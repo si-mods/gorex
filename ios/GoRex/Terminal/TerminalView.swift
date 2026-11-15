@@ -811,6 +811,7 @@ final class TerminalHost: UIView {
     let terminal: TerminalView
     private let scrollDown = UIVisualEffectView(effect: UIGlassEffect(style: .regular))
     private let unreadDot = UIView()
+    private var laidOut = false
 
     init(_ terminal: TerminalView) {
         self.terminal = terminal
@@ -890,9 +891,25 @@ final class TerminalHost: UIView {
 
     override func layoutSubviews() {
         super.layoutSubviews()
-        terminal.bounds = CGRect(origin: .zero, size: bounds.size)
-        terminal.center = CGPoint(x: bounds.midX, y: bounds.midY)
-        terminal.inset = safeAreaInsets.top
+        let apply = {
+            self.terminal.bounds = CGRect(origin: .zero, size: self.bounds.size)
+            self.terminal.center = CGPoint(x: self.bounds.midX, y: self.bounds.midY)
+            self.terminal.inset = self.safeAreaInsets.top
+        }
+        if !laidOut, window != nil, bounds.size != .zero {
+            laidOut = true
+            // Snap initial frame, safe-area inset, and key bar into place so
+            // SwiftUI tab-switch transitions don't animate subviews up from .zero.
+            UIView.performWithoutAnimation {
+                apply()
+                self.layoutIfNeeded()
+                self.terminal.layoutIfNeeded()
+            }
+        } else if !laidOut {
+            UIView.performWithoutAnimation { apply() }
+        } else {
+            apply()
+        }
     }
 
     override func safeAreaInsetsDidChange() {

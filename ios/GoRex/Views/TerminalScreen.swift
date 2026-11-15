@@ -60,7 +60,7 @@ struct TerminalScreen: View {
         let scheme: ColorScheme = bg.light ? .light : .dark
         // The terminal goes up under the clear bar and the status bar: its
         // grid starts below them, and its scrollback fills the band.
-        Group {
+        ZStack {
             if let session {
                 TerminalRepresentable(session: session, newTab: newTab, closeTab: closeTab, mic: mic, voice: voiceCapsule, dictating: said != nil)
                     .id(currentTarget.block)
@@ -118,19 +118,21 @@ struct TerminalScreen: View {
                 // tap opens the session's sheet.
                 ToolbarItem(placement: .principal) {
                     // As tall as the back button beside it.
-                    HStack(spacing: 10) {
-                        let k = ProgramTiles.scale, small = 0.85
-                        ProgramTile(program: .of(host.blocks[currentTarget.block]?.program))
-                            .frame(width: 21 * k, height: 16 * k)
-                            .scaleEffect(small)
-                            .frame(width: 21 * k * small, height: 16 * k * small)
-                        Text(title.asText).font(.body.weight(.semibold)).lineLimit(1)
+                    ZStack {
+                        HStack(spacing: 10) {
+                            let k = ProgramTiles.scale, small = 0.85
+                            ProgramTile(program: .of(host.blocks[currentTarget.block]?.program))
+                                .frame(width: 21 * k, height: 16 * k)
+                                .scaleEffect(small)
+                                .frame(width: 21 * k * small, height: 16 * k * small)
+                            Text(title.asText).font(.body.weight(.semibold)).lineLimit(1)
+                        }
+                        .id(currentTarget.block)
+                        .transition(.asymmetric(
+                            insertion: .move(edge: slideDir > 0 ? .trailing : .leading).combined(with: .opacity),
+                            removal: .move(edge: slideDir > 0 ? .leading : .trailing).combined(with: .opacity)
+                        ))
                     }
-                    .id(currentTarget.block)
-                    .transition(.asymmetric(
-                        insertion: .move(edge: slideDir > 0 ? .trailing : .leading).combined(with: .opacity),
-                        removal: .move(edge: slideDir > 0 ? .leading : .trailing).combined(with: .opacity)
-                    ))
                     .padding(.leading, 12)
                     .padding(.trailing, 18)
                     .frame(height: 44)
