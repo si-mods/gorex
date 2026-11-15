@@ -31,6 +31,9 @@ struct TerminalScreen: View {
     @State private var diagnostics = false
     /// The height of the status bar.
     @State private var statusBar: CGFloat = 0
+    /// Whether the navigation stack is mid-transition; `TopEdge` drops its
+    /// masked material blur during transitions so it doesn't snap off mid-pop.
+    @State private var transitioning = true
     /// What is said while the mic is on.
     @State private var said: Dictation.Said?
     /// Whether the mic asks to download the speech model, or to stop it.
@@ -60,11 +63,22 @@ struct TerminalScreen: View {
                 // The status bar is the window's inset, read as the page's changes.
                 Color(cgColor: bg.cgColor)
                     .ignoresSafeArea()
-                    .onGeometryChange(for: CGFloat.self) { $0.safeAreaInsets.top } action: { _ in statusBar = Self.statusBar }
+                    .onGeometryChange(for: CGFloat.self) { $0.safeAreaInsets.top } action: { _ in
+                        let top = Self.statusBar
+                        if top > 0 { statusBar = top }
+                    }
+                TransitionObserver { isTransitioning in
+                    if isTransitioning {
+                        transitioning = true
+                    } else {
+                        withAnimation(.easeIn(duration: 0.15)) { transitioning = false }
+                    }
+                }
+                .allowsHitTesting(false)
             }
             // What goes up under the status bar blurs and fades into the
             // background, for the clock over it.
-            .overlay(alignment: .top) { TopEdge(color: Color(cgColor: bg.cgColor), height: statusBar + 10) }
+            .overlay(alignment: .top) { TopEdge(color: Color(cgColor: bg.cgColor), height: statusBar + 10, blurred: !transitioning) }
             // Above the key bar, which is not the keyboard's.
             .overlay(alignment: .bottom) { if let said { Heard(said: said) { terminal?.stopDictating() }.padding(.bottom, hasBar ? KeyBar.height : 0) } }
             .overlay { status }
@@ -384,6 +398,7 @@ private struct TopEdge: View {
     let color: Color
     /// How far down from the top of the screen it reaches.
     let height: CGFloat
+    let blurred: Bool
 
     var body: some View {
         let fade = LinearGradient(stops: [.init(color: .black, location: 0), .init(color: .black, location: 0.35), .init(color: .clear, location: 1)],
@@ -391,8 +406,10 @@ private struct TopEdge: View {
         // From the top of the screen, height down.
         VStack(spacing: 0) {
             ZStack {
-                Rectangle().fill(.ultraThinMaterial)
-                color.opacity(0.75)
+                if blurred {
+                    Rectangle().fill(.ultraThinMaterial)
+                }
+                color.opacity(blurred ? 0.75 : 0.9)
             }
             .mask(fade)
             .frame(height: height)
@@ -400,6 +417,53 @@ private struct TopEdge: View {
         }
         .ignoresSafeArea(.container, edges: .top)
         .allowsHitTesting(false)
+    }
+}
+
+/// Tracks whether the enclosing navigation controller is mid-transition, so
+/// `TopEdge` only renders its masked material blur in steady state.
+private struct TransitionObserver: UIViewControllerRepresentable {
+    let onChange: (Bool) -> Void
+
+    func makeUIViewController(context: Context) -> Controller {
+        Controller(onChange: onChange)
+    }
+
+    func updateUIViewController(_ vc: Controller, context: Context) {
+        vc.onChange = onChange
+    }
+
+    final class Controller: UIViewController {
+        var onChange: (Bool) -> Void
+
+        init(onChange: @escaping (Bool) -> Void) {
+            self.onChange = onChange
+            super.init(nibName: nil, bundle: nil)
+        }
+
+        @available(*, unavailable)
+        required init?(coder: NSCoder) { fatalError() }
+
+        override func loadView() {
+            view = UIView()
+            view.isHidden = true
+            view.isUserInteractionEnabled = false
+        }
+
+        override func viewWillAppear(_ animated: Bool) {
+            super.viewWillAppear(animated)
+            if animated { onChange(true) }
+        }
+
+        override func viewDidAppear(_ animated: Bool) {
+            super.viewDidAppear(animated)
+            onChange(false)
+        }
+
+        override func viewWillDisappear(_ animated: Bool) {
+            super.viewWillDisappear(animated)
+            onChange(true)
+        }
     }
 }
 
