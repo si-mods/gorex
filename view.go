@@ -156,12 +156,10 @@ func (a *App) titleBar(c *ui.Context, k *colors) {
 // then more's.
 func (a *App) titleButtons(c *ui.Context, k *colors, more func()) {
 	ui.Row(c).Gap(2).AlignItems(ui.Center).Shrink(0).Children(func() {
-		naturalGlyphs = true
-		defer func() { naturalGlyphs = false }()
-		if iconButton(c, k, "command", locales.PaletteTitle(), 30, 18).Tooltip(tip(locales.PaletteTitle(), &cmdPalette)).Clicked() {
+		if naturalIconButton(c, k, "command", locales.PaletteTitle(), 30, 18).Tooltip(tip(locales.PaletteTitle(), &cmdPalette)).Clicked() {
 			a.openPalette()
 		}
-		if iconButton(c, k, "plus", locales.CmdNewTab(), 30, 18).Tooltip(tip(locales.CmdNewTab(), &cmdNewTab)).Clicked() {
+		if naturalIconButton(c, k, "plus", locales.CmdNewTab(), 30, 18).Tooltip(tip(locales.CmdNewTab(), &cmdNewTab)).Clicked() {
 			a.newTab(a.currentDir())
 		}
 		if more != nil {
@@ -255,12 +253,27 @@ func tip(label string, cmd *command) string {
 // iconButton is a borderless button of an icon, with a face on hover;
 // label names it for screen readers and its tooltip.
 func iconButton(c *ui.Context, k *colors, name, label string, size, iconSize float32) ui.Element {
-	return iconButtonWith(c, k, name, label, size, iconSize, false, nil)
+	return drawIconButton(c, k, name, label, size, iconSize, false, false, nil)
 }
 
 // iconButtonWith is iconButton drawn as pressed in while active, with more
 // drawn over its icon.
 func iconButtonWith(c *ui.Context, k *colors, name, label string, size, iconSize float32, active bool, more func()) ui.Element {
+	return drawIconButton(c, k, name, label, size, iconSize, active, false, more)
+}
+
+// naturalIconButton is iconButton whose SF Symbol keeps its natural
+// proportion beside others in a button row, as Rex draws them.
+func naturalIconButton(c *ui.Context, k *colors, name, label string, size, iconSize float32) ui.Element {
+	return drawIconButton(c, k, name, label, size, iconSize, false, true, nil)
+}
+
+// naturalIconButtonWith is naturalIconButton drawn as pressed in while active.
+func naturalIconButtonWith(c *ui.Context, k *colors, name, label string, size, iconSize float32, active bool) ui.Element {
+	return drawIconButton(c, k, name, label, size, iconSize, active, true, nil)
+}
+
+func drawIconButton(c *ui.Context, k *colors, name, label string, size, iconSize float32, active, natural bool, more func()) ui.Element {
 	b := ui.Box(c).Size(size, size).Center().Radius(size / 2).Cursor(ui.CursorPointer).Role(ui.RoleButton).Label(label)
 	if b.Pressed() {
 		b.Background(k.pressed)
@@ -275,7 +288,7 @@ func iconButtonWith(c *ui.Context, k *colors, name, label string, size, iconSize
 		col = k.text
 	}
 	b.Children(func() {
-		glyphIcon(c, name, iconSize, col)
+		glyphIconWith(c, name, iconSize, col, natural)
 		if more != nil {
 			more()
 		}
@@ -1215,16 +1228,12 @@ func (a *App) paneActions(c *ui.Context, k *colors, t *Tab, p *Pane, show bool) 
 		row.AnimatePose(ui.Pose{}, *anim)
 	}
 	row.Children(func() {
-		// The symbols keep the sizes they have beside each other, as Rex
-		// draws them, rather than each filling its button.
-		naturalGlyphs = true
-		defer func() { naturalGlyphs = false }()
 		if n := p.note; n != nil {
 			icon, label := "eye", locales.NotePreview()
 			if n.preview {
 				icon, label = "pencil", locales.NoteEdit()
 			}
-			if iconButton(c, k, icon, label, 26, 16).Tooltip(tip(label, &cmdNotePreview)).Clicked() {
+			if naturalIconButton(c, k, icon, label, 26, 16).Tooltip(tip(label, &cmdNotePreview)).Clicked() {
 				t.setFocus(p)
 				a.toggleNotePreview(p)
 			}
@@ -1232,23 +1241,23 @@ func (a *App) paneActions(c *ui.Context, k *colors, t *Tab, p *Pane, show bool) 
 		// As Rex has them: split right, split down, float, zoom and close.
 		// A float's float button, lit, docks it.
 		if f := p.float; f != nil {
-			if iconButton(c, k, "minus", locales.PaneMinimize(), 26, 16).Tooltip(locales.PaneMinimize()).Clicked() {
+			if naturalIconButton(c, k, "minus", locales.PaneMinimize(), 26, 16).Tooltip(locales.PaneMinimize()).Clicked() {
 				a.later(c, func() { a.hideFloat(f) })
 			}
 			// A canvas's panes are all free: none docks.
-			if t.canvas == nil && iconButtonWith(c, k, "float", locales.CmdDockPane(), 26, 16, true, nil).Tooltip(tip(locales.CmdDockPane(), &cmdFloatPane)).Clicked() {
+			if t.canvas == nil && naturalIconButtonWith(c, k, "float", locales.CmdDockPane(), 26, 16, true).Tooltip(tip(locales.CmdDockPane(), &cmdFloatPane)).Clicked() {
 				a.later(c, func() { a.dockPane(p) })
 			}
 		} else {
-			if iconButton(c, k, "columns-2", locales.CmdSplitRight(), 26, 16).Tooltip(tip(locales.CmdSplitRight(), &cmdSplitRight)).Clicked() {
+			if naturalIconButton(c, k, "columns-2", locales.CmdSplitRight(), 26, 16).Tooltip(tip(locales.CmdSplitRight(), &cmdSplitRight)).Clicked() {
 				t.setFocus(p)
 				a.split(false)
 			}
-			if iconButton(c, k, "rows-2", locales.CmdSplitDown(), 26, 16).Tooltip(tip(locales.CmdSplitDown(), &cmdSplitDown)).Clicked() {
+			if naturalIconButton(c, k, "rows-2", locales.CmdSplitDown(), 26, 16).Tooltip(tip(locales.CmdSplitDown(), &cmdSplitDown)).Clicked() {
 				t.setFocus(p)
 				a.split(true)
 			}
-			if len(t.panes()) > 1 && iconButton(c, k, "float", locales.CmdFloatPane(), 26, 16).Tooltip(tip(locales.CmdFloatPane(), &cmdFloatPane)).Clicked() {
+			if len(t.panes()) > 1 && naturalIconButton(c, k, "float", locales.CmdFloatPane(), 26, 16).Tooltip(tip(locales.CmdFloatPane(), &cmdFloatPane)).Clicked() {
 				a.later(c, func() { a.floatPane(p) })
 			}
 		}
@@ -1256,11 +1265,11 @@ func (a *App) paneActions(c *ui.Context, k *colors, t *Tab, p *Pane, show bool) 
 		if t.Zoom == p || p.float != nil && p.float.Zoom {
 			zoom, label = "minimize-2", locales.PaneUnzoom()
 		}
-		if iconButton(c, k, zoom, label, 26, 16).Tooltip(tip(label, &cmdZoom)).Clicked() {
+		if naturalIconButton(c, k, zoom, label, 26, 16).Tooltip(tip(label, &cmdZoom)).Clicked() {
 			t.setFocus(p)
 			a.toggleZoom()
 		}
-		if iconButton(c, k, "x", locales.CmdClosePane(), 26, 16).Tooltip(tip(locales.CmdClosePane(), &cmdClosePane)).Clicked() {
+		if naturalIconButton(c, k, "x", locales.CmdClosePane(), 26, 16).Tooltip(tip(locales.CmdClosePane(), &cmdClosePane)).Clicked() {
 			a.later(c, func() { a.closePane(p) })
 		}
 	})
