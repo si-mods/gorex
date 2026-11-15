@@ -269,7 +269,7 @@ func (a *App) spaceStrip(c *ui.Context, k *colors) {
 		for i, w := range a.st.workspaces {
 			a.spaceDotButton(c, k, i, w)
 		}
-		if b := iconButton(c, k, "plus", cmdNewSession.Title(), 22, 13).Tooltip(cmdNewSession.Title()); b.Clicked() {
+		if b := iconButton(c, k, "plus", cmdNewSession.Title(), 24, 13).Tooltip(cmdNewSession.Title()); b.Clicked() {
 			a.later(c, a.newWorkspace)
 		}
 	})
