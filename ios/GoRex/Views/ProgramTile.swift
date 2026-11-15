@@ -314,20 +314,17 @@ struct ProgramStatusMark: View {
 /// icon bounces:
 /// - `attention` (`blocked`, `error`): energetic double-hop repeating on a
 ///   calm cadence until the user attends to it.
-/// - `working`: gentle low-amplitude float while a program is busy.
 /// - `done`: celebratory double-hop repeating on a relaxed cadence while
 ///   unseen.
-/// - `none` (`idle` or `nil`): still.
+/// - `none` (`working`, `idle`, or `nil`): still (working uses `WorkingDots`).
 enum TileMotion: Equatable, Hashable, Sendable {
     case none
-    case working
     case done
     case attention
 
     init(state: String?) {
         switch state {
         case "blocked", "error": self = .attention
-        case "working": self = .working
         case "done": self = .done
         default: self = .none
         }
@@ -376,10 +373,6 @@ private struct TileBounceModifier: ViewModifier {
                         CubicKeyframe(-2.0, duration: 0.11)
                         CubicKeyframe(0, duration: 0.11)
                         LinearKeyframe(0, duration: 1.88)
-                    case .working:
-                        CubicKeyframe(-2.0, duration: 0.70)
-                        CubicKeyframe(0, duration: 0.70)
-                        LinearKeyframe(0, duration: 0.25)
                     case .none:
                         LinearKeyframe(0, duration: 0.01)
                     }
@@ -401,7 +394,7 @@ private struct TileBounceModifier: ViewModifier {
                         CubicKeyframe(1.0, duration: 0.11)
                         CubicKeyframe(1.0, duration: 0.11)
                         LinearKeyframe(1.0, duration: 1.88)
-                    case .working, .none:
+                    case .none:
                         LinearKeyframe(1.0, duration: 0.01)
                     }
                 }
@@ -422,7 +415,7 @@ private struct TileBounceModifier: ViewModifier {
                         CubicKeyframe(1.0, duration: 0.11)
                         CubicKeyframe(1.0, duration: 0.11)
                         LinearKeyframe(1.0, duration: 1.88)
-                    case .working, .none:
+                    case .none:
                         LinearKeyframe(1.0, duration: 0.01)
                     }
                 }
