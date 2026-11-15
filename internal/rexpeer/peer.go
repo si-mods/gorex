@@ -25,19 +25,21 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
+
+	"gorex/internal/rexproto"
 )
 
 // APIRevision is the revision of Rex's API this client speaks.
-const APIRevision = 14
+const APIRevision = rexproto.APIRevision
 
 // APIMinRevision is the oldest revision of Rex's API this client accepts.
-const APIMinRevision = 0
+const APIMinRevision = rexproto.APIMinRevision
 
 // APIVersion is the protocol of the control connection.
-const APIVersion = "rex.control.v1"
+const APIVersion = rexproto.ControlProtocol
 
 // DataTerminal is the subprotocol of a terminal's data connection.
-const DataTerminal = "rex.data.terminal.v1"
+const DataTerminal = rexproto.TerminalProtocol
 
 // Client is a control connection to a Rex server.
 type Client struct {

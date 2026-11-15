@@ -64,8 +64,8 @@ struct EventGate {
 /// with JSON requests, responses and events.
 final class ControlConnection {
     /// The API revision this client speaks, and the oldest it accepts.
-    static let revision = 14
-    static let minRevision = 0
+    static let revision = RexProtocol.apiRevision
+    static let minRevision = RexProtocol.apiMinRevision
 
     var onEvent: (RexEvent) -> Void = { _ in }
     /// Called once when the connection ends, by either side.

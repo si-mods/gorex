@@ -1,25 +1,6 @@
 // Pure file-upload helpers (no DOM or window globals) so web/test/upload.test.ts
 // can run them directly in Node.
 
-export interface UploadResult {
-  path: string;
-  word: string;
-  reason?: string;
-}
-
-export class UploadError extends Error {
-  constructor(public code: string, message: string) {
-    super(message);
-  }
-}
-
-/** Builds the /api/upload path for a block, file name, and optional uncompressed size (when deflate-raw). */
-export function uploadPath(blockID: string, name: string, rawSize?: number): string {
-  const q = new URLSearchParams({ block_id: blockID, name });
-  if (rawSize !== undefined) q.set("size", String(rawSize));
-  return `/api/upload?${q.toString()}`;
-}
-
 /** Generates a timestamped file name for a pasted clipboard image, matching desktop paste.go. */
 export function pastedImageName(mime: string, now = new Date()): string {
   const pad = (n: number) => String(n).padStart(2, "0");
@@ -73,22 +54,4 @@ export function extractPastedImages(dt: DataTransfer | null, now = new Date()): 
     if (item.kind === "file") add(item.getAsFile());
   }
   return out;
-}
-
-/** Parses the JSON answer from POST /api/upload. */
-export function parseUploadResponse(status: number, bodyText: string): UploadResult {
-  let j: any = {};
-  try {
-    j = JSON.parse(bodyText || "{}");
-  } catch {
-    if (status < 200 || status >= 300) throw new Error(bodyText || `HTTP ${status}`);
-    throw new Error("Invalid upload response");
-  }
-  if (status < 200 || status >= 300) {
-    throw new UploadError(typeof j.code === "string" ? j.code : "upload_failed", j.error || `HTTP ${status}`);
-  }
-  if (!j.word) {
-    throw new Error(j.reason || "Shell cannot accept this uploaded path");
-  }
-  return { path: String(j.path ?? ""), word: String(j.word), reason: j.reason };
 }

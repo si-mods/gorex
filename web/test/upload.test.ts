@@ -1,12 +1,7 @@
-// File upload helpers: paths, clipboard image extraction, directory skip, and response parsing (src/upload.ts).
+// File upload helpers: clipboard image extraction and directory skip (src/upload.ts).
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { extractDroppedFiles, extractPastedImages, parseUploadResponse, pastedImageName, uploadPath } from "../src/uploadhelpers";
-
-test("uploadPath encodes block_id, name, and optional size", () => {
-  assert.equal(uploadPath("block:1", "my file.png"), "/api/upload?block_id=block%3A1&name=my+file.png");
-  assert.equal(uploadPath("block:1", "a.txt", 42), "/api/upload?block_id=block%3A1&name=a.txt&size=42");
-});
+import { extractDroppedFiles, extractPastedImages, pastedImageName } from "../src/uploadhelpers";
 
 test("pastedImageName formats timestamp and extension", () => {
   const d = new Date(2026, 10, 13, 9, 5, 7);
@@ -50,14 +45,4 @@ test("extractPastedImages ignores images when plain text is present and renames 
   assert.equal(out.length, 2);
   assert.equal(out[0].name, "pasted-image-20261113-210000.png");
   assert.equal(out[1].name, "shot.png");
-});
-
-test("parseUploadResponse returns word or throws on error / unsupported shell path", () => {
-  assert.deepEqual(parseUploadResponse(200, JSON.stringify({ path: "/tmp/a b.png", word: "'/tmp/a b.png'" })), {
-    path: "/tmp/a b.png",
-    word: "'/tmp/a b.png'",
-    reason: undefined,
-  });
-  assert.throws(() => parseUploadResponse(200, JSON.stringify({ path: "/tmp/a", word: "", reason: "bad shell" })), /bad shell/);
-  assert.throws(() => parseUploadResponse(413, JSON.stringify({ error: "file too large" })), /file too large/);
 });

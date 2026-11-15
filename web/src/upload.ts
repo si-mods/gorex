@@ -1,15 +1,14 @@
 // Uploading dropped files, picked files, and pasted clipboard images to a
-// remote GoRex host (/api/upload, internal/rexapi/upload.go): shows progress,
-// supports cancellation, and pastes the shell-escaped remote path(s) into the
-// target pane only once the upload succeeds.
+// remote Rex/GoRex host over com.superlogical.terminal.upload_begin +
+// rex.data.bytes.v1: shows progress and supports cancellation.
 
 import { Msg, t } from "./i18n";
 import { formatBytes } from "./progress";
 import { BytesStream, Control, describe, RexError } from "./rex";
-import { extractDroppedFiles, extractPastedImages, parseUploadResponse, pastedImageName, UploadError, uploadPath, UploadResult } from "./uploadhelpers";
+import { RexProtocol } from "./rex-protocol.gen";
+import { extractDroppedFiles, extractPastedImages, pastedImageName } from "./uploadhelpers";
 
-export { extractDroppedFiles, extractPastedImages, parseUploadResponse, pastedImageName, uploadPath };
-export type { UploadResult };
+export { extractDroppedFiles, extractPastedImages, pastedImageName };
 
 export interface UploadTarget {
   control: Control;
@@ -21,81 +20,6 @@ export interface UploadTarget {
   status(s: Msg): void;
 }
 
-async function compressDeflateRaw(file: File): Promise<Uint8Array | undefined> {
-  if (typeof CompressionStream === "undefined" || file.size === 0 || file.size > 32 << 20) return undefined;
-  try {
-    const stream = file.stream().pipeThrough(new CompressionStream("deflate-raw"));
-    const buf = new Uint8Array(await new Response(stream).arrayBuffer());
-    return buf.length < file.size ? buf : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-function sendXHR(
-  url: string,
-  file: File,
-  signal: AbortSignal,
-  onProgress: (loaded: number) => void,
-): Promise<{ status: number; text: string }> {
-  return new Promise((resolve, reject) => {
-    const xhr = new XMLHttpRequest();
-    const onAbort = () => xhr.abort();
-    signal.addEventListener("abort", onAbort, { once: true });
-    xhr.open("POST", url);
-    xhr.setRequestHeader("Content-Type", "application/octet-stream");
-    xhr.upload.onprogress = (e) => {
-      if (e.lengthComputable) onProgress(e.loaded);
-    };
-    xhr.onload = () => {
-      signal.removeEventListener("abort", onAbort);
-      resolve({ status: xhr.status, text: xhr.responseText });
-    };
-    xhr.onerror = () => {
-      signal.removeEventListener("abort", onAbort);
-      reject(new Error(t("errorOffline")));
-    };
-    xhr.onabort = () => {
-      signal.removeEventListener("abort", onAbort);
-      reject(new DOMException("Aborted", "AbortError"));
-    };
-    xhr.send(file);
-  });
-}
-
-async function sendOne(
-  control: Control,
-  blockID: string,
-  file: File,
-  signal: AbortSignal,
-  onProgress: (loaded: number) => void,
-): Promise<UploadResult> {
-  if (control.transport.url) {
-    const path = uploadPath(blockID, file.name);
-    const r = await sendXHR(control.transport.url(path), file, signal, onProgress);
-    return parseUploadResponse(r.status, r.text);
-  }
-  let body: BodyInit = file;
-  let path = uploadPath(blockID, file.name);
-  const headers: Record<string, string> = { "Content-Type": "application/octet-stream" };
-  if (control.features.has("gorex.upload.deflate-raw")) {
-    const gz = await compressDeflateRaw(file);
-    if (gz) {
-      body = gz as unknown as BodyInit;
-      headers["Content-Encoding"] = "deflate-raw";
-      path = uploadPath(blockID, file.name, file.size);
-    }
-  }
-  const res = await control.transport.fetch(path, { method: "POST", headers, body, signal });
-  onProgress(file.size);
-  return parseUploadResponse(res.status, await res.text());
-}
-
-/**
- * Uploads files to target's captured host/control and blockID, showing a
- * cancellable progress bar in target.container, and pastes the escaped
- * remote path(s) into target only after all files succeed.
- */
 async function sendOneBytes(
   control: Control,
   sessionID: string,
@@ -133,7 +57,7 @@ async function sendOneBytes(
     await stream.open(ticket);
     const reader = file.stream().getReader();
     let sent = 0;
-    const chunkSize = 64 << 10;
+    const chunkSize = RexProtocol.maxChunk;
     while (true) {
       if (signal.aborted) throw new DOMException("Aborted", "AbortError");
       const { done, value } = await reader.read();
@@ -152,12 +76,14 @@ async function sendOneBytes(
   }
 }
 
+/**
+ * Uploads files to target's captured host/control and blockID, showing a
+ * cancellable progress bar in target.container.
+ */
 export async function uploadFiles(target: UploadTarget, files: File[]): Promise<void> {
   if (!files.length) return;
   const { control, sessionID, blockID } = target;
-  const useGorexHTTP = control.features.has("gorex.upload");
-  const useBytesStream = !useGorexHTTP && control.apiRevision >= 11 && !!sessionID;
-  if (!useGorexHTTP && !useBytesStream) {
+  if (control.apiRevision < RexProtocol.uploadRevision || !sessionID) {
     target.status(() => t("uploadUnsupported"));
     return;
   }
@@ -197,9 +123,8 @@ export async function uploadFiles(target: UploadTarget, files: File[]): Promise<
   };
 
   try {
-    const words: string[] = [];
     let doneBytes = 0;
-    const batch = useBytesStream && files.length > 1 ? crypto.randomUUID().toLowerCase() : undefined;
+    const batch = files.length > 1 ? crypto.randomUUID().toLowerCase() : undefined;
     for (let i = 0; i < files.length; i++) {
       if (ac.signal.aborted || !target.isAlive()) {
         ac.abort();
@@ -207,26 +132,17 @@ export async function uploadFiles(target: UploadTarget, files: File[]): Promise<
       }
       const f = files[i];
       update(i, f, doneBytes, 0);
-      if (useBytesStream) {
-        await sendOneBytes(control, sessionID!, blockID, f, batch, i, files.length, ac.signal, (loaded) =>
-          update(i, f, doneBytes, loaded),
-        );
-      } else {
-        const res = await sendOne(control, blockID, f, ac.signal, (loaded) => update(i, f, doneBytes, loaded));
-        words.push(res.word);
-      }
+      await sendOneBytes(control, sessionID, blockID, f, batch, i, files.length, ac.signal, (loaded) =>
+        update(i, f, doneBytes, loaded),
+      );
       doneBytes += f.size;
       update(i, f, doneBytes, 0);
-    }
-    if (!useBytesStream && target.isAlive() && words.length > 0) {
-      target.paste(words.join(" "));
     }
   } catch (e) {
     if (e instanceof DOMException && e.name === "AbortError") {
       target.status(() => t("uploadCancelled"));
     } else {
-      const err = e instanceof UploadError ? new RexError(e.code, e.message) : e;
-      target.status(() => t("uploadFailed", { error: describe(err) }));
+      target.status(() => t("uploadFailed", { error: describe(e) }));
     }
   } finally {
     box.remove();

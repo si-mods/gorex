@@ -1,0 +1,22 @@
+{
+  "api_revision": 14,
+  "api_min_revision": 0,
+  "upload_revision": 11,
+  "download_revision": 13,
+  "tunnel_revision": 14,
+  "control_protocol": "rex.control.v1",
+  "terminal_protocol": "rex.data.terminal.v1",
+  "bytes_protocol": "rex.data.bytes.v1",
+  "data_welcome_byte": 129,
+  "data_reject_byte": 130,
+  "max_chunk": 65536,
+  "methods": {
+    "terminal_upload_begin": "com.superlogical.terminal.upload_begin",
+    "terminal_download_begin": "com.superlogical.terminal.download_begin",
+    "tunnel_info": "com.superlogical.tunnel.info"
+  },
+  "creators": {
+    "terminal": "com.superlogical.terminal",
+    "tunnel": "com.superlogical.tunnel"
+  }
+}
