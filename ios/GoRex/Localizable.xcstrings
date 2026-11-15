@@ -942,6 +942,16 @@
         }
       }
     },
+    "Reconnecting…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在重新连接…"
+          }
+        }
+      }
+    },
     "Remote Hosts": {
       "localizations": {
         "zh-Hans": {
@@ -2734,6 +2744,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "输出中的网页和邮件链接轻点即可打开，程序用 OSC 8 标记的链接也一样。链接后紧跟中文时，链接在地址结束处截止。"
+          }
+        }
+      }
+    },
+    "What you type is sent when the connection is back.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "连接恢复后会发送你输入的内容。"
           }
         }
       }

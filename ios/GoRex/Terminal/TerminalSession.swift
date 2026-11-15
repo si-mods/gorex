@@ -37,6 +37,17 @@ final class TerminalSession {
     private(set) var background: VTerminal.RGB?
     /// The progress a program reports (OSC 9;4), nil without one.
     var progress: Progress?
+    /// Whether the stream connects again after a drop, or after the app
+    /// came back, while its screen shows what it last had.
+    private(set) var reconnecting = false
+    /// Whether what was typed waits for the host, offline.
+    private(set) var waitingToSend = false
+    /// Whether the session failed only for want of a connection, and so
+    /// starts again when its host is back online.
+    @ObservationIgnored private(set) var startsWhenHostIsBack = false
+    /// The starts made on its own since the user's last, or since the
+    /// stream was last live: three at most.
+    @ObservationIgnored private var autoStarts = 0
 
     struct Progress: Equatable {
         /// Done of the whole, nil while the program can't tell.
@@ -122,8 +133,16 @@ final class TerminalSession {
     /// Opens the stream from the start: a ticket, a HELLO, a new snapshot.
     /// The stream before it ends. A closed session opens again.
     func start() {
+        autoStarts = 0
+        begin()
+    }
+
+    /// Starts, as the user does or on its own after a lost connection.
+    private func begin() {
         closed = false
         drops = 0
+        startsWhenHostIsBack = false
+        setReconnecting(false)
         if let demo {
             state = .live
             demo.onOutput = { [weak self] bytes in self?.write(bytes) }
@@ -165,7 +184,11 @@ final class TerminalSession {
                 diagnosis = "Waiting for \(d?.stage ?? "the ticket (data.connect)"), \(began.duration(to: .now).ms): \(error.diagnosis)"
                 if d == nil { ConnectionLog.note("terminal \(block): no ticket: \(error.diagnosis)") }
                 // Opened by hand, it tells at once; after a drop, it tries again.
-                if drops == 0 { state = .failed(error.localizedDescription) } else { retry(fresh: true) }
+                // Without a connection, not refused by the server, it
+                // starts again when the host is online.
+                let code = (error as? RexError)?.code
+                let lost = d != nil || code == "offline" || code == "timeout"
+                if drops == 0 { end(.failed(error.localizedDescription), startsWhenHostIsBack: lost) } else { retry(fresh: true) }
             }
         }
     }
@@ -180,6 +203,7 @@ final class TerminalSession {
     }
 
     private func rejoin() {
+        setReconnecting(true)
         host.reconnectIfNeeded()
         generation += 1
         let g = generation
@@ -187,6 +211,7 @@ final class TerminalSession {
             do {
                 try await data.resume()
                 guard g == generation else { return }
+                setReconnecting(false)
                 log.info("resumed \(self.block, privacy: .public)")
                 opened = .now
                 // A client that came back too late to resume lost the block.
@@ -220,6 +245,7 @@ final class TerminalSession {
     func close() {
         closed = true
         generation += 1
+        setReconnecting(false)
         guard demo == nil else { return }
         data.close()
         let (session, block) = (session, block)
@@ -234,8 +260,8 @@ final class TerminalSession {
         d.onDrop = { [weak self, weak d] code in
             guard let self, d === self.data, !self.closed else { return }
             switch code {
-            case 4000: self.state = .failed(String(localized: "The window closed."))
-            case 1002, 1008: self.state = .failed(String(localized: "The server refused the terminal."))
+            case 4000: self.end(.failed(String(localized: "The window closed.")))
+            case 1002, 1008: self.end(.failed(String(localized: "The server refused the terminal.")))
             default: self.retry(fresh: code == 1000 || code == 1013)
             }
         }
@@ -251,15 +277,46 @@ final class TerminalSession {
         if opened.duration(to: .now) > .seconds(10) { drops = 0 }
         drops += 1
         guard let wait = Self.backoff(after: drops) else {
-            state = .failed(String(localized: "The connection was lost."))
+            end(.failed(String(localized: "The connection was lost.")), startsWhenHostIsBack: true)
             return
         }
+        setReconnecting(true)
         let g = generation
         Task {
             try? await Task.sleep(for: wait)
             guard g == generation, !closed else { return }
             if fresh { open() } else { rejoin() }
         }
+    }
+
+    /// Fails the stream, or ends it as its program exited. Failed for
+    /// want of a connection, it starts again once the host is online, a
+    /// few times at most.
+    private func end(_ s: State, startsWhenHostIsBack again: Bool = false) {
+        state = s
+        startsWhenHostIsBack = again
+        setReconnecting(false)
+        guard again, demo == nil else { return }
+        let g = generation
+        let h = self.host
+        Task { [weak self] in
+            // It waits while the host is offline, and fails as it is removed.
+            guard (try? await h.online()) != nil else { return }
+            try? await Task.sleep(for: .seconds(2))
+            guard let self, g == self.generation, !self.closed, case .failed = self.state,
+                  self.startsWhenHostIsBack, self.autoStarts < 3 else { return }
+            self.autoStarts += 1
+            self.begin()
+        }
+    }
+
+    /// Sets the flags only as they change, for no needless updates.
+    private func setReconnecting(_ r: Bool) {
+        if reconnecting != r { reconnecting = r }
+    }
+
+    private func setWaitingToSend(_ w: Bool) {
+        if waitingToSend != w { waitingToSend = w }
     }
 
     /// The wait before connecting again after drops in a row: half a
@@ -273,7 +330,7 @@ final class TerminalSession {
             switch item {
             case .snapshot(let s):
                 guard let t = VTerminal(snapshot: s) else {
-                    state = .failed(String(localized: "The terminal's snapshot could not be read."))
+                    end(.failed(String(localized: "The terminal's snapshot could not be read.")))
                     return
                 }
                 // Drawn at the view's size, which the block takes next.
@@ -283,6 +340,8 @@ final class TerminalSession {
                 // A reset first: the snapshot of a new stream replaces the screen.
                 write(Data("\u{1b}c".utf8) + t.replay())
                 state = .live
+                setReconnecting(false)
+                autoStarts = 0
             case .output(let o):
                 write(o)
             case .message(let m):
@@ -292,7 +351,7 @@ final class TerminalSession {
                     hostTheme = m
                     apply(theme: TerminalTheme.chosen?.message ?? m)
                 case "child_exited":
-                    state = .exited(m["exit_code"] as? Int ?? 0)
+                    end(.exited(m["exit_code"] as? Int ?? 0))
                 default:
                     // A resize follows this view's size, which it set.
                     break
@@ -379,13 +438,18 @@ final class TerminalSession {
         let (session, block) = (session, block)
         Task {
             do {
+                // Offline, the write waits for the host.
+                if host.status != .online { setWaitingToSend(true) }
                 try await host.online().callBlock("write", session: session, block: block, ["data": text])
                 typed = Data(typed.dropFirst(n))
+                setWaitingToSend(false)
             } catch let e as RexError where e.code == "offline" {
+                setWaitingToSend(true)
                 try? await Task.sleep(for: .seconds(1))
             } catch {
                 log.error("dropped a write of \(n) bytes: \(error.localizedDescription, privacy: .public)")
                 typed = Data(typed.dropFirst(n))
+                setWaitingToSend(false)
             }
             typing = false
             write()

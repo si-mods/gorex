@@ -42,6 +42,9 @@ struct TerminalScreen: View {
     @State private var currentTarget: TerminalTarget
     @State private var pillDrag: CGFloat = 0
     @State private var slideDir: CGFloat = 1
+    /// Whether the terminal has been reconnecting, or holding what was
+    /// typed, for a second: a short reconnect shows nothing.
+    @State private var stalled = false
 
     init(target: TerminalTarget, host: Host, go: @escaping (TerminalTarget?) -> Void) {
         self.target = target
@@ -90,6 +93,23 @@ struct TerminalScreen: View {
             // On iPad or with a hardware keyboard (no KeyBar), show the floating preview.
             .overlay(alignment: .bottom) { if !hasBar, let said { Heard(said: said) { terminal?.stopDictating() } } }
             .overlay { status }
+            // Inside the safe area: under the navigation bar, whatever its height.
+            .overlay(alignment: .top) {
+                if stalled, let session {
+                    Reconnecting(waitingToSend: session.waitingToSend)
+                        .padding(.top, 8)
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                }
+            }
+            .task(id: troubled) {
+                guard troubled else {
+                    withAnimation(.easeOut(duration: 0.2)) { stalled = false }
+                    return
+                }
+                try? await Task.sleep(for: .seconds(1))
+                guard !Task.isCancelled else { return }
+                withAnimation(.easeOut(duration: 0.2)) { stalled = true }
+            }
             .navigationTitle(title.asText)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -346,10 +366,18 @@ struct TerminalScreen: View {
         }
     }
 
+    /// Whether the terminal reconnects, or holds what was typed, while
+    /// its stream is open or opening.
+    private var troubled: Bool {
+        guard let session, session.state == .connecting || session.state == .live else { return false }
+        return session.reconnecting || session.waitingToSend
+    }
+
     @ViewBuilder private var status: some View {
         switch session?.state ?? .connecting {
         case .connecting:
-            ProgressView()
+            // A reconnect shows its note at the top instead.
+            if session?.reconnecting != true { ProgressView() }
         case .live:
             EmptyView()
         case .exited(let code):
@@ -367,6 +395,34 @@ struct TerminalScreen: View {
 
     private func label(_ s: String) -> some View {
         Text(s).font(.callout).padding(12).glassEffect(.regular, in: .rect(cornerRadius: 14))
+    }
+}
+
+/// The note of a terminal that reconnects, under the navigation bar: it
+/// lets the terminal show, and touches go through it.
+private struct Reconnecting: View {
+    let waitingToSend: Bool
+
+    var body: some View {
+        VStack(spacing: 4) {
+            HStack(spacing: 8) {
+                ProgressView()
+                Text("Reconnecting…")
+            }
+            if waitingToSend {
+                Text("What you type is sent when the connection is back.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .font(.callout)
+        .multilineTextAlignment(.center)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .glassEffect(.regular, in: .rect(cornerRadius: 14))
+        .padding(.horizontal, 16)
+        .accessibilityElement(children: .combine)
+        .allowsHitTesting(false)
     }
 }
 

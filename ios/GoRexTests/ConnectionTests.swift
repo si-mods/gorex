@@ -91,8 +91,10 @@ nonisolated final class ConnectionTests: XCTestCase {
         let s = TerminalSession(host: h, session: "s", block: "b")
         s.type(Data("ls".utf8))
         s.type(Data("\r".utf8))
+        await until("waiting") { s.waitingToSend }
         h.connect()
         await until("written") { self.written(rex).joined() == "ls\r" }
+        await until("sent") { !s.waitingToSend }
         s.close()
         h.stop()
     }
@@ -263,6 +265,71 @@ nonisolated final class ConnectionTests: XCTestCase {
         // At once, then after 0.5 s and 1 s; the next waits 2 s.
         XCTAssertLessThanOrEqual(handshakes, 4)
         XCTAssertGreaterThanOrEqual(handshakes, 2)
+        s.close()
+        h.stop()
+    }
+
+    /// A data connection the server drops shows the terminal reconnecting,
+    /// and it connects again.
+    @MainActor func testDropShowsReconnecting() async throws {
+        let rex = try FakeRex()
+        defer { rex.stop() }
+        let h = try await online(rex)
+        rex.respond = { method, _ in method == "data.connect" ? ["ticket": "uH4mJKwzMarlTNT-UiyMog"] : [:] }
+        var handshakes = 0
+        var conns: [NWConnection] = []
+        rex.data = { c, _ in
+            handshakes += 1
+            conns.append(c)
+            FakeRex.send(c, FakeRex.welcome)
+            if handshakes == 1 { FakeRex.close(c, .protocolCode(.normalClosure)) }
+        }
+        let s = TerminalSession(host: h, session: "s", block: "b")
+        s.start()
+        XCTAssertFalse(s.reconnecting)
+        await until("reconnecting") { s.reconnecting }
+        // Without a snapshot it stays so; it connected again.
+        await until("again") { handshakes == 2 }
+        s.close()
+        conns.forEach { $0.cancel() }
+        h.stop()
+    }
+
+    /// A server that answers data.connect with an error is not asked
+    /// again on its own: Retry asks.
+    @MainActor func testServerErrorDoesNotStartAgain() async throws {
+        let rex = try FakeRex()
+        defer { rex.stop() }
+        let h = try await online(rex)
+        rex.respond = { method, _ in
+            method == "data.connect" ? ["error": ["code": "unavailable", "message": "no"]] : [:]
+        }
+        let s = TerminalSession(host: h, session: "s", block: "b")
+        s.start()
+        await until("failed") { if case .failed = s.state { true } else { false } }
+        XCTAssertFalse(s.startsWhenHostIsBack)
+        try await Task.sleep(for: .seconds(3))
+        XCTAssertEqual(rex.count("data.connect"), 1)
+        s.close()
+        h.stop()
+    }
+
+    /// A terminal whose data connection fails starts again on its own,
+    /// three times at most; Retry starts it again.
+    @MainActor func testLostConnectionStartsAgainAtMostThreeTimes() async throws {
+        let rex = try FakeRex()
+        defer { rex.stop() }
+        let h = try await online(rex)
+        rex.respond = { method, _ in method == "data.connect" ? ["ticket": "uH4mJKwzMarlTNT-UiyMog"] : [:] }
+        rex.data = { c, _ in c.cancel() }
+        let s = TerminalSession(host: h, session: "s", block: "b")
+        s.start()
+        await until("three restarts", timeout: 20) { rex.count("data.connect") == 4 }
+        try await Task.sleep(for: .seconds(4))
+        XCTAssertEqual(rex.count("data.connect"), 4)
+        if case .failed = s.state {} else { XCTFail("not failed: \(s.state)") }
+        s.start()
+        await until("retry") { rex.count("data.connect") == 5 }
         s.close()
         h.stop()
     }
