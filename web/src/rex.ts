@@ -259,17 +259,102 @@ export class Control {
 }
 
 const protocolError = () => t("errorProtocol");
+const helloWait = openWait;
+
+interface DataWelcome {
+  ws: SocketLike;
+  token: Uint8Array;
+  keepMillis: number;
+  nonce: bigint;
+}
 
 /** HELLO: 0x01 and the ticket's 16 bytes, from its base64url form. */
 function helloFrame(ticket: string): Uint8Array {
   let s = ticket.replace(/-/g, "+").replace(/_/g, "/");
   s += "=".repeat((4 - (s.length % 4)) % 4);
-  const t = Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
+  let t: Uint8Array;
+  try {
+    t = Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
+  } catch {
+    throw new RexError("protocol", protocolError);
+  }
   if (t.length !== 16) throw new RexError("protocol", protocolError);
   const out = new Uint8Array(17);
   out[0] = 0x01;
   out.set(t, 1);
   return out;
+}
+
+/** RESUME: 0x02, the latest 16-byte reconnect token, and received byte count (LE u64). */
+function resumeFrame(token: Uint8Array, received: bigint): Uint8Array {
+  if (token.length !== 16) throw new RexError("protocol", protocolError);
+  const out = new Uint8Array(25);
+  out[0] = 0x02;
+  out.set(token, 1);
+  new DataView(out.buffer).setBigUint64(17, received, true);
+  return out;
+}
+
+/** Opens a Rex data WebSocket, sends the initial handshake frame, and awaits WELCOME. */
+function openDataSocket(
+  transport: Transport,
+  subprotocol: string,
+  frame: Uint8Array,
+  onAttach: (ws: SocketLike) => void,
+  onData: (b: Uint8Array) => void,
+  onEnded: (ws: SocketLike, code: number, reason: string) => void,
+): Promise<DataWelcome> {
+  return new Promise((resolve, reject) => {
+    const ws = transport.socket("/api/data", subprotocol);
+    ws.binaryType = "arraybuffer";
+    onAttach(ws);
+    let welcomed = false;
+    let settled = false;
+    const fail = (err: RexError, closeSocket = true) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      if (closeSocket) {
+        try {
+          ws.close(1000);
+        } catch {
+          // ignore close errors on failed handshake socket
+        }
+      }
+      reject(err);
+    };
+    const timer = setTimeout(() => {
+      fail(new RexError("timeout", () => t("errorTimeout")));
+    }, helloWait);
+
+    ws.onopen = () => ws.send(frame);
+    ws.onmessage = (m) => {
+      if (!(m.data instanceof ArrayBuffer)) return;
+      const b = new Uint8Array(m.data);
+      if (welcomed) {
+        onData(b);
+        return;
+      }
+      if (b.length === 32 && b[0] === RexProtocol.dataWelcomeByte) {
+        const view = new DataView(m.data);
+        const token = b.slice(1, 17);
+        const keepMillis = view.getUint32(20, true);
+        const nonce = view.getBigUint64(24, true);
+        welcomed = true;
+        settled = true;
+        clearTimeout(timer);
+        resolve({ ws, token, keepMillis, nonce });
+      } else if (b.length === 2 && b[0] === RexProtocol.dataRejectByte) {
+        fail(new RexError("rejected", () => t("errorDataRefused", { code: `0x${b[1].toString(16).padStart(2, "0")}` })));
+      } else {
+        fail(new RexError("protocol", protocolError));
+      }
+    };
+    ws.onclose = (e) => {
+      if (!welcomed) fail(new RexError("closed", () => t("errorDataClosed", { code: String(e.code) })), false);
+      else onEnded(ws, e.code, e.reason ?? "");
+    };
+  });
 }
 
 /** One data connection carrying a terminal's stream. */
@@ -279,44 +364,39 @@ export class DataStream {
   /** The connection ended, with its close code. */
   onDrop: (code: number) => void = () => {};
   nonce = 0n;
+  token?: Uint8Array;
   private ws?: SocketLike;
 
   /** A stream on transport: the one of the Control that gives its ticket. */
   constructor(private transport: Transport) {}
 
   /** Opens the stream with a ticket: HELLO, then the server's WELCOME. */
-  open(ticket: string): Promise<void> {
-    const hello = helloFrame(ticket);
-    return new Promise((resolve, reject) => {
-      const ws = this.transport.socket("/api/data", "rex.data.terminal.v1");
-      ws.binaryType = "arraybuffer";
-      this.ws = ws;
-      let welcomed = false;
-      ws.onopen = () => ws.send(hello);
-      ws.onmessage = (m) => {
-        if (!(m.data instanceof ArrayBuffer)) return;
-        const b = new Uint8Array(m.data);
-        if (welcomed) {
-          this.onBytes(b);
-          return;
-        }
-        if (b.length === 32 && b[0] === 0x81) {
-          // WELCOME: the reconnect token (1..17), keep-alive (20..24)
-          // and the stream's nonce (24..32), little-endian.
-          this.nonce = new DataView(m.data).getBigUint64(24, true);
-          welcomed = true;
-          resolve();
-        } else if (b.length === 2 && b[0] === 0x82) {
-          reject(new RexError("rejected", () => t("errorDataRefused", { code: `0x${b[1].toString(16).padStart(2, "0")}` })));
-        } else {
-          reject(new RexError("protocol", () => t("errorProtocol")));
-        }
-      };
-      ws.onclose = (e) => {
-        if (!welcomed) reject(new RexError("closed", () => t("errorDataClosed", { code: String(e.code) })));
-        else if (this.ws === ws) this.onDrop(e.code);
-      };
-    });
+  async open(ticket: string): Promise<void> {
+    const welcome = await openDataSocket(
+      this.transport,
+      RexProtocol.terminalProtocol,
+      helloFrame(ticket),
+      (ws) => { this.ws = ws; },
+      (b) => this.onBytes(b),
+      (ws, code) => { if (this.ws === ws) this.onDrop(code); },
+    );
+    this.token = welcome.token;
+    this.nonce = welcome.nonce;
+  }
+
+  /** Resumes the stream after a drop using the latest reconnect token and received byte count. */
+  async resume(received: bigint): Promise<void> {
+    if (!this.token) throw new RexError("protocol", protocolError);
+    const welcome = await openDataSocket(
+      this.transport,
+      RexProtocol.terminalProtocol,
+      resumeFrame(this.token, received),
+      (ws) => { this.ws = ws; },
+      (b) => this.onBytes(b),
+      (ws, code) => { if (this.ws === ws) this.onDrop(code); },
+    );
+    this.token = welcome.token;
+    this.nonce = welcome.nonce;
   }
 
   close() {
@@ -334,35 +414,15 @@ export class BytesStream {
 
   constructor(private transport: Transport) {}
 
-  open(ticket: string): Promise<void> {
-    const hello = helloFrame(ticket);
-    return new Promise((resolve, reject) => {
-      const ws = this.transport.socket("/api/data", RexProtocol.bytesProtocol);
-      ws.binaryType = "arraybuffer";
-      this.ws = ws;
-      let welcomed = false;
-      ws.onopen = () => ws.send(hello);
-      ws.onmessage = (m) => {
-        if (!(m.data instanceof ArrayBuffer)) return;
-        const b = new Uint8Array(m.data);
-        if (welcomed) {
-          this.onBytes(b);
-          return;
-        }
-        if (b.length === 32 && b[0] === RexProtocol.dataWelcomeByte) {
-          welcomed = true;
-          resolve();
-        } else if (b.length === 2 && b[0] === RexProtocol.dataRejectByte) {
-          reject(new RexError("rejected", () => t("errorDataRefused", { code: `0x${b[1].toString(16).padStart(2, "0")}` })));
-        } else {
-          reject(new RexError("protocol", () => t("errorProtocol")));
-        }
-      };
-      ws.onclose = (e) => {
-        if (!welcomed) reject(new RexError("closed", () => t("errorDataClosed", { code: String(e.code) })));
-        else if (this.ws === ws) this.onClose(e.code, e.reason ?? "");
-      };
-    });
+  async open(ticket: string): Promise<void> {
+    await openDataSocket(
+      this.transport,
+      RexProtocol.bytesProtocol,
+      helloFrame(ticket),
+      (ws) => { this.ws = ws; },
+      (b) => this.onBytes(b),
+      (ws, code, reason) => { if (this.ws === ws) this.onClose(code, reason); },
+    );
   }
 
   send(b: Uint8Array) {

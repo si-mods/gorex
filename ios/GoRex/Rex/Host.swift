@@ -813,6 +813,69 @@ final class Host: Identifiable {
                               control: c, to: config.url, urlSession: try self.session())
     }
 
+    /// Whether the server supports rev 13+ file downloads.
+    var canDownload: Bool {
+        (control?.apiRevision ?? 0) >= RexProtocol.downloadRevision
+    }
+
+    /// Downloads a file from the working directory of block over rev 13 download_begin.
+    func download(_ path: String, block: String, session: String? = nil,
+                  ifNoneMatch: String? = nil) async throws -> DownloadResult {
+        let c = try live()
+        guard c.apiRevision >= RexProtocol.downloadRevision, let sid = session ?? sessionID(forBlock: block) else {
+            throw RexError(code: "not_supported", message: String(localized: "Server does not accept downloads"))
+        }
+        return try await Download.fetch(path: path, session: sid, block: block,
+                                        ifNoneMatch: ifNoneMatch,
+                                        control: c, to: config.url, urlSession: try self.session())
+    }
+
+    /// Whether the server supports rev 14+ com.superlogical.tunnel blocks.
+    var canTunnel: Bool {
+        (control?.apiRevision ?? 0) >= RexProtocol.tunnelRevision
+    }
+
+    /// Opens a dial tunnel block targeting host:port inside session.
+    func openDialTunnel(host: String, port: Int, session: String,
+                        clientAddress: String? = nil) async throws -> String {
+        let c = try live()
+        guard c.apiRevision >= RexProtocol.tunnelRevision else {
+            throw RexError(code: "not_supported", message: String(localized: "Server does not support tunnels"))
+        }
+        return try await Tunnel.openDial(session: session, host: host, port: port,
+                                         clientAddress: clientAddress, control: c)
+    }
+
+    /// Opens a listen tunnel block on address:port inside session.
+    func openListenTunnel(address: String = "127.0.0.1", port: Int = 0, session: String,
+                          clientTarget: String? = nil) async throws -> String {
+        let c = try live()
+        guard c.apiRevision >= RexProtocol.tunnelRevision else {
+            throw RexError(code: "not_supported", message: String(localized: "Server does not support tunnels"))
+        }
+        return try await Tunnel.openListen(session: session, address: address, port: port,
+                                           clientTarget: clientTarget, control: c)
+    }
+
+    /// Queries metadata for a tunnel block.
+    func tunnelInfo(session: String, block: String) async throws -> Tunnel.Info {
+        let c = try live()
+        guard c.apiRevision >= RexProtocol.tunnelRevision else {
+            throw RexError(code: "not_supported", message: String(localized: "Server does not support tunnels"))
+        }
+        return try await Tunnel.info(session: session, block: block, control: c)
+    }
+
+    /// Connects a `rex.data.bytes.v1` stream to a tunnel block.
+    func connectTunnel(session: String, block: String, dataRefID: String? = nil) async throws -> BytesStream {
+        let c = try live()
+        guard c.apiRevision >= RexProtocol.tunnelRevision else {
+            throw RexError(code: "not_supported", message: String(localized: "Server does not support tunnels"))
+        }
+        return try await Tunnel.connect(session: session, block: block, dataRefID: dataRefID,
+                                        control: c, to: config.url, urlSession: try self.session())
+    }
+
     private func sessionID(forBlock block: String) -> String? {
         for s in sessions {
             for w in s.view?.windows ?? [] {
