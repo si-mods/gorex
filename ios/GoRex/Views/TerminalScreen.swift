@@ -97,30 +97,30 @@ struct TerminalScreen: View {
                 // tap opens the session's sheet.
                 ToolbarItem(placement: .principal) {
                     // As tall as the back button beside it.
-                    Button { sheet = true } label: {
-                        HStack(spacing: 10) {
-                            let k = ProgramTiles.scale, small = 0.85
-                            ProgramTile(program: .of(host.blocks[currentTarget.block]?.program))
-                                .frame(width: 21 * k, height: 16 * k)
-                                .scaleEffect(small)
-                                .frame(width: 21 * k * small, height: 16 * k * small)
-                            Text(title.asText).font(.body.weight(.semibold)).lineLimit(1)
-                        }
-                        .id(currentTarget.block)
-                        .transition(.asymmetric(
-                            insertion: .move(edge: slideDir > 0 ? .trailing : .leading).combined(with: .opacity),
-                            removal: .move(edge: slideDir > 0 ? .leading : .trailing).combined(with: .opacity)
-                        ))
-                        .padding(.leading, 12)
-                        .padding(.trailing, 18)
-                        .frame(height: 44)
-                        .clipped()
-                        // Glass behind, not over: on the content it would fade the tile.
-                        .background { Capsule().fill(.clear).glassEffect(.regular, in: .capsule) }
+                    HStack(spacing: 10) {
+                        let k = ProgramTiles.scale, small = 0.85
+                        ProgramTile(program: .of(host.blocks[currentTarget.block]?.program))
+                            .frame(width: 21 * k, height: 16 * k)
+                            .scaleEffect(small)
+                            .frame(width: 21 * k * small, height: 16 * k * small)
+                        Text(title.asText).font(.body.weight(.semibold)).lineLimit(1)
                     }
-                    .buttonStyle(.plain)
+                    .id(currentTarget.block)
+                    .transition(.asymmetric(
+                        insertion: .move(edge: slideDir > 0 ? .trailing : .leading).combined(with: .opacity),
+                        removal: .move(edge: slideDir > 0 ? .leading : .trailing).combined(with: .opacity)
+                    ))
+                    .padding(.leading, 12)
+                    .padding(.trailing, 18)
+                    .frame(height: 44)
+                    .clipped()
+                    // Glass behind, not over: on the content it would fade the tile.
+                    .background { Capsule().fill(.clear).glassEffect(.regular, in: .capsule) }
+                    .contentShape(.capsule)
+                    .accessibilityAddTraits(.isButton)
                     .offset(x: pillDrag)
-                    .simultaneousGesture(
+                    .onTapGesture { sheet = true }
+                    .highPriorityGesture(
                         DragGesture(minimumDistance: 12)
                             .onChanged { v in
                                 guard sessionWindows.count > 1, abs(v.translation.width) > abs(v.translation.height) else { return }
