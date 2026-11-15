@@ -269,7 +269,7 @@ export class TerminalView {
     try {
       const ticket = (
         await c.call("data.connect", {
-          session_id: this.session, block_id: this.block, data_ref_id: "terminal", subprotocol: "rex.data.terminal.v1",
+          session_id: this.session, block_id: this.block, data_ref_id: "terminal", subprotocol: RexProtocol.terminalProtocol,
         })
       ).payload.ticket;
       if (gen !== this.generation) return;

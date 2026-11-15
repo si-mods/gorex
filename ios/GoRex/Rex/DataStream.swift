@@ -21,11 +21,11 @@ enum DataHandshake: Equatable {
     /// Reads the server's answer to a HELLO or a RESUME.
     init?(_ d: Data) {
         let b = [UInt8](d)
-        if b.count == 32, b[0] == 0x81 {
+        if b.count == 32, b[0] == RexProtocol.dataWelcomeByte {
             let keep = b[20..<24].reversed().reduce(UInt32(0)) { $0 << 8 | UInt32($1) }
             let nonce = b[24..<32].reversed().reduce(UInt64(0)) { $0 << 8 | UInt64($1) }
             self = .welcome(token: Data(b[1..<17]), keepMillis: keep, nonce: nonce)
-        } else if b.count == 2, b[0] == 0x82 {
+        } else if b.count == 2, b[0] == RexProtocol.dataRejectByte {
             self = .reject(reason: b[1])
         } else {
             return nil
@@ -188,7 +188,7 @@ final class DataConnection {
         // As the control connection's: a path that carries nothing fails
         // in seconds, not URLSession's minute.
         request.timeoutInterval = 15
-        let t = session.webSocketTask(with: request.withSubprotocol("rex.data.terminal.v1"))
+        let t = session.webSocketTask(with: request.withSubprotocol(RexProtocol.terminalProtocol))
         t.maximumMessageSize = 1 << 20
         task = t
         let began = ContinuousClock.now

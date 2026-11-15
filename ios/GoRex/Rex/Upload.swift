@@ -13,21 +13,12 @@ enum Upload {
             "block_id": block,
             "args": ["ref": ref, "name": name, "size": size],
         ])
-        guard let ticket = reply.payload["ticket"] as? String,
-              let hello = DataHandshake.hello(ticket: ticket)
-        else { throw RexError(code: "protocol", message: "missing upload ticket") }
+        guard let ticket = reply.payload["ticket"] as? String else {
+            throw RexError(code: "protocol", message: "missing upload ticket")
+        }
 
-        var request = URLRequest(url: base.rexURL("/api/data"))
-        request.timeoutInterval = 30
-        let task = urlSession.webSocketTask(with: request.withSubprotocol(RexProtocol.bytesProtocol))
-        task.resume()
-        defer { task.cancel(with: .normalClosure, reason: nil) }
-
-        try await task.send(.data(hello))
-        let first = try await task.receive()
-        guard case .data(let welcomeData) = first,
-              welcomeData.count == 32, welcomeData[0] == RexProtocol.dataWelcomeByte
-        else { throw RexError(code: "protocol", message: "upload stream rejected") }
+        let stream = try await BytesStream.open(ticket: ticket, to: base, urlSession: urlSession)
+        defer { stream.close() }
 
         let fh = try FileHandle(forReadingFrom: file)
         defer { try? fh.close() }
@@ -35,18 +26,10 @@ enum Upload {
         while true {
             let chunk = try fh.read(upToCount: chunkSize) ?? Data()
             if chunk.isEmpty { break }
-            try await task.send(.data(chunk))
+            try await stream.send(chunk)
         }
-        try await task.send(.data(Data()))
-        // Wait for server close ("ok" = 1000).
-        while true {
-            do {
-                _ = try await task.receive()
-            } catch {
-                if task.closeCode == .normalClosure { return }
-                throw RexError(code: "upload", message: error.localizedDescription)
-            }
-        }
+        try await stream.halfClose()
+        try await stream.waitForClose()
     }
 
     /// A photo's file name: the name the library suggests, as IMG_1234, with

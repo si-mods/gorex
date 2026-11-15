@@ -81,10 +81,14 @@ export function onLanguageChange(f: () => void): () => void {
 }
 
 // System follows the browser's languages as they change.
-window.addEventListener("languagechange", () => {
-  if (!prefs.language) apply();
-});
-document.documentElement.lang = current;
+if (typeof window !== "undefined") {
+  window.addEventListener("languagechange", () => {
+    if (!prefs.language) apply();
+  });
+}
+if (typeof document !== "undefined") {
+  document.documentElement.lang = current;
+}
 
 /** Each language's formats, made once. */
 const locales = new Map<Language, Locale>();

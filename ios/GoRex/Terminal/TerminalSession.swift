@@ -145,7 +145,7 @@ final class TerminalSession {
             do {
                 let t = try await host.online().call("data.connect", [
                     "session_id": session, "block_id": block,
-                    "data_ref_id": "terminal", "subprotocol": "rex.data.terminal.v1",
+                    "data_ref_id": "terminal", "subprotocol": RexProtocol.terminalProtocol,
                 ]).payload["ticket"] as? String ?? ""
                 guard g == generation else { return }
                 ConnectionLog.note("terminal \(block): ticket, \(began.duration(to: .now).ms)")
