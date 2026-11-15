@@ -56,9 +56,9 @@ enum Upload {
     /// Sends the file at file over Rex's official rev 11 upload_begin +
     /// rex.data.bytes.v1 data stream. The server types the uploaded path
     /// into the terminal itself once the stream completes.
-    nonisolated static func sendBytes(_ file: URL, name: String, session: String, block: String,
-                                      control: ControlConnection, to base: URL,
-                                      urlSession: URLSession = .shared) async throws {
+    static func sendBytes(_ file: URL, name: String, session: String, block: String,
+                          control: ControlConnection, to base: URL,
+                          urlSession: URLSession = .shared) async throws {
         let size = (try file.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
         let ref = "upload:\(UUID().uuidString.lowercased())"
         let reply = try await control.call("com.superlogical.terminal.upload_begin", [
