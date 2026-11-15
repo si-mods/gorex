@@ -278,10 +278,10 @@ func (s *Server) restorePane(n *layout.Node, owner string) bool {
 	// A directory gone, as a work tree removed, starts it at home.
 	dir := n.Dir
 	if st, err := os.Stat(dir); err != nil || !st.IsDir() {
-		dir, _ = os.UserHomeDir()
+		dir, _ = s.homeDir()
 	}
 	o := CreateOptions{Dir: dir, Cols: n.Cols, Rows: n.Rows}
-	ss, err := newSession(n.SID, o, owner, s.sessionsChanged)
+	ss, err := newSession(n.SID, o, owner, s.sessionsChanged, s.spawner())
 	if err != nil {
 		log.Printf("rex: session %s of the layout is lost: %v", n.SID, err)
 		return false

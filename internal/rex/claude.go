@@ -13,14 +13,17 @@ import (
 // claudeSession returns the conversation Claude Code's process pid has
 // open, from the file the process keeps of itself in its config dir, and
 // that dir when the process was given one: CLAUDE_CONFIG_DIR, against its
-// working directory dir. Both are "" when the file tells none.
-func claudeSession(pid int, dir string) (id, config string) {
+// working directory dir, else home's .claude. Both are "" when the file
+// tells none.
+func claudeSession(pid int, dir, home string) (id, config string) {
 	config = procEnv(pid, "CLAUDE_CONFIG_DIR")
 	base := config
 	switch {
 	case base == "":
-		home, err := os.UserHomeDir()
-		if err != nil {
+		if home == "" {
+			home, _ = os.UserHomeDir()
+		}
+		if home == "" {
 			return "", ""
 		}
 		base = filepath.Join(home, ".claude")

@@ -26,7 +26,7 @@ func TestPTYKeepsDescriptors(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer syscall.Close(fd)
-	p, err := startPTY("/bin/sh", []string{"sh", "-c", "ls /dev/fd; echo END"}, t.TempDir(), nil, 80, 24)
+	p, err := startPTY(sessionSpawn{path: "/bin/sh", argv: []string{"sh", "-c", "ls /dev/fd; echo END"}, dir: t.TempDir(), cols: 80, rows: 24})
 	if err != nil {
 		t.Fatal(err)
 	}

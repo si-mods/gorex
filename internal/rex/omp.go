@@ -123,10 +123,11 @@ func ompSlug(dir, home string) string {
 // terminal-sessions, by the tty's name; where it has no tty, as on
 // Windows, the conversation of dir written last stands for it. All ""
 // when none is found.
-func ompSession(env func(string) string, dir string, args []string, tty string) (id, data, file string) {
-	home := env("HOME")
-	if home == "" {
-		home = env("USERPROFILE")
+func ompSession(env func(string) string, dir string, args []string, tty, home string) (id, data, file string) {
+	if h := env("HOME"); h != "" {
+		home = h
+	} else if h := env("USERPROFILE"); h != "" {
+		home = h
 	}
 	if home == "" {
 		home, _ = os.UserHomeDir()

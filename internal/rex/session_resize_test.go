@@ -38,7 +38,7 @@ func watchResizes(t *testing.T) func() [][2]int {
 // newResizeSession starts a shell to resize, at 80×24.
 func newResizeSession(t *testing.T) *session {
 	t.Helper()
-	s, err := newSession("resize", CreateOptions{Command: []string{"/bin/sh"}, Cols: 80, Rows: 24}, "", func() {})
+	s, err := newSession("resize", CreateOptions{Command: []string{"/bin/sh"}, Cols: 80, Rows: 24}, "", func() {}, spawner{})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -36,6 +36,12 @@ type session struct {
 	created time.Time
 	p       *pty
 	dir     string
+	// home is the home directory of the user the session runs as, where
+	// it starts when no directory is named, and what ~ means to it.
+	home string
+	// runAs is the user the session runs as, when it is not the server's:
+	// what the server writes for it is that user's.
+	runAs *sessionUser
 	// owner is the key of the remote client that created the session, ""
 	// for one created locally; set before the session is listed.
 	owner string
@@ -234,8 +240,23 @@ const maxSize = 1000
 
 func clampSize(n int) int { return min(max(n, 1), maxSize) }
 
-func newSession(id string, o CreateOptions, owner string, changed func()) (*session, error) {
-	path, argv, name, err := shellCommand(o.Command)
+// sessionDir is where a session starts: dir, when it is a directory, else
+// home, as a layout whose directory is gone starts at home too.
+func sessionDir(dir, home string) string {
+	if dir != "" {
+		if st, err := os.Stat(dir); err == nil && st.IsDir() {
+			return dir
+		}
+	}
+	if home != "" {
+		return home
+	}
+	home, _ = os.UserHomeDir()
+	return home
+}
+
+func newSession(id string, o CreateOptions, owner string, changed func(), sp spawner) (*session, error) {
+	path, argv, name, err := shellCommand(o.Command, sp.shell())
 	if err != nil {
 		return nil, err
 	}
@@ -244,20 +265,20 @@ func newSession(id string, o CreateOptions, owner string, changed func()) (*sess
 		cols, rows = 80, 24
 	}
 	cols, rows = clampSize(cols), clampSize(rows)
-	dir := o.Dir
-	if dir == "" {
-		dir, _ = os.UserHomeDir()
-	}
-	env := sessionEnv(id, o.Env, owner == "")
-	p, err := startPTY(path, argv, dir, env, cols, rows)
+	home := sp.home()
+	dir := sessionDir(o.Dir, home)
+	env := sessionEnv(id, o.Env, owner == "", sp.user)
+	p, err := startPTY(sessionSpawn{path: path, argv: argv, dir: dir, env: env, cols: cols, rows: rows, user: sp.user, exe: sp.exe})
 	if err != nil {
 		return nil, err
 	}
 	s := &session{
-		id: id, shell: name, command: len(o.Command) > 0, created: time.Now(), p: p, dir: dir,
+		id: id, shell: name, command: len(o.Command) > 0, created: time.Now(), p: p, dir: dir, home: home,
+		runAs:   sp.user,
 		clients: map[*attached]struct{}{}, changed: changed,
 		cols: cols, rows: rows, done: make(chan struct{}),
 	}
+	s.graphics.home = home
 	if err := s.newVT(); err != nil {
 		p.hangup()
 		return nil, err
@@ -429,8 +450,14 @@ func serverEnv() []string { return cleanEnv(os.Environ()) }
 // sessionEnv returns the environment of a session's shell: the server's,
 // without what other terminals set, and what terminal apps set. A local
 // session gets the gorex shim on PATH; one a remote client made does not,
-// so its shell cannot reach this machine's local socket as a local client.
-func sessionEnv(id string, extra []string, local bool) []string {
+// so its shell cannot reach this machine's local socket as a local client,
+// and neither does one of another user run (runAs): the server is not its
+// to reach either. Such a session's identity is the user's, not the
+// server's, which may run as root.
+func sessionEnv(id string, extra []string, local bool, runAs *sessionUser) []string {
+	if runAs != nil {
+		local = false
+	}
 	var env []string
 	hasLang := false
 	// The server's environment is clean already (serverEnv). cleanEnv here
@@ -440,6 +467,9 @@ func sessionEnv(id string, extra []string, local bool) []string {
 		switch {
 		case foldName(k) == "PATH" && local:
 			continue // added below, with the gorex directory first; Windows's is Path
+		case runAs != nil && (foldName(k) == "HOME" || foldName(k) == "USER" ||
+			foldName(k) == "USERNAME" || foldName(k) == "LOGNAME" || foldName(k) == "SHELL" || k == "MAIL"):
+			continue // the session's own, below
 		case k == "TERM", k == "COLORTERM", k == "TERM_PROGRAM", k == "TERM_PROGRAM_VERSION",
 			k == "TERM_SESSION_ID", k == "TMUX", k == "TMUX_PANE", k == "STY", k == "WINDOWID",
 			k == "COLUMNS", k == "LINES", k == "SHLVL", k == "OLDPWD", k == "PWD", k == "_",
@@ -462,6 +492,12 @@ func sessionEnv(id string, extra []string, local bool) []string {
 		"TERM_PROGRAM_VERSION="+terminal.GhosttyVersion,
 		"GOREX_SESSION="+id,
 	)
+	if runAs != nil {
+		env = append(env, "HOME="+runAs.home, "USER="+runAs.name, "LOGNAME="+runAs.name)
+		if runAs.shell != "" {
+			env = append(env, "SHELL="+runAs.shell)
+		}
+	}
 	if local {
 		bin := CLIDir()
 		path := bin
@@ -1449,9 +1485,9 @@ func (s *session) foreground(in *SessionInfo) {
 	switch {
 	case in.Idle:
 	case strings.EqualFold(in.Program, "claude"):
-		in.AgentSession, in.AgentConfigDir = claudeSession(fg, p.dir)
+		in.AgentSession, in.AgentConfigDir = claudeSession(fg, p.dir, s.home)
 	case strings.EqualFold(in.Program, "omp"):
-		in.AgentSession, in.AgentConfigDir, in.agentFile = ompSession(procEnvOf(fg), p.dir, p.args, s.p.tty())
+		in.AgentSession, in.AgentConfigDir, in.agentFile = ompSession(procEnvOf(fg), p.dir, p.args, s.p.tty(), s.home)
 	}
 }
 

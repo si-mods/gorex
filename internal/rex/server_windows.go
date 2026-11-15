@@ -28,6 +28,12 @@ func lockFile(f *os.File) error {
 // the temporary directory is, which Windows has one of for each user.
 func ownDir(os.FileInfo) bool { return true }
 
+// ownedBy reports whether st is uid's: Windows has no uid, and one user.
+func ownedBy(os.FileInfo, int) bool { return true }
+
+// chownPath gives path to uid and gid: Windows has neither.
+func chownPath(string, int, int) error { return nil }
+
 // hideConsole keeps a console program the server runs, as git, from
 // opening a console window: the server has none to lend it.
 func hideConsole(cmd *exec.Cmd) {

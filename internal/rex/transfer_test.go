@@ -718,7 +718,7 @@ func TestFileTemp(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	drops, err := dropDir()
+	drops, err := dropDir(nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -757,14 +757,14 @@ func TestDropDirRefuses(t *testing.T) {
 	}
 	tmp := t.TempDir()
 	t.Setenv("TMPDIR", tmp)
-	dir, err := dropDir()
+	dir, err := dropDir(nil)
 	if err != nil || filepath.Dir(dir) != tmp {
 		t.Fatalf("dropDir: %q %v", dir, err)
 	}
 	if err := os.Chmod(dir, 0o777); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := dropDir(); err != nil {
+	if _, err := dropDir(nil); err != nil {
 		t.Fatalf("dropDir of its own folder all may write in: %v", err)
 	}
 	if st, err := os.Stat(dir); err != nil || st.Mode().Perm() != 0o700 {
@@ -776,12 +776,12 @@ func TestDropDirRefuses(t *testing.T) {
 	if err := os.Symlink(other, dir); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := dropDir(); err == nil {
+	if _, err := dropDir(nil); err == nil {
 		t.Error("took a link")
 	}
 	os.Remove(dir)
 	os.WriteFile(dir, nil, 0o600)
-	if _, err := dropDir(); err == nil {
+	if _, err := dropDir(nil); err == nil {
 		t.Error("took a file")
 	}
 }

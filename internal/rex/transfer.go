@@ -114,7 +114,7 @@ func (s *Server) filePath(sid, dir string) (string, error) {
 		return "", err
 	}
 	if rest, ok := strings.CutPrefix(dir, "~"); ok && (rest == "" || rest[0] == '/') {
-		home, err := os.UserHomeDir()
+		home, err := s.homeDir()
 		if err != nil {
 			return "", err
 		}
@@ -127,13 +127,18 @@ func (s *Server) filePath(sid, dir string) (string, error) {
 }
 
 // dropDir is this user's folder in the temporary directory, where a put
-// with Temp goes, made when it is not there. Another user may have made
-// the path first in a temporary directory all share: it is taken only as
-// a directory of this user's, not a link, which it then lets no other
+// with Temp goes, made when it is not there: su's, when the session runs
+// as another user, which reads the file it takes. Another user may have
+// made the path first in a temporary directory all share: it is taken only
+// as a directory of this user's, not a link, which it then lets no other
 // user read or write in, whatever the umask or a chmod made it.
-func dropDir() (string, error) {
+func dropDir(su *sessionUser) (string, error) {
+	uid, gid := os.Getuid(), os.Getgid()
+	if su != nil {
+		uid, gid = int(su.uid), int(su.gid)
+	}
 	name := "gorex-drops"
-	if uid := os.Getuid(); uid >= 0 { // Windows has none, and a temporary directory per user
+	if uid >= 0 { // Windows has none, and a temporary directory per user
 		name = fmt.Sprintf("gorex-drops-%d", uid)
 	}
 	dir := filepath.Join(os.TempDir(), name)
@@ -144,8 +149,14 @@ func dropDir() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if !st.IsDir() || !ownDir(st) {
+	// The session user's directory, or one this server made for it.
+	if !st.IsDir() || (!ownedBy(st, uid) && !ownedBy(st, os.Getuid())) {
 		return "", fmt.Errorf("rex: %s is not a folder of this user's", dir)
+	}
+	if !ownedBy(st, uid) {
+		if err := chownPath(dir, uid, gid); err != nil {
+			return "", err
+		}
 	}
 	if st.Mode().Perm() != 0o700 {
 		if err := os.Chmod(dir, 0o700); err != nil {
@@ -185,8 +196,14 @@ func (s *Server) filePut(conn net.Conn, r *bufio.Reader, first []byte, peer stri
 		}
 		return s.abortPut(path, answer)
 	}
+	// What the server writes for a session of another user is that user's:
+	// its program reads the file, and writes it after.
+	var su *sessionUser
+	if ss, err := s.session(req.SID); err == nil {
+		su = ss.runAs
+	}
 	if req.Temp {
-		if dir, err = dropDir(); err != nil {
+		if dir, err = dropDir(su); err != nil {
 			return err
 		}
 	}
@@ -259,6 +276,9 @@ func (s *Server) filePut(conn net.Conn, r *bufio.Reader, first []byte, peer stri
 	var skipped bool
 	if err == nil {
 		t.Path, skipped, err = p.finish(dir, req.Name, req.Conflict)
+	}
+	if err == nil && su != nil && !skipped {
+		err = chownPath(t.Path, int(su.uid), int(su.gid))
 	}
 	if err == nil {
 		s.puts.Delete(p.path)
