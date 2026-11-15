@@ -42,6 +42,9 @@ struct TerminalScreen: View {
     @State private var currentTarget: TerminalTarget
     @State private var pillDrag: CGFloat = 0
     @State private var slideDir: CGFloat = 1
+    /// How many tab switches are animating: while any is, a new terminal's
+    /// layout snaps.
+    @State private var switching = 0
     /// Whether the terminal has been reconnecting, or holding what was
     /// typed, for a second: a short reconnect shows nothing.
     @State private var stalled = false
@@ -62,7 +65,7 @@ struct TerminalScreen: View {
         // grid starts below them, and its scrollback fills the band.
         ZStack {
             if let session {
-                TerminalRepresentable(session: session, newTab: newTab, closeTab: closeTab, mic: mic, voice: voiceCapsule, dictating: said != nil)
+                TerminalRepresentable(session: session, newTab: newTab, closeTab: closeTab, mic: mic, voice: voiceCapsule, dictating: said != nil, snaps: switching > 0)
                     .id(currentTarget.block)
                     .transition(.asymmetric(
                         insertion: .move(edge: slideDir > 0 ? .trailing : .leading),
@@ -118,20 +121,17 @@ struct TerminalScreen: View {
                 // tap opens the session's sheet.
                 ToolbarItem(placement: .principal) {
                     // As tall as the back button beside it.
-                    ZStack {
-                        HStack(spacing: 10) {
-                            let k = ProgramTiles.scale, small = 0.85
-                            ProgramTile(program: .of(host.blocks[currentTarget.block]?.program))
-                                .frame(width: 21 * k, height: 16 * k)
-                                .scaleEffect(small)
-                                .frame(width: 21 * k * small, height: 16 * k * small)
-                            Text(title.asText).font(.body.weight(.semibold)).lineLimit(1)
-                        }
-                        .id(currentTarget.block)
-                        .transition(.asymmetric(
-                            insertion: .move(edge: slideDir > 0 ? .trailing : .leading).combined(with: .opacity),
-                            removal: .move(edge: slideDir > 0 ? .leading : .trailing).combined(with: .opacity)
-                        ))
+                    // The title pushes in the way the terminal slides, and the
+                    // capsule's width animates to the new title's, inside the
+                    // switch's animation.
+                    HStack(spacing: 10) {
+                        let k = ProgramTiles.scale, small = 0.85
+                        ProgramTile(program: .of(host.blocks[currentTarget.block]?.program))
+                            .frame(width: 21 * k, height: 16 * k)
+                            .scaleEffect(small)
+                            .frame(width: 21 * k * small, height: 16 * k * small)
+                        Text(title.asText).font(.body.weight(.semibold)).lineLimit(1)
+                            .contentTransition(.push(from: slideDir > 0 ? .trailing : .leading))
                     }
                     .padding(.leading, 12)
                     .padding(.trailing, 18)
@@ -326,10 +326,13 @@ struct TerminalScreen: View {
         nextSession.start()
         Notifier.shared.onScreen = next
         host.see(session: next.session, block: next.block)
-        withAnimation(.spring(duration: 0.32, bounce: 0.12)) {
+        switching += 1
+        withAnimation(.spring(duration: 0.32, bounce: 0.12), completionCriteria: .removed) {
             slideDir = resolvedDir
             session = nextSession
             currentTarget = next
+        } completion: {
+            switching -= 1
         }
     }
 
@@ -760,6 +763,7 @@ private struct TerminalRepresentable: UIViewRepresentable {
     let mic: Mic
     let voice: VoiceCapsule
     let dictating: Bool
+    let snaps: Bool
 
     struct Coordinator {
         let mic: UIHostingController<Mic>
@@ -792,6 +796,7 @@ private struct TerminalRepresentable: UIViewRepresentable {
     }
 
     func updateUIView(_ v: TerminalHost, context: Context) {
+        v.snaps = snaps
         v.terminal.newTab = newTab
         v.terminal.closeTab = closeTab
         context.coordinator.mic.rootView = mic

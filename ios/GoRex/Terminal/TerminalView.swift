@@ -811,7 +811,10 @@ final class TerminalHost: UIView {
     let terminal: TerminalView
     private let scrollDown = UIVisualEffectView(effect: UIGlassEffect(style: .regular))
     private let unreadDot = UIView()
-    private var laidOut = false
+    /// While a tab switch animates, layout passes place the terminal, its
+    /// inset and the key bar at once, so they don't animate from .zero under
+    /// the switch's spring.
+    var snaps = false
 
     init(_ terminal: TerminalView) {
         self.terminal = terminal
@@ -890,26 +893,22 @@ final class TerminalHost: UIView {
     required init?(coder: NSCoder) { fatalError() }
 
     override func layoutSubviews() {
-        super.layoutSubviews()
-        let apply = {
-            self.terminal.bounds = CGRect(origin: .zero, size: self.bounds.size)
-            self.terminal.center = CGPoint(x: self.bounds.midX, y: self.bounds.midY)
-            self.terminal.inset = self.safeAreaInsets.top
+        guard snaps else {
+            super.layoutSubviews()
+            place()
+            return
         }
-        if !laidOut, window != nil, bounds.size != .zero {
-            laidOut = true
-            // Snap initial frame, safe-area inset, and key bar into place so
-            // SwiftUI tab-switch transitions don't animate subviews up from .zero.
-            UIView.performWithoutAnimation {
-                apply()
-                self.layoutIfNeeded()
-                self.terminal.layoutIfNeeded()
-            }
-        } else if !laidOut {
-            UIView.performWithoutAnimation { apply() }
-        } else {
-            apply()
+        UIView.performWithoutAnimation {
+            super.layoutSubviews()
+            place()
+            terminal.layoutIfNeeded()
         }
+    }
+
+    private func place() {
+        terminal.bounds = CGRect(origin: .zero, size: bounds.size)
+        terminal.center = CGPoint(x: bounds.midX, y: bounds.midY)
+        terminal.inset = safeAreaInsets.top
     }
 
     override func safeAreaInsetsDidChange() {
