@@ -21,14 +21,13 @@ nonisolated final class ProgramTests: XCTestCase {
     @MainActor func testTileMotionMapping() {
         XCTAssertEqual(TileMotion(state: "blocked"), .attention)
         XCTAssertEqual(TileMotion(state: "error"), .attention)
-        XCTAssertEqual(TileMotion(state: "working"), .working)
+        XCTAssertEqual(TileMotion(state: "working"), .none)
         XCTAssertEqual(TileMotion(state: "done"), .done)
         XCTAssertEqual(TileMotion(state: "idle"), .none)
         XCTAssertEqual(TileMotion(state: nil), .none)
         XCTAssertEqual(TileMotion(state: "unknown"), .none)
 
         XCTAssertTrue(TileMotion.attention.isRepeating)
-        XCTAssertTrue(TileMotion.working.isRepeating)
         XCTAssertTrue(TileMotion.done.isRepeating)
         XCTAssertFalse(TileMotion.none.isRepeating)
     }
