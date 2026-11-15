@@ -132,7 +132,6 @@ interface Begun {
   name: string;
   size: number;
   type: string;
-  bytesStream: boolean;
 }
 
 /** The status line's words for download_begin's errors (docs/web-open-files.md). */
@@ -175,9 +174,10 @@ function guessTypeFromName(name: string): string {
 
 async function begin(c: Control | undefined, session: string, block: string, path: string): Promise<Begun> {
   if (!c) throw new RexError("offline", () => t("errorOffline"));
-  const bytesStream = c.apiRevision >= 13;
-  const args = bytesStream ? { ref: `download:${crypto.randomUUID().toLowerCase()}`, path } : { path };
-  const r = await c.callBlock("download_begin", session, block, args);
+  const r = await c.callBlock("download_begin", session, block, {
+    ref: `download:${crypto.randomUUID().toLowerCase()}`,
+    path,
+  });
   const name = String(r.name ?? "");
   return {
     transport: c.transport,
@@ -185,7 +185,6 @@ async function begin(c: Control | undefined, session: string, block: string, pat
     name,
     size: Number(r.size ?? 0),
     type: String(r.type ?? guessTypeFromName(name)),
-    bytesStream,
   };
 }
 
@@ -223,29 +222,8 @@ function openBytesReader(f: Begun): ReadableStreamDefaultReader<Uint8Array> {
   }).getReader();
 }
 
-async function openDownloadReader(f: Begun, init?: RequestInit): Promise<ReadableStreamDefaultReader<Uint8Array>> {
-  if (f.bytesStream) return openBytesReader(f);
-  const r = await f.transport.fetch(downloadPath(f.ticket), init);
-  if (!r.ok || !r.body) throw fail(() => t("fileHostAnswered", { status: String(r.status) }));
-  return r.body.getReader();
-}
-
-const downloadPath = (ticket: string) => `/api/download?ticket=${encodeURIComponent(ticket)}`;
-
-/**
- * Hands a ticket's file to the browser's own download: a hidden frame
- * navigated to it. The answer is an attachment, which the browser saves;
- * an error (a lapsed ticket's 404) lands in the frame, never in the page.
- * A tailnet host's file goes through the worker, or a blob (saveTailnet).
- */
 async function navigate(f: Begun, host: FileHost) {
-  if (f.bytesStream || !f.transport.url) return saveTailnet(f, host);
-  const frame = document.createElement("iframe");
-  frame.hidden = true;
-  frame.src = f.transport.url(downloadPath(f.ticket));
-  document.body.append(frame);
-  // The download goes on without the frame once it has started.
-  setTimeout(() => frame.remove(), 60_000);
+  return saveTailnet(f, host);
 }
 
 /**
@@ -259,7 +237,7 @@ async function saveTailnet(f: Begun, host: FileHost) {
   if (!save) return saveBlob(f, host);
   let reader: ReadableStreamDefaultReader<Uint8Array>;
   try {
-    reader = await openDownloadReader(f, { cache: "no-store" });
+    reader = openBytesReader(f);
   } catch (e) {
     save.abort(e instanceof Error ? e.message : String(e));
     throw e;
@@ -285,7 +263,7 @@ async function saveBlob(f: Begun, host: FileHost) {
   const cap = () => formatSize(maxBlobBytes);
   if (f.size > maxBlobBytes) throw fail(() => t("fileTooLargeTailnet", { size: cap() }));
   const name = f.name || "download";
-  const reader = await openDownloadReader(f, { cache: "no-store" });
+  const reader = openBytesReader(f);
   const chunks: Uint8Array[] = [];
   let n = 0, shown = -1;
   try {
@@ -323,7 +301,7 @@ async function saveBlob(f: Begun, host: FileHost) {
  * image's, the rest then left unread.
  */
 async function fetchImage(f: Begun, kind: ImageKind): Promise<Blob | undefined> {
-  const reader = await openDownloadReader(f, { mode: "cors", credentials: "omit", cache: "no-store", referrerPolicy: "no-referrer" });
+  const reader = openBytesReader(f);
   const chunks: Uint8Array[] = [];
   let n = 0, checked = false;
   try {

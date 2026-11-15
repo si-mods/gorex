@@ -4,6 +4,7 @@
 // carrying a terminal's bytes.
 
 import { Msg, PlainKey, t } from "./i18n";
+import { RexProtocol } from "./rex-protocol.gen";
 import { joinHostURL } from "./share";
 
 /**
@@ -60,8 +61,8 @@ export interface RexEvent {
 }
 
 /** The API revision this client speaks, and the oldest it accepts. */
-const revision = 14;
-const minRevision = 0;
+const revision = RexProtocol.apiRevision;
+const minRevision = RexProtocol.apiMinRevision;
 
 /**
  * How long a control connection may take to open and be welcomed: an
@@ -336,7 +337,7 @@ export class BytesStream {
   open(ticket: string): Promise<void> {
     const hello = helloFrame(ticket);
     return new Promise((resolve, reject) => {
-      const ws = this.transport.socket("/api/data", "rex.data.bytes.v1");
+      const ws = this.transport.socket("/api/data", RexProtocol.bytesProtocol);
       ws.binaryType = "arraybuffer";
       this.ws = ws;
       let welcomed = false;
@@ -348,10 +349,10 @@ export class BytesStream {
           this.onBytes(b);
           return;
         }
-        if (b.length === 32 && b[0] === 0x81) {
+        if (b.length === 32 && b[0] === RexProtocol.dataWelcomeByte) {
           welcomed = true;
           resolve();
-        } else if (b.length === 2 && b[0] === 0x82) {
+        } else if (b.length === 2 && b[0] === RexProtocol.dataRejectByte) {
           reject(new RexError("rejected", () => t("errorDataRefused", { code: `0x${b[1].toString(16).padStart(2, "0")}` })));
         } else {
           reject(new RexError("protocol", () => t("errorProtocol")));

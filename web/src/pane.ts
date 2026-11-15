@@ -9,6 +9,7 @@ import { contrastRatio, cursorSeq, fontFamily, textSize } from "./prefs";
 import { Program, smallTile } from "./programs";
 import { localize, Msg, PlainKey, t } from "./i18n";
 import { Control, DataStream, describe, RexError, TerminalStream } from "./rex";
+import { RexProtocol } from "./rex-protocol.gen";
 import { desktopTheme, Font, Terminal, Theme, themeOf } from "./terminal";
 import { extractPastedImages, uploadFiles as sendUploads } from "./upload";
 
@@ -183,14 +184,8 @@ export class TerminalView {
       send: (b) => this.type(b),
       paste: (text) => this.paste(text),
       status: (s) => this.app.status(s),
-      files: () => {
-        const c = this.app.control();
-        return !!c && (c.features.has("gorex.download") || c.apiRevision >= 13);
-      },
-      canUpload: () => {
-        const c = this.app.live() ?? this.app.control();
-        return !!c && (c.features.has("gorex.upload") || c.apiRevision >= 11);
-      },
+      files: () => (this.app.control()?.apiRevision ?? 0) >= RexProtocol.downloadRevision,
+      canUpload: () => ((this.app.live() ?? this.app.control())?.apiRevision ?? 0) >= RexProtocol.uploadRevision,
       pickUpload: () => this.pickUpload(),
       // Opening files (files.ts) is a chunk of its own, loaded with the first link opened.
       openFile: (path) =>

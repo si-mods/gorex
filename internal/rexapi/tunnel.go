@@ -331,7 +331,7 @@ func (g *Gateway) createTunnelBlock(c *control, s *mSession, flavor, label strin
 
 	g.addTunnel(tb)
 	if tb.listener != nil {
-		go tb.acceptLoop(g)
+		go tb.acceptLoop(g, tb.listener)
 	}
 	return map[string]any{
 		"block_id": tb.id,
@@ -339,9 +339,9 @@ func (g *Gateway) createTunnelBlock(c *control, s *mSession, flavor, label strin
 	}, nil
 }
 
-func (tb *tunnelBlock) acceptLoop(g *Gateway) {
+func (tb *tunnelBlock) acceptLoop(g *Gateway, ln net.Listener) {
 	for {
-		conn, err := tb.listener.Accept()
+		conn, err := ln.Accept()
 		if err != nil {
 			return
 		}

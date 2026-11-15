@@ -5,40 +5,35 @@ import (
 	"encoding/json"
 	"fmt"
 	"sync"
+
+	"gorex/internal/rexproto"
 )
 
 // The constants of the protocol this package speaks.
 const (
 	// controlProtocol is the WebSocket subprotocol of a control connection.
-	controlProtocol = "rex.control.v1"
+	controlProtocol = rexproto.ControlProtocol
 	// terminalProtocol is the subprotocol of a terminal's data connection.
-	terminalProtocol = "rex.data.terminal.v1"
+	terminalProtocol = rexproto.TerminalProtocol
 	// bytesProtocol is the subprotocol of the data connection that
 	// carries a file's bytes to com.superlogical.terminal.upload_begin's
 	// reservation.
-	bytesProtocol = "rex.data.bytes.v1"
+	bytesProtocol = rexproto.BytesProtocol
 	// dataTerminal is the data_ref_id of a terminal block's stream.
 	dataTerminal = "terminal"
-	// apiRevision is the newest revision of Rex's API this package serves:
-	// revision 8 adds session.bootstrap's data_tickets, revision 9
-	// session.set_layer_state and a layer's state, revision 10 built-in
-	// Tailscale's control_url, revision 11 com.superlogical.terminal
-	// .upload_begin and the rex.data.bytes.v1 data stream that carries
-	// its file, revision 12 server.status's listeners, revision 13
-	// com.superlogical.terminal.download_begin over rex.data.bytes.v1,
-	// and revision 14 com.superlogical.tunnel.
-	apiRevision = 14
+	// apiRevision is the newest revision of Rex's API this package serves.
+	apiRevision = rexproto.APIRevision
 	// apiMinRevision is the oldest revision it serves. A client that
 	// negotiates an older revision gets that revision's shape: requests
 	// are translated up and results back down by revisions.go.
-	apiMinRevision = 0
+	apiMinRevision = rexproto.APIMinRevision
 	// maxMessage is the largest message a control connection sends or
 	// accepts, in bytes.
 	maxMessage = 1 << 20
 	// maxHello is the largest control hello, as Rex's clients keep it.
 	maxHello = 512
 	// maxChunk is the largest binary message of a data connection.
-	maxChunk = 64 << 10
+	maxChunk = rexproto.MaxChunk
 	// eventBacklog is how many bytes of events a control connection may
 	// fall behind before the server closes it.
 	eventBacklog = 8 << 20

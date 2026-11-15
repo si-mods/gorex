@@ -49,30 +49,20 @@ extension TerminalView: UIDocumentPickerDelegate {
     }
 
     /// Sends the files that files puts into a folder of its own, one after
-    /// another, then pastes the paths of those sent, and removes the folder.
+    /// another, and removes the folder.
     private func upload(_ files: @escaping (URL) async throws -> [URL]) {
         let dir = FileManager.default.temporaryDirectory.appending(path: "Uploads").appending(path: UUID().uuidString)
         bar.uploading += 1
         Task {
-            var words: [String] = []
             do {
                 for f in try await files(dir) {
-                    // One sent but not to be pasted says why; the others go on.
-                    do {
-                        let word = try await session.host.upload(f, block: session.block, session: session.session)
-                        if !word.isEmpty { words.append(word) }
-                    } catch let e as RexError where e.code == Upload.notPasted {
-                        failed(e)
-                    }
+                    try await session.host.upload(f, block: session.block, session: session.session)
                 }
             } catch {
                 failed(error)
             }
             try? FileManager.default.removeItem(at: dir)
             bar.uploading -= 1
-            // A space after each, as a drop on the Mac pastes paths, so that
-            // what is typed next is another word.
-            if !words.isEmpty { insert(words.joined(separator: " ") + " ") }
         }
     }
 
@@ -97,8 +87,7 @@ extension TerminalView: UIDocumentPickerDelegate {
     }
 
     private func failed(_ error: Error) {
-        let title = (error as? RexError)?.code == Upload.notPasted ? String(localized: "Uploaded, Not Pasted") : String(localized: "Can't Upload")
-        alert(title, error.localizedDescription)
+        alert(String(localized: "Can't Upload"), error.localizedDescription)
     }
 
     /// Tells of a problem; the keyboard comes back once it is read, if it

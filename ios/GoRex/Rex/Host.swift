@@ -797,28 +797,20 @@ final class Host: Identifiable {
         return [argv0, p["name"] as? String].compactMap { $0 }.first { !$0.isEmpty }
     }
 
-    /// Whether the server takes files into its machine's temporary folder
-    /// (Upload).
+    /// Whether the server supports rev 11+ file uploads.
     var canUpload: Bool {
-        control?.features.contains(Upload.feature) == true || (control?.apiRevision ?? 0) >= 11
+        (control?.apiRevision ?? 0) >= RexProtocol.uploadRevision
     }
 
     /// Sends a file into the temporary folder of the host's machine, for
-    /// block, and returns its path there as a word of the block's shell,
-    /// or empty when the server itself types the path (rev 11+ upload_begin).
-    func upload(_ file: URL, block: String, session: String? = nil) async throws -> String {
+    /// block; the server types its path into the terminal once uploaded.
+    func upload(_ file: URL, block: String, session: String? = nil) async throws {
         let c = try live()
-        if c.features.contains(Upload.feature) {
-            let compress = c.features.contains(Upload.deflateRaw)
-            return try await Upload.send(file, name: file.lastPathComponent, block: block, to: config.url,
-                                         compress: compress, session: try self.session())
-        }
-        guard c.apiRevision >= 11, let sid = session ?? sessionID(forBlock: block) else {
+        guard c.apiRevision >= RexProtocol.uploadRevision, let sid = session ?? sessionID(forBlock: block) else {
             throw RexError(code: "not_supported", message: String(localized: "Server does not accept uploads"))
         }
-        try await Upload.sendBytes(file, name: file.lastPathComponent, session: sid, block: block,
-                                   control: c, to: config.url, urlSession: try self.session())
-        return ""
+        try await Upload.send(file, name: file.lastPathComponent, session: sid, block: block,
+                              control: c, to: config.url, urlSession: try self.session())
     }
 
     private func sessionID(forBlock block: String) -> String? {
