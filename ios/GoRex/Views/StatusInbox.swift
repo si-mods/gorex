@@ -147,23 +147,6 @@ private struct StatusRow: View {
     /// As the desktop's dot: the progress or the dots of work while
     /// working, else the dot of attention, red for an error.
     @ViewBuilder private var mark: some View {
-        switch item.status.state {
-        case "working":
-            if let p = item.status.progress {
-                Circle().trim(from: 0, to: CGFloat(p) / 100)
-                    .stroke(.secondary, style: StrokeStyle(lineWidth: 2, lineCap: .round))
-                    .rotationEffect(.degrees(-90))
-                    .background(Circle().stroke(.quaternary, lineWidth: 2))
-                    .frame(width: 12, height: 12)
-                    .accessibilityLabel(Text(verbatim: "\(p)%"))
-            } else {
-                Image(systemName: "ellipsis").font(.footnote.weight(.bold)).foregroundStyle(.secondary).accessibilityLabel("Working")
-            }
-        case "error":
-            Circle().fill(.red).frame(width: 8, height: 8).accessibilityLabel("Failed")
-        default:
-            Circle().fill(Color.attention).frame(width: 8, height: 8)
-                .accessibilityLabel(item.status.state == "blocked" ? "Needs Input" : "Done")
-        }
+        ProgramStatusMark(state: item.status.state, progress: item.status.progress, dotSize: 8, showDone: true)
     }
 }

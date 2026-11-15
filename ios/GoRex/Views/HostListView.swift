@@ -933,17 +933,8 @@ struct WindowRow<Mark: View>: View {
                 .truncationMode(.tail)
             Spacer(minLength: 8)
             // As the desktop's tab: a dot while the program waits for the
-            // user, else its progress when it tells one.
-            if status?.state == "blocked" {
-                Circle().fill(Color.attention).frame(width: 7, height: 7).accessibilityLabel("Needs Input")
-            } else if let p = status?.progress {
-                Circle().trim(from: 0, to: CGFloat(p) / 100)
-                    .stroke(.secondary, style: StrokeStyle(lineWidth: 2, lineCap: .round))
-                    .rotationEffect(.degrees(-90))
-                    .background(Circle().stroke(.quaternary, lineWidth: 2))
-                    .frame(width: 12, height: 12)
-                    .accessibilityLabel(Text(verbatim: "\(p)%"))
-            }
+            // user or failed, else its progress or animated dots while working.
+            ProgramStatusMark(state: status?.state, progress: status?.progress)
             mark
         }
         .padding(.horizontal, 16)

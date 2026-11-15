@@ -32,4 +32,25 @@ nonisolated final class ProgramTests: XCTestCase {
         XCTAssertTrue(TileMotion.done.isRepeating)
         XCTAssertFalse(TileMotion.none.isRepeating)
     }
+
+    @MainActor func testWorkingDotsPhaseStagger() {
+        // Dot 0 peaks at quarter period (0.3s), while dots 1 and 2 are staggered.
+        let p0 = WorkingDots.phase(at: 0.3, index: 0)
+        let p1 = WorkingDots.phase(at: 0.3, index: 1)
+        let p2 = WorkingDots.phase(at: 0.3, index: 2)
+        XCTAssertEqual(p0, 1.0, accuracy: 0.001)
+        XCTAssertLessThan(p1, p0)
+        XCTAssertGreaterThan(p1, 0)
+        XCTAssertEqual(p2, 0.0, accuracy: 0.001)
+
+        // All phases stay within 0...1 across the cycle.
+        for step in 0..<24 {
+            let t = Double(step) * 0.05
+            for i in 0..<3 {
+                let v = WorkingDots.phase(at: t, index: i)
+                XCTAssertGreaterThanOrEqual(v, 0)
+                XCTAssertLessThanOrEqual(v, 1)
+            }
+        }
+    }
 }

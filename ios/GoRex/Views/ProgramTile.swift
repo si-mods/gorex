@@ -223,6 +223,84 @@ private struct DoneDot: View {
     }
 }
 
+/// Three animated dots shown while a program is working without a
+/// percentage progress, pulsing and hopping in a wave.
+struct WorkingDots: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1.0 / 30, paused: reduceMotion)) { tl in
+            let t = reduceMotion ? 0 : tl.date.timeIntervalSinceReferenceDate
+            HStack(spacing: 3) {
+                ForEach(0..<3, id: \.self) { i in
+                    let phase = Self.phase(at: t, index: i)
+                    Circle()
+                        .fill(.secondary)
+                        .frame(width: 3.5, height: 3.5)
+                        .opacity(reduceMotion ? 0.75 : 0.35 + 0.65 * phase)
+                        .scaleEffect(reduceMotion ? 1 : 0.85 + 0.2 * phase)
+                        .offset(y: reduceMotion ? 0 : -1.5 * phase)
+                }
+            }
+        }
+        .accessibilityLabel("Working")
+    }
+
+    /// Wave value in `0...1` for dot `index` at time `t`, staggered across
+    /// a 1.2s cycle so the three dots pulse left-to-right.
+    static func phase(at t: TimeInterval, index: Int) -> Double {
+        let period = 1.2
+        let shifted = (t / period - Double(index) * 0.16).truncatingRemainder(dividingBy: 1)
+        let u = shifted < 0 ? shifted + 1 : shifted
+        guard u < 0.5 else { return 0 }
+        return 0.5 - 0.5 * cos(2 * .pi * (u / 0.5))
+    }
+}
+
+/// Circular progress indicator for a working program that reports a percentage.
+struct ProgressRing: View {
+    let progress: Int
+
+    var body: some View {
+        let clamped = max(0, min(100, progress))
+        Circle().trim(from: 0, to: CGFloat(clamped) / 100)
+            .stroke(.secondary, style: StrokeStyle(lineWidth: 2, lineCap: .round))
+            .rotationEffect(.degrees(-90))
+            .background(Circle().stroke(.quaternary, lineWidth: 2))
+            .frame(width: 12, height: 12)
+            .accessibilityLabel(Text(verbatim: "\(clamped)%"))
+    }
+}
+
+/// Trailing status indicator for a window or inbox row: attention dot for
+/// blocked/error (and optionally done), progress ring or animated working
+/// dots while working.
+struct ProgramStatusMark: View {
+    let state: String?
+    let progress: Int?
+    var dotSize: CGFloat = 7
+    var showDone = false
+
+    var body: some View {
+        switch state {
+        case "blocked":
+            Circle().fill(Color.attention).frame(width: dotSize, height: dotSize).accessibilityLabel("Needs Input")
+        case "error":
+            Circle().fill(.red).frame(width: dotSize, height: dotSize).accessibilityLabel("Failed")
+        case "done" where showDone:
+            Circle().fill(Color.attention).frame(width: dotSize, height: dotSize).accessibilityLabel("Done")
+        case "working":
+            if let progress {
+                ProgressRing(progress: progress)
+            } else {
+                WorkingDots()
+            }
+        default:
+            EmptyView()
+        }
+    }
+}
+
 /// How a program tile moves for its session's state, modeled on macOS Dock
 /// icon bounces:
 /// - `attention` (`blocked`, `error`): energetic double-hop repeating on a
