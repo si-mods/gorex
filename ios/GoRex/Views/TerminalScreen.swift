@@ -41,10 +41,20 @@ struct TerminalScreen: View {
     @State private var hasBar = TerminalView.hasBar
     @State private var currentTarget: TerminalTarget
     @State private var pillDrag: CGFloat = 0
+    /// The way the last switch went, 1 from the right, -1 from the left,
+    /// for the title's push.
     @State private var slideDir: CGFloat = 1
-    /// How many tab switches are animating: while any is, a new terminal's
-    /// layout snaps.
+    /// How many tab switches are sliding: while any is, the terminals'
+    /// layout snaps, and the panes off the page stay until the last ends.
     @State private var switching = 0
+    /// The terminals on the page: the current one, one that waits to slide
+    /// in, and those still sliding out.
+    @State private var panes: [Pane] = []
+    /// The pane of a switch that waits for its terminal to draw before it
+    /// slides in. A newer switch takes its place.
+    @State private var incoming: UUID?
+    /// The page's width, which a pane's place is a fraction of.
+    @State private var pageWidth: CGFloat = 0
     /// Whether the terminal has been reconnecting, or holding what was
     /// typed, for a second: a short reconnect shows nothing.
     @State private var stalled = false
@@ -63,18 +73,21 @@ struct TerminalScreen: View {
         let scheme: ColorScheme = bg.light ? .light : .dark
         // The terminal goes up under the clear bar and the status bar: its
         // grid starts below them, and its scrollback fills the band.
+        // Each pane sits at its place across the page: off it, to the
+        // left or right, or on it. Only the current one takes touches.
         ZStack {
-            if let session {
-                TerminalRepresentable(session: session, newTab: newTab, closeTab: closeTab, mic: mic, voice: voiceCapsule, dictating: said != nil, snaps: switching > 0)
-                    .id(currentTarget.block)
-                    .transition(.asymmetric(
-                        insertion: .move(edge: slideDir > 0 ? .trailing : .leading),
-                        removal: .move(edge: slideDir > 0 ? .leading : .trailing)
-                    ))
-            } else {
-                Color.clear
+            if panes.isEmpty { Color.clear }
+            ForEach(panes) { pane in
+                let current = pane.session === session
+                TerminalRepresentable(session: pane.session, newTab: newTab, closeTab: closeTab, mic: mic, voice: voiceCapsule, dictating: said != nil && current, snaps: switching > 0)
+                    .offset(x: pane.x * pageWidth)
+                    // Before the page's width is known, off the page is hidden.
+                    .opacity(pageWidth == 0 && pane.x != 0 ? 0 : 1)
+                    .allowsHitTesting(current)
+                    .accessibilityHidden(!current)
             }
         }
+            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { pageWidth = $0 }
             .clipped()
             .ignoresSafeArea(.container, edges: .top)
             .ignoresSafeArea(.keyboard)
@@ -214,12 +227,14 @@ struct TerminalScreen: View {
             .onAppear {
                 let s = session ?? TerminalSession(host: host, session: currentTarget.session, block: currentTarget.block)
                 session = s
+                if panes.isEmpty { panes = [Pane(session: s, block: currentTarget.block, x: 0)] }
                 s.start()
                 Notifier.shared.onScreen = currentTarget
                 host.see(session: currentTarget.session, block: currentTarget.block)
             }
             .onDisappear {
                 terminal?.stopDictating()
+                dropIncoming()
                 host.see(session: currentTarget.session, block: currentTarget.block)
                 session?.close()
                 if Notifier.shared.onScreen == currentTarget { Notifier.shared.onScreen = nil }
@@ -245,6 +260,8 @@ struct TerminalScreen: View {
             .onChange(of: phase) { _, p in
                 // Inactive, as under Control Center or an alert, keeps it.
                 if p == .background {
+                    // A switch still waiting stops: only the shown stream suspends.
+                    dropIncoming()
                     terminal?.stopDictating()
                     session?.suspend()
                     suspended = true
@@ -304,12 +321,31 @@ struct TerminalScreen: View {
         (hostSession?.view?.windows ?? []).compactMap { w in w.block.map { (block: $0, window: w) } }
     }
 
+    /// A terminal on the page, at x widths from its place: -1 off to the
+    /// left, 0 on the page, 1 off to the right. Its id is its own, not its
+    /// block's: a block can come back while its last pane still slides out.
+    private struct Pane: Identifiable {
+        let id = UUID()
+        let session: TerminalSession
+        let block: String
+        var x: CGFloat
+    }
+
+    /// Opens the window's block in place of this one: it opens off the
+    /// page, on the side it comes from, and slides in once its terminal
+    /// has drawn what the block shows, or after 300 ms.
     private func switchTo(_ next: TerminalTarget, dir: CGFloat? = nil) {
         guard next.host == currentTarget.host && next.session == currentTarget.session else {
             go(next)
             return
         }
-        guard next.block != currentTarget.block else { return }
+        guard next.block != currentTarget.block else {
+            // Back to the one shown: the switch still waiting stops.
+            dropIncoming()
+            return
+        }
+        // The same block again, as a second swipe while it opens, waits on.
+        if let id = incoming, panes.first(where: { $0.id == id })?.block == next.block { return }
         let resolvedDir: CGFloat
         if let dir {
             resolvedDir = dir
@@ -319,28 +355,81 @@ struct TerminalScreen: View {
             let toIdx = all.firstIndex { $0.window.holds(next.block) } ?? fromIdx
             resolvedDir = toIdx >= fromIdx ? 1 : -1
         }
+        dropIncoming()
+        // The terminal opens off the page, without animation, so that its
+        // surface is made before the slide, not in its first frame.
+        let nextSession = TerminalSession(host: host, session: next.session, block: next.block)
+        nextSession.start()
+        let pane = Pane(session: nextSession, block: next.block, x: resolvedDir)
+        let id = pane.id
+        var t = Transaction()
+        t.disablesAnimations = true
+        withTransaction(t) { panes.append(pane) }
+        incoming = id
+        Task { @MainActor in
+            // Until the terminal has drawn the snapshot, or 300 ms; a
+            // failure ends the wait, to show on the new pane.
+            let deadline = ContinuousClock.now + .milliseconds(300)
+            func waits() -> Bool {
+                switch nextSession.state {
+                case .connecting: true
+                case .live: (nextSession.output as? TerminalView)?.drawn != true
+                default: false
+                }
+            }
+            while waits(), ContinuousClock.now < deadline, incoming == id {
+                try? await Task.sleep(for: .milliseconds(16))
+            }
+            guard incoming == id else { return }
+            promote(id, to: next, dir: resolvedDir)
+        }
+    }
+
+    /// Slides the waiting pane in and the current one out, the way the
+    /// switch goes, and closes the current one's stream.
+    private func promote(_ id: UUID, to next: TerminalTarget, dir: CGFloat) {
+        guard let i = panes.firstIndex(where: { $0.id == id }) else { return }
+        incoming = nil
+        let nextSession = panes[i].session
         terminal?.stopDictating()
         host.see(session: currentTarget.session, block: currentTarget.block)
         session?.close()
-        let nextSession = TerminalSession(host: host, session: next.session, block: next.block)
-        nextSession.start()
         Notifier.shared.onScreen = next
         host.see(session: next.session, block: next.block)
         switching += 1
         withAnimation(.spring(duration: 0.32, bounce: 0.12), completionCriteria: .removed) {
-            slideDir = resolvedDir
+            slideDir = dir
+            if let j = panes.firstIndex(where: { $0.session === session }) { panes[j].x = -dir }
+            panes[i].x = 0
             session = nextSession
             currentTarget = next
         } completion: {
             switching -= 1
+            // Once no slide is left, the panes off the page go, but one
+            // that waits to slide in.
+            guard switching == 0 else { return }
+            panes.removeAll { $0.session !== session && $0.id != incoming }
         }
     }
 
+    /// Drops the pane of a switch that still waits, and closes its stream.
+    private func dropIncoming() {
+        guard let id = incoming else { return }
+        incoming = nil
+        panes.first(where: { $0.id == id })?.session.close()
+        var t = Transaction()
+        t.disablesAnimations = true
+        withTransaction(t) { panes.removeAll { $0.id == id } }
+    }
+
+    /// Steps from the window a switch still waits to show, if any, so a
+    /// second quick swipe goes one window farther.
     private func stepTab(by delta: Int) {
         let all = sessionWindows
-        guard all.count > 1, let i = all.firstIndex(where: { $0.window.holds(currentTarget.block) }) else { return }
+        let from = incoming.flatMap { id in panes.first(where: { $0.id == id })?.block } ?? currentTarget.block
+        guard all.count > 1, let i = all.firstIndex(where: { $0.window.holds(from) }) else { return }
         let next = all[(i + delta + all.count) % all.count]
-        guard !next.window.holds(currentTarget.block) else { return }
+        guard !next.window.holds(from) else { return }
         switchTo(TerminalTarget(host: host.id, session: currentTarget.session, block: next.block, title: host.title(next.window)), dir: delta > 0 ? 1 : -1)
     }
 
