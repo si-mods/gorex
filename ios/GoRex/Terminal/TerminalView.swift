@@ -84,6 +84,11 @@ final class TerminalView: UIView, TerminalOutput {
     var last: CGFloat = 0
     /// Set while the content is moved to match Ghostty, not by the finger.
     var syncing = false
+    /// Whether the viewport is scrolled up from the bottom, and whether new
+    /// output arrived while scrolled up.
+    var scrolledUp = false { didSet { if scrolledUp != oldValue { onScrollState?(scrolledUp, hasUnreadOutput) } } }
+    var hasUnreadOutput = false { didSet { if hasUnreadOutput != oldValue { onScrollState?(scrolledUp, hasUnreadOutput) } } }
+    var onScrollState: ((_ scrolledUp: Bool, _ unread: Bool) -> Void)?
 
     /// The keyboard's height over the terminal.
     private var keys: CGFloat = 0
@@ -113,8 +118,9 @@ final class TerminalView: UIView, TerminalOutput {
     private(set) var surface: ghostty_surface_t?
     private var config: ghostty_config_t?
     /// The lines the config was made of, which a theme message repeats,
-    /// and the minimum contrast it was made with.
+    /// the last applied theme, and the minimum contrast it was made with.
     private var configured: String?
+    private var theme: [String: Any] = [:]
     private var contrast: Double?
     /// The surface's terminal takes the program's output here, in order on
     /// the queue: a write waits while Ghostty catches up.
@@ -152,6 +158,7 @@ final class TerminalView: UIView, TerminalOutput {
         NotificationCenter.default.addObserver(self, selector: #selector(show), name: UIApplication.willEnterForegroundNotification, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(keyboard), name: UIResponder.keyboardWillChangeFrameNotification, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(contrastChanged), name: .minimumContrast, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(fontChanged), name: .terminalFont, object: nil)
         for name in [Notification.Name.GCKeyboardDidConnect, .GCKeyboardDidDisconnect] {
             NotificationCenter.default.addObserver(self, selector: #selector(showBar), name: name, object: nil)
         }
@@ -256,6 +263,7 @@ final class TerminalView: UIView, TerminalOutput {
         let fd = output
         guard fd >= 0, !bytes.isEmpty else { return }
         wrote += 1
+        if scrolledUp { hasUnreadOutput = true }
         laterSlide()
         writes.async {
             bytes.withUnsafeBytes { p in
@@ -270,6 +278,7 @@ final class TerminalView: UIView, TerminalOutput {
 
     /// Sets the default colors, and the font, through Ghostty's config.
     func setTheme(_ theme: [String: Any]) {
+        self.theme = theme
         func hex(_ c: VTerminal.RGB) -> String { String(format: "#%06x", c.packed) }
         var lines = ["font-size = \(Self.fontSize)"]
         if !Self.fontFamily.isEmpty { lines.append("font-family = \"\(Self.fontFamily)\"") }
@@ -309,6 +318,11 @@ final class TerminalView: UIView, TerminalOutput {
     /// configured takes it with its theme.
     @objc private func contrastChanged() {
         if let configured { configure(configured) }
+    }
+
+    /// Settings changed the font family or size: rebuilds the Ghostty config.
+    @objc private func fontChanged() {
+        setTheme(theme)
     }
 
     @objc private func hide() { if let surface { ghostty_surface_set_occlusion(surface, false) } }
@@ -793,20 +807,81 @@ final class TerminalView: UIView, TerminalOutput {
 /// keyboard, else above the home indicator.
 final class TerminalHost: UIView {
     let terminal: TerminalView
+    private let scrollDown = UIVisualEffectView(effect: UIGlassEffect(style: .regular))
+    private let unreadDot = UIView()
 
     init(_ terminal: TerminalView) {
         self.terminal = terminal
         super.init(frame: .zero)
         addSubview(terminal)
-        guard UIDevice.current.userInterfaceIdiom != .pad else { return }
-        let bar = terminal.bar
-        bar.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(bar)
+        let anchor: NSLayoutYAxisAnchor
+        if UIDevice.current.userInterfaceIdiom != .pad {
+            let bar = terminal.bar
+            bar.translatesAutoresizingMaskIntoConstraints = false
+            addSubview(bar)
+            NSLayoutConstraint.activate([
+                bar.leadingAnchor.constraint(equalTo: leadingAnchor),
+                bar.trailingAnchor.constraint(equalTo: trailingAnchor),
+                bar.bottomAnchor.constraint(equalTo: keyboardLayoutGuide.topAnchor),
+            ])
+            anchor = bar.topAnchor
+        } else {
+            anchor = keyboardLayoutGuide.topAnchor
+        }
+
+        scrollDown.cornerConfiguration = .capsule()
+        scrollDown.clipsToBounds = true
+        scrollDown.alpha = 0
+        scrollDown.isHidden = true
+        scrollDown.translatesAutoresizingMaskIntoConstraints = false
+        var cfg = UIButton.Configuration.plain()
+        cfg.image = UIImage(systemName: "arrow.down")
+        cfg.preferredSymbolConfigurationForImage = UIImage.SymbolConfiguration(pointSize: 15, weight: .semibold)
+        cfg.baseForegroundColor = .label
+        let btn = UIButton(configuration: cfg, primaryAction: UIAction { [weak terminal] _ in terminal?.scrollToBottom() })
+        btn.accessibilityLabel = String(localized: "Scroll to Bottom")
+        btn.translatesAutoresizingMaskIntoConstraints = false
+        scrollDown.contentView.addSubview(btn)
+
+        unreadDot.backgroundColor = .systemOrange
+        unreadDot.layer.cornerRadius = 3.5
+        unreadDot.isHidden = true
+        unreadDot.isUserInteractionEnabled = false
+        unreadDot.translatesAutoresizingMaskIntoConstraints = false
+        scrollDown.contentView.addSubview(unreadDot)
+
+        addSubview(scrollDown)
         NSLayoutConstraint.activate([
-            bar.leadingAnchor.constraint(equalTo: leadingAnchor),
-            bar.trailingAnchor.constraint(equalTo: trailingAnchor),
-            bar.bottomAnchor.constraint(equalTo: keyboardLayoutGuide.topAnchor),
+            btn.leadingAnchor.constraint(equalTo: scrollDown.contentView.leadingAnchor),
+            btn.trailingAnchor.constraint(equalTo: scrollDown.contentView.trailingAnchor),
+            btn.topAnchor.constraint(equalTo: scrollDown.contentView.topAnchor),
+            btn.bottomAnchor.constraint(equalTo: scrollDown.contentView.bottomAnchor),
+            unreadDot.widthAnchor.constraint(equalToConstant: 7),
+            unreadDot.heightAnchor.constraint(equalToConstant: 7),
+            unreadDot.topAnchor.constraint(equalTo: scrollDown.contentView.topAnchor, constant: 7),
+            unreadDot.trailingAnchor.constraint(equalTo: scrollDown.contentView.trailingAnchor, constant: -7),
+            scrollDown.widthAnchor.constraint(equalToConstant: 40),
+            scrollDown.heightAnchor.constraint(equalToConstant: 40),
+            scrollDown.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -16),
+            scrollDown.bottomAnchor.constraint(equalTo: anchor, constant: -12),
         ])
+
+        terminal.onScrollState = { [weak self] up, unread in
+            self?.updateScrollDown(visible: up, unread: unread)
+        }
+    }
+
+    private func updateScrollDown(visible: Bool, unread: Bool) {
+        unreadDot.isHidden = !unread
+        guard visible == scrollDown.isHidden else { return }
+        if visible {
+            scrollDown.isHidden = false
+            UIView.animate(withDuration: 0.2) { self.scrollDown.alpha = 1 }
+        } else {
+            UIView.animate(withDuration: 0.2) { self.scrollDown.alpha = 0 } completion: { _ in
+                if !self.terminal.scrolledUp { self.scrollDown.isHidden = true }
+            }
+        }
     }
 
     required init?(coder: NSCoder) { fatalError() }
@@ -1169,4 +1244,6 @@ extension Notification.Name {
     static let minimumContrast = Notification.Name("minimumContrast")
     /// Settings changed the terminal theme, posted on the main thread.
     static let terminalTheme = Notification.Name("terminalTheme")
+    /// Settings changed the terminal font family or size, posted on the main thread.
+    static let terminalFont = Notification.Name("terminalFont")
 }

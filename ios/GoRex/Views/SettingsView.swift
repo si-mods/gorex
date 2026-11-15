@@ -329,6 +329,8 @@ private struct TerminalSettings: View {
             Stepper(value: $fontSize, in: 8...24) {
                 LabeledContent("Font Size", value: String(localized: "\(Int(fontSize)) pt"))
             }
+            .onChange(of: fontSize) { NotificationCenter.default.post(name: .terminalFont, object: nil) }
+            .onChange(of: family) { NotificationCenter.default.post(name: .terminalFont, object: nil) }
             .listRowBackground(Color.card)
             Section("Font") {
                 ForEach(Fonts.all, id: \.family) { row($0.family, $0.name) }

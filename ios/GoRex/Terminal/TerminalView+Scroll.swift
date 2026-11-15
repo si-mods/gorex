@@ -42,6 +42,7 @@ extension TerminalView: UIScrollViewDelegate {
         scroller.contentSize = CGSize(width: bounds.width, height: end + bounds.height)
         if row != Int(b.offset) || y > end { scroller.contentOffset.y = min(CGFloat(b.offset) * h + y - CGFloat(row) * h, end) }
         syncing = false
+        updateScrollState(at: scroller.contentOffset.y, end: end)
     }
 
     /// Slides again once Ghostty has drawn the output that came, which moves
@@ -106,6 +107,7 @@ extension TerminalView: UIScrollViewDelegate {
         wheel = ghostty_surface_is_alternate_active(s) || ghostty_surface_mouse_captured(s)
         v.showsVerticalScrollIndicator = !wheel
         v.alwaysBounceVertical = !wheel
+        if wheel { updateScrollState(at: 0, end: 0) }
         guard wheel else { return }
         syncing = true
         v.contentSize = CGSize(width: bounds.width, height: 1e6)
@@ -137,6 +139,7 @@ extension TerminalView: UIScrollViewDelegate {
             let row = Int(at / h)
             ghostty_surface_scroll_to_row_smooth(s, UInt(row), (at - CGFloat(row) * h) * scale)
         }
+        updateScrollState(at: at, end: end)
     }
 
     func scrollViewDidEndDragging(_ v: UIScrollView, willDecelerate: Bool) {
@@ -156,5 +159,26 @@ extension TerminalView: UIScrollViewDelegate {
         }
         ghostty_surface_set_smooth_scroll_offset(s, 0)
         ghostty_surface_set_rubber_band_offset(s, 0)
+    }
+
+    /// Tracks whether the viewport is scrolled above the bottom by more than 3 lines.
+    func updateScrollState(at: CGFloat, end: CGFloat) {
+        let up = !wheel && (end - at) > max(cell.height * 3, 24)
+        if !up { hasUnreadOutput = false }
+        if scrolledUp != up { scrolledUp = up }
+    }
+
+    /// Scrolls smoothly back to the bottom of the scrollback and clears unread output.
+    func scrollToBottom() {
+        guard let s = surface else { return }
+        stopScrolling()
+        hasUnreadOutput = false
+        let end = max(0, scroller.contentSize.height - scroller.bounds.height)
+        if scroller.contentOffset.y < end {
+            scroller.setContentOffset(CGPoint(x: 0, y: end), animated: true)
+        }
+        _ = ghostty_surface_binding_action(s, "scroll_to_bottom", UInt("scroll_to_bottom".utf8.count))
+        scrolledUp = false
+        UIImpactFeedbackGenerator(style: .light, view: self).impactOccurred()
     }
 }

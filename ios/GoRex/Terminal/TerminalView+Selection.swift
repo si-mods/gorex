@@ -37,7 +37,7 @@ extension TerminalView: UIEditMenuInteractionDelegate {
             loupe?.move(to: p, withCaretRect: .null, trackingCaret: false)
         default:
             click(s, [GHOSTTY_MOUSE_RELEASE], at: p)
-            showSelection()
+            showSelection(at: p)
         }
     }
 
@@ -55,7 +55,7 @@ extension TerminalView: UIEditMenuInteractionDelegate {
             ghostty_surface_mouse_pos(s, p.x, p.y, mods)
         default:
             click(s, [GHOSTTY_MOUSE_RELEASE], at: p)
-            showSelection()
+            showSelection(at: p)
         }
     }
 
@@ -83,15 +83,23 @@ extension TerminalView: UIEditMenuInteractionDelegate {
             placeHandles()
         default:
             click(s, [GHOSTTY_MOUSE_RELEASE], at: p)
-            showSelection()
+            showSelection(at: p)
         }
     }
 
-    /// Shows the handles and the menu at the selection just made, if any.
-    private func showSelection() {
+    /// Shows the handles and the menu at the selection just made, if any;
+    /// when a long press lands on empty space, presents the edit menu for
+    /// Paste and Select All.
+    private func showSelection(at fallback: CGPoint? = nil) {
         loupe?.invalidate()
         loupe = nil
-        guard let s = surface, ghostty_surface_has_selection(s) else { return hideSelection() }
+        guard let s = surface, ghostty_surface_has_selection(s) else {
+            hideSelection()
+            if let fallback {
+                editMenu.presentEditMenu(with: UIEditMenuConfiguration(identifier: nil, sourcePoint: fallback))
+            }
+            return
+        }
         showsSelection = true
         placeHandles()
         let box = ends()?.box ?? bounds
@@ -197,7 +205,9 @@ extension TerminalView: UIEditMenuInteractionDelegate {
     }
 
     override func copy(_ sender: Any?) {
-        if let t = selectedText { UIPasteboard.general.string = t }
+        guard let t = selectedText else { return }
+        UIPasteboard.general.string = t
+        UIImpactFeedbackGenerator(style: .light, view: self).impactOccurred()
     }
 
     override func selectAll(_ sender: Any?) {
