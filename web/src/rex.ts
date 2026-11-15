@@ -272,7 +272,12 @@ interface DataWelcome {
 function helloFrame(ticket: string): Uint8Array {
   let s = ticket.replace(/-/g, "+").replace(/_/g, "/");
   s += "=".repeat((4 - (s.length % 4)) % 4);
-  const t = Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
+  let t: Uint8Array;
+  try {
+    t = Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
+  } catch {
+    throw new RexError("protocol", protocolError);
+  }
   if (t.length !== 16) throw new RexError("protocol", protocolError);
   const out = new Uint8Array(17);
   out[0] = 0x01;
@@ -305,18 +310,20 @@ function openDataSocket(
     onAttach(ws);
     let welcomed = false;
     let settled = false;
-    const fail = (err: RexError) => {
+    const fail = (err: RexError, closeSocket = true) => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
+      if (closeSocket) {
+        try {
+          ws.close(1000);
+        } catch {
+          // ignore close errors on failed handshake socket
+        }
+      }
       reject(err);
     };
     const timer = setTimeout(() => {
-      try {
-        ws.close(1000);
-      } catch {
-        // ignore close errors on timed-out socket
-      }
       fail(new RexError("timeout", () => t("errorTimeout")));
     }, helloWait);
 
@@ -344,7 +351,7 @@ function openDataSocket(
       }
     };
     ws.onclose = (e) => {
-      if (!welcomed) fail(new RexError("closed", () => t("errorDataClosed", { code: String(e.code) })));
+      if (!welcomed) fail(new RexError("closed", () => t("errorDataClosed", { code: String(e.code) })), false);
       else onEnded(ws, e.code, e.reason ?? "");
     };
   });

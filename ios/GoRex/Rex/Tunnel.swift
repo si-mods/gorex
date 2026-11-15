@@ -8,9 +8,12 @@ enum Tunnel {
     struct Info: Equatable {
         let blockID: String
         let flavor: String
+        let target: String?
         let address: String?
         let clientAddress: String?
         let clientTarget: String?
+        let connections: Int
+        let lastOwner: String?
     }
 
     static func openDial(session: String, host: String, port: Int,
@@ -57,9 +60,12 @@ enum Tunnel {
         return Info(
             blockID: block,
             flavor: reply.payload["flavor"] as? String ?? "",
+            target: reply.payload["target"] as? String,
             address: reply.payload["address"] as? String,
             clientAddress: reply.payload["client_address"] as? String,
-            clientTarget: reply.payload["client_target"] as? String
+            clientTarget: reply.payload["client_target"] as? String,
+            connections: reply.payload["connections"] as? Int ?? 0,
+            lastOwner: reply.payload["last_owner"] as? String
         )
     }
 

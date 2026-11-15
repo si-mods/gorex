@@ -111,6 +111,21 @@ test("Control.open sends hello and applies welcome metadata", async () => {
   assert.equal(c.reconnectToken, "tok-next");
   assert.equal(c.apiRevision, 14);
   assert.equal(c.features.has("tunnel"), true);
+
+  const events: Array<{ type: string; payload: any }> = [];
+  c.onEvent = (e) => events.push({ type: e.type, payload: e.payload });
+  ws.emitText(JSON.stringify({ type: "event", seq: 1, payload: { type: "session_changed", payload: { id: "s1" } } }));
+  assert.equal(events.length, 1);
+  assert.equal(events[0].type, "session_changed");
+
+  const callPromise = c.call("session.list", {});
+  const req = JSON.parse(ws.sent[1] as string);
+  assert.equal(req.type, "request");
+  assert.equal(req.method, "session.list");
+  ws.emitText(JSON.stringify({ type: "response", id: req.id, seq: 2, ok: true, payload: { sessions: [] } }));
+  const reply = await callPromise;
+  assert.deepEqual(reply.payload, { sessions: [] });
+
   c.close();
 });
 
@@ -163,20 +178,34 @@ test("DataStream open, welcome token/nonce, resume frame, and onDrop", async () 
   ds.close();
 });
 
-test("DataStream rejects on 0x82 and times out on missing WELCOME", async (t) => {
+test("DataStream rejects on 0x82, invalid frames, invalid tickets, pre-welcome close, and timeout", async (t) => {
   const { transport, sockets } = makeTransport();
   const ds = new DataStream(transport);
+  await assert.rejects(() => ds.open("!!!invalid-base64!!!"), (err: unknown) => err instanceof RexError && err.code === "protocol");
+
   const p1 = ds.open(makeTicketBase64Url(0x11));
   sockets[0].emitOpen();
   sockets[0].emitBytes(new Uint8Array([RexProtocol.dataRejectByte, 0x04]));
   await assert.rejects(p1, (err: unknown) => err instanceof RexError && err.code === "rejected");
+  assert.equal(sockets[0].closedWith?.code, 1000);
+
+  const pMalformed = ds.open(makeTicketBase64Url(0x12));
+  sockets[1].emitOpen();
+  sockets[1].emitBytes(new Uint8Array([0x99]));
+  await assert.rejects(pMalformed, (err: unknown) => err instanceof RexError && err.code === "protocol");
+  assert.equal(sockets[1].closedWith?.code, 1000);
+
+  const pClosed = ds.open(makeTicketBase64Url(0x13));
+  sockets[2].emitOpen();
+  sockets[2].emitClose(1006);
+  await assert.rejects(pClosed, (err: unknown) => err instanceof RexError && err.code === "closed");
 
   t.mock.timers.enable({ apis: ["setTimeout"] });
   const p2 = ds.open(makeTicketBase64Url(0x22));
-  sockets[1].emitOpen();
+  sockets[3].emitOpen();
   t.mock.timers.tick(openWait + 1);
   await assert.rejects(p2, (err: unknown) => err instanceof RexError && err.code === "timeout");
-  assert.equal(sockets[1].closedWith?.code, 1000);
+  assert.equal(sockets[3].closedWith?.code, 1000);
 });
 
 test("BytesStream open, send, halfClose, onBytes/onClose, 0x82 rejection, and timeout", async (t) => {

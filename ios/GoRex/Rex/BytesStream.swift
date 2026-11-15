@@ -44,14 +44,13 @@ final class BytesStream {
         try await task.send(.data(Data()))
     }
 
-    /// Reads the next non-empty binary payload, or `nil` when the server closes normally (1000).
+    /// Reads the next binary payload, or `nil` on half-close EOF (empty frame) or normal closure (1000).
     func receive() async throws -> Data? {
         while true {
             do {
                 let message = try await task.receive()
                 if case .data(let data) = message {
-                    if data.isEmpty { continue }
-                    return data
+                    return data.isEmpty ? nil : data
                 }
             } catch {
                 if task.closeCode == .normalClosure { return nil }
@@ -60,7 +59,7 @@ final class BytesStream {
         }
     }
 
-    /// Reads all remaining bytes until the server closes normally (1000).
+    /// Reads all remaining bytes until EOF (empty frame or normal closure 1000).
     func readAll() async throws -> Data {
         var out = Data()
         while let chunk = try await receive() {
@@ -71,7 +70,14 @@ final class BytesStream {
 
     /// Waits for the server to close the stream normally (1000).
     func waitForClose() async throws {
-        while try await receive() != nil {}
+        while true {
+            do {
+                _ = try await task.receive()
+            } catch {
+                if task.closeCode == .normalClosure { return }
+                throw RexError(code: "stream", message: error.localizedDescription)
+            }
+        }
     }
 
     func close() {
