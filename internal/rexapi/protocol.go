@@ -24,8 +24,10 @@ const (
 	// session.set_layer_state and a layer's state, revision 10 built-in
 	// Tailscale's control_url, revision 11 com.superlogical.terminal
 	// .upload_begin and the rex.data.bytes.v1 data stream that carries
-	// its file, and revision 12 server.status's listeners.
-	apiRevision = 12
+	// its file, revision 12 server.status's listeners, revision 13
+	// com.superlogical.terminal.download_begin over rex.data.bytes.v1,
+	// and revision 14 com.superlogical.tunnel.
+	apiRevision = 14
 	// apiMinRevision is the oldest revision it serves. A client that
 	// negotiates an older revision gets that revision's shape: requests
 	// are translated up and results back down by revisions.go.

@@ -264,7 +264,16 @@ func methodBlockCreatorList(c *control, a args) (any, *apiError) {
 			methods["upload_begin"] = uploadBeginEntry
 		}
 	}
-	return map[string]any{"creators": []any{creator}}, nil
+	creators := []any{creator}
+	if c.rev >= 14 {
+		tc := make(map[string]any, len(tunnelCreatorEntry)+1)
+		for k, v := range tunnelCreatorEntry {
+			tc[k] = v
+		}
+		tc["host_id"] = c.g.host
+		creators = append(creators, tc)
+	}
+	return map[string]any{"creators": creators}, nil
 }
 
 // helpDocument returns the help document as this server serves it, limited

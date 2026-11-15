@@ -152,8 +152,14 @@ type Gateway struct {
 	abortedBatches map[string]time.Time
 
 	// downloads are the files download_begin opened, by their ticket,
-	// until GET /api/download takes one or it lapses.
-	downloads map[string]*download
+	// until GET /api/download takes one or it lapses. byteDownloads are
+	// official rev 13 download_begin reservations, keyed by ref, for
+	// rex.data.bytes.v1 streams.
+	downloads     map[string]*download
+	byteDownloads map[string]*download
+
+	// tunnels are com.superlogical.tunnel blocks, keyed by block ID.
+	tunnels map[string]*tunnelBlock
 
 	// generation counts the loads the configuration file had, which
 	// server.config_reload makes; keymapHash names the file's contents.
@@ -212,6 +218,8 @@ func New(opt Options) (*Gateway, error) {
 		uploadBatches:  map[string]*uploadBatch{},
 		abortedBatches: map[string]time.Time{},
 		downloads:      map[string]*download{},
+		byteDownloads:  map[string]*download{},
+		tunnels:        map[string]*tunnelBlock{},
 		generation:     1,
 		canLock:        hello.Keepalive > 0 && hello.Conn != "",
 		done:           make(chan struct{}),
@@ -274,6 +282,7 @@ func (g *Gateway) Close() error {
 			s.closeWith(1001, "data provider canceled")
 		}
 		g.dropDownloads(nil)
+		g.closeAllTunnels()
 		g.opt.Client.Close()
 		g.wg.Wait()
 	})
@@ -622,6 +631,9 @@ func (g *Gateway) dropControl(c *control, clean bool) {
 	delete(g.conns, c)
 	g.mu.Unlock()
 	g.dropDownloads(c)
+	if c.rec != nil {
+		g.disownClientTunnels(c.rec.id)
+	}
 	rec := c.rec
 	if rec == nil {
 		return

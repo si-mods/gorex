@@ -174,6 +174,7 @@ var methods = map[string]func(*control, args) (any, *apiError){
 	"session.close_window":          methodSessionCloseWindow,
 	"session.set_window_label":      methodSessionSetWindowLabel,
 	"session.set_block_label":       methodSessionSetBlockLabel,
+	"session.new_block":             methodSessionNewBlock,
 	"session.focus_block":           methodSessionFocusBlock,
 	"session.focus_window":          methodSessionFocusWindow,
 	"session.focus_direction":       methodSessionFocusDirection,
@@ -847,12 +848,32 @@ func methodDataConnect(c *control, a args) (any, *apiError) {
 	if s == nil {
 		return nil, errSessionNotFound("no session %s", sid)
 	}
+	if !c.rec.attachedTo(sid) {
+		return nil, errConflict("session.attach or session.bootstrap is required for data connections")
+	}
+	if tb := c.g.tunnel(block); tb != nil && tb.session == sid {
+		if !tunnelConnRefPattern.MatchString(dataRef) {
+			return nil, errBadRequest("tunnel data_ref_id must start with conn:")
+		}
+		if tb.currentOwner() != c.rec.id {
+			return nil, errConflict("only the tunnel's owner may open its streams")
+		}
+		if subprotocol != "" && subprotocol != bytesProtocol {
+			return nil, errBadRequest("tunnel streams use %s", bytesProtocol)
+		}
+		ticket := c.g.issueTicket(&ticket{
+			record:      c.rec.id,
+			session:     sid,
+			block:       block,
+			dataRef:     dataRef,
+			subprotocol: bytesProtocol,
+			expires:     time.Now().Add(ticketWait),
+		})
+		return connectResult{Ticket: ticket, ExpiresInMS: int(ticketWait / time.Millisecond)}, nil
+	}
 	b := s.findBlock(block)
 	if b == nil {
 		return nil, errNotFound("no block %s in %s", block, sid)
-	}
-	if !c.rec.attachedTo(sid) {
-		return nil, errConflict("session.attach or session.bootstrap is required for data connections")
 	}
 	ticket := c.g.issueTicket(&ticket{
 		record:      c.rec.id,

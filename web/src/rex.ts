@@ -59,8 +59,9 @@ export interface RexEvent {
   payload: any;
 }
 
-/** The API revision this client speaks. */
-const revision = 10;
+/** The API revision this client speaks, and the oldest it accepts. */
+const revision = 14;
+const minRevision = 0;
 
 /**
  * How long a control connection may take to open and be welcomed: an
@@ -120,6 +121,7 @@ export class Control {
   onClose: (reason: Msg) => void = () => {};
   clientID = "";
   reconnectToken?: string;
+  apiRevision = revision;
   features = new Set<string>();
 
   private nextID = 0;
@@ -159,6 +161,7 @@ export class Control {
         const hello: any = {
           type: "hello",
           api_revision: revision,
+          api_min_revision: minRevision,
           client: { kind: "app", platform: "web", name: "GoRex Web", version: "0.1", label: navigator.platform || "browser" },
         };
         if (token) hello.reconnect_token = token;
@@ -178,6 +181,7 @@ export class Control {
           signal?.removeEventListener("abort", aborted);
           c.clientID = msg.client?.id ?? "";
           c.reconnectToken = msg.client?.reconnect_token;
+          if (typeof msg.api_revision === "number") c.apiRevision = msg.api_revision;
           c.features = new Set(msg.features ?? []);
           resolve(c);
           return;
@@ -312,6 +316,60 @@ export class DataStream {
         else if (this.ws === ws) this.onDrop(e.code);
       };
     });
+  }
+
+  close() {
+    const ws = this.ws;
+    this.ws = undefined;
+    ws?.close(1000);
+  }
+}
+
+/** One rex.data.bytes.v1 data stream for file uploads, downloads, or tunnels. */
+export class BytesStream {
+  onBytes: (b: Uint8Array) => void = () => {};
+  onClose: (code: number, reason: string) => void = () => {};
+  private ws?: SocketLike;
+
+  constructor(private transport: Transport) {}
+
+  open(ticket: string): Promise<void> {
+    const hello = helloFrame(ticket);
+    return new Promise((resolve, reject) => {
+      const ws = this.transport.socket("/api/data", "rex.data.bytes.v1");
+      ws.binaryType = "arraybuffer";
+      this.ws = ws;
+      let welcomed = false;
+      ws.onopen = () => ws.send(hello);
+      ws.onmessage = (m) => {
+        if (!(m.data instanceof ArrayBuffer)) return;
+        const b = new Uint8Array(m.data);
+        if (welcomed) {
+          this.onBytes(b);
+          return;
+        }
+        if (b.length === 32 && b[0] === 0x81) {
+          welcomed = true;
+          resolve();
+        } else if (b.length === 2 && b[0] === 0x82) {
+          reject(new RexError("rejected", () => t("errorDataRefused", { code: `0x${b[1].toString(16).padStart(2, "0")}` })));
+        } else {
+          reject(new RexError("protocol", () => t("errorProtocol")));
+        }
+      };
+      ws.onclose = (e) => {
+        if (!welcomed) reject(new RexError("closed", () => t("errorDataClosed", { code: String(e.code) })));
+        else if (this.ws === ws) this.onClose(e.code, e.reason ?? "");
+      };
+    });
+  }
+
+  send(b: Uint8Array) {
+    this.ws?.send(b);
+  }
+
+  halfClose() {
+    this.ws?.send(new Uint8Array(0));
   }
 
   close() {

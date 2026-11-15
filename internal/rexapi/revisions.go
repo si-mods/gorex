@@ -79,6 +79,7 @@ var revisionChanges = []revisionChange{
 // speaks an older revision does not know it.
 var creatorSince = map[string]int{
 	"com.superlogical.onboarding": 7,
+	"com.superlogical.tunnel":     14,
 }
 
 // methodSince is when a method first appeared. A client that speaks an
@@ -93,6 +94,8 @@ var methodSince = map[string]int{
 	// .upload_begin reserves a file and the rex.data.bytes.v1 stream
 	// carries its bytes.
 	"com.superlogical.terminal.upload_begin": 11,
+	// Revision 14 adds com.superlogical.tunnel and its info method.
+	"com.superlogical.tunnel.info": 14,
 }
 
 // methodAvailable tells whether a client at revision rev may call method.

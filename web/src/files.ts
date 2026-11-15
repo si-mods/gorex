@@ -12,7 +12,7 @@
 // blob that is saved and let go (docs/web-tailscale.md, Downloads).
 import { streamSave } from "./app";
 import { failure as fail, formatSize, Msg, PlainKey, t } from "./i18n";
-import { Control, describe, RexError, Transport } from "./rex";
+import { BytesStream, Control, describe, RexError, Transport } from "./rex";
 import { Chunk } from "./chunks";
 import type { Viewer } from "./viewer";
 
@@ -132,6 +132,7 @@ interface Begun {
   name: string;
   size: number;
   type: string;
+  bytesStream: boolean;
 }
 
 /** The status line's words for download_begin's errors (docs/web-open-files.md). */
@@ -161,10 +162,72 @@ let viewer: Viewer | undefined;
 /** The image viewer's code, a chunk of its own (chunks.ts), loaded with the first image shown. */
 const viewerCode = new Chunk("viewer", () => t("chunkViewer"), () => import("./viewer"));
 
+function guessTypeFromName(name: string): string {
+  const dot = name.lastIndexOf(".");
+  if (dot < 0) return "application/octet-stream";
+  const ext = name.slice(dot + 1).toLowerCase();
+  if (ext === "jpg" || ext === "jpeg") return "image/jpeg";
+  if (ext === "png") return "image/png";
+  if (ext === "gif") return "image/gif";
+  if (ext === "webp") return "image/webp";
+  return "application/octet-stream";
+}
+
 async function begin(c: Control | undefined, session: string, block: string, path: string): Promise<Begun> {
   if (!c) throw new RexError("offline", () => t("errorOffline"));
-  const r = await c.callBlock("download_begin", session, block, { path });
-  return { transport: c.transport, ticket: String(r.ticket ?? ""), name: String(r.name ?? ""), size: Number(r.size ?? 0), type: String(r.type ?? "") };
+  const bytesStream = c.apiRevision >= 13;
+  const args = bytesStream ? { ref: `download:${crypto.randomUUID().toLowerCase()}`, path } : { path };
+  const r = await c.callBlock("download_begin", session, block, args);
+  const name = String(r.name ?? "");
+  return {
+    transport: c.transport,
+    ticket: String(r.ticket ?? ""),
+    name,
+    size: Number(r.size ?? 0),
+    type: String(r.type ?? guessTypeFromName(name)),
+    bytesStream,
+  };
+}
+
+function openBytesReader(f: Begun): ReadableStreamDefaultReader<Uint8Array> {
+  const stream = new BytesStream(f.transport);
+  return new ReadableStream<Uint8Array>({
+    async start(controller) {
+      let halfClosed = false;
+      stream.onBytes = (b) => {
+        if (b.length === 0) {
+          halfClosed = true;
+          controller.close();
+        } else {
+          controller.enqueue(b);
+        }
+      };
+      stream.onClose = (code, reason) => {
+        if (halfClosed || code === 1000) {
+          try {
+            controller.close();
+          } catch {}
+        } else {
+          controller.error(fail(() => reason || t("errorDataClosed", { code: String(code) })));
+        }
+      };
+      try {
+        await stream.open(f.ticket);
+      } catch (e) {
+        controller.error(e);
+      }
+    },
+    cancel() {
+      stream.close();
+    },
+  }).getReader();
+}
+
+async function openDownloadReader(f: Begun, init?: RequestInit): Promise<ReadableStreamDefaultReader<Uint8Array>> {
+  if (f.bytesStream) return openBytesReader(f);
+  const r = await f.transport.fetch(downloadPath(f.ticket), init);
+  if (!r.ok || !r.body) throw fail(() => t("fileHostAnswered", { status: String(r.status) }));
+  return r.body.getReader();
 }
 
 const downloadPath = (ticket: string) => `/api/download?ticket=${encodeURIComponent(ticket)}`;
@@ -176,7 +239,7 @@ const downloadPath = (ticket: string) => `/api/download?ticket=${encodeURICompon
  * A tailnet host's file goes through the worker, or a blob (saveTailnet).
  */
 async function navigate(f: Begun, host: FileHost) {
-  if (!f.transport.url) return saveTailnet(f, host);
+  if (f.bytesStream || !f.transport.url) return saveTailnet(f, host);
   const frame = document.createElement("iframe");
   frame.hidden = true;
   frame.src = f.transport.url(downloadPath(f.ticket));
@@ -194,16 +257,15 @@ async function saveTailnet(f: Begun, host: FileHost) {
   const name = f.name || "download";
   const save = await streamSave(name);
   if (!save) return saveBlob(f, host);
-  let r: Response;
+  let reader: ReadableStreamDefaultReader<Uint8Array>;
   try {
-    r = await f.transport.fetch(downloadPath(f.ticket), { cache: "no-store" });
-    if (!r.ok || !r.body) throw fail(() => t("fileHostAnswered", { status: String(r.status) }));
+    reader = await openDownloadReader(f, { cache: "no-store" });
   } catch (e) {
     save.abort(e instanceof Error ? e.message : String(e));
     throw e;
   }
   let n = 0, shown = -1;
-  const how = await save.pipe(r.body!.getReader(), (bytes) => {
+  const how = await save.pipe(reader, (bytes) => {
     n += bytes;
     const pct = f.size ? Math.floor((100 * n) / f.size) : -1;
     if (pct !== shown && pct >= 0) {
@@ -223,9 +285,7 @@ async function saveBlob(f: Begun, host: FileHost) {
   const cap = () => formatSize(maxBlobBytes);
   if (f.size > maxBlobBytes) throw fail(() => t("fileTooLargeTailnet", { size: cap() }));
   const name = f.name || "download";
-  const r = await f.transport.fetch(downloadPath(f.ticket), { cache: "no-store" });
-  if (!r.ok || !r.body) throw fail(() => t("fileHostAnswered", { status: String(r.status) }));
-  const reader = r.body.getReader();
+  const reader = await openDownloadReader(f, { cache: "no-store" });
   const chunks: Uint8Array[] = [];
   let n = 0, shown = -1;
   try {
@@ -263,9 +323,7 @@ async function saveBlob(f: Begun, host: FileHost) {
  * image's, the rest then left unread.
  */
 async function fetchImage(f: Begun, kind: ImageKind): Promise<Blob | undefined> {
-  const r = await f.transport.fetch(downloadPath(f.ticket), { mode: "cors", credentials: "omit", cache: "no-store", referrerPolicy: "no-referrer" });
-  if (!r.ok || !r.body) throw fail(() => t("fileHostAnswered", { status: String(r.status) }));
-  const reader = r.body.getReader();
+  const reader = await openDownloadReader(f, { mode: "cors", credentials: "omit", cache: "no-store", referrerPolicy: "no-referrer" });
   const chunks: Uint8Array[] = [];
   let n = 0, checked = false;
   try {

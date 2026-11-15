@@ -258,12 +258,16 @@ func TestBlockCreatorList(t *testing.T) {
 	c.hello(apiRevision)
 	res := callChecked(t, c, "block_creator.list", nil)
 	creators := res["creators"].([]any)
-	if len(creators) != 1 {
+	if len(creators) != 2 {
 		t.Fatalf("creators: %v", creators)
 	}
 	creator := creators[0].(map[string]any)
 	if creator["name"] != creatorName || creator["host_id"] == "" {
 		t.Errorf("creator: %v", creator)
+	}
+	tunnel := creators[1].(map[string]any)
+	if tunnel["name"] != tunnelCreatorName || tunnel["host_id"] == "" {
+		t.Errorf("tunnel creator: %v", tunnel)
 	}
 	flavor := creator["flavors"].([]any)[0].(map[string]any)
 	if flavor["flavor"] != flavorShell || flavor["name"] != "shell" {

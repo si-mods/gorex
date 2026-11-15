@@ -59,7 +59,8 @@ extension TerminalView: UIDocumentPickerDelegate {
                 for f in try await files(dir) {
                     // One sent but not to be pasted says why; the others go on.
                     do {
-                        words.append(try await session.host.upload(f, block: session.block))
+                        let word = try await session.host.upload(f, block: session.block, session: session.session)
+                        if !word.isEmpty { words.append(word) }
                     } catch let e as RexError where e.code == Upload.notPasted {
                         failed(e)
                     }

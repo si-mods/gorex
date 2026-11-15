@@ -2,16 +2,19 @@ package rexapi
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"mime"
 	"net/http"
 	"path"
+	"regexp"
 	"strconv"
 	"strings"
 	"syscall"
 	"time"
 	"unicode"
 
+	"github.com/coder/websocket"
 	"gorex/internal/rex"
 )
 
@@ -36,6 +39,7 @@ const (
 	// maxDownloadsPerControl is how many tickets one control connection
 	// may hold open at once.
 	maxDownloadsPerControl = 4
+	downloadWriteWait      = 30 * time.Second
 )
 
 var (
@@ -58,7 +62,7 @@ type download struct {
 	timer *time.Timer
 }
 
-// downloadResult is download_begin's result.
+// downloadResult is the legacy GoRex download_begin's result (pre-rev 13).
 type downloadResult struct {
 	Ticket string `json:"ticket"`
 	Name   string `json:"name"`
@@ -69,10 +73,24 @@ type downloadResult struct {
 	Type string `json:"type"`
 }
 
+// bytesDownloadResult is Rex API revision 13's download_begin result.
+type bytesDownloadResult struct {
+	Ticket      string `json:"ticket,omitempty"`
+	ExpiresInMS int    `json:"expires_in_ms,omitempty"`
+	NotModified bool   `json:"not_modified,omitempty"`
+	Path        string `json:"path"`
+	Name        string `json:"name"`
+	Size        int64  `json:"size"`
+	ModifiedAt  string `json:"modified_at"`
+	Version     string `json:"version,omitempty"`
+}
+
+var downloadRefPattern = regexp.MustCompile(`^download:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
+
 // blockDownloadBegin opens a file of the block's machine for a download
 // and answers its ticket.
-func blockDownloadBegin(c *control, _ *mSession, b *mBlock, a args) (any, *apiError) {
-	res, aerr := beginDownload(c, b, a)
+func blockDownloadBegin(c *control, s *mSession, b *mBlock, a args) (any, *apiError) {
+	res, aerr := beginDownload(c, s, b, a)
 	if aerr != nil {
 		p, _, _ := a.str("path")
 		logf("download refused %s %s %q: %s", c.remote, b.id, p, aerr.Code)
@@ -80,14 +98,37 @@ func blockDownloadBegin(c *control, _ *mSession, b *mBlock, a args) (any, *apiEr
 	return res, aerr
 }
 
-func beginDownload(c *control, b *mBlock, a args) (any, *apiError) {
+func beginDownload(c *control, s *mSession, b *mBlock, a args) (any, *apiError) {
 	g := c.g
 	if !g.hello.Can(rex.CapabilityFileTransfer) {
 		return nil, errNotSupported("the GoRex server sends no files; update GoRex there")
 	}
+	ref, hasRef, aerr := a.str("ref")
+	if aerr != nil {
+		return nil, aerr
+	}
+	ifNoneMatch, hasIfNoneMatch, aerr := a.str("if_none_match")
+	if aerr != nil {
+		return nil, aerr
+	}
+	official := hasRef || hasIfNoneMatch
+	if official && c.rev < 13 {
+		return nil, errBadRequest("the method takes no ref")
+	}
 	for name := range a {
-		if name != "path" {
+		switch name {
+		case "path":
+		case "ref", "if_none_match":
+			if !official {
+				return nil, errBadRequest("the method takes no %s", name)
+			}
+		default:
 			return nil, errBadRequest("the method takes no %s", name)
+		}
+	}
+	if official {
+		if !hasRef || !downloadRefPattern.MatchString(ref) {
+			return nil, errBadRequest("ref is download: followed by a UUID in lower-case canonical form")
 		}
 	}
 	p, aerr := a.reqStr("path")
@@ -110,6 +151,54 @@ func beginDownload(c *control, b *mBlock, a args) (any, *apiError) {
 	if ans.Size > maxDownloadFileBytes {
 		rc.Close()
 		return nil, errTooLarge("the file is %d bytes, more than the %d a download may hold", ans.Size, maxDownloadFileBytes)
+	}
+	if official {
+		absPath := ans.Path
+		if absPath == "" {
+			absPath = p
+		}
+		modAt := time.Now().UTC().Format(time.RFC3339)
+		if !ans.MTime.IsZero() {
+			modAt = ans.MTime.UTC().Format(time.RFC3339)
+		}
+		var version string
+		if !ans.MTime.IsZero() && time.Since(ans.MTime) >= time.Second {
+			version = fmt.Sprintf("%d:%d", ans.Size, ans.MTime.UnixNano())
+		}
+		if ifNoneMatch != "" && version != "" && ifNoneMatch == version {
+			rc.Close()
+			return bytesDownloadResult{
+				NotModified: true,
+				Path:        absPath,
+				Name:        ans.Name,
+				Size:        ans.Size,
+				ModifiedAt:  modAt,
+				Version:     version,
+			}, nil
+		}
+		d := &download{conn: c, rc: rc, block: b.id, path: absPath, name: ans.Name, size: ans.Size, mtime: ans.MTime}
+		if aerr := g.addByteDownload(ref, d); aerr != nil {
+			rc.Close()
+			return nil, aerr
+		}
+		tID := g.issueTicket(&ticket{
+			record:      c.rec.id,
+			session:     s.id,
+			block:       b.id,
+			sid:         b.sid,
+			dataRef:     ref,
+			subprotocol: bytesProtocol,
+			expires:     time.Now().Add(ticketWait),
+		})
+		return bytesDownloadResult{
+			Ticket:      tID,
+			ExpiresInMS: int(ticketWait / time.Millisecond),
+			Path:        absPath,
+			Name:        ans.Name,
+			Size:        ans.Size,
+			ModifiedAt:  modAt,
+			Version:     version,
+		}, nil
 	}
 	d := &download{conn: c, rc: rc, block: b.id, path: p, name: ans.Name, size: ans.Size, mtime: ans.MTime}
 	id, aerr := g.addDownload(d)
@@ -167,7 +256,110 @@ func (g *Gateway) openDownloads(c *control) int {
 			n++
 		}
 	}
+	for _, d := range g.byteDownloads {
+		if d.conn == c {
+			n++
+		}
+	}
 	return n
+}
+
+// addByteDownload records d under ref until its rex.data.bytes.v1 stream
+// takes it or ticketWait elapses.
+func (g *Gateway) addByteDownload(ref string, d *download) *apiError {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if g.closing {
+		return errInternal("the gateway is closing")
+	}
+	if _, exists := g.byteDownloads[ref]; exists {
+		return errConflict("download %s is already reserved", ref)
+	}
+	n := 0
+	for _, old := range g.downloads {
+		if old.conn == d.conn {
+			n++
+		}
+	}
+	for _, old := range g.byteDownloads {
+		if old.conn == d.conn {
+			n++
+		}
+	}
+	if n >= maxDownloadsPerControl {
+		return errConflict("the connection has %d downloads waiting, the most it may", maxDownloadsPerControl)
+	}
+	g.byteDownloads[ref] = d
+	d.timer = time.AfterFunc(ticketWait, func() {
+		if d := g.takeByteDownload(ref); d != nil {
+			d.rc.Close()
+		}
+	})
+	return nil
+}
+
+func (g *Gateway) takeByteDownload(ref string) *download {
+	if ref == "" {
+		return nil
+	}
+	g.mu.Lock()
+	d := g.byteDownloads[ref]
+	delete(g.byteDownloads, ref)
+	g.mu.Unlock()
+	if d != nil {
+		d.timer.Stop()
+	}
+	return d
+}
+
+// startDownloadStream serves a rev 13 download_begin reservation over a
+// rex.data.bytes.v1 WebSocket stream.
+func (g *Gateway) startDownloadStream(ws *websocket.Conn, t *ticket) {
+	d := g.takeByteDownload(t.dataRef)
+	if d == nil {
+		g.welcomeThenClose(ws, websocket.StatusPolicyViolation, "download expired")
+		return
+	}
+	defer d.rc.Close()
+	if !writeData(ws, welcomeBytes(randomBytes(16), nonzeroNonce())) {
+		ws.CloseNow()
+		return
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	// Drain/ignore any client messages until the connection closes.
+	go func() {
+		for {
+			if _, _, err := ws.Read(ctx); err != nil {
+				cancel()
+				return
+			}
+		}
+	}()
+	buf := make([]byte, maxChunk)
+	for {
+		n, err := d.rc.Read(buf)
+		if n > 0 {
+			wctx, wcancel := context.WithTimeout(ctx, downloadWriteWait)
+			werr := ws.Write(wctx, websocket.MessageBinary, buf[:n])
+			wcancel()
+			if werr != nil {
+				ws.CloseNow()
+				return
+			}
+		}
+		if err == io.EOF {
+			wctx, wcancel := context.WithTimeout(ctx, downloadWriteWait)
+			_ = ws.Write(wctx, websocket.MessageBinary, []byte{})
+			wcancel()
+			ws.Close(websocket.StatusNormalClosure, "ok")
+			return
+		}
+		if err != nil {
+			ws.Close(websocket.StatusInternalError, "internal")
+			return
+		}
+	}
 }
 
 // addDownload records d under a new ticket, which lapses after
@@ -221,6 +413,12 @@ func (g *Gateway) dropDownloads(c *control) {
 	for id, d := range g.downloads {
 		if c == nil || d.conn == c {
 			delete(g.downloads, id)
+			dropped = append(dropped, d)
+		}
+	}
+	for id, d := range g.byteDownloads {
+		if c == nil || d.conn == c {
+			delete(g.byteDownloads, id)
 			dropped = append(dropped, d)
 		}
 	}

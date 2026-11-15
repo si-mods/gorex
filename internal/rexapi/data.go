@@ -111,7 +111,14 @@ func (g *Gateway) dataHello(ws *websocket.Conn, rest []byte) {
 			g.welcomeThenClose(ws, 1008, "no upload is reserved for this ticket")
 			return
 		}
-		g.startUploadStream(ws, t)
+		switch {
+		case strings.HasPrefix(t.dataRef, "download:"):
+			g.startDownloadStream(ws, t)
+		case strings.HasPrefix(t.dataRef, "conn:"):
+			g.startTunnelStream(ws, t)
+		default:
+			g.startUploadStream(ws, t)
+		}
 	case t.subprotocol != "" && t.subprotocol != terminalProtocol:
 		g.welcomeThenClose(ws, 1008, "data provider unavailable")
 	case ws.Subprotocol() != terminalProtocol:

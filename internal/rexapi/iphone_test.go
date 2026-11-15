@@ -31,7 +31,7 @@ func TestControlNotCompressed(t *testing.T) {
 	c := newTestConn(t, ws)
 	c.hello(apiRevision)
 	creators := callChecked(t, c, "block_creator.list", nil)
-	if len(creators["creators"].([]any)) != 1 {
+	if len(creators["creators"].([]any)) != 2 {
 		t.Fatalf("creators: %v", creators)
 	}
 }

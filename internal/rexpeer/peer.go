@@ -28,7 +28,10 @@ import (
 )
 
 // APIRevision is the revision of Rex's API this client speaks.
-const APIRevision = 7
+const APIRevision = 14
+
+// APIMinRevision is the oldest revision of Rex's API this client accepts.
+const APIMinRevision = 0
 
 // APIVersion is the protocol of the control connection.
 const APIVersion = "rex.control.v1"
@@ -76,7 +79,7 @@ func Dial(ctx context.Context, socket string) (*Client, error) {
 		return nil, err
 	}
 	hello := map[string]any{
-		"type": "hello", "api_revision": APIRevision,
+		"type": "hello", "api_revision": APIRevision, "api_min_revision": APIMinRevision,
 		"client": map[string]any{"kind": "other", "name": "gorex", "platform": platform()},
 	}
 	data, _ := json.Marshal(hello)

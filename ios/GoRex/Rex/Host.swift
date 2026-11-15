@@ -799,14 +799,37 @@ final class Host: Identifiable {
 
     /// Whether the server takes files into its machine's temporary folder
     /// (Upload).
-    var canUpload: Bool { control?.features.contains(Upload.feature) == true }
+    var canUpload: Bool {
+        control?.features.contains(Upload.feature) == true || (control?.apiRevision ?? 0) >= 11
+    }
 
     /// Sends a file into the temporary folder of the host's machine, for
-    /// block, and returns its path there as a word of the block's shell.
-    func upload(_ file: URL, block: String) async throws -> String {
-        let compress = try live().features.contains(Upload.deflateRaw)
-        return try await Upload.send(file, name: file.lastPathComponent, block: block, to: config.url,
-                                     compress: compress, session: try session())
+    /// block, and returns its path there as a word of the block's shell,
+    /// or empty when the server itself types the path (rev 11+ upload_begin).
+    func upload(_ file: URL, block: String, session: String? = nil) async throws -> String {
+        let c = try live()
+        if c.features.contains(Upload.feature) {
+            let compress = c.features.contains(Upload.deflateRaw)
+            return try await Upload.send(file, name: file.lastPathComponent, block: block, to: config.url,
+                                         compress: compress, session: try self.session())
+        }
+        guard c.apiRevision >= 11, let sid = session ?? sessionID(forBlock: block) else {
+            throw RexError(code: "not_supported", message: String(localized: "Server does not accept uploads"))
+        }
+        try await Upload.sendBytes(file, name: file.lastPathComponent, session: sid, block: block,
+                                   control: c, to: config.url, urlSession: try self.session())
+        return ""
+    }
+
+    private func sessionID(forBlock block: String) -> String? {
+        for s in sessions {
+            for w in s.view?.windows ?? [] {
+                if (w.layers ?? []).contains(where: { ($0.blocks ?? []).contains(where: { $0.block_id == block }) }) {
+                    return s.id
+                }
+            }
+        }
+        return nil
     }
 
     /// The control connection; offline, an error to tell.
