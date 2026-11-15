@@ -3,12 +3,20 @@ version: "2"
 linters:
   default: none
   enable:
+    - bodyclose
+    - copyloopvar
     - durationcheck
+    - errname
+    - forbidigo
     - govet
     - ineffassign
     - staticcheck
     - unconvert
   settings:
+    forbidigo:
+      forbid:
+        - pattern: ^os\.Exit$
+          msg: "os.Exit is restricted to entrypoints (main.go, tools/, internal/rexproto/gen.go)"
     staticcheck:
       checks:
         - all
@@ -32,6 +40,10 @@ linters:
         text: "SA2001:"
       - path: internal/cli/apc_test\.go$
         text: "S1009:"
+      # Intentional entrypoints / generated helpers / Windows self-upgrade exit / TestMain.
+      - path: ^(main\.go|tools/|internal/rexproto/gen\.go|internal/rex/upgrade_windows\.go)|_test\.go$
+        linters:
+          - forbidigo
       # Pre-existing baseline items tracked for gradual cleanup.
       - path: internal/cli/(hooks|skill)\.go$
         linters:

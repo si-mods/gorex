@@ -615,7 +615,6 @@ func (a *App) hostLayoutSheet(c *ui.Context, k *colors) {
 										for _, dir := range []struct{ name, label string }{
 											{"left", "←"}, {"right", "→"}, {"up", "↑"}, {"down", "↓"},
 										} {
-											dir := dir
 											label := map[string]string{
 												"left": locales.HostsLayoutLeft(), "right": locales.HostsLayoutRight(),
 												"up": locales.HostsLayoutUp(), "down": locales.HostsLayoutDown(),

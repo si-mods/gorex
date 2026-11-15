@@ -458,7 +458,10 @@ func TestStreamResumeWindow(t *testing.T) {
 		conns <- ws
 	}))
 	defer srv.Close()
-	client, _, err := websocket.Dial(context.Background(), srv.URL, nil)
+	client, resp, err := websocket.Dial(context.Background(), srv.URL, nil)
+	if resp != nil && resp.Body != nil {
+		resp.Body.Close()
+	}
 	if err != nil {
 		t.Fatal(err)
 	}

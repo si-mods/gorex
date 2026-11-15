@@ -172,7 +172,10 @@ func TestShareAdmissionStaticAndProxy(t *testing.T) {
 
 	// 4. WebSocket upgrade works over /h/mac1/api/control.
 	wsURL := "ws://" + srv.Addr() + "/h/mac1/api/control"
-	ws, _, err := websocket.Dial(t.Context(), wsURL, &websocket.DialOptions{HTTPHeader: http.Header{"Origin": {base}}})
+	ws, resp, err := websocket.Dial(t.Context(), wsURL, &websocket.DialOptions{HTTPHeader: http.Header{"Origin": {base}}})
+	if resp != nil && resp.Body != nil {
+		resp.Body.Close()
+	}
 	if err != nil {
 		t.Fatal(err)
 	}

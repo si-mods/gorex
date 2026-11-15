@@ -60,9 +60,12 @@ func callGatewayWelcome(path string, within time.Duration, calls ...gatewayCall)
 			return d.DialContext(ctx, "unix", path)
 		},
 	}}
-	ws, _, err := websocket.Dial(ctx, "ws://localhost/api/control", &websocket.DialOptions{
+	ws, resp, err := websocket.Dial(ctx, "ws://localhost/api/control", &websocket.DialOptions{
 		HTTPClient: httpc, Subprotocols: []string{controlProtocol},
 	})
+	if resp != nil && resp.Body != nil {
+		resp.Body.Close()
+	}
 	if err != nil {
 		return nil, gatewayWelcome{}, fmt.Errorf("no Rex API gateway on %s (run gorex rexapi): %w", path, err)
 	}

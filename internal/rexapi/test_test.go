@@ -89,7 +89,10 @@ func (f *fixture) dial(path string, subprotocols ...string) *websocket.Conn {
 	f.t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	ws, _, err := websocket.Dial(ctx, f.srv.URL+path, &websocket.DialOptions{Subprotocols: subprotocols})
+	ws, resp, err := websocket.Dial(ctx, f.srv.URL+path, &websocket.DialOptions{Subprotocols: subprotocols})
+	if resp != nil && resp.Body != nil {
+		resp.Body.Close()
+	}
 	if err != nil {
 		f.t.Fatal(err)
 	}

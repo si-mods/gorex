@@ -51,8 +51,14 @@ func relayWebSocket(w http.ResponseWriter, r *http.Request, target *url.URL) {
 	up, resp, err := websocket.Dial(ctx, u.String(), &websocket.DialOptions{Subprotocols: offered, CompressionMode: websocket.CompressionDisabled})
 	if err != nil {
 		tracef("relay dial %s: %v (%v)", u.String(), err, resp)
+		if resp != nil && resp.Body != nil {
+			resp.Body.Close()
+		}
 		http.Error(w, err.Error(), http.StatusBadGateway)
 		return
+	}
+	if resp != nil && resp.Body != nil {
+		resp.Body.Close()
 	}
 	up.SetReadLimit(64 << 20)
 	down, err := websocket.Accept(w, r, &websocket.AcceptOptions{

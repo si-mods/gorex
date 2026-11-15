@@ -128,6 +128,7 @@ func TestPairByAddress(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		defer res.Body.Close()
 		b, _ := io.ReadAll(res.Body)
 		return res.StatusCode, string(b)
 	}
@@ -240,8 +241,13 @@ func TestPairByAddress(t *testing.T) {
 		defer nc.Close()
 		br := bufio.NewReader(nc)
 		fmt.Fprintf(nc, "GET %s HTTP/1.1\r\nHost: x\r\nConnection: Upgrade\r\nUpgrade: %s\r\n\r\n", pairPath, pairUpgrade)
-		if res, err := http.ReadResponse(br, nil); err != nil || res.StatusCode != http.StatusSwitchingProtocols {
+		res, err := http.ReadResponse(br, nil)
+		if err != nil {
 			t.Fatalf("upgrade: %v", err)
+		}
+		res.Body.Close()
+		if res.StatusCode != http.StatusSwitchingProtocols {
+			t.Fatalf("upgrade status: %d", res.StatusCode)
 		}
 		kc, nonce := key.NewNode().Public().Raw32(), [32]byte{1}
 		commit := pairCommit(kc, nonce, []byte("laptop"))
@@ -309,8 +315,13 @@ func TestPairByAddress(t *testing.T) {
 		defer nc.Close()
 		br := bufio.NewReader(nc)
 		fmt.Fprintf(nc, "GET %s HTTP/1.1\r\nHost: x\r\nConnection: Upgrade\r\nUpgrade: %s\r\n\r\n", pairPath, pairUpgrade)
-		if res, err := http.ReadResponse(br, nil); err != nil || res.StatusCode != http.StatusSwitchingProtocols {
+		res, err := http.ReadResponse(br, nil)
+		if err != nil {
 			t.Fatalf("upgrade: %v", err)
+		}
+		res.Body.Close()
+		if res.StatusCode != http.StatusSwitchingProtocols {
+			t.Fatalf("upgrade status: %d", res.StatusCode)
 		}
 		nc.Write(make([]byte, 32))
 		if _, err := io.ReadFull(br, make([]byte, 64)); err != nil {
@@ -330,8 +341,14 @@ func TestPairByAddress(t *testing.T) {
 		}
 		defer nc.Close()
 		fmt.Fprintf(nc, "GET %s HTTP/1.1\r\nHost: x\r\nConnection: Upgrade\r\nUpgrade: %s\r\n\r\n", pairPath, pairUpgrade)
-		if res, err := http.ReadResponse(bufio.NewReader(nc), nil); err != nil || res.StatusCode != http.StatusNotFound {
+		res, err := http.ReadResponse(bufio.NewReader(nc), nil)
+		if err != nil {
 			t.Errorf("pairing over TLS 1.2: %v %v", res, err)
+			return
+		}
+		res.Body.Close()
+		if res.StatusCode != http.StatusNotFound {
+			t.Errorf("pairing over TLS 1.2: %v", res)
 		}
 	})
 

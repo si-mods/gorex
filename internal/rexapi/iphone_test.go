@@ -21,6 +21,9 @@ func TestControlNotCompressed(t *testing.T) {
 		Subprotocols:    []string{controlProtocol},
 		CompressionMode: websocket.CompressionContextTakeover,
 	})
+	if resp != nil && resp.Body != nil {
+		resp.Body.Close()
+	}
 	if err != nil {
 		t.Fatal(err)
 	}

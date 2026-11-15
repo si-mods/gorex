@@ -73,10 +73,13 @@ func Dial(ctx context.Context, socket string) (*Client, error) {
 	hc := &http.Client{Transport: &http.Transport{DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
 		return dialUnix(ctx, socket)
 	}}}
-	ws, _, err := websocket.Dial(ctx, "ws://localhost/api/control", &websocket.DialOptions{
+	ws, resp, err := websocket.Dial(ctx, "ws://localhost/api/control", &websocket.DialOptions{
 		Subprotocols: []string{APIVersion},
 		HTTPClient:   hc,
 	})
+	if resp != nil && resp.Body != nil {
+		resp.Body.Close()
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -433,10 +436,13 @@ func (c *Client) Data(ctx context.Context, session, block string) (*Stream, erro
 	hc := &http.Client{Transport: &http.Transport{DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
 		return dialUnix(ctx, c.sock)
 	}}}
-	ws, _, err := websocket.Dial(ctx, "ws://localhost/api/data", &websocket.DialOptions{
+	ws, resp, err := websocket.Dial(ctx, "ws://localhost/api/data", &websocket.DialOptions{
 		Subprotocols: []string{DataTerminal},
 		HTTPClient:   hc,
 	})
+	if resp != nil && resp.Body != nil {
+		resp.Body.Close()
+	}
 	if err != nil {
 		return nil, err
 	}
