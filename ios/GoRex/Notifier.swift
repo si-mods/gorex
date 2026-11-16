@@ -62,6 +62,6 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
         guard let host = (info["host"] as? String).flatMap(UUID.init(uuidString:)),
               let session = info["session"] as? String, let block = info["block"] as? String else { return }
         let title = info["title"] as? String ?? ""
-        await MainActor.run { opening = TerminalTarget(host: host, session: session, block: block, title: title) }
+        await MainActor.run { opening = TerminalTarget(host: host, session: session, block: block, title: title, explicit: true) }
     }
 }

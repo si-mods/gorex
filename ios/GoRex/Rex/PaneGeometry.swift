@@ -4,7 +4,6 @@ import CoreGraphics
 /// and a working program's progress when it reports one.
 struct PaneRecord: Equatable {
     let state: String
-    let progress: Int?
 }
 
 /// A pane's place in a window, normalized to the window's room: the block,

@@ -9,6 +9,9 @@ struct TerminalTarget: Hashable {
     let session: String
     let block: String
     let title: String
+    /// A notification's or the inbox's target: open this pane, not the one
+    /// this device last viewed of its window.
+    var explicit = false
 }
 
 /// A window's terminal, full screen, under a clear navigation bar.
@@ -63,6 +66,9 @@ struct TerminalScreen: View {
     @State private var paneMapShown = false
     /// The task that hides the floating map.
     @State private var paneMapTask: Task<Void, Never>?
+    /// Whether the screen is gone: a slide finishing after it must not start
+    /// the map again.
+    @State private var gone = false
 
     init(target: TerminalTarget, host: Host, go: @escaping (TerminalTarget?) -> Void) {
         self.target = target
@@ -85,7 +91,7 @@ struct TerminalScreen: View {
             ForEach(pages) { pane in
                 let current = pane.session === session
                 TerminalRepresentable(session: pane.session, newTab: newTab, closeTab: closeTab, mic: mic, voice: voiceCapsule, dictating: said != nil && current, snaps: switching > 0,
-                                      paneInset: paneCellList.count > 1 ? 52 : 0,
+                                      paneInset: paneCellList.count > 1 ? PaneBar.height + 10 : 0,
                                       onSwipe: { stepPane(by: $0) },
                                       canSwipe: { switching == 0 && incoming == nil && (terminal?.paneSwipeAllowed ?? false) })
                     .offset(x: pane.x * pageWidth)
@@ -196,6 +202,7 @@ struct TerminalScreen: View {
             .toolbarColorScheme(scheme, for: .navigationBar)
             .environment(\.colorScheme, scheme)
             .onAppear {
+                gone = false
                 let s = session ?? TerminalSession(host: host, session: currentTarget.session, block: currentTarget.block)
                 session = s
                 if pages.isEmpty { pages = [Pane(session: s, block: currentTarget.block, x: 0)] }
@@ -205,6 +212,7 @@ struct TerminalScreen: View {
                 host.see(session: currentTarget.session, block: currentTarget.block)
             }
             .onDisappear {
+                gone = true
                 paneMapTask?.cancel()
                 terminal?.stopDictating()
                 dropIncoming()
@@ -314,7 +322,7 @@ struct TerminalScreen: View {
             layout: w.layout,
             panes: w.panes,
             name: { host.paneTitle($0, in: w) ?? String(localized: "Terminal") },
-            record: { block in host.status([block]).map { PaneRecord(state: $0.state, progress: $0.progress) } }
+            record: { block in host.status([block]).map { PaneRecord(state: $0.state) } }
         )
     }
 
@@ -327,12 +335,17 @@ struct TerminalScreen: View {
     /// names that focused pane (a row's, not a notification's). An explicit
     /// other pane stays as given.
     private static func remembered(_ target: TerminalTarget, host: Host) -> TerminalTarget {
+        guard !target.explicit else { return target }
         guard let s = host.sessions.first(where: { $0.id == target.session }),
               let w = s.view?.windows?.first(where: { $0.holds(target.block) }),
-              target.block == w.block,
-              let stored = ViewedBlockStore.shared.block(for: key(for: w, session: target.session, host: host)),
-              stored != target.block, w.panes.contains(stored)
+              target.block == w.block
         else { return target }
+        let memory = key(for: w, session: target.session, host: host)
+        guard let stored = ViewedBlockStore.shared.block(for: memory) else { return target }
+        guard w.panes.contains(stored), stored != target.block else {
+            if !w.panes.contains(stored) { ViewedBlockStore.shared.forget(memory) }
+            return target
+        }
         return TerminalTarget(host: target.host, session: target.session, block: stored, title: host.paneTitle(stored, in: w) ?? target.title)
     }
 
@@ -362,6 +375,7 @@ struct TerminalScreen: View {
     /// Shows the layout under the toolbar's right side for a moment, then
     /// takes it away. Only a pane switch does this; changing tabs does not.
     private func flashPaneMap() {
+        guard !gone else { return }
         paneMapTask?.cancel()
         withAnimation(.spring(duration: 0.28, bounce: 0.16)) { paneMapShown = true }
         paneMapTask = Task { @MainActor in

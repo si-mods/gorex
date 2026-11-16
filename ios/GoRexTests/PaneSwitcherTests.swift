@@ -92,7 +92,25 @@ nonisolated final class PaneSwitcherTests: XCTestCase {
         XCTAssertNil(store.block(for: key))
     }
 
-    func testPaneNeighborFollowsTheLayout() {
+
+    @MainActor func testCellsComputeMissingRects() {
+        let layout = PaneLayout(split: PaneSplit(direction: "horizontal", ratio: 0.25,
+                                                 before: PaneLayout(block_id: "a"),
+                                                 after: PaneLayout(block_id: "b")))
+        let cells = paneCells(layout: layout, panes: ["a", "b"], name: { $0 }, record: { _ in nil })
+        XCTAssertEqual(Double(cells[0].rect.width), 0.25, accuracy: 0.0001)
+        XCTAssertEqual(Double(cells[1].rect.minX), 0.25, accuracy: 0.0001)
+    }
+
+
+    @MainActor func testCellsFallBackWhenTreeMissesAHeldPane() {
+        let layout = PaneLayout(block_id: "a")
+        let cells = paneCells(layout: layout, panes: ["a", "b"], name: { $0 }, record: { _ in nil })
+        XCTAssertEqual(cells.map(\.block), ["a", "b"])
+        XCTAssertEqual(Double(cells[0].rect.width), 0.5, accuracy: 0.0001)
+    }
+
+    @MainActor func testPaneNeighborFollowsTheLayout() {
         let cells = [
             PaneCell(block: "left", rect: CGRect(x: 0, y: 0, width: 0.55, height: 1), name: "left", record: nil),
             PaneCell(block: "top", rect: CGRect(x: 0.55, y: 0, width: 0.45, height: 0.5), name: "top", record: nil),
@@ -108,7 +126,7 @@ nonisolated final class PaneSwitcherTests: XCTestCase {
         XCTAssertNotNil(paneNeighbor(cells, from: "left", direction: .right))
     }
 
-    func testPaneStepStopsAtTheEnds() {
+    @MainActor func testPaneStepStopsAtTheEnds() {
         let panes = ["a", "b", "c"]
         XCTAssertEqual(paneStep(panes, from: "a", by: 1), "b")
         XCTAssertEqual(paneStep(panes, from: "b", by: -1), "a")

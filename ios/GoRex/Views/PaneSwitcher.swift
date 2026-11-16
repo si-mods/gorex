@@ -43,7 +43,7 @@ struct PaneMiniMap: View {
                         .contentShape(.rect)
                         .onTapGesture { select?(cell.block) }
                         .accessibilityLabel(Text(cell.name))
-                        .accessibilityValue(Text(cell.block == current ? "Current" : ""))
+                        .accessibilityValue(cell.block == current ? Text("Current") : Text(""))
                         .accessibilityAddTraits(select == nil ? .isImage : (cell.block == current ? [.isButton, .isSelected] : .isButton))
                 }
             }
@@ -80,6 +80,9 @@ struct PaneMiniMap: View {
 /// current one filled, and a pane's record as a dot. A tap switches; the
 /// plus opens a new window, as Rex Go's bottom bar does.
 struct PaneBar: View {
+    /// The bar's height over the key bar, for the terminal's inset.
+    static let height: CGFloat = 52
+
     let cells: [PaneCell]
     let current: String
     let program: (String) -> Program
@@ -106,11 +109,12 @@ struct PaneBar: View {
                                         .fill(.primary.opacity(0.16))
                                 }
                             }
+                            .frame(minWidth: 44, minHeight: 44)
                             .contentShape(.rect)
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel(Text(cell.name))
-                    .accessibilityValue(Text(cell.block == current ? "Current" : ""))
+                    .accessibilityValue(cell.block == current ? Text("Current") : Text(""))
                     .accessibilityAddTraits(cell.block == current ? [.isButton, .isSelected] : .isButton)
                     .accessibilityHint(Text("Switch to this pane."))
                 }
