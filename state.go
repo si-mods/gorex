@@ -452,9 +452,9 @@ func browserHost(s string) string {
 // App is the state of a window of GoRex's, which shows a workspace.
 type App struct {
 	win *mygo.Window
-	// winR is the radius the system rounds the window's corners to, as
-	// the last frame read it, in DIPs; 0 where they are square or there is
-	// no window. Window.CornerRadius asks the main loop, so view reads it
+	// winR is the radius macOS rounds the window's corners to, as the last
+	// frame read it, in DIPs; 0 elsewhere, in full screen, and without a
+	// window. Window.CornerRadius asks the main loop, so view reads it
 	// once for the frame's cards.
 	winR float64
 	// pathStats is what stats found of the paths printed in panes of this

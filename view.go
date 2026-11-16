@@ -29,16 +29,18 @@ const (
 
 // cardR is the panes' corners: concentric with the window's, which the
 // panes in its bottom corners sit in, and one radius for every pane. The
-// window's is the radius the system rounds it to (Window.CornerRadius),
-// which is 8 on Windows 11 and so leaves square panes, and windowR where
-// that is 0: full screen, maximised on Windows, Linux, or a window of the
-// tests, which have none. The radius is read once a frame, in view.
-func (a *App) cardR() float32 { return cardRadius(a.winR) }
+// window's is, on macOS only, the radius the system rounds it to
+// (Window.CornerRadius, read once a frame in view), as that varies with
+// the title bar; windowR where that is 0 (full screen), on Windows and
+// Linux, and in the tests, whose views have no window. Windows keeps its
+// rounded panes in every window state.
+func (a *App) cardR() float32 { return cardRadius(a.winR, runtime.GOOS) }
 
-// cardRadius is the panes' radius in a window rounded to r DIPs, which
-// is windowR when r is 0.
-func cardRadius(r float64) float32 {
-	if r <= 0 {
+// cardRadius is the panes' radius in a window that the system rounds to r
+// DIPs, on the operating system goos: r is only taken on macOS, and only
+// when it is above 0.
+func cardRadius(r float64, goos string) float32 {
+	if goos != "darwin" || r <= 0 {
 		return concentric(windowR, gap)
 	}
 	return concentric(float32(r), gap)
@@ -91,7 +93,7 @@ func (a *App) view(c *ui.Context) {
 	a.syncHostTheme(c.Theme().Dark)
 	a.focusedWin = a.win == nil || a.win.IsFocused()
 	a.winR = 0
-	if a.win != nil {
+	if a.win != nil && runtime.GOOS == "darwin" {
 		a.winR = a.win.CornerRadius()
 	}
 	breathing = a.focusedWin
