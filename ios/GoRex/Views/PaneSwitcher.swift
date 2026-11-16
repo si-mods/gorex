@@ -80,8 +80,8 @@ struct PaneMiniMap: View {
 /// current one filled, and a pane's record as a dot. A tap switches; the
 /// plus opens a new window, as Rex Go's bottom bar does.
 struct PaneBar: View {
-    /// The bar's height over the key bar, for the terminal's inset.
-    static let height: CGFloat = 52
+    /// The bar's height: a tile and its padding, in the capsule's.
+    static let height: CGFloat = 32
 
     let cells: [PaneCell]
     let current: String
@@ -109,8 +109,12 @@ struct PaneBar: View {
                                         .fill(.primary.opacity(0.16))
                                 }
                             }
-                            .frame(minWidth: 44, minHeight: 44)
+                            // A 44 pt tall hit target that does not
+                            // grow the bar: the tiles touch side by side,
+                            // and the touch area reaches above and below.
+                            .padding(.vertical, 10)
                             .contentShape(.rect)
+                            .padding(.vertical, -10)
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel(Text(cell.name))

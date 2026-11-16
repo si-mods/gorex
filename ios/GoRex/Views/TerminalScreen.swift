@@ -91,7 +91,7 @@ struct TerminalScreen: View {
             ForEach(pages) { pane in
                 let current = pane.session === session
                 TerminalRepresentable(session: pane.session, newTab: newTab, closeTab: closeTab, mic: mic, voice: voiceCapsule, dictating: said != nil && current, snaps: switching > 0,
-                                      paneInset: paneCellList.count > 1 ? PaneBar.height + 10 : 0,
+                                      paneInset: paneCellList.count > 1 ? PaneBar.height + 20 : 0,
                                       onSwipe: { stepPane(by: $0) },
                                       canSwipe: { switching == 0 && incoming == nil && (terminal?.paneSwipeAllowed ?? false) })
                     .offset(x: pane.x * pageWidth)
