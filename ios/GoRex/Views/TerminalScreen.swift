@@ -464,6 +464,8 @@ struct TerminalScreen: View {
         }
         .padding(.leading, 12)
         .padding(.trailing, 18)
+        .fixedSize(horizontal: true, vertical: false)
+        .frame(minWidth: 180)
         .frame(height: 44)
         .clipped()
         .background { Capsule().fill(.clear).glassEffect(.regular, in: .capsule) }

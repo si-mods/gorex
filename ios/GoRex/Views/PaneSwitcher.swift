@@ -18,6 +18,7 @@ struct PaneMiniMap: View {
     var body: some View {
         GeometryReader { g in
             let inset: CGFloat = 6
+            let gap: CGFloat = 3
             let room = CGRect(x: inset, y: inset,
                               width: max(0, g.size.width - inset * 2),
                               height: max(0, g.size.height - inset * 2))
@@ -33,8 +34,8 @@ struct PaneMiniMap: View {
                             RoundedRectangle(cornerRadius: 3, style: .continuous)
                                 .strokeBorder(ink.opacity(cell.block == current ? 0 : 0.08), lineWidth: 0.5)
                         }
-                        .frame(width: max(1, r.width - 3), height: max(1, r.height - 3))
-                        .offset(x: r.minX, y: r.minY)
+                        .frame(width: max(1, r.width - gap), height: max(1, r.height - gap))
+                        .offset(x: r.minX + gap / 2, y: r.minY + gap / 2)
                         .accessibilityLabel(Text(cell.name))
                         .accessibilityValue(Text(cell.block == current ? "Current" : ""))
                 }
@@ -68,7 +69,7 @@ struct PaneBar: View {
             HStack(spacing: 0) {
                 ForEach(cells) { cell in
                     Button { select(cell.block) } label: {
-                        ProgramTile(program: program(cell.block))
+                        ProgramTile(program: program(cell.block), scale: 1)
                             .frame(width: 21, height: 16)
                             .overlay(alignment: .topTrailing) {
                                 if let record = cell.record {
