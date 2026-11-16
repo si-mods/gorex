@@ -82,7 +82,8 @@ func TestMenuStyleHasWindowPalette(t *testing.T) {
 
 func TestMenuStyleHoldsStill(t *testing.T) {
 	k := spaceColors(&darkColors, "teal", true)
-	if menuStyleOf(k, true) != menuStyleOf(k, true) {
+	s1, s2 := menuStyleOf(k, true), menuStyleOf(k, true)
+	if s1 != s2 {
 		t.Error("the same colors give two styles")
 	}
 	if menuStyleOf(k, true) == menuStyleOf(&darkColors, true) {

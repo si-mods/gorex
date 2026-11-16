@@ -25,31 +25,10 @@ linters:
         - "-SA1019"
   exclusions:
     rules:
-      # Pre-existing test assertions / test helpers that intentionally repeat calls or lock probes.
-      - path: _test\.go$
-        linters:
-          - ineffassign
-          - unconvert
-      - path: _test\.go$
-        text: "SA4006:"
-      - path: menus_test\.go$
-        text: "SA4000:"
-      - path: glass_test\.go$
-        text: "SA4003:"
+      # Intentional lock-drain barriers (acquire and immediately release mutex).
       - path: internal/rex/(server|remote_test)\.go$
         text: "SA2001:"
-      - path: internal/cli/apc_test\.go$
-        text: "S1009:"
       # Intentional entrypoints / generated helpers / Windows self-upgrade exit / TestMain.
       - path: ^(main\.go|tools/|internal/rexproto/gen\.go|internal/rex/upgrade_windows\.go)|_test\.go$
         linters:
           - forbidigo
-      # Pre-existing baseline items tracked for gradual cleanup.
-      - path: internal/cli/(hooks|skill)\.go$
-        linters:
-          - ineffassign
-      - path: internal/rexapi/help\.go$
-        linters:
-          - unconvert
-      - path: internal/rex/graphics\.go$
-        text: "S1017:"

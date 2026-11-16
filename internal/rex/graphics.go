@@ -251,9 +251,7 @@ func (g *graphics) sequence(seq []byte, cwd string) ([]byte, []graphicsSeq) {
 // home, at most maxGraphicsImage bytes.
 func readImageFile(payload, cwd, home string) ([]byte, bool) {
 	path := strings.TrimSpace(payload)
-	if strings.HasPrefix(path, "file://") {
-		path = strings.TrimPrefix(path, "file://")
-	}
+	path = strings.TrimPrefix(path, "file://")
 	if strings.HasPrefix(path, "~/") {
 		if home == "" {
 			home, _ = os.UserHomeDir()

@@ -940,10 +940,9 @@ func TestLayoutApplyCloseGone(t *testing.T) {
 	two := command(t, c, LayoutCommand{Op: "tab.create", Dir: dir, Command: cmd})
 	split := command(t, c, LayoutCommand{Op: "pane.split", SID: one.New, Command: cmd})
 	w := storeOf(t, c).Sessions[0]
-	a := w.Tabs[0]
 	command(t, c, LayoutCommand{Op: "tab.close", Tab: two.Tab})
 	command(t, c, LayoutCommand{Op: "pane.close", SID: split.New})
-	a = storeOf(t, c).Sessions[0].Tabs[0]
+	a := storeOf(t, c).Sessions[0].Tabs[0]
 	named := a
 	named.Name = "mine"
 	res := command(t, c, LayoutCommand{Op: "layout.apply", Batch: []LayoutCommand{

@@ -50,7 +50,6 @@ func readObject(path string) (root map[string]any, created bool, err error) {
 	if err != nil {
 		return nil, false, err
 	}
-	created = true
 	// Windows editors and PowerShell 5 start a UTF-8 file with a byte
 	// order mark, which JSON does not allow.
 	b = bytes.TrimPrefix(b, []byte("\xef\xbb\xbf"))

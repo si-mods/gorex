@@ -102,10 +102,10 @@ func blockCreatorAPI() map[string]any {
 			}
 			entry := map[string]any{"description": m.Description}
 			if len(m.ArgsSchema) > 0 {
-				entry["input_schema"] = json.RawMessage(m.ArgsSchema)
+				entry["input_schema"] = m.ArgsSchema
 			}
 			if len(m.OutputSchema) > 0 {
-				entry["output_schema"] = json.RawMessage(m.OutputSchema)
+				entry["output_schema"] = m.OutputSchema
 			}
 			methods[m.Name] = entry
 		}
