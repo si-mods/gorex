@@ -17,6 +17,16 @@ linters:
       forbid:
         - pattern: ^os\.Exit$
           msg: "os.Exit is restricted to entrypoints (main.go, tools/, internal/rexproto/gen.go)"
+        - pattern: ^http\.(Get|Post|PostForm|Head|DefaultClient)$
+          msg: "use http.NewRequestWithContext with an explicit *http.Client instead of http.DefaultClient helpers"
+        - pattern: ^filepath\.Walk$
+          msg: "use filepath.WalkDir instead of filepath.Walk"
+        - pattern: ^context\.TODO$
+          msg: "pass an explicit context instead of context.TODO()"
+        - pattern: ^ioutil\.
+          msg: "io/ioutil is deprecated; use os or io"
+        - pattern: ^fmt\.Print(f|ln)?$
+          msg: "avoid stdout printing in GUI/library code; use log or return errors"
     staticcheck:
       checks:
         - all
@@ -30,5 +40,10 @@ linters:
         text: "SA2001:"
       # Intentional entrypoints / generated helpers / Windows self-upgrade exit / TestMain.
       - path: ^(main\.go|tools/|internal/rexproto/gen\.go|internal/rex/upgrade_windows\.go)|_test\.go$
-        linters:
-          - forbidigo
+        text: "use of `os\\.Exit` forbidden"
+      # Tests may use http.DefaultClient / fmt.Print helpers freely.
+      - path: _test\.go$
+        text: "http\\.DefaultClient|fmt\\.Print"
+      # CLI & standalone tools intentionally print to stdout.
+      - path: ^(internal/cli/|internal/rexapi/(cli|serve|web)\.go|internal/rex/proto\.go|tools/|web/tailnet/)
+        text: "fmt\\.Print"
