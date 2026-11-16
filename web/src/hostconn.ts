@@ -10,6 +10,7 @@ import { Control, Transport } from "./rex";
 import type { LinkState } from "./settings";
 import * as spaces from "./spaces";
 import type { Tailnet, TailnetHost } from "./tailnet";
+import { webTransportAvailable, webTransportProblem } from "./webtransport";
 import { layoutOf, leavesOf } from "./window";
 
 /** A session the gateway serves, and its last view. */
@@ -256,8 +257,18 @@ export class HostConn {
     } catch (e) {
       if (this.opening === opening) this.opening = undefined;
       if (gen !== this.generation) return;
-      const p = h.kind === "tailnet" ? await this.tailnet.diagnose(h as TailnetHost) : await diagnose(h.url);
+      const p = h.certHash
+        ? webTransportProblem(h.url, e)
+        : h.kind === "tailnet"
+          ? await this.tailnet.diagnose(h as TailnetHost)
+          : await diagnose(h.url);
       if (gen !== this.generation) return;
+      if (h.certHash && !webTransportAvailable()) {
+        // No attempt can mend a browser without WebTransport: say so once.
+        this.status(() => t("statusBlocked", { host: h.name }));
+        this.block(p);
+        return;
+      }
       this.attempt++;
       this.setState("unreachable", p);
       this.status(() => t("statusRetrying", { host: h.name, problem: p.title }));

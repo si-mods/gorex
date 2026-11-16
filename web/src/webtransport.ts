@@ -1,3 +1,5 @@
+import { Problem, problem } from "./hosts";
+import { t } from "./i18n";
 import { joinHostURL } from "./share";
 import type { SocketLike, Transport } from "./rex";
 
@@ -79,6 +81,31 @@ function encodeFrame(kind: number, data: Uint8Array): Uint8Array {
   new DataView(out.buffer).setUint32(1, data.length, false);
   out.set(data, 5);
   return out;
+}
+
+/** Whether this browser opens WebTransport at all (Safari before 26.4 and old Chrome do not). */
+export function webTransportAvailable(): boolean {
+  return typeof WebTransport === "function";
+}
+
+/**
+ * Why a WebTransport host's control connection did not open. A browser says
+ * only "Opening handshake failed." for a refused certificate hash, a blocked
+ * local network request and an unreachable host alike, so the card names what
+ * the user can act on instead of asking its gateway, which a pinned self-signed
+ * certificate and the browser's local network check would both fail.
+ */
+export function webTransportProblem(url: string, err?: unknown): Problem {
+  if (!webTransportAvailable()) {
+    return problem(() => t("problemWebTransportUnsupportedTitle"), () => t("problemWebTransportUnsupportedText"));
+  }
+  const why = err instanceof Error ? err.message : err === undefined ? "" : String(err);
+  return problem(
+    () => t("problemWebTransportTitle"),
+    () => t("problemWebTransportText", { url }),
+    undefined,
+    why ? () => t("problemWebTransportDetails", { why }) : undefined,
+  );
 }
 
 /**

@@ -1014,6 +1014,38 @@
       }
     }
   },
+  "problemWebTransportTitle": "The host can't be reached over the local network",
+  "@problemWebTransportTitle": {
+    "description": "Card title: a host paired by QR code (WebTransport with a pinned certificate) did not answer over the local network."
+  },
+  "problemWebTransportText": "The browser's local network connection to {url} did not open. Allow this page to reach devices on your local network when the browser asks, check that the host's local network listener is on (gorex rexapi lan status), and scan the host's pairing QR code again if it rotated its certificate.",
+  "@problemWebTransportText": {
+    "description": "Card text under problemWebTransportTitle: what to check, the three causes a browser never names.",
+    "placeholders": {
+      "url": {
+        "type": "String",
+        "example": "https://192.168.1.2:7298"
+      }
+    }
+  },
+  "problemWebTransportDetails": "The browser said: {why}",
+  "@problemWebTransportDetails": {
+    "description": "Behind Learn more, under problemWebTransportText: the browser's own message.",
+    "placeholders": {
+      "why": {
+        "type": "String",
+        "example": "Opening handshake failed."
+      }
+    }
+  },
+  "problemWebTransportUnsupportedTitle": "This browser can't reach a host directly",
+  "@problemWebTransportUnsupportedTitle": {
+    "description": "Card title: the browser has no WebTransport, which a QR-paired host needs."
+  },
+  "problemWebTransportUnsupportedText": "This page reaches a QR-paired host over WebTransport, which this browser does not support. Use Safari 26.4 or later, Chrome, Edge or Firefox, or add the host over Tailscale instead.",
+  "@problemWebTransportUnsupportedText": {
+    "description": "Card text under problemWebTransportUnsupportedTitle: the browsers that work."
+  },
   "problemUntrustedTitle": "This computer hasn't allowed this page yet",
   "@problemUntrustedTitle": {
     "description": "Card title: the host's GoRex answered but refuses this page's origin. Plain words, no technical terms."
