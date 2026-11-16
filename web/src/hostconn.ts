@@ -258,7 +258,7 @@ export class HostConn {
       if (this.opening === opening) this.opening = undefined;
       if (gen !== this.generation) return;
       const p = h.certHash
-        ? webTransportProblem(h.url, e)
+        ? await webTransportProblem(h.url, e)
         : h.kind === "tailnet"
           ? await this.tailnet.diagnose(h as TailnetHost)
           : await diagnose(h.url);
