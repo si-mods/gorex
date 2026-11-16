@@ -26,12 +26,12 @@ func TestPaneFollowsAnotherClientsSize(t *testing.T) {
 	waitFor(t, tt, "the pane's stream", func() bool {
 		return p.stream != nil && p.stream.ClientID() != ""
 	})
-	refresh(a)
-	tt.Frame()
-	ownCols, ownRows := p.term.Size()
-	if ownCols == 0 || p.info.Cols != ownCols || p.info.Rows != ownRows {
-		t.Fatalf("the pane's terminal is %dx%d, the session %dx%d", ownCols, ownRows, p.info.Cols, p.info.Rows)
-	}
+	var ownCols, ownRows int
+	waitFor(t, tt, "the pane's initial size", func() bool {
+		refresh(a)
+		ownCols, ownRows = p.term.Size()
+		return ownCols > 0 && p.info.Cols == ownCols && p.info.Rows == ownRows
+	})
 
 	// A window of another machine shows the session, and the user there
 	// takes its size.

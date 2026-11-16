@@ -67,11 +67,7 @@ func startGorex(t *testing.T) (*rex.Client, string) {
 
 func TestPeerListsAndMirrors(t *testing.T) {
 	c, sock := startGorex(t)
-	var cmd []string
-	if runtime.GOOS != "windows" {
-		cmd = []string{"/bin/sh"}
-	}
-	a, err := c.Create(rex.CreateOptions{Command: cmd, Cols: 80, Rows: 24})
+	a, err := c.Create(rex.CreateOptions{Cols: 80, Rows: 24})
 	if err != nil {
 		t.Fatal(err)
 	}
