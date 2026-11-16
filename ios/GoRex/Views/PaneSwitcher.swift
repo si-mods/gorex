@@ -9,6 +9,8 @@ struct PaneMiniMap: View {
     /// The current pane's color, from its program's tile, as Rex Go tints
     /// the pane it shows.
     let currentColor: Color
+    /// Tapping a cell switches to it; nil keeps the map read-only.
+    var select: ((String) -> Void)?
     @Environment(\.colorScheme) private var scheme
 
     /// Explicit ink, so the glass container's vibrancy does not invert the
@@ -36,12 +38,15 @@ struct PaneMiniMap: View {
                         }
                         .frame(width: max(1, r.width - gap), height: max(1, r.height - gap))
                         .offset(x: r.minX + gap / 2, y: r.minY + gap / 2)
+                        .contentShape(.rect)
+                        .onTapGesture { select?(cell.block) }
                         .accessibilityLabel(Text(cell.name))
                         .accessibilityValue(Text(cell.block == current ? "Current" : ""))
+                        .accessibilityAddTraits(select == nil ? .isImage : (cell.block == current ? [.isButton, .isSelected] : .isButton))
                 }
             }
         }
-        .accessibilityElement(children: .combine)
+        .accessibilityElement(children: select == nil ? .combine : .contain)
         .background {
             RoundedRectangle(cornerRadius: 5, style: .continuous)
                 .fill(ink.opacity(0.08))

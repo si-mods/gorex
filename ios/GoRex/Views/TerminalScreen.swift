@@ -129,12 +129,11 @@ struct TerminalScreen: View {
             // moment after a switch, as Rex Go shows it.
             .overlay(alignment: .topTrailing) {
                 if paneMapShown {
-                    PaneMiniMap(cells: paneCellList, current: currentTarget.block, currentColor: paneAccent(currentTarget.block))
+                    PaneMiniMap(cells: paneCellList, current: currentTarget.block, currentColor: paneAccent(currentTarget.block), select: selectPane)
                         .frame(width: 84, height: 56)
                         .padding(.top, 8)
                         .padding(.trailing, 12)
                         .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .topTrailing)))
-                        .allowsHitTesting(false)
                 }
             }
             .animation(.spring(duration: 0.28, bounce: 0.16), value: paneMapShown)
@@ -361,7 +360,7 @@ struct TerminalScreen: View {
         paneMapTask?.cancel()
         withAnimation(.spring(duration: 0.28, bounce: 0.16)) { paneMapShown = true }
         paneMapTask = Task { @MainActor in
-            try? await Task.sleep(for: .seconds(1.4))
+            try? await Task.sleep(for: .seconds(4))
             guard !Task.isCancelled else { return }
             withAnimation(.easeOut(duration: 0.2)) { paneMapShown = false }
         }
