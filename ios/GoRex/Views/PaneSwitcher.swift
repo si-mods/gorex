@@ -72,6 +72,7 @@ struct PaneMiniMap: View {
                 .strokeBorder(ink.opacity(0.12), lineWidth: 0.5)
         }
         .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
+        .animation(.easeInOut(duration: 0.25), value: current)
     }
 }
 
