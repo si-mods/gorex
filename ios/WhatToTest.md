@@ -11,4 +11,8 @@ bullet that reads like a commit subject is one testers cannot read, and the
 
 ## en-US
 
+- The mic in the key bar now taps your hand as its keys do, as your finger goes down.
+
 ## zh-Hans
+
+- 键盘栏的麦克风现在和旁边的按键一样，手指按下时就震动一下。

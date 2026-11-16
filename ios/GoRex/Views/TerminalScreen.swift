@@ -676,7 +676,6 @@ private struct Mic: View {
     @Binding var busy: Bool
     @Binding var asking: Bool
     @Binding var stopping: Bool
-    @GestureState private var pressed = false
     private let dictation = Dictation.shared
     private var on: Bool { said != nil && !busy }
 
@@ -717,9 +716,6 @@ private struct Mic: View {
                 _ = terminal()?.dictate { said = $0 }
             }
         }
-        // A light tap as the finger goes down, as the key bar's keys give.
-        .simultaneousGesture(DragGesture(minimumDistance: 0).updating($pressed) { _, p, _ in p = true })
-        .sensoryFeedback(.impact(weight: .light), trigger: pressed) { _, p in p }
         .accessibilityAddTraits(on ? [.isButton, .isSelected] : .isButton)
     }
 }
