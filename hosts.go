@@ -572,6 +572,10 @@ const hostLayoutGrace = 2
 func (a *App) watchHost(h *hostConn, c *rex.Client, update func(func())) {
 	tick := time.NewTicker(time.Second)
 	defer tick.Stop()
+	var events <-chan rex.Event
+	if err := c.Subscribe(); err == nil {
+		events = c.Events()
+	}
 	round := 0
 	first := map[string]int{}            // the poll each session first appeared in
 	prev := map[string]rex.SessionInfo{} // the sessions of the poll before
@@ -579,6 +583,8 @@ func (a *App) watchHost(h *hostConn, c *rex.Client, update func(func())) {
 	shared, read := false, false         // the host shares its layout, and it was read
 	etag, held := "", false              // of the last list, and whether it held a session
 	for {
+		layoutDirty := false
+		ticked := false
 		select {
 		case <-c.Closed():
 			return
@@ -587,9 +593,21 @@ func (a *App) watchHost(h *hostConn, c *rex.Client, update func(func())) {
 		case <-h.retry: // connected: the next list is taken all the same (openTailnetHost)
 			etag = ""
 			continue
+		case ev, ok := <-events:
+			if !ok {
+				events = nil
+				continue
+			}
+			if ev.Kind != "layout" {
+				continue
+			}
+			layoutDirty = true
 		case <-tick.C:
+			ticked = true
 		}
-		round++
+		if ticked {
+			round++
+		}
 		infos, next, changed, err := c.ListSince(etag)
 		if err != nil {
 			// A connection that stopped answering is as good as dropped.
@@ -624,10 +642,16 @@ func (a *App) watchHost(h *hostConn, c *rex.Client, update func(func())) {
 				break
 			}
 		}
-		if !read || fresh || shared && retry {
+		layoutRead := !read || fresh || layoutDirty || shared && retry
+		if layoutRead {
 			read = true
 			raw, err := c.Layout()
 			if shared = err == nil; shared {
+				if events == nil {
+					if err := c.Subscribe(); err == nil {
+						events = c.Events()
+					}
+				}
 				l = hostLayout{named: map[string]bool{}}
 				for _, w := range layout.Parse(raw).Sessions {
 					l.tabs = append(l.tabs, w.Tabs...)
@@ -663,11 +687,12 @@ func (a *App) watchHost(h *hostConn, c *rex.Client, update func(func())) {
 			}
 		}
 		// A session the layout stops holding opens in the round after.
-		if !changed && l.hold == nil && !held {
+		if !changed && !layoutDirty && l.hold == nil && !held {
 			continue
 		}
 		held = l.hold != nil
 		layout := l
+		layout.syncNames = layoutRead && shared
 		update(func() {
 			h.infos = byID
 			for _, o := range a.peers() {
@@ -697,9 +722,10 @@ type hostLayout struct {
 	tabs []savedTab
 	// spaces are the name and color of the host's space each of tabs is
 	// in, by index.
-	spaces []layout.Workspace
-	named  map[string]bool
-	hold   map[string]bool
+	spaces    []layout.Workspace
+	named     map[string]bool
+	hold      map[string]bool
+	syncNames bool
 }
 
 // adopt opens a tab for each live session of host h that no pane here

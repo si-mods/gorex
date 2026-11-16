@@ -555,8 +555,16 @@ func monoFamily() string {
 
 // copyText copies s, and says so on the button named by what for a while.
 // It does not clear the clipboard afterwards.
-func copyText(what, s string) {
-	if err := mygo.Clipboard.Write(transfer.TextData(s)); err != nil {
+func copyText(what, s string) { copyWith(what, s, mygo.ClipboardOptions{}) }
+
+// copySecret is copyText for a secret, as the remote access address, which
+// the page shows masked. The clipboard managers that read the platform's
+// mark for it keep it out of their histories, and macOS keeps it off
+// Universal Clipboard.
+func copySecret(what, s string) { copyWith(what, s, mygo.ClipboardOptions{Concealed: true}) }
+
+func copyWith(what, s string, opts mygo.ClipboardOptions) {
+	if err := mygo.Clipboard.Write(transfer.TextData(s), opts); err != nil {
 		msg := err.Error()
 		remoteUI.err = func() string { return locales.RemoteCopyFailed(msg) }
 		return
@@ -595,7 +603,7 @@ func (a *App) copyAddress(direct bool) {
 				remoteUI.err = locales.RemoteNoAddress
 				return
 			}
-			copyText(what, addr)
+			copySecret(what, addr)
 		}
 	})
 }

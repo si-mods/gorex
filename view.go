@@ -22,14 +22,29 @@ import (
 const (
 	gap       = 8  // between panes, and around them
 	titleH    = 44 // the title bar
-	windowR   = 16 // the window's corners, as macOS 27 draws them
+	windowR   = 16 // the window's corners where the system tells none, as macOS 27 draws them
 	headerH   = 33 // the panes' headers
 	activeFor = 1500 * time.Millisecond
 )
 
 // cardR is the panes' corners: concentric with the window's, which the
-// panes in its bottom corners sit in, and one radius for every pane.
-const cardR = windowR - gap
+// panes in its bottom corners sit in, and one radius for every pane. The
+// window's is, on macOS only, the radius the system rounds it to
+// (Window.CornerRadius, read once a frame in view), as that varies with
+// the title bar; windowR where that is 0 (full screen), on Windows and
+// Linux, and in the tests, whose views have no window. Windows keeps its
+// rounded panes in every window state.
+func (a *App) cardR() float32 { return cardRadius(a.winR, runtime.GOOS) }
+
+// cardRadius is the panes' radius in a window that the system rounds to r
+// DIPs, on the operating system goos: r is only taken on macOS, and only
+// when it is above 0.
+func cardRadius(r float64, goos string) float32 {
+	if goos != "darwin" || r <= 0 {
+		return concentric(windowR, gap)
+	}
+	return concentric(float32(r), gap)
+}
 
 // concentric is the corner radius of a shape inset by inset (its
 // container's border and padding) in a container of radius outer, as
@@ -77,6 +92,10 @@ func (a *App) view(c *ui.Context) {
 	k := a.colors(c)
 	a.syncHostTheme(c.Theme().Dark)
 	a.focusedWin = a.win == nil || a.win.IsFocused()
+	a.winR = 0
+	if a.win != nil && runtime.GOOS == "darwin" {
+		a.winR = a.win.CornerRadius()
+	}
 	breathing = a.focusedWin
 	a.claimFocus()
 	a.syncSizes()
@@ -108,10 +127,9 @@ func (a *App) view(c *ui.Context) {
 	// paints, and a field cannot give it one of its own: the widgets above
 	// have taken their colors already, so the theme changes now, after
 	// them, and the caret of the field with the focus is the space's
-	// accent. A popover's rows took their colors as they were made.
-	t := *c.Theme()
-	t.Accent = k.accent
-	c.SetTheme(&t)
+	// accent, as are the shades that go with it (focus ring, selection).
+	// A popover's rows took their colors as they were made.
+	c.SetTheme(c.Theme().WithAccent(k.accent))
 	rootBackground(c, k.bgBottom) // SetTheme gave the root the theme's
 	if a.saveDue && time.Since(a.lastSave) > time.Second && !a.gesturing() {
 		a.save()
@@ -600,7 +618,7 @@ func (a *App) floatCell(c *ui.Context, k *colors, t *Tab, f *Float, bounds ui.Re
 		s = whole
 	}
 	cell.LeftPercent(s.x * 100).TopPercent(s.y * 100).WidthPercent(s.w * 100).HeightPercent(s.h * 100).
-		Radius(cardR)
+		Radius(a.cardR())
 	// Under the glass setting a float is a pane of the system's Liquid
 	// Glass, as the tiled panes are; where the system draws none, the
 	// tiled panes blurred through its face on a GPU, and opaque elsewhere,
@@ -780,7 +798,7 @@ func (a *App) divider(c *ui.Context, k *colors, n *Node, s share, bounds ui.Rect
 // holds its size while held.
 func (a *App) paneCard(c *ui.Context, k *colors, t *Tab, p *Pane, held bool) ui.Element {
 	focused := t.Focus == p
-	card := ui.Column(c.Key(p.ID)).Radius(cardR).Clip().MinWidth(0).MinHeight(0)
+	card := ui.Column(c.Key(p.ID)).Radius(a.cardR()).Clip().MinWidth(0).MinHeight(0)
 	border, shadow := k.cardBorder, k.shadow
 	if focused {
 		border, shadow = k.cardBorderFocused, k.shadowFocused
@@ -890,7 +908,7 @@ func (a *App) paneCard(c *ui.Context, k *colors, t *Tab, p *Pane, held bool) ui.
 	})
 	if dragged, over := ui.DragOver[*Pane](card); over {
 		if z, ok := paneDropZoneAt(card, dragged, p); ok {
-			drawPaneDrop(card, k, z)
+			drawPaneDrop(card, k, z, a.cardR())
 			a.paneDrop = shownDrop{p, z}
 		}
 	}

@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.30.0
+
+### Features
+
+* **ios:** add a gradient blur fade behind the bottom key bar ([#616](https://github.com/si-mods/gorex/pull/616))
+
+### Bug Fixes
+
+* **deps:** sync si-mods/mygo with upstream 0.9.1: a wrapped link opens whole, scrolled rows are reused, and a killed program's mouse and key reports turn off ([#622](https://github.com/si-mods/gorex/pull/622))
+* **ios:** open the next terminal before the tab switch slides ([#615](https://github.com/si-mods/gorex/pull/615))
+* **ios:** eliminate the upward jump on the header pill's tab switch ([#600](https://github.com/si-mods/gorex/pull/600))
+* **ui:** sync renamed remote pane and tab titles ([#621](https://github.com/si-mods/gorex/pull/621))
+
 ## 0.29.0
 
 ### Features

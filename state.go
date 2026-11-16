@@ -452,6 +452,11 @@ func browserHost(s string) string {
 // App is the state of a window of GoRex's, which shows a workspace.
 type App struct {
 	win *mygo.Window
+	// winR is the radius macOS rounds the window's corners to, as the last
+	// frame read it, in DIPs; 0 elsewhere, in full screen, and without a
+	// window. Window.CornerRadius asks the main loop, so view reads it
+	// once for the frame's cards.
+	winR float64
 	// pathStats is what stats found of the paths printed in panes of this
 	// machine, which isLink answers from; the main thread's.
 	pathStats map[string]pathStat
@@ -3236,6 +3241,9 @@ func (st *store) poll(client *rex.Client, stop chan struct{}, update func(func()
 func (a *App) apply(h *hostConn, byID map[string]rex.SessionInfo, l hostLayout) {
 	if h != nil {
 		a.adopt(h, byID, l)
+		if l.syncNames {
+			a.syncHostNames(h, l)
+		}
 	}
 	var events []map[string]string
 	for _, t := range a.tabs {
@@ -3303,6 +3311,77 @@ func (a *App) apply(h *hostConn, byID map[string]rex.SessionInfo, l hostLayout) 
 	a.syncBadge()
 	if a.st != nil {
 		a.st.retryClick()
+	}
+}
+
+// syncHostNames updates the names of already-adopted remote tabs and panes
+// (and hidden workspace layouts) from the host's shared layout.
+func (a *App) syncHostNames(h *hostConn, l hostLayout) {
+	paneNames := map[string]string{}
+	tabNames := map[string]string{}
+	for _, st := range l.tabs {
+		if st.ID != "" {
+			tabNames[st.ID] = st.Name
+		}
+		for _, r := range st.Roots() {
+			for _, n := range layout.Leaves(r) {
+				if n.Host == "" && n.SID != "" {
+					paneNames[n.SID] = n.Name
+				}
+			}
+		}
+	}
+	changed := false
+	for _, t := range a.tabs {
+		if t.host() == h && t.UID != "" {
+			if name, ok := tabNames[t.UID]; ok && t.Name != name {
+				t.Name = name
+				changed = true
+			}
+		}
+		for _, p := range t.allPanes() {
+			if p.host != h {
+				continue
+			}
+			if name, ok := paneNames[p.SID]; ok && p.Name != name {
+				p.Name = name
+				changed = true
+			}
+		}
+	}
+	if changed {
+		a.changed()
+	}
+	if a.st == nil || len(a.st.apps) == 0 || a.st.apps[0] != a {
+		return
+	}
+	savedChanged := false
+	for _, w := range a.st.workspaces {
+		if w.app != nil {
+			continue
+		}
+		for i := range w.layout.Tabs {
+			st := &w.layout.Tabs[i]
+			if st.ID != "" && savedTabHost(*st) == h.ID {
+				if name, ok := tabNames[st.ID]; ok && st.Name != name {
+					st.Name = name
+					savedChanged = true
+				}
+			}
+			for _, r := range st.Roots() {
+				for _, n := range layout.Leaves(r) {
+					if n.Host == h.ID {
+						if name, ok := paneNames[n.SID]; ok && n.Name != name {
+							n.Name = name
+							savedChanged = true
+						}
+					}
+				}
+			}
+		}
+	}
+	if savedChanged {
+		a.st.save()
 	}
 }
 

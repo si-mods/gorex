@@ -16,12 +16,12 @@ func TestClaudeResume(t *testing.T) {
 	}{
 		{"bash", "", "claude --resume " + id, true},
 		{"cmd.exe", "", "claude --resume " + id, true},
-		{"/bin/zsh", "/home/u/.claude-work", "CLAUDE_CONFIG_DIR=/home/u/.claude-work claude --resume " + id, true},
-		{"bash", "/tmp/a b", "CLAUDE_CONFIG_DIR='/tmp/a b' claude --resume " + id, true},
+		{"/bin/zsh", "/home/u/.claude-work", "CLAUDE_CONFIG_DIR=/home/u/.claude-work command claude --resume " + id, true},
+		{"bash", "/tmp/a b", "CLAUDE_CONFIG_DIR='/tmp/a b' command claude --resume " + id, true},
 		{"fish", "/tmp/a b", "env CLAUDE_CONFIG_DIR='/tmp/a b' claude --resume " + id, true},
 		{"tcsh", "/tmp/x", "env CLAUDE_CONFIG_DIR=/tmp/x claude --resume " + id, true},
-		{"pwsh.exe", `D:\it's`, `$env:CLAUDE_CONFIG_DIR='D:\it''s'; claude --resume ` + id, true},
-		{"powershell", `D:\c`, `$env:CLAUDE_CONFIG_DIR='D:\c'; claude --resume ` + id, true},
+		{"pwsh.exe", `D:\it's`, `$env:CLAUDE_CONFIG_DIR='D:\it''s'; & (Get-Command claude -CommandType Application | Select-Object -First 1) --resume ` + id, true},
+		{"powershell", `D:\c`, `$env:CLAUDE_CONFIG_DIR='D:\c'; & (Get-Command claude -CommandType Application | Select-Object -First 1) --resume ` + id, true},
 		{"cmd.exe", `D:\a & b`, `set "CLAUDE_CONFIG_DIR=D:\a & b" && claude --resume ` + id, true},
 		{"cmd.exe", `D:\100%`, "", false},
 		{"nu", "", "", false},
@@ -29,6 +29,23 @@ func TestClaudeResume(t *testing.T) {
 		got, ok := ClaudeResume(c.shell, id, c.config)
 		if ok != c.ok || got != c.want {
 			t.Errorf("ClaudeResume(%q, %q) = %q, %v; want %q, %v", c.shell, c.config, got, ok, c.want, c.ok)
+		}
+	}
+	for _, c := range []struct {
+		shell, exe, config, want string
+		ok                       bool
+	}{
+		{"pwsh.exe", `C:\Users\u\.local\bin\claude.exe`, `C:\Users\u\.claude-team`,
+			`$env:CLAUDE_CONFIG_DIR='C:\Users\u\.claude-team'; & 'C:\Users\u\.local\bin\claude.exe' --resume ` + id, true},
+		{"bash", `/usr/local/bin/claude`, `/home/u/.claude-team`,
+			`CLAUDE_CONFIG_DIR=/home/u/.claude-team /usr/local/bin/claude --resume ` + id, true},
+		{"pwsh.exe", `claude`, `C:\Users\u\.claude-team`,
+			`$env:CLAUDE_CONFIG_DIR='C:\Users\u\.claude-team'; & (Get-Command claude -CommandType Application | Select-Object -First 1) --resume ` + id, true},
+		{"cmd.exe", `C:\Users\100%\claude.exe`, `D:\c`, "", false},
+	} {
+		got, ok := ClaudeResumeExe(c.shell, c.exe, id, c.config)
+		if ok != c.ok || got != c.want {
+			t.Errorf("ClaudeResumeExe(%q, %q, %q) = %q, %v; want %q, %v", c.shell, c.exe, c.config, got, ok, c.want, c.ok)
 		}
 	}
 }

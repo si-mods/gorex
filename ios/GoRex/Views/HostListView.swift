@@ -108,9 +108,16 @@ struct HostListView: View {
     }
 
     private func pushSpacesToDesktop() {
+        guard spaceStore.desktopSyncEnabled else { return }
         let all = spaceStore.orderedSpaces
-        for h in store.hosts where h.supportsSpacesSync {
-            Task { await h.applySpaces(all) }
+        let primary = spaceStore.primaryHostID
+        let targets = store.hosts.filter { h in
+            h.supportsSpacesSync && (primary.isEmpty || h.id.uuidString == primary)
+        }
+        guard !targets.isEmpty else { return }
+        Task {
+            for h in targets { await h.applySpaces(all) }
+            spaceStore.markDesktopSynced()
         }
     }
 
@@ -601,8 +608,13 @@ private struct HostSection: View {
             ForEach(spaceStore.orderedSpaces) { target in
                 Button {
                     spaceStore.assign(window: w, on: m, to: target.id)
-                    let all = spaceStore.orderedSpaces
-                    Task { await host.applySpaces(all) }
+                    if spaceStore.desktopSyncEnabled, spaceStore.primaryHostID.isEmpty || host.id.uuidString == spaceStore.primaryHostID {
+                        let all = spaceStore.orderedSpaces
+                        Task {
+                            await host.applySpaces(all)
+                            spaceStore.markDesktopSynced()
+                        }
+                    }
                 } label: {
                     if current?.id == target.id {
                         Label(target.name, systemImage: "checkmark")

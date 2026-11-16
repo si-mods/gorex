@@ -80,7 +80,7 @@ Run it, with `scripts/debug-shots.sh` as a template:
 ```sh
 D=/tmp/gxt; rm -rf $D; mkdir -p $D
 echo '{"tabPlacement":"left"}' > $D/settings.json   # optional starting settings
-GOREX_DIR=$D GOREX_DEBUG=$D go tool mygo dev &       # or the built app's binary
+GOREX_DIR=$D GOREX_DEBUG=$D go tool mygo dev -background &       # or the built app's binary
 printf 'appearance dark\nshot left-dark.png\n' > $D/do
 ```
 

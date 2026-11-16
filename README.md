@@ -501,6 +501,9 @@ go tool mygo build   # build/darwin-arm64/GoRex.app and a .dmg
 go run ./tools/mkicon  # redraw resources/icon.png
 ```
 
+`go tool mygo dev -background` starts the app and each rebuild without
+bringing it to the front, for runs that no one is watching.
+
 `go get -tool github.com/egoist/mygo/cmd/mygo@latest` updates MyGo and its
 CLI together.
 

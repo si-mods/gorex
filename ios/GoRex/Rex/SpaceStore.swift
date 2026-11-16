@@ -69,6 +69,9 @@ final class SpaceStore {
     static let kvsKey = "gorex.spaces.manifest.v1"
     /// Stay safely under `NSUbiquitousKeyValueStore`'s 1 MB per-key limit.
     static let kvsMaxBytes = 900_000
+    static let iCloudSyncKey = "spaceSync.icloud"
+    static let desktopSyncKey = "spaceSync.desktop"
+    static let primaryHostKey = "spaceSync.primaryHost"
 
     struct HostSnapshot {
         struct Session {
@@ -84,6 +87,25 @@ final class SpaceStore {
     }
 
     private(set) var manifest: SpaceManifest
+    private(set) var lastCloudSyncAt: Date?
+    private(set) var lastDesktopSyncAt: Date?
+    var iCloudSyncEnabled: Bool {
+        didSet {
+            UserDefaults.standard.set(iCloudSyncEnabled, forKey: Self.iCloudSyncKey)
+            if iCloudSyncEnabled {
+                pullFromKVS()
+                save(pushKVS: true)
+            }
+        }
+    }
+    var desktopSyncEnabled: Bool {
+        didSet { UserDefaults.standard.set(desktopSyncEnabled, forKey: Self.desktopSyncKey) }
+    }
+    /// Empty string means sync to all supporting desktop hosts; otherwise a
+    /// specific `Host.id.uuidString`.
+    var primaryHostID: String {
+        didSet { UserDefaults.standard.set(primaryHostID, forKey: Self.primaryHostKey) }
+    }
     @ObservationIgnored private let fileURL: URL
     @ObservationIgnored private let kvs: SpaceKeyValueStore?
     @ObservationIgnored nonisolated(unsafe) private var cloudObserver: NSObjectProtocol?
@@ -92,6 +114,10 @@ final class SpaceStore {
         let url = fileURL ?? Self.defaultFileURL()
         self.fileURL = url
         self.kvs = kvs
+        let defaults = UserDefaults.standard
+        self.iCloudSyncEnabled = defaults.object(forKey: Self.iCloudSyncKey) as? Bool ?? true
+        self.desktopSyncEnabled = defaults.object(forKey: Self.desktopSyncKey) as? Bool ?? true
+        self.primaryHostID = defaults.string(forKey: Self.primaryHostKey) ?? ""
         if let data = try? Data(contentsOf: url),
            let decoded = try? JSONDecoder().decode(SpaceManifest.self, from: data) {
             self.manifest = decoded
@@ -99,8 +125,10 @@ final class SpaceStore {
             self.manifest = SpaceManifest()
         }
         if let kvs {
-            kvs.synchronize()
-            pullFromKVS(kvs)
+            if iCloudSyncEnabled {
+                kvs.synchronize()
+                pullFromKVS(kvs)
+            }
             if observeCloud {
                 cloudObserver = NotificationCenter.default.addObserver(
                     forName: NSUbiquitousKeyValueStore.didChangeExternallyNotification,
@@ -114,6 +142,10 @@ final class SpaceStore {
                 }
             }
         }
+    }
+
+    func markDesktopSynced() {
+        lastDesktopSyncAt = .now
     }
 
     deinit {
@@ -365,8 +397,10 @@ final class SpaceStore {
 
     /// Reads the manifest stored in `kvs` and merges it into local state.
     func pullFromKVS(_ store: SpaceKeyValueStore? = nil) {
-        guard let target = store ?? kvs,
-              let data = target.data(forKey: Self.kvsKey),
+        guard iCloudSyncEnabled, let target = store ?? kvs else { return }
+        target.synchronize()
+        lastCloudSyncAt = .now
+        guard let data = target.data(forKey: Self.kvsKey),
               let incoming = try? JSONDecoder().decode(SpaceManifest.self, from: data) else { return }
         merge(incoming, pushIfChanged: true)
     }
@@ -482,7 +516,7 @@ final class SpaceStore {
         guard var data = try? JSONEncoder().encode(manifest) else { return }
         try? data.write(to: fileURL, options: .atomic)
 
-        guard pushKVS, let kvs else { return }
+        guard pushKVS, iCloudSyncEnabled, let kvs else { return }
         if data.count > Self.kvsMaxBytes, !manifest.tombstones.isEmpty {
             var trimmed = manifest
             trimmed.tombstones.sort { $0.deleted_at > $1.deleted_at }
@@ -494,5 +528,6 @@ final class SpaceStore {
         guard data.count <= Self.kvsMaxBytes else { return }
         kvs.set(data, forKey: Self.kvsKey)
         kvs.synchronize()
+        lastCloudSyncAt = .now
     }
 }

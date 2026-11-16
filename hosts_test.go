@@ -79,6 +79,42 @@ func startHostServer(t *testing.T) (string, *rex.Client) {
 	return sock, c
 }
 
+// hostDesk opens the host's own window on the host server at sock: it
+// takes the server's layout commands, and answers each as made. With no
+// window, the server gives each session a client starts a tab of its own
+// (doCreate), which a client can read before the layout that splits it
+// into a tab comes. A host whose window splits a pane does not.
+func hostDesk(t *testing.T, sock string) {
+	t.Helper()
+	desk, err := rex.ConnectSocket(sock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { desk.Close() })
+	go func() {
+		for {
+			cmd, err := desk.TakeCommand()
+			if err != nil {
+				return
+			}
+			if cmd != nil {
+				desk.CommandDone(*cmd)
+			}
+		}
+	}()
+	// The server counts the window once it took its first take: a command
+	// for the window then waits for it rather than fails.
+	probe, err := rex.ConnectSocket(sock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer probe.Close()
+	waitForThat(t, func() bool {
+		res, err := probe.Command(rex.LayoutCommand{Op: "action", Action: "test.probe"})
+		return err == nil && res.Code != "desktop_unavailable"
+	}, "the host's window")
+}
+
 // hostProxy forwards the connections of a socket of its own to a host's,
 // as a network between them that drops: down closes them all and refuses
 // new ones until up. While gate is set, new connections wait for it to
@@ -1072,6 +1108,7 @@ func TestAdoptHostTabSplitLater(t *testing.T) {
 	a, tt := newTestApp(t)
 	fakeHosts(t)
 	sock, remote := startHostServer(t)
+	hostDesk(t, sock)
 	t.Cleanup(a.stopHosts)
 	share := func(root *savedNode, floats ...layout.Float) {
 		t.Helper()
@@ -1167,6 +1204,7 @@ func TestAdoptHostTabSplitZoomed(t *testing.T) {
 	a, tt := newTestApp(t)
 	fakeHosts(t)
 	sock, remote := startHostServer(t)
+	hostDesk(t, sock)
 	t.Cleanup(a.stopHosts)
 	share := func(root *savedNode, zoom bool) {
 		t.Helper()
@@ -1941,4 +1979,85 @@ func TestWatchHostTakesChanges(t *testing.T) {
 		t.Fatal(err)
 	}
 	taken("a new session")
+}
+
+// TestWatchHostSyncsRenamedPaneAndTab checks that renaming a pane (e.g.
+// gorex rename) or tab on a remote host updates the already-adopted pane
+// and tab names in the desktop app.
+func TestWatchHostSyncsRenamedPaneAndTab(t *testing.T) {
+	sock, remote := startHostServer(t)
+	s, err := remote.Create(rex.CreateOptions{Cols: 80, Rows: 24})
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw := []byte(`{"version":2,"windows":["sp1"],"sessions":[{"id":"sp1","name":"Main","tabs":[{"id":"t1","root":{"sid":"` + s.ID + `"}}]}]}`)
+	if err := remote.SetLayout(raw); err != nil {
+		t.Fatal(err)
+	}
+	c, err := rex.ConnectSocket(sock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { c.Close() })
+	h := newHostConn(savedHost{ID: "h1", Name: "office-pc", Address: sock})
+	t.Cleanup(h.close)
+	a := &App{hosts: []*hostConn{h}}
+
+	mainQ := make(chan func(), 32)
+	done := make(chan struct{})
+	defer close(done)
+	go func() {
+		for {
+			select {
+			case fn := <-mainQ:
+				fn()
+			case <-done:
+				return
+			}
+		}
+	}()
+	runMain := func(fn func()) {
+		reply := make(chan struct{})
+		mainQ <- func() {
+			fn()
+			close(reply)
+		}
+		<-reply
+	}
+
+	go a.watchHost(h, c, func(fn func()) { mainQ <- fn })
+
+	waitFor := func(what string, cond func() bool) {
+		t.Helper()
+		deadline := time.Now().Add(5 * time.Second)
+		for time.Now().Before(deadline) {
+			ok := false
+			runMain(func() { ok = cond() })
+			if ok {
+				return
+			}
+			time.Sleep(50 * time.Millisecond)
+		}
+		t.Fatalf("timed out waiting for %s", what)
+	}
+
+	waitFor("initial adopt", func() bool {
+		return len(a.tabs) == 1 && a.tabs[0].Focus != nil && a.tabs[0].Focus.SID == s.ID
+	})
+
+	if res, err := remote.Command(rex.LayoutCommand{Op: "pane.rename", SID: s.ID, Name: "renamed-pane"}); err != nil || res.Code != "" {
+		t.Fatalf("pane.rename: err=%v res=%+v", err, res)
+	}
+	waitFor("pane rename sync", func() bool {
+		name, _ := a.tabs[0].label()
+		return a.tabs[0].Focus.Name == "renamed-pane" && name == "renamed-pane"
+	})
+
+	if res, err := remote.Command(rex.LayoutCommand{Op: "tab.rename", Tab: "t1", Name: "renamed-tab"}); err != nil || res.Code != "" {
+		t.Fatalf("tab.rename: err=%v res=%+v", err, res)
+	}
+	waitFor("tab rename sync", func() bool {
+		name, _ := a.tabs[0].label()
+		return a.tabs[0].Name == "renamed-tab" && name == "renamed-tab"
+	})
 }

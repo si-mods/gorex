@@ -63,11 +63,10 @@ func styledField(c *ui.Context, k *colors, make func(*ui.Context) ui.Element) ui
 	// replace: that style function sets the border as it paints. Its
 	// outline closure keeps the theme it was made under, so a theme of the
 	// field's own, the space's accent, gives it the app's color without
-	// restyling the widgets around it.
+	// restyling the widgets around it. WithAccent gives it the accent's
+	// shades too (hover, pressed, selection, focus), not the stock blue's.
 	base := c.Theme()
-	t := *base
-	t.Accent = k.accent
-	c.SetTheme(&t)
+	c.SetTheme(base.WithAccent(k.accent))
 	in := make(c)
 	c.SetTheme(base)
 	// Selected text is the theme's Selection as the frame paints, not as

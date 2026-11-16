@@ -26,11 +26,12 @@ func TestPaneFollowsAnotherClientsSize(t *testing.T) {
 	waitFor(t, tt, "the pane's stream", func() bool {
 		return p.stream != nil && p.stream.ClientID() != ""
 	})
-	var ownCols, ownRows int
-	waitFor(t, tt, "the pane's initial size", func() bool {
+	// The pane's stream sends its size on its own: the session takes it
+	// a moment later.
+	waitFor(t, tt, "the session to take the pane's size", func() bool {
 		refresh(a)
-		ownCols, ownRows = p.term.Size()
-		return ownCols > 0 && p.info.Cols == ownCols && p.info.Rows == ownRows
+		cols, rows := p.term.Size()
+		return cols != 0 && p.info.Cols == cols && p.info.Rows == rows
 	})
 
 	// A window of another machine shows the session, and the user there
