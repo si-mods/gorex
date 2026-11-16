@@ -922,17 +922,7 @@
         }
       }
     },
-    "Panes": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "面板"
-          }
-        }
-      }
-    },
-    "Shows the window's panes.": {
+"Shows the window's panes.": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {

@@ -59,8 +59,6 @@ struct TerminalScreen: View {
     /// Whether the terminal has been reconnecting, or holding what was
     /// typed, for a second: a short reconnect shows nothing.
     @State private var stalled = false
-    /// Whether the keyboard covers the bottom; the pane bar gives way to it.
-    @State private var keyboardUp = false
     /// Whether the floating pane map shows, briefly after a pane switch.
     @State private var paneMapShown = false
     /// The task that hides the floating map.
@@ -87,9 +85,9 @@ struct TerminalScreen: View {
             ForEach(pages) { pane in
                 let current = pane.session === session
                 TerminalRepresentable(session: pane.session, newTab: newTab, closeTab: closeTab, mic: mic, voice: voiceCapsule, dictating: said != nil && current, snaps: switching > 0,
-                                      paneInset: paneCellList.count > 1 && !keyboardUp ? 52 : 0,
+                                      paneInset: paneCellList.count > 1 ? 52 : 0,
                                       onSwipe: { stepPane(by: $0) },
-                                      canSwipe: { switching == 0 && incoming == nil && !keyboardUp && (terminal?.paneSwipeAllowed ?? false) })
+                                      canSwipe: { switching == 0 && incoming == nil && (terminal?.paneSwipeAllowed ?? false) })
                     .offset(x: pane.x * pageWidth)
                     // Before the page's width is known, off the page is hidden.
                     .opacity(pageWidth == 0 && pane.x != 0 ? 0 : 1)
@@ -121,7 +119,7 @@ struct TerminalScreen: View {
             .overlay { status }
             // The window's panes, above the key bar; the keyboard takes its place.
             .overlay(alignment: .bottom) {
-                if paneCellList.count > 1, !keyboardUp {
+                if paneCellList.count > 1 {
                     PaneBar(cells: paneCellList, current: currentTarget.block, program: { .of(host.blocks[$0]?.program) }, select: selectPane, newTab: newTab)
                         .padding(.bottom, hasBar ? KeyBar.height + 10 : 10)
                         .transition(.opacity.combined(with: .move(edge: .bottom)))
@@ -131,11 +129,8 @@ struct TerminalScreen: View {
             // moment after a switch, as Rex Go shows it.
             .overlay(alignment: .topTrailing) {
                 if paneMapShown {
-                    PaneMiniMap(cells: paneCellList, current: currentTarget.block)
-                        .frame(width: 128, height: 80)
-                        .padding(8)
-                        .glassEffect(.regular, in: .rect(cornerRadius: 14))
-                        .shadow(color: .black.opacity(0.18), radius: 12, y: 4)
+                    PaneMiniMap(cells: paneCellList, current: currentTarget.block, currentColor: paneAccent(currentTarget.block))
+                        .frame(width: 84, height: 56)
                         .padding(.top, 8)
                         .padding(.trailing, 12)
                         .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .topTrailing)))
@@ -180,17 +175,6 @@ struct TerminalScreen: View {
                         Image(systemName: "ellipsis")
                     }
                     .accessibilityLabel("More")
-                    if paneCellList.count > 1 {
-                        Button { flashPaneMap() } label: {
-                            Image(systemName: "rectangle.split.2x1")
-                                .font(.body)
-                                .frame(width: 44, height: 44)
-                                .contentShape(.rect)
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel("Panes")
-                        .accessibilityHint("Shows the window's panes.")
-                    }
                 }
             }
             // The sheet takes the terminal's scheme as the bar does; the
@@ -208,12 +192,6 @@ struct TerminalScreen: View {
                         }
                 }
                 .environment(\.colorScheme, scheme)
-            }
-            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
-                keyboardUp = true
-            }
-            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
-                keyboardUp = false
             }
             .toolbarBackgroundVisibility(.hidden, for: .navigationBar)
             .toolbarColorScheme(scheme, for: .navigationBar)
@@ -387,6 +365,13 @@ struct TerminalScreen: View {
             guard !Task.isCancelled else { return }
             withAnimation(.easeOut(duration: 0.2)) { paneMapShown = false }
         }
+    }
+
+    /// The color Rex Go gives the current pane in the map: its program's
+    /// tile, preferring the foreground unless that is white.
+    private func paneAccent(_ block: String) -> Color {
+        let program = Program.of(host.blocks[block]?.program)
+        return Color(rgb: program.tileFg == 0xffffff ? program.tileBg : program.tileFg)
     }
 
     /// A terminal on the page, at x widths from its place: -1 off to the

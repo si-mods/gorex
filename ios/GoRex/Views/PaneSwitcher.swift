@@ -6,6 +6,9 @@ import SwiftUI
 struct PaneMiniMap: View {
     let cells: [PaneCell]
     let current: String
+    /// The current pane's color, from its program's tile, as Rex Go tints
+    /// the pane it shows.
+    let currentColor: Color
     @Environment(\.colorScheme) private var scheme
 
     /// Explicit ink, so the glass container's vibrancy does not invert the
@@ -26,7 +29,7 @@ struct PaneMiniMap: View {
                                    width: max(1, room.width * cell.rect.width),
                                    height: max(1, room.height * cell.rect.height))
                     RoundedRectangle(cornerRadius: 3, style: .continuous)
-                        .fill(cell.block == current ? AnyShapeStyle(ink.opacity(0.9)) : AnyShapeStyle(ink.opacity(0.18)))
+                        .fill(cell.block == current ? AnyShapeStyle(currentColor) : AnyShapeStyle(ink.opacity(0.18)))
                         .overlay {
                             RoundedRectangle(cornerRadius: 3, style: .continuous)
                                 .strokeBorder(ink.opacity(cell.block == current ? 0 : 0.08), lineWidth: 0.5)
@@ -62,34 +65,37 @@ struct PaneBar: View {
     let newTab: () -> Void
 
     var body: some View {
-        HStack(spacing: 0) {
-            ForEach(cells) { cell in
-                Button { select(cell.block) } label: {
-                    ProgramTile(program: program(cell.block))
-                        .frame(width: 21 * ProgramTiles.scale, height: 16 * ProgramTiles.scale)
-                        .overlay {
-                            if cell.block == current {
-                                RoundedRectangle(cornerRadius: 8.5, style: .continuous)
-                                    .strokeBorder(.primary.opacity(0.55), lineWidth: 1.3)
-                                    .padding(-2)
+        HStack(spacing: 8) {
+            HStack(spacing: 0) {
+                ForEach(cells) { cell in
+                    Button { select(cell.block) } label: {
+                        ProgramTile(program: program(cell.block))
+                            .frame(width: 21, height: 16)
+                            .overlay(alignment: .topTrailing) {
+                                if let record = cell.record {
+                                    PaneStatus(record: record)
+                                        .offset(x: 3, y: -3)
+                                }
                             }
-                        }
-                        .overlay(alignment: .topTrailing) {
-                            if let record = cell.record {
-                                PaneStatus(record: record)
-                                    .offset(x: 4, y: -4)
+                            .padding(4)
+                            .background {
+                                if cell.block == current {
+                                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                        .fill(.primary.opacity(0.16))
+                                }
                             }
-                        }
-                        .padding(5)
-                        .contentShape(.rect)
+                            .contentShape(.rect)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(Text(cell.name))
+                    .accessibilityValue(Text(cell.block == current ? "Current" : ""))
+                    .accessibilityAddTraits(cell.block == current ? [.isButton, .isSelected] : .isButton)
+                    .accessibilityHint(Text("Switch to this pane."))
                 }
-                .buttonStyle(.plain)
-                .accessibilityLabel(Text(cell.name))
-                .accessibilityValue(Text(cell.block == current ? "Current" : ""))
-                .accessibilityAddTraits(cell.block == current ? [.isButton, .isSelected] : .isButton)
-                .accessibilityHint(Text("Switch to this pane."))
             }
-            Divider().frame(height: 22).padding(.horizontal, 4)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 4)
+            .glassEffect(.regular, in: .capsule)
             Button(action: newTab) {
                 Image(systemName: "plus")
                     .font(.footnote.weight(.semibold))
@@ -98,11 +104,8 @@ struct PaneBar: View {
             }
             .buttonStyle(.plain)
             .accessibilityLabel("New Tab")
-            .padding(.horizontal, 3)
+            .glassEffect(.regular, in: .circle)
         }
-        .padding(.horizontal, 5)
-        .padding(.vertical, 3)
-        .glassEffect(.regular, in: .capsule)
         .animation(.snappy, value: current)
     }
 }
