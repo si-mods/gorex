@@ -43,13 +43,15 @@ gained() { # FROM LOCALE TO: the bullets TO has that FROM had not
 }
 
 # What the app is, to a tester: its sources, not its tests, builds or notes.
-APP='ios/GoRex ios/project.yml ios/share ios/tailnet internal/tailnode'
+# Not APP: that is the app's App Store Connect ID, from scripts/asc-env, which
+# the notes below are set on.
+APP_PATHS='ios/GoRex ios/project.yml ios/share ios/tailnet internal/tailnode'
 
 check() { # BASE [TO]: what the pull request in BASE..TO owes testers
 	local base=$1 to=${2:-HEAD} from app locale bullets b bad=0 re=
 	from=$(git merge-base "$base" "$to")
 	re='^(feat|fix|perf|chore|ci|docs|refactor|test)(\([^)]*\))?!?:[[:space:]]'
-	app=$(git diff --name-only "$from" "$to" -- $APP)
+	app=$(git diff --name-only "$from" "$to" -- $APP_PATHS)
 	for locale in $LOCALES; do
 		bullets=$(gained "$from" "$locale" "$to")
 		if [ -n "$app" ] && [ -z "$bullets" ]; then
@@ -103,6 +105,8 @@ elif [ -z "$en" ] || [ -z "$zh" ]; then
 	en=${en:-$zh}
 	zh=${zh:-$en}
 fi
+err=$(mktemp)
+trap 'rm -f "$err"' EXIT
 for locale in $LOCALES; do
 	case $locale in
 	en-US) notes=${en:-$(fallback "$locale")} ;;
@@ -110,11 +114,22 @@ for locale in $LOCALES; do
 	esac
 	for _ in $(seq 40); do
 		if ASC_TIMEOUT=60s asc builds test-notes update --app "$APP" --build-number "$B" --platform IOS --version "$V" \
-			--locale "$locale" --whats-new "$notes" --output json >/dev/null 2>&1 ||
+			--locale "$locale" --whats-new "$notes" --output json >/dev/null 2>"$err" ||
 			ASC_TIMEOUT=60s asc builds test-notes create --app "$APP" --build-number "$B" --platform IOS --version "$V" \
-				--locale "$locale" --whats-new "$notes" --output json >/dev/null 2>&1; then
+				--locale "$locale" --whats-new "$notes" --output json >/dev/null 2>"$err"; then
 			printf 'NOTES %s (%s) %s\n%s\n' "$V" "$B" "$locale" "$notes"
 			continue 2
+		fi
+		# A build App Store Connect has not got to yet is worth the wait;
+		# anything else fails the same way 40 times, so it fails now, with
+		# what asc said, instead of 20 minutes later without it.
+		if ! grep -qiE 'no build found|not yet|processing|404|429|5[0-9][0-9]|timeout|timed out|dial tcp|connection (reset|refused)' "$err"; then
+			if [ -s "$err" ]; then
+				sed 's/^/asc: /' "$err" >&2
+			else
+				echo "asc: builds test-notes failed with no message" >&2
+			fi
+			exit 1
 		fi
 		sleep 30
 	done
