@@ -94,7 +94,10 @@ func TestWebTransportControlAndHTTP(t *testing.T) {
 		if origin != "" {
 			hdr.Set("Origin", origin)
 		}
-		_, sess, err := d.Dial(ctx, "https://"+addr+"/api/wt", hdr)
+		resp, sess, err := d.Dial(ctx, "https://"+addr+"/api/wt", hdr) //nolint:bodyclose // closing CONNECT body cancels the WebTransport session
+		if err != nil && resp != nil && resp.Body != nil {
+			resp.Body.Close()
+		}
 		return sess, err
 	}
 
