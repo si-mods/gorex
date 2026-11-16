@@ -479,7 +479,7 @@ func (a *App) fileDrop(c *ui.Context, k *colors, p *Pane, card, tv ui.Element) {
 			if h.hello.Can(rex.CapabilityFileTemp) {
 				label = locales.PaneDropUploadTemp(h.label())
 			}
-			drawPaneDrop(card, k, dropCenter)
+			drawPaneDrop(card, k, dropCenter, a.cardR())
 		}
 	case h != nil && h.current() != nil && tv.FileDragOver():
 		label = locales.PaneDropUpdate(h.label())
@@ -527,7 +527,7 @@ func (a *App) transfers(c *ui.Context, k *colors, p *Pane) {
 	if p.float == nil {
 		edge += 1
 	}
-	r := concentric(cardR, edge)
+	r := concentric(a.cardR(), edge)
 	list := ui.Column(c.Key("transfers")).Absolute().Right(inset).Bottom(inset).Width(260).Padding(pad).Gap(2).
 		Radius(r).Shadow(0, 8, 24, 0, k.shadowFocused)
 	frostPanel(list, k, r)

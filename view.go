@@ -22,14 +22,27 @@ import (
 const (
 	gap       = 8  // between panes, and around them
 	titleH    = 44 // the title bar
-	windowR   = 16 // the window's corners, as macOS 27 draws them
+	windowR   = 16 // the window's corners where the system tells none, as macOS 27 draws them
 	headerH   = 33 // the panes' headers
 	activeFor = 1500 * time.Millisecond
 )
 
 // cardR is the panes' corners: concentric with the window's, which the
-// panes in its bottom corners sit in, and one radius for every pane.
-const cardR = windowR - gap
+// panes in its bottom corners sit in, and one radius for every pane. The
+// window's is the radius the system rounds it to (Window.CornerRadius),
+// which is 8 on Windows 11 and so leaves square panes, and windowR where
+// that is 0: full screen, maximised on Windows, Linux, or a window of the
+// tests, which have none. The radius is read once a frame, in view.
+func (a *App) cardR() float32 { return cardRadius(a.winR) }
+
+// cardRadius is the panes' radius in a window rounded to r DIPs, which
+// is windowR when r is 0.
+func cardRadius(r float64) float32 {
+	if r <= 0 {
+		return concentric(windowR, gap)
+	}
+	return concentric(float32(r), gap)
+}
 
 // concentric is the corner radius of a shape inset by inset (its
 // container's border and padding) in a container of radius outer, as
@@ -77,6 +90,10 @@ func (a *App) view(c *ui.Context) {
 	k := a.colors(c)
 	a.syncHostTheme(c.Theme().Dark)
 	a.focusedWin = a.win == nil || a.win.IsFocused()
+	a.winR = 0
+	if a.win != nil {
+		a.winR = a.win.CornerRadius()
+	}
 	breathing = a.focusedWin
 	a.claimFocus()
 	a.syncSizes()
@@ -600,7 +617,7 @@ func (a *App) floatCell(c *ui.Context, k *colors, t *Tab, f *Float, bounds ui.Re
 		s = whole
 	}
 	cell.LeftPercent(s.x * 100).TopPercent(s.y * 100).WidthPercent(s.w * 100).HeightPercent(s.h * 100).
-		Radius(cardR)
+		Radius(a.cardR())
 	// Under the glass setting a float is a pane of the system's Liquid
 	// Glass, as the tiled panes are; where the system draws none, the
 	// tiled panes blurred through its face on a GPU, and opaque elsewhere,
@@ -780,7 +797,7 @@ func (a *App) divider(c *ui.Context, k *colors, n *Node, s share, bounds ui.Rect
 // holds its size while held.
 func (a *App) paneCard(c *ui.Context, k *colors, t *Tab, p *Pane, held bool) ui.Element {
 	focused := t.Focus == p
-	card := ui.Column(c.Key(p.ID)).Radius(cardR).Clip().MinWidth(0).MinHeight(0)
+	card := ui.Column(c.Key(p.ID)).Radius(a.cardR()).Clip().MinWidth(0).MinHeight(0)
 	border, shadow := k.cardBorder, k.shadow
 	if focused {
 		border, shadow = k.cardBorderFocused, k.shadowFocused
@@ -890,7 +907,7 @@ func (a *App) paneCard(c *ui.Context, k *colors, t *Tab, p *Pane, held bool) ui.
 	})
 	if dragged, over := ui.DragOver[*Pane](card); over {
 		if z, ok := paneDropZoneAt(card, dragged, p); ok {
-			drawPaneDrop(card, k, z)
+			drawPaneDrop(card, k, z, a.cardR())
 			a.paneDrop = shownDrop{p, z}
 		}
 	}

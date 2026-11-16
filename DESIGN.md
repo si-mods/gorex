@@ -143,7 +143,10 @@ system"), and no radius is picked on its own:
 - **Concentric**, the container's radius less its border and padding
   (`concentric(outer, inset)`): what sits in a corner of a rounded
   container, as a menu's, popover's or the palette's rows, and the panes:
-  `cardR` is the window's radius (`windowR`, macOS 27's) less the gap,
-  and every pane, tiled or floating, takes it.
+  `cardR` is the window's radius less the gap, and every pane, tiled or
+  floating, takes it. The window's radius is what the system rounds it to
+  (`Window.CornerRadius`, read once a frame: 8 on Windows 11, which leaves
+  the panes square), and `windowR` (16, macOS 27's) where that is 0: full
+  screen, maximised on Windows, Linux, or no window.
 - **Fixed**, a radius of its own: what sits away from any corner, as a
   toast, a badge or a button in a dialog's padding.
