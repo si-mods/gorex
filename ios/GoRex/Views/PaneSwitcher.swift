@@ -17,7 +17,7 @@ struct PaneMiniMap: View {
 
     var body: some View {
         GeometryReader { g in
-            let inset: CGFloat = 6
+            let inset: CGFloat = 3
             let gap: CGFloat = 3
             let room = CGRect(x: inset, y: inset,
                               width: max(0, g.size.width - inset * 2),
