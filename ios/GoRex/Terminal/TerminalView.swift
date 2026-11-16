@@ -851,9 +851,15 @@ final class EdgeFadeView: UIView {
     private let maskLayer = CAGradientLayer()
     private let colorLayer = CAGradientLayer()
     private var color: UIColor
+    /// How tall the fade to clear is, from the inner edge; nil fades over
+    /// 65% of the view, with a 0.75 tint where it starts. With a length the
+    /// rest is solid: the bottom edge covers the key bar's lower half and
+    /// the home indicator, and fades over the bar's upper half only.
+    private let fade: CGFloat?
 
-    init(edge: Edge, color: UIColor) {
+    init(edge: Edge, color: UIColor, fade: CGFloat? = nil) {
         self.color = color
+        self.fade = fade
         super.init(frame: .zero)
         isUserInteractionEnabled = false
         backgroundColor = .clear
@@ -888,6 +894,11 @@ final class EdgeFadeView: UIView {
         CATransaction.setDisableActions(true)
         maskLayer.frame = blurView.bounds
         colorLayer.frame = bounds
+        if let fade, bounds.height > 0 {
+            let solid = NSNumber(value: Double(max(0, 1 - fade / bounds.height)))
+            maskLayer.locations = [0, solid, 1]
+            colorLayer.locations = [0, solid, 1]
+        }
         CATransaction.commit()
     }
 
@@ -900,7 +911,7 @@ final class EdgeFadeView: UIView {
     private func applyColor() {
         colorLayer.colors = [
             color.cgColor,
-            color.withAlphaComponent(0.75).cgColor,
+            color.withAlphaComponent(fade == nil ? 0.75 : 1).cgColor,
             color.withAlphaComponent(0).cgColor,
         ]
     }
@@ -921,8 +932,9 @@ final class TerminalHost: UIView, UIGestureRecognizerDelegate {
     /// the switch's spring.
     var snaps = false
     /// The fade behind the phone's key bar, as the top edge's under the
-    /// status bar. It starts at the bar's top, clear there, so the row the
-    /// cursor rests on above the bar is never covered; it changes no inset.
+    /// status bar: solid from the bottom to the bar's middle, clear at the
+    /// bar's top, so the row the cursor rests on above the bar is never
+    /// covered; it changes no inset.
     private var bottomEdge: EdgeFadeView?
 
     init(_ terminal: TerminalView) {
@@ -940,7 +952,7 @@ final class TerminalHost: UIView, UIGestureRecognizerDelegate {
         if UIDevice.current.userInterfaceIdiom != .pad {
             let bar = terminal.bar
             bar.translatesAutoresizingMaskIntoConstraints = false
-            let edge = EdgeFadeView(edge: .bottom, color: .black)
+            let edge = EdgeFadeView(edge: .bottom, color: .black, fade: KeyBar.height / 2)
             edge.translatesAutoresizingMaskIntoConstraints = false
             edge.isHidden = !TerminalView.hasBar
             bottomEdge = edge
