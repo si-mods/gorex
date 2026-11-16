@@ -850,7 +850,6 @@ private struct TerminalRepresentable: UIViewRepresentable {
         v.snaps = snaps
         v.terminal.newTab = newTab
         v.terminal.closeTab = closeTab
-        v.setBottomEdgeColor(UIColor(cgColor: (session.background ?? .black).cgColor))
         context.coordinator.mic.rootView = mic
         context.coordinator.voice.rootView = voice
         v.terminal.bar.setVoice(active: dictating)

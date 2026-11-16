@@ -499,7 +499,6 @@ final class TerminalView: UIView, TerminalOutput {
     /// comes and goes.
     @objc private func showBar() {
         bar.isHidden = !Self.hasBar
-        (superview as? TerminalHost)?.setBottomEdgeHidden(bar.isHidden)
         slide(duration: 0)
     }
 
@@ -880,7 +879,6 @@ final class TerminalHost: UIView {
     /// inset and the key bar at once, so they don't animate from .zero under
     /// the switch's spring.
     var snaps = false
-    private var bottomEdge: EdgeFadeView?
 
     init(_ terminal: TerminalView) {
         self.terminal = terminal
@@ -890,20 +888,11 @@ final class TerminalHost: UIView {
         if UIDevice.current.userInterfaceIdiom != .pad {
             let bar = terminal.bar
             bar.translatesAutoresizingMaskIntoConstraints = false
-            let edge = EdgeFadeView(edge: .bottom, color: .black)
-            edge.translatesAutoresizingMaskIntoConstraints = false
-            edge.isHidden = !TerminalView.hasBar
-            bottomEdge = edge
-            addSubview(edge)
             addSubview(bar)
             NSLayoutConstraint.activate([
                 bar.leadingAnchor.constraint(equalTo: leadingAnchor),
                 bar.trailingAnchor.constraint(equalTo: trailingAnchor),
                 bar.bottomAnchor.constraint(equalTo: keyboardLayoutGuide.topAnchor),
-                edge.leadingAnchor.constraint(equalTo: leadingAnchor),
-                edge.trailingAnchor.constraint(equalTo: trailingAnchor),
-                edge.topAnchor.constraint(equalTo: bar.topAnchor, constant: -10),
-                edge.bottomAnchor.constraint(equalTo: bar.bottomAnchor),
             ])
             anchor = bar.topAnchor
         } else {
@@ -989,14 +978,6 @@ final class TerminalHost: UIView {
     override func safeAreaInsetsDidChange() {
         super.safeAreaInsetsDidChange()
         setNeedsLayout()
-    }
-
-    func setBottomEdgeColor(_ color: UIColor) {
-        bottomEdge?.setColor(color)
-    }
-
-    func setBottomEdgeHidden(_ hidden: Bool) {
-        bottomEdge?.isHidden = hidden
     }
 }
 
