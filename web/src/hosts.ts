@@ -18,6 +18,8 @@ export interface Host {
   /** One of icons' names. */
   icon: string;
   kind?: "direct" | "tailnet" | "share";
+  /** Base64url SHA-256 of the host's self-signed ECDSA cert for WebTransport. */
+  certHash?: string;
 }
 
 /** The icons a host can take, as the iOS app offers them, from the repo's lucide set. */
@@ -74,6 +76,20 @@ export function hostURL(typed: string): { url: string } | { error: string } {
   return { url: u.origin };
 }
 
+/**
+ * Parses either a plain host address (`hostURL`) or a full pairing link
+ * (`https://web.gorex.uk/#host=...&wt=sha256-...` or `?host=...#wt=...`).
+ */
+export function parsePairingLink(search: string, hash: string): { url: string; certHash?: string } | undefined {
+  const q = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
+  const f = new URLSearchParams(hash.startsWith("#") ? hash.slice(1) : hash);
+  const rawHost = f.get("host") || q.get("host");
+  if (!rawHost) return undefined;
+  const r = hostURL(rawHost);
+  if (!("url" in r)) return undefined;
+  const wt = f.get("wt") || q.get("wt") || undefined;
+  return { url: r.url, certHash: wt };
+}
 /** A host's name until the user gives one: the first label of a DNS name, else the whole host (an IP address). */
 export function defaultName(url: string): string {
   const h = new URL(url).hostname;
@@ -349,13 +365,17 @@ export class HostList {
     this.refresh();
   }
 
-  /** Adds the host of a quick link (?host=URL), or chooses the one with its address. */
-  addLink(url: string) {
+  /** Adds the host of a quick link (?host=URL or #host=URL&wt=...), or chooses the one with its address. */
+  addLink(url: string, certHash?: string) {
     const had = this.hosts.find((h) => h.url === url);
     if (had) {
+      if (certHash && had.certHash !== certHash) {
+        had.certHash = certHash;
+        saveHosts(this.hosts);
+      }
       this.chosen = had;
     } else {
-      const h: Host = { id: newID(), name: defaultName(url), url, icon: "laptop" };
+      const h: Host = { id: newID(), name: defaultName(url), url, icon: "laptop", ...(certHash ? { certHash } : {}) };
       this.hosts.push(h);
       saveHosts(this.hosts);
       this.chosen = h;
