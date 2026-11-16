@@ -133,63 +133,7 @@ struct TerminalScreen: View {
                 // the window's program, as its row in the list shows it; a
                 // tap opens the session's sheet.
                 ToolbarItem(placement: .principal) {
-                    // As tall as the back button beside it.
-                    // The title pushes in the way the terminal slides, and the
-                    // capsule's width animates to the new title's, inside the
-                    // switch's animation.
-                    HStack(spacing: 10) {
-                        let k = ProgramTiles.scale, small = 0.85
-                        ProgramTile(program: .of(host.blocks[currentTarget.block]?.program))
-                            .frame(width: 21 * k, height: 16 * k)
-                            .scaleEffect(small)
-                            .frame(width: 21 * k * small, height: 16 * k * small)
-                        Text(title.asText).font(.body.weight(.semibold)).lineLimit(1)
-                            .contentTransition(.push(from: slideDir > 0 ? .trailing : .leading))
-                    }
-                    .padding(.leading, 12)
-                    .padding(.trailing, 18)
-                    .frame(height: 44)
-                    .clipped()
-                    // Glass behind, not over: on the content it would fade the tile.
-                    .background { Capsule().fill(.clear).glassEffect(.regular, in: .capsule) }
-                    .contentShape(.capsule)
-                    .accessibilityAddTraits(.isButton)
-                    .offset(x: pillDrag)
-                    .onTapGesture { sheet = true }
-                    .highPriorityGesture(
-                        DragGesture(minimumDistance: 12)
-                            .onChanged { v in
-                                guard sessionWindows.count > 1, abs(v.translation.width) > abs(v.translation.height) else { return }
-                                pillDrag = max(-28, min(28, v.translation.width * 0.35))
-                            }
-                            .onEnded { v in
-                                withAnimation(.spring(duration: 0.28, bounce: 0.2)) {
-                                    pillDrag = 0
-                                }
-                                guard abs(v.translation.width) > 24, abs(v.translation.width) > abs(v.translation.height) else { return }
-                                stepTab(by: v.translation.width < 0 ? 1 : -1)
-                            }
-                    )
-                    .contextMenu {
-                        ForEach(sessionWindows, id: \.window.window_id) { w in
-                            let open = w.window.holds(currentTarget.block)
-                            let label = host.title(w.window)
-                            Button {
-                                if !open {
-                                    switchTo(TerminalTarget(host: host.id, session: currentTarget.session, block: w.block, title: label))
-                                }
-                            } label: {
-                                if open {
-                                    Label(label.isEmpty ? sessionLabel : label, systemImage: "checkmark")
-                                } else {
-                                    Text(label.isEmpty ? sessionLabel : label)
-                                }
-                            }
-                        }
-                        Divider()
-                        Button("New Tab", systemImage: "plus") { newTab() }
-                    }
-                    .sensoryFeedback(.selection, trigger: currentTarget.block)
+                    principalTitlePill
                 }
                 .sharedBackgroundVisibility(.hidden)
                 // The mic where the terminal has no key bar, and the
@@ -370,7 +314,7 @@ struct TerminalScreen: View {
             // Until the terminal has drawn the snapshot, or 300 ms; a
             // failure ends the wait, to show on the new pane.
             let deadline = ContinuousClock.now + .milliseconds(300)
-            func waits() -> Bool {
+            @MainActor func waits() -> Bool {
                 switch nextSession.state {
                 case .connecting: true
                 case .live: (nextSession.output as? TerminalView)?.drawn != true
@@ -383,6 +327,66 @@ struct TerminalScreen: View {
             guard incoming == id else { return }
             promote(id, to: next, dir: resolvedDir)
         }
+    }
+
+    @ViewBuilder private var principalTitlePill: some View {
+        let k = ProgramTiles.scale
+        let small: CGFloat = 0.85
+        let edge: Edge = slideDir > 0 ? .trailing : .leading
+        HStack(spacing: 10) {
+            ProgramTile(program: .of(host.blocks[currentTarget.block]?.program))
+                .frame(width: 21 * k, height: 16 * k)
+                .scaleEffect(small)
+                .frame(width: 21 * k * small, height: 16 * k * small)
+            Text(title.asText)
+                .font(.body.weight(.semibold))
+                .lineLimit(1)
+                .id(currentTarget.block)
+                .transition(.push(from: edge))
+        }
+        .padding(.leading, 12)
+        .padding(.trailing, 18)
+        .frame(height: 44)
+        .clipped()
+        .background { Capsule().fill(.clear).glassEffect(.regular, in: .capsule) }
+        .contentShape(.capsule)
+        .accessibilityAddTraits(.isButton)
+        .offset(x: pillDrag)
+        .onTapGesture { sheet = true }
+        .highPriorityGesture(
+            DragGesture(minimumDistance: 12)
+                .onChanged { v in
+                    guard sessionWindows.count > 1, abs(v.translation.width) > abs(v.translation.height) else { return }
+                    pillDrag = max(-28, min(28, v.translation.width * 0.35))
+                }
+                .onEnded { v in
+                    withAnimation(.spring(duration: 0.28, bounce: 0.2)) {
+                        pillDrag = 0
+                    }
+                    guard abs(v.translation.width) > 24, abs(v.translation.width) > abs(v.translation.height) else { return }
+                    stepTab(by: v.translation.width < 0 ? 1 : -1)
+                }
+        )
+        .contextMenu {
+            ForEach(sessionWindows, id: \.window.window_id) { w in
+                let open = w.window.holds(currentTarget.block)
+                let label = host.title(w.window)
+                Button {
+                    if !open {
+                        switchTo(TerminalTarget(host: host.id, session: currentTarget.session, block: w.block, title: label))
+                    }
+                } label: {
+                    if open {
+                        Label(label.isEmpty ? sessionLabel : label, systemImage: "checkmark")
+                    } else {
+                        Text(label.isEmpty ? sessionLabel : label)
+                    }
+                }
+            }
+            Divider()
+            Button("New Tab", systemImage: "plus") { newTab() }
+        }
+        .sensoryFeedback(.selection, trigger: currentTarget.block)
     }
 
     /// Slides the waiting pane in and the current one out, the way the
