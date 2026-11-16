@@ -123,13 +123,20 @@ struct TerminalScreen: View {
             // On iPad or with a hardware keyboard (no KeyBar), show the floating preview.
             .overlay(alignment: .bottom) { if !hasBar, let said { Heard(said: said) { terminal?.stopDictating() } } }
             .overlay { status }
-            // The window's panes, above the key bar; it rides the keyboard too.
+            // The reconnect's note and the window's panes, above the key
+            // bar; they ride the keyboard too.
             .overlay(alignment: .bottom) {
-                if paneCellList.count > 1 {
-                    PaneBar(cells: paneCellList, current: currentTarget.block, program: { .of(host.blocks[$0]?.program) }, select: selectPane, newTab: newTab)
-                        .padding(.bottom, hasBar ? KeyBar.height + 10 : 10)
-                        .transition(.opacity.combined(with: .move(edge: .bottom)))
+                VStack(spacing: 10) {
+                    if stalled, let session {
+                        Reconnecting(waitingToSend: session.waitingToSend)
+                            .transition(.move(edge: .bottom).combined(with: .opacity))
+                    }
+                    if paneCellList.count > 1 {
+                        PaneBar(cells: paneCellList, current: currentTarget.block, program: { .of(host.blocks[$0]?.program) }, select: selectPane, newTab: newTab)
+                            .transition(.opacity.combined(with: .move(edge: .bottom)))
+                    }
                 }
+                .padding(.bottom, hasBar ? KeyBar.height + 10 : 10)
             }
             // The layout, floating under the toolbar's right side for a
             // moment after a switch, as Rex Go shows it.
@@ -143,13 +150,6 @@ struct TerminalScreen: View {
                 }
             }
             .animation(.spring(duration: 0.28, bounce: 0.16), value: paneMapShown)
-            .overlay(alignment: .top) {
-                if stalled, let session {
-                    Reconnecting(waitingToSend: session.waitingToSend)
-                        .padding(.top, 8)
-                        .transition(.move(edge: .top).combined(with: .opacity))
-                }
-            }
             .task(id: troubled) {
                 guard troubled else {
                     withAnimation(.easeOut(duration: 0.2)) { stalled = false }
@@ -614,7 +614,7 @@ struct TerminalScreen: View {
     @ViewBuilder private var status: some View {
         switch session?.state ?? .connecting {
         case .connecting:
-            // A reconnect shows its note at the top instead.
+            // A reconnect shows its note above the key bar instead.
             if session?.reconnecting != true { ProgressView() }
         case .live:
             EmptyView()
@@ -636,8 +636,9 @@ struct TerminalScreen: View {
     }
 }
 
-/// The note of a terminal that reconnects, under the navigation bar: it
-/// lets the terminal show, and touches go through it.
+/// The note of a terminal that reconnects, above the key bar, or above the
+/// keyboard where the terminal has none: it lets the terminal show, and
+/// touches go through it.
 private struct Reconnecting: View {
     let waitingToSend: Bool
 
