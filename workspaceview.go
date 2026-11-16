@@ -19,7 +19,8 @@ func init() {
 
 // workspaceChip shows the window's workspace, which the interface calls a
 // session: a click lists the workspaces, to show another, make one or
-// rename this one. In the sidebar it is wide, a row of its own.
+// rename this one. In the sidebar it is wide, a row of its own. It has no
+// icon; a program at work shows its dots on its tab's row only.
 func (a *App) workspaceChip(c *ui.Context, k *colors, wide bool) {
 	w := a.ws
 	if w == nil {
@@ -38,12 +39,7 @@ func (a *App) workspaceChip(c *ui.Context, k *colors, wide bool) {
 	if chip.Clicked() && !a.wsRenaming {
 		a.wsOpen = !a.wsOpen
 	}
-	glyph := k.textMuted
-	if _, ok := spaceColorHex(w.Color); ok {
-		glyph = k.accent
-	}
 	chip.Children(func() {
-		glyphIcon(c, "layers", 15, glyph).Shrink(0)
 		if a.wsRenaming {
 			a.workspaceRenameField(c, k, w.Name)
 			return
@@ -52,7 +48,7 @@ func (a *App) workspaceChip(c *ui.Context, k *colors, wide bool) {
 		if wide {
 			name.Grow(1)
 		}
-		if s := a.st.status(w); s != nil && s.State != "idle" {
+		if s := a.st.status(w); needsUser(s) {
 			statusDot(c, k, s, 7)
 		}
 		glyphIcon(c, "chevron-down", 13, k.textFaint).Shrink(0)

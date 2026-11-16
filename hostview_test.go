@@ -278,6 +278,20 @@ func TestSidebarHostView(t *testing.T) {
 	}
 	tt.Frame()
 
+	// A program at work shows its dots on its tab's row only: not on the
+	// space's row under the open host.
+	works := rex.ProgramStatus{ID: "a", State: "working", Updated: time.Now()}
+	h.infos = map[string]rex.SessionInfo{"far2": {ID: "far2", Statuses: []rex.ProgramStatus{works}}}
+	tt.Frame()
+	if _, ok := tt.Find("icy-ridge, " + locales.SessionTabs(1)); !ok {
+		t.Fatalf("no row for the hidden space under the open host; texts %q", tt.Texts())
+	}
+	if _, ok := tt.Find(statusTip(&works)); ok {
+		t.Errorf("the space's row shows the working dots of a session under it")
+	}
+	h.infos = nil
+	tt.Frame()
+
 	// A click on the second space under the host shows it, on that tab.
 	if err := tt.Click("icy-ridge, " + locales.SessionTabs(1)); err != nil {
 		t.Fatal(err)
