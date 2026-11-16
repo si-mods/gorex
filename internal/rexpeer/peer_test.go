@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -66,7 +67,11 @@ func startGorex(t *testing.T) (*rex.Client, string) {
 
 func TestPeerListsAndMirrors(t *testing.T) {
 	c, sock := startGorex(t)
-	a, err := c.Create(rex.CreateOptions{Command: []string{"/bin/sh"}, Cols: 80, Rows: 24})
+	var cmd []string
+	if runtime.GOOS != "windows" {
+		cmd = []string{"/bin/sh"}
+	}
+	a, err := c.Create(rex.CreateOptions{Command: cmd, Cols: 80, Rows: 24})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -129,6 +134,9 @@ func TestPeerListsAndMirrors(t *testing.T) {
 	// A program's title and status come back as Rex reports them.
 	// The shell prints the title and the status, as a program does.
 	command := "printf '\\033]2;build the site\\033\\\\\\033]7501;state=working:app=omp:progress=40\\033\\\\'\n"
+	if runtime.GOOS == "windows" {
+		command = "[Console]::Write(\"$([char]27)]2;build the site$([char]27)\\$([char]27)]7501;state=working:app=omp:progress=40$([char]27)\\\")\r\n"
+	}
 	if err := c.Input(a.ID, []byte(command)); err != nil {
 		t.Fatal(err)
 	}

@@ -275,7 +275,7 @@ func TestLANRefusesAdministering(t *testing.T) {
 // socket, which a test's temporary directory may not be.
 func shortSocket(t *testing.T) string {
 	t.Helper()
-	f, err := os.CreateTemp("/tmp", "gxapi-*.sock")
+	f, err := os.CreateTemp("", "gxapi-*.sock")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -443,7 +443,7 @@ func TestStatusListsListeners(t *testing.T) {
 	if len(got) != 2 {
 		t.Fatalf("listeners = %v, want the socket and --listen's", got)
 	}
-	if got[0]["endpoint"] != "unix://"+sock || got[0]["transport"] != "unix" || got[0]["primary"] != true ||
+	if got[0]["endpoint"] != unixEndpoint(sock) || got[0]["transport"] != "unix" || got[0]["primary"] != true ||
 		got[0]["addresses"].([]any)[0] != sock || got[0]["admission"] != nilIfEmpty(unixAdmission) {
 		t.Errorf("primary = %v", got[0])
 	}

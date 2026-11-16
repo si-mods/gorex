@@ -9,6 +9,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -122,13 +123,20 @@ func decodeChunks(t *testing.T, out []byte) []byte {
 }
 
 func TestSessionRewritesFileImage(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows ConPTY strips Kitty APC sequences")
+	}
 	dir := t.TempDir()
 	data := append(append([]byte(nil), pngHeader...), []byte("pixels")...)
 	if err := os.WriteFile(filepath.Join(dir, "image.png"), data, 0o600); err != nil {
 		t.Fatal(err)
 	}
+	cmd := []string{"/bin/sh", "-c", "printf '\\033_Gi=9,a=T,t=f;image.png\\033\\\\'; sleep 0.1"}
+	if runtime.GOOS == "windows" {
+		cmd = []string{"powershell", "-NoProfile", "-Command", `[Console]::Write("$([char]27)_Gi=9,a=T,t=f;image.png$([char]27)\"); Start-Sleep -Milliseconds 100`}
+	}
 	s, err := newSession("gfx", CreateOptions{
-		Command: []string{"/bin/sh", "-c", "printf '\\033_Gi=9,a=T,t=f;image.png\\033\\\\'; sleep 0.1"},
+		Command: cmd,
 		Dir:     dir, Cols: 40, Rows: 6,
 	}, "", func() {}, spawner{})
 	if err != nil {
@@ -351,12 +359,19 @@ func TestGraphicsHistoryReplacesByID(t *testing.T) {
 // TestSessionReplaysImageOnce: a window attaching to a session whose
 // program sent its image twenty times gets it once.
 func TestSessionReplaysImageOnce(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows ConPTY strips Kitty APC sequences")
+	}
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "image.png"), append(append([]byte(nil), pngHeader...), "pixels"...), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	cmd := []string{"/bin/sh", "-c", "for n in $(seq 20); do printf '\\033_Gi=7,a=T,t=f;image.png\\033\\\\'; done; sleep 0.1"}
+	if runtime.GOOS == "windows" {
+		cmd = []string{"powershell", "-NoProfile", "-Command", `1..20 | ForEach-Object { [Console]::Write("$([char]27)_Gi=7,a=T,t=f;image.png$([char]27)\") }; Start-Sleep -Milliseconds 100`}
+	}
 	s, err := newSession("gfx", CreateOptions{
-		Command: []string{"/bin/sh", "-c", "for n in $(seq 20); do printf '\\033_Gi=7,a=T,t=f;image.png\\033\\\\'; done; sleep 0.1"},
+		Command: cmd,
 		Dir:     dir, Cols: 40, Rows: 6,
 	}, "", func() {}, spawner{})
 	if err != nil {

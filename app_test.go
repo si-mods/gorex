@@ -109,6 +109,21 @@ func newTestApp(t *testing.T) (*App, *ui.Tester) {
 	return a, tt
 }
 
+// appTempDir returns a temporary directory that outlives a's session server,
+// so Windows child processes release their working-directory handle before
+// t.TempDir removes it.
+func appTempDir(t *testing.T, a *App) string {
+	t.Helper()
+	d := t.TempDir()
+	t.Cleanup(func() {
+		a.client.Shutdown()
+		if runtime.GOOS == "windows" {
+			time.Sleep(100 * time.Millisecond)
+		}
+	})
+	return d
+}
+
 // savedWorkspaces reads the workspaces the server keeps.
 func savedWorkspaces(t *testing.T, c *rex.Client) savedStore {
 	t.Helper()
@@ -240,7 +255,11 @@ func TestPanesDump(t *testing.T) {
 	t.Cleanup(func() { debugMain = old })
 	p := a.tab().Focus
 	waitFor(t, tt, "the shell", func() bool { return p.term != nil && strings.Contains(p.term.Text(), testShell.prompt) })
-	p.term.Send([]byte("echo DUMP_$((6*7))\r"))
+	cmd := "echo DUMP_$((6*7))\r"
+	if runtime.GOOS == "windows" {
+		cmd = `powershell -NoProfile -Command "Write-Host ('DUMP_' + (6*7))"` + "\r"
+	}
+	p.term.Send([]byte(cmd))
 	waitFor(t, tt, "the output", func() bool { return strings.Contains(p.term.Text(), "DUMP_42") })
 	tt.Frame()
 

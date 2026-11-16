@@ -603,7 +603,7 @@ func TestDownloadFromHost(t *testing.T) {
 			t.Errorf("a folder %s: %+v", link, x)
 		}
 	}
-	if x := clicked(t, a, tt, p, "missing.txt"); !strings.Contains(x.err, "no such file") {
+	if x := clicked(t, a, tt, p, "missing.txt"); !strings.Contains(x.err, "no such file") && !strings.Contains(x.err, "cannot find the file") {
 		t.Errorf("a missing file: %+v", x)
 	}
 	if a.openLink(p, "https://example.com/a.txt") {
@@ -964,7 +964,9 @@ func TestUploadOutlivesConnection(t *testing.T) {
 	close(f.release)
 	proxy.setDown(false)
 	h.poke()
-	waitFor(t, tt, "the path there", func() bool { return strings.Contains(p.term.Text(), "kept.bin") })
+	waitFor(t, tt, "the path there", func() bool {
+		return strings.Contains(strings.ReplaceAll(p.term.Text(), "\n", ""), "kept.bin")
+	})
 	if st, err := os.Stat(filepath.Join(there, "kept.bin")); err != nil || st.Size() != size {
 		t.Errorf("there: %v, %v", st, err)
 	}

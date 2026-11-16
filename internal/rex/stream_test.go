@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
+	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -181,7 +182,11 @@ func TestInputCapture(t *testing.T) {
 // TestClients lists the clients attached to a session.
 func TestInputEnded(t *testing.T) {
 	_, c, sid := streamServer(t, nil)
-	if err := c.Input(sid, []byte("exit\n")); err != nil {
+	exitCmd := "exit\n"
+	if runtime.GOOS == "windows" {
+		exitCmd = "exit\r"
+	}
+	if err := c.Input(sid, []byte(exitCmd)); err != nil {
 		t.Fatal(err)
 	}
 	deadline := time.Now().Add(5 * time.Second)

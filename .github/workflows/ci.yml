@@ -16,11 +16,12 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  # Every job runs on an instabox machine (Ubuntu 24.04) that lives for
+  # Most jobs run on an instabox machine (Ubuntu 24.04) that lives for
   # the job, a fork's pull request too. The Mac mini's runner takes one job
-  # at a time and is kept for the release, so no job here waits for it, and
-  # the tests run on Linux only: what fails on macOS or Windows alone shows
-  # on a developer's machine. si-mods runs no job on GitHub's runners.
+  # at a time and is kept for the release, so no job here waits for it.
+  # Windows tests run on the self-hosted YIBO-PC runner (same-repo PRs and
+  # pushes only); macOS-only issues still show on a developer's machine.
+  # si-mods runs no job on GitHub's runners.
 
   # gofmt and vet, and each system's code cross-compiled.
   build:
@@ -130,6 +131,29 @@ jobs:
             run() { "$RUNNER_TEMP/gorex.test" -test.timeout 15m -test.run "^($tests)\$"; }
             run || { echo "::warning::$PART failed, running it once more"; run; }
           fi
+
+  test-windows:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, yibo-pc]
+    timeout-minutes: 25
+    steps:
+      - run: git config --global core.autocrlf false
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: false
+      # Root UI integration tests take ~40m and hit Session 0 timing flakes on
+      # yibo-pc, so CI runs all subpackages here (~3.5m) which cover ConPTY,
+      # session server, CLI, rexapi, and Windows-specific subsystems.
+      - name: test
+        shell: powershell
+        env:
+          CGO_ENABLED: "0"
+        run: |
+          $pkgs = go list ./... | Where-Object { $_ -ne 'gorex' }
+          go test $pkgs -count=1 -timeout 15m
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
   # Builds web/dist (with files.json) and uploads it to Cloudflare R2 on pushes to main.
   web-r2:

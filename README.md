@@ -15,11 +15,20 @@ The signed installer for macOS and Linux is published with each release.
 curl -fsSL https://github.com/si-mods/gorex/releases/latest/download/install.sh | sh
 ```
 
+On Windows (10 1809 or later, x64 and ARM64), run the PowerShell installer
+or download `gorex-setup-*-amd64.exe` / `gorex-setup-*-arm64.exe` from
+[the latest release](https://github.com/si-mods/gorex/releases/latest):
+
+```powershell
+irm https://github.com/si-mods/gorex/releases/latest/download/install.ps1 | iex
+```
+
 On Linux, the per-user install links `gorex` in `~/.local/bin`. Run
 `gorex update` to install a signed update and hand an active local session
 server over to the new version. After installing a newer build yourself,
 `gorex server upgrade` performs the handoff on macOS and Linux; it refuses
-a build whose modification time is not newer than the server's. See
+a build whose modification time is not newer than the server's. On Windows
+and macOS, use **Check for Updates** in the app. See
 [the CLI reference](docs/cli.md#commands).
 
 ## What it does

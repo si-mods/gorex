@@ -113,7 +113,7 @@ func TestNotifyPane(t *testing.T) {
 	t1.Name = "work"
 	p := t1.Focus
 	name, _ := p.label()
-	a.newTab(t.TempDir())
+	a.newTab(appTempDir(t, a))
 	a.notifyStatus(p, &rex.ProgramStatus{State: "blocked", App: "claude", Msg: "Allow edit?"})
 	a.notifyStatus(p, &rex.ProgramStatus{State: "done", App: "claude", LastMsg: "Fixed the test"})
 	a.notifyStatus(p, &rex.ProgramStatus{State: "done", App: name})
@@ -227,7 +227,7 @@ func TestNotificationClickFindsSession(t *testing.T) {
 	var got []mygo.NotificationOptions
 	showNotification = func(o mygo.NotificationOptions) func() { got = append(got, o); return func() {} }
 	first := a.ws
-	a.newTab(t.TempDir())
+	a.newTab(appTempDir(t, a))
 	p := a.tabs[0].Focus
 	a.notifyPane(p, "", program{}, "hi", "")
 	id := got[0].ID
@@ -268,7 +268,7 @@ func TestNotificationClickWaits(t *testing.T) {
 	showNotification = func(o mygo.NotificationOptions) func() { got = append(got, o); return func() {} }
 	p := a.tab().Focus
 	a.notifyPane(p, "", program{}, "hi", "")
-	a.newTab(t.TempDir())
+	a.newTab(appTempDir(t, a))
 	apps := st.apps
 	st.apps = nil
 	st.notificationClicked(got[0].ID)
@@ -295,7 +295,7 @@ func TestNotificationsCloseSeen(t *testing.T) {
 	}
 	t1 := a.tab()
 	p := t1.Focus
-	q := a.newTab(t.TempDir()).Focus
+	q := a.newTab(appTempDir(t, a)).Focus
 	a.focusedWin = true
 	a.notifyProgram(q, "", "on screen")
 	a.notifyProgram(p, "", "one")

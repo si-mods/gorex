@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strconv"
 	"strings"
@@ -656,7 +657,7 @@ func lookPairURL(done chan struct{}) {
 			url, _ = pairURL(res.Tailscale)
 			known = true
 		}
-	} else if _, serr := os.Stat(path); errors.Is(serr, fs.ErrNotExist) || errors.Is(err, syscall.ECONNREFUSED) {
+	} else if _, serr := os.Stat(path); errors.Is(serr, fs.ErrNotExist) || isConnRefused(err) {
 		known = true
 	}
 	pairNow.Lock()
@@ -671,6 +672,15 @@ func lookPairURL(done chan struct{}) {
 	if changed && wake != nil {
 		wake()
 	}
+}
+
+func isConnRefused(err error) bool {
+	if errors.Is(err, syscall.ECONNREFUSED) {
+		return true
+	}
+	// Go's syscall.ECONNREFUSED on Windows is a synthetic POSIX errno, while
+	// net.Dial returns Winsock WSAECONNREFUSED (10061).
+	return runtime.GOOS == "windows" && errors.Is(err, syscall.Errno(10061))
 }
 
 // renderQR draws a QR code in a terminal, two rows a line with half

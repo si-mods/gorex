@@ -165,7 +165,7 @@ func TestSubscribe(t *testing.T) {
 		title, run = "title gorex-t\r", "ping -n 30 127.0.0.1\r"
 	}
 	st.Write([]byte(title))
-	for deadline := time.Now().Add(5 * time.Second); sessionInfo(t, c, sid).Title != "gorex-t"; {
+	for deadline := time.Now().Add(5 * time.Second); !strings.HasSuffix(sessionInfo(t, c, sid).Title, "gorex-t"); {
 		expect("title", "sessions")
 		if time.Now().After(deadline) {
 			t.Fatalf("title %q", sessionInfo(t, c, sid).Title)

@@ -420,7 +420,7 @@ func TestTeleportDropDialog(t *testing.T) {
 	})
 	// Another tab is in front: the dragged one comes to it on Teleport,
 	// so that its overlay shows.
-	a.newTabOn(nil, t.TempDir())
+	a.newTabOn(nil, appTempDir(t, a))
 	drop()
 	if !tt.HasText("move to office-mac") {
 		t.Errorf("no body in %q", tt.Texts())

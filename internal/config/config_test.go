@@ -86,7 +86,7 @@ func TestPath(t *testing.T) {
 	}
 	t.Setenv("GOREX_CONFIG", "")
 	t.Setenv("XDG_CONFIG_HOME", "/tmp/cfg")
-	if got := Path(); got != "/tmp/cfg/gorex/init.lua" {
+	if got := Path(); got != filepath.FromSlash("/tmp/cfg/gorex/init.lua") {
 		t.Fatalf("path %q", got)
 	}
 }

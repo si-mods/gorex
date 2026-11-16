@@ -22,6 +22,7 @@ func TestOmpDirs(t *testing.T) {
 	home, xdg := resolved(t), resolved(t)
 	os.MkdirAll(filepath.Join(xdg, "omp"), 0o755)
 	agent := filepath.Join(home, ".omp", "agent")
+	srvOmp := filepath.Join(home, "srv-omp")
 	for _, c := range []struct {
 		env         map[string]string
 		args        []string
@@ -32,7 +33,7 @@ func TestOmpDirs(t *testing.T) {
 		{map[string]string{"OMP_PROFILE": "work"}, nil, filepath.Join(home, ".omp", "profiles", "work", "agent"), filepath.Join(home, ".omp", "profiles", "work", "agent")},
 		{nil, []string{"omp", "--profile=work"}, filepath.Join(home, ".omp", "profiles", "work", "agent"), filepath.Join(home, ".omp", "profiles", "work", "agent")},
 		{map[string]string{"OMP_PROFILE": "default"}, nil, agent, agent},
-		{map[string]string{"PI_CODING_AGENT_DIR": "/srv/omp"}, nil, "/srv/omp", "/srv/omp"},
+		{map[string]string{"PI_CODING_AGENT_DIR": srvOmp}, nil, srvOmp, srvOmp},
 		{map[string]string{"XDG_DATA_HOME": xdg}, nil, filepath.Join(xdg, "omp"), agent},
 		{map[string]string{"XDG_STATE_HOME": filepath.Join(home, "none")}, nil, agent, agent},
 	} {
