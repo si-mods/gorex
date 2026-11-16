@@ -1,13 +1,16 @@
 import SwiftUI
 
 /// A window's pane layout as a small diagram: the current pane is lit, the
-/// others dim. Interactive, a tap selects the pane it hits; not, it only
-/// shows.
+/// others dim. It only shows, floating briefly after a pane switch, as Rex
+/// Go's does.
 struct PaneMiniMap: View {
     let cells: [PaneCell]
     let current: String
-    var interactive = false
-    var select: ((String) -> Void)?
+    @Environment(\.colorScheme) private var scheme
+
+    /// Explicit ink, so the glass container's vibrancy does not invert the
+    /// current pane: a hierarchical `.primary` came out darker than the rest.
+    private var ink: Color { scheme == .dark ? .white : .black }
 
     var body: some View {
         GeometryReader { g in
@@ -22,60 +25,29 @@ struct PaneMiniMap: View {
                                    y: room.minY + room.height * cell.rect.minY,
                                    width: max(1, room.width * cell.rect.width),
                                    height: max(1, room.height * cell.rect.height))
-                    RoundedRectangle(cornerRadius: interactive ? 5 : 3, style: .continuous)
-                        .fill(cell.block == current ? AnyShapeStyle(.primary.opacity(0.9)) : AnyShapeStyle(.primary.opacity(0.18)))
+                    RoundedRectangle(cornerRadius: 3, style: .continuous)
+                        .fill(cell.block == current ? AnyShapeStyle(ink.opacity(0.9)) : AnyShapeStyle(ink.opacity(0.18)))
                         .overlay {
-                            RoundedRectangle(cornerRadius: interactive ? 5 : 3, style: .continuous)
-                                .strokeBorder(.primary.opacity(cell.block == current ? 0 : 0.08), lineWidth: 0.5)
+                            RoundedRectangle(cornerRadius: 3, style: .continuous)
+                                .strokeBorder(ink.opacity(cell.block == current ? 0 : 0.08), lineWidth: 0.5)
                         }
-                        .frame(width: max(1, r.width - 1.5), height: max(1, r.height - 1.5))
+                        .frame(width: max(1, r.width - 3), height: max(1, r.height - 3))
                         .offset(x: r.minX, y: r.minY)
-                        .contentShape(.rect)
-                        .onTapGesture { if interactive { select?(cell.block) } }
                         .accessibilityLabel(Text(cell.name))
                         .accessibilityValue(Text(cell.block == current ? "Current" : ""))
-                        .accessibilityAddTraits(interactive ? (cell.block == current ? [.isButton, .isSelected] : .isButton) : .isImage)
                 }
             }
         }
-        .accessibilityElement(children: interactive ? .contain : .combine)
+        .accessibilityElement(children: .combine)
         .background {
-            RoundedRectangle(cornerRadius: interactive ? 8 : 5, style: .continuous)
-                .fill(.primary.opacity(0.08))
+            RoundedRectangle(cornerRadius: 5, style: .continuous)
+                .fill(ink.opacity(0.08))
         }
         .overlay {
-            RoundedRectangle(cornerRadius: interactive ? 8 : 5, style: .continuous)
-                .strokeBorder(.primary.opacity(0.12), lineWidth: 0.5)
+            RoundedRectangle(cornerRadius: 5, style: .continuous)
+                .strokeBorder(ink.opacity(0.12), lineWidth: 0.5)
         }
-        .clipShape(RoundedRectangle(cornerRadius: interactive ? 8 : 5, style: .continuous))
-    }
-}
-
-/// The enlarged map, from the toolbar's small one.
-struct PaneMapSheet: View {
-    let cells: [PaneCell]
-    let current: String
-    let select: (String) -> Void
-    @Environment(\.dismiss) private var dismiss
-
-    var body: some View {
-        VStack(spacing: 16) {
-            Text("Panes").font(.headline)
-            PaneMiniMap(cells: cells, current: current, interactive: true) { block in
-                select(block)
-                dismiss()
-            }
-            .frame(width: 220, height: 150)
-            .padding(12)
-            .glassEffect(.regular, in: .rect(cornerRadius: 16))
-            Text("Tap a pane to switch. The list at the bottom switches too.")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-        }
-        .padding(24)
-        .presentationDetents([.height(300)])
-        .presentationDragIndicator(.visible)
+        .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
     }
 }
 

@@ -952,16 +952,6 @@
         }
       }
     },
-    "Tap a pane to switch. The list at the bottom switches too.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "点按面板即可切换；底部栏也可以切换。"
-          }
-        }
-      }
-    },
     "Paste": {
       "localizations": {
         "zh-Hans": {

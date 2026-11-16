@@ -61,8 +61,10 @@ struct TerminalScreen: View {
     @State private var stalled = false
     /// Whether the keyboard covers the bottom; the pane bar gives way to it.
     @State private var keyboardUp = false
-    /// Whether the pane map's enlarged sheet shows.
-    @State private var paneMap = false
+    /// Whether the floating pane map shows, briefly after a pane switch.
+    @State private var paneMapShown = false
+    /// The task that hides the floating map.
+    @State private var paneMapTask: Task<Void, Never>?
 
     init(target: TerminalTarget, host: Host, go: @escaping (TerminalTarget?) -> Void) {
         self.target = target
@@ -125,6 +127,22 @@ struct TerminalScreen: View {
                         .transition(.opacity.combined(with: .move(edge: .bottom)))
                 }
             }
+            // The layout, floating under the toolbar's panes icon for a
+            // moment after a switch, as Rex Go shows it.
+            .overlay(alignment: .topTrailing) {
+                if paneMapShown {
+                    PaneMiniMap(cells: paneCellList, current: currentTarget.block)
+                        .frame(width: 128, height: 80)
+                        .padding(8)
+                        .glassEffect(.regular, in: .rect(cornerRadius: 14))
+                        .shadow(color: .black.opacity(0.18), radius: 12, y: 4)
+                        .padding(.top, 8)
+                        .padding(.trailing, 12)
+                        .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .topTrailing)))
+                        .allowsHitTesting(false)
+                }
+            }
+            .animation(.spring(duration: 0.28, bounce: 0.16), value: paneMapShown)
             .overlay(alignment: .top) {
                 if stalled, let session {
                     Reconnecting(waitingToSend: session.waitingToSend)
@@ -155,17 +173,6 @@ struct TerminalScreen: View {
                 // window's menu, New Tab being in the session's sheet and on
                 // ⌘T; the bar's glass draws them.
                 ToolbarItemGroup(placement: .topBarTrailing) {
-                    if paneCellList.count > 1 {
-                        Button { paneMap = true } label: {
-                            PaneMiniMap(cells: paneCellList, current: currentTarget.block)
-                                .frame(width: 44, height: 28)
-                                .frame(width: 44, height: 44)
-                                .contentShape(.rect)
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel("Panes")
-                        .accessibilityHint("Shows the window's panes.")
-                    }
                     if !hasBar { mic }
                     Menu {
                         Button("New Tab", systemImage: "plus") { newTab() }
@@ -173,6 +180,17 @@ struct TerminalScreen: View {
                         Image(systemName: "ellipsis")
                     }
                     .accessibilityLabel("More")
+                    if paneCellList.count > 1 {
+                        Button { flashPaneMap() } label: {
+                            Image(systemName: "rectangle.split.2x1")
+                                .font(.body)
+                                .frame(width: 44, height: 44)
+                                .contentShape(.rect)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Panes")
+                        .accessibilityHint("Shows the window's panes.")
+                    }
                 }
             }
             // The sheet takes the terminal's scheme as the bar does; the
@@ -190,10 +208,6 @@ struct TerminalScreen: View {
                         }
                 }
                 .environment(\.colorScheme, scheme)
-            }
-            .sheet(isPresented: $paneMap) {
-                PaneMapSheet(cells: paneCellList, current: currentTarget.block, select: selectPane)
-                    .environment(\.colorScheme, scheme)
             }
             .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
                 keyboardUp = true
@@ -214,6 +228,7 @@ struct TerminalScreen: View {
                 host.see(session: currentTarget.session, block: currentTarget.block)
             }
             .onDisappear {
+                paneMapTask?.cancel()
                 terminal?.stopDictating()
                 dropIncoming()
                 host.see(session: currentTarget.session, block: currentTarget.block)
@@ -361,6 +376,19 @@ struct TerminalScreen: View {
         selectPane(next)
     }
 
+    /// Shows the layout under the toolbar's panes icon for a moment, then
+    /// takes it away. Only a pane switch and the icon do this; changing tabs
+    /// does not.
+    private func flashPaneMap() {
+        paneMapTask?.cancel()
+        withAnimation(.spring(duration: 0.28, bounce: 0.16)) { paneMapShown = true }
+        paneMapTask = Task { @MainActor in
+            try? await Task.sleep(for: .seconds(1.4))
+            guard !Task.isCancelled else { return }
+            withAnimation(.easeOut(duration: 0.2)) { paneMapShown = false }
+        }
+    }
+
     /// A terminal on the page, at x widths from its place: -1 off to the
     /// left, 0 on the page, 1 off to the right. Its id is its own, not its
     /// block's: a block can come back while its last pane still slides out.
@@ -506,6 +534,7 @@ struct TerminalScreen: View {
         Notifier.shared.onScreen = next
         host.see(session: next.session, block: next.block)
         switching += 1
+        let paneSwitch = next.session == currentTarget.session && (window?.panes.contains(next.block) ?? false)
         withAnimation(.spring(duration: 0.32, bounce: 0.12), completionCriteria: .removed) {
             slideDir = dir
             if let j = pages.firstIndex(where: { $0.session === session }) { pages[j].x = -dir }
@@ -513,6 +542,7 @@ struct TerminalScreen: View {
             session = nextSession
             currentTarget = next
         } completion: {
+            if paneSwitch { flashPaneMap() }
             switching -= 1
             // Once no slide is left, the pages beside it go, but one
             // that waits to slide in.

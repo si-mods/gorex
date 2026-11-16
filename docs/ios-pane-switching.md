@@ -229,17 +229,16 @@ Tab 切换不进 `selectPane`：仍走现有 window 列表/pill 手势，并各�
 两层轴分开：
 
 - **Tab 轴**：沿用现有 `SessionSheet` 的 window 列表与 pill 的 window 手势；不在其中展开面板行（避免与 pane 轴重复）。
-- **Pane 轴**：当前 Tab 内三个互补入口，共用 `panes` 与 `selectPane`：
-  1. **右上角缩略图**：按 `PaneLayout` 的 rect/split 画出与桌面同形状的小图，当前 viewed block 高亮；点击任一格直接切换。它是“同组还有哪些面板、在什么位置”的唯一空间视图。
-  2. **底部面板条**：每个 pane 一个程序图标按钮（`ProgramTile`），当前项高亮；超过 5 个时横向滚动。按钮上叠加该 pane 的状态点；`accessibilityLabel` 用 `paneTitle(block)` + 状态。长按显示名称/状态的 tooltip（可选），不另开列表。Rex Go 本身也用图标而非常显名称；若产品要求名称常显，则把底部条改成可横向滚动的名称胶囊（会增加宽度）。
-  3. **横向滑动**：在终端页面级滑动，一次切换一个 pane；到当前 Tab 的首/尾停住，不跨 Tab。选中文本、鼠标捕获的全屏程序（vim/Claude Code）或拖拽进行中时，滑动手势让位给终端。
+- **Pane 轴**：当前 Tab 内两个入口，共用 `panes` 与 `selectPane`：
+  1. **底部面板条**：每个 pane 一个程序图标按钮（`ProgramTile` 的原生 31.5×24 比例），当前项用紧贴 tile 的描边环；按钮上叠加该 pane 的状态点（blocked 黄、error 红、done 蓝、working 小灰点）。`accessibilityLabel` 用 `paneTitle(block)` + 状态。
+  2. **横向滑动**：在终端页面级滑动，一次切换一个 pane；到当前 Tab 的首/尾停住，不跨 Tab。选中文本、鼠标捕获的全屏程序（vim/Claude Code）或拖拽进行中时，滑动手势让位给终端。
+- **布局缩略图**：工具栏最右是一个独立的 panes icon（`rectangle.split.2x1`），**不是缩略图本身**。切换 pane 后，缩略图在 icon 下方浮出一次，显示 `PaneLayout` 的 rect/split 与当前 pane，约 1.4 秒后自动淡出；点 icon 也可再看一次。缩略图只读，不拦截触摸，也不参与切换。切 Tab 不触发。
+- **单 pane**：`panes.count == 1` 时隐藏 icon 与底部条，保持今天的面板。
 - **标题**：沿用现有 pill，显示当前 pane 的 `paneTitle`/程序与 Tab 名；当前 pane 的状态点在这里也可见。**去掉标题里的 `ProgramTiles` 堆叠**（同组信息已由缩略图与底部条表达），只保留一个当前程序图标。
 - **`+`**：保持现有 New Tab 行为，不在本期新增“新建 pane”。
 - **底部安全区**：面板条与现有 KeyBar/语音胶囊同一区域；键盘或语音出现时面板条收起或上移，二者不叠加（沿用 `TerminalScreen` 的底部 inset 逻辑，实现时验证）。
 
-这样"同组有哪些面板"由缩略图与底部条共同表达，但两者职责不同：缩略图表达**位置/方向/比例**，底部条表达**顺序与快速切换**；不新增第二份面板数据。
-
-`panes.count == 1` 时隐藏缩略图与底部条（没有可切换项），保持与今天单 pane Tab 一致的界面。
+缩略图说明**位置/方向/比例**，底部条给出**顺序与切换**；两者来自同一份 `panes`/`PaneLayout`，不新增第二份面板数据。
 
 ### 5.6 同步与失效
 
@@ -269,12 +268,11 @@ iOS（本期全部改动）：
 - `ios/GoRex/Rex/SessionView.swift`：`tiled` 重命名为 `panes`（更新全部调用点）；新增只读 `PaneLayout`/`PaneSplit`，解码 tiled layer 的 `layout`；抽取 `paneTitle`。
 - `ios/GoRex/Rex/ViewedBlock.swift`（新增）：`ViewedBlockKey`、`ViewedBlockStore`（本地缓存）。
 - `ios/GoRex/Rex/Host.swift`：`paneTitle` 与现有 `title(_:)` 共用；不新增 API 调用。
-- `ios/GoRex/Views/PaneMiniMap.swift`（新增）：按 `PaneLayout` 画位置/比例，当前 pane 高亮，点击命中。
-- `ios/GoRex/Views/PaneBar.swift`（新增）：底部程序图标面板条，状态点与可访问性。
-- `ios/GoRex/Views/TerminalScreen.swift`：打开时按 §5.3 解析；`selectPane`；页面级横向滑动；block 关闭回退；接入缩略图与底部条，并协调 KeyBar 的底部 inset。
+- `ios/GoRex/Rex/PaneGeometry.swift`（新增）：`PaneCell`、`PaneRecord`、`paneCells`、`paneStep`，无 UI 依赖。
+- `ios/GoRex/Views/PaneSwitcher.swift`（新增）：`PaneMiniMap`（只读浮动图）、`PaneBar`（底部图标条与紧凑状态点）。
+- `ios/GoRex/Views/TerminalScreen.swift`：打开时按 §5.3 解析；`selectPane`；页面级横向滑动；pane 切换后浮出缩略图并自动淡出；接入底部条，并协调 KeyBar 的底部 inset。
 - `ios/GoRex/Views/SessionSheet.swift`：保持 window/session 列表，不展开 pane 行。
-- `ios/GoRexTests/ViewedBlockTests.swift`（新增）：解析顺序、持久化、失效清理。
-- `ios/GoRexTests/SessionViewTests.swift`（若不存在则新建）：从 fixture JSON 解析面板顺序、名称与嵌套 `PaneLayout`。
+- `ios/GoRexTests/PaneSwitcherTests.swift`（新增）：嵌套 split 几何、行 fallback、缺失 block、pane 步进边界、viewed block 持久化。
 
 Go / Web：**无改动**。若后续做 §7.2，再改 `internal/rexapi`。
 
