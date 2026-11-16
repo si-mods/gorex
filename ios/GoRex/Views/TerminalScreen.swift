@@ -1012,6 +1012,7 @@ private struct TerminalRepresentable: UIViewRepresentable {
         v.terminal.paneInset = paneInset
         v.onSwipe = onSwipe
         v.canSwipe = canSwipe
+        v.setBottomEdgeColor(UIColor(cgColor: (session.background ?? .black).cgColor))
         context.coordinator.mic.rootView = mic
         context.coordinator.voice.rootView = voice
         v.terminal.bar.setVoice(active: dictating)
