@@ -400,7 +400,16 @@ final class TerminalView: UIView, TerminalOutput {
         guard surface != nil, covered > 0 else { return 0 }
         let c = cursor(width: nil)
         let room = bounds.height - covered - drawnBottom(under: c)
-        return min(0, max(room, inset - c.minY, -covered))
+        let y = min(0, max(room, inset - c.minY, -covered))
+        // The bar draws over the terminal, and scrolling leaves its rows
+        // showing through the glass, but a cursor under it is no cursor at
+        // all: what is on screen and landing under the bar takes the rest of
+        // the slide, so it stays whole above it.
+        let bar = barCover
+        guard bar > 0, c.maxY <= bounds.height else { return y }
+        let top = bounds.height - covered - bar
+        guard c.maxY + y > top else { return y }
+        return max(-covered - bar, top - c.maxY)
     }
 
     /// Slides the terminal there, the scroll indicator's insets with it, and
