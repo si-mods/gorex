@@ -11,8 +11,11 @@ struct PaneMiniMap: View {
 
     var body: some View {
         GeometryReader { g in
-            let inset: CGFloat = 3
-            let room = CGRect(x: inset, y: inset, width: max(0, g.size.width - inset * 2), height: max(0, g.size.height - inset * 2))
+            let hInset: CGFloat = 6
+            let vInset: CGFloat = 3.5
+            let room = CGRect(x: hInset, y: vInset,
+                              width: max(0, g.size.width - hInset * 2),
+                              height: max(0, g.size.height - vInset * 2))
             ZStack(alignment: .topLeading) {
                 ForEach(cells) { cell in
                     let r = CGRect(x: room.minX + room.width * cell.rect.minX,
@@ -87,26 +90,26 @@ struct PaneBar: View {
     let newTab: () -> Void
 
     var body: some View {
-        HStack(spacing: 2) {
+        HStack(spacing: 0) {
             ForEach(cells) { cell in
                 Button { select(cell.block) } label: {
                     ProgramTile(program: program(cell.block))
-                        .frame(width: 24, height: 18)
-                        .padding(6)
-                        .background {
-                            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                .fill(cell.block == current ? AnyShapeStyle(.primary.opacity(0.16)) : AnyShapeStyle(.clear))
-                        }
+                        .frame(width: 21 * ProgramTiles.scale, height: 16 * ProgramTiles.scale)
                         .overlay {
-                            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                .strokeBorder(.primary.opacity(cell.block == current ? 0.5 : 0), lineWidth: 1)
+                            if cell.block == current {
+                                RoundedRectangle(cornerRadius: 8.5, style: .continuous)
+                                    .strokeBorder(.primary.opacity(0.55), lineWidth: 1.3)
+                                    .padding(-2)
+                            }
                         }
                         .overlay(alignment: .topTrailing) {
                             if let record = cell.record {
-                                ProgramStatusMark(state: record.state, progress: record.progress, dotSize: 6)
-                                    .offset(x: 2, y: -2)
+                                PaneStatus(record: record)
+                                    .offset(x: 4, y: -4)
                             }
                         }
+                        .padding(5)
+                        .contentShape(.rect)
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(Text(cell.name))
@@ -114,19 +117,42 @@ struct PaneBar: View {
                 .accessibilityAddTraits(cell.block == current ? [.isButton, .isSelected] : .isButton)
                 .accessibilityHint(Text("Switch to this pane."))
             }
-            Divider().frame(height: 20).padding(.horizontal, 2)
+            Divider().frame(height: 22).padding(.horizontal, 4)
             Button(action: newTab) {
                 Image(systemName: "plus")
                     .font(.footnote.weight(.semibold))
-                    .frame(width: 24, height: 24)
+                    .frame(width: 30, height: 30)
                     .contentShape(.circle)
             }
             .buttonStyle(.plain)
             .accessibilityLabel("New Tab")
+            .padding(.horizontal, 3)
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 6)
+        .padding(.horizontal, 5)
+        .padding(.vertical, 3)
         .glassEffect(.regular, in: .capsule)
         .animation(.snappy, value: current)
+    }
+}
+
+
+/// A pane's record in the bar, small enough not to cover its tile: a dot
+/// in the color of the state, or a quiet one while its program works.
+private struct PaneStatus: View {
+    let record: PaneRecord
+
+    var body: some View {
+        switch record.state {
+        case "blocked":
+            Circle().fill(Color.attention).frame(width: 7, height: 7)
+        case "error":
+            Circle().fill(.red).frame(width: 7, height: 7)
+        case "done":
+            Circle().fill(Color.done).frame(width: 7, height: 7)
+        case "working":
+            Circle().fill(.secondary).frame(width: 6, height: 6)
+        default:
+            EmptyView()
+        }
     }
 }
