@@ -12,7 +12,9 @@ bullet that reads like a commit subject is one testers cannot read, and the
 ## en-US
 
 - The mic in the key bar now taps your hand as its keys do, as your finger goes down.
+- A terminal that loses its connection shows its note above the key bar, near the bottom, and the note moves up with the keyboard.
 
 ## zh-Hans
 
 - 键盘栏的麦克风现在和旁边的按键一样，手指按下时就震动一下。
+- 终端断线重连时，提示条显示在按键栏上方、贴近底部，并随键盘一起上移。
