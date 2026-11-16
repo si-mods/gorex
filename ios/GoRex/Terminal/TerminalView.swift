@@ -533,7 +533,7 @@ final class TerminalView: UIView, TerminalOutput {
     /// comes and goes.
     @objc private func showBar() {
         bar.isHidden = !Self.hasBar
-        (superview as? TerminalHost)?.setBottomEdgeHidden(bar.isHidden)
+        (superview as? TerminalHost)?.placeBottomEdge()
         slide(duration: 0)
     }
 
@@ -931,11 +931,17 @@ final class TerminalHost: UIView, UIGestureRecognizerDelegate {
     /// inset and the key bar at once, so they don't animate from .zero under
     /// the switch's spring.
     var snaps = false
-    /// The fade behind the phone's key bar, as the top edge's under the
-    /// status bar: solid from the bottom to the bar's middle, clear at the
-    /// bar's top, so the row the cursor rests on above the bar is never
-    /// covered; it changes no inset.
-    private var bottomEdge: EdgeFadeView?
+    /// The fade behind the bars at the bottom, as the top edge's under the
+    /// status bar: solid from the bottom up, clear at the top bar's top, so
+    /// the row the cursor rests on above the bars is never covered; it
+    /// changes no inset. It covers the phone's key bar and what sits above
+    /// it, and goes when neither is there.
+    private let bottomEdge = EdgeFadeView(edge: .bottom, color: .black, fade: KeyBar.height / 2)
+    private var bottomEdgeTop: NSLayoutConstraint?
+    /// How tall the bars above the key bar reach, such as the pane bar,
+    /// counted from the key bar's top, or from the keyboard's (or the home
+    /// indicator's) without it. The bottom edge reaches over them too.
+    var aboveBar: CGFloat = 0 { didSet { if aboveBar != oldValue { placeBottomEdge() } } }
 
     init(_ terminal: TerminalView) {
         self.terminal = terminal
@@ -948,24 +954,26 @@ final class TerminalHost: UIView, UIGestureRecognizerDelegate {
             swipe.cancelsTouchesInView = false
             addGestureRecognizer(swipe)
         }
+        let edge = bottomEdge
+        edge.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(edge)
+        let edgeTop = edge.topAnchor.constraint(equalTo: keyboardLayoutGuide.topAnchor)
+        bottomEdgeTop = edgeTop
+        NSLayoutConstraint.activate([
+            edge.leadingAnchor.constraint(equalTo: leadingAnchor),
+            edge.trailingAnchor.constraint(equalTo: trailingAnchor),
+            edgeTop,
+            edge.bottomAnchor.constraint(equalTo: bottomAnchor),
+        ])
         let anchor: NSLayoutYAxisAnchor
         if UIDevice.current.userInterfaceIdiom != .pad {
             let bar = terminal.bar
             bar.translatesAutoresizingMaskIntoConstraints = false
-            let edge = EdgeFadeView(edge: .bottom, color: .black, fade: KeyBar.height / 2)
-            edge.translatesAutoresizingMaskIntoConstraints = false
-            edge.isHidden = !TerminalView.hasBar
-            bottomEdge = edge
-            addSubview(edge)
             addSubview(bar)
             NSLayoutConstraint.activate([
                 bar.leadingAnchor.constraint(equalTo: leadingAnchor),
                 bar.trailingAnchor.constraint(equalTo: trailingAnchor),
                 bar.bottomAnchor.constraint(equalTo: keyboardLayoutGuide.topAnchor),
-                edge.leadingAnchor.constraint(equalTo: leadingAnchor),
-                edge.trailingAnchor.constraint(equalTo: trailingAnchor),
-                edge.topAnchor.constraint(equalTo: bar.topAnchor),
-                edge.bottomAnchor.constraint(equalTo: bottomAnchor),
             ])
             anchor = bar.topAnchor
         } else {
@@ -1009,6 +1017,7 @@ final class TerminalHost: UIView, UIGestureRecognizerDelegate {
             scrollDown.bottomAnchor.constraint(equalTo: anchor, constant: -12),
         ])
 
+        placeBottomEdge()
         terminal.onScrollState = { [weak self] up, unread in
             self?.updateScrollDown(visible: up, unread: unread)
         }
@@ -1077,11 +1086,17 @@ final class TerminalHost: UIView, UIGestureRecognizerDelegate {
     }
 
     func setBottomEdgeColor(_ color: UIColor) {
-        bottomEdge?.setColor(color)
+        bottomEdge.setColor(color)
     }
 
-    func setBottomEdgeHidden(_ hidden: Bool) {
-        bottomEdge?.isHidden = hidden
+    /// Reaches the bottom edge up over the key bar, when it shows, and the
+    /// bars above it; with neither it goes.
+    func placeBottomEdge() {
+        let bar = terminal.bar
+        let keyBar = bar.superview === self && !bar.isHidden ? KeyBar.height : 0
+        let height = keyBar + aboveBar
+        bottomEdge.isHidden = height == 0
+        bottomEdgeTop?.constant = -height
     }
 }
 
