@@ -942,12 +942,12 @@
         }
       }
     },
-    "Tap a pane or swipe toward one to switch to it.": {
+    "Tap a pane to switch to it.": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "点按面板，或朝该方向滑动，即可切换。"
+            "value": "点按面板即可切换。"
           }
         }
       }

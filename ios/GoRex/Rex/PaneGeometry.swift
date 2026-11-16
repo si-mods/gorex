@@ -63,15 +63,7 @@ private func norm(_ r: [Double]?) -> CGRect? {
     return CGRect(x: r[0], y: r[1], width: r[2], height: r[3])
 }
 
-/// The pane one step along the window's order, for a swipe: nil at the
-/// first or the last, as a swipe stops there and does not cross a tab.
-func paneStep(_ panes: [String], from current: String, by delta: Int) -> String? {
-    guard panes.count > 1, let i = panes.firstIndex(of: current) else { return nil }
-    let next = i + delta
-    return panes.indices.contains(next) ? panes[next] : nil
-}
-
-/// Which way a swipe on the layout map points.
+/// Which way a pane switch goes from the current pane.
 enum PaneDirection {
     case left, right, up, down
 }

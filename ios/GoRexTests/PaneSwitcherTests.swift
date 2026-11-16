@@ -125,14 +125,4 @@ nonisolated final class PaneSwitcherTests: XCTestCase {
         XCTAssertNil(paneNeighbor(cells, from: "left", direction: .down))
         XCTAssertNotNil(paneNeighbor(cells, from: "left", direction: .right))
     }
-
-    @MainActor func testPaneStepStopsAtTheEnds() {
-        let panes = ["a", "b", "c"]
-        XCTAssertEqual(paneStep(panes, from: "a", by: 1), "b")
-        XCTAssertEqual(paneStep(panes, from: "b", by: -1), "a")
-        XCTAssertEqual(paneStep(panes, from: "c", by: 1), nil)
-        XCTAssertEqual(paneStep(panes, from: "a", by: -1), nil)
-        XCTAssertEqual(paneStep(["a"], from: "a", by: 1), nil)
-        XCTAssertEqual(paneStep(panes, from: "gone", by: 1), nil)
-    }
 }

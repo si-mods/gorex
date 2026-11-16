@@ -11,8 +11,6 @@ struct PaneMiniMap: View {
     let currentColor: Color
     /// Tapping a pane switches to it.
     var select: ((String) -> Void)?
-    /// A swipe toward a pane switches to it.
-    var swipe: ((PaneDirection) -> Void)?
     @Environment(\.colorScheme) private var scheme
 
     /// Explicit ink, so the current pane keeps a clear contrast in both
@@ -49,20 +47,7 @@ struct PaneMiniMap: View {
             }
         }
         .accessibilityElement(children: select == nil ? .combine : .contain)
-        .accessibilityHint(select == nil ? Text("") : Text("Tap a pane or swipe toward one to switch to it."))
-        .contentShape(.rect)
-        .gesture(
-            DragGesture(minimumDistance: 12)
-                .onEnded { v in
-                    let dx = v.translation.width, dy = v.translation.height
-                    guard max(abs(dx), abs(dy)) > 12 else { return }
-                    if abs(dx) > abs(dy) {
-                        swipe?(dx < 0 ? .left : .right)
-                    } else {
-                        swipe?(dy < 0 ? .up : .down)
-                    }
-                }
-        )
+        .accessibilityHint(select == nil ? Text("") : Text("Tap a pane to switch to it."))
         .background {
             RoundedRectangle(cornerRadius: 5, style: .continuous)
                 .fill(ink.opacity(0.08))

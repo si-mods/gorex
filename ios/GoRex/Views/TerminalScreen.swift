@@ -92,7 +92,7 @@ struct TerminalScreen: View {
                 let current = pane.session === session
                 TerminalRepresentable(session: pane.session, newTab: newTab, closeTab: closeTab, mic: mic, voice: voiceCapsule, dictating: said != nil && current, snaps: switching > 0,
                                       paneInset: paneCellList.count > 1 ? PaneBar.height + 20 : 0,
-                                      onSwipe: { stepPane(by: $0) },
+                                      onSwipe: { stepPane($0) },
                                       canSwipe: { switching == 0 && incoming == nil && (terminal?.paneSwipeAllowed ?? false) })
                     .offset(x: pane.x * pageWidth)
                     // Before the page's width is known, off the page is hidden.
@@ -142,7 +142,7 @@ struct TerminalScreen: View {
             // moment after a switch, as Rex Go shows it.
             .overlay(alignment: .topTrailing) {
                 if paneMapShown {
-                    PaneMiniMap(cells: paneCellList, current: currentTarget.block, currentColor: paneAccent(currentTarget.block), select: selectPane, swipe: stepPane)
+                    PaneMiniMap(cells: paneCellList, current: currentTarget.block, currentColor: paneAccent(currentTarget.block), select: selectPane)
                         .frame(width: 84, height: 56)
                         .padding(.top, 8)
                         .padding(.trailing, 12)
@@ -303,11 +303,6 @@ struct TerminalScreen: View {
         (hostSession?.view?.windows ?? []).compactMap { w in w.block.map { (block: $0, window: w) } }
     }
 
-    /// The panes of the window open, in layout order.
-    private var windowPanes: [String] {
-        window?.panes ?? []
-    }
-
     /// Where this device remembers the window's last viewed pane.
     private var viewedKey: ViewedBlockKey? {
         guard let w = window else { return nil }
@@ -359,16 +354,9 @@ struct TerminalScreen: View {
         switchTo(TerminalTarget(host: host.id, session: currentTarget.session, block: block, title: host.paneTitle(block, in: w) ?? host.title(w)), dir: to >= from ? 1 : -1)
     }
 
-    /// Moves to the pane nearest in a direction, for a swipe on the map.
+    /// Moves to the pane nearest in a direction, for a two-finger swipe.
     private func stepPane(_ direction: PaneDirection) {
         guard let next = paneNeighbor(paneCellList, from: currentTarget.block, direction: direction) else { return }
-        selectPane(next)
-    }
-
-    /// Moves one pane along the window's order, for a swipe. It stops at the
-    /// first and the last; a tab switch is not a pane switch.
-    private func stepPane(by delta: Int) {
-        guard let next = paneStep(windowPanes, from: currentTarget.block, by: delta) else { return }
         selectPane(next)
     }
 
@@ -998,7 +986,7 @@ private struct TerminalRepresentable: UIViewRepresentable {
     /// stay above it; 0 when the bar is away.
     let paneInset: CGFloat
     /// Moves a pane along the window's order: 1 next, -1 previous.
-    let onSwipe: (Int) -> Void
+    let onSwipe: (PaneDirection) -> Void
     /// Whether a swipe may switch now: no switch under way, no selection,
     /// no full-screen program with the mouse.
     let canSwipe: () -> Bool
