@@ -504,8 +504,11 @@ final class Host: Identifiable {
 
     /// The wait before connecting again after failures in a row: a
     /// terminal's, which never gives up here.
+    /// The wait before dialing a host again after failures in a row: half a
+    /// second, doubling up to ten. A host is dialed again while the app runs.
     static func backoff(after failures: Int) -> Duration {
-        TerminalSession.backoff(after: failures) ?? .seconds(10)
+        let n = min(max(failures, 1), 6)
+        return min(.milliseconds(500) * (1 << (n - 1)), .seconds(10))
     }
 
     /// The control connection, once the host is online: bootstrapped, so

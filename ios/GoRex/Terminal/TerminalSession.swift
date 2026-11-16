@@ -42,12 +42,6 @@ final class TerminalSession {
     private(set) var reconnecting = false
     /// Whether what was typed waits for the host, offline.
     private(set) var waitingToSend = false
-    /// Whether the session failed only for want of a connection, and so
-    /// starts again when its host is back online.
-    @ObservationIgnored private(set) var startsWhenHostIsBack = false
-    /// The starts made on its own since the user's last, or since the
-    /// stream was last live: three at most.
-    @ObservationIgnored private var autoStarts = 0
 
     struct Progress: Equatable {
         /// Done of the whole, nil while the program can't tell.
@@ -133,7 +127,6 @@ final class TerminalSession {
     /// Opens the stream from the start: a ticket, a HELLO, a new snapshot.
     /// The stream before it ends. A closed session opens again.
     func start() {
-        autoStarts = 0
         begin()
     }
 
@@ -141,7 +134,6 @@ final class TerminalSession {
     private func begin() {
         closed = false
         drops = 0
-        startsWhenHostIsBack = false
         setReconnecting(false)
         if let demo {
             state = .live
@@ -183,12 +175,15 @@ final class TerminalSession {
                 guard g == generation else { return }
                 diagnosis = "Waiting for \(d?.stage ?? "the ticket (data.connect)"), \(began.duration(to: .now).ms): \(error.diagnosis)"
                 if d == nil { ConnectionLog.note("terminal \(block): no ticket: \(error.diagnosis)") }
-                // Opened by hand, it tells at once; after a drop, it tries again.
-                // Without a connection, not refused by the server, it
-                // starts again when the host is online.
-                let code = (error as? RexError)?.code
-                let lost = d != nil || code == "offline" || code == "timeout"
-                if drops == 0 { end(.failed(error.localizedDescription), startsWhenHostIsBack: lost) } else { retry(fresh: true) }
+                // A terminal ends only as its session does, or as the server
+                // refuses the stream, which tells at once: a socket lost, a
+                // host away, or a handshake the server answered with an
+                // unusable one tries again, as a window's pane does.
+                if d != nil && !(error is DataConnection.Failure) {
+                    retry(fresh: true)
+                } else {
+                    end(.failed(error.localizedDescription))
+                }
             }
         }
     }
@@ -276,12 +271,9 @@ final class TerminalSession {
         guard going else { return }
         if opened.duration(to: .now) > .seconds(10) { drops = 0 }
         drops += 1
-        guard let wait = Self.backoff(after: drops) else {
-            end(.failed(String(localized: "The connection was lost.")), startsWhenHostIsBack: true)
-            return
-        }
         setReconnecting(true)
         let g = generation
+        let wait = Self.backoff(after: drops)
         Task {
             try? await Task.sleep(for: wait)
             guard g == generation, !closed else { return }
@@ -289,25 +281,12 @@ final class TerminalSession {
         }
     }
 
-    /// Fails the stream, or ends it as its program exited. Failed for
-    /// want of a connection, it starts again once the host is online, a
-    /// few times at most.
-    private func end(_ s: State, startsWhenHostIsBack again: Bool = false) {
+    /// Ends the terminal: its program exited, its window closed, the server
+    /// refused the stream, or its snapshot could not be read. A stream lost
+    /// for want of a connection is not an end: it attaches again (retry).
+    private func end(_ s: State) {
         state = s
-        startsWhenHostIsBack = again
         setReconnecting(false)
-        guard again, demo == nil else { return }
-        let g = generation
-        let h = self.host
-        Task { [weak self] in
-            // It waits while the host is offline, and fails as it is removed.
-            guard (try? await h.online()) != nil else { return }
-            try? await Task.sleep(for: .seconds(2))
-            guard let self, g == self.generation, !self.closed, case .failed = self.state,
-                  self.startsWhenHostIsBack, self.autoStarts < 3 else { return }
-            self.autoStarts += 1
-            self.begin()
-        }
     }
 
     /// Sets the flags only as they change, for no needless updates.
@@ -319,10 +298,12 @@ final class TerminalSession {
         if waitingToSend != w { waitingToSend = w }
     }
 
-    /// The wait before connecting again after drops in a row: half a
-    /// second, doubling up to ten; nil after the sixth.
-    static func backoff(after drops: Int) -> Duration? {
-        drops > 6 ? nil : min(.milliseconds(500) * (1 << (drops - 1)), .seconds(10))
+    /// The wait before connecting again after drops in a row: a quarter of
+    /// a second, doubling up to two, as a window's stream waits. There is no
+    /// sixth: a stream lost attaches again while its session exists.
+    static func backoff(after drops: Int) -> Duration {
+        let n = min(max(drops, 1), 4)
+        return min(.milliseconds(250) * (1 << (n - 1)), .seconds(2))
     }
 
     private func receive(_ bytes: Data) {
@@ -341,7 +322,6 @@ final class TerminalSession {
                 write(Data("\u{1b}c".utf8) + t.replay())
                 state = .live
                 setReconnecting(false)
-                autoStarts = 0
             case .output(let o):
                 write(o)
             case .message(let m):

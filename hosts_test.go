@@ -521,9 +521,12 @@ func TestRemoteHost(t *testing.T) {
 	}
 	p.term.Send([]byte(backCmd))
 	waitFor(t, tt, "the echo after reconnecting", func() bool { return strings.Contains(p.term.Text(), "BACK_42") })
-	if strings.Contains(p.term.Text(), "LOST_2") {
-		t.Error("what was typed while disconnected reached the session")
-	}
+	// What was typed while the stream was away waited for it, in order,
+	// and ran once it attached again: lost for a moment, keys wait
+	// (queuedInputTTL) rather than being dropped unseen.
+	waitFor(t, tt, "the echo of what was typed while away", func() bool {
+		return strings.Contains(p.term.Text(), "LOST_2")
+	})
 
 	// A session that ends on the host closes its pane.
 	a.selectTab(0)
@@ -883,25 +886,81 @@ func TestLocalPaneTakesKeysAfterItsStreamWasLost(t *testing.T) {
 		t.Fatal("the stream of the pane is gone")
 	}
 	st.Close()
-	waitFor(t, tt, "the pane to say the stream was lost", func() bool {
-		return tt.HasText(locales.PaneStreamInterrupted())
-	})
-	waitFor(t, tt, "the stream to attach again", func() bool {
-		return !p.stream.Detached() && !tt.HasText(locales.PaneStreamInterrupted())
-	})
-	// The stream attached again replays the session's screen, and what
-	// is typed reaches it.
-	waitFor(t, tt, "the screen the session sends again", func() bool {
-		return strings.Contains(p.term.Text(), testShell.prompt)
-	})
+	for deadline := time.Now().Add(5 * time.Second); !p.stream.Detached(); time.Sleep(5 * time.Millisecond) {
+		if time.Now().After(deadline) {
+			t.Fatal("the pane did not notice the stream was lost")
+		}
+	}
+	// A stream lost for a moment says nothing (streamNoteDelay), and what
+	// is typed while it is away waits for it: the attach again writes it in
+	// order, and the shell runs it.
 	cmd := "echo AFTER_LOSS_$((6*7))\r"
 	if runtime.GOOS == "windows" {
 		cmd = `powershell -NoProfile -Command "Write-Host ('AFTER_LOSS_' + (6*7))"` + "\r"
 	}
 	p.term.Send([]byte(cmd))
-	waitFor(t, tt, "the shell's output after its stream was lost", func() bool {
+	waitFor(t, tt, "the stream to attach again", func() bool {
+		return !p.stream.Detached()
+	})
+	waitFor(t, tt, "the screen the session sends again", func() bool {
+		return strings.Contains(p.term.Text(), testShell.prompt)
+	})
+	waitFor(t, tt, "the shell's output of what was typed while away", func() bool {
 		return strings.Contains(p.term.Text(), "AFTER_LOSS_42")
 	})
+}
+
+// TestLostStreamWaitsForItsInput is the bound on what a pane keeps while
+// its stream is away: typed at once it waits, in order, and typed 10
+// seconds after the screen stopped it does not — a program the user has
+// stopped seeing takes no key. The pane says so a second after the loss at
+// the earliest.
+func TestLostStreamWaitsForItsInput(t *testing.T) {
+	s := newLocalStream(nil, "sid", 80, 24)
+	defer s.Close()
+	if d := s.DetachedFor(); d != 0 {
+		t.Errorf("an attached stream says it was lost for %v", d)
+	}
+	s.mu.Lock()
+	s.detached, s.detachedAt = true, time.Now()
+	s.mu.Unlock()
+	if d := s.DetachedFor(); d <= 0 || d >= streamNoteDelay {
+		t.Errorf("a stream just lost says it was lost for %v, want under %v", d, streamNoteDelay)
+	}
+	s.Write([]byte("ab"))
+	s.Write([]byte("cd"))
+	s.mu.Lock()
+	queued := string(s.queued)
+	s.mu.Unlock()
+	if queued != "abcd" {
+		t.Errorf("what was typed while away waited as %q, want \"abcd\"", queued)
+	}
+	// The bound in size: what goes past it is dropped, not held.
+	s.mu.Lock()
+	s.queued = []byte(strings.Repeat("x", maxQueuedInput-1))
+	s.mu.Unlock()
+	s.Write([]byte("yz"))
+	s.mu.Lock()
+	n := len(s.queued)
+	s.mu.Unlock()
+	if n != maxQueuedInput {
+		t.Errorf("the queue took %d bytes, want %d", n, maxQueuedInput)
+	}
+	// The bound in time: past queuedInputTTL the keys are dropped, and
+	// what waited before them with them.
+	s.mu.Lock()
+	s.detachedAt = time.Now().Add(-queuedInputTTL - time.Second)
+	s.mu.Unlock()
+	s.Write([]byte("late"))
+	s.mu.Lock()
+	n = len(s.queued)
+	s.mu.Unlock()
+	if n != 0 {
+		t.Errorf("what was typed %v after the loss waited: %d bytes", queuedInputTTL, n)
+	}
+	if d := s.DetachedFor(); d < queuedInputTTL {
+		t.Errorf("a stream lost %v ago says %v", queuedInputTTL, d)
+	}
 }
 
 // TestHostStreamResizeWhileAttaching resizes a remote pane while its

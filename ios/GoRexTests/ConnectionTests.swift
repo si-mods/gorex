@@ -307,16 +307,16 @@ nonisolated final class ConnectionTests: XCTestCase {
         let s = TerminalSession(host: h, session: "s", block: "b")
         s.start()
         await until("failed") { if case .failed = s.state { true } else { false } }
-        XCTAssertFalse(s.startsWhenHostIsBack)
         try await Task.sleep(for: .seconds(3))
         XCTAssertEqual(rex.count("data.connect"), 1)
         s.close()
         h.stop()
     }
 
-    /// A terminal whose data connection fails starts again on its own,
-    /// three times at most; Retry starts it again.
-    @MainActor func testLostConnectionStartsAgainAtMostThreeTimes() async throws {
+    /// A terminal whose data connection keeps failing asks again on its
+    /// own, however many times, as a window's pane does: it ends only as
+    /// its session does.
+    @MainActor func testLostConnectionKeepsConnectingAgain() async throws {
         let rex = try FakeRex()
         defer { rex.stop() }
         let h = try await online(rex)
@@ -324,22 +324,24 @@ nonisolated final class ConnectionTests: XCTestCase {
         rex.data = { c, _ in c.cancel() }
         let s = TerminalSession(host: h, session: "s", block: "b")
         s.start()
-        await until("three restarts", timeout: 20) { rex.count("data.connect") == 4 }
-        try await Task.sleep(for: .seconds(4))
-        XCTAssertEqual(rex.count("data.connect"), 4)
-        if case .failed = s.state {} else { XCTFail("not failed: \(s.state)") }
-        s.start()
-        await until("retry") { rex.count("data.connect") == 5 }
+        // Seven attempts: the waits of a stream that keeps going, at most
+        // two seconds each.
+        await until("seven attempts", timeout: 30) { rex.count("data.connect") >= 7 }
+        if case .failed = s.state { XCTFail("the terminal ended: \(s.state)") }
+        XCTAssertTrue(s.reconnecting)
+        // It goes on asking: a stream lost for good is not the end of it.
+        let asked = rex.count("data.connect")
+        await until("another attempt", timeout: 10) { rex.count("data.connect") > asked }
         s.close()
         h.stop()
     }
 
     @MainActor func testBackoff() {
-        XCTAssertEqual(TerminalSession.backoff(after: 1), .milliseconds(500))
-        XCTAssertEqual(TerminalSession.backoff(after: 2), .seconds(1))
-        XCTAssertEqual(TerminalSession.backoff(after: 5), .seconds(8))
-        XCTAssertEqual(TerminalSession.backoff(after: 6), .seconds(10))
-        XCTAssertNil(TerminalSession.backoff(after: 7))
+        XCTAssertEqual(TerminalSession.backoff(after: 1), .milliseconds(250))
+        XCTAssertEqual(TerminalSession.backoff(after: 2), .milliseconds(500))
+        XCTAssertEqual(TerminalSession.backoff(after: 3), .seconds(1))
+        XCTAssertEqual(TerminalSession.backoff(after: 4), .seconds(2))
+        XCTAssertEqual(TerminalSession.backoff(after: 7), .seconds(2))
     }
 
     /// A terminal closed as its screen went away opens again when it comes back.
