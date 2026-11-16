@@ -71,7 +71,7 @@ func TestWebTransportControlAndHTTP(t *testing.T) {
 		t.Fatalf("wt status invalid: addr=%q hash=%q err=%q", addr, hash, errMsg)
 	}
 
-	dialWT := func(origin string) (*webtransport.Session, error) {
+	dialWT := func(origin string) (*http.Response, *webtransport.Session, error) {
 		d := &webtransport.Transport{
 			TLSClientConfig: &tls.Config{
 				InsecureSkipVerify: true,
@@ -94,24 +94,27 @@ func TestWebTransportControlAndHTTP(t *testing.T) {
 		if origin != "" {
 			hdr.Set("Origin", origin)
 		}
-		resp, sess, err := d.Dial(ctx, "https://"+addr+"/api/wt", hdr) //nolint:bodyclose // closing CONNECT body cancels the WebTransport session
-		if err != nil && resp != nil && resp.Body != nil {
-			resp.Body.Close()
-		}
-		return sess, err
+		return d.Dial(ctx, "https://"+addr+"/api/wt", hdr)
 	}
 
 	// Untrusted origin is rejected.
-	if sess, err := dialWT("https://evil.example"); err == nil {
+	if resp, sess, err := dialWT("https://evil.example"); err == nil {
+		resp.Body.Close()
 		sess.CloseWithError(0, "")
 		t.Fatal("expected untrusted origin to be rejected")
+	} else if resp != nil && resp.Body != nil {
+		resp.Body.Close()
 	}
 
 	// Trusted origin succeeds.
-	sess, err := dialWT("https://web.gorex.uk")
+	resp, sess, err := dialWT("https://web.gorex.uk")
 	if err != nil {
+		if resp != nil && resp.Body != nil {
+			resp.Body.Close()
+		}
 		t.Fatalf("dial trusted wt: %v", err)
 	}
+	defer resp.Body.Close()
 	defer sess.CloseWithError(0, "")
 
 	// 1. Control stream (0x01) -> hello / welcome.
