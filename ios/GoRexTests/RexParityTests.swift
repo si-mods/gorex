@@ -1,8 +1,10 @@
 import XCTest
-@testable import GoRex
 
-final class RexParityTests: XCTestCase {
-    func testProtocolConstantsMatchRev14() {
+// The bundle compiles the app's sources itself (ios/project.yml): there is no
+// GoRex module to import, and `@testable import GoRex` stopped the target
+// building when #612 added it.
+nonisolated final class RexParityTests: XCTestCase {
+    @MainActor func testProtocolConstantsMatchRev14() {
         XCTAssertEqual(RexProtocol.apiRevision, 14)
         XCTAssertEqual(RexProtocol.downloadRevision, 13)
         XCTAssertEqual(RexProtocol.tunnelRevision, 14)
@@ -12,7 +14,7 @@ final class RexParityTests: XCTestCase {
         XCTAssertEqual(RexProtocol.methodTunnelInfo, "com.superlogical.tunnel.info")
     }
 
-    func testDataHandshakeHelloResumeWelcomeAndReject() {
+    @MainActor func testDataHandshakeHelloResumeWelcomeAndReject() {
         let rawTicket = Data(repeating: 0xAA, count: 16)
         let ticket = rawTicket.base64EncodedString()
             .replacingOccurrences(of: "+", with: "-")

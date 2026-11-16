@@ -50,18 +50,45 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
         }
     }
 
+    // The answers below use the completion handlers, not the async forms: for
+    // those, the bridge calls the handler on whatever thread the task resumes
+    // on, and UIKit asserts the main thread right after it, taking the app's
+    // snapshot and state restoration. iOS 27 crashed every notification tap
+    // that way (build 1.1 (86), "Call must be made on main thread").
+
     /// Shows them in the foreground too: post leaves out the terminal on screen.
     nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter,
-                                            willPresent notification: UNNotification) async -> UNNotificationPresentationOptions {
-        [.banner, .list, .sound]
+                                            willPresent notification: UNNotification,
+                                            withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
+        nonisolated(unsafe) let finish = completionHandler
+        Self.onMain { finish([.banner, .list, .sound]) }
     }
 
+    /// Opens the terminal the tapped notification names, then answers.
     nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter,
-                                            didReceive response: UNNotificationResponse) async {
+                                            didReceive response: UNNotificationResponse,
+                                            withCompletionHandler completionHandler: @escaping () -> Void) {
         let info = response.notification.request.content.userInfo
-        guard let host = (info["host"] as? String).flatMap(UUID.init(uuidString:)),
-              let session = info["session"] as? String, let block = info["block"] as? String else { return }
+        let host = (info["host"] as? String).flatMap(UUID.init(uuidString:))
+        let session = info["session"] as? String
+        let block = info["block"] as? String
         let title = info["title"] as? String ?? ""
-        await MainActor.run { opening = TerminalTarget(host: host, session: session, block: block, title: title, explicit: true) }
+        nonisolated(unsafe) let finish = completionHandler
+        Self.onMain {
+            if let host, let session, let block {
+                self.opening = TerminalTarget(host: host, session: session, block: block, title: title, explicit: true)
+            }
+            finish()
+        }
+    }
+
+    /// Runs an answer on the main thread: now when the caller is there, else
+    /// on its next turn.
+    nonisolated static func onMain(_ answer: @escaping @MainActor () -> Void) {
+        if Thread.isMainThread {
+            MainActor.assumeIsolated { answer() }
+        } else {
+            DispatchQueue.main.async { MainActor.assumeIsolated { answer() } }
+        }
     }
 }

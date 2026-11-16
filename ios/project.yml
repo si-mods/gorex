@@ -105,11 +105,14 @@ targets:
     sources:
       - GoRexTests
       - GoRex/Rex
+      - GoRex/Notifier.swift
+      - GoRex/Views/TerminalTarget.swift
       - GoRex/Terminal/VTerminal.swift
       - GoRex/Terminal/KeyEvent.swift
       - GoRex/Terminal/InputDocument.swift
       - GoRex/Terminal/InputTrace.swift
       - GoRex/Terminal/TerminalTheme.swift
+      - GoRex/Terminal/TerminalNotifications.swift
       - GoRex/Terminal/TerminalSession.swift
       - GoRex/Terminal/Maple.swift
       - GoRex/Terminal/WebLink.swift

@@ -1522,12 +1522,3 @@ final class StickPad: UIView {
         UIBezierPath(arcCenter: c, radius: 8, startAngle: 0, endAngle: 2 * .pi, clockwise: true).fill()
     }
 }
-
-extension Notification.Name {
-    /// Settings changed the minimum contrast, posted on the main thread.
-    static let minimumContrast = Notification.Name("minimumContrast")
-    /// Settings changed the terminal theme, posted on the main thread.
-    static let terminalTheme = Notification.Name("terminalTheme")
-    /// Settings changed the terminal font family or size, posted on the main thread.
-    static let terminalFont = Notification.Name("terminalFont")
-}
