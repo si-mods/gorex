@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"maps"
@@ -440,7 +441,7 @@ func TestTeleportPackRefuses(t *testing.T) {
 	}
 	defer c.Kill(in.ID)
 	waitInfo(t, c, in.ID, "the program", func(in SessionInfo) bool { return in.Command && in.Dir != "" })
-	if _, pkg, err := s.pack(in.ID); err == nil || !strings.Contains(err.Error(), prog[0]+" is running") {
+	if _, pkg, err := s.pack(in.ID); err == nil || !strings.Contains(strings.ToLower(err.Error()), prog[0]+" is running") {
 		if pkg != nil {
 			os.Remove(pkg.Name())
 		}
@@ -1308,7 +1309,7 @@ func TestTeleportClientGone(t *testing.T) {
 	// The clone may stay, and the directory of its teleports, empty: the
 	// work tree the teleport made goes.
 	trees, err := os.ReadDir(filepath.Join(dst.home, "remote", ".gorex", "teleport"))
-	if err != nil || len(trees) > 0 {
+	if (err != nil && !errors.Is(err, os.ErrNotExist)) || len(trees) > 0 {
 		t.Errorf("the clone's teleports: %v, %v", trees, err)
 	}
 }

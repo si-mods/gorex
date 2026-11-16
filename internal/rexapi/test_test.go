@@ -34,7 +34,11 @@ func startFixtureVia(t *testing.T, via func(socket string) string) *fixture {
 	t.Helper()
 	dir := t.TempDir()
 	t.Setenv("GOREX_DIR", dir)
-	go rex.Serve()
+	serveDone := make(chan struct{})
+	go func() {
+		defer close(serveDone)
+		rex.Serve()
+	}()
 	for i := 0; i < 500; i++ {
 		if _, err := os.Stat(rex.SocketPath()); err == nil {
 			break
@@ -68,6 +72,7 @@ func startFixtureVia(t *testing.T, via func(socket string) string) *fixture {
 		srv.Close()
 		g.Close()
 		desk.Shutdown()
+		<-serveDone
 	})
 	return f
 }

@@ -338,7 +338,7 @@ func TestSplitFloatTargetsTiled(t *testing.T) {
 	if len(tab.panes()) != 1 || len(tab.Floats) != 1 {
 		t.Fatalf("%d tiled, %d floats", len(tab.panes()), len(tab.Floats))
 	}
-	res := clientCommand(a, rex.LayoutCommand{Op: "pane.split", SID: p.SID, Dir: t.TempDir()})
+	res := clientCommand(a, rex.LayoutCommand{Op: "pane.split", SID: p.SID, Dir: appTempDir(t, a)})
 	if res.Code != "" || res.New == "" {
 		t.Fatalf("split %+v", res)
 	}

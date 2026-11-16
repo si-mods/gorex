@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -191,7 +192,7 @@ func TestLargeNoteStaysOutOfLayout(t *testing.T) {
 	if err != nil || string(b) != text+"more" {
 		t.Errorf("the note's file holds %d bytes, err %v", len(b), err)
 	}
-	if fi, err := os.Stat(p.note.path()); err != nil || fi.Mode().Perm() != 0o600 {
+	if fi, err := os.Stat(p.note.path()); err != nil || (runtime.GOOS != "windows" && fi.Mode().Perm() != 0o600) {
 		t.Errorf("file %v %v", fi, err)
 	}
 	if ents, _ := os.ReadDir(noteDir()); len(ents) != 1 {

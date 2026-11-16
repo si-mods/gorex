@@ -52,8 +52,8 @@ func TestJumpToNeedy(t *testing.T) {
 	now := time.Now()
 	t1 := a.tab()
 	first := t1.Focus
-	t2 := a.newTab(t.TempDir())
-	t3 := a.newTab(t.TempDir())
+	t2 := a.newTab(appTempDir(t, a))
+	t3 := a.newTab(appTempDir(t, a))
 	a.syncBadge()
 	if testBadge.Load() != 0 {
 		t.Fatalf("badge %d without needs", testBadge.Load())
@@ -100,7 +100,7 @@ func TestDockBadgeSetting(t *testing.T) {
 	old := prefs
 	t.Cleanup(func() { prefs = old })
 	prefs = settings{}
-	a.newTab(t.TempDir()) // the first tab is no longer shown
+	a.newTab(appTempDir(t, a)) // the first tab is no longer shown
 	a.tabs[0].Focus.attention = true
 	a.syncBadge()
 	if testBadge.Load() != 1 {
@@ -122,8 +122,8 @@ func TestJumpToNeedyCycles(t *testing.T) {
 	prefs = settings{}
 	now := time.Now()
 	ta := a.tab()
-	tb := a.newTab(t.TempDir())
-	tc := a.newTab(t.TempDir())
+	tb := a.newTab(appTempDir(t, a))
+	tc := a.newTab(appTempDir(t, a))
 	for _, x := range []*Tab{ta, tb, tc} {
 		x.Focus.info.Statuses = oneStatus("blocked", now)
 	}
@@ -154,9 +154,9 @@ func TestJumpWalksInOrder(t *testing.T) {
 	prefs = settings{}
 	now := time.Now()
 	ta := a.tab()
-	tb := a.newTab(t.TempDir())
-	tc := a.newTab(t.TempDir())
-	a.newTab(t.TempDir())
+	tb := a.newTab(appTempDir(t, a))
+	tc := a.newTab(appTempDir(t, a))
+	a.newTab(appTempDir(t, a))
 	ta.Focus.info.Statuses = oneStatus("blocked", now)
 	tb.Focus.info.Statuses = oneStatus("done", now)
 	tc.Focus.info.Statuses = oneStatus("blocked", now)
@@ -187,7 +187,7 @@ func TestJumpIntoZoomedTab(t *testing.T) {
 	a.zoom(first, true)
 	second.info.Statuses = oneStatus("blocked", now)
 	first.info.Statuses = oneStatus("done", now)
-	a.newTab(t.TempDir()) // away from the first tab
+	a.newTab(appTempDir(t, a)) // away from the first tab
 	tt.Frame()
 	a.jumpToNeedy()
 	if a.tab() != t1 || t1.Focus != second || t1.Zoom != second {
@@ -209,9 +209,9 @@ func TestNeedsPalette(t *testing.T) {
 	prefs = settings{}
 	now := tt.Now()
 	t1 := a.tab()
-	t2 := a.newTab(t.TempDir())
-	t3 := a.newTab(t.TempDir())
-	t4 := a.newTab(t.TempDir())
+	t2 := a.newTab(appTempDir(t, a))
+	t3 := a.newTab(appTempDir(t, a))
+	t4 := a.newTab(appTempDir(t, a))
 	t1.Focus.info.Statuses = []rex.ProgramStatus{{State: "done", Msg: "", LastMsg: "Wrote tests", Updated: now.Add(-5 * time.Minute)}}
 	t2.Focus.info.Statuses = []rex.ProgramStatus{{State: "blocked", Msg: "Allow edit?", Updated: now}}
 	t3.Focus.attention = true
@@ -327,8 +327,8 @@ func TestNeedsPaletteSelection(t *testing.T) {
 	prefs = settings{}
 	now := tt.Now()
 	t1 := a.tab()
-	t2 := a.newTab(t.TempDir())
-	t3 := a.newTab(t.TempDir())
+	t2 := a.newTab(appTempDir(t, a))
+	t3 := a.newTab(appTempDir(t, a))
 	t1.Focus.info.Statuses = oneStatus("done", now)
 	t2.Focus.info.Statuses = oneStatus("done", now)
 	a.selectTab(2)

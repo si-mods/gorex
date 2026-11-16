@@ -18,7 +18,7 @@ func TestGeneratedFilesUpToDate(t *testing.T) {
 		if err != nil {
 			t.Fatalf("read %s: %v (run go generate ./internal/rexproto)", rel, err)
 		}
-		if !bytes.Equal(got, want) {
+		if !bytes.Equal(bytes.ReplaceAll(got, []byte("\r\n"), []byte("\n")), want) {
 			t.Fatalf("%s is out of date with protocol.json; run go generate ./internal/rexproto", rel)
 		}
 	}

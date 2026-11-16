@@ -14,6 +14,7 @@ import (
 	"net/netip"
 	"net/url"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -489,7 +490,7 @@ func (s *Server) serveStatic(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	clean := filepath.Clean("/" + r.URL.Path)
+	clean := path.Clean("/" + r.URL.Path)
 	if clean == "/" {
 		clean = "/index.html"
 	}

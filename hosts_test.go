@@ -38,7 +38,10 @@ func fakeHosts(t *testing.T) {
 		}
 		return rex.ConnectSocketKeepalive(address)
 	}
-	validAddress = func(s string) bool { return strings.HasPrefix(strings.TrimSpace(s), "/") }
+	validAddress = func(s string) bool {
+		s = strings.TrimSpace(s)
+		return strings.HasPrefix(s, "/") || filepath.IsAbs(s)
+	}
 	pairPoll = 50 * time.Millisecond
 	t.Cleanup(func() { dialHost, validAddress, pairPoll = oldDial, oldValid, oldPoll })
 }
@@ -363,7 +366,8 @@ func TestRemoteHost(t *testing.T) {
 	proxy := newHostProxy(t, sock)
 	t.Cleanup(a.stopHosts)
 	h := a.addHost(savedHost{ID: "h1", Name: "office-mac", Address: proxy.path})
-	if b, err := os.ReadFile(hostsPath()); err != nil || !strings.Contains(string(b), proxy.path) {
+	wantAddr, _ := json.Marshal(proxy.path)
+	if b, err := os.ReadFile(hostsPath()); err != nil || !strings.Contains(string(b), string(wantAddr)) {
 		t.Fatalf("hosts.json: %s, %v", b, err)
 	}
 	waitFor(t, tt, "the host to connect", func() bool { return h.state == hostConnected })
@@ -408,7 +412,11 @@ func TestRemoteHost(t *testing.T) {
 	a.selectTab(slices.Index(a.tabs, rt))
 	tt.Frame()
 	waitFor(t, tt, "the remote shell", func() bool { return p.term != nil && strings.Contains(p.term.Text(), testShell.prompt) })
-	p.term.Send([]byte("echo REMOTE_$((6*7))\r"))
+	cmd := "echo REMOTE_$((6*7))\r"
+	if runtime.GOOS == "windows" {
+		cmd = `powershell -NoProfile -Command "Write-Host ('REMOTE_' + (6*7))"` + "\r"
+	}
+	p.term.Send([]byte(cmd))
 	waitFor(t, tt, "the remote echo", func() bool { return strings.Contains(p.term.Text(), "REMOTE_42") })
 	a.split(false)
 	waitFor(t, tt, "the split", func() bool { return len(rt.panes()) == 2 })
@@ -463,14 +471,19 @@ func TestRemoteHost(t *testing.T) {
 		t.Error("a tab opened on a host not connected")
 	}
 	a.err, a.errMsg = "", nil
-	p.term.Send([]byte("echo LOST_$((1+1))\r"))
+	lostCmd, backCmd := "echo LOST_$((1+1))\r", "echo BACK_$((6*7))\r"
+	if runtime.GOOS == "windows" {
+		lostCmd = `powershell -NoProfile -Command "Write-Host ('LOST_' + (1+1))"` + "\r"
+		backCmd = `powershell -NoProfile -Command "Write-Host ('BACK_' + (6*7))"` + "\r"
+	}
+	p.term.Send([]byte(lostCmd))
 	proxy.setDown(false)
 	h.poke()
 	waitFor(t, tt, "the host to come back", func() bool { return h.state == hostConnected && !p.remote.Detached() })
 	if tt.HasText("Reconnecting to office-mac…") {
 		t.Error("the banner stays")
 	}
-	p.term.Send([]byte("echo BACK_$((6*7))\r"))
+	p.term.Send([]byte(backCmd))
 	waitFor(t, tt, "the echo after reconnecting", func() bool { return strings.Contains(p.term.Text(), "BACK_42") })
 	if strings.Contains(p.term.Text(), "LOST_2") {
 		t.Error("what was typed while disconnected reached the session")

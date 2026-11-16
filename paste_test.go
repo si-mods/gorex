@@ -245,6 +245,9 @@ func TestPasteImageReachesAProgramReadingTheClipboard(t *testing.T) {
 // sent to flush it.
 func pasteInto(t *testing.T, mode bool, d transfer.Data, until string) (string, string) {
 	t.Helper()
+	if testShell.path == "cmd.exe" {
+		t.Skip("POSIX shell")
+	}
 	a, tt := newTestApp(t)
 	p := a.tab().Focus
 	waitFor(t, tt, "the shell", func() bool { return p.term != nil && strings.Contains(p.term.Text(), testShell.prompt) })
@@ -302,6 +305,9 @@ func TestPasteOfAPathOverTheSession(t *testing.T) {
 // the text as a paste its session's server writes, bracketed when the
 // program asked for bracketed pastes.
 func TestPasteToAConPTYGoesThroughTheServer(t *testing.T) {
+	if testShell.path == "cmd.exe" {
+		t.Skip("POSIX shell")
+	}
 	a, tt := newTestApp(t)
 	p := a.tab().Focus
 	waitFor(t, tt, "the shell", func() bool { return p.term != nil && strings.Contains(p.term.Text(), testShell.prompt) })
@@ -350,6 +356,9 @@ func pasteKey(tt *ui.Tester) {
 // a client of the host's server.
 func catOnHost(t *testing.T, a *App, tt *ui.Tester, first string) (*Pane, string) {
 	t.Helper()
+	if testShell.path == "cmd.exe" {
+		t.Skip("POSIX shell")
+	}
 	there := dropsDir(t)
 	_, _, p, c := remotePaneOf(t, a, tt, t.TempDir())
 	if err := c.Input(p.SID, []byte(first+"exec cat\r")); err != nil {

@@ -40,11 +40,11 @@ func TestRexImportCreatesSpaces(t *testing.T) {
 	}()
 	// Two sessions, laid out as a Rex server's: one session, one window of
 	// two blocks side by side.
-	one, err := a.client.Create(rex.CreateOptions{Command: []string{"/bin/sh"}, Cols: 80, Rows: 24})
+	one, err := a.client.Create(rex.CreateOptions{Command: []string{testShell.path}, Cols: 80, Rows: 24})
 	if err != nil {
 		t.Fatal(err)
 	}
-	two, err := a.client.Create(rex.CreateOptions{Command: []string{"/bin/sh"}, Cols: 80, Rows: 24})
+	two, err := a.client.Create(rex.CreateOptions{Command: []string{testShell.path}, Cols: 80, Rows: 24})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -77,7 +77,7 @@ func TestRexImportCreatesSpaces(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer peer.Close()
-	state := filepath.Join(t.TempDir(), "rex-import.json")
+	state := filepath.Join(appTempDir(t, a), "rex-import.json")
 	res, err := reximp.Run(ctx, a.client, peer, reximp.Options{
 		Shell:     true,
 		StatePath: state,

@@ -109,6 +109,7 @@ func TestSkillSetupMergesHooks(t *testing.T) {
 
 func TestSkillDetectsAgents(t *testing.T) {
 	home := tempHome(t)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
 	mkdirs(t, filepath.Join(home, ".codex"), filepath.Join(home, ".config", "opencode"))
 
 	code, _, out, errOut := runMain(t, "skill", "setup", "--json")

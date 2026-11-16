@@ -31,7 +31,30 @@ func transferSession(t *testing.T, local, c *Client, dir string) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { local.Kill(info.ID) })
+	t.Cleanup(func() {
+		local.Kill(info.ID)
+		deadline := time.Now().Add(3 * time.Second)
+		for time.Now().Before(deadline) {
+			list, err := local.List()
+			if err != nil {
+				return
+			}
+			found := false
+			for _, s := range list {
+				if s.ID == info.ID && !s.Exited {
+					found = true
+					break
+				}
+			}
+			if !found {
+				if runtime.GOOS == "windows" {
+					time.Sleep(100 * time.Millisecond)
+				}
+				return
+			}
+			time.Sleep(20 * time.Millisecond)
+		}
+	})
 	return info.ID
 }
 
@@ -60,7 +83,7 @@ func wantFile(t *testing.T, path string, want []byte) {
 func TestFileRoundTrip(t *testing.T) {
 	s, _ := testServer(t)
 	local := pipe(s, "")
-	defer local.Close()
+	t.Cleanup(func() { _ = local.Close() })
 	alice := key.NewNode().Public().String()
 	remote := pipe(s, alice)
 	defer remote.Close()
@@ -130,7 +153,7 @@ func TestFileNoSession(t *testing.T) {
 func TestFileResume(t *testing.T) {
 	s, _ := testServer(t)
 	local := pipe(s, "")
-	defer local.Close()
+	t.Cleanup(func() { _ = local.Close() })
 	dir := t.TempDir()
 	sid := transferSession(t, local, local, dir)
 	data := bytes.Repeat([]byte("0123456789"), 10_000)
@@ -217,7 +240,7 @@ func TestFileResume(t *testing.T) {
 func TestFileConflicts(t *testing.T) {
 	s, _ := testServer(t)
 	local := pipe(s, "")
-	defer local.Close()
+	t.Cleanup(func() { _ = local.Close() })
 	dir := t.TempDir()
 	sid := transferSession(t, local, local, dir)
 	for i, want := range []string{"n.tar.gz", "n.tar (1).gz", "n.tar (2).gz"} {
@@ -252,7 +275,7 @@ func TestFileConflicts(t *testing.T) {
 func TestFileBadNames(t *testing.T) {
 	s, _ := testServer(t)
 	local := pipe(s, "")
-	defer local.Close()
+	t.Cleanup(func() { _ = local.Close() })
 	dir := t.TempDir()
 	sid := transferSession(t, local, local, dir)
 	for _, name := range []string{"", ".", "..", "a/b", `a\b`, "../a", "a\x00b", "a\nb", "a\x7fb", strings.Repeat("a", 256)} {
@@ -276,7 +299,7 @@ func TestFileBadNames(t *testing.T) {
 func TestFileEvents(t *testing.T) {
 	s, _ := testServer(t)
 	local := pipe(s, "")
-	defer local.Close()
+	t.Cleanup(func() { _ = local.Close() })
 	sub, plain := pipe(s, ""), pipe(s, "")
 	defer sub.Close()
 	defer plain.Close()
@@ -362,7 +385,7 @@ func TestFileNoCapability(t *testing.T) {
 func TestFileLongName(t *testing.T) {
 	s, _ := testServer(t)
 	local := pipe(s, "")
-	defer local.Close()
+	t.Cleanup(func() { _ = local.Close() })
 	dir := t.TempDir()
 	sid := transferSession(t, local, local, dir)
 	name := strings.Repeat("n", 251) + ".txt"
@@ -386,7 +409,7 @@ func TestFileOverwriteMode(t *testing.T) {
 	}
 	s, _ := testServer(t)
 	local := pipe(s, "")
-	defer local.Close()
+	t.Cleanup(func() { _ = local.Close() })
 	dir := t.TempDir()
 	sid := transferSession(t, local, local, dir)
 	target := filepath.Join(dir, "run.sh")
@@ -409,7 +432,7 @@ func TestFilePartialLink(t *testing.T) {
 	}
 	s, _ := testServer(t)
 	local := pipe(s, "")
-	defer local.Close()
+	t.Cleanup(func() { _ = local.Close() })
 	dir, other := t.TempDir(), t.TempDir()
 	sid := transferSession(t, local, local, dir)
 	victim := filepath.Join(other, "victim")
@@ -432,7 +455,7 @@ func TestFilePartialLink(t *testing.T) {
 func TestFilePutError(t *testing.T) {
 	s, _ := testServer(t)
 	local := pipe(s, "")
-	defer local.Close()
+	t.Cleanup(func() { _ = local.Close() })
 	dir := t.TempDir()
 	sid := transferSession(t, local, local, dir)
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
@@ -482,7 +505,7 @@ func TestFilePutError(t *testing.T) {
 func TestFileAbort(t *testing.T) {
 	s, _ := testServer(t)
 	local := pipe(s, "")
-	defer local.Close()
+	t.Cleanup(func() { _ = local.Close() })
 	dir := t.TempDir()
 	sid := transferSession(t, local, local, dir)
 	f := FilePut{SID: sid, Dir: dir, Name: "a.bin", ID: "a1"}
@@ -512,7 +535,7 @@ func TestFileAbort(t *testing.T) {
 func TestFileSweep(t *testing.T) {
 	s, _ := testServer(t)
 	local := pipe(s, "")
-	defer local.Close()
+	t.Cleanup(func() { _ = local.Close() })
 	dir := t.TempDir()
 	sid := transferSession(t, local, local, dir)
 	old, busy, fresh := filepath.Join(dir, partialName("o", "1")), filepath.Join(dir, partialName("b", "1")), filepath.Join(dir, partialName("f", "1"))
@@ -540,7 +563,7 @@ func TestFileSweep(t *testing.T) {
 func TestFileAbortAfterSession(t *testing.T) {
 	s, _ := testServer(t)
 	local := pipe(s, "")
-	defer local.Close()
+	t.Cleanup(func() { _ = local.Close() })
 	dir := t.TempDir()
 	sid := transferSession(t, local, local, dir)
 	part := filepath.Join(dir, partialName("a.bin", "a1"))
@@ -602,7 +625,7 @@ func (r stalled) ReadAt(b []byte, off int64) (int, error) {
 func TestFilePutCancelled(t *testing.T) {
 	s, _ := testServer(t)
 	local := pipe(s, "")
-	defer local.Close()
+	t.Cleanup(func() { _ = local.Close() })
 	dir := t.TempDir()
 	sid := transferSession(t, local, local, dir)
 	ctx, cancel := context.WithCancel(context.Background())
@@ -638,7 +661,7 @@ func TestFileHome(t *testing.T) {
 	t.Setenv("USERPROFILE", home)
 	s, _ := testServer(t)
 	local := pipe(s, "")
-	defer local.Close()
+	t.Cleanup(func() { _ = local.Close() })
 	sid := transferSession(t, local, local, t.TempDir())
 	path, _, _, err := put(local, sid, "~", "h.txt", "h1", "", []byte("home"))
 	if err != nil || path != filepath.Join(home, "h.txt") {
@@ -660,7 +683,7 @@ func TestFileHome(t *testing.T) {
 func TestDownloadCancelled(t *testing.T) {
 	s, _ := testServer(t)
 	local := pipe(s, "")
-	defer local.Close()
+	t.Cleanup(func() { _ = local.Close() })
 	dir := t.TempDir()
 	sid := transferSession(t, local, local, dir)
 	data := bytes.Repeat([]byte("x"), 8<<20)
@@ -710,7 +733,7 @@ func TestFileTemp(t *testing.T) {
 	}
 	s, _ := testServer(t)
 	local := pipe(s, "")
-	defer local.Close()
+	t.Cleanup(func() { _ = local.Close() })
 	cwd := t.TempDir()
 	sid := transferSession(t, local, local, cwd)
 	f := FilePut{SID: sid, Name: "shot.png", Size: 4, ID: "t1", Temp: true}
@@ -793,7 +816,7 @@ func TestDropDirRefuses(t *testing.T) {
 func TestFilePutAgain(t *testing.T) {
 	s, _ := testServer(t)
 	local := pipe(s, "")
-	defer local.Close()
+	t.Cleanup(func() { _ = local.Close() })
 	dir := t.TempDir()
 	sid := transferSession(t, local, local, dir)
 	data := []byte("kept")

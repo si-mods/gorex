@@ -36,6 +36,15 @@ func sessionUserFromEnv() (*sessionUser, error) {
 	if name == "" {
 		return nil, nil
 	}
+	if !sessionUserSupported {
+		if me, err := user.Current(); err == nil && strings.EqualFold(me.Username, name) {
+			return nil, nil
+		}
+		if _, err := user.Lookup(name); err != nil {
+			return nil, fmt.Errorf("rex: %s: %w", EnvSessionUser, err)
+		}
+		return nil, fmt.Errorf("rex: %s is supported on Linux only", EnvSessionUser)
+	}
 	u, err := lookupSessionUser(name)
 	if err != nil {
 		return nil, err

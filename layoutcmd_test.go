@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"gorex/locales"
 	"os"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -191,7 +192,7 @@ func TestPaneRename(t *testing.T) {
 
 func TestMovePane(t *testing.T) {
 	a, _ := newTestApp(t)
-	dir := t.TempDir()
+	dir := appTempDir(t, a)
 	first := a.tab()
 	a.newTab(dir)
 	second := a.tab()
@@ -451,7 +452,7 @@ func TestMovePaneWithinTab(t *testing.T) {
 
 func TestMovePaneFromActiveTab(t *testing.T) {
 	a, _ := newTestApp(t)
-	dir := t.TempDir()
+	dir := appTempDir(t, a)
 	first := a.tab()
 	a.newTab(dir)
 	second := a.tab()
@@ -472,7 +473,7 @@ func TestMovePaneKeepsActiveTabFocus(t *testing.T) {
 	a, _ := newTestApp(t)
 	a.split(false)
 	first := a.tab()
-	dir := t.TempDir()
+	dir := appTempDir(t, a)
 	a.newTab(dir)
 	second := a.tab()
 	a.selectTab(slices.Index(a.tabs, first))
@@ -632,7 +633,7 @@ func TestCommandPaneMove(t *testing.T) {
 	a.split(false)
 	first := a.tab()
 	p := first.Focus
-	a.newTab(t.TempDir())
+	a.newTab(appTempDir(t, a))
 	target := a.tab().Focus
 	res := clientCommand(a, rex.LayoutCommand{Op: "pane.move", SID: p.SID, Target: target.SID, Direction: "down", Ratio: 0.4})
 	if res.Code != "" || !res.Changed || p.Tab != target.Tab || len(first.panes()) != 1 {
@@ -642,7 +643,7 @@ func TestCommandPaneMove(t *testing.T) {
 		t.Fatalf("moved split %+v", target.Node.Parent)
 	}
 	p = target.Tab.Focus
-	a.newTab(t.TempDir())
+	a.newTab(appTempDir(t, a))
 	src := p.Tab
 	res = clientCommand(a, rex.LayoutCommand{Op: "pane.move", SID: p.SID, NewTab: true, Name: "moved"})
 	if res.Code != "" || !res.Changed || p.Tab == src || p.Tab.Name != "moved" {
@@ -655,9 +656,9 @@ func TestCommandPaneMove(t *testing.T) {
 func TestMovePaneToNewTabKeepsActive(t *testing.T) {
 	a, _ := newTestApp(t)
 	first := a.tab()
-	a.newTab(t.TempDir())
+	a.newTab(appTempDir(t, a))
 	second := a.tab()
-	a.newTab(t.TempDir())
+	a.newTab(appTempDir(t, a))
 	a.selectTab(slices.Index(a.tabs, second))
 	p := first.Focus
 	src := p.Tab
@@ -785,9 +786,13 @@ func TestCommandSpaces(t *testing.T) {
 	}
 	// The program outlives the checks: the server takes the tab of one
 	// that ended out of the layout at once.
+	cmd := []string{"/bin/sh", "-c", "echo made; exec sleep 60"}
+	if runtime.GOOS == "windows" {
+		cmd = []string{"cmd.exe", "/c", "echo made && ping -n 60 127.0.0.1 >nul"}
+	}
 	res = clientCommand(a, rex.LayoutCommand{
 		Op: "tab.create", Space: space, Name: "editor", Dir: os.TempDir(),
-		Command: []string{"/bin/sh", "-c", "echo made; exec sleep 60"}, Focus: true,
+		Command: cmd, Focus: true,
 	})
 	if res.Code != "" || res.New == "" {
 		t.Fatalf("tab.create in a space: %+v", res)
@@ -901,9 +906,13 @@ func TestCommandSplitRunsCommand(t *testing.T) {
 	a, _ := newTestApp(t)
 	first := a.tab().Focus
 	// The program outlives the checks, as in TestCommandSpaces.
+	cmd := []string{"/bin/sh", "-c", "echo split; exec sleep 60"}
+	if runtime.GOOS == "windows" {
+		cmd = []string{"cmd.exe", "/c", "echo split && ping -n 60 127.0.0.1 >nul"}
+	}
 	res := clientCommand(a, rex.LayoutCommand{
 		Op: "pane.split", SID: first.SID, Dir: os.TempDir(), Vertical: true,
-		Command: []string{"/bin/sh", "-c", "echo split; exec sleep 60"},
+		Command: cmd,
 	})
 	if res.Code != "" || res.New == "" {
 		t.Fatalf("pane.split: %+v", res)
