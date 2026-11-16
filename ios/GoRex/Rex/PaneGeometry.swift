@@ -71,3 +71,32 @@ func paneStep(_ panes: [String], from current: String, by delta: Int) -> String?
     let next = i + delta
     return panes.indices.contains(next) ? panes[next] : nil
 }
+
+/// Which way a swipe on the layout map points.
+enum PaneDirection {
+    case left, right, up, down
+}
+
+/// The pane nearest the current one in a direction, by their places: a
+/// candidate must lie mostly that way, so a swipe down from a pane that
+/// spans the height does not jump to a diagonal. Nil when none is there.
+func paneNeighbor(_ cells: [PaneCell], from current: String, direction: PaneDirection) -> String? {
+    guard let here = cells.first(where: { $0.block == current }) else { return nil }
+    let c = CGPoint(x: here.rect.midX, y: here.rect.midY)
+    var best: (block: String, score: CGFloat)?
+    for cell in cells where cell.block != current {
+        let p = CGPoint(x: cell.rect.midX, y: cell.rect.midY)
+        let dx = p.x - c.x, dy = p.y - c.y
+        let primary: CGFloat, secondary: CGFloat
+        switch direction {
+        case .left: primary = -dx; secondary = abs(dy)
+        case .right: primary = dx; secondary = abs(dy)
+        case .up: primary = -dy; secondary = abs(dx)
+        case .down: primary = dy; secondary = abs(dx)
+        }
+        guard primary > 0.001, primary >= secondary else { continue }
+        let score = primary + secondary * 1.5
+        if best == nil || score < best!.score { best = (cell.block, score) }
+    }
+    return best?.block
+}

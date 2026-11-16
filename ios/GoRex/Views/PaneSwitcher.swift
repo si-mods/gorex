@@ -9,8 +9,8 @@ struct PaneMiniMap: View {
     /// The current pane's color, from its program's tile, as Rex Go tints
     /// the pane it shows.
     let currentColor: Color
-    /// Tapping a cell switches to it; nil keeps the map read-only.
-    var select: ((String) -> Void)?
+    /// A swipe toward a pane switches to it; nil keeps the map read-only.
+    var select: ((PaneDirection) -> Void)?
     @Environment(\.colorScheme) private var scheme
 
     /// Explicit ink, so the glass container's vibrancy does not invert the
@@ -38,15 +38,26 @@ struct PaneMiniMap: View {
                         }
                         .frame(width: max(1, r.width - gap), height: max(1, r.height - gap))
                         .offset(x: r.minX + gap / 2, y: r.minY + gap / 2)
-                        .contentShape(.rect)
-                        .onTapGesture { select?(cell.block) }
                         .accessibilityLabel(Text(cell.name))
                         .accessibilityValue(Text(cell.block == current ? "Current" : ""))
-                        .accessibilityAddTraits(select == nil ? .isImage : (cell.block == current ? [.isButton, .isSelected] : .isButton))
                 }
             }
         }
-        .accessibilityElement(children: select == nil ? .combine : .contain)
+        .accessibilityElement(children: .combine)
+        .accessibilityHint(select == nil ? Text("") : Text("Swipe toward a pane to switch to it."))
+        .contentShape(.rect)
+        .gesture(
+            DragGesture(minimumDistance: 12)
+                .onEnded { v in
+                    let dx = v.translation.width, dy = v.translation.height
+                    guard max(abs(dx), abs(dy)) > 12 else { return }
+                    if abs(dx) > abs(dy) {
+                        select?(dx < 0 ? .left : .right)
+                    } else {
+                        select?(dy < 0 ? .up : .down)
+                    }
+                }
+        )
         .background {
             RoundedRectangle(cornerRadius: 5, style: .continuous)
                 .fill(ink.opacity(0.08))

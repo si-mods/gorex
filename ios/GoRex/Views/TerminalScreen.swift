@@ -129,7 +129,7 @@ struct TerminalScreen: View {
             // moment after a switch, as Rex Go shows it.
             .overlay(alignment: .topTrailing) {
                 if paneMapShown {
-                    PaneMiniMap(cells: paneCellList, current: currentTarget.block, currentColor: paneAccent(currentTarget.block), select: selectPane)
+                    PaneMiniMap(cells: paneCellList, current: currentTarget.block, currentColor: paneAccent(currentTarget.block), select: stepPane)
                         .frame(width: 84, height: 56)
                         .padding(.top, 8)
                         .padding(.trailing, 12)
@@ -344,6 +344,12 @@ struct TerminalScreen: View {
         let from = w.panes.firstIndex(of: currentTarget.block) ?? 0
         let to = w.panes.firstIndex(of: block) ?? from
         switchTo(TerminalTarget(host: host.id, session: currentTarget.session, block: block, title: host.paneTitle(block, in: w) ?? host.title(w)), dir: to >= from ? 1 : -1)
+    }
+
+    /// Moves to the pane nearest in a direction, for a swipe on the map.
+    private func stepPane(_ direction: PaneDirection) {
+        guard let next = paneNeighbor(paneCellList, from: currentTarget.block, direction: direction) else { return }
+        selectPane(next)
     }
 
     /// Moves one pane along the window's order, for a swipe. It stops at the
