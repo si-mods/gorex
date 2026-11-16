@@ -36,7 +36,11 @@ func resumeHintFor(shell string, s *savedNode) *resumeHint {
 	// which another pane there may have had.
 	// The layout is a file: an id that is no UUID is not typed.
 	if cont == agentContinue["claude"] && rex.IsUUID(s.AgentSession) {
-		if c, ok := rex.ClaudeResume(shell, s.AgentSession, s.AgentConfigDir); ok {
+		var exe string
+		if len(s.Args) > 0 {
+			exe = s.Args[0]
+		}
+		if c, ok := rex.ClaudeResumeExe(shell, exe, s.AgentSession, s.AgentConfigDir); ok {
 			cont = c
 		}
 	}
