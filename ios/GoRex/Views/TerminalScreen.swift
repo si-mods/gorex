@@ -1010,6 +1010,7 @@ private struct TerminalRepresentable: UIViewRepresentable {
         v.terminal.newTab = newTab
         v.terminal.closeTab = closeTab
         v.terminal.paneInset = paneInset
+        v.aboveBar = paneInset
         v.onSwipe = onSwipe
         v.canSwipe = canSwipe
         v.setBottomEdgeColor(UIColor(cgColor: (session.background ?? .black).cgColor))
