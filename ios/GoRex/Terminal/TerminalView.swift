@@ -476,11 +476,13 @@ final class TerminalView: UIView, TerminalOutput {
         return g.location(in: self).y >= inset
     }
 
-    /// Whether a horizontal swipe may switch panes: not while a selection
-    /// is shown, and not in a full-screen program that has the mouse.
+    /// Whether a two-finger swipe may switch panes: not while a selection
+    /// is shown, not in a full-screen program that has the mouse, and not
+    /// while a pinch sizes the font, whose fingers can drift as a swipe's.
     var paneSwipeAllowed: Bool {
         guard let s = surface else { return false }
-        return !showsSelection && !ghostty_surface_mouse_captured(s)
+        let pinching = gestureRecognizers?.contains { $0 is UIPinchGestureRecognizer && ($0.state == .began || $0.state == .changed) } ?? false
+        return !showsSelection && !pinching && !ghostty_surface_mouse_captured(s)
     }
 
     /// A tap that clears no selection clicks for a program that has the
@@ -918,9 +920,10 @@ final class TerminalHost: UIView, UIGestureRecognizerDelegate {
     let terminal: TerminalView
     private let scrollDown = UIVisualEffectView(effect: UIGlassEffect(style: .regular))
     private let unreadDot = UIView()
-    /// Moves a pane along the window's order: 1 next, -1 previous. Nil on a
-    /// host whose screen has no pane switching.
-    var onSwipe: ((Int) -> Void)?
+    /// Moves to the pane next to the current one, the way the content
+    /// goes: a swipe left brings the pane on the right. Nil on a host whose
+    /// screen has no pane switching.
+    var onSwipe: ((PaneDirection) -> Void)?
     /// Whether a swipe may switch now: no selection, no full-screen program
     /// with the mouse, no switch under way.
     var canSwipe: (() -> Bool)?
@@ -944,9 +947,11 @@ final class TerminalHost: UIView, UIGestureRecognizerDelegate {
         self.terminal = terminal
         super.init(frame: .zero)
         addSubview(terminal)
-        for direction in [UISwipeGestureRecognizer.Direction.left, .right] {
+        // Two fingers, so one keeps scrolling, selecting and clicking.
+        for direction in [UISwipeGestureRecognizer.Direction.left, .right, .up, .down] {
             let swipe = UISwipeGestureRecognizer(target: self, action: #selector(swiped))
             swipe.direction = direction
+            swipe.numberOfTouchesRequired = 2
             swipe.delegate = self
             swipe.cancelsTouchesInView = false
             addGestureRecognizer(swipe)
@@ -1033,13 +1038,19 @@ final class TerminalHost: UIView, UIGestureRecognizerDelegate {
         }
     }
 
-    /// A horizontal swipe moves one pane along the window's order, unless a
-    /// switch is under way or the terminal must keep the touch (a selection,
-    /// a full-screen program with the mouse). The key bar and the
-    /// scroll-to-bottom button keep their own touches.
+    /// A two-finger swipe moves to the pane beside the current one, the
+    /// way the content goes, unless a switch is under way or the terminal
+    /// must keep the touch (a selection, a full-screen program with the
+    /// mouse). The key bar and the scroll-to-bottom button keep their own
+    /// touches.
     @objc private func swiped(_ g: UISwipeGestureRecognizer) {
         guard canSwipe?() != false else { return }
-        onSwipe?(g.direction == .left ? 1 : -1)
+        switch g.direction {
+        case .left: onSwipe?(.right)
+        case .right: onSwipe?(.left)
+        case .up: onSwipe?(.down)
+        default: onSwipe?(.up)
+        }
     }
 
     override func gestureRecognizerShouldBegin(_ g: UIGestureRecognizer) -> Bool {
