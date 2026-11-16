@@ -476,11 +476,13 @@ final class TerminalView: UIView, TerminalOutput {
         return g.location(in: self).y >= inset
     }
 
-    /// Whether a horizontal swipe may switch panes: not while a selection
-    /// is shown, and not in a full-screen program that has the mouse.
+    /// Whether a two-finger swipe may switch panes: not while a selection
+    /// is shown, not in a full-screen program that has the mouse, and not
+    /// while a pinch sizes the font, whose fingers can drift as a swipe's.
     var paneSwipeAllowed: Bool {
         guard let s = surface else { return false }
-        return !showsSelection && !ghostty_surface_mouse_captured(s)
+        let pinching = gestureRecognizers?.contains { $0 is UIPinchGestureRecognizer && ($0.state == .began || $0.state == .changed) } ?? false
+        return !showsSelection && !pinching && !ghostty_surface_mouse_captured(s)
     }
 
     /// A tap that clears no selection clicks for a program that has the

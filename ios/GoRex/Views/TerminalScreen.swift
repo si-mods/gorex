@@ -985,7 +985,8 @@ private struct TerminalRepresentable: UIViewRepresentable {
     /// How far the pane bar reaches over the terminal, for the cursor to
     /// stay above it; 0 when the bar is away.
     let paneInset: CGFloat
-    /// Moves a pane along the window's order: 1 next, -1 previous.
+    /// Moves to the pane next to the current one, the way a two-finger
+    /// swipe goes.
     let onSwipe: (PaneDirection) -> Void
     /// Whether a swipe may switch now: no switch under way, no selection,
     /// no full-screen program with the mouse.
