@@ -1216,6 +1216,13 @@ final class KeyBar: UIView {
             b.accessibilityLabel = hidden ? String(localized: "Show Keyboard") : String(localized: "Hide Keyboard")
         }
 
+        // The mic taps the hand as the keys do, as the finger goes down.
+        // What the tap does is the screen's, so it never keeps the touch.
+        let micDown = PressWatcher(target: self, action: #selector(pressMic))
+        micDown.minimumPressDuration = 0
+        micDown.cancelsTouchesInView = false
+        mic.addGestureRecognizer(micDown)
+
         let middle = Self.capsule(scroll)
         // The middle capsule takes the room the others leave.
         middle.setContentHuggingPriority(.defaultLow, for: .horizontal)
@@ -1296,6 +1303,13 @@ final class KeyBar: UIView {
                 if !self.voiceActive { voiceCapsule.isHidden = true }
             }
         }
+    }
+
+    /// The screen's mic, as it goes down: a light tap of the hand, as the
+    /// keys give.
+    @objc private func pressMic(_ g: UILongPressGestureRecognizer) {
+        guard g.state == .began else { return }
+        tick.impactOccurred()
     }
 
     /// Points the stick: past a dead zone, the arrow of the drag's main
@@ -1405,6 +1419,13 @@ final class KeyBar: UIView {
         c.contentInsets = NSDirectionalEdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0)
         return c
     }
+}
+
+/// A touch, watched as it goes down: it never keeps the touch from the
+/// view, so what the view does with the tap still happens.
+final class PressWatcher: UILongPressGestureRecognizer {
+    override func canPrevent(_ other: UIGestureRecognizer) -> Bool { false }
+    override func canBePrevented(by other: UIGestureRecognizer) -> Bool { false }
 }
 
 /// The stick while held: a disc over its capsule, the quarter it points to
