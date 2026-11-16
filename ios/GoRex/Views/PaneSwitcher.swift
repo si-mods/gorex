@@ -78,7 +78,7 @@ struct PaneMiniMap: View {
 
 /// The panes of the open window, at the bottom: each pane's program, the
 /// current one filled, and a pane's record as a dot. A tap switches; the
-/// plus opens a new window, as Rex Go's bottom bar does.
+/// plus splits the current pane in place.
 struct PaneBar: View {
     /// The bar's height: a tile and its padding, in the capsule's.
     static let height: CGFloat = 32
@@ -87,7 +87,7 @@ struct PaneBar: View {
     let current: String
     let program: (String) -> Program
     let select: (String) -> Void
-    let newTab: () -> Void
+    let newSplit: () -> Void
 
     var body: some View {
         HStack(spacing: 8) {
@@ -121,14 +121,14 @@ struct PaneBar: View {
             .padding(.horizontal, 6)
             .padding(.vertical, 4)
             .glassEffect(.regular, in: .capsule)
-            Button(action: newTab) {
+            Button(action: newSplit) {
                 Image(systemName: "plus")
                     .font(.footnote.weight(.semibold))
                     .frame(width: 30, height: 30)
                     .contentShape(.circle)
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("New Tab")
+            .accessibilityLabel("Split Pane")
             .glassEffect(.regular, in: .circle)
         }
         .animation(.snappy, value: current)

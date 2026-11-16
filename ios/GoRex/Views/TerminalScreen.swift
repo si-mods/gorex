@@ -132,7 +132,7 @@ struct TerminalScreen: View {
                             .transition(.move(edge: .bottom).combined(with: .opacity))
                     }
                     if paneCellList.count > 1 {
-                        PaneBar(cells: paneCellList, current: currentTarget.block, program: { .of(host.blocks[$0]?.program) }, select: selectPane, newTab: newTab)
+                        PaneBar(cells: paneCellList, current: currentTarget.block, program: { .of(host.blocks[$0]?.program) }, select: selectPane, newSplit: newSplit)
                             .transition(.opacity.combined(with: .move(edge: .bottom)))
                     }
                 }
@@ -575,6 +575,20 @@ struct TerminalScreen: View {
         let next = all[(i + delta + all.count) % all.count]
         guard !next.window.holds(from) else { return }
         switchTo(TerminalTarget(host: host.id, session: currentTarget.session, block: next.block, title: host.title(next.window)), dir: delta > 0 ? 1 : -1)
+    }
+
+    /// Splits the pane in place, a new shell beside it in the same window,
+    /// and goes to it.
+    private func newSplit() {
+        Task {
+            do {
+                if let b = try await host.newSplit(beside: currentTarget.block, in: currentTarget.session) {
+                    switchTo(TerminalTarget(host: host.id, session: currentTarget.session, block: b, title: ""), dir: 1)
+                }
+            } catch {
+                failure = ("Can't Split the Pane", error.localizedDescription)
+            }
+        }
     }
 
     /// Opens a new window in the session, and goes to it.
