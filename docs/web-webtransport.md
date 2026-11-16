@@ -104,8 +104,9 @@ Add a `WebTransport`-backed `Transport` implementation (`kind: "direct"`):
 - Note on `Transport.url`: Because `certHash` is self-signed, plain browser `<a href>` / `<iframe>` downloads cannot bypass TLS on `https://<ip>:7298`; `Transport.url` returns `undefined` for WebTransport hosts so file downloads use `Transport.fetch()` + `Blob` URLs (the same path `tailnet` hosts already use).
 
 #### Error Handling & Re-pairing UX
-- **Certificate rotated (> 10 days):** `WebTransport.ready` rejects with `WebTransportError`. Detect this when `certHash` is set and show a clear notice: *"Host certificate rotated or mismatched — scan the host's QR code again to update."*
-- **Chrome Local Network Access (LNA):** When `https://web.gorex.uk` dials a private IP (`192.168.x.x`), Chrome may prompt the user to allow Local Network Access. Keep `openWait` generous enough (or surface a hint if blocked) so users know to accept the browser prompt.
+- **No WebTransport in the browser:** `webTransportAvailable()` (`web/src/webtransport.ts`) checks `typeof WebTransport` before a `certHash` host's connection is retried; `HostConn` then blocks the host (no backoff loop), and the page shows *"This browser can't reach a host directly"* naming the browsers that work, instead of the generic unreachable card.
+- **Certificate rotated, LNA denied, or host down:** A browser reports all three as the same opaque `WebTransportError: Opening handshake failed.`, so a `certHash` host's failure is not diagnosed by probing its gateway (a pinned self-signed certificate and the local network check would fail that probe too). The card names the three causes — allow local network access, `gorex rexapi lan status`, re-scan the pairing QR after rotation — and puts the browser's own words behind *Learn more* (`webTransportProblem`).
+- **Chrome Local Network Access (LNA):** When `https://web.gorex.uk` dials a private IP (`192.168.x.x`), Chrome 142+ blocks the request until the user allows Local Network Access for the page (`net::ERR_BLOCKED_BY_LOCAL_NETWORK_ACCESS_CHECKS` otherwise).
 - **CSP (`web/_headers`):** `connect-src` already includes `https:`, which permits `new WebTransport("https://...")`.
 
 ## Security Considerations

@@ -193,7 +193,8 @@ export class Control {
         if (!welcomed) {
           clearTimeout(timer);
           signal?.removeEventListener("abort", aborted);
-          reject(new RexError("closed", () => t("errorServerClosed", { code: String(e.code) })));
+          // The reason a transport gave (`WebTransport` says "Opening handshake failed.") is the browser's own words; keep them.
+          reject(new RexError("closed", e.reason || (() => t("errorServerClosed", { code: String(e.code) }))));
         }
         c.finish(() => (e.reason ? t("statusClosedReason", { code: String(e.code), reason: e.reason }) : t("statusClosed", { code: String(e.code) })));
       };
