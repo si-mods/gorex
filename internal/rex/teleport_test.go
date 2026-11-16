@@ -743,7 +743,7 @@ func TestPlaceConversationOverOld(t *testing.T) {
 	before := tree(t, config)
 
 	// Behind: it gives way, and comes back as it was on undo.
-	undo, done, err := placeConversation(from, config, m, tree0, dir, "")
+	undo, _, err := placeConversation(from, config, m, tree0, dir, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -769,7 +769,7 @@ func TestPlaceConversationOverOld(t *testing.T) {
 	}
 
 	// Kept: the old copy and the backup are gone.
-	_, done, err = placeConversation(from, config, m, tree0, dir, "")
+	_, done, err := placeConversation(from, config, m, tree0, dir, "")
 	if err != nil {
 		t.Fatal(err)
 	}

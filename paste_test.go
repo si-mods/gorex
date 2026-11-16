@@ -258,11 +258,7 @@ func pasteInto(t *testing.T, mode bool, d transfer.Data, until string) (string, 
 	waitFor(t, tt, "cat", func() bool { return strings.Contains(p.term.Text(), "GO") })
 	tt.SetClipboardData(d)
 	tt.Frame()
-	key := ui.Modifiers(ui.Super)
-	if runtime.GOOS != "darwin" {
-		key = ui.Ctrl | ui.Shift
-	}
-	tt.Key(key, ui.KeyV)
+	pasteKey(tt)
 	waitFor(t, tt, "the paste", func() bool { return strings.Contains(p.term.Text(), until) })
 	p.term.Send([]byte{0x04}) // the end of what cat reads
 	deadline := time.Now().Add(5 * time.Second)
@@ -316,11 +312,7 @@ func TestPasteToAConPTYGoesThroughTheServer(t *testing.T) {
 	// What the server of a Windows session says of it.
 	p.info.ConPTY = true
 	tt.Frame()
-	key := ui.Modifiers(ui.Super)
-	if runtime.GOOS != "darwin" {
-		key = ui.Ctrl | ui.Shift
-	}
-	tt.Key(key, ui.KeyV)
+	pasteKey(tt)
 	read := func(want string) []byte {
 		deadline := time.Now().Add(5 * time.Second)
 		var b []byte
@@ -346,7 +338,7 @@ func TestPasteToAConPTYGoesThroughTheServer(t *testing.T) {
 
 // pasteKey presses the paste key in the window of tt.
 func pasteKey(tt *ui.Tester) {
-	key := ui.Modifiers(ui.Super)
+	key := ui.Super
 	if runtime.GOOS != "darwin" {
 		key = ui.Ctrl | ui.Shift
 	}

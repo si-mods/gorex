@@ -92,7 +92,7 @@ func TestCLI(t *testing.T) {
 		time.Sleep(20 * time.Millisecond)
 	}
 
-	code, _, out, errOut = runMain(t, "remote", "control", "on")
+	code, _, _, errOut = runMain(t, "remote", "control", "on")
 	if code != ExitOK {
 		t.Fatalf("remote control on: %d %s", code, errOut)
 	}
@@ -107,12 +107,12 @@ func TestCLI(t *testing.T) {
 	if code != ExitOK {
 		t.Fatalf("remote relay: %d %s", code, errOut)
 	}
-	code, _, out, _ = runMain(t, "remote", "status")
+	_, _, out, _ = runMain(t, "remote", "status")
 	if !strings.Contains(out, "relay=derp.example.com") {
 		t.Errorf("remote status: %q", out)
 	}
 	runMain(t, "remote", "relay", "default")
-	code, _, out, _ = runMain(t, "remote", "status")
+	_, _, out, _ = runMain(t, "remote", "status")
 	if !strings.Contains(out, "relay=default") {
 		t.Errorf("remote status after relay default: %q", out)
 	}

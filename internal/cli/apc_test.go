@@ -69,7 +69,7 @@ func TestAPCWriterUnterminated(t *testing.T) {
 	if len(got) < len(long) {
 		t.Errorf("the stream kept %d of %d bytes", len(got), len(long)+5)
 	}
-	if w.buf != nil && len(w.buf) > maxAPC {
+	if len(w.buf) > maxAPC {
 		t.Errorf("the writer holds %d bytes", len(w.buf))
 	}
 }

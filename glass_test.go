@@ -91,7 +91,7 @@ func TestGlassWindow(t *testing.T) {
 		t.Fatalf("without a material the background reads %v, want opaque", plainEdge)
 	}
 	tt.SetVibrancy(true)
-	if got := at(edge[0], edge[1]); got[3] >= 255 || got[3] == 0 {
+	if got := at(edge[0], edge[1]); got[3] == 255 || got[3] == 0 {
 		t.Errorf("over the glass the background reads %v, want a translucent wash", got)
 	}
 	glassPane := at(pane[0], pane[1])

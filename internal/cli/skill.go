@@ -720,7 +720,8 @@ func skillRun(action string, args []string, out, errOut io.Writer) (int, bool) {
 	failed := false
 	// Skills: one write per directory, listing every agent that reads it.
 	for _, t := range skillTargets(selected) {
-		change, err := "unchanged", error(nil)
+		var change string
+		var err error
 		if action == "setup" {
 			change, err = installSkill(t.path, stub, *force, *dry)
 		} else {
