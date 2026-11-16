@@ -18,6 +18,13 @@
 - Before any `gh` write, run `git remote -v`. If a remote points to `egoist/gorex`, stop and tell the user; do not add one back.
 - Screenshots for a PR go on a `shots/pr-<n>` branch, linked by commit SHA, with made-up data only (the repo is public). `.github/workflows/delete-shots.yml` deletes the branch when the PR merges.
 
+## Upgrades and restarts
+
+- **Never kill a running server to upgrade it.** A session's terminal belongs to the server process: `Stop-Process`/`pkill` (or an installer over it) loses every shell and its screen for good, and no resume brings them back.
+- Upgrade in place with the newer build's own CLI: `<new GoRex> server upgrade`, with the host's data directory. Outside macOS the server executable is the CLI's own binary, so it must be the new build. Success reads `upgraded in place; terminal sessions kept`; the server logs `upgrading to …` then `resumed N of N sessions`, and `gorex ls` keeps the session IDs (`internal/rex/upgrade.go`, `upgrade_windows.go`). Linux user installs get the same handoff from `gorex update`.
+- `gorex server restart` is not that: the layout comes back with new shells, as its own output says.
+- Practise on an isolated data directory (`GOREX_DIR=<dir> <exe> -server`) before the host that people are working in.
+
 ## iOS TestFlight
 
 - GitHub Actions uploads the iOS app (`.github/workflows/testflight.yml`) on every push to main that touches `ios/**`, `internal/tailnode/**`, `go.mod` or `go.sum`. The job runs on the Mac mini's self-hosted runner (`~/actions-runner-gorex`, label `gorex-testflight`); with the Mac mini off, it waits. Do not upload by hand after a merge; read the build from the run's summary ("Uploaded Rex Go 1.1 (n)").
