@@ -661,13 +661,10 @@ private struct TopEdge: UIViewControllerRepresentable {
     }
 
     final class Controller: UIViewController {
-        private let blurView = UIVisualEffectView(effect: UIBlurEffect(style: .systemUltraThinMaterial))
-        private let maskLayer = CAGradientLayer()
-        private let colorLayer = CAGradientLayer()
-        private var color: UIColor
+        private let edgeView: EdgeFadeView
 
         init(color: UIColor) {
-            self.color = color
+            self.edgeView = EdgeFadeView(edge: .top, color: color)
             super.init(nibName: nil, bundle: nil)
         }
 
@@ -675,82 +672,43 @@ private struct TopEdge: UIViewControllerRepresentable {
         required init?(coder: NSCoder) { fatalError() }
 
         override func loadView() {
-            let v = UIView()
-            v.isUserInteractionEnabled = false
-            v.backgroundColor = .clear
-
-            maskLayer.colors = [UIColor.black.cgColor, UIColor.black.cgColor, UIColor.clear.cgColor]
-            maskLayer.locations = [0, 0.35, 1]
-            maskLayer.startPoint = CGPoint(x: 0.5, y: 0)
-            maskLayer.endPoint = CGPoint(x: 0.5, y: 1)
-
-            blurView.isUserInteractionEnabled = false
-            blurView.layer.mask = maskLayer
-            v.addSubview(blurView)
-
-            colorLayer.locations = [0, 0.35, 1]
-            colorLayer.startPoint = CGPoint(x: 0.5, y: 0)
-            colorLayer.endPoint = CGPoint(x: 0.5, y: 1)
-            v.layer.addSublayer(colorLayer)
-
-            view = v
-            applyColor()
-        }
-
-        override func viewDidLayoutSubviews() {
-            super.viewDidLayoutSubviews()
-            blurView.frame = view.bounds
-            CATransaction.begin()
-            CATransaction.setDisableActions(true)
-            maskLayer.frame = blurView.bounds
-            colorLayer.frame = view.bounds
-            CATransaction.commit()
+            view = edgeView
         }
 
         override func viewWillAppear(_ animated: Bool) {
             super.viewWillAppear(animated)
             if let tc = transitionCoordinator {
-                blurView.alpha = 0
+                edgeView.blurView.alpha = 0
                 tc.animate(alongsideTransition: { _ in
-                    self.blurView.alpha = 1
+                    self.edgeView.blurView.alpha = 1
                 }, completion: { ctx in
-                    if ctx.isCancelled { self.blurView.alpha = 0 }
+                    if ctx.isCancelled { self.edgeView.blurView.alpha = 0 }
                 })
             } else {
-                blurView.alpha = 1
+                edgeView.blurView.alpha = 1
             }
         }
 
         override func viewDidAppear(_ animated: Bool) {
             super.viewDidAppear(animated)
-            blurView.alpha = 1
+            edgeView.blurView.alpha = 1
         }
 
         override func viewWillDisappear(_ animated: Bool) {
             super.viewWillDisappear(animated)
             if let tc = transitionCoordinator {
                 tc.animate(alongsideTransition: { _ in
-                    self.blurView.alpha = 0
+                    self.edgeView.blurView.alpha = 0
                 }, completion: { ctx in
-                    if ctx.isCancelled { self.blurView.alpha = 1 }
+                    if ctx.isCancelled { self.edgeView.blurView.alpha = 1 }
                 })
             } else {
-                blurView.alpha = 0
+                edgeView.blurView.alpha = 0
             }
         }
 
         func setColor(_ c: UIColor) {
-            guard c != color else { return }
-            color = c
-            applyColor()
-        }
-
-        private func applyColor() {
-            colorLayer.colors = [
-                color.cgColor,
-                color.withAlphaComponent(0.75).cgColor,
-                color.withAlphaComponent(0).cgColor,
-            ]
+            edgeView.setColor(c)
         }
     }
 }
@@ -888,6 +846,7 @@ private struct TerminalRepresentable: UIViewRepresentable {
         v.snaps = snaps
         v.terminal.newTab = newTab
         v.terminal.closeTab = closeTab
+        v.setBottomEdgeColor(UIColor(cgColor: (session.background ?? .black).cgColor))
         context.coordinator.mic.rootView = mic
         context.coordinator.voice.rootView = voice
         v.terminal.bar.setVoice(active: dictating)
