@@ -2,15 +2,13 @@ import SwiftUI
 
 /// A window's pane layout as a small diagram: the current pane is lit, the
 /// others dim. It only shows, floating briefly after a pane switch, as Rex
-/// Go's does.
+/// Go's does, and takes no touches: they go to the terminal under it.
 struct PaneMiniMap: View {
     let cells: [PaneCell]
     let current: String
     /// The current pane's color, from its program's tile, as Rex Go tints
     /// the pane it shows.
     let currentColor: Color
-    /// Tapping a pane switches to it.
-    var select: ((String) -> Void)?
     @Environment(\.colorScheme) private var scheme
 
     /// Explicit ink, so the current pane keeps a clear contrast in both
@@ -38,16 +36,14 @@ struct PaneMiniMap: View {
                         }
                         .frame(width: max(1, r.width - gap), height: max(1, r.height - gap))
                         .offset(x: r.minX + gap / 2, y: r.minY + gap / 2)
-                        .contentShape(.rect)
-                        .onTapGesture { select?(cell.block) }
                         .accessibilityLabel(Text(cell.name))
                         .accessibilityValue(cell.block == current ? Text("Current") : Text(""))
-                        .accessibilityAddTraits(select == nil ? .isImage : (cell.block == current ? [.isButton, .isSelected] : .isButton))
+                        .accessibilityAddTraits(.isImage)
                 }
             }
         }
-        .accessibilityElement(children: select == nil ? .combine : .contain)
-        .accessibilityHint(select == nil ? Text("") : Text("Tap a pane to switch to it."))
+        .accessibilityElement(children: .combine)
+        .allowsHitTesting(false)
         .background {
             RoundedRectangle(cornerRadius: 5, style: .continuous)
                 .fill(ink.opacity(0.08))
