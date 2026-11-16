@@ -689,7 +689,8 @@ func savedTabLabel(t savedTab) (string, program) {
 
 // sessionRow is a session under a host in the host view: a chevron, its
 // color, its name and how many tabs it has on the host, and what needs
-// the user there. The chevron opens and closes it on its tabs, as a click
+// the user there; a program at work shows its dots on its tab's row only.
+// The chevron opens and closes it on its tabs, as a click
 // on the window's own does; a right click on that renames it, colors it
 // or closes it, and as the anchor, the first, it holds the space's
 // popover and the field that renames it. Another is a button that shows
@@ -735,7 +736,7 @@ func (a *App) sessionRow(c *ui.Context, k *colors, h *hostConn, w *Workspace, n 
 			return
 		}
 		ui.Text(c, w.Name).FontSize(13).FontWeight(500).TextColor(k.text.Alpha(0.85)).SingleLine().Ellipsis("…").Grow(1).MinWidth(0)
-		if s := a.st.statusOn(w, h); s != nil && s.State != "idle" {
+		if s := a.st.statusOn(w, h); needsUser(s) {
 			statusDot(c, k, s, 7).Label(statusTip(s))
 		}
 		ui.Text(c, fmt.Sprint(n)).FontSize(11.5).TextColor(k.textFaint).Shrink(0)
