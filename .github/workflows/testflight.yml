@@ -89,8 +89,8 @@ jobs:
           (umask 077; printf '%s\n' "$ASC_KEY_P8" > "$ASC_KEY_PATH")
           ios/scripts/upload | tee "$RUNNER_TEMP/upload.log"
           sed -n 's/^UPLOADED /Uploaded Rex Go /p' "$RUNNER_TEMP/upload.log" >> "$GITHUB_STEP_SUMMARY"
-          # What to Test: the app's commits since the last run that uploaded.
-          # Notes that fail leave the upload as it is.
+          # What to Test: what ios/WhatToTest.md gained since the last run
+          # that uploaded. Notes that fail leave the upload as it is.
           read -r V B < <(sed -n 's/^UPLOADED \([0-9.]*\) (\([0-9]*\))$/\1 \2/p' "$RUNNER_TEMP/upload.log") || true
           FROM=$(gh run list -R "$GITHUB_REPOSITORY" --workflow testflight.yml --branch main --status success -L 1 --json headSha -q '.[0].headSha' || true)
           ios/scripts/test-notes "${V:-}" "${B:-}" "${FROM:-HEAD~1}" || echo "::warning::What to Test was not set for ${V:-?} (${B:-?})"
