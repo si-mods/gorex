@@ -1435,13 +1435,15 @@ func hostStatus(h *hostConn) (label, detail string, up bool) {
 // snapshot of the screen and scrollback follows.
 const screenReset = "\x1bc\x1b[H\x1b[2J\x1b[3J"
 
-// hostStream is the Conn of a remote pane's terminal: its session on the
-// host, attached again whenever the host's connection comes back, until
-// the session ends. What is typed while it is detached is dropped, not
-// queued for a screen nobody sees.
-type hostStream struct {
-	h   *hostConn
-	sid string
+// paneStream is the Conn of a pane's terminal: its session on this
+// machine's server or on a host, attached again whenever its connection
+// comes back, until the session ends. What is typed while it is detached
+// is dropped, not queued for a screen nobody sees.
+type paneStream struct {
+	// client returns the client to attach through: this machine's, or the
+	// host's, nil while it has none.
+	client func() *rex.Client
+	sid    string
 	// OnData is told the size of what the session prints, and onChange that
 	// the stream detached or attached again.
 	OnData   func(n int)
@@ -1466,26 +1468,34 @@ type hostStream struct {
 	pending  []byte
 }
 
-func newHostStream(h *hostConn, sid string, cols, rows int) *hostStream {
-	return &hostStream{h: h, sid: sid, cols: cols, rows: rows}
+func newHostStream(h *hostConn, sid string, cols, rows int) *paneStream {
+	return &paneStream{client: h.current, sid: sid, cols: cols, rows: rows}
+}
+
+// newLocalStream is newHostStream for a session of this machine: it
+// attaches through the app's client, and attaches again when the stream
+// is lost, as a host's does, so that a pane whose connection dropped
+// takes what is typed again instead of showing a screen that goes on.
+func newLocalStream(c *rex.Client, sid string, cols, rows int) *paneStream {
+	return &paneStream{client: func() *rex.Client { return c }, sid: sid, cols: cols, rows: rows}
 }
 
 // Detached tells that the stream was lost and is not back yet.
-func (s *hostStream) Detached() bool {
+func (s *paneStream) Detached() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.detached
 }
 
-func (s *hostStream) changed() {
+func (s *paneStream) changed() {
 	if s.onChange != nil {
 		s.onChange()
 	}
 }
 
 // stream returns the stream of the moment, attaching a new one through
-// the host's client once it has one; io.EOF once closed.
-func (s *hostStream) stream() (*rex.Stream, error) {
+// its client once it has one; io.EOF once closed.
+func (s *paneStream) stream() (*rex.Stream, error) {
 	for {
 		s.mu.Lock()
 		if s.closed {
@@ -1499,7 +1509,7 @@ func (s *hostStream) stream() (*rex.Stream, error) {
 		}
 		cols, rows, fails, present := s.cols, s.rows, s.fails, s.present
 		s.mu.Unlock()
-		c := s.h.current()
+		c := s.client()
 		if c == nil || fails > 0 {
 			time.Sleep(min(250*time.Millisecond<<min(fails, 3), 2*time.Second))
 			if c == nil {
@@ -1507,8 +1517,8 @@ func (s *hostStream) stream() (*rex.Stream, error) {
 			}
 		}
 		st := c.Stream(s.sid, cols, rows)
-		// Before it attaches: a host's session is claimed again on each
-		// new stream only while the user is at this machine.
+		// Before it attaches: a session is claimed again on each new
+		// stream only while the user is at this machine.
 		st.SetPresent(present)
 		st.Resize(cols, rows) // attaches now
 		s.mu.Lock()
@@ -1534,7 +1544,7 @@ func (s *hostStream) stream() (*rex.Stream, error) {
 	}
 }
 
-func (s *hostStream) Read(p []byte) (int, error) {
+func (s *paneStream) Read(p []byte) (int, error) {
 	for {
 		s.mu.Lock()
 		if len(s.pending) > 0 {
@@ -1582,7 +1592,7 @@ func (s *hostStream) Read(p []byte) (int, error) {
 
 // lost drops a stream that ended, and tells whether its session ended
 // too, rather than the connection.
-func (s *hostStream) lost(st *rex.Stream, err error) bool {
+func (s *paneStream) lost(st *rex.Stream, err error) bool {
 	st.Close()
 	s.mu.Lock()
 	if s.cur == st {
@@ -1599,7 +1609,7 @@ func (s *hostStream) lost(st *rex.Stream, err error) bool {
 		s.changed()
 	}
 	if err.Error() != "no such session" {
-		c := s.h.current()
+		c := s.client()
 		if c == nil {
 			return false
 		}
@@ -1622,13 +1632,13 @@ func (s *hostStream) lost(st *rex.Stream, err error) bool {
 
 // Gone tells that the session ended without a trace, or that the host no
 // longer shares it with this machine.
-func (s *hostStream) Gone() bool {
+func (s *paneStream) Gone() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.gone
 }
 
-func (s *hostStream) Write(p []byte) (int, error) {
+func (s *paneStream) Write(p []byte) (int, error) {
 	s.mu.Lock()
 	st := s.cur
 	if s.detached {
@@ -1643,8 +1653,8 @@ func (s *hostStream) Write(p []byte) (int, error) {
 
 // Paste writes text to the session as a paste, as the terminal's paste
 // keys would: the host's server brackets it as the program asked.
-func (s *hostStream) Paste(text string) error {
-	c := s.h.current()
+func (s *paneStream) Paste(text string) error {
+	c := s.client()
 	if c == nil {
 		return errors.New("gorex: the host is away")
 	}
@@ -1653,7 +1663,7 @@ func (s *hostStream) Paste(text string) error {
 
 // Resize tells the session the size of the screen, when attached; the
 // next stream attaches at it.
-func (s *hostStream) Resize(cols, rows int) error {
+func (s *paneStream) Resize(cols, rows int) error {
 	s.mu.Lock()
 	s.cols, s.rows = cols, rows
 	s.mu.Unlock()
@@ -1661,9 +1671,18 @@ func (s *hostStream) Resize(cols, rows int) error {
 	return nil
 }
 
+// SetPresent sets what tells whether the user is at this machine, which
+// each stream attaching again reads: a pane of this machine claims the
+// session's size only then.
+func (s *paneStream) SetPresent(present func() bool) {
+	s.mu.Lock()
+	s.present = present
+	s.mu.Unlock()
+}
+
 // SetFocused tells the session whether the user looks at the pane, once
 // attached; a stream attaching again is told when it does (stream).
-func (s *hostStream) SetFocused(on bool) {
+func (s *paneStream) SetFocused(on bool) {
 	s.mu.Lock()
 	s.focused = on
 	st := s.cur
@@ -1675,16 +1694,16 @@ func (s *hostStream) SetFocused(on bool) {
 
 // Size returns the size the pane asked the session for, which its next
 // stream attaches at.
-func (s *hostStream) Size() (cols, rows int) {
+func (s *paneStream) Size() (cols, rows int) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.cols, s.rows
 }
 
 // ClientID returns the id of the stream attached now, "" while none is:
-// the host's server names the client whose terminal sizes the session
+// the server names the client whose terminal sizes the session
 // (SessionInfo.SizedBy) by it.
-func (s *hostStream) ClientID() string {
+func (s *paneStream) ClientID() string {
 	s.mu.Lock()
 	st := s.cur
 	s.mu.Unlock()
@@ -1696,7 +1715,7 @@ func (s *hostStream) ClientID() string {
 
 // sendSize tells the stream of the moment the latest size, one at a time,
 // so that an older size never comes last.
-func (s *hostStream) sendSize() {
+func (s *paneStream) sendSize() {
 	s.sizeMu.Lock()
 	defer s.sizeMu.Unlock()
 	s.mu.Lock()
@@ -1708,7 +1727,7 @@ func (s *hostStream) sendSize() {
 }
 
 // Close detaches; the session goes on.
-func (s *hostStream) Close() error {
+func (s *paneStream) Close() error {
 	s.mu.Lock()
 	s.closed = true
 	st := s.cur

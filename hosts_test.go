@@ -724,6 +724,114 @@ func TestHostBlackholeReattaches(t *testing.T) {
 	}
 }
 
+// TestLocalStreamReattaches is a pane of this machine's session whose
+// stream's connection went away, as a server that drops a client closes
+// it, while the app's client lives: the pane attaches again by itself,
+// and takes what is typed again. Left as it was, the pane kept the screen
+// it last showed and dropped every key, with nothing said.
+func TestLocalStreamReattaches(t *testing.T) {
+	sock, remote := startHostServer(t)
+	info, err := remote.Create(rex.CreateOptions{Cols: 80, Rows: 24})
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, err := rex.ConnectSocket(sock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { c.Close() })
+	if _, err := c.Hello(); err != nil {
+		t.Fatal(err)
+	}
+	s := newLocalStream(c, info.ID, 80, 24)
+	t.Cleanup(func() { s.Close() })
+	go func() {
+		buf := make([]byte, 32<<10)
+		for {
+			if _, err := s.Read(buf); err != nil {
+				return
+			}
+		}
+	}()
+	attaches := func() int {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		return s.attaches
+	}
+	until := func(what string, cond func() bool) {
+		t.Helper()
+		for deadline := time.Now().Add(10 * time.Second); !cond(); time.Sleep(20 * time.Millisecond) {
+			if time.Now().After(deadline) {
+				t.Fatalf("timed out waiting for %s; attached %d", what, attaches())
+			}
+		}
+	}
+	until("the pane to attach", func() bool { return attaches() == 1 && !s.Detached() })
+	// The stream's connection ends, as a server's does for the clients it
+	// drops; the app's own connection stays.
+	s.mu.Lock()
+	st := s.cur
+	s.mu.Unlock()
+	if st == nil {
+		t.Fatal("the stream of the pane is gone")
+	}
+	st.Close()
+	until("the pane to notice", s.Detached)
+	until("the pane to attach again", func() bool { return attaches() == 2 && !s.Detached() })
+	// What is typed reaches the session again.
+	var before time.Time
+	for _, in := range sessionInfos(t, remote) {
+		if in.ID == info.ID {
+			before = in.LastInput
+		}
+	}
+	s.Write([]byte("x"))
+	until("the session to take what is typed", func() bool {
+		for _, in := range sessionInfos(t, remote) {
+			if in.ID == info.ID {
+				return in.LastInput.After(before)
+			}
+		}
+		return false
+	})
+	// One window attached, not one more per drop.
+	attached := 0
+	for _, in := range sessionInfos(t, remote) {
+		if in.ID == info.ID {
+			attached = in.Attached
+		}
+	}
+	if attached != 1 {
+		t.Errorf("the server counts %d windows attached, want 1", attached)
+	}
+}
+
+// TestLocalPaneSaysTheStreamWasLost is the screen of a pane of this
+// machine whose stream's connection ended: it says so over the screen it
+// last showed, instead of standing there taking no key, and the word goes
+// once the stream attached again.
+func TestLocalPaneSaysTheStreamWasLost(t *testing.T) {
+	a, tt := newTestApp(t)
+	p := a.tab().Focus
+	if p == nil || p.stream == nil {
+		t.Fatal("the tab has no pane of this machine")
+	}
+	waitFor(t, tt, "the pane to attach", func() bool { return p.stream.ClientID() != "" })
+	p.stream.mu.Lock()
+	st := p.stream.cur
+	p.stream.mu.Unlock()
+	if st == nil {
+		t.Fatal("the stream of the pane is gone")
+	}
+	st.Close()
+	waitFor(t, tt, "the pane to say the stream was lost", func() bool {
+		return tt.HasText(locales.PaneStreamInterrupted())
+	})
+	waitFor(t, tt, "the pane to attach again", func() bool {
+		return !p.stream.Detached() && !tt.HasText(locales.PaneStreamInterrupted())
+	})
+}
+
 // TestHostStreamResizeWhileAttaching resizes a remote pane while its
 // stream attaches, as the view does as it first lays out a new tab, made
 // at 80x24, over a slow network: the session takes the window's size. At
