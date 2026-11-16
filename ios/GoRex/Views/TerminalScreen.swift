@@ -129,7 +129,7 @@ struct TerminalScreen: View {
             // moment after a switch, as Rex Go shows it.
             .overlay(alignment: .topTrailing) {
                 if paneMapShown {
-                    PaneMiniMap(cells: paneCellList, current: currentTarget.block, currentColor: paneAccent(currentTarget.block), select: stepPane)
+                    PaneMiniMap(cells: paneCellList, current: currentTarget.block, currentColor: paneAccent(currentTarget.block), select: selectPane, swipe: stepPane)
                         .frame(width: 84, height: 56)
                         .padding(.top, 8)
                         .padding(.trailing, 12)
