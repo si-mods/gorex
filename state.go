@@ -288,9 +288,11 @@ type Pane struct {
 	Tab  *Tab
 	Node *Node
 	// float is the float the pane is, nil for a tiled pane.
-	float  *Float
-	term   *terminal.Terminal
-	stream *rex.Stream
+	float *Float
+	term  *terminal.Terminal
+	// stream is the Conn of a pane of this machine, nil for a pane of a
+	// host, whose is remote; it attaches again when its connection drops.
+	stream *paneStream
 	// browser is the state of a browser pane, nil for a terminal.
 	browser *browserPane
 	// note is the state of a note pane, nil for any other.
@@ -298,7 +300,7 @@ type Pane struct {
 	// host is the remote host the session lives on, nil for this machine;
 	// remote is then the terminal's Conn.
 	host   *hostConn
-	remote *hostStream
+	remote *paneStream
 
 	// info is what the server last said of the session.
 	info rex.SessionInfo
@@ -992,9 +994,14 @@ func (a *App) attach(p *Pane, cols, rows int) {
 		p.remote.onChange = func() { update(func() {}) }
 		opts.Conn = p.remote
 	} else {
-		p.stream = a.client.Stream(p.SID, cols, rows)
+		// A pane of this machine's session attaches through the app's
+		// client, and attaches again when the stream is lost, as a host's
+		// does: a stream lost for good leaves a screen that keeps what it
+		// last showed and takes nothing typed.
+		p.stream = newLocalStream(a.client, p.SID, cols, rows)
 		p.stream.SetPresent(userPresent)
 		p.stream.OnData = onData
+		p.stream.onChange = func() { update(func() {}) }
 		opts.Conn = p.stream
 	}
 	// A paste offers the bytes the clipboard holds here, an image's among
@@ -3267,11 +3274,7 @@ func (a *App) apply(h *hostConn, byID map[string]rex.SessionInfo, l hostLayout) 
 			// ends; one before does not, and outlives the app: a
 			// Windows server never upgrades in place.
 			if was.SizeLock != "" && in.SizeLock == "" && p.stream != nil {
-				go func(st *rex.Stream) {
-					if err := st.ResendSize(); err != nil {
-						log.Printf("resizing a session given back: %v", err)
-					}
-				}(p.stream)
+				go p.stream.sendSize()
 			}
 			// The layout keeps a host's pane's directory, which this
 			// machine's server does not stamp: a change saves it.

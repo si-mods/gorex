@@ -724,6 +724,186 @@ func TestHostBlackholeReattaches(t *testing.T) {
 	}
 }
 
+// TestLocalStreamReattaches is a pane of this machine's session whose
+// stream's connection went away, as a server that drops a client closes
+// it, while the app's client lives: the pane attaches again by itself,
+// and takes what is typed again. Left as it was, the pane kept the screen
+// it last showed and dropped every key, with nothing said.
+func TestLocalStreamReattaches(t *testing.T) {
+	sock, remote := startHostServer(t)
+	info, err := remote.Create(rex.CreateOptions{Cols: 80, Rows: 24})
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, err := rex.ConnectSocket(sock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { c.Close() })
+	if _, err := c.Hello(); err != nil {
+		t.Fatal(err)
+	}
+	s := newLocalStream(c, info.ID, 80, 24)
+	t.Cleanup(func() { s.Close() })
+	go func() {
+		buf := make([]byte, 32<<10)
+		for {
+			if _, err := s.Read(buf); err != nil {
+				return
+			}
+		}
+	}()
+	attaches := func() int {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		return s.attaches
+	}
+	until := func(what string, cond func() bool) {
+		t.Helper()
+		for deadline := time.Now().Add(10 * time.Second); !cond(); time.Sleep(20 * time.Millisecond) {
+			if time.Now().After(deadline) {
+				t.Fatalf("timed out waiting for %s; attached %d", what, attaches())
+			}
+		}
+	}
+	until("the pane to attach", func() bool { return attaches() == 1 && !s.Detached() })
+	// The stream's connection ends, as a server's does for the clients it
+	// drops; the app's own connection stays.
+	s.mu.Lock()
+	st := s.cur
+	s.mu.Unlock()
+	if st == nil {
+		t.Fatal("the stream of the pane is gone")
+	}
+	st.Close()
+	until("the pane to notice", s.Detached)
+	until("the pane to attach again", func() bool { return attaches() == 2 && !s.Detached() })
+	// What is typed reaches the session again.
+	var before time.Time
+	for _, in := range sessionInfos(t, remote) {
+		if in.ID == info.ID {
+			before = in.LastInput
+		}
+	}
+	s.Write([]byte("x"))
+	until("the session to take what is typed", func() bool {
+		for _, in := range sessionInfos(t, remote) {
+			if in.ID == info.ID {
+				return in.LastInput.After(before)
+			}
+		}
+		return false
+	})
+	// One window attached, not one more per drop.
+	attached := 0
+	for _, in := range sessionInfos(t, remote) {
+		if in.ID == info.ID {
+			attached = in.Attached
+		}
+	}
+	if attached != 1 {
+		t.Errorf("the server counts %d windows attached, want 1", attached)
+	}
+}
+
+// TestLocalStreamTakesWhatIsTypedAsItAttaches is a pane of this machine
+// made a moment ago, before the view asked its size: what is typed then
+// reaches the program once its first stream attached, rather than going
+// nowhere — a shell asked to exit as its pane opens still exits.
+func TestLocalStreamTakesWhatIsTypedAsItAttaches(t *testing.T) {
+	sock, remote := startHostServer(t)
+	info, err := remote.Create(rex.CreateOptions{Cols: 80, Rows: 24})
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, err := rex.ConnectSocket(sock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { c.Close() })
+	if _, err := c.Hello(); err != nil {
+		t.Fatal(err)
+	}
+	var before time.Time
+	for _, in := range sessionInfos(t, remote) {
+		if in.ID == info.ID {
+			before = in.LastInput
+		}
+	}
+	s := newLocalStream(c, info.ID, 80, 24)
+	t.Cleanup(func() { s.Close() })
+	// Typed before the first stream attached: the terminal reads after.
+	if n, err := s.Write([]byte("x")); err != nil || n != 1 {
+		t.Fatalf("write = %d, %v", n, err)
+	}
+	go func() {
+		buf := make([]byte, 32<<10)
+		for {
+			if _, err := s.Read(buf); err != nil {
+				return
+			}
+		}
+	}()
+	for deadline := time.Now().Add(10 * time.Second); ; time.Sleep(20 * time.Millisecond) {
+		taken := false
+		for _, in := range sessionInfos(t, remote) {
+			if in.ID == info.ID {
+				taken = in.LastInput.After(before)
+			}
+		}
+		if taken {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("timed out waiting for the session to take what was typed before it attached")
+		}
+	}
+}
+
+// TestLocalPaneTakesKeysAfterItsStreamWasLost is the lesson: a pane of
+// this machine's session whose stream's connection ended says so over the
+// screen it last showed, attaches again by itself, and takes what is
+// typed again — at the shell, as a user types it. Left as it was, the
+// pane stood there taking no key, with nothing said.
+func TestLocalPaneTakesKeysAfterItsStreamWasLost(t *testing.T) {
+	a, tt := newTestApp(t)
+	p := a.tab().Focus
+	if p == nil || p.stream == nil {
+		t.Fatal("the tab has no pane of this machine")
+	}
+	waitFor(t, tt, "the shell", func() bool {
+		return p.term != nil && strings.Contains(p.term.Text(), testShell.prompt)
+	})
+	// The stream's connection ends, as it does for the clients a server
+	// drops; the app's own connection stays.
+	p.stream.mu.Lock()
+	st := p.stream.cur
+	p.stream.mu.Unlock()
+	if st == nil {
+		t.Fatal("the stream of the pane is gone")
+	}
+	st.Close()
+	waitFor(t, tt, "the pane to say the stream was lost", func() bool {
+		return tt.HasText(locales.PaneStreamInterrupted())
+	})
+	waitFor(t, tt, "the stream to attach again", func() bool {
+		return !p.stream.Detached() && !tt.HasText(locales.PaneStreamInterrupted())
+	})
+	// The stream attached again replays the session's screen, and what
+	// is typed reaches it.
+	waitFor(t, tt, "the screen the session sends again", func() bool {
+		return strings.Contains(p.term.Text(), testShell.prompt)
+	})
+	cmd := "echo AFTER_LOSS_$((6*7))\r"
+	if runtime.GOOS == "windows" {
+		cmd = `powershell -NoProfile -Command "Write-Host ('AFTER_LOSS_' + (6*7))"` + "\r"
+	}
+	p.term.Send([]byte(cmd))
+	waitFor(t, tt, "the shell's output after its stream was lost", func() bool {
+		return strings.Contains(p.term.Text(), "AFTER_LOSS_42")
+	})
+}
+
 // TestHostStreamResizeWhileAttaching resizes a remote pane while its
 // stream attaches, as the view does as it first lays out a new tab, made
 // at 80x24, over a slow network: the session takes the window's size. At

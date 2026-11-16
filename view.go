@@ -1445,14 +1445,17 @@ func (p *Pane) labelName() string {
 // reconnecting shows over the screen of a pane whose host or stream is
 // away, without hiding it, what is going on.
 func (a *App) reconnecting(c *ui.Context, k *colors, p *Pane) {
-	h := p.host
-	if h == nil {
-		return
-	}
 	var title, detail string
 	switch {
-	case h.state != hostConnected:
-		title, detail = locales.PaneReconnecting(h.label()), locales.PaneConnectionDropped()
+	case p.host == nil:
+		// A pane of this machine's session: its stream attaches again on
+		// its own, and until it does the screen is the last it showed.
+		if p.stream == nil || !p.stream.Detached() {
+			return
+		}
+		title, detail = locales.PaneStreamInterrupted(), locales.PaneConnectionDropped()
+	case p.host.state != hostConnected:
+		title, detail = locales.PaneReconnecting(p.host.label()), locales.PaneConnectionDropped()
 	case p.remote != nil && p.remote.Detached():
 		title = locales.PaneStreamInterrupted()
 	default:
