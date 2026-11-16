@@ -60,7 +60,7 @@ struct StatusInbox: View {
                 VStack(spacing: 12) {
                     ForEach(items) { item in
                         Button {
-                            open(TerminalTarget(host: item.host, session: item.session, block: item.block, title: item.title))
+                            open(TerminalTarget(host: item.host, session: item.session, block: item.block, title: item.title, explicit: true))
                         } label: {
                             StatusRow(item: item, now: now)
                         }

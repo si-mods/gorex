@@ -172,10 +172,13 @@ struct ProgramTiles: View {
 struct ProgramTile: View {
     let program: Program
     var glyph = true
+    /// Points to a DIP of the tile: lists use ProgramTiles.scale, and the
+    /// phone's pane bar draws the same tile at its own 21x16 size.
+    var scale: CGFloat = ProgramTiles.scale
     @Environment(\.colorScheme) private var scheme
 
     var body: some View {
-        let k = ProgramTiles.scale
+        let k = scale
         let card = RoundedRectangle(cornerRadius: 4.5 * k)
         card.fill(Color(rgb: program.tileBg))
             .overlay {

@@ -928,7 +928,7 @@ struct WindowRow<Mark: View>: View {
 
     var body: some View {
         let title = host.title(window)
-        let status = host.status([block] + window.tiled)
+        let status = host.status([block] + window.panes)
         HStack(spacing: 14) {
             ProgramTiles(front: host.blocks[block]?.program, back: window.back.map { host.blocks[$0]?.program }, state: status?.state).frame(width: tiles, height: 16 * ProgramTiles.scale + 4, alignment: .leading)
             Text(title.isEmpty ? " " : title.asText)

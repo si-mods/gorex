@@ -663,13 +663,19 @@ final class Host: Identifiable {
         }
     }
 
+    /// A pane's name, as the desktop names it: the label the user gave it,
+    /// else its terminal's title.
+    func paneTitle(_ block: String, in w: SessionView.Window) -> String? {
+        w.blockName(block)
+            ?? blocks[block]?.title.flatMap { $0.isEmpty ? nil : $0 }
+    }
+
     /// A window's title, as the desktop names a tab: its name when it has
     /// one, else its focused pane's name, else its terminal's title, else
     /// its label.
     func title(_ w: SessionView.Window) -> String {
         w.name
-            ?? w.block.flatMap { w.blockName($0) }
-            ?? w.block.flatMap { blocks[$0]?.title }.flatMap { $0.isEmpty ? nil : $0 }
+            ?? w.block.flatMap { paneTitle($0, in: w) }
             ?? w.label
             ?? ""
     }
@@ -738,7 +744,7 @@ final class Host: Identifiable {
         if let label = v.label { sessions[i].label = label }
         let again = reread.remove(v.session_id) != nil
         for w in v.windows ?? [] {
-            for b in [w.block].compactMap(\.self) + w.tiled where blocks[b]?.title == nil || again { describe(session: v.session_id, block: b) }
+            for b in [w.block].compactMap(\.self) + w.panes where blocks[b]?.title == nil || again { describe(session: v.session_id, block: b) }
         }
         prune()
     }
@@ -748,7 +754,7 @@ final class Host: Identifiable {
     /// reconnect: its blocks would look gone.
     private func prune() {
         guard sessions.allSatisfy({ $0.view != nil }) else { return }
-        let held = Set(sessions.flatMap { $0.view?.windows ?? [] }.flatMap { [$0.block].compactMap(\.self) + $0.tiled })
+        let held = Set(sessions.flatMap { $0.view?.windows ?? [] }.flatMap { [$0.block].compactMap(\.self) + $0.panes })
         for id in blocks.keys where !held.contains(id) { blocks[id] = nil }
     }
 

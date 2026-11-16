@@ -1,6 +1,7 @@
 import AVFAudio
 import GameController
 import SwiftUI
+import UIKit
 
 /// What a window's row opens: the window's block on a host.
 struct TerminalTarget: Hashable {
@@ -8,6 +9,9 @@ struct TerminalTarget: Hashable {
     let session: String
     let block: String
     let title: String
+    /// A notification's or the inbox's target: open this pane, not the one
+    /// this device last viewed of its window.
+    var explicit = false
 }
 
 /// A window's terminal, full screen, under a clear navigation bar.
@@ -45,11 +49,11 @@ struct TerminalScreen: View {
     /// for the title's push.
     @State private var slideDir: CGFloat = 1
     /// How many tab switches are sliding: while any is, the terminals'
-    /// layout snaps, and the panes off the page stay until the last ends.
+    /// layout snaps, and the pages beside it stay until the last ends.
     @State private var switching = 0
     /// The terminals on the page: the current one, one that waits to slide
     /// in, and those still sliding out.
-    @State private var panes: [Pane] = []
+    @State private var pages: [Pane] = []
     /// The pane of a switch that waits for its terminal to draw before it
     /// slides in. A newer switch takes its place.
     @State private var incoming: UUID?
@@ -58,12 +62,19 @@ struct TerminalScreen: View {
     /// Whether the terminal has been reconnecting, or holding what was
     /// typed, for a second: a short reconnect shows nothing.
     @State private var stalled = false
+    /// Whether the floating pane map shows, briefly after a pane switch.
+    @State private var paneMapShown = false
+    /// The task that hides the floating map.
+    @State private var paneMapTask: Task<Void, Never>?
+    /// Whether the screen is gone: a slide finishing after it must not start
+    /// the map again.
+    @State private var gone = false
 
     init(target: TerminalTarget, host: Host, go: @escaping (TerminalTarget?) -> Void) {
         self.target = target
         self.host = host
         self.go = go
-        _currentTarget = State(initialValue: target)
+        _currentTarget = State(initialValue: Self.remembered(target, host: host))
     }
 
     var body: some View {
@@ -76,10 +87,13 @@ struct TerminalScreen: View {
         // Each pane sits at its place across the page: off it, to the
         // left or right, or on it. Only the current one takes touches.
         ZStack {
-            if panes.isEmpty { Color.clear }
-            ForEach(panes) { pane in
+            if pages.isEmpty { Color.clear }
+            ForEach(pages) { pane in
                 let current = pane.session === session
-                TerminalRepresentable(session: pane.session, newTab: newTab, closeTab: closeTab, mic: mic, voice: voiceCapsule, dictating: said != nil && current, snaps: switching > 0)
+                TerminalRepresentable(session: pane.session, newTab: newTab, closeTab: closeTab, mic: mic, voice: voiceCapsule, dictating: said != nil && current, snaps: switching > 0,
+                                      paneInset: paneCellList.count > 1 ? PaneBar.height + 10 : 0,
+                                      onSwipe: { stepPane(by: $0) },
+                                      canSwipe: { switching == 0 && incoming == nil && (terminal?.paneSwipeAllowed ?? false) })
                     .offset(x: pane.x * pageWidth)
                     // Before the page's width is known, off the page is hidden.
                     .opacity(pageWidth == 0 && pane.x != 0 ? 0 : 1)
@@ -109,7 +123,26 @@ struct TerminalScreen: View {
             // On iPad or with a hardware keyboard (no KeyBar), show the floating preview.
             .overlay(alignment: .bottom) { if !hasBar, let said { Heard(said: said) { terminal?.stopDictating() } } }
             .overlay { status }
-            // Inside the safe area: under the navigation bar, whatever its height.
+            // The window's panes, above the key bar; it rides the keyboard too.
+            .overlay(alignment: .bottom) {
+                if paneCellList.count > 1 {
+                    PaneBar(cells: paneCellList, current: currentTarget.block, program: { .of(host.blocks[$0]?.program) }, select: selectPane, newTab: newTab)
+                        .padding(.bottom, hasBar ? KeyBar.height + 10 : 10)
+                        .transition(.opacity.combined(with: .move(edge: .bottom)))
+                }
+            }
+            // The layout, floating under the toolbar's right side for a
+            // moment after a switch, as Rex Go shows it.
+            .overlay(alignment: .topTrailing) {
+                if paneMapShown {
+                    PaneMiniMap(cells: paneCellList, current: currentTarget.block, currentColor: paneAccent(currentTarget.block), select: selectPane, swipe: stepPane)
+                        .frame(width: 84, height: 56)
+                        .padding(.top, 8)
+                        .padding(.trailing, 12)
+                        .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .topTrailing)))
+                }
+            }
+            .animation(.spring(duration: 0.28, bounce: 0.16), value: paneMapShown)
             .overlay(alignment: .top) {
                 if stalled, let session {
                     Reconnecting(waitingToSend: session.waitingToSend)
@@ -169,14 +202,18 @@ struct TerminalScreen: View {
             .toolbarColorScheme(scheme, for: .navigationBar)
             .environment(\.colorScheme, scheme)
             .onAppear {
+                gone = false
                 let s = session ?? TerminalSession(host: host, session: currentTarget.session, block: currentTarget.block)
                 session = s
-                if panes.isEmpty { panes = [Pane(session: s, block: currentTarget.block, x: 0)] }
+                if pages.isEmpty { pages = [Pane(session: s, block: currentTarget.block, x: 0)] }
+                if let key = viewedKey { ViewedBlockStore.shared.set(currentTarget.block, for: key) }
                 s.start()
                 Notifier.shared.onScreen = currentTarget
                 host.see(session: currentTarget.session, block: currentTarget.block)
             }
             .onDisappear {
+                gone = true
+                paneMapTask?.cancel()
                 terminal?.stopDictating()
                 dropIncoming()
                 host.see(session: currentTarget.session, block: currentTarget.block)
@@ -252,7 +289,8 @@ struct TerminalScreen: View {
     /// one in front, else as the row gave it, else its session's name, as
     /// for a new session.
     private var title: String {
-        let live = window.flatMap { $0.block == currentTarget.block ? host.title($0) : nil } ?? ""
+        if let w = window, let pane = host.paneTitle(currentTarget.block, in: w), !pane.isEmpty { return pane }
+        let live = window.map { host.title($0) } ?? ""
         return [live, currentTarget.title].first { !$0.isEmpty } ?? sessionLabel
     }
 
@@ -263,6 +301,95 @@ struct TerminalScreen: View {
 
     private var sessionWindows: [(block: String, window: SessionView.Window)] {
         (hostSession?.view?.windows ?? []).compactMap { w in w.block.map { (block: $0, window: w) } }
+    }
+
+    /// The panes of the window open, in layout order.
+    private var windowPanes: [String] {
+        window?.panes ?? []
+    }
+
+    /// Where this device remembers the window's last viewed pane.
+    private var viewedKey: ViewedBlockKey? {
+        guard let w = window else { return nil }
+        return Self.key(for: w, session: currentTarget.session, host: host)
+    }
+
+    /// The window's panes as the map and the bar show them, from the view's
+    /// split tree and the host's names and records.
+    private var paneCellList: [PaneCell] {
+        guard let w = window else { return [] }
+        return paneCells(
+            layout: w.layout,
+            panes: w.panes,
+            name: { host.paneTitle($0, in: w) ?? String(localized: "Terminal") },
+            record: { block in host.status([block]).map { PaneRecord(state: $0.state) } }
+        )
+    }
+
+    private static func key(for w: SessionView.Window, session: String, host: Host) -> ViewedBlockKey {
+        ViewedBlockKey(machine: host.spaceMachineKey, session: session, window: w.window_id)
+    }
+
+    /// The target as this device opens it: the pane it last viewed of the
+    /// window takes the place of the window's focused one, when the target
+    /// names that focused pane (a row's, not a notification's). An explicit
+    /// other pane stays as given.
+    private static func remembered(_ target: TerminalTarget, host: Host) -> TerminalTarget {
+        guard !target.explicit else { return target }
+        guard let s = host.sessions.first(where: { $0.id == target.session }),
+              let w = s.view?.windows?.first(where: { $0.holds(target.block) }),
+              target.block == w.block
+        else { return target }
+        let memory = key(for: w, session: target.session, host: host)
+        guard let stored = ViewedBlockStore.shared.block(for: memory) else { return target }
+        guard w.panes.contains(stored), stored != target.block else {
+            if !w.panes.contains(stored) { ViewedBlockStore.shared.forget(memory) }
+            return target
+        }
+        return TerminalTarget(host: target.host, session: target.session, block: stored, title: host.paneTitle(stored, in: w) ?? target.title)
+    }
+
+    /// Switches to a pane of the window open, remembering it on this device.
+    /// The shared layout's focus is not touched.
+    private func selectPane(_ block: String) {
+        guard let w = window, w.panes.contains(block), block != currentTarget.block else { return }
+        if let key = viewedKey { ViewedBlockStore.shared.set(block, for: key) }
+        let from = w.panes.firstIndex(of: currentTarget.block) ?? 0
+        let to = w.panes.firstIndex(of: block) ?? from
+        switchTo(TerminalTarget(host: host.id, session: currentTarget.session, block: block, title: host.paneTitle(block, in: w) ?? host.title(w)), dir: to >= from ? 1 : -1)
+    }
+
+    /// Moves to the pane nearest in a direction, for a swipe on the map.
+    private func stepPane(_ direction: PaneDirection) {
+        guard let next = paneNeighbor(paneCellList, from: currentTarget.block, direction: direction) else { return }
+        selectPane(next)
+    }
+
+    /// Moves one pane along the window's order, for a swipe. It stops at the
+    /// first and the last; a tab switch is not a pane switch.
+    private func stepPane(by delta: Int) {
+        guard let next = paneStep(windowPanes, from: currentTarget.block, by: delta) else { return }
+        selectPane(next)
+    }
+
+    /// Shows the layout under the toolbar's right side for a moment, then
+    /// takes it away. Only a pane switch does this; changing tabs does not.
+    private func flashPaneMap() {
+        guard !gone else { return }
+        paneMapTask?.cancel()
+        withAnimation(.spring(duration: 0.28, bounce: 0.16)) { paneMapShown = true }
+        paneMapTask = Task { @MainActor in
+            try? await Task.sleep(for: .seconds(4))
+            guard !Task.isCancelled else { return }
+            withAnimation(.easeOut(duration: 0.2)) { paneMapShown = false }
+        }
+    }
+
+    /// The color Rex Go gives the current pane in the map: its program's
+    /// tile, preferring the foreground unless that is white.
+    private func paneAccent(_ block: String) -> Color {
+        let program = Program.of(host.blocks[block]?.program)
+        return Color(rgb: program.tileFg == 0xffffff ? program.tileBg : program.tileFg)
     }
 
     /// A terminal on the page, at x widths from its place: -1 off to the
@@ -278,8 +405,13 @@ struct TerminalScreen: View {
     /// Opens the window's block in place of this one: it opens off the
     /// page, on the side it comes from, and slides in once its terminal
     /// has drawn what the block shows, or after 300 ms.
-    private func switchTo(_ next: TerminalTarget, dir: CGFloat? = nil) {
-        guard next.host == currentTarget.host && next.session == currentTarget.session else {
+    private func switchTo(_ target: TerminalTarget, dir: CGFloat? = nil) {
+        guard target.host == currentTarget.host else {
+            go(target)
+            return
+        }
+        let next = Self.remembered(target, host: host)
+        guard next.session == currentTarget.session else {
             go(next)
             return
         }
@@ -288,8 +420,12 @@ struct TerminalScreen: View {
             dropIncoming()
             return
         }
+        if let s = host.sessions.first(where: { $0.id == next.session }),
+           let w = s.view?.windows?.first(where: { $0.holds(next.block) }) {
+            ViewedBlockStore.shared.set(next.block, for: Self.key(for: w, session: next.session, host: host))
+        }
         // The same block again, as a second swipe while it opens, waits on.
-        if let id = incoming, panes.first(where: { $0.id == id })?.block == next.block { return }
+        if let id = incoming, pages.first(where: { $0.id == id })?.block == next.block { return }
         let resolvedDir: CGFloat
         if let dir {
             resolvedDir = dir
@@ -308,7 +444,7 @@ struct TerminalScreen: View {
         let id = pane.id
         var t = Transaction()
         t.disablesAnimations = true
-        withTransaction(t) { panes.append(pane) }
+        withTransaction(t) { pages.append(pane) }
         incoming = id
         Task { @MainActor in
             // Until the terminal has drawn the snapshot, or 300 ms; a
@@ -346,6 +482,8 @@ struct TerminalScreen: View {
         }
         .padding(.leading, 12)
         .padding(.trailing, 18)
+        .fixedSize(horizontal: true, vertical: false)
+        .frame(minWidth: 180)
         .frame(height: 44)
         .clipped()
         .background { Capsule().fill(.clear).glassEffect(.regular, in: .capsule) }
@@ -392,27 +530,29 @@ struct TerminalScreen: View {
     /// Slides the waiting pane in and the current one out, the way the
     /// switch goes, and closes the current one's stream.
     private func promote(_ id: UUID, to next: TerminalTarget, dir: CGFloat) {
-        guard let i = panes.firstIndex(where: { $0.id == id }) else { return }
+        guard let i = pages.firstIndex(where: { $0.id == id }) else { return }
         incoming = nil
-        let nextSession = panes[i].session
+        let nextSession = pages[i].session
         terminal?.stopDictating()
         host.see(session: currentTarget.session, block: currentTarget.block)
         session?.close()
         Notifier.shared.onScreen = next
         host.see(session: next.session, block: next.block)
         switching += 1
+        let paneSwitch = next.session == currentTarget.session && (window?.panes.contains(next.block) ?? false)
         withAnimation(.spring(duration: 0.32, bounce: 0.12), completionCriteria: .removed) {
             slideDir = dir
-            if let j = panes.firstIndex(where: { $0.session === session }) { panes[j].x = -dir }
-            panes[i].x = 0
+            if let j = pages.firstIndex(where: { $0.session === session }) { pages[j].x = -dir }
+            pages[i].x = 0
             session = nextSession
             currentTarget = next
         } completion: {
+            if paneSwitch { flashPaneMap() }
             switching -= 1
-            // Once no slide is left, the panes off the page go, but one
+            // Once no slide is left, the pages beside it go, but one
             // that waits to slide in.
             guard switching == 0 else { return }
-            panes.removeAll { $0.session !== session && $0.id != incoming }
+            pages.removeAll { $0.session !== session && $0.id != incoming }
         }
     }
 
@@ -420,17 +560,17 @@ struct TerminalScreen: View {
     private func dropIncoming() {
         guard let id = incoming else { return }
         incoming = nil
-        panes.first(where: { $0.id == id })?.session.close()
+        pages.first(where: { $0.id == id })?.session.close()
         var t = Transaction()
         t.disablesAnimations = true
-        withTransaction(t) { panes.removeAll { $0.id == id } }
+        withTransaction(t) { pages.removeAll { $0.id == id } }
     }
 
     /// Steps from the window a switch still waits to show, if any, so a
     /// second quick swipe goes one window farther.
     private func stepTab(by delta: Int) {
         let all = sessionWindows
-        let from = incoming.flatMap { id in panes.first(where: { $0.id == id })?.block } ?? currentTarget.block
+        let from = incoming.flatMap { id in pages.first(where: { $0.id == id })?.block } ?? currentTarget.block
         guard all.count > 1, let i = all.firstIndex(where: { $0.window.holds(from) }) else { return }
         let next = all[(i + delta + all.count) % all.count]
         guard !next.window.holds(from) else { return }
@@ -815,6 +955,14 @@ private struct TerminalRepresentable: UIViewRepresentable {
     let voice: VoiceCapsule
     let dictating: Bool
     let snaps: Bool
+    /// How far the pane bar reaches over the terminal, for the cursor to
+    /// stay above it; 0 when the bar is away.
+    let paneInset: CGFloat
+    /// Moves a pane along the window's order: 1 next, -1 previous.
+    let onSwipe: (Int) -> Void
+    /// Whether a swipe may switch now: no switch under way, no selection,
+    /// no full-screen program with the mouse.
+    let canSwipe: () -> Bool
 
     struct Coordinator {
         let mic: UIHostingController<Mic>
@@ -850,6 +998,9 @@ private struct TerminalRepresentable: UIViewRepresentable {
         v.snaps = snaps
         v.terminal.newTab = newTab
         v.terminal.closeTab = closeTab
+        v.terminal.paneInset = paneInset
+        v.onSwipe = onSwipe
+        v.canSwipe = canSwipe
         context.coordinator.mic.rootView = mic
         context.coordinator.voice.rootView = voice
         v.terminal.bar.setVoice(active: dictating)

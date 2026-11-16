@@ -24,25 +24,39 @@ enum Demo {
     static let tests = "b-tests"
     static let git = "b-git"
     static let shell = "b-shell"
+    static let logs = "b-logs"
+    static let gpu = "b-gpu"
 
     /// The host's sessions, as session.bootstrap would list them.
     static func sessions() -> [Host.Session] {
         [
             Host.Session(id: "s-work", label: "GoRex", view: SessionView(revision: 1, session_id: "s-work", label: "GoRex", windows: [
-                window("w-claude", claude),
-                window("w-dashboard", dashboard),
-                window("w-tests", tests),
+                window("w-claude", [claude, logs, gpu], layout: workLayout()),
+                window("w-dashboard", [dashboard]),
+                window("w-tests", [tests]),
             ])),
             Host.Session(id: "s-dotfiles", label: "dotfiles", view: SessionView(revision: 1, session_id: "s-dotfiles", label: "dotfiles", windows: [
-                window("w-git", git),
-                window("w-shell", shell),
+                window("w-git", [git]),
+                window("w-shell", [shell]),
             ])),
         ]
     }
 
-    private static func window(_ id: String, _ block: String) -> SessionView.Window {
-        SessionView.Window(window_id: id, focused_block_id: block,
-                           layers: [.init(blocks: [.init(block_id: block)])])
+    /// The first window's panes: Claude on the left, Dashboard over Tests on
+    /// the right, as the map and the pane bar show them.
+    private static func workLayout() -> PaneLayout {
+        let claudePane = PaneLayout(rect: [0, 0, 0.55, 1], block_id: claude)
+        let logsPane = PaneLayout(rect: [0.55, 0, 0.45, 0.5], block_id: logs)
+        let gpuPane = PaneLayout(rect: [0.55, 0.5, 0.45, 0.5], block_id: gpu)
+        let right = PaneLayout(rect: [0.55, 0, 0.45, 1],
+                               split: PaneSplit(direction: "vertical", ratio: 0.5, before: logsPane, after: gpuPane))
+        return PaneLayout(rect: [0, 0, 1, 1],
+                          split: PaneSplit(direction: "horizontal", ratio: 0.55, before: claudePane, after: right))
+    }
+
+    private static func window(_ id: String, _ blocks: [String], layout: PaneLayout? = nil) -> SessionView.Window {
+        SessionView.Window(window_id: id, focused_block_id: blocks.first,
+                           layers: [.init(blocks: blocks.map { .init(block_id: $0) }, layout: layout)])
     }
 
     /// What each block shows: its title, its program's tile, and what its
@@ -64,6 +78,8 @@ enum Demo {
             ]),
             git: block("git log", "git", []),
             shell: block("Shell", "zsh", []),
+            logs: block("Logs", "tail", []),
+            gpu: block("GPU", "nvidia-smi", []),
         ]
     }
 
@@ -132,6 +148,20 @@ enum Demo {
                 \(DemoText.yellow("2b9a6e0")) git: rebase by default\r
                 \(DemoText.yellow("a03c5f1")) tmux: keep the status bar quiet\r
                 \(DemoText.yellow("6d84e2a")) zsh: a prompt with the branch\r
+                """)
+        case logs:
+            return DemoScene(program: .shell, dir: "~/dashboard", history: ["tail -f app.log"], intro: """
+                \(DemoText.prompt("~/dashboard", command: "tail -f app.log"))\r
+                \(DemoText.dim("2026-11-16 09:41:02  GET / 200 12ms"))\r
+                \(DemoText.dim("2026-11-16 09:41:07  GET /app.js 200 3ms"))\r
+                \(DemoText.dim("2026-11-16 09:41:12  HMR update accepted"))\r
+                """)
+        case gpu:
+            return DemoScene(program: .shell, dir: "~", history: ["nvidia-smi"], intro: """
+                \(DemoText.prompt("~", command: "nvidia-smi"))\r
+                \(DemoText.dim("Mon Nov 16 09:42:10 2026"))\r
+                \(DemoText.green("GPU  Name        Memory-Usage  Utilization"))\r
+                \(DemoText.dim("  0  Apple M3    18GiB / 36GiB        42%"))\r
                 """)
         default:
             return DemoScene(program: .shell, dir: "~", history: [], intro:
