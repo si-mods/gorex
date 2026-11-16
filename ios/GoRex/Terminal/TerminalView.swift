@@ -94,11 +94,21 @@ final class TerminalView: UIView, TerminalOutput {
 
     /// The keyboard's height over the terminal.
     private var keys: CGFloat = 0
-    /// How far the keyboard, and a phone's bar, reach over the terminal:
-    /// the bar rides the keyboard, else rests above the home indicator.
+    /// How far the keyboard reaches over the terminal, or the home indicator
+    /// when it is away: how far the terminal slides up to keep its cursor
+    /// clear. The phone's bar rides the keyboard but draws over the
+    /// terminal, so the grid goes under it, and it is not covered.
     private var covered: CGFloat {
-        guard let host = superview, bar.superview === host, !bar.isHidden else { return keys }
-        return max(keys, host.safeAreaInsets.bottom) + bar.intrinsicContentSize.height
+        guard let host = superview, !bar.isHidden else { return keys }
+        return max(keys, host.safeAreaInsets.bottom)
+    }
+
+    /// How tall the phone's bar is. The terminal goes under it, so only the
+    /// scroll indicator, which would be hard to read through the glass, keeps
+    /// out from under it.
+    private var barCover: CGFloat {
+        guard let host = superview, bar.superview === host, !bar.isHidden else { return 0 }
+        return bar.intrinsicContentSize.height
     }
     /// Whether the mouse is over a link, as Ghostty last told.
     var overLink = false
@@ -373,8 +383,9 @@ final class TerminalView: UIView, TerminalOutput {
 
     /// Slides the terminal up over the keyboard, no farther than it is tall,
     /// as far as the cursor's row and the lines drawn under it, as an
-    /// agent's box and status, need, but not the cursor under the bar. With
-    /// nothing over it, it rests at 0 and reads nothing.
+    /// agent's box and status, need. The bar rides the keyboard and the
+    /// terminal goes under it: the last rows show through its glass. With
+    /// nothing over it, it rests on the home indicator and reads nothing.
     func slide(duration: Double, options: UIView.AnimationOptions = .curveEaseOut) {
         guard surface != nil, drawn else { return }
         slide(to: needed(), duration: duration, options: options)
@@ -396,7 +407,7 @@ final class TerminalView: UIView, TerminalOutput {
     /// leaves it alone if it is there already.
     func slide(to y: CGFloat, duration: Double, options: UIView.AnimationOptions = .curveEaseOut) {
         wantsDown = 0
-        scroller.verticalScrollIndicatorInsets = UIEdgeInsets(top: inset - y, left: 0, bottom: covered + y, right: 0)
+        scroller.verticalScrollIndicatorInsets = UIEdgeInsets(top: inset - y, left: 0, bottom: covered + barCover + y, right: 0)
         guard transform.ty != y else { return }
         UIView.animate(withDuration: duration, delay: 0, options: [options, .beginFromCurrentState]) {
             self.transform = CGAffineTransform(translationX: 0, y: y)
