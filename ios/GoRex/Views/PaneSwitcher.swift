@@ -109,12 +109,7 @@ struct PaneBar: View {
                                         .fill(.primary.opacity(0.16))
                                 }
                             }
-                            // A 44 pt tall hit target that does not
-                            // grow the bar: the tiles touch side by side,
-                            // and the touch area reaches above and below.
-                            .padding(.vertical, 10)
                             .contentShape(.rect)
-                            .padding(.vertical, -10)
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel(Text(cell.name))
