@@ -88,6 +88,34 @@ what a slow connection falls behind by. It then sends a reset and a new
 snapshot on the same stream (`stream.collapse` in
 `internal/rexapi/data.go`; [rex-api.md](rex-api.md)).
 
+## Recovery policy
+
+A window on this machine, a window on another host, and Rex Go on iOS hold
+a session the same way and recover it the same way: one policy over three
+transports.
+
+- **The stream attaches again while the session exists**, however many
+  times it is lost: a backoff of 250 ms doubling to 2 s, the terminal's
+  size and focus claimed again, and the screen replaced by a snapshot. No
+  client gives up on a loss that says nothing of the session.
+- **What is typed while the stream is away waits for it**, in order, up to
+  64 KiB and 10 s of loss (`maxQueuedInput`, `queuedInputTTL`). Past
+  either bound it is dropped: keys must not reach a program the user
+  stopped seeing.
+- **The pane says so a second after the loss**, not at once
+  (`streamNoteDelay`): "The terminal stream was interrupted. Reconnecting
+  automatically." A stream that resumed at once shows nothing.
+- **A terminal ends only as its session does**: its program exited, its
+  window closed, the server refused the stream, or its snapshot could not
+  be read. A host's own connection is dialled again forever with its own
+  backoff (1 s to 30 s in a window, 0.5 s to 10 s on iOS), and a terminal
+  whose host is away waits for it.
+
+The tests that pin it: `TestLostStreamWaitsForItsInput`,
+`TestLocalPaneTakesKeysAfterItsStreamWasLost` and
+`TestLocalStreamReattaches` here; `testLostConnectionKeepsConnectingAgain`
+and `testBackoff` in `ios/GoRexTests/ConnectionTests.swift`.
+
 ## Attaching
 
 A client opens a connection whose first line is an `Attach`

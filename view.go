@@ -1450,13 +1450,15 @@ func (a *App) reconnecting(c *ui.Context, k *colors, p *Pane) {
 	case p.host == nil:
 		// A pane of this machine's session: its stream attaches again on
 		// its own, and until it does the screen is the last it showed.
-		if p.stream == nil || !p.stream.Detached() {
+		// Said once the loss lasted (streamNoteDelay), not the moment it
+		// happens: a stream that resumed at once shows nothing.
+		if p.stream == nil || p.stream.DetachedFor() < streamNoteDelay {
 			return
 		}
 		title, detail = locales.PaneStreamInterrupted(), locales.PaneConnectionDropped()
 	case p.host.state != hostConnected:
 		title, detail = locales.PaneReconnecting(p.host.label()), locales.PaneConnectionDropped()
-	case p.remote != nil && p.remote.Detached():
+	case p.remote != nil && p.remote.DetachedFor() >= streamNoteDelay:
 		title = locales.PaneStreamInterrupted()
 	default:
 		return

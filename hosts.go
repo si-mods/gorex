@@ -1441,15 +1441,24 @@ const screenReset = "\x1bc\x1b[H\x1b[2J\x1b[3J"
 // moment after its session, and the program must draw for that box.
 const attachGrace = 400 * time.Millisecond
 
-// maxQueuedInput bounds what waits for the first stream of a pane of
-// this machine: typed at a pane whose server never answers, it would
-// hold every key.
+// maxQueuedInput bounds what waits for a stream: typed at a pane whose
+// server never answers, or while the screen was lost, it would hold every
+// key.
 const maxQueuedInput = 64 << 10
+
+// queuedInputTTL is how long after the screen was lost what is typed still
+// waits for the stream: past it, the keys go to a program the user has
+// stopped seeing, and are dropped instead.
+const queuedInputTTL = 10 * time.Second
+
+// streamNoteDelay is how long a pane's stream is lost before the pane
+// says so: a stream that resumed at once shows nothing.
+const streamNoteDelay = time.Second
 
 // paneStream is the Conn of a pane's terminal: its session on this
 // machine's server or on a host, attached again whenever its connection
 // comes back, until the session ends. What is typed while it is detached
-// is dropped, not queued for a screen nobody sees.
+// waits for it, in order, up to maxQueuedInput and queuedInputTTL.
 type paneStream struct {
 	// client returns the client to attach through: this machine's, or the
 	// host's, nil while it has none.
@@ -1473,12 +1482,15 @@ type paneStream struct {
 	present  func() bool
 	closed   bool
 	detached bool
-	gone     bool // the host no longer lists the session to this machine
-	attaches int  // the streams that printed
-	fails    int  // the streams lost since one printed
-	pending  []byte
-	// queued is what was typed before the first stream attached, which it
-	// writes in order once it has one.
+	// detachedAt is when the stream was lost, zero while attached: a
+	// stream lost a moment shows no note, and takes what is typed.
+	detachedAt time.Time
+	gone       bool // the host no longer lists the session to this machine
+	attaches   int  // the streams that printed
+	fails      int  // the streams lost since one printed
+	pending    []byte
+	// queued is what was typed while the stream is away, or before the
+	// first one attached, which it writes in order once it has one.
 	queued []byte
 	// made is when the pane was made, zero for a pane of a host: a pane
 	// of this machine attaches at the size its box takes, which the view
@@ -1508,6 +1520,17 @@ func (s *paneStream) Detached() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.detached
+}
+
+// DetachedFor tells how long the stream has been lost, zero while it is
+// attached: the pane says so (streamNoteDelay) once it has been a while.
+func (s *paneStream) DetachedFor() time.Duration {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if !s.detached {
+		return 0
+	}
+	return time.Since(s.detachedAt)
 }
 
 func (s *paneStream) changed() {
@@ -1611,6 +1634,7 @@ func (s *paneStream) Read(p []byte) (int, error) {
 			first := s.fresh && s.cur == st
 			if first {
 				s.fresh, s.detached, s.fails = false, false, 0
+				s.detachedAt = time.Time{}
 				s.attaches++
 				// Attached again: its snapshot replaces what shows.
 				if s.attaches > 1 {
@@ -1646,7 +1670,7 @@ func (s *paneStream) lost(st *rex.Stream, err error) bool {
 		s.cur = nil
 	}
 	closed, was := s.closed, s.detached
-	s.detached = true
+	s.detached, s.detachedAt = true, time.Now()
 	s.fails++
 	s.mu.Unlock()
 	if closed {
@@ -1654,6 +1678,15 @@ func (s *paneStream) lost(st *rex.Stream, err error) bool {
 	}
 	if !was {
 		s.changed()
+		// The note comes due a moment later, when the pane draws again.
+		time.AfterFunc(streamNoteDelay, func() {
+			s.mu.Lock()
+			show := s.detached && !s.closed
+			s.mu.Unlock()
+			if show {
+				s.changed()
+			}
+		})
 	}
 	if err.Error() != "no such session" {
 		c := s.client()
@@ -1688,28 +1721,30 @@ func (s *paneStream) Gone() bool {
 func (s *paneStream) Write(p []byte) (int, error) {
 	typed := len(p)
 	s.mu.Lock()
-	st := s.cur
-	switch {
-	case st != nil && s.detached:
-		st = nil
-	case st == nil && s.asked != nil && !s.detached && !s.closed && s.fails == 0:
-		// The first stream of a pane of this machine is still on its way:
-		// what is typed before it goes once it attached, in order, as it
-		// waited for the attach of old. Dropped, a shell asked to exit as
-		// its pane was made would go on.
-		if room := maxQueuedInput - len(s.queued); room > 0 {
-			if len(p) > room {
-				p = p[:room]
-			}
-			s.queued = append(s.queued, p...)
-		}
+	if st := s.cur; st != nil && !s.detached {
+		s.mu.Unlock()
+		st.Write(p)
+		return typed, nil
+	}
+	// The stream is lost, or the pane's first one is still on its way:
+	// what is typed goes once it attached, in order, as it waited for the
+	// attach of old. Dropped, a shell asked to exit as its pane was made
+	// would go on, and a key typed the moment a stream dropped would be
+	// lost though the pane said it reconnected.
+	if s.closed || !s.detachedAt.IsZero() && time.Since(s.detachedAt) > queuedInputTTL {
+		// Typed long after the screen was lost: not for a program the user
+		// has stopped seeing.
+		s.queued = nil
 		s.mu.Unlock()
 		return typed, nil
 	}
-	s.mu.Unlock()
-	if st != nil {
-		st.Write(p)
+	if room := maxQueuedInput - len(s.queued); room > 0 {
+		if len(p) > room {
+			p = p[:room]
+		}
+		s.queued = append(s.queued, p...)
 	}
+	s.mu.Unlock()
 	return typed, nil
 }
 
