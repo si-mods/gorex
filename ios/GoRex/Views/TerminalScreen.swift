@@ -508,23 +508,45 @@ struct TerminalScreen: View {
         .contextMenu {
             ForEach(sessionWindows, id: \.window.window_id) { w in
                 let open = w.window.holds(currentTarget.block)
-                let label = host.title(w.window)
+                let name = host.title(w.window)
+                // The open one is marked in its title: an item's icon takes
+                // a column of the menu, which leaves its title too little
+                // to stay on one line.
+                let label = menuTitle((open ? "✓ " : "") + (name.isEmpty ? sessionLabel : name))
                 Button {
                     if !open {
-                        switchTo(TerminalTarget(host: host.id, session: currentTarget.session, block: w.block, title: label))
+                        switchTo(TerminalTarget(host: host.id, session: currentTarget.session, block: w.block, title: name))
                     }
                 } label: {
-                    if open {
-                        Label(label.isEmpty ? sessionLabel : label, systemImage: "checkmark")
-                    } else {
-                        Text(label.isEmpty ? sessionLabel : label)
-                    }
+                    Text(label)
                 }
             }
             Divider()
             Button("New Tab", systemImage: "plus") { newTab() }
         }
         .sensoryFeedback(.selection, trigger: currentTarget.block)
+    }
+
+    /// A title as a menu item shows it: on one line. A menu wraps a title
+    /// too long for its item, breaking it anywhere when it must, and a
+    /// wrapped terminal title reads as several entries, so the title is
+    /// measured at the menu's font and cut with an ellipsis where its item
+    /// would end.
+    private func menuTitle(_ s: String) -> String {
+        let one = s.split(whereSeparator: \.isNewline).joined(separator: " ")
+        // An item holds about as much: its menu is 250 points wide, less
+        // the insets around its text.
+        let width: CGFloat = 200
+        let font = UIFont.systemFont(ofSize: UIFont.preferredFont(forTextStyle: .body).pointSize, weight: .semibold)
+        func fits(_ text: String) -> Bool {
+            (text as NSString).size(withAttributes: [.font: font]).width <= width
+        }
+        guard !one.isEmpty, !fits(one) else { return one }
+        var cut = one[...]
+        while !cut.isEmpty, !fits(cut.trimmingCharacters(in: .whitespaces) + "…") {
+            cut = cut.dropLast()
+        }
+        return cut.trimmingCharacters(in: .whitespaces) + "…"
     }
 
     /// Slides the waiting pane in and the current one out, the way the
