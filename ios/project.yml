@@ -112,6 +112,7 @@ targets:
       - GoRex/Terminal/InputDocument.swift
       - GoRex/Terminal/InputTrace.swift
       - GoRex/Terminal/TerminalTheme.swift
+      - GoRex/Terminal/TerminalNotifications.swift
       - GoRex/Terminal/TerminalSession.swift
       - GoRex/Terminal/Maple.swift
       - GoRex/Terminal/WebLink.swift

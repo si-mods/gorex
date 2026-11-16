@@ -13,6 +13,8 @@ import XCTest
     var data: (_ conn: NWConnection, _ first: Data) -> Void = { c, _ in c.cancel() }
     /// The features the welcome lists.
     var features: [String] = []
+    /// The API revision the welcome reports, for a test of an older server.
+    var revision: Int?
     /// The methods called, in order.
     private(set) var calls: [String] = []
     private(set) var payloads: [[String: Any]] = []
@@ -109,9 +111,11 @@ import XCTest
         case "hello":
             controls.append(c)
             tokens.append(m["reconnect_token"] as? String)
-            Self.send(c, json: ["type": "welcome", "protocol": "rex.control.v1",
-                                "client": ["id": "c\(controls.count)", "reconnect_token": "t\(controls.count)"],
-                                "features": features])
+            var welcome: [String: Any] = ["type": "welcome", "protocol": "rex.control.v1",
+                                          "client": ["id": "c\(controls.count)", "reconnect_token": "t\(controls.count)"],
+                                          "features": features]
+            if let revision { welcome["api_revision"] = revision }
+            Self.send(c, json: welcome)
         case "request":
             let method = m["method"] as? String ?? ""
             let payload = m["payload"] as? [String: Any] ?? [:]

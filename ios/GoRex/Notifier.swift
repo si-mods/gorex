@@ -76,7 +76,7 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
         nonisolated(unsafe) let finish = completionHandler
         Self.onMain {
             if let host, let session, let block {
-                opening = TerminalTarget(host: host, session: session, block: block, title: title, explicit: true)
+                self.opening = TerminalTarget(host: host, session: session, block: block, title: title, explicit: true)
             }
             finish()
         }
