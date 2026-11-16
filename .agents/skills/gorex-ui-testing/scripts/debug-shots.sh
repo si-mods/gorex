@@ -7,7 +7,7 @@ set -eu
 out=$1; shift
 dir=$(mktemp -d /tmp/gxt.XXXX)
 mkdir -p "$out"
-GOREX_DIR=$dir GOREX_DEBUG=$dir go tool mygo dev >"$dir/dev.log" 2>&1 &
+GOREX_DIR=$dir GOREX_DEBUG=$dir go tool mygo dev -background >"$dir/dev.log" 2>&1 &
 dev=$!
 i=0
 until [ -S "$dir/server.sock" ]; do

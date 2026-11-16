@@ -670,7 +670,7 @@ T=/c/t; mkdir -p $T && go build -o $T/gorex.exe .
 # Host A: the desktop app on its own data directory runs its session server;
 # the gateway listens on a spare port, unauthenticated, for this machine only.
 export GOREX_DIR=$T/a
-go tool mygo dev &                                   # or $T/gorex.exe
+go tool mygo dev -background &                      # or $T/gorex.exe
 $T/gorex.exe rexapi web allow http://127.0.0.1:5173
 $T/gorex.exe rexapi --listen http://127.0.0.1:7481
 

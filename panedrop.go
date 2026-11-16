@@ -145,7 +145,7 @@ const dropInset = float32(4)
 
 // drawPaneDrop shows where the pane dragged over e would go. It paints
 // with the card, not an effect: the card holds a terminal.
-func drawPaneDrop(e ui.Element, k *colors, z dropZone) {
+func drawPaneDrop(e ui.Element, k *colors, z dropZone, cardR float32) {
 	e.DrawOver(func(p *ui.Painter, r ui.Rect) {
 		d := paneDropRect(r, z)
 		p.Fill(d, k.busy.Alpha(0.18), concentric(cardR, dropInset))
