@@ -84,7 +84,7 @@ extension Host {
                 guard let b = w.block else { return nil }
                 // The block whose program needs the user most, which the row opens.
                 var pick: (block: String, status: ProgramStatus)?
-                for x in [b] + w.tiled.filter({ $0 != b }) {
+                for x in [b] + w.panes.filter({ $0 != b }) {
                     if let r = blocks[x].flatMap({ ProgramStatus.mostUrgent($0.statuses ?? [], seen: $0.seen) }), pick.map({ r.outranks($0.status) }) ?? true {
                         pick = (x, r)
                     }

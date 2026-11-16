@@ -19,9 +19,12 @@ struct SessionView: Decodable {
 
     struct Layer: Decodable {
         var blocks: [Block]?
+        /// The tiled layer's tree of splits, which its blocks' places are in.
+        var layout: PaneLayout?
 
-        init(blocks: [Block]? = nil) {
+        init(blocks: [Block]? = nil, layout: PaneLayout? = nil) {
             self.blocks = blocks
+            self.layout = layout
         }
     }
 
@@ -94,18 +97,59 @@ extension SessionView.Window {
         return nil
     }
 
-    /// The blocks of its tiled layer, the first.
-    var tiled: [String] {
+    /// The blocks of its tiled layer, the first, in layout order.
+    var panes: [String] {
         layers?.first?.blocks?.map(\.block_id) ?? []
+    }
+
+    /// The tree the tiled layer's pane places are in, nil when the view
+    /// has none.
+    var layout: PaneLayout? {
+        layers?.first?.layout
     }
 
     /// Whether the block is in it: the one its row opens, or a tiled one.
     func holds(_ b: String) -> Bool {
-        block == b || tiled.contains(b)
+        block == b || panes.contains(b)
     }
 
     /// The blocks tiled behind the one its row opens.
     var back: [String] {
-        tiled.filter { $0 != block }
+        panes.filter { $0 != block }
+    }
+}
+
+/// A pane's place in a tiled layer, or a split of two such places, as
+/// session.view gives it: normalized to the window's room.
+final class PaneLayout: Decodable {
+    /// [x, y, w, h] of the pane or split, fractions of the window's room.
+    var rect: [Double]?
+    /// The block of a leaf; nil in a split.
+    var block_id: String?
+    /// The split, nil in a leaf.
+    var split: PaneSplit?
+
+    init(rect: [Double]? = nil, block_id: String? = nil, split: PaneSplit? = nil) {
+        self.rect = rect
+        self.block_id = block_id
+        self.split = split
+    }
+}
+
+/// A split of two pane layouts: horizontal puts before at the left, else
+/// on top; ratio is before's share.
+final class PaneSplit: Decodable {
+    var split_id: String?
+    var direction: String
+    var ratio: Double
+    var before: PaneLayout
+    var after: PaneLayout
+
+    init(split_id: String? = nil, direction: String, ratio: Double, before: PaneLayout, after: PaneLayout) {
+        self.split_id = split_id
+        self.direction = direction
+        self.ratio = ratio
+        self.before = before
+        self.after = after
     }
 }

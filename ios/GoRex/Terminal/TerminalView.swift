@@ -60,6 +60,9 @@ final class TerminalView: UIView, TerminalOutput {
     /// terminal; whether a slide waits for the output to be drawn, whether
     /// more came meanwhile, and whether any was drawn.
     var inset: CGFloat = 0 { didSet { if inset != oldValue { setNeedsLayout() } } }
+    /// How far the pane bar reaches over the terminal: the cursor and the
+    /// lines under it stay above it, as they do above the key bar.
+    var paneInset: CGFloat = 0 { didSet { if paneInset != oldValue { setNeedsLayout(); slide(duration: 0) } } }
     var slideWaits = false
     var slideAgain = false
     var drawn = false
@@ -97,8 +100,9 @@ final class TerminalView: UIView, TerminalOutput {
     /// How far the keyboard, and a phone's bar, reach over the terminal:
     /// the bar rides the keyboard, else rests above the home indicator.
     private var covered: CGFloat {
-        guard let host = superview, bar.superview === host, !bar.isHidden else { return keys }
-        return max(keys, host.safeAreaInsets.bottom) + bar.intrinsicContentSize.height
+        let base = max(keys, superview?.safeAreaInsets.bottom ?? 0)
+        guard let host = superview, bar.superview === host, !bar.isHidden else { return base + paneInset }
+        return base + bar.intrinsicContentSize.height + paneInset
     }
     /// Whether the mouse is over a link, as Ghostty last told.
     var overLink = false
@@ -451,6 +455,13 @@ final class TerminalView: UIView, TerminalOutput {
     override func gestureRecognizerShouldBegin(_ g: UIGestureRecognizer) -> Bool {
         guard g.view === self, g !== scroller.panGestureRecognizer, !(g is UIPinchGestureRecognizer) else { return true }
         return g.location(in: self).y >= inset
+    }
+
+    /// Whether a horizontal swipe may switch panes: not while a selection
+    /// is shown, and not in a full-screen program that has the mouse.
+    var paneSwipeAllowed: Bool {
+        guard let s = surface else { return false }
+        return !showsSelection && !ghostty_surface_mouse_captured(s)
     }
 
     /// A tap that clears no selection clicks for a program that has the
@@ -871,10 +882,16 @@ final class EdgeFadeView: UIView {
     }
 }
 
-final class TerminalHost: UIView {
+final class TerminalHost: UIView, UIGestureRecognizerDelegate {
     let terminal: TerminalView
     private let scrollDown = UIVisualEffectView(effect: UIGlassEffect(style: .regular))
     private let unreadDot = UIView()
+    /// Moves a pane along the window's order: 1 next, -1 previous. Nil on a
+    /// host whose screen has no pane switching.
+    var onSwipe: ((Int) -> Void)?
+    /// Whether a swipe may switch now: no selection, no full-screen program
+    /// with the mouse, no switch under way.
+    var canSwipe: (() -> Bool)?
     /// While a tab switch animates, layout passes place the terminal, its
     /// inset and the key bar at once, so they don't animate from .zero under
     /// the switch's spring.
@@ -884,6 +901,13 @@ final class TerminalHost: UIView {
         self.terminal = terminal
         super.init(frame: .zero)
         addSubview(terminal)
+        for direction in [UISwipeGestureRecognizer.Direction.left, .right] {
+            let swipe = UISwipeGestureRecognizer(target: self, action: #selector(swiped))
+            swipe.direction = direction
+            swipe.delegate = self
+            swipe.cancelsTouchesInView = false
+            addGestureRecognizer(swipe)
+        }
         let anchor: NSLayoutYAxisAnchor
         if UIDevice.current.userInterfaceIdiom != .pad {
             let bar = terminal.bar
@@ -952,6 +976,29 @@ final class TerminalHost: UIView {
                 if !self.terminal.scrolledUp { self.scrollDown.isHidden = true }
             }
         }
+    }
+
+    /// A horizontal swipe moves one pane along the window's order, unless a
+    /// switch is under way or the terminal must keep the touch (a selection,
+    /// a full-screen program with the mouse). The key bar and the
+    /// scroll-to-bottom button keep their own touches.
+    @objc private func swiped(_ g: UISwipeGestureRecognizer) {
+        guard canSwipe?() != false else { return }
+        onSwipe?(g.direction == .left ? 1 : -1)
+    }
+
+    override func gestureRecognizerShouldBegin(_ g: UIGestureRecognizer) -> Bool {
+        guard let swipe = g as? UISwipeGestureRecognizer else { return true }
+        let p = swipe.location(in: self)
+        if terminal.bar.superview != nil, terminal.bar.frame.contains(p) { return false }
+        if scrollDown.superview != nil, !scrollDown.isHidden, scrollDown.frame.contains(p) { return false }
+        return canSwipe?() != false
+    }
+
+    /// The terminal's own drag, tap, long press and pinch keep working with
+    /// the pane swipe.
+    func gestureRecognizer(_ g: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool {
+        true
     }
 
     required init?(coder: NSCoder) { fatalError() }

@@ -29,20 +29,32 @@ enum Demo {
     static func sessions() -> [Host.Session] {
         [
             Host.Session(id: "s-work", label: "GoRex", view: SessionView(revision: 1, session_id: "s-work", label: "GoRex", windows: [
-                window("w-claude", claude),
-                window("w-dashboard", dashboard),
-                window("w-tests", tests),
+                window("w-claude", [claude, dashboard, tests], layout: workLayout()),
+                window("w-dashboard", [dashboard]),
+                window("w-tests", [tests]),
             ])),
             Host.Session(id: "s-dotfiles", label: "dotfiles", view: SessionView(revision: 1, session_id: "s-dotfiles", label: "dotfiles", windows: [
-                window("w-git", git),
-                window("w-shell", shell),
+                window("w-git", [git]),
+                window("w-shell", [shell]),
             ])),
         ]
     }
 
-    private static func window(_ id: String, _ block: String) -> SessionView.Window {
-        SessionView.Window(window_id: id, focused_block_id: block,
-                           layers: [.init(blocks: [.init(block_id: block)])])
+    /// The first window's panes: Claude on the left, Dashboard over Tests on
+    /// the right, as the map and the pane bar show them.
+    private static func workLayout() -> PaneLayout {
+        let claudePane = PaneLayout(rect: [0, 0, 0.55, 1], block_id: claude)
+        let dashboardPane = PaneLayout(rect: [0.55, 0, 0.45, 0.5], block_id: dashboard)
+        let testsPane = PaneLayout(rect: [0.55, 0.5, 0.45, 0.5], block_id: tests)
+        let right = PaneLayout(rect: [0.55, 0, 0.45, 1],
+                               split: PaneSplit(direction: "vertical", ratio: 0.5, before: dashboardPane, after: testsPane))
+        return PaneLayout(rect: [0, 0, 1, 1],
+                          split: PaneSplit(direction: "horizontal", ratio: 0.55, before: claudePane, after: right))
+    }
+
+    private static func window(_ id: String, _ blocks: [String], layout: PaneLayout? = nil) -> SessionView.Window {
+        SessionView.Window(window_id: id, focused_block_id: blocks.first,
+                           layers: [.init(blocks: blocks.map { .init(block_id: $0) }, layout: layout)])
     }
 
     /// What each block shows: its title, its program's tile, and what its
