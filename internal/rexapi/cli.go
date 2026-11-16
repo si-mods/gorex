@@ -10,6 +10,7 @@ import (
 	"io/fs"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"slices"
@@ -335,7 +336,7 @@ func setTailnetEnabled(dir string, payload any) error {
 // NET": the gateway's listener on the local network, which the GoRex
 // server runs while it is on.
 func lanMain(args []string) int {
-	usage := "usage: gorex rexapi lan on | off | status | listen HOST:PORT | allow NETWORK | deny NETWORK"
+	usage := "usage: gorex rexapi lan on | off | status | qr [--origin URL] | listen HOST:PORT | allow NETWORK | deny NETWORK"
 	if len(args) == 0 {
 		fmt.Fprintln(os.Stderr, usage)
 		return 2
@@ -350,6 +351,8 @@ func lanMain(args []string) int {
 	switch {
 	case args[0] == "status" && len(args) == 1:
 		change = false
+	case args[0] == "qr":
+		return lanQRMain(dir, args[1:])
 	case args[0] == "on" && len(args) == 1:
 		conf = conf.WithDefaults()
 		conf.Enabled = true
@@ -429,6 +432,50 @@ func printLAN(w io.Writer, c LANConfig, s LANStatus) {
 	if s.Error != "" {
 		fmt.Fprintf(w, "  error: %s\n", s.Error)
 	}
+	if s.WTListening != "" {
+		fmt.Fprintf(w, "  webtransport: https://%s/api/wt\n", s.WTListening)
+	}
+	if s.WTCertHash != "" {
+		fmt.Fprintf(w, "  cert: sha256-%s\n", s.WTCertHash)
+	}
+	if s.WTError != "" {
+		fmt.Fprintf(w, "  webtransport error: %s\n", s.WTError)
+	}
+}
+
+func lanQRMain(dir string, args []string) int {
+	origin := "https://web.gorex.uk"
+	for i := 0; i < len(args); i++ {
+		if args[i] == "--origin" && i+1 < len(args) {
+			origin = strings.TrimRight(args[i+1], "/")
+			i++
+		} else {
+			fmt.Fprintln(os.Stderr, "usage: gorex rexapi lan qr [--origin URL]")
+			return 2
+		}
+	}
+	s := LoadLANStatus(dir)
+	if s.WTListening == "" || s.WTCertHash == "" {
+		fmt.Fprintln(os.Stderr, "gorex rexapi lan qr: WebTransport listener is not running (run gorex rexapi lan on)")
+		return 1
+	}
+	addr := s.WTListening
+	if host, port, err := net.SplitHostPort(addr); err == nil && (host == "0.0.0.0" || host == "::" || host == "") {
+		if defListen, _ := DefaultLAN(); defListen != "" {
+			if defHost, _, err := net.SplitHostPort(defListen); err == nil && defHost != "" {
+				addr = net.JoinHostPort(defHost, port)
+			}
+		}
+	}
+	pairURL := fmt.Sprintf("%s/#host=%s&wt=sha256-%s", origin, url.QueryEscape("https://"+addr), url.QueryEscape(s.WTCertHash))
+	code, err := qr.Encode(pairURL, qr.M)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "gorex rexapi lan qr: %v\n", err)
+		return 1
+	}
+	fmt.Println(pairURL)
+	fmt.Print(renderQR(code))
+	return 0
 }
 
 func readKey(path string) (string, error) {

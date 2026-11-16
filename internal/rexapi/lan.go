@@ -41,7 +41,13 @@ type LANStatus struct {
 	// Listening is the address the listener has, "" for none.
 	Listening string `json:"listening,omitempty"`
 	// Error is why it does not listen, when it should.
-	Error   string    `json:"error,omitempty"`
+	Error string `json:"error,omitempty"`
+	// WTListening is the WebTransport UDP address, "" for none.
+	WTListening string `json:"wt_listening,omitempty"`
+	// WTCertHash is the base64url SHA-256 hash of the WebTransport cert.
+	WTCertHash string `json:"wt_cert_hash,omitempty"`
+	// WTError is why the WebTransport listener failed, if any.
+	WTError string    `json:"wt_error,omitempty"`
 	Updated time.Time `json:"updated"`
 }
 
@@ -301,6 +307,7 @@ func networkOf(a netip.Addr) netip.Prefix {
 type lanListener struct {
 	g   *Gateway
 	dir string
+	wt  *wtListener
 
 	mu      sync.Mutex
 	conf    LANConfig
@@ -314,7 +321,7 @@ type lanListener struct {
 }
 
 func newLANListener(g *Gateway, dir string) *lanListener {
-	return &lanListener{g: g, dir: dir, refused: map[netip.Addr]time.Time{}}
+	return &lanListener{g: g, dir: dir, wt: newWTListener(g, dir), refused: map[netip.Addr]time.Time{}}
 }
 
 // apply makes the listener what c says: it listens on c.Listen while
@@ -371,6 +378,15 @@ func (l *lanListener) apply(c LANConfig) {
 			}
 		}()
 		logf("lan: listening on http://%s for %s", ln.Addr(), strings.Join(c.Allow, ", "))
+		if l.wt != nil {
+			l.wt.start(c.Listen, func(addr net.Addr) bool {
+				l.mu.Lock()
+				nets := l.nets
+				l.mu.Unlock()
+				_, ok := allowedPeer(nets, addr.String())
+				return ok
+			})
+		}
 	}
 	l.reportLocked()
 }
@@ -396,6 +412,9 @@ func sameLAN(a, b LANConfig) bool {
 }
 
 func (l *lanListener) closeLocked() {
+	if l.wt != nil {
+		l.wt.close()
+	}
 	if l.ln != nil {
 		l.ln.Close()
 		l.ln = nil
@@ -414,6 +433,9 @@ func (l *lanListener) reportLocked() {
 	s := LANStatus{Running: true, Error: l.err}
 	if l.ln != nil {
 		s.Listening = l.ln.Addr().String()
+	}
+	if l.wt != nil {
+		s.WTListening, s.WTCertHash, s.WTError = l.wt.status()
 	}
 	saveLANStatus(l.dir, s)
 }

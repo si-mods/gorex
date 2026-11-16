@@ -8,7 +8,7 @@ import { Chunk } from "./chunks";
 import { Ghostty } from "./ghostty";
 import type { Guide } from "./guide";
 import { mountCorner } from "./corner";
-import { commandBox, Host, HostLink, HostList, hostURL, icon, loadHosts, mixedContent, Problem, problem as newProblem } from "./hosts";
+import { commandBox, Host, HostLink, HostList, icon, loadHosts, mixedContent, parsePairingLink, Problem, problem as newProblem } from "./hosts";
 import { HostConn, HostEvents, Session } from "./hostconn";
 import { localize, Msg, msg, onLanguageChange, PlainKey, t } from "./i18n";
 import { commandTitle, keysOf, shortcut } from "./keys";
@@ -26,6 +26,7 @@ import type { Settings } from "./settings";
 import { fetchSharedHosts, SharedGroup } from "./share";
 import { hold, initSidebar, paneName, redraw, sidebar as drawSidebar, sidebarBlock, spaceName, windowTitle } from "./sidebar";
 import { Tailnet, TailnetHost } from "./tailnet";
+import { webTransport } from "./webtransport";
 import { desktopTheme, Theme } from "./terminal";
 import { isLight, startTheme, ThemeEntry, themeColours } from "./themes";
 import type { Welcome } from "./welcome";
@@ -351,18 +352,15 @@ async function main() {
     boot.fail(() => t("bootFailedText", { error: describe(e) }));
     return;
   }
-  // A quick link: ?host=URL adds the host, or chooses it, and leaves the address bar.
+  // A quick link: ?host=URL or #host=URL&wt=sha256-... adds the host, or chooses it, and leaves the address bar.
   let place = startAt;
-  const linked = new URLSearchParams(location.search).get("host");
+  const linked = parsePairingLink(location.search, location.hash);
   if (linked) {
-    const r = hostURL(linked);
-    if ("url" in r) {
-      hostList.addLink(r.url);
-      if (hostList.chosen) {
-        // A host linked is asked for: it connects, though the user disconnected it before.
-        setOff(hostList.chosen.id, false);
-        place = { host: hostList.chosen.id };
-      }
+    hostList.addLink(linked.url, linked.certHash);
+    if (hostList.chosen) {
+      // A host linked is asked for: it connects, though the user disconnected it before.
+      setOff(hostList.chosen.id, false);
+      place = { host: hostList.chosen.id };
     }
     history.replaceState(null, "", location.pathname);
   }
@@ -615,9 +613,11 @@ function drawNotice() {
   } else notice();
 }
 
-/** A host's transport: the browser's to its address, or the tailnet node's. */
+/** A host's transport: the browser's to its address, WebTransport with pinned cert, or the tailnet node's. */
 function transportOf(h: Host) {
-  return h.kind === "tailnet" ? tailnet.transport(h as TailnetHost) : directTransport(h.url);
+  if (h.kind === "tailnet") return tailnet.transport(h as TailnetHost);
+  if (h.certHash) return webTransport(h.url, h.certHash);
+  return directTransport(h.url);
 }
 
 /**
@@ -627,7 +627,7 @@ function transportOf(h: Host) {
  */
 function ensure(h: Host): HostConn {
   let c = conns.get(h.id);
-  if (c && c.host.url !== h.url) {
+  if (c && (c.host.url !== h.url || c.host.certHash !== h.certHash)) {
     drop(c);
     c = undefined;
   }
