@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.31.1
+
+### Features
+
+* **ios:** switch a tab's panes like Rex Go ([#639](https://github.com/si-mods/gorex/pull/639))
+
+### Bug Fixes
+
+* **ios:** keep the terminal above the bottom bars and fade what scrolls under them ([#648](https://github.com/si-mods/gorex/pull/648))
+* **ios:** show the reconnect note above the key bar ([#643](https://github.com/si-mods/gorex/pull/643))
+* **ios:** tap the hand as the key bar's mic is pressed ([#642](https://github.com/si-mods/gorex/pull/642))
+* **ios:** tap the hand on the voice capsule's buttons ([#646](https://github.com/si-mods/gorex/pull/646))
+* **panes:** attach a pane of this machine again when its stream is lost ([#641](https://github.com/si-mods/gorex/pull/641))
+
 ## 0.31.0
 
 ### Features
