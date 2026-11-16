@@ -97,22 +97,29 @@ final class TerminalView: UIView, TerminalOutput {
 
     /// The keyboard's height over the terminal.
     private var keys: CGFloat = 0
-    /// How far the keyboard reaches over the terminal, or the home indicator
-    /// when it is away: how far the terminal slides up to keep its cursor
-    /// clear. The phone's bar rides the keyboard but draws over the
-    /// terminal, so the grid goes under it, and it is not covered.
+    /// How far the keyboard reaches over the grid, past the band under it:
+    /// how far the terminal slides up to keep its cursor clear. The bars
+    /// ride the keyboard, and the grid ends above them.
     private var covered: CGFloat {
-        guard let host = superview, bar.superview === host, !bar.isHidden else { return keys }
-        return max(keys, host.safeAreaInsets.bottom)
+        guard band > 0 else { return keys }
+        return max(0, keys - (superview?.safeAreaInsets.bottom ?? 0))
     }
 
-    /// How tall the phone's bar is, and the pane bar over it. The terminal
-    /// goes under both, so only the scroll indicator, which would be hard to
-    /// read through the glass, keeps out from under them; a cursor under
-    /// them takes the slide that `needed` gives it.
+    /// How tall the phone's bar is, and the pane bar over it.
     private var barCover: CGFloat {
         guard let host = superview, bar.superview === host, !bar.isHidden else { return paneInset }
         return bar.intrinsicContentSize.height + paneInset
+    }
+
+    /// The band at the bottom the grid stays out of: the home indicator and
+    /// the bars over it, so they never cover a row. Ghostty keeps it blank
+    /// at rest and, while the scrollback is scrolled back, draws the lines
+    /// after the screen into it, which go on under the bars' fade. Without
+    /// bars it is nothing, as on an iPad with one pane.
+    var band: CGFloat {
+        let bars = barCover
+        guard bars > 0 else { return 0 }
+        return (superview?.safeAreaInsets.bottom ?? 0) + bars
     }
     /// Whether the mouse is over a link, as Ghostty last told.
     var overLink = false
@@ -362,7 +369,8 @@ final class TerminalView: UIView, TerminalOutput {
         // The grid starts below the bars, on either screen, and the lines
         // above it in the scrollback fill the band under them. The terminal
         // takes the two as one resize: Ghostty's IO thread waits 25 ms for
-        // the last.
+        // the last. The grid ends above the band at the bottom, the bars'.
+        ghostty_surface_set_bottom_inset(s, band * scale)
         ghostty_surface_set_top_inset(s, inset * scale)
         ghostty_surface_set_size(s, UInt32(bounds.width * scale), UInt32(bounds.height * scale))
         syncing = true
@@ -387,9 +395,9 @@ final class TerminalView: UIView, TerminalOutput {
 
     /// Slides the terminal up over the keyboard, no farther than it is tall,
     /// as far as the cursor's row and the lines drawn under it, as an
-    /// agent's box and status, need. The bar rides the keyboard and the
-    /// terminal goes under it: the last rows show through its glass. With
-    /// nothing over it, it rests on the home indicator and reads nothing.
+    /// agent's box and status, need. The grid ends above the bars, which
+    /// ride the keyboard: with the keyboard away nothing is over it, and it
+    /// rests at 0 and reads nothing.
     func slide(duration: Double, options: UIView.AnimationOptions = .curveEaseOut) {
         guard surface != nil, drawn else { return }
         slide(to: needed(), duration: duration, options: options)
@@ -401,29 +409,17 @@ final class TerminalView: UIView, TerminalOutput {
     /// is not read.
     func needed() -> CGFloat {
         let covered = self.covered
-        let bar = barCover
-        guard surface != nil, covered > 0 || bar > 0 else { return 0 }
+        guard surface != nil, covered > 0 else { return 0 }
         let c = cursor(width: nil)
-        var y: CGFloat = 0
-        if covered > 0 {
-            let room = bounds.height - covered - drawnBottom(under: c)
-            y = min(0, max(room, inset - c.minY, -covered))
-        }
-        // The bar draws over the terminal, and scrolling leaves its rows
-        // showing through the glass, but a cursor under it is no cursor at
-        // all: what is on screen and landing under the bar takes the rest of
-        // the slide, so it stays whole above it.
-        guard bar > 0, c.maxY <= bounds.height else { return y }
-        let top = bounds.height - covered - bar
-        guard c.maxY + y > top else { return y }
-        return max(-covered - bar, top - c.maxY)
+        let room = bounds.height - band - covered - drawnBottom(under: c)
+        return min(0, max(room, inset - c.minY, -covered))
     }
 
     /// Slides the terminal there, the scroll indicator's insets with it, and
     /// leaves it alone if it is there already.
     func slide(to y: CGFloat, duration: Double, options: UIView.AnimationOptions = .curveEaseOut) {
         wantsDown = 0
-        scroller.verticalScrollIndicatorInsets = UIEdgeInsets(top: inset - y, left: 0, bottom: covered + barCover + y, right: 0)
+        scroller.verticalScrollIndicatorInsets = UIEdgeInsets(top: inset - y, left: 0, bottom: band + covered + y, right: 0)
         guard transform.ty != y else { return }
         UIView.animate(withDuration: duration, delay: 0, options: [options, .beginFromCurrentState]) {
             self.transform = CGAffineTransform(translationX: 0, y: y)
@@ -534,6 +530,7 @@ final class TerminalView: UIView, TerminalOutput {
     @objc private func showBar() {
         bar.isHidden = !Self.hasBar
         (superview as? TerminalHost)?.placeBottomEdge()
+        setNeedsLayout()
         slide(duration: 0)
     }
 
@@ -1083,6 +1080,8 @@ final class TerminalHost: UIView, UIGestureRecognizerDelegate {
     override func safeAreaInsetsDidChange() {
         super.safeAreaInsetsDidChange()
         setNeedsLayout()
+        // The terminal's band holds the home indicator's height.
+        terminal.setNeedsLayout()
     }
 
     func setBottomEdgeColor(_ color: UIColor) {
