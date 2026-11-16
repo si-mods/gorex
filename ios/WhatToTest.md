@@ -1,9 +1,14 @@
 # What to Test
 
-The bullets this file gains between two builds are what TestFlight's testers
-read as the newer build's What to Test (`ios/scripts/test-notes` takes the
-difference since the last run that uploaded).
+A build's What to Test, per locale, is what its locale section here gained
+since the last build that uploaded: `ios/scripts/test-notes` sets `en-US`
+from `## en-US` and `zh-Hans` from `## zh-Hans`.
 
-A pull request that changes what a tester sees adds a bullet here, in the
-app's language and in their terms: what they get to try, not how it is
-built. A line that reads like a commit subject does not belong here.
+A pull request that changes what a tester sees adds one bullet to each
+section, in the app's terms: what they get to try, not how it is built. A
+bullet that reads like a commit subject is one testers cannot read, and the
+`notes` job of `.github/workflows/ci.yml` fails it.
+
+## en-US
+
+## zh-Hans
