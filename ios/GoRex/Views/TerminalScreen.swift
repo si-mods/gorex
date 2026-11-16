@@ -341,7 +341,8 @@ struct TerminalScreen: View {
             Text(title.asText)
                 .font(.body.weight(.semibold))
                 .lineLimit(1)
-                .contentTransition(.push(from: edge))
+                .id(currentTarget.block)
+                .transition(.push(from: edge))
         }
         .padding(.leading, 12)
         .padding(.trailing, 18)
