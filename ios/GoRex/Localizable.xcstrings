@@ -3857,6 +3857,196 @@
           }
         }
       }
+    },
+    "All Supporting Hosts": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "所有支持的主机"
+          }
+        }
+      }
+    },
+    "Assigned Panes": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已归属窗格"
+          }
+        }
+      }
+    },
+    "Automatically applies iOS space assignments back to online desktop hosts that support gorex.spaces_sync.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自动将 iOS 端的空间分组变更同步回支持 gorex.spaces_sync 的在线桌面主机。"
+          }
+        }
+      }
+    },
+    "Desktop Hosts": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "桌面主机"
+          }
+        }
+      }
+    },
+    "Last Desktop Sync": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "最近桌面同步"
+          }
+        }
+      }
+    },
+    "Last iCloud Sync": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "最近 iCloud 同步"
+          }
+        }
+      }
+    },
+    "Local Only": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "仅本地"
+          }
+        }
+      }
+    },
+    "Never": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "从未"
+          }
+        }
+      }
+    },
+    "Not Supported": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "不支持"
+          }
+        }
+      }
+    },
+    "Ready": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "就绪"
+          }
+        }
+      }
+    },
+    "Revision": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "版本"
+          }
+        }
+      }
+    },
+    "Space Sync": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "空间同步"
+          }
+        }
+      }
+    },
+    "Spaces": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "空间数"
+          }
+        }
+      }
+    },
+    "Sync Now": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "立即同步"
+          }
+        }
+      }
+    },
+    "Sync to Desktop": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "同步到桌面端"
+          }
+        }
+      }
+    },
+    "Syncs your cross-host spaces and window assignments across your Apple devices via iCloud.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "通过 iCloud 在你的 Apple 设备间同步跨主机空间与窗口归属。"
+          }
+        }
+      }
+    },
+    "Target Desktop": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "目标桌面主机"
+          }
+        }
+      }
+    },
+    "iCloud On": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "iCloud 已开启"
+          }
+        }
+      }
+    },
+    "iCloud Sync": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "iCloud 同步"
+          }
+        }
+      }
     }
   }
 }
