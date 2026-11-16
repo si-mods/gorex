@@ -197,8 +197,10 @@ func (a *App) sidebarParts(c *ui.Context, k *colors, right bool) {
 
 // paneBar is the title bar over the panes beside a sidebar: the sidebar's
 // buttons while it is hidden, and the window's controls when the sidebar
-// does not have them.
+// does not have them. Beside a shown left sidebar under own controls, it
+// holds the title buttons too, as the sidebar's head has the space chip.
 func (a *App) paneBar(c *ui.Context, k *colors, right, shown bool) {
+	unified := shown && !right && ownControls
 	bar := c.TitleBar()
 	left := float32(gap)
 	if right || !shown {
@@ -221,7 +223,7 @@ func (a *App) paneBar(c *ui.Context, k *colors, right, shown bool) {
 			a.workspaceChip(c, k, false)
 		}
 		ui.Spacer(c)
-		if !shown {
+		if !shown || unified {
 			a.titleButtons(c, k, func() {
 				if right {
 					a.sidebarButton(c, k, true)
@@ -251,8 +253,14 @@ func (a *App) sidebarButton(c *ui.Context, k *colors, right bool) {
 
 // sidebar draws the sidebar: under the window's controls its buttons and
 // the tabs, one a row; the settings' button and the host's at its foot.
+// With own controls on the left, its head holds the space chip beside the
+// button, and the pane bar has the title buttons.
 func (a *App) sidebar(c *ui.Context, k *colors, right bool) {
 	bar := c.TitleBar()
+	// The host view lists the spaces under their hosts: the chip would say
+	// it twice.
+	chip := a.ws != nil && !a.hostView()
+	unified := !right && ownControls
 	winW, _ := c.Size()
 	ui.Column(c).Width(sidebarWidthIn(winW)).Shrink(0).MinHeight(0).Children(func() {
 		head := ui.Row(c).Height(titleH).Shrink(0).Gap(2).AlignItems(ui.Center).DragWindow()
@@ -269,15 +277,19 @@ func (a *App) sidebar(c *ui.Context, k *colors, right bool) {
 		}
 		head.Children(func() {
 			a.sidebarButton(c, k, right)
+			if unified {
+				if chip {
+					a.workspaceChip(c, k, true)
+				}
+				return
+			}
 			ui.Spacer(c)
 			a.titleButtons(c, k, nil)
 			if right {
 				a.windowControls(c, k)
 			}
 		})
-		// The host view lists the spaces under their hosts: the chip would
-		// say it twice.
-		if a.ws != nil && !a.hostView() {
+		if chip && !unified {
 			ui.Row(c).Shrink(0).Padding(0, 6, 4, 6).Children(func() { a.workspaceChip(c, k, true) })
 		}
 		ui.Scroll(c).Grow(1).MinHeight(0).Padding(2, 6, 6, 6).Children(func() {
