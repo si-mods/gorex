@@ -99,7 +99,7 @@ final class TerminalView: UIView, TerminalOutput {
     /// clear. The phone's bar rides the keyboard but draws over the
     /// terminal, so the grid goes under it, and it is not covered.
     private var covered: CGFloat {
-        guard let host = superview, !bar.isHidden else { return keys }
+        guard let host = superview, bar.superview === host, !bar.isHidden else { return keys }
         return max(keys, host.safeAreaInsets.bottom)
     }
 
