@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -134,5 +135,71 @@ func TestWorkflowsTargetFork(t *testing.T) {
 		if strings.Contains(string(data), "egoist/gorex") {
 			t.Errorf("%s: must not reference upstream egoist/gorex", path)
 		}
+	}
+}
+
+var excuseCommentRe = regexp.MustCompile(`(?i)(//\s*nolint\b|@ts-(?:ignore|expect-error|nocheck)\b|eslint-disable\b|\b(?:TODO|FIXME|XXX)\b|\b(?:workaround|hack)\b)`)
+
+// TestNoExcuseComments forbids inline lint/type suppressions and shortcut
+// excuse comments (TODO/FIXME/XXX/workaround/hack) across Go, TypeScript, and
+// Swift sources so shortcuts are fixed rather than normalized.
+func TestNoExcuseComments(t *testing.T) {
+	skipDirs := map[string]bool{
+		".git": true, ".claude": true, ".mygo": true,
+		"build": true, "node_modules": true,
+	}
+	skipFiles := map[string]bool{
+		"rules_test.go":          true,
+		"locales/catalog_gen.go": true,
+		"web/src/locales.gen.ts": true,
+	}
+	fset := token.NewFileSet()
+	err := filepath.WalkDir(".", func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		slash := filepath.ToSlash(path)
+		if d.IsDir() {
+			if skipDirs[d.Name()] || slash == "web/dist" {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if skipFiles[slash] {
+			return nil
+		}
+		switch filepath.Ext(slash) {
+		case ".go":
+			f, err := parser.ParseFile(fset, path, nil, parser.ParseComments)
+			if err != nil {
+				return err
+			}
+			for _, cg := range f.Comments {
+				for _, c := range cg.List {
+					if m := excuseCommentRe.FindString(c.Text); m != "" {
+						pos := fset.Position(c.Pos())
+						t.Errorf("%s:%d: forbidden excuse/suppression comment %q", slash, pos.Line, m)
+					}
+				}
+			}
+		case ".ts", ".swift":
+			data, err := os.ReadFile(path)
+			if err != nil {
+				return err
+			}
+			for i, line := range strings.Split(string(data), "\n") {
+				trimmed := strings.TrimSpace(line)
+				if !strings.HasPrefix(trimmed, "//") && !strings.HasPrefix(trimmed, "/*") && !strings.HasPrefix(trimmed, "*") {
+					continue
+				}
+				if m := excuseCommentRe.FindString(trimmed); m != "" {
+					t.Errorf("%s:%d: forbidden excuse/suppression comment %q", slash, i+1, m)
+				}
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 }
