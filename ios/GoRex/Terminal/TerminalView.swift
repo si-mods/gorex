@@ -97,22 +97,29 @@ final class TerminalView: UIView, TerminalOutput {
 
     /// The keyboard's height over the terminal.
     private var keys: CGFloat = 0
-    /// How far the keyboard reaches over the terminal, or the home indicator
-    /// when it is away: how far the terminal slides up to keep its cursor
-    /// clear. The phone's bar rides the keyboard but draws over the
-    /// terminal, so the grid goes under it, and it is not covered.
+    /// How far the keyboard reaches over the grid, past the band under it:
+    /// how far the terminal slides up to keep its cursor clear. The bars
+    /// ride the keyboard, and the grid ends above them.
     private var covered: CGFloat {
-        guard let host = superview, bar.superview === host, !bar.isHidden else { return keys }
-        return max(keys, host.safeAreaInsets.bottom)
+        guard band > 0 else { return keys }
+        return max(0, keys - (superview?.safeAreaInsets.bottom ?? 0))
     }
 
-    /// How tall the phone's bar is, and the pane bar over it. The terminal
-    /// goes under both, so only the scroll indicator, which would be hard to
-    /// read through the glass, keeps out from under them; a cursor under
-    /// them takes the slide that `needed` gives it.
+    /// How tall the phone's bar is, and the pane bar over it.
     private var barCover: CGFloat {
         guard let host = superview, bar.superview === host, !bar.isHidden else { return paneInset }
         return bar.intrinsicContentSize.height + paneInset
+    }
+
+    /// The band at the bottom the grid stays out of: the home indicator and
+    /// the bars over it, so they never cover a row. Ghostty keeps it blank
+    /// at rest and, while the scrollback is scrolled back, draws the lines
+    /// after the screen into it, which go on under the bars' fade. Without
+    /// bars it is nothing, as on an iPad with one pane.
+    var band: CGFloat {
+        let bars = barCover
+        guard bars > 0 else { return 0 }
+        return (superview?.safeAreaInsets.bottom ?? 0) + bars
     }
     /// Whether the mouse is over a link, as Ghostty last told.
     var overLink = false
@@ -362,7 +369,8 @@ final class TerminalView: UIView, TerminalOutput {
         // The grid starts below the bars, on either screen, and the lines
         // above it in the scrollback fill the band under them. The terminal
         // takes the two as one resize: Ghostty's IO thread waits 25 ms for
-        // the last.
+        // the last. The grid ends above the band at the bottom, the bars'.
+        ghostty_surface_set_bottom_inset(s, band * scale)
         ghostty_surface_set_top_inset(s, inset * scale)
         ghostty_surface_set_size(s, UInt32(bounds.width * scale), UInt32(bounds.height * scale))
         syncing = true
@@ -387,9 +395,9 @@ final class TerminalView: UIView, TerminalOutput {
 
     /// Slides the terminal up over the keyboard, no farther than it is tall,
     /// as far as the cursor's row and the lines drawn under it, as an
-    /// agent's box and status, need. The bar rides the keyboard and the
-    /// terminal goes under it: the last rows show through its glass. With
-    /// nothing over it, it rests on the home indicator and reads nothing.
+    /// agent's box and status, need. The grid ends above the bars, which
+    /// ride the keyboard: with the keyboard away nothing is over it, and it
+    /// rests at 0 and reads nothing.
     func slide(duration: Double, options: UIView.AnimationOptions = .curveEaseOut) {
         guard surface != nil, drawn else { return }
         slide(to: needed(), duration: duration, options: options)
@@ -401,29 +409,17 @@ final class TerminalView: UIView, TerminalOutput {
     /// is not read.
     func needed() -> CGFloat {
         let covered = self.covered
-        let bar = barCover
-        guard surface != nil, covered > 0 || bar > 0 else { return 0 }
+        guard surface != nil, covered > 0 else { return 0 }
         let c = cursor(width: nil)
-        var y: CGFloat = 0
-        if covered > 0 {
-            let room = bounds.height - covered - drawnBottom(under: c)
-            y = min(0, max(room, inset - c.minY, -covered))
-        }
-        // The bar draws over the terminal, and scrolling leaves its rows
-        // showing through the glass, but a cursor under it is no cursor at
-        // all: what is on screen and landing under the bar takes the rest of
-        // the slide, so it stays whole above it.
-        guard bar > 0, c.maxY <= bounds.height else { return y }
-        let top = bounds.height - covered - bar
-        guard c.maxY + y > top else { return y }
-        return max(-covered - bar, top - c.maxY)
+        let room = bounds.height - band - covered - drawnBottom(under: c)
+        return min(0, max(room, inset - c.minY, -covered))
     }
 
     /// Slides the terminal there, the scroll indicator's insets with it, and
     /// leaves it alone if it is there already.
     func slide(to y: CGFloat, duration: Double, options: UIView.AnimationOptions = .curveEaseOut) {
         wantsDown = 0
-        scroller.verticalScrollIndicatorInsets = UIEdgeInsets(top: inset - y, left: 0, bottom: covered + barCover + y, right: 0)
+        scroller.verticalScrollIndicatorInsets = UIEdgeInsets(top: inset - y, left: 0, bottom: band + covered + y, right: 0)
         guard transform.ty != y else { return }
         UIView.animate(withDuration: duration, delay: 0, options: [options, .beginFromCurrentState]) {
             self.transform = CGAffineTransform(translationX: 0, y: y)
@@ -533,6 +529,8 @@ final class TerminalView: UIView, TerminalOutput {
     /// comes and goes.
     @objc private func showBar() {
         bar.isHidden = !Self.hasBar
+        (superview as? TerminalHost)?.placeBottomEdge()
+        setNeedsLayout()
         slide(duration: 0)
     }
 
@@ -850,9 +848,15 @@ final class EdgeFadeView: UIView {
     private let maskLayer = CAGradientLayer()
     private let colorLayer = CAGradientLayer()
     private var color: UIColor
+    /// How tall the fade to clear is, from the inner edge; nil fades over
+    /// 65% of the view, with a 0.75 tint where it starts. With a length the
+    /// rest is solid: the bottom edge covers the key bar's lower half and
+    /// the home indicator, and fades over the bar's upper half only.
+    private let fade: CGFloat?
 
-    init(edge: Edge, color: UIColor) {
+    init(edge: Edge, color: UIColor, fade: CGFloat? = nil) {
         self.color = color
+        self.fade = fade
         super.init(frame: .zero)
         isUserInteractionEnabled = false
         backgroundColor = .clear
@@ -887,6 +891,11 @@ final class EdgeFadeView: UIView {
         CATransaction.setDisableActions(true)
         maskLayer.frame = blurView.bounds
         colorLayer.frame = bounds
+        if let fade, bounds.height > 0 {
+            let solid = NSNumber(value: Double(max(0, 1 - fade / bounds.height)))
+            maskLayer.locations = [0, solid, 1]
+            colorLayer.locations = [0, solid, 1]
+        }
         CATransaction.commit()
     }
 
@@ -899,7 +908,7 @@ final class EdgeFadeView: UIView {
     private func applyColor() {
         colorLayer.colors = [
             color.cgColor,
-            color.withAlphaComponent(0.75).cgColor,
+            color.withAlphaComponent(fade == nil ? 0.75 : 1).cgColor,
             color.withAlphaComponent(0).cgColor,
         ]
     }
@@ -919,6 +928,17 @@ final class TerminalHost: UIView, UIGestureRecognizerDelegate {
     /// inset and the key bar at once, so they don't animate from .zero under
     /// the switch's spring.
     var snaps = false
+    /// The fade behind the bars at the bottom, as the top edge's under the
+    /// status bar: solid from the bottom up, clear at the top bar's top, so
+    /// the row the cursor rests on above the bars is never covered; it
+    /// changes no inset. It covers the phone's key bar and what sits above
+    /// it, and goes when neither is there.
+    private let bottomEdge = EdgeFadeView(edge: .bottom, color: .black, fade: KeyBar.height / 2)
+    private var bottomEdgeTop: NSLayoutConstraint?
+    /// How tall the bars above the key bar reach, such as the pane bar,
+    /// counted from the key bar's top, or from the keyboard's (or the home
+    /// indicator's) without it. The bottom edge reaches over them too.
+    var aboveBar: CGFloat = 0 { didSet { if aboveBar != oldValue { placeBottomEdge() } } }
 
     init(_ terminal: TerminalView) {
         self.terminal = terminal
@@ -931,6 +951,17 @@ final class TerminalHost: UIView, UIGestureRecognizerDelegate {
             swipe.cancelsTouchesInView = false
             addGestureRecognizer(swipe)
         }
+        let edge = bottomEdge
+        edge.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(edge)
+        let edgeTop = edge.topAnchor.constraint(equalTo: keyboardLayoutGuide.topAnchor)
+        bottomEdgeTop = edgeTop
+        NSLayoutConstraint.activate([
+            edge.leadingAnchor.constraint(equalTo: leadingAnchor),
+            edge.trailingAnchor.constraint(equalTo: trailingAnchor),
+            edgeTop,
+            edge.bottomAnchor.constraint(equalTo: bottomAnchor),
+        ])
         let anchor: NSLayoutYAxisAnchor
         if UIDevice.current.userInterfaceIdiom != .pad {
             let bar = terminal.bar
@@ -983,6 +1014,7 @@ final class TerminalHost: UIView, UIGestureRecognizerDelegate {
             scrollDown.bottomAnchor.constraint(equalTo: anchor, constant: -12),
         ])
 
+        placeBottomEdge()
         terminal.onScrollState = { [weak self] up, unread in
             self?.updateScrollDown(visible: up, unread: unread)
         }
@@ -1048,6 +1080,22 @@ final class TerminalHost: UIView, UIGestureRecognizerDelegate {
     override func safeAreaInsetsDidChange() {
         super.safeAreaInsetsDidChange()
         setNeedsLayout()
+        // The terminal's band holds the home indicator's height.
+        terminal.setNeedsLayout()
+    }
+
+    func setBottomEdgeColor(_ color: UIColor) {
+        bottomEdge.setColor(color)
+    }
+
+    /// Reaches the bottom edge up over the key bar, when it shows, and the
+    /// bars above it; with neither it goes.
+    func placeBottomEdge() {
+        let bar = terminal.bar
+        let keyBar = bar.superview === self && !bar.isHidden ? KeyBar.height : 0
+        let height = keyBar + aboveBar
+        bottomEdge.isHidden = height == 0
+        bottomEdgeTop?.constant = -height
     }
 }
 

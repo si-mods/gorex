@@ -91,7 +91,7 @@ struct TerminalScreen: View {
             ForEach(pages) { pane in
                 let current = pane.session === session
                 TerminalRepresentable(session: pane.session, newTab: newTab, closeTab: closeTab, mic: mic, voice: voiceCapsule, dictating: said != nil && current, snaps: switching > 0,
-                                      paneInset: paneCellList.count > 1 ? PaneBar.height + 10 : 0,
+                                      paneInset: paneCellList.count > 1 ? PaneBar.height + 20 : 0,
                                       onSwipe: { stepPane(by: $0) },
                                       canSwipe: { switching == 0 && incoming == nil && (terminal?.paneSwipeAllowed ?? false) })
                     .offset(x: pane.x * pageWidth)
@@ -132,7 +132,7 @@ struct TerminalScreen: View {
                             .transition(.move(edge: .bottom).combined(with: .opacity))
                     }
                     if paneCellList.count > 1 {
-                        PaneBar(cells: paneCellList, current: currentTarget.block, program: { .of(host.blocks[$0]?.program) }, select: selectPane, newTab: newTab)
+                        PaneBar(cells: paneCellList, current: currentTarget.block, program: { .of(host.blocks[$0]?.program) }, select: selectPane, newSplit: newSplit)
                             .transition(.opacity.combined(with: .move(edge: .bottom)))
                     }
                 }
@@ -577,6 +577,20 @@ struct TerminalScreen: View {
         switchTo(TerminalTarget(host: host.id, session: currentTarget.session, block: next.block, title: host.title(next.window)), dir: delta > 0 ? 1 : -1)
     }
 
+    /// Splits the pane in place, a new shell beside it in the same window,
+    /// and goes to it.
+    private func newSplit() {
+        Task {
+            do {
+                if let b = try await host.newSplit(beside: currentTarget.block, in: currentTarget.session) {
+                    switchTo(TerminalTarget(host: host.id, session: currentTarget.session, block: b, title: ""), dir: 1)
+                }
+            } catch {
+                failure = ("Can't Split the Pane", error.localizedDescription)
+            }
+        }
+    }
+
     /// Opens a new window in the session, and goes to it.
     private func newTab() {
         Task {
@@ -996,8 +1010,10 @@ private struct TerminalRepresentable: UIViewRepresentable {
         v.terminal.newTab = newTab
         v.terminal.closeTab = closeTab
         v.terminal.paneInset = paneInset
+        v.aboveBar = paneInset
         v.onSwipe = onSwipe
         v.canSwipe = canSwipe
+        v.setBottomEdgeColor(UIColor(cgColor: (session.background ?? .black).cgColor))
         context.coordinator.mic.rootView = mic
         context.coordinator.voice.rootView = voice
         v.terminal.bar.setVoice(active: dictating)

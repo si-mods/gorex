@@ -212,6 +212,26 @@
         }
       }
     },
+    "Can't Split the Pane": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法拆分面板"
+          }
+        }
+      }
+    },
+    "Split Pane": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "拆分面板"
+          }
+        }
+      }
+    },
     "Can't Rename the Tab": {
       "localizations": {
         "zh-Hans": {

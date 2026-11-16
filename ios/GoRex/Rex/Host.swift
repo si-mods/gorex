@@ -954,6 +954,43 @@ final class Host: Identifiable {
         }
     }
 
+    /// Splits a demo window's pane, a new shell to its right, as the server
+    /// would: the pane's place halves, the new block after it.
+    private func demoAddSplit(beside anchor: String, in session: String) -> String? {
+        guard let i = sessions.firstIndex(where: { $0.id == session }),
+              var view = sessions[i].view, var windows = view.windows,
+              let w = windows.firstIndex(where: { $0.holds(anchor) }) else { return nil }
+        let block = Self.demoID("b")
+        var layer = windows[w].layers?.first ?? .init(blocks: [.init(block_id: anchor)])
+        var tiled = layer.blocks ?? [.init(block_id: anchor)]
+        let at = tiled.firstIndex { $0.block_id == anchor }.map { $0 + 1 } ?? tiled.count
+        tiled.insert(.init(block_id: block), at: at)
+        layer.blocks = tiled
+        let root = layer.layout ?? PaneLayout(rect: [0, 0, 1, 1], block_id: anchor)
+        func leaf(_ n: PaneLayout) -> PaneLayout? {
+            if n.block_id == anchor { return n }
+            guard let s = n.split else { return nil }
+            return leaf(s.before) ?? leaf(s.after)
+        }
+        if let n = leaf(root), let r = n.rect, r.count == 4 {
+            let half = r[2] / 2
+            n.split = PaneSplit(direction: "horizontal", ratio: 0.5,
+                                before: PaneLayout(rect: [r[0], r[1], half, r[3]], block_id: anchor),
+                                after: PaneLayout(rect: [r[0] + half, r[1], half, r[3]], block_id: block))
+            n.block_id = nil
+        }
+        layer.layout = root
+        windows[w].layers = [layer] + (windows[w].layers ?? []).dropFirst()
+        view.windows = windows
+        view.revision += 1
+        sessions[i].view = view
+        let b = Block()
+        b.title = "Shell"
+        b.program = "zsh"
+        blocks[block] = b
+        return block
+    }
+
     /// Adds a window to a demo session, as the server would.
     @discardableResult
     private func demoAddWindow(_ id: String, block: String, to i: Int) -> String {
@@ -980,6 +1017,18 @@ final class Host: Identifiable {
         }
         let r = try await live().call("session.new_window", [
             "session_id": session, "focus": false, "layout": ["block": shell],
+        ]).payload
+        return (r["block_ids"] as? [Any])?.first as? String
+    }
+
+    /// Splits a pane of a window where it is: a new shell to its right, as
+    /// the desktop's Split Right, and returns its block. The shared layout's
+    /// focus stays where it is.
+    func newSplit(beside block: String, in session: String) async throws -> String? {
+        if isDemo { return demoAddSplit(beside: block, in: session) }
+        let r = try await live().call("session.new_split", [
+            "session_id": session, "anchor_id": block, "direction": "horizontal", "side": "after",
+            "focus": false, "layout": ["block": shell],
         ]).payload
         return (r["block_ids"] as? [Any])?.first as? String
     }
