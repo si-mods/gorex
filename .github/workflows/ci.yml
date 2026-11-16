@@ -135,7 +135,7 @@ jobs:
   test-windows:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, yibo-pc]
-    timeout-minutes: 55
+    timeout-minutes: 60
     steps:
       - run: git config --global core.autocrlf false
       - uses: actions/checkout@v4
@@ -151,12 +151,8 @@ jobs:
           $pkgs = go list ./... | Where-Object { $_ -ne 'gorex' }
           go test $pkgs -count=1 -timeout 15m
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          go test . -count=1 -timeout 25m
-          if ($LASTEXITCODE -ne 0) {
-            Write-Warning "root failed, running it once more"
-            go test . -count=1 -timeout 25m
-            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          }
+          go test . -count=1 -timeout 40m
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
   # Builds web/dist (with files.json) and uploads it to Cloudflare R2 on pushes to main.
   web-r2:
