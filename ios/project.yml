@@ -105,6 +105,8 @@ targets:
     sources:
       - GoRexTests
       - GoRex/Rex
+      - GoRex/Notifier.swift
+      - GoRex/Views/TerminalTarget.swift
       - GoRex/Terminal/VTerminal.swift
       - GoRex/Terminal/KeyEvent.swift
       - GoRex/Terminal/InputDocument.swift
