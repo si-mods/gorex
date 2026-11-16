@@ -1,20 +1,26 @@
 #!/bin/bash
-# test-notes: set a TestFlight build's What to Test to the app's commits
-# since another: those of the app alone, feat, fix or perf of scope ios or
-# ios-*, without the prefix; a change shared with the desktop app, or to
-# the build, is not for testers. test-notes VERSION BUILD FROM [TO], from
-# ios/; TO is HEAD by default. The key is upload's: ASC_KEY_PATH, ASC_KEY_ID and ASC_ISSUER_ID.
-# A build just uploaded shows in App Store Connect after a while, so it tries
-# for 20 minutes.
+# test-notes: set a TestFlight build's What to Test to the bullets
+# ios/WhatToTest.md gained since another commit: a tester's view of what
+# changed, written for them, not the commits that made it. test-notes
+# VERSION BUILD FROM [TO], from ios/; TO is HEAD by default. The key is
+# upload's: ASC_KEY_PATH, ASC_KEY_ID and ASC_ISSUER_ID. A build just
+# uploaded shows in App Store Connect after a while, so it tries for 20
+# minutes.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 . scripts/asc-env
 export ASC_KEY_ID ASC_ISSUER_ID ASC_PRIVATE_KEY_PATH
 V=${1:?version} B=${2:?build} FROM=${3:?from} TO=${4:-HEAD}
-notes=$(git log --no-merges --format='%s' "$FROM..$TO" -- . |
-  sed -nE 's/^(feat|fix|perf)\(ios(-[a-z0-9-]+)?\)!?: (.*)$/- \3/p')
-notes=${notes:-"- No changes to the app since the last build."}
-notes=$(printf '%s\n\n%s' "$notes" "Commit $(git rev-parse --short=7 "$TO")" | head -c 4000)
+notes=$(git diff --no-color --unified=0 "$FROM" "$TO" -- ios/WhatToTest.md |
+  sed -n 's/^+[-*][[:space:]]\([^[:space:]].*\)$/- \1/p' |
+  sed -n '1,15p')
+if [ -z "$notes" ]; then
+  notes="- Bug fixes and internal improvements; no new features in this build."
+  # An app change nobody wrote a bullet for reads as an empty build.
+  if ! git diff --quiet "$FROM" "$TO" -- . ':!ios/WhatToTest.md'; then
+    echo "::warning::${FROM:0:7}..${TO:0:7} changes the app, but ios/WhatToTest.md gains no bullet"
+  fi
+fi
 for _ in $(seq 40); do
   if ASC_TIMEOUT=60s asc builds test-notes update --app "$APP" --build-number "$B" --platform IOS --version "$V" \
     --locale en-US --whats-new "$notes" --output json > /dev/null 2>&1 ||
