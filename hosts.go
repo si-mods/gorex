@@ -1435,6 +1435,17 @@ func hostStatus(h *hostConn) (label, detail string, up bool) {
 // snapshot of the screen and scrollback follows.
 const screenReset = "\x1bc\x1b[H\x1b[2J\x1b[3J"
 
+// attachGrace is how long a pane of this machine waits for the view to ask
+// for its size before it attaches at the one it has, as rex.Stream waited
+// for its first Resize: the box of a pane made by a split is laid out a
+// moment after its session, and the program must draw for that box.
+const attachGrace = 400 * time.Millisecond
+
+// maxQueuedInput bounds what waits for the first stream of a pane of
+// this machine: typed at a pane whose server never answers, it would
+// hold every key.
+const maxQueuedInput = 64 << 10
+
 // paneStream is the Conn of a pane's terminal: its session on this
 // machine's server or on a host, attached again whenever its connection
 // comes back, until the session ends. What is typed while it is detached
@@ -1466,6 +1477,18 @@ type paneStream struct {
 	attaches int  // the streams that printed
 	fails    int  // the streams lost since one printed
 	pending  []byte
+	// queued is what was typed before the first stream attached, which it
+	// writes in order once it has one.
+	queued []byte
+	// made is when the pane was made, zero for a pane of a host: a pane
+	// of this machine attaches at the size its box takes, which the view
+	// asks within attachGrace of it, not at the one its session had. It
+	// attaches as the view asks, once it does: the session takes that size
+	// now, as a split's child session is made at its parent's.
+	made time.Time
+	// asked is closed as the view asks for a size the first time.
+	asked     chan struct{}
+	askedOnce sync.Once
 }
 
 func newHostStream(h *hostConn, sid string, cols, rows int) *paneStream {
@@ -1477,7 +1500,7 @@ func newHostStream(h *hostConn, sid string, cols, rows int) *paneStream {
 // is lost, as a host's does, so that a pane whose connection dropped
 // takes what is typed again instead of showing a screen that goes on.
 func newLocalStream(c *rex.Client, sid string, cols, rows int) *paneStream {
-	return &paneStream{client: func() *rex.Client { return c }, sid: sid, cols: cols, rows: rows}
+	return &paneStream{client: func() *rex.Client { return c }, sid: sid, cols: cols, rows: rows, made: time.Now(), asked: make(chan struct{})}
 }
 
 // Detached tells that the stream was lost and is not back yet.
@@ -1508,7 +1531,26 @@ func (s *paneStream) stream() (*rex.Stream, error) {
 			return st, nil
 		}
 		cols, rows, fails, present := s.cols, s.rows, s.fails, s.present
+		made := s.made
 		s.mu.Unlock()
+		// The first stream of a pane of this machine attaches as the view
+		// asks for the size of the box it lays out, or after a moment, as
+		// rex.Stream did: the program draws for that box, not for the size
+		// its session had when the pane was made.
+		if !made.IsZero() && fails == 0 {
+			s.mu.Lock()
+			s.made = time.Time{}
+			s.mu.Unlock()
+			if d := time.Until(made.Add(attachGrace)); d > 0 {
+				select {
+				case <-s.asked:
+				case <-time.After(d):
+				}
+			}
+			s.mu.Lock()
+			cols, rows = s.cols, s.rows
+			s.mu.Unlock()
+		}
 		c := s.client()
 		if c == nil || fails > 0 {
 			time.Sleep(min(250*time.Millisecond<<min(fails, 3), 2*time.Second))
@@ -1528,7 +1570,12 @@ func (s *paneStream) stream() (*rex.Stream, error) {
 			return nil, io.EOF
 		}
 		s.cur, s.fresh = st, true
+		queued := s.queued
+		s.queued = nil
 		s.mu.Unlock()
+		if len(queued) > 0 {
+			st.Write(queued)
+		}
 		// A Resize while it attached, over a slow network as the view
 		// first lays out, only noted the size: the session takes it now.
 		// Left at the old size, its console draws for a screen of other
@@ -1639,16 +1686,31 @@ func (s *paneStream) Gone() bool {
 }
 
 func (s *paneStream) Write(p []byte) (int, error) {
+	typed := len(p)
 	s.mu.Lock()
 	st := s.cur
-	if s.detached {
+	switch {
+	case st != nil && s.detached:
 		st = nil
+	case st == nil && s.asked != nil && !s.detached && !s.closed && s.fails == 0:
+		// The first stream of a pane of this machine is still on its way:
+		// what is typed before it goes once it attached, in order, as it
+		// waited for the attach of old. Dropped, a shell asked to exit as
+		// its pane was made would go on.
+		if room := maxQueuedInput - len(s.queued); room > 0 {
+			if len(p) > room {
+				p = p[:room]
+			}
+			s.queued = append(s.queued, p...)
+		}
+		s.mu.Unlock()
+		return typed, nil
 	}
 	s.mu.Unlock()
 	if st != nil {
 		st.Write(p)
 	}
-	return len(p), nil
+	return typed, nil
 }
 
 // Paste writes text to the session as a paste, as the terminal's paste
@@ -1666,7 +1728,11 @@ func (s *paneStream) Paste(text string) error {
 func (s *paneStream) Resize(cols, rows int) error {
 	s.mu.Lock()
 	s.cols, s.rows = cols, rows
+	asked := s.asked
 	s.mu.Unlock()
+	if asked != nil {
+		s.askedOnce.Do(func() { close(asked) })
+	}
 	s.sendSize()
 	return nil
 }

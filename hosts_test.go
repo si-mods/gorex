@@ -806,6 +806,60 @@ func TestLocalStreamReattaches(t *testing.T) {
 	}
 }
 
+// TestLocalStreamTakesWhatIsTypedAsItAttaches is a pane of this machine
+// made a moment ago, before the view asked its size: what is typed then
+// reaches the program once its first stream attached, rather than going
+// nowhere — a shell asked to exit as its pane opens still exits.
+func TestLocalStreamTakesWhatIsTypedAsItAttaches(t *testing.T) {
+	sock, remote := startHostServer(t)
+	info, err := remote.Create(rex.CreateOptions{Cols: 80, Rows: 24})
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, err := rex.ConnectSocket(sock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { c.Close() })
+	if _, err := c.Hello(); err != nil {
+		t.Fatal(err)
+	}
+	var before time.Time
+	for _, in := range sessionInfos(t, remote) {
+		if in.ID == info.ID {
+			before = in.LastInput
+		}
+	}
+	s := newLocalStream(c, info.ID, 80, 24)
+	t.Cleanup(func() { s.Close() })
+	// Typed before the first stream attached: the terminal reads after.
+	if n, err := s.Write([]byte("x")); err != nil || n != 1 {
+		t.Fatalf("write = %d, %v", n, err)
+	}
+	go func() {
+		buf := make([]byte, 32<<10)
+		for {
+			if _, err := s.Read(buf); err != nil {
+				return
+			}
+		}
+	}()
+	for deadline := time.Now().Add(10 * time.Second); ; time.Sleep(20 * time.Millisecond) {
+		taken := false
+		for _, in := range sessionInfos(t, remote) {
+			if in.ID == info.ID {
+				taken = in.LastInput.After(before)
+			}
+		}
+		if taken {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("timed out waiting for the session to take what was typed before it attached")
+		}
+	}
+}
+
 // TestLocalPaneTakesKeysAfterItsStreamWasLost is the lesson: a pane of
 // this machine's session whose stream's connection ended says so over the
 // screen it last showed, attaches again by itself, and takes what is
