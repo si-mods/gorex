@@ -17,11 +17,10 @@ struct PaneMiniMap: View {
 
     var body: some View {
         GeometryReader { g in
-            let hInset: CGFloat = 6
-            let vInset: CGFloat = 3.5
-            let room = CGRect(x: hInset, y: vInset,
-                              width: max(0, g.size.width - hInset * 2),
-                              height: max(0, g.size.height - vInset * 2))
+            let inset: CGFloat = 6
+            let room = CGRect(x: inset, y: inset,
+                              width: max(0, g.size.width - inset * 2),
+                              height: max(0, g.size.height - inset * 2))
             ZStack(alignment: .topLeading) {
                 ForEach(cells) { cell in
                     let r = CGRect(x: room.minX + room.width * cell.rect.minX,
