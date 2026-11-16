@@ -8,6 +8,14 @@ import (
 // ClaudeResume is the command that resumes Claude Code's conversation id,
 // in config dir config when not "", as the shell at path reads it.
 func ClaudeResume(shell, id, config string) (string, bool) {
+	return ClaudeResumeExe(shell, "", id, config)
+}
+
+// ClaudeResumeExe is like ClaudeResume, using exe when it is a path so
+// shell functions or aliases on "claude" cannot shadow the executable or
+// drop CLAUDE_CONFIG_DIR. When exe is empty or bare and config is set, it
+// still bypasses shell functions and aliases where the shell supports it.
+func ClaudeResumeExe(shell, exe, id, config string) (string, bool) {
 	q := QuoterOf(shell)
 	if q == nil {
 		return "", false
@@ -16,13 +24,17 @@ func ClaudeResume(shell, id, config string) (string, bool) {
 	if !ok {
 		return "", false
 	}
-	cmd := "claude --resume " + w
+	prog, ok := claudeProgram(shell, exe, config != "", q)
+	if !ok {
+		return "", false
+	}
+	cmd := prog + " --resume " + w
 	if config == "" {
 		return cmd, true
 	}
 	switch ShellName(shell) {
 	case "fish", "csh", "tcsh":
-		// No NAME=value prefix in these.
+		// No NAME=value prefix in these; env runs an external binary directly.
 		d, _ := q(config)
 		return "env CLAUDE_CONFIG_DIR=" + d + " " + cmd, true
 	case "pwsh", "powershell":
@@ -35,6 +47,31 @@ func ClaudeResume(shell, id, config string) (string, bool) {
 	}
 	d, _ := q(config)
 	return "CLAUDE_CONFIG_DIR=" + d + " " + cmd, true
+}
+
+func claudeProgram(shell, exe string, hasConfig bool, q func(string) (string, bool)) (string, bool) {
+	name := ShellName(shell)
+	if strings.ContainsAny(exe, `/\`) {
+		w, ok := q(exe)
+		if !ok {
+			return "", false
+		}
+		if (name == "pwsh" || name == "powershell") && w != exe {
+			w = "& " + w
+		}
+		return w, true
+	}
+	if !hasConfig {
+		return "claude", true
+	}
+	switch name {
+	case "pwsh", "powershell":
+		return "& (Get-Command claude -CommandType Application | Select-Object -First 1)", true
+	case "fish", "csh", "tcsh", "cmd":
+		return "claude", true
+	default:
+		return "command claude", true
+	}
 }
 
 // ShellName returns the name of the shell or program at path, lower case

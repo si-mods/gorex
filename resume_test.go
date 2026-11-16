@@ -220,8 +220,9 @@ func TestResumeHintSession(t *testing.T) {
 		node  savedNode
 		want  string
 	}{
-		{"bash", savedNode{Prog: "claude", Args: []string{`C:\bin\claude.exe`}, AgentSession: id}, "claude --resume " + id},
-		{"bash", savedNode{Prog: "claude", AgentSession: id, AgentConfigDir: "/c"}, "CLAUDE_CONFIG_DIR=/c claude --resume " + id},
+		{"bash", savedNode{Prog: "claude", Args: []string{`C:\bin\claude.exe`}, AgentSession: id}, `'C:\bin\claude.exe' --resume ` + id},
+		{"bash", savedNode{Prog: "claude", AgentSession: id}, "claude --resume " + id},
+		{"bash", savedNode{Prog: "claude", AgentSession: id, AgentConfigDir: "/c"}, "CLAUDE_CONFIG_DIR=/c command claude --resume " + id},
 		{"bash", savedNode{Prog: "claude"}, "claude --continue"},
 		// A config dir cmd cannot take leaves the last conversation.
 		{"cmd", savedNode{Prog: "claude", AgentSession: id, AgentConfigDir: "%x%"}, "claude --continue"},
@@ -230,10 +231,12 @@ func TestResumeHintSession(t *testing.T) {
 		// The layout is a file anyone may write: what is no UUID is not typed.
 		{"bash", savedNode{Prog: "claude", AgentSession: "x; touch pwned"}, "claude --continue"},
 		{"pwsh", savedNode{Prog: "claude", AgentSession: "--add"}, "claude --continue"},
+		{"pwsh", savedNode{Prog: "claude", Args: []string{`C:\Users\u\.local\bin\claude.exe`}, AgentSession: id, AgentConfigDir: `C:\Users\u\.claude-team`},
+			`$env:CLAUDE_CONFIG_DIR='C:\Users\u\.claude-team'; & 'C:\Users\u\.local\bin\claude.exe' --resume ` + id},
 		{"pwsh", savedNode{Prog: "claude", AgentSession: id, AgentConfigDir: "x’; Write-Output INJECTED; ’"},
-			"$env:CLAUDE_CONFIG_DIR='x’’; Write-Output INJECTED; ’’'; claude --resume " + id},
+			"$env:CLAUDE_CONFIG_DIR='x’’; Write-Output INJECTED; ’’'; & (Get-Command claude -CommandType Application | Select-Object -First 1) --resume " + id},
 		{"bash", savedNode{Prog: "claude", AgentSession: id, AgentConfigDir: "x'; touch pwned; '"},
-			`CLAUDE_CONFIG_DIR='x'\''; touch pwned; '\''' claude --resume ` + id},
+			`CLAUDE_CONFIG_DIR='x'\''; touch pwned; '\''' command claude --resume ` + id},
 	} {
 		h := resumeHintFor(c.shell, &c.node)
 		if h == nil || h.cont != c.want {
@@ -334,7 +337,11 @@ func TestClaudeSessionRecorded(t *testing.T) {
 		t.Fatal("nothing restored")
 	}
 	h := r.tab().panes()[0].resume
-	want, _ := rex.ClaudeResume(testShell.path, id, config)
+	var exe string
+	if len(n.Args) > 0 {
+		exe = n.Args[0]
+	}
+	want, _ := rex.ClaudeResumeExe(testShell.path, exe, id, config)
 	if h == nil || h.cont != want || !strings.Contains(want, id) {
 		t.Errorf("restored with %+v, want continue %q", h, want)
 	}
