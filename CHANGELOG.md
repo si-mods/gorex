@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.31.0
+
+### Features
+
+* **desktop:** adopt mygo 0.9.1's corner radius, concealed copies, WithAccent and dev -background ([#625](https://github.com/si-mods/gorex/pull/625))
+* **ios:** add observable Space Sync settings view ([#626](https://github.com/si-mods/gorex/pull/626))
+* **rexapi,web:** add WebTransport serverCertificateHashes LAN pairing ([#629](https://github.com/si-mods/gorex/pull/629))
+
+### Bug Fixes
+
+* **ios:** keep bottom key bar background transparent ([#631](https://github.com/si-mods/gorex/pull/631))
+* **resume:** bypass shell functions when resuming Claude ([#632](https://github.com/si-mods/gorex/pull/632))
+* **web:** name the local network permission that blocked a WebTransport host ([#635](https://github.com/si-mods/gorex/pull/635))
+* **web:** say why a WebTransport host did not answer ([#633](https://github.com/si-mods/gorex/pull/633))
+
 ## 0.30.0
 
 ### Features
