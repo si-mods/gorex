@@ -1,6 +1,8 @@
 import XCTest
-@testable import GoRex
 
+// The bundle compiles the app's sources itself (ios/project.yml): there is no
+// GoRex module to import, and `@testable import GoRex` stopped the target
+// building when #612 added it.
 final class RexParityTests: XCTestCase {
     func testProtocolConstantsMatchRev14() {
         XCTAssertEqual(RexProtocol.apiRevision, 14)
