@@ -15,8 +15,8 @@ struct PaneMiniMap: View {
     var swipe: ((PaneDirection) -> Void)?
     @Environment(\.colorScheme) private var scheme
 
-    /// Explicit ink, so the glass container's vibrancy does not invert the
-    /// current pane: a hierarchical `.primary` came out darker than the rest.
+    /// Explicit ink, so the current pane keeps a clear contrast in both
+    /// schemes and does not depend on a hierarchical foreground style.
     private var ink: Color { scheme == .dark ? .white : .black }
 
     var body: some View {
@@ -77,7 +77,7 @@ struct PaneMiniMap: View {
 }
 
 /// The panes of the open window, at the bottom: each pane's program, the
-/// current one ringed, and a pane's record as a dot. A tap switches; the
+/// current one filled, and a pane's record as a dot. A tap switches; the
 /// plus opens a new window, as Rex Go's bottom bar does.
 struct PaneBar: View {
     let cells: [PaneCell]

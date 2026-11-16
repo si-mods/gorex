@@ -85,6 +85,22 @@ jobs:
           npm run typecheck
           npm test
 
+  # What to Test comes from ios/WhatToTest.md, a bullet per locale, through
+  # ios/scripts/test-notes: a pull request that changes what a tester sees
+  # adds one, and one that reads like a commit subject fails.
+  notes:
+    if: github.event_name == 'pull_request'
+    runs-on: instabox-medium
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: ios/WhatToTest.md
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: ios/scripts/test-notes check "$BASE"
+
   # The tests. The root package's tests run one after another, so three
   # machines take a third each; a fourth runs the other packages. With
   # build and web, that is six at a time.

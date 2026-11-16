@@ -88,23 +88,55 @@ export function webTransportAvailable(): boolean {
   return typeof WebTransport === "function";
 }
 
+/** This page's permission to reach the local network: Chrome's Local Network Access, and Safari's like it. */
+export type LocalNetworkAccess = "granted" | "denied" | "prompt" | "unknown";
+
+/** The permission's state, "unknown" where the browser has no such permission. */
+export async function localNetworkAccess(): Promise<LocalNetworkAccess> {
+  try {
+    // "local-network-access" is Chrome 142+'s and Safari 26.4+'s name for it, newer than TypeScript's PermissionName.
+    const state = await navigator.permissions.query({ name: "local-network-access" as PermissionName });
+    return state.state;
+  } catch {
+    return "unknown";
+  }
+}
+
 /**
  * Why a WebTransport host's control connection did not open. A browser says
- * only "Opening handshake failed." for a refused certificate hash, a blocked
- * local network request and an unreachable host alike, so the card names what
- * the user can act on instead of asking its gateway, which a pinned self-signed
- * certificate and the browser's local network check would both fail.
+ * only "Opening handshake failed." for a permission it did not give, a refused
+ * certificate hash and an unreachable host alike, so the card asks the
+ * permission which of those it is, and names what the user can act on — never
+ * the gateway, which a pinned self-signed certificate would fail to answer.
  */
-export function webTransportProblem(url: string, err?: unknown): Problem {
+export async function webTransportProblem(url: string, err?: unknown): Promise<Problem> {
   if (!webTransportAvailable()) {
     return problem(() => t("problemWebTransportUnsupportedTitle"), () => t("problemWebTransportUnsupportedText"));
   }
   const why = err instanceof Error ? err.message : err === undefined ? "" : String(err);
+  const access = await localNetworkAccess();
+  const details = why ? () => t("problemWebTransportDetails", { why }) : undefined;
+  if (access === "denied") {
+    return problem(
+      () => t("problemWebTransportDeniedTitle"),
+      () => t("problemWebTransportDeniedText", { url }),
+      undefined,
+      details,
+    );
+  }
+  if (access === "prompt") {
+    return problem(
+      () => t("problemWebTransportPromptTitle"),
+      () => t("problemWebTransportPromptText", { url }),
+      undefined,
+      details,
+    );
+  }
   return problem(
     () => t("problemWebTransportTitle"),
     () => t("problemWebTransportText", { url }),
     undefined,
-    why ? () => t("problemWebTransportDetails", { why }) : undefined,
+    details,
   );
 }
 

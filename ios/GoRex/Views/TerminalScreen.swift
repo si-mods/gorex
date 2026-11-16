@@ -117,7 +117,7 @@ struct TerminalScreen: View {
             // On iPad or with a hardware keyboard (no KeyBar), show the floating preview.
             .overlay(alignment: .bottom) { if !hasBar, let said { Heard(said: said) { terminal?.stopDictating() } } }
             .overlay { status }
-            // The window's panes, above the key bar; the keyboard takes its place.
+            // The window's panes, above the key bar; it rides the keyboard too.
             .overlay(alignment: .bottom) {
                 if paneCellList.count > 1 {
                     PaneBar(cells: paneCellList, current: currentTarget.block, program: { .of(host.blocks[$0]?.program) }, select: selectPane, newTab: newTab)
@@ -125,7 +125,7 @@ struct TerminalScreen: View {
                         .transition(.opacity.combined(with: .move(edge: .bottom)))
                 }
             }
-            // The layout, floating under the toolbar's panes icon for a
+            // The layout, floating under the toolbar's right side for a
             // moment after a switch, as Rex Go shows it.
             .overlay(alignment: .topTrailing) {
                 if paneMapShown {
@@ -359,9 +359,8 @@ struct TerminalScreen: View {
         selectPane(next)
     }
 
-    /// Shows the layout under the toolbar's panes icon for a moment, then
-    /// takes it away. Only a pane switch and the icon do this; changing tabs
-    /// does not.
+    /// Shows the layout under the toolbar's right side for a moment, then
+    /// takes it away. Only a pane switch does this; changing tabs does not.
     private func flashPaneMap() {
         paneMapTask?.cancel()
         withAnimation(.spring(duration: 0.28, bounce: 0.16)) { paneMapShown = true }

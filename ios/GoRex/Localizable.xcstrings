@@ -922,12 +922,12 @@
         }
       }
     },
-"Shows the window's panes.": {
+    "Tap a pane or swipe toward one to switch to it.": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "显示此窗口的面板。"
+            "value": "点按面板，或朝该方向滑动，即可切换。"
           }
         }
       }
