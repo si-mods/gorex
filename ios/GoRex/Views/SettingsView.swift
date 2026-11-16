@@ -4,6 +4,7 @@ import SwiftUI
 /// page each, the client's label, and a search over the rows' titles.
 struct SettingsView: View {
     @Environment(HostStore.self) private var store
+    @Environment(SpaceStore.self) private var spaceStore
     @Environment(\.dismiss) private var dismiss
     @AppStorage("scheme") private var scheme = "dark"
     @AppStorage("theme") private var theme = TerminalTheme.standard
@@ -43,7 +44,10 @@ struct SettingsView: View {
              Item(title: "Grouping", icon: tile("rectangle.3.group.fill", .teal),
                   value: String(localized: Self.groupings.first { $0.0 == Grouping(stored: grouping).rawValue }?.1 ?? "Desktop Spaces"),
                   page: AnyView(Choices(title: "Grouping", options: Self.groupings.map { ($0.0, String(localized: $0.1)) }, selection: $grouping,
-                                        footer: "Desktop Spaces shows one space at a time, as the desktop's sidebar: switch spaces at the top, and each lists its windows by host, those on your other hosts too. By Host lists each host's sessions.")))],
+                                        footer: "Desktop Spaces shows one space at a time, as the desktop's sidebar: switch spaces at the top, and each lists its windows by host, those on your other hosts too. By Host lists each host's sessions."))),
+             Item(title: "Space Sync", icon: tile("icloud.and.arrow.up.fill", .cyan),
+                  value: spaceStore.iCloudSyncEnabled ? String(localized: "iCloud On") : String(localized: "Local Only"),
+                  page: AnyView(SpaceSyncView()))],
             [Item(title: "Features", icon: tile("sparkles", .blue), page: AnyView(FeaturesView())),
              Item(title: "About", icon: tile("info.circle.fill", .gray),
                   value: "\(version) (\(build))", page: AnyView(AboutView(version: version, build: build)))],
