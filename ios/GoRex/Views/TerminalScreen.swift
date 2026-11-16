@@ -474,11 +474,13 @@ struct TerminalScreen: View {
                 .frame(width: 21 * k, height: 16 * k)
                 .scaleEffect(small)
                 .frame(width: 21 * k * small, height: 16 * k * small)
-            Text(title.asText)
-                .font(.body.weight(.semibold))
-                .lineLimit(1)
-                .id(currentTarget.block)
-                .transition(.push(from: edge))
+            Capped(max: titleWidth) {
+                Text(title.asText)
+                    .font(.body.weight(.semibold))
+                    .lineLimit(1)
+                    .id(currentTarget.block)
+                    .transition(.push(from: edge))
+            }
         }
         .padding(.leading, 12)
         .padding(.trailing, 18)
@@ -525,6 +527,15 @@ struct TerminalScreen: View {
             Button("New Tab", systemImage: "plus") { newTab() }
         }
         .sensoryFeedback(.selection, trigger: currentTarget.block)
+    }
+
+    /// How wide the title may be: the pill half the screen at most, which
+    /// the bar leaves it beside the back button and the menu, less the
+    /// tile and the padding, and less the mic's place while it shows.
+    private var titleWidth: CGFloat {
+        let chrome = 12 + 21 * ProgramTiles.scale * 0.85 + 10 + 18
+        let mic: CGFloat = hasBar ? 0 : 52
+        return max(60, (pageWidth > 0 ? pageWidth / 2 : 160) - mic - chrome)
     }
 
     /// Slides the waiting pane in and the current one out, the way the
@@ -1016,5 +1027,24 @@ extension View {
             Button("Stop Downloading", role: .destructive) { Dictation.shared.cancel() }
             Button("Keep Downloading", role: .cancel) {}
         }
+    }
+}
+
+/// A view no wider than `max`, and only as wide as it needs below that: a
+/// text truncates there instead of laying itself out at the whole line's
+/// length. The bar gives its principal item no width to wrap in, so the
+/// pill's title takes its ceiling from the screen instead.
+private nonisolated struct Capped: Layout {
+    var max: CGFloat
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let width = min(proposal.width ?? max, max)
+        let size = subviews[0].sizeThatFits(ProposedViewSize(width: width, height: proposal.height))
+        return CGSize(width: min(size.width, max), height: size.height)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        subviews[0].place(at: bounds.origin, anchor: .leading,
+                          proposal: ProposedViewSize(width: bounds.width, height: bounds.height))
     }
 }
