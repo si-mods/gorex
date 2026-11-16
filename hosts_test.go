@@ -806,17 +806,22 @@ func TestLocalStreamReattaches(t *testing.T) {
 	}
 }
 
-// TestLocalPaneSaysTheStreamWasLost is the screen of a pane of this
-// machine whose stream's connection ended: it says so over the screen it
-// last showed, instead of standing there taking no key, and the word goes
-// once the stream attached again.
-func TestLocalPaneSaysTheStreamWasLost(t *testing.T) {
+// TestLocalPaneTakesKeysAfterItsStreamWasLost is the lesson: a pane of
+// this machine's session whose stream's connection ended says so over the
+// screen it last showed, attaches again by itself, and takes what is
+// typed again — at the shell, as a user types it. Left as it was, the
+// pane stood there taking no key, with nothing said.
+func TestLocalPaneTakesKeysAfterItsStreamWasLost(t *testing.T) {
 	a, tt := newTestApp(t)
 	p := a.tab().Focus
 	if p == nil || p.stream == nil {
 		t.Fatal("the tab has no pane of this machine")
 	}
-	waitFor(t, tt, "the pane to attach", func() bool { return p.stream.ClientID() != "" })
+	waitFor(t, tt, "the shell", func() bool {
+		return p.term != nil && strings.Contains(p.term.Text(), testShell.prompt)
+	})
+	// The stream's connection ends, as it does for the clients a server
+	// drops; the app's own connection stays.
 	p.stream.mu.Lock()
 	st := p.stream.cur
 	p.stream.mu.Unlock()
@@ -827,8 +832,21 @@ func TestLocalPaneSaysTheStreamWasLost(t *testing.T) {
 	waitFor(t, tt, "the pane to say the stream was lost", func() bool {
 		return tt.HasText(locales.PaneStreamInterrupted())
 	})
-	waitFor(t, tt, "the pane to attach again", func() bool {
+	waitFor(t, tt, "the stream to attach again", func() bool {
 		return !p.stream.Detached() && !tt.HasText(locales.PaneStreamInterrupted())
+	})
+	// The stream attached again replays the session's screen, and what
+	// is typed reaches it.
+	waitFor(t, tt, "the screen the session sends again", func() bool {
+		return strings.Contains(p.term.Text(), testShell.prompt)
+	})
+	cmd := "echo AFTER_LOSS_$((6*7))\r"
+	if runtime.GOOS == "windows" {
+		cmd = `powershell -NoProfile -Command "Write-Host ('AFTER_LOSS_' + (6*7))"` + "\r"
+	}
+	p.term.Send([]byte(cmd))
+	waitFor(t, tt, "the shell's output after its stream was lost", func() bool {
+		return strings.Contains(p.term.Text(), "AFTER_LOSS_42")
 	})
 }
 
