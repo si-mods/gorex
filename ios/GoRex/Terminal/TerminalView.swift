@@ -397,15 +397,18 @@ final class TerminalView: UIView, TerminalOutput {
     /// is not read.
     func needed() -> CGFloat {
         let covered = self.covered
-        guard surface != nil, covered > 0 else { return 0 }
+        let bar = barCover
+        guard surface != nil, covered > 0 || bar > 0 else { return 0 }
         let c = cursor(width: nil)
-        let room = bounds.height - covered - drawnBottom(under: c)
-        let y = min(0, max(room, inset - c.minY, -covered))
+        var y: CGFloat = 0
+        if covered > 0 {
+            let room = bounds.height - covered - drawnBottom(under: c)
+            y = min(0, max(room, inset - c.minY, -covered))
+        }
         // The bar draws over the terminal, and scrolling leaves its rows
         // showing through the glass, but a cursor under it is no cursor at
         // all: what is on screen and landing under the bar takes the rest of
         // the slide, so it stays whole above it.
-        let bar = barCover
         guard bar > 0, c.maxY <= bounds.height else { return y }
         let top = bounds.height - covered - bar
         guard c.maxY + y > top else { return y }
