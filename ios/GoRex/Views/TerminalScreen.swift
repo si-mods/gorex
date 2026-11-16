@@ -928,7 +928,10 @@ private struct VoiceCapsule: View {
                     .init(color: .black, location: 1),
                 ], startPoint: .leading, endPoint: .trailing)
             }
-            Button(action: cancel) {
+            Button {
+                Haptics.tapped()
+                cancel()
+            } label: {
                 Image(systemName: "xmark")
                     .font(.footnote.weight(.semibold))
                     .foregroundStyle(.secondary)
@@ -937,7 +940,10 @@ private struct VoiceCapsule: View {
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Cancel")
-            Button(action: finish) {
+            Button {
+                Haptics.tapped()
+                finish()
+            } label: {
                 Group {
                     if busy {
                         ProgressView().accessibilityLabel("Recognising")
