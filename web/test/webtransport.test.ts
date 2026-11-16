@@ -26,30 +26,91 @@ test("parsePairingLink supports legacy ?host= query param", () => {
   assert.deepEqual(res, { url: "https://example.ts.net", certHash: undefined });
 });
 
-test("a browser without WebTransport is told what it lacks, not that the host is down", () => {
+function stubPermission(state: string | undefined) {
+  const had = Object.getOwnPropertyDescriptor(globalThis, "navigator");
+  Reflect.defineProperty(globalThis, "navigator", {
+    value: state === undefined ? {} : { permissions: { query: async () => ({ state }) } },
+    configurable: true,
+  });
+  return () => {
+    if (had) Reflect.defineProperty(globalThis, "navigator", had);
+    else Reflect.deleteProperty(globalThis, "navigator");
+  };
+}
+
+function stubWebTransport() {
   const had = Object.getOwnPropertyDescriptor(globalThis, "WebTransport");
+  Reflect.set(globalThis, "WebTransport", class {});
+  return () => {
+    if (had) Reflect.defineProperty(globalThis, "WebTransport", had);
+    else Reflect.deleteProperty(globalThis, "WebTransport");
+  };
+}
+
+test("a browser without WebTransport is told what it lacks, not that the host is down", async () => {
+  const restoreWT = stubWebTransport();
   Reflect.deleteProperty(globalThis, "WebTransport");
+  const restoreNav = stubPermission("prompt");
   try {
-    const p = webTransportProblem("https://192.168.1.50:7298", new Error("Opening handshake failed."));
+    const p = await webTransportProblem("https://192.168.1.50:7298", new Error("Opening handshake failed."));
     assert.equal(p.title, "This browser can't reach a host directly");
     assert.match(p.text, /Safari 26\.4/);
     assert.doesNotMatch(p.text, /192\.168\.1\.50/);
   } finally {
-    if (had) Object.defineProperty(globalThis, "WebTransport", had);
+    restoreNav();
+    restoreWT();
   }
 });
 
-test("a WebTransport handshake failure names the causes a browser never does", () => {
-  const had = Object.getOwnPropertyDescriptor(globalThis, "WebTransport");
-  Reflect.set(globalThis, "WebTransport", class {});
+test("a denied local network permission is named as such", async () => {
+  const restoreWT = stubWebTransport();
+  const restoreNav = stubPermission("denied");
   try {
-    const p = webTransportProblem("https://192.168.1.50:7298", new Error("Opening handshake failed."));
-    assert.match(p.title, /local network/);
-    assert.match(p.text, /192\.168\.1\.50:7298/);
-    assert.match(p.text, /gorex rexapi lan status/);
+    const p = await webTransportProblem("https://192.168.1.50:7298", new Error("Opening handshake failed."));
+    assert.equal(p.title, "This site isn't allowed on your local network");
+    assert.match(p.text, /Site settings, Additional permissions/);
     assert.match(String(p.details), /Opening handshake failed\./);
   } finally {
-    if (had) Object.defineProperty(globalThis, "WebTransport", had);
-    else Reflect.deleteProperty(globalThis, "WebTransport");
+    restoreNav();
+    restoreWT();
+  }
+});
+
+test("a permission never decided sends the user to allow it", async () => {
+  const restoreWT = stubWebTransport();
+  const restoreNav = stubPermission("prompt");
+  try {
+    const p = await webTransportProblem("https://192.168.1.50:7298");
+    assert.equal(p.title, "Let this page reach your local network");
+    assert.match(p.text, /192\.168\.1\.50:7298/);
+    assert.equal(p.details, undefined);
+  } finally {
+    restoreNav();
+    restoreWT();
+  }
+});
+
+test("a granted permission leaves the causes a browser never names", async () => {
+  const restoreWT = stubWebTransport();
+  const restoreNav = stubPermission("granted");
+  try {
+    const p = await webTransportProblem("https://192.168.1.50:7298", new Error("Opening handshake failed."));
+    assert.match(p.title, /local network/);
+    assert.match(p.text, /gorex rexapi lan status/);
+  } finally {
+    restoreNav();
+    restoreWT();
+  }
+});
+
+test("a browser with no such permission still gets the causes", async () => {
+  const restoreWT = stubWebTransport();
+  const restoreNav = stubPermission(undefined);
+  try {
+    const p = await webTransportProblem("https://192.168.1.50:7298");
+    assert.match(p.text, /gorex rexapi lan status/);
+  } finally {
+    restoreNav();
+    restoreWT();
   }
 });
