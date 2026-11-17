@@ -708,6 +708,12 @@ func (c *Client) openFile(ctx context.Context, first any) (fileConn, FileAnswer,
 	if err == nil {
 		a, err = fc.answer()
 	}
+	// ctx ending closes conn from another goroutine, which may come after
+	// the answer: a file opened as ctx is done is not opened, or a caller
+	// writes over its partial with nothing (DownloadFile truncates it).
+	if err == nil {
+		err = ctx.Err()
+	}
 	if err != nil {
 		fc.Close()
 		return fileConn{}, a, ctxErr(ctx, err)
