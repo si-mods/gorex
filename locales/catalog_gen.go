@@ -3360,6 +3360,134 @@ func (msgs Messages) TailnetModeNote() string {
 	return Catalog.Format(msgs.locale, "tailnetModeNote", nil)
 }
 
+// TailnetModeNoteBuiltin says "Find GoRex devices on your Tailscale account and let them open terminals on this computer. This also turns on built-i…"
+// in the language the app shows.
+func TailnetModeNoteBuiltin() string { return In(i18n.Locale()).TailnetModeNoteBuiltin() }
+
+// TailnetModeNoteBuiltin says "Find GoRex devices on your Tailscale account and let them open terminals on this computer. This also turns on built-i…"
+// in the language of msgs.
+func (msgs Messages) TailnetModeNoteBuiltin() string {
+	return Catalog.Format(msgs.locale, "tailnetModeNoteBuiltin", nil)
+}
+
+// TailnetSignInHint says "Sign in to built-in Tailscale to find your devices."
+// in the language the app shows.
+func TailnetSignInHint() string { return In(i18n.Locale()).TailnetSignInHint() }
+
+// TailnetSignInHint says "Sign in to built-in Tailscale to find your devices."
+// in the language of msgs.
+func (msgs Messages) TailnetSignInHint() string {
+	return Catalog.Format(msgs.locale, "tailnetSignInHint", nil)
+}
+
+// TailnetSignIn says "Sign in"
+// in the language the app shows.
+func TailnetSignIn() string { return In(i18n.Locale()).TailnetSignIn() }
+
+// TailnetSignIn says "Sign in"
+// in the language of msgs.
+func (msgs Messages) TailnetSignIn() string {
+	return Catalog.Format(msgs.locale, "tailnetSignIn", nil)
+}
+
+// TailnetSignInFailed says "Could not sign in: {error}"
+// in the language the app shows.
+//
+// Error: built-in Tailscale gave no sign-in link.
+func TailnetSignInFailed(error string) string { return In(i18n.Locale()).TailnetSignInFailed(error) }
+
+// TailnetSignInFailed says "Could not sign in: {error}"
+// in the language of msgs.
+//
+// Error: built-in Tailscale gave no sign-in link.
+func (msgs Messages) TailnetSignInFailed(error string) string {
+	return Catalog.Format(msgs.locale, "tailnetSignInFailed", map[string]any{"error": error})
+}
+
+// TailnetSignInNoLink says "Built-in Tailscale has no sign-in link yet. Try again in a moment."
+// in the language the app shows.
+func TailnetSignInNoLink() string { return In(i18n.Locale()).TailnetSignInNoLink() }
+
+// TailnetSignInNoLink says "Built-in Tailscale has no sign-in link yet. Try again in a moment."
+// in the language of msgs.
+func (msgs Messages) TailnetSignInNoLink() string {
+	return Catalog.Format(msgs.locale, "tailnetSignInNoLink", nil)
+}
+
+// TailnetApproval says "The admin of your tailnet has to approve this device before it can find others."
+// in the language the app shows.
+func TailnetApproval() string { return In(i18n.Locale()).TailnetApproval() }
+
+// TailnetApproval says "The admin of your tailnet has to approve this device before it can find others."
+// in the language of msgs.
+func (msgs Messages) TailnetApproval() string {
+	return Catalog.Format(msgs.locale, "tailnetApproval", nil)
+}
+
+// TailnetStarting says "Starting built-in Tailscale…"
+// in the language the app shows.
+func TailnetStarting() string { return In(i18n.Locale()).TailnetStarting() }
+
+// TailnetStarting says "Starting built-in Tailscale…"
+// in the language of msgs.
+func (msgs Messages) TailnetStarting() string {
+	return Catalog.Format(msgs.locale, "tailnetStarting", nil)
+}
+
+// TailnetOff says "Built-in Tailscale is off."
+// in the language the app shows.
+func TailnetOff() string { return In(i18n.Locale()).TailnetOff() }
+
+// TailnetOff says "Built-in Tailscale is off."
+// in the language of msgs.
+func (msgs Messages) TailnetOff() string {
+	return Catalog.Format(msgs.locale, "tailnetOff", nil)
+}
+
+// TailnetTurnOn says "Turn on"
+// in the language the app shows.
+func TailnetTurnOn() string { return In(i18n.Locale()).TailnetTurnOn() }
+
+// TailnetTurnOn says "Turn on"
+// in the language of msgs.
+func (msgs Messages) TailnetTurnOn() string {
+	return Catalog.Format(msgs.locale, "tailnetTurnOn", nil)
+}
+
+// TailnetTagged says "This device is tagged on your tailnet. Only a device that a user signed in finds that user's devices."
+// in the language the app shows.
+func TailnetTagged() string { return In(i18n.Locale()).TailnetTagged() }
+
+// TailnetTagged says "This device is tagged on your tailnet. Only a device that a user signed in finds that user's devices."
+// in the language of msgs.
+func (msgs Messages) TailnetTagged() string {
+	return Catalog.Format(msgs.locale, "tailnetTagged", nil)
+}
+
+// TailnetExpired says "The sign-in of built-in Tailscale expired. Sign in again."
+// in the language the app shows.
+func TailnetExpired() string { return In(i18n.Locale()).TailnetExpired() }
+
+// TailnetExpired says "The sign-in of built-in Tailscale expired. Sign in again."
+// in the language of msgs.
+func (msgs Messages) TailnetExpired() string {
+	return Catalog.Format(msgs.locale, "tailnetExpired", nil)
+}
+
+// TailnetSignedIn says "Signed in as {account}"
+// in the language the app shows.
+//
+// Status: the Tailscale account that signed in built-in Tailscale.
+func TailnetSignedIn(account string) string { return In(i18n.Locale()).TailnetSignedIn(account) }
+
+// TailnetSignedIn says "Signed in as {account}"
+// in the language of msgs.
+//
+// Status: the Tailscale account that signed in built-in Tailscale.
+func (msgs Messages) TailnetSignedIn(account string) string {
+	return Catalog.Format(msgs.locale, "tailnetSignedIn", map[string]any{"account": account})
+}
+
 // TailnetUnavailable says "System Tailscale is unavailable. GoRex will try again automatically."
 // in the language the app shows.
 func TailnetUnavailable() string { return In(i18n.Locale()).TailnetUnavailable() }

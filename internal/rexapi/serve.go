@@ -106,6 +106,9 @@ type runOptions struct {
 	stop <-chan struct{}
 	// announce prints where the gateway listens.
 	announce bool
+	// desktop tells that the GoRex server of this process runs the
+	// gateway: its tailnet broker then uses the gateway's node.
+	desktop bool
 }
 
 // errGatewayRuns is what a second gateway on the same state gets.
@@ -148,6 +151,10 @@ func run(c *rex.Client, o runOptions) error {
 		return err
 	}
 	defer g.Close()
+	if o.desktop {
+		setDesktop(g)
+		defer clearDesktop(g)
+	}
 
 	serveErr := make(chan error, 3)
 	unixLn, err := listenUnix(o.socket)
@@ -325,7 +332,7 @@ func Supervise(stop <-chan struct{}) {
 			}
 			runStop, done = make(chan struct{}), make(chan error, 1)
 			go func(c *rex.Client, stop chan struct{}, done chan error) {
-				done <- run(c, runOptions{socket: SocketPath(), dir: dir, stop: stop})
+				done <- run(c, runOptions{socket: SocketPath(), dir: dir, stop: stop, desktop: true})
 			}(c, runStop, done)
 		case !want && runStop != nil:
 			end()
