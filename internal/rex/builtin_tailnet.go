@@ -35,8 +35,9 @@ var TailnetNode func() TailnetDevice
 // EnableBuiltinTailscale, when set, turns built-in Tailscale on, as
 // gorex rexapi tailscale on does. It keeps the saved
 // allow_tailnet_members and never turns it on itself. Where the built-in
-// node carries discovery, turning the tailnet mode on calls it, and so
-// does a server that starts with the mode on.
+// node carries discovery, turning the tailnet mode on calls it. A server
+// that starts with the mode on does not: the node stays off until the
+// user turns it on.
 var EnableBuiltinTailscale func() error
 
 // builtinNode is node, or a node that is always off when it is nil.
@@ -199,15 +200,6 @@ func (t *systemTailnet) unavailable(off *tailnetOffError) {
 	t.failures = 0
 	t.errText, t.errCode = off.reason, off.code
 	t.replaceLocked(nil, nil)
-}
-
-// enableBuiltin turns the built-in node on once for a broker that starts
-// with the mode on from before the built-in node carried discovery, as
-// after an upgrade: remote.tailnetSet does it when the mode is turned on.
-// It runs off r.mu, since the gateway answers in its own time; its error
-// shows in the status.
-func (t *systemTailnet) enableBuiltin(enable func() error) {
-	t.enabled(enable())
 }
 
 // enabled notes how turning the built-in node on ended, and reads the

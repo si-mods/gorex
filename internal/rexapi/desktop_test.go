@@ -137,3 +137,43 @@ func TestResumeReadsALateTurnOn(t *testing.T) {
 		t.Fatal("the turn-on written while the gateway started was lost")
 	}
 }
+
+// TestResumeServesOnlyWhatTheUserTurnedOn starts the gateway's built-in
+// Tailscale as tailscale.json has it: one never turned on, as after an
+// upgrade with the tailnet mode on from before, makes no device and no
+// listener on port 443, and runs no gateway; one the user turned on
+// comes back with its listener.
+func TestResumeServesOnlyWhatTheUserTurnedOn(t *testing.T) {
+	t.Run("never turned on", func(t *testing.T) {
+		f := startTailnetFixture(t)
+		made := 0
+		newNode := f.g.tailnet.newNode
+		f.g.tailnet.newNode = func(dir, hostname, authKey, controlURL string, tags []string) tailnetNode {
+			made++
+			return newNode(dir, hostname, authKey, controlURL, tags)
+		}
+		close(f.node.ready)
+		f.g.tailnet.resume()
+		if made != 0 || f.g.tailnet.running() != nil {
+			t.Fatalf("resume made %d devices, running %v; want none", made, f.g.tailnet.running())
+		}
+		if f.node.addr() != "" {
+			t.Fatal("port 443 listens with built-in Tailscale never turned on")
+		}
+		if Wanted(f.dir) {
+			t.Fatal("the server would run a gateway for built-in Tailscale never turned on")
+		}
+	})
+	t.Run("turned on", func(t *testing.T) {
+		f := startTailnetFixture(t)
+		if err := writeJSON(tailscaleConfPath(f.dir), TailscaleConfig{Enabled: true, Hostname: "box-gorex"}); err != nil {
+			t.Fatal(err)
+		}
+		close(f.node.ready)
+		f.g.tailnet.resume()
+		if f.g.tailnet.running() == nil {
+			t.Fatal("built-in Tailscale the user turned on stays off")
+		}
+		waitFor(t, "listener", func() bool { return f.node.addr() != "" })
+	})
+}

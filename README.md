@@ -277,8 +277,11 @@ with Tailscale.
 Turn **Tailscale discovery and connections** on in Settings › Server, or
 use `gorex remote tailscale on`; on macOS and Windows this also turns
 built-in Tailscale on, which serves Rex's API on port 443 to your own
-devices. Built-in Tailscale that you turn off later stays off over
-restarts; **Turn on** under the switch starts it again. The mode is off by default and waits when Tailscale is
+devices. An upgrade never turns built-in Tailscale on: with the mode on
+from an earlier version, it stays off until you click **Turn on** under
+the switch or run `gorex remote tailscale on` (or `gorex rexapi tailscale
+on`). Built-in Tailscale that you turn off later stays off over
+restarts; **Turn on** starts it again. The mode is off by default and waits when Tailscale is
 unavailable. `gorex remote status --json` reports the local mode, the
 side that carries it (`system` or `built-in`), the built-in node's state
 and the hosts it has discovered.

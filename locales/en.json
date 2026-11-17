@@ -1102,7 +1102,7 @@
   "tailnetSignInNoLink": "Built-in Tailscale has no sign-in link yet. Try again in a moment.",
   "tailnetApproval": "The admin of your tailnet has to approve this device before it can find others.",
   "tailnetStarting": "Starting built-in Tailscale…",
-  "tailnetOff": "Built-in Tailscale is off.",
+  "tailnetOff": "Built-in Tailscale is off. Turn it on to find your devices; it also serves Rex's API on port 443 over your tailnet.",
   "tailnetTurnOn": "Turn on",
   "tailnetTagged": "This device is tagged on your tailnet. Only a device that a user signed in finds that user's devices.",
   "tailnetExpired": "The sign-in of built-in Tailscale expired. Sign in again.",

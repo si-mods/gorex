@@ -54,9 +54,10 @@ func (a *App) remoteTailnet(c *ui.Context, k *colors, tn *rex.TailnetStatus) {
 	case rex.NodeStarting:
 		groupRow(c, k, nil).Children(func() { rowHint(c, k, locales.TailnetStarting()) })
 	case rex.NodeOff:
-		// Off after a sign-out or gorex rexapi tailscale off: Turn on
-		// starts it again, as the switch does. Error is why turning it
-		// on failed.
+		// Off until the user turns it on, as after an upgrade with the
+		// mode on from before, or after a sign-out or gorex rexapi
+		// tailscale off: Turn on starts it, as the switch does. Error is
+		// why turning it on failed.
 		groupRow(c, k, "ts-off").Children(func() {
 			rowLine(c, k, locales.TailnetOff(), func() {
 				if ui.Button(c.Key("ts-on"), locales.TailnetTurnOn()).Disabled(page.unreachable || page.busy).Clicked() {
