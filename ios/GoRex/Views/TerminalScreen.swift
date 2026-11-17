@@ -630,7 +630,9 @@ struct TerminalScreen: View {
         .frame(minWidth: 180)
         .frame(height: 44)
         .clipped()
-        .background { Capsule().fill(.clear).glassEffect(.regular, in: .capsule) }
+        // Interactive glass swells and lights under the finger, as the
+        // host list's capsules do.
+        .background { Capsule().fill(.clear).glassEffect(.regular.interactive(), in: .capsule) }
         .contentShape(.capsule)
         .accessibilityAddTraits(.isButton)
         .offset(x: pillDrag)
@@ -654,6 +656,8 @@ struct TerminalScreen: View {
                 }
         )
         .sensoryFeedback(.selection, trigger: currentTarget.block)
+        // A tap that opens the sheet taps the hand; closing it does not.
+        .sensoryFeedback(trigger: sheet) { _, open in open ? .impact(weight: .light) : nil }
     }
 
     /// Slides the waiting pane in and the current one out, the way the
