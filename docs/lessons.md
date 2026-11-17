@@ -96,7 +96,7 @@ Each item has a **Trigger** (what the diff shows), a **Check** (what the author 
 ### Test helper that starts things
 - **Trigger:** a test helper (`newTestApp` and the like) starts a client, server, goroutine or registers something global.
 - **Check:** `t.Cleanup` closes and unregisters all of it, and one-time global setup is idempotent. Per-run time stays flat at `-count 200`.
-- **Source:** `newTestApp` never closed its client and re-registered the fonts on every call; root tests got 15x slower within one process and timed out in CI (#707, fixed in #711).
+- **Source:** `newTestApp` never closed its client and re-registered the fonts on every call; one test went from 0.2 s to about 4 s per run within one process and timed out in CI (#707, fixed in #711).
 
 ### Concurrency change tested only on Windows
 - **Trigger:** the diff adds goroutines, locks, a listener restart or a shared package variable, and the PR's `-race` runs are from Windows only.
