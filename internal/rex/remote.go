@@ -379,11 +379,13 @@ func (s *Server) remoteShareLayout() bool {
 }
 
 // remoteAllowed tells the ops a remote connection may make; it may also
-// attach to sessions.
+// attach to sessions. dir.list goes to the clients that may take a file
+// with file.get, which reads any path as the server's user already.
 func remoteAllowed(op string) bool {
 	switch op {
 	case "hello", "ping", "list", "create", "kill", "resize", "focus", "input", "paste", "capture", "clients",
-		"key", "mouse", "focusReport", "modes", "format", "inputMode", "clear", "reset", "command", "seeStatus", "resync":
+		"key", "mouse", "focusReport", "modes", "format", "inputMode", "clear", "reset", "command", "seeStatus", "resync",
+		"dir.list":
 		return true
 	}
 	return false

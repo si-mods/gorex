@@ -538,6 +538,13 @@ func (c *Client) SeeStatus(sid string, at time.Time) error {
 	return c.call(Request{Op: "seeStatus", SID: sid, Seen: at}, nil)
 }
 
+// DirList lists the directories in path on the server's machine
+// (DirList); a server without CapabilityDirList answers an error.
+func (c *Client) DirList(path string, hidden bool) (r DirListResult, err error) {
+	err = c.call(Request{Op: "dir.list", DirList: &DirList{Path: path, Hidden: hidden}}, &r)
+	return
+}
+
 func (c *Client) RenewSize(sid, owner string) error {
 	return c.call(Request{Op: "renewSize", SID: sid, Owner: owner}, nil)
 }

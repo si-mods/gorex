@@ -207,12 +207,13 @@ var methods = map[string]func(*control, args) (any, *apiError){
 	"client.inspect":                methodClientInspect,
 	"data.connect":                  methodDataConnect,
 	// GoRex's own, which Rex's document does not have (movewindow.go,
-	// seen.go).
+	// seen.go, dirlist.go).
 	"gorex.move_window":              methodGorexMoveWindow,
 	"gorex.spaces_apply":             methodGorexSpacesApply,
 	"gorex.merge_windows":            methodGorexMergeWindows,
 	"gorex.move_block_to_new_window": methodGorexMoveBlockToNewWindow,
 	"gorex.see_block":                methodGorexSeeBlock,
+	"gorex.dir.list":                 methodGorexDirList,
 }
 
 // sessionArg reads the session_id argument and returns the session,

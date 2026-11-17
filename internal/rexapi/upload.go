@@ -111,6 +111,9 @@ func (g *Gateway) features() []string {
 	if g.hello.Can(rex.CapabilityStatusSeen) {
 		features = append(features, featureSeeBlock)
 	}
+	if g.hello.Can(rex.CapabilityDirList) {
+		features = append(features, featureDirList)
+	}
 	return features
 }
 

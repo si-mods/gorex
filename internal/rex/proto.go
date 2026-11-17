@@ -60,7 +60,8 @@ import (
 // reads a voice any more, and to go. Still within 3, the capability
 // "status.seen": "seeStatus", which tells that the user saw a session's
 // status records, and SessionInfo.StatusSeen, which every client reads
-// back.
+// back. Still within 3, the capability "dir.list": "dir.list", which
+// lists the directories in a directory of the server's machine (DirList).
 const ProtocolVersion = 3
 
 // CapabilityShutdownRestart is what a server that stops to be replaced — one
@@ -119,9 +120,13 @@ const CapabilityTabToSpace = "tab.to_space"
 // SessionInfo.StatusSeen.
 const CapabilityStatusSeen = "status.seen"
 
+// CapabilityDirList is what a server that lists the directories of its
+// machine says it does: the "dir.list" op (DirList).
+const CapabilityDirList = "dir.list"
+
 // capabilities are what a version 3 server does beyond version 2. A
 // client reads them from Hello and falls back when one is absent.
-var capabilities = []string{"layout.revision", "events.revision", CapabilityShutdownRestart, CapabilityShutdownIfIdle, CapabilitySnapshotGhostty, CapabilityInputEvents, CapabilityTerminalQuery, CapabilityFileTransfer, CapabilityFileTemp, CapabilityTeleport, CapabilityLayoutServer, CapabilityTabToSpace, CapabilityStatusSeen}
+var capabilities = []string{"layout.revision", "events.revision", CapabilityShutdownRestart, CapabilityShutdownIfIdle, CapabilitySnapshotGhostty, CapabilityInputEvents, CapabilityTerminalQuery, CapabilityFileTransfer, CapabilityFileTemp, CapabilityTeleport, CapabilityLayoutServer, CapabilityTabToSpace, CapabilityStatusSeen, CapabilityDirList}
 
 // Request is a line of the control connection, from the client.
 type Request struct {
@@ -230,6 +235,8 @@ type Request struct {
 	// Teleport is the package that follows "teleport" on its connection
 	// (CapabilityTeleport).
 	Teleport *TeleportManifest `json:"teleport,omitempty"`
+	// DirList is what "dir.list" lists (CapabilityDirList).
+	DirList *DirList `json:"dirList,omitempty"`
 }
 
 // CommandTimeout is how long the server waits for the app to make a
@@ -909,6 +916,66 @@ type FileGet struct {
 	// which the transfer events name it by.
 	ID string `json:"id,omitempty"`
 }
+
+// DirList asks for the directories in a directory of the server's
+// machine ("dir.list", CapabilityDirList), for a folder picker: their
+// names only, no files. The server answers a DirListResult.
+type DirList struct {
+	// Path is the directory: absolute; "" or "~" for the home directory;
+	// "~/x" and a relative path are of the home directory. It is cleaned,
+	// so ".." goes up a name, then its symlinks are resolved; Windows'
+	// junctions are kept as they are. DirTop names the top of the
+	// machine: "/" on macOS and Linux, and on Windows the list of its
+	// drives, whose names are their roots, as `C:\`. On Windows, a drive
+	// with no root after it, as "C:x", is of the drive's root (`C:\x`),
+	// and a path rooted with no drive (`\x`, "/x") or an incomplete share
+	// ("//", `\\server`) answers DirNotFound.
+	Path string `json:"path,omitempty"`
+	// Hidden lists hidden directories too: those whose name starts with a
+	// dot, and on Windows those of the hidden attribute.
+	Hidden bool `json:"hidden,omitempty"`
+}
+
+// DirListResult is the answer to "dir.list". A directory that is not
+// there, or is not a directory, answers Code DirNotFound, and one the
+// server may not read DirDenied, with Path, Parent and Home still set,
+// so that a picker can go elsewhere; any other failure is an error, as a
+// listing that takes over 10 seconds, on a mount that hangs, or one over
+// the few a connection or the server runs at once (DirListBusy). A
+// listing past its deadline goes on counting toward the server's limit
+// till the system returns it: a host with mounts that hang may refuse
+// listings till they return, or the server restarts.
+type DirListResult struct {
+	// Path is the directory listed: absolute, cleaned, its symlinks
+	// resolved but not Windows' junctions; DirTop for Windows' drives.
+	// A path through a loop of symlinks answers DirNotFound.
+	Path string `json:"path"`
+	// Parent is the directory above Path, "" at the top: of a drive's
+	// root on Windows, it is DirTop.
+	Parent string `json:"parent"`
+	// Home is the home directory, its symlinks resolved.
+	Home string `json:"home"`
+	// Dirs are the names of the directories in Path, symlinks and
+	// junctions to one among them, sorted without regard to case, at most
+	// DirListMax.
+	Dirs []string `json:"dirs"`
+	// More tells that Path holds more than DirListMax: Dirs are the first.
+	More bool   `json:"more"`
+	Code string `json:"code,omitempty"`
+}
+
+// DirTop is the DirList.Path of the top of a machine: on Windows, the
+// list of its drives.
+const DirTop = "/"
+
+// DirListMax is how many names a DirListResult holds at most.
+const DirListMax = 2000
+
+// The codes of a DirListResult.
+const (
+	DirNotFound = "not_found"
+	DirDenied   = "denied"
+)
 
 // FileAnswer is a line of the server on a file.put or file.get
 // connection: Error, after which it closes it, or OK with what the step
