@@ -1,6 +1,6 @@
 # Projects: spaces bound to a folder
 
-Status: proposed. Issue #519. Replaces the earlier design in this file
+Status: approved. Issue #519. Replaces the earlier design in this file
 (#570), which grouped tabs inside a space.
 
 ## Problem
@@ -221,10 +221,10 @@ before the next.
 - UI: the New Project sheet browses a remote host's folders (a test
   server with a temporary directory tree), and Create opens a tab there.
 
-## Open questions
+## Decided later
 
-1. When a project's home host is removed from `hosts.json`, should the
-   project keep the folder and show the host as unknown (this design), or
-   lose its home?
-2. Should the folder browser offer **New Folder**? This design leaves it
-   out: `dir.list` only reads.
+Also by the user on 2026-11-17:
+
+- A project whose home host is removed from `hosts.json` keeps its folder
+  and shows the host as unknown; adding the host again restores it.
+- The folder browser has no **New Folder**: `dir.list` only reads.
