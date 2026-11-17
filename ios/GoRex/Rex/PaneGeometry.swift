@@ -91,3 +91,47 @@ func paneNeighbor(_ cells: [PaneCell], from current: String, direction: PaneDire
     }
     return best?.block
 }
+
+/// The axis a two-finger drag between panes moves along.
+enum PaneAxis {
+    case horizontal, vertical
+}
+
+/// The axis a pane drag locks to once its fingers have gone a few points:
+/// the one they went farther along. Nil until then.
+func paneDragAxis(_ translation: CGPoint, lockAfter: CGFloat = 10) -> PaneAxis? {
+    guard max(abs(translation.x), abs(translation.y)) >= lockAfter else { return nil }
+    return abs(translation.x) >= abs(translation.y) ? .horizontal : .vertical
+}
+
+/// The pane a drag brings, as the content follows the fingers: a drag
+/// left (sign -1) brings the pane on the right, a drag up the one below.
+func paneDragDirection(_ axis: PaneAxis, sign: CGFloat) -> PaneDirection {
+    switch axis {
+    case .horizontal: sign < 0 ? .right : .left
+    case .vertical: sign < 0 ? .down : .up
+    }
+}
+
+/// How far a drag has moved the panes along its way, 0 to 1: the fingers'
+/// way over the page's size, no farther back or on than the panes go.
+func paneDragProgress(_ along: CGFloat, sign: CGFloat, size: CGFloat) -> CGFloat {
+    guard size > 0 else { return 0 }
+    return min(max(along * sign / size, 0), 1)
+}
+
+/// How far the pane moves under a drag with no pane to bring: a fifth of
+/// the fingers' way at first, less as they go, never 40 points.
+func paneRubberBand(_ along: CGFloat, resistance: CGFloat = 0.2, limit: CGFloat = 40) -> CGFloat {
+    let d = abs(along) * resistance
+    let band = limit * d / (d + limit)
+    return along < 0 ? -band : band
+}
+
+/// Whether a pane drag switches as the fingers lift: past 35% of the way,
+/// or flung its way at 500 points a second. One flung back stays.
+/// The velocity is along the drag's way, negative when flung back.
+func paneDragCommits(progress: CGFloat, velocity: CGFloat) -> Bool {
+    guard velocity > -200 else { return false }
+    return progress >= 0.35 || velocity >= 500
+}

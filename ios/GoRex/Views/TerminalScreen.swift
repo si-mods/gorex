@@ -46,8 +46,10 @@ struct TerminalScreen: View {
     /// The pane of a switch that waits for its terminal to draw before it
     /// slides in. A newer switch takes its place.
     @State private var incoming: UUID?
-    /// The page's width, which a pane's place is a fraction of.
-    @State private var pageWidth: CGFloat = 0
+    /// The page's size, which a pane's place is a fraction of.
+    @State private var pageSize: CGSize = .zero
+    /// The two-finger drag between panes under way, if any.
+    @State private var paneDrag: PaneDrag?
     /// Whether the terminal has been reconnecting, or holding what was
     /// typed, for a second: a short reconnect shows nothing.
     @State private var stalled = false
@@ -79,18 +81,19 @@ struct TerminalScreen: View {
             if pages.isEmpty { Color.clear }
             ForEach(pages) { pane in
                 let current = pane.session === session
-                TerminalRepresentable(session: pane.session, newTab: newTab, closeTab: closeTab, newSplit: newSplit, mic: mic, voice: voiceCapsule, dictating: said != nil && current, snaps: switching > 0,
+                // Under the fingers too, layout snaps.
+                TerminalRepresentable(session: pane.session, newTab: newTab, closeTab: closeTab, newSplit: newSplit, mic: mic, voice: voiceCapsule, dictating: said != nil && current, snaps: switching > 0 || paneDrag != nil,
                                       paneInset: paneCellList.count > 1 ? PaneBar.height + 20 : 0,
-                                      onSwipe: { stepPane($0) },
-                                      canSwipe: { switching == 0 && incoming == nil && (terminal?.paneSwipeAllowed ?? false) })
-                    .offset(x: pane.x * pageWidth)
-                    // Before the page's width is known, off the page is hidden.
-                    .opacity(pageWidth == 0 && pane.x != 0 ? 0 : 1)
+                                      onPaneDrag: { dragPane($0, $1, $2) },
+                                      canSwipe: { switching == 0 && incoming == paneDrag?.pane && (terminal?.paneSwipeAllowed ?? false) })
+                    .offset(x: pane.x * pageSize.width, y: pane.y * pageSize.height)
+                    // Before the page's size is known, off the page is hidden.
+                    .opacity(pageSize.width == 0 && (pane.x != 0 || pane.y != 0) ? 0 : 1)
                     .allowsHitTesting(current)
                     .accessibilityHidden(!current)
             }
         }
-            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { pageWidth = $0 }
+            .onGeometryChange(for: CGSize.self) { $0.size } action: { pageSize = $0 }
             .clipped()
             .ignoresSafeArea(.container, edges: .top)
             .ignoresSafeArea(.keyboard)
@@ -345,10 +348,98 @@ struct TerminalScreen: View {
         switchTo(TerminalTarget(host: host.id, session: currentTarget.session, block: block, title: host.paneTitle(block, in: w) ?? host.title(w)), dir: to >= from ? 1 : -1)
     }
 
-    /// Moves to the pane nearest in a direction, for a two-finger swipe.
-    private func stepPane(_ direction: PaneDirection) {
-        guard let next = paneNeighbor(paneCellList, from: currentTarget.block, direction: direction) else { return }
-        selectPane(next)
+    /// A two-finger drag between panes while the fingers are down: the
+    /// current pane's page, the axis it locked to and its way (-1 or 1, as
+    /// the fingers go), and the pane it brings beside it. With no pane that
+    /// way, at the window's edge, it brings none.
+    private struct PaneDrag {
+        let page: UUID
+        var axis: PaneAxis?
+        var sign: CGFloat = 1
+        var pane: UUID?
+        var next: TerminalTarget?
+    }
+
+    /// Follows a two-finger drag: once it locks to an axis, the pane
+    /// nearest that way opens beside the current one, and both move with
+    /// the fingers. As they lift, the switch is made, far or fast enough,
+    /// or the panes spring back.
+    private func dragPane(_ state: UIGestureRecognizer.State, _ t: CGPoint, _ v: CGPoint) {
+        switch state {
+        case .began:
+            guard let page = pages.first(where: { $0.session === session })?.id else { return }
+            paneDrag = PaneDrag(page: page)
+        case .changed:
+            guard var d = paneDrag else { return }
+            // A switch made elsewhere took the page from under the fingers.
+            guard pages.first(where: { $0.id == d.page })?.session === session else {
+                paneDrag = nil
+                return
+            }
+            if d.axis == nil {
+                guard let axis = paneDragAxis(t) else { return }
+                d.axis = axis
+                d.sign = (axis == .horizontal ? t.x : t.y) < 0 ? -1 : 1
+                if let w = window, let block = paneNeighbor(paneCellList, from: currentTarget.block, direction: paneDragDirection(axis, sign: d.sign)) {
+                    let next = TerminalTarget(host: host.id, session: currentTarget.session, block: block, title: host.paneTitle(block, in: w) ?? host.title(w))
+                    d.next = next
+                    d.pane = openIncoming(next, axis: axis, at: -d.sign)
+                }
+                paneDrag = d
+            }
+            follow(d, t)
+        case .ended:
+            guard let d = paneDrag else { return }
+            paneDrag = nil
+            guard let axis = d.axis, pages.first(where: { $0.id == d.page })?.session === session else { return }
+            let along = axis == .horizontal ? t.x : t.y
+            let speed = axis == .horizontal ? v.x : v.y
+            let size = axis == .horizontal ? pageSize.width : pageSize.height
+            if let pane = d.pane, let next = d.next, incoming == pane,
+               paneDragCommits(progress: paneDragProgress(along, sign: d.sign, size: size), velocity: speed * d.sign) {
+                if let key = viewedKey { ViewedBlockStore.shared.set(next.block, for: key) }
+                promote(pane, to: next, dir: -d.sign, axis: axis)
+            } else {
+                springBack(d)
+            }
+        default:
+            guard let d = paneDrag else { return }
+            paneDrag = nil
+            springBack(d)
+        }
+    }
+
+    /// Puts a drag's panes where the fingers have them, at once: the
+    /// current one, and the one it brings right beside it, neither past its
+    /// end. With none to bring, the current one gives a little.
+    private func follow(_ d: PaneDrag, _ t: CGPoint) {
+        guard let axis = d.axis, let i = pages.firstIndex(where: { $0.id == d.page }) else { return }
+        let along = axis == .horizontal ? t.x : t.y
+        let size = axis == .horizontal ? pageSize.width : pageSize.height
+        guard size > 0 else { return }
+        var tr = Transaction()
+        tr.disablesAnimations = true
+        withTransaction(tr) {
+            if let p = d.pane, let j = pages.firstIndex(where: { $0.id == p }) {
+                let at = d.sign * paneDragProgress(along, sign: d.sign, size: size)
+                pages[i].move(axis, to: at)
+                pages[j].move(axis, to: at - d.sign)
+            } else {
+                pages[i].move(axis, to: paneRubberBand(along) / size)
+            }
+        }
+    }
+
+    /// Springs a drag's panes back to their places, the current one on
+    /// the page, then drops the one it brought and closes its stream.
+    private func springBack(_ d: PaneDrag) {
+        guard let axis = d.axis, pages.first(where: { $0.id == d.page })?.session === session else { return }
+        withAnimation(.spring(duration: 0.32, bounce: 0.12), completionCriteria: .removed) {
+            if let i = pages.firstIndex(where: { $0.id == d.page }) { pages[i].move(axis, to: 0) }
+            if let p = d.pane, let j = pages.firstIndex(where: { $0.id == p }) { pages[j].move(axis, to: -d.sign) }
+        } completion: {
+            if let p = d.pane, incoming == p { dropIncoming() }
+        }
     }
 
     /// Shows the layout under the toolbar's right side for a moment, then
@@ -371,14 +462,22 @@ struct TerminalScreen: View {
         return Color(rgb: program.tileFg == 0xffffff ? program.tileBg : program.tileFg)
     }
 
-    /// A terminal on the page, at x widths from its place: -1 off to the
-    /// left, 0 on the page, 1 off to the right. Its id is its own, not its
-    /// block's: a block can come back while its last pane still slides out.
+    /// A terminal on the page, at x widths and y heights from its place:
+    /// -1 off to the left (or above), 0 on the page, 1 off to the right (or
+    /// below). Its id is its own, not its block's: a block can come back
+    /// while its last pane still slides out.
     private struct Pane: Identifiable {
         let id = UUID()
         let session: TerminalSession
         let block: String
         var x: CGFloat
+        var y: CGFloat = 0
+
+        /// Puts it at a place along an axis, and on the page along the other.
+        mutating func move(_ axis: PaneAxis, to at: CGFloat) {
+            x = axis == .horizontal ? at : 0
+            y = axis == .vertical ? at : 0
+        }
     }
 
     /// Opens the window's block in place of this one: it opens off the
@@ -399,12 +498,13 @@ struct TerminalScreen: View {
             dropIncoming()
             return
         }
+        // The same block again, as a second swipe while it opens, waits on;
+        // one a drag brings is opened again, as the drag may spring back.
+        if paneDrag == nil, let id = incoming, pages.first(where: { $0.id == id })?.block == next.block { return }
         if let s = host.sessions.first(where: { $0.id == next.session }),
            let w = s.view?.windows?.first(where: { $0.holds(next.block) }) {
             ViewedBlockStore.shared.set(next.block, for: Self.key(for: w, session: next.session, host: host))
         }
-        // The same block again, as a second swipe while it opens, waits on.
-        if let id = incoming, pages.first(where: { $0.id == id })?.block == next.block { return }
         let resolvedDir: CGFloat
         if let dir {
             resolvedDir = dir
@@ -414,17 +514,8 @@ struct TerminalScreen: View {
             let toIdx = all.firstIndex { $0.window.holds(next.block) } ?? fromIdx
             resolvedDir = toIdx >= fromIdx ? 1 : -1
         }
-        dropIncoming()
-        // The terminal opens off the page, without animation, so that its
-        // surface is made before the slide, not in its first frame.
-        let nextSession = TerminalSession(host: host, session: next.session, block: next.block)
-        nextSession.start()
-        let pane = Pane(session: nextSession, block: next.block, x: resolvedDir)
-        let id = pane.id
-        var t = Transaction()
-        t.disablesAnimations = true
-        withTransaction(t) { pages.append(pane) }
-        incoming = id
+        let id = openIncoming(next, axis: .horizontal, at: resolvedDir)
+        guard let nextSession = pages.first(where: { $0.id == id })?.session else { return }
         Task { @MainActor in
             // Until the terminal has drawn the snapshot, or 300 ms; a
             // failure ends the wait, to show on the new pane.
@@ -442,6 +533,23 @@ struct TerminalScreen: View {
             guard incoming == id else { return }
             promote(id, to: next, dir: resolvedDir)
         }
+    }
+
+    /// Opens a block's terminal off the page, at a place along an axis, as
+    /// the switch that waits: a newer one drops it. It opens without
+    /// animation, so that its surface is made before the slide, not in its
+    /// first frame.
+    private func openIncoming(_ next: TerminalTarget, axis: PaneAxis, at: CGFloat) -> UUID {
+        dropIncoming()
+        let nextSession = TerminalSession(host: host, session: next.session, block: next.block)
+        nextSession.start()
+        var pane = Pane(session: nextSession, block: next.block, x: 0)
+        pane.move(axis, to: at)
+        var t = Transaction()
+        t.disablesAnimations = true
+        withTransaction(t) { pages.append(pane) }
+        incoming = pane.id
+        return pane.id
     }
 
     @ViewBuilder private var principalTitlePill: some View {
@@ -492,10 +600,13 @@ struct TerminalScreen: View {
     }
 
     /// Slides the waiting pane in and the current one out, the way the
-    /// switch goes, and closes the current one's stream.
-    private func promote(_ id: UUID, to next: TerminalTarget, dir: CGFloat) {
+    /// switch goes along the axis, from where they are, and closes the
+    /// current one's stream.
+    private func promote(_ id: UUID, to next: TerminalTarget, dir: CGFloat, axis: PaneAxis = .horizontal) {
         guard let i = pages.firstIndex(where: { $0.id == id }) else { return }
         incoming = nil
+        // A drag still under way loses its page: it ends here.
+        paneDrag = nil
         let nextSession = pages[i].session
         terminal?.stopDictating()
         host.see(session: currentTarget.session, block: currentTarget.block)
@@ -506,8 +617,8 @@ struct TerminalScreen: View {
         let paneSwitch = next.session == currentTarget.session && (window?.panes.contains(next.block) ?? false)
         withAnimation(.spring(duration: 0.32, bounce: 0.12), completionCriteria: .removed) {
             slideDir = dir
-            if let j = pages.firstIndex(where: { $0.session === session }) { pages[j].x = -dir }
-            pages[i].x = 0
+            if let j = pages.firstIndex(where: { $0.session === session }) { pages[j].move(axis, to: -dir) }
+            pages[i].move(axis, to: 0)
             session = nextSession
             currentTarget = next
         } completion: {
@@ -527,6 +638,13 @@ struct TerminalScreen: View {
         pages.first(where: { $0.id == id })?.session.close()
         var t = Transaction()
         t.disablesAnimations = true
+        // A drag that brought it ends, its page back in place.
+        if let d = paneDrag, d.pane == id {
+            paneDrag = nil
+            if let axis = d.axis, let i = pages.firstIndex(where: { $0.id == d.page }) {
+                withTransaction(t) { pages[i].move(axis, to: 0) }
+            }
+        }
         withTransaction(t) { pages.removeAll { $0.id == id } }
     }
 
@@ -940,11 +1058,11 @@ private struct TerminalRepresentable: UIViewRepresentable {
     /// How far the pane bar reaches over the terminal, for the cursor to
     /// stay above it; 0 when the bar is away.
     let paneInset: CGFloat
-    /// Moves to the pane next to the current one, the way a two-finger
-    /// swipe goes.
-    let onSwipe: (PaneDirection) -> Void
-    /// Whether a swipe may switch now: no switch under way, no selection,
-    /// no full-screen program with the mouse.
+    /// Follows a two-finger drag between panes: its state, and how far and
+    /// how fast the fingers went.
+    let onPaneDrag: (UIGestureRecognizer.State, CGPoint, CGPoint) -> Void
+    /// Whether a drag may switch now: no other switch under way, no
+    /// selection, no full-screen program with the mouse, no pinch.
     let canSwipe: () -> Bool
 
     struct Coordinator {
@@ -984,7 +1102,7 @@ private struct TerminalRepresentable: UIViewRepresentable {
         v.terminal.newSplit = newSplit
         v.terminal.paneInset = paneInset
         v.aboveBar = paneInset
-        v.onSwipe = onSwipe
+        v.onPaneDrag = onPaneDrag
         v.canSwipe = canSwipe
         v.setBottomEdgeColor(UIColor(cgColor: (session.background ?? .black).cgColor))
         context.coordinator.mic.rootView = mic
