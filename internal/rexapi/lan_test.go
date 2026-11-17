@@ -634,14 +634,14 @@ func TestLANNeedsToken(t *testing.T) {
 func TestLANTokenNotLogged(t *testing.T) {
 	var buf bytes.Buffer
 	var mu sync.Mutex
-	old, oldTracing := log.Writer(), tracing
+	old, oldTracing := log.Writer(), tracing.Load()
 	log.SetOutput(writerFunc(func(p []byte) (int, error) {
 		mu.Lock()
 		defer mu.Unlock()
 		return buf.Write(p)
 	}))
-	tracing = true
-	t.Cleanup(func() { log.SetOutput(old); tracing = oldTracing })
+	tracing.Store(true)
+	t.Cleanup(func() { log.SetOutput(old); tracing.Store(oldTracing) })
 
 	g, dir := startStateGateway(t)
 	g.lan.apply(LANConfig{Enabled: true, Listen: "127.0.0.1:0", Allow: []string{"127.0.0.1"}, Token: testLANToken})
