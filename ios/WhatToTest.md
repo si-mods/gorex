@@ -28,6 +28,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - Connecting to a computer over Tailscale works as before. If a computer that used to connect no longer does, tell us.
 - Adding a computer on the same Wi-Fi now needs the new QR code GoRex shows; if a computer you added before refuses you, scan its QR code again in Hosts.
 - Drag a window in the list and let go of it away from the rows: the windows go back to their order at once, and the one you dragged no longer stays dimmed.
+- Swiping with two fingers no longer switches panes, for now; tap a pane in the pane bar instead.
 
 ## zh-Hans
 
@@ -48,3 +49,4 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - 通过 Tailscale 连接电脑和以前一样。如果某台以前能连上的电脑现在连不上，请告诉我们。
 - 在同一 Wi-Fi 下添加电脑，现在要扫 GoRex 显示的新二维码；以前添加过的电脑如果拒绝连接，在主机列表里重新扫它的二维码。
 - 在列表里拖动窗口，在行外松手：窗口立刻回到原来的顺序，被拖的那一行也不再一直变暗。
+- 双指滑动暂时不再切换面板；请点面板条里的面板来切换。
