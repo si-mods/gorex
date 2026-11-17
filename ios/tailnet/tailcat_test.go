@@ -373,7 +373,7 @@ func TestTailcatReset(t *testing.T) {
 // once, not after WireGuard's rekey.
 func TestTailcatServerRestart(t *testing.T) {
 	defer func(d time.Duration) { tailcatTry = d }(tailcatTry)
-	tailcatTry = 2 * time.Second
+	tailcatTry = time.Second
 	Stop()
 	tailcatEnv(t)
 	m := newMachine(t)
@@ -392,16 +392,18 @@ func TestTailcatServerRestart(t *testing.T) {
 	}
 	go http.Serve(gw, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { io.WriteString(w, "again") }))
 	// The kept client fails one try (tailcatTry) against the new server,
-	// which has not met it, and a new client replaces it. Waiting for a
-	// second try of the old client adds tailcatTry for nothing: the
-	// client's Ping returns at once, as it registered before.
+	// which has not met it, and a new client replaces it. A second try of
+	// the old client adds tailcatTry for nothing: its Ping returns at once,
+	// as it registered before. The count of tries is what is asserted, not
+	// the time, which a loaded machine stretches; tailcatDial bounds it.
+	tries := tailcatTries.Load()
 	start := time.Now()
 	got, err := get(hc, "http://mac.tailcat.invalid:7297/")
 	if err != nil || got != "again" {
 		t.Fatalf("GET after the restart = %q, %v, %v after it", got, err, time.Since(start))
 	}
-	if d := time.Since(start); d >= 2*tailcatTry {
-		t.Errorf("reached again in %v, want under two tries of %v", d, tailcatTry)
+	if n := tailcatTries.Load() - tries; n != 1 {
+		t.Errorf("the kept client had %d tries after the restart, want 1", n)
 	}
 }
 
