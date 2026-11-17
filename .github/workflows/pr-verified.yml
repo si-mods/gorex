@@ -1,0 +1,42 @@
+name: PR verified
+
+# A pull request says how it was verified: a "Verified:" line in its body.
+# pull_request_target runs this file from the base branch, so the pull request
+# cannot change its own gate. For that reason this workflow never checks out
+# or runs the pull request's code: it reads the title and body only.
+on:
+  pull_request_target:
+    types: [opened, edited, synchronize, reopened]
+
+permissions: {}
+
+jobs:
+  verified:
+    runs-on: instabox-medium
+    timeout-minutes: 2
+    env:
+      # observe: a missing line is a warning. enforce: it fails the check.
+      MODE: observe
+    steps:
+      - name: Verified line
+        # The title and body go through env, never into the script text.
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+        shell: bash
+        run: |
+          bad=0
+          if ! printf '%s\n' "$PR_BODY" | tr -d '\r' | grep -Eq '^[[:space:]]*Verified:[[:space:]]*[^[:space:]]'; then
+            echo "::warning::The pull request body has no \"Verified:\" line. Say how it was verified, or write \"Verified: none - <reason>\"."
+            bad=1
+          fi
+          if printf '%s\n' "$PR_TITLE" | grep -Eq '^fix(\([^)]*\))?!?:'; then
+            if ! printf '%s\n' "$PR_BODY" | grep -Eqi '(^|[^[:alnum:]])tests?([^[:alnum:]]|$)|Test[A-Z_]'; then
+              echo "::warning::A fix names the test that failed before it. The body names no test."
+              bad=1
+            fi
+          fi
+          if [ "$bad" -ne 0 ] && [ "$MODE" = enforce ]; then
+            exit 1
+          fi
+          exit 0
