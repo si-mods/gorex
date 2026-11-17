@@ -5,6 +5,11 @@ export function joinHostURL(base: string, path: string): string {
   return base.replace(/\/+$/, "") + (path.startsWith("/") ? path : "/" + path);
 }
 
+/** Adds a LAN pairing token to a gateway URL as ?k= (&k= after a query); the URL is unchanged without one. Never log the result. */
+export function withToken(url: string, token?: string): string {
+  return token ? url + (url.includes("?") ? "&" : "?") + "k=" + encodeURIComponent(token) : url;
+}
+
 export interface SharedGroup {
   phone: string;
   hosts: Host[];

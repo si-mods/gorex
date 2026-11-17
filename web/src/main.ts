@@ -356,7 +356,7 @@ async function main() {
   let place = startAt;
   const linked = parsePairingLink(location.search, location.hash);
   if (linked) {
-    hostList.addLink(linked.url, linked.certHash);
+    hostList.addLink(linked.url, linked.certHash, linked.token);
     if (hostList.chosen) {
       // A host linked is asked for: it connects, though the user disconnected it before.
       setOff(hostList.chosen.id, false);
@@ -616,8 +616,8 @@ function drawNotice() {
 /** A host's transport: the browser's to its address, WebTransport with pinned cert, or the tailnet node's. */
 function transportOf(h: Host) {
   if (h.kind === "tailnet") return tailnet.transport(h as TailnetHost);
-  if (h.certHash) return webTransport(h.url, h.certHash);
-  return directTransport(h.url);
+  if (h.certHash) return webTransport(h.url, h.certHash, h.token);
+  return directTransport(h.url, h.token);
 }
 
 /**
@@ -627,7 +627,7 @@ function transportOf(h: Host) {
  */
 function ensure(h: Host): HostConn {
   let c = conns.get(h.id);
-  if (c && (c.host.url !== h.url || c.host.certHash !== h.certHash)) {
+  if (c && (c.host.url !== h.url || c.host.certHash !== h.certHash || c.host.token !== h.token)) {
     drop(c);
     c = undefined;
   }

@@ -1,6 +1,6 @@
 import { Problem, problem } from "./hosts";
 import { t } from "./i18n";
-import { joinHostURL } from "./share";
+import { joinHostURL, withToken } from "./share";
 import type { SocketLike, Transport } from "./rex";
 
 const streamSocket = 0x01;
@@ -144,9 +144,10 @@ export async function webTransportProblem(url: string, err?: unknown): Promise<P
  * A Transport over WebTransport (`serverCertificateHashes`) for connecting from
  * an HTTPS page to a GoRex LAN host with a rotating self-signed ECDSA P-256 cert.
  */
-export function webTransport(url: string, certHash: string): Transport {
+export function webTransport(url: string, certHash: string, token?: string): Transport {
   const hashBuf = parseCertHash(certHash);
-  const wtURL = joinHostURL(url, "/api/wt");
+  // The gateway checks the token once, on the CONNECT; the streams inside need none.
+  const wtURL = withToken(joinHostURL(url, "/api/wt"), token);
   let sessionPromise: Promise<WebTransport> | undefined;
 
   const getSession = (): Promise<WebTransport> => {

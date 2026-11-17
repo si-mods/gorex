@@ -261,7 +261,7 @@ export class HostConn {
         ? await webTransportProblem(h.url, e)
         : h.kind === "tailnet"
           ? await this.tailnet.diagnose(h as TailnetHost)
-          : await diagnose(h.url);
+          : await diagnose(h.url, h.token);
       if (gen !== this.generation) return;
       if (h.certHash && !webTransportAvailable()) {
         // No attempt can mend a browser without WebTransport: say so once.
