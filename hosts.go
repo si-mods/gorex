@@ -1639,13 +1639,17 @@ func (s *paneStream) Read(p []byte) (int, error) {
 		if n > 0 {
 			s.mu.Lock()
 			first := s.fresh && s.cur == st
+			var away time.Duration
+			back := false
 			if first {
 				s.fresh, s.detached, s.fails = false, false, 0
 				s.detachedAt = time.Time{}
 				s.attaches++
 				now := time.Now()
-				if s.attaches > 1 && !s.lostAt.IsZero() {
-					log.Printf("gorex: pane stream back: host=%s sid=%s away=%s", s.name, s.sid, now.Sub(s.lostAt).Round(time.Millisecond))
+				// Back from a loss, even one before the first attach.
+				if !s.lostAt.IsZero() {
+					away, back = now.Sub(s.lostAt).Round(time.Millisecond), true
+					s.lostAt = time.Time{}
 				}
 				s.attachedAt = now
 				// Attached again: its snapshot replaces what shows.
@@ -1656,6 +1660,9 @@ func (s *paneStream) Read(p []byte) (int, error) {
 				}
 			}
 			s.mu.Unlock()
+			if back {
+				log.Printf("gorex: pane stream back: host=%s sid=%s away=%s", s.name, s.sid, away)
+			}
 			if first {
 				s.changed()
 			}
