@@ -1,6 +1,8 @@
 # Projects: spaces bound to a folder
 
-Status: approved. Issue #519. Replaces the earlier design in this file
+Status: approved. Issue #519. Phases 1 to 5 are implemented: `dir.list`
+(#717), model and rules (#722), desktop (#746), Rex Go (#743) and web
+(#741). Phase 6 is these docs. Replaces the earlier design in this file
 (#570), which grouped tabs inside a space.
 
 ## Problem

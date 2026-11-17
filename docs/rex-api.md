@@ -503,11 +503,14 @@ folder there (`docs/projects.md`). The welcome lists the feature
   and a split starts where the block it splits started. A session the
   server starts again from the layout after a restart still starts at
   home when its folder is gone.
-- `gorex.spaces_apply` takes `home_machine` and `dir` for each space: left
-  out, the home stays, as from a client of before projects; a `dir` of
-  `""` clears it. The result's `homes` counts the homes changed.
+- `gorex.spaces_apply` (feature `gorex.spaces_sync`) takes `home_machine`
+  and `dir` for each space: left out, the home stays, as from a client of
+  before projects; a `dir` of `""` clears it. A `dir` with no
+  `home_machine` changes nothing. A machine this desktop has no host of
+  keeps the folder. The result's `homes` counts the homes changed.
 - Errors: `session_not_found`, `bad_request` (a relative `dir`, a
-  `machine_id` with no `dir`, an unknown argument), `not_found`,
+  `machine_id` with no `dir`, an unknown argument, the desktop's sessions
+  of no tab, which have no project), `not_found`,
   `not_supported` (the GoRex server is older).
 
 ## Files of a host

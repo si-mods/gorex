@@ -72,18 +72,52 @@ and macOS, use **Check for Updates** in the app. See
   scrollback, with the match count and next/previous; Escape closes it.
   Command-click (Control-click elsewhere) opens URLs through the system,
   and file paths relative to the pane's program.
-- **Spaces.** Like a Rex session, a space is a set of tabs of its own, with a
+- **Projects.** Like a Rex session, a project is a set of tabs of its own, with a
   name such as `icy-ridge` and a color of its own, and each window shows
-  one. The space chip in the title bar, or atop the sidebar, lists the
-  spaces with their tabs and the window that shows them, and makes,
-  renames and closes them; so do the Space menu and the command palette,
-  whose Change Space… finds one by its name. New Window opens a window of
-  a new space, and Move Tab to New Window moves a tab to one. Choosing a
-  space another window shows brings that window to the front. Closing a
-  window keeps its space, its programs running; Close Space asks, then
+  one. The project chip in the title bar, or atop the sidebar, lists the
+  projects with their tabs and the window that shows them, and makes,
+  renames and closes them; so do the Project menu and the command palette,
+  whose Change Project… finds one by its name. New Window opens a window of
+  a new project, and Move Tab to New Window moves a tab to one. Choosing a
+  project another window shows brings that window to the front. Closing a
+  window keeps its project, its programs running; Close Project asks, then
   ends its terminals. GoRex opens again the windows open when it quit,
-  each on its space; terminals that no space has, as after a crash, get
+  each on its project; terminals that no project has, as after a crash, get
   tabs in the first.
+- **Project folders.** A project may be bound to a folder on one host, its
+  home host. **New Project…** (the sidebar's `+`, the command palette, the
+  Project menu) opens a sheet in three steps: the host (this machine or a
+  host of `hosts.json`; an offline host is shown but cannot be picked), the
+  folder (a browser of that host's folders with Home, Up, a typed path and,
+  for this machine, **Choose…** for the system picker), and the name, which
+  follows the folder's name until you type one. Create makes the project
+  and opens its first tab in the folder. **New Project with No Folder**
+  makes a project that only groups terminals.
+  - New Tab in a project with a folder starts on the home host, in the
+    folder, even when the focused pane is on another host. A split or a
+    floating pane starts where the pane it comes from started. A project may
+    still hold terminals of several hosts.
+  - The project's context menu has **Change Folder…** and **Remove Folder**,
+    beside Rename, Color and Close Project. The sidebar shows the folder
+    under the project's name, after the home host's name when that is not
+    this machine.
+  - A folder that is gone fails New Tab with a note and a **Change
+    Folder…** button; the shell does not start in the home directory
+    instead. A tab that GoRex opens again after a restart is not checked
+    and starts at home as before.
+  - With the home host offline, New Tab fails with a note that names the
+    host and does not start a tab elsewhere. A tailnet host that is online
+    but not connected yet connects first, and the tab then opens in the
+    folder.
+  - A project made before this has no folder and works as it did. A home
+    host removed from `hosts.json` leaves the folder in place and shows the
+    host as unknown; adding the host again restores it.
+  - Rex Go and the web client do the same: New Project with a folder
+    browser, a folder shown under the name, New Window in the folder on the
+    home host, and Change Folder… and Remove Folder. With the home host not
+    connected, they say why and open nothing elsewhere. The home reaches
+    them through `gorex.projects` and `gorex.dir.list` (`docs/rex-api.md`)
+    and Rex Go's synced projects (`docs/ios-centralized-spaces.md`).
 - **Single instance.** GoRex runs once: opened again, it brings the
   window used last to the front, or opens one. The installed app and
   `mygo dev`'s GoRex Dev each run once, apart, and an app given a
@@ -447,7 +481,7 @@ asks to teleport it there. See [docs/teleport.md](docs/teleport.md).
 ## Importing a Rex session
 
 GoRex reads a Rex server and makes the same shape here: a Rex session
-becomes a space, a window a tab, and a block a pane. Each pane runs
+becomes a project, a window a tab, and a block a pane. Each pane runs
 `gorex rex-mirror`, which draws what the Rex block shows and sends what
 is typed there to it, so the two show the same program.
 
@@ -458,14 +492,14 @@ gorex rex-import --shell                   # shells, not mirrors
 gorex rex-import --resize                  # mirrors give their blocks the pane's size
 ```
 
-The window imports without a terminal: **Space ▸ Import from Rex**, or the
+The window imports without a terminal: **Project ▸ Import from Rex**, or the
 command palette's *Import from Rex*, mirrors every session the record does
 not have yet and says how many it made in a notification; a failure opens a
 dialog. The Rex server defaults to `$REX_SERVER`, else `rex/server.sock` in
 the platform's data directory; `--rex` names another. What a run imported
 is recorded in `rex-import.json` in GoRex's data directory, so a second run
 leaves those sessions alone. The GoRex window must be open: it makes the
-spaces, tabs and panes.
+projects, tabs and panes.
 
 A mirror is a view with input. The data stream starts with a snapshot in
 Ghostty's binary format, which only a Ghostty terminal restores, so the
@@ -494,7 +528,7 @@ ratios are not kept.
 Rex's own apps, the iPhone one among them, connect to GoRex as to a Rex
 server: the GoRex server serves Rex's API (revision 12), on the local
 network to the networks you allow (Settings › Server), and on the tailnet
-through a Tailscale device of its own. A space is
+through a Tailscale device of its own. A project is
 a Rex session, a tab a window, a pane a block, and a floating pane a
 floating layer; terminals stream as Ghostty snapshots, as Rex's do. Setup,
 pairing, what differs from a Rex server, and troubleshooting:
@@ -600,7 +634,7 @@ image reaches a program as a file it opens, not as clipboard data.
 |---|---|
 | `main.go` | the app, its window, and `-server` |
 | `state.go` | tabs, the tree of splits, panes, saving and restoring the layout |
-| `workspace.go`, `workspaceview.go`, `space.go` | spaces of tabs (workspaces in the code) and the windows showing them; the space chip, its list, Close Space's question, and the palette of space colors |
+| `workspace.go`, `workspaceview.go`, `space.go` | projects of tabs (workspaces in the code) and the windows showing them; the project chip, its list, Close Project's question, and the palette of project colors |
 | `view.go`, `tabs.go`, `sidebar.go`, `host.go`, `commands.go` | the interface: title bar, tabs and their sidebar, panes, host popover, menus and palette |
 | `programs.go` | how programs show: names, glyphs, tile colors |
 | `style.go`, `settings.go` | colors, fonts, terminal themes; appearance, text size and the user's choices over Ghostty's |

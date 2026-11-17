@@ -1,6 +1,6 @@
 # Rex Go: 以 iOS（+ iCloud）为中心化控制端的跨主机 Space 同步设计
 
-Status: approved (设计决策已确认). 阶段 1 至 3 已实现：阶段 1 见 #580，阶段 2 与 3 见 #581。
+Status: approved (设计决策已确认). 阶段 1 至 3 已实现：阶段 1 见 #580，阶段 2 与 3 见 #581。Project 的主目录（`home_machine`、`dir`）见 3.1，设计见 [projects.md](projects.md)。
 
 ## 1. 背景与问题诊断
 
@@ -86,6 +86,22 @@ iOS 端（Rex Go）作为纯控制端，自身不运行本地 shell 或 PTY，�
   ]
 }
 ```
+
+### 3.1 Project 的主目录：`home_machine` 与 `dir`
+
+Space 在用户界面中叫 Project（`docs/projects.md`）。Project 可绑定一个文件夹：主机与其上的目录。清单中的 Space 为此多两个可选字段，线上与代码名仍为 `CentralSpace`、`gorex.spaces`：
+
+```json
+{ "id": "sp_01J...", "name": "windflow", "home_machine": "9c63...", "dir": "/home/me/code/windflow", "members": [] }
+```
+
+- `home_machine`：主目录所在主机的 `rex.MachineID`。各设备相同；`hosts.json` 的主机 ID 各设备不同，不可用。
+- `dir`：该主机上的绝对路径。缺省（nil）表示“未知”，即项目功能之前的 App 写出的清单；空字符串表示“无文件夹”。
+- 解码宽松：字段缺失或类型错误时读作 nil，清单仍可加载。
+- **iCloud 合并**：较新的一份没有主目录（旧版 App 丢掉了字段）时，保留本地的主目录；较新或已清除的主目录照常取用。
+- **桌面端同步**（`gorex.spaces_apply`，feature `gorex.projects`）：主目录已知时 iOS 发送 `home_machine` 与 `dir`；未知时不发送，桌面端保留自己的主目录；`dir` 为 `""` 表示清除。桌面端不认识该 `machine_id` 时保留文件夹，并把主目录主机显示为未知。结果中的 `homes` 为被改动的主目录数。
+- **桌面端到 iOS**：会话的 `project {home_machine, dir}` 字段（bootstrap、`session_created`、每个视图）被读取。iOS 尚不知道主目录的 Project 由桌面端的主目录填充；桌面端之后改动的主目录（如 Change Folder）会被采用；手机端已改而桌面端尚未跟上的主目录保持不变。
+- **新窗口**：有文件夹的 Project 在主目录主机的网关上新建窗口，`cwd` 为该文件夹；主机不在线时说明原因，不在别处打开。Change Folder / Remove Folder 更新清单，并对在线且保有该 Project 会话的主机调用 `gorex.project.set_home`。
 
 ### 关键设计点
 
