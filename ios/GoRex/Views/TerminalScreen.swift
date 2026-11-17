@@ -768,22 +768,20 @@ struct TerminalScreen: View {
     }
 
     /// Closes a pane of the window, without asking; when it is the one
-    /// shown, goes to the pane before it, else the one after.
+    /// shown, goes first to the pane before it, else the one after, so its
+    /// stream ending never shows as the window closing.
     private func closePane(_ block: String) {
         guard let w = window, w.panes.count > 1, let i = w.panes.firstIndex(of: block) else { return }
-        let was = block == currentTarget.block
-        let next = w.panes[i > 0 ? i - 1 : 1]
-        let key = viewedKey
-        let target = TerminalTarget(host: host.id, session: currentTarget.session, block: next, title: host.paneTitle(next, in: w) ?? host.title(w))
+        let session = currentTarget.session
+        if block == currentTarget.block { selectPane(w.panes[i > 0 ? i - 1 : 1]) }
         Task {
+            // The switch slides in once the pane has drawn, within 300 ms.
+            let deadline = ContinuousClock.now + .seconds(1)
+            while currentTarget.block == block, ContinuousClock.now < deadline {
+                try? await Task.sleep(for: .milliseconds(16))
+            }
             do {
-                try await host.closePane(block, in: currentTarget.session)
-                // The window no longer holds a pane closed while shown, so
-                // selectPane, which finds the window by it, cannot be used.
-                if was, currentTarget.block == block {
-                    if let key { ViewedBlockStore.shared.set(next, for: key) }
-                    switchTo(target, dir: i > 0 ? -1 : 1)
-                }
+                try await host.closePane(block, in: session)
             } catch {
                 failure = ("Can't Close the Pane", error.localizedDescription)
             }
