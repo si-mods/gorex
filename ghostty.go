@@ -606,6 +606,23 @@ func termOptions() terminal.Options {
 	}
 }
 
+// newTerm makes a terminal of opts whose programs, asking its colors before
+// a view shows it, get those of the app's appearance. Until then the
+// terminal answers with Theme, the light one: a program that keeps its
+// first answer, as Codex, would draw light boxes in a dark window (#656).
+// The terminal then takes opts' themes back, and a view picks between them.
+func newTerm(opts terminal.Options) (*terminal.Terminal, error) {
+	light := opts.Theme
+	if opts.DarkTheme != nil && appearanceDark() {
+		opts.Theme = opts.DarkTheme
+	}
+	t, err := terminal.New(opts)
+	if err == nil && opts.Theme != light {
+		t.SetTheme(light, opts.DarkTheme)
+	}
+	return t, err
+}
+
 func paddingOrZero(p *terminal.Padding) terminal.Padding {
 	if p == nil {
 		return terminal.Padding{}
