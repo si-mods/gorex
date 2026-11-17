@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.37.0
+
+### Features
+
+* **rexapi:** require a pairing token on the local-network listener ([#684](https://github.com/si-mods/gorex/pull/684))
+* **rex:** list a host's directories with `dir.list` and `gorex.dir.list` ([#717](https://github.com/si-mods/gorex/pull/717))
+* **ios:** open a file path tapped in the terminal ([#721](https://github.com/si-mods/gorex/pull/721))
+
+### Bug Fixes
+
+* **rex:** refuse Windows device and named-pipe paths in file gets and directory listings ([#723](https://github.com/si-mods/gorex/pull/723))
+* **panes:** resync a pane's screen in band on its stream ([#690](https://github.com/si-mods/gorex/pull/690))
+* **layout:** go on after a take refused for a change already on its way ([#706](https://github.com/si-mods/gorex/pull/706))
+* **tailnet:** replace a restarted server's tailcat client after one try ([#713](https://github.com/si-mods/gorex/pull/713))
+* **tailnet:** keep the built-in node off until the user turns it on ([#716](https://github.com/si-mods/gorex/pull/716))
+* **ios:** reset a window drag let go of off the rows on iOS 26 ([#693](https://github.com/si-mods/gorex/pull/693))
+* **ios:** give the title pill and pane bar press feedback ([#718](https://github.com/si-mods/gorex/pull/718))
+* **ios:** disable the two-finger pane swipe for now ([#677](https://github.com/si-mods/gorex/pull/677))
+
 ## 0.36.0
 
 ### Features
