@@ -7,6 +7,35 @@ import (
 	"time"
 )
 
+// TestIsDevicePathAllowsFileShares: a normal UNC file share is not a
+// device path (opening it may still fail, for other reasons).
+func TestIsDevicePathAllowsFileShares(t *testing.T) {
+	for _, p := range []string{
+		`\\server\share\file.txt`,
+		`//server/share/pipe`,
+		`\\?\UNC\server\share\file.txt`,
+		`\\server\pipes\x`,
+		`C:\pipe\x`,
+	} {
+		if isDevicePath(p) {
+			t.Errorf("isDevicePath(%q) = true, want false", p)
+		}
+	}
+}
+
+// TestOpenToSendFileShareNotRefused: a file share on this host passes the
+// guard; opening it fails later, not as a not-regular refusal.
+func TestOpenToSendFileShareNotRefused(t *testing.T) {
+	p := `\\localhost\share\file.txt`
+	f, _, err := openToSend(p)
+	if f != nil {
+		f.Close()
+	}
+	if NotRegular(err) {
+		t.Errorf("openToSend(%q) refused as not regular: %v", p, err)
+	}
+}
+
 // TestOpenToSendRefusesDevicePaths: a device or pipe path is refused by
 // name, before anything opens it, in both slash directions.
 func TestOpenToSendRefusesDevicePaths(t *testing.T) {
@@ -18,6 +47,12 @@ func TestOpenToSendRefusesDevicePaths(t *testing.T) {
 		`\\?\GLOBALROOT\Device\x`,
 		`//?/globalroot/Device/x`,
 		`\\.\PIPE\x`,
+		`\\localhost\pipe\x`,
+		`\\127.0.0.1\pipe\x`,
+		`\\?\UNC\localhost\pipe\x`,
+		`//localhost/PIPE/x`,
+		`//?/unc/localhost/pipe/x`,
+		`\\server\pipe`,
 	} {
 		type result struct{ err error }
 		done := make(chan result, 1)
