@@ -18,6 +18,8 @@ struct TerminalScreen: View {
     @State private var suspended = false
     /// What failed last, and why, as the server says it.
     @State private var failure: (title: LocalizedStringKey, why: String)?
+    /// The panes asked to close, until the server answers.
+    @State private var closing: Set<String> = []
     /// Whether the session's sheet is open, as the title opens it.
     @State private var sheet = false
     /// Whether the diagnostics of a failed terminal show.
@@ -771,15 +773,23 @@ struct TerminalScreen: View {
     /// shown, goes first to the pane before it, else the one after, so its
     /// stream ending never shows as the window closing.
     private func closePane(_ block: String) {
-        guard let w = window, w.panes.count > 1, let i = w.panes.firstIndex(of: block) else { return }
+        // Panes already closing count as gone, so a quick second close
+        // neither goes back to one nor closes the window's last.
+        guard let w = window, !closing.contains(block) else { return }
+        let left = w.panes.filter { !closing.contains($0) }
+        guard left.count > 1, let i = left.firstIndex(of: block) else { return }
         let session = currentTarget.session
-        if block == currentTarget.block { selectPane(w.panes[i > 0 ? i - 1 : 1]) }
+        closing.insert(block)
+        if block == currentTarget.block { selectPane(left[i > 0 ? i - 1 : 1]) }
         Task {
-            // The switch slides in once the pane has drawn, within 300 ms.
+            defer { closing.remove(block) }
+            // The switch slides in once the pane has drawn, within 300 ms;
+            // one that never came leaves the pane open.
             let deadline = ContinuousClock.now + .seconds(1)
             while currentTarget.block == block, ContinuousClock.now < deadline {
                 try? await Task.sleep(for: .milliseconds(16))
             }
+            guard currentTarget.block != block else { return }
             do {
                 try await host.closePane(block, in: session)
             } catch {

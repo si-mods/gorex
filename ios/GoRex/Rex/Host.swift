@@ -1074,16 +1074,26 @@ final class Host: Identifiable {
               let at = tiled.firstIndex(where: { $0.block_id == block }), tiled.count > 1 else { return }
         tiled.remove(at: at)
         layer.blocks = tiled
-        func place(_ n: PaneLayout) {
-            n.rect = nil
-            if let s = n.split { place(s.before); place(s.after) }
+        // The kept side fills the room both had, laid out again from it.
+        func place(_ n: PaneLayout, _ r: [Double]) {
+            n.rect = r
+            guard let s = n.split else { return }
+            if s.direction == "horizontal" {
+                let a = r[2] * s.ratio
+                place(s.before, [r[0], r[1], a, r[3]])
+                place(s.after, [r[0] + a, r[1], r[2] - a, r[3]])
+            } else {
+                let a = r[3] * s.ratio
+                place(s.before, [r[0], r[1], r[2], a])
+                place(s.after, [r[0], r[1] + a, r[2], r[3] - a])
+            }
         }
         func prune(_ n: PaneLayout) {
             guard let s = n.split else { return }
             for (gone, kept) in [(s.before, s.after), (s.after, s.before)] where gone.block_id == block {
                 n.block_id = kept.block_id
                 n.split = kept.split
-                if let r = n.rect, r.count == 4 { place(n); n.rect = r }
+                if let r = n.rect, r.count == 4 { place(n, r) }
                 return
             }
             prune(s.before)
