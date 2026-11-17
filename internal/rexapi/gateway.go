@@ -122,8 +122,12 @@ type Gateway struct {
 	// server stops once. shutdown asks the GoRex server to stop, as the
 	// app does when it quits; tests replace it.
 	stopMu   sync.Mutex
-	stopping bool
+	stopping atomic.Bool
 	shutdown func() error
+	// shutdownIfIdle is shutdown for a server that holds no session.
+	shutdownIfIdle func() error
+	// inflight counts the calls being handled.
+	inflight atomic.Int32
 
 	mu      sync.Mutex
 	model   atomic.Pointer[model]
@@ -202,6 +206,7 @@ func New(opt Options) (*Gateway, error) {
 	g := &Gateway{
 		opt:            opt,
 		shutdown:       opt.Client.Shutdown,
+		shutdownIfIdle: opt.Client.ShutdownIfIdle,
 		started:        time.Now(),
 		hello:          hello,
 		host:           hostID(name, hello.Host.User),

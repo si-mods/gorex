@@ -440,8 +440,15 @@ func parseRequest(data []byte) (*request, bool) {
 // handle answers one request. A handler that panics answers an internal
 // error, because the server must outlive it.
 func (c *control) handle(req *request) {
+	c.g.inflight.Add(1)
+	defer c.g.inflight.Add(-1)
 	if c.hold != nil {
 		c.hold(req.ID)
+	}
+	// A server that stops takes no call that changes anything.
+	if c.g.stopping.Load() && !stopAllowed[req.Method] {
+		c.respond(req, nil, errConflict("the server is stopping"))
+		return
 	}
 	if !methodAvailable(c.rev, req.Method) {
 		c.respond(req, nil, errMethodNotFound("%s is not a method of revision %d", req.Method, c.rev))

@@ -67,6 +67,15 @@ const ProtocolVersion = 3
 // the next starts the sessions of its layout again — says it does.
 const CapabilityShutdownRestart = "shutdown.restart"
 
+// CapabilityShutdownIfIdle is what a server that stops only when it holds
+// no session, nor one it is starting, says it does (Request.IfIdle). A
+// server without it ignores the field and stops at once.
+const CapabilityShutdownIfIdle = "shutdown.ifIdle"
+
+// BusyPrefix starts the error of a "shutdown" with IfIdle that a server in
+// use refuses.
+const BusyPrefix = "busy: "
+
 // CapabilitySnapshotGhostty is what a server that takes a session's screen
 // as Ghostty's binary snapshot says it does: Attach.Snapshot "ghostty",
 // and SnapshotHeader.Format "ghostty" in the header of a framed attach.
@@ -112,7 +121,7 @@ const CapabilityStatusSeen = "status.seen"
 
 // capabilities are what a version 3 server does beyond version 2. A
 // client reads them from Hello and falls back when one is absent.
-var capabilities = []string{"layout.revision", "events.revision", CapabilityShutdownRestart, CapabilitySnapshotGhostty, CapabilityInputEvents, CapabilityTerminalQuery, CapabilityFileTransfer, CapabilityFileTemp, CapabilityTeleport, CapabilityLayoutServer, CapabilityTabToSpace, CapabilityStatusSeen}
+var capabilities = []string{"layout.revision", "events.revision", CapabilityShutdownRestart, CapabilityShutdownIfIdle, CapabilitySnapshotGhostty, CapabilityInputEvents, CapabilityTerminalQuery, CapabilityFileTransfer, CapabilityFileTemp, CapabilityTeleport, CapabilityLayoutServer, CapabilityTabToSpace, CapabilityStatusSeen}
 
 // Request is a line of the control connection, from the client.
 type Request struct {
@@ -157,6 +166,10 @@ type Request struct {
 	// sessions end with the server. A server that does not know it
 	// ignores it.
 	Restart bool `json:"restart,omitempty"`
+	// IfIdle, on "shutdown", stops the server only if it holds no session
+	// and starts none, checked and stopped in one step; a server in use
+	// answers an error that starts with BusyPrefix (CapabilityShutdownIfIdle).
+	IfIdle bool `json:"ifIdle,omitempty"`
 
 	// On is the setting of remote.shareLayoutSet, remote.controlSet and
 	// remote.tailnetSet.

@@ -232,6 +232,10 @@ meets:
   a minimized layer: its header has a minimize button, a chip over the
   tab shows it again, and `session.set_layer_state` minimizes it and
   brings it back from a Rex client, with the focus when asked.
+- `server.stop` stops the session server (local socket only). With the GoRex
+  app open, the app starts a new server a moment later, so it works as a
+  restart; quit the app first to keep the server down. `if_idle` refuses while
+  any session, shell or other client is in use.
 - There are no detached blocks, Lua scripts, configuration file or host
   list: `client.set_script`, `client.perform`, `hosts.put` and the like
   fail with `not_supported`, and `client.keymap` is empty.
