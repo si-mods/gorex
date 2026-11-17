@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { cleanPath, fileURLPath, LinkGrid, linkAt, remotePath } from "../src/links";
+import { cleanPath, climbs, fileURLPath, LinkGrid, linkAt, remotePath } from "../src/links";
 
 /** A one-row grid printing text, whose columns from..to carry the hyperlink url. */
 function grid(text: string, url = "", from = 0, to = 0): LinkGrid {
@@ -81,4 +81,19 @@ test("cleanPath cleans as Go's filepath.Clean", () => {
     ["/home/demo/x", "/home/demo/x"],
   ];
   for (const [p, want] of cases) assert.equal(cleanPath(p), want, p);
+});
+
+test("a path with a .. segment, printed or in a file URL, asks and shows the file the host opens", () => {
+  const printed = linkAt(grid("see /tmp/chart.png/../../home/demo/.ssh/id_ed25519 now"), 6, 0, true);
+  assert.equal(printed?.path, "/home/demo/.ssh/id_ed25519");
+  assert.equal(printed?.hidden, true);
+  const up = linkAt(grid("see ../out/b.png now"), 6, 0, true);
+  assert.equal(up?.path, "../out/b.png");
+  assert.equal(up?.hidden, true);
+  assert.equal(linkAt(grid("see ./out/b.png now"), 6, 0, true)?.hidden, undefined);
+  const drive = linkAt(hyperlinked("id_ed25519", "file:///C:..%2F..%2F.ssh%2Fid_ed25519"), 5, 0, true);
+  assert.equal(drive?.path, "C:../../.ssh/id_ed25519");
+  assert.equal(drive?.hidden, true);
+  assert.equal(climbs("C:../x"), true);
+  assert.equal(climbs("/a/b..c/d"), false);
 });

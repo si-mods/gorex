@@ -30,18 +30,32 @@ nonisolated enum FileLink {
         if word.lowercased().hasPrefix("file:") { return fileURLTarget(word, hidden: spans) }
         guard !word.contains("://"), let path = path(word) else { return nil }
         if webPath(path), let url = URL(string: "https://" + path) { return .web(url) }
-        return .file(path, hidden: spans)
+        // A path that climbs (/tmp/chart.png/../../home/u/.ssh/id_ed25519,
+        // its tail printed unseen) asks, and shows the file the host opens.
+        guard climbs(path) else { return .file(path, hidden: spans) }
+        let c = clean(path)
+        guard c != "/", c != "." else { return nil }
+        return .file(c, hidden: true)
+    }
+
+    /// Whether a path has a .. segment, after a Windows drive's C: too
+    /// (C:../x climbs, and cleaning keeps it).
+    static func climbs(_ path: String) -> Bool {
+        var rest = Substring(path)
+        let chars = Array(path)
+        if chars.count >= 2, chars[1] == ":", chars[0].isASCII, chars[0].isLetter { rest = rest.dropFirst(2) }
+        return rest.split(separator: "/", omittingEmptySubsequences: false).contains("..")
     }
 
     /// A file:// URL's file, by its path cleaned (clean): what is shown and
     /// downloaded is the file the host opens, and a path that cleaning
-    /// changes (a decoded %2F.. that climbs out, dot segments that push the
-    /// file out of the alert's view) is hidden, so the app asks.
+    /// changes (dot segments that push the file out of the alert's view),
+    /// or that climbs (a decoded %2F.., C:..), is hidden, so the app asks.
     private static func fileURLTarget(_ url: String, hidden: Bool) -> Target? {
         guard let p = fileURLPath(url) else { return nil }
         let c = clean(p)
         guard c != "/", c != "." else { return nil }
-        return .file(c, hidden: hidden || c != p)
+        return .file(c, hidden: hidden || c != p || climbs(p))
     }
 
     /// A path cleaned lexically as Go's path/filepath.Clean does on the

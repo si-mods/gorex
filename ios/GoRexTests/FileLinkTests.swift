@@ -133,6 +133,25 @@ nonisolated final class FileLinkTests: XCTestCase {
         XCTAssertEqual(FileLink.clean("./a//b"), "a/b")
     }
 
+    /// A path with a .. segment, printed or in a file:// URL, asks and
+    /// shows the file the host opens: its tail may be printed unseen after
+    /// a harmless name, and cleaning keeps a .. after a drive's C:.
+    func testClimbs() {
+        XCTAssertEqual(FileLink.target("/tmp/chart.png/../../home/demo/.ssh/id_ed25519", matched: true),
+                       .file("/home/demo/.ssh/id_ed25519", hidden: true))
+        XCTAssertEqual(FileLink.target("../out/b.png", matched: true), .file("../out/b.png", hidden: true))
+        XCTAssertEqual(FileLink.target("./out/b.png", matched: true), .file("./out/b.png", hidden: false))
+        XCTAssertEqual(FileLink.target("file:///C:..%2F..%2F.ssh%2Fid_ed25519", matched: false),
+                       .file("C:../../.ssh/id_ed25519", hidden: true))
+        XCTAssertEqual(FileLink.target("file:///C:..%2F..%2F.ssh%2Fid_ed25519", matched: true),
+                       .file("C:../../.ssh/id_ed25519", hidden: true))
+        XCTAssertNil(FileLink.target("/tmp/..", matched: true))
+        XCTAssertTrue(FileLink.climbs("C:../x"))
+        XCTAssertTrue(FileLink.climbs("a/.."))
+        XCTAssertFalse(FileLink.climbs("/a/b..c/d"))
+        XCTAssertFalse(FileLink.climbs("C:/a/b"))
+    }
+
     /// Another machine's path, which a Windows host would reach over SMB
     /// as it looks the file up, and a device's, are no file: UNC, \\.\,
     /// \\?\ and \??\, with either slash, printed or in a file:// URL.

@@ -363,6 +363,11 @@ export function remotePath(path: string): boolean {
   return p.startsWith("//") || p.startsWith("/??/");
 }
 
+/** Whether a path has a .. segment, after a Windows drive's C: too (C:../x climbs, and cleaning keeps it). */
+export function climbs(path: string): boolean {
+  return path.replace(/^[A-Za-z]:/, "").split("/").includes("..");
+}
+
 /**
  * Whether a file hyperlink's cells, columns x0 up to x1 of a row, print
  * what it opens: its URL, its path, or the path's last parts, as ls
@@ -452,8 +457,12 @@ export function linkAt(g: LinkGrid, col: number, row: number, files = false): Li
     const web = webURL(p.path);
     if (web) return { url: web, row, x0: p.x0, x1: p.x1 };
     const path = linkPath(p.path);
-    if (files && path && !path.endsWith("/") && !remotePath(path) && !backslashed(t, p.path, p.x0, p.x1)) return { url: p.path, row, x0: p.x0, x1: p.x1, path };
-    return undefined;
+    if (!files || !path || path.endsWith("/") || remotePath(path) || backslashed(t, p.path, p.x0, p.x1)) return undefined;
+    // A path that climbs (/tmp/chart.png/../../home/u/.ssh/id_ed25519, its
+    // tail printed unseen) asks, and shows the file the host opens.
+    if (!climbs(path)) return { url: p.path, row, x0: p.x0, x1: p.x1, path };
+    const clean = cleanPath(path);
+    return clean === "/" || clean === "." ? undefined : { url: p.path, row, x0: p.x0, x1: p.x1, path: clean, hidden: true };
   })();
   if (!found) return undefined;
   if (found.path !== undefined || opens(found.url)) return found;
@@ -465,7 +474,7 @@ export function linkAt(g: LinkGrid, col: number, row: number, files = false): Li
   if (path === "/" || path === ".") return undefined;
   // A hyperlink's cells may print other text than its file; a URL printed as text shows itself.
   const hyperlink = g.hyperlinkAt(col, row) === found.url;
-  const hidden = path !== raw || (hyperlink && !printsPath(g.rowText(row), found.x0, found.x1, found.url, path));
+  const hidden = path !== raw || climbs(raw) || (hyperlink && !printsPath(g.rowText(row), found.x0, found.x1, found.url, path));
   return hidden ? { ...found, path, hidden } : { ...found, path };
 }
 

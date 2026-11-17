@@ -195,6 +195,10 @@ code. Uploads are not logged today; this does not change them.
   first, printed or not, and printed text with a `.` or `..` segment
   shows no part of the path. A decoded backslash is no link: it is a
   separator to a Windows host.
+- Any path with a `..` segment, printed or in a `file://` URL, asks
+  first and shows its clean path (`climbs`): a program can print
+  `/tmp/chart.png` and, unseen right after it, `/../../home/u/.ssh/id`.
+  A `..` after a drive's `C:` counts, as cleaning keeps it (`C:../x`).
 - Ctrl+click (Cmd+click on macOS) on a path asks for a ticket with
   `download_begin`. A second click on the same path while one is under way
   does nothing, as the desktop's.
@@ -311,6 +315,7 @@ As built on iOS:
   word the path is taken from (a path printed unseen, then a name), or
   the URL's path changes as it is cleaned (`FileLink.clean`, as the web
   client's `cleanPath`); the clean path is the one shown and downloaded.
+  A path with a `..` segment, printed or not, asks too (`FileLink.climbs`).
 - On an older host a tap on a path does nothing, so `Server does not
   accept downloads` never shows; the server's `not_supported` shows the
   web client's `The host does not send files`.
