@@ -125,4 +125,40 @@ nonisolated final class PaneSwitcherTests: XCTestCase {
         XCTAssertNil(paneNeighbor(cells, from: "left", direction: .down))
         XCTAssertNotNil(paneNeighbor(cells, from: "left", direction: .right))
     }
+
+    @MainActor func testPaneDragLocksToTheFartherAxis() {
+        XCTAssertNil(paneDragAxis(CGPoint(x: 6, y: -5)))
+        XCTAssertEqual(paneDragAxis(CGPoint(x: -12, y: 4)), .horizontal)
+        XCTAssertEqual(paneDragAxis(CGPoint(x: 3, y: 11)), .vertical)
+        // The content follows the fingers: left brings the right pane.
+        XCTAssertEqual(paneDragDirection(.horizontal, sign: -1), .right)
+        XCTAssertEqual(paneDragDirection(.horizontal, sign: 1), .left)
+        XCTAssertEqual(paneDragDirection(.vertical, sign: -1), .down)
+        XCTAssertEqual(paneDragDirection(.vertical, sign: 1), .up)
+    }
+
+    @MainActor func testPaneDragProgressStaysOnItsWay() {
+        XCTAssertEqual(paneDragProgress(-100, sign: -1, size: 400), 0.25)
+        XCTAssertEqual(paneDragProgress(50, sign: -1, size: 400), 0)
+        XCTAssertEqual(paneDragProgress(900, sign: 1, size: 400), 1)
+        XCTAssertEqual(paneDragProgress(10, sign: 1, size: 0), 0)
+    }
+
+    @MainActor func testPaneRubberBandGivesLittle() {
+        XCTAssertEqual(paneRubberBand(0), 0)
+        XCTAssertEqual(Double(paneRubberBand(10)), 1.905, accuracy: 0.001)
+        XCTAssertLessThan(paneRubberBand(10_000), 40)
+        XCTAssertEqual(paneRubberBand(-200), -paneRubberBand(200))
+    }
+
+    @MainActor func testPaneDragCommits() {
+        // Far enough, or fast enough its way.
+        XCTAssertTrue(paneDragCommits(progress: 0.35, velocity: 0))
+        XCTAssertTrue(paneDragCommits(progress: 0.1, velocity: 500))
+        XCTAssertFalse(paneDragCommits(progress: 0.34, velocity: 499))
+        XCTAssertFalse(paneDragCommits(progress: 0, velocity: 0))
+        // Flung back, it stays, however far it went.
+        XCTAssertFalse(paneDragCommits(progress: 0.8, velocity: -300))
+        XCTAssertTrue(paneDragCommits(progress: 0.8, velocity: -100))
+    }
 }

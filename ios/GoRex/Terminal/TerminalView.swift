@@ -922,13 +922,15 @@ final class TerminalHost: UIView, UIGestureRecognizerDelegate {
     let terminal: TerminalView
     private let scrollDown = UIVisualEffectView(effect: UIGlassEffect(style: .regular))
     private let unreadDot = UIView()
-    /// Moves to the pane next to the current one, the way the content
-    /// goes: a swipe left brings the pane on the right. Nil on a host whose
-    /// screen has no pane switching.
-    var onSwipe: ((PaneDirection) -> Void)?
-    /// Whether a swipe may switch now: no selection, no full-screen program
-    /// with the mouse, no switch under way.
+    /// Follows a two-finger drag between panes: its state, and how far and
+    /// how fast the fingers went. Nil on a host whose screen has no pane
+    /// switching.
+    var onPaneDrag: ((UIGestureRecognizer.State, _ translation: CGPoint, _ velocity: CGPoint) -> Void)?
+    /// Whether a drag may switch now: no selection, no full-screen program
+    /// with the mouse, no pinch, no other switch under way.
     var canSwipe: (() -> Bool)?
+    /// The two-finger drag between panes.
+    private let paneDrag = UIPanGestureRecognizer()
     /// While a tab switch animates, layout passes place the terminal, its
     /// inset and the key bar at once, so they don't animate from .zero under
     /// the switch's spring.
@@ -950,14 +952,12 @@ final class TerminalHost: UIView, UIGestureRecognizerDelegate {
         super.init(frame: .zero)
         addSubview(terminal)
         // Two fingers, so one keeps scrolling, selecting and clicking.
-        for direction in [UISwipeGestureRecognizer.Direction.left, .right, .up, .down] {
-            let swipe = UISwipeGestureRecognizer(target: self, action: #selector(swiped))
-            swipe.direction = direction
-            swipe.numberOfTouchesRequired = 2
-            swipe.delegate = self
-            swipe.cancelsTouchesInView = false
-            addGestureRecognizer(swipe)
-        }
+        paneDrag.addTarget(self, action: #selector(dragged))
+        paneDrag.minimumNumberOfTouches = 2
+        paneDrag.maximumNumberOfTouches = 2
+        paneDrag.delegate = self
+        paneDrag.cancelsTouchesInView = false
+        addGestureRecognizer(paneDrag)
         let edge = bottomEdge
         edge.translatesAutoresizingMaskIntoConstraints = false
         addSubview(edge)
@@ -1040,31 +1040,32 @@ final class TerminalHost: UIView, UIGestureRecognizerDelegate {
         }
     }
 
-    /// A two-finger swipe moves to the pane beside the current one, the
-    /// way the content goes, unless a switch is under way or the terminal
-    /// must keep the touch (a selection, a full-screen program with the
-    /// mouse). The key bar and the scroll-to-bottom button keep their own
-    /// touches.
-    @objc private func swiped(_ g: UISwipeGestureRecognizer) {
-        guard canSwipe?() != false else { return }
-        switch g.direction {
-        case .left: onSwipe?(.right)
-        case .right: onSwipe?(.left)
-        case .up: onSwipe?(.down)
-        default: onSwipe?(.up)
+    /// A two-finger drag moves the panes with the fingers, unless a switch
+    /// is under way or the terminal must keep the touch (a selection, a
+    /// full-screen program with the mouse). One that can no longer switch
+    /// midway, as a pinch starts, is cancelled. The key bar and the
+    /// scroll-to-bottom button keep their own touches.
+    @objc private func dragged(_ g: UIPanGestureRecognizer) {
+        if g.state == .changed, canSwipe?() == false {
+            onPaneDrag?(.cancelled, g.translation(in: self), .zero)
+            // Off and on again ends it, as cancelled.
+            g.isEnabled = false
+            g.isEnabled = true
+            return
         }
+        onPaneDrag?(g.state, g.translation(in: self), g.velocity(in: self))
     }
 
     override func gestureRecognizerShouldBegin(_ g: UIGestureRecognizer) -> Bool {
-        guard let swipe = g as? UISwipeGestureRecognizer else { return true }
-        let p = swipe.location(in: self)
+        guard g === paneDrag else { return true }
+        let p = g.location(in: self)
         if terminal.bar.superview != nil, terminal.bar.frame.contains(p) { return false }
         if scrollDown.superview != nil, !scrollDown.isHidden, scrollDown.frame.contains(p) { return false }
         return canSwipe?() != false
     }
 
     /// The terminal's own drag, tap, long press and pinch keep working with
-    /// the pane swipe.
+    /// the pane drag.
     func gestureRecognizer(_ g: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool {
         true
     }
