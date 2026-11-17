@@ -20,6 +20,8 @@ struct TerminalScreen: View {
     @State private var failure: (title: LocalizedStringKey, why: String)?
     /// The panes asked to close, until the server answers.
     @State private var closing: Set<String> = []
+    /// The pane the menu or the pane bar asked to close, until its alert is answered.
+    @State private var closingPane: String?
     /// Whether the session's sheet is open, as the title opens it.
     @State private var sheet = false
     /// Whether the diagnostics of a failed terminal show.
@@ -129,7 +131,7 @@ struct TerminalScreen: View {
                             .transition(.move(edge: .bottom).combined(with: .opacity))
                     }
                     if paneCellList.count > 1 {
-                        PaneBar(cells: paneCellList, current: currentTarget.block, program: { .of(host.blocks[$0]?.program) }, select: selectPane, newSplit: newSplit, close: closePane)
+                        PaneBar(cells: paneCellList, current: currentTarget.block, program: { .of(host.blocks[$0]?.program) }, select: selectPane, newSplit: newSplit, close: { closingPane = $0 })
                             .transition(.opacity.combined(with: .move(edge: .bottom)))
                     }
                 }
@@ -176,7 +178,7 @@ struct TerminalScreen: View {
                         Button("New Tab", systemImage: "plus") { newTab() }
                         Button("Split Pane", systemImage: "rectangle.split.2x1") { newSplit() }
                         if paneCellList.count > 1 {
-                            Button("Close Pane", systemImage: "xmark.rectangle", role: .destructive) { closePane(currentTarget.block) }
+                            Button("Close Pane", systemImage: "xmark.rectangle", role: .destructive) { closingPane = currentTarget.block }
                         }
                     } label: {
                         Image(systemName: "ellipsis")
@@ -230,6 +232,14 @@ struct TerminalScreen: View {
             // and follow its panes as they split and close.
             .onChange(of: keptPanes, initial: true) { _, panes in
                 if let panes { keep(panes) }
+            }
+            // Closing a pane ends its program, on a remote computer too, so
+            // both the menu and the pane bar ask first.
+            .alert("Close This Pane?", isPresented: Binding { closingPane != nil } set: { if !$0 { closingPane = nil } }, presenting: closingPane) { block in
+                Button("Close", role: .destructive) { closePane(block) }
+                Button("Cancel", role: .cancel) {}
+            } message: { _ in
+                Text("The program running in this pane will end, on the computer it runs on.")
             }
             .alert(failure?.title ?? "", isPresented: Binding { failure != nil } set: { if !$0 { failure = nil } }) {
             } message: {
@@ -769,7 +779,7 @@ struct TerminalScreen: View {
         }
     }
 
-    /// Closes a pane of the window, without asking; when it is the one
+    /// Closes a pane of the window, once its alert is confirmed; when it is the one
     /// shown, goes first to the pane before it, else the one after, so its
     /// stream ending never shows as the window closing.
     private func closePane(_ block: String) {

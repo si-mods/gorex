@@ -312,6 +312,26 @@
         }
       }
     },
+    "Close This Pane?": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "关闭此面板？"
+          }
+        }
+      }
+    },
+    "The program running in this pane will end, on the computer it runs on.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "此面板中运行的程序将在其所在的电脑上结束。"
+          }
+        }
+      }
+    },
     "Can't Rename the Tab": {
       "localizations": {
         "zh-Hans": {
