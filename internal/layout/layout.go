@@ -5,7 +5,10 @@
 // again the sessions a run before lost; the app shows it.
 package layout
 
-import "time"
+import (
+	"strings"
+	"time"
+)
 
 // Store is every workspace and the windows that show them, in order.
 type Store struct {
@@ -46,12 +49,50 @@ type Kill struct {
 	SID  string `json:"sid"`
 }
 
-// Workspace is a workspace as the layout keeps it.
+// Workspace is a workspace as the layout keeps it: a project, to the
+// user, whose home is a folder on a host.
 type Workspace struct {
 	ID    string `json:"id"`
 	Name  string `json:"name"`
 	Color string `json:"color,omitempty"`
+	// Host is the project's home host, as Node.Host: "" for this machine.
+	// A machine this machine has no host of is MachineHost's.
+	Host string `json:"host,omitempty"`
+	// Dir is the project's folder on Host, absolute; "" for a project
+	// with no folder, as every space of an older layout is. A new tab of
+	// the project starts there.
+	Dir string `json:"dir,omitempty"`
 	Layout
+}
+
+// machineHost starts a Workspace.Host that names a machine
+// (rex.MachineID) rather than a host of hosts.json: the home of a project
+// another device set on a machine this one has no host of.
+const machineHost = "machine:"
+
+// MachineHost is the Workspace.Host of the machine of ID machine, which
+// no host of hosts.json is.
+func MachineHost(machine string) string { return machineHost + machine }
+
+// HostMachine is the machine a Workspace.Host of MachineHost names, and
+// whether it is one.
+func HostMachine(host string) (string, bool) {
+	m, ok := strings.CutPrefix(host, machineHost)
+	return m, ok && m != ""
+}
+
+// IsAbsDir tells whether dir is an absolute path on some machine: a Unix
+// one, or a Windows one with a drive or a share. A project's folder may
+// be on a host of another system than this one.
+func IsAbsDir(dir string) bool {
+	switch {
+	case strings.HasPrefix(dir, "/"), strings.HasPrefix(dir, `\\`):
+		return true
+	case len(dir) >= 3 && dir[1] == ':' && (dir[2] == '\\' || dir[2] == '/'):
+		c := dir[0] | 0x20
+		return c >= 'a' && c <= 'z'
+	}
+	return false
 }
 
 // Layout is the tabs of a window, and which is active.
