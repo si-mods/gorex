@@ -23,18 +23,19 @@ func rotateLog(path string, limit int64) {
 
 // startAppLog sends the app's log, the standard one, to app.log in its
 // data directory, beside the server's server.log: an installed app has no
-// terminal, so the log would go nowhere. Started from a terminal it also
-// goes to stderr. It does nothing if the file cannot be opened.
+// terminal, so the log would go nowhere. Started from a terminal it
+// goes to stderr too. It does nothing if the file cannot be opened.
 func startAppLog() {
+	if err := os.MkdirAll(rex.Dir(), 0o700); err != nil {
+		return
+	}
 	path := filepath.Join(rex.Dir(), "app.log")
 	rotateLog(path, appLogLimit)
 	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
 	if err != nil {
 		return
 	}
-	var w io.Writer = f
-	if fi, err := os.Stderr.Stat(); err == nil && fi.Mode()&os.ModeCharDevice != 0 {
-		w = io.MultiWriter(os.Stderr, f)
-	}
-	log.SetOutput(w)
+	// The file first: MultiWriter stops at the first writer that fails,
+	// and a GUI app's stderr on Windows is no handle at all.
+	log.SetOutput(io.MultiWriter(f, os.Stderr))
 }
