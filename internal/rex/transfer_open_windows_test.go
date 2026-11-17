@@ -33,13 +33,23 @@ func pipeForms(name string) []string {
 		`//localhost/PIPE/` + name,
 		`//?/unc/localhost/pipe/` + name,
 		`\\;LanmanRedirector\localhost\pipe\` + name,
+		`\\localhost\IPC$\` + name,
+		`\\localhost\ipc$\` + name,
+		`\\localhost\ipc$.\` + name,
+		`\\?\UNC\localhost\IPC$\` + name,
+		`//127.0.0.1/IPC$/` + name,
+		`\\[::1]\IPC$\` + name,
+		`\\localhost\.\pipe\` + name,
+		`\\localhost\..\pipe\` + name,
 	}
 }
+
+var pipeSeq atomic.Int32
 
 // livePipe makes a named pipe, and counts the connects to it.
 func livePipe(t *testing.T) (name string, connects *atomic.Int32) {
 	t.Helper()
-	name = fmt.Sprintf("gorex-test-%d", os.Getpid())
+	name = fmt.Sprintf("gorex-test-%d-%d", os.Getpid(), pipeSeq.Add(1))
 	h, err := windows.CreateNamedPipe(windows.StringToUTF16Ptr(`\\.\pipe\`+name),
 		windows.PIPE_ACCESS_DUPLEX, windows.PIPE_TYPE_BYTE|windows.PIPE_WAIT,
 		windows.PIPE_UNLIMITED_INSTANCES, 4096, 4096, 0, nil)
@@ -47,19 +57,30 @@ func livePipe(t *testing.T) (name string, connects *atomic.Int32) {
 		t.Fatal(err)
 	}
 	connects = new(atomic.Int32)
-	// The handle stays open until the process ends: closing it would wait
-	// on the connect.
+	var stop atomic.Bool
+	done := make(chan struct{})
 	go func() {
-		for {
+		defer close(done)
+		for !stop.Load() {
 			// A client that connects and closes before this call gives
 			// ERROR_PIPE_CONNECTED or ERROR_NO_DATA: a connect all the same.
-			if err := windows.ConnectNamedPipe(h, nil); err == windows.ERROR_INVALID_HANDLE {
-				return
+			windows.ConnectNamedPipe(h, nil)
+			if !stop.Load() {
+				connects.Add(1)
 			}
-			connects.Add(1)
 			windows.DisconnectNamedPipe(h)
 		}
 	}()
+	// Closing the handle would wait on a connect in progress: set stop,
+	// connect once to end the wait, wait for the goroutine, then close.
+	t.Cleanup(func() {
+		stop.Store(true)
+		if f, err := os.Open(`\\.\pipe\` + name); err == nil {
+			f.Close()
+		}
+		<-done
+		windows.CloseHandle(h)
+	})
 	return name, connects
 }
 

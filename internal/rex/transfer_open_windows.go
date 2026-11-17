@@ -21,7 +21,8 @@ import (
 //
 // where the server is a name (not ".", "?", "??", and none that starts
 // with ".", "?" or ";" as `\\.\`, `\\?\Global` and `\\;LanmanRedirector`
-// do), the share is not "pipe" (the host's named pipes), and no segment
+// do), the share is not "pipe" or "ipc$" (the host's named pipes), nor "."
+// or "..", and no segment
 // is empty. Anything else is refused: `\??\`, `\\.\`, `\\?\Global`,
 // `\\?\GLOBALROOT`, a redirector form, a relative path.
 func plainPath(path string) bool {
@@ -65,8 +66,14 @@ func plainUNC(rest string) bool {
 	if strings.ContainsRune(".?;", rune(parts[0][0])) {
 		return false
 	}
-	// Windows drops a name's trailing dots and spaces: "pipe." is "pipe".
-	return !strings.EqualFold(strings.TrimRight(parts[1], ". "), "pipe")
+	// The share "pipe" and the SMB share "IPC$" are the host's pipes; "."
+	// and ".." are no share. Windows drops a name's trailing dots and
+	// spaces: "pipe." is "pipe".
+	if parts[1] == "." || parts[1] == ".." {
+		return false
+	}
+	share := strings.TrimRight(parts[1], ". ")
+	return !strings.EqualFold(share, "pipe") && !strings.EqualFold(share, "ipc$")
 }
 
 // openToSend opens path for a get, a regular file only. It refuses a
