@@ -2,6 +2,7 @@
 /.mygo/
 /.claude/*
 !/.claude/skills/
+!/.claude/settings.json
 mygo_windows_*.syso
 /gorex
 /*.png
