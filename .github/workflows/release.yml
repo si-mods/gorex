@@ -131,7 +131,7 @@ jobs:
   checksums:
     needs: [unix, windows]
     if: always() && github.ref == 'refs/heads/main' && contains(needs.*.result, 'success') && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')
-    runs-on: ubuntu-latest
+    runs-on: instabox-medium
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
