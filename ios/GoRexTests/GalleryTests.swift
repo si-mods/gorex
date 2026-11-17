@@ -81,11 +81,14 @@ nonisolated final class GalleryTests: XCTestCase {
         XCTAssertEqual(paths(scan("/tmp/chart.png/../../home/demo/x.png ../out/a.png\n")), [])
         XCTAssertEqual(paths(scan("'/tmp/my shots/../../home/demo/x.png'\n")), [])
         XCTAssertEqual(paths(scan(#"C:\a\..\..\x.png 'C:\a\..\y.png' C:/a/./z.png"# + "\n")), [])
-        for url in ["file:///tmp/a/..%2F..%2Fhome%2Fdemo%2Fx.png", "file:///tmp/.%2Fb.png", "file:///C:..%2F..%2Fx.png"] {
+        for url in ["file:///tmp/a/..%2F..%2Fhome%2Fdemo%2Fx.png", "file:///C:..%2F..%2Fx.png"] {
             let p = URL(string: url)!.path(percentEncoded: false)
             XCTAssertEqual(paths(scan("\u{1b}]8;;\(url)\u{07}\(p)\u{1b}]8;;\u{07}\n")), [], url)
         }
-        XCTAssertEqual(paths(scan("\u{1b}]8;;file:///tmp/ok.png\u{07}/tmp/ok.png\u{1b}]8;;\u{07}\n")), ["/tmp/ok.png"])
+        // A link whose path cleaning changes is not followed; the text it
+        // prints counts on its own, as a printed ./ segment opens a tap too.
+        XCTAssertEqual(paths(scan("\u{1b}]8;;file:///tmp/.%2Fb.png\u{07}/tmp/./b.png\u{1b}]8;;\u{07}\n")), ["/tmp/./b.png"])
+        XCTAssertEqual(paths(scan("\u{1b}]8;;file:///tmp/ok.png\u{07}/tmp/ok.png\u{1b}]8;;\u{07}\n")), ["/tmp/ok.png", "/tmp/ok.png"])
     }
 
     /// As Claude Code prints them on a Windows host, quoted or not.
