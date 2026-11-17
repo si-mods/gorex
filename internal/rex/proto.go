@@ -62,6 +62,10 @@ import (
 // status records, and SessionInfo.StatusSeen, which every client reads
 // back. Still within 3, the capability "dir.list": "dir.list", which
 // lists the directories in a directory of the server's machine (DirList).
+// Still within 3, the capability "space.home": "space.home", which sets
+// or clears a space's home (layout.Workspace.Host and Dir), a tab.create
+// of no Dir in a space whose home is this machine starting in its folder
+// or failing with "folder_missing", and CreateOptions.DirStrict.
 const ProtocolVersion = 3
 
 // CapabilityShutdownRestart is what a server that stops to be replaced — one
@@ -124,9 +128,21 @@ const CapabilityStatusSeen = "status.seen"
 // machine says it does: the "dir.list" op (DirList).
 const CapabilityDirList = "dir.list"
 
+// CapabilitySpaceHome is what a server that keeps a space's home, a
+// project's folder, says it does: the "space.home" command, a tab.create
+// that starts in the folder of a space whose home is this machine, and
+// CreateOptions.DirStrict. A server without it ignores DirStrict and
+// starts a session whose directory is gone at home.
+const CapabilitySpaceHome = "space.home"
+
+// FolderMissing is the code of a tab.create, and the start of a create's
+// error, that failed because the session must start in a folder
+// (CreateOptions.DirStrict) that is not a directory it can read.
+const FolderMissing = "folder_missing"
+
 // capabilities are what a version 3 server does beyond version 2. A
 // client reads them from Hello and falls back when one is absent.
-var capabilities = []string{"layout.revision", "events.revision", CapabilityShutdownRestart, CapabilityShutdownIfIdle, CapabilitySnapshotGhostty, CapabilityInputEvents, CapabilityTerminalQuery, CapabilityFileTransfer, CapabilityFileTemp, CapabilityTeleport, CapabilityLayoutServer, CapabilityTabToSpace, CapabilityStatusSeen, CapabilityDirList}
+var capabilities = []string{"layout.revision", "events.revision", CapabilityShutdownRestart, CapabilityShutdownIfIdle, CapabilitySnapshotGhostty, CapabilityInputEvents, CapabilityTerminalQuery, CapabilityFileTransfer, CapabilityFileTemp, CapabilityTeleport, CapabilityLayoutServer, CapabilityTabToSpace, CapabilityStatusSeen, CapabilityDirList, CapabilitySpaceHome}
 
 // Request is a line of the control connection, from the client.
 type Request struct {
@@ -268,7 +284,13 @@ type LayoutCommand struct {
 	// "pane.rename", "pane.focus", "pane.zoom", "tab.move", "pane.resize",
 	// "pane.swap", "pane.move", "pane.restart", "tab.set", "windows.set",
 	// "layout.apply", "pane.teleporting", "pane.teleported", "kills.taken",
-	// "show.taken" or "tab.to_space".
+	// "show.taken", "tab.to_space" or "space.home".
+	// space.home sets the home of the space Space, a project's: the host
+	// Host, by its ID as layout.Node.Host has it ("" for this machine),
+	// and the folder Dir there, absolute; a Dir of "" clears both. A
+	// tab.create of no Dir in a space whose home is this machine starts in
+	// its folder, or fails with FolderMissing when it is gone, and starts
+	// no session elsewhere (CapabilitySpaceHome).
 	// tab.to_space moves the tab, with its panes, their sessions, its
 	// floats, focus and zoom as they are, to the space ToSpace, as the
 	// app's Move to Space does: before the tab of Target there, else at
@@ -329,7 +351,8 @@ type LayoutCommand struct {
 	// ToSpace is the space tab.to_space moves the tab to, by ID.
 	ToSpace string `json:"to_space,omitempty"`
 	// Host is a host of the window's, by its address as hosts.json has
-	// it, of the teleport commands, whose Target is the session there.
+	// it, of the teleport commands, whose Target is the session there; of
+	// space.home, the home host by its ID (layout.Workspace.Host).
 	Host string `json:"host,omitempty"`
 	// NewTab moves a pane into a tab of its own, named Name.
 	NewTab bool `json:"new_tab,omitempty"`
@@ -640,9 +663,15 @@ type CreateOptions struct {
 	// Command runs instead of the user's login shell.
 	Command []string `json:"command,omitempty"`
 	Dir     string   `json:"dir,omitempty"`
-	Env     []string `json:"env,omitempty"`
-	Cols    int      `json:"cols,omitempty"`
-	Rows    int      `json:"rows,omitempty"`
+	// DirStrict starts the session in Dir or not at all: a Dir that is
+	// not a directory the server can read fails the create, its error
+	// starting with FolderMissing, and starts no program. Without it a
+	// session whose Dir is gone starts at home, as one of a layout does
+	// after a restart (CapabilitySpaceHome).
+	DirStrict bool     `json:"dirStrict,omitempty"`
+	Env       []string `json:"env,omitempty"`
+	Cols      int      `json:"cols,omitempty"`
+	Rows      int      `json:"rows,omitempty"`
 	// prelude is text the session's screen shows before the program's
 	// first output: a teleported pane's scrollback; id the session's id,
 	// a new one when "": a teleport's, its hop's.
