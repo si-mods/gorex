@@ -125,11 +125,13 @@ jobs:
         run: go tool mygo build -platform windows/amd64,windows/arm64 -upload
 
   # Writes SHA256SUMS from the release's assets once a build is done and none
-  # failed. A build that the target skips does not count.
+  # failed. A build that the target skips does not count. It needs only gh, jq
+  # and sha256sum, so it runs on a GitHub-hosted runner, not the Mac mini: a
+  # Windows-only release does not wait for it.
   checksums:
     needs: [unix, windows]
     if: always() && github.ref == 'refs/heads/main' && contains(needs.*.result, 'success') && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')
-    runs-on: [self-hosted, macmini]
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
