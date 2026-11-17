@@ -92,7 +92,7 @@ final class TerminalSession {
         self.session = session
         self.block = block
         self.owns = owns
-        data = DataConnection(base: host.config.url)
+        data = DataConnection(base: host.config.url, auth: host.config.auth)
         // The demo has no host colors: it takes the chosen theme, else the
         // one the app starts with.
         let theme = host.isDemo
@@ -165,7 +165,7 @@ final class TerminalSession {
                 guard g == generation else { return }
                 ConnectionLog.note("terminal \(block): ticket, \(began.duration(to: .now).ms)")
                 // What ends this generation closes the connection it opens.
-                let c = DataConnection(base: host.config.url, session: try host.session())
+                let c = DataConnection(base: host.config.url, auth: host.config.auth, session: try host.session())
                 d = c
                 data = c
                 wire(c)

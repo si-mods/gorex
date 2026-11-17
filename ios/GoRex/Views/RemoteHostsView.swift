@@ -102,6 +102,12 @@ struct RemoteHostsView: View {
             return String(localized: "Not a Rex pairing code. Scan the Rex QR code that GoRex or Rex shows.")
         }
         if let h = store.host(at: c.url) {
+            // A new code of the same computer brings its new token.
+            if let t = c.lanToken, t != h.config.lanToken {
+                var u = h.config
+                u.lanToken = t
+                store.update(u)
+            }
             sheet = .details(h.config)
         } else {
             c.transport = TailnetEngine.shared.transport(of: c.url)
@@ -207,7 +213,12 @@ private struct HostForm: View {
             let s = address.trimmingCharacters(in: .whitespaces)
             guard let p = HostConfig(pairing: s.contains("://") ? s : "http://" + s) else { return nil }
             c = p
-            if let config { c.id = config.id }
+            if let config {
+                c.id = config.id
+                // The address shown has no token: the host keeps its own
+                // till a code with one is pasted.
+                if c.lanToken == nil, c.url == config.url { c.lanToken = config.lanToken }
+            }
             c.transport = HostConfig.transport(switched: tailnet, was: config, at: c.url, rule: TailnetEngine.shared.transport(of: c.url))
         }
         let n = name.trimmingCharacters(in: .whitespaces)

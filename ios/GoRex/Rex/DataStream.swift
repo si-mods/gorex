@@ -151,10 +151,13 @@ final class DataConnection {
     private var received: UInt64 = 0
     private var task: URLSessionWebSocketTask?
     private let base: URL
+    /// The host's LAN token (HostConfig.auth).
+    private let auth: String?
     private let session: URLSession
 
-    init(base: URL, session: URLSession = .shared) {
+    init(base: URL, auth: String?, session: URLSession = .shared) {
         self.base = base
+        self.auth = auth
         self.session = session
     }
 
@@ -188,7 +191,7 @@ final class DataConnection {
         // As the control connection's: a path that carries nothing fails
         // in seconds, not URLSession's minute.
         request.timeoutInterval = 15
-        let t = session.webSocketTask(with: request.withSubprotocol(RexProtocol.terminalProtocol))
+        let t = session.webSocketTask(with: request.withSubprotocol(RexProtocol.terminalProtocol).authorized(auth))
         t.maximumMessageSize = 1 << 20
         task = t
         let began = ContinuousClock.now

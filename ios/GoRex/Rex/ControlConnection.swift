@@ -93,10 +93,10 @@ final class ControlConnection {
     }
     private var closed = false
 
-    init(base: URL, session: URLSession = .shared) {
+    init(base: URL, auth: String?, session: URLSession = .shared) {
         var request = URLRequest(url: base.rexURL("/api/control"))
         request.timeoutInterval = 10
-        task = session.webSocketTask(with: request.withSubprotocol("rex.control.v1"))
+        task = session.webSocketTask(with: request.withSubprotocol("rex.control.v1").authorized(auth))
         task.maximumMessageSize = 1 << 20
     }
 
@@ -257,6 +257,16 @@ extension URLRequest {
     func withSubprotocol(_ p: String) -> URLRequest {
         var r = self
         r.setValue(p, forHTTPHeaderField: "Sec-WebSocket-Protocol")
+        return r
+    }
+
+    /// The request with the LAN gateway's pairing token (HostConfig.auth)
+    /// as a bearer, for every request to a host that has one, HTTP or a
+    /// WebSocket's upgrade; as is for none.
+    nonisolated func authorized(_ token: String?) -> URLRequest {
+        guard let token, !token.isEmpty else { return self }
+        var r = self
+        r.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         return r
     }
 }

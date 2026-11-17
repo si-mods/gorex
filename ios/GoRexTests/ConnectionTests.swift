@@ -27,7 +27,7 @@ nonisolated final class ConnectionTests: XCTestCase {
         let http = try FakeHTTP()
         defer { http.stop() }
         http.respond = { _ in (403, ["error": "this server lets in only the Tailscale user who signed it in"]) }
-        let c = ControlConnection(base: try await http.url())
+        let c = ControlConnection(base: try await http.url(), auth: nil)
         do {
             try await c.open(token: nil)
             XCTFail("opened")
@@ -56,7 +56,7 @@ nonisolated final class ConnectionTests: XCTestCase {
     @MainActor func testNoPongClosesTheConnection() async throws {
         let rex = try FakeRex(pongs: false)
         defer { rex.stop() }
-        let c = ControlConnection(base: try await rex.url())
+        let c = ControlConnection(base: try await rex.url(), auth: nil)
         c.pingEvery = .milliseconds(200)
         c.pongWait = .milliseconds(300)
         var closed = false
@@ -69,7 +69,7 @@ nonisolated final class ConnectionTests: XCTestCase {
     @MainActor func testUnansweredCallTimesOut() async throws {
         let rex = try FakeRex()
         defer { rex.stop() }
-        let c = ControlConnection(base: try await rex.url())
+        let c = ControlConnection(base: try await rex.url(), auth: nil)
         c.callWait = .milliseconds(300)
         try await c.open(token: nil)
         rex.respond = { _, _ in nil }
