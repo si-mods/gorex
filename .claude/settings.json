@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|PowerShell",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "go -C \"${CLAUDE_PROJECT_DIR}\" run ./tools/verify -hook",
+            "timeout": 900
+          }
+        ]
+      }
+    ]
+  }
+}
