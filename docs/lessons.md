@@ -20,6 +20,16 @@ Each item has a **Trigger** (what the diff shows), a **Check** (what the author 
 - **Check:** the failure is fixed in the PR or tracked in an issue, not just noted.
 - **Source:** #663 reported that `TestLostStreamWaitsForItsInput` already fails on main on Windows, and nothing followed.
 
+### Regression test thrown away
+- **Trigger:** a `fix` PR says its failing test was written but "not committed", or only run by hand.
+- **Check:** the test is committed. If it cannot run in CI, the PR says why and where it runs.
+- **Source:** #693 wrote an XCUITest that failed before the fix and dropped it.
+
+### Rule changes merged together
+- **Trigger:** PRs that change `REVIEW.md`, `docs/lessons.md` or a workflow's gates.
+- **Check:** each is reviewed against the `main` before it, and they are not merged in one batch with the PRs they would judge.
+- **Source:** #678, #683, #687 and #694 merged within minutes of each other; #678 edited the rules that reviewed it.
+
 ## iOS
 
 ### Any change under `ios/**`
@@ -93,6 +103,16 @@ Each item has a **Trigger** (what the diff shows), a **Check** (what the author 
 - **Check:** the author ran `golangci-lint` at the version `ci.yml` pins, for `GOOS` linux, windows and darwin, and `gofmt -l` on the changed files. `go vet` alone is not the lint job.
 - **Source:** #684 failed CI three times, one push at a time: `bodyclose` (lint), gofmt, and `TestNoInternalInit` (a rule test that `go vet` does not run); #672 needed a gofmt fix after review.
 
+### Shell pipeline with an early exit
+- **Trigger:** a script with `set -o pipefail` pipes into `head`, `grep -q`, `awk '... exit'` or anything else that stops reading early.
+- **Check:** the reader consumes all input, or the producer writes to a file first. Otherwise the producer gets SIGPIPE and the step fails.
+- **Source:** `draft-release.sh` piped `tr` into an `awk` that exited early; it passed in earlier releases, then failed the 0.36.0 release on timing (#699).
+
+### Release workflow change
+- **Trigger:** the diff touches `release.yml` or `.github/scripts/*release*` / `checksums.sh`.
+- **Check:** the PR shows a `--dry-run` or a run on a test tag, and the job's runner matches the release target (a Windows-only release must not wait for the Mac mini).
+- **Source:** #694 merged without a release run; the first one (0.36.0) failed in `draft` (#699), and its new `checksums` job runs on the Mac mini for every target.
+
 ### New CI gate
 - **Trigger:** the diff turns on `-race`, adds a shard, or adds a gate to `ci.yml`.
 - **Check:** the gate was run with `-count 10` on every platform it gates. One clean run does not show a test is free of races.
@@ -137,6 +157,16 @@ Each item has a **Trigger** (what the diff shows), a **Check** (what the author 
 - **Check:** config does not point at third-party endpoints without a note saying why.
 - **Source:** standing rule.
 
+### Agent hook runs repo code
+- **Trigger:** the diff adds or changes hooks in `.claude/settings.json` or a tool they call.
+- **Check:** the PR lists what the hook executes and from which checkout. A branch not from `si-mods` gets no tests or npm scripts run by the hook.
+- **Source:** #687's push hook runs the pushed checkout's `go test`, npm scripts and lint config.
+
+### Upgrade turns on a listener
+- **Trigger:** migration or upgrade code that enables a node, a listener or a network feature.
+- **Check:** the user opts in, or the release notes say it.
+- **Source:** #573 turns the built-in Tailscale node on once on upgrade, which serves the API on the tailnet.
+
 ### Public repo
 - **Trigger:** every PR, and every screenshot or log added to one.
 - **Check:** the repo is public. The diff has no real names, home paths, host names, IPs, Team or issuer IDs. Screenshots use made-up data.
@@ -148,6 +178,11 @@ Each item has a **Trigger** (what the diff shows), a **Check** (what the author 
 - **Trigger:** the diff adds lines to `state.go`.
 - **Check:** `state.go` passed 4000 lines and is still growing. New behavior goes in a file of its own concern.
 - **Source:** standing rule.
+
+### Disabled instead of removed
+- **Trigger:** a feature is turned off "for now" (`isEnabled = false`, a flag, an early return) and its code stays.
+- **Check:** an issue is linked with what must happen before it comes back or is deleted.
+- **Source:** #677 disabled the pane swipe from #665 and #667 within hours and kept the recognizer.
 
 ### Removing a feature
 - **Trigger:** the PR deletes a feature or a cleanup PR removes unused code.
