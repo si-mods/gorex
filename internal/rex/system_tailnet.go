@@ -497,7 +497,7 @@ func (t *systemTailnet) run(s *Server) {
 }
 
 // read reads the status and makes its snapshot. A definite answer that
-// there is none, from the built-in node, is a *tailnetOff.
+// there is none, from the built-in node, is a *tailnetOffError.
 func (t *systemTailnet) read() (*tailnetSnapshot, error) {
 	ctx, cancel := context.WithTimeout(t.ctx, tailnetIO)
 	defer cancel()
@@ -513,7 +513,7 @@ func (t *systemTailnet) read() (*tailnetSnapshot, error) {
 
 func (t *systemTailnet) refresh(s *Server) {
 	snap, err := t.read()
-	if off := (*tailnetOff)(nil); errors.As(err, &off) {
+	if off := (*tailnetOffError)(nil); errors.As(err, &off) {
 		if off.passing {
 			t.mu.Lock()
 			t.errText, t.errCode = off.reason, off.code

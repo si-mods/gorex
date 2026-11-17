@@ -93,24 +93,24 @@ func (v builtinVia) dial(ctx context.Context, _ netip.Addr, addr string) (net.Co
 	return v.node.DialPeer(ctx, "tcp4", addr)
 }
 
-// tailnetOff is an answer that the built-in node cannot carry discovery
+// tailnetOffError is an answer that the built-in node cannot carry discovery
 // now, with the reason the status shows. A passing one, such as a node
 // that reconnects, counts as a failed read; any other is definite. code
 // is the reason's TailnetStatus.Reason. A node that is only off has no
 // reason: the state tells it.
-type tailnetOff struct {
+type tailnetOffError struct {
 	reason, code string
 	passing      bool
 }
 
-func (e *tailnetOff) Error() string { return e.reason }
+func (e *tailnetOffError) Error() string { return e.reason }
 
 // readBuiltin reads the built-in node's status and makes its snapshot.
 func (t *systemTailnet) readBuiltin(ctx context.Context) (*tailnetSnapshot, error) {
 	node := t.node()
 	if node == nil {
 		t.noteNode(NodeOff, "", "")
-		return nil, &tailnetOff{}
+		return nil, &tailnetOffError{}
 	}
 	st, err := node.StatusWithPeers(ctx)
 	if err != nil {
@@ -123,24 +123,24 @@ func (t *systemTailnet) readBuiltin(ctx context.Context) (*tailnetSnapshot, erro
 	t.noteNode(state, account, device)
 	switch {
 	case state == NodeNeedsLogin:
-		return nil, &tailnetOff{reason: "built-in Tailscale needs a sign-in"}
+		return nil, &tailnetOffError{reason: "built-in Tailscale needs a sign-in"}
 	case state == NodeNeedsApproval:
-		return nil, &tailnetOff{reason: "the tailnet's admin has to approve this device"}
+		return nil, &tailnetOffError{reason: "the tailnet's admin has to approve this device"}
 	case state != NodeRunning:
 		// A node that reconnects keeps its links a while; a new one does
 		// not.
-		return nil, &tailnetOff{reason: "built-in Tailscale is starting", passing: t.sameNode(node)}
+		return nil, &tailnetOffError{reason: "built-in Tailscale is starting", passing: t.sameNode(node)}
 	case st.Self != nil && st.Self.IsTagged():
-		return nil, &tailnetOff{reason: "built-in Tailscale's device is tagged: only a device a user signed in finds that user's devices", code: ReasonTagged}
+		return nil, &tailnetOffError{reason: "built-in Tailscale's device is tagged: only a device a user signed in finds that user's devices", code: ReasonTagged}
 	case st.Self != nil && st.Self.Expired:
-		return nil, &tailnetOff{reason: "built-in Tailscale's sign-in expired: sign in again", code: ReasonExpired}
+		return nil, &tailnetOffError{reason: "built-in Tailscale's sign-in expired: sign in again", code: ReasonExpired}
 	}
 	if err := tailnetUsable(st); err != nil {
-		return nil, &tailnetOff{reason: "built-in Tailscale cannot find devices: " + err.Error()}
+		return nil, &tailnetOffError{reason: "built-in Tailscale cannot find devices: " + err.Error()}
 	}
 	ip := tailnetIPv4(st.TailscaleIPs)
 	if !ip.IsValid() {
-		return nil, &tailnetOff{reason: "built-in Tailscale has no IPv4 address"}
+		return nil, &tailnetOffError{reason: "built-in Tailscale has no IPv4 address"}
 	}
 	return tailnetSnapshotOf(st, ip, net.Interface{}, node), nil
 }
@@ -192,7 +192,7 @@ func (t *systemTailnet) noteNode(state, account, device string) {
 
 // unavailable drops the listener and the links at once, with the reason:
 // the node's own word, unlike a failed read, is not a slow answer.
-func (t *systemTailnet) unavailable(off *tailnetOff) {
+func (t *systemTailnet) unavailable(off *tailnetOffError) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	t.lastRead = time.Now()

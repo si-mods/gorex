@@ -25,6 +25,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - Dragging two fingers in a terminal now moves the panes with your fingers, up and down too; let go past a third of the way, or flick, to switch, or the pane springs back.
 - A terminal that another computer's shared space lists now joins that space, whichever computer connects first. Terminals you moved yourself stay where you put them.
 - Switching between a window's panes, with two fingers or the pane bar, now shows the pane at once: every pane of the window stays connected while its terminal is open.
+- Connecting to a computer over Tailscale works as before. If a computer that used to connect no longer does, tell us.
 
 ## zh-Hans
 
@@ -42,3 +43,4 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - 双指拖动终端时，面板现在跟着手指移动，上下切换也是上下滑；拖过约三分之一或快速一甩就切换，否则弹回原处。
 - 别的电脑的共享空间列出的终端，现在会归入那个空间，不再取决于哪台电脑先连上；你自己移动过的终端仍留在原处。
 - 在同一窗口的面板之间切换（双指轻扫或点面板条）现在立刻显示，不再重新连接：终端打开期间，窗口的每个面板都保持连接。
+- 通过 Tailscale 连接电脑和以前一样。如果某台以前能连上的电脑现在连不上，请告诉我们。
