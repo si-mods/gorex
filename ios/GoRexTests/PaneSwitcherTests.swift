@@ -161,4 +161,19 @@ nonisolated final class PaneSwitcherTests: XCTestCase {
         XCTAssertFalse(paneDragCommits(progress: 0.8, velocity: -300))
         XCTAssertTrue(paneDragCommits(progress: 0.8, velocity: -100))
     }
+
+    @MainActor func testPaneKeepChanges() {
+        // The window's other panes open, once each; the current one is open.
+        var c = paneKeepChanges(open: ["a"], kept: [], panes: ["a", "b", "c", "b"])
+        XCTAssertEqual(c.open, ["b", "c"])
+        XCTAssertEqual(c.close, [])
+        // A split opens; a pane that closed goes; the page's own stay.
+        c = paneKeepChanges(open: ["a", "b", "c", "x"], kept: ["b", "c"], panes: ["a", "c", "d"])
+        XCTAssertEqual(c.open, ["d"])
+        XCTAssertEqual(c.close, ["b"])
+        // Nothing changed, nothing to do.
+        c = paneKeepChanges(open: ["a", "b"], kept: ["b"], panes: ["a", "b"])
+        XCTAssertEqual(c.open, [])
+        XCTAssertEqual(c.close, [])
+    }
 }

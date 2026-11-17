@@ -83,11 +83,15 @@ final class TerminalSession {
     /// The terminal of Demo Mode, which runs on the phone; nil for a
     /// host's, whose stream comes over a data connection.
     @ObservationIgnored private var demo: DemoTerminal?
+    /// Whether the session owns the block, as the pane on the page does: a
+    /// pane kept open off the page streams without it, at the block's size.
+    @ObservationIgnored private var owns: Bool
 
-    init(host: Host, session: String, block: String) {
+    init(host: Host, session: String, block: String, owns: Bool = true) {
         self.host = host
         self.session = session
         self.block = block
+        self.owns = owns
         data = DataConnection(base: host.config.url)
         // The demo has no host colors: it takes the chosen theme, else the
         // one the app starts with.
@@ -170,7 +174,8 @@ final class TerminalSession {
                 log.info("opened \(self.block, privacy: .public)")
                 opened = .now
                 stream = TerminalStream(nonce: c.nonce)
-                await claim()
+                // One kept off the page gives back what the server restored.
+                if owns { await claim() } else { await giveBack() }
             } catch {
                 guard g == generation else { return }
                 diagnosis = "Waiting for \(d?.stage ?? "the ticket (data.connect)"), \(began.duration(to: .now).ms): \(error.diagnosis)"
@@ -210,7 +215,8 @@ final class TerminalSession {
                 log.info("resumed \(self.block, privacy: .public)")
                 opened = .now
                 // A client that came back too late to resume lost the block.
-                await claim()
+                // One kept off the page gives back what the server restored.
+                if owns { await claim() } else { await giveBack() }
             } catch {
                 guard g == generation else { return }
                 log.info("resume failed, starting over: \(error.localizedDescription, privacy: .public)")
@@ -222,12 +228,31 @@ final class TerminalSession {
     /// Owns the block, so that it takes this view's size. Not owned, the
     /// block keeps its size, and its stream goes on.
     private func claim() async {
+        guard owns, !closed else { return }
         do {
             try await host.online().call("session.own_block", ["session_id": session, "block_ids": [block], "mode": "take"])
-            sendSize()
+            // Gone off the page or closed meanwhile: the block goes back.
+            if owns, !closed { sendSize() } else { await giveBack() }
         } catch {
             log.error("could not own \(self.block, privacy: .public): \(error.localizedDescription, privacy: .public)")
         }
+    }
+
+    /// Gives the block back, the stream going on.
+    private func giveBack() async {
+        _ = try? await host.control?.call("session.disown_block", ["session_id": session, "block_ids": [block]])
+        // Back on the page meanwhile: it owns the block again.
+        if owns, !closed { await claim() }
+    }
+
+    /// Owns the block as the pane comes on the page, or gives it back as it
+    /// goes off it, kept open. A stream still opening owns it once open.
+    func own(_ yes: Bool) {
+        guard owns != yes else { return }
+        owns = yes
+        if !yes { sizing?.cancel() }
+        guard demo == nil, !closed, going else { return }
+        Task { if yes { await claim() } else { await giveBack() } }
     }
 
     /// Leaves the stream for a resume, as when the app goes to the background.
@@ -363,7 +388,8 @@ final class TerminalSession {
     func fit(cols: Int, rows: Int, cellWidth: Int, cellHeight: Int) {
         guard cols > 0, rows > 0, size.map({ ($0.cols, $0.rows) != (cols, rows) }) ?? true else { return }
         size = (cols, rows, cellWidth, cellHeight)
-        guard demo == nil else { return }
+        // Not owned, the block keeps its size: the size goes as it is owned.
+        guard demo == nil, owns else { return }
         sizing?.cancel()
         sizing = Task {
             try? await Task.sleep(for: .milliseconds(100))

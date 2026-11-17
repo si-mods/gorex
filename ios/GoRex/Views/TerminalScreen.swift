@@ -41,7 +41,8 @@ struct TerminalScreen: View {
     /// layout snaps, and the pages beside it stay until the last ends.
     @State private var switching = 0
     /// The terminals on the page: the current one, one that waits to slide
-    /// in, and those still sliding out.
+    /// in, those still sliding out, and the window's other panes, kept open
+    /// off the page.
     @State private var pages: [Pane] = []
     /// The pane of a switch that waits for its terminal to draw before it
     /// slides in. A newer switch takes its place.
@@ -84,11 +85,13 @@ struct TerminalScreen: View {
                 // Under the fingers too, layout snaps.
                 TerminalRepresentable(session: pane.session, newTab: newTab, closeTab: closeTab, newSplit: newSplit, mic: mic, voice: voiceCapsule, dictating: said != nil && current, snaps: switching > 0 || paneDrag != nil,
                                       paneInset: paneCellList.count > 1 ? PaneBar.height + 20 : 0,
+                                      onPage: !pane.kept,
                                       onPaneDrag: { dragPane($0, $1, $2) },
                                       canSwipe: { switching == 0 && incoming == paneDrag?.pane && (terminal?.paneSwipeAllowed ?? false) })
                     .offset(x: pane.x * pageSize.width, y: pane.y * pageSize.height)
-                    // Before the page's size is known, off the page is hidden.
-                    .opacity(pageSize.width == 0 && (pane.x != 0 || pane.y != 0) ? 0 : 1)
+                    // A pane kept off the page is hidden, and so is off the
+                    // page before the page's size is known.
+                    .opacity(pane.kept || (pageSize.width == 0 && (pane.x != 0 || pane.y != 0)) ? 0 : 1)
                     .allowsHitTesting(current)
                     .accessibilityHidden(!current)
             }
@@ -202,6 +205,7 @@ struct TerminalScreen: View {
                 if pages.isEmpty { pages = [Pane(session: s, block: currentTarget.block, x: 0)] }
                 if let key = viewedKey { ViewedBlockStore.shared.set(currentTarget.block, for: key) }
                 s.start()
+                if let keptPanes { keep(keptPanes) }
                 Notifier.shared.onScreen = currentTarget
                 host.see(session: currentTarget.session, block: currentTarget.block)
             }
@@ -211,8 +215,16 @@ struct TerminalScreen: View {
                 terminal?.stopDictating()
                 dropIncoming()
                 host.see(session: currentTarget.session, block: currentTarget.block)
-                session?.close()
+                // Every stream closes; the panes kept off the page open
+                // again with the screen.
+                for p in pages { p.session.close() }
+                pages.removeAll { $0.session !== session }
                 if Notifier.shared.onScreen == currentTarget { Notifier.shared.onScreen = nil }
+            }
+            // The window's other panes open once the current one is live,
+            // and follow its panes as they split and close.
+            .onChange(of: keptPanes, initial: true) { _, panes in
+                if let panes { keep(panes) }
             }
             .alert(failure?.title ?? "", isPresented: Binding { failure != nil } set: { if !$0 { failure = nil } }) {
             } message: {
@@ -235,15 +247,16 @@ struct TerminalScreen: View {
             .onChange(of: phase) { _, p in
                 // Inactive, as under Control Center or an alert, keeps it.
                 if p == .background {
-                    // A switch still waiting stops: only the shown stream suspends.
+                    // A switch still waiting stops; the window's panes suspend.
                     dropIncoming()
                     terminal?.stopDictating()
-                    session?.suspend()
+                    for pane in pages where !pane.leaving { pane.session.suspend() }
                     suspended = true
                 }
                 if p == .active, suspended {
-                    session?.resume()
+                    for pane in pages where !pane.leaving { pane.session.resume() }
                     suspended = false
+                    if let keptPanes { keep(keptPanes) }
                 }
             }
     }
@@ -431,7 +444,7 @@ struct TerminalScreen: View {
     }
 
     /// Springs a drag's panes back to their places, the current one on
-    /// the page, then drops the one it brought and closes its stream.
+    /// the page, then drops the one it brought, kept open off the page.
     private func springBack(_ d: PaneDrag) {
         guard let axis = d.axis, pages.first(where: { $0.id == d.page })?.session === session else { return }
         withAnimation(.spring(duration: 0.32, bounce: 0.12), completionCriteria: .removed) {
@@ -472,6 +485,11 @@ struct TerminalScreen: View {
         let block: String
         var x: CGFloat
         var y: CGFloat = 0
+        /// Whether it is kept open off the page, hidden, as a pane of the
+        /// window open, for a switch to show it at once.
+        var kept = false
+        /// Whether its stream closed, and it only slides out.
+        var leaving = false
 
         /// Puts it at a place along an axis, and on the page along the other.
         mutating func move(_ axis: PaneAxis, to at: CGFloat) {
@@ -482,7 +500,8 @@ struct TerminalScreen: View {
 
     /// Opens the window's block in place of this one: it opens off the
     /// page, on the side it comes from, and slides in once its terminal
-    /// has drawn what the block shows, or after 300 ms.
+    /// has drawn what the block shows, or after 300 ms: a pane of the
+    /// window kept open has, and slides in at once.
     private func switchTo(_ target: TerminalTarget, dir: CGFloat? = nil) {
         guard target.host == currentTarget.host else {
             go(target)
@@ -538,18 +557,56 @@ struct TerminalScreen: View {
     /// Opens a block's terminal off the page, at a place along an axis, as
     /// the switch that waits: a newer one drops it. It opens without
     /// animation, so that its surface is made before the slide, not in its
-    /// first frame.
+    /// first frame. A pane of the window kept open off the page is shown
+    /// there, drawn already. It owns its block once it slides in.
     private func openIncoming(_ next: TerminalTarget, axis: PaneAxis, at: CGFloat) -> UUID {
         dropIncoming()
-        let nextSession = TerminalSession(host: host, session: next.session, block: next.block)
+        var t = Transaction()
+        t.disablesAnimations = true
+        // Kept, or still sliding out: its stream is open, and a block
+        // streams once.
+        if let i = pages.firstIndex(where: { !$0.leaving && $0.session !== session && $0.block == next.block }) {
+            withTransaction(t) {
+                pages[i].move(axis, to: at)
+                pages[i].kept = false
+            }
+            incoming = pages[i].id
+            return pages[i].id
+        }
+        let nextSession = TerminalSession(host: host, session: next.session, block: next.block, owns: false)
         nextSession.start()
         var pane = Pane(session: nextSession, block: next.block, x: 0)
         pane.move(axis, to: at)
-        var t = Transaction()
-        t.disablesAnimations = true
         withTransaction(t) { pages.append(pane) }
         incoming = pane.id
         return pane.id
+    }
+
+    /// The window's panes to keep open, once the current one is live; nil
+    /// before, and without the window.
+    private var keptPanes: [String]? {
+        guard session?.state == .live, let w = window else { return nil }
+        return w.panes
+    }
+
+    /// Opens the window's panes that have no terminal, off the page and
+    /// not owning their blocks, and closes those kept that left it.
+    private func keep(_ panes: [String]) {
+        guard !gone, !suspended else { return }
+        let open = pages.filter { !$0.leaving }
+        let change = paneKeepChanges(open: open.map(\.block), kept: open.filter(\.kept).map(\.block), panes: panes)
+        guard !change.open.isEmpty || !change.close.isEmpty else { return }
+        for p in pages where p.kept && change.close.contains(p.block) { p.session.close() }
+        var t = Transaction()
+        t.disablesAnimations = true
+        withTransaction(t) {
+            pages.removeAll { $0.kept && change.close.contains($0.block) }
+            for block in change.open {
+                let s = TerminalSession(host: host, session: currentTarget.session, block: block, owns: false)
+                s.start()
+                pages.append(Pane(session: s, block: block, x: 1, kept: true))
+            }
+        }
     }
 
     @ViewBuilder private var principalTitlePill: some View {
@@ -600,21 +657,34 @@ struct TerminalScreen: View {
     }
 
     /// Slides the waiting pane in and the current one out, the way the
-    /// switch goes along the axis, from where they are, and closes the
-    /// current one's stream.
+    /// switch goes along the axis, from where they are. Within the window,
+    /// the current one gives its block back and is kept open off the page;
+    /// to another window, its stream and those of the panes kept close.
     private func promote(_ id: UUID, to next: TerminalTarget, dir: CGFloat, axis: PaneAxis = .horizontal) {
-        guard let i = pages.firstIndex(where: { $0.id == id }) else { return }
+        guard let nextSession = pages.first(where: { $0.id == id })?.session else { return }
         incoming = nil
         // A drag still under way loses its page: it ends here.
         paneDrag = nil
-        let nextSession = pages[i].session
         terminal?.stopDictating()
         host.see(session: currentTarget.session, block: currentTarget.block)
-        session?.close()
+        let paneSwitch = next.session == currentTarget.session && (window?.panes.contains(next.block) ?? false)
+        if paneSwitch {
+            session?.own(false)
+        } else {
+            for j in pages.indices where pages[j].id != id && !pages[j].leaving {
+                pages[j].session.close()
+                pages[j].leaving = true
+            }
+            // The hidden ones go at once; the current one slides out.
+            var t = Transaction()
+            t.disablesAnimations = true
+            withTransaction(t) { pages.removeAll { $0.kept } }
+        }
+        guard let i = pages.firstIndex(where: { $0.id == id }) else { return }
+        nextSession.own(true)
         Notifier.shared.onScreen = next
         host.see(session: next.session, block: next.block)
         switching += 1
-        let paneSwitch = next.session == currentTarget.session && (window?.panes.contains(next.block) ?? false)
         withAnimation(.spring(duration: 0.32, bounce: 0.12), completionCriteria: .removed) {
             slideDir = dir
             if let j = pages.firstIndex(where: { $0.session === session }) { pages[j].move(axis, to: -dir) }
@@ -624,18 +694,29 @@ struct TerminalScreen: View {
         } completion: {
             if paneSwitch { flashPaneMap() }
             switching -= 1
-            // Once no slide is left, the pages beside it go, but one
-            // that waits to slide in.
+            // Once no slide is left, the pages that closed go, and the
+            // window's panes beside it are kept off the page, but one that
+            // waits to slide in.
             guard switching == 0 else { return }
-            pages.removeAll { $0.session !== session && $0.id != incoming }
+            var t = Transaction()
+            t.disablesAnimations = true
+            // A pane no longer in the window closes.
+            let panes = window?.panes ?? []
+            for p in pages where !p.leaving && p.session !== session && p.id != incoming && !panes.contains(p.block) { p.session.close() }
+            withTransaction(t) {
+                pages.removeAll { $0.leaving || ($0.session !== session && $0.id != incoming && !panes.contains($0.block)) }
+                for j in pages.indices where pages[j].session !== session && pages[j].id != incoming { pages[j].kept = true }
+            }
         }
     }
 
-    /// Drops the pane of a switch that still waits, and closes its stream.
+    /// Drops the pane of a switch that still waits: a pane of the window
+    /// open is kept off the page, another closes its stream.
     private func dropIncoming() {
         guard let id = incoming else { return }
         incoming = nil
-        pages.first(where: { $0.id == id })?.session.close()
+        let keeps = pages.first(where: { $0.id == id }).map { window?.panes.contains($0.block) == true } ?? false
+        if !keeps { pages.first(where: { $0.id == id })?.session.close() }
         var t = Transaction()
         t.disablesAnimations = true
         // A drag that brought it ends, its page back in place.
@@ -645,7 +726,13 @@ struct TerminalScreen: View {
                 withTransaction(t) { pages[i].move(axis, to: 0) }
             }
         }
-        withTransaction(t) { pages.removeAll { $0.id == id } }
+        withTransaction(t) {
+            if keeps, let i = pages.firstIndex(where: { $0.id == id }) {
+                pages[i].kept = true
+            } else {
+                pages.removeAll { $0.id == id }
+            }
+        }
     }
 
     /// Steps from the window a switch still waits to show, if any, so a
@@ -1058,6 +1145,8 @@ private struct TerminalRepresentable: UIViewRepresentable {
     /// How far the pane bar reaches over the terminal, for the cursor to
     /// stay above it; 0 when the bar is away.
     let paneInset: CGFloat
+    /// Whether the terminal shows: one kept off the page draws nothing.
+    let onPage: Bool
     /// Follows a two-finger drag between panes: its state, and how far and
     /// how fast the fingers went.
     let onPaneDrag: (UIGestureRecognizer.State, CGPoint, CGPoint) -> Void
@@ -1102,6 +1191,7 @@ private struct TerminalRepresentable: UIViewRepresentable {
         v.terminal.newSplit = newSplit
         v.terminal.paneInset = paneInset
         v.aboveBar = paneInset
+        v.terminal.onPage = onPage
         v.onPaneDrag = onPaneDrag
         v.canSwipe = canSwipe
         v.setBottomEdgeColor(UIColor(cgColor: (session.background ?? .black).cgColor))

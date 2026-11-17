@@ -135,3 +135,13 @@ func paneDragCommits(progress: CGFloat, velocity: CGFloat) -> Bool {
     guard velocity > -200 else { return false }
     return progress >= 0.35 || velocity >= 500
 }
+
+/// The panes to open and to close so that every pane of the window stays
+/// open: open, the blocks with a terminal (on the page or kept off it);
+/// kept, those kept off it, which alone close.
+func paneKeepChanges(open: [String], kept: [String], panes: [String]) -> (open: [String], close: [String]) {
+    var seen = Set(open)
+    let opening = panes.filter { seen.insert($0).inserted }
+    let closing = kept.filter { !panes.contains($0) }
+    return (opening, closing)
+}
