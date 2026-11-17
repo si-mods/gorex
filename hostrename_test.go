@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -334,7 +335,7 @@ func TestRunRenamesKeepsOnlyRetryable(t *testing.T) {
 		{name: "refused", err: errors.New("remote commands are not allowed")},
 		{name: "conflict", code: "layout_conflict", keep: true},
 		{name: "lost", err: errors.New("rex: connection to the server lost"), keep: true},
-		{name: "timed out", err: errors.New("rex: command timed out"), keep: true},
+		{name: "timed out", err: fmt.Errorf("rex: rename %w", rex.ErrTimeout), keep: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			old := renameCommand

@@ -401,7 +401,7 @@ func connectHost(ctx context.Context, address string) (c *rex.Client, hello rex.
 			return nil, hello, locales.HostsNotAllowed, failPending
 		case rex.IsRefused(err):
 			return nil, hello, locales.HostsNotAllowed, failRefused
-		case strings.Contains(err.Error(), "connection to the server lost"), strings.Contains(err.Error(), "timed out"):
+		case strings.Contains(err.Error(), "connection to the server lost"), errors.Is(err, rex.ErrTimeout):
 			// Lost on the way: nothing tells that the host refused.
 			return nil, hello, locales.HostsUnreachable, failUnreachable
 		}

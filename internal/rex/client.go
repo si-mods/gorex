@@ -421,7 +421,7 @@ func (c *Client) exchange(req Request, timeout time.Duration) (Response, error) 
 		c.mu.Lock()
 		delete(c.pending, req.ID)
 		c.mu.Unlock()
-		return Response{}, fmt.Errorf("rex: %s timed out", req.Op)
+		return Response{}, fmt.Errorf("rex: %s %w", req.Op, ErrTimeout)
 	}
 	if res.Error != "" {
 		return res, errors.New(res.Error)
