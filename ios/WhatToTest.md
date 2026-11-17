@@ -36,6 +36,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - Switching panes in the pane bar no longer brings up the keyboard, even when you come back to a pane where you were typing. Tap the terminal to type.
 - Close a pane you no longer need: open the menu at the top right and choose Close Pane, or press and hold its tile in the pane bar. The last pane of a window stays.
 - Choose Gallery, first in a terminal's More menu, to see every image the pane showed: printed image paths and pictures drawn in the terminal. Swipe, pinch or share them; the menu marks new ones.
+- An image whose file no longer exists on your computer now leaves the Gallery by itself, instead of staying as a blank square.
 
 ## zh-Hans
 
@@ -64,3 +65,4 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - 用面板条切换面板时不再自动弹出键盘，回到之前打过字的面板也一样。要输入时点一下终端。
 - 不再需要的面板可以关掉：点右上角菜单选“关闭面板”，或在面板条里长按它的图标。窗口的最后一个面板不会被关。
 - 选终端「更多」菜单的第一项「相册」，查看这个面板出现过的全部图片：打印出的图片路径和直接画在终端里的图片；可滑动、缩放和分享。有新图片时菜单里会标出。
+- 电脑上已经不存在的图片文件，现在会自己从相册里消失，不再留下一个空白格子。

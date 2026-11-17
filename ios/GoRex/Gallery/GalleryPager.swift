@@ -37,9 +37,17 @@ struct GalleryPager: View {
         .statusBarHidden(!chrome)
         .environment(\.colorScheme, .dark)
         .sheet(item: $sharing) { s in ShareSheet(items: s.urls).ignoresSafeArea() }
-        // The image went from the gallery meanwhile.
-        .onChange(of: gallery.entries) { _, all in
-            if !all.contains(where: { $0.id == current }) { dismiss() }
+        // The image went from the gallery meanwhile: the next one shows, else
+        // the one before, and the pager closes when none is left.
+        .onChange(of: gallery.entries) { old, all in
+            guard !all.contains(where: { $0.id == current }) else { return }
+            let i = old.firstIndex { $0.id == current } ?? old.count
+            let near = old[min(i + 1, old.count)...] + old[..<min(i, old.count)].reversed()
+            if let next = near.first(where: { n in all.contains { $0.id == n.id } }) {
+                current = next.id
+            } else {
+                dismiss()
+            }
         }
     }
 
@@ -147,6 +155,7 @@ private struct GalleryPage: View {
             loaded(url)
         } catch {
             guard !(error is CancellationError) else { return }
+            if GalleryImages.isMissing(error) { gallery.drop(missing: entry.id) }
             failure = GalleryImages.reason(error)
         }
     }

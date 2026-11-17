@@ -253,6 +253,7 @@ private struct GalleryCell: View {
                 do {
                     image = try await GalleryImages.thumbnail(entry, gallery: gallery, session: session)
                 } catch {
+                    if GalleryImages.isMissing(error) { gallery.drop(missing: entry.id) }
                     if !(error is CancellationError) { failed = true }
                 }
             }
@@ -339,6 +340,11 @@ enum GalleryImages {
     /// Deletes downloads: each is in a folder of its own (OpenedFiles).
     static func discard(_ urls: [URL]) {
         for u in urls { try? FileManager.default.removeItem(at: u.deletingLastPathComponent()) }
+    }
+
+    /// Whether the host has no such file: the image leaves the gallery.
+    static func isMissing(_ error: Error) -> Bool {
+        (error as? RexError)?.code == "no_file"
     }
 
     /// Why an image did not load, in the words of a tap on its path.
