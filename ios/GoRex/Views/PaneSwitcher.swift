@@ -69,6 +69,8 @@ struct PaneBar: View {
     let program: (String) -> Program
     let select: (String) -> Void
     let newSplit: () -> Void
+    /// Counts the plus's taps, for its tap on the hand.
+    @State private var splits = 0
 
     var body: some View {
         HStack(spacing: 8) {
@@ -77,6 +79,9 @@ struct PaneBar: View {
                     Button { select(cell.block) } label: {
                         ProgramTile(program: program(cell.block), scale: 1)
                             .frame(width: 21, height: 16)
+                            // The other panes' tiles recede, so the current
+                            // one stands out; their dots stay full.
+                            .opacity(cell.block == current ? 1 : 0.55)
                             .overlay(alignment: .topTrailing) {
                                 if let record = cell.record {
                                     PaneStatus(record: record)
@@ -87,7 +92,8 @@ struct PaneBar: View {
                             .background {
                                 if cell.block == current {
                                     RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                        .fill(.primary.opacity(0.16))
+                                        .fill(Color.accentColor.opacity(0.3))
+                                        .strokeBorder(Color.accentColor.opacity(0.8), lineWidth: 1)
                                 }
                             }
                             .contentShape(.rect)
@@ -101,8 +107,12 @@ struct PaneBar: View {
             }
             .padding(.horizontal, 6)
             .padding(.vertical, 4)
-            .glassEffect(.regular, in: .capsule)
-            Button(action: newSplit) {
+            // Interactive glass answers the finger, as the title's does.
+            .glassEffect(.regular.interactive(), in: .capsule)
+            Button {
+                splits += 1
+                newSplit()
+            } label: {
                 Image(systemName: "plus")
                     .font(.footnote.weight(.semibold))
                     .frame(width: 30, height: 30)
@@ -110,7 +120,8 @@ struct PaneBar: View {
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Split Pane")
-            .glassEffect(.regular, in: .circle)
+            .glassEffect(.regular.interactive(), in: .circle)
+            .sensoryFeedback(.impact(weight: .light), trigger: splits)
         }
         .animation(.snappy, value: current)
     }
