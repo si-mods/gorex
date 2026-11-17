@@ -10,6 +10,14 @@ protocol TerminalOutput: AnyObject {
     func write(_ bytes: Data)
     /// Sets the default colors, as a stream's theme message gives them.
     func setTheme(_ theme: [String: Any])
+    /// Reads the text the screen shows, and the scrollback's above it where
+    /// it can, for the gallery (docs/ios-pane-gallery.md §3.4); done gets
+    /// it and the screen's columns off the main thread.
+    func readScreen(_ done: @escaping @Sendable (_ text: String, _ columns: Int) -> Void)
+}
+
+extension TerminalOutput {
+    func readScreen(_ done: @escaping @Sendable (_ text: String, _ columns: Int) -> Void) {}
 }
 
 /// One block's terminal on the phone: its data stream fed to the view's
@@ -349,12 +357,12 @@ final class TerminalSession {
                 // A reset first: the snapshot of a new stream replaces the screen.
                 let replay = t.replay()
                 write(Data("\u{1b}c".utf8) + replay)
-                gallery?.feed(replay, fresh: true)
+                gallery?.feed(replay, fresh: true, screen: output)
                 state = .live
                 setReconnecting(false)
             case .output(let o):
                 write(o)
-                gallery?.feed(o)
+                gallery?.feed(o, screen: output)
             case .message(let m):
                 switch m["type"] as? String {
                 case "theme":

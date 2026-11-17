@@ -130,6 +130,102 @@ nonisolated final class GalleryTests: XCTestCase {
         XCTAssertEqual(store.index.entries.map(\.path), ["/tmp/a.png", "./a.png"])
     }
 
+    // MARK: Screen
+
+    /// Rows of a text as Claude Code wraps it at columns: the rest of a
+    /// full row goes on the next after an indent.
+    private func wrap(_ text: String, columns: Int, indent: Int = 2) -> [String] {
+        var rows = [String(text.prefix(columns))]
+        var rest = text.dropFirst(columns)
+        while !rest.isEmpty {
+            rows.append(String(repeating: " ", count: indent) + rest.prefix(columns - indent))
+            rest = rest.dropFirst(columns - indent)
+        }
+        return rows
+    }
+
+    func testScreenJoinsClaudeCodeWindowsPath() {
+        let path = #"C:\Users\demo\AppData\Local\Temp\claude\b447e8\scratchpad\shots\above-02-x.png"#
+        let rows = wrap("- " + path, columns: 40)
+        XCTAssertEqual(rows.count, 3)
+        XCTAssertEqual(rows[0].count, 40)
+        XCTAssertEqual(GalleryScanner.paths(inRows: rows + ["  done"], columns: 40), [path])
+        // Each row alone holds none.
+        XCTAssertEqual(rows.flatMap { GalleryScanner.paths(inLine: $0) }, [])
+    }
+
+    func testScreenJoinsUnixPathAcrossTwoRows() {
+        let rows = wrap("saved /tmp/demo/folder/chart-01.png ok", columns: 30, indent: 0)
+        XCTAssertEqual(rows.count, 2)
+        XCTAssertEqual(GalleryScanner.paths(inRows: rows, columns: 30), ["/tmp/demo/folder/chart-01.png"])
+    }
+
+    func testScreenDropsPiecesTheBytesFound() throws {
+        let rows = ["saved /tmp/demo/fo", "  lder/sub/chart.png"]
+        let screen = GalleryScanner.screen(rows: rows, columns: 18)
+        XCTAssertEqual(screen.paths, ["/tmp/demo/folder/sub/chart.png"])
+        XCTAssertEqual(screen.pieces, ["lder/sub/chart.png"])
+        let worker = PaneGallery.Worker(dir: try tempDir())
+        worker.scan(Data((rows.joined(separator: "\r\n") + "\r\n").utf8), fresh: false) { _ in }
+        XCTAssertEqual(index(worker) { $0.index }.entries.map(\.path), ["lder/sub/chart.png"])
+        worker.scan(screen: rows.joined(separator: "\n"), columns: 18) { _ in }
+        XCTAssertEqual(index(worker) { $0.index }.entries.map(\.path), ["/tmp/demo/folder/sub/chart.png"])
+    }
+
+    func testScreenRowShortOfLastColumnNotJoined() {
+        XCTAssertEqual(GalleryScanner.paths(inRows: ["see /tmp/demo/a", "  /b.png"], columns: 40), ["/b.png"])
+        // Nor a row whose last column is a blank.
+        XCTAssertEqual(GalleryScanner.paths(inRows: ["see /tmp/demo/a ", "b.png"], columns: 16), [])
+    }
+
+    func testScreenJoinNotImageFallsBackToRows() {
+        let row = "x /tmp/demo/x.png"
+        XCTAssertEqual(row.count, 17)
+        XCTAssertEqual(GalleryScanner.paths(inRows: [row, "  --done"], columns: 17), ["/tmp/demo/x.png"])
+        // A path at the end of a row and one that starts the next are two.
+        XCTAssertEqual(GalleryScanner.paths(inRows: [row, "  /tmp/b.png"], columns: 17), ["/tmp/demo/x.png", "/tmp/b.png"])
+    }
+
+    func testScreenWidthCountsWideCharacters() {
+        let row = "截图在 /tmp/demo/abc"
+        XCTAssertEqual(GalleryScanner.width(row), 20)
+        XCTAssertEqual(GalleryScanner.paths(inRows: [row, "  d.png"], columns: 20), ["/tmp/demo/abcd.png"])
+        // By characters the row is 17 wide; it does not reach 17's last column twice.
+        XCTAssertEqual(GalleryScanner.paths(inRows: [row, "  d.png"], columns: 17), [])
+    }
+
+    func testConcealedPathsRemembered() {
+        var s = GalleryScanner()
+        XCTAssertEqual(paths(s.feed(Data("\u{1b}[8m/tmp/secret.png\u{1b}[0m /tmp/shown.png\n".utf8))), ["/tmp/shown.png"])
+        XCTAssertEqual(s.concealedPaths, ["/tmp/secret.png"])
+        // A new stream's snapshot shows them again.
+        s.reset()
+        XCTAssertEqual(s.concealedPaths, ["/tmp/secret.png"])
+    }
+
+    func testRepeatedScreenReadsAddNothing() throws {
+        let worker = PaneGallery.Worker(dir: try tempDir())
+        worker.scan(Data("\u{1b}[8m/tmp/demo/hidden.png\u{1b}[0m\n".utf8), fresh: false) { _ in }
+        worker.scan(screen: "/tmp/demo/a.png /tmp/demo/hidden.png\n$ ", columns: 40) { _ in }
+        let first = index(worker) { $0.seen(); return $0.index }
+        XCTAssertEqual(first.entries.map(\.path), ["/tmp/demo/a.png"])
+        // The same screen, and the same path a row lower, are not new.
+        worker.scan(screen: "/tmp/demo/a.png /tmp/demo/hidden.png\n$ ", columns: 40) { _ in }
+        worker.scan(screen: "$ ls\n/tmp/demo/a.png\n$ ", columns: 40) { _ in }
+        let again = index(worker) { $0.index }
+        XCTAssertEqual(again.entries.map(\.path), ["/tmp/demo/a.png"])
+        XCTAssertFalse(again.unseen)
+    }
+
+    /// The index after what the worker has queued, and f.
+    private func index(_ worker: PaneGallery.Worker, _ f: @escaping @Sendable (GalleryStore) -> GalleryIndex) -> GalleryIndex {
+        let done = expectation(description: "worker")
+        nonisolated(unsafe) var got: GalleryIndex?
+        worker.run(f) { got = $0; done.fulfill() }
+        wait(for: [done], timeout: 5)
+        return got!
+    }
+
     // MARK: Kitty
 
     /// A Kitty transmission of data, in chunks of at most chunk base64 bytes.

@@ -49,6 +49,14 @@ nonisolated struct GalleryScanner {
     private var stringEsc = false
     /// The visible text of the line so far: a quoted path may hold spaces.
     private var line: [UInt8] = []
+    /// The hidden text of the line so far, the visible as blanks.
+    private var hiddenLine: [UInt8] = []
+    /// The image paths printed in hidden text, oldest first: Ghostty reads
+    /// hidden text out as any other, so the screen's text (§3.4) does not
+    /// show which is hidden, and a path in it is skipped by this list.
+    private(set) var concealedPaths: [String] = []
+    /// The most hidden paths remembered.
+    static let concealedLimit = 500
     private var osc: [UInt8] = []
     private var apc: [UInt8] = []
     /// Whether the APC is not a Kitty one, or too large to keep.
@@ -192,7 +200,9 @@ nonisolated struct GalleryScanner {
     // MARK: Paths
 
     private mutating func append(_ b: UInt8) {
-        // Hidden text shows as blanks, and is read as them.
+        // Hidden text shows as blanks, and is read as them; it is read
+        // apart to know its paths.
+        hiddenLine.append(concealed ? b : 0x20)
         let b = concealed ? 0x20 : b
         // A line past its bound is read in parts: a path across the cut
         // is lost, as one the program wrapped is.
@@ -202,10 +212,96 @@ nonisolated struct GalleryScanner {
     }
 
     private mutating func endLine() {
-        defer { line = [] }
+        defer { line = []; hiddenLine = [] }
         guard !line.isEmpty else { return }
         for p in Self.paths(inLine: String(decoding: line, as: UTF8.self)) { found.append(.path(p)) }
+        guard hiddenLine.contains(where: { $0 != 0x20 }) else { return }
+        for p in Self.paths(inLine: String(decoding: hiddenLine, as: UTF8.self)) where !concealedPaths.contains(p) {
+            concealedPaths.append(p)
+        }
+        if concealedPaths.count > Self.concealedLimit { concealedPaths.removeFirst(concealedPaths.count - Self.concealedLimit) }
     }
+
+    // MARK: Screen
+
+    /// The most rows a path is joined across, the most rows of a screen
+    /// read, and of the scrollback above it.
+    static let maxJoin = 32
+    static let maxScreenRows = 300
+    static let maxScrollback = 200
+
+    /// The image paths the rows of the screen show (docs/ios-pane-gallery.md
+    /// §3.4), as Ghostty reads them out: soft-wrapped rows come as one. A
+    /// program as Claude Code wraps a long path itself, a row full to the
+    /// last column and the rest on the next, after an indent: such rows are
+    /// read as one where that makes an image path across them, else each
+    /// as it is.
+    static func paths(inRows rows: [String], columns: Int) -> [String] {
+        screen(rows: rows, columns: columns).paths
+    }
+
+    /// The image paths of the rows, and the pieces of them the rows show
+    /// alone: the output's bytes, read a line at a time, find a piece as
+    /// a path of its own, as wrapped/b.png of /tmp/a/wrapped/b.png.
+    static func screen(rows: [String], columns: Int) -> (paths: [String], pieces: [String]) {
+        var out: [String] = [], pieces: [String] = []
+        var i = 0
+        while i < rows.count {
+            var text = rows[i], end = i
+            var joined = rows[i], last = paths(inLine: rows[i])
+            var k = i
+            while k + 1 < rows.count, k - i < maxJoin, fills(rows[k], columns: columns) {
+                let next = rows[k + 1].drop { $0 == " " }
+                guard let c = next.first, isPathCharacter(c) else { break }
+                // A path that ends at the last column, and one that starts
+                // the next row, as in a list, are two.
+                let tail = joined.split(whereSeparator: \.isWhitespace).last ?? "", head = next.prefix { !$0.isWhitespace }
+                if !paths(in: String(tail)).isEmpty && !paths(in: String(head)).isEmpty { break }
+                joined += next
+                k += 1
+                // A path the join makes, which neither side holds alone.
+                let now = paths(inLine: joined), alone = Set(last + paths(inLine: rows[k]))
+                if now.contains(where: { !alone.contains($0) }) { (text, end) = (joined, k) }
+                last = now
+            }
+            let found = paths(inLine: text)
+            out += found
+            if end > i {
+                pieces += rows[i...end].flatMap { paths(inLine: String($0.drop { $0 == " " })) }.filter { !found.contains($0) }
+            }
+            i = end + 1
+        }
+        return (out, pieces)
+    }
+
+    /// Whether a row's text reaches its last column, a path's character in
+    /// it: the program may go on with the word on the next row.
+    static func fills(_ row: String, columns: Int) -> Bool {
+        guard columns > 0, let c = row.last, isPathCharacter(c) else { return false }
+        let w = width(row)
+        return w >= columns && w % columns == 0
+    }
+
+    static func isPathCharacter(_ c: Character) -> Bool {
+        !c.isWhitespace && !FileLink.proseDelimiters.contains(c)
+    }
+
+    /// The columns a text takes: an East Asian wide character, as most
+    /// CJK ones and emoji, takes two.
+    static func width(_ text: String) -> Int {
+        text.reduce(0) { n, c in
+            let wide = c.unicodeScalars.contains { s in
+                s.value == 0xfe0f || wideRanges.contains { $0.contains(s.value) }
+            }
+            return n + (wide ? 2 : 1)
+        }
+    }
+
+    private static let wideRanges: [ClosedRange<UInt32>] = [
+        0x1100...0x115f, 0x2e80...0x303e, 0x3041...0x33ff, 0x3400...0x4dbf, 0x4e00...0x9fff,
+        0xa000...0xa4cf, 0xac00...0xd7a3, 0xf900...0xfaff, 0xfe30...0xfe4f, 0xff00...0xff60,
+        0xffe0...0xffe6, 0x1f300...0x1f64f, 0x1f900...0x1f9ff, 0x20000...0x3fffd,
+    ]
 
     /// The image paths a line of text prints: those in quotes first, read
     /// to the closing quote as they may hold spaces, then those in the
@@ -464,7 +560,10 @@ nonisolated struct GalleryScanner {
 
     /// Forgets what a read left unfinished, as a new stream's snapshot
     /// replaces the screen.
+    /// The hidden paths stay: the snapshot shows them again.
     mutating func reset() {
+        let hidden = concealedPaths
         self = GalleryScanner()
+        concealedPaths = hidden
     }
 }

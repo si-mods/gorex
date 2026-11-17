@@ -43,9 +43,42 @@ final class PaneGallery {
         } done: { [weak self] in self?.show($0) }
     }
 
+    /// The terminal whose screen is read (§3.4), the read owed once the
+    /// output pauses, and when output began to come since the last read.
+    @ObservationIgnored private weak var screen: TerminalOutput?
+    @ObservationIgnored private var pause: DispatchWorkItem?
+    @ObservationIgnored private var lastRead = Date.distantPast
+    @ObservationIgnored private var busySince: Date?
+    /// The pause in the output after which the screen is read, and the
+    /// least time between reads while it does not pause.
+    static let readPause: TimeInterval = 0.3
+    static let readEvery: TimeInterval = 2
+
     /// Scans what the pane printed; a new stream's snapshot starts over.
-    func feed(_ bytes: Data, fresh: Bool = false) {
+    /// The screen it drew on is read once the output pauses, and every
+    /// two seconds while it does not.
+    func feed(_ bytes: Data, fresh: Bool = false, screen: TerminalOutput? = nil) {
         worker.scan(bytes, fresh: fresh) { [weak self] in self?.show($0) }
+        if let screen { self.screen = screen }
+        guard self.screen != nil else { return }
+        pause?.cancel()
+        let read = DispatchWorkItem { [weak self] in self?.readScreen() }
+        pause = read
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.readPause, execute: read)
+        let now = Date.now, since = busySince ?? now
+        busySince = since
+        if now.timeIntervalSince(max(since, lastRead)) >= Self.readEvery { readScreen() }
+    }
+
+    /// Reads the screen's text and scans it on the queue: the read is the
+    /// only work the main thread has.
+    private func readScreen() {
+        lastRead = .now
+        busySince = nil
+        let worker = worker
+        screen?.readScreen { [weak self] text, columns in
+            worker.scan(screen: text, columns: columns) { self?.show($0) }
+        }
     }
 
     /// Notes that the gallery was seen, as it opens and closes.
@@ -118,6 +151,30 @@ final class PaneGallery {
                 var added = false
                 // A new stream's first bytes are a snapshot, not live output.
                 for f in found where store.add(f, live: !fresh) { added = true }
+                guard added else { return }
+                try? store.save()
+                let index = store.index
+                Task { @MainActor in done(index) }
+            }
+        }
+
+        /// The text the screen showed at the last read: the same again is
+        /// not scanned.
+        private var lastScreen = ""
+
+        /// Adds the image paths the screen's text shows. They are added as
+        /// a snapshot's are: a path removed or missing does not come back.
+        func scan(screen text: String, columns: Int, done: @escaping @MainActor @Sendable (GalleryIndex) -> Void) {
+            Self.queue.async { [self] in
+                guard text != lastScreen else { return }
+                lastScreen = text
+                let rows = text.split(separator: "\n", omittingEmptySubsequences: false).suffix(GalleryScanner.maxScreenRows).map(String.init)
+                let screen = GalleryScanner.screen(rows: rows, columns: columns)
+                // The pieces of a wrapped path the bytes found go.
+                var added = store.drop(pieces: Set(screen.pieces))
+                for p in screen.paths where !scanner.concealedPaths.contains(p) && store.add(.path(p), live: false) {
+                    added = true
+                }
                 guard added else { return }
                 try? store.save()
                 let index = store.index
