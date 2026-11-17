@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.34.0
+
+### Bug Fixes
+
+* **panes:** log why a pane's stream was lost and when it came back, in `app.log` ([#663](https://github.com/si-mods/gorex/pull/663))
+
 ## 0.33.0
 
 ### Features
