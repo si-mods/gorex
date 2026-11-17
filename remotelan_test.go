@@ -1,6 +1,7 @@
 package main
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/egoist/mygo/ui"
@@ -153,7 +154,7 @@ func TestLocalPairQRCloses(t *testing.T) {
 	a := &App{}
 	settingsUI.section = "server"
 	remoteUI.loaded, remoteUI.st = true, rex.RemoteStatus{}
-	remoteUI.lan = rexapi.LANConfig{Enabled: true, Listen: "192.168.1.20:7297", Allow: []string{"192.168.1.0/24"}}
+	remoteUI.lan = rexapi.LANConfig{Enabled: true, Listen: "192.168.1.20:7297", Allow: []string{"192.168.1.0/24"}, Token: "test-token-AAAA"}
 	remoteUI.lanStatus = rexapi.LANStatus{Running: true, Listening: "192.168.1.20:7297"}
 	tt := ui.NewTester(a.settingsView, 780, 1400)
 	tt.Frame()
@@ -163,8 +164,13 @@ func TestLocalPairQRCloses(t *testing.T) {
 	a.openLocalPairQR()
 	tt.Frame()
 	tt.Frame()
-	if remoteUI.pairQR == nil || remoteUI.pairQR.address != "http://192.168.1.20:7297" {
+	if remoteUI.pairQR == nil || remoteUI.pairQR.address != "http://192.168.1.20:7297/#k=test-token-AAAA" {
 		t.Fatalf("the code: %+v", remoteUI.pairQR)
+	}
+	for _, s := range tt.Texts() {
+		if strings.Contains(s, "test-token-AAAA") {
+			t.Errorf("the pairing token is on the screen: %q", s)
+		}
 	}
 	remoteUI.lanStatus = rexapi.LANStatus{Running: true}
 	tt.Frame()
@@ -211,5 +217,26 @@ func TestRemoteRelayRow(t *testing.T) {
 	tt.Frame()
 	if remoteUI.relayErr != locales.RemoteNotConnected() || !tt.HasText(remoteUI.relayErr) || !remoteUI.relayEdited || remoteUI.err != nil {
 		t.Errorf("a failed save: %q, edited %v, page error %v", remoteUI.relayErr, remoteUI.relayEdited, remoteUI.err != nil)
+	}
+}
+
+// TestMobilePairQRTakesToken takes the local network's address with its
+// pairing token in the fragment, and nothing else beyond a bare origin.
+func TestMobilePairQRTakesToken(t *testing.T) {
+	for addr, ok := range map[string]bool{
+		"https://dev.example.ts.net":           true,
+		"http://192.0.2.10:7297":               true,
+		"http://192.0.2.10:7297/#k=test-token": true,
+		"http://192.0.2.10:7297#k=test-token":  false,
+		"http://192.0.2.10:7297/#k=":           false,
+		"http://192.0.2.10:7297/#x=1":          false,
+		"http://192.0.2.10:7297/?k=test-token": false,
+		"http://192.0.2.10:7297/api#k=test":    false,
+		"http://user@192.0.2.10:7297/#k=test":  false,
+		"ftp://192.0.2.10:7297/#k=test-token":  false,
+	} {
+		if got, img := mobilePairQR(addr); (img != nil) != ok || ok && got != addr {
+			t.Errorf("mobilePairQR(%q) = %q, %v; want ok %v", addr, got, img != nil, ok)
+		}
 	}
 }

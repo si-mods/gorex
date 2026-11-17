@@ -127,10 +127,21 @@ func rexGoPairURL(address, name string) string {
 	return "rexgo://tailcat?" + strings.ReplaceAll(q, "+", "%20")
 }
 
+// mobilePairQR returns the code for a Rex pairing address, and the
+// address to show and copy: a bare http(s) origin, or the local network
+// listener's with its pairing token, http://IP:PORT/#k=TOKEN
+// (rexapi.LANConfig.PairURL). Anything else is no code.
 func mobilePairQR(address string) (string, ui.ImageSource) {
 	u, err := url.Parse(address)
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Hostname() == "" ||
-		u.User != nil || u.Path != "" || u.RawQuery != "" || u.Fragment != "" || u.ForceQuery {
+		u.User != nil || u.RawQuery != "" || u.ForceQuery {
+		return "", nil
+	}
+	if u.Fragment == "" {
+		if u.Path != "" {
+			return "", nil
+		}
+	} else if u.Path != "/" || !strings.HasPrefix(u.Fragment, "k=") || len(u.Fragment) == len("k=") {
 		return "", nil
 	}
 	img := qrImage(address)
@@ -190,7 +201,10 @@ func hostPairQRSheet(c *ui.Context, k *colors, page *hostPairQR) {
 				})
 			})
 			if !page.rexGo {
-				ui.Text(c, page.address).Font(monoFamily()).FontSize(12).TextColor(k.text).SingleLine().Label(page.address)
+				// The pairing token stays in the code and the copy, off
+				// the screen.
+				shown, _, _ := strings.Cut(page.address, "#")
+				ui.Text(c, shown).Font(monoFamily()).FontSize(12).TextColor(k.text).SingleLine().Label(shown)
 			}
 		case page.rexGo:
 			ui.Text(c, locales.RemoteRexGoQRUnavailable()).FontSize(12.5).TextColor(k.textMuted).LineHeight(1.35)

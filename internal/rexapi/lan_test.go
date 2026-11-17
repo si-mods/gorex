@@ -2,16 +2,20 @@ package rexapi
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"net/http"
 	"net/netip"
 	"os"
+	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -82,8 +86,20 @@ func TestLANConfigCheck(t *testing.T) {
 		t.Fatal(err)
 	}
 	got, err := LoadLAN(dir)
-	if err != nil || !sameLAN(got, want) {
-		t.Fatalf("LoadLAN = %+v, %v; want %+v", got, err, want)
+	if err != nil || got.Token == "" {
+		t.Fatalf("LoadLAN = %+v, %v; want a pairing token made", got, err)
+	}
+	want.Token = got.Token
+	if !sameLAN(got, want) {
+		t.Fatalf("LoadLAN = %+v; want %+v", got, want)
+	}
+	// Saved again with no token, it keeps the one it has.
+	want.Token = ""
+	if err := SaveLAN(dir, want); err != nil {
+		t.Fatal(err)
+	}
+	if again, _ := LoadLAN(dir); again.Token != got.Token {
+		t.Errorf("saving with no token changed it")
 	}
 	if c, err := LoadLAN(t.TempDir()); err != nil || c.Enabled {
 		t.Errorf("a missing file: %+v, %v; want off", c, err)
@@ -96,8 +112,8 @@ func TestLANPairURL(t *testing.T) {
 		enabled, running, allowed      bool
 		want                           string
 	}{
-		{"LAN", "192.168.1.2:7297", "192.168.1.2:7297", "", true, true, true, "http://192.168.1.2:7297"},
-		{"IPv6", "[fd00:0::2]:7297", "[fd00::2]:7297", "", true, true, true, "http://[fd00::2]:7297"},
+		{"LAN", "192.168.1.2:7297", "192.168.1.2:7297", "", true, true, true, "http://192.168.1.2:7297/#k=" + testLANToken},
+		{"IPv6", "[fd00:0::2]:7297", "[fd00::2]:7297", "", true, true, true, "http://[fd00::2]:7297/#k=" + testLANToken},
 		{"disabled", "192.168.1.2:7297", "192.168.1.2:7297", "", false, true, true, ""},
 		{"stopped", "192.168.1.2:7297", "192.168.1.2:7297", "", true, false, true, ""},
 		{"no allowed peers", "192.168.1.2:7297", "192.168.1.2:7297", "", true, true, false, ""},
@@ -107,7 +123,7 @@ func TestLANPairURL(t *testing.T) {
 		{"loopback", "127.0.0.1:7297", "127.0.0.1:7297", "", true, true, true, ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			config := LANConfig{Enabled: tc.enabled, Listen: tc.listen}
+			config := LANConfig{Enabled: tc.enabled, Listen: tc.listen, Token: testLANToken}
 			if tc.allowed {
 				config.Allow = []string{"192.168.1.3/32"}
 			}
@@ -116,6 +132,11 @@ func TestLANPairURL(t *testing.T) {
 				t.Fatalf("PairURL = %q, want %q", got, tc.want)
 			}
 		})
+	}
+	// No token, no code: one without it would only be refused.
+	c := LANConfig{Enabled: true, Listen: "192.168.1.2:7297", Allow: []string{"192.168.1.0/24"}}
+	if got := c.PairURL(LANStatus{Running: true, Listening: "192.168.1.2:7297"}); got != "" {
+		t.Errorf("PairURL with no token = %q", got)
 	}
 }
 
@@ -173,11 +194,11 @@ func waitLAN(t *testing.T, dir string, cond func(LANStatus) bool) LANStatus {
 // listener.
 func TestLANAllowsOnlyItsNetworks(t *testing.T) {
 	g, dir := startStateGateway(t)
-	g.lan.apply(LANConfig{Enabled: true, Listen: "127.0.0.1:0", Allow: []string{"127.0.0.1"}})
+	g.lan.apply(LANConfig{Enabled: true, Listen: "127.0.0.1:0", Allow: []string{"127.0.0.1"}, Token: testLANToken})
 	s := waitLAN(t, dir, func(s LANStatus) bool { return s.Listening != "" })
 	url := "http://" + s.Listening
 
-	resp, err := http.Get(url + "/api/help")
+	resp, err := http.Get(url + "/api/help?k=" + testLANToken)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -186,11 +207,11 @@ func TestLANAllowsOnlyItsNetworks(t *testing.T) {
 		t.Fatalf("allowed: status %d", resp.StatusCode)
 	}
 
-	g.lan.apply(LANConfig{Enabled: true, Listen: "127.0.0.1:0", Allow: []string{"10.0.0.0/8"}})
+	g.lan.apply(LANConfig{Enabled: true, Listen: "127.0.0.1:0", Allow: []string{"10.0.0.0/8"}, Token: testLANToken})
 	if now := LoadLANStatus(dir).Listening; now != s.Listening {
 		t.Fatalf("changing the networks moved the listener from %s to %s", s.Listening, now)
 	}
-	resp, err = http.Get(url + "/api/help")
+	resp, err = http.Get(url + "/api/help?k=" + testLANToken)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -208,7 +229,7 @@ func TestLANAllowsOnlyItsNetworks(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer kept.Close()
-	fmt.Fprintf(kept, "GET /api/help HTTP/1.1\r\nHost: %s\r\n\r\n", s.Listening)
+	fmt.Fprintf(kept, "GET /api/help HTTP/1.1\r\nHost: %s\r\nAuthorization: Bearer %s\r\n\r\n", s.Listening, testLANToken)
 	r := bufio.NewReader(kept)
 	resp, err = http.ReadResponse(r, nil)
 	if err != nil {
@@ -223,7 +244,7 @@ func TestLANAllowsOnlyItsNetworks(t *testing.T) {
 	ln := g.lan.ln
 	g.lan.mu.Unlock()
 
-	g.lan.apply(LANConfig{Enabled: false, Listen: "127.0.0.1:0", Allow: []string{"10.0.0.0/8"}})
+	g.lan.apply(LANConfig{Enabled: false, Listen: "127.0.0.1:0", Allow: []string{"10.0.0.0/8"}, Token: testLANToken})
 	if s := waitLAN(t, dir, func(s LANStatus) bool { return s.Listening == "" }); s.Error != "" {
 		t.Fatalf("off: %+v", s)
 	}
@@ -247,11 +268,11 @@ func TestLANAllowsOnlyItsNetworks(t *testing.T) {
 // socket: a caller on the local network gets 403.
 func TestLANRefusesAdministering(t *testing.T) {
 	g, dir := startStateGateway(t)
-	g.lan.apply(LANConfig{Enabled: true, Listen: "127.0.0.1:0", Allow: []string{"127.0.0.0/8"}})
+	g.lan.apply(LANConfig{Enabled: true, Listen: "127.0.0.1:0", Allow: []string{"127.0.0.0/8"}, Token: testLANToken})
 	s := waitLAN(t, dir, func(s LANStatus) bool { return s.Listening != "" })
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	ws, resp, err := websocket.Dial(ctx, "ws://"+s.Listening+"/api/control", &websocket.DialOptions{Subprotocols: []string{controlProtocol}})
+	ws, resp, err := websocket.Dial(ctx, "ws://"+s.Listening+"/api/control?k="+testLANToken, &websocket.DialOptions{Subprotocols: []string{controlProtocol}})
 	if resp != nil && resp.Body != nil {
 		resp.Body.Close()
 	}
@@ -344,7 +365,8 @@ func TestServerRunsGateway(t *testing.T) {
 		if !gatewayRuns() {
 			t.Fatalf("run %d: no gateway on the local socket", run)
 		}
-		resp, err := http.Get("http://" + s.Listening + "/api/help")
+		conf, _ := LoadLAN(state)
+		resp, err := http.Get("http://" + s.Listening + "/api/help?k=" + conf.Token)
 		if err != nil || resp.StatusCode != 200 {
 			t.Fatalf("run %d: %v %v", run, resp, err)
 		}
@@ -518,5 +540,292 @@ func TestUnixEndpointEscapes(t *testing.T) {
 	got := unixEndpoint("/Users/me/Library/Application Support/GoRex/rexapi.sock")
 	if want := "unix:///Users/me/Library/Application%20Support/GoRex/rexapi.sock"; got != want {
 		t.Errorf("got %s, want %s", got, want)
+	}
+}
+
+// testLANToken is a pairing token for tests; a real one is 43 random
+// characters (NewLANToken).
+const testLANToken = "test-token-0123456789abcdefghijklmnopqrstuv"
+
+// lanGet asks the listener for url with the headers given, as name and
+// value pairs, and returns the status and the body.
+func lanGet(t *testing.T, url string, header ...string) (int, string) {
+	t.Helper()
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i+1 < len(header); i += 2 {
+		req.Header.Set(header[i], header[i+1])
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	return resp.StatusCode, string(body)
+}
+
+// dialLANControl opens a control connection on the listener at addr,
+// with query added to its path, and says hello.
+func dialLANControl(t *testing.T, addr, query string) (*testConn, error) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	ws, resp, err := websocket.Dial(ctx, "ws://"+addr+"/api/control"+query, &websocket.DialOptions{Subprotocols: []string{controlProtocol}})
+	if resp != nil && resp.Body != nil {
+		resp.Body.Close()
+	}
+	if err != nil {
+		return nil, err
+	}
+	t.Cleanup(func() { ws.CloseNow() })
+	c := newTestConn(t, ws)
+	c.hello(apiRevision)
+	return c, nil
+}
+
+// TestLANNeedsToken lets in a caller from a network allowed only with
+// the pairing token, as a Bearer header or as k; any other gets 403 and
+// is told how to get in.
+func TestLANNeedsToken(t *testing.T) {
+	g, dir := startStateGateway(t)
+	g.lan.apply(LANConfig{Enabled: true, Listen: "127.0.0.1:0", Allow: []string{"127.0.0.1"}, Token: testLANToken})
+	s := waitLAN(t, dir, func(s LANStatus) bool { return s.Listening != "" })
+	help := "http://" + s.Listening + "/api/help"
+
+	for _, tc := range []struct {
+		name   string
+		url    string
+		header []string
+		want   int
+	}{
+		{"no token", help, nil, 403},
+		{"wrong Bearer", help, []string{"Authorization", "Bearer wrong"}, 403},
+		{"wrong k", help + "?k=wrong", nil, 403},
+		{"a prefix of the token", help + "?k=" + testLANToken[:10], nil, 403},
+		{"Basic", help, []string{"Authorization", "Basic " + testLANToken}, 403},
+		{"Bearer", help, []string{"Authorization", "Bearer " + testLANToken}, 200},
+		{"bearer", help, []string{"Authorization", "bearer " + testLANToken}, 200},
+		{"k", help + "?k=" + testLANToken, nil, 200},
+	} {
+		code, body := lanGet(t, tc.url, tc.header...)
+		if code != tc.want {
+			t.Errorf("%s: status %d, want %d (%s)", tc.name, code, tc.want, body)
+		}
+		if code == 403 && (!strings.Contains(body, "re-scan the pairing QR code") || !strings.Contains(body, "gorex rexapi lan legacy add 127.0.0.1")) {
+			t.Errorf("%s: the refusal does not say how to get in: %s", tc.name, body)
+		}
+	}
+
+	if _, err := dialLANControl(t, s.Listening, ""); err == nil || !strings.Contains(err.Error(), "403") {
+		t.Errorf("a WebSocket with no token: %v, want 403", err)
+	}
+	c, err := dialLANControl(t, s.Listening, "?k="+testLANToken)
+	if err != nil {
+		t.Fatalf("a WebSocket with k: %v", err)
+	}
+	result(t, c.request("v", "server.version", nil))
+}
+
+// TestLANTokenNotLogged keeps the token in k out of the log, the wire
+// trace among it.
+func TestLANTokenNotLogged(t *testing.T) {
+	var buf bytes.Buffer
+	var mu sync.Mutex
+	old, oldTracing := log.Writer(), tracing
+	log.SetOutput(writerFunc(func(p []byte) (int, error) {
+		mu.Lock()
+		defer mu.Unlock()
+		return buf.Write(p)
+	}))
+	tracing = true
+	t.Cleanup(func() { log.SetOutput(old); tracing = oldTracing })
+
+	g, dir := startStateGateway(t)
+	g.lan.apply(LANConfig{Enabled: true, Listen: "127.0.0.1:0", Allow: []string{"127.0.0.1"}, Token: testLANToken})
+	s := waitLAN(t, dir, func(s LANStatus) bool { return s.Listening != "" })
+	const wrong = "wrong-token-that-must-not-be-logged"
+	if code, _ := lanGet(t, "http://"+s.Listening+"/api/help?k="+testLANToken+"&x=1"); code != 200 {
+		t.Fatalf("with k: %d", code)
+	}
+	if code, _ := lanGet(t, "http://"+s.Listening+"/api/help?k="+wrong); code != 403 {
+		t.Fatalf("with a wrong k: %d", code)
+	}
+	mu.Lock()
+	logged := buf.String()
+	mu.Unlock()
+	if !strings.Contains(logged, "/api/help?x=1") {
+		t.Errorf("the trace does not show the request without its token:\n%s", logged)
+	}
+	if strings.Contains(logged, testLANToken) || strings.Contains(logged, wrong) {
+		t.Errorf("a token reached the log:\n%s", logged)
+	}
+}
+
+type writerFunc func([]byte) (int, error)
+
+func (f writerFunc) Write(p []byte) (int, error) { return f(p) }
+
+// TestLANLegacyOpen lets an address on the legacy list in without the
+// token, while it stays in a network allowed; a network is not taken on
+// the list.
+func TestLANLegacyOpen(t *testing.T) {
+	g, dir := startStateGateway(t)
+	conf := LANConfig{Enabled: true, Listen: "127.0.0.1:0", Allow: []string{"127.0.0.1"}, Token: testLANToken, LegacyOpen: []string{"127.0.0.1"}}
+	g.lan.apply(conf)
+	s := waitLAN(t, dir, func(s LANStatus) bool { return s.Listening != "" })
+	help := "http://" + s.Listening + "/api/help"
+	if code, body := lanGet(t, help); code != 200 {
+		t.Fatalf("legacy, no token: %d %s", code, body)
+	}
+	// Out of the networks allowed, the legacy list lets no one in.
+	conf.Allow = []string{"10.0.0.0/8"}
+	g.lan.apply(conf)
+	if code, _ := lanGet(t, help); code != 403 {
+		t.Errorf("legacy out of the networks allowed: %d", code)
+	}
+	conf.Allow, conf.LegacyOpen = []string{"127.0.0.1"}, nil
+	g.lan.apply(conf)
+	if code, _ := lanGet(t, help); code != 403 {
+		t.Errorf("off the legacy list, no token: %d", code)
+	}
+
+	for _, ok := range [][]string{{"10.0.0.5"}, {"10.0.0.5/32"}, {"fd00::5"}, {"fd00::5/128"}} {
+		if err := SaveLAN(t.TempDir(), LANConfig{LegacyOpen: ok}); err != nil {
+			t.Errorf("legacy %v: %v", ok, err)
+		}
+	}
+	for _, bad := range [][]string{{"10.0.0.0/24"}, {"0.0.0.0/0"}, {"fd00::/64"}, {"phone"}} {
+		if err := SaveLAN(t.TempDir(), LANConfig{LegacyOpen: bad}); err == nil {
+			t.Errorf("legacy %v was taken", bad)
+		}
+	}
+}
+
+// TestLANMigratesToToken gives an enabled lan.json from before the token
+// one on the gateway's first look, saved for this user only, and refuses
+// a caller without it from then on.
+func TestLANMigratesToToken(t *testing.T) {
+	g, dir := startStateGateway(t)
+	old := []byte(`{"enabled": true, "listen": "127.0.0.1:0", "allow": ["127.0.0.1/32"]}`)
+	if err := os.WriteFile(lanConfPath(dir), old, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	conf, err := LoadLAN(dir)
+	if err != nil || conf.Token != "" {
+		t.Fatalf("the old file: %+v, %v", conf, err)
+	}
+	g.lan.apply(conf)
+	s := waitLAN(t, dir, func(s LANStatus) bool { return s.Listening != "" })
+	saved, err := LoadLAN(dir)
+	if err != nil || len(saved.Token) != 43 {
+		t.Fatalf("after the gateway's look: %+v, %v; want a token", saved, err)
+	}
+	if runtime.GOOS != "windows" {
+		if fi, err := os.Stat(lanConfPath(dir)); err != nil || fi.Mode().Perm() != 0o600 {
+			t.Errorf("lan.json: %v, %v; want mode 0600", fi, err)
+		}
+	}
+	help := "http://" + s.Listening + "/api/help"
+	if code, body := lanGet(t, help); code != 403 || !strings.Contains(body, "legacy add") {
+		t.Errorf("no token after the upgrade: %d %s", code, body)
+	}
+	if code, _ := lanGet(t, help, "Authorization", "Bearer "+saved.Token); code != 200 {
+		t.Errorf("the new token: %d", code)
+	}
+	// The file read again, as the gateway does when it changes, keeps
+	// the listener and its token.
+	g.lan.apply(saved)
+	if code, _ := lanGet(t, help+"?k="+saved.Token); code != 200 {
+		t.Errorf("the token after the file is read again: %d", code)
+	}
+}
+
+// TestLANRotateClosesConnections gives the listener a new token: every
+// connection made with the old one closes at once, the old token is
+// refused and the new one let in, on the same address.
+func TestLANRotateClosesConnections(t *testing.T) {
+	g, dir := startStateGateway(t)
+	if err := SaveLAN(dir, LANConfig{Enabled: true, Listen: "127.0.0.1:0", Allow: []string{"127.0.0.1"}}); err != nil {
+		t.Fatal(err)
+	}
+	before, _ := LoadLAN(dir)
+	g.lan.apply(before)
+	s := waitLAN(t, dir, func(s LANStatus) bool { return s.Listening != "" })
+
+	ws, err := dialLANControl(t, s.Listening, "?k="+before.Token)
+	if err != nil {
+		t.Fatal(err)
+	}
+	kept, err := net.Dial("tcp", s.Listening)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer kept.Close()
+	fmt.Fprintf(kept, "GET /api/help HTTP/1.1\r\nHost: %s\r\nAuthorization: Bearer %s\r\n\r\n", s.Listening, before.Token)
+	r := bufio.NewReader(kept)
+	resp, err := http.ReadResponse(r, nil)
+	if err != nil || resp.StatusCode != 200 {
+		t.Fatalf("kept alive: %v %v", resp, err)
+	}
+	io.Copy(io.Discard, resp.Body)
+	resp.Body.Close()
+
+	after, err := RotateLANToken(dir)
+	if err != nil || after.Token == before.Token || after.Token == "" {
+		t.Fatalf("RotateLANToken = %+v, %v", after, err)
+	}
+	if saved, _ := LoadLAN(dir); saved.Token != after.Token {
+		t.Fatalf("the new token was not saved")
+	}
+	g.lan.apply(after)
+
+	closed := time.After(5 * time.Second)
+	for open := true; open; {
+		select {
+		case _, open = <-ws.msgs:
+		case <-closed:
+			t.Fatal("the WebSocket made with the old token stays open")
+		}
+	}
+	kept.SetReadDeadline(time.Now().Add(5 * time.Second))
+	if _, err := r.ReadByte(); err == nil || os.IsTimeout(err) {
+		t.Errorf("the connection kept alive stays open: %v", err)
+	}
+	if now := LoadLANStatus(dir).Listening; now != s.Listening {
+		t.Errorf("the listener moved from %s to %s", s.Listening, now)
+	}
+	help := "http://" + s.Listening + "/api/help"
+	if code, _ := lanGet(t, help+"?k="+before.Token); code != 403 {
+		t.Errorf("the old token: %d", code)
+	}
+	if code, _ := lanGet(t, help+"?k="+after.Token); code != 200 {
+		t.Errorf("the new token: %d", code)
+	}
+}
+
+// TestWriteJSONWhileRead writes a file that a reader has open, as the
+// app's poll has lan-status.json open: on Windows the rename fails until
+// the reader closes it, and the write must not be lost.
+func TestWriteJSONWhileRead(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "lan-status.json")
+	if err := writeJSON(path, LANStatus{Running: true}); err != nil {
+		t.Fatal(err)
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	go func() {
+		time.Sleep(100 * time.Millisecond)
+		f.Close()
+	}()
+	if err := writeJSON(path, LANStatus{Running: true, Listening: "192.0.2.10:7297"}); err != nil {
+		t.Fatalf("a write while the file is read: %v", err)
+	}
+	if s := LoadLANStatus(filepath.Dir(path)); s.Listening != "192.0.2.10:7297" {
+		t.Errorf("the write was lost: %+v", s)
 	}
 }

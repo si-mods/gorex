@@ -68,7 +68,11 @@ func wtListenAddr(httpListen string) (string, error) {
 	return net.JoinHostPort(host, strconv.Itoa(port+1)), nil
 }
 
-func (w *wtListener) start(httpListen string, allowed func(net.Addr) bool) {
+// start listens for WebTransport beside the HTTP listener at httpListen.
+// A CONNECT is admitted as an HTTP request on the local network is
+// (lanListener.admit), the pairing token with it; the session's streams
+// then need no token of their own (withWTAuth).
+func (w *wtListener) start(httpListen string) {
 	addr, err := wtListenAddr(httpListen)
 	if err != nil {
 		w.mu.Lock()
@@ -126,15 +130,12 @@ func (w *wtListener) start(httpListen string, allowed func(net.Addr) bool) {
 			refuseHost(rw, r)
 			return
 		}
-		if allowed != nil && !allowed(&net.UDPAddr{IP: parseRemoteIP(r.RemoteAddr)}) {
-			// Fall back to lan.admit for exact error response & logging.
-			if _, ok := w.g.lan.admit(rw, r); !ok {
-				return
-			}
-		} else if w.g.lan != nil {
-			if _, ok := w.g.lan.admit(rw, r); !ok {
-				return
-			}
+		if w.g.lan == nil {
+			writeRefusal(rw, "the local network listener is off")
+			return
+		}
+		if _, ok := w.g.lan.admit(rw, r); !ok {
+			return
 		}
 		sess, err := wt.Upgrade(rw, r)
 		if err != nil {
@@ -191,17 +192,11 @@ func (w *wtListener) status() (listening, certHash, errMsg string) {
 	return "", "", errMsg
 }
 
-func parseRemoteIP(remoteAddr string) net.IP {
-	host, _, err := net.SplitHostPort(remoteAddr)
-	if err != nil {
-		host = remoteAddr
-	}
-	return net.ParseIP(host)
-}
-
 func (w *wtListener) serveSession(sess *webtransport.Session, origin, host string) {
 	defer sess.CloseWithError(0, "")
-	ctx := sess.Context()
+	// Only a session whose CONNECT showed the token gets here: its
+	// streams' requests carry the mark in their context.
+	ctx := withWTAuth(sess.Context())
 	for {
 		str, err := sess.AcceptStream(ctx)
 		if err != nil {
@@ -243,6 +238,7 @@ func (w *wtListener) handleSocketStream(ctx context.Context, str *webtransport.S
 	srv := &http.Server{
 		Handler:           w.g.HandlerFor(transportLAN),
 		ReadHeaderTimeout: 10 * time.Second,
+		BaseContext:       func(net.Listener) context.Context { return withWTAuth(context.Background()) },
 	}
 	ln := &singleConnListener{conn: wrappedServer, addr: wrappedServer.LocalAddr()}
 	go func() {

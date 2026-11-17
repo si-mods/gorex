@@ -144,9 +144,10 @@ wins over `-s`. An ambiguous target exits 3. `rename` gives a pane a label.
 clients from the server the app already runs. The server runs that
 gateway itself while the local network listener or built-in Tailscale is
 on; `gorex rexapi` alone runs one of its own, for development.
-`gorex rexapi lan on|off|status`, `gorex rexapi lan listen HOST:PORT` and
-`gorex rexapi lan allow|deny NETWORK` set the listener on the local
-network; `gorex rexapi tailscale on|off|login|logout|rename|status`,
+`gorex rexapi lan on|off|status`, `gorex rexapi lan listen HOST:PORT`,
+`gorex rexapi lan allow|deny NETWORK`, `gorex rexapi lan token
+show|rotate` and `gorex rexapi lan legacy add|remove|list ADDRESS` set
+the listener on the local network and its pairing token; `gorex rexapi tailscale on|off|login|logout|rename|status`,
 `gorex rexapi pair`, the gateway's own view of the first, and `gorex
 rexapi call METHOD [JSON]` talk to the gateway. See [rex-api.md](rex-api.md).
 

@@ -661,7 +661,7 @@ func TestAuthURLOnlyLocal(t *testing.T) {
 	if f.g.lan == nil {
 		f.g.lan = newLANListener(f.g, t.TempDir())
 	}
-	f.g.lan.apply(LANConfig{Enabled: true, Listen: "127.0.0.1:0", Allow: []string{"127.0.0.1"}})
+	f.g.lan.apply(LANConfig{Enabled: true, Listen: "127.0.0.1:0", Allow: []string{"127.0.0.1"}, Token: testLANToken})
 	t.Cleanup(f.g.lan.close)
 
 	dial := func(url string, httpc *http.Client) *testConn {
@@ -688,7 +688,7 @@ func TestAuthURLOnlyLocal(t *testing.T) {
 	f.g.lan.mu.Lock()
 	lanAddr := f.g.lan.ln.Addr().String()
 	f.g.lan.mu.Unlock()
-	lan := dial("ws://"+lanAddr+"/api/control", nil)
+	lan := dial("ws://"+lanAddr+"/api/control?k="+testLANToken, nil)
 	tcp := f.dialControl()
 	tcp.hello(apiRevision)
 

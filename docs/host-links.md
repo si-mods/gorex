@@ -16,7 +16,7 @@ its own idea of who the client is:
 | Tailcat, port 7297 (gateway) | the same allowlist | Rex Go |
 | Tailscale discovery, port 7464 | devices of the same Tailscale user; identity `tailscale:<scope>:<node>` | desktop (macOS, Linux) |
 | Gateway HTTPS on the tailnet, port 443 | the Tailscale user who signed the gateway in | Rex Go, web, Rex's own app |
-| Gateway HTTP on the local network, port 7297 | the networks allowed; no credential, no encryption | Rex Go, web, Rex's own app |
+| Gateway HTTP on the local network, port 7297 | the networks allowed, with the pairing token (or an address on the legacy list); no encryption, so a sniffer on the network can take the token | Rex Go, web (WebTransport, 7298), Rex's own app (legacy list) |
 
 The user pays for it:
 

@@ -207,11 +207,16 @@ func fetchLAN() {
 // saveLAN writes the listener's settings, which the server's gateway
 // applies within a second.
 func saveLAN(c rexapi.LANConfig) bool {
-	if err := rexapi.SaveLAN(rexapi.TailnetDir(), c); err != nil {
+	dir := rexapi.TailnetDir()
+	if err := rexapi.SaveLAN(dir, c); err != nil {
 		remoteUI.lanErr = err.Error()
 		return false
 	}
 	remoteUI.lanErr = ""
+	// Read back: SaveLAN gives the settings their pairing token.
+	if saved, err := rexapi.LoadLAN(dir); err == nil {
+		c = saved
+	}
 	remoteUI.lan = c
 	return true
 }
