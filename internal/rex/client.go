@@ -497,6 +497,14 @@ func (c *Client) Resize(sid string, cols, rows int) error {
 	return c.call(Request{Op: "resize", SID: sid, Cols: cols, Rows: rows}, nil)
 }
 
+// Resync asks the server to send the session's screen again, in band, on
+// the stream whose attach gave client (Stream.ClientID), with what the
+// session prints after it: ErrResyncSize's message while the session's
+// size is not cols×rows.
+func (c *Client) Resync(sid, client string, cols, rows int) error {
+	return c.call(Request{Op: "resync", SID: sid, Client: client, Cols: cols, Rows: rows}, nil)
+}
+
 // Focus tells the server the user of this client looks at the session
 // now: its size follows the machine the user's focus is on.
 func (c *Client) Focus(sid string) error { return c.call(Request{Op: "focus", SID: sid}, nil) }

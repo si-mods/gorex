@@ -193,8 +193,8 @@ So each attach gives an id of its own (`Attach.Client`), and the server
 names the authority by it (`SessionInfo.SizedBy`, empty while a device
 holds the size, `SizeLock`): a window that is neither takes the session's
 size rather than the pane's. When it takes a size the program drew for
-another, it asks the server for the session's screen (`capture`) and shows
-that, since what it laid out at the pane's size before, wrapped where the
+another, it asks the server to send the session's screen again on its
+stream (`resync`) and shows that, since what it laid out at the pane's size before, wrapped where the
 program did not wrap and drawn over where the program moves its cursor, is
 not the screen the server shows. The way back is mended alike: a pane
 typing or pasting takes the authority at once, without waiting for the

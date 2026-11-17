@@ -100,9 +100,19 @@ func TestPaneReturnsToItsSize(t *testing.T) {
 	waitFor(t, tt, "the pane's stream", func() bool {
 		return p.stream != nil && p.stream.ClientID() != ""
 	})
-	refresh(a)
-	tt.Frame()
-	ownCols, ownRows := p.askedSize()
+	// The pane's stream sends its size on its own: the session takes it
+	// a moment later. Read the pane's size once they agree.
+	var ownCols, ownRows int
+	waitFor(t, tt, "the session to take the pane's size", func() bool {
+		refresh(a)
+		cols, rows := p.term.Size()
+		askedCols, askedRows := p.askedSize()
+		if cols == 0 || p.info.Cols != cols || p.info.Rows != rows || cols != askedCols || rows != askedRows {
+			return false
+		}
+		ownCols, ownRows = cols, rows
+		return true
+	})
 	other := a.client.Stream(p.SID, 200, 60)
 	defer other.Close()
 	if err := other.Resize(200, 60); err != nil {

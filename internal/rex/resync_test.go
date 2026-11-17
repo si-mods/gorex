@@ -268,3 +268,174 @@ func BenchmarkSnapshotLocked(b *testing.B) {
 		ss.snapshotLocked(Attach{History: resyncHistory})
 	}
 }
+
+// streamReader reads an attach's stream into a buffer.
+type streamReader struct {
+	mu  sync.Mutex
+	got []byte
+}
+
+func readStream(conn net.Conn) *streamReader {
+	r := &streamReader{}
+	go func() {
+		buf := make([]byte, 32<<10)
+		for {
+			n, err := conn.Read(buf)
+			r.mu.Lock()
+			r.got = append(r.got, buf[:n]...)
+			r.mu.Unlock()
+			if err != nil {
+				return
+			}
+		}
+	}()
+	return r
+}
+
+// afterReset returns what the stream brought after its last resync's
+// reset, and how many resets it brought.
+func (r *streamReader) afterReset() (string, int) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	got := string(r.got)
+	i := strings.LastIndex(got, resyncReset)
+	if i < 0 {
+		return "", 0
+	}
+	return got[i+len(resyncReset):], strings.Count(got, resyncReset)
+}
+
+// TestResyncClientInBand is a window that asks for the session's screen
+// again (Client.Resync), as one that laid its terminal out at another
+// size does: the screen comes on its stream holding the output before
+// the request; output printed meanwhile comes once, in the screen or
+// after it; output printed once the screen came follows it. A request
+// at another size than the session's, or for the stream of another
+// peer, is refused.
+func TestResyncClientInBand(t *testing.T) {
+	for name, peer := range map[string]string{"local": "", "remote": key.NewNode().Public().String()} {
+		t.Run(name, func(t *testing.T) {
+			s, _ := testServer(t)
+			c := pipe(s, "")
+			defer c.Close()
+			info, err := c.Create(CreateOptions{Command: silentCommand(), Cols: 80, Rows: 24})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer c.Kill(info.ID)
+			ss := sessionOf(t, s, info.ID)
+			w := pipe(s, peer)
+			defer w.Close()
+			conn, err := w.AttachConn(Attach{SID: info.ID, Cols: 80, Rows: 24, Client: "w1"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer conn.Close()
+			r := readStream(conn)
+			emit := func(s string) { ss.emit([]byte(s+"\r\n"), nil, len(s)+2) }
+			emit("before the resync")
+
+			if err := w.Resync(info.ID, "w1", 81, 24); err == nil || err.Error() != ErrResyncSize.Error() {
+				t.Fatalf("a resync at another size: %v, want %v", err, ErrResyncSize)
+			}
+			other := pipe(s, key.NewNode().Public().String())
+			defer other.Close()
+			if err := other.Resync(info.ID, "w1", 80, 24); err == nil {
+				t.Fatal("another peer resynced the stream")
+			}
+			if err := w.Resync(info.ID, "w1", 80, 24); err != nil {
+				t.Fatal(err)
+			}
+			emit("meanwhile")
+			var tail string
+			if !waitUntil(5*time.Second, func() bool {
+				tail, _ = r.afterReset()
+				return strings.Contains(tail, "meanwhile")
+			}) {
+				t.Fatalf("no resync on the stream: %q", tail)
+			}
+			// The screen came: what prints now must follow it.
+			emit("after the screen")
+			if !waitUntil(5*time.Second, func() bool {
+				tail, _ = r.afterReset()
+				return strings.Contains(tail, "after the screen")
+			}) {
+				t.Fatalf("the output after the screen did not follow it: %q", tail)
+			}
+			b, m, a := strings.Index(tail, "before the resync"), strings.Index(tail, "meanwhile"), strings.Index(tail, "after the screen")
+			if b < 0 || b > m || m > a {
+				t.Fatalf("after the reset the stream brings %q: want the screen with the output before the request, then the rest in order", tail)
+			}
+			for _, s := range []string{"before the resync", "meanwhile", "after the screen"} {
+				if n := strings.Count(tail, s); n != 1 {
+					t.Fatalf("%q comes %d times after the reset: %q", s, n, tail)
+				}
+			}
+		})
+	}
+}
+
+// TestResyncReachesTheLiveAttach is a stream that attached again with
+// its id while the server still holds its old attach, whose connection
+// is dead: each resync reaches the live one, and with no live one the
+// request fails, so that the window falls back to a capture.
+func TestResyncReachesTheLiveAttach(t *testing.T) {
+	s, _ := testServer(t)
+	c := pipe(s, "")
+	defer c.Close()
+	info, err := c.Create(CreateOptions{Command: silentCommand(), Cols: 80, Rows: 24})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Kill(info.ID)
+	ss := sessionOf(t, s, info.ID)
+	attach := func() net.Conn {
+		conn, err := c.AttachConn(Attach{SID: info.ID, Cols: 80, Rows: 24, Client: "w1"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { conn.Close() })
+		return conn
+	}
+	attach()
+	ss.mu.Lock()
+	var old *attached
+	for a := range ss.clients {
+		old = a
+	}
+	ss.mu.Unlock()
+	live := readStream(attach())
+	// The old connection is half-open: the server has not dropped it, but
+	// its writer is gone.
+	old.mu.Lock()
+	old.dead = true
+	old.mu.Unlock()
+
+	for i := 1; i <= 10; i++ {
+		if err := c.Resync(info.ID, "w1", 80, 24); err != nil {
+			t.Fatal(err)
+		}
+		if !waitUntil(5*time.Second, func() bool {
+			_, n := live.afterReset()
+			return n >= i
+		}) {
+			t.Fatalf("resync %d did not reach the live attach", i)
+		}
+	}
+
+	live.mu.Lock()
+	live.got = nil
+	live.mu.Unlock()
+	ss.mu.Lock()
+	for a := range ss.clients {
+		if a != old {
+			a.mu.Lock()
+			a.dead = true
+			a.mu.Unlock()
+		}
+	}
+	ss.mu.Unlock()
+	if err := c.Resync(info.ID, "w1", 80, 24); err == nil {
+		t.Fatal("a resync with no live attach succeeded: the window would not fall back")
+	}
+}
