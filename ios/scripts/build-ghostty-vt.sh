@@ -17,6 +17,9 @@ set -euo pipefail
 # The commit of si-mods/mygo's plugins/terminal/internal/libbuild.
 COMMIT=108cacb17ed8990840cd14abfce43d8ed8503ca1
 ZIG_VERSION=0.17.0
+# SHA-256 of the Zig archives; update with ZIG_VERSION (ziglang.org/download/index.json, "shasum").
+ZIG_SHA256_aarch64=b607e9b9234790a008116ae5bdb71c6243b84b9fb42a53a9e70fde41c06c536a
+ZIG_SHA256_x86_64=4f9a1c5269aa17ebda5e6d3c2b89d6cbf36f7d2b22a0306e9ab98f25f95529c6
 
 IOS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CACHE="${XDG_CACHE_HOME:-$HOME/.cache}/gorex-ios"
@@ -26,9 +29,18 @@ SRC="$CACHE/ghostty"
 if [[ -z "${ZIG:-}" ]]; then
     ZIG="$CACHE/zig-$ZIG_VERSION/zig"
     if [[ ! -x "$ZIG" ]]; then
+        ARCH="$(uname -m | sed s/arm64/aarch64/)"
+        EXPECT="ZIG_SHA256_$ARCH"
+        ARCHIVE="$(mktemp)"
+        curl -fL -o "$ARCHIVE" "https://ziglang.org/download/$ZIG_VERSION/zig-$ARCH-macos-$ZIG_VERSION.tar.xz"
+        if [[ "$(shasum -a 256 "$ARCHIVE" | cut -d" " -f1)" != "${!EXPECT:-}" ]]; then
+            rm -f "$ARCHIVE"
+            echo "error: Zig $ZIG_VERSION archive for $ARCH-macos does not match its pinned SHA-256; set ZIG to use your own Zig" >&2
+            exit 1
+        fi
         mkdir -p "$CACHE/zig-$ZIG_VERSION"
-        curl -fL "https://ziglang.org/download/$ZIG_VERSION/zig-$(uname -m | sed s/arm64/aarch64/)-macos-$ZIG_VERSION.tar.xz" |
-            tar -xJ --strip-components=1 -C "$CACHE/zig-$ZIG_VERSION"
+        tar -xJf "$ARCHIVE" --strip-components=1 -C "$CACHE/zig-$ZIG_VERSION"
+        rm -f "$ARCHIVE"
     fi
 fi
 
