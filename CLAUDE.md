@@ -1,5 +1,9 @@
 # GoRex
 
+## Lessons
+
+- Before you open or merge a PR, read `docs/lessons.md`. When a PR fixes, undoes or redoes an earlier one, add the lesson there.
+
 ## Design
 
 - Before adding or changing UI, read `DESIGN.md`. New overlays, pages and inactive states use its shaders (`paintFrost`, `paintBackground`, `dimmed`) and follow its rules.
