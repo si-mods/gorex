@@ -23,7 +23,7 @@ struct SettingsView: View {
 
     private static let schemes: [(String, LocalizedStringResource)] = [("system", "System"), ("dark", "Dark"), ("light", "Light")]
     private static let groupings: [(String, LocalizedStringResource)] = [
-        (Grouping.spaces.rawValue, "Desktop Spaces"), (Grouping.hosts.rawValue, "By Host"),
+        (Grouping.spaces.rawValue, "By Project"), (Grouping.hosts.rawValue, "By Host"),
     ]
 
     private var cards: [[Item]] {
@@ -42,10 +42,10 @@ struct SettingsView: View {
              Item(title: "Share on Hotspot", icon: tile("personalhotspot", .green),
                   value: String(localized: HotspotShare.shared.isSharing ? "On" : "Off"), page: AnyView(HotspotShareView())),
              Item(title: "Grouping", icon: tile("rectangle.3.group.fill", .teal),
-                  value: String(localized: Self.groupings.first { $0.0 == Grouping(stored: grouping).rawValue }?.1 ?? "Desktop Spaces"),
+                  value: String(localized: Self.groupings.first { $0.0 == Grouping(stored: grouping).rawValue }?.1 ?? "By Project"),
                   page: AnyView(Choices(title: "Grouping", options: Self.groupings.map { ($0.0, String(localized: $0.1)) }, selection: $grouping,
-                                        footer: "Desktop Spaces shows one space at a time, as the desktop's sidebar: switch spaces at the top, and each lists its windows by host, those on your other hosts too. By Host lists each host's sessions."))),
-             Item(title: "Space Sync", icon: tile("icloud.and.arrow.up.fill", .cyan),
+                                        footer: "By Project shows one project at a time, as the desktop's sidebar: switch projects at the top, and each lists its windows by host, those on your other hosts too. By Host lists each host's sessions."))),
+             Item(title: "Project Sync", icon: tile("icloud.and.arrow.up.fill", .cyan),
                   value: spaceStore.iCloudSyncEnabled ? String(localized: "iCloud On") : String(localized: "Local Only"),
                   page: AnyView(SpaceSyncView()))],
             [Item(title: "Features", icon: tile("sparkles", .blue), page: AnyView(FeaturesView())),

@@ -27,9 +27,15 @@ struct HostListView: View {
     /// waiting is one that waits for Settings to close first.
     @State private var pairing: HostConfig?
     @State private var waiting: HostConfig?
-    @State private var creatingSpace = false
     @State private var renamingSpace: CentralSpace?
     @State private var spaceName = ""
+    /// The project sheet open: New Project, or a project's Change Folder.
+    @State private var projectSheet: ProjectSheetMode?
+    /// Why a project's new window did not open, and whether changing its
+    /// folder is the way on.
+    @State private var projectFailure: ProjectFailure?
+    /// The project whose new window is on its way.
+    @State private var openingProject: String?
     @AppStorage(Grouping.key) private var grouping = Grouping.standard
     /// The space chosen, by its centralized `CentralSpace.id` or `"__unassigned__"`.
     @AppStorage("space") private var chosen = ""
@@ -91,15 +97,33 @@ struct HostListView: View {
             spaceStore.sync(from: store.hosts.map(\.spaceSnapshot))
             pushSpacesToDesktop()
         }
-        .alert("New Space", isPresented: $creatingSpace) {
-            TextField("Name", text: $spaceName)
-            Button("Cancel", role: .cancel) {}
-            Button("Create") {
-                let created = spaceStore.createSpace(name: spaceName)
-                chosen = created.id
+        .sheet(item: $projectSheet) { mode in
+            ProjectSheet(mode: mode) { host, dir, name in
+                switch mode {
+                case .new:
+                    if let host, let dir {
+                        createProject(on: host, dir: dir, name: name)
+                    } else {
+                        // A project that only groups windows, as a space did.
+                        let created = spaceStore.createSpace(name: name)
+                        chosen = created.id
+                    }
+                case .change(let id):
+                    if let host, let dir { changeFolder(id, on: host, dir: dir) }
+                }
             }
         }
-        .alert("Rename Space", isPresented: Binding { renamingSpace != nil } set: { if !$0 { renamingSpace = nil } }, presenting: renamingSpace) { s in
+        .alert(projectFailure?.title ?? "", isPresented: Binding { projectFailure != nil } set: { if !$0 { projectFailure = nil } }, presenting: projectFailure) { f in
+            if let id = f.changeFolder {
+                Button("Change Folder…") { projectSheet = .change(id) }
+                Button("Cancel", role: .cancel) {}
+            } else {
+                Button("OK", role: .cancel) {}
+            }
+        } message: { f in
+            Text(f.why)
+        }
+        .alert("Rename Project", isPresented: Binding { renamingSpace != nil } set: { if !$0 { renamingSpace = nil } }, presenting: renamingSpace) { s in
             TextField(s.name, text: $spaceName)
             Button("Cancel", role: .cancel) {}
             Button("Save") {
@@ -125,7 +149,7 @@ struct HostListView: View {
 
     private var syncFingerprint: [String] {
         store.hosts.map { h in
-            let s = h.sessions.map { "\($0.id):\($0.label):\($0.view?.revision ?? -1):\((h.remote[$0.id] ?? []).count)" }.joined(separator: ",")
+            let s = h.sessions.map { "\($0.id):\($0.label):\($0.view?.revision ?? -1):\((h.remote[$0.id] ?? []).count):\($0.project?.dir ?? "")" }.joined(separator: ",")
             return "\(h.id.uuidString):\(h.status == .online):\(h.spaceMachineKey):\(s)"
         }
     }
@@ -153,6 +177,9 @@ struct HostListView: View {
                             let hasUnassigned = hasUnassignedWindows
                             let selection = resolvedSelection(all: all, hasUnassigned: hasUnassigned)
                             strip(all, hasUnassigned: hasUnassigned, selection: selection)
+                            if case .space(let id) = selection, let s = spaceStore.space(id: id) {
+                                projectHeader(s)
+                            }
                             ForEach(sections(selection)) { host in
                                 HostSection(host: host, space: selection, collapsed: $collapsed, filter: filter, open: { go($0) })
                             }
@@ -257,21 +284,39 @@ struct HostListView: View {
                             let sel = SpaceSelection.space(s.id)
                             let isChosen = sel == selection
                             Button { withAnimation(.snappy) { chosen = s.id } } label: {
-                                Text(verbatim: s.name).lineLimit(1)
+                                // The folder under the name, as the
+                                // desktop's sidebar header shows it.
+                                VStack(spacing: 0) {
+                                    Text(verbatim: s.name).lineLimit(1)
+                                    if let f = s.folder {
+                                        Text(verbatim: ProjectWindow.short(f))
+                                            .font(.caption2)
+                                            .lineLimit(1)
+                                            .truncationMode(.head)
+                                            .frame(maxWidth: 160)
+                                            .opacity(0.7)
+                                    }
+                                }
                                     .foregroundStyle(isChosen ? Color(.systemBackground) : .primary)
                                     .padding(.horizontal, 16)
-                                    .frame(height: 42)
+                                    .frame(minHeight: 42)
                                     .glassEffect(isChosen ? .regular.tint(.accentColor).interactive() : .regular.interactive(), in: .capsule)
                                     .glassEffectID(isChosen ? "chosen" : s.id, in: glass)
                             }
                             .buttonStyle(.plain)
                             .accessibilityAddTraits(isChosen ? .isSelected : [])
                             .contextMenu {
-                                Button("Rename Space…", systemImage: "pencil") {
+                                Button("Rename Project…", systemImage: "pencil") {
                                     spaceName = s.name
                                     renamingSpace = s
                                 }
-                                Button("Delete Space", systemImage: "trash", role: .destructive) {
+                                Button(s.folder == nil ? "Choose Folder…" : "Change Folder…", systemImage: "folder") {
+                                    projectSheet = .change(s.id)
+                                }
+                                if s.folder != nil {
+                                    Button("Remove Folder", systemImage: "folder.badge.minus") { removeFolder(s.id) }
+                                }
+                                Button("Delete Project", systemImage: "trash", role: .destructive) {
                                     spaceStore.deleteSpace(s.id)
                                     if chosen == s.id { chosen = "" }
                                 }
@@ -293,16 +338,13 @@ struct HostListView: View {
                             .accessibilityAddTraits(isChosen ? .isSelected : [])
                             .id(sel)
                         }
-                        Button {
-                            spaceName = ""
-                            creatingSpace = true
-                        } label: {
+                        Button { projectSheet = .new } label: {
                             Image(systemName: "plus")
                                 .frame(width: 42, height: 42)
                                 .glassEffect(.regular.interactive(), in: .circle)
                         }
                         .buttonStyle(.plain)
-                        .accessibilityLabel("New Space")
+                        .accessibilityLabel("New Project")
                     }
                     .font(.subheadline.weight(.semibold))
                 }
@@ -313,6 +355,189 @@ struct HostListView: View {
                 guard let p else { return }
                 if old == p { proxy.scrollTo(p) } else { withAnimation { proxy.scrollTo(p) } }
             }
+        }
+    }
+
+    /// The chosen project's folder and home host, under the strip, with its
+    /// New Window; a project with no folder offers to choose one.
+    private func projectHeader(_ s: CentralSpace) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: s.folder == nil ? "folder.badge.questionmark" : "folder")
+                .font(.title3)
+                .foregroundStyle(.secondary)
+                .frame(width: 28)
+            VStack(alignment: .leading, spacing: 2) {
+                if let f = s.folder {
+                    Text(verbatim: ProjectWindow.short(f))
+                        .font(.subheadline.monospaced())
+                        .lineLimit(1)
+                        .truncationMode(.head)
+                    Text(verbatim: homeName(s) ?? String(localized: "Home host not added"))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                } else {
+                    Text("No Folder").font(.subheadline)
+                    Text("Choose one to open new windows in it.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                }
+            }
+            Spacer(minLength: 8)
+            if s.folder != nil {
+                Button { newProjectWindow(s) } label: {
+                    Group {
+                        if openingProject == s.id {
+                            ProgressView()
+                        } else {
+                            HStack(spacing: 6) {
+                                Image(systemName: "plus")
+                                Text("New Window")
+                            }
+                        }
+                    }
+                    .font(.subheadline.weight(.semibold))
+                    .lineLimit(1)
+                    .fixedSize()
+                }
+                .buttonStyle(.glass)
+                .disabled(openingProject == s.id)
+            } else {
+                Button("Choose Folder…") { projectSheet = .change(s.id) }
+                    .font(.subheadline.weight(.semibold))
+                    .buttonStyle(.glass)
+            }
+        }
+        .padding(.horizontal, 4)
+        .padding(.top, -14)
+    }
+
+    /// The name of a project's home host, nil when no host of its machine
+    /// is added here.
+    private func homeName(_ s: CentralSpace) -> String? {
+        store.hosts.first { $0.spaceMachineKey == s.home_machine }?.config.name
+    }
+
+    private var candidates: [ProjectWindow.Candidate] {
+        store.hosts.map {
+            .init(id: $0.id, name: $0.config.name, machine: $0.spaceMachineKey, online: $0.status == .online, sessions: $0.sessions)
+        }
+    }
+
+    /// The machine a host's server takes as a project's home: its own, or
+    /// Demo Mode's key, which has none.
+    private func homeMachine(of host: Host) -> String? {
+        host.machine ?? (host.isDemo ? host.spaceMachineKey : nil)
+    }
+
+    /// Opens a new window of a project with a folder on its home host, in
+    /// the folder; nowhere else when the home host can't be reached.
+    private func newProjectWindow(_ s: CentralSpace) {
+        let cant = String(localized: "Can't Open a New Window")
+        switch ProjectWindow.plan(s, hosts: candidates) {
+        case .noFolder:
+            projectSheet = .change(s.id)
+        case .unknownHost:
+            projectFailure = .init(title: cant, why: String(localized: "The home host of \(s.name) is not added on this device. Add it in Settings, or change the project's folder."), changeFolder: s.id)
+        case .offline(_, let name):
+            projectFailure = .init(title: cant, why: String(localized: "\(name), the home host of \(s.name), is offline. New windows of the project open only there."), changeFolder: nil)
+        case .window(let id, let session, let cwd):
+            guard let host = store.host(id) else { return }
+            openProject(s, on: host) {
+                try await host.newWindow(in: session, cwd: cwd).map { (session, $0) }
+            }
+        case .session(let id, let label, let cwd):
+            guard let host = store.host(id) else { return }
+            let machine = homeMachine(of: host)
+            openProject(s, on: host) {
+                guard let (session, block) = try await host.newSession(label: label, cwd: cwd) else { return nil }
+                if host.supportsProjects, let machine {
+                    try? await host.setHome(session: session, machine: machine, dir: cwd)
+                }
+                return (session, block)
+            }
+        }
+    }
+
+    /// Runs what opens a project's window, puts the window in the project
+    /// and goes to it; tells why it failed, a folder gone with a way to
+    /// change it.
+    private func openProject(_ s: CentralSpace, on host: Host, _ body: @escaping () async throws -> (String, String)?) {
+        openingProject = s.id
+        Task {
+            defer { openingProject = nil }
+            do {
+                guard let (session, block) = try await body() else { return }
+                spaceStore.assign(machine: host.spaceMachineKey, block: block, window: nil, to: s.id)
+                let moved = await host.applySpaces(spaceStore.orderedSpaces)
+                let sid = moved ? await host.resolveSession(forBlock: block, fallback: session) : session
+                go(TerminalTarget(host: host.id, session: sid, block: block, title: ""))
+            } catch let error where ProjectWindow.folderMissing(error) {
+                projectFailure = .init(title: String(localized: "Folder Not Found"),
+                                       why: String(localized: "\(s.folder ?? "") is not on \(host.config.name) any more. Change the project's folder to open a new window."),
+                                       changeFolder: s.id)
+            } catch {
+                projectFailure = .init(title: String(localized: "Can't Open a New Window"), why: error.localizedDescription, changeFolder: nil)
+            }
+        }
+    }
+
+    /// Makes a project of a folder on a host: the host keeps its home, and
+    /// its first window opens there, in the folder.
+    private func createProject(on host: Host, dir: String, name: String) {
+        let s = spaceStore.createSpace(name: name, homeMachine: host.spaceMachineKey, dir: dir)
+        withAnimation(.snappy) { chosen = s.id }
+        let machine = homeMachine(of: host)
+        openProject(s, on: host) {
+            let existing = host.sessions.first {
+                $0.id != SpaceStore.desktopTerminalsSessionID
+                    && $0.label.trimmingCharacters(in: .whitespaces).caseInsensitiveCompare(s.name) == .orderedSame
+            }
+            let opened: (String, String)?
+            if let existing {
+                opened = try await host.newWindow(in: existing.id, cwd: dir).map { (existing.id, $0) }
+            } else {
+                opened = try await host.newSession(label: s.name, cwd: dir)
+            }
+            guard let opened else { return nil }
+            if host.supportsProjects, let machine {
+                try await host.setHome(session: opened.0, machine: machine, dir: dir)
+            }
+            return opened
+        }
+    }
+
+    /// Gives a project another home: this device's manifest, the hosts that
+    /// keep a session of it, and, by the desktop sync, the other desktops.
+    private func changeFolder(_ id: String, on host: Host, dir: String) {
+        spaceStore.setHome(id, machine: host.spaceMachineKey, dir: dir)
+        setHomeOnHosts(id, machine: homeMachine(of: host) ?? host.spaceMachineKey, dir: dir)
+    }
+
+    private func removeFolder(_ id: String) {
+        spaceStore.setHome(id, machine: "", dir: "")
+        setHomeOnHosts(id, machine: "", dir: "")
+    }
+
+    /// Sets the home on each online host that keeps a session of the
+    /// project, then sends the manifest to the desktops.
+    private func setHomeOnHosts(_ id: String, machine: String, dir: String) {
+        guard let s = spaceStore.space(id: id) else { return }
+        let targets: [(Host, String)] = store.hosts.compactMap { h in
+            guard h.status == .online, h.supportsProjects else { return nil }
+            return h.sessions.first {
+                $0.id != SpaceStore.desktopTerminalsSessionID
+                    && $0.label.trimmingCharacters(in: .whitespaces).caseInsensitiveCompare(s.name) == .orderedSame
+            }.map { (h, $0.id) }
+        }
+        Task {
+            for (h, session) in targets {
+                do { try await h.setHome(session: session, machine: machine, dir: dir) } catch {
+                    projectFailure = .init(title: String(localized: "Can't Change the Folder"), why: error.localizedDescription, changeFolder: nil)
+                }
+            }
+            pushSpacesToDesktop()
         }
     }
 
@@ -398,6 +623,14 @@ private struct DemoBanner: View {
         .padding(.top, 8)
         .padding(.bottom, 4)
     }
+}
+
+/// Why a project's window did not open; changeFolder is the project whose
+/// folder to change, when that is the way on.
+struct ProjectFailure {
+    let title: String
+    let why: String
+    let changeFolder: String?
 }
 
 enum SpaceSelection: Hashable {
@@ -606,7 +839,7 @@ private struct HostSection: View {
         Button("Move Down", systemImage: "arrow.down") { move(id, in: s, onto: shown[i + 1], shown: shown) }
             .disabled(i >= shown.count - 1)
         Divider()
-        Menu("Move to Space", systemImage: "rectangle.stack") {
+        Menu("Move to Project", systemImage: "rectangle.stack") {
             let m = host.spaceMachineKey
             let current = w.block.flatMap { spaceStore.space(for: m, block: $0) }
             ForEach(spaceStore.orderedSpaces) { target in
@@ -630,7 +863,7 @@ private struct HostSection: View {
             }
             if current != nil {
                 Divider()
-                Button("Unassign from Space", systemImage: "minus.circle") {
+                Button("Unassign from Project", systemImage: "minus.circle") {
                     for b in w.blocks { spaceStore.unassign(machine: m, block: b) }
                 }
             }

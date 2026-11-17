@@ -34,12 +34,47 @@ enum Demo {
                 window("w-claude", [claude, logs, gpu], layout: workLayout()),
                 window("w-dashboard", [dashboard]),
                 window("w-tests", [tests]),
-            ])),
+            ]), project: .init(home_machine: machine, dir: home + "/code/gorex")),
             Host.Session(id: "s-dotfiles", label: "dotfiles", view: SessionView(revision: 1, session_id: "s-dotfiles", label: "dotfiles", windows: [
                 window("w-git", [git]),
                 window("w-shell", [shell]),
             ])),
         ]
+    }
+
+    /// The demo host's machine, as the spaces read it (Host.spaceMachineKey).
+    static var machine: String { "host:\(hostID.uuidString)" }
+
+    /// The demo Mac's home directory.
+    static let home = "/Users/demo"
+
+    /// The demo Mac's folders, by path, for New Project's folder browser.
+    private static let tree: [String: [String]] = [
+        "/": ["Applications", "Library", "System", "Users"],
+        "/Users": ["Shared", "demo"],
+        home: ["Desktop", "Documents", "Downloads", "code", "dotfiles"],
+        home + "/code": ["dashboard", "gorex", "notes-app", "windflow"],
+        home + "/code/gorex": ["cmd", "docs", "internal", "ios", "web"],
+        home + "/code/windflow": ["api", "infra", "web"],
+        home + "/code/dashboard": ["public", "src"],
+        home + "/Documents": ["Invoices", "Talks"],
+    ]
+
+    /// What gorex.dir.list answers on the demo Mac.
+    static func folders(_ path: String) -> Host.Folders {
+        var p = path.trimmingCharacters(in: .whitespaces)
+        if p.isEmpty || p == "~" { p = home } else if p.hasPrefix("~/") { p = home + p.dropFirst(1) }
+        else if !p.hasPrefix("/") { p = home + "/" + p }
+        var parts: [String] = []
+        for c in p.split(separator: "/") {
+            if c == ".." { _ = parts.popLast() } else if c != "." { parts.append(String(c)) }
+        }
+        p = "/" + parts.joined(separator: "/")
+        let parent = parts.isEmpty ? "" : "/" + parts.dropLast().joined(separator: "/")
+        if let dirs = tree[p] { return Host.Folders(path: p, parent: parent, home: home, dirs: dirs) }
+        // A folder the tree names, but does not open, is empty.
+        let there = parts.last.map { tree[parent.isEmpty ? "/" : parent]?.contains($0) ?? false } ?? false
+        return Host.Folders(path: p, parent: parent, home: home, dirs: [], code: there ? nil : "not_found")
     }
 
     /// The first window's panes: Claude on the left, Dashboard over Tests on

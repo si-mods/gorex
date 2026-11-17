@@ -2,6 +2,26 @@
   "sourceLanguage": "en",
   "version": "1.0",
   "strings": {
+    "%@ is not on %@ any more. Change the project's folder to open a new window.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%2$@ 上已没有 %1$@。请更改项目的文件夹后再打开新窗口。"
+          }
+        }
+      }
+    },
+    "%@, the home host of %@, is offline. New windows of the project open only there.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%2$@ 的主目录所在主机 %1$@ 已离线。项目的新窗口只会在那台主机上打开。"
+          }
+        }
+      }
+    },
     "%lld Images, New": {
       "localizations": {
         "en": {
@@ -216,6 +236,16 @@
         }
       }
     },
+    "Can't Change the Folder": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法更改文件夹"
+          }
+        }
+      }
+    },
     "Can't Close the Tab": {
       "localizations": {
         "zh-Hans": {
@@ -276,6 +306,156 @@
         }
       }
     },
+    "Change Folder": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "更改文件夹"
+          }
+        }
+      }
+    },
+    "Change Folder…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "更改文件夹…"
+          }
+        }
+      }
+    },
+    "Choose": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "选择"
+          }
+        }
+      }
+    },
+    "Choose a Folder": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "选择文件夹"
+          }
+        }
+      }
+    },
+    "Choose a host first.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请先选择主机。"
+          }
+        }
+      }
+    },
+    "Choose Folder…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "选择文件夹…"
+          }
+        }
+      }
+    },
+    "Choose one to open new windows in it.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "选择一个文件夹，新窗口就会在其中打开。"
+          }
+        }
+      }
+    },
+    "Folder": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "文件夹"
+          }
+        }
+      }
+    },
+    "Folder Not Found": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "找不到文件夹"
+          }
+        }
+      }
+    },
+    "Home": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "主目录"
+          }
+        }
+      }
+    },
+    "Home host not added": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "未添加主目录所在主机"
+          }
+        }
+      }
+    },
+    "New windows of the project open on this host, in this folder.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "项目的新窗口会在这台主机的这个文件夹中打开。"
+          }
+        }
+      }
+    },
+    "New windows of the project open on this host, in this folder. With no folder, the project only groups windows.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "项目的新窗口会在这台主机的这个文件夹中打开。不选文件夹时，项目只用于归组窗口。"
+          }
+        }
+      }
+    },
+    "No Folder": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无文件夹"
+          }
+        }
+      }
+    },
+    "No folders inside": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "里面没有文件夹"
+          }
+        }
+      }
+    },
     "No such file": {
       "localizations": {
         "zh-Hans": {
@@ -296,6 +476,16 @@
         }
       }
     },
+    "Only the first 2000 folders are shown.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "只显示前 2000 个文件夹。"
+          }
+        }
+      }
+    },
     "Opening File": {
       "localizations": {
         "zh-Hans": {
@@ -306,12 +496,32 @@
         }
       }
     },
+    "Path": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "路径"
+          }
+        }
+      }
+    },
     "Permission denied": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
             "value": "没有访问权限"
+          }
+        }
+      }
+    },
+    "Remove Folder": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "移除文件夹"
           }
         }
       }
@@ -556,22 +766,22 @@
         }
       }
     },
-    "Desktop Spaces": {
+    "By Project": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "桌面空间"
+            "value": "按项目"
           }
         }
       }
     },
-    "Desktop Spaces shows one space at a time, as the desktop's sidebar: switch spaces at the top, and each lists its windows by host, those on your other hosts too. By Host lists each host's sessions.": {
+    "By Project shows one project at a time, as the desktop's sidebar: switch projects at the top, and each lists its windows by host, those on your other hosts too. By Host lists each host's sessions.": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "「桌面空间」像桌面端侧边栏一样一次显示一个空间：在顶部切换空间，每个空间按主机列出它的窗口，包括位于其他主机上的窗口。「按主机」列出每个主机的会话。"
+            "value": "「按项目」像桌面端侧边栏一样一次显示一个项目：在顶部切换项目，每个项目按主机列出它的窗口，包括位于其他主机上的窗口。「按主机」列出每个主机的会话。"
           }
         }
       }
@@ -1366,6 +1576,16 @@
         }
       }
     },
+    "The home host of %@ is not added on this device. Add it in Settings, or change the project's folder.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这台设备未添加 %@ 的主目录所在主机。请在设置中添加它，或更改项目的文件夹。"
+          }
+        }
+      }
+    },
     "The host does not send files": {
       "localizations": {
         "zh-Hans": {
@@ -1456,12 +1676,42 @@
         }
       }
     },
+    "This folder is not there.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这个文件夹不存在。"
+          }
+        }
+      }
+    },
     "Too large": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
             "value": "文件过大"
+          }
+        }
+      }
+    },
+    "Type a path and press Go, or open a folder below.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "输入路径后按「前往」，或打开下方的文件夹。"
+          }
+        }
+      }
+    },
+    "Up": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "上一级"
           }
         }
       }
@@ -1492,6 +1742,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "不支持的地址。请输入 http:// 或 https:// 地址，例如 http://192.168.1.2:7297。"
+          }
+        }
+      }
+    },
+    "Update GoRex": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "需更新 GoRex"
           }
         }
       }
@@ -2962,6 +3222,16 @@
         }
       }
     },
+    "You can't read this folder.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "你无权读取这个文件夹。"
+          }
+        }
+      }
+    },
     "⌘ on the key bar spins while files go up, and an alert tells of an upload that failed.": {
       "localizations": {
         "zh-Hans": {
@@ -3962,62 +4232,62 @@
         }
       }
     },
-    "Delete Space": {
+    "Delete Project": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "删除空间"
+            "value": "删除项目"
           }
         }
       }
     },
-    "Move to Space": {
+    "Move to Project": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "移动到空间"
+            "value": "移动到项目"
           }
         }
       }
     },
-    "New Space": {
+    "New Project": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "新建空间"
+            "value": "新建项目"
           }
         }
       }
     },
-    "Rename Space": {
+    "Rename Project": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "重命名空间"
+            "value": "重命名项目"
           }
         }
       }
     },
-    "Rename Space…": {
+    "Rename Project…": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "重命名空间…"
+            "value": "重命名项目…"
           }
         }
       }
     },
-    "Unassign from Space": {
+    "Unassign from Project": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "移出空间"
+            "value": "移出项目"
           }
         }
       }
@@ -4052,12 +4322,12 @@
         }
       }
     },
-    "Automatically applies iOS space assignments back to online desktop hosts that support gorex.spaces_sync.": {
+    "Automatically applies iOS project assignments and folders back to online desktop hosts that support gorex.spaces_sync.": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "自动将 iOS 端的空间分组变更同步回支持 gorex.spaces_sync 的在线桌面主机。"
+            "value": "自动将 iOS 端的项目分组与文件夹同步回支持 gorex.spaces_sync 的在线桌面主机。"
           }
         }
       }
@@ -4142,22 +4412,22 @@
         }
       }
     },
-    "Space Sync": {
+    "Project Sync": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "空间同步"
+            "value": "项目同步"
           }
         }
       }
     },
-    "Spaces": {
+    "Projects": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "空间数"
+            "value": "项目数"
           }
         }
       }
@@ -4182,12 +4452,12 @@
         }
       }
     },
-    "Syncs your cross-host spaces and window assignments across your Apple devices via iCloud.": {
+    "Syncs your cross-host projects, their folders and window assignments across your Apple devices via iCloud.": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "通过 iCloud 在你的 Apple 设备间同步跨主机空间与窗口归属。"
+            "value": "通过 iCloud 在你的 Apple 设备间同步跨主机项目、项目文件夹与窗口归属。"
           }
         }
       }

@@ -248,6 +248,8 @@ final class Host: Identifiable {
         let id: String
         var label: String
         var view: SessionView?
+        /// Its project's home, as the server reports it; nil with no folder.
+        var project: SessionView.Project?
     }
 
     /// A record a program in a terminal reported (OSC 7501), as
@@ -349,6 +351,14 @@ final class Host: Identifiable {
     /// The welcome's feature of a server that accepts passive space
     /// synchronization from the control plane (`gorex.spaces_apply`).
     static let spacesSyncFeature = "gorex.spaces_sync"
+
+    /// The welcome's feature of a server that keeps projects' homes
+    /// (`gorex.project.set_home`, the sessions' `project`).
+    static let projectsFeature = "gorex.projects"
+
+    /// The welcome's feature of a server that lists its directories
+    /// (`gorex.dir.list`).
+    static let dirListFeature = "gorex.dir_list"
 
     /// The machine the host is, and the panes of other hosts in each of
     /// its sessions' spaces, by session, as /api/spaces tells (Spaces);
@@ -564,7 +574,7 @@ final class Host: Identifiable {
         let (seq, r, raw) = try await c.call("session.bootstrap", ["event_scope": "all"])
         let all = (r["attach_all"] as? [String: Any])?["sessions"] as? [[String: Any]] ?? []
         sessions = all.compactMap { s in
-            (s["session_id"] as? String).map { Session(id: $0, label: s["label"] as? String ?? "") }
+            (s["session_id"] as? String).map { Session(id: $0, label: s["label"] as? String ?? "", project: .of(s["project"])) }
         }
         // What was read before keeps showing, as after a reconnect from
         // the background; each session's view reads it again in place.
@@ -631,8 +641,9 @@ final class Host: Identifiable {
             machine: spaceMachineKey,
             online: status == .online,
             sessions: sessions.map {
-                .init(id: $0.id, label: $0.label, view: $0.view, remote: remote[$0.id] ?? [])
-            }
+                .init(id: $0.id, label: $0.label, view: $0.view, remote: remote[$0.id] ?? [], project: $0.project)
+            },
+            projects: supportsProjects
         )
     }
 
@@ -649,7 +660,7 @@ final class Host: Identifiable {
         case "session_created":
             if let s = e.payload["session"] as? [String: Any], let id = s["session_id"] as? String,
                !sessions.contains(where: { $0.id == id }) {
-                sessions.append(Session(id: id, label: s["label"] as? String ?? ""))
+                sessions.append(Session(id: id, label: s["label"] as? String ?? "", project: .of(s["project"])))
                 attach(id)
                 readSpaces()
             }
@@ -773,6 +784,9 @@ final class Host: Identifiable {
         if let old = sessions[i].view, old.revision >= v.revision { return }
         sessions[i].view = v
         if let label = v.label { sessions[i].label = label }
+        // Every view carries the home: one without has no folder.
+        let project = v.project.flatMap { $0.dir.isEmpty ? nil : $0 }
+        if sessions[i].project != project { sessions[i].project = project }
         let again = reread.remove(v.session_id) != nil
         for w in v.windows ?? [] {
             for b in [w.block].compactMap(\.self) + w.panes where blocks[b]?.title == nil || again { describe(session: v.session_id, block: b) }
@@ -1039,15 +1053,18 @@ final class Host: Identifiable {
         return block
     }
 
-    /// Opens a new window running the shell, and returns its block.
-    func newWindow(in session: String) async throws -> String? {
+    /// Opens a new window running the shell, in cwd when given, and
+    /// returns its block. Without a cwd, a session whose project's home is
+    /// this host starts it in the folder, or fails with conflict
+    /// (folder_missing) when the folder is gone.
+    func newWindow(in session: String, cwd: String? = nil) async throws -> String? {
         if isDemo {
             guard let i = sessions.firstIndex(where: { $0.id == session }) else { return nil }
             let window = Self.demoID("w"), block = Self.demoID("b")
             return demoAddWindow(window, block: block, to: i)
         }
         let r = try await live().call("session.new_window", [
-            "session_id": session, "focus": false, "layout": ["block": shell],
+            "session_id": session, "focus": false, "layout": ["block": shell(cwd: cwd)],
         ]).payload
         return (r["block_ids"] as? [Any])?.first as? String
     }
@@ -1116,7 +1133,7 @@ final class Host: Identifiable {
 
     /// Makes a session, named by `label` or by the server, with a window
     /// running the shell, and returns the session and the window's block.
-    func newSession(label: String? = nil) async throws -> (String, String)? {
+    func newSession(label: String? = nil, cwd: String? = nil) async throws -> (String, String)? {
         let trimmed = label?.trimmingCharacters(in: .whitespaces)
         let customLabel = (trimmed?.isEmpty == false) ? trimmed : nil
         if isDemo {
@@ -1132,7 +1149,7 @@ final class Host: Identifiable {
             blocks[block] = b
             return (id, block)
         }
-        var args: [String: Any] = ["initial_windows": [["layout": ["block": shell]]]]
+        var args: [String: Any] = ["initial_windows": [["layout": ["block": shell(cwd: cwd)]]]]
         if let customLabel { args["label"] = customLabel }
         let r = try await live().call("session.create", args).payload
         guard let s = r["session_id"] as? String,
@@ -1141,12 +1158,89 @@ final class Host: Identifiable {
         return (s, b)
     }
 
-    /// The block a new window runs: the shell, or the command of the host.
-    private var shell: [String: Any] {
+    /// The block a new window runs: the shell, or the command of the host,
+    /// in cwd when given.
+    private var shell: [String: Any] { shell(cwd: nil) }
+
+    private func shell(cwd: String?) -> [String: Any] {
         var block: [String: Any] = ["flavor": "com.superlogical.terminal.shell"]
+        var options: [String: Any] = [:]
         let argv = HostConfig.argv(config.command ?? "")
-        if !argv.isEmpty { block["options"] = ["command": argv] }
+        if !argv.isEmpty { options["command"] = argv }
+        if let cwd, !cwd.isEmpty { options["cwd"] = cwd }
+        if !options.isEmpty { block["options"] = options }
         return block
+    }
+
+    // MARK: Projects
+
+    /// Whether the host keeps projects' homes (gorex.projects). Demo Mode's
+    /// does, on the phone.
+    var supportsProjects: Bool {
+        isDemo || (control?.features.contains(Self.projectsFeature) ?? false)
+    }
+
+    /// Whether the host lists its folders (gorex.dir.list), for a project's
+    /// folder to be chosen there.
+    var listsFolders: Bool {
+        isDemo || (status == .online && control?.features.contains(Self.dirListFeature) ?? false)
+    }
+
+    /// A directory's folders, as gorex.dir.list answers.
+    struct Folders: Equatable {
+        var path: String
+        var parent: String
+        var home: String
+        var dirs: [String]
+        var more = false
+        /// "not_found" or "denied", with path, parent and home still set.
+        var code: String?
+
+        init(path: String, parent: String, home: String, dirs: [String], more: Bool = false, code: String? = nil) {
+            self.path = path
+            self.parent = parent
+            self.home = home
+            self.dirs = dirs
+            self.more = more
+            self.code = code
+        }
+
+        init(_ p: [String: Any]) {
+            path = p["path"] as? String ?? ""
+            parent = p["parent"] as? String ?? ""
+            home = p["home"] as? String ?? ""
+            dirs = p["dirs"] as? [String] ?? []
+            more = p["more"] as? Bool ?? false
+            code = (p["code"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+        }
+
+        /// A child's path: path and name joined with "/", which the server
+        /// cleans; at Windows' drives each name is a path of its own.
+        func child(_ name: String) -> String {
+            if path.isEmpty || name.hasSuffix(":\\") || name.hasSuffix(":/") { return name }
+            return path.hasSuffix("/") || path.hasSuffix("\\") ? path + name : path + "/" + name
+        }
+    }
+
+    /// Lists the folders of path on the host: "" is the home directory.
+    func folders(_ path: String, hidden: Bool = false) async throws -> Folders {
+        if isDemo { return Demo.folders(path) }
+        var p: [String: Any] = ["path": path]
+        if hidden { p["hidden"] = true }
+        return Folders(try await live().call("gorex.dir.list", p).payload)
+    }
+
+    /// Sets the home of a session's project, or clears it with a machine of
+    /// "" (gorex.project.set_home).
+    func setHome(session: String, machine: String, dir: String) async throws {
+        if isDemo {
+            guard let i = sessions.firstIndex(where: { $0.id == session }) else { return }
+            sessions[i].project = machine.isEmpty || dir.isEmpty ? nil : .init(home_machine: machine, dir: dir)
+            return
+        }
+        try await live().call("gorex.project.set_home", [
+            "session_id": session, "machine_id": machine, "dir": machine.isEmpty ? "" : dir,
+        ])
     }
 
     /// Names a window; an empty name gives back its default.
@@ -1175,11 +1269,17 @@ final class Host: Identifiable {
     func applySpaces(_ spaces: [CentralSpace]) async -> Bool {
         guard supportsSpacesSync else { return false }
         let m = spaceMachineKey
+        let projects = supportsProjects
         let entries: [[String: Any]] = spaces.compactMap { s in
             let ids = s.members.filter { $0.machine_id == m }.map(\.block_id)
             guard !ids.isEmpty else { return nil }
             var entry: [String: Any] = ["name": s.name, "block_ids": ids]
             if let color = s.color, !color.isEmpty { entry["color"] = color }
+            // The home, once known: "" clears it; left out, it stays.
+            if projects, let dir = s.dir {
+                entry["dir"] = dir
+                entry["home_machine"] = dir.isEmpty ? "" : s.home_machine ?? ""
+            }
             return entry
         }
         guard !entries.isEmpty else { return false }
