@@ -126,15 +126,22 @@ jobs:
 
   # Writes SHA256SUMS from the release's assets once a build is done and none
   # failed. A build that the target skips does not count. It needs only gh, jq
-  # and sha256sum, so it runs on a GitHub-hosted runner, not the Mac mini: a
-  # Windows-only release does not wait for it.
+  # and sha256sum, so it runs on an instabox machine, not the Mac mini: a
+  # Windows-only release does not wait for it. Not on a GitHub-hosted runner:
+  # si-mods runs none, and a job there stays queued (0.37.0's did).
   checksums:
     needs: [unix, windows]
     if: always() && github.ref == 'refs/heads/main' && contains(needs.*.result, 'success') && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')
-    runs-on: ubuntu-latest
+    runs-on: instabox-medium
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
+      - name: gh and jq
+        run: |
+          command -v gh >/dev/null && command -v jq >/dev/null && exit 0
+          sudo=; [ "$(id -u)" = 0 ] || sudo="sudo -n"
+          $sudo apt-get update -q
+          $sudo apt-get install -y -q gh jq
       - name: write SHA256SUMS
         env:
           GH_TOKEN: ${{ github.token }}
