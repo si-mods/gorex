@@ -70,6 +70,11 @@ func TestPeerListsAndMirrors(t *testing.T) {
 	var cmd []string
 	if runtime.GOOS != "windows" {
 		cmd = []string{"/bin/sh"}
+	} else {
+		// The test types PowerShell and expects its title. A developer's
+		// $SHELL (Git Bash sets /bin/bash.exe) would pick another shell, which
+		// sets its own title; clear it so Rex picks PowerShell, as in CI.
+		t.Setenv("SHELL", "")
 	}
 	a, err := c.Create(rex.CreateOptions{Command: cmd, Cols: 80, Rows: 24})
 	if err != nil {
