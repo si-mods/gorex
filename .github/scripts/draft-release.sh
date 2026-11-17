@@ -27,10 +27,13 @@ tag=v$version
 
 # Same as update.ReleaseNotes: the lines under "## <version>", also
 # "## [<version>]" and "## [<version>](link)", or with text after the
-# version, up to the next "## " heading, trimmed.
+# version, up to the next "## " heading, trimmed. awk reads to the end
+# rather than exit after the section: an early exit can break tr's pipe,
+# which pipefail turns into a failed release.
 notes=$(tr -d '\r' < CHANGELOG.md | awk -v v="$version" '
+  done { next }
   /^## / {
-    if (in_section) exit
+    if (in_section) { done = 1; next }
     split(substr($0, 4), f, /[ \t]+/)
     h = f[1]
     if (h == "") h = f[2]
