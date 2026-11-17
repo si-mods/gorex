@@ -32,6 +32,9 @@ type Workspace struct {
 	// layout.Workspace.Host, and its folder there; "" for a space of no
 	// folder. The server keeps them (space.home); the app reads them.
 	Host, Dir string
+	// fresh marks a project New Project made, whose first tab opens in
+	// its folder as the window shows it (show).
+	fresh bool
 	// layout is its tabs while no window shows it; app is the window that
 	// shows it, whose tabs are then its own.
 	layout savedLayout
@@ -1256,7 +1259,15 @@ func (a *App) show(w *Workspace) {
 	}
 	w.unkeep()
 	a.tabs, a.active, a.focusReq, a.renaming = nil, 0, nil, nil
-	if !a.reconcile(w.layout) {
+	switch {
+	case a.reconcile(w.layout):
+	case w.fresh && w.Dir != "":
+		// New Project's first tab: in its folder, or none, with the
+		// reason. A project emptied otherwise opens one at home, as
+		// before.
+		w.fresh = false
+		a.newProjectTab()
+	default:
 		home, _ := os.UserHomeDir()
 		a.newTabOn(nil, home)
 	}

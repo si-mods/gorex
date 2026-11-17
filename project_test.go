@@ -94,8 +94,8 @@ func TestNewTabInLocalProject(t *testing.T) {
 	if tab := a.newProjectTab(); tab != nil {
 		t.Errorf("New Tab in a folder gone opened %+v", tab)
 	}
-	if !strings.Contains(a.err, rex.FolderMissing) || !strings.Contains(a.err, "gone") {
-		t.Errorf("the error is %q", a.err)
+	if n := a.note(); n == nil || n.action == nil || !strings.Contains(a.errText(), "gone") {
+		t.Errorf("the note is %q, of a button %v", a.errText(), n != nil && n.action != nil)
 	}
 	if len(a.tabs) != tabs || len(sessionIDs(t, a.client)) != sessions {
 		t.Errorf("%d tabs and %d sessions after, %d and %d before", len(a.tabs), len(sessionIDs(t, a.client)), tabs, sessions)
@@ -135,7 +135,10 @@ func TestNewTabInHostProject(t *testing.T) {
 	setProjectHome(t, a, tt, home, filepath.Join(folder, "gone"))
 	n, sessions := len(a.tabs), len(sessionInfos(t, remote))
 	a.newProjectTab()
-	waitFor(t, tt, "the error", func() bool { return strings.Contains(a.err, rex.FolderMissing) })
+	waitFor(t, tt, "the note", func() bool {
+		n := a.note()
+		return n != nil && n.action != nil && strings.Contains(a.errText(), "gone")
+	})
 	if len(a.tabs) != n || len(sessionInfos(t, remote)) != sessions {
 		t.Errorf("a tab or a session of a folder gone: %d tabs, %d sessions", len(a.tabs), len(sessionInfos(t, remote)))
 	}
@@ -144,9 +147,9 @@ func TestNewTabInHostProject(t *testing.T) {
 	// Tab opens none.
 	far := layout.MachineHost("machine-far")
 	setProjectHome(t, a, tt, far, folder)
-	a.err = ""
-	if tab := a.newProjectTab(); tab != nil || len(a.tabs) != n || !strings.Contains(a.err, "not one of your hosts") {
-		t.Errorf("New Tab of an unknown host: %v, %d tabs, %q", tab, len(a.tabs), a.err)
+	a.err, a.errMsg = "", nil
+	if tab := a.newProjectTab(); tab != nil || len(a.tabs) != n || !strings.Contains(a.errText(), "not one of your hosts") {
+		t.Errorf("New Tab of an unknown host: %v, %d tabs, %q", tab, len(a.tabs), a.errText())
 	}
 	if a.ws.Host != far || a.ws.Dir != folder {
 		t.Errorf("the project's home is %q %q", a.ws.Host, a.ws.Dir)
@@ -190,9 +193,9 @@ func TestProjectHostAddedAgain(t *testing.T) {
 	folder := t.TempDir()
 	setProjectHomeAs(t, a, tt, h.ID, folder, layout.MachineHost(h.Machine))
 	a.removeHost(h)
-	a.err = ""
-	if tab := a.newProjectTab(); tab != nil || !strings.Contains(a.err, "not one of your hosts") {
-		t.Fatalf("New Tab of a removed host: %v, %q", tab, a.err)
+	a.err, a.errMsg = "", nil
+	if tab := a.newProjectTab(); tab != nil || !strings.Contains(a.errText(), "not one of your hosts") {
+		t.Fatalf("New Tab of a removed host: %v, %q", tab, a.errText())
 	}
 	again := a.addHost(savedHost{ID: "h-again", Name: "office-mac", Address: proxy.path})
 	waitFor(t, tt, "the host to connect again", func() bool { return again.state == hostConnected && again.Machine != "" })
@@ -355,15 +358,15 @@ func TestProjectHostLearnedOnConnect(t *testing.T) {
 
 			if tailnet {
 				// Not online: nothing to try.
-				a.err = ""
-				if tab := a.newProjectTab(); tab != nil || a.projectOpen != nil || !strings.Contains(a.err, "is not connected") {
-					t.Fatalf("New Tab with no host to try: %v, %+v, %q", tab, a.projectOpen, a.err)
+				a.err, a.errMsg = "", nil
+				if tab := a.newProjectTab(); tab != nil || a.projectOpen != nil || !strings.Contains(a.errText(), "is not connected") {
+					t.Fatalf("New Tab with no host to try: %v, %+v, %q", tab, a.projectOpen, a.errText())
 				}
 				h.tailnetOnline = true
 			}
-			a.err = ""
-			if tab := a.newProjectTab(); tab != nil || a.projectOpen == nil || !strings.Contains(a.err, "Connecting") {
-				t.Fatalf("New Tab of a host not known yet: %v, %+v, %q", tab, a.projectOpen, a.err)
+			a.err, a.errMsg = "", nil
+			if tab := a.newProjectTab(); tab != nil || a.projectOpen == nil || !strings.Contains(a.errText(), "Connecting") {
+				t.Fatalf("New Tab of a host not known yet: %v, %+v, %q", tab, a.projectOpen, a.errText())
 			}
 			if h.Machine != "" {
 				t.Fatal("the host's machine is known before it connects")
@@ -437,9 +440,9 @@ func TestProjectTabRefusesOldHost(t *testing.T) {
 	h.hello.Capabilities = slices.DeleteFunc(slices.Clone(h.hello.Capabilities), func(c string) bool { return c == rex.CapabilitySpaceHome })
 	focusLocal(t, a)
 	n := len(a.tabsOn(h))
-	a.err = ""
-	if tab := a.newProjectTab(); tab != nil || !strings.Contains(a.err, "older GoRex") {
-		t.Fatalf("New Tab of an older host: %v, %q", tab, a.err)
+	a.err, a.errMsg = "", nil
+	if tab := a.newProjectTab(); tab != nil || !strings.Contains(a.errText(), "older GoRex") {
+		t.Fatalf("New Tab of an older host: %v, %q", tab, a.errText())
 	}
 	time.Sleep(300 * time.Millisecond)
 	tt.Frame()
@@ -457,9 +460,9 @@ func TestProjectTabHomeMovedMeanwhile(t *testing.T) {
 	n := len(a.tabsOn(h))
 	a.newProjectTab()
 	setProjectHome(t, a, tt, layout.MachineHost("machine-far"), filepath.Join(folder, "elsewhere"))
-	a.err = ""
+	a.err, a.errMsg = "", nil
 	release()
-	waitFor(t, tt, "the note", func() bool { return strings.Contains(a.err, "home changed") })
+	waitFor(t, tt, "the note", func() bool { return strings.Contains(a.errText(), "home changed") })
 	time.Sleep(300 * time.Millisecond)
 	tt.Frame()
 	if len(a.tabsOn(h)) != n || a.projectOpen != nil {
@@ -495,11 +498,11 @@ func TestProjectWaitEndsWhenNoHostIsHome(t *testing.T) {
 	a, tt := newTestApp(t)
 	h, _, release := unknownHomeProject(t, a, tt, "machine-elsewhere")
 	if a.newProjectTab(); a.projectOpen == nil {
-		t.Fatalf("no wait: %q", a.err)
+		t.Fatalf("no wait: %q", a.errText())
 	}
-	a.err = ""
+	a.err, a.errMsg = "", nil
 	release()
-	waitFor(t, tt, "the note", func() bool { return strings.Contains(a.err, "not one of your hosts") })
+	waitFor(t, tt, "the note", func() bool { return strings.Contains(a.errText(), "not one of your hosts") })
 	if a.projectOpen != nil || len(a.tabsOn(h)) != 0 {
 		t.Errorf("wait %+v, %d tabs of the host", a.projectOpen, len(a.tabsOn(h)))
 	}
@@ -524,15 +527,15 @@ func TestProjectWaitTimesOut(t *testing.T) {
 	a.newProjectTab()
 	second := a.projectOpen
 	if first == nil || second == nil || second == first {
-		t.Fatalf("the waits %p %p: %q", first, second, a.err)
+		t.Fatalf("the waits %p %p: %q", first, second, a.errText())
 	}
-	a.err = ""
+	a.err, a.errMsg = "", nil
 	time.Sleep(250 * time.Millisecond)
 	tt.Frame()
 	if a.projectOpen != second {
 		t.Fatal("the first wait's time ended the second")
 	}
-	waitFor(t, tt, "the note", func() bool { return strings.Contains(a.err, "did not connect") })
+	waitFor(t, tt, "the note", func() bool { return strings.Contains(a.errText(), "did not connect") })
 	if a.projectOpen != nil || len(a.tabsOn(h)) != 0 {
 		t.Errorf("wait %+v, %d tabs of the host", a.projectOpen, len(a.tabsOn(h)))
 	}
@@ -584,7 +587,7 @@ func TestProbeNotHomeDisconnects(t *testing.T) {
 		t.Fatalf("the host is not probed: probing %v, running %v", h.probing, h.running)
 	}
 	release()
-	waitFor(t, tt, "the note", func() bool { return strings.Contains(a.err, "not one of your hosts") })
+	waitFor(t, tt, "the note", func() bool { return strings.Contains(a.errText(), "not one of your hosts") })
 	now := a.hostByID(h.ID)
 	if now == nil || now == h || now.current() != nil || now.running || now.TailnetOpened || h.current() != nil {
 		t.Fatalf("after the probe: %+v, old connected %v", now, h.current() != nil)

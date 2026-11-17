@@ -480,6 +480,12 @@ type App struct {
 	// errMsg is a message of the catalog, said when drawn, which wins
 	// over err, a message of the server.
 	errMsg func(locales.Messages) string
+	// errNote is how the banner shows the message it was set with
+	// (setNote): as a wait, or with a button.
+	errNote *bannerNote
+	// sheet is the New Project sheet, and the one that changes a
+	// project's folder.
+	sheet projectSheet
 
 	tabs   []*Tab
 	active int
@@ -841,6 +847,9 @@ func (a *App) newPaneIn(h *hostConn, o rex.CreateOptions, place func(*Pane) bool
 			if err != nil {
 				log.Printf("creating a session: %v", err)
 				a.err, a.errMsg = err.Error(), nil
+				if o.DirStrict && strings.Contains(err.Error(), rex.FolderMissing) {
+					a.folderMissing(dir)
+				}
 				return
 			}
 			h.expecting(info.ID, false)
@@ -1485,6 +1494,7 @@ func (a *App) newTabAfterIn(h *hostConn, dir string, strict bool, after *Tab, co
 		a.ask(c, func(res rex.LayoutCommand) {
 			if res.Code == rex.FolderMissing {
 				log.Printf("no new tab: %s", res.Error)
+				a.folderMissing(dir)
 			}
 			t = a.tabByUID(res.Tab)
 		})
@@ -1599,7 +1609,7 @@ func (a *App) waitProject(p *projectOpen) {
 				name = w.Name
 			}
 			log.Printf("no new tab: the home host of project %s did not connect", p.space)
-			a.err, a.errMsg = fmt.Sprintf("The home host of %s did not connect; no tab opened", name), nil
+			a.setNote(func(m locales.Messages) string { return m.ProjectHostTimeout(name) }, bannerNote{})
 		})
 	})
 }
@@ -1654,13 +1664,16 @@ func (a *App) awaitProjectHost(w *Workspace) *Tab {
 	case tried:
 		log.Printf("new tab of project %s: connecting to find its home host %s", w.ID, w.Host)
 		a.waitProject(&projectOpen{space: w.ID, machine: machine})
-		a.err, a.errMsg = fmt.Sprintf("Connecting to the home host of %s; the tab opens in %s once it is connected", w.Name, w.Dir), nil
+		name, dir := w.Name, w.Dir
+		a.setNote(func(m locales.Messages) string { return m.ProjectHostWaiting(name, dir) }, bannerNote{wait: true})
 	case unknown > 0:
 		log.Printf("no new tab: the home host %s of project %s is not connected", w.Host, w.ID)
-		a.err, a.errMsg = fmt.Sprintf("The home host of %s is not connected; no tab opened in %s", w.Name, w.Dir), nil
+		name, dir := w.Name, w.Dir
+		a.setNote(func(m locales.Messages) string { return m.ProjectHostOffline(name, dir) }, bannerNote{})
 	default:
 		log.Printf("no new tab: the home host %s of project %s is unknown", w.Host, w.ID)
-		a.err, a.errMsg = fmt.Sprintf("The home host of %s is not one of your hosts; no tab opened in %s", w.Name, w.Dir), nil
+		name, dir := w.Name, w.Dir
+		a.setNote(func(m locales.Messages) string { return m.ProjectHostNotYours(name, dir) }, bannerNote{})
 	}
 	return nil
 }
@@ -1686,7 +1699,7 @@ func (a *App) takeProjectOpen(h *hostConn) {
 		if p.host == nil && !slices.ContainsFunc(a.hosts, mayBeHome) {
 			a.endWait()
 			log.Printf("no new tab: no host is the home machine %s of project %s", p.machine, p.space)
-			a.err, a.errMsg = "The project's home host is not one of your hosts; no tab opened", nil
+			a.setNote(locales.Messages.ProjectHostNone, bannerNote{})
 		}
 		return
 	}
@@ -1694,8 +1707,13 @@ func (a *App) takeProjectOpen(h *hostConn) {
 	if w := a.ws; w == nil || w.ID != p.space || w.Dir == "" || a.projectHost(w) != h {
 		a.endProbe(h)
 		log.Printf("no new tab: %s connected, but it is not the home of project %s now", h.label(), p.space)
-		a.err, a.errMsg = fmt.Sprintf("%s is connected, but the project's home changed meanwhile; no tab opened", h.label()), nil
+		label := h.label()
+		a.setNote(func(m locales.Messages) string { return m.ProjectHomeMoved(label) }, bannerNote{})
 		return
+	}
+	if n := a.errNote; n != nil && n.wait && a.noteShows() {
+		// The wait it said is over.
+		a.err, a.errMsg, a.errNote = "", nil, nil
 	}
 	a.projectTabOn(h, a.ws.Dir)
 }
@@ -1707,7 +1725,8 @@ func (a *App) takeProjectOpen(h *hostConn) {
 func (a *App) projectTabOn(h *hostConn, dir string) *Tab {
 	if h.current() != nil && !h.hello.Can(rex.CapabilitySpaceHome) {
 		log.Printf("no new tab in %s: the home host %s does not check project folders", dir, h.label())
-		a.err, a.errMsg = fmt.Sprintf("%s runs an older GoRex that cannot open %s safely; update GoRex there", h.label(), dir), nil
+		label := h.label()
+		a.setNote(func(m locales.Messages) string { return m.ProjectHostOld(label, dir) }, bannerNote{})
 		return nil
 	}
 	return a.newTabOnIn(h, dir, true)

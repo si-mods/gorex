@@ -67,7 +67,7 @@ The user may be viewing a different session or pane. Use these values for
 "here", "beside you" or no location at all; find a named target in a listing
 for anything else.
 
-A target is a full session ID, a workspace, tab or pane label, a position in
+A target is a full session ID, a project, tab or pane label, a position in
 ` + "`gorex ls`" + ` (1 is the first), or the end of an ID (at least four characters).
 ` + "`-b`" + ` chooses a pane, ` + "`-w`" + ` a tab, and ` + "`-s`" + ` a session; ` + "`-b`" + ` wins over ` + "`-w`" + `,
 which wins over ` + "`-s`" + `. An ambiguous target exits 3.
