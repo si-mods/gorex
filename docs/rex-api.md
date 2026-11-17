@@ -462,6 +462,50 @@ The welcome lists the feature `gorex.see_block` when the server keeps it
   unknown or malformed argument), `not_supported` (the GoRex server is
   older).
 
+## Projects
+
+A project is a GoRex space bound to a folder, its *home*: a host and a
+folder there (`docs/projects.md`). The welcome lists the feature
+`gorex.projects` when the GoRex server keeps homes
+(`CapabilitySpaceHome`); call the method only then.
+
+- Each session in `session.list`, `session_created` and every view carries
+  `project` when its space has a folder, and leaves it out otherwise:
+
+  ```json
+  {"session_id": "session:…", "label": "windflow",
+   "project": {"home_machine": "9c63…", "dir": "/home/me/code/windflow"}}
+  ```
+
+  `home_machine` is the home host's machine, as `/api/spaces` names
+  machines; it is `""` when this desktop no longer knows that host's
+  machine (a host removed from `hosts.json`), and the folder stays.
+- `gorex.project.set_home` sets or clears a session's home:
+
+  ```
+  → {"method": "gorex.project.set_home",
+     "payload": {"session_id": "<session>", "machine_id": "9c63…",
+                 "dir": "/home/me/code/windflow"}}
+  ← {"revision": 5, "project": {"home_machine": "9c63…", "dir": "/home/me/code/windflow"}}
+  ```
+
+  A `machine_id` of `""` clears the home. A folder on this machine must
+  exist (`not_found`); one on another machine is not checked here. A
+  machine this desktop has no host of is kept, and the desktop shows the
+  home host as unknown until it has a host of that machine.
+- `session.new_window` without a `cwd`, in a session whose home is this
+  machine, starts in the folder. A folder gone fails the call with
+  `conflict` (`folder_missing`) and starts no shell. A `cwd` given wins,
+  and a split starts where the block it splits started. A session the
+  server starts again from the layout after a restart still starts at
+  home when its folder is gone.
+- `gorex.spaces_apply` takes `home_machine` and `dir` for each space: left
+  out, the home stays, as from a client of before projects; a `dir` of
+  `""` clears it. The result's `homes` counts the homes changed.
+- Errors: `session_not_found`, `bad_request` (a relative `dir`, a
+  `machine_id` with no `dir`, an unknown argument), `not_found`,
+  `not_supported` (the GoRex server is older).
+
 ## Files of a host
 
 The web client opens a file path printed in a pane as the desktop does

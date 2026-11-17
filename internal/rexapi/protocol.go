@@ -208,6 +208,9 @@ type eventBody struct {
 type sessionListEntry struct {
 	SessionID string `json:"session_id"`
 	Label     string `json:"label"`
+	// Project is GoRex's own: the session's home, left out for a session
+	// whose space has no folder (projects.go).
+	Project *projectInfo `json:"project,omitempty"`
 }
 
 // sessionCreated is session_created's payload.

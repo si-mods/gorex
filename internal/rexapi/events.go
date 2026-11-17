@@ -26,7 +26,7 @@ func diffModels(old, new *model) []change {
 		before := old.byID[s.id]
 		if before == nil {
 			events = append(events, change{server: true, typ: "session_created",
-				payload: sessionCreated{Session: sessionListEntry{SessionID: s.id, Label: s.label}}})
+				payload: sessionCreated{Session: s.entry()}})
 			for _, w := range s.windows {
 				events = append(events, change{session: s.id, typ: "window_created",
 					payload: windowPayload{WindowID: w.id, Label: w.label}})

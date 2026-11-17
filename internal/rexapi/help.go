@@ -298,7 +298,7 @@ func helpDocument(rev int, withHTTP bool) map[string]json.RawMessage {
 		if !implementedMethods[m.Name] || !methodAvailable(rev, m.Name) {
 			continue
 		}
-		kept = append(kept, laterSchema(rev, m.Name, raw))
+		kept = append(kept, withProject(laterSchema(rev, m.Name, raw)))
 	}
 	kept = append(kept, ownMethods()...)
 	doc["methods"], _ = json.Marshal(kept)
@@ -342,7 +342,7 @@ func helpAllDocument(rev int) map[string]json.RawMessage {
 		if json.Unmarshal(raw, &m) != nil || !methodAvailable(rev, m.Name) {
 			continue
 		}
-		kept = append(kept, laterSchema(rev, m.Name, raw))
+		kept = append(kept, withProject(laterSchema(rev, m.Name, raw)))
 	}
 	kept = append(kept, ownMethods()...)
 	doc["methods"], _ = json.Marshal(kept)
@@ -373,7 +373,7 @@ func helpAllDocument(rev int) map[string]json.RawMessage {
 // gorex.dir.list.
 func ownMethods() []json.RawMessage {
 	var out []json.RawMessage
-	for _, e := range []map[string]any{moveWindowEntry, seeBlockEntry, mergeWindowsEntry, newWindowFromBlockEntry, spacesApplyEntry, dirListEntry} {
+	for _, e := range []map[string]any{moveWindowEntry, seeBlockEntry, mergeWindowsEntry, newWindowFromBlockEntry, spacesApplyEntry, dirListEntry, projectSetHomeEntry} {
 		if raw, err := json.Marshal(e); err == nil {
 			out = append(out, raw)
 		}
