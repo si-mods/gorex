@@ -637,10 +637,18 @@ func TestDownloadCancelled(t *testing.T) {
 	there := testDir(t)
 	t.Cleanup(func() { os.RemoveAll(there) })
 	os.WriteFile(filepath.Join(there, "big.bin"), []byte(strings.Repeat("x", 1<<20)), 0o644)
-	_, _, p := remotePane(t, a, tt, there)
+	_, proxy, p := remotePane(t, a, tt, there)
 	downloads := downloadsHere(t)
 	part := partialOf(downloads, "big.bin", rex.DownloadID(p.SID, hostPath(p.info.Dir, "big.bin")))
 	os.WriteFile(part, []byte("xxxx"), 0o644)
+	// The downloads' connections wait at the proxy till the pane closes,
+	// so the downloads are under way as it does: otherwise the megabyte
+	// may all come first, on a machine that runs the test slowly.
+	gate := make(chan struct{})
+	defer close(gate)
+	proxy.mu.Lock()
+	proxy.gate = gate
+	proxy.mu.Unlock()
 	if !a.openLink(p, "big.bin") || !a.openLink(p, "big.bin:3") {
 		t.Fatal("the link not taken")
 	}

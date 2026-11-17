@@ -16,6 +16,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -720,6 +721,43 @@ func TestDownloadCancelled(t *testing.T) {
 	}
 	if exists(part) {
 		t.Error("a cancelled download keeps an earlier try's partial")
+	}
+}
+
+// TestDownloadDoneKeepsPartial tries a download whose context is past its
+// deadline, many times: none opens the file, so none empties the partial an
+// earlier try left. The context closes the connection from another
+// goroutine, which the server's answer may come before: goroutines that
+// keep every processor busy, as a loaded machine's do, delay that one.
+func TestDownloadDoneKeepsPartial(t *testing.T) {
+	var idle atomic.Bool
+	var busy sync.WaitGroup
+	defer busy.Wait()
+	defer idle.Store(true)
+	for range runtime.GOMAXPROCS(0) {
+		busy.Go(func() {
+			for !idle.Load() {
+			}
+		})
+	}
+	s, _ := testServer(t)
+	local := pipe(s, "")
+	t.Cleanup(func() { _ = local.Close() })
+	dir := t.TempDir()
+	sid := transferSession(t, local, local, dir)
+	os.WriteFile(filepath.Join(dir, "f.bin"), bytes.Repeat([]byte("x"), 1<<20), 0o644)
+	dest := t.TempDir()
+	part := filepath.Join(dest, partialName("f.bin", DownloadID(sid, "f.bin")))
+	ctx, stop := context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
+	defer stop()
+	for i := range 30 {
+		os.WriteFile(part, []byte("xxxx"), 0o644)
+		if _, err := local.DownloadFile(ctx, sid, "f.bin", dest, "", nil); !errors.Is(err, context.DeadlineExceeded) {
+			t.Fatalf("try %d: %v", i, err)
+		}
+		if b, err := os.ReadFile(part); err != nil || string(b) != "xxxx" {
+			t.Fatalf("try %d left the partial %q, %v", i, b, err)
+		}
 	}
 }
 
