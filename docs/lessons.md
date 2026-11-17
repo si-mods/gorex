@@ -93,6 +93,11 @@ Each item has a **Trigger** (what the diff shows), a **Check** (what the author 
 - **Check:** do not also save Go's caches to the Actions cache. The Mac mini holds `~/Library/Caches/go-build` (27 GB) and `~/go/pkg/mod` (4.5 GB) between runs. Jobs on instabox start on a fresh box, so they do use the Actions cache, but only pushes to main save it.
 - **Source:** `setup-go` with `cache: true` in `testflight.yml` (#371) saved a 7.1 GB copy into the repository's 10 GB Actions cache and evicted the Linux test caches; #688 set `cache: false`, as `release.yml` already had (#681).
 
+### Test helper that starts things
+- **Trigger:** a test helper (`newTestApp` and the like) starts a client, server, goroutine or registers something global.
+- **Check:** `t.Cleanup` closes and unregisters all of it, and one-time global setup is idempotent. Per-run time stays flat at `-count 200`.
+- **Source:** `newTestApp` never closed its client and re-registered the fonts on every call; root tests got 15x slower within one process and timed out in CI (#707, fixed in #711).
+
 ### Concurrency change tested only on Windows
 - **Trigger:** the diff adds goroutines, locks, a listener restart or a shared package variable, and the PR's `-race` runs are from Windows only.
 - **Check:** the new tests also pass `go test -race -count 20 -cpu 1,4,8` on Linux or macOS before the PR opens.
