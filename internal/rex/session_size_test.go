@@ -12,7 +12,7 @@ import (
 // addAttached adds a client to s, as an attach would, at cols×rows when
 // given, through the control connection via.
 func addAttached(s *session, seq uint64, via net.Conn, cols, rows int) *attached {
-	a := &attached{conn: via, out: make(chan []byte, maxQueue), seq: seq, via: via, cols: cols, rows: rows}
+	a := &attached{conn: via, seq: seq, via: via, cols: cols, rows: rows}
 	s.mu.Lock()
 	s.clients[a] = struct{}{}
 	s.mu.Unlock()
@@ -459,10 +459,10 @@ func TestInfoNamesTheAuthority(t *testing.T) {
 	}
 }
 
-// TestDroppedClientGivesSizeBack: the authority dropped for falling
-// behind passes the size on at once, as one leaving does: its leave, which
-// follows, finds it gone already.
-func TestDroppedClientGivesSizeBack(t *testing.T) {
+// TestLaggingClientKeepsSize: the authority falling behind is not
+// dropped, but sent its screen again, and keeps the session's size: only
+// its leave, once its connection is gone, passes the size on.
+func TestLaggingClientKeepsSize(t *testing.T) {
 	settleFor(t, 30*time.Millisecond)
 	s := newResizeSession(t)
 	deskVia, phoneVia := net.Pipe()
@@ -477,10 +477,19 @@ func TestDroppedClientGivesSizeBack(t *testing.T) {
 	s.admit(phone, []byte("x"))
 	waitApplied(t, s, 150, 55)
 	// The phone stops reading: the next output finds its queue full.
-	for len(phone.out) < cap(phone.out) {
-		phone.out <- nil
+	s.mu.Lock()
+	phone.send(make([]byte, maxQueuedBytes))
+	phone.send(make([]byte, 1))
+	s.mu.Unlock()
+	if !phone.behind {
+		t.Fatal("the phone is not behind")
 	}
 	s.write([]byte("echo hi\r"))
+	settled()
+	if c, r := appliedSize(t, s); c != 150 || r != 55 {
+		t.Fatalf("session %dx%d, want the phone's 150x55", c, r)
+	}
+	s.leave(phone)
 	waitApplied(t, s, 100, 30)
 	if got := s.info().SizedBy; got != "desk" {
 		t.Fatalf("sizedBy %q, want the desk left", got)

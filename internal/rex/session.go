@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log"
 	"net"
 	"os"
 	"runtime"
@@ -139,17 +140,34 @@ func (s *session) setTheme(th *terminal.Theme) {
 // goroutine writes so that a slow client never holds up the others.
 type attached struct {
 	conn net.Conn
-	// first is the snapshot it gets first, out what the session printed
-	// since.
+	// first is the snapshot it gets first, pending what the session
+	// printed since.
 	first []byte
-	out   chan []byte
-	once  sync.Once
-	// peer is the remote client's key, "" for a local window; queued is how
-	// many bytes wait in out; remote tells a remote connection, whose writes
-	// have a deadline.
+	// s is the session, whose screen a client fallen behind gets again
+	// (resync); nil in tests that run no writer.
+	s *session
+	// mu guards what follows, up to peer; the session's mu, when both are
+	// held, is taken first.
+	mu sync.Mutex
+	// pending is the output the writer did not take yet, queued its
+	// bytes; behind tells that the client fell too far behind: its output
+	// is dropped until the writer sends it the screen again. closed tells
+	// that no more output comes (finish): the writer writes what is
+	// pending and closes; dead, that the writer is gone.
+	pending              [][]byte
+	queued               int
+	behind, closed, dead bool
+	// wake tells the writer that pending, behind or closed changed.
+	wake chan struct{}
+	// resynced is when the writer last sent the screen again; resyncs and
+	// dropped count the resyncs and bytes not logged yet, logged when the
+	// last log was (noteBehindLocked).
+	resynced, logged time.Time
+	resyncs, dropped int
+	// peer is the remote client's key, "" for a local window; remote tells
+	// a remote connection, whose writes have a deadline.
 	peer   string
 	since  time.Time
-	queued atomic.Int64
 	remote bool
 	// seq orders the attaches of a session; via is the control connection
 	// it attached through, which may hold the size lock (lockSize).
@@ -165,32 +183,101 @@ type attached struct {
 	mute bool
 }
 
-// The most chunks of output that may wait for a client, and bytes for a
-// remote one: one further behind is dropped, and attaches again to a
-// snapshot. Without a bound, a client that stopped reading would hold
-// all the session printed since.
+// A terminal stream carries the session's screen, not every byte it
+// printed: a client that falls behind gets the screen again, on the same
+// connection, rather than the output it missed, and is never dropped for
+// it. Only a connection that takes nothing for writeTimeout, or fails a
+// write, is closed.
 const (
-	maxQueue       = 2048
-	maxQueuedBytes = 8 << 20
+	// maxQueuedBytes is the most output that may wait for a client, local
+	// or remote, before it is dropped for the screen again: as
+	// internal/rexapi's collapseBytes, about a second of a connection of
+	// 2 MiB/s, past which the screen is worth more than the old output.
+	// It counts bytes, not chunks, whose size follows the terminal's
+	// reads rather than the load. One chunk always queues on an empty
+	// queue, as an image a read rewrote may be larger.
+	maxQueuedBytes = 2 << 20
+	// resyncHistory is the most scrollback, in bytes, of the screen sent
+	// again: an eighth of maxQueuedBytes, as internal/rexapi's, so that a
+	// resync sends far less than the output it drops. It is not counted
+	// against maxQueuedBytes, so it never makes another resync itself.
+	resyncHistory = 256 << 10
+	// resyncEvery is the least time between a client's resyncs: one that
+	// keeps falling behind gets the screen once a second at most, not a
+	// snapshot per drop.
+	resyncEvery = time.Second
+	// resyncLogEvery is the least time between a client's log lines of
+	// resyncs, which count those between.
+	resyncLogEvery = 10 * time.Second
 )
 
-func (a *attached) send(p []byte) bool {
-	// The bytes are capped for remote clients only: a local one dropped
-	// closes its pane, and reads what it is sent quick enough.
-	if a.queued.Add(int64(len(p))) > maxQueuedBytes && a.remote {
-		a.queued.Add(-int64(len(p)))
-		return false
+// resyncReset is what a resync sends before the session's screen: CAN and
+// ST end an escape sequence the dropped output may have cut, then the
+// terminal resets and clears as a GoRex window attaching again does
+// (screenReset in package main), so that the screen after is a new
+// attach's.
+const resyncReset = "\x18\x1b\\" + "\x1bc\x1b[H\x1b[2J\x1b[3J"
+
+// send queues p for the client, s.mu held: once more than maxQueuedBytes
+// wait, the queue is dropped and the writer sends the screen again.
+func (a *attached) send(p []byte) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	switch {
+	case a.dead || a.closed:
+		return
+	case a.behind:
+		a.dropped += len(p)
+		return
+	case a.queued > 0 && a.queued+len(p) > maxQueuedBytes:
+		a.noteBehindLocked(a.queued + len(p))
+		a.pending, a.queued, a.behind = nil, 0, true
+	default:
+		a.pending = append(a.pending, p)
+		a.queued += len(p)
+	}
+	a.wakeLocked()
+}
+
+// noteBehindLocked logs that the client fell behind, dropping n bytes,
+// once per resyncLogEvery with the counts between; a.mu is held.
+func (a *attached) noteBehindLocked(n int) {
+	a.resyncs++
+	a.dropped += n
+	if time.Since(a.logged) < resyncLogEvery {
+		return
+	}
+	who, sid := "local", ""
+	if a.peer != "" {
+		k := strings.TrimPrefix(a.peer, "nodekey:")
+		who = "peer " + k[:min(len(k), 8)]
+	}
+	if a.s != nil {
+		sid = a.s.id
+	}
+	log.Printf("rex: session %s: %s client fell behind %d times, dropped %d bytes: it is sent the screen again", sid, who, a.resyncs, a.dropped)
+	a.logged, a.resyncs, a.dropped = time.Now(), 0, 0
+}
+
+// wakeLocked wakes the writer; a.mu is held.
+func (a *attached) wakeLocked() {
+	if a.wake == nil {
+		a.wake = make(chan struct{}, 1)
 	}
 	select {
-	case a.out <- p:
-		return true
+	case a.wake <- struct{}{}:
 	default:
-		a.queued.Add(-int64(len(p)))
-		return false // too far behind: drop it, it attaches again
 	}
 }
 
-func (a *attached) finish() { a.once.Do(func() { close(a.out) }) }
+// finish ends the client's output: the writer writes what is pending,
+// then closes the connection.
+func (a *attached) finish() {
+	a.mu.Lock()
+	a.closed = true
+	a.wakeLocked()
+	a.mu.Unlock()
+}
 
 // writeChunk is the most the writer writes under one deadline: a remote
 // client is dropped once it takes nothing for writeTimeout, not when a
@@ -202,23 +289,142 @@ const writeChunk = 32 << 10
 // client, though the session prints nothing more.
 func (a *attached) writer() {
 	defer func() {
+		a.mu.Lock()
+		a.dead, a.pending, a.queued = true, nil, 0
+		a.mu.Unlock()
 		a.conn.Close()
-		for range a.out {
-		}
 	}()
 	first := a.first
 	a.first = nil
 	if a.write(first) != nil {
 		return
 	}
-	for p := range a.out {
-		err := a.write(p)
-		a.queued.Add(-int64(len(p)))
-		if err != nil {
+	for {
+		p, ok := a.next()
+		if !ok || a.write(p) != nil {
 			return
 		}
 	}
 }
+
+// next waits for what the writer writes next: the screen again for a
+// client fallen behind, else its oldest pending output. It is false
+// once the output ended and all of it was taken.
+func (a *attached) next() ([]byte, bool) {
+	for {
+		a.mu.Lock()
+		if a.wake == nil {
+			a.wake = make(chan struct{}, 1)
+		}
+		wake := a.wake
+		switch {
+		case a.behind && !a.closed:
+			wait := resyncEvery - time.Since(a.resynced)
+			a.mu.Unlock()
+			if wait > 0 {
+				select {
+				case <-time.After(wait):
+				case <-wake:
+				}
+			} else if p := a.resync(); p != nil {
+				return p, true
+			}
+		case len(a.pending) > 0:
+			p := a.pending[0]
+			a.pending[0] = nil
+			a.pending = a.pending[1:]
+			a.queued -= len(p)
+			a.mu.Unlock()
+			return p, true
+		case a.closed:
+			a.mu.Unlock()
+			return nil, false
+		default:
+			a.mu.Unlock()
+			<-wake
+		}
+	}
+}
+
+// resync returns the screen again for a client fallen behind: what ends a
+// cut escape sequence and resets its terminal, then the session's screen
+// as an attach's snapshot has it, with resyncHistory of scrollback. It
+// takes the state under s.mu, as the output is fed and queued, so that it
+// holds all the output before and none of what follows, which queues
+// after it. nil means there is none to send.
+//
+// Under s.mu it takes only Ghostty's binary snapshot, the title and the
+// graphics: rendering the whole scrollback as escape sequences, which
+// the formatter cannot bound, costs some times more, and is done after,
+// from the binary snapshot, holding up no output (renderResync). Should
+// that fail, the snapshot is taken again under s.mu, as an attach's.
+func (a *attached) resync() []byte {
+	s := a.s
+	s.mu.Lock()
+	s.waitBatchLocked()
+	a.mu.Lock()
+	if !a.behind || a.closed || a.dead {
+		a.mu.Unlock()
+		s.mu.Unlock()
+		return nil
+	}
+	a.pending, a.queued, a.behind, a.resynced = nil, 0, false, time.Now()
+	a.mu.Unlock()
+	var bin []byte
+	if !s.exited {
+		bin, _ = s.vt.GhosttySnapshot()
+	}
+	if bin == nil {
+		snap := s.snapshotLocked(Attach{History: resyncHistory})
+		s.mu.Unlock()
+		return append([]byte(resyncReset), snap...)
+	}
+	title, graphics, rows := s.vt.Title(), s.graphics.replay(), s.rows
+	s.mu.Unlock()
+	if snap, err := renderResync(bin, title, graphics, rows); err == nil {
+		return append([]byte(resyncReset), snap...)
+	}
+	// Drop what queued meanwhile, and take the snapshot as an attach does.
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.closed || a.dead {
+		return nil
+	}
+	a.pending, a.queued, a.behind = nil, 0, false
+	return append([]byte(resyncReset), s.snapshotLocked(Attach{History: resyncHistory})...)
+}
+
+// renderResync returns what snapshotLocked returns for an attach with
+// resyncHistory, from bin, the session's Ghostty binary snapshot, and its
+// title, graphics and rows: bin restores in a terminal no program runs,
+// whose escape sequences are the session's.
+func renderResync(bin []byte, title string, graphics []byte, rows int) ([]byte, error) {
+	pr, pw := io.Pipe()
+	defer pw.Close()
+	term, err := terminal.New(terminal.Options{Conn: quietConn{pr}, Scrollback: scrollback})
+	if err != nil {
+		return nil, err
+	}
+	defer term.Close()
+	if err := term.RestoreGhosttySnapshot(bin); err != nil {
+		return nil, err
+	}
+	snap, _ := trimSnapshot(append(term.Snapshot(), graphics...), rows, resyncHistory)
+	if title != "" {
+		snap = append([]byte("\x1b]2;"+title+"\x07"), snap...)
+	}
+	return snap, nil
+}
+
+// quietConn connects a terminal no program runs: what it answers goes
+// nowhere.
+type quietConn struct{ r *io.PipeReader }
+
+func (c quietConn) Read(p []byte) (int, error)  { return c.r.Read(p) }
+func (c quietConn) Write(p []byte) (int, error) { return len(p), nil }
+func (c quietConn) Close() error                { return c.r.Close() }
 
 func (a *attached) write(p []byte) error {
 	for len(p) > 0 {
@@ -535,36 +741,7 @@ func (s *session) read() {
 				cwd = s.imageDir()
 			}
 			data, graphics := s.graphics.filter(data, cwd)
-			s.mu.Lock()
-			s.graphics.record(graphics)
-			s.answerLocked()
-			s.vt.Feed(data)
-			s.modes.feed(data)
-			s.batch(data)
-			beforeStatus := s.status.updates
-			queries := s.status.feed(data)
-			statusChanged := s.status.updates != beforeStatus
-			s.output += uint64(n)
-			s.lastOutput = time.Now()
-			s.sampler.ask()
-			resize := false
-			for a := range s.clients {
-				if !a.send(data) && s.dropLocked(a) {
-					resize = true
-				}
-			}
-			cols, rows := s.cols, s.rows
-			s.mu.Unlock()
-			if resize {
-				s.resizeTerminal(cols, rows)
-			}
-			if statusChanged {
-				s.notify()
-			}
-			// The server answers, as the windows' terminals do not.
-			for range queries {
-				s.write(statusReply)
-			}
+			s.emit(data, graphics, n)
 		}
 		if err != nil {
 			s.mu.Lock()
@@ -579,6 +756,34 @@ func (s *session) read() {
 	}
 }
 
+// emit feeds the session's screen with data, n bytes the terminal printed
+// with the graphics it rewrote, and sends it to the clients.
+func (s *session) emit(data []byte, graphics []graphicsSeq, n int) {
+	s.mu.Lock()
+	s.graphics.record(graphics)
+	s.answerLocked()
+	s.vt.Feed(data)
+	s.modes.feed(data)
+	s.batch(data)
+	beforeStatus := s.status.updates
+	queries := s.status.feed(data)
+	statusChanged := s.status.updates != beforeStatus
+	s.output += uint64(n)
+	s.lastOutput = time.Now()
+	s.sampler.ask()
+	for a := range s.clients {
+		a.send(data)
+	}
+	s.mu.Unlock()
+	if statusChanged {
+		s.notify()
+	}
+	// The server answers, as the windows' terminals do not.
+	for range queries {
+		s.write(statusReply)
+	}
+}
+
 // attach attaches a connection: it is answered once it is one of the
 // session's clients, whose resizes on its control connection are then
 // its own (resizeFrom); it gets a snapshot of the session's screen and
@@ -588,7 +793,7 @@ func (s *session) read() {
 // is the control connection it attached through (Attach.Conn), if any;
 // o.History, o.Framed and o.Snapshot shape the snapshot.
 func (s *session) attach(conn net.Conn, peer string, o Attach, via net.Conn, typed []byte) {
-	a := &attached{conn: conn, via: via, peer: peer, since: time.Now(), out: make(chan []byte, maxQueue), remote: peer != "", client: o.Client, mute: o.Mute}
+	a := &attached{conn: conn, s: s, via: via, peer: peer, since: time.Now(), remote: peer != "", client: o.Client, mute: o.Mute}
 	if o.Cols > 0 && o.Rows > 0 {
 		a.cols, a.rows = o.Cols, o.Rows
 	}
@@ -641,9 +846,7 @@ func (s *session) leave(a *attached) {
 	s.sized(func() bool { return s.dropLocked(a) })
 }
 
-// dropLocked drops client a, s.mu held, as leave does: a client dropped
-// for falling behind passes the size on too, which its leave, finding it
-// gone, would not. It reports whether to resize the terminal to the
+// dropLocked drops client a, s.mu held, as leave does. It reports whether to resize the terminal to the
 // session's size, which the caller does once it let go of s.mu.
 func (s *session) dropLocked(a *attached) bool {
 	prev := s.authorityLocked()
@@ -1273,13 +1476,10 @@ func (s *session) resyncScreen() {
 		}
 		// Clear the alternate screen the window shows, then draw it anew.
 		msg := append([]byte("\x1b[?1049h\x1b[H\x1b[2J"), snap...)
-		resize := false
 		for a := range s.clients {
-			if !a.send(msg) && s.dropLocked(a) {
-				resize = true
-			}
+			a.send(msg)
 		}
-		return resize
+		return false
 	})
 }
 

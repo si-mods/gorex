@@ -381,21 +381,36 @@ func TestStalledClientIsDropped(t *testing.T) {
 	}
 }
 
-// TestQueueIsBounded checks that what waits for a client that is behind
-// is bounded in bytes, not only in chunks: 2048 chunks of a megabyte would
-// be two gigabytes.
+// TestQueueIsBounded checks that what waits for a client that is behind,
+// local or remote, is bounded in bytes, not in chunks: 2048 chunks of a
+// megabyte would be two gigabytes. Past the bound the queue is dropped
+// for the screen again, and the client stays.
 func TestQueueIsBounded(t *testing.T) {
-	a := &attached{out: make(chan []byte, 2048), remote: true}
-	chunk := make([]byte, 1<<20)
-	queued := 0
-	for range 2048 {
-		if !a.send(chunk) {
-			break
+	for _, remote := range []bool{false, true} {
+		a := &attached{remote: remote}
+		chunk := make([]byte, 1<<20)
+		most := 0
+		for range 2048 {
+			a.send(chunk)
+			most = max(most, a.queued)
 		}
-		queued += len(chunk)
+		if most > maxQueuedBytes {
+			t.Errorf("remote %v: %d MiB wait for a client that reads nothing, want at most %d", remote, most>>20, maxQueuedBytes>>20)
+		}
+		if !a.behind || a.closed || a.dead {
+			t.Errorf("remote %v: behind %v closed %v dead %v, want behind only", remote, a.behind, a.closed, a.dead)
+		}
 	}
-	if queued > 8<<20 {
-		t.Errorf("%d MiB wait for a client that reads nothing, want at most 8", queued>>20)
+}
+
+// TestBigChunkQueues checks that a chunk larger than maxQueuedBytes, as
+// an image a read rewrote, queues whole on an empty queue rather than
+// making a resync that would send it again.
+func TestBigChunkQueues(t *testing.T) {
+	a := &attached{}
+	a.send(make([]byte, maxQueuedBytes+1))
+	if a.behind || len(a.pending) != 1 {
+		t.Fatalf("behind %v, %d pending, want the chunk queued", a.behind, len(a.pending))
 	}
 }
 
@@ -426,7 +441,7 @@ func TestWriterClosesOnFailedWrite(t *testing.T) {
 	defer SetTimeoutsForTest(200*time.Millisecond, 2*time.Second)()
 	client, server := net.Pipe()
 	defer client.Close()
-	a := &attached{conn: server, first: []byte("snapshot"), out: make(chan []byte, maxQueue), remote: true}
+	a := &attached{conn: server, first: []byte("snapshot"), remote: true}
 	done := make(chan struct{})
 	go func() {
 		a.writer()
@@ -443,26 +458,6 @@ func TestWriterClosesOnFailedWrite(t *testing.T) {
 	case <-done:
 	case <-time.After(2 * time.Second):
 		t.Fatal("the writer does not return")
-	}
-}
-
-// TestLocalQueueNotCappedInBytes checks that a local client, whose
-// dropped stream would close its pane, keeps the queue bounded in chunks
-// only, as before; a remote one is capped in bytes.
-func TestLocalQueueNotCappedInBytes(t *testing.T) {
-	chunk := make([]byte, 1<<20)
-	for _, remote := range []bool{false, true} {
-		a := &attached{out: make(chan []byte, maxQueue), remote: remote}
-		n := 0
-		for range 16 {
-			if !a.send(chunk) {
-				break
-			}
-			n++
-		}
-		if want := map[bool]int{false: 16, true: 8}[remote]; n != want {
-			t.Errorf("remote %v: %d MiB queued, want %d", remote, n, want)
-		}
 	}
 }
 

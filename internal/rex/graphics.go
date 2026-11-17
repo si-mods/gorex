@@ -16,8 +16,8 @@ import (
 const (
 	// maxGraphicsImage is the largest image file a session reads and
 	// rewrites. A larger one reaches the window as the program sent it,
-	// which refuses the file medium. Its base64 form must fit one client
-	// message (maxQueuedBytes).
+	// which refuses the file medium. Its base64 form goes in one read's
+	// output, which a client's empty queue takes whole (attached.send).
 	maxGraphicsImage = 4 << 20
 	// maxGraphicsRewrite bounds what one read's images add to the output:
 	// a program naming many files must not multiply what it printed.

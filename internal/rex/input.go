@@ -221,10 +221,7 @@ func (s *session) ClearScreen() bool {
 	// What a window clearing its own screen shows: the screen it has now.
 	msg := append([]byte("\x1b[3J\x1b[2J\x1b[H"), s.vt.Snapshot()...)
 	for a := range s.clients {
-		if !a.send(msg) {
-			a.finish()
-			delete(s.clients, a)
-		}
+		a.send(msg)
 	}
 	return true
 }
@@ -242,10 +239,7 @@ func (s *session) ResetTerminal() {
 	s.vt.Feed([]byte("\x1bc"))
 	s.modes = decModes{}
 	for a := range s.clients {
-		if !a.send([]byte("\x1bc")) {
-			a.finish()
-			delete(s.clients, a)
-		}
+		a.send([]byte("\x1bc"))
 	}
 }
 

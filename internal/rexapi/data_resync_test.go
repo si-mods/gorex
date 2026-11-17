@@ -555,3 +555,20 @@ func TestStreamKeepsUnsent(t *testing.T) {
 		t.Errorf("the stream keeps %d bytes once they were sent", n)
 	}
 }
+
+// TestServerResetSendsTerminalReset checks that a RIS in the session's
+// output, as the GoRex server's resync of a client behind ends a cut
+// sequence and resets with, is followed by terminal_reset, right after
+// it, as the stream's own resync sends: also when the RIS is cut between
+// reads, and not for an ESC c inside a string.
+func TestServerResetSendsTerminalReset(t *testing.T) {
+	s := &stream{g: &Gateway{collapseBytes: 1 << 30}, nonce: 7}
+	reset := string(apcMessage(7, map[string]any{"type": "terminal_reset"}))
+	for _, p := range []string{"a\x1b]2;cut", "\x18\x1b\\" + "\x1bc\x1b[Hscreen\x1b", "c", "\x1b]2;t\x1bc\x07end"} {
+		s.feedOutput([]byte(p))
+	}
+	want := "a\x1b]2;cut\x18\x1b\\" + "\x1bc" + reset + "\x1b[Hscreen\x1b" + "c" + reset + "\x1b]2;t\x1bc\x07end"
+	if got := string(s.buf); got != want {
+		t.Fatalf("stream\n%q\nwant\n%q", got, want)
+	}
+}
