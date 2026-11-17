@@ -66,7 +66,9 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
-          cache: true
+          # The runner keeps Go's caches between runs; a saved copy took
+          # 7 GB of the repository's 10 GB Actions cache.
+          cache: false
       - uses: actions/cache/restore@v6
         id: tailnet
         with:
