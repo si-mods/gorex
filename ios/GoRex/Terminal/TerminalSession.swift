@@ -86,12 +86,15 @@ final class TerminalSession {
     /// Whether the session owns the block, as the pane on the page does: a
     /// pane kept open off the page streams without it, at the block's size.
     @ObservationIgnored private var owns: Bool
+    /// The images the pane's output shows; Demo Mode has none.
+    @ObservationIgnored let gallery: PaneGallery?
 
     init(host: Host, session: String, block: String, owns: Bool = true) {
         self.host = host
         self.session = session
         self.block = block
         self.owns = owns
+        gallery = host.isDemo ? nil : PaneGallery.of(host: host.id.uuidString, block: block)
         data = DataConnection(base: host.config.url, auth: host.config.auth)
         // The demo has no host colors: it takes the chosen theme, else the
         // one the app starts with.
@@ -344,11 +347,14 @@ final class TerminalSession {
                 hostTheme = t.theme
                 apply(theme: TerminalTheme.chosen?.message ?? t.theme)
                 // A reset first: the snapshot of a new stream replaces the screen.
-                write(Data("\u{1b}c".utf8) + t.replay())
+                let replay = t.replay()
+                write(Data("\u{1b}c".utf8) + replay)
+                gallery?.feed(replay, fresh: true)
                 state = .live
                 setReconnecting(false)
             case .output(let o):
                 write(o)
+                gallery?.feed(o)
             case .message(let m):
                 switch m["type"] as? String {
                 case "theme":

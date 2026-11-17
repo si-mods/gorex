@@ -91,6 +91,8 @@ targets:
         NSCameraUsageDescription: Rex Go scans the pairing QR code that GoRex or Rex shows.
         # The mic dictates into the terminal (Dictation).
         NSMicrophoneUsageDescription: Rex Go hears what you say while the mic is on, and types it into the terminal. Speech is recognised on this device.
+        # A gallery's image saved to Photos from the share sheet.
+        NSPhotoLibraryAddUsageDescription: Rex Go saves the images you choose from a terminal's gallery to your photos.
         # A window row's drag in the list (HostListView's Lifted), which
         # only the app's own drop targets take.
         UTExportedTypeDeclarations:
@@ -123,6 +125,9 @@ targets:
       - GoRex/Terminal/Maple.swift
       - GoRex/Terminal/WebLink.swift
       - GoRex/Terminal/FileLink.swift
+      - GoRex/Gallery/GalleryScanner.swift
+      - GoRex/Gallery/GalleryStore.swift
+      - GoRex/Gallery/PaneGallery.swift
       - GoRex/Terminal/Dictation.swift
       - GoRex/Terminal/Polish.swift
       - GoRex/Tailnet/TailnetSettings.swift

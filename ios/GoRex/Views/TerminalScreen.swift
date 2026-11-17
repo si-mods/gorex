@@ -172,6 +172,8 @@ struct TerminalScreen: View {
                 // draws them.
                 ToolbarItemGroup(placement: .topBarTrailing) {
                     if !hasBar { mic }
+                    // The images the pane showed (docs/ios-pane-gallery.md).
+                    if let s = session, let g = s.gallery { GalleryButton(gallery: g, session: s, title: title) }
                     Menu {
                         Button("New Tab", systemImage: "plus") { newTab() }
                         Button("Split Pane", systemImage: "rectangle.split.2x1") { newSplit() }

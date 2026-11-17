@@ -52,6 +52,23 @@
           }
         }
       }
+    },
+    "NSPhotoLibraryAddUsageDescription": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rex Go saves the images you choose from a terminal's gallery to your photos."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rex Go 把你在终端相册中选择的图片存入照片。"
+          }
+        }
+      }
     }
   }
 }
