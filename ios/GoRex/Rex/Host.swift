@@ -26,6 +26,18 @@ struct HostConfig: Codable, Identifiable, Hashable {
     /// which the hosts saved never hold. Optional, as a list saved before
     /// Demo Mode must still decode.
     var demo: Bool?
+    /// The LAN gateway's pairing token, from the code's #k=; nil for a
+    /// code without one. It lives in the Keychain (LANTokens), never in
+    /// the list saved, so CodingKeys leaves it out.
+    var lanToken: String? = nil
+
+    enum CodingKeys: String, CodingKey {
+        case id, name, url, desktop, icon, command, transport, tailcat, demo
+    }
+
+    /// The token the host's requests carry: the LAN token of a host the
+    /// system's network reaches by its address; none for a tailcat host.
+    var auth: String? { tailcat == nil && demo != true ? lanToken : nil }
 
     enum Transport: String, Codable {
         /// The phone's own network, or the Tailscale app's VPN.
@@ -122,16 +134,32 @@ extension HostConfig {
 
 extension HostConfig {
     /// The host of a pairing QR code. GoRex and Rex show a plain address,
-    /// http(s)://host[:port], with no path, query or user; nil for anything else.
+    /// http(s)://host[:port], with no path, query or user; GoRex's LAN
+    /// code adds its token, http://host:port/#k=<token>. nil for anything
+    /// else. The address kept has no path and no token.
     init?(pairing code: String) {
         guard var c = URLComponents(string: code.trimmingCharacters(in: .whitespacesAndNewlines)),
               let scheme = c.scheme?.lowercased(), ["http", "https"].contains(scheme),
               let host = c.host, !host.isEmpty,
-              c.user == nil, c.password == nil, c.path.isEmpty, c.query == nil, c.fragment == nil
+              c.user == nil, c.password == nil, c.query == nil
         else { return nil }
+        var token: String?
+        if let f = c.fragment {
+            guard f.hasPrefix("k="), Self.validToken(String(f.dropFirst(2))), ["", "/"].contains(c.path) else { return nil }
+            token = String(f.dropFirst(2))
+        } else if !c.path.isEmpty {
+            return nil
+        }
         c.scheme = scheme
+        c.path = ""
+        c.fragment = nil
         guard let url = c.url else { return nil }
-        self.init(name: Self.name(host), url: url)
+        self.init(name: Self.name(host), url: url, lanToken: token)
+    }
+
+    /// Whether a LAN token reads as the gateway's: base64url, no padding.
+    static func validToken(_ t: String) -> Bool {
+        t.count <= 256 && t.wholeMatch(of: /[A-Za-z0-9_-]+/) != nil
     }
 
     /// The host of a Rex Go code, rexgo://tailcat?a=<address>&n=<machine>,
@@ -344,8 +372,8 @@ final class Host: Identifiable {
     @ObservationIgnored private var stopped = false
     @ObservationIgnored private var readingSpaces = false
     @ObservationIgnored private var spacesAgain = false
-    /// Reads a server's spaces; tests replace it.
-    @ObservationIgnored var spacesReader: (URL, URLSession) async throws -> Spaces.Answer = Spaces.read
+    /// Reads a server's spaces, with the host's token; tests replace it.
+    @ObservationIgnored var spacesReader: (URL, String?, URLSession) async throws -> Spaces.Answer = Spaces.read
     /// The built-in Tailscale's proxy of the moment; nil while it isn't
     /// running. The app sets it.
     static var tailnetProxy: () -> LoopbackProxy? = { nil }
@@ -418,7 +446,7 @@ final class Host: Identifiable {
             scheduleRetry()
             return
         }
-        let c = ControlConnection(base: config.url, session: session)
+        let c = ControlConnection(base: config.url, auth: config.auth, session: session)
         control = c
         gate = EventGate()
         c.onEvent = { [weak self, weak c] e in
@@ -567,7 +595,7 @@ final class Host: Identifiable {
                 if !c.features.contains(Spaces.feature) {
                     take(nil)
                 // A read that fails keeps what was read before.
-                } else if let s = try? session(), let a = try? await spacesReader(config.url, s), c === control {
+                } else if let s = try? session(), let a = try? await spacesReader(config.url, config.auth, s), c === control {
                     take(a)
                 }
             } while spacesAgain
@@ -819,7 +847,7 @@ final class Host: Identifiable {
             throw RexError(code: "not_supported", message: String(localized: "Server does not accept uploads"))
         }
         try await Upload.send(file, name: file.lastPathComponent, session: sid, block: block,
-                              control: c, to: config.url, urlSession: try self.session())
+                              control: c, to: config.url, auth: config.auth, urlSession: try self.session())
     }
 
     /// Whether the server supports rev 13+ file downloads.
@@ -836,7 +864,7 @@ final class Host: Identifiable {
         }
         return try await Download.fetch(path: path, session: sid, block: block,
                                         ifNoneMatch: ifNoneMatch,
-                                        control: c, to: config.url, urlSession: try self.session())
+                                        control: c, to: config.url, auth: config.auth, urlSession: try self.session())
     }
 
     /// Whether the server supports rev 14+ com.superlogical.tunnel blocks.
@@ -882,7 +910,7 @@ final class Host: Identifiable {
             throw RexError(code: "not_supported", message: String(localized: "Server does not support tunnels"))
         }
         return try await Tunnel.connect(session: session, block: block, dataRefID: dataRefID,
-                                        control: c, to: config.url, urlSession: try self.session())
+                                        control: c, to: config.url, auth: config.auth, urlSession: try self.session())
     }
 
     private func sessionID(forBlock block: String) -> String? {
@@ -1209,12 +1237,18 @@ final class Host: Identifiable {
 @Observable
 final class HostStore {
     private(set) var hosts: [Host]
+    /// The hosts' LAN tokens, kept apart from the list saved.
+    @ObservationIgnored private let tokens: LANTokens
 
-    init() {
+    init(tokens: LANTokens = KeychainLANTokens()) {
+        self.tokens = tokens
         // A saved list never holds the demo host; one from an older build
         // that did is dropped, as it answers nothing.
-        let saved = (UserDefaults.standard.data(forKey: "hosts")
+        var saved = (UserDefaults.standard.data(forKey: "hosts")
             .flatMap { try? JSONDecoder().decode([HostConfig].self, from: $0) } ?? []).filter { $0.demo != true }
+        for i in saved.indices where saved[i].tailcat == nil {
+            saved[i].lanToken = tokens.token(for: saved[i].id)
+        }
         hosts = saved.map(Host.init)
         Host.tailcatHosts(saved)
         hosts.forEach { $0.connect() }
@@ -1243,6 +1277,7 @@ final class HostStore {
     func add(_ config: HostConfig) {
         let h = Host(config)
         hosts.append(h)
+        tokens.set(config.auth, for: config.id)
         save()
         h.connect()
     }
@@ -1250,6 +1285,7 @@ final class HostStore {
     func remove(_ id: UUID) {
         hosts.first { $0.id == id }?.stop()
         hosts.removeAll { $0.id == id }
+        tokens.set(nil, for: id)
         save()
     }
 
@@ -1257,7 +1293,8 @@ final class HostStore {
     /// again. The host stays the same, for the terminals open on it.
     func update(_ config: HostConfig) {
         guard let h = host(config.id) else { return }
-        let moved = h.config.url != config.url || h.config.transport != config.transport
+        let moved = h.config.url != config.url || h.config.transport != config.transport || h.config.auth != config.auth
+        if h.config.auth != config.auth { tokens.set(config.auth, for: config.id) }
         h.config = config
         if moved { h.reconnect() }
         save()

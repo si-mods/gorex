@@ -191,7 +191,7 @@ func readHello(ws *websocket.Conn, wait time.Duration) (*hello, string) {
 	typ, data, err := ws.Read(ctx)
 	if err != nil {
 		tracef("control hello read: %v", err)
-	} else if tracing {
+	} else if tracing.Load() {
 		tracef("control <- %s", clip(data))
 	}
 	if err != nil {
@@ -320,7 +320,7 @@ func (c *control) writeSync(v any) error {
 	if err != nil {
 		return err
 	}
-	if tracing {
+	if tracing.Load() {
 		tracef("control -> %s", clip(data))
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -333,7 +333,7 @@ func (c *control) writeLoop() {
 	for {
 		select {
 		case m := <-c.out:
-			if tracing {
+			if tracing.Load() {
 				tracef("control -> %s", clip(m.data))
 			}
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -370,7 +370,7 @@ func (c *control) readLoop() {
 			c.closeWith(websocket.StatusNormalClosure, "")
 			return
 		}
-		if tracing {
+		if tracing.Load() {
 			tracef("control <- %s", clip(data))
 		}
 		if typ == websocket.MessageBinary {

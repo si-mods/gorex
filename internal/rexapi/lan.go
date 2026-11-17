@@ -1,6 +1,10 @@
 package rexapi
 
 import (
+	"context"
+	"crypto/rand"
+	"crypto/subtle"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -9,6 +13,7 @@ import (
 	"net/netip"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"sync"
@@ -21,9 +26,10 @@ const LANPort = 7297
 
 // LANConfig is the gateway's listener on the local network, kept in
 // lan.json in the gateway's state directory. Rex's apps connect to it by
-// plain HTTP. Rex's API has no password on such a listener, so who may
-// connect is a list of networks: a caller from any other address gets
-// 403.
+// plain HTTP. A caller must come from one of the networks allowed, and
+// must show the pairing token, as "Authorization: Bearer <token>" or as
+// the query parameter k; a caller from an address on the legacy list
+// needs no token. Any other caller gets 403.
 type LANConfig struct {
 	Enabled bool `json:"enabled"`
 	// Listen is the address to listen on, host:port.
@@ -31,6 +37,28 @@ type LANConfig struct {
 	// Allow are the networks let in, as CIDRs; a bare address stands for
 	// itself alone.
 	Allow []string `json:"allow,omitempty"`
+	// Token is the pairing token: 32 random bytes, base64url. SaveLAN and
+	// the gateway make one when it is missing.
+	Token string `json:"token,omitempty"`
+	// LegacyOpen are single addresses (/32 or /128) let in without the
+	// token, for apps that cannot send one, such as Rex's own. They must
+	// be in Allow too.
+	LegacyOpen []string `json:"legacy_open,omitempty"`
+}
+
+// NewLANToken returns a new pairing token: 32 random bytes, base64url.
+func NewLANToken() string {
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		panic(err)
+	}
+	return base64.RawURLEncoding.EncodeToString(b)
+}
+
+// lanRefusalHint is what a caller without the token, and the log, are
+// told to do.
+func lanRefusalHint(a netip.Addr) string {
+	return fmt.Sprintf("re-scan the pairing QR code, or run gorex rexapi lan legacy add %s", a)
 }
 
 // LANStatus is what the gateway did with its LANConfig, kept in
@@ -72,12 +100,39 @@ func LoadLAN(dir string) (LANConfig, error) {
 }
 
 // SaveLAN checks c and writes it in dir, where a gateway running picks it
-// up within a second.
+// up within a second. A c with no token keeps the one in dir, or gets a
+// new one.
 func SaveLAN(dir string, c LANConfig) error {
 	if _, err := c.check(); err != nil {
 		return err
 	}
+	fillLANToken(dir, &c)
 	return writeJSON(lanConfPath(dir), c)
+}
+
+// fillLANToken gives c the token saved in dir when it has none, or a new
+// one when dir has none either.
+func fillLANToken(dir string, c *LANConfig) {
+	if c.Token != "" {
+		return
+	}
+	if old, err := LoadLAN(dir); err == nil && old.Token != "" {
+		c.Token = old.Token
+		return
+	}
+	c.Token = NewLANToken()
+}
+
+// RotateLANToken gives the listener in dir a new pairing token. A gateway
+// running takes it within a second, and closes every connection on the
+// local network: each device must show the new token.
+func RotateLANToken(dir string) (LANConfig, error) {
+	c, err := LoadLAN(dir)
+	if err != nil {
+		return c, err
+	}
+	c.Token = NewLANToken()
+	return c, SaveLAN(dir, c)
 }
 
 // LoadLANStatus reads what the gateway last reported of its listener.
@@ -89,14 +144,15 @@ func LoadLANStatus(dir string) LANStatus {
 	return s
 }
 
-// PairURL returns the active listener's address, which another device on
-// the same network can open in Rex. Rex pairs over its own Tailscale
-// address (gorex rexapi pair); this is the local network's plain HTTP
-// listener, which holds no credential either. Empty unless the listener
-// is bound to a specific, reachable address: a wildcard or loopback one
-// is only a bind address.
+// PairURL returns the active listener's address with its pairing token,
+// http://IP:PORT/#k=TOKEN, which another device on the same network
+// scans. The token is in the fragment, which a client never sends. Rex
+// pairs over its own Tailscale address (gorex rexapi pair); this is the
+// local network's plain HTTP listener. Empty unless the listener is bound
+// to a specific, reachable address: a wildcard or loopback one is only a
+// bind address.
 func (c LANConfig) PairURL(s LANStatus) string {
-	if !c.Enabled || len(c.Allow) == 0 || !s.Running || s.Error != "" {
+	if !c.Enabled || len(c.Allow) == 0 || c.Token == "" || !s.Running || s.Error != "" {
 		return ""
 	}
 	configured, err := netip.ParseAddrPort(c.Listen)
@@ -108,7 +164,7 @@ func (c LANConfig) PairURL(s LANStatus) string {
 		!bound.Addr().IsGlobalUnicast() || bound.Addr().Zone() != "" {
 		return ""
 	}
-	return "http://" + bound.String()
+	return "http://" + bound.String() + "/#k=" + c.Token
 }
 
 func saveLANStatus(dir string, s LANStatus) {
@@ -128,11 +184,22 @@ func writeJSON(path string, v any) error {
 	if err := os.WriteFile(tmp, append(b, '\n'), 0o600); err != nil {
 		return err
 	}
-	return os.Rename(tmp, path)
+	err := os.Rename(tmp, path)
+	// On Windows the rename fails while a reader, such as the app's poll
+	// of lan-status.json, has path open: try again for a moment rather
+	// than lose the write.
+	for i := 0; err != nil && runtime.GOOS == "windows" && i < 50; i++ {
+		time.Sleep(10 * time.Millisecond)
+		err = os.Rename(tmp, path)
+	}
+	return err
 }
 
 // check validates c, and returns its networks.
 func (c LANConfig) check() ([]netip.Prefix, error) {
+	if _, err := c.legacy(); err != nil {
+		return nil, err
+	}
 	if c.Listen != "" {
 		host, port, err := net.SplitHostPort(c.Listen)
 		if err != nil || port == "" {
@@ -145,6 +212,36 @@ func (c LANConfig) check() ([]netip.Prefix, error) {
 		}
 	}
 	return ParseNetworks(c.Allow)
+}
+
+// legacy returns the addresses let in without the token: single
+// addresses only, never a network.
+func (c LANConfig) legacy() ([]netip.Addr, error) {
+	out := make([]netip.Addr, 0, len(c.LegacyOpen))
+	for _, s := range c.LegacyOpen {
+		p, err := ParseLegacyAddr(s)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, p)
+	}
+	return out, nil
+}
+
+// ParseLegacyAddr reads an address for the legacy list: a bare address,
+// or one written as /32 or /128. A network is refused: the list lets in
+// devices one by one.
+func ParseLegacyAddr(s string) (netip.Addr, error) {
+	p, err := ParseNetwork(s)
+	if err != nil {
+		return netip.Addr{}, err
+	}
+	if !p.IsSingleIP() {
+		return netip.Addr{}, fmt.Errorf("%q is a network: the legacy list takes single addresses only", strings.TrimSpace(s))
+	}
+	// An IPv4 address written as IPv6 (::ffff:a.b.c.d) is the IPv4 one, as
+	// allowedPeer sees a caller.
+	return p.Addr().Unmap(), nil
 }
 
 // ParseNetworks reads networks written as CIDRs or bare addresses.
@@ -312,38 +409,53 @@ type lanListener struct {
 	mu      sync.Mutex
 	conf    LANConfig
 	nets    []netip.Prefix
+	legacy  []netip.Addr
 	ln      *trackedListener
 	err     string
 	applied bool
 	// refused remembers when each refused address was logged last, so
 	// that a client retrying does not fill the log.
 	refused map[netip.Addr]time.Time
+	// untokened is the same for callers allowed but with no token or a
+	// wrong one.
+	untokened map[netip.Addr]time.Time
 }
 
 func newLANListener(g *Gateway, dir string) *lanListener {
-	return &lanListener{g: g, dir: dir, wt: newWTListener(g, dir), refused: map[netip.Addr]time.Time{}}
+	return &lanListener{g: g, dir: dir, wt: newWTListener(g, dir),
+		refused: map[netip.Addr]time.Time{}, untokened: map[netip.Addr]time.Time{}}
 }
 
 // apply makes the listener what c says: it listens on c.Listen while
-// enabled, and lets in c.Allow; the networks change at once, without
-// closing the connections of callers still allowed.
+// enabled, and lets in c.Allow with c.Token; the networks change at once,
+// without closing the connections of callers still allowed. An enabled c
+// with no token gets one, saved in lan.json: from then on, a caller
+// without it is refused. A new token closes every connection.
 func (l *lanListener) apply(c LANConfig) {
 	nets, err := c.check()
+	if err == nil && c.Enabled && c.Token == "" {
+		var token string
+		if token, err = l.saveNewToken(c); err == nil {
+			c.Token = token
+		}
+	}
+	legacy, _ := c.legacy()
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	if l.applied && sameLAN(l.conf, c) {
 		return
 	}
 	addrChanged := !l.applied || l.conf.Enabled != c.Enabled || l.conf.Listen != c.Listen || l.ln == nil
+	tokenChanged := l.applied && l.conf.Token != c.Token
 	l.applied = true
 	l.conf = c
 	if err != nil {
-		l.nets, l.err = nil, err.Error()
+		l.nets, l.legacy, l.err = nil, nil, err.Error()
 		l.closeLocked()
 		l.reportLocked()
 		return
 	}
-	l.nets, l.err = nets, ""
+	l.nets, l.legacy, l.err = nets, legacy, ""
 	if !c.Enabled {
 		l.closeLocked()
 		l.reportLocked()
@@ -379,16 +491,42 @@ func (l *lanListener) apply(c LANConfig) {
 		}()
 		logf("lan: listening on http://%s for %s", ln.Addr(), strings.Join(c.Allow, ", "))
 		if l.wt != nil {
-			l.wt.start(c.Listen, func(addr net.Addr) bool {
-				l.mu.Lock()
-				nets := l.nets
-				l.mu.Unlock()
-				_, ok := allowedPeer(nets, addr.String())
-				return ok
-			})
+			l.wt.start(c.Listen)
 		}
+	} else if tokenChanged {
+		// Every caller showed the old token: close them all, on HTTP,
+		// WebSocket and WebTransport alike.
+		l.ln.closeConns()
+		if l.wt != nil {
+			l.wt.close()
+			l.wt.start(c.Listen)
+		}
+		logf("lan: the pairing token changed: closed every connection on the local network")
 	}
 	l.reportLocked()
+}
+
+// saveNewToken gives lan.json a pairing token, for c, a configuration
+// with none, and returns it. The file is read again first: a token
+// another writer saved meanwhile is the one, and only the token is added
+// to what the file holds now, so that a concurrent SaveLAN is not undone.
+// A token that cannot be saved is not used: a device could never learn
+// it, so the listener stays off with the error instead.
+func (l *lanListener) saveNewToken(c LANConfig) (string, error) {
+	cur, err := LoadLAN(l.dir)
+	if err == nil && cur.Token != "" {
+		return cur.Token, nil
+	}
+	if err != nil {
+		cur = c // no file yet: save what is applied
+	}
+	cur.Token = NewLANToken()
+	if err := writeJSON(lanConfPath(l.dir), cur); err != nil {
+		logf("lan: saving the pairing token: %v", err)
+		return "", fmt.Errorf("could not save the pairing token: %w", err)
+	}
+	logf("lan: made a pairing token: a device without it is refused until it re-scans the pairing QR code, or until gorex rexapi lan legacy add lets its address in")
+	return cur.Token, nil
 }
 
 // listener is the listener as server.status lists it, while it
@@ -408,7 +546,8 @@ func (l *lanListener) listener() (Listener, bool) {
 }
 
 func sameLAN(a, b LANConfig) bool {
-	return a.Enabled == b.Enabled && a.Listen == b.Listen && slices.Equal(a.Allow, b.Allow)
+	return a.Enabled == b.Enabled && a.Listen == b.Listen && slices.Equal(a.Allow, b.Allow) &&
+		a.Token == b.Token && slices.Equal(a.LegacyOpen, b.LegacyOpen)
 }
 
 func (l *lanListener) closeLocked() {
@@ -441,11 +580,14 @@ func (l *lanListener) reportLocked() {
 }
 
 // admit identifies a caller on the local network, or refuses it with 403
-// when its address is in no network allowed. A refusal is logged with the
-// address, so that the user can find the one to add.
+// when its address is in no network allowed, or when it shows no pairing
+// token or a wrong one and its address is not on the legacy list. A
+// request inside a WebTransport session that showed the token needs none
+// (wtAuthenticated). A refusal is logged with the address, so that the
+// user can find the one to add; the token is never logged.
 func (l *lanListener) admit(w http.ResponseWriter, r *http.Request) (map[string]any, bool) {
 	l.mu.Lock()
-	nets := l.nets
+	nets, legacy, token := l.nets, l.legacy, l.conf.Token
 	l.mu.Unlock()
 	a, ok := allowedPeer(nets, r.RemoteAddr)
 	if !ok {
@@ -458,8 +600,64 @@ func (l *lanListener) admit(w http.ResponseWriter, r *http.Request) (map[string]
 		writeRefusal(w, fmt.Sprintf("GoRex lets in only the networks it allows, and %s is in none of them", a))
 		return nil, false
 	}
+	if !wtAuthenticated(r.Context()) && !slices.Contains(legacy, a) && !tokenMatches(r, token) {
+		l.mu.Lock()
+		if time.Since(l.untokened[a]) > time.Minute {
+			l.untokened[a] = time.Now()
+			logf("lan: refused %s: no pairing token, or a wrong one (%s)", a, lanRefusalHint(a))
+		}
+		l.mu.Unlock()
+		writeRefusal(w, fmt.Sprintf("GoRex needs this device's pairing token: %s on the computer", lanRefusalHint(a)))
+		return nil, false
+	}
 	return map[string]any{
 		"kind": "anonymous", "transport": transportTCP,
 		"remote_addr": a.String(), "display": a.String(),
 	}, true
+}
+
+// tokenMatches reports whether r shows token, as "Authorization: Bearer
+// <token>" or as the query parameter k. No token lets no one in.
+func tokenMatches(r *http.Request, token string) bool {
+	if token == "" {
+		return false
+	}
+	got := ""
+	if scheme, rest, ok := strings.Cut(r.Header.Get("Authorization"), " "); ok && strings.EqualFold(scheme, "Bearer") {
+		got = strings.TrimSpace(rest)
+	}
+	if got == "" {
+		got = r.URL.Query().Get("k")
+	}
+	return subtle.ConstantTimeCompare([]byte(got), []byte(token)) == 1
+}
+
+// withoutToken returns r with the query parameter k taken out, so that
+// nothing after admission, a trace among them, sees the token.
+func withoutToken(r *http.Request) *http.Request {
+	q := r.URL.Query()
+	if !q.Has("k") {
+		return r
+	}
+	q.Del("k")
+	u := *r.URL
+	u.RawQuery = q.Encode()
+	r2 := r.WithContext(r.Context())
+	r2.URL = &u
+	r2.RequestURI = u.RequestURI()
+	return r2
+}
+
+// wtAuthKey marks the context of a WebTransport session whose CONNECT
+// showed the pairing token. Only the gateway sets it, in the context of
+// the session's streams; no header or query a client sends can.
+type wtAuthKey struct{}
+
+func withWTAuth(ctx context.Context) context.Context {
+	return context.WithValue(ctx, wtAuthKey{}, true)
+}
+
+func wtAuthenticated(ctx context.Context) bool {
+	ok, _ := ctx.Value(wtAuthKey{}).(bool)
+	return ok
 }

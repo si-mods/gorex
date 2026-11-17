@@ -334,10 +334,11 @@ func setTailnetEnabled(dir string, payload any) error {
 }
 
 // lanMain is "gorex rexapi lan on|off|status|listen ADDR|allow NET|deny
-// NET": the gateway's listener on the local network, which the GoRex
-// server runs while it is on.
+// NET|token show|token rotate|legacy add|remove|list": the gateway's
+// listener on the local network, which the GoRex server runs while it is
+// on.
 func lanMain(args []string) int {
-	usage := "usage: gorex rexapi lan on | off | status | qr [--origin URL] | listen HOST:PORT | allow NETWORK | deny NETWORK"
+	usage := "usage: gorex rexapi lan on | off | status | qr [--origin URL] | listen HOST:PORT | allow NETWORK | deny NETWORK | token show | token rotate | legacy add ADDRESS | legacy remove ADDRESS | legacy list"
 	if len(args) == 0 {
 		fmt.Fprintln(os.Stderr, usage)
 		return 2
@@ -354,6 +355,43 @@ func lanMain(args []string) int {
 		change = false
 	case args[0] == "qr":
 		return lanQRMain(dir, args[1:])
+	case args[0] == "token" && len(args) == 2 && args[1] == "show":
+		if conf.Token == "" {
+			// Made now, as the gateway would make it.
+			if err := SaveLAN(dir, conf); err != nil {
+				fmt.Fprintf(os.Stderr, "gorex rexapi lan: %v\n", err)
+				return 1
+			}
+			conf, _ = LoadLAN(dir)
+		}
+		fmt.Println(conf.Token)
+		return 0
+	case args[0] == "token" && len(args) == 2 && args[1] == "rotate":
+		conf.Token = NewLANToken()
+		fmt.Fprintln(os.Stderr, "gorex rexapi lan: a new pairing token: every device on the local network must scan the new pairing QR code")
+	case args[0] == "legacy" && len(args) == 2 && args[1] == "list":
+		for _, a := range conf.LegacyOpen {
+			fmt.Println(a)
+		}
+		return 0
+	case args[0] == "legacy" && len(args) == 3 && (args[1] == "add" || args[1] == "remove"):
+		a, err := ParseLegacyAddr(args[2])
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "gorex rexapi lan: %v\n", err)
+			return 2
+		}
+		conf.LegacyOpen = slices.DeleteFunc(conf.LegacyOpen, func(s string) bool {
+			b, err := ParseLegacyAddr(s)
+			return err == nil && b == a
+		})
+		if args[1] == "add" {
+			conf.LegacyOpen = append(conf.LegacyOpen, a.String())
+			if nets, err := ParseNetworks(conf.Allow); err == nil {
+				if _, ok := allowedPeer(nets, net.JoinHostPort(a.String(), "1")); !ok {
+					fmt.Fprintf(os.Stderr, "gorex rexapi lan: %s is in no network allowed: add it with gorex rexapi lan allow %s\n", a, a)
+				}
+			}
+		}
 	case args[0] == "on" && len(args) == 1:
 		conf = conf.WithDefaults()
 		conf.Enabled = true
@@ -394,6 +432,9 @@ func lanMain(args []string) int {
 			fmt.Fprintf(os.Stderr, "gorex rexapi lan: %v\n", err)
 			return 2
 		}
+		if saved, err := LoadLAN(dir); err == nil {
+			conf = saved // with the token SaveLAN gave it
+		}
 		// The server's gateway reads the file within a second; wait for
 		// its word, when there is a server to give it.
 		deadline := time.Now()
@@ -430,6 +471,12 @@ func printLAN(w io.Writer, c LANConfig, s LANStatus) {
 	} else {
 		fmt.Fprintln(w, "  allow: none")
 	}
+	if c.Token != "" {
+		fmt.Fprintln(w, "  pairing token: set (gorex rexapi lan token show)")
+	}
+	if len(c.LegacyOpen) > 0 {
+		fmt.Fprintf(w, "  legacy, no token: %s\n", strings.Join(c.LegacyOpen, ", "))
+	}
 	if s.Error != "" {
 		fmt.Fprintf(w, "  error: %s\n", s.Error)
 	}
@@ -456,6 +503,15 @@ func lanQRMain(dir string, args []string) int {
 		}
 	}
 	s := LoadLANStatus(dir)
+	conf, err := LoadLAN(dir)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "gorex rexapi lan qr: %v\n", err)
+		return 1
+	}
+	if conf.Token == "" {
+		fmt.Fprintln(os.Stderr, "gorex rexapi lan qr: no pairing token yet (run gorex rexapi lan on)")
+		return 1
+	}
 	if s.WTListening == "" || s.WTCertHash == "" {
 		fmt.Fprintln(os.Stderr, "gorex rexapi lan qr: WebTransport listener is not running (run gorex rexapi lan on)")
 		return 1
@@ -468,7 +524,7 @@ func lanQRMain(dir string, args []string) int {
 			}
 		}
 	}
-	pairURL := fmt.Sprintf("%s/#host=%s&wt=sha256-%s", origin, url.QueryEscape("https://"+addr), url.QueryEscape(s.WTCertHash))
+	pairURL := fmt.Sprintf("%s/#host=%s&wt=sha256-%s&k=%s", origin, url.QueryEscape("https://"+addr), url.QueryEscape(s.WTCertHash), url.QueryEscape(conf.Token))
 	code, err := qr.Encode(pairURL, qr.M)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "gorex rexapi lan qr: %v\n", err)

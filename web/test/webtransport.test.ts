@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { parsePairingLink } from "../src/hosts";
-import { parseCertHash, webTransportProblem } from "../src/webtransport";
+import { directTransport } from "../src/rex";
+import { withToken } from "../src/share";
+import { parseCertHash, webTransport, webTransportProblem } from "../src/webtransport";
 
 test("parseCertHash decodes sha256-<base64url> to 32 bytes", () => {
   const raw = new Uint8Array(32);
@@ -112,5 +114,69 @@ test("a browser with no such permission still gets the causes", async () => {
   } finally {
     restoreNav();
     restoreWT();
+  }
+});
+
+const tok = "test-token-AAAA";
+const lan = "https://192.0.2.10:7298";
+
+test("parsePairingLink reads k from the fragment only, never the page's query", () => {
+  const hash = `#host=${encodeURIComponent(lan)}&wt=sha256-abc&k=${tok}`;
+  assert.deepEqual(parsePairingLink("", hash), { url: lan, certHash: "sha256-abc", token: tok });
+  assert.equal(parsePairingLink(`?host=${encodeURIComponent(lan)}&k=${tok}`, "")?.token, undefined);
+  assert.equal(parsePairingLink("", `#host=${encodeURIComponent(lan)}`)?.token, undefined);
+});
+
+test("withToken adds k with ? or &, and nothing without a token", () => {
+  assert.equal(withToken("https://192.0.2.10:7298/api/wt", tok), `https://192.0.2.10:7298/api/wt?k=${tok}`);
+  assert.equal(withToken("http://192.0.2.10:7297/api/download?ticket=1", tok), `http://192.0.2.10:7297/api/download?ticket=1&k=${tok}`);
+  assert.equal(withToken("http://192.0.2.10:7297/api/control"), "http://192.0.2.10:7297/api/control");
+  assert.equal(withToken("http://192.0.2.10:7297/api/control", ""), "http://192.0.2.10:7297/api/control");
+});
+
+test("directTransport puts k on its WebSocket and fetch URLs only with a token", async () => {
+  const urls: string[] = [];
+  const hadWS = Object.getOwnPropertyDescriptor(globalThis, "WebSocket");
+  const hadFetch = Object.getOwnPropertyDescriptor(globalThis, "fetch");
+  Reflect.set(globalThis, "WebSocket", class { constructor(u: string) { urls.push(u); } });
+  Reflect.set(globalThis, "fetch", async (u: string) => { urls.push(u); return new Response(""); });
+  try {
+    const withK = directTransport("http://192.0.2.10:7297", tok);
+    withK.socket("/api/control", "p");
+    withK.socket("/api/data", "p");
+    await withK.fetch("/api/download?ticket=1");
+    await withK.fetch("/api/spaces");
+    assert.equal(withK.url?.("/api/upload"), `http://192.0.2.10:7297/api/upload?k=${tok}`);
+    const plain = directTransport("http://192.0.2.10:7297");
+    plain.socket("/api/control", "p");
+    await plain.fetch("/api/spaces");
+    assert.deepEqual(urls, [
+      `ws://192.0.2.10:7297/api/control?k=${tok}`,
+      `ws://192.0.2.10:7297/api/data?k=${tok}`,
+      `http://192.0.2.10:7297/api/download?ticket=1&k=${tok}`,
+      `http://192.0.2.10:7297/api/spaces?k=${tok}`,
+      "ws://192.0.2.10:7297/api/control",
+      "http://192.0.2.10:7297/api/spaces",
+    ]);
+  } finally {
+    if (hadWS) Reflect.defineProperty(globalThis, "WebSocket", hadWS); else Reflect.deleteProperty(globalThis, "WebSocket");
+    if (hadFetch) Reflect.defineProperty(globalThis, "fetch", hadFetch);
+  }
+});
+
+test("webTransport puts k on the CONNECT URL only with a token", async () => {
+  const urls: string[] = [];
+  const had = Object.getOwnPropertyDescriptor(globalThis, "WebTransport");
+  Reflect.set(globalThis, "WebTransport", class {
+    ready = Promise.reject(new Error("stop"));
+    constructor(u: string) { urls.push(u); this.ready.catch(() => {}); }
+  });
+  const hash = "sha256-" + Buffer.alloc(32).toString("base64url");
+  try {
+    await assert.rejects(webTransport(lan, hash, tok).fetch("/api/spaces"), /stop/);
+    await assert.rejects(webTransport(lan, hash).fetch("/api/spaces"), /stop/);
+    assert.deepEqual(urls, [`${lan}/api/wt?k=${tok}`, `${lan}/api/wt`]);
+  } finally {
+    if (had) Reflect.defineProperty(globalThis, "WebTransport", had); else Reflect.deleteProperty(globalThis, "WebTransport");
   }
 });

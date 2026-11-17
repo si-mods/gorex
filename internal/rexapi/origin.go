@@ -73,6 +73,18 @@ func (l *trackedListener) Close() error {
 	return err
 }
 
+// closeConns closes every connection accepted so far, and keeps
+// listening.
+func (l *trackedListener) closeConns() {
+	l.mu.Lock()
+	conns := l.conns
+	l.conns = map[net.Conn]struct{}{}
+	l.mu.Unlock()
+	for c := range conns {
+		c.(*trackedConn).Conn.Close()
+	}
+}
+
 type trackedConn struct {
 	net.Conn
 	l    *trackedListener
@@ -149,6 +161,7 @@ func (g *Gateway) HandlerFor(transport string) http.Handler {
 			if p, ok = g.lan.admit(w, r); !ok {
 				return
 			}
+			r = withoutToken(r)
 		case transportTailscale:
 			if g.tailnet == nil {
 				writeRefusal(w, "built-in Tailscale is off")

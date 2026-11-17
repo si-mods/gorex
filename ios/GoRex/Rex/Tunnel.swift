@@ -71,7 +71,7 @@ enum Tunnel {
 
     static func connect(session: String, block: String,
                         dataRefID: String? = nil,
-                        control: ControlConnection, to base: URL,
+                        control: ControlConnection, to base: URL, auth: String?,
                         urlSession: URLSession = .shared) async throws -> BytesStream {
         let ref = dataRefID ?? "conn:\(UUID().uuidString.lowercased())"
         let reply = try await control.call("data.connect", [
@@ -83,6 +83,6 @@ enum Tunnel {
         guard let ticket = reply.payload["ticket"] as? String else {
             throw RexError(code: "protocol", message: "missing tunnel ticket")
         }
-        return try await BytesStream.open(ticket: ticket, to: base, urlSession: urlSession)
+        return try await BytesStream.open(ticket: ticket, to: base, auth: auth, urlSession: urlSession)
     }
 }

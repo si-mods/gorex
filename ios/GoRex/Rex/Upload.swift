@@ -4,7 +4,7 @@ import Foundation
 /// com.superlogical.terminal.upload_begin + rex.data.bytes.v1 stream.
 enum Upload {
     static func send(_ file: URL, name: String, session: String, block: String,
-                     control: ControlConnection, to base: URL,
+                     control: ControlConnection, to base: URL, auth: String?,
                      urlSession: URLSession = .shared) async throws {
         let size = (try file.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
         let ref = "upload:\(UUID().uuidString.lowercased())"
@@ -17,7 +17,7 @@ enum Upload {
             throw RexError(code: "protocol", message: "missing upload ticket")
         }
 
-        let stream = try await BytesStream.open(ticket: ticket, to: base, urlSession: urlSession)
+        let stream = try await BytesStream.open(ticket: ticket, to: base, auth: auth, urlSession: urlSession)
         defer { stream.close() }
 
         let fh = try FileHandle(forReadingFrom: file)

@@ -48,7 +48,7 @@ The gateway listens on five places:
   methods that administer the gateway or the server (`server.tailscale.*`, `server.stop`) are accepted
   only there, as on a Rex server;
 - the local network, over plain HTTP, while that listener is on: only
-  the networks it allows get in (below);
+  the networks it allows get in, with the pairing token (below);
 - the tailnet, over HTTPS, while built-in Tailscale is on;
 - the session server's tailcat address, on Rex's port 7297, while remote
   access is on (below);
@@ -79,8 +79,7 @@ directly or through a VPN to it, Rex's app connects without Tailscale.
 Settings › Server › Local API › Serve Rex apps on the local network turns the listener on.
 It listens on this machine's private address with Rex's port, such as
 `192.168.88.119:7297`, and lets in that address's network, such as
-`192.168.88.0/24`; change either there. In Rex's app, add the host
-`http://192.168.88.119:7297`. The same from the command line:
+`192.168.88.0/24`; change either there. The same from the command line:
 
 ```sh
 gorex rexapi lan on                 # this machine's address and network
@@ -88,21 +87,68 @@ gorex rexapi lan allow 10.6.0.2     # the phone's VPN address, alone
 gorex rexapi lan deny 192.168.88.0/24
 gorex rexapi lan listen 0.0.0.0:7297
 gorex rexapi lan status
+gorex rexapi lan token show         # the pairing token
+gorex rexapi lan token rotate       # a new one; every device must pair again
+gorex rexapi lan legacy add 192.168.88.40   # a device that cannot send a token
+gorex rexapi lan legacy remove 192.168.88.40
+gorex rexapi lan legacy list
 ```
 
-A device in no network allowed gets 403. The refusal is in the server's
-log with the device's address, which is how to find the one to allow.
+### Pairing token
+
+A caller must be in a network allowed **and** show the listener's
+pairing token: 32 random bytes, base64url, kept as `token` in
+`rexapi/lan.json` (mode 0600). It goes either as the header
+`Authorization: Bearer <token>` or as the query parameter `k=<token>`,
+on every request and WebSocket. The gateway compares it in constant time
+and takes `k` out of the request before anything logs it.
+
+- **Getting it.** The pairing code holds it in the URL's fragment, which
+  a client never sends: `http://192.168.88.119:7297/#k=<token>`. Scan
+  **Settings › Server › Local API → Rex QR…**, or paste that URL by hand.
+  The web pairing link of `gorex rexapi lan qr` carries it as `&k=` in
+  the fragment; the web client reads it from the fragment only, never
+  from the page's query, so it never reaches the web server's logs. The
+  web client keeps it in the browser's `localStorage` with the host, so a
+  script injected into the web client's origin could read it. It sends it
+  as `?k=` (no custom header, so no CORS preflight). Rex Go keeps it in
+  the iOS Keychain; its hotspot share adds it as `Authorization: Bearer`
+  to what it forwards, and never gives it to the browser. On WebTransport the token goes once, as `?k=` on the
+  `CONNECT` to `/api/wt`; the session's streams need no token of their
+  own, as the session is marked authenticated in the server's own
+  context, which no header a client sends can set.
+- **Upgrading.** A `lan.json` from before the token gets one the first
+  time the gateway reads it (added to the file as it is then; when the
+  file cannot be written, the listener stays off with that error rather
+  than serve with a token no device can learn), and from then on a
+  device without it gets 403: *re-scan the pairing QR code, or run `gorex rexapi lan legacy add
+  <IP>`*. The server's log says the same, with the device's address.
+- **Rotating.** `gorex rexapi lan token rotate` makes a new token. The
+  gateway takes it within a second and closes every connection on the
+  local network (HTTP, WebSocket and WebTransport); each device must scan
+  the new code.
+- **Legacy list.** An app that cannot send a token, such as Rex's own
+  app, gets in from an address on `legacy_open`, without the token. The
+  list takes single addresses only (`/32` or `/128`; `::ffff:a.b.c.d`
+  is the IPv4 address), never a network,
+  and the address must be in a network allowed too.
+
+A device in no network allowed gets 403 as well. Every refusal is in the
+server's log with the device's address, which is how to find the one to
+allow.
 
 Mind what this listener is:
 
-- **Anyone in a network allowed gets a full shell as you.** Rex's API has
-  no password on a plain TCP listener; the networks are the only check.
-  Allow as little as you can: the phone's address alone (`/32`), or the
-  VPN's network rather than the whole home network.
-- **It is not encrypted.** What you type and what the terminals show
-  cross the local network as plain HTTP. A VPN protects the way to the
-  network, not the last hop in it. Built-in Tailscale encrypts end to
-  end.
+- **Anyone with the token, in a network allowed, gets a full shell as
+  you.** So does anyone at an address on the legacy list. Allow as
+  little as you can: the phone's address alone (`/32`), or the VPN's
+  network rather than the whole home network.
+- **It is not encrypted.** Port 7297 is plain HTTP. What you type, what
+  the terminals show **and the pairing token** cross the local network
+  in the clear: anyone who can sniff that network can take the token
+  and use it. A VPN protects the way to the network, not the last hop in
+  it. Prefer an encrypted way: tailcat or built-in Tailscale for Rex Go,
+  WebTransport (self-signed, pinned certificate) for the web client.
 
 The settings live in `rexapi/lan.json` in GoRex's data directory; the
 server's gateway follows a change within a second, without a restart.
@@ -112,9 +158,9 @@ built-in Tailscale address, `https://<machine>-gorex.<tailnet>.ts.net`.
 The code holds the address only, not a credential, and the device that
 scans it must be on the same tailnet. Until built-in Tailscale is on and
 its HTTPS address is ready, the dialog shows the local network
-listener's address instead, `http://<address>:7297`, for a device on the
-same network: the listener below is unchanged, and Rex can also add it
-by hand.
+listener's address instead, `http://<address>:7297/#k=<token>`, for a
+device on the same network. The dialog shows the address without the
+token; the code and Copy carry it.
 
 A session that a GoRex desktop of yours made on this machine (one of its
 remote hosts' panes) and that no local tab shows is under **Desktop
@@ -212,6 +258,9 @@ device out; `tailscale rename NAME` renames it.
 | `GoRex rexapi lan on \| off \| status` | the listener on the local network |
 | `GoRex rexapi lan listen HOST:PORT` | the address it listens on |
 | `GoRex rexapi lan allow NETWORK` / `deny NETWORK` | the networks let in: a CIDR, or an address alone |
+| `GoRex rexapi lan token show \| rotate` | the pairing token; rotate makes a new one and closes every connection on the local network |
+| `GoRex rexapi lan legacy add ADDRESS \| remove ADDRESS \| list` | addresses let in without the token, for apps that cannot send one: single addresses only |
+| `GoRex rexapi lan qr [--origin URL]` | the web client's pairing link and QR code for WebTransport, with the token |
 | `GoRex rexapi web allow ORIGIN` / `deny ORIGIN` | the web pages trusted, by origin, such as `https://gorex-web.example.workers.dev`: `http(s)://host[:port]`, no path or wildcard; in `rexapi/web.json`, followed within a second (docs/web-client.md) |
 | `GoRex rexapi web host add NAME` / `host remove NAME` | the host names the gateway answers besides `localhost`, IP addresses and built-in Tailscale's names: a DNS name, no port or wildcard; in `rexapi/web.json` |
 | `GoRex rexapi web status` | the web pages trusted, and the host names added |

@@ -5,7 +5,7 @@
 
 import { Msg, PlainKey, t } from "./i18n";
 import { RexProtocol } from "./rex-protocol.gen";
-import { joinHostURL } from "./share";
+import { joinHostURL, withToken } from "./share";
 
 /**
  * A failed call, as the response's error names it: the host's code and its
@@ -102,16 +102,16 @@ export interface Transport {
 }
 
 /** The browser's own connections to a gateway at url: today's, unchanged. */
-export function directTransport(url: string): Transport {
+export function directTransport(url: string, token?: string): Transport {
   return {
     kind: "direct",
     socket(path, protocol) {
-      const u = new URL(joinHostURL(url, path));
+      const u = new URL(withToken(joinHostURL(url, path), token));
       u.protocol = u.protocol === "https:" ? "wss:" : "ws:";
       return new WebSocket(u.href, protocol) as SocketLike;
     },
-    fetch: (path, init) => fetch(joinHostURL(url, path), init),
-    url: (path) => joinHostURL(url, path),
+    fetch: (path, init) => fetch(withToken(joinHostURL(url, path), token), init),
+    url: (path) => withToken(joinHostURL(url, path), token),
   };
 }
 

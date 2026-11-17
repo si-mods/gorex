@@ -6,7 +6,7 @@
 // group of their own, and not kept.
 import { localize, PlainKey, t } from "./i18n";
 import type { LinkState } from "./settings";
-import { joinHostURL, SharedGroup } from "./share";
+import { joinHostURL, SharedGroup, withToken } from "./share";
 import type { Tailnet, TailnetHost } from "./tailnet";
 
 /** A host as the user added it, as built-in Tailscale found it (kind "tailnet"), or shared by Rex Go (kind "share"). */
@@ -20,6 +20,8 @@ export interface Host {
   kind?: "direct" | "tailnet" | "share";
   /** Base64url SHA-256 of the host's self-signed ECDSA cert for WebTransport. */
   certHash?: string;
+  /** The LAN gateway's pairing token (base64url), sent as ?k= on each connection. Kept in this browser's storage like the rest. */
+  token?: string;
 }
 
 /** The icons a host can take, as the iOS app offers them, from the repo's lucide set. */
@@ -80,7 +82,7 @@ export function hostURL(typed: string): { url: string } | { error: string } {
  * Parses either a plain host address (`hostURL`) or a full pairing link
  * (`https://web.gorex.uk/#host=...&wt=sha256-...` or `?host=...#wt=...`).
  */
-export function parsePairingLink(search: string, hash: string): { url: string; certHash?: string } | undefined {
+export function parsePairingLink(search: string, hash: string): { url: string; certHash?: string; token?: string } | undefined {
   const q = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
   const f = new URLSearchParams(hash.startsWith("#") ? hash.slice(1) : hash);
   const rawHost = f.get("host") || q.get("host");
@@ -88,7 +90,10 @@ export function parsePairingLink(search: string, hash: string): { url: string; c
   const r = hostURL(rawHost);
   if (!("url" in r)) return undefined;
   const wt = f.get("wt") || q.get("wt") || undefined;
-  return { url: r.url, certHash: wt };
+  // The token only from the fragment, which the browser never sends: a
+  // ?k= in the page's own address would reach the web server's logs.
+  const k = f.get("k") || undefined;
+  return { url: r.url, certHash: wt, ...(k ? { token: k } : {}) };
 }
 /** A host's name until the user gives one: the first label of a DNS name, else the whole host (an IP address). */
 export function defaultName(url: string): string {
@@ -168,8 +173,8 @@ const mixedProblem: Problem = problem(() => t("problemMixedTitle"), () => t("pro
  * the page (CORS), which a gateway that trusts the page answers, and
  * without reading it (no-cors), which any server that is there answers.
  */
-export async function diagnose(url: string): Promise<Problem> {
-  const help = joinHostURL(url, "/api/help");
+export async function diagnose(url: string, token?: string): Promise<Problem> {
+  const help = withToken(joinHostURL(url, "/api/help"), token);
   const wait = () => AbortSignal.timeout(8000);
   try {
     const r = await fetch(help, { cache: "no-store", signal: wait() });
@@ -366,16 +371,17 @@ export class HostList {
   }
 
   /** Adds the host of a quick link (?host=URL or #host=URL&wt=...), or chooses the one with its address. */
-  addLink(url: string, certHash?: string) {
+  addLink(url: string, certHash?: string, token?: string) {
     const had = this.hosts.find((h) => h.url === url);
     if (had) {
-      if (certHash && had.certHash !== certHash) {
-        had.certHash = certHash;
+      if ((certHash && had.certHash !== certHash) || (token && had.token !== token)) {
+        if (certHash) had.certHash = certHash;
+        if (token) had.token = token;
         saveHosts(this.hosts);
       }
       this.chosen = had;
     } else {
-      const h: Host = { id: newID(), name: defaultName(url), url, icon: "laptop", ...(certHash ? { certHash } : {}) };
+      const h: Host = { id: newID(), name: defaultName(url), url, icon: "laptop", ...(certHash ? { certHash } : {}), ...(token ? { token } : {}) };
       this.hosts.push(h);
       saveHosts(this.hosts);
       this.chosen = h;

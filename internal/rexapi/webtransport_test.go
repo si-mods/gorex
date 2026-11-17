@@ -63,6 +63,7 @@ func TestWebTransportControlAndHTTP(t *testing.T) {
 		Enabled: true,
 		Listen:  "127.0.0.1:0",
 		Allow:   []string{"127.0.0.1"},
+		Token:   testLANToken,
 	})
 	defer f.g.lan.close()
 
@@ -71,7 +72,7 @@ func TestWebTransportControlAndHTTP(t *testing.T) {
 		t.Fatalf("wt status invalid: addr=%q hash=%q err=%q", addr, hash, errMsg)
 	}
 
-	dialWT := func(origin string) (*http.Response, *webtransport.Session, error) {
+	dialWT := func(origin, query string) (*http.Response, *webtransport.Session, error) {
 		d := &webtransport.Transport{
 			TLSClientConfig: &tls.Config{
 				InsecureSkipVerify: true,
@@ -94,11 +95,11 @@ func TestWebTransportControlAndHTTP(t *testing.T) {
 		if origin != "" {
 			hdr.Set("Origin", origin)
 		}
-		return d.Dial(ctx, "https://"+addr+"/api/wt", hdr)
+		return d.Dial(ctx, "https://"+addr+"/api/wt"+query, hdr)
 	}
 
 	// Untrusted origin is rejected.
-	if resp, sess, err := dialWT("https://evil.example"); err == nil {
+	if resp, sess, err := dialWT("https://evil.example", "?k="+testLANToken); err == nil {
 		resp.Body.Close()
 		sess.CloseWithError(0, "")
 		t.Fatal("expected untrusted origin to be rejected")
@@ -106,8 +107,25 @@ func TestWebTransportControlAndHTTP(t *testing.T) {
 		resp.Body.Close()
 	}
 
-	// Trusted origin succeeds.
-	resp, sess, err := dialWT("https://web.gorex.uk")
+	// A CONNECT without the pairing token, or with a wrong one, is
+	// refused.
+	for _, q := range []string{"", "?k=wrong"} {
+		if resp, sess, err := dialWT("https://web.gorex.uk", q); err == nil {
+			resp.Body.Close()
+			sess.CloseWithError(0, "")
+			t.Fatalf("a CONNECT with %q got a session", q)
+		} else if resp != nil {
+			if resp.StatusCode != http.StatusForbidden {
+				t.Errorf("a CONNECT with %q: status %d, want 403", q, resp.StatusCode)
+			}
+			if resp.Body != nil {
+				resp.Body.Close()
+			}
+		}
+	}
+
+	// Trusted origin with the token succeeds.
+	resp, sess, err := dialWT("https://web.gorex.uk", "?k="+testLANToken)
 	if err != nil {
 		if resp != nil && resp.Body != nil {
 			resp.Body.Close()
@@ -188,6 +206,41 @@ func TestWebTransportControlAndHTTP(t *testing.T) {
 		t.Fatalf("expected non-empty /api/help body, len=%d err=%v", len(body), err)
 	}
 	hstr.Close()
+
+	// 3. The session's mark is in its streams' context, never in what a
+	// client sends: a request straight to the HTTP listener with the
+	// headers an inner stream carries, and any a client may invent, is
+	// still refused without the token.
+	f.g.lan.mu.Lock()
+	lanAddr := f.g.lan.ln.Addr().String()
+	f.g.lan.mu.Unlock()
+	if code, body := lanGet(t, "http://"+lanAddr+"/api/help",
+		"Origin", "https://web.gorex.uk", "Wt-Authenticated", "true", "X-Webtransport-Session", "1",
+		"X-Forwarded-For", "127.0.0.1", "Authorization", "Bearer "); code != http.StatusForbidden {
+		t.Errorf("a forged inner request on the HTTP listener: %d %s", code, body)
+	}
+	// Inside the session, what the stream's headers say of a token does
+	// not matter: the CONNECT showed it.
+	fstr, err := sess.OpenStreamSync(ctx)
+	if err != nil {
+		t.Fatalf("open http stream: %v", err)
+	}
+	forged, _ := json.Marshal(wtHTTPReq{Method: http.MethodGet, Path: "/api/help?k=wrong", Headers: map[string]string{"Authorization": "Bearer wrong"}})
+	fstr.Write([]byte{wtStreamHTTP})
+	writeLenBytes(fstr, forged)
+	writeLenBytes(fstr, nil)
+	if b, err := readLenBytes(fstr); err != nil || json.Unmarshal(b, &respMeta) != nil || respMeta.Status != http.StatusOK {
+		t.Errorf("an inner stream with a wrong token in its headers: %s, %v", b, err)
+	}
+	fstr.Close()
+
+	// 4. A new token closes the session.
+	f.g.lan.apply(LANConfig{Enabled: true, Listen: "127.0.0.1:0", Allow: []string{"127.0.0.1"}, Token: testLANToken + "-new"})
+	select {
+	case <-sess.Context().Done():
+	case <-time.After(5 * time.Second):
+		t.Error("the WebTransport session stays open after the token changed")
+	}
 
 	// Verify wtListenAddr increments port.
 	if got, err := wtListenAddr("192.168.1.50:7297"); err != nil || got != "192.168.1.50:7298" {
