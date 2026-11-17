@@ -10,10 +10,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log"
 	"net"
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"gorex/internal/tailnode"
@@ -161,6 +163,9 @@ var (
 	tailcatTry  = 3 * time.Second
 )
 
+// tailcatTries counts the tries of kept clients (a test reads it).
+var tailcatTries atomic.Int64
+
 // pooledTailcat is the client of an address, as internal/rex's.
 type pooledTailcat struct {
 	tc    *tailcat.Client
@@ -184,10 +189,11 @@ func dialTailcat(ctx context.Context, id string, port uint16) (net.Conn, error) 
 
 // dialAddr connects to port at addr with the client of addr, as
 // internal/rex's dialTailcat: a client that connected before and fails
-// now may have a server that restarted and forgot it, so it registers
-// again (Ping) and tries once more; then, when no other connection uses
-// it, a new client replaces it. A client other connections use is never
-// closed here: one slow dial says little of them.
+// now may have a server that restarted and forgot it, so, when no other
+// connection uses it, a new client replaces it. (A Ping to register again
+// does not help: it returns at once for a client that was registered, so
+// the try after it only waited tailcatTry more.) A client other
+// connections use is never closed here: one slow dial says little of them.
 func dialAddr(ctx context.Context, addr string, port uint16) (net.Conn, error) {
 	tcMu.Lock()
 	if tcKey.IsZero() {
@@ -209,16 +215,10 @@ func dialAddr(ctx context.Context, addr string, port uint16) (net.Conn, error) {
 	var c net.Conn
 	var err error
 	if used {
+		t0 := time.Now()
 		c, err = p.try(ctx, port)
-		if err != nil && ctx.Err() == nil {
-			pctx, cancel := context.WithTimeout(ctx, tailcatTry)
-			_, err = p.tc.Ping(pctx)
-			cancel()
-			if err == nil {
-				c, err = p.try(ctx, port)
-			}
-		}
 		if err != nil && ctx.Err() == nil && p.drop(addr) {
+			tried := time.Since(t0)
 			old := p
 			tcMu.Lock()
 			if p = tcClients[addr]; p == nil {
@@ -229,6 +229,10 @@ func dialAddr(ctx context.Context, addr string, port uint16) (net.Conn, error) {
 			go old.tc.Close()
 			old.release(addr)
 			c, err = p.tc.DialTCPPort(ctx, port)
+			// Only on this path, so a slow reconnect explains itself.
+			log.Printf("tailcat: the kept client's try failed after %v; a new client %s after %v more",
+				tried.Round(time.Millisecond), map[bool]string{true: "connected", false: "failed"}[err == nil],
+				(time.Since(t0) - tried).Round(time.Millisecond))
 		}
 	} else {
 		c, err = p.tc.DialTCPPort(ctx, port)
@@ -256,6 +260,7 @@ func newPooledLocked(addr string) *pooledTailcat {
 
 // try dials within tailcatTry.
 func (p *pooledTailcat) try(ctx context.Context, port uint16) (net.Conn, error) {
+	tailcatTries.Add(1)
 	ctx, cancel := context.WithTimeout(ctx, tailcatTry)
 	defer cancel()
 	return p.tc.DialTCPPort(ctx, port)

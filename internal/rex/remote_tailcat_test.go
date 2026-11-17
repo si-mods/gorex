@@ -284,7 +284,7 @@ func TestTailcatPool(t *testing.T) {
 }
 
 // The remote server restarts, as an upgrade does, with the same address:
-// the kept client registers again and connects.
+// the kept client gets one try, which fails, and a new client connects.
 func TestTailcatServerRestart(t *testing.T) {
 	reg := tailcatEnv(t)
 	sk, psk := key.NewNode(), tailcat.NewPresharedKey()
@@ -302,11 +302,17 @@ func TestTailcatServerRestart(t *testing.T) {
 	c.Close()
 	ts.Close()
 	ts = echoServer(t, reg, sk, psk)
+	tries := tailcatTries.Load()
 	c, err = dialTrip(t, ts.TailcatAddr())
 	if err != nil {
 		t.Fatalf("after the restart: %v", err)
 	}
 	c.Close()
+	// Its Ping returns at once, as it registered before, so a second try
+	// would only wait another tailcatTry.
+	if n := tailcatTries.Load() - tries; n != 1 {
+		t.Errorf("the kept client had %d tries after the restart, want 1", n)
+	}
 }
 
 // With no local server it cannot start, or one that does not relay, the

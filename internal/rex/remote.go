@@ -1065,6 +1065,9 @@ var (
 	tailcatTry  = 3 * time.Second
 )
 
+// tailcatTries counts the tries of kept clients (a test reads it).
+var tailcatTries atomic.Int64
+
 type pooledTailcat struct {
 	tc    *tailcat.Client
 	conns int  // open, or being dialed
@@ -1074,11 +1077,12 @@ type pooledTailcat struct {
 
 // dialTailcat connects to RemotePort at addr with the tailcat client of
 // addr. A client that connected before and fails now may have a server
-// that restarted and forgot it: it registers again (Ping) and tries once
-// more; then, when no other connection uses it, another client replaces
-// it. A client other connections use is never closed here: one slow dial
-// says little of them, and a restarted server's close soon. A dial its
-// caller gave up (canceled) closes no client.
+// that restarted and forgot it: when no other connection uses it, another
+// client replaces it. (A Ping to register again does not help: it returns
+// at once for a client that was registered, so the try after it only
+// waited tailcatTry more.) A client other connections use is never closed
+// here: one slow dial says little of them, and a restarted server's close
+// soon. A dial its caller gave up (canceled) closes no client.
 func dialTailcat(ctx context.Context, addr string) (net.Conn, error) {
 	k, err := remoteClientKey()
 	if err != nil {
@@ -1099,16 +1103,10 @@ func dialTailcat(ctx context.Context, addr string) (net.Conn, error) {
 
 	var c net.Conn
 	if used {
+		t0 := time.Now()
 		c, err = p.try(ctx, tailcatTry)
-		if err != nil && ctx.Err() == nil {
-			pctx, cancel := context.WithTimeout(ctx, tailcatTry)
-			_, err = p.tc.Ping(pctx)
-			cancel()
-			if err == nil {
-				c, err = p.try(ctx, tailcatTry)
-			}
-		}
 		if err != nil && ctx.Err() == nil && p.drop(addr) {
+			tried := time.Since(t0)
 			old := p
 			tailcatMu.Lock()
 			if p = tailcatClients[addr]; p == nil {
@@ -1119,6 +1117,10 @@ func dialTailcat(ctx context.Context, addr string) (net.Conn, error) {
 			old.tc.Close()
 			old.release(addr)
 			c, err = p.tc.DialTCPPort(ctx, RemotePort)
+			// Only on this path, so a slow reconnect explains itself.
+			log.Printf("rex: the kept tailcat client's try failed after %v; a new client %s after %v more",
+				tried.Round(time.Millisecond), map[bool]string{true: "connected", false: "failed"}[err == nil],
+				(time.Since(t0) - tried).Round(time.Millisecond))
 		}
 	} else {
 		c, err = p.tc.DialTCPPort(ctx, RemotePort)
@@ -1157,6 +1159,7 @@ func newPooledTailcat(addr string, k key.NodePrivate) *pooledTailcat {
 
 // try dials within d.
 func (p *pooledTailcat) try(ctx context.Context, d time.Duration) (net.Conn, error) {
+	tailcatTries.Add(1)
 	ctx, cancel := context.WithTimeout(ctx, d)
 	defer cancel()
 	return p.tc.DialTCPPort(ctx, RemotePort)
