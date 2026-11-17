@@ -25,6 +25,11 @@ Each item has a **Trigger** (what the diff shows), a **Check** (what the author 
 - **Check:** the test is committed. If it cannot run in CI, the PR says why and where it runs.
 - **Source:** #693 wrote an XCUITest that failed before the fix and dropped it.
 
+### Review rounds that only find edge cases
+- **Trigger:** a PR whose main behavior is already verified (tests and an end-to-end run pass) gets another fix-and-review round for findings that are low severity or not confirmed by running.
+- **Check:** only confirmed findings of medium severity or higher block the merge. Low and unconfirmed ones go to a follow-up issue after the merge. Work that depends on the PR starts on its branch once its interfaces stop changing, instead of waiting for the last round. More than two fix-and-review rounds on one PR is a sign to stop and merge.
+- **Source:** #722 (projects phase 2) went through five review rounds on app-side waiting edge cases after round one had verified the model, rules and end to end; phases 3–5 of #519 waited the whole time.
+
 ### Rule changes merged together
 - **Trigger:** PRs that change `REVIEW.md`, `docs/lessons.md` or a workflow's gates.
 - **Check:** each is reviewed against the `main` before it, and they are not merged in one batch with the PRs they would judge.
