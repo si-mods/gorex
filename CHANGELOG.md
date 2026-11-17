@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.38.0
+
+### Features
+
+* **projects:** a project is bound to a folder on a home host; New Tab in a project starts there, and a missing folder or offline home host is reported instead of opening elsewhere ([#722](https://github.com/si-mods/gorex/pull/722))
+* **projects:** New Project sheet with a host picker and folder browser, Change Folder and Remove Folder, and the folder under the project's name ([#746](https://github.com/si-mods/gorex/pull/746))
+* **web:** New Project with a folder browser, and new windows in a project's folder on its home host ([#741](https://github.com/si-mods/gorex/pull/741))
+* **ios:** bind Rex Go projects to a home folder ([#743](https://github.com/si-mods/gorex/pull/743))
+* **ios:** add a gallery of the images a pane shows ([#736](https://github.com/si-mods/gorex/pull/736))
+* **ios:** close a single pane from the menu or the pane bar ([#734](https://github.com/si-mods/gorex/pull/734))
+
+### Bug Fixes
+
+* **rex:** refuse a file get through a link that leaves its folder ([#732](https://github.com/si-mods/gorex/pull/732))
+* **rex:** open no file once a download's context is done, so a cancelled download keeps its partial ([#748](https://github.com/si-mods/gorex/pull/748))
+* **ios:** ask before a program's file link downloads, refuse UNC paths ([#729](https://github.com/si-mods/gorex/pull/729))
+* **ios:** keep pane switches from bringing the keyboard back ([#733](https://github.com/si-mods/gorex/pull/733))
+* **ios:** drop gallery images whose file is missing ([#744](https://github.com/si-mods/gorex/pull/744))
+* **ios:** collect image paths a program wrapped across rows ([#749](https://github.com/si-mods/gorex/pull/749))
+
+### Documentation
+
+* projects, Rex API and Rex Go sync docs ([#747](https://github.com/si-mods/gorex/pull/747))
+
 ## 0.37.0
 
 ### Features
