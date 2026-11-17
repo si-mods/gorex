@@ -1,0 +1,251 @@
+// Projects (docs/projects.md): a session with a folder, its home, on a host.
+// The rules of the web client with no DOM: what a session's `project` says,
+// which host a new window opens on, what the sidebar shows under a
+// project's name, and the folder browser's state over gorex.dir.list.
+
+/** The welcome's feature of a gateway that keeps projects' homes. */
+export const feature = "gorex.projects";
+/** The welcome's feature of a gateway that answers gorex.dir.list. */
+export const dirFeature = "gorex.dir_list";
+
+/** A session's home: the home host's machine, and a folder there. */
+export interface Project {
+  home_machine: string;
+  dir: string;
+}
+
+/** Reads a session's `project`; none when it has no folder. */
+export function parse(j: any): Project | undefined {
+  if (!j || typeof j.dir !== "string" || !j.dir) return undefined;
+  return { home_machine: typeof j.home_machine === "string" ? j.home_machine : "", dir: j.dir };
+}
+
+/** A host as the rules read it: what the page knows of its connection. */
+export interface HostRef {
+  id: string;
+  name: string;
+  /** Its machine_id; none before /api/spaces answered. */
+  machine?: string;
+  /** Whether its control connection is up and its sessions were read. */
+  connected: boolean;
+}
+
+/**
+ * The host that is the project's home: the host of its machine. Of two
+ * hosts of one machine (its LAN and tailnet entries), the connected one.
+ */
+export function homeHost(p: Project, hosts: HostRef[]): HostRef | undefined {
+  if (!p.home_machine) return undefined;
+  const same = hosts.filter((h) => h.machine === p.home_machine);
+  return same.find((h) => h.connected) ?? same[0];
+}
+
+/** What New Window does in a session. */
+export type Plan =
+  /** The session has no folder: a window in the session, as before. */
+  | { kind: "plain" }
+  /** A window on host, in cwd; here when host is the session's own. */
+  | { kind: "open"; host: HostRef; cwd: string; here: boolean }
+  /** No window: the home host is a host of the user's, not connected. */
+  | { kind: "offline"; host: HostRef }
+  /** No window: no host of the user's is the home's machine. */
+  | { kind: "unknown" };
+
+/**
+ * Where New Window in a session opens (docs/projects.md, Where a new
+ * session starts): in a project with a folder, on the home host, in the
+ * folder; never on another host when the home is out of reach.
+ */
+export function planNewWindow(p: Project | undefined, sessionHost: string, hosts: HostRef[]): Plan {
+  if (!p) return { kind: "plain" };
+  const home = homeHost(p, hosts);
+  if (!home) return { kind: "unknown" };
+  if (!home.connected) return { kind: "offline", host: home };
+  return { kind: "open", host: home, cwd: p.dir, here: home.id === sessionHost };
+}
+
+/** What the sidebar shows under a project's name: the home host's name when it is another machine, then the folder. */
+export interface Line {
+  /** The home host's name; none when the home is the session's own host. */
+  host?: string;
+  /** The home host is none the page knows. */
+  unknown: boolean;
+  dir: string;
+}
+
+export function projectLine(p: Project, sessionHost: HostRef, hosts: HostRef[]): Line {
+  const home = homeHost(p, hosts);
+  const own = home ? home.id === sessionHost.id : !!p.home_machine && p.home_machine === sessionHost.machine;
+  if (own) return { unknown: false, dir: p.dir };
+  return home ? { host: home.name, unknown: false, dir: p.dir } : { unknown: true, dir: p.dir };
+}
+
+/** Whether a failed new_window is the gateway's folder_missing (a `conflict` that names the code). */
+export function isFolderMissing(e: unknown): boolean {
+  const x = e as { code?: string; message?: string } | undefined;
+  return x?.code === "conflict" && /folder_missing/.test(x.message ?? "");
+}
+
+/** A directory's answer, as gorex.dir.list writes it. */
+export interface DirAnswer {
+  path: string;
+  parent: string;
+  home: string;
+  dirs: string[];
+  more: boolean;
+  /** "not_found" or "denied", with path, parent and home still set. */
+  code?: string;
+}
+
+/** Reads gorex.dir.list's answer. */
+export function parseDirs(j: any): DirAnswer {
+  if (!j || typeof j.path !== "string") throw new Error("dir.list: no path");
+  return {
+    path: j.path,
+    parent: typeof j.parent === "string" ? j.parent : "",
+    home: typeof j.home === "string" ? j.home : "",
+    dirs: Array.isArray(j.dirs) ? j.dirs.filter((d: unknown): d is string => typeof d === "string") : [],
+    more: !!j.more,
+    code: typeof j.code === "string" && j.code ? j.code : undefined,
+  };
+}
+
+/** A name that is a path of its own: a drive's root, a share, or an absolute path. */
+const absolute = /^([A-Za-z]:[\\/]|\\\\|\/)/;
+
+/**
+ * The path of a folder listed in path: a name is joined with the path's
+ * own separator; at Windows' drives each name is a path already.
+ */
+export function childPath(path: string, name: string): string {
+  if (absolute.test(name)) return name;
+  const sep = path.includes("\\") && !path.startsWith("/") ? "\\" : "/";
+  return path.endsWith("/") || path.endsWith("\\") ? path + name : path + sep + name;
+}
+
+/** The parts of a path, from its root: each with the path that shows it. */
+export function crumbs(path: string): { name: string; path: string }[] {
+  if (!path) return [];
+  const win = path.includes("\\") || /^[A-Za-z]:/.test(path);
+  const sep = win ? "\\" : "/";
+  const parts = path.split(win ? /[\\/]+/ : /\/+/).filter((p) => p);
+  const out: { name: string; path: string }[] = [];
+  let at = "";
+  if (win && path.startsWith("\\\\") && parts.length >= 2) {
+    at = `\\\\${parts[0]}\\${parts[1]}`;
+    out.push({ name: at, path: at });
+    parts.splice(0, 2);
+  } else if (win && /^[A-Za-z]:$/.test(parts[0] ?? "")) {
+    at = parts[0] + "\\";
+    out.push({ name: at, path: at });
+    parts.shift();
+  } else if (!win) {
+    at = "/";
+    out.push({ name: "/", path: "/" });
+  }
+  for (const p of parts) {
+    at = at.endsWith(sep) ? at + p : at + sep + p;
+    out.push({ name: p, path: at });
+  }
+  return out;
+}
+
+/** A folder's name: the project's default name. A drive's root is its letter; the machine's root has none. */
+export function folderName(path: string): string {
+  const last = crumbs(path).pop();
+  if (!last) return "";
+  return /^[A-Za-z]:\\$/.test(last.name) ? last.name.slice(0, 2) : last.name === "/" ? "" : last.name;
+}
+
+/**
+ * The folder browser's state: the folder listed, and what a click, Up,
+ * Home or a typed path does. The page draws it (projectdialog.ts) and
+ * redraws on changed. Of two requests the later wins, whatever order
+ * their answers come in; a request that fails keeps the listing before it.
+ */
+export class FolderBrowser {
+  path = "";
+  parent = "";
+  home = "";
+  dirs: string[] = [];
+  more = false;
+  /** "not_found" or "denied" for the folder asked; the listing is empty then. */
+  code?: string;
+  /** What failed the last request, in words; none after an answer. */
+  error?: string;
+  loading = false;
+  private sequence = 0;
+
+  constructor(
+    private readonly list: (path: string) => Promise<DirAnswer>,
+    private readonly changed: () => void = () => {},
+  ) {}
+
+  /** Lists path: "" is the host's home directory. */
+  async go(path: string): Promise<void> {
+    const n = ++this.sequence;
+    this.loading = true;
+    this.changed();
+    try {
+      const a = await this.list(path);
+      if (n !== this.sequence) return;
+      this.path = a.path;
+      this.parent = a.parent;
+      this.home = a.home;
+      this.dirs = a.code ? [] : a.dirs;
+      this.more = a.more;
+      this.code = a.code;
+      this.error = undefined;
+    } catch (e) {
+      if (n !== this.sequence) return;
+      this.error = e instanceof Error ? e.message : String(e);
+    }
+    this.loading = false;
+    this.changed();
+  }
+
+  /** The folder above, when there is one. */
+  up(): Promise<void> {
+    return this.parent ? this.go(this.parent) : Promise.resolve();
+  }
+
+  /** The host's home directory. */
+  goHome(): Promise<void> {
+    return this.go(this.home || "");
+  }
+
+  /** A folder of the listing, by name. */
+  open(name: string): Promise<void> {
+    return this.go(childPath(this.path, name));
+  }
+
+  get canUp(): boolean {
+    return !!this.parent && !this.loading;
+  }
+
+  /** Whether the folder listed can be the project's: it was listed, with no failure. */
+  get canChoose(): boolean {
+    return !!this.path && !this.code && !this.error && !this.loading;
+  }
+}
+
+/** Why a host can or cannot be the home of a new project. */
+export type HostState = "ok" | "offline" | "old" | "nomachine";
+
+/**
+ * Whether a host can be picked in New Project: connected, with the
+ * gateway's folder listing and project homes, and its machine known, as
+ * a home is kept by machine.
+ */
+export function hostState(h: { connected: boolean; listsDirs: boolean; keepsProjects: boolean; machine?: string }): HostState {
+  if (!h.connected) return "offline";
+  if (!h.listsDirs || !h.keepsProjects) return "old";
+  if (!h.machine) return "nomachine";
+  return "ok";
+}
+
+/** The host New Project starts on: the preferred one if it can be picked, else the first that can. */
+export function defaultHost(hosts: { id: string; state: HostState }[], preferred?: string): string | undefined {
+  const ok = hosts.filter((h) => h.state === "ok");
+  return (ok.find((h) => h.id === preferred) ?? ok[0])?.id;
+}

@@ -282,9 +282,9 @@
       }
     }
   },
-  "statusNewSpaceFailed": "Could not make a space: {error}",
+  "statusNewSpaceFailed": "Could not make a project: {error}",
   "@statusNewSpaceFailed": {
-    "description": "Status line when New Space failed.",
+    "description": "Status line when New Project failed.",
     "placeholders": {
       "error": {
         "type": "String",
@@ -292,9 +292,9 @@
       }
     }
   },
-  "statusRenameSpaceFailed": "Could not rename the space: {error}",
+  "statusRenameSpaceFailed": "Could not rename the project: {error}",
   "@statusRenameSpaceFailed": {
-    "description": "Status line when Rename Space failed.",
+    "description": "Status line when Rename Project failed.",
     "placeholders": {
       "error": {
         "type": "String",
@@ -302,9 +302,9 @@
       }
     }
   },
-  "statusCloseSpaceFailed": "Could not close the space: {error}",
+  "statusCloseSpaceFailed": "Could not close the project: {error}",
   "@statusCloseSpaceFailed": {
-    "description": "Status line when Close Space failed.",
+    "description": "Status line when Close Project failed.",
     "placeholders": {
       "error": {
         "type": "String",
@@ -580,13 +580,13 @@
   "@cmdPreviousWindow": {
     "description": "Settings › Keyboard: show the previous window of the sidebar."
   },
-  "cmdNextSpace": "Next Space",
+  "cmdNextSpace": "Next Project",
   "@cmdNextSpace": {
-    "description": "Settings › Keyboard: show the next space's last shown window, in the sidebar's order across hosts."
+    "description": "Settings › Keyboard: show the next project's last shown window, in the sidebar's order across hosts."
   },
-  "cmdPreviousSpace": "Previous Space",
+  "cmdPreviousSpace": "Previous Project",
   "@cmdPreviousSpace": {
-    "description": "Settings › Keyboard: show the previous space's last shown window, in the sidebar's order across hosts."
+    "description": "Settings › Keyboard: show the previous project's last shown window, in the sidebar's order across hosts."
   },
   "cmdRenameWindow": "Rename Window…",
   "@cmdRenameWindow": {
@@ -604,37 +604,37 @@
   "@windowMoveDown": {
     "description": "Window row menu: move the window one place down in its session's list."
   },
-  "windowMoveSpace": "Move to Space",
+  "windowMoveSpace": "Move to Project",
   "@windowMoveSpace": {
-    "description": "Window row menu: a submenu of the other spaces (sessions) to move the window to, where the host can."
+    "description": "Window row menu: a submenu of the other projects (sessions) to move the window to, where the host can."
   },
   "cmdCloseOtherWindows": "Close Other Windows",
   "@cmdCloseOtherWindows": {
-    "description": "Window row menu: close every other window of the same space (session)."
+    "description": "Window row menu: close every other window of the same project (session)."
   },
   "paneMoveWindow": "Move to Window",
   "@paneMoveWindow": {
-    "description": "Pane header menu: a submenu of the other windows of the pane's space to move the pane into, beside their focused pane; its program goes on."
+    "description": "Pane header menu: a submenu of the other windows of the pane's project to move the pane into, beside their focused pane; its program goes on."
   },
-  "cmdNewSpace": "New Space",
+  "cmdNewSpace": "New Project…",
   "@cmdNewSpace": {
-    "description": "Command: make a space (a session of the host) with one window, and show it. Sidebar foot + button tooltip, Settings › Keyboard."
+    "description": "Command: make a project (a session of the host) with one window, and show it. Sidebar foot + button tooltip, Settings › Keyboard."
   },
-  "cmdRenameSpace": "Rename Space…",
+  "cmdRenameSpace": "Rename Project…",
   "@cmdRenameSpace": {
-    "description": "Space heading menu: rename the space (session) in place in its heading."
+    "description": "Project heading menu: rename the project (session) in place in its heading."
   },
-  "cmdCloseSpace": "Close Space",
+  "cmdCloseSpace": "Close Project",
   "@cmdCloseSpace": {
-    "description": "Space heading menu, and the red button of its question: close the space (session) and end its terminals."
+    "description": "Project heading menu, and the red button of its question: close the project (session) and end its terminals."
   },
-  "keysSpaces": "Spaces",
+  "keysSpaces": "Projects",
   "@keysSpaces": {
-    "description": "Settings › Keyboard: the heading of the spaces' shortcuts."
+    "description": "Settings › Keyboard: the heading of the projects' shortcuts."
   },
-  "renameSpaceLabel": "Space name",
+  "renameSpaceLabel": "Project name",
   "@renameSpaceLabel": {
-    "description": "Accessible name of the field that renames a space in its sidebar heading."
+    "description": "Accessible name of the field that renames a project in its sidebar heading."
   },
   "renameWindowLabel": "Window name",
   "@renameWindowLabel": {
@@ -642,7 +642,7 @@
   },
   "spaceCloseTitle": "Close “{name}”?",
   "@spaceCloseTitle": {
-    "description": "Title of the question Close Space asks.",
+    "description": "Title of the question Close Project asks.",
     "placeholders": {
       "name": {
         "type": "String",
@@ -652,7 +652,7 @@
   },
   "spaceCloseBody": "{n, plural, one {Its terminal ends, and the program running in it.} other {Its # terminals end, and the programs running in them.}}",
   "@spaceCloseBody": {
-    "description": "Text of the question Close Space asks: what ends with the space.",
+    "description": "Text of the question Close Project asks: what ends with the project.",
     "placeholders": {
       "n": {
         "type": "int",
@@ -2486,7 +2486,7 @@
   },
   "settingsTabPlacement": "Tab placement",
   "@settingsTabPlacement": {
-    "description": "Settings › Appearance: where the tabs (the windows of the shown space) go, as the desktop's setting."
+    "description": "Settings › Appearance: where the tabs (the windows of the shown project) go, as the desktop's setting."
   },
   "settingsTabPlacementHint": "Place tabs Above, on the Left Side, or on the Right Side of the window.",
   "@settingsTabPlacementHint": {
@@ -2494,7 +2494,7 @@
   },
   "settingsPlacementAbove": "Above",
   "@settingsPlacementAbove": {
-    "description": "Tab placement option: a bar above the panes with the host, the space and its windows."
+    "description": "Tab placement option: a bar above the panes with the host, the project and its windows."
   },
   "settingsPlacementLeft": "Left Side",
   "@settingsPlacementLeft": {
@@ -2508,17 +2508,17 @@
   "@settingsSidebarView": {
     "description": "Settings › Appearance: what the sidebar lists, shown only while the tabs are in a sidebar."
   },
-  "settingsSidebarViewHint": "Spaces lists the host's spaces and their windows. Hosts lists the hosts you added and found, with the connected host's spaces under it; choose another host to connect to it.",
+  "settingsSidebarViewHint": "Projects lists the host's projects and their windows. Hosts lists the hosts you added and found, with the connected host's projects under it; choose another host to connect to it.",
   "@settingsSidebarViewHint": {
     "description": "Hint under Sidebar view. The page connects to one host at a time."
   },
-  "settingsSidebarSpaces": "Spaces",
+  "settingsSidebarSpaces": "Projects",
   "@settingsSidebarSpaces": {
-    "description": "Sidebar view option: the spaces and their windows."
+    "description": "Sidebar view option: the projects and their windows."
   },
   "settingsSidebarHosts": "Hosts",
   "@settingsSidebarHosts": {
-    "description": "Sidebar view option: the spaces under their host."
+    "description": "Sidebar view option: the projects under their host."
   },
   "settingsAnimation": "Animation style",
   "@settingsAnimation": {
@@ -2576,9 +2576,9 @@
       }
     }
   },
-  "spaceMenuLabel": "Spaces",
+  "spaceMenuLabel": "Projects",
   "@spaceMenuLabel": {
-    "description": "Tooltip and accessible name of the button with the shown space's name in the bar above the panes, which opens the spaces' menu."
+    "description": "Tooltip and accessible name of the button with the shown project's name in the bar above the panes, which opens the projects' menu."
   },
   "sidebarConnectHost": "Connect to {host}",
   "@sidebarConnectHost": {
@@ -2710,5 +2710,185 @@
   "paneFloatMinimize": "Minimize Floating Pane",
   "@paneFloatMinimize": { "description": "Pane menu and palette item: minimize a floating pane." },
   "paneFloatRestore": "Restore Floating Pane",
-  "@paneFloatRestore": { "description": "Dock button and palette item: restore a minimized floating pane." }
+  "@paneFloatRestore": { "description": "Dock button and palette item: restore a minimized floating pane." },
+  "cmdNewProjectNoFolder": "New Project with No Folder",
+  "@cmdNewProjectNoFolder": {
+    "description": "Project menu: make a project that only groups terminals, with no folder."
+  },
+  "cmdChangeFolder": "Change Folder…",
+  "@cmdChangeFolder": {
+    "description": "Project menu, and the button of the folder-gone question: choose another folder as the project's home."
+  },
+  "cmdRemoveFolder": "Remove Folder",
+  "@cmdRemoveFolder": {
+    "description": "Project menu: the project keeps its windows and has no folder."
+  },
+  "projectNewTitle": "New Project",
+  "@projectNewTitle": {
+    "description": "Title of the New Project sheet."
+  },
+  "projectChangeTitle": "Change Folder",
+  "@projectChangeTitle": {
+    "description": "Title of the Change Folder sheet."
+  },
+  "projectCreate": "Create",
+  "@projectCreate": {
+    "description": "Button of the New Project sheet: make the project and open its first window in the folder."
+  },
+  "projectChange": "Change",
+  "@projectChange": {
+    "description": "Button of the Change Folder sheet: set the folder as the project's home."
+  },
+  "projectHost": "Host",
+  "@projectHost": {
+    "description": "Label of the host picker in the New Project sheet."
+  },
+  "projectName": "Name",
+  "@projectName": {
+    "description": "Label of the name field in the New Project sheet; the folder's name by default."
+  },
+  "projectHome": "Home",
+  "@projectHome": {
+    "description": "Tooltip of the button that lists the host's home directory."
+  },
+  "projectUp": "Up",
+  "@projectUp": {
+    "description": "Tooltip of the button that lists the folder above."
+  },
+  "projectPath": "Folder path",
+  "@projectPath": {
+    "description": "Accessible name of the field that holds the folder's path; Enter lists it."
+  },
+  "projectNoFolders": "No folders here",
+  "@projectNoFolders": {
+    "description": "Note under the folder list when the folder has no folders."
+  },
+  "projectMore": "Only the first 2000 folders are shown. Type a path to go further.",
+  "@projectMore": {
+    "description": "Note under the folder list when the host cut it."
+  },
+  "projectNoHosts": "No connected host can keep a project's folder.",
+  "@projectNoHosts": {
+    "description": "Note in the New Project sheet when no host can be picked."
+  },
+  "projectNotFound": "This folder is not on {host}.",
+  "@projectNotFound": {
+    "description": "Note in the folder browser: the typed path names no folder.",
+    "placeholders": {
+      "host": {
+        "type": "String",
+        "example": "office"
+      }
+    }
+  },
+  "projectDenied": "{host} does not let you read this folder.",
+  "@projectDenied": {
+    "description": "Note in the folder browser: the folder is not readable.",
+    "placeholders": {
+      "host": {
+        "type": "String",
+        "example": "office"
+      }
+    }
+  },
+  "projectListFailed": "Could not list the folder: {error}",
+  "@projectListFailed": {
+    "description": "Note in the folder browser when the host did not answer.",
+    "placeholders": {
+      "error": {
+        "type": "String",
+        "example": "No response"
+      }
+    }
+  },
+  "projectHostOffline": "{host} (not connected)",
+  "@projectHostOffline": {
+    "description": "Option of the host picker: a host that is not connected, which cannot be picked.",
+    "placeholders": {
+      "host": {
+        "type": "String",
+        "example": "office"
+      }
+    }
+  },
+  "projectHostOld": "{host} (cannot browse folders)",
+  "@projectHostOld": {
+    "description": "Option of the host picker: a host whose GoRex is too old for projects.",
+    "placeholders": {
+      "host": {
+        "type": "String",
+        "example": "office"
+      }
+    }
+  },
+  "projectHostNoMachine": "{host} (machine not known yet)",
+  "@projectHostNoMachine": {
+    "description": "Option of the host picker: a host that has not told its machine.",
+    "placeholders": {
+      "host": {
+        "type": "String",
+        "example": "office"
+      }
+    }
+  },
+  "projectHostUnknown": "unknown host",
+  "@projectHostUnknown": {
+    "description": "Under a project's name: its home host is none of the hosts you added."
+  },
+  "statusFolderFailed": "Could not set the folder: {error}",
+  "@statusFolderFailed": {
+    "description": "Status line when setting or removing a project's folder failed.",
+    "placeholders": {
+      "error": {
+        "type": "String",
+        "example": "No response"
+      }
+    }
+  },
+  "statusProjectHomeOffline": "No window opened. The home host of “{project}”, {host}, is not connected.",
+  "@statusProjectHomeOffline": {
+    "description": "Status line when New Window finds the project's home host not connected; the window does not open on another host.",
+    "placeholders": {
+      "project": {
+        "type": "String",
+        "example": "windflow"
+      },
+      "host": {
+        "type": "String",
+        "example": "office"
+      }
+    }
+  },
+  "statusProjectHomeUnknown": "No window opened. The home host of “{project}” is none of your hosts. Add it, or change the folder.",
+  "@statusProjectHomeUnknown": {
+    "description": "Status line when New Window finds no host of the project's home machine.",
+    "placeholders": {
+      "project": {
+        "type": "String",
+        "example": "windflow"
+      }
+    }
+  },
+  "folderMissingTitle": "Folder not found",
+  "@folderMissingTitle": {
+    "description": "Title of the question New Window asks when the project's folder is gone."
+  },
+  "folderMissingBody": "The folder {dir} of “{name}” is not on {host}. No window was opened.",
+  "@folderMissingBody": {
+    "description": "Text of the folder-gone question.",
+    "placeholders": {
+      "dir": {
+        "type": "String",
+        "example": "~/code/windflow"
+      },
+      "name": {
+        "type": "String",
+        "example": "windflow"
+      },
+      "host": {
+        "type": "String",
+        "example": "office"
+      }
+    }
+  }
 }

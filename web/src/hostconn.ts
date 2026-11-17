@@ -6,6 +6,7 @@ import { diagnose, Host, Problem } from "./hosts";
 import { Msg, msg, t } from "./i18n";
 import { describe } from "./pane";
 import { programName, Status, statusOf } from "./programs";
+import * as projects from "./projects";
 import { Control, Transport } from "./rex";
 import type { LinkState } from "./settings";
 import * as spaces from "./spaces";
@@ -17,6 +18,8 @@ import { layoutOf, leavesOf } from "./window";
 export interface Session {
   id: string;
   label: string;
+  /** The folder the session is bound to, its home (projects.ts); none for a session with no folder. */
+  project?: projects.Project;
   view?: any;
   /** The connection a read of the view is on its way over. */
   reading?: Control;
@@ -217,9 +220,39 @@ export class HostConn {
   }
 
   /** Makes a window in a session, running the shell; its ID. */
-  async newWindow(session: string): Promise<string | undefined> {
-    const r = (await this.call("session.new_window", { session_id: session, focus: false, layout: { block: { flavor: "com.superlogical.terminal.shell" } } })).payload;
+  async newWindow(session: string, cwd?: string): Promise<string | undefined> {
+    const block: any = { flavor: "com.superlogical.terminal.shell" };
+    if (cwd) block.options = { cwd };
+    const r = (await this.call("session.new_window", { session_id: session, focus: false, layout: { block } })).payload;
     return r.window_id;
+  }
+
+  /** Whether the host keeps projects' homes (gorex.projects). */
+  get keepsProjects(): boolean {
+    return !!this.control?.features.has(projects.feature);
+  }
+
+  /** Whether the host lists its folders (gorex.dir_list). */
+  get listsDirs(): boolean {
+    return !!this.control?.features.has(projects.dirFeature);
+  }
+
+  /** Lists a folder of this host (gorex.dir.list); "" is its home directory. */
+  async dirList(path: string): Promise<projects.DirAnswer> {
+    return projects.parseDirs((await this.call("gorex.dir.list", { path })).payload);
+  }
+
+  /** Binds a session to a folder of a machine, or frees it with machine "" (gorex.project.set_home). */
+  async setHome(session: string, machine: string, dir: string): Promise<void> {
+    const r = (await this.call("gorex.project.set_home", machine ? { session_id: session, machine_id: machine, dir } : { session_id: session, machine_id: "" })).payload;
+    const s = this.sessions.get(session);
+    if (s) s.project = projects.parse(r?.project);
+    this.events.sessions(this, false);
+  }
+
+  /** This host, as the project rules read it. */
+  get ref(): projects.HostRef {
+    return { id: this.host.id, name: this.host.name, machine: this.machine, connected: this.state === "connected" && this.live };
   }
 
   /** Closes a window of a session; nothing while there is no control connection. */
@@ -324,7 +357,7 @@ export class HostConn {
       case "session_created": {
         const id = p.session?.session_id;
         if (id && !sessions.has(id)) {
-          sessions.set(id, { id, label: p.session.label ?? "" });
+          sessions.set(id, { id, label: p.session.label ?? "", project: projects.parse(p.session.project) });
           this.refresh(id, true);
         }
         break;
@@ -398,8 +431,10 @@ export class HostConn {
     for (const id of sessions.keys()) if (!ids.has(id)) sessions.delete(id);
     for (const s of listed) {
       const had = sessions.get(s.session_id);
-      if (had) had.label = s.label ?? had.label;
-      else sessions.set(s.session_id, { id: s.session_id, label: s.label ?? "" });
+      if (had) {
+        had.label = s.label ?? had.label;
+        had.project = projects.parse(s.project);
+      } else sessions.set(s.session_id, { id: s.session_id, label: s.label ?? "", project: projects.parse(s.project) });
     }
     this.events.sessions(this, false);
     await Promise.all(listed.map((s) => this.refresh(s.session_id, true)));
@@ -450,6 +485,7 @@ export class HostConn {
   private apply(s: Session, v: any) {
     s.view = v;
     if (v.label) s.label = v.label;
+    s.project = projects.parse(v.project);
     for (const w of v.windows ?? []) {
       for (const b of leavesOf(layoutOf(w))) {
         if (!this.described.has(b)) {

@@ -15,6 +15,9 @@ export interface WindowOpsDeps {
   want: (since: number, w: { host: string; session: string; window: string }) => void;
   showWanted: () => void;
   newWindow: (conn: HostConn, session: string) => void;
+  newProject: (conn: HostConn | undefined) => void;
+  changeFolder: (conn: HostConn, session: string) => void;
+  removeFolder: (conn: HostConn, session: string) => void;
   closeWindow: (conn: HostConn, session: string, window: string) => void;
   status: (s: Msg) => void;
   canBlockToNewWindow: (conn: HostConn) => boolean;
@@ -43,12 +46,18 @@ export function createWindowOps(deps: WindowOpsDeps) {
     const spaces: MenuItem[] = [...conn.sessions.values()]
       .filter((o) => o.view)
       .map((o) => ({ label: spaceName(o), disabled: o.id === current, run: () => showSpace(conn, o.id) }));
-    return [...spaces, "separator", { label: t("cmdNewSpace"), run: () => newSpace(conn) }, ...spaceMenu(conn, current)];
+    const make: MenuItem[] = conn.keepsProjects
+      ? [{ label: t("cmdNewSpace"), run: () => deps.newProject(conn) }, { label: t("cmdNewProjectNoFolder"), run: () => newSpace(conn) }]
+      : [{ label: t("cmdNewSpace"), run: () => newSpace(conn) }];
+    return [...spaces, "separator", ...make, ...spaceMenu(conn, current)];
   }
 
   function spaceMenu(conn: HostConn, session: string): MenuItem[] {
+    const folder: MenuItem[] = conn.keepsProjects && conn.listsDirs ? [{ label: t("cmdChangeFolder"), run: () => deps.changeFolder(conn, session) }] : [];
+    if (folder.length && conn.sessions.get(session)?.project) folder.push({ label: t("cmdRemoveFolder"), run: () => deps.removeFolder(conn, session) });
     return [
       { label: t("cmdRenameSpace"), run: () => startRename(conn, session) },
+      ...folder,
       { label: t("cmdCloseSpace"), run: () => closeSpace(conn, session) },
     ];
   }

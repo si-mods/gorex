@@ -175,6 +175,8 @@
   #sessions nav { color: var(--muted); }
   #sessions h2 { display: flex; align-items: center; }
   #sessions h2 span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* A project's home host and folder under its name (sidebar.ts). */
+  #sessions h2 .project-line { display: block; overflow: hidden; text-overflow: ellipsis; margin-top: 1px; font-size: 10.5px; font-weight: 400; text-transform: none; letter-spacing: 0; opacity: 0.8; }
   button.icon {
     flex: none; width: 22px; height: 22px; padding: 0; border: 0; border-radius: 999px; background: none;
     color: var(--muted); display: flex; align-items: center; justify-content: center; cursor: pointer;
@@ -364,6 +366,29 @@
   dialog.confirm h2 { margin: 0; font-size: 15px; font-weight: 700; overflow-wrap: anywhere; }
   dialog.confirm p { margin: 10px 0 0; color: var(--muted); line-height: 1.35; }
   .confirm-buttons { display: flex; gap: 8px; justify-content: flex-end; margin-top: 18px; }
+  .host-add.primary { background: var(--pill); border-color: var(--muted); font-weight: 600; }
+  .host-add:disabled { opacity: 0.5; cursor: default; }
+  /* The New Project sheet (projectdialog.ts): the same frosted panel, wider; a host, a folder browser, a name. */
+  dialog.project-sheet { width: min(460px, calc(100vw - 32px)); }
+  dialog.project-sheet[open] { display: flex; flex-direction: column; gap: 10px; }
+  .sheet-label { display: flex; flex-direction: column; gap: 4px; color: var(--muted); font-size: 12px; }
+  .sheet-field {
+    min-width: 0; height: 30px; padding: 0 10px; border: 1px solid var(--panel-edge); border-radius: 8px;
+    background: var(--hover); color: var(--text); font: inherit; font-size: 16px; outline: none;
+  }
+  .sheet-field:focus { border-color: var(--muted); }
+  .sheet-bar { display: flex; gap: 6px; align-items: center; }
+  .sheet-bar .sheet-field { flex: 1; }
+  .sheet-list {
+    list-style: none; margin: 0; padding: 4px; height: 200px; overflow-y: auto; border: 1px solid var(--panel-edge); border-radius: 8px;
+  }
+  .sheet-dir {
+    display: flex; align-items: center; gap: 8px; width: 100%; padding: 5px 8px; border: 0; border-radius: 6px;
+    background: none; color: var(--text); font: inherit; text-align: left; cursor: pointer;
+  }
+  .sheet-dir:hover { background: var(--hover); }
+  .sheet-dir span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sheet-note { margin: 0; min-height: 1.35em; color: var(--muted); font-size: 12px; }
   .host-add.destroy { background: var(--danger); border-color: transparent; color: #fff; font-weight: 600; }
   .host-add.destroy:hover { background: color-mix(in srgb, var(--danger) 88%, #000); }
   /* The pane's text field, which holds its keys (pane.ts): put on the cursor by the pane, so that an input
