@@ -529,9 +529,6 @@ func (a *App) runHost(h *hostConn, update func(func())) {
 			})
 			since := time.Now()
 			h.runKills(c)
-			// Before the layout is read, which would have the names of
-			// before (syncHostNames).
-			h.runRenames(c)
 			a.watchHost(h, c, update)
 			h.mu.Lock()
 			if h.client == c {
@@ -617,6 +614,13 @@ func (a *App) watchHost(h *hostConn, c *rex.Client, update func(func())) {
 		}
 		if ticked {
 			round++
+		}
+		// The names given here while the host was away, or that it did
+		// not take, go before its layout is read again, which has them as
+		// they were (syncHostNames skips them meanwhile); those it still
+		// does not take go again the next time round.
+		if h.renamesWaiting() {
+			h.runRenames(c)
 		}
 		infos, next, changed, err := c.ListSince(etag)
 		if err != nil {

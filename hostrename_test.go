@@ -158,7 +158,7 @@ func TestRenamePushesPaneAndTabNameToHost(t *testing.T) {
 }
 
 // A tab here that is not plainly one tab of the host's, as one holding
-// the panes of two of its tabs, keeps its name here only; its panes'
+// the panes of two of its tabs, sends no name to the host; its panes'
 // names go all the same.
 func TestRenameAmbiguousTabStaysLocal(t *testing.T) {
 	r, sids := newRenameHost(t, 2, splitLayout)
@@ -182,6 +182,9 @@ func TestRenameAmbiguousTabStaysLocal(t *testing.T) {
 		}
 		second = a.tabs[0].allPanes()[1]
 		a.setTabName(a.tabs[0], "both")
+		if r.h.renamesWaiting() {
+			t.Error("a name of the tab waits for the host")
+		}
 		a.setPaneName(second, "logs")
 	})
 	if t.Failed() {
@@ -191,46 +194,124 @@ func TestRenameAmbiguousTabStaysLocal(t *testing.T) {
 	if tabs, _ := r.names(); tabs["t1"] != "" || tabs["t2"] != "" {
 		t.Fatalf("host tabs = %v, want no names", tabs)
 	}
+}
+
+// A tab here split since it opened, so that the host's tab has fewer
+// panes, still takes the name the host gives that tab (#621).
+func TestRenameDesktopSplitStillSyncsHostTabName(t *testing.T) {
+	r, _ := newRenameHost(t, 1, func(s []string) string {
+		return `{"version":2,"windows":["sp1"],"sessions":[{"id":"sp1","name":"Main","tabs":[{"id":"t1","root":{"sid":"` + s[0] + `"}}]}]}`
+	})
+	a := r.a
+	r.waitFor("adopt", func() bool { return len(a.tabs) == 1 && a.tabs[0].Focus != nil })
+	// The session starts and its pane takes it in one go on the main
+	// thread, as no list of the host's comes between them: as newPaneRun's
+	// expecting does.
 	r.runMain(func() {
-		if a.tabs[0].Name != "both" {
-			t.Errorf("tab here = %q", a.tabs[0].Name)
+		s2, err := r.remote.Create(rex.CreateOptions{Cols: 80, Rows: 24})
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		a.splitWith(a.tabs[0].Focus, &Pane{ID: a.id(), SID: s2.ID, host: r.h}, false)
+	})
+	if t.Failed() {
+		t.FailNow()
+	}
+	r.waitFor("the split", func() bool { return len(a.tabs) == 1 && len(a.tabs[0].allPanes()) == 2 })
+	if res, err := r.remote.Command(rex.LayoutCommand{Op: "tab.rename", Tab: "t1", Name: "from-host"}); err != nil || res.Code != "" {
+		t.Fatalf("tab.rename: err=%v res=%+v", err, res)
+	}
+	r.waitFor("the host's tab name", func() bool { return a.tabs[0].Name == "from-host" })
+}
+
+// A name given here that waits to go to the host is not overwritten by
+// the name of before in the host's layout.
+func TestSyncHostNamesSkipsWaitingRenames(t *testing.T) {
+	r, sids := newRenameHost(t, 1, func(s []string) string {
+		return `{"version":2,"windows":["sp1"],"sessions":[{"id":"sp1","name":"Main","tabs":[{"id":"t1","name":"host-tab","root":{"sid":"` + s[0] + `","name":"host-pane"}}]}]}`
+	})
+	a := r.a
+	r.waitFor("adopt", func() bool {
+		return len(a.tabs) == 1 && a.tabs[0].Name == "host-tab" && a.tabs[0].Focus != nil && a.tabs[0].Focus.Name == "host-pane"
+	})
+	r.runMain(func() {
+		tab := a.tabs[0]
+		tab.Name, tab.Focus.Name = "mine", "my-pane"
+		r.h.mu.Lock()
+		r.h.renames = map[renameKey]string{{tab: true, id: tab.UID}: "mine", {id: sids[0]}: "my-pane"}
+		r.h.mu.Unlock()
+		a.syncHostNames(r.h, hostLayout{tabs: r.h.layoutTabs})
+		if tab.Name != "mine" || tab.Focus.Name != "my-pane" {
+			t.Errorf("names here: tab %q, pane %q", tab.Name, tab.Focus.Name)
+		}
+		// Taken by the host, the names follow it again.
+		r.h.mu.Lock()
+		r.h.renames = nil
+		r.h.mu.Unlock()
+		a.syncHostNames(r.h, hostLayout{tabs: r.h.layoutTabs})
+		if tab.Name != "host-tab" || tab.Focus.Name != "host-pane" {
+			t.Errorf("names here: tab %q, pane %q", tab.Name, tab.Focus.Name)
 		}
 	})
 }
 
-// A name given while the host is away stays here, through the host's
-// layout read as it connects again, and goes to the host then.
+// A name given while the host is away stays here, and goes to the host as
+// it connects again.
 func TestRenameWaitsForHostConnection(t *testing.T) {
-	r, sids := newRenameHost(t, 1, func(s []string) string {
-		return `{"version":2,"windows":["sp1"],"sessions":[{"id":"sp1","name":"Main","tabs":[{"id":"t1","root":{"sid":"` + s[0] + `","name":"old"}}]}]}`
-	})
-	a := r.a
-	r.waitFor("adopt", func() bool { return len(a.tabs) == 1 && a.tabs[0].Focus != nil && a.tabs[0].Focus.Name == "old" })
-
-	r.h.mu.Lock()
-	r.h.setClient(nil)
-	r.h.mu.Unlock()
-	r.runMain(func() { a.setPaneName(a.tabs[0].Focus, "new") })
-	if !r.h.renaming(renameKey{id: sids[0]}) {
-		t.Fatal("the rename is not kept for the host")
+	a, tt := newTestApp(t)
+	fakeHosts(t)
+	sock, remote := startHostServer(t)
+	s, err := remote.Create(rex.CreateOptions{Cols: 80, Rows: 24})
+	if err != nil {
+		t.Fatal(err)
 	}
-	// The host's layout is read again, with the pane's name of before.
-	if res, err := r.remote.Command(rex.LayoutCommand{Op: "tab.rename", Tab: "t1", Name: "elsewhere"}); err != nil || res.Code != "" {
-		t.Fatalf("tab.rename: err=%v res=%+v", err, res)
+	// The host's space has the name of this window's, whose tabs its tab
+	// joins (adopt).
+	if err := remote.SetLayout([]byte(`{"version":2,"windows":["sp1"],"sessions":[{"id":"sp1","name":"` + a.ws.Name + `","tabs":[{"id":"t1","root":{"sid":"` + s.ID + `","name":"old"}}]}]}`)); err != nil {
+		t.Fatal(err)
 	}
-	r.waitFor("the host's tab name", func() bool { return a.tabs[0].Name == "elsewhere" })
-	r.runMain(func() {
-		if n := a.tabs[0].Focus.Name; n != "new" {
-			t.Errorf("pane here = %q, want new", n)
+	proxy := newHostProxy(t, sock)
+	t.Cleanup(a.stopHosts)
+	h := a.addHost(savedHost{ID: "h1", Name: "lab-box", Address: proxy.path})
+	var tab *Tab
+	waitFor(t, tt, "adopt", func() bool {
+		if ts := a.tabsOn(h); len(ts) == 1 && ts[0].Focus != nil && ts[0].Focus.Name == "old" {
+			tab = ts[0]
 		}
+		return tab != nil
 	})
-	if _, panes := r.names(); panes[sids[0]] != "old" {
-		t.Fatalf("host pane = %q before the connection", panes[sids[0]])
+	proxy.setDown(true)
+	waitFor(t, tt, "the host to drop", func() bool { return h.state != hostConnected && h.current() == nil })
+	a.setPaneName(tab.Focus, "new")
+	a.setTabName(tab, "tab-new")
+	if !h.renaming(renameKey{id: s.ID}) || !h.renaming(renameKey{tab: true, id: "t1"}) {
+		t.Fatal("the renames are not kept for the host")
 	}
-
-	r.h.runRenames(r.c)
-	r.waitRemote("pane name on host", func(_, panes map[string]string) bool { return panes[sids[0]] == "new" })
-	if r.h.renaming(renameKey{id: sids[0]}) {
-		t.Fatal("a rename the host took is still kept")
+	proxy.setDown(false)
+	h.poke()
+	waitFor(t, tt, "the host to connect again", func() bool { return h.state == hostConnected })
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		raw, err := remote.Layout()
+		if err != nil {
+			t.Fatal(err)
+		}
+		st := layout.Parse(raw)
+		if len(st.Sessions) == 1 && len(st.Sessions[0].Tabs) == 1 {
+			ht := st.Sessions[0].Tabs[0]
+			if ht.Name == "tab-new" && ht.Root != nil && ht.Root.Name == "new" {
+				break
+			}
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("host layout = %s", raw)
+		}
+		tt.Frame()
+		time.Sleep(50 * time.Millisecond)
+	}
+	waitFor(t, tt, "the renames to be forgotten", func() bool { return !h.renamesWaiting() })
+	if tab.Name != "tab-new" || tab.Focus.Name != "new" {
+		t.Errorf("names here: tab %q, pane %q", tab.Name, tab.Focus.Name)
 	}
 }

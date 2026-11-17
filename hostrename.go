@@ -3,6 +3,7 @@ package main
 import (
 	"maps"
 	"slices"
+	"strings"
 
 	"gorex/internal/layout"
 	"gorex/internal/rex"
@@ -91,7 +92,7 @@ func hostTabOf(t *Tab) (*hostConn, string) {
 
 // rename keeps the name of k to give it on the host until the host took
 // it, and gives it through the client of the moment, or the next one
-// (runHost). Call it on the main thread.
+// (watchHost). Call it on the main thread.
 func (h *hostConn) rename(k renameKey, name string) {
 	h.mu.Lock()
 	if h.renames == nil {
@@ -115,10 +116,18 @@ func (h *hostConn) renaming(k renameKey) bool {
 	return ok
 }
 
+// renamesWaiting tells whether names wait to go to the host.
+func (h *hostConn) renamesWaiting() bool {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return len(h.renames) != 0
+}
+
 // runRenames gives the host, through c, the names kept for it, one run at
 // a time so that the last name of a pane goes last, and forgets those the
-// host answered: a pane or tab it no longer has keeps its name here only.
-// Those it could not reach stay for the next connection.
+// host took, and those of a pane or tab its layout does not have, whose
+// name stays here only. The others, not sent or refused for now (as a
+// layout_conflict), stay for watchHost to give again.
 func (h *hostConn) runRenames(c *rex.Client) {
 	h.renameMu.Lock()
 	defer h.renameMu.Unlock()
@@ -130,7 +139,8 @@ func (h *hostConn) runRenames(c *rex.Client) {
 		if k.tab {
 			cmd = rex.LayoutCommand{Op: "tab.rename", Tab: k.id, Name: name}
 		}
-		if _, err := c.Command(cmd); err != nil {
+		res, err := c.Command(cmd)
+		if err != nil || res.Code != "" && !strings.HasSuffix(res.Code, "_not_found") {
 			continue
 		}
 		h.mu.Lock()
