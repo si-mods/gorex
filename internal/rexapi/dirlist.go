@@ -6,12 +6,12 @@ import (
 
 // gorex.dir.list lists the directories in a directory of this machine,
 // for a folder picker (docs/projects.md): the GoRex server's "dir.list"
-// (rex.CapabilityDirList). It is allowed to every caller that may call
-// session.create, as a caller that can start a shell can read the
-// directory tree already: no transport limits it, as server.stop and
-// server.tailscale.* are, and a stopping gateway refuses it as it does
-// session.create. The welcome lists featureDirList when the server lists
-// directories.
+// (rex.CapabilityDirList). It is allowed to the callers that may take a
+// file with download_begin, the server's file.get, which reads any path
+// as the server's user already; they are those of session.create: no
+// transport limits it, as server.stop and server.tailscale.* are, and a
+// stopping gateway refuses it as it does session.create. The welcome
+// lists featureDirList when the server lists directories.
 
 // featureDirList is the welcome's feature of a gateway whose server lists
 // directories (gorex.dir.list).
@@ -60,7 +60,7 @@ var dirListEntry = map[string]any{
 	"input_schema": map[string]any{
 		"type": "object",
 		"properties": map[string]any{
-			"path":   map[string]any{"type": "string", "description": "The directory: absolute, '~' or '~/…' of the home directory, or relative to it; left out or empty for the home directory. '/' is the top of the machine; on Windows it lists the drives, as 'C:\\'."},
+			"path":   map[string]any{"type": "string", "description": "The directory: absolute, '~' or '~/…' of the home directory, or relative to it; left out or empty for the home directory. '/' is the top of the machine; on Windows it lists the drives, as 'C:\\'. On Windows, 'C:x' is of the drive's root ('C:\\x'), and a path rooted with no drive ('\\x', '/x') or an incomplete share ('//', '\\\\server') answers not_found."},
 			"hidden": map[string]any{"type": "boolean", "description": "List hidden directories too: a name that starts with a dot, and on Windows the hidden attribute. Default false."},
 		},
 		"additionalProperties": false,
@@ -68,12 +68,12 @@ var dirListEntry = map[string]any{
 	"output_schema": map[string]any{
 		"type": "object",
 		"properties": map[string]any{
-			"path":   map[string]any{"type": "string", "description": "The directory listed: absolute, cleaned, its symlinks resolved; '/' for Windows' drives."},
+			"path":   map[string]any{"type": "string", "description": "The directory listed: absolute, cleaned, its symlinks resolved; Windows' junctions are kept as they are. '/' for Windows' drives."},
 			"parent": map[string]any{"type": "string", "description": "The directory above path, empty at the top. Above a Windows drive's root it is '/'."},
 			"home":   map[string]any{"type": "string", "description": "The home directory, its symlinks resolved."},
-			"dirs":   map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "The names of the directories in path, symlinks to one among them, sorted without regard to case, at most 2000. At Windows' drives, each is a drive's root, a path of its own."},
+			"dirs":   map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "The names of the directories in path, symlinks and junctions to one among them, sorted without regard to case, at most 2000. At Windows' drives, each is a drive's root, a path of its own."},
 			"more":   map[string]any{"type": "boolean", "description": "The directory holds more than 2000 directories: dirs are the first 2000."},
-			"code":   map[string]any{"type": "string", "enum": []any{rex.DirNotFound, rex.DirDenied}, "description": "Left out when listed. not_found: no directory at path. denied: this machine's user may not read it. path, parent and home are still set."},
+			"code":   map[string]any{"type": "string", "enum": []any{rex.DirNotFound, rex.DirDenied}, "description": "Left out when listed. not_found: no directory at path, or a loop of symlinks. denied: this machine's user may not read it. path, parent and home are still set."},
 		},
 		"required":             []any{"path", "parent", "home", "dirs", "more"},
 		"additionalProperties": false,
@@ -83,7 +83,8 @@ var dirListEntry = map[string]any{
 	"validation_notes": []any{
 		"A child's path is path and its name joined with '/' (the server cleans it, '\\' on Windows); at Windows' drives ('/'), a name is the path.",
 		"A missing or unreadable directory is not an error: the result carries code not_found or denied.",
-		"Allowed to every caller that may call session.create.",
+		"A listing that takes over 10 seconds, as on a mount that hangs, or one over the few the server runs at once, fails with internal.",
+		"Allowed to the callers that may take a file (download_begin), which reads any path as the server's user already: those of session.create.",
 		"A server that does not list directories, whose welcome doesn't list gorex.dir_list, fails with not_supported.",
 	},
 }
@@ -99,10 +100,12 @@ Arguments:
 
 - ` + "`path`" + ` (string, optional): The directory: absolute, ` + "`~`" + ` or ` + "`~/…`" + ` of the home directory, or relative to
   it; left out or empty for the home directory. ` + "`/`" + ` is the top of the machine; on Windows it lists the drives.
+  On Windows, ` + "`C:x`" + ` is of the drive's root (` + "`C:\\x`" + `), and a path rooted with no drive (` + "`\\x`" + `,
+  ` + "`/x`" + `) or an incomplete share (` + "`//`" + `, ` + "`\\\\server`" + `) answers ` + "`not_found`" + `.
 - ` + "`hidden`" + ` (boolean, optional): List hidden directories too: a name that starts with a dot, and on Windows
   the hidden attribute. Default false.
 
-The result has ` + "`path`" + ` (absolute, cleaned, symlinks resolved), ` + "`parent`" + ` (empty at the top; ` + "`/`" + `
+The result has ` + "`path`" + ` (absolute, cleaned, symlinks resolved, Windows' junctions kept),` + "`parent`" + ` (empty at the top; ` + "`/`" + `
 above a Windows drive's root), ` + "`home`" + `, ` + "`dirs`" + ` (names, sorted without regard to case, at most 2000),
 ` + "`more`" + ` (true when cut at 2000), and ` + "`code`" + ` when it could not list: ` + "`not_found`" + ` or ` + "`denied`" + `,
 with path, parent and home still set.
@@ -111,8 +114,11 @@ Notes:
 
 - A child's path is ` + "`path`" + ` and its name joined with ` + "`/`" + `; the server cleans it. At Windows' drives,
   each name is a drive's root, as ` + "`C:\\`" + `, a path of its own.
-- Allowed to every caller that may call ` + "`session.create`" + `. A server that doesn't list directories fails
-  with ` + "`not_supported`" + `.
+- A loop of symlinks answers ` + "`not_found`" + `. A listing that takes over 10 seconds, as on a mount that hangs,
+  fails with ` + "`internal`" + `.
+- Allowed to the callers that may take a file (` + "`download_begin`" + `), which reads any path as the server's
+  user already: those of ` + "`session.create`" + `. A server that doesn't list directories fails with
+  ` + "`not_supported`" + `.
 
 Example arguments:
 

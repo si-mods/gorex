@@ -9,7 +9,9 @@ import (
 	"reflect"
 	"runtime"
 	"slices"
+	"strings"
 	"testing"
+	"time"
 )
 
 // dirListFixture is a test server whose home directory is a temporary
@@ -193,5 +195,107 @@ func TestDirListTop(t *testing.T) {
 		if r.Path != sys || r.Parent != DirTop || r.Code != "" || !slices.ContainsFunc(r.Dirs, func(d string) bool { return d == "Windows" }) {
 			t.Errorf("%q: %+v, want %s under the drives, with Windows", path, r, sys)
 		}
+	}
+}
+
+// TestDirListLoop answers a path through a loop of symlinks with
+// not_found.
+func TestDirListLoop(t *testing.T) {
+	_, c, home := dirListFixture(t)
+	a, b := filepath.Join(home, "a"), filepath.Join(home, "b")
+	if err := os.Symlink(b, a); err != nil {
+		t.Skipf("no symlinks here: %v", err)
+	}
+	if err := os.Symlink(a, b); err != nil {
+		t.Fatal(err)
+	}
+	self := filepath.Join(home, "self")
+	if err := os.Symlink(self, self); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{a, filepath.Join(a, "x"), self} {
+		if r := dirList(t, c, path, false); r.Code != DirNotFound || r.Path != path {
+			t.Errorf("%s: %+v, want not_found", path, r)
+		}
+	}
+	if r := dirList(t, c, "", false); len(r.Dirs) != 0 {
+		t.Errorf("home lists loops as directories: %v", r.Dirs)
+	}
+}
+
+// TestDirListHangs: a listing that hangs, as on a mount gone dead, holds
+// no other request of its connection, which stays alive; it answers an
+// error at its deadline, and a connection runs a few at once, refusing
+// more.
+func TestDirListHangs(t *testing.T) {
+	s, _, _ := dirListFixture(t)
+	release, entered := make(chan struct{}), make(chan struct{}, maxDirListsAside)
+	old := listDirFunc
+	listDirFunc = func(home, path string, hidden bool) (DirListResult, error) {
+		if path == "hang" {
+			entered <- struct{}{}
+			<-release
+		}
+		return old(home, path, hidden)
+	}
+	keep := keepaliveTimeout.set(600 * time.Millisecond)
+	deadline := dirListTimeout.set(time.Second)
+	t.Cleanup(func() {
+		close(release)
+		listDirFunc = old
+		keepaliveTimeout.set(keep)
+		dirListTimeout.set(deadline)
+	})
+	c := pipe(s, "")
+	defer c.Close()
+	c.keepalive = true
+	if h, err := c.Hello(); err != nil || h.Keepalive == 0 {
+		t.Fatalf("hello %+v %v", h, err)
+	}
+
+	errs := make(chan error, maxDirListsAside)
+	for range maxDirListsAside {
+		go func() {
+			_, err := c.DirList("hang", false)
+			errs <- err
+		}()
+	}
+	for range maxDirListsAside {
+		<-entered
+	}
+	if _, err := c.DirList("", false); err == nil || !strings.Contains(err.Error(), "on this connection") {
+		t.Errorf("a listing over the connection's slots: %v, want refused", err)
+	}
+	if _, err := c.List(); err != nil {
+		t.Errorf("list while listings hang: %v", err)
+	}
+	for range maxDirListsAside {
+		if err := <-errs; err == nil || !strings.Contains(err.Error(), "took over") {
+			t.Errorf("a hung listing: %v, want its deadline", err)
+		}
+	}
+	// The slots are free again, though the hung listings are not over.
+	dirList(t, c, "", false)
+	// Pings went on through it all: the connection outlives the
+	// server's keepalive wait.
+	time.Sleep(2 * keepaliveTimeout.get())
+	select {
+	case <-c.Closed():
+		t.Fatal("the connection closed while listings hung")
+	default:
+	}
+	if _, err := c.List(); err != nil {
+		t.Errorf("list after: %v", err)
+	}
+}
+
+// TestDirListBusy refuses a listing while too many run in the server,
+// stuck ones among them.
+func TestDirListBusy(t *testing.T) {
+	_, c, _ := dirListFixture(t)
+	dirListsRunning.Add(maxDirListsRunning)
+	defer dirListsRunning.Add(-maxDirListsRunning)
+	if _, err := c.DirList("", false); err == nil || err.Error() != errDirListBusy.Error() {
+		t.Errorf("%v, want %v", err, errDirListBusy)
 	}
 }

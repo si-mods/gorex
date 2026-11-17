@@ -523,14 +523,20 @@ through that host's own gateway.
 - `path` is absolute, `~` or `~/…` of the home directory, or relative to
   it; left out or empty, it is the home directory. It is cleaned, so
   `..` goes up a name, and then its symlinks are resolved: the result's
-  `path` is the directory listed.
+  `path` is the directory listed. Windows' junctions (mount points) are
+  not resolved, as Go's `filepath.EvalSymlinks` leaves them: the path
+  goes through them as it was asked. A loop of symlinks is `not_found`.
 - `/` is the top of the machine. On Windows it lists the drives, each as
   its root (`C:\`), and it is the `parent` of a drive's root. A share's
-  root (`\server\share`) has no parent.
+  root (`\\server\share`) has no parent.
+- On Windows, a drive with no root after it is of the drive's root:
+  `C:` is `C:\`, and `C:x` is `C:\x`. A path rooted with no drive (`\x`,
+  `/x`) and an incomplete share (`//`, `\\server`) are `not_found`, with
+  no `parent`.
 - A child's path is `path` and its name joined with `/`; the server
   cleans it (to `\` on Windows). At Windows' drives, each name is a path
   of its own.
-- `dirs` holds directories only, and symlinks to one, never files,
+- `dirs` holds directories only, and symlinks and junctions to one, never files,
   sorted without regard to case, at most 2000; `more` is true when there
   were more. Hidden ones, a name with a leading dot and on Windows one of
   the hidden attribute, come only with `hidden: true`.
@@ -539,12 +545,20 @@ through that host's own gateway.
 - A directory that is not there answers `code: "not_found"`, and one this
   machine's user may not read `code: "denied"`, with `path`, `parent`
   and `home` still set, so a picker can go elsewhere.
-- It is allowed to every caller that may call `session.create`: one
-  that can start a shell can read the directory tree already. A stopping
-  gateway refuses it with `conflict`, as it does `session.create`.
+- The server lists aside from the connection's other requests, two at a
+  time per connection and 16 in all, and gives up on a listing after 10
+  seconds: a directory on a mount that hangs, as an SMB or NFS share
+  whose server is gone, fails the call with `internal` and holds nothing
+  else.
+- It is allowed to the callers that may take a file with
+  `download_begin` (the server's `file.get`), which reads any path as the
+  server's user already; through the gateway, those are the callers of
+  `session.create`. A stopping gateway refuses it with `conflict`, as it
+  does `session.create`.
 - Errors: `bad_request` (an unknown or malformed argument),
   `not_supported` (the GoRex server is older), `conflict` (the gateway is
-  stopping), else `internal` with the server's text.
+  stopping), else `internal` with the server's text (a listing over 10
+  seconds, or too many at once).
 
 ## Troubleshooting
 

@@ -3,6 +3,7 @@
 package rex
 
 import (
+	"os"
 	"os/exec"
 	"os/user"
 	"path/filepath"
@@ -47,5 +48,57 @@ func TestDirListDenied(t *testing.T) {
 	r := dirList(t, c, locked, false)
 	if r.Code != DirDenied || r.Path != locked || r.Parent != home || len(r.Dirs) != 0 {
 		t.Errorf("locked: %+v, want denied", r)
+	}
+}
+
+// junction makes a junction at link to target, as mklink /J does.
+func junction(t *testing.T, link, target string) {
+	t.Helper()
+	if out, err := exec.Command("cmd", "/c", "mklink", "/J", link, target).CombinedOutput(); err != nil {
+		t.Fatalf("mklink /J: %v %s", err, out)
+	}
+}
+
+// TestDirListJunction lists a junction to a directory as one, and goes
+// through a junction as it is, unresolved, as filepath.EvalSymlinks does:
+// a junction to itself nests as deep as it is asked.
+func TestDirListJunction(t *testing.T) {
+	_, c, home := dirListFixture(t)
+	target := filepath.Join(home, "target")
+	mkdirs(t, filepath.Join(target, "inner"))
+	os.WriteFile(filepath.Join(home, "file.txt"), nil, 0o644)
+	junction(t, filepath.Join(home, "jump"), target)
+	if r := dirList(t, c, "", false); !reflect.DeepEqual(r.Dirs, []string{"jump", "target"}) {
+		t.Errorf("home: %v, want the junction among the directories", r.Dirs)
+	}
+	jump := filepath.Join(home, "jump")
+	if r := dirList(t, c, jump, false); r.Path != jump || r.Parent != home || !reflect.DeepEqual(r.Dirs, []string{"inner"}) {
+		t.Errorf("through the junction: %+v", r)
+	}
+	self := filepath.Join(home, "target", "self")
+	junction(t, self, target)
+	deep := filepath.Join(self, "self", "self")
+	if r := dirList(t, c, deep, false); r.Path != deep || r.Code != "" || !reflect.DeepEqual(r.Dirs, []string{"inner", "self"}) {
+		t.Errorf(`self\self\self: %+v`, r)
+	}
+}
+
+// TestDirListWindowsPaths: a drive with no root after it is of the
+// drive's root; a path rooted with no drive, or an incomplete share, is
+// not found, with no parent.
+func TestDirListWindowsPaths(t *testing.T) {
+	_, c, _ := dirListFixture(t)
+	drive := os.Getenv("SystemDrive")
+	win, err := filepath.EvalSymlinks(drive + `\Windows`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r := dirList(t, c, drive+"Windows", false); r.Path != win || r.Parent != drive+`\` || r.Code != "" {
+		t.Errorf("%sWindows: %+v, want %s", drive, r, win)
+	}
+	for _, path := range []string{"/Windows", `\Windows`, "//", `\\`, `\\server`, "//server", `/\`} {
+		if r := dirList(t, c, path, false); r.Code != DirNotFound || r.Path != path || r.Parent != "" || len(r.Dirs) != 0 {
+			t.Errorf("%q: %+v, want not_found with no parent", path, r)
+		}
 	}
 }

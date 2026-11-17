@@ -4,25 +4,82 @@ package rex
 
 import (
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync/atomic"
+	"syscall"
+	"time"
 )
 
+// dirListTimeout is how long a listing may take before "dir.list" answers
+// an error: a directory on a mount that hangs, as an SMB or NFS share
+// whose server is gone, holds the call that reads it till the system
+// gives up. It is shorter than a client's call timeout, so the client
+// hears why.
+var dirListTimeout = newDuration(10 * time.Second)
+
+// maxDirListsAside is how many listings a connection runs aside at once
+// (control): a listing that hangs holds no other request of its
+// connection. maxDirListsRunning is how many run in the whole server, those
+// that outlived their deadline, still stuck in the system, among them.
+const (
+	maxDirListsAside   = 2
+	maxDirListsRunning = 16
+)
+
+// dirListsRunning counts the listings under way, stuck ones among them.
+var dirListsRunning atomic.Int32
+
+// errDirListBusy answers a listing over maxDirListsRunning, and
+// errDirListsAside one over maxDirListsAside of its connection.
+var (
+	errDirListBusy   = errors.New("rex: too many directory listings under way; try again later")
+	errDirListsAside = errors.New("rex: too many directory listings under way on this connection; try again later")
+)
+
+// listDirFunc lists a directory: listDir, which tests replace with one
+// that hangs.
+var listDirFunc = listDir
+
 // doDirList lists the directories of a directory of this machine
-// (DirList), of the home directory of the user the sessions run as.
+// (DirList), of the home directory of the user the sessions run as. It
+// answers within dirListTimeout: a listing that takes longer goes on
+// alone, counted in dirListsRunning till the system lets it go.
 func (s *Server) doDirList(req Request, _ string, _ *keptConn) (any, error) {
 	var o DirList
 	if req.DirList != nil {
 		o = *req.DirList
 	}
-	home, err := s.homeDir()
-	if err != nil {
-		return nil, err
+	if dirListsRunning.Add(1) > maxDirListsRunning {
+		dirListsRunning.Add(-1)
+		return nil, errDirListBusy
 	}
-	return listDir(home, o.Path, o.Hidden)
+	type answer struct {
+		res DirListResult
+		err error
+	}
+	done := make(chan answer, 1)
+	go func() {
+		defer dirListsRunning.Add(-1)
+		home, err := s.homeDir()
+		if err != nil {
+			done <- answer{err: err}
+			return
+		}
+		r, err := listDirFunc(home, o.Path, o.Hidden)
+		done <- answer{r, err}
+	}()
+	timeout := dirListTimeout.get()
+	select {
+	case a := <-done:
+		return a.res, a.err
+	case <-time.After(timeout):
+		return nil, fmt.Errorf("rex: listing %q took over %v", o.Path, timeout)
+	}
 }
 
 // listDir lists the directories in path, of home when it is not absolute.
@@ -36,7 +93,11 @@ func listDir(home, path string, hidden bool) (DirListResult, error) {
 		res.Dirs = drives()
 		return res, nil
 	}
-	path = volumeRoot(path)
+	path, ok := volumePath(path)
+	if !ok {
+		res.Path, res.Code = path, DirNotFound
+		return res, nil
+	}
 	if rest, ok := strings.CutPrefix(path, "~"); ok && (rest == "" || rest[0] == '/' || rest[0] == filepath.Separator) {
 		path = filepath.Join(home, rest)
 	} else if !filepath.IsAbs(path) {
@@ -44,9 +105,16 @@ func listDir(home, path string, hidden bool) (DirListResult, error) {
 	}
 	path = filepath.Clean(path)
 	res.Path, res.Parent = path, parentDir(path)
+	// filepath.EvalSymlinks resolves symlinks, but not Windows' junctions
+	// (mount points), which it keeps as they are, and it fails on some
+	// paths through them, as a junction's within another: a directory
+	// the system reaches all the same is listed as it was asked.
 	real, err := filepath.EvalSymlinks(path)
 	if err != nil {
-		return dirCode(res, err)
+		if st, serr := os.Stat(path); serr != nil || !st.IsDir() {
+			return dirCode(res, err)
+		}
+		real = path
 	}
 	res.Path, res.Parent = real, parentDir(real)
 	if st, err := os.Stat(real); err != nil {
@@ -89,10 +157,12 @@ func listDir(home, path string, hidden bool) (DirListResult, error) {
 }
 
 // dirCode answers a directory that is not there, or that the server may
-// not read, with its code; another error as it is.
+// not read, with its code; another error as it is. A path through a loop
+// of symlinks leads to no directory: filepath.EvalSymlinks says so in
+// words of its own, os.Stat with ELOOP.
 func dirCode(res DirListResult, err error) (DirListResult, error) {
 	switch {
-	case errors.Is(err, fs.ErrNotExist) || notDir(err):
+	case errors.Is(err, fs.ErrNotExist) || notDir(err) || errors.Is(err, syscall.ELOOP) || strings.Contains(err.Error(), "too many links"):
 		res.Code = DirNotFound
 	case errors.Is(err, fs.ErrPermission):
 		res.Code = DirDenied

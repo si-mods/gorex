@@ -17,8 +17,8 @@ func isTop(string) bool { return false }
 // drives are Windows' only.
 func drives() []string { return []string{} }
 
-// volumeRoot is Windows' only.
-func volumeRoot(path string) string { return path }
+// volumePath is Windows' only: every path names a place here.
+func volumePath(path string) (string, bool) { return path, true }
 
 // parentDir is the directory above path, "" at "/".
 func parentDir(path string) string {

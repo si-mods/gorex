@@ -31,13 +31,25 @@ func drives() []string {
 	return out
 }
 
-// volumeRoot makes a drive alone, as "C:", its root: else it would name
-// the drive's current directory.
-func volumeRoot(path string) string {
-	if len(path) == 2 && path[1] == ':' {
-		return path + `\`
+// volumePath reads path as a picker means it, false for one that names
+// no place. A drive with no root after it, as "C:" or "C:x", would name
+// the drive's current directory, which means nothing to a picker: it is
+// of the drive's root, `C:\` and `C:\x`. A path rooted with no volume, as
+// `\Windows` or "/Windows", would be of the server's current drive, and an
+// incomplete share, as "//" or `\\server`, is nowhere: no place.
+func volumePath(path string) (string, bool) {
+	vol := filepath.VolumeName(path)
+	switch {
+	case len(vol) == 2 && vol[1] == ':':
+		if rest := path[2:]; rest == "" || (rest[0] != '\\' && rest[0] != '/') {
+			return vol + `\` + rest, true
+		}
+	case vol == "" && path != "" && (path[0] == '\\' || path[0] == '/'):
+		return path, false
+	case (strings.HasPrefix(vol, `\\`) || strings.HasPrefix(vol, "//")) && !strings.ContainsAny(strings.Trim(vol, `\/`), `\/`):
+		return path, false
 	}
-	return path
+	return path, true
 }
 
 // parentDir is the directory above path: DirTop above a drive's root, ""

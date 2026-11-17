@@ -923,9 +923,13 @@ type FileGet struct {
 type DirList struct {
 	// Path is the directory: absolute; "" or "~" for the home directory;
 	// "~/x" and a relative path are of the home directory. It is cleaned,
-	// so ".." goes up a name, then its symlinks are resolved. DirTop
-	// names the top of the machine: "/" on macOS and Linux, and on Windows
-	// the list of its drives, whose names are their roots, as `C:\`.
+	// so ".." goes up a name, then its symlinks are resolved; Windows'
+	// junctions are kept as they are. DirTop names the top of the
+	// machine: "/" on macOS and Linux, and on Windows the list of its
+	// drives, whose names are their roots, as `C:\`. On Windows, a drive
+	// with no root after it, as "C:x", is of the drive's root (`C:\x`),
+	// and a path rooted with no drive (`\x`, "/x") or an incomplete share
+	// ("//", `\\server`) answers DirNotFound.
 	Path string `json:"path,omitempty"`
 	// Hidden lists hidden directories too: those whose name starts with a
 	// dot, and on Windows those of the hidden attribute.
@@ -935,18 +939,22 @@ type DirList struct {
 // DirListResult is the answer to "dir.list". A directory that is not
 // there, or is not a directory, answers Code DirNotFound, and one the
 // server may not read DirDenied, with Path, Parent and Home still set,
-// so that a picker can go elsewhere; any other failure is an error.
+// so that a picker can go elsewhere; any other failure is an error, as a
+// listing that takes over 10 seconds, on a mount that hangs, or one over
+// the few a connection or the server runs at once.
 type DirListResult struct {
 	// Path is the directory listed: absolute, cleaned, its symlinks
-	// resolved; DirTop for Windows' drives.
+	// resolved but not Windows' junctions; DirTop for Windows' drives.
+	// A path through a loop of symlinks answers DirNotFound.
 	Path string `json:"path"`
 	// Parent is the directory above Path, "" at the top: of a drive's
 	// root on Windows, it is DirTop.
 	Parent string `json:"parent"`
 	// Home is the home directory, its symlinks resolved.
 	Home string `json:"home"`
-	// Dirs are the names of the directories in Path, symlinks to one
-	// among them, sorted without regard to case, at most DirListMax.
+	// Dirs are the names of the directories in Path, symlinks and
+	// junctions to one among them, sorted without regard to case, at most
+	// DirListMax.
 	Dirs []string `json:"dirs"`
 	// More tells that Path holds more than DirListMax: Dirs are the first.
 	More bool   `json:"more"`

@@ -611,6 +611,7 @@ func (s *Server) control(conn net.Conn, r *bufio.Reader, first []byte, peer stri
 		write(b)
 	}
 	aside := make(chan struct{}, maxAside)
+	dirLists := make(chan struct{}, maxDirListsAside)
 	// gone closes with the connection, ending its take; desk tells that it
 	// took commands, the app's.
 	gone := make(chan struct{})
@@ -665,6 +666,21 @@ func (s *Server) control(conn net.Conn, r *bufio.Reader, first []byte, peer stri
 					}
 					reply(s.request(req, peer, kept))
 				}()
+			} else if req.Op == "dir.list" {
+				// A listing may hang on a mount gone dead: it runs aside,
+				// in slots of its own, so that the connection's other
+				// requests, pings among them, go on; with none free, it is
+				// refused rather than waited for.
+				select {
+				case dirLists <- struct{}{}:
+					kept := kept
+					go func() {
+						defer func() { <-dirLists }()
+						reply(s.request(req, peer, kept))
+					}()
+				default:
+					reply(Response{ID: req.ID, Error: errDirListsAside.Error()})
+				}
 			} else {
 				reply(s.request(req, peer, kept))
 			}
