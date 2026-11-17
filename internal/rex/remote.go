@@ -1074,11 +1074,12 @@ type pooledTailcat struct {
 
 // dialTailcat connects to RemotePort at addr with the tailcat client of
 // addr. A client that connected before and fails now may have a server
-// that restarted and forgot it: it registers again (Ping) and tries once
-// more; then, when no other connection uses it, another client replaces
-// it. A client other connections use is never closed here: one slow dial
-// says little of them, and a restarted server's close soon. A dial its
-// caller gave up (canceled) closes no client.
+// that restarted and forgot it: when no other connection uses it, another
+// client replaces it. (A Ping to register again does not help: it returns
+// at once for a client that was registered, so the try after it only
+// waited tailcatTry more.) A client other connections use is never closed
+// here: one slow dial says little of them, and a restarted server's close
+// soon. A dial its caller gave up (canceled) closes no client.
 func dialTailcat(ctx context.Context, addr string) (net.Conn, error) {
 	k, err := remoteClientKey()
 	if err != nil {
@@ -1100,14 +1101,6 @@ func dialTailcat(ctx context.Context, addr string) (net.Conn, error) {
 	var c net.Conn
 	if used {
 		c, err = p.try(ctx, tailcatTry)
-		if err != nil && ctx.Err() == nil {
-			pctx, cancel := context.WithTimeout(ctx, tailcatTry)
-			_, err = p.tc.Ping(pctx)
-			cancel()
-			if err == nil {
-				c, err = p.try(ctx, tailcatTry)
-			}
-		}
 		if err != nil && ctx.Err() == nil && p.drop(addr) {
 			old := p
 			tailcatMu.Lock()

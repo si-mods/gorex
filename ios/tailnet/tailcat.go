@@ -184,10 +184,11 @@ func dialTailcat(ctx context.Context, id string, port uint16) (net.Conn, error) 
 
 // dialAddr connects to port at addr with the client of addr, as
 // internal/rex's dialTailcat: a client that connected before and fails
-// now may have a server that restarted and forgot it, so it registers
-// again (Ping) and tries once more; then, when no other connection uses
-// it, a new client replaces it. A client other connections use is never
-// closed here: one slow dial says little of them.
+// now may have a server that restarted and forgot it, so, when no other
+// connection uses it, a new client replaces it. (A Ping to register again
+// does not help: it returns at once for a client that was registered, so
+// the try after it only waited tailcatTry more.) A client other
+// connections use is never closed here: one slow dial says little of them.
 func dialAddr(ctx context.Context, addr string, port uint16) (net.Conn, error) {
 	tcMu.Lock()
 	if tcKey.IsZero() {
@@ -210,14 +211,6 @@ func dialAddr(ctx context.Context, addr string, port uint16) (net.Conn, error) {
 	var err error
 	if used {
 		c, err = p.try(ctx, port)
-		if err != nil && ctx.Err() == nil {
-			pctx, cancel := context.WithTimeout(ctx, tailcatTry)
-			_, err = p.tc.Ping(pctx)
-			cancel()
-			if err == nil {
-				c, err = p.try(ctx, port)
-			}
-		}
 		if err != nil && ctx.Err() == nil && p.drop(addr) {
 			old := p
 			tcMu.Lock()
