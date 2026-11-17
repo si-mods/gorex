@@ -62,6 +62,8 @@ struct HostListView: View {
                 }
             }
         }
+        // And let go of on the bars.
+        .onDrop(of: [Lifted.type], delegate: PageDrop())
         // A tapped notification opens its terminal.
         .onChange(of: Notifier.shared.opening, initial: true) { _, t in
             guard let t else { return }
@@ -179,6 +181,8 @@ struct HostListView: View {
                     .background(Color.page)
             }
         }
+        // A row let go of off the cards goes back to its place.
+        .onDrop(of: [Lifted.type], delegate: PageDrop())
         // Beside the terminal the bar stays, for the sidebar's toggle.
         .toolbar(width == .regular ? .automatic : .hidden, for: .navigationBar)
         .toolbar {
@@ -466,14 +470,14 @@ private struct HostSection: View {
             if !isCollapsed { sessions }
         }
         // A row dropped in the section, off the rows, stays where it is.
-        .onDrop(of: [.text], isTargeted: nil) { _ in drop() }
+        .onDrop(of: [.text], isTargeted: nil) { drop($0) }
         // The dragged session's server order: a dropped row waits for it to
         // change; a drag ends when its window goes.
         .onChange(of: drag.map { d in host.sessions.first { $0.id == d.session.id }?.view?.windows?.map(\.window_id) ?? [] }) { _, ids in
             guard let d = drag, let ids else { return }
             if d.dropped ? ids != d.from : !ids.contains(d.window) { drag = nil }
         }
-        // A drag let go of with no drop.
+        // A drag let go of with no drop, or off its card's rows.
         .onReceive(NotificationCenter.default.publisher(for: Lifted.ended)) { n in
             if let d = drag, !d.dropped, n.object as? UUID == d.token { drag = nil }
         }
@@ -675,6 +679,7 @@ private struct HostSection: View {
         let item = Lifted(object: w.id as NSString)
         var d = Drag(session: w.session, window: w.window.window_id, from: shown)
         item.token = d.token
+        item.mark(d.token)
         d.item = item
         drag = d
         order = shown
@@ -691,8 +696,12 @@ private struct HostSection: View {
     }
 
     /// Moves the dropped row on the server to where the drag left it.
-    private func drop() -> Bool {
-        guard var d = drag, !d.dropped else { return false }
+    private func drop(_ items: [NSItemProvider]) -> Bool {
+        guard var d = drag, !d.dropped else {
+            // Another card's row, which cannot move here.
+            PageDrop.missed(items)
+            return false
+        }
         guard let i = order.firstIndex(of: d.window), let j = d.from.firstIndex(of: d.window), i != j else {
             drag = nil
             return true
@@ -771,7 +780,7 @@ private struct HostSection: View {
             let lifted = drag.map { !$0.dropped && $0.session.id == w.session.id && $0.window == w.window.window_id } ?? false
             row.onDrag { lift(w, shown: shown) }
                 .contextMenu { menu(w.session, w.window, shown: shown) }
-                .onDrop(of: [.text], delegate: RowDrop(pass: { pass(over: w) }, drop: drop))
+                .onDrop(of: [.text], delegate: RowDrop(pass: { pass(over: w) }, drop: { drop($0) }))
                 .opacity(lifted ? 0.4 : 1)
         }
     }
@@ -877,11 +886,39 @@ private struct SessionMenu: ViewModifier {
 /// the drop.
 private struct RowDrop: DropDelegate {
     let pass: () -> Void
-    let drop: () -> Bool
+    let drop: ([NSItemProvider]) -> Bool
 
     func dropEntered(info: DropInfo) { pass() }
     func dropUpdated(info: DropInfo) -> DropProposal? { DropProposal(operation: .move) }
-    func performDrop(info: DropInfo) -> Bool { drop() }
+    func performDrop(info: DropInfo) -> Bool { drop(info.itemProviders(for: [.text])) }
+}
+
+/// The page as a drop target, under the cards', for rows only: a row let
+/// go of there, rather than cancelled, tells its card on iOS 26 too, where
+/// no call says when a drag ends.
+private struct PageDrop: DropDelegate {
+    /// Text from elsewhere is not the page's, whatever types it offers.
+    func validateDrop(info: DropInfo) -> Bool {
+        info.itemProviders(for: [Lifted.type]).contains { $0.registeredTypeIdentifiers.contains(Lifted.type.identifier) }
+    }
+
+    func dropUpdated(info: DropInfo) -> DropProposal? { DropProposal(operation: .move) }
+    func performDrop(info: DropInfo) -> Bool {
+        Self.missed(info.itemProviders(for: [Lifted.type]))
+        return true
+    }
+
+    /// Tells a dragged row's card, by the drag's token its item carries,
+    /// that the row was let go of off its rows.
+    static func missed(_ items: [NSItemProvider]) {
+        for item in items where item.hasItemConformingToTypeIdentifier(Lifted.type.identifier) {
+            _ = item.loadDataRepresentation(forTypeIdentifier: Lifted.type.identifier) { data, _ in
+                let token = data.flatMap { UUID(uuidString: String(decoding: $0, as: UTF8.self)) }
+                guard let token else { return }
+                DispatchQueue.main.async { NotificationCenter.default.post(name: Lifted.ended, object: token) }
+            }
+        }
+    }
 }
 
 /// Tells when a drag from the view ends, where the system says so (iOS
@@ -908,7 +945,17 @@ private struct DragEnd: ViewModifier {
 /// by its drag's token.
 nonisolated private final class Lifted: NSItemProvider, @unchecked Sendable {
     static let ended = Notification.Name("GoRex.Lifted.ended")
+    /// A row's drag, which only the app's own targets take.
+    static let type = UTType(exportedAs: "dev.gorex.window-row")
     var token: UUID?
+
+    /// Carries the drag's token, for this app only.
+    func mark(_ token: UUID) {
+        registerDataRepresentation(forTypeIdentifier: Self.type.identifier, visibility: .ownProcess) { done in
+            done(Data(token.uuidString.utf8), nil)
+            return nil
+        }
+    }
 
     deinit {
         let token = token

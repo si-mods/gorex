@@ -91,6 +91,12 @@ targets:
         NSCameraUsageDescription: Rex Go scans the pairing QR code that GoRex or Rex shows.
         # The mic dictates into the terminal (Dictation).
         NSMicrophoneUsageDescription: Rex Go hears what you say while the mic is on, and types it into the terminal. Speech is recognised on this device.
+        # A window row's drag in the list (HostListView's Lifted), which
+        # only the app's own drop targets take.
+        UTExportedTypeDeclarations:
+          - UTTypeIdentifier: dev.gorex.window-row
+            UTTypeDescription: Rex Go Window
+            UTTypeConformsTo: [public.data]
         # rexgo://tailcat?a=…&n=…, GoRex's Rex Go QR…, opened from the
         # camera app. The Tailscale login's callback (TailnetEngine) is the
         # same scheme; its session takes that one itself.
