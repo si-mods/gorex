@@ -58,6 +58,20 @@ struct SpaceMember: Codable, Equatable, Hashable {
     }
 }
 
+extension SpaceMember {
+    /// Decodes `origin` leniently: an unknown or wrong-typed value (from a
+    /// newer app) reads as nil instead of failing the whole manifest.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        machine_id = try c.decode(String.self, forKey: .machine_id)
+        block_id = try c.decode(String.self, forKey: .block_id)
+        window_id = try c.decodeIfPresent(String.self, forKey: .window_id)
+        order = try c.decode(Int.self, forKey: .order)
+        added_at = try c.decode(TimeInterval.self, forKey: .added_at)
+        origin = (try? c.decodeIfPresent(String.self, forKey: .origin)).flatMap { $0 }.flatMap(Origin.init(rawValue:))
+    }
+}
+
 /// Deletion marker preventing offline hosts or stale syncs from resurrecting
 /// deleted spaces or manually unassigned members.
 struct SpaceTombstone: Codable, Equatable, Hashable {
@@ -344,13 +358,11 @@ final class SpaceStore {
         pruneTombstones(before: ts - Self.tombstoneRetention, changed: &changed)
 
         // 1. Discover spaces & members from online hosts. Collect every claim
-        //    first and keep the best per block, so the result does not depend
+        //    first and resolve each block once, so the result does not depend
         //    on host or session order.
-        var claims: [String: Claim] = [:]
+        var claims: [String: [Claim]] = [:]
         func claim(_ c: Claim) {
-            let key = "\(c.machine)/\(c.block)"
-            if let cur = claims[key], !c.beats(cur) { return }
-            claims[key] = c
+            claims["\(c.machine)/\(c.block)", default: []].append(c)
         }
         for host in hosts where host.online {
             for session in host.sessions {
@@ -467,6 +479,23 @@ final class SpaceStore {
             }
         }
 
+        // An older app drops `origin` when it re-encodes. Where the chosen copy
+        // of a space lost a member's origin that the local copy still has,
+        // keep the local one, so a user placement stays a user placement.
+        var localOrigin: [String: SpaceMember.Origin] = [:]
+        for s in local.spaces {
+            for m in s.members {
+                if let o = m.origin { localOrigin["\(s.id)|\(m.machine_id)/\(m.block_id)"] = o }
+            }
+        }
+        for (sid, s) in spacesByID where s.members.contains(where: { $0.origin == nil }) {
+            var copy = s
+            for i in copy.members.indices where copy.members[i].origin == nil {
+                copy.members[i].origin = localOrigin["\(sid)|\(copy.members[i].machine_id)/\(copy.members[i].block_id)"]
+            }
+            spacesByID[sid] = copy
+        }
+
         // Enforce single-space membership per (machine_id, block_id): a user
         // placement beats a discovered one, then the latest added_at wins.
         var ownerByBlock: [String: (spaceID: String, user: Bool, addedAt: TimeInterval)] = [:]
@@ -530,10 +559,15 @@ final class SpaceStore {
         }
     }
 
-    /// Adds the claimed membership, or moves an existing non-user membership
-    /// whose rank is not higher than the claim. Only manifest data changes;
-    /// the block keeps its machine, block and window IDs.
-    private func addDiscoveredMember(_ c: Claim, ts: TimeInterval, changed: inout Bool) {
+    /// Resolves one block's claims from a sync. A non-user membership stays
+    /// put while its space is among the top-rank claims (so equal claims do
+    /// not flap as hosts come and go); otherwise it moves to the best claim.
+    /// A user membership, or one ranked above every claim, is kept. Only
+    /// manifest data changes; the block keeps its machine, block and window IDs.
+    private func addDiscoveredMember(_ claims: [Claim], ts: TimeInterval, changed: inout Bool) {
+        guard var c = claims.first else { return }
+        for other in claims.dropFirst() where other.beats(c) { c = other }
+        let top = SpaceMember.rank(c.origin)
         guard !c.machine.isEmpty, !c.block.isEmpty else { return }
         if isMemberTombstoned(machine: c.machine, block: c.block) { return }
         var window = c.window
@@ -542,8 +576,9 @@ final class SpaceStore {
         }), let mi = manifest.spaces[si].members.firstIndex(where: { $0.machine_id == c.machine && $0.block_id == c.block }) {
             let current = manifest.spaces[si].members[mi]
             // An explicit user placement is never moved by discovery.
-            if current.origin == .user || current.rank > SpaceMember.rank(c.origin) { return }
-            if manifest.spaces[si].id == c.spaceID {
+            if current.origin == .user || current.rank > top { return }
+            let sid = manifest.spaces[si].id
+            if claims.contains(where: { $0.spaceID == sid && SpaceMember.rank($0.origin) == top }) {
                 if current.origin != c.origin {
                     manifest.spaces[si].members[mi].origin = c.origin
                     changed = true
