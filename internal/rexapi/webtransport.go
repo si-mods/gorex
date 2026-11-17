@@ -37,10 +37,10 @@ type wtListener struct {
 	g     *Gateway
 	certs *wtCertManager
 
-	mu     sync.Mutex
-	srv    *webtransport.Server
-	pc     net.PacketConn
-	ln     *quic.EarlyListener
+	mu  sync.Mutex
+	srv *webtransport.Server
+	pc  net.PacketConn
+	ln  *quic.EarlyListener
 	// served closes when the goroutine accepting on ln has returned.
 	served chan struct{}
 	addr   string

@@ -12,9 +12,13 @@ import (
 // why each connection ended. It is for finding out what a client does
 // that the gateway does not expect; it logs reconnect tokens and tickets,
 // so it is off by default.
-var tracing atomic.Bool
+var tracing = newTracing()
 
-func init() { tracing.Store(os.Getenv("GOREX_REXAPI_TRACE") != "") }
+func newTracing() *atomic.Bool {
+	var b atomic.Bool
+	b.Store(os.Getenv("GOREX_REXAPI_TRACE") != "")
+	return &b
+}
 
 // tracef logs a trace line when tracing.
 func tracef(format string, args ...any) {
