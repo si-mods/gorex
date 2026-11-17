@@ -292,6 +292,26 @@
         }
       }
     },
+    "Close Pane": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "关闭面板"
+          }
+        }
+      }
+    },
+    "Can't Close the Pane": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法关闭面板"
+          }
+        }
+      }
+    },
     "Can't Rename the Tab": {
       "localizations": {
         "zh-Hans": {

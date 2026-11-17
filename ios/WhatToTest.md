@@ -34,6 +34,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - Tap a file path a program printed in a terminal, such as a screenshot Claude Code saved: the file downloads from the computer and opens in Quick Look, where you can zoom, share or save it.
 - After a computer you added restarts GoRex, for example to update, Rex Go reaches it again about 3 seconds sooner.
 - Switching panes in the pane bar no longer brings up the keyboard, even when you come back to a pane where you were typing. Tap the terminal to type.
+- Close a pane you no longer need: open the menu at the top right and choose Close Pane, or press and hold its tile in the pane bar. The last pane of a window stays.
 
 ## zh-Hans
 
@@ -60,3 +61,4 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - 点按终端里程序打印的文件路径，例如 Claude Code 保存的截图：文件从电脑下载后在快速查看中打开，可以缩放、分享或存储。
 - 你添加的电脑重启 GoRex（比如更新）之后，Rex Go 重新连上它大约快 3 秒。
 - 用面板条切换面板时不再自动弹出键盘，回到之前打过字的面板也一样。要输入时点一下终端。
+- 不再需要的面板可以关掉：点右上角菜单选“关闭面板”，或在面板条里长按它的图标。窗口的最后一个面板不会被关。

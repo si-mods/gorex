@@ -18,6 +18,8 @@ struct TerminalScreen: View {
     @State private var suspended = false
     /// What failed last, and why, as the server says it.
     @State private var failure: (title: LocalizedStringKey, why: String)?
+    /// The panes asked to close, until the server answers.
+    @State private var closing: Set<String> = []
     /// Whether the session's sheet is open, as the title opens it.
     @State private var sheet = false
     /// Whether the diagnostics of a failed terminal show.
@@ -127,7 +129,7 @@ struct TerminalScreen: View {
                             .transition(.move(edge: .bottom).combined(with: .opacity))
                     }
                     if paneCellList.count > 1 {
-                        PaneBar(cells: paneCellList, current: currentTarget.block, program: { .of(host.blocks[$0]?.program) }, select: selectPane, newSplit: newSplit)
+                        PaneBar(cells: paneCellList, current: currentTarget.block, program: { .of(host.blocks[$0]?.program) }, select: selectPane, newSplit: newSplit, close: closePane)
                             .transition(.opacity.combined(with: .move(edge: .bottom)))
                     }
                 }
@@ -173,6 +175,9 @@ struct TerminalScreen: View {
                     Menu {
                         Button("New Tab", systemImage: "plus") { newTab() }
                         Button("Split Pane", systemImage: "rectangle.split.2x1") { newSplit() }
+                        if paneCellList.count > 1 {
+                            Button("Close Pane", systemImage: "xmark.rectangle", role: .destructive) { closePane(currentTarget.block) }
+                        }
                     } label: {
                         Image(systemName: "ellipsis")
                     }
@@ -760,6 +765,35 @@ struct TerminalScreen: View {
                 }
             } catch {
                 failure = ("Can't Split the Pane", error.localizedDescription)
+            }
+        }
+    }
+
+    /// Closes a pane of the window, without asking; when it is the one
+    /// shown, goes first to the pane before it, else the one after, so its
+    /// stream ending never shows as the window closing.
+    private func closePane(_ block: String) {
+        // Panes already closing count as gone, so a quick second close
+        // neither goes back to one nor closes the window's last.
+        guard let w = window, !closing.contains(block) else { return }
+        let left = w.panes.filter { !closing.contains($0) }
+        guard left.count > 1, let i = left.firstIndex(of: block) else { return }
+        let session = currentTarget.session
+        closing.insert(block)
+        if block == currentTarget.block { selectPane(left[i > 0 ? i - 1 : 1]) }
+        Task {
+            defer { closing.remove(block) }
+            // The switch slides in once the pane has drawn, within 300 ms;
+            // one that never came leaves the pane open.
+            let deadline = ContinuousClock.now + .seconds(1)
+            while currentTarget.block == block, ContinuousClock.now < deadline {
+                try? await Task.sleep(for: .milliseconds(16))
+            }
+            guard currentTarget.block != block else { return }
+            do {
+                try await host.closePane(block, in: session)
+            } catch {
+                failure = ("Can't Close the Pane", error.localizedDescription)
             }
         }
     }
