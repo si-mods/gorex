@@ -29,6 +29,8 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - Adding a computer on the same Wi-Fi now needs the new QR code GoRex shows; if a computer you added before refuses you, scan its QR code again in Hosts.
 - Drag a window in the list and let go of it away from the rows: the windows go back to their order at once, and the one you dragged no longer stays dimmed.
 - Swiping with two fingers no longer switches panes, for now; tap a pane in the pane bar instead.
+- Tapping a terminal's title now answers your finger: its glass lights up as you press, and your hand feels a tap as the session's sheet opens.
+- The pane bar answers your finger too: its glass and the + light up as you press, and the pane you are in is outlined while the others fade.
 
 ## zh-Hans
 
@@ -50,3 +52,5 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - 在同一 Wi-Fi 下添加电脑，现在要扫 GoRex 显示的新二维码；以前添加过的电脑如果拒绝连接，在主机列表里重新扫它的二维码。
 - 在列表里拖动窗口，在行外松手：窗口立刻回到原来的顺序，被拖的那一行也不再一直变暗。
 - 双指滑动暂时不再切换面板；请点面板条里的面板来切换。
+- 点终端顶部的标题现在有反馈：按下时玻璃会亮起，打开会话面板时手上有一下轻触。
+- 面板条也有按下反馈：按下时玻璃和 + 会亮起；当前面板加了描边，其他面板变淡。
