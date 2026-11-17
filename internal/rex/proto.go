@@ -941,7 +941,10 @@ type DirList struct {
 // server may not read DirDenied, with Path, Parent and Home still set,
 // so that a picker can go elsewhere; any other failure is an error, as a
 // listing that takes over 10 seconds, on a mount that hangs, or one over
-// the few a connection or the server runs at once.
+// the few a connection or the server runs at once (DirListBusy). A
+// listing past its deadline goes on counting toward the server's limit
+// till the system returns it: a host with mounts that hang may refuse
+// listings till they return, or the server restarts.
 type DirListResult struct {
 	// Path is the directory listed: absolute, cleaned, its symlinks
 	// resolved but not Windows' junctions; DirTop for Windows' drives.

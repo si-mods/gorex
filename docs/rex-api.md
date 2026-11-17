@@ -549,7 +549,11 @@ through that host's own gateway.
   time per connection and 16 in all, and gives up on a listing after 10
   seconds: a directory on a mount that hangs, as an SMB or NFS share
   whose server is gone, fails the call with `internal` and holds nothing
-  else.
+  else. A third listing on a connection, or one past the server's 16, is
+  refused with `conflict`: try again later. A listing past its deadline
+  goes on counting toward the 16 till the system returns it, so a host
+  with mounts that hang may refuse listings till they return, or till
+  the GoRex server restarts.
 - It is allowed to the callers that may take a file with
   `download_begin` (the server's `file.get`), which reads any path as the
   server's user already; through the gateway, those are the callers of
@@ -557,8 +561,8 @@ through that host's own gateway.
   does `session.create`.
 - Errors: `bad_request` (an unknown or malformed argument),
   `not_supported` (the GoRex server is older), `conflict` (the gateway is
-  stopping), else `internal` with the server's text (a listing over 10
-  seconds, or too many at once).
+  stopping, or too many listings run), else `internal` with the server's
+  text (a listing over 10 seconds, or another failure).
 
 ## Troubleshooting
 

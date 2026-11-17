@@ -2,6 +2,7 @@ package rexapi
 
 import (
 	"context"
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -154,5 +155,32 @@ func TestDirListCallers(t *testing.T) {
 	if err == nil {
 		ws.CloseNow()
 		t.Error("a caller without the token got in")
+	}
+}
+
+// TestDirListBusy: a listing the server refuses as too many run fails
+// with conflict, to try again later; one that failed, or took too long,
+// with internal.
+func TestDirListBusy(t *testing.T) {
+	dirListHome(t)
+	f := startFixture(t)
+	c := f.dialControl()
+	c.hello(apiRevision)
+	restore := rex.FillDirListsForTest()
+	e := failure(t, c.request("busy", "gorex.dir.list", nil))
+	restore()
+	if e["code"] != "conflict" || !strings.Contains(e["message"].(string), "too many directory listings") {
+		t.Errorf("a refused listing: %v, want conflict", e)
+	}
+	callChecked(t, c, "gorex.dir.list", nil)
+
+	for msg, code := range map[string]string{
+		rex.DirListBusy + " under way on this connection; try again later": "conflict",
+		`rex: listing "x" took over 10s`:                                   "internal",
+		"rex: dir.list timed out":                                          "internal",
+	} {
+		if got := dirListError("x", errors.New(msg)); got.Code != code {
+			t.Errorf("%q: %s, want %s", msg, got.Code, code)
+		}
 	}
 }

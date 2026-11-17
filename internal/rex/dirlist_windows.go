@@ -36,8 +36,17 @@ func drives() []string {
 // the drive's current directory, which means nothing to a picker: it is
 // of the drive's root, `C:\` and `C:\x`. A path rooted with no volume, as
 // `\Windows` or "/Windows", would be of the server's current drive, and an
-// incomplete share, as "//" or `\\server`, is nowhere: no place.
+// incomplete share, as "//" or `\\server`, is nowhere: no place. Nor is
+// a device path, as `\\.\pipe\x`.
 func volumePath(path string) (string, bool) {
+	// A device or pipe path is no directory, and reading it may wait on
+	// it: refused, as openToSend refuses it to file.get.
+	norm := strings.ToLower(strings.ReplaceAll(path, "/", `\`))
+	for _, p := range []string{`\\.\`, `\\?\pipe\`, `\\?\globalroot`} {
+		if strings.HasPrefix(norm, p) {
+			return path, false
+		}
+	}
 	vol := filepath.VolumeName(path)
 	switch {
 	case len(vol) == 2 && vol[1] == ':':

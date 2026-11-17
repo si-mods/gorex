@@ -96,7 +96,8 @@ func TestDirListWindowsPaths(t *testing.T) {
 	if r := dirList(t, c, drive+"Windows", false); r.Path != win || r.Parent != drive+`\` || r.Code != "" {
 		t.Errorf("%sWindows: %+v, want %s", drive, r, win)
 	}
-	for _, path := range []string{"/Windows", `\Windows`, "//", `\\`, `\\server`, "//server", `/\`} {
+	for _, path := range []string{"/Windows", `\Windows`, "//", `\\`, `\\server`, "//server", `/\`,
+		`\\.\pipe\`, `\\.\PIPE\x`, "//./pipe/x", `\\.\C:\Windows`, `\\?\pipe\x`, `\\?\GLOBALROOT\Device`} {
 		if r := dirList(t, c, path, false); r.Code != DirNotFound || r.Path != path || r.Parent != "" || len(r.Dirs) != 0 {
 			t.Errorf("%q: %+v, want not_found with no parent", path, r)
 		}

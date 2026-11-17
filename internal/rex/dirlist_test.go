@@ -263,7 +263,7 @@ func TestDirListHangs(t *testing.T) {
 	for range maxDirListsAside {
 		<-entered
 	}
-	if _, err := c.DirList("", false); err == nil || !strings.Contains(err.Error(), "on this connection") {
+	if _, err := c.DirList("", false); err == nil || !strings.HasPrefix(err.Error(), DirListBusy) || !strings.Contains(err.Error(), "on this connection") {
 		t.Errorf("a listing over the connection's slots: %v, want refused", err)
 	}
 	if _, err := c.List(); err != nil {
@@ -295,7 +295,7 @@ func TestDirListBusy(t *testing.T) {
 	_, c, _ := dirListFixture(t)
 	dirListsRunning.Add(maxDirListsRunning)
 	defer dirListsRunning.Add(-maxDirListsRunning)
-	if _, err := c.DirList("", false); err == nil || err.Error() != errDirListBusy.Error() {
+	if _, err := c.DirList("", false); err == nil || err.Error() != errDirListBusy.Error() || !strings.HasPrefix(err.Error(), DirListBusy) {
 		t.Errorf("%v, want %v", err, errDirListBusy)
 	}
 }

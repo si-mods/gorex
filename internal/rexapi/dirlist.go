@@ -1,6 +1,8 @@
 package rexapi
 
 import (
+	"strings"
+
 	"gorex/internal/rex"
 )
 
@@ -46,9 +48,19 @@ func methodGorexDirList(c *control, a args) (any, *apiError) {
 	}
 	r, err := c.g.opt.Client.DirList(path, hidden)
 	if err != nil {
-		return nil, errInternal("listing %s: %v", path, err)
+		return nil, dirListError(path, err)
 	}
 	return dirListResult{Path: r.Path, Parent: r.Parent, Home: r.Home, Dirs: r.Dirs, More: r.More, Code: r.Code}, nil
+}
+
+// dirListError is the API's error of a listing the server did not make:
+// conflict when it refused it because too many run, to try again later;
+// internal when it failed, or took too long.
+func dirListError(path string, err error) *apiError {
+	if strings.HasPrefix(err.Error(), rex.DirListBusy) {
+		return errConflict("%v", err)
+	}
+	return errInternal("listing %s: %v", path, err)
 }
 
 // dirListEntry is gorex.dir.list's entry of the help document, in the
@@ -83,7 +95,7 @@ var dirListEntry = map[string]any{
 	"validation_notes": []any{
 		"A child's path is path and its name joined with '/' (the server cleans it, '\\' on Windows); at Windows' drives ('/'), a name is the path.",
 		"A missing or unreadable directory is not an error: the result carries code not_found or denied.",
-		"A listing that takes over 10 seconds, as on a mount that hangs, or one over the few the server runs at once, fails with internal.",
+		"A listing that takes over 10 seconds, as on a mount that hangs, fails with internal. One over the few a connection or the server runs at once fails with conflict: try again later. A listing past its deadline counts toward the server's limit till the system returns it.",
 		"Allowed to the callers that may take a file (download_begin), which reads any path as the server's user already: those of session.create.",
 		"A server that does not list directories, whose welcome doesn't list gorex.dir_list, fails with not_supported.",
 	},
@@ -115,7 +127,9 @@ Notes:
 - A child's path is ` + "`path`" + ` and its name joined with ` + "`/`" + `; the server cleans it. At Windows' drives,
   each name is a drive's root, as ` + "`C:\\`" + `, a path of its own.
 - A loop of symlinks answers ` + "`not_found`" + `. A listing that takes over 10 seconds, as on a mount that hangs,
-  fails with ` + "`internal`" + `.
+  fails with ` + "`internal`" + `. One over the few a connection or the server runs at once fails with
+  ` + "`conflict`" + `: try again later. A listing past its deadline counts toward the server's limit till the
+  system returns it, so a host with mounts that hang may refuse listings till then, or till GoRex restarts.
 - Allowed to the callers that may take a file (` + "`download_begin`" + `), which reads any path as the server's
   user already: those of ` + "`session.create`" + `. A server that doesn't list directories fails with
   ` + "`not_supported`" + `.

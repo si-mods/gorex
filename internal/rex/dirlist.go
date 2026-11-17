@@ -37,9 +37,21 @@ var dirListsRunning atomic.Int32
 // errDirListBusy answers a listing over maxDirListsRunning, and
 // errDirListsAside one over maxDirListsAside of its connection.
 var (
-	errDirListBusy   = errors.New("rex: too many directory listings under way; try again later")
-	errDirListsAside = errors.New("rex: too many directory listings under way on this connection; try again later")
+	errDirListBusy   = errors.New(DirListBusy + " under way; try again later")
+	errDirListsAside = errors.New(DirListBusy + " under way on this connection; try again later")
 )
+
+// DirListBusy starts the error of a "dir.list" refused because too many
+// run, on its connection or in the server: one to try again later, unlike
+// a listing that failed.
+const DirListBusy = "rex: too many directory listings"
+
+// FillDirListsForTest makes the servers of this process refuse listings
+// as too many run, till restore: for the tests of other packages.
+func FillDirListsForTest() (restore func()) {
+	dirListsRunning.Add(maxDirListsRunning)
+	return func() { dirListsRunning.Add(-maxDirListsRunning) }
+}
 
 // listDirFunc lists a directory: listDir, which tests replace with one
 // that hangs.
