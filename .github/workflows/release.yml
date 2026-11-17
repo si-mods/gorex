@@ -30,8 +30,8 @@ jobs:
     steps:
       # -upload uploads with gh.
       - run: gh --version
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
           # The runner keeps Go's caches between runs.
@@ -80,8 +80,8 @@ jobs:
       - run: gh --version
       # Keep LF in the files the app embeds, as the other platforms do.
       - run: git config --global core.autocrlf false
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
           # The runner keeps Go's caches between runs.
@@ -99,11 +99,11 @@ jobs:
     runs-on: instabox-medium
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: npm
