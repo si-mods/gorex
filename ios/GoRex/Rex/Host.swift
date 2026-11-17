@@ -857,13 +857,13 @@ final class Host: Identifiable {
 
     /// Downloads a file from the working directory of block over rev 13 download_begin.
     func download(_ path: String, block: String, session: String? = nil,
-                  ifNoneMatch: String? = nil) async throws -> DownloadResult {
+                  ifNoneMatch: String? = nil, maxBytes: Int? = nil) async throws -> DownloadResult {
         let c = try live()
         guard c.apiRevision >= RexProtocol.downloadRevision, let sid = session ?? sessionID(forBlock: block) else {
             throw RexError(code: "not_supported", message: String(localized: "Server does not accept downloads"))
         }
         return try await Download.fetch(path: path, session: sid, block: block,
-                                        ifNoneMatch: ifNoneMatch,
+                                        ifNoneMatch: ifNoneMatch, maxBytes: maxBytes,
                                         control: c, to: config.url, auth: config.auth, urlSession: try self.session())
     }
 

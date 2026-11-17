@@ -134,6 +134,9 @@ final class TerminalView: UIView, TerminalOutput {
     }
     /// Whether the mouse is over a link, as Ghostty last told.
     var overLink = false
+    /// Whether the keyboard was up as the last tap that opened a link
+    /// began: a file's preview gives it back as it closes.
+    var typingBeforeLink = false
 
     /// The grid's size, shown while pinching.
     lazy var sizeLabel: UILabel = {
@@ -497,11 +500,21 @@ final class TerminalView: UIView, TerminalOutput {
     }
 
     /// A tap that clears no selection clicks for a program that has the
-    /// mouse, else opens the link under it, and shows the keyboard.
+    /// mouse, else opens the link under it, and shows the keyboard. A tap on
+    /// a link leaves the keyboard as it is: the link may open a preview
+    /// that takes it away, and gives it back as it closes.
     @objc private func tap(_ g: UITapGestureRecognizer) {
         let p = g.location(in: self)
         if deselect(at: p) { return }
-        if let s = surface, ghostty_surface_mouse_captured(s) { click(at: p) } else { openLink(at: p) }
+        if let s = surface, ghostty_surface_mouse_captured(s) {
+            click(at: p)
+        } else {
+            let typing = isFirstResponder
+            if openLink(at: p) {
+                typingBeforeLink = typing
+                return
+            }
+        }
         if !isFirstResponder { becomeFirstResponder() }
     }
 
@@ -518,13 +531,16 @@ final class TerminalView: UIView, TerminalOutput {
     /// move a prompt's cursor. Ghostty looks again only where it has not
     /// looked, and keeps a link lit while the mouse stays on it, so the
     /// mouse leaves the view before and after.
-    private func openLink(at p: CGPoint) {
-        guard let s = surface else { return }
+    private func openLink(at p: CGPoint) -> Bool {
+        guard let s = surface else { return false }
         overLink = false
         ghostty_surface_mouse_pos(s, -1, -1, GHOSTTY_MODS_NONE)
         ghostty_surface_mouse_pos(s, p.x, p.y, GHOSTTY_MODS_SUPER)
-        if overLink { click(at: p, mods: GHOSTTY_MODS_SUPER) }
+        // Read before the mouse leaves, which tells Ghostty's no link.
+        let hit = overLink
+        if hit { click(at: p, mods: GHOSTTY_MODS_SUPER) }
         ghostty_surface_mouse_pos(s, -1, -1, GHOSTTY_MODS_NONE)
+        return hit
     }
 
     // MARK: Keyboard

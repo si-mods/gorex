@@ -22,6 +22,16 @@
         }
       }
     },
+    "A folder is not downloaded": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "暂不支持下载文件夹"
+          }
+        }
+      }
+    },
     "About": {
       "localizations": {
         "zh-Hans": {
@@ -212,12 +222,62 @@
         }
       }
     },
+    "Can't Open File": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法打开文件"
+          }
+        }
+      }
+    },
     "Can't Split the Pane": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
             "value": "无法拆分面板"
+          }
+        }
+      }
+    },
+    "No such file": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "文件不存在"
+          }
+        }
+      }
+    },
+    "Not a regular file": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "不是普通文件"
+          }
+        }
+      }
+    },
+    "Opening File": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在打开文件"
+          }
+        }
+      }
+    },
+    "Permission denied": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "没有访问权限"
           }
         }
       }
@@ -1252,6 +1312,16 @@
         }
       }
     },
+    "The host does not send files": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "此主机不支持发送文件"
+          }
+        }
+      }
+    },
     "The mic types what you say into the terminal, without pressing Return; the model you choose recognises it on this device. Fun-ASR-Nano and Qwen3-ASR are larger and slower: on a Mac they take 2 to 2.6 GB of memory, and phones with less may not run them. Swipe a model to delete it. With an API key, the text you dictate and words from the terminal screen go to the service you set here, which corrects misheard terms and punctuation. Without a key, nothing leaves the device.": {
       "localizations": {
         "zh-Hans": {
@@ -1328,6 +1398,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "此设备没有麦克风。"
+          }
+        }
+      }
+    },
+    "Too large": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "文件过大"
           }
         }
       }

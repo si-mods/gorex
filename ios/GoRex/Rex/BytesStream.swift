@@ -63,6 +63,7 @@ final class BytesStream {
     func readAll() async throws -> Data {
         var out = Data()
         while let chunk = try await receive() {
+            try Task.checkCancellation()
             out.append(chunk)
         }
         return out
