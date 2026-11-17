@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"log"
 	"net"
 	"os"
 	"path/filepath"
@@ -908,6 +909,56 @@ func TestLocalPaneTakesKeysAfterItsStreamWasLost(t *testing.T) {
 	waitFor(t, tt, "the shell's output of what was typed while away", func() bool {
 		return strings.Contains(p.term.Text(), "AFTER_LOSS_42")
 	})
+}
+
+// logBuf is a log sink that tolerates the app's goroutines writing to it.
+type logBuf struct {
+	mu sync.Mutex
+	b  strings.Builder
+}
+
+func (l *logBuf) Write(p []byte) (int, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.b.Write(p)
+}
+
+func (l *logBuf) String() string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.b.String()
+}
+
+// TestLostStreamIsLogged: a pane's stream that is lost and attaches again
+// leaves one line for each, with the session, so that a "stream
+// interrupted" note can be traced.
+func TestLostStreamIsLogged(t *testing.T) {
+	a, tt := newTestApp(t)
+	p := a.tab().Focus
+	if p == nil || p.stream == nil {
+		t.Fatal("the tab has no pane of this machine")
+	}
+	waitFor(t, tt, "the shell", func() bool {
+		return p.term != nil && strings.Contains(p.term.Text(), testShell.prompt)
+	})
+	var buf logBuf
+	log.SetOutput(&buf)
+	t.Cleanup(func() { log.SetOutput(os.Stderr) })
+	p.stream.mu.Lock()
+	st := p.stream.cur
+	p.stream.mu.Unlock()
+	st.Close()
+	waitFor(t, tt, "the stream to attach again", func() bool {
+		return strings.Contains(buf.String(), "pane stream back:")
+	})
+	out := buf.String()
+	sid := "sid=" + p.stream.sid
+	if n := strings.Count(out, "pane stream lost: host=local "+sid+" after="); n != 1 {
+		t.Errorf("%d lost lines, want 1:\n%s", n, out)
+	}
+	if n := strings.Count(out, "pane stream back: host=local "+sid+" away="); n != 1 {
+		t.Errorf("%d back lines, want 1:\n%s", n, out)
+	}
 }
 
 // TestLostStreamWaitsForItsInput is the bound on what a pane keeps while

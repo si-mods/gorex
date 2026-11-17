@@ -1464,6 +1464,8 @@ type paneStream struct {
 	// host's, nil while it has none.
 	client func() *rex.Client
 	sid    string
+	// name is the host's label, or "local" for this machine, for the log.
+	name string
 	// OnData is told the size of what the session prints, and onChange that
 	// the stream detached or attached again.
 	OnData   func(n int)
@@ -1485,10 +1487,15 @@ type paneStream struct {
 	// detachedAt is when the stream was lost, zero while attached: a
 	// stream lost a moment shows no note, and takes what is typed.
 	detachedAt time.Time
-	gone       bool // the host no longer lists the session to this machine
-	attaches   int  // the streams that printed
-	fails      int  // the streams lost since one printed
-	pending    []byte
+	// attachedAt is when the stream attached, for the log of its loss.
+	attachedAt time.Time
+	// lostAt is when the stream was last lost, for the log of its return.
+	lostAt time.Time
+
+	gone     bool // the host no longer lists the session to this machine
+	attaches int  // the streams that printed
+	fails    int  // the streams lost since one printed
+	pending  []byte
 	// queued is what was typed while the stream is away, or before the
 	// first one attached, which it writes in order once it has one.
 	queued []byte
@@ -1504,7 +1511,7 @@ type paneStream struct {
 }
 
 func newHostStream(h *hostConn, sid string, cols, rows int) *paneStream {
-	return &paneStream{client: h.current, sid: sid, cols: cols, rows: rows}
+	return &paneStream{client: h.current, name: h.label(), sid: sid, cols: cols, rows: rows}
 }
 
 // newLocalStream is newHostStream for a session of this machine: it
@@ -1512,7 +1519,7 @@ func newHostStream(h *hostConn, sid string, cols, rows int) *paneStream {
 // is lost, as a host's does, so that a pane whose connection dropped
 // takes what is typed again instead of showing a screen that goes on.
 func newLocalStream(c *rex.Client, sid string, cols, rows int) *paneStream {
-	return &paneStream{client: func() *rex.Client { return c }, sid: sid, cols: cols, rows: rows, made: time.Now(), asked: make(chan struct{})}
+	return &paneStream{client: func() *rex.Client { return c }, name: "local", sid: sid, cols: cols, rows: rows, made: time.Now(), asked: make(chan struct{})}
 }
 
 // Detached tells that the stream was lost and is not back yet.
@@ -1632,10 +1639,19 @@ func (s *paneStream) Read(p []byte) (int, error) {
 		if n > 0 {
 			s.mu.Lock()
 			first := s.fresh && s.cur == st
+			var away time.Duration
+			back := false
 			if first {
 				s.fresh, s.detached, s.fails = false, false, 0
 				s.detachedAt = time.Time{}
 				s.attaches++
+				now := time.Now()
+				// Back from a loss, even one before the first attach.
+				if !s.lostAt.IsZero() {
+					away, back = now.Sub(s.lostAt).Round(time.Millisecond), true
+					s.lostAt = time.Time{}
+				}
+				s.attachedAt = now
 				// Attached again: its snapshot replaces what shows.
 				if s.attaches > 1 {
 					s.pending = append([]byte(screenReset), p[:n]...)
@@ -1644,6 +1660,9 @@ func (s *paneStream) Read(p []byte) (int, error) {
 				}
 			}
 			s.mu.Unlock()
+			if back {
+				log.Printf("gorex: pane stream back: host=%s sid=%s away=%s", s.name, s.sid, away)
+			}
 			if first {
 				s.changed()
 			}
@@ -1670,13 +1689,21 @@ func (s *paneStream) lost(st *rex.Stream, err error) bool {
 		s.cur = nil
 	}
 	closed, was := s.closed, s.detached
+	after := "never attached"
+	if !s.attachedAt.IsZero() {
+		after = time.Since(s.attachedAt).Round(time.Millisecond).String()
+	}
 	s.detached, s.detachedAt = true, time.Now()
+	if !was {
+		s.lostAt = s.detachedAt
+	}
 	s.fails++
 	s.mu.Unlock()
 	if closed {
 		return true
 	}
 	if !was {
+		log.Printf("gorex: pane stream lost: host=%s sid=%s after=%s: %v", s.name, s.sid, after, err)
 		s.changed()
 		// The note comes due a moment later, when the pane draws again.
 		time.AfterFunc(streamNoteDelay, func() {

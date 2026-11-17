@@ -95,6 +95,7 @@ func main() {
 	if !ownDir && !mygo.App.RequestSingleInstanceLock() {
 		return
 	}
+	startAppLog()
 	mygo.Use(native.Plugin)
 	registerFonts()
 	loadSettings()

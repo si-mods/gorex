@@ -537,8 +537,9 @@ do not update; "Check for Updates…" is in the Shell menu and the command
 palette.
 
 The app keeps its state in its data directory: the server's socket and
-log, `layout.json` and `settings.json`, in `~/Library/Application
-Support/GoRex` for the built app and `GoRex Dev` for `mygo dev`'s, so
+log, the app's own log `app.log` (kept as `app.log.1` at the next start
+once it passes 1 MiB), `layout.json` and `settings.json`, in
+`~/Library/Application Support/GoRex` for the built app and `GoRex Dev` for `mygo dev`'s, so
 that developing never touches the sessions of the app you use
 (`GOREX_DIR` names another directory). `layout.jsonl` beside the layout
 is a journal of every layout the app sent, and of each run's start and
