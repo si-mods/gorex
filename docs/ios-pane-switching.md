@@ -106,7 +106,7 @@ dmg 里没有 iOS 二进制，但 Rex Go 的 alpha 已通过 TestFlight 分发�
 ### 非目标
 
 - 不把桌面宫格作为可编辑的分屏布局搬到手机；右上角缩略图只读显示方向/比例，iOS 不做分隔条拖动。
-- 在 iPhone 上编辑共享布局（split/close/rename 面板）——本期只读 + 查看。
+- 在 iPhone 上编辑共享布局：关闭、重命名面板、拖动分隔条仍只在桌面；iOS 只新建一次 split（新增一个面板），与新 Tab 同级。
 - 跨主机面板、浏览器/note 面板的完整呈现（§7）。
 - 另一台 GoRex 桌面收养远端布局后的实时几何跟随（§7.3）。
 - 改变多端共享 PTY 的输入/尺寸语义（§5.7 说明现状）。
@@ -233,9 +233,9 @@ Tab 切换不进 `selectPane`：仍走现有 window 列表/pill 手势，并各�
   1. **底部面板条**：每个 pane 一个程序图标按钮（`ProgramTile` 的 21×16 原生比例），当前项是一圈紧贴 tile 的淡色背景；按钮上叠加该 pane 的状态点（blocked 黄、error 红、done 蓝、working 小灰点）。`+` 在胶囊外单独一个圆钮。`accessibilityLabel` 用 `paneTitle(block)` + 状态。
   2. **双指滑动**：在终端页面上用双指朝上/下/左/右轻扫，切到该方向相邻的 pane（按 `PaneLayout` 的位置找，内容跟手：左扫切到右边的 pane，上扫切到下面的 pane）；该方向没有 pane 时不动，不跨 Tab。单指仍用于滚动、选择和点按。选中文本、鼠标捕获的全屏程序（vim/Claude Code）或切换进行中时，手势让位给终端。
 - **布局缩略图**：没有单独的 panes icon。切换 pane 后，缩略图在工具栏右侧（ellipsis 下方）浮出一次，显示 `PaneLayout` 的 rect/split；当前 pane 用其程序 tile 的颜色，其余灰色。约 4 秒后自动淡出。缩略图只作指示，不接收点按和滑动，触摸穿过它落到终端；方向切换由终端页面的双指滑动完成（45° 锥形范围找最近的 pane）。当前格的颜色用 0.25s 淡入淡出。直接点底部条也可切换。切 Tab 不触发。
-- **单 pane**：`panes.count == 1` 时隐藏 icon 与底部条，保持今天的面板。
+- **单 pane**：`panes.count == 1` 时隐藏 icon 与底部条，保持今天的面板；工具栏菜单的 Split Pane（与 ⌘D）仍是入口。
 - **标题**：沿用现有 pill，显示当前 pane 的 `paneTitle`/程序与 Tab 名。**去掉标题里的 `ProgramTiles` 堆叠**（同组信息已由缩略图与底部条表达），只保留一个当前程序图标。
-- **`+`**：保持现有 New Tab 行为，不在本期新增“新建 pane”。
+- **拆分入口**：当前 pane 就地拆出一个新 shell（`session.new_split`，`direction: horizontal`、`side: after`、`focus: false`），随后切到新面板，桌面布局焦点不变。三个入口共用同一实现：底部条胶囊外的 `+`、工具栏菜单的 Split Pane、外接键盘的 ⌘D（与桌面 Split Right 同键）。单面板窗口只有后两者。`+` 不再表示 New Tab。
 - **底部安全区**：面板条在 KeyBar 之上；键盘出现时，它跟着键盘上移，KeyBar 仍在它下面。终端 `paneInset` 让光标保持在两者之上。
 
 缩略图说明**位置/方向/比例**，底部条给出**顺序与切换**；两者来自同一份 `panes`/`PaneLayout`，不新增第二份面板数据。
