@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"io"
+	"runtime"
 	"testing"
 	"time"
 )
@@ -51,6 +52,30 @@ func readAll(t *testing.T, voice io.ReadCloser) []byte {
 		voice.Close()
 		t.Fatal("the voice never ended")
 		return nil
+	}
+}
+
+// waitVoiceBuffer waits until sid's voice holds exactly want, which is so
+// only after the voice kept the last bytes written.
+func waitVoiceBuffer(t *testing.T, s *Server, sid string, want []byte) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		s.voiceMu.Lock()
+		v := s.voices[sid]
+		s.voiceMu.Unlock()
+		if v != nil {
+			v.mu.Lock()
+			ok := bytes.Equal(v.buf, want)
+			v.mu.Unlock()
+			if ok {
+				return
+			}
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the voice never kept the last bytes")
+		}
+		runtime.Gosched()
 	}
 }
 
@@ -194,6 +219,10 @@ func TestVoiceKeepsTheLast(t *testing.T) {
 		b[i] = byte(i)
 	}
 	feed := feedVoice(t, c, sid, b)
+	// The pipe's Write returns once the server read the last chunk, not
+	// once the voice kept it; a get that took the buffer before then
+	// would drain it untrimmed.
+	waitVoiceBuffer(t, s, sid, b[1000:])
 	voice, err := c.ReadVoice(context.Background(), sid)
 	if err != nil {
 		t.Fatal(err)
