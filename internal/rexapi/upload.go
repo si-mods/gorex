@@ -431,8 +431,8 @@ func blockUploadBegin(c *control, s *mSession, b *mBlock, a args) (any, *apiErro
 // uploadErrors carries the bytes a stream received, shared by its read
 // loop and its put.
 type uploadCount struct {
-	mu  sync.Mutex
-	n   int64
+	mu sync.Mutex
+	n  int64
 }
 
 func (c *uploadCount) add(n int) {
