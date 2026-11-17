@@ -69,8 +69,6 @@ struct PaneBar: View {
     let program: (String) -> Program
     let select: (String) -> Void
     let newSplit: () -> Void
-    /// Counts the plus's taps, for its tap on the hand.
-    @State private var splits = 0
 
     var body: some View {
         HStack(spacing: 8) {
@@ -109,10 +107,7 @@ struct PaneBar: View {
             .padding(.vertical, 4)
             // Interactive glass answers the finger, as the title's does.
             .glassEffect(.regular.interactive(), in: .capsule)
-            Button {
-                splits += 1
-                newSplit()
-            } label: {
+            Button(action: newSplit) {
                 Image(systemName: "plus")
                     .font(.footnote.weight(.semibold))
                     .frame(width: 30, height: 30)
@@ -121,7 +116,6 @@ struct PaneBar: View {
             .buttonStyle(.plain)
             .accessibilityLabel("Split Pane")
             .glassEffect(.regular.interactive(), in: .circle)
-            .sensoryFeedback(.impact(weight: .light), trigger: splits)
         }
         .animation(.snappy, value: current)
     }
