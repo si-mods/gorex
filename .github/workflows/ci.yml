@@ -118,7 +118,13 @@ jobs:
         if: github.event_name == 'pull_request'
         env:
           BASE: ${{ github.event.pull_request.base.sha }}
-        run: ios/scripts/test-notes check "$BASE"
+        # The script that judges the pull request comes from the base commit,
+        # so the pull request cannot edit its own check. It reads the merge
+        # commit (HEAD here) by SHA: the objects are shared.
+        run: |
+          TO=$(git rev-parse HEAD)
+          git worktree add "$RUNNER_TEMP/base" "$BASE"
+          "$RUNNER_TEMP/base/ios/scripts/test-notes" check "$BASE" "$TO"
       - uses: actions/setup-node@v7
         with:
           node-version: 24
@@ -136,8 +142,8 @@ jobs:
   # build and web, that is five at a time.
   test-linux:
     runs-on: instabox-medium
-    # Two runs of a part that hangs, at 15 minutes each.
-    timeout-minutes: 35
+    # One run of a part that hangs, at 15 minutes, and the setup.
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
