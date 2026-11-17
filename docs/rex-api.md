@@ -478,8 +478,10 @@ folder there (`docs/projects.md`). The welcome lists the feature
   ```
 
   `home_machine` is the home host's machine, as `/api/spaces` names
-  machines; it is `""` when this desktop no longer knows that host's
-  machine (a host removed from `hosts.json`), and the folder stays.
+  machines. The desktop keeps another host's home by that machine, so
+  it outlives the host's removal from `hosts.json` and its return under a
+  new ID. A home of an older build, kept by a host's ID, reads `""` once
+  `hosts.json` no longer has that host; the folder stays.
 - `gorex.project.set_home` sets or clears a session's home:
 
   ```
@@ -489,13 +491,15 @@ folder there (`docs/projects.md`). The welcome lists the feature
   ← {"revision": 5, "project": {"home_machine": "9c63…", "dir": "/home/me/code/windflow"}}
   ```
 
-  A `machine_id` of `""` clears the home. A folder on this machine must
-  exist (`not_found`); one on another machine is not checked here. A
-  machine this desktop has no host of is kept, and the desktop shows the
-  home host as unknown until it has a host of that machine.
+  A `machine_id` of `""` clears the home. A folder on this machine that
+  is not there fails with `not_found`: the argument names nothing. One on
+  another machine is not checked here. A machine this desktop has no
+  host of is kept, and the desktop shows the home host as unknown until
+  it has a host of that machine.
 - `session.new_window` without a `cwd`, in a session whose home is this
-  machine, starts in the folder. A folder gone fails the call with
-  `conflict` (`folder_missing`) and starts no shell. A `cwd` given wins,
+  machine, starts in the folder. A folder gone since fails the call with
+  `conflict` (`folder_missing`), as the session's state, not the
+  arguments, stands in the way, and starts no shell. A `cwd` given wins,
   and a split starts where the block it splits started. A session the
   server starts again from the layout after a restart still starts at
   home when its folder is gone.

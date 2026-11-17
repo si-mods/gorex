@@ -659,7 +659,7 @@ func (s *Server) applyTo(st *layout.Store, c LayoutCommand, a *applying) LayoutC
 		if w == nil {
 			return fail("space_not_found", "no such space in the GoRex layout")
 		}
-		host, dir, code, msg := spaceHome(c.Host, c.Dir)
+		host, dir, code, msg := spaceHome(s.homeHost(c.Host), c.Dir)
 		if code != "" {
 			return fail(code, msg)
 		}
@@ -1263,6 +1263,23 @@ func spaceHome(host, dir string) (string, string, string, string) {
 		dir = filepath.Clean(dir)
 	}
 	return host, dir, "", ""
+}
+
+// homeHost is a home host as the layout keeps it: by its machine
+// (layout.MachineHost) when hosts.json knows the machine of the host of
+// that ID, so that the home outlives the host's removal and its return
+// under a new ID; else as given.
+func (s *Server) homeHost(host string) string {
+	if host == "" {
+		return ""
+	}
+	if _, ok := layout.HostMachine(host); ok {
+		return host
+	}
+	if m := HostMachines(cmp.Or(s.dir, Dir()))[host]; m != "" {
+		return layout.MachineHost(m)
+	}
+	return host
 }
 
 // setColor gives w the color of a command: "default" for the default

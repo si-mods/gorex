@@ -41,6 +41,18 @@ func TestSpaceHome(t *testing.T) {
 	if w := spaceOf(t, c, work); w.Host != "h1" || w.Dir != `C:\code\app` {
 		t.Fatalf("a rename changed the home to %q %q", w.Host, w.Dir)
 	}
+	// A host whose machine hosts.json knows is kept by its machine, which
+	// outlives the host's ID; one named by its machine stays so.
+	hosts := `{"hosts":[{"id":"h2","address":"tcat://x","machine":"machine-two"}]}`
+	if err := os.WriteFile(filepath.Join(Dir(), "hosts.json"), []byte(hosts), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, host := range []string{"h2", layout.MachineHost("machine-two")} {
+		command(t, c, LayoutCommand{Op: "space.home", Space: work, Host: host, Dir: "/srv/app"})
+		if w := spaceOf(t, c, work); w.Host != layout.MachineHost("machine-two") {
+			t.Errorf("the home of host %q is kept as %q", host, w.Host)
+		}
+	}
 	for _, x := range []LayoutCommand{
 		{Op: "space.home", Space: work, Dir: "relative/dir"},
 		{Op: "space.home", Space: "none", Dir: folder},

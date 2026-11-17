@@ -138,37 +138,62 @@ func TestProjectSetHome(t *testing.T) {
 	}
 }
 
-// TestProjectHomeOfHosts sets homes on other machines: one of the app's
-// hosts is named by its ID, one the app has no host of by the machine,
-// and a host removed from hosts.json keeps the home, its machine unknown.
+// TestProjectHomeOfHosts sets homes on other machines: each is kept by
+// its machine (layout.MachineHost), so a host removed from hosts.json and
+// added again under a new ID is the home again; a home of before, kept by
+// a host's ID, reads by hosts.json while it has the host.
 func TestProjectHomeOfHosts(t *testing.T) {
 	f := startFixture(t)
 	hosts := filepath.Join(rex.Dir(), "hosts.json")
-	if err := os.WriteFile(hosts, []byte(`{"hosts":[{"id":"h1","name":"Studio","address":"tcat://x","machine":"machine-one"}]}`), 0o600); err != nil {
-		t.Fatal(err)
+	writeHosts := func(body string) {
+		t.Helper()
+		if err := os.WriteFile(hosts, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
 	}
+	writeHosts(`{"hosts":[{"id":"h1","name":"Studio","address":"tcat://x","machine":"machine-one"}]}`)
 	f.setLayout(spacesLayout())
 	c := f.dialControl()
 	c.hello(apiRevision)
 	work := sessionIDs(t, c)["work"]
 
 	callChecked(t, c, "gorex.project.set_home", map[string]any{"session_id": work, "machine_id": "machine-one", "dir": `C:\code\app`})
-	if w := f.spaceOfSession(t, work); w.Host != "h1" || w.Dir != `C:\code\app` {
+	if w := f.spaceOfSession(t, work); w.Host != layout.MachineHost("machine-one") || w.Dir != `C:\code\app` {
 		t.Fatalf("the home of a host is %q %q", w.Host, w.Dir)
 	}
 	if p := projectOf(t, c, work); p["home_machine"] != "machine-one" || p["dir"] != `C:\code\app` {
 		t.Errorf("the project of a host is %v", p)
 	}
 
-	// The host removed: the home stays, its machine unknown.
-	if err := os.WriteFile(hosts, []byte(`{"hosts":[]}`), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if p := projectOf(t, c, work); p == nil || p["home_machine"] != "" || p["dir"] != `C:\code\app` {
+	// The host removed, and added again under another ID: the home stays
+	// that machine's.
+	writeHosts(`{"hosts":[]}`)
+	if p := projectOf(t, c, work); p["home_machine"] != "machine-one" || p["dir"] != `C:\code\app` {
 		t.Errorf("the project of a removed host is %v", p)
 	}
-	if w := f.spaceOfSession(t, work); w.Host != "h1" {
-		t.Errorf("the removed host's home is %q", w.Host)
+	writeHosts(`{"hosts":[{"id":"h2","name":"Studio","address":"tcat://x","machine":"machine-one"}]}`)
+	if p := projectOf(t, c, work); p["home_machine"] != "machine-one" {
+		t.Errorf("the project of the host added again is %v", p)
+	}
+
+	// A home kept by a host's ID: the server keeps it by the machine when
+	// hosts.json knows it, and the gateway reads an older one's by
+	// hosts.json, unknown once the host is gone.
+	if _, aerr := f.g.command(rex.LayoutCommand{Op: "space.home", Space: "work", Host: "h2", Dir: "/srv/app"}); aerr != nil {
+		t.Fatal(aerr)
+	}
+	if w := f.spaceOfSession(t, work); w.Host != layout.MachineHost("machine-one") {
+		t.Errorf("a home given by a host's ID is kept as %q", w.Host)
+	}
+	st := spacesLayout()
+	st.Sessions[0].Host, st.Sessions[0].Dir = "h2", "/srv/app"
+	f.setLayout(st)
+	if p := projectOf(t, c, work); p["home_machine"] != "machine-one" {
+		t.Errorf("an older home of a host is %v", p)
+	}
+	writeHosts(`{"hosts":[]}`)
+	if p := projectOf(t, c, work); p == nil || p["home_machine"] != "" || p["dir"] != "/srv/app" {
+		t.Errorf("an older home of a removed host is %v", p)
 	}
 
 	callChecked(t, c, "gorex.project.set_home", map[string]any{"session_id": work, "machine_id": "machine-far", "dir": "/srv/app"})
@@ -218,8 +243,15 @@ func TestSpacesApplyHome(t *testing.T) {
 		t.Errorf("the project of an unknown machine goes back as %v", p)
 	}
 
-	// A client of before projects sends no home: it stays.
+	// A client of before projects sends no home: it stays. A dir with no
+	// machine names no home: it stays too.
 	apply(map[string]any{})
+	if w := f.spaceOfSession(t, work); w.Dir != "/home/me/code" {
+		t.Errorf("an apply of no home changed it to %q", w.Dir)
+	}
+	if res := apply(map[string]any{"home_machine": "", "dir": "/elsewhere"}); res["homes"] != nil {
+		t.Errorf("an apply of a dir with no machine answered %v", res)
+	}
 	if w := f.spaceOfSession(t, work); w.Dir != "/home/me/code" {
 		t.Errorf("an apply of no home changed it to %q", w.Dir)
 	}

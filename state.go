@@ -1551,18 +1551,41 @@ func (a *App) newProjectTab() *Tab {
 		a.err, a.errMsg = fmt.Sprintf("The home host of %s is not one of your hosts; no tab opened in %s", w.Name, w.Dir), nil
 		return nil
 	}
-	return a.newTabOnIn(h, w.Dir, true)
+	if _, ok := layout.HostMachine(w.Host); !ok && h.Machine != "" && a.st != nil {
+		// A home kept by the host's ID, of before homes named machines:
+		// by its machine, it outlives the host's removal and return.
+		a.ask(rex.LayoutCommand{Op: "space.home", Space: w.ID, Host: layout.MachineHost(h.Machine), Dir: w.Dir}, nil)
+	}
+	return a.projectTabOn(h, w.Dir)
 }
 
-// projectHost is the home host of project w: the host of its ID, else
-// the host of the machine it names (layout.MachineHost); nil for none,
-// as of a host removed from hosts.json, which the project keeps.
+// projectTabOn opens a tab of the window's project on its home host h in
+// dir, or none, with the reason. A host of the tailnet not connected yet
+// opens it once it connects (hostConn.openDir); a host whose server does
+// not check the folder (rex.CapabilitySpaceHome), as an older GoRex's,
+// which would start the shell at home when the folder is gone, opens none.
+func (a *App) projectTabOn(h *hostConn, dir string) *Tab {
+	if rex.IsTailnetTarget(h.Address) && h.current() == nil && h.tailnetOnline {
+		a.openTailnetHost(h)
+		h.openDir, h.openStrict = dir, true
+		return nil
+	}
+	if h.current() != nil && !h.hello.Can(rex.CapabilitySpaceHome) {
+		log.Printf("no new tab in %s: the home host %s does not check project folders", dir, h.label())
+		a.err, a.errMsg = fmt.Sprintf("%s runs an older GoRex that cannot open %s safely; update GoRex there", h.label(), dir), nil
+		return nil
+	}
+	return a.newTabOnIn(h, dir, true)
+}
+
+// projectHost is the home host of project w: the host of the machine it
+// names (layout.MachineHost), which is the same after the host is removed
+// and added again under a new ID, else the host of its ID, as a home of
+// before; nil for none, as of a host removed from hosts.json, which the
+// project keeps.
 func (a *App) projectHost(w *Workspace) *hostConn {
 	if w.Host == "" {
 		return nil
-	}
-	if h := a.hostByID(w.Host); h != nil {
-		return h
 	}
 	if m, ok := layout.HostMachine(w.Host); ok {
 		for _, h := range a.hosts {
@@ -1570,8 +1593,9 @@ func (a *App) projectHost(w *Workspace) *hostConn {
 				return h
 			}
 		}
+		return nil
 	}
-	return nil
+	return a.hostByID(w.Host)
 }
 
 // currentHost is the host of the focused pane, nil for this machine.

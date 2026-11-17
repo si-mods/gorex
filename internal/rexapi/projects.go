@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 
 	"gorex/internal/layout"
@@ -28,8 +27,8 @@ const featureProjects = "gorex.projects"
 const desktopSpace = "gorex-desktop-terminals"
 
 // projectInfo is a session's home as a client reads it: the machine of
-// its home host (rex.MachineID), "" when this desktop no longer knows
-// the host's, and its folder there.
+// its home host (rex.MachineID), "" for a home of before kept by a host's
+// ID that hosts.json no longer has, and its folder there.
 type projectInfo struct {
 	HomeMachine string `json:"home_machine"`
 	Dir         string `json:"dir"`
@@ -52,23 +51,15 @@ func (m *model) homeMachine(host string) string {
 }
 
 // hostOfMachine is the home host (layout.Workspace.Host) of a machine:
-// "" for this one, the app's host of it, else one that names the machine
-// itself, which the app shows as unknown until it has a host of it.
+// "" for this one, else one that names the machine (layout.MachineHost),
+// which the app finds among its hosts as it opens a tab: the same after
+// the host is removed and added again under a new ID, and shown as
+// unknown while the app has no host of it.
 func (m *model) hostOfMachine(machine string) string {
 	if machine == m.self {
 		return ""
 	}
-	var ids []string
-	for id, mid := range m.machines {
-		if mid == machine {
-			ids = append(ids, id)
-		}
-	}
-	if len(ids) == 0 {
-		return layout.MachineHost(machine)
-	}
-	slices.Sort(ids)
-	return ids[0]
+	return layout.MachineHost(machine)
 }
 
 // homeOf is the home host and folder a home of machine and dir is in
@@ -168,7 +159,7 @@ type projectSetHomeResult struct {
 // document's results.
 var projectSchema = map[string]any{
 	"type":        "object",
-	"description": "GoRex's own: the project's home, the machine (machine_id, as /api/spaces names machines) of its home host and its folder there. Left out for a session whose space has no folder. home_machine is empty when this desktop no longer knows the home host's machine.",
+	"description": "GoRex's own: the project's home, the machine (machine_id, as /api/spaces names machines) of its home host and its folder there. Left out for a session whose space has no folder. home_machine is empty only for an older home of a host this desktop no longer has.",
 	"properties": map[string]any{
 		"home_machine": map[string]any{"type": "string"},
 		"dir":          map[string]any{"type": "string"},
@@ -249,7 +240,7 @@ var projectSetHomeEntry = map[string]any{
 	"response_example": "{\n  \"revision\": 5,\n  \"project\": {\"home_machine\": \"9c63…\", \"dir\": \"/home/me/code/windflow\"}\n}",
 	"validation_notes": []any{
 		"A machine_id of \"\" clears the home: the session's new windows start as before, and its project is left out.",
-		"On this machine the folder must exist, or the call fails with not_found. A folder on another machine is not checked here.",
+		"On this machine a folder that is not there fails with not_found. A folder on another machine is not checked here. session.new_window fails with conflict (folder_missing) when the folder went since.",
 		"A machine this desktop has no host of is kept, and its project shows that machine; the desktop shows the home host as unknown.",
 		"session.new_window without a cwd, in a session whose home is this machine, starts in the folder, and fails with conflict (folder_missing) when it is gone. Splits start where the block they split started.",
 		"A server that doesn't keep projects, whose welcome doesn't list gorex.projects, fails with not_supported.",
