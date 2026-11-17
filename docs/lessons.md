@@ -22,6 +22,7 @@ Mistakes that reached main, and the rule that would have stopped each one. Read 
 - **Before turning on a new gate (`-race`, a new shard), run it with `-count 10` on every platform it gates.** One clean run (#563) does not show a test is free of races.
 - **No CI job retries a failed test** (#563, #674). The root-shard retry hid `TestAdoptHostTabSplit*` and `TestPaneFollowsAnotherClientsSize` (fixed in #630) and `TestPaneReturnsToItsSize`. Do not add a retry back; fix the test.
 - **A test must not depend on the developer's environment.** `TestPeerListsAndMirrors` failed in Git Bash because `$SHELL` picked bash (#679). Pin the shell, env and paths a test relies on.
+- **A self-hosted runner keeps Go's caches on its own disk; do not also save them to the Actions cache.** The Mac mini holds `~/Library/Caches/go-build` (27 GB) and `~/go/pkg/mod` (4.5 GB) between runs. `setup-go` with `cache: true` in `testflight.yml` (#371) saved a 7.1 GB copy into the repository's 10 GB Actions cache and evicted the Linux test caches; #688 set `cache: false`, as `release.yml` already had. Jobs on instabox start on a fresh box, so they do use the Actions cache, but only pushes to main save it (#681).
 
 ## Design before code
 
