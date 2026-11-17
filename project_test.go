@@ -471,7 +471,7 @@ func TestProjectTabHomeMovedMeanwhile(t *testing.T) {
 // unknownHomeProject is a project whose home is machine, and a host the
 // app has not learned the machine of, whose connection is held till the
 // release returned.
-func unknownHomeProject(t *testing.T, a *App, tt *ui.Tester, machine string) (h *hostConn, folder string, release func()) {
+func unknownHomeProject(t *testing.T, a *App, tt *ui.Tester, machine string) (h *hostConn, proxy *hostProxy, release func()) {
 	t.Helper()
 	_, proxy, remote, _, folder := tailnetHost(t, a)
 	if machine == "" {
@@ -485,7 +485,7 @@ func unknownHomeProject(t *testing.T, a *App, tt *ui.Tester, machine string) (h 
 	h = a.addHost(savedHost{ID: "h-again", Name: "office-mac", Address: proxy.path})
 	setProjectHome(t, a, tt, layout.MachineHost(machine), folder)
 	focusLocal(t, a)
-	return h, folder, release
+	return h, proxy, release
 }
 
 // TestProjectWaitEndsWhenNoHostIsHome makes New Tab of a project whose
@@ -514,14 +514,18 @@ func TestProjectWaitTimesOut(t *testing.T) {
 	projectWait = 400 * time.Millisecond
 	t.Cleanup(func() { projectWait = old })
 	a, tt := newTestApp(t)
-	h, _, _ := unknownHomeProject(t, a, tt, "")
+	// The host does not answer: its connections fail, rather than wait
+	// at a gate a cleanup opens after the test.
+	h, proxy, release := unknownHomeProject(t, a, tt, "")
+	proxy.setDown(true)
+	release()
 	a.newProjectTab()
 	first := a.projectOpen
 	time.Sleep(250 * time.Millisecond)
 	a.newProjectTab()
 	second := a.projectOpen
 	if first == nil || second == nil || second == first {
-		t.Fatalf("the waits %p %p", first, second)
+		t.Fatalf("the waits %p %p: %q", first, second, a.err)
 	}
 	a.err = ""
 	time.Sleep(250 * time.Millisecond)
