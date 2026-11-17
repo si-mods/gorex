@@ -486,6 +486,9 @@ type App struct {
 	nextID int
 	// hosts are the remote hosts saved, in their order.
 	hosts []*hostConn
+	// projectOpen is the New Tab of a project that waits for its home
+	// host to connect (takeProjectOpen), nil for none.
+	projectOpen *projectOpen
 
 	// focusReq asks the view to give the keyboard focus to a pane's
 	// terminal.
@@ -800,6 +803,13 @@ func (a *App) offline(h *hostConn) bool {
 // reports whether the pane has a place still; the session of one that has
 // not ends. One the host does not make shows its error, and no pane.
 func (a *App) newPaneRun(h *hostConn, dir string, cols, rows int, command []string, place func(*Pane) bool) {
+	a.newPaneIn(h, rex.CreateOptions{Dir: dir, Cols: cols, Rows: rows, Command: command}, place)
+}
+
+// newPaneIn is newPaneRun of the session o describes, which a strict
+// directory (rex.CreateOptions.DirStrict) the host does not have fails.
+func (a *App) newPaneIn(h *hostConn, o rex.CreateOptions, place func(*Pane) bool) {
+	dir, cols, rows, command := o.Dir, o.Cols, o.Rows, o.Command
 	if cols <= 0 {
 		cols, rows = 80, 24
 	}
@@ -817,7 +827,7 @@ func (a *App) newPaneRun(h *hostConn, dir string, cols, rows int, command []stri
 		var info rex.SessionInfo
 		err := errors.New("rex: connection to the server lost")
 		if c != nil {
-			info, err = c.Create(rex.CreateOptions{Command: command, Dir: dir, Cols: cols, Rows: rows, Env: env})
+			info, err = c.Create(rex.CreateOptions{Command: command, Dir: dir, DirStrict: o.DirStrict, Cols: cols, Rows: rows, Env: env})
 		}
 		if err == nil {
 			// The host's next list may have it before its pane: adopt
@@ -839,6 +849,9 @@ func (a *App) newPaneRun(h *hostConn, dir string, cols, rows int, command []stri
 			if a.quitting || !slices.Contains(a.hosts, h) {
 				return
 			}
+			// A tab on a host connected only to learn its machine opens
+			// it: it reaches the host after a restart too.
+			a.keepProbed(h)
 			p := &Pane{ID: id, SID: info.ID, info: info, startDir: dir, host: h}
 			if p.info.Dir == "" {
 				p.info.Dir = dir
@@ -1420,12 +1433,16 @@ func (a *App) newTab(dir string) *Tab { return a.newTabOn(a.currentHost(), dir) 
 
 // newTabOn opens a tab with a shell in dir on host h, nil for this
 // machine, after the active tab (newTabAfter), and shows it.
-func (a *App) newTabOn(h *hostConn, dir string) *Tab {
+func (a *App) newTabOn(h *hostConn, dir string) *Tab { return a.newTabOnIn(h, dir, false) }
+
+// newTabOnIn is newTabOn of a tab of a host that starts in dir or not at
+// all when strict (rex.CreateOptions.DirStrict).
+func (a *App) newTabOnIn(h *hostConn, dir string, strict bool) *Tab {
 	if h != nil && rex.IsTailnetTarget(h.Address) && h.current() == nil && h.tailnetOnline {
 		a.openTailnetHost(h)
 		return nil
 	}
-	t := a.newTabAfter(h, dir, a.tab())
+	t := a.newTabAfterIn(h, dir, strict, a.tab(), nil)
 	if t != nil {
 		a.active = slices.Index(a.tabs, t)
 		a.focusReq = t.Focus
@@ -1446,6 +1463,13 @@ func (a *App) newTabAfter(h *hostConn, dir string, after *Tab) *Tab {
 // nil. One of a host shows as the host made its session, after the tab
 // active then, as a tab of the host asked for before it is.
 func (a *App) newTabAfterRun(h *hostConn, dir string, after *Tab, command []string) *Tab {
+	return a.newTabAfterIn(h, dir, false, after, command)
+}
+
+// newTabAfterIn is newTabAfterRun of a tab of a host that starts in dir or
+// not at all when strict. One of this machine the server makes in the
+// folder of the window's project when dir is "", or fails.
+func (a *App) newTabAfterIn(h *hostConn, dir string, strict bool, after *Tab, command []string) *Tab {
 	if a.offline(h) {
 		return nil
 	}
@@ -1458,10 +1482,15 @@ func (a *App) newTabAfterRun(h *hostConn, dir string, after *Tab, command []stri
 			c.After = p.SID
 		}
 		var t *Tab
-		a.ask(c, func(res rex.LayoutCommand) { t = a.tabByUID(res.Tab) })
+		a.ask(c, func(res rex.LayoutCommand) {
+			if res.Code == rex.FolderMissing {
+				log.Printf("no new tab: %s", res.Error)
+			}
+			t = a.tabByUID(res.Tab)
+		})
 		return t
 	}
-	a.newPaneRun(h, dir, 0, 0, command, func(p *Pane) bool {
+	a.newPaneIn(h, rex.CreateOptions{Dir: dir, DirStrict: strict, Command: command}, func(p *Pane) bool {
 		t := a.makeTab("")
 		t.Root = &Node{ID: a.id(), Pane: p}
 		p.Tab, p.Node = t, t.Root
@@ -1504,6 +1533,213 @@ func (a *App) newPaneTab(p *Pane) *Tab {
 	a.groupTabs()
 	a.changed()
 	return t
+}
+
+// newProjectTab is New Tab. In a project with a folder it opens a tab on
+// the project's home host in the folder, or none, with the reason, while
+// the host is unknown or not connected or the folder is gone: never one
+// elsewhere. In a project of no folder it opens one on the focused pane's
+// host in its directory, as before. A split starts where its pane
+// started, project or not.
+func (a *App) newProjectTab() *Tab {
+	w := a.ws
+	if w == nil || w.Dir == "" {
+		return a.newTab(a.currentDir())
+	}
+	if w.Host == "" {
+		// The server starts it in the folder, or fails with
+		// rex.FolderMissing and starts none.
+		return a.newTabOn(nil, "")
+	}
+	h := a.projectHost(w)
+	if h == nil {
+		return a.awaitProjectHost(w)
+	}
+	if _, ok := layout.HostMachine(w.Host); !ok && h.Machine != "" && a.st != nil {
+		// A home kept by the host's ID, of before homes named machines:
+		// by its machine, it outlives the host's removal and return.
+		a.ask(rex.LayoutCommand{Op: "space.home", Space: w.ID, Host: layout.MachineHost(h.Machine), Dir: w.Dir}, nil)
+	}
+	if rex.IsTailnetTarget(h.Address) && h.current() == nil && h.tailnetOnline {
+		// A host of the tailnet connects at the user's asking: the tab
+		// opens once it has (takeProjectOpen).
+		a.waitProject(&projectOpen{space: w.ID, host: h})
+		a.connectTailnetHost(h)
+		return nil
+	}
+	return a.projectTabOn(h, w.Dir)
+}
+
+// projectOpen is a New Tab of the project of ID space that waits for its
+// home host to connect: the host, or the host of the machine, that none
+// of the app's hosts was known to be as the user asked.
+type projectOpen struct {
+	space, machine string
+	host           *hostConn
+}
+
+// projectWait is how long a New Tab waits for its project's home host to
+// connect; tests shorten it.
+var projectWait = 60 * time.Second
+
+// waitProject makes p the window's New Tab that waits for its home host,
+// in place of one before, and ends it, with a note, once projectWait went
+// by without the host.
+func (a *App) waitProject(p *projectOpen) {
+	a.projectOpen = p
+	update := a.updater()
+	time.AfterFunc(projectWait, func() {
+		update(func() {
+			if a.projectOpen != p {
+				return
+			}
+			a.endWait()
+			name := p.space
+			if w := a.ws; w != nil && w.ID == p.space {
+				name = w.Name
+			}
+			log.Printf("no new tab: the home host of project %s did not connect", p.space)
+			a.err, a.errMsg = fmt.Sprintf("The home host of %s did not connect; no tab opened", name), nil
+		})
+	})
+}
+
+// endWait ends the window's New Tab that waits for a project's home host,
+// and, once no window waits, the connections made to learn the machines
+// of hosts (endProbe).
+func (a *App) endWait() {
+	a.projectOpen = nil
+	if slices.ContainsFunc(a.peers(), func(o *App) bool { return o.projectOpen != nil }) {
+		return
+	}
+	for _, h := range slices.Clone(a.hosts) {
+		a.endProbe(h)
+	}
+}
+
+// mayBeHome tells whether host h may turn out to be a project's home
+// machine as it connects: its machine is not known, and the app reaches
+// it, or tries to.
+func mayBeHome(h *hostConn) bool {
+	if h.Machine != "" || h.current() != nil {
+		return false
+	}
+	return !rex.IsTailnetTarget(h.Address) || h.TailnetOpened || h.tailnetOnline
+}
+
+// awaitProjectHost is New Tab of project w, whose home host is none the
+// app knows: a host whose machine the app has not learned, as one added
+// again, may be it, so those it can reach connect, and the tab opens once
+// the home host has (takeProjectOpen). With none to try, it opens none,
+// and says why.
+func (a *App) awaitProjectHost(w *Workspace) *Tab {
+	machine, ok := layout.HostMachine(w.Host)
+	unknown, tried := 0, false
+	for _, h := range a.hosts {
+		if !ok || h.Machine != "" {
+			continue
+		}
+		unknown++
+		if !mayBeHome(h) {
+			continue
+		}
+		tried = true
+		if rex.IsTailnetTarget(h.Address) && !h.TailnetOpened {
+			// Once, to learn its machine: the host stays as the user left
+			// it, not opened (probeTailnetHost).
+			a.probeTailnetHost(h)
+		}
+	}
+	switch {
+	case tried:
+		log.Printf("new tab of project %s: connecting to find its home host %s", w.ID, w.Host)
+		a.waitProject(&projectOpen{space: w.ID, machine: machine})
+		a.err, a.errMsg = fmt.Sprintf("Connecting to the home host of %s; the tab opens in %s once it is connected", w.Name, w.Dir), nil
+	case unknown > 0:
+		log.Printf("no new tab: the home host %s of project %s is not connected", w.Host, w.ID)
+		a.err, a.errMsg = fmt.Sprintf("The home host of %s is not connected; no tab opened in %s", w.Name, w.Dir), nil
+	default:
+		log.Printf("no new tab: the home host %s of project %s is unknown", w.Host, w.ID)
+		a.err, a.errMsg = fmt.Sprintf("The home host of %s is not one of your hosts; no tab opened in %s", w.Name, w.Dir), nil
+	}
+	return nil
+}
+
+// takeProjectOpen opens the tab of the New Tab that waits for host h, now
+// connected and its machine learned, if h is the project's home. The tab
+// opens in the project the user asked in, while h is its home still, in
+// its folder now; a home moved meanwhile opens none, and says so. Once no
+// host may be the home machine (mayBeHome) and none is, the wait ends.
+// (A window that shows another project dropped its wait as it switched:
+// show.)
+func (a *App) takeProjectOpen(h *hostConn) {
+	p := a.projectOpen
+	if p == nil {
+		if h.probing && !slices.ContainsFunc(a.peers(), func(o *App) bool { return o.projectOpen != nil }) {
+			a.endProbe(h)
+		}
+		return
+	}
+	if p.host != h && (p.machine == "" || h.Machine != p.machine) {
+		// Not the home: a host connected to learn so goes again.
+		a.endProbe(h)
+		if p.host == nil && !slices.ContainsFunc(a.hosts, mayBeHome) {
+			a.endWait()
+			log.Printf("no new tab: no host is the home machine %s of project %s", p.machine, p.space)
+			a.err, a.errMsg = "The project's home host is not one of your hosts; no tab opened", nil
+		}
+		return
+	}
+	a.projectOpen = nil
+	if w := a.ws; w == nil || w.ID != p.space || w.Dir == "" || a.projectHost(w) != h {
+		a.endProbe(h)
+		log.Printf("no new tab: %s connected, but it is not the home of project %s now", h.label(), p.space)
+		a.err, a.errMsg = fmt.Sprintf("%s is connected, but the project's home changed meanwhile; no tab opened", h.label()), nil
+		return
+	}
+	a.projectTabOn(h, a.ws.Dir)
+}
+
+// projectTabOn opens a tab of the window's project on its home host h in
+// dir, or none, with the reason: a host whose server does not check the
+// folder (rex.CapabilitySpaceHome), as an older GoRex's, which would
+// start the shell at home when the folder is gone, opens none.
+func (a *App) projectTabOn(h *hostConn, dir string) *Tab {
+	if h.current() != nil && !h.hello.Can(rex.CapabilitySpaceHome) {
+		log.Printf("no new tab in %s: the home host %s does not check project folders", dir, h.label())
+		a.err, a.errMsg = fmt.Sprintf("%s runs an older GoRex that cannot open %s safely; update GoRex there", h.label(), dir), nil
+		return nil
+	}
+	return a.newTabOnIn(h, dir, true)
+}
+
+// projectHost is the home host of project w: the host of the machine it
+// names (layout.MachineHost), which is the same after the host is removed
+// and added again under a new ID, else the host of its ID, as a home of
+// before; nil for none, as of a host removed from hosts.json, which the
+// project keeps.
+func (a *App) projectHost(w *Workspace) *hostConn {
+	if w.Host == "" {
+		return nil
+	}
+	if m, ok := layout.HostMachine(w.Host); ok {
+		// Of two hosts of the machine, as its LAN and tailnet addresses,
+		// the connected one.
+		var found *hostConn
+		for _, h := range a.hosts {
+			if h.Machine != m {
+				continue
+			}
+			if h.current() != nil {
+				return h
+			}
+			if found == nil {
+				found = h
+			}
+		}
+		return found
+	}
+	return a.hostByID(w.Host)
 }
 
 // currentHost is the host of the focused pane, nil for this machine.

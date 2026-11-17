@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"strings"
 
+	"gorex/internal/layout"
 	"gorex/internal/rex"
 )
 
@@ -16,10 +17,50 @@ type spacesApplySpace struct {
 	Name     string   `json:"name"`
 	Color    string   `json:"color,omitempty"`
 	BlockIDs []string `json:"block_ids"`
+	// HomeMachine and Dir are the project's home (projects.go): the
+	// machine of its home host and its folder there. Left out, the home
+	// stays as it is, as from a client of before projects; a dir of ""
+	// clears it.
+	HomeMachine *string `json:"home_machine,omitempty"`
+	Dir         *string `json:"dir,omitempty"`
 }
 
 type spacesApplyResult struct {
 	Applied int `json:"applied"`
+	// Homes counts the projects whose home changed.
+	Homes int `json:"homes,omitempty"`
+}
+
+// applyHome gives the space of the session of id the home of entry, when
+// entry has one and the server keeps homes, and tells whether it changed.
+// A machine this desktop has no host of keeps the folder (hostOfMachine).
+func (c *control) applyHome(id string, entry spacesApplySpace) (bool, *apiError) {
+	if entry.Dir == nil || !c.g.hello.Can(rex.CapabilitySpaceHome) {
+		return false, nil
+	}
+	machine := ""
+	if entry.HomeMachine != nil {
+		machine = *entry.HomeMachine
+	}
+	if machine == "" && *entry.Dir != "" {
+		return false, nil
+	}
+	m := c.g.modelNow()
+	s := m.byID[id]
+	if s == nil || s.space == desktopSpace {
+		return false, nil
+	}
+	host, dir, aerr := m.homeOf(machine, *entry.Dir)
+	if aerr != nil {
+		return false, aerr
+	}
+	if s.home == host && s.dir == dir {
+		return false, nil
+	}
+	if _, aerr := c.g.setHome(s, host, dir); aerr != nil {
+		return false, aerr
+	}
+	return true, nil
 }
 
 // methodGorexSpacesApply applies centralized space groupings from the control
@@ -45,10 +86,22 @@ func methodGorexSpacesApply(c *control, a args) (any, *apiError) {
 		return nil, errBadRequest("invalid spaces: %v", err)
 	}
 
-	applied := 0
+	for _, entry := range desired {
+		if entry.Dir != nil && *entry.Dir != "" && !layout.IsAbsDir(strings.TrimSpace(*entry.Dir)) {
+			return nil, errBadRequest("the dir of space %q must be an absolute path", entry.Name)
+		}
+	}
+	applied, homes := 0, 0
+	home := func(id string, entry spacesApplySpace) *apiError {
+		changed, aerr := c.applyHome(id, entry)
+		if changed {
+			homes++
+		}
+		return aerr
+	}
 	for _, entry := range desired {
 		name := strings.TrimSpace(entry.Name)
-		if name == "" || len(entry.BlockIDs) == 0 {
+		if name == "" {
 			continue
 		}
 		m := c.g.modelNow()
@@ -67,6 +120,11 @@ func methodGorexSpacesApply(c *control, a args) (any, *apiError) {
 			toMove = append(toMove, blockMoveTarget{session: s, window: w, block: blk})
 		}
 		if len(toMove) == 0 {
+			if target != nil {
+				if aerr := home(target.id, entry); aerr != nil {
+					return nil, aerr
+				}
+			}
 			continue
 		}
 
@@ -114,8 +172,11 @@ func methodGorexSpacesApply(c *control, a args) (any, *apiError) {
 			}
 			applied++
 		}
+		if aerr := home(target.id, entry); aerr != nil {
+			return nil, aerr
+		}
 	}
-	return spacesApplyResult{Applied: applied}, nil
+	return spacesApplyResult{Applied: applied, Homes: homes}, nil
 }
 
 type blockMoveTarget struct {
@@ -156,13 +217,14 @@ var spacesApplyEntry = map[string]any{
 	"args": map[string]any{
 		"spaces": map[string]any{
 			"type":        "array",
-			"description": "List of {name, color?, block_ids} space definitions.",
+			"description": "List of {name, color?, block_ids, home_machine?, dir?} space definitions. home_machine and dir are a project's home (gorex.projects): left out, the home stays; a dir of \"\" clears it.",
 		},
 	},
 	"result": map[string]any{
 		"type": "object",
 		"properties": map[string]any{
 			"applied": map[string]any{"type": "integer"},
+			"homes":   map[string]any{"type": "integer"},
 		},
 		"required": []string{"applied"},
 	},
@@ -178,4 +240,7 @@ Feature: ` + "`gorex.spaces_sync`" + `. Apply centralized space assignments from
 
 - Request: ` + "`{\"spaces\": [{\"name\": \"Work\", \"color\": \"blue\", \"block_ids\": [\"block:...\"]}]}`" + `
 - Result: ` + "`{\"applied\": 1}`" + `
+- A space may carry its project's home, ` + "`home_machine`" + ` and ` + "`dir`" + ` (feature ` + "`gorex.projects`" + `): left
+  out, the home stays; a ` + "`dir`" + ` of ` + "`\"\"`" + ` clears it. A machine this desktop has no host of keeps the folder.
+  The result's ` + "`homes`" + ` counts the projects whose home changed.
 `)

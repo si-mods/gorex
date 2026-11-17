@@ -6,7 +6,9 @@ import (
 	"bytes"
 	"cmp"
 	"encoding/json"
+	"log"
 	"math"
+	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
@@ -25,7 +27,7 @@ var applied = map[string]bool{
 	"pane.zoom": true, "pane.resize": true, "pane.swap": true, "pane.move": true,
 	"pane.restart": true, "pane.teleporting": true, "pane.teleported": true,
 	"tab.set": true, "windows.set": true, "layout.apply": true, "kills.taken": true, "show.taken": true,
-	"tab.to_space": true,
+	"tab.to_space": true, "space.home": true,
 }
 
 // batched are the commands a layout.apply carries: the app's changes of
@@ -206,12 +208,18 @@ type applying struct {
 
 // start returns a new pane's leaf, starting its session in the first pass.
 func (a *applying) start(dir string, cols, rows int, command []string) (*layout.Node, error) {
+	return a.startIn(dir, false, cols, rows, command)
+}
+
+// startIn is start, of a session that starts in dir or not at all when
+// strict (CreateOptions.DirStrict).
+func (a *applying) startIn(dir string, strict bool, cols, rows int, command []string) (*layout.Node, error) {
 	if a.n < len(a.made) {
 		n := *a.made[a.n]
 		a.n++
 		return &n, nil
 	}
-	n, err := a.s.startPane(dir, cols, rows, command)
+	n, err := a.s.startPane(dir, strict, cols, rows, command)
 	if err != nil {
 		return nil, err
 	}
@@ -358,13 +366,13 @@ func hasLocal(t *layout.Tab) bool {
 func indexOf(root, n *layout.Node) int { return slices.Index(layout.Leaves(root), n) }
 
 // startPane starts the session of a new pane, as the window does.
-func (s *Server) startPane(dir string, cols, rows int, command []string) (*layout.Node, error) {
+func (s *Server) startPane(dir string, strict bool, cols, rows int, command []string) (*layout.Node, error) {
 	<-s.hostDone
 	var env []string
 	if s.host.Name != "" {
 		env = []string{"GOREX_CLIENT=" + s.host.Name}
 	}
-	ss, err := s.createHeld(CreateOptions{Command: command, Dir: dir, Cols: cols, Rows: rows, Env: env}, "")
+	ss, err := s.createHeld(CreateOptions{Command: command, Dir: dir, DirStrict: strict, Cols: cols, Rows: rows, Env: env}, "")
 	if err != nil {
 		return nil, err
 	}
@@ -646,6 +654,17 @@ func (s *Server) applyTo(st *layout.Store, c LayoutCommand, a *applying) LayoutC
 		}
 		st.Windows = ids
 		return res
+	case "space.home":
+		w := st.Space(c.Space)
+		if w == nil {
+			return fail("space_not_found", "no such space in the GoRex layout")
+		}
+		host, dir, code, msg := spaceHome(s.homeHost(c.Host), c.Dir)
+		if code != "" {
+			return fail(code, msg)
+		}
+		w.Host, w.Dir = host, dir
+		return res
 	case "show.taken":
 		if st.Show == c.Space {
 			st.Show, st.ShowAt = "", time.Time{}
@@ -822,6 +841,14 @@ func (s *Server) createTab(st *layout.Store, c LayoutCommand, a *applying) Layou
 		w = newSpace(st, "")
 	}
 	dir, at := c.Dir, -1
+	// A new tab of a project whose home is this machine starts in its
+	// folder, or not at all: not at home, as one of the layout does after
+	// a restart. A directory the caller gives wins; a home on another
+	// host is the app's to reach, so a tab made here starts as before.
+	strict := false
+	if dir == "" && w.Dir != "" && w.Host == "" {
+		dir, strict = w.Dir, true
+	}
 	if p, ok := findIn(w, localLeaf(c.After)); ok {
 		at = p.ti + 1
 		if dir == "" {
@@ -844,9 +871,13 @@ func (s *Server) createTab(st *layout.Store, c LayoutCommand, a *applying) Layou
 	if cols <= 0 || rows <= 0 {
 		cols, rows = s.largest(w)
 	}
-	n, err := a.start(dir, cols, rows, c.Command)
+	n, err := a.startIn(dir, strict, cols, rows, c.Command)
 	if err != nil {
 		res.Code, res.Error = "create_failed", err.Error()
+		if strings.HasPrefix(err.Error(), FolderMissing) {
+			res.Code = FolderMissing
+			log.Printf("rex: no new tab in space %s: %v", w.ID, err)
+		}
 		return res
 	}
 	t := layout.Tab{ID: layout.NewTabID(), Name: layout.Label(c.Name), Root: n}
@@ -1215,6 +1246,40 @@ func floatState(st *layout.Store, c LayoutCommand, ap *applying) LayoutCommand {
 	reveal(t, p.fi)
 	p.w.Active = p.ti
 	return res
+}
+
+// spaceHome is the home a space.home sets, of host and dir as the command
+// gives them: none for a dir of "", else dir cleaned, which must be
+// absolute; an error code and its message when it is not.
+func spaceHome(host, dir string) (string, string, string, string) {
+	dir = strings.TrimSpace(dir)
+	if dir == "" {
+		return "", "", "", ""
+	}
+	if !layout.IsAbsDir(dir) {
+		return "", "", "bad_dir", "a project's folder must be an absolute path"
+	}
+	if host == "" {
+		dir = filepath.Clean(dir)
+	}
+	return host, dir, "", ""
+}
+
+// homeHost is a home host as the layout keeps it: by its machine
+// (layout.MachineHost) when hosts.json knows the machine of the host of
+// that ID, so that the home outlives the host's removal and its return
+// under a new ID; else as given.
+func (s *Server) homeHost(host string) string {
+	if host == "" {
+		return ""
+	}
+	if _, ok := layout.HostMachine(host); ok {
+		return host
+	}
+	if m := HostMachines(cmp.Or(s.dir, Dir()))[host]; m != "" {
+		return layout.MachineHost(m)
+	}
+	return host
 }
 
 // setColor gives w the color of a command: "default" for the default

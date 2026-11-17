@@ -153,6 +153,11 @@ type hostConn struct {
 	closed        map[string]bool
 	tailnetOnline bool
 	openOnConnect *App
+	// running tells that the app connects to the host (startHost), and
+	// probing that it does only to learn the host's machine for a
+	// project's New Tab (probeTailnetHost): not opened, it stops once
+	// that is learned, unless a tab opens on it (keepProbed).
+	running, probing bool
 	// transfers are those of the host's sessions, by session.
 	transfers map[string]*sessionTransfers
 	// creating closes once the pane of the session asked of the host last
@@ -477,6 +482,7 @@ func (a *App) hostRedraw() func(func()) {
 // startHost connects to a host in the background, and again whenever the
 // connection drops, until the host is closed.
 func (a *App) startHost(h *hostConn) {
+	h.running = true
 	h.update, h.persist = a.hostUpdate(), func() { a.saveHosts() }
 	go a.runHost(h, h.update)
 }
@@ -716,6 +722,17 @@ func (a *App) watchHost(h *hostConn, c *rex.Client, update func(func())) {
 			if h.openOnConnect != nil && h.openOnConnect.quitting {
 				h.openOnConnect = nil
 			}
+			// A project's tab opens a session of its own, which adopt
+			// leaves alone (expecting): it need not wait for the host's
+			// layout to name its sessions, as the tab openOnConnect
+			// opens does.
+			if h.current() == c {
+				for _, o := range a.peers() {
+					if !o.quitting {
+						o.takeProjectOpen(h)
+					}
+				}
+			}
 			if o := h.openOnConnect; o != nil && h.current() == c {
 				if tabs := o.tabsOn(h); len(tabs) != 0 {
 					h.openOnConnect = nil
@@ -759,8 +776,9 @@ type hostLayout struct {
 // window or not. A tab of the host's layout opens in the space of the
 // name of the host's space it is in.
 func (a *App) adopt(h *hostConn, byID map[string]rex.SessionInfo, l hostLayout) {
-	// A list on its way as the host was removed, or the window closed.
-	if a.quitting || !slices.Contains(a.hosts, h) {
+	// A list on its way as the host was removed, or the window closed. A
+	// host connected only to learn its machine shows none of its sessions.
+	if a.quitting || !slices.Contains(a.hosts, h) || h.probing {
 		return
 	}
 	if st := a.st; st != nil && (len(st.apps) == 0 || st.apps[0] != a) {
@@ -1368,15 +1386,80 @@ func (a *App) reconcileTailnet(st *rex.TailnetStatus) {
 // session to attach to. It is only called in response to a user action.
 func (a *App) openTailnetHost(h *hostConn) {
 	h.openOnConnect = a
-	if h.TailnetOpened {
+	a.connectTailnetHost(h)
+}
+
+// connectTailnetHost connects to a host of the tailnet, at the user's
+// asking: it stays opened, and connects again as the app starts.
+func (a *App) connectTailnetHost(h *hostConn) {
+	h.probing = false
+	if !h.TailnetOpened {
+		h.mu.Lock()
+		h.TailnetOpened = true
+		h.mu.Unlock()
+		a.saveHosts()
+	}
+	if h.running {
 		h.poke()
 		return
 	}
-	h.mu.Lock()
-	h.TailnetOpened = true
-	h.mu.Unlock()
-	a.saveHosts()
 	a.startHost(h)
+}
+
+// probeTailnetHost connects to a host of the tailnet for now, to learn its
+// machine, and opens it for nothing: it is not opened, does not connect
+// again as the app starts, and stops once the machine is learned
+// (endProbe), unless a tab opens on it, which opens it (keepProbed).
+func (a *App) probeTailnetHost(h *hostConn) {
+	if h.running {
+		h.poke()
+		return
+	}
+	h.probing = true
+	a.startHost(h)
+}
+
+// keepProbed opens the host probeTailnetHost connects to, as a tab opens on
+// it: it stays connected, and connects again as the app starts.
+func (a *App) keepProbed(h *hostConn) {
+	if h != nil && h.probing {
+		a.connectTailnetHost(h)
+	}
+}
+
+// endProbe stops the connection probeTailnetHost made to h, which no tab
+// uses: the host stays in the list, as one not opened, by its machine
+// learned. A hostConn's connection, once closed, does not start again, so
+// a new one takes its place.
+func (a *App) endProbe(h *hostConn) {
+	if !h.probing {
+		return
+	}
+	for _, o := range a.peers() {
+		if len(o.tabsOn(h)) > 0 {
+			return
+		}
+	}
+	i := slices.Index(a.hosts, h)
+	if i < 0 {
+		return
+	}
+	h.mu.Lock()
+	s := h.savedHost
+	h.mu.Unlock()
+	s.Kills = slices.Clone(s.Kills)
+	nh := newHostConn(s)
+	nh.tailnetOnline = h.tailnetOnline
+	if nh.tailnetOnline {
+		nh.state = hostAvailable
+	}
+	h.probing = false
+	h.close()
+	hosts := slices.Clone(a.hosts)
+	hosts[i] = nh
+	a.hosts = hosts
+	a.syncHosts()
+	log.Printf("gorex: host %s: connected to learn its machine, not opened: disconnected", nh.label())
 }
 
 // host is the host of a tab's panes, nil for this machine: a tab's panes

@@ -214,6 +214,8 @@ var methods = map[string]func(*control, args) (any, *apiError){
 	"gorex.move_block_to_new_window": methodGorexMoveBlockToNewWindow,
 	"gorex.see_block":                methodGorexSeeBlock,
 	"gorex.dir.list":                 methodGorexDirList,
+	// Projects (projects.go).
+	"gorex.project.set_home": methodGorexProjectSetHome,
 }
 
 // sessionArg reads the session_id argument and returns the session,
@@ -641,7 +643,7 @@ func methodSessionBootstrap(c *control, a args) (any, *apiError) {
 			c.g.emitClientEvent(c.rec, s.id, "client_connected")
 		}
 		return attachedSession{
-			Session: sessionListEntry{SessionID: s.id, Label: s.label},
+			Session: s.entry(),
 			View:    s.view(c.g.host),
 		}
 	}

@@ -347,6 +347,7 @@ func (g *Gateway) reread(layout bool) (*model, error) {
 	}
 	g.listSessions()
 	g.mapper.machines = g.machines()
+	g.mapper.self = g.hello.Machine
 	m, err := g.mapper.build(g.raw, g.host, g.ownersNow(), g.desktop...)
 	if err != nil {
 		return g.modelNow(), err

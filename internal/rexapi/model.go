@@ -30,6 +30,11 @@ type model struct {
 	blocks   map[string]*mBlock
 	// host names the machine the blocks run on.
 	host string
+	// self is this machine's ID (rex.MachineID), and machines those of
+	// the app's remote hosts by host ID (rex.HostMachines), as the model
+	// was built: a project's home names its host by them.
+	self     string
+	machines map[string]string
 }
 
 // mSession is a GoRex workspace as a Rex session.
@@ -44,6 +49,11 @@ type mSession struct {
 	space string
 	// remote are the space's panes of other hosts, in layout order.
 	remote []remoteBlock
+	// home and dir are the space's home host, as layout.Workspace.Host,
+	// and its folder there, "" for none; project is them as a client
+	// reads them, nil for a space of no folder.
+	home, dir string
+	project   *projectInfo
 	// sig names everything the session's view shows, so that a later
 	// build can tell whether the view changed.
 	sig string
@@ -135,6 +145,9 @@ type view struct {
 	Label          string       `json:"label,omitempty"`
 	ActiveWindowID string       `json:"active_window_id,omitempty"`
 	Windows        []windowView `json:"windows,omitempty"`
+	// Project is the session's home, GoRex's own: left out for a session
+	// whose space has no folder (projects.go).
+	Project *projectInfo `json:"project,omitempty"`
 }
 
 type windowView struct {
@@ -189,8 +202,9 @@ type mapper struct {
 	revs map[string]uint64
 	sigs map[string]string
 	// machines are the machines of the app's remote hosts, by the host
-	// ID a pane names (rex.HostMachines).
+	// ID a pane names (rex.HostMachines), and self this machine's.
 	machines map[string]string
+	self     string
 }
 
 func newMapper() *mapper {
@@ -214,14 +228,17 @@ func (mp *mapper) build(raw json.RawMessage, host string, owners map[string]stri
 	if ws := desktopWorkspace(spaces, desktop); len(ws.Tabs) != 0 {
 		spaces = append(spaces, ws)
 	}
-	m := &model{byID: map[string]*mSession{}, blocks: map[string]*mBlock{}, host: host}
+	m := &model{byID: map[string]*mSession{}, blocks: map[string]*mBlock{}, host: host, self: mp.self, machines: mp.machines}
 	for i := range spaces {
 		ws := &spaces[i]
 		workspace := ws.ID
 		if workspace == "" {
 			workspace = "main"
 		}
-		s := &mSession{id: sessionID(workspace), label: ws.Name, space: workspace}
+		s := &mSession{id: sessionID(workspace), label: ws.Name, space: workspace, home: ws.Host, dir: ws.Dir}
+		if ws.Dir != "" {
+			s.project = &projectInfo{HomeMachine: m.homeMachine(ws.Host), Dir: ws.Dir}
+		}
 		if s.label == "" {
 			s.label = "Session " + shortID(s.id)
 		}
@@ -561,6 +578,7 @@ func (s *mSession) view(host string) view {
 		SessionID:      s.id,
 		Label:          s.label,
 		ActiveWindowID: s.active,
+		Project:        s.project,
 	}
 	for _, w := range s.windows {
 		wv := windowView{
@@ -627,7 +645,7 @@ func viewSignature(v view) string {
 func (m *model) list() []sessionListEntry {
 	out := make([]sessionListEntry, 0, len(m.sessions))
 	for _, s := range m.sessions {
-		out = append(out, sessionListEntry{SessionID: s.id, Label: s.label})
+		out = append(out, s.entry())
 	}
 	return out
 }

@@ -193,6 +193,9 @@ func layoutError(g *Gateway, res rex.LayoutCommand) *apiError {
 		return errConflict("%s", res.Error)
 	case "create_failed":
 		return errInternal("%s", res.Error)
+	case rex.FolderMissing:
+		// The project's folder is gone: the error names the code.
+		return errConflict("%s", res.Error)
 	}
 	return errConflict("%s: %s", res.Code, res.Error)
 }

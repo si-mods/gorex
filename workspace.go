@@ -28,6 +28,10 @@ type Workspace struct {
 	// Color is the space's color: a preset id from layout.Palette, a custom
 	// "#rrggbb", or "" for the default look.
 	Color string
+	// Host and Dir are the space's home, a project's: its home host, as
+	// layout.Workspace.Host, and its folder there; "" for a space of no
+	// folder. The server keeps them (space.home); the app reads them.
+	Host, Dir string
 	// layout is its tabs while no window shows it; app is the window that
 	// shows it, whose tabs are then its own.
 	layout savedLayout
@@ -274,7 +278,7 @@ func (st *store) saved() savedStore {
 		if w.app != nil {
 			l = w.app.snapshot()
 		}
-		s.Sessions = append(s.Sessions, savedWorkspace{ID: w.ID, Name: w.Name, Color: w.Color, Layout: l})
+		s.Sessions = append(s.Sessions, savedWorkspace{ID: w.ID, Name: w.Name, Color: w.Color, Host: w.Host, Dir: w.Dir, Layout: l})
 		if len(s.Windows) > 0 && w.ID == s.Windows[0] {
 			s.Layout = l
 		}
@@ -548,7 +552,7 @@ func (st *store) reconcile(s savedStore) {
 		if w == nil {
 			w = &Workspace{ID: sw.ID}
 		}
-		w.Name, w.Color = sw.Name, sw.Color
+		w.Name, w.Color, w.Host, w.Dir = sw.Name, sw.Color, sw.Host, sw.Dir
 		if a := w.app; a != nil {
 			if !a.reconcile(sw.Layout) {
 				// Emptied by another client: the space stays, as Rex
@@ -661,7 +665,7 @@ func (st *store) loaded(raw []byte) []*Workspace {
 	s := layout.Parse(raw)
 	st.workspaces = nil
 	for _, sw := range s.Sessions {
-		st.workspaces = append(st.workspaces, &Workspace{ID: sw.ID, Name: sw.Name, Color: sw.Color, layout: sw.Layout})
+		st.workspaces = append(st.workspaces, &Workspace{ID: sw.ID, Name: sw.Name, Color: sw.Color, Host: sw.Host, Dir: sw.Dir, layout: sw.Layout})
 	}
 	var open []*Workspace
 	for _, id := range s.Windows {
@@ -1220,6 +1224,12 @@ func (a *App) show(w *Workspace) {
 	a.keepSpacesOpen(w)
 	if old := a.ws; old != nil && old != w {
 		a.park()
+	}
+	if p := a.projectOpen; p != nil && p.space != w.ID {
+		// A New Tab that waits for its project's host is the shown
+		// project's: another one shown, it ends.
+		a.endWait()
+		log.Printf("no new tab: the window left project %s while its home host connected", p.space)
 	}
 	a.ws, w.app = w, a
 	if k := w.kept; k != nil && k.app == a {

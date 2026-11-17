@@ -37,7 +37,10 @@ type Workspace struct {
 	ID    string `json:"id"`
 	Name  string `json:"name"`
 	Color string `json:"color,omitempty"`
-	// Host is the project's home host, as Node.Host: "" for this machine.
+	// Host is the project's home host: "" for this machine, else
+	// "machine:<rex.MachineID>" (layout.MachineHost), resolved to the
+	// hosts.json entry of that machine when a tab opens. A home given by
+	// a host's ID is kept by the host's machine once hosts.json knows it.
 	Host string `json:"host,omitempty"`
 	// Dir is the project's folder on Host, absolute. "" for a project
 	// with no folder, as every space is today.
@@ -85,11 +88,48 @@ home host as offline.
 | Rex Go or web: new window in a project | the home host | the folder |
 | Any of these with a directory given by the caller (CLI `--dir`, Rex API `cwd`) | as given | as given |
 
-- The rule is applied where the session is made, in the app
-  (`newTabOn`) and in the gateway (`session.new_window`), so the Rex API,
-  the CLI and Lua get it too.
+- The rule lives in two places: the app's New Tab (`newProjectTab`,
+  `state.go`) and the server's `tab.create` (`createTab`,
+  `internal/rex/layout_apply.go`). A `tab.create` with no directory, in a
+  project whose home is this machine, starts in the folder, so the
+  gateway's `session.new_window` without `cwd` gets it too.
+- Entry points that use it: ⌘T, the tab bar's `+`, the tab menu's New
+  Tab, and the `tab.new` action without a `dir`, which Lua bindings and
+  the command palette run.
+- Entry points that do not, by design: the CLI's `gorex new` makes a
+  session with no tab of a space; the palette's **New Tab on <host>**
+  names a host; a tab the app opens again by itself (a host reconnected,
+  a space left empty) gives a directory.
+- A Rex API `session.new_window` in a project whose home is another host
+  opens on the host whose gateway was called, as before, until phase 4
+  has Rex Go call the home host's gateway.
 - **Home host offline.** New Tab in the project fails with a note that
-  names the host, and does not start a tab elsewhere.
+  names the host, and does not start a tab elsewhere. A tailnet host that
+  is online but not connected yet connects first, then opens the tab in
+  the folder, with the same folder check, as a new tab though the window
+  has tabs of the host.
+- **Home machine not known yet.** A host added again has no machine until
+  it connects once. When no host is known to be the home's machine, the
+  hosts of unknown machine that can be reached connect, and the tab opens
+  on the one that turns out to be the home. A tailnet host connected only
+  to learn its machine is not opened: it shows none of its sessions, its
+  connection stops once its machine is known and it is not the home, and
+  it does not connect again as the app starts. A tab that opens on it,
+  the project's or the user's, opens it, as opening it by hand does.
+  With none to try, New Tab says the home host is not connected; once
+  every host's machine is known and none is the home, it says the host
+  is not one of the user's hosts. Of two hosts of one machine, as its
+  LAN and tailnet entries, the connected one is the home.
+- **The wait.** A window has at most one New Tab that waits for a host;
+  a New Tab again replaces it. It ends when the window shows another
+  project (a tab in the wrong project, or the window switching back
+  unasked, would surprise more than nothing), and after 60 s with the
+  note "The home host of … did not connect". When the host connects, the
+  tab opens only if the host is the project's home still, in its folder
+  then; a home moved meanwhile opens none, with a note.
+- **Home host of an older GoRex.** A server without the capability
+  `space.home` would start the shell at home when the folder is gone:
+  New Tab in the project fails with a note instead.
 - **Folder gone.** The server checks the directory before it starts the
   shell. A missing or unreadable folder fails the new tab with a note and
   a **Change Folder…** button; it does not fall back to the home
@@ -226,5 +266,7 @@ before the next.
 Also by the user on 2026-11-17:
 
 - A project whose home host is removed from `hosts.json` keeps its folder
-  and shows the host as unknown; adding the host again restores it.
+  and shows the host as unknown; adding the host again restores it. The
+  home names the host's machine, not its `hosts.json` ID, which a host
+  added again gets anew.
 - The folder browser has no **New Folder**: `dir.list` only reads.

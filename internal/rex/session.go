@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log"
 	"net"
@@ -502,7 +503,40 @@ func sessionDir(dir, home string) string {
 	return home
 }
 
+// checkFolder fails, its error starting with FolderMissing, unless dir is
+// a directory the server can read: where a session of a project must
+// start (CreateOptions.DirStrict).
+func checkFolder(dir string) error {
+	if dir == "" {
+		return fmt.Errorf("%s: no folder given", FolderMissing)
+	}
+	st, err := os.Stat(dir)
+	if err == nil && !st.IsDir() {
+		return fmt.Errorf("%s: %s is not a folder", FolderMissing, dir)
+	}
+	if err == nil {
+		var f *os.File
+		if f, err = os.Open(dir); err == nil {
+			f.Close()
+			return nil
+		}
+	}
+	if errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("%s: the folder %s is missing", FolderMissing, dir)
+	}
+	var pe *os.PathError
+	if errors.As(err, &pe) {
+		err = pe.Err
+	}
+	return fmt.Errorf("%s: the folder %s cannot be opened: %v", FolderMissing, dir, err)
+}
+
 func newSession(id string, o CreateOptions, owner string, changed func(), sp spawner) (*session, error) {
+	if o.DirStrict {
+		if err := checkFolder(o.Dir); err != nil {
+			return nil, err
+		}
+	}
 	path, argv, name, err := shellCommand(o.Command, sp.shell())
 	if err != nil {
 		return nil, err
