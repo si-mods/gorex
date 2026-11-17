@@ -173,6 +173,21 @@ nonisolated final class GalleryTests: XCTestCase {
         XCTAssertEqual(rows.flatMap { GalleryScanner.paths(inLine: $0) }, [])
     }
 
+    /// A wrapped path the join makes follows the rules of a tapped one: a
+    /// .. segment or another machine's path is not collected.
+    func testScreenJoinSkipsClimbingAndNetworkPaths() {
+        for line in ["saved /tmp/demo/folder/../../home/demo/x.png ok", #"saved C:\Users\demo\a\..\..\Pictures\x.png ok"#,
+                     "saved //server/share/folder/demo/x.png ok"] {
+            let rows = wrap(line, columns: 30, indent: 0)
+            XCTAssertGreaterThan(rows.count, 1, line)
+            // A row alone may still print a path of its own; the joined one is never collected.
+            let found = GalleryScanner.paths(inRows: rows, columns: 30)
+            let joined = String(line.dropFirst(6).dropLast(3))
+            XCTAssertFalse(found.contains(joined), "\(line): \(found)")
+            XCTAssertFalse(found.contains { FileLink.climbs($0.replacing("\\", with: "/")) || GalleryScanner.isNetworkPath($0) }, "\(line): \(found)")
+        }
+    }
+
     func testScreenJoinsUnixPathAcrossTwoRows() {
         let rows = wrap("saved /tmp/demo/folder/chart-01.png ok", columns: 30, indent: 0)
         XCTAssertEqual(rows.count, 2)
