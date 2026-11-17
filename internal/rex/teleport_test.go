@@ -567,7 +567,10 @@ func TestTeleport(t *testing.T) {
 	writeFile(t, fake, "#!/bin/sh\nsleep 60\n")
 	os.Chmod(fake, 0o755)
 	local, sid = shellIn(t, src, filepath.Join(work, "sub"))
-	local.Input(sid, []byte("'"+fake+"' 60\n"))
+	// Printed after the line's echo, as claudeIn's marker: no output is
+	// on its way once the server read it.
+	local.Input(sid, []byte("echo claude''-started; '"+fake+"' 60\n"))
+	waitText(t, local, sid, "claude-started")
 	cl := waitInfo(t, local, sid, "claude in the foreground", func(in SessionInfo) bool { return in.Program == "claude" })
 	t.Cleanup(func() {
 		if p, err := os.FindProcess(cl.Foreground); err == nil {
@@ -811,7 +814,12 @@ func claudeIn(t *testing.T, c *Client, dir, config string) string {
 	os.Chmod(fake, 0o755)
 	// The config dir is HOME's too: macOS does not tell the environment of
 	// a system binary, as sh, and the server looks there then.
-	c.Input(in.ID, []byte("CLAUDE_CONFIG_DIR='"+config+"' '"+fake+"' 60\n"))
+	// The marker, which shows only as printed, comes after the echo of the
+	// line and before the stand-in, which prints nothing: once the server
+	// read it, no output is still on its way to make the session working
+	// again after a wait for it to be quiet (TeleportRefusal).
+	c.Input(in.ID, []byte("echo claude''-started; CLAUDE_CONFIG_DIR='"+config+"' '"+fake+"' 60\n"))
+	waitText(t, c, in.ID, "claude-started")
 	cl := waitInfo(t, c, in.ID, "claude in the foreground", func(in SessionInfo) bool { return in.Program == "claude" })
 	t.Cleanup(func() {
 		c.Kill(in.ID)
