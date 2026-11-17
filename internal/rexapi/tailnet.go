@@ -334,12 +334,21 @@ func (t *tailnet) stop(reason string, disable bool) {
 
 // resume turns the device back on when it was on as the gateway last
 // stopped, with its sign-in and settings. When it cannot, the device
-// stays off and enabled, and the status tells why.
+// stays off and enabled, and the status tells why. A turn-on written to
+// tailscale.json after the gateway read it, while it started, counts.
 func (t *tailnet) resume() {
+	t.mu.Lock()
 	if !t.conf.Enabled {
+		if saved, err := LoadTailscale(t.dir); err == nil && saved.Enabled {
+			t.conf = saved
+		}
+	}
+	on, allow := t.conf.Enabled, t.conf.AllowTailnetMembers
+	t.mu.Unlock()
+	if !on {
 		return
 	}
-	if _, aerr := t.enable(enableOptions{allowMembers: t.conf.AllowTailnetMembers}); aerr != nil {
+	if _, aerr := t.enable(enableOptions{allowMembers: allow}); aerr != nil {
 		logf("tailscale: %s", aerr.Message)
 		t.stop(aerr.Message, false)
 	}

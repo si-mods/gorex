@@ -415,8 +415,9 @@ func TestBuiltinTailnetNodeReplaced(t *testing.T) {
 	mu.Unlock()
 	b.refresh(nil)
 	st := b.status()
-	if st.Running || st.Node != NodeOff || !strings.Contains(st.Error, "off") || !second.listener().isClosed() {
-		t.Fatalf("status with no node = %+v; want unavailable and off", st)
+	// Off is a state, not an error: the app says it in its own words.
+	if st.Running || st.Node != NodeOff || st.Error != "" || !second.listener().isClosed() {
+		t.Fatalf("status with no node = %+v; want unavailable and off, with no error", st)
 	}
 }
 
@@ -447,6 +448,9 @@ func TestBuiltinTailnetUnavailable(t *testing.T) {
 			if st.Account != "" {
 				t.Fatalf("account %q shown for an unusable node", st.Account)
 			}
+			if want := map[bool]string{true: ReasonTagged}[test.name == "tagged"]; st.Reason != want {
+				t.Fatalf("reason = %q; want %q", st.Reason, want)
+			}
 		})
 	}
 }
@@ -474,55 +478,151 @@ func TestTailnetNames(t *testing.T) {
 }
 
 // TestBuiltinTailnetEnablesAtStart turns the built-in node on when the
-// server starts with the mode already on, as after an upgrade, and shows
-// why when that fails.
+// server starts with the mode on from before, as after an upgrade, and
+// shows why when that fails. It does so once: a later start keeps the
+// node as the user left it.
 func TestBuiltinTailnetEnablesAtStart(t *testing.T) {
 	for _, fail := range []bool{false, true} {
-		s, _ := testServer(t)
-		oldSide, oldEnable, oldNode := tailnetBuiltin, EnableBuiltinTailscale, TailnetNode
-		t.Cleanup(func() { tailnetBuiltin, EnableBuiltinTailscale, TailnetNode = oldSide, oldEnable, oldNode })
-		tailnetBuiltin, TailnetNode = true, nil
-		called := make(chan struct{}, 4)
-		EnableBuiltinTailscale = func() error {
-			called <- struct{}{}
-			if fail {
-				return errors.New("the gateway is not running")
+		t.Run(map[bool]string{false: "ok", true: "fails"}[fail], func(t *testing.T) {
+			called := make(chan struct{}, 4)
+			enable := func() error {
+				called <- struct{}{}
+				if fail {
+					return errors.New("the gateway is not running")
+				}
+				return nil
 			}
+			s := builtinStartServer(t, enable)
+			if err := writeJSON(remotePath(), RemoteConfig{Tailnet: true}); err != nil {
+				t.Fatal(err)
+			}
+			b := startBuiltin(t, s)
+			select {
+			case <-called:
+			case <-time.After(2 * time.Second):
+				t.Fatal("the server started with the mode on and did not turn the built-in node on")
+			}
+			var st TailnetStatus
+			for range 100 {
+				if st = b.status(); !fail || strings.Contains(st.Error, "gateway is not running") {
+					break
+				}
+				time.Sleep(10 * time.Millisecond)
+			}
+			if fail != strings.Contains(st.Error, "gateway is not running") {
+				t.Fatalf("status = %+v", st)
+			}
+			var cfg RemoteConfig
+			if err := readJSON(remotePath(), &cfg); err != nil || !cfg.Tailnet || !cfg.BuiltinTailnet {
+				t.Fatalf("remote.json after the start = %+v, %v; want the mode on, marked as turned on", cfg, err)
+			}
+
+			// A restart, as after the user turned the node off.
+			stopBuiltin(s)
+			startBuiltin(t, s)
+			select {
+			case <-called:
+				t.Fatal("a second start turned the built-in node on again")
+			case <-time.After(100 * time.Millisecond):
+			}
+		})
+	}
+}
+
+// TestBuiltinTailnetSetMarksEnabled marks the node turned on when the mode
+// is turned on, so that a start leaves it to the user.
+func TestBuiltinTailnetSetMarksEnabled(t *testing.T) {
+	called := make(chan struct{}, 4)
+	s := builtinStartServer(t, func() error { called <- struct{}{}; return nil })
+	if _, err := s.remoteDo(Request{Op: "remote.tailnetSet", On: true}); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { stopBuiltin(s) })
+	if len(called) != 1 {
+		t.Fatalf("turning the mode on turned the node on %d times; want 1", len(called))
+	}
+	<-called
+	var cfg RemoteConfig
+	if err := readJSON(remotePath(), &cfg); err != nil || !cfg.Tailnet || !cfg.BuiltinTailnet {
+		t.Fatalf("remote.json = %+v, %v; want the mode on, marked as turned on", cfg, err)
+	}
+	stopBuiltin(s)
+	startBuiltin(t, s)
+	select {
+	case <-called:
+		t.Fatal("a start after the mode was turned on turned the node on again")
+	case <-time.After(100 * time.Millisecond):
+	}
+}
+
+// builtinStartServer is a test server on the built-in side, whose node is
+// off and whose turning on calls enable. The variables return as they
+// were after the brokers stop.
+func builtinStartServer(t *testing.T, enable func() error) *Server {
+	t.Helper()
+	oldSide, oldEnable, oldNode := tailnetBuiltin, EnableBuiltinTailscale, TailnetNode
+	t.Cleanup(func() { tailnetBuiltin, EnableBuiltinTailscale, TailnetNode = oldSide, oldEnable, oldNode })
+	tailnetBuiltin, TailnetNode, EnableBuiltinTailscale = true, nil, enable
+	s, _ := testServer(t)
+	return s
+}
+
+// startBuiltin loads the server's remote access, as a start does, and
+// returns its broker, which stops with the test.
+func startBuiltin(t *testing.T, s *Server) *systemTailnet {
+	t.Helper()
+	s.remoteLoad()
+	t.Cleanup(func() { stopBuiltin(s) })
+	s.rem.mu.Lock()
+	b := s.rem.tailnet
+	s.rem.mu.Unlock()
+	if b == nil {
+		t.Fatal("no broker")
+	}
+	return b
+}
+
+func stopBuiltin(s *Server) {
+	s.rem.mu.Lock()
+	s.tailnetStopLocked()
+	s.rem.mu.Unlock()
+}
+
+// TestBuiltinTailnetEnableErrClears forgets why turning the node on failed
+// once the node is on, or a later turn-on succeeds.
+func TestBuiltinTailnetEnableErrClears(t *testing.T) {
+	var on bool
+	var mu sync.Mutex
+	n := newFakeNode()
+	b := builtinBroker(t, func() TailnetDevice {
+		mu.Lock()
+		defer mu.Unlock()
+		if !on {
 			return nil
 		}
-		if err := writeJSON(remotePath(), RemoteConfig{Tailnet: true}); err != nil {
-			t.Fatal(err)
-		}
-		s.remoteLoad()
-		t.Cleanup(func() {
-			s.rem.mu.Lock()
-			s.tailnetStopLocked()
-			s.rem.mu.Unlock()
-		})
-		select {
-		case <-called:
-		case <-time.After(2 * time.Second):
-			t.Fatal("the server started with the mode on and did not turn the built-in node on")
-		}
-		s.rem.mu.Lock()
-		b := s.rem.tailnet
-		s.rem.mu.Unlock()
-		if b == nil {
-			t.Fatal("no broker")
-		}
-		var st TailnetStatus
-		for range 100 {
-			if st = b.status(); !fail || strings.Contains(st.Error, "gateway is not running") {
-				break
-			}
-			time.Sleep(10 * time.Millisecond)
-		}
-		if fail != strings.Contains(st.Error, "gateway is not running") {
-			t.Fatalf("fail %v: status = %+v", fail, st)
-		}
-		if len(called) != 0 {
-			t.Fatalf("fail %v: the node was turned on more than once", fail)
-		}
+		return n
+	})
+	b.enabled(errors.New("the gateway is not running"))
+	b.refresh(nil)
+	if st := b.status(); st.Node != NodeOff || !strings.Contains(st.Error, "gateway is not running") {
+		t.Fatalf("status = %+v; want off with the error", st)
+	}
+	b.enabled(nil)
+	if st := b.status(); st.Error != "" {
+		t.Fatalf("a turn-on that succeeded kept the error: %+v", st)
+	}
+
+	b.enabled(errors.New("the gateway is not running"))
+	mu.Lock()
+	on = true
+	mu.Unlock()
+	b.refresh(nil)
+	mu.Lock()
+	on = false
+	mu.Unlock()
+	b.refresh(nil)
+	if st := b.status(); st.Node != NodeOff || st.Error != "" {
+		t.Fatalf("status of a node turned off after it ran = %+v; want off, no error", st)
 	}
 }
 
@@ -557,11 +657,15 @@ func TestBuiltinTailnetStartingBlip(t *testing.T) {
 	if st.Node != NodeStarting || !strings.Contains(st.Error, "starting") {
 		t.Fatalf("status = %+v; want starting with its reason", st)
 	}
-	for range tailnetFailures - 1 {
+	for range builtinFailures - 2 {
 		b.refresh(nil)
 	}
+	if !b.linked() {
+		t.Fatalf("%d reads of a starting node dropped the link", builtinFailures-1)
+	}
+	b.refresh(nil)
 	if b.linked() || !n.listener().isClosed() {
-		t.Fatalf("%d reads of a starting node kept the link", tailnetFailures)
+		t.Fatalf("%d reads of a starting node kept the link", builtinFailures)
 	}
 
 	n = newFakeNode()

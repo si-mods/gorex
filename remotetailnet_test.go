@@ -27,10 +27,14 @@ func TestRemoteTailnetRows(t *testing.T) {
 	running.Running, running.Account, running.Device = true, "me@example.com", "studio-gorex.example.ts.net"
 	tagged := builtin("")
 	tagged.Error = "This device is tagged, so it cannot find yours."
+	// The states as the broker gives them: off has no error of its own,
+	// and a tagged or expired node names its reason.
 	offErr := builtin(rex.NodeOff)
-	offErr.Error = "the gateway is in another process"
+	offErr.Error = "turning built-in Tailscale on: the gateway is in another process"
 	runTagged := builtin(rex.NodeRunning)
-	runTagged.Device, runTagged.Error = "studio-gorex.example.ts.net", "built-in Tailscale's device is tagged"
+	runTagged.Device, runTagged.Error, runTagged.Reason = "studio-gorex.example.ts.net", "built-in Tailscale's device is tagged: only a device a user signed in finds that user's devices", rex.ReasonTagged
+	runExpired := builtin(rex.NodeRunning)
+	runExpired.Device, runExpired.Error, runExpired.Reason = "studio-gorex.example.ts.net", "built-in Tailscale's sign-in expired: sign in again", rex.ReasonExpired
 
 	tests := []struct {
 		name    string
@@ -39,16 +43,18 @@ func TestRemoteTailnetRows(t *testing.T) {
 		absent  []string
 		sign    bool
 		noteNew bool
+		turnOn  bool
 	}{
-		{"needs login", builtin(rex.NodeNeedsLogin), []string{locales.TailnetSignInHint(), locales.TailnetSignIn()}, []string{locales.TailnetUnavailable()}, true, true},
-		{"needs approval", builtin(rex.NodeNeedsApproval), []string{locales.TailnetApproval()}, []string{locales.TailnetUnavailable(), locales.TailnetSignIn()}, false, true},
-		{"starting", builtin(rex.NodeStarting), []string{locales.TailnetStarting()}, []string{locales.TailnetUnavailable(), locales.TailnetSignIn()}, false, true},
-		{"off", builtin(rex.NodeOff), []string{locales.TailnetOff()}, []string{locales.TailnetUnavailable(), locales.TailnetStarting()}, false, true},
-		{"off with error", offErr, []string{offErr.Error}, []string{locales.TailnetStarting(), locales.TailnetOff()}, false, true},
-		{"running tagged", runTagged, []string{runTagged.Device, runTagged.Error}, []string{locales.TailnetSignedIn(""), locales.TailnetSignIn()}, false, true},
-		{"running", running, []string{locales.TailnetSignedIn("me@example.com"), "studio-gorex.example.ts.net"}, []string{locales.TailnetUnavailable(), locales.TailnetSignIn()}, false, true},
-		{"tagged", tagged, []string{tagged.Error}, []string{locales.TailnetUnavailable(), locales.TailnetSignIn()}, false, true},
-		{"system waiting", &rex.TailnetStatus{Enabled: true, Side: rex.TailnetSystem}, []string{locales.TailnetUnavailable()}, []string{locales.TailnetSignIn(), locales.TailnetStarting()}, false, false},
+		{"needs login", builtin(rex.NodeNeedsLogin), []string{locales.TailnetSignInHint(), locales.TailnetSignIn()}, []string{locales.TailnetUnavailable()}, true, true, false},
+		{"needs approval", builtin(rex.NodeNeedsApproval), []string{locales.TailnetApproval()}, []string{locales.TailnetUnavailable(), locales.TailnetSignIn()}, false, true, false},
+		{"starting", builtin(rex.NodeStarting), []string{locales.TailnetStarting()}, []string{locales.TailnetUnavailable(), locales.TailnetSignIn()}, false, true, false},
+		{"off", builtin(rex.NodeOff), []string{locales.TailnetOff(), locales.TailnetTurnOn()}, []string{locales.TailnetUnavailable(), locales.TailnetStarting()}, false, true, true},
+		{"off with error", offErr, []string{locales.TailnetOff(), offErr.Error}, []string{locales.TailnetStarting()}, false, true, true},
+		{"running tagged", runTagged, []string{runTagged.Device, locales.TailnetTagged()}, []string{runTagged.Error, locales.TailnetSignedIn(""), locales.TailnetSignIn()}, false, true, false},
+		{"running expired", runExpired, []string{locales.TailnetExpired()}, []string{runExpired.Error}, false, true, false},
+		{"running", running, []string{locales.TailnetSignedIn("me@example.com"), "studio-gorex.example.ts.net"}, []string{locales.TailnetUnavailable(), locales.TailnetSignIn()}, false, true, false},
+		{"tagged", tagged, []string{tagged.Error}, []string{locales.TailnetUnavailable(), locales.TailnetSignIn()}, false, true, false},
+		{"system waiting", &rex.TailnetStatus{Enabled: true, Side: rex.TailnetSystem}, []string{locales.TailnetUnavailable()}, []string{locales.TailnetSignIn(), locales.TailnetStarting()}, false, false, false},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -81,6 +87,9 @@ func TestRemoteTailnetRows(t *testing.T) {
 					png.Encode(f, tt.Image())
 					f.Close()
 				}
+			}
+			if _, ok := tt.Find(locales.TailnetTurnOn()); ok != tc.turnOn {
+				t.Errorf("Turn on button shown %v, want %v", ok, tc.turnOn)
 			}
 			if tc.sign {
 				if _, ok := tt.Find(locales.TailnetSignIn()); !ok {

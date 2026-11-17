@@ -28,7 +28,8 @@ type TailnetDevice interface {
 
 // TailnetNode, when set, returns the built-in Tailscale node of the
 // gateway in this process, or nil while it is off. The broker asks for it
-// on every read.
+// on every read. main sets it before the server runs; a broker takes it
+// as it starts (builtinNode), so that its reads never race a change.
 var TailnetNode func() TailnetDevice
 
 // EnableBuiltinTailscale, when set, turns built-in Tailscale on, as
@@ -38,11 +39,14 @@ var TailnetNode func() TailnetDevice
 // does a server that starts with the mode on.
 var EnableBuiltinTailscale func() error
 
-func currentTailnetNode() TailnetDevice {
-	if TailnetNode == nil {
-		return nil
+// builtinNode is node, or a node that is always off when it is nil.
+func builtinNode(node func() TailnetDevice) func() TailnetDevice {
+	return func() TailnetDevice {
+		if node == nil {
+			return nil
+		}
+		return node()
 	}
-	return TailnetNode()
 }
 
 // tailnetVia is what the broker needs of Tailscale besides the status:
@@ -91,10 +95,12 @@ func (v builtinVia) dial(ctx context.Context, _ netip.Addr, addr string) (net.Co
 
 // tailnetOff is an answer that the built-in node cannot carry discovery
 // now, with the reason the status shows. A passing one, such as a node
-// that reconnects, counts as a failed read; any other is definite.
+// that reconnects, counts as a failed read; any other is definite. code
+// is the reason's TailnetStatus.Reason. A node that is only off has no
+// reason: the state tells it.
 type tailnetOff struct {
-	reason  string
-	passing bool
+	reason, code string
+	passing      bool
 }
 
 func (e *tailnetOff) Error() string { return e.reason }
@@ -104,7 +110,7 @@ func (t *systemTailnet) readBuiltin(ctx context.Context) (*tailnetSnapshot, erro
 	node := t.node()
 	if node == nil {
 		t.noteNode(NodeOff, "", "")
-		return nil, &tailnetOff{reason: "built-in Tailscale is off"}
+		return nil, &tailnetOff{}
 	}
 	st, err := node.StatusWithPeers(ctx)
 	if err != nil {
@@ -125,9 +131,9 @@ func (t *systemTailnet) readBuiltin(ctx context.Context) (*tailnetSnapshot, erro
 		// not.
 		return nil, &tailnetOff{reason: "built-in Tailscale is starting", passing: t.sameNode(node)}
 	case st.Self != nil && st.Self.IsTagged():
-		return nil, &tailnetOff{reason: "built-in Tailscale's device is tagged: only a device a user signed in finds that user's devices"}
+		return nil, &tailnetOff{reason: "built-in Tailscale's device is tagged: only a device a user signed in finds that user's devices", code: ReasonTagged}
 	case st.Self != nil && st.Self.Expired:
-		return nil, &tailnetOff{reason: "built-in Tailscale's sign-in expired: sign in again"}
+		return nil, &tailnetOff{reason: "built-in Tailscale's sign-in expired: sign in again", code: ReasonExpired}
 	}
 	if err := tailnetUsable(st); err != nil {
 		return nil, &tailnetOff{reason: "built-in Tailscale cannot find devices: " + err.Error()}
@@ -173,32 +179,47 @@ func (t *systemTailnet) sameNode(node TailnetDevice) bool {
 	return t.snap == nil || t.snap.node == node
 }
 
+// noteNode keeps the node's state. A node that is on clears why turning
+// it on failed.
 func (t *systemTailnet) noteNode(state, account, device string) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	t.nodeState, t.account, t.device = state, account, device
+	if state != NodeOff {
+		t.enableErr = ""
+	}
 }
 
 // unavailable drops the listener and the links at once, with the reason:
 // the node's own word, unlike a failed read, is not a slow answer.
-func (t *systemTailnet) unavailable(reason string) {
+func (t *systemTailnet) unavailable(off *tailnetOff) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	t.lastRead = time.Now()
 	t.failures = 0
-	t.errText = reason
+	t.errText, t.errCode = off.reason, off.code
 	t.replaceLocked(nil, nil)
 }
 
-// enableBuiltin turns the built-in node on for a broker that starts with
-// the mode already on, as after an upgrade: remote.tailnetSet does it
-// only when the mode is turned on. It runs off r.mu, since the gateway
-// answers in its own time; its error shows in the status.
+// enableBuiltin turns the built-in node on once for a broker that starts
+// with the mode on from before the built-in node carried discovery, as
+// after an upgrade: remote.tailnetSet does it when the mode is turned on.
+// It runs off r.mu, since the gateway answers in its own time; its error
+// shows in the status.
 func (t *systemTailnet) enableBuiltin(enable func() error) {
-	if err := enable(); err != nil {
-		t.mu.Lock()
+	t.enabled(enable())
+}
+
+// enabled notes how turning the built-in node on ended, and reads the
+// node again when it succeeded.
+func (t *systemTailnet) enabled(err error) {
+	t.mu.Lock()
+	t.enableErr = ""
+	if err != nil {
 		t.enableErr = "turning built-in Tailscale on: " + err.Error()
-		t.mu.Unlock()
+	}
+	t.mu.Unlock()
+	if err != nil {
 		return
 	}
 	select {

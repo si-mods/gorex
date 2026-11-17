@@ -78,12 +78,20 @@ func (s *Server) remoteNonConfigOpLocked(req Request, done *[]func()) (any, bool
 	case "remote.tailnetSet":
 		cfg := r.cfg
 		cfg.Tailnet = req.On
+		// remoteDo turned the built-in node on: a start need not.
+		builtin := req.On && tailnetBuiltin && EnableBuiltinTailscale != nil
+		if builtin {
+			cfg.BuiltinTailnet = true
+		}
 		if err := writeJSON(remotePath(), cfg); err != nil {
 			return nil, true, err
 		}
 		r.cfg = cfg
 		if cfg.Tailnet {
 			s.tailnetStartLocked()
+			if builtin && r.tailnet != nil {
+				r.tailnet.enabled(nil)
+			}
 		} else {
 			s.tailnetStopLocked()
 		}

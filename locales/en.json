@@ -1103,6 +1103,9 @@
   "tailnetApproval": "The admin of your tailnet has to approve this device before it can find others.",
   "tailnetStarting": "Starting built-in Tailscale…",
   "tailnetOff": "Built-in Tailscale is off.",
+  "tailnetTurnOn": "Turn on",
+  "tailnetTagged": "This device is tagged on your tailnet. Only a device that a user signed in finds that user's devices.",
+  "tailnetExpired": "The sign-in of built-in Tailscale expired. Sign in again.",
   "tailnetSignedIn": "Signed in as {account}",
   "@tailnetSignedIn": {
     "description": "Status: the Tailscale account that signed in built-in Tailscale.",

@@ -265,8 +265,8 @@ lists the Ghostty options it ignores.
 On Linux, GoRex uses an existing, running system Tailscale client to
 discover GoRex hosts and connect to their terminals. On macOS and
 Windows, it uses the gateway's built-in Tailscale node instead (no
-Tailscale app), which you sign in once in a browser (click **Sign in** in Settings →
-Remote). Devices with the
+Tailscale app), which you sign in once in a browser (click **Sign in** in Settings ›
+Server). Devices with the
 same Tailscale user in the same tailnet appear in Remote Hosts once they
 have a compatible GoRex server and Tailscale policy allows TCP port
 7464. Click Connect on a host to open or reattach to a session. The
@@ -274,10 +274,11 @@ server only listens on its Tailscale interface, or in the built-in
 node's own network stack, and checks each connection's device identity
 with Tailscale.
 
-Turn **Tailscale discovery and connections** on in Settings → Remote, or
+Turn **Tailscale discovery and connections** on in Settings › Server, or
 use `gorex remote tailscale on`; on macOS and Windows this also turns
 built-in Tailscale on, which serves Rex's API on port 443 to your own
-devices. The mode is off by default and waits when Tailscale is
+devices. Built-in Tailscale that you turn off later stays off over
+restarts; **Turn on** under the switch starts it again. The mode is off by default and waits when Tailscale is
 unavailable. `gorex remote status --json` reports the local mode, the
 side that carries it (`system` or `built-in`), the built-in node's state
 and the hosts it has discovered.

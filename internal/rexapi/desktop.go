@@ -59,9 +59,18 @@ func DesktopNode() rex.TailnetDevice {
 // Tailscale on, as gorex rexapi tailscale on does, keeping the saved
 // allow_tailnet_members. With the gateway in this process it starts the
 // node at once; without one it turns it on in tailscale.json, and the
-// server's gateway starts it (Supervise, Wanted).
+// server's gateway starts it (Supervise, Wanted). That write holds the
+// desktop lock, so a gateway that starts meanwhile is set only after it,
+// and reads it as it resumes.
 func EnableBuiltinTailscale() error {
-	return enableBuiltin(TailnetDir(), desktopGateway())
+	desktop.Lock()
+	g := desktop.g
+	if g == nil {
+		defer desktop.Unlock()
+		return enableBuiltin(TailnetDir(), nil)
+	}
+	desktop.Unlock()
+	return enableBuiltin(TailnetDir(), g)
 }
 
 func enableBuiltin(dir string, g *Gateway) error {

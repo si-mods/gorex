@@ -54,11 +54,19 @@ func (a *App) remoteTailnet(c *ui.Context, k *colors, tn *rex.TailnetStatus) {
 	case rex.NodeStarting:
 		groupRow(c, k, nil).Children(func() { rowHint(c, k, locales.TailnetStarting()) })
 	case rex.NodeOff:
-		hint := locales.TailnetOff()
-		if tn.Error != "" {
-			hint = tn.Error
-		}
-		groupRow(c, k, nil).Children(func() { rowHint(c, k, hint) })
+		// Off after a sign-out or gorex rexapi tailscale off: Turn on
+		// starts it again, as the switch does. Error is why turning it
+		// on failed.
+		groupRow(c, k, "ts-off").Children(func() {
+			rowLine(c, k, locales.TailnetOff(), func() {
+				if ui.Button(c.Key("ts-on"), locales.TailnetTurnOn()).Disabled(page.unreachable || page.busy).Clicked() {
+					a.remoteDo(func(srv *rex.Client) error { return srv.SetTailnet(true) }, nil)
+				}
+			})
+			if tn.Error != "" {
+				rowError(c, k, tn.Error)
+			}
+		})
 	case rex.NodeRunning:
 		// A tagged node has no account; one that runs may still not
 		// carry discovery, and Error says why.
@@ -68,7 +76,7 @@ func (a *App) remoteTailnet(c *ui.Context, k *colors, tn *rex.TailnetStatus) {
 			}
 			rowHint(c, k, tn.Device)
 			if !tn.Running && tn.Error != "" {
-				rowError(c, k, tn.Error)
+				rowError(c, k, tailnetReason(tn))
 			}
 		})
 	default:
@@ -76,6 +84,18 @@ func (a *App) remoteTailnet(c *ui.Context, k *colors, tn *rex.TailnetStatus) {
 			groupRow(c, k, nil).Children(func() { rowHint(c, k, tn.Error) })
 		}
 	}
+}
+
+// tailnetReason is why a running node does not carry discovery, in the
+// app's words where the broker names the cause.
+func tailnetReason(tn *rex.TailnetStatus) string {
+	switch tn.Reason {
+	case rex.ReasonTagged:
+		return locales.TailnetTagged()
+	case rex.ReasonExpired:
+		return locales.TailnetExpired()
+	}
+	return tn.Error
 }
 
 // tailnetSignIn asks the built-in node for a sign-in, off the UI thread,

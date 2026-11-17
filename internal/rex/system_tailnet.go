@@ -40,8 +40,13 @@ const (
 	tailnetBurst = 8
 	// tailnetFailures is how many reads in a row may fail before the
 	// broker decides the tailnet is gone, not merely slow, and drops its
-	// links.
+	// links: about three minutes at tailnetRefresh.
 	tailnetFailures = 3
+	// builtinFailures is the same for the built-in node, which is read
+	// more often: the same three minutes at builtinRefresh, so that a
+	// relay gap of the node ends live terminals no sooner than one of the
+	// system client.
+	builtinFailures = tailnetFailures * int(tailnetRefresh/builtinRefresh)
 	tailnetIO       = 3 * time.Second
 	tailnetProbe    = "gorex-tailnet/1 probe\n"
 	tailnetConnect  = "gorex-tailnet/1 relay\n"
@@ -62,8 +67,11 @@ type TailnetStatus struct {
 	Hosts []TailnetHost `json:"hosts,omitempty"`
 	// Error is why the broker cannot serve, such as a kernel that does
 	// not let it bind to the Tailscale interface, or a built-in node
-	// that is off or not signed in.
+	// that is not signed in. It is empty for a node that is only off.
 	Error string `json:"error,omitempty"`
+	// Reason names Error's cause where the app says it in its own words:
+	// ReasonTagged or ReasonExpired; empty otherwise.
+	Reason string `json:"reason,omitempty"`
 	// Node is the built-in node's state, while the broker runs on that
 	// side: NodeOff, NodeStarting, NodeNeedsLogin, NodeNeedsApproval or
 	// NodeRunning. The sign-in link is not here: the gateway's local
@@ -88,6 +96,12 @@ const (
 	NodeNeedsLogin    = "needs-login"
 	NodeNeedsApproval = "needs-approval"
 	NodeRunning       = "running"
+)
+
+// TailnetStatus.Reason's values.
+const (
+	ReasonTagged  = "tagged"
+	ReasonExpired = "expired"
 )
 
 // TailnetSide is the side that carries discovery on this OS, as
@@ -197,7 +211,10 @@ func tailnetSnapshotOf(st *ipnstate.Status, ip netip.Addr, dev net.Interface, no
 }
 
 // tailnetName is a peer's name as hosts show it: a built-in node's,
-// MACHINE-gorex, without its suffix.
+// MACHINE-gorex, without its suffix. Tailscale's status does not tell a
+// built-in node from a system client, and both sides list both, so any
+// peer loses it: a machine of its own named NAME-gorex shows as NAME.
+// The name is only shown; the host's target is the node's identity.
 func tailnetName(host string) string {
 	name := pairName(host)
 	if base, ok := strings.CutSuffix(name, "-gorex"); ok && base != "" {
@@ -298,8 +315,11 @@ type systemTailnet struct {
 	lastRead     time.Time
 	lastDiscover time.Time
 	errText      string
-	failures     int
-	// enableErr is why turning the built-in node on at start failed.
+	// errCode is errText's TailnetStatus.Reason.
+	errCode  string
+	failures int
+	// enableErr is why turning the built-in node on failed, until the
+	// node's state changes or a later turn-on succeeds.
 	enableErr string
 	// nodeState, account and device are the built-in node's, as
 	// TailnetStatus tells them.
@@ -313,7 +333,7 @@ func (s *Server) tailnetStartLocked() {
 	var t *systemTailnet
 	switch {
 	case tailnetBuiltin:
-		t = newTailnetBroker(nil, currentTailnetNode)
+		t = newTailnetBroker(nil, builtinNode(TailnetNode))
 	default:
 		api := systemTailscaleClient()
 		if api == nil {
@@ -383,7 +403,7 @@ func (t *systemTailnet) status() TailnetStatus {
 	if t.node != nil {
 		wake = time.Since(t.lastRead) > time.Second
 	}
-	st := TailnetStatus{Enabled: true, Side: t.side(), Error: t.errText}
+	st := TailnetStatus{Enabled: true, Side: t.side(), Error: t.errText, Reason: t.errCode}
 	if t.node != nil {
 		st.Node, st.Account, st.Device = t.nodeState, t.account, t.device
 		if st.Node == "" {
@@ -395,7 +415,7 @@ func (t *systemTailnet) status() TailnetStatus {
 		st.Scope = t.snap.scope
 		st.Hosts = slices.Clone(t.hosts)
 	} else if t.enableErr != "" && st.Node == NodeOff {
-		st.Error = t.enableErr
+		st.Error, st.Reason = t.enableErr, ""
 	}
 	t.mu.Unlock()
 	if wake {
@@ -448,7 +468,11 @@ func (t *systemTailnet) noteFailure() {
 	defer t.mu.Unlock()
 	t.lastRead = time.Now()
 	t.failures++
-	if t.failures < tailnetFailures {
+	limit := tailnetFailures
+	if t.node != nil {
+		limit = builtinFailures
+	}
+	if t.failures < limit {
 		return
 	}
 	t.replaceLocked(nil, nil)
@@ -492,11 +516,11 @@ func (t *systemTailnet) refresh(s *Server) {
 	if off := (*tailnetOff)(nil); errors.As(err, &off) {
 		if off.passing {
 			t.mu.Lock()
-			t.errText = off.reason
+			t.errText, t.errCode = off.reason, off.code
 			t.mu.Unlock()
 			t.noteFailure()
 		} else {
-			t.unavailable(off.reason)
+			t.unavailable(off)
 		}
 		return
 	}
@@ -519,12 +543,12 @@ func (t *systemTailnet) refresh(s *Server) {
 		if err != nil {
 			// An older Linux kernel refuses to bind to an interface:
 			// the user has to hear why the mode finds nothing.
-			t.errText = err.Error()
+			t.errText, t.errCode = err.Error(), ""
 			t.mu.Unlock()
 			return
 		}
 	}
-	t.errText = ""
+	t.errText, t.errCode = "", ""
 	t.replaceLocked(snap, ln)
 	// Probing asks the Tailscale client about every peer it reaches, so
 	// a pass runs rarely, and only while a page that shows hosts asked

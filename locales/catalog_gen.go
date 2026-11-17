@@ -3444,6 +3444,36 @@ func (msgs Messages) TailnetOff() string {
 	return Catalog.Format(msgs.locale, "tailnetOff", nil)
 }
 
+// TailnetTurnOn says "Turn on"
+// in the language the app shows.
+func TailnetTurnOn() string { return In(i18n.Locale()).TailnetTurnOn() }
+
+// TailnetTurnOn says "Turn on"
+// in the language of msgs.
+func (msgs Messages) TailnetTurnOn() string {
+	return Catalog.Format(msgs.locale, "tailnetTurnOn", nil)
+}
+
+// TailnetTagged says "This device is tagged on your tailnet. Only a device that a user signed in finds that user's devices."
+// in the language the app shows.
+func TailnetTagged() string { return In(i18n.Locale()).TailnetTagged() }
+
+// TailnetTagged says "This device is tagged on your tailnet. Only a device that a user signed in finds that user's devices."
+// in the language of msgs.
+func (msgs Messages) TailnetTagged() string {
+	return Catalog.Format(msgs.locale, "tailnetTagged", nil)
+}
+
+// TailnetExpired says "The sign-in of built-in Tailscale expired. Sign in again."
+// in the language the app shows.
+func TailnetExpired() string { return In(i18n.Locale()).TailnetExpired() }
+
+// TailnetExpired says "The sign-in of built-in Tailscale expired. Sign in again."
+// in the language of msgs.
+func (msgs Messages) TailnetExpired() string {
+	return Catalog.Format(msgs.locale, "tailnetExpired", nil)
+}
+
 // TailnetSignedIn says "Signed in as {account}"
 // in the language the app shows.
 //

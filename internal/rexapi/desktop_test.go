@@ -120,3 +120,20 @@ func TestTailscaleAuthURL(t *testing.T) {
 		t.Fatalf("%d sign-ins asked; want 1", logins)
 	}
 }
+
+// TestResumeReadsALateTurnOn turns built-in Tailscale on in a gateway that
+// read tailscale.json before the turn-on was written to it, as one that
+// starts while the server turns the mode on.
+func TestResumeReadsALateTurnOn(t *testing.T) {
+	f := startTailnetFixture(t)
+	if f.g.tailnet.conf.Enabled {
+		t.Fatal("on before the turn-on")
+	}
+	if err := enableBuiltin(f.dir, nil); err != nil {
+		t.Fatal(err)
+	}
+	f.g.tailnet.resume()
+	if f.g.tailnet.running() == nil {
+		t.Fatal("the turn-on written while the gateway started was lost")
+	}
+}
