@@ -183,8 +183,11 @@ type DirListResult struct {
   2. **Folder**: a browser built on `dir.list`: the path as a breadcrumb,
      the folders below, Home, Up, and a field to type a path. For this
      machine, **Choose…** also opens the system folder picker.
-  3. **Name**: the folder's name by default.
+  3. **Name**: the folder's name by default; a project made with an
+     empty name takes the folder's name.
   4. **Create** makes the project and opens its first tab in the folder.
+  A listing that arrives after the sheet moved to another host is
+  dropped.
 - **New Project with No Folder** stays, for a project that only groups
   terminals, as a space does.
 - **Project settings** (the project's context menu): Rename, Color,

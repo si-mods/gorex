@@ -100,8 +100,8 @@ Space 在用户界面中叫 Project（`docs/projects.md`）。Project 可绑定�
 - 解码宽松：字段缺失或类型错误时读作 nil，清单仍可加载。
 - **iCloud 合并**：较新的一份没有主目录（旧版 App 丢掉了字段）时，保留本地的主目录；较新或已清除的主目录照常取用。
 - **桌面端同步**（`gorex.spaces_apply`，feature `gorex.projects`）：主目录已知时 iOS 发送 `home_machine` 与 `dir`；未知时不发送，桌面端保留自己的主目录；`dir` 为 `""` 表示清除。桌面端不认识该 `machine_id` 时保留文件夹，并把主目录主机显示为未知。结果中的 `homes` 为被改动的主目录数。
-- **桌面端到 iOS**：会话的 `project {home_machine, dir}` 字段（bootstrap、`session_created`、每个视图）被读取。iOS 尚不知道主目录的 Project 由桌面端的主目录填充；桌面端之后改动的主目录（如 Change Folder）会被采用；手机端已改而桌面端尚未跟上的主目录保持不变。
-- **新窗口**：有文件夹的 Project 在主目录主机的网关上新建窗口，`cwd` 为该文件夹；主机不在线时说明原因，不在别处打开。Change Folder / Remove Folder 更新清单，并对在线且保有该 Project 会话的主机调用 `gorex.project.set_home`。
+- **桌面端到 iOS**：会话的 `project {home_machine, dir}` 字段（bootstrap、`session_created`、每个视图）被读取。iOS 尚不知道主目录的 Project 由桌面端的主目录填充；桌面端之后改动的主目录（如 Change Folder）会被采用；手机端已改而桌面端尚未跟上的主目录保持不变。为区分“桌面端改了”与“桌面端尚未跟上”，iOS 记下各主机最后报告的主目录，存于本设备的 `spaces-manifest.reported.json`（与清单同目录，不进 iCloud）；因此 App 关闭期间桌面端所做的改动，在下次启动时被采用。
+- **新窗口**：有文件夹的 Project 在主目录主机的网关上新建窗口，`cwd` 为该文件夹；主机不在线时说明原因，不在别处打开。凡带 `cwd` 的新建（New Project 的首个窗口、New Window）之前，先用 `gorex.dir.list` 检查该文件夹；文件夹已不存在则显示 “Folder Not Found”（带 Change Folder…），不打开窗口。不列出文件夹的主机（welcome 没有 `gorex.dir_list`）跳过该检查。Change Folder / Remove Folder 更新清单，并对在线且保有该 Project 会话的主机调用 `gorex.project.set_home`。
 
 ### 关键设计点
 

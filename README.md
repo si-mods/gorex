@@ -90,7 +90,8 @@ and macOS, use **Check for Updates** in the app. See
   host of `hosts.json`; an offline host is shown but cannot be picked), the
   folder (a browser of that host's folders with Home, Up, a typed path and,
   for this machine, **Choose…** for the system picker), and the name, which
-  follows the folder's name until you type one. Create makes the project
+  follows the folder's name until you type one (left empty, the name is the
+  folder's). Create makes the project
   and opens its first tab in the folder. **New Project with No Folder**
   makes a project that only groups terminals.
   - New Tab in a project with a folder starts on the home host, in the
@@ -114,7 +115,10 @@ and macOS, use **Check for Updates** in the app. See
     host as unknown; adding the host again restores it.
   - Rex Go and the web client do the same: New Project with a folder
     browser, a folder shown under the name, New Window in the folder on the
-    home host, and Change Folder… and Remove Folder. With the home host not
+    home host, and Change Folder… and Remove Folder. Rex Go and the web client
+    check the folder first and, when it is gone, show "Folder Not Found" with
+    Change Folder… instead of opening a window (Rex Go skips the check on a
+    host that does not list folders). With the home host not
     connected, they say why and open nothing elsewhere. The home reaches
     them through `gorex.projects` and `gorex.dir.list` (`docs/rex-api.md`)
     and Rex Go's synced projects (`docs/ios-centralized-spaces.md`).
