@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -200,16 +201,14 @@ func TestProjectHostAddedAgain(t *testing.T) {
 	}
 }
 
-// TestProjectTabWaitsForTailnetHost makes New Tab of a project whose home
-// is a tailnet host online but not connected: the tab opens in the folder
-// once the host connects, a new one though the window has the host's.
-func TestProjectTabWaitsForTailnetHost(t *testing.T) {
-	a, tt := newTestApp(t)
-	// The host's shells have these directories until it stops: made
-	// first, they go after it, as Windows wants.
+// tailnetHost is a host of the tailnet the test serves at a socket of its
+// own, behind a proxy: the host, the proxy, a client of its server, and
+// two directories made before it, which its shells have till it stops.
+func tailnetHost(t *testing.T, a *App) (*hostConn, *hostProxy, *rex.Client, string, string) {
+	t.Helper()
 	first, folder := t.TempDir(), t.TempDir()
 	fakeHosts(t)
-	sock, _ := startHostServer(t)
+	sock, remote := startHostServer(t)
 	proxy := newHostProxy(t, sock)
 	dial := dialHost
 	dialHost = func(ctx context.Context, address string) (*rex.Client, error) {
@@ -219,31 +218,201 @@ func TestProjectTabWaitsForTailnetHost(t *testing.T) {
 		return dial(ctx, address)
 	}
 	t.Cleanup(a.stopHosts)
-	h := a.addHost(savedHost{ID: "h1", Name: "peer", Address: "tailscale:peer", TailnetOpened: true})
+	return nil, proxy, remote, first, folder
+}
+
+// holdDials holds the hosts' connections until the release it returns.
+func holdDials(t *testing.T) (release func()) {
+	t.Helper()
+	gate := make(chan struct{})
+	dialGate.Store(&gate)
+	done := false
+	release = func() {
+		if !done {
+			done = true
+			dialGate.Store(nil)
+			close(gate)
+		}
+	}
+	t.Cleanup(release)
+	return release
+}
+
+// pendingTailnetProject is a project whose home is a tailnet host that
+// dropped, online but not connected, while the window has a tab of it.
+func pendingTailnetProject(t *testing.T, a *App, tt *ui.Tester) (h *hostConn, folder string, release func()) {
+	t.Helper()
+	_, proxy, _, first, folder := tailnetHost(t, a)
+	h = a.addHost(savedHost{ID: "h1", Name: "peer", Address: "tailscale:peer", TailnetOpened: true})
 	waitFor(t, tt, "the host to connect", func() bool { return h.state == hostConnected && h.Machine != "" })
 	hostTab(t, a, tt, h, first)
 	setProjectHomeAs(t, a, tt, h.ID, folder, layout.MachineHost(h.Machine))
-
-	gate := make(chan struct{})
-	dialGate.Store(&gate)
-	t.Cleanup(func() { dialGate.Store(nil) })
+	release = holdDials(t)
 	proxy.setDown(true)
 	waitFor(t, tt, "the host to drop", func() bool { return h.current() == nil })
 	proxy.setDown(false)
 	h.tailnetOnline = true
 	focusLocal(t, a)
-	n := len(a.tabsOn(h))
-	if n == 0 {
+	if len(a.tabsOn(h)) == 0 {
 		t.Fatal("the window has no tab of the host")
 	}
-	if tab := a.newProjectTab(); tab != nil || h.openOnConnect != a || !h.openStrict || h.openDir != folder {
-		t.Fatalf("New Tab of a host not connected: %v, pending %v %v %q", tab, h.openOnConnect == a, h.openStrict, h.openDir)
+	return h, folder, release
+}
+
+// TestProjectTabWaitsForTailnetHost makes New Tab of a project whose home
+// is a tailnet host online but not connected: the tab opens in the folder
+// once the host connects, a new one though the window has the host's.
+func TestProjectTabWaitsForTailnetHost(t *testing.T) {
+	a, tt := newTestApp(t)
+	h, folder, release := pendingTailnetProject(t, a, tt)
+	n := len(a.tabsOn(h))
+	if tab := a.newProjectTab(); tab != nil || a.projectOpen == nil || a.projectOpen.host != h || h.openOnConnect != nil {
+		t.Fatalf("New Tab of a host not connected: %v, pending %+v", tab, a.projectOpen)
 	}
-	dialGate.Store(nil)
-	close(gate)
+	release()
 	waitFor(t, tt, "the project's tab on the host", func() bool { return len(a.tabsOn(h)) > n })
 	if p := a.tab().Focus; p.host != h || !sameDir(p.startDir, folder) {
 		t.Errorf("the project's tab is on %v in %q", p.host, p.startDir)
+	}
+	if a.projectOpen != nil {
+		t.Error("the wait stays")
+	}
+}
+
+// TestProjectTabNotInAnotherProject makes New Tab of a project whose home
+// host is not connected, then shows another project: once the host
+// connects, no tab opens, in either, and the window says why.
+func TestProjectTabNotInAnotherProject(t *testing.T) {
+	a, tt := newTestApp(t)
+	h, _, release := pendingTailnetProject(t, a, tt)
+	project := a.ws
+	a.newProjectTab()
+	// Another project of the same home: its folder is no reason to open
+	// the tab there.
+	other := a.st.addWorkspace()
+	a.showWorkspace(other)
+	if a.ws != other {
+		t.Fatal("the window does not show the other project")
+	}
+	setProjectHome(t, a, tt, project.Host, project.Dir)
+	a.err = ""
+	release()
+	waitFor(t, tt, "the note", func() bool { return strings.Contains(a.err, "not shown") })
+	tt.Frame()
+	if len(a.tabsOn(h)) != 0 || a.projectOpen != nil {
+		t.Errorf("the other project has %d tabs of the host; wait %+v", len(a.tabsOn(h)), a.projectOpen)
+	}
+	a.showWorkspace(project)
+	n := 0
+	for _, w := range savedWorkspaces(t, a.client).Sessions {
+		if w.ID == project.ID {
+			for _, x := range w.Tabs {
+				for _, r := range x.Roots() {
+					for _, l := range layout.Leaves(r) {
+						if l.Host != "" {
+							n++
+						}
+					}
+				}
+			}
+		}
+	}
+	if n != 1 {
+		t.Errorf("the project has %d panes of the host, want the one it had", n)
+	}
+}
+
+// TestProjectHostLearnedOnConnect makes New Tab of a project whose home
+// machine no host is known to be yet: a host added again, whose machine
+// the app learns as it connects, and a tailnet host never opened. Each
+// connects, and the tab opens there once it has; with no host to try,
+// none opens, and the window says the host is not connected.
+func TestProjectHostLearnedOnConnect(t *testing.T) {
+	for _, tailnet := range []bool{false, true} {
+		t.Run(map[bool]string{false: "added", true: "tailnet"}[tailnet], func(t *testing.T) {
+			a, tt := newTestApp(t)
+			_, proxy, remote, _, folder := tailnetHost(t, a)
+			hello, err := remote.Hello()
+			if err != nil || hello.Machine == "" {
+				t.Fatalf("the host's machine: %+v %v", hello, err)
+			}
+			release := holdDials(t)
+			var h *hostConn
+			if tailnet {
+				h = newHostConn(savedHost{ID: "h-peer", Name: "peer", Address: "tailscale:peer"})
+				a.hosts = append(slices.Clone(a.hosts), h)
+				a.syncHosts()
+			} else {
+				h = a.addHost(savedHost{ID: "h-again", Name: "office-mac", Address: proxy.path})
+			}
+			setProjectHome(t, a, tt, layout.MachineHost(hello.Machine), folder)
+			focusLocal(t, a)
+
+			if tailnet {
+				// Not online: nothing to try.
+				a.err = ""
+				if tab := a.newProjectTab(); tab != nil || a.projectOpen != nil || !strings.Contains(a.err, "is not connected") {
+					t.Fatalf("New Tab with no host to try: %v, %+v, %q", tab, a.projectOpen, a.err)
+				}
+				h.tailnetOnline = true
+			}
+			a.err = ""
+			if tab := a.newProjectTab(); tab != nil || a.projectOpen == nil || !strings.Contains(a.err, "Connecting") {
+				t.Fatalf("New Tab of a host not known yet: %v, %+v, %q", tab, a.projectOpen, a.err)
+			}
+			if h.Machine != "" {
+				t.Fatal("the host's machine is known before it connects")
+			}
+			release()
+			waitFor(t, tt, "the project's tab on the host", func() bool { return len(a.tabsOn(h)) > 0 })
+			if p := a.tab().Focus; p.host != h || !sameDir(p.startDir, folder) {
+				t.Errorf("the project's tab is on %v in %q", p.host, p.startDir)
+			}
+		})
+	}
+}
+
+// TestProjectHomeByIDMigrates loads a layout whose project names its home
+// host by the host's ID, as one of before homes named machines: New Tab
+// opens on the host, and the home is kept by the host's machine then.
+func TestProjectHomeByIDMigrates(t *testing.T) {
+	a, tt := newTestApp(t)
+	h, _, _ := remotePane(t, a, tt, t.TempDir())
+	folder := t.TempDir()
+	st := savedWorkspaces(t, a.client)
+	w := st.Space(a.ws.ID)
+	w.Host, w.Dir = h.ID, folder
+	raw, err := json.Marshal(st)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := a.client.SetLayout(raw); err != nil {
+		t.Fatal(err)
+	}
+	a.st.out.follow(a.client)
+	caughtUp(t, a, tt)
+	waitFor(t, tt, "the app to read the home", func() bool { return a.ws.Host == h.ID })
+	focusLocal(t, a)
+	if p := newOnHost(t, a, tt, h).Focus; !sameDir(p.startDir, folder) {
+		t.Errorf("the project's tab starts in %q", p.startDir)
+	}
+	waitFor(t, tt, "the home kept by machine", func() bool {
+		st := savedWorkspaces(t, a.client)
+		return st.Space(a.ws.ID).Host == layout.MachineHost(h.Machine)
+	})
+}
+
+// TestProjectHostPrefersConnected names a home machine two hosts are, as
+// a host's LAN and tailnet entries: New Tab opens on the connected one.
+func TestProjectHostPrefersConnected(t *testing.T) {
+	a, tt := newTestApp(t)
+	h, _, _ := remotePane(t, a, tt, t.TempDir())
+	idle := newHostConn(savedHost{ID: "h0", Name: "office-mac (tailnet)", Address: "tailscale:office", Machine: h.Machine})
+	a.hosts = append([]*hostConn{idle}, a.hosts...)
+	t.Cleanup(func() { a.hosts = slices.DeleteFunc(a.hosts, func(x *hostConn) bool { return x == idle }) })
+	setProjectHome(t, a, tt, layout.MachineHost(h.Machine), t.TempDir())
+	if got := a.projectHost(a.ws); got != h {
+		t.Fatalf("the home host is %v, want the connected %v", got, h)
 	}
 }
 

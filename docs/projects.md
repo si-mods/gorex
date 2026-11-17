@@ -108,6 +108,18 @@ home host as offline.
   is online but not connected yet connects first, then opens the tab in
   the folder, with the same folder check, as a new tab though the window
   has tabs of the host.
+- **Home machine not known yet.** A host added again has no machine until
+  it connects once. When no host is known to be the home's machine, the
+  hosts of unknown machine that can be reached connect (a tailnet one as
+  above), and the tab opens on the one that turns out to be the home.
+  With none to try, New Tab says the home host is not connected; once
+  every host's machine is known and none is the home, it says the host
+  is not one of the user's hosts. Of two hosts of one machine, as its
+  LAN and tailnet entries, the connected one is the home.
+- **Project switched meanwhile.** A tab that waits for its host opens in
+  the project it was asked in. A window that shows another project when
+  the host connects opens none and says so: a tab in the wrong project,
+  or the window switching back unasked, would surprise more than a note.
 - **Home host of an older GoRex.** A server without the capability
   `space.home` would start the shell at home when the folder is gone:
   New Tab in the project fails with a note instead.

@@ -153,11 +153,6 @@ type hostConn struct {
 	closed        map[string]bool
 	tailnetOnline bool
 	openOnConnect *App
-	// openDir is the folder of the project tab openOnConnect opens, in
-	// it or not at all when openStrict (App.projectTabOn): a new tab,
-	// though the window has the host's tabs.
-	openDir    string
-	openStrict bool
 	// transfers are those of the host's sessions, by session.
 	transfers map[string]*sessionTransfers
 	// creating closes once the pane of the session asked of the host last
@@ -721,13 +716,14 @@ func (a *App) watchHost(h *hostConn, c *rex.Client, update func(func())) {
 			if h.openOnConnect != nil && h.openOnConnect.quitting {
 				h.openOnConnect = nil
 			}
-			if o := h.openOnConnect; o != nil && h.current() == c && h.openStrict {
-				if len(layout.hold) == 0 {
-					dir := h.openDir
-					h.openOnConnect, h.openDir, h.openStrict = nil, "", false
-					o.projectTabOn(h, dir)
+			if h.current() == c && len(layout.hold) == 0 {
+				for _, o := range a.peers() {
+					if !o.quitting {
+						o.takeProjectOpen(h)
+					}
 				}
-			} else if o != nil && h.current() == c {
+			}
+			if o := h.openOnConnect; o != nil && h.current() == c {
 				if tabs := o.tabsOn(h); len(tabs) != 0 {
 					h.openOnConnect = nil
 					o.active = slices.Index(o.tabs, tabs[0])
@@ -1378,7 +1374,13 @@ func (a *App) reconcileTailnet(st *rex.TailnetStatus) {
 // openTailnetHost schedules an initial attach, or a shell if there is no
 // session to attach to. It is only called in response to a user action.
 func (a *App) openTailnetHost(h *hostConn) {
-	h.openOnConnect, h.openDir, h.openStrict = a, "", false
+	h.openOnConnect = a
+	a.connectTailnetHost(h)
+}
+
+// connectTailnetHost connects to a host of the tailnet, at the user's
+// asking: it stays opened, and connects again as the app starts.
+func (a *App) connectTailnetHost(h *hostConn) {
 	if h.TailnetOpened {
 		h.poke()
 		return
