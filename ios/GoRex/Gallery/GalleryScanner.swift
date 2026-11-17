@@ -38,6 +38,9 @@ nonisolated struct GalleryScanner {
     private var apcSkip = false
     private var transfer: Transfer?
     private var found: [Found] = []
+    /// The target of the OSC 8 link open now, and the text printed in it.
+    private var linkPath: String?
+    private var linkText: [UInt8] = []
 
     /// A Kitty image whose chunks (m=1) still come.
     private struct Transfer {
@@ -142,6 +145,7 @@ nonisolated struct GalleryScanner {
         // is lost, as one the program wrapped is.
         if line.count >= Self.maxLine { endLine() }
         line.append(b)
+        if linkPath != nil && linkText.count < Self.maxLine { linkText.append(b) }
     }
 
     private mutating func endLine() {
@@ -179,7 +183,7 @@ nonisolated struct GalleryScanner {
     static func quotedPath(_ inner: String) -> String? {
         if let p = windowsPath(inner), p == inner { return p }
         guard inner.prefix(while: { !$0.isWhitespace }).contains("/"),
-              let p = FileLink.path(inner), p == inner, isImage(p) else { return nil }
+              let p = FileLink.path(inner), p == inner, isImage(p), !isNetworkPath(p) else { return nil }
         return p
     }
 
@@ -203,29 +207,29 @@ nonisolated struct GalleryScanner {
     /// The path of an image file a word prints, by the rules of a tapped
     /// path, nil for another word. Ghostty matches only paths with a slash.
     static func imagePath(_ word: String) -> String? {
-        guard case .file(let p) = FileLink.target(word, matched: true), p.contains("/"), isImage(p) else { return nil }
+        guard case .file(let p) = FileLink.target(word, matched: true), p.contains("/"), isImage(p), !isNetworkPath(p) else { return nil }
         return p
     }
 
     /// The Windows image path in a word, as Claude Code prints one on a
-    /// Windows host: a drive's (C:\x.png, C:/x.png) or a share's
-    /// (\\server\share\x.png), from where it starts in the word, as in
-    /// --out=C:\x.png, without what ends the sentence after it.
+    /// Windows host: a drive's (C:\x.png, C:/x.png), from where it starts
+    /// in the word, as in --out=C:\x.png, without what ends the sentence
+    /// after it. A share's path is none (isNetworkPath).
     static func windowsPath(_ word: String) -> String? {
         let c = Array(word)
         var start: Int?
         for i in c.indices where i + 2 < c.count {
+            // A drive after a slash ends a device path (\\?\C:\x.png).
             let drive = c[i].isASCII && c[i].isLetter && c[i + 1] == ":" && (c[i + 2] == "\\" || c[i + 2] == "/")
-                && (i == 0 || !(c[i - 1].isLetter || c[i - 1].isNumber))
-            let share = c[i] == "\\" && c[i + 1] == "\\" && c[i + 2] != "\\" && (i == 0 || c[i - 1] != "\\")
-            if drive || share {
+                && (i == 0 || !(c[i - 1].isLetter || c[i - 1].isNumber || c[i - 1] == "\\" || c[i - 1] == "/"))
+            if drive {
                 start = i
                 break
             }
         }
         guard let start else { return nil }
         let p = FileLink.trimmed(String(c[start...]))
-        let body = p.dropFirst(p.hasPrefix("\\\\") ? 2 : 3)
+        let body = p.dropFirst(3)
         guard !body.isEmpty, !body.contains(where: { ":*?\"<>|\0".contains($0) }), isImage(p) else { return nil }
         return p
     }
@@ -236,21 +240,34 @@ nonisolated struct GalleryScanner {
         return imageExtensions.contains(path[path.index(after: dot)...].lowercased())
     }
 
-    /// Whether a path names another computer, as //server/share/x.png or
-    /// \\server\share\x.png: reading it on a Windows host contacts that
-    /// computer (docs/lessons.md), so the gallery fetches it only at a tap.
+    /// Whether a path names another computer or a device, as
+    /// //server/share/x.png, \\server\share\x.png and \\?\C:\x.png: the
+    /// server refuses them, and a Windows host that read one would contact
+    /// that computer (docs/lessons.md), so the gallery never collects one.
     static func isNetworkPath(_ path: String) -> Bool {
         path.hasPrefix("//") || path.hasPrefix("\\\\")
     }
 
-    /// A program's OSC 8 link to an image file: 8;params;file://…
+    /// A program's OSC 8 link to an image file: 8;params;file://... It is
+    /// kept when its text ends, and only if the text is its target path:
+    /// a link that shows one name and opens another file (docs/lessons.md)
+    /// is not followed. The text is read as any other text, so a path
+    /// printed in it counts on its own.
     private mutating func endOSC() {
         mode = .ground
         defer { osc = [] }
         guard osc.starts(with: Array("8;".utf8)) else { return }
+        endLink()
         let parts = String(decoding: osc, as: UTF8.self).split(separator: ";", maxSplits: 2, omittingEmptySubsequences: false)
-        guard parts.count == 3, let p = FileLink.fileURLPath(String(parts[2])), Self.isImage(p) else { return }
-        found.append(.path(p))
+        guard parts.count == 3, let p = FileLink.fileURLPath(String(parts[2])), Self.isImage(p), !Self.isNetworkPath(p) else { return }
+        linkPath = p
+    }
+
+    private mutating func endLink() {
+        defer { linkPath = nil; linkText = [] }
+        guard let p = linkPath else { return }
+        let text = String(decoding: linkText, as: UTF8.self).trimmingCharacters(in: .whitespaces)
+        if FileLink.trimmed(text) == p { found.append(.path(p)) }
     }
 
     // MARK: Kitty

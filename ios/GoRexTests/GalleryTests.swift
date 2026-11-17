@@ -36,11 +36,10 @@ nonisolated final class GalleryTests: XCTestCase {
         XCTAssertEqual(paths(scan("a.png example.com/a.png https://example.com/b.png\n")), [])
     }
 
-    func testNetworkPaths() {
-        // Kept, but fetched only at a tap.
-        let found = paths(scan("//server/share/a.png \u{1b}]8;;file:////server/share/b.png\u{07}b\u{1b}]8;;\u{07}\n"))
-        XCTAssertEqual(found, ["//server/share/b.png", "//server/share/a.png"])
-        XCTAssertTrue(found.allSatisfy(GalleryScanner.isNetworkPath))
+    func testNetworkAndDevicePathsSkipped() {
+        let text = #"//server/share/a.png \\server\share\c.png '//server/s/q.png' \\.\C:\d.png \\?\C:\e.png //./C:/f.png //?/C:/g.png"# + "\n"
+        XCTAssertEqual(paths(scan(text)), [])
+        XCTAssertEqual(paths(scan("\u{1b}]8;;file:////server/share/b.png\u{07}//server/share/b.png\u{1b}]8;;\u{07}\n")), [])
         XCTAssertTrue(GalleryScanner.isNetworkPath(#"\\server\share\c.png"#))
         XCTAssertFalse(GalleryScanner.isNetworkPath("/tmp/a.png"))
         XCTAssertFalse(GalleryScanner.isNetworkPath(#"C:\a.png"#))
@@ -50,7 +49,6 @@ nonisolated final class GalleryTests: XCTestCase {
     func testWindowsPaths() {
         XCTAssertEqual(paths(scan(#"Saved 'C:\Users\demo\Pictures\IMG_0001.PNG'"# + "\r\n")), [#"C:\Users\demo\Pictures\IMG_0001.PNG"#])
         XCTAssertEqual(paths(scan(#"see C:/work/out/chart.png, and D:\shots\a.jpg."# + "\n")), ["C:/work/out/chart.png", #"D:\shots\a.jpg"#])
-        XCTAssertEqual(paths(scan(#"share \\fileserver\team\plot.webp done"# + "\n")), [#"\\fileserver\team\plot.webp"#])
         XCTAssertEqual(paths(scan(#"--out=C:\tmp\o.png (E:\x\y.gif)"# + "\n")), [#"C:\tmp\o.png"#, #"E:\x\y.gif"#])
         // Quotes hold spaces, of either kind.
         XCTAssertEqual(paths(scan(#"wrote "C:\Program Files\Demo\shot 1.png" and '/tmp/my shots/b.png'"# + "\n")),
@@ -79,9 +77,20 @@ nonisolated final class GalleryTests: XCTestCase {
     }
 
     func testOSC8FileLink() {
-        let link = "\u{1b}]8;;file:///tmp/demo/shot%201.png\u{1b}\\shot\u{1b}]8;;\u{1b}\\\n"
+        let link = "\u{1b}]8;;file:///tmp/demo/shot%201.png\u{1b}\\/tmp/demo/shot 1.png\u{1b}]8;;\u{1b}\\\n"
         XCTAssertEqual(paths(scan(link)), ["/tmp/demo/shot 1.png"])
         XCTAssertEqual(paths(scan("\u{1b}]8;;https://example.com/a.png\u{07}a\u{1b}]8;;\u{07}\n")), [])
+        // Text that is the target, even in two reads; the text is read too, and the store keeps one.
+        XCTAssertEqual(Set(paths(scan("\u{1b}]8;;file:///tmp/a.png\u{07}/tmp/", "a.png\u{1b}]8;;\u{07}\n"))), ["/tmp/a.png"])
+    }
+
+    func testOSC8LinkWithOtherTarget() {
+        // The text shows one file, the link opens another: not collected.
+        let link = "\u{1b}]8;;file:///home/demo/.ssh/id_ed25519.png\u{07}chart.png\u{1b}]8;;\u{07}\n"
+        XCTAssertEqual(paths(scan(link)), [])
+        // The text is still read as text: a path printed in it counts alone.
+        let printed = "\u{1b}]8;;file:///home/demo/.ssh/id_ed25519.png\u{07}/tmp/chart.png\u{1b}]8;;\u{07}\n"
+        XCTAssertEqual(paths(scan(printed)), ["/tmp/chart.png"])
     }
 
     func testDuplicatePathOnce() throws {

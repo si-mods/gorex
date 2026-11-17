@@ -2,6 +2,26 @@
   "sourceLanguage": "en",
   "version": "1.0",
   "strings": {
+    "%lld Images": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld 张图片"
+          }
+        }
+      }
+    },
+    "%lld Images, New": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld 张图片，有新图片"
+          }
+        }
+      }
+    },
     "%@ needs input": {
       "localizations": {
         "zh-Hans": {

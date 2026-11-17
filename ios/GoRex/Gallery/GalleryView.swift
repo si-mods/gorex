@@ -2,35 +2,59 @@ import ImageIO
 import SwiftUI
 import UIKit
 
-/// The toolbar's gallery button: a dot shows while the pane has images
-/// not yet seen, and a tap opens the pane's gallery full screen in the
-/// terminal's scheme.
-struct GalleryButton: View {
+/// The first item of the terminal's More menu (docs/ios-pane-gallery.md):
+/// the images' count, and whether some are new. It sets a flag the screen
+/// reads (galleryCover), as the menu's own views go when it closes.
+struct GalleryMenuItem: View {
     let gallery: PaneGallery
-    let session: TerminalSession
-    let title: String
-    @State private var shown = false
-    @Environment(\.colorScheme) private var scheme
 
     var body: some View {
         Button {
             // The keyboard goes, as it does for a file a tap opens: it
             // would cover the gallery.
             UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
-            shown = true
+            gallery.presenting = true
         } label: {
-            Image(systemName: "photo.on.rectangle")
-                .overlay(alignment: .topTrailing) {
-                    if gallery.unseen {
-                        Circle().fill(Color.accentColor).frame(width: 7, height: 7).offset(x: 4, y: -3)
-                    }
-                }
+            Label {
+                Text("Gallery")
+                Text(gallery.unseen ? "\(gallery.entries.count) Images, New" : "\(gallery.entries.count) Images")
+            } icon: {
+                Image(systemName: "photo.on.rectangle")
+            }
         }
-        .accessibilityLabel("Gallery")
-        .accessibilityValue(gallery.unseen ? Text("New Images") : Text(verbatim: ""))
-        .fullScreenCover(isPresented: $shown, onDismiss: { gallery.opened() }) {
-            GalleryView(gallery: gallery, session: session, title: title)
-                .environment(\.colorScheme, scheme)
+    }
+}
+
+extension View {
+    /// The dot on a button's top right while the pane has images not yet seen.
+    func galleryDot(_ gallery: PaneGallery?) -> some View {
+        overlay(alignment: .topTrailing) {
+            if gallery?.unseen == true {
+                Circle().fill(Color.accentColor).frame(width: 7, height: 7).offset(x: 4, y: -3)
+            }
+        }
+    }
+
+    /// The pane's gallery, full screen in the terminal's scheme.
+    func galleryCover(_ session: TerminalSession?, title: String) -> some View {
+        modifier(GalleryCover(session: session, title: title))
+    }
+}
+
+private struct GalleryCover: ViewModifier {
+    let session: TerminalSession?
+    let title: String
+    @Environment(\.colorScheme) private var scheme
+
+    func body(content: Content) -> some View {
+        if let session, let gallery = session.gallery {
+            content.fullScreenCover(isPresented: Binding { gallery.presenting } set: { gallery.presenting = $0 },
+                                    onDismiss: { gallery.opened() }) {
+                GalleryView(gallery: gallery, session: session, title: title)
+                    .environment(\.colorScheme, scheme)
+            }
+        } else {
+            content
         }
     }
 }
@@ -206,8 +230,6 @@ private struct GalleryCell: View {
     let session: TerminalSession
     @State private var image: UIImage?
     @State private var failed = false
-    /// An image of another computer, which loads only at a tap.
-    @State private var remote = false
 
     var body: some View {
         Color.secondary.opacity(0.15)
@@ -218,8 +240,6 @@ private struct GalleryCell: View {
                     Image(uiImage: image).resizable().scaledToFill()
                         .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
                         .clipped()
-                } else if remote {
-                    Image(systemName: "network").foregroundStyle(.secondary)
                 } else if failed {
                     Image(systemName: "photo.badge.exclamationmark").foregroundStyle(.secondary)
                 }
@@ -237,8 +257,6 @@ private struct GalleryCell: View {
             .task(id: entry.id) {
                 do {
                     image = try await GalleryImages.thumbnail(entry, gallery: gallery, session: session)
-                } catch is GalleryImages.NetworkPath {
-                    remote = true
                 } catch {
                     if !(error is CancellationError) { failed = true }
                 }
@@ -275,7 +293,6 @@ enum GalleryImages {
             return try await Task.detached { try downsample(Data(contentsOf: file)) }.value
         }
         if let d = try? Data(contentsOf: thumb), let image = UIImage(data: d) { return image }
-        if GalleryScanner.isNetworkPath(e.path ?? "") { throw NetworkPath() }
         let r = try await download(e, session: session)
         guard let data = r.data else { throw RexError(code: "protocol", message: "the download sent no file") }
         return try await Task.detached {
@@ -323,9 +340,6 @@ enum GalleryImages {
     static func reason(_ error: Error) -> String {
         (error as? RexError).map { FileLink.reason(code: $0.code, message: $0.message) } ?? error.localizedDescription
     }
-
-    /// An image file of another computer, not fetched for a thumbnail.
-    nonisolated struct NetworkPath: Error {}
 
     nonisolated struct Unreadable: LocalizedError {
         var errorDescription: String? { String(localized: "Can't Read Image") }

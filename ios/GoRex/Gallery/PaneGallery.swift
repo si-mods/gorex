@@ -8,6 +8,8 @@ import Observation
 final class PaneGallery {
     private(set) var entries: [GalleryEntry] = []
     private(set) var unseen = false
+    /// Whether the screen shows the gallery.
+    var presenting = false
     @ObservationIgnored nonisolated let dir: URL
     @ObservationIgnored private let worker: Worker
 

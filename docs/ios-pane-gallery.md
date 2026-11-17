@@ -64,9 +64,9 @@ Claude Code 这类 agent 把生成的图片写到主机文件里，只在输出�
 
 ### 5.1 入口
 
-- 终端页右上角工具栏（`TerminalScreen.swift` `ToolbarItemGroup(placement: .topBarTrailing)`）在「More」菜单左边加一个相册按钮。
-- 图标：SF Symbol `photo.on.rectangle`，与工具栏现有的 `ellipsis` 一样用系统图标，由工具栏的 glass 绘制。
-- 相册有新图片且用户还没看过时，按钮右上角显示一个小圆点。
+- 终端页右上角的「More」菜单（`TerminalScreen.swift` `ToolbarItemGroup(placement: .topBarTrailing)`）第一项是「Gallery」，带图片数量，图标 SF Symbol `photo.on.rectangle`。工具栏不加按钮：返回、标题、麦克风、More 已经占满 header，再加一个按钮会把标题挤成省略号（用户，2026-11-17）。
+- 相册有新图片且用户还没看过时，「More」按钮右上角显示一个小圆点；菜单中「Gallery」一项也标出新图片。打开相册后小圆点消失。
+- 相册没有图片时，「Gallery」一项仍然显示，打开后是空状态。
 
 ### 5.2 相册页
 

@@ -172,17 +172,18 @@ struct TerminalScreen: View {
                 // draws them.
                 ToolbarItemGroup(placement: .topBarTrailing) {
                     if !hasBar { mic }
-                    // The images the pane showed (docs/ios-pane-gallery.md).
-                    if let s = session, let g = s.gallery { GalleryButton(gallery: g, session: s, title: title) }
                     Menu {
+                        // The images the pane showed (docs/ios-pane-gallery.md).
+                        if let g = session?.gallery { GalleryMenuItem(gallery: g) }
                         Button("New Tab", systemImage: "plus") { newTab() }
                         Button("Split Pane", systemImage: "rectangle.split.2x1") { newSplit() }
                         if paneCellList.count > 1 {
                             Button("Close Pane", systemImage: "xmark.rectangle", role: .destructive) { closePane(currentTarget.block) }
                         }
                     } label: {
-                        Image(systemName: "ellipsis")
+                        Image(systemName: "ellipsis").galleryDot(session?.gallery)
                     }
+                    .galleryCover(session, title: title)
                     .accessibilityLabel("More")
                 }
             }
