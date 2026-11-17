@@ -79,10 +79,17 @@ into the escape sequences that draw the same screen.
 feeds the emulator, follows the modes, and queues the same bytes for
 every attached client (`attached.send`). Each client has a goroutine that
 writes its queue (`attached.writer`), so a slow client does not hold up
-the others. A client too far behind (2048 queued chunks; for a remote
-one also 8 MiB) is dropped. A remote host's stream attaches again to a new
-snapshot (`hostStream` in `hosts.go`); a local window's stream ends, and
-its pane closes (`attached.send`). The rexapi gateway reads its attaches
+the others. A stream carries the session's screen, not every byte: a
+client, local or remote, with more than 2 MiB queued (`maxQueuedBytes`)
+is not dropped. Its queue is dropped, and on the same connection it gets
+CAN and ST, which end an escape sequence the drop cut, the reset a window
+attaching again sends (`screenReset`), and the session's screen as a new
+attach's snapshot with 256 KiB of scrollback, then the output that
+follows (`attached.resync`), at most once a second. The server logs it,
+at most once per client per 10 s. Only a connection that takes nothing
+for the write timeout, or fails a write, is closed; the client then
+attaches again. A framed attach is framed only up to its first snapshot,
+so a resync's plain bytes suit it too. The rexapi gateway reads its attaches
 at once, whatever its clients' connections take, and drops on its own
 what a slow connection falls behind by. It then sends a reset and a new
 snapshot on the same stream (`stream.collapse` in

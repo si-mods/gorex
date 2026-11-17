@@ -106,7 +106,7 @@ func TestAnswerDecidedAsFed(t *testing.T) {
 		s, c, sid := streamServerCommand(t, nil, answerScript(""), "/tmp")
 		ss := s.sessions[sid]
 		ready(t, c, sid)
-		window := &attached{seq: 1 << 30, out: make(chan []byte, maxQueue)}
+		window := &attached{seq: 1 << 30}
 		ss.mu.Lock()
 		ss.answerLocked()
 		ss.vt.Feed([]byte("\x1b[6n"))
@@ -121,7 +121,7 @@ func TestAnswerDecidedAsFed(t *testing.T) {
 		s, c, sid := streamServerCommand(t, nil, answerScript(""), "/tmp")
 		ss := s.sessions[sid]
 		ready(t, c, sid)
-		window := &attached{seq: 1 << 30, out: make(chan []byte, maxQueue)}
+		window := &attached{seq: 1 << 30}
 		ss.mu.Lock()
 		ss.clients[window] = struct{}{}
 		ss.answerLocked()

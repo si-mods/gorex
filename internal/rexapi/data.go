@@ -539,9 +539,10 @@ func (s *stream) readOutput(gen int, rd io.Reader) {
 // not take yet. Past it, the stream drops that output and goes on from a
 // new snapshot (resync), which a client far behind needs sooner than old
 // output. It is a quarter of what the stream keeps for a resume
-// (resumeBytes), so that the bytes not sent yet stay among those, and of
-// what the GoRex server lets a remote client fall behind (8 MiB,
-// maxQueuedBytes): about a second of a connection of 2 MiB/s.
+// (resumeBytes), so that the bytes not sent yet stay among those, and
+// what the GoRex server lets a client fall behind before it sends it the
+// screen again (maxQueuedBytes): about a second of a connection of
+// 2 MiB/s.
 const collapseBytes = 2 << 20
 
 // resyncHistory is the most scrollback, in bytes, of a resync's snapshot:
