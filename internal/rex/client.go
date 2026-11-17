@@ -817,6 +817,13 @@ func (c *Client) Revision() uint64 {
 
 func (c *Client) Shutdown() error { return c.call(Request{Op: "shutdown"}, nil) }
 
+// ShutdownIfIdle is Shutdown for a server that holds no session, and starts
+// none: another leaves the server running and fails with an error that
+// starts with BusyPrefix (CapabilityShutdownIfIdle).
+func (c *Client) ShutdownIfIdle() error {
+	return c.call(Request{Op: "shutdown", IfIdle: true}, nil)
+}
+
 // StopToRestart asks the server to stop as one a new server replaces: the
 // next one starts the sessions of its layout again, as new shells, where
 // Shutdown ends them with the server (CapabilityShutdownRestart).

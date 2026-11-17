@@ -45,7 +45,7 @@ The gateway listens on five places:
 
 - its local socket, `rexapi.sock` in GoRex's data directory, for this
   user only. The Rex CLI reaches it with `rex -S unix://PATH`, and the
-  methods that administer the gateway (`server.tailscale.*`) are accepted
+  methods that administer the gateway or the server (`server.tailscale.*`, `server.stop`) are accepted
   only there, as on a Rex server;
 - the local network, over plain HTTP, while that listener is on: only
   the networks it allows get in (below);
@@ -236,6 +236,10 @@ meets:
   a minimized layer: its header has a minimize button, a chip over the
   tab shows it again, and `session.set_layer_state` minimizes it and
   brings it back from a Rex client, with the focus when asked.
+- `server.stop` stops the session server (local socket only). With the GoRex
+  app open, the app starts a new server a moment later, so it works as a
+  restart; quit the app first to keep the server down. `if_idle` refuses while
+  any session, shell or other client is in use.
 - There are no detached blocks, Lua scripts, configuration file or host
   list: `client.set_script`, `client.perform`, `hosts.put` and the like
   fail with `not_supported`, and `client.keymap` is empty.

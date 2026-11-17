@@ -22,6 +22,8 @@ type fixture struct {
 	g    *Gateway
 	desk *rex.Client
 	srv  *httptest.Server
+	// serveDone closes when the GoRex server stopped.
+	serveDone chan struct{}
 }
 
 // startFixture starts a GoRex server in a directory of its own, connects
@@ -67,7 +69,7 @@ func startFixtureVia(t *testing.T, via func(socket string) string) *fixture {
 		t.Fatal(err)
 	}
 	srv := httptest.NewServer(g.Handler())
-	f := &fixture{t: t, g: g, desk: desk, srv: srv}
+	f := &fixture{t: t, g: g, desk: desk, srv: srv, serveDone: serveDone}
 	t.Cleanup(func() {
 		srv.Close()
 		g.Close()
@@ -113,6 +115,8 @@ type testConn struct {
 	pending []map[string]any
 	// welcome is the server's answer to the connection's hello.
 	welcome map[string]any
+	// readErr is why the connection stopped reading, set once msgs closes.
+	readErr error
 }
 
 // dialControl opens a control connection.
@@ -130,6 +134,7 @@ func newTestConn(t *testing.T, ws *websocket.Conn) *testConn {
 		for {
 			_, data, err := c.ws.Read(context.Background())
 			if err != nil {
+				c.readErr = err
 				return
 			}
 			var m map[string]any

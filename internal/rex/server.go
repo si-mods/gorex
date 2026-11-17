@@ -856,6 +856,12 @@ func (s *Server) writeLayout(rev uint64, journal bool) {
 func (s *Server) create(o CreateOptions, peer string) (*session, error) {
 	s.ops.RLock()
 	defer s.ops.RUnlock()
+	s.mu.Lock()
+	stopping := s.stopping
+	s.mu.Unlock()
+	if stopping {
+		return nil, errors.New("rex: the server is stopping")
+	}
 	return s.createHeld(o, peer)
 }
 

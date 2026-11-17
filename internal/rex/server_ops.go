@@ -295,6 +295,21 @@ func (s *Server) doShutdown(req Request, _ string, _ *keptConn) (any, error) {
 	if req.Restart {
 		reason = stopRestart
 	}
+	// The stop starts now: a session made after it would end with it. With
+	// IfIdle, ops held alone waits for the sessions being made or ended,
+	// and the check and the stop are one step.
+	if req.IfIdle {
+		s.ops.Lock()
+		defer s.ops.Unlock()
+	}
+	s.mu.Lock()
+	if req.IfIdle && (len(s.sessions) > 0 || len(s.restoring) > 0) {
+		n, r := len(s.sessions), len(s.restoring)
+		s.mu.Unlock()
+		return nil, fmt.Errorf("%s%d shells run, %d are starting", BusyPrefix, n, r)
+	}
+	s.stopping = true
+	s.mu.Unlock()
 	go func() {
 		time.Sleep(50 * time.Millisecond)
 		s.shutdown(reason)

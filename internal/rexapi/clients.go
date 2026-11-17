@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/coder/websocket"
+
 	"gorex/internal/rex"
 )
 
@@ -334,4 +336,103 @@ func methodClientReply(c *control, a args) (any, *apiError) {
 		}
 	}
 	return nil, errNotFound("nothing is waiting for that call")
+}
+
+// methodServerStop stops the GoRex session server, as the app does when
+// it quits and ends the sessions: the server records the stop and keeps
+// the layout, so that the next one starts the sessions again. Like
+// Rex's, it is for the local socket only. The answer goes out before the
+// server stops. Once it began, the gateway takes no new connection and
+// no call that changes anything, and a call to stop fails with conflict.
+//
+// With if_idle the server must hold no Rex session (a workspace of the
+// layout, with or without a window), no shell, and no other client, and
+// no call may be running; the check and the stop are one step.
+func methodServerStop(c *control, a args) (any, *apiError) {
+	if c.transport != transportUnix {
+		return nil, errorf("internal", 403, "server.stop is accepted only over the server's local socket")
+	}
+	if aerr := a.only("if_idle"); aerr != nil {
+		return nil, aerr
+	}
+	ifIdle, _, aerr := a.boolean("if_idle")
+	if aerr != nil {
+		return nil, aerr
+	}
+	g := c.g
+	g.stopMu.Lock()
+	defer g.stopMu.Unlock()
+	if g.stopping.Load() {
+		return nil, errConflict("the server is already stopping")
+	}
+	// Set before the checks, so that no call or connection starts under
+	// them: that makes the check and the stop one step. The cost is that
+	// while an if_idle check runs, other clients' calls that change
+	// something and new connections are refused for a moment. Anything but
+	// a stop that went through lifts it, a panic too.
+	g.stopping.Store(true)
+	stopped := false
+	defer func() {
+		if !stopped {
+			g.stopping.Store(false)
+		}
+	}()
+	refuse := func(e *apiError) (any, *apiError) { return nil, e }
+	var err error
+	if ifIdle {
+		if !g.hello.Can(rex.CapabilityShutdownIfIdle) {
+			return refuse(errNotSupported("the GoRex server can't check that it is idle"))
+		}
+		m, merr := g.current()
+		if merr != nil {
+			return refuse(errInternal("server.stop could not read the layout: %v", merr))
+		}
+		g.mu.Lock()
+		others := len(g.conns) - 1
+		g.mu.Unlock()
+		switch {
+		case len(m.sessions) > 0:
+			return refuse(errConflict("the server has %d sessions", len(m.sessions)))
+		case others > 0:
+			return refuse(errConflict("%d other clients are connected", others))
+		case g.inflight.Load() > 1:
+			return refuse(errConflict("%d other calls are running", g.inflight.Load()-1))
+		}
+		err = g.shutdownIfIdle()
+		if err != nil && strings.Contains(err.Error(), rex.BusyPrefix) {
+			_, msg, _ := strings.Cut(err.Error(), rex.BusyPrefix)
+			return refuse(errConflict("the server is in use: %s", msg))
+		}
+	} else {
+		err = g.shutdown()
+	}
+	if err != nil {
+		return refuse(errInternal("the server did not stop: %v", err))
+	}
+	stopped = true
+	g.goingAway(c)
+	return map[string]any{}, nil
+}
+
+// goingAway closes the control connections except the caller, with 1001, Going
+// Away, which tells a client that the server stops.
+func (g *Gateway) goingAway(except *control) {
+	g.mu.Lock()
+	conns := make([]*control, 0, len(g.conns))
+	for c := range g.conns {
+		if c != except {
+			conns = append(conns, c)
+		}
+	}
+	g.mu.Unlock()
+	for _, c := range conns {
+		c.closeWith(websocket.StatusGoingAway, "the server is stopping")
+	}
+}
+
+// stopAllowed are the methods a stopping gateway still answers: those that
+// change nothing.
+var stopAllowed = map[string]bool{
+	"server.stop": true, "server.version": true, "server.status": true,
+	"server.whoami": true, "session.list": true, "client.list": true,
 }

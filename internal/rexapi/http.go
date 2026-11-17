@@ -5,6 +5,7 @@ import (
 	"html"
 	"io"
 	"net/http"
+	"strings"
 )
 
 // Handler returns the gateway's HTTP endpoints: the control and data
@@ -37,6 +38,11 @@ func (g *Gateway) Handler() http.Handler {
 			}
 		}
 		if preflight(w, r) {
+			return
+		}
+		// A server that stops takes no new connection.
+		if g.stopping.Load() && strings.HasPrefix(r.URL.Path, "/api/") && r.URL.Path != "/api/help" {
+			writeError(w, http.StatusServiceUnavailable, "the server is stopping")
 			return
 		}
 		mux.ServeHTTP(w, r)

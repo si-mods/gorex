@@ -2,11 +2,18 @@ package rexapi
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"net/http"
+	"os"
+	"path/filepath"
 	"runtime"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/coder/websocket"
 
 	"gorex/internal/layout"
 	"gorex/internal/rex"
@@ -394,5 +401,227 @@ func TestClientEvents(t *testing.T) {
 	}
 	if ev := serverEvent(t, obs, "client_left"); ev["client_id"] != id {
 		t.Errorf("client_left: %v", ev)
+	}
+}
+
+// stopSocket serves the fixture's gateway on a local socket, as the
+// server.stop call is for it only.
+func stopSocket(t *testing.T, f *fixture) string {
+	t.Helper()
+	sdir, err := os.MkdirTemp("", "rx")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sock := filepath.Join(sdir, "g.sock")
+	ln, err := listenUnix(sock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	go f.g.serveOn(ln, transportUnix)
+	t.Cleanup(func() {
+		ln.Close()
+		os.RemoveAll(sdir)
+	})
+	return sock
+}
+
+// wantCode checks that a call over a socket failed with a code.
+func wantCode(t *testing.T, err error, code string) {
+	t.Helper()
+	if err == nil || !strings.Contains(err.Error(), code) {
+		t.Errorf("error %v, want %s", err, code)
+	}
+}
+
+// TestServerStop: over the local socket the call stops the server once;
+// the next one fails with conflict, over any other transport it is refused
+// with 403, and once it began the gateway takes no new connection and no
+// call that changes anything, and tells the other clients 1001.
+func TestServerStop(t *testing.T) {
+	f := startFixture(t)
+	var stops atomic.Int32
+	f.g.shutdown = func() error { stops.Add(1); return nil }
+	c := f.dialControl()
+	c.hello(apiRevision)
+	other := f.dialControl()
+	other.hello(apiRevision)
+	if e := failure(t, c.request("tcp", "server.stop", nil)); e["status"] != float64(403) {
+		t.Errorf("over tcp: %v", e)
+	}
+	sock := stopSocket(t, f)
+	_, err := callGateway(sock, "server.stop", map[string]any{"now": true})
+	wantCode(t, err, "bad_request")
+	if stops.Load() != 0 {
+		t.Fatalf("stopped %d times before a valid call", stops.Load())
+	}
+	// Two calls on one connection: the second, once the stop began, is a
+	// conflict.
+	out, _, err := callGatewayWelcome(sock, 20*time.Second, gatewayCall{"server.stop", nil}, gatewayCall{"server.stop", nil})
+	wantCode(t, err, "conflict")
+	if len(out) > 0 {
+		var res map[string]any
+		if err := json.Unmarshal(out[0], &res); err != nil {
+			t.Fatal(err)
+		}
+		checkResult(t, "server.stop", res)
+	}
+	if n := stops.Load(); n != 1 {
+		t.Errorf("shutdown ran %d times, want 1", n)
+	}
+	// The other client is told the server goes away.
+	timeout := time.After(5 * time.Second)
+wait:
+	for {
+		select {
+		case _, ok := <-other.msgs:
+			if !ok {
+				break wait
+			}
+		case <-timeout:
+			t.Fatal("the other client was not closed")
+		}
+	}
+	if websocket.CloseStatus(other.readErr) != websocket.StatusGoingAway {
+		t.Errorf("the other client saw %v, want close 1001", other.readErr)
+	}
+	// No new connection, no call that changes anything.
+	resp, err := http.Get(f.srv.URL + "/api/control")
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != 503 {
+		t.Errorf("a connection after the stop: %v", resp.Status)
+	}
+}
+
+// TestServerStopRefusesCalls: a call that changes something, on a
+// connection open when the stop began, fails with conflict; a read does not.
+func TestServerStopRefusesCalls(t *testing.T) {
+	f := startFixture(t)
+	c := f.dialControl()
+	c.hello(apiRevision)
+	f.g.stopping.Store(true)
+	if e := failure(t, c.request("create", "session.create", nil)); e["code"] != "conflict" {
+		t.Errorf("session.create after the stop: %v", e)
+	}
+	callChecked(t, c, "session.list", nil)
+	if n := len(f.g.model.Load().sessions); n != 0 {
+		t.Errorf("%d sessions made", n)
+	}
+}
+
+// TestServerStopIfIdle: a Rex session without a window, a shell, or a
+// client refuses if_idle with conflict and the server keeps running; an
+// idle server stops; a failed stop can be tried again.
+func TestServerStopIfIdle(t *testing.T) {
+	f := startFixture(t)
+	sock := stopSocket(t, f)
+	// A session with no window.
+	callGateway(sock, "session.create", nil)
+	_, err := callGateway(sock, "server.stop", map[string]any{"if_idle": true})
+	wantCode(t, err, "conflict")
+	if err != nil && !strings.Contains(err.Error(), "1 sessions") {
+		t.Errorf("the message does not count sessions: %v", err)
+	}
+	select {
+	case <-f.serveDone:
+		t.Fatal("the server stopped")
+	default:
+	}
+}
+
+func TestServerStopIfIdleShell(t *testing.T) {
+	f := startFixture(t)
+	sock := stopSocket(t, f)
+	if _, err := f.desk.Create(rex.CreateOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	_, err := callGateway(sock, "server.stop", map[string]any{"if_idle": true})
+	wantCode(t, err, "conflict")
+	select {
+	case <-f.serveDone:
+		t.Fatal("the server stopped")
+	default:
+	}
+}
+
+// TestServerStopReal runs the real Client.Shutdown on an idle server: if_idle
+// stops it, the server exits, and a call after it fails.
+func TestServerStopReal(t *testing.T) {
+	f := startFixture(t)
+	sock := stopSocket(t, f)
+	if _, err := callGateway(sock, "server.stop", map[string]any{"if_idle": true}); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-f.serveDone:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the server did not stop")
+	}
+	if _, err := callGateway(sock, "server.stop", nil); err == nil {
+		t.Error("a call after the stop worked")
+	}
+}
+
+// TestServerStopPlainReal: a plain stop ends a server that is in use.
+func TestServerStopPlainReal(t *testing.T) {
+	f := startFixture(t)
+	sock := stopSocket(t, f)
+	if _, err := f.desk.Create(rex.CreateOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := callGateway(sock, "server.stop", nil); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-f.serveDone:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the server did not stop")
+	}
+}
+
+// TestServerStopRetry: a stop that failed leaves the server open to another.
+func TestServerStopRetry(t *testing.T) {
+	f := startFixture(t)
+	sock := stopSocket(t, f)
+	f.g.shutdown = func() error { return errors.New("no") }
+	if _, err := callGateway(sock, "server.stop", nil); err == nil {
+		t.Error("a failed shutdown answered ok")
+	}
+	var stops atomic.Int32
+	f.g.shutdown = func() error { stops.Add(1); return nil }
+	if _, err := callGateway(sock, "server.stop", nil); err != nil || stops.Load() != 1 {
+		t.Errorf("retry after a failed stop: %v, %d stops", err, stops.Load())
+	}
+}
+
+// TestServerStopIfIdleBusyCall: a call running refuses if_idle, and the
+// refusal lifts the block on new connections.
+func TestServerStopIfIdleBusyCall(t *testing.T) {
+	f := startFixture(t)
+	sock := stopSocket(t, f)
+	f.g.inflight.Add(1)
+	_, err := callGateway(sock, "server.stop", map[string]any{"if_idle": true})
+	wantCode(t, err, "conflict")
+	if err != nil && !strings.Contains(err.Error(), "calls are running") {
+		t.Errorf("not the running-call refusal: %v", err)
+	}
+	f.g.inflight.Add(-1)
+	if f.g.stopping.Load() {
+		t.Error("a refused stop left the gateway stopping")
+	}
+}
+
+// TestServerStopPanic: a stop that panics leaves the gateway open.
+func TestServerStopPanic(t *testing.T) {
+	f := startFixture(t)
+	sock := stopSocket(t, f)
+	f.g.shutdown = func() error { panic("boom") }
+	if _, err := callGateway(sock, "server.stop", nil); err == nil {
+		t.Error("a panic answered ok")
+	}
+	if f.g.stopping.Load() {
+		t.Error("a panic left the gateway stopping")
 	}
 }
