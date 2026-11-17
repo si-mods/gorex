@@ -172,6 +172,39 @@ nonisolated final class GalleryTests: XCTestCase {
         XCTAssertEqual(index(worker) { $0.index }.entries.map(\.path), ["/tmp/demo/folder/sub/chart.png"])
     }
 
+    func testScreenPlainWordAtLastColumnNotJoined() {
+        // The row is full and ends in "to"; the program put the path on the next row.
+        let row = "⏺ I saved the screenshot to"
+        let screen = GalleryScanner.screen(rows: [row, "  /tmp/demo/x.png"], columns: GalleryScanner.width(row))
+        XCTAssertEqual(screen.paths, ["/tmp/demo/x.png"])
+        XCTAssertEqual(screen.pieces, [])
+        // A relative path on the next row is the path alone, as well.
+        let relative = GalleryScanner.screen(rows: ["I put it in the", "  shots/x.png"], columns: 15)
+        XCTAssertEqual(relative.paths, ["shots/x.png"])
+        XCTAssertEqual(relative.pieces, [])
+        // A row that ends in a path's start is still joined.
+        XCTAssertEqual(GalleryScanner.paths(inRows: ["see ./shots", "  /x.png"], columns: 11), ["./shots/x.png"])
+    }
+
+    func testScreenStartsPath() {
+        for w in ["/tmp/x", "a/b", #"a\b"#, "~", "~/x", ".", "./x", "../x", "C:", #"C:\x"#, "d:/x"] {
+            XCTAssertTrue(GalleryScanner.startsPath(Substring(w)), w)
+        }
+        for w in ["to", "the", "1:", "ab:", ""] {
+            XCTAssertFalse(GalleryScanner.startsPath(Substring(w)), w)
+        }
+    }
+
+    func testScreenJoinsAtMostMaxJoinRows() {
+        XCTAssertEqual(GalleryScanner.maxJoin, 32)
+        let ok = wrap("/d/" + String(repeating: "a", count: 10 * 32 - 7) + ".png", columns: 10, indent: 0)
+        XCTAssertEqual(ok.count, 32)
+        XCTAssertEqual(GalleryScanner.screen(rows: ok, columns: 10).paths.count, 1)
+        let long = wrap("/d/" + String(repeating: "a", count: 10 * 33 - 7) + ".png", columns: 10, indent: 0)
+        XCTAssertEqual(long.count, 33)
+        XCTAssertEqual(GalleryScanner.screen(rows: long, columns: 10).paths, [])
+    }
+
     func testScreenRowShortOfLastColumnNotJoined() {
         XCTAssertEqual(GalleryScanner.paths(inRows: ["see /tmp/demo/a", "  /b.png"], columns: 40), ["/b.png"])
         // Nor a row whose last column is a blank.
@@ -201,6 +234,22 @@ nonisolated final class GalleryTests: XCTestCase {
         // A new stream's snapshot shows them again.
         s.reset()
         XCTAssertEqual(s.concealedPaths, ["/tmp/secret.png"])
+    }
+
+    func testDroppedFragmentsDoNotReturn() throws {
+        let rows = ["saved /tmp/demo/fo", "  lder/sub/chart.png"]
+        let bytes = Data((rows.joined(separator: "\r\n") + "\r\n").utf8)
+        let worker = PaneGallery.Worker(dir: try tempDir())
+        worker.scan(bytes, fresh: false) { _ in }
+        worker.scan(screen: rows.joined(separator: "\n"), columns: 18) { _ in }
+        let first = index(worker) { $0.seen(); return $0.index }
+        XCTAssertEqual(first.entries.map(\.path), ["/tmp/demo/folder/sub/chart.png"])
+        // A reconnect's snapshot, and the program's redraw, print the pieces again.
+        worker.scan(bytes, fresh: true) { _ in }
+        worker.scan(bytes, fresh: false) { _ in }
+        let again = index(worker) { $0.index }
+        XCTAssertEqual(again.entries.map(\.path), ["/tmp/demo/folder/sub/chart.png"])
+        XCTAssertFalse(again.unseen)
     }
 
     func testRepeatedScreenReadsAddNothing() throws {

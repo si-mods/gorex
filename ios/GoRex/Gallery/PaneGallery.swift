@@ -146,7 +146,11 @@ final class PaneGallery {
         func scan(_ bytes: Data, fresh: Bool, done: @escaping @MainActor @Sendable (GalleryIndex) -> Void) {
             Self.queue.async { [self] in
                 if fresh { scanner.reset() }
-                let found = scanner.feed(bytes)
+                // A fragment of a path the screen joined is not collected again.
+                let found = scanner.feed(bytes).filter { f in
+                    if case .path(let p) = f { return !fragments.contains(p) }
+                    return true
+                }
                 guard !found.isEmpty else { return }
                 var added = false
                 // A new stream's first bytes are a snapshot, not live output.
@@ -157,6 +161,11 @@ final class PaneGallery {
                 Task { @MainActor in done(index) }
             }
         }
+
+        /// The pieces of wrapped paths the screen joined, oldest first: the
+        /// bytes of a snapshot or a redraw show them again.
+        private var fragments: [String] = []
+        private static let fragmentLimit = 500
 
         /// The text the screen showed at the last read: the same again is
         /// not scanned.
@@ -172,6 +181,8 @@ final class PaneGallery {
                 let screen = GalleryScanner.screen(rows: rows, columns: columns)
                 // The pieces of a wrapped path the bytes found go.
                 var added = store.drop(pieces: Set(screen.pieces))
+                for p in screen.pieces where !fragments.contains(p) { fragments.append(p) }
+                if fragments.count > Self.fragmentLimit { fragments.removeFirst(fragments.count - Self.fragmentLimit) }
                 for p in screen.paths where !scanner.concealedPaths.contains(p) && store.add(.path(p), live: false) {
                     added = true
                 }

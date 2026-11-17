@@ -250,12 +250,15 @@ nonisolated struct GalleryScanner {
             var text = rows[i], end = i
             var joined = rows[i], last = paths(inLine: rows[i])
             var k = i
-            while k + 1 < rows.count, k - i < maxJoin, fills(rows[k], columns: columns) {
+            while k + 1 < rows.count, k - i < maxJoin - 1, fills(rows[k], columns: columns) {
                 let next = rows[k + 1].drop { $0 == " " }
                 guard let c = next.first, isPathCharacter(c) else { break }
                 // A path that ends at the last column, and one that starts
                 // the next row, as in a list, are two.
                 let tail = joined.split(whereSeparator: \.isWhitespace).last ?? "", head = next.prefix { !$0.isWhitespace }
+                // A row that ends in a plain word, as "to", goes on in
+                // another word: "to" and "/tmp/x.png" are not one.
+                guard startsPath(tail) else { break }
                 if !paths(in: String(tail)).isEmpty && !paths(in: String(head)).isEmpty { break }
                 joined += next
                 k += 1
@@ -272,6 +275,14 @@ nonisolated struct GalleryScanner {
             i = end + 1
         }
         return (out, pieces)
+    }
+
+    /// Whether a word looks like the start of a path: it holds a slash, or
+    /// starts with "~", ".", or a drive letter and a colon.
+    static func startsPath(_ word: Substring) -> Bool {
+        if word.contains(where: { $0 == "/" || $0 == "\\" }) || word.first == "~" || word.first == "." { return true }
+        let c = Array(word.prefix(2))
+        return c.count == 2 && c[0].isASCII && c[0].isLetter && c[1] == ":"
     }
 
     /// Whether a row's text reaches its last column, a path's character in
