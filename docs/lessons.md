@@ -187,7 +187,7 @@ Each item has a **Trigger** (what the diff shows), a **Check** (what the author 
 ### Disabled instead of removed
 - **Trigger:** a feature is turned off "for now" (`isEnabled = false`, a flag, an early return) and its code stays.
 - **Check:** an issue is linked with what must happen before it comes back or is deleted.
-- **Source:** #677 disabled the pane swipe from #665 and #667 within hours and kept the recognizer.
+- **Source:** #677 disabled the pane swipe from #665 and #667 within hours; it did this right by linking #676, which lists the open problems and the steps before re-enabling.
 
 ### Removing a feature
 - **Trigger:** the PR deletes a feature or a cleanup PR removes unused code.
