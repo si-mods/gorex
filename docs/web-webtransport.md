@@ -1,6 +1,6 @@
 # Web Client: Direct LAN & Self-Signed Connections via WebTransport
 
-Status: proposed.
+Status: partly built in #629: the host listener, the CLI QR code and the web client. The desktop Web (LAN) QR tab is not built.
 
 ## Problem
 

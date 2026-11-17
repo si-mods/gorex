@@ -1,6 +1,6 @@
 # Rex Go: the web client over Personal Hotspot
 
-Status: proposed.
+Status: Phase 1 built in #556; Phases 2 and 3 not built.
 
 ## Problem
 
@@ -239,8 +239,8 @@ progress, and reports say it fails after minutes locked. It is not used.
 ## Test plan
 
 - `ios/share`: the static files and their types; forwarding under
-  `/h/<id>`, WebSocket upgrades included, to a test gateway
-  (`internal/testrex`), with `Origin` dropped; another origin refused;
+  `/h/<id>`, WebSocket upgrades included, to a test upstream
+  (`httptest`, in `ios/share/share_test.go`), with `Origin` dropped; another origin refused;
   admission: 403 before, served after, forgotten on stop; listening
   again after the listener closes.
 - `web/`: a host address with a path, for sockets, fetches, downloads
