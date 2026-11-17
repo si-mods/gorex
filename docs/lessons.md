@@ -20,7 +20,7 @@ Mistakes that reached main, and the rule that would have stopped each one. Read 
 
 - **Do not hide flakes with retries.** Find the race and wait on state; never read async state once. #630 found its race with `-count 30`; do that before merge, not after main goes red (#630, #658).
 - **Before turning on a new gate (`-race`, a new shard), run it with `-count 10` on every platform it gates.** One clean run (#563) does not show a test is free of races.
-- **No CI job retries a failed test** (#563, #674). The root-shard retry hid `TestAdoptHostTabSplit*` and `TestPaneFollowsAnotherClientsSize` until #630, and `TestPaneReturnsToItsSize` after it. Do not add a retry back; fix the test.
+- **No CI job retries a failed test** (#563, #674). The root-shard retry hid `TestAdoptHostTabSplit*` and `TestPaneFollowsAnotherClientsSize` (fixed in #630) and `TestPaneReturnsToItsSize`. Do not add a retry back; fix the test.
 - **A test must not depend on the developer's environment.** `TestPeerListsAndMirrors` failed in Git Bash because `$SHELL` picked bash (#679). Pin the shell, env and paths a test relies on.
 
 ## Design before code
