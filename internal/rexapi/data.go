@@ -510,9 +510,10 @@ func (s *stream) run() {
 }
 
 // readOutput reads the output of the session's attach gen from rd into
-// the stream's queue, as fast as it comes: the GoRex server drops a
-// client that falls too far behind (attached.send), and a stream whose
-// connection is slow drops what it cannot send itself (feedOutput).
+// the stream's queue, as fast as it comes: the GoRex server sends a
+// client that falls too far behind its screen again, in the output
+// (attached.send), and a stream whose connection is slow drops what it
+// cannot send itself (feedOutput).
 func (s *stream) readOutput(gen int, rd io.Reader) {
 	buf := make([]byte, maxChunk)
 	for {
@@ -552,13 +553,21 @@ const resyncHistory = 256 << 10
 
 // feedOutput adds the session's output, and Rex's messages queued for a
 // safe place once the output leaves an escape sequence. Output of a
-// stream behind is dropped: the resync's snapshot shows it.
+// stream behind is dropped: the resync's snapshot shows it. A RIS in the
+// output, as the GoRex server's resync of a client behind and a terminal
+// reset send, is followed by terminal_reset, as the stream's own resync
+// sends it: the client sets again what it set on its terminal.
 func (s *stream) feedOutput(p []byte) {
 	s.fed = true
 	if s.behind {
 		return
 	}
-	s.vt.feed(p)
+	for _, n := range s.vt.feed(p) {
+		s.appendBytes(p[:n])
+		p = p[n:]
+		s.flushPending(true) // RIS ends in the ground state
+		s.appendBytes(apcMessage(s.nonce, map[string]any{"type": "terminal_reset"}))
+	}
 	s.appendBytes(p)
 	s.flushPending(false)
 	s.out.Lock()
@@ -773,9 +782,16 @@ const (
 	vtStringEscape
 )
 
-// feed reads output to track its escape sequences.
-func (p *vtParser) feed(b []byte) {
-	for _, c := range b {
+// feed reads output to track its escape sequences, and returns where
+// each RIS (ESC c) in b ends, each counted from the end of the one
+// before. CAN and SUB end any sequence, as in a terminal.
+func (p *vtParser) feed(b []byte) (resets []int) {
+	last := 0
+	for i, c := range b {
+		if c == 0x18 || c == 0x1a {
+			p.state = vtGround
+			continue
+		}
 		switch p.state {
 		case vtGround:
 			if c == 0x1b {
@@ -787,6 +803,10 @@ func (p *vtParser) feed(b []byte) {
 				p.state = vtCSI
 			case ']', 'P', 'X', '^', '_':
 				p.state = vtString
+			case 'c':
+				p.state = vtGround
+				resets = append(resets, i+1-last)
+				last = i + 1
 			default:
 				p.state = vtGround
 			}
@@ -812,6 +832,7 @@ func (p *vtParser) feed(b []byte) {
 			}
 		}
 	}
+	return resets
 }
 
 // ground tells whether more output would start something new.
@@ -939,8 +960,9 @@ func (s *stream) outputEnded() {
 		// The resync's attach replaces this one.
 	case s.behind, !exited && s.fed:
 		// The stream dropped output, and needs the newest screen; or the
-		// server dropped the attach, as it drops a client far behind
-		// (attached.send), though the stream reads all the time.
+		// server dropped the attach, as on an upgrade, or as an older
+		// one dropped a client far behind, though the stream reads all
+		// the time.
 		s.startResync()
 	case exited:
 		s.ended(code)

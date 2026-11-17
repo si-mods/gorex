@@ -16,7 +16,7 @@ import (
 )
 
 // sessionOf returns the server's session sid.
-func sessionOf(t *testing.T, s *Server, sid string) *session {
+func sessionOf(t testing.TB, s *Server, sid string) *session {
 	t.Helper()
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -188,5 +188,83 @@ func TestDeadClientDropped(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// styledSession returns a session of 300x50 whose scrollback is full of
+// rows that change color at every cell, the costliest to render as
+// escape sequences.
+func styledSession(t testing.TB) *session {
+	t.Helper()
+	s, _ := testServer(t)
+	c := pipe(s, "")
+	t.Cleanup(func() { c.Close() })
+	info, err := c.Create(CreateOptions{Command: silentCommand(), Cols: 300, Rows: 50})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { c.Kill(info.ID) })
+	ss := sessionOf(t, s, info.ID)
+	var b []byte
+	for i := 0; len(b) < 32<<20; i++ {
+		for j := range 290 {
+			b = fmt.Appendf(b, "\x1b[38;5;%dm%c", (i+j)%256, 'a'+j%26)
+		}
+		b = append(b, "\r\n"...)
+	}
+	for len(b) > 0 {
+		n := min(len(b), 64<<10)
+		ss.emit(b[:n], nil, n)
+		b = b[n:]
+	}
+	return ss
+}
+
+// TestResyncRendersAsAttach checks that the screen a resync renders off
+// the session's lock, from its binary snapshot, is the one an attach
+// with resyncHistory gets, bounded however large the scrollback.
+func TestResyncRendersAsAttach(t *testing.T) {
+	ss := styledSession(t)
+	ss.mu.Lock()
+	want := ss.snapshotLocked(Attach{History: resyncHistory})
+	bin, err := ss.vt.GhosttySnapshot()
+	title, graphics, rows := ss.vt.Title(), ss.graphics.replay(), ss.rows
+	full := len(ss.vt.Snapshot())
+	ss.mu.Unlock()
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := renderResync(bin, title, graphics, rows)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != string(want) {
+		t.Fatalf("the resync renders %d bytes, unlike the attach's %d", len(got), len(want))
+	}
+	if len(got) > resyncHistory+64<<10 || full < 4*resyncHistory {
+		t.Fatalf("resync of %d bytes from a scrollback of %d", len(got), full)
+	}
+}
+
+// BenchmarkResyncLocked is the work a resync does under the session's
+// lock, against BenchmarkSnapshotLocked, an attach's, which renders the
+// whole scrollback.
+func BenchmarkResyncLocked(b *testing.B) {
+	ss := styledSession(b)
+	ss.mu.Lock()
+	defer ss.mu.Unlock()
+	for b.Loop() {
+		ss.vt.GhosttySnapshot()
+		ss.vt.Title()
+		ss.graphics.replay()
+	}
+}
+
+func BenchmarkSnapshotLocked(b *testing.B) {
+	ss := styledSession(b)
+	ss.mu.Lock()
+	defer ss.mu.Unlock()
+	for b.Loop() {
+		ss.snapshotLocked(Attach{History: resyncHistory})
 	}
 }

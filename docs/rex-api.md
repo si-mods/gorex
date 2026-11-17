@@ -295,7 +295,9 @@ meets:
   the cursor style: on `terminal_reset`, a client sets again what it set
   on the terminal itself (the web client sets its cursor again). The
   gateway does the same when the GoRex server ends its attach while the
-  session runs. When it cannot attach again, the stream closes with
+  session runs. A RIS in the session's output, as the GoRex server sends
+  when its own client falls behind or the terminal is reset, is followed
+  by `terminal_reset` too. When it cannot attach again, the stream closes with
   `4000` if the session is gone, sends `child_exited` if the program
   ended, and else closes with `1011`. It also closes with `1011` when an
   attach ends with no output after its snapshot.

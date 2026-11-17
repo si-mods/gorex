@@ -349,22 +349,82 @@ func (a *attached) next() ([]byte, bool) {
 // resync returns the screen again for a client fallen behind: what ends a
 // cut escape sequence and resets its terminal, then the session's screen
 // as an attach's snapshot has it, with resyncHistory of scrollback. It
-// takes the snapshot under s.mu, as the output is fed and queued, so that
-// it holds all the output before and none of what follows, which queues
+// takes the state under s.mu, as the output is fed and queued, so that it
+// holds all the output before and none of what follows, which queues
 // after it. nil means there is none to send.
+//
+// Under s.mu it takes only Ghostty's binary snapshot, the title and the
+// graphics: rendering the whole scrollback as escape sequences, which
+// the formatter cannot bound, costs some times more, and is done after,
+// from the binary snapshot, holding up no output (renderResync). Should
+// that fail, the snapshot is taken again under s.mu, as an attach's.
 func (a *attached) resync() []byte {
 	s := a.s
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	s.waitBatchLocked()
 	a.mu.Lock()
-	defer a.mu.Unlock()
 	if !a.behind || a.closed || a.dead {
+		a.mu.Unlock()
+		s.mu.Unlock()
 		return nil
 	}
 	a.pending, a.queued, a.behind, a.resynced = nil, 0, false, time.Now()
+	a.mu.Unlock()
+	var bin []byte
+	if !s.exited {
+		bin, _ = s.vt.GhosttySnapshot()
+	}
+	if bin == nil {
+		snap := s.snapshotLocked(Attach{History: resyncHistory})
+		s.mu.Unlock()
+		return append([]byte(resyncReset), snap...)
+	}
+	title, graphics, rows := s.vt.Title(), s.graphics.replay(), s.rows
+	s.mu.Unlock()
+	if snap, err := renderResync(bin, title, graphics, rows); err == nil {
+		return append([]byte(resyncReset), snap...)
+	}
+	// Drop what queued meanwhile, and take the snapshot as an attach does.
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.closed || a.dead {
+		return nil
+	}
+	a.pending, a.queued, a.behind = nil, 0, false
 	return append([]byte(resyncReset), s.snapshotLocked(Attach{History: resyncHistory})...)
 }
+
+// renderResync returns what snapshotLocked returns for an attach with
+// resyncHistory, from bin, the session's Ghostty binary snapshot, and its
+// title, graphics and rows: bin restores in a terminal no program runs,
+// whose escape sequences are the session's.
+func renderResync(bin []byte, title string, graphics []byte, rows int) ([]byte, error) {
+	pr, pw := io.Pipe()
+	defer pw.Close()
+	term, err := terminal.New(terminal.Options{Conn: quietConn{pr}, Scrollback: scrollback})
+	if err != nil {
+		return nil, err
+	}
+	defer term.Close()
+	if err := term.RestoreGhosttySnapshot(bin); err != nil {
+		return nil, err
+	}
+	snap, _ := trimSnapshot(append(term.Snapshot(), graphics...), rows, resyncHistory)
+	if title != "" {
+		snap = append([]byte("\x1b]2;"+title+"\x07"), snap...)
+	}
+	return snap, nil
+}
+
+// quietConn connects a terminal no program runs: what it answers goes
+// nowhere.
+type quietConn struct{ r *io.PipeReader }
+
+func (c quietConn) Read(p []byte) (int, error)  { return c.r.Read(p) }
+func (c quietConn) Write(p []byte) (int, error) { return len(p), nil }
+func (c quietConn) Close() error                { return c.r.Close() }
 
 func (a *attached) write(p []byte) error {
 	for len(p) > 0 {
