@@ -120,7 +120,7 @@ nonisolated final class FileLinkTests: XCTestCase {
     func testCleanedFileURL() {
         XCTAssertEqual(FileLink.target("file:///home/demo/.ssh/id_ed25519%2Fx%2F..", matched: false),
                        .file("/home/demo/.ssh/id_ed25519", hidden: true))
-        XCTAssertEqual(FileLink.target("file:///home/demo/.ssh/id_ed25519%2Fx%2F..", matched: true),
+        XCTAssertEqual(FileLink.target("file:///home/demo/Pictures/chart.png%2F%2E%2F..%2F..%2F.ssh%2Fid_ed25519", matched: true),
                        .file("/home/demo/.ssh/id_ed25519", hidden: true))
         XCTAssertEqual(FileLink.target("file:///home/demo/Pictures/chart.png%2F%2E%2F..%2F..%2F.ssh%2Fid_ed25519", matched: false),
                        .file("/home/demo/.ssh/id_ed25519", hidden: true))
