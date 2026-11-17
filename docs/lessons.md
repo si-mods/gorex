@@ -30,7 +30,7 @@ Mistakes that reached main, and the rule that would have stopped each one. Read 
 
 ## Security
 
-- **PR code must not run on a self-hosted runner that also builds releases or holds signing keys.** A fork PR can rewrite the workflow, so an `if:` on the head repo is not a boundary. Keep PR and release machines and caches apart.
+- **Do not approve a fork PR's workflow run if the PR changes anything under `.github/`.** `test-windows` in `ci.yml` runs PR code on a self-hosted runner that also builds releases and keeps its Go caches. A fork PR can rewrite the workflow, so the `if:` on the head repo is not a boundary; the approval for outside contributors is the only one. Read the whole diff of a fork PR before approving its run.
 - **Pin a checksum for every downloaded tool before running it.** Reject `curl | tar` of a toolchain.
 - **A new network listener needs a reviewed auth model before merge.** An IP-range allow list with no token is not auth on a shared Wi-Fi.
 - **Project-level agent config (`.omp/`, `.claude/`, `.agents/`) must not point at third-party endpoints** without a note saying why.
