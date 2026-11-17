@@ -223,6 +223,8 @@ func downloadError(err error) *apiError {
 		return errorf("is_folder", 409, "%s", msg)
 	case rex.NotRegular(err):
 		return errorf("not_regular", 409, "%s", msg)
+	case rex.LinksOutside(err):
+		return errorf("denied", 403, "%s", msg)
 	case endsWithAny(msg, noFileErrors):
 		return errorf("no_file", 404, "%s", msg)
 	case endsWithAny(msg, deniedErrors):
