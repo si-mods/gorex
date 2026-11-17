@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.35.0
+
+### Features
+
+* **linux:** round the windows' corners ([#576](https://github.com/si-mods/gorex/pull/576))
+
+### Bug Fixes
+
+* **rex:** resync a lagging client in band instead of dropping it ([#673](https://github.com/si-mods/gorex/pull/673))
+* **ios:** make the two-finger pane swipe follow the fingers ([#665](https://github.com/si-mods/gorex/pull/665))
+* **ios:** let shared space references correct discovered memberships ([#666](https://github.com/si-mods/gorex/pull/666))
+* **linux:** keep the pane bar under window buttons on the right with a left sidebar ([#575](https://github.com/si-mods/gorex/pull/575))
+
+### Performance Improvements
+
+* **ios:** keep a window's panes connected so a pane switch is instant ([#667](https://github.com/si-mods/gorex/pull/667))
+
 ## 0.34.0
 
 ### Bug Fixes
