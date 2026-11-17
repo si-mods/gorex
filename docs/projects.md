@@ -112,8 +112,10 @@ home host as offline.
   it connects once. When no host is known to be the home's machine, the
   hosts of unknown machine that can be reached connect, and the tab opens
   on the one that turns out to be the home. A tailnet host connected only
-  to learn its machine is not opened: it does not connect again as the
-  app starts.
+  to learn its machine is not opened: it shows none of its sessions, its
+  connection stops once its machine is known and it is not the home, and
+  it does not connect again as the app starts. A tab that opens on it,
+  the project's or the user's, opens it, as opening it by hand does.
   With none to try, New Tab says the home host is not connected; once
   every host's machine is known and none is the home, it says the host
   is not one of the user's hosts. Of two hosts of one machine, as its

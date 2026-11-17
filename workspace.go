@@ -1228,7 +1228,7 @@ func (a *App) show(w *Workspace) {
 	if p := a.projectOpen; p != nil && p.space != w.ID {
 		// A New Tab that waits for its project's host is the shown
 		// project's: another one shown, it ends.
-		a.projectOpen = nil
+		a.endWait()
 		log.Printf("no new tab: the window left project %s while its home host connected", p.space)
 	}
 	a.ws, w.app = w, a

@@ -849,6 +849,9 @@ func (a *App) newPaneIn(h *hostConn, o rex.CreateOptions, place func(*Pane) bool
 			if a.quitting || !slices.Contains(a.hosts, h) {
 				return
 			}
+			// A tab on a host connected only to learn its machine opens
+			// it: it reaches the host after a restart too.
+			a.keepProbed(h)
 			p := &Pane{ID: id, SID: info.ID, info: info, startDir: dir, host: h}
 			if p.info.Dir == "" {
 				p.info.Dir = dir
@@ -1590,7 +1593,7 @@ func (a *App) waitProject(p *projectOpen) {
 			if a.projectOpen != p {
 				return
 			}
-			a.projectOpen = nil
+			a.endWait()
 			name := p.space
 			if w := a.ws; w != nil && w.ID == p.space {
 				name = w.Name
@@ -1599,6 +1602,19 @@ func (a *App) waitProject(p *projectOpen) {
 			a.err, a.errMsg = fmt.Sprintf("The home host of %s did not connect; no tab opened", name), nil
 		})
 	})
+}
+
+// endWait ends the window's New Tab that waits for a project's home host,
+// and, once no window waits, the connections made to learn the machines
+// of hosts (endProbe).
+func (a *App) endWait() {
+	a.projectOpen = nil
+	if slices.ContainsFunc(a.peers(), func(o *App) bool { return o.projectOpen != nil }) {
+		return
+	}
+	for _, h := range slices.Clone(a.hosts) {
+		a.endProbe(h)
+	}
 }
 
 // mayBeHome tells whether host h may turn out to be a project's home
@@ -1659,11 +1675,16 @@ func (a *App) awaitProjectHost(w *Workspace) *Tab {
 func (a *App) takeProjectOpen(h *hostConn) {
 	p := a.projectOpen
 	if p == nil {
+		if h.probing && !slices.ContainsFunc(a.peers(), func(o *App) bool { return o.projectOpen != nil }) {
+			a.endProbe(h)
+		}
 		return
 	}
 	if p.host != h && (p.machine == "" || h.Machine != p.machine) {
+		// Not the home: a host connected to learn so goes again.
+		a.endProbe(h)
 		if p.host == nil && !slices.ContainsFunc(a.hosts, mayBeHome) {
-			a.projectOpen = nil
+			a.endWait()
 			log.Printf("no new tab: no host is the home machine %s of project %s", p.machine, p.space)
 			a.err, a.errMsg = "The project's home host is not one of your hosts; no tab opened", nil
 		}
@@ -1671,6 +1692,7 @@ func (a *App) takeProjectOpen(h *hostConn) {
 	}
 	a.projectOpen = nil
 	if w := a.ws; w == nil || w.ID != p.space || w.Dir == "" || a.projectHost(w) != h {
+		a.endProbe(h)
 		log.Printf("no new tab: %s connected, but it is not the home of project %s now", h.label(), p.space)
 		a.err, a.errMsg = fmt.Sprintf("%s is connected, but the project's home changed meanwhile; no tab opened", h.label()), nil
 		return
