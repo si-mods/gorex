@@ -1,6 +1,6 @@
 # Rex Go: the web client over Personal Hotspot
 
-Status: built in #556.
+Status: Phase 1 built in #556; Phases 2 and 3 not built.
 
 ## Problem
 
