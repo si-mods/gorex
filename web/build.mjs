@@ -49,6 +49,15 @@ import { generateOrFail } from "./i18n.mjs";
 // ios/scripts/build-ghostty-vt.sh pins it.
 const COMMIT = "108cacb17ed8990840cd14abfce43d8ed8503ca1";
 const ZIG_VERSION = "0.17.0";
+// SHA-256 of the Zig archives; update with ZIG_VERSION (ziglang.org/download/index.json, "shasum").
+const ZIG_SHA256 = {
+  "x86_64-windows": "b5663f69581dcf391293fbf16c06cb80d81d806545ce618b4d0bab7f0eb8c428",
+  "aarch64-windows": "0a59d91fa1cb40cf068e9b0954434ce973500c7a2ea749f1e01af62cdab52d26",
+  "x86_64-linux": "1cbe9df9f27e6b78d14ccbca43b6703a404ef79ef1c463de901d7f088d4e2026",
+  "aarch64-linux": "9e8d11661d4ae3bd57702a3832781e23ad151dde5798e16a5ccd503f65234ff8",
+  "x86_64-macos": "4f9a1c5269aa17ebda5e6d3c2b89d6cbf36f7d2b22a0306e9ab98f25f95529c6",
+  "aarch64-macos": "b607e9b9234790a008116ae5bdb71c6243b84b9fb42a53a9e70fde41c06c536a",
+};
 
 const web = dirname(fileURLToPath(import.meta.url));
 const root = dirname(web);
@@ -76,9 +85,13 @@ async function zig() {
   console.log(`fetching ${url}`);
   const res = await fetch(url);
   if (!res.ok) throw new Error(`${url}: ${res.status}`);
+  const bytes = Buffer.from(await res.arrayBuffer());
+  const want = ZIG_SHA256[`${arch}-${os}`];
+  const got = createHash("sha256").update(bytes).digest("hex");
+  if (got !== want) throw new Error(`${url}: SHA-256 is ${got}, expected ${want ?? "a pinned hash"}; set ZIG to use your own Zig`);
   mkdirSync(dir, { recursive: true });
   const archive = join(cache, `zig-${ZIG_VERSION}.${ext}`);
-  writeFileSync(archive, Buffer.from(await res.arrayBuffer()));
+  writeFileSync(archive, bytes);
   // Windows' own tar (bsdtar) reads zip files; Git Bash's GNU tar does not.
   const tar = windows ? join(process.env.SystemRoot || "C:\\Windows", "System32", "tar.exe") : "tar";
   run(tar, ["-xf", archive, "--strip-components=1", "-C", dir]);
