@@ -17,7 +17,7 @@ extension TerminalView {
         guard OpenedFiles.opening.insert(key).inserted else { return }
         let download = Task {
             let r = try await host.download(path, block: block, session: sid, maxBytes: OpenedFiles.maxBytes)
-            return try OpenedFiles.save(r, path: path)
+            return try await OpenedFiles.save(r, path: path)
         }
         let veil = OpenedFiles.Veil {
             download.cancel()
@@ -25,7 +25,9 @@ extension TerminalView {
         }
         let waits = Task {
             try await Task.sleep(for: .milliseconds(300))
-            guard let v = shown?.view else { return }
+            // The result may have come in the same moment: a veil added
+            // after it was taken off would stay.
+            guard !Task.isCancelled, let v = shown?.view else { return }
             veil.frame = v.bounds
             v.addSubview(veil)
         }
@@ -50,7 +52,12 @@ extension TerminalView {
     /// Shows a downloaded file over the terminal; the keyboard goes while
     /// it is up and comes back as it closes, if it was up.
     private func preview(_ url: URL) {
-        let typing = isFirstResponder
+        // With no view controller to show it, the file would stay.
+        guard shown != nil else {
+            try? FileManager.default.removeItem(at: url.deletingLastPathComponent())
+            return
+        }
+        let typing = typingBeforeLink
         resignFirstResponder()
         present(OpenedFiles.Preview(url) { [weak self] in if typing { self?.becomeFirstResponder() } })
     }
@@ -67,18 +74,30 @@ enum OpenedFiles {
     /// memory (web/src/files.ts maxBlobBytes): the download is read whole.
     static let maxBytes = 256 << 20
 
-    static let folder = FileManager.default.temporaryDirectory.appending(path: "Opened")
+    nonisolated static let folder = FileManager.default.temporaryDirectory.appending(path: "Opened")
 
     static func clean() {
         try? FileManager.default.removeItem(at: folder)
     }
 
-    static func save(_ r: DownloadResult, path: String) throws -> URL {
+    /// Writes the file off the main thread, as up to 256 MiB takes a while.
+    static func save(_ r: DownloadResult, path: String) async throws -> URL {
+        try Task.checkCancellation()
+        let folder = folder
+        return try await Task.detached { try write(r, path: path, in: folder) }.value
+    }
+
+    nonisolated private static func write(_ r: DownloadResult, path: String, in folder: URL) throws -> URL {
         guard let data = r.data else { throw RexError(code: "protocol", message: "the download sent no file") }
         let dir = folder.appending(path: UUID().uuidString)
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         let url = dir.appending(path: FileLink.fileName(r.name, path: path))
-        try data.write(to: url)
+        do {
+            try data.write(to: url)
+        } catch {
+            try? FileManager.default.removeItem(at: dir)
+            throw error
+        }
         return url
     }
 

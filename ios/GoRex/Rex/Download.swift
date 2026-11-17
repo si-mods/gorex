@@ -41,7 +41,16 @@ enum Download {
         }
         let stream = try await BytesStream.open(ticket: ticket, to: base, auth: auth, urlSession: urlSession)
         defer { stream.close() }
-        let data = try await stream.readAll()
+        // A cancelled task closes the stream: a pending read of the socket
+        // does not end by itself, and its closing reads as the end of the
+        // file, so the task checks again before it keeps the bytes.
+        let data = try await withTaskCancellationHandler {
+            try Task.checkCancellation()
+            return try await stream.readAll()
+        } onCancel: {
+            Task { @MainActor in stream.close() }
+        }
+        try Task.checkCancellation()
         return DownloadResult(name: name, version: version, data: data, notModified: false)
     }
 }

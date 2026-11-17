@@ -259,8 +259,7 @@ adds its caller.
   outside the progress cancels it.
 - An error shows as an alert with the web client's words: `No such file`,
   `A folder is not downloaded`, `Not a regular file`, `Permission
-  denied`, `Too large`; on an older host, `Server does not accept
-  downloads`. The words go in `Localizable.xcstrings` in every locale the
+  denied`, `Too large`. The words go in `Localizable.xcstrings` in every locale the
   app has.
 
 Differences from the web client:
@@ -269,7 +268,8 @@ Differences from the web client:
   check of the bytes against the image type, as the bytes never reach a
   web page's origin.
 - The file is held in memory once (`Download.fetch` returns `Data`), so
-  the server's file limit (`maxDownloadFileBytes`) bounds it; the web
+  the app's limit of 256 MiB (`maxBytes`) bounds it, below the server's
+  `maxDownloadFileBytes`; the web
   client streams a large file to the browser's download instead.
 
 As built on iOS:
@@ -279,15 +279,19 @@ As built on iOS:
   text as printed. `FileLink` then applies the web client's rules to it
   (a place in the file, an option's `--name=`, closing punctuation and
   brackets go; a folder, a backslash and a `:` are no file), so a bare
-  name such as `notes.md`, a quoted path with a space and a `(12,3)`
-  place are no link. A path that starts with `$` is no link either: the
+  name such as `notes.md` and a quoted path with a space are no link. A
+  `(12,3)` place goes with the others, and prose in full-width punctuation
+  after a path (`/tmp/x.png，请查看`) is cut off, as the web client does. A path that starts with `$` is no link either: the
   host does not expand variables.
 - On an older host a tap on a path does nothing, so `Server does not
   accept downloads` never shows; the server's `not_supported` shows the
   web client's `The host does not send files`.
 - A file is held in memory once, up to the web client's 256 MiB
   (`maxBlobBytes`); a larger one answers `Too large` before its bytes
-  are read.
+  are read. The server keeps the ticket of such a file until it lapses
+  (60 s), and it counts toward the 4 open tickets of the connection.
+- Cancelling a download (a tap beside the progress) closes its data
+  stream; the bytes read so far are dropped.
 - Each file is deleted as QuickLook closes, as well as when the app
   starts.
 - QuickLook on iOS 26 shows an image without its bar; a tap shows its

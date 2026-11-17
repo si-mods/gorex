@@ -28,12 +28,20 @@ nonisolated final class FileLinkTests: XCTestCase {
         }
     }
 
+    /// Prose in full-width punctuation follows a path without a space.
+    func testProseAfterPath() {
+        XCTAssertEqual(file("/tmp/x.png，请查看"), "/tmp/x.png")
+        XCTAssertEqual(file("./out/b.png。结果"), "./out/b.png")
+    }
+
     /// A place in the file, and the option a path is the value of.
     func testPlaceAndOption() {
         XCTAssertEqual(file("src/main.go:12:3"), "src/main.go")
         XCTAssertEqual(file("src/main.go:12:3:"), "src/main.go")
         XCTAssertEqual(file("src/main.go:12"), "src/main.go")
         XCTAssertEqual(file("ios/a.swift#L12C3"), "ios/a.swift")
+        XCTAssertEqual(file("dir/a.cs(12,3)"), "dir/a.cs")
+        XCTAssertEqual(file("dir/a.cs(12)"), "dir/a.cs")
         XCTAssertEqual(file("--out=./a.png"), "./a.png")
         XCTAssertEqual(file("./a=b/c.png"), "./a=b/c.png")
     }

@@ -17,15 +17,19 @@ nonisolated enum FileLink {
     /// OSC 8 link, which only a file:// URL makes a file's.
     static func target(_ text: String, matched: Bool) -> Target? {
         guard matched else { return fileURLPath(text).map(Target.file) }
-        let word = trimmed(String(text.prefix { !$0.isWhitespace }))
+        // A word ends at a space or at the full-width punctuation of prose
+        // (web/src/links.ts proseDelimiters), which has no space round it.
+        let word = trimmed(String(text.prefix { !$0.isWhitespace && !proseDelimiters.contains($0) }))
         if word.lowercased().hasPrefix("file:") { return fileURLPath(word).map(Target.file) }
         guard !word.contains("://"), let path = path(word) else { return nil }
         if webPath(path), let url = URL(string: "https://" + path) { return .web(url) }
         return .file(path)
     }
 
+    private static let proseDelimiters = Set("，。；：！？、（）【】《》「」『』")
+
     /// The path a matched word prints, without the place in the file
-    /// (main.go:12:3, a.swift#L12C3) and the name of the option or
+    /// (main.go:12:3, main.cs(12,3), a.swift#L12C3) and the name of the option or
     /// variable it is the value of (--out=a/b.png); nil for a folder's (a
     /// trailing /), one written with backslashes, a variable's ($HOME/x,
     /// which the host does not expand) and what holds no letter or digit.
@@ -34,7 +38,7 @@ nonisolated enum FileLink {
     static func path(_ word: String) -> String? {
         var s = Substring(word)
         if let eq = s.firstIndex(of: "="), !s[..<eq].contains("/") { s = s[s.index(after: eq)...] }
-        var p = String(s).replacing(#/(?::\d+(?::\d+)?|#L\d+(?:C\d+)?)$/#, with: "")
+        var p = String(s).replacing(#/(?::\d+(?::\d+)?|\(\d+(?:,\d+)?\)|#L\d+(?:C\d+)?)$/#, with: "")
         p = trimmed(p)
         guard !p.isEmpty, !p.hasSuffix("/"), !p.hasPrefix("$"),
               !p.contains(where: { $0 == "\\" || $0 == ":" || $0 == "\0" }),
