@@ -41,11 +41,8 @@ func drives() []string {
 func volumePath(path string) (string, bool) {
 	// A device or pipe path is no directory, and reading it may wait on
 	// it: refused, as openToSend refuses it to file.get.
-	norm := strings.ToLower(strings.ReplaceAll(path, "/", `\`))
-	for _, p := range []string{`\\.\`, `\\?\pipe\`, `\\?\globalroot`} {
-		if strings.HasPrefix(norm, p) {
-			return path, false
-		}
+	if isDevicePath(path) {
+		return path, false
 	}
 	vol := filepath.VolumeName(path)
 	switch {
