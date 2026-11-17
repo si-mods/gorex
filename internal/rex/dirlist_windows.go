@@ -41,11 +41,11 @@ func drives() []string {
 func volumePath(path string) (string, bool) {
 	// A device or pipe path is no directory, and reading it may wait on
 	// it: refused, as openToSend refuses it to file.get.
-	norm := strings.ToLower(strings.ReplaceAll(path, "/", `\`))
-	for _, p := range []string{`\\.\`, `\\?\pipe\`, `\\?\globalroot`} {
-		if strings.HasPrefix(norm, p) {
-			return path, false
-		}
+	// A rooted path (and every UNC and device form is one) must be a plain
+	// drive or share path; a relative one is joined under home, a drive
+	// or a share, later.
+	if strings.HasPrefix(strings.ReplaceAll(path, "/", `\`), `\`) && !plainPath(path) {
+		return path, false
 	}
 	vol := filepath.VolumeName(path)
 	switch {
