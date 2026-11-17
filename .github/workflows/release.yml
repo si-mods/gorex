@@ -139,8 +139,9 @@ jobs:
       - name: gh and jq
         run: |
           command -v gh >/dev/null && command -v jq >/dev/null && exit 0
-          sudo apt-get update -q
-          sudo apt-get install -y -q gh jq
+          sudo=; [ "$(id -u)" = 0 ] || sudo="sudo -n"
+          $sudo apt-get update -q
+          $sudo apt-get install -y -q gh jq
       - name: write SHA256SUMS
         env:
           GH_TOKEN: ${{ github.token }}
