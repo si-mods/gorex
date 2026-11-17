@@ -444,3 +444,12 @@ func TestGuessType(t *testing.T) {
 		}
 	}
 }
+
+// TestDownloadErrorLinksOutside: a get refused for a symlink that leads
+// out of its folder (#730) is denied, with the server's words.
+func TestDownloadErrorLinksOutside(t *testing.T) {
+	e := downloadError(errors.New("rex: /repo/chart.png links outside its folder"))
+	if e.Code != "denied" || e.Status != 403 || e.Message != "/repo/chart.png links outside its folder" {
+		t.Errorf("downloadError: %+v", e)
+	}
+}

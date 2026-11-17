@@ -134,6 +134,7 @@ server can name exactly, as it runs on the same machine:
 | `is not a regular file` | `not_regular` |
 | `syscall.ENOENT`'s text | `no_file` |
 | `syscall.EACCES`'s, `ERROR_ACCESS_DENIED`'s text | `denied` |
+| `links outside its folder` (`rex.LinksOutside`, #730) | `denied` |
 | past `maxDownloadFileBytes` | `too_large` |
 | no `CapabilityFileTransfer` | `unsupported` |
 | anything else | `internal`, with the text |

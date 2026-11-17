@@ -489,7 +489,9 @@ and answers a ticket:
   when its control connection closes, which closes its `file.get`. A
   control connection holds at most 4.
 - Errors: `not_found` (no block, or its session ended), `is_folder`,
-  `not_regular` (a FIFO, a device, a socket), `no_file`, `denied`,
+  `not_regular` (a FIFO, a device, a socket), `no_file`, `denied` (a
+  file this user may not read, or a symlink on the path that leads out
+  of its folder),
   `too_large` (over 1 GiB), `not_supported` (the server sends no files),
   `conflict` (4 tickets open already), `bad_request`, else `internal`
   with the server's text. Each refusal is logged with its code.
