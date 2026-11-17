@@ -79,6 +79,8 @@ final class TerminalView: UIView, TerminalOutput {
     /// Opens a new window in the session, and closes this one, for ⌘T and ⌘W.
     var newTab: (() -> Void)?
     var closeTab: (() -> Void)?
+    /// Splits the pane open, for ⌘D, as the desktop's Split Right.
+    var newSplit: (() -> Void)?
 
     /// The scroll view whose physics the drag has, and where it last was as
     /// the wheel.
