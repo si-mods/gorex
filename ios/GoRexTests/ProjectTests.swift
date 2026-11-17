@@ -188,6 +188,48 @@ nonisolated final class ProjectTests: XCTestCase {
         XCTAssertEqual(store.space(id: s.id)?.dir, "")
     }
 
+    /// A desktop's Change Folder and Remove Folder made while the app was
+    /// closed are taken at the next launch, not sent back over them.
+    @MainActor func testDesktopChangeWhileClosedIsAdopted() {
+        let url = tempURL()
+        defer {
+            try? FileManager.default.removeItem(at: url)
+            try? FileManager.default.removeItem(at: SpaceStore.reportedURL(for: url))
+        }
+        let first = SpaceStore(fileURL: url)
+        first.sync(from: [host("m-office", project: .init(home_machine: "m-office", dir: "/srv/old"))])
+        let id = first.orderedSpaces.first?.id ?? ""
+        XCTAssertEqual(first.space(id: id)?.folder, "/srv/old")
+
+        // The app relaunches; the desktop changed the folder meanwhile.
+        let second = SpaceStore(fileURL: url)
+        second.sync(from: [host("m-office", project: .init(home_machine: "m-office", dir: "/srv/new"))])
+        XCTAssertEqual(second.space(id: id)?.folder, "/srv/new")
+
+        // Again, and the desktop removed the folder meanwhile.
+        let third = SpaceStore(fileURL: url)
+        third.sync(from: [host("m-office", project: nil)])
+        XCTAssertEqual(third.space(id: id)?.dir, "")
+    }
+
+    /// A home set on the phone that the desktop has not caught up with
+    /// stays after a relaunch too.
+    @MainActor func testLocalHomeStaysAfterRelaunch() {
+        let url = tempURL()
+        defer {
+            try? FileManager.default.removeItem(at: url)
+            try? FileManager.default.removeItem(at: SpaceStore.reportedURL(for: url))
+        }
+        let old = SessionView.Project(home_machine: "m-office", dir: "/srv/old")
+        let first = SpaceStore(fileURL: url)
+        first.sync(from: [host("m-office", project: old)])
+        let id = first.orderedSpaces.first?.id ?? ""
+        first.setHome(id, machine: "m-office", dir: "/srv/phone")
+        let second = SpaceStore(fileURL: url)
+        second.sync(from: [host("m-office", project: old)])
+        XCTAssertEqual(second.space(id: id)?.folder, "/srv/phone")
+    }
+
     // MARK: New Window
 
     @MainActor private func candidate(_ name: String, machine: String, online: Bool = true, sessions: [Host.Session] = []) -> ProjectWindow.Candidate {
@@ -248,6 +290,30 @@ nonisolated final class ProjectTests: XCTestCase {
         let loose = Host.Session(id: SpaceStore.desktopTerminalsSessionID, label: "windflow", view: nil, project: nil)
         let office = candidate("office", machine: "m-office", sessions: [loose])
         XCTAssertEqual(ProjectWindow.plan(project(), hosts: [office]), .session(host: office.id, label: "windflow", cwd: "/srv/windflow"))
+    }
+
+    /// A cwd the server would leave for home when it is gone is checked
+    /// first: a folder not there, or not readable, fails as folder_missing.
+    @MainActor func testEnsureFolder() async throws {
+        try await ProjectWindow.ensureFolder("/srv/w") { Host.Folders(path: $0, parent: "/srv", home: "/home/demo", dirs: []) }
+        for code in ["not_found", "denied"] {
+            do {
+                try await ProjectWindow.ensureFolder("/srv/gone") {
+                    Host.Folders(path: $0, parent: "/srv", home: "/home/demo", dirs: [], code: code)
+                }
+                XCTFail("a \(code) folder passed")
+            } catch {
+                XCTAssertTrue(ProjectWindow.folderMissing(error), "\(error)")
+            }
+        }
+        // Demo Mode's tree: a folder gone fails, one there passes.
+        try await ProjectWindow.ensureFolder("~/code/windflow") { Demo.folders($0) }
+        do {
+            try await ProjectWindow.ensureFolder("~/code/gone") { Demo.folders($0) }
+            XCTFail("a gone demo folder passed")
+        } catch {
+            XCTAssertTrue(ProjectWindow.folderMissing(error))
+        }
     }
 
     @MainActor func testFolderMissing() {

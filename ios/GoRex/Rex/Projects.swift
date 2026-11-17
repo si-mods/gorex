@@ -55,6 +55,16 @@ enum ProjectWindow {
         return e.code == "conflict" && e.message.contains("folder_missing")
     }
 
+    /// Fails as the server's folder_missing (conflict) when dir is not a
+    /// folder the host can read, as gorex.dir.list answers it: the server
+    /// would start a shell given a cwd that is gone at home, which a
+    /// project's window must not.
+    static func ensureFolder(_ dir: String, list: (String) async throws -> Host.Folders) async throws {
+        if let code = try await list(dir).code {
+            throw RexError(code: "conflict", message: "folder_missing: \(dir) (\(code))")
+        }
+    }
+
     /// A folder as the strip shows it: the home directory as ~.
     static func short(_ dir: String) -> String {
         for prefix in ["/Users/", "/home/"] where dir.hasPrefix(prefix) {

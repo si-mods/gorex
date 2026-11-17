@@ -182,8 +182,11 @@ final class SpaceStore {
     }
     /// The home each host last reported for each space, by machine and
     /// space ID ("machine|dir", "|" for none), to tell a home a desktop
-    /// changed from one it has not caught up with yet.
+    /// changed from one it has not caught up with yet. Kept on this device
+    /// beside the manifest, not in iCloud, so that a desktop's change made
+    /// while the app was closed is taken at the next launch.
     @ObservationIgnored private var reportedHomes: [String: String] = [:]
+    @ObservationIgnored private let reportedURL: URL
     @ObservationIgnored private let fileURL: URL
     @ObservationIgnored private let kvs: SpaceKeyValueStore?
     @ObservationIgnored nonisolated(unsafe) private var cloudObserver: NSObjectProtocol?
@@ -191,6 +194,12 @@ final class SpaceStore {
     init(fileURL: URL? = nil, kvs: SpaceKeyValueStore? = nil, observeCloud: Bool = false) {
         let url = fileURL ?? Self.defaultFileURL()
         self.fileURL = url
+        let reportedURL = Self.reportedURL(for: url)
+        self.reportedURL = reportedURL
+        if let data = try? Data(contentsOf: reportedURL),
+           let decoded = try? JSONDecoder().decode([String: String].self, from: data) {
+            self.reportedHomes = decoded
+        }
         self.kvs = kvs
         let defaults = UserDefaults.standard
         self.iCloudSyncEnabled = defaults.object(forKey: Self.iCloudSyncKey) as? Bool ?? true
@@ -678,6 +687,7 @@ final class SpaceStore {
         let reported = project.map { "\($0.home_machine)|\($0.dir)" } ?? "|"
         let key = "\(machine)|\(spaceID)"
         let before = reportedHomes.updateValue(reported, forKey: key)
+        if before != reported { saveReported() }
         let s = manifest.spaces[i]
         let current = s.dir.map { $0.isEmpty ? "|" : "\(s.home_machine ?? "")|\($0)" }
         if current == reported { return }
@@ -705,6 +715,17 @@ final class SpaceStore {
         let before = manifest.tombstones.count
         manifest.tombstones.removeAll { $0.deleted_at < cutoff }
         if manifest.tombstones.count != before { changed = true }
+    }
+
+    /// Where the homes the hosts reported are kept: beside the manifest.
+    static func reportedURL(for manifest: URL) -> URL {
+        manifest.deletingPathExtension().appendingPathExtension("reported.json")
+    }
+
+    private func saveReported() {
+        guard let data = try? JSONEncoder().encode(reportedHomes) else { return }
+        try? FileManager.default.createDirectory(at: reportedURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try? data.write(to: reportedURL, options: .atomic)
     }
 
     private func save(pushKVS: Bool = true) {

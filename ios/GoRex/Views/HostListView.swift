@@ -445,19 +445,31 @@ struct HostListView: View {
         case .window(let id, let session, let cwd):
             guard let host = store.host(id) else { return }
             openProject(s, on: host) {
-                try await host.newWindow(in: session, cwd: cwd).map { (session, $0) }
+                // A cwd the server would leave for home when it is gone:
+                // checked first, as the server checks a folder it keeps.
+                if let cwd { try await ensureFolder(cwd, on: host) }
+                return try await host.newWindow(in: session, cwd: cwd).map { (session, $0) }
             }
         case .session(let id, let label, let cwd):
             guard let host = store.host(id) else { return }
             let machine = homeMachine(of: host)
             openProject(s, on: host) {
+                try await ensureFolder(cwd, on: host)
                 guard let (session, block) = try await host.newSession(label: label, cwd: cwd) else { return nil }
                 if host.supportsProjects, let machine {
-                    try? await host.setHome(session: session, machine: machine, dir: cwd)
+                    try await host.setHome(session: session, machine: machine, dir: cwd)
                 }
                 return (session, block)
             }
         }
+    }
+
+    /// Fails as the server's folder_missing when the host lists folders and
+    /// dir is not one it can read; a host of before gorex.dir_list is not
+    /// asked.
+    private func ensureFolder(_ dir: String, on host: Host) async throws {
+        guard host.listsFolders else { return }
+        try await ProjectWindow.ensureFolder(dir) { try await host.folders($0) }
     }
 
     /// Runs what opens a project's window, puts the window in the project
@@ -490,6 +502,7 @@ struct HostListView: View {
         withAnimation(.snappy) { chosen = s.id }
         let machine = homeMachine(of: host)
         openProject(s, on: host) {
+            try await ensureFolder(dir, on: host)
             let existing = host.sessions.first {
                 $0.id != SpaceStore.desktopTerminalsSessionID
                     && $0.label.trimmingCharacters(in: .whitespaces).caseInsensitiveCompare(s.name) == .orderedSame
