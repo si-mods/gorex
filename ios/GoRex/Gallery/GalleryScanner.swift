@@ -343,7 +343,7 @@ nonisolated struct GalleryScanner {
     static func quotedPath(_ inner: String) -> String? {
         if let p = windowsPath(inner), p == inner { return p }
         guard inner.prefix(while: { !$0.isWhitespace }).contains("/"),
-              let p = FileLink.path(inner), p == inner, isImage(p), !isNetworkPath(p) else { return nil }
+              let p = FileLink.path(inner), p == inner, !FileLink.climbs(p), isImage(p), !isNetworkPath(p) else { return nil }
         return p
     }
 
@@ -374,16 +374,20 @@ nonisolated struct GalleryScanner {
     }
 
     /// The path of an image file a word prints, by the rules of a tapped
-    /// path, nil for another word. Ghostty matches only paths with a slash.
+    /// path, nil for another word, and for one a tap would ask about
+    /// (FileLink.Target.file's hidden: a .. segment, text past the path).
+    /// Ghostty matches only paths with a slash.
     static func imagePath(_ word: String) -> String? {
-        guard case .file(let p) = FileLink.target(word, matched: true), p.contains("/"), isImage(p), !isNetworkPath(p) else { return nil }
+        guard case .file(let p, let hidden) = FileLink.target(word, matched: true), !hidden, p.contains("/"), isImage(p),
+              !isNetworkPath(p) else { return nil }
         return p
     }
 
     /// The Windows image path in a word, as Claude Code prints one on a
     /// Windows host: a drive's (C:\x.png, C:/x.png), from where it starts
     /// in the word, as in --out=C:\x.png, without what ends the sentence
-    /// after it. A share's path is none (isNetworkPath).
+    /// after it. A share's path is none (isNetworkPath), nor one with a ..
+    /// segment or that cleaning changes (FileLink.climbs, FileLink.clean).
     static func windowsPath(_ word: String) -> String? {
         let c = Array(word)
         var start: Int?
@@ -399,7 +403,9 @@ nonisolated struct GalleryScanner {
         guard let start else { return nil }
         let p = FileLink.trimmed(String(c[start...]))
         let body = p.dropFirst(3)
-        guard !body.isEmpty, !body.contains(where: { ":*?\"<>|\0".contains($0) }), isImage(p) else { return nil }
+        let slashed = p.replacing("\\", with: "/")
+        guard !body.isEmpty, !body.contains(where: { ":*?\"<>|\0".contains($0) }), isImage(p),
+              !FileLink.climbs(slashed), FileLink.clean(slashed) == slashed else { return nil }
         return p
     }
 
@@ -432,7 +438,10 @@ nonisolated struct GalleryScanner {
         guard osc.starts(with: Array("8;".utf8)) else { return }
         endLink()
         let parts = String(decoding: osc, as: UTF8.self).split(separator: ";", maxSplits: 2, omittingEmptySubsequences: false)
-        guard parts.count == 3, let p = FileLink.fileURLPath(String(parts[2])), Self.isImage(p), !Self.isNetworkPath(p) else { return }
+        // As a tap would ask about one (FileLink.Target.file's hidden): a ..
+        // segment, or a path that cleaning changes, is not followed.
+        guard parts.count == 3, let p = FileLink.fileURLPath(String(parts[2])), !FileLink.climbs(p), FileLink.clean(p) == p,
+              Self.isImage(p), !Self.isNetworkPath(p) else { return }
         linkPath = p
     }
 

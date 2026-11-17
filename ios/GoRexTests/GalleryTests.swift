@@ -65,11 +65,27 @@ nonisolated final class GalleryTests: XCTestCase {
         XCTAssertTrue(GalleryScanner.isNetworkPath("%2F%2Fserver/share/c.png"))
         XCTAssertTrue(GalleryScanner.isNetworkPath("%5C%5Cserver%5Cc.png"))
         for url in ["file:///%5C%5Cserver%5Cshare%5Cb.png", "file:///%2F%2Fserver/share/b.png", "file:///%2F%5Cserver/share/b.png"] {
-            let p = try! XCTUnwrap(FileLink.fileURLPath(url))
+            // FileLink.fileURLPath refuses them itself; the text prints the path as decoded.
+            XCTAssertNil(FileLink.fileURLPath(url), url)
+            let p = URL(string: url)!.path(percentEncoded: false)
             XCTAssertEqual(paths(scan("\u{1b}]8;;\(url)\u{07}\(p)\u{1b}]8;;\u{07}\n")), [], url)
         }
         XCTAssertFalse(GalleryScanner.isNetworkPath("/tmp/a.png"))
         XCTAssertFalse(GalleryScanner.isNetworkPath(#"C:\a.png"#))
+    }
+
+    /// A path a tap would ask about is not collected: a .. segment, printed,
+    /// quoted, in a Windows path or in an OSC 8 link, or a file URL's path
+    /// that cleaning changes.
+    func testClimbingPathsSkipped() {
+        XCTAssertEqual(paths(scan("/tmp/chart.png/../../home/demo/x.png ../out/a.png\n")), [])
+        XCTAssertEqual(paths(scan("'/tmp/my shots/../../home/demo/x.png'\n")), [])
+        XCTAssertEqual(paths(scan(#"C:\a\..\..\x.png 'C:\a\..\y.png' C:/a/./z.png"# + "\n")), [])
+        for url in ["file:///tmp/a/..%2F..%2Fhome%2Fdemo%2Fx.png", "file:///tmp/.%2Fb.png", "file:///C:..%2F..%2Fx.png"] {
+            let p = URL(string: url)!.path(percentEncoded: false)
+            XCTAssertEqual(paths(scan("\u{1b}]8;;\(url)\u{07}\(p)\u{1b}]8;;\u{07}\n")), [], url)
+        }
+        XCTAssertEqual(paths(scan("\u{1b}]8;;file:///tmp/ok.png\u{07}/tmp/ok.png\u{1b}]8;;\u{07}\n")), ["/tmp/ok.png"])
     }
 
     /// As Claude Code prints them on a Windows host, quoted or not.
