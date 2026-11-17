@@ -133,7 +133,10 @@ func ompIn(t *testing.T, c *Client, dir string) (string, SessionInfo) {
 	fake := filepath.Join(t.TempDir(), "bin", "omp")
 	writeFile(t, fake, "#!/bin/sh\nsleep 60\n")
 	os.Chmod(fake, 0o755)
-	c.Input(in.ID, []byte("'"+fake+"' 60\n"))
+	// Printed after the line's echo, as claudeIn's marker: no output is
+	// on its way once the server read it.
+	c.Input(in.ID, []byte("echo omp''-started; '"+fake+"' 60\n"))
+	waitText(t, c, in.ID, "omp-started")
 	o := waitInfo(t, c, in.ID, "omp in the foreground", func(in SessionInfo) bool { return in.Program == "omp" })
 	t.Cleanup(func() {
 		c.Kill(in.ID)
