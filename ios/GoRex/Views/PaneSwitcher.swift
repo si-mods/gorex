@@ -58,8 +58,8 @@ struct PaneMiniMap: View {
 }
 
 /// The panes of the open window, at the bottom: each pane's program, the
-/// current one filled, and a pane's record as a dot. A tap switches; the
-/// plus splits the current pane in place.
+/// current one filled, and a pane's record as a dot. A tap switches; a long
+/// press offers to close; the plus splits the current pane in place.
 struct PaneBar: View {
     /// The bar's height: a tile and its padding, in the capsule's.
     static let height: CGFloat = 32
@@ -69,6 +69,7 @@ struct PaneBar: View {
     let program: (String) -> Program
     let select: (String) -> Void
     let newSplit: () -> Void
+    let close: (String) -> Void
 
     var body: some View {
         HStack(spacing: 8) {
@@ -101,6 +102,9 @@ struct PaneBar: View {
                     .accessibilityValue(cell.block == current ? Text("Current") : Text(""))
                     .accessibilityAddTraits(cell.block == current ? [.isButton, .isSelected] : .isButton)
                     .accessibilityHint(Text("Switch to this pane."))
+                    .contextMenu {
+                        Button("Close Pane", systemImage: "xmark.rectangle", role: .destructive) { close(cell.block) }
+                    }
                 }
             }
             .padding(.horizontal, 6)

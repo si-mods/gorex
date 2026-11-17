@@ -127,7 +127,7 @@ struct TerminalScreen: View {
                             .transition(.move(edge: .bottom).combined(with: .opacity))
                     }
                     if paneCellList.count > 1 {
-                        PaneBar(cells: paneCellList, current: currentTarget.block, program: { .of(host.blocks[$0]?.program) }, select: selectPane, newSplit: newSplit)
+                        PaneBar(cells: paneCellList, current: currentTarget.block, program: { .of(host.blocks[$0]?.program) }, select: selectPane, newSplit: newSplit, close: closePane)
                             .transition(.opacity.combined(with: .move(edge: .bottom)))
                     }
                 }
@@ -173,6 +173,9 @@ struct TerminalScreen: View {
                     Menu {
                         Button("New Tab", systemImage: "plus") { newTab() }
                         Button("Split Pane", systemImage: "rectangle.split.2x1") { newSplit() }
+                        if paneCellList.count > 1 {
+                            Button("Close Pane", systemImage: "xmark.rectangle", role: .destructive) { closePane(currentTarget.block) }
+                        }
                     } label: {
                         Image(systemName: "ellipsis")
                     }
@@ -760,6 +763,29 @@ struct TerminalScreen: View {
                 }
             } catch {
                 failure = ("Can't Split the Pane", error.localizedDescription)
+            }
+        }
+    }
+
+    /// Closes a pane of the window, without asking; when it is the one
+    /// shown, goes to the pane before it, else the one after.
+    private func closePane(_ block: String) {
+        guard let w = window, w.panes.count > 1, let i = w.panes.firstIndex(of: block) else { return }
+        let was = block == currentTarget.block
+        let next = w.panes[i > 0 ? i - 1 : 1]
+        let key = viewedKey
+        let target = TerminalTarget(host: host.id, session: currentTarget.session, block: next, title: host.paneTitle(next, in: w) ?? host.title(w))
+        Task {
+            do {
+                try await host.closePane(block, in: currentTarget.session)
+                // The window no longer holds a pane closed while shown, so
+                // selectPane, which finds the window by it, cannot be used.
+                if was, currentTarget.block == block {
+                    if let key { ViewedBlockStore.shared.set(next, for: key) }
+                    switchTo(target, dir: i > 0 ? -1 : 1)
+                }
+            } catch {
+                failure = ("Can't Close the Pane", error.localizedDescription)
             }
         }
     }

@@ -1064,6 +1064,46 @@ final class Host: Identifiable {
         return (r["block_ids"] as? [Any])?.first as? String
     }
 
+    /// Closes a pane of a window, as the server would: its neighbor takes
+    /// its place in the layout, and the window's focus moves off it.
+    private func demoClosePane(_ block: String, in session: String) {
+        guard let i = sessions.firstIndex(where: { $0.id == session }),
+              var view = sessions[i].view, var windows = view.windows,
+              let w = windows.firstIndex(where: { $0.holds(block) }),
+              var layer = windows[w].layers?.first, var tiled = layer.blocks,
+              let at = tiled.firstIndex(where: { $0.block_id == block }), tiled.count > 1 else { return }
+        tiled.remove(at: at)
+        layer.blocks = tiled
+        func place(_ n: PaneLayout) {
+            n.rect = nil
+            if let s = n.split { place(s.before); place(s.after) }
+        }
+        func prune(_ n: PaneLayout) {
+            guard let s = n.split else { return }
+            for (gone, kept) in [(s.before, s.after), (s.after, s.before)] where gone.block_id == block {
+                n.block_id = kept.block_id
+                n.split = kept.split
+                if let r = n.rect, r.count == 4 { place(n); n.rect = r }
+                return
+            }
+            prune(s.before)
+            prune(s.after)
+        }
+        if let root = layer.layout { prune(root) }
+        windows[w].layers = [layer] + (windows[w].layers ?? []).dropFirst()
+        if windows[w].focused_block_id == block { windows[w].focused_block_id = tiled[min(at, tiled.count - 1)].block_id }
+        view.windows = windows
+        view.revision += 1
+        sessions[i].view = view
+        blocks[block] = nil
+    }
+
+    /// Closes a pane and ends its program; the window's last pane stays.
+    func closePane(_ block: String, in session: String) async throws {
+        if isDemo { return demoClosePane(block, in: session) }
+        try await live().call("block.close", ["session_id": session, "block_id": block, "keep_last": true])
+    }
+
     /// Makes a session, named by `label` or by the server, with a window
     /// running the shell, and returns the session and the window's block.
     func newSession(label: String? = nil) async throws -> (String, String)? {
