@@ -961,7 +961,7 @@ func (a *App) attach(p *Pane, cols, rows int) {
 	if p.SID == "" {
 		opts := termOptions()
 		opts.Conn = nopConn{}
-		term, err := terminal.New(opts)
+		term, err := newTerm(opts)
 		if err == nil {
 			term.Feed([]byte("\x1b[31m" + locales.ErrorSessionStart(a.err) + "\x1b[0m\r\n"))
 			p.term = term
@@ -1091,7 +1091,7 @@ func (a *App) attach(p *Pane, cols, rows int) {
 			a.paneStopped(p)
 		})
 	}
-	term, err := terminal.New(opts)
+	term, err := newTerm(opts)
 	if err != nil {
 		log.Printf("terminal: %v", err)
 		a.err, a.errMsg = err.Error(), nil
