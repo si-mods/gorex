@@ -396,6 +396,39 @@ func (a *attached) resync() []byte {
 	return append([]byte(resyncReset), s.snapshotLocked(Attach{History: resyncHistory})...)
 }
 
+// ErrResyncSize is the answer to "resync" while the session has another
+// size than the one asked for: the client asks again once it took it.
+var ErrResyncSize = errors.New("rex: the session has another size")
+
+// resyncClient sends the session's screen at cols×rows again to the
+// client whose attach gave id, of peer, in band, as to a client fallen
+// behind (resync): the screen holds all the output before it on that
+// stream and none of what follows. A window that laid its terminal out
+// for another size asks for it. A screen it captured on its own
+// connection would not be in step with its stream: output the stream
+// brought before the capture's answer, the reset before that screen
+// would wipe, and output the capture holds, the stream would bring again.
+func (s *session) resyncClient(id, peer string, cols, rows int) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.cols != cols || s.rows != rows {
+		return ErrResyncSize
+	}
+	for a := range s.clients {
+		if id == "" || a.client != id || a.peer != peer {
+			continue
+		}
+		a.mu.Lock()
+		if !a.closed && !a.dead {
+			a.pending, a.queued, a.behind, a.resynced = nil, 0, true, time.Time{}
+			a.wakeLocked()
+		}
+		a.mu.Unlock()
+		return nil
+	}
+	return errors.New("rex: no such client")
+}
+
 // renderResync returns what snapshotLocked returns for an attach with
 // resyncHistory, from bin, the session's Ghostty binary snapshot, and its
 // title, graphics and rows: bin restores in a terminal no program runs,

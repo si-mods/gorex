@@ -90,6 +90,10 @@ func serverOp(op string) serverOpFunc {
 		return withSession(doCapture)
 	case "focus":
 		return withSession(doFocus)
+	case "resync":
+		return withSession(func(_ *Server, ss *session, req Request, peer string, _ *keptConn) (any, error) {
+			return nil, ss.resyncClient(req.Client, peer, req.Cols, req.Rows)
+		})
 	case "seeStatus":
 		return withSession(func(_ *Server, ss *session, req Request, _ string, _ *keptConn) (any, error) {
 			ss.seeStatus(req.Seen)

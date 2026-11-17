@@ -268,3 +268,82 @@ func BenchmarkSnapshotLocked(b *testing.B) {
 		ss.snapshotLocked(Attach{History: resyncHistory})
 	}
 }
+
+// TestResyncClientInBand is a window that asks for the session's screen
+// again (Client.Resync), as one that laid its terminal out at another
+// size does: the screen comes on its stream after the output before it
+// and before the output after, so it holds the one and the other follows
+// it once. A request at another size than the session's, or for the
+// stream of another peer, is refused.
+func TestResyncClientInBand(t *testing.T) {
+	for name, peer := range map[string]string{"local": "", "remote": key.NewNode().Public().String()} {
+		t.Run(name, func(t *testing.T) {
+			s, _ := testServer(t)
+			c := pipe(s, "")
+			defer c.Close()
+			info, err := c.Create(CreateOptions{Command: silentCommand(), Cols: 80, Rows: 24})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer c.Kill(info.ID)
+			ss := sessionOf(t, s, info.ID)
+			w := pipe(s, peer)
+			defer w.Close()
+			conn, err := w.AttachConn(Attach{SID: info.ID, Cols: 80, Rows: 24, Client: "w1"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer conn.Close()
+			var mu sync.Mutex
+			var got []byte
+			go func() {
+				buf := make([]byte, 32<<10)
+				for {
+					n, err := conn.Read(buf)
+					mu.Lock()
+					got = append(got, buf[:n]...)
+					mu.Unlock()
+					if err != nil {
+						return
+					}
+				}
+			}()
+			before := []byte("before the resync\r\n")
+			ss.emit(before, nil, len(before))
+
+			if err := w.Resync(info.ID, "w1", 81, 24); err == nil || err.Error() != ErrResyncSize.Error() {
+				t.Fatalf("a resync at another size: %v, want %v", err, ErrResyncSize)
+			}
+			other := pipe(s, key.NewNode().Public().String())
+			defer other.Close()
+			if err := other.Resync(info.ID, "w1", 80, 24); err == nil {
+				t.Fatal("another peer resynced the stream")
+			}
+			if err := w.Resync(info.ID, "w1", 80, 24); err != nil {
+				t.Fatal(err)
+			}
+			after := []byte("after the resync\r\n")
+			ss.emit(after, nil, len(after))
+
+			var tail string
+			if !waitUntil(5*time.Second, func() bool {
+				mu.Lock()
+				defer mu.Unlock()
+				i := strings.LastIndex(string(got), resyncReset)
+				if i < 0 {
+					return false
+				}
+				tail = string(got[i+len(resyncReset):])
+				return strings.Contains(tail, "after the resync")
+			}) {
+				mu.Lock()
+				defer mu.Unlock()
+				t.Fatalf("no resync followed by the output after it: %q", got)
+			}
+			b, a := strings.Index(tail, "before the resync"), strings.Index(tail, "after the resync")
+			if b < 0 || b > a || strings.Count(tail, "after the resync") != 1 {
+				t.Fatalf("after the reset the stream brings %q: want the screen, with the output before it, then the output after it once", tail)
+			}
+		})
+	}
+}

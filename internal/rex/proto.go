@@ -171,6 +171,9 @@ type Request struct {
 	// last, and the sessions attached through it answer the programs'
 	// queries meanwhile.
 	Owner string `json:"owner,omitempty"`
+	// Client is the id an attach gave (Attach.Client) of the stream
+	// "resync" sends the session's screen again on.
+	Client string `json:"client,omitempty"`
 	// Bytes is what "input" types into the session.
 	Bytes []byte `json:"bytes,omitempty"`
 	// Paste is the text "paste" writes to the session's program as a

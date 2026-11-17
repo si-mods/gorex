@@ -1270,13 +1270,16 @@ const resyncHistory = 64 << 10
 
 // resyncPane makes the pane show its session's screen at cols×rows, the
 // size its terminal took, off the UI thread: the session takes a size it
-// was asked for once it settled, so the capture waits for it, and one for
-// a size the pane no longer has is dropped.
+// was asked for once it settled, so the request waits for it. The server
+// sends the screen on the pane's stream (rex.Client.Resync), in step with
+// the output around it; a server too old for that answers with a capture,
+// which the pane feeds, and one for a size the pane no longer has is
+// dropped.
 func (a *App) resyncPane(p *Pane, cols, rows int) {
 	if p.SID == "" || p.closed || p.term == nil {
 		return
 	}
-	sid, update, term := p.SID, a.updater(), p.term
+	sid, update, term, id := p.SID, a.updater(), p.term, p.clientID()
 	var client *rex.Client
 	if p.host != nil {
 		client = p.host.current()
@@ -1287,8 +1290,20 @@ func (a *App) resyncPane(p *Pane, cols, rows int) {
 		return
 	}
 	go func() {
-		var res rex.CaptureResult
 		var err error
+		for try := 0; id != ""; try++ {
+			if err = client.Resync(sid, id, cols, rows); err == nil {
+				return
+			}
+			if err.Error() != rex.ErrResyncSize.Error() {
+				break
+			}
+			if try == 20 {
+				return
+			}
+			time.Sleep(50 * time.Millisecond)
+		}
+		var res rex.CaptureResult
 		for try := 0; ; try++ {
 			if res, err = client.Capture(sid, resyncHistory); err == nil && res.Cols == cols && res.Rows == rows {
 				break

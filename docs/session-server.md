@@ -181,11 +181,17 @@ emulator's screen again (`resyncScreen`). That is all the server mends.
 
 The main screen is mended by the app. When a pane's terminal takes a
 size the session's screen was not laid out for (it follows another
-client's size, or a divider drag ends), the app asks the server for the
-screen with `capture` (`resyncPane` in `state.go`): it tries every 50 ms,
-up to 20 times, until the capture has the pane's size, then resets the
-pane's terminal and feeds it the session's screen and the last 64 KiB of
-scrollback (`resyncHistory`). `capture` itself only reads. See
+client's size, or a divider drag ends), the app asks the server to send
+the screen again on the pane's stream (`resync`, `resyncPane` in
+`state.go`): it tries every 50 ms, up to 20 times, until the session has
+the pane's size. The server then resyncs that client as one fallen behind
+(`attached.resync`): the reset and the screen come in band, holding all
+the output before them, and the output after follows. A screen the app
+captured on its own connection was not in step with the stream: output
+the stream brought before the capture's answer, such as the console's
+redraw after the resize, was wiped by the reset that came before the
+older screen. Against a server without `resync`, the app falls back to
+that capture with the last 64 KiB of scrollback (`resyncHistory`). See
 [session-size.md](session-size.md).
 
 ## Terminal queries
