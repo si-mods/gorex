@@ -470,6 +470,30 @@ final class TerminalView: UIView, TerminalOutput {
         return t.text.map { String(decoding: UnsafeRawBufferPointer(start: $0, count: Int(t.text_len)), as: UTF8.self) } ?? ""
     }
 
+    /// Reads the screen's text off the main thread, after the writes queued
+    /// before it, which the surface's free waits for: the screen and as
+    /// much scrollback above it as the gallery reads, else the screen
+    /// alone, as a point in the scrollback is no further than a screen's
+    /// rows from its top (Ghostty clamps it).
+    func readScreen(_ done: @escaping @Sendable (_ text: String, _ columns: Int) -> Void) {
+        guard let s = surface else { return }
+        let z = ghostty_surface_size(s), rows = Int(z.rows), columns = Int(z.columns)
+        guard rows > 0, columns > 0 else { return }
+        nonisolated(unsafe) let surface = s
+        writes.async {
+            let total = Int(ghostty_surface_total_rows(surface))
+            let whole = total - rows <= GalleryScanner.maxScrollback && total <= GalleryScanner.maxScreenRows
+            let top = whole ? GHOSTTY_POINT_SCREEN : GHOSTTY_POINT_ACTIVE
+            let sel = ghostty_selection_s(top_left: ghostty_point_s(tag: top, coord: GHOSTTY_POINT_COORD_TOP_LEFT, x: 0, y: 0),
+                                          bottom_right: ghostty_point_s(tag: GHOSTTY_POINT_ACTIVE, coord: GHOSTTY_POINT_COORD_BOTTOM_RIGHT, x: 0, y: 0),
+                                          rectangle: false)
+            var t = ghostty_text_s()
+            guard ghostty_surface_read_text(surface, sel, &t) else { return }
+            defer { ghostty_surface_free_text(surface, &t) }
+            done(t.text.map { String(decoding: UnsafeRawBufferPointer(start: $0, count: Int(t.text_len)), as: UTF8.self) } ?? "", columns)
+        }
+    }
+
     /// Ghostty settled on a grid for the view's size: the block takes it.
     func resized(cols: Int, rows: Int, width: Int, height: Int) {
         guard cols > 0, rows > 0 else { return }

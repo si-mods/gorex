@@ -195,6 +195,16 @@ nonisolated final class GalleryStore {
         if index.missing.count > Self.removedLimit { index.missing.removeFirst(index.missing.count - Self.removedLimit) }
     }
 
+    /// Drops the images of these paths, pieces of a longer path the screen
+    /// shows wrapped, as neither removed nor missing. Whether any went.
+    func drop(pieces: Set<String>) -> Bool {
+        guard !pieces.isEmpty else { return false }
+        let gone = index.entries.filter { $0.path.map(pieces.contains) ?? false }
+        gone.forEach(deleteFiles)
+        index.entries.removeAll { $0.path.map(pieces.contains) ?? false }
+        return !gone.isEmpty
+    }
+
     func clear() {
         remove(Set(index.entries.map(\.id)))
     }

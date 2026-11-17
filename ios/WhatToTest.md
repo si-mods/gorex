@@ -38,6 +38,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - Choose Gallery, first in a terminal's More menu, to see every image the pane showed: printed image paths and pictures drawn in the terminal. Swipe, pinch or share them; the menu marks new ones.
 - An image whose file no longer exists on your computer now leaves the Gallery by itself, instead of staying as a blank square.
 - Spaces are Projects now. Tap + by the projects, pick a computer and browse to a folder: new windows of the project open there, and its folder shows under its name.
+- The Gallery now also finds images whose long paths a program like Claude Code wraps across lines, as on a Windows computer.
 
 ## zh-Hans
 
@@ -68,3 +69,4 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - 选终端「更多」菜单的第一项「相册」，查看这个面板出现过的全部图片：打印出的图片路径和直接画在终端里的图片；可滑动、缩放和分享。有新图片时菜单里会标出。
 - 电脑上已经不存在的图片文件，现在会自己从相册里消失，不再留下一个空白格子。
 - 「空间」现在叫「项目」。点项目栏的 +，选一台电脑并浏览到一个文件夹：项目的新窗口都在这个文件夹中打开，项目名下方显示该文件夹。
+- 相册现在也能收到被 Claude Code 这类程序折成几行的长图片路径，例如 Windows 电脑上的截图路径。
