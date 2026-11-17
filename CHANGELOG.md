@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.33.0
+
+### Features
+
+* **ios:** split a pane from a single-pane window ([#660](https://github.com/si-mods/gorex/pull/660))
+* **ios:** switch panes with a two-finger swipe, and keep the pane map as an indicator ([#653](https://github.com/si-mods/gorex/pull/653))
+
+### Bug Fixes
+
+* answer a new terminal's color queries in the app's appearance ([#661](https://github.com/si-mods/gorex/pull/661))
+* one recovery policy for a lost terminal stream ([#654](https://github.com/si-mods/gorex/pull/654))
+* **ios:** answer a notification tap on the main thread ([#655](https://github.com/si-mods/gorex/pull/655))
+* **ios:** cut a long title to the pill ([#657](https://github.com/si-mods/gorex/pull/657))
+* **ios:** keep a window's title on one line in the title menu ([#644](https://github.com/si-mods/gorex/pull/644))
+* **ios:** the title opens the session's sheet on a long press too ([#659](https://github.com/si-mods/gorex/pull/659))
+* **tailnet:** quiet the two test flakes reddening the linux shard, and let a test-only change owe no tester bullet ([#658](https://github.com/si-mods/gorex/pull/658))
+
 ## 0.32.0
 
 ### Features
