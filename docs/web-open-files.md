@@ -177,6 +177,28 @@ code. Uploads are not logged today; this does not change them.
   `no_file` when it is opened. A web address without a scheme stays a web
   link. A Windows path written with backslashes (`C:\dir\x`) is not a link,
   as on the desktop; `file:///C:/dir/x` is.
+- Another machine's path is no link, printed or in a `file://` URL: a UNC
+  path (`//server/share`, `\\server\share`), a device's (`\\.\`, `\\?\`)
+  or an NT one (`\??\`), with either slash (`links.ts` `remotePath`). A
+  Windows host would look such a path up over SMB, and so hand the
+  user's NTLM hash to the server a program named.
+- An OSC 8 `file://` hyperlink whose cells print other text than its
+  path, its URL or the path's last parts (as `ls --hyperlink` prints a
+  name over its absolute path) asks first: a program can print
+  `chart.png` over `file:///home/u/.ssh/id_ed25519`. A `confirm` names the
+  path when the click ends; Cancel opens nothing.
+- A `file://` URL's path is cleaned as the host's `filepath.Clean` does
+  (`cleanPath`), and the clean path is what the page shows and asks for:
+  `%2F` decodes after the URL's own dot segments are resolved, so
+  `a.png%2F..%2F.ssh%2Fid` still climbs, and a long run of them could push
+  the real file out of the dialog. A path that cleaning changes asks
+  first, printed or not, and printed text with a `.` or `..` segment
+  shows no part of the path. A decoded backslash is no link: it is a
+  separator to a Windows host.
+- Any path with a `..` segment, printed or in a `file://` URL, asks
+  first and shows its clean path (`climbs`): a program can print
+  `/tmp/chart.png` and, unseen right after it, `/../../home/u/.ssh/id`.
+  A `..` after a drive's `C:` counts, as cleaning keeps it (`C:../x`).
 - Ctrl+click (Cmd+click on macOS) on a path asks for a ticket with
   `download_begin`. A second click on the same path while one is under way
   does nothing, as the desktop's.
@@ -283,7 +305,17 @@ As built on iOS:
   name such as `notes.md` and a quoted path with a space are no link. A
   `(12,3)` place goes with the others, and prose in full-width punctuation
   after a path (`/tmp/x.png，请查看`) is cut off, as the web client does. A path that starts with `$` is no link either: the
-  host does not expand variables.
+  host does not expand variables. Another machine's path is no file,
+  printed or in a `file://` URL, by the web client's `remotePath`
+  (`FileLink.remote`).
+- Ghostty hands an OSC 8 link's URL without the text it prints, so a tap
+  on any OSC 8 `file://` link asks first: an alert names the host and the
+  full path, with Cancel and Open. A path or `file://` URL printed as text
+  opens with one tap, unless the text Ghostty matched goes on past the
+  word the path is taken from (a path printed unseen, then a name), or
+  the URL's path changes as it is cleaned (`FileLink.clean`, as the web
+  client's `cleanPath`); the clean path is the one shown and downloaded.
+  A path with a `..` segment, printed or not, asks too (`FileLink.climbs`).
 - On an older host a tap on a path does nothing, so `Server does not
   accept downloads` never shows; the server's `not_supported` shows the
   web client's `The host does not send files`.

@@ -65,11 +65,30 @@ nonisolated final class GalleryTests: XCTestCase {
         XCTAssertTrue(GalleryScanner.isNetworkPath("%2F%2Fserver/share/c.png"))
         XCTAssertTrue(GalleryScanner.isNetworkPath("%5C%5Cserver%5Cc.png"))
         for url in ["file:///%5C%5Cserver%5Cshare%5Cb.png", "file:///%2F%2Fserver/share/b.png", "file:///%2F%5Cserver/share/b.png"] {
-            let p = try! XCTUnwrap(FileLink.fileURLPath(url))
+            // FileLink.fileURLPath refuses them itself; the text prints the path as decoded.
+            XCTAssertNil(FileLink.fileURLPath(url), url)
+            let p = URL(string: url)!.path(percentEncoded: false)
             XCTAssertEqual(paths(scan("\u{1b}]8;;\(url)\u{07}\(p)\u{1b}]8;;\u{07}\n")), [], url)
         }
         XCTAssertFalse(GalleryScanner.isNetworkPath("/tmp/a.png"))
         XCTAssertFalse(GalleryScanner.isNetworkPath(#"C:\a.png"#))
+    }
+
+    /// A path a tap would ask about is not collected: a .. segment, printed,
+    /// quoted, in a Windows path or in an OSC 8 link, or a file URL's path
+    /// that cleaning changes.
+    func testClimbingPathsSkipped() {
+        XCTAssertEqual(paths(scan("/tmp/chart.png/../../home/demo/x.png ../out/a.png\n")), [])
+        XCTAssertEqual(paths(scan("'/tmp/my shots/../../home/demo/x.png'\n")), [])
+        XCTAssertEqual(paths(scan(#"C:\a\..\..\x.png 'C:\a\..\y.png' C:/a/./z.png"# + "\n")), [])
+        for url in ["file:///tmp/a/..%2F..%2Fhome%2Fdemo%2Fx.png", "file:///C:..%2F..%2Fx.png"] {
+            let p = URL(string: url)!.path(percentEncoded: false)
+            XCTAssertEqual(paths(scan("\u{1b}]8;;\(url)\u{07}\(p)\u{1b}]8;;\u{07}\n")), [], url)
+        }
+        // A link whose path cleaning changes is not followed; the text it
+        // prints counts on its own, as a printed ./ segment opens a tap too.
+        XCTAssertEqual(paths(scan("\u{1b}]8;;file:///tmp/.%2Fb.png\u{07}/tmp/./b.png\u{1b}]8;;\u{07}\n")), ["/tmp/./b.png"])
+        XCTAssertEqual(paths(scan("\u{1b}]8;;file:///tmp/ok.png\u{07}/tmp/ok.png\u{1b}]8;;\u{07}\n")), ["/tmp/ok.png", "/tmp/ok.png"])
     }
 
     /// As Claude Code prints them on a Windows host, quoted or not.
@@ -152,6 +171,21 @@ nonisolated final class GalleryTests: XCTestCase {
         XCTAssertEqual(GalleryScanner.paths(inRows: rows + ["  done"], columns: 40), [path])
         // Each row alone holds none.
         XCTAssertEqual(rows.flatMap { GalleryScanner.paths(inLine: $0) }, [])
+    }
+
+    /// A wrapped path the join makes follows the rules of a tapped one: a
+    /// .. segment or another machine's path is not collected.
+    func testScreenJoinSkipsClimbingAndNetworkPaths() {
+        for line in ["saved /tmp/demo/folder/../../home/demo/x.png ok", #"saved C:\Users\demo\a\..\..\Pictures\x.png ok"#,
+                     "saved //server/share/folder/demo/x.png ok"] {
+            let rows = wrap(line, columns: 30, indent: 0)
+            XCTAssertGreaterThan(rows.count, 1, line)
+            // A row alone may still print a path of its own; the joined one is never collected.
+            let found = GalleryScanner.paths(inRows: rows, columns: 30)
+            let joined = String(line.dropFirst(6).dropLast(3))
+            XCTAssertFalse(found.contains(joined), "\(line): \(found)")
+            XCTAssertFalse(found.contains { FileLink.climbs($0.replacing("\\", with: "/")) || GalleryScanner.isNetworkPath($0) }, "\(line): \(found)")
+        }
     }
 
     func testScreenJoinsUnixPathAcrossTwoRows() {

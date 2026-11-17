@@ -182,7 +182,7 @@ enum Ghostty {
         }
         switch FileLink.target(text, matched: matched) {
         case .web(let url): UIApplication.shared.open(url)
-        case .file(let path): view?.openFile(path)
+        case .file(let path, let hidden): view?.openFile(path, hidden: hidden)
         case nil: break
         }
     }

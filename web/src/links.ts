@@ -31,6 +31,12 @@ export interface Link {
   x1: number;
   /** For a link to a file on the host, the path to ask the gateway for. */
   path?: string;
+  /**
+   * For a file:// hyperlink (OSC 8) whose cells do not print its path: a
+   * program may print chart.png over file:///home/u/.ssh/id_ed25519, so
+   * the page asks before it opens (docs/web-open-files.md).
+   */
+  hidden?: boolean;
 }
 
 // urlPattern finds the URLs programs print as text. A URL sends what is not
@@ -304,7 +310,9 @@ export function webURL(link: string): string | undefined {
  * The path a file:// URL names on the host, as the desktop's download
  * reads it: the host ignored, the path percent-decoded, and a Windows
  * drive's leading slash taken off (file:///C:/x is C:/x). Undefined for
- * another URL, or one without a path.
+ * another URL, one without a path, one with a backslash (a separator to a
+ * Windows host, which could climb out unseen) or one of another machine
+ * (remotePath). The path is as decoded, not cleaned (cleanPath).
  */
 export function fileURLPath(url: string): string | undefined {
   if (!/^file:\/\//i.test(url)) return undefined;
@@ -315,7 +323,65 @@ export function fileURLPath(url: string): string | undefined {
     return undefined;
   }
   if (path.length > 2 && path[2] === ":") path = path.slice(1);
-  return path === "" || path === "/" ? undefined : path;
+  return path === "" || path === "/" || path.includes("\\") || remotePath(path) ? undefined : path;
+}
+
+/**
+ * A path cleaned lexically as Go's path/filepath.Clean does on the host:
+ * empty and . segments dropped, .. taking the segment before it off (none
+ * above the root), a trailing slash gone; a Windows drive (C:) stays in
+ * front. A file:// URL's %2F decodes after the URL's own dot segments are
+ * resolved, so its decoded path may still climb (a.png%2F..%2F.ssh).
+ */
+export function cleanPath(path: string): string {
+  let vol = "", rest = path;
+  if (/^[A-Za-z]:/.test(path)) [vol, rest] = [path.slice(0, 2), path.slice(2)];
+  const rooted = rest.startsWith("/");
+  const out: string[] = [];
+  for (const seg of rest.split("/")) {
+    if (seg === "" || seg === ".") continue;
+    if (seg === "..") {
+      if (out.length > 0 && out[out.length - 1] !== "..") out.pop();
+      else if (!rooted) out.push(seg);
+      continue;
+    }
+    out.push(seg);
+  }
+  const body = (rooted ? "/" : "") + out.join("/");
+  return vol + (body === "" ? "." : body);
+}
+
+/**
+ * Whether a path names another machine or a device, not a file of the
+ * host's disks, as Windows reads it: a UNC path (//server/share,
+ * \\server\share), a device's (\\.\, \\?\) or an NT one (\??\), with
+ * either slash. A Windows host's stat of //attacker/share/x.png would reach
+ * that SMB server and hand it the user's NTLM hash.
+ */
+export function remotePath(path: string): boolean {
+  const p = path.replaceAll("\\", "/");
+  return p.startsWith("//") || p.startsWith("/??/");
+}
+
+/** Whether a path has a .. segment, after a Windows drive's C: too (C:../x climbs, and cleaning keeps it). */
+export function climbs(path: string): boolean {
+  return path.replace(/^[A-Za-z]:/, "").split("/").includes("..");
+}
+
+/**
+ * Whether a file hyperlink's cells, columns x0 up to x1 of a row, print
+ * what it opens: its URL, its path, or the path's last parts, as ls
+ * --hyperlink prints a file's name over its absolute path. path is the
+ * cleaned one, and printed text with a . or .. segment prints none of it.
+ */
+function printsPath(t: RowText, x0: number, x1: number, url: string, path: string): boolean {
+  let s = "";
+  t.cols.forEach((c, i) => {
+    if (x0 <= c && c < x1) s += t.text[i];
+  });
+  s = s.trim().replace(/^\.\//, "");
+  if (s === "" || s.split("/").some((seg) => seg === "." || seg === "..")) return false;
+  return s === url || s === path || path.endsWith("/" + s);
 }
 
 /** Whether the page opens a URL: http, https, ftp and mailto. A file:// URL names a file on the host, which only the gateway sends (fileURLPath). */
@@ -391,13 +457,25 @@ export function linkAt(g: LinkGrid, col: number, row: number, files = false): Li
     const web = webURL(p.path);
     if (web) return { url: web, row, x0: p.x0, x1: p.x1 };
     const path = linkPath(p.path);
-    if (files && path && !path.endsWith("/") && !backslashed(t, p.path, p.x0, p.x1)) return { url: p.path, row, x0: p.x0, x1: p.x1, path };
-    return undefined;
+    if (!files || !path || path.endsWith("/") || remotePath(path) || backslashed(t, p.path, p.x0, p.x1)) return undefined;
+    // A path that climbs (/tmp/chart.png/../../home/u/.ssh/id_ed25519, its
+    // tail printed unseen) asks, and shows the file the host opens.
+    if (!climbs(path)) return { url: p.path, row, x0: p.x0, x1: p.x1, path };
+    const clean = cleanPath(path);
+    return clean === "/" || clean === "." ? undefined : { url: p.path, row, x0: p.x0, x1: p.x1, path: clean, hidden: true };
   })();
   if (!found) return undefined;
   if (found.path !== undefined || opens(found.url)) return found;
-  const path = files ? fileURLPath(found.url) : undefined;
-  return path !== undefined ? { ...found, path } : undefined;
+  const raw = files ? fileURLPath(found.url) : undefined;
+  if (raw === undefined) return undefined;
+  // The file the host opens: what is asked for and shown. A path that
+  // cleaning changes hides its file, printed or not.
+  const path = cleanPath(raw);
+  if (path === "/" || path === ".") return undefined;
+  // A hyperlink's cells may print other text than its file; a URL printed as text shows itself.
+  const hyperlink = g.hyperlinkAt(col, row) === found.url;
+  const hidden = path !== raw || climbs(raw) || (hyperlink && !printsPath(g.rowText(row), found.x0, found.x1, found.url, path));
+  return hidden ? { ...found, path, hidden } : { ...found, path };
 }
 
 /** Whether a path printed at columns x0 up to x1 of a row is part of one written with backslashes, as the x.txt of C:\dir\x.txt. */

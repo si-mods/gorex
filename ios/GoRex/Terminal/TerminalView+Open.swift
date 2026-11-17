@@ -8,10 +8,14 @@ import UIKit
 /// sends it to another app. After a moment without the file a spinner
 /// shows, and a tap beside it cancels; a failure tells why in an alert.
 extension TerminalView {
-    func openFile(_ path: String) {
+    func openFile(_ path: String, hidden: Bool = false) {
         let host = session.host, block = session.block, sid = session.session
         // On an older host a path is plain text, as before.
         guard host.canDownload else { return }
+        if hidden {
+            ask(path) { [weak self] in self?.openFile(path) }
+            return
+        }
         // A second tap on the same path while it downloads does nothing.
         let key = [sid, block, path].joined(separator: "\n")
         guard OpenedFiles.opening.insert(key).inserted else { return }
@@ -47,6 +51,18 @@ extension TerminalView {
                 alert(String(localized: "Can't Open File"), reason + "\n" + path)
             }
         }
+    }
+
+    /// Asks before a program's link (OSC 8) downloads a file: the text
+    /// tapped need not show the path, so the alert names the file and its
+    /// host in full. Cancel gives the keyboard back, if it was up.
+    private func ask(_ path: String, open: @escaping () -> Void) {
+        let typing = isFirstResponder
+        let message = String(localized: "The link you tapped names a file on \(session.host.config.name) that its text may not show:")
+        let a = UIAlertController(title: String(localized: "Open This File?"), message: message + "\n\n" + path, preferredStyle: .alert)
+        a.addAction(UIAlertAction(title: String(localized: "Cancel"), style: .cancel) { [weak self] _ in if typing { self?.becomeFirstResponder() } })
+        a.addAction(UIAlertAction(title: String(localized: "Open"), style: .default) { _ in open() })
+        present(a)
     }
 
     /// Shows a downloaded file over the terminal; the keyboard goes while

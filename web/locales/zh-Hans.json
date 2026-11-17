@@ -413,6 +413,7 @@
   "fileHostAnswered": "主机返回了 {status}",
   "fileGrewView": "文件超出了页面可显示的大小",
   "fileDownloadFailed": "无法下载 {path}：{error}",
+  "fileLinkAsk": "你点的链接要打开主机上的这个文件，链接文字未必显示它：\n\n{path}\n\n打开吗？",
   "fileOpenFailed": "无法打开 {path}：{error}",
   "loadServerAnswered": "{url}：服务器返回了 {status}",
   "loadNoBody": "服务器未返回数据",

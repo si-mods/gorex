@@ -6,7 +6,7 @@ import XCTest
 /// without its scheme, by the web client's rules (web/src/links.ts).
 nonisolated final class FileLinkTests: XCTestCase {
     private func file(_ text: String, matched: Bool = true) -> String? {
-        guard case .file(let p) = FileLink.target(text, matched: matched) else { return nil }
+        guard case .file(let p, _) = FileLink.target(text, matched: matched) else { return nil }
         return p
     }
 
@@ -90,6 +90,88 @@ nonisolated final class FileLinkTests: XCTestCase {
         XCTAssertNil(FileLink.target("/tmp/a.png", matched: false))
         XCTAssertNil(FileLink.target("https://example.com/a.png", matched: false))
         XCTAssertNil(FileLink.target("vscode://file/tmp/a.png", matched: false))
+    }
+
+    /// A program's link (OSC 8) may print other text over its file, as
+    /// chart.png over a private key: the app asks before it downloads. A
+    /// path or file:// URL printed as text shows what it opens.
+    func testHiddenTarget() {
+        XCTAssertEqual(FileLink.target("file:///home/demo/.ssh/id_ed25519", matched: false),
+                       .file("/home/demo/.ssh/id_ed25519", hidden: true))
+        XCTAssertEqual(FileLink.target("file:///home/demo/chart.png", matched: true), .file("/home/demo/chart.png", hidden: false))
+        XCTAssertEqual(FileLink.target("./out/chart.png", matched: true), .file("./out/chart.png", hidden: false))
+    }
+
+    /// Text Ghostty matched past the word the path is taken from may be
+    /// what the tap was on, after a path printed unseen: the app asks.
+    func testMatchSpansWords() {
+        XCTAssertEqual(FileLink.target("/home/demo/.ssh/id_ed25519 chart.png", matched: true),
+                       .file("/home/demo/.ssh/id_ed25519", hidden: true))
+        XCTAssertEqual(FileLink.target("file:///home/demo/.ssh/id_ed25519 chart.png", matched: true),
+                       .file("/home/demo/.ssh/id_ed25519", hidden: true))
+        XCTAssertEqual(FileLink.target("./out/b.png.", matched: true), .file("./out/b.png", hidden: false))
+        XCTAssertEqual(FileLink.target("src/main.go:12:3", matched: true), .file("src/main.go", hidden: false))
+    }
+
+    /// A file:// URL's path is cleaned as the host cleans it, so the alert
+    /// shows and the app downloads the file the host opens; a path that
+    /// cleaning changes asks, even printed. A backslash, a separator to a
+    /// Windows host, is no file.
+    func testCleanedFileURL() {
+        XCTAssertEqual(FileLink.target("file:///home/demo/.ssh/id_ed25519%2Fx%2F..", matched: false),
+                       .file("/home/demo/.ssh/id_ed25519", hidden: true))
+        XCTAssertEqual(FileLink.target("file:///home/demo/Pictures/chart.png%2F%2E%2F..%2F..%2F.ssh%2Fid_ed25519", matched: true),
+                       .file("/home/demo/.ssh/id_ed25519", hidden: true))
+        XCTAssertEqual(FileLink.target("file:///home/demo/Pictures/chart.png%2F%2E%2F..%2F..%2F.ssh%2Fid_ed25519", matched: false),
+                       .file("/home/demo/.ssh/id_ed25519", hidden: true))
+        XCTAssertNil(FileLink.target("file:///home/demo/a.png%5C..%5C..%5Cid_ed25519", matched: false))
+        XCTAssertNil(FileLink.target("file:///tmp%2F..", matched: false))
+        XCTAssertEqual(FileLink.clean("/a/./b/"), "/a/b")
+        XCTAssertEqual(FileLink.clean("/../a"), "/a")
+        XCTAssertEqual(FileLink.clean("a/../../b"), "../b")
+        XCTAssertEqual(FileLink.clean("C:/a/../.."), "C:/")
+        XCTAssertEqual(FileLink.clean("./a//b"), "a/b")
+    }
+
+    /// A path with a .. segment, printed or in a file:// URL, asks and
+    /// shows the file the host opens: its tail may be printed unseen after
+    /// a harmless name, and cleaning keeps a .. after a drive's C:.
+    func testClimbs() {
+        XCTAssertEqual(FileLink.target("/tmp/chart.png/../../home/demo/.ssh/id_ed25519", matched: true),
+                       .file("/home/demo/.ssh/id_ed25519", hidden: true))
+        XCTAssertEqual(FileLink.target("../out/b.png", matched: true), .file("../out/b.png", hidden: true))
+        XCTAssertEqual(FileLink.target("./out/b.png", matched: true), .file("./out/b.png", hidden: false))
+        XCTAssertEqual(FileLink.target("file:///C:..%2F..%2F.ssh%2Fid_ed25519", matched: false),
+                       .file("C:../../.ssh/id_ed25519", hidden: true))
+        XCTAssertEqual(FileLink.target("file:///C:..%2F..%2F.ssh%2Fid_ed25519", matched: true),
+                       .file("C:../../.ssh/id_ed25519", hidden: true))
+        XCTAssertNil(FileLink.target("/tmp/..", matched: true))
+        XCTAssertTrue(FileLink.climbs("C:../x"))
+        XCTAssertTrue(FileLink.climbs("a/.."))
+        XCTAssertFalse(FileLink.climbs("/a/b..c/d"))
+        XCTAssertFalse(FileLink.climbs("C:/a/b"))
+    }
+
+    /// Another machine's path, which a Windows host would reach over SMB
+    /// as it looks the file up, and a device's, are no file: UNC, \\.\,
+    /// \\?\ and \??\, with either slash, printed or in a file:// URL.
+    func testRemotePaths() {
+        for text in ["//attacker/share/x.png", "//attacker/share/x.png.", "///attacker/share/x.png", "//?/UNC/attacker/x.png",
+                     "/??/UNC/attacker/x.png"] {
+            XCTAssertNil(FileLink.target(text, matched: true), text)
+        }
+        for url in ["file:////attacker/share/x.png", "file:///%2F%2Fattacker/share/x.png", "file:///%5C%5Cattacker%5Cshare%5Cx.png",
+                    "file:///%5C??%5CUNC%5Cattacker%5Cx.png", "file:////./pipe/x"] {
+            XCTAssertNil(FileLink.target(url, matched: false), url)
+            XCTAssertNil(FileLink.target(url, matched: true), url)
+        }
+        XCTAssertTrue(FileLink.remote("\\\\attacker\\share\\x.png"))
+        XCTAssertTrue(FileLink.remote("\\\\?\\UNC\\attacker\\x.png"))
+        XCTAssertTrue(FileLink.remote("\\??\\UNC\\attacker\\x.png"))
+        XCTAssertTrue(FileLink.remote("/\\attacker\\share"))
+        XCTAssertFalse(FileLink.remote("/tmp/a.png"))
+        XCTAssertFalse(FileLink.remote("C:/dir/a.png"))
+        XCTAssertFalse(FileLink.remote("./a//b.png"))
     }
 
     /// The downloaded file's name never leaves its folder.
