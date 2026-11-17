@@ -106,12 +106,12 @@ Each item has a **Trigger** (what the diff shows), a **Check** (what the author 
 ### Shell pipeline with an early exit
 - **Trigger:** a script with `set -o pipefail` pipes into `head`, `grep -q`, `awk '... exit'` or anything else that stops reading early.
 - **Check:** the reader consumes all input, or the producer writes to a file first. Otherwise the producer gets SIGPIPE and the step fails.
-- **Source:** #694 broke the 0.36.0 release this way; #699 fixed it.
+- **Source:** `draft-release.sh` piped `tr` into an `awk` that exited early; it passed for months, then failed the 0.36.0 release on timing (#699).
 
 ### Release workflow change
 - **Trigger:** the diff touches `release.yml` or `.github/scripts/*release*` / `checksums.sh`.
 - **Check:** the PR shows a `--dry-run` or a run on a test tag, and the job's runner matches the release target (a Windows-only release must not wait for the Mac mini).
-- **Source:** #694's first real run failed (#699); its `checksums` job runs on the Mac mini for every target.
+- **Source:** #694 merged without a release run; the first one (0.36.0) failed in `draft` (#699), and its new `checksums` job runs on the Mac mini for every target.
 
 ### New CI gate
 - **Trigger:** the diff turns on `-race`, adds a shard, or adds a gate to `ci.yml`.
