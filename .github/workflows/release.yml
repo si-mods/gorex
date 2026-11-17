@@ -4,8 +4,11 @@ name: Release
 # them to that version's draft GitHub release, on si-mods' own runners: no
 # job runs on GitHub's. The Mac mini builds the Unix apps, whose archives
 # keep the executable bit that a Windows file system loses; YIBO-PC builds
-# the Windows apps, with the NSIS installer. The jobs run one after the
-# other, as each merges its checksums into the release's SHA256SUMS.
+# the Windows apps, with the NSIS installer. The two builds run in parallel.
+# "draft" creates the draft release before them, so that they do not both
+# create it. "checksums" writes the release's SHA256SUMS from its assets
+# after them, so that they do not both rewrite it; the SHA256SUMS that each
+# build uploads is replaced.
 on:
   workflow_dispatch:
     inputs:
@@ -23,7 +26,34 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # Creates the draft release, which the builds upload to, if there is none.
+  # On the runner of the build that runs: a Windows-only release does not
+  # wait for the Mac mini.
+  draft:
+    if: github.ref == 'refs/heads/main' && (inputs.target == 'all' || inputs.target == 'unix' || inputs.target == 'windows')
+    runs-on: ${{ inputs.target == 'windows' && fromJSON('["self-hosted","yibo-pc"]') || fromJSON('["self-hosted","macmini"]') }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - if: runner.os != 'Windows'
+        run: .github/scripts/draft-release.sh
+        env:
+          GH_TOKEN: ${{ github.token }}
+      # PowerShell reads mygo.json, as the runner may have no jq; Git Bash
+      # runs the script: a bare bash on Windows can be WSL's.
+      - if: runner.os == 'Windows'
+        shell: powershell
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $m = Get-Content mygo.json -Raw | ConvertFrom-Json
+          $env:VERSION = $m.version
+          $env:REPO = $m.updates.github
+          & "C:\Program Files\Git\bin\bash.exe" .github/scripts/draft-release.sh
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
   unix:
+    needs: draft
     if: github.ref == 'refs/heads/main' && (inputs.target == 'all' || inputs.target == 'unix')
     runs-on: [self-hosted, macmini]
     timeout-minutes: 60
@@ -72,8 +102,8 @@ jobs:
           rm -f "$RUNNER_TEMP/id.p12" "$RUNNER_TEMP/AuthKey.p8"
 
   windows:
-    needs: unix
-    if: always() && github.ref == 'refs/heads/main' && (inputs.target == 'all' || inputs.target == 'windows') && (needs.unix.result == 'success' || needs.unix.result == 'skipped')
+    needs: draft
+    if: github.ref == 'refs/heads/main' && (inputs.target == 'all' || inputs.target == 'windows')
     runs-on: [self-hosted, yibo-pc]
     timeout-minutes: 60
     steps:
@@ -93,6 +123,20 @@ jobs:
           MYGO_UPDATER_PRIVATE_KEY: ${{ secrets.MYGO_UPDATER_PRIVATE_KEY }}
           GH_TOKEN: ${{ github.token }}
         run: go tool mygo build -platform windows/amd64,windows/arm64 -upload
+
+  # Writes SHA256SUMS from the release's assets once a build is done and none
+  # failed. A build that the target skips does not count.
+  checksums:
+    needs: [unix, windows]
+    if: always() && github.ref == 'refs/heads/main' && contains(needs.*.result, 'success') && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')
+    runs-on: [self-hosted, macmini]
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - name: write SHA256SUMS
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: .github/scripts/checksums.sh "v$(jq -r .version mygo.json)" -R "$GITHUB_REPOSITORY"
 
   web-r2:
     if: github.ref == 'refs/heads/main' && (inputs.target == 'all' || inputs.target == 'web')
