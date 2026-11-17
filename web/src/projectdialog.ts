@@ -46,6 +46,7 @@ export function chooseFolder(o: SheetOptions): Promise<Chosen | undefined> {
     const first = defaultHost(states.map((s) => ({ id: s.host.host.id, state: s.state })), o.host);
     let conn = o.hosts.find((c) => c.host.id === first);
     let named = false;
+    let shownPath = "";
     let browser: FolderBrowser;
 
     const d = el("dialog", "confirm project-sheet");
@@ -100,7 +101,11 @@ export function chooseFolder(o: SheetOptions): Promise<Chosen | undefined> {
 
     function draw() {
       const b = browser;
-      if (document.activeElement !== path) path.value = b.path;
+      // The field shows the folder listed; a path being typed stays until another folder is listed.
+      if (b.path !== shownPath) {
+        shownPath = b.path;
+        path.value = b.path;
+      }
       up.disabled = !b.canUp;
       home.disabled = !conn || b.loading;
       if (o.named && !named) name.value = folderName(b.path) || conn?.host.name || "";

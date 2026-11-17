@@ -306,6 +306,12 @@ function tabBar(nav: HTMLElement, c: HostConn | undefined) {
     chip.setAttribute("aria-haspopup", "menu");
     const name = document.createElement("span");
     name.textContent = spaceName(s);
+    if (line) {
+      const sub = document.createElement("small");
+      sub.className = "project-line";
+      sub.textContent = lineText(line);
+      name.append(sub);
+    }
     chip.append(name, icon("chevron-down"));
     chip.onclick = () => {
       const r = chip.getBoundingClientRect();
