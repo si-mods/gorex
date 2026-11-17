@@ -1,6 +1,7 @@
 # Web client: several hosts at once
 
-Status: design for si-mods/gorex#472, not built. Part of the umbrella
+Status: built for si-mods/gorex#472, in #533, #534, #536, #537, #539 and
+#538. Part of the umbrella
 #331. #474 (stay signed in, restore the place), #475 (desktop layout and
 space management) and #477 (uploads) build on it.
 

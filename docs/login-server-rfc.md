@@ -1,6 +1,8 @@
 # RFC: login server and PAM
 
-Status: proposal. Not implemented.
+Status: proposal. Not implemented: no login, PAM or per-principal
+owner uid. #609 builds one piece of step 4, a fixed session user
+(`GOREX_SESSION_USER`) for all sessions on a Linux server.
 
 ## Problem
 

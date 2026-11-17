@@ -1,6 +1,6 @@
 # Web Client: Direct LAN & Self-Signed Connections via WebTransport
 
-Status: proposed.
+Status: built in #629.
 
 ## Problem
 

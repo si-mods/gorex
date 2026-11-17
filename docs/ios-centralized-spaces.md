@@ -1,6 +1,6 @@
 # Rex Go: 以 iOS（+ iCloud）为中心化控制端的跨主机 Space 同步设计
 
-Status: approved (设计决策已确认).
+Status: approved (设计决策已确认). 阶段 1 至 3 已实现：阶段 1 见 #580，阶段 2 与 3 见 #581。
 
 ## 1. 背景与问题诊断
 
