@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cmp"
 	"log"
 	"os"
 	"runtime"
@@ -165,7 +166,8 @@ func (a *App) createProject(h *hostConn, dir, name string) {
 		return
 	}
 	w := st.addWorkspace()
-	if name = strings.TrimSpace(name); name != "" {
+	// An empty name is the folder's, as the field's placeholder says.
+	if name = cmp.Or(strings.TrimSpace(name), folderName(dir)); name != "" {
 		w.Name = name
 	}
 	// The home is the window's as it shows the project, so that its first

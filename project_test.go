@@ -135,7 +135,10 @@ func TestNewTabInHostProject(t *testing.T) {
 	setProjectHome(t, a, tt, home, filepath.Join(folder, "gone"))
 	n, sessions := len(a.tabs), len(sessionInfos(t, remote))
 	a.newProjectTab()
-	waitFor(t, tt, "the note", func() bool { n := a.note(); return n != nil && n.action != nil && strings.Contains(a.errText(), "gone") })
+	waitFor(t, tt, "the note", func() bool {
+		n := a.note()
+		return n != nil && n.action != nil && strings.Contains(a.errText(), "gone")
+	})
 	if len(a.tabs) != n || len(sessionInfos(t, remote)) != sessions {
 		t.Errorf("a tab or a session of a folder gone: %d tabs, %d sessions", len(a.tabs), len(sessionInfos(t, remote)))
 	}

@@ -38,7 +38,9 @@ type projectSheet struct {
 // openSheet opens the sheet: of project space ("" for New Project), on
 // host h, nil for this machine, in dir, "" for the home directory.
 func (a *App) openSheet(space string, h *hostConn, dir string) {
-	a.sheet = projectSheet{open: true, space: space, host: h, want: dir}
+	// gen goes on from the sheet before, whose listings still on their
+	// way are not this one's.
+	a.sheet = projectSheet{open: true, space: space, host: h, want: dir, gen: a.sheet.gen + 1}
 	a.wsOpen, a.wsColorOnly = false, false
 	a.focusReq = nil
 	if h != nil && h.current() == nil {
@@ -93,11 +95,11 @@ func (a *App) listSheet() {
 		return
 	}
 	s.asked, s.loading = true, true
-	gen, want, update := s.gen, s.want, a.updater()
+	gen, host, want, update := s.gen, s.host, s.want, a.updater()
 	go func() {
 		r, err := c.DirList(want, false)
 		update(func() {
-			if !a.sheet.open || a.sheet.gen != gen {
+			if !a.sheet.open || a.sheet.gen != gen || a.sheet.host != host {
 				return
 			}
 			a.sheet.listed(r, err)

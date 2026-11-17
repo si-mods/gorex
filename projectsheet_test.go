@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/egoist/mygo/ui"
 
@@ -149,12 +150,14 @@ func TestNewProjectSheetHost(t *testing.T) {
 	click(t, tt, "beta")
 	sheetShows(t, a, tt, filepath.Join(root, "beta"))
 	folder := a.sheet.res.Path
+	// An empty name is the folder's, as the placeholder says.
+	a.sheet.name = ""
 
 	before := a.ws
 	click(t, tt, locales.ProjectSheetCreate())
 	waitFor(t, tt, "the project's tab on the host", func() bool { return a.ws != before && len(a.tabsOn(h)) == 1 })
-	if a.ws.Host != layout.MachineHost(h.Machine) || a.ws.Dir != folder {
-		t.Fatalf("the project's home is %q %q", a.ws.Host, a.ws.Dir)
+	if a.ws.Host != layout.MachineHost(h.Machine) || a.ws.Dir != folder || a.ws.Name != "beta" {
+		t.Fatalf("the project %q's home is %q %q", a.ws.Name, a.ws.Host, a.ws.Dir)
 	}
 	p := a.tabsOn(h)[0].Focus
 	waitFor(t, tt, "the shell in the folder", func() bool {
@@ -165,6 +168,42 @@ func TestNewProjectSheetHost(t *testing.T) {
 		}
 		return false
 	})
+}
+
+// TestProjectSheetStaleListing cancels a sheet while a slow host lists a
+// folder, and opens another on this machine: the host's late listing is
+// not the new sheet's, whose folder stays this machine's.
+func TestProjectSheetStaleListing(t *testing.T) {
+	a, tt := newTestApp(t)
+	h, proxy, _ := remotePane(t, a, tt, t.TempDir())
+	root := folderTree(t, appTempDir(t, a))
+
+	a.openSheet("", nil, root)
+	sheetShows(t, a, tt, root)
+	release := proxy.hold()
+	t.Cleanup(release)
+	// The host's listing is the sheet's second, as is alpha's below.
+	a.pickHost(h)
+	tt.Frame()
+	if !a.sheet.loading || a.sheet.host != h {
+		t.Fatalf("no listing of the host on its way: %+v", a.sheet)
+	}
+	click(t, tt, locales.ProjectSheetCancel())
+
+	a.openSheet("", nil, root)
+	sheetShows(t, a, tt, root)
+	click(t, tt, "alpha")
+	alpha := filepath.Join(root, "alpha")
+	sheetShows(t, a, tt, alpha)
+	release()
+	// The host's listing comes back, and is dropped.
+	for range 40 {
+		time.Sleep(25 * time.Millisecond)
+		tt.Frame()
+	}
+	if s := a.sheet; s.host != nil || !sameDir(s.res.Path, alpha) || !sameDir(s.chosen(), alpha) {
+		t.Fatalf("the sheet of this machine shows %q of %v, would use %q", s.res.Path, s.host, s.chosen())
+	}
 }
 
 // TestProjectSettings changes the window's project from its context menu:
