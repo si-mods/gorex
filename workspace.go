@@ -1225,6 +1225,12 @@ func (a *App) show(w *Workspace) {
 	if old := a.ws; old != nil && old != w {
 		a.park()
 	}
+	if p := a.projectOpen; p != nil && p.space != w.ID {
+		// A New Tab that waits for its project's host is the shown
+		// project's: another one shown, it ends.
+		a.projectOpen = nil
+		log.Printf("no new tab: the window left project %s while its home host connected", p.space)
+	}
 	a.ws, w.app = w, a
 	if k := w.kept; k != nil && k.app == a {
 		w.kept = nil

@@ -280,8 +280,9 @@ func TestProjectTabWaitsForTailnetHost(t *testing.T) {
 }
 
 // TestProjectTabNotInAnotherProject makes New Tab of a project whose home
-// host is not connected, then shows another project: once the host
-// connects, no tab opens, in either, and the window says why.
+// host is not connected, then shows another project of the same home:
+// the wait ends as the window switches, and once the host connects no tab
+// opens, in either.
 func TestProjectTabNotInAnotherProject(t *testing.T) {
 	a, tt := newTestApp(t)
 	h, _, release := pendingTailnetProject(t, a, tt)
@@ -294,13 +295,16 @@ func TestProjectTabNotInAnotherProject(t *testing.T) {
 	if a.ws != other {
 		t.Fatal("the window does not show the other project")
 	}
+	if a.projectOpen != nil {
+		t.Error("the wait stays as the window shows another project")
+	}
 	setProjectHome(t, a, tt, project.Host, project.Dir)
-	a.err = ""
 	release()
-	waitFor(t, tt, "the note", func() bool { return strings.Contains(a.err, "not shown") })
+	waitFor(t, tt, "the host to connect", func() bool { return h.current() != nil })
+	time.Sleep(500 * time.Millisecond)
 	tt.Frame()
-	if len(a.tabsOn(h)) != 0 || a.projectOpen != nil {
-		t.Errorf("the other project has %d tabs of the host; wait %+v", len(a.tabsOn(h)), a.projectOpen)
+	if len(a.tabsOn(h)) != 0 {
+		t.Errorf("the other project has %d tabs of the host", len(a.tabsOn(h)))
 	}
 	a.showWorkspace(project)
 	n := 0
@@ -368,6 +372,15 @@ func TestProjectHostLearnedOnConnect(t *testing.T) {
 			if p := a.tab().Focus; p.host != h || !sameDir(p.startDir, folder) {
 				t.Errorf("the project's tab is on %v in %q", p.host, p.startDir)
 			}
+			if tailnet {
+				// Connected to learn its machine, the host is not opened:
+				// it does not connect again as the app starts.
+				hs, _ := loadHosts()
+				i := slices.IndexFunc(hs, func(s savedHost) bool { return s.ID == h.ID })
+				if h.TailnetOpened || i >= 0 && hs[i].TailnetOpened {
+					t.Errorf("the host is opened: %v, hosts.json %+v", h.TailnetOpened, hs)
+				}
+			}
 		})
 	}
 }
@@ -433,5 +446,91 @@ func TestProjectTabRefusesOldHost(t *testing.T) {
 	tt.Frame()
 	if len(a.tabsOn(h)) != n {
 		t.Error("a tab opened on the older host")
+	}
+}
+
+// TestProjectTabHomeMovedMeanwhile makes New Tab of a project whose home
+// host is not connected, then moves the home to another machine: once the
+// old host connects, no tab opens there, and the window says why.
+func TestProjectTabHomeMovedMeanwhile(t *testing.T) {
+	a, tt := newTestApp(t)
+	h, folder, release := pendingTailnetProject(t, a, tt)
+	n := len(a.tabsOn(h))
+	a.newProjectTab()
+	setProjectHome(t, a, tt, layout.MachineHost("machine-far"), filepath.Join(folder, "elsewhere"))
+	a.err = ""
+	release()
+	waitFor(t, tt, "the note", func() bool { return strings.Contains(a.err, "home changed") })
+	time.Sleep(300 * time.Millisecond)
+	tt.Frame()
+	if len(a.tabsOn(h)) != n || a.projectOpen != nil {
+		t.Errorf("%d tabs of the old home, %d before; wait %+v", len(a.tabsOn(h)), n, a.projectOpen)
+	}
+}
+
+// unknownHomeProject is a project whose home is machine, and a host the
+// app has not learned the machine of, whose connection is held till the
+// release returned.
+func unknownHomeProject(t *testing.T, a *App, tt *ui.Tester, machine string) (h *hostConn, folder string, release func()) {
+	t.Helper()
+	_, proxy, remote, _, folder := tailnetHost(t, a)
+	if machine == "" {
+		hello, err := remote.Hello()
+		if err != nil {
+			t.Fatal(err)
+		}
+		machine = hello.Machine
+	}
+	release = holdDials(t)
+	h = a.addHost(savedHost{ID: "h-again", Name: "office-mac", Address: proxy.path})
+	setProjectHome(t, a, tt, layout.MachineHost(machine), folder)
+	focusLocal(t, a)
+	return h, folder, release
+}
+
+// TestProjectWaitEndsWhenNoHostIsHome makes New Tab of a project whose
+// home machine is none of the hosts: once the host of unknown machine
+// connects and is another machine, the wait ends, with a note, and no tab
+// opens.
+func TestProjectWaitEndsWhenNoHostIsHome(t *testing.T) {
+	a, tt := newTestApp(t)
+	h, _, release := unknownHomeProject(t, a, tt, "machine-elsewhere")
+	if a.newProjectTab(); a.projectOpen == nil {
+		t.Fatalf("no wait: %q", a.err)
+	}
+	a.err = ""
+	release()
+	waitFor(t, tt, "the note", func() bool { return strings.Contains(a.err, "not one of your hosts") })
+	if a.projectOpen != nil || len(a.tabsOn(h)) != 0 {
+		t.Errorf("wait %+v, %d tabs of the host", a.projectOpen, len(a.tabsOn(h)))
+	}
+}
+
+// TestProjectWaitTimesOut makes New Tab of a project whose home host does
+// not connect: the wait ends after projectWait, with a note. A New Tab
+// again replaces the wait, whose time starts anew.
+func TestProjectWaitTimesOut(t *testing.T) {
+	old := projectWait
+	projectWait = 400 * time.Millisecond
+	t.Cleanup(func() { projectWait = old })
+	a, tt := newTestApp(t)
+	h, _, _ := unknownHomeProject(t, a, tt, "")
+	a.newProjectTab()
+	first := a.projectOpen
+	time.Sleep(250 * time.Millisecond)
+	a.newProjectTab()
+	second := a.projectOpen
+	if first == nil || second == nil || second == first {
+		t.Fatalf("the waits %p %p", first, second)
+	}
+	a.err = ""
+	time.Sleep(250 * time.Millisecond)
+	tt.Frame()
+	if a.projectOpen != second {
+		t.Fatal("the first wait's time ended the second")
+	}
+	waitFor(t, tt, "the note", func() bool { return strings.Contains(a.err, "did not connect") })
+	if a.projectOpen != nil || len(a.tabsOn(h)) != 0 {
+		t.Errorf("wait %+v, %d tabs of the host", a.projectOpen, len(a.tabsOn(h)))
 	}
 }

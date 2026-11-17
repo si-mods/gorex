@@ -110,16 +110,21 @@ home host as offline.
   has tabs of the host.
 - **Home machine not known yet.** A host added again has no machine until
   it connects once. When no host is known to be the home's machine, the
-  hosts of unknown machine that can be reached connect (a tailnet one as
-  above), and the tab opens on the one that turns out to be the home.
+  hosts of unknown machine that can be reached connect, and the tab opens
+  on the one that turns out to be the home. A tailnet host connected only
+  to learn its machine is not opened: it does not connect again as the
+  app starts.
   With none to try, New Tab says the home host is not connected; once
   every host's machine is known and none is the home, it says the host
   is not one of the user's hosts. Of two hosts of one machine, as its
   LAN and tailnet entries, the connected one is the home.
-- **Project switched meanwhile.** A tab that waits for its host opens in
-  the project it was asked in. A window that shows another project when
-  the host connects opens none and says so: a tab in the wrong project,
-  or the window switching back unasked, would surprise more than a note.
+- **The wait.** A window has at most one New Tab that waits for a host;
+  a New Tab again replaces it. It ends when the window shows another
+  project (a tab in the wrong project, or the window switching back
+  unasked, would surprise more than nothing), and after 60 s with the
+  note "The home host of … did not connect". When the host connects, the
+  tab opens only if the host is the project's home still, in its folder
+  then; a home moved meanwhile opens none, with a note.
 - **Home host of an older GoRex.** A server without the capability
   `space.home` would start the shell at home when the folder is gone:
   New Tab in the project fails with a note instead.

@@ -1560,7 +1560,7 @@ func (a *App) newProjectTab() *Tab {
 	if rex.IsTailnetTarget(h.Address) && h.current() == nil && h.tailnetOnline {
 		// A host of the tailnet connects at the user's asking: the tab
 		// opens once it has (takeProjectOpen).
-		a.projectOpen = &projectOpen{space: w.ID, host: h}
+		a.waitProject(&projectOpen{space: w.ID, host: h})
 		a.connectTailnetHost(h)
 		return nil
 	}
@@ -1573,6 +1573,42 @@ func (a *App) newProjectTab() *Tab {
 type projectOpen struct {
 	space, machine string
 	host           *hostConn
+}
+
+// projectWait is how long a New Tab waits for its project's home host to
+// connect; tests shorten it.
+var projectWait = 60 * time.Second
+
+// waitProject makes p the window's New Tab that waits for its home host,
+// in place of one before, and ends it, with a note, once projectWait went
+// by without the host.
+func (a *App) waitProject(p *projectOpen) {
+	a.projectOpen = p
+	update := a.updater()
+	time.AfterFunc(projectWait, func() {
+		update(func() {
+			if a.projectOpen != p {
+				return
+			}
+			a.projectOpen = nil
+			name := p.space
+			if w := a.ws; w != nil && w.ID == p.space {
+				name = w.Name
+			}
+			log.Printf("no new tab: the home host of project %s did not connect", p.space)
+			a.err, a.errMsg = fmt.Sprintf("The home host of %s did not connect; no tab opened", name), nil
+		})
+	})
+}
+
+// mayBeHome tells whether host h may turn out to be a project's home
+// machine as it connects: its machine is not known, and the app reaches
+// it, or tries to.
+func mayBeHome(h *hostConn) bool {
+	if h.Machine != "" || h.current() != nil {
+		return false
+	}
+	return !rex.IsTailnetTarget(h.Address) || h.TailnetOpened || h.tailnetOnline
 }
 
 // awaitProjectHost is New Tab of project w, whose home host is none the
@@ -1588,21 +1624,20 @@ func (a *App) awaitProjectHost(w *Workspace) *Tab {
 			continue
 		}
 		unknown++
-		switch tailnet := rex.IsTailnetTarget(h.Address); {
-		case h.current() != nil:
-			// Connected to a server of before machines: not the home.
-		case tailnet && h.tailnetOnline:
-			a.connectTailnetHost(h)
-			tried = true
-		case !tailnet || h.TailnetOpened:
-			// Its connection is tried already (runHost).
-			tried = true
+		if !mayBeHome(h) {
+			continue
+		}
+		tried = true
+		if rex.IsTailnetTarget(h.Address) && !h.TailnetOpened {
+			// Once, to learn its machine: the host stays as the user left
+			// it, not opened (probeTailnetHost).
+			a.probeTailnetHost(h)
 		}
 	}
 	switch {
 	case tried:
 		log.Printf("new tab of project %s: connecting to find its home host %s", w.ID, w.Host)
-		a.projectOpen = &projectOpen{space: w.ID, machine: machine}
+		a.waitProject(&projectOpen{space: w.ID, machine: machine})
 		a.err, a.errMsg = fmt.Sprintf("Connecting to the home host of %s; the tab opens in %s once it is connected", w.Name, w.Dir), nil
 	case unknown > 0:
 		log.Printf("no new tab: the home host %s of project %s is not connected", w.Host, w.ID)
@@ -1616,17 +1651,18 @@ func (a *App) awaitProjectHost(w *Workspace) *Tab {
 
 // takeProjectOpen opens the tab of the New Tab that waits for host h, now
 // connected and its machine learned, if h is the project's home. The tab
-// opens in the project the user asked in; a window that shows another one
-// now opens none, and says so: a tab of a project not shown, or the
-// project switched back unasked, would surprise more than a note. Once
-// every host's machine is known and none is the home, the wait ends.
+// opens in the project the user asked in, while h is its home still, in
+// its folder now; a home moved meanwhile opens none, and says so. Once no
+// host may be the home machine (mayBeHome) and none is, the wait ends.
+// (A window that shows another project dropped its wait as it switched:
+// show.)
 func (a *App) takeProjectOpen(h *hostConn) {
 	p := a.projectOpen
 	if p == nil {
 		return
 	}
 	if p.host != h && (p.machine == "" || h.Machine != p.machine) {
-		if p.host == nil && !slices.ContainsFunc(a.hosts, func(x *hostConn) bool { return x.Machine == "" && x.current() == nil }) {
+		if p.host == nil && !slices.ContainsFunc(a.hosts, mayBeHome) {
 			a.projectOpen = nil
 			log.Printf("no new tab: no host is the home machine %s of project %s", p.machine, p.space)
 			a.err, a.errMsg = "The project's home host is not one of your hosts; no tab opened", nil
@@ -1634,9 +1670,9 @@ func (a *App) takeProjectOpen(h *hostConn) {
 		return
 	}
 	a.projectOpen = nil
-	if a.ws == nil || a.ws.ID != p.space || a.ws.Dir == "" {
-		log.Printf("no new tab: %s connected, but project %s is not shown", h.label(), p.space)
-		a.err, a.errMsg = fmt.Sprintf("%s is connected, but its project is not shown now; no tab opened", h.label()), nil
+	if w := a.ws; w == nil || w.ID != p.space || w.Dir == "" || a.projectHost(w) != h {
+		log.Printf("no new tab: %s connected, but it is not the home of project %s now", h.label(), p.space)
+		a.err, a.errMsg = fmt.Sprintf("%s is connected, but the project's home changed meanwhile; no tab opened", h.label()), nil
 		return
 	}
 	a.projectTabOn(h, a.ws.Dir)

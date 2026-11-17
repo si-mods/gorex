@@ -153,6 +153,8 @@ type hostConn struct {
 	closed        map[string]bool
 	tailnetOnline bool
 	openOnConnect *App
+	// running tells that the app connects to the host (startHost).
+	running bool
 	// transfers are those of the host's sessions, by session.
 	transfers map[string]*sessionTransfers
 	// creating closes once the pane of the session asked of the host last
@@ -477,6 +479,7 @@ func (a *App) hostRedraw() func(func()) {
 // startHost connects to a host in the background, and again whenever the
 // connection drops, until the host is closed.
 func (a *App) startHost(h *hostConn) {
+	h.running = true
 	h.update, h.persist = a.hostUpdate(), func() { a.saveHosts() }
 	go a.runHost(h, h.update)
 }
@@ -716,7 +719,11 @@ func (a *App) watchHost(h *hostConn, c *rex.Client, update func(func())) {
 			if h.openOnConnect != nil && h.openOnConnect.quitting {
 				h.openOnConnect = nil
 			}
-			if h.current() == c && len(layout.hold) == 0 {
+			// A project's tab opens a session of its own, which adopt
+			// leaves alone (expecting): it need not wait for the host's
+			// layout to name its sessions, as the tab openOnConnect
+			// opens does.
+			if h.current() == c {
 				for _, o := range a.peers() {
 					if !o.quitting {
 						o.takeProjectOpen(h)
@@ -1359,7 +1366,7 @@ func (a *App) reconcileTailnet(st *rex.TailnetStatus) {
 			h.poke()
 		}
 		h.tailnetOnline = online
-		if !h.TailnetOpened {
+		if !h.TailnetOpened && h.current() == nil {
 			h.state = hostOffline
 			if online {
 				h.state = hostAvailable
@@ -1381,14 +1388,23 @@ func (a *App) openTailnetHost(h *hostConn) {
 // connectTailnetHost connects to a host of the tailnet, at the user's
 // asking: it stays opened, and connects again as the app starts.
 func (a *App) connectTailnetHost(h *hostConn) {
-	if h.TailnetOpened {
+	if !h.TailnetOpened {
+		h.mu.Lock()
+		h.TailnetOpened = true
+		h.mu.Unlock()
+		a.saveHosts()
+	}
+	a.probeTailnetHost(h)
+}
+
+// probeTailnetHost connects to a host of the tailnet for now, as to learn
+// its machine, and opens it for nothing: it is not opened, and does not
+// connect again as the app starts.
+func (a *App) probeTailnetHost(h *hostConn) {
+	if h.running {
 		h.poke()
 		return
 	}
-	h.mu.Lock()
-	h.TailnetOpened = true
-	h.mu.Unlock()
-	a.saveHosts()
 	a.startHost(h)
 }
 
