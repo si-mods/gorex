@@ -3,8 +3,8 @@ package rexapi
 import (
 	"context"
 	"encoding/json"
+	"net"
 	"net/http/httptest"
-	"os"
 	"runtime"
 	"testing"
 	"time"
@@ -23,7 +23,7 @@ type fixture struct {
 	desk *rex.Client
 	srv  *httptest.Server
 	// serveDone closes when the GoRex server stopped.
-	serveDone chan struct{}
+	serveDone <-chan struct{}
 }
 
 // startFixture starts a GoRex server in a directory of its own, connects
@@ -34,38 +34,24 @@ func startFixture(t *testing.T) *fixture { return startFixtureVia(t, nil) }
 // server's socket through the one via returns, when via is set.
 func startFixtureVia(t *testing.T, via func(socket string) string) *fixture {
 	t.Helper()
-	dir := t.TempDir()
-	t.Setenv("GOREX_DIR", dir)
-	serveDone := make(chan struct{})
-	go func() {
-		defer close(serveDone)
-		rex.Serve()
-	}()
-	for i := 0; i < 500; i++ {
-		if _, err := os.Stat(rex.SocketPath()); err == nil {
-			break
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
-	desk, err := rex.ConnectSocket(rex.SocketPath())
+	sock, serveDone := startServer(t)
+	desk, err := rex.ConnectSocket(sock)
 	if err != nil {
 		t.Fatal(err)
 	}
 	// The gateway holds the blocks' size locks through its connection, so
 	// the server must keep it alive.
-	socket := rex.SocketPath()
+	socket := sock
 	if via != nil {
 		socket = via(socket)
 	}
 	c, err := rex.ConnectSocketKeepalive(socket)
 	if err != nil {
-		desk.Shutdown()
 		t.Fatal(err)
 	}
 	g, err := New(Options{Client: c})
 	if err != nil {
 		c.Close()
-		desk.Shutdown()
 		t.Fatal(err)
 	}
 	srv := httptest.NewServer(g.Handler())
@@ -73,10 +59,86 @@ func startFixtureVia(t *testing.T, via func(socket string) string) *fixture {
 	t.Cleanup(func() {
 		srv.Close()
 		g.Close()
-		desk.Shutdown()
-		<-serveDone
 	})
 	return f
+}
+
+// startServer starts a GoRex server in a directory of its own: see
+// serveHere.
+func startServer(t testing.TB) (string, <-chan struct{}) {
+	t.Helper()
+	t.Setenv("GOREX_DIR", t.TempDir())
+	return serveHere(t)
+}
+
+// serveHere starts a GoRex server in rex.Dir, and returns its socket once
+// it accepts connections, and a channel that closes when Serve returned.
+// The server stops in t's cleanup, before t.Setenv gives GOREX_DIR back,
+// however the test ends: a server that outlives its test resolves Dir
+// again, and then gets the default directory, the user's (#719).
+func serveHere(t testing.TB) (string, <-chan struct{}) {
+	t.Helper()
+	sock := rex.SocketPath()
+	done := make(chan struct{})
+	var serveErr error
+	go func() {
+		defer close(done)
+		serveErr = rex.Serve()
+	}()
+	t.Cleanup(func() {
+		stopServer(t, sock, done)
+		if err := checkDefaultDir(); err != nil {
+			t.Error(err)
+		}
+	})
+	// The socket's file is there from bind, before the server listens:
+	// a dial in between is refused (#719). So the server is ready once a
+	// dial gets through.
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		c, err := net.Dial("unix", sock)
+		if err == nil {
+			c.Close()
+			return sock, done
+		}
+		select {
+		case <-done:
+			t.Fatalf("the server stopped before it accepted: %v (%v)", serveErr, err)
+		default:
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("the server does not accept: %v", err)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+// stopServer shuts the server on sock down, if it still runs, and waits
+// until Serve returned.
+func stopServer(t testing.TB, sock string, done <-chan struct{}) {
+	t.Helper()
+	deadline := time.After(10 * time.Second)
+	for stopping := false; ; {
+		select {
+		case <-done:
+			return
+		case <-deadline:
+			t.Errorf("the server on %s did not stop", sock)
+			return
+		default:
+		}
+		if !stopping {
+			if c, err := rex.ConnectSocket(sock); err == nil {
+				c.Shutdown()
+				stopping = true
+			}
+		}
+		select {
+		case <-done:
+		case <-deadline:
+		case <-time.After(10 * time.Millisecond):
+		}
+	}
 }
 
 // setLayout gives the GoRex server a layout.
