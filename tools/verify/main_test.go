@@ -271,3 +271,160 @@ func TestHookDenies(t *testing.T) {
 		}
 	}
 }
+
+// trustRepo makes a repo with one commit on a remote-tracking main, and
+// returns a helper that commits and runs git in it. No network is used.
+func trustRepo(t *testing.T, url string) (string, func(args ...string) string) {
+	t.Helper()
+	dir := t.TempDir()
+	g := func(args ...string) string {
+		t.Helper()
+		out, err := git(dir, append([]string{"-c", "user.name=t", "-c", "user.email=t@example.com"}, args...)...)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return strings.TrimSpace(out)
+	}
+	g("init", "-q", "-b", "main")
+	g("commit", "-q", "--allow-empty", "-m", "base")
+	g("remote", "add", "origin", url)
+	g("update-ref", "refs/remotes/origin/main", "HEAD")
+	return dir, g
+}
+
+func TestTrustedBranch(t *testing.T) {
+	const si = "https://github.com/si-mods/gorex.git"
+	t.Run("own commits on si-mods", func(t *testing.T) {
+		dir, g := trustRepo(t, si)
+		g("commit", "-q", "--allow-empty", "-m", "mine")
+		if ok, why := trustedBranch(dir); !ok {
+			t.Errorf("untrusted: %s", why)
+		}
+	})
+	t.Run("head on si-mods main", func(t *testing.T) {
+		dir, _ := trustRepo(t, si)
+		if ok, _ := trustedBranch(dir); !ok {
+			t.Error("untrusted")
+		}
+	})
+	t.Run("ssh remote", func(t *testing.T) {
+		dir, _ := trustRepo(t, "git@github.com:si-mods/gorex.git")
+		if ok, _ := trustedBranch(dir); !ok {
+			t.Error("untrusted")
+		}
+	})
+	t.Run("fork remote", func(t *testing.T) {
+		for _, u := range []string{"https://github.com/someone/gorex.git", "https://github.com.evil.example/si-mods/gorex", "https://github.com/egoist/gorex", t.TempDir()} {
+			dir, g := trustRepo(t, u)
+			g("commit", "-q", "--allow-empty", "-m", "mine")
+			if ok, _ := trustedBranch(dir); ok {
+				t.Errorf("remote %q trusted", u)
+			}
+		}
+	})
+	t.Run("no remote", func(t *testing.T) {
+		dir, g := trustRepo(t, si)
+		g("remote", "remove", "origin")
+		if ok, _ := trustedBranch(dir); ok {
+			t.Error("trusted")
+		}
+	})
+	t.Run("fetched commit not made here", func(t *testing.T) {
+		// A fork's commit that reached the branch by fetch and checkout.
+		dir, g := trustRepo(t, si)
+		checkoutFork(t, dir, g)
+		if ok, why := trustedBranch(dir); ok {
+			t.Errorf("fork commit trusted (%s)", why)
+		}
+	})
+	t.Run("own commit on top of a fork commit", func(t *testing.T) {
+		dir, g := trustRepo(t, si)
+		checkoutFork(t, dir, g)
+		g("commit", "-q", "--allow-empty", "-m", "my fix")
+		if ok, _ := trustedBranch(dir); ok {
+			t.Error("trusted")
+		}
+	})
+	t.Run("amend of a fork commit", func(t *testing.T) {
+		dir, g := trustRepo(t, si)
+		checkoutFork(t, dir, g)
+		g("commit", "-q", "--amend", "--allow-empty", "-m", "looks mine")
+		if ok, _ := trustedBranch(dir); ok {
+			t.Error("amended fork commit trusted")
+		}
+	})
+	t.Run("fork branch pushed to the si-mods remote", func(t *testing.T) {
+		// The fork's commit now sits on refs/remotes/origin/pr.
+		dir, g := trustRepo(t, si)
+		checkoutFork(t, dir, g)
+		g("update-ref", "refs/remotes/origin/pr", "HEAD")
+		if ok, why := trustedBranch(dir); ok {
+			t.Errorf("trusted (%s)", why)
+		}
+	})
+	t.Run("config in the checkout is ignored", func(t *testing.T) {
+		dir, g := trustRepo(t, "https://github.com/someone/gorex.git")
+		g("commit", "-q", "--allow-empty", "-m", "mine")
+		if err := os.WriteFile(filepath.Join(dir, ".verify-trusted"), []byte("si-mods"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if ok, _ := trustedBranch(dir); ok {
+			t.Error("trusted")
+		}
+	})
+}
+
+func TestPlanReadOnly(t *testing.T) {
+	files := []string{"internal/rex/a.go", "web/src/a.ts", "ios/App.swift", ".github/workflows/ci.yml"}
+	for _, c := range plan(files, facts{goos: "darwin", webNodeModules: true, iosToolsPresent: true, readOnly: true}) {
+		safe := c.name == "gofmt" || c.name == "actionlint" || strings.HasPrefix(c.name, "vet ") || strings.HasPrefix(c.name, "build ")
+		if safe && c.skip != "" {
+			t.Errorf("%s skipped in read-only mode: %s", c.name, c.skip)
+		}
+		if !safe && (c.skip == "" || !c.unverified) {
+			t.Errorf("%s still runs in read-only mode", c.name)
+		}
+	}
+}
+
+func TestHookReadOnlyMode(t *testing.T) {
+	dir, g := trustRepo(t, "https://github.com/someone/gorex.git")
+	if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module gorex\n\ngo 1.22\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "a.go"), []byte("package gorex\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	g("add", "go.mod", "a.go")
+	g("commit", "-q", "-m", "mod")
+	g("update-ref", "refs/remotes/origin/main", "HEAD~1")
+	setBlocks("test-ro", 0)
+	t.Cleanup(func() { setBlocks("test-ro", 0) })
+	in := `{"session_id":"test-ro","cwd":` + quote(dir) + `,"tool_name":"Bash","tool_input":{"command":"git push"}}`
+	var errb, outb bytes.Buffer
+	if code := hookMain(strings.NewReader(in), &errb, &outb); code != 0 {
+		t.Fatalf("exit %d", code)
+	}
+	if strings.Contains(outb.String(), "deny") || !strings.Contains(errb.String(), "mode read-only") || !strings.Contains(outb.String(), "read-only") {
+		t.Errorf("mode not reported: stderr %q stdout %q", errb.String(), outb.String())
+	}
+}
+
+// checkoutFork fetches a commit made in another repo (a fork) on top of
+// origin/main and checks it out as branch pr, like `gh pr checkout`.
+func checkoutFork(t *testing.T, dir string, g func(args ...string) string) {
+	t.Helper()
+	fork := t.TempDir()
+	for _, a := range [][]string{
+		{"init", "-q", "-b", "main"},
+		{"fetch", "-q", dir, "refs/remotes/origin/main"},
+		{"checkout", "-q", "-b", "work", "FETCH_HEAD"},
+		{"-c", "user.name=f", "-c", "user.email=f@example.com", "commit", "-q", "--allow-empty", "-m", "fork work"},
+	} {
+		if _, err := git(fork, a...); err != nil {
+			t.Fatal(err)
+		}
+	}
+	g("fetch", "-q", fork, "work")
+	g("checkout", "-q", "-b", "pr", "FETCH_HEAD")
+}

@@ -5,5 +5,7 @@
 !/.claude/settings.json
 mygo_windows_*.syso
 /gorex
+/verify
+/verify.exe
 /*.png
 /.omp/
