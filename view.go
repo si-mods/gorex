@@ -188,7 +188,7 @@ func (a *App) titleButtons(c *ui.Context, k *colors, more func()) {
 			a.openPalette()
 		}
 		if naturalIconButton(c, k, "plus", locales.CmdNewTab(), 30, 18).Tooltip(tip(locales.CmdNewTab(), &cmdNewTab)).Clicked() {
-			a.newTab(a.currentDir())
+			a.newProjectTab()
 		}
 		if more != nil {
 			more()

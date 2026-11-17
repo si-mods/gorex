@@ -827,7 +827,7 @@ func sameArrangement(x, y savedStore) bool {
 	}
 	for i, xw := range x.Sessions {
 		yw := y.Sessions[i]
-		if xw.ID != yw.ID || xw.Name != yw.Name || xw.Color != yw.Color || xw.Active != yw.Active || len(xw.Tabs) != len(yw.Tabs) {
+		if xw.ID != yw.ID || xw.Name != yw.Name || xw.Color != yw.Color || xw.Host != yw.Host || xw.Dir != yw.Dir || xw.Active != yw.Active || len(xw.Tabs) != len(yw.Tabs) {
 			return false
 		}
 		for j := range xw.Tabs {

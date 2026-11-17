@@ -800,6 +800,13 @@ func (a *App) offline(h *hostConn) bool {
 // reports whether the pane has a place still; the session of one that has
 // not ends. One the host does not make shows its error, and no pane.
 func (a *App) newPaneRun(h *hostConn, dir string, cols, rows int, command []string, place func(*Pane) bool) {
+	a.newPaneIn(h, rex.CreateOptions{Dir: dir, Cols: cols, Rows: rows, Command: command}, place)
+}
+
+// newPaneIn is newPaneRun of the session o describes, which a strict
+// directory (rex.CreateOptions.DirStrict) the host does not have fails.
+func (a *App) newPaneIn(h *hostConn, o rex.CreateOptions, place func(*Pane) bool) {
+	dir, cols, rows, command := o.Dir, o.Cols, o.Rows, o.Command
 	if cols <= 0 {
 		cols, rows = 80, 24
 	}
@@ -817,7 +824,7 @@ func (a *App) newPaneRun(h *hostConn, dir string, cols, rows int, command []stri
 		var info rex.SessionInfo
 		err := errors.New("rex: connection to the server lost")
 		if c != nil {
-			info, err = c.Create(rex.CreateOptions{Command: command, Dir: dir, Cols: cols, Rows: rows, Env: env})
+			info, err = c.Create(rex.CreateOptions{Command: command, Dir: dir, DirStrict: o.DirStrict, Cols: cols, Rows: rows, Env: env})
 		}
 		if err == nil {
 			// The host's next list may have it before its pane: adopt
@@ -1420,12 +1427,16 @@ func (a *App) newTab(dir string) *Tab { return a.newTabOn(a.currentHost(), dir) 
 
 // newTabOn opens a tab with a shell in dir on host h, nil for this
 // machine, after the active tab (newTabAfter), and shows it.
-func (a *App) newTabOn(h *hostConn, dir string) *Tab {
+func (a *App) newTabOn(h *hostConn, dir string) *Tab { return a.newTabOnIn(h, dir, false) }
+
+// newTabOnIn is newTabOn of a tab of a host that starts in dir or not at
+// all when strict (rex.CreateOptions.DirStrict).
+func (a *App) newTabOnIn(h *hostConn, dir string, strict bool) *Tab {
 	if h != nil && rex.IsTailnetTarget(h.Address) && h.current() == nil && h.tailnetOnline {
 		a.openTailnetHost(h)
 		return nil
 	}
-	t := a.newTabAfter(h, dir, a.tab())
+	t := a.newTabAfterIn(h, dir, strict, a.tab(), nil)
 	if t != nil {
 		a.active = slices.Index(a.tabs, t)
 		a.focusReq = t.Focus
@@ -1446,6 +1457,13 @@ func (a *App) newTabAfter(h *hostConn, dir string, after *Tab) *Tab {
 // nil. One of a host shows as the host made its session, after the tab
 // active then, as a tab of the host asked for before it is.
 func (a *App) newTabAfterRun(h *hostConn, dir string, after *Tab, command []string) *Tab {
+	return a.newTabAfterIn(h, dir, false, after, command)
+}
+
+// newTabAfterIn is newTabAfterRun of a tab of a host that starts in dir or
+// not at all when strict. One of this machine the server makes in the
+// folder of the window's project when dir is "", or fails.
+func (a *App) newTabAfterIn(h *hostConn, dir string, strict bool, after *Tab, command []string) *Tab {
 	if a.offline(h) {
 		return nil
 	}
@@ -1458,10 +1476,15 @@ func (a *App) newTabAfterRun(h *hostConn, dir string, after *Tab, command []stri
 			c.After = p.SID
 		}
 		var t *Tab
-		a.ask(c, func(res rex.LayoutCommand) { t = a.tabByUID(res.Tab) })
+		a.ask(c, func(res rex.LayoutCommand) {
+			if res.Code == rex.FolderMissing {
+				log.Printf("no new tab: %s", res.Error)
+			}
+			t = a.tabByUID(res.Tab)
+		})
 		return t
 	}
-	a.newPaneRun(h, dir, 0, 0, command, func(p *Pane) bool {
+	a.newPaneIn(h, rex.CreateOptions{Dir: dir, DirStrict: strict, Command: command}, func(p *Pane) bool {
 		t := a.makeTab("")
 		t.Root = &Node{ID: a.id(), Pane: p}
 		p.Tab, p.Node = t, t.Root
@@ -1504,6 +1527,51 @@ func (a *App) newPaneTab(p *Pane) *Tab {
 	a.groupTabs()
 	a.changed()
 	return t
+}
+
+// newProjectTab is New Tab. In a project with a folder it opens a tab on
+// the project's home host in the folder, or none, with the reason, while
+// the host is unknown or not connected or the folder is gone: never one
+// elsewhere. In a project of no folder it opens one on the focused pane's
+// host in its directory, as before. A split starts where its pane
+// started, project or not.
+func (a *App) newProjectTab() *Tab {
+	w := a.ws
+	if w == nil || w.Dir == "" {
+		return a.newTab(a.currentDir())
+	}
+	if w.Host == "" {
+		// The server starts it in the folder, or fails with
+		// rex.FolderMissing and starts none.
+		return a.newTabOn(nil, "")
+	}
+	h := a.projectHost(w)
+	if h == nil {
+		log.Printf("no new tab: the home host %s of project %s is unknown", w.Host, w.ID)
+		a.err, a.errMsg = fmt.Sprintf("The home host of %s is not one of your hosts; no tab opened in %s", w.Name, w.Dir), nil
+		return nil
+	}
+	return a.newTabOnIn(h, w.Dir, true)
+}
+
+// projectHost is the home host of project w: the host of its ID, else
+// the host of the machine it names (layout.MachineHost); nil for none,
+// as of a host removed from hosts.json, which the project keeps.
+func (a *App) projectHost(w *Workspace) *hostConn {
+	if w.Host == "" {
+		return nil
+	}
+	if h := a.hostByID(w.Host); h != nil {
+		return h
+	}
+	if m, ok := layout.HostMachine(w.Host); ok {
+		for _, h := range a.hosts {
+			if h.Machine == m {
+				return h
+			}
+		}
+	}
+	return nil
 }
 
 // currentHost is the host of the focused pane, nil for this machine.

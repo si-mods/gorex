@@ -460,7 +460,7 @@ func (a *App) tabMenu(m *ui.Menu, t *Tab) {
 		mods, key = cmdNewTab.Other.Mods, cmdNewTab.Other.Key
 	}
 	if m.Item(locales.CmdNewTab()).Shortcut(mods, key).Chosen() {
-		a.newTab(a.currentDir())
+		a.newProjectTab()
 	}
 	if m.Item(locales.CmdCloseTab()).Chosen() {
 		a.laterService(func() { a.closeTab(t) })

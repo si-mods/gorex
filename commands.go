@@ -224,11 +224,13 @@ var (
 	cmdNewTab = command{
 		ID: "tab.new", Name: locales.Messages.CmdNewTab, Accel: "CmdOrCtrl+T", Keys: "⌘T", Other: ctrlShift(ui.KeyT),
 		Args: []actionArg{{Name: "dir", Type: "string", Optional: true}},
-		Run:  func(a *App) { a.newTab(a.currentDir()) },
+		Run:  func(a *App) { a.newProjectTab() },
 		RunArgs: func(a *App, args map[string]any) error {
+			// A directory the caller gives wins over the project's folder.
 			dir, _ := args["dir"].(string)
 			if strings.TrimSpace(dir) == "" {
-				dir = a.currentDir()
+				a.newProjectTab()
+				return nil
 			}
 			a.newTab(dir)
 			return nil
