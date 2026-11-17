@@ -310,7 +310,9 @@ export function webURL(link: string): string | undefined {
  * The path a file:// URL names on the host, as the desktop's download
  * reads it: the host ignored, the path percent-decoded, and a Windows
  * drive's leading slash taken off (file:///C:/x is C:/x). Undefined for
- * another URL, or one without a path.
+ * another URL, one without a path, one with a backslash (a separator to a
+ * Windows host, which could climb out unseen) or one of another machine
+ * (remotePath). The path is as decoded, not cleaned (cleanPath).
  */
 export function fileURLPath(url: string): string | undefined {
   if (!/^file:\/\//i.test(url)) return undefined;
@@ -321,7 +323,32 @@ export function fileURLPath(url: string): string | undefined {
     return undefined;
   }
   if (path.length > 2 && path[2] === ":") path = path.slice(1);
-  return path === "" || path === "/" || remotePath(path) ? undefined : path;
+  return path === "" || path === "/" || path.includes("\\") || remotePath(path) ? undefined : path;
+}
+
+/**
+ * A path cleaned lexically as Go's path/filepath.Clean does on the host:
+ * empty and . segments dropped, .. taking the segment before it off (none
+ * above the root), a trailing slash gone; a Windows drive (C:) stays in
+ * front. A file:// URL's %2F decodes after the URL's own dot segments are
+ * resolved, so its decoded path may still climb (a.png%2F..%2F.ssh).
+ */
+export function cleanPath(path: string): string {
+  let vol = "", rest = path;
+  if (/^[A-Za-z]:/.test(path)) [vol, rest] = [path.slice(0, 2), path.slice(2)];
+  const rooted = rest.startsWith("/");
+  const out: string[] = [];
+  for (const seg of rest.split("/")) {
+    if (seg === "" || seg === ".") continue;
+    if (seg === "..") {
+      if (out.length > 0 && out[out.length - 1] !== "..") out.pop();
+      else if (!rooted) out.push(seg);
+      continue;
+    }
+    out.push(seg);
+  }
+  const body = (rooted ? "/" : "") + out.join("/");
+  return vol + (body === "" ? "." : body);
 }
 
 /**
@@ -339,7 +366,8 @@ export function remotePath(path: string): boolean {
 /**
  * Whether a file hyperlink's cells, columns x0 up to x1 of a row, print
  * what it opens: its URL, its path, or the path's last parts, as ls
- * --hyperlink prints a file's name over its absolute path.
+ * --hyperlink prints a file's name over its absolute path. path is the
+ * cleaned one, and printed text with a . or .. segment prints none of it.
  */
 function printsPath(t: RowText, x0: number, x1: number, url: string, path: string): boolean {
   let s = "";
@@ -347,7 +375,8 @@ function printsPath(t: RowText, x0: number, x1: number, url: string, path: strin
     if (x0 <= c && c < x1) s += t.text[i];
   });
   s = s.trim().replace(/^\.\//, "");
-  return s !== "" && (s === url || s === path || path.endsWith("/" + s));
+  if (s === "" || s.split("/").some((seg) => seg === "." || seg === "..")) return false;
+  return s === url || s === path || path.endsWith("/" + s);
 }
 
 /** Whether the page opens a URL: http, https, ftp and mailto. A file:// URL names a file on the host, which only the gateway sends (fileURLPath). */
@@ -428,11 +457,15 @@ export function linkAt(g: LinkGrid, col: number, row: number, files = false): Li
   })();
   if (!found) return undefined;
   if (found.path !== undefined || opens(found.url)) return found;
-  const path = files ? fileURLPath(found.url) : undefined;
-  if (path === undefined) return undefined;
+  const raw = files ? fileURLPath(found.url) : undefined;
+  if (raw === undefined) return undefined;
+  // The file the host opens: what is asked for and shown. A path that
+  // cleaning changes hides its file, printed or not.
+  const path = cleanPath(raw);
+  if (path === "/" || path === ".") return undefined;
   // A hyperlink's cells may print other text than its file; a URL printed as text shows itself.
   const hyperlink = g.hyperlinkAt(col, row) === found.url;
-  const hidden = hyperlink && !printsPath(g.rowText(row), found.x0, found.x1, found.url, path);
+  const hidden = path !== raw || (hyperlink && !printsPath(g.rowText(row), found.x0, found.x1, found.url, path));
   return hidden ? { ...found, path, hidden } : { ...found, path };
 }
 

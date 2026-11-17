@@ -19,14 +19,54 @@ nonisolated enum FileLink {
     /// The target of a link Ghostty found in the text, else of a program's
     /// OSC 8 link, which only a file:// URL makes a file's.
     static func target(_ text: String, matched: Bool) -> Target? {
-        guard matched else { return fileURLPath(text).map { .file($0, hidden: true) } }
+        guard matched else { return fileURLTarget(text, hidden: true) }
         // A word ends at a space or at the full-width punctuation of prose
         // (web/src/links.ts proseDelimiters), which has no space round it.
         let word = trimmed(String(text.prefix { !$0.isWhitespace && !proseDelimiters.contains($0) }))
-        if word.lowercased().hasPrefix("file:") { return fileURLPath(word).map { .file($0, hidden: false) } }
+        // Text Ghostty matched past the word may be what the tap was on: a
+        // program can print the path unseen (SGR 8, or in the background's
+        // color) and a harmless name after it, so the app asks.
+        let spans = word != trimmed(text.trimmingCharacters(in: .whitespacesAndNewlines))
+        if word.lowercased().hasPrefix("file:") { return fileURLTarget(word, hidden: spans) }
         guard !word.contains("://"), let path = path(word) else { return nil }
         if webPath(path), let url = URL(string: "https://" + path) { return .web(url) }
-        return .file(path, hidden: false)
+        return .file(path, hidden: spans)
+    }
+
+    /// A file:// URL's file, by its path cleaned (clean): what is shown and
+    /// downloaded is the file the host opens, and a path that cleaning
+    /// changes (a decoded %2F.. that climbs out, dot segments that push the
+    /// file out of the alert's view) is hidden, so the app asks.
+    private static func fileURLTarget(_ url: String, hidden: Bool) -> Target? {
+        guard let p = fileURLPath(url) else { return nil }
+        let c = clean(p)
+        guard c != "/", c != "." else { return nil }
+        return .file(c, hidden: hidden || c != p)
+    }
+
+    /// A path cleaned lexically as Go's path/filepath.Clean does on the
+    /// host: empty and . segments dropped, .. taking the segment before
+    /// it off (none above the root), a trailing slash gone; a Windows
+    /// drive (C:) stays in front.
+    static func clean(_ path: String) -> String {
+        var vol = "", rest = Substring(path)
+        let chars = Array(path)
+        if chars.count >= 2, chars[1] == ":", chars[0].isASCII, chars[0].isLetter {
+            vol = String(path.prefix(2))
+            rest = rest.dropFirst(2)
+        }
+        let rooted = rest.hasPrefix("/")
+        var out: [Substring] = []
+        for seg in rest.split(separator: "/", omittingEmptySubsequences: true) {
+            if seg == "." { continue }
+            if seg == ".." {
+                if let last = out.last, last != ".." { out.removeLast() } else if !rooted { out.append(seg) }
+                continue
+            }
+            out.append(seg)
+        }
+        let body = (rooted ? "/" : "") + out.joined(separator: "/")
+        return vol + (body.isEmpty ? "." : body)
     }
 
     /// The full-width punctuation of prose, which has no space round a
@@ -58,13 +98,15 @@ nonisolated enum FileLink {
     /// The path a file:// URL names on the host, as the desktop's download
     /// reads it: the host part ignored, the path decoded, and a Windows
     /// drive's leading slash taken off (file:///C:/x is C:/x); nil for
-    /// another URL, one without a path, or one of another machine (remote).
+    /// another URL, one without a path, one with a backslash (a separator
+    /// to a Windows host, which could climb out unseen) or one of another
+    /// machine (remote).
     static func fileURLPath(_ text: String) -> String? {
         guard text.lowercased().hasPrefix("file://"), let url = URL(string: text) else { return nil }
         var p = url.path(percentEncoded: false)
         let chars = Array(p)
         if chars.count > 2, chars[2] == ":" { p.removeFirst() }
-        return p.isEmpty || p == "/" || remote(p) ? nil : p
+        return p.isEmpty || p == "/" || p.contains("\\") || remote(p) ? nil : p
     }
 
     /// Whether a path names another machine or a device, not a file of the

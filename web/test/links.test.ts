@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { fileURLPath, LinkGrid, linkAt, remotePath } from "../src/links";
+import { cleanPath, fileURLPath, LinkGrid, linkAt, remotePath } from "../src/links";
 
 /** A one-row grid printing text, whose columns from..to carry the hyperlink url. */
 function grid(text: string, url = "", from = 0, to = 0): LinkGrid {
@@ -51,4 +51,34 @@ test("another machine's path is no file link", () => {
   }
   assert.equal(linkAt(grid("see //attacker/share/x.png now"), 8, 0, true), undefined);
   assert.equal(linkAt(hyperlinked("x.png", "file:////attacker/share/x.png"), 5, 0, true), undefined);
+});
+
+test("a file URL's path is cleaned as the host cleans it, and a path cleaning changes asks", () => {
+  // %2F decodes after the URL's own dot segments are resolved.
+  const key = "file:///home/demo/.ssh/id_ed25519%2Fx%2F..";
+  for (const label of ["..", "x/.."]) {
+    const l = linkAt(hyperlinked(label, key), 5, 0, true);
+    assert.equal(l?.path, "/home/demo/.ssh/id_ed25519", label);
+    assert.equal(l?.hidden, true, label);
+  }
+  const long = linkAt(hyperlinked("chart.png", "file:///home/demo/Pictures/chart.png%2F%2E%2F..%2F..%2F.ssh%2Fid_ed25519"), 5, 0, true);
+  assert.equal(long?.path, "/home/demo/.ssh/id_ed25519");
+  assert.equal(long?.hidden, true);
+  const printed = linkAt(grid("see file:///home/demo/Pictures/a.png%2F..%2F..%2F.ssh%2Fid_ed25519 now"), 6, 0, true);
+  assert.equal(printed?.path, "/home/demo/.ssh/id_ed25519");
+  assert.equal(printed?.hidden, true);
+  assert.equal(fileURLPath("file:///home/demo/a.png%5C..%5C..%5Cid_ed25519"), undefined);
+  assert.equal(linkAt(hyperlinked("tmp", "file:///tmp%2F.."), 5, 0, true), undefined);
+});
+
+test("cleanPath cleans as Go's filepath.Clean", () => {
+  const cases: [string, string][] = [
+    ["/a/./b/", "/a/b"],
+    ["/../a", "/a"],
+    ["a/../../b", "../b"],
+    ["C:/a/../..", "C:/"],
+    ["./a//b", "a/b"],
+    ["/home/demo/x", "/home/demo/x"],
+  ];
+  for (const [p, want] of cases) assert.equal(cleanPath(p), want, p);
 });

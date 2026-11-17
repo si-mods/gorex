@@ -256,8 +256,10 @@ export class PointerInput {
     const t = this.host.term();
     const l = t && this.linkUnder(t);
     const was = this.link;
-    if (l?.url === was?.url && l?.row === was?.row && l?.x0 === was?.x0 && l?.x1 === was?.x1) return false;
+    // Kept fresh even when its cells are the same: a program may change the
+    // text over a link in place, and with it whether the link is hidden.
     this.link = l;
+    if (l?.url === was?.url && l?.row === was?.row && l?.x0 === was?.x0 && l?.x1 === was?.x1) return false;
     this.canvas.style.cursor = l ? "pointer" : "";
     if (redraw) this.host.redraw(true);
     return true;

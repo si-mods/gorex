@@ -102,6 +102,37 @@ nonisolated final class FileLinkTests: XCTestCase {
         XCTAssertEqual(FileLink.target("./out/chart.png", matched: true), .file("./out/chart.png", hidden: false))
     }
 
+    /// Text Ghostty matched past the word the path is taken from may be
+    /// what the tap was on, after a path printed unseen: the app asks.
+    func testMatchSpansWords() {
+        XCTAssertEqual(FileLink.target("/home/demo/.ssh/id_ed25519 chart.png", matched: true),
+                       .file("/home/demo/.ssh/id_ed25519", hidden: true))
+        XCTAssertEqual(FileLink.target("file:///home/demo/.ssh/id_ed25519 chart.png", matched: true),
+                       .file("/home/demo/.ssh/id_ed25519", hidden: true))
+        XCTAssertEqual(FileLink.target("./out/b.png.", matched: true), .file("./out/b.png", hidden: false))
+        XCTAssertEqual(FileLink.target("src/main.go:12:3", matched: true), .file("src/main.go", hidden: false))
+    }
+
+    /// A file:// URL's path is cleaned as the host cleans it, so the alert
+    /// shows and the app downloads the file the host opens; a path that
+    /// cleaning changes asks, even printed. A backslash, a separator to a
+    /// Windows host, is no file.
+    func testCleanedFileURL() {
+        XCTAssertEqual(FileLink.target("file:///home/demo/.ssh/id_ed25519%2Fx%2F..", matched: false),
+                       .file("/home/demo/.ssh/id_ed25519", hidden: true))
+        XCTAssertEqual(FileLink.target("file:///home/demo/.ssh/id_ed25519%2Fx%2F..", matched: true),
+                       .file("/home/demo/.ssh/id_ed25519", hidden: true))
+        XCTAssertEqual(FileLink.target("file:///home/demo/Pictures/chart.png%2F%2E%2F..%2F..%2F.ssh%2Fid_ed25519", matched: false),
+                       .file("/home/demo/.ssh/id_ed25519", hidden: true))
+        XCTAssertNil(FileLink.target("file:///home/demo/a.png%5C..%5C..%5Cid_ed25519", matched: false))
+        XCTAssertNil(FileLink.target("file:///tmp%2F..", matched: false))
+        XCTAssertEqual(FileLink.clean("/a/./b/"), "/a/b")
+        XCTAssertEqual(FileLink.clean("/../a"), "/a")
+        XCTAssertEqual(FileLink.clean("a/../../b"), "../b")
+        XCTAssertEqual(FileLink.clean("C:/a/../.."), "C:/")
+        XCTAssertEqual(FileLink.clean("./a//b"), "a/b")
+    }
+
     /// Another machine's path, which a Windows host would reach over SMB
     /// as it looks the file up, and a device's, are no file: UNC, \\.\,
     /// \\?\ and \??\, with either slash, printed or in a file:// URL.

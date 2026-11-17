@@ -187,6 +187,14 @@ code. Uploads are not logged today; this does not change them.
   name over its absolute path) asks first: a program can print
   `chart.png` over `file:///home/u/.ssh/id_ed25519`. A `confirm` names the
   path when the click ends; Cancel opens nothing.
+- A `file://` URL's path is cleaned as the host's `filepath.Clean` does
+  (`cleanPath`), and the clean path is what the page shows and asks for:
+  `%2F` decodes after the URL's own dot segments are resolved, so
+  `a.png%2F..%2F.ssh%2Fid` still climbs, and a long run of them could push
+  the real file out of the dialog. A path that cleaning changes asks
+  first, printed or not, and printed text with a `.` or `..` segment
+  shows no part of the path. A decoded backslash is no link: it is a
+  separator to a Windows host.
 - Ctrl+click (Cmd+click on macOS) on a path asks for a ticket with
   `download_begin`. A second click on the same path while one is under way
   does nothing, as the desktop's.
@@ -299,7 +307,10 @@ As built on iOS:
 - Ghostty hands an OSC 8 link's URL without the text it prints, so a tap
   on any OSC 8 `file://` link asks first: an alert names the host and the
   full path, with Cancel and Open. A path or `file://` URL printed as text
-  opens with one tap.
+  opens with one tap, unless the text Ghostty matched goes on past the
+  word the path is taken from (a path printed unseen, then a name), or
+  the URL's path changes as it is cleaned (`FileLink.clean`, as the web
+  client's `cleanPath`); the clean path is the one shown and downloaded.
 - On an older host a tap on a path does nothing, so `Server does not
   accept downloads` never shows; the server's `not_supported` shows the
   web client's `The host does not send files`.
