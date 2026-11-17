@@ -506,8 +506,11 @@ func (o *outbox) takeOn(c *rex.Client, ls rex.LayoutState, sent uint64, force bo
 		}
 	}
 	// Held off by a gesture, with nothing to send, it waits for the save
-	// that ends the gesture, which kicks; else it goes on.
-	o.held = !took && current && len(o.queue) == 0
+	// that ends the gesture, which kicks; else it goes on. Held off for a
+	// change of the app's to send first, which the run took off the queue
+	// as the take ran (on its way, or answered since), it goes on too: the
+	// run that sent it may have stopped already, and no kick comes.
+	o.held = !took && current && len(o.queue) == 0 && !o.sending && o.sent == sent
 	held := o.held
 	o.mu.Unlock()
 	if !held {

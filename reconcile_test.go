@@ -1049,7 +1049,22 @@ func TestSaveNowLeavesNoCheck(t *testing.T) {
 		t.Fatal(err)
 	}
 	a.st.saveNow()
+	// Timed out, the outbox's state tells why the take did not come.
+	defer func() {
+		if t.Failed() {
+			t.Log(outboxState(&a.st.out))
+		}
+	}()
 	waitFor(t, tt, "the other client's rename", func() bool { return tab.Name == "theirs" })
+}
+
+// outboxState is what an outbox waits on, for a test that timed out
+// waiting for a take.
+func outboxState(o *outbox) string {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	return fmt.Sprintf("outbox: rev %d, told %d, sent %d, queue %d, dones %d; running %v, sending %v, taking %v, held %v, check %v, force %v",
+		o.rev, o.told, o.sent, len(o.queue), len(o.dones), o.running, o.sending, o.taking, o.held, o.check, o.force)
 }
 
 // TestTellDuringReadIsTaken tells the outbox of another client's change
@@ -1096,6 +1111,108 @@ func TestTellDuringReadIsTaken(t *testing.T) {
 	}
 	if !slices.Contains(took, changed) {
 		t.Errorf("took %v, not the told revision %d", took, changed)
+	}
+}
+
+// TestTakeRefusedForASendIsNotHeld has the app refuse a take as a change
+// of its own waits to be sent (takeLayout's save), a change the outbox
+// takes off its queue before the take returns, as it runs on its own
+// goroutine: the outbox reads the server's layout again after the send,
+// and the app takes it; the outbox is not held as for a gesture, with no
+// kick to come.
+func TestTakeRefusedForASendIsNotHeld(t *testing.T) {
+	a, _ := newTestApp(t)
+	a.saveNow()
+	// A desk takes actions, and answers each when the test says: the
+	// app's command stays on its way as long as the test needs.
+	desk, err := rex.ConnectExisting()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer desk.Close()
+	taken := make(chan *rex.LayoutCommand, 4)
+	go func() {
+		for {
+			c, err := desk.TakeCommand()
+			if err != nil {
+				return
+			}
+			if c != nil {
+				taken <- c
+			}
+		}
+	}()
+	other, err := rex.ConnectExisting()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer other.Close()
+	// The server sends actions to the desk once it counts it: until
+	// then, it answers that no window is open.
+	for deadline := time.Now().Add(5 * time.Second); ; {
+		answer := make(chan rex.LayoutCommand, 1)
+		go func() {
+			res, _ := other.Command(rex.LayoutCommand{Op: "action", Action: "tab.rename"})
+			answer <- res
+		}()
+		select {
+		case c := <-taken:
+			if err := desk.CommandDone(rex.LayoutCommand{ID: c.ID}); err != nil {
+				t.Fatal(err)
+			}
+			<-answer
+		case res := <-answer:
+			if res.Code != "desktop_unavailable" {
+				t.Fatalf("the probe: %+v", res)
+			}
+			if time.Now().After(deadline) {
+				t.Fatal("the server does not count the desk")
+			}
+			continue
+		}
+		break
+	}
+
+	posted := make(chan func(), 16)
+	var o outbox
+	var took []uint64
+	var held *rex.LayoutCommand
+	o.use(a.client, func(fn func()) { posted <- fn }, func(ls rex.LayoutState) bool {
+		if held == nil {
+			// The app's change, queued as the take runs, goes before the
+			// take answers.
+			o.add(rex.LayoutCommand{Op: "action", Action: "tab.rename"}, nil)
+			o.kick()
+			select {
+			case held = <-taken:
+			case <-time.After(5 * time.Second):
+				t.Fatal("the app's change did not reach the desk")
+			}
+			return false
+		}
+		took = append(took, ls.Revision)
+		return true
+	})
+	o.follow(a.client)
+	select {
+	case fn := <-posted:
+		fn()
+	case <-time.After(5 * time.Second):
+		t.Fatalf("no take posted; %s", outboxState(&o))
+	}
+	if held == nil {
+		t.Fatal("no take refused")
+	}
+	if err := desk.CommandDone(rex.LayoutCommand{ID: held.ID}); err != nil {
+		t.Fatal(err)
+	}
+	for len(took) == 0 {
+		select {
+		case fn := <-posted:
+			fn()
+		case <-time.After(5 * time.Second):
+			t.Fatalf("no take after the send; %s", outboxState(&o))
+		}
 	}
 }
 
