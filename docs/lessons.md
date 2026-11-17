@@ -13,6 +13,7 @@ Mistakes that reached main, and the rule that would have stopped each one. Read 
 ## Fixes
 
 - **List every consumer before fixing one.** A bug in a shared path (local pane, remote host, iOS) is fixed for all of them in one PR, with one policy. The lost terminal stream took #641, #654 and #663 in two days because #641 fixed local panes only.
+- **State reset after a round trip keeps what came during it.** The outbox (#230) cleared the revision a layout event told while its read of the layout was on its way, so another client's change was not shown until the next one. Compare with the value read before the call, and reset only if it did not change.
 - **A fix for an unexplained failure adds the log line that explains it.** #663 had to add the logs that #641 and #654 lacked.
 - **Before a build fix, search open PRs for the same symbol.** #587 and #588 are the same one-line fix from two sessions.
 

@@ -283,6 +283,9 @@ type outbox struct {
 	// own to send first, or a gesture runs.
 	update func(func())
 	take   func(rex.LayoutState) bool
+	// afterRead, set by tests alone, runs as a read of the server's
+	// layout comes back, before the outbox looks at it.
+	afterRead func()
 }
 
 // outCmd is a command to send, and what runs with its answer.
@@ -452,17 +455,25 @@ func (o *outbox) run() {
 			}
 			return
 		}
-		rev, force, sent := o.rev, o.force, o.sent
+		rev, force, sent, told := o.rev, o.force, o.sent, o.told
 		o.check, o.force = false, false
 		o.mu.Unlock()
 		ls, err := c.LayoutState()
+		if o.afterRead != nil {
+			o.afterRead()
+		}
 		o.mu.Lock()
 		if c != o.client {
 			o.mu.Unlock()
 			continue // of a connection no longer used
 		}
 		if err != nil || ls.Revision == rev && !force {
-			o.told = min(o.told, o.rev) // nothing to take
+			// Nothing to take. A revision told while the read was on its
+			// way, which kicked nothing as this runs, may be past the one
+			// read: it stays, for a read after.
+			if o.told == told {
+				o.told = min(o.told, o.rev)
+			}
 			o.mu.Unlock()
 			if err != nil {
 				log.Printf("gorex: reading the layout: %v", err)
