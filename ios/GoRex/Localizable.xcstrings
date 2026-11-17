@@ -2,6 +2,40 @@
   "sourceLanguage": "en",
   "version": "1.0",
   "strings": {
+    "%lld Images, New": {
+      "localizations": {
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld Image, New"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld Images, New"
+                }
+              }
+            }
+          }
+        },
+        "zh-Hans": {
+          "variations": {
+            "plural": {
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld 张图片，有新图片"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "%@ needs input": {
       "localizations": {
         "zh-Hans": {
@@ -4184,6 +4218,160 @@
           "stringUnit": {
             "state": "translated",
             "value": "iCloud 同步"
+          }
+        }
+      }
+    },
+    "Gallery": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "相册"
+          }
+        }
+      }
+    },
+    "No Images": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "没有图片"
+          }
+        }
+      }
+    },
+    "Images this pane shows gather here: image files whose paths a program prints, and pictures drawn in the terminal.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这个面板出现过的图片会收集在这里：程序打印了路径的图片文件，以及直接画在终端里的图片。"
+          }
+        }
+      }
+    },
+    "Copy Path": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "拷贝路径"
+          }
+        }
+      }
+    },
+    "Share": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "分享"
+          }
+        }
+      }
+    },
+    "Remove from Gallery": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "从相册移除"
+          }
+        }
+      }
+    },
+    "Select": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "选择"
+          }
+        }
+      }
+    },
+    "Clear Gallery": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "清空相册"
+          }
+        }
+      }
+    },
+    "Clear Gallery?": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "清空相册？"
+          }
+        }
+      }
+    },
+    "The images leave this gallery. Files on the computer stay.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "图片会从这个相册移除，电脑上的文件保留。"
+          }
+        }
+      }
+    },
+    "Can't Share": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法分享"
+          }
+        }
+      }
+    },
+    "Can't Read Image": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法读取图片"
+          }
+        }
+      }
+    },
+    "%lld Images": {
+      "localizations": {
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld Image"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld Images"
+                }
+              }
+            }
+          }
+        },
+        "zh-Hans": {
+          "variations": {
+            "plural": {
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld 张图片"
+                }
+              }
+            }
           }
         }
       }

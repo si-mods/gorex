@@ -173,6 +173,8 @@ struct TerminalScreen: View {
                 ToolbarItemGroup(placement: .topBarTrailing) {
                     if !hasBar { mic }
                     Menu {
+                        // The images the pane showed (docs/ios-pane-gallery.md).
+                        if let g = session?.gallery { GalleryMenuItem(gallery: g) }
                         Button("New Tab", systemImage: "plus") { newTab() }
                         Button("Split Pane", systemImage: "rectangle.split.2x1") { newSplit() }
                         if paneCellList.count > 1 {
@@ -181,6 +183,7 @@ struct TerminalScreen: View {
                     } label: {
                         Image(systemName: "ellipsis")
                     }
+                    .galleryCover(session, title: title)
                     .accessibilityLabel("More")
                 }
             }
