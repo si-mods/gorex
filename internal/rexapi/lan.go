@@ -239,7 +239,9 @@ func ParseLegacyAddr(s string) (netip.Addr, error) {
 	if !p.IsSingleIP() {
 		return netip.Addr{}, fmt.Errorf("%q is a network: the legacy list takes single addresses only", strings.TrimSpace(s))
 	}
-	return p.Addr(), nil
+	// An IPv4 address written as IPv6 (::ffff:a.b.c.d) is the IPv4 one, as
+	// allowedPeer sees a caller.
+	return p.Addr().Unmap(), nil
 }
 
 // ParseNetworks reads networks written as CIDRs or bare addresses.
@@ -432,11 +434,10 @@ func newLANListener(g *Gateway, dir string) *lanListener {
 func (l *lanListener) apply(c LANConfig) {
 	nets, err := c.check()
 	if err == nil && c.Enabled && c.Token == "" {
-		fillLANToken(l.dir, &c)
-		if werr := writeJSON(lanConfPath(l.dir), c); werr != nil {
-			logf("lan: saving the pairing token: %v", werr)
+		var token string
+		if token, err = l.saveNewToken(c); err == nil {
+			c.Token = token
 		}
-		logf("lan: made a pairing token: a device without it is refused until it re-scans the pairing QR code, or until gorex rexapi lan legacy add lets its address in")
 	}
 	legacy, _ := c.legacy()
 	l.mu.Lock()
@@ -503,6 +504,29 @@ func (l *lanListener) apply(c LANConfig) {
 		logf("lan: the pairing token changed: closed every connection on the local network")
 	}
 	l.reportLocked()
+}
+
+// saveNewToken gives lan.json a pairing token, for c, a configuration
+// with none, and returns it. The file is read again first: a token
+// another writer saved meanwhile is the one, and only the token is added
+// to what the file holds now, so that a concurrent SaveLAN is not undone.
+// A token that cannot be saved is not used: a device could never learn
+// it, so the listener stays off with the error instead.
+func (l *lanListener) saveNewToken(c LANConfig) (string, error) {
+	cur, err := LoadLAN(l.dir)
+	if err == nil && cur.Token != "" {
+		return cur.Token, nil
+	}
+	if err != nil {
+		cur = c // no file yet: save what is applied
+	}
+	cur.Token = NewLANToken()
+	if err := writeJSON(lanConfPath(l.dir), cur); err != nil {
+		logf("lan: saving the pairing token: %v", err)
+		return "", fmt.Errorf("could not save the pairing token: %w", err)
+	}
+	logf("lan: made a pairing token: a device without it is refused until it re-scans the pairing QR code, or until gorex rexapi lan legacy add lets its address in")
+	return cur.Token, nil
 }
 
 // listener is the listener as server.status lists it, while it

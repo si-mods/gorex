@@ -205,9 +205,18 @@ func fetchLAN() {
 }
 
 // saveLAN writes the listener's settings, which the server's gateway
-// applies within a second.
+// applies within a second. The page owns only the switch, the address
+// and the networks: the token and the legacy list are taken from the
+// file as it is now, never from the page's copy, which a gorex rexapi lan
+// token rotate or legacy add may have left behind.
 func saveLAN(c rexapi.LANConfig) bool {
 	dir := rexapi.TailnetDir()
+	if cur, err := rexapi.LoadLAN(dir); err == nil {
+		cur.Enabled, cur.Listen, cur.Allow = c.Enabled, c.Listen, c.Allow
+		c = cur
+	} else {
+		c.Token = "" // SaveLAN keeps the one on disk, or makes one
+	}
 	if err := rexapi.SaveLAN(dir, c); err != nil {
 		remoteUI.lanErr = err.Error()
 		return false

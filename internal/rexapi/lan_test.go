@@ -829,3 +829,65 @@ func TestWriteJSONWhileRead(t *testing.T) {
 		t.Errorf("the write was lost: %+v", s)
 	}
 }
+
+// TestLANLegacyMappedAddress takes an IPv4 address written as IPv6, as
+// ::ffff:a.b.c.d/128, for the IPv4 address a caller comes from.
+func TestLANLegacyMappedAddress(t *testing.T) {
+	for in, want := range map[string]string{
+		"::ffff:192.0.2.5/128": "192.0.2.5",
+		"::ffff:192.0.2.5":     "192.0.2.5",
+		"192.0.2.5/32":         "192.0.2.5",
+		"fd00::5/128":          "fd00::5",
+	} {
+		if a, err := ParseLegacyAddr(in); err != nil || a.String() != want {
+			t.Errorf("ParseLegacyAddr(%q) = %v, %v; want %s", in, a, err, want)
+		}
+	}
+	g, dir := startStateGateway(t)
+	g.lan.apply(LANConfig{Enabled: true, Listen: "127.0.0.1:0", Allow: []string{"127.0.0.1"}, Token: testLANToken, LegacyOpen: []string{"::ffff:127.0.0.1/128"}})
+	s := waitLAN(t, dir, func(s LANStatus) bool { return s.Listening != "" })
+	if code, body := lanGet(t, "http://"+s.Listening+"/api/help"); code != 200 {
+		t.Errorf("a mapped legacy address, no token: %d %s", code, body)
+	}
+}
+
+// TestLANMigrationKeepsConcurrentToken: a token another writer saved in
+// lan.json while the gateway applied a configuration without one is the
+// token the gateway uses, and the file keeps what that writer saved.
+func TestLANMigrationKeepsConcurrentToken(t *testing.T) {
+	g, dir := startStateGateway(t)
+	saved := LANConfig{Enabled: true, Listen: "127.0.0.1:0", Allow: []string{"127.0.0.1"}, Token: testLANToken, LegacyOpen: []string{"192.0.2.9"}}
+	if err := SaveLAN(dir, saved); err != nil {
+		t.Fatal(err)
+	}
+	g.lan.apply(LANConfig{Enabled: true, Listen: "127.0.0.1:0", Allow: []string{"127.0.0.1"}})
+	s := waitLAN(t, dir, func(s LANStatus) bool { return s.Listening != "" })
+	if code, _ := lanGet(t, "http://"+s.Listening+"/api/help?k="+testLANToken); code != 200 {
+		t.Errorf("the token saved meanwhile: %d", code)
+	}
+	if got, _ := LoadLAN(dir); got.Token != testLANToken || len(got.LegacyOpen) != 1 {
+		t.Errorf("lan.json after the gateway's look: %+v", got)
+	}
+}
+
+// TestLANMigrationUnsavedTokenStaysOff: a token the gateway cannot save
+// is one no device can learn; the listener stays off and says why,
+// instead of serving with it.
+func TestLANMigrationUnsavedTokenStaysOff(t *testing.T) {
+	g, dir := startStateGateway(t)
+	// A directory where the file's temporary copy goes makes the write fail.
+	if err := os.MkdirAll(lanConfPath(dir)+".tmp", 0o700); err != nil {
+		t.Fatal(err)
+	}
+	g.lan.apply(LANConfig{Enabled: true, Listen: "127.0.0.1:0", Allow: []string{"127.0.0.1"}})
+	s := waitLAN(t, dir, func(s LANStatus) bool { return s.Running })
+	if s.Listening != "" || !strings.Contains(s.Error, "pairing token") {
+		t.Errorf("status = %+v; want off, with the token's error", s)
+	}
+	g.lan.mu.Lock()
+	token := g.lan.conf.Token
+	g.lan.mu.Unlock()
+	if token != "" {
+		t.Errorf("the listener holds a token it could not save")
+	}
+}

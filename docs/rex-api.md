@@ -106,15 +106,22 @@ and takes `k` out of the request before anything logs it.
 - **Getting it.** The pairing code holds it in the URL's fragment, which
   a client never sends: `http://192.168.88.119:7297/#k=<token>`. Scan
   **Settings › Server › Local API → Rex QR…**, or paste that URL by hand.
-  The web pairing link of `gorex rexapi lan qr` carries it as `&k=`, and
-  the web client sends it as `?k=` (no custom header, so no CORS
-  preflight). On WebTransport the token goes once, as `?k=` on the
+  The web pairing link of `gorex rexapi lan qr` carries it as `&k=` in
+  the fragment; the web client reads it from the fragment only, never
+  from the page's query, so it never reaches the web server's logs. The
+  web client keeps it in the browser's `localStorage` with the host, so a
+  script injected into the web client's origin could read it. It sends it
+  as `?k=` (no custom header, so no CORS preflight). Rex Go keeps it in
+  the iOS Keychain; its hotspot share adds it as `Authorization: Bearer`
+  to what it forwards, and never gives it to the browser. On WebTransport the token goes once, as `?k=` on the
   `CONNECT` to `/api/wt`; the session's streams need no token of their
   own, as the session is marked authenticated in the server's own
   context, which no header a client sends can set.
 - **Upgrading.** A `lan.json` from before the token gets one the first
-  time the gateway reads it, and from then on a device without it gets
-  403: *re-scan the pairing QR code, or run `gorex rexapi lan legacy add
+  time the gateway reads it (added to the file as it is then; when the
+  file cannot be written, the listener stays off with that error rather
+  than serve with a token no device can learn), and from then on a
+  device without it gets 403: *re-scan the pairing QR code, or run `gorex rexapi lan legacy add
   <IP>`*. The server's log says the same, with the device's address.
 - **Rotating.** `gorex rexapi lan token rotate` makes a new token. The
   gateway takes it within a second and closes every connection on the
@@ -122,7 +129,8 @@ and takes `k` out of the request before anything logs it.
   the new code.
 - **Legacy list.** An app that cannot send a token, such as Rex's own
   app, gets in from an address on `legacy_open`, without the token. The
-  list takes single addresses only (`/32` or `/128`), never a network,
+  list takes single addresses only (`/32` or `/128`; `::ffff:a.b.c.d`
+  is the IPv4 address), never a network,
   and the address must be in a network allowed too.
 
 A device in no network allowed gets 403 as well. Every refusal is in the

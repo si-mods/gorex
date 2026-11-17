@@ -96,6 +96,12 @@ func (w *wtListener) start(httpListen string) {
 	}
 
 	pc, err := net.ListenPacket("udp", addr)
+	// A restart, as a new pairing token makes, binds the port the old
+	// server has just let go: give the system a moment to free it.
+	for i := 0; err != nil && i < 10; i++ {
+		time.Sleep(50 * time.Millisecond)
+		pc, err = net.ListenPacket("udp", addr)
+	}
 	if err != nil {
 		w.err = err.Error()
 		w.mu.Unlock()

@@ -240,3 +240,37 @@ func TestMobilePairQRTakesToken(t *testing.T) {
 		}
 	}
 }
+
+// TestSaveLANKeepsRotatedToken: the page's copy of the settings, read
+// before a gorex rexapi lan token rotate and legacy add, does not write
+// the old token back, nor drop the legacy address, when the page saves.
+func TestSaveLANKeepsRotatedToken(t *testing.T) {
+	t.Setenv("GOREX_DIR", t.TempDir())
+	t.Cleanup(func() { remoteUI.lan, remoteUI.lanErr = rexapi.LANConfig{}, "" })
+	dir := rexapi.TailnetDir()
+	if err := rexapi.SaveLAN(dir, rexapi.LANConfig{Listen: "192.0.2.10:7297", Allow: []string{"192.0.2.0/24"}}); err != nil {
+		t.Fatal(err)
+	}
+	stale, _ := rexapi.LoadLAN(dir)
+	rotated, err := rexapi.RotateLANToken(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rotated.LegacyOpen = []string{"192.0.2.77"}
+	if err := rexapi.SaveLAN(dir, rotated); err != nil {
+		t.Fatal(err)
+	}
+
+	next := stale
+	next.Enabled = true
+	if !saveLAN(next) {
+		t.Fatalf("saveLAN: %s", remoteUI.lanErr)
+	}
+	got, _ := rexapi.LoadLAN(dir)
+	if got.Token != rotated.Token || !got.Enabled || len(got.LegacyOpen) != 1 {
+		t.Errorf("after the page saved: %+v; want token %q, on, the legacy address kept", got, rotated.Token)
+	}
+	if remoteUI.lan.Token != rotated.Token {
+		t.Errorf("the page's copy keeps the old token")
+	}
+}
