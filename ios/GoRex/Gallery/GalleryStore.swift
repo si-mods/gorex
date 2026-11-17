@@ -26,6 +26,16 @@ nonisolated struct GalleryEntry: Codable, Equatable, Identifiable, Sendable {
         if let path { return FileLink.fileName("", path: path) }
         return "image-\(id.prefix(8).lowercased()).png"
     }
+
+    /// Whether the path names one file wherever the program is: from the
+    /// root, the home folder or a drive. A relative one resolves against the
+    /// program's directory now, which may differ from when it printed.
+    var absolute: Bool {
+        guard let p = path else { return false }
+        let c = Array(p.prefix(3))
+        return p.hasPrefix("/") || p.hasPrefix("~/")
+            || (c.count == 3 && c[0].isLetter && c[1] == ":" && (c[2] == "\\" || c[2] == "/"))
+    }
 }
 
 /// What index.json holds.
@@ -39,6 +49,22 @@ nonisolated struct GalleryIndex: Codable, Equatable, Sendable {
     /// The paths and Kitty hashes of the images the user removed, oldest
     /// first: a snapshot or the server's replay does not bring them back.
     var removed: [String] = []
+    /// The paths whose file the host did not have, oldest first: the
+    /// snapshot of a reconnect, which still holds their lines, does not
+    /// bring them back.
+    var missing: [String] = []
+}
+
+/// An index.json of an older build lacks some of the lists.
+extension GalleryIndex {
+    nonisolated init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        entries = try c.decodeIfPresent([GalleryEntry].self, forKey: .entries) ?? []
+        used = try c.decode(Date.self, forKey: .used)
+        unseen = try c.decodeIfPresent(Bool.self, forKey: .unseen) ?? false
+        removed = try c.decodeIfPresent([String].self, forKey: .removed) ?? []
+        missing = try c.decodeIfPresent([String].self, forKey: .missing) ?? []
+    }
 }
 
 /// A pane's gallery on disk (docs/ios-pane-gallery.md, Storage): index.json,
@@ -98,12 +124,17 @@ nonisolated final class GalleryStore {
     /// Adds what the scanner found, unless the gallery has it or the user
     /// removed it: the same path, or a Kitty image of the same bytes. A
     /// Kitty image replaces the last of its number shown within frameTime.
-    /// The oldest go past the limits. Whether it was new.
+    /// The oldest go past the limits. A path whose file was missing is added
+    /// again only by live output (not a snapshot). Whether it was new.
     @discardableResult
-    func add(_ found: GalleryScanner.Found, now: Date = .now) -> Bool {
+    func add(_ found: GalleryScanner.Found, live: Bool = true, now: Date = .now) -> Bool {
         let id = UUID().uuidString
         switch found {
         case .path(let p):
+            if index.missing.contains(p) {
+                guard live else { return false }
+                index.missing.removeAll { $0 == p }
+            }
             guard !index.entries.contains(where: { $0.path == p }), !index.removed.contains(p) else { return false }
             index.entries.append(GalleryEntry(id: id, source: .path, path: p, first: now))
         case .kitty(let png, let w, let h, let number):
@@ -148,6 +179,20 @@ nonisolated final class GalleryStore {
         }
         index.entries.removeAll { ids.contains($0.id) }
         if index.removed.count > Self.removedLimit { index.removed.removeFirst(index.removed.count - Self.removedLimit) }
+    }
+
+    /// Drops the images whose file the host no longer has. Unlike remove, it
+    /// notes them in missing: live output that prints the path again adds it.
+    func drop(missing ids: Set<String>) {
+        for e in index.entries where ids.contains(e.id) {
+            deleteFiles(e)
+            if let p = e.path {
+                index.missing.removeAll { $0 == p }
+                index.missing.append(p)
+            }
+        }
+        index.entries.removeAll { ids.contains($0.id) }
+        if index.missing.count > Self.removedLimit { index.missing.removeFirst(index.missing.count - Self.removedLimit) }
     }
 
     func clear() {

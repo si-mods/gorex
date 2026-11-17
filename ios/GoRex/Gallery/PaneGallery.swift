@@ -59,6 +59,13 @@ final class PaneGallery {
         change { $0.remove(ids) }
     }
 
+    /// Drops an image whose file the host answered with no_file, and does
+    /// not note it as removed.
+    func drop(missing id: String) {
+        entries.removeAll { $0.id == id }
+        change { $0.drop(missing: [id]) }
+    }
+
     func clear() {
         entries = []
         change { $0.clear() }
@@ -109,7 +116,8 @@ final class PaneGallery {
                 let found = scanner.feed(bytes)
                 guard !found.isEmpty else { return }
                 var added = false
-                for f in found where store.add(f) { added = true }
+                // A new stream's first bytes are a snapshot, not live output.
+                for f in found where store.add(f, live: !fresh) { added = true }
                 guard added else { return }
                 try? store.save()
                 let index = store.index

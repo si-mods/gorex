@@ -330,6 +330,87 @@ nonisolated final class GalleryTests: XCTestCase {
         XCTAssertTrue(again.add(.path("/tmp/c.png")))
     }
 
+    func testOnlyAbsolutePathsDropOnNoFile() {
+        func entry(_ p: String?) -> GalleryEntry {
+            GalleryEntry(id: "x", source: p == nil ? .kitty : .path, path: p, first: .now)
+        }
+        for p in ["/home/demo/a.png", "~/a.png", #"C:\demo\a.png"#, "C:/demo/a.png"] {
+            XCTAssertTrue(entry(p).absolute, p)
+        }
+        for p in ["out/a.png", "./a.png", "../a.png", "a.png"] {
+            XCTAssertFalse(entry(p).absolute, p)
+        }
+        XCTAssertFalse(entry(nil).absolute)
+    }
+
+    func testDropMissingIsNotRemembered() throws {
+        let dir = try tempDir()
+        let store = GalleryStore(dir: dir)
+        store.add(.path("/tmp/a.png"))
+        store.add(.path("/tmp/b.png"))
+        let a = store.index.entries[0]
+        let thumb = store.thumb(a)
+        try FileManager.default.createDirectory(at: thumb.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data([1]).write(to: thumb)
+        store.drop(missing: [a.id])
+        XCTAssertEqual(store.index.entries.map(\.path), ["/tmp/b.png"])
+        XCTAssertTrue(store.index.removed.isEmpty)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: thumb.path))
+        try store.save()
+        // The same path found again, its file there now, is added back.
+        let again = GalleryStore(dir: dir)
+        XCTAssertTrue(again.add(.path("/tmp/a.png")))
+        XCTAssertEqual(again.index.entries.map(\.path), ["/tmp/b.png", "/tmp/a.png"])
+    }
+
+    func testSnapshotDoesNotReAddMissing() throws {
+        let dir = try tempDir()
+        let store = GalleryStore(dir: dir)
+        store.add(.path("/tmp/a.png"))
+        store.drop(missing: [store.index.entries[0].id])
+        store.seen()
+        try store.save()
+        // A reconnect's snapshot still holds the line.
+        let again = GalleryStore(dir: dir)
+        XCTAssertEqual(again.index.missing, ["/tmp/a.png"])
+        XCTAssertFalse(again.add(.path("/tmp/a.png"), live: false))
+        XCTAssertTrue(again.index.entries.isEmpty)
+        XCTAssertFalse(again.index.unseen)
+        XCTAssertEqual(again.index.missing, ["/tmp/a.png"])
+    }
+
+    func testLiveOutputReAddsMissing() throws {
+        let store = GalleryStore(dir: try tempDir())
+        store.add(.path("/tmp/a.png"))
+        store.drop(missing: [store.index.entries[0].id])
+        XCTAssertTrue(store.add(.path("/tmp/a.png"), live: true))
+        XCTAssertEqual(store.index.entries.map(\.path), ["/tmp/a.png"])
+        XCTAssertTrue(store.index.missing.isEmpty)
+        XCTAssertTrue(store.index.unseen)
+    }
+
+    func testMissingLimitDropsOldest() throws {
+        let store = GalleryStore(dir: try tempDir())
+        for i in 0...GalleryStore.removedLimit {
+            store.add(.path("/tmp/\(i).png"))
+            store.drop(missing: [store.index.entries[0].id])
+        }
+        XCTAssertEqual(store.index.missing.count, GalleryStore.removedLimit)
+        XCTAssertEqual(store.index.missing.first, "/tmp/1.png")
+    }
+
+    func testIndexWithoutListsDecodes() throws {
+        let dir = try tempDir()
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let json = #"{"entries":[{"first":"2026-11-01T00:00:00Z","id":"x","path":"/tmp/a.png","source":"path"}],"used":"2026-11-01T00:00:00Z"}"#
+        try Data(json.utf8).write(to: dir.appending(path: "index.json"))
+        let store = GalleryStore(dir: dir)
+        XCTAssertEqual(store.index.entries.map(\.path), ["/tmp/a.png"])
+        XCTAssertTrue(store.index.removed.isEmpty)
+        XCTAssertTrue(store.index.missing.isEmpty)
+        XCTAssertFalse(store.index.unseen)
+    }
+
     func testRemovedLimitDropsOldest() throws {
         let store = GalleryStore(dir: try tempDir())
         for i in 0...GalleryStore.removedLimit {
