@@ -1244,11 +1244,15 @@ func TestAdoptHostSessions(t *testing.T) {
 		t.Fatal(err)
 	}
 	waitFor(t, tb, "the other session's tab", func() bool { return len(tabsOf(b, other.ID)) == 1 })
+	// The pane can see the session as exited before the host deletes it, and
+	// end it with kill, which keeps the id in Kills until the host answers; so
+	// wait for hosts.json to forget it rather than read it once.
 	remote.Kill(other.ID)
 	waitFor(t, tb, "its tab to close", func() bool { return len(tabsOf(b, other.ID)) == 0 })
-	if hs, _ := loadHosts(); len(hs) != 1 || slices.Contains(hs[0].Kills, other.ID) {
-		t.Errorf("hosts.json keeps %+v", hs)
-	}
+	waitFor(t, tb, "hosts.json to drop the kill", func() bool {
+		hs, _ := loadHosts()
+		return len(hs) == 1 && !slices.Contains(hs[0].Kills, other.ID)
+	})
 }
 
 // TestAdoptHostTabSplits checks that the sessions of one tab of the host's
