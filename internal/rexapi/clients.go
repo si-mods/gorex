@@ -372,12 +372,18 @@ func methodServerStop(c *control, a args) (any, *apiError) {
 		return nil, errConflict("the server is already stopping")
 	}
 	// Set before the checks, so that no call or connection starts under
-	// them; a refusal lifts it.
+	// them: that makes the check and the stop one step. The cost is that
+	// while an if_idle check runs, other clients' calls that change
+	// something and new connections are refused for a moment. Anything but
+	// a stop that went through lifts it, a panic too.
 	g.stopping.Store(true)
-	refuse := func(e *apiError) (any, *apiError) {
-		g.stopping.Store(false)
-		return nil, e
-	}
+	stopped := false
+	defer func() {
+		if !stopped {
+			g.stopping.Store(false)
+		}
+	}()
+	refuse := func(e *apiError) (any, *apiError) { return nil, e }
 	var err error
 	if ifIdle {
 		if !g.hello.Can(rex.CapabilityShutdownIfIdle) {
@@ -409,6 +415,7 @@ func methodServerStop(c *control, a args) (any, *apiError) {
 	if err != nil {
 		return refuse(errInternal("the server did not stop: %v", err))
 	}
+	stopped = true
 	g.goingAway(c)
 	return map[string]any{}, nil
 }

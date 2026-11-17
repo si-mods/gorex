@@ -469,7 +469,17 @@ func TestServerStop(t *testing.T) {
 		t.Errorf("shutdown ran %d times, want 1", n)
 	}
 	// The other client is told the server goes away.
-	for range other.msgs {
+	timeout := time.After(5 * time.Second)
+wait:
+	for {
+		select {
+		case _, ok := <-other.msgs:
+			if !ok {
+				break wait
+			}
+		case <-timeout:
+			t.Fatal("the other client was not closed")
+		}
 	}
 	if websocket.CloseStatus(other.readErr) != websocket.StatusGoingAway {
 		t.Errorf("the other client saw %v, want close 1001", other.readErr)
@@ -583,5 +593,35 @@ func TestServerStopRetry(t *testing.T) {
 	f.g.shutdown = func() error { stops.Add(1); return nil }
 	if _, err := callGateway(sock, "server.stop", nil); err != nil || stops.Load() != 1 {
 		t.Errorf("retry after a failed stop: %v, %d stops", err, stops.Load())
+	}
+}
+
+// TestServerStopIfIdleBusyCall: a call running refuses if_idle, and the
+// refusal lifts the block on new connections.
+func TestServerStopIfIdleBusyCall(t *testing.T) {
+	f := startFixture(t)
+	sock := stopSocket(t, f)
+	f.g.inflight.Add(1)
+	_, err := callGateway(sock, "server.stop", map[string]any{"if_idle": true})
+	wantCode(t, err, "conflict")
+	if err != nil && !strings.Contains(err.Error(), "calls are running") {
+		t.Errorf("not the running-call refusal: %v", err)
+	}
+	f.g.inflight.Add(-1)
+	if f.g.stopping.Load() {
+		t.Error("a refused stop left the gateway stopping")
+	}
+}
+
+// TestServerStopPanic: a stop that panics leaves the gateway open.
+func TestServerStopPanic(t *testing.T) {
+	f := startFixture(t)
+	sock := stopSocket(t, f)
+	f.g.shutdown = func() error { panic("boom") }
+	if _, err := callGateway(sock, "server.stop", nil); err == nil {
+		t.Error("a panic answered ok")
+	}
+	if f.g.stopping.Load() {
+		t.Error("a panic left the gateway stopping")
 	}
 }

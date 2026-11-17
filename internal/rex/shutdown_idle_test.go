@@ -51,3 +51,24 @@ func TestShutdownIfIdle(t *testing.T) {
 		t.Fatal("an idle server did not stop")
 	}
 }
+
+// TestShutdownIfIdleRestoring: shells being restored are not idle; a server
+// that stops takes no new session.
+func TestShutdownIfIdleRestoring(t *testing.T) {
+	s := &Server{sessions: map[string]*session{}, quit: make(chan struct{}),
+		restoring: map[string]chan struct{}{"a": make(chan struct{})}}
+	_, err := s.doShutdown(Request{IfIdle: true}, "", nil)
+	if err == nil || !strings.Contains(err.Error(), BusyPrefix) {
+		t.Fatalf("restoring shells: %v", err)
+	}
+	if s.stopping {
+		t.Fatal("a refused stop began")
+	}
+	delete(s.restoring, "a")
+	if _, err := s.doShutdown(Request{IfIdle: true}, "", nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.create(CreateOptions{}, ""); err == nil || !strings.Contains(err.Error(), "stopping") {
+		t.Errorf("create while stopping: %v", err)
+	}
+}
