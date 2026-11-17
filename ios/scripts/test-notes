@@ -51,7 +51,8 @@ check() { # BASE [TO]: what the pull request in BASE..TO owes testers
 	local base=$1 to=${2:-HEAD} from app locale bullets b bad=0 re=
 	from=$(git merge-base "$base" "$to")
 	re='^(feat|fix|perf|chore|ci|docs|refactor|test)(\([^)]*\))?!?:[[:space:]]'
-	app=$(git diff --name-only "$from" "$to" -- $APP_PATHS)
+	# The app's sources, not its tests: a test-only change owes no bullet.
+	app=$(git diff --name-only "$from" "$to" -- $APP_PATHS ':!ios/GoRexTests' ':!*_test.go')
 	for locale in $LOCALES; do
 		bullets=$(gained "$from" "$locale" "$to")
 		if [ -n "$app" ] && [ -z "$bullets" ]; then
