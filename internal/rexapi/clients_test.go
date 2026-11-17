@@ -2,9 +2,13 @@ package rexapi
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"runtime"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -394,5 +398,95 @@ func TestClientEvents(t *testing.T) {
 	}
 	if ev := serverEvent(t, obs, "client_left"); ev["client_id"] != id {
 		t.Errorf("client_left: %v", ev)
+	}
+}
+
+// TestServerStop: over the local socket the call stops the server once;
+// the next one fails with conflict, and over any other transport it is
+// refused with 403.
+func TestServerStop(t *testing.T) {
+	f := startFixture(t)
+	var stops atomic.Int32
+	f.g.shutdown = func() error { stops.Add(1); return nil }
+	// Not over the local socket.
+	c := f.dialControl()
+	c.hello(apiRevision)
+	if e := failure(t, c.request("tcp", "server.stop", nil)); e["status"] != float64(403) {
+		t.Errorf("over tcp: %v", e)
+	}
+	// An argument it does not know.
+	sdir, err := os.MkdirTemp("", "rx")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sock := filepath.Join(sdir, "g.sock")
+	ln, err := listenUnix(sock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	go f.g.serveOn(ln, transportUnix)
+	t.Cleanup(func() {
+		ln.Close()
+		os.RemoveAll(sdir)
+	})
+	if _, err := callGateway(sock, "server.stop", map[string]any{"now": true}); err == nil {
+		t.Error("an unknown argument stopped the server")
+	}
+	if stops.Load() != 0 {
+		t.Fatalf("stopped %d times before a valid call", stops.Load())
+	}
+	raw, err := callGateway(sock, "server.stop", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var res map[string]any
+	if err := json.Unmarshal(raw, &res); err != nil {
+		t.Fatal(err)
+	}
+	checkResult(t, "server.stop", res)
+	if _, err := callGateway(sock, "server.stop", nil); err == nil || !strings.Contains(err.Error(), "conflict") {
+		t.Errorf("second call: %v", err)
+	}
+	if n := stops.Load(); n != 1 {
+		t.Errorf("shutdown ran %d times, want 1", n)
+	}
+}
+
+// TestServerStopIfIdle: a server that holds a session refuses with
+// conflict and keeps running, and a failed stop can be tried again.
+func TestServerStopIfIdle(t *testing.T) {
+	f := startFixture(t)
+	f.setLayout(standardLayout())
+	var stops atomic.Int32
+	f.g.shutdown = func() error { stops.Add(1); return nil }
+	sdir, err := os.MkdirTemp("", "rx")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sock := filepath.Join(sdir, "g.sock")
+	ln, err := listenUnix(sock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	go f.g.serveOn(ln, transportUnix)
+	t.Cleanup(func() {
+		ln.Close()
+		os.RemoveAll(sdir)
+	})
+	c := f.dialControl()
+	c.hello(apiRevision)
+	if _, err := callGateway(sock, "server.stop", map[string]any{"if_idle": true}); err == nil || !strings.Contains(err.Error(), "conflict") {
+		t.Errorf("if_idle with another client: %v", err)
+	}
+	if stops.Load() != 0 {
+		t.Errorf("stopped %d times", stops.Load())
+	}
+	f.g.shutdown = func() error { return errors.New("no") }
+	if _, err := callGateway(sock, "server.stop", nil); err == nil {
+		t.Error("a failed shutdown answered ok")
+	}
+	f.g.shutdown = func() error { stops.Add(1); return nil }
+	if _, err := callGateway(sock, "server.stop", nil); err != nil {
+		t.Errorf("retry after a failed stop: %v", err)
 	}
 }

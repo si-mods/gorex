@@ -146,6 +146,7 @@ var methods = map[string]func(*control, args) (any, *apiError){
 	"server.status":                 methodServerStatus,
 	"server.whoami":                 methodServerWhoami,
 	"server.config_reload":          methodServerConfigReload,
+	"server.stop":                   methodServerStop,
 	"server.tailscale.enable":       methodTailscaleEnable,
 	"server.tailscale.disable":      methodTailscaleDisable,
 	"server.tailscale.login":        methodTailscaleLogin,

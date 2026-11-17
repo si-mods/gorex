@@ -340,7 +340,7 @@ func httpGet(url string) (*http.Response, error) {
 // schema that compiles.
 func TestSchemaCompiles(t *testing.T) {
 	for _, m := range []string{
-		"server.version", "server.status", "server.whoami", "server.config_reload",
+		"server.version", "server.status", "server.whoami", "server.config_reload", "server.stop",
 		"hosts.list", "block_creator.list",
 		"session.list", "session.attach", "session.attach_all", "session.detach",
 		"session.bootstrap", "session.view", "session.create", "session.destroy",

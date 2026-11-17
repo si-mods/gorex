@@ -118,6 +118,13 @@ type Gateway struct {
 	refreshMu sync.Mutex
 	mapper    *mapper
 
+	// stopMu guards stopping, which tells that server.stop began: the
+	// server stops once. shutdown asks the GoRex server to stop, as the
+	// app does when it quits; tests replace it.
+	stopMu   sync.Mutex
+	stopping bool
+	shutdown func() error
+
 	mu      sync.Mutex
 	model   atomic.Pointer[model]
 	conns   map[*control]struct{}
@@ -194,6 +201,7 @@ func New(opt Options) (*Gateway, error) {
 	}
 	g := &Gateway{
 		opt:            opt,
+		shutdown:       opt.Client.Shutdown,
 		started:        time.Now(),
 		hello:          hello,
 		host:           hostID(name, hello.Host.User),

@@ -341,3 +341,47 @@ func methodClientReply(c *control, a args) (any, *apiError) {
 	}
 	return nil, errNotFound("nothing is waiting for that call")
 }
+
+// methodServerStop stops the GoRex session server, as the app does when
+// it quits and ends the sessions: the server records the stop and keeps
+// the layout, so that the next one starts the sessions again. Like
+// Rex's, it is for the local socket only. The answer goes out before the
+// server stops. A call once the stop began fails with conflict.
+func methodServerStop(c *control, a args) (any, *apiError) {
+	if c.transport != transportUnix {
+		return nil, errorf("internal", 403, "server.stop is accepted only over the server's local socket")
+	}
+	if aerr := a.only("if_idle"); aerr != nil {
+		return nil, aerr
+	}
+	ifIdle, _, aerr := a.boolean("if_idle")
+	if aerr != nil {
+		return nil, aerr
+	}
+	g := c.g
+	g.stopMu.Lock()
+	defer g.stopMu.Unlock()
+	if g.stopping {
+		return nil, errConflict("the server is already stopping")
+	}
+	if ifIdle {
+		sessions, err := g.opt.Client.List()
+		if err != nil {
+			return nil, errInternal("server.stop could not read the sessions: %v", err)
+		}
+		g.mu.Lock()
+		others := len(g.conns) - 1
+		g.mu.Unlock()
+		switch {
+		case len(sessions) > 0:
+			return nil, errConflict("the server has %d sessions", len(sessions))
+		case others > 0:
+			return nil, errConflict("%d other clients are connected", others)
+		}
+	}
+	if err := g.shutdown(); err != nil {
+		return nil, errInternal("the server did not stop: %v", err)
+	}
+	g.stopping = true
+	return map[string]any{}, nil
+}

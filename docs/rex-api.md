@@ -45,7 +45,7 @@ The gateway listens on five places:
 
 - its local socket, `rexapi.sock` in GoRex's data directory, for this
   user only. The Rex CLI reaches it with `rex -S unix://PATH`, and the
-  methods that administer the gateway (`server.tailscale.*`) are accepted
+  methods that administer the gateway or the server (`server.tailscale.*`, `server.stop`) are accepted
   only there, as on a Rex server;
 - the local network, over plain HTTP, while that listener is on: only
   the networks it allows get in (below);
