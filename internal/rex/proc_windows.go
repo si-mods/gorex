@@ -228,15 +228,6 @@ func processTree() procTree {
 	return t
 }
 
-// parentPID returns the parent of a process, 0 when unknown. Windows keeps
-// the id of a parent that exited, which another process may have now.
-func parentPID(pid int) int {
-	if pid <= 0 {
-		return 0
-	}
-	return int(processTree().parent[uint32(pid)])
-}
-
 // newestChild returns the child of parent that started last, or 0. A
 // process that started before parent only has the id parent had before it.
 func (t procTree) newestChild(parent uint32) uint32 {

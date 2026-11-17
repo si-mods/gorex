@@ -350,9 +350,6 @@ func wsRead(t *testing.T, ws *websocket.Conn) (websocket.MessageType, []byte, er
 	return ws.Read(ctx)
 }
 
-// closeStatus returns the close status of a read error.
-func closeStatus(err error) websocket.StatusCode { return websocket.CloseStatus(err) }
-
 // openControl opens a control connection and sends a hello, without a
 // reader goroutine, for tests that expect the server to close it.
 func openControl(t *testing.T, f *fixture) *websocket.Conn {

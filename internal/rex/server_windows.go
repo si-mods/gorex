@@ -24,10 +24,6 @@ func lockFile(f *os.File) error {
 	return windows.LockFileEx(windows.Handle(f.Fd()), windows.LOCKFILE_EXCLUSIVE_LOCK|windows.LOCKFILE_FAIL_IMMEDIATELY, 0, 1, 0, &ol)
 }
 
-// ownDir reports whether st, of a directory, is this user's alone: one in
-// the temporary directory is, which Windows has one of for each user.
-func ownDir(os.FileInfo) bool { return true }
-
 // ownedBy reports whether st is uid's: Windows has no uid, and one user.
 func ownedBy(os.FileInfo, int) bool { return true }
 

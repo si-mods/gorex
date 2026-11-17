@@ -64,15 +64,6 @@ func newUUIDv4() string {
 		b[10:16])
 }
 
-func (tb *tunnelBlock) setOwner(clientID string) {
-	tb.mu.Lock()
-	tb.owner = clientID
-	if clientID != "" {
-		tb.lastOwner = clientID
-	}
-	tb.mu.Unlock()
-}
-
 func (tb *tunnelBlock) currentOwner() string {
 	tb.mu.Lock()
 	defer tb.mu.Unlock()

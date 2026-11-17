@@ -49,7 +49,6 @@ type Client struct {
 	mu      sync.Mutex
 	next    int
 	pending map[string]chan answer
-	err     error
 	closed  chan struct{}
 }
 
@@ -122,9 +121,6 @@ func (c *Client) Close() error {
 	c.mu.Unlock()
 	return c.conn.Close(websocket.StatusNormalClosure, "")
 }
-
-// socket returns the server's socket, for a data connection.
-func (c *Client) socket() string { return c.sock }
 
 // read answers the calls and drops the events, until the connection ends.
 func (c *Client) read() {

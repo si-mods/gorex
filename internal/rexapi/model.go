@@ -668,16 +668,6 @@ func sortedStrings(ss []string) []string {
 	return ss
 }
 
-// fallbackLabel is a person's name for a value with no label, for target
-// results: the field is required and may be empty, but an empty one is
-// less useful than the ID's end.
-func fallbackLabel(label, id string) string {
-	if label != "" {
-		return label
-	}
-	return shortID(id)
-}
-
 // joinNonEmpty joins the parts that are not empty with a space, for the
 // "where" of a target.
 func joinNonEmpty(parts ...string) string {

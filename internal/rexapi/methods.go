@@ -214,10 +214,6 @@ var methods = map[string]func(*control, args) (any, *apiError){
 	"gorex.see_block":                methodGorexSeeBlock,
 }
 
-// blockMethodPrefix is the namespace of the methods every GoRex block
-// provides.
-const blockMethodPrefix = creatorName + "."
-
 // sessionArg reads the session_id argument and returns the session,
 // failing with session_not_found when there is none. A method whose
 // connection must be attached calls attachedArg instead.

@@ -23,12 +23,7 @@ func LockFile(f *os.File) error { return lockFile(f) }
 // it.
 func lockFile(f *os.File) error { return unix.Flock(int(f.Fd()), unix.LOCK_EX|unix.LOCK_NB) }
 
-// ownDir reports whether st, of a directory, is this user's: no other
-// user may change who may read or write in it.
-func ownDir(st os.FileInfo) bool { return ownedBy(st, os.Getuid()) }
-
-// ownedBy reports whether st is uid's, in the way ownDir asks of this
-// user's.
+// ownedBy reports whether st is uid's.
 func ownedBy(st os.FileInfo, uid int) bool {
 	sys, ok := st.Sys().(*syscall.Stat_t)
 	return ok && int(sys.Uid) == uid
