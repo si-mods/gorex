@@ -50,8 +50,6 @@ jobs:
         with:
           go-version-file: go.mod
           cache: false
-      # The last restore key is transitional: it lets the first runs reuse
-      # the entry setup-go saved before.
       - uses: actions/cache/restore@v4
         with:
           path: |
@@ -61,7 +59,6 @@ jobs:
           restore-keys: |
             go-build-${{ hashFiles('go.sum') }}-
             go-build-
-            setup-go-Linux-x64-ubuntu24-go-
       - name: gofmt
         run: |
           unformatted=$(gofmt -l $(git ls-files '*.go'))
@@ -236,7 +233,6 @@ jobs:
           restore-keys: |
             go-build-${{ hashFiles('go.sum') }}-
             go-build-
-            setup-go-Linux-x64-ubuntu24-go-
       - uses: actions/setup-node@v4
         with:
           node-version: 24
