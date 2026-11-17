@@ -62,6 +62,8 @@ struct HostListView: View {
                 }
             }
         }
+        // And let go of on the bars.
+        .onDrop(of: [.text], delegate: PageDrop())
         // A tapped notification opens its terminal.
         .onChange(of: Notifier.shared.opening, initial: true) { _, t in
             guard let t else { return }
@@ -179,6 +181,8 @@ struct HostListView: View {
                     .background(Color.page)
             }
         }
+        // A row let go of off the cards goes back to its place.
+        .onDrop(of: [.text], delegate: PageDrop())
         // Beside the terminal the bar stays, for the sidebar's toggle.
         .toolbar(width == .regular ? .automatic : .hidden, for: .navigationBar)
         .toolbar {
@@ -477,6 +481,10 @@ private struct HostSection: View {
         .onReceive(NotificationCenter.default.publisher(for: Lifted.ended)) { n in
             if let d = drag, !d.dropped, n.object as? UUID == d.token { drag = nil }
         }
+        // A drag let go of where no row of its card is.
+        .onReceive(NotificationCenter.default.publisher(for: PageDrop.missed)) { _ in
+            if drag?.dropped == false { drag = nil }
+        }
         .modifier(DragEnd { if drag?.dropped == false { drag = nil } })
         .sensoryFeedback(.selection, trigger: lifts)
         .alert(failure?.title ?? "", isPresented: Binding { failure != nil } set: { if !$0 { failure = nil } }) {
@@ -692,7 +700,11 @@ private struct HostSection: View {
 
     /// Moves the dropped row on the server to where the drag left it.
     private func drop() -> Bool {
-        guard var d = drag, !d.dropped else { return false }
+        guard var d = drag, !d.dropped else {
+            // Another card's row, which cannot move here.
+            NotificationCenter.default.post(name: PageDrop.missed, object: nil)
+            return false
+        }
         guard let i = order.firstIndex(of: d.window), let j = d.from.firstIndex(of: d.window), i != j else {
             drag = nil
             return true
@@ -882,6 +894,19 @@ private struct RowDrop: DropDelegate {
     func dropEntered(info: DropInfo) { pass() }
     func dropUpdated(info: DropInfo) -> DropProposal? { DropProposal(operation: .move) }
     func performDrop(info: DropInfo) -> Bool { drop() }
+}
+
+/// The page as a drop target, under the cards': a row let go of there,
+/// rather than cancelled, tells its card on iOS 26 too, where no call says
+/// when a drag ends.
+private struct PageDrop: DropDelegate {
+    static let missed = Notification.Name("GoRex.PageDrop.missed")
+
+    func dropUpdated(info: DropInfo) -> DropProposal? { DropProposal(operation: .move) }
+    func performDrop(info: DropInfo) -> Bool {
+        NotificationCenter.default.post(name: Self.missed, object: nil)
+        return true
+    }
 }
 
 /// Tells when a drag from the view ends, where the system says so (iOS
