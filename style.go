@@ -2,6 +2,7 @@ package main
 
 import (
 	_ "embed"
+	"sync"
 
 	"github.com/egoist/mygo/plugins/terminal"
 	"github.com/egoist/mygo/ui"
@@ -262,10 +263,18 @@ var fontItalic []byte
 //go:embed assets/fonts/JetBrainsMono-BoldItalic.ttf
 var fontBoldItalic []byte
 
+var fontsOnce sync.Once
+
+// registerFonts registers the fonts once: every call to ui.RegisterFont adds
+// the fonts to the text system again, which keeps them (DirectWrite on
+// Windows) and slows every later layout, as a test process that builds many
+// apps shows.
 func registerFonts() {
-	for _, f := range [][]byte{fontRegular, fontBold, fontItalic, fontBoldItalic} {
-		ui.RegisterFont(f, "JetBrains Mono")
-	}
+	fontsOnce.Do(func() {
+		for _, f := range [][]byte{fontRegular, fontBold, fontItalic, fontBoldItalic} {
+			ui.RegisterFont(f, "JetBrains Mono")
+		}
+	})
 }
 
 // defaultFontFamily is the terminals' font family, after the user's own.

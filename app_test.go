@@ -78,6 +78,10 @@ func newTestApp(t *testing.T) (*App, *ui.Tester) {
 	}
 	t.Cleanup(func() {
 		client.Shutdown()
+		// Shutdown ends the server's work, not the connection: closing
+		// it ends the client's reader, the layout follower and the
+		// server's handler of this client.
+		client.Close()
 		time.Sleep(100 * time.Millisecond)
 		os.RemoveAll(dir)
 	})
