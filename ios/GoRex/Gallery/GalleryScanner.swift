@@ -12,21 +12,38 @@ nonisolated struct GalleryScanner {
     enum Found: Equatable {
         /// A path as printed: the host resolves a relative one.
         case path(String)
-        /// A Kitty image as a PNG file, and its size in pixels.
-        case kitty(Data, width: Int, height: Int)
+        /// A Kitty image as a PNG file, its size in pixels, and the
+        /// number (i=) the program gave it, which it may draw again.
+        case kitty(Data, width: Int, height: Int, number: Int? = nil)
     }
 
     /// The largest image kept, as the server's maxGraphicsImage: a larger
     /// one is skipped.
     static let maxImage = 4 << 20
+    /// The largest side and the most pixels of an image kept or drawn as a
+    /// thumbnail: a size from the output is not trusted, as its product
+    /// overflows and its decoding fills the memory.
+    static let maxSide = 16384
+    static let maxPixels = 50_000_000
 
-    static let imageExtensions: Set<String> = ["png", "jpg", "jpeg", "gif", "webp", "heic", "avif", "bmp", "tiff", "svg"]
+    /// Whether an image of this size is small enough to keep.
+    static func fits(width: Int, height: Int) -> Bool {
+        width > 0 && height > 0 && width <= maxSide && height <= maxSide && width * height <= maxPixels
+    }
+
+    /// The files ImageIO draws: an SVG it does not.
+    static let imageExtensions: Set<String> = ["png", "jpg", "jpeg", "gif", "webp", "heic", "avif", "bmp", "tiff"]
 
     private enum Mode {
-        case ground, esc, csi, osc, apc, string
+        case ground, esc, escIntermediate, csi, osc, apc, string
     }
 
     private var mode = Mode.ground
+    /// The parameters of the CSI read now, for those of SGR.
+    private var csi: [UInt8] = []
+    /// Whether SGR 8 hides the text now: a path in it is not collected,
+    /// as no one sees it and the gallery downloads its thumbnail.
+    private var concealed = false
     /// Whether the last byte of an OSC, APC or other string was ESC, which
     /// ends it before a backslash.
     private var stringEsc = false
@@ -77,21 +94,33 @@ nonisolated struct GalleryScanner {
             }
         case .esc:
             switch b {
-            case UInt8(ascii: "["): mode = .csi
+            case UInt8(ascii: "["): mode = .csi; csi = []
             case UInt8(ascii: "]"): mode = .osc; osc = []; stringEsc = false
             case UInt8(ascii: "_"): mode = .apc; apc = []; apcSkip = false; stringEsc = false
             case UInt8(ascii: "P"), UInt8(ascii: "X"), UInt8(ascii: "^"): mode = .string; stringEsc = false
             case 0x1b: break
+            // An intermediate, as the ( of ESC ( B, which picks a character
+            // set: the bytes up to the final one are no text.
+            case 0x20...0x2f: mode = .escIntermediate
             default:
                 // A two-byte escape, as a reset, moves the cursor or clears.
                 endLine()
+                mode = .ground
+            }
+        case .escIntermediate:
+            if b == 0x1b {
+                mode = .esc
+            } else if b < 0x20 {
+                mode = .ground
+                step(b)
+            } else if b >= 0x30 {
                 mode = .ground
             }
         case .csi:
             // Colors do not end a line, as a path printed in color shows
             // whole; what moves the cursor or clears does.
             if b >= 0x40 && b <= 0x7e {
-                if b != UInt8(ascii: "m") { endLine() }
+                if b == UInt8(ascii: "m") { sgr() } else { endLine() }
                 mode = .ground
             } else if b == 0x1b {
                 mode = .esc
@@ -99,6 +128,8 @@ nonisolated struct GalleryScanner {
                 // A control cuts the CSI short; it runs as in text.
                 mode = .ground
                 step(b)
+            } else if csi.count < 64 {
+                csi.append(b)
             }
         case .osc:
             if stringEsc {
@@ -138,9 +169,31 @@ nonisolated struct GalleryScanner {
         }
     }
 
+    /// Notes whether an SGR hides the text (8) or shows it (28, or a
+    /// reset); the numbers of a color, as the 8 of 38;5;8, are skipped.
+    private mutating func sgr() {
+        // A private one, as CSI > 4 m, sets no attribute.
+        guard csi.first.map({ $0 >= 0x30 && $0 <= 0x3b }) ?? true else { return }
+        // A color's numbers after colons (38:5:8) stay in its own.
+        let params = String(decoding: csi, as: UTF8.self).split(separator: ";", omittingEmptySubsequences: false)
+        var i = 0
+        while i < params.count {
+            switch params[i] {
+            case "", "0", "28": concealed = false
+            case "8": concealed = true
+            case "38", "48", "58":
+                if i + 1 < params.count { i += params[i + 1] == "5" ? 2 : params[i + 1] == "2" ? 4 : 0 }
+            default: break
+            }
+            i += 1
+        }
+    }
+
     // MARK: Paths
 
     private mutating func append(_ b: UInt8) {
+        // Hidden text shows as blanks, and is read as them.
+        let b = concealed ? 0x20 : b
         // A line past its bound is read in parts: a path across the cut
         // is lost, as one the program wrapped is.
         if line.count >= Self.maxLine { endLine() }
@@ -173,7 +226,7 @@ nonisolated struct GalleryScanner {
             rest.append(c)
             i = text.index(after: i)
         }
-        for word in rest.split(whereSeparator: \.isWhitespace) { out += paths(in: String(word)) }
+        for word in rest.split(whereSeparator: \.isWhitespace) where mayBeImage(word) { out += paths(in: String(word)) }
         return out
     }
 
@@ -192,7 +245,8 @@ nonisolated struct GalleryScanner {
     /// one in brackets, as ![shot](/tmp/a.png); Ghostty's matcher finds
     /// the path in both.
     static func paths(in word: String) -> [String] {
-        word.split(whereSeparator: { proseDelimiters.contains($0) }).compactMap { part in
+        word.split(whereSeparator: { FileLink.proseDelimiters.contains($0) }).compactMap { part in
+            guard mayBeImage(part) else { return nil }
             var s = Substring(part)
             if let r = s.range(of: "](", options: .backwards) { s = s[r.upperBound...] }
             s = s.drop(while: { "([{<*\"'`".contains($0) })
@@ -200,9 +254,17 @@ nonisolated struct GalleryScanner {
         }
     }
 
-    /// FileLink's: the full-width punctuation of prose, which has no space
-    /// round a path.
-    private static let proseDelimiters = Set("，。；：！？、（）【】《》「」『』")
+    /// Whether a word holds an image's extension after a dot, as most
+    /// words do not: a cheap test before the rules of a tapped path.
+    static func mayBeImage(_ word: Substring) -> Bool {
+        var i = word.startIndex
+        while let dot = word[i...].firstIndex(of: ".") {
+            let ext = word[word.index(after: dot)...].prefix { $0.isASCII && $0.isLetter }
+            if imageExtensions.contains(ext.lowercased()) { return true }
+            i = word.index(after: dot)
+        }
+        return false
+    }
 
     /// The path of an image file a word prints, by the rules of a tapped
     /// path, nil for another word. Ghostty matches only paths with a slash.
@@ -241,11 +303,15 @@ nonisolated struct GalleryScanner {
     }
 
     /// Whether a path names another computer or a device, as
-    /// //server/share/x.png, \\server\share\x.png and \\?\C:\x.png: the
+    /// //server/share/x.png, \\server\share\x.png and \\?\C:\x.png, with
+    /// either slash in either place, and once its %XX are decoded: the
     /// server refuses them, and a Windows host that read one would contact
     /// that computer (docs/lessons.md), so the gallery never collects one.
     static func isNetworkPath(_ path: String) -> Bool {
-        path.hasPrefix("//") || path.hasPrefix("\\\\")
+        [path, path.removingPercentEncoding ?? path].contains { p in
+            let two = p.prefix(2)
+            return two.count == 2 && two.allSatisfy { $0 == "/" || $0 == "\\" }
+        }
     }
 
     /// A program's OSC 8 link to an image file: 8;params;file://... It is
@@ -337,18 +403,23 @@ nonisolated struct GalleryScanner {
             data = d
         }
         guard data.count <= maxImage else { return nil }
+        // A number of 0 is none.
+        let number = Int(keys["i"] ?? "").flatMap { $0 > 0 ? $0 : nil }
         switch keys["f"] ?? "32" {
         case "100":
+            // The size the PNG's header declares, read without decoding it.
             guard data.starts(with: [0x89, 0x50, 0x4e, 0x47]),
                   let src = CGImageSourceCreateWithData(data as CFData, nil),
                   let props = CGImageSourceCopyPropertiesAtIndex(src, 0, nil) as? [CFString: Any],
-                  let w = props[kCGImagePropertyPixelWidth] as? Int, let h = props[kCGImagePropertyPixelHeight] as? Int else { return nil }
-            return .kitty(data, width: w, height: h)
+                  let w = props[kCGImagePropertyPixelWidth] as? Int, let h = props[kCGImagePropertyPixelHeight] as? Int,
+                  fits(width: w, height: h) else { return nil }
+            return .kitty(data, width: w, height: h, number: number)
         case let f:
             let bpp = f == "24" ? 3 : 4
-            guard let w = Int(keys["s"] ?? ""), let h = Int(keys["v"] ?? ""), w > 0, h > 0,
+            // The sides are bounded before they multiply.
+            guard let w = Int(keys["s"] ?? ""), let h = Int(keys["v"] ?? ""), fits(width: w, height: h),
                   w * h * bpp <= data.count, let png = png(data, width: w, height: h, bytesPerPixel: bpp) else { return nil }
-            return .kitty(png, width: w, height: h)
+            return .kitty(png, width: w, height: h, number: number)
         }
     }
 

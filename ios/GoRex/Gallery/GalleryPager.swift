@@ -1,3 +1,4 @@
+import ImageIO
 import SwiftUI
 import UIKit
 
@@ -91,7 +92,8 @@ private struct GalleryPage: View {
     let session: TerminalSession
     let tap: () -> Void
     let close: () -> Void
-    let loaded: (URL) -> Void
+    /// The page's file to share, and nil as it goes with the page.
+    let loaded: (URL?) -> Void
     @State private var image: UIImage?
     @State private var failure: String?
     @State private var download: URL?
@@ -116,18 +118,32 @@ private struct GalleryPage: View {
         .onDisappear {
             if let download { GalleryImages.discard([download]) }
             download = nil
+            loaded(nil)
         }
+    }
+
+    /// Three times the screen's longer side in points: as many pixels as
+    /// the screen has, and more to zoom into on a 1x or 2x one, without
+    /// decoding a large image whole.
+    private var side: Int {
+        let screen = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first?.screen.bounds.size
+        return Int(max(screen?.width ?? 440, screen?.height ?? 956) * 3)
     }
 
     private func load() async {
         do {
             let o = try await GalleryImages.original(entry, gallery: gallery, session: session)
+            // The page went while its file came: no one deletes it after.
+            guard !Task.isCancelled else {
+                if o.temporary { GalleryImages.discard([o.url]) }
+                return
+            }
             if o.temporary { download = o.url }
-            let url = o.url
+            let url = o.url, side = side
             image = try await Task.detached {
-                guard let i = UIImage(contentsOfFile: url.path) else { throw GalleryImages.Unreadable() }
-                return i.preparingForDisplay() ?? i
+                try GalleryImages.downsample(CGImageSourceCreateWithURL(url as CFURL, nil), side: side, bounded: false)
             }.value
+            guard !Task.isCancelled else { return }
             loaded(url)
         } catch {
             guard !(error is CancellationError) else { return }

@@ -12,6 +12,8 @@ final class PaneGallery {
     var presenting = false
     @ObservationIgnored nonisolated let dir: URL
     @ObservationIgnored private let worker: Worker
+    /// The downloads of thumbnails, three at once (docs/ios-pane-gallery.md).
+    @ObservationIgnored let thumbnails = Limiter(3)
 
     /// One per pane, shared by its terminal and the screen.
     private static var all: [URL: PaneGallery] = [:]
@@ -29,11 +31,10 @@ final class PaneGallery {
         self.dir = dir
         worker = Worker(dir: dir)
         // Galleries not opened for 30 days go as the first pane opens,
-        // before this one notes that it opened.
-        let prune = !Self.pruned
+        // before this one is read from disk and notes that it opened.
+        if !Self.pruned { Worker.prune() }
         Self.pruned = true
         worker.run { store in
-            if prune { GalleryStore.prune() }
             if store.exists {
                 store.use()
                 try? store.save()
@@ -97,6 +98,11 @@ final class PaneGallery {
             self.dir = dir
         }
 
+        /// Deletes the old galleries, before any store on the queue reads its own.
+        static func prune() {
+            queue.async { GalleryStore.prune() }
+        }
+
         func scan(_ bytes: Data, fresh: Bool, done: @escaping @MainActor @Sendable (GalleryIndex) -> Void) {
             Self.queue.async { [self] in
                 if fresh { scanner.reset() }
@@ -117,5 +123,29 @@ final class PaneGallery {
                 Task { @MainActor in done(index) }
             }
         }
+    }
+}
+
+/// At most a number of tasks at once; the others wait their turn, in order.
+final class Limiter {
+    private var free: Int
+    private var waiting: [CheckedContinuation<Void, Never>] = []
+
+    init(_ n: Int) {
+        free = n
+    }
+
+    func run<T>(_ f: () async throws -> T) async throws -> T {
+        if free > 0 {
+            free -= 1
+        } else {
+            await withCheckedContinuation { waiting.append($0) }
+        }
+        defer {
+            if waiting.isEmpty { free += 1 } else { waiting.removeFirst().resume() }
+        }
+        // A cell that went while it waited downloads nothing.
+        try Task.checkCancellation()
+        return try await f()
     }
 }

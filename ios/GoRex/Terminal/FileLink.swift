@@ -26,7 +26,9 @@ nonisolated enum FileLink {
         return .file(path)
     }
 
-    private static let proseDelimiters = Set("，。；：！？、（）【】《》「」『』")
+    /// The full-width punctuation of prose, which has no space round a
+    /// path; the gallery's scanner splits words at it too.
+    static let proseDelimiters = Set("，。；：！？、（）【】《》「」『』")
 
     /// The path a matched word prints, without the place in the file
     /// (main.go:12:3, main.cs(12,3), a.swift#L12C3) and the name of the option or

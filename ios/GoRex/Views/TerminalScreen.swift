@@ -181,7 +181,7 @@ struct TerminalScreen: View {
                             Button("Close Pane", systemImage: "xmark.rectangle", role: .destructive) { closePane(currentTarget.block) }
                         }
                     } label: {
-                        Image(systemName: "ellipsis").galleryDot(session?.gallery)
+                        Image(systemName: "ellipsis")
                     }
                     .galleryCover(session, title: title)
                     .accessibilityLabel("More")

@@ -15,26 +15,16 @@ struct GalleryMenuItem: View {
             UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
             gallery.presenting = true
         } label: {
-            Label {
-                Text("Gallery")
-                Text(gallery.unseen ? "\(gallery.entries.count) Images, New" : "\(gallery.entries.count) Images")
-            } icon: {
-                Image(systemName: "photo.on.rectangle")
-            }
+            // A menu shows the second text under the title; in a Label it
+            // drops it.
+            Text("Gallery")
+            Text(gallery.unseen ? "\(gallery.entries.count) Images, New" : "\(gallery.entries.count) Images")
+            Image(systemName: "photo.on.rectangle")
         }
     }
 }
 
 extension View {
-    /// The dot on a button's top right while the pane has images not yet seen.
-    func galleryDot(_ gallery: PaneGallery?) -> some View {
-        overlay(alignment: .topTrailing) {
-            if gallery?.unseen == true {
-                Circle().fill(Color.accentColor).frame(width: 7, height: 7).offset(x: 4, y: -3)
-            }
-        }
-    }
-
     /// The pane's gallery, full screen in the terminal's scheme.
     func galleryCover(_ session: TerminalSession?, title: String) -> some View {
         modifier(GalleryCover(session: session, title: title))
@@ -74,6 +64,8 @@ struct GalleryView: View {
     /// The downloads of the share sheet up, to delete as it closes.
     @State private var shared: [URL] = []
     @State private var preparing = false
+    /// The share's downloads, cancelled as the gallery closes.
+    @State private var preparation: Task<Void, Never>?
     @State private var failure: String?
 
     var body: some View {
@@ -94,6 +86,7 @@ struct GalleryView: View {
             .toolbar { toolbar }
         }
         .onAppear { gallery.opened() }
+        .onDisappear { preparation?.cancel() }
         .fullScreenCover(item: $viewing) { e in
             GalleryPager(gallery: gallery, session: session, current: e.id)
         }
@@ -200,7 +193,7 @@ struct GalleryView: View {
     private func share(_ entries: [GalleryEntry]) {
         guard !entries.isEmpty, !preparing else { return }
         preparing = true
-        Task {
+        preparation = Task {
             defer { preparing = false }
             var urls: [URL] = []
             var temporary: [URL] = []
@@ -210,6 +203,8 @@ struct GalleryView: View {
                     urls.append(o.url)
                     if o.temporary { temporary.append(o.url) }
                 }
+                // The gallery closed while they downloaded.
+                try Task.checkCancellation()
                 shared = temporary
                 sharing = GalleryShare(urls: urls)
             } catch {
@@ -286,21 +281,31 @@ struct ShareSheet: UIViewControllerRepresentable {
 /// A thumbnail of the host's file is kept; its original is not.
 enum GalleryImages {
     nonisolated static let thumbSide = 512
+    /// The largest file downloaded for a thumbnail: a gallery opens with
+    /// the thumbnails of all the cells it shows.
+    static let maxThumbBytes = 32 << 20
 
     static func thumbnail(_ e: GalleryEntry, gallery: PaneGallery, session: TerminalSession) async throws -> UIImage {
         let file = gallery.file(e), thumb = gallery.thumb(e)
         if e.source == .kitty {
-            return try await Task.detached { try downsample(Data(contentsOf: file)) }.value
+            return try await Task.detached { try downsample(CGImageSourceCreateWithURL(file as CFURL, nil), side: thumbSide) }.value
         }
-        if let d = try? Data(contentsOf: thumb), let image = UIImage(data: d) { return image }
-        let r = try await download(e, session: session)
+        let kept = await Task.detached { () -> UIImage? in
+            guard let d = try? Data(contentsOf: thumb) else { return nil }
+            return UIImage(data: d)?.preparingForDisplay()
+        }.value
+        if let kept { return kept }
+        let r = try await gallery.thumbnails.run { try await download(e, session: session, maxBytes: maxThumbBytes) }
         guard let data = r.data else { throw RexError(code: "protocol", message: "the download sent no file") }
-        return try await Task.detached {
-            let image = try downsample(data)
+        let image = try await Task.detached {
+            let image = try downsample(CGImageSourceCreateWithData(data as CFData, nil), side: thumbSide)
             try? FileManager.default.createDirectory(at: thumb.deletingLastPathComponent(), withIntermediateDirectories: true)
             try? image.jpegData(compressionQuality: 0.8)?.write(to: thumb)
             return image
         }.value
+        // The image went from the gallery while its thumbnail was made.
+        if !gallery.entries.contains(where: { $0.id == e.id }) { try? FileManager.default.removeItem(at: thumb) }
+        return image
     }
 
     /// The image's file to view or share, and whether it is a download to
@@ -319,16 +324,16 @@ enum GalleryImages {
             }.value
             return (url, true)
         }
-        let r = try await download(e, session: session)
+        let r = try await download(e, session: session, maxBytes: OpenedFiles.maxBytes)
         let path = e.path ?? ""
         return (try await OpenedFiles.save(r, path: path), true)
     }
 
-    private static func download(_ e: GalleryEntry, session: TerminalSession) async throws -> DownloadResult {
+    private static func download(_ e: GalleryEntry, session: TerminalSession, maxBytes: Int) async throws -> DownloadResult {
         guard let path = e.path, session.host.canDownload else {
             throw RexError(code: "not_supported", message: String(localized: "The host does not send files"))
         }
-        return try await session.host.download(path, block: session.block, session: session.session, maxBytes: OpenedFiles.maxBytes)
+        return try await session.host.download(path, block: session.block, session: session.session, maxBytes: maxBytes)
     }
 
     /// Deletes downloads: each is in a folder of its own (OpenedFiles).
@@ -345,15 +350,23 @@ enum GalleryImages {
         var errorDescription: String? { String(localized: "Can't Read Image") }
     }
 
-    /// The image at most thumbSide pixels on its longer side, upright.
-    nonisolated static func downsample(_ data: Data) throws -> UIImage {
+    /// The image at most side pixels on its longer side, upright, decoded
+    /// at that size rather than whole. A thumbnail is not made of one
+    /// larger than the scanner keeps, by the size its header declares.
+    nonisolated static func downsample(_ src: CGImageSource?, side: Int, bounded: Bool = true) throws -> UIImage {
+        guard let src else { throw Unreadable() }
+        if bounded {
+            guard let props = CGImageSourceCopyPropertiesAtIndex(src, 0, nil) as? [CFString: Any],
+                  let w = props[kCGImagePropertyPixelWidth] as? Int, let h = props[kCGImagePropertyPixelHeight] as? Int,
+                  GalleryScanner.fits(width: w, height: h) else { throw Unreadable() }
+        }
         let options: [CFString: Any] = [
             kCGImageSourceCreateThumbnailFromImageAlways: true,
-            kCGImageSourceThumbnailMaxPixelSize: thumbSide,
+            kCGImageSourceThumbnailMaxPixelSize: side,
             kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceShouldCacheImmediately: true,
         ]
-        guard let src = CGImageSourceCreateWithData(data as CFData, nil),
-              let cg = CGImageSourceCreateThumbnailAtIndex(src, 0, options as CFDictionary) else { throw Unreadable() }
+        guard let cg = CGImageSourceCreateThumbnailAtIndex(src, 0, options as CFDictionary) else { throw Unreadable() }
         return UIImage(cgImage: cg)
     }
 }

@@ -36,11 +36,38 @@ nonisolated final class GalleryTests: XCTestCase {
         XCTAssertEqual(paths(scan("a.png example.com/a.png https://example.com/b.png\n")), [])
     }
 
+    func testCharsetEscapeBeforePath() {
+        // tput sgr0 prints ESC ( B ESC [ m: the B is no text.
+        XCTAssertEqual(paths(scan("\u{1b}(B\u{1b}[m./out/a.png\n")), ["./out/a.png"])
+        XCTAssertEqual(paths(scan("\u{1b}(", "B/tmp/b.png\n")), ["/tmp/b.png"])
+    }
+
+    func testConcealedPathsSkipped() {
+        XCTAssertEqual(paths(scan("\u{1b}[8m/tmp/secret.png\u{1b}[28m /tmp/shown.png\n")), ["/tmp/shown.png"])
+        XCTAssertEqual(paths(scan("\u{1b}[1;8m/tmp/a.png\u{1b}[0m /tmp/b.png\n")), ["/tmp/b.png"])
+        XCTAssertEqual(paths(scan("\u{1b}[8m/tmp/a", ".png\u{1b}[m /tmp/c.png\n")), ["/tmp/c.png"])
+        // Hidden text stays hidden across lines, until a reset.
+        XCTAssertEqual(paths(scan("\u{1b}[8mx\n/tmp/d.png\n")), [])
+        // The 8 of a color is no SGR 8.
+        XCTAssertEqual(paths(scan("\u{1b}[38;5;8m/tmp/e.png\u{1b}[48:5:8m /tmp/f.png\u{1b}[0m\n")), ["/tmp/e.png", "/tmp/f.png"])
+        // A link whose text is hidden is not collected either.
+        XCTAssertEqual(paths(scan("\u{1b}[8m\u{1b}]8;;file:///tmp/g.png\u{07}/tmp/g.png\u{1b}]8;;\u{07}\u{1b}[0m\n")), [])
+    }
+
     func testNetworkAndDevicePathsSkipped() {
         let text = #"//server/share/a.png \\server\share\c.png '//server/s/q.png' \\.\C:\d.png \\?\C:\e.png //./C:/f.png //?/C:/g.png"# + "\n"
         XCTAssertEqual(paths(scan(text)), [])
         XCTAssertEqual(paths(scan("\u{1b}]8;;file:////server/share/b.png\u{07}//server/share/b.png\u{1b}]8;;\u{07}\n")), [])
         XCTAssertTrue(GalleryScanner.isNetworkPath(#"\\server\share\c.png"#))
+        // Either slash in either place, and once decoded.
+        XCTAssertTrue(GalleryScanner.isNetworkPath(#"/\server\share\c.png"#))
+        XCTAssertTrue(GalleryScanner.isNetworkPath(#"\/server/share/c.png"#))
+        XCTAssertTrue(GalleryScanner.isNetworkPath("%2F%2Fserver/share/c.png"))
+        XCTAssertTrue(GalleryScanner.isNetworkPath("%5C%5Cserver%5Cc.png"))
+        for url in ["file:///%5C%5Cserver%5Cshare%5Cb.png", "file:///%2F%2Fserver/share/b.png", "file:///%2F%5Cserver/share/b.png"] {
+            let p = try! XCTUnwrap(FileLink.fileURLPath(url))
+            XCTAssertEqual(paths(scan("\u{1b}]8;;\(url)\u{07}\(p)\u{1b}]8;;\u{07}\n")), [], url)
+        }
         XCTAssertFalse(GalleryScanner.isNetworkPath("/tmp/a.png"))
         XCTAssertFalse(GalleryScanner.isNetworkPath(#"C:\a.png"#))
     }
@@ -64,7 +91,9 @@ nonisolated final class GalleryTests: XCTestCase {
 
     func testPathInProseAndMarkdown() {
         XCTAssertEqual(paths(scan("截图：/tmp/截图/图.png。\n")), ["/tmp/截图/图.png"])
-        XCTAssertEqual(paths(scan("![chart](./docs/chart.svg) (~/shots/x.heic).\n")), ["./docs/chart.svg", "~/shots/x.heic"])
+        XCTAssertEqual(paths(scan("![chart](./docs/chart.gif) (~/shots/x.heic).\n")), ["./docs/chart.gif", "~/shots/x.heic"])
+        // ImageIO draws no SVG.
+        XCTAssertEqual(paths(scan("./docs/chart.svg\n")), [])
         XCTAssertEqual(paths(scan("--out=/tmp/o.png /tmp/p.png:12\n")), ["/tmp/o.png", "/tmp/p.png"])
     }
 
@@ -135,7 +164,7 @@ nonisolated final class GalleryTests: XCTestCase {
     }
 
     private func kittyImages(_ found: [GalleryScanner.Found]) -> [(Data, Int, Int)] {
-        found.compactMap { if case .kitty(let d, let w, let h) = $0 { (d, w, h) } else { nil } }
+        found.compactMap { if case .kitty(let d, let w, let h, _) = $0 { (d, w, h) } else { nil } }
     }
 
     func testKittyPNG() {
@@ -209,6 +238,37 @@ nonisolated final class GalleryTests: XCTestCase {
         XCTAssertTrue(kittyImages(scan(kitty(zeros, "a=T,f=32,s=2048,v=513,o=z"))).isEmpty)
     }
 
+    func testKittyHugeSizeSkipped() {
+        // Sides from the output whose product overflows: skipped, no trap.
+        let rgb = Data(repeating: 9, count: 12)
+        for (s, v) in [("4294967296", "4294967296"), ("9223372036854775807", "2"), ("16385", "1"), ("8000", "8000")] {
+            XCTAssertTrue(kittyImages(scan(kitty(rgb, "a=T,f=32,s=\(s),v=\(v)"))).isEmpty, "\(s)x\(v)")
+            XCTAssertNil(GalleryScanner.image(keys: ["f": "24", "s": s, "v": v], base64: Array(rgb.base64EncodedString().utf8)))
+        }
+        XCTAssertTrue(GalleryScanner.fits(width: 16384, height: 3051))
+        XCTAssertFalse(GalleryScanner.fits(width: 16384, height: 3052))
+        XCTAssertFalse(GalleryScanner.fits(width: 0, height: 1))
+    }
+
+    func testKittyOversizedPNGHeaderSkipped() {
+        // A small PNG whose header declares 20000x20000.
+        var p = png(2, 2)
+        XCTAssertEqual(kittyImages(scan(kitty(p, "a=T,f=100"))).count, 1)
+        let big: [UInt8] = [0, 0, 0x4e, 0x20]
+        p.replaceSubrange(16..<20, with: big)
+        p.replaceSubrange(20..<24, with: big)
+        let c = crc32(p[12..<29])
+        p.replaceSubrange(29..<33, with: [UInt8(c >> 24), UInt8(c >> 16 & 0xff), UInt8(c >> 8 & 0xff), UInt8(c & 0xff)])
+        XCTAssertTrue(kittyImages(scan(kitty(p, "a=T,f=100"))).isEmpty)
+    }
+
+    func testKittyNumberCarried() {
+        let found = scan(kitty(png(2, 2), "a=T,f=100,i=42"), kitty(png(2, 2, red: 3), "a=T,f=100,i=0"))
+        let numbers = found.compactMap { if case .kitty(_, _, _, let n) = $0 { n } else { nil } }
+        XCTAssertEqual(numbers, [42])
+        XCTAssertEqual(found.count, 2)
+    }
+
     func testKittyReplayOnce() throws {
         let p = png(4, 4)
         let store = GalleryStore(dir: try tempDir())
@@ -248,6 +308,67 @@ nonisolated final class GalleryTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: firstFile.path))
     }
 
+    func testRemovedDoNotReturn() throws {
+        let dir = try tempDir()
+        let store = GalleryStore(dir: dir)
+        let p = png(2, 2)
+        store.add(.path("/tmp/a.png"))
+        store.add(.kitty(p, width: 2, height: 2))
+        store.add(.path("/tmp/b.png"))
+        store.seen()
+        store.remove([store.index.entries[0].id])
+        store.clear()
+        XCTAssertTrue(store.index.entries.isEmpty)
+        try store.save()
+        // As a snapshot and the server's replay bring them again.
+        let again = GalleryStore(dir: dir)
+        XCTAssertFalse(again.add(.path("/tmp/a.png")))
+        XCTAssertFalse(again.add(.kitty(p, width: 2, height: 2)))
+        XCTAssertFalse(again.add(.path("/tmp/b.png")))
+        XCTAssertTrue(again.index.entries.isEmpty)
+        XCTAssertFalse(again.index.unseen)
+        XCTAssertTrue(again.add(.path("/tmp/c.png")))
+    }
+
+    func testRemovedLimitDropsOldest() throws {
+        let store = GalleryStore(dir: try tempDir())
+        for i in 0...GalleryStore.removedLimit {
+            store.add(.path("/tmp/\(i).png"))
+            store.remove([store.index.entries[0].id])
+        }
+        XCTAssertEqual(store.index.removed.count, GalleryStore.removedLimit)
+        XCTAssertTrue(store.add(.path("/tmp/0.png")))
+        XCTAssertFalse(store.add(.path("/tmp/1.png")))
+    }
+
+    func testBytesLimitDropsOldest() throws {
+        let store = GalleryStore(dir: try tempDir())
+        let images = (1...4).map { png(8, 8, red: UInt8($0)) }
+        store.maxBytes = images.dropFirst().reduce(0) { $0 + $1.count }
+        for p in images { store.add(.kitty(p, width: 8, height: 8)) }
+        XCTAssertEqual(store.index.entries.count, 3)
+        XCTAssertEqual(store.index.entries.map(\.bytes), images.dropFirst().map(\.count))
+        let files = try FileManager.default.contentsOfDirectory(atPath: store.dir.appending(path: "files").path)
+        XCTAssertEqual(files.count, 3)
+    }
+
+    func testKittyFramesReplace() throws {
+        let store = GalleryStore(dir: try tempDir())
+        let t = Date(timeIntervalSince1970: 1_800_000_000)
+        let frames = (1...4).map { png(4, 4, red: UInt8($0 * 40)) }
+        store.add(.kitty(frames[0], width: 4, height: 4, number: 7), now: t)
+        let firstFile = store.file(try XCTUnwrap(store.index.entries.first))
+        // The next frame of the same number within 2 s replaces it.
+        XCTAssertTrue(store.add(.kitty(frames[1], width: 4, height: 4, number: 7), now: t.addingTimeInterval(1.5)))
+        XCTAssertEqual(store.index.entries.count, 1)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: firstFile.path))
+        XCTAssertEqual(try Data(contentsOf: store.file(store.index.entries[0])), frames[1])
+        // Another number, or later than 2 s, adds.
+        store.add(.kitty(frames[2], width: 4, height: 4, number: 8), now: t.addingTimeInterval(2))
+        store.add(.kitty(frames[3], width: 4, height: 4, number: 7), now: t.addingTimeInterval(4))
+        XCTAssertEqual(store.index.entries.count, 3)
+    }
+
     func testIndexRoundTrip() throws {
         let dir = try tempDir()
         let now = Date(timeIntervalSince1970: 1_800_000_000)
@@ -285,6 +406,16 @@ nonisolated final class GalleryTests: XCTestCase {
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         addTeardownBlock { try? FileManager.default.removeItem(at: dir) }
         return dir
+    }
+
+    /// The CRC-32 of a PNG chunk (ISO 3309).
+    private func crc32(_ bytes: Data) -> UInt32 {
+        var c: UInt32 = 0xffffffff
+        for b in bytes {
+            c ^= UInt32(b)
+            for _ in 0..<8 { c = c & 1 == 1 ? 0xedb88320 ^ (c >> 1) : c >> 1 }
+        }
+        return c ^ 0xffffffff
     }
 
     /// A zlib stream (RFC 1950) of data, as Kitty's o=z: a header, raw

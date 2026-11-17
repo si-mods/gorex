@@ -2,22 +2,36 @@
   "sourceLanguage": "en",
   "version": "1.0",
   "strings": {
-    "%lld Images": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld 张图片"
-          }
-        }
-      }
-    },
     "%lld Images, New": {
       "localizations": {
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld Image, New"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld Images, New"
+                }
+              }
+            }
+          }
+        },
         "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld 张图片，有新图片"
+          "variations": {
+            "plural": {
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld 张图片，有新图片"
+                }
+              }
+            }
           }
         }
       }
@@ -4218,16 +4232,6 @@
         }
       }
     },
-    "New Images": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "有新图片"
-          }
-        }
-      }
-    },
     "No Images": {
       "localizations": {
         "zh-Hans": {
@@ -4359,9 +4363,15 @@
           }
         },
         "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld 张图片"
+          "variations": {
+            "plural": {
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld 张图片"
+                }
+              }
+            }
           }
         }
       }

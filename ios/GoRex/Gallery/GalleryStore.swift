@@ -18,6 +18,8 @@ nonisolated struct GalleryEntry: Codable, Equatable, Identifiable, Sendable {
     var first: Date
     var width: Int?
     var height: Int?
+    /// The size of a Kitty image's PNG, which counts to the gallery's bound.
+    var bytes: Int?
 
     /// The name the viewer shows and a share gives the file.
     var name: String {
@@ -34,6 +36,9 @@ nonisolated struct GalleryIndex: Codable, Equatable, Sendable {
     var used: Date
     /// Whether an image came since the gallery was last open.
     var unseen = false
+    /// The paths and Kitty hashes of the images the user removed, oldest
+    /// first: a snapshot or the server's replay does not bring them back.
+    var removed: [String] = []
 }
 
 /// A pane's gallery on disk (docs/ios-pane-gallery.md, Storage): index.json,
@@ -42,10 +47,19 @@ nonisolated struct GalleryIndex: Codable, Equatable, Sendable {
 /// It is not thread-safe: one queue uses it.
 nonisolated final class GalleryStore {
     static let limit = 500
+    /// The most removed images remembered.
+    static let removedLimit = 2000
+    /// A Kitty image of the same number within this time of the last one
+    /// replaces it: a program draws an animation or a chart in frames.
+    static let frameTime: TimeInterval = 2
     static let maxAge: TimeInterval = 30 * 24 * 3600
 
     let dir: URL
     private(set) var index: GalleryIndex
+    /// The most bytes of Kitty images the gallery keeps; a test lowers it.
+    var maxBytes = 256 << 20
+    /// The entry and the time of the last Kitty image of each number.
+    private var frames: [Int: (id: String, at: Date)] = [:]
 
     /// Where the galleries live: Application Support/Gallery/<host>/<block>/.
     static let root = URL.applicationSupportDirectory.appending(path: "Gallery")
@@ -81,40 +95,59 @@ nonisolated final class GalleryStore {
     static func file(_ e: GalleryEntry, in dir: URL) -> URL { dir.appending(path: "files").appending(path: "\(e.id).png") }
     static func thumb(_ e: GalleryEntry, in dir: URL) -> URL { dir.appending(path: "thumbs").appending(path: "\(e.id).jpg") }
 
-    /// Adds what the scanner found, unless the gallery has it: the same
-    /// path, or a Kitty image of the same bytes. The oldest go past the
-    /// limit. Whether it was new.
+    /// Adds what the scanner found, unless the gallery has it or the user
+    /// removed it: the same path, or a Kitty image of the same bytes. A
+    /// Kitty image replaces the last of its number shown within frameTime.
+    /// The oldest go past the limits. Whether it was new.
     @discardableResult
     func add(_ found: GalleryScanner.Found, now: Date = .now) -> Bool {
         let id = UUID().uuidString
         switch found {
         case .path(let p):
-            guard !index.entries.contains(where: { $0.path == p }) else { return false }
+            guard !index.entries.contains(where: { $0.path == p }), !index.removed.contains(p) else { return false }
             index.entries.append(GalleryEntry(id: id, source: .path, path: p, first: now))
-        case .kitty(let png, let w, let h):
+        case .kitty(let png, let w, let h, let number):
             let hash = SHA256.hash(data: png).map { String(format: "%02x", $0) }.joined()
-            guard !index.entries.contains(where: { $0.hash == hash }) else { return false }
-            let e = GalleryEntry(id: id, source: .kitty, hash: hash, first: now, width: w, height: h)
+            let last = number.flatMap { frames[$0] }.flatMap { now.timeIntervalSince($0.at) < Self.frameTime ? $0 : nil }
+            if let number { frames[number]?.at = now }
+            guard !index.entries.contains(where: { $0.hash == hash }), !index.removed.contains(hash) else { return false }
+            let e = GalleryEntry(id: id, source: .kitty, hash: hash, first: now, width: w, height: h, bytes: png.count)
             do {
                 try FileManager.default.createDirectory(at: file(e).deletingLastPathComponent(), withIntermediateDirectories: true)
                 try png.write(to: file(e))
             } catch {
                 return false
             }
+            if let last, let old = index.entries.firstIndex(where: { $0.id == last.id }) {
+                deleteFiles(index.entries[old])
+                index.entries.remove(at: old)
+            }
+            if let number { frames[number] = (id, now) }
             index.entries.append(e)
         }
         index.unseen = true
-        if index.entries.count > Self.limit {
-            let gone = index.entries.prefix(index.entries.count - Self.limit)
-            for e in gone { deleteFiles(e) }
-            index.entries.removeFirst(gone.count)
+        var bytes = index.entries.reduce(0) { $0 + ($1.bytes ?? 0) }
+        var gone = 0
+        while index.entries.count - gone > Self.limit || bytes > maxBytes && gone < index.entries.count - 1 {
+            deleteFiles(index.entries[gone])
+            bytes -= index.entries[gone].bytes ?? 0
+            gone += 1
         }
+        index.entries.removeFirst(gone)
         return true
     }
 
+    /// Removes the images, and remembers them so that they do not return.
     func remove(_ ids: Set<String>) {
-        for e in index.entries where ids.contains(e.id) { deleteFiles(e) }
+        for e in index.entries where ids.contains(e.id) {
+            deleteFiles(e)
+            if let key = e.path ?? e.hash {
+                index.removed.removeAll { $0 == key }
+                index.removed.append(key)
+            }
+        }
         index.entries.removeAll { ids.contains($0.id) }
+        if index.removed.count > Self.removedLimit { index.removed.removeFirst(index.removed.count - Self.removedLimit) }
     }
 
     func clear() {
