@@ -45,9 +45,9 @@ var errLinksOutside = errors.New(linksOutside)
 // links may point anywhere, and a get of it sends without asking.
 //
 // It returns the file path names, which openToSend compares with the file
-// it opens: one swapped in after the check is refused. On Windows only
-// symlinks are read, not junctions, which git does not make. Both
-// openToSend call it, after any check of their own on the path.
+// it opens: one swapped in after the check is refused. A Windows
+// junction counts as a symlink (readLink). Both openToSend call it, after
+// any check of their own on the path.
 func checkLinks(path string) (fs.FileInfo, error) {
 	hops := 0
 	real, err := resolveLinks(path, &hops)
@@ -97,16 +97,16 @@ func resolveLinks(path string, hops *int) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		if st.Mode()&fs.ModeSymlink == 0 {
+		target, link, err := readLink(next, st.Mode())
+		if err != nil {
+			return "", err
+		}
+		if !link {
 			cur = next
 			continue
 		}
 		if *hops++; *hops > maxLinks {
 			return "", &fs.PathError{Op: "stat", Path: next, Err: syscall.ELOOP}
-		}
-		target, err := os.Readlink(next)
-		if err != nil {
-			return "", err
 		}
 		switch {
 		case filepath.IsAbs(target):
@@ -128,6 +128,26 @@ func resolveLinks(path string, hops *int) (string, error) {
 		cur = to
 	}
 	return cur, nil
+}
+
+// readLink is the target of the link at path, of the mode Lstat gave,
+// and whether it is a link. A symlink is one, and on Windows a junction
+// (a mount point), which Go reports as fs.ModeIrregular and which
+// takes no privilege to make: zip tools, install scripts and pnpm make
+// them. Another file of that mode is one when os.Readlink reads it, which
+// it does for those two reparse tags only; one it cannot read, as a
+// OneDrive file not yet downloaded or a deduplicated one, sends its own
+// contents, not another file's, and is read as it is.
+func readLink(path string, mode fs.FileMode) (string, bool, error) {
+	switch {
+	case mode&fs.ModeSymlink != 0:
+		target, err := os.Readlink(path)
+		return target, err == nil, err
+	case mode&fs.ModeIrregular != 0:
+		target, err := os.Readlink(path)
+		return target, err == nil, nil
+	}
+	return "", false, nil
 }
 
 // within reports whether path is dir or under it; both are clean and have
