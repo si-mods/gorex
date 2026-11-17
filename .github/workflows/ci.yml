@@ -1,9 +1,22 @@
 name: CI
 
 on:
+  # Docs-only changes start no run; workflow_dispatch runs it by hand.
+  # ios/WhatToTest.md stays in: the web job checks it. No other .md file is
+  # an input to the code or the tests.
   pull_request:
+    paths:
+      - '**'
+      - '!**.md'
+      - '!docs/**'
+      - 'ios/WhatToTest.md'
   push:
     branches: [main]
+    paths:
+      - '**'
+      - '!**.md'
+      - '!docs/**'
+      - 'ios/WhatToTest.md'
   # For a commit that started no run: gh workflow run ci.yml --ref <branch>
   workflow_dispatch:
 
@@ -17,21 +30,35 @@ concurrency:
 
 jobs:
   # Most jobs run on an instabox machine (Ubuntu 24.04) that lives for
-  # the job, a fork's pull request too. The Mac mini's runner takes one job
-  # at a time and is kept for the release, so no job here waits for it.
+  # the job, a fork's pull request too. Go caches are saved on pushes to
+  # main only; a pull request restores them and saves none, so the 10 GB
+  # cache limit does not fill with one copy per pull request.
+  # The Mac mini's runner takes one job at a time and is kept for the
+  # release, so no job here waits for it.
   # Windows tests run on the self-hosted YIBO-PC runner (same-repo PRs and
   # pushes only); macOS-only issues still show on a developer's machine.
   # si-mods runs no job on GitHub's runners.
 
-  # gofmt and vet, and each system's code cross-compiled.
+  # gofmt and vet, and each system's code cross-compiled. It runs on the
+  # large box (8 vCPU, 16 GiB), as vet and lint compile everything.
   build:
-    runs-on: instabox-medium
+    runs-on: instabox-large
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+          cache: false
+      - uses: actions/cache/restore@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: go-build-${{ hashFiles('go.sum') }}-${{ github.sha }}
+          restore-keys: |
+            go-build-${{ hashFiles('go.sum') }}-
+            go-build-
       - name: gofmt
         run: |
           unformatted=$(gofmt -l $(git ls-files '*.go'))
@@ -64,15 +91,34 @@ jobs:
             GOOS=${t%/*} GOARCH=${t#*/} go build ./...
             echo "::endgroup::"
           done
+      - uses: actions/cache/save@v4
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: go-build-${{ hashFiles('go.sum') }}-${{ github.sha }}
 
   # The web client's unit tests: its modules with no DOM, in Node
   # (web/test.mjs bundles web/test/*.test.ts and runs node --test). The
   # web build itself needs Zig and Ghostty, and is not run here.
+  #
+  # A pull request also checks what to test. What to Test comes from
+  # ios/WhatToTest.md, a bullet per locale, through ios/scripts/test-notes:
+  # a pull request that changes what a tester sees adds one, and one that
+  # reads like a commit subject fails.
   web:
     runs-on: instabox-medium
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: ios/WhatToTest.md
+        if: github.event_name == 'pull_request'
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: ios/scripts/test-notes check "$BASE"
       - uses: actions/setup-node@v4
         with:
           node-version: 24
@@ -85,25 +131,9 @@ jobs:
           npm run typecheck
           npm test
 
-  # What to Test comes from ios/WhatToTest.md, a bullet per locale, through
-  # ios/scripts/test-notes: a pull request that changes what a tester sees
-  # adds one, and one that reads like a commit subject fails.
-  notes:
-    if: github.event_name == 'pull_request'
-    runs-on: instabox-medium
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - name: ios/WhatToTest.md
-        env:
-          BASE: ${{ github.event.pull_request.base.sha }}
-        run: ios/scripts/test-notes check "$BASE"
-
   # The tests. The root package's tests run one after another, so three
   # machines take a third each; a fourth runs the other packages. With
-  # build and web, that is six at a time.
+  # build and web, that is five at a time.
   test-linux:
     runs-on: instabox-medium
     # Two runs of a part that hangs, at 15 minutes each.
@@ -119,13 +149,16 @@ jobs:
           go-version-file: go.mod
           cache: false
       # Its own cache, as build's holds no compiled tests.
-      - uses: actions/cache@v4
+      - uses: actions/cache/restore@v4
+        id: cache
         with:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: go-test-linux-${{ startsWith(matrix.part, 'root') && 'root' || 'others' }}-${{ hashFiles('go.sum') }}
-          restore-keys: go-test-linux-${{ startsWith(matrix.part, 'root') && 'root' || 'others' }}-
+          key: go-test-linux-${{ startsWith(matrix.part, 'root') && 'root' || 'others' }}-${{ hashFiles('go.sum') }}-${{ github.sha }}
+          restore-keys: |
+            go-test-linux-${{ startsWith(matrix.part, 'root') && 'root' || 'others' }}-${{ hashFiles('go.sum') }}-
+            go-test-linux-${{ startsWith(matrix.part, 'root') && 'root' || 'others' }}-
       - name: test
         shell: bash
         env:
@@ -144,6 +177,14 @@ jobs:
             [ -n "$tests" ]
             "$RUNNER_TEMP/gorex.test" -test.timeout 15m -test.run "^($tests)\$"
           fi
+      # root-0, root-1 and root-2 share one key, so root-0 saves for them.
+      - uses: actions/cache/save@v4
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && (matrix.part == 'root-0' || matrix.part == 'others')
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ steps.cache.outputs.cache-primary-key }}
 
   test-windows:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
@@ -178,6 +219,17 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+          cache: false
+      # Build's cache, restored only: this job saves none.
+      - uses: actions/cache/restore@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: go-build-${{ hashFiles('go.sum') }}-${{ github.sha }}
+          restore-keys: |
+            go-build-${{ hashFiles('go.sum') }}-
+            go-build-
       - uses: actions/setup-node@v4
         with:
           node-version: 24
