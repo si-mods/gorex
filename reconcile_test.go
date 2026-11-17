@@ -1052,6 +1052,53 @@ func TestSaveNowLeavesNoCheck(t *testing.T) {
 	waitFor(t, tt, "the other client's rename", func() bool { return tab.Name == "theirs" })
 }
 
+// TestTellDuringReadIsTaken tells the outbox of another client's change
+// while its read of the layout, made before the change, is on its way:
+// the tell kicks nothing, as the outbox runs, and the read shows nothing
+// new; the outbox reads again and takes the change, the tell not lost.
+func TestTellDuringReadIsTaken(t *testing.T) {
+	a, _ := newTestApp(t)
+	a.saveNow()
+	other, err := rex.ConnectExisting()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer other.Close()
+	ls, err := a.client.LayoutState()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var o outbox
+	var took []uint64
+	o.use(a.client, nil, func(ls rex.LayoutState) bool {
+		took = append(took, ls.Revision)
+		return true
+	})
+	o.took(ls.Revision, ls.Layout)
+	var changed uint64
+	o.afterRead = func() {
+		o.afterRead = nil
+		if _, err := other.Command(rex.LayoutCommand{Op: "space.create", Name: "elsewhere"}); err != nil {
+			t.Error(err)
+			return
+		}
+		now, err := other.LayoutState()
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		changed = now.Revision
+		o.tell(a.client, changed)
+	}
+	o.follow(a.client) // runs on this goroutine, as update is nil
+	if changed == 0 || changed == ls.Revision {
+		t.Fatalf("the other client's change: revision %d, from %d", changed, ls.Revision)
+	}
+	if !slices.Contains(took, changed) {
+		t.Errorf("took %v, not the told revision %d", took, changed)
+	}
+}
+
 // TestUseRunsInFlightDone switches the outbox's connection while a command
 // is on its way: its done runs once, with an error.
 func TestUseRunsInFlightDone(t *testing.T) {

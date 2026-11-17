@@ -2266,6 +2266,10 @@ func TestWatchHostTakesChanges(t *testing.T) {
 	taken("the list after a poke")
 	quiet()
 	if _, err := remote.Create(rex.CreateOptions{Cols: 80, Rows: 24}); err != nil {
+		// Once on CI the server did not answer this create in time
+		// (callTimeout), for no cause found: the stacks show what held it.
+		buf := make([]byte, 4<<20)
+		t.Logf("goroutines:\n%s", buf[:runtime.Stack(buf, true)])
 		t.Fatal(err)
 	}
 	taken("a new session")
