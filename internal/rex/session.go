@@ -414,6 +414,11 @@ func (s *session) resyncClient(id, peer string, cols, rows int) error {
 	if s.cols != cols || s.rows != rows {
 		return ErrResyncSize
 	}
+	// A stream that attached again gives the same id: its old attach,
+	// whose connection the server has not seen fail yet, may still be
+	// here. Each live one gets the screen; with none, the window falls
+	// back to a capture.
+	live := false
 	for a := range s.clients {
 		if id == "" || a.client != id || a.peer != peer {
 			continue
@@ -422,11 +427,14 @@ func (s *session) resyncClient(id, peer string, cols, rows int) error {
 		if !a.closed && !a.dead {
 			a.pending, a.queued, a.behind, a.resynced = nil, 0, true, time.Time{}
 			a.wakeLocked()
+			live = true
 		}
 		a.mu.Unlock()
-		return nil
 	}
-	return errors.New("rex: no such client")
+	if !live {
+		return errors.New("rex: no such client")
+	}
+	return nil
 }
 
 // renderResync returns what snapshotLocked returns for an attach with
