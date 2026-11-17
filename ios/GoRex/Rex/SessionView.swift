@@ -38,10 +38,40 @@ struct SessionView: Decodable {
         }
     }
 
+    /// A session's project home, GoRex's own (docs/rex-api.md, Projects):
+    /// the machine of its home host and its folder there. Read leniently:
+    /// a malformed one reads as no folder rather than failing the view.
+    struct Project: Decodable, Hashable {
+        var home_machine: String
+        var dir: String
+
+        init(home_machine: String, dir: String) {
+            self.home_machine = home_machine
+            self.dir = dir
+        }
+
+        private enum CodingKeys: String, CodingKey { case home_machine, dir }
+
+        init(from decoder: Decoder) throws {
+            let c = try? decoder.container(keyedBy: CodingKeys.self)
+            home_machine = (try? c?.decodeIfPresent(String.self, forKey: .home_machine)) ?? ""
+            dir = (try? c?.decodeIfPresent(String.self, forKey: .dir)) ?? ""
+        }
+
+        /// The project of a session list's entry, as session.bootstrap and
+        /// session_created give it; nil when it has no folder.
+        static func of(_ entry: Any?) -> Project? {
+            guard let p = entry as? [String: Any], let dir = p["dir"] as? String, !dir.isEmpty else { return nil }
+            return Project(home_machine: p["home_machine"] as? String ?? "", dir: dir)
+        }
+    }
+
     var revision: Int
     var session_id: String
     var label: String?
     var windows: [Window]?
+    /// Left out by a session with no folder, and by servers of before.
+    var project: Project?
 
     /// A view to show, as Demo Mode makes one; the server's arrive as JSON.
     init(revision: Int, session_id: String, label: String? = nil, windows: [Window]? = nil) {

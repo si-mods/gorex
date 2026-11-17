@@ -37,6 +37,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - Close a pane you no longer need: open the menu at the top right and choose Close Pane, or press and hold its tile in the pane bar. The last pane of a window stays.
 - Choose Gallery, first in a terminal's More menu, to see every image the pane showed: printed image paths and pictures drawn in the terminal. Swipe, pinch or share them; the menu marks new ones.
 - An image whose file no longer exists on your computer now leaves the Gallery by itself, instead of staying as a blank square.
+- Spaces are Projects now. Tap + by the projects, pick a computer and browse to a folder: new windows of the project open there, and its folder shows under its name.
 
 ## zh-Hans
 
@@ -66,3 +67,4 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - 不再需要的面板可以关掉：点右上角菜单选“关闭面板”，或在面板条里长按它的图标。窗口的最后一个面板不会被关。
 - 选终端「更多」菜单的第一项「相册」，查看这个面板出现过的全部图片：打印出的图片路径和直接画在终端里的图片；可滑动、缩放和分享。有新图片时菜单里会标出。
 - 电脑上已经不存在的图片文件，现在会自己从相册里消失，不再留下一个空白格子。
+- 「空间」现在叫「项目」。点项目栏的 +，选一台电脑并浏览到一个文件夹：项目的新窗口都在这个文件夹中打开，项目名下方显示该文件夹。

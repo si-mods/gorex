@@ -18,7 +18,7 @@ struct SpaceSyncView: View {
                 Toggle("iCloud Sync", isOn: $spaceStore.iCloudSyncEnabled)
                     .listRowBackground(Color.card)
             } footer: {
-                Text("Syncs your cross-host spaces and window assignments across your Apple devices via iCloud.")
+                Text("Syncs your cross-host projects, their folders and window assignments across your Apple devices via iCloud.")
             }
 
             Section {
@@ -34,11 +34,11 @@ struct SpaceSyncView: View {
                     .listRowBackground(Color.card)
                 }
             } footer: {
-                Text("Automatically applies iOS space assignments back to online desktop hosts that support gorex.spaces_sync.")
+                Text("Automatically applies iOS project assignments and folders back to online desktop hosts that support gorex.spaces_sync.")
             }
 
             Section("Status") {
-                row("Spaces", value: "\(spaceStore.orderedSpaces.count)")
+                row("Projects", value: "\(spaceStore.orderedSpaces.count)")
                 row("Assigned Panes", value: "\(assignedCount)")
                 row("Revision", value: "r\(spaceStore.manifest.revision)")
                 row("Last iCloud Sync", value: format(spaceStore.lastCloudSyncAt))
@@ -77,7 +77,7 @@ struct SpaceSyncView: View {
         .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden)
         .background(Color.page.ignoresSafeArea())
-        .navigationTitle("Space Sync")
+        .navigationTitle("Project Sync")
         .navigationBarTitleDisplayMode(.inline)
     }
 

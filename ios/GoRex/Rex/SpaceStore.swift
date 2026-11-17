@@ -19,6 +19,33 @@ struct CentralSpace: Codable, Equatable, Identifiable, Hashable {
     var order: Int
     var updated_at: TimeInterval
     var members: [SpaceMember]
+    /// The project's home (docs/projects.md): the machine (`rex.MachineID`)
+    /// of its home host, and its folder there, absolute. `dir` nil is a
+    /// space of an app of before projects, whose home is not known: it
+    /// keeps whatever home the desktops have. `dir` "" is a project with no
+    /// folder.
+    var home_machine: String? = nil
+    var dir: String? = nil
+
+    /// The project's folder, nil for one with none or not known.
+    var folder: String? { dir.flatMap { $0.isEmpty ? nil : $0 } }
+}
+
+extension CentralSpace {
+    /// Decodes `home_machine` and `dir` leniently, as `SpaceMember.origin`:
+    /// absent, as an older app writes the manifest, or of a type this app
+    /// does not know, they read as nil instead of failing the manifest.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id)
+        name = try c.decode(String.self, forKey: .name)
+        color = try c.decodeIfPresent(String.self, forKey: .color)
+        order = try c.decode(Int.self, forKey: .order)
+        updated_at = try c.decode(TimeInterval.self, forKey: .updated_at)
+        members = try c.decode([SpaceMember].self, forKey: .members)
+        home_machine = (try? c.decodeIfPresent(String.self, forKey: .home_machine)).flatMap { $0 }
+        dir = (try? c.decodeIfPresent(String.self, forKey: .dir)).flatMap { $0 }
+    }
 }
 
 /// A terminal block belonging to a space, anchored by its host's durable
@@ -120,11 +147,17 @@ final class SpaceStore {
             let label: String
             let view: SessionView?
             let remote: [Spaces.Member]
+            /// The session's project home, as the host reports it; nil
+            /// for one with no folder.
+            var project: SessionView.Project? = nil
         }
 
         let machine: String
         let online: Bool
         let sessions: [Session]
+        /// Whether the host reports projects' homes (`gorex.projects`):
+        /// only then does a session with no `project` have no folder.
+        var projects = false
     }
 
     private(set) var manifest: SpaceManifest
@@ -147,6 +180,13 @@ final class SpaceStore {
     var primaryHostID: String {
         didSet { UserDefaults.standard.set(primaryHostID, forKey: Self.primaryHostKey) }
     }
+    /// The home each host last reported for each space, by machine and
+    /// space ID ("machine|dir", "|" for none), to tell a home a desktop
+    /// changed from one it has not caught up with yet. Kept on this device
+    /// beside the manifest, not in iCloud, so that a desktop's change made
+    /// while the app was closed is taken at the next launch.
+    @ObservationIgnored private var reportedHomes: [String: String] = [:]
+    @ObservationIgnored private let reportedURL: URL
     @ObservationIgnored private let fileURL: URL
     @ObservationIgnored private let kvs: SpaceKeyValueStore?
     @ObservationIgnored nonisolated(unsafe) private var cloudObserver: NSObjectProtocol?
@@ -154,6 +194,12 @@ final class SpaceStore {
     init(fileURL: URL? = nil, kvs: SpaceKeyValueStore? = nil, observeCloud: Bool = false) {
         let url = fileURL ?? Self.defaultFileURL()
         self.fileURL = url
+        let reportedURL = Self.reportedURL(for: url)
+        self.reportedURL = reportedURL
+        if let data = try? Data(contentsOf: reportedURL),
+           let decoded = try? JSONDecoder().decode([String: String].self, from: data) {
+            self.reportedHomes = decoded
+        }
         self.kvs = kvs
         let defaults = UserDefaults.standard
         self.iCloudSyncEnabled = defaults.object(forKey: Self.iCloudSyncKey) as? Bool ?? true
@@ -239,9 +285,9 @@ final class SpaceStore {
     // MARK: - Mutations
 
     @discardableResult
-    func createSpace(name: String, color: String? = nil, now: Date = .now) -> CentralSpace {
+    func createSpace(name: String, color: String? = nil, homeMachine: String? = nil, dir: String? = nil, now: Date = .now) -> CentralSpace {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        let label = trimmed.isEmpty ? "New Space" : trimmed
+        let label = trimmed.isEmpty ? "New Project" : trimmed
         let ts = now.timeIntervalSince1970
         let nextOrder = (manifest.spaces.map(\.order).max() ?? -1) + 1
         let space = CentralSpace(
@@ -250,7 +296,9 @@ final class SpaceStore {
             color: color,
             order: nextOrder,
             updated_at: ts,
-            members: []
+            members: [],
+            home_machine: dir.map { $0.isEmpty ? "" : homeMachine ?? "" },
+            dir: dir
         )
         manifest.tombstones.removeAll {
             $0.kind == .space && ($0.name?.caseInsensitiveCompare(label) == .orderedSame)
@@ -265,6 +313,19 @@ final class SpaceStore {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, let i = manifest.spaces.firstIndex(where: { $0.id == id }) else { return }
         manifest.spaces[i].name = trimmed
+        manifest.spaces[i].updated_at = now.timeIntervalSince1970
+        manifest.revision += 1
+        save()
+    }
+
+    /// Sets a project's home: the machine of its home host and its folder
+    /// there. A `dir` of "" removes the folder.
+    func setHome(_ id: String, machine: String, dir: String, now: Date = .now) {
+        guard let i = manifest.spaces.firstIndex(where: { $0.id == id }) else { return }
+        let home = dir.isEmpty ? "" : machine
+        guard manifest.spaces[i].dir != dir || manifest.spaces[i].home_machine != home else { return }
+        manifest.spaces[i].home_machine = home
+        manifest.spaces[i].dir = dir
         manifest.spaces[i].updated_at = now.timeIntervalSince1970
         manifest.revision += 1
         save()
@@ -392,6 +453,10 @@ final class SpaceStore {
                     changed = true
                 }
 
+                if host.projects {
+                    adoptHome(session.project, from: host.machine, into: targetID, ts: ts, changed: &changed)
+                }
+
                 // Collect local blocks of this session's windows.
                 for w in session.view?.windows ?? [] {
                     for b in w.blocks {
@@ -476,6 +541,15 @@ final class SpaceStore {
                 spacesByID[s.id] = s.updated_at >= existing.updated_at ? s : existing
             } else {
                 spacesByID[s.id] = s
+            }
+        }
+
+        // An older app drops the home when it re-encodes: where the chosen
+        // copy has none, the local copy's stays.
+        for l in local.spaces where l.dir != nil {
+            if let s = spacesByID[l.id], s.dir == nil {
+                spacesByID[l.id]?.home_machine = l.home_machine
+                spacesByID[l.id]?.dir = l.dir
             }
         }
 
@@ -604,6 +678,27 @@ final class SpaceStore {
         changed = true
     }
 
+    /// Takes a home a host reports for a space when the manifest knows
+    /// none yet, or when the host's changed since it last reported, as
+    /// after the desktop's Change Folder. A home the manifest changed and
+    /// the host has not caught up with stays, for the desktop sync to send.
+    private func adoptHome(_ project: SessionView.Project?, from machine: String, into spaceID: String, ts: TimeInterval, changed: inout Bool) {
+        guard let i = manifest.spaces.firstIndex(where: { $0.id == spaceID }) else { return }
+        let reported = project.map { "\($0.home_machine)|\($0.dir)" } ?? "|"
+        let key = "\(machine)|\(spaceID)"
+        let before = reportedHomes.updateValue(reported, forKey: key)
+        if before != reported { saveReported() }
+        let s = manifest.spaces[i]
+        let current = s.dir.map { $0.isEmpty ? "|" : "\(s.home_machine ?? "")|\($0)" }
+        if current == reported { return }
+        let fresh = current == nil ? project != nil : before != nil && before != reported
+        guard fresh else { return }
+        manifest.spaces[i].home_machine = project?.home_machine ?? ""
+        manifest.spaces[i].dir = project?.dir ?? ""
+        manifest.spaces[i].updated_at = ts
+        changed = true
+    }
+
     private func isSpaceTombstoned(name: String) -> Bool {
         manifest.tombstones.contains {
             $0.kind == .space && $0.name?.caseInsensitiveCompare(name) == .orderedSame
@@ -620,6 +715,17 @@ final class SpaceStore {
         let before = manifest.tombstones.count
         manifest.tombstones.removeAll { $0.deleted_at < cutoff }
         if manifest.tombstones.count != before { changed = true }
+    }
+
+    /// Where the homes the hosts reported are kept: beside the manifest.
+    static func reportedURL(for manifest: URL) -> URL {
+        manifest.deletingPathExtension().appendingPathExtension("reported.json")
+    }
+
+    private func saveReported() {
+        guard let data = try? JSONEncoder().encode(reportedHomes) else { return }
+        try? FileManager.default.createDirectory(at: reportedURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try? data.write(to: reportedURL, options: .atomic)
     }
 
     private func save(pushKVS: Bool = true) {
