@@ -966,6 +966,9 @@ final class TerminalHost: UIView, UIGestureRecognizerDelegate {
         paneDrag.maximumNumberOfTouches = 2
         paneDrag.delegate = self
         paneDrag.cancelsTouchesInView = false
+        // Off until it feels right on a device (si-mods/gorex#676); the pane
+        // bar switches panes.
+        paneDrag.isEnabled = false
         addGestureRecognizer(paneDrag)
         let edge = bottomEdge
         edge.translatesAutoresizingMaskIntoConstraints = false
