@@ -1,6 +1,7 @@
 package share
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -8,7 +9,9 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/coder/websocket"
 )
@@ -202,5 +205,108 @@ func TestShareAdmissionStaticAndProxy(t *testing.T) {
 	srv.Stop()
 	if srv.Alive() {
 		t.Fatal("expected Alive() == false after Stop")
+	}
+}
+
+// TestShareProxySendsLANToken adds the phone's LAN token to every request
+// it forwards, HTTP and WebSocket alike, in place of any the browser
+// sends, and never lets the browser see it.
+func TestShareProxySendsLANToken(t *testing.T) {
+	const token = "test-token-0123456789abcdefghijklmnopqrstuv"
+	webDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(webDir, "index.html"), []byte("<h1>GoRex</h1>"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var mu sync.Mutex
+	var auths []string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		auths = append(auths, r.URL.Path+" "+r.Header.Get("Authorization"))
+		mu.Unlock()
+		if r.Header.Get("Authorization") != "Bearer "+token {
+			http.Error(w, "no token", http.StatusForbidden)
+			return
+		}
+		if r.URL.Path == "/api/control" {
+			c, err := websocket.Accept(w, r, &websocket.AcceptOptions{InsecureSkipVerify: true})
+			if err != nil {
+				return
+			}
+			defer c.CloseNow()
+			mt, msg, err := c.Read(r.Context())
+			if err == nil {
+				_ = c.Write(r.Context(), mt, append([]byte("echo:"), msg...))
+			}
+			return
+		}
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	}))
+	defer upstream.Close()
+
+	srv, err := Start(Config{Addr: "127.0.0.1:0", WebDir: webDir, PhoneName: "Test iPhone"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer srv.Stop()
+	hostsJSON, _ := json.Marshal([]Host{
+		{ID: "lan", Name: "Desk", URL: upstream.URL, Transport: "system", Token: token},
+	})
+	if err := srv.SetHosts(string(hostsJSON)); err != nil {
+		t.Fatal(err)
+	}
+	srv.Admit("127.0.0.1")
+	base := "http://" + srv.Addr()
+
+	get := func(path string, header ...string) (int, string) {
+		t.Helper()
+		req, _ := http.NewRequest(http.MethodGet, base+path, nil)
+		for i := 0; i+1 < len(header); i += 2 {
+			req.Header.Set(header[i], header[i+1])
+		}
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		b, _ := io.ReadAll(resp.Body)
+		var hdr strings.Builder
+		for k, v := range resp.Header {
+			hdr.WriteString(k + ": " + strings.Join(v, ",") + "\n")
+		}
+		return resp.StatusCode, hdr.String() + string(b)
+	}
+
+	if code, body := get("/h/lan/api/help"); code != 200 {
+		t.Fatalf("proxied with the phone's token: %d %s", code, body)
+	}
+	// A token the browser sends is replaced by the phone's.
+	if code, _ := get("/h/lan/api/help", "Authorization", "Bearer browser-token"); code != 200 {
+		t.Errorf("a browser's own Authorization reached the host: %d", code)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	ws, _, err := websocket.Dial(ctx, "ws://"+srv.Addr()+"/h/lan/api/control", nil)
+	if err != nil {
+		t.Fatalf("WebSocket through the proxy: %v", err)
+	}
+	defer ws.CloseNow()
+	if err := ws.Write(ctx, websocket.MessageText, []byte("hi")); err != nil {
+		t.Fatal(err)
+	}
+	if _, msg, err := ws.Read(ctx); err != nil || string(msg) != "echo:hi" {
+		t.Fatalf("WebSocket echo: %q, %v", msg, err)
+	}
+
+	mu.Lock()
+	for _, a := range auths {
+		if !strings.HasSuffix(a, " Bearer "+token) {
+			t.Errorf("a forwarded request without the phone's token: %q", a)
+		}
+	}
+	mu.Unlock()
+	for _, p := range []string{"/", "/share/hosts", "/share/state", "/h/lan/api/help"} {
+		if _, body := get(p); strings.Contains(body, token) {
+			t.Errorf("%s shows the token to the browser: %s", p, body)
+		}
 	}
 }

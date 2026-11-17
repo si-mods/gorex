@@ -36,6 +36,10 @@ type Host struct {
 	Icon      string `json:"icon,omitempty"`
 	URL       string `json:"url"`
 	Transport string `json:"transport,omitempty"` // "system", "tailnet", "tailcat"
+	// Token is the LAN gateway's pairing token. The proxy sends it as
+	// Authorization: Bearer on every request to this host; it never
+	// reaches the browser (handleHosts leaves it out).
+	Token string `json:"token,omitempty"`
 }
 
 // Device represents a hotspot client that has requested or been granted access.
@@ -480,6 +484,12 @@ func (s *Server) handleProxy(w http.ResponseWriter, r *http.Request) {
 			pr.Out.Host = target.Host
 			// Drop Origin so the gateway treats the request as native (the phone's).
 			pr.Out.Header.Del("Origin")
+			// The phone's credential, not the browser's: the browser never
+			// holds the token, and cannot send one of its own.
+			pr.Out.Header.Del("Authorization")
+			if h.Token != "" {
+				pr.Out.Header.Set("Authorization", "Bearer "+h.Token)
+			}
 		},
 	}
 	rp.ServeHTTP(w, r)

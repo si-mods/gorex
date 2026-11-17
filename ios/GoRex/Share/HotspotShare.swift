@@ -31,6 +31,9 @@ final class HotspotShare: NSObject, TailnetShareDelegateProtocol {
         let icon: String
         let url: String
         let transport: String
+        /// The LAN gateway's token: the share proxy sends it to the host
+        /// as Authorization: Bearer and never gives it to the browser.
+        let token: String?
     }
 
     private(set) var isSharing = false
@@ -99,7 +102,8 @@ final class HotspotShare: NSObject, TailnetShareDelegateProtocol {
                 name: c.name,
                 icon: c.icon ?? "laptop",
                 url: c.url.absoluteString,
-                transport: (c.transport ?? .system).rawValue
+                transport: (c.transport ?? .system).rawValue,
+                token: c.auth
             )
         }
         guard let data = try? JSONEncoder().encode(payload),
