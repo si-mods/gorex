@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
-	"strings"
 )
 
 // openToSend opens path for a get, a regular file only. It refuses a
@@ -14,10 +13,8 @@ import (
 // opens, and looks at the open file again, so that one swapped in
 // between is refused too.
 func openToSend(path string) (*os.File, fs.FileInfo, error) {
-	for _, p := range []string{`\.\`, `\?\pipe\`, `\?\GLOBALROOT`} {
-		if strings.HasPrefix(strings.ToLower(path), strings.ToLower(p)) {
-			return nil, nil, fmt.Errorf("rex: %s %s", path, notRegular)
-		}
+	if isDevicePath(path) {
+		return nil, nil, fmt.Errorf("rex: %s %s", path, notRegular)
 	}
 	st, err := os.Stat(path)
 	if err != nil {
