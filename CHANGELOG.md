@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.36.0
+
+### Features
+
+* **tailnet:** run desktop Tailscale discovery on the built-in node on Windows and macOS ([#573](https://github.com/si-mods/gorex/pull/573))
+* **rexapi:** serve `server.stop` ([#675](https://github.com/si-mods/gorex/pull/675))
+* **hosts:** send pane and tab renames to the remote host ([#686](https://github.com/si-mods/gorex/pull/686))
+
+### Bug Fixes
+
+* **layout:** keep a revision told while the outbox reads the layout ([#692](https://github.com/si-mods/gorex/pull/692))
+
+### Maintenance
+
+* remove code no build uses ([#672](https://github.com/si-mods/gorex/pull/672))
+
 ## 0.35.0
 
 ### Features
