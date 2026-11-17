@@ -106,7 +106,7 @@ Each item has a **Trigger** (what the diff shows), a **Check** (what the author 
 ### Shell pipeline with an early exit
 - **Trigger:** a script with `set -o pipefail` pipes into `head`, `grep -q`, `awk '... exit'` or anything else that stops reading early.
 - **Check:** the reader consumes all input, or the producer writes to a file first. Otherwise the producer gets SIGPIPE and the step fails.
-- **Source:** `draft-release.sh` piped `tr` into an `awk` that exited early; it passed for months, then failed the 0.36.0 release on timing (#699).
+- **Source:** `draft-release.sh` piped `tr` into an `awk` that exited early; it passed in earlier releases, then failed the 0.36.0 release on timing (#699).
 
 ### Release workflow change
 - **Trigger:** the diff touches `release.yml` or `.github/scripts/*release*` / `checksums.sh`.
