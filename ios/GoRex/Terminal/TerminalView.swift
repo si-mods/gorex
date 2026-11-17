@@ -81,6 +81,15 @@ final class TerminalView: UIView, TerminalOutput {
     var closeTab: (() -> Void)?
     /// Splits the pane open, for ⌘D, as the desktop's Split Right.
     var newSplit: (() -> Void)?
+    /// Whether the terminal is on the page: one kept open off it draws
+    /// nothing, and gives up the keyboard.
+    var onPage = true {
+        didSet {
+            guard onPage != oldValue else { return }
+            if !onPage, isFirstResponder { resignFirstResponder() }
+            if UIApplication.shared.applicationState != .background { show() }
+        }
+    }
 
     /// The scroll view whose physics the drag has, and where it last was as
     /// the wheel.
@@ -212,7 +221,7 @@ final class TerminalView: UIView, TerminalOutput {
         c.scale_factor = traitCollection.displayScale
         c.font_size = Float(Self.fontSize)
         c.use_external_io = true
-        c.initially_visible = true
+        c.initially_visible = onPage
         guard let s = ghostty_surface_new(app, &c) else { return }
         surface = s
         Ghostty.register(self, for: s)
@@ -351,7 +360,7 @@ final class TerminalView: UIView, TerminalOutput {
     }
 
     @objc private func hide() { if let surface { ghostty_surface_set_occlusion(surface, false) } }
-    @objc private func show() { if let surface { ghostty_surface_set_occlusion(surface, true) } }
+    @objc private func show() { if let surface { ghostty_surface_set_occlusion(surface, onPage) } }
 
     // MARK: Size
 

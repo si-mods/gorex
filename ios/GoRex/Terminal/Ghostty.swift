@@ -113,7 +113,8 @@ enum Ghostty {
             DispatchQueue.main.async { MainActor.assumeIsolated { open(text, matched: matched) } }
             return true
         case GHOSTTY_ACTION_RING_BELL:
-            DispatchQueue.main.async { MainActor.assumeIsolated { bell() } }
+            // Only the terminal on the page rings: one kept off it is quiet.
+            DispatchQueue.main.async { MainActor.assumeIsolated { if views[key]?.view?.onPage == true { bell() } } }
             return true
         case GHOSTTY_ACTION_DESKTOP_NOTIFICATION:
             let n = action.action.desktop_notification
@@ -153,7 +154,7 @@ enum Ghostty {
     }
 
     /// What a program copies (OSC 52) goes to the clipboard, only from the
-    /// terminal on screen in the app in front. Its text lives only for the
+    /// terminal on the page in the app in front. Its text lives only for the
     /// call.
     nonisolated private static func copy(_ view: UnsafeMutableRawPointer?, _ clipboard: ghostty_clipboard_e, _ content: UnsafePointer<ghostty_clipboard_content_s>?, _ count: Int) {
         guard clipboard == GHOSTTY_CLIPBOARD_STANDARD, let view, let content else { return }
@@ -165,7 +166,7 @@ enum Ghostty {
             MainActor.assumeIsolated {
                 guard UIApplication.shared.applicationState == .active,
                       let v = views.values.lazy.compactMap(\.view).first(where: { Int(bitPattern: Unmanaged.passUnretained($0).toOpaque()) == key }),
-                      v.window?.isKeyWindow == true else { return }
+                      v.onPage, v.window?.isKeyWindow == true else { return }
                 UIPasteboard.general.string = text
             }
         }
