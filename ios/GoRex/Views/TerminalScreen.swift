@@ -454,12 +454,12 @@ struct TerminalScreen: View {
             Text(title.asText)
                 .font(.body.weight(.semibold))
                 .lineLimit(1)
+                .truncationMode(.tail)
                 .id(currentTarget.block)
                 .transition(.push(from: edge))
         }
         .padding(.leading, 12)
         .padding(.trailing, 18)
-        .fixedSize(horizontal: true, vertical: false)
         .frame(minWidth: 180)
         .frame(height: 44)
         .clipped()
