@@ -45,12 +45,12 @@ jobs:
     runs-on: instabox-large
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
           cache: false
-      - uses: actions/cache/restore@v4
+      - uses: actions/cache/restore@v6
         with:
           path: |
             ~/.cache/go-build
@@ -91,7 +91,7 @@ jobs:
             GOOS=${t%/*} GOARCH=${t#*/} go build ./...
             echo "::endgroup::"
           done
-      - uses: actions/cache/save@v4
+      - uses: actions/cache/save@v6
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         with:
           path: |
@@ -111,7 +111,7 @@ jobs:
     runs-on: instabox-medium
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - name: ios/WhatToTest.md
@@ -119,7 +119,7 @@ jobs:
         env:
           BASE: ${{ github.event.pull_request.base.sha }}
         run: ios/scripts/test-notes check "$BASE"
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: npm
@@ -143,13 +143,13 @@ jobs:
       matrix:
         part: [root-0, root-1, root-2, others]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
           cache: false
       # Its own cache, as build's holds no compiled tests.
-      - uses: actions/cache/restore@v4
+      - uses: actions/cache/restore@v6
         id: cache
         with:
           path: |
@@ -178,7 +178,7 @@ jobs:
             "$RUNNER_TEMP/gorex.test" -test.timeout 15m -test.run "^($tests)\$"
           fi
       # root-0, root-1 and root-2 share one key, so root-0 saves for them.
-      - uses: actions/cache/save@v4
+      - uses: actions/cache/save@v6
         if: github.event_name == 'push' && github.ref == 'refs/heads/main' && (matrix.part == 'root-0' || matrix.part == 'others')
         with:
           path: |
@@ -192,8 +192,8 @@ jobs:
     timeout-minutes: 25
     steps:
       - run: git config --global core.autocrlf false
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
           cache: false
@@ -215,13 +215,13 @@ jobs:
     runs-on: instabox-medium
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
           cache: false
       # Build's cache, restored only: this job saves none.
-      - uses: actions/cache/restore@v4
+      - uses: actions/cache/restore@v6
         with:
           path: |
             ~/.cache/go-build
@@ -230,7 +230,7 @@ jobs:
           restore-keys: |
             go-build-${{ hashFiles('go.sum') }}-
             go-build-
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: npm

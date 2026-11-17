@@ -37,7 +37,7 @@ jobs:
     runs-on: gorex-testflight
     steps:
       # The history, for What to Test.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       # The deployment target is iOS 26: the newest Xcode_26*, as GitHub's
@@ -50,7 +50,7 @@ jobs:
       - run: xcodebuild -version
       - run: for t in asc xcodegen; do command -v "$t" >/dev/null || brew install "$t"; done
       # The script pins Ghostty's commit and Zig's version.
-      - uses: actions/cache/restore@v4
+      - uses: actions/cache/restore@v6
         id: ghostty-vt
         with:
           path: ios/Frameworks/GhosttyVt.xcframework
@@ -58,16 +58,16 @@ jobs:
       - if: steps.ghostty-vt.outputs.cache-hit != 'true'
         run: ios/scripts/build-ghostty-vt.sh
       - if: steps.ghostty-vt.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v6
         with:
           path: ios/Frameworks/GhosttyVt.xcframework
           key: ${{ steps.ghostty-vt.outputs.cache-primary-key }}
       # Built-in Tailscale (ios/tailnet), with the Go and gomobile go.mod pins.
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
           cache: true
-      - uses: actions/cache/restore@v4
+      - uses: actions/cache/restore@v6
         id: tailnet
         with:
           path: ios/Frameworks/Tailnet.xcframework
@@ -75,7 +75,7 @@ jobs:
       - if: steps.tailnet.outputs.cache-hit != 'true'
         run: ios/scripts/build-tailnet
       - if: steps.tailnet.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v6
         with:
           path: ios/Frameworks/Tailnet.xcframework
           key: ${{ steps.tailnet.outputs.cache-primary-key }}
@@ -97,7 +97,7 @@ jobs:
       - if: always()
         run: rm -f "$RUNNER_TEMP/AuthKey.p8"
       - if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: xcodebuild-logs
           path: ios/build/*.log
