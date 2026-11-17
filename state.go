@@ -3336,8 +3336,11 @@ func (a *App) syncHostNames(h *hostConn, l hostLayout) {
 	}
 	changed := false
 	for _, t := range a.tabs {
-		if t.host() == h && t.UID != "" {
-			if name, ok := tabNames[t.UID]; ok && t.Name != name {
+		// A tab takes the name of the host's tab it plainly is, as its
+		// name goes there (hostTabOf): one that holds a part of the host's
+		// tab, or of two, keeps its own.
+		if th, id := hostTabOf(t); th == h {
+			if name, ok := tabNames[id]; ok && t.Name != name && !h.renaming(renameKey{tab: true, id: id}) {
 				t.Name = name
 				changed = true
 			}
@@ -3346,7 +3349,7 @@ func (a *App) syncHostNames(h *hostConn, l hostLayout) {
 			if p.host != h {
 				continue
 			}
-			if name, ok := paneNames[p.SID]; ok && p.Name != name {
+			if name, ok := paneNames[p.SID]; ok && p.Name != name && !h.renaming(renameKey{id: p.SID}) {
 				p.Name = name
 				changed = true
 			}

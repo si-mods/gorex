@@ -460,8 +460,7 @@ var (
 				return nil
 			}
 			if t := a.tab(); t != nil {
-				t.Name = name
-				a.changed()
+				a.setTabName(t, name)
 			}
 			return nil
 		},

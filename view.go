@@ -1184,8 +1184,7 @@ func (a *App) paneMenu(m *ui.Menu, p *Pane) {
 		a.startPaneRename(p)
 	}
 	if p.Name != "" && m.Item(locales.PaneResetName()).Chosen() {
-		p.Name = ""
-		a.changed()
+		a.setPaneName(p, "")
 	}
 	// A canvas's panes are all free: none docks.
 	if p.float != nil {
@@ -1423,8 +1422,7 @@ func (a *App) paneRename(c *ui.Context, k *colors) {
 	})
 	done := func(keep bool) {
 		if keep {
-			p.Name = layout.PaneName(a.paneNameText)
-			a.changed()
+			a.setPaneName(p, layout.PaneName(a.paneNameText))
 		}
 		a.paneRenaming, a.paneNameFocus = nil, false
 		a.focusReq = p
