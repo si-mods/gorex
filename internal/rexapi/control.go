@@ -43,7 +43,6 @@ type control struct {
 	seq     uint64
 	queued  int
 	pending map[string]bool
-	ordered sync.Mutex
 
 	ours      atomic.Bool
 	closeOnce sync.Once

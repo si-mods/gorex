@@ -285,12 +285,6 @@ func mustRaw(s string) json.RawMessage {
 	return b
 }
 
-// performResult is client.perform's result.
-type performResult struct {
-	Result      any    `json:"result,omitempty"`
-	PerformedBy string `json:"performed_by"`
-}
-
 // methodClientPerform asks another client to perform an action. GoRex's
 // clients do not perform actions for each other.
 func methodClientPerform(c *control, a args) (any, *apiError) {

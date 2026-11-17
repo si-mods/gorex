@@ -433,7 +433,6 @@ func blockUploadBegin(c *control, s *mSession, b *mBlock, a args) (any, *apiErro
 type uploadCount struct {
 	mu  sync.Mutex
 	n   int64
-	err error
 }
 
 func (c *uploadCount) add(n int) {
