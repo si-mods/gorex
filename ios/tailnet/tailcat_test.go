@@ -261,8 +261,11 @@ func TestTailcatPair(t *testing.T) {
 	if err != nil || fp == "" || fp != rex.Fingerprint(TailcatKey()) {
 		t.Errorf("TailcatPair = %q, %v; want %q", fp, err, rex.Fingerprint(TailcatKey()))
 	}
-	if m.asked != "rexgo-kqzt" {
-		t.Errorf("the machine was asked by %q", m.asked)
+	m.mu.Lock()
+	asked := m.asked
+	m.mu.Unlock()
+	if asked != "rexgo-kqzt" {
+		t.Errorf("the machine was asked by %q", asked)
 	}
 	// The client made to pair, of no host, is gone.
 	tcMu.Lock()
@@ -386,9 +389,21 @@ func TestTailcatServerRestart(t *testing.T) {
 		t.Fatal(err)
 	}
 	go http.Serve(gw, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { io.WriteString(w, "again") }))
+	// The client reaches the machine again within a dial of a tailcat host,
+	// not after WireGuard's rekey of minutes. A machine loaded as a CI
+	// runner's may take a try or two while the new server comes up: what
+	// the rekey waits for is minutes, and that is what this bounds.
 	start := time.Now()
-	if got, err := get(hc, "http://mac.tailcat.invalid:7297/"); err != nil || got != "again" {
-		t.Fatalf("GET after the restart = %q, %v", got, err)
+	deadline := start.Add(tailcatDial)
+	for {
+		got, err := get(hc, "http://mac.tailcat.invalid:7297/")
+		if err == nil && got == "again" {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("GET after the restart = %q, %v, %v after it", got, err, time.Since(start))
+		}
+		time.Sleep(100 * time.Millisecond)
 	}
 	if d := time.Since(start); d > tailcatDial {
 		t.Errorf("reached again in %v", d)
