@@ -159,10 +159,14 @@ type hostConn struct {
 	// is placed, or would have been (newPaneRun).
 	creating chan struct{}
 
-	// mu guards client, changed, Kills of savedHost, and expect, the
-	// sessions a teleport starts here, which adopt leaves for their pane.
-	mu     sync.Mutex
-	client *rex.Client // nil while not connected
+	// mu guards client, changed, Kills of savedHost, expect, the
+	// sessions a teleport starts here, which adopt leaves for their pane,
+	// and renames, the names given here that wait to go to the host
+	// (rename); renameMu keeps runRenames to one at a time.
+	mu       sync.Mutex
+	renameMu sync.Mutex
+	renames  map[renameKey]string
+	client   *rex.Client // nil while not connected
 	// changed closes as client changes (setClient).
 	changed chan struct{}
 	expect  map[string]bool
@@ -173,6 +177,9 @@ type hostConn struct {
 	// status of the spaces no window shows (store.hiddenStatus); changed
 	// on the main thread.
 	infos map[string]rex.SessionInfo
+	// layoutTabs are the tabs of the host's shared layout, as last read,
+	// none while it shares none (hostTabOf); changed on the main thread.
+	layoutTabs []savedTab
 	// update runs a change on the main thread, and persist saves the
 	// hosts there; startHost sets them.
 	update  func(func())
@@ -608,6 +615,13 @@ func (a *App) watchHost(h *hostConn, c *rex.Client, update func(func())) {
 		if ticked {
 			round++
 		}
+		// The names given here while the host was away, or that it did
+		// not take, go before its layout is read again, which has them as
+		// they were (syncHostNames skips them meanwhile); those it still
+		// does not take go again the next time round.
+		if h.renamesWaiting() {
+			h.runRenames(c)
+		}
 		infos, next, changed, err := c.ListSince(etag)
 		if err != nil {
 			// A connection that stopped answering is as good as dropped.
@@ -695,6 +709,7 @@ func (a *App) watchHost(h *hostConn, c *rex.Client, update func(func())) {
 		layout.syncNames = layoutRead && shared
 		update(func() {
 			h.infos = byID
+			h.layoutTabs = layout.tabs
 			for _, o := range a.peers() {
 				o.apply(h, byID, layout)
 			}

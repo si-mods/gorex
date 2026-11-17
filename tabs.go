@@ -374,8 +374,7 @@ func (a *App) renameField(c *ui.Context, k *colors, t *Tab, name string) {
 	in := textField(c, k, &a.renameText, fieldCompact).Placeholder(name).Grow(1).MinWidth(0).AutoFocus()
 	done := func(keep bool) {
 		if keep {
-			t.Name = strings.TrimSpace(a.renameText)
-			a.changed()
+			a.setTabName(t, strings.TrimSpace(a.renameText))
 		}
 		a.renaming, a.renameFocus = nil, false
 		a.focusReq = t.Focus
@@ -432,8 +431,7 @@ func (a *App) tabMenu(m *ui.Menu, t *Tab) {
 		a.startRename()
 	}
 	if t.Name != "" && m.Item(locales.TabResetName()).Chosen() {
-		t.Name = ""
-		a.changed()
+		a.setTabName(t, "")
 	}
 	m.Separator()
 	i := slices.Index(a.tabs, t)

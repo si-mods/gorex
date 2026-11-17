@@ -3336,8 +3336,11 @@ func (a *App) syncHostNames(h *hostConn, l hostLayout) {
 	}
 	changed := false
 	for _, t := range a.tabs {
+		// A tab takes the name of the host's tab of its lasting ID, even
+		// with panes split or moved here since, but not while a name
+		// given here waits to go there.
 		if t.host() == h && t.UID != "" {
-			if name, ok := tabNames[t.UID]; ok && t.Name != name {
+			if name, ok := tabNames[t.UID]; ok && t.Name != name && !h.renaming(renameKey{tab: true, id: t.UID}) {
 				t.Name = name
 				changed = true
 			}
@@ -3346,7 +3349,7 @@ func (a *App) syncHostNames(h *hostConn, l hostLayout) {
 			if p.host != h {
 				continue
 			}
-			if name, ok := paneNames[p.SID]; ok && p.Name != name {
+			if name, ok := paneNames[p.SID]; ok && p.Name != name && !h.renaming(renameKey{id: p.SID}) {
 				p.Name = name
 				changed = true
 			}
@@ -3366,7 +3369,7 @@ func (a *App) syncHostNames(h *hostConn, l hostLayout) {
 		for i := range w.layout.Tabs {
 			st := &w.layout.Tabs[i]
 			if st.ID != "" && savedTabHost(*st) == h.ID {
-				if name, ok := tabNames[st.ID]; ok && st.Name != name {
+				if name, ok := tabNames[st.ID]; ok && st.Name != name && !h.renaming(renameKey{tab: true, id: st.ID}) {
 					st.Name = name
 					savedChanged = true
 				}
@@ -3374,7 +3377,7 @@ func (a *App) syncHostNames(h *hostConn, l hostLayout) {
 			for _, r := range st.Roots() {
 				for _, n := range layout.Leaves(r) {
 					if n.Host == h.ID {
-						if name, ok := paneNames[n.SID]; ok && n.Name != name {
+						if name, ok := paneNames[n.SID]; ok && n.Name != name && !h.renaming(renameKey{id: n.SID}) {
 							n.Name = name
 							savedChanged = true
 						}
