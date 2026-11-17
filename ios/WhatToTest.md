@@ -31,6 +31,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - Swiping with two fingers no longer switches panes, for now; tap a pane in the pane bar instead.
 - Tapping a terminal's title now answers your finger: its glass lights up as you press, and your hand feels a tap as the session's sheet opens.
 - The pane bar answers your finger too: its glass and the + light up as you press, and the pane you are in is outlined while the others fade.
+- Tap a file path a program printed in a terminal, such as a screenshot Claude Code saved: the file downloads from the computer and opens in Quick Look, where you can zoom, share or save it.
 
 ## zh-Hans
 
@@ -54,3 +55,4 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - 双指滑动暂时不再切换面板；请点面板条里的面板来切换。
 - 点终端顶部的标题现在有反馈：按下时玻璃会亮起，打开会话面板时手上有一下轻触。
 - 面板条也有按下反馈：按下时玻璃和 + 会亮起；当前面板加了描边，其他面板变淡。
+- 点按终端里程序打印的文件路径，例如 Claude Code 保存的截图：文件从电脑下载后在快速查看中打开，可以缩放、分享或存储。

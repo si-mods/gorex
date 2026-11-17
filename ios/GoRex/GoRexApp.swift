@@ -13,8 +13,10 @@ struct GoRexApp: App {
     /// push; the notifications too, for a tap that launches it. A
     /// downloaded font is known before. So does the built-in Tailscale,
     /// when on: the hosts on it wait for it to run. The engine comes
-    /// before the hosts, which tell it those paired over tailcat.
+    /// before the hosts, which tell it those paired over tailcat. The files
+    /// a run opened from its hosts go.
     init() {
+        OpenedFiles.clean()
         Maple.shared.register()
         _ = Ghostty.app
         Notifier.shared.start()

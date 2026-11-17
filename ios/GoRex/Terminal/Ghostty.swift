@@ -110,7 +110,7 @@ enum Ghostty {
             guard let u = o.url else { return true }
             let text = String(decoding: UnsafeRawBufferPointer(start: u, count: Int(o.len)), as: UTF8.self)
             let matched = o.kind != GHOSTTY_ACTION_OPEN_URL_KIND_OSC8
-            DispatchQueue.main.async { MainActor.assumeIsolated { open(text, matched: matched) } }
+            DispatchQueue.main.async { MainActor.assumeIsolated { open(text, matched: matched, in: views[key]?.view) } }
             return true
         case GHOSTTY_ACTION_RING_BELL:
             // Only the terminal on the page rings: one kept off it is quiet.
@@ -172,11 +172,19 @@ enum Ghostty {
         }
     }
 
-    /// Opens a web or mail link; a program's link to a file or another
-    /// app stays shut.
-    private static func open(_ text: String, matched: Bool) {
-        guard let url = WebLink.url(text, matched: matched) else { return }
-        UIApplication.shared.open(url)
+    /// Opens a web or mail link, else a web address printed without its
+    /// scheme, else a file of the host the view's pane shows (FileLink); a
+    /// program's link to another app stays shut.
+    private static func open(_ text: String, matched: Bool, in view: TerminalView?) {
+        if let url = WebLink.url(text, matched: matched) {
+            UIApplication.shared.open(url)
+            return
+        }
+        switch FileLink.target(text, matched: matched) {
+        case .web(let url): UIApplication.shared.open(url)
+        case .file(let path): view?.openFile(path)
+        case nil: break
+        }
     }
 
     private static func notify(_ title: String, _ body: String, _ s: TerminalSession) {

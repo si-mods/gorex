@@ -1,9 +1,11 @@
-# Opening a host's files from the web client
+# Opening a host's files from the web and iOS clients
 
-Status: revised after review. The gateway's and the server's half is
-built (`internal/rexapi/download.go`, `host.go`, `internal/rex`
-`openToSend`, `Client.GetFile`); the web client's is not yet. Where the
-build differs from this text, see "As built" at the end.
+Status: the gateway's, the server's and the web client's halves are built
+(`internal/rexapi/download.go`, `host.go`, `internal/rex` `openToSend`,
+`Client.GetFile`, `web/src/files.ts`, `web/src/viewer.ts`). The iOS
+client's is built too (`ios/GoRex/Terminal/FileLink.swift`,
+`TerminalView+Open.swift`), as "The iOS client" says. Where the build
+differs from this text, see "As built" at the end.
 
 The desktop opens a file path printed in a pane with Command+click
 (Control elsewhere). In a pane of a host it first downloads the file over
@@ -220,7 +222,86 @@ code. Uploads are not logged today; this does not change them.
 - Local panes do not exist in the web client, so there is no "open the
   file in place".
 
+## The iOS client
+
+An agent such as Claude Code shows the user an image it made only as a
+printed path. Rex Go draws inline images (Kitty graphics, which the server
+rewrites from file to in-band, `internal/rex/graphics.go`), so a program
+that draws its images, as omp does, already shows them; a printed path
+opened nothing, as a tap opened only web and mail links
+(`Terminal/WebLink.swift`, `Ghostty.swift` `open`). Rex Go already has the
+client half of the download (`Rex/Download.swift`, `Host.download`, Rex
+API revision 13 `download_begin` with a `rex.data.bytes.v1` stream); this
+adds its caller.
+
+- On a host whose control connection is revision 13 or later
+  (`Host.canDownload`), a path is a link by the web client's rules above:
+  the same finder of printed paths, ported to Swift, and an OSC 8
+  `file://host/path` link, its host ignored and its path percent-decoded.
+  A web address without a scheme stays a web link. On an older host a
+  path is plain text, as before.
+- A tap opens a link, as a tap opens a web link now: no modifier is
+  needed on a touch screen. When a program tracks the mouse, the tap goes
+  to the program, as now. A tap on text that is no link shows the
+  keyboard, as now. A second tap on the same path while it downloads does
+  nothing.
+- The tap downloads the file with `Host.download` for the tapped pane's
+  block and session, so that a relative path resolves on the server
+  against the directory of the program in the foreground. The bytes go to
+  a file under the app's temporary folder, named as the server names
+  the file; the folder is emptied when the app starts.
+- The file opens in QuickLook (`QLPreviewController`), over the
+  terminal: an image, a PDF, text and anything else QuickLook reads.
+  QuickLook gives zoom, pan and its share button, which saves the image
+  to Photos or sends any file to another app. Closing it returns the
+  keyboard to the pane as it was.
+- After 0.3 s without the file, the pane shows that it downloads; a tap
+  outside the progress cancels it.
+- An error shows as an alert with the web client's words: `No such file`,
+  `A folder is not downloaded`, `Not a regular file`, `Permission
+  denied`, `Too large`; on an older host, `Server does not accept
+  downloads`. The words go in `Localizable.xcstrings` in every locale the
+  app has.
+
+Differences from the web client:
+
+- QuickLook opens every file type it reads, not only images; there is no
+  check of the bytes against the image type, as the bytes never reach a
+  web page's origin.
+- The file is held in memory once (`Download.fetch` returns `Data`), so
+  the server's file limit (`maxDownloadFileBytes`) bounds it; the web
+  client streams a large file to the browser's download instead.
+
+As built on iOS:
+
+- Ghostty finds the links itself: its default link pattern matches a path
+  with a slash (`./`, `../`, `~/`, `/abs`, `dir/x.ext`) and hands the
+  text as printed. `FileLink` then applies the web client's rules to it
+  (a place in the file, an option's `--name=`, closing punctuation and
+  brackets go; a folder, a backslash and a `:` are no file), so a bare
+  name such as `notes.md`, a quoted path with a space and a `(12,3)`
+  place are no link. A path that starts with `$` is no link either: the
+  host does not expand variables.
+- On an older host a tap on a path does nothing, so `Server does not
+  accept downloads` never shows; the server's `not_supported` shows the
+  web client's `The host does not send files`.
+- A file is held in memory once, up to the web client's 256 MiB
+  (`maxBlobBytes`); a larger one answers `Too large` before its bytes
+  are read.
+- Each file is deleted as QuickLook closes, as well as when the app
+  starts.
+- QuickLook on iOS 26 shows an image without its bar; a tap shows its
+  close and share buttons.
+
 ## Tests
+
+iOS (`ios/GoRexTests`, XCTest): the Swift finder of printed paths gives
+the web client's answers for the same lines (absolute, `~/`, relative,
+with a line and column suffix, in brackets and quotes, a folder, a web
+address without a scheme, a Windows path); `file://` links decode to
+their path; a web link still opens as before. On the simulator, against
+a server with a made-up PNG: a tap on its printed path opens QuickLook
+with the image; a tap on a missing file shows `No such file`.
 
 Gateway (Go, `internal/rexapi`):
 

@@ -106,7 +106,7 @@ extension TerminalView: UIDocumentPickerDelegate {
 
     /// Presents a view controller over the topmost one, so an alert shows
     /// over a sheet that is up.
-    private func present(_ vc: UIViewController) {
+    func present(_ vc: UIViewController) {
         var top = shown
         while let p = top?.presentedViewController { top = p }
         top?.present(vc, animated: true)
