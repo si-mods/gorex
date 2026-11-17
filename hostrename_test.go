@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"testing"
 	"time"
 
@@ -313,5 +314,73 @@ func TestRenameWaitsForHostConnection(t *testing.T) {
 	waitFor(t, tt, "the renames to be forgotten", func() bool { return !h.renamesWaiting() })
 	if tab.Name != "tab-new" || tab.Focus.Name != "new" {
 		t.Errorf("names here: tab %q, pane %q", tab.Name, tab.Focus.Name)
+	}
+}
+
+// A rename the host answers so that another try cannot help, as a host
+// before renames from other machines, is forgotten, its name kept here
+// only; one lost on the way, or that met another change of the layout,
+// stays to go again.
+func TestRunRenamesKeepsOnlyRetryable(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		code string
+		err  error
+		keep bool
+	}{
+		{name: "taken"},
+		{name: "pane gone", code: "pane_not_found"},
+		{name: "no window", code: "desktop_unavailable"},
+		{name: "refused", err: errors.New("remote commands are not allowed")},
+		{name: "conflict", code: "layout_conflict", keep: true},
+		{name: "lost", err: errors.New("rex: connection to the server lost"), keep: true},
+		{name: "timed out", err: errors.New("rex: command timed out"), keep: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			old := renameCommand
+			t.Cleanup(func() { renameCommand = old })
+			var sent []rex.LayoutCommand
+			renameCommand = func(_ *rex.Client, c rex.LayoutCommand) (rex.LayoutCommand, error) {
+				sent = append(sent, c)
+				return rex.LayoutCommand{Code: tc.code}, tc.err
+			}
+			h := newHostConn(savedHost{ID: "h1"})
+			h.renames = map[renameKey]string{{id: "s1"}: "build", {tab: true, id: "t1"}: "work"}
+			h.runRenames(nil)
+			if len(sent) != 2 {
+				t.Fatalf("sent %+v", sent)
+			}
+			if got := h.renamesWaiting(); got != tc.keep {
+				t.Errorf("kept = %v, want %v", got, tc.keep)
+			}
+		})
+	}
+}
+
+// The layouts of spaces no window shows take the host's names too, but
+// not over names given here that wait to go to the host.
+func TestSyncHostNamesSkipsWaitingRenamesInHiddenSpaces(t *testing.T) {
+	a, _ := newTestApp(t)
+	h := newHostConn(savedHost{ID: "h1", Name: "lab-box"})
+	w := a.st.addWorkspace()
+	w.layout.Tabs = []savedTab{{ID: "t1", Name: "mine", Root: &layout.Node{SID: "s1", Host: "h1", Name: "my-pane"}}}
+	hl := hostLayout{tabs: []savedTab{{ID: "t1", Name: "host-tab", Root: &layout.Node{SID: "s1", Name: "host-pane"}}}}
+	names := func() (string, string) { return w.layout.Tabs[0].Name, w.layout.Tabs[0].Root.Name }
+
+	h.renames = map[renameKey]string{{tab: true, id: "t1"}: "mine"}
+	a.syncHostNames(h, hl)
+	if tab, pane := names(); tab != "mine" || pane != "host-pane" {
+		t.Errorf("tab waiting: tab %q, pane %q", tab, pane)
+	}
+	w.layout.Tabs[0].Root.Name = "my-pane"
+	h.renames = map[renameKey]string{{id: "s1"}: "my-pane"}
+	a.syncHostNames(h, hl)
+	if tab, pane := names(); tab != "host-tab" || pane != "my-pane" {
+		t.Errorf("pane waiting: tab %q, pane %q", tab, pane)
+	}
+	h.renames = nil
+	a.syncHostNames(h, hl)
+	if tab, pane := names(); tab != "host-tab" || pane != "host-pane" {
+		t.Errorf("none waiting: tab %q, pane %q", tab, pane)
 	}
 }

@@ -123,11 +123,26 @@ func (h *hostConn) renamesWaiting() bool {
 	return len(h.renames) != 0
 }
 
+// renameCommand sends a rename to the host: tests replace it.
+var renameCommand = (*rex.Client).Command
+
+// renameAgain tells whether a rename the host answered with res and err
+// may go through another time: one lost on the way, or that met another
+// change of the layout. Any other answer, as of a pane or tab the host's
+// layout does not have, or of a host before renames from other machines
+// (desktop_unavailable, or a command refused), stays so: its name stays
+// here only.
+func renameAgain(res rex.LayoutCommand, err error) bool {
+	if err != nil {
+		return rex.Lost(err) || strings.HasSuffix(err.Error(), " timed out")
+	}
+	return res.Code == "layout_conflict"
+}
+
 // runRenames gives the host, through c, the names kept for it, one run at
 // a time so that the last name of a pane goes last, and forgets those the
-// host took, and those of a pane or tab its layout does not have, whose
-// name stays here only. The others, not sent or refused for now (as a
-// layout_conflict), stay for watchHost to give again.
+// host answered, but those to give again (renameAgain), which stay for
+// watchHost.
 func (h *hostConn) runRenames(c *rex.Client) {
 	h.renameMu.Lock()
 	defer h.renameMu.Unlock()
@@ -139,8 +154,7 @@ func (h *hostConn) runRenames(c *rex.Client) {
 		if k.tab {
 			cmd = rex.LayoutCommand{Op: "tab.rename", Tab: k.id, Name: name}
 		}
-		res, err := c.Command(cmd)
-		if err != nil || res.Code != "" && !strings.HasSuffix(res.Code, "_not_found") {
+		if renameAgain(renameCommand(c, cmd)) {
 			continue
 		}
 		h.mu.Lock()
