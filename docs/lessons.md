@@ -172,6 +172,16 @@ Each item has a **Trigger** (what the diff shows), a **Check** (what the author 
 - **Check:** the user opts in, or the release notes say it.
 - **Source:** #573 turns the built-in Tailscale node on once on upgrade, which serves the API on the tailnet.
 
+### Link whose target differs from its text
+- **Trigger:** a client opens or downloads something from a link in terminal output (OSC 8, a tapped path) that reads host data.
+- **Check:** when the target differs from the visible text, the user sees the real target and confirms before anything is fetched.
+- **Source:** #721 let an OSC 8 link labelled `chart.png` download `~/.ssh/id_ed25519` into Quick Look with one tap.
+
+### Untrusted path to the host's filesystem
+- **Trigger:** a path from terminal output, a link or a remote caller reaches `os.Stat`, `os.Open` or a directory read on the host.
+- **Check:** UNC (`//host/…`, `\\host\…`) and device paths (`\\.\`, `\\?\`, `//./`) are refused, with a test for each form. On Windows a UNC stat contacts that host.
+- **Source:** #721 passed `//host/share/x`; the device-path guard from #410 never matched because its prefixes lost a backslash.
+
 ### Public repo
 - **Trigger:** every PR, and every screenshot or log added to one.
 - **Check:** the repo is public. The diff has no real names, home paths, host names, IPs, Team or issuer IDs. Screenshots use made-up data.
@@ -188,6 +198,16 @@ Each item has a **Trigger** (what the diff shows), a **Check** (what the author 
 - **Trigger:** a feature is turned off "for now" (`isEnabled = false`, a flag, an early return) and its code stays.
 - **Check:** an issue is linked with what must happen before it comes back or is deleted.
 - **Source:** #677 disabled the pane swipe from #665 and #667 within hours; it did this right by linking #676, which lists the open problems and the steps before re-enabling.
+
+### "Same rule as X"
+- **Trigger:** code or a comment says it applies the same rule as another place.
+- **Check:** both places call one shared function, and both have a test.
+- **Source:** #717's `dir.list` said it used the same device-path rule as `openToSend`; that rule was broken (#410).
+
+### Unbounded work from a remote request
+- **Trigger:** a remote request reads a directory, a file or a list whose size the caller controls.
+- **Check:** the read is batched and capped before it is sorted or held in memory.
+- **Source:** #717 reads a whole directory with `os.ReadDir` before keeping 2000 entries.
 
 ### Removing a feature
 - **Trigger:** the PR deletes a feature or a cleanup PR removes unused code.
