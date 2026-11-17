@@ -58,6 +58,7 @@ type facts struct {
 	full            bool
 	webNodeModules  bool
 	iosToolsPresent bool // xcodegen, xcodebuild and ios/Frameworks
+	readOnly        bool // the branch is not from si-mods: run no repo code
 }
 
 // plan maps the changed files to the checks to run, cheapest first.
@@ -156,7 +157,85 @@ func plan(files []string, f facts) []check {
 		}
 		cs = append(cs, c)
 	}
+	if f.readOnly {
+		cs = readOnlyPlan(cs)
+	}
 	return cs
+}
+
+// readOnlyPlan keeps the checks that only read and compile the branch
+// (gofmt, actionlint, vet, build) and skips the rest. Tests, npm scripts and
+// xcodebuild run the branch's code or scripts; golangci-lint reads the
+// branch's own config. A skip counts as NOT VERIFIED.
+func readOnlyPlan(cs []check) []check {
+	for i, c := range cs {
+		safe := c.name == "gofmt" || c.name == "actionlint" ||
+			strings.HasPrefix(c.name, "vet ") || strings.HasPrefix(c.name, "build ")
+		if !safe && c.skip == "" {
+			cs[i].skip = "NOT VERIFIED: branch is not from si-mods; read-only checks only"
+			cs[i].unverified = true
+		}
+	}
+	return cs
+}
+
+var siModsURL = regexp.MustCompile(`(?i)^(?:(?:https?|ssh|git)://)?(?:[^@/\s]+@)?github\.com[:/]si-mods/gorex(?:\.git)?/?$`)
+
+// trustedBranch decides whether the checkout at root holds only code that
+// came from si-mods, so its tests and scripts may run. It reads only the
+// repository's own state (git config, refs, the HEAD reflog), never a file
+// of the working tree, so a pushed branch cannot grant itself trust. Rule:
+// some remote points at github.com/si-mods/gorex, and every commit of HEAD
+// that is not on that remote's main was made here by a plain `git commit`
+// (per the HEAD reflog). Other remote branches do not count: a fork branch
+// pushed to the remote would turn into "si-mods" code. Commits fetched from a
+// fork, cherry-picked, rebased, merged or amended do not qualify. The rule
+// judges where commits came from, not where their content came from. Any
+// doubt returns false.
+func trustedBranch(root string) (bool, string) {
+	out, err := git(root, "config", "--get-regexp", `^remote\..*\.url$`)
+	if err != nil {
+		return false, "no remote configured"
+	}
+	var args []string
+	for _, l := range strings.Split(out, "\n") {
+		key, url, _ := strings.Cut(strings.TrimSpace(l), " ")
+		name := strings.TrimSuffix(strings.TrimPrefix(key, "remote."), ".url")
+		if name != key && siModsURL.MatchString(strings.TrimSpace(url)) {
+			ref := "refs/remotes/" + name + "/main"
+			if _, err := git(root, "rev-parse", "--verify", "-q", ref); err == nil {
+				args = append(args, ref)
+			}
+		}
+	}
+	if len(args) == 0 {
+		return false, "no si-mods remote with a main branch (github.com/si-mods/gorex)"
+	}
+	out, err = git(root, append([]string{"rev-list", "HEAD", "--not"}, args...)...)
+	if err != nil {
+		return false, "cannot list commits: " + err.Error()
+	}
+	extra := strings.Fields(out)
+	if len(extra) == 0 {
+		return true, "HEAD is on si-mods main"
+	}
+	log, err := git(root, "log", "-g", "--format=%H %gs", "HEAD")
+	if err != nil {
+		return false, "cannot read the HEAD reflog"
+	}
+	local := map[string]bool{}
+	for _, l := range strings.Split(log, "\n") {
+		h, subj, _ := strings.Cut(strings.TrimSpace(l), " ")
+		if kind, _, _ := strings.Cut(subj, ":"); kind == "commit" || kind == "commit (initial)" {
+			local[h] = true
+		}
+	}
+	for _, h := range extra {
+		if !local[h] {
+			return false, "commit " + h[:min(len(h), 12)] + " is neither on si-mods main nor made here by git commit"
+		}
+	}
+	return true, fmt.Sprintf("%d local commits on top of si-mods", len(extra))
 }
 
 func pathDir(p string) string {
@@ -430,18 +509,27 @@ func machineFacts(root string, full bool) facts {
 }
 
 // verify runs the checks for the repo at dir.
-func verify(dir string, full bool, log io.Writer) (bool, string, string, error) {
+// The returned mode line says which mode ran and why.
+func verify(dir string, full bool, log io.Writer) (good bool, sum, failure, mode string, err error) {
 	root, err := repoRoot(dir)
 	if err != nil {
-		return false, "", "", err
+		return false, "", "", "", err
 	}
 	files, err := changedFiles(root)
 	if err != nil {
-		return false, "", "", err
+		return false, "", "", "", err
 	}
+	trusted, why := trustedBranch(root)
+	mode = "verify: mode full (tests and scripts run): " + why
+	if !trusted {
+		mode = "verify: mode read-only (gofmt, vet, build; no tests, scripts or lint): " + why
+	}
+	fmt.Fprintln(log, mode)
 	fmt.Fprintf(log, "verify: %d changed files vs merge-base with origin/main\n", len(files))
-	rs, failure := run(root, plan(files, machineFacts(root, full)), log)
-	return ok(rs), summary(rs), failure, nil
+	f := machineFacts(root, full)
+	f.readOnly = !trusted
+	rs, failure := run(root, plan(files, f), log)
+	return ok(rs), summary(rs), failure, mode, nil
 }
 
 func main() {
@@ -451,7 +539,7 @@ func main() {
 	if *hook {
 		os.Exit(hookMain(os.Stdin, os.Stderr, os.Stdout))
 	}
-	good, sum, failure, err := verify(".", *full, os.Stdout)
+	good, sum, failure, _, err := verify(".", *full, os.Stdout)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "verify:", err)
 		os.Exit(1)
@@ -572,7 +660,10 @@ func hookMain(stdin io.Reader, stderr, stdout io.Writer) int {
 		return 0
 	}
 	var log bytes.Buffer
-	good, sum, failure, err := verify(root, false, &log)
+	good, sum, failure, mode, err := verify(root, false, &log)
+	if mode != "" {
+		fmt.Fprintln(stderr, mode)
+	}
 	if err != nil {
 		// A broken harness must not block work; say why and allow.
 		fmt.Fprintln(stderr, "tools/verify could not run:", err)
@@ -580,11 +671,14 @@ func hookMain(stdin io.Reader, stderr, stdout io.Writer) int {
 	}
 	if good {
 		setBlocks(in.SessionID, 0)
+		if strings.Contains(mode, "read-only") {
+			_ = json.NewEncoder(stdout).Encode(map[string]any{"systemMessage": mode})
+		}
 		return 0
 	}
 	n := blocks(in.SessionID) + 1
 	setBlocks(in.SessionID, n)
-	reason := fmt.Sprintf("tools/verify blocked this command (%d of %d; set GOREX_VERIFY=off to bypass). Fix the failure, then run `go run ./tools/verify` in %s.\n\n%s\n\n%s", n, maxBlocks, root, failure, sum)
+	reason := fmt.Sprintf("tools/verify blocked this command (%d of %d; set GOREX_VERIFY=off to bypass). Fix the failure, then run `go run ./tools/verify` in %s.\n\n%s\n\n%s", n, maxBlocks, root, failure, sum+"\n"+mode)
 	fmt.Fprintln(stderr, reason)
 	_ = json.NewEncoder(stdout).Encode(map[string]any{
 		"hookSpecificOutput": map[string]any{
