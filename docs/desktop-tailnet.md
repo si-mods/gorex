@@ -191,9 +191,14 @@ own name.
 A Mac with the mode on moves from the system client to the built-in
 node with the update:
 
-- The rule waits for a sign-in of the node, unless built-in Tailscale
-  was signed in already. Settings shows **Sign in**; nothing answers on
-  7464 until then.
+- The update never turns built-in Tailscale on, as it serves Rex's
+  API on port 443 over the tailnet: the user opts in. A node the user
+  turned on before stays on; one never turned on stays off, and
+  Settings says so under the switch, with **Turn on** and what it
+  serves. Nothing answers on 7464 or 443 until then. The same holds on
+  Windows.
+- Once turned on, the rule waits for a sign-in of the node, unless
+  built-in Tailscale was signed in already: Settings shows **Sign in**.
 - The Mac is another device now (`<machine>-gorex`). A peer that saved
   it by its `tailscale:` target finds it again as an available machine,
   and one **Connect** introduces it (host-links.md, Migration).
@@ -236,8 +241,9 @@ node with the update:
 - Windows with macOS, neither with the Tailscale app: sign in, each
   finds the other, Connect, open and reattach a terminal.
 - A built-in node with Linux (system), both ways.
-- A Mac with the mode on before the update: asks for a sign-in after
-  it, and its peers find the new device.
+- A Mac with the mode on before the update: built-in Tailscale stays
+  off after it; after **Turn on** it asks for a sign-in, and its peers
+  find the new device.
 - Refusals: another user's device, a tagged device, a LAN address on
   port 7464.
 - No Windows Firewall prompt when the node starts.

@@ -54,16 +54,12 @@ type RemoteConfig struct {
 	Enabled bool `json:"enabled"`
 	// Tailnet turns on the system Tailscale mode: the GoRex desktops on
 	// this account's tailnet find this one, and may open terminals on it.
-	// Off until the user turns it on.
-	Tailnet bool `json:"tailnet,omitempty"`
-	// BuiltinTailnet tells that the built-in Tailscale node was turned on
-	// for the mode, on Windows and macOS: by turning the mode on, or once
-	// at a start with the mode on from before, as after an upgrade. A
-	// start turns the node on only while this is false, so that the
-	// user's later off holds over restarts.
-	BuiltinTailnet bool                 `json:"builtinTailnet,omitempty"`
-	NodeKey        key.NodePrivate      `json:"nodeKey,omitzero"`
-	PresharedKey   tailcat.PresharedKey `json:"presharedKey,omitzero"`
+	// Off until the user turns it on. On Windows and macOS a start with
+	// it on never turns the built-in Tailscale node on: only the user
+	// does, as the mode is turned on or with Turn on.
+	Tailnet      bool                 `json:"tailnet,omitempty"`
+	NodeKey      key.NodePrivate      `json:"nodeKey,omitzero"`
+	PresharedKey tailcat.PresharedKey `json:"presharedKey,omitzero"`
 	// Region is the DERP region picked the first time, kept so that the
 	// address stays the same.
 	Region int `json:"region,omitempty"`
@@ -421,17 +417,9 @@ func (s *Server) remoteLoad() {
 		s.remoteStartLocked()
 	}
 	if r.cfg.Tailnet {
+		// The built-in node stays as the user left it: a mode on from
+		// before, as after an upgrade, waits for the user's Turn on.
 		s.tailnetStartLocked()
-		// A mode that was on before the built-in node carried discovery,
-		// as before an upgrade, has a node that nothing turned on yet:
-		// turn it on, once. The node's switch is then the user's.
-		if t := r.tailnet; t != nil && t.node != nil && !r.cfg.BuiltinTailnet && EnableBuiltinTailscale != nil {
-			r.cfg.BuiltinTailnet = true
-			if err := writeJSON(remotePath(), r.cfg); err != nil {
-				log.Printf("rex: saving remote access: %v", err)
-			}
-			go t.enableBuiltin(EnableBuiltinTailscale)
-		}
 	}
 }
 

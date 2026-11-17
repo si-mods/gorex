@@ -246,7 +246,7 @@
   "tailnetSignInNoLink": "内置 Tailscale 暂时没有登录链接，请稍后再试。",
   "tailnetApproval": "你的 tailnet 管理员需要批准此设备，它才能发现其他设备。",
   "tailnetStarting": "正在启动内置 Tailscale…",
-  "tailnetOff": "内置 Tailscale 已关闭。",
+  "tailnetOff": "内置 Tailscale 已关闭。打开后才能发现你的设备；它也会在 443 端口通过你的 tailnet 提供 Rex 的 API。",
   "tailnetTurnOn": "开启",
   "tailnetTagged": "此设备在 tailnet 中带有标签。只有用户登录的设备才能发现该用户的设备。",
   "tailnetExpired": "内置 Tailscale 的登录已过期，请重新登录。",

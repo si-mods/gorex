@@ -7,6 +7,7 @@ import (
 	"io"
 	"net"
 	"net/netip"
+	"os"
 	"slices"
 	"strings"
 	"sync"
@@ -477,61 +478,50 @@ func TestTailnetNames(t *testing.T) {
 	}
 }
 
-// TestBuiltinTailnetEnablesAtStart turns the built-in node on when the
-// server starts with the mode on from before, as after an upgrade, and
-// shows why when that fails. It does so once: a later start keeps the
-// node as the user left it.
-func TestBuiltinTailnetEnablesAtStart(t *testing.T) {
-	for _, fail := range []bool{false, true} {
-		t.Run(map[bool]string{false: "ok", true: "fails"}[fail], func(t *testing.T) {
+// TestBuiltinTailnetStartKeepsNodeOff starts a server with the mode on
+// from before the built-in node carried discovery, as after an upgrade.
+// The node stays as the user left it: one that was never turned on stays
+// off, over restarts, and one the user turned on stays on. remote.json is
+// not rewritten.
+func TestBuiltinTailnetStartKeepsNodeOff(t *testing.T) {
+	for _, on := range []bool{false, true} {
+		t.Run(map[bool]string{false: "never turned on", true: "turned on"}[on], func(t *testing.T) {
 			called := make(chan struct{}, 4)
-			enable := func() error {
-				called <- struct{}{}
-				if fail {
-					return errors.New("the gateway is not running")
-				}
-				return nil
+			s := builtinStartServer(t, func() error { called <- struct{}{}; return nil })
+			n := newFakeNode()
+			if on {
+				TailnetNode = nodeFunc(n)
 			}
-			s := builtinStartServer(t, enable)
 			if err := writeJSON(remotePath(), RemoteConfig{Tailnet: true}); err != nil {
 				t.Fatal(err)
 			}
-			b := startBuiltin(t, s)
-			select {
-			case <-called:
-			case <-time.After(2 * time.Second):
-				t.Fatal("the server started with the mode on and did not turn the built-in node on")
+			before, err := os.ReadFile(remotePath())
+			if err != nil {
+				t.Fatal(err)
 			}
-			var st TailnetStatus
-			for range 100 {
-				if st = b.status(); !fail || strings.Contains(st.Error, "gateway is not running") {
-					break
+			for i := range 2 { // a start, then a restart
+				if i > 0 {
+					stopBuiltin(s)
 				}
-				time.Sleep(10 * time.Millisecond)
-			}
-			if fail != strings.Contains(st.Error, "gateway is not running") {
-				t.Fatalf("status = %+v", st)
-			}
-			var cfg RemoteConfig
-			if err := readJSON(remotePath(), &cfg); err != nil || !cfg.Tailnet || !cfg.BuiltinTailnet {
-				t.Fatalf("remote.json after the start = %+v, %v; want the mode on, marked as turned on", cfg, err)
-			}
-
-			// A restart, as after the user turned the node off.
-			stopBuiltin(s)
-			startBuiltin(t, s)
-			select {
-			case <-called:
-				t.Fatal("a second start turned the built-in node on again")
-			case <-time.After(100 * time.Millisecond):
+				b := startBuiltin(t, s)
+				if len(called) != 0 {
+					t.Fatalf("start %d turned the built-in node on", i+1)
+				}
+				if got := b.node(); on != (got != nil) || on && got != TailnetDevice(n) {
+					t.Fatalf("start %d: node = %v; want on = %v", i+1, got, on)
+				}
+				after, err := os.ReadFile(remotePath())
+				if err != nil || string(after) != string(before) {
+					t.Fatalf("start %d rewrote remote.json: %s, %v; want %s", i+1, after, err, before)
+				}
 			}
 		})
 	}
 }
 
-// TestBuiltinTailnetSetMarksEnabled marks the node turned on when the mode
-// is turned on, so that a start leaves it to the user.
-func TestBuiltinTailnetSetMarksEnabled(t *testing.T) {
+// TestBuiltinTailnetSetTurnsNodeOn turns the built-in node on when the
+// user turns the mode on, once: a later start leaves it to the user.
+func TestBuiltinTailnetSetTurnsNodeOn(t *testing.T) {
 	called := make(chan struct{}, 4)
 	s := builtinStartServer(t, func() error { called <- struct{}{}; return nil })
 	if _, err := s.remoteDo(Request{Op: "remote.tailnetSet", On: true}); err != nil {
@@ -543,15 +533,13 @@ func TestBuiltinTailnetSetMarksEnabled(t *testing.T) {
 	}
 	<-called
 	var cfg RemoteConfig
-	if err := readJSON(remotePath(), &cfg); err != nil || !cfg.Tailnet || !cfg.BuiltinTailnet {
-		t.Fatalf("remote.json = %+v, %v; want the mode on, marked as turned on", cfg, err)
+	if err := readJSON(remotePath(), &cfg); err != nil || !cfg.Tailnet {
+		t.Fatalf("remote.json = %+v, %v; want the mode on", cfg, err)
 	}
 	stopBuiltin(s)
 	startBuiltin(t, s)
-	select {
-	case <-called:
+	if len(called) != 0 {
 		t.Fatal("a start after the mode was turned on turned the node on again")
-	case <-time.After(100 * time.Millisecond):
 	}
 }
 

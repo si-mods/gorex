@@ -3434,11 +3434,11 @@ func (msgs Messages) TailnetStarting() string {
 	return Catalog.Format(msgs.locale, "tailnetStarting", nil)
 }
 
-// TailnetOff says "Built-in Tailscale is off."
+// TailnetOff says "Built-in Tailscale is off. Turn it on to find your devices; it also serves Rex's API on port 443 over your tailnet."
 // in the language the app shows.
 func TailnetOff() string { return In(i18n.Locale()).TailnetOff() }
 
-// TailnetOff says "Built-in Tailscale is off."
+// TailnetOff says "Built-in Tailscale is off. Turn it on to find your devices; it also serves Rex's API on port 443 over your tailnet."
 // in the language of msgs.
 func (msgs Messages) TailnetOff() string {
 	return Catalog.Format(msgs.locale, "tailnetOff", nil)
