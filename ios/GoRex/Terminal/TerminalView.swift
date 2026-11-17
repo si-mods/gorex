@@ -960,6 +960,8 @@ final class TerminalHost: UIView, UIGestureRecognizerDelegate {
     /// inset and the key bar at once, so they don't animate from .zero under
     /// the switch's spring.
     var snaps = false
+    /// Whether its pane is the one shown, as the screen last said.
+    var current = true
     /// The fade behind the bars at the bottom, as the top edge's under the
     /// status bar: solid from the bottom up, clear at the top bar's top, so
     /// the row the cursor rests on above the bars is never covered; it

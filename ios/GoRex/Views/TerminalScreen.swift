@@ -85,7 +85,7 @@ struct TerminalScreen: View {
                 // Under the fingers too, layout snaps.
                 TerminalRepresentable(session: pane.session, newTab: newTab, closeTab: closeTab, newSplit: newSplit, mic: mic, voice: voiceCapsule, dictating: said != nil && current, snaps: switching > 0 || paneDrag != nil,
                                       paneInset: paneCellList.count > 1 ? PaneBar.height + 20 : 0,
-                                      onPage: !pane.kept,
+                                      onPage: !pane.kept, current: current,
                                       onPaneDrag: { dragPane($0, $1, $2) },
                                       canSwipe: { switching == 0 && incoming == paneDrag?.pane && (terminal?.paneSwipeAllowed ?? false) })
                     .offset(x: pane.x * pageSize.width, y: pane.y * pageSize.height)
@@ -1151,6 +1151,8 @@ private struct TerminalRepresentable: UIViewRepresentable {
     let paneInset: CGFloat
     /// Whether the terminal shows: one kept off the page draws nothing.
     let onPage: Bool
+    /// Whether it is the pane shown, the one that takes touches.
+    let current: Bool
     /// Follows a two-finger drag between panes: its state, and how far and
     /// how fast the fingers went.
     let onPaneDrag: (UIGestureRecognizer.State, CGPoint, CGPoint) -> Void
@@ -1196,6 +1198,15 @@ private struct TerminalRepresentable: UIViewRepresentable {
         v.terminal.paneInset = paneInset
         v.aboveBar = paneInset
         v.terminal.onPage = onPage
+        // A pane switched away from gives up the keyboard itself: left to
+        // the hit testing turned off, UIKit would give it back as the pane
+        // comes back, and a switch never shows the keyboard. With a
+        // hardware keyboard, which shows none, the pane switched to takes
+        // the keys at once.
+        let arrived = current && !v.current
+        v.current = current
+        if !current, v.terminal.isFirstResponder { _ = v.terminal.resignFirstResponder() }
+        if arrived, GCKeyboard.coalesced != nil { _ = v.terminal.becomeFirstResponder() }
         v.onPaneDrag = onPaneDrag
         v.canSwipe = canSwipe
         v.setBottomEdgeColor(UIColor(cgColor: (session.background ?? .black).cgColor))
