@@ -1,9 +1,9 @@
 package main
 
 import (
+	"errors"
 	"maps"
 	"slices"
-	"strings"
 
 	"gorex/internal/layout"
 	"gorex/internal/rex"
@@ -134,7 +134,7 @@ var renameCommand = (*rex.Client).Command
 // here only.
 func renameAgain(res rex.LayoutCommand, err error) bool {
 	if err != nil {
-		return rex.Lost(err) || strings.HasSuffix(err.Error(), " timed out")
+		return rex.Lost(err) || errors.Is(err, rex.ErrTimeout)
 	}
 	return res.Code == "layout_conflict"
 }

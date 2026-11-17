@@ -34,6 +34,10 @@ var errNoFileTransfer = errors.New("rex: the server does not transfer files; upd
 // writes yet.
 var errTransferring = errors.New("rex: the file is being transferred already")
 
+// ErrTimeout is the error of a command the server did not answer in time;
+// its message reads "rex: <op> timed out".
+var ErrTimeout = errors.New("timed out")
+
 // Lost reports whether err is of a connection lost, which a try again may
 // get past, and not an answer of the server's.
 func Lost(err error) bool {
