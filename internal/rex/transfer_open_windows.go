@@ -14,8 +14,9 @@ import (
 // opens, and looks at the open file again, so that one swapped in
 // between is refused too.
 func openToSend(path string) (*os.File, fs.FileInfo, error) {
-	for _, p := range []string{`\.\`, `\?\pipe\`, `\?\GLOBALROOT`} {
-		if strings.HasPrefix(strings.ToLower(path), strings.ToLower(p)) {
+	norm := strings.ToLower(strings.ReplaceAll(path, "/", `\`))
+	for _, p := range []string{`\\.\`, `\\?\pipe\`, `\\?\globalroot`} {
+		if strings.HasPrefix(norm, p) {
 			return nil, nil, fmt.Errorf("rex: %s %s", path, notRegular)
 		}
 	}
