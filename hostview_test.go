@@ -160,7 +160,7 @@ func TestSidebarHostView(t *testing.T) {
 	}
 	a.st.workspaces = slices.DeleteFunc(a.st.workspaces, func(w *Workspace) bool { return w == third })
 	tt.Frame()
-	if _, ok := tt.Find(cmdNewSession.Title()); ok {
+	if _, ok := tt.Find(cmdNewProject.Title()); ok {
 		t.Error("the strip of spaces shows in the host view")
 	}
 	if _, ok := tt.Find(locales.SessionLabel(first.Name)); ok {
@@ -344,7 +344,7 @@ func TestSidebarHostView(t *testing.T) {
 	// Without remote hosts, the spaces' view.
 	a.hosts = nil
 	tt.Frame()
-	if _, ok := tt.Find(cmdNewSession.Title()); !ok {
+	if _, ok := tt.Find(cmdNewProject.Title()); !ok {
 		t.Errorf("no strip of spaces without hosts; texts %q", tt.Texts())
 	}
 	if _, ok := tt.Find(locales.SessionLabel(a.ws.Name)); !ok {

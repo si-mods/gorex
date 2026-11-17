@@ -306,7 +306,7 @@
       }
     }
   },
-  "menuShowSpace": "Show Space {n}",
+  "menuShowSpace": "Show Project {n}",
   "@menuShowSpace": {
     "description": "Menu item that shows the nth space, from 1 to 9.",
     "placeholders": {
@@ -830,11 +830,11 @@
   "@settingsSidebarView": {
     "description": "Setting: what the sidebar of vertical tabs lists."
   },
-  "settingsSidebarViewHint": "Spaces lists this window's tabs. Hosts lists every space under each host it has tabs on, once a remote host is added.",
+  "settingsSidebarViewHint": "Projects lists this window's tabs. Hosts lists every project under each host it has tabs on, once a remote host is added.",
   "@settingsSidebarViewHint": {
     "description": "Hint under the Sidebar view setting. Its options are the next two messages."
   },
-  "settingsSidebarSpaces": "Spaces",
+  "settingsSidebarSpaces": "Projects",
   "@settingsSidebarSpaces": {
     "description": "Sidebar view option: this window's space, its tabs grouped by host."
   },
@@ -1036,7 +1036,7 @@
   "@settingsShowTabRange": {
     "description": "Keyboard section row: the keys that show the 1st to the 9th tab."
   },
-  "settingsShowSpaceRange": "Show Space 1 to 9",
+  "settingsShowSpaceRange": "Show Project 1 to 9",
   "@settingsShowSpaceRange": {
     "description": "Keyboard section row: the keys that show the 1st to the 9th space."
   },
@@ -1682,31 +1682,31 @@
   "@cmdNewWindow": {
     "description": "Command: open a new window, which shows a new space."
   },
-  "cmdNewSession": "New Space",
+  "cmdNewSession": "New Project with No Folder",
   "cmdImportRex": "Import from Rex",
   "@cmdImportRex": {
     "description": "Command: import a Rex server's sessions as spaces, tabs and panes, each block mirrored."
   },
   "@cmdNewSession": {
-    "description": "Command: show a new space, with one tab, in the window. A space is a set of tabs of its own, as a session was in Rex."
+    "description": "Command: show a new project with no folder, with one tab, in the window. A project groups tabs, as a session did in Rex; this one is bound to no folder."
   },
-  "cmdChangeSession": "Change Space…",
+  "cmdChangeSession": "Change Project…",
   "@cmdChangeSession": {
     "description": "Command: open a list of the spaces, to show one in the window."
   },
-  "cmdNextSession": "Next Space",
+  "cmdNextSession": "Next Project",
   "@cmdNextSession": {
     "description": "Command: show the next space in the window."
   },
-  "cmdPreviousSession": "Previous Space",
+  "cmdPreviousSession": "Previous Project",
   "@cmdPreviousSession": {
     "description": "Command: show the previous space in the window."
   },
-  "cmdRenameSession": "Rename Space…",
+  "cmdRenameSession": "Rename Project…",
   "@cmdRenameSession": {
     "description": "Command: rename the window's space."
   },
-  "cmdCloseSession": "Close Space",
+  "cmdCloseSession": "Close Project",
   "@cmdCloseSession": {
     "description": "Command: end the terminals of the window's space, after asking, and forget it."
   },
@@ -1714,11 +1714,11 @@
   "@cmdMoveTabToNewWindow": {
     "description": "Command: move the active tab to a new window, in a new space."
   },
-  "menuSession": "Space",
+  "menuSession": "Project",
   "@menuSession": {
     "description": "Title of the Space menu."
   },
-  "sessionLabel": "Space {name}",
+  "sessionLabel": "Project {name}",
   "@sessionLabel": {
     "description": "Accessibility label and tooltip of the title bar's space button. name is the space's name, as icy-ridge.",
     "placeholders": {
@@ -1728,7 +1728,7 @@
       }
     }
   },
-  "sessionListTitle": "Spaces",
+  "sessionListTitle": "Projects",
   "@sessionListTitle": {
     "description": "Space popover: title over the list of spaces."
   },
@@ -1746,7 +1746,7 @@
   "@sessionElsewhere": {
     "description": "Space popover and palette: the space shows in another window, which choosing it focuses."
   },
-  "sessionPlaceholder": "Change to a space…",
+  "sessionPlaceholder": "Change to a project…",
   "@sessionPlaceholder": {
     "description": "Placeholder of the command palette listing the spaces."
   },
@@ -1848,7 +1848,7 @@
   "@paneMoveTab": {
     "description": "Submenu of the tabs a pane moves to."
   },
-  "tabMoveSpace": "Move to Space",
+  "tabMoveSpace": "Move to Project",
   "@tabMoveSpace": {
     "description": "Submenu of the spaces a tab moves to."
   },
@@ -2431,5 +2431,209 @@
   "teleportOnePane": "Only a tab with one pane can teleport",
   "@teleportOnePane": {
     "description": "Why a tab dropped on another host cannot teleport: it has more than one pane."
+  },
+  "cmdNewProject": "New Project…",
+  "@cmdNewProject": {
+    "description": "Command: open the sheet that makes a project bound to a folder on a host."
+  },
+  "projectSheetTitle": "New Project",
+  "@projectSheetTitle": {
+    "description": "Title of the New Project sheet."
+  },
+  "projectSheetChangeTitle": "Folder of {name}",
+  "@projectSheetChangeTitle": {
+    "description": "Title of the sheet that changes a project's folder.",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "windflow"
+      }
+    }
+  },
+  "projectSheetHost": "Host",
+  "@projectSheetHost": {
+    "description": "New Project sheet: label over the hosts the folder can be on."
+  },
+  "projectSheetFolder": "Folder",
+  "@projectSheetFolder": {
+    "description": "New Project sheet: label over the folder browser."
+  },
+  "projectSheetName": "Name",
+  "@projectSheetName": {
+    "description": "New Project sheet: label over the project's name field."
+  },
+  "projectSheetHome": "Home",
+  "@projectSheetHome": {
+    "description": "Folder browser: button that goes to the home folder."
+  },
+  "projectSheetUp": "Up",
+  "@projectSheetUp": {
+    "description": "Folder browser: button that goes to the parent folder."
+  },
+  "projectSheetChoose": "Choose…",
+  "@projectSheetChoose": {
+    "description": "Folder browser: button that opens the system's folder picker, for this machine."
+  },
+  "projectSheetPath": "Type a path and press Enter",
+  "@projectSheetPath": {
+    "description": "Folder browser: placeholder of the field that takes a path."
+  },
+  "projectSheetCreate": "Create",
+  "@projectSheetCreate": {
+    "description": "New Project sheet: button that makes the project."
+  },
+  "projectSheetUse": "Use This Folder",
+  "@projectSheetUse": {
+    "description": "Change Folder sheet: button that gives the project the folder shown."
+  },
+  "projectSheetCancel": "Cancel",
+  "@projectSheetCancel": {
+    "description": "New Project sheet: button that closes it."
+  },
+  "projectSheetLoading": "Loading…",
+  "@projectSheetLoading": {
+    "description": "Folder browser: shown while the host lists a folder."
+  },
+  "projectSheetConnecting": "Connecting to {host}…",
+  "@projectSheetConnecting": {
+    "description": "Folder browser: shown while the chosen host connects.",
+    "placeholders": {
+      "host": {
+        "type": "String",
+        "example": "office-mac"
+      }
+    }
+  },
+  "projectSheetNotFound": "This folder does not exist.",
+  "@projectSheetNotFound": {
+    "description": "Folder browser: the path is not a folder on the host."
+  },
+  "projectSheetDenied": "GoRex may not read this folder.",
+  "@projectSheetDenied": {
+    "description": "Folder browser: the host may not read the folder."
+  },
+  "projectSheetEmpty": "No folders here.",
+  "@projectSheetEmpty": {
+    "description": "Folder browser: the folder has no folders in it."
+  },
+  "projectSheetMore": "Only the first {n} folders are shown.",
+  "@projectSheetMore": {
+    "description": "Folder browser: the folder holds more folders than are listed.",
+    "placeholders": {
+      "n": {
+        "type": "int",
+        "example": "2000"
+      }
+    }
+  },
+  "projectSheetDrives": "Drives",
+  "@projectSheetDrives": {
+    "description": "Folder browser: the top of a Windows machine, the list of its drives."
+  },
+  "projectChangeFolder": "Change Folder…",
+  "@projectChangeFolder": {
+    "description": "Project menu: choose the folder the project's new tabs start in."
+  },
+  "projectRemoveFolder": "Remove Folder",
+  "@projectRemoveFolder": {
+    "description": "Project menu: unbind the project from its folder; its tabs stay."
+  },
+  "projectHostUnknown": "unknown host",
+  "@projectHostUnknown": {
+    "description": "Sidebar project header: the project's home host is not one of the user's hosts."
+  },
+  "projectFolderMissing": "The folder {dir} of {name} is missing or cannot be opened; no tab opened.",
+  "@projectFolderMissing": {
+    "description": "Note: New Tab of a project whose folder is gone.",
+    "placeholders": {
+      "dir": {
+        "type": "String",
+        "example": "~/code/windflow"
+      },
+      "name": {
+        "type": "String",
+        "example": "windflow"
+      }
+    }
+  },
+  "projectHostTimeout": "The home host of {name} did not connect; no tab opened.",
+  "@projectHostTimeout": {
+    "description": "Note: New Tab waited 60 s for the project's home host, which did not connect.",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "windflow"
+      }
+    }
+  },
+  "projectHostWaiting": "Connecting to the home host of {name}; the tab opens in {dir} once it is connected.",
+  "@projectHostWaiting": {
+    "description": "Note: New Tab waits for the project's home host to connect.",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "windflow"
+      },
+      "dir": {
+        "type": "String",
+        "example": "~/code/windflow"
+      }
+    }
+  },
+  "projectHostOffline": "The home host of {name} is not connected; no tab opened in {dir}.",
+  "@projectHostOffline": {
+    "description": "Note: New Tab of a project whose home host is not connected.",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "windflow"
+      },
+      "dir": {
+        "type": "String",
+        "example": "~/code/windflow"
+      }
+    }
+  },
+  "projectHostNotYours": "The home host of {name} is not one of your hosts; no tab opened in {dir}.",
+  "@projectHostNotYours": {
+    "description": "Note: New Tab of a project whose home host was removed from the user's hosts.",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "windflow"
+      },
+      "dir": {
+        "type": "String",
+        "example": "~/code/windflow"
+      }
+    }
+  },
+  "projectHostNone": "The project's home host is not one of your hosts; no tab opened.",
+  "@projectHostNone": {
+    "description": "Note: the hosts connected to find the project's home machine, and none was it."
+  },
+  "projectHomeMoved": "{host} is connected, but the project's home changed meanwhile; no tab opened.",
+  "@projectHomeMoved": {
+    "description": "Note: the home host connected after the project's home moved elsewhere.",
+    "placeholders": {
+      "host": {
+        "type": "String",
+        "example": "office-mac"
+      }
+    }
+  },
+  "projectHostOld": "{host} runs an older GoRex that cannot open {dir} safely; update GoRex there.",
+  "@projectHostOld": {
+    "description": "Note: the home host's GoRex does not check project folders.",
+    "placeholders": {
+      "host": {
+        "type": "String",
+        "example": "office-mac"
+      },
+      "dir": {
+        "type": "String",
+        "example": "~/code/windflow"
+      }
+    }
   }
 }

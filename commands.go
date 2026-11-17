@@ -542,6 +542,7 @@ var (
 	cmdEndAll = command{ID: "app.quit", Name: locales.Messages.CmdQuitAndEndAll, Accel: "CmdOrCtrl+Alt+Q", Keys: "⌥⌘Q", Run: func(a *App) { a.quitAndEnd() }}
 
 	cmdNewWindow     = command{ID: "window.new", Name: locales.Messages.CmdNewWindow, Accel: "CmdOrCtrl+N", Keys: "⌘N", Other: ctrlShift(ui.KeyN)}
+	cmdNewProject    = command{ID: "project.new", Name: locales.Messages.CmdNewProject, Run: func(a *App) { a.openNewProject() }}
 	cmdNewSession    = command{ID: "session.new", Name: locales.Messages.CmdNewSession, Accel: "CmdOrCtrl+Shift+N", Keys: "⇧⌘N", Run: func(a *App) { a.newWorkspace() }}
 	cmdImportRex     = command{ID: "rex.import", Name: locales.Messages.CmdImportRex, Run: func(a *App) { a.importRex() }, Available: func(a *App) bool { return !rexImporting.Load() }}
 	cmdChangeSession = command{ID: "session.switch", Name: locales.Messages.CmdChangeSession, Accel: "CmdOrCtrl+Shift+O", Keys: "⇧⌘O", Other: ctrlShift(ui.KeyO), Run: func(a *App) { a.openSessionPalette() }}
@@ -665,14 +666,14 @@ var paletteCommands = []*command{
 	&cmdGrowLeft, &cmdGrowRight, &cmdGrowUp, &cmdGrowDown,
 	&cmdBigger, &cmdSmaller, &cmdActualSize, &cmdLight, &cmdDark, &cmdSystem,
 	&cmdGhostty, &cmdClearScroll, &cmdFind, &cmdFindNext, &cmdFindPrev, &cmdRestart, &cmdSettings, &cmdUpdates, &cmdRestartServer, &cmdEndAll,
-	&cmdNewWindow, &cmdNewSession, &cmdImportRex, &cmdChangeSession, &cmdNextSession, &cmdPrevSession,
+	&cmdNewWindow, &cmdNewProject, &cmdNewSession, &cmdImportRex, &cmdChangeSession, &cmdNextSession, &cmdPrevSession,
 	&cmdRenameSession, &cmdCloseSession, &cmdMoveTabWindow,
 }
 
 // sessionCommands are those of the workspaces and the windows, which an
 // app without a store, as in tests, does not list.
 var sessionCommands = []*command{
-	&cmdNewWindow, &cmdNewSession, &cmdImportRex, &cmdChangeSession, &cmdNextSession, &cmdPrevSession,
+	&cmdNewWindow, &cmdNewProject, &cmdNewSession, &cmdImportRex, &cmdChangeSession, &cmdNextSession, &cmdPrevSession,
 	&cmdRenameSession, &cmdCloseSession, &cmdMoveTabWindow,
 }
 
@@ -918,6 +919,7 @@ func (st *store) menu() *mygo.Menu {
 		}},
 		{Label: locales.MenuTabs(), Submenu: append(tabItems, item(&cmdJumpNeedy), item(&cmdNeeds), mygo.Separator(), item(&cmdRenameTab), item(&cmdMoveTabWindow))},
 		{Label: locales.MenuSession(), Submenu: append([]*mygo.MenuItem{
+			item(&cmdNewProject),
 			item(&cmdNewSession),
 			item(&cmdImportRex),
 			mygo.Separator(),

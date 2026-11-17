@@ -122,6 +122,7 @@ func (a *App) view(c *ui.Context) {
 	a.shortcuts(c)
 	a.palette(c, k)
 	a.workspaceConfirm(c, k)
+	a.projectSheetView(c, k)
 	a.teleportConfirm(c, k)
 	// mygo paints a text input's caret in the theme of the frame as it
 	// paints, and a field cannot give it one of its own: the widgets above
@@ -1731,8 +1732,10 @@ func (a *App) errText() string {
 // goes as it is dismissed.
 var bannerMotion = &ui.Motion{Y: 12, Opacity: 0}
 
-// errorBanner shows what went wrong with the server.
+// errorBanner shows what went wrong with the server, or a note: a wait,
+// whose dot is not an error's, or one with a button that acts on it.
 func (a *App) errorBanner(c *ui.Context, k *colors) {
+	n := a.note()
 	ui.Overlay(c, func() {
 		banner := ui.Row(c.Key("error-banner")).Absolute().Bottom(18).Left(0).Right(0).Justify(ui.Center).PassThrough()
 		if anim := motion(c); anim != nil {
@@ -1741,10 +1744,21 @@ func (a *App) errorBanner(c *ui.Context, k *colors) {
 		banner.Children(func() {
 			ui.Row(c).Gap(10).Padding(8, 10, 8, 14).Radius(12).Background(k.panel).Border(1, k.panelBorder).
 				Shadow(0, 8, 24, 0, k.shadowFocused).AlignItems(ui.Center).Children(func() {
-				ui.Box(c).Size(8, 8).Radius(4).Background(k.danger)
+				dot := k.danger
+				if n != nil && n.wait {
+					dot = k.busy
+				}
+				ui.Box(c).Size(8, 8).Radius(4).Background(dot)
 				ui.Text(c, a.errText()).FontSize(12.5).TextColor(k.text).MaxWidth(520)
+				if n != nil && n.action != nil {
+					if ui.Button(c.Key("note-action"), say(n.action)).Clicked() {
+						run := n.run
+						a.err, a.errMsg, a.errNote = "", nil, nil
+						a.later(c, run)
+					}
+				}
 				if iconButton(c, k, "x", locales.ErrorDismiss(), 22, 14).Clicked() {
-					a.err, a.errMsg = "", nil
+					a.err, a.errMsg, a.errNote = "", nil, nil
 				}
 			})
 		})

@@ -657,16 +657,22 @@ func TestSpaceStrip(t *testing.T) {
 	}
 	a.wsRenaming, a.wsRenameFocus = false, false
 	tt.Frame()
-	if err := tt.Click(cmdNewSession.Title()); err != nil {
+	// The plus button opens New Project, and makes no project yet.
+	if err := tt.Click(cmdNewProject.Title()); err != nil {
 		t.Fatalf("%v; texts %q", err, tt.Texts())
 	}
 	tt.Frame()
 	tt.Frame()
-	if len(st.workspaces) != before+1 {
-		t.Fatalf("the plus button made %d spaces", len(st.workspaces)-before)
+	if !a.sheet.open || a.sheet.space != "" || len(st.workspaces) != before {
+		t.Fatalf("the plus button: sheet open %v, %d projects made", a.sheet.open, len(st.workspaces)-before)
 	}
-	if a.ws != st.workspaces[len(st.workspaces)-1] {
-		t.Errorf("the plus button did not show the space it made")
+	a.sheet.open = false
+	tt.Frame()
+	// The popover's New Project with No Folder makes one and shows it.
+	a.newWorkspace()
+	tt.Frame()
+	if len(st.workspaces) != before+1 || a.ws != st.workspaces[len(st.workspaces)-1] || a.ws.Dir != "" {
+		t.Errorf("New Project with No Folder made %d projects", len(st.workspaces)-before)
 	}
 	quit(st)
 }

@@ -393,6 +393,29 @@ func (a *App) debug(dir, line string) {
 		win.Update(func() { a.hostOpen = !a.hostOpen })
 	case "chip": // opens or closes the session chip's popover
 		win.Update(func() { a.wsOpen = !a.wsOpen })
+	case "sheet": // open [DIR]: the New Project sheet in DIR; change: of the window's project; browse DIR; create; close; home HOSTID DIR
+		win.Update(func() {
+			v, rest, _ := strings.Cut(arg, " ")
+			switch v {
+			case "open":
+				a.openSheet("", nil, rest)
+			case "change":
+				if a.ws != nil {
+					a.openChangeFolder(a.ws.ID)
+				}
+			case "browse":
+				a.sheet.browse(rest)
+			case "create":
+				a.finishSheet()
+			case "close":
+				a.sheet.open = false
+			case "home": // HOSTID DIR: the window's project's home, "local" for this machine
+				id, d, _ := strings.Cut(rest, " ")
+				if a.ws != nil {
+					a.setProjectHome(a.ws, a.hostByID(id), d, nil)
+				}
+			}
+		})
 	case "tabs": // above, left or right: where the tabs go
 		win.Update(func() {
 			setTabPlacement(&prefs, map[string]string{"left": "left", "right": "right"}[arg])

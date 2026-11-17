@@ -26,11 +26,22 @@ func (a *App) workspaceChip(c *ui.Context, k *colors, wide bool) {
 	if w == nil {
 		return
 	}
+	// A project's folder shows under its name, after its home host's name
+	// when that is not this machine.
+	detail := a.projectDetail(w)
+	label := locales.SessionLabel(w.Name)
+	if detail != "" {
+		label += " · " + detail
+	}
 	chip := ui.Row(c.Key("session-chip")).Gap(7).Padding(3, 6, 3, 8).Radius(9).AlignItems(ui.Center).Cursor(ui.CursorPointer).
-		Role(ui.RoleButton).Label(locales.SessionLabel(w.Name)).Tooltip(locales.SessionLabel(w.Name))
-	if wide {
+		Role(ui.RoleButton).Label(label).Tooltip(label)
+	chip.ContextMenu(func(m *ui.Menu) { a.spaceMenu(m, true) })
+	switch {
+	case wide && detail != "" && !a.wsRenaming:
+		chip.Height(42).Grow(1).MinWidth(0)
+	case wide:
 		chip.Height(30).Grow(1).MinWidth(0)
-	} else {
+	default:
 		chip.MaxWidth(180).Shrink(0)
 	}
 	if chip.Hovered() || a.wsOpen {
@@ -44,9 +55,16 @@ func (a *App) workspaceChip(c *ui.Context, k *colors, wide bool) {
 			a.workspaceRenameField(c, k, w.Name)
 			return
 		}
-		name := ui.Text(c, w.Name).FontSize(13).FontWeight(600).TextColor(k.text.Alpha(0.85)).SingleLine().Ellipsis("…").MinWidth(0)
-		if wide {
-			name.Grow(1)
+		if wide && detail != "" {
+			ui.Column(c).Grow(1).MinWidth(0).Gap(1).Children(func() {
+				ui.Text(c, w.Name).FontSize(13).FontWeight(600).TextColor(k.text.Alpha(0.85)).SingleLine().Ellipsis("…").MinWidth(0)
+				ui.Text(c, detail).FontSize(11).TextColor(k.textFaint).SingleLine().Ellipsis("…").MinWidth(0)
+			})
+		} else {
+			name := ui.Text(c, w.Name).FontSize(13).FontWeight(600).TextColor(k.text.Alpha(0.85)).SingleLine().Ellipsis("…").MinWidth(0)
+			if wide {
+				name.Grow(1)
+			}
 		}
 		if s := a.st.status(w); needsUser(s) {
 			statusDot(c, k, s, 7)
@@ -177,8 +195,13 @@ func (a *App) workspaceList(c *ui.Context, k *colors) {
 			ui.Text(c, label).FontSize(13).TextColor(k.text).SingleLine().Ellipsis("…")
 		})
 	}
+	action("folder-plus", cmdNewProject.Title(), a.openNewProject)
 	action("plus", cmdNewSession.Title(), a.newWorkspace)
 	action("pencil", cmdRenameSession.Title(), a.startWorkspaceRename)
+	if w := a.ws; w != nil {
+		id := w.ID
+		action("folder-open", locales.ProjectChangeFolder(), func() { a.openChangeFolder(id) })
+	}
 	action("trash-2", cmdCloseSession.Title(), a.askCloseWorkspace)
 }
 
@@ -265,8 +288,8 @@ func (a *App) spaceStrip(c *ui.Context, k *colors) {
 		for i, w := range a.st.workspaces {
 			a.spaceDotButton(c, k, i, w)
 		}
-		if b := iconButton(c, k, "plus", cmdNewSession.Title(), 24, 13).Tooltip(cmdNewSession.Title()); b.Clicked() {
-			a.later(c, a.newWorkspace)
+		if b := iconButton(c, k, "plus", cmdNewProject.Title(), 24, 13).Tooltip(cmdNewProject.Title()); b.Clicked() {
+			a.later(c, a.openNewProject)
 		}
 	})
 }
@@ -297,14 +320,24 @@ func (a *App) spaceDotButton(c *ui.Context, k *colors, i int, w *Workspace) {
 	b.Children(func() { spaceDotMark(c, k, w, w == a.ws) })
 }
 
-// spaceMenu is the right click menu of the window's own space: rename
-// it, color it where no chip does, or close it.
+// spaceMenu is the right click menu of the window's own project, its
+// settings: rename it, color it where a popover can show the colors,
+// change or remove its folder, or close it.
 func (a *App) spaceMenu(m *ui.Menu, color bool) {
 	if m.Item(cmdRenameSession.Title()).Chosen() {
 		a.startWorkspaceRename()
 	}
 	if color && m.Item(locales.SpaceColor()+"…").Chosen() {
 		a.wsOpen, a.wsColorOnly = true, true
+	}
+	if w := a.ws; w != nil {
+		id := w.ID
+		if m.Item(locales.ProjectChangeFolder()).Chosen() {
+			a.openChangeFolder(id)
+		}
+		if w.Dir != "" && m.Item(locales.ProjectRemoveFolder()).Chosen() {
+			a.removeProjectFolder()
+		}
 	}
 	if m.Item(cmdCloseSession.Title()).Chosen() {
 		a.askCloseWorkspace()
@@ -365,6 +398,9 @@ func (a *App) sessionItems(match func(string) bool) []paletteItem {
 		} else {
 			items = append(items, it)
 		}
+	}
+	if title := cmdNewProject.Title(); match(title) || match(cmdNewProject.English()) {
+		items = append(items, paletteItem{title: title, glyph: "folder-plus", run: a.openNewProject})
 	}
 	if title := cmdNewSession.Title(); match(title) || match(cmdNewSession.English()) {
 		items = append(items, paletteItem{title: title, keys: cmdNewSession.Keys, glyph: "plus", run: a.newWorkspace})
