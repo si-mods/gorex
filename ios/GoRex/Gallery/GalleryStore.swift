@@ -26,6 +26,16 @@ nonisolated struct GalleryEntry: Codable, Equatable, Identifiable, Sendable {
         if let path { return FileLink.fileName("", path: path) }
         return "image-\(id.prefix(8).lowercased()).png"
     }
+
+    /// Whether the path names one file wherever the program is: from the
+    /// root, the home folder or a drive. A relative one resolves against the
+    /// program's directory now, which may differ from when it printed.
+    var absolute: Bool {
+        guard let p = path else { return false }
+        let c = Array(p.prefix(3))
+        return p.hasPrefix("/") || p.hasPrefix("~/")
+            || (c.count == 3 && c[0].isLetter && c[1] == ":" && (c[2] == "\\" || c[2] == "/"))
+    }
 }
 
 /// What index.json holds.

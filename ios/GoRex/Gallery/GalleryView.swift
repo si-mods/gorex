@@ -253,7 +253,7 @@ private struct GalleryCell: View {
                 do {
                     image = try await GalleryImages.thumbnail(entry, gallery: gallery, session: session)
                 } catch {
-                    if GalleryImages.isMissing(error) { gallery.drop(missing: entry.id) }
+                    if GalleryImages.isMissing(error, entry) { gallery.drop(missing: entry.id) }
                     if !(error is CancellationError) { failed = true }
                 }
             }
@@ -342,9 +342,12 @@ enum GalleryImages {
         for u in urls { try? FileManager.default.removeItem(at: u.deletingLastPathComponent()) }
     }
 
-    /// Whether the host has no such file: the image leaves the gallery.
-    static func isMissing(_ error: Error) -> Bool {
-        (error as? RexError)?.code == "no_file"
+    /// Whether the host has no such file at an absolute path: the image
+    /// leaves the gallery. A relative path resolves against the program's
+    /// directory now, which may have changed since it printed, so its
+    /// no_file proves nothing and the entry stays.
+    static func isMissing(_ error: Error, _ entry: GalleryEntry) -> Bool {
+        (error as? RexError)?.code == "no_file" && entry.absolute
     }
 
     /// Why an image did not load, in the words of a tap on its path.

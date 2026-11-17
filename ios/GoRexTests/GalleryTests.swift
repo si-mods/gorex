@@ -330,6 +330,19 @@ nonisolated final class GalleryTests: XCTestCase {
         XCTAssertTrue(again.add(.path("/tmp/c.png")))
     }
 
+    func testOnlyAbsolutePathsDropOnNoFile() {
+        func entry(_ p: String?) -> GalleryEntry {
+            GalleryEntry(id: "x", source: p == nil ? .kitty : .path, path: p, first: .now)
+        }
+        for p in ["/home/demo/a.png", "~/a.png", #"C:\demo\a.png"#, "C:/demo/a.png"] {
+            XCTAssertTrue(entry(p).absolute, p)
+        }
+        for p in ["out/a.png", "./a.png", "../a.png", "a.png"] {
+            XCTAssertFalse(entry(p).absolute, p)
+        }
+        XCTAssertFalse(entry(nil).absolute)
+    }
+
     func testDropMissingIsNotRemembered() throws {
         let dir = try tempDir()
         let store = GalleryStore(dir: dir)

@@ -155,7 +155,7 @@ private struct GalleryPage: View {
             loaded(url)
         } catch {
             guard !(error is CancellationError) else { return }
-            if GalleryImages.isMissing(error) { gallery.drop(missing: entry.id) }
+            if GalleryImages.isMissing(error, entry) { gallery.drop(missing: entry.id) }
             failure = GalleryImages.reason(error)
         }
     }
