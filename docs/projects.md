@@ -40,8 +40,8 @@ names, members and order.
   own spaces on its own session server. A space of the Mac that holds
   tabs of office-h800 is the Mac's, not office-h800's. Sharing spaces,
   and with them their projects, between desktops is #518. This design
-  keeps projects where spaces are kept, so that #518 takes them with the
-  spaces (Relation to #518).
+  keeps projects where spaces are kept; how #518's sync can carry them
+  is in Relation to #518.
 - **Projects in Rex's own apps.** Rex's API has no such level. Rex's
   apps keep seeing the tabs, in the same order, as today.
 - **Projects in the strip above the panes.** With the tabs above
@@ -237,19 +237,25 @@ writes through the same methods.
 
 ## Relation to #518
 
-#518 asks that all devices share one set of spaces, synced between
-devices without a central server. It is not designed yet. This design
-holds for it:
+#518 asks that all devices share one set of spaces. Its design is
+`docs/ios-centralized-spaces.md`: Rex Go keeps a `SpaceManifest`
+(spaces and their members, by machine id and block id), syncs it
+between Apple devices by iCloud (#581), and passes space changes to a
+desktop that lists `gorex.spaces_sync`. This design holds for it:
 
-- A project lives in its space, and names its host by id. When #518
-  syncs spaces, projects go with them, with no second sync.
-- In the API, a project's host is a machine id, which is the same on
-  every device; `hosts.json` ids are not.
+- A project lives in its space, and names its host by machine id, which
+  is the same on every device; `hosts.json` ids are not.
 - Project and tab ids are random and lasting, so two devices that make
   changes apart can merge them by id.
+- The manifest does not carry projects yet. Until it does, a project is
+  kept only in the layout of the server that keeps its space. The
+  manifest sync makes and removes no project; a tab it moves to another
+  space leaves its project (rule 3). Carrying projects in the
+  manifest (a `projects` list per space, and a project id per member)
+  is a later change of that design, not part of the phases below.
 
-Until #518, a project made on the Mac's space shows on every client of
-the Mac's server — Rex Go and the web client among them — but not in
+So a project made on the Mac's space shows on every client of the
+Mac's server — Rex Go and the web client among them — but not in
 office-h800's own desktop windows, which have spaces of their own.
 
 ## Phases
