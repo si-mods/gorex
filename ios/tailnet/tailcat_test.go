@@ -379,9 +379,15 @@ func TestTailcatServerRestart(t *testing.T) {
 	m := newMachine(t)
 	setHosts(t, tailcatHost{ID: "mac", Address: string(m.ts.TailcatAddr())})
 	hc, _ := proxyClient(t)
-	if _, err := get(hc, "http://mac.tailcat.invalid:7297/"); err != nil {
+	// The client connects once, and that connection is closed before the
+	// server restarts. One through the proxy would close only once the
+	// proxy reads the server's FIN, which a server closed first never
+	// sends: the client would stay in use, and is not replaced then.
+	c, err := dialTailcat(context.Background(), "mac", 7297)
+	if err != nil {
 		t.Fatal(err)
 	}
+	c.Close()
 	ci, _ := tailcat.ParseAddr(m.ts.TailcatAddr())
 	m.ts.Close()
 	again := &tailcat.Server{Key: m.ts.Key, PresharedKey: m.ts.PresharedKey, Region: ci.Region[0], Logf: func(string, ...any) {}}
