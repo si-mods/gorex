@@ -505,6 +505,47 @@ that ends short of its size aborts the response. `Range` is not taken.
 Each download is logged as `rexapi: download <client address> <block>
 <path> <bytes>`.
 
+## Directories of a host
+
+A folder picker, as the one of a project's folder (docs/projects.md),
+browses a host's directories with GoRex's own method `gorex.dir.list`.
+The welcome lists the feature `gorex.dir_list` when the GoRex server
+lists directories (`CapabilityDirList`, its `dir.list` op); call it only
+then. It lists this machine's directories: a client lists another host's
+through that host's own gateway.
+
+```
+→ {"method": "gorex.dir.list", "payload": {"path": "~/src", "hidden": false}}
+← {"path": "/home/user/src", "parent": "/home/user", "home": "/home/user",
+   "dirs": ["api", "web"], "more": false}
+```
+
+- `path` is absolute, `~` or `~/…` of the home directory, or relative to
+  it; left out or empty, it is the home directory. It is cleaned, so
+  `..` goes up a name, and then its symlinks are resolved: the result's
+  `path` is the directory listed.
+- `/` is the top of the machine. On Windows it lists the drives, each as
+  its root (`C:\`), and it is the `parent` of a drive's root. A share's
+  root (`\server\share`) has no parent.
+- A child's path is `path` and its name joined with `/`; the server
+  cleans it (to `\` on Windows). At Windows' drives, each name is a path
+  of its own.
+- `dirs` holds directories only, and symlinks to one, never files,
+  sorted without regard to case, at most 2000; `more` is true when there
+  were more. Hidden ones, a name with a leading dot and on Windows one of
+  the hidden attribute, come only with `hidden: true`.
+- `parent` is `""` at the top. `home` is the home directory of the user
+  the sessions run as, its symlinks resolved.
+- A directory that is not there answers `code: "not_found"`, and one this
+  machine's user may not read `code: "denied"`, with `path`, `parent`
+  and `home` still set, so a picker can go elsewhere.
+- It is allowed to every caller that may call `session.create`: one
+  that can start a shell can read the directory tree already. A stopping
+  gateway refuses it with `conflict`, as it does `session.create`.
+- Errors: `bad_request` (an unknown or malformed argument),
+  `not_supported` (the GoRex server is older), `conflict` (the gateway is
+  stopping), else `internal` with the server's text.
+
 ## Troubleshooting
 
 | Symptom | Check |

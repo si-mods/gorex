@@ -81,6 +81,7 @@ func serveLLMs(w http.ResponseWriter, r *http.Request) {
 	w.Write(llmsSeeBlock)
 	w.Write(llmsSpacesApply)
 	w.Write(llmsMergeWindows)
+	w.Write(llmsDirList)
 }
 
 // llmsRev11 documents what revision 11 adds, which the revision 10
@@ -167,5 +168,6 @@ func serveLLMsHTML(w http.ResponseWriter, r *http.Request) {
 	io.WriteString(w, html.EscapeString(string(llmsSeeBlock)))
 	io.WriteString(w, html.EscapeString(string(llmsSpacesApply)))
 	io.WriteString(w, html.EscapeString(string(llmsMergeWindows)))
+	io.WriteString(w, html.EscapeString(string(llmsDirList)))
 	io.WriteString(w, "</pre>\n")
 }

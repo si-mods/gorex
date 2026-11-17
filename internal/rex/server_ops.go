@@ -58,6 +58,8 @@ func serverOp(op string) serverOpFunc {
 		return (*Server).doShutdown
 	case "theme.set":
 		return (*Server).doSetTheme
+	case "dir.list":
+		return (*Server).doDirList
 	case "input":
 		return withSession(doInput)
 	case "key":
