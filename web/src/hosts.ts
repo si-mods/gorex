@@ -90,7 +90,9 @@ export function parsePairingLink(search: string, hash: string): { url: string; c
   const r = hostURL(rawHost);
   if (!("url" in r)) return undefined;
   const wt = f.get("wt") || q.get("wt") || undefined;
-  const k = f.get("k") || q.get("k") || undefined;
+  // The token only from the fragment, which the browser never sends: a
+  // ?k= in the page's own address would reach the web server's logs.
+  const k = f.get("k") || undefined;
   return { url: r.url, certHash: wt, ...(k ? { token: k } : {}) };
 }
 /** A host's name until the user gives one: the first label of a DNS name, else the whole host (an IP address). */

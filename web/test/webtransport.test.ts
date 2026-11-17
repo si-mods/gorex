@@ -120,10 +120,10 @@ test("a browser with no such permission still gets the causes", async () => {
 const tok = "test-token-AAAA";
 const lan = "https://192.0.2.10:7298";
 
-test("parsePairingLink reads k from the fragment, and from a legacy query", () => {
+test("parsePairingLink reads k from the fragment only, never the page's query", () => {
   const hash = `#host=${encodeURIComponent(lan)}&wt=sha256-abc&k=${tok}`;
   assert.deepEqual(parsePairingLink("", hash), { url: lan, certHash: "sha256-abc", token: tok });
-  assert.equal(parsePairingLink(`?host=${encodeURIComponent(lan)}&k=${tok}`, "")?.token, tok);
+  assert.equal(parsePairingLink(`?host=${encodeURIComponent(lan)}&k=${tok}`, "")?.token, undefined);
   assert.equal(parsePairingLink("", `#host=${encodeURIComponent(lan)}`)?.token, undefined);
 });
 
