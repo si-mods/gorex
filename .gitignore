@@ -5,3 +5,4 @@
 mygo_windows_*.syso
 /gorex
 /*.png
+/.omp/
