@@ -1,293 +1,230 @@
-# Projects: tabs grouped under a host in a space
+# Projects: spaces bound to a folder
 
-Status: proposed. Issue #519.
+Status: proposed. Issue #519. Replaces the earlier design in this file
+(#570), which grouped tabs inside a space.
 
 ## Problem
 
-A space holds tabs, and a tab holds panes (`internal/layout/layout.go`:
-`Workspace`, `Tab`, `Node`). With remote hosts, the sidebar lists a
-space's tabs under the host each runs on (`sidebar.go`, `sidebar`), and
-the host view lists Host → Space → Tab (`hostSessions`).
+A space groups tabs, on this machine and on remote hosts (`Spaces across
+hosts` in `docs/rex-api.md`). Nothing ties a space to the work it holds:
+a new tab starts on the host of the focused pane, in that pane's start
+directory or the home directory. To open one more terminal of a project,
+the user `cd`s there by hand, on the right host.
 
-One piece of work often needs several tabs on one host: an editor, a
-training monitor, a service log. Today these lie flat among the host's
-other tabs. The user cannot fold them, name them as one thing, or start
-a new terminal of that work in its directory.
+The user asked for projects as Codex has them: a project is bound to a
+folder, and every new session made in the project starts in that folder.
 
-## Goal
+## Decisions
 
-A **project** is a named group of tabs of one space on one host. The
-user's examples:
+Made by the user on 2026-11-17:
 
-- `Work → office-h800 → windflow → dev, training monitor, service logs`
-- `Life → mba-15 → blog → writing, preview`
+1. **A project replaces a space.** There is one grouping level, named
+   Project in every client. There is no separate group of tabs inside a
+   space.
+2. **A project may hold terminals of several hosts**, as a space does
+   today. Its folder is on one host, its *home host*.
+3. **A split starts where the pane it splits started**, as today; it does
+   not go back to the project's folder.
+4. **The folder is chosen by browsing**, on remote hosts too. GoRex gets
+   an operation that lists a directory.
 
-The user can:
+## Model
 
-- create, rename, fold, unfold and remove a project;
-- put existing tabs in a project, and take them out, without a restart
-  of any terminal and without a change to any tab's panes;
-- keep tabs outside every project, as today;
-- give a project a directory, where its new tabs start.
-
-Every client of the server that keeps the space — the desktop windows,
-Rex Go on iOS and the web client — sees the same projects, with the same
-names, members and order.
-
-## Non-goals
-
-- **Groups shared by all devices.** Today each GoRex desktop keeps its
-  own spaces on its own session server. A space of the Mac that holds
-  tabs of office-h800 is the Mac's, not office-h800's. Sharing spaces,
-  and with them their projects, between desktops is #518. This design
-  keeps projects where spaces are kept; how #518's sync can carry them
-  is in Relation to #518.
-- **Projects in Rex's own apps.** Rex's API has no such level. Rex's
-  apps keep seeing the tabs, in the same order, as today.
-- **Projects in the strip above the panes.** With the tabs above
-  (`TabPlacement` ""), tabs show flat, in project order. Only the
-  sidebar shows project rows.
-- **Nested projects**, and a project over several hosts.
-- **Tab names and split layout across devices.** Those are #520 and
-  #521.
-
-## Design
-
-### Model
-
-A project is a field of the space, and a tab names its project. The
-tabs stay in one flat list, `Workspace.Tabs`:
+A project is a space with a home: a host and a directory on it.
 
 ```go
 type Workspace struct {
-	ID       string    `json:"id"`
-	Name     string    `json:"name"`
-	Color    string    `json:"color,omitempty"`
-	Projects []Project `json:"projects,omitempty"`
+	ID    string `json:"id"`
+	Name  string `json:"name"`
+	Color string `json:"color,omitempty"`
+	// Host is the project's home host, as Node.Host: "" for this machine.
+	Host string `json:"host,omitempty"`
+	// Dir is the project's folder on Host, absolute. "" for a project
+	// with no folder, as every space is today.
+	Dir string `json:"dir,omitempty"`
 	Layout
 }
+```
 
-// Project is a named group of tabs of the space on one host.
-type Project struct {
-	ID   string `json:"id"`             // random, lasts while the project does
-	Name string `json:"name"`
-	Host string `json:"host,omitempty"` // as Node.Host: "" for this machine
-	Dir  string `json:"dir,omitempty"`  // where its new tabs start, on Host
-}
+- The Go, Swift and wire names stay `Workspace`, `CentralSpace`,
+  `gorex.spaces` and `/api/spaces`. Only what the user reads changes. A
+  rename of the code would touch every package and the iOS sync format,
+  for no gain to the user.
+- A space of an older layout reads as a project with no folder, and works
+  as a space does today. Nothing is migrated; the user can give it a
+  folder later.
+- An older GoRex that reads a newer layout drops `host` and `dir` and
+  keeps the space.
 
-type Tab struct {
-	// ...
-	Project string `json:"project,omitempty"` // Project.ID, "" for none
+### Across devices
+
+The iOS manifest (`docs/ios-centralized-spaces.md`) carries the home, so
+every device shows it and makes new sessions there:
+
+```swift
+struct CentralSpace {
+    // ...
+    var home_machine: String?   // rex.MachineID of the home host
+    var dir: String?
 }
 ```
 
-Why a field, and not a level that holds the tabs:
+`home_machine` is a machine ID, which is the same on every device; a
+`hosts.json` ID is not. The desktop maps it to its own host entry
+(`HostMachines`) when it applies the manifest (`gorex.spaces_sync`). A
+desktop that does not know the machine keeps the folder but shows the
+home host as offline.
 
-- Every walk over a space's tabs stays as it is: `Layout.Active`, Rex
-  API window ids (`windowIDOf`), `tab.move`, `tab.to_space`, the
-  journal, and `reximp`.
-- A layout of an older GoRex reads as today: no project, no tab in one.
-  An older GoRex that reads a newer layout drops the two unknown
-  fields and shows the tabs flat. Nothing is lost but the grouping.
-- A tab keeps its `ID` and its panes. To put it in a project changes
-  one string; no session ends or starts.
+## Where a new session starts
 
-`Projects` is in the order the sidebar shows them under each host.
-Projects of different hosts share the list. Each host's own are in
-their relative order.
-
-### Rules the server keeps
-
-The session server applies every layout change (`internal/rex`,
-`layout_apply.go`). After each change it keeps these rules, in
-`layout_apply.go`'s normalization:
-
-1. **One host.** A tab is in a project only while its host
-   (`Tab.host`: its first pane's) is the project's. When a teleport or
-   `pane.move` takes the tab to another host, the tab leaves the
-   project.
-2. **Members together.** A project's tabs are next to each other in
-   `Tabs`. When a tab joins a project, the server moves it after the
-   project's last tab. So `Ctrl+Tab`, the strip and Rex's window order
-   go through a project's tabs in a row, as the sidebar shows them.
-3. **No dangling names.** A tab whose `Project` names no project of its
-   space has `Project` "". `tab.to_space` clears it: projects do not
-   move between spaces.
-4. **Empty projects stay.** A project with no tab stays until the user
-   removes it, so that the user can make one first and fill it next.
-5. **Removing a project ungroups it.** Its tabs stay open, outside every
-   project. Closing them is the user's separate action.
-
-### Commands
-
-New `LayoutCommand` ops (`internal/rex/proto.go`), each with `Space`:
-
-| Op | Fields | Does |
+| Action | Host | Directory |
 | --- | --- | --- |
-| `project.create` | `Project` (id, may be ""), `Name`, `Host`, `Dir`, `Target` (tab ids) | Makes the project after the host's last, with the tabs `Target` in it. |
-| `project.rename` | `Project`, `Name` | Renames it. |
-| `project.set_dir` | `Project`, `Dir` | Sets or clears its directory. |
-| `project.remove` | `Project` | Removes it; its tabs stay (rule 5). |
-| `project.move` | `Project`, `Index` | Moves it among its host's projects; its tabs move with it in `Tabs`. |
-| `tab.set_project` | `Tab`, `Project` ("" for none), `Index` | Puts the tab in the project at `Index` among its tabs, or takes it out. |
+| New Tab in a project with a folder | the home host | the folder |
+| New Tab in a project with no folder | as today: the focused pane's host | as today |
+| Split, floating pane | the pane's host, as today | the pane's start directory, as today (decision 3) |
+| Rex Go or web: new window in a project | the home host | the folder |
+| Any of these with a directory given by the caller (CLI `--dir`, Rex API `cwd`) | as given | as given |
 
-A command that breaks rule 1 — a tab of another host than the
-project's — fails with an error, and changes nothing.
+- The rule is applied where the session is made, in the app
+  (`newTabOn`) and in the gateway (`session.new_window`), so the Rex API,
+  the CLI and Lua get it too.
+- **Home host offline.** New Tab in the project fails with a note that
+  names the host, and does not start a tab elsewhere.
+- **Folder gone.** The server checks the directory before it starts the
+  shell. A missing or unreadable folder fails the new tab with a note and
+  a **Change Folder…** button; it does not fall back to the home
+  directory. Today the server falls back silently (`sessionDir`,
+  `internal/rex/session.go`). The check is for new sessions made in a
+  project only: a session the server starts again from the layout after
+  a restart keeps today's fallback to home.
 
-`tab.create` takes `Project` too. The new tab is made in the project,
-after its last tab, and starts in the project's `Dir` when the command
-has no `Dir` of its own.
+## Listing a directory
 
-Fold state is not in the layout. It is each client's own, as
-`prefs.FoldedHosts` is today: a desktop window folds a project without
-folding it on the phone. Which tab a client shows is its own too, as
-today.
+A new server operation lists one directory, so a client can browse a
+host's folders:
 
-### Desktop sidebar
-
-Under a host's section, the sidebar shows the host's projects in order,
-then the host's tabs that are in none:
-
+```go
+// "dir.list": the directories in Path, on this machine.
+type DirList struct {
+	Op   string `json:"op"`             // "dir.list"
+	Path string `json:"path,omitempty"` // "" for the home directory
+	Hidden bool `json:"hidden,omitempty"`
+}
+type DirListResult struct {
+	Path    string   `json:"path"`    // absolute, cleaned, symlinks resolved
+	Parent  string   `json:"parent"`  // "" at a root
+	Home    string   `json:"home"`
+	Dirs    []string `json:"dirs"`    // names, sorted, at most 2000
+	More    bool     `json:"more"`    // true when cut at 2000
+	Code    string   `json:"code,omitempty"` // "not_found", "denied"
+}
 ```
-▾ office-h800                              +
-  ▾ [folder-open] windflow              3
-      [tile] dev
-      [tile] training monitor
-      [tile] service logs
-  ▸ [folder] old-experiments            2
-    [tile] scratch
-```
 
-- **The project row**: a chevron, a Lucide `folder` (folded) or
-  `folder-open` (open) icon, the name, and the tab count. It is as high
-  as a host's section row. `assets/icons` has `folder-open.svg`;
-  Lucide's `folder.svg` is added beside it. Its tabs are indented 12 points, as the host
-  view indents a space's tabs.
-- **Folded**: the row shows only, with the count. As a folded host does
-  today, it keeps showing the tab the window shows, and tabs that need
-  the user (`needsYou`).
-- **On hover**, a `plus` button makes a new tab in the project.
-- **Its context menu**: Rename, Directory…, New Tab, Remove Project.
-- **A tab's context menu** gets **Move to Project**: the host's
-  projects, None, and New Project…, which makes one with that tab.
-- **Drag and drop**: a tab dropped on a project row joins it. A tab
-  dragged among a project's tabs reorders them. A tab dragged out
-  between loose tabs leaves it. A tab of another host dropped on a
-  project asks to teleport (`askTeleport`), as it does on a host row
-  today; if the user agrees, the tab joins the project after the
-  teleport.
-- **The host's `+`** keeps making a loose tab.
-- **The command palette** gets `New Project`, `Rename Project`,
-  `Move Tab to Project…` and `New Tab in Project…`.
+- Directories only, no files, no sizes: it is a folder picker, not a file
+  manager.
+- On Windows `Path` "" is the home directory, and a root lists the drives.
+- The app calls it on a remote host through that host's client, as it
+  sends other commands (`hostConn`).
+- The Rex API serves it as `gorex.dir.list` (GoRex's own method; the
+  welcome lists `gorex.dir_list`), for Rex Go and the web client. It is
+  allowed to the same callers as `session.create`: a caller that can
+  start a shell can already read the directory tree.
 
-The host view (Host → Space → Tab) shows the same project rows between
-a space and its tabs on that host.
+## Desktop
 
-A project's directory is a path on the project's host. For this machine
-the field offers the folder picker. For a remote host it is a text
-field, as GoRex has no browser of a remote file system.
+- **Wording.** Every "Space" a user reads becomes "Project": the sidebar,
+  menus, the command palette, Settings, the CLI help and the docs.
+  `locales/*.json` keys keep their names; their text changes.
+- **New Project…** (sidebar `+`, palette, File menu) opens a sheet:
+  1. **Host**: this machine and the hosts in `hosts.json`; offline hosts
+     are shown but cannot be picked.
+  2. **Folder**: a browser built on `dir.list`: the path as a breadcrumb,
+     the folders below, Home, Up, and a field to type a path. For this
+     machine, **Choose…** also opens the system folder picker.
+  3. **Name**: the folder's name by default.
+  4. **Create** makes the project and opens its first tab in the folder.
+- **New Project with No Folder** stays, for a project that only groups
+  terminals, as a space does.
+- **Project settings** (the project's context menu): Rename, Color,
+  **Change Folder…** (the same sheet), Remove Folder, Close Project.
+- The sidebar's project header shows the folder under the name, with the
+  home host's name when it is not this machine:
+  `windflow · office-h800 · ~/code/windflow`.
+- New UI follows `DESIGN.md`: the sheet uses `paintFrost`, Lucide icons
+  only (`folder`, `folder-open`, `house`, `arrow-up`).
 
-New UI follows `DESIGN.md`: the rows reuse `sidebarTab`'s faces and the
-existing hover and drop styles. No new shader is needed.
+## Rex Go (iOS)
 
-### Rex API and its clients
+- "Space" becomes "Project" in every string (`Localizable.xcstrings`,
+  Settings › Grouping).
+- The manifest gains `home_machine` and `dir` (above); the strip shows the
+  folder under the name.
+- **New Project** gets the same three steps, the folder browser built on
+  `gorex.dir.list` against the chosen host's gateway.
+- **New Window** in a project with a folder opens on the home host's
+  gateway with `cwd` set to the folder. With the home host unreachable it
+  shows why and does not open elsewhere.
 
-Rex's methods stay as they are. Rex's apps see windows, in the order of
-rule 2.
+## Web client
 
-GoRex's own clients get projects as GoRex already gives them spaces
-across hosts (`internal/rexapi/spaces.go`):
+The same wording, the same New Project steps and the same New Window rule,
+through `gorex.dir.list` and `cwd`.
 
-- **Read.** The welcome lists a feature `gorex.projects`. Each session
-  in a session list, and each session view, carries `projects`:
-  id, name, the host as a machine id (`rex.MachineID`, as
-  `remoteBlock.Machine`), the directory, and the window ids of its
-  tabs in order. A Rex app ignores the field it does not know.
-  Unconfirmed: that Rex's iOS app ignores an unknown field of a session
-  view. Check before release by connecting Rex's app to a gateway that
-  sends it; if it does not, serve projects at `GET /api/projects`
-  instead, as `/api/spaces`.
-- **Write.** Methods `gorex.project.create`, `gorex.project.rename`,
-  `gorex.project.set_dir`, `gorex.project.remove`,
-  `gorex.project.move` and `gorex.window.set_project`, each mapping to
-  the command of the same meaning.
-- **Events.** A change of projects is a change of the session's view:
-  it goes into `viewSignature`, so the gateway sends
-  `session_view_changed`, as it does for a change of the windows.
+## Rex API
 
-### Rex Go (iOS)
-
-The session sheet lists a space's windows (`SessionSheet.swift`). With
-`gorex.projects`, it groups them under project headers, folded or open
-per device. A long press on a window offers Move to Project; a project
-header offers Rename and Remove. Creating a project with a directory
-picker is desktop-only at first.
-
-Cross-host spaces (`Spaces.swift`) show a remote host's tabs from that
-host's own gateway. The project of such a tab is in the space's server,
-not the remote host's, so the grouping comes from the space's server's
-`projects` field. The window ids there are the space server's, which
-the app already maps for `remote_blocks`.
-
-### Web client
-
-The web client's sidebar (`web/`) groups windows under project rows as
-the desktop does, with the same context-menu actions. It reads and
-writes through the same methods.
-
-## Relation to #518
-
-#518 asks that all devices share one set of spaces. Its design is
-`docs/ios-centralized-spaces.md`: Rex Go keeps a `SpaceManifest`
-(spaces and their members, by machine id and block id), syncs it
-between Apple devices by iCloud (#581), and passes space changes to a
-desktop that lists `gorex.spaces_sync`. This design holds for it:
-
-- A project lives in its space, and names its host by machine id, which
-  is the same on every device; `hosts.json` ids are not.
-- Project and tab ids are random and lasting, so two devices that make
-  changes apart can merge them by id.
-- The manifest does not carry projects yet. Until it does, a project is
-  kept only in the layout of the server that keeps its space. The
-  manifest sync makes and removes no project; a tab it moves to another
-  space leaves its project (rule 3). Carrying projects in the
-  manifest (a `projects` list per space, and a project id per member)
-  is a later change of that design, not part of the phases below.
-
-So a project made on the Mac's space shows on every client of the
-Mac's server — Rex Go and the web client among them — but not in
-office-h800's own desktop windows, which have spaces of their own.
+- Rex's own methods are unchanged: a project is a Rex session, as a
+  space is.
+- The welcome lists `gorex.projects`. Each session in a session list and
+  in a session view gains `project: {home_machine, dir}` when the space has
+  a folder. Rex's apps ignore the unknown field. Unconfirmed: that Rex's
+  iOS app ignores it; check before release by connecting Rex's app to a
+  gateway that sends it.
+- `gorex.project.set_home {session_id, machine_id, dir}` sets or clears a
+  project's home, for Rex Go and the web client.
+- `session.new_window` without `cwd`, in a project whose home is this
+  host, starts in the folder.
 
 ## Phases
 
-1. Model, commands and the rules in `internal/layout` and `internal/rex`,
-   with tests on `layout_apply`.
-2. Desktop sidebar, menus, drag and drop, palette; UI tests with
-   `ui.NewTester` and screenshots by the `GOREX_DEBUG` hook.
-3. Rex API read and write, with contract tests in `internal/rexapi`.
-4. Rex Go and the web client.
+Each phase is its own PR, verified by running it, reviewed and merged
+before the next.
 
-Each phase is its own PR. Phase 1 alone changes nothing a user sees.
+1. **`dir.list`**: the server operation, the host client call, the Rex API
+   method `gorex.dir.list`, and tests (paths, home, Windows drives, limits,
+   a missing and a denied directory).
+2. **Model and rules**: `Workspace.Host` and `Dir`, the layout round trip,
+   the new-session rule in the app and the gateway, the folder check, the
+   Rex API fields and `gorex.project.set_home`, and `spaces_sync` with the
+   manifest's new fields.
+3. **Desktop**: the wording, the New Project sheet with the folder
+   browser, project settings and the sidebar header; UI tests with
+   `ui.NewTester` and screenshots by the `GOREX_DEBUG` hook.
+4. **Rex Go**: the wording, the manifest fields, New Project with the
+   folder browser, New Window in the folder; simulator checks on the Mac
+   mini.
+5. **Web client**.
+6. **Docs**: README, `docs/rex-api.md`, `docs/ios-centralized-spaces.md`.
 
 ## Tests
 
-- `layout`: a layout with projects round-trips; an older layout reads
-  with no projects; an unknown project on a tab is dropped.
-- `rex` apply: each command; rule 2 after `tab.create`, `tab.move` and
-  `tab.set_project`; rule 1 after a teleport; rule 3 after
-  `tab.to_space`; removing a project closes no session.
-- App: a project row folds and keeps the shown tab and tabs that need
-  the user; drop on a project row; a new tab in a project starts in its
-  directory (local host).
-- `rexapi`: `projects` in session views; the methods; a Rex client
-  without the feature sees the windows in rule 2's order.
+- `dir.list`: home, a nested path, `..` and symlinks resolved, hidden
+  folders only when asked, the 2000 limit, not found, denied, Windows
+  drives.
+- Layout: a layout with a home round-trips; an older layout reads as
+  projects with no folder.
+- New sessions: New Tab in a project with a folder starts on the home
+  host in the folder; a split starts where its pane started; a caller's
+  `cwd` wins; a missing folder fails with no shell started; an offline
+  home host fails.
+- Sync: a manifest home reaches a desktop and back; a desktop that does
+  not know the home machine keeps the folder.
+- UI: the New Project sheet browses a remote host's folders (a test
+  server with a temporary directory tree), and Create opens a tab there.
 
 ## Open questions
 
-1. Should removing a project offer to close its tabs too, or only
-   ungroup them? This design only ungroups.
-2. Should the strip above the panes show project boundaries, such as a
-   gap or a label? This design shows none.
-3. Should a tab made by a remote client (Rex Go's new window) join the
-   project of the tab it was made from? This design puts it in none,
-   unless the client names a project.
+1. When a project's home host is removed from `hosts.json`, should the
+   project keep the folder and show the host as unknown (this design), or
+   lose its home?
+2. Should the folder browser offer **New Folder**? This design leaves it
+   out: `dir.list` only reads.
