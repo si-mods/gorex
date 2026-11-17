@@ -23,6 +23,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - Long-pressing a terminal's title opens the session's sheet now, as a tap does: each window shows the tile of the program it runs, and New Tab and Switch Session are under the list.
 - A window with a single pane can split it now: open the menu at the top right and choose Split Pane, or press ⌘D on a hardware keyboard. The new pane opens beside the one you were in.
 - Dragging two fingers in a terminal now moves the panes with your fingers, up and down too; let go past a third of the way, or flick, to switch, or the pane springs back.
+- A terminal that another computer's shared space lists now joins that space, whichever computer connects first. Terminals you moved yourself stay where you put them.
 
 ## zh-Hans
 
@@ -38,3 +39,4 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - 长按终端标题现在和点按一样打开会话的标签页列表：每个窗口都带着自己程序的图标，新建标签页和切换会话就在列表下面。
 - 只有一个面板的窗口现在也能拆分了：点右上角的菜单选「拆分面板」，或在外接键盘上按 ⌘D；新面板开在你当前面板的旁边。
 - 双指拖动终端时，面板现在跟着手指移动，上下切换也是上下滑；拖过约三分之一或快速一甩就切换，否则弹回原处。
+- 别的电脑的共享空间列出的终端，现在会归入那个空间，不再取决于哪台电脑先连上；你自己移动过的终端仍留在原处。
