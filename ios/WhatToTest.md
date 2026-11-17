@@ -20,6 +20,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - Swipe with two fingers up, down, left or right in a terminal to move to the pane that way; one finger still scrolls. The layout map is now only an indicator.
 - A terminal whose connection keeps dropping no longer gives up: it reconnects on its own until the session ends, and a refused stream is the only one that asks you to retry.
 - A window's name too long for the header now ends in an ellipsis, and its program's tile stays in view.
+- Long-pressing a terminal's title opens the session's sheet now, as a tap does: each window shows the tile of the program it runs, and New Tab and Switch Session are under the list.
 
 ## zh-Hans
 
@@ -32,3 +33,4 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - 在终端里用双指上下左右轻扫，可切到那个方向的面板；单指仍用来滚动。布局小地图只作指示，不再响应点按和滑动。
 - 连接反复断开的终端不再放弃：只要会话还在，它自己一直重连；只有服务端拒绝时才让你重试。
 - 窗口名太长时，标题栏里会截断成一行，末尾是省略号，程序图标也不会再被挤出胶囊。
+- 长按终端标题现在和点按一样打开会话的标签页列表：每个窗口都带着自己程序的图标，新建标签页和切换会话就在列表下面。
