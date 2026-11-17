@@ -37,6 +37,16 @@ Each item has a **Trigger** (what the diff shows), a **Check** (what the author 
 - **Check:** the PR builds with `xcodebuild` against current main. `swiftc -parse` is not verification.
 - **Source:** #587, #588 and #627 repaired Swift 6 build errors on main; the one #627 fixed also stopped TestFlight uploads.
 
+### Two iOS PRs on one file
+- **Trigger:** two open iOS PRs change the same Swift file.
+- **Check:** after the first merges, the second is rebased and builds with `xcodebuild` before it merges.
+- **Source:** #733 and #734 both changed `TerminalScreen.swift` and merged 38 seconds apart, with #734's compile check still unchecked.
+
+### Destructive action in a menu
+- **Trigger:** the diff adds an action that closes, kills or deletes (a pane, session, host, file).
+- **Check:** the PR says whether it asks to confirm and whether it reaches a remote host's session; a one-tap action that ends a running program asks.
+- **Source:** #734's "Close Pane" menu item ends the pane's program, also on remote hosts, with one tap and no question.
+
 ### iOS layout, animation or gesture
 - **Trigger:** the diff changes iOS views, layout, animation or gesture code.
 - **Check:** the PR carries a simulator screenshot or recording, and says what was not tested. "In progress" at merge time means not ready.
@@ -59,10 +69,10 @@ Each item has a **Trigger** (what the diff shows), a **Check** (what the author 
 - **Check:** the PR adds the log line that explains the failure next time.
 - **Source:** #663 had to add the logs that #641 and #654 lacked.
 
-### Build fix
-- **Trigger:** the PR fixes a build error or a compile-time symbol.
-- **Check:** open PRs are searched for the same symbol before the fix.
-- **Source:** #587 and #588 are the same one-line fix from two sessions.
+### Any fix: search open PRs first
+- **Trigger:** a PR fixes a bug, a build error or a security finding.
+- **Check:** open PRs are searched for the same file, symbol or finding before work starts.
+- **Source:** #587 and #588 are the same one-line fix from two sessions; #728 duplicated #723's Windows device-path fix and was closed.
 
 ## Style
 
@@ -82,6 +92,11 @@ Each item has a **Trigger** (what the diff shows), a **Check** (what the author 
 - **Trigger:** the diff adds a retry or rerun of a failed test or shard to a workflow or script.
 - **Check:** reject it. No CI job retries a failed test. Fix the test.
 - **Source:** the root-shard retry hid `TestAdoptHostTabSplit*` and `TestPaneFollowsAnotherClientsSize` (fixed in #630) and `TestPaneReturnsToItsSize`; removed in #674 (see also #563).
+
+### Server state read after a write
+- **Trigger:** a test writes to a server over `net.Pipe` or a socket and then reads the server's state.
+- **Check:** the test waits on the server's state before asserting. A returned `Write` only means the bytes were read, not processed.
+- **Source:** `TestVoiceKeepsTheLast` read the voice buffer between two chunks and got 321000 bytes, not 320000 (#700).
 
 ### Test that depends on the environment
 - **Trigger:** a test reads `$SHELL`, env vars, home paths or the host's tools without setting them.
@@ -202,7 +217,7 @@ Each item has a **Trigger** (what the diff shows), a **Check** (what the author 
 ### "Same rule as X"
 - **Trigger:** code or a comment says it applies the same rule as another place.
 - **Check:** both places call one shared function, and both have a test.
-- **Source:** #717's `dir.list` said it used the same device-path rule as `openToSend`; that rule was broken (#410).
+- **Source:** #717's `dir.list` said it used the same device-path rule as `openToSend`, but kept its own copy; `openToSend`'s copy had lost a backslash since #410 (both now share one helper, #723).
 
 ### Unbounded work from a remote request
 - **Trigger:** a remote request reads a directory, a file or a list whose size the caller controls.
