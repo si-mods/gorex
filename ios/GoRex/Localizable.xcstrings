@@ -496,6 +496,36 @@
         }
       }
     },
+    "Open This File?": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "打开这个文件？"
+          }
+        }
+      }
+    },
+    "The link you tapped names a file on %@ that its text may not show:": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "你点的链接指向 %@ 上的这个文件，链接文字未必显示它："
+          }
+        }
+      }
+    },
+    "Open": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "打开"
+          }
+        }
+      }
+    },
     "Path": {
       "localizations": {
         "zh-Hans": {

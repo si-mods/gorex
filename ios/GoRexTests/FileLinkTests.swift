@@ -6,7 +6,7 @@ import XCTest
 /// without its scheme, by the web client's rules (web/src/links.ts).
 nonisolated final class FileLinkTests: XCTestCase {
     private func file(_ text: String, matched: Bool = true) -> String? {
-        guard case .file(let p) = FileLink.target(text, matched: matched) else { return nil }
+        guard case .file(let p, _) = FileLink.target(text, matched: matched) else { return nil }
         return p
     }
 
@@ -90,6 +90,38 @@ nonisolated final class FileLinkTests: XCTestCase {
         XCTAssertNil(FileLink.target("/tmp/a.png", matched: false))
         XCTAssertNil(FileLink.target("https://example.com/a.png", matched: false))
         XCTAssertNil(FileLink.target("vscode://file/tmp/a.png", matched: false))
+    }
+
+    /// A program's link (OSC 8) may print other text over its file, as
+    /// chart.png over a private key: the app asks before it downloads. A
+    /// path or file:// URL printed as text shows what it opens.
+    func testHiddenTarget() {
+        XCTAssertEqual(FileLink.target("file:///home/demo/.ssh/id_ed25519", matched: false),
+                       .file("/home/demo/.ssh/id_ed25519", hidden: true))
+        XCTAssertEqual(FileLink.target("file:///home/demo/chart.png", matched: true), .file("/home/demo/chart.png", hidden: false))
+        XCTAssertEqual(FileLink.target("./out/chart.png", matched: true), .file("./out/chart.png", hidden: false))
+    }
+
+    /// Another machine's path, which a Windows host would reach over SMB
+    /// as it looks the file up, and a device's, are no file: UNC, \\.\,
+    /// \\?\ and \??\, with either slash, printed or in a file:// URL.
+    func testRemotePaths() {
+        for text in ["//attacker/share/x.png", "//attacker/share/x.png.", "///attacker/share/x.png", "//?/UNC/attacker/x.png",
+                     "/??/UNC/attacker/x.png"] {
+            XCTAssertNil(FileLink.target(text, matched: true), text)
+        }
+        for url in ["file:////attacker/share/x.png", "file:///%2F%2Fattacker/share/x.png", "file:///%5C%5Cattacker%5Cshare%5Cx.png",
+                    "file:///%5C??%5CUNC%5Cattacker%5Cx.png", "file:////./pipe/x"] {
+            XCTAssertNil(FileLink.target(url, matched: false), url)
+            XCTAssertNil(FileLink.target(url, matched: true), url)
+        }
+        XCTAssertTrue(FileLink.remote("\\\\attacker\\share\\x.png"))
+        XCTAssertTrue(FileLink.remote("\\\\?\\UNC\\attacker\\x.png"))
+        XCTAssertTrue(FileLink.remote("\\??\\UNC\\attacker\\x.png"))
+        XCTAssertTrue(FileLink.remote("/\\attacker\\share"))
+        XCTAssertFalse(FileLink.remote("/tmp/a.png"))
+        XCTAssertFalse(FileLink.remote("C:/dir/a.png"))
+        XCTAssertFalse(FileLink.remote("./a//b.png"))
     }
 
     /// The downloaded file's name never leaves its folder.

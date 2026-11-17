@@ -9,21 +9,24 @@ nonisolated enum FileLink {
     enum Target: Equatable {
         /// The path to ask the host for, as printed: the server resolves a
         /// relative one against the directory of the session's program.
-        case file(String)
+        /// Hidden when the text tapped need not show it: a program's link
+        /// (OSC 8) may print chart.png over file:///home/u/.ssh/id_ed25519,
+        /// so the app asks before it downloads.
+        case file(String, hidden: Bool)
         case web(URL)
     }
 
     /// The target of a link Ghostty found in the text, else of a program's
     /// OSC 8 link, which only a file:// URL makes a file's.
     static func target(_ text: String, matched: Bool) -> Target? {
-        guard matched else { return fileURLPath(text).map(Target.file) }
+        guard matched else { return fileURLPath(text).map { .file($0, hidden: true) } }
         // A word ends at a space or at the full-width punctuation of prose
         // (web/src/links.ts proseDelimiters), which has no space round it.
         let word = trimmed(String(text.prefix { !$0.isWhitespace && !proseDelimiters.contains($0) }))
-        if word.lowercased().hasPrefix("file:") { return fileURLPath(word).map(Target.file) }
+        if word.lowercased().hasPrefix("file:") { return fileURLPath(word).map { .file($0, hidden: false) } }
         guard !word.contains("://"), let path = path(word) else { return nil }
         if webPath(path), let url = URL(string: "https://" + path) { return .web(url) }
-        return .file(path)
+        return .file(path, hidden: false)
     }
 
     /// The full-width punctuation of prose, which has no space round a
@@ -34,7 +37,8 @@ nonisolated enum FileLink {
     /// (main.go:12:3, main.cs(12,3), a.swift#L12C3) and the name of the option or
     /// variable it is the value of (--out=a/b.png); nil for a folder's (a
     /// trailing /), one written with backslashes, a variable's ($HOME/x,
-    /// which the host does not expand) and what holds no letter or digit.
+    /// which the host does not expand), another machine's (remote) and
+    /// what holds no letter or digit.
     /// A name without a slash needs a letter and an extension, so that
     /// version 1.2.3 is none.
     static func path(_ word: String) -> String? {
@@ -42,7 +46,7 @@ nonisolated enum FileLink {
         if let eq = s.firstIndex(of: "="), !s[..<eq].contains("/") { s = s[s.index(after: eq)...] }
         var p = String(s).replacing(#/(?::\d+(?::\d+)?|\(\d+(?:,\d+)?\)|#L\d+(?:C\d+)?)$/#, with: "")
         p = trimmed(p)
-        guard !p.isEmpty, !p.hasSuffix("/"), !p.hasPrefix("$"),
+        guard !p.isEmpty, !p.hasSuffix("/"), !p.hasPrefix("$"), !remote(p),
               !p.contains(where: { $0 == "\\" || $0 == ":" || $0 == "\0" }),
               p.contains(where: { $0.isLetter || $0.isNumber }) else { return nil }
         if !p.contains("/") {
@@ -54,13 +58,23 @@ nonisolated enum FileLink {
     /// The path a file:// URL names on the host, as the desktop's download
     /// reads it: the host part ignored, the path decoded, and a Windows
     /// drive's leading slash taken off (file:///C:/x is C:/x); nil for
-    /// another URL, or one without a path.
+    /// another URL, one without a path, or one of another machine (remote).
     static func fileURLPath(_ text: String) -> String? {
         guard text.lowercased().hasPrefix("file://"), let url = URL(string: text) else { return nil }
         var p = url.path(percentEncoded: false)
         let chars = Array(p)
         if chars.count > 2, chars[2] == ":" { p.removeFirst() }
-        return p.isEmpty || p == "/" ? nil : p
+        return p.isEmpty || p == "/" || remote(p) ? nil : p
+    }
+
+    /// Whether a path names another machine or a device, not a file of the
+    /// host's disks, as Windows reads it: a UNC path (//server/share,
+    /// \\server\share), a device's (\\.\, \\?\) or an NT one (\??\), with
+    /// either slash. A Windows host's stat of //attacker/share/x.png would
+    /// reach that SMB server and hand it the user's NTLM hash.
+    static func remote(_ path: String) -> Bool {
+        let p = path.replacing("\\", with: "/")
+        return p.hasPrefix("//") || p.hasPrefix("/??/")
     }
 
     /// A word without what likely ends the sentence around it rather than

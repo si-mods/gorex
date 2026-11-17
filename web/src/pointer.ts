@@ -113,7 +113,8 @@ export class PointerInput {
    * program (report), or only focused the pane, or opened a link (link),
    * whose moves and release then go to no one.
    */
-  private down?: { id: number; button: number; kind: "select" | "report" | "focus" | "link" };
+  /** The press held; a link's asks (a file to ask about) as it ends, as a dialog in the press would lose its release. */
+  private down?: { id: number; button: number; kind: "select" | "report" | "focus" | "link"; asks?: string };
   /** Where the mouse is over the canvas, in client pixels; none while it is elsewhere. */
   private over?: { clientX: number; clientY: number };
   /** The link the link key is held over, underlined, which a click opens. */
@@ -297,7 +298,9 @@ export class PointerInput {
       if (link || t.hyperlinkAt(p.col, p.row) !== "") {
         this.canvas.setPointerCapture(e.pointerId);
         this.down = { id: e.pointerId, button, kind: "link" };
-        if (link?.path !== undefined) this.host.openFile(link.path);
+        // A program's hyperlink whose text is not its file asks first, as the press ends (links.ts Link.hidden).
+        if (link?.path !== undefined && link.hidden) this.down.asks = link.path;
+        else if (link?.path !== undefined) this.host.openFile(link.path);
         else if (link) window.open(link.url, "_blank", "noopener,noreferrer");
         return;
       }
@@ -349,6 +352,7 @@ export class PointerInput {
     if (d?.id !== e.pointerId) return;
     this.down = undefined;
     this.stopAutoscroll();
+    if (d.asks !== undefined) return this.askOpen(d.asks);
     if (!t) return;
     const p = this.at(e, t);
     if (d.kind === "report") {
@@ -358,6 +362,11 @@ export class PointerInput {
       this.host.redraw(true);
       this.copyOnSelect(t);
     }
+  }
+
+  /** Opens a file a program's hyperlink names over other text, once the user agrees. */
+  private askOpen(path: string) {
+    if (confirm(t("fileLinkAsk", { path }))) this.host.openFile(path);
   }
 
   private pointerCancel(e: PointerEvent) {

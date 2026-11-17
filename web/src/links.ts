@@ -31,6 +31,12 @@ export interface Link {
   x1: number;
   /** For a link to a file on the host, the path to ask the gateway for. */
   path?: string;
+  /**
+   * For a file:// hyperlink (OSC 8) whose cells do not print its path: a
+   * program may print chart.png over file:///home/u/.ssh/id_ed25519, so
+   * the page asks before it opens (docs/web-open-files.md).
+   */
+  hidden?: boolean;
 }
 
 // urlPattern finds the URLs programs print as text. A URL sends what is not
@@ -315,7 +321,33 @@ export function fileURLPath(url: string): string | undefined {
     return undefined;
   }
   if (path.length > 2 && path[2] === ":") path = path.slice(1);
-  return path === "" || path === "/" ? undefined : path;
+  return path === "" || path === "/" || remotePath(path) ? undefined : path;
+}
+
+/**
+ * Whether a path names another machine or a device, not a file of the
+ * host's disks, as Windows reads it: a UNC path (//server/share,
+ * \\server\share), a device's (\\.\, \\?\) or an NT one (\??\), with
+ * either slash. A Windows host's stat of //attacker/share/x.png would reach
+ * that SMB server and hand it the user's NTLM hash.
+ */
+export function remotePath(path: string): boolean {
+  const p = path.replaceAll("\\", "/");
+  return p.startsWith("//") || p.startsWith("/??/");
+}
+
+/**
+ * Whether a file hyperlink's cells, columns x0 up to x1 of a row, print
+ * what it opens: its URL, its path, or the path's last parts, as ls
+ * --hyperlink prints a file's name over its absolute path.
+ */
+function printsPath(t: RowText, x0: number, x1: number, url: string, path: string): boolean {
+  let s = "";
+  t.cols.forEach((c, i) => {
+    if (x0 <= c && c < x1) s += t.text[i];
+  });
+  s = s.trim().replace(/^\.\//, "");
+  return s !== "" && (s === url || s === path || path.endsWith("/" + s));
 }
 
 /** Whether the page opens a URL: http, https, ftp and mailto. A file:// URL names a file on the host, which only the gateway sends (fileURLPath). */
@@ -391,13 +423,17 @@ export function linkAt(g: LinkGrid, col: number, row: number, files = false): Li
     const web = webURL(p.path);
     if (web) return { url: web, row, x0: p.x0, x1: p.x1 };
     const path = linkPath(p.path);
-    if (files && path && !path.endsWith("/") && !backslashed(t, p.path, p.x0, p.x1)) return { url: p.path, row, x0: p.x0, x1: p.x1, path };
+    if (files && path && !path.endsWith("/") && !remotePath(path) && !backslashed(t, p.path, p.x0, p.x1)) return { url: p.path, row, x0: p.x0, x1: p.x1, path };
     return undefined;
   })();
   if (!found) return undefined;
   if (found.path !== undefined || opens(found.url)) return found;
   const path = files ? fileURLPath(found.url) : undefined;
-  return path !== undefined ? { ...found, path } : undefined;
+  if (path === undefined) return undefined;
+  // A hyperlink's cells may print other text than its file; a URL printed as text shows itself.
+  const hyperlink = g.hyperlinkAt(col, row) === found.url;
+  const hidden = hyperlink && !printsPath(g.rowText(row), found.x0, found.x1, found.url, path);
+  return hidden ? { ...found, path, hidden } : { ...found, path };
 }
 
 /** Whether a path printed at columns x0 up to x1 of a row is part of one written with backslashes, as the x.txt of C:\dir\x.txt. */
