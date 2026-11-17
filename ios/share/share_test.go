@@ -285,7 +285,10 @@ func TestShareProxySendsLANToken(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	ws, _, err := websocket.Dial(ctx, "ws://"+srv.Addr()+"/h/lan/api/control", nil)
+	ws, resp, err := websocket.Dial(ctx, "ws://"+srv.Addr()+"/h/lan/api/control", nil)
+	if resp != nil && resp.Body != nil {
+		resp.Body.Close()
+	}
 	if err != nil {
 		t.Fatalf("WebSocket through the proxy: %v", err)
 	}

@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
+	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/http3"
 	"github.com/quic-go/webtransport-go"
 )
@@ -39,6 +40,9 @@ type wtListener struct {
 	mu     sync.Mutex
 	srv    *webtransport.Server
 	pc     net.PacketConn
+	ln     *quic.EarlyListener
+	// served closes when the goroutine accepting on ln has returned.
+	served chan struct{}
 	addr   string
 	listen string
 	err    string
@@ -151,15 +155,39 @@ func (w *wtListener) start(httpListen string) {
 		go w.serveSession(sess, r.Header.Get("Origin"), r.Host)
 	})
 
+	// The QUIC listener is made here, not in wt.Serve: Serve's
+	// WaitGroup.Add would race Close's Wait when a restart closes the
+	// server before its Serve goroutine got going. Each connection goes
+	// to ServeQUICConn, which Close ends.
+	ln, err := quic.ListenEarly(pc, wt.H3.TLSConfig, &quic.Config{EnableDatagrams: true, EnableStreamResetPartialDelivery: true})
+	if err != nil {
+		pc.Close()
+		w.err = err.Error()
+		w.mu.Unlock()
+		logf("lan webtransport: %v", err)
+		return
+	}
+	served := make(chan struct{})
 	w.pc = pc
+	w.ln = ln
 	w.srv = wt
+	w.served = served
 	w.addr = pc.LocalAddr().String()
 	w.mu.Unlock()
 
 	logf("lan webtransport: listening on https://%s/api/wt", pc.LocalAddr())
 	go func() {
-		if err := wt.Serve(pc); err != nil && !isClosed(err) {
-			logf("lan webtransport: %v", err)
+		defer close(served)
+		for {
+			conn, err := ln.Accept(context.Background())
+			if err != nil {
+				return
+			}
+			go func() {
+				if err := wt.ServeQUICConn(conn); err != nil && !errors.Is(err, http.ErrServerClosed) {
+					tracef("lan webtransport: %v", err)
+				}
+			}()
 		}
 	}()
 }
@@ -170,10 +198,20 @@ func (w *wtListener) close() {
 	w.closeLocked()
 }
 
+// closeLocked stops the server: its sessions first, while the socket can
+// still tell the peers, then the listener and the socket.
 func (w *wtListener) closeLocked() {
 	if w.srv != nil {
 		w.srv.Close()
 		w.srv = nil
+	}
+	if w.ln != nil {
+		w.ln.Close()
+		w.ln = nil
+	}
+	if w.served != nil {
+		<-w.served
+		w.served = nil
 	}
 	if w.pc != nil {
 		w.pc.Close()
