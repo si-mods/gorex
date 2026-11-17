@@ -178,6 +178,194 @@ nonisolated final class SpaceStoreTests: XCTestCase {
         XCTAssertEqual(merged.spaces.first(where: { $0.id == "sp2" })?.members.map(\.block_id), ["b1"])
     }
 
+    // MARK: - Discovery order (#518)
+
+    /// `alice-laptop` holds block `b1` in its own session `gentle-meadow`;
+    /// `bob-mac`'s shared space `Work` references that block.
+    @MainActor private func laptop() -> SpaceStore.HostSnapshot {
+        .init(machine: "alice-laptop", online: true, sessions: [
+            .init(id: "s-laptop", label: "gentle-meadow", view: view("s-laptop", [("w1", ["b1"])]), remote: []),
+        ])
+    }
+
+    @MainActor private func mac(online: Bool = true) -> SpaceStore.HostSnapshot {
+        .init(machine: "bob-mac", online: online, sessions: online ? [
+            .init(id: "s-mac", label: "Work", view: view("s-mac", []), remote: [member("alice-laptop", "b1")]),
+        ] : [])
+    }
+
+    /// Both traversal orders put the block in the shared space.
+    @MainActor func testSharedReferenceWinsInEitherOrder() {
+        for hosts in [[mac(), laptop()], [laptop(), mac()]] {
+            let url = tempURL()
+            defer { try? FileManager.default.removeItem(at: url) }
+            let store = SpaceStore(fileURL: url)
+            store.sync(from: hosts)
+            XCTAssertEqual(store.space(for: "alice-laptop", block: "b1")?.name, "Work")
+            XCTAssertEqual(store.manifest.spaces.flatMap(\.members).count, 1)
+        }
+    }
+
+    /// A native membership found while the Mac is offline moves to the shared
+    /// space once the Mac comes online, keeping the same block and window.
+    @MainActor func testSharedReferenceCorrectsEarlierNativeMembership() {
+        let url = tempURL()
+        defer { try? FileManager.default.removeItem(at: url) }
+        let store = SpaceStore(fileURL: url)
+
+        store.sync(from: [mac(online: false), laptop()])
+        XCTAssertEqual(store.space(for: "alice-laptop", block: "b1")?.name, "gentle-meadow")
+
+        store.sync(from: [mac(), laptop()])
+        XCTAssertEqual(store.space(for: "alice-laptop", block: "b1")?.name, "Work")
+        let members = store.manifest.spaces.flatMap(\.members)
+        XCTAssertEqual(members.count, 1)
+        XCTAssertEqual(members.first?.window_id, "w1")
+        XCTAssertEqual(members.first?.origin, .shared)
+
+        // The Mac goes offline again: the native claim does not undo the move.
+        store.sync(from: [mac(online: false), laptop()])
+        XCTAssertEqual(store.space(for: "alice-laptop", block: "b1")?.name, "Work")
+    }
+
+    /// A membership cached before origins existed (no `origin` key) decodes,
+    /// survives native discovery, and yields to a shared reference.
+    @MainActor func testCachedLegacyMembershipIsCorrected() throws {
+        let url = tempURL()
+        defer { try? FileManager.default.removeItem(at: url) }
+        let legacy = #"""
+        {"version":1,"revision":3,"tombstones":[],"spaces":[
+          {"id":"sp_gm","name":"gentle-meadow","order":0,"updated_at":100,
+           "members":[{"machine_id":"alice-laptop","block_id":"b1","window_id":"w1","order":0,"added_at":100}]}
+        ]}
+        """#
+        try Data(legacy.utf8).write(to: url)
+
+        let store = SpaceStore(fileURL: url)
+        XCTAssertEqual(store.space(for: "alice-laptop", block: "b1")?.id, "sp_gm")
+        XCTAssertNil(store.manifest.spaces.first?.members.first?.origin)
+
+        store.sync(from: [laptop()])
+        XCTAssertEqual(store.space(for: "alice-laptop", block: "b1")?.id, "sp_gm")
+
+        store.sync(from: [laptop(), mac()])
+        XCTAssertEqual(store.space(for: "alice-laptop", block: "b1")?.name, "Work")
+        XCTAssertEqual(store.manifest.spaces.flatMap(\.members).count, 1)
+    }
+
+    /// Discovery never moves a block the user placed.
+    @MainActor func testUserPlacementIsNotOverwrittenByDiscovery() {
+        let url = tempURL()
+        defer { try? FileManager.default.removeItem(at: url) }
+        let store = SpaceStore(fileURL: url)
+        let personal = store.createSpace(name: "Personal")
+        store.assign(machine: "alice-laptop", block: "b1", window: "w1", to: personal.id)
+
+        store.sync(from: [mac(), laptop()])
+        XCTAssertEqual(store.space(for: "alice-laptop", block: "b1")?.id, personal.id)
+        XCTAssertEqual(store.manifest.spaces.flatMap(\.members).count, 1)
+
+        // The user placement also wins an iCloud merge against a later discovered one.
+        var other = store.manifest
+        let work = other.spaces.firstIndex { $0.name == "Work" }!
+        other.spaces[work].members = [.init(machine_id: "alice-laptop", block_id: "b1", window_id: "w1", order: 0, added_at: Date.now.timeIntervalSince1970 + 60, origin: .shared)]
+        other.spaces[work].updated_at += 120
+        let merged = SpaceStore.merged(local: store.manifest, remote: other)
+        XCTAssertEqual(merged.spaces.first { $0.members.contains { $0.block_id == "b1" } }?.id, personal.id)
+    }
+
+    @MainActor private func sharing(_ machine: String, _ space: String, online: Bool = true) -> SpaceStore.HostSnapshot {
+        .init(machine: machine, online: online, sessions: online ? [
+            .init(id: "s-\(machine)", label: space, view: view("s-\(machine)", []), remote: [member("alice-laptop", "b1")]),
+        ] : [])
+    }
+
+    /// Two equal shared claims do not flap as their hosts come and go, and a
+    /// repeated identical sync does not bump the revision.
+    @MainActor func testEqualSharedClaimsDoNotFlap() {
+        let url = tempURL()
+        defer { try? FileManager.default.removeItem(at: url) }
+        let store = SpaceStore(fileURL: url)
+        func run(_ alpha: Bool, _ beta: Bool) {
+            store.sync(from: [sharing("carol-mac", "Alpha", online: alpha), sharing("dave-mac", "Beta", online: beta), laptop()])
+        }
+        func placed() -> String? { store.space(for: "alice-laptop", block: "b1")?.name }
+
+        run(true, true)
+        XCTAssertEqual(placed(), "Alpha")
+        let rev = store.manifest.revision
+        run(true, true)
+        XCTAssertEqual(store.manifest.revision, rev)
+
+        // Beta's host goes offline and back: nothing moves.
+        run(true, false)
+        run(true, true)
+        XCTAssertEqual(placed(), "Alpha")
+        XCTAssertEqual(store.manifest.revision, rev)
+
+        // Alpha's host goes offline: one move to Beta, which then stays.
+        run(false, true)
+        XCTAssertEqual(placed(), "Beta")
+        let moved = store.manifest.revision
+        run(true, true)
+        run(false, true)
+        run(true, true)
+        XCTAssertEqual(placed(), "Beta")
+        XCTAssertEqual(store.manifest.revision, moved)
+        XCTAssertEqual(store.manifest.spaces.flatMap(\.members).count, 1)
+    }
+
+    /// A native membership follows its block when its own host moves the
+    /// block to another session.
+    @MainActor func testNativeMembershipFollowsSessionMove() {
+        let url = tempURL()
+        defer { try? FileManager.default.removeItem(at: url) }
+        let store = SpaceStore(fileURL: url)
+        func host(_ label: String) -> SpaceStore.HostSnapshot {
+            .init(machine: "alice-laptop", online: true, sessions: [
+                .init(id: "s-\(label)", label: label, view: view("s-\(label)", [("w1", ["b1"])]), remote: []),
+            ])
+        }
+        store.sync(from: [host("One")])
+        XCTAssertEqual(store.space(for: "alice-laptop", block: "b1")?.name, "One")
+        store.sync(from: [host("Two")])
+        XCTAssertEqual(store.space(for: "alice-laptop", block: "b1")?.name, "Two")
+        XCTAssertEqual(store.manifest.spaces.flatMap(\.members).count, 1)
+    }
+
+    /// An unknown or wrong-typed `origin` from a newer app reads as nil and
+    /// does not fail the manifest.
+    @MainActor func testUnknownOriginDecodesAsNil() throws {
+        let url = tempURL()
+        defer { try? FileManager.default.removeItem(at: url) }
+        let json = #"""
+        {"version":1,"revision":1,"tombstones":[],"spaces":[
+          {"id":"sp_a","name":"A","order":0,"updated_at":100,"members":[
+            {"machine_id":"alice-laptop","block_id":"b1","order":0,"added_at":100,"origin":"something-new"},
+            {"machine_id":"alice-laptop","block_id":"b2","order":1,"added_at":100,"origin":5},
+            {"machine_id":"alice-laptop","block_id":"b3","order":2,"added_at":100,"origin":"user"}
+          ]}
+        ]}
+        """#
+        try Data(json.utf8).write(to: url)
+        let store = SpaceStore(fileURL: url)
+        let members = store.manifest.spaces.first?.members ?? []
+        XCTAssertEqual(members.map(\.block_id), ["b1", "b2", "b3"])
+        XCTAssertEqual(members.map(\.origin), [nil, nil, .user])
+    }
+
+    /// An older app's copy of a space drops `origin`; merging keeps the local
+    /// origin of the same member in the same space.
+    @MainActor func testMergeKeepsLocalOriginDroppedByOlderApp() {
+        let local = CentralSpace(id: "sp1", name: "Work", color: nil, order: 0, updated_at: 100, members: [
+            .init(machine_id: "alice-laptop", block_id: "b1", window_id: "w1", order: 0, added_at: 100, origin: .user),
+        ])
+        var remote = local
+        remote.members[0].origin = nil
+        let merged = SpaceStore.merged(local: SpaceManifest(spaces: [local]), remote: SpaceManifest(spaces: [remote]))
+        XCTAssertEqual(merged.spaces.first?.members.first?.origin, .user)
+    }
+
     /// Mutations push to iCloud KVS and a second device pulls them on init
     /// and on external-change notifications without ping-ponging.
     @MainActor func testICloudKVSSyncAcrossDevices() {
