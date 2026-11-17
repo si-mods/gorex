@@ -4,9 +4,9 @@ Mistakes that reached main, and the rule that would have stopped each one. Read 
 
 ## Merge gates
 
-- **A fix names the test that failed before it.** If no test can be written, the PR says why and what was checked instead. Good examples: #630, #641, #654, #658. Bad: #590, #593, #595, #597, #600, #616 merged with no test and no screenshot.
-- **`swiftc -parse` is not verification.** An iOS PR builds with `xcodebuild` against current main before merge. #587, #588 and #627 repaired main after Swift 6 errors broke builds and TestFlight uploads.
-- **iOS layout, animation and gesture PRs carry a simulator screenshot or recording** in the PR, and say what was not tested. "In progress" at merge time (#616) means not ready. The key bar and bottom edge were redone six times (#616, #631, #637, #642, #643, #648); animations went back and forth (#590→#595, #593→#597, #594→#603).
+- **A fix names the test that failed before it.** If no test can be written, the PR says why and what was checked instead. Good examples: #630, #641, #654, #658. Bad: #590, #593, #595, #597, #600, #616 merged with no test.
+- **`swiftc -parse` is not verification.** An iOS PR builds with `xcodebuild` against current main before merge. #587, #588 and #627 repaired Swift 6 build errors on main; the one #627 fixed also stopped TestFlight uploads.
+- **iOS layout, animation and gesture PRs carry a simulator screenshot or recording** in the PR, and say what was not tested. "In progress" at merge time (#616) means not ready. The key bar and bottom edge were redone five times (#616, #631, #637, #643, #648); animations went back and forth (#590→#595, #593→#597, #594→#603).
 - **A style change carries a screenshot**, and sizes come from a shared constant. #605, #607, #608, #611 and #614 reset the same sizes within hours.
 - **A failing test found during a PR gets fixed or tracked, not just noted.** #663 reported that `TestLostStreamWaitsForItsInput` already fails on main on Windows, and nothing followed.
 
@@ -24,7 +24,7 @@ Mistakes that reached main, and the rule that would have stopped each one. Read 
 
 ## Design before code
 
-- **A gesture or interaction feature needs its design doc settled first.** Pane switching took #593, #639, #653 and #665 in three days; #653 dropped what #639 had just added.
+- **A gesture or interaction feature needs its design doc settled first.** Pane switching took #639, #653 and #665 in three days; #653 dropped what #639 had just added.
 - **Pick one layout model** (inset or overlay) and change it in one PR. #637 and #648 reversed each other.
 - **When a feature ships, update its design doc's status line** in the same PR.
 
