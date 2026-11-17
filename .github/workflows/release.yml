@@ -27,15 +27,30 @@ concurrency:
 
 jobs:
   # Creates the draft release, which the builds upload to, if there is none.
+  # On the runner of the build that runs: a Windows-only release does not
+  # wait for the Mac mini.
   draft:
     if: github.ref == 'refs/heads/main' && (inputs.target == 'all' || inputs.target == 'unix' || inputs.target == 'windows')
-    runs-on: [self-hosted, macmini]
+    runs-on: ${{ inputs.target == 'windows' && fromJSON('["self-hosted","yibo-pc"]') || fromJSON('["self-hosted","macmini"]') }}
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
-      - run: .github/scripts/draft-release.sh
+      - if: runner.os != 'Windows'
+        run: .github/scripts/draft-release.sh
         env:
           GH_TOKEN: ${{ github.token }}
+      # PowerShell reads mygo.json, as the runner may have no jq; Git Bash
+      # runs the script: a bare bash on Windows can be WSL's.
+      - if: runner.os == 'Windows'
+        shell: powershell
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $m = Get-Content mygo.json -Raw | ConvertFrom-Json
+          $env:VERSION = $m.version
+          $env:REPO = $m.updates.github
+          & "C:\Program Files\Git\bin\bash.exe" .github/scripts/draft-release.sh
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
   unix:
     needs: draft

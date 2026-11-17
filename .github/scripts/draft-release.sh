@@ -20,8 +20,9 @@ while [ $# -gt 0 ]; do
   esac
   shift
 done
-[ -n "$repo" ] || repo=$(jq -r .updates.github mygo.json)
-version=$(jq -r .version mygo.json)
+# REPO and VERSION, when set, stand for mygo.json's, for a runner without jq.
+[ -n "$repo" ] || repo=${REPO:-$(jq -r .updates.github mygo.json)}
+version=${VERSION:-$(jq -r .version mygo.json)}
 tag=v$version
 
 # Same as update.ReleaseNotes: the lines under "## <version>", also
