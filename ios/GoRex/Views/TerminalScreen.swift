@@ -79,7 +79,7 @@ struct TerminalScreen: View {
             if pages.isEmpty { Color.clear }
             ForEach(pages) { pane in
                 let current = pane.session === session
-                TerminalRepresentable(session: pane.session, newTab: newTab, closeTab: closeTab, mic: mic, voice: voiceCapsule, dictating: said != nil && current, snaps: switching > 0,
+                TerminalRepresentable(session: pane.session, newTab: newTab, closeTab: closeTab, newSplit: newSplit, mic: mic, voice: voiceCapsule, dictating: said != nil && current, snaps: switching > 0,
                                       paneInset: paneCellList.count > 1 ? PaneBar.height + 20 : 0,
                                       onSwipe: { stepPane($0) },
                                       canSwipe: { switching == 0 && incoming == nil && (terminal?.paneSwipeAllowed ?? false) })
@@ -160,11 +160,13 @@ struct TerminalScreen: View {
                 .sharedBackgroundVisibility(.hidden)
                 // The mic where the terminal has no key bar, and the
                 // window's menu, New Tab being in the session's sheet and on
-                // ⌘T; the bar's glass draws them.
+                // ⌘T, the split on ⌘D as the desktop's; the bar's glass
+                // draws them.
                 ToolbarItemGroup(placement: .topBarTrailing) {
                     if !hasBar { mic }
                     Menu {
                         Button("New Tab", systemImage: "plus") { newTab() }
+                        Button("Split Pane", systemImage: "rectangle.split.2x1") { newSplit() }
                     } label: {
                         Image(systemName: "ellipsis")
                     }
@@ -930,6 +932,7 @@ private struct TerminalRepresentable: UIViewRepresentable {
     let session: TerminalSession
     let newTab: () -> Void
     let closeTab: () -> Void
+    let newSplit: () -> Void
     let mic: Mic
     let voice: VoiceCapsule
     let dictating: Bool
@@ -978,6 +981,7 @@ private struct TerminalRepresentable: UIViewRepresentable {
         v.snaps = snaps
         v.terminal.newTab = newTab
         v.terminal.closeTab = closeTab
+        v.terminal.newSplit = newSplit
         v.terminal.paneInset = paneInset
         v.aboveBar = paneInset
         v.onSwipe = onSwipe
