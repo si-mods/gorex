@@ -132,9 +132,7 @@ jobs:
           PART: ${{ matrix.part }}
           # The number of root-N parts in the matrix.
           ROOT_PARTS: 3
-        # All internal/* packages run with -race and no retry. Some root UI
-        # tests still fail occasionally on shared runners, so root-* parts
-        # retry once.
+        # No part retries: a failed test fails the job.
         run: |
           if [ "$PART" = others ]; then
             pkgs=$(go list ./... | grep -v '^gorex$')
@@ -144,8 +142,7 @@ jobs:
             tests=$("$RUNNER_TEMP/gorex.test" -test.list '^(Test|Example|Fuzz)' |
               awk -v n="$ROOT_PARTS" -v i="${PART#root-}" 'NR % n == i' | paste -sd'|' -)
             [ -n "$tests" ]
-            run() { "$RUNNER_TEMP/gorex.test" -test.timeout 15m -test.run "^($tests)\$"; }
-            run || { echo "::warning::$PART failed, running it once more"; run; }
+            "$RUNNER_TEMP/gorex.test" -test.timeout 15m -test.run "^($tests)\$"
           fi
 
   test-windows:
