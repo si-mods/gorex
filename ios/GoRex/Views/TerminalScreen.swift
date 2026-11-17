@@ -1200,8 +1200,13 @@ private struct TerminalRepresentable: UIViewRepresentable {
         v.terminal.onPage = onPage
         // A pane switched away from gives up the keyboard itself: left to
         // the hit testing turned off, UIKit would give it back as the pane
-        // comes back, and a switch never shows the keyboard.
+        // comes back, and a switch never shows the keyboard. With a
+        // hardware keyboard, which shows none, the pane switched to takes
+        // the keys at once.
+        let arrived = current && !v.current
+        v.current = current
         if !current, v.terminal.isFirstResponder { _ = v.terminal.resignFirstResponder() }
+        if arrived, GCKeyboard.coalesced != nil { _ = v.terminal.becomeFirstResponder() }
         v.onPaneDrag = onPaneDrag
         v.canSwipe = canSwipe
         v.setBottomEdgeColor(UIColor(cgColor: (session.background ?? .black).cgColor))
