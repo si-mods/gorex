@@ -13,6 +13,7 @@ import { Host, icon } from "./hosts";
 import { t } from "./i18n";
 import { draggable, MenuItem, onMenu, openMenu, ownDrag, renameField } from "./manage";
 import { prefs } from "./prefs";
+import type { Line } from "./projects";
 import { mostUrgent, rank, Status, tiles, tilesWidth } from "./programs";
 import { layoutOf, leavesOf, WindowView } from "./window";
 
@@ -33,6 +34,8 @@ export interface SidebarApp {
   /** Whether c's gateway merges a window into another (gorex.merge_windows). */
   mergesWindows(c: HostConn): boolean;
   mergeWindows(c: HostConn, session: string, window: string, into: string): void;
+  /** What shows under a project's name: its home host and folder; none for a session with no folder. */
+  projectLine(c: HostConn, session: string): Line | undefined;
   /** The space chip's menu. */
   spacesMenu(c: HostConn, session: string): MenuItem[];
   /** The hosts the page can connect to, in the sidebar's order: the host list's, then the tailnet's. */
@@ -253,6 +256,15 @@ function spaceSection(nav: HTMLElement, c: HostConn, s: Session) {
   } else {
     const name = document.createElement("span");
     name.textContent = spaceName(s);
+    const line = app.projectLine(c, s.id);
+    if (line) {
+      const sub = document.createElement("small");
+      sub.className = "project-line";
+      sub.textContent = lineText(line);
+      sub.title = sub.textContent;
+      h.classList.add("has-folder");
+      name.append(sub);
+    }
     h.append(name, add);
   }
   onMenu(h, (x, y) => openMenu(x, y, app.spaceMenu(c, s.id), () => app.shown()?.focusKeys()));
@@ -289,10 +301,17 @@ function tabBar(nav: HTMLElement, c: HostConn | undefined) {
     const chip = document.createElement("button");
     chip.type = "button";
     chip.className = "space-chip";
-    chip.title = t("spaceMenuLabel");
+    const line = app.projectLine(c, s.id);
+    chip.title = line ? `${t("spaceMenuLabel")}: ${lineText(line)}` : t("spaceMenuLabel");
     chip.setAttribute("aria-haspopup", "menu");
     const name = document.createElement("span");
     name.textContent = spaceName(s);
+    if (line) {
+      const sub = document.createElement("small");
+      sub.className = "project-line";
+      sub.textContent = lineText(line);
+      name.append(sub);
+    }
     chip.append(name, icon("chevron-down"));
     chip.onclick = () => {
       const r = chip.getBoundingClientRect();
@@ -406,6 +425,11 @@ function spaceSections(nav: HTMLElement) {
     if (conns.length > 1) hostHead(nav, c.host, c);
     hostRows(nav, c);
   }
+}
+
+/** A project's line under its name: `host · folder`, the host when it is another machine. */
+export function lineText(l: Line): string {
+  return [l.unknown ? t("projectHostUnknown") : l.host, l.dir].filter(Boolean).join(" · ");
 }
 
 /** A space's name: its label, else its view's, else a word. */

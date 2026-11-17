@@ -24,6 +24,7 @@ import { programOf } from "./programs";
 import { Control, directTransport } from "./rex";
 import type { Settings } from "./settings";
 import { fetchSharedHosts, SharedGroup } from "./share";
+import { createProjectOps } from "./projectops";
 import { hold, initSidebar, paneName, redraw, sidebar as drawSidebar, sidebarBlock, spaceName, windowTitle } from "./sidebar";
 import { Tailnet, TailnetHost } from "./tailnet";
 import { webTransport } from "./webtransport";
@@ -891,10 +892,24 @@ const {
   want,
   showWanted,
   newWindow,
+  newProject: (c) => void projectOps.newProject(c),
+  changeFolder: (c, s) => void projectOps.changeFolder(c, s),
+  removeFolder: (c, s) => void projectOps.removeFolder(c, s),
   closeWindow,
   status,
   canBlockToNewWindow: gateway.blockToNewWindow,
   moveWindowToSpace: gateway.moveWindowToSpace,
+});
+
+const projectOps = createProjectOps({
+  conns: orderedConns,
+  picked: () => picked,
+  want,
+  showWanted,
+  status,
+  plainSpace: newSpace,
+  plainWindow,
+  focusKeys: () => shown?.focusKeys(),
 });
 
 initSidebar({
@@ -902,6 +917,7 @@ initSidebar({
   see,
   show: pick,
   newWindow,
+  projectLine: (c, s) => projectOps.line(c, s),
   closeWindow,
   startRename,
   renamedSpace,
@@ -1044,7 +1060,12 @@ function showWanted() {
   }
 }
 
-async function newWindow(conn: HostConn, session: string) {
+/** New Window: in a project with a folder, on its home host in the folder (projectops.ts). */
+function newWindow(conn: HostConn, session: string): Promise<void> {
+  return projectOps.newWindow(conn, session);
+}
+
+async function plainWindow(conn: HostConn, session: string) {
   const since = picked;
   try {
     const id = await conn.newWindow(session);
@@ -1169,7 +1190,7 @@ function run(name: string) {
     return;
   }
   if (name === "new-space") {
-    newSpace(currentConn());
+    void projectOps.newProject(currentConn());
     return;
   }
   if (!w) return;
@@ -1324,7 +1345,7 @@ document.fonts.addEventListener("loadingdone", () => {
     add.title = t("cmdNewSpace");
     add.setAttribute("aria-label", add.title);
   });
-  add.onclick = () => newSpace(currentConn());
+  add.onclick = () => void projectOps.newProject(currentConn());
   $("foot").append(add);
 }
 

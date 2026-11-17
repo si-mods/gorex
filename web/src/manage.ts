@@ -247,7 +247,7 @@ export function renameField(name: string, placeholder: string, label: string, do
  * workspaceConfirm: its title, what ends, Cancel and the red button.
  * It answers true for the red button.
  */
-export function confirmDanger(title: string, body: string, action: string): Promise<boolean> {
+export function confirmDanger(title: string, body: string, action: string, danger = true): Promise<boolean> {
   return new Promise((resolve) => {
     const d = document.createElement("dialog");
     d.className = "confirm";
@@ -264,7 +264,7 @@ export function confirmDanger(title: string, body: string, action: string): Prom
     cancel.textContent = t("commonCancel");
     const ok = document.createElement("button");
     ok.type = "button";
-    ok.className = "host-add destroy";
+    ok.className = danger ? "host-add destroy" : "host-add primary";
     ok.textContent = action;
     row.append(cancel, ok);
     d.append(h, p, row);
