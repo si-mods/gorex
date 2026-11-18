@@ -58,7 +58,7 @@ targets:
         product: SherpaOnnxC
     settings:
       base:
-        OTHER_LDFLAGS: -lc++
+        OTHER_LDFLAGS: -lc++ -lbz2
         SWIFT_OBJC_BRIDGING_HEADER: GoRex/GoRex-Bridging-Header.h
         PRODUCT_BUNDLE_IDENTIFIER: dev.gorex.ios
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
@@ -127,6 +127,7 @@ targets:
       - GoRex/Gallery/GalleryScanner.swift
       - GoRex/Gallery/GalleryStore.swift
       - GoRex/Gallery/PaneGallery.swift
+      - GoRex/Terminal/Archive.swift
       - GoRex/Terminal/Dictation.swift
       - GoRex/Terminal/Polish.swift
       - GoRex/Tailnet/TailnetSettings.swift
@@ -142,6 +143,9 @@ targets:
     settings:
       base:
         GENERATE_INFOPLIST_FILE: true
+        # Archive.swift reads bzip2, as the app does.
+        OTHER_LDFLAGS: -lbz2
+        SWIFT_OBJC_BRIDGING_HEADER: GoRex/GoRex-Bridging-Header.h
 schemes:
   GoRex:
     build:

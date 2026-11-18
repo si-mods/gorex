@@ -4,20 +4,26 @@ import XCTest
 /// Dictation's phrases, joined as spoken.
 nonisolated final class DictationTests: XCTestCase {
     /// SenseVoice is FluidAudio's; the others are pinned Hugging Face
-    /// files, their size their sum. A phrase is cut under each model's
-    /// limit: 29 s, and 20 for Fun-ASR-Nano.
+    /// files, their size their sum, and the same model as one tarball on
+    /// sherpa-onnx's releases, whose files are not always the commit's. A
+    /// phrase is cut under each model's limit: 29 s, and 20 for Fun-ASR-Nano.
     func testModels() {
         XCTAssertEqual(Dictation.Model.allCases, [.senseVoice, .funASRNano, .qwen3ASR])
         XCTAssertNil(Dictation.Model.senseVoice.repo)
+        XCTAssertNil(Dictation.Model.senseVoice.release)
         XCTAssertEqual(Dictation.Model.senseVoice.longest, 29 * 16_000)
         XCTAssertEqual(Dictation.Model.qwen3ASR.longest, 29 * 16_000)
         XCTAssertEqual(Dictation.Model.funASRNano.longest, 20 * 16_000)
         XCTAssertEqual(Dictation.Model.funASRNano.size, 1_009_605_061)
         XCTAssertEqual(Dictation.Model.qwen3ASR.size, 987_015_347)
+        XCTAssertEqual(Dictation.Model.funASRNano.release?.asset, "sherpa-onnx-funasr-nano-int8-2025-12-30.tar.bz2")
+        XCTAssertEqual(Dictation.Model.qwen3ASR.release?.asset, "sherpa-onnx-qwen3-asr-0.6B-int8-2026-03-25.tar.bz2")
         for m in [Dictation.Model.funASRNano, .qwen3ASR] {
             let repo = m.repo!
             XCTAssertEqual(repo.commit.count, 40, m.name)
             XCTAssertEqual(Set(repo.files.map(\.path)).count, repo.files.count, m.name)
+            // The release holds the same files as the commit, at its own sizes.
+            XCTAssertEqual(Set(m.release!.files.map(\.path)), Set(repo.files.map(\.path)), m.name)
         }
     }
 
@@ -36,6 +42,91 @@ nonisolated final class DictationTests: XCTestCase {
         XCTAssertFalse(Dictation.whole(files, in: dir))
         try Data(count: 2).write(to: dir.appending(path: "t/vocab.json"))
         XCTAssertTrue(Dictation.whole(files, in: dir))
+    }
+
+    /// A release's tarball is read as it comes: the files wanted written
+    /// where they belong, .partial taking their names, the rest passed
+    /// over, and a name too long for its header taken from the one before
+    /// it.
+    func testTarballHoldsTheFilesWanted() throws {
+        let fm = FileManager.default
+        let archive = fm.temporaryDirectory.appending(path: UUID().uuidString)
+        let dir = fm.temporaryDirectory.appending(path: UUID().uuidString)
+        defer {
+            try? fm.removeItem(at: archive)
+            try? fm.removeItem(at: dir)
+        }
+        let long = String(repeating: "l", count: 120) + ".txt"
+        let tar = Self.tar([
+            (name: "pkg", kind: UInt8(ascii: "5"), data: []),
+            (name: "pkg/notes.txt", kind: 0, data: Array("hello".utf8)),
+            (name: "pkg/a.onnx", kind: 0, data: [UInt8](repeating: 0xAB, count: 1_000)),
+            (name: "pkg/\(long)", kind: 0, data: [0x01, 0x02, 0x03]),
+        ])
+        try Self.bzip2(tar).write(to: archive)
+
+        try TarBz2.extract([(path: "a.onnx", size: 1_000), (path: long, size: 3)], from: archive, into: dir)
+        XCTAssertEqual(try Data(contentsOf: dir.appending(path: "a.onnx")), Data(repeating: 0xAB, count: 1_000))
+        XCTAssertEqual(try Data(contentsOf: dir.appending(path: long)), Data([0x01, 0x02, 0x03]))
+        XCTAssertFalse(fm.fileExists(atPath: dir.appending(path: "notes.txt").path))
+        XCTAssertEqual(try fm.contentsOfDirectory(atPath: dir.path).filter { $0.hasSuffix(".partial") }, [])
+
+        // A size that is not the archive's fails, rather than a file short.
+        XCTAssertThrowsError(try TarBz2.extract([(path: "a.onnx", size: 999)], from: archive,
+                                                into: fm.temporaryDirectory.appending(path: UUID().uuidString)))
+    }
+
+    /// A tar of the entries given, as tar writes it, a long name as GNU
+    /// does.
+    private static func tar(_ entries: [(name: String, kind: UInt8, data: [UInt8])]) -> [UInt8] {
+        var out: [UInt8] = []
+        for e in entries {
+            var name = e.name
+            let bytes = Array(name.utf8)
+            if bytes.count > 100 {
+                out += header("././@LongLink", bytes.count, UInt8(ascii: "L"))
+                out += bytes + [UInt8](repeating: 0, count: (512 - bytes.count % 512) % 512)
+                name = String(e.name.suffix(100))
+            }
+            out += header(name, e.data.count, e.kind)
+            out += e.data + [UInt8](repeating: 0, count: (512 - e.data.count % 512) % 512)
+        }
+        return out + [UInt8](repeating: 0, count: 1_024)
+    }
+
+    private static func header(_ name: String, _ size: Int, _ kind: UInt8) -> [UInt8] {
+        var h = [UInt8](repeating: 0, count: 512)
+        func put(_ text: String, _ at: Int) {
+            for (i, b) in Array(text.utf8).enumerated() where at + i < h.count { h[at + i] = b }
+        }
+        put(name, 0)
+        put("0000644", 100)
+        put("0000000", 108)
+        put("0000000", 116)
+        put(String(format: "%011o", size), 124)
+        put("00000000000", 136)
+        h[156] = kind
+        put("ustar", 257)
+        put("00", 263)
+        for i in 148..<156 { h[i] = 32 }
+        put(String(format: "%06o", h.reduce(0) { $0 + Int($1) }) + "\0 ", 148)
+        return h
+    }
+
+    /// The archive as bzip2 has it.
+    private static func bzip2(_ bytes: [UInt8]) throws -> Data {
+        var out = [UInt8](repeating: 0, count: bytes.count + bytes.count / 50 + 1_024)
+        var length = UInt32(out.count)
+        let status = bytes.withUnsafeBufferPointer { source in
+            out.withUnsafeMutableBufferPointer { dest in
+                BZ2_bzBuffToBuffCompress(dest.baseAddress!.withMemoryRebound(to: CChar.self, capacity: dest.count) { $0 },
+                                         &length,
+                                         UnsafeMutablePointer(mutating: source.baseAddress!.withMemoryRebound(to: CChar.self, capacity: source.count) { $0 }),
+                                         UInt32(bytes.count), 9, 0, 0)
+            }
+        }
+        XCTAssertEqual(status, BZ_OK)
+        return Data(out.prefix(Int(length)))
     }
 
     /// The model chosen stays chosen.

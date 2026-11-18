@@ -32,10 +32,29 @@ import os
             case .funASRNano: ("csukuangfj/sherpa-onnx-funasr-nano-int8-2025-12-30", "6f16bd378457e13f36ccf3910df9017f96c346fb",
                                [("encoder_adaptor.int8.onnx", 237_792_748), ("llm.int8.onnx", 600_356_593), ("embedding.int8.onnx", 155_584_380),
                                 ("Qwen3-0.6B/tokenizer.json", 11_422_654), ("Qwen3-0.6B/vocab.json", 2_776_833), ("Qwen3-0.6B/merges.txt", 1_671_853)])
-            case .qwen3ASR: ("csukuangfj2/sherpa-onnx-qwen3-asr-0.6B-int8-2026-03-25", "68818b2313fe77bd06f6a7c5068ff3ef59d02b8a",
-                             [("conv_frontend.onnx", 44_148_281), ("encoder.int8.onnx", 182_491_662), ("decoder.int8.onnx", 755_914_231),
-                              ("tokenizer/tokenizer_config.json", 12_487), ("tokenizer/vocab.json", 2_776_833), ("tokenizer/merges.txt", 1_671_853)])
+            case .qwen3ASR: ("csukuangfj2/sherpa-onnx-qwen3-asr-0.6B-int8-2026-03-25", "68818b2313fe77bd06f6a7c5068ff3ef59d02b8a", qwen3)
             }
+        }
+
+        /// The same model as sherpa-onnx releases it, one tarball on
+        /// GitHub: its asset, and the files in it with what each weighs.
+        /// Those are that build's, which are not always the commit's:
+        /// Fun-ASR-Nano's differ. Nil for SenseVoice's, which FluidAudio
+        /// keeps.
+        var release: (asset: String, files: [(path: String, size: Int)])? {
+            switch self {
+            case .senseVoice: nil
+            case .funASRNano: ("sherpa-onnx-funasr-nano-int8-2025-12-30.tar.bz2",
+                               [("encoder_adaptor.int8.onnx", 238_277_200), ("llm.int8.onnx", 600_339_316), ("embedding.int8.onnx", 155_583_106),
+                                ("Qwen3-0.6B/tokenizer.json", 11_422_654), ("Qwen3-0.6B/vocab.json", 2_776_833), ("Qwen3-0.6B/merges.txt", 1_671_853)])
+            case .qwen3ASR: ("sherpa-onnx-qwen3-asr-0.6B-int8-2026-03-25.tar.bz2", qwen3)
+            }
+        }
+
+        /// Qwen3-ASR's files, the same in its commit and its release.
+        private var qwen3: [(path: String, size: Int)] {
+            [("conv_frontend.onnx", 44_148_281), ("encoder.int8.onnx", 182_491_662), ("decoder.int8.onnx", 755_914_231),
+             ("tokenizer/tokenizer_config.json", 12_487), ("tokenizer/vocab.json", 2_776_833), ("tokenizer/merges.txt", 1_671_853)]
         }
 
         /// What it weighs: SenseVoice's preprocessor, encoder, vocabulary
@@ -69,9 +88,13 @@ import os
         MLModelConfigurationUtils.defaultModelsDirectory(for: .vad).appending(path: ModelNames.VAD.sileroVadFile)
     }
     /// Hugging Face, and hf-mirror.com, a mirror run by others, for where
-    /// Hugging Face can't be reached, as often from mainland China.
+    /// Hugging Face can't be reached, as often from mainland China. The
+    /// mirror now redirects there instead of serving the files itself, so a
+    /// model both fail to serve comes as one tarball from GitHub.
     nonisolated private static let hub = "https://huggingface.co"
     nonisolated private static let mirror = "https://hf-mirror.com"
+    /// sherpa-onnx's releases, where each of its models is one tarball.
+    nonisolated private static let releases = "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models"
     /// SenseVoice's text-norm: punctuation and digits (withitn).
     nonisolated private static let textNorm: Int32 = 14
 
@@ -216,7 +239,10 @@ import os
               !(FileManager.default.enumerator(at: vadModel, includingPropertiesForKeys: nil)?.contains { ($0 as? URL)?.pathExtension == "partial" } ?? true)
         else { return false }
         guard let repo = m.repo else { return SenseVoiceModels.modelsExist(at: speechDir, precision: precision) }
-        return whole(repo.files, in: dir(m))
+        if whole(repo.files, in: dir(m)) { return true }
+        // The release's build of the same model, whose files are not
+        // always the commit's.
+        return m.release.map { whole($0.files, in: dir(m)) } ?? false
     }
 
     /// Whether each file is in dir at its size; one downloading is not
@@ -232,10 +258,11 @@ import os
         return (speech, try await VadManager())
     }
 
-    /// Downloads what is missing from Hugging Face, and from the mirror
-    /// when Hugging Face does not answer in seconds or its download fails.
-    /// FluidAudio checks each file against the size its source lists, and
-    /// keeps it as .partial until it is whole; get does the same.
+    /// Downloads what is missing from the first source that serves it:
+    /// Hugging Face, hf-mirror, or sherpa-onnx's release on GitHub, where
+    /// the model is one tarball. FluidAudio checks each file against the
+    /// size its source lists, and keeps it as .partial until it is whole;
+    /// get and the release's tarball do the same.
     @concurrent nonisolated private static func fetch(_ m: Model, _ progress: @escaping @Sendable (Double) -> Void) async throws {
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         var v = URLResourceValues()
@@ -244,19 +271,124 @@ import os
         try dir.setResourceValues(v)
         ModelHub.offlineMode = false
         defer { ModelHub.offlineMode = true }
-        let sources = await reachable(hub) ? [hub, mirror] : [mirror]
-        for source in sources {
-            ModelRegistry.baseURL = source
+        var failure: Error?
+        for source in await sources(m) {
+            ModelRegistry.baseURL = source.url
             do {
                 try await ModelHub.download(.vad, to: MLModelConfigurationUtils.defaultModelsDirectory())
                 if m == .senseVoice {
                     _ = try await SenseVoiceModels.download(precision: precision) { progress($0.fractionCompleted) }
+                } else if source.release {
+                    try await tarball(m, progress)
                 } else {
-                    try await get(m, from: source, progress)
+                    try await get(m, from: source.url, progress)
                 }
                 return
-            } catch where source != sources.last && !Task.isCancelled {}
+            } catch {
+                if Task.isCancelled { throw error }
+                failure = error
+            }
         }
+        throw RexError(code: "dictation", message: String(localized: "Hugging Face, its mirror and GitHub could not be reached.")
+                       + (failure.map { " " + $0.localizedDescription } ?? ""))
+    }
+
+    /// A place a model comes from: Hugging Face or its mirror, file by
+    /// file, or sherpa-onnx's release, the model as one tarball.
+    nonisolated private struct Source: Sendable {
+        let url: String
+        let release: Bool
+    }
+
+    /// The sources that serve a model, best first. One that does not serve
+    /// is left out, so a host this network blocks fails no download: from
+    /// mainland China hf-mirror answers nothing but a redirect to Hugging
+    /// Face, which does not answer at all.
+    @concurrent nonisolated private static func sources(_ m: Model) async -> [Source] {
+        async let fromHub = serves(hub, m)
+        async let fromMirror = serves(mirror, m)
+        var sources: [Source] = []
+        if await fromHub { sources.append(Source(url: hub, release: false)) }
+        if await fromMirror { sources.append(Source(url: mirror, release: false)) }
+        if m.release != nil { sources.append(Source(url: hub, release: true)) }
+        return sources
+    }
+
+    /// Whether a source serves a model: the first bytes of the smallest of
+    /// its files come back, not a redirect to a host this network cannot
+    /// reach. SenseVoice's is the VAD's model, which a source of a
+    /// sherpa-onnx one carries too.
+    @concurrent nonisolated private static func serves(_ base: String, _ m: Model) async -> Bool {
+        let probe: (repo: String, commit: String, path: String, size: Int)
+        if let repo = m.repo, let smallest = repo.files.min(by: { $0.size < $1.size }) {
+            probe = (repo.name, repo.commit, smallest.path, smallest.size)
+        } else {
+            probe = (Repo.vad.rawValue, "main", "\(ModelNames.VAD.sileroVadFile)/coremldata.bin", 100)
+        }
+        let n = min(64, probe.size)
+        guard let url = URL(string: "\(base)/\(probe.repo)/resolve/\(probe.commit)/\(probe.path)") else { return false }
+        var r = URLRequest(url: url, timeoutInterval: 10)
+        r.setValue("bytes=0-\(n - 1)", forHTTPHeaderField: "Range")
+        guard let (data, res) = try? await sessions[0].data(for: r) else { return false }
+        return (res as? HTTPURLResponse)?.statusCode == 206 && data.count == n
+    }
+
+    /// A sherpa-onnx model from GitHub's release: the whole of it as one
+    /// tarball, resumed by ranges on four connections as get does a file,
+    /// then unpacked where its files belong. Half of what the tarball holds
+    /// is not wanted, and bzip2 gives no way to pass over it.
+    @concurrent nonisolated private static func tarball(_ m: Model, _ progress: @escaping @Sendable (Double) -> Void) async throws {
+        guard let release = m.release else { return }
+        let dir = dir(m)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let url = URL(string: "\(releases)/\(release.asset)")!
+        let archive = dir.appending(path: release.asset).appendingPathExtension("partial")
+        let size = try await length(of: url)
+        var have = Int((try? archive.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0)
+        if have > size {
+            try FileManager.default.removeItem(at: archive)
+            have = 0
+        }
+        if have < size {
+            if !FileManager.default.fileExists(atPath: archive.path) { FileManager.default.createFile(atPath: archive.path, contents: nil) }
+            let out = try FileHandle(forWritingTo: archive)
+            defer { try? out.close() }
+            try out.truncate(atOffset: UInt64(have))
+            try out.seekToEnd()
+            try await withThrowingTaskGroup(of: (Int, Data, URL).self) { g in
+                var next = have
+                var got: [Int: Data] = [:]
+                while have < size {
+                    while next < size, next - have < 3 * chunk {
+                        let at = next, n = min(chunk, size - at)
+                        g.addTask { try await range(at, n, of: url, else: url) }
+                        next += n
+                    }
+                    let (at, data, _) = try await g.next()!
+                    got[at] = data
+                    while let data = got.removeValue(forKey: have) {
+                        try out.write(contentsOf: data)
+                        have += data.count
+                        progress(0.9 * Double(have) / Double(size))
+                    }
+                }
+            }
+        }
+        try TarBz2.extract(release.files, from: archive, into: dir, strip: 1) { progress(0.9 + 0.1 * $0) }
+        try? FileManager.default.removeItem(at: archive)
+    }
+
+    /// How big a release's asset is: a range asked for its first byte is
+    /// answered with the whole of it.
+    @concurrent nonisolated private static func length(of url: URL) async throws -> Int {
+        var r = URLRequest(url: url, timeoutInterval: 30)
+        r.setValue("bytes=0-0", forHTTPHeaderField: "Range")
+        let (_, res) = try await URLSession.shared.data(for: r)
+        guard let http = res as? HTTPURLResponse,
+              let field = http.value(forHTTPHeaderField: "Content-Range"),
+              let total = Int(field.split(separator: "/").last ?? ""), total > 0
+        else { throw URLError(.badServerResponse) }
+        return total
     }
 
     /// A sherpa-onnx model's files not yet whole, as Maple gets its faces:
@@ -333,12 +465,6 @@ import os
         throw URLError(.badServerResponse)
     }
 
-    /// Whether a host answers within seconds; one a network blocks does not.
-    @concurrent nonisolated private static func reachable(_ base: String) async -> Bool {
-        var r = URLRequest(url: URL(string: base)!, timeoutInterval: 6)
-        r.httpMethod = "HEAD"
-        return (try? await URLSession.shared.data(for: r)) != nil
-    }
 }
 
 /// One listening, as rootshell's DictationRecognizer, with its defaults:
