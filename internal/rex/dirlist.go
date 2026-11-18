@@ -46,6 +46,13 @@ var (
 // a listing that failed.
 const DirListBusy = "rex: too many directory listings"
 
+// VolumePath is volumePath for callers outside this package: the path
+// itself when it names a place a directory can be read from, false for a
+// device, a pipe, or a path rooted with no volume. On Windows reading such
+// a path may wait on it or contact another host, so no path a client sends
+// reaches a file call unchecked.
+func VolumePath(path string) (string, bool) { return volumePath(path) }
+
 // FillDirListsForTest makes the servers of this process refuse listings
 // as too many run, till restore: for the tests of other packages.
 func FillDirListsForTest() (restore func()) {

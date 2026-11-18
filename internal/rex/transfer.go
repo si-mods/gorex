@@ -184,6 +184,14 @@ func (s *Server) filePut(conn net.Conn, r *bufio.Reader, first []byte, peer stri
 	if req.Size < 0 {
 		return errors.New("rex: a negative size")
 	}
+	// A directory a client names absolute is read here: a device, a pipe
+	// or a share rooted with no volume may wait or contact another host
+	// (volumePath).
+	if filepath.IsAbs(req.Dir) {
+		if _, ok := volumePath(req.Dir); !ok {
+			return fmt.Errorf("rex: %s names no folder to put a file in", req.Dir)
+		}
+	}
 	dir, err := s.filePath(req.SID, req.Dir)
 	if err != nil {
 		// An abort names the directory absolute, as the put's first answer

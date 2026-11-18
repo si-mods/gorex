@@ -199,8 +199,8 @@ Each item has a **Trigger** (what the diff shows), a **Check** (what the author 
 
 ### Untrusted path to the host's filesystem
 - **Trigger:** a path from terminal output, a link or a remote caller reaches `os.Stat`, `os.Open` or a directory read on the host.
-- **Check:** UNC (`//host/…`, `\\host\…`) and device paths (`\\.\`, `\\?\`, `//./`) are refused, with a test for each form. On Windows a UNC stat contacts that host.
-- **Source:** #721 passed `//host/share/x`; the device-path guard from #410 never matched because its prefixes lost a backslash.
+- **Check:** device and pipe paths (`\\.\`, `\\?\`, `//./`, `\??\`, a redirector such as `\\;LanmanRedirector`) are refused, with a test for each form; opening one waits on it forever on Windows. A plain drive or share path is a place the user may name, and `plainPath` takes it. A path a client sends absolute goes through `rex.VolumePath` first: `list_dir`, `project.set_home` and `file.put` did not, so `\\.\pipe\x` from a paired device held a server goroutine.
+- **Source:** #721 passed `//host/share/x`; the device-path guard from #410 never matched because its prefixes lost a backslash. The review of 0.38.0 found the three methods above still unchecked.
 
 ### Public repo
 - **Trigger:** every PR, and every screenshot or log added to one.

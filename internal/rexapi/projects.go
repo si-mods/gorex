@@ -138,6 +138,9 @@ func methodGorexProjectSetHome(c *control, a args) (any, *apiError) {
 		return nil, aerr
 	}
 	if machine != "" && host == "" {
+		if _, ok := rex.VolumePath(folder); !ok {
+			return nil, errNotFound("no folder %s on this machine", folder)
+		}
 		if st, err := os.Stat(folder); err != nil || !st.IsDir() {
 			return nil, errNotFound("no folder %s on this machine", folder)
 		}

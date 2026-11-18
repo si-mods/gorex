@@ -660,7 +660,13 @@ func resolveDir(path, cwd, home string) (string, string) {
 	case strings.HasPrefix(path, "~/"):
 		return filepath.Join(home, path[2:]), "ok"
 	case filepath.IsAbs(path):
-		return filepath.Clean(path), "ok"
+		if p, ok := rex.VolumePath(path); ok {
+			return p, "ok"
+		}
+		// A device, a pipe, or a path rooted with no volume: reading it
+		// may wait on it or contact another host, so nothing here reads
+		// it, and it names no directory.
+		return filepath.Clean(path), "missing"
 	case cwd == "":
 		return filepath.Clean(path), "ok"
 	}
