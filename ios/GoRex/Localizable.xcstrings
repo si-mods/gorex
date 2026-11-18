@@ -166,6 +166,16 @@
         }
       }
     },
+    "App Icon": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "应用图标"
+          }
+        }
+      }
+    },
     "Arrow Keys": {
       "localizations": {
         "zh-Hans": {
@@ -252,6 +262,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "选择文件夹"
+          }
+        }
+      }
+    },
+    "Classic": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "经典"
           }
         }
       }
@@ -366,12 +386,32 @@
         }
       }
     },
+    "Prism": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "棱镜"
+          }
+        }
+      }
+    },
     "Shell": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
             "value": "Shell"
+          }
+        }
+      }
+    },
+    "Spectrum": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "光谱"
           }
         }
       }
