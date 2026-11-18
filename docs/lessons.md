@@ -57,6 +57,11 @@ Each item has a **Trigger** (what the diff shows), a **Check** (what the author 
 - **Check:** the PR carries a simulator screenshot or recording, and says what was not tested. "In progress" at merge time means not ready.
 - **Source:** #616 merged in progress. The key bar and bottom edge were redone five times (#616, #631, #637, #643, #648); animations went back and forth (#590→#595, #593→#597, #594→#603).
 
+### Removing an iOS entitlement or capability
+- **Trigger:** a PR removes an iOS entitlement or capability.
+- **Check:** search `docs/` for features or designs that may need it again, and say in the PR that a later PR re-adding it must also re-enable it on the App ID.
+- **Source:** #581 added the iCloud key-value store entitlement, #778 removed it with space sync, and #798 adds it back for settings sync.
+
 ## Fixes
 
 ### Path shared by local panes, remote hosts and iOS

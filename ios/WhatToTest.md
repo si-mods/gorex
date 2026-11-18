@@ -47,6 +47,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - Long-press a project to rename it, color it, move it to another space or close it; long-press a tab to move it to another project. A computer that is off shows its projects greyed.
 - Delete a space in Edit Spaces: swipe it or tap its red minus. Its projects move to Default and no tab closes; a computer that is off moves them when it connects.
 - Coming back to a terminal after the computer's Tailscale connection started over no longer closes the app: the terminal reconnects by itself.
+- Your theme, interface, font, font size, minimum contrast and dictation's API key, base URL and model now follow you to your other iPhone and iPad through iCloud.
 - A project's tabs and New Tab now line up with the project row instead of sitting indented.
 - On a phone that shows its clock at the side, such as a folded iPhone, a terminal's back button, title and menu stay in the bar at the top, and the terminal fills the width under the clock.
 - Fun-ASR-Nano and Qwen3-ASR download from GitHub now where Hugging Face cannot be reached, and a download that stopped picks up where it left off.
@@ -88,6 +89,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - 长按项目可重命名、设颜色、移到别的空间或关闭；长按标签页可移到别的项目。关机的电脑以灰色显示它的项目。
 - 在「编辑空间」里可以删除空间：左滑它或点红色减号。它的项目移到「默认」，不会关闭任何标签页；关机的电脑在连上后再移动。
 - 电脑的 Tailscale 连接重连过之后，再回到终端不会再让应用退出：终端会自己重新连上。
+- 你的主题、界面、字体、字号、最小对比度，以及听写的 API 密钥、服务地址和模型，现在会通过 iCloud 同步到你的其他 iPhone 和 iPad。
 - 展开项目后，它的标签页和「新建标签页」与项目行左对齐，不再缩进。
 - 在时钟显示在侧边的手机上，例如折叠屏 iPhone，终端的返回按钮、标题和菜单留在顶部工具栏里，终端也铺满到时钟那一列下面。
 - 切换空间的按钮现在和侧栏顶部的搜索、侧栏开关在同一行；空间名太长时末尾显示省略号。

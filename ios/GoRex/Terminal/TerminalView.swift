@@ -28,7 +28,12 @@ final class TerminalView: UIView, TerminalOutput {
         return v > 0 ? v : 12
     }
     /// The font family chosen in Settings; "" is Ghostty's own, JetBrains Mono.
-    static var fontFamily: String { UserDefaults.standard.string(forKey: "fontFamily") ?? "" }
+    static var fontFamily: String { family(UserDefaults.standard.string(forKey: "fontFamily") ?? "") }
+    /// A stored family as it is used: Maple Mono, which each device
+    /// downloads, falls back to Ghostty's own where it is not installed.
+    static func family(_ stored: String) -> String {
+        stored == Maple.family && !Maple.shared.installed ? "" : stored
+    }
     /// The least contrast of text with its background chosen in Settings,
     /// as Ghostty's minimum-contrast: 1, unset, corrects nothing. Ghostty
     /// turns text short of it black or white, not a shade of its hue as
