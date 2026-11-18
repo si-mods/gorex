@@ -1454,20 +1454,6 @@ func (msgs Messages) PaneNeedsAttention() string {
 	return Catalog.Format(msgs.locale, "paneNeedsAttention", nil)
 }
 
-// PanePrinting says "Printing"
-// in the language the app shows.
-//
-// Tooltip of the dot of a pane whose program is printing output.
-func PanePrinting() string { return In(i18n.Locale()).PanePrinting() }
-
-// PanePrinting says "Printing"
-// in the language of msgs.
-//
-// Tooltip of the dot of a pane whose program is printing output.
-func (msgs Messages) PanePrinting() string {
-	return Catalog.Format(msgs.locale, "panePrinting", nil)
-}
-
 // WindowMinimize says "Minimize"
 // in the language the app shows.
 //

@@ -349,7 +349,7 @@ func tabsCanMerge(src, dst *Tab) bool {
 }
 
 // tabEnd draws the end of a tab: its close button while hovered, else the
-// dot of its activity.
+// dot of its record, or of its attention.
 func (a *App) tabEnd(c *ui.Context, k *colors, t *Tab, hovered bool) {
 	if hovered && len(a.tabs) > 1 {
 		x := iconButton(c, k, "x", locales.CmdCloseTab(), 18, 12).Tooltip(locales.CmdCloseTab())
@@ -362,8 +362,6 @@ func (a *App) tabEnd(c *ui.Context, k *colors, t *Tab, hovered bool) {
 		attentionDot(c, k, t.allPanes()...).Margin(0, 5, 0, 0)
 	} else if s != nil && s.State == "working" {
 		statusDot(c, k, s, 5.5)
-	} else if a.tabBusy(c, t) {
-		activityDot(c, k.busy, 5.5)
 	}
 }
 
@@ -401,15 +399,6 @@ func (t *Tab) status() *rex.ProgramStatus {
 		}
 	}
 	return best
-}
-
-func (a *App) tabBusy(c *ui.Context, t *Tab) bool {
-	for _, p := range t.allPanes() {
-		if a.statusOf(c, p) == statusRunning {
-			return true
-		}
-	}
-	return false
 }
 
 func (a *App) moveTab(t *Tab, to int) {

@@ -420,10 +420,6 @@
   "@paneNeedsAttention": {
     "description": "Tooltip of the dot of a pane whose program finished or rang out of sight."
   },
-  "panePrinting": "Printing",
-  "@panePrinting": {
-    "description": "Tooltip of the dot of a pane whose program is printing output."
-  },
   "windowMinimize": "Minimize",
   "@windowMinimize": {
     "description": "Window button that minimizes the window (Windows)."
