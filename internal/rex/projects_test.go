@@ -136,6 +136,46 @@ func TestMigrateKeepsShells(t *testing.T) {
 	}
 }
 
+// TestUnnameProjectTabs: as the layout loads, a project's tab named
+// exactly as its project, as project.create of v0.41.0 named its first
+// tab, loses that name, once; other names, the tabs with no project and a
+// tab named so after it ran keep theirs.
+func TestUnnameProjectTabs(t *testing.T) {
+	s, c := applyFixture(t)
+	np := layout.NoProjectName
+	raw := fmt.Sprintf(`{"version":%d,"sessions":[
+ {"id":"p1","name":"acme","dir":%q,"tabs":[{"id":"a","name":"acme","root":{"sid":"s1"}},{"id":"b","name":"logs","root":{"sid":"s2"}},{"id":"c","name":"Acme","root":{"sid":"s3"}}]},
+ {"id":"np","name":%q,"tabs":[{"id":"d","name":%q,"root":{"sid":"s4"}}]}]}`,
+		layout.Version, t.TempDir(), np, np)
+	s.mu.Lock()
+	s.layout = []byte(raw)
+	s.mu.Unlock()
+	s.migrateLayout()
+	names := func() []string {
+		var out []string
+		for _, w := range storeOf(t, c).Sessions {
+			for _, tab := range w.Tabs {
+				out = append(out, tab.Name)
+			}
+		}
+		return out
+	}
+	if got, want := names(), []string{"", "logs", "Acme", np}; !slices.Equal(got, want) {
+		t.Fatalf("the tabs' names %q, want %q", got, want)
+	}
+	if _, err := os.Stat(filepath.Join(Dir(), tabNamesMark)); err != nil {
+		t.Fatalf("no mark that it ran: %v", err)
+	}
+	// Once: a tab named as its project after it ran keeps its name.
+	s.mu.Lock()
+	s.layout = []byte(raw)
+	s.mu.Unlock()
+	s.migrateLayout()
+	if got := names(); got[0] != "acme" {
+		t.Errorf("a second load cleared the name again: %q", got)
+	}
+}
+
 // TestProjectAdopt adopts, as host h1 does once the app sends it the
 // adoption, shells that run already into the tabs given, in a project it
 // makes: it starts no shell, a pane of no session here is skipped, the

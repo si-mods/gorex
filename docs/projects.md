@@ -687,6 +687,13 @@ What the design left open, and phase 2 (the desktop) decided:
   v0.40.x held for a host away, made by another client of this machine,
   are dropped by the migration and not sent: such a session runs on until
   it is closed there.
+- **A tab named as its project loses that name, once.** `project.create`
+  of v0.41.0 and v0.41.1 gave a project's first tab the project's name,
+  which hid the tab's title; it no longer does. As the layout loads, the
+  server clears the name of each project's tab that equals its project's
+  name exactly, once (`unnameProjectTabs`, noted in `layout.tabnames`
+  beside the layout), so the tab shows its title. The tabs with no
+  project keep theirs. A user who wants the name back renames the tab.
 - **`space.home`** stays on the server, for the deprecated
   `gorex.project.set_home` of phase 1; the desktop no longer sends it, and
   `Workspace.Host`, the home-host waits and `layout.MachineHost` are gone.
