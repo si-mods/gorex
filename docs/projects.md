@@ -28,7 +28,7 @@ GoRex's own protocol (`gorex.*` methods, the session server):
 
 | Level | Word (zh-Hans) | What it is | GoRex code | Rex API |
 | --- | --- | --- | --- | --- |
-| 1 | Space (空间) | Work, Life: the picker atop the sidebar | the space list | none (GoRex's own) |
+| 1 | Space (空间) | Work, Life: the picker atop the sidebar | a name on each project | none (GoRex's own) |
 | 2 | Host (主机) | this machine, office-h800 | a `hosts.json` entry | a gateway |
 | 3 | Project (项目) | a folder on the host | a `Workspace` with a `Dir` | a session |
 | 4 | Tab (标签页) | dev, logs | `Tab` | a window |
@@ -62,10 +62,24 @@ Made by the user on 2026-11-18 (#771):
    name can change.
 5. **The tab bar shows the current project's tabs** when the tabs are on
    top. The title bar picks the host and the project.
-6. **Projects of v0.38.0 and v0.39.0 become projects** on their home
-   host, all in one space; their tabs on other hosts become tabs with no
-   project.
+6. **Projects of v0.38.0 and v0.39.0 become projects** of this machine,
+   in one space (but see 12).
 7. A tab with no project stays possible, as a secondary entry.
+
+Made by the user on 2026-11-18, after a review of this design:
+
+8. **No space list to sync.** A space is a name on its projects. The
+   `gorex.spaces_sync` manifest and its iCloud copy go.
+9. **No `ShareLayout` flag.** A host's layout is where its projects and
+   tabs live, so every client the host lets in reads it.
+10. **One project per folder on a host**, whatever its space.
+11. **One "Tabs with no project" for each host**, shown in every space.
+12. **Projects homed on another host in v0.38.0** are not moved there:
+    their tabs become tabs with no project, with a note to make the
+    project again on that host.
+13. **Clients cache each host's last projects**, to show an offline host;
+    the cache is only shown, never changed.
+14. **Projects are in order of last use**, as Codex lists them.
 
 Kept from v0.38.0: the folder browser and `dir.list`, the rule that a new
 tab of a project starts in its folder, the folder check, and the Rex Go
@@ -83,12 +97,15 @@ type Workspace struct {
 	ID    string `json:"id"`
 	Name  string `json:"name"`
 	Color string `json:"color,omitempty"`
-	// Space is the ID of the space the workspace shows in.
+	// Space is the name of the space the project shows in; "" is
+	// "Default". The workspace of tabs with no project has none.
 	Space string `json:"space,omitempty"`
-	// Dir is the project's folder on this host, absolute. "" for the
-	// tabs of Space that are in no project: one such workspace for each
-	// space, at most.
+	// Dir is the project's folder on this host, absolute and unique
+	// among the host's projects. "" for the host's one workspace of tabs
+	// with no project.
 	Dir string `json:"dir,omitempty"`
+	// Used is when a tab of the project last took input or was made.
+	Used time.Time `json:"used,omitzero"`
 	Layout
 }
 ```
@@ -96,7 +113,9 @@ type Workspace struct {
 - The `Host` field goes: a project's folder is always on the host whose
   layout keeps it. A layout of v0.38.0 is read once, as in Migration.
 - A workspace with a `Dir` is a **project**. The one with no `Dir` holds
-  the space's **tabs with no project** on this host.
+  the host's **tabs with no project**, which every space shows.
+- The server refuses a second project of a folder; the caller gets the
+  first one's ID (`code: "exists"`).
 - The Rex API shows each workspace as a Rex session, a tab as a window
   and a pane as a block, as today. Rex's own apps see a project as a
   session, unchanged.
@@ -105,21 +124,42 @@ type Workspace struct {
 
 ### Spaces
 
-A space is an ID, a name, a color and an order, the same on every
-client. Spaces change seldom.
+A space is only a name on projects. No list of spaces is kept or synced.
 
-- The list of spaces goes in the space sync that exists today (the
-  desktop's `gorex.spaces_sync`, Rex Go's manifest in iCloud;
-  `docs/ios-centralized-spaces.md`). The manifest keeps only the spaces'
-  names, colors and order; it no longer keeps which tabs a space has.
-- Which space a project is in is on the project, on its host
-  (`Workspace.Space`). So no client has to agree with another about
-  membership.
-- A project whose space no client knows shows in a space named
-  "Unsorted" until the user moves it.
-- The first space is **Default**. Its ID is `default` on every host, so
-  a host that never heard of the space list still puts new projects
-  somewhere all clients show.
+- A client's space picker lists the names its hosts' projects carry, and
+  "Default" (a project with no `Space`). It keeps each space's color and
+  order itself, in its own settings.
+- **New Space…** adds a name to the picker on this client; the space
+  stays there, empty, until a project moves into it.
+- **Rename** a space: the client asks each connected host to rename it
+  (`gorex.space.rename`). A host offline then keeps the old name; the
+  client keeps the rename and sends it when the host connects.
+- A space no project carries any more drops from the picker, unless it
+  was made on this client and is still empty.
+- The `gorex.spaces_sync` manifest and its iCloud copy
+  (`docs/ios-centralized-spaces.md`) are removed.
+
+### The desktop window
+
+The desktop's window shows the hosts' layouts; it no longer keeps a
+layout of other hosts' panes.
+
+- Each project's tabs, their splits, sizes, floating panes and browser
+  panes are in the layout of the project's host, as Rex's windows and
+  blocks are. Every client of the host sees the same tabs.
+- This machine's layout keeps this machine's projects. It keeps no pane
+  of another host: `Node.Host`, `Kills` and `Teleports` of other hosts'
+  panes go with the migration.
+- What stays on each client, in its own settings: the space shown, the
+  project and tab shown in each window, the window's size, the sidebar's
+  width, which projects are expanded, the spaces' colors and order.
+- `ShareLayout` goes: a client the host lets in (the Remote Access list,
+  a paired device) reads its layout and follows its changes, as it
+  already attaches to its sessions.
+- **Offline hosts.** Each client keeps a copy of each host's projects
+  and their tabs' names as it last saw them, and shows them greyed while
+  the host is away. Nothing in the copy can be changed or opened; it is
+  replaced as the host connects.
 
 ## Listing a directory
 
@@ -238,10 +278,10 @@ A project's context menu:
   greyed, with their last tabs.
 - A project row expands to its tabs. Its context menu: New Tab, Rename,
   Color, Move to Space, Reveal Folder (this host only), Close Project.
-- Projects of a host are in the order the user drags them; a new project
-  goes first.
-- **Tabs with no project** is collapsed by default and has New Tab with
-  No Project.
+- Projects of a host are in order of last use (`Used`), the latest
+  first; those not used for 30 days go under a collapsed **Older**.
+- **Tabs with no project** shows in every space, collapsed by default,
+  and has New Tab with No Project.
 - Drag a tab onto a project of its host to move it there, with its panes
   and their processes.
 
@@ -313,8 +353,9 @@ host chosen:
 └─────────────────────────────┘
 ```
 
-- A folder that is already a project of this host and space: Create goes
-  to that project instead of making a second one.
+- A folder that is already a project of this host: Create shows that
+  project instead of making a second one; when it is in another space,
+  it asks whether to move it to this space.
 
 ### New tabs and panes
 
@@ -353,8 +394,10 @@ that names it.
 ```
 
 - The top shows the space picker, not a strip of projects.
-- Each host lists its projects of the space, then Tabs with no project.
-  A project expands to its tabs and a New Tab row.
+- Each host lists its projects of the space, in order of last use, then
+  Tabs with no project. A project expands to its tabs and a New Tab row.
+- An offline host shows its projects greyed, from the copy the app kept
+  when it last saw them.
 - The host's `+ ` opens the folder browser of v0.38.0 on that host and
   makes the project (`gorex.project.create`).
 - New Tab in a project opens on its host with `cwd` set to the folder.
@@ -370,44 +413,50 @@ hosts.
 Rex's own methods keep Rex's words (`session`, `window`, `block`).
 GoRex's own methods use the words above:
 
-- `gorex.project.create {name, dir, space_id}` → `{project_id, tab_id}`.
+- `gorex.project.create {name, dir, space}` → `{project_id, tab_id}`.
   The `dir` goes through `rex.VolumePath` first, so a device or pipe
   path is refused (`docs/lessons.md`, "device paths"); then the folder
   is checked as `dir.list` does, and the project's first tab starts in
-  it.
+  it. A folder that is a project already answers `code: "exists"` with
+  that project's ID.
 - `gorex.project.move {tab_id, project_id}` moves a tab, with its panes,
   between workspaces of this host. `project_id` "" moves it to the
   space's tabs with no project.
-- `gorex.project.update {project_id, name?, color?, space_id?}`.
+- `gorex.project.update {project_id, name?, color?, space?}`.
+- `gorex.space.rename {from, to}` renames the space on every project of
+  this host.
 - Each session in a session list and a session view gains
-  `project: {dir, space_id}`; the space's tabs with no project have
-  `project: {space_id}` and no `dir`. Rex's apps ignore the field.
+  `project: {dir, space, used}`; the host's tabs with no project have
+  `project: {}`. Rex's apps ignore the field.
 - `gorex.project.set_home` of v0.38.0 is removed: a project's folder does
   not change.
-- The welcome lists `gorex.projects2`. A client that sees only
-  `gorex.projects` talks to a host of v0.38.0 or v0.39.0 and shows its
+- The welcome lists `gorex.projects` with `version: 2`. A client that
+  sees no version talks to a host of v0.38.0 to v0.40.x and shows its
   tabs as before, with no Projects section.
 
 ## Migration
 
-On the first start of a version with this design:
+The server migrates its own layout once, as it loads it:
 
-- **This host's layout.** A workspace with a `Dir` and `Host` "" stays a
-  project, in space `default`. A workspace with no `Dir` becomes the
-  space's tabs with no project; its name becomes a space of the same
-  name when it is not "Default" (the user's old spaces come back).
-- **A workspace whose `Host` is another host** (a v0.38.0 project homed
-  elsewhere): the desktop asks that host, when it connects, to make the
-  project (`gorex.project.create`) and to move into it that host's tabs
-  the workspace held. The workspace's tabs on this machine become tabs
+- A workspace with a `Dir` and `Host` "" (a project of this machine)
+  stays a project, in space "Default". Two of one folder become one,
+  with the tabs of both.
+- A workspace with no `Dir` (an old space): its tabs of this machine go
+  to the tabs with no project, and its name becomes a space name the
+  client offers, so the user's old spaces come back in the picker.
+- A workspace whose `Host` is another host (a v0.38.0 project homed
+  there): its tabs of this machine go to the tabs with no project. The
+  client shows a note: "Make the project <name> again on <host>: its
+  folder is <dir>", with **New Project on <host>…**. Nothing is made on
+  the other host by itself.
+- Panes of other hosts in this machine's layout are dropped from it;
+  their sessions keep running on their hosts and show there, as tabs
   with no project.
-- Rex Go drops `home_machine` and `dir` from its manifest and reads
-  projects from the hosts.
 
-The server runs the migration once, as it loads the layout, and keeps
-the old layout as `layout.json.v039`. It runs the same way after
-`gorex server upgrade`, which keeps the sessions' shells: the migration
-moves tabs between workspaces and stops no process.
+The old layout is kept as `layout.json.v039`. The migration only moves
+tabs between workspaces and stops no process, so it runs the same way
+after `gorex server upgrade`. Rex Go drops its manifest and reads
+projects from the hosts.
 
 ## Tests
 
@@ -428,20 +477,21 @@ moves tabs between workspaces and stops no process.
 
 Each phase is its own PR, run, reviewed and merged before the next.
 
-1. **Model**: `Workspace.Space`, the `Host` field removed, the migration
-   of a host's own layout, the Rex API methods and fields, and tests.
-2. **Desktop sidebar and title bar**: hosts, Projects, tabs with no
-   project, move by drag and menu, the space picker. The new UI goes in
-   files of its own (`projects_sidebar.go` and the like), not in
-   `state.go` (`docs/lessons.md`).
-3. **Desktop migration of projects homed on other hosts.**
-4. **Rex Go**: spaces in the strip, projects under each host, create and
-   move; "Window" becomes "Tab".
-5. **Web client.**
-6. **Docs**: README, `docs/rex-api.md`, `docs/ios-centralized-spaces.md`.
+1. **Server model**: `Workspace.Space`, `Used`, one project per folder,
+   the `Host` field removed, the migration, `ShareLayout` removed, the
+   Rex API methods and fields, and tests.
+2. **Desktop window from the hosts' layouts**, then the sidebar and the
+   title bar: hosts, Projects, tabs with no project, move by drag and
+   menu, the space picker, the offline copy. The new UI goes in files of
+   its own (`projects_sidebar.go` and the like), not in `state.go`
+   (`docs/lessons.md`).
+3. **Rex Go**: the space picker, projects under each host, create and
+   move, the offline copy, the manifest removed; "Window" becomes "Tab".
+4. **Web client.**
+5. **Docs**: README, `docs/rex-api.md`, `docs/cli.md` (Share Layout),
+   `docs/ios-centralized-spaces.md` marked replaced.
 
 ## Open
 
-- Whether a project can show in more than one space. Not planned; Move
-  to Space is the only change.
-- Whether tabs with no project should show in every space.
+- A project in more than one space: not planned; Move to Space is the
+  only change.
