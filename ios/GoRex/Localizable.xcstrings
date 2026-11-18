@@ -4785,16 +4785,6 @@
           }
         }
       }
-    },
-    "This host lists no tabs with no project yet. Reconnect, and try again.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "这台主机还没有列出无项目的标签页。请重新连接后再试。"
-          }
-        }
-      }
     }
   }
 }

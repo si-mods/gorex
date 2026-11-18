@@ -278,7 +278,7 @@ extension URL {
         return c.url!
     }
 
-    /// The server's HTTP endpoint at path, as /api/upload and /api/spaces:
+    /// The server's HTTP endpoint at path, as /api/upload and /api/voice:
     /// this base's scheme, host and port.
     nonisolated func apiURL(_ path: String) -> URL {
         var c = URLComponents(url: self, resolvingAgainstBaseURL: false)!

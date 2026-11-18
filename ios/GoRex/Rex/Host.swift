@@ -1217,7 +1217,8 @@ final class Host: Identifiable {
     }
 
     /// Changes a project's name, color or space; nil leaves it as it is
-    /// (gorex.project.update).
+    /// (gorex.project.update). The color "default" gives the default one
+    /// back: the server takes "" as no change.
     func updateProject(_ project: String, name: String? = nil, color: String? = nil, space: String? = nil) async throws {
         if isDemo { return demoUpdateProject(project, name: name, color: color, space: space) }
         var p: [String: Any] = ["project_id": project]
@@ -1251,15 +1252,12 @@ final class Host: Identifiable {
 
     /// Opens a tab with no project, in the host's home directory, and
     /// returns its session and block: in the session of the host's tabs
-    /// with no project. A host with projects keeps one such session and
-    /// makes no second (docs/projects.md, Phases); one of before makes a
-    /// session.
+    /// with no project. A host that has none yet, as a fresh one, makes it
+    /// with session.create, with the tab in it; the server lets the first
+    /// one be made (docs/projects.md, Phases).
     func newLooseTab() async throws -> (String, String)? {
         if let s = sessions.first(where: { $0.project == nil }) {
             return try await newWindow(in: s.id).map { (s.id, $0) }
-        }
-        guard !hasProjects || isDemo else {
-            throw RexError(code: "not_found", message: String(localized: "This host lists no tabs with no project yet. Reconnect, and try again."))
         }
         return try await newSession()
     }
@@ -1290,7 +1288,7 @@ final class Host: Identifiable {
     private func demoUpdateProject(_ project: String, name: String?, color: String?, space: String?) {
         guard let i = sessions.firstIndex(where: { $0.id == project }), sessions[i].project != nil else { return }
         if let name, !name.isEmpty { sessions[i].label = name }
-        if let color { sessions[i].project?.color = color.isEmpty ? nil : color }
+        if let color, !color.isEmpty { sessions[i].project?.color = color == "default" ? nil : color }
         if let space { sessions[i].project?.space = space }
     }
 

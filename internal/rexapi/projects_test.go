@@ -234,8 +234,11 @@ func TestProjectUpdateSpaces(t *testing.T) {
 	c.hello(apiRevision)
 	p := callChecked(t, c, "gorex.project.create", map[string]any{"dir": t.TempDir(), "space": "Work"})["project_id"].(string)
 	res := callChecked(t, c, "gorex.project.update", map[string]any{"project_id": p, "name": "renamed", "color": "blue"})
-	if pr, _ := res["project"].(map[string]any); pr["space"] != "Work" {
+	if pr, _ := res["project"].(map[string]any); pr["space"] != "Work" || pr["color"] != "blue" {
 		t.Errorf("update answered %v", res)
+	}
+	if pr := projectOf(t, c, p); pr["color"] != "blue" {
+		t.Errorf("the list's project of color blue is %v", pr)
 	}
 	if w := f.spaceOfSession(t, p); w.Name != "renamed" || w.Color != "blue" || w.Space != "Work" {
 		t.Errorf("the project updated is %+v", w)
@@ -253,6 +256,10 @@ func TestProjectUpdateSpaces(t *testing.T) {
 	callChecked(t, c, "gorex.project.update", map[string]any{"project_id": p, "space": ""})
 	if pr := projectOf(t, c, p); pr["space"] != nil {
 		t.Errorf("the project moved to Default is %v", pr)
+	}
+	callChecked(t, c, "gorex.project.update", map[string]any{"project_id": p, "color": "default"})
+	if pr := projectOf(t, c, p); pr["color"] != nil {
+		t.Errorf("the project of the default color is %v", pr)
 	}
 	if e := failure(t, c.request("np", "gorex.project.update", map[string]any{"project_id": "session:none"})); e["code"] != "not_found" {
 		t.Errorf("update of no project: %v", e)

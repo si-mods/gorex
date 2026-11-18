@@ -276,7 +276,7 @@ struct HostSection: View {
             }
             Divider()
             Button("No Color") {
-                change("Can't Change the Color") { try await host.updateProject(s.id, color: "") }
+                change("Can't Change the Color") { try await host.updateProject(s.id, color: "default") }
             }
             .disabled(s.project?.color == nil)
         }
@@ -724,9 +724,11 @@ struct ProjectRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
+            // Only a mark: the row reads as its name and folder.
             Image(systemName: "folder.fill")
                 .foregroundStyle(Color(project: color) ?? .secondary)
                 .frame(width: 24)
+                .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 1) {
                 Text(verbatim: name).font(.body.weight(.semibold)).lineLimit(1)
                 Text(verbatim: ProjectFolder.short(dir))

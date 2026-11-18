@@ -64,7 +64,7 @@ nonisolated final class ProjectTests: XCTestCase {
     /// in their spaces, and the tabs of the others as tabs with no project.
     @MainActor func testHostListsProjectsAndLooseTabs() async throws {
         let (rex, h) = try await connect(features: [Host.projectsFeature], versions: [Host.projectsFeature: 2], sessions: [
-            session("session:api", "acme-api", project: ["dir": "/tmp/demo/acme-api", "space": "Work", "used": "2026-11-18T01:00:00Z"],
+            session("session:api", "acme-api", project: ["dir": "/tmp/demo/acme-api", "space": "Work", "used": "2026-11-18T01:00:00Z", "color": "teal"],
                     tabs: [("window:dev", "dev"), ("window:logs", "logs")]),
             session("session:site", "site", project: ["dir": "/tmp/demo/site", "space": ""], tabs: []),
             session("session:loose", "", project: [:], tabs: [("window:scratch", "scratch")]),
@@ -77,6 +77,8 @@ nonisolated final class ProjectTests: XCTestCase {
         XCTAssertEqual(l.projects.map(\.name), ["acme-api", "site"])
         XCTAssertEqual(l.projects[0].space, "Work")
         XCTAssertEqual(l.projects[0].tabs.map(\.title), ["dev", "logs"])
+        XCTAssertEqual(l.projects[0].color, "teal")
+        XCTAssertNil(l.projects[1].color)
         XCTAssertEqual(l.projects[1].space, "")
         XCTAssertEqual(l.loose.map(\.title), ["scratch"])
         XCTAssertEqual(l.spaces, ["Work", ""])
@@ -148,6 +150,7 @@ nonisolated final class ProjectTests: XCTestCase {
         try await h.moveTab("window:dev", to: "")
         try await h.updateProject("session:api", space: "Life")
         try await h.updateProject("session:api", name: "API", color: "teal")
+        try await h.updateProject("session:api", color: "default")
         try await h.renameSpace(from: "Work", to: "Office")
         let moves = rex.payloads(of: "gorex.project.move")
         XCTAssertEqual(moves.map { $0["tab_id"] as? String }, ["window:dev", "window:dev"])
@@ -156,9 +159,35 @@ nonisolated final class ProjectTests: XCTestCase {
         XCTAssertEqual(Set(updates[0].keys), ["project_id", "space"])
         XCTAssertEqual(updates[0]["space"] as? String, "Life")
         XCTAssertEqual(Set(updates[1].keys), ["project_id", "name", "color"])
+        // No Color sends the default color: the server keeps a color of "".
+        XCTAssertEqual(updates[2]["color"] as? String, "default")
         let rename = try XCTUnwrap(rex.payload("gorex.space.rename"))
         XCTAssertEqual(rename["from"] as? String, "Work")
         XCTAssertEqual(rename["to"] as? String, "Office")
+    }
+
+    /// New Tab with No Project on a host that has no such workspace yet, as
+    /// a fresh one, makes it once with session.create, its tab in it; with
+    /// one, the tab opens in it.
+    @MainActor func testNewLooseTab() async throws {
+        let (rex, h) = try await connect(features: [Host.projectsFeature], versions: [Host.projectsFeature: 2])
+        defer { h.stop(); rex.stop() }
+        rex.respond = { method, _ in
+            switch method {
+            case "session.create": ["session_id": "session:np", "initial_windows": [["window_id": "window:1", "block_ids": ["block:1"]]]]
+            case "session.new_window": ["block_ids": ["block:2"]]
+            default: [:]
+            }
+        }
+        let first = try await h.newLooseTab()
+        XCTAssertEqual(first?.0, "session:np")
+        XCTAssertEqual(rex.count("session.create"), 1)
+        rex.event(["type": "session_created", "payload": ["session": ["session_id": "session:np", "label": "", "project": [String: Any]()]]])
+        await until("the tabs with no project") { h.sessions.contains { $0.id == "session:np" } }
+        let second = try await h.newLooseTab()
+        XCTAssertEqual(second?.1, "block:2")
+        XCTAssertEqual(rex.count("session.create"), 1)
+        XCTAssertEqual(rex.payload("session.new_window")?["session_id"] as? String, "session:np")
     }
 
     /// A new tab of a project opens with its folder as cwd.
@@ -196,6 +225,8 @@ nonisolated final class ProjectTests: XCTestCase {
         XCTAssertEqual(p.label, "Windflow")
         XCTAssertEqual(p.project?.color, "teal")
         XCTAssertEqual(p.project?.space, "Life")
+        try await h.updateProject(project, color: "default")
+        XCTAssertNil(h.sessions.first { $0.id == project }?.project?.color)
         try await h.renameSpace(from: "Life", to: "Home")
         XCTAssertEqual(Set(h.sessions.compactMap(\.project?.space)), ["", "Home"])
     }
@@ -395,7 +426,10 @@ nonisolated final class ProjectTests: XCTestCase {
     /// A session list entry of the fake server, with its view: tabs by ID
     /// and name, each with one block.
     @MainActor private func session(_ id: String, _ label: String, project: [String: Any], tabs: [(String, String)]) -> [String: Any] {
-        ["session_id": id, "label": label, "project": project, "view": [
+        // As the server writes it: a project carries home_machine too.
+        var project = project
+        if project["dir"] != nil { project["home_machine"] = "m-office" }
+        return ["session_id": id, "label": label, "project": project, "view": [
             "revision": 1, "session_id": id, "label": label, "project": project,
             "windows": tabs.map { w, name in
                 ["window_id": w, "label": name, "focused_block_id": "block:" + w, "layers": [["blocks": [["block_id": "block:" + w]]]]] as [String: Any]
