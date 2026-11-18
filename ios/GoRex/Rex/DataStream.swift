@@ -153,24 +153,23 @@ final class DataConnection {
     private let base: URL
     /// The host's LAN token (HostConfig.auth).
     private let auth: String?
-    private let session: URLSession
 
-    init(base: URL, auth: String?, session: URLSession = .shared) {
+    init(base: URL, auth: String?) {
         self.base = base
         self.auth = auth
-        self.session = session
     }
 
-    /// Opens the stream with a ticket.
-    func open(ticket: String) async throws {
+    /// Opens the stream with a ticket, on the host's session (Host.session).
+    func open(ticket: String, session: URLSession) async throws {
         guard let hello = DataHandshake.hello(ticket: ticket) else { throw Failure.malformed }
         received = 0
-        try await connect(hello)
+        try await connect(hello, session: session)
     }
 
-    /// Continues the stream on a new connection.
-    func resume() async throws {
-        try await connect(DataHandshake.resume(token: token, received: received))
+    /// Continues the stream on a new connection, on the host's session
+    /// (Host.session).
+    func resume(session: URLSession) async throws {
+        try await connect(DataHandshake.resume(token: token, received: received), session: session)
     }
 
     /// Drops the connection, leaving the stream for a resume.
@@ -185,7 +184,10 @@ final class DataConnection {
         task = nil
     }
 
-    private func connect(_ first: Data) async throws {
+    /// A session of the built-in Tailscale's proxy is invalid once the proxy
+    /// changes, and its next task would abort the app, so the caller gives
+    /// the session of the moment instead of one held from a past connect.
+    private func connect(_ first: Data, session: URLSession) async throws {
         task?.cancel()
         var request = URLRequest(url: base.rexURL("/api/data"))
         // As the control connection's: a path that carries nothing fails
