@@ -235,6 +235,12 @@ func TestProjectCreate(t *testing.T) {
 	if st := storeOf(t, c); len(st.Sessions) != 1 {
 		t.Errorf("workspaces after the refusals: %+v", st.Sessions)
 	}
+	// A project's name is not its first tab's: the tab names itself by
+	// its title, as every tab does (docs/projects.md, Names).
+	named := command(t, c, LayoutCommand{Op: "project.create", Dir: realDir(t, t.TempDir()), Name: "acme", Command: cmd})
+	if p := spaceOf(t, c, named.Space); p == nil || p.Name != "acme" || len(p.Tabs) != 1 || p.Tabs[0].Name != "" {
+		t.Errorf("the project named acme is %+v", p)
+	}
 }
 
 // TestProjectMove moves a tab to another project and out of projects,

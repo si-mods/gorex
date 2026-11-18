@@ -245,9 +245,9 @@ The sidebar on the left, space Work, three hosts:
 ├───────────────────────────────┼──────────────────────────────────────────┤
 │ THIS MAC  ●                 + │ ~/code/gorex $ go test ./...             │
 │ ● gorex                   3 + │ ok   gorex   12.3s                       │
-│ ┃ dev                         │ ◀ dev is the tab shown here              │
-│ ┃ logs                        │                                          │
-│ ┃ review                      │                                          │
+│ ▣ dev                         │ ◀ dev is the tab shown here              │
+│ ▣ logs                        │                                          │
+│ ▣ review                      │                                          │
 │ ● notes                     1 │                                          │
 │   Tabs with no project      2 │                                          │
 │                               │                                          │
@@ -276,7 +276,7 @@ from `assets/icons/` (`DESIGN.md`), never the character:
 | `⚙` | `settings` |
 | `☰` | `menu` |
 | `●` `○` | a host's state dot, a project's color dot, drawn, not icons |
-| `┃` | the guide line from a project to its tabs, drawn |
+| `▣` | a tab's program icon, its tile |
 
 `◀` and `←` mark notes on a sketch; they are not drawn.
 
@@ -321,7 +321,9 @@ A project's context menu:
   and, with the tabs on top, in the title bar (`host › project`). A click
   shows the project and expands it; on the project shown, or on the dot
   of any, it expands or collapses that project's tabs alone, which come
-  one step in, joined to it by a thin guide line. Each project keeps its
+  under it flush with it, with no guide line: a tab's program icon starts
+  where the project's dot does, and its title where the project's name
+  does. The rows of Older and of Tabs with no project line up the same. Each project keeps its
   own state, per client (`sidebarOpen`); choosing another project, in
   any way, closes none. Its `+` (shown on the row under the pointer and on
   the chosen project's) opens a tab in the folder; ⌘T does the same while
@@ -332,7 +334,11 @@ A project's context menu:
   at the projects' level.
 - **Tabs with no project** is a row at the projects' level, with no dot,
   last among the host's; it shows in every space, collapsed until chosen,
-  and expands the same way.
+  and expands the same way. With no tab, it does not show, unless the
+  window shows it.
+- A tab of a project the window does not show names itself as a shown
+  one does: by the title its program set, its program's icon and its
+  folder, from the host's session list, with no pane attached.
 - Drag a tab onto a project of its host to move it there, with its panes
   and their processes.
 

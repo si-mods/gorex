@@ -7,6 +7,7 @@ import (
 	"github.com/egoist/mygo/ui"
 
 	"gorex/internal/layout"
+	"gorex/internal/rex"
 	"gorex/locales"
 )
 
@@ -335,7 +336,7 @@ func (a *App) sidebarTab(c *ui.Context, k *colors, i int, t *Tab, reserve float3
 	// Keyed by the tab's lasting ID, as spaceTab keys it: as the window
 	// goes to show another space, the rows of both stay, not close and
 	// open again.
-	e := ui.Row(c.Key("tab-"+t.UID)).Height(sideRowH).Shrink(0).Padding(0, 6, 0, 9).Gap(6).AlignItems(ui.Center).Radius(pillRadius(sideRowH, 9)).
+	e := ui.Row(c.Key("tab-"+t.UID)).Height(sideRowH).Shrink(0).Padding(0, 6, 0, sideLead).Gap(sideGap).AlignItems(ui.Center).Radius(pillRadius(sideRowH, 9)).
 		Role(ui.RoleTab).Selected(active)
 	name, detail := t.label()
 	e.Label(name + " " + detail)
@@ -398,7 +399,7 @@ func (a *App) hostSectionIcon(c *ui.Context, k *colors, h *hostConn) {
 // view: its tiles and its name, as the window's tabs show, but neither
 // chosen nor dragged. It reports whether it was clicked.
 func spaceTab(c *ui.Context, k *colors, key, name, detail string, reserve float32, tiles func()) bool {
-	e := ui.Row(c.Key("tab-"+key)).Height(sideRowH).Shrink(0).Padding(0, 6, 0, 9).Gap(6).AlignItems(ui.Center).Radius(pillRadius(sideRowH, 9)).
+	e := ui.Row(c.Key("tab-"+key)).Height(sideRowH).Shrink(0).Padding(0, 6, 0, sideLead).Gap(sideGap).AlignItems(ui.Center).Radius(pillRadius(sideRowH, 9)).
 		Cursor(ui.CursorPointer).Role(ui.RoleButton).Label(name + " " + detail)
 	if anim := motion(c); anim != nil {
 		e.Transition(ui.ElementTransition{Animation: anim, Position: true, Enter: tabMotion, Exit: tabMotion})
@@ -416,13 +417,10 @@ func spaceTab(c *ui.Context, k *colors, key, name, detail string, reserve float3
 }
 
 // savedTabLabel is how a tab of a layout names itself, and the program
-// of its tile, from what the layout keeps: its name, else its first
-// pane's, else the program that ran there.
+// of its tile, from what the layout keeps: its name, else its focused
+// pane's, else the program that ran there, else the pane's folder.
 func savedTabLabel(t savedTab) (string, program) {
-	var n savedNode
-	if r := t.Roots(); len(r) > 0 {
-		n = *layout.FirstLeaf(r[0])
-	}
+	n := focusedLeaf(t)
 	prog := shellTile
 	switch {
 	case n.URL != "":
@@ -432,5 +430,40 @@ func savedTabLabel(t savedTab) (string, program) {
 	case n.Prog != "":
 		prog = programOf(n.Prog)
 	}
-	return cmp.Or(t.Name, n.Name, prog.Name, "Shell"), prog
+	return cmp.Or(t.Name, n.Name, prog.Name, folderName(n.Dir), "Shell"), prog
+}
+
+// savedTabFace is how a tab of a layout no window shows names itself, and
+// the program of its tile, as the window's tab would: from what its
+// machine's last session list (infos) says of its focused pane's session,
+// the title its program set, the program and its folder; else from what
+// the layout keeps (savedTabLabel). No pane attaches for it.
+func savedTabFace(t savedTab, infos map[string]rex.SessionInfo) (name, detail string, prog program) {
+	name, prog = savedTabLabel(t)
+	n := focusedLeaf(t)
+	in, ok := infos[n.SID]
+	if t.Name != "" || n.SID == "" || n.URL != "" || n.Kind == "note" || !ok || in.Exited {
+		return name, "", prog
+	}
+	p := &Pane{SID: n.SID, Name: n.Name, info: in, startDir: n.Dir}
+	name, detail = p.label()
+	return name, detail, p.program()
+}
+
+// focusedLeaf is the pane of tab t that has the focus, as the layout
+// keeps it: its focused float, else its focused tiled pane, else its
+// first.
+func focusedLeaf(t savedTab) savedNode {
+	if f := t.FocusFloat - 1; f >= 0 && f < len(t.Floats) && t.Floats[f].Pane != nil {
+		return *layout.FirstLeaf(t.Floats[f].Pane)
+	}
+	if t.Root != nil {
+		if l := layout.Leaves(t.Root); t.Focus >= 0 && t.Focus < len(l) {
+			return *l[t.Focus]
+		}
+	}
+	if r := t.Roots(); len(r) > 0 {
+		return *layout.FirstLeaf(r[0])
+	}
+	return savedNode{}
 }

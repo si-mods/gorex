@@ -137,7 +137,9 @@ func (s *Server) createProject(st *layout.Store, c LayoutCommand, a *applying) L
 	}
 	st.Sessions = append(st.Sessions, w)
 	carried(st, w.Space)
-	tab := s.createTab(st, LayoutCommand{Space: w.ID, Name: c.Name, Command: c.Command, Focus: c.Focus}, a)
+	// The project's name is not its first tab's: a tab names itself by its
+	// title (docs/projects.md, Names).
+	tab := s.createTab(st, LayoutCommand{Space: w.ID, Command: c.Command, Focus: c.Focus}, a)
 	if tab.Code != "" {
 		return tab
 	}
