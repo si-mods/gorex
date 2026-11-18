@@ -171,12 +171,7 @@ struct HostListView: View {
                         if inbox {
                             StatusInbox(query: query, collapsed: $collapsed, open: { go($0) })
                         } else {
-                            if hasSpaces {
-                                SpacePicker(spaces: spaces, current: current, color: { Color(project: book.colors[$0]) },
-                                            choose: { s in withAnimation(.snappy) { book.chosen = s } },
-                                            add: { spaceName = ""; addingSpace = true },
-                                            edit: { editingSpaces = true })
-                            }
+                            if hasSpaces { ListPicker(wide: width == .regular) { picker() } }
                             ForEach(store.hosts.filter(shows)) { host in
                                 HostSection(host: host, space: current, spaces: spaces, collapsed: $collapsed, expanded: expanded,
                                             query: query, open: { go($0) }, newProject: { newProject = host })
@@ -207,6 +202,11 @@ struct HostListView: View {
         // Beside the terminal the bar stays, for the sidebar's toggle.
         .toolbar(width == .regular ? .automatic : .hidden, for: .navigationBar)
         .toolbar {
+            // First on a wide window's sidebar, in the bar's row, whose
+            // search and toggle it shares; atop the list on a narrow one.
+            ToolbarItem(placement: .topBarLeading) {
+                if width == .regular, !inbox, hasSpaces { picker(place: .bar) }
+            }
             ToolbarItemGroup(placement: .bottomBar) {
                 Button("Settings", systemImage: "gearshape") { settings = true }
                 Button(inbox ? "Show All Tabs" : "Show Activity", systemImage: inbox ? "eye.slash" : "eye") {
@@ -227,6 +227,15 @@ struct HostListView: View {
     }
 
     // MARK: Spaces
+
+    /// The space shown, and the menu of the others.
+    private func picker(place: SpacePicker.Place = .list) -> some View {
+        SpacePicker(spaces: spaces, current: current, color: { Color(project: book.colors[$0]) },
+                    choose: { s in withAnimation(.snappy) { book.chosen = s } },
+                    add: { spaceName = ""; addingSpace = true },
+                    edit: { editingSpaces = true },
+                    place: place)
+    }
 
     /// Whether a host keeps projects, connected or as last seen: only then
     /// does the list have spaces to pick.
@@ -372,6 +381,19 @@ struct HostListView: View {
                 failure = (String(localized: "Can't Move the Project"), error.localizedDescription)
             }
         }
+    }
+}
+
+/// The picker atop the list: on a narrow window, and on a wide one while
+/// the search is out, which takes the bar's whole row and filters the list
+/// below.
+private struct ListPicker<Content: View>: View {
+    let wide: Bool
+    @ViewBuilder let content: Content
+    @Environment(\.isSearching) private var searching
+
+    var body: some View {
+        if !wide || searching { content }
     }
 }
 

@@ -28,6 +28,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - Connecting to a computer over Tailscale works as before. If a computer that used to connect no longer does, tell us.
 - Adding a computer on the same Wi-Fi now needs the new QR code GoRex shows; if a computer you added before refuses you, scan its QR code again in Hosts.
 - Drag a window in the list and let go of it away from the rows: the windows go back to their order at once, and the one you dragged no longer stays dimmed.
+- On iPad the space picker shares the sidebar's top row with Search and the sidebar toggle, and a space name too long for it ends in an ellipsis.
 - Swiping with two fingers no longer switches panes, for now; tap a pane in the pane bar instead.
 - Tapping a terminal's title now answers your finger: its glass lights up as you press, and your hand feels a tap as the session's sheet opens.
 - The pane bar answers your finger too: its glass and the + light up as you press, and the pane you are in is outlined while the others fade.
@@ -88,3 +89,4 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - 电脑的 Tailscale 连接重连过之后，再回到终端不会再让应用退出：终端会自己重新连上。
 - 展开项目后，它的标签页和「新建标签页」与项目行左对齐，不再缩进。
 - 在时钟显示在侧边的手机上，例如折叠屏 iPhone，终端的返回按钮、标题和菜单留在顶部工具栏里，终端也铺满到时钟那一列下面。
+- 切换空间的按钮现在和侧栏顶部的搜索、侧栏开关在同一行；空间名太长时末尾显示省略号。
