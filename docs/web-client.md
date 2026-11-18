@@ -541,6 +541,9 @@ npm run build     # node build.mjs; Windows: the same, from PowerShell or Git Ba
    packages itself crashes Zig 0.17 in a fresh cache (a segfault at
    `0xaaaaaaaaaaaaaaaa`, a general protection exception on x86_64). It keeps `ghostty-vt.wasm` (about 910 KB) in the cache, so the next
    build skips this step. `--rebuild-wasm` builds it again.
+   The CI and release `web-r2` jobs run on empty runners, so they keep only this wasm file with `actions/cache`,
+   set `GOREX_WEB_CACHE` to its directory, and key it by the Ghostty commit, the Zig version and a hash of `web/build.mjs`;
+   a hit skips the Zig build, a miss builds cold. Any edit to `build.mjs` therefore builds cold once.
 4. It runs `npm ci` in `web/` if `web/node_modules` is missing, checks
    the catalogs and writes `src/locales.gen.ts` (`web/i18n.mjs`; see
    Languages), then type-checks the client (`tsc --noEmit`).
