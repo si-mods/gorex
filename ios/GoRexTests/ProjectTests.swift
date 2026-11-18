@@ -277,7 +277,7 @@ nonisolated final class ProjectTests: XCTestCase {
         XCTAssertEqual(b.spaces(carried: ["Work"]), ["Work", ""])
         // A made space no project carries can go.
         b.add("Empty", carried: [])
-        b.remove("Empty")
+        b.delete("Empty", on: [])
         XCTAssertEqual(b.spaces(carried: []), [""])
         XCTAssertEqual(b.chosen, "")
     }
@@ -309,6 +309,108 @@ nonisolated final class ProjectTests: XCTestCase {
         b.forget(host: "away")
         XCTAssertNil(b.renames["away"])
         XCTAssertNil(b.listing(for: "away"))
+    }
+
+    /// A deletion drops the space's place, color and choice at once, and
+    /// waits for each host until it is sent; a host away shows its last
+    /// projects of the space in Default meanwhile. Default stays.
+    @MainActor func testDeleteQueuesForEachHost() {
+        let (b, _, _) = book()
+        b.reorder(["Work", "", "Life"])
+        b.setColor("teal", for: "Work")
+        b.chosen = "Work"
+        b.remember(ProjectListing(projects: [.init(id: "p", name: "acme-api", dir: "/tmp/demo/acme-api", space: "Work", tabs: [])]), for: "away")
+        b.delete("Work", on: ["away", "here"])
+        XCTAssertEqual(b.order, ["", "Life"])
+        XCTAssertEqual(b.colors, [:])
+        XCTAssertEqual(b.chosen, "")
+        XCTAssertEqual(b.renames["away"], [.init(from: "Work", to: "")])
+        XCTAssertEqual(b.listing(for: "away")?.spaces, [""])
+        XCTAssertEqual(b.space("Work", on: "here"), "")
+        XCTAssertEqual(b.spaces(carried: []), [""])
+        b.delete("", on: ["here"])
+        XCTAssertEqual(b.renames["here"]?.count, 1)
+    }
+
+    /// gorex.space.delete sends the name and gives the projects moved; no
+    /// rename goes with it.
+    @MainActor func testDeleteSpace() async throws {
+        let (rex, h) = try await connect(features: [Host.projectsFeature], versions: [Host.projectsFeature: 2])
+        defer { h.stop(); rex.stop() }
+        let base = rex.respond
+        rex.respond = { m, p in m == "gorex.space.delete" ? ["projects": 3] : base(m, p) }
+        let moved = try await h.deleteSpace("Work")
+        XCTAssertEqual(moved, 3)
+        XCTAssertEqual(rex.payload("gorex.space.delete")?["name"] as? String, "Work")
+        XCTAssertEqual(rex.count("gorex.space.rename"), 0)
+    }
+
+    /// A server of v0.41.0 does not know gorex.space.delete: the space is
+    /// renamed to Default there instead. Another error is not retried.
+    @MainActor func testDeleteSpaceFallsBackToRename() async throws {
+        let (rex, h) = try await connect(features: [Host.projectsFeature], versions: [Host.projectsFeature: 2])
+        defer { h.stop(); rex.stop() }
+        let base = rex.respond
+        rex.respond = { m, p in
+            switch m {
+            case "gorex.space.delete":
+                ["error": ["code": "method_not_found", "message": "gorex.space.delete is not a method this server has"]]
+            case "gorex.space.rename":
+                ["projects": 2]
+            default: base(m, p)
+            }
+        }
+        let moved = try await h.deleteSpace("Work")
+        XCTAssertEqual(moved, 2)
+        let rename = try XCTUnwrap(rex.payload("gorex.space.rename"))
+        XCTAssertEqual(rename["from"] as? String, "Work")
+        XCTAssertEqual(rename["to"] as? String, "")
+
+        rex.respond = { m, p in m == "gorex.space.delete" ? ["error": ["code": "internal", "message": "failed"]] : base(m, p) }
+        do {
+            try await h.deleteSpace("Life")
+            XCTFail("an internal error should fail")
+        } catch {
+            XCTAssertEqual((error as? RexError)?.code, "internal")
+        }
+        XCTAssertEqual(rex.count("gorex.space.rename"), 1)
+    }
+
+    /// A deletion for a host that is away waits in the book, and goes, in
+    /// order after the renames before it, once the host connects.
+    @MainActor func testDeleteWaitsForOfflineHost() async throws {
+        let (b, _, _) = book()
+        let rex = try FakeRex()
+        rex.features = [Host.projectsFeature]
+        rex.featureVersions = [Host.projectsFeature: 2]
+        rex.respond = { m, _ in
+            switch m {
+            case "session.bootstrap": ["attach_all": ["sessions": []]]
+            case "gorex.space.list": ["spaces": []]
+            case "gorex.space.delete": ["projects": 1]
+            default: [:]
+            }
+        }
+        let h = Host(HostConfig(name: "office", url: try await rex.url()))
+        defer { h.stop(); rex.stop() }
+        let key = h.id.uuidString
+        b.rename("Life", to: "Home", on: [key])
+        b.delete("Work", on: [key])
+        // Away: nothing goes, and both wait.
+        let early = await b.send(to: h)
+        XCTAssertFalse(early)
+        XCTAssertEqual(b.renames[key], [.init(from: "Life", to: "Home"), .init(from: "Work", to: "")])
+        XCTAssertEqual(rex.count("gorex.space.delete"), 0)
+
+        h.connect()
+        await until("online") { h.status == .online }
+        let sent = await b.send(to: h)
+        XCTAssertTrue(sent)
+        XCTAssertNil(b.renames[key])
+        XCTAssertEqual(rex.payload("gorex.space.rename")?["to"] as? String, "Home")
+        XCTAssertEqual(rex.payload("gorex.space.delete")?["name"] as? String, "Work")
+        let order = rex.calls.filter { $0.hasPrefix("gorex.space.") && $0 != "gorex.space.list" }
+        XCTAssertEqual(order, ["gorex.space.rename", "gorex.space.delete"])
     }
 
     /// What the book keeps is there at the next launch.

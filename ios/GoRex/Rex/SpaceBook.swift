@@ -4,13 +4,15 @@ import Observation
 /// The spaces as this device keeps them (docs/projects.md, Spaces). A
 /// space is only a name on the hosts' projects; this device keeps their
 /// order and colors, the spaces made here that no project carries yet,
-/// the renames still to reach hosts that were away, the space shown, and
+/// the renames and deletions still to reach hosts that were away, the
+/// space shown, and
 /// each host's last projects, to show while it is away. Nothing of it is
 /// synced: each client keeps its own.
 @MainActor
 @Observable
 final class SpaceBook {
-    /// A space's rename, as a host is to take it (gorex.space.rename).
+    /// A space's rename, as a host is to take it (gorex.space.rename); one
+    /// to "" is a deletion (gorex.space.delete), its projects to Default.
     struct Rename: Codable, Equatable {
         var from: String
         var to: String
@@ -34,7 +36,8 @@ final class SpaceBook {
     /// The spaces made on this device that no project carries yet: they
     /// stay in the picker, empty, until a project moves into one.
     private(set) var made: [String]
-    /// The renames each host is still to take, by host ID, in order.
+    /// The renames and deletions each host is still to take, by host ID,
+    /// in order.
     private(set) var renames: [String: [Rename]]
     /// Each host's projects as last seen, by host ID.
     private(set) var listings: [String: ProjectListing]
@@ -103,15 +106,6 @@ final class SpaceBook {
         return n
     }
 
-    /// Removes a space made here that no project carries.
-    func remove(_ name: String) {
-        made.removeAll { $0 == name }
-        order.removeAll { $0 == name }
-        colors[name] = nil
-        if chosen == name { chosen = "" }
-        save()
-    }
-
     /// Sets the order of the spaces, as Edit Spaces leaves them.
     func reorder(_ spaces: [String]) {
         order = spaces
@@ -140,12 +134,45 @@ final class SpaceBook {
         save()
     }
 
-    /// Forgets a rename the host took.
+    /// Deletes a space: here at once, its place, color and choice gone,
+    /// and on each host given, which may be away; each moves the space's
+    /// projects to Default as it connects (sent). Default is not deleted.
+    func delete(_ name: String, on hosts: [String]) {
+        guard !name.isEmpty else { return }
+        order.removeAll { $0 == name }
+        colors[name] = nil
+        made.removeAll { $0 == name }
+        for h in hosts { renames[h, default: []].append(Rename(from: name, to: "")) }
+        if chosen == name { chosen = "" }
+        save()
+    }
+
+    /// Forgets a rename or deletion the host took.
     func sent(_ r: Rename, to host: String) {
         guard var rs = renames[host], let i = rs.firstIndex(of: r) else { return }
         rs.remove(at: i)
         renames[host] = rs.isEmpty ? nil : rs
         save()
+    }
+
+    /// Sends a host online the renames and deletions it is still to take,
+    /// in order. One that fails waits, with those after it, for the host
+    /// to connect again; false then.
+    func send(to host: Host) async -> Bool {
+        let key = host.id.uuidString
+        for r in renames[key] ?? [] {
+            do {
+                if r.to.isEmpty {
+                    try await host.deleteSpace(r.from)
+                } else {
+                    try await host.renameSpace(from: r.from, to: r.to)
+                }
+                sent(r, to: key)
+            } catch {
+                return false
+            }
+        }
+        return true
     }
 
     /// The space a host's project shows in: its own, with the renames the

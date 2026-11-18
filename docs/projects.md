@@ -153,6 +153,13 @@ A space is only a name on projects. No list of spaces is kept or synced.
 - **Rename** a space: the client asks each connected host to rename it
   (`gorex.space.rename`). A host offline then keeps the old name; the
   client keeps the rename and sends it when the host connects.
+- **Delete** a space (Rex Go's Edit Spaces…, after the user confirms):
+  its projects move to Default and no tab closes. The client asks each
+  connected host (`gorex.space.delete {name}` → `{projects}`); a host of
+  v0.41.0, which answers `method_not_found`, is sent
+  `gorex.space.rename {from: name, to: ""}` instead. A host offline
+  takes it as it takes a rename, when it connects. The client forgets
+  the space's color and place, and shows Default if it showed the space.
 - A space no project carries any more drops from the picker, unless it
   was made on this client and is still empty.
 - The `gorex.spaces_sync` manifest and its iCloud copy

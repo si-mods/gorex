@@ -4026,16 +4026,6 @@
         }
       }
     },
-    "A space is the name on its projects. Renaming one renames it on every host; a host that is offline takes the new name when it connects.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "空间是项目上的名称。重命名空间会在每台主机上生效；离线的主机在连上后采用新名称。"
-          }
-        }
-      }
-    },
     "Amber": {
       "localizations": {
         "zh-Hans": {
@@ -4782,6 +4772,60 @@
           "stringUnit": {
             "state": "translated",
             "value": "⌘T 新建标签页，⌘W 关闭，⌘O 添加文件，⇧⌘O 添加照片，⌘K 清除屏幕和回滚，⌘+、⌘- 和 ⌘0 调整字号。按住 ⌘ 可查看全部。"
+          }
+        }
+      }
+    },
+    "A space is the name on its projects. Renaming one renames it on every host; deleting one moves its projects to Default. A host that is offline takes the change when it connects.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "空间是项目上的名称。重命名空间会在每台主机上生效；删除空间会把它的项目移到“默认”。离线的主机在连上后执行更改。"
+          }
+        }
+      }
+    },
+    "Delete space %@?": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "删除空间“%@”？"
+          }
+        }
+      }
+    },
+    "Its %lld projects move to Default. No tab closes.": {
+      "localizations": {
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Its %lld project moves to Default. No tab closes."
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Its %lld projects move to Default. No tab closes."
+                }
+              }
+            }
+          }
+        },
+        "zh-Hans": {
+          "variations": {
+            "plural": {
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "它的 %lld 个项目将移到“默认”。不会关闭任何标签页。"
+                }
+              }
+            }
           }
         }
       }

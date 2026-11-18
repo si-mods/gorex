@@ -123,8 +123,10 @@ struct HostListView: View {
             ProjectSheet(host: host, space: SpaceName.shown(current)) { dir, name in createProject(on: host, dir: dir, name: name) }
         }
         .sheet(isPresented: $editingSpaces) {
-            EditSpaces(spaces: spaces, carried: carried) { from, to in
-                book.rename(from, to: to, on: store.hosts.filter { $0.hasProjects || book.listings[$0.id.uuidString] != nil }.map(\.id.uuidString))
+            EditSpaces(spaces: spaces, carried: carried, projects: projects(in:)) { from, to in
+                book.rename(from, to: to, on: spaceHosts)
+            } delete: { name in
+                book.delete(name, on: spaceHosts)
             }
         }
         .alert("New Space", isPresented: $addingSpace) {
@@ -294,30 +296,34 @@ struct HostListView: View {
         }
     }
 
+    /// The hosts a rename or deletion of a space goes to: those with
+    /// projects, connected or as last seen.
+    private var spaceHosts: [String] {
+        store.hosts.filter { $0.hasProjects || book.listings[$0.id.uuidString] != nil }.map(\.id.uuidString)
+    }
+
+    /// The projects of a space on the hosts connected now.
+    private func projects(in space: String) -> Int {
+        store.hosts.filter { $0.status == .online }.reduce(0) { n, h in
+            n + (listing(h)?.projects.filter { $0.space == space }.count ?? 0)
+        }
+    }
+
     /// The renames each host is still to take, and whether it can now.
     private var renameKey: [String] {
         store.hosts.map { "\($0.id):\($0.status == .online && $0.hasProjects):\(book.renames[$0.id.uuidString]?.count ?? 0)" }
     }
 
-    /// Sends each host online the renames of spaces it is still to take,
-    /// in order; one that fails waits, with those after it, for the host
-    /// to connect again.
+    /// Sends each host online the renames and deletions of spaces it is
+    /// still to take, in order; one that fails waits, with those after it,
+    /// for the host to connect again.
     private func sendRenames() {
         for h in store.hosts where h.status == .online && h.hasProjects && !renaming.contains(h.id) {
             let key = h.id.uuidString
             guard let rs = book.renames[key], !rs.isEmpty else { continue }
             renaming.insert(h.id)
             Task {
-                var all = true
-                for r in rs {
-                    do {
-                        try await h.renameSpace(from: r.from, to: r.to)
-                        book.sent(r, to: key)
-                    } catch {
-                        all = false
-                        break
-                    }
-                }
+                let all = await book.send(to: h)
                 renaming.remove(h.id)
                 // Renames made while these went wait for no other change.
                 if all, book.renames[key]?.isEmpty == false { sendRenames() }
