@@ -215,7 +215,12 @@ var methods = map[string]func(*control, args) (any, *apiError){
 	"gorex.see_block":                methodGorexSeeBlock,
 	"gorex.dir.list":                 methodGorexDirList,
 	// Projects (projects.go).
-	"gorex.project.set_home": methodGorexProjectSetHome,
+	"gorex.project.create": methodGorexProjectCreate,
+	"gorex.project.adopt":  methodGorexProjectAdopt,
+	"gorex.project.move":   methodGorexProjectMove,
+	"gorex.project.update": methodGorexProjectUpdate,
+	"gorex.space.rename":   methodGorexSpaceRename,
+	"gorex.space.list":     methodGorexSpaceList,
 }
 
 // sessionArg reads the session_id argument and returns the session,

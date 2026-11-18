@@ -20,16 +20,17 @@ func (s *Server) filterLayout(raw []byte, peer string) (json.RawMessage, error) 
 	if err := json.Unmarshal(raw, &st); err != nil {
 		return nil, err
 	}
-	st.Teleports, st.Kills, st.Show, st.ShowAt = nil, nil, "", time.Time{} // this machine's
+	st.Teleports, st.Kills, st.Show, st.ShowAt, st.Adopt = nil, nil, "", time.Time{}, nil // this machine's
 	var sessions []layout.Workspace
 	ids := map[string]bool{}
 	for _, w := range st.Sessions {
+		// A project shows with no tab too: it is a folder of the host's.
 		tabs := s.filterLayoutTabs(w.Tabs)
-		if len(tabs) == 0 {
+		if len(tabs) == 0 && w.Dir == "" {
 			continue
 		}
 		w.Tabs = tabs
-		w.Active = min(max(w.Active, 0), len(tabs)-1)
+		w.Active = min(max(w.Active, 0), max(len(tabs)-1, 0))
 		sessions = append(sessions, w)
 		ids[w.ID] = true
 	}

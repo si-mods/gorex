@@ -28,9 +28,11 @@ type Workspace struct {
 	// Color is the space's color: a preset id from layout.Palette, a custom
 	// "#rrggbb", or "" for the default look.
 	Color string
-	// Host and Dir are the space's home, a project's: its home host, as
-	// layout.Workspace.Host, and its folder there; "" for a space of no
-	// folder. The server keeps them (space.home); the app reads them.
+	// Host and Dir are the space's home, a project's: its home host and
+	// its folder there; "" for a space of no folder. The server keeps the
+	// folder (space.home), always of this machine since the layout of
+	// docs/projects.md; Host is another host's only while the server has
+	// not refused it yet (phase 2 of docs/projects.md replaces this).
 	Host, Dir string
 	// fresh marks a project New Project made, whose first tab opens in
 	// its folder as the window shows it (show).
@@ -286,7 +288,7 @@ func (st *store) saved() savedStore {
 		if w.app != nil {
 			l = w.app.snapshot()
 		}
-		s.Sessions = append(s.Sessions, savedWorkspace{ID: w.ID, Name: w.Name, Color: w.Color, Host: w.Host, Dir: w.Dir, Layout: l})
+		s.Sessions = append(s.Sessions, savedWorkspace{ID: w.ID, Name: w.Name, Color: w.Color, Dir: w.Dir, Layout: l})
 		if len(s.Windows) > 0 && w.ID == s.Windows[0] {
 			s.Layout = l
 		}
@@ -560,7 +562,9 @@ func (st *store) reconcile(s savedStore) {
 		if w == nil {
 			w = &Workspace{ID: sw.ID}
 		}
-		w.Name, w.Color, w.Host, w.Dir = sw.Name, sw.Color, sw.Host, sw.Dir
+		// A project of the layout is a folder of this machine's
+		// (docs/projects.md): no other home host.
+		w.Name, w.Color, w.Host, w.Dir = sw.Name, sw.Color, "", sw.Dir
 		if a := w.app; a != nil {
 			if !a.reconcile(sw.Layout) {
 				// Emptied by another client: the space stays, as Rex
@@ -673,7 +677,7 @@ func (st *store) loaded(raw []byte) []*Workspace {
 	s := layout.Parse(raw)
 	st.workspaces = nil
 	for _, sw := range s.Sessions {
-		st.workspaces = append(st.workspaces, &Workspace{ID: sw.ID, Name: sw.Name, Color: sw.Color, Host: sw.Host, Dir: sw.Dir, layout: sw.Layout})
+		st.workspaces = append(st.workspaces, &Workspace{ID: sw.ID, Name: sw.Name, Color: sw.Color, Dir: sw.Dir, layout: sw.Layout})
 	}
 	var open []*Workspace
 	for _, id := range s.Windows {

@@ -11,8 +11,10 @@ import (
 )
 
 // Version is the version of Store; a layout without one is the tabs of a
-// GoRex of one window.
-const Version = 2
+// GoRex of one window. Version 2 is that of v0.38.0 to v0.40.x, of
+// spaces and projects homed on any host, which the server migrates once
+// (Migrate); 3 keeps a host's projects, each a folder of its own.
+const Version = 3
 
 // Parse reads a layout the server keeps, a workspace for the tabs of an
 // older GoRex. Workspaces without an id, or of an id already read, and
@@ -59,14 +61,14 @@ func parse(raw []byte) Store {
 	if len(raw) == 0 || json.Unmarshal(raw, &s) != nil {
 		return Store{Version: Version}
 	}
-	if s.Version < Version {
+	if s.Version < 2 {
 		if len(s.Tabs) == 0 {
 			return Store{Version: Version}
 		}
 		w := Workspace{ID: NewSpaceID(), Name: SpaceName(nil), Layout: s.Layout}
 		return Store{Version: Version, Sessions: []Workspace{w}, Windows: []string{w.ID}}
 	}
-	out := Store{Version: s.Version, Teleports: s.Teleports, Kills: s.Kills, Show: s.Show, ShowAt: s.ShowAt}
+	out := Store{Version: s.Version, Teleports: s.Teleports, Kills: s.Kills, Show: s.Show, ShowAt: s.ShowAt, Adopt: s.Adopt, Spaces: s.Spaces}
 	ids := map[string]bool{}
 	for _, w := range s.Sessions {
 		if w.ID == "" || ids[w.ID] {

@@ -464,53 +464,71 @@ The welcome lists the feature `gorex.see_block` when the server keeps it
 
 ## Projects
 
-A project is a GoRex space bound to a folder, its *home*: a host and a
-folder there (`docs/projects.md`). The welcome lists the feature
-`gorex.projects` when the GoRex server keeps homes
-(`CapabilitySpaceHome`); call the method only then.
+A project is a folder of the host, in a space (`docs/projects.md`). Each
+GoRex workspace is a Rex session: a project, or the host's one workspace
+of tabs with no project. GoRex's own methods name a project by its
+session ID (`project_id`), a tab by its window ID (`tab_id`) and a pane by
+its block ID (`pane_id`), so an ID from a Rex method passes unchanged.
+
+- The welcome lists the feature and its version, when the GoRex server
+  keeps projects so (`CapabilityProjects`); call the methods only then.
+  A welcome with `gorex.projects` but no `feature_versions` entry is a
+  host of v0.38.0 to v0.40.x:
+
+  ```json
+  {"type": "welcome", "features": ["gorex.spaces", "…", "gorex.projects"],
+   "feature_versions": {"gorex.projects": 2}, "…": "…"}
+  ```
 
 - Each session in `session.list`, `session_created` and every view carries
-  `project` when its space has a folder, and leaves it out otherwise:
+  `project`; `{}` for the tabs with no project. `space` is left out for
+  Default, `used` (RFC 3339) until a tab of the project took input or was
+  made. `home_machine` is this machine, for clients of v0.38.0 to v0.40.x
+  (deprecated). Rex's apps ignore the field.
 
   ```json
   {"session_id": "session:…", "label": "windflow",
-   "project": {"home_machine": "9c63…", "dir": "/home/me/code/windflow"}}
+   "project": {"dir": "/home/me/code/windflow", "space": "Work",
+               "used": "2026-11-18T09:30:00Z", "home_machine": "9c63…"}}
   ```
 
-  `home_machine` is the home host's machine, as `/api/spaces` names
-  machines. The desktop keeps another host's home by that machine, so
-  it outlives the host's removal from `hosts.json` and its return under a
-  new ID. A home of an older build, kept by a host's ID, reads `""` once
-  `hosts.json` no longer has that host; the folder stays.
-- `gorex.project.set_home` sets or clears a session's home:
+- `gorex.project.create {name, dir, space}` → `{project_id, tab_id}`: the
+  project and its first tab in the folder. `dir` goes through
+  `rex.VolumePath` first (a device or pipe path is `bad_request`), then a
+  folder not there is `not_found`. A folder that is a project of this host
+  already answers an error, with the project's ID in the error object:
 
   ```
-  → {"method": "gorex.project.set_home",
-     "payload": {"session_id": "<session>", "machine_id": "9c63…",
-                 "dir": "/home/me/code/windflow"}}
-  ← {"revision": 5, "project": {"home_machine": "9c63…", "dir": "/home/me/code/windflow"}}
+  ← {"type": "response", "id": "…",
+     "error": {"code": "exists", "message": "/home/me/code/windflow is a project already",
+               "status": 409, "project_id": "session:…"}}
   ```
 
-  A `machine_id` of `""` clears the home. A folder on this machine that
-  is not there fails with `not_found`: the argument names nothing. One on
-  another machine is not checked here. A machine this desktop has no
-  host of is kept, and the desktop shows the home host as unknown until
-  it has a host of that machine.
-- `session.new_window` without a `cwd`, in a session whose home is this
-  machine, starts in the folder. A folder gone since fails the call with
-  `conflict` (`folder_missing`), as the session's state, not the
-  arguments, stands in the way, and starts no shell. A `cwd` given wins,
-  and a split starts where the block it splits started. A session the
-  server starts again from the layout after a restart still starts at
-  home when its folder is gone.
-- `gorex.spaces_apply` (feature `gorex.spaces_sync`) takes `home_machine`
-  and `dir` for each space: left out, the home stays, as from a client of
-  before projects; a `dir` of `""` clears it. A `dir` with no
-  `home_machine` changes nothing. A machine this desktop has no host of
-  keeps the folder. The result's `homes` counts the homes changed.
-- Errors: `session_not_found`, `bad_request` (a relative `dir`, a
-  `machine_id` with no `dir`, an unknown argument, the desktop's sessions
-  of no tab, which have no project), `not_found`,
+- `gorex.project.adopt {project?: {name, dir, space}, tabs: [{title, split}]}`
+  → `{project_id}`: arranges panes that run already into the tabs given,
+  in the project, made unless the host has one of the folder (a folder
+  not there makes none: the tabs go to the tabs with no project). Each
+  `split` is a tree of `{"pane_id": "block:…"}` leaves and
+  `{"vertical", "ratio", "a", "b"}` splits. It starts no shell and opens no
+  tab of its own; an unknown pane is skipped; each pane leaves the tab it
+  was in; adopting again changes nothing.
+- `gorex.project.move {tab_id, project_id}` → `{project_id, tab_id}`:
+  moves a tab with its panes; `project_id` `""` is the tabs with no
+  project. The project it leaves stays.
+- `gorex.project.update {project_id, name?, color?, space?}` →
+  `{project_id, project}`; `space` `""` is Default, left out keeps it.
+- `gorex.space.rename {from, to}` → `{projects}`: every project of this
+  host of space `from` goes to `to`.
+- `gorex.space.list` → `{spaces}`: the names this host's projects carry,
+  then those it offers though none does (the spaces of a layout of before
+  projects). `""` is Default.
+- `session.new_window` without a `cwd`, in a project, starts in the
+  folder; a folder gone fails with `conflict` (`folder_missing`) and
+  starts no shell. A `cwd` given wins.
+- `gorex.project.set_home` of v0.38.0 is removed: a project's folder does
+  not change. `gorex.spaces_apply` reads `home_machine` and `dir` and
+  ignores them.
+- Errors: `bad_request`, `not_found`, `exists`, `conflict`,
   `not_supported` (the GoRex server is older).
 
 ## Files of a host

@@ -10,7 +10,6 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
-	"gorex/internal/layout"
 	"gorex/internal/rex"
 	"gorex/locales"
 )
@@ -113,18 +112,19 @@ func TestNewProjectSheetLocal(t *testing.T) {
 	}
 	caughtUp(t, a, tt)
 	for _, w := range savedWorkspaces(t, a.client).Sessions {
-		if w.ID == a.ws.ID && (w.Dir != folder || w.Host != "") {
-			t.Errorf("the server keeps the home %q %q", w.Host, w.Dir)
+		if w.ID == a.ws.ID && w.Dir != folder {
+			t.Errorf("the server keeps the folder %q", w.Dir)
 		}
 	}
 }
 
 // TestNewProjectSheetHost browses a remote host's folders, on a test
-// server: an offline host shows and cannot be chosen; the project made
-// opens its first tab on the host in the folder.
+// server: an offline host shows and cannot be chosen. A project of a
+// host is made on that host from docs/projects.md's phase 2 on: until
+// then this machine's server refuses it, and the banner says so.
 func TestNewProjectSheetHost(t *testing.T) {
 	a, tt := newTestApp(t)
-	h, _, _, remote := remotePaneOf(t, a, tt, t.TempDir())
+	h, _, _, _ := remotePaneOf(t, a, tt, t.TempDir())
 	off := a.addHost(savedHost{ID: "h-off", Name: "far-box", Address: filepath.Join(t.TempDir(), "none.sock")})
 	root := folderTree(t, t.TempDir())
 	focusLocal(t, a)
@@ -149,24 +149,12 @@ func TestNewProjectSheetHost(t *testing.T) {
 	sheetShows(t, a, tt, root)
 	click(t, tt, "beta")
 	sheetShows(t, a, tt, filepath.Join(root, "beta"))
-	folder := a.sheet.res.Path
 	// An empty name is the folder's, as the placeholder says.
 	a.sheet.name = ""
 
-	before := a.ws
 	click(t, tt, locales.ProjectSheetCreate())
-	waitFor(t, tt, "the project's tab on the host", func() bool { return a.ws != before && len(a.tabsOn(h)) == 1 })
-	if a.ws.Host != layout.MachineHost(h.Machine) || a.ws.Dir != folder || a.ws.Name != "beta" {
-		t.Fatalf("the project %q's home is %q %q", a.ws.Name, a.ws.Host, a.ws.Dir)
-	}
-	p := a.tabsOn(h)[0].Focus
-	waitFor(t, tt, "the shell in the folder", func() bool {
-		for _, in := range sessionInfos(t, remote) {
-			if in.ID == p.SID {
-				return sameDir(in.Dir, folder)
-			}
-		}
-		return false
+	waitFor(t, tt, "the refusal", func() bool {
+		return strings.Contains(a.errText(), "made on that host") && a.ws.Host == "" && a.ws.Dir == ""
 	})
 }
 
@@ -264,8 +252,7 @@ func TestProjectSettings(t *testing.T) {
 }
 
 // TestProjectHeader checks what the sidebar's project header says under
-// the name: the folder of this machine under ~; a host's name before its
-// folder; an unknown host as such.
+// the name: the folder of this machine under ~.
 func TestProjectHeader(t *testing.T) {
 	a, tt := newTestApp(t)
 	old := prefs
@@ -281,25 +268,6 @@ func TestProjectHeader(t *testing.T) {
 	want := "~" + string(filepath.Separator) + filepath.Join("code", "windflow")
 	if d := a.projectDetail(a.ws); d != want || !tt.HasText(want) {
 		t.Errorf("the header says %q, want %q; texts %q", d, want, tt.Texts())
-	}
-
-	h, _, _ := remotePane(t, a, tt, t.TempDir())
-	setProjectHomeAs(t, a, tt, h.ID, folder, layout.MachineHost(h.Machine))
-	want = "office-mac · " + tildePath(folder, a.homeOf(h))
-	tt.Frame()
-	if d := a.projectDetail(a.ws); d != want || !tt.HasText(want) {
-		t.Errorf("the header of a host's project says %q, want %q", d, want)
-	}
-	if _, ok := tt.Find(locales.SessionLabel(a.ws.Name) + " · " + want); !ok {
-		t.Errorf("the chip's label lacks the folder; texts %q", tt.Texts())
-	}
-
-	far := "/srv/far"
-	setProjectHome(t, a, tt, layout.MachineHost("machine-far"), far)
-	want = locales.ProjectHostUnknown() + " · " + far
-	tt.Frame()
-	if d := a.projectDetail(a.ws); d != want || !tt.HasText(want) {
-		t.Errorf("the header of an unknown host says %q, want %q", d, want)
 	}
 }
 
@@ -328,14 +296,6 @@ func TestProjectNotes(t *testing.T) {
 	a.err, a.errMsg = "something else", nil
 	if a.note() != nil {
 		t.Errorf("the note's button stays with another message")
-	}
-
-	setProjectHome(t, a, tt, layout.MachineHost("machine-far"), folder)
-	a.err, a.errMsg = "", nil
-	a.newProjectTab()
-	tt.Frame()
-	if n := a.note(); n == nil || n.action == nil || n.wait || !tt.HasText(locales.ProjectHostNotYours(a.ws.Name, folder)) {
-		t.Errorf("the note of an unknown host: %q", a.errText())
 	}
 
 	a.setNote(func(m locales.Messages) string { return m.ProjectHostWaiting("p", "/x") }, bannerNote{wait: true})
@@ -613,29 +573,5 @@ func TestProjectSheetCreateState(t *testing.T) {
 	tt.Frame()
 	if a.sheet.ready() || !tt.HasText(locales.ProjectSheetNoChoice()) {
 		t.Errorf("a folder gone: ready %v, texts %q", a.sheet.ready(), tt.Texts())
-	}
-}
-
-// TestProjectSheetHostUnknown opens Change Folder… of a project whose home
-// host is none of the user's: the sheet says so with its folder, and Use
-// This Folder waits for the user to browse.
-func TestProjectSheetHostUnknown(t *testing.T) {
-	a, tt := newTestApp(t)
-	far := "/srv/acme-api"
-	setProjectHome(t, a, tt, layout.MachineHost("machine-far"), far)
-	a.openChangeFolder(a.ws.ID)
-	sheetShows(t, a, tt, a.homeOf(nil))
-	tt.Frame()
-	if !tt.HasText(locales.ProjectSheetHostUnknown(far)) || a.sheet.ready() || !tt.HasText(locales.ProjectSheetBrowseFirst()) {
-		t.Fatalf("the sheet of an unknown host: ready %v, texts %q", a.sheet.ready(), tt.Texts())
-	}
-	click(t, tt, locales.ProjectSheetUse())
-	if !a.sheet.open || a.ws.Dir != far {
-		t.Fatalf("Use took the home folder: %q", a.ws.Dir)
-	}
-	click(t, tt, locales.ProjectSheetHome())
-	sheetShows(t, a, tt, a.homeOf(nil))
-	if !a.sheet.ready() {
-		t.Errorf("browsed, the folder cannot be used")
 	}
 }

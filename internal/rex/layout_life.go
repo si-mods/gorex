@@ -72,6 +72,7 @@ func (s *Server) watchExit(ss *session) {
 // holds the change off. A session that exited is forgotten refreshWait
 // later, once a client polling the sessions saw it exit.
 func (s *Server) ended(sid string) {
+	s.forgetUse(sid)
 	a := &applying{s: s}
 	pruned := false
 	s.change(a, func(st *layout.Store) LayoutCommand {

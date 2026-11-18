@@ -22,48 +22,39 @@ func sessionCount(t *testing.T, c *Client) int {
 	return len(infos)
 }
 
-// TestSpaceHome sets, checks and clears a space's home.
+// TestSpaceHome sets, checks and clears a space's folder, which the
+// desktop before docs/projects.md's phase 2 does: only one of this
+// machine, and only one project per folder.
 func TestSpaceHome(t *testing.T) {
 	_, c := applyFixture(t)
 	folder := t.TempDir()
 	work := command(t, c, LayoutCommand{Op: "space.create", Name: "work"}).Space
 	command(t, c, LayoutCommand{Op: "space.home", Space: work, Dir: folder + string(filepath.Separator)})
-	if w := spaceOf(t, c, work); w.Host != "" || w.Dir != filepath.Clean(folder) {
-		t.Fatalf("the home of this machine is %q %q", w.Host, w.Dir)
+	if w := spaceOf(t, c, work); w.Dir != filepath.Clean(folder) {
+		t.Fatalf("the folder is %q", w.Dir)
 	}
-	// Another host's folder is kept as given, a Windows one on any system.
-	command(t, c, LayoutCommand{Op: "space.home", Space: work, Host: "h1", Dir: `C:\code\app`})
-	if w := spaceOf(t, c, work); w.Host != "h1" || w.Dir != `C:\code\app` {
-		t.Fatalf("the home of a host is %q %q", w.Host, w.Dir)
-	}
-	// A rename keeps the home.
+	// A rename keeps the folder.
 	command(t, c, LayoutCommand{Op: "space.rename", Space: work, Name: "renamed", Color: "blue"})
-	if w := spaceOf(t, c, work); w.Host != "h1" || w.Dir != `C:\code\app` {
-		t.Fatalf("a rename changed the home to %q %q", w.Host, w.Dir)
+	if w := spaceOf(t, c, work); w.Dir != filepath.Clean(folder) {
+		t.Fatalf("a rename changed the folder to %q", w.Dir)
 	}
-	// A host whose machine hosts.json knows is kept by its machine, which
-	// outlives the host's ID; one named by its machine stays so.
-	hosts := `{"hosts":[{"id":"h2","address":"tcat://x","machine":"machine-two"}]}`
-	if err := os.WriteFile(filepath.Join(Dir(), "hosts.json"), []byte(hosts), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	for _, host := range []string{"h2", layout.MachineHost("machine-two")} {
-		command(t, c, LayoutCommand{Op: "space.home", Space: work, Host: host, Dir: "/srv/app"})
-		if w := spaceOf(t, c, work); w.Host != layout.MachineHost("machine-two") {
-			t.Errorf("the home of host %q is kept as %q", host, w.Host)
-		}
-	}
-	for _, x := range []LayoutCommand{
-		{Op: "space.home", Space: work, Dir: "relative/dir"},
-		{Op: "space.home", Space: "none", Dir: folder},
+	other := command(t, c, LayoutCommand{Op: "space.create", Name: "other"}).Space
+	for _, x := range []struct {
+		c    LayoutCommand
+		code string
+	}{
+		{LayoutCommand{Op: "space.home", Space: other, Dir: "relative/dir"}, "bad_dir"},
+		{LayoutCommand{Op: "space.home", Space: "none", Dir: folder}, "space_not_found"},
+		{LayoutCommand{Op: "space.home", Space: other, Host: "h1", Dir: "/srv/app"}, "remote_home"},
+		{LayoutCommand{Op: "space.home", Space: other, Dir: folder}, "exists"},
 	} {
-		if res, _ := c.Command(x); res.Code == "" {
-			t.Errorf("space.home of %q in %q: %+v", x.Dir, x.Space, res)
+		if res, _ := c.Command(x.c); res.Code != x.code {
+			t.Errorf("space.home of %q on %q in %q: %+v, want %s", x.c.Dir, x.c.Host, x.c.Space, res, x.code)
 		}
 	}
-	command(t, c, LayoutCommand{Op: "space.home", Space: work, Host: "h1"})
-	if w := spaceOf(t, c, work); w.Host != "" || w.Dir != "" {
-		t.Fatalf("a cleared home is %q %q", w.Host, w.Dir)
+	command(t, c, LayoutCommand{Op: "space.home", Space: work})
+	if w := spaceOf(t, c, work); w.Dir != "" {
+		t.Fatalf("a cleared folder is %q", w.Dir)
 	}
 }
 
@@ -98,14 +89,6 @@ func TestNewTabInProject(t *testing.T) {
 	split := command(t, c, LayoutCommand{Op: "pane.split", SID: given.New, Command: cmd})
 	if n := layout.Find(spaceOf(t, c, work).Tabs[0].Root, split.New); n == nil || !sameDir(n.Dir, other) {
 		t.Errorf("the split starts in %+v, want %q", n, other)
-	}
-
-	// A project whose home is another host: a tab made here starts as
-	// before, the app's to reach the host.
-	far := command(t, c, LayoutCommand{Op: "space.create", Name: "far"}).Space
-	command(t, c, LayoutCommand{Op: "space.home", Space: far, Host: "h1", Dir: filepath.Join(folder, "nowhere")})
-	if res, err := c.Command(LayoutCommand{Op: "tab.create", Space: far, Command: cmd}); err != nil || res.Code != "" {
-		t.Errorf("a tab of a project of another host: %+v %v", res, err)
 	}
 }
 

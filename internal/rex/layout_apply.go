@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"log"
 	"math"
-	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
@@ -28,6 +27,8 @@ var applied = map[string]bool{
 	"pane.restart": true, "pane.teleporting": true, "pane.teleported": true,
 	"tab.set": true, "windows.set": true, "layout.apply": true, "kills.taken": true, "show.taken": true,
 	"tab.to_space": true, "space.home": true,
+	"project.create": true, "project.adopt": true, "project.move": true, "project.update": true,
+	"spaces.rename": true, "adopt.taken": true,
 }
 
 // batched are the commands a layout.apply carries: the app's changes of
@@ -46,6 +47,14 @@ func applies(c LayoutCommand) bool {
 // server keeps, starting and ending the sessions of its panes here.
 func (s *Server) apply(c LayoutCommand) LayoutCommand {
 	a := &applying{s: s}
+	// The folder of a project an adoption makes is checked before the
+	// locks: a folder on a mount that hangs holds no change of the
+	// layout.
+	if c.Op == "project.adopt" && c.Adopt != nil && c.Adopt.Project != nil {
+		if dir, code, _ := projectDir(c.Adopt.Project.Dir); code == "" {
+			a.folder = isDir(dir)
+		}
+	}
 	res := s.applyHeld(c, a)
 	// The sessions of the panes it closed end once the layout no longer
 	// has them, side by side and outside the lock, as each may take a
@@ -204,6 +213,9 @@ type applying struct {
 
 	// kills are the sessions of other hosts' panes the pass closed.
 	kills []layout.Kill
+	// folder tells, of a project.adopt, that its project's folder is
+	// there (apply).
+	folder bool
 }
 
 // start returns a new pane's leaf, starting its session in the first pass.
@@ -659,11 +671,31 @@ func (s *Server) applyTo(st *layout.Store, c LayoutCommand, a *applying) LayoutC
 		if w == nil {
 			return fail("space_not_found", "no such space in the GoRex layout")
 		}
-		host, dir, code, msg := spaceHome(s.homeHost(c.Host), c.Dir)
+		if c.Host != "" {
+			return fail("remote_home", "a project of another host is made on that host")
+		}
+		dir, code, msg := spaceHome(c.Dir)
 		if code != "" {
 			return fail(code, msg)
 		}
-		w.Host, w.Dir = host, dir
+		if p := st.Project(dir); dir != "" && p != nil && p != w {
+			res.Space = p.ID
+			return fail("exists", "the folder is a project already")
+		}
+		w.Dir = dir
+		return res
+	case "project.create":
+		return s.createProject(st, c, a)
+	case "project.adopt":
+		return s.adopt(st, c, a)
+	case "project.move":
+		return moveToProject(st, c, a)
+	case "project.update":
+		return updateProject(st, c)
+	case "spaces.rename":
+		return renameSpace(st, c)
+	case "adopt.taken":
+		st.Adopt = slices.DeleteFunc(st.Adopt, func(x layout.Adoption) bool { return x.ID == c.Target })
 		return res
 	case "show.taken":
 		if st.Show == c.Space {
@@ -846,7 +878,7 @@ func (s *Server) createTab(st *layout.Store, c LayoutCommand, a *applying) Layou
 	// a restart. A directory the caller gives wins; a home on another
 	// host is the app's to reach, so a tab made here starts as before.
 	strict := false
-	if dir == "" && w.Dir != "" && w.Host == "" {
+	if dir == "" && w.Dir != "" {
 		dir, strict = w.Dir, true
 	}
 	if p, ok := findIn(w, localLeaf(c.After)); ok {
@@ -883,6 +915,7 @@ func (s *Server) createTab(st *layout.Store, c LayoutCommand, a *applying) Layou
 	t := layout.Tab{ID: layout.NewTabID(), Name: layout.Label(c.Name), Root: n}
 	a.touch(t.ID, nil)
 	insertTab(w, min(at, len(w.Tabs)), t, c.Focus)
+	projectUsed(w)
 	if c.Focus && !slices.Contains(st.Windows, w.ID) {
 		st.Show, st.ShowAt = w.ID, time.Now()
 	}
@@ -1248,38 +1281,14 @@ func floatState(st *layout.Store, c LayoutCommand, ap *applying) LayoutCommand {
 	return res
 }
 
-// spaceHome is the home a space.home sets, of host and dir as the command
-// gives them: none for a dir of "", else dir cleaned, which must be
-// absolute; an error code and its message when it is not.
-func spaceHome(host, dir string) (string, string, string, string) {
-	dir = strings.TrimSpace(dir)
-	if dir == "" {
-		return "", "", "", ""
+// spaceHome is the folder a space.home sets, of dir as the command gives
+// it: none for a dir of "", else dir cleaned (projectDir); an error code
+// and its message when it is not a folder's.
+func spaceHome(dir string) (string, string, string) {
+	if strings.TrimSpace(dir) == "" {
+		return "", "", ""
 	}
-	if !layout.IsAbsDir(dir) {
-		return "", "", "bad_dir", "a project's folder must be an absolute path"
-	}
-	if host == "" {
-		dir = filepath.Clean(dir)
-	}
-	return host, dir, "", ""
-}
-
-// homeHost is a home host as the layout keeps it: by its machine
-// (layout.MachineHost) when hosts.json knows the machine of the host of
-// that ID, so that the home outlives the host's removal and its return
-// under a new ID; else as given.
-func (s *Server) homeHost(host string) string {
-	if host == "" {
-		return ""
-	}
-	if _, ok := layout.HostMachine(host); ok {
-		return host
-	}
-	if m := HostMachines(cmp.Or(s.dir, Dir()))[host]; m != "" {
-		return layout.MachineHost(m)
-	}
-	return host
+	return projectDir(dir)
 }
 
 // setColor gives w the color of a command: "default" for the default

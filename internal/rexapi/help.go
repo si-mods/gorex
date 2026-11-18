@@ -373,7 +373,7 @@ func helpAllDocument(rev int) map[string]json.RawMessage {
 // gorex.dir.list.
 func ownMethods() []json.RawMessage {
 	var out []json.RawMessage
-	for _, e := range []map[string]any{moveWindowEntry, seeBlockEntry, mergeWindowsEntry, newWindowFromBlockEntry, spacesApplyEntry, dirListEntry, projectSetHomeEntry} {
+	for _, e := range append([]map[string]any{moveWindowEntry, seeBlockEntry, mergeWindowsEntry, newWindowFromBlockEntry, spacesApplyEntry, dirListEntry}, projectEntries...) {
 		if raw, err := json.Marshal(e); err == nil {
 			out = append(out, raw)
 		}

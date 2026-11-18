@@ -129,6 +129,7 @@ func (g *Gateway) handleControl(w http.ResponseWriter, r *http.Request) {
 			Resumed:        resumed,
 		},
 		Features:          g.features(),
+		FeatureVersions:   g.featureVersions(),
 		APIRevision:       rev,
 		APIServerRevision: apiRevision,
 	}
@@ -146,11 +147,15 @@ func (g *Gateway) handleControl(w http.ResponseWriter, r *http.Request) {
 
 // welcome is the server's first message.
 type welcome struct {
-	Type              string         `json:"type"`
-	Protocol          string         `json:"protocol"`
-	Limits            limits         `json:"limits"`
-	Client            *welcomeClient `json:"client,omitempty"`
-	Features          []string       `json:"features,omitempty"`
+	Type     string         `json:"type"`
+	Protocol string         `json:"protocol"`
+	Limits   limits         `json:"limits"`
+	Client   *welcomeClient `json:"client,omitempty"`
+	Features []string       `json:"features,omitempty"`
+	// FeatureVersions are the versions of the features that have one,
+	// GoRex's own: gorex.projects is 2 for projects that are folders of
+	// their host (projects.go).
+	FeatureVersions   map[string]int `json:"feature_versions,omitempty"`
 	Carriers          []carrier      `json:"carriers,omitempty"`
 	APIRevision       int            `json:"api_revision"`
 	APIServerRevision int            `json:"api_server_revision"`

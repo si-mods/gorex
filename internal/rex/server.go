@@ -26,6 +26,8 @@ import (
 
 // Server owns the sessions.
 type Server struct {
+	// uses are the notes of input of the sessions (used).
+	uses       uses
 	mu         sync.Mutex
 	sessions   map[string]*session
 	order      []string
@@ -369,6 +371,7 @@ func Serve() error {
 		log.Print("rex: the layout is the last the journal kept")
 	}
 	s.journal.started()
+	s.migrateLayout()
 	// The sessions of the layout's panes start again once it listens: an
 	// attach to one waits for its own.
 	go s.restoreLost(journalOwners(entries), s.lostPanes())
@@ -632,7 +635,7 @@ func (s *Server) control(conn net.Conn, r *bufio.Reader, first []byte, peer stri
 				kept = s.keep(conn, peer)
 			}
 			// Before the answer: no change after it goes untold.
-			if req.Op == "subscribe" && (!remote || s.remoteShareLayout()) && sub == nil {
+			if req.Op == "subscribe" && sub == nil {
 				sub = s.subscribe(write, remote, req.Transfers)
 			}
 			// Kills wait for the session to end, layout commands for the
@@ -746,16 +749,15 @@ func (s *Server) request(req Request, peer string, kept *keptConn) Response {
 	var data any
 	var err error
 	remote := peer != ""
-	layout := remote && (req.Op == "getLayout" || req.Op == "getLayoutState" || req.Op == "subscribe") && s.remoteShareLayout()
 	if remote && req.Op == "command" && req.Command != nil && req.Command.Op == "action" && !s.remoteControlEnabled() {
 		err = errors.New("rex: remote control is off")
 	} else if remote && req.Op == "command" && req.Command != nil && strings.HasPrefix(req.Command.Op, "pane.teleport") {
 		err = errors.New("rex: a teleport is this machine's to show")
-	} else if remote && req.Op == "command" && req.Command != nil && (req.Command.Op == "tab.set" || req.Command.Op == "windows.set" || req.Command.Op == "layout.apply" || req.Command.Op == "kills.taken" || req.Command.Op == "show.taken") {
+	} else if remote && req.Op == "command" && req.Command != nil && (req.Command.Op == "tab.set" || req.Command.Op == "windows.set" || req.Command.Op == "layout.apply" || req.Command.Op == "kills.taken" || req.Command.Op == "show.taken" || req.Command.Op == "adopt.taken") {
 		err = fmt.Errorf("rex: %s is this machine's GoRex window's", req.Command.Op)
 	} else if remote && req.Op == "remote.pair" {
 		err = errors.New("rex: this machine is allowed there already")
-	} else if remote && !remoteAllowed(req.Op) && !layout && !(req.Op == "action" && s.remoteControlEnabled()) {
+	} else if remote && !remoteAllowed(req.Op) && !(req.Op == "action" && s.remoteControlEnabled()) {
 		log.Printf("rex: denied %q to a remote connection", req.Op)
 		err = fmt.Errorf("%s is not allowed remotely", req.Op)
 	} else {
@@ -900,6 +902,7 @@ func (s *Server) createHeld(o CreateOptions, peer string) (*session, error) {
 		return nil, err
 	}
 	ss.owner = peer
+	ss.typed = func() { s.used(id) }
 	s.mu.Lock()
 	s.sessions[id] = ss
 	s.order = append(s.order, id)

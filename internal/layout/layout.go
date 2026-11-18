@@ -28,6 +28,12 @@ type Store struct {
 	// it, and the server forgets it then (show.taken).
 	Show   string    `json:"show,omitempty"`
 	ShowAt time.Time `json:"showAt,omitzero"`
+	// Adopt are the panes of other hosts the migration took out of this
+	// host's tabs, for each host to adopt (Adoption).
+	Adopt []Adoption `json:"adopt,omitempty"`
+	// Spaces are space names the clients offer though no project carries
+	// them: the names of the spaces of a layout of before projects.
+	Spaces []string `json:"spaces,omitempty"`
 	// The first window's tabs, for a GoRex from before workspaces.
 	Layout
 	// Named tells that Parse gave a browser pane an ID: the layout read is
@@ -49,32 +55,92 @@ type Kill struct {
 	SID  string `json:"sid"`
 }
 
-// Workspace is a workspace as the layout keeps it: a project, to the
-// user, whose home is a folder on a host.
+// Workspace is a workspace as the layout keeps it: a project, a folder of
+// this host's (docs/projects.md), or with no Dir the host's tabs with no
+// project.
 type Workspace struct {
 	ID    string `json:"id"`
 	Name  string `json:"name"`
 	Color string `json:"color,omitempty"`
-	// Host is the project's home host, as Node.Host: "" for this machine.
-	// A machine this machine has no host of is MachineHost's.
-	Host string `json:"host,omitempty"`
-	// Dir is the project's folder on Host, absolute; "" for a project
-	// with no folder, as every space of an older layout is. A new tab of
-	// the project starts there.
+	// Space is the name of the space the project shows in; "" is
+	// "Default". The workspace of tabs with no project has none.
+	Space string `json:"space,omitempty"`
+	// Dir is the project's folder on this host, absolute and unique among
+	// the host's projects (SameDir). "" for the host's workspace of tabs
+	// with no project. A new tab of the project starts there.
 	Dir string `json:"dir,omitempty"`
+	// Used is when a tab of the project last took input or was made.
+	Used time.Time `json:"used,omitzero"`
 	Layout
 }
 
-// machineHost starts a Workspace.Host that names a machine
-// (rex.MachineID) rather than a host of hosts.json: the home of a project
-// another device set on a machine this one has no host of.
+// NoProjectName is the name of a host's workspace of tabs with no
+// project, as Rex's apps show it as a session.
+const NoProjectName = "Tabs with no project"
+
+// NoProject is the host's workspace of tabs with no project (no Dir), nil
+// for none.
+func (s *Store) NoProject() *Workspace {
+	for i := range s.Sessions {
+		if s.Sessions[i].Dir == "" {
+			return &s.Sessions[i]
+		}
+	}
+	return nil
+}
+
+// Project is the project of folder dir (SameDir), nil for none.
+func (s *Store) Project(dir string) *Workspace {
+	for i := range s.Sessions {
+		if w := &s.Sessions[i]; w.Dir != "" && SameDir(w.Dir, dir) {
+			return w
+		}
+	}
+	return nil
+}
+
+// Adoption is what the migration of a layout of v0.38.0 to v0.40.x kept
+// of the panes another host ran in this host's tabs (Store.Adopt): the
+// app sends it to that host as it connects (the "project.adopt"
+// command), which arranges them there, and the server forgets it then.
+type Adoption struct {
+	ID string `json:"id"`
+	// Host is the host by its ID in hosts.json, as Node.Host had it, and
+	// Machine its machine (rex.MachineID) when known; one of them is set.
+	Host    string `json:"host,omitempty"`
+	Machine string `json:"machine,omitempty"`
+	// Project is the project the tabs go in there, of a workspace homed
+	// on that host; nil for its tabs with no project.
+	Project *AdoptProject `json:"project,omitempty"`
+	Tabs    []AdoptTab    `json:"tabs"`
+}
+
+// AdoptProject is the project an adoption makes on its host, unless the
+// host has a project of the folder already.
+type AdoptProject struct {
+	Name  string `json:"name"`
+	Dir   string `json:"dir"`
+	Space string `json:"space,omitempty"`
+}
+
+// AdoptTab is a tab an adoption makes: its title and the panes, a tree of
+// leaves of sessions of that host (Node.SID) and their splits.
+type AdoptTab struct {
+	Title string `json:"title,omitempty"`
+	Split *Node  `json:"split"`
+}
+
+// machineHost starts a home host of a layout of v0.38.0 to v0.40.x that
+// names a machine (rex.MachineID) rather than a host of hosts.json: the
+// home of a project another device set on a machine this one has no host
+// of. The migration reads it (Migrate); the app still names a host so.
 const machineHost = "machine:"
 
-// MachineHost is the Workspace.Host of the machine of ID machine, which
-// no host of hosts.json is.
+// MachineHost is the home host of the machine of ID machine, which no
+// host of hosts.json is.
 func MachineHost(machine string) string { return machineHost + machine }
 
-// HostMachine is the machine a Workspace.Host of MachineHost names, and
+// HostMachine is the machine a home host of MachineHost names, and
 // whether it is one.
 func HostMachine(host string) (string, bool) {
 	m, ok := strings.CutPrefix(host, machineHost)

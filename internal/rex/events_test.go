@@ -380,16 +380,25 @@ func BenchmarkEventSessions(b *testing.B) {
 	}
 }
 
-func TestShareLayoutGate(t *testing.T) {
+// TestShareLayoutGone: every remote client reads the layout, with no
+// setting (docs/projects.md); an app of before that turns Share Layout
+// off changes nothing, and the status says the layout is shared.
+func TestShareLayoutGone(t *testing.T) {
 	s := &Server{layout: []byte(`{"tabs":[]}`)}
-	req := Request{ID: 1, Op: "getLayout"}
-	if res := s.request(req, "peer", nil); res.Error == "" {
-		t.Fatal("layout shared while off")
+	for _, op := range []string{"getLayout", "getLayoutState"} {
+		res := s.request(Request{ID: 1, Op: op}, "peer", nil)
+		if res.Error != "" || !strings.Contains(string(res.Data), "tabs") {
+			t.Fatalf("%s of a remote client: %q %q", op, res.Error, res.Data)
+		}
 	}
-	s.rem.cfg.ShareLayout = true
-	res := s.request(req, "peer", nil)
-	if res.Error != "" || !strings.Contains(string(res.Data), "tabs") {
-		t.Fatalf("shared layout: %q %q", res.Error, res.Data)
+	if _, err := s.remoteDo(Request{Op: "remote.shareLayoutSet", On: false}); err != nil {
+		t.Fatalf("remote.shareLayoutSet of an app of before: %v", err)
+	}
+	if res := s.request(Request{ID: 2, Op: "getLayout"}, "peer", nil); res.Error != "" {
+		t.Fatalf("the layout after Share Layout off: %q", res.Error)
+	}
+	if !s.remoteStatusLocked(nil).ShareLayout {
+		t.Error("the status of an app of before says the layout is not shared")
 	}
 }
 

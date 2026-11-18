@@ -3,35 +3,38 @@ package layout
 import (
 	"encoding/json"
 	"testing"
+	"time"
 )
 
-// TestProjectRoundTrip writes a layout of a project with a home and reads
-// it back; an older layout reads as spaces of no folder; a layout of a
-// newer GoRex, with fields this one does not know, keeps its spaces.
+// TestProjectRoundTrip writes a layout of a project in a space and reads
+// it back; a layout of a newer GoRex, with fields this one does not know,
+// keeps its workspaces.
 func TestProjectRoundTrip(t *testing.T) {
-	st := Store{Version: Version, Windows: []string{"p"}, Sessions: []Workspace{
-		{ID: "p", Name: "windflow", Color: "blue", Host: "a1b2c3", Dir: "/home/me/code/windflow"},
-		{ID: "q", Name: "plain"},
-	}}
+	used := time.Date(2026, 11, 18, 9, 30, 0, 0, time.UTC)
+	st := Store{Version: Version, Windows: []string{"p"}, Spaces: []string{"Life"}, Sessions: []Workspace{
+		{ID: "p", Name: "windflow", Color: "blue", Space: "Work", Dir: "/home/me/code/windflow", Used: used},
+		{ID: "q", Name: NoProjectName},
+	}, Adopt: []Adoption{{ID: "a", Host: "h1", Machine: "m1", Project: &AdoptProject{Name: "x", Dir: "/srv/x"},
+		Tabs: []AdoptTab{{Title: "dev", Split: &Node{SID: "s1"}}}}}}
 	raw, err := json.Marshal(st)
 	if err != nil {
 		t.Fatal(err)
 	}
 	got := Parse(raw)
-	if w := got.Space("p"); w == nil || w.Host != "a1b2c3" || w.Dir != "/home/me/code/windflow" || w.Name != "windflow" {
+	if w := got.Space("p"); w == nil || w.Space != "Work" || w.Dir != "/home/me/code/windflow" || w.Name != "windflow" || !w.Used.Equal(used) {
 		t.Fatalf("the project read back is %+v", w)
 	}
-	if w := got.Space("q"); w == nil || w.Host != "" || w.Dir != "" {
-		t.Fatalf("the space of no folder read back is %+v", w)
+	if w := got.NoProject(); w == nil || w.ID != "q" || w.Space != "" {
+		t.Fatalf("the tabs with no project read back are %+v", w)
+	}
+	if len(got.Adopt) != 1 || got.Adopt[0].Project == nil || got.Adopt[0].Tabs[0].Split.SID != "s1" || len(got.Spaces) != 1 {
+		t.Fatalf("the adoptions and spaces read back are %+v, %v", got.Adopt, got.Spaces)
+	}
+	if got.Project("/home/me/code/windflow/") == nil || got.Project("/home/me/code") != nil {
+		t.Fatal("Project finds the project by its folder")
 	}
 
-	older := `{"version":2,"sessions":[{"id":"o","name":"old","color":"red","active":0,"tabs":[]}],"windows":["o"]}`
-	got = Parse([]byte(older))
-	if w := got.Space("o"); w == nil || w.Host != "" || w.Dir != "" || w.Name != "old" {
-		t.Fatalf("a space of an older layout is %+v", w)
-	}
-
-	newer := `{"version":2,"sessions":[{"id":"n","name":"new","dir":"/srv/app","icon":"rocket","tabs":[],"later":{"x":1}}],"windows":["n"],"future":true}`
+	newer := `{"version":3,"sessions":[{"id":"n","name":"new","dir":"/srv/app","icon":"rocket","tabs":[],"later":{"x":1}}],"windows":["n"],"future":true}`
 	got = Parse([]byte(newer))
 	if w := got.Space("n"); w == nil || w.Dir != "/srv/app" || w.Name != "new" || len(got.Windows) != 1 {
 		t.Fatalf("a space of a newer layout is %+v, windows %v", w, got.Windows)

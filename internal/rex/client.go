@@ -889,12 +889,6 @@ func (c *Client) RemoteControl(on bool) error {
 	return c.call(Request{Op: "remote.controlSet", On: on}, nil)
 }
 
-// ShareLayout sets whether remote clients may read the layout and
-// subscribe to its changes.
-func (c *Client) ShareLayout(on bool) error {
-	return c.call(Request{Op: "remote.shareLayoutSet", On: on}, nil)
-}
-
 // StartPairing opens the pairing window for five minutes, or opens it
 // five minutes more, while remote access is on.
 func (c *Client) StartPairing() error { return c.call(Request{Op: "remote.pairStart"}, nil) }

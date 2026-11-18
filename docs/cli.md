@@ -6,7 +6,8 @@ without opening a window; with no arguments it starts the app.
 `-S HOST` before a command uses a saved remote host from `hosts.json`, by
 its name or its alias, or an address, instead of this machine's server. Local-only commands (`hosts`,
 `remote`, `server`, `update`) do not apply remotely. `action` applies remotely when the host turns Remote
-Control on; `layout` reads a host's layout when it turns Share Layout on.
+Control on; `layout` reads a host's layout, which every client the host lets in may read (Share Layout
+is gone: a host's layout is where its projects and tabs live).
 
 Every local terminal GoRex opens gets:
 
@@ -43,7 +44,7 @@ gorex events
 gorex hosts [ls] [--json]
 gorex [-S HOST] pair [--json]
 gorex skill show|setup|status|remove [--agent NAME] [--project] [--dry-run] [--json]
-gorex remote status [--json] | tailscale on|off | address | relay HOST|default | reachable IP|off | enable | disable | control on|off | layout on|off | pair start|stop | pending | approve KEY|CODE | reject KEY|CODE | allow NAME KEY | revoke KEY
+gorex remote status [--json] | tailscale on|off | address | relay HOST|default | reachable IP|off | enable | disable | control on|off | pair start|stop | pending | approve KEY|CODE | reject KEY|CODE | allow NAME KEY | revoke KEY
 gorex server restart | upgrade
 gorex update
 gorex config path | config check [FILE] | config reload
@@ -74,7 +75,7 @@ wins over `-s`. An ambiguous target exits 3. `rename` gives a pane a label.
   open window shows it at once, a closed one as it opens. `close` and
   `rename` work the same way.
 - `events` prints each layout or session change as one JSON line; with a
-  host that shares its layout, it subscribes to that host's layout too.
+  remote host, it subscribes to that host's layout too.
 - `clients` prints the principal, peer key, whether it is remote, through a
   kept connection, and how many seconds it has been attached.
 - `hosts` lists saved remote hosts, each by its name and the alias it was

@@ -551,6 +551,49 @@ Each phase is its own PR, run, reviewed and merged before the next.
 5. **Docs**: README, `docs/rex-api.md`, `docs/cli.md` (Share Layout),
    `docs/ios-centralized-spaces.md` marked replaced.
 
+## Decided in phase 1
+
+What the design left open, and phase 1 (the server model) decided:
+
+- **Welcome.** `features` lists `gorex.projects`, and the welcome's new
+  `feature_versions` object gives its version:
+  `"feature_versions": {"gorex.projects": 2}`.
+- **`exists`.** `gorex.project.create` of a folder that is a project
+  already fails with an error of code `exists` (status 409), whose
+  `project_id` names that project.
+- **Space names offered.** The layout keeps the old spaces' names in
+  `Store.Spaces`, until a project carries one; `gorex.space.list` answers
+  the names the host's projects carry, then those.
+- **Adoptions.** Each is one host and one project (or none): `ID`,
+  `Host` (its `hosts.json` ID), `Machine` when known, `Project`, `Tabs`.
+  The app takes one with the local command `adopt.taken`. An adoption
+  whose project folder is not on the host puts its tabs in the tabs with
+  no project. An adopted tab counts as adopted when one tab of the
+  project holds all its panes that run; then adopting again changes
+  nothing.
+- **Tabs with no project.** The migration's workspace of them takes the
+  ID of the first old space, so Rex Go 1.1 keeps that session, and the
+  name "Tabs with no project".
+- **Floats of another host** join that host's part of the split.
+- **`Used`** follows input at most once a minute per pane; a new tab sets
+  it at once.
+- **Share Layout.** `remote.shareLayoutSet` of an older app is accepted
+  and changes nothing; `remote.status` says `shareLayout: true`.
+- **Older clients.** A project's `project` also carries `home_machine`,
+  this machine, so Rex Go 1.1 and the web client of v0.39.0 find its
+  host. `gorex.spaces_apply` stays, and ignores `home_machine` and
+  `dir`.
+- **Until phase 2** the desktop still sends `space.home`: the server keeps
+  it for a folder of this machine only (another host's fails with
+  `remote_home`, a second project of a folder with `exists`). Between
+  phase 1 and phase 2, a migrated desktop no longer shows other hosts'
+  panes of its old tabs: they wait in the adoptions.
+- **Phase 2 removes** `space.home`, the app's `Workspace.Host` and the
+  waits for a project's home host (`projectHost`, `homeArg`,
+  `projectOpen`), `layout.MachineHost`, and sends the adoptions. **Phase
+  3 removes** `gorex.spaces_apply` and `featureSpacesSync` once Rex Go no
+  longer sends them.
+
 ## Open
 
 - A project in more than one space: not planned; Move to Space is the
