@@ -450,3 +450,68 @@ func TestSpacesDelete(t *testing.T) {
 		t.Fatalf("the shells changed: before %v, after %v", before, after)
 	}
 }
+
+// TestRepairHostPanesAtLoad loads a layout of projects that keeps another
+// host's panes, as a client of before projects put back, and repairs it as
+// a server does as it starts: this machine's panes stay where they are,
+// with their processes, and h1's wait in an adoption for it, its tabs'
+// parts of the splits, as the migration leaves them.
+func TestRepairHostPanesAtLoad(t *testing.T) {
+	s, c := applyFixture(t)
+	hosts := `{"hosts":[{"id":"h1","address":"tcat://x","machine":"m1"}]}`
+	if err := os.WriteFile(filepath.Join(Dir(), "hosts.json"), []byte(hosts), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	l := shells(t, c, 2)
+	old := fmt.Sprintf(`{"version":%d,"windows":["proj","gone"],"sessions":[
+ {"id":"proj","name":"gorex","dir":%q,"active":1,"tabs":[
+  {"id":"dev","name":"dev","root":{"ratio":0.4,"a":{"sid":%q},"b":{"sid":"r1","host":"h1"}}},
+  {"id":"host","name":"Projects V2","root":{"sid":"r2","host":"h1"}}]},
+ {"id":"gone","name":"Work","tabs":[{"id":"away","name":"away","root":{"sid":"r3","host":"h1"}}]}]}`,
+		layout.Version, t.TempDir(), l[0])
+	before := pids(t, c)
+	s.mu.Lock()
+	s.layout = []byte(old)
+	s.mu.Unlock()
+	s.migrateLayout()
+	if after := pids(t, c); !maps.Equal(before, after) {
+		t.Fatalf("the shells changed: before %v, after %v", before, after)
+	}
+	st := storeOf(t, c)
+	if st.Version != layout.Version {
+		t.Fatalf("the layout is of version %d", st.Version)
+	}
+	// The project here keeps its tab, with this machine's pane alone; the
+	// tab of h1's pane goes.
+	proj := st.Space("proj")
+	if proj == nil || len(proj.Tabs) != 1 || proj.Tabs[0].ID != "dev" {
+		t.Fatalf("the project here is %+v", proj)
+	}
+	if got := localPanes(st); !slices.Equal(got, l[:1]) {
+		t.Fatalf("panes here %v, want %v", got, l[:1])
+	}
+	if root := proj.Tabs[0].Root; root == nil || root.SID != l[0] || root.A != nil {
+		t.Fatalf("the tab's split is %+v", root)
+	}
+	// The old space of h1's pane only goes, its name one the picker offers.
+	if st.Space("gone") != nil || !slices.Equal(st.Spaces, []string{"Work"}) || !slices.Equal(st.Windows, []string{"proj"}) {
+		t.Fatalf("the space gone: %+v, spaces %v, windows %v", st.Space("gone"), st.Spaces, st.Windows)
+	}
+	// h1's panes wait for it in one adoption of its machine.
+	if len(st.Adopt) != 1 {
+		t.Fatalf("the adoptions %+v", st.Adopt)
+	}
+	ad := st.Adopt[0]
+	if ad.Machine != "m1" || len(ad.Tabs) != 3 {
+		t.Fatalf("the adoption is %+v", ad)
+	}
+	if ad.Tabs[0].Title != "dev" || ad.Tabs[0].Split.SID != "r1" || ad.Tabs[1].Title != "Projects V2" || ad.Tabs[2].Title != "away" {
+		t.Errorf("the adoption's tabs %+v", ad.Tabs)
+	}
+	// A second load changes nothing: nothing else is put back.
+	raw, _ := c.Layout()
+	s.migrateLayout()
+	if again, _ := c.Layout(); string(again) != string(raw) {
+		t.Fatalf("a second load changed the layout:\n%s\n%s", raw, again)
+	}
+}

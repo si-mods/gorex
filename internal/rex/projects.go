@@ -45,8 +45,10 @@ func (s *Server) migrateLayout() {
 		return
 	}
 	machines := HostMachines(dir)
-	st, changed := layout.Migrate(raw, func(host string) string { return machines[host] })
+	machineOf := func(host string) string { return machines[host] }
+	st, changed := layout.Migrate(raw, machineOf)
 	if !changed {
+		s.repairHostPanes(machineOf)
 		return
 	}
 	keep := filepath.Join(dir, "layout.json.v039")
@@ -67,6 +69,33 @@ func (s *Server) migrateLayout() {
 		tabs += len(a.Tabs)
 	}
 	log.Printf("rex: the layout is of projects now: %d workspaces, %d tabs of other hosts to adopt", len(st.Sessions), tabs)
+}
+
+// repairHostPanes takes the panes of other hosts out of a layout of
+// projects that keeps some, as a layout of before projects did and a
+// client of one may put back, into an adoption for each host, as the
+// migration leaves them (layout.RepairHostPanes): this machine's layout
+// keeps no pane of another host (docs/projects.md, "The desktop window").
+// It changes nothing for a layout that keeps this machine's panes only.
+func (s *Server) repairHostPanes(machineOf func(host string) string) {
+	s.mu.Lock()
+	raw := s.layout
+	s.mu.Unlock()
+	if len(raw) == 0 {
+		return
+	}
+	st, taken := layout.RepairHostPanes(layout.Parse(raw), machineOf)
+	if taken == 0 {
+		return
+	}
+	l := encodeLayout(&st)
+	s.mu.Lock()
+	s.layout = l
+	s.layoutRev++
+	rev := s.layoutRev
+	s.mu.Unlock()
+	s.writeLayout(rev, true)
+	log.Printf("rex: took %d panes of other hosts out of this machine's layout, to adopt: something of before projects put them back", taken)
 }
 
 // tabNamesMark is the file, beside the layout, that tells
