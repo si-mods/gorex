@@ -215,9 +215,11 @@
   .window[data-drop="into"] { box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--busy) 60%, transparent); }
   /* Projects (projectsidebar.ts): a host's projects of the space, a row each with its folder and `+`, its tabs
      under it; the space picker is a chip at the top. A host that is away shows its copy, dimmed (DESIGN.md). */
-  .project { display: flex; align-items: center; border-radius: 999px; }
+  .project { display: flex; align-items: center; margin: 1px 0; border-radius: 999px; }
   .project:hover { background: var(--hover); }
   .project.open { background: var(--pill); }
+  .project.current .name { font-weight: 600; }
+  .project-tabs .window { margin: 1px 0; }
   .project[data-drop="into"] { box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--busy) 60%, transparent); }
   .project-main {
     display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; padding: 5px 4px 5px 8px; border: 0;
@@ -228,7 +230,7 @@
   .project-main .name { flex: 0 1 auto; }
   .project.group .project-main { color: var(--muted); }
   .project > button.icon { margin-right: 4px; display: none; }
-  .project:hover > button.icon, .project.open > button.icon, .project:focus-within > button.icon { display: flex; }
+  .project:hover > button.icon, .project.open > button.icon, .project.current > button.icon, .project:focus-within > button.icon { display: flex; }
   /* A touch screen has no hover: the row's + stays. */
   @media (hover: none) { .project > button.icon { display: flex; } }
   .project-main .color-dot.none { background: none; box-shadow: none; }

@@ -258,7 +258,8 @@ function projectRow(nav: HTMLElement, model: HostModel, c: HostConn | undefined,
   row.dataset.host = model.host;
   row.dataset.session = p.id;
   if (!c) row.classList.add("dimmed");
-  if (shownHere) row.classList.add("open");
+  // One fill for the chosen place: the active tab when it shows, else the project row. The project that holds a shown tab is only marked current.
+  if (shownHere) row.classList.add(open ? "current" : "open");
   if (c && renaming(c, p.id)) {
     row.append(renameField(p.name, dirName(p.dir), t("renameSpaceLabel"), (name) => app.renamedSpace(c, p.id, name)));
     nav.append(row);
