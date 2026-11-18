@@ -8,7 +8,8 @@ enum ProjectWindow {
     struct Candidate {
         let id: UUID
         let name: String
-        /// The host's machine, as the spaces key it (Host.spaceMachineKey).
+        /// The host's machine, the one last seen while offline
+        /// (Host.homeMachineKey).
         let machine: String
         let online: Bool
         let sessions: [Host.Session]

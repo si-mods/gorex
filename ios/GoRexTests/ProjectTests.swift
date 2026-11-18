@@ -239,19 +239,63 @@ nonisolated final class ProjectTests: XCTestCase {
         let config = HostConfig(name: "office", url: URL(string: "http://127.0.0.1:1")!)
         defer { Host.forgetMachine(config.id) }
         let h = Host(config)
-        XCTAssertEqual(h.spaceMachineKey, "host:\(config.id.uuidString)")
+        XCTAssertEqual(h.homeMachineKey, "host:\(config.id.uuidString)")
         h.take(try Spaces.Answer(json: Data(#"{"machine_id":"m-office","sessions":[]}"#.utf8)))
-        XCTAssertEqual(h.spaceMachineKey, "m-office")
+        XCTAssertEqual(h.homeMachineKey, "m-office")
         h.take(nil)
         XCTAssertNil(h.machine)
-        XCTAssertEqual(h.spaceMachineKey, "m-office")
+        XCTAssertEqual(h.homeMachineKey, "m-office")
         let relaunched = Host(config)
-        XCTAssertEqual(relaunched.spaceMachineKey, "m-office")
-        let candidate = ProjectWindow.Candidate(id: relaunched.id, name: "office", machine: relaunched.spaceMachineKey,
+        XCTAssertEqual(relaunched.homeMachineKey, "m-office")
+        let candidate = ProjectWindow.Candidate(id: relaunched.id, name: "office", machine: relaunched.homeMachineKey,
                                                 online: false, sessions: [])
         XCTAssertEqual(ProjectWindow.plan(project(), hosts: [candidate]), .offline(host: config.id, name: "office"))
         Host.forgetMachine(config.id)
-        XCTAssertEqual(Host(config).spaceMachineKey, "host:\(config.id.uuidString)")
+        XCTAssertEqual(Host(config).homeMachineKey, "host:\(config.id.uuidString)")
+    }
+
+    /// M1: a host whose address now leads to another computer is online
+    /// before /api/spaces tells its machine. Until then its sync is not
+    /// keyed by the machine it was last seen to be: the old computer's
+    /// members stay, and nothing is reported under its machine. A new
+    /// address forgets the machine the host was.
+    @MainActor func testHostNotReadYetIsNotTheLastMachine() async throws {
+        let saved = UserDefaults.standard.data(forKey: "hosts")
+        defer { UserDefaults.standard.set(saved, forKey: "hosts") }
+        UserDefaults.standard.removeObject(forKey: "hosts")
+        let url = tempURL()
+        defer {
+            try? FileManager.default.removeItem(at: url)
+            try? FileManager.default.removeItem(at: SpaceStore.reportedURL(for: url))
+        }
+        let (old, new) = (try FakeRex(), try FakeRex())
+        defer { old.stop(); new.stop() }
+        for r in [old, new] { r.respond = { m, _ in m == "session.bootstrap" ? ["attach_all": ["sessions": []]] : [:] } }
+        var config = HostConfig(name: "office", url: try await old.url())
+        defer { Host.forgetMachine(config.id) }
+        // The host was m-office, as a launch before read it.
+        Host(config).take(try Spaces.Answer(json: Data(#"{"machine_id":"m-office","sessions":[]}"#.utf8)))
+
+        let spaces = SpaceStore(fileURL: url)
+        let ops = spaces.createSpace(name: "acme-ops")
+        spaces.assign(machine: "m-office", block: "block:74", window: "w1", to: ops.id)
+
+        let store = HostStore()
+        store.add(config)
+        let h = try XCTUnwrap(store.host(config.id))
+        await until("online") { h.status == .online }
+        XCTAssertNil(h.machine)
+        XCTAssertFalse(h.spaceSnapshot.known)
+        XCTAssertNotEqual(h.spaceSnapshot.machine, "m-office")
+        spaces.sync(from: [h.spaceSnapshot])
+        XCTAssertEqual(spaces.space(id: ops.id)?.members.map(\.block_id), ["block:74"])
+        XCTAssertEqual(h.lastMachine, "m-office")
+
+        config.url = try await new.url()
+        store.update(config)
+        XCTAssertNil(h.lastMachine)
+        XCTAssertNil(Host(config).lastMachine)
+        store.remove(config.id)
     }
 
     // MARK: Rename and reports of other sessions

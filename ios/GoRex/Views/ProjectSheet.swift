@@ -136,7 +136,7 @@ struct ProjectSheet: View {
         guard !started else { return }
         started = true
         if case .change(let id) = mode, let s = spaceStore.space(id: id) {
-            let home = store.hosts.filter { $0.spaceMachineKey == s.home_machine }
+            let home = store.hosts.filter { $0.homeMachineKey == s.home_machine }
             if let h = home.first(where: \.listsFolders) ?? home.first {
                 hostID = h.id
                 dir = s.folder

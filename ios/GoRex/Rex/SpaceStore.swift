@@ -158,9 +158,9 @@ final class SpaceStore {
         /// Whether the host reports projects' homes (`gorex.projects`):
         /// only then does a session with no `project` have no folder.
         var projects = false
-        /// Whether `machine` is the host's machine, not its host ID as
-        /// before it first connected: only then are its sessions' names and
-        /// homes remembered (reports).
+        /// Whether `machine` is the machine this connection read, not the
+        /// host's ID as before /api/spaces answers: only then are its
+        /// sessions' names and homes remembered (reports).
         var known = true
     }
 
@@ -511,9 +511,9 @@ final class SpaceStore {
         }
     }
 
-    /// The names a host's sessions are to take: a project renamed here,
-    /// or on another device, whose session on the host still reports the
-    /// name it had. Sent before the manifest (Host.applySpaces), so that
+    /// The names a host's sessions are to take: a project renamed in the
+    /// manifest, whose session on the host still reports the name it had
+    /// when this device last synced with the host. Sent before the manifest (Host.applySpaces), so that
     /// the host renames its space and does not make a second one of the
     /// new name. A session whose new name another session of the host has
     /// already is left as it is.

@@ -537,7 +537,7 @@ struct HostListView: View {
     /// is offline, or that no host of its machine is added here. Of two
     /// hosts of the machine, the one online is the project host.
     private func homeName(_ s: CentralSpace) -> String {
-        let home = store.hosts.filter { $0.spaceMachineKey == s.home_machine }
+        let home = store.hosts.filter { $0.homeMachineKey == s.home_machine }
         guard let h = home.first(where: { $0.status == .online }) ?? home.first else {
             return String(localized: "Project host not added")
         }
@@ -547,7 +547,7 @@ struct HostListView: View {
 
     private var candidates: [ProjectWindow.Candidate] {
         store.hosts.map {
-            .init(id: $0.id, name: $0.config.name, machine: $0.spaceMachineKey, online: $0.status == .online, sessions: $0.sessions)
+            .init(id: $0.id, name: $0.config.name, machine: $0.homeMachineKey, online: $0.status == .online, sessions: $0.sessions)
         }
     }
 

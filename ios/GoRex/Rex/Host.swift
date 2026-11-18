@@ -365,8 +365,10 @@ final class Host: Identifiable {
     /// nil and none from a server that doesn't.
     private(set) var machine: String?
     /// The machine the host was last seen to be, kept across launches
-    /// (lastMachinesKey): a project's home host offline, or not read yet
-    /// after it connects, is still known as its machine's.
+    /// (lastMachinesKey), and forgotten when its address changes: a
+    /// project's home host offline is still found by its machine
+    /// (homeMachineKey). Only to show and find the home host: the sync
+    /// keys a host by the machine its connection read (spaceMachineKey).
     private(set) var lastMachine: String?
     private(set) var remote: [String: [Spaces.Member]] = [:]
     private(set) var control: ControlConnection?
@@ -651,14 +653,29 @@ final class Host: Identifiable {
         lastMachines[id.uuidString] = nil
     }
 
+    /// Forgets the machine the host was, as its address changes: the new
+    /// address may be another computer.
+    func forgetLastMachine() {
+        lastMachine = nil
+        Self.forgetMachine(id)
+    }
+
     /// The host's machine: the one it reports, else the one it was last
     /// seen to be.
     var knownMachine: String? { machine ?? lastMachine }
 
     /// Durable machine key for `SpaceStore`, falling back to the host UUID
-    /// when no machine is known: a server that does not report `machine_id`
-    /// (e.g. Demo Mode), or a host that has not reported it yet.
+    /// when this connection has not read the machine: a server that does
+    /// not report `machine_id` (e.g. Demo Mode), a host offline, or one
+    /// whose /api/spaces has not answered yet, which may be another
+    /// computer than the one it was.
     var spaceMachineKey: String {
+        machine ?? "host:\(id.uuidString)"
+    }
+
+    /// The key a project's home host is found by: the machine last seen
+    /// too, so that a home host offline reads as offline, not as not added.
+    var homeMachineKey: String {
         knownMachine ?? "host:\(id.uuidString)"
     }
 
@@ -671,7 +688,7 @@ final class Host: Identifiable {
                 .init(id: $0.id, label: $0.label, view: $0.view, remote: remote[$0.id] ?? [], project: $0.project)
             },
             projects: supportsProjects,
-            known: knownMachine != nil || isDemo
+            known: machine != nil || isDemo
         )
     }
 
@@ -1482,6 +1499,9 @@ final class HostStore {
         guard let h = host(config.id) else { return }
         let moved = h.config.url != config.url || h.config.transport != config.transport || h.config.auth != config.auth
         if h.config.auth != config.auth { tokens.set(config.auth, for: config.id) }
+        if h.config.url != config.url || h.config.tailcat?.address != config.tailcat?.address {
+            h.forgetLastMachine()
+        }
         h.config = config
         if moved { h.reconnect() }
         save()
