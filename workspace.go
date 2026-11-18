@@ -1328,6 +1328,12 @@ func (a *App) leave() []*Tab {
 		a.closeFind()
 	}
 	if w := a.ws; w != nil {
+		// A project is open by default only while it is shown: leaving
+		// it keeps it as it was, so that no project closes by another's
+		// being chosen.
+		if key := openKey(w.host, w.ID); !hasRowOpen(key) {
+			setRowOpen(key, true)
+		}
 		w.layout = a.snapshot()
 		w.app = nil
 	}
