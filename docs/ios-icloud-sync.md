@@ -1,0 +1,75 @@
+# Rex Go: iCloud sync
+
+Status: implemented.
+
+## Problem
+
+A user with an iPhone and an iPad sets Rex Go up twice: the theme, the font,
+the dictation service and its API key. This design makes those follow the
+user between their own devices, through iCloud, with no account or server of
+GoRex.
+
+## What syncs, and where
+
+- **The API key** (dictation's Polish, Settings › Dictation) goes in the iCloud
+  Keychain: a Keychain item with `kSecAttrSynchronizable`, which iCloud
+  Keychain encrypts end to end. It never goes in the key-value store, which is
+  not end-to-end encrypted. A synchronizable item cannot be `ThisDeviceOnly`,
+  so it is `AfterFirstUnlock`. Keychain sync needs no entitlement. With iCloud
+  Keychain off, the item stays on the device.
+- **Preferences** go in the iCloud key-value store (`NSUbiquitousKeyValueStore`),
+  mirrored with `UserDefaults`, which the app keeps reading and writing as
+  before (`@AppStorage` included): `scheme` (Interface), `theme`, `fontSize`,
+  `fontFamily`, `minimumContrast`, `polishBase` and `polishModel`. Values are
+  strings and numbers only. `CloudSettings` (`ios/GoRex/Rex`) does the mirror.
+
+## What does not sync
+
+- `clientLabel`: the name of each device.
+- Tailscale keys and state: a device's identity on the tailnet.
+- `dictationModel`: the models are downloaded per device, and some need more
+  memory than another device has.
+- `hosts` (a LAN gateway's token is in the Keychain, per device), `backgrounds`,
+  `expanded`, the input trace and anything else not listed above.
+
+## Merge
+
+- iCloud's last writer wins, per key.
+- At launch the cloud wins: a key it holds is written into `UserDefaults`. A key
+  it lacks is pushed from the device, so the first launch after the update
+  seeds the cloud.
+- Afterwards a change from another device is applied as iCloud tells it
+  (the account changing re-applies every key), and a change made here is
+  pushed. A value is written only where it differs, and only a change made on
+  the device is pushed, so nothing loops and what came from the cloud does not go back.
+- Removing a key removes it on the other side too. An empty API key means
+  polish is off, so clearing it clears it on every device.
+- The terminals are told as Settings tells them (`.terminalFont`,
+  `.terminalTheme`, `.minimumContrast`), so open ones follow.
+
+## Maple Mono
+
+The font family `Maple Mono NF CN` is downloaded per device. A device applies
+it from the cloud only when the font is installed there; otherwise it keeps its
+own value and the cloud keeps Maple for the devices that have it. Deleting the
+font takes the family out of that device's settings only: the cloud keeps it.
+
+## Key migration
+
+An older build kept the key in a local item. At launch, `Polish.syncKey()`
+saves it again as synchronizable and removes the local one; a synchronizable
+key already there stays, and the local one goes.
+
+## Downgrade
+
+An older build reads the key without `kSecAttrSynchronizableAny`, so it does
+not see the synchronizable item: after a downgrade dictation polish is off until
+the key is typed again.
+
+## Entitlement
+
+`com.apple.developer.ubiquity-kvstore-identifier` =
+`$(TeamIdentifierPrefix)$(CFBundleIdentifier)`, in `ios/GoRex/GoRex.entitlements`,
+set by `CODE_SIGN_ENTITLEMENTS` in `ios/project.yml`. The App ID needs iCloud
+key-value storage enabled in the developer portal (Automatic signing does it).
+

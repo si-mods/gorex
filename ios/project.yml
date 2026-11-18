@@ -61,6 +61,8 @@ targets:
         OTHER_LDFLAGS: -lc++
         SWIFT_OBJC_BRIDGING_HEADER: GoRex/GoRex-Bridging-Header.h
         PRODUCT_BUNDLE_IDENTIFIER: dev.gorex.ios
+        # iCloud key-value store: the settings that sync (CloudSettings).
+        CODE_SIGN_ENTITLEMENTS: GoRex/GoRex.entitlements
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
         TARGETED_DEVICE_FAMILY: "1,2"

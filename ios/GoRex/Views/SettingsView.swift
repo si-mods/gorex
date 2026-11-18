@@ -353,7 +353,7 @@ private struct TerminalSettings: View {
             } header: {
                 Text("Dictation")
             } footer: {
-                Text("The mic types what you say into the terminal, without pressing Return; the model you choose recognises it on this device. Fun-ASR-Nano and Qwen3-ASR are larger and slower: on a Mac they take 2 to 2.6 GB of memory, and phones with less may not run them. Swipe a model to delete it. With an API key, the text you dictate and words from the terminal screen go to the service you set here, which corrects misheard terms and punctuation. Without a key, nothing leaves the device.")
+                Text("The mic types what you say into the terminal, without pressing Return; the model you choose recognises it on this device. Fun-ASR-Nano and Qwen3-ASR are larger and slower: on a Mac they take 2 to 2.6 GB of memory, and phones with less may not run them. Swipe a model to delete it. With an API key, the text you dictate and words from the terminal screen go to the service you set here, which corrects misheard terms and punctuation. Without a key, nothing leaves the device. The key and these settings sync through iCloud to your other devices.")
             }
             Section {
                 ForEach(contrasts, id: \.0) { value, name in

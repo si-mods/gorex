@@ -14,10 +14,14 @@ struct GoRexApp: App {
     /// downloaded font is known before. So does the built-in Tailscale,
     /// when on: the hosts on it wait for it to run. The engine comes
     /// before the hosts, which tell it those paired over tailcat. The files
-    /// a run opened from its hosts go.
+    /// a run opened from its hosts go. The API key and the settings that
+    /// sync through iCloud come in after the font, which one names, and
+    /// before Ghostty, which reads some.
     init() {
         OpenedFiles.clean()
         Maple.shared.register()
+        Polish.syncKey()
+        CloudSettings.shared.start()
         _ = Ghostty.app
         Notifier.shared.start()
         let engine = TailnetEngine.shared

@@ -130,21 +130,43 @@ nonisolated extension Polish {
         [kSecClass: kSecClassGenericPassword, kSecAttrService: "dev.gorex.ios.polish", kSecAttrAccount: "key"]
     }
 
-    /// The service's API key, in the Keychain on this device only; nil or
-    /// empty removes it.
+    private static func query(_ extra: [CFString: Any]) -> CFDictionary {
+        item.merging(extra) { $1 } as CFDictionary
+    }
+
+    /// The service's API key, in the iCloud Keychain, so that it follows the
+    /// user to their other devices; where that is off it stays on this one.
+    /// nil or empty removes it, from every device.
     static var savedKey: String? {
         get {
             var data: CFTypeRef?
-            guard SecItemCopyMatching(item.merging([kSecReturnData: true]) { $1 } as CFDictionary, &data) == errSecSuccess,
+            guard SecItemCopyMatching(query([kSecReturnData: true, kSecAttrSynchronizable: kSecAttrSynchronizableAny]), &data) == errSecSuccess,
                   let data = data as? Data else { return nil }
             return String(decoding: data, as: UTF8.self)
         }
         set {
-            SecItemDelete(item as CFDictionary)
+            SecItemDelete(query([kSecAttrSynchronizable: kSecAttrSynchronizableAny]))
             guard let newValue, !newValue.isEmpty else { return }
-            SecItemAdd(item.merging([
-                kSecValueData: Data(newValue.utf8), kSecAttrAccessible: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly,
-            ]) { $1 } as CFDictionary, nil)
+            SecItemAdd(query([
+                kSecValueData: Data(newValue.utf8), kSecAttrSynchronizable: true,
+                kSecAttrAccessible: kSecAttrAccessibleAfterFirstUnlock,
+            ]), nil)
         }
+    }
+
+    /// Moves a key that an older build kept on this device only to the
+    /// iCloud Keychain. A key already there stays, and the old one goes.
+    static func syncKey() {
+        var local: CFTypeRef?
+        guard SecItemCopyMatching(query([kSecReturnData: true, kSecAttrSynchronizable: false]), &local) == errSecSuccess,
+              let data = local as? Data else { return }
+        if SecItemCopyMatching(query([kSecAttrSynchronizable: true]), nil) != errSecSuccess {
+            let added = SecItemAdd(query([
+                kSecValueData: data, kSecAttrSynchronizable: true,
+                kSecAttrAccessible: kSecAttrAccessibleAfterFirstUnlock,
+            ]), nil)
+            guard added == errSecSuccess else { return }
+        }
+        SecItemDelete(query([kSecAttrSynchronizable: false]))
     }
 }
