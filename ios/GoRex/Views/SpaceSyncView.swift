@@ -112,12 +112,11 @@ struct SpaceSyncView: View {
             spaceStore.pullFromKVS()
             spaceStore.sync(from: store.hosts.map(\.spaceSnapshot))
             if spaceStore.desktopSyncEnabled {
-                let all = spaceStore.orderedSpaces
                 let primary = spaceStore.primaryHostID
                 let targets = store.hosts.filter { h in
                     h.supportsSpacesSync && (primary.isEmpty || h.id.uuidString == primary)
                 }
-                for h in targets { await h.applySpaces(all) }
+                for h in targets { await spaceStore.apply(to: h) }
                 if !targets.isEmpty { spaceStore.markDesktopSynced() }
             }
         }

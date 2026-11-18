@@ -155,14 +155,13 @@ struct HostListView: View {
 
     private func pushSpacesToDesktop() {
         guard spaceStore.desktopSyncEnabled else { return }
-        let all = spaceStore.orderedSpaces
         let primary = spaceStore.primaryHostID
         let targets = store.hosts.filter { h in
             h.supportsSpacesSync && (primary.isEmpty || h.id.uuidString == primary)
         }
         guard !targets.isEmpty else { return }
         Task {
-            for h in targets { await h.applySpaces(all) }
+            for h in targets { await spaceStore.apply(to: h) }
             spaceStore.markDesktopSynced()
         }
     }
@@ -446,7 +445,7 @@ struct HostListView: View {
                         .font(.subheadline.monospaced())
                         .lineLimit(stacked ? 3 : 1)
                         .truncationMode(.head)
-                    Text(verbatim: homeName(s) ?? String(localized: "Project host not added"))
+                    Text(verbatim: homeName(s))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .lineLimit(stacked ? 2 : 1)
@@ -534,22 +533,28 @@ struct HostListView: View {
         }
     }
 
-    /// The name of a project's home host, nil when no host of its machine
-    /// is added here.
-    private func homeName(_ s: CentralSpace) -> String? {
-        store.hosts.first { $0.spaceMachineKey == s.home_machine }?.config.name
+    /// A project's project host as its header reads it: its name, that it
+    /// is offline, or that no host of its machine is added here. Of two
+    /// hosts of the machine, the one online is the project host.
+    private func homeName(_ s: CentralSpace) -> String {
+        let home = store.hosts.filter { $0.homeMachineKey == s.home_machine }
+        guard let h = home.first(where: { $0.status == .online }) ?? home.first else {
+            return String(localized: "Project host not added")
+        }
+        if case .offline = h.status { return String(localized: "\(h.config.name) is offline") }
+        return h.config.name
     }
 
     private var candidates: [ProjectWindow.Candidate] {
         store.hosts.map {
-            .init(id: $0.id, name: $0.config.name, machine: $0.spaceMachineKey, online: $0.status == .online, sessions: $0.sessions)
+            .init(id: $0.id, name: $0.config.name, machine: $0.homeMachineKey, online: $0.status == .online, sessions: $0.sessions)
         }
     }
 
     /// The machine a host's server takes as a project's home: its own, or
     /// Demo Mode's key, which has none.
     private func homeMachine(of host: Host) -> String? {
-        host.machine ?? (host.isDemo ? host.spaceMachineKey : nil)
+        host.knownMachine ?? (host.isDemo ? host.spaceMachineKey : nil)
     }
 
     /// Opens a new window of a project with a folder on its home host, in
@@ -603,7 +608,7 @@ struct HostListView: View {
             do {
                 guard let (session, block) = try await body() else { return }
                 spaceStore.assign(machine: host.spaceMachineKey, block: block, window: nil, to: s.id)
-                let moved = await host.applySpaces(spaceStore.orderedSpaces)
+                let moved = await spaceStore.apply(to: host)
                 let sid = moved ? await host.resolveSession(forBlock: block, fallback: session) : session
                 go(TerminalTarget(host: host.id, session: sid, block: block, title: ""))
             } catch let error where ProjectWindow.folderMissing(error) {
@@ -619,7 +624,7 @@ struct HostListView: View {
     /// Makes a project of a folder on a host: the host keeps its home, and
     /// its first window opens there, in the folder.
     private func createProject(on host: Host, dir: String, name: String) {
-        let s = spaceStore.createSpace(name: name, homeMachine: host.spaceMachineKey, dir: dir)
+        let s = spaceStore.createSpace(name: name, homeMachine: host.homeMachineKey, dir: dir)
         withAnimation(.snappy) { chosen = s.id }
         let machine = homeMachine(of: host)
         openProject(s, on: host) {
@@ -645,8 +650,8 @@ struct HostListView: View {
     /// Gives a project another home: this device's manifest, the hosts that
     /// keep a session of it, and, by the desktop sync, the other desktops.
     private func changeFolder(_ id: String, on host: Host, dir: String) {
-        spaceStore.setHome(id, machine: host.spaceMachineKey, dir: dir)
-        setHomeOnHosts(id, machine: homeMachine(of: host) ?? host.spaceMachineKey, dir: dir)
+        spaceStore.setHome(id, on: host, dir: dir)
+        setHomeOnHosts(id, machine: host.homeMachineKey, dir: dir)
     }
 
     private func removeFolder(_ id: String) {
@@ -901,7 +906,7 @@ private struct HostSection: View {
     private func assignAndResolveSession(block: String, fallbackSession: String) async -> String {
         guard case .space(let spaceID) = space else { return fallbackSession }
         spaceStore.assign(machine: host.spaceMachineKey, block: block, window: nil, to: spaceID)
-        let moved = await host.applySpaces(spaceStore.orderedSpaces)
+        let moved = await spaceStore.apply(to: host)
         guard moved else { return fallbackSession }
         return await host.resolveSession(forBlock: block, fallback: fallbackSession)
     }
@@ -987,9 +992,8 @@ private struct HostSection: View {
                 Button {
                     spaceStore.assign(window: w, on: m, to: target.id)
                     if spaceStore.desktopSyncEnabled, spaceStore.primaryHostID.isEmpty || host.id.uuidString == spaceStore.primaryHostID {
-                        let all = spaceStore.orderedSpaces
                         Task {
-                            await host.applySpaces(all)
+                            await spaceStore.apply(to: host)
                             spaceStore.markDesktopSynced()
                         }
                     }

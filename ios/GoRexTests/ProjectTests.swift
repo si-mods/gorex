@@ -230,6 +230,229 @@ nonisolated final class ProjectTests: XCTestCase {
         XCTAssertEqual(second.space(id: id)?.folder, "/srv/phone")
     }
 
+    // MARK: Home host offline
+
+    /// H1: a host keeps the machine it was last seen to be while offline
+    /// and after a relaunch, so that a project's home host offline reads
+    /// as offline, not as not added.
+    @MainActor func testHostKeepsLastMachineWhileOffline() throws {
+        let config = HostConfig(name: "office", url: URL(string: "http://127.0.0.1:1")!)
+        defer { Host.forgetMachine(config.id) }
+        let h = Host(config)
+        XCTAssertEqual(h.homeMachineKey, "host:\(config.id.uuidString)")
+        h.take(try Spaces.Answer(json: Data(#"{"machine_id":"m-office","sessions":[]}"#.utf8)))
+        XCTAssertEqual(h.homeMachineKey, "m-office")
+        h.take(nil)
+        XCTAssertNil(h.machine)
+        XCTAssertEqual(h.homeMachineKey, "m-office")
+        let relaunched = Host(config)
+        XCTAssertEqual(relaunched.homeMachineKey, "m-office")
+        let candidate = ProjectWindow.Candidate(id: relaunched.id, name: "office", machine: relaunched.homeMachineKey,
+                                                online: false, sessions: [])
+        XCTAssertEqual(ProjectWindow.plan(project(), hosts: [candidate]), .offline(host: config.id, name: "office"))
+        Host.forgetMachine(config.id)
+        XCTAssertEqual(Host(config).homeMachineKey, "host:\(config.id.uuidString)")
+    }
+
+    /// M1: a host whose address now leads to another computer is online
+    /// before /api/spaces tells its machine. Until then its sync is not
+    /// keyed by the machine it was last seen to be: the old computer's
+    /// members stay, and nothing is reported under its machine. A new
+    /// address forgets the machine the host was.
+    @MainActor func testHostNotReadYetIsNotTheLastMachine() async throws {
+        let saved = UserDefaults.standard.data(forKey: "hosts")
+        defer { UserDefaults.standard.set(saved, forKey: "hosts") }
+        UserDefaults.standard.removeObject(forKey: "hosts")
+        let url = tempURL()
+        defer {
+            try? FileManager.default.removeItem(at: url)
+            try? FileManager.default.removeItem(at: SpaceStore.reportedURL(for: url))
+        }
+        let (old, new) = (try FakeRex(), try FakeRex())
+        defer { old.stop(); new.stop() }
+        for r in [old, new] { r.respond = { m, _ in m == "session.bootstrap" ? ["attach_all": ["sessions": []]] : [:] } }
+        var config = HostConfig(name: "office", url: try await old.url())
+        defer { Host.forgetMachine(config.id) }
+        // The host was m-office, as a launch before read it.
+        Host(config).take(try Spaces.Answer(json: Data(#"{"machine_id":"m-office","sessions":[]}"#.utf8)))
+
+        let spaces = SpaceStore(fileURL: url)
+        let ops = spaces.createSpace(name: "acme-ops")
+        spaces.assign(machine: "m-office", block: "block:74", window: "w1", to: ops.id)
+
+        let store = HostStore()
+        store.add(config)
+        let h = try XCTUnwrap(store.host(config.id))
+        await until("online") { h.status == .online }
+        XCTAssertNil(h.machine)
+        XCTAssertFalse(h.spaceSnapshot.known)
+        XCTAssertNotEqual(h.spaceSnapshot.machine, "m-office")
+        spaces.sync(from: [h.spaceSnapshot])
+        XCTAssertEqual(spaces.space(id: ops.id)?.members.map(\.block_id), ["block:74"])
+        XCTAssertEqual(h.lastMachine, "m-office")
+
+        config.url = try await new.url()
+        store.update(config)
+        XCTAssertNil(h.lastMachine)
+        XCTAssertNil(Host(config).lastMachine)
+        store.remove(config.id)
+    }
+
+    /// Round 2: Change Folder while the project host is offline, after a
+    /// relaunch, keeps the host's machine as the project's home: not its
+    /// host ID, which no other device knows, and which would show the host
+    /// as not added.
+    @MainActor func testChangeFolderOfflineKeepsHomeMachine() throws {
+        let url = tempURL()
+        defer {
+            try? FileManager.default.removeItem(at: url)
+            try? FileManager.default.removeItem(at: SpaceStore.reportedURL(for: url))
+        }
+        let config = HostConfig(name: "office", url: URL(string: "http://127.0.0.1:1")!)
+        defer { Host.forgetMachine(config.id) }
+        Host(config).take(try Spaces.Answer(json: Data(#"{"machine_id":"m-old","sessions":[]}"#.utf8)))
+        let offline = Host(config)
+        XCTAssertNil(offline.machine)
+
+        let store = SpaceStore(fileURL: url)
+        let s = store.createSpace(name: "acme-api", homeMachine: "m-old", dir: "/srv/acme-api")
+        store.setHome(s.id, on: offline, dir: "/srv/acme-web")
+        XCTAssertEqual(store.space(id: s.id)?.home_machine, "m-old")
+        XCTAssertEqual(store.space(id: s.id)?.folder, "/srv/acme-web")
+    }
+
+    // MARK: Rename and reports of other sessions
+
+    @MainActor private func session(_ id: String, _ label: String, _ blocks: [String], project: SessionView.Project?) -> SpaceStore.HostSnapshot.Session {
+        .init(id: id, label: label, view: view(id, blocks), remote: [], project: project)
+    }
+
+    @MainActor private func snapshot(_ machine: String, known: Bool = true, _ sessions: [SpaceStore.HostSnapshot.Session]) -> SpaceStore.HostSnapshot {
+        .init(machine: machine, online: true, sessions: sessions, projects: true, known: known)
+    }
+
+    /// H2: renamed here, a project's windows go to a new desktop space of
+    /// the new name, which has no folder until gorex.spaces_apply gives it
+    /// one. That space's first report is not the desktop removing the
+    /// project's folder: the folder stays.
+    @MainActor func testNewSessionWithoutFolderKeepsProjectFolder() {
+        let url = tempURL()
+        defer {
+            try? FileManager.default.removeItem(at: url)
+            try? FileManager.default.removeItem(at: SpaceStore.reportedURL(for: url))
+        }
+        let home = SessionView.Project(home_machine: "m-office", dir: "/tmp/demo/acme-api")
+        let store = SpaceStore(fileURL: url)
+        let s = store.createSpace(name: "acme-api", homeMachine: "m-office", dir: home.dir)
+        store.sync(from: [snapshot("m-office", [session("s1", "acme-api", ["b1"], project: home)])])
+        store.renameSpace(s.id, to: "acme-web")
+        store.sync(from: [snapshot("m-office", [
+            session("s1", "acme-api", [], project: home),
+            session("s2", "acme-web", ["b1"], project: nil),
+        ])])
+        XCTAssertEqual(store.space(id: s.id)?.folder, "/tmp/demo/acme-api")
+        XCTAssertEqual(store.space(id: s.id)?.home_machine, "m-office")
+        // A relaunch, with the host back.
+        let again = SpaceStore(fileURL: url)
+        again.sync(from: [snapshot("m-office", [session("s2", "acme-web", ["b1"], project: nil)])])
+        XCTAssertEqual(again.space(id: s.id)?.folder, "/tmp/demo/acme-api")
+    }
+
+    /// H2: a host whose machine is not known yet, as just after it connects,
+    /// keys its reports by its host ID: they are not taken as the home's
+    /// changes, nor kept.
+    @MainActor func testReportsOfUnknownMachineAreIgnored() {
+        let url = tempURL()
+        defer {
+            try? FileManager.default.removeItem(at: url)
+            try? FileManager.default.removeItem(at: SpaceStore.reportedURL(for: url))
+        }
+        let home = SessionView.Project(home_machine: "m-office", dir: "/tmp/demo/acme-api")
+        let store = SpaceStore(fileURL: url)
+        let s = store.createSpace(name: "acme-api", homeMachine: "m-office", dir: home.dir)
+        let unknown = "host:" + UUID().uuidString
+        store.sync(from: [snapshot(unknown, known: false, [session("s1", "acme-api", ["b1"], project: home)])])
+        store.sync(from: [snapshot(unknown, known: false, [session("s1", "acme-api", ["b1"], project: nil)])])
+        XCTAssertEqual(store.space(id: s.id)?.folder, "/tmp/demo/acme-api")
+        store.sync(from: [snapshot("m-office", [session("s1", "acme-api", ["b1"], project: home)])])
+        XCTAssertEqual(store.space(id: s.id)?.folder, "/tmp/demo/acme-api")
+    }
+
+    /// H3: renamed here, the project's desktop session still reports the
+    /// old name until it is renamed there: no project of the old name is
+    /// made, and the session is renamed to the new name.
+    @MainActor func testRenameHereDoesNotRecreateOldName() {
+        let url = tempURL()
+        defer {
+            try? FileManager.default.removeItem(at: url)
+            try? FileManager.default.removeItem(at: SpaceStore.reportedURL(for: url))
+        }
+        let home = SessionView.Project(home_machine: "m-office", dir: "/tmp/demo/acme-api")
+        let store = SpaceStore(fileURL: url)
+        let s = store.createSpace(name: "acme-api", homeMachine: "m-office", dir: home.dir)
+        let before = snapshot("m-office", [session("s1", "acme-api", ["b1"], project: home)])
+        store.sync(from: [before])
+        XCTAssertEqual(store.renames(for: before).map(\.name), [])
+        store.renameSpace(s.id, to: "acme-web")
+        XCTAssertEqual(store.renames(for: before).map(\.session), ["s1"])
+        XCTAssertEqual(store.renames(for: before).map(\.name), ["acme-web"])
+
+        // The host has not caught up yet, as offline meanwhile.
+        store.sync(from: [before])
+        XCTAssertEqual(store.orderedSpaces.map(\.name), ["acme-web"])
+        XCTAssertEqual(store.space(id: s.id)?.members.map(\.block_id), ["b1"])
+        // Nor after a relaunch.
+        let again = SpaceStore(fileURL: url)
+        again.sync(from: [before])
+        XCTAssertEqual(again.orderedSpaces.map(\.name), ["acme-web"])
+        XCTAssertEqual(again.renames(for: before).map(\.name), ["acme-web"])
+
+        // Renamed there, it is the same project.
+        let after = snapshot("m-office", [session("s1", "acme-web", ["b1"], project: home)])
+        again.sync(from: [after])
+        XCTAssertEqual(again.orderedSpaces.map(\.name), ["acme-web"])
+        XCTAssertEqual(again.renames(for: after).map(\.name), [])
+    }
+
+    /// A project the desktop renames keeps its ID and folder here: the
+    /// manifest takes the new name, and makes no second project.
+    @MainActor func testRenameOnDesktopRenamesProject() {
+        let url = tempURL()
+        defer {
+            try? FileManager.default.removeItem(at: url)
+            try? FileManager.default.removeItem(at: SpaceStore.reportedURL(for: url))
+        }
+        let home = SessionView.Project(home_machine: "m-office", dir: "/tmp/demo/acme-api")
+        let store = SpaceStore(fileURL: url)
+        let s = store.createSpace(name: "acme-api", homeMachine: "m-office", dir: home.dir)
+        store.sync(from: [snapshot("m-office", [session("s1", "acme-api", ["b1"], project: home)])])
+        let after = snapshot("m-office", [session("s1", "acme-web", ["b1"], project: home)])
+        store.sync(from: [after])
+        XCTAssertEqual(store.orderedSpaces.map(\.id), [s.id])
+        XCTAssertEqual(store.space(id: s.id)?.name, "acme-web")
+        XCTAssertEqual(store.space(id: s.id)?.folder, "/tmp/demo/acme-api")
+        XCTAssertEqual(store.renames(for: after).map(\.name), [])
+    }
+
+    /// A session is not renamed to a name another session of its host has.
+    @MainActor func testNoRenameOntoAnotherSessionsName() {
+        let url = tempURL()
+        defer {
+            try? FileManager.default.removeItem(at: url)
+            try? FileManager.default.removeItem(at: SpaceStore.reportedURL(for: url))
+        }
+        let store = SpaceStore(fileURL: url)
+        let s = store.createSpace(name: "acme-api")
+        let before = snapshot("m-office", [session("s1", "acme-api", ["b1"], project: nil)])
+        store.sync(from: [before])
+        store.renameSpace(s.id, to: "acme-web")
+        let both = snapshot("m-office", [
+            session("s1", "acme-api", ["b1"], project: nil),
+            session("s2", "acme-web", ["b2"], project: nil),
+        ])
+        XCTAssertEqual(store.renames(for: both).map(\.name), [])
+    }
+
     // MARK: New Window
 
     @MainActor private func candidate(_ name: String, machine: String, online: Bool = true, sessions: [Host.Session] = []) -> ProjectWindow.Candidate {

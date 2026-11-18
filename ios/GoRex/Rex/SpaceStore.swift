@@ -158,6 +158,19 @@ final class SpaceStore {
         /// Whether the host reports projects' homes (`gorex.projects`):
         /// only then does a session with no `project` have no folder.
         var projects = false
+        /// Whether `machine` is the machine this connection read, not the
+        /// host's ID as before /api/spaces answers: only then are its
+        /// sessions' names and homes remembered (reports).
+        var known = true
+    }
+
+    /// What a host's session last reported: the space it was taken as,
+    /// under which name, and its home ("machine|dir", "|" for none; nil
+    /// from a host that does not report homes).
+    struct Report: Codable, Equatable {
+        var space: String
+        var label: String
+        var home: String?
     }
 
     private(set) var manifest: SpaceManifest
@@ -180,12 +193,13 @@ final class SpaceStore {
     var primaryHostID: String {
         didSet { UserDefaults.standard.set(primaryHostID, forKey: Self.primaryHostKey) }
     }
-    /// The home each host last reported for each space, by machine and
-    /// space ID ("machine|dir", "|" for none), to tell a home a desktop
-    /// changed from one it has not caught up with yet. Kept on this device
-    /// beside the manifest, not in iCloud, so that a desktop's change made
-    /// while the app was closed is taken at the next launch.
-    @ObservationIgnored private var reportedHomes: [String: String] = [:]
+    /// What each host's session last reported, by machine and session ID:
+    /// to tell a home or a name the desktop changed from one it has not
+    /// caught up with yet, and a session's own change from another
+    /// session's report. Kept on this device beside the manifest, not in
+    /// iCloud, so that a desktop's change made while the app was closed is
+    /// taken at the next launch.
+    @ObservationIgnored private var reports: [String: Report] = [:]
     @ObservationIgnored private let reportedURL: URL
     @ObservationIgnored private let fileURL: URL
     @ObservationIgnored private let kvs: SpaceKeyValueStore?
@@ -197,8 +211,8 @@ final class SpaceStore {
         let reportedURL = Self.reportedURL(for: url)
         self.reportedURL = reportedURL
         if let data = try? Data(contentsOf: reportedURL),
-           let decoded = try? JSONDecoder().decode([String: String].self, from: data) {
-            self.reportedHomes = decoded
+           let decoded = try? JSONDecoder().decode([String: Report].self, from: data) {
+            self.reports = decoded
         }
         self.kvs = kvs
         let defaults = UserDefaults.standard
@@ -318,6 +332,13 @@ final class SpaceStore {
         save()
     }
 
+    /// Sets a project's home to a folder on host: the host's machine as
+    /// its home is found by (Host.homeMachineKey), the machine last seen
+    /// while the host is offline, not its host ID.
+    func setHome(_ id: String, on host: Host, dir: String, now: Date = .now) {
+        setHome(id, machine: host.homeMachineKey, dir: dir, now: now)
+    }
+
     /// Sets a project's home: the machine of its home host and its folder
     /// there. A `dir` of "" removes the folder.
     func setHome(_ id: String, machine: String, dir: String, now: Date = .now) {
@@ -425,36 +446,32 @@ final class SpaceStore {
         func claim(_ c: Claim) {
             claims["\(c.machine)/\(c.block)", default: []].append(c)
         }
+        var reported = false
         for host in hosts where host.online {
             for session in host.sessions {
                 if session.id == Self.desktopTerminalsSessionID { continue }
-                let label = session.label.trimmingCharacters(in: .whitespacesAndNewlines)
-                let spaceName = label.isEmpty ? session.id : label
+                let spaceName = Self.name(of: session)
 
                 // Skip spaces explicitly deleted by the user.
                 if isSpaceTombstoned(name: spaceName) { continue }
 
-                // Find or create CentralSpace (auto-merge same-name spaces).
-                let targetID: String
-                if let existing = manifest.spaces.first(where: { $0.name.caseInsensitiveCompare(spaceName) == .orderedSame }) {
-                    targetID = existing.id
-                } else {
-                    let nextOrder = (manifest.spaces.map(\.order).max() ?? -1) + 1
-                    let created = CentralSpace(
-                        id: "sp_" + UUID().uuidString.lowercased(),
-                        name: spaceName,
-                        color: nil,
-                        order: nextOrder,
-                        updated_at: ts,
-                        members: []
-                    )
-                    manifest.spaces.append(created)
-                    targetID = created.id
-                    changed = true
-                }
+                let key = "\(host.machine)|\(session.id)"
+                let before = host.known ? reports[key] : nil
+                let targetID = spaceID(for: spaceName, before: before, ts: ts, changed: &changed)
 
-                if host.projects {
-                    adoptHome(session.project, from: host.machine, into: targetID, ts: ts, changed: &changed)
+                // A home reported by a host whose machine is not known yet is
+                // not taken: its reports would be keyed by the host's ID,
+                // apart from the machine's own.
+                var home = before?.home
+                if host.projects, host.known {
+                    home = adoptHome(session.project, before: before?.home, into: targetID, ts: ts, changed: &changed)
+                }
+                if host.known {
+                    let now = Report(space: targetID, label: spaceName, home: home)
+                    if before != now {
+                        reports[key] = now
+                        reported = true
+                    }
                 }
 
                 // Collect local blocks of this session's windows.
@@ -494,10 +511,37 @@ final class SpaceStore {
             }
         }
 
+        if reported { saveReported() }
         if changed {
             manifest.revision += 1
             save()
         }
+    }
+
+    /// The names a host's sessions are to take: a project renamed in the
+    /// manifest, whose session on the host still reports the name it had
+    /// when this device last synced with the host. Sent before the manifest (Host.applySpaces), so that
+    /// the host renames its space and does not make a second one of the
+    /// new name. A session whose new name another session of the host has
+    /// already is left as it is.
+    func renames(for host: HostSnapshot) -> [(session: String, name: String)] {
+        guard host.known else { return [] }
+        let sessions = host.sessions.filter { $0.id != Self.desktopTerminalsSessionID }
+        return sessions.compactMap { session in
+            let label = Self.name(of: session)
+            guard let r = reports["\(host.machine)|\(session.id)"], Self.same(r.label, label),
+                  let s = space(id: r.space), !Self.same(s.name, label),
+                  !sessions.contains(where: { $0.id != session.id && Self.same(Self.name(of: $0), s.name) })
+            else { return nil }
+            return (session.id, s.name)
+        }
+    }
+
+    /// Sends the manifest to a desktop host, with the renames of its
+    /// sessions it has not caught up with first (Host.applySpaces).
+    @discardableResult
+    func apply(to host: Host) async -> Bool {
+        await host.applySpaces(orderedSpaces, renames: renames(for: host.spaceSnapshot))
     }
 
     /// LWW merge with another `SpaceManifest` (e.g. from iCloud).
@@ -678,25 +722,71 @@ final class SpaceStore {
         changed = true
     }
 
-    /// Takes a home a host reports for a space when the manifest knows
-    /// none yet, or when the host's changed since it last reported, as
-    /// after the desktop's Change Folder. A home the manifest changed and
-    /// the host has not caught up with stays, for the desktop sync to send.
-    private func adoptHome(_ project: SessionView.Project?, from machine: String, into spaceID: String, ts: TimeInterval, changed: inout Bool) {
-        guard let i = manifest.spaces.firstIndex(where: { $0.id == spaceID }) else { return }
+    /// A session's name as a space's: its label, or its ID with none.
+    private static func name(of session: HostSnapshot.Session) -> String {
+        let label = session.label.trimmingCharacters(in: .whitespacesAndNewlines)
+        return label.isEmpty ? session.id : label
+    }
+
+    private static func same(_ a: String, _ b: String) -> Bool {
+        a.caseInsensitiveCompare(b) == .orderedSame
+    }
+
+    /// The space of a session that reports name: the one it was, as it
+    /// last reported; else the space of its name, made when there is none
+    /// (same-name spaces of several hosts merge). A session of a space
+    /// renamed here since stays that space, for the host to catch up
+    /// (renames). Of a session the desktop renamed, the space takes the
+    /// new name, unless another space has it already, which then takes the
+    /// session.
+    private func spaceID(for name: String, before: Report?, ts: TimeInterval, changed: inout Bool) -> String {
+        let named = manifest.spaces.first { Self.same($0.name, name) }
+        if let before, let i = manifest.spaces.firstIndex(where: { $0.id == before.space }) {
+            let s = manifest.spaces[i]
+            if Self.same(s.name, name) { return s.id }
+            // The manifest's name changed since: the host has not caught up.
+            guard Self.same(s.name, before.label) else { return s.id }
+            if let named { return named.id }
+            manifest.spaces[i].name = name
+            manifest.spaces[i].updated_at = ts
+            changed = true
+            return s.id
+        }
+        if let named { return named.id }
+        let created = CentralSpace(
+            id: "sp_" + UUID().uuidString.lowercased(),
+            name: name,
+            color: nil,
+            order: (manifest.spaces.map(\.order).max() ?? -1) + 1,
+            updated_at: ts,
+            members: []
+        )
+        manifest.spaces.append(created)
+        changed = true
+        return created.id
+    }
+
+    /// Takes a home a session reports for its space when the manifest knows
+    /// none yet, or when the session's changed since it last reported, as
+    /// after the desktop's Change Folder; returns the home reported. A home
+    /// the manifest changed and the host has not caught up with stays, for
+    /// the desktop sync to send. Only the session's own earlier report
+    /// counts: a session new to the space, as the one gorex.spaces_apply
+    /// makes for a project renamed here, has no folder until it is given
+    /// one, which is not the desktop removing the project's folder.
+    private func adoptHome(_ project: SessionView.Project?, before: String?, into spaceID: String, ts: TimeInterval, changed: inout Bool) -> String {
         let reported = project.map { "\($0.home_machine)|\($0.dir)" } ?? "|"
-        let key = "\(machine)|\(spaceID)"
-        let before = reportedHomes.updateValue(reported, forKey: key)
-        if before != reported { saveReported() }
+        guard let i = manifest.spaces.firstIndex(where: { $0.id == spaceID }) else { return reported }
         let s = manifest.spaces[i]
         let current = s.dir.map { $0.isEmpty ? "|" : "\(s.home_machine ?? "")|\($0)" }
-        if current == reported { return }
+        if current == reported { return reported }
         let fresh = current == nil ? project != nil : before != nil && before != reported
-        guard fresh else { return }
+        guard fresh else { return reported }
         manifest.spaces[i].home_machine = project?.home_machine ?? ""
         manifest.spaces[i].dir = project?.dir ?? ""
         manifest.spaces[i].updated_at = ts
         changed = true
+        return reported
     }
 
     private func isSpaceTombstoned(name: String) -> Bool {
@@ -717,13 +807,13 @@ final class SpaceStore {
         if manifest.tombstones.count != before { changed = true }
     }
 
-    /// Where the homes the hosts reported are kept: beside the manifest.
+    /// Where what the hosts' sessions reported is kept: beside the manifest.
     static func reportedURL(for manifest: URL) -> URL {
         manifest.deletingPathExtension().appendingPathExtension("reported.json")
     }
 
     private func saveReported() {
-        guard let data = try? JSONEncoder().encode(reportedHomes) else { return }
+        guard let data = try? JSONEncoder().encode(reports) else { return }
         try? FileManager.default.createDirectory(at: reportedURL.deletingLastPathComponent(), withIntermediateDirectories: true)
         try? data.write(to: reportedURL, options: .atomic)
     }

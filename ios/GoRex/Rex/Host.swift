@@ -364,6 +364,12 @@ final class Host: Identifiable {
     /// its sessions' spaces, by session, as /api/spaces tells (Spaces);
     /// nil and none from a server that doesn't.
     private(set) var machine: String?
+    /// The machine the host was last seen to be, kept across launches
+    /// (lastMachinesKey), and forgotten when its address changes: a
+    /// project's home host offline is still found by its machine
+    /// (homeMachineKey). Only to show and find the home host: the sync
+    /// keys a host by the machine its connection read (spaceMachineKey).
+    private(set) var lastMachine: String?
     private(set) var remote: [String: [Spaces.Member]] = [:]
     private(set) var control: ControlConnection?
 
@@ -397,6 +403,7 @@ final class Host: Identifiable {
 
     init(_ config: HostConfig) {
         self.config = config
+        if config.demo != true { lastMachine = Self.lastMachines[config.id.uuidString] }
     }
 
     /// Whether the host's connections go through the built-in Tailscale.
@@ -617,6 +624,10 @@ final class Host: Identifiable {
         let m = a.flatMap { $0.machine_id.isEmpty ? nil : $0.machine_id }
         let r = Dictionary((a?.sessions ?? []).map { ($0.session_id, $0.remote_blocks) }) { first, _ in first }
         if machine != m { machine = m }
+        if let m, m != lastMachine, !isDemo {
+            lastMachine = m
+            Self.lastMachines[id.uuidString] = m
+        }
         if remote != r { remote = r }
     }
 
@@ -629,10 +640,43 @@ final class Host: Identifiable {
         })
     }
 
+    /// The UserDefaults key of each host's last machine, by host ID.
+    static let lastMachinesKey = "hostMachines"
+
+    private static var lastMachines: [String: String] {
+        get { UserDefaults.standard.dictionary(forKey: lastMachinesKey) as? [String: String] ?? [:] }
+        set { UserDefaults.standard.set(newValue, forKey: lastMachinesKey) }
+    }
+
+    /// Forgets a host's last machine, as the host is removed.
+    static func forgetMachine(_ id: UUID) {
+        lastMachines[id.uuidString] = nil
+    }
+
+    /// Forgets the machine the host was, as its address changes: the new
+    /// address may be another computer.
+    func forgetLastMachine() {
+        lastMachine = nil
+        Self.forgetMachine(id)
+    }
+
+    /// The host's machine: the one it reports, else the one it was last
+    /// seen to be.
+    var knownMachine: String? { machine ?? lastMachine }
+
     /// Durable machine key for `SpaceStore`, falling back to the host UUID
-    /// when a server does not report `machine_id` (e.g. Demo Mode).
+    /// when this connection has not read the machine: a server that does
+    /// not report `machine_id` (e.g. Demo Mode), a host offline, or one
+    /// whose /api/spaces has not answered yet, which may be another
+    /// computer than the one it was.
     var spaceMachineKey: String {
         machine ?? "host:\(id.uuidString)"
+    }
+
+    /// The key a project's home host is found by: the machine last seen
+    /// too, so that a home host offline reads as offline, not as not added.
+    var homeMachineKey: String {
+        knownMachine ?? "host:\(id.uuidString)"
     }
 
     /// Snapshot of this host's current sessions and views for `SpaceStore`.
@@ -643,7 +687,8 @@ final class Host: Identifiable {
             sessions: sessions.map {
                 .init(id: $0.id, label: $0.label, view: $0.view, remote: remote[$0.id] ?? [], project: $0.project)
             },
-            projects: supportsProjects
+            projects: supportsProjects,
+            known: machine != nil || isDemo
         )
     }
 
@@ -1266,10 +1311,16 @@ final class Host: Identifiable {
 
     /// Pushes centralized space assignments for blocks on this machine to
     /// the desktop host (`gorex.spaces_apply`). Returns true when the server
-    /// moved at least one window into its assigned space.
+    /// moved at least one window into its assigned space. Renames, from
+    /// `SpaceStore.renames`, go first: a project renamed here renames its
+    /// session, which spaces_apply then finds by the new name, instead of
+    /// moving the windows to a new space and leaving the old one behind.
     @discardableResult
-    func applySpaces(_ spaces: [CentralSpace]) async -> Bool {
+    func applySpaces(_ spaces: [CentralSpace], renames: [(session: String, name: String)] = []) async -> Bool {
         guard supportsSpacesSync else { return false }
+        for r in renames {
+            try? await renameSession(r.session, to: r.name)
+        }
         let m = spaceMachineKey
         let projects = supportsProjects
         let entries: [[String: Any]] = spaces.compactMap { s in
@@ -1438,6 +1489,7 @@ final class HostStore {
         hosts.first { $0.id == id }?.stop()
         hosts.removeAll { $0.id == id }
         tokens.set(nil, for: id)
+        Host.forgetMachine(id)
         save()
     }
 
@@ -1447,6 +1499,9 @@ final class HostStore {
         guard let h = host(config.id) else { return }
         let moved = h.config.url != config.url || h.config.transport != config.transport || h.config.auth != config.auth
         if h.config.auth != config.auth { tokens.set(config.auth, for: config.id) }
+        if h.config.url != config.url || h.config.tailcat?.address != config.tailcat?.address {
+            h.forgetLastMachine()
+        }
         h.config = config
         if moved { h.reconnect() }
         save()
