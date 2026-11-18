@@ -171,7 +171,8 @@ nonisolated final class DictationTests: XCTestCase {
         let samples = Array(UnsafeBufferPointer(start: b.floatChannelData![0], count: Int(b.frameLength)))
         for m in [Dictation.Model.funASRNano, .qwen3ASR] {
             let dir = URL(filePath: models).appending(path: m.repo!.name)
-            XCTAssertTrue(Dictation.whole(m.repo!.files, in: dir), m.name)
+            // The commit's files, or the release's build of them.
+            XCTAssertTrue(Dictation.whole(m.repo!.files, in: dir) || Dictation.whole(m.release!.files, in: dir), m.name)
             let start = ContinuousClock.now
             let sherpa = try Sherpa(m, in: dir)
             let loaded = ContinuousClock.now
