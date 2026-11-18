@@ -515,8 +515,8 @@ func TestGuardReason(t *testing.T) {
 		`go run ./tools/verify`,
 		`GOREX_HEAVY_TESTS=1 go test ./...`,
 		`$env:GOREX_HEAVY_TESTS=1; go test ./...`,
-		`ssh macmini "cd gorex && go test ./..."`,
-		`ssh macmini go test ./...`,
+		`ssh alice-mac "cd gorex && go test ./..."`,
+		`ssh alice-mac go test ./...`,
 		`ls`,
 	}
 	for _, c := range allow {
