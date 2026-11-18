@@ -1248,10 +1248,10 @@ func (st *store) closed(a *App) {
 }
 
 // show shows w in the window: the tabs of its layout, attached to the
-// sessions the server has. An empty workspace gets a tab
-// in the home directory. A space this window showed before shows its kept
-// tabs again, as they were; another window's kept tabs close, and the
-// space shows from its layout.
+// sessions the server has. A project with no tab opens none, and the
+// tabs with no project open one in the home directory. A space this
+// window showed before shows its kept tabs again, as they were; another
+// window's kept tabs close, and the space shows from its layout.
 func (a *App) show(w *Workspace) {
 	if old := a.ws; old != nil && old != w {
 		a.park()
@@ -1288,11 +1288,8 @@ func (a *App) show(w *Workspace) {
 	case a.reconcile(w.layout):
 	case w.offline():
 		// A host's copy, while it is away: nothing opens there.
-	case w.Dir != "":
-		// A project emptied opens a tab in its folder, or none, with the
-		// reason.
-		a.newProjectTab()
-	default:
+	case w.Dir == "":
+		// The tabs with no project open one at home.
 		a.newTabOn(w.host, a.homeOf(w.host))
 	}
 	a.changed()

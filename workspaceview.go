@@ -172,7 +172,8 @@ func dangerButton(c *ui.Context, k *colors, label string) ui.Element {
 }
 
 // windowTitle is the title of the window, which the Window menu and the
-// taskbar show: the workspace's name and the active tab's.
+// taskbar show: the workspace's name and the active tab's, or the
+// workspace's alone while it has no tab.
 func (a *App) windowTitle() string {
 	title := ""
 	if t := a.tab(); t != nil {
@@ -180,6 +181,9 @@ func (a *App) windowTitle() string {
 		title = strings.TrimSpace(name + " " + detail)
 	}
 	if a.ws != nil {
+		if title == "" {
+			return a.ws.Name
+		}
 		title = locales.WindowTitle(a.ws.Name, title)
 	}
 	return title

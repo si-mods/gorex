@@ -137,9 +137,10 @@ func (a *App) view(c *ui.Context) {
 		a.save()
 	}
 	// The window's title, which the Window menu and Mission Control show,
-	// is the workspace's and the active tab's.
-	if a.tab() != nil && a.win != nil {
-		if title := a.windowTitle(); title != a.title {
+	// is the workspace's and the active tab's, or the workspace's alone
+	// while its project has no tab.
+	if a.win != nil {
+		if title := a.windowTitle(); title != "" && title != a.title {
 			a.title = title
 			a.win.SetTitle(title)
 		}

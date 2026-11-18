@@ -224,6 +224,40 @@ func TestProjectRowNewTabAndMove(t *testing.T) {
 	}
 }
 
+// TestEmptyProjectShowsNoTab: choosing a project with no tab shows it in
+// the window and starts none, as Rex Go's list does; New Tab is the one
+// that opens one, in its folder.
+func TestEmptyProjectShowsNoTab(t *testing.T) {
+	a, tt, _, _ := projectsApp(t)
+	dir := appTempDir(t, a)
+	res := clientCommand(a, rex.LayoutCommand{Op: "project.adopt", Adopt: &layout.Adoption{
+		Project: &layout.AdoptProject{Name: "empty", Dir: dir},
+	}})
+	caughtUp(t, a, tt)
+	w := a.st.byID(res.Space)
+	if w == nil || w.tabCount() != 0 {
+		t.Fatalf("the project adopted is %+v (answer %+v)", w, res)
+	}
+	a.showWorkspace(w)
+	tt.Frame()
+	if a.ws != w || len(a.tabs) != 0 {
+		t.Fatalf("the empty project shows %d tabs, its workspace %v", len(a.tabs), a.ws == w)
+	}
+	if !tt.HasText("empty") {
+		t.Errorf("the project shown is not in the list: %q", tt.Texts())
+	}
+	if got, want := a.windowTitle(), "empty"; got != want {
+		t.Errorf("the window title is %q, want %q", got, want)
+	}
+	tab := a.newProjectTab()
+	if tab == nil || tab.Focus == nil {
+		t.Fatal("New Tab opened no tab")
+	}
+	if d := localDirOf(t, a, tab.Focus.SID); !sameDir(d, dir) {
+		t.Errorf("New Tab starts in %q, want %q", d, dir)
+	}
+}
+
 // TestOfflineHostGreyed: a host that goes away shows its projects as the
 // app last took them, greyed: they open nothing, and the copy is kept
 // for the next launch.
@@ -419,7 +453,7 @@ func TestProjectMenu(t *testing.T) {
 }
 
 // TestSidebarFlatLayout: a host is a section header, in capitals, with no
-// PROJECTS row; its projects are flush with it, their folder only in the
+// PROJECTS row; its projects are flush with it, their folder in no row or
 // tooltip; the tabs of the project shown come one step in; a host away
 // says "offline".
 func TestSidebarFlatLayout(t *testing.T) {
@@ -438,7 +472,7 @@ func TestSidebarFlatLayout(t *testing.T) {
 	if !ok || tt.HasText("PROJECTS") {
 		t.Fatalf("the header of this machine: %v; texts %q", ok, tt.Texts())
 	}
-	row, _ := tt.Find("acme-api" + spacedComma(a.projectDetail(w)))
+	row, _ := tt.Find("acme-api" + spacedComma(workspaceDetail(w, a, w.tabCount())))
 	name, detail := a.tabs[0].label()
 	tab, _ := tt.Find(name + " " + detail)
 	if row.X > header.X+1 || tab.X != row.X || tab.W != row.W {
@@ -448,9 +482,6 @@ func TestSidebarFlatLayout(t *testing.T) {
 	// room of the tiles, where the project's dot is.
 	if text, ok := tt.Find("acme-api"); !ok || text.X != tab.X+sideLead+tilesReserve(a.tabs)+sideGap {
 		t.Errorf("the project's name at x %v, want %v", text.X, tab.X+sideLead+tilesReserve(a.tabs)+sideGap)
-	}
-	if r, inline := tt.Find(a.projectDetail(w)); inline && r.X < sidebarWidthIn(1000) {
-		t.Errorf("the folder %q shows in the row", a.projectDetail(w))
 	}
 	// One row is filled: the active tab, not its project, which is
 	// filled once its tabs are closed.

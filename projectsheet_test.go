@@ -197,23 +197,24 @@ func TestProjectSheetStaleListing(t *testing.T) {
 	}
 }
 
-// TestProjectHeader checks what the sidebar's project header says under
-// the name: the folder of this machine under ~.
+// TestProjectHeader checks that the sidebar's project row says its name,
+// and not its folder: the folder, under ~ or not, is in no label or
+// tooltip.
 func TestProjectHeader(t *testing.T) {
 	a, tt := newTestApp(t)
 	old := prefs
 	t.Cleanup(func() { prefs = old })
 	prefs = settings{TabPlacement: "left"}
 	tt.Frame()
-	if d := a.projectDetail(a.ws); d != "" {
-		t.Errorf("a project of no folder says %q", d)
-	}
 	home := a.homeOf(nil)
 	folder := filepath.Join(home, "code", "windflow")
 	setProjectHome(t, a, tt, "", folder)
 	want := "~" + string(filepath.Separator) + filepath.Join("code", "windflow")
-	if d := a.projectDetail(a.ws); d != want || !tt.HasText(want) {
-		t.Errorf("the header says %q, want %q; texts %q", d, want, tt.Texts())
+	if tt.HasText(want) {
+		t.Errorf("the project's row says its folder %q: %q", want, tt.Texts())
+	}
+	if !tt.HasText(a.ws.Name) {
+		t.Errorf("the project's row does not say its name %q: %q", a.ws.Name, tt.Texts())
 	}
 }
 
