@@ -2,8 +2,7 @@ import { HostConn } from "./hostconn";
 import { Msg, t } from "./i18n";
 import { closeMenu, confirmDanger, DropZone, focusRename, MenuItem, renameField, zoneSplit } from "./manage";
 import { describe } from "./pane";
-import { hold, lineText, paneName, sidebar as drawSidebar, spaceName, windowName, windowTitle } from "./sidebar";
-import type { Line } from "./projects";
+import { hold, paneName, sidebar as drawSidebar, spaceName, windowName, windowTitle } from "./sidebar";
 import { layoutOf, leavesOf, WindowView } from "./window";
 
 export interface WindowOpsDeps {
@@ -16,10 +15,11 @@ export interface WindowOpsDeps {
   want: (since: number, w: { host: string; session: string; window: string }) => void;
   showWanted: () => void;
   newWindow: (conn: HostConn, session: string) => void;
-  projectLine: (conn: HostConn, session: string) => Line | undefined;
-  newProject: (conn: HostConn | undefined) => void;
-  changeFolder: (conn: HostConn, session: string) => void;
-  removeFolder: (conn: HostConn, session: string) => void;
+  /** Renames a project of a host of version 2: its name only. */
+  renameProject: (conn: HostConn, session: string, name: string) => void;
+  /** The projects a tab of session can move to (Move to Project); none for a host that has no projects of version 2. */
+  projectTargets: (conn: HostConn, session: string) => { id: string; name: string }[] | undefined;
+  moveTab: (conn: HostConn, session: string, window: string, target: string) => void;
   closeWindow: (conn: HostConn, session: string, window: string) => void;
   status: (s: Msg) => void;
   canBlockToNewWindow: (conn: HostConn) => boolean;
@@ -47,24 +47,13 @@ export function createWindowOps(deps: WindowOpsDeps) {
   function spacesMenu(conn: HostConn, current: string): MenuItem[] {
     const spaces: MenuItem[] = [...conn.sessions.values()]
       .filter((o) => o.view)
-      .map((o) => {
-        // Projects of one name differ by their folder, so the folder shows under the name, and with the full name in a tooltip.
-        const line = deps.projectLine(conn, o.id);
-        const detail = line ? lineText(line) : undefined;
-        return { label: spaceName(o), detail, title: [spaceName(o), detail].filter(Boolean).join("\n"), disabled: o.id === current, run: () => showSpace(conn, o.id) };
-      });
-    const make: MenuItem[] = conn.keepsProjects
-      ? [{ label: t("cmdNewSpace"), run: () => deps.newProject(conn) }, { label: t("cmdNewProjectNoFolder"), run: () => newSpace(conn) }]
-      : [{ label: t("cmdNewSpace"), run: () => newSpace(conn) }];
-    return [...spaces, "separator", ...make, ...spaceMenu(conn, current)];
+      .map((o) => ({ label: spaceName(o), title: spaceName(o), disabled: o.id === current, run: () => showSpace(conn, o.id) }));
+    return [...spaces, "separator", { label: t("cmdNewSpace"), run: () => newSpace(conn) }, ...spaceMenu(conn, current)];
   }
 
   function spaceMenu(conn: HostConn, session: string): MenuItem[] {
-    const folder: MenuItem[] = conn.keepsProjects && conn.listsDirs ? [{ label: t("cmdChangeFolder"), run: () => deps.changeFolder(conn, session) }] : [];
-    if (folder.length && conn.sessions.get(session)?.project) folder.push({ label: t("cmdRemoveFolder"), run: () => deps.removeFolder(conn, session) });
     return [
       { label: t("cmdRenameSpace"), run: () => startRename(conn, session) },
-      ...folder,
       { label: t("cmdCloseSpace"), run: () => closeSpace(conn, session) },
     ];
   }
@@ -81,9 +70,12 @@ export function createWindowOps(deps: WindowOpsDeps) {
       { label: t("windowMoveUp"), disabled: i <= 0, run: () => moveWindowTo(conn, session, window, ids[i - 1], true) },
       { label: t("windowMoveDown"), disabled: i >= ids.length - 1, run: () => moveWindowTo(conn, session, window, ids[i + 1], false) },
     );
+    const targets = deps.projectTargets(conn, session);
     const move = deps.moveWindowToSpace(conn);
     const others = [...conn.sessions.values()].filter((o) => o.id !== session && o.view);
-    if (move && others.length) {
+    if (targets) {
+      items.push({ label: t("windowMoveSpace"), submenu: targets.map((o) => ({ label: o.name, run: () => deps.moveTab(conn, session, window, o.id) })) });
+    } else if (move && others.length) {
       items.push({
         label: t("windowMoveSpace"),
         submenu: others.map((o) => ({
@@ -178,7 +170,9 @@ export function createWindowOps(deps: WindowOpsDeps) {
   function renamedSpace(conn: HostConn, session: string, name: string | undefined) {
     if (hold.renaming?.host === conn.host.id && hold.renaming.session === session && !hold.renaming.window) hold.renaming = undefined;
     const s = conn.sessions.get(session);
-    if (s && name && name !== s.label) {
+    if (s && name && name !== s.label && conn.v2 && s.project?.dir) {
+      deps.renameProject(conn, session, name);
+    } else if (s && name && name !== s.label) {
       const was = s.label;
       s.label = name;
       conn.control?.call("session.set_label", { session_id: session, label: name }).catch((e) => {
@@ -278,5 +272,6 @@ export function createWindowOps(deps: WindowOpsDeps) {
     mergeWindows,
     dropPane,
     newSpace,
+    closeSpace,
   };
 }

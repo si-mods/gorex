@@ -7,6 +7,7 @@ import { Msg, msg, t } from "./i18n";
 import { describe } from "./pane";
 import { programName, Status, statusOf } from "./programs";
 import * as projects from "./projects";
+import { featureVersion, parseProject, ProjectInfo } from "./projectmodel";
 import { Control, Transport } from "./rex";
 import type { LinkState } from "./settings";
 import * as spaces from "./spaces";
@@ -18,8 +19,8 @@ import { layoutOf, leavesOf } from "./window";
 export interface Session {
   id: string;
   label: string;
-  /** The folder the session is bound to, its home (projects.ts); none for a session with no folder. */
-  project?: projects.Project;
+  /** A host of version 2 says where the session belongs (projectmodel.ts): a project, or `{dir: ""}` for the host's tabs with no project. */
+  project?: ProjectInfo;
   view?: any;
   /** The connection a read of the view is on its way over. */
   reading?: Control;
@@ -227,9 +228,15 @@ export class HostConn {
     return r.window_id;
   }
 
-  /** Whether the host keeps projects' homes (gorex.projects). */
-  get keepsProjects(): boolean {
-    return !!this.control?.features.has(projects.feature);
+  /** Whether the host keeps projects on itself, in spaces (gorex.projects, version 2). A host without it shows its sessions as before. */
+  get v2(): boolean {
+    const c = this.control;
+    return !!c && c.features.has(projects.feature) && featureVersion(c.welcome, projects.feature) >= projects.projectsVersion;
+  }
+
+  /** A session's `project` as this host writes it; none from a host that has no projects of version 2. */
+  private project(j: any): ProjectInfo | undefined {
+    return this.v2 ? parseProject(j) : undefined;
   }
 
   /** Whether the host lists its folders (gorex.dir_list). */
@@ -242,17 +249,48 @@ export class HostConn {
     return projects.parseDirs((await this.call("gorex.dir.list", { path })).payload);
   }
 
-  /** Binds a session to a folder of a machine, or frees it with machine "" (gorex.project.set_home). */
-  async setHome(session: string, machine: string, dir: string): Promise<void> {
-    const r = (await this.call("gorex.project.set_home", machine ? { session_id: session, machine_id: machine, dir } : { session_id: session, machine_id: "" })).payload;
-    const s = this.sessions.get(session);
-    if (s) s.project = projects.parse(r?.project);
-    this.events.sessions(this, false);
+  /** Makes a project from a folder of this host and opens its first tab there (gorex.project.create). */
+  async projectCreate(name: string, dir: string, space: string): Promise<{ project_id: string; tab_id?: string; exists: boolean }> {
+    try {
+      const r = (await this.call("gorex.project.create", { name, dir, space })).payload;
+      return { project_id: String(r?.project_id ?? ""), tab_id: r?.tab_id, exists: false };
+    } catch (e) {
+      // A folder that is a project already is an error that names the project.
+      const x = e as { code?: string; projectID?: string };
+      if (x?.code === "exists" && x.projectID) return { project_id: x.projectID, exists: true };
+      throw e;
+    }
   }
 
-  /** This host, as the project rules read it. */
-  get ref(): projects.HostRef {
-    return { id: this.host.id, name: this.host.name, machine: this.machine, connected: this.state === "connected" && this.live };
+  /** Moves a tab, with its panes, to a project of this host; "" is the host's tabs with no project (gorex.project.move). */
+  async projectMove(tab: string, project: string): Promise<void> {
+    await this.call("gorex.project.move", { tab_id: tab, project_id: project });
+  }
+
+  /** Changes a project's name, color or space (gorex.project.update). */
+  async projectUpdate(project: string, fields: { name?: string; color?: string; space?: string }): Promise<void> {
+    await this.call("gorex.project.update", { project_id: project, ...fields });
+  }
+
+  /** Renames a space on every project of this host (gorex.space.rename). */
+  async spaceRename(from: string, to: string): Promise<void> {
+    await this.call("gorex.space.rename", { from, to });
+    await this.readSpaces();
+  }
+
+  /** The space names this host offers, those of its projects first (gorex.space.list); "" is Default. */
+  offered: string[] = [];
+
+  /** Reads gorex.space.list; a failure keeps what was read. */
+  async readSpaces(): Promise<void> {
+    if (!this.v2) return;
+    try {
+      const r = (await this.call("gorex.space.list")).payload;
+      this.offered = (Array.isArray(r?.spaces) ? r.spaces : []).filter((x: unknown): x is string => typeof x === "string");
+      this.events.sessions(this, false);
+    } catch (e) {
+      console.warn("space list", e);
+    }
   }
 
   /** Closes a window of a session; nothing while there is no control connection. */
@@ -334,6 +372,7 @@ export class HostConn {
     try {
       await c.call("session.bootstrap", { event_scope: "all" });
       await this.list();
+      void this.readSpaces();
       this.spaceReader.ask();
       // Connected is the usual state: the status line says nothing, and an earlier problem goes.
       this.status("");
@@ -357,7 +396,7 @@ export class HostConn {
       case "session_created": {
         const id = p.session?.session_id;
         if (id && !sessions.has(id)) {
-          sessions.set(id, { id, label: p.session.label ?? "", project: projects.parse(p.session.project) });
+          sessions.set(id, { id, label: p.session.label ?? "", project: this.project(p.session.project) });
           this.refresh(id, true);
         }
         break;
@@ -433,8 +472,8 @@ export class HostConn {
       const had = sessions.get(s.session_id);
       if (had) {
         had.label = s.label ?? had.label;
-        had.project = projects.parse(s.project);
-      } else sessions.set(s.session_id, { id: s.session_id, label: s.label ?? "", project: projects.parse(s.project) });
+        had.project = this.project(s.project);
+      } else sessions.set(s.session_id, { id: s.session_id, label: s.label ?? "", project: this.project(s.project) });
     }
     this.events.sessions(this, false);
     await Promise.all(listed.map((s) => this.refresh(s.session_id, true)));
@@ -485,7 +524,7 @@ export class HostConn {
   private apply(s: Session, v: any) {
     s.view = v;
     if (v.label) s.label = v.label;
-    s.project = projects.parse(v.project);
+    s.project = this.project(v.project) ?? s.project;
     for (const w of v.windows ?? []) {
       for (const b of leavesOf(layoutOf(w))) {
         if (!this.described.has(b)) {

@@ -36,13 +36,13 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: 
 }
 
 function why(s: HostState, name: string): string {
-  return s === "offline" ? t("projectHostOffline", { host: name }) : s === "old" ? t("projectHostOld", { host: name }) : t("projectHostNoMachine", { host: name });
+  return s === "offline" ? t("projectHostOffline", { host: name }) : t("projectHostOld", { host: name });
 }
 
 /** Opens the sheet; the choice, or none when it is cancelled. */
 export function chooseFolder(o: SheetOptions): Promise<Chosen | undefined> {
   return new Promise((resolve) => {
-    const states = o.hosts.map((c) => ({ host: c, state: hostState({ connected: c.ref.connected, listsDirs: c.listsDirs, keepsProjects: c.keepsProjects, machine: c.machine }) }));
+    const states = o.hosts.map((c) => ({ host: c, state: hostState({ connected: c.state === "connected" && c.live, listsDirs: c.listsDirs, projectsV2: c.v2 }) }));
     const first = defaultHost(states.map((s) => ({ id: s.host.host.id, state: s.state })), o.host);
     let conn = o.hosts.find((c) => c.host.id === first);
     let named = false;

@@ -13,7 +13,7 @@ import { Host, icon } from "./hosts";
 import { t } from "./i18n";
 import { draggable, MenuItem, onMenu, openMenu, ownDrag, renameField } from "./manage";
 import { prefs } from "./prefs";
-import type { Line } from "./projects";
+import { projectBar, projectTree } from "./projectsidebar";
 import { mostUrgent, rank, Status, tiles, tilesWidth } from "./programs";
 import { layoutOf, leavesOf, WindowView } from "./window";
 
@@ -34,8 +34,8 @@ export interface SidebarApp {
   /** Whether c's gateway merges a window into another (gorex.merge_windows). */
   mergesWindows(c: HostConn): boolean;
   mergeWindows(c: HostConn, session: string, window: string, into: string): void;
-  /** What shows under a project's name: its home host and folder; none for a session with no folder. */
-  projectLine(c: HostConn, session: string): Line | undefined;
+  /** Closes a project (session) after asking. */
+  closeSpace(c: HostConn, session: string): void;
   /** The space chip's menu. */
   spacesMenu(c: HostConn, session: string): MenuItem[];
   /** The hosts the page can connect to, in the sidebar's order: the host list's, then the tailnet's. */
@@ -53,6 +53,11 @@ export interface SidebarApp {
 }
 
 let app: SidebarApp;
+
+/** What the sidebar's rows do, for the projects' sidebar (projectsidebar.ts). */
+export function sidebarApp(): SidebarApp {
+  return app;
+}
 
 /** Sets what the rows do; once, as the page starts. */
 export function initSidebar(a: SidebarApp) {
@@ -72,7 +77,7 @@ export const hold: {
 } = { rowDragging: false, stale: false };
 
 /** Whether hold.renaming is this space's own field (no window), or this window's. */
-function renaming(c: HostConn, session: string, window?: string): boolean {
+export function renaming(c: HostConn, session: string, window?: string): boolean {
   const r = hold.renaming;
   return !!r && r.host === c.host.id && r.session === session && r.window === window;
 }
@@ -235,9 +240,12 @@ export function sidebar(force = false) {
   whole = false;
   changed.clear();
   const nav = document.createElement("nav");
-  if (!prefs.tabPlacement) tabBar(nav, c);
-  else if (prefs.sidebarView === "host") hostSections(nav);
-  else spaceSections(nav);
+  if (!prefs.tabPlacement) {
+    if (!projectBar(nav, c)) tabBar(nav, c);
+  } else if (!projectTree(nav)) {
+    if (prefs.sidebarView === "host") hostSections(nav);
+    else spaceSections(nav);
+  }
   if (!nav.children.length) nav.textContent = !c || !c.control ? "" : c.sessions.size ? "" : t("sidebarNoSessions");
   list().replaceChildren(nav);
 }
@@ -256,18 +264,8 @@ function spaceSection(nav: HTMLElement, c: HostConn, s: Session) {
   } else {
     const name = document.createElement("span");
     name.textContent = spaceName(s);
-    const line = app.projectLine(c, s.id);
-    if (line) {
-      const sub = document.createElement("small");
-      sub.className = "project-line";
-      sub.textContent = lineText(line);
-      sub.title = sub.textContent;
-      h.classList.add("has-folder");
-      h.title = `${spaceName(s)}\n${sub.textContent}`;
-      name.append(sub);
-    }
     h.append(name, add);
-    if (!line) h.title = spaceName(s);
+    h.title = spaceName(s);
   }
   onMenu(h, (x, y) => openMenu(x, y, app.spaceMenu(c, s.id), () => app.shown()?.focusKeys()));
   nav.append(h);
@@ -303,17 +301,10 @@ function tabBar(nav: HTMLElement, c: HostConn | undefined) {
     const chip = document.createElement("button");
     chip.type = "button";
     chip.className = "space-chip";
-    const line = app.projectLine(c, s.id);
-    chip.title = line ? `${t("spaceMenuLabel")}: ${lineText(line)}` : t("spaceMenuLabel");
+    chip.title = t("spaceMenuLabel");
     chip.setAttribute("aria-haspopup", "menu");
     const name = document.createElement("span");
     name.textContent = spaceName(s);
-    if (line) {
-      const sub = document.createElement("small");
-      sub.className = "project-line";
-      sub.textContent = lineText(line);
-      name.append(sub);
-    }
     chip.append(name, icon("chevron-down"));
     chip.onclick = () => {
       const r = chip.getBoundingClientRect();
@@ -347,7 +338,7 @@ export function hostDot(c: HostConn): LinkState | undefined {
 }
 
 /** A host's heading: its icon, its name and its state's dot, which is never dimmed. */
-function hostHead(nav: HTMLElement, h: Host, c: HostConn | undefined): HTMLElement {
+export function hostHead(nav: HTMLElement, h: Host, c: HostConn | undefined): HTMLElement {
   const head = document.createElement(c ? "h3" : "button");
   head.className = "host-head";
   head.dataset.host = h.id;
@@ -367,7 +358,7 @@ function hostHead(nav: HTMLElement, h: Host, c: HostConn | undefined): HTMLEleme
 }
 
 /** A host's problem, in one muted line, with Retry and, for a host of the list, Edit. */
-function problemLine(nav: HTMLElement, c: HostConn) {
+export function problemLine(nav: HTMLElement, c: HostConn) {
   if (c.state !== "unreachable" || !c.problem) return;
   const line = document.createElement("div");
   line.className = "host-problem";
@@ -391,7 +382,7 @@ function problemLine(nav: HTMLElement, c: HostConn) {
 }
 
 /** A host's sessions: its problem's line, then each session, dimmed while it is not connected. */
-function hostRows(nav: HTMLElement, c: HostConn) {
+export function hostRows(nav: HTMLElement, c: HostConn) {
   problemLine(nav, c);
   for (const s of c.sessions.values()) spaceSection(nav, c, s);
 }
@@ -429,11 +420,6 @@ function spaceSections(nav: HTMLElement) {
   }
 }
 
-/** A project's line under its name: `host · folder`, the host when it is another machine. */
-export function lineText(l: Line): string {
-  return [l.unknown ? t("projectHostUnknown") : l.host, l.dir].filter(Boolean).join(" · ");
-}
-
 /** A space's name: its label, else its view's, else a word. */
 export function spaceName(s: Session): string {
   return s.label || s.view?.label || t("sidebarSession");
@@ -444,7 +430,7 @@ export function spaceName(s: Session): string {
  * and its drag to another row's place (tabEvents in tabs.go). A pane
  * dropped on it goes into its window (tabRest's drop, movePaneToTab).
  */
-function windowRow(c: HostConn, session: string, w: any, room: number): HTMLElement {
+export function windowRow(c: HostConn, session: string, w: any, room: number): HTMLElement {
   const id: string = w.window_id;
   const row = document.createElement("div");
   row.className = "window";

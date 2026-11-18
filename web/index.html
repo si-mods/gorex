@@ -213,6 +213,55 @@
   body[data-tabs="above"] .window[data-drop="before"]::before { left: -1px; right: auto; }
   body[data-tabs="above"] .window[data-drop="after"]::before { left: auto; right: -1px; }
   .window[data-drop="into"] { box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--busy) 60%, transparent); }
+  /* Projects (projectsidebar.ts): a host's projects of the space, a row each with its folder and `+`, its tabs
+     under it; the space picker is a chip at the top. A host that is away shows its copy, dimmed (DESIGN.md). */
+  .project { display: flex; align-items: center; margin: 1px 0; border-radius: 999px; }
+  .project:hover { background: var(--hover); }
+  .project.open { background: var(--pill); }
+  .project.current .name { font-weight: 600; }
+  .project-tabs .window { margin: 1px 0; }
+  .project[data-drop="into"] { box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--busy) 60%, transparent); }
+  .project-main {
+    display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; padding: 5px 4px 5px 8px; border: 0;
+    background: none; color: var(--text); font: inherit; text-align: left; cursor: pointer;
+  }
+  .project-main .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .project-main .count { flex: none; margin-left: auto; padding-left: 8px; color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+  .project-main .name { flex: 0 1 auto; }
+  .project.group .project-main { color: var(--muted); }
+  .project > button.icon { margin-right: 4px; display: none; }
+  .project:hover > button.icon, .project.open > button.icon, .project.current > button.icon, .project:focus-within > button.icon { display: flex; }
+  /* A touch screen has no hover: the row's + stays. */
+  @media (hover: none) { .project > button.icon { display: flex; } }
+  .project-main .color-dot.none { background: none; box-shadow: none; }
+  /* A project's tabs: one step in, under a thin guide line. */
+  .project-tabs { margin: 0 0 2px 12px; padding-left: 6px; border-left: 1px solid var(--panel-edge); }
+  .project-tabs .window.copy { padding: 6px 12px; color: var(--text); cursor: default; }
+  .new-tab {
+    display: flex; align-items: center; gap: 8px; width: 100%; padding: 5px 12px; border: 0; border-radius: 999px;
+    background: none; color: var(--muted); font: inherit; text-align: left; cursor: pointer;
+  }
+  .new-tab:hover:not(:disabled) { background: var(--hover); color: var(--text); }
+  .new-tab:disabled { filter: grayscale(1); opacity: 0.4; cursor: default; }
+  .new-tab .pane-icon { width: 14px; height: 14px; }
+  .host-note { padding: 2px 12px 4px 34px; color: var(--muted); font-size: 12px; }
+  .host-head > button.icon { margin-right: -6px; }
+  /* The projects' sidebar: a host is a section header, flush left, its state drawn beside the name, its + at the end. */
+  .host-head.flat { padding: 4px 8px; margin-top: 14px; border-radius: 8px; font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); }
+  .host-head.flat > .pane-icon { display: none; }
+  .host-head.flat > span { flex: 0 1 auto; }
+  .host-head.flat > button.icon { margin-left: auto; margin-right: 0; }
+  .host-dot { flex: none; width: 7px; height: 7px; border-radius: 50%; box-sizing: border-box; }
+  .host-dot.on { background: var(--ok); }
+  .host-dot.off { border: 1.5px solid var(--muted); }
+  .host-offline { flex: none; font-size: 11px; font-weight: 400; letter-spacing: 0; text-transform: none; }
+  .host-head.flat .state-dot { margin: 0; }
+  #list { overflow-x: hidden; }
+  .space-picker { margin-bottom: 2px; }
+  .color-dot { flex: none; width: 9px; height: 9px; border-radius: 50%; box-shadow: inset 0 0 0 0.5px var(--panel-edge); }
+  .project-chip .host { color: var(--muted); font-weight: 400; }
+  .context-item .context-mark { flex: none; width: 12px; }
+  .context-item .context-mark .pane-icon { display: block; width: 12px; height: 12px; color: var(--text); }
   /* Renaming in place (manage.ts), as the desktop's compact field. */
   .rename-field {
     flex: 1; min-width: 0; height: 26px; margin: 3px 0; padding: 0 10px; border: 1px solid var(--muted); border-radius: 999px;

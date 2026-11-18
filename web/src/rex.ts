@@ -14,6 +14,8 @@ import { joinHostURL, withToken } from "./share";
  * of language says them in the new one.
  */
 export class RexError extends Error {
+  /** The project an `exists` error names (gorex.project.create). */
+  projectID?: string;
   constructor(public code: string, message: Msg) {
     super(typeof message === "string" ? message : "");
     if (typeof message === "function") Object.defineProperty(this, "message", { get: message });
@@ -124,6 +126,8 @@ export class Control {
   reconnectToken?: string;
   apiRevision = revision;
   features = new Set<string>();
+  /** The welcome as the host wrote it, for the versions of its features. */
+  welcome: any = {};
 
   private nextID = 0;
   private pending = new Map<string, { resolve: (v: { seq: number; payload: any }) => void; reject: (e: Error) => void }>();
@@ -183,7 +187,8 @@ export class Control {
           c.clientID = msg.client?.id ?? "";
           c.reconnectToken = msg.client?.reconnect_token;
           if (typeof msg.api_revision === "number") c.apiRevision = msg.api_revision;
-          c.features = new Set(msg.features ?? []);
+          c.welcome = msg;
+          c.features = new Set((msg.features ?? []).map((f: any) => (typeof f === "string" ? f : (f?.name ?? f?.id ?? f?.feature))).filter((f: unknown) => typeof f === "string"));
           resolve(c);
           return;
         }
@@ -235,7 +240,11 @@ export class Control {
       const p = this.pending.get(m.id);
       if (!p) return;
       this.pending.delete(m.id);
-      if (m.error) p.reject(new RexError(m.error.code ?? "", m.error.message ?? ""));
+      if (m.error) {
+        const e = new RexError(m.error.code ?? "", m.error.message ?? "");
+        if (typeof m.error.project_id === "string") e.projectID = m.error.project_id;
+        p.reject(e);
+      }
       else p.resolve({ seq: m.seq ?? 0, payload: m.payload ?? {} });
     } else if (m.type === "event" && m.payload?.type) {
       let type: string = m.payload.type;

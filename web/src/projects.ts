@@ -1,84 +1,13 @@
-// Projects (docs/projects.md): a session with a folder, its home, on a host.
-// The rules of the web client with no DOM: what a session's `project` says,
-// which host a new window opens on, what the sidebar shows under a
-// project's name, and the folder browser's state over gorex.dir.list.
+// Projects (docs/projects.md): the folder browser's state over
+// gorex.dir.list and the rules of New Project. What a host's projects, spaces
+// and tabs are is projectmodel.ts's.
 
-/** The welcome's feature of a gateway that keeps projects' homes. */
+/** The welcome's feature of a gateway that keeps projects; version 2 is this design's. */
 export const feature = "gorex.projects";
 /** The welcome's feature of a gateway that answers gorex.dir.list. */
 export const dirFeature = "gorex.dir_list";
-
-/** A session's home: the home host's machine, and a folder there. */
-export interface Project {
-  home_machine: string;
-  dir: string;
-}
-
-/** Reads a session's `project`; none when it has no folder. */
-export function parse(j: any): Project | undefined {
-  if (!j || typeof j.dir !== "string" || !j.dir) return undefined;
-  return { home_machine: typeof j.home_machine === "string" ? j.home_machine : "", dir: j.dir };
-}
-
-/** A host as the rules read it: what the page knows of its connection. */
-export interface HostRef {
-  id: string;
-  name: string;
-  /** Its machine_id; none before /api/spaces answered. */
-  machine?: string;
-  /** Whether its control connection is up and its sessions were read. */
-  connected: boolean;
-}
-
-/**
- * The host that is the project's home: the host of its machine. Of two
- * hosts of one machine (its LAN and tailnet entries), the connected one.
- */
-export function homeHost(p: Project, hosts: HostRef[]): HostRef | undefined {
-  if (!p.home_machine) return undefined;
-  const same = hosts.filter((h) => h.machine === p.home_machine);
-  return same.find((h) => h.connected) ?? same[0];
-}
-
-/** What New Window does in a session. */
-export type Plan =
-  /** The session has no folder: a window in the session, as before. */
-  | { kind: "plain" }
-  /** A window on host, in cwd; here when host is the session's own. */
-  | { kind: "open"; host: HostRef; cwd: string; here: boolean }
-  /** No window: the home host is a host of the user's, not connected. */
-  | { kind: "offline"; host: HostRef }
-  /** No window: no host of the user's is the home's machine. */
-  | { kind: "unknown" };
-
-/**
- * Where New Window in a session opens (docs/projects.md, Where a new
- * session starts): in a project with a folder, on the home host, in the
- * folder; never on another host when the home is out of reach.
- */
-export function planNewWindow(p: Project | undefined, sessionHost: string, hosts: HostRef[]): Plan {
-  if (!p) return { kind: "plain" };
-  const home = homeHost(p, hosts);
-  if (!home) return { kind: "unknown" };
-  if (!home.connected) return { kind: "offline", host: home };
-  return { kind: "open", host: home, cwd: p.dir, here: home.id === sessionHost };
-}
-
-/** What the sidebar shows under a project's name: the home host's name when it is another machine, then the folder. */
-export interface Line {
-  /** The home host's name; none when the home is the session's own host. */
-  host?: string;
-  /** The home host is none the page knows. */
-  unknown: boolean;
-  dir: string;
-}
-
-export function projectLine(p: Project, sessionHost: HostRef, hosts: HostRef[]): Line {
-  const home = homeHost(p, hosts);
-  const own = home ? home.id === sessionHost.id : !!p.home_machine && p.home_machine === sessionHost.machine;
-  if (own) return { unknown: false, dir: p.dir };
-  return home ? { host: home.name, unknown: false, dir: p.dir } : { unknown: true, dir: p.dir };
-}
+/** The version of `gorex.projects` that keeps a project on its host, inside a space. */
+export const projectsVersion = 2;
 
 /** Whether a failed new_window is the gateway's folder_missing (a `conflict` that names the code). */
 export function isFolderMissing(e: unknown): boolean {
@@ -276,18 +205,13 @@ export class FolderBrowser {
   }
 }
 
-/** Why a host can or cannot be the home of a new project. */
-export type HostState = "ok" | "offline" | "old" | "nomachine";
+/** Why a host can or cannot make a new project. */
+export type HostState = "ok" | "offline" | "old";
 
-/**
- * Whether a host can be picked in New Project: connected, with the
- * gateway's folder listing and project homes, and its machine known, as
- * a home is kept by machine.
- */
-export function hostState(h: { connected: boolean; listsDirs: boolean; keepsProjects: boolean; machine?: string }): HostState {
+/** Whether a host can be picked in New Project: connected, with projects of version 2 and the gateway's folder listing. */
+export function hostState(h: { connected: boolean; listsDirs: boolean; projectsV2: boolean }): HostState {
   if (!h.connected) return "offline";
-  if (!h.listsDirs || !h.keepsProjects) return "old";
-  if (!h.machine) return "nomachine";
+  if (!h.listsDirs || !h.projectsV2) return "old";
   return "ok";
 }
 
