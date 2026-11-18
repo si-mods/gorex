@@ -126,15 +126,6 @@ func winPath(p string) bool {
 	return len(p) >= 2 && p[1] == ':' && (p[0]|0x20 >= 'a' && p[0]|0x20 <= 'z') || strings.HasPrefix(p, `\\`)
 }
 
-// projectDetail is what a project's row says beside its name: its
-// folder, under its host's home as ~; "" for the tabs with no project.
-func (a *App) projectDetail(w *Workspace) string {
-	if w == nil || w.Dir == "" {
-		return ""
-	}
-	return a.tildeOn(w.host, w.Dir)
-}
-
 // createProject makes a project named name of the folder dir on host h,
 // nil for this machine, in the space shown (docs/projects.md, "New
 // Project"): the host makes it and its first tab, in the folder, which

@@ -317,11 +317,11 @@ A project's context menu:
   header says "offline", and its projects show greyed, with their last
   tabs.
 - A project row is flush with the header: the project's color dot, its
-  name, and its tab count on the right. Its folder shows in its tooltip
-  and, with the tabs on top, in the title bar (`host › project`). A click
-  shows the project and expands it; on the project shown, or on the dot
-  of any, it expands or collapses that project's tabs alone, which come
-  under it flush with it, with no guide line: a tab's program icon starts
+  name, and its tab count on the right, as Rex Go's list has it. Its
+  folder is in no row or tooltip. A click shows the project and expands
+  it; on the project shown, or on the dot of any, it expands or
+  collapses that project's tabs alone, which come under it flush with
+  it, with no guide line: a tab's program icon starts
   where the project's dot does, and its title where the project's name
   does. The rows of Older and of Tabs with no project line up the same. Each project keeps its
   own state, per client (`sidebarOpen`); choosing another project, in
@@ -690,7 +690,8 @@ What the design left open, and phase 2 (the desktop) decided:
   project there; the app arranges nothing on them, and their adoptions
   wait ("Waiting for" the host) until they are upgraded.
 - **A project with no tab stays**, as its host keeps it; closing its last
-  tab shows the window another workspace.
+  tab shows the window another workspace, and choosing it again shows it
+  with no tab. New Tab opens one, in its folder.
 - **Space renames for a host away** wait in `settings.json`
   (`spaceRenames`) and go as it connects.
 - **Teleport** (the app's) puts the session that arrives in the host's

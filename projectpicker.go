@@ -61,7 +61,7 @@ func (a *App) projectPicker(c *ui.Context, k *colors) {
 	host := a.hostName(w.host)
 	label := host + " › " + name
 	chip := ui.Row(c.Key("project-picker")).Height(28).Gap(6).Padding(0, 8).Radius(pillRadius(28, 9)).AlignItems(ui.Center).Cursor(ui.CursorPointer).
-		Role(ui.RoleButton).Label(label).Tooltip(label + spacedDetail(a.projectDetail(w))).MaxWidth(320).Shrink(1).MinWidth(60)
+		Role(ui.RoleButton).Label(label).Tooltip(label).MaxWidth(320).Shrink(1).MinWidth(60)
 	if chip.Hovered() || a.pickerOpen {
 		chip.Background(hoverFace(k))
 	}
@@ -87,14 +87,6 @@ func (a *App) projectPicker(c *ui.Context, k *colors) {
 		ui.Box(c).Height(1).Margin(4, 6).Background(k.panelBorder).Shrink(0)
 		a.menuRow(c, k, "picker-new", false, cmdNewProject.Title(), cmdNewProject.Keys, nil, a.openNewProject).Shrink(0)
 	})
-}
-
-// spacedDetail is " · " and d, or "" for none.
-func spacedDetail(d string) string {
-	if d == "" {
-		return ""
-	}
-	return " · " + d
 }
 
 // pickerList is the picker's hosts and their workspaces.

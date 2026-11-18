@@ -240,12 +240,8 @@ func (a *App) projectRow(c *ui.Context, k *colors, w *Workspace, reserve float32
 	}
 	n := w.tabCount()
 	offline := w.offline()
-	detail := a.projectDetail(w)
 	row := ui.Row(c.Key("project-"+key)).Height(projectRowH).Shrink(0).Padding(0, 4, 0, sideLead).Gap(sideGap).AlignItems(ui.Center).
-		Radius(pillRadius(projectRowH, 9)).Cursor(ui.CursorPointer).Role(ui.RoleButton).Expanded(open).Label(name + spacedComma(detail))
-	if detail != "" {
-		row.Tooltip(detail)
-	}
+		Radius(pillRadius(projectRowH, 9)).Cursor(ui.CursorPointer).Role(ui.RoleButton).Expanded(open).Label(name + spacedComma(workspaceDetail(w, a, n)))
 	if anim := motion(c); anim != nil {
 		row.Transition(ui.ElementTransition{Animation: anim, Position: true, Enter: tabMotion, Exit: tabMotion})
 	}
