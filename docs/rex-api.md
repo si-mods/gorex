@@ -525,9 +525,16 @@ its block ID (`pane_id`), so an ID from a Rex method passes unchanged.
 - `session.new_window` without a `cwd`, in a project, starts in the
   folder; a folder gone fails with `conflict` (`folder_missing`) and
   starts no shell. A `cwd` given wins.
-- `gorex.project.set_home` of v0.38.0 is removed: a project's folder does
-  not change. `gorex.spaces_apply` reads `home_machine` and `dir` and
-  ignores them.
+- `gorex.project.set_home {session_id, machine_id, dir}` → `{revision, project}`
+  is deprecated, and goes once phases 3 and 4 of `docs/projects.md` ship.
+  It stays for Rex Go 1.1 and the web client of v0.39.0, which make a
+  project as `session.create` then `set_home`. It sets a folder of this
+  machine only: another `machine_id` fails with `bad_request`, a folder
+  that is a project already with `exists` (and `project_id`), a
+  `machine_id` of `""` clears the folder.
+- `gorex.spaces_apply` reads `home_machine` and `dir` and ignores them. A
+  space no session is makes no workspace: its windows go to the tabs with
+  no project, but a project's windows stay.
 - Errors: `bad_request`, `not_found`, `exists`, `conflict`,
   `not_supported` (the GoRex server is older).
 

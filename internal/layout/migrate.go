@@ -64,7 +64,28 @@ func Migrate(raw []byte, machineOf func(host string) string) (st Store, changed 
 	noProjectAt := -1
 	projectAt := map[string]int{} // a project's ID → its place in out
 	var projects []*Workspace
+	// The tabs with no project take the ID of the first old space, which
+	// Rex's apps of before keep as a session; a new one with none.
+	firstSpace := ""
 	for _, w := range st.Sessions {
+		if w.Dir == "" && homes[w.ID] == "" {
+			firstSpace = w.ID
+			break
+		}
+	}
+	if firstSpace == "" {
+		firstSpace = NewSpaceID()
+	}
+	// The active tab of a workspace that several became is that of the
+	// one a window showed first (rank), else of the first.
+	rank := func(id string, at int) int {
+		if i := slices.Index(st.Windows, id); i >= 0 {
+			return i
+		}
+		return len(st.Windows) + at
+	}
+	ranked := map[*Workspace]int{}
+	for at, w := range st.Sessions {
 		home := homes[w.ID]
 		var to *Workspace
 		switch {
@@ -86,7 +107,7 @@ func Migrate(raw []byte, machineOf func(host string) string) (st Store, changed 
 				out.Spaces = addName(out.Spaces, w.Name)
 			}
 			if noProject == nil {
-				noProject = &Workspace{ID: w.ID, Name: NoProjectName, Layout: Layout{Tabs: []Tab{}}}
+				noProject = &Workspace{ID: firstSpace, Name: NoProjectName, Layout: Layout{Tabs: []Tab{}}}
 				noProjectAt = len(out.Sessions)
 				out.Sessions = append(out.Sessions, Workspace{})
 			}
@@ -102,7 +123,8 @@ func Migrate(raw []byte, machineOf func(host string) string) (st Store, changed 
 			if local == nil {
 				continue
 			}
-			if ti == w.Active && to != noProject && to.Active < 0 {
+			if r, ok := ranked[to]; ti == w.Active && (!ok || rank(w.ID, at) < r) {
+				ranked[to] = rank(w.ID, at)
 				to.Active = len(to.Tabs)
 			}
 			to.Tabs = append(to.Tabs, *local)
@@ -124,6 +146,7 @@ func Migrate(raw []byte, machineOf func(host string) string) (st Store, changed 
 				}
 			}
 		} else {
+			noProject.Active = min(max(noProject.Active, 0), len(noProject.Tabs)-1)
 			out.Sessions[noProjectAt] = *noProject
 		}
 	}

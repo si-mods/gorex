@@ -156,13 +156,11 @@ func (s *session) hasExited() bool {
 	return s.exited
 }
 
-// placeTab gives ss a tab as the window would show it: in the default
-// space, after this machine's tabs, without the focus.
+// placeTab gives ss a tab as the window would show it: in the host's tabs
+// with no project, made when it has none, after this machine's tabs,
+// without the focus.
 func placeTab(st *layout.Store, a *applying, ss *session) {
-	w := defaultSpace(st)
-	if w == nil {
-		w = newSpace(st, "")
-	}
+	w := noProject(st)
 	ss.mu.Lock()
 	cols, rows := ss.cols, ss.rows
 	ss.mu.Unlock()

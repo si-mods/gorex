@@ -218,13 +218,13 @@ func TestProjectCreate(t *testing.T) {
 	if again, _ := c.Command(LayoutCommand{Op: "project.create", Dir: folder + string(filepath.Separator), Command: cmd}); again.Code != "exists" || again.Space != res.Space {
 		t.Fatalf("a second project of the folder: %+v", again)
 	}
-	device := "/dev/null"
+	refused := map[string]string{filepath.Join(folder, "gone"): FolderMissing, "relative": "bad_dir"}
+	// A device or pipe path is one only on Windows, where reading it
+	// waits (VolumePath).
 	if filepath.Separator == '\\' {
-		device = `\\.\pipe\x`
+		refused[`\\.\pipe\x`] = "bad_dir"
 	}
-	for dir, code := range map[string]string{
-		filepath.Join(folder, "gone"): FolderMissing, "relative": "bad_dir", device: "bad_dir",
-	} {
+	for dir, code := range refused {
 		if r, _ := c.Command(LayoutCommand{Op: "project.create", Dir: dir, Command: cmd}); r.Code != code {
 			t.Errorf("project.create of %q: %+v, want %s", dir, r, code)
 		}

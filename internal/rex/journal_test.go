@@ -24,7 +24,7 @@ func testLayout(panes ...*layout.Node) json.RawMessage {
 		ID: "w1", Name: "icy-ridge",
 		Layout: layout.Layout{Tabs: []layout.Tab{{Root: root}}},
 	}
-	b, _ := json.Marshal(layout.Store{Version: 2, Sessions: []layout.Workspace{w}, Windows: []string{w.ID}})
+	b, _ := json.Marshal(layout.Store{Version: layout.Version, Sessions: []layout.Workspace{w}, Windows: []string{w.ID}})
 	return b
 }
 

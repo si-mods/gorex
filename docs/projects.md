@@ -581,8 +581,18 @@ What the design left open, and phase 1 (the server model) decided:
   and changes nothing; `remote.status` says `shareLayout: true`.
 - **Older clients.** A project's `project` also carries `home_machine`,
   this machine, so Rex Go 1.1 and the web client of v0.39.0 find its
-  host. `gorex.spaces_apply` stays, and ignores `home_machine` and
-  `dir`.
+  host. `gorex.project.set_home` stays as a deprecated shim onto
+  `space.home`, a folder of this machine only, for their New Project
+  (`session.create`, then `set_home`). `gorex.spaces_apply` stays, ignores
+  `home_machine` and `dir`, and makes no workspace: a space no session is
+  sends its windows to the tabs with no project, but a project's.
+- **One workspace with no folder.** The migration makes one; tabs the
+  server places itself (a remote client's session, a tab with no space)
+  go to it. `space.create`, and Rex's `session.create`, still make a
+  workspace with no folder, because the desktop before phase 2 and the
+  clients before phases 3 and 4 make a project as such a workspace and
+  then give it a folder (`space.home`, `set_home`). Phases 2 to 4 stop
+  sending them, and then the server refuses a second one.
 - **Until phase 2** the desktop still sends `space.home`: the server keeps
   it for a folder of this machine only (another host's fails with
   `remote_home`, a second project of a folder with `exists`). Between
@@ -590,9 +600,11 @@ What the design left open, and phase 1 (the server model) decided:
   panes of its old tabs: they wait in the adoptions.
 - **Phase 2 removes** `space.home`, the app's `Workspace.Host` and the
   waits for a project's home host (`projectHost`, `homeArg`,
-  `projectOpen`), `layout.MachineHost`, and sends the adoptions. **Phase
-  3 removes** `gorex.spaces_apply` and `featureSpacesSync` once Rex Go no
-  longer sends them.
+  `projectOpen`), `layout.MachineHost`, and sends the adoptions. **Phases
+  3 and 4 remove** `gorex.spaces_apply`, `featureSpacesSync` and
+  `gorex.project.set_home` once Rex Go and the web client no longer send
+  them; then `space.create` and `session.create` make no second workspace
+  with no folder.
 
 ## Open
 

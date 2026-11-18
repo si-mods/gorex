@@ -868,9 +868,9 @@ func (s *Server) createTab(st *layout.Store, c LayoutCommand, a *applying) Layou
 		}
 	}
 	if w == nil {
-		// A layout of no space, as a server's first: the window would
-		// show one.
-		w = newSpace(st, "")
+		// A layout of no space, as a server's first: its tabs with no
+		// project.
+		w = noProject(st)
 	}
 	dir, at := c.Dir, -1
 	// A new tab of a project whose home is this machine starts in its
@@ -1370,7 +1370,7 @@ func (s *Server) setTab(st *layout.Store, c LayoutCommand, a *applying) LayoutCo
 		}
 	}
 	if w == nil {
-		w = newSpace(st, "")
+		w = noProject(st)
 	}
 	// A batch's tab may take a session another of its tab.sets left out.
 	before := a.before

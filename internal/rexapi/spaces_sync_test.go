@@ -16,13 +16,14 @@ func TestGorexSpacesApply(t *testing.T) {
 	}
 
 	ids := sessionIDs(t, c)
-	work := ids["work"]
-	callChecked(t, c, "session.attach", map[string]any{"session_id": work})
-	view := viewOf(t, c, work)
-	logsWin := windowByLabel(t, view, "logs")
-	layers := logsWin["layers"].([]any)
-	blocks := layers[0].(map[string]any)["blocks"].([]any)
-	logsBlock := blocks[0].(map[string]any)["block_id"].(string)
+	work, play := ids["work"], ids["play"]
+	blockOf := func(sid, label string) string {
+		t.Helper()
+		callChecked(t, c, "session.attach", map[string]any{"session_id": sid})
+		layers := windowByLabel(t, viewOf(t, c, sid), label)["layers"].([]any)
+		return layers[0].(map[string]any)["blocks"].([]any)[0].(map[string]any)["block_id"].(string)
+	}
+	logsBlock, p1Block := blockOf(work, "logs"), blockOf(play, "p1")
 
 	// Bad requests.
 	if e := failure(t, c.request("bad1", "gorex.spaces_apply", map[string]any{})); e["code"] != "bad_request" {
@@ -32,33 +33,34 @@ func TestGorexSpacesApply(t *testing.T) {
 		t.Fatalf("extra arg: got %v", e)
 	}
 
-	// Apply a new space "infra" containing logsBlock (plus an unknown remote block).
+	// A space of a session: logs goes to play.
 	res := callChecked(t, c, "gorex.spaces_apply", map[string]any{
-		"spaces": []map[string]any{
-			{"name": "infra", "color": "blue", "block_ids": []string{logsBlock, "block:other-machine"}},
-		},
+		"spaces": []map[string]any{{"name": "play", "block_ids": []string{logsBlock, "block:other-machine"}}},
 	})
 	if got := int(res["applied"].(float64)); got != 1 {
 		t.Fatalf("applied = %d, want 1", got)
 	}
-
+	if s, _, _ := findBlockInModel(f.g.modelNow(), logsBlock); s == nil || s.id != play {
+		t.Fatalf("logs is in %v, not play", s)
+	}
 	// Repeating the same apply is idempotent.
-	res2 := callChecked(t, c, "gorex.spaces_apply", map[string]any{
-		"spaces": []map[string]any{
-			{"name": "infra", "color": "blue", "block_ids": []string{logsBlock}},
-		},
+	res = callChecked(t, c, "gorex.spaces_apply", map[string]any{
+		"spaces": []map[string]any{{"name": "play", "block_ids": []string{logsBlock}}},
 	})
-	if got := int(res2["applied"].(float64)); got != 0 {
+	if got := int(res["applied"].(float64)); got != 0 {
 		t.Fatalf("repeat applied = %d, want 0", got)
 	}
 
-	// Verify "infra" session now exists and holds "logs".
+	// A space no session is makes no workspace (docs/projects.md): its
+	// windows go to the first workspace with no folder, work.
+	res = callChecked(t, c, "gorex.spaces_apply", map[string]any{
+		"spaces": []map[string]any{{"name": "infra", "color": "blue", "block_ids": []string{p1Block}}},
+	})
 	m := f.g.modelNow()
-	infra := findSessionByLabel(m, "infra")
-	if infra == nil {
-		t.Fatal("expected infra session to be created")
+	if findSessionByLabel(m, "infra") != nil {
+		t.Fatal("spaces_apply made a workspace infra")
 	}
-	if s, _, _ := findBlockInModel(m, logsBlock); s == nil || s.id != infra.id {
-		t.Fatalf("logsBlock not moved to infra: session=%v", s)
+	if s, _, _ := findBlockInModel(m, p1Block); int(res["applied"].(float64)) != 1 || s == nil || s.id != work {
+		t.Fatalf("p1 is in %v (applied %v), not work", s, res["applied"])
 	}
 }

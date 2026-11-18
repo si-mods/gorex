@@ -73,8 +73,10 @@ func TestMigrateCases(t *testing.T) {
 	if np == nil || np.Name != NoProjectName || np.Dir != "" {
 		t.Fatalf("no tabs with no project: %+v", st.Sessions)
 	}
-	if np.ID != "trainer" && np.ID != "work" {
-		t.Fatalf("the tabs with no project took a new ID %q", np.ID)
+	// They take the ID of the first old space, not of a project homed
+	// elsewhere: Rex's apps of before keep that session.
+	if np.ID != "work" {
+		t.Fatalf("the tabs with no project took the ID %q", np.ID)
 	}
 	var api, mon *Tab
 	for i := range np.Tabs {
@@ -90,6 +92,11 @@ func TestMigrateCases(t *testing.T) {
 	}
 	if mon == nil || !mon.Root.IsLeaf() || mon.Root.SID != "l3" || mon.Root.Host != "" {
 		t.Fatalf("tab mon here is %+v", mon)
+	}
+	// The active tab is that of the space a window showed: api of Work,
+	// not mon of trainer, which no window showed.
+	if np.Tabs[np.Active].ID != "api" {
+		t.Fatalf("the active tab with no project is %q", np.Tabs[np.Active].ID)
 	}
 	if !slices.Equal(st.Spaces, []string{"Work", "Life"}) {
 		t.Fatalf("spaces offered %v", st.Spaces)
@@ -172,5 +179,20 @@ func TestMigrateFloats(t *testing.T) {
 	sp := st.Adopt[0].Tabs[0].Split
 	if sp.A == nil || sp.A.SID != "r1" || sp.B.SID != "r2" {
 		t.Fatalf("h1's split is %+v", sp)
+	}
+}
+
+// TestMigrateKeepsActive keeps the active tab of an old space, which the
+// window shows and whose session the server restores first.
+func TestMigrateKeepsActive(t *testing.T) {
+	raw := `{"version":2,"windows":["w1"],"sessions":[{"id":"w1","name":"w","active":2,"tabs":[
+ {"id":"a","root":{"sid":"a"}},{"id":"b","root":{"sid":"b","host":"h1"}},{"id":"c","root":{"sid":"c"}}]}]}`
+	st, _ := Migrate([]byte(raw), machines)
+	np := st.NoProject()
+	if np == nil || np.ID != "w1" || len(np.Tabs) != 2 || np.Tabs[np.Active].ID != "c" {
+		t.Fatalf("tabs with no project %+v", np)
+	}
+	if !slices.Equal(st.Windows, []string{"w1"}) {
+		t.Fatalf("windows %v", st.Windows)
 	}
 }

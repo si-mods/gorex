@@ -115,19 +115,64 @@ func TestProjectCreate(t *testing.T) {
 	if e["code"] != "exists" || e["project_id"] != pid {
 		t.Errorf("a second project of the folder: %v", e)
 	}
-	device := "/dev/null"
+	refused := map[string]string{"relative": "bad_request", filepath.Join(folder, "gone"): "not_found"}
+	// A device or pipe path is one only on Windows, where reading it
+	// waits (rex.VolumePath).
 	if runtime.GOOS == "windows" {
-		device = `\\.\pipe\x`
+		refused[`\\.\pipe\x`] = "bad_request"
 	}
-	for dir, code := range map[string]string{
-		device: "bad_request", "relative": "bad_request", filepath.Join(folder, "gone"): "not_found",
-	} {
+	for dir, code := range refused {
 		if e := failure(t, c.request("bad", "gorex.project.create", map[string]any{"dir": dir})); e["code"] != code {
 			t.Errorf("project.create of %q: %v, want %s", dir, e, code)
 		}
 	}
-	if e := failure(t, c.request("old", "gorex.project.set_home", map[string]any{"session_id": pid, "machine_id": "", "dir": ""})); e["code"] == nil {
-		t.Errorf("gorex.project.set_home is still served: %v", e)
+}
+
+// TestProjectSetHomeShim makes a project as Rex Go 1.1 and the web client
+// of v0.39.0 do, a session.create and a gorex.project.set_home of a folder
+// of this machine: the session becomes the project; another machine's
+// folder is refused, and a folder that is a project already answers
+// exists; a machine_id of "" clears the folder.
+func TestProjectSetHomeShim(t *testing.T) {
+	f := startFixture(t)
+	f.setLayout(emptyStore())
+	c := f.dialControl()
+	c.hello(apiRevision)
+	self := f.g.hello.Machine
+	create := func() string {
+		t.Helper()
+		return callChecked(t, c, "session.create", map[string]any{
+			"initial_windows": []any{map[string]any{"window_label": "one", "layout": blockLayout()}},
+		})["session_id"].(string)
+	}
+	sid := create()
+	folder := t.TempDir()
+	res := callChecked(t, c, "gorex.project.set_home", map[string]any{"session_id": sid, "machine_id": self, "dir": folder})
+	if p, _ := res["project"].(map[string]any); p["dir"] != filepath.Clean(folder) || p["home_machine"] != self {
+		t.Fatalf("set_home answered %v", res)
+	}
+	if p := projectOf(t, c, sid); p["dir"] != filepath.Clean(folder) {
+		t.Fatalf("the list's project is %v", p)
+	}
+	other := create()
+	for _, x := range []struct {
+		payload map[string]any
+		code    string
+	}{
+		{map[string]any{"session_id": other, "machine_id": "machine-far", "dir": "/srv/app"}, "bad_request"},
+		{map[string]any{"session_id": other, "machine_id": self, "dir": "relative"}, "bad_request"},
+		{map[string]any{"session_id": other, "machine_id": self, "dir": filepath.Join(folder, "gone")}, "not_found"},
+		{map[string]any{"session_id": other, "machine_id": self, "dir": folder}, "exists"},
+	} {
+		if e := failure(t, c.request("bad", "gorex.project.set_home", x.payload)); e["code"] != x.code {
+			t.Errorf("set_home %v: %v, want %s", x.payload, e, x.code)
+		} else if x.code == "exists" && e["project_id"] != sid {
+			t.Errorf("exists names %v, not %s", e["project_id"], sid)
+		}
+	}
+	callChecked(t, c, "gorex.project.set_home", map[string]any{"session_id": sid, "machine_id": ""})
+	if p := projectOf(t, c, sid); p == nil || len(p) != 0 {
+		t.Errorf("a cleared folder lists %v", p)
 	}
 }
 
