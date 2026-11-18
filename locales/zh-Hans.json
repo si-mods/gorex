@@ -660,7 +660,6 @@
   "hostRename": "重命名…",
   "projectCloseAsk": "关闭项目…",
   "projectMoveToSpace": "移动到空间",
-  "projectsHeader": "项目",
   "projectSheetTitleOn": "在 {host} 上新建项目",
   "projectsNewOn": "在 {host} 上新建项目…",
   "projectsNewTabIn": "在 {name} 中新建标签页",
@@ -680,5 +679,6 @@
   "spaceNew": "新建空间…",
   "spaceNewTitle": "新建空间",
   "spacePickerLabel": "空间 {name}",
-  "projectsTabsOf": "{name} 的标签页"
+  "projectsTabsOf": "{name} 的标签页",
+  "projectsOfflineLabel": "离线"
 }

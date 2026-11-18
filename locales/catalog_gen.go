@@ -7590,20 +7590,6 @@ func (msgs Messages) ProjectMoveToSpace() string {
 	return Catalog.Format(msgs.locale, "projectMoveToSpace", nil)
 }
 
-// ProjectsHeader says "PROJECTS"
-// in the language the app shows.
-//
-// Sidebar: the header over a host's projects.
-func ProjectsHeader() string { return In(i18n.Locale()).ProjectsHeader() }
-
-// ProjectsHeader says "PROJECTS"
-// in the language of msgs.
-//
-// Sidebar: the header over a host's projects.
-func (msgs Messages) ProjectsHeader() string {
-	return Catalog.Format(msgs.locale, "projectsHeader", nil)
-}
-
 // ProjectSheetTitleOn says "New Project on {host}"
 // in the language the app shows.
 //
@@ -7884,4 +7870,18 @@ func ProjectsTabsOf(name string) string { return In(i18n.Locale()).ProjectsTabsO
 // Sidebar: the chevron that shows or hides a project's tabs.
 func (msgs Messages) ProjectsTabsOf(name string) string {
 	return Catalog.Format(msgs.locale, "projectsTabsOf", map[string]any{"name": name})
+}
+
+// ProjectsOfflineLabel says "offline"
+// in the language the app shows.
+//
+// Sidebar: beside the header of a host that is not connected.
+func ProjectsOfflineLabel() string { return In(i18n.Locale()).ProjectsOfflineLabel() }
+
+// ProjectsOfflineLabel says "offline"
+// in the language of msgs.
+//
+// Sidebar: beside the header of a host that is not connected.
+func (msgs Messages) ProjectsOfflineLabel() string {
+	return Catalog.Format(msgs.locale, "projectsOfflineLabel", nil)
 }

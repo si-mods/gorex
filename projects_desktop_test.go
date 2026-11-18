@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -92,7 +93,7 @@ func TestHostProjectsInWindow(t *testing.T) {
 	waitFor(t, tt, "the host's project", func() bool { w := a.st.byID(res.Space); return w != nil && w.host == h && !w.offline() })
 	w := a.st.byID(res.Space)
 	tt.Frame()
-	for _, s := range []string{"office-h800", locales.ProjectsHeader(), "acme-api"} {
+	for _, s := range []string{"OFFICE-H800", "acme-api"} {
 		if !tt.HasText(s) {
 			t.Fatalf("the sidebar has no %q: %q", s, tt.Texts())
 		}
@@ -406,5 +407,39 @@ func TestProjectMenu(t *testing.T) {
 	rightClick(t, tt, locales.ProjectsNoProject())
 	if m := tt.Menu(); slices.Contains(m, cmdRenameSession.Title()) || !slices.Contains(m, locales.CmdNewTab()) {
 		t.Errorf("the menu of the tabs with no project: %q", m)
+	}
+}
+
+// TestSidebarFlatLayout: a host is a section header, in capitals, with no
+// PROJECTS row; its projects are flush with it, their folder only in the
+// tooltip; the tabs of the project shown come one step in; a host away
+// says "offline".
+func TestSidebarFlatLayout(t *testing.T) {
+	a, tt, _, _ := projectsApp(t)
+	space := ""
+	dir := appTempDir(t, a)
+	res := clientCommand(a, rex.LayoutCommand{Op: "project.create", Dir: dir, Name: "acme-api", SpaceName: &space})
+	caughtUp(t, a, tt)
+	w := a.st.byID(res.Space)
+	a.showWorkspace(w)
+	waitFor(t, tt, "the project's tab", func() bool { return len(a.tabs) == 1 && a.tabs[0].Focus != nil })
+	off := a.addHost(savedHost{ID: "h2", Name: "old-laptop", Address: filepath.Join(testDir(t), "none.sock")})
+	a.st.workspaces = append(a.st.workspaces, &Workspace{ID: "site", Name: "site", Dir: "/srv/site", host: off})
+	tt.Frame()
+	header, ok := tt.Find(strings.ToUpper(thisMachine()))
+	if !ok || tt.HasText("PROJECTS") {
+		t.Fatalf("the header of this machine: %v; texts %q", ok, tt.Texts())
+	}
+	row, _ := tt.Find("acme-api" + spacedComma(a.projectDetail(w)))
+	name, detail := a.tabs[0].label()
+	tab, _ := tt.Find(name + " " + detail)
+	if row.X > header.X+1 || tab.X-row.X < dotRoom-1 || tab.X-row.X > dotRoom+1 {
+		t.Errorf("header at x %v, project at %v, its tab at %v; want the project flush and its tab %v in", header.X, row.X, tab.X, dotRoom)
+	}
+	if _, inline := tt.Find(a.projectDetail(w)); inline {
+		t.Errorf("the folder %q shows in the row", a.projectDetail(w))
+	}
+	if !tt.HasText("OLD-LAPTOP") || !tt.HasText(locales.ProjectsOfflineLabel()) {
+		t.Errorf("the header of a host away: %q", tt.Texts())
 	}
 }

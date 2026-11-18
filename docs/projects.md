@@ -215,32 +215,27 @@ type DirListResult struct {
 
 ### Sidebar
 
-The sidebar on the left, space Work, two hosts:
+The sidebar on the left, space Work, three hosts:
 
 ```
 ┌───────────────────────────────┬──────────────────────────────────────────┐
 │ ● ● ●   [■ Work ▾]            │ gorex › dev                          ⋯   │
 ├───────────────────────────────┼──────────────────────────────────────────┤
-│ [H] This Mac                  │ ~/code/gorex $ go test ./...             │
-│   PROJECTS                  + │ ok   gorex   12.3s                       │
-│   ▾ [F] gorex  ~/code/gorex + │                                          │
-│       ▸ dev                   │ ◀ dev is the tab shown here              │
-│         logs                  │                                          │
-│         review                │                                          │
-│   ▸ [F] notes   ~/notes       │                                          │
-│   ▸ Tabs with no project (2)  │                                          │
+│ THIS MAC  ●                 + │ ~/code/gorex $ go test ./...             │
+│ ● gorex                   3 + │ ok   gorex   12.3s                       │
+│ ┃ dev                         │ ◀ dev is the tab shown here              │
+│ ┃ logs                        │                                          │
+│ ┃ review                      │                                          │
+│ ● notes                     1 │                                          │
+│   Tabs with no project      2 │                                          │
 │                               │                                          │
-│ [H] office-h800  ●            │                                          │
-│   PROJECTS                  + │                                          │
-│   ▾ [F] trainer ~/work/trainer│                                          │
-│         train                 │                                          │
-│         monitor               │                                          │
+│ OFFICE-H800  ●              + │                                          │
+│ ● trainer                   2 │                                          │
 │                               │                                          │
-│ [H] old-laptop   ○ offline    │                                          │
-│   PROJECTS                    │                                          │
-│   ▸ [F] site    ~/site  (grey)│                                          │
+│ OLD-LAPTOP  ○ offline         │                                          │
+│ ● site (grey)               1 │                                          │
 ├───────────────────────────────┤                                          │
-│ +  New Project…          ⚙    │                                          │
+│ ⚙   +  New Project…           │                                          │
 └───────────────────────────────┴──────────────────────────────────────────┘
 ```
 
@@ -258,7 +253,8 @@ from `assets/icons/` (`DESIGN.md`), never the character:
 | `⌂` `↑` | `house`, `arrow-up` |
 | `⚙` | `settings` |
 | `☰` | `menu` |
-| `●` `○` | a host's state dot, drawn, not an icon |
+| `●` `○` | a host's state dot, a project's color dot, drawn, not icons |
+| `┃` | the guide line from a project to its tabs, drawn |
 
 `◀` and `←` mark notes on a sketch; they are not drawn.
 
@@ -292,19 +288,27 @@ A project's context menu:
 - The hosts are the ones the user added (`hosts.json`, read through
   `internal/hosts`); a machine the tailnet finds shows only in the Add
   Remote Host sheet (#761). A host shows in a space when it is connected
-  or keeps a project of the space. An offline host's projects show
-  greyed, with their last tabs.
-- A project row expands to its tabs. Its `+` (shown on the row under
-  the pointer and on the chosen project's) opens a tab in the folder;
-  ⌘T does the same while the project is chosen. Its context menu: New
-  Tab, Rename, Color, Move to Space, Reveal Folder (this host only),
-  Close Project.
-- A host row's menu has Rename… (its alias) and New Tab with No
-  Project.
+  or keeps a project of the space.
+- A host is a section header, not indented, small and in capitals, with
+  its state dot and the `+` that makes a project there. Its context menu
+  has Rename… (its alias) and New Tab with No Project. An offline host's
+  header says "offline", and its projects show greyed, with their last
+  tabs.
+- A project row is flush with the header: the project's color dot, its
+  name, and its tab count on the right. Its folder shows in its tooltip
+  and, with the tabs on top, in the title bar (`host › project`). A click
+  shows the project; on the project shown, or on the dot of any, it
+  expands or collapses its tabs, which come one step in, joined to it by
+  a thin guide line. Its `+` (shown on the row under the pointer and on
+  the chosen project's) opens a tab in the folder; ⌘T does the same while
+  the project is chosen. Its context menu: New Tab, Rename, Color, Move to
+  Space, Reveal Folder (this host only), Close Project.
 - Projects of a host are in order of last use (`Used`), the latest
-  first; those not used for 30 days go under a collapsed **Older**.
-- **Tabs with no project** shows in every space, collapsed by default,
-  and has New Tab with No Project.
+  first; those not used for 30 days go under a collapsed **Older** row,
+  at the projects' level.
+- **Tabs with no project** is a row at the projects' level, with no dot,
+  last among the host's; it shows in every space, collapsed until chosen,
+  and expands the same way.
 - Drag a tab onto a project of its host to move it there, with its panes
   and their processes.
 
@@ -343,7 +347,7 @@ A project's context menu:
 
 ### New Project
 
-The `+ ` of a host's PROJECTS opens the folder sheet of v0.38.0 with the
+The `+` of a host's header opens the folder sheet of v0.38.0 with the
 host chosen:
 
 ```

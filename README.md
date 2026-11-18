@@ -78,11 +78,14 @@ and macOS, use **Check for Updates** in the app. See
   (this app on another machine, Rex Go, the web client) sees the same
   tabs. A space (Work, Life) is a name on projects.
   - The sidebar has the space picker atop (New Space…, Edit Spaces… to
-    rename, color and order them), then each host you added: its
-    **PROJECTS** of the space, latest used first, those unused for 30 days
-    under a folded **Older**, and its **Tabs with no project**, which every
-    space shows. A project row opens on its tabs; its `+` (and ⌘T while it
-    is shown) opens a tab in its folder. Its menu has New Tab, Rename…,
+    rename, color and order them), then each host you added as a section
+    header with its state and a `+` for a new project, and under it its
+    projects of the space, flush, each with its color dot and tab count
+    (the folder in its tooltip), latest used first, those unused for 30
+    days under a folded **Older**, then its **Tabs with no project**, which
+    every space shows. A click on the project shown, or on a project's dot,
+    opens its tabs one step in, joined by a guide line; its `+` (and ⌘T
+    while it is shown) opens a tab in its folder. Its menu has New Tab, Rename…,
     Color, Move to Space, Reveal Folder (this machine's) and Close
     Project…. A host's menu has Rename… (its alias) and New Tab with No
     Project. Drag a tab onto a project of its host to move it there, its
@@ -90,7 +93,7 @@ and macOS, use **Check for Updates** in the app. See
   - With the tabs on top, the title bar shows `Space ▾` and `host ›
     project ▾`, whose menu lists the space's hosts, their projects with
     their tab counts, the tabs with no project, and New Project….
-  - **New Project…** (the `+` of a host's PROJECTS, the sidebar's foot, the
+  - **New Project…** (the `+` of a host's header, the sidebar's foot, the
     palette, the Project menu, ⇧⌘N) opens the folder sheet on that host:
     browse its folders, name the project (the folder's name by default),
     Create. The host makes the project in the space shown and its first

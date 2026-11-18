@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"fmt"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/egoist/mygo/ui"
@@ -82,8 +83,10 @@ func (a *App) projectsOf(h *hostConn, space string) (recent, older []*Workspace)
 	return recent, older
 }
 
-// projectsList is the sidebar's list: each host shown, its projects and
-// its tabs with no project.
+// projectsList is the sidebar's list (docs/projects.md, "Sidebar"): each
+// host shown, as a section header, then its projects of the space, flush
+// with it, those not used for olderAfter under Older, the adoptions that
+// wait for it, and its tabs with no project.
 func (a *App) projectsList(c *ui.Context, k *colors) {
 	if a.st == nil {
 		tabs := slices.Clone(a.tabs)
@@ -99,11 +102,8 @@ func (a *App) projectsList(c *ui.Context, k *colors) {
 		if !a.hostShown(h, space) {
 			continue
 		}
-		if a.sidebarHostRow(c, k, h) {
-			continue // folded
-		}
-		ui.Column(c.Key("host-body-"+hostKey(h))).Gap(2).Padding(0, 0, 6, 8).Children(func() {
-			a.projectsHeader(c, k, h)
+		ui.Column(c.Key("host-body-"+hostKey(h))).Gap(2).Padding(0, 0, 10, 0).Children(func() {
+			a.hostHeader(c, k, h)
 			recent, older := a.projectsOf(h, space)
 			for _, w := range recent {
 				a.projectRow(c, k, w, reserve)
@@ -111,7 +111,7 @@ func (a *App) projectsList(c *ui.Context, k *colors) {
 			if len(older) > 0 {
 				key := openKey(h, "older")
 				open := rowOpen(key, false)
-				if a.foldRow(c, k, key, locales.ProjectsOlder(), fmt.Sprint(len(older)), open, nil) {
+				if a.foldRow(c, k, key, locales.ProjectsOlder(), fmt.Sprint(len(older)), open) {
 					setRowOpen(key, !open)
 				}
 				if open {
@@ -130,14 +130,19 @@ func (a *App) projectsList(c *ui.Context, k *colors) {
 	}
 }
 
-// sidebarHostRow is a host's row: its machine's icon, its name, its state, and a
-// chevron that folds it; its menu renames it (its alias) and opens a tab
-// with no project there. It reports whether the host is folded.
-func (a *App) sidebarHostRow(c *ui.Context, k *colors, h *hostConn) bool {
+// hostHeaderH is the height of a host's section header.
+const hostHeaderH = 24
+
+// hostHeader is a host's section header over its projects, as the
+// sidebar's other section labels: its name, small and in capitals, its
+// state's dot, "offline" while it is away, and the + that makes a project
+// there (the folder sheet on that host). Its menu renames it (its alias)
+// and opens a tab with no project there. A host away is greyed.
+func (a *App) hostHeader(c *ui.Context, k *colors, h *hostConn) {
 	name, key := a.hostName(h), hostKey(h)
-	folded := slices.Contains(prefs.FoldedHosts, key)
-	row := ui.Row(c.Key("host-"+key)).Height(projectRowH).Shrink(0).Padding(6, 4, 0, 6).Gap(7).AlignItems(ui.Center).
-		Radius(pillRadius(projectRowH, 9)).Cursor(ui.CursorPointer).Role(ui.RoleDisclosure).Expanded(!folded).Label(name)
+	away := h != nil && h.current() == nil
+	row := ui.Row(c.Key("host-"+key)).Height(hostHeaderH).Shrink(0).Padding(4, 4, 0, 8).Gap(6).AlignItems(ui.Center).
+		Role(ui.RoleHeading).Label(name)
 	if anim := motion(c); anim != nil {
 		row.Transition(ui.ElementTransition{Animation: anim, Position: true})
 	}
@@ -146,36 +151,40 @@ func (a *App) sidebarHostRow(c *ui.Context, k *colors, h *hostConn) bool {
 		a.askTeleport(dragged, h)
 	}
 	if dragged, over := ui.DragOver[*Tab](row); over && teleportsTo(dragged, h) {
-		row.Border(1.5, k.busy.Alpha(0.6))
+		row.Radius(pillRadius(hostHeaderH, 9)).Border(1.5, k.busy.Alpha(0.6))
 	}
 	row.ContextMenu(func(m *ui.Menu) { a.hostMenu(m, h) })
-	if row.Clicked() {
-		if folded {
-			prefs.FoldedHosts = slices.DeleteFunc(prefs.FoldedHosts, func(s string) bool { return s == key })
-		} else {
-			prefs.FoldedHosts = append(prefs.FoldedHosts, key)
+	row.Children(func() {
+		ui.Text(c, strings.ToUpper(name)).FontSize(10.5).FontWeight(700).TextColor(k.textFaint).SingleLine().Ellipsis("…").Shrink(1).MinWidth(0)
+		dot := ui.Box(c).Size(6, 6).Radius(3).Shrink(0)
+		switch {
+		case !away:
+			dot.Background(k.textFaint)
+		case h.state == hostConnecting:
+			dot.Border(1, k.textFaint)
+		default:
+			dot.Border(1, hostDot(k, h))
 		}
-		folded = !folded
-		saveSettings()
-	}
-	if h != nil && h.current() == nil && h.state != hostConnecting {
+		if h != nil {
+			label, _, _ := hostStatus(h)
+			dot.Role(ui.RoleImage).Label(label).Tooltip(label)
+		}
+		if away {
+			ui.Text(c, locales.ProjectsOfflineLabel()).FontSize(10.5).TextColor(k.textFaint).SingleLine().Shrink(0)
+		}
+		ui.Spacer(c)
+		if away {
+			ui.Box(c).Size(20, 20).Shrink(0)
+			return
+		}
+		label := locales.ProjectsNewOn(name)
+		if iconButton(c, k, "plus", label, 20, 13).Tooltip(label).Clicked() {
+			a.later(c, func() { a.openNewProjectOn(h) })
+		}
+	})
+	if away {
 		dimmed(row, 0.55)
 	}
-	row.Children(func() {
-		a.hostSectionIcon(c, k, h)
-		ui.Text(c, name).FontSize(13).FontWeight(600).TextColor(k.text.Alpha(0.85)).SingleLine().Ellipsis("…").Grow(1).MinWidth(0)
-		if h != nil && h.current() == nil {
-			label, _, _ := hostStatus(h)
-			ui.Text(c, label).FontSize(11).TextColor(k.textFaint).SingleLine().Shrink(0)
-		}
-		chevron := glyphIcon(c.Key("chevron"), "chevron-down", 11, k.textFaint).Shrink(0)
-		turn := float32(0)
-		if folded {
-			turn = -90
-		}
-		chevron.Rotate(animated(c, chevron, "fold", turn))
-	})
-	return folded
 }
 
 // hostMenu is a host's menu: Rename… (its alias, a remote host's) and New
@@ -199,21 +208,6 @@ func (a *App) renameHostAlias(h *hostConn) {
 	hostsUI.renaming, hostsUI.alias, hostsUI.aliasFocus = h.ID, h.label(), false
 }
 
-// projectsHeader is PROJECTS over a host's projects, with the + that makes
-// one there (the folder sheet on that host).
-func (a *App) projectsHeader(c *ui.Context, k *colors, h *hostConn) {
-	ui.Row(c.Key("projects-"+hostKey(h))).Height(22).Shrink(0).Padding(0, 4, 0, 8).AlignItems(ui.Center).Children(func() {
-		ui.Text(c, locales.ProjectsHeader()).FontSize(10.5).FontWeight(700).TextColor(k.textFaint).Grow(1).SingleLine()
-		if h != nil && h.current() == nil {
-			return
-		}
-		label := locales.ProjectsNewOn(a.hostName(h))
-		if iconButton(c, k, "plus", label, 20, 13).Tooltip(label).Clicked() {
-			a.later(c, func() { a.openNewProjectOn(h) })
-		}
-	})
-}
-
 // newNoProjectTab opens a tab with no project on host h, at its home.
 func (a *App) newNoProjectTab(h *hostConn) {
 	dir := ""
@@ -223,23 +217,30 @@ func (a *App) newNoProjectTab(h *hostConn) {
 	a.newTabOn(h, dir)
 }
 
-// projectRow is a project's row, or the tabs with no project's: a
-// chevron, its folder's icon and its name, its folder, its tabs' count
-// and what needs the user there; under the pointer and when shown, the +
-// that opens a tab in it. A click shows it, the chevron opens it on its
-// tabs. A host's offline copy shows greyed, and does nothing.
+// projectRow is a project's row, or the host's tabs with no project's,
+// flush with the host's header: the project's color dot (none for the tabs
+// with no project), its name and its tabs' count; under the pointer and
+// while it is shown, the + that opens a tab in it in place of the count.
+// Its folder shows in its tooltip and, shown, in the title bar. A click
+// shows it, and on the project shown opens or closes its tabs; they come
+// under it one step in, joined to it by a guide line. A host's offline
+// copy shows greyed, and opens nothing.
 func (a *App) projectRow(c *ui.Context, k *colors, w *Workspace, reserve float32) {
 	key := openKey(w.host, w.ID)
 	shown := w == a.ws
 	open := rowOpen(key, shown)
-	name, glyph := w.Name, "folder"
+	name := w.Name
 	if w.Dir == "" {
-		name, glyph = locales.ProjectsNoProject(), "layers"
+		name = locales.ProjectsNoProject()
 	}
 	n := w.tabCount()
 	offline := w.offline()
-	row := ui.Row(c.Key("project-"+key)).Height(projectRowH).Shrink(0).Padding(0, 4, 0, 0).Gap(6).AlignItems(ui.Center).
-		Radius(pillRadius(projectRowH, 9)).Cursor(ui.CursorPointer).Role(ui.RoleButton).Selected(shown).Label(name + spacedComma(a.projectDetail(w)))
+	detail := a.projectDetail(w)
+	row := ui.Row(c.Key("project-"+key)).Height(projectRowH).Shrink(0).Padding(0, 4, 0, 0).Gap(4).AlignItems(ui.Center).
+		Radius(pillRadius(projectRowH, 9)).Cursor(ui.CursorPointer).Role(ui.RoleButton).Selected(shown).Expanded(open).Label(name + spacedComma(detail))
+	if detail != "" {
+		row.Tooltip(detail)
+	}
 	if anim := motion(c); anim != nil {
 		row.Transition(ui.ElementTransition{Animation: anim, Position: true, Enter: tabMotion, Exit: tabMotion})
 	}
@@ -265,28 +266,23 @@ func (a *App) projectRow(c *ui.Context, k *colors, w *Workspace, reserve float32
 	hovered := row.Hovered()
 	toggled := false
 	row.Children(func() {
-		fold := ui.Row(c.Key("fold")).Height(projectRowH).Padding(0, 0, 0, 6).AlignItems(ui.Center).Shrink(0).
+		// The dot's room opens and closes the tabs of any project, as a
+		// click on the row of the one shown does.
+		fold := ui.Box(c.Key("fold")).Size(dotRoom, projectRowH).Center().Shrink(0).
 			Role(ui.RoleDisclosure).Expanded(open).Label(locales.ProjectsTabsOf(name))
 		toggled = fold.Clicked()
-		fold.Children(func() {
-			chevron := glyphIcon(c.Key("chevron"), "chevron-down", 11, k.textFaint).Shrink(0)
-			turn := float32(0)
-			if !open {
-				turn = -90
-			}
-			chevron.Rotate(animated(c, chevron, "fold", turn))
-		})
-		if hex, ok := spaceColorHex(w.Color); ok {
-			glyphIcon(c, glyph, 14, ui.Hex(hex)).Shrink(0)
-		} else {
-			glyphIcon(c, glyph, 14, k.textMuted).Shrink(0)
+		if w.Dir != "" {
+			fold.Children(func() { spaceSwatchMark(c, k, w.Color, 9) })
 		}
 		if shown && a.wsRenaming {
 			a.workspaceRenameField(c, k, w.Name)
 			return
 		}
-		ui.Text(c, name).FontSize(13).FontWeight(500).TextColor(k.text.Alpha(0.85)).SingleLine().Ellipsis("…").Shrink(0).MaxWidth(150)
-		ui.Text(c, a.projectDetail(w)).FontSize(11).TextColor(k.textFaint).SingleLine().Ellipsis("…").TruncateMiddle().Grow(1).MinWidth(0)
+		weight := 500
+		if shown {
+			weight = 600
+		}
+		ui.Text(c, name).FontSize(13).FontWeight(weight).TextColor(k.text.Alpha(0.85)).SingleLine().Ellipsis("…").Grow(1).MinWidth(0)
 		if s := a.st.status(w); needsUser(s) {
 			statusDot(c, k, s, 7).Label(statusTip(s))
 		}
@@ -297,7 +293,7 @@ func (a *App) projectRow(c *ui.Context, k *colors, w *Workspace, reserve float32
 			}
 			return
 		}
-		ui.Text(c, fmt.Sprint(n)).FontSize(11.5).TextColor(k.textFaint).Shrink(0)
+		ui.Text(c, fmt.Sprint(n)).FontSize(11.5).TextColor(k.textFaint).Shrink(0).Padding(0, 6, 0, 0)
 	})
 	if offline {
 		dimmed(row, 0.5)
@@ -308,13 +304,17 @@ func (a *App) projectRow(c *ui.Context, k *colors, w *Workspace, reserve float32
 		setRowOpen(key, !open)
 	case row.Clicked() && !offline && !shown:
 		a.later(c, func() { a.showWorkspace(w) })
-	case row.Clicked() && shown && !open:
-		setRowOpen(key, true)
+	case row.Clicked() && shown:
+		setRowOpen(key, !open)
 	}
-	if !open {
+	if !open || n == 0 {
 		return
 	}
-	list := ui.Column(c.Key("project-tabs-"+key)).Gap(2).Padding(0, 0, 0, 14)
+	list := ui.Column(c.Key("project-tabs-"+key)).Gap(2).Padding(0, 0, 0, dotRoom).Draw(func(p *ui.Painter, r ui.Rect) {
+		// The guide line that joins the tabs to their project, under its
+		// dot.
+		p.Fill(ui.Rect{X: r.X + dotRoom/2 - 0.5, Y: r.Y + 2, W: 1, H: r.H - 4}, k.textFaint.Alpha(0.4), 0.5)
+	})
 	if offline {
 		dimmed(list, 0.5)
 	}
@@ -328,6 +328,10 @@ func (a *App) projectRow(c *ui.Context, k *colors, w *Workspace, reserve float32
 		a.workspaceTabs(c, k, w, reserve, offline)
 	})
 }
+
+// dotRoom is the room of a project's dot before its name, and the one step
+// its tabs come in under it, the guide line at its middle.
+const dotRoom = 20
 
 // workspaceTabs lists the tabs of workspace w no window here shows, from
 // the window that shows it, else its layout: a click shows w on that tab;
@@ -380,48 +384,53 @@ func (a *App) showWorkspaceTab(w *Workspace, i int) {
 	}
 }
 
-// foldRow is a row that opens and closes what is under it, as Older: a
-// chevron, its label and a count. It reports whether it was clicked.
-func (a *App) foldRow(c *ui.Context, k *colors, key, label, count string, open bool, mark func()) bool {
-	row := ui.Row(c.Key("fold-"+key)).Height(26).Shrink(0).Padding(0, 8, 0, 6).Gap(6).AlignItems(ui.Center).
+// foldRow is a row at the projects' level that opens and closes what is
+// under it, as Older: its label and a count, and a chevron under the
+// pointer. It reports whether it was clicked.
+func (a *App) foldRow(c *ui.Context, k *colors, key, label, count string, open bool) bool {
+	row := ui.Row(c.Key("fold-"+key)).Height(26).Shrink(0).Padding(0, 10, 0, 0).Gap(4).AlignItems(ui.Center).
 		Radius(pillRadius(26, 9)).Cursor(ui.CursorPointer).Role(ui.RoleDisclosure).Expanded(open).Label(label)
-	if row.Hovered() {
+	hovered := row.Hovered()
+	if hovered {
 		row.Background(hoverFace(k))
 	}
 	row.Children(func() {
-		chevron := glyphIcon(c.Key("chevron"), "chevron-down", 11, k.textFaint).Shrink(0)
-		turn := float32(0)
-		if !open {
-			turn = -90
-		}
-		chevron.Rotate(animated(c, chevron, "fold", turn))
-		if mark != nil {
-			mark()
-		}
-		ui.Text(c, label).FontSize(12).TextColor(k.textMuted).SingleLine().Grow(1).MinWidth(0)
+		ui.Box(c).Size(dotRoom, 26).Center().Shrink(0).Children(func() {
+			if !hovered {
+				return
+			}
+			chevron := glyphIcon(c.Key("chevron"), "chevron-down", 11, k.textFaint).Shrink(0)
+			if !open {
+				chevron.Rotate(-90)
+			}
+		})
+		ui.Text(c, label).FontSize(12.5).TextColor(k.textMuted).SingleLine().Grow(1).MinWidth(0)
 		ui.Text(c, count).FontSize(11.5).TextColor(k.textFaint).Shrink(0)
 	})
 	return row.Clicked()
 }
 
 // waitingRow is a project, or tabs with no project, that an adoption
-// keeps for host h until it connects (docs/projects.md, Migration):
-// greyed, with "Waiting for <host>".
+// keeps for host h until it connects (docs/projects.md, Migration): at the
+// projects' level, greyed, with "Waiting for <host>".
 func (a *App) waitingRow(c *ui.Context, k *colors, h *hostConn, ad layout.Adoption) {
 	name, detail := locales.ProjectsNoProject(), ""
 	if p := ad.Project; p != nil {
 		name, detail = p.Name, a.tildeOn(h, p.Dir)
 	}
 	note := locales.ProjectsWaitingFor(a.hostName(h))
-	row := ui.Row(c.Key("waiting-"+ad.ID)).Height(projectRowH).Shrink(0).Padding(0, 8, 0, 23).Gap(6).AlignItems(ui.Center).
-		Role(ui.RoleText).Label(name + ", " + note).Tooltip(note)
+	tipText := note
+	if detail != "" {
+		tipText = detail + " · " + note
+	}
+	row := ui.Row(c.Key("waiting-"+ad.ID)).Height(projectRowH).Shrink(0).Padding(0, 10, 0, 0).Gap(4).AlignItems(ui.Center).
+		Role(ui.RoleText).Label(name + ", " + note).Tooltip(tipText)
 	row.Children(func() {
-		glyphIcon(c, "folder", 14, k.textMuted).Shrink(0)
-		ui.Text(c, name).FontSize(13).TextColor(k.text.Alpha(0.85)).SingleLine().Ellipsis("…").Shrink(0).MaxWidth(130)
-		ui.Text(c, cmp.Or(detail, note)).FontSize(11).TextColor(k.textFaint).SingleLine().Ellipsis("…").Grow(1).MinWidth(0)
+		ui.Box(c).Size(dotRoom, projectRowH).Center().Shrink(0).Children(func() { spaceSwatchMark(c, k, "", 9) })
+		ui.Text(c, name).FontSize(13).TextColor(k.text.Alpha(0.85)).SingleLine().Ellipsis("…").Shrink(1).MinWidth(0)
+		ui.Text(c, note).FontSize(11).TextColor(k.textFaint).SingleLine().Ellipsis("…").Grow(1).MinWidth(0).Padding(0, 0, 0, 6)
 	})
 	dimmed(row, 0.5)
-	ui.Text(c.Key("waiting-note-"+ad.ID), note).FontSize(10.5).TextColor(k.textFaint).Padding(0, 8, 2, 43).SingleLine().Ellipsis("…")
 }
 
 // projectMenu is a project's menu (docs/projects.md): New Tab, Rename…,

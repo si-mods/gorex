@@ -2561,10 +2561,6 @@
   "@projectMoveToSpace": {
     "description": "Project menu: submenu of the spaces the project moves to."
   },
-  "projectsHeader": "PROJECTS",
-  "@projectsHeader": {
-    "description": "Sidebar: the header over a host's projects."
-  },
   "projectSheetTitleOn": "New Project on {host}",
   "@projectSheetTitleOn": {
     "description": "Title of the New Project sheet, of the host chosen.",
@@ -2665,5 +2661,9 @@
     "placeholders": {
       "name": {}
     }
+  },
+  "projectsOfflineLabel": "offline",
+  "@projectsOfflineLabel": {
+    "description": "Sidebar: beside the header of a host that is not connected."
   }
 }
