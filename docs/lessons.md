@@ -216,7 +216,7 @@ Each item has a **Trigger** (what the diff shows), a **Check** (what the author 
 
 ### Growth of `state.go`
 - **Trigger:** the diff adds lines to `state.go`.
-- **Check:** `state.go` passed 4000 lines and is still growing. New behavior goes in a file of its own concern.
+- **Check:** `state.go` passed 4000 lines, and the audit split it (#763): floats, the browser pane and `App` with its posted changes now have `float.go`, `browser.go` and `app.go`. New behavior goes in a file of its own concern.
 - **Source:** standing rule.
 
 ### Disabled instead of removed
