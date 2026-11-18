@@ -9,7 +9,7 @@ import { icon } from "./hosts";
 import { t } from "./i18n";
 
 /** An item of a menu: its words and what it runs, or a submenu; or a line between groups. */
-export type MenuItem = { label: string; run?: () => void; disabled?: boolean; submenu?: MenuItem[] } | "separator";
+export type MenuItem = { label: string; /** A second line under the label. */ detail?: string; /** A tooltip. */ title?: string; run?: () => void; disabled?: boolean; submenu?: MenuItem[] } | "separator";
 
 /** The menu open, one at a time, and what closes it. */
 let shown: { el: HTMLElement; done: AbortController; closed?: () => void } | undefined;
@@ -80,7 +80,16 @@ function panel(items: MenuItem[], signal: AbortSignal): HTMLElement {
     b.setAttribute("role", "menuitem");
     const label = document.createElement("span");
     label.textContent = it.label;
-    b.append(label);
+    if (it.title) b.title = it.title;
+    if (it.detail) {
+      const text = document.createElement("div");
+      text.className = "context-text";
+      const detail = document.createElement("small");
+      detail.className = "context-detail";
+      detail.textContent = it.detail;
+      text.append(label, detail);
+      b.append(text);
+    } else b.append(label);
     b.disabled = !!it.disabled || (!!it.submenu && !it.submenu.length);
     // The menu keeps the page's focus where it was: a press does not take it.
     b.onpointerdown = (e) => e.preventDefault();

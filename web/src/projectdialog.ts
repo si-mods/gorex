@@ -6,7 +6,7 @@ import type { HostConn } from "./hostconn";
 import { icon } from "./hosts";
 import { describe } from "./pane";
 import { t } from "./i18n";
-import { defaultHost, FolderBrowser, folderName, hostState, HostState } from "./projects";
+import { browserCrumbs, collapseCrumbs, defaultHost, FolderBrowser, folderName, hostState, HostState } from "./projects";
 
 export interface Chosen {
   conn: HostConn;
@@ -82,6 +82,9 @@ export function chooseFolder(o: SheetOptions): Promise<Chosen | undefined> {
     path.setAttribute("aria-label", t("projectPath"));
     bar.append(home, up, path);
 
+    const crumbBar = el("nav", "sheet-crumbs");
+    crumbBar.setAttribute("aria-label", t("projectCrumbs"));
+
     const list = el("ul", "sheet-list");
     const note = el("p", "sheet-note");
     const nameLabel = el("label", "sheet-label", t("projectName"));
@@ -97,15 +100,17 @@ export function chooseFolder(o: SheetOptions): Promise<Chosen | undefined> {
     const ok = el("button", "host-add primary", o.action);
     ok.type = "button";
     row.append(cancel, ok);
-    d.append(h, hostLabel, bar, list, note, nameLabel, row);
+    d.append(h, hostLabel, bar, crumbBar, list, note, nameLabel, row);
 
     function draw() {
       const b = browser;
       // The field shows the folder listed; a path being typed stays until another folder is listed.
-      if (b.path !== shownPath) {
-        shownPath = b.path;
-        path.value = b.path;
+      const shown = b.atDrives ? t("projectThisPC") : b.path;
+      if (shown !== shownPath) {
+        shownPath = shown;
+        path.value = shown;
       }
+      drawCrumbs(b);
       up.disabled = !b.canUp;
       home.disabled = !conn || b.loading;
       if (o.named && !named) name.value = folderName(b.path) || conn?.host.name || "";
@@ -126,7 +131,9 @@ export function chooseFolder(o: SheetOptions): Promise<Chosen | undefined> {
         ? t("projectNoHosts")
         : b.error
           ? t("projectListFailed", { error: b.error })
-          : b.code === "not_found"
+          : b.missing
+            ? t("projectFolderMissing", { dir: b.missing, host })
+            : b.code === "not_found"
             ? t("projectNotFound", { host })
             : b.code === "denied"
               ? t("projectDenied", { host })
@@ -135,6 +142,50 @@ export function chooseFolder(o: SheetOptions): Promise<Chosen | undefined> {
                 : !b.loading && !b.dirs.length && b.path
                   ? t("projectNoFolders")
                   : "";
+    }
+
+    function crumbButton(c: { name: string; path: string }, last: boolean): HTMLElement {
+      if (last) {
+        const cur = el("span", "sheet-crumb current", c.name);
+        cur.setAttribute("aria-current", "location");
+        cur.title = c.name;
+        return cur;
+      }
+      const btn = el("button", "sheet-crumb", c.name);
+      btn.type = "button";
+      btn.title = c.path;
+      btn.onclick = () => void browser.go(c.path);
+      return btn;
+    }
+
+    /** The breadcrumb: all of it when it fits, else its middle as "…"; the last crumb always, ellipsized only when alone too long. */
+    function drawCrumbs(b: FolderBrowser) {
+      const cs = browserCrumbs(b.path, b.atDrives, t("projectThisPC"));
+      const render = (hidden: number) => {
+        const { head, gone, tail } = collapseCrumbs(cs, hidden);
+        const nodes: HTMLElement[] = [];
+        const add = (n: HTMLElement) => {
+          if (nodes.length) nodes.push(icon("chevron-right"));
+          nodes.push(n);
+        };
+        head.forEach((c) => add(crumbButton(c, cs.length === 1)));
+        if (gone.length) {
+          const more = el("button", "sheet-crumb", "…");
+          more.type = "button";
+          more.title = gone.map((c) => c.name).join(" / ");
+          more.onclick = () => void b.go(gone[gone.length - 1].path);
+          add(more);
+        }
+        tail.forEach((c) => add(crumbButton(c, c === cs[cs.length - 1])));
+        crumbBar.replaceChildren(...nodes);
+      };
+      render(0);
+      // The bar is laid out once the sheet is open; hide crumbs until the rest fits and the last shows whole.
+      const cut = () => {
+        const last = crumbBar.lastElementChild as HTMLElement | null;
+        return crumbBar.scrollWidth > crumbBar.clientWidth || (!!last && last.scrollWidth > last.clientWidth);
+      };
+      for (let k = 1; k <= cs.length - 2 && cut(); k++) render(k);
     }
 
     function start() {
@@ -148,7 +199,7 @@ export function chooseFolder(o: SheetOptions): Promise<Chosen | undefined> {
         }
       }, draw);
       draw();
-      if (c) void browser.go(o.dir && c.host.id === o.host ? o.dir : "");
+      if (c) void (o.dir && c.host.id === o.host ? browser.goNearest(o.dir) : browser.go(""));
     }
 
     select.onchange = () => {
@@ -161,7 +212,8 @@ export function chooseFolder(o: SheetOptions): Promise<Chosen | undefined> {
     path.onkeydown = (e) => {
       if (e.key === "Enter") {
         e.preventDefault();
-        void browser.go(path.value.trim());
+        const v = path.value.trim();
+        void browser.go(v === t("projectThisPC") ? "/" : v);
       }
     };
     name.oninput = () => {

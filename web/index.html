@@ -352,6 +352,9 @@
     display: flex; align-items: center; gap: 12px; padding: 5px 10px; border: 0; border-radius: 8px;
     background: none; color: var(--text); font: inherit; text-align: left; white-space: nowrap; cursor: pointer;
   }
+  .context-text { display: flex; flex: 1; flex-direction: column; min-width: 0; }
+  .context-text span { flex: none; }
+  .context-detail { overflow: hidden; text-overflow: ellipsis; margin-top: 1px; color: var(--muted); font-size: 11px; }
   .context-item span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   .context-item:hover:not(:disabled), .context-item:focus-visible, .context-item[aria-haspopup]:focus { background: var(--hover); outline: none; }
   .context-item:disabled { color: var(--muted); cursor: default; }
@@ -374,6 +377,14 @@
   dialog.project-sheet { width: min(460px, calc(100vw - 32px)); }
   dialog.project-sheet[open] { display: flex; flex-direction: column; gap: 10px; }
   .sheet-label { display: flex; flex-direction: column; gap: 4px; color: var(--muted); font-size: 12px; }
+  .sheet-label[hidden] { display: none; }
+  /* The breadcrumb of the folder listed: the last crumb stays whole, the middle collapses into "…" (projectdialog.ts). */
+  .sheet-crumbs { display: flex; align-items: center; gap: 2px; min-width: 0; overflow: hidden; font-size: 12px; color: var(--muted); }
+  .sheet-crumbs .pane-icon { flex: none; width: 12px; height: 12px; }
+  .sheet-crumb { flex: none; max-width: 100%; padding: 2px 6px; border: 0; border-radius: 6px; background: none; color: inherit; font: inherit; cursor: pointer; }
+  .sheet-crumb:hover { background: var(--hover); color: var(--text); }
+  .sheet-crumb.current { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); cursor: default; }
+  .sheet-crumb.current:hover { background: none; }
   .sheet-field {
     min-width: 0; height: 30px; padding: 0 10px; border: 1px solid var(--panel-edge); border-radius: 8px;
     background: var(--hover); color: var(--text); font: inherit; font-size: 16px; outline: none;

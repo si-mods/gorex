@@ -2769,6 +2769,28 @@
   "@projectPath": {
     "description": "Accessible name of the field that holds the folder's path; Enter lists it."
   },
+  "projectThisPC": "This PC",
+  "@projectThisPC": {
+    "description": "Windows' list of drives, above the drives' roots: shown in the folder path field and the breadcrumb instead of \"/\"."
+  },
+  "projectCrumbs": "Folder breadcrumb",
+  "@projectCrumbs": {
+    "description": "Accessible name of the breadcrumb of the folder listed; each part lists that folder."
+  },
+  "projectFolderMissing": "{dir} is not on {host}. Showing the nearest folder that exists.",
+  "@projectFolderMissing": {
+    "description": "Note in Change Folder when the project's folder is gone: the sheet opened on the nearest folder above it that exists.",
+    "placeholders": {
+      "dir": {
+        "type": "String",
+        "example": "/home/me/old-project"
+      },
+      "host": {
+        "type": "String",
+        "example": "office"
+      }
+    }
+  },
   "projectNoFolders": "No folders here",
   "@projectNoFolders": {
     "description": "Note under the folder list when the folder has no folders."

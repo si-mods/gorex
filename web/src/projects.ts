@@ -150,6 +150,23 @@ export function crumbs(path: string): { name: string; path: string }[] {
   return out;
 }
 
+/** The path's crumbs for the folder browser: a drives listing is one crumb, `thisPC`; a Windows path starts with it. */
+export function browserCrumbs(path: string, atDrives: boolean, thisPC: string): { name: string; path: string }[] {
+  if (atDrives) return [{ name: thisPC, path: "/" }];
+  const cs = crumbs(path);
+  return /^([A-Za-z]:|\\\\)/.test(cs[0]?.name ?? "") ? [{ name: thisPC, path: "/" }, ...cs] : cs;
+}
+
+/**
+ * Which of the crumbs show when the room is short: the first, a "…" for
+ * `hidden` of those after it (the ones nearest the first go), then the
+ * rest, the last always. `hidden` is clamped to what can go.
+ */
+export function collapseCrumbs<T>(cs: T[], hidden: number): { head: T[]; gone: T[]; tail: T[] } {
+  const k = Math.max(0, Math.min(hidden, cs.length - 2));
+  return { head: cs.slice(0, 1), gone: cs.slice(1, 1 + k), tail: cs.slice(1 + k) };
+}
+
 /** A folder's name: the project's default name. A drive's root is its letter; the machine's root has none. */
 export function folderName(path: string): string {
   const last = crumbs(path).pop();
@@ -174,6 +191,8 @@ export class FolderBrowser {
   /** What failed the last request, in words; none after an answer. */
   error?: string;
   loading = false;
+  /** The folder asked for that is not there, when the listing shows the nearest one that is. */
+  missing?: string;
   private sequence = 0;
 
   constructor(
@@ -183,12 +202,35 @@ export class FolderBrowser {
 
   /** Lists path: "" is the host's home directory. */
   async go(path: string): Promise<void> {
+    return this.run(path, false);
+  }
+
+  /**
+   * Lists path, or when it is not there, the nearest folder above it that
+   * is, else the home directory; `missing` then holds path.
+   */
+  goNearest(path: string): Promise<void> {
+    return this.run(path, true);
+  }
+
+  private async run(path: string, nearest: boolean): Promise<void> {
     const n = ++this.sequence;
     this.loading = true;
     this.changed();
     try {
-      const a = await this.list(path);
+      let a = await this.list(path);
+      let missing: string | undefined;
+      if (nearest && a.code === "not_found") {
+        missing = path;
+        const up = crumbs(path).slice(0, -1).reverse();
+        for (const c of up) {
+          a = await this.list(c.path);
+          if (a.code !== "not_found") break;
+        }
+        if (a.code) a = await this.list("");
+      }
       if (n !== this.sequence) return;
+      this.missing = missing;
       this.path = a.path;
       this.parent = a.parent;
       this.home = a.home;
@@ -202,6 +244,11 @@ export class FolderBrowser {
     }
     this.loading = false;
     this.changed();
+  }
+
+  /** Whether the listing is Windows' drives (path "/", each folder a root), which is no folder. */
+  get atDrives(): boolean {
+    return this.path === "/" && !this.parent && !!this.dirs.length && this.dirs.every((d) => /^([A-Za-z]:[\\/]?|\\\\)/.test(d));
   }
 
   /** The folder above, when there is one. */
@@ -225,7 +272,7 @@ export class FolderBrowser {
 
   /** Whether the folder listed can be the project's: it was listed, with no failure. */
   get canChoose(): boolean {
-    return !!this.path && !this.code && !this.error && !this.loading;
+    return !!this.path && !this.atDrives && !this.code && !this.error && !this.loading;
   }
 }
 
