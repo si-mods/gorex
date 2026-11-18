@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.41.0
+
+### ⚠ BREAKING CHANGES
+
+* **projects:** projects now live on each host, inside a space: Space → Host → Project → Tab → Pane. A host's server keeps its projects (a folder each) and their tabs; the desktop window shows the hosts' layouts. The layout is migrated once as the server loads it, with no shell stopped or started (old layout kept as `layout.json.v039`); tabs of projects homed on another host move there when that host connects ([#776](https://github.com/si-mods/gorex/pull/776), [#779](https://github.com/si-mods/gorex/pull/779))
+* **remote:** the Share Layout switch is gone: every client a host lets in (Remote Access, paired devices) now reads its layout: project and space names, project folders, and tab and pane names ([#776](https://github.com/si-mods/gorex/pull/776))
+
+### Features
+
+* **projects:** the sidebar lists each host's projects in order of last use, with Tabs with no project; a host's + makes a project from one of its folders, a project's + opens a tab in its folder; spaces are names on projects, picked atop the sidebar ([#779](https://github.com/si-mods/gorex/pull/779))
+* **rexapi:** `gorex.project.create`, `adopt`, `move`, `update`, `gorex.space.rename` and `list`; a session's `project` field with its folder, space, last use and color ([#776](https://github.com/si-mods/gorex/pull/776), [#778](https://github.com/si-mods/gorex/pull/778))
+* **web:** projects under each host, inside a space ([#775](https://github.com/si-mods/gorex/pull/775))
+* **ios:** projects under each host, inside a space; the iCloud space sync is gone; "Window" reads "Tab" ([#778](https://github.com/si-mods/gorex/pull/778))
+
+### Bug Fixes
+
+* let the verify hook skip instead of failing when go is missing ([#781](https://github.com/si-mods/gorex/pull/781))
+
+### Documentation
+
+* projects: folders on each host, inside a space ([#773](https://github.com/si-mods/gorex/pull/773))
+
 ## 0.40.1
 
 ### Bug Fixes
