@@ -964,7 +964,7 @@ the sidebar is, and whether there is one, is the Tab placement setting's
 
 ### Spaces, windows and moves
 
-A session is the desktop's Space, and a window its project tab (GoRex's
+A session is the desktop's project (or, on a host without projects of version 2, its Space), and a window its tab (GoRex's
 gateway maps them so: `internal/rexapi/doc.go`). The page manages them
 with the desktop's commands, words and entry points (`tabMenu` in
 `tabs.go`, `spaceMenu` and `workspaceConfirm` in `workspaceview.go`,
@@ -1096,6 +1096,47 @@ there is more than one host. The desktop groups the spaces of all hosts
 into its own spaces; the page does that once it reads `/api/spaces`
 (docs/web-multihost.md, PR 6). The bar above lists the shown host's
 space.
+
+### Projects, spaces and tabs
+
+For a host whose welcome lists `gorex.projects` with `version: 2`
+(`docs/projects.md`), the page shows the five levels with one word each:
+a **Space** (the picker), a **Host**, a **Project** (a folder of the host,
+a session of its Rex API), a **Tab** (a window) and a **Pane** (a block).
+A host without version 2 keeps its sessions as rows, as before, with no
+folders.
+
+- **Space picker.** A chip at the top of the sidebar, and at the left of
+  the bar above. It lists the names that the hosts' projects carry (`project.space`,
+  "" being Default), Default, and the spaces made on this page. New Space…
+  adds a name to the picker, empty until a project moves in. Rename Space…
+  sends `gorex.space.rename {from, to}` to each connected host; a host that
+  is away gets it when it connects. Color gives a space a dot. The shown
+  space, the colors, the order, the spaces made here, the renames waiting
+  and the projects left open are kept in this browser's `localStorage`
+  (`gorex.web.spaces`, `gorex.web.expanded`); the page works without it.
+- **Under each host**, its projects of the shown space in order of last use
+  (`project.used`), those unused for 30 days under a collapsed **Older**,
+  and the host's **Tabs with no project** (`project: {}`), shut at first and
+  shown in every space. A project's row opens its tabs and a New Tab row;
+  its `+` and New Tab send `session.new_window` with `cwd` set to the
+  project's folder; a tab of no project has no `cwd`. A folder that is gone
+  fails with a note and opens nothing.
+- **New Project.** The host's `+` opens the folder sheet on that host and
+  sends `gorex.project.create {name, dir, space}` with the space shown. A
+  folder that is a project already answers `code: "exists"`: the page
+  shows that project, and asks whether to move it to the space shown when it
+  is in another (`gorex.project.update {space}`).
+- **Rename and move.** Rename Project (`gorex.project.update {name}`; the
+  folder and the tabs do not change), Rename Tab (`session.set_window_label`),
+  Move to Space on a project, Move to Project on a tab or a tab dragged onto
+  a project (`gorex.project.move {tab_id, project_id}`; "" is the tabs with no
+  project).
+- **A host that is away.** The page keeps each host's projects and their
+  tabs' names as last read (`gorex.web.projects-cache`) and shows them
+  greyed, read-only, with a note; the copy is replaced as the host connects.
+- **Tabs above** show `host › project` as a chip that opens the space's hosts
+  and projects, then the project's tabs and a +.
 
 ### Not in the web client
 

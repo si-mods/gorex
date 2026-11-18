@@ -124,6 +124,8 @@ export class Control {
   reconnectToken?: string;
   apiRevision = revision;
   features = new Set<string>();
+  /** The welcome as the host wrote it, for the versions of its features. */
+  welcome: any = {};
 
   private nextID = 0;
   private pending = new Map<string, { resolve: (v: { seq: number; payload: any }) => void; reject: (e: Error) => void }>();
@@ -183,7 +185,8 @@ export class Control {
           c.clientID = msg.client?.id ?? "";
           c.reconnectToken = msg.client?.reconnect_token;
           if (typeof msg.api_revision === "number") c.apiRevision = msg.api_revision;
-          c.features = new Set(msg.features ?? []);
+          c.welcome = msg;
+          c.features = new Set((msg.features ?? []).map((f: any) => (typeof f === "string" ? f : (f?.name ?? f?.id ?? f?.feature))).filter((f: unknown) => typeof f === "string"));
           resolve(c);
           return;
         }

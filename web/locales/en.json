@@ -232,7 +232,7 @@
       }
     }
   },
-  "statusNewWindowFailed": "Could not open a window: {error}",
+  "statusNewWindowFailed": "Could not open a tab: {error}",
   "@statusNewWindowFailed": {
     "description": "Status line when New Window failed.",
     "placeholders": {
@@ -242,7 +242,7 @@
       }
     }
   },
-  "statusCloseWindowFailed": "Could not close the window: {error}",
+  "statusCloseWindowFailed": "Could not close the tab: {error}",
   "@statusCloseWindowFailed": {
     "description": "Status line when Close Window failed.",
     "placeholders": {
@@ -312,7 +312,7 @@
       }
     }
   },
-  "statusRenameWindowFailed": "Could not rename the window: {error}",
+  "statusRenameWindowFailed": "Could not rename the tab: {error}",
   "@statusRenameWindowFailed": {
     "description": "Status line when renaming a window, or Reset Name, failed.",
     "placeholders": {
@@ -322,7 +322,7 @@
       }
     }
   },
-  "statusMoveWindowFailed": "Could not move the window: {error}",
+  "statusMoveWindowFailed": "Could not move the tab: {error}",
   "@statusMoveWindowFailed": {
     "description": "Status line when moving a window in the sidebar failed.",
     "placeholders": {
@@ -520,7 +520,7 @@
   "@sidebarTerminal": {
     "description": "The title of a terminal that set none: a pane's header, a sidebar row."
   },
-  "sidebarWindow": "Window",
+  "sidebarWindow": "Tab",
   "@sidebarWindow": {
     "description": "The title of a window in the sidebar when its terminal has no title and it has no label."
   },
@@ -564,19 +564,19 @@
   "@cmdMoveDivider": {
     "description": "Settings › Keyboard: the arrow keys that move the divider of the focused pane's split."
   },
-  "cmdNewWindow": "New Window",
+  "cmdNewWindow": "New Tab",
   "@cmdNewWindow": {
     "description": "Command: open a window in a session. Sidebar + button tooltip, Settings › Keyboard."
   },
-  "cmdCloseWindow": "Close Window",
+  "cmdCloseWindow": "Close Tab",
   "@cmdCloseWindow": {
     "description": "Command: close a window. Sidebar × button tooltip, Settings › Keyboard."
   },
-  "cmdNextWindow": "Next Window",
+  "cmdNextWindow": "Next Tab",
   "@cmdNextWindow": {
     "description": "Settings › Keyboard: show the next window of the sidebar."
   },
-  "cmdPreviousWindow": "Previous Window",
+  "cmdPreviousWindow": "Previous Tab",
   "@cmdPreviousWindow": {
     "description": "Settings › Keyboard: show the previous window of the sidebar."
   },
@@ -588,7 +588,7 @@
   "@cmdPreviousSpace": {
     "description": "Settings › Keyboard: show the previous project's last shown window, in the sidebar's order across hosts."
   },
-  "cmdRenameWindow": "Rename Window…",
+  "cmdRenameWindow": "Rename Tab…",
   "@cmdRenameWindow": {
     "description": "Command: rename a window in place in its sidebar row; an empty name gives back its terminal's title. Window row menu, Settings › Keyboard."
   },
@@ -608,11 +608,11 @@
   "@windowMoveSpace": {
     "description": "Window row menu: a submenu of the other projects (sessions) to move the window to, where the host can."
   },
-  "cmdCloseOtherWindows": "Close Other Windows",
+  "cmdCloseOtherWindows": "Close Other Tabs",
   "@cmdCloseOtherWindows": {
     "description": "Window row menu: close every other window of the same project (session)."
   },
-  "paneMoveWindow": "Move to Window",
+  "paneMoveWindow": "Move to Tab",
   "@paneMoveWindow": {
     "description": "Pane header menu: a submenu of the other windows of the pane's project to move the pane into, beside their focused pane; its program goes on."
   },
@@ -636,7 +636,7 @@
   "@renameSpaceLabel": {
     "description": "Accessible name of the field that renames a project in its sidebar heading."
   },
-  "renameWindowLabel": "Window name",
+  "renameWindowLabel": "Tab name",
   "@renameWindowLabel": {
     "description": "Accessible name of the field that renames a window in its sidebar row."
   },
@@ -672,7 +672,7 @@
   "@keysTerminal": {
     "description": "Settings › Keyboard: the heading of the terminal's shortcuts."
   },
-  "keysWindows": "Windows",
+  "keysWindows": "Tabs",
   "@keysWindows": {
     "description": "Settings › Keyboard: the heading of the windows' shortcuts."
   },
@@ -2518,7 +2518,7 @@
   "@settingsSidebarView": {
     "description": "Settings › Appearance: what the sidebar lists, shown only while the tabs are in a sidebar."
   },
-  "settingsSidebarViewHint": "Projects lists the host's projects and their windows. Hosts lists the hosts you added and found, with the connected host's projects under it; choose another host to connect to it.",
+  "settingsSidebarViewHint": "Projects lists the projects of each host and their tabs. Hosts lists the hosts you added and found, with the connected host's projects under it; choose another host to connect to it.",
   "@settingsSidebarViewHint": {
     "description": "Hint under Sidebar view. The page connects to one host at a time."
   },
@@ -2562,7 +2562,7 @@
   "@renamePaneLabel": {
     "description": "Accessible name of the field that renames a pane in its header."
   },
-  "paneMoveNewWindow": "Move Pane to New Window",
+  "paneMoveNewWindow": "Move Pane to New Tab",
   "@paneMoveNewWindow": {
     "description": "Pane header menu, with two panes or more: move the pane into a window of its own, after its window; its program goes on."
   },
@@ -2576,7 +2576,7 @@
       }
     }
   },
-  "statusMergeWindowsFailed": "Could not merge the windows: {error}",
+  "statusMergeWindowsFailed": "Could not merge the tabs: {error}",
   "@statusMergeWindowsFailed": {
     "description": "Status line when merging a window into another (a row dropped on another row's middle) failed.",
     "placeholders": {
@@ -2614,7 +2614,7 @@
       }
     }
   },
-  "placeTailnetSearchingText": "The window shown last is on a host of your tailnet. Tailscale is still looking for it.",
+  "placeTailnetSearchingText": "The tab shown last is on a host of your tailnet. Tailscale is still looking for it.",
   "@placeTailnetSearchingText": {
     "description": "Under placeTailnetTitle, after a reload, while built-in Tailscale runs and still probes the tailnet for GoRex hosts."
   },
@@ -2622,7 +2622,7 @@
   "@placeTailnetGoneTitle": {
     "description": "Notice over the stage after a reload, when the window shown last is on a tailnet host that built-in Tailscale, running, does not find."
   },
-  "placeTailnetGoneText": "The window shown last is on a host Tailscale does not find on your tailnet now. It may be off, or no longer trust this page. Choose another window, or check its Tailscale settings.",
+  "placeTailnetGoneText": "The tab shown last is on a host Tailscale does not find on your tailnet now. It may be off, or no longer trust this page. Choose another tab, or check its Tailscale settings.",
   "@placeTailnetGoneText": {
     "description": "Under placeTailnetGoneTitle; a Tailscale Settings button follows."
   },
@@ -2630,7 +2630,7 @@
   "@placeTailnetTitle": {
     "description": "Notice over the stage after a reload, when the window shown last is on a tailnet host that built-in Tailscale has not found yet."
   },
-  "placeTailnetText": "The window shown last is on a host of your tailnet. Turn on Tailscale and sign in to reach it, or choose another window.",
+  "placeTailnetText": "The tab shown last is on a host of your tailnet. Turn on Tailscale and sign in to reach it, or choose another tab.",
   "@placeTailnetText": {
     "description": "Under placeTailnetTitle; a Tailscale Settings button follows."
   },
@@ -2721,33 +2721,13 @@
   "@paneFloatMinimize": { "description": "Pane menu and palette item: minimize a floating pane." },
   "paneFloatRestore": "Restore Floating Pane",
   "@paneFloatRestore": { "description": "Dock button and palette item: restore a minimized floating pane." },
-  "cmdNewProjectNoFolder": "New Project with No Folder",
-  "@cmdNewProjectNoFolder": {
-    "description": "Project menu: make a project that only groups terminals, with no folder."
-  },
-  "cmdChangeFolder": "Change Folder…",
-  "@cmdChangeFolder": {
-    "description": "Project menu, and the button of the folder-gone question: choose another folder as the project's home."
-  },
-  "cmdRemoveFolder": "Remove Folder",
-  "@cmdRemoveFolder": {
-    "description": "Project menu: the project keeps its windows and has no folder."
-  },
   "projectNewTitle": "New Project",
   "@projectNewTitle": {
     "description": "Title of the New Project sheet."
   },
-  "projectChangeTitle": "Change Folder",
-  "@projectChangeTitle": {
-    "description": "Title of the Change Folder sheet."
-  },
   "projectCreate": "Create",
   "@projectCreate": {
     "description": "Button of the New Project sheet: make the project and open its first window in the folder."
-  },
-  "projectChange": "Change",
-  "@projectChange": {
-    "description": "Button of the Change Folder sheet: set the folder as the project's home."
   },
   "projectHost": "Host",
   "@projectHost": {
@@ -2853,9 +2833,53 @@
       }
     }
   },
-  "projectHostNoMachine": "{host} (machine not known yet)",
-  "@projectHostNoMachine": {
-    "description": "Option of the host picker: a host that has not told its machine.",
+  "spaceDefault": "Default",
+  "@spaceDefault": {
+    "description": "Name of the space of projects that have none."
+  },
+  "spacePickerLabel": "Space",
+  "@spacePickerLabel": {
+    "description": "Tooltip and accessible name of the space picker at the top of the sidebar."
+  },
+  "spaceNewMenu": "New Space…",
+  "@spaceNewMenu": {
+    "description": "Space picker menu: add a space name to the picker."
+  },
+  "spaceRenameMenu": "Rename Space…",
+  "@spaceRenameMenu": {
+    "description": "Space picker menu: rename the space shown, on every host."
+  },
+  "spaceColorMenu": "Color",
+  "@spaceColorMenu": {
+    "description": "Space picker menu: a submenu of colors for the space shown."
+  },
+  "spaceColorNone": "No Color",
+  "@spaceColorNone": {
+    "description": "Space color submenu: remove the color."
+  },
+  "spaceNewTitle": "New Space",
+  "@spaceNewTitle": {
+    "description": "Title of the question that asks for a new space's name."
+  },
+  "spaceRenameTitle": "Rename Space",
+  "@spaceRenameTitle": {
+    "description": "Title of the question that asks for a space's new name."
+  },
+  "spaceNameLabel": "Space name",
+  "@spaceNameLabel": {
+    "description": "Accessible name of the field for a space's name."
+  },
+  "spaceCreate": "Create",
+  "@spaceCreate": {
+    "description": "Button of the New Space question."
+  },
+  "spaceRename": "Rename",
+  "@spaceRename": {
+    "description": "Button of the Rename Space question."
+  },
+  "projectNewOn": "New Project on {host}",
+  "@projectNewOn": {
+    "description": "Tooltip of the + button of a host: choose a folder of that host and make a project.",
     "placeholders": {
       "host": {
         "type": "String",
@@ -2863,51 +2887,81 @@
       }
     }
   },
-  "projectHostUnknown": "unknown host",
-  "@projectHostUnknown": {
-    "description": "Under a project's name: its home host is none of the hosts you added."
+  "projectsOfflineNote": "Not connected. Shown as last seen.",
+  "@projectsOfflineNote": {
+    "description": "Note under a host that is away: its projects are a copy, read-only."
   },
-  "statusFolderFailed": "Could not set the folder: {error}",
-  "@statusFolderFailed": {
-    "description": "Status line when setting or removing a project's folder failed.",
+  "projectsOlder": "Older ({n})",
+  "@projectsOlder": {
+    "description": "Sidebar group of the projects not used for 30 days.",
     "placeholders": {
-      "error": {
-        "type": "String",
-        "example": "No response"
+      "n": {
+        "type": "int",
+        "example": "3"
       }
     }
   },
-  "statusProjectHomeOffline": "No window opened. The home host of “{project}”, {host}, is not connected.",
-  "@statusProjectHomeOffline": {
-    "description": "Status line when New Window finds the project's home host not connected; the window does not open on another host.",
+  "projectsNoProject": "Tabs with no project ({n})",
+  "@projectsNoProject": {
+    "description": "Sidebar group of a host's tabs that belong to no project, with their count.",
     "placeholders": {
-      "project": {
+      "n": {
+        "type": "int",
+        "example": "2"
+      }
+    }
+  },
+  "projectNoProjectName": "Tabs with no project",
+  "@projectNoProjectName": {
+    "description": "A host's tabs that belong to no project, as a target of Move to Project and in the project menu."
+  },
+  "projectNewTabNoProject": "New Tab with No Project",
+  "@projectNewTabNoProject": {
+    "description": "Menu item and tooltip: a tab in the host's home directory, in no project."
+  },
+  "projectsEmpty": "No projects in this space.",
+  "@projectsEmpty": {
+    "description": "Note under a connected host that has no project in the space shown."
+  },
+  "projectMoveSpace": "Move to Space",
+  "@projectMoveSpace": {
+    "description": "Project menu: a submenu of spaces to move the project to."
+  },
+  "projectExistsTitle": "“{name}” is a project already",
+  "@projectExistsTitle": {
+    "description": "Title of the question when the folder chosen is a project of another space.",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "windflow"
+      }
+    }
+  },
+  "projectExistsBody": "This folder is the project “{name}”, in the space {was}. Move it to {here}?",
+  "@projectExistsBody": {
+    "description": "Text of that question.",
+    "placeholders": {
+      "name": {
         "type": "String",
         "example": "windflow"
       },
-      "host": {
+      "was": {
         "type": "String",
-        "example": "office"
+        "example": "Life"
+      },
+      "here": {
+        "type": "String",
+        "example": "Work"
       }
     }
   },
-  "statusProjectHomeUnknown": "No window opened. The home host of “{project}” is none of your hosts. Add it, or change the folder.",
-  "@statusProjectHomeUnknown": {
-    "description": "Status line when New Window finds no host of the project's home machine.",
-    "placeholders": {
-      "project": {
-        "type": "String",
-        "example": "windflow"
-      }
-    }
+  "projectMoveHere": "Move Here",
+  "@projectMoveHere": {
+    "description": "Button of that question."
   },
-  "folderMissingTitle": "Folder not found",
-  "@folderMissingTitle": {
-    "description": "Title of the question New Window asks when the project's folder is gone."
-  },
-  "folderMissingBody": "The folder {dir} of “{name}” is not on {host}. No window was opened.",
-  "@folderMissingBody": {
-    "description": "Text of the folder-gone question.",
+  "statusFolderMissing": "No tab opened. The folder {dir} of “{name}” is not on {host}.",
+  "@statusFolderMissing": {
+    "description": "Status line when New Tab finds the project's folder gone.",
     "placeholders": {
       "dir": {
         "type": "String",
@@ -2920,6 +2974,40 @@
       "host": {
         "type": "String",
         "example": "office"
+      }
+    }
+  },
+  "statusMoveTabFailed": "Could not move the tab: {error}",
+  "@statusMoveTabFailed": {
+    "description": "Status line when Move to Project failed.",
+    "placeholders": {
+      "error": {
+        "type": "String",
+        "example": "No response"
+      }
+    }
+  },
+  "statusMoveProjectFailed": "Could not move the project: {error}",
+  "@statusMoveProjectFailed": {
+    "description": "Status line when Move to Space failed.",
+    "placeholders": {
+      "error": {
+        "type": "String",
+        "example": "No response"
+      }
+    }
+  },
+  "statusRenameSpaceHostFailed": "Could not rename the space on {host}: {error}",
+  "@statusRenameSpaceHostFailed": {
+    "description": "Status line when a host did not take a space's rename.",
+    "placeholders": {
+      "host": {
+        "type": "String",
+        "example": "office"
+      },
+      "error": {
+        "type": "String",
+        "example": "No response"
       }
     }
   }

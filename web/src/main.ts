@@ -25,6 +25,7 @@ import { Control, directTransport } from "./rex";
 import type { Settings } from "./settings";
 import { fetchSharedHosts, SharedGroup } from "./share";
 import { createProjectOps } from "./projectops";
+import { initProjectView } from "./projectsidebar";
 import { hold, initSidebar, paneName, redraw, sidebar as drawSidebar, sidebarBlock, spaceName, windowTitle } from "./sidebar";
 import { Tailnet, TailnetHost } from "./tailnet";
 import { webTransport } from "./webtransport";
@@ -859,6 +860,8 @@ const hostEvents: HostEvents = {
   },
   live(c) {
     for (const w of [shown, ...kept]) if (w?.conn === c) for (const p of w.panes.values()) p.resume();
+    // A rename of a space that this host missed while it was away.
+    void projectOps.flush(c);
     showPending(c);
   },
 };
@@ -882,6 +885,7 @@ const {
   mergeWindows,
   dropPane,
   newSpace,
+  closeSpace,
 } = createWindowOps({
   listEl: () => $("list"),
   shell,
@@ -892,10 +896,9 @@ const {
   want,
   showWanted,
   newWindow,
-  projectLine: (c, s) => projectOps.line(c, s),
-  newProject: (c) => void projectOps.newProject(c),
-  changeFolder: (c, s) => void projectOps.changeFolder(c, s),
-  removeFolder: (c, s) => void projectOps.removeFolder(c, s),
+  renameProject: (c, s, name) => void projectOps.renameProject(c, s, name),
+  projectTargets,
+  moveTab: (c, s, w, target) => void projectOps.moveTab(c, s, w, target),
   closeWindow,
   status,
   canBlockToNewWindow: gateway.blockToNewWindow,
@@ -903,22 +906,35 @@ const {
 });
 
 const projectOps = createProjectOps({
-  conns: orderedConns,
+  hosts: sidebarHosts,
+  conn: (id) => conns.get(id),
   picked: () => picked,
   want,
   showWanted,
   status,
   plainSpace: newSpace,
   plainWindow,
+  redraw: () => sidebar(),
   focusKeys: () => shown?.focusKeys(),
 });
+initProjectView(projectOps);
+
+/** The projects a tab of a session can move to: the host's others, then its tabs with no project; none for a host with no projects of version 2. */
+function projectTargets(conn: HostConn, session: string): { id: string; name: string }[] | undefined {
+  if (!conn.v2) return undefined;
+  const all = [...conn.sessions.values()].filter((o) => o.id !== session && o.project && o.view);
+  return [...all.filter((o) => o.project!.dir), ...all.filter((o) => !o.project!.dir)].map((o) => ({
+    id: o.id,
+    name: o.project!.dir ? spaceName(o) : t("projectNoProjectName"),
+  }));
+}
 
 initSidebar({
   shown: () => shown,
   see,
   show: pick,
   newWindow,
-  projectLine: (c, s) => projectOps.line(c, s),
+  closeSpace,
   closeWindow,
   startRename,
   renamedSpace,
@@ -1061,9 +1077,9 @@ function showWanted() {
   }
 }
 
-/** New Window: in a project with a folder, on its home host in the folder (projectops.ts). */
+/** New Tab: in a project, in its folder on its host (projectops.ts). */
 function newWindow(conn: HostConn, session: string): Promise<void> {
-  return projectOps.newWindow(conn, session);
+  return projectOps.newTab(conn, session);
 }
 
 async function plainWindow(conn: HostConn, session: string) {

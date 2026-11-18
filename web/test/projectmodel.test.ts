@@ -1,0 +1,201 @@
+// Projects, spaces and tabs as the web client shows them (src/projectmodel.ts),
+// and the calls of a host's connection (src/hostconn.ts) against a fake gateway.
+import assert from "node:assert/strict";
+import { test } from "node:test";
+import type { HostConn as HostConnType } from "../src/hostconn";
+import { dirName, featureVersion, groupProjects, hostModel, Offline, parseProject, ProjectRow, SpaceStore } from "../src/projectmodel";
+
+// hostconn.ts imports the page's modules, which look at `window` as they load; a bare one is enough here.
+(globalThis as any).window ??= { addEventListener() {}, matchMedia: () => ({ matches: false, addEventListener() {} }) };
+const { HostConn } = (await import("../src/hostconn")) as { HostConn: typeof HostConnType };
+
+const day = 86400000;
+const now = Date.UTC(2026, 10, 18);
+
+class Mem {
+  data = new Map<string, string>();
+  getItem(k: string) {
+    return this.data.get(k) ?? null;
+  }
+  setItem(k: string, v: string) {
+    this.data.set(k, v);
+  }
+}
+
+const row = (id: string, space: string, ago: number, name = id): ProjectRow => ({ id, name, dir: `/work/${id}`, space, used: ago < 0 ? 0 : now - ago * day, tabs: [] });
+
+test("parseProject reads {dir, space, used}, and {} as the tabs with no project", () => {
+  assert.deepEqual(parseProject({ dir: "/work/a", space: "Work", used: "2026-11-18T00:00:00Z" }), { dir: "/work/a", space: "Work", used: now });
+  assert.deepEqual(parseProject({}), { dir: "", space: "", used: 0 });
+  assert.equal(parseProject(undefined), undefined);
+  assert.equal(parseProject("x"), undefined);
+  // A time of the zero value is none.
+  assert.equal(parseProject({ dir: "/a", used: "0001-01-01T00:00:00Z" })!.used, 0);
+});
+
+test("featureVersion reads the welcome's versions in either shape", () => {
+  assert.equal(featureVersion({ features: ["gorex.projects"], feature_versions: { "gorex.projects": 2 } }, "gorex.projects"), 2);
+  assert.equal(featureVersion({ features: [{ name: "gorex.projects", version: 2 }] }, "gorex.projects"), 2);
+  assert.equal(featureVersion({ features: ["gorex.projects"] }, "gorex.projects"), 0);
+  assert.equal(featureVersion(undefined, "gorex.projects"), 0);
+});
+
+test("a host's model has its projects and its tabs with no project apart", () => {
+  const view = (...ids: string[]) => ({ windows: ids.map((id) => ({ window_id: id })) });
+  const m = hostModel(
+    {
+      host: { id: "h1", name: "office" },
+      sessions: [
+        { id: "s1", label: "windflow", project: { dir: "/work/windflow", space: "Work", used: now }, view: view("w1", "w2") },
+        { id: "s2", label: "", project: { dir: "", space: "", used: 0 }, view: view("w3") },
+        // No view yet, or a session of a host with no projects: not shown.
+        { id: "s3", label: "x", project: { dir: "/x", space: "", used: 0 } },
+        { id: "s4", label: "y", view: view("w4") },
+      ],
+    },
+    (w) => `tab ${w.window_id}`,
+  );
+  assert.deepEqual(m.projects.map((p) => [p.id, p.name, p.tabs.map((t) => t.title)]), [["s1", "windflow", ["tab w1", "tab w2"]]]);
+  assert.deepEqual(m.loose, { id: "s2", tabs: [{ id: "w3", title: "tab w3" }] });
+});
+
+test("projects of a space are in order of last use, and the ones unused for 30 days go under Older", () => {
+  const ps = [row("old", "Work", 31), row("new", "Work", 1), row("mid", "Work", 20), row("life", "Life", 0), row("never", "Work", -1)];
+  const g = groupProjects(ps, "Work", now);
+  assert.deepEqual(g.recent.map((p) => p.id), ["new", "mid", "never"].sort((a, b) => ps.find((p) => p.id === b)!.used - ps.find((p) => p.id === a)!.used));
+  assert.deepEqual(g.older.map((p) => p.id), ["old"]);
+  // 30 days exactly is not older.
+  assert.deepEqual(groupProjects([row("edge", "", 30)], "", now).older, []);
+  assert.deepEqual(groupProjects(ps, "Nowhere", now), { recent: [], older: [] });
+});
+
+test("dirName is a folder's name on Unix and Windows", () => {
+  assert.equal(dirName("/home/me/code/windflow/"), "windflow");
+  assert.equal(dirName("C:\\work\\trainer"), "trainer");
+  assert.equal(dirName("/"), "/");
+});
+
+test("the picker lists the names the projects carry, Default, and the ones made here, in the user's order", () => {
+  const s = new SpaceStore(new Mem());
+  assert.deepEqual(s.names(["Work", "Life", "Work"]), ["", "Life", "Work"]);
+  s.add("Ideas");
+  assert.equal(s.current, "Ideas");
+  assert.deepEqual(s.names(["Work"]), ["", "Ideas", "Work"]);
+  s.order = ["Work", "Ideas"];
+  assert.deepEqual(s.names(["Work", "Life"]), ["Work", "Ideas", "", "Life"]);
+  // A space that vanished: the shown one falls back to Default.
+  assert.equal(s.shown(["", "Work"]), "");
+  s.setCurrent("Work");
+  assert.equal(s.shown(["", "Work"]), "Work");
+});
+
+test("a space made here leaves the made list once a project carries it, and drops with its last project", () => {
+  const s = new SpaceStore(new Mem());
+  s.add("Ideas");
+  s.prune(new Set(["Work"]));
+  assert.deepEqual(s.names(["Work"]), ["", "Ideas", "Work"]);
+  s.prune(new Set(["Ideas"]));
+  assert.deepEqual(s.names(["Ideas"]), ["", "Ideas"]);
+  assert.deepEqual(s.names([]), [""]);
+});
+
+test("the space store keeps its colors, order and renames, and reads them back", () => {
+  const mem = new Mem();
+  const a = new SpaceStore(mem);
+  a.setColor("Work", "#e5484d");
+  a.add("Ideas");
+  a.setCurrent("Work");
+  a.rename("Work", "Job", ["h-away"]);
+  const b = new SpaceStore(mem);
+  assert.equal(b.current, "Job");
+  assert.deepEqual(b.colors, { Job: "#e5484d" });
+  assert.deepEqual(b.made, ["Ideas"]);
+  assert.deepEqual(b.pending, [{ host: "h-away", from: "Work", to: "Job" }]);
+});
+
+test("a rename waits for the host that is away, and maps its projects' space meanwhile", () => {
+  const s = new SpaceStore(new Mem());
+  s.rename("Work", "Job", ["away"]);
+  s.rename("Job", "Office", ["away"]);
+  assert.equal(s.mapSpace("away", "Work"), "Office");
+  assert.equal(s.mapSpace("away", "Life"), "Life");
+  // A host that took them shows its own names.
+  assert.equal(s.mapSpace("here", "Work"), "Work");
+  const w = s.waiting("away");
+  assert.equal(w.length, 2);
+  s.done(w[0]);
+  s.done(w[1]);
+  assert.equal(s.mapSpace("away", "Work"), "Work");
+  assert.deepEqual(s.pending, []);
+});
+
+test("a storage that is missing, corrupt or throws does not stop the page", () => {
+  const bad = { getItem: () => "not json", setItem: () => { throw new Error("quota"); } };
+  const s = new SpaceStore(bad);
+  s.add("Ideas");
+  assert.equal(s.current, "Ideas");
+  const o = new Offline(bad);
+  o.put({ host: "h", name: "h", projects: [] });
+  assert.ok(o.get("h"));
+  assert.equal(new SpaceStore(undefined).current, "");
+  assert.equal(new Offline(undefined).get("h"), undefined);
+});
+
+test("the offline copy keeps each host's projects, is replaced as the host is read, and reads back", () => {
+  const mem = new Mem();
+  const o = new Offline(mem);
+  const m = { host: "h1", name: "office", projects: [row("p", "Work", 1)], loose: { id: "l", tabs: [{ id: "w", title: "dev" }] } };
+  o.put(m);
+  const again = new Offline(mem);
+  assert.deepEqual(again.get("h1"), m);
+  o.put({ ...m, projects: [] });
+  assert.deepEqual(new Offline(mem).get("h1")!.projects, []);
+  o.drop("h1");
+  assert.equal(new Offline(mem).get("h1"), undefined);
+  // A damaged entry is skipped, not thrown.
+  mem.setItem("gorex.web.projects-cache", JSON.stringify({ x: 5, y: { projects: [{ nope: 1 }, { id: "p" }] } }));
+  assert.deepEqual(new Offline(mem).get("y")!.projects.map((p) => p.id), ["p"]);
+});
+
+/** A HostConn with a fake control connection, which records the calls. */
+function fake(welcome: any, answers: Record<string, any> = {}) {
+  const calls: [string, any][] = [];
+  const c = new HostConn({ id: "h1", name: "office", url: "http://x", kind: "direct" } as any, {} as any, {} as any, {} as any);
+  c.control = {
+    features: new Set(welcome.features ?? []),
+    welcome,
+    call: async (method: string, payload: any) => {
+      calls.push([method, payload]);
+      return { seq: 1, payload: answers[method] ?? {} };
+    },
+  } as any;
+  return { c, calls };
+}
+
+test("a host has projects of version 2 only when its welcome says so", () => {
+  assert.ok(fake({ features: ["gorex.projects"], feature_versions: { "gorex.projects": 2 } }).c.v2);
+  assert.ok(!fake({ features: ["gorex.projects"] }).c.v2);
+  assert.ok(!fake({ features: [] }).c.v2);
+});
+
+test("project create, move, update and space rename call the host's methods with the doc's arguments", async () => {
+  const { c, calls } = fake(
+    { features: ["gorex.projects"], feature_versions: { "gorex.projects": 2 } },
+    { "gorex.project.create": { project_id: "session:1", tab_id: "window:1" } },
+  );
+  assert.deepEqual(await c.projectCreate("windflow", "/work/windflow", "Work"), { project_id: "session:1", tab_id: "window:1", exists: false });
+  await c.projectMove("window:1", "");
+  await c.projectUpdate("session:1", { name: "wf" });
+  await c.spaceRename("Work", "Job");
+  assert.deepEqual(calls, [
+    ["gorex.project.create", { name: "windflow", dir: "/work/windflow", space: "Work" }],
+    ["gorex.project.move", { tab_id: "window:1", project_id: "" }],
+    ["gorex.project.update", { project_id: "session:1", name: "wf" }],
+    ["gorex.space.rename", { from: "Work", to: "Job" }],
+  ]);
+});
+
+test("a folder that is a project already answers exists, with that project's ID", async () => {
+  const { c } = fake({ features: [] }, { "gorex.project.create": { code: "exists", project_id: "session:9" } });
+  assert.deepEqual(await c.projectCreate("x", "/work/x", ""), { project_id: "session:9", tab_id: undefined, exists: true });
+});

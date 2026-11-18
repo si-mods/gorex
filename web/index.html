@@ -213,6 +213,39 @@
   body[data-tabs="above"] .window[data-drop="before"]::before { left: -1px; right: auto; }
   body[data-tabs="above"] .window[data-drop="after"]::before { left: auto; right: -1px; }
   .window[data-drop="into"] { box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--busy) 60%, transparent); }
+  /* Projects (projectsidebar.ts): a host's projects of the space, a row each with its folder and `+`, its tabs
+     under it; the space picker is a chip at the top. A host that is away shows its copy, dimmed (DESIGN.md). */
+  .project { display: flex; align-items: center; border-radius: 999px; }
+  .project:hover { background: var(--hover); }
+  .project.open { background: var(--pill); }
+  .project[data-drop="into"] { box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--busy) 60%, transparent); }
+  .project-main {
+    display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; padding: 6px 4px 6px 10px; border: 0;
+    background: none; color: var(--text); font: inherit; text-align: left; cursor: pointer;
+  }
+  .project-main .pane-icon { flex: none; width: 14px; height: 14px; color: var(--muted); }
+  .project-main .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .project-main .project-line { display: block; overflow: hidden; text-overflow: ellipsis; margin-top: 1px; color: var(--muted); font-size: 10.5px; }
+  .project-main .count { flex: none; color: var(--muted); font-size: 11px; }
+  .project.group .project-main { color: var(--muted); }
+  .project > button.icon { margin-right: 4px; visibility: hidden; }
+  .project:hover > button.icon, .project.open > button.icon, .project.group > button.icon { visibility: visible; }
+  .project-tabs { margin-left: 16px; }
+  .project-tabs .window.copy { padding: 6px 12px; color: var(--text); cursor: default; }
+  .new-tab {
+    display: flex; align-items: center; gap: 8px; width: 100%; padding: 5px 12px; border: 0; border-radius: 999px;
+    background: none; color: var(--muted); font: inherit; text-align: left; cursor: pointer;
+  }
+  .new-tab:hover:not(:disabled) { background: var(--hover); color: var(--text); }
+  .new-tab:disabled { filter: grayscale(1); opacity: 0.4; cursor: default; }
+  .new-tab .pane-icon { width: 14px; height: 14px; }
+  .host-note { padding: 2px 12px 4px 34px; color: var(--muted); font-size: 12px; }
+  .host-head > button.icon { margin-right: -6px; }
+  .space-picker { margin-bottom: 2px; }
+  .color-dot { flex: none; width: 9px; height: 9px; border-radius: 50%; box-shadow: inset 0 0 0 0.5px var(--panel-edge); }
+  .project-chip .host { color: var(--muted); font-weight: 400; }
+  .context-item .context-mark { flex: none; width: 12px; }
+  .context-item .context-mark .pane-icon { display: block; width: 12px; height: 12px; color: var(--text); }
   /* Renaming in place (manage.ts), as the desktop's compact field. */
   .rename-field {
     flex: 1; min-width: 0; height: 26px; margin: 3px 0; padding: 0 10px; border: 1px solid var(--muted); border-radius: 999px;

@@ -9,7 +9,7 @@ import { icon } from "./hosts";
 import { t } from "./i18n";
 
 /** An item of a menu: its words and what it runs, or a submenu; or a line between groups. */
-export type MenuItem = { label: string; /** A second line under the label. */ detail?: string; /** A tooltip. */ title?: string; run?: () => void; disabled?: boolean; submenu?: MenuItem[] } | "separator";
+export type MenuItem = { label: string; /** A second line under the label. */ detail?: string; /** A tooltip. */ title?: string; run?: () => void; disabled?: boolean; submenu?: MenuItem[]; /** A check before the label: the item is the one chosen. */ checked?: boolean; /** A dot of this color before the label. */ color?: string } | "separator";
 
 /** The menu open, one at a time, and what closes it. */
 let shown: { el: HTMLElement; done: AbortController; closed?: () => void } | undefined;
@@ -81,6 +81,18 @@ function panel(items: MenuItem[], signal: AbortSignal): HTMLElement {
     const label = document.createElement("span");
     label.textContent = it.label;
     if (it.title) b.title = it.title;
+    if (it.checked !== undefined || it.color) {
+      const mark = document.createElement("span");
+      mark.className = "context-mark";
+      if (it.checked) mark.append(icon("check"));
+      b.append(mark);
+      if (it.color) {
+        const dot = document.createElement("i");
+        dot.className = "color-dot";
+        dot.style.background = it.color;
+        b.append(dot);
+      }
+    }
     if (it.detail) {
       const text = document.createElement("div");
       text.className = "context-text";
@@ -290,6 +302,61 @@ export function confirmDanger(title: string, body: string, action: string, dange
     document.body.append(d);
     d.showModal();
     cancel.focus();
+  });
+}
+
+/**
+ * Asks for one line of text, in the frosted dialog of confirmDanger: New
+ * Space and Rename Space. It answers the text, trimmed, or undefined for
+ * Cancel or an empty field.
+ */
+export function askText(title: string, label: string, value: string, action: string): Promise<string | undefined> {
+  return new Promise((resolve) => {
+    const d = document.createElement("dialog");
+    d.className = "confirm";
+    d.setAttribute("aria-label", title);
+    const h = document.createElement("h2");
+    h.textContent = title;
+    const field = document.createElement("input");
+    field.className = "sheet-field";
+    field.type = "text";
+    field.value = value;
+    field.spellcheck = false;
+    field.autocomplete = "off";
+    field.setAttribute("aria-label", label);
+    const row = document.createElement("div");
+    row.className = "confirm-buttons";
+    const cancel = document.createElement("button");
+    cancel.type = "button";
+    cancel.className = "host-add";
+    cancel.textContent = t("commonCancel");
+    const ok = document.createElement("button");
+    ok.type = "button";
+    ok.className = "host-add primary";
+    ok.textContent = action;
+    row.append(cancel, ok);
+    d.append(h, field, row);
+    let answer: string | undefined;
+    const sync = () => (ok.disabled = !field.value.trim());
+    field.oninput = sync;
+    sync();
+    field.onkeydown = (e) => {
+      e.stopPropagation();
+      if (e.key === "Enter" && !e.isComposing && e.keyCode !== 229 && !ok.disabled) ok.click();
+    };
+    cancel.onclick = () => d.close();
+    ok.onclick = () => {
+      answer = field.value.trim();
+      d.close();
+    };
+    d.addEventListener("close", () => {
+      d.remove();
+      resolve(answer || undefined);
+    });
+    document.body.append(d);
+    d.showModal();
+    field.focus();
+    field.select();
   });
 }
 

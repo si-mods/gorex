@@ -3,54 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
-import { browserCrumbs, childPath, collapseCrumbs, crumbs, defaultHost, DirAnswer, FolderBrowser, folderName, HostRef, hostState, isFolderMissing, parse, parseDirs, planNewWindow, projectLine } from "../src/projects";
-
-const office: HostRef = { id: "h-office", name: "office", machine: "M-office", connected: true };
-const laptop: HostRef = { id: "h-laptop", name: "laptop", machine: "M-laptop", connected: true };
-const proj = (machine: string, dir = "/home/me/windflow") => parse({ home_machine: machine, dir });
-
-test("parse reads a session's project, and none without a folder", () => {
-  assert.deepEqual(parse({ home_machine: "M", dir: "/a" }), { home_machine: "M", dir: "/a" });
-  assert.equal(parse(undefined), undefined);
-  assert.equal(parse({ home_machine: "M", dir: "" }), undefined);
-  assert.deepEqual(parse({ dir: "/a" }), { home_machine: "", dir: "/a" });
-});
-
-test("New Window without a project is a plain window", () => {
-  assert.deepEqual(planNewWindow(undefined, office.id, [office]), { kind: "plain" });
-});
-
-test("New Window opens on the home host with the folder", () => {
-  assert.deepEqual(planNewWindow(proj("M-office"), office.id, [office, laptop]), { kind: "open", host: office, cwd: "/home/me/windflow", here: true });
-  // The session is on the laptop; the home is the office.
-  assert.deepEqual(planNewWindow(proj("M-office"), laptop.id, [laptop, office]), { kind: "open", host: office, cwd: "/home/me/windflow", here: false });
-});
-
-test("New Window is refused when the home host is not connected, and opens nowhere else", () => {
-  const away = { ...office, connected: false };
-  assert.deepEqual(planNewWindow(proj("M-office"), laptop.id, [laptop, away]), { kind: "offline", host: away });
-});
-
-test("New Window is refused when no host is the home's machine", () => {
-  assert.deepEqual(planNewWindow(proj("M-gone"), laptop.id, [laptop, office]), { kind: "unknown" });
-  assert.deepEqual(planNewWindow(proj(""), laptop.id, [laptop]), { kind: "unknown" });
-  // A host whose machine is not known yet is no match.
-  assert.deepEqual(planNewWindow(proj("M-office"), laptop.id, [laptop, { ...office, machine: undefined }]), { kind: "unknown" });
-});
-
-test("of two hosts of one machine, the connected one is the home", () => {
-  const lan = { ...office, id: "lan", connected: false };
-  const tail = { ...office, id: "tail" };
-  const plan = planNewWindow(proj("M-office"), laptop.id, [laptop, lan, tail]);
-  assert.equal(plan.kind === "open" && plan.host.id, "tail");
-});
-
-test("the line under a project's name names the host when it is another machine", () => {
-  assert.deepEqual(projectLine(proj("M-office")!, office, [office, laptop]), { unknown: false, dir: "/home/me/windflow" });
-  assert.deepEqual(projectLine(proj("M-office")!, laptop, [office, laptop]), { host: "office", unknown: false, dir: "/home/me/windflow" });
-  assert.deepEqual(projectLine(proj("M-gone")!, laptop, [laptop]), { unknown: true, dir: "/home/me/windflow" });
-  assert.deepEqual(projectLine(proj("M-laptop")!, laptop, [laptop]), { unknown: false, dir: "/home/me/windflow" });
-});
+import { browserCrumbs, childPath, collapseCrumbs, crumbs, defaultHost, DirAnswer, FolderBrowser, folderName, hostState, isFolderMissing, parseDirs } from "../src/projects";
 
 test("folder_missing is a conflict that names the code", () => {
   assert.ok(isFolderMissing({ code: "conflict", message: "folder_missing: /x is gone" }));
@@ -58,13 +11,12 @@ test("folder_missing is a conflict that names the code", () => {
   assert.ok(!isFolderMissing(new Error("folder_missing")));
 });
 
-test("a host can be picked when connected, able and its machine known", () => {
-  const ok = { connected: true, listsDirs: true, keepsProjects: true, machine: "M" };
+test("a host can be picked when connected, listing folders and keeping projects of version 2", () => {
+  const ok = { connected: true, listsDirs: true, projectsV2: true };
   assert.equal(hostState(ok), "ok");
   assert.equal(hostState({ ...ok, connected: false }), "offline");
   assert.equal(hostState({ ...ok, listsDirs: false }), "old");
-  assert.equal(hostState({ ...ok, keepsProjects: false }), "old");
-  assert.equal(hostState({ ...ok, machine: undefined }), "nomachine");
+  assert.equal(hostState({ ...ok, projectsV2: false }), "old");
 });
 
 test("New Project starts on the preferred host if it can be picked, else the first that can", () => {
@@ -180,18 +132,26 @@ test("Up at a root does nothing", async () => {
   assert.equal(b.path, "/");
 });
 
-test("no message of the page says Space where a project is meant", () => {
+test("the catalogs say Tab for a window and Project for a session, and Space only for the picker", () => {
   const reads = (lang: string) => JSON.parse(readFileSync(join(process.cwd(), "locales", `${lang}.json`), "utf8")) as Record<string, any>;
   const en = reads("en");
-  for (const [k, v] of Object.entries(en)) {
-    if (k.startsWith("@") || typeof v !== "string") continue;
-    assert.ok(!/\bspaces?\b/i.test(v), `en ${k}: ${v}`);
-  }
+  assert.equal(en.cmdNewWindow, "New Tab");
+  assert.equal(en.cmdCloseWindow, "Close Tab");
   assert.equal(en.cmdNewSpace, "New Project…");
   assert.equal(en.cmdCloseSpace, "Close Project");
+  assert.equal(en.windowMoveSpace, "Move to Project");
+  for (const k of ["statusNewWindowFailed", "cmdRenameWindow", "keysWindows", "paneMoveNewWindow", "sidebarWindow", "placeTailnetText"]) {
+    assert.ok(!/windows?/i.test(en[k]), `en ${k}: ${en[k]}`);
+  }
   const zh = reads("zh-Hans");
-  for (const [k, v] of Object.entries(zh)) {
-    if (typeof v === "string") assert.ok(!v.includes("空间"), `zh ${k}: ${v}`);
+  assert.equal(zh.cmdNewWindow, "新建标签页");
+  for (const k of ["statusNewWindowFailed", "cmdRenameWindow", "keysWindows", "paneMoveNewWindow", "sidebarWindow", "placeTailnetText"]) {
+    assert.ok(!zh[k].includes("窗口"), `zh ${k}: ${zh[k]}`);
+  }
+  // The project commands of the sessions never say Space.
+  for (const k of ["cmdNewSpace", "cmdRenameSpace", "cmdCloseSpace", "renameSpaceLabel", "statusNewSpaceFailed"]) {
+    assert.ok(!/spaces?/i.test(en[k]), `en ${k}: ${en[k]}`);
+    assert.ok(!zh[k].includes("空间"), `zh ${k}: ${zh[k]}`);
   }
 });
 
