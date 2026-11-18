@@ -28,8 +28,8 @@ struct HostListView: View {
     @State private var path: [TerminalTarget] = []
     /// The hosts and the sessions folded away.
     @State private var collapsed: Set<String> = []
-    /// The projects, Older and the tabs with no project open, by
-    /// HostSection's keys, kept across launches.
+    /// The projects and Older open, by HostSection's keys, kept across
+    /// launches.
     @AppStorage("expanded") private var expandedText = ""
     @State private var inbox = false
     @State private var query = ""
@@ -278,8 +278,8 @@ struct HostListView: View {
         return l.spaces.contains(current)
     }
 
-    /// The projects open in the list, and the hosts' Older and tabs with no
-    /// project, by HostSection's keys.
+    /// The projects open in the list, and the hosts' Older, by
+    /// HostSection's keys.
     private var expanded: Binding<Set<String>> {
         Binding {
             Set(expandedText.split(separator: "\n").map(String.init))

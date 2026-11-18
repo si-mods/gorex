@@ -51,6 +51,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - A project's tabs and New Tab now line up with the project row instead of sitting indented.
 - On a phone that shows its clock at the side, such as a folded iPhone, a terminal's back button, title and menu stay in the bar at the top, and the terminal fills the width under the clock.
 - Fun-ASR-Nano and Qwen3-ASR download from GitHub now where Hugging Face cannot be reached, and a download that stopped picks up where it left off.
+- The tabs with no project are no longer folded under a row of their own: each shows as its own row under the host's projects, with New Tab after them.
 
 ## zh-Hans
 
@@ -94,3 +95,4 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - 在时钟显示在侧边的手机上，例如折叠屏 iPhone，终端的返回按钮、标题和菜单留在顶部工具栏里，终端也铺满到时钟那一列下面。
 - 切换空间的按钮现在和侧栏顶部的搜索、侧栏开关在同一行；空间名太长时末尾显示省略号。
 - 语音模型在 Hugging Face 连不上时改为从 GitHub 下载：Fun-ASR-Nano 和 Qwen3-ASR 现在能下完了，下载中断过也会接着下。
+- 没有项目的标签页不再折叠在一行里：每个标签页都直接列在电脑的项目下面，后面是「新建标签页」。

@@ -3,10 +3,10 @@ import SwiftUI
 /// A host in the list: its name and state, then, for a host that keeps
 /// projects (docs/projects.md, Rex Go), its projects of the space shown in
 /// order of last use, those not used for 30 days under Older, and its tabs
-/// with no project, which every space shows. A project opens to its tabs
-/// and a New Tab row. A host away shows its projects as last seen, greyed,
-/// only to read. A host of before projects lists its sessions and their
-/// tabs, as before.
+/// with no project, which every space shows, tiled after them. A project
+/// opens to its tabs and a New Tab row. A host away shows its projects as
+/// last seen, greyed, only to read. A host of before projects lists its
+/// sessions and their tabs, as before.
 struct HostSection: View {
     let host: Host
     /// The space shown; "" is Default.
@@ -14,7 +14,7 @@ struct HostSection: View {
     /// The spaces the picker lists, for Move to Space.
     let spaces: [String]
     @Binding var collapsed: Set<String>
-    /// The projects, Older and tabs with no project open, by key.
+    /// The projects and Older open, by key.
     @Binding var expanded: Set<String>
     let query: String
     let open: (TerminalTarget) -> Void
@@ -44,8 +44,7 @@ struct HostSection: View {
     /// The project whose folder is gone, which can only be closed.
     @State private var missing: Host.Session?
 
-    /// The key of a project, Older or the tabs with no project of a host,
-    /// as expanded keeps them.
+    /// The key of a project or Older of a host, as expanded keeps it.
     static func key(_ host: Host, _ id: String) -> String { host.id.uuidString + "|" + id }
 
     private var hostKey: String { host.id.uuidString }
@@ -228,8 +227,10 @@ struct HostSection: View {
                 ForEach(Array(older.enumerated()), id: \.element.id) { i, s in project(s, divider: i < older.count - 1) }
             }
         }
+        // The tabs with no project are tiled, not grouped: their rows and
+        // New Tab, with no row of their own to fold.
         if query.isEmpty || !looseTabs.isEmpty {
-            group("loose", Text("Tabs with No Project"), count: looseTabs.count) {
+            card {
                 rows(looseTabs, more: true)
                 newTabRow { newLooseTab() }
             }
@@ -307,8 +308,8 @@ struct HostSection: View {
         }
     }
 
-    /// A card of a title row that opens to its content: Older, or the tabs
-    /// with no project, both folded at first.
+    /// A card of a title row that opens to its content: Older, folded at
+    /// first.
     private func group(_ id: String, _ title: Text, count: Int, @ViewBuilder content: () -> some View) -> some View {
         let k = Self.key(host, id)
         let isOpen = expanded.contains(k) || !query.isEmpty
@@ -372,7 +373,7 @@ struct HostSection: View {
                 }
             }
             if !l.loose.isEmpty {
-                group("loose", Text("Tabs with No Project"), count: l.loose.count) { awayTabs(l.loose) }
+                card { awayTabs(l.loose) }
             }
         }
         .saturation(0)
@@ -474,7 +475,6 @@ struct HostSection: View {
             defer { creating = false }
             do {
                 if let (s, b) = try await host.newLooseTab() {
-                    expanded.insert(Self.key(host, "loose"))
                     open(TerminalTarget(host: host.id, session: s, block: b, title: ""))
                 }
             } catch {
