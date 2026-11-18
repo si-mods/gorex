@@ -335,6 +335,14 @@ page, so `npm ci` in a build does not fetch it and its runtime. Then
 trust the page's origin on each host:
 `gorex rexapi web allow https://gorex-web.<account>.workers.dev`.
 
+On a push to `main` that touches the page's files (`web/**`, `assets/**`,
+`ios/GoRex/ghostty-themes.json`, `go.mod`/`go.sum`), `.github/workflows/web.yml`
+deploys it the same way: it runs `node build.mjs --ci`, then Wrangler 4.152.0's
+`deploy`, in `web/`. It reads two secrets, `CLOUDFLARE_API_TOKEN` (a token with
+the Workers Scripts: Edit permission) and `CLOUDFLARE_ACCOUNT_ID`; a run with
+neither skips the deploy, as the R2 job skips its upload without the R2
+secrets. `gh workflow run web.yml -R si-mods/gorex` deploys on demand.
+
 `web/_headers`, which the build copies into `dist`, sets the files'
 headers on Cloudflare:
 
