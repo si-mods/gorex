@@ -1,7 +1,10 @@
 # Design
 
 How GoRex's UI is drawn, for anyone adding to it. Read this before you
-build a new surface, overlay or visual state.
+build a new surface, overlay or visual state. GoRex's own drawn UI
+(`style.go`, `view.go`, `tabs.go`, `host.go`) is the only style source: a new
+window or page reuses its colors, cards, title bar and selected states, not
+stock MyGo widgets.
 
 ## Shaders
 
@@ -150,3 +153,11 @@ system"), and no radius is picked on its own:
   and Linux keep their panes' rounding (`cardR` 8) in every window state.
 - **Fixed**, a radius of its own: what sits away from any corner, as a
   toast, a badge or a button in a dialog's padding.
+
+## Icons
+
+Every icon, on the desktop and in the web client, is a lucide SVG from
+`assets/icons/` (`programs.go` on the desktop, `icon(name)` in
+`web/src/hosts.ts` on the web). A Unicode character (✓ ✕ ⌄ +) never
+stands in for one: when an icon is missing, copy its lucide SVG into
+`assets/icons/`.
