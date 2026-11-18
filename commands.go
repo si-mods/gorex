@@ -1125,7 +1125,12 @@ func (a *App) restartFocused() {
 		if t.Zoom == old {
 			t.Zoom = p
 		}
-		a.disposePane(old, true)
+		// The old session ends once the host has the tab with the new
+		// pane: its exit would change the tab first, and the host would
+		// refuse the app's change, built on the tab as it was, and show
+		// its own, with no new pane.
+		a.disposePane(old, false)
+		a.st.sendOn(old.host, rex.LayoutCommand{Op: "layout.apply"}, func(rex.LayoutCommand) { killOn(old.host, old.SID) })
 		// The focus moved meanwhile stays.
 		if t.Focus == old {
 			t.Focus = nil

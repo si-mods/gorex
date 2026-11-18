@@ -496,7 +496,9 @@ func (o *outbox) run() {
 // holds off (take), it leaves for a read after.
 func (o *outbox) takeOn(c *rex.Client, ls rex.LayoutState, sent uint64, force bool) {
 	o.mu.Lock()
-	current := c == o.client && sent == o.sent
+	// A command on its way is not counted in sent yet, and the layout
+	// read before it does not show it: taking that layout would undo it.
+	current := c == o.client && sent == o.sent && !o.sending
 	o.taking = false
 	take := o.take
 	o.mu.Unlock()
