@@ -82,7 +82,7 @@ Made by the user on 2026-11-18, after a review of this design:
 11. **One "Tabs with no project" for each host**, shown in every space.
 12. **Projects homed on another host in v0.38.0** are made on that host
     when it connects, with the tabs they held there, and start no new
-    shell (revised after the review of #773; see Migration).
+    shell (chosen by the user after the review of #773; see Migration).
 13. **Clients cache each host's last projects**, to show an offline host;
     the cache is only shown, never changed.
 14. **Projects are in order of last use**, as Codex lists them.
