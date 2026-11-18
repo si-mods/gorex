@@ -38,27 +38,36 @@ GoRex.
 - At launch the cloud wins: a key it holds is written into `UserDefaults`. A key
   it lacks is pushed from the device, so the first launch after the update
   seeds the cloud.
-- Afterwards a change from another device is applied as iCloud tells it
-  (the account changing re-applies every key), and a change made here is
-  pushed. A value is written only where it differs, and only a change made on
-  the device is pushed, so nothing loops and what came from the cloud does not go back.
-- Removing a key removes it on the other side too. An empty API key means
-  polish is off, so clearing it clears it on every device.
+- The key-value store drops what is written before its first download, so
+  the launch seed can be lost. After the first download (initial sync), an
+  account change or a quota violation, every key is reconciled again: the
+  cloud's value is taken, or, where the cloud has none, this device's is
+  pushed. That also seeds a new iCloud account. These never delete a local value.
+- A server change names its keys: each is applied, and a key another device
+  removed is removed here.
+- A change made here is pushed. A value is written only where it differs, and
+  only a change made on the device is pushed, so nothing loops and what came
+  from the cloud does not go back.
+- Removing a key on a device removes it in the cloud too. An empty API key
+  means polish is off, so clearing it clears it on every device.
+- The key is saved when its field is submitted or the page closes, not per
+  keystroke, so that a partial key does not sync.
 - The terminals are told as Settings tells them (`.terminalFont`,
   `.terminalTheme`, `.minimumContrast`), so open ones follow.
 
 ## Maple Mono
 
 The font family `Maple Mono NF CN` is downloaded per device. A device applies
-it from the cloud only when the font is installed there; otherwise it keeps its
+it from the cloud only when the font is installed there (and again when a
+download finishes); otherwise it keeps its
 own value and the cloud keeps Maple for the devices that have it. Deleting the
 font takes the family out of that device's settings only: the cloud keeps it.
 
 ## Key migration
 
 An older build kept the key in a local item. At launch, `Polish.syncKey()`
-saves it again as synchronizable and removes the local one; a synchronizable
-key already there stays, and the local one goes.
+saves it again as synchronizable, replacing a synced one, and removes the
+local one. The old item is the newest, as only an older build writes it.
 
 ## Downgrade
 

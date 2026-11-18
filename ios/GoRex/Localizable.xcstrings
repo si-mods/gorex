@@ -1316,12 +1316,12 @@
         }
       }
     },
-    "The mic types what you say into the terminal, without pressing Return; the model you choose recognises it on this device. Fun-ASR-Nano and Qwen3-ASR are larger and slower: on a Mac they take 2 to 2.6 GB of memory, and phones with less may not run them. Swipe a model to delete it. With an API key, the text you dictate and words from the terminal screen go to the service you set here, which corrects misheard terms and punctuation. Without a key, nothing leaves the device. The key and these settings sync through iCloud to your other devices.": {
+    "The mic types what you say into the terminal, without pressing Return; the model you choose recognises it on this device. Fun-ASR-Nano and Qwen3-ASR are larger and slower: on a Mac they take 2 to 2.6 GB of memory, and phones with less may not run them. Swipe a model to delete it. With an API key, the text you dictate and words from the terminal screen go to the service you set here, which corrects misheard terms and punctuation. Without a key, nothing you dictate leaves the device. The key and these settings sync through iCloud to your other devices.": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "麦克风把你说的话打进终端，但不按回车；语音由你选的模型在本机上识别。Fun-ASR-Nano 和 Qwen3-ASR 更大、更慢：在 Mac 上要占 2 到 2.6 GB 内存，内存更小的手机可能跑不动。左滑模型可删除它。填了 API 密钥后，你听写的文字和终端屏幕上的单词会发到你在这里设置的服务，由它纠正听错的术语和标点。没有密钥时，什么都不会离开本机。密钥和这些设置会通过 iCloud 同步到你的其他设备。"
+            "value": "麦克风把你说的话打进终端，但不按回车；语音由你选的模型在本机上识别。Fun-ASR-Nano 和 Qwen3-ASR 更大、更慢：在 Mac 上要占 2 到 2.6 GB 内存，内存更小的手机可能跑不动。左滑模型可删除它。填了 API 密钥后，你听写的文字和终端屏幕上的单词会发到你在这里设置的服务，由它纠正听错的术语和标点。没有密钥时，你听写的内容不会离开本机。密钥和这些设置会通过 iCloud 同步到你的其他设备。"
           }
         }
       }

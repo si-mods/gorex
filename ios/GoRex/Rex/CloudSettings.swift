@@ -75,14 +75,7 @@ final class CloudSettings {
         guard !started else { return }
         started = true
         _ = cloud.synchronize()
-        for k in Self.keys {
-            if let value = cloudValue(k.key) {
-                apply(value, to: k.key)
-            } else {
-                known[k.key] = localValue(k.key)
-                push(k.key)
-            }
-        }
+        for k in Self.keys { reconcile(k.key) }
         let center = NotificationCenter.default
         center.addObserver(forName: NSUbiquitousKeyValueStore.didChangeExternallyNotification, object: nil, queue: .main) { [weak self] n in
             let keys = n.userInfo?[NSUbiquitousKeyValueStoreChangedKeysKey] as? [String] ?? []
@@ -94,20 +87,43 @@ final class CloudSettings {
         }
     }
 
-    /// The cloud changed under us: take the keys it names, or all of them
-    /// when the account changed.
-    func cloudChanged(keys changed: [String], reason: Int?) {
-        let all = reason == NSUbiquitousKeyValueStoreAccountChange
-        for k in Self.keys where all || changed.contains(k.key) {
-            if let value = cloudValue(k.key) {
-                apply(value, to: k.key)
-            } else if !all, localValue(k.key) != nil {
-                // Removed on another device.
-                known[k.key] = nil
-                defaults.removeObject(forKey: k.key)
-                tell(k.key)
-            }
+    /// The cloud's value of a key if it has one, else this device's, which
+    /// is then sent; never a deletion.
+    private func reconcile(_ key: String) {
+        if let value = cloudValue(key) {
+            apply(value, to: key)
+        } else {
+            known[key] = localValue(key)
+            push(key)
         }
+    }
+
+    /// The cloud changed under us. A server change names its keys: each is
+    /// taken, or removed here when another device removed it. After the
+    /// first download, an account change or a quota violation, the cloud may
+    /// lack what this device wrote before, so every key is reconciled: taken
+    /// from the cloud, or sent from here.
+    func cloudChanged(keys changed: [String], reason: Int?) {
+        if reason == nil || reason == NSUbiquitousKeyValueStoreServerChange {
+            for k in Self.keys where changed.contains(k.key) {
+                if let value = cloudValue(k.key) {
+                    apply(value, to: k.key)
+                } else if localValue(k.key) != nil {
+                    // Removed on another device.
+                    known[k.key] = nil
+                    defaults.removeObject(forKey: k.key)
+                    tell(k.key)
+                }
+            }
+        } else {
+            for k in Self.keys { reconcile(k.key) }
+        }
+    }
+
+    /// A key's cloud value, if it has one, taken again: Maple Mono came
+    /// after it was skipped.
+    func recheck(_ key: String) {
+        if let value = cloudValue(key) { apply(value, to: key) }
     }
 
     /// Defaults changed: send the synced keys that this device changed.

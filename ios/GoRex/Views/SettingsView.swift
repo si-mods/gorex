@@ -337,7 +337,7 @@ private struct TerminalSettings: View {
                 ForEach(Dictation.Model.allCases, id: \.self, content: speech)
                 Group {
                     LabeledContent("API Key") {
-                        SecureField("Off", text: $key).onChange(of: key) { Polish.savedKey = key }
+                        SecureField("Off", text: $key).onSubmit(saveKey)
                     }
                     LabeledContent("Base URL") {
                         TextField(Polish.defaultBase, text: $base).keyboardType(.URL)
@@ -353,7 +353,7 @@ private struct TerminalSettings: View {
             } header: {
                 Text("Dictation")
             } footer: {
-                Text("The mic types what you say into the terminal, without pressing Return; the model you choose recognises it on this device. Fun-ASR-Nano and Qwen3-ASR are larger and slower: on a Mac they take 2 to 2.6 GB of memory, and phones with less may not run them. Swipe a model to delete it. With an API key, the text you dictate and words from the terminal screen go to the service you set here, which corrects misheard terms and punctuation. Without a key, nothing leaves the device. The key and these settings sync through iCloud to your other devices.")
+                Text("The mic types what you say into the terminal, without pressing Return; the model you choose recognises it on this device. Fun-ASR-Nano and Qwen3-ASR are larger and slower: on a Mac they take 2 to 2.6 GB of memory, and phones with less may not run them. Swipe a model to delete it. With an API key, the text you dictate and words from the terminal screen go to the service you set here, which corrects misheard terms and punctuation. Without a key, nothing you dictate leaves the device. The key and these settings sync through iCloud to your other devices.")
             }
             Section {
                 ForEach(contrasts, id: \.0) { value, name in
@@ -388,8 +388,14 @@ private struct TerminalSettings: View {
         .scrollContentBackground(.hidden)
         .background(Color.page)
         .stopsDownload($stopping)
+        // Saved when done, not per keystroke: it syncs to other devices.
+        .onDisappear(perform: saveKey)
         .navigationTitle("Terminal")
         .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private func saveKey() {
+        if key != (Polish.savedKey ?? "") { Polish.savedKey = key }
     }
 
     private func row(_ f: String, _ name: String) -> some View {

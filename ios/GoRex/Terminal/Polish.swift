@@ -145,8 +145,15 @@ nonisolated extension Polish {
             return String(decoding: data, as: UTF8.self)
         }
         set {
-            SecItemDelete(query([kSecAttrSynchronizable: kSecAttrSynchronizableAny]))
-            guard let newValue, !newValue.isEmpty else { return }
+            let any = query([kSecAttrSynchronizable: kSecAttrSynchronizableAny])
+            guard let newValue, !newValue.isEmpty else {
+                SecItemDelete(any)
+                return
+            }
+            // An update keeps the item, which sync follows better than a
+            // delete and an add.
+            if SecItemUpdate(any, [kSecValueData: Data(newValue.utf8)] as CFDictionary) == errSecSuccess { return }
+            SecItemDelete(any)
             SecItemAdd(query([
                 kSecValueData: Data(newValue.utf8), kSecAttrSynchronizable: true,
                 kSecAttrAccessible: kSecAttrAccessibleAfterFirstUnlock,
@@ -155,18 +162,20 @@ nonisolated extension Polish {
     }
 
     /// Moves a key that an older build kept on this device only to the
-    /// iCloud Keychain. A key already there stays, and the old one goes.
+    /// iCloud Keychain. The old item is the newest, as only an older build
+    /// writes it, so it replaces a synced one; then it goes.
     static func syncKey() {
         var local: CFTypeRef?
         guard SecItemCopyMatching(query([kSecReturnData: true, kSecAttrSynchronizable: false]), &local) == errSecSuccess,
               let data = local as? Data else { return }
-        if SecItemCopyMatching(query([kSecAttrSynchronizable: true]), nil) != errSecSuccess {
-            let added = SecItemAdd(query([
+        var status = SecItemUpdate(query([kSecAttrSynchronizable: true]), [kSecValueData: data] as CFDictionary)
+        if status == errSecItemNotFound {
+            status = SecItemAdd(query([
                 kSecValueData: data, kSecAttrSynchronizable: true,
                 kSecAttrAccessible: kSecAttrAccessibleAfterFirstUnlock,
             ]), nil)
-            guard added == errSecSuccess else { return }
         }
+        guard status == errSecSuccess else { return }
         SecItemDelete(query([kSecAttrSynchronizable: false]))
     }
 }

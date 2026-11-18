@@ -46,6 +46,7 @@ import zlib
             do {
                 try await fetch()
                 register()
+                CloudSettings.shared.recheck("fontFamily")
             } catch {
                 if !Task.isCancelled { self.error = error.localizedDescription }
             }

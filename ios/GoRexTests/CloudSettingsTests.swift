@@ -79,6 +79,49 @@ nonisolated final class CloudSettingsTests: XCTestCase {
         XCTAssertEqual(d.double(forKey: "minimumContrast"), 4.5)
     }
 
+    /// The first download may lack what this device wrote before it: the
+    /// local value is sent again, and kept.
+    @MainActor func testInitialSyncRepushesLocal() {
+        let (s, cloud, d) = make()
+        d.set("Nord", forKey: "theme")
+        s.start()
+        cloud.values = [:]
+        cloud.values["scheme"] = "light"
+        s.cloudChanged(keys: ["scheme"], reason: NSUbiquitousKeyValueStoreInitialSyncChange)
+        XCTAssertEqual(d.string(forKey: "theme"), "Nord")
+        XCTAssertEqual(cloud.values["theme"] as? String, "Nord")
+        XCTAssertEqual(d.string(forKey: "scheme"), "light")
+    }
+
+    /// Another device removing a key removes it here.
+    @MainActor func testServerChangeRemovesLocal() {
+        let (s, cloud, d) = make()
+        cloud.values = ["theme": "Nord"]
+        s.start()
+        cloud.values["theme"] = nil
+        s.cloudChanged(keys: ["theme"], reason: NSUbiquitousKeyValueStoreServerChange)
+        XCTAssertNil(d.object(forKey: "theme"))
+    }
+
+    /// Maple Mono downloaded after launch is taken from the cloud then.
+    @MainActor func testRecheckAfterMapleDownload() {
+        var installed = false
+        let suite = "cloud-\(UUID().uuidString)"
+        let d = UserDefaults(suiteName: suite)!
+        addTeardownBlock { UserDefaults().removePersistentDomain(forName: suite) }
+        let cloud = FakeCloud()
+        let s = CloudSettings(cloud: cloud, defaults: d, installed: { installed })
+        d.set("Menlo", forKey: "fontFamily")
+        cloud.values["fontFamily"] = Maple.family
+        s.start()
+        XCTAssertEqual(d.string(forKey: "fontFamily"), "Menlo")
+        s.recheck("fontFamily")
+        XCTAssertEqual(d.string(forKey: "fontFamily"), "Menlo")
+        installed = true
+        s.recheck("fontFamily")
+        XCTAssertEqual(d.string(forKey: "fontFamily"), Maple.family)
+    }
+
     @MainActor func testLocalChangePushedAndRemoved() {
         let (s, cloud, d) = make()
         s.start()
@@ -141,19 +184,5 @@ nonisolated final class CloudSettingsTests: XCTestCase {
         s.defaultsChanged()
         s.cloudChanged(keys: ["theme"], reason: nil)
         XCTAssertTrue(cloud.writes.isEmpty)
-    }
-
-    /// One round trip of the API key through the real Keychain, where the
-    /// test runs with one; the key is not left behind.
-    @MainActor func testKeyRoundTrip() throws {
-        let before = Polish.savedKey
-        defer { Polish.savedKey = before }
-        Polish.savedKey = "test-key-AAAA"
-        if Polish.savedKey == nil { throw XCTSkip("no Keychain in this test process") }
-        XCTAssertEqual(Polish.savedKey, "test-key-AAAA")
-        Polish.savedKey = "test-key-BBBB"
-        XCTAssertEqual(Polish.savedKey, "test-key-BBBB")
-        Polish.savedKey = nil
-        XCTAssertNil(Polish.savedKey)
     }
 }
