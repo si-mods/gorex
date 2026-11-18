@@ -88,7 +88,7 @@ func TestProjectCreate(t *testing.T) {
 	if vs, _ := c.welcome["feature_versions"].(map[string]any); vs[featureProjects] != float64(2) {
 		t.Fatalf("welcome feature_versions %v", c.welcome["feature_versions"])
 	}
-	folder := t.TempDir()
+	folder := realDir(t, t.TempDir())
 	res := callChecked(t, c, "gorex.project.create", map[string]any{"name": "windflow", "dir": folder, "space": "Work"})
 	pid, tid := res["project_id"].(string), res["tab_id"].(string)
 	if pid == "" || tid == "" {
@@ -147,7 +147,7 @@ func TestProjectSetHomeShim(t *testing.T) {
 		})["session_id"].(string)
 	}
 	sid := create()
-	folder := t.TempDir()
+	folder := realDir(t, t.TempDir())
 	res := callChecked(t, c, "gorex.project.set_home", map[string]any{"session_id": sid, "machine_id": self, "dir": folder})
 	if p, _ := res["project"].(map[string]any); p["dir"] != realDir(t, folder) || p["home_machine"] != self {
 		t.Fatalf("set_home answered %v", res)

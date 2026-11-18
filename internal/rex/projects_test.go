@@ -143,7 +143,7 @@ func TestMigrateKeepsShells(t *testing.T) {
 func TestProjectAdopt(t *testing.T) {
 	_, c := applyFixture(t)
 	cmd, _ := testShell()
-	folder := t.TempDir()
+	folder := realDir(t, t.TempDir())
 	// Two shells a remote desktop started here, each in a tab of its own,
 	// and a third that ended.
 	a := command(t, c, LayoutCommand{Op: "tab.create", Command: cmd})
@@ -204,7 +204,7 @@ func TestProjectAdopt(t *testing.T) {
 func TestProjectCreate(t *testing.T) {
 	_, c := applyFixture(t)
 	cmd, _ := testShell()
-	folder := t.TempDir()
+	folder := realDir(t, t.TempDir())
 	work := "Work"
 	res := command(t, c, LayoutCommand{Op: "project.create", Dir: folder, SpaceName: &work, Command: cmd})
 	p := spaceOf(t, c, res.Space)
