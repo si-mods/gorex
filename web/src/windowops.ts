@@ -2,7 +2,8 @@ import { HostConn } from "./hostconn";
 import { Msg, t } from "./i18n";
 import { closeMenu, confirmDanger, DropZone, focusRename, MenuItem, renameField, zoneSplit } from "./manage";
 import { describe } from "./pane";
-import { hold, paneName, sidebar as drawSidebar, spaceName, windowName, windowTitle } from "./sidebar";
+import { hold, lineText, paneName, sidebar as drawSidebar, spaceName, windowName, windowTitle } from "./sidebar";
+import type { Line } from "./projects";
 import { layoutOf, leavesOf, WindowView } from "./window";
 
 export interface WindowOpsDeps {
@@ -15,6 +16,7 @@ export interface WindowOpsDeps {
   want: (since: number, w: { host: string; session: string; window: string }) => void;
   showWanted: () => void;
   newWindow: (conn: HostConn, session: string) => void;
+  projectLine: (conn: HostConn, session: string) => Line | undefined;
   newProject: (conn: HostConn | undefined) => void;
   changeFolder: (conn: HostConn, session: string) => void;
   removeFolder: (conn: HostConn, session: string) => void;
@@ -45,7 +47,12 @@ export function createWindowOps(deps: WindowOpsDeps) {
   function spacesMenu(conn: HostConn, current: string): MenuItem[] {
     const spaces: MenuItem[] = [...conn.sessions.values()]
       .filter((o) => o.view)
-      .map((o) => ({ label: spaceName(o), disabled: o.id === current, run: () => showSpace(conn, o.id) }));
+      .map((o) => {
+        // Projects of one name differ by their folder, so the folder shows under the name, and with the full name in a tooltip.
+        const line = deps.projectLine(conn, o.id);
+        const detail = line ? lineText(line) : undefined;
+        return { label: spaceName(o), detail, title: [spaceName(o), detail].filter(Boolean).join("\n"), disabled: o.id === current, run: () => showSpace(conn, o.id) };
+      });
     const make: MenuItem[] = conn.keepsProjects
       ? [{ label: t("cmdNewSpace"), run: () => deps.newProject(conn) }, { label: t("cmdNewProjectNoFolder"), run: () => newSpace(conn) }]
       : [{ label: t("cmdNewSpace"), run: () => newSpace(conn) }];

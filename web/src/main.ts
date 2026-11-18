@@ -892,6 +892,7 @@ const {
   want,
   showWanted,
   newWindow,
+  projectLine: (c, s) => projectOps.line(c, s),
   newProject: (c) => void projectOps.newProject(c),
   changeFolder: (c, s) => void projectOps.changeFolder(c, s),
   removeFolder: (c, s) => void projectOps.removeFolder(c, s),

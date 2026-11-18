@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
-import { childPath, crumbs, defaultHost, DirAnswer, FolderBrowser, folderName, HostRef, hostState, isFolderMissing, parse, parseDirs, planNewWindow, projectLine } from "../src/projects";
+import { browserCrumbs, childPath, collapseCrumbs, crumbs, defaultHost, DirAnswer, FolderBrowser, folderName, HostRef, hostState, isFolderMissing, parse, parseDirs, planNewWindow, projectLine } from "../src/projects";
 
 const office: HostRef = { id: "h-office", name: "office", machine: "M-office", connected: true };
 const laptop: HostRef = { id: "h-laptop", name: "laptop", machine: "M-laptop", connected: true };
@@ -193,4 +193,54 @@ test("no message of the page says Space where a project is meant", () => {
   for (const [k, v] of Object.entries(zh)) {
     if (typeof v === "string") assert.ok(!v.includes("空间"), `zh ${k}: ${v}`);
   }
+});
+
+const drives = () => answer("/", ["C:\\", "D:\\"]);
+
+test("the Windows drives listing cannot be chosen, and is one crumb", async () => {
+  const b = new FolderBrowser(async () => drives());
+  await b.go("/");
+  assert.ok(b.atDrives);
+  assert.ok(!b.canChoose);
+  assert.deepEqual(browserCrumbs(b.path, b.atDrives, "This PC"), [{ name: "This PC", path: "/" }]);
+  // A Unix root is a folder: it can be chosen.
+  const u = new FolderBrowser(async () => answer("/", ["usr", "home"]));
+  await u.go("/");
+  assert.ok(!u.atDrives);
+  assert.ok(u.canChoose);
+});
+
+test("a Windows path's crumbs start at This PC, a Unix path's at its root", () => {
+  assert.deepEqual(browserCrumbs("C:\\a\\b", false, "PC").map((c) => c.name), ["PC", "C:\\", "a", "b"]);
+  assert.deepEqual(browserCrumbs("/a/b", false, "PC").map((c) => c.name), ["/", "a", "b"]);
+});
+
+test("collapseCrumbs keeps the first and the last, and hides the ones after the first", () => {
+  const cs = ["/", "a", "b", "c", "d"];
+  assert.deepEqual(collapseCrumbs(cs, 0), { head: ["/"], gone: [], tail: ["a", "b", "c", "d"] });
+  assert.deepEqual(collapseCrumbs(cs, 2), { head: ["/"], gone: ["a", "b"], tail: ["c", "d"] });
+  assert.deepEqual(collapseCrumbs(cs, 99), { head: ["/"], gone: ["a", "b", "c"], tail: ["d"] });
+  assert.deepEqual(collapseCrumbs(["x"], 3), { head: ["x"], gone: [], tail: [] });
+});
+
+test("goNearest lists the nearest folder that exists above a missing one", async () => {
+  const tree: Record<string, DirAnswer> = {
+    "/home/me": answer("/home/me", ["code"]),
+    "": answer("/home/me", ["code"]),
+  };
+  const b = new FolderBrowser(async (p) => tree[p] ?? answer(p, [], { code: "not_found" }));
+  await b.goNearest("/home/me/gone/deeper");
+  assert.equal(b.path, "/home/me");
+  assert.equal(b.missing, "/home/me/gone/deeper");
+  assert.equal(b.code, undefined);
+  assert.ok(b.canChoose);
+  await b.go("/home/me");
+  assert.equal(b.missing, undefined);
+  // Nothing above exists: the home directory.
+  await b.goNearest("/zzz/y");
+  assert.equal(b.path, "/home/me");
+  assert.equal(b.missing, "/zzz/y");
+  // A folder that is there is listed as it is.
+  await b.goNearest("/home/me");
+  assert.equal(b.missing, undefined);
 });

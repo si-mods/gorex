@@ -263,9 +263,11 @@ function spaceSection(nav: HTMLElement, c: HostConn, s: Session) {
       sub.textContent = lineText(line);
       sub.title = sub.textContent;
       h.classList.add("has-folder");
+      h.title = `${spaceName(s)}\n${sub.textContent}`;
       name.append(sub);
     }
     h.append(name, add);
+    if (!line) h.title = spaceName(s);
   }
   onMenu(h, (x, y) => openMenu(x, y, app.spaceMenu(c, s.id), () => app.shown()?.focusKeys()));
   nav.append(h);
