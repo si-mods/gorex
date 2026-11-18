@@ -219,8 +219,10 @@ nonisolated final class HostTests: XCTestCase {
     /// A window with neither a name nor a title takes its project's
     /// folder's name, else its program's, never the server's "Window <ID>".
     @MainActor func testUntitledWindowTakesFolderOrProgramNotItsID() async throws {
-        XCTAssertEqual(try await untitledTitle(dir: "/tmp/demo/acme-api"), "acme-api")
-        XCTAssertEqual(try await untitledTitle(dir: nil), "zsh")
+        let inFolder = try await untitledTitle(dir: "/tmp/demo/acme-api")
+        XCTAssertEqual(inFolder, "acme-api")
+        let loose = try await untitledTitle(dir: nil)
+        XCTAssertEqual(loose, "zsh")
     }
 
     /// The title of a window with the server's default label, no name and
