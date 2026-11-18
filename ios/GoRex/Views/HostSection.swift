@@ -242,7 +242,7 @@ struct HostSection: View {
         let k = Self.key(host, s.id)
         let isOpen = expanded.contains(k) || !query.isEmpty
         Button { toggle(k) } label: {
-            ProjectRow(name: s.label, dir: s.project?.dir ?? "", color: s.project?.color,
+            ProjectRow(name: s.label, color: s.project?.color,
                        count: s.view?.windows?.count ?? 0, open: isOpen, busy: opening.contains(s.id), divider: divider || isOpen)
         }
         .buttonStyle(.plain)
@@ -385,7 +385,7 @@ struct HostSection: View {
         let k = Self.key(host, p.id)
         let isOpen = expanded.contains(k)
         Button { toggle(k) } label: {
-            ProjectRow(name: p.name, dir: p.dir, color: p.color, count: p.tabs.count, open: isOpen, divider: divider || isOpen)
+            ProjectRow(name: p.name, color: p.color, count: p.tabs.count, open: isOpen, divider: divider || isOpen)
         }
         .buttonStyle(.plain)
         // No tile to line up with the folder's icon: the titles start at the project's name.
@@ -712,11 +712,10 @@ struct HostSection: View {
     }
 }
 
-/// A project's row: its folder's icon in the project's color, its name
-/// and folder, the number of its tabs, and whether it is open.
+/// A project's row: its folder's icon in the project's color, its name,
+/// the number of its tabs, and whether it is open.
 struct ProjectRow: View {
     let name: String
-    let dir: String
     let color: String?
     let count: Int
     let open: Bool
@@ -725,19 +724,12 @@ struct ProjectRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            // Only a mark: the row reads as its name and folder.
+            // Only a mark: the row reads as its name.
             Image(systemName: "folder.fill")
                 .foregroundStyle(Color(project: color) ?? .secondary)
                 .frame(width: 24)
                 .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 1) {
-                Text(verbatim: name).font(.body.weight(.semibold)).lineLimit(1)
-                Text(verbatim: ProjectFolder.short(dir))
-                    .font(.caption.monospaced())
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.head)
-            }
+            Text(verbatim: name).font(.body.weight(.semibold)).lineLimit(1)
             Spacer(minLength: 8)
             if busy {
                 ProgressView()

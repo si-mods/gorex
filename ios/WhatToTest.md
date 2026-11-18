@@ -52,6 +52,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - On a phone that shows its clock at the side, such as a folded iPhone, a terminal's back button, title and menu stay in the bar at the top, and the terminal fills the width under the clock.
 - Fun-ASR-Nano and Qwen3-ASR download from GitHub now where Hugging Face cannot be reached, and a download that stopped picks up where it left off.
 - The tabs with no project are no longer folded under a row of their own: each shows as its own row under the host's projects, with New Tab after them.
+- A project's row no longer puts its folder's path under the name: it shows the project's name, its tab count and its fold, as the desktop's list does.
 
 ## zh-Hans
 
@@ -96,3 +97,4 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - 切换空间的按钮现在和侧栏顶部的搜索、侧栏开关在同一行；空间名太长时末尾显示省略号。
 - 语音模型在 Hugging Face 连不上时改为从 GitHub 下载：Fun-ASR-Nano 和 Qwen3-ASR 现在能下完了，下载中断过也会接着下。
 - 没有项目的标签页不再折叠在一行里：每个标签页都直接列在电脑的项目下面，后面是「新建标签页」。
+- 项目行不再在名字下面显示文件夹路径：只显示项目名、标签页数量和展开箭头，和桌面版的列表一致。

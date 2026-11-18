@@ -434,21 +434,21 @@ that names it.
 │ ☰        Work ▾             [S] │   ← space picker
 ├─────────────────────────────────┤
 │ [H] This Mac                  + │   ← + makes a project here
-│   [F] gorex  ~/code/gorex   3 ⌄ │
+│   [F] gorex                 3 ⌄ │
 │       dev                    ›  │
 │       logs                   ›  │
 │       review                 ›  │
 │       + New Tab                 │
-│   [F] notes  ~/notes        1 › │
+│   [F] notes                 1 › │
 │       dev                    ›  │
 │       logs                   ›  │
 │       + New Tab                 │
 │                                 │
 │ [H] office-h800  ●            + │
-│   [F] trainer ~/work/trainer 2 ›│
+│   [F] trainer               2 › │
 │                                 │
 │ [H] old-laptop   ○ offline      │
-│   [F] site   ~/site         0 › │
+│   [F] site                  0 › │
 └─────────────────────────────────┘
 ```
 
@@ -457,6 +457,9 @@ that names it.
   its tabs with no project, tiled flat: a row each, with a New Tab row
   after them, and no row of their own to fold. A project expands to its
   tabs and a New Tab row.
+- A project's row shows its folder icon in its color, its name, its tab
+  count and whether it is open; the folder itself does not show in the
+  list, as on the desktop and the web client.
 - An offline host shows its projects greyed, from the copy the app kept
   when it last saw them.
 - The host's `+ ` opens the folder browser of v0.38.0 on that host and
