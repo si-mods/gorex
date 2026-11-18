@@ -161,9 +161,28 @@ jobs:
           node-version: 24
           cache: npm
           cache-dependency-path: web/package-lock.json
+      # Reuse the built ghostty-vt wasm: web/build.mjs skips the Zig build when
+      # $GOREX_WEB_CACHE has it. The key holds the Ghostty commit, the Zig version
+      # and a hash of build.mjs (which holds the build flags), so any change there
+      # builds cold. Only the wasm file is cached, not the clone or the toolchain.
+      - name: ghostty-vt wasm cache key
+        id: wasm
+        run: |
+          commit=$(sed -n 's/^const COMMIT = "\([0-9a-f]*\)";/\1/p' web/build.mjs)
+          zig=$(sed -n 's/^const ZIG_VERSION = "\([^"]*\)";/\1/p' web/build.mjs)
+          [ -n "$commit" ] && [ -n "$zig" ] || { echo "::error::COMMIT or ZIG_VERSION not found in web/build.mjs"; exit 1; }
+          echo "cache=$RUNNER_TEMP/gorex-web" >> "$GITHUB_OUTPUT"
+          echo "file=$RUNNER_TEMP/gorex-web/ghostty-vt-${commit:0:12}.wasm" >> "$GITHUB_OUTPUT"
+          echo "key=ghostty-vt-$commit-zig-$zig-${{ hashFiles('web/build.mjs') }}" >> "$GITHUB_OUTPUT"
+      - name: ghostty-vt wasm cache
+        uses: actions/cache@v6
+        with:
+          path: ${{ steps.wasm.outputs.file }}
+          key: ${{ steps.wasm.outputs.key }}
       - name: build and upload to R2
         working-directory: web
         env:
+          GOREX_WEB_CACHE: ${{ steps.wasm.outputs.cache }}
           R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
           R2_BUCKET: ${{ secrets.R2_BUCKET }}
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
