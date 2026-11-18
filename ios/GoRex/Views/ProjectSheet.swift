@@ -213,7 +213,8 @@ struct FolderBrowser: View {
                         }
                         .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                             Button("Use", systemImage: "checkmark") { use(listing.child(d)) }
-                                .tint(.accentColor)
+                                // Blue: the accent is white in the dark scheme, as its icon is.
+                                .tint(.blue)
                         }
                         .contextMenu {
                             Button("Use This Folder", systemImage: "checkmark.circle") { use(listing.child(d)) }
