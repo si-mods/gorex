@@ -533,9 +533,13 @@ npm run build     # node build.mjs; Windows: the same, from PowerShell or Git Ba
 2. It clones Ghostty and checks out the pinned commit. This is the same
    commit as `ios/scripts/build-ghostty-vt.sh`. Pass
    `--ghostty-source <path>` to use a checkout you already have.
-3. It runs
-   `zig build -Demit-lib-vt -Dtarget=wasm32-freestanding -Doptimize=ReleaseSmall`.
-   It keeps `ghostty-vt.wasm` (about 910 KB) in the cache, so the next
+3. It fetches the Zig packages that libghostty-vt needs (Ghostty's
+   `deps/libghostty-vt.txt`) into the cache, as Ghostty's
+   `nix/build-support/fetch-zig-cache.sh` does, and then runs
+   `zig build --system <packages> -Demit-lib-vt -Dtarget=wasm32-freestanding -Doptimize=ReleaseSmall`
+   with an empty Zig cache of its own. A `zig build` that fetches the
+   packages itself crashes Zig 0.17 in a fresh cache (a segfault at
+   `0xaaaaaaaaaaaaaaaa`, a general protection exception on x86_64). It keeps `ghostty-vt.wasm` (about 910 KB) in the cache, so the next
    build skips this step. `--rebuild-wasm` builds it again.
 4. It runs `npm ci` in `web/` if `web/node_modules` is missing, checks
    the catalogs and writes `src/locales.gen.ts` (`web/i18n.mjs`; see
