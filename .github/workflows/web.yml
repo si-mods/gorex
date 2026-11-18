@@ -1,0 +1,67 @@
+name: Web
+
+# Builds GoRex's web client and deploys it to Cloudflare Workers (the
+# `gorex-web` Worker of web/wrangler.jsonc), like `npm run deploy` does on
+# a developer's machine: the same web/dist, the same Wrangler 4.152.0. Only
+# the page's own changes upload it, with the files its build reads from the
+# repo (the terminal's wasm source, the fonts, the icons and brand marks,
+# the Ghostty themes). A change to this workflow redeploys too, so a
+# secret or command change takes effect at once. A run with no
+# CLOUDFLARE_API_TOKEN secret skips the upload, as the R2 job does.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - web/**
+      - assets/**
+      - ios/GoRex/ghostty-themes.json
+      - go.mod
+      - go.sum
+      - .github/workflows/web.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: web
+  # A deploy's run always goes to its end: a newer push queues behind it
+  # rather than killing it mid-upload, so the page never serves a partial
+  # deploy (the Worker's assets swap only when the upload completes).
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  deploy:
+    if: github.ref == 'refs/heads/main'
+    runs-on: instabox-medium
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: build and deploy to Cloudflare Workers
+        working-directory: web
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          # The wasm build fetches and compiles Ghostty's sources; the CI
+          # flag makes a missing translation fail the build (i18n.mjs).
+          CI: "true"
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ] || [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
+            echo "Cloudflare secrets not configured; skipping deploy"
+            exit 0
+          fi
+          npm ci
+          node build.mjs --ci
+          npx --yes wrangler@4.152.0 deploy
