@@ -7760,6 +7760,78 @@ func (msgs Messages) SpaceEditTitle() string {
 	return Catalog.Format(msgs.locale, "spaceEditTitle", nil)
 }
 
+// SpaceDelete says "Delete Space…"
+// in the language the app shows.
+//
+// Edit Spaces: delete the space; its projects move to Default.
+func SpaceDelete() string { return In(i18n.Locale()).SpaceDelete() }
+
+// SpaceDelete says "Delete Space…"
+// in the language of msgs.
+//
+// Edit Spaces: delete the space; its projects move to Default.
+func (msgs Messages) SpaceDelete() string {
+	return Catalog.Format(msgs.locale, "spaceDelete", nil)
+}
+
+// SpaceDeleteTitle says "Delete space {name}?"
+// in the language the app shows.
+//
+// Title of the dialog that asks before a space is deleted.
+func SpaceDeleteTitle(name string) string { return In(i18n.Locale()).SpaceDeleteTitle(name) }
+
+// SpaceDeleteTitle says "Delete space {name}?"
+// in the language of msgs.
+//
+// Title of the dialog that asks before a space is deleted.
+func (msgs Messages) SpaceDeleteTitle(name string) string {
+	return Catalog.Format(msgs.locale, "spaceDeleteTitle", map[string]any{"name": name})
+}
+
+// SpaceDeleteBody says "{n, plural, one {Its # project moves to Default.} other {Its # projects move to Default.}} No tab closes."
+// in the language the app shows.
+//
+// Delete Space dialog: how many projects of the connected hosts move to
+// Default.
+func SpaceDeleteBody(n int) string { return In(i18n.Locale()).SpaceDeleteBody(n) }
+
+// SpaceDeleteBody says "{n, plural, one {Its # project moves to Default.} other {Its # projects move to Default.}} No tab closes."
+// in the language of msgs.
+//
+// Delete Space dialog: how many projects of the connected hosts move to
+// Default.
+func (msgs Messages) SpaceDeleteBody(n int) string {
+	return Catalog.Format(msgs.locale, "spaceDeleteBody", map[string]any{"n": n})
+}
+
+// SpaceDeleteOffline says "Projects of hosts that are offline move when they connect."
+// in the language the app shows.
+//
+// Delete Space dialog: shown when a host is offline.
+func SpaceDeleteOffline() string { return In(i18n.Locale()).SpaceDeleteOffline() }
+
+// SpaceDeleteOffline says "Projects of hosts that are offline move when they connect."
+// in the language of msgs.
+//
+// Delete Space dialog: shown when a host is offline.
+func (msgs Messages) SpaceDeleteOffline() string {
+	return Catalog.Format(msgs.locale, "spaceDeleteOffline", nil)
+}
+
+// SpaceDeleteConfirm says "Delete"
+// in the language the app shows.
+//
+// Delete Space dialog: the button that deletes the space.
+func SpaceDeleteConfirm() string { return In(i18n.Locale()).SpaceDeleteConfirm() }
+
+// SpaceDeleteConfirm says "Delete"
+// in the language of msgs.
+//
+// Delete Space dialog: the button that deletes the space.
+func (msgs Messages) SpaceDeleteConfirm() string {
+	return Catalog.Format(msgs.locale, "spaceDeleteConfirm", nil)
+}
+
 // SpaceMoveDown says "Move Down"
 // in the language the app shows.
 //

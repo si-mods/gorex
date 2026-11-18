@@ -114,6 +114,7 @@ var orderedMethods = map[string]bool{
 	"session.set_layer_state": true, "session.swap_blocks": true, "session.zoom_block": true,
 	"gorex.move_window": true, "gorex.merge_windows": true, "gorex.move_block_to_new_window": true, "gorex.spaces_apply": true,
 	"gorex.project.create": true, "gorex.project.adopt": true, "gorex.project.move": true, "gorex.project.update": true, "gorex.space.rename": true,
+	"gorex.space.delete": true,
 }
 
 // The API's own documents, served at /api/help, /llms.txt and

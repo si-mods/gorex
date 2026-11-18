@@ -2849,6 +2849,38 @@
   "@spaceRenameMenu": {
     "description": "Space picker menu: rename the space shown, on every host."
   },
+  "spaceDeleteMenu": "Delete Space…",
+  "@spaceDeleteMenu": {
+    "description": "Space picker menu: delete the space shown; its projects move to Default."
+  },
+  "spaceDeleteTitle": "Delete space {name}?",
+  "@spaceDeleteTitle": {
+    "description": "Title of the question asked before a space is deleted.",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "Work"
+      }
+    }
+  },
+  "spaceDeleteBody": "{n, plural, one {Its # project moves to Default.} other {Its # projects move to Default.}} No tab closes.",
+  "@spaceDeleteBody": {
+    "description": "Delete Space question: how many projects of the connected hosts move to Default.",
+    "placeholders": {
+      "n": {
+        "type": "int",
+        "example": "3"
+      }
+    }
+  },
+  "spaceDeleteOffline": "Projects of hosts that are offline move when they connect.",
+  "@spaceDeleteOffline": {
+    "description": "Delete Space question: added when a host is offline."
+  },
+  "spaceDelete": "Delete",
+  "@spaceDelete": {
+    "description": "Delete Space question: the button that deletes the space."
+  },
   "spaceColorMenu": "Color",
   "@spaceColorMenu": {
     "description": "Space picker menu: a submenu of colors for the space shown."
@@ -2971,6 +3003,20 @@
   "@statusMoveProjectFailed": {
     "description": "Status line when Move to Space failed.",
     "placeholders": {
+      "error": {
+        "type": "String",
+        "example": "No response"
+      }
+    }
+  },
+  "statusDeleteSpaceHostFailed": "Could not delete the space on {host}: {error}",
+  "@statusDeleteSpaceHostFailed": {
+    "description": "Status line when a host did not take a space's delete.",
+    "placeholders": {
+      "host": {
+        "type": "String",
+        "example": "office"
+      },
       "error": {
         "type": "String",
         "example": "No response"

@@ -72,7 +72,7 @@ export function hasProjects(): boolean {
   return ops.views().length > 0;
 }
 
-/** The space picker's menu: the spaces, New Space…, and Rename and Color for the one shown. */
+/** The space picker's menu: the spaces, New Space…, and Rename, Delete (not Default's) and Color for the one shown. */
 export function spaceMenu(): MenuItem[] {
   const vs = ops.views();
   const names = ops.spaces(vs);
@@ -83,6 +83,7 @@ export function spaceMenu(): MenuItem[] {
     "separator",
     { label: t("spaceNewMenu"), run: () => void ops.newSpace() },
     { label: t("spaceRenameMenu"), disabled: !now, run: () => void ops.renameSpace(now) },
+    ...(now ? [{ label: t("spaceDeleteMenu"), run: () => void ops.deleteSpace(now) }] : []),
     {
       label: t("spaceColorMenu"),
       submenu: [

@@ -278,6 +278,23 @@ export class HostConn {
     await this.readSpaces();
   }
 
+  /**
+   * Deletes a space of this host: its projects go to Default, and the name is offered no more
+   * (gorex.space.delete). A host of v0.41.0, which has no such method, gets a rename to Default.
+   * It answers how many projects moved.
+   */
+  async spaceDelete(name: string): Promise<number> {
+    let r: any;
+    try {
+      r = (await this.call("gorex.space.delete", { name })).payload;
+    } catch (e) {
+      if ((e as { code?: string })?.code !== "method_not_found") throw e;
+      r = (await this.call("gorex.space.rename", { from: name, to: "" })).payload;
+    }
+    await this.readSpaces();
+    return Number(r?.projects ?? 0);
+  }
+
   /** The space names this host offers, those of its projects first (gorex.space.list); "" is Default. */
   offered: string[] = [];
 

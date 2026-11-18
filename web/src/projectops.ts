@@ -244,22 +244,49 @@ export function createProjectOps(deps: ProjectOpsDeps) {
     );
   }
 
-  /** A host connected: it takes the renames it waited for, in order. */
+  /** Delete Space…: asks first; then each connected host moves the space's projects to Default, and a host away does when it connects. No tab closes. */
+  async function deleteSpace(name: string) {
+    if (!name) return;
+    const vs = views();
+    const n = vs.filter((v) => v.online).reduce((k, v) => k + v.model.projects.filter((p) => store.mapSpace(v.model.host, p.space) === name).length, 0);
+    const away = vs.filter((v) => !v.online).map((v) => v.model.host);
+    const body = t("spaceDeleteBody", { n }) + (away.length ? " " + t("spaceDeleteOffline") : "");
+    const ok = await confirmDanger(t("spaceDeleteTitle", { name }), body, t("spaceDelete"));
+    deps.focusKeys();
+    if (!ok) return;
+    store.delete(name, away);
+    const live = vs.filter((v) => v.online).map((v) => deps.conn(v.model.host)).filter(isLive);
+    for (const c of live) {
+      for (const s of c.sessions.values()) if (s.project?.space === name) s.project = { ...s.project, space: "" };
+      c.offered = c.offered.filter((x) => x !== name);
+    }
+    deps.redraw();
+    await Promise.all(
+      live.map((c) =>
+        c.spaceDelete(name).catch((e) => deps.status(() => t("statusDeleteSpaceHostFailed", { host: c.host.name, error: describe(e) }))),
+      ),
+    );
+    deps.redraw();
+  }
+
+  /** A host connected: it takes the renames and deletes it waited for, in order. */
   async function flush(conn: HostConn) {
     if (!conn.v2) return;
     for (const p of store.waiting(conn.host.id)) {
       try {
-        await conn.spaceRename(p.from, p.to);
+        if (p.to === "") await conn.spaceDelete(p.from);
+        else await conn.spaceRename(p.from, p.to);
         store.done(p);
       } catch (e) {
-        deps.status(() => t("statusRenameSpaceHostFailed", { host: conn.host.name, error: describe(e) }));
+        const key = p.to === "" ? "statusDeleteSpaceHostFailed" : "statusRenameSpaceHostFailed";
+        deps.status(() => t(key, { host: conn.host.name, error: describe(e) }));
         return;
       }
     }
     deps.redraw();
   }
 
-  return { store, views, spaces, space, label, newProject, newProjectOn, newTab, moveTab, renameProject, moveProjectToSpace, newSpace, renameSpace, flush, isLive };
+  return { store, views, spaces, space, label, newProject, newProjectOn, newTab, moveTab, renameProject, moveProjectToSpace, newSpace, renameSpace, deleteSpace, flush, isLive };
 }
 
 export type ProjectOps = ReturnType<typeof createProjectOps>;

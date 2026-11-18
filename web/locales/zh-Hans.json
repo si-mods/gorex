@@ -529,6 +529,11 @@
   "spaceColorNone": "无颜色",
   "spaceNewTitle": "新建空间",
   "spaceRenameTitle": "重命名空间",
+  "spaceDeleteMenu": "删除空间…",
+  "spaceDeleteTitle": "删除空间 {name}？",
+  "spaceDeleteBody": "{n, plural, other {其中的 # 个项目将移到“默认”。}}不关闭任何标签页。",
+  "spaceDeleteOffline": "离线主机的项目在其连接后移动。",
+  "spaceDelete": "删除",
   "spaceNameLabel": "空间名称",
   "spaceCreate": "创建",
   "spaceRename": "重命名",
@@ -544,6 +549,7 @@
   "statusFolderMissing": "未打开标签页。“{name}”的文件夹 {dir} 不在 {host} 上。",
   "statusMoveTabFailed": "无法移动标签页：{error}",
   "statusMoveProjectFailed": "无法移动项目：{error}",
+  "statusDeleteSpaceHostFailed": "无法在 {host} 上删除空间：{error}",
   "statusRenameSpaceHostFailed": "无法在 {host} 上重命名空间：{error}",
   "hostOffline": "离线"
 }

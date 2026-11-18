@@ -28,7 +28,7 @@ var applied = map[string]bool{
 	"tab.set": true, "windows.set": true, "layout.apply": true, "kills.taken": true, "show.taken": true,
 	"tab.to_space": true, "space.home": true,
 	"project.create": true, "project.adopt": true, "project.move": true, "project.update": true,
-	"spaces.rename": true, "adopt.taken": true,
+	"spaces.rename": true, "spaces.delete": true, "adopt.taken": true,
 }
 
 // batched are the commands a layout.apply carries: the app's changes of
@@ -703,6 +703,8 @@ func (s *Server) applyTo(st *layout.Store, c LayoutCommand, a *applying) LayoutC
 		return updateProject(st, c)
 	case "spaces.rename":
 		return renameSpace(st, c)
+	case "spaces.delete":
+		return deleteSpace(st, c)
 	case "adopt.taken":
 		st.Adopt = slices.DeleteFunc(st.Adopt, func(x layout.Adoption) bool { return x.ID == c.Target })
 		return res

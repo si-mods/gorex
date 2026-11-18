@@ -29,7 +29,8 @@ type clientSpace struct {
 	Made  bool   `json:"made,omitempty"`
 }
 
-// spaceRename is a rename of a space that waits for a host to connect.
+// spaceRename is a rename of a space that waits for a host to connect;
+// one to "" (Default) is a delete of the space (deleteSpace).
 type spaceRename struct {
 	From string `json:"from"`
 	To   string `json:"to"`
@@ -227,8 +228,80 @@ func (a *App) renameSpace(from, to string) {
 	saveSettings()
 }
 
-// sendSpaceRenames sends host h the renames of spaces that waited for it,
-// in order, now that it is connected. Call it on the main thread.
+// deleteSpace deletes space name: each connected host moves its projects
+// to Default and offers the name no more (spaces.delete), and a host not
+// connected does once it connects (sendSpaceRenames). This client drops
+// its color, order and made space, and a window of it shows Default. No
+// tab closes. Default ("") is not deleted.
+func (a *App) deleteSpace(name string) {
+	if a.st == nil || name == "" {
+		return
+	}
+	st := a.st
+	for _, h := range a.allHosts() {
+		if h != nil && !serverMade(h) {
+			if prefs.SpaceRenames == nil {
+				prefs.SpaceRenames = map[string][]spaceRename{}
+			}
+			prefs.SpaceRenames[h.ID] = append(prefs.SpaceRenames[h.ID], spaceRename{From: name})
+			// Its copy offers the name no more, as it will not.
+			if h.lay != nil {
+				h.lay.base.Spaces = slices.DeleteFunc(slices.Clone(h.lay.base.Spaces), func(n string) bool { return n == name })
+			}
+			continue
+		}
+		st.sendOn(h, st.spaceDeleteCommand(h, name), nil)
+	}
+	prefs.Spaces = slices.DeleteFunc(prefs.Spaces, func(s clientSpace) bool { return s.Name == name })
+	// The copies of hosts away show their projects in Default too.
+	for _, w := range st.workspaces {
+		if w.Dir != "" && w.Space == name {
+			w.Space = ""
+		}
+	}
+	saveSettings()
+	if prefs.Space == name {
+		a.showSpaceNamed("")
+	}
+}
+
+// spaceDeleteCommand is the command that deletes space name on host h:
+// spaces.delete, or on a server of v0.41.0, which has it not, a rename to
+// Default, which moves the projects as well.
+func (st *store) spaceDeleteCommand(h *hostConn, name string) rex.LayoutCommand {
+	hello := st.hello
+	if h != nil {
+		hello = h.hello
+	}
+	if hello.Can(rex.CapabilitySpacesDelete) {
+		return rex.LayoutCommand{Op: "spaces.delete", From: name}
+	}
+	return rex.LayoutCommand{Op: "spaces.rename", From: name}
+}
+
+// spaceProjects counts the projects of space name of the hosts
+// connected, and tells whether a host is not connected, whose projects
+// are not counted.
+func (a *App) spaceProjects(name string) (n int, away bool) {
+	if a.st == nil {
+		return 0, false
+	}
+	for _, w := range a.st.workspaces {
+		if w.Dir != "" && w.Space == name && !w.offline() {
+			n++
+		}
+	}
+	for _, h := range a.hosts {
+		if !serverMade(h) {
+			away = true
+		}
+	}
+	return n, away
+}
+
+// sendSpaceRenames sends host h the renames and deletes of spaces that
+// waited for it, in order, now that it is connected. Call it on the main
+// thread.
 func (st *store) sendSpaceRenames(h *hostConn) {
 	renames := prefs.SpaceRenames[h.ID]
 	if len(renames) == 0 || !serverMade(h) {
@@ -237,7 +310,11 @@ func (st *store) sendSpaceRenames(h *hostConn) {
 	delete(prefs.SpaceRenames, h.ID)
 	saveSettings()
 	for _, r := range renames {
-		st.sendOn(h, rex.LayoutCommand{Op: "spaces.rename", From: r.From, To: r.To}, func(res rex.LayoutCommand) {
+		c := rex.LayoutCommand{Op: "spaces.rename", From: r.From, To: r.To}
+		if r.To == "" {
+			c = st.spaceDeleteCommand(h, r.From)
+		}
+		st.sendOn(h, c, func(res rex.LayoutCommand) {
 			if res.Code != "" {
 				log.Printf("gorex: renaming space %q to %q on %s: %s", r.From, r.To, h.label(), res.Error)
 			}
@@ -265,9 +342,10 @@ func (a *App) moveProjectToSpace(w *Workspace, name string) {
 // spaceUI is the state of the space picker and its dialogs, of a window.
 type spaceUI struct {
 	open bool
-	// dialog is "new" or "edit" while the dialog of New Space… or Edit
-	// Spaces… shows; name is the new space's name, names the edit's
-	// fields by the space's name.
+	// dialog is "new", "edit" or "delete" while the dialog of New
+	// Space…, Edit Spaces… or Delete Space… shows; name is the new
+	// space's name, or the one to delete; names the edit's fields by the
+	// space's name.
 	dialog string
 	name   string
 	names  map[string]string
@@ -372,8 +450,11 @@ func (a *App) spaceDialog(c *ui.Context, k *colors) {
 	}
 	open := true
 	title := locales.SpaceNewTitle()
-	if s.dialog == "edit" {
+	switch s.dialog {
+	case "edit":
 		title = locales.SpaceEditTitle()
+	case "delete":
+		title = locales.SpaceDeleteTitle(s.name)
 	}
 	ui.DialogBase(c.Key("space-dialog"), &open, func(backdrop, panel ui.Element) {
 		backdrop.Background(k.backdrop)
@@ -397,6 +478,26 @@ func (a *App) spaceDialog(c *ui.Context, k *colors) {
 				open = false
 				a.later(c, func() { a.newSpace(name) })
 			}
+			return
+		}
+		if s.dialog == "delete" {
+			n, away := a.spaceProjects(s.name)
+			ui.Column(c).Gap(6).Children(func() {
+				ui.Text(c, locales.SpaceDeleteBody(n)).FontSize(13).TextColor(k.textMuted).LineHeight(1.35)
+				if away {
+					ui.Text(c, locales.SpaceDeleteOffline()).FontSize(13).TextColor(k.textMuted).LineHeight(1.35)
+				}
+			})
+			ui.Row(c).Gap(8).Justify(ui.End).Margin(14, 0, 0, 0).Children(func() {
+				if ui.Button(c, locales.SessionCancel()).Clicked() {
+					open = false
+				}
+				if dangerButton(c, k, locales.SpaceDeleteConfirm()).Clicked() {
+					name := s.name
+					open = false
+					a.later(c, func() { a.deleteSpace(name) })
+				}
+			})
 			return
 		}
 		ui.Scroll(c.Key("space-list")).MinHeight(0).Shrink(1).Children(func() {
@@ -466,6 +567,17 @@ func (a *App) spaceEditRow(c *ui.Context, k *colors, i int, name string) {
 			dimmed(down, 0.4)
 		} else if down.Clicked() {
 			a.st.moveSpace(name, 1)
+		}
+		if name == "" {
+			// Default is not deleted: a box keeps the rows' columns.
+			ui.Box(c).Size(24, 24).Shrink(0)
+		} else if del := iconButton(c, k, "trash-2", locales.SpaceDelete(), 24, 13).Tooltip(locales.SpaceDelete()); del.Clicked() {
+			a.later(c, func() {
+				// The other fields' renames go first; this one's is dropped.
+				delete(s.names, name)
+				a.applySpaceNames()
+				s.dialog, s.name = "delete", name
+			})
 		}
 	})
 }

@@ -363,3 +363,44 @@ func TestProjectFolderResolved(t *testing.T) {
 		t.Fatalf("the adoption went to %q, not the project %q: %+v", ad.Space, res.Space, storeOf(t, c).Sessions)
 	}
 }
+
+// TestSpacesDelete moves every project of a deleted space to Default and
+// offers its name no more; it stops no shell and closes no tab, and
+// Default is not deleted.
+func TestSpacesDelete(t *testing.T) {
+	s, c := applyFixture(t)
+	cmd, _ := testShell()
+	work := "Work"
+	one := command(t, c, LayoutCommand{Op: "project.create", Dir: t.TempDir(), SpaceName: &work, Command: cmd})
+	two := command(t, c, LayoutCommand{Op: "project.create", Dir: t.TempDir(), SpaceName: &work, Command: cmd})
+	other := command(t, c, LayoutCommand{Op: "project.create", Dir: t.TempDir(), Command: cmd})
+	s.change(&applying{s: s}, func(st *layout.Store) LayoutCommand {
+		st.Spaces = []string{"Old", "Keep"}
+		return LayoutCommand{}
+	})
+	before := pids(t, c)
+	if r := command(t, c, LayoutCommand{Op: "spaces.delete", From: "Work"}); r.Index != 2 {
+		t.Fatalf("spaces.delete moved %d projects", r.Index)
+	}
+	for _, id := range []string{one.Space, two.Space, other.Space} {
+		if p := spaceOf(t, c, id); p.Space != "" || len(p.Tabs) != 1 {
+			t.Errorf("after the delete: %+v", p)
+		}
+	}
+	if r := command(t, c, LayoutCommand{Op: "spaces.delete", From: "Old"}); r.Index != 0 {
+		t.Errorf("spaces.delete of an offered name moved %d", r.Index)
+	}
+	if got := storeOf(t, c).Spaces; !slices.Equal(got, []string{"Keep"}) {
+		t.Errorf("offered names after the delete: %v", got)
+	}
+	command(t, c, LayoutCommand{Op: "project.update", Space: one.Space, SpaceName: &work})
+	if r := command(t, c, LayoutCommand{Op: "spaces.delete"}); r.Index != 0 {
+		t.Errorf("Default was deleted: %+v", r)
+	}
+	if p := spaceOf(t, c, one.Space); p.Space != "Work" {
+		t.Errorf("deleting Default moved %+v", p)
+	}
+	if after := pids(t, c); !maps.Equal(before, after) {
+		t.Fatalf("the shells changed: before %v, after %v", before, after)
+	}
+}
