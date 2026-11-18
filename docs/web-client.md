@@ -1118,7 +1118,11 @@ folders.
   "" being Default), Default, and the spaces made on this page. New Space…
   adds a name to the picker, empty until a project moves in. Rename Space…
   sends `gorex.space.rename {from, to}` to each connected host; a host that
-  is away gets it when it connects. Color gives a space a dot. The shown
+  is away gets it when it connects. Delete Space…, for the space shown but
+  Default, asks first, then sends `gorex.space.delete {name}` to each
+  connected host (`gorex.space.rename {from: name, to: ""}` to a host that
+  answers `method_not_found`); a host that is away gets it when it
+  connects. Its projects move to Default; no tab closes. Color gives a space a dot. The shown
   space, the colors, the order, the spaces made here, the renames waiting
   and the projects left open are kept in this browser's `localStorage`
   (`gorex.web.spaces`, `gorex.web.expanded`); the page works without it.

@@ -213,3 +213,44 @@ test("gorex.space.list adds the names a host offers to the model, and the copy k
   new Offline(mem).put(m);
   assert.deepEqual(new Offline(mem).get("h1")!.offered, ["Work", "", "Old"]);
 });
+
+test("a delete drops the space's color, order and made name, shows Default, and waits for the host that is away", () => {
+  const mem = new Mem();
+  const a = new SpaceStore(mem);
+  a.setColor("Work", "#e5484d");
+  a.add("Ideas");
+  a.add("Work");
+  a.order = ["Work", "Ideas"];
+  a.delete("Work", ["away"]);
+  const b = new SpaceStore(mem);
+  assert.equal(b.current, "");
+  assert.deepEqual(b.colors, {});
+  assert.deepEqual(b.made, ["Ideas"]);
+  assert.deepEqual(b.order, ["Ideas"]);
+  assert.deepEqual(b.pending, [{ host: "away", from: "Work", to: "" }]);
+  // The host away's projects of the space show in Default meanwhile, and the picker drops the name.
+  assert.equal(b.mapSpace("away", "Work"), "");
+  assert.ok(!b.names([b.mapSpace("away", "Work")]).includes("Work"));
+  // Default is not deleted.
+  b.delete("", ["away"]);
+  assert.equal(b.pending.length, 1);
+});
+
+test("space delete calls gorex.space.delete, and a host of v0.41.0 a rename to Default", async () => {
+  const v2 = { features: ["gorex.projects"], feature_versions: { "gorex.projects": 2 } };
+  const { c, calls } = fake(v2, { "gorex.space.delete": { projects: 2 } });
+  assert.equal(await c.spaceDelete("Work"), 2);
+  assert.deepEqual(calls, [
+    ["gorex.space.delete", { name: "Work" }],
+    ["gorex.space.list", undefined],
+  ]);
+  const missing = Object.assign(new Error("no such method"), { code: "method_not_found" });
+  const old = fake(v2, { "gorex.space.delete": missing, "gorex.space.rename": { projects: 1 } });
+  assert.equal(await old.c.spaceDelete("Work"), 1);
+  assert.deepEqual(old.calls.slice(0, 2), [
+    ["gorex.space.delete", { name: "Work" }],
+    ["gorex.space.rename", { from: "Work", to: "" }],
+  ]);
+  const other = Object.assign(new Error("denied"), { code: "forbidden" });
+  await assert.rejects(fake(v2, { "gorex.space.delete": other }).c.spaceDelete("Work"), /denied/);
+});

@@ -153,13 +153,27 @@ A space is only a name on projects. No list of spaces is kept or synced.
 - **Rename** a space: the client asks each connected host to rename it
   (`gorex.space.rename`). A host offline then keeps the old name; the
   client keeps the rename and sends it when the host connects.
-- **Delete** a space (Rex Go's Edit Spaces…, after the user confirms):
-  its projects move to Default and no tab closes. The client asks each
-  connected host (`gorex.space.delete {name}` → `{projects}`); a host of
-  v0.41.0, which answers `method_not_found`, is sent
-  `gorex.space.rename {from: name, to: ""}` instead. A host offline
-  takes it as it takes a rename, when it connects. The client forgets
-  the space's color and place, and shows Default if it showed the space.
+- **Delete Space…** is offered for every space but Default: in the
+  desktop's Edit Spaces… (a trash button on each row but Default's), in
+  Rex Go's Edit Spaces… (swipe or the minus), and in the web picker's
+  menu, for the space shown. It asks first: "Delete
+  space <name>? Its N projects move to Default. No tab closes.", N
+  counted across the connected hosts, adding that the projects of hosts
+  offline move when they connect, when one is. On confirm:
+  - each connected host gets `gorex.space.delete {name}` (the desktop's
+    layout command `spaces.delete`): it moves every project of the space
+    to Default (`""`) and drops the name from `Store.Spaces`, and answers
+    `{projects: n}`;
+  - a host offline gets it when it connects, kept as a waiting rename
+    to `""`, in order with the renames;
+  - the client drops the name from its own made spaces, colors and order,
+    and shows Default if the deleted space was the one shown.
+
+  No tab closes, no shell stops, nothing else changes. A host of v0.41.0
+  has no such method (the desktop sees no `spaces.delete` capability, the
+  web client gets `method_not_found`): it gets `gorex.space.rename {from:
+  name, to: ""}`, which moves the projects to Default and drops the name
+  as well.
 - A space no project carries any more drops from the picker, unless it
   was made on this client and is still empty.
 - The `gorex.spaces_sync` manifest and its iCloud copy
@@ -469,6 +483,9 @@ GoRex's own methods use the words above:
 - `gorex.project.update {project_id, name?, color?, space?}`.
 - `gorex.space.rename {from, to}` renames the space on every project of
   this host.
+- `gorex.space.delete {name}` → `{projects}` moves every project of the
+  space to Default and drops the name from `Store.Spaces`; `name` `""`
+  fails with `bad_request`.
 - Each session in a session list and a session view gains
   `project: {dir, space, used}`; the host's tabs with no project have
   `project: {}`. Rex's apps ignore the field.

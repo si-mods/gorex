@@ -113,7 +113,7 @@ export function dirName(dir: string): string {
   return dir.split(/[\\/]+/).filter(Boolean).pop() ?? dir;
 }
 
-/** What a rename asks of a host that is not connected: it keeps the old name until it is. */
+/** What a rename asks of a host that is not connected: it keeps the old name until it is. A `to` of "" (Default) is a delete. */
 export interface Pending {
   host: string;
   from: string;
@@ -202,6 +202,17 @@ export class SpaceStore {
       delete this.colors[from];
     }
     for (const host of offline) this.pending.push({ host, from, to });
+    this.save();
+  }
+
+  /** Deletes a space on this client: its color, order and made name go, and Default shows in its place. `offline`: the hosts not connected; each gets the delete when it connects. */
+  delete(name: string, offline: string[]) {
+    if (!name) return;
+    if (this.current === name) this.current = "";
+    this.order = this.order.filter((x) => x !== name);
+    this.made = this.made.filter((x) => x !== name);
+    delete this.colors[name];
+    for (const host of offline) this.pending.push({ host, from: name, to: "" });
     this.save();
   }
 
