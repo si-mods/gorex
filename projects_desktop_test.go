@@ -689,3 +689,72 @@ func TestDeleteSpace(t *testing.T) {
 		t.Errorf("the command for an old server: %+v", c)
 	}
 }
+
+// TestSplitOfHostPaneInThisMachinesTab: a layout of v0.40's kept another
+// host's panes in this machine's tabs, and a client of one may put one
+// back at any time (docs/projects.md, "The desktop window"). The split of
+// such a pane is the host's to make, in the space the host keeps it in:
+// no error, and the pane beside it in the host's own tab.
+func TestSplitOfHostPaneInThisMachinesTab(t *testing.T) {
+	a, tt, sock, remote := projectsApp(t)
+	dir := testDir(t)
+	res, err := remote.Command(rex.LayoutCommand{Op: "tab.create", Dir: dir, Focus: true})
+	if err != nil || res.Code != "" {
+		t.Fatalf("tab.create on the host: %+v %v", res, err)
+	}
+	hostSID := res.New
+	h := a.addHost(savedHost{ID: "h1", Name: "office-h800", Address: sock})
+	waitFor(t, tt, "the host's layout", func() bool { return serverMade(h) })
+	// This machine's project keeps the host's pane, as a layout of before
+	// projects did.
+	st := savedWorkspaces(t, a.client)
+	local := layout.Workspace{ID: layout.NewSpaceID(), Name: "mine", Dir: dir,
+		Layout: layout.Layout{Active: 0, Tabs: []layout.Tab{{ID: layout.NewTabID(), Root: &layout.Node{SID: hostSID, Host: h.ID}}}}}
+	st.Sessions = append(st.Sessions, local)
+	raw, err := json.Marshal(st)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := a.client.SetLayout(raw); err != nil {
+		t.Fatal(err)
+	}
+	a.st.out.follow(a.client)
+	caughtUp(t, a, tt)
+	a.showWorkspace(a.st.byID(local.ID))
+	waitFor(t, tt, "the tab of the host's pane", func() bool {
+		return a.ws != nil && a.ws.ID == local.ID && len(a.tabs) == 1 && a.tab().Focus != nil && a.tab().Focus.SID == hostSID
+	})
+	a.split(false)
+	waitFor(t, tt, "the split on the host", func() bool {
+		w := hostProject(t, remote, hostProjectOf(t, remote, hostSID))
+		return w != nil && slices.ContainsFunc(w.Tabs, func(x layout.Tab) bool {
+			var n int
+			for _, r := range x.Roots() {
+				n += len(layout.Leaves(r))
+			}
+			return n == 2
+		})
+	})
+	if a.err != "" {
+		t.Fatalf("the split showed %q", a.err)
+	}
+}
+
+// hostProjectOf is the ID of the host's workspace with a tab of session
+// sid, "" for none.
+func hostProjectOf(t *testing.T, c *rex.Client, sid string) string {
+	t.Helper()
+	for _, w := range hostStore(t, c).Sessions {
+		if slices.ContainsFunc(w.Tabs, func(x layout.Tab) bool {
+			for _, r := range x.Roots() {
+				if layout.Find(r, sid) != nil {
+					return true
+				}
+			}
+			return false
+		}) {
+			return w.ID
+		}
+	}
+	return ""
+}

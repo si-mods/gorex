@@ -1410,6 +1410,13 @@ func (s *Server) setTab(st *layout.Store, c LayoutCommand, a *applying) LayoutCo
 		}
 	}
 	a.touch(t.ID, nil)
+	if n := hostedPanes(&t); n > 0 {
+		// This machine's layout keeps no pane of another host
+		// (docs/projects.md, "The desktop window"): a client of before
+		// projects put one back, and the server takes it out as it loads
+		// (repairHostPanes). It goes now, so the next one is named.
+		log.Printf("rex: tab.set of %s, of space %s, names %d panes of other hosts", t.ID, w.ID, n)
+	}
 	mine := map[string]bool{}
 	for _, r := range t.Roots() {
 		for _, l := range layout.Leaves(r) {
@@ -1654,4 +1661,17 @@ func countSetRevs(was, l json.RawMessage) json.RawMessage {
 		return bytes.Clone(l)
 	}
 	return encodeLayout(&now)
+}
+
+// hostedPanes counts the panes of other hosts in t, tiled and floating.
+func hostedPanes(t *layout.Tab) int {
+	n := 0
+	for _, r := range t.Roots() {
+		for _, l := range layout.Leaves(r) {
+			if l.Host != "" && l.SID != "" {
+				n++
+			}
+		}
+	}
+	return n
 }

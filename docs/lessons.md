@@ -79,6 +79,21 @@ Each item has a **Trigger** (what the diff shows), a **Check** (what the author 
 - **Check:** open PRs are searched for the same file, symbol or finding before work starts.
 - **Source:** #587 and #588 are the same one-line fix from two sessions; #728 duplicated #723's Windows device-path fix and was closed.
 
+### A command that carries the space of another layout
+- **Trigger:** the diff sends a layout command to a host's server (`askOn`, `sendOn`, `followHost`) with `Space` taken from the app's own state (`a.ws.ID`, a workspace of this machine's layout).
+- **Check:** the space is one of the layout the command goes to. A pane of another host keeps its tab in that host's space; this machine's space answers `pane_not_found` there, which reads as a client bug.
+- **Source:** #799: `pane.split` of a remote host's pane went to that host with this machine's space, and the window said "no such pane in the GoRex layout".
+
+### Layout invariant that only the migration enforces
+- **Trigger:** the diff changes a load-time repair of the layout (`migrateLayout`, `repairHostPanes`, `unnameProjectTabs`), or a command that lets a client of another version break a rule (`tab.set` with another host's leaf).
+- **Check:** the rule is enforced where the layout loads, the offending command is logged, and a test loads a store that breaks it (`applyFixture`, then `s.layout = …; s.migrateLayout()`). The invariant of the flows the tests drive (`noHostLeaves`) is not enough: a client can break it and every test still passes.
+- **Source:** #799: this machine's layout kept ten panes of another host for 45 minutes; the split of one failed, and no test noticed.
+
+### Two builds on one data directory
+- **Trigger:** a bug is reported from `layout.json`, `app.log`, `layout.jsonl` or `hosts-layout.json`, and the checkout has a `build/` or an installer whose app can open the same `GOREX_DIR`.
+- **Check:** `ps ax -o pid,command | grep GoRex` and `lsof -p <pid> | grep 'Application Support/GoRex'` name every process writing the store, and `git describe` the binary, before the store is read as evidence. A build of before the model in the report writes that model back; close it and delete it.
+- **Source:** #799: an app of v0.34, relaunched from `launchd` twice against the same store, put a host's panes back tab by tab while the new app took the layout and split them.
+
 ## Style
 
 ### Style or size change

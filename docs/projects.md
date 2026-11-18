@@ -524,6 +524,12 @@ with that host's part of the split.
   panes' session IDs. It drops those panes from its own tab; a tab left
   with no pane goes.
 - The old layout is kept as `layout.json.v039`.
+- A layout of projects that keeps a pane of another host, as a client of
+  before projects puts back (`tab.set` of its own model), is repaired as
+  it loads, with the same adoptions (`layout.RepairHostPanes`): the
+  server logs the `tab.set` that named it, and a space left with no tab
+  that was no project becomes a name the picker offers, as an old space
+  does.
 
 **On the desktop, as each host connects**, the app sends that host its
 adoptions (`gorex.project.adopt`) and the server forgets each once the
