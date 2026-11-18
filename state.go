@@ -2213,8 +2213,10 @@ func (p *Pane) label() (name, detail string) {
 	}
 	// A program that is not a shell names its pane by the title it sets,
 	// even while it is the one the session started with, as a mirror of a
-	// Rex block does.
-	if t := strings.TrimSpace(p.title); t != "" && !titleOfShell(t, in) {
+	// Rex block does: the one its terminal here read, else the one the
+	// server keeps of the session, for a pane whose terminal has not read
+	// one yet, as one of a tab not shown.
+	if t := strings.TrimSpace(cmp.Or(p.title, in.Title)); t != "" && !titleOfShell(t, in) {
 		return t, ""
 	}
 	if in.Idle {

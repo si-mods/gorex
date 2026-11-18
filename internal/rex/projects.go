@@ -36,6 +36,7 @@ const CapabilitySpacesDelete = "spaces.delete"
 // one resumes after an upgrade. It starts and ends no session. The layout
 // read is kept as layout.json.v039, unless one is there already.
 func (s *Server) migrateLayout() {
+	defer s.unnameProjectTabs()
 	dir := cmp.Or(s.dir, Dir())
 	s.mu.Lock()
 	raw := s.layout
@@ -66,6 +67,57 @@ func (s *Server) migrateLayout() {
 		tabs += len(a.Tabs)
 	}
 	log.Printf("rex: the layout is of projects now: %d workspaces, %d tabs of other hosts to adopt", len(st.Sessions), tabs)
+}
+
+// tabNamesMark is the file, beside the layout, that tells
+// unnameProjectTabs ran.
+const tabNamesMark = "layout.tabnames"
+
+// unnameProjectTabs clears, once, the name of each project's tab named
+// exactly as its project: project.create of v0.41.0 and v0.41.1 gave a
+// project's first tab the project's name, which hid the tab's title for
+// good (docs/projects.md, "Decided in phase 2"). The tabs with no project
+// keep theirs. It runs as the layout loads (migrateLayout), and notes in
+// tabNamesMark that it ran, so that a tab the user names so later keeps
+// its name; running it again changes nothing.
+func (s *Server) unnameProjectTabs() {
+	mark := filepath.Join(cmp.Or(s.dir, Dir()), tabNamesMark)
+	if _, err := os.Stat(mark); err == nil {
+		return
+	}
+	s.mu.Lock()
+	st := layout.Parse(s.layout)
+	if len(s.layout) > 0 && st.Version < layout.Version {
+		s.mu.Unlock()
+		return // not migrated: the next load tries again
+	}
+	n := 0
+	for i := range st.Sessions {
+		w := &st.Sessions[i]
+		if w.Dir == "" {
+			continue
+		}
+		for j := range w.Tabs {
+			if w.Tabs[j].Name != "" && w.Tabs[j].Name == w.Name {
+				w.Tabs[j].Name = ""
+				n++
+			}
+		}
+	}
+	var rev uint64
+	if n > 0 {
+		s.layout = encodeLayout(&st)
+		s.layoutRev++
+		rev = s.layoutRev
+	}
+	s.mu.Unlock()
+	if n > 0 {
+		s.writeLayout(rev, true)
+		log.Printf("rex: cleared the name of %d tabs named as their project", n)
+	}
+	if err := os.WriteFile(mark, nil, 0o600); err != nil {
+		log.Printf("rex: noting the tabs' names cleared: %v", err)
+	}
 }
 
 // noProject is the layout's workspace of tabs with no project, made when
@@ -137,7 +189,9 @@ func (s *Server) createProject(st *layout.Store, c LayoutCommand, a *applying) L
 	}
 	st.Sessions = append(st.Sessions, w)
 	carried(st, w.Space)
-	tab := s.createTab(st, LayoutCommand{Space: w.ID, Name: c.Name, Command: c.Command, Focus: c.Focus}, a)
+	// The project's name is not its first tab's: a tab names itself by its
+	// title (docs/projects.md, Names).
+	tab := s.createTab(st, LayoutCommand{Space: w.ID, Command: c.Command, Focus: c.Focus}, a)
 	if tab.Code != "" {
 		return tab
 	}

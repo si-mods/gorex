@@ -441,8 +441,13 @@ func TestSidebarFlatLayout(t *testing.T) {
 	row, _ := tt.Find("acme-api" + spacedComma(a.projectDetail(w)))
 	name, detail := a.tabs[0].label()
 	tab, _ := tt.Find(name + " " + detail)
-	if row.X > header.X+1 || tab.X-row.X < dotRoom-1 || tab.X-row.X > dotRoom+1 {
-		t.Errorf("header at x %v, project at %v, its tab at %v; want the project flush and its tab %v in", header.X, row.X, tab.X, dotRoom)
+	if row.X > header.X+1 || tab.X != row.X || tab.W != row.W {
+		t.Errorf("header at x %v, project at %v (%v wide), its tab at %v (%v wide); want both flush", header.X, row.X, row.W, tab.X, tab.W)
+	}
+	// The project's name starts where its tab's title does: after the
+	// room of the tiles, where the project's dot is.
+	if text, ok := tt.Find("acme-api"); !ok || text.X != tab.X+sideLead+tilesReserve(a.tabs)+sideGap {
+		t.Errorf("the project's name at x %v, want %v", text.X, tab.X+sideLead+tilesReserve(a.tabs)+sideGap)
 	}
 	if r, inline := tt.Find(a.projectDetail(w)); inline && r.X < sidebarWidthIn(1000) {
 		t.Errorf("the folder %q shows in the row", a.projectDetail(w))

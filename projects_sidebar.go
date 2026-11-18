@@ -114,7 +114,7 @@ func (a *App) projectsList(c *ui.Context, k *colors) {
 			if len(older) > 0 {
 				key := openKey(h, "older")
 				open := rowOpen(key, false)
-				if a.foldRow(c, k, key, locales.ProjectsOlder(), fmt.Sprint(len(older)), open) {
+				if a.foldRow(c, k, key, locales.ProjectsOlder(), fmt.Sprint(len(older)), open, reserve) {
 					setRowOpen(key, !open)
 				}
 				if open {
@@ -124,9 +124,11 @@ func (a *App) projectsList(c *ui.Context, k *colors) {
 				}
 			}
 			for _, ad := range a.st.waitingOn(h) {
-				a.waitingRow(c, k, h, ad)
+				a.waitingRow(c, k, h, ad, reserve)
 			}
-			if w := a.st.noProjectOf(h); w != nil {
+			// Tabs with no project shows while it has a tab, or the
+			// window shows it.
+			if w := a.st.noProjectOf(h); w != nil && (w.tabCount() > 0 || w == a.ws) {
 				a.projectRow(c, k, w, reserve)
 			}
 		})
@@ -239,7 +241,7 @@ func (a *App) projectRow(c *ui.Context, k *colors, w *Workspace, reserve float32
 	n := w.tabCount()
 	offline := w.offline()
 	detail := a.projectDetail(w)
-	row := ui.Row(c.Key("project-"+key)).Height(projectRowH).Shrink(0).Padding(0, 4, 0, 0).Gap(4).AlignItems(ui.Center).
+	row := ui.Row(c.Key("project-"+key)).Height(projectRowH).Shrink(0).Padding(0, 4, 0, sideLead).Gap(sideGap).AlignItems(ui.Center).
 		Radius(pillRadius(projectRowH, 9)).Cursor(ui.CursorPointer).Role(ui.RoleButton).Expanded(open).Label(name + spacedComma(detail))
 	if detail != "" {
 		row.Tooltip(detail)
@@ -272,8 +274,10 @@ func (a *App) projectRow(c *ui.Context, k *colors, w *Workspace, reserve float32
 	toggled := false
 	row.Children(func() {
 		// The dot's room opens and closes the tabs of any project, as a
-		// click on the row of the one shown does.
-		fold := ui.Box(c.Key("fold")).Size(dotRoom, projectRowH).Center().Shrink(0).
+		// click on the row of the one shown does. It is as wide as the
+		// tabs' tiles: the dot starts where their tiles do, and the name
+		// where their titles do.
+		fold := leadRoom(c.Key("fold"), reserve, projectRowH).
 			Role(ui.RoleDisclosure).Expanded(open).Label(locales.ProjectsTabsOf(name))
 		toggled = fold.Clicked()
 		if w.Dir != "" {
@@ -318,11 +322,8 @@ func (a *App) projectRow(c *ui.Context, k *colors, w *Workspace, reserve float32
 	if !open || n == 0 {
 		return
 	}
-	list := ui.Column(c.Key("project-tabs-"+key)).Gap(rowGap).Padding(0, 0, 0, dotRoom).Draw(func(p *ui.Painter, r ui.Rect) {
-		// The guide line that joins the tabs to their project, under its
-		// dot.
-		p.Fill(ui.Rect{X: r.X + dotRoom/2 - 0.5, Y: r.Y + 2, W: 1, H: r.H - 4}, k.textFaint.Alpha(0.4), 0.5)
-	})
+	// The tabs come under their project flush with it, not one step in.
+	list := ui.Column(c.Key("project-tabs-" + key)).Gap(rowGap)
 	if offline {
 		dimmed(list, 0.5)
 	}
@@ -341,9 +342,21 @@ func (a *App) projectRow(c *ui.Context, k *colors, w *Workspace, reserve float32
 // ones, a hovered and the chosen, never touch.
 const rowGap = 3
 
-// dotRoom is the room of a project's dot before its name, and the one step
-// its tabs come in under it, the guide line at its middle.
-const dotRoom = 20
+// The rows of the sidebar under a host's header, its projects', Older's
+// and their tabs', start at one leading edge: sideLead in, then the room
+// of the tabs' tiles (tilesReserve), where a project's dot shows, then
+// sideGap, then the name or title. So a project's dot is where its tabs'
+// tiles start, and its name where their titles do.
+const (
+	sideLead = 9
+	sideGap  = 6
+)
+
+// leadRoom is the room before a row's name: as wide as the tabs' tiles,
+// what it holds at its start.
+func leadRoom(c *ui.Context, reserve, h float32) ui.Element {
+	return ui.Row(c).Width(reserve).Height(h).AlignItems(ui.Center).Shrink(0)
+}
 
 // workspaceTabs lists the tabs of workspace w no window here shows, from
 // the window that shows it, else its layout: a click shows w on that tab;
@@ -364,9 +377,12 @@ func (a *App) workspaceTabs(c *ui.Context, k *colors, w *Workspace, reserve floa
 		}
 		return
 	}
+	// Each tab names itself from what its host's last session list says
+	// of its session, as a window's tab does; no pane attaches for it.
+	infos, _, _ := a.st.listOf(w.host)
 	for i, t := range w.layout.Tabs {
-		name, prog := savedTabLabel(t)
-		if spaceTab(c, k, cmp.Or(t.ID, fmt.Sprint(i)), name, "", reserve, func() {
+		name, detail, prog := savedTabFace(t, infos)
+		if spaceTab(c, k, cmp.Or(t.ID, fmt.Sprint(i)), name, detail, reserve, func() {
 			ui.Box(c).Size(tileW+2, tileH+4).Shrink(0).Draw(func(p *ui.Painter, r ui.Rect) {
 				drawTile(p, k, ui.Rect{X: r.X + 1, Y: r.Y + 2, W: tileW, H: tileH}, prog, true)
 			})
@@ -399,15 +415,15 @@ func (a *App) showWorkspaceTab(w *Workspace, i int) {
 // foldRow is a row at the projects' level that opens and closes what is
 // under it, as Older: its label and a count, and a chevron under the
 // pointer. It reports whether it was clicked.
-func (a *App) foldRow(c *ui.Context, k *colors, key, label, count string, open bool) bool {
-	row := ui.Row(c.Key("fold-"+key)).Height(26).Shrink(0).Padding(0, 10, 0, 0).Gap(4).AlignItems(ui.Center).
+func (a *App) foldRow(c *ui.Context, k *colors, key, label, count string, open bool, reserve float32) bool {
+	row := ui.Row(c.Key("fold-"+key)).Height(26).Shrink(0).Padding(0, 10, 0, sideLead).Gap(sideGap).AlignItems(ui.Center).
 		Radius(pillRadius(26, 9)).Cursor(ui.CursorPointer).Role(ui.RoleDisclosure).Expanded(open).Label(label)
 	hovered := row.Hovered()
 	if hovered {
 		row.Background(hoverFace(k))
 	}
 	row.Children(func() {
-		ui.Box(c).Size(dotRoom, 26).Center().Shrink(0).Children(func() {
+		leadRoom(c, reserve, 26).Children(func() {
 			if !hovered {
 				return
 			}
@@ -425,7 +441,7 @@ func (a *App) foldRow(c *ui.Context, k *colors, key, label, count string, open b
 // waitingRow is a project, or tabs with no project, that an adoption
 // keeps for host h until it connects (docs/projects.md, Migration): at the
 // projects' level, greyed, with "Waiting for <host>".
-func (a *App) waitingRow(c *ui.Context, k *colors, h *hostConn, ad layout.Adoption) {
+func (a *App) waitingRow(c *ui.Context, k *colors, h *hostConn, ad layout.Adoption, reserve float32) {
 	name, detail := locales.ProjectsNoProject(), ""
 	if p := ad.Project; p != nil {
 		name, detail = p.Name, a.tildeOn(h, p.Dir)
@@ -435,10 +451,10 @@ func (a *App) waitingRow(c *ui.Context, k *colors, h *hostConn, ad layout.Adopti
 	if detail != "" {
 		tipText = detail + " · " + note
 	}
-	row := ui.Row(c.Key("waiting-"+ad.ID)).Height(projectRowH).Shrink(0).Padding(0, 10, 0, 0).Gap(4).AlignItems(ui.Center).
+	row := ui.Row(c.Key("waiting-"+ad.ID)).Height(projectRowH).Shrink(0).Padding(0, 10, 0, sideLead).Gap(sideGap).AlignItems(ui.Center).
 		Role(ui.RoleText).Label(name + ", " + note).Tooltip(tipText)
 	row.Children(func() {
-		ui.Box(c).Size(dotRoom, projectRowH).Center().Shrink(0).Children(func() { spaceSwatchMark(c, k, "", 9) })
+		leadRoom(c, reserve, projectRowH).Children(func() { spaceSwatchMark(c, k, "", 9) })
 		ui.Text(c, name).FontSize(13).TextColor(k.text.Alpha(0.85)).SingleLine().Ellipsis("…").Shrink(1).MinWidth(0)
 		ui.Text(c, note).FontSize(11).TextColor(k.textFaint).SingleLine().Ellipsis("…").Grow(1).MinWidth(0).Padding(0, 0, 0, 6)
 	})
