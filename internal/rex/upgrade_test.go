@@ -8,9 +8,11 @@ import (
 	"encoding/json"
 	"image"
 	"image/png"
+	"net"
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
 	"syscall"
@@ -450,5 +452,66 @@ func TestResumeKeepsStatusSeen(t *testing.T) {
 	}
 	if !r.status.seen.Equal(s.status.seen) || r.status.seen.IsZero() || MostUrgent(r.status.list(), r.status.seen) != nil {
 		t.Errorf("seen %v after the handoff, want %v", r.status.seen, s.status.seen)
+	}
+}
+
+// TestResumeSessionUser serves an upgrade's handoff, as the new executable
+// of an upgrade does: the sessions it starts after it run as the user the
+// server was told (EnvSessionUser), as one that starts by itself does, not
+// as the server's own. A host whose server runs as root handed every
+// session started after an upgrade to root without this.
+func TestResumeSessionUser(t *testing.T) {
+	if runtime.GOOS != "linux" || os.Geteuid() != 0 {
+		t.Skip("needs a server that runs as root, to run sessions as another user")
+	}
+	t.Setenv("GOREX_DIR", t.TempDir())
+	t.Setenv(EnvSessionUser, "nobody")
+	if err := os.MkdirAll(Dir(), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	ln, err := net.Listen("unix", SocketPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+	lf, err := ln.(*net.UnixListener).File()
+	if err != nil {
+		t.Fatal(err)
+	}
+	lock, err := os.OpenFile(filepath.Join(Dir(), "server.lock"), os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The resumed server takes these two descriptors over: closing them
+	// here would close what it serves on.
+	h := handoff{Version: handoffVersion, Started: time.Now(), Listener: descriptor(lf), Lock: descriptor(lock)}
+	path := handoffPath()
+	if err := writeJSON(path, &h); err != nil {
+		t.Fatal(err)
+	}
+	go func() {
+		if err := Resume(path); err != nil {
+			t.Errorf("resume: %v", err)
+		}
+	}()
+	var c *Client
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		if c, err = ConnectExisting(); err == nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("connecting to the resumed server: %v", err)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	defer c.Shutdown()
+	defer c.Close()
+	hello, err := c.Hello()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hello.Host.User != "nobody" {
+		t.Fatalf("the resumed server's sessions run as %q, not nobody", hello.Host.User)
 	}
 }

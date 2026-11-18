@@ -261,6 +261,14 @@ func Resume(path string) error {
 	}
 	defer lock.Close()
 	s := newServer(ln, lock)
+	// An upgrade runs this executable in the server's place, with the
+	// environment the server was started with: the sessions it starts
+	// from now on run as the same user, not as the server's.
+	sessUser, err := sessionUserFromEnv()
+	if err != nil {
+		return err
+	}
+	s.setSessionUser(sessUser)
 	s.journal = openJournal()
 	defer s.journal.close()
 	s.journal.started()

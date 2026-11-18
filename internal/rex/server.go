@@ -352,12 +352,7 @@ func Serve() error {
 		return err
 	}
 	s := newServer(ln, lock)
-	s.sessUser = sessUser
-	if sessUser != nil {
-		s.home = sessUser.home
-	} else if os.Geteuid() == 0 {
-		log.Printf("rex: the server runs as root: set %s to run sessions as a user", EnvSessionUser)
-	}
+	s.setSessionUser(sessUser)
 	// The journal is read before this run records its start: what it kept
 	// of the run before this one tells whether that one stopped, and which
 	// layout it had last.
