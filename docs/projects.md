@@ -209,6 +209,19 @@ type DirListResult struct {
 - **New Window** in a project with a folder opens on the home host's
   gateway with `cwd` set to the folder. With the home host unreachable it
   shows why and does not open elsewhere.
+- **New Window** in a project with no folder opens on the host the user
+  picks from the header's menu (the only online host needs no pick), in
+  that host's session of the project, as the host card's New Window does.
+- The strings call the home host the *project host* ("项目所在主机"), so
+  that it does not read as the folder browser's Home. Rex Go names a
+  window "window" everywhere (row menu, title menu, ⌘T), as its list,
+  search and Rex API do; an unnamed window with no terminal title shows its project's
+  folder name, else its program, never the server's `Window <id>`.
+- New Project (`+`) stays outside the scrolling project strip. The folder
+  browser's **Use This Folder** row, a row's swipe and its menu choose a
+  folder; a tap opens it.
+- **Delete Project** asks first. It closes no window: the project's
+  windows stay open on their hosts and show under Unassigned.
 
 ## Web client
 

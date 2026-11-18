@@ -175,7 +175,7 @@ struct TerminalScreen: View {
                     Menu {
                         // The images the pane showed (docs/ios-pane-gallery.md).
                         if let g = session?.gallery { GalleryMenuItem(gallery: g) }
-                        Button("New Tab", systemImage: "plus") { newTab() }
+                        Button("New Window", systemImage: "plus") { newTab() }
                         Button("Split Pane", systemImage: "rectangle.split.2x1") { newSplit() }
                         if paneCellList.count > 1 {
                             Button("Close Pane", systemImage: "xmark.rectangle", role: .destructive) { closePane(currentTarget.block) }
@@ -823,7 +823,7 @@ struct TerminalScreen: View {
                 try await host.closeWindow(w.window_id, in: currentTarget.session)
                 go(nil)
             } catch {
-                failure = ("Can't Close the Tab", error.localizedDescription)
+                failure = ("Can't Close the Window", error.localizedDescription)
             }
         }
     }
