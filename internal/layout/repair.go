@@ -27,7 +27,7 @@ func RepairHostPanes(st Store, machineOf func(host string) string) (Store, int) 
 	if taken == 0 {
 		return st, 0
 	}
-	m := migration{machineOf: machineOf, byKey: map[string]*Adoption{}}
+	m := migration{machineOf: machineOf}
 	var spaces []string
 	gone := map[string]bool{}
 	sessions := make([]Workspace, 0, len(st.Sessions))
@@ -57,8 +57,12 @@ func RepairHostPanes(st Store, machineOf func(host string) string) (Store, int) 
 		}
 		if len(tabs) == 0 && w.Dir == "" {
 			// An old space, of no project: it goes, and its name stays
-			// one the picker offers, as Migrate leaves such a space.
-			spaces = addName(spaces, w.Name)
+			// one the picker offers, as Migrate leaves such a space. The
+			// workspace of tabs with no project is no space, and a client
+			// of before projects keeps its ID: it goes unnamed.
+			if w.Name != NoProjectName {
+				spaces = addName(spaces, w.Name)
+			}
 			gone[w.ID] = true
 			continue
 		}

@@ -112,6 +112,31 @@ func TestRepairHostPanes(t *testing.T) {
 	}
 }
 
+// TestRepairHostPanesNoProjectWorkspace: the workspace of tabs with no
+// project, which a client of before projects keeps as the ID of an old
+// space, gives up its panes of another host without its name joining the
+// spaces the picker offers: it is no space.
+func TestRepairHostPanesNoProjectWorkspace(t *testing.T) {
+	raw := `{"version":3,"windows":["np"],"sessions":[
+ {"id":"np","name":"` + NoProjectName + `","dir":"","active":0,"tabs":[
+  {"id":"away","name":"away","root":{"sid":"r1","host":"h1"}}]},
+ {"id":"proj","name":"gorex","dir":"/code/gorex","active":0,"tabs":[
+  {"id":"dev","root":{"sid":"l1"}}]}]}`
+	st, taken := RepairHostPanes(Parse([]byte(raw)), machines)
+	if taken != 1 {
+		t.Fatalf("took %d panes, want 1", taken)
+	}
+	if st.Space("np") != nil || slices.Contains(st.Spaces, NoProjectName) {
+		t.Fatalf("the workspace of no project stayed, or named a space: %+v, %v", st.Space("np"), st.Spaces)
+	}
+	if !slices.Equal(st.Windows, []string{}) && slices.Contains(st.Windows, "np") {
+		t.Errorf("the windows %v", st.Windows)
+	}
+	if len(st.Adopt) != 1 || st.Adopt[0].Tabs[0].Title != "away" {
+		t.Fatalf("the adoptions %+v", st.Adopt)
+	}
+}
+
 // TestRepairHostPanesChangesNothing: a layout that keeps this machine's
 // panes only, and one of before projects, which Migrate makes, change
 // not at all.

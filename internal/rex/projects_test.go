@@ -508,6 +508,12 @@ func TestRepairHostPanesAtLoad(t *testing.T) {
 	if ad.Tabs[0].Title != "dev" || ad.Tabs[0].Split.SID != "r1" || ad.Tabs[1].Title != "Projects V2" || ad.Tabs[2].Title != "away" {
 		t.Errorf("the adoption's tabs %+v", ad.Tabs)
 	}
+	// The store on disk is the repaired one: a second server reads it.
+	if raw, err := c.Layout(); err != nil {
+		t.Fatal(err)
+	} else if b, err := os.ReadFile(filepath.Join(Dir(), "layout.json")); err != nil || string(b) != string(raw) {
+		t.Fatalf("layout.json is %s, %v; the server has %s", b, err, raw)
+	}
 	// A second load changes nothing: nothing else is put back.
 	raw, _ := c.Layout()
 	s.migrateLayout()

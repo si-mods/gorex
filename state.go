@@ -1249,7 +1249,11 @@ func (a *App) askPane(at *Pane, c rex.LayoutCommand, done func(*Pane)) *Pane {
 	if at == nil || at.Tab == nil {
 		return nil
 	}
-	if a.ws != nil {
+	// The space is one of the layout the command goes to: the window's,
+	// when it shows that host's, which a pane of another host's in this
+	// machine's layout is not (docs/projects.md, "The desktop window").
+	// None otherwise, and the server finds the pane in any of its spaces.
+	if a.ws != nil && a.ws.host == at.host {
 		c.Space = a.ws.ID
 	}
 	if at.SID != "" {

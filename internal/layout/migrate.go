@@ -57,7 +57,7 @@ func Migrate(raw []byte, machineOf func(host string) string) (st Store, changed 
 			homes[w.ID] = w.Host
 		}
 	}
-	m := migration{machineOf: machineOf, byKey: map[string]*Adoption{}}
+	m := migration{machineOf: machineOf}
 	out := Store{Version: Version, Show: st.Show, ShowAt: st.ShowAt}
 	moved := map[string]string{} // old workspace ID → the one it went to
 	var noProject *Workspace
@@ -179,7 +179,6 @@ func addName(names []string, name string) []string {
 // migration gathers the adoptions of a Migrate.
 type migration struct {
 	machineOf func(string) string
-	byKey     map[string]*Adoption
 	list      []Adoption
 	order     []string
 }
