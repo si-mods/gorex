@@ -50,3 +50,4 @@ These checks prove the code builds and its unit tests pass. They do not prove th
 - The tool prints one line, `verify: mode full ...` or `verify: mode read-only ...`, with the reason. In the hook the read-only line also shows to the user. Your own rebased or amended commits also give read-only mode; CI runs the full checks.
 - Limit: the rule judges where commits came from, not where content came from. `git merge --squash`, `git checkout <fork> -- .`, `git cherry-pick -n`, or `git apply` of a fork diff followed by `git commit` all look trusted. Never do that with untrusted code and then push from a session with the hook on.
 - `GOREX_VERIFY=off` turns the hook off (for example, to push a branch you know is broken to share it).
+- No Go on `PATH`: the hook exits 0 with a one-line note on stderr instead of failing every Bash call with `/bin/sh: 1: go: not found`. The checks then did not run, so tick nothing off by hand — install Go and rerun the checks before you push.
