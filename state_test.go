@@ -231,7 +231,7 @@ func TestNotificationClickFindsSession(t *testing.T) {
 	p := a.tabs[0].Focus
 	a.notifyPane(p, "", program{}, "hi", "")
 	id := got[0].ID
-	a.newWorkspace()
+	a.showWorkspace(a.st.newTestSpace())
 	tt.Frame()
 	if first.app != nil || a.ws == first {
 		t.Fatal("the space still shows")
@@ -240,9 +240,9 @@ func TestNotificationClickFindsSession(t *testing.T) {
 	if a.ws != first || a.tab().Focus != p {
 		t.Fatalf("the click showed %s", a.ws.Name)
 	}
-	a.newWorkspace()
+	a.showWorkspace(a.st.newTestSpace())
 	tt.Frame()
-	b := st.openWindow(st.addWorkspace())
+	b := st.openWindow(st.newTestSpace())
 	b.showWorkspace(first)
 	b.selectTab(1)
 	if !p.closed {

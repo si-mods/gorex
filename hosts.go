@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -20,7 +19,6 @@ import (
 	"github.com/egoist/mygo"
 
 	"gorex/internal/hosts"
-	"gorex/internal/layout"
 	"gorex/internal/rex"
 	"gorex/locales"
 )
@@ -116,8 +114,7 @@ type hostConn struct {
 	hello   rex.Hello
 	// closed are the sessions closed here since the host connected, which
 	// adopt does not open again though a list still has them.
-	closed        map[string]bool
-	openOnConnect *App
+	closed map[string]bool
 	// running tells that the app connects to the host (startHost), which
 	// it does from the moment the host is saved.
 	running bool
@@ -127,14 +124,10 @@ type hostConn struct {
 	// is placed, or would have been (newPaneRun).
 	creating chan struct{}
 
-	// mu guards client, changed, Kills of savedHost, expect, the
-	// sessions a teleport starts here, which adopt leaves for their pane,
-	// and renames, the names given here that wait to go to the host
-	// (rename); renameMu keeps runRenames to one at a time.
-	mu       sync.Mutex
-	renameMu sync.Mutex
-	renames  map[renameKey]string
-	client   *rex.Client // nil while not connected
+	// mu guards client, changed, Kills of savedHost and expect, the
+	// sessions a teleport starts here.
+	mu     sync.Mutex
+	client *rex.Client // nil while not connected
 	// changed closes as client changes (setClient).
 	changed chan struct{}
 	expect  map[string]bool
@@ -145,9 +138,9 @@ type hostConn struct {
 	// status of the spaces no window shows (store.hiddenStatus); changed
 	// on the main thread.
 	infos map[string]rex.SessionInfo
-	// layoutTabs are the tabs of the host's shared layout, as last read,
-	// none while it shares none (hostTabOf); changed on the main thread.
-	layoutTabs []savedTab
+	// lay is the host's layout as the app follows it (hostlayout.go);
+	// the main thread's.
+	lay *hostSync
 	// update runs a change on the main thread, and persist saves the
 	// hosts there; startHost sets them.
 	update  func(func())
@@ -491,6 +484,9 @@ func (a *App) runHost(h *hostConn, update func(func())) {
 				if h.learn(hello) && h.persist != nil {
 					h.persist()
 				}
+				if a.st != nil && h.current() == c {
+					a.st.followHost(h, c, hello, update)
+				}
 			})
 			since := time.Now()
 			h.runKills(c)
@@ -501,6 +497,12 @@ func (a *App) runHost(h *hostConn, update func(func())) {
 			}
 			h.mu.Unlock()
 			c.Close()
+			update(func() {
+				if a.st != nil {
+					a.st.lostHost(h, c)
+					a.st.redraw()
+				}
+			})
 			select {
 			case <-h.stop:
 				return
@@ -531,16 +533,11 @@ func (a *App) runHost(h *hostConn, update func(func())) {
 	}
 }
 
-// hostLayoutGrace is how many polls a session the host's shared layout
-// does not name waits for it: the host saves its layout at most once a
-// second, so a session it just opened may be listed here before the save,
-// and would then get a tab of its own.
-const hostLayoutGrace = 2
-
 // watchHost asks a host what runs in its sessions every second, until its
-// connection closes, an ask fails, or the host is closed. The windows take
-// the list, and draw again, as it changes (its ETag), and while a session
-// waits for the host's layout.
+// connection closes, an ask fails, or the host is closed, and follows its
+// layout: the windows take the list, and draw again, as it changes (its
+// ETag), and the host's layout as its server tells it changed
+// (store.followHost).
 func (a *App) watchHost(h *hostConn, c *rex.Client, update func(func())) {
 	tick := time.NewTicker(time.Second)
 	defer tick.Stop()
@@ -548,15 +545,9 @@ func (a *App) watchHost(h *hostConn, c *rex.Client, update func(func())) {
 	if err := c.Subscribe(); err == nil {
 		events = c.Events()
 	}
-	round := 0
-	first := map[string]int{}            // the poll each session first appeared in
-	prev := map[string]rex.SessionInfo{} // the sessions of the poll before
-	var l hostLayout                     // the host's layout, as last read
-	shared, read := false, false         // the host shares its layout, and it was read
-	etag, held := "", false              // of the last list, and whether it held a session
+	etag := ""
+	var prev map[string]rex.SessionInfo
 	for {
-		layoutDirty := false
-		ticked := false
 		select {
 		case <-c.Closed():
 			return
@@ -570,554 +561,41 @@ func (a *App) watchHost(h *hostConn, c *rex.Client, update func(func())) {
 				events = nil
 				continue
 			}
-			if ev.Kind != "layout" {
-				continue
+			if ev.Kind == "layout" {
+				if l := h.lay; l != nil {
+					l.out.tell(c, ev.Revision)
+				}
 			}
-			layoutDirty = true
+			continue
 		case <-tick.C:
-			ticked = true
-		}
-		if ticked {
-			round++
-		}
-		// The names given here while the host was away, or that it did
-		// not take, go before its layout is read again, which has them as
-		// they were (syncHostNames skips them meanwhile); those it still
-		// does not take go again the next time round.
-		if h.renamesWaiting() {
-			h.runRenames(c)
 		}
 		infos, next, changed, err := c.ListSince(etag)
 		if err != nil {
 			// A connection that stopped answering is as good as dropped.
 			return
 		}
-		if etag = next; !changed {
-			infos = slices.Collect(maps.Values(prev))
-		}
-		byID := make(map[string]rex.SessionInfo, len(infos))
-		fresh := false
-		for _, in := range infos {
-			byID[in.ID] = in
-			if _, ok := prev[in.ID]; !ok {
-				fresh = true
-			}
-			if _, ok := first[in.ID]; !ok {
-				first[in.ID] = round
-			}
-		}
-		prev = byID
-		// A session may be adopted in the tab the host's shared layout
-		// shows it in, with its splits. The layout is read when it was not
-		// yet, when a session appears, and while one the layout does not
-		// name may still be on its way into it.
-		retry := false
-		for id, in := range byID {
-			if in.Exited || l.named[id] {
-				continue
-			}
-			if round-first[id] <= hostLayoutGrace {
-				retry = true
-				break
-			}
-		}
-		layoutRead := !read || fresh || layoutDirty || shared && retry
-		if layoutRead {
-			read = true
-			raw, err := c.Layout()
-			if shared = err == nil; shared {
-				if events == nil {
-					if err := c.Subscribe(); err == nil {
-						events = c.Events()
-					}
-				}
-				l = hostLayout{named: map[string]bool{}}
-				for _, w := range layout.Parse(raw).Sessions {
-					l.tabs = append(l.tabs, w.Tabs...)
-					for range w.Tabs {
-						l.spaces = append(l.spaces, layout.Workspace{Name: w.Name, Color: w.Color})
-					}
-				}
-				for _, t := range l.tabs {
-					for _, r := range t.Roots() {
-						for _, n := range layout.Leaves(r) {
-							if n.SID != "" {
-								l.named[n.SID] = true
-							}
-						}
-					}
-				}
-			} else {
-				// Not shared, or not now: each session gets a tab of its
-				// own, as before there were layouts.
-				l = hostLayout{}
-			}
-		}
-		if shared {
-			l.hold = nil
-			for id, in := range byID {
-				if in.Exited || l.named[id] || round-first[id] >= hostLayoutGrace {
-					continue
-				}
-				if l.hold == nil {
-					l.hold = map[string]bool{}
-				}
-				l.hold[id] = true
-			}
-		}
-		// A session the layout stops holding opens in the round after.
-		if !changed && !layoutDirty && l.hold == nil && !held {
+		etag = next
+		if !changed && prev != nil {
 			continue
 		}
-		held = l.hold != nil
-		layout := l
-		layout.syncNames = layoutRead && shared
+		byID := make(map[string]rex.SessionInfo, len(infos))
+		for _, in := range infos {
+			byID[in.ID] = in
+		}
+		prev = byID
 		update(func() {
+			if h.current() != c {
+				return
+			}
 			h.infos = byID
-			h.layoutTabs = layout.tabs
+			if a.st != nil {
+				a.st.takeOld(h, byID)
+			}
 			for _, o := range a.peers() {
-				o.apply(h, byID, layout)
-			}
-			if h.openOnConnect != nil && h.openOnConnect.quitting {
-				h.openOnConnect = nil
-			}
-			// A project's tab opens a session of its own, which adopt
-			// leaves alone (expecting): it need not wait for the host's
-			// layout to name its sessions, as the tab openOnConnect
-			// opens does.
-			if h.current() == c {
-				for _, o := range a.peers() {
-					if !o.quitting {
-						o.takeProjectOpen(h)
-					}
-				}
-			}
-			if o := h.openOnConnect; o != nil && h.current() == c {
-				if tabs := o.tabsOn(h); len(tabs) != 0 {
-					h.openOnConnect = nil
-					o.active = slices.Index(o.tabs, tabs[0])
-					o.focusReq = tabs[0].Focus
-				} else if len(layout.hold) == 0 {
-					h.openOnConnect = nil
-					o.newTabOn(h, o.dirOn(h))
-				}
+				o.apply(h, byID)
 			}
 		})
 	}
-}
-
-// hostLayout is what a host's shared layout says of its sessions, for
-// adopt: the sessions in its tabs, and those seen too lately for the host
-// to have saved them there yet.
-type hostLayout struct {
-	tabs []savedTab
-	// spaces are the name and color of the host's space each of tabs is
-	// in, by index.
-	spaces    []layout.Workspace
-	named     map[string]bool
-	hold      map[string]bool
-	syncNames bool
-}
-
-// adopt opens a tab for each live session of host h that no pane here
-// shows, as those of the host's own window or of another client while the
-// host shares them; not those closed here, which end. Call it on the main
-// thread.
-//
-// With the host's shared layout, the sessions of one of its tabs open in
-// one tab here, with its splits: two panes side by side there are not two
-// tabs here. Without it, each gets a tab of its own. A session the layout
-// does not name yet waits for the host to save it there (hostLayout.hold)
-// before it gets a tab of its own.
-//
-// With windows of workspaces, the window focused last opens them, and a
-// session shows already when a tab of any workspace has it, shown in a
-// window or not. A tab of the host's layout opens in the space of the
-// name of the host's space it is in.
-func (a *App) adopt(h *hostConn, byID map[string]rex.SessionInfo, l hostLayout) {
-	// A list on its way as the host was removed, or the window closed.
-	if a.quitting || !slices.Contains(a.hosts, h) {
-		return
-	}
-	if st := a.st; st != nil && (len(st.apps) == 0 || st.apps[0] != a) {
-		return
-	}
-	shown := map[string]bool{}
-	where := map[string]*Pane{} // the panes here of h's sessions
-	for _, o := range a.peers() {
-		for _, t := range o.tabs {
-			for _, p := range t.allPanes() {
-				if p.host == h {
-					shown[p.SID] = true
-					where[p.SID] = p
-				}
-			}
-		}
-	}
-	if a.st != nil {
-		for sid := range a.st.hostSIDs(h) {
-			shown[sid] = true
-		}
-	}
-	// A teleport under way, which the layout notes before the host starts
-	// its session, shows it in its pane's place.
-	if a.st != nil {
-		for _, tp := range a.st.base.Teleports {
-			if tp.Host == h.ID {
-				shown[tp.SID] = true
-			}
-		}
-	}
-	h.mu.Lock()
-	for _, sid := range h.Kills {
-		shown[sid] = true
-	}
-	for sid := range h.expect {
-		shown[sid] = true
-	}
-	h.mu.Unlock()
-	// free are the sessions to open, by id, until a tab of the layout
-	// takes them; order keeps their creation order for those it does not.
-	free := map[string]rex.SessionInfo{}
-	var order []rex.SessionInfo
-	for _, in := range sortedInfos(byID) {
-		if in.Exited || shown[in.ID] || h.closed[in.ID] || l.hold[in.ID] {
-			continue
-		}
-		free[in.ID] = in
-		order = append(order, in)
-	}
-	if len(order) == 0 {
-		return
-	}
-	added := false
-	for i, t := range l.tabs {
-		// A tab here that shows panes of t already takes its new ones,
-		// as when the host splits a pane of it.
-		if a.adoptInto(h, t, free, where) {
-			added = true
-		}
-		// A new tab goes to the space here of the name of the host's
-		// space it is in, so that the two group it alike: into the window
-		// that shows that space, or into its layout, made last when no
-		// space has the name.
-		var sp layout.Workspace
-		var w *Workspace
-		if a.st != nil && i < len(l.spaces) {
-			sp = l.spaces[i]
-			w = a.st.workspaceNamed(sp.Name)
-		}
-		o := a
-		if w != nil && w.app != nil {
-			o = w.app
-		}
-		at := o.adoptTab(h, t, free)
-		if at == nil {
-			continue
-		}
-		added = true
-		if sp.Name == "" || w != nil && w.app != nil {
-			o.tabs = append(o.tabs, at)
-			if o != a {
-				o.groupTabs()
-				o.changed()
-			}
-			continue
-		}
-		if w == nil {
-			w = a.st.addWorkspace()
-			w.Name = sp.Name
-			if _, ok := spaceColorHex(sp.Color); ok {
-				w.Color = sp.Color
-			}
-		}
-		w.unkeep()
-		w.layout.Tabs = append(w.layout.Tabs, a.savedTab(at))
-		a.closePanes([]*Tab{at})
-		a.st.save()
-	}
-	// A session the layout does not name, as of a host that shares no
-	// layout, gets a tab of its own.
-	for _, in := range order {
-		if _, ok := free[in.ID]; !ok {
-			continue
-		}
-		a.tabs = append(a.tabs, a.sessionTab(h, in))
-		added = true
-	}
-	if added {
-		a.groupTabs()
-		a.changed()
-	}
-}
-
-// adoptInto puts the panes of the host's tab st that free has into the
-// tabs here that show its other panes, where its splits put them, and takes
-// them from free; where are the panes here of h's sessions, and gets those
-// it adds. It reports whether it added any. The tabs keep their focus.
-func (a *App) adoptInto(h *hostConn, st savedTab, free map[string]rex.SessionInfo, where map[string]*Pane) bool {
-	up := map[*savedNode]*savedNode{}
-	var leaves func(n *savedNode) []*savedNode
-	leaves = func(n *savedNode) []*savedNode {
-		if n == nil {
-			return nil
-		}
-		if n.A == nil || n.B == nil {
-			return []*savedNode{n}
-		}
-		up[n.A], up[n.B] = n, n
-		return append(leaves(n.A), leaves(n.B)...)
-	}
-	tiled := leaves(st.Root)
-	// pane makes the pane of n's session in tab t of window o, which has
-	// had the focus just before the pane that has it.
-	pane := func(o *App, t *Tab, n *savedNode) *Pane {
-		in := free[n.SID]
-		delete(free, n.SID)
-		p := o.adoptPane(h, t, in, n.Name)
-		where[in.ID] = p
-		t.recentBehind(p)
-		o.changed()
-		return p
-	}
-	added := false
-	// A pane is placed beside one placed before it, so go on while any is.
-	for more := true; more; {
-		more = false
-		for _, n := range tiled {
-			if _, ok := free[n.SID]; n.SID == "" || n.Host != "" || !ok {
-				continue
-			}
-			// The nearest split with a side shown here: the new pane
-			// splits what shows that side.
-			for c, s := n, up[n]; s != nil; c, s = s, up[s] {
-				first, other := c == s.A, s.A
-				if first {
-					other = s.B
-				}
-				var near []*Pane
-				for _, o := range leaves(other) {
-					if p := where[o.SID]; p != nil && p.float == nil && p.Node != nil {
-						near = append(near, p)
-					}
-				}
-				if len(near) == 0 {
-					continue
-				}
-				// The pane next to the new one there, and those of its tab.
-				next := near[len(near)-1]
-				if first {
-					next = near[0]
-				}
-				t := next.Tab
-				near = slices.DeleteFunc(near, func(p *Pane) bool { return p.Tab != t })
-				// The split here of all those panes, when it has no other,
-				// else the pane next to the new one.
-				target := next.Node
-				for x := next.Node; x != nil; x = x.Parent {
-					ps := x.panes()
-					if !slices.ContainsFunc(near, func(p *Pane) bool { return !slices.Contains(ps, p) }) {
-						if len(ps) == len(near) {
-							target = x
-						}
-						break
-					}
-				}
-				o := a.owner(t)
-				if o == nil {
-					break
-				}
-				o.splitNode(t, target, pane(o, t, n), !first, s.Vertical, s.Ratio)
-				added, more = true, true
-				break
-			}
-		}
-	}
-	// A float of st goes over the tab here that shows st's other panes.
-	var t *Tab
-	for _, n := range tiled {
-		if p := where[n.SID]; p != nil {
-			t = p.Tab
-			break
-		}
-	}
-	for _, sf := range st.Floats {
-		if t != nil {
-			break
-		}
-		if sf.Pane != nil && where[sf.Pane.SID] != nil {
-			t = where[sf.Pane.SID].Tab
-		}
-	}
-	o := a.owner(t)
-	if o == nil {
-		return added
-	}
-	for _, sf := range st.Floats {
-		n := sf.Pane
-		if n == nil || n.A != nil && n.B != nil {
-			continue
-		}
-		if _, ok := free[n.SID]; n.SID == "" || n.Host != "" || !ok {
-			continue
-		}
-		o.floatOver(t, pane(o, t, n), sf)
-		added = true
-	}
-	return added
-}
-
-// owner returns the window of the peers whose tabs have t, nil for none.
-func (a *App) owner(t *Tab) *App {
-	for _, o := range a.peers() {
-		if t != nil && slices.Contains(o.tabs, t) {
-			return o
-		}
-	}
-	return nil
-}
-
-// adoptPane makes the pane of tab t of the host's session in, named name.
-func (a *App) adoptPane(h *hostConn, t *Tab, in rex.SessionInfo, name string) *Pane {
-	p := &Pane{ID: a.id(), SID: in.ID, Name: name, info: in, startDir: in.Dir, host: h}
-	a.attach(p, in.Cols, in.Rows)
-	p.Tab = t
-	return p
-}
-
-// splitNode puts pane p beside node n of tab t, after it (right or below)
-// when after, else before it, with ratio as the first side's share. The
-// tab shows all its tiled panes, as no pane fills it; its focus stays.
-func (a *App) splitNode(t *Tab, n *Node, p *Pane, after, vertical bool, ratio float32) {
-	if ratio == 0 {
-		ratio = 0.5
-	}
-	t.Zoom = nil
-	p.Tab = t
-	old := &Node{ID: a.id(), Pane: n.Pane, Parent: n, Vertical: n.Vertical, Ratio: n.Ratio, A: n.A, B: n.B}
-	if old.Pane != nil {
-		old.Pane.Node = old
-	}
-	if old.A != nil {
-		old.A.Parent, old.B.Parent = old, old
-	}
-	node := &Node{ID: a.id(), Pane: p, Parent: n}
-	p.Node = node
-	n.Pane, n.Vertical, n.Ratio = nil, vertical, min(max(ratio, 0.05), 0.95)
-	n.A, n.B = old, node
-	if !after {
-		n.A, n.B = node, old
-	}
-}
-
-// adoptTab makes the tab of the panes of the host's tab st that free has,
-// in its splits, and takes them from it. It returns nil when none is left,
-// as they all show here already.
-func (a *App) adoptTab(h *hostConn, st savedTab, free map[string]rex.SessionInfo) *Tab {
-	t := a.makeTab(st.ID)
-	t.Name = st.Name
-	// named are st's panes in order, as its focus counts them: the host's
-	// filter leaves out the panes this client may not use, and compresses
-	// the focus over those left.
-	var named []string
-	var load func(n *savedNode, parent *Node) *Node
-	load = func(n *savedNode, parent *Node) *Node {
-		if n == nil {
-			return nil
-		}
-		if n.A == nil || n.B == nil {
-			if n.SID != "" {
-				named = append(named, n.SID)
-			}
-			in, ok := free[n.SID]
-			if n.SID == "" || n.Host != "" || !ok {
-				return nil
-			}
-			delete(free, n.SID)
-			node := &Node{ID: a.id(), Parent: parent}
-			p := a.adoptPane(h, t, in, n.Name)
-			p.Node = node
-			node.Pane = p
-			return node
-		}
-		r := n.Ratio
-		if r == 0 {
-			r = 0.5
-		}
-		node := &Node{ID: a.id(), Parent: parent, Vertical: n.Vertical, Ratio: min(max(r, 0.05), 0.95)}
-		node.A, node.B = load(n.A, node), load(n.B, node)
-		// The side left takes the place of a split whose other side does
-		// not come, as a pane not shown here leaves no split of one pane.
-		switch {
-		case node.A == nil && node.B == nil:
-			return nil
-		case node.A == nil:
-			node.B.Parent = parent
-			return node.B
-		case node.B == nil:
-			node.A.Parent = parent
-			return node.A
-		}
-		return node
-	}
-	if st.Root != nil {
-		t.Root = load(st.Root, nil)
-	}
-	tiled := len(named)
-	// The saved float with the focus, by its place among the saved floats:
-	// a float that does not come shifts no index as it does.
-	wanted := -1
-	if st.FocusFloat > 0 {
-		wanted = st.FocusFloat - 1
-	}
-	var focusedFloat *Float
-	for i, sf := range st.Floats {
-		if sf.Pane == nil {
-			continue
-		}
-		n := load(sf.Pane, nil)
-		if n == nil || n.Pane == nil {
-			continue
-		}
-		f := a.floatOver(t, n.Pane, sf)
-		if i == wanted {
-			focusedFloat = f
-		}
-	}
-	named = named[:tiled]
-	if t.Root == nil {
-		if len(t.Floats) == 0 {
-			return nil
-		}
-		// The tab's tiled panes are not here: its topmost float takes
-		// their place, as it does when the last tiled pane closes.
-		a.promoteFloat(t)
-	}
-	ps := t.panes()
-	for _, p := range ps {
-		t.setFocus(p)
-	}
-	for _, f := range t.Floats {
-		t.setFocus(f.Pane)
-	}
-	// The pane the host focuses, or the first when it does not come.
-	focused := ps[0]
-	if st.Focus >= 0 && st.Focus < len(named) {
-		for _, p := range ps {
-			if p.SID == named[st.Focus] {
-				focused = p
-				break
-			}
-		}
-	}
-	t.setFocus(focused)
-	if st.Zoom && len(ps) > 1 {
-		t.Zoom = t.Focus
-	}
-	if focusedFloat != nil && slices.Contains(t.Floats, focusedFloat) && !focusedFloat.Hidden {
-		t.setFocus(focusedFloat.Pane)
-	}
-	return t
 }
 
 // hostByID returns the saved host of an id, nil when none.
@@ -1241,42 +719,29 @@ func (a *App) removeHost(h *hostConn) {
 	if hostsUI.renaming == h.ID {
 		closeHostRename()
 	}
+	// The host's workspaces go from the windows, its sessions going on
+	// there: a window that showed one shows another.
+	if st := a.st; st != nil {
+		for _, o := range slices.Clone(st.apps) {
+			if o.ws != nil && o.ws.host == h {
+				o.showWorkspace(st.freshWorkspace())
+			}
+		}
+		st.reconcileOn(h, savedStore{})
+		forgetHostCache(h.ID)
+	}
 	for _, o := range a.peers() {
-		drop := func() {
-			for _, t := range slices.Clone(o.tabs) {
-				for _, p := range t.allPanes() {
-					if p.host == h {
-						o.dropPane(p, false)
-					}
+		changed := false
+		for _, t := range slices.Clone(o.tabs) {
+			for _, p := range t.allPanes() {
+				if p.host == h {
+					o.dropPane(p, false)
+					changed = true
 				}
 			}
+		}
+		if changed {
 			o.changed()
-		}
-		// The window keeps a tab, as it would close with its last: the
-		// host's panes go once the server made it, or could not.
-		if len(o.tabs) > 0 && len(o.tabsOn(h)) == len(o.tabs) {
-			// A window of no space takes a space of its own for it, never
-			// another window's.
-			if o.ws == nil && o.st != nil {
-				w := o.st.addWorkspace()
-				o.ws, w.app = w, o
-			}
-			if o.ws != nil {
-				home, _ := os.UserHomeDir()
-				o.ask(rex.LayoutCommand{Op: "tab.create", Space: o.ws.ID, Dir: home, Focus: true}, func(rex.LayoutCommand) { drop() })
-				continue
-			}
-		}
-		drop()
-	}
-	// Spaces whose kept tabs show the host's panes show from their layout.
-	if a.st != nil {
-		for _, w := range a.st.workspaces {
-			if k := w.kept; k != nil && slices.ContainsFunc(k.tabs, func(t *Tab) bool {
-				return slices.ContainsFunc(t.allPanes(), func(p *Pane) bool { return p.host == h })
-			}) {
-				w.unkeep()
-			}
 		}
 	}
 	a.hosts = slices.DeleteFunc(slices.Clone(a.hosts), func(o *hostConn) bool { return o == h })

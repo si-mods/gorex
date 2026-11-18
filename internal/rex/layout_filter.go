@@ -57,8 +57,8 @@ func (s *Server) filterLayoutTabs(tabs []layout.Tab) []layout.Tab {
 	var out []layout.Tab
 	for _, t := range tabs {
 		// The focus names a place among every leaf the host keeps, a
-		// browser pane's among them; the peer adopts it by the sessions it
-		// sees, in order, which is what its own count names.
+		// browser pane's among them; the peer counts those it may use, a
+		// browser pane's among them, but not the unavailable places.
 		before := leavesOf(t.Root)
 		root := s.filterLayoutNode(t.Root)
 		if root != nil {
@@ -69,7 +69,7 @@ func (s *Server) filterLayoutTabs(tabs []layout.Tab) []layout.Tab {
 			}
 			focus, kept, named := 0, false, 0
 			for _, n := range after {
-				if n.SID == "" {
+				if n.Unavailable {
 					continue
 				}
 				if n == wanted {
@@ -138,6 +138,18 @@ func leavesOf(n *layout.Node) []*layout.Node {
 func (s *Server) filterLayoutNode(n *layout.Node) *layout.Node {
 	if n == nil {
 		return nil
+	}
+	// A browser pane is the host's pane as its terminals are: a client
+	// that arranges the host's tabs keeps it (docs/projects.md). A note's
+	// text is this machine's: its place stays, as an unavailable pane's,
+	// so that the tab is not arranged without it.
+	if n.SID == "" && n.A == nil && n.B == nil {
+		switch {
+		case n.URL != "":
+			return n
+		case n.Kind != "":
+			return &layout.Node{Name: "Unavailable", Unavailable: true}
+		}
 	}
 	if n.SID != "" {
 		if _, err := s.session(n.SID); err != nil || n.Host != "" {

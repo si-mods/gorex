@@ -17,28 +17,6 @@ import (
 	"gorex/locales"
 )
 
-// hostChip shows the machine the sessions run on; a click shows more of
-// it, and of the session server.
-func (a *App) hostChip(c *ui.Context, k *colors) {
-	name, model, glyph := a.hostIdentity()
-	chip := ui.Row(c).Gap(9).Padding(3, 8, 3, 6).Radius(9).AlignItems(ui.Center).Cursor(ui.CursorPointer).
-		Role(ui.RoleButton).Label(locales.HostLabel(name)).MaxWidth(190).Shrink(0)
-	if chip.Hovered() || a.hostOpen {
-		chip.Background(k.hover)
-	}
-	if chip.Clicked() {
-		a.hostOpen = !a.hostOpen
-	}
-	chip.Children(func() {
-		glyphIcon(c, glyph, 19, k.textMuted)
-		ui.Column(c).MinWidth(0).Children(func() {
-			ui.Text(c, name).FontSize(13.5).FontWeight(700).TextColor(k.text.Alpha(0.85)).SingleLine().Ellipsis("…")
-			ui.Text(c, model).FontSize(11.5).TextColor(k.textFaint).SingleLine().Ellipsis("…")
-		})
-	})
-	a.hostPopover(c, k, chip, name, glyph)
-}
-
 // hostButton is the host chip as an icon, for the sidebar's foot: the
 // same panel opens from it. A remote host that is not connected shows as
 // a dot on the icon and in the button's label and tooltip; one making

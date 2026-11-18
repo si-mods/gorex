@@ -498,7 +498,7 @@ func TestPaneName(t *testing.T) {
 
 func TestMovePaneToWindow(t *testing.T) {
 	a, _ := newTestApp(t)
-	b := a.st.openWindow(a.st.addWorkspace())
+	b := a.st.openWindow(a.st.newTestSpace())
 	a.split(false)
 	p := a.tab().Focus
 	p.Name = "logs"
@@ -530,7 +530,7 @@ func TestMovePaneToWindow(t *testing.T) {
 
 func TestMoveOnlyPaneToWindow(t *testing.T) {
 	a, _ := newTestApp(t)
-	b := a.st.openWindow(a.st.addWorkspace())
+	b := a.st.openWindow(a.st.newTestSpace())
 	p := a.tab().Focus
 	sid := p.SID
 	a.movePaneToWindow(p, b)
@@ -884,7 +884,7 @@ func TestCommandTabFocus(t *testing.T) {
 func TestCommandTabFocusWindow(t *testing.T) {
 	a, _ := newTestApp(t)
 	st := a.st
-	b := st.openWindow(st.addWorkspace())
+	b := st.openWindow(st.newTestSpace())
 	for _, front := range []*App{b, a} {
 		st.raise(front)
 		back := a

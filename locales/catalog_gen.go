@@ -616,22 +616,6 @@ func (msgs Messages) CmdToggleSidebar() string {
 	return Catalog.Format(msgs.locale, "cmdToggleSidebar", nil)
 }
 
-// CmdToggleSidebarView says "Toggle Sidebar View"
-// in the language the app shows.
-//
-// Command: switch the sidebar between listing this window's space and
-// listing every space by host.
-func CmdToggleSidebarView() string { return In(i18n.Locale()).CmdToggleSidebarView() }
-
-// CmdToggleSidebarView says "Toggle Sidebar View"
-// in the language of msgs.
-//
-// Command: switch the sidebar between listing this window's space and
-// listing every space by host.
-func (msgs Messages) CmdToggleSidebarView() string {
-	return Catalog.Format(msgs.locale, "cmdToggleSidebarView", nil)
-}
-
 // CmdRenameTab says "Rename Tab…"
 // in the language the app shows.
 //
@@ -2458,64 +2442,6 @@ func SettingsPaneHeadersHint() string { return In(i18n.Locale()).SettingsPaneHea
 // Hint under the Show pane headers setting.
 func (msgs Messages) SettingsPaneHeadersHint() string {
 	return Catalog.Format(msgs.locale, "settingsPaneHeadersHint", nil)
-}
-
-// SettingsSidebarView says "Sidebar view"
-// in the language the app shows.
-//
-// Setting: what the sidebar of vertical tabs lists.
-func SettingsSidebarView() string { return In(i18n.Locale()).SettingsSidebarView() }
-
-// SettingsSidebarView says "Sidebar view"
-// in the language of msgs.
-//
-// Setting: what the sidebar of vertical tabs lists.
-func (msgs Messages) SettingsSidebarView() string {
-	return Catalog.Format(msgs.locale, "settingsSidebarView", nil)
-}
-
-// SettingsSidebarViewHint says "Projects lists this window's tabs. Hosts lists every project under each host it has tabs on, once a remote host is ad…"
-// in the language the app shows.
-//
-// Hint under the Sidebar view setting. Its options are the next two
-// messages.
-func SettingsSidebarViewHint() string { return In(i18n.Locale()).SettingsSidebarViewHint() }
-
-// SettingsSidebarViewHint says "Projects lists this window's tabs. Hosts lists every project under each host it has tabs on, once a remote host is ad…"
-// in the language of msgs.
-//
-// Hint under the Sidebar view setting. Its options are the next two
-// messages.
-func (msgs Messages) SettingsSidebarViewHint() string {
-	return Catalog.Format(msgs.locale, "settingsSidebarViewHint", nil)
-}
-
-// SettingsSidebarSpaces says "Projects"
-// in the language the app shows.
-//
-// Sidebar view option: this window's space, its tabs grouped by host.
-func SettingsSidebarSpaces() string { return In(i18n.Locale()).SettingsSidebarSpaces() }
-
-// SettingsSidebarSpaces says "Projects"
-// in the language of msgs.
-//
-// Sidebar view option: this window's space, its tabs grouped by host.
-func (msgs Messages) SettingsSidebarSpaces() string {
-	return Catalog.Format(msgs.locale, "settingsSidebarSpaces", nil)
-}
-
-// SettingsSidebarHosts says "Hosts"
-// in the language the app shows.
-//
-// Sidebar view option: every space listed under each host it has tabs on.
-func SettingsSidebarHosts() string { return In(i18n.Locale()).SettingsSidebarHosts() }
-
-// SettingsSidebarHosts says "Hosts"
-// in the language of msgs.
-//
-// Sidebar view option: every space listed under each host it has tabs on.
-func (msgs Messages) SettingsSidebarHosts() string {
-	return Catalog.Format(msgs.locale, "settingsSidebarHosts", nil)
 }
 
 // SettingsDockBadge says "Dock badge"
@@ -5118,7 +5044,7 @@ func (msgs Messages) CmdNewWindow() string {
 	return Catalog.Format(msgs.locale, "cmdNewWindow", nil)
 }
 
-// CmdNewSession says "New Project with No Folder"
+// CmdNewSession says "New Tab with No Project"
 // in the language the app shows.
 //
 // Command: show a new project with no folder, with one tab, in the window.
@@ -5126,7 +5052,7 @@ func (msgs Messages) CmdNewWindow() string {
 // folder.
 func CmdNewSession() string { return In(i18n.Locale()).CmdNewSession() }
 
-// CmdNewSession says "New Project with No Folder"
+// CmdNewSession says "New Tab with No Project"
 // in the language of msgs.
 //
 // Command: show a new project with no folder, with one tab, in the window.
@@ -5224,20 +5150,6 @@ func (msgs Messages) CmdCloseSession() string {
 	return Catalog.Format(msgs.locale, "cmdCloseSession", nil)
 }
 
-// CmdMoveTabToNewWindow says "Move Tab to New Window"
-// in the language the app shows.
-//
-// Command: move the active tab to a new window, in a new space.
-func CmdMoveTabToNewWindow() string { return In(i18n.Locale()).CmdMoveTabToNewWindow() }
-
-// CmdMoveTabToNewWindow says "Move Tab to New Window"
-// in the language of msgs.
-//
-// Command: move the active tab to a new window, in a new space.
-func (msgs Messages) CmdMoveTabToNewWindow() string {
-	return Catalog.Format(msgs.locale, "cmdMoveTabToNewWindow", nil)
-}
-
 // MenuSession says "Project"
 // in the language the app shows.
 //
@@ -5268,20 +5180,6 @@ func (msgs Messages) SessionLabel(name string) string {
 	return Catalog.Format(msgs.locale, "sessionLabel", map[string]any{"name": name})
 }
 
-// SessionListTitle says "Projects"
-// in the language the app shows.
-//
-// Space popover: title over the list of spaces.
-func SessionListTitle() string { return In(i18n.Locale()).SessionListTitle() }
-
-// SessionListTitle says "Projects"
-// in the language of msgs.
-//
-// Space popover: title over the list of spaces.
-func (msgs Messages) SessionListTitle() string {
-	return Catalog.Format(msgs.locale, "sessionListTitle", nil)
-}
-
 // SessionTabs says "{n, plural, one {# tab} other {# tabs}}"
 // in the language the app shows.
 //
@@ -5294,22 +5192,6 @@ func SessionTabs(n int) string { return In(i18n.Locale()).SessionTabs(n) }
 // Space popover and palette: how many tabs a space has.
 func (msgs Messages) SessionTabs(n int) string {
 	return Catalog.Format(msgs.locale, "sessionTabs", map[string]any{"n": n})
-}
-
-// SessionElsewhere says "In another window"
-// in the language the app shows.
-//
-// Space popover and palette: the space shows in another window, which
-// choosing it focuses.
-func SessionElsewhere() string { return In(i18n.Locale()).SessionElsewhere() }
-
-// SessionElsewhere says "In another window"
-// in the language of msgs.
-//
-// Space popover and palette: the space shows in another window, which
-// choosing it focuses.
-func (msgs Messages) SessionElsewhere() string {
-	return Catalog.Format(msgs.locale, "sessionElsewhere", nil)
 }
 
 // SessionPlaceholder says "Change to a project…"
@@ -5508,22 +5390,6 @@ func SpaceColorDefault() string { return In(i18n.Locale()).SpaceColorDefault() }
 // its theme's.
 func (msgs Messages) SpaceColorDefault() string {
 	return Catalog.Format(msgs.locale, "spaceColorDefault", nil)
-}
-
-// SpaceColorCustom says "Custom #rrggbb"
-// in the language the app shows.
-//
-// Space popover: placeholder of the field that takes a custom color of the
-// space, as #0090ff.
-func SpaceColorCustom() string { return In(i18n.Locale()).SpaceColorCustom() }
-
-// SpaceColorCustom says "Custom #rrggbb"
-// in the language of msgs.
-//
-// Space popover: placeholder of the field that takes a custom color of the
-// space, as #0090ff.
-func (msgs Messages) SpaceColorCustom() string {
-	return Catalog.Format(msgs.locale, "spaceColorCustom", nil)
 }
 
 // PaneRename says "Rename Pane…"
@@ -7240,50 +7106,6 @@ func (msgs Messages) CmdNewProject() string {
 	return Catalog.Format(msgs.locale, "cmdNewProject", nil)
 }
 
-// ProjectSheetTitle says "New Project"
-// in the language the app shows.
-//
-// Title of the New Project sheet.
-func ProjectSheetTitle() string { return In(i18n.Locale()).ProjectSheetTitle() }
-
-// ProjectSheetTitle says "New Project"
-// in the language of msgs.
-//
-// Title of the New Project sheet.
-func (msgs Messages) ProjectSheetTitle() string {
-	return Catalog.Format(msgs.locale, "projectSheetTitle", nil)
-}
-
-// ProjectSheetChangeTitle says "Folder of {name}"
-// in the language the app shows.
-//
-// Title of the sheet that changes a project's folder.
-func ProjectSheetChangeTitle(name string) string {
-	return In(i18n.Locale()).ProjectSheetChangeTitle(name)
-}
-
-// ProjectSheetChangeTitle says "Folder of {name}"
-// in the language of msgs.
-//
-// Title of the sheet that changes a project's folder.
-func (msgs Messages) ProjectSheetChangeTitle(name string) string {
-	return Catalog.Format(msgs.locale, "projectSheetChangeTitle", map[string]any{"name": name})
-}
-
-// ProjectSheetSetTitle says "Set Folder for {name}"
-// in the language the app shows.
-//
-// Title of the sheet that gives a project with no folder one.
-func ProjectSheetSetTitle(name string) string { return In(i18n.Locale()).ProjectSheetSetTitle(name) }
-
-// ProjectSheetSetTitle says "Set Folder for {name}"
-// in the language of msgs.
-//
-// Title of the sheet that gives a project with no folder one.
-func (msgs Messages) ProjectSheetSetTitle(name string) string {
-	return Catalog.Format(msgs.locale, "projectSheetSetTitle", map[string]any{"name": name})
-}
-
 // ProjectSheetHost says "Host"
 // in the language the app shows.
 //
@@ -7396,20 +7218,6 @@ func ProjectSheetCreate() string { return In(i18n.Locale()).ProjectSheetCreate()
 // New Project sheet: button that makes the project.
 func (msgs Messages) ProjectSheetCreate() string {
 	return Catalog.Format(msgs.locale, "projectSheetCreate", nil)
-}
-
-// ProjectSheetUse says "Use This Folder"
-// in the language the app shows.
-//
-// Change Folder sheet: button that gives the project the folder shown.
-func ProjectSheetUse() string { return In(i18n.Locale()).ProjectSheetUse() }
-
-// ProjectSheetUse says "Use This Folder"
-// in the language of msgs.
-//
-// Change Folder sheet: button that gives the project the folder shown.
-func (msgs Messages) ProjectSheetUse() string {
-	return Catalog.Format(msgs.locale, "projectSheetUse", nil)
 }
 
 // ProjectSheetCancel says "Cancel"
@@ -7560,22 +7368,6 @@ func (msgs Messages) ProjectSheetNoChoice() string {
 	return Catalog.Format(msgs.locale, "projectSheetNoChoice", nil)
 }
 
-// ProjectSheetBrowseFirst says "Choose a host and open the project's folder."
-// in the language the app shows.
-//
-// Change Folder sheet: over the buttons, while the project's home host is
-// unknown and the user has not browsed yet.
-func ProjectSheetBrowseFirst() string { return In(i18n.Locale()).ProjectSheetBrowseFirst() }
-
-// ProjectSheetBrowseFirst says "Choose a host and open the project's folder."
-// in the language of msgs.
-//
-// Change Folder sheet: over the buttons, while the project's home host is
-// unknown and the user has not browsed yet.
-func (msgs Messages) ProjectSheetBrowseFirst() string {
-	return Catalog.Format(msgs.locale, "projectSheetBrowseFirst", nil)
-}
-
 // ProjectSheetNameNeeded says "This folder has no name. Type a name for the project."
 // in the language the app shows.
 //
@@ -7606,24 +7398,6 @@ func ProjectSheetNameHint() string { return In(i18n.Locale()).ProjectSheetNameHi
 // name.
 func (msgs Messages) ProjectSheetNameHint() string {
 	return Catalog.Format(msgs.locale, "projectSheetNameHint", nil)
-}
-
-// ProjectSheetHostUnknown says "Previous host unknown: {dir}"
-// in the language the app shows.
-//
-// Change Folder sheet: at the top, when the project's home host is none of
-// the user's hosts; dir is its folder there.
-func ProjectSheetHostUnknown(dir string) string {
-	return In(i18n.Locale()).ProjectSheetHostUnknown(dir)
-}
-
-// ProjectSheetHostUnknown says "Previous host unknown: {dir}"
-// in the language of msgs.
-//
-// Change Folder sheet: at the top, when the project's home host is none of
-// the user's hosts; dir is its folder there.
-func (msgs Messages) ProjectSheetHostUnknown(dir string) string {
-	return Catalog.Format(msgs.locale, "projectSheetHostUnknown", map[string]any{"dir": dir})
 }
 
 // ProjectSheetMoreFolders says "Folders above"
@@ -7698,134 +7472,6 @@ func (msgs Messages) ProjectNoFolder() string {
 	return Catalog.Format(msgs.locale, "projectNoFolder", nil)
 }
 
-// ProjectHomeOffline says "{host} is not connected"
-// in the language the app shows.
-//
-// Project list: tooltip of the dot of a project whose home host is not
-// connected.
-func ProjectHomeOffline(host string) string { return In(i18n.Locale()).ProjectHomeOffline(host) }
-
-// ProjectHomeOffline says "{host} is not connected"
-// in the language of msgs.
-//
-// Project list: tooltip of the dot of a project whose home host is not
-// connected.
-func (msgs Messages) ProjectHomeOffline(host string) string {
-	return Catalog.Format(msgs.locale, "projectHomeOffline", map[string]any{"host": host})
-}
-
-// ProjectHomeUnknown says "The home host is not one of your hosts"
-// in the language the app shows.
-//
-// Project list: tooltip of the dot of a project whose home host was removed
-// from the user's hosts.
-func ProjectHomeUnknown() string { return In(i18n.Locale()).ProjectHomeUnknown() }
-
-// ProjectHomeUnknown says "The home host is not one of your hosts"
-// in the language of msgs.
-//
-// Project list: tooltip of the dot of a project whose home host was removed
-// from the user's hosts.
-func (msgs Messages) ProjectHomeUnknown() string {
-	return Catalog.Format(msgs.locale, "projectHomeUnknown", nil)
-}
-
-// ProjectHomeFailed says "The folder of {name} did not change: {error}"
-// in the language the app shows.
-//
-// Note: the server did not keep the project's new folder, or did not take
-// it away.
-func ProjectHomeFailed(name string, error string) string {
-	return In(i18n.Locale()).ProjectHomeFailed(name, error)
-}
-
-// ProjectHomeFailed says "The folder of {name} did not change: {error}"
-// in the language of msgs.
-//
-// Note: the server did not keep the project's new folder, or did not take
-// it away.
-func (msgs Messages) ProjectHomeFailed(name string, error string) string {
-	return Catalog.Format(msgs.locale, "projectHomeFailed", map[string]any{"name": name, "error": error})
-}
-
-// ProjectFolderRemoved says "Removed the folder {dir} from {name}."
-// in the language the app shows.
-//
-// Note: Remove Folder took the project's folder away; an Undo button
-// follows.
-func ProjectFolderRemoved(dir string, name string) string {
-	return In(i18n.Locale()).ProjectFolderRemoved(dir, name)
-}
-
-// ProjectFolderRemoved says "Removed the folder {dir} from {name}."
-// in the language of msgs.
-//
-// Note: Remove Folder took the project's folder away; an Undo button
-// follows.
-func (msgs Messages) ProjectFolderRemoved(dir string, name string) string {
-	return Catalog.Format(msgs.locale, "projectFolderRemoved", map[string]any{"dir": dir, "name": name})
-}
-
-// ProjectUndo says "Undo"
-// in the language the app shows.
-//
-// Note: button that gives the project the folder Remove Folder took away.
-func ProjectUndo() string { return In(i18n.Locale()).ProjectUndo() }
-
-// ProjectUndo says "Undo"
-// in the language of msgs.
-//
-// Note: button that gives the project the folder Remove Folder took away.
-func (msgs Messages) ProjectUndo() string {
-	return Catalog.Format(msgs.locale, "projectUndo", nil)
-}
-
-// CmdChangeProjectFolder says "Change Project Folder…"
-// in the language the app shows.
-//
-// Command: open the sheet that sets or changes the folder of the window's
-// project.
-func CmdChangeProjectFolder() string { return In(i18n.Locale()).CmdChangeProjectFolder() }
-
-// CmdChangeProjectFolder says "Change Project Folder…"
-// in the language of msgs.
-//
-// Command: open the sheet that sets or changes the folder of the window's
-// project.
-func (msgs Messages) CmdChangeProjectFolder() string {
-	return Catalog.Format(msgs.locale, "cmdChangeProjectFolder", nil)
-}
-
-// CmdRemoveProjectFolder says "Remove Project Folder"
-// in the language the app shows.
-//
-// Command: unbind the window's project from its folder; its tabs stay.
-func CmdRemoveProjectFolder() string { return In(i18n.Locale()).CmdRemoveProjectFolder() }
-
-// CmdRemoveProjectFolder says "Remove Project Folder"
-// in the language of msgs.
-//
-// Command: unbind the window's project from its folder; its tabs stay.
-func (msgs Messages) CmdRemoveProjectFolder() string {
-	return Catalog.Format(msgs.locale, "cmdRemoveProjectFolder", nil)
-}
-
-// ProjectHostUnknown says "unknown host"
-// in the language the app shows.
-//
-// Sidebar project header: the project's home host is not one of the user's
-// hosts.
-func ProjectHostUnknown() string { return In(i18n.Locale()).ProjectHostUnknown() }
-
-// ProjectHostUnknown says "unknown host"
-// in the language of msgs.
-//
-// Sidebar project header: the project's home host is not one of the user's
-// hosts.
-func (msgs Messages) ProjectHostUnknown() string {
-	return Catalog.Format(msgs.locale, "projectHostUnknown", nil)
-}
-
 // ProjectFolderMissing says "The folder {dir} of {name} is missing or cannot be opened; no tab opened."
 // in the language the app shows.
 //
@@ -7842,114 +7488,400 @@ func (msgs Messages) ProjectFolderMissing(dir string, name string) string {
 	return Catalog.Format(msgs.locale, "projectFolderMissing", map[string]any{"dir": dir, "name": name})
 }
 
-// ProjectHostTimeout says "The home host of {name} did not connect; no tab opened."
+// CmdCloseProject says "Close Project…"
 // in the language the app shows.
 //
-// Note: New Tab waited 60 s for the project's home host, which did not
+// Note button: close the project whose folder is gone.
+func CmdCloseProject() string { return In(i18n.Locale()).CmdCloseProject() }
+
+// CmdCloseProject says "Close Project…"
+// in the language of msgs.
+//
+// Note button: close the project whose folder is gone.
+func (msgs Messages) CmdCloseProject() string {
+	return Catalog.Format(msgs.locale, "cmdCloseProject", nil)
+}
+
+// CmdRevealProjectFolder says "Reveal Folder"
+// in the language the app shows.
+//
+// Command and project menu: show this machine's project folder in the file
+// manager.
+func CmdRevealProjectFolder() string { return In(i18n.Locale()).CmdRevealProjectFolder() }
+
+// CmdRevealProjectFolder says "Reveal Folder"
+// in the language of msgs.
+//
+// Command and project menu: show this machine's project folder in the file
+// manager.
+func (msgs Messages) CmdRevealProjectFolder() string {
+	return Catalog.Format(msgs.locale, "cmdRevealProjectFolder", nil)
+}
+
+// ProjectMoveHere says "Move Here"
+// in the language the app shows.
+//
+// Note button: move the project shown to the space shown.
+func ProjectMoveHere() string { return In(i18n.Locale()).ProjectMoveHere() }
+
+// ProjectMoveHere says "Move Here"
+// in the language of msgs.
+//
+// Note button: move the project shown to the space shown.
+func (msgs Messages) ProjectMoveHere() string {
+	return Catalog.Format(msgs.locale, "projectMoveHere", nil)
+}
+
+// ProjectInOtherSpace says "{name} is a project already, in {space}."
+// in the language the app shows.
+//
+// Note: New Project of a folder that is a project of another space.
+func ProjectInOtherSpace(name string, space string) string {
+	return In(i18n.Locale()).ProjectInOtherSpace(name, space)
+}
+
+// ProjectInOtherSpace says "{name} is a project already, in {space}."
+// in the language of msgs.
+//
+// Note: New Project of a folder that is a project of another space.
+func (msgs Messages) ProjectInOtherSpace(name string, space string) string {
+	return Catalog.Format(msgs.locale, "projectInOtherSpace", map[string]any{"name": name, "space": space})
+}
+
+// HostRename says "Rename…"
+// in the language the app shows.
+//
+// Host menu in the sidebar: rename the host's alias.
+func HostRename() string { return In(i18n.Locale()).HostRename() }
+
+// HostRename says "Rename…"
+// in the language of msgs.
+//
+// Host menu in the sidebar: rename the host's alias.
+func (msgs Messages) HostRename() string {
+	return Catalog.Format(msgs.locale, "hostRename", nil)
+}
+
+// ProjectCloseAsk says "Close Project…"
+// in the language the app shows.
+//
+// Project menu: close the project, after a question.
+func ProjectCloseAsk() string { return In(i18n.Locale()).ProjectCloseAsk() }
+
+// ProjectCloseAsk says "Close Project…"
+// in the language of msgs.
+//
+// Project menu: close the project, after a question.
+func (msgs Messages) ProjectCloseAsk() string {
+	return Catalog.Format(msgs.locale, "projectCloseAsk", nil)
+}
+
+// ProjectMoveToSpace says "Move to Space"
+// in the language the app shows.
+//
+// Project menu: submenu of the spaces the project moves to.
+func ProjectMoveToSpace() string { return In(i18n.Locale()).ProjectMoveToSpace() }
+
+// ProjectMoveToSpace says "Move to Space"
+// in the language of msgs.
+//
+// Project menu: submenu of the spaces the project moves to.
+func (msgs Messages) ProjectMoveToSpace() string {
+	return Catalog.Format(msgs.locale, "projectMoveToSpace", nil)
+}
+
+// ProjectSheetTitleOn says "New Project on {host}"
+// in the language the app shows.
+//
+// Title of the New Project sheet, of the host chosen.
+func ProjectSheetTitleOn(host string) string { return In(i18n.Locale()).ProjectSheetTitleOn(host) }
+
+// ProjectSheetTitleOn says "New Project on {host}"
+// in the language of msgs.
+//
+// Title of the New Project sheet, of the host chosen.
+func (msgs Messages) ProjectSheetTitleOn(host string) string {
+	return Catalog.Format(msgs.locale, "projectSheetTitleOn", map[string]any{"host": host})
+}
+
+// ProjectsNewOn says "New Project on {host}…"
+// in the language the app shows.
+//
+// Tooltip of the + of a host's projects.
+func ProjectsNewOn(host string) string { return In(i18n.Locale()).ProjectsNewOn(host) }
+
+// ProjectsNewOn says "New Project on {host}…"
+// in the language of msgs.
+//
+// Tooltip of the + of a host's projects.
+func (msgs Messages) ProjectsNewOn(host string) string {
+	return Catalog.Format(msgs.locale, "projectsNewOn", map[string]any{"host": host})
+}
+
+// ProjectsNewTabIn says "New Tab in {name}"
+// in the language the app shows.
+//
+// Tooltip of the + of a project's row.
+func ProjectsNewTabIn(name string) string { return In(i18n.Locale()).ProjectsNewTabIn(name) }
+
+// ProjectsNewTabIn says "New Tab in {name}"
+// in the language of msgs.
+//
+// Tooltip of the + of a project's row.
+func (msgs Messages) ProjectsNewTabIn(name string) string {
+	return Catalog.Format(msgs.locale, "projectsNewTabIn", map[string]any{"name": name})
+}
+
+// ProjectsNoProject says "Tabs with no project"
+// in the language the app shows.
+//
+// Sidebar and picker: a host's tabs that belong to no project.
+func ProjectsNoProject() string { return In(i18n.Locale()).ProjectsNoProject() }
+
+// ProjectsNoProject says "Tabs with no project"
+// in the language of msgs.
+//
+// Sidebar and picker: a host's tabs that belong to no project.
+func (msgs Messages) ProjectsNoProject() string {
+	return Catalog.Format(msgs.locale, "projectsNoProject", nil)
+}
+
+// ProjectsOffline says "{host} is not connected: its projects as last seen"
+// in the language the app shows.
+//
+// Tooltip of a project of a host that is away.
+func ProjectsOffline(host string) string { return In(i18n.Locale()).ProjectsOffline(host) }
+
+// ProjectsOffline says "{host} is not connected: its projects as last seen"
+// in the language of msgs.
+//
+// Tooltip of a project of a host that is away.
+func (msgs Messages) ProjectsOffline(host string) string {
+	return Catalog.Format(msgs.locale, "projectsOffline", map[string]any{"host": host})
+}
+
+// ProjectsOlder says "Older"
+// in the language the app shows.
+//
+// Sidebar: the folded group of projects not used for 30 days.
+func ProjectsOlder() string { return In(i18n.Locale()).ProjectsOlder() }
+
+// ProjectsOlder says "Older"
+// in the language of msgs.
+//
+// Sidebar: the folded group of projects not used for 30 days.
+func (msgs Messages) ProjectsOlder() string {
+	return Catalog.Format(msgs.locale, "projectsOlder", nil)
+}
+
+// ProjectsWaitingFor says "Waiting for {host}"
+// in the language the app shows.
+//
+// Sidebar: a project of a migrated layout that waits for its host to
 // connect.
-func ProjectHostTimeout(name string) string { return In(i18n.Locale()).ProjectHostTimeout(name) }
+func ProjectsWaitingFor(host string) string { return In(i18n.Locale()).ProjectsWaitingFor(host) }
 
-// ProjectHostTimeout says "The home host of {name} did not connect; no tab opened."
+// ProjectsWaitingFor says "Waiting for {host}"
 // in the language of msgs.
 //
-// Note: New Tab waited 60 s for the project's home host, which did not
+// Sidebar: a project of a migrated layout that waits for its host to
 // connect.
-func (msgs Messages) ProjectHostTimeout(name string) string {
-	return Catalog.Format(msgs.locale, "projectHostTimeout", map[string]any{"name": name})
+func (msgs Messages) ProjectsWaitingFor(host string) string {
+	return Catalog.Format(msgs.locale, "projectsWaitingFor", map[string]any{"host": host})
 }
 
-// ProjectHostWaiting says "Connecting to the home host of {name}; the tab opens in {dir} once it is connected."
+// SpaceCreate says "Create"
 // in the language the app shows.
 //
-// Note: New Tab waits for the project's home host to connect.
-func ProjectHostWaiting(name string, dir string) string {
-	return In(i18n.Locale()).ProjectHostWaiting(name, dir)
-}
+// Button of the New Space dialog.
+func SpaceCreate() string { return In(i18n.Locale()).SpaceCreate() }
 
-// ProjectHostWaiting says "Connecting to the home host of {name}; the tab opens in {dir} once it is connected."
+// SpaceCreate says "Create"
 // in the language of msgs.
 //
-// Note: New Tab waits for the project's home host to connect.
-func (msgs Messages) ProjectHostWaiting(name string, dir string) string {
-	return Catalog.Format(msgs.locale, "projectHostWaiting", map[string]any{"name": name, "dir": dir})
+// Button of the New Space dialog.
+func (msgs Messages) SpaceCreate() string {
+	return Catalog.Format(msgs.locale, "spaceCreate", nil)
 }
 
-// ProjectHostOffline says "The home host of {name} is not connected; no tab opened in {dir}."
+// SpaceDefault says "Default"
 // in the language the app shows.
 //
-// Note: New Tab of a project whose home host is not connected.
-func ProjectHostOffline(name string, dir string) string {
-	return In(i18n.Locale()).ProjectHostOffline(name, dir)
-}
+// The space of projects with no space.
+func SpaceDefault() string { return In(i18n.Locale()).SpaceDefault() }
 
-// ProjectHostOffline says "The home host of {name} is not connected; no tab opened in {dir}."
+// SpaceDefault says "Default"
 // in the language of msgs.
 //
-// Note: New Tab of a project whose home host is not connected.
-func (msgs Messages) ProjectHostOffline(name string, dir string) string {
-	return Catalog.Format(msgs.locale, "projectHostOffline", map[string]any{"name": name, "dir": dir})
+// The space of projects with no space.
+func (msgs Messages) SpaceDefault() string {
+	return Catalog.Format(msgs.locale, "spaceDefault", nil)
 }
 
-// ProjectHostNotYours says "The home host of {name} is not one of your hosts; no tab opened in {dir}."
+// SpaceDone says "Done"
 // in the language the app shows.
 //
-// Note: New Tab of a project whose home host was removed from the user's
-// hosts.
-func ProjectHostNotYours(name string, dir string) string {
-	return In(i18n.Locale()).ProjectHostNotYours(name, dir)
-}
+// Button that closes Edit Spaces.
+func SpaceDone() string { return In(i18n.Locale()).SpaceDone() }
 
-// ProjectHostNotYours says "The home host of {name} is not one of your hosts; no tab opened in {dir}."
+// SpaceDone says "Done"
 // in the language of msgs.
 //
-// Note: New Tab of a project whose home host was removed from the user's
-// hosts.
-func (msgs Messages) ProjectHostNotYours(name string, dir string) string {
-	return Catalog.Format(msgs.locale, "projectHostNotYours", map[string]any{"name": name, "dir": dir})
+// Button that closes Edit Spaces.
+func (msgs Messages) SpaceDone() string {
+	return Catalog.Format(msgs.locale, "spaceDone", nil)
 }
 
-// ProjectHostNone says "The project's home host is not one of your hosts; no tab opened."
+// SpaceEdit says "Edit Spaces…"
 // in the language the app shows.
 //
-// Note: the hosts connected to find the project's home machine, and none
-// was it.
-func ProjectHostNone() string { return In(i18n.Locale()).ProjectHostNone() }
+// Space picker: rename, color and order the spaces.
+func SpaceEdit() string { return In(i18n.Locale()).SpaceEdit() }
 
-// ProjectHostNone says "The project's home host is not one of your hosts; no tab opened."
+// SpaceEdit says "Edit Spaces…"
 // in the language of msgs.
 //
-// Note: the hosts connected to find the project's home machine, and none
-// was it.
-func (msgs Messages) ProjectHostNone() string {
-	return Catalog.Format(msgs.locale, "projectHostNone", nil)
+// Space picker: rename, color and order the spaces.
+func (msgs Messages) SpaceEdit() string {
+	return Catalog.Format(msgs.locale, "spaceEdit", nil)
 }
 
-// ProjectHomeMoved says "{host} is connected, but the project's home changed meanwhile; no tab opened."
+// SpaceEditTitle says "Edit Spaces"
 // in the language the app shows.
 //
-// Note: the home host connected after the project's home moved elsewhere.
-func ProjectHomeMoved(host string) string { return In(i18n.Locale()).ProjectHomeMoved(host) }
+// Title of the Edit Spaces dialog.
+func SpaceEditTitle() string { return In(i18n.Locale()).SpaceEditTitle() }
 
-// ProjectHomeMoved says "{host} is connected, but the project's home changed meanwhile; no tab opened."
+// SpaceEditTitle says "Edit Spaces"
 // in the language of msgs.
 //
-// Note: the home host connected after the project's home moved elsewhere.
-func (msgs Messages) ProjectHomeMoved(host string) string {
-	return Catalog.Format(msgs.locale, "projectHomeMoved", map[string]any{"host": host})
+// Title of the Edit Spaces dialog.
+func (msgs Messages) SpaceEditTitle() string {
+	return Catalog.Format(msgs.locale, "spaceEditTitle", nil)
 }
 
-// ProjectHostOld says "{host} runs an older GoRex that cannot open {dir} safely; update GoRex there."
+// SpaceMoveDown says "Move Down"
 // in the language the app shows.
 //
-// Note: the home host's GoRex does not check project folders.
-func ProjectHostOld(host string, dir string) string {
-	return In(i18n.Locale()).ProjectHostOld(host, dir)
-}
+// Edit Spaces: move the space down.
+func SpaceMoveDown() string { return In(i18n.Locale()).SpaceMoveDown() }
 
-// ProjectHostOld says "{host} runs an older GoRex that cannot open {dir} safely; update GoRex there."
+// SpaceMoveDown says "Move Down"
 // in the language of msgs.
 //
-// Note: the home host's GoRex does not check project folders.
-func (msgs Messages) ProjectHostOld(host string, dir string) string {
-	return Catalog.Format(msgs.locale, "projectHostOld", map[string]any{"host": host, "dir": dir})
+// Edit Spaces: move the space down.
+func (msgs Messages) SpaceMoveDown() string {
+	return Catalog.Format(msgs.locale, "spaceMoveDown", nil)
+}
+
+// SpaceMoveUp says "Move Up"
+// in the language the app shows.
+//
+// Edit Spaces: move the space up.
+func SpaceMoveUp() string { return In(i18n.Locale()).SpaceMoveUp() }
+
+// SpaceMoveUp says "Move Up"
+// in the language of msgs.
+//
+// Edit Spaces: move the space up.
+func (msgs Messages) SpaceMoveUp() string {
+	return Catalog.Format(msgs.locale, "spaceMoveUp", nil)
+}
+
+// SpaceNameHint says "Work"
+// in the language the app shows.
+//
+// Placeholder of the new space's name.
+func SpaceNameHint() string { return In(i18n.Locale()).SpaceNameHint() }
+
+// SpaceNameHint says "Work"
+// in the language of msgs.
+//
+// Placeholder of the new space's name.
+func (msgs Messages) SpaceNameHint() string {
+	return Catalog.Format(msgs.locale, "spaceNameHint", nil)
+}
+
+// SpaceNameLabel says "Space name"
+// in the language the app shows.
+//
+// Label of a space's name field.
+func SpaceNameLabel() string { return In(i18n.Locale()).SpaceNameLabel() }
+
+// SpaceNameLabel says "Space name"
+// in the language of msgs.
+//
+// Label of a space's name field.
+func (msgs Messages) SpaceNameLabel() string {
+	return Catalog.Format(msgs.locale, "spaceNameLabel", nil)
+}
+
+// SpaceNew says "New Space…"
+// in the language the app shows.
+//
+// Space picker: make a space.
+func SpaceNew() string { return In(i18n.Locale()).SpaceNew() }
+
+// SpaceNew says "New Space…"
+// in the language of msgs.
+//
+// Space picker: make a space.
+func (msgs Messages) SpaceNew() string {
+	return Catalog.Format(msgs.locale, "spaceNew", nil)
+}
+
+// SpaceNewTitle says "New Space"
+// in the language the app shows.
+//
+// Title of the New Space dialog.
+func SpaceNewTitle() string { return In(i18n.Locale()).SpaceNewTitle() }
+
+// SpaceNewTitle says "New Space"
+// in the language of msgs.
+//
+// Title of the New Space dialog.
+func (msgs Messages) SpaceNewTitle() string {
+	return Catalog.Format(msgs.locale, "spaceNewTitle", nil)
+}
+
+// SpacePickerLabel says "Space {name}"
+// in the language the app shows.
+//
+// Label of the space picker's button.
+func SpacePickerLabel(name string) string { return In(i18n.Locale()).SpacePickerLabel(name) }
+
+// SpacePickerLabel says "Space {name}"
+// in the language of msgs.
+//
+// Label of the space picker's button.
+func (msgs Messages) SpacePickerLabel(name string) string {
+	return Catalog.Format(msgs.locale, "spacePickerLabel", map[string]any{"name": name})
+}
+
+// ProjectsTabsOf says "Tabs of {name}"
+// in the language the app shows.
+//
+// Sidebar: the chevron that shows or hides a project's tabs.
+func ProjectsTabsOf(name string) string { return In(i18n.Locale()).ProjectsTabsOf(name) }
+
+// ProjectsTabsOf says "Tabs of {name}"
+// in the language of msgs.
+//
+// Sidebar: the chevron that shows or hides a project's tabs.
+func (msgs Messages) ProjectsTabsOf(name string) string {
+	return Catalog.Format(msgs.locale, "projectsTabsOf", map[string]any{"name": name})
+}
+
+// ProjectsOfflineLabel says "offline"
+// in the language the app shows.
+//
+// Sidebar: beside the header of a host that is not connected.
+func ProjectsOfflineLabel() string { return In(i18n.Locale()).ProjectsOfflineLabel() }
+
+// ProjectsOfflineLabel says "offline"
+// in the language of msgs.
+//
+// Sidebar: beside the header of a host that is not connected.
+func (msgs Messages) ProjectsOfflineLabel() string {
+	return Catalog.Format(msgs.locale, "projectsOfflineLabel", nil)
 }

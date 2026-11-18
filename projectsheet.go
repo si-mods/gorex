@@ -13,13 +13,11 @@ import (
 )
 
 // projectSheet is the New Project sheet: a host, a folder on it chosen by
-// browsing its directories (dir.list), and a name. The same sheet, of a
-// project, changes the project's folder.
+// browsing its directories (dir.list), and a name (docs/projects.md, "New
+// Project"). A project's folder does not change: another folder is
+// another project.
 type projectSheet struct {
 	open bool
-	// space is the project whose folder the sheet changes, "" for New
-	// Project.
-	space string
 	// host is the host browsed, nil for this machine.
 	host *hostConn
 	// want is the directory to list next, "" for the home directory;
@@ -43,22 +41,17 @@ type projectSheet struct {
 	// focusList gives the list the focus in the next frame, as the arrow
 	// keys highlight a row, so that Enter opens it.
 	focusList bool
-	// lost is the folder of a project whose home host is unknown, which
-	// the sheet shows; held keeps the folder listed from being used until
-	// the user browses, as it is this machine's home, not the project's.
-	lost string
-	held bool
 	// pathFocused tells that the path field had the focus last frame.
 	pathFocused bool
 }
 
-// openSheet opens the sheet: of project space ("" for New Project), on
-// host h, nil for this machine, in dir, "" for the home directory.
-func (a *App) openSheet(space string, h *hostConn, dir string) {
+// openSheet opens the sheet on host h, nil for this machine, in dir, ""
+// for the home directory.
+func (a *App) openSheet(h *hostConn, dir string) {
 	// gen goes on from the sheet before, whose listings still on their
 	// way are not this one's.
-	a.sheet = projectSheet{open: true, space: space, host: h, want: dir, gen: a.sheet.gen + 1, sel: -1}
-	a.wsOpen, a.wsColorOnly = false, false
+	a.sheet = projectSheet{open: true, host: h, want: dir, gen: a.sheet.gen + 1, sel: -1}
+	a.closeMenus()
 	a.focusReq = nil
 	if h != nil && h.current() == nil {
 		a.connectHostNow(h)
@@ -69,7 +62,7 @@ func (a *App) openSheet(space string, h *hostConn, dir string) {
 func (s *projectSheet) browse(dir string) {
 	s.from = s.res.Path
 	s.want, s.asked, s.failed = dir, false, ""
-	s.sel, s.held = -1, false
+	s.sel = -1
 	s.gen++
 }
 
@@ -202,7 +195,7 @@ func (s *projectSheet) windows() bool {
 // listed, which is not Windows' list of drives.
 func (s *projectSheet) chosen() string {
 	r := s.res
-	if s.held || s.loading || s.failed != "" || r.Code != "" || r.Path == "" || r.Path == rex.DirTop && s.windows() {
+	if s.loading || s.failed != "" || r.Code != "" || r.Path == "" || r.Path == rex.DirTop && s.windows() {
 		return ""
 	}
 	return r.Path
@@ -213,7 +206,7 @@ func (s *projectSheet) chosen() string {
 // has no name of its own.
 func (s *projectSheet) ready() bool {
 	dir := s.chosen()
-	return dir != "" && (s.space != "" || strings.TrimSpace(s.name) != "" || folderName(dir) != "")
+	return dir != "" && (strings.TrimSpace(s.name) != "" || folderName(dir) != "")
 }
 
 // crumb is a step of the breadcrumb: its name and its path.
@@ -310,8 +303,7 @@ func (a *App) chooseFolder() {
 	}()
 }
 
-// finishSheet makes the project, or gives the project its folder, and
-// closes the sheet.
+// finishSheet makes the project and closes the sheet.
 func (a *App) finishSheet() {
 	s := a.sheet
 	dir := s.chosen()
@@ -319,22 +311,7 @@ func (a *App) finishSheet() {
 		return
 	}
 	a.sheet.open = false
-	if s.space == "" {
-		a.createProject(s.host, dir, s.name)
-		return
-	}
-	if a.st == nil {
-		return
-	}
-	if i := slices.IndexFunc(a.st.workspaces, func(w *Workspace) bool { return w.ID == s.space }); i >= 0 {
-		w := a.st.workspaces[i]
-		a.setProjectHome(w, s.host, dir, func(ok bool) {
-			// The note of its folder gone is answered.
-			if ok && a.errNote != nil && a.errNote.run != nil && a.noteShows() {
-				a.err, a.errMsg, a.errNote = "", nil, nil
-			}
-		})
-	}
+	a.createProject(s.host, dir, s.name)
 }
 
 // projectSheetView draws the sheet while it is open.
@@ -349,21 +326,7 @@ func (a *App) projectSheetView(c *ui.Context, k *colors) {
 		s.browse("")
 	}
 	a.listSheet()
-	title := locales.ProjectSheetTitle()
-	var w *Workspace
-	if s.space != "" && a.st != nil {
-		if i := slices.IndexFunc(a.st.workspaces, func(w *Workspace) bool { return w.ID == s.space }); i >= 0 {
-			w = a.st.workspaces[i]
-		}
-		if w == nil {
-			s.open = false
-			return
-		}
-		title = locales.ProjectSheetChangeTitle(w.Name)
-		if w.Dir == "" {
-			title = locales.ProjectSheetSetTitle(w.Name)
-		}
-	}
+	title := locales.ProjectSheetTitleOn(a.hostName(s.host))
 	was := s.open
 	ui.DialogBase(c.Key("project-sheet"), &s.open, func(backdrop, panel ui.Element) {
 		backdrop.Background(k.backdrop)
@@ -375,33 +338,21 @@ func (a *App) projectSheetView(c *ui.Context, k *colors) {
 		ui.Scroll(c.Key("sheet-body")).MinHeight(0).Shrink(1).Children(func() {
 			ui.Column(c).Gap(8).Children(func() {
 				ui.Text(c, title).FontSize(15).FontWeight(700).TextColor(k.text).Margin(0, 0, 6, 0)
-				if s.lost != "" {
-					// The folder of a home host unknown: not this machine's.
-					ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
-						glyphIcon(c, "circle-alert", 14, k.attention).Shrink(0)
-						ui.Text(c, locales.ProjectSheetHostUnknown(s.lost)).FontSize(12.5).TextColor(k.textMuted).SingleLine().TruncateMiddle().MinWidth(0).Tooltip(s.lost)
-					})
-				}
 				sheetLabel(c, k, locales.ProjectSheetHost())
 				a.sheetHosts(c, k)
 				sheetLabel(c, k, locales.ProjectSheetFolder())
 				// The folders take what room the window leaves, so that the
 				// buttons stay in sight in a short window.
-				room := winH - 500
-				if s.space == "" {
-					room -= 70
-				}
+				room := winH - 570
 				a.sheetBrowser(c, k, min(max(room, 84), 220))
-				if s.space == "" {
-					sheetLabel(c, k, locales.ProjectSheetName())
-					placeholder := s.auto
-					if placeholder == "" {
-						placeholder = locales.ProjectSheetNameHint()
-					}
-					in := textField(c.Key("project-name"), k, &s.name, fieldRegular).Label(locales.ProjectSheetName()).Placeholder(placeholder)
-					if in.Submitted() {
-						a.later(c, a.finishSheet)
-					}
+				sheetLabel(c, k, locales.ProjectSheetName())
+				placeholder := s.auto
+				if placeholder == "" {
+					placeholder = locales.ProjectSheetNameHint()
+				}
+				in := textField(c.Key("project-name"), k, &s.name, fieldRegular).Label(locales.ProjectSheetName()).Placeholder(placeholder)
+				if in.Submitted() {
+					a.later(c, a.finishSheet)
 				}
 			})
 		})
@@ -411,9 +362,6 @@ func (a *App) projectSheetView(c *ui.Context, k *colors) {
 				s.open = false
 			}
 			label := locales.ProjectSheetCreate()
-			if s.space != "" {
-				label = locales.ProjectSheetUse()
-			}
 			if ui.PrimaryButton(c, label).Disabled(!s.ready()).Clicked() {
 				a.later(c, a.finishSheet)
 			}
@@ -455,8 +403,6 @@ func (a *App) sheetChoice(c *ui.Context, k *colors) {
 		glyph, text = "circle-alert", locales.ProjectSheetNameNeeded()
 	case dir != "":
 		text = locales.ProjectSheetChosen(dir)
-	case s.held:
-		glyph, text = "info", locales.ProjectSheetBrowseFirst()
 	case s.loading || !s.asked:
 	default:
 		glyph, text = "info", locales.ProjectSheetNoChoice()

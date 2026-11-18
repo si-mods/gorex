@@ -13,9 +13,6 @@ import (
 
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/plugins/terminal"
-
-	"gorex/internal/layout"
-	"gorex/internal/rex"
 )
 
 // debugHook lets a script drive the app while GOREX_DEBUG names a
@@ -394,17 +391,35 @@ func (a *App) debug(dir, line string) {
 		})
 	case "host": // opens or closes the host chip's panel
 		win.Update(func() { a.hostOpen = !a.hostOpen })
-	case "chip": // opens or closes the session chip's popover
-		win.Update(func() { a.wsOpen = !a.wsOpen })
-	case "sheet": // open [DIR]: the New Project sheet in DIR; change: of the window's project; browse DIR; create; close; home HOSTID DIR
+	case "chip": // opens or closes the title bar's menu of projects
+		win.Update(func() { a.pickerOpen = !a.pickerOpen })
+	case "spaces": // open: the space picker's menu; new: New Space…; edit: Edit Spaces…; close: none of them
+		win.Update(func() {
+			a.spaces.open, a.spaces.dialog = arg == "open", ""
+			switch arg {
+			case "new":
+				a.spaces.dialog = "new"
+			case "edit":
+				a.spaces.dialog, a.spaces.names = "edit", map[string]string{}
+			}
+		})
+	case "space": // NAME: the windows show that space, "" for Default
+		debugMain(func() { a.showSpaceNamed(arg) })
+	case "open-row": // HOSTKEY/ID open|closed: a sidebar row of a project, or HOSTKEY/older
+		debugMain(func() {
+			key, v, _ := strings.Cut(arg, " ")
+			setRowOpen(key, v != "closed")
+		})
+	case "sheet": // open [HOSTID] DIR: the New Project sheet on a host ("local" for this machine) in DIR; browse DIR; create; close
 		win.Update(func() {
 			v, rest, _ := strings.Cut(arg, " ")
 			switch v {
-			case "open":
-				a.openSheet("", nil, rest)
-			case "change":
-				if a.ws != nil {
-					a.openChangeFolder(a.ws.ID)
+			case "open": // [HOSTID] DIR: the sheet on a host, "local" for this machine
+				id, d, _ := strings.Cut(rest, " ")
+				if h := a.hostByID(id); h != nil || id == "local" {
+					a.openSheet(h, d)
+				} else {
+					a.openSheet(nil, rest)
 				}
 			case "browse":
 				a.sheet.browse(rest)
@@ -412,20 +427,6 @@ func (a *App) debug(dir, line string) {
 				a.finishSheet()
 			case "close":
 				a.sheet.open = false
-			case "home": // HOSTID DIR: the window's project's home, "local" for this machine
-				id, d, _ := strings.Cut(rest, " ")
-				if a.ws != nil {
-					a.setProjectHome(a.ws, a.hostByID(id), d, nil)
-				}
-			case "lost": // DIR: the window's project's home, DIR on a machine none of the hosts is
-				if w := a.ws; w != nil {
-					host := layout.MachineHost("machine-lost")
-					a.ask(rex.LayoutCommand{Op: "space.home", Space: w.ID, Host: host, Dir: rest}, func(res rex.LayoutCommand) {
-						if res.Code == "" {
-							w.Host, w.Dir = host, rest
-						}
-					})
-				}
 			case "down", "up": // the arrow keys in the folder list
 				a.sheet.step(map[string]int{"down": 1, "up": -1}[v])
 			}

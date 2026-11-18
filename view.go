@@ -122,6 +122,7 @@ func (a *App) view(c *ui.Context) {
 	a.shortcuts(c)
 	a.palette(c, k)
 	a.workspaceConfirm(c, k)
+	a.spaceDialog(c, k)
 	a.projectSheetView(c, k)
 	a.teleportConfirm(c, k)
 	// mygo paints a text input's caret in the theme of the frame as it
@@ -170,8 +171,8 @@ func (a *App) titleBar(c *ui.Context, k *colors) {
 		left += 14
 	}
 	ui.Row(c).Height(titleH).Padding(0, max(bar.Right, 10), 0, left).Gap(14).AlignItems(ui.Center).DragWindow().Children(func() {
-		a.hostChip(c, k)
-		a.workspaceChip(c, k, false)
+		a.spacePicker(c, k, false)
+		a.projectPicker(c, k)
 		a.tabStrip(c, k)
 		// The title bar between the tabs and the buttons, which drags the
 		// window, and a double click on which zooms it.

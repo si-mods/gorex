@@ -162,14 +162,16 @@ func TestChineseSurfaces(t *testing.T) {
 	}
 }
 
-// TestSpaceChipInChinese checks that the chip above the tabs names spaces in
-// Chinese.
+// TestSpaceChipInChinese checks that the space picker and the project
+// picker above the tabs speak Chinese.
 func TestSpaceChipInChinese(t *testing.T) {
 	isolateSettings(t, "")
-	a, tt := newTestApp(t)
+	_, tt := newTestApp(t)
 	inChinese(t, tt)
-	if _, ok := tt.Find(locales.SessionLabel(a.ws.Name)); !ok {
-		t.Fatalf("no space chip in Chinese; texts %q", tt.Texts())
+	for _, s := range []string{"空间 默认", "无项目的标签页"} {
+		if !tt.HasText(s) {
+			t.Fatalf("no %q in Chinese; texts %q", s, tt.Texts())
+		}
 	}
 }
 

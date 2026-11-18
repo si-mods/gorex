@@ -392,7 +392,7 @@ func TestNeedsHiddenRemote(t *testing.T) {
 	h.state = hostConnected
 	a.hosts = []*hostConn{h}
 	a.st.hosts = a.hosts // as syncHosts shares them
-	w := a.st.addWorkspace()
+	w := a.st.newTestSpace()
 	w.Name = "icy-ridge"
 	// Another session of the host's is the one it shows first.
 	w.layout = savedLayout{Tabs: []savedTab{{ID: "r0-tab", Root: &savedNode{SID: "r0", Host: "h1"}}, {ID: "r1-tab", Root: &savedNode{SID: "r1", Host: "h1"}}}}

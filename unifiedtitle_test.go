@@ -8,7 +8,7 @@ import (
 )
 
 // TestSidebarHeadHoldsChipUnderOwnControls checks that, beside a shown left
-// sidebar under own controls, the space chip is in the sidebar's head and
+// sidebar under own controls, the space picker is in the sidebar's head and
 // the title buttons are over the panes.
 func TestSidebarHeadHoldsChipUnderOwnControls(t *testing.T) {
 	old, oldOwn := prefs, ownControls
@@ -21,7 +21,7 @@ func TestSidebarHeadHoldsChipUnderOwnControls(t *testing.T) {
 	if a.ws == nil {
 		t.Fatal("no space")
 	}
-	chip, ok := tt.Find(locales.SessionLabel(a.ws.Name))
+	chip, ok := tt.Find(locales.SpacePickerLabel(spaceLabel(shownSpace())))
 	if !ok {
 		t.Fatalf("no space chip; texts %q", tt.Texts())
 	}

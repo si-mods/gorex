@@ -3,11 +3,13 @@ package main
 import (
 	"cmp"
 	"fmt"
+	"log"
 	"math"
 	"os"
 	"runtime"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/egoist/mygo"
@@ -60,7 +62,7 @@ type command struct {
 var clientBlockedActions = map[string]bool{
 	"app.quit": true, "app.updates": true, "server.restart": true, "config.reload": true,
 	"session.close": true, "tab.close": true, "pane.close": true, "pane.restart": true,
-	"screen.clear": true, "scrollback.clear": true, "tab.move_window": true,
+	"screen.clear": true, "scrollback.clear": true,
 	"mode.enter": true, "mode.exit": true, "mode.exit_all": true,
 	"rex.import": true,
 }
@@ -204,8 +206,56 @@ func newCustomCommands(cfg *config.Config) ([]*command, error) {
 	return out, nil
 }
 
-// lookupCommand returns the built-in action ID, nil when there is none.
-func lookupCommand(id string) *command { return commandsByID[id] }
+// lookupCommand returns the built-in action ID, nil when there is none:
+// an old ID of an action renamed is the action's, and one of an action
+// removed does nothing (oldAction), so that bindings of before keep
+// working (docs/lua.md).
+func lookupCommand(id string) *command {
+	if c := commandsByID[id]; c != nil {
+		return c
+	}
+	if to, ok := renamedActions[id]; ok {
+		return commandsByID[to]
+	}
+	return oldAction(id)
+}
+
+// renamedActions are the IDs of before of actions renamed since: New
+// Project with No Folder became New Tab with No Project
+// (docs/projects.md).
+var renamedActions = map[string]string{"session.new": "tab.new_no_project"}
+
+// removedActions are the IDs of actions docs/projects.md removed, which a
+// binding may still name: Toggle Sidebar View, Move Tab to New Window,
+// Change and Remove Project Folder.
+var removedActions = map[string]bool{
+	"sidebar.view.toggle": true, "tab.move_window": true,
+	"project.change_folder": true, "project.remove_folder": true,
+}
+
+var (
+	oldActionsMu sync.Mutex
+	oldActions   = map[string]*command{}
+)
+
+// oldAction is the action of a removed ID, which does nothing but log,
+// once; nil for an ID never an action's.
+func oldAction(id string) *command {
+	if !removedActions[id] {
+		return nil
+	}
+	oldActionsMu.Lock()
+	defer oldActionsMu.Unlock()
+	if c := oldActions[id]; c != nil {
+		return c
+	}
+	var once sync.Once
+	c := &command{ID: id, Name: func(locales.Messages) string { return id }, Hidden: true, Run: func(*App) {
+		once.Do(func() { log.Printf("gorex: the action %s was removed; a binding of it does nothing", id) })
+	}}
+	oldActions[id] = c
+	return c
+}
 
 // lookupCommand returns the action by ID, checking custom actions on a
 // before built-in actions.
@@ -217,7 +267,7 @@ func (a *App) lookupCommand(id string) *command {
 			}
 		}
 	}
-	return commandsByID[id]
+	return lookupCommand(id)
 }
 
 var (
@@ -440,11 +490,6 @@ var (
 		Run:       func(a *App) { a.nudgeFloat(0, 0.05) },
 		Available: func(a *App) bool { return a.focusedFloat() != nil },
 	}
-	cmdSidebarView = command{
-		ID: "sidebar.view.toggle", Name: locales.Messages.CmdToggleSidebarView,
-		Run:       func(a *App) { a.toggleSidebarView() },
-		Available: func(a *App) bool { return a.hostViewable() },
-	}
 
 	cmdNextTab   = command{ID: "tab.next", Name: locales.Messages.CmdNextTab, Accel: "CmdOrCtrl+Shift+]", Keys: "⇧⌘]", Other: shortcut{ui.Ctrl, ui.KeyPageDown}, Run: func(a *App) { a.cycleTab(1) }}
 	cmdPrevTab   = command{ID: "tab.previous", Name: locales.Messages.CmdPreviousTab, Accel: "CmdOrCtrl+Shift+[", Keys: "⇧⌘[", Other: shortcut{ui.Ctrl, ui.KeyPageUp}, Run: func(a *App) { a.cycleTab(-1) }}
@@ -543,25 +588,17 @@ var (
 
 	cmdNewWindow     = command{ID: "window.new", Name: locales.Messages.CmdNewWindow, Accel: "CmdOrCtrl+N", Keys: "⌘N", Other: ctrlShift(ui.KeyN)}
 	cmdNewProject    = command{ID: "project.new", Name: locales.Messages.CmdNewProject, Accel: "CmdOrCtrl+Shift+N", Keys: "⇧⌘N", Run: func(a *App) { a.openNewProject() }}
-	cmdNewSession    = command{ID: "session.new", Name: locales.Messages.CmdNewSession, Run: func(a *App) { a.newWorkspace() }}
+	cmdNewSession    = command{ID: "tab.new_no_project", Name: locales.Messages.CmdNewSession, Run: func(a *App) { a.newNoProjectTab(a.currentHost()) }}
 	cmdImportRex     = command{ID: "rex.import", Name: locales.Messages.CmdImportRex, Run: func(a *App) { a.importRex() }, Available: func(a *App) bool { return !rexImporting.Load() }}
 	cmdChangeSession = command{ID: "session.switch", Name: locales.Messages.CmdChangeSession, Accel: "CmdOrCtrl+Shift+O", Keys: "⇧⌘O", Other: ctrlShift(ui.KeyO), Run: func(a *App) { a.openSessionPalette() }}
 	cmdNextSession   = command{ID: "session.next", Name: locales.Messages.CmdNextSession, Accel: "CmdOrCtrl+Ctrl+]", Keys: "⌃⌘]", Other: shortcut{ui.Ctrl | ui.Shift, ui.KeyPageDown}, Run: func(a *App) { a.cycleWorkspace(1) }}
 	cmdPrevSession   = command{ID: "session.previous", Name: locales.Messages.CmdPreviousSession, Accel: "CmdOrCtrl+Ctrl+[", Keys: "⌃⌘[", Other: shortcut{ui.Ctrl | ui.Shift, ui.KeyPageUp}, Run: func(a *App) { a.cycleWorkspace(-1) }}
 	cmdRenameSession = command{ID: "session.rename", Name: locales.Messages.CmdRenameSession, Run: func(a *App) { a.startWorkspaceRename() }}
 	cmdCloseSession  = command{ID: "session.close", Name: locales.Messages.CmdCloseSession, Run: func(a *App) { a.askCloseWorkspace() }}
-	cmdMoveTabWindow = command{ID: "tab.move_window", Name: locales.Messages.CmdMoveTabToNewWindow}
-
-	// cmdChangeFolder opens the sheet of the window's project's folder;
-	// cmdRemoveFolder takes its folder away (removeProjectFolder). The
-	// palette lists Remove Folder only for a project with a folder; the
-	// menu's does nothing for one of none.
-	cmdChangeFolder = command{ID: "project.change_folder", Name: locales.Messages.CmdChangeProjectFolder, Run: func(a *App) {
-		if a.ws != nil {
-			a.openChangeFolder(a.ws.ID)
-		}
-	}}
-	cmdRemoveFolder = command{ID: "project.remove_folder", Name: locales.Messages.CmdRemoveProjectFolder, Run: func(a *App) { a.removeProjectFolder() }}
+	// cmdRevealFolder shows the window's project's folder in the system's
+	// file manager: of this machine's projects only.
+	cmdRevealFolder = command{ID: "project.reveal", Name: locales.Messages.CmdRevealProjectFolder, Run: func(a *App) { a.revealProject(a.ws) },
+		Available: func(a *App) bool { return a.ws != nil && a.ws.host == nil && a.ws.Dir != "" }}
 
 	cmdModeEnter = command{
 		ID: "mode.enter", Name: func(locales.Messages) string { return "Enter Mode" }, Hidden: true,
@@ -673,20 +710,20 @@ var paletteCommands = []*command{
 	&cmdNewTab, &cmdNewBrowser, &cmdNewNote, &cmdSplitRight, &cmdSplitDown, &cmdSplitBrowser, &cmdSplitNote, &cmdNotePreview, &cmdZoom, &cmdEqualize, &cmdResetCanvas, &cmdPaneToNewTab, &cmdClosePane, &cmdCloseTab,
 	&cmdFloatPane, &cmdNewFloat, &cmdToggleFloat, &cmdHideFloats, &cmdFloatState, &cmdRaiseFloat, &cmdLowerFloat, &cmdCycleFloat,
 	&cmdFloatMove, &cmdFloatResize, &cmdMoveFloatLeft, &cmdMoveFloatRight, &cmdMoveFloatUp, &cmdMoveFloatDown,
-	&cmdNextTab, &cmdPrevTab, &cmdJumpNeedy, &cmdNeeds, &cmdRenameTab, &cmdSidebar, &cmdSidebarView,
+	&cmdNextTab, &cmdPrevTab, &cmdJumpNeedy, &cmdNeeds, &cmdRenameTab, &cmdSidebar,
 	&cmdFocusLeft, &cmdFocusRight, &cmdFocusUp, &cmdFocusDown,
 	&cmdGrowLeft, &cmdGrowRight, &cmdGrowUp, &cmdGrowDown,
 	&cmdBigger, &cmdSmaller, &cmdActualSize, &cmdLight, &cmdDark, &cmdSystem,
 	&cmdGhostty, &cmdClearScroll, &cmdFind, &cmdFindNext, &cmdFindPrev, &cmdRestart, &cmdSettings, &cmdUpdates, &cmdRestartServer, &cmdEndAll,
 	&cmdNewWindow, &cmdNewProject, &cmdNewSession, &cmdImportRex, &cmdChangeSession, &cmdNextSession, &cmdPrevSession,
-	&cmdRenameSession, &cmdChangeFolder, &cmdRemoveFolder, &cmdCloseSession, &cmdMoveTabWindow,
+	&cmdRenameSession, &cmdRevealFolder, &cmdCloseSession,
 }
 
 // sessionCommands are those of the workspaces and the windows, which an
 // app without a store, as in tests, does not list.
 var sessionCommands = []*command{
 	&cmdNewWindow, &cmdNewProject, &cmdNewSession, &cmdImportRex, &cmdChangeSession, &cmdNextSession, &cmdPrevSession,
-	&cmdRenameSession, &cmdChangeFolder, &cmdRemoveFolder, &cmdCloseSession, &cmdMoveTabWindow,
+	&cmdRenameSession, &cmdRevealFolder, &cmdCloseSession,
 }
 
 // commands are all of them.
@@ -929,7 +966,7 @@ func (st *store) menu() *mygo.Menu {
 			{Role: mygo.RoleToggleFullScreen},
 			{Role: mygo.RoleToggleDevTools, Label: locales.MenuInspector(), Hidden: !mygo.IsDev()},
 		}},
-		{Label: locales.MenuTabs(), Submenu: append(tabItems, item(&cmdJumpNeedy), item(&cmdNeeds), mygo.Separator(), item(&cmdRenameTab), item(&cmdMoveTabWindow))},
+		{Label: locales.MenuTabs(), Submenu: append(tabItems, item(&cmdJumpNeedy), item(&cmdNeeds), mygo.Separator(), item(&cmdRenameTab))},
 		{Label: locales.MenuSession(), Submenu: append([]*mygo.MenuItem{
 			item(&cmdNewProject),
 			item(&cmdNewSession),
@@ -941,8 +978,7 @@ func (st *store) menu() *mygo.Menu {
 			item(&cmdPrevSession),
 			mygo.Separator(),
 			item(&cmdRenameSession),
-			item(&cmdChangeFolder),
-			item(&cmdRemoveFolder),
+			item(&cmdRevealFolder),
 			item(&cmdCloseSession),
 		}, spaceItems...)},
 		{Role: mygo.RoleWindowMenu},
@@ -1270,8 +1306,8 @@ func (a *App) paletteItems() []paletteItem {
 		})
 	}
 	for _, cmd := range paletteCommands {
-		if cmd.Hidden || cmd == &cmdUpdates && !mygo.Updater.Enabled() || cmd == &cmdSidebar && prefs.TabPlacement == "" || cmd == &cmdSidebarView && !a.hostViewable() ||
-			a.st == nil && slices.Contains(sessionCommands, cmd) || cmd == &cmdRemoveFolder && (a.ws == nil || a.ws.Dir == "") ||
+		if cmd.Hidden || cmd == &cmdUpdates && !mygo.Updater.Enabled() || cmd == &cmdSidebar && prefs.TabPlacement == "" ||
+			a.st == nil && slices.Contains(sessionCommands, cmd) ||
 			!match(cmd.Title()) && !match(cmd.English()) {
 			continue
 		}

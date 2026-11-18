@@ -586,7 +586,7 @@ func TestCanvasBrowserAddress(t *testing.T) {
 // other boxes where they are.
 func TestCanvasMoveBoxToWindow(t *testing.T) {
 	a, _, tab := canvasApp(t, 0, 0, 1)
-	b := a.st.openWindow(a.st.addWorkspace())
+	b := a.st.openWindow(a.st.newTestSpace())
 	a.split(false)
 	if len(tab.Floats) != 2 {
 		t.Fatalf("%d boxes", len(tab.Floats))

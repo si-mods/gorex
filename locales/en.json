@@ -160,10 +160,6 @@
   "@cmdToggleSidebar": {
     "description": "Command: show or hide the sidebar of vertical tabs."
   },
-  "cmdToggleSidebarView": "Toggle Sidebar View",
-  "@cmdToggleSidebarView": {
-    "description": "Command: switch the sidebar between listing this window's space and listing every space by host."
-  },
   "cmdRenameTab": "Rename Tab…",
   "@cmdRenameTab": {
     "description": "Command: rename the active tab. Also in a tab's context menu."
@@ -825,22 +821,6 @@
   "settingsPaneHeadersHint": "Pane headers are always shown when the vertical sidebar is hidden or positioned on the right.",
   "@settingsPaneHeadersHint": {
     "description": "Hint under the Show pane headers setting."
-  },
-  "settingsSidebarView": "Sidebar view",
-  "@settingsSidebarView": {
-    "description": "Setting: what the sidebar of vertical tabs lists."
-  },
-  "settingsSidebarViewHint": "Projects lists this window's tabs. Hosts lists every project under each host it has tabs on, once a remote host is added.",
-  "@settingsSidebarViewHint": {
-    "description": "Hint under the Sidebar view setting. Its options are the next two messages."
-  },
-  "settingsSidebarSpaces": "Projects",
-  "@settingsSidebarSpaces": {
-    "description": "Sidebar view option: this window's space, its tabs grouped by host."
-  },
-  "settingsSidebarHosts": "Hosts",
-  "@settingsSidebarHosts": {
-    "description": "Sidebar view option: every space listed under each host it has tabs on."
   },
   "settingsDockBadge": "Dock badge",
   "@settingsDockBadge": {
@@ -1687,7 +1667,7 @@
   "@cmdNewWindow": {
     "description": "Command: open a new window, which shows a new space."
   },
-  "cmdNewSession": "New Project with No Folder",
+  "cmdNewSession": "New Tab with No Project",
   "cmdImportRex": "Import from Rex",
   "@cmdImportRex": {
     "description": "Command: import a Rex server's sessions as spaces, tabs and panes, each block mirrored."
@@ -1715,10 +1695,6 @@
   "@cmdCloseSession": {
     "description": "Command: end the terminals of the window's space, after asking, and forget it."
   },
-  "cmdMoveTabToNewWindow": "Move Tab to New Window",
-  "@cmdMoveTabToNewWindow": {
-    "description": "Command: move the active tab to a new window, in a new space."
-  },
   "menuSession": "Project",
   "@menuSession": {
     "description": "Title of the Space menu."
@@ -1733,10 +1709,6 @@
       }
     }
   },
-  "sessionListTitle": "Projects",
-  "@sessionListTitle": {
-    "description": "Space popover: title over the list of spaces."
-  },
   "sessionTabs": "{n, plural, one {# tab} other {# tabs}}",
   "@sessionTabs": {
     "description": "Space popover and palette: how many tabs a space has.",
@@ -1746,10 +1718,6 @@
         "example": "3"
       }
     }
-  },
-  "sessionElsewhere": "In another window",
-  "@sessionElsewhere": {
-    "description": "Space popover and palette: the space shows in another window, which choosing it focuses."
   },
   "sessionPlaceholder": "Change to a project…",
   "@sessionPlaceholder": {
@@ -1836,10 +1804,6 @@
   "spaceColorDefault": "Default",
   "@spaceColorDefault": {
     "description": "Space popover: the first of the space's colors, which leaves the window its theme's."
-  },
-  "spaceColorCustom": "Custom #rrggbb",
-  "@spaceColorCustom": {
-    "description": "Space popover: placeholder of the field that takes a custom color of the space, as #0090ff."
   },
   "paneRename": "Rename Pane…",
   "@paneRename": {
@@ -2433,30 +2397,6 @@
   "@cmdNewProject": {
     "description": "Command: open the sheet that makes a project bound to a folder on a host."
   },
-  "projectSheetTitle": "New Project",
-  "@projectSheetTitle": {
-    "description": "Title of the New Project sheet."
-  },
-  "projectSheetChangeTitle": "Folder of {name}",
-  "@projectSheetChangeTitle": {
-    "description": "Title of the sheet that changes a project's folder.",
-    "placeholders": {
-      "name": {
-        "type": "String",
-        "example": "windflow"
-      }
-    }
-  },
-  "projectSheetSetTitle": "Set Folder for {name}",
-  "@projectSheetSetTitle": {
-    "description": "Title of the sheet that gives a project with no folder one.",
-    "placeholders": {
-      "name": {
-        "type": "String",
-        "example": "windflow"
-      }
-    }
-  },
   "projectSheetHost": "Host",
   "@projectSheetHost": {
     "description": "New Project sheet: label over the hosts the folder can be on."
@@ -2488,10 +2428,6 @@
   "projectSheetCreate": "Create",
   "@projectSheetCreate": {
     "description": "New Project sheet: button that makes the project."
-  },
-  "projectSheetUse": "Use This Folder",
-  "@projectSheetUse": {
-    "description": "Change Folder sheet: button that gives the project the folder shown."
   },
   "projectSheetCancel": "Cancel",
   "@projectSheetCancel": {
@@ -2551,10 +2487,6 @@
   "@projectSheetNoChoice": {
     "description": "New Project sheet: over the buttons, when no folder can be taken, as in the list of drives or in a folder that cannot be read."
   },
-  "projectSheetBrowseFirst": "Choose a host and open the project's folder.",
-  "@projectSheetBrowseFirst": {
-    "description": "Change Folder sheet: over the buttons, while the project's home host is unknown and the user has not browsed yet."
-  },
   "projectSheetNameNeeded": "This folder has no name. Type a name for the project.",
   "@projectSheetNameNeeded": {
     "description": "New Project sheet: over the buttons, at the top of a drive or of the disk, whose folder gives no name."
@@ -2562,16 +2494,6 @@
   "projectSheetNameHint": "Type a name",
   "@projectSheetNameHint": {
     "description": "New Project sheet: placeholder of the name field when the folder gives no name."
-  },
-  "projectSheetHostUnknown": "Previous host unknown: {dir}",
-  "@projectSheetHostUnknown": {
-    "description": "Change Folder sheet: at the top, when the project's home host is none of the user's hosts; dir is its folder there.",
-    "placeholders": {
-      "dir": {
-        "type": "String",
-        "example": "/srv/acme-api"
-      }
-    }
   },
   "projectSheetMoreFolders": "Folders above",
   "@projectSheetMoreFolders": {
@@ -2593,64 +2515,6 @@
   "@projectNoFolder": {
     "description": "Project list: under the name of a project that has no folder."
   },
-  "projectHomeOffline": "{host} is not connected",
-  "@projectHomeOffline": {
-    "description": "Project list: tooltip of the dot of a project whose home host is not connected.",
-    "placeholders": {
-      "host": {
-        "type": "String",
-        "example": "office-mac"
-      }
-    }
-  },
-  "projectHomeUnknown": "The home host is not one of your hosts",
-  "@projectHomeUnknown": {
-    "description": "Project list: tooltip of the dot of a project whose home host was removed from the user's hosts."
-  },
-  "projectHomeFailed": "The folder of {name} did not change: {error}",
-  "@projectHomeFailed": {
-    "description": "Note: the server did not keep the project's new folder, or did not take it away.",
-    "placeholders": {
-      "name": {
-        "type": "String",
-        "example": "windflow"
-      },
-      "error": {
-        "type": "String",
-        "example": "unknown space"
-      }
-    }
-  },
-  "projectFolderRemoved": "Removed the folder {dir} from {name}.",
-  "@projectFolderRemoved": {
-    "description": "Note: Remove Folder took the project's folder away; an Undo button follows.",
-    "placeholders": {
-      "dir": {
-        "type": "String",
-        "example": "~/code/windflow"
-      },
-      "name": {
-        "type": "String",
-        "example": "windflow"
-      }
-    }
-  },
-  "projectUndo": "Undo",
-  "@projectUndo": {
-    "description": "Note: button that gives the project the folder Remove Folder took away."
-  },
-  "cmdChangeProjectFolder": "Change Project Folder…",
-  "@cmdChangeProjectFolder": {
-    "description": "Command: open the sheet that sets or changes the folder of the window's project."
-  },
-  "cmdRemoveProjectFolder": "Remove Project Folder",
-  "@cmdRemoveProjectFolder": {
-    "description": "Command: unbind the window's project from its folder; its tabs stay."
-  },
-  "projectHostUnknown": "unknown host",
-  "@projectHostUnknown": {
-    "description": "Sidebar project header: the project's home host is not one of the user's hosts."
-  },
   "projectFolderMissing": "The folder {dir} of {name} is missing or cannot be opened; no tab opened.",
   "@projectFolderMissing": {
     "description": "Note: New Tab of a project whose folder is gone.",
@@ -2665,84 +2529,141 @@
       }
     }
   },
-  "projectHostTimeout": "The home host of {name} did not connect; no tab opened.",
-  "@projectHostTimeout": {
-    "description": "Note: New Tab waited 60 s for the project's home host, which did not connect.",
+  "cmdCloseProject": "Close Project…",
+  "@cmdCloseProject": {
+    "description": "Note button: close the project whose folder is gone."
+  },
+  "cmdRevealProjectFolder": "Reveal Folder",
+  "@cmdRevealProjectFolder": {
+    "description": "Command and project menu: show this machine's project folder in the file manager."
+  },
+  "projectMoveHere": "Move Here",
+  "@projectMoveHere": {
+    "description": "Note button: move the project shown to the space shown."
+  },
+  "projectInOtherSpace": "{name} is a project already, in {space}.",
+  "@projectInOtherSpace": {
+    "description": "Note: New Project of a folder that is a project of another space.",
     "placeholders": {
-      "name": {
-        "type": "String",
-        "example": "windflow"
-      }
+      "name": {},
+      "space": {}
     }
   },
-  "projectHostWaiting": "Connecting to the home host of {name}; the tab opens in {dir} once it is connected.",
-  "@projectHostWaiting": {
-    "description": "Note: New Tab waits for the project's home host to connect.",
+  "hostRename": "Rename…",
+  "@hostRename": {
+    "description": "Host menu in the sidebar: rename the host's alias."
+  },
+  "projectCloseAsk": "Close Project…",
+  "@projectCloseAsk": {
+    "description": "Project menu: close the project, after a question."
+  },
+  "projectMoveToSpace": "Move to Space",
+  "@projectMoveToSpace": {
+    "description": "Project menu: submenu of the spaces the project moves to."
+  },
+  "projectSheetTitleOn": "New Project on {host}",
+  "@projectSheetTitleOn": {
+    "description": "Title of the New Project sheet, of the host chosen.",
     "placeholders": {
-      "name": {
-        "type": "String",
-        "example": "windflow"
-      },
-      "dir": {
-        "type": "String",
-        "example": "~/code/windflow"
-      }
+      "host": {}
     }
   },
-  "projectHostOffline": "The home host of {name} is not connected; no tab opened in {dir}.",
-  "@projectHostOffline": {
-    "description": "Note: New Tab of a project whose home host is not connected.",
+  "projectsNewOn": "New Project on {host}…",
+  "@projectsNewOn": {
+    "description": "Tooltip of the + of a host's projects.",
     "placeholders": {
-      "name": {
-        "type": "String",
-        "example": "windflow"
-      },
-      "dir": {
-        "type": "String",
-        "example": "~/code/windflow"
-      }
+      "host": {}
     }
   },
-  "projectHostNotYours": "The home host of {name} is not one of your hosts; no tab opened in {dir}.",
-  "@projectHostNotYours": {
-    "description": "Note: New Tab of a project whose home host was removed from the user's hosts.",
+  "projectsNewTabIn": "New Tab in {name}",
+  "@projectsNewTabIn": {
+    "description": "Tooltip of the + of a project's row.",
     "placeholders": {
-      "name": {
-        "type": "String",
-        "example": "windflow"
-      },
-      "dir": {
-        "type": "String",
-        "example": "~/code/windflow"
-      }
+      "name": {}
     }
   },
-  "projectHostNone": "The project's home host is not one of your hosts; no tab opened.",
-  "@projectHostNone": {
-    "description": "Note: the hosts connected to find the project's home machine, and none was it."
+  "projectsNoProject": "Tabs with no project",
+  "@projectsNoProject": {
+    "description": "Sidebar and picker: a host's tabs that belong to no project."
   },
-  "projectHomeMoved": "{host} is connected, but the project's home changed meanwhile; no tab opened.",
-  "@projectHomeMoved": {
-    "description": "Note: the home host connected after the project's home moved elsewhere.",
+  "projectsOffline": "{host} is not connected: its projects as last seen",
+  "@projectsOffline": {
+    "description": "Tooltip of a project of a host that is away.",
     "placeholders": {
-      "host": {
-        "type": "String",
-        "example": "office-mac"
-      }
+      "host": {}
     }
   },
-  "projectHostOld": "{host} runs an older GoRex that cannot open {dir} safely; update GoRex there.",
-  "@projectHostOld": {
-    "description": "Note: the home host's GoRex does not check project folders.",
+  "projectsOlder": "Older",
+  "@projectsOlder": {
+    "description": "Sidebar: the folded group of projects not used for 30 days."
+  },
+  "projectsWaitingFor": "Waiting for {host}",
+  "@projectsWaitingFor": {
+    "description": "Sidebar: a project of a migrated layout that waits for its host to connect.",
     "placeholders": {
-      "host": {
-        "type": "String",
-        "example": "office-mac"
-      },
-      "dir": {
-        "type": "String",
-        "example": "~/code/windflow"
-      }
+      "host": {}
     }
+  },
+  "spaceCreate": "Create",
+  "@spaceCreate": {
+    "description": "Button of the New Space dialog."
+  },
+  "spaceDefault": "Default",
+  "@spaceDefault": {
+    "description": "The space of projects with no space."
+  },
+  "spaceDone": "Done",
+  "@spaceDone": {
+    "description": "Button that closes Edit Spaces."
+  },
+  "spaceEdit": "Edit Spaces…",
+  "@spaceEdit": {
+    "description": "Space picker: rename, color and order the spaces."
+  },
+  "spaceEditTitle": "Edit Spaces",
+  "@spaceEditTitle": {
+    "description": "Title of the Edit Spaces dialog."
+  },
+  "spaceMoveDown": "Move Down",
+  "@spaceMoveDown": {
+    "description": "Edit Spaces: move the space down."
+  },
+  "spaceMoveUp": "Move Up",
+  "@spaceMoveUp": {
+    "description": "Edit Spaces: move the space up."
+  },
+  "spaceNameHint": "Work",
+  "@spaceNameHint": {
+    "description": "Placeholder of the new space's name."
+  },
+  "spaceNameLabel": "Space name",
+  "@spaceNameLabel": {
+    "description": "Label of a space's name field."
+  },
+  "spaceNew": "New Space…",
+  "@spaceNew": {
+    "description": "Space picker: make a space."
+  },
+  "spaceNewTitle": "New Space",
+  "@spaceNewTitle": {
+    "description": "Title of the New Space dialog."
+  },
+  "spacePickerLabel": "Space {name}",
+  "@spacePickerLabel": {
+    "description": "Label of the space picker's button.",
+    "placeholders": {
+      "name": {}
+    }
+  },
+  "projectsTabsOf": "Tabs of {name}",
+  "@projectsTabsOf": {
+    "description": "Sidebar: the chevron that shows or hides a project's tabs.",
+    "placeholders": {
+      "name": {}
+    }
+  },
+  "projectsOfflineLabel": "offline",
+  "@projectsOfflineLabel": {
+    "description": "Sidebar: beside the header of a host that is not connected."
   }
 }

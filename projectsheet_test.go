@@ -4,7 +4,6 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
-	"strings"
 	"testing"
 	"time"
 
@@ -70,7 +69,7 @@ func TestNewProjectSheetLocal(t *testing.T) {
 	before := a.ws
 
 	click(t, tt, cmdNewProject.Title())
-	if !a.sheet.open || a.sheet.space != "" || a.sheet.host != nil {
+	if !a.sheet.open || a.sheet.host != nil {
 		t.Fatalf("the sidebar's + opened %+v", a.sheet)
 	}
 	sheetShows(t, a, tt, a.homeOf(nil))
@@ -104,8 +103,8 @@ func TestNewProjectSheetLocal(t *testing.T) {
 
 	click(t, tt, locales.ProjectSheetCreate())
 	waitFor(t, tt, "the new project", func() bool { return a.ws != before && a.ws != nil && len(a.tabs) == 1 && a.tabs[0].Focus != nil })
-	if a.sheet.open || a.ws.Name != "beta" || a.ws.Host != "" || a.ws.Dir != folder {
-		t.Fatalf("the project %q %q %q; sheet open %v", a.ws.Name, a.ws.Host, a.ws.Dir, a.sheet.open)
+	if a.sheet.open || a.ws.Name != "beta" || a.ws.host != nil || a.ws.Dir != folder {
+		t.Fatalf("the project %q %v %q; sheet open %v", a.ws.Name, a.ws.host, a.ws.Dir, a.sheet.open)
 	}
 	if dir := localDirOf(t, a, a.tabs[0].Focus.SID); !sameDir(dir, folder) {
 		t.Errorf("its first tab starts in %q, want %q", dir, folder)
@@ -119,9 +118,9 @@ func TestNewProjectSheetLocal(t *testing.T) {
 }
 
 // TestNewProjectSheetHost browses a remote host's folders, on a test
-// server: an offline host shows and cannot be chosen. A project of a
-// host is made on that host from docs/projects.md's phase 2 on: until
-// then this machine's server refuses it, and the banner says so.
+// server: an offline host shows and cannot be chosen. Create makes the
+// project on that host (docs/projects.md), in the space shown, and the
+// window shows it, its first tab in the folder there.
 func TestNewProjectSheetHost(t *testing.T) {
 	a, tt := newTestApp(t)
 	h, _, _, _ := remotePaneOf(t, a, tt, t.TempDir())
@@ -153,9 +152,13 @@ func TestNewProjectSheetHost(t *testing.T) {
 	a.sheet.name = ""
 
 	click(t, tt, locales.ProjectSheetCreate())
-	waitFor(t, tt, "the refusal", func() bool {
-		return strings.Contains(a.errText(), "made on that host") && a.ws.Host == "" && a.ws.Dir == ""
+	folder := filepath.Join(root, "beta")
+	waitFor(t, tt, "the project on the host", func() bool {
+		return a.ws != nil && a.ws.host == h && sameDir(a.ws.Dir, folder) && len(a.tabs) == 1 && a.tabs[0].Focus != nil
 	})
+	if a.ws.Name != "beta" || a.tabs[0].Focus.host != h {
+		t.Errorf("the project %q, its pane on %v", a.ws.Name, a.tabs[0].Focus.host)
+	}
 }
 
 // TestProjectSheetStaleListing cancels a sheet while a slow host lists a
@@ -166,7 +169,7 @@ func TestProjectSheetStaleListing(t *testing.T) {
 	h, proxy, _ := remotePane(t, a, tt, t.TempDir())
 	root := folderTree(t, appTempDir(t, a))
 
-	a.openSheet("", nil, root)
+	a.openSheet(nil, root)
 	sheetShows(t, a, tt, root)
 	release := proxy.hold()
 	t.Cleanup(release)
@@ -178,7 +181,7 @@ func TestProjectSheetStaleListing(t *testing.T) {
 	}
 	click(t, tt, locales.ProjectSheetCancel())
 
-	a.openSheet("", nil, root)
+	a.openSheet(nil, root)
 	sheetShows(t, a, tt, root)
 	click(t, tt, "alpha")
 	alpha := filepath.Join(root, "alpha")
@@ -191,63 +194,6 @@ func TestProjectSheetStaleListing(t *testing.T) {
 	}
 	if s := a.sheet; s.host != nil || !sameDir(s.res.Path, alpha) || !sameDir(s.chosen(), alpha) {
 		t.Fatalf("the sheet of this machine shows %q of %v, would use %q", s.res.Path, s.host, s.chosen())
-	}
-}
-
-// TestProjectSettings changes the window's project from its context menu:
-// Change Folder… opens the sheet in its folder and gives it another;
-// Remove Folder takes it away; the menu offers Remove Folder only to a
-// project with a folder, and Set Folder… to one of none.
-func TestProjectSettings(t *testing.T) {
-	a, tt := newTestApp(t)
-	old := prefs
-	t.Cleanup(func() { prefs = old })
-	prefs = settings{TabPlacement: "left"}
-	root := folderTree(t, appTempDir(t, a))
-	setProjectHome(t, a, tt, "", filepath.Join(root, "alpha"))
-	w := a.ws
-
-	chip := locales.SessionLabel(w.Name) + " · " + a.projectDetail(w)
-	tt.Frame()
-	rightClick(t, tt, chip)
-	if err := tt.ChooseMenuItem(locales.ProjectChangeFolder()); err != nil {
-		t.Fatalf("Change Folder…: %v; texts %q", err, tt.Texts())
-	}
-	tt.Frame()
-	if !a.sheet.open || a.sheet.space != w.ID || a.sheet.host != nil {
-		t.Fatalf("the sheet of the project: %+v", a.sheet)
-	}
-	sheetShows(t, a, tt, filepath.Join(root, "alpha"))
-	if tt.HasText(locales.ProjectSheetName()) || !tt.HasText(locales.ProjectSheetChangeTitle(w.Name)) {
-		t.Errorf("the sheet of Change Folder: %q", tt.Texts())
-	}
-	click(t, tt, locales.ProjectSheetUp())
-	sheetShows(t, a, tt, root)
-	click(t, tt, "beta")
-	sheetShows(t, a, tt, filepath.Join(root, "beta"))
-	folder := a.sheet.res.Path
-	click(t, tt, locales.ProjectSheetUse())
-	waitFor(t, tt, "the new folder", func() bool { return a.ws == w && w.Dir == folder })
-
-	chip = locales.SessionLabel(w.Name) + " · " + a.projectDetail(w)
-	rightClick(t, tt, chip)
-	if err := tt.ChooseMenuItem(locales.ProjectRemoveFolder()); err != nil {
-		t.Fatalf("Remove Folder: %v", err)
-	}
-	waitFor(t, tt, "no folder", func() bool { return w.Dir == "" && w.Host == "" })
-	caughtUp(t, a, tt)
-	if w.Dir != "" {
-		t.Errorf("the server gave the folder back: %q", w.Dir)
-	}
-	rightClick(t, tt, locales.SessionLabel(w.Name))
-	if m := tt.Menu(); slices.Contains(m, locales.ProjectRemoveFolder()) || !slices.Contains(m, locales.ProjectSetFolder()) {
-		t.Errorf("the menu of a project of no folder: %q", m)
-	}
-	if err := tt.ChooseMenuItem(locales.ProjectSetFolder()); err != nil {
-		t.Fatalf("Set Folder: %v", err)
-	}
-	if !tt.HasText(locales.ProjectSheetSetTitle(w.Name)) {
-		t.Errorf("the sheet of Set Folder: %q", tt.Texts())
 	}
 }
 
@@ -268,39 +214,6 @@ func TestProjectHeader(t *testing.T) {
 	want := "~" + string(filepath.Separator) + filepath.Join("code", "windflow")
 	if d := a.projectDetail(a.ws); d != want || !tt.HasText(want) {
 		t.Errorf("the header says %q, want %q; texts %q", d, want, tt.Texts())
-	}
-}
-
-// TestProjectNotes checks the notes of New Tab in a project: a folder
-// gone says so with Change Folder…, which opens the sheet of the project;
-// a home host unknown says so with Change Folder…; a wait is not an error,
-// and goes once the tab opens.
-func TestProjectNotes(t *testing.T) {
-	a, tt := newTestApp(t)
-	folder := appTempDir(t, a)
-	gone := filepath.Join(folder, "gone")
-	setProjectHome(t, a, tt, "", gone)
-	a.newProjectTab()
-	waitFor(t, tt, "the note", func() bool { return a.note() != nil })
-	tt.Frame()
-	if n := a.note(); n.wait || n.action == nil || !strings.Contains(a.errText(), "gone") || !tt.HasText(a.errText()) {
-		t.Fatalf("the note %q: %+v; texts %q", a.errText(), n, tt.Texts())
-	}
-	click(t, tt, locales.ProjectChangeFolder())
-	if !a.sheet.open || a.sheet.space != a.ws.ID || a.errText() != "" {
-		t.Fatalf("Change Folder… of the note: sheet %+v, note %q", a.sheet, a.errText())
-	}
-	// Another message has no button, though the note was not cleared.
-	a.sheet.open = false
-	a.folderMissing("")
-	a.err, a.errMsg = "something else", nil
-	if a.note() != nil {
-		t.Errorf("the note's button stays with another message")
-	}
-
-	a.setNote(func(m locales.Messages) string { return m.ProjectHostWaiting("p", "/x") }, bannerNote{wait: true})
-	if n := a.note(); n == nil || !n.wait {
-		t.Errorf("the wait: %+v", n)
 	}
 }
 
@@ -421,7 +334,7 @@ func TestProjectSheetBreadcrumb(t *testing.T) {
 	root := appTempDir(t, a)
 	long := "acme-api-service-gateway"
 	deep := deepTree(t, root, "code", "clients", "acme", "services", long)
-	a.openSheet("", nil, deep)
+	a.openSheet(nil, deep)
 	sheetShows(t, a, tt, deep)
 	tt.Frame()
 	if !tt.HasText(long) {
@@ -459,7 +372,7 @@ func TestProjectSheetBreadcrumb(t *testing.T) {
 func TestProjectSheetKeys(t *testing.T) {
 	a, tt := newTestApp(t)
 	root := folderTree(t, appTempDir(t, a))
-	a.openSheet("", nil, root)
+	a.openSheet(nil, root)
 	sheetShows(t, a, tt, root)
 
 	key := func(mods ui.Modifiers, k ui.Key) {
@@ -533,7 +446,7 @@ func TestProjectSheetKeys(t *testing.T) {
 func TestProjectSheetCreateState(t *testing.T) {
 	a, tt := newTestApp(t)
 	root := folderTree(t, appTempDir(t, a))
-	a.openSheet("", nil, root)
+	a.openSheet(nil, root)
 	sheetShows(t, a, tt, root)
 	tt.Frame()
 	if !a.sheet.ready() || !tt.HasText(locales.ProjectSheetChosen(a.sheet.res.Path)) {

@@ -433,8 +433,8 @@ func TestFilterLayout(t *testing.T) {
 
 func TestFilterLayoutFocusAcrossBrowser(t *testing.T) {
 	// A tab of a terminal, a browser pane and a terminal, focused on the
-	// last: the browser leaves the peer's layout, and the focus follows
-	// the terminal to its new place.
+	// last: the browser pane is the host's, as its terminals are, and
+	// stays in the peer's layout (docs/projects.md), the focus with it.
 	raw := []byte(`{"version":2,"sessions":[{"id":"w","name":"w","tabs":[{"root":{"a":{"sid":"a"},"b":{"a":{"url":"https://example.com/"},"b":{"sid":"b"}}},"focus":2}]}],"windows":["w"]}`)
 	s := &Server{
 		sessions: map[string]*session{"a": {id: "a", owner: "p"}, "b": {id: "b", owner: "p"}},
@@ -452,14 +452,45 @@ func TestFilterLayoutFocusAcrossBrowser(t *testing.T) {
 		t.Fatalf("filtered %s", got)
 	}
 	tab := st.Sessions[0].Tabs[0]
-	if tab.Root == nil || tab.Root.A == nil || tab.Root.A.SID != "a" || tab.Root.B == nil || tab.Root.B.SID != "b" {
-		t.Fatalf("panes %+v", tab.Root)
+	if tab.Root == nil || tab.Root.A == nil || tab.Root.A.SID != "a" || tab.Root.B == nil || tab.Root.B.A == nil || tab.Root.B.A.URL != "https://example.com/" || tab.Root.B.B.SID != "b" {
+		t.Fatalf("panes %s", got)
 	}
-	if tab.Focus != 1 {
-		t.Errorf("focus %d, want the second terminal", tab.Focus)
+	if tab.Focus != 2 {
+		t.Errorf("focus %d, want the second terminal, after the browser pane", tab.Focus)
 	}
-	if bytes.Contains(got, []byte("example.com")) {
-		t.Fatalf("leaked the browser pane: %s", got)
+}
+
+// TestRemoteArranges: a client the host lets in arranges the host's tabs
+// (tab.set, layout.apply) as its window does, but never with another
+// host's pane or a place it could not see, nor what names the host's own
+// windows, kills, shows or adoptions (docs/projects.md).
+func TestRemoteArranges(t *testing.T) {
+	tab := func(n layout.Node) *layout.Tab { return &layout.Tab{ID: "t", Root: &n} }
+	for _, c := range []struct {
+		cmd LayoutCommand
+		ok  bool
+	}{
+		{LayoutCommand{Op: "tab.set", TabLayout: tab(layout.Node{SID: "a"})}, true},
+		{LayoutCommand{Op: "tab.set", TabLayout: tab(layout.Node{URL: "https://example.com/", ID: "b"})}, true},
+		{LayoutCommand{Op: "tab.set", TabLayout: tab(layout.Node{SID: "a", Host: "h"})}, false},
+		{LayoutCommand{Op: "tab.set", TabLayout: tab(layout.Node{Unavailable: true})}, false},
+		{LayoutCommand{Op: "layout.apply", Batch: []LayoutCommand{{Op: "tab.close", Tab: "t"}, {Op: "pane.close", SID: "a"}, {Op: "space.rename", Space: "w", Name: "x"}}}, true},
+		{LayoutCommand{Op: "layout.apply", Batch: []LayoutCommand{{Op: "windows.set", Spaces: []string{"w"}}}}, false},
+		{LayoutCommand{Op: "layout.apply", Batch: []LayoutCommand{{Op: "tab.set", TabLayout: tab(layout.Node{SID: "a", Host: "h"})}}}, false},
+		{LayoutCommand{Op: "windows.set"}, false},
+		{LayoutCommand{Op: "kills.taken"}, false},
+		{LayoutCommand{Op: "show.taken"}, false},
+		{LayoutCommand{Op: "adopt.taken"}, false},
+		{LayoutCommand{Op: "project.adopt"}, true},
+	} {
+		if got := remoteCommand(c.cmd); got != c.ok {
+			t.Errorf("%s %+v: remote %v, want %v", c.cmd.Op, c.cmd, got, c.ok)
+		}
+	}
+	// Through the request: refused before it reaches the layout.
+	s := &Server{layout: []byte(`{"tabs":[]}`)}
+	if res := s.request(Request{ID: 1, Op: "command", Command: &LayoutCommand{Op: "windows.set", Spaces: []string{"w"}}}, "peer", nil); !strings.Contains(res.Error, "GoRex window") {
+		t.Errorf("windows.set of a remote client: %q", res.Error)
 	}
 }
 
@@ -522,10 +553,12 @@ func TestFilterLayoutFloats(t *testing.T) {
 // TestFilterLayoutFloatsTakeRoot checks that a tab whose tiled panes leave
 // keeps the floats that survive, the first of them taking the tree's place,
 // and leaves out a tab with nothing left.
-func TestFilterLayoutFloatsTakeRoot(t *testing.T) {
+// TestFilterLayoutKeepsBrowserFloats: browser panes are the host's, tiled
+// and floating, and stay in a peer's layout with their places and the
+// focus (docs/projects.md).
+func TestFilterLayoutKeepsBrowserFloats(t *testing.T) {
 	raw := []byte(`{"version":2,"sessions":[{"id":"w","name":"w","active":0,"tabs":[
-		{"root":{"url":"https://tiled.example/"},"focus":0,"floats":[{"pane":{"url":"https://gone.example/"}},{"pane":{"sid":"a"},"x":0.1},{"pane":{"sid":"c"},"x":0.2}],"focusFloat":3},
-		{"root":{"url":"https://tiled.example/"},"focus":0,"floats":[{"pane":{"url":"https://gone.example/"}}]}
+		{"root":{"url":"https://tiled.example/"},"focus":0,"floats":[{"pane":{"url":"https://float.example/"}},{"pane":{"sid":"a"},"x":0.1},{"pane":{"sid":"c"},"x":0.2}],"focusFloat":3}
 	]}],"windows":["w"]}`)
 	s := &Server{
 		sessions: map[string]*session{"a": {id: "a", owner: "p"}, "c": {id: "c", owner: "p"}},
@@ -543,17 +576,11 @@ func TestFilterLayoutFloatsTakeRoot(t *testing.T) {
 		t.Fatalf("filtered %s", got)
 	}
 	tab := st.Sessions[0].Tabs[0]
-	if tab.Root == nil || tab.Root.SID != "a" {
-		t.Fatalf("the first surviving float did not take the tree: %+v", tab.Root)
+	if tab.Root == nil || tab.Root.URL != "https://tiled.example/" || len(tab.Floats) != 3 || tab.Floats[0].Pane.URL != "https://float.example/" {
+		t.Fatalf("panes %s", got)
 	}
-	if len(tab.Floats) != 1 || tab.Floats[0].Pane == nil || tab.Floats[0].Pane.SID != "c" {
-		t.Fatalf("floats after the promotion: %+v", tab.Floats)
-	}
-	if tab.Focus != 0 || tab.FocusFloat != 1 || tab.Zoom {
-		t.Errorf("focus %d, focus float %d, zoom %v", tab.Focus, tab.FocusFloat, tab.Zoom)
-	}
-	if bytes.Contains(got, []byte("gone.example")) {
-		t.Fatalf("leaked a pane the peer may not use: %s", got)
+	if tab.FocusFloat != 3 {
+		t.Errorf("focus float %d", tab.FocusFloat)
 	}
 }
 
@@ -576,8 +603,9 @@ func TestFilterLayoutMirror(t *testing.T) {
 }
 
 func TestFilterLayoutDropsNotes(t *testing.T) {
-	// A note pane is this machine's: it leaves the peer's layout, its text
-	// with it, and the focus follows the terminal to its new place.
+	// A note pane is this machine's: its text leaves the peer's layout,
+	// and its place stays as an unavailable pane's, the focus on the
+	// terminal after it.
 	raw := []byte(`{"version":2,"sessions":[{"id":"w","name":"w","tabs":[{"root":{"a":{"sid":"a"},"b":{"a":{"kind":"note","note":"secret text"},"b":{"sid":"b"}}},"focus":2}]}],"windows":["w"]}`)
 	s := &Server{
 		sessions: map[string]*session{"a": {id: "a", owner: "p"}, "b": {id: "b", owner: "p"}},
@@ -592,8 +620,8 @@ func TestFilterLayoutDropsNotes(t *testing.T) {
 		t.Fatal(err)
 	}
 	tab := st.Sessions[0].Tabs[0]
-	if tab.Root == nil || tab.Root.A == nil || tab.Root.A.SID != "a" || tab.Root.B == nil || tab.Root.B.SID != "b" {
-		t.Fatalf("panes %+v", tab.Root)
+	if tab.Root == nil || tab.Root.A == nil || tab.Root.A.SID != "a" || tab.Root.B == nil || tab.Root.B.A == nil || !tab.Root.B.A.Unavailable || tab.Root.B.B.SID != "b" {
+		t.Fatalf("panes %s", got)
 	}
 	if tab.Focus != 1 {
 		t.Errorf("focus %d, want the second terminal", tab.Focus)

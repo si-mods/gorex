@@ -812,58 +812,6 @@ func movedPane(b *App, sid string) *Pane {
 	return nil
 }
 
-// TestUploadMovesWithItsTab moves a tab to a new window while a file
-// dropped on its pane goes to the host, and closes the window it was
-// dropped in: the new window's pane lists the transfer and gets its path
-// pasted.
-func TestUploadMovesWithItsTab(t *testing.T) {
-	dropsDir(t)
-	a, tt := newTestApp(t)
-	_, _, p := remotePane(t, a, tt, t.TempDir())
-	release := gateUploads(t)
-	defer release()
-	a.upload(p, dropped(t, "moved.txt", "x"))
-	sid, x := p.SID, listOf(p)[0]
-	a.moveTabToNewWindow(p.Tab)
-	b := a.st.apps[0]
-	q := movedPane(b, sid)
-	if b == a || q == nil || q.term == nil {
-		t.Fatal("the tab did not move")
-	}
-	if !slices.Contains(listOf(q), x) {
-		t.Fatalf("the moved pane's transfers %v", listOf(q))
-	}
-	a.st.closed(a)
-	release()
-	waitFor(t, tt, "the path there", func() bool { return strings.Contains(q.term.Text(), "moved.txt") })
-	waitFor(t, tt, "the upload", func() bool { return x.ok })
-}
-
-// TestUploadMovesWithItsPane is TestUploadMovesWithItsTab for a pane moved
-// into another window's tab.
-func TestUploadMovesWithItsPane(t *testing.T) {
-	dropsDir(t)
-	a, tt := newTestApp(t)
-	h, _, p := remotePane(t, a, tt, t.TempDir())
-	b := a.st.openWindow(a.st.addWorkspace())
-	b.newTabOn(h, t.TempDir())
-	waitFor(t, tt, "the tab on the host", func() bool { return len(b.tabsOn(h)) == 1 })
-	release := gateUploads(t)
-	defer release()
-	a.upload(p, dropped(t, "moved.txt", "x"))
-	sid, x := p.SID, listOf(p)[0]
-	a.movePaneToWindow(p, b)
-	q := movedPane(b, sid)
-	if q == nil || q.term == nil {
-		t.Fatal("the pane did not move")
-	}
-	if !slices.Contains(listOf(q), x) {
-		t.Fatalf("the moved pane's transfers %v", listOf(q))
-	}
-	release()
-	waitFor(t, tt, "the path there", func() bool { return strings.Contains(q.term.Text(), "moved.txt") })
-}
-
 // TestClosedPaneDropsItsPaste closes a pane while a file dropped on it
 // waits to go: the upload stops and its session's list goes with it.
 func TestClosedPaneDropsItsPaste(t *testing.T) {

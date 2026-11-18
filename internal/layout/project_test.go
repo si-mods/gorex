@@ -43,7 +43,7 @@ func TestProjectRoundTrip(t *testing.T) {
 
 // TestMachineHost names a machine as a home host and reads it back.
 func TestMachineHost(t *testing.T) {
-	if m, ok := HostMachine(MachineHost("9c63")); !ok || m != "9c63" {
+	if m, ok := HostMachine((machineHost + "9c63")); !ok || m != "9c63" {
 		t.Errorf("HostMachine(MachineHost) = %q, %v", m, ok)
 	}
 	for _, host := range []string{"", "a1b2c3", "machine:"} {

@@ -410,7 +410,7 @@ func TestNoteSizeAndPreviewPersist(t *testing.T) {
 		t.Fatalf("restored %+v", ns)
 	}
 	// Moving to another window keeps both.
-	w := a.st.openWindow(a.st.addWorkspace())
+	w := a.st.openWindow(a.st.newTestSpace())
 	a.movePaneToWindow(p, w)
 	ms := restoredNotes(w)
 	if len(ms) != 1 || ms[0].note.size != 18 || !ms[0].note.preview {
