@@ -108,12 +108,31 @@ func (a *App) openSettingsAt(id string) {
 	}
 }
 
-// openAddHost opens the sheet that adds a host, its fields empty.
+// openAddHost opens the sheet that adds a host, its fields empty, and the
+// hosts the tailnet shows.
 func (a *App) openAddHost() {
 	cancelAddHost()
 	page := &hostsUI
 	page.adding, page.address, page.name, page.pairAs = true, "", "", a.localName()
 	page.formErr, page.fingerprint = nil, ""
+	a.refreshTailnetFound()
+}
+
+// refreshTailnetFound reads the hosts the tailnet shows now, as the sheet
+// opens, rather than as the window's poll of the server comes around.
+func (a *App) refreshTailnetFound() {
+	c := a.client
+	if c == nil {
+		return
+	}
+	update := a.settingsUpdate()
+	go func() {
+		s, err := c.RemoteStatus()
+		if err != nil || s.Tailnet == nil {
+			return
+		}
+		update(func() { a.reconcileTailnet(s.Tailnet) })
+	}()
 }
 
 // cancelAddHost stops an attempt under way and goes back to the fields.
@@ -416,14 +435,10 @@ func (a *App) hostRow(c *ui.Context, k *colors, h *hostConn) {
 				a.openHostLayout(h)
 			}
 			tailnet := rex.IsTailnetTarget(h.Address)
-			if tailnet && (h.tailnetOnline || up) && ui.Button(c.Key("rex-qr"), locales.HostsRexQR()).Clicked() {
+			if tailnet && up && ui.Button(c.Key("rex-qr"), locales.HostsRexQR()).Clicked() {
 				openHostPairQR(h)
 			}
-			if tailnet && h.tailnetOnline && !up {
-				if ui.Button(c.Key("connect"), locales.TailnetConnect()).Clicked() {
-					a.newTabOn(h, a.dirOn(h))
-				}
-			} else if !tailnet && !up && ui.Button(c.Key("retry"), locales.HostsRetry()).Clicked() {
+			if !up && ui.Button(c.Key("retry"), locales.HostsRetry()).Clicked() {
 				h.poke()
 			}
 			// Another host's alias, being edited, is kept first, as
@@ -432,7 +447,7 @@ func (a *App) hostRow(c *ui.Context, k *colors, h *hostConn) {
 				(page.renaming == "" || a.commitHostRename()) {
 				page.renaming, page.alias = h.ID, h.label()
 			}
-			if !tailnet && ui.Button(c.Key("remove"), locales.HostsRemove()).Disabled(page.removing == h.ID).Clicked() {
+			if ui.Button(c.Key("remove"), locales.HostsRemove()).Disabled(page.removing == h.ID).Clicked() {
 				page.removing = h.ID
 			}
 		})
@@ -807,6 +822,42 @@ func hostDot(k *colors, h *hostConn) ui.Color {
 	return k.attention
 }
 
+// foundHostRows lists the GoRex hosts the tailnet showed, each with the
+// button that adds it. One saved here already, by its target, says so, and
+// one whose name another host goes by: adding it would name two alike.
+func (a *App) foundHostRows(c *ui.Context, k *colors) {
+	found := a.tailnetFound()
+	if len(found) == 0 {
+		return
+	}
+	ui.Column(c).Gap(6).Children(func() {
+		ui.Text(c, locales.HostsFound()).FontSize(12).FontWeight(600).TextColor(k.textMuted)
+		for _, peer := range slices.Clone(found) {
+			saved := slices.ContainsFunc(a.hosts, func(h *hostConn) bool { return h.Address == peer.Target })
+			taken := !saved && nameTaken(peer.Name, nil, a.hosts)
+			ui.Row(c.Key("found-" + peer.Target)).Gap(8).AlignItems(ui.Center).Children(func() {
+				ui.Box(c).Size(16, 16).Shrink(0).Children(func() { glyphIcon(c, "server", 16, k.textMuted) })
+				ui.Column(c).Grow(1).MinWidth(0).Children(func() {
+					ui.Text(c, peer.Name).FontSize(12.5).FontWeight(500).TextColor(k.text).SingleLine().Ellipsis("…")
+					switch {
+					case saved:
+						ui.Text(c, locales.HostsAlreadySaved()).FontSize(11.5).TextColor(k.textFaint)
+					case taken:
+						ui.Text(c, locales.HostsNameTaken()).FontSize(11.5).TextColor(k.textFaint)
+					}
+				})
+				if saved || taken {
+					return
+				}
+				if ui.Button(c.Key("found-add"), locales.HostsAddFound()).Clicked() {
+					a.addFoundHost(peer)
+					closeAddHost()
+				}
+			})
+		}
+	})
+}
+
 // addHostSheet is the sheet that adds a host: its fields, then the
 // connection's progress and the fingerprint to approve.
 func (a *App) addHostSheet(c *ui.Context, k *colors) {
@@ -854,6 +905,7 @@ func (a *App) addHostSheet(c *ui.Context, k *colors) {
 			}
 		default:
 			ui.Text(c, locales.HostsAddNote()).FontSize(12).TextColor(k.textFaint).LineHeight(1.3)
+			a.foundHostRows(c, k)
 			field := func(label string, input func() ui.Element) {
 				ui.Column(c).Gap(4).Children(func() {
 					ui.Text(c, label).FontSize(12).FontWeight(600).TextColor(k.textMuted)

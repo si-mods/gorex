@@ -310,12 +310,12 @@ Under Show Details:
   removing them needs administrator.
 - **Relay**: default, or a host.
 
-Remote Hosts lists machines. **Add Remote Host** takes what the user
-has: an IP address or a name of a machine they can dial, or the long
-address a machine shows. A machine found on the tailnet shows as
-available;
-**Connect** makes the introduction and saves it as a host like any
-other. A host's details say how it is reached now.
+Remote Hosts lists the machines the user added. **Add Remote Host** takes
+what the user has: an IP address or a name of a machine they can dial, or
+the long address a machine shows. The sheet also offers the GoRex hosts
+the tailnet finds, each with **Add Host**: discovery adds no host by
+itself, and one added so is a host like any other, which can be renamed
+and removed. A host's details say how it is reached now.
 
 The first connection, in order: on the serving machine, turn **Let
 other devices connect** on and open **Add a device**; on the other,

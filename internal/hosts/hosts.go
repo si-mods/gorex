@@ -20,9 +20,14 @@ type Host struct {
 	Name string `json:"name"`
 	// Alias is the name the user gave the host here, "" for none: the
 	// tailnet sets Name, never this.
-	Alias         string `json:"alias,omitempty"`
-	Address       string `json:"address"`
-	TailnetOpened bool   `json:"tailnetOpened,omitempty"`
+	Alias   string `json:"alias,omitempty"`
+	Address string `json:"address"`
+	// TailnetOpened tells that the host is the user's, not the tailnet's
+	// discovery: the user added it from the add sheet, or, in a file of
+	// before, opened one discovery had saved. The app leaves out, as it
+	// loads the file, a host of a tailnet address with none of this, no
+	// alias and no icon (keptHosts), and offers the machine again.
+	TailnetOpened bool `json:"tailnetOpened,omitempty"`
 	// Machine is the machine the host is (rex.Hello.Machine), as it said
 	// when it last connected: the Rex API names the host's panes by it,
 	// for a phone that connects to that machine too.
