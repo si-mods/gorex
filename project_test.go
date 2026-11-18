@@ -14,6 +14,7 @@ import (
 
 	"gorex/internal/layout"
 	"gorex/internal/rex"
+	"gorex/locales"
 )
 
 // setProjectHome gives the window's space the home host and folder, as
@@ -151,6 +152,9 @@ func TestNewTabInHostProject(t *testing.T) {
 	if tab := a.newProjectTab(); tab != nil || len(a.tabs) != n || !strings.Contains(a.errText(), "not one of your hosts") {
 		t.Errorf("New Tab of an unknown host: %v, %d tabs, %q", tab, len(a.tabs), a.errText())
 	}
+	if n := a.note(); n == nil || n.action == nil || say(n.action) != locales.ProjectChangeFolder() {
+		t.Errorf("the note of an unknown host has no Change Folder…: %+v", n)
+	}
 	if a.ws.Host != far || a.ws.Dir != folder {
 		t.Errorf("the project's home is %q %q", a.ws.Host, a.ws.Dir)
 	}
@@ -163,6 +167,16 @@ func TestNewTabInHostProject(t *testing.T) {
 	if tab := a.newProjectTab(); tab != nil || len(a.tabs) != n || a.errMsg == nil {
 		t.Errorf("New Tab of an offline host: %v, %d tabs, a reason %v", tab, len(a.tabs), a.errMsg != nil)
 	}
+	// The note is the project's, with Retry and Change Folder….
+	note := a.note()
+	if want := locales.ProjectHostOffline(a.ws.Name, tildePath(folder, a.homeOf(h))); a.errText() != want || note == nil ||
+		say(note.action) != locales.HostsRetry() || say(note.alt) != locales.ProjectChangeFolder() || note.space != a.ws.ID {
+		t.Fatalf("the note of an offline home host: %q %+v", a.errText(), note)
+	}
+	// Retry, with the host back, opens the tab there.
+	proxy.setDown(false)
+	note.run()
+	waitFor(t, tt, "the tab on the home host after Retry", func() bool { return len(a.tabsOn(h)) > 0 && a.tab().host() == h && len(a.tabs) > n })
 }
 
 // focusLocal gives a tab of this machine the focus.

@@ -361,6 +361,9 @@ func (a *App) projectSheetView(c *ui.Context, k *colors) {
 			return
 		}
 		title = locales.ProjectSheetChangeTitle(w.Name)
+		if w.Dir == "" {
+			title = locales.ProjectSheetSetTitle(w.Name)
+		}
 	}
 	was := s.open
 	ui.DialogBase(c.Key("project-sheet"), &s.open, func(backdrop, panel ui.Element) {

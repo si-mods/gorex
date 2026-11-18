@@ -2450,6 +2450,16 @@
       }
     }
   },
+  "projectSheetSetTitle": "Set Folder for {name}",
+  "@projectSheetSetTitle": {
+    "description": "Title of the sheet that gives a project with no folder one.",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "windflow"
+      }
+    }
+  },
   "projectSheetHost": "Host",
   "@projectSheetHost": {
     "description": "New Project sheet: label over the hosts the folder can be on."
@@ -2577,6 +2587,68 @@
   "projectRemoveFolder": "Remove Folder",
   "@projectRemoveFolder": {
     "description": "Project menu: unbind the project from its folder; its tabs stay."
+  },
+  "projectSetFolder": "Set Folder…",
+  "@projectSetFolder": {
+    "description": "Project menu: choose a folder for a project that has none."
+  },
+  "projectNoFolder": "No folder",
+  "@projectNoFolder": {
+    "description": "Project list: under the name of a project that has no folder."
+  },
+  "projectHomeOffline": "{host} is not connected",
+  "@projectHomeOffline": {
+    "description": "Project list: tooltip of the dot of a project whose home host is not connected.",
+    "placeholders": {
+      "host": {
+        "type": "String",
+        "example": "office-mac"
+      }
+    }
+  },
+  "projectHomeUnknown": "The home host is not one of your hosts",
+  "@projectHomeUnknown": {
+    "description": "Project list: tooltip of the dot of a project whose home host was removed from the user's hosts."
+  },
+  "projectHomeFailed": "The folder of {name} did not change: {error}",
+  "@projectHomeFailed": {
+    "description": "Note: the server did not keep the project's new folder, or did not take it away.",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "windflow"
+      },
+      "error": {
+        "type": "String",
+        "example": "unknown space"
+      }
+    }
+  },
+  "projectFolderRemoved": "Removed the folder {dir} from {name}.",
+  "@projectFolderRemoved": {
+    "description": "Note: Remove Folder took the project's folder away; an Undo button follows.",
+    "placeholders": {
+      "dir": {
+        "type": "String",
+        "example": "~/code/windflow"
+      },
+      "name": {
+        "type": "String",
+        "example": "windflow"
+      }
+    }
+  },
+  "projectUndo": "Undo",
+  "@projectUndo": {
+    "description": "Note: button that gives the project the folder Remove Folder took away."
+  },
+  "cmdChangeProjectFolder": "Change Project Folder…",
+  "@cmdChangeProjectFolder": {
+    "description": "Command: open the sheet that sets or changes the folder of the window's project."
+  },
+  "cmdRemoveProjectFolder": "Remove Project Folder",
+  "@cmdRemoveProjectFolder": {
+    "description": "Command: unbind the window's project from its folder; its tabs stay."
   },
   "projectHostUnknown": "unknown host",
   "@projectHostUnknown": {

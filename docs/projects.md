@@ -106,7 +106,9 @@ home host as offline.
   opens on the host whose gateway was called, as before, until phase 4
   has Rex Go call the home host's gateway.
 - **Home host offline.** New Tab in the project fails with a note that
-  names the host, and does not start a tab elsewhere. A tailnet host that
+  names the project and its folder, and does not start a tab elsewhere.
+  The note's **Retry** connects to the host again and opens the tab once
+  it has (the wait below); its **Change Folder…** opens the sheet. A tailnet host that
   is online but not connected yet connects first, then opens the tab in
   the folder, with the same folder check, as a new tab though the window
   has tabs of the host.
@@ -120,7 +122,7 @@ home host as offline.
   the project's or the user's, opens it, as opening it by hand does.
   With none to try, New Tab says the home host is not connected; once
   every host's machine is known and none is the home, it says the host
-  is not one of the user's hosts. Of two hosts of one machine, as its
+  is not one of the user's hosts. Both notes have **Change Folder…**. Of two hosts of one machine, as its
   LAN and tailnet entries, the connected one is the home.
 - **The wait.** A window has at most one New Tab that waits for a host;
   a New Tab again replaces it. It ends when the window shows another
@@ -202,11 +204,31 @@ type DirListResult struct {
     use until the user browses.
 - **New Project with No Folder** stays, for a project that only groups
   terminals, as a space does.
-- **Project settings** (the project's context menu): Rename, Color,
-  **Change Folder…** (the same sheet), Remove Folder, Close Project.
+- **Project settings** (the project's context menu, and the project
+  popover's actions): Rename, Color, **Change Folder…** (the same sheet;
+  **Set Folder…** for a project with no folder), **Remove Folder** (only
+  for a project with a folder), Close Project. Remove Folder says so in a
+  note with **Undo**, which gives the folder back. A home the server does
+  not keep says so in a note.
+- **Commands.** ⇧⌘N is New Project…; New Project with No Folder has no
+  shortcut. The palette and the Project menu have **Change Project
+  Folder…** and **Remove Project Folder** (`project.change_folder`,
+  `project.remove_folder`); the palette lists the second only for a
+  project with a folder.
+- **Project popover** (the project's name in the title bar or the
+  sidebar): each row shows the folder under the name, after the home
+  host's name when that is not this machine, or "No folder" and the tab
+  count; a dot marks a home host that is not connected (grey) or not one
+  of the user's hosts (red). The rows and colors scroll; the actions stay
+  in sight.
+- **Notes.** A note about a project goes when the window shows another
+  project. Notes stay under the scrim of a sheet or dialog.
 - The sidebar's project header shows the folder under the name, with the
   home host's name when it is not this machine:
-  `windflow · office-h800 · ~/code/windflow`.
+  `windflow · office-h800 · ~/code/windflow`. A path too long for it is
+  cut in the middle, so the folder's own name shows.
+- The sidebar's strip has a dot for each project; when they do not fit,
+  they scroll sideways, the window's project in sight, and the `+` stays.
 - New UI follows `DESIGN.md`: the sheet uses `paintFrost`, Lucide icons
   only (`folder`, `folder-open`, `house`, `arrow-up`).
 

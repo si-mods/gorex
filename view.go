@@ -1737,7 +1737,9 @@ var bannerMotion = &ui.Motion{Y: 12, Opacity: 0}
 func (a *App) errorBanner(c *ui.Context, k *colors) {
 	n := a.note()
 	ui.Overlay(c, func() {
-		banner := ui.Row(c.Key("error-banner")).Absolute().Bottom(18).Left(0).Right(0).Justify(ui.Center).PassThrough()
+		// Under the other overlays: a sheet's or a dialog's scrim covers it,
+		// as it covers the window.
+		banner := ui.Row(c.Key("error-banner")).Absolute().Bottom(18).Left(0).Right(0).Justify(ui.Center).PassThrough().ZIndex(-1)
 		if anim := motion(c); anim != nil {
 			banner.Transition(ui.ElementTransition{Animation: anim, Position: true, Enter: bannerMotion, Exit: bannerMotion})
 		}
@@ -1745,20 +1747,23 @@ func (a *App) errorBanner(c *ui.Context, k *colors) {
 			ui.Row(c).Gap(10).Padding(8, 10, 8, 14).Radius(12).Background(k.panel).Border(1, k.panelBorder).
 				Shadow(0, 8, 24, 0, k.shadowFocused).AlignItems(ui.Center).Children(func() {
 				dot := k.danger
-				if n != nil && n.wait {
+				if n != nil && (n.wait || n.info) {
 					dot = k.busy
 				}
 				ui.Box(c).Size(8, 8).Radius(4).Background(dot)
 				ui.Text(c, a.errText()).FontSize(12.5).TextColor(k.text).MaxWidth(520)
-				if n != nil && n.action != nil {
-					if ui.Button(c.Key("note-action"), say(n.action)).Clicked() {
-						run := n.run
-						a.err, a.errMsg, a.errNote = "", nil, nil
+				button := func(key string, label func(locales.Messages) string, run func()) {
+					if label != nil && ui.Button(c.Key(key), say(label)).Clicked() {
+						a.clearNote()
 						a.later(c, run)
 					}
 				}
+				if n != nil {
+					button("note-action", n.action, n.run)
+					button("note-alt", n.alt, n.altRun)
+				}
 				if iconButton(c, k, "x", locales.ErrorDismiss(), 22, 14).Clicked() {
-					a.err, a.errMsg, a.errNote = "", nil, nil
+					a.clearNote()
 				}
 			})
 		})

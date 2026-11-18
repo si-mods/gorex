@@ -209,7 +209,7 @@ func TestProjectSheetStaleListing(t *testing.T) {
 // TestProjectSettings changes the window's project from its context menu:
 // Change Folder… opens the sheet in its folder and gives it another;
 // Remove Folder takes it away; the menu offers Remove Folder only to a
-// project with a folder.
+// project with a folder, and Set Folder… to one of none.
 func TestProjectSettings(t *testing.T) {
 	a, tt := newTestApp(t)
 	old := prefs
@@ -252,8 +252,14 @@ func TestProjectSettings(t *testing.T) {
 		t.Errorf("the server gave the folder back: %q", w.Dir)
 	}
 	rightClick(t, tt, locales.SessionLabel(w.Name))
-	if m := tt.Menu(); slices.Contains(m, locales.ProjectRemoveFolder()) || !slices.Contains(m, locales.ProjectChangeFolder()) {
+	if m := tt.Menu(); slices.Contains(m, locales.ProjectRemoveFolder()) || !slices.Contains(m, locales.ProjectSetFolder()) {
 		t.Errorf("the menu of a project of no folder: %q", m)
+	}
+	if err := tt.ChooseMenuItem(locales.ProjectSetFolder()); err != nil {
+		t.Fatalf("Set Folder: %v", err)
+	}
+	if !tt.HasText(locales.ProjectSheetSetTitle(w.Name)) {
+		t.Errorf("the sheet of Set Folder: %q", tt.Texts())
 	}
 }
 
@@ -299,7 +305,7 @@ func TestProjectHeader(t *testing.T) {
 
 // TestProjectNotes checks the notes of New Tab in a project: a folder
 // gone says so with Change Folder…, which opens the sheet of the project;
-// a home host unknown says so with no button; a wait is not an error,
+// a home host unknown says so with Change Folder…; a wait is not an error,
 // and goes once the tab opens.
 func TestProjectNotes(t *testing.T) {
 	a, tt := newTestApp(t)
@@ -328,7 +334,7 @@ func TestProjectNotes(t *testing.T) {
 	a.err, a.errMsg = "", nil
 	a.newProjectTab()
 	tt.Frame()
-	if n := a.note(); n == nil || n.action != nil || n.wait || !tt.HasText(locales.ProjectHostNotYours(a.ws.Name, folder)) {
+	if n := a.note(); n == nil || n.action == nil || n.wait || !tt.HasText(locales.ProjectHostNotYours(a.ws.Name, folder)) {
 		t.Errorf("the note of an unknown host: %q", a.errText())
 	}
 
