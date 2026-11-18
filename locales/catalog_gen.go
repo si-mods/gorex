@@ -3498,36 +3498,6 @@ func (msgs Messages) TailnetUnavailable() string {
 	return Catalog.Format(msgs.locale, "tailnetUnavailable", nil)
 }
 
-// TailnetConnect says "Connect"
-// in the language the app shows.
-func TailnetConnect() string { return In(i18n.Locale()).TailnetConnect() }
-
-// TailnetConnect says "Connect"
-// in the language of msgs.
-func (msgs Messages) TailnetConnect() string {
-	return Catalog.Format(msgs.locale, "tailnetConnect", nil)
-}
-
-// TailnetAvailable says "Available via Tailscale"
-// in the language the app shows.
-func TailnetAvailable() string { return In(i18n.Locale()).TailnetAvailable() }
-
-// TailnetAvailable says "Available via Tailscale"
-// in the language of msgs.
-func (msgs Messages) TailnetAvailable() string {
-	return Catalog.Format(msgs.locale, "tailnetAvailable", nil)
-}
-
-// TailnetOffline says "Offline"
-// in the language the app shows.
-func TailnetOffline() string { return In(i18n.Locale()).TailnetOffline() }
-
-// TailnetOffline says "Offline"
-// in the language of msgs.
-func (msgs Messages) TailnetOffline() string {
-	return Catalog.Format(msgs.locale, "tailnetOffline", nil)
-}
-
 // RemoteAllow says "Allow remote clients"
 // in the language the app shows.
 //
@@ -4338,6 +4308,38 @@ func HostsAddNote() string { return In(i18n.Locale()).HostsAddNote() }
 // settings page.
 func (msgs Messages) HostsAddNote() string {
 	return Catalog.Format(msgs.locale, "hostsAddNote", nil)
+}
+
+// HostsFound says "Found on your Tailscale network"
+// in the language the app shows.
+//
+// Heading, in the sheet that adds a host, of the GoRex hosts the tailnet
+// shows; each is added by its own button.
+func HostsFound() string { return In(i18n.Locale()).HostsFound() }
+
+// HostsFound says "Found on your Tailscale network"
+// in the language of msgs.
+//
+// Heading, in the sheet that adds a host, of the GoRex hosts the tailnet
+// shows; each is added by its own button.
+func (msgs Messages) HostsFound() string {
+	return Catalog.Format(msgs.locale, "hostsFound", nil)
+}
+
+// HostsAddFound says "Add Host"
+// in the language the app shows.
+//
+// Button: save the host the tailnet found, beside its name in the add
+// sheet.
+func HostsAddFound() string { return In(i18n.Locale()).HostsAddFound() }
+
+// HostsAddFound says "Add Host"
+// in the language of msgs.
+//
+// Button: save the host the tailnet found, beside its name in the add
+// sheet.
+func (msgs Messages) HostsAddFound() string {
+	return Catalog.Format(msgs.locale, "hostsAddFound", nil)
 }
 
 // HostsAddress says "Address"

@@ -269,8 +269,7 @@ func (a *App) needItems(match func(string) bool) []paletteItem {
 		items = append(items, it)
 	}
 	for _, h := range a.hosts {
-		// A host of the tailnet not yet opened is not connected to.
-		if h.state == hostConnected || rex.IsTailnetTarget(h.Address) && !h.TailnetOpened || !match(h.label()) {
+		if h.state == hostConnected || !match(h.label()) {
 			continue
 		}
 		label, _, _ := hostStatus(h)

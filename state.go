@@ -370,9 +370,6 @@ func (a *App) newPaneIn(h *hostConn, o rex.CreateOptions, place func(*Pane) bool
 			if a.quitting || !slices.Contains(a.hosts, h) {
 				return
 			}
-			// A tab on a host connected only to learn its machine opens
-			// it: it reaches the host after a restart too.
-			a.keepProbed(h)
 			p := &Pane{ID: id, SID: info.ID, info: info, startDir: dir, host: h}
 			if p.info.Dir == "" {
 				p.info.Dir = dir
@@ -959,10 +956,6 @@ func (a *App) newTabOn(h *hostConn, dir string) *Tab { return a.newTabOnIn(h, di
 // newTabOnIn is newTabOn of a tab of a host that starts in dir or not at
 // all when strict (rex.CreateOptions.DirStrict).
 func (a *App) newTabOnIn(h *hostConn, dir string, strict bool) *Tab {
-	if h != nil && rex.IsTailnetTarget(h.Address) && h.current() == nil && h.tailnetOnline {
-		a.openTailnetHost(h)
-		return nil
-	}
 	t := a.newTabAfterIn(h, dir, strict, a.tab(), nil)
 	if t != nil {
 		a.active = slices.Index(a.tabs, t)
@@ -1072,11 +1065,11 @@ func (a *App) newProjectTab() *Tab {
 		// by its machine, it outlives the host's removal and return.
 		a.ask(rex.LayoutCommand{Op: "space.home", Space: w.ID, Host: layout.MachineHost(h.Machine), Dir: w.Dir}, nil)
 	}
-	if rex.IsTailnetTarget(h.Address) && h.current() == nil && h.tailnetOnline {
-		// A host of the tailnet connects at the user's asking: the tab
-		// opens once it has (takeProjectOpen).
+	if rex.IsTailnetTarget(h.Address) && h.current() == nil {
+		// A host of the tailnet reconnects on its own: the tab opens once
+		// it has (takeProjectOpen).
 		a.waitProject(&projectOpen{space: w.ID, host: h})
-		a.connectTailnetHost(h)
+		a.connectHostNow(h)
 		return nil
 	}
 	return a.projectTabOn(h, w.Dir)
@@ -1116,34 +1109,23 @@ func (a *App) waitProject(p *projectOpen) {
 	})
 }
 
-// endWait ends the window's New Tab that waits for a project's home host,
-// and, once no window waits, the connections made to learn the machines
-// of hosts (endProbe).
+// endWait ends the window's New Tab that waits for a project's home host.
 func (a *App) endWait() {
 	a.projectOpen = nil
-	if slices.ContainsFunc(a.peers(), func(o *App) bool { return o.projectOpen != nil }) {
-		return
-	}
-	for _, h := range slices.Clone(a.hosts) {
-		a.endProbe(h)
-	}
 }
 
 // mayBeHome tells whether host h may turn out to be a project's home
-// machine as it connects: its machine is not known, and the app reaches
-// it, or tries to.
+// machine as it connects: its machine is not known, and the app is
+// connecting to it.
 func mayBeHome(h *hostConn) bool {
-	if h.Machine != "" || h.current() != nil {
-		return false
-	}
-	return !rex.IsTailnetTarget(h.Address) || h.TailnetOpened || h.tailnetOnline
+	return h.Machine == "" && h.current() == nil && h.running
 }
 
 // awaitProjectHost is New Tab of project w, whose home host is none the
 // app knows: a host whose machine the app has not learned, as one added
-// again, may be it, so those it can reach connect, and the tab opens once
-// the home host has (takeProjectOpen). With none to try, it opens none,
-// and says why.
+// again, may be it; the app connects to those, and the tab opens once the
+// home host has (takeProjectOpen). With none to try, it opens none, and
+// says why.
 func (a *App) awaitProjectHost(w *Workspace) *Tab {
 	machine, ok := layout.HostMachine(w.Host)
 	unknown, tried := 0, false
@@ -1152,14 +1134,8 @@ func (a *App) awaitProjectHost(w *Workspace) *Tab {
 			continue
 		}
 		unknown++
-		if !mayBeHome(h) {
-			continue
-		}
-		tried = true
-		if rex.IsTailnetTarget(h.Address) && !h.TailnetOpened {
-			// Once, to learn its machine: the host stays as the user left
-			// it, not opened (probeTailnetHost).
-			a.probeTailnetHost(h)
+		if mayBeHome(h) {
+			tried = true
 		}
 	}
 	switch {
@@ -1190,14 +1166,9 @@ func (a *App) awaitProjectHost(w *Workspace) *Tab {
 func (a *App) takeProjectOpen(h *hostConn) {
 	p := a.projectOpen
 	if p == nil {
-		if h.probing && !slices.ContainsFunc(a.peers(), func(o *App) bool { return o.projectOpen != nil }) {
-			a.endProbe(h)
-		}
 		return
 	}
 	if p.host != h && (p.machine == "" || h.Machine != p.machine) {
-		// Not the home: a host connected to learn so goes again.
-		a.endProbe(h)
 		if p.host == nil && !slices.ContainsFunc(a.hosts, mayBeHome) {
 			a.endWait()
 			log.Printf("no new tab: no host is the home machine %s of project %s", p.machine, p.space)
@@ -1207,7 +1178,6 @@ func (a *App) takeProjectOpen(h *hostConn) {
 	}
 	a.projectOpen = nil
 	if w := a.ws; w == nil || w.ID != p.space || w.Dir == "" || a.projectHost(w) != h {
-		a.endProbe(h)
 		log.Printf("no new tab: %s connected, but it is not the home of project %s now", h.label(), p.space)
 		label := h.label()
 		a.setNote(func(m locales.Messages) string { return m.ProjectHomeMoved(label) }, bannerNote{space: p.space})
@@ -1265,14 +1235,7 @@ func (a *App) retryProjectHost(id string) {
 		return
 	}
 	a.waitProject(&projectOpen{space: id, host: h})
-	switch {
-	case rex.IsTailnetTarget(h.Address):
-		a.connectTailnetHost(h)
-	case h.running:
-		h.poke()
-	default:
-		a.startHost(h)
-	}
+	a.connectHostNow(h)
 	name, dir := w.Name, a.tildeOn(h, w.Dir)
 	a.setNote(func(m locales.Messages) string { return m.ProjectHostWaiting(name, dir) }, bannerNote{wait: true, space: id})
 }

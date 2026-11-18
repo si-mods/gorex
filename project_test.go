@@ -6,7 +6,6 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -257,11 +256,11 @@ func holdDials(t *testing.T) (release func()) {
 }
 
 // pendingTailnetProject is a project whose home is a tailnet host that
-// dropped, online but not connected, while the window has a tab of it.
+// dropped and reconnects while the window has a tab of it.
 func pendingTailnetProject(t *testing.T, a *App, tt *ui.Tester) (h *hostConn, folder string, release func()) {
 	t.Helper()
 	_, proxy, _, first, folder := tailnetHost(t, a)
-	h = a.addHost(savedHost{ID: "h1", Name: "peer", Address: "tailscale:peer", TailnetOpened: true})
+	h = a.addHost(savedHost{ID: "h1", Name: "peer", Address: "tailscale:peer"})
 	waitFor(t, tt, "the host to connect", func() bool { return h.state == hostConnected && h.Machine != "" })
 	hostTab(t, a, tt, h, first)
 	setProjectHomeAs(t, a, tt, h.ID, folder, layout.MachineHost(h.Machine))
@@ -269,7 +268,6 @@ func pendingTailnetProject(t *testing.T, a *App, tt *ui.Tester) (h *hostConn, fo
 	proxy.setDown(true)
 	waitFor(t, tt, "the host to drop", func() bool { return h.current() == nil })
 	proxy.setDown(false)
-	h.tailnetOnline = true
 	focusLocal(t, a)
 	if len(a.tabsOn(h)) == 0 {
 		t.Fatal("the window has no tab of the host")
@@ -346,58 +344,30 @@ func TestProjectTabNotInAnotherProject(t *testing.T) {
 
 // TestProjectHostLearnedOnConnect makes New Tab of a project whose home
 // machine no host is known to be yet: a host added again, whose machine
-// the app learns as it connects, and a tailnet host never opened. Each
-// connects, and the tab opens there once it has; with no host to try,
-// none opens, and the window says the host is not connected.
+// the app learns as it connects, connects, and the tab opens there once it
+// has.
 func TestProjectHostLearnedOnConnect(t *testing.T) {
-	for _, tailnet := range []bool{false, true} {
-		t.Run(map[bool]string{false: "added", true: "tailnet"}[tailnet], func(t *testing.T) {
-			a, tt := newTestApp(t)
-			_, proxy, remote, _, folder := tailnetHost(t, a)
-			hello, err := remote.Hello()
-			if err != nil || hello.Machine == "" {
-				t.Fatalf("the host's machine: %+v %v", hello, err)
-			}
-			release := holdDials(t)
-			var h *hostConn
-			if tailnet {
-				h = newHostConn(savedHost{ID: "h-peer", Name: "peer", Address: "tailscale:peer"})
-				a.hosts = append(slices.Clone(a.hosts), h)
-				a.syncHosts()
-			} else {
-				h = a.addHost(savedHost{ID: "h-again", Name: "office-mac", Address: proxy.path})
-			}
-			setProjectHome(t, a, tt, layout.MachineHost(hello.Machine), folder)
-			focusLocal(t, a)
-
-			if tailnet {
-				// Not online: nothing to try.
-				a.err, a.errMsg = "", nil
-				if tab := a.newProjectTab(); tab != nil || a.projectOpen != nil || !strings.Contains(a.errText(), "is not connected") {
-					t.Fatalf("New Tab with no host to try: %v, %+v, %q", tab, a.projectOpen, a.errText())
-				}
-				h.tailnetOnline = true
-			}
-			a.err, a.errMsg = "", nil
-			if tab := a.newProjectTab(); tab != nil || a.projectOpen == nil || !strings.Contains(a.errText(), "Connecting") {
-				t.Fatalf("New Tab of a host not known yet: %v, %+v, %q", tab, a.projectOpen, a.errText())
-			}
-			if h.Machine != "" {
-				t.Fatal("the host's machine is known before it connects")
-			}
-			release()
-			waitFor(t, tt, "the project's tab on the host", func() bool { return len(a.tabsOn(h)) > 0 })
-			if p := a.tab().Focus; p.host != h || !sameDir(p.startDir, folder) {
-				t.Errorf("the project's tab is on %v in %q", p.host, p.startDir)
-			}
-			if tailnet {
-				// Connected to learn its machine, the host has a tab now:
-				// it is opened, and reaches it after a restart too.
-				if !h.TailnetOpened || h.probing || !savedOpened(t, h.ID) {
-					t.Errorf("the home host with a tab: opened %v, probing %v, saved %v", h.TailnetOpened, h.probing, savedOpened(t, h.ID))
-				}
-			}
-		})
+	a, tt := newTestApp(t)
+	_, proxy, remote, _, folder := tailnetHost(t, a)
+	hello, err := remote.Hello()
+	if err != nil || hello.Machine == "" {
+		t.Fatalf("the host's machine: %+v %v", hello, err)
+	}
+	release := holdDials(t)
+	h := a.addHost(savedHost{ID: "h-again", Name: "office-mac", Address: proxy.path})
+	setProjectHome(t, a, tt, layout.MachineHost(hello.Machine), folder)
+	focusLocal(t, a)
+	a.err, a.errMsg = "", nil
+	if tab := a.newProjectTab(); tab != nil || a.projectOpen == nil || !strings.Contains(a.errText(), "Connecting") {
+		t.Fatalf("New Tab of a host not known yet: %v, %+v, %q", tab, a.projectOpen, a.errText())
+	}
+	if h.Machine != "" {
+		t.Fatal("the host's machine is known before it connects")
+	}
+	release()
+	waitFor(t, tt, "the project's tab on the host", func() bool { return len(a.tabsOn(h)) > 0 })
+	if p := a.tab().Focus; p.host != h || !sameDir(p.startDir, folder) {
+		t.Errorf("the project's tab is on %v in %q", p.host, p.startDir)
 	}
 }
 
@@ -552,99 +522,5 @@ func TestProjectWaitTimesOut(t *testing.T) {
 	waitFor(t, tt, "the note", func() bool { return strings.Contains(a.errText(), "did not connect") })
 	if a.projectOpen != nil || len(a.tabsOn(h)) != 0 {
 		t.Errorf("wait %+v, %d tabs of the host", a.projectOpen, len(a.tabsOn(h)))
-	}
-}
-
-// savedOpened tells whether hosts.json keeps the host of id opened.
-func savedOpened(t *testing.T, id string) bool {
-	t.Helper()
-	hs, err := loadHosts()
-	if err != nil {
-		t.Fatal(err)
-	}
-	i := slices.IndexFunc(hs, func(s savedHost) bool { return s.ID == id })
-	return i >= 0 && hs[i].TailnetOpened
-}
-
-// probedHost is a host of the tailnet, online, never opened, of unknown
-// machine, in a project whose home is machine: its connections wait till
-// the release returned, and dials counts them.
-func probedHost(t *testing.T, a *App, tt *ui.Tester, machine string) (h *hostConn, dials *atomic.Int32, release func()) {
-	t.Helper()
-	tailnetHost(t, a)
-	dials = new(atomic.Int32)
-	dial := dialHost
-	dialHost = func(ctx context.Context, address string) (*rex.Client, error) {
-		if rex.IsTailnetTarget(address) {
-			dials.Add(1)
-		}
-		return dial(ctx, address)
-	}
-	release = holdDials(t)
-	h = newHostConn(savedHost{ID: "tailscale:peer", Name: "peer", Address: "tailscale:peer"})
-	h.tailnetOnline = true
-	a.hosts = append(slices.Clone(a.hosts), h)
-	a.syncHosts()
-	setProjectHome(t, a, tt, layout.MachineHost(machine), t.TempDir())
-	focusLocal(t, a)
-	return h, dials, release
-}
-
-// TestProbeNotHomeDisconnects connects a host of the tailnet to learn its
-// machine, which is not the project's home: the connection stops, and the
-// host stays in the list, not opened, as before.
-func TestProbeNotHomeDisconnects(t *testing.T) {
-	a, tt := newTestApp(t)
-	h, _, release := probedHost(t, a, tt, "machine-elsewhere")
-	a.newProjectTab()
-	if !h.probing || !h.running {
-		t.Fatalf("the host is not probed: probing %v, running %v", h.probing, h.running)
-	}
-	release()
-	waitFor(t, tt, "the note", func() bool { return strings.Contains(a.errText(), "not one of your hosts") })
-	now := a.hostByID(h.ID)
-	if now == nil || now == h || now.current() != nil || now.running || now.TailnetOpened || h.current() != nil {
-		t.Fatalf("after the probe: %+v, old connected %v", now, h.current() != nil)
-	}
-	if now.Machine == "" || savedOpened(t, h.ID) {
-		t.Errorf("the host's machine %q; opened in hosts.json %v", now.Machine, savedOpened(t, h.ID))
-	}
-	time.Sleep(300 * time.Millisecond)
-	tt.Frame()
-	if now.current() != nil || len(a.tabsOn(now)) != 0 {
-		t.Error("the host connected again")
-	}
-}
-
-// TestProbeThenUserTabOpens opens a tab on a host that is being connected
-// only to learn its machine: the host is opened and saved so, stays
-// connected, and shows the tab.
-func TestProbeThenUserTabOpens(t *testing.T) {
-	a, tt := newTestApp(t)
-	h, _, release := probedHost(t, a, tt, "machine-elsewhere")
-	a.newProjectTab()
-	a.newTabOn(h, "")
-	if h.probing || !h.TailnetOpened || !savedOpened(t, h.ID) {
-		t.Fatalf("the host with a tab asked: probing %v, opened %v, saved %v", h.probing, h.TailnetOpened, savedOpened(t, h.ID))
-	}
-	release()
-	waitFor(t, tt, "the user's tab on the host", func() bool { return len(a.tabsOn(h)) > 0 })
-	time.Sleep(300 * time.Millisecond)
-	tt.Frame()
-	if a.hostByID(h.ID) != h || h.current() == nil {
-		t.Error("the opened host was disconnected")
-	}
-}
-
-// TestProbeStartsOnce makes New Tab twice while the host of unknown
-// machine is still connecting: it is dialed once, not by two loops.
-func TestProbeStartsOnce(t *testing.T) {
-	a, tt := newTestApp(t)
-	_, dials, _ := probedHost(t, a, tt, "machine-elsewhere")
-	a.newProjectTab()
-	a.newProjectTab()
-	time.Sleep(300 * time.Millisecond)
-	if n := dials.Load(); n != 1 {
-		t.Errorf("the host is dialed %d times, want 1", n)
 	}
 }

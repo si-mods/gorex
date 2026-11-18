@@ -61,7 +61,7 @@ func (a *App) openSheet(space string, h *hostConn, dir string) {
 	a.wsOpen, a.wsColorOnly = false, false
 	a.focusReq = nil
 	if h != nil && h.current() == nil {
-		a.connectTailnetHost(h)
+		a.connectHostNow(h)
 	}
 }
 
@@ -126,10 +126,9 @@ func (a *App) sheetClient() *rex.Client {
 }
 
 // pickable tells whether the sheet can browse host h, nil for this
-// machine: a host that is connected, or one of the tailnet that is online
-// and connects as it is picked.
+// machine: a host that is connected.
 func pickable(h *hostConn) bool {
-	return h == nil || h.current() != nil || rex.IsTailnetTarget(h.Address) && h.tailnetOnline
+	return h == nil || h.current() != nil
 }
 
 // pickHost has the sheet browse host h from its home directory.
@@ -141,7 +140,7 @@ func (a *App) pickHost(h *hostConn) {
 	s.host, s.res = h, rex.DirListResult{}
 	s.browse("")
 	if h != nil && h.current() == nil {
-		a.connectTailnetHost(h)
+		a.connectHostNow(h)
 	}
 }
 

@@ -1970,40 +1970,132 @@ func TestNetworkHostsLoad(t *testing.T) {
 	}
 }
 
+// TestDiscoveredHostsLoad: a host the tailnet's discovery saved is not
+// one the user asked for: never opened, renamed nor given an icon, it goes
+// as the hosts load, and one the user did keep is kept, as any host.
+func TestDiscoveredHostsLoad(t *testing.T) {
+	t.Setenv("GOREX_DIR", t.TempDir())
+	old := `{"hosts": [
+		{"id": "tailscale:a:1", "name": "never-opened", "address": "tailscale:a:1"},
+		{"id": "tailscale:a:2", "name": "opened", "address": "tailscale:a:2", "tailnetOpened": true},
+		{"id": "tailscale:a:3", "name": "renamed", "address": "tailscale:a:3", "alias": "Build Box"},
+		{"id": "tailscale:a:4", "name": "iconed", "address": "tailscale:a:4", "icon": "server"},
+		{"id": "m1", "name": "manual", "address": "tcMANUAL"}
+	]}`
+	if err := os.WriteFile(hostsPath(), []byte(old), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got, err := loadHosts()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var ids []string
+	for _, h := range got {
+		ids = append(ids, h.ID)
+	}
+	if want := []string{"tailscale:a:2", "tailscale:a:3", "tailscale:a:4", "m1"}; !slices.Equal(ids, want) {
+		t.Errorf("loaded %v, want %v", ids, want)
+	}
+	b, err := os.ReadFile(hostsPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(b), "never-opened") {
+		t.Error("the file keeps the host discovery saved")
+	}
+}
+
+// TestTailnetFoundInAddSheet: a host the tailnet shows is offered by the
+// sheet that adds a host, and discovery saves none; adding one saves it as
+// any host, by the node's target, one that can be removed, and that
+// discovery neither offers again nor brings back.
+func TestTailnetFoundInAddSheet(t *testing.T) {
+	a, tt := hostsPage(t)
+	peer := rex.TailnetHost{Target: "tailscale:nfake:peer", Name: "ws-01"}
+	status := &rex.TailnetStatus{Running: true, Hosts: []rex.TailnetHost{peer}}
+	a.reconcileTailnet(status)
+	tt.Frame()
+	if len(a.hosts) != 0 {
+		t.Fatalf("discovery saved %+v", a.hosts)
+	}
+	if _, err := os.Stat(hostsPath()); err == nil {
+		t.Error("discovery wrote hosts.json")
+	}
+	if err := tt.Click("Add Remote Host…"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if !tt.HasText(locales.HostsFound()) || !tt.HasText("ws-01") {
+		t.Fatalf("the sheet does not offer the host; texts %q", tt.Texts())
+	}
+	if err := tt.Click(locales.HostsAddFound()); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if len(a.hosts) != 1 || hostsUI.adding {
+		t.Fatalf("after adding: %+v, sheet %v", a.hosts, hostsUI.adding)
+	}
+	h := a.hosts[0]
+	if h.ID != peer.Target || h.Name != peer.Name || h.Address != peer.Target {
+		t.Errorf("added %+v", h.savedHost)
+	}
+	if hs, _ := loadHosts(); len(hs) != 1 || hs[0].Address != peer.Target {
+		t.Errorf("hosts.json: %+v", hs)
+	}
+	// A host of the tailnet is a host like any here: its row removes it.
+	if !tt.HasText(locales.HostsRemove()) {
+		t.Errorf("the host cannot be removed; texts %q", tt.Texts())
+	}
+	// Offered again, the sheet says it is saved, and adds no second.
+	a.openAddHost()
+	tt.Frame()
+	if !tt.HasText(locales.HostsAlreadySaved()) || tt.HasText(locales.HostsAddFound()) {
+		t.Errorf("a saved host offered again; texts %q", tt.Texts())
+	}
+	closeAddHost()
+	// Another machine of the tailnet under the same name is refused, which
+	// the sheet says.
+	a.reconcileTailnet(&rex.TailnetStatus{Running: true, Hosts: []rex.TailnetHost{peer, {
+		Target: "tailscale:nfake:peer2", Name: "ws-01",
+	}}})
+	a.openAddHost()
+	tt.Frame()
+	if !tt.HasText(locales.HostsNameTaken()) || tt.HasText(locales.HostsAddFound()) {
+		t.Errorf("a name of another host taken; texts %q", tt.Texts())
+	}
+	closeAddHost()
+	// Removed here, the host does not come back with the tailnet's next
+	// status.
+	a.removeHost(h)
+	a.reconcileTailnet(status)
+	if len(a.hosts) != 0 {
+		t.Errorf("discovery brought back %+v", a.hosts)
+	}
+}
+
 // TestHostAlias: the alias the user gives a host is what it shows by,
-// the tailnet's names go on changing Name under it, and clearing it, or
-// typing the host's own name, shows that name again.
+// and clearing it, or typing the host's own name, shows that name again.
 func TestHostAlias(t *testing.T) {
 	a, _ := newTestApp(t)
 	fakeHosts(t)
 	t.Cleanup(a.stopHosts)
-	peer := rex.TailnetHost{Target: "tailscale:nfake", Name: "ws-01"}
-	a.reconcileTailnet(&rex.TailnetStatus{Running: true, Hosts: []rex.TailnetHost{peer}})
-	if len(a.hosts) != 1 {
-		t.Fatalf("the peer became %+v", a.hosts)
-	}
-	h := a.hosts[0]
+	h := a.addHost(savedHost{ID: "tailscale:nfake", Name: "ws-01", Address: "tailscale:nfake"})
 	a.setHostAlias(h, "  build box ")
 	if a.hostName(h) != "build box" || h.Name != "ws-01" {
 		t.Fatalf("alias %q, name %q", a.hostName(h), h.Name)
 	}
-	peer.Name = "ws-02"
-	a.reconcileTailnet(&rex.TailnetStatus{Running: true, Hosts: []rex.TailnetHost{peer}})
-	if h.Name != "ws-02" || h.Alias != "build box" {
-		t.Fatalf("after the tailnet renamed it: %+v", h.savedHost)
-	}
-	if hs, _ := loadHosts(); len(hs) != 1 || hs[0].Name != "ws-02" || hs[0].Alias != "build box" {
+	if hs, _ := loadHosts(); len(hs) != 1 || hs[0].Name != "ws-01" || hs[0].Alias != "build box" {
 		t.Fatalf("hosts.json: %+v", hs)
 	}
 	// A new host takes neither name nor alias of another.
-	for _, name := range []string{"Build Box", "WS-02"} {
+	for _, name := range []string{"Build Box", "WS-01"} {
 		if validateHost("/tmp/other", name, "me", a.hosts) != locales.HostsNameTaken() {
 			t.Errorf("%q is not taken", name)
 		}
 	}
 	// Nor does an alias: another host's name or alias is refused.
 	other := a.addHost(savedHost{ID: "m1", Name: "studio", Address: "/tmp/nowhere"})
-	for _, alias := range []string{"WS-02", "build box"} {
+	for _, alias := range []string{"WS-01", "build box"} {
 		if a.setHostAlias(other, alias) || other.Alias != "" {
 			t.Errorf("alias %q taken: %+v", alias, other.savedHost)
 		}
@@ -2016,10 +2108,10 @@ func TestHostAlias(t *testing.T) {
 	if _, err := os.Stat(hostsPath()); err == nil {
 		t.Error("the same alias saved the hosts")
 	}
-	for _, alias := range []string{"", "ws-02"} {
+	for _, alias := range []string{"", "ws-01"} {
 		a.setHostAlias(h, "x")
 		a.setHostAlias(h, alias)
-		if h.Alias != "" || a.hostName(h) != "ws-02" {
+		if h.Alias != "" || a.hostName(h) != "ws-01" {
 			t.Errorf("alias %q: %+v", alias, h.savedHost)
 		}
 	}
@@ -2226,7 +2318,7 @@ func TestHostIcon(t *testing.T) {
 
 // TestWatchHostTakesChanges checks that a host's rounds of the same list
 // run nothing on the main thread, so draw no window, and that a new list,
-// or a poke while connected (openTailnetHost), is taken.
+// or a poke while connected, is taken.
 func TestWatchHostTakesChanges(t *testing.T) {
 	sock, remote := startHostServer(t)
 	if _, err := remote.Create(rex.CreateOptions{Cols: 80, Rows: 24}); err != nil {

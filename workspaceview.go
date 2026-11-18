@@ -9,7 +9,6 @@ import (
 	"gorex/locales"
 
 	"gorex/internal/layout"
-	"gorex/internal/rex"
 )
 
 // Run is set here: they open windows, whose debug hook lists the commands.
@@ -240,8 +239,7 @@ func (a *App) workspaceRow(c *ui.Context, k *colors, w *Workspace) {
 }
 
 // homeTrouble tells of project w's home host what its row's dot says:
-// that it is not connected, nor about to be as New Tab asks (a host of
-// the tailnet that is online), or that it is none of the user's hosts.
+// that it is not connected, or that it is none of the user's hosts.
 func (a *App) homeTrouble(k *colors, w *Workspace) (tip string, col ui.Color, ok bool) {
 	if w.Dir == "" || w.Host == "" {
 		return "", col, false
@@ -250,7 +248,7 @@ func (a *App) homeTrouble(k *colors, w *Workspace) (tip string, col ui.Color, ok
 	switch {
 	case h == nil:
 		return locales.ProjectHomeUnknown(), k.danger, true
-	case h.current() == nil && !(rex.IsTailnetTarget(h.Address) && h.tailnetOnline):
+	case h.current() == nil:
 		return locales.ProjectHomeOffline(h.label()), k.exited, true
 	}
 	return "", col, false

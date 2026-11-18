@@ -54,6 +54,10 @@ type App struct {
 	nextID int
 	// hosts are the remote hosts saved, in their order.
 	hosts []*hostConn
+	// tailnetHosts are the GoRex hosts the tailnet showed, for the sheet
+	// that adds a host, which saves none of them itself; the store's when
+	// there is one, shared by the windows.
+	tailnetHosts []rex.TailnetHost
 	// projectOpen is the New Tab of a project that waits for its home
 	// host to connect (takeProjectOpen), nil for none.
 	projectOpen *projectOpen

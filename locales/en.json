@@ -1117,9 +1117,6 @@
     }
   },
   "tailnetUnavailable": "System Tailscale is unavailable. GoRex will try again automatically.",
-  "tailnetConnect": "Connect",
-  "tailnetAvailable": "Available via Tailscale",
-  "tailnetOffline": "Offline",
   "remoteAllow": "Allow remote clients",
   "@remoteAllow": {
     "description": "Setting: whether other machines may connect."
@@ -1377,6 +1374,14 @@
   "hostsAddNote": "Paste the address that Settings › Server shows on the other machine, with remote access on there, or type its IP address when its Reachable at is on and it is pairing. The address is a secret: anyone with it may ask to pair.",
   "@hostsAddNote": {
     "description": "Note of the add sheet. Settings › Server names the other machine's settings page."
+  },
+  "hostsFound": "Found on your Tailscale network",
+  "@hostsFound": {
+    "description": "Heading, in the sheet that adds a host, of the GoRex hosts the tailnet shows; each is added by its own button."
+  },
+  "hostsAddFound": "Add Host",
+  "@hostsAddFound": {
+    "description": "Button: save the host the tailnet found, beside its name in the add sheet."
   },
   "hostsAddress": "Address",
   "@hostsAddress": {
