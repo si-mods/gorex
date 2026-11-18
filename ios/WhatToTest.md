@@ -44,6 +44,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - A project whose computer is off says it is offline. Renaming a project keeps its folder and no longer leaves an empty project of the old name.
 - Spaces are back: pick one at the top, such as Work. Each computer lists its projects of that space, latest first; tap one for its tabs, or tap + by a computer to make a project from a folder.
 - Long-press a project to rename it, color it, move it to another space or close it; long-press a tab to move it to another project. A computer that is off shows its projects greyed.
+- Delete a space in Edit Spaces: swipe it or tap its red minus. Its projects move to Default and no tab closes; a computer that is off moves them when it connects.
 
 ## zh-Hans
 
@@ -80,3 +81,4 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - 项目所在的电脑关机时，显示这台电脑已离线。重命名项目后，项目的文件夹保留，也不再多出一个旧名称的空项目。
 - 空间回来了：在顶部选一个空间，例如「工作」。每台电脑列出它在这个空间的项目，最近用过的在前；点项目查看它的标签页，点电脑旁的 + 用一个文件夹新建项目。
 - 长按项目可重命名、设颜色、移到别的空间或关闭；长按标签页可移到别的项目。关机的电脑以灰色显示它的项目。
+- 在「编辑空间」里可以删除空间：左滑它或点红色减号。它的项目移到「默认」，不会关闭任何标签页；关机的电脑在连上后再移动。

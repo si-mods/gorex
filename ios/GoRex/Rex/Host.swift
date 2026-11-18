@@ -1238,6 +1238,28 @@ final class Host: Identifiable {
         listSpaces()
     }
 
+    /// Deletes a space on the host: its projects move to Default and no
+    /// tab closes (gorex.space.delete). A server of before it (v0.41.0)
+    /// does not know the method; a rename to Default does the same there.
+    /// Gives the number of projects moved.
+    @discardableResult
+    func deleteSpace(_ name: String) async throws -> Int {
+        if isDemo {
+            let moved = sessions.indices.filter { sessions[$0].project?.space == name }
+            for i in moved { sessions[i].project?.space = "" }
+            return moved.count
+        }
+        let c = try live()
+        let r: [String: Any]
+        do {
+            r = try await c.call("gorex.space.delete", ["name": name]).payload
+        } catch let e as RexError where e.code == "method_not_found" {
+            r = try await c.call("gorex.space.rename", ["from": name, "to": ""]).payload
+        }
+        listSpaces()
+        return r["projects"] as? Int ?? 0
+    }
+
     /// The block a tab's row opens, as the host shows it, else as the
     /// project's view reads it now, as for the tab a call just made.
     func block(ofTab tab: String, in project: String) async throws -> String? {

@@ -44,18 +44,25 @@ struct SpacePicker: View {
 }
 
 /// Edit Spaces…: each space's color and name, and their order. A rename
-/// reaches every host with projects, now or as it connects; a space made
-/// here that no project carries can be removed. Default keeps its name.
+/// or a deletion reaches every host with projects, now or as it connects;
+/// a deletion moves the space's projects to Default and closes no tab.
+/// Default keeps its name and stays.
 struct EditSpaces: View {
     let spaces: [String]
     let carried: Set<String>
+    /// The projects of a space on the hosts connected now.
+    let projects: (String) -> Int
     /// Renames a space, from one name to another.
     let rename: (String, String) -> Void
+    /// Deletes a space, after the user confirms.
+    let delete: (String) -> Void
     @Environment(SpaceBook.self) private var book
     @Environment(\.dismiss) private var dismiss
     @State private var list: [String] = []
     @State private var renaming: String?
     @State private var name = ""
+    /// The space to delete, once the user confirms.
+    @State private var deleting: String?
 
     var body: some View {
         NavigationStack {
@@ -67,12 +74,11 @@ struct EditSpaces: View {
                             book.reorder(list)
                         }
                         .onDelete { at in
-                            for i in at { book.remove(list[i]) }
-                            list.remove(atOffsets: at)
+                            deleting = at.first.map { list[$0] }
                         }
                         .listRowBackground(Color.card)
                 } footer: {
-                    Text("A space is the name on its projects. Renaming one renames it on every host; a host that is offline takes the new name when it connects.")
+                    Text("A space is the name on its projects. Renaming one renames it on every host; deleting one moves its projects to Default. A host that is offline takes the change when it connects.")
                 }
             }
             .environment(\.editMode, .constant(.active))
@@ -94,6 +100,16 @@ struct EditSpaces: View {
                     rename(s, to)
                     list = list.contains(to) ? list.filter { $0 != s } : list.map { $0 == s ? to : $0 }
                 }
+            }
+            .alert(deleting.map { String(localized: "Delete space \(SpaceName.shown($0))?") } ?? "",
+                   isPresented: Binding { deleting != nil } set: { if !$0 { deleting = nil } }, presenting: deleting) { s in
+                Button("Cancel", role: .cancel) {}
+                Button("Delete", role: .destructive) {
+                    delete(s)
+                    list.removeAll { $0 == s }
+                }
+            } message: { s in
+                Text("Its \(projects(s)) projects move to Default. No tab closes.")
             }
         }
         .onAppear { list = spaces }
@@ -124,6 +140,6 @@ struct EditSpaces: View {
                 .buttonStyle(.borderless)
             }
         }
-        .deleteDisabled(!book.made.contains(s) || carried.contains(s))
+        .deleteDisabled(s.isEmpty)
     }
 }
