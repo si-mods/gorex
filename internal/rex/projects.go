@@ -89,15 +89,6 @@ func projectDir(dir string) (string, string, string) {
 	return dir, "", ""
 }
 
-// isDir tells whether dir is a directory the server can read.
-func isDir(dir string) bool {
-	if _, ok := VolumePath(dir); !ok {
-		return false
-	}
-	st, err := os.Stat(dir)
-	return err == nil && st.IsDir()
-}
-
 // spaceName is a space's name as a command gives it.
 func spaceName(name *string) string {
 	if name == nil {

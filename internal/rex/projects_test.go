@@ -208,7 +208,7 @@ func TestProjectCreate(t *testing.T) {
 	work := "Work"
 	res := command(t, c, LayoutCommand{Op: "project.create", Dir: folder, SpaceName: &work, Command: cmd})
 	p := spaceOf(t, c, res.Space)
-	if p == nil || p.Dir != filepath.Clean(folder) || p.Space != "Work" || p.Name != filepath.Base(folder) || len(p.Tabs) != 1 || p.Tabs[0].ID != res.Tab || p.Used.IsZero() {
+	if p == nil || p.Dir != realDir(t, folder) || p.Space != "Work" || p.Name != filepath.Base(folder) || len(p.Tabs) != 1 || p.Tabs[0].ID != res.Tab || p.Used.IsZero() {
 		t.Fatalf("the project is %+v", p)
 	}
 	if !sameDir(p.Tabs[0].Root.Dir, folder) {
@@ -318,5 +318,48 @@ func TestProjectUsed(t *testing.T) {
 	s.uses.mu.Unlock()
 	if noted.IsZero() || s.layoutRevision() != rev {
 		t.Fatalf("a second input wrote the layout: %s", raw)
+	}
+}
+
+// realDir is dir as dir.list and a project name it: its symlinks
+// resolved, as /private/var for macOS's /var.
+func realDir(t *testing.T, dir string) string {
+	t.Helper()
+	real, err := filepath.EvalSymlinks(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return real
+}
+
+// TestProjectFolderResolved makes projects of a folder through a symlink
+// to it: the project keeps the folder as dir.list names it, and the
+// folder's own path is the same project's, exists; an adoption of the
+// link's project takes that project.
+func TestProjectFolderResolved(t *testing.T) {
+	_, c := applyFixture(t)
+	cmd, _ := testShell()
+	real := realDir(t, t.TempDir())
+	link := filepath.Join(t.TempDir(), "link")
+	if err := os.Symlink(real, link); err != nil {
+		t.Skipf("no symlink here: %v", err)
+	}
+	res := command(t, c, LayoutCommand{Op: "project.create", Dir: link, Command: cmd})
+	if p := spaceOf(t, c, res.Space); p == nil || p.Dir != real {
+		t.Fatalf("the project of the link is %+v, want the folder %q", p, real)
+	}
+	if again, _ := c.Command(LayoutCommand{Op: "project.create", Dir: real, Command: cmd}); again.Code != "exists" || again.Space != res.Space {
+		t.Fatalf("a project of the folder itself: %+v", again)
+	}
+	other := command(t, c, LayoutCommand{Op: "space.create", Name: "other"}).Space
+	if r, _ := c.Command(LayoutCommand{Op: "space.home", Space: other, Dir: link}); r.Code != "exists" || r.Space != res.Space {
+		t.Fatalf("space.home of the link: %+v", r)
+	}
+	tab := command(t, c, LayoutCommand{Op: "tab.create", Space: other, Command: cmd})
+	ad := command(t, c, LayoutCommand{Op: "project.adopt", Adopt: &layout.Adoption{
+		Project: &layout.AdoptProject{Name: "x", Dir: link},
+		Tabs:    []layout.AdoptTab{{Title: "t", Split: &layout.Node{SID: tab.New}}}}})
+	if ad.Space != res.Space || len(storeOf(t, c).Sessions) != 2 {
+		t.Fatalf("the adoption went to %q, not the project %q: %+v", ad.Space, res.Space, storeOf(t, c).Sessions)
 	}
 }

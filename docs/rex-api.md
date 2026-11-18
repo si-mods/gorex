@@ -495,7 +495,10 @@ its block ID (`pane_id`), so an ID from a Rex method passes unchanged.
 - `gorex.project.create {name, dir, space}` → `{project_id, tab_id}`: the
   project and its first tab in the folder. `dir` goes through
   `rex.VolumePath` first (a device or pipe path is `bad_request`), then a
-  folder not there is `not_found`. A folder that is a project of this host
+  folder not there is `not_found`. The folder is kept as `gorex.dir.list`
+  names it, its symlinks resolved (on Windows in the case it has on disk),
+  so two paths of one folder (`/tmp/x`, `/private/tmp/x`) are one
+  project; the same holds for `gorex.project.adopt` and `set_home`. A folder that is a project of this host
   already answers an error, with the project's ID in the error object:
 
   ```

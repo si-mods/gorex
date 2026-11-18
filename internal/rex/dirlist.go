@@ -124,16 +124,9 @@ func listDir(home, path string, hidden bool) (DirListResult, error) {
 	}
 	path = filepath.Clean(path)
 	res.Path, res.Parent = path, parentDir(path)
-	// filepath.EvalSymlinks resolves symlinks, but not Windows' junctions
-	// (mount points), which it keeps as they are, and it fails on some
-	// paths through them, as a junction's within another: a directory
-	// the system reaches all the same is listed as it was asked.
-	real, err := filepath.EvalSymlinks(path)
+	real, err := resolveDir(path)
 	if err != nil {
-		if st, serr := os.Stat(path); serr != nil || !st.IsDir() {
-			return dirCode(res, err)
-		}
-		real = path
+		return dirCode(res, err)
 	}
 	res.Path, res.Parent = real, parentDir(real)
 	if st, err := os.Stat(real); err != nil {
@@ -173,6 +166,45 @@ func listDir(home, path string, hidden bool) (DirListResult, error) {
 		res.Dirs, res.More = res.Dirs[:DirListMax], true
 	}
 	return res, nil
+}
+
+// resolveDir is path, absolute and clean, as dir.list lists it: its
+// symlinks resolved, and on Windows each name in the case it has on disk
+// (filepath.EvalSymlinks). EvalSymlinks keeps Windows' junctions (mount
+// points) as they are, and fails on some paths through them, as a
+// junction's within another: a directory the system reaches all the same
+// is kept as it was asked.
+func resolveDir(path string) (string, error) {
+	real, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		if st, serr := os.Stat(path); serr != nil || !st.IsDir() {
+			return path, err
+		}
+		real = path
+	}
+	return real, nil
+}
+
+// ProjectFolder is the folder dir names, as dir.list names it
+// (resolveDir), and whether it is a directory here: dir must be absolute
+// and not a device or pipe (VolumePath), which is checked before anything
+// reads it. Two paths of one folder, as /tmp/x and /private/tmp/x on
+// macOS, are one project's (docs/projects.md).
+func ProjectFolder(dir string) (string, bool) {
+	dir = strings.TrimSpace(dir)
+	if dir == "" || !filepath.IsAbs(dir) {
+		return dir, false
+	}
+	dir = filepath.Clean(dir)
+	if _, ok := VolumePath(dir); !ok {
+		return dir, false
+	}
+	real, err := resolveDir(dir)
+	if err != nil {
+		return dir, false
+	}
+	st, err := os.Stat(real)
+	return real, err == nil && st.IsDir()
 }
 
 // dirCode answers a directory that is not there, or that the server may

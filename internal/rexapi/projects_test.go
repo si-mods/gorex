@@ -1,6 +1,7 @@
 package rexapi
 
 import (
+	"os"
 	"path/filepath"
 	"runtime"
 	"slices"
@@ -94,11 +95,11 @@ func TestProjectCreate(t *testing.T) {
 		t.Fatalf("project.create answered %v", res)
 	}
 	p := projectOf(t, c, pid)
-	if p["dir"] != filepath.Clean(folder) || p["space"] != "Work" || p["used"] == nil || p["home_machine"] != f.g.hello.Machine {
+	if p["dir"] != realDir(t, folder) || p["space"] != "Work" || p["used"] == nil || p["home_machine"] != f.g.hello.Machine {
 		t.Fatalf("the list's project is %v", p)
 	}
 	callChecked(t, c, "session.attach", map[string]any{"session_id": pid})
-	if v, _ := viewOf(t, c, pid)["project"].(map[string]any); v["dir"] != filepath.Clean(folder) {
+	if v, _ := viewOf(t, c, pid)["project"].(map[string]any); v["dir"] != realDir(t, folder) {
 		t.Errorf("the view's project is %v", v)
 	}
 	if n := f.tabRoot(t, pid); !sameDir(n.Dir, folder) {
@@ -148,10 +149,10 @@ func TestProjectSetHomeShim(t *testing.T) {
 	sid := create()
 	folder := t.TempDir()
 	res := callChecked(t, c, "gorex.project.set_home", map[string]any{"session_id": sid, "machine_id": self, "dir": folder})
-	if p, _ := res["project"].(map[string]any); p["dir"] != filepath.Clean(folder) || p["home_machine"] != self {
+	if p, _ := res["project"].(map[string]any); p["dir"] != realDir(t, folder) || p["home_machine"] != self {
 		t.Fatalf("set_home answered %v", res)
 	}
-	if p := projectOf(t, c, sid); p["dir"] != filepath.Clean(folder) {
+	if p := projectOf(t, c, sid); p["dir"] != realDir(t, folder) {
 		t.Fatalf("the list's project is %v", p)
 	}
 	other := create()
@@ -263,4 +264,43 @@ func sameDir(a, b string) bool {
 	a, _ = filepath.EvalSymlinks(a)
 	b, _ = filepath.EvalSymlinks(b)
 	return a != "" && a == b
+}
+
+// realDir is dir as dir.list and a project name it: its symlinks
+// resolved, as /private/var for macOS's /var.
+func realDir(t *testing.T, dir string) string {
+	t.Helper()
+	real, err := filepath.EvalSymlinks(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return real
+}
+
+// TestProjectFolderResolved makes a project through a symlink to a
+// folder: the folder's own path, and a set_home of the link, answer
+// exists with that project.
+func TestProjectFolderResolved(t *testing.T) {
+	f := startFixture(t)
+	f.setLayout(emptyStore())
+	c := f.dialControl()
+	c.hello(apiRevision)
+	real := realDir(t, t.TempDir())
+	link := filepath.Join(t.TempDir(), "link")
+	if err := os.Symlink(real, link); err != nil {
+		t.Skipf("no symlink here: %v", err)
+	}
+	pid := callChecked(t, c, "gorex.project.create", map[string]any{"dir": link})["project_id"].(string)
+	if p := projectOf(t, c, pid); p["dir"] != real {
+		t.Fatalf("the project of the link is %v, want %q", p, real)
+	}
+	if e := failure(t, c.request("again", "gorex.project.create", map[string]any{"dir": real})); e["code"] != "exists" || e["project_id"] != pid {
+		t.Errorf("a project of the folder itself: %v", e)
+	}
+	sid := callChecked(t, c, "session.create", map[string]any{
+		"initial_windows": []any{map[string]any{"window_label": "one", "layout": blockLayout()}},
+	})["session_id"].(string)
+	if e := failure(t, c.request("home", "gorex.project.set_home", map[string]any{"session_id": sid, "machine_id": f.g.hello.Machine, "dir": link})); e["code"] != "exists" || e["project_id"] != pid {
+		t.Errorf("set_home of the link: %v", e)
+	}
 }

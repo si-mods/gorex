@@ -2,7 +2,6 @@ package rexapi
 
 import (
 	"encoding/json"
-	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -117,13 +116,15 @@ func folderArg(dir string) (string, *apiError) {
 	return dir, nil
 }
 
-// folderThere checks that dir, a folderArg, is a folder here, as
-// dir.list reads one.
-func folderThere(dir string) *apiError {
-	if st, err := os.Stat(dir); err != nil || !st.IsDir() {
-		return errNotFound("no folder %s on this machine", dir)
+// folderThere is dir, a folderArg, as dir.list names it, its symlinks
+// resolved (rex.ProjectFolder), and fails when it is no folder here: two
+// paths of one folder are one project's.
+func folderThere(dir string) (string, *apiError) {
+	real, ok := rex.ProjectFolder(dir)
+	if !ok {
+		return "", errNotFound("no folder %s on this machine", dir)
 	}
-	return nil
+	return real, nil
 }
 
 // windowOfTab waits for the window of GoRex tab tab in the session of
@@ -178,6 +179,9 @@ func methodGorexProjectCreate(c *control, a args) (any, *apiError) {
 	if aerr != nil {
 		return nil, aerr
 	}
+	if dir, aerr = folderThere(dir); aerr != nil {
+		return nil, aerr
+	}
 	m, err := c.g.current()
 	if err != nil {
 		return nil, errInternal("reading the layout: %v", err)
@@ -186,9 +190,6 @@ func methodGorexProjectCreate(c *control, a args) (any, *apiError) {
 		if s.dir != "" && layout.SameDir(s.dir, dir) {
 			return nil, errExists(dir, s.id)
 		}
-	}
-	if aerr := folderThere(dir); aerr != nil {
-		return nil, aerr
 	}
 	res, err := c.g.opt.Client.Command(rex.LayoutCommand{Op: "project.create", Name: name, Dir: dir, SpaceName: &space})
 	if err != nil {
@@ -464,7 +465,7 @@ func methodGorexProjectSetHome(c *control, a args) (any, *apiError) {
 		if dir, aerr = folderArg(raw); aerr != nil {
 			return nil, aerr
 		}
-		if aerr := folderThere(dir); aerr != nil {
+		if dir, aerr = folderThere(dir); aerr != nil {
 			return nil, aerr
 		}
 	}

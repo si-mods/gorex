@@ -571,6 +571,11 @@ What the design left open, and phase 1 (the server model) decided:
   no project. An adopted tab counts as adopted when one tab of the
   project holds all its panes that run; then adopting again changes
   nothing.
+- **One folder, one path.** A project's folder is kept as `dir.list`
+  names it (`rex.ProjectFolder`): its symlinks resolved, on Windows in the
+  case it has on disk, so `/tmp/x` and `/private/tmp/x` are one project.
+  `project.create`, `project.adopt` and `space.home` (and the
+  `set_home` shim) resolve it before the one-project-per-folder check.
 - **Tabs with no project.** The migration's workspace of them takes the
   ID of the first old space, so Rex Go 1.1 keeps that session, and the
   name "Tabs with no project".

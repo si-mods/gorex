@@ -30,12 +30,12 @@ func TestSpaceHome(t *testing.T) {
 	folder := t.TempDir()
 	work := command(t, c, LayoutCommand{Op: "space.create", Name: "work"}).Space
 	command(t, c, LayoutCommand{Op: "space.home", Space: work, Dir: folder + string(filepath.Separator)})
-	if w := spaceOf(t, c, work); w.Dir != filepath.Clean(folder) {
+	if w := spaceOf(t, c, work); w.Dir != realDir(t, folder) {
 		t.Fatalf("the folder is %q", w.Dir)
 	}
 	// A rename keeps the folder.
 	command(t, c, LayoutCommand{Op: "space.rename", Space: work, Name: "renamed", Color: "blue"})
-	if w := spaceOf(t, c, work); w.Dir != filepath.Clean(folder) {
+	if w := spaceOf(t, c, work); w.Dir != realDir(t, folder) {
 		t.Fatalf("a rename changed the folder to %q", w.Dir)
 	}
 	other := command(t, c, LayoutCommand{Op: "space.create", Name: "other"}).Space

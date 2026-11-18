@@ -47,12 +47,21 @@ func applies(c LayoutCommand) bool {
 // server keeps, starting and ending the sessions of its panes here.
 func (s *Server) apply(c LayoutCommand) LayoutCommand {
 	a := &applying{s: s}
-	// The folder of a project an adoption makes is checked before the
-	// locks: a folder on a mount that hangs holds no change of the
-	// layout.
-	if c.Op == "project.adopt" && c.Adopt != nil && c.Adopt.Project != nil {
-		if dir, code, _ := projectDir(c.Adopt.Project.Dir); code == "" {
-			a.folder = isDir(dir)
+	// A project's folder is read before the locks, a folder on a mount
+	// that hangs holding no change of the layout: resolved as dir.list
+	// resolves it (ProjectFolder), so that two paths of one folder are
+	// one project, and of an adoption checked to be there.
+	switch {
+	case c.Op == "project.adopt" && c.Adopt != nil && c.Adopt.Project != nil:
+		ad, p := *c.Adopt, *c.Adopt.Project
+		if dir, code, _ := projectDir(p.Dir); code == "" {
+			p.Dir, a.folder = ProjectFolder(dir)
+		}
+		ad.Project = &p
+		c.Adopt = &ad
+	case c.Op == "project.create" || c.Op == "space.home" && strings.TrimSpace(c.Dir) != "":
+		if dir, code, _ := projectDir(c.Dir); code == "" {
+			c.Dir, _ = ProjectFolder(dir)
 		}
 	}
 	res := s.applyHeld(c, a)
