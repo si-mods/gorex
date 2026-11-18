@@ -129,6 +129,24 @@ nonisolated final class DictationTests: XCTestCase {
         return Data(out.prefix(Int(length)))
     }
 
+    /// A release's tarball, as k2-fsa's `asr-models` serves it, is read by
+    /// the app's reader whole: each of its model's files at the release's
+    /// size. The archive is DICTATION_ARCHIVE, and the release's model
+    /// DICTATION_MODEL, its name as Model has it (TEST_RUNNER_… to
+    /// xcodebuild): ~840 MB, so not with every test run.
+    func testTarballUnpacksARelease() throws {
+        let env = ProcessInfo.processInfo.environment
+        guard let archive = env["DICTATION_ARCHIVE"], let model = env["DICTATION_MODEL"].flatMap(Dictation.Model.init(rawValue:)),
+              let release = model.release
+        else { throw XCTSkip("DICTATION_ARCHIVE or DICTATION_MODEL not set") }
+        let dir = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let start = ContinuousClock.now
+        try TarBz2.extract(release.files, from: URL(filePath: archive), into: dir)
+        print("TARBALL \(release.asset): \(ContinuousClock.now - start)")
+        XCTAssertTrue(Dictation.whole(release.files, in: dir), model.name)
+    }
+
     /// The model chosen stays chosen.
     @MainActor func testModelChosenIsSaved() {
         let d = Dictation.shared
