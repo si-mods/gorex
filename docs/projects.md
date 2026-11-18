@@ -440,7 +440,9 @@ that names it.
 │       review                 ›  │
 │       + New Tab                 │
 │   [F] notes  ~/notes        1 › │
-│   Tabs with no project     2 ›  │
+│       dev                    ›  │
+│       logs                   ›  │
+│       + New Tab                 │
 │                                 │
 │ [H] office-h800  ●            + │
 │   [F] trainer ~/work/trainer 2 ›│
@@ -452,7 +454,9 @@ that names it.
 
 - The top shows the space picker, not a strip of projects.
 - Each host lists its projects of the space, in order of last use, then
-  Tabs with no project. A project expands to its tabs and a New Tab row.
+  its tabs with no project, tiled flat: a row each, with a New Tab row
+  after them, and no row of their own to fold. A project expands to its
+  tabs and a New Tab row.
 - An offline host shows its projects greyed, from the copy the app kept
   when it last saw them.
 - The host's `+ ` opens the folder browser of v0.38.0 on that host and
@@ -463,7 +467,7 @@ that names it.
 ## Web client
 
 The same as Rex Go, for the host the page is connected to and its
-hosts.
+hosts, with its tabs with no project under a row of their own.
 
 ## Rex API
 

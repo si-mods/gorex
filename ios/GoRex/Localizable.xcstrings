@@ -4316,12 +4316,12 @@
         }
       }
     },
-    "Each host lists its projects of the space, the latest used first; those not used for 30 days are under Older. Tabs with No Project shows in every space.": {
+    "Each host lists its projects of the space, the latest used first; those not used for 30 days are under Older, and the tabs with no project come last, in every space.": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "每台主机列出当前空间的项目，最近用过的在前；30 天没用的放在「更早」下。「无项目的标签页」在每个空间都显示。"
+            "value": "每台主机列出当前空间的项目，最近用过的在前；30 天没用的放在「更早」下。无项目的标签页列在最后，每个空间都显示。"
           }
         }
       }
@@ -4672,16 +4672,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "空间"
-          }
-        }
-      }
-    },
-    "Tabs with No Project": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "无项目的标签页"
           }
         }
       }

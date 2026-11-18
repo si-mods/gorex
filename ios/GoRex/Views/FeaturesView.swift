@@ -10,7 +10,7 @@ struct FeaturesView: View {
     private static let sections: [(title: LocalizedStringResource, features: [Feature])] = [
         ("Home & Hosts", [
             ("Spaces", "The picker at the top shows one space at a time, such as Work or Life. New Space… adds one, and Edit Spaces… renames, colors and orders them."),
-            ("Projects under each host", "Each host lists its projects of the space, the latest used first; those not used for 30 days are under Older. Tabs with No Project shows in every space."),
+            ("Projects under each host", "Each host lists its projects of the space, the latest used first; those not used for 30 days are under Older, and the tabs with no project come last, in every space."),
             ("A project from a folder", "The + by a host browses its folders and makes a project of one. New Tab in a project opens on its host, in its folder."),
             ("Long-press a project for its menu", "New Tab, Rename, Color, Move to Space and Close Project, which asks first."),
             ("Long-press a tab for its menu", "Rename Tab, Reset Name, Move Up, Move Down, Move to Project, New Tab, Close Tab and Close Other Tabs."),
