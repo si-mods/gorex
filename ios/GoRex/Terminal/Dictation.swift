@@ -238,13 +238,18 @@ import os
         root.appending(path: (m.repo?.name ?? m.rawValue) + ".release")
     }
 
+    /// Whether the VAD's compiled model is on disk whole: what every model
+    /// recognises a phrase through.
+    nonisolated static var vadPresent: Bool {
+        FileManager.default.fileExists(atPath: vadModel.appending(path: "coremldata.bin").path)
+            && !(FileManager.default.enumerator(at: vadModel, includingPropertiesForKeys: nil)?.contains { ($0 as? URL)?.pathExtension == "partial" } ?? true)
+    }
+
     /// Whether a model is whole: the VAD's compiled model, with nothing
     /// left half downloaded; FluidAudio's check for SenseVoice, and
     /// another's files.
     nonisolated private static func present(_ m: Model) -> Bool {
-        guard FileManager.default.fileExists(atPath: vadModel.appending(path: "coremldata.bin").path),
-              !(FileManager.default.enumerator(at: vadModel, includingPropertiesForKeys: nil)?.contains { ($0 as? URL)?.pathExtension == "partial" } ?? true)
-        else { return false }
+        guard vadPresent else { return false }
         guard let repo = m.repo else { return SenseVoiceModels.modelsExist(at: speechDir, precision: precision) }
         if whole(repo.files, in: dir(m)) { return true }
         // The release's build of the same model, whose files are not
@@ -288,7 +293,12 @@ import os
         for source in sources {
             ModelRegistry.baseURL = source.url
             do {
-                try await ModelHub.download(.vad, to: MLModelConfigurationUtils.defaultModelsDirectory())
+                // Listing the VAD's files on Hugging Face takes the network:
+                // one already on disk is not asked for again, whatever the
+                // source, its listing unreachable as much as its files.
+                if !vadPresent {
+                    try await ModelHub.download(.vad, to: MLModelConfigurationUtils.defaultModelsDirectory())
+                }
                 if m == .senseVoice {
                     _ = try await SenseVoiceModels.download(precision: precision) { progress($0.fractionCompleted) }
                 } else if source.release {
