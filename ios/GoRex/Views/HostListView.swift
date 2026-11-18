@@ -400,47 +400,65 @@ struct HostListView: View {
     /// The chosen project's folder and project host, under the strip, with
     /// its New Window; a project with no folder offers to choose one too.
     private func projectHeader(_ s: CentralSpace) -> some View {
-        // The buttons go on a line of their own under the folder at the
-        // accessibility text sizes, and with no folder, where two follow.
-        let stacked = s.folder == nil || typeSize.isAccessibilitySize
-        return VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 12) {
-                Image(systemName: s.folder == nil ? "folder.badge.questionmark" : "folder")
-                    .font(.title3)
-                    .foregroundStyle(.secondary)
-                    .frame(width: iconWidth)
-                VStack(alignment: .leading, spacing: 2) {
-                    if let f = s.folder {
-                        Text(verbatim: ProjectWindow.short(f))
-                            .font(.subheadline.monospaced())
-                            .lineLimit(stacked ? 3 : 1)
-                            .truncationMode(.head)
-                        Text(verbatim: homeName(s) ?? String(localized: "Project host not added"))
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(stacked ? 2 : 1)
-                    } else {
-                        Text("No Folder").font(.subheadline)
-                        Text("Choose one to open new windows in it.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(3)
-                    }
-                }
-                if !stacked {
-                    Spacer(minLength: 8)
-                    newWindowButton(s)
-                }
-            }
-            if stacked {
+        Group {
+            // The buttons go on a line of their own under the folder at the
+            // accessibility text sizes, with no folder, where two follow,
+            // and where the folder and its host would not fit beside New
+            // Window, as in an iPad's sidebar.
+            if s.folder == nil || typeSize.isAccessibilitySize {
+                stackedHeader(s)
+            } else {
                 ViewThatFits(in: .horizontal) {
-                    HStack(spacing: 10) { headerActions(s) }
-                    VStack(alignment: .leading, spacing: 10) { headerActions(s) }
+                    HStack(spacing: 12) {
+                        headerInfo(s, stacked: false).fixedSize(horizontal: true, vertical: false)
+                        Spacer(minLength: 8)
+                        newWindowButton(s)
+                    }
+                    stackedHeader(s)
                 }
             }
         }
         .padding(.horizontal, 4)
         .padding(.top, -14)
+    }
+
+    private func stackedHeader(_ s: CentralSpace) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            headerInfo(s, stacked: true)
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 10) { headerActions(s) }
+                VStack(alignment: .leading, spacing: 10) { headerActions(s) }
+            }
+        }
+    }
+
+    /// The header's folder icon, the folder and its project host, or why
+    /// there is none.
+    private func headerInfo(_ s: CentralSpace, stacked: Bool) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: s.folder == nil ? "folder.badge.questionmark" : "folder")
+                .font(.title3)
+                .foregroundStyle(.secondary)
+                .frame(width: iconWidth)
+            VStack(alignment: .leading, spacing: 2) {
+                if let f = s.folder {
+                    Text(verbatim: ProjectWindow.short(f))
+                        .font(.subheadline.monospaced())
+                        .lineLimit(stacked ? 3 : 1)
+                        .truncationMode(.head)
+                    Text(verbatim: homeName(s) ?? String(localized: "Project host not added"))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(stacked ? 2 : 1)
+                } else {
+                    Text("No Folder").font(.subheadline)
+                    Text("Choose one to open new windows in it.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(3)
+                }
+            }
+        }
     }
 
     /// The header's buttons on their own line: New Window, and with no
