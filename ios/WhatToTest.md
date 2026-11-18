@@ -28,6 +28,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - Connecting to a computer over Tailscale works as before. If a computer that used to connect no longer does, tell us.
 - Adding a computer on the same Wi-Fi now needs the new QR code GoRex shows; if a computer you added before refuses you, scan its QR code again in Hosts.
 - Drag a window in the list and let go of it away from the rows: the windows go back to their order at once, and the one you dragged no longer stays dimmed.
+- On iPad the space picker shares the sidebar's top row with Search and the sidebar toggle, and a space name too long for it ends in an ellipsis.
 - Swiping with two fingers no longer switches panes, for now; tap a pane in the pane bar instead.
 - Tapping a terminal's title now answers your finger: its glass lights up as you press, and your hand feels a tap as the session's sheet opens.
 - The pane bar answers your finger too: its glass and the + light up as you press, and the pane you are in is outlined while the others fade.
@@ -47,6 +48,9 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - Delete a space in Edit Spaces: swipe it or tap its red minus. Its projects move to Default and no tab closes; a computer that is off moves them when it connects.
 - Coming back to a terminal after the computer's Tailscale connection started over no longer closes the app: the terminal reconnects by itself.
 - Your theme, interface, font, font size, minimum contrast and dictation's API key, base URL and model now follow you to your other iPhone and iPad through iCloud.
+- A project's tabs and New Tab now line up with the project row instead of sitting indented.
+- On a phone that shows its clock at the side, such as a folded iPhone, a terminal's back button, title and menu stay in the bar at the top, and the terminal fills the width under the clock.
+- Fun-ASR-Nano and Qwen3-ASR download from GitHub now where Hugging Face cannot be reached, and a download that stopped picks up where it left off.
 
 ## zh-Hans
 
@@ -86,3 +90,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - 在「编辑空间」里可以删除空间：左滑它或点红色减号。它的项目移到「默认」，不会关闭任何标签页；关机的电脑在连上后再移动。
 - 电脑的 Tailscale 连接重连过之后，再回到终端不会再让应用退出：终端会自己重新连上。
 - 你的主题、界面、字体、字号、最小对比度，以及听写的 API 密钥、服务地址和模型，现在会通过 iCloud 同步到你的其他 iPhone 和 iPad。
+- 展开项目后，它的标签页和「新建标签页」与项目行左对齐，不再缩进。
+- 在时钟显示在侧边的手机上，例如折叠屏 iPhone，终端的返回按钮、标题和菜单留在顶部工具栏里，终端也铺满到时钟那一列下面。
+- 切换空间的按钮现在和侧栏顶部的搜索、侧栏开关在同一行；空间名太长时末尾显示省略号。
+- 语音模型在 Hugging Face 连不上时改为从 GitHub 下载：Fun-ASR-Nano 和 Qwen3-ASR 现在能下完了，下载中断过也会接着下。

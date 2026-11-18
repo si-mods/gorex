@@ -253,7 +253,6 @@ struct HostSection: View {
                 rows(entries((s.view?.windows ?? []).map { (s, $0) }), more: true)
                 newTabRow { newProjectTab(s) }
             }
-            .padding(.leading, 20)
         }
     }
 
@@ -388,18 +387,20 @@ struct HostSection: View {
             ProjectRow(name: p.name, dir: p.dir, color: p.color, count: p.tabs.count, open: isOpen, divider: divider || isOpen)
         }
         .buttonStyle(.plain)
-        if isOpen { awayTabs(p.tabs).padding(.leading, 20) }
+        // No tile to line up with the folder's icon: the titles start at the project's name.
+        if isOpen { awayTabs(p.tabs, inset: 52) }
     }
 
-    private func awayTabs(_ tabs: [ProjectListing.Tab]) -> some View {
+    private func awayTabs(_ tabs: [ProjectListing.Tab], inset: CGFloat = 16) -> some View {
         ForEach(Array(tabs.enumerated()), id: \.element.id) { i, t in
             Text(verbatim: t.title.isEmpty ? " " : t.title.asText)
                 .foregroundStyle(.primary.opacity(0.8))
                 .lineLimit(1)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 16)
+                .padding(.leading, inset)
+                .padding(.trailing, 16)
                 .frame(minHeight: 46)
-                .overlay(alignment: .bottom) { if i < tabs.count - 1 { RowDivider(inset: 16) } }
+                .overlay(alignment: .bottom) { if i < tabs.count - 1 { RowDivider(inset: inset) } }
         }
     }
 

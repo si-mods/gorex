@@ -1,14 +1,24 @@
 import SwiftUI
 
-/// The space picker atop the list (docs/projects.md, Rex Go): the space
-/// shown, and a menu of the spaces, New Space… and Edit Spaces….
+/// The space picker atop the list (docs/projects.md, Rex Go), or in a wide
+/// window's bar beside the search: the space shown, and a menu of the
+/// spaces, New Space… and Edit Spaces….
 struct SpacePicker: View {
+    /// Where the picker shows: a wide window's bar packs its items at the
+    /// start, so one wider than there is room for goes into the menu beside
+    /// the search.
+    enum Place {
+        case list
+        case bar
+    }
+
     let spaces: [String]
     let current: String
     let color: (String) -> Color?
     let choose: (String) -> Void
     let add: () -> Void
     let edit: () -> Void
+    var place: Place = .list
 
     var body: some View {
         Menu {
@@ -21,25 +31,37 @@ struct SpacePicker: View {
             Button("New Space…", systemImage: "plus") { add() }
             Button("Edit Spaces…", systemImage: "pencil") { edit() }
         } label: {
-            HStack(spacing: 10) {
-                RoundedRectangle(cornerRadius: 4, style: .continuous)
-                    .fill(color(current) ?? Color.secondary.opacity(0.5))
-                    .frame(width: 14, height: 14)
-                Text(verbatim: SpaceName.shown(current))
-                    .font(.title2.bold())
-                    .lineLimit(1)
-                Image(systemName: "chevron.down")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.secondary)
+            if place == .list {
+                // Glass of its own over the page; a bar's own is behind it,
+                // and two glass effects nest.
+                label.glassEffect(.regular.interactive(), in: .capsule)
+            } else {
+                // A name longer than the room ends in an ellipsis, leaving
+                // the search and the toggle their places.
+                label.frame(maxWidth: 160)
             }
-            .foregroundStyle(.primary)
-            .padding(.horizontal, 16)
-            .frame(minHeight: 44)
-            .glassEffect(.regular.interactive(), in: .capsule)
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Space")
         .accessibilityValue(SpaceName.shown(current))
+    }
+
+    private var label: some View {
+        let bar = place == .bar
+        return HStack(spacing: 10) {
+            RoundedRectangle(cornerRadius: 4, style: .continuous)
+                .fill(color(current) ?? Color.secondary.opacity(0.5))
+                .frame(width: 14, height: 14)
+            Text(verbatim: SpaceName.shown(current))
+                .font(bar ? .title3.bold() : .title2.bold())
+                .lineLimit(1)
+            Image(systemName: "chevron.down")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.secondary)
+        }
+        .foregroundStyle(.primary)
+        .padding(.horizontal, bar ? 12 : 16)
+        .frame(minHeight: 44)
     }
 }
 
