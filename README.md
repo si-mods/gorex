@@ -98,16 +98,20 @@ and macOS, use **Check for Updates** in the app. See
     folder, even when the focused pane is on another host. A split or a
     floating pane starts where the pane it comes from started. A project may
     still hold terminals of several hosts.
-  - The project's context menu has **Change Folder…** and **Remove Folder**,
-    beside Rename, Color and Close Project. The sidebar shows the folder
-    under the project's name, after the home host's name when that is not
-    this machine.
+  - The project's context menu and the project popover have **Change
+    Folder…** (**Set Folder…** for a project with no folder) and **Remove
+    Folder**, beside Rename, Color and Close Project; Remove Folder's note
+    has **Undo**. The command palette has **Change Project Folder…** and
+    **Remove Project Folder**. The sidebar shows the folder under the
+    project's name, after the home host's name when that is not this
+    machine; the popover shows it under each project's name, with a dot
+    when the home host is not connected or not known.
   - A folder that is gone fails New Tab with a note and a **Change
     Folder…** button; the shell does not start in the home directory
     instead. A tab that GoRex opens again after a restart is not checked
     and starts at home as before.
-  - With the home host offline, New Tab fails with a note that names the
-    host and does not start a tab elsewhere. A tailnet host that is online
+  - With the home host offline, New Tab fails with a note, with **Retry**
+    and **Change Folder…**, and does not start a tab elsewhere. A tailnet host that is online
     but not connected yet connects first, and the tab then opens in the
     folder.
   - A project made before this has no folder and works as it did. A home
@@ -194,7 +198,7 @@ and macOS, use **Check for Updates** in the app. See
 | ⌘1…⌘9, ⇧⌘[ ⇧⌘], ⌃Tab | Ctrl+Shift+1…9, Ctrl+PageUp/PageDown, Ctrl+Tab | Switch tabs |
 | ⇧⌘R | Ctrl+Shift+R | Rename tab |
 | ⌘N | Ctrl+Shift+N | New window, of a new session |
-| ⇧⌘N | | New session |
+| ⇧⌘N | | New project… |
 | ⇧⌘O | Ctrl+Shift+O | Change session |
 | ⌃⌘] ⌃⌘[ | Ctrl+Shift+PageDown/PageUp | Next / previous session |
 | ⌘J | Ctrl+Shift+J | Jump to the pane that needs you |

@@ -9,6 +9,7 @@ import (
 	"gorex/locales"
 
 	"gorex/internal/layout"
+	"gorex/internal/rex"
 )
 
 // Run is set here: they open windows, whose debug hook lists the commands.
@@ -58,7 +59,8 @@ func (a *App) workspaceChip(c *ui.Context, k *colors, wide bool) {
 		if wide && detail != "" {
 			ui.Column(c).Grow(1).MinWidth(0).Gap(1).Children(func() {
 				ui.Text(c, w.Name).FontSize(13).FontWeight(600).TextColor(k.text.Alpha(0.85)).SingleLine().Ellipsis("…").MinWidth(0)
-				ui.Text(c, detail).FontSize(11).TextColor(k.textFaint).SingleLine().Ellipsis("…").MinWidth(0)
+				// The folder's own name, at its end, shows.
+				ui.Text(c, detail).FontSize(11).TextColor(k.textFaint).SingleLine().Ellipsis("…").TruncateMiddle().MinWidth(0)
 			})
 		} else {
 			name := ui.Text(c, w.Name).FontSize(13).FontWeight(600).TextColor(k.text.Alpha(0.85)).SingleLine().Ellipsis("…").MinWidth(0)
@@ -125,84 +127,133 @@ const popR, popPad = 14, 6
 // the host view's Color…, it shows only the colors.
 func (a *App) workspacePopover(c *ui.Context, k *colors, anchor ui.Element) {
 	if !a.wsOpen {
-		a.wsColorOnly = false
+		a.wsColorOnly, a.wsShown = false, false
 	}
 	ui.PopoverBase(c, anchor, &a.wsOpen, func(panel ui.Element) {
 		_, winH := c.Size()
 		glassPanel(panel.Margin(8, 0, 0, 0).MaxHeight(winH-24-titleH).Width(280).Padding(popPad).Radius(popR), k.panel).Border(1, k.panelBorder).
 			Shadow(0, 12, 32, 0, k.shadowFocused)
-		ui.Scroll(c).MinHeight(0).Children(func() {
-			ui.Column(c).Gap(2).Children(func() {
-				if a.wsColorOnly {
-					a.spaceColorPicker(c, k)
-					return
-				}
-				a.workspaceList(c, k)
+		if a.wsColorOnly {
+			ui.Scroll(c).MinHeight(0).Shrink(1).Children(func() {
+				ui.Column(c).Gap(2).Children(func() { a.spaceColorPicker(c, k) })
 			})
-		})
+			return
+		}
+		a.workspaceList(c, k)
 	})
 }
 
-// workspaceList is the popover's body: a row for each workspace, then
-// the actions.
+// workspaceList is the popover's body: a row for each project and the
+// window's colors, which scroll when they do not fit, then the actions,
+// which stay in sight.
 func (a *App) workspaceList(c *ui.Context, k *colors) {
-	ui.Text(c, locales.SessionListTitle()).FontSize(12).FontWeight(600).TextColor(k.textFaint).Padding(6, 8, 4, 8)
-	for _, w := range a.st.workspaces {
-		current := w == a.ws
-		detail := workspaceDetail(w, a, w.tabCount())
-		row := ui.Row(c.Key(w.ID)).Height(40).Padding(0, 8).Gap(9).Radius(concentric(popR, 1+popPad)).AlignItems(ui.Center).Cursor(ui.CursorPointer).
-			Role(ui.RoleButton).Label(w.Name + ", " + detail)
-		if row.Hovered() {
-			row.Background(k.hover)
-		}
-		if row.Clicked() {
-			a.wsOpen = false
-			a.later(c, func() { a.showWorkspace(w) })
-		}
-		row.Children(func() {
-			ui.Box(c).Size(15, 15).Shrink(0).Children(func() {
-				if current {
-					glyphIcon(c, "check", 15, k.text)
-				}
-			})
-			spaceDot(c, k, w)
-			ui.Column(c).Grow(1).MinWidth(0).Children(func() {
-				ui.Text(c, w.Name).FontSize(13.5).FontWeight(600).TextColor(k.text).SingleLine().Ellipsis("…")
-				ui.Text(c, detail).FontSize(11.5).TextColor(k.textFaint).SingleLine().Ellipsis("…")
-			})
-			if s := a.st.status(w); s != nil && s.State != "idle" {
-				statusDot(c, k, s, 7)
+	ui.Text(c, locales.SessionListTitle()).FontSize(12).FontWeight(600).TextColor(k.textFaint).Padding(6, 8, 4, 8).Shrink(0)
+	ui.Scroll(c.Key("project-list")).MinHeight(0).Shrink(1).Children(func() {
+		ui.Column(c).Gap(2).Children(func() {
+			for _, w := range a.st.workspaces {
+				a.workspaceRow(c, k, w)
 			}
-			if w.app != nil && !current {
-				glyphIcon(c, "app-window", 14, k.textFaint).Shrink(0).Tooltip(locales.SessionElsewhere())
+			a.spaceColorPicker(c, k)
+		})
+	})
+	a.wsShown = true
+	ui.Column(c).Gap(2).Shrink(0).Children(func() {
+		ui.Box(c).Height(1).Margin(4, 6).Background(k.panelBorder)
+		action := func(glyph, label string, run func()) {
+			row := ui.Row(c.Key("action-"+glyph)).Height(32).Padding(0, 8).Gap(9).Radius(concentric(popR, 1+popPad)).AlignItems(ui.Center).Cursor(ui.CursorPointer).
+				Role(ui.RoleButton).Label(label)
+			if row.Hovered() {
+				row.Background(k.hover)
+			}
+			if row.Clicked() {
+				a.wsOpen = false
+				a.later(c, run)
+			}
+			row.Children(func() {
+				glyphIcon(c, glyph, 15, k.textMuted).Shrink(0)
+				ui.Text(c, label).FontSize(13).TextColor(k.text).SingleLine().Ellipsis("…")
+			})
+		}
+		action("folder-plus", cmdNewProject.Title(), a.openNewProject)
+		action("plus", cmdNewSession.Title(), a.newWorkspace)
+		action("pencil", cmdRenameSession.Title(), a.startWorkspaceRename)
+		if w := a.ws; w != nil {
+			id := w.ID
+			action("folder-open", folderLabel(w), func() { a.openChangeFolder(id) })
+			if w.Dir != "" {
+				action("folder-minus", locales.ProjectRemoveFolder(), a.removeProjectFolder)
+			}
+		}
+		action("trash-2", cmdCloseSession.Title(), a.askCloseWorkspace)
+	})
+}
+
+// workspaceRow is a project's row in the popover: its color, its name,
+// and under it its folder, after its home host's name when that is not
+// this machine, or that it has none; a dot when its home host is not
+// connected or not known.
+func (a *App) workspaceRow(c *ui.Context, k *colors, w *Workspace) {
+	current := w == a.ws
+	tabs := workspaceDetail(w, a, w.tabCount())
+	detail := a.projectDetail(w)
+	if detail == "" {
+		detail = locales.ProjectNoFolder() + " · " + tabs
+	}
+	label := w.Name + ", " + detail
+	if w.Dir != "" {
+		label += ", " + tabs
+	}
+	row := ui.Row(c.Key(w.ID)).Height(40).Padding(0, 8).Gap(9).Radius(concentric(popR, 1+popPad)).AlignItems(ui.Center).Cursor(ui.CursorPointer).
+		Role(ui.RoleButton).Label(label)
+	if row.Hovered() {
+		row.Background(k.hover)
+	}
+	if current && !a.wsShown {
+		// As it opens, the popover shows the window's project.
+		row.ScrollIntoView()
+	}
+	if row.Clicked() {
+		a.wsOpen = false
+		a.later(c, func() { a.showWorkspace(w) })
+	}
+	row.Children(func() {
+		ui.Box(c).Size(15, 15).Shrink(0).Children(func() {
+			if current {
+				glyphIcon(c, "check", 15, k.text)
 			}
 		})
-	}
-	a.spaceColorPicker(c, k)
-	ui.Box(c).Height(1).Margin(4, 6).Background(k.panelBorder)
-	action := func(glyph, label string, run func()) {
-		row := ui.Row(c.Key("action-"+glyph)).Height(32).Padding(0, 8).Gap(9).Radius(concentric(popR, 1+popPad)).AlignItems(ui.Center).Cursor(ui.CursorPointer).
-			Role(ui.RoleButton).Label(label)
-		if row.Hovered() {
-			row.Background(k.hover)
-		}
-		if row.Clicked() {
-			a.wsOpen = false
-			a.later(c, run)
-		}
-		row.Children(func() {
-			glyphIcon(c, glyph, 15, k.textMuted).Shrink(0)
-			ui.Text(c, label).FontSize(13).TextColor(k.text).SingleLine().Ellipsis("…")
+		spaceDot(c, k, w)
+		ui.Column(c).Grow(1).MinWidth(0).Children(func() {
+			ui.Text(c, w.Name).FontSize(13.5).FontWeight(600).TextColor(k.text).SingleLine().Ellipsis("…")
+			ui.Text(c, detail).FontSize(11.5).TextColor(k.textFaint).SingleLine().Ellipsis("…").TruncateMiddle()
 		})
+		if tip, col, ok := a.homeTrouble(k, w); ok {
+			ui.Box(c).Size(7, 7).Radius(4).Background(col).Shrink(0).Role(ui.RoleImage).Label(tip).Tooltip(tip)
+		}
+		if s := a.st.status(w); s != nil && s.State != "idle" {
+			statusDot(c, k, s, 7)
+		}
+		if w.app != nil && !current {
+			glyphIcon(c, "app-window", 14, k.textFaint).Shrink(0).Tooltip(locales.SessionElsewhere())
+		}
+	})
+}
+
+// homeTrouble tells of project w's home host what its row's dot says:
+// that it is not connected, nor about to be as New Tab asks (a host of
+// the tailnet that is online), or that it is none of the user's hosts.
+func (a *App) homeTrouble(k *colors, w *Workspace) (tip string, col ui.Color, ok bool) {
+	if w.Dir == "" || w.Host == "" {
+		return "", col, false
 	}
-	action("folder-plus", cmdNewProject.Title(), a.openNewProject)
-	action("plus", cmdNewSession.Title(), a.newWorkspace)
-	action("pencil", cmdRenameSession.Title(), a.startWorkspaceRename)
-	if w := a.ws; w != nil {
-		id := w.ID
-		action("folder-open", locales.ProjectChangeFolder(), func() { a.openChangeFolder(id) })
+	h := a.projectHost(w)
+	switch {
+	case h == nil:
+		return locales.ProjectHomeUnknown(), k.danger, true
+	case h.current() == nil && !(rex.IsTailnetTarget(h.Address) && h.tailnetOnline):
+		return locales.ProjectHomeOffline(h.label()), k.exited, true
 	}
-	action("trash-2", cmdCloseSession.Title(), a.askCloseWorkspace)
+	return "", col, false
 }
 
 // spaceColorPicker is the popover's colors for the window's space: the
@@ -284,11 +335,16 @@ func (a *App) spaceStrip(c *ui.Context, k *colors) {
 		ui.Spacer(c)
 		return
 	}
-	ui.Row(c).Grow(1).MinWidth(0).ClipX().Gap(2).AlignItems(ui.Center).Justify(ui.Center).Children(func() {
-		for i, w := range a.st.workspaces {
-			a.spaceDotButton(c, k, i, w)
-		}
-		if b := iconButton(c, k, "plus", cmdNewProject.Title(), 24, 13).Tooltip(cmdNewProject.Title()); b.Clicked() {
+	// The dots scroll sideways when they do not fit; the plus stays.
+	ui.Row(c).Grow(1).MinWidth(0).Gap(2).AlignItems(ui.Center).Justify(ui.Center).Children(func() {
+		ui.ScrollHorizontal(c.Key("project-strip")).MinWidth(0).Shrink(1).Children(func() {
+			ui.Row(c).Gap(2).AlignItems(ui.Center).Children(func() {
+				for i, w := range a.st.workspaces {
+					a.spaceDotButton(c, k, i, w)
+				}
+			})
+		})
+		if b := iconButton(c, k, "plus", cmdNewProject.Title(), 24, 13).Shrink(0).Tooltip(cmdNewProject.Title()); b.Clicked() {
 			a.later(c, a.openNewProject)
 		}
 	})
@@ -304,7 +360,12 @@ func (a *App) spaceDotButton(c *ui.Context, k *colors, i int, w *Workspace) {
 	if i < 9 {
 		label += "  " + showSpaceKeys(i+1)
 	}
-	b := ui.Box(c).Size(24, 24).Center().Radius(12).Cursor(ui.CursorPointer).Role(ui.RoleButton).Label(label).Tooltip(label)
+	b := ui.Box(c).Size(24, 24).Shrink(0).Center().Radius(12).Cursor(ui.CursorPointer).Role(ui.RoleButton).Label(label).Tooltip(label)
+	if w == a.ws && a.stripShown != w {
+		// The window's project comes into view as the window shows it.
+		a.stripShown = w
+		b.ScrollIntoView()
+	}
 	if b.Hovered() {
 		b.Background(k.hover)
 	}
@@ -332,7 +393,7 @@ func (a *App) spaceMenu(m *ui.Menu, color bool) {
 	}
 	if w := a.ws; w != nil {
 		id := w.ID
-		if m.Item(locales.ProjectChangeFolder()).Chosen() {
+		if m.Item(folderLabel(w)).Chosen() {
 			a.openChangeFolder(id)
 		}
 		if w.Dir != "" && m.Item(locales.ProjectRemoveFolder()).Chosen() {
@@ -400,7 +461,7 @@ func (a *App) sessionItems(match func(string) bool) []paletteItem {
 		}
 	}
 	if title := cmdNewProject.Title(); match(title) || match(cmdNewProject.English()) {
-		items = append(items, paletteItem{title: title, glyph: "folder-plus", run: a.openNewProject})
+		items = append(items, paletteItem{title: title, keys: cmdNewProject.Keys, glyph: "folder-plus", run: a.openNewProject})
 	}
 	if title := cmdNewSession.Title(); match(title) || match(cmdNewSession.English()) {
 		items = append(items, paletteItem{title: title, keys: cmdNewSession.Keys, glyph: "plus", run: a.newWorkspace})

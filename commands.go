@@ -542,8 +542,8 @@ var (
 	cmdEndAll = command{ID: "app.quit", Name: locales.Messages.CmdQuitAndEndAll, Accel: "CmdOrCtrl+Alt+Q", Keys: "⌥⌘Q", Run: func(a *App) { a.quitAndEnd() }}
 
 	cmdNewWindow     = command{ID: "window.new", Name: locales.Messages.CmdNewWindow, Accel: "CmdOrCtrl+N", Keys: "⌘N", Other: ctrlShift(ui.KeyN)}
-	cmdNewProject    = command{ID: "project.new", Name: locales.Messages.CmdNewProject, Run: func(a *App) { a.openNewProject() }}
-	cmdNewSession    = command{ID: "session.new", Name: locales.Messages.CmdNewSession, Accel: "CmdOrCtrl+Shift+N", Keys: "⇧⌘N", Run: func(a *App) { a.newWorkspace() }}
+	cmdNewProject    = command{ID: "project.new", Name: locales.Messages.CmdNewProject, Accel: "CmdOrCtrl+Shift+N", Keys: "⇧⌘N", Run: func(a *App) { a.openNewProject() }}
+	cmdNewSession    = command{ID: "session.new", Name: locales.Messages.CmdNewSession, Run: func(a *App) { a.newWorkspace() }}
 	cmdImportRex     = command{ID: "rex.import", Name: locales.Messages.CmdImportRex, Run: func(a *App) { a.importRex() }, Available: func(a *App) bool { return !rexImporting.Load() }}
 	cmdChangeSession = command{ID: "session.switch", Name: locales.Messages.CmdChangeSession, Accel: "CmdOrCtrl+Shift+O", Keys: "⇧⌘O", Other: ctrlShift(ui.KeyO), Run: func(a *App) { a.openSessionPalette() }}
 	cmdNextSession   = command{ID: "session.next", Name: locales.Messages.CmdNextSession, Accel: "CmdOrCtrl+Ctrl+]", Keys: "⌃⌘]", Other: shortcut{ui.Ctrl | ui.Shift, ui.KeyPageDown}, Run: func(a *App) { a.cycleWorkspace(1) }}
@@ -551,7 +551,19 @@ var (
 	cmdRenameSession = command{ID: "session.rename", Name: locales.Messages.CmdRenameSession, Run: func(a *App) { a.startWorkspaceRename() }}
 	cmdCloseSession  = command{ID: "session.close", Name: locales.Messages.CmdCloseSession, Run: func(a *App) { a.askCloseWorkspace() }}
 	cmdMoveTabWindow = command{ID: "tab.move_window", Name: locales.Messages.CmdMoveTabToNewWindow}
-	cmdModeEnter     = command{
+
+	// cmdChangeFolder opens the sheet of the window's project's folder;
+	// cmdRemoveFolder takes its folder away (removeProjectFolder). The
+	// palette lists Remove Folder only for a project with a folder; the
+	// menu's does nothing for one of none.
+	cmdChangeFolder = command{ID: "project.change_folder", Name: locales.Messages.CmdChangeProjectFolder, Run: func(a *App) {
+		if a.ws != nil {
+			a.openChangeFolder(a.ws.ID)
+		}
+	}}
+	cmdRemoveFolder = command{ID: "project.remove_folder", Name: locales.Messages.CmdRemoveProjectFolder, Run: func(a *App) { a.removeProjectFolder() }}
+
+	cmdModeEnter = command{
 		ID: "mode.enter", Name: func(locales.Messages) string { return "Enter Mode" }, Hidden: true,
 		Args: []actionArg{{Name: "name", Type: "string"}, {Name: "once", Type: "boolean", Optional: true}},
 		RunArgs: func(a *App, args map[string]any) error {
@@ -667,14 +679,14 @@ var paletteCommands = []*command{
 	&cmdBigger, &cmdSmaller, &cmdActualSize, &cmdLight, &cmdDark, &cmdSystem,
 	&cmdGhostty, &cmdClearScroll, &cmdFind, &cmdFindNext, &cmdFindPrev, &cmdRestart, &cmdSettings, &cmdUpdates, &cmdRestartServer, &cmdEndAll,
 	&cmdNewWindow, &cmdNewProject, &cmdNewSession, &cmdImportRex, &cmdChangeSession, &cmdNextSession, &cmdPrevSession,
-	&cmdRenameSession, &cmdCloseSession, &cmdMoveTabWindow,
+	&cmdRenameSession, &cmdChangeFolder, &cmdRemoveFolder, &cmdCloseSession, &cmdMoveTabWindow,
 }
 
 // sessionCommands are those of the workspaces and the windows, which an
 // app without a store, as in tests, does not list.
 var sessionCommands = []*command{
 	&cmdNewWindow, &cmdNewProject, &cmdNewSession, &cmdImportRex, &cmdChangeSession, &cmdNextSession, &cmdPrevSession,
-	&cmdRenameSession, &cmdCloseSession, &cmdMoveTabWindow,
+	&cmdRenameSession, &cmdChangeFolder, &cmdRemoveFolder, &cmdCloseSession, &cmdMoveTabWindow,
 }
 
 // commands are all of them.
@@ -929,6 +941,8 @@ func (st *store) menu() *mygo.Menu {
 			item(&cmdPrevSession),
 			mygo.Separator(),
 			item(&cmdRenameSession),
+			item(&cmdChangeFolder),
+			item(&cmdRemoveFolder),
 			item(&cmdCloseSession),
 		}, spaceItems...)},
 		{Role: mygo.RoleWindowMenu},
@@ -952,7 +966,7 @@ func (st *store) run(cmd *command, w *mygo.Window) {
 		a.run(cmd)
 	case cmd == &cmdNewTab:
 		mygo.RunOnMain(st.reopen)
-	case cmd == &cmdNewWindow || cmd == &cmdNewSession:
+	case cmd == &cmdNewWindow || cmd == &cmdNewSession || cmd == &cmdNewProject:
 		mygo.RunOnMain(st.openNew)
 	}
 }
@@ -1257,7 +1271,8 @@ func (a *App) paletteItems() []paletteItem {
 	}
 	for _, cmd := range paletteCommands {
 		if cmd.Hidden || cmd == &cmdUpdates && !mygo.Updater.Enabled() || cmd == &cmdSidebar && prefs.TabPlacement == "" || cmd == &cmdSidebarView && !a.hostViewable() ||
-			a.st == nil && slices.Contains(sessionCommands, cmd) || !match(cmd.Title()) && !match(cmd.English()) {
+			a.st == nil && slices.Contains(sessionCommands, cmd) || cmd == &cmdRemoveFolder && (a.ws == nil || a.ws.Dir == "") ||
+			!match(cmd.Title()) && !match(cmd.English()) {
 			continue
 		}
 		items = append(items, paletteItem{title: cmd.Title(), keys: cmd.Keys, glyph: "command", run: func() { a.invokeCommand(cmd, nil) }})

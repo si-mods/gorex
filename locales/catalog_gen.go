@@ -7682,6 +7682,146 @@ func (msgs Messages) ProjectRemoveFolder() string {
 	return Catalog.Format(msgs.locale, "projectRemoveFolder", nil)
 }
 
+// ProjectSetFolder says "Set Folder…"
+// in the language the app shows.
+//
+// Project menu: choose a folder for a project that has none.
+func ProjectSetFolder() string { return In(i18n.Locale()).ProjectSetFolder() }
+
+// ProjectSetFolder says "Set Folder…"
+// in the language of msgs.
+//
+// Project menu: choose a folder for a project that has none.
+func (msgs Messages) ProjectSetFolder() string {
+	return Catalog.Format(msgs.locale, "projectSetFolder", nil)
+}
+
+// ProjectNoFolder says "No folder"
+// in the language the app shows.
+//
+// Project list: under the name of a project that has no folder.
+func ProjectNoFolder() string { return In(i18n.Locale()).ProjectNoFolder() }
+
+// ProjectNoFolder says "No folder"
+// in the language of msgs.
+//
+// Project list: under the name of a project that has no folder.
+func (msgs Messages) ProjectNoFolder() string {
+	return Catalog.Format(msgs.locale, "projectNoFolder", nil)
+}
+
+// ProjectHomeOffline says "{host} is not connected"
+// in the language the app shows.
+//
+// Project list: tooltip of the dot of a project whose home host is not
+// connected.
+func ProjectHomeOffline(host string) string { return In(i18n.Locale()).ProjectHomeOffline(host) }
+
+// ProjectHomeOffline says "{host} is not connected"
+// in the language of msgs.
+//
+// Project list: tooltip of the dot of a project whose home host is not
+// connected.
+func (msgs Messages) ProjectHomeOffline(host string) string {
+	return Catalog.Format(msgs.locale, "projectHomeOffline", map[string]any{"host": host})
+}
+
+// ProjectHomeUnknown says "The home host is not one of your hosts"
+// in the language the app shows.
+//
+// Project list: tooltip of the dot of a project whose home host was removed
+// from the user's hosts.
+func ProjectHomeUnknown() string { return In(i18n.Locale()).ProjectHomeUnknown() }
+
+// ProjectHomeUnknown says "The home host is not one of your hosts"
+// in the language of msgs.
+//
+// Project list: tooltip of the dot of a project whose home host was removed
+// from the user's hosts.
+func (msgs Messages) ProjectHomeUnknown() string {
+	return Catalog.Format(msgs.locale, "projectHomeUnknown", nil)
+}
+
+// ProjectHomeFailed says "The folder of {name} did not change: {error}"
+// in the language the app shows.
+//
+// Note: the server did not keep the project's new folder, or did not take
+// it away.
+func ProjectHomeFailed(name string, error string) string {
+	return In(i18n.Locale()).ProjectHomeFailed(name, error)
+}
+
+// ProjectHomeFailed says "The folder of {name} did not change: {error}"
+// in the language of msgs.
+//
+// Note: the server did not keep the project's new folder, or did not take
+// it away.
+func (msgs Messages) ProjectHomeFailed(name string, error string) string {
+	return Catalog.Format(msgs.locale, "projectHomeFailed", map[string]any{"name": name, "error": error})
+}
+
+// ProjectFolderRemoved says "Removed the folder {dir} from {name}."
+// in the language the app shows.
+//
+// Note: Remove Folder took the project's folder away; an Undo button
+// follows.
+func ProjectFolderRemoved(dir string, name string) string {
+	return In(i18n.Locale()).ProjectFolderRemoved(dir, name)
+}
+
+// ProjectFolderRemoved says "Removed the folder {dir} from {name}."
+// in the language of msgs.
+//
+// Note: Remove Folder took the project's folder away; an Undo button
+// follows.
+func (msgs Messages) ProjectFolderRemoved(dir string, name string) string {
+	return Catalog.Format(msgs.locale, "projectFolderRemoved", map[string]any{"dir": dir, "name": name})
+}
+
+// ProjectUndo says "Undo"
+// in the language the app shows.
+//
+// Note: button that gives the project the folder Remove Folder took away.
+func ProjectUndo() string { return In(i18n.Locale()).ProjectUndo() }
+
+// ProjectUndo says "Undo"
+// in the language of msgs.
+//
+// Note: button that gives the project the folder Remove Folder took away.
+func (msgs Messages) ProjectUndo() string {
+	return Catalog.Format(msgs.locale, "projectUndo", nil)
+}
+
+// CmdChangeProjectFolder says "Change Project Folder…"
+// in the language the app shows.
+//
+// Command: open the sheet that sets or changes the folder of the window's
+// project.
+func CmdChangeProjectFolder() string { return In(i18n.Locale()).CmdChangeProjectFolder() }
+
+// CmdChangeProjectFolder says "Change Project Folder…"
+// in the language of msgs.
+//
+// Command: open the sheet that sets or changes the folder of the window's
+// project.
+func (msgs Messages) CmdChangeProjectFolder() string {
+	return Catalog.Format(msgs.locale, "cmdChangeProjectFolder", nil)
+}
+
+// CmdRemoveProjectFolder says "Remove Project Folder"
+// in the language the app shows.
+//
+// Command: unbind the window's project from its folder; its tabs stay.
+func CmdRemoveProjectFolder() string { return In(i18n.Locale()).CmdRemoveProjectFolder() }
+
+// CmdRemoveProjectFolder says "Remove Project Folder"
+// in the language of msgs.
+//
+// Command: unbind the window's project from its folder; its tabs stay.
+func (msgs Messages) CmdRemoveProjectFolder() string {
+	return Catalog.Format(msgs.locale, "cmdRemoveProjectFolder", nil)
+}
+
 // ProjectHostUnknown says "unknown host"
 // in the language the app shows.
 //

@@ -568,6 +568,11 @@ type App struct {
 	// wsColorText is the color the popover's custom field holds.
 	wsColorText string
 	wsConfirm   bool
+	// wsShown tells that the open popover scrolled the window's project
+	// into view; stripShown is the project the sidebar's strip last
+	// scrolled into view.
+	wsShown    bool
+	stripShown *Workspace
 	// teleportAsk is the question after a tab was dropped on another
 	// host's place in the tabs.
 	teleportAsk teleportAsk
@@ -1609,7 +1614,7 @@ func (a *App) waitProject(p *projectOpen) {
 				name = w.Name
 			}
 			log.Printf("no new tab: the home host of project %s did not connect", p.space)
-			a.setNote(func(m locales.Messages) string { return m.ProjectHostTimeout(name) }, bannerNote{})
+			a.setNote(func(m locales.Messages) string { return m.ProjectHostTimeout(name) }, bannerNote{space: p.space})
 		})
 	})
 }
@@ -1665,15 +1670,15 @@ func (a *App) awaitProjectHost(w *Workspace) *Tab {
 		log.Printf("new tab of project %s: connecting to find its home host %s", w.ID, w.Host)
 		a.waitProject(&projectOpen{space: w.ID, machine: machine})
 		name, dir := w.Name, w.Dir
-		a.setNote(func(m locales.Messages) string { return m.ProjectHostWaiting(name, dir) }, bannerNote{wait: true})
+		a.setNote(func(m locales.Messages) string { return m.ProjectHostWaiting(name, dir) }, bannerNote{wait: true, space: w.ID})
 	case unknown > 0:
 		log.Printf("no new tab: the home host %s of project %s is not connected", w.Host, w.ID)
 		name, dir := w.Name, w.Dir
-		a.setNote(func(m locales.Messages) string { return m.ProjectHostOffline(name, dir) }, bannerNote{})
+		a.setNote(func(m locales.Messages) string { return m.ProjectHostOffline(name, dir) }, a.changeFolderButton(w.ID))
 	default:
 		log.Printf("no new tab: the home host %s of project %s is unknown", w.Host, w.ID)
 		name, dir := w.Name, w.Dir
-		a.setNote(func(m locales.Messages) string { return m.ProjectHostNotYours(name, dir) }, bannerNote{})
+		a.setNote(func(m locales.Messages) string { return m.ProjectHostNotYours(name, dir) }, a.changeFolderButton(w.ID))
 	}
 	return nil
 }
@@ -1699,7 +1704,7 @@ func (a *App) takeProjectOpen(h *hostConn) {
 		if p.host == nil && !slices.ContainsFunc(a.hosts, mayBeHome) {
 			a.endWait()
 			log.Printf("no new tab: no host is the home machine %s of project %s", p.machine, p.space)
-			a.setNote(locales.Messages.ProjectHostNone, bannerNote{})
+			a.setNote(locales.Messages.ProjectHostNone, a.changeFolderButton(p.space))
 		}
 		return
 	}
@@ -1708,28 +1713,71 @@ func (a *App) takeProjectOpen(h *hostConn) {
 		a.endProbe(h)
 		log.Printf("no new tab: %s connected, but it is not the home of project %s now", h.label(), p.space)
 		label := h.label()
-		a.setNote(func(m locales.Messages) string { return m.ProjectHomeMoved(label) }, bannerNote{})
+		a.setNote(func(m locales.Messages) string { return m.ProjectHomeMoved(label) }, bannerNote{space: p.space})
 		return
 	}
 	if n := a.errNote; n != nil && n.wait && a.noteShows() {
 		// The wait it said is over.
-		a.err, a.errMsg, a.errNote = "", nil, nil
+		a.clearNote()
 	}
 	a.projectTabOn(h, a.ws.Dir)
 }
 
 // projectTabOn opens a tab of the window's project on its home host h in
-// dir, or none, with the reason: a host whose server does not check the
+// dir, or none, with the reason: a host not connected says so, with
+// Retry and Change Folder…; a host whose server does not check the
 // folder (rex.CapabilitySpaceHome), as an older GoRex's, which would
 // start the shell at home when the folder is gone, opens none.
 func (a *App) projectTabOn(h *hostConn, dir string) *Tab {
-	if h.current() != nil && !h.hello.Can(rex.CapabilitySpaceHome) {
+	var id, name string
+	if w := a.ws; w != nil {
+		id, name = w.ID, w.Name
+	}
+	if h.current() == nil {
+		log.Printf("no new tab in %s: the home host %s is not connected", dir, h.label())
+		shown := a.tildeOn(h, dir)
+		n := a.changeFolderButton(id)
+		n.action, n.run, n.alt, n.altRun = locales.Messages.HostsRetry, func() { a.retryProjectHost(id) }, n.action, n.run
+		a.setNote(func(m locales.Messages) string { return m.ProjectHostOffline(name, shown) }, n)
+		return nil
+	}
+	if !h.hello.Can(rex.CapabilitySpaceHome) {
 		log.Printf("no new tab in %s: the home host %s does not check project folders", dir, h.label())
 		label := h.label()
-		a.setNote(func(m locales.Messages) string { return m.ProjectHostOld(label, dir) }, bannerNote{})
+		a.setNote(func(m locales.Messages) string { return m.ProjectHostOld(label, dir) }, bannerNote{space: id})
 		return nil
 	}
 	return a.newTabOnIn(h, dir, true)
+}
+
+// retryProjectHost connects again to the home host of the project of ID
+// id, the window's, and opens its New Tab once it has (takeProjectOpen),
+// or says, after projectWait, that it did not connect.
+func (a *App) retryProjectHost(id string) {
+	w := a.ws
+	if w == nil || w.ID != id || w.Dir == "" {
+		return
+	}
+	h := a.projectHost(w)
+	if h == nil {
+		a.newProjectTab()
+		return
+	}
+	if h.current() != nil {
+		a.projectTabOn(h, w.Dir)
+		return
+	}
+	a.waitProject(&projectOpen{space: id, host: h})
+	switch {
+	case rex.IsTailnetTarget(h.Address):
+		a.connectTailnetHost(h)
+	case h.running:
+		h.poke()
+	default:
+		a.startHost(h)
+	}
+	name, dir := w.Name, a.tildeOn(h, w.Dir)
+	a.setNote(func(m locales.Messages) string { return m.ProjectHostWaiting(name, dir) }, bannerNote{wait: true, space: id})
 }
 
 // projectHost is the home host of project w: the host of the machine it

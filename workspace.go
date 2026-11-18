@@ -1234,6 +1234,8 @@ func (a *App) show(w *Workspace) {
 		a.endWait()
 		log.Printf("no new tab: the window left project %s while its home host connected", p.space)
 	}
+	// A note about another project is not this one's.
+	a.dropProjectNote(w.ID)
 	a.ws, w.app = w, a
 	if k := w.kept; k != nil && k.app == a {
 		w.kept = nil

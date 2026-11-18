@@ -21,9 +21,34 @@ type bannerNote struct {
 	// text is the message it came with, as it was said.
 	text string
 	wait bool
-	// action names the button, run is what it does.
+	// action names the button, run is what it does; alt and altRun are a
+	// second button, after it.
 	action func(locales.Messages) string
 	run    func()
+	alt    func(locales.Messages) string
+	altRun func()
+	// info is a note that tells what was done, not an error.
+	info bool
+	// space is the ID of the project the note is about, "" for none: the
+	// window showing another project drops it (show).
+	space string
+}
+
+// clearNote takes the banner's message away.
+func (a *App) clearNote() { a.err, a.errMsg, a.errNote = "", nil, nil }
+
+// dropProjectNote takes away the banner's note when it is about a project
+// other than the one of ID id.
+func (a *App) dropProjectNote(id string) {
+	if n := a.errNote; n != nil && n.space != "" && n.space != id && a.noteShows() {
+		a.clearNote()
+	}
+}
+
+// changeFolderButton is the note's button that changes the folder of the
+// project of ID id.
+func (a *App) changeFolderButton(id string) bannerNote {
+	return bannerNote{space: id, action: locales.Messages.ProjectChangeFolder, run: func() { a.openChangeFolder(id) }}
 }
 
 // setNote has the banner say msg, as n says.
@@ -58,10 +83,7 @@ func (a *App) folderMissing(dir string) {
 		dir = w.Dir
 	}
 	name, id, shown := w.Name, w.ID, a.tildeOn(a.projectHost(w), dir)
-	a.setNote(func(m locales.Messages) string { return m.ProjectFolderMissing(shown, name) }, bannerNote{
-		action: locales.Messages.ProjectChangeFolder,
-		run:    func() { a.openChangeFolder(id) },
-	})
+	a.setNote(func(m locales.Messages) string { return m.ProjectFolderMissing(shown, name) }, a.changeFolderButton(id))
 }
 
 // homeOf is the home directory of host h, nil for this machine, as its
@@ -145,12 +167,20 @@ func (a *App) setProjectHome(w *Workspace, h *hostConn, dir string, done func(bo
 	if dir == "" {
 		host = ""
 	}
+	a.setHome(w, host, dir, done)
+}
+
+// setHome is setProjectHome of a home named as the layout keeps it
+// (Workspace.Host). One the server does not keep says so on the banner.
+func (a *App) setHome(w *Workspace, host, dir string, done func(bool)) {
 	a.ask(rex.LayoutCommand{Op: "space.home", Space: w.ID, Host: host, Dir: dir}, func(res rex.LayoutCommand) {
 		ok := res.Code == ""
 		if ok {
 			w.Host, w.Dir = host, dir
 		} else {
 			log.Printf("project %s: no home %q %q: %s", w.ID, host, dir, res.Error)
+			name, why := w.Name, cmp.Or(res.Error, res.Code)
+			a.setNote(func(m locales.Messages) string { return m.ProjectHomeFailed(name, why) }, bannerNote{space: w.ID})
 		}
 		if done != nil {
 			done(ok)
@@ -172,31 +202,70 @@ func (a *App) createProject(h *hostConn, dir, name string) {
 	}
 	// The home is the window's as it shows the project, so that its first
 	// tab opens there (show); the server has it before the tab, as the
-	// window's commands go in order.
+	// window's commands go in order. One the server did not keep is not
+	// the project's, and the banner says so.
 	w.Host, w.Dir, w.fresh = homeArg(h), dir, true
-	a.setProjectHome(w, h, dir, nil)
+	a.setProjectHome(w, h, dir, func(ok bool) {
+		if !ok {
+			w.Host, w.Dir = "", ""
+		}
+	})
 	a.showWorkspace(w)
 }
 
 // removeProjectFolder takes the folder away from the window's project:
-// its tabs stay, and its new ones start as a project of no folder's.
+// its tabs stay, and its new ones start as a project of no folder's. A
+// note says so, with Undo, which gives the folder back.
 func (a *App) removeProjectFolder() {
-	if w := a.ws; w != nil && w.Dir != "" {
-		a.setProjectHome(w, nil, "", nil)
+	w := a.ws
+	if w == nil || w.Dir == "" {
+		return
 	}
+	id, name, host, dir := w.ID, w.Name, w.Host, w.Dir
+	shown := a.tildeOn(a.projectHost(w), dir)
+	a.setHome(w, "", "", func(ok bool) {
+		if !ok {
+			return
+		}
+		a.setNote(func(m locales.Messages) string { return m.ProjectFolderRemoved(shown, name) }, bannerNote{
+			space: id, info: true,
+			action: locales.Messages.ProjectUndo,
+			run: func() {
+				if w := a.projectByID(id); w != nil && w.Dir == "" {
+					a.setHome(w, host, dir, nil)
+				}
+			},
+		})
+	})
+}
+
+// projectByID is the project of ID id, nil for none.
+func (a *App) projectByID(id string) *Workspace {
+	if a.st == nil {
+		return nil
+	}
+	if i := slices.IndexFunc(a.st.workspaces, func(w *Workspace) bool { return w.ID == id }); i >= 0 {
+		return a.st.workspaces[i]
+	}
+	return nil
+}
+
+// folderLabel is the name of the action that opens the folder sheet of
+// project w: Set Folder… for one of no folder, else Change Folder….
+func folderLabel(w *Workspace) string {
+	if w != nil && w.Dir == "" {
+		return locales.ProjectSetFolder()
+	}
+	return locales.ProjectChangeFolder()
 }
 
 // openChangeFolder opens the sheet that changes the folder of the project
 // of ID id, in its folder on its home host.
 func (a *App) openChangeFolder(id string) {
-	if a.st == nil {
+	w := a.projectByID(id)
+	if w == nil {
 		return
 	}
-	i := slices.IndexFunc(a.st.workspaces, func(w *Workspace) bool { return w.ID == id })
-	if i < 0 {
-		return
-	}
-	w := a.st.workspaces[i]
 	h := a.projectHost(w)
 	if w.Host != "" && h == nil {
 		// Its host is none of the user's: this machine's home to start,
