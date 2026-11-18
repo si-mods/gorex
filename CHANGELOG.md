@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.40.0
+
+### Features
+
+* **hosts:** offer the GoRex machines the tailnet finds in the Add Remote Host sheet, each with Add Host; discovery no longer saves or connects to a host by itself, and a host it saved that the user never took goes as the hosts load ([#761](https://github.com/si-mods/gorex/pull/761))
+
+### Chores
+
+* split `state.go` into `app.go`, `float.go` and `browser.go` ([#765](https://github.com/si-mods/gorex/pull/765))
+* one `internal/hosts` for hosts.json, read the same by the app, the CLI and the session server ([#768](https://github.com/si-mods/gorex/pull/768))
+* guard `gh` targets and local full test runs; slim CLAUDE.md ([#767](https://github.com/si-mods/gorex/pull/767))
+
 ## 0.39.0
 
 ### Bug Fixes
