@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.39.0
+
+### Bug Fixes
+
+* **projects:** keep the project popover's actions and the sidebar's New Project in reach with many projects; show each project's folder and an offline or unknown home host; Retry and Change Folder on the home host notes; Remove Folder with Undo; ⇧⌘N opens New Project… ([#756](https://github.com/si-mods/gorex/pull/756))
+* **projects:** make the New Project sheet's folder choice clear and keyboard-driven: a short breadcrumb, the folder it will use, readable in light mode ([#757](https://github.com/si-mods/gorex/pull/757))
+* **web:** fix the Projects folder sheet (breadcrumb, drive list, missing folder) and tell same-name projects apart ([#754](https://github.com/si-mods/gorex/pull/754))
+* **ios:** keep project folders and names in sync with the home host: an offline home host reads as offline, a rename keeps the folder and leaves no empty project ([#755](https://github.com/si-mods/gorex/pull/755))
+* **ios:** make projects clearer to use: New Project always in reach, choose a folder from its row, one word for windows, delete asks first ([#760](https://github.com/si-mods/gorex/pull/760))
+* **rex:** refuse device paths from list_dir, set_home and file.put ([#759](https://github.com/si-mods/gorex/pull/759))
+
+### Documentation
+
+* keep local test runs to the changed packages ([#764](https://github.com/si-mods/gorex/pull/764))
+
+### Chores
+
+* remove dead code, share duplicated helpers, add a maintenance audit ([#758](https://github.com/si-mods/gorex/pull/758))
+
 ## 0.38.0
 
 ### Features
