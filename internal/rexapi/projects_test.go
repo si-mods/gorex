@@ -3,12 +3,11 @@ package rexapi
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
-	"strings"
 	"testing"
 
 	"gorex/internal/layout"
-	"gorex/internal/rex"
 )
 
 // projectOf returns a session's project in a session list, nil for none.
@@ -42,227 +41,221 @@ func (f *fixture) spaceOfSession(t *testing.T, sid string) layout.Workspace {
 	return layout.Workspace{}
 }
 
-// TestProjectSetHome sets a session's home through the Rex API: the
-// welcome lists the feature, the session list and view carry it, a new
-// window without a cwd starts in the folder and one with a cwd there, and
-// a folder gone fails the window with no shell started.
-func TestProjectSetHome(t *testing.T) {
+// blocksOf are the block IDs of a session's view, in order.
+func blocksOf(t *testing.T, c *testConn, sid string) []string {
+	t.Helper()
+	c.request("attach", "session.attach", map[string]any{"session_id": sid})
+	var out []string
+	for _, w := range viewOf(t, c, sid)["windows"].([]any) {
+		for _, l := range w.(map[string]any)["layers"].([]any) {
+			var walk func(n any)
+			walk = func(n any) {
+				m, _ := n.(map[string]any)
+				if b, ok := m["block_id"].(string); ok {
+					out = append(out, b)
+				}
+				for _, k := range []string{"a", "b", "first", "second", "root", "layout", "block"} {
+					if x, ok := m[k]; ok {
+						walk(x)
+					}
+				}
+				if xs, ok := m["children"].([]any); ok {
+					for _, x := range xs {
+						walk(x)
+					}
+				}
+			}
+			walk(l)
+		}
+	}
+	slices.Sort(out)
+	return slices.Compact(out)
+}
+
+// TestProjectCreate makes a project through the Rex API: the welcome lists
+// gorex.projects of version 2; the project's first tab starts in the
+// folder; the session list and view carry the project, and the tabs with
+// no project {}; a second project of the folder answers exists with the
+// first; a device path, a relative one and a folder not there are refused.
+func TestProjectCreate(t *testing.T) {
 	f := startFixture(t)
-	f.setLayout(emptyStore())
+	f.setLayout(layout.Store{Version: layout.Version, Windows: []string{"np"}, Sessions: []layout.Workspace{{ID: "np", Name: layout.NoProjectName}}})
 	c := f.dialControl()
 	c.hello(apiRevision)
 	if fs, _ := c.welcome["features"].([]any); !slices.Contains(fs, any(featureProjects)) {
 		t.Fatalf("welcome features %v lack %s", fs, featureProjects)
 	}
-	self := f.g.hello.Machine
-	if self == "" {
-		t.Fatal("the server names no machine")
+	if vs, _ := c.welcome["feature_versions"].(map[string]any); vs[featureProjects] != float64(2) {
+		t.Fatalf("welcome feature_versions %v", c.welcome["feature_versions"])
 	}
-	created := callChecked(t, c, "session.create", map[string]any{
-		"initial_windows": []any{map[string]any{"window_label": "one", "layout": blockLayout()}},
-	})
-	sid := created["session_id"].(string)
-	callChecked(t, c, "session.attach", map[string]any{"session_id": sid})
-	if p := projectOf(t, c, sid); p != nil {
-		t.Fatalf("a session of no folder has a project %v", p)
+	folder := realDir(t, t.TempDir())
+	res := callChecked(t, c, "gorex.project.create", map[string]any{"name": "windflow", "dir": folder, "space": "Work"})
+	pid, tid := res["project_id"].(string), res["tab_id"].(string)
+	if pid == "" || tid == "" {
+		t.Fatalf("project.create answered %v", res)
 	}
-	if _, ok := viewOf(t, c, sid)["project"]; ok {
-		t.Fatal("a view of no folder has a project")
+	p := projectOf(t, c, pid)
+	if p["dir"] != realDir(t, folder) || p["space"] != "Work" || p["used"] == nil || p["home_machine"] != f.g.hello.Machine {
+		t.Fatalf("the list's project is %v", p)
 	}
-
-	folder := t.TempDir()
-	res := callChecked(t, c, "gorex.project.set_home", map[string]any{"session_id": sid, "machine_id": self, "dir": folder})
-	p, _ := res["project"].(map[string]any)
-	if p["home_machine"] != self || p["dir"] != filepath.Clean(folder) {
-		t.Fatalf("set_home answered %v", res)
-	}
-	if p := projectOf(t, c, sid); p["home_machine"] != self || p["dir"] != filepath.Clean(folder) {
-		t.Errorf("the list's project is %v", p)
-	}
-	if v, _ := viewOf(t, c, sid)["project"].(map[string]any); v["dir"] != filepath.Clean(folder) {
+	callChecked(t, c, "session.attach", map[string]any{"session_id": pid})
+	if v, _ := viewOf(t, c, pid)["project"].(map[string]any); v["dir"] != realDir(t, folder) {
 		t.Errorf("the view's project is %v", v)
 	}
-	if w := f.spaceOfSession(t, sid); w.Host != "" || w.Dir != filepath.Clean(folder) {
-		t.Errorf("the space's home is %q %q", w.Host, w.Dir)
+	if n := f.tabRoot(t, pid); !sameDir(n.Dir, folder) {
+		t.Errorf("the first tab starts in %q, want %q", n.Dir, folder)
+	}
+	if np := projectOf(t, c, sessionID("np")); np == nil || len(np) != 0 {
+		t.Errorf("the tabs with no project have the project %v", np)
+	}
+	if ids := sessionIDs(t, c); ids["windflow"] != pid || ids[layout.NoProjectName] == "" {
+		t.Errorf("the sessions an old client sees: %v", ids)
 	}
 
-	// A new window without a cwd starts in the folder; with one, there.
-	callChecked(t, c, "session.new_window", map[string]any{"session_id": sid, "layout": blockLayout()})
-	if n := f.tabRoot(t, sid); !sameDir(n.Dir, folder) {
-		t.Errorf("a new window starts in %q, want %q", n.Dir, folder)
+	e := failure(t, c.request("again", "gorex.project.create", map[string]any{"dir": folder + string(filepath.Separator)}))
+	if e["code"] != "exists" || e["project_id"] != pid {
+		t.Errorf("a second project of the folder: %v", e)
 	}
-	other := t.TempDir()
-	callChecked(t, c, "session.new_window", map[string]any{"session_id": sid, "layout": map[string]any{
-		"block": map[string]any{"flavor": flavorShell, "options": map[string]any{"cwd": other}},
-	}})
-	if n := f.tabRoot(t, sid); !sameDir(n.Dir, other) {
-		t.Errorf("a new window of a cwd starts in %q, want %q", n.Dir, other)
+	refused := map[string]string{"relative": "bad_request", filepath.Join(folder, "gone"): "not_found"}
+	// A device or pipe path is one only on Windows, where reading it
+	// waits (rex.VolumePath).
+	if runtime.GOOS == "windows" {
+		refused[`\\.\pipe\x`] = "bad_request"
 	}
+	for dir, code := range refused {
+		if e := failure(t, c.request("bad", "gorex.project.create", map[string]any{"dir": dir})); e["code"] != code {
+			t.Errorf("project.create of %q: %v, want %s", dir, e, code)
+		}
+	}
+}
 
-	// The folder gone: the window fails, and no shell starts.
-	gone := filepath.Join(t.TempDir(), "gone")
-	os.Mkdir(gone, 0o700)
-	callChecked(t, c, "gorex.project.set_home", map[string]any{"session_id": sid, "machine_id": self, "dir": gone})
-	os.Remove(gone)
-	before, _ := f.desk.List()
-	e := failure(t, c.request("gone", "session.new_window", map[string]any{"session_id": sid, "layout": blockLayout()}))
-	if e["code"] != "conflict" || !strings.Contains(e["message"].(string), rex.FolderMissing) {
-		t.Errorf("a new window in a folder gone: %v", e)
+// TestProjectSetHomeShim makes a project as Rex Go 1.1 and the web client
+// of v0.39.0 do, a session.create and a gorex.project.set_home of a folder
+// of this machine: the session becomes the project; another machine's
+// folder is refused, and a folder that is a project already answers
+// exists; a machine_id of "" clears the folder.
+func TestProjectSetHomeShim(t *testing.T) {
+	f := startFixture(t)
+	f.setLayout(emptyStore())
+	c := f.dialControl()
+	c.hello(apiRevision)
+	self := f.g.hello.Machine
+	create := func() string {
+		t.Helper()
+		return callChecked(t, c, "session.create", map[string]any{
+			"initial_windows": []any{map[string]any{"window_label": "one", "layout": blockLayout()}},
+		})["session_id"].(string)
 	}
-	if after, _ := f.desk.List(); len(after) != len(before) {
-		t.Errorf("%d sessions after the failed window, %d before", len(after), len(before))
+	sid := create()
+	folder := realDir(t, t.TempDir())
+	res := callChecked(t, c, "gorex.project.set_home", map[string]any{"session_id": sid, "machine_id": self, "dir": folder})
+	if p, _ := res["project"].(map[string]any); p["dir"] != realDir(t, folder) || p["home_machine"] != self {
+		t.Fatalf("set_home answered %v", res)
 	}
-
+	if p := projectOf(t, c, sid); p["dir"] != realDir(t, folder) {
+		t.Fatalf("the list's project is %v", p)
+	}
+	other := create()
 	for _, x := range []struct {
 		payload map[string]any
 		code    string
 	}{
-		{map[string]any{"session_id": sid, "machine_id": self, "dir": "relative"}, "bad_request"},
-		{map[string]any{"session_id": sid, "machine_id": self}, "bad_request"},
-		{map[string]any{"session_id": sid, "machine_id": self, "dir": gone}, "not_found"},
-		{map[string]any{"session_id": sid, "machine_id": self, "dir": folder, "x": 1}, "bad_request"},
-		{map[string]any{"session_id": "session:none", "machine_id": ""}, "session_not_found"},
+		{map[string]any{"session_id": other, "machine_id": "machine-far", "dir": "/srv/app"}, "bad_request"},
+		{map[string]any{"session_id": other, "machine_id": self, "dir": "relative"}, "bad_request"},
+		{map[string]any{"session_id": other, "machine_id": self, "dir": filepath.Join(folder, "gone")}, "not_found"},
+		{map[string]any{"session_id": other, "machine_id": self, "dir": folder}, "exists"},
 	} {
 		if e := failure(t, c.request("bad", "gorex.project.set_home", x.payload)); e["code"] != x.code {
 			t.Errorf("set_home %v: %v, want %s", x.payload, e, x.code)
+		} else if x.code == "exists" && e["project_id"] != sid {
+			t.Errorf("exists names %v, not %s", e["project_id"], sid)
 		}
 	}
-
-	// A machine_id of "" clears the home.
-	res = callChecked(t, c, "gorex.project.set_home", map[string]any{"session_id": sid, "machine_id": ""})
-	if _, ok := res["project"]; ok {
-		t.Errorf("a cleared home answered %v", res)
-	}
-	if p := projectOf(t, c, sid); p != nil {
-		t.Errorf("a cleared home lists %v", p)
+	callChecked(t, c, "gorex.project.set_home", map[string]any{"session_id": sid, "machine_id": ""})
+	if p := projectOf(t, c, sid); p == nil || len(p) != 0 {
+		t.Errorf("a cleared folder lists %v", p)
 	}
 }
 
-// TestProjectHomeOfHosts sets homes on other machines: each is kept by
-// its machine (layout.MachineHost), so a host removed from hosts.json and
-// added again under a new ID is the home again; a home of before, kept by
-// a host's ID, reads by hosts.json while it has the host.
-func TestProjectHomeOfHosts(t *testing.T) {
+// TestProjectMoveAdopt moves a tab between projects, keeping its blocks,
+// and adopts blocks that run already into a project's tab: twice changes
+// nothing, and a block it does not know is skipped.
+func TestProjectMoveAdopt(t *testing.T) {
 	f := startFixture(t)
-	hosts := filepath.Join(rex.Dir(), "hosts.json")
-	writeHosts := func(body string) {
-		t.Helper()
-		if err := os.WriteFile(hosts, []byte(body), 0o600); err != nil {
-			t.Fatal(err)
-		}
-	}
-	writeHosts(`{"hosts":[{"id":"h1","name":"Studio","address":"tcat://x","machine":"machine-one"}]}`)
-	f.setLayout(spacesLayout())
+	f.setLayout(emptyStore())
 	c := f.dialControl()
 	c.hello(apiRevision)
-	work := sessionIDs(t, c)["work"]
-
-	callChecked(t, c, "gorex.project.set_home", map[string]any{"session_id": work, "machine_id": "machine-one", "dir": `C:\code\app`})
-	if w := f.spaceOfSession(t, work); w.Host != layout.MachineHost("machine-one") || w.Dir != `C:\code\app` {
-		t.Fatalf("the home of a host is %q %q", w.Host, w.Dir)
+	one := callChecked(t, c, "gorex.project.create", map[string]any{"dir": t.TempDir()})
+	two := callChecked(t, c, "gorex.project.create", map[string]any{"dir": t.TempDir()})
+	p1, p2, tab := one["project_id"].(string), two["project_id"].(string), one["tab_id"].(string)
+	callChecked(t, c, "session.attach", map[string]any{"session_id": p1})
+	blocks := blocksOf(t, c, p1)
+	if len(blocks) != 1 {
+		t.Fatalf("blocks %v", blocks)
 	}
-	if p := projectOf(t, c, work); p["home_machine"] != "machine-one" || p["dir"] != `C:\code\app` {
-		t.Errorf("the project of a host is %v", p)
+	res := callChecked(t, c, "gorex.project.move", map[string]any{"tab_id": tab, "project_id": p2})
+	if res["project_id"] != p2 {
+		t.Fatalf("project.move answered %v", res)
 	}
-
-	// The host removed, and added again under another ID: the home stays
-	// that machine's.
-	writeHosts(`{"hosts":[]}`)
-	if p := projectOf(t, c, work); p["home_machine"] != "machine-one" || p["dir"] != `C:\code\app` {
-		t.Errorf("the project of a removed host is %v", p)
+	if got := blocksOf(t, c, p2); !slices.Contains(got, blocks[0]) {
+		t.Fatalf("the moved tab's blocks are %v, want %v", got, blocks)
 	}
-	writeHosts(`{"hosts":[{"id":"h2","name":"Studio","address":"tcat://x","machine":"machine-one"}]}`)
-	if p := projectOf(t, c, work); p["home_machine"] != "machine-one" {
-		t.Errorf("the project of the host added again is %v", p)
-	}
-
-	// A home kept by a host's ID: the server keeps it by the machine when
-	// hosts.json knows it, and the gateway reads an older one's by
-	// hosts.json, unknown once the host is gone.
-	if _, aerr := f.g.command(rex.LayoutCommand{Op: "space.home", Space: "work", Host: "h2", Dir: "/srv/app"}); aerr != nil {
-		t.Fatal(aerr)
-	}
-	if w := f.spaceOfSession(t, work); w.Host != layout.MachineHost("machine-one") {
-		t.Errorf("a home given by a host's ID is kept as %q", w.Host)
-	}
-	st := spacesLayout()
-	st.Sessions[0].Host, st.Sessions[0].Dir = "h2", "/srv/app"
-	f.setLayout(st)
-	if p := projectOf(t, c, work); p["home_machine"] != "machine-one" {
-		t.Errorf("an older home of a host is %v", p)
-	}
-	writeHosts(`{"hosts":[]}`)
-	if p := projectOf(t, c, work); p == nil || p["home_machine"] != "" || p["dir"] != "/srv/app" {
-		t.Errorf("an older home of a removed host is %v", p)
+	res = callChecked(t, c, "gorex.project.move", map[string]any{"tab_id": res["tab_id"], "project_id": ""})
+	np := res["project_id"].(string)
+	if p := projectOf(t, c, np); p == nil || len(p) != 0 || !slices.Equal(blocksOf(t, c, np), blocks) {
+		t.Fatalf("the tabs with no project: %v, %v", p, blocksOf(t, c, np))
 	}
 
-	callChecked(t, c, "gorex.project.set_home", map[string]any{"session_id": work, "machine_id": "machine-far", "dir": "/srv/app"})
-	if w := f.spaceOfSession(t, work); w.Host != layout.MachineHost("machine-far") || w.Dir != "/srv/app" {
-		t.Fatalf("the home of an unknown machine is %q %q", w.Host, w.Dir)
+	adopt := map[string]any{
+		"project": map[string]any{"name": "trainer", "dir": f.spaceOfSession(t, p1).Dir},
+		"tabs": []any{map[string]any{"title": "mon", "split": map[string]any{"vertical": true, "ratio": 0.5,
+			"a": map[string]any{"pane_id": blocks[0]}, "b": map[string]any{"pane_id": "block:00000000-0000-8000-8000-000000000000"}}}},
 	}
-	if p := projectOf(t, c, work); p["home_machine"] != "machine-far" {
-		t.Errorf("the project of an unknown machine is %v", p)
+	res = callChecked(t, c, "gorex.project.adopt", adopt)
+	if res["project_id"] != p1 || !slices.Equal(blocksOf(t, c, p1), blocks) {
+		t.Fatalf("adopt answered %v; blocks %v", res, blocksOf(t, c, p1))
+	}
+	before, _ := f.desk.Layout()
+	callChecked(t, c, "gorex.project.adopt", adopt)
+	if after, _ := f.desk.Layout(); string(after) != string(before) {
+		t.Errorf("adopting again changed the layout")
+	}
+	if w := f.spaceOfSession(t, p1); len(w.Tabs) != 1 || w.Tabs[0].Name != "mon" || !w.Tabs[0].Root.IsLeaf() {
+		t.Errorf("the adopted tab is %+v", w.Tabs)
 	}
 }
 
-// TestSpacesApplyHome syncs a project's home both ways: a manifest's home
-// reaches the desktop's space, and the session list gives it back; a
-// machine the desktop does not know keeps the folder; a space with no
-// home fields keeps its home, and a dir of "" clears it.
-func TestSpacesApplyHome(t *testing.T) {
+// TestProjectUpdateSpaces updates a project, renames its space, and lists
+// the spaces, those offered among them.
+func TestProjectUpdateSpaces(t *testing.T) {
 	f := startFixture(t)
-	f.setLayout(spacesLayout())
+	f.setLayout(layout.Store{Version: layout.Version, Spaces: []string{"Life"}})
 	c := f.dialControl()
 	c.hello(apiRevision)
-	self := f.g.hello.Machine
-	work := sessionIDs(t, c)["work"]
-	folder := t.TempDir()
-
-	apply := func(entry map[string]any) map[string]any {
-		t.Helper()
-		entry["name"] = "work"
-		entry["block_ids"] = []string{}
-		return callChecked(t, c, "gorex.spaces_apply", map[string]any{"spaces": []any{entry}})
+	p := callChecked(t, c, "gorex.project.create", map[string]any{"dir": t.TempDir(), "space": "Work"})["project_id"].(string)
+	res := callChecked(t, c, "gorex.project.update", map[string]any{"project_id": p, "name": "renamed", "color": "blue"})
+	if pr, _ := res["project"].(map[string]any); pr["space"] != "Work" {
+		t.Errorf("update answered %v", res)
 	}
-	res := apply(map[string]any{"home_machine": self, "dir": folder})
-	if res["homes"] != float64(1) {
-		t.Errorf("the apply answered %v", res)
+	if w := f.spaceOfSession(t, p); w.Name != "renamed" || w.Color != "blue" || w.Space != "Work" {
+		t.Errorf("the project updated is %+v", w)
 	}
-	if p := projectOf(t, c, work); p["home_machine"] != self || p["dir"] != filepath.Clean(folder) {
-		t.Fatalf("the synced project is %v", p)
+	list := callChecked(t, c, "gorex.space.list", nil)
+	if got := list["spaces"].([]any); !slices.Equal(got, []any{"Work", "Life"}) {
+		t.Errorf("spaces %v", got)
 	}
-	if res := apply(map[string]any{"home_machine": self, "dir": folder}); res["homes"] != nil {
-		t.Errorf("the same home again answered %v", res)
+	if res := callChecked(t, c, "gorex.space.rename", map[string]any{"from": "Work", "to": "Job"}); res["projects"] != float64(1) {
+		t.Errorf("space.rename answered %v", res)
 	}
-
-	apply(map[string]any{"home_machine": "machine-unknown", "dir": "/home/me/code"})
-	if w := f.spaceOfSession(t, work); w.Host != layout.MachineHost("machine-unknown") || w.Dir != "/home/me/code" {
-		t.Errorf("the home of an unknown machine is %q %q", w.Host, w.Dir)
+	if pr := projectOf(t, c, p); pr["space"] != "Job" {
+		t.Errorf("the project after the rename is %v", pr)
 	}
-	if p := projectOf(t, c, work); p["home_machine"] != "machine-unknown" || p["dir"] != "/home/me/code" {
-		t.Errorf("the project of an unknown machine goes back as %v", p)
+	callChecked(t, c, "gorex.project.update", map[string]any{"project_id": p, "space": ""})
+	if pr := projectOf(t, c, p); pr["space"] != nil {
+		t.Errorf("the project moved to Default is %v", pr)
 	}
-
-	// A client of before projects sends no home: it stays. A dir with no
-	// machine names no home: it stays too.
-	apply(map[string]any{})
-	if w := f.spaceOfSession(t, work); w.Dir != "/home/me/code" {
-		t.Errorf("an apply of no home changed it to %q", w.Dir)
-	}
-	if res := apply(map[string]any{"home_machine": "", "dir": "/elsewhere"}); res["homes"] != nil {
-		t.Errorf("an apply of a dir with no machine answered %v", res)
-	}
-	if w := f.spaceOfSession(t, work); w.Dir != "/home/me/code" {
-		t.Errorf("an apply of no home changed it to %q", w.Dir)
-	}
-	if e := failure(t, c.request("rel", "gorex.spaces_apply", map[string]any{"spaces": []any{
-		map[string]any{"name": "work", "block_ids": []string{}, "home_machine": self, "dir": "rel"},
-	}})); e["code"] != "bad_request" {
-		t.Errorf("a relative dir: %v", e)
-	}
-	apply(map[string]any{"dir": ""})
-	if w := f.spaceOfSession(t, work); w.Host != "" || w.Dir != "" {
-		t.Errorf("a cleared home is %q %q", w.Host, w.Dir)
+	if e := failure(t, c.request("np", "gorex.project.update", map[string]any{"project_id": "session:none"})); e["code"] != "not_found" {
+		t.Errorf("update of no project: %v", e)
 	}
 }
 
@@ -271,4 +264,43 @@ func sameDir(a, b string) bool {
 	a, _ = filepath.EvalSymlinks(a)
 	b, _ = filepath.EvalSymlinks(b)
 	return a != "" && a == b
+}
+
+// realDir is dir as dir.list and a project name it: its symlinks
+// resolved, as /private/var for macOS's /var.
+func realDir(t *testing.T, dir string) string {
+	t.Helper()
+	real, err := filepath.EvalSymlinks(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return real
+}
+
+// TestProjectFolderResolved makes a project through a symlink to a
+// folder: the folder's own path, and a set_home of the link, answer
+// exists with that project.
+func TestProjectFolderResolved(t *testing.T) {
+	f := startFixture(t)
+	f.setLayout(emptyStore())
+	c := f.dialControl()
+	c.hello(apiRevision)
+	real := realDir(t, t.TempDir())
+	link := filepath.Join(t.TempDir(), "link")
+	if err := os.Symlink(real, link); err != nil {
+		t.Skipf("no symlink here: %v", err)
+	}
+	pid := callChecked(t, c, "gorex.project.create", map[string]any{"dir": link})["project_id"].(string)
+	if p := projectOf(t, c, pid); p["dir"] != real {
+		t.Fatalf("the project of the link is %v, want %q", p, real)
+	}
+	if e := failure(t, c.request("again", "gorex.project.create", map[string]any{"dir": real})); e["code"] != "exists" || e["project_id"] != pid {
+		t.Errorf("a project of the folder itself: %v", e)
+	}
+	sid := callChecked(t, c, "session.create", map[string]any{
+		"initial_windows": []any{map[string]any{"window_label": "one", "layout": blockLayout()}},
+	})["session_id"].(string)
+	if e := failure(t, c.request("home", "gorex.project.set_home", map[string]any{"session_id": sid, "machine_id": f.g.hello.Machine, "dir": link})); e["code"] != "exists" || e["project_id"] != pid {
+		t.Errorf("set_home of the link: %v", e)
+	}
 }

@@ -114,10 +114,19 @@ func (g *Gateway) features() []string {
 	if g.hello.Can(rex.CapabilityDirList) {
 		features = append(features, featureDirList)
 	}
-	if g.hello.Can(rex.CapabilitySpaceHome) {
+	if g.hello.Can(rex.CapabilityProjects) {
 		features = append(features, featureProjects)
 	}
 	return features
+}
+
+// featureVersions are the versions of the welcome's features that have
+// one (welcome.FeatureVersions).
+func (g *Gateway) featureVersions() map[string]int {
+	if !g.hello.Can(rex.CapabilityProjects) {
+		return nil
+	}
+	return map[string]int{featureProjects: featureProjectsVersion}
 }
 
 // uploadResult is an upload's answer.

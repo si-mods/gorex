@@ -1889,14 +1889,6 @@
       "total": {}
     }
   },
-  "remoteShareLayout": "Share layout",
-  "@remoteShareLayout": {
-    "description": "Remote access: share this window layout with remote clients."
-  },
-  "remoteShareLayoutNote": "Remote clients may read this window's tabs and splits, and follow changes.",
-  "@remoteShareLayoutNote": {
-    "description": "Remote access: share this window layout with remote clients."
-  },
   "hostsLayout": "Layout",
   "@hostsLayout": {
     "description": "Remote host layout sheet."

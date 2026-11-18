@@ -30,7 +30,10 @@ var ErrSessionEnded = errors.New("rex: the session has ended")
 
 // session is a pseudo-terminal of the server and its shell.
 type session struct {
-	id    string
+	id string
+	// typed, when set, is told of what a client typed: the server notes
+	// the use of the session's project (Server.used).
+	typed func()
 	shell string
 	// command tells a session started with a command, as gorex new --
 	// ping, whose process shell names, rather than the user's shell.
@@ -939,6 +942,9 @@ func (s *session) dropLocked(a *attached) bool {
 func (s *session) input(a *attached, p []byte) {
 	if p := s.admit(a, p); len(p) > 0 {
 		s.write(p)
+		if a != nil && s.typed != nil && len(dropFocusReports(dropReplies(p))) > 0 {
+			s.typed()
+		}
 	}
 }
 
@@ -958,6 +964,9 @@ func (s *session) inputProgram(p []byte) error {
 	s.lastInput = time.Now()
 	s.mu.Unlock()
 	s.write(p)
+	if s.typed != nil {
+		s.typed()
+	}
 	return nil
 }
 

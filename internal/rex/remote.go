@@ -68,9 +68,6 @@ type RemoteConfig struct {
 	// it to be cleared.
 	Relay   string         `json:"relay,omitempty"`
 	Allowed []RemoteClient `json:"allowed"`
-	// ShareLayout lets remote clients read the layout and subscribe to
-	// its changes; off by default.
-	ShareLayout bool `json:"shareLayout,omitempty"`
 	// RemoteControl lets remote clients run app actions through this
 	// window; off by default.
 	RemoteControl bool `json:"remoteControl,omitempty"`
@@ -370,22 +367,16 @@ func (s *Server) remoteSeen(peer string) {
 	}
 }
 
-// remoteShareLayout tells whether remote clients may read and subscribe
-// to the layout.
-func (s *Server) remoteShareLayout() bool {
-	s.rem.mu.Lock()
-	defer s.rem.mu.Unlock()
-	return s.rem.cfg.ShareLayout
-}
-
 // remoteAllowed tells the ops a remote connection may make; it may also
 // attach to sessions. dir.list goes to the clients that may take a file
-// with file.get, which reads any path as the server's user already.
+// with file.get, which reads any path as the server's user already. Every
+// client the host lets in reads the layout and follows its changes: it is
+// where the host's projects and tabs live (docs/projects.md).
 func remoteAllowed(op string) bool {
 	switch op {
 	case "hello", "ping", "list", "create", "kill", "resize", "focus", "input", "paste", "capture", "clients",
 		"key", "mouse", "focusReport", "modes", "format", "inputMode", "clear", "reset", "command", "seeStatus", "resync",
-		"dir.list":
+		"dir.list", "getLayout", "getLayoutState", "subscribe":
 		return true
 	}
 	return false
@@ -787,7 +778,7 @@ func (s *Server) remoteStatusLocked(tailnet *TailnetStatus) RemoteStatus {
 	st := RemoteStatus{
 		Enabled: r.cfg.Enabled, Running: r.ts != nil, Address: string(r.addr), Relay: r.cfg.Relay,
 		Allowed: slices.Clone(r.cfg.Allowed), LastError: r.lastErr,
-		ShareLayout: r.cfg.ShareLayout, RemoteControl: r.cfg.RemoteControl,
+		ShareLayout: true, RemoteControl: r.cfg.RemoteControl,
 		ReachableAt: r.cfg.ReachableAt, ReachableError: r.ownErr,
 	}
 	if r.own != nil {

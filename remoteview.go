@@ -1077,11 +1077,6 @@ func (a *App) remoteDetails(c *ui.Context, k *colors, st rex.RemoteStatus) {
 	}
 	a.remoteRelay(c, k)
 	if remoteServes(st) {
-		// Whether remote clients read the layout and follow it.
-		layoutShare := st.ShareLayout
-		if remoteSwitch(c, k, "share-layout", locales.RemoteShareLayout(), locales.RemoteShareLayoutNote(), &layoutShare, page.unreachable || page.busy) {
-			a.remoteDo(func(srv *rex.Client) error { return srv.ShareLayout(layoutShare) }, nil)
-		}
 		if page.addingKey {
 			a.addByKey(c, k, st)
 		} else {

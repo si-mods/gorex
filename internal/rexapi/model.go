@@ -35,6 +35,9 @@ type model struct {
 	// was built: a project's home names its host by them.
 	self     string
 	machines map[string]string
+	// spaces are the space names offered though no project carries them
+	// (layout.Store.Spaces).
+	spaces []string
 }
 
 // mSession is a GoRex workspace as a Rex session.
@@ -49,11 +52,11 @@ type mSession struct {
 	space string
 	// remote are the space's panes of other hosts, in layout order.
 	remote []remoteBlock
-	// home and dir are the space's home host, as layout.Workspace.Host,
-	// and its folder there, "" for none; project is them as a client
-	// reads them, nil for a space of no folder.
-	home, dir string
-	project   *projectInfo
+	// dir is the project's folder, "" for the tabs with no project;
+	// project is the project as a client reads it, nil for none of the
+	// layout's (the desktop's sessions of no tab).
+	dir     string
+	project *projectInfo
 	// sig names everything the session's view shows, so that a later
 	// build can tell whether the view changed.
 	sig string
@@ -228,16 +231,16 @@ func (mp *mapper) build(raw json.RawMessage, host string, owners map[string]stri
 	if ws := desktopWorkspace(spaces, desktop); len(ws.Tabs) != 0 {
 		spaces = append(spaces, ws)
 	}
-	m := &model{byID: map[string]*mSession{}, blocks: map[string]*mBlock{}, host: host, self: mp.self, machines: mp.machines}
+	m := &model{byID: map[string]*mSession{}, blocks: map[string]*mBlock{}, host: host, self: mp.self, machines: mp.machines, spaces: store.Spaces}
 	for i := range spaces {
 		ws := &spaces[i]
 		workspace := ws.ID
 		if workspace == "" {
 			workspace = "main"
 		}
-		s := &mSession{id: sessionID(workspace), label: ws.Name, space: workspace, home: ws.Host, dir: ws.Dir}
-		if ws.Dir != "" {
-			s.project = &projectInfo{HomeMachine: m.homeMachine(ws.Host), Dir: ws.Dir}
+		s := &mSession{id: sessionID(workspace), label: ws.Name, space: workspace, dir: ws.Dir}
+		if workspace != desktopSpace {
+			s.project = m.projectOf(ws)
 		}
 		if s.label == "" {
 			s.label = "Session " + shortID(s.id)

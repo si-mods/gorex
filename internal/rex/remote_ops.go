@@ -26,6 +26,11 @@ func (s *Server) remoteDo(req Request) (any, error) {
 		s.firewallCheck(true)
 		return nil, nil
 	}
+	// Share Layout is gone: every remote client reads the layout. An app
+	// of before that still turns it on or off changes nothing.
+	if req.Op == "remote.shareLayoutSet" {
+		return nil, nil
+	}
 	// Where the built-in node carries discovery, turning the mode on
 	// turns that node on too, before the lock: the gateway answers in
 	// its own time. Turning the mode off leaves it on.
@@ -183,8 +188,6 @@ func (s *Server) remoteConfigOpLocked(req Request, done *[]func()) error {
 			return err
 		}
 		cfg.ReachableAt = ip
-	case "remote.shareLayoutSet":
-		cfg.ShareLayout = req.On
 	case "remote.controlSet":
 		cfg.RemoteControl = req.On
 	default:

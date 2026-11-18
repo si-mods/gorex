@@ -85,11 +85,11 @@ func TestApplyWithoutApp(t *testing.T) {
 	_, c := applyFixture(t)
 	cmd, dir := testShell()
 
-	// A layout of no space gets one, with the tab, of a session at the
-	// size of a window's first pane.
+	// A layout of no space gets its tabs with no project, with the tab, of
+	// a session at the size of a window's first pane.
 	one := command(t, c, LayoutCommand{Op: "tab.create", Dir: dir, Command: cmd, Name: "one"})
 	st := storeOf(t, c)
-	if len(st.Sessions) != 1 || len(st.Sessions[0].Tabs) != 1 || st.Sessions[0].Name == "" || st.Sessions[0].Color == "" {
+	if len(st.Sessions) != 1 || len(st.Sessions[0].Tabs) != 1 || st.Sessions[0].Name != layout.NoProjectName || st.Sessions[0].Dir != "" {
 		t.Fatalf("after the first tab: %+v", st)
 	}
 	tab := st.Sessions[0].Tabs[0]

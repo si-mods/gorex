@@ -65,7 +65,9 @@ import (
 // Still within 3, the capability "space.home": "space.home", which sets
 // or clears a space's home (layout.Workspace.Host and Dir), a tab.create
 // of no Dir in a space whose home is this machine starting in its folder
-// or failing with "folder_missing", and CreateOptions.DirStrict.
+// or failing with "folder_missing", and CreateOptions.DirStrict. Still
+// within 3, the capability "projects.v2": a host keeps its projects, a
+// folder each, and its tabs with no project (CapabilityProjects).
 const ProtocolVersion = 3
 
 // CapabilityShutdownRestart is what a server that stops to be replaced — one
@@ -142,7 +144,7 @@ const FolderMissing = "folder_missing"
 
 // capabilities are what a version 3 server does beyond version 2. A
 // client reads them from Hello and falls back when one is absent.
-var capabilities = []string{"layout.revision", "events.revision", CapabilityShutdownRestart, CapabilityShutdownIfIdle, CapabilitySnapshotGhostty, CapabilityInputEvents, CapabilityTerminalQuery, CapabilityFileTransfer, CapabilityFileTemp, CapabilityTeleport, CapabilityLayoutServer, CapabilityTabToSpace, CapabilityStatusSeen, CapabilityDirList, CapabilitySpaceHome}
+var capabilities = []string{"layout.revision", "events.revision", CapabilityShutdownRestart, CapabilityShutdownIfIdle, CapabilitySnapshotGhostty, CapabilityInputEvents, CapabilityTerminalQuery, CapabilityFileTransfer, CapabilityFileTemp, CapabilityTeleport, CapabilityLayoutServer, CapabilityTabToSpace, CapabilityStatusSeen, CapabilityDirList, CapabilitySpaceHome, CapabilityProjects}
 
 // Request is a line of the control connection, from the client.
 type Request struct {
@@ -192,7 +194,7 @@ type Request struct {
 	// answers an error that starts with BusyPrefix (CapabilityShutdownIfIdle).
 	IfIdle bool `json:"ifIdle,omitempty"`
 
-	// On is the setting of remote.shareLayoutSet, remote.controlSet and
+	// On is the setting of remote.controlSet and
 	// remote.tailnetSet.
 	On bool `json:"on,omitempty"`
 
@@ -284,13 +286,29 @@ type LayoutCommand struct {
 	// "pane.rename", "pane.focus", "pane.zoom", "tab.move", "pane.resize",
 	// "pane.swap", "pane.move", "pane.restart", "tab.set", "windows.set",
 	// "layout.apply", "pane.teleporting", "pane.teleported", "kills.taken",
-	// "show.taken", "tab.to_space" or "space.home".
-	// space.home sets the home of the space Space, a project's: the host
-	// Host, by its ID as layout.Node.Host has it ("" for this machine),
-	// and the folder Dir there, absolute; a Dir of "" clears both. A
-	// tab.create of no Dir in a space whose home is this machine starts in
-	// its folder, or fails with FolderMissing when it is gone, and starts
-	// no session elsewhere (CapabilitySpaceHome).
+	// "show.taken", "tab.to_space", "space.home", "project.create",
+	// "project.adopt", "project.move", "project.update", "spaces.rename"
+	// or "adopt.taken".
+	// space.home sets the folder Dir, absolute, of the workspace Space,
+	// which makes it a project of this machine; a Dir of "" clears it.
+	// Host must be "": a project of another host is made there
+	// (remote_home), and a folder that is a project already fails with
+	// "exists", Space naming it. The desktop of before docs/projects.md's
+	// phase 2 sends it. A tab.create of no Dir in a project starts in its
+	// folder, or fails with FolderMissing when it is gone, and starts no
+	// session elsewhere (CapabilitySpaceHome).
+	// project.create makes a project of the folder Dir named Name in the
+	// space SpaceName, and its first tab in the folder; it fails with
+	// "exists", Space naming the project, for a folder that is one, and
+	// with FolderMissing for one that is not there. project.adopt arranges
+	// sessions that run already into the tabs of Adopt, in its project,
+	// starting none (CapabilityProjects). project.move moves the tab Tab
+	// to the project ToSpace, or to the tabs with no project; project.update
+	// renames the project Space (Name), colors it (Color) and moves it to
+	// the space SpaceName; spaces.rename moves every project of space From
+	// to space To, Index in the answer counting them. adopt.taken, a local
+	// client's only, tells that the app's host adopted the adoption of ID
+	// Target (layout.Store.Adopt), which the server forgets.
 	// tab.to_space moves the tab, with its panes, their sessions, its
 	// floats, focus and zoom as they are, to the space ToSpace, as the
 	// app's Move to Space does: before the tab of Target there, else at
@@ -348,8 +366,19 @@ type LayoutCommand struct {
 	// by its ID, else by a session of this machine it has; "" for the end.
 	Target string  `json:"target,omitempty"`
 	Ratio  float32 `json:"ratio,omitempty"`
-	// ToSpace is the space tab.to_space moves the tab to, by ID.
+	// ToSpace is the space tab.to_space moves the tab to, by ID; of
+	// project.move, the project, "" for the tabs with no project.
 	ToSpace string `json:"to_space,omitempty"`
+	// SpaceName is the space of a project (layout.Workspace.Space) that
+	// project.create and project.update give it, "" for Default; nil
+	// gives Default to a new one and keeps an existing one's.
+	SpaceName *string `json:"space_name,omitempty"`
+	// Adopt is what project.adopt arranges (layout.Adoption): its project
+	// and its tabs, each a split of sessions of this machine.
+	Adopt *layout.Adoption `json:"adopt,omitempty"`
+	// From and To are the space names spaces.rename renames.
+	From string `json:"from,omitempty"`
+	To   string `json:"to,omitempty"`
 	// Host is a host of the window's, by its address as hosts.json has
 	// it, of the teleport commands, whose Target is the session there; of
 	// space.home, the home host by its ID (layout.Workspace.Host).
@@ -565,7 +594,10 @@ type RemoteStatus struct {
 	// PendingByAddress are the requests made by address (pairaddr.go),
 	// apart from Pending: each is approved by its code alone.
 	PendingByAddress []RemoteAddrPending `json:"pendingByAddress,omitempty"`
-	// ShareLayout tells that remote clients may read this machine's layout
+	// ShareLayout is always true: every remote client reads this
+	// machine's layout (docs/projects.md). Deprecated: kept for an app of
+	// before, which shows its switch; this server ignores the switch.
+	// Before, it told that remote clients may read this machine's layout
 	// and subscribe to its changes.
 	ShareLayout bool `json:"shareLayout"`
 	// RemoteControl tells that remote clients may run app actions through

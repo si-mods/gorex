@@ -245,7 +245,7 @@ func TestRemoteOff(t *testing.T) {
 			t.Errorf("off: no %q in %q", s, tt.Texts())
 		}
 	}
-	for _, s := range []string{locales.RemoteShareLayout(), locales.TailnetMode(), locales.RemoteDevices(), "bob-desktop",
+	for _, s := range []string{locales.TailnetMode(), locales.RemoteDevices(), "bob-desktop",
 		locales.RemoteMyKey(), locales.HostsNone()} {
 		if tt.HasText(s) {
 			t.Errorf("off: %q shows; texts %q", s, tt.Texts())
@@ -273,14 +273,14 @@ func TestRemoteOff(t *testing.T) {
 	if !tt.HasText(locales.RemoteDevices()) || !tt.HasText(locales.RemoteAddDevice()) || tt.HasText(locales.RemoteOffNote()) {
 		t.Fatalf("on: texts %q", tt.Texts())
 	}
-	if tt.HasText(locales.RemoteMyKey()) || tt.HasText(locales.RemoteShareLayout()) {
+	if tt.HasText(locales.RemoteMyKey()) || tt.HasText(locales.RemoteAddByKey()) {
 		t.Fatal("the details show before Show Details is clicked")
 	}
 	if err := tt.Click(locales.RemoteShowDetails()); err != nil {
 		t.Fatalf("%v; texts %q", err, tt.Texts())
 	}
 	tt.Frame()
-	if !tt.HasText(locales.RemoteMyKey()) || !tt.HasText(locales.RemoteMyKeyNote()) || !tt.HasText(locales.RemoteShareLayout()) || !tt.HasText(locales.RemoteHideDetails()) {
+	if !tt.HasText(locales.RemoteMyKey()) || !tt.HasText(locales.RemoteMyKeyNote()) || !tt.HasText(locales.RemoteAddByKey()) || !tt.HasText(locales.RemoteHideDetails()) {
 		t.Fatalf("details: texts %q", tt.Texts())
 	}
 	if err := tt.Click(locales.RemoteHideDetails()); err != nil {
@@ -487,7 +487,7 @@ func TestServerPageWords(t *testing.T) {
 		t.Fatal(err)
 	}
 	tt.Frame()
-	for _, s := range []string{locales.RemoteReachableTitle(), locales.RemoteRelay(), locales.RemoteShareLayout(), locales.RemoteAddByKey()} {
+	for _, s := range []string{locales.RemoteReachableTitle(), locales.RemoteRelay(), locales.RemoteAddByKey()} {
 		if !tt.HasText(s) {
 			t.Errorf("no %q under Show Details; texts %q", s, tt.Texts())
 		}

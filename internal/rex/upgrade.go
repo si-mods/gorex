@@ -275,11 +275,15 @@ func Resume(path string) error {
 			closeHandedOver(st)
 			continue
 		}
+		id := ss.id
+		ss.typed = func() { s.used(id) }
 		s.sessions[ss.id] = ss
 		s.order = append(s.order, ss.id)
 		s.watchExit(ss)
 	}
 	log.Printf("rex: resumed %d of %d sessions", len(s.order), len(h.Sessions))
+	// A server of before projects hands over a layout of them.
+	s.migrateLayout()
 	// Those the handoff lost start again, once it listens.
 	go s.restoreLost(journalOwners(readJournal()), s.lostPanes())
 	tookOver(h)

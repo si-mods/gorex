@@ -51,7 +51,7 @@ func (s *Server) subscribe(write func([]byte), remote bool, transfers bool) *sub
 					continue
 				}
 				if sub.remote {
-					if kind == "sessions" || kind == "theme" || !s.remoteShareLayout() {
+					if kind == "sessions" || kind == "theme" {
 						continue
 					}
 				}

@@ -483,7 +483,7 @@ func TestRemoteDenied(t *testing.T) {
 	if _, err := c.Hello(); err != nil {
 		t.Fatal(err)
 	}
-	for _, op := range []string{"shutdown", "setLayout", "getLayout", "remote.status", "remote.enable",
+	for _, op := range []string{"shutdown", "setLayout", "remote.status", "remote.enable",
 		"remote.disable", "remote.allow", "remote.revoke", "remote.regenerate", "remote.pairStart",
 		"remote.pairStop", "remote.approve", "remote.reject", "remote.controlSet", "nope"} {
 		// On, as a remote client would want sharing.
@@ -759,25 +759,12 @@ func TestRemoteTailcat(t *testing.T) {
 		h.Client.Created.IsZero() || h.Client.LastSeen.IsZero() {
 		t.Fatalf("client identity %+v", h.Client)
 	}
-	// A shared layout crosses the real connection; turning it off closes
-	// the read gate.
+	// The layout crosses the real connection, with no setting.
 	if err := c.SetLayout(json.RawMessage(`{"tabs":[]}`)); err != nil {
 		t.Fatal(err)
 	}
-	if err := c.ShareLayout(true); err != nil {
-		t.Fatal(err)
-	}
 	if raw, err := rc.Layout(); err != nil || !strings.Contains(string(raw), "tabs") {
-		t.Fatalf("shared layout %q %v", raw, err)
-	}
-	if err := c.ShareLayout(false); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := rc.Layout(); err == nil {
-		t.Fatal("layout read after sharing stopped")
-	}
-	if err := c.ShareLayout(true); err != nil {
-		t.Fatal(err)
+		t.Fatalf("the layout of a remote client %q %v", raw, err)
 	}
 	if err := rc.Shutdown(); err == nil {
 		t.Error("remote shutdown")
@@ -949,7 +936,7 @@ func TestRemoteConfigShareSessions(t *testing.T) {
 	s.remoteLoad()
 	s.rem.mu.Lock()
 	defer s.rem.mu.Unlock()
-	if s.rem.lastErr != "" || !s.rem.cfg.ShareLayout {
+	if s.rem.lastErr != "" {
 		t.Errorf("not loaded: %q %+v", s.rem.lastErr, s.rem.cfg)
 	}
 }
