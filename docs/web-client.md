@@ -1023,7 +1023,7 @@ to the terminal.
 | Next, previous window, across hosts (desktop: Ctrl+Tab, Ctrl+Shift+Tab) | ⌥⇧] and ⌥⇧[ | Alt+Shift+] and Alt+Shift+[ |
 | Next, previous space, across hosts (desktop: Ctrl+Shift+PageDown and PageUp, the browser's tab moves) | ⌃⌘] and ⌃⌘[ | Alt+Shift+PageDown and Alt+Shift+PageUp |
 | Rename the window (desktop: ⇧⌘R, Ctrl+Shift+R, which reload the page) | ⌥⇧R | Alt+Shift+R |
-| New Space (desktop: ⇧⌘N, Ctrl+Shift+N, the browser's new window) | ⌥⇧N | Alt+Shift+N |
+| New Project (desktop: ⇧⌘N, Ctrl+Shift+N, the browser's new window) | ⌥⇧N | Alt+Shift+N |
 | Settings | ⌘, | Ctrl+, |
 | Copy the selection | ⌘C | Ctrl+Shift+C |
 | Paste | ⌘V | Ctrl+Shift+V, Shift+Insert; on Windows also Ctrl+V (see Typing and paste) |

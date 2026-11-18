@@ -255,6 +255,12 @@ func TestProjectSettings(t *testing.T) {
 	if m := tt.Menu(); slices.Contains(m, locales.ProjectRemoveFolder()) || !slices.Contains(m, locales.ProjectSetFolder()) {
 		t.Errorf("the menu of a project of no folder: %q", m)
 	}
+	if err := tt.ChooseMenuItem(locales.ProjectSetFolder()); err != nil {
+		t.Fatalf("Set Folder: %v", err)
+	}
+	if !tt.HasText(locales.ProjectSheetSetTitle(w.Name)) {
+		t.Errorf("the sheet of Set Folder: %q", tt.Texts())
+	}
 }
 
 // TestProjectHeader checks what the sidebar's project header says under

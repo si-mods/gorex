@@ -7296,6 +7296,20 @@ func (msgs Messages) ProjectSheetChangeTitle(name string) string {
 	return Catalog.Format(msgs.locale, "projectSheetChangeTitle", map[string]any{"name": name})
 }
 
+// ProjectSheetSetTitle says "Set Folder for {name}"
+// in the language the app shows.
+//
+// Title of the sheet that gives a project with no folder one.
+func ProjectSheetSetTitle(name string) string { return In(i18n.Locale()).ProjectSheetSetTitle(name) }
+
+// ProjectSheetSetTitle says "Set Folder for {name}"
+// in the language of msgs.
+//
+// Title of the sheet that gives a project with no folder one.
+func (msgs Messages) ProjectSheetSetTitle(name string) string {
+	return Catalog.Format(msgs.locale, "projectSheetSetTitle", map[string]any{"name": name})
+}
+
 // ProjectSheetHost says "Host"
 // in the language the app shows.
 //

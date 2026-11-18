@@ -2450,6 +2450,16 @@
       }
     }
   },
+  "projectSheetSetTitle": "Set Folder for {name}",
+  "@projectSheetSetTitle": {
+    "description": "Title of the sheet that gives a project with no folder one.",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "windflow"
+      }
+    }
+  },
   "projectSheetHost": "Host",
   "@projectSheetHost": {
     "description": "New Project sheet: label over the hosts the folder can be on."

@@ -650,6 +650,7 @@
   "cmdNewProject": "新建项目…",
   "projectSheetTitle": "新建项目",
   "projectSheetChangeTitle": "{name} 的文件夹",
+  "projectSheetSetTitle": "为 {name} 设置文件夹",
   "projectSheetHost": "主机",
   "projectSheetFolder": "文件夹",
   "projectSheetName": "名称",
