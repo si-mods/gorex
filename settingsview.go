@@ -172,6 +172,16 @@ const (
 	settingsMaxW     = 720 // the settings column, at most
 )
 
+// settingsSidebarTop is the room above the sidebar's items: the traffic
+// lights' row, which the card starts under. Windows draws its controls in
+// the page's header instead, and there the card takes that room.
+func settingsSidebarTop() float32 {
+	if ownControls {
+		return 14
+	}
+	return settingsHeaderH
+}
+
 // settingsTheme is the widgets' theme in the settings window: the app's,
 // with capsule controls, as macOS's settings have. It is the settings
 // window's alone; the terminal window keeps its own.
@@ -190,9 +200,9 @@ func (a *App) settingsView(c *ui.Context) {
 	wash := backgroundAlpha(c)
 	ui.Row(c).Fill().AlignItems(ui.Stretch).Draw(func(p *ui.Painter, r ui.Rect) { paintBackground(p, r, k, wash) }).Children(func() {
 		// The sidebar paints no face: the window's glass shows through it,
-		// and the traffic lights sit at its top.
+		// and the traffic lights sit at its top on macOS.
 		ui.Column(c).Width(settingsSidebarW).Shrink(0).Children(func() {
-			ui.Box(c).Height(settingsHeaderH).Shrink(0).DragWindow()
+			ui.Box(c).Height(settingsSidebarTop()).Shrink(0).DragWindow()
 			ui.Column(c).Grow(1).MinHeight(0).Padding(0, 10, 10, 10).Gap(2).Children(func() {
 				a.serverCard(c, k)
 				ui.Box(c).Height(8).Shrink(0)
