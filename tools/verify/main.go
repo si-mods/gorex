@@ -5,7 +5,9 @@
 //
 //	go run ./tools/verify          the checks for this diff
 //	go run ./tools/verify -full    also the root package's (slow, UI) tests
-//	go run ./tools/verify -hook    Claude Code PreToolUse hook (see .claude/settings.json)
+//	go run ./tools/verify -hook    Claude Code PreToolUse hook (see .claude/settings.json):
+//	                               verifies before a push or `gh pr create`; denies gh
+//	                               writes without -R si-mods/gorex and local full test runs
 //
 // It needs no shell, so it runs the same on Windows, macOS and Linux.
 package main
@@ -654,12 +656,37 @@ func hookMain(stdin io.Reader, stderr, stdout io.Writer) int {
 		return 0
 	}
 	var in hookInput
-	if err := json.NewDecoder(stdin).Decode(&in); err != nil || !triggers(in.ToolInput.Command) {
+	if err := json.NewDecoder(stdin).Decode(&in); err != nil {
 		return 0
 	}
-	dir := targetDir(in.Cwd, in.ToolInput.Command)
-	root, err := repoRoot(dir)
-	if err != nil || !isGoRex(root) {
+	cmd := in.ToolInput.Command
+	dir := targetDir(in.Cwd, cmd)
+	var root string
+	var checked, rex bool
+	where := func() (string, string, bool) {
+		if !checked {
+			checked = true
+			r, err := repoRoot(dir)
+			root, rex = r, err == nil && isGoRex(r)
+		}
+		return root, dir, rex
+	}
+	guard := guardReason(cmd, where)
+	if guard == "" && !triggers(cmd) {
+		return 0
+	}
+	if _, _, ok := where(); !ok {
+		return 0
+	}
+	if guard != "" {
+		fmt.Fprintln(stderr, guard)
+		_ = json.NewEncoder(stdout).Encode(map[string]any{
+			"hookSpecificOutput": map[string]any{
+				"hookEventName":            "PreToolUse",
+				"permissionDecision":       "deny",
+				"permissionDecisionReason": guard,
+			},
+		})
 		return 0
 	}
 	if n := blocks(in.SessionID); n >= maxBlocks {

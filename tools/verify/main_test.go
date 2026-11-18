@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -427,4 +428,154 @@ func checkoutFork(t *testing.T, dir string, g func(args ...string) string) {
 	}
 	g("fetch", "-q", fork, "work")
 	g("checkout", "-q", "-b", "pr", "FETCH_HEAD")
+}
+
+func TestGuardReason(t *testing.T) {
+	t.Setenv("CI", "")
+	root := t.TempDir()
+	gr := func(cmd, sub string) string {
+		return guardReason(cmd, func() (string, string, bool) { return root, filepath.Join(root, sub), true })
+	}
+	deny := []string{
+		`gh pr create --title x`,
+		`gh.exe pr create --title x`,
+		`gh pr merge 5 --squash`,
+		`gh pr ready 5`,
+		`gh issue comment 3 --body hi`,
+		`gh issue delete 3`,
+		`gh release create v1`,
+		`gh release upload v1 f.zip`,
+		`gh repo edit --visibility public`,
+		`gh pr create -R egoist/gorex`,
+		`gh pr create -R EGOIST/Other`,
+		`gh pr view 1 -R egoist/gorex`,
+		`gh pr comment 5 --body "pass -R si-mods/gorex"`,
+		"gh pr merge 5 \\\n  --squash",
+		`git push https://github.com/egoist/gorex main`,
+		`git remote add up git@github.com:egoist/gorex.git`,
+		`git push origin x && gh pr create --body "a; b"`,
+		`go test ./...`,
+		`go test ./internal/...`,
+		`go test -v`,
+		`go test .`,
+		`go test -count=1 -timeout 5m ./...`,
+		`go test -cpuprofile cpu.out ./...`,
+		`cd x && go test ./internal/foo; go test ./...`,
+		`FOO=1 go test`,
+		`go run ./tools/verify -full`,
+		`go test ./... # then ssh host`,
+		`ssh host true; go test ./...`,
+		"go test ./... `\n -v",
+	}
+	for _, c := range deny {
+		if gr(c, ".") == "" {
+			t.Errorf("not denied: %q", c)
+		}
+	}
+	// Directory-dependent cases.
+	for _, c := range []struct{ cmd, sub string }{
+		{`go test ./...`, "internal"},
+		{`go test .`, "."},
+		{`go test ./internal/...`, "."},
+		{`go test ./tools/...`, "."},
+	} {
+		if gr(c.cmd, c.sub) == "" {
+			t.Errorf("not denied in %s: %q", c.sub, c.cmd)
+		}
+	}
+	allow := []string{
+		`gh pr create -R si-mods/gorex --title x`,
+		`gh pr create --title "a; b" --repo si-mods/gorex`,
+		`gh pr merge 5 --repo=si-mods/gorex`,
+		`gh pr merge 5 -R https://github.com/si-mods/gorex`,
+		`gh pr create -R si-mods/mygo --title x`,
+		`gh pr comment 12 --repo si-mods/mygo`,
+		"gh pr merge 5 \\\n  --repo si-mods/gorex --squash",
+		"gh pr merge 5 `\n -R si-mods/gorex --squash",
+		`gh pr view 5`,
+		`gh pr list`,
+		`gh pr checks 5`,
+		`gh pr diff 5`,
+		`gh run list`,
+		`gh api repos/si-mods/gorex/pulls`,
+		`git commit -m "doc: run go test ./... in CI, not egoist/gorex"`,
+		"git commit -F - <<'EOF'\nfix: x\n\ngo test ./... now runs in CI\nEOF",
+		"git commit -F - <<-EOF\n\tgh pr create\n\tEOF\nls",
+		`go test ./internal/foo`,
+		`go test ./internal/foo -run X`,
+		`go test . -run TestX`,
+		`go test -run TestX`,
+		`go test -count 1 ./internal/foo`,
+		`go test ./... -run X`,
+		`go test ./internal/rex/...`,
+		`go test -C internal/rex`,
+		`go test -C internal/rex ./...`,
+		`go vet ./...`,
+		`go build ./...`,
+		`go run ./tools/verify`,
+		`GOREX_HEAVY_TESTS=1 go test ./...`,
+		`$env:GOREX_HEAVY_TESTS=1; go test ./...`,
+		`ssh alice-mac "cd gorex && go test ./..."`,
+		`ssh alice-mac go test ./...`,
+		`ls`,
+	}
+	for _, c := range allow {
+		if r := gr(c, "."); r != "" {
+			t.Errorf("denied %q: %s", c, r)
+		}
+	}
+	for _, c := range []struct{ cmd, sub string }{
+		{`go test .`, "internal/rex"},
+		{`go test ./...`, "internal/rex"},
+		{`go test`, "internal/rex"},
+		{`go test ./... -run X`, "."},
+	} {
+		if r := gr(c.cmd, c.sub); r != "" {
+			t.Errorf("denied in %s: %q: %s", c.sub, c.cmd, r)
+		}
+	}
+	t.Setenv("CI", "1")
+	if r := gr(`go test ./...`, "."); r != "" {
+		t.Errorf("CI should allow: %s", r)
+	}
+	if gr(`gh pr create`, ".") == "" {
+		t.Error("CI must not lift the gh guard")
+	}
+	if guardReason(`gh pr create`, func() (string, string, bool) { return "", "", false }) != "" {
+		t.Error("non-GoRex target must pass")
+	}
+}
+
+func TestHookGuards(t *testing.T) {
+	t.Setenv("CI", "")
+	run := func(cwd, cmd string) string {
+		sid := "test-guard"
+		setBlocks(sid, 0)
+		in := `{"session_id":"` + sid + `","cwd":` + quote(cwd) + `,"tool_name":"Bash","tool_input":{"command":` + strconv.Quote(cmd) + `}}`
+		var outb bytes.Buffer
+		if code := hookMain(strings.NewReader(in), &bytes.Buffer{}, &outb); code != 0 {
+			t.Fatalf("exit %d", code)
+		}
+		if blocks(sid) != 0 {
+			t.Errorf("guard counted as a block: %s", cmd)
+		}
+		return outb.String()
+	}
+	gorex := repoDirForTest(t)
+	for _, c := range []string{"gh pr create --title x", "go test ./...", "go run ./tools/verify -full"} {
+		out := run(gorex, c)
+		if !strings.Contains(out, `"permissionDecision":"deny"`) || strings.Contains(out, "tools/verify blocked") {
+			t.Errorf("%s: %s", c, out)
+		}
+	}
+	if out := run(gorex, "go test ./internal/foo -run X"); out != "" {
+		t.Errorf("allowed command produced %s", out)
+	}
+	if out := run(t.TempDir(), "gh pr create && go test ./..."); out != "" {
+		t.Errorf("non-GoRex cwd denied: %s", out)
+	}
+	t.Setenv("GOREX_VERIFY", "off")
+	if out := run(gorex, "go test ./..."); out != "" {
+		t.Errorf("GOREX_VERIFY=off denied: %s", out)
+	}
 }
