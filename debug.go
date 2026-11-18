@@ -503,10 +503,8 @@ func (a *App) debug(dir, line string) {
 			}
 		})
 	case "size":
-		var w, h int
-		if _, err := fmtSscan(arg, &w, &h); err == nil {
-			win.SetSize(w, h)
-		}
+		cw, ch, _ := strings.Cut(arg, " ")
+		win.SetSize(atoi(cw), atoi(ch))
 	default:
 		for _, cmd := range commands {
 			if strings.EqualFold(strings.ReplaceAll(cmd.English(), " ", "-"), verb) {
@@ -563,10 +561,4 @@ func atoi(s string) int {
 		}
 	}
 	return n
-}
-
-func fmtSscan(s string, w, h *int) (int, error) {
-	a, b, _ := strings.Cut(s, " ")
-	*w, *h = atoi(a), atoi(b)
-	return 2, nil
 }

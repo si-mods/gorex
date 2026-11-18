@@ -10,6 +10,8 @@ import (
 
 	"github.com/egoist/mygo/plugins/terminal"
 	"github.com/egoist/mygo/ui"
+
+	"gorex/internal/rex"
 )
 
 // ghosttyConfig is what GoRex takes from the user's Ghostty configuration.
@@ -178,15 +180,10 @@ func parseBool(s string) bool {
 // parseColor reads "#rgb" and "#rrggbb", with or without the #, and nil for
 // other forms.
 func parseColor(s string) *ui.Color {
-	h := strings.TrimPrefix(s, "#")
-	if len(h) != 3 && len(h) != 6 {
-		return nil
+	if c, ok := rex.ParseHexColor(s); ok {
+		return &c
 	}
-	if _, err := strconv.ParseUint(h, 16, 32); err != nil {
-		return nil
-	}
-	c := ui.Hex("#" + h)
-	return &c
+	return nil
 }
 
 // set applies one assignment, and ignores keys GoRex has no use for.
