@@ -298,9 +298,11 @@ A project's context menu:
 - A project row is flush with the header: the project's color dot, its
   name, and its tab count on the right. Its folder shows in its tooltip
   and, with the tabs on top, in the title bar (`host › project`). A click
-  shows the project; on the project shown, or on the dot of any, it
-  expands or collapses its tabs, which come one step in, joined to it by
-  a thin guide line. Its `+` (shown on the row under the pointer and on
+  shows the project and expands it; on the project shown, or on the dot
+  of any, it expands or collapses that project's tabs alone, which come
+  one step in, joined to it by a thin guide line. Each project keeps its
+  own state, per client (`sidebarOpen`); choosing another project, in
+  any way, closes none. Its `+` (shown on the row under the pointer and on
   the chosen project's) opens a tab in the folder; ⌘T does the same while
   the project is chosen. Its context menu: New Tab, Rename, Color, Move to
   Space, Reveal Folder (this host only), Close Project.

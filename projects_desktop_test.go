@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -564,5 +565,51 @@ func TestRefusedAdoptionWaits(t *testing.T) {
 	st.retryAdoptions(h)
 	if st.adopting["ad1"] || len(st.adoptRefused) != 0 {
 		t.Errorf("a new connection does not let it go again: %v %v", st.adopting, st.adoptRefused)
+	}
+}
+
+// TestProjectsOpenIndependently: each project opens and closes on its own,
+// choosing one never closes another, and the states outlive a restart.
+func TestProjectsOpenIndependently(t *testing.T) {
+	a, tt := newTestApp(t)
+	old := prefs
+	t.Cleanup(func() { prefs = old })
+	prefs = settings{TabPlacement: "left", Animation: "off"}
+	space := ""
+	ida := clientCommand(a, rex.LayoutCommand{Op: "project.create", Dir: appTempDir(t, a), Name: "alpha", SpaceName: &space}).Space
+	idb := clientCommand(a, rex.LayoutCommand{Op: "project.create", Dir: appTempDir(t, a), Name: "bravo", SpaceName: &space}).Space
+	caughtUp(t, a, tt)
+	wa, wb := a.st.byID(ida), a.st.byID(idb)
+	ka, kb := openKey(wa.host, ida), openKey(wb.host, idb)
+	ws := map[string]*Workspace{ka: wa, kb: wb}
+	open := func(k string) bool { return rowOpen(k, ws[k] == a.ws) }
+
+	a.showWorkspace(wa)
+	a.showWorkspace(wb)
+	tt.Frame()
+	if !open(ka) || !open(kb) {
+		t.Fatalf("alpha open %v, bravo open %v after choosing both; want both", open(ka), open(kb))
+	}
+	setRowOpen(ka, false)
+	if open(ka) || !open(kb) {
+		t.Fatalf("after closing alpha: alpha %v, bravo %v", open(ka), open(kb))
+	}
+	// A restart reads the file back.
+	b, err := os.ReadFile(settingsPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	prefs = settings{}
+	if err := json.Unmarshal(b, &prefs); err != nil {
+		t.Fatal(err)
+	}
+	if open(ka) || !open(kb) {
+		t.Fatalf("after a restart: alpha %v, bravo %v", open(ka), open(kb))
+	}
+	// Choosing alpha, as the picker does, leaves bravo as it was.
+	a.showWorkspace(wa)
+	tt.Frame()
+	if !open(kb) {
+		t.Error("choosing alpha closed bravo")
 	}
 }

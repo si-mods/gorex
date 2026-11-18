@@ -40,6 +40,9 @@ func rowOpen(key string, def bool) bool {
 	return def
 }
 
+// hasRowOpen tells whether the user, or a project left, set key's row.
+func hasRowOpen(key string) bool { _, ok := prefs.Open[key]; return ok }
+
 // setRowOpen opens or closes the row of key, for this client.
 func setRowOpen(key string, open bool) {
 	if prefs.Open == nil {
@@ -305,6 +308,9 @@ func (a *App) projectRow(c *ui.Context, k *colors, w *Workspace, reserve float32
 	case toggled:
 		setRowOpen(key, !open)
 	case row.Clicked() && !offline && !shown:
+		// The click opens the project's tabs, and no other project's
+		// closes.
+		setRowOpen(key, true)
 		a.later(c, func() { a.showWorkspace(w) })
 	case row.Clicked() && shown:
 		setRowOpen(key, !open)
