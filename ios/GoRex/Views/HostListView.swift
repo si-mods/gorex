@@ -36,6 +36,11 @@ struct HostListView: View {
     @State private var projectFailure: ProjectFailure?
     /// The project whose new window is on its way.
     @State private var openingProject: String?
+    /// The project whose Delete Project asks first.
+    @State private var deletingSpace: CentralSpace?
+    @Environment(\.dynamicTypeSize) private var typeSize
+    /// The project header's folder icon's room, which grows with the text.
+    @ScaledMetric(relativeTo: .title3) private var iconWidth: CGFloat = 28
     @AppStorage(Grouping.key) private var grouping = Grouping.standard
     /// The space chosen, by its centralized `CentralSpace.id` or `"__unassigned__"`.
     @AppStorage("space") private var chosen = ""
@@ -122,6 +127,21 @@ struct HostListView: View {
             }
         } message: { f in
             Text(f.why)
+        }
+        // Deleting a project closes none of its windows: they stay open on
+        // their hosts and show under Unassigned.
+        .alert("Delete Project", isPresented: Binding { deletingSpace != nil } set: { if !$0 { deletingSpace = nil } }, presenting: deletingSpace) { s in
+            Button("Cancel", role: .cancel) {}
+            Button("Delete", role: .destructive) {
+                spaceStore.deleteSpace(s.id)
+                if chosen == s.id { chosen = "" }
+            }
+        } message: { s in
+            switch windowCount(s.id) {
+            case 0: Text("Delete \(s.name)? No window is in it.")
+            case 1: Text("Delete \(s.name)? Its window stays open, unassigned.")
+            case let n: Text("Delete \(s.name)? Its \(n) windows stay open, unassigned.")
+            }
         }
         .alert("Rename Project", isPresented: Binding { renamingSpace != nil } set: { if !$0 { renamingSpace = nil } }, presenting: renamingSpace) { s in
             TextField(s.name, text: $spaceName)
@@ -275,7 +295,25 @@ struct HostListView: View {
         }
     }
 
+    /// The projects, scrolling, then New Project, which stays in view
+    /// however many or long the names: the strip runs to the page's edge on
+    /// the left and fades out under the button on the right.
     private func strip(_ all: [CentralSpace], hasUnassigned: Bool, selection: SpaceSelection?) -> some View {
+        HStack(spacing: 4) {
+            projects(all, hasUnassigned: hasUnassigned, selection: selection)
+            Button { projectSheet = .new } label: {
+                Image(systemName: "plus")
+                    .font(.subheadline.weight(.semibold))
+                    .frame(width: 42, height: 42)
+                    .glassEffect(.regular.interactive(), in: .circle)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("New Project")
+        }
+        .padding(.leading, -20)
+    }
+
+    private func projects(_ all: [CentralSpace], hasUnassigned: Bool, selection: SpaceSelection?) -> some View {
         ScrollViewReader { proxy in
             ScrollView(.horizontal) {
                 GlassEffectContainer(spacing: 8) {
@@ -285,9 +323,10 @@ struct HostListView: View {
                             let isChosen = sel == selection
                             Button { withAnimation(.snappy) { chosen = s.id } } label: {
                                 // The folder under the name, as the
-                                // desktop's sidebar header shows it.
+                                // desktop's sidebar header shows it; a
+                                // long name ends in an ellipsis.
                                 VStack(spacing: 0) {
-                                    Text(verbatim: s.name).lineLimit(1)
+                                    Text(verbatim: s.name).lineLimit(1).frame(maxWidth: 180)
                                     if let f = s.folder {
                                         Text(verbatim: ProjectWindow.short(f))
                                             .font(.caption2)
@@ -316,10 +355,7 @@ struct HostListView: View {
                                 if s.folder != nil {
                                     Button("Remove Folder", systemImage: "folder.badge.minus") { removeFolder(s.id) }
                                 }
-                                Button("Delete Project", systemImage: "trash", role: .destructive) {
-                                    spaceStore.deleteSpace(s.id)
-                                    if chosen == s.id { chosen = "" }
-                                }
+                                Button("Delete Project", systemImage: "trash", role: .destructive) { deletingSpace = s }
                             }
                             .id(sel)
                         }
@@ -338,19 +374,22 @@ struct HostListView: View {
                             .accessibilityAddTraits(isChosen ? .isSelected : [])
                             .id(sel)
                         }
-                        Button { projectSheet = .new } label: {
-                            Image(systemName: "plus")
-                                .frame(width: 42, height: 42)
-                                .glassEffect(.regular.interactive(), in: .circle)
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel("New Project")
                     }
                     .font(.subheadline.weight(.semibold))
+                    // Room for the glass to swell as it is pressed.
+                    .padding(.vertical, 8)
                 }
             }
             .scrollIndicators(.hidden)
-            .scrollClipDisabled()
+            .contentMargins(.leading, 20, for: .scrollContent)
+            .contentMargins(.trailing, 12, for: .scrollContent)
+            .mask {
+                HStack(spacing: 0) {
+                    Color.black
+                    LinearGradient(colors: [.black, .clear], startPoint: .leading, endPoint: .trailing).frame(width: 12)
+                }
+            }
+            .padding(.vertical, -8)
             .onChange(of: selection, initial: true) { old, p in
                 guard let p else { return }
                 if old == p { proxy.scrollTo(p) } else { withAnimation { proxy.scrollTo(p) } }
@@ -358,59 +397,141 @@ struct HostListView: View {
         }
     }
 
-    /// The chosen project's folder and home host, under the strip, with its
-    /// New Window; a project with no folder offers to choose one.
+    /// The chosen project's folder and project host, under the strip, with
+    /// its New Window; a project with no folder offers to choose one too.
     private func projectHeader(_ s: CentralSpace) -> some View {
+        Group {
+            // The buttons go on a line of their own under the folder at the
+            // accessibility text sizes, with no folder, where two follow,
+            // and where the folder and its host would not fit beside New
+            // Window, as in an iPad's sidebar.
+            if s.folder == nil || typeSize.isAccessibilitySize {
+                stackedHeader(s)
+            } else {
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 12) {
+                        headerInfo(s, stacked: false).fixedSize(horizontal: true, vertical: false)
+                        Spacer(minLength: 8)
+                        newWindowButton(s)
+                    }
+                    stackedHeader(s)
+                }
+            }
+        }
+        .padding(.horizontal, 4)
+        .padding(.top, -14)
+    }
+
+    private func stackedHeader(_ s: CentralSpace) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            headerInfo(s, stacked: true)
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 10) { headerActions(s) }
+                VStack(alignment: .leading, spacing: 10) { headerActions(s) }
+            }
+        }
+    }
+
+    /// The header's folder icon, the folder and its project host, or why
+    /// there is none.
+    private func headerInfo(_ s: CentralSpace, stacked: Bool) -> some View {
         HStack(spacing: 12) {
             Image(systemName: s.folder == nil ? "folder.badge.questionmark" : "folder")
                 .font(.title3)
                 .foregroundStyle(.secondary)
-                .frame(width: 28)
+                .frame(width: iconWidth)
             VStack(alignment: .leading, spacing: 2) {
                 if let f = s.folder {
                     Text(verbatim: ProjectWindow.short(f))
                         .font(.subheadline.monospaced())
-                        .lineLimit(1)
+                        .lineLimit(stacked ? 3 : 1)
                         .truncationMode(.head)
-                    Text(verbatim: homeName(s) ?? String(localized: "Home host not added"))
+                    Text(verbatim: homeName(s) ?? String(localized: "Project host not added"))
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                        .lineLimit(1)
+                        .lineLimit(stacked ? 2 : 1)
                 } else {
                     Text("No Folder").font(.subheadline)
                     Text("Choose one to open new windows in it.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                        .lineLimit(2)
+                        .lineLimit(3)
                 }
-            }
-            Spacer(minLength: 8)
-            if s.folder != nil {
-                Button { newProjectWindow(s) } label: {
-                    Group {
-                        if openingProject == s.id {
-                            ProgressView()
-                        } else {
-                            HStack(spacing: 6) {
-                                Image(systemName: "plus")
-                                Text("New Window")
-                            }
-                        }
-                    }
-                    .font(.subheadline.weight(.semibold))
-                    .lineLimit(1)
-                    .fixedSize()
-                }
-                .buttonStyle(.glass)
-                .disabled(openingProject == s.id)
-            } else {
-                Button("Choose Folder…") { projectSheet = .change(s.id) }
-                    .font(.subheadline.weight(.semibold))
-                    .buttonStyle(.glass)
             }
         }
-        .padding(.horizontal, 4)
-        .padding(.top, -14)
+    }
+
+    /// The header's buttons on their own line: New Window, and with no
+    /// folder, Choose Folder… too.
+    @ViewBuilder private func headerActions(_ s: CentralSpace) -> some View {
+        newWindowButton(s)
+        if s.folder == nil {
+            Button("Choose Folder…") { projectSheet = .change(s.id) }
+                .font(.subheadline.weight(.semibold))
+                .buttonStyle(.glass)
+        }
+    }
+
+    /// New Window of a project: on its project host, in its folder; with
+    /// no folder, on the host picked, when more than one is online.
+    @ViewBuilder private func newWindowButton(_ s: CentralSpace) -> some View {
+        let label = Group {
+            if openingProject == s.id {
+                ProgressView()
+            } else {
+                Label("New Window", systemImage: "plus")
+            }
+        }
+        .font(.subheadline.weight(.semibold))
+        .lineLimit(1)
+        .fixedSize()
+        let online = store.hosts.filter { $0.status == .online }
+        if s.folder == nil, online.count > 1 {
+            Menu {
+                Section("Open On") {
+                    ForEach(online) { h in
+                        Button(h.config.name, systemImage: h.config.symbol) { newLooseWindow(s, on: h) }
+                    }
+                }
+            } label: { label }
+            .buttonStyle(.glass)
+            .disabled(openingProject == s.id)
+        } else {
+            Button {
+                if s.folder != nil {
+                    newProjectWindow(s)
+                } else if let h = online.first {
+                    newLooseWindow(s, on: h)
+                }
+            } label: { label }
+            .buttonStyle(.glass)
+            .disabled(openingProject == s.id || (s.folder == nil && online.isEmpty))
+        }
+    }
+
+    /// Opens a window of a project with no folder on a host, as the host's
+    /// New Window does: in the host's session of the project, else a new
+    /// one named after it.
+    private func newLooseWindow(_ s: CentralSpace, on host: Host) {
+        openProject(s, on: host) {
+            let existing = host.sessions.first {
+                $0.id != SpaceStore.desktopTerminalsSessionID
+                    && $0.label.trimmingCharacters(in: .whitespaces).caseInsensitiveCompare(s.name) == .orderedSame
+            }
+            if let existing {
+                return try await host.newWindow(in: existing.id).map { (existing.id, $0) }
+            }
+            return try await host.newSession(label: s.name)
+        }
+    }
+
+    /// The number of windows of a project on the hosts connected.
+    private func windowCount(_ id: String) -> Int {
+        store.hosts.reduce(0) { n, h in
+            n + h.sessions.reduce(0) { m, session in
+                m + (session.view?.windows ?? []).filter { spaceStore.contains(spaceID: id, machine: h.spaceMachineKey, window: $0) }.count
+            }
+        }
     }
 
     /// The name of a project's home host, nil when no host of its machine
@@ -439,9 +560,9 @@ struct HostListView: View {
         case .noFolder:
             projectSheet = .change(s.id)
         case .unknownHost:
-            projectFailure = .init(title: cant, why: String(localized: "The home host of \(s.name) is not added on this device. Add it in Settings, or change the project's folder."), changeFolder: s.id)
+            projectFailure = .init(title: cant, why: String(localized: "The project host of \(s.name) is not added on this device. Add it in Settings, or change the project's folder."), changeFolder: s.id)
         case .offline(_, let name):
-            projectFailure = .init(title: cant, why: String(localized: "\(name), the home host of \(s.name), is offline. New windows of the project open only there."), changeFolder: nil)
+            projectFailure = .init(title: cant, why: String(localized: "\(name), the project host of \(s.name), is offline. New windows of the project open only there."), changeFolder: nil)
         case .window(let id, let session, let cwd):
             guard let host = store.host(id) else { return }
             openProject(s, on: host) {
@@ -691,8 +812,15 @@ private struct HostSection: View {
                 Spacer()
                 // One + per card: the host's new session is in its menu.
                 Menu {
-                    Button("New Session", systemImage: "plus.rectangle.on.rectangle") { newSession() }
-                        .disabled(creating)
+                    // In a project, a window of the project, which the
+                    // list names a window as everywhere else.
+                    if case .space = space {
+                        Button("New Window", systemImage: "plus") { newSession() }
+                            .disabled(creating)
+                    } else {
+                        Button("New Session", systemImage: "plus.rectangle.on.rectangle") { newSession() }
+                            .disabled(creating)
+                    }
                     Button("Reconnect", systemImage: "arrow.clockwise") { host.resume() }
                     Button("Remove", systemImage: "trash", role: .destructive) { store.remove(host.id) }
                 } label: {
@@ -733,11 +861,11 @@ private struct HostSection: View {
         } message: {
             Text(failure?.why ?? "")
         }
-        .alert("Rename Tab", isPresented: Binding { renaming != nil } set: { if !$0 { renaming = nil } }, presenting: renaming) { r in
+        .alert("Rename Window", isPresented: Binding { renaming != nil } set: { if !$0 { renaming = nil } }, presenting: renaming) { r in
             TextField(r.title, text: $name)
             Button("Cancel", role: .cancel) {}
             Button("Save") {
-                change("Can't Rename the Tab") { try await host.renameWindow(r.window, in: r.session, to: name) }
+                change("Can't Rename the Window") { try await host.renameWindow(r.window, in: r.session, to: name) }
             }
         }
     }
@@ -837,13 +965,13 @@ private struct HostSection: View {
         let id = w.window_id
         let i = shown.firstIndex(of: id) ?? 0
         // The title changes while the menu is open: it's read on the tap.
-        Button("Rename Tab…", systemImage: "pencil") {
+        Button("Rename Window…", systemImage: "pencil") {
             name = w.name ?? ""
             renaming = (s.id, id, host.title(w))
         }
         if w.name != nil {
             Button("Reset Name", systemImage: "arrow.uturn.backward") {
-                change("Can't Rename the Tab") { try await host.renameWindow(id, in: s.id, to: "") }
+                change("Can't Rename the Window") { try await host.renameWindow(id, in: s.id, to: "") }
             }
         }
         Divider()
@@ -882,12 +1010,12 @@ private struct HostSection: View {
             }
         }
         Divider()
-        Button("New Tab", systemImage: "plus") { newWindow(s) }
-        Button("Close Tab", systemImage: "xmark", role: .destructive) {
-            change("Can't Close the Tab") { try await host.closeWindow(id, in: s.id) }
+        Button("New Window", systemImage: "plus") { newWindow(s) }
+        Button("Close Window", systemImage: "xmark", role: .destructive) {
+            change("Can't Close the Window") { try await host.closeWindow(id, in: s.id) }
         }
-        Button("Close Other Tabs", systemImage: "xmark.square", role: .destructive) {
-            change("Can't Close the Tab") {
+        Button("Close Other Windows", systemImage: "xmark.square", role: .destructive) {
+            change("Can't Close the Window") {
                 for o in shown where o != id { try await host.closeWindow(o, in: s.id) }
             }
         }
@@ -897,7 +1025,7 @@ private struct HostSection: View {
     /// Moves a window of a session to the place of another row shown.
     private func move(_ id: String, in s: Host.Session, onto target: String, shown: [String]) {
         let before = Host.before(id, onto: target, shown: shown, all: (s.view?.windows ?? []).map(\.window_id))
-        change("Can't Move the Tab") { [host] in
+        change("Can't Move the Window") { [host] in
             do { try await host.moveWindow(id, in: s.id, before: before) } catch {
                 // The dropped row goes back to the server's order.
                 if drag?.dropped == true { drag = nil }
@@ -1087,7 +1215,7 @@ private struct SessionMenu: ViewModifier {
         content
             .contextMenu {
                 if let open {
-                    Button("New Tab", systemImage: "plus") {
+                    Button("New Window", systemImage: "plus") {
                         change("Can't Open a New Window") { [host, session] in
                             if let b = try await host.newWindow(in: session.id) {
                                 open(TerminalTarget(host: host.id, session: session.id, block: b, title: session.label))

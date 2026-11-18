@@ -216,6 +216,44 @@ nonisolated final class HostTests: XCTestCase {
         XCTAssertEqual(fired.names, ["a", "b"])
     }
 
+    /// A window with neither a name nor a title takes its project's
+    /// folder's name, else its program's, never the server's "Window <ID>".
+    @MainActor func testUntitledWindowTakesFolderOrProgramNotItsID() async throws {
+        let inFolder = try await untitledTitle(dir: "/tmp/demo/acme-api")
+        XCTAssertEqual(inFolder, "acme-api")
+        let loose = try await untitledTitle(dir: nil)
+        XCTAssertEqual(loose, "zsh")
+    }
+
+    /// The title of a window with the server's default label, no name and
+    /// no terminal title, in a session of a project with dir as its folder.
+    @MainActor private func untitledTitle(dir: String?) async throws -> String {
+        let rex = try FakeRex()
+        defer { rex.stop() }
+        var session: [String: Any] = ["session_id": "p", "label": "acme-api"]
+        var view: [String: Any] = ["revision": 1, "session_id": "p", "label": "acme-api", "windows": [
+            ["window_id": "window:0123abcd4567ef89", "label": "Window 4567ef89", "layers": [["blocks": [["block_id": "b"]]]]],
+        ]]
+        if let dir {
+            session["project"] = ["home_machine": "m", "dir": dir]
+            view["project"] = ["home_machine": "m", "dir": dir]
+        }
+        rex.respond = { [session, view] m, _ in
+            switch m {
+            case "session.bootstrap":
+                ["attach_all": ["sessions": [session]], "selected_session": ["view": view]]
+            case "com.superlogical.terminal.process":
+                ["foreground": ["name": "zsh"]]
+            default: [:]
+            }
+        }
+        let h = Host(HostConfig(name: "test", url: try await rex.url()))
+        h.connect()
+        defer { h.stop() }
+        await until("read") { h.blocks["b"]?.program == "zsh" && h.sessions.first?.view != nil }
+        return h.title(try XCTUnwrap(h.sessions.first?.view?.windows?.first))
+    }
+
     /// A reconnect, as after the background, keeps the titles and programs
     /// it had, and reads them again in place: nothing blanks while the
     /// reads run, and what changed while away arrives.

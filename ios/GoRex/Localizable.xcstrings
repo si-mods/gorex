@@ -12,12 +12,12 @@
         }
       }
     },
-    "%@, the home host of %@, is offline. New windows of the project open only there.": {
+    "%@, the project host of %@, is offline. New windows of the project open only there.": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "%2$@ 的主目录所在主机 %1$@ 已离线。项目的新窗口只会在那台主机上打开。"
+            "value": "%2$@ 的项目所在主机 %1$@ 已离线。项目的新窗口只会在那台主机上打开。"
           }
         }
       }
@@ -246,12 +246,12 @@
         }
       }
     },
-    "Can't Close the Tab": {
+    "Can't Close the Window": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "无法关闭标签页"
+            "value": "无法关闭窗口"
           }
         }
       }
@@ -266,12 +266,12 @@
         }
       }
     },
-    "Can't Move the Tab": {
+    "Can't Move the Window": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "无法移动标签页"
+            "value": "无法移动窗口"
           }
         }
       }
@@ -376,6 +376,36 @@
         }
       }
     },
+    "Delete %@? Its %lld windows stay open, unassigned.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "删除项目 %1$@？其中的 %2$lld 个窗口保持打开，归入「未分组」。"
+          }
+        }
+      }
+    },
+    "Delete %@? Its window stays open, unassigned.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "删除项目 %@？其中的窗口保持打开，归入「未分组」。"
+          }
+        }
+      }
+    },
+    "Delete %@? No window is in it.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "删除项目 %@？其中没有窗口。"
+          }
+        }
+      }
+    },
     "Folder": {
       "localizations": {
         "zh-Hans": {
@@ -406,12 +436,22 @@
         }
       }
     },
-    "Home host not added": {
+    "Open On": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "未添加主目录所在主机"
+            "value": "打开于"
+          }
+        }
+      }
+    },
+    "Project host not added": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "未添加项目所在主机"
           }
         }
       }
@@ -506,6 +546,16 @@
         }
       }
     },
+    "Shell": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Shell"
+          }
+        }
+      }
+    },
     "The link you tapped names a file on %@ that its text may not show:": {
       "localizations": {
         "zh-Hans": {
@@ -586,12 +636,12 @@
         }
       }
     },
-    "Can't Rename the Tab": {
+    "Can't Rename the Window": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "无法重命名标签页"
+            "value": "无法重命名窗口"
           }
         }
       }
@@ -656,22 +706,22 @@
         }
       }
     },
-    "Close Other Tabs": {
+    "Close Other Windows": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "关闭其他标签页"
+            "value": "关闭其他窗口"
           }
         }
       }
     },
-    "Close Tab": {
+    "Close Window": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "关闭标签页"
+            "value": "关闭窗口"
           }
         }
       }
@@ -1136,16 +1186,6 @@
         }
       }
     },
-    "New Tab": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "新建标签页"
-          }
-        }
-      }
-    },
     "New Window": {
       "localizations": {
         "zh-Hans": {
@@ -1366,22 +1406,22 @@
         }
       }
     },
-    "Rename Tab": {
+    "Rename Window": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "重命名标签页"
+            "value": "重命名窗口"
           }
         }
       }
     },
-    "Rename Tab…": {
+    "Rename Window…": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "重命名标签页…"
+            "value": "重命名窗口…"
           }
         }
       }
@@ -1606,12 +1646,12 @@
         }
       }
     },
-    "The home host of %@ is not added on this device. Add it in Settings, or change the project's folder.": {
+    "The project host of %@ is not added on this device. Add it in Settings, or change the project's folder.": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "这台设备未添加 %@ 的主目录所在主机。请在设置中添加它，或更改项目的文件夹。"
+            "value": "这台设备未添加 %@ 的项目所在主机。请在设置中添加它，或更改项目的文件夹。"
           }
         }
       }
@@ -1726,12 +1766,12 @@
         }
       }
     },
-    "Type a path and press Go, or open a folder below.": {
+    "Type a path and press Go, or tap a folder below to open it.": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "输入路径后按「前往」，或打开下方的文件夹。"
+            "value": "输入路径后按「前往」，或轻点下方的文件夹将其打开。"
           }
         }
       }
@@ -1802,6 +1842,36 @@
           "stringUnit": {
             "state": "translated",
             "value": "已上传，未粘贴"
+          }
+        }
+      }
+    },
+    "Use": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "使用"
+          }
+        }
+      }
+    },
+    "Use This Folder": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "使用此文件夹"
+          }
+        }
+      }
+    },
+    "Use This Folder: %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "使用此文件夹：%@"
           }
         }
       }
@@ -2802,12 +2872,12 @@
         }
       }
     },
-    "Rename Tab, Reset Name, Move Up, Move Down, New Tab, Close Tab and Close Other Tabs, as on the desktop.": {
+    "Rename Window, Reset Name, Move Up, Move Down, New Window, Close Window and Close Other Windows.": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "重命名标签页、重置名称、上移、下移、新建标签页、关闭标签页和关闭其他标签页，与桌面版一致。"
+            "value": "重命名窗口、重置名称、上移、下移、新建窗口、关闭窗口和关闭其他窗口。"
           }
         }
       }
@@ -3132,12 +3202,12 @@
         }
       }
     },
-    "The title shows the window's program and title. Tap it for the session's windows, New Tab and Switch Session.": {
+    "The title shows the window's program and title. Tap it for the session's windows, New Window and Switch Session.": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "标题显示窗口的程序和标题。轻点可查看会话的窗口、新建标签页和切换会话。"
+            "value": "标题显示窗口的程序和标题。轻点可查看会话的窗口、新建窗口和切换会话。"
           }
         }
       }
@@ -3282,12 +3352,12 @@
         }
       }
     },
-    "⌘T opens a tab, ⌘W closes it, ⌘O adds a file, ⇧⌘O a photo, ⌘K clears the screen and scrollback, and ⌘+, ⌘- and ⌘0 size the text. Hold ⌘ to see them.": {
+    "⌘T opens a window, ⌘W closes it, ⌘O adds a file, ⇧⌘O a photo, ⌘K clears the screen and scrollback, and ⌘+, ⌘- and ⌘0 size the text. Hold ⌘ to see them.": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "⌘T 新建标签页，⌘W 关闭，⌘O 添加文件，⇧⌘O 添加照片，⌘K 清除屏幕和回滚，⌘+、⌘- 和 ⌘0 调整字号。按住 ⌘ 可查看全部。"
+            "value": "⌘T 新建窗口，⌘W 关闭，⌘O 添加文件，⇧⌘O 添加照片，⌘K 清除屏幕和回滚，⌘+、⌘- 和 ⌘0 调整字号。按住 ⌘ 可查看全部。"
           }
         }
       }

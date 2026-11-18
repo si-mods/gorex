@@ -108,9 +108,13 @@ struct ProjectSheet: View {
             }
         } label: {
             HStack(spacing: 12) {
-                Image(systemName: h.config.symbol).foregroundStyle(.secondary).frame(width: 28)
-                Text(h.config.name).foregroundStyle(.primary)
-                Spacer()
+                // A label, whose icon keeps its room as the text grows.
+                Label {
+                    Text(h.config.name).foregroundStyle(.primary)
+                } icon: {
+                    Image(systemName: h.config.symbol).foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 8)
                 if h.status != .online {
                     Text("Offline").foregroundStyle(.secondary)
                 } else if !h.listsFolders {
@@ -166,7 +170,19 @@ struct FolderBrowser: View {
                     .submitLabel(.go)
                     .onSubmit { go(typed) }
             } footer: {
-                Text("Type a path and press Go, or open a folder below.")
+                Text("Type a path and press Go, or tap a folder below to open it.")
+            }
+            // What Choose takes: the folder open, not a row below it.
+            if let listing, listing.code == nil {
+                Section {
+                    Button { use(listing.path) } label: {
+                        Label {
+                            Text("Use This Folder: \(ProjectWindow.name(of: listing.path))")
+                        } icon: {
+                            Image(systemName: "checkmark.circle.fill")
+                        }
+                    }
+                }
             }
             if let failure {
                 Section {
@@ -183,6 +199,7 @@ struct FolderBrowser: View {
                 }
                 Section {
                     ForEach(listing.dirs, id: \.self) { d in
+                        // A tap opens the folder; a swipe or the menu uses it.
                         Button { go(listing.child(d)) } label: {
                             HStack {
                                 Label {
@@ -193,6 +210,14 @@ struct FolderBrowser: View {
                                 Spacer()
                                 Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(.gray)
                             }
+                        }
+                        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                            Button("Use", systemImage: "checkmark") { use(listing.child(d)) }
+                                // Blue: the accent is white in the dark scheme, as its icon is.
+                                .tint(.blue)
+                        }
+                        .contextMenu {
+                            Button("Use This Folder", systemImage: "checkmark.circle") { use(listing.child(d)) }
                         }
                     }
                     if listing.dirs.isEmpty, listing.code == nil {
@@ -213,8 +238,7 @@ struct FolderBrowser: View {
             ToolbarItem(placement: .confirmationAction) {
                 Button("Choose") {
                     guard let listing else { return }
-                    choose(listing.path)
-                    dismiss()
+                    use(listing.path)
                 }
                 .disabled(listing == nil || listing?.code != nil)
             }
@@ -226,6 +250,12 @@ struct FolderBrowser: View {
             }
         }
         .task { go(start) }
+    }
+
+    /// Takes a folder for the project, and goes back to the sheet.
+    private func use(_ path: String) {
+        choose(path)
+        dismiss()
     }
 
     private func go(_ path: String) {

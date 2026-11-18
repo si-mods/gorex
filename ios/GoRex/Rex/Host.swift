@@ -714,12 +714,14 @@ final class Host: Identifiable {
 
     /// A window's title, as the desktop names a tab: its name when it has
     /// one, else its focused pane's name, else its terminal's title, else
-    /// its label.
+    /// its project's folder's name, else its program, as the desktop names
+    /// a tab with none; never the server's "Window <ID>".
     func title(_ w: SessionView.Window) -> String {
-        w.name
-            ?? w.block.flatMap { paneTitle($0, in: w) }
-            ?? w.label
-            ?? ""
+        if let t = w.name ?? w.block.flatMap({ paneTitle($0, in: w) }) { return t }
+        let dir = sessions.first { $0.view?.windows?.contains { $0.window_id == w.window_id } == true }?.project?.dir
+        if let dir, !dir.isEmpty { return ProjectWindow.name(of: dir) }
+        if let p = w.block.flatMap({ blocks[$0]?.program }), !p.isEmpty { return p }
+        return String(localized: "Shell")
     }
 
     /// The record of blocks that most needs the user, as the desktop's dot

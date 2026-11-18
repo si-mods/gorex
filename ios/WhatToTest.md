@@ -40,6 +40,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - Spaces are Projects now. Tap + by the projects, pick a computer and browse to a folder: new windows of the project open there, and its folder shows under its name.
 - The Gallery now also finds images whose long paths a program like Claude Code wraps across lines, as on a Windows computer.
 - A file link a program made, whose text may not be the file's name, now asks first: the alert shows the computer and the file's full path. Plain paths still open with one tap.
+- Projects: + stays in view, the folder browser has Use This Folder, Delete Project asks first, a project without a folder gets New Window, and menus say window, not tab.
 
 ## zh-Hans
 
@@ -72,3 +73,4 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - 「空间」现在叫「项目」。点项目栏的 +，选一台电脑并浏览到一个文件夹：项目的新窗口都在这个文件夹中打开，项目名下方显示该文件夹。
 - 相册现在也能收到被 Claude Code 这类程序折成几行的长图片路径，例如 Windows 电脑上的截图路径。
 - 程序生成的文件链接，其文字未必是文件名，现在点按后会先询问：提示框显示电脑名和文件的完整路径。普通路径仍然点一下就打开。
+- 项目：+ 始终可见；文件夹浏览器新增「使用此文件夹」；删除项目会先确认；没有文件夹的项目也能新建窗口；菜单统一称「窗口」，不再叫「标签页」。

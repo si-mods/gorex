@@ -36,7 +36,7 @@ struct SessionSheet: View {
                         dismiss()
                         newTab()
                     } label: {
-                        Row(icon: "plus", title: Text("New Tab"), divider: false) {}
+                        Row(icon: "plus", title: Text("New Window"), divider: false) {}
                     }
                     .background(.fill.quaternary, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
                     NavigationLink {
