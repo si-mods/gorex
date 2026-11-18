@@ -642,6 +642,7 @@ image reaches a program as a file it opens, not as clipboard data.
 |---|---|
 | `main.go` | the app, its window, and `-server` |
 | `state.go` | tabs, the tree of splits, panes, saving and restoring the layout |
+| `app.go`, `float.go`, `browser.go` | the window's state and its posted changes; floating panes and how a throw comes to rest; the browser pane and its URLs |
 | `workspace.go`, `workspaceview.go`, `space.go` | projects of tabs (workspaces in the code) and the windows showing them; the project chip, its list, Close Project's question, and the palette of project colors |
 | `view.go`, `tabs.go`, `sidebar.go`, `host.go`, `commands.go` | the interface: title bar, tabs and their sidebar, panes, host popover, menus and palette |
 | `programs.go` | how programs show: names, glyphs, tile colors |
