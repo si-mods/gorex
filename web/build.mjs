@@ -36,7 +36,7 @@
 // ~/.cache/gorex-web. See docs/web-client.md.
 import { execFile, execFileSync, execSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { basename, dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -115,18 +115,60 @@ function ghostty() {
   return src;
 }
 
+/**
+ * Fetches the Zig packages that libghostty-vt needs (Ghostty's
+ * deps/libghostty-vt.txt) into the cache and returns their directory, for
+ * `zig build --system`. It does what Ghostty's
+ * nix/build-support/fetch-zig-cache.sh does (PACKAGING.md), in Node so that
+ * Windows needs no sh: an empty project that depends on each package, built
+ * with --fetch. A `zig build` that fetches the packages itself crashes Zig
+ * 0.17 in a fresh cache ("Segmentation fault at address 0xaaaaaaaaaaaaaaaa",
+ * "General protection exception" on x86_64).
+ */
+function ghosttyDeps(z, src) {
+  const home = join(cache, "zig-deps");
+  const pkgs = join(home, "p");
+  mkdirSync(pkgs, { recursive: true });
+  const hashes = new Map(Object.entries(JSON.parse(readFileSync(join(src, "deps", "packages.json"), "utf8"))).map(([hash, p]) => [p.url, hash]));
+  const urls = readFileSync(join(src, "deps", "libghostty-vt.txt"), "utf8").split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
+  const deps = urls.map((url, i) => {
+    const hash = hashes.get(url);
+    if (!hash) throw new Error(`no hash for ${url} in Ghostty's deps/packages.json`);
+    return `    .d${i} = .{ .url = ${JSON.stringify(url)}, .hash = ${JSON.stringify(hash)} },`;
+  });
+  const shim = mkdtempSync(join(tmpdir(), "ghostty-deps-"));
+  try {
+    writeFileSync(join(shim, "build.zig"), 'pub fn build(_: *@import("std").Build) void {}\n');
+    // The fingerprint is the one Zig computes for the name fetch_shim.
+    writeFileSync(join(shim, "build.zig.zon"),
+      `.{\n  .name = .fetch_shim,\n  .version = "0.0.0",\n  .fingerprint = 0x5d559c7454d9543b,\n  .paths = .{""},\n  .dependencies = .{\n${deps.join("\n")}\n  },\n}\n`);
+    run(z, ["build", "--fetch=needed", "--pkg-dir", pkgs, "--cache-dir", join(shim, ".zig-cache")],
+      { cwd: shim, env: { ...process.env, ZIG_GLOBAL_CACHE_DIR: home } });
+  } finally {
+    rmSync(shim, { recursive: true, force: true });
+  }
+  // Real paths: Zig reaches the packages by a path relative to the build's
+  // working directory, which a symbolic link (macOS's /tmp) breaks.
+  return realpathSync(pkgs);
+}
+
 /** ghostty-vt.wasm at COMMIT, built once into the cache. */
 async function wasm() {
   const out = join(cache, `ghostty-vt-${COMMIT.slice(0, 12)}.wasm`);
   if (existsSync(out) && !args.includes("--rebuild-wasm")) return out;
   const z = await zig();
-  const src = ghostty();
+  const src = realpathSync(ghostty());
+  const pkgs = ghosttyDeps(z, src);
   const prefix = mkdtempSync(join(tmpdir(), "ghostty-vt-wasm-"));
+  // An empty global cache of its own, as PACKAGING.md asks of a --system build.
+  const zigCache = realpathSync(mkdtempSync(join(tmpdir(), "ghostty-vt-zig-")));
   try {
-    run(z, ["build", "-Demit-lib-vt", "-Dtarget=wasm32-freestanding", "-Doptimize=ReleaseSmall", "--prefix", prefix], { cwd: src });
+    run(z, ["build", "--system", pkgs, "-Demit-lib-vt", "-Dtarget=wasm32-freestanding", "-Doptimize=ReleaseSmall", "--prefix", prefix],
+      { cwd: src, env: { ...process.env, ZIG_GLOBAL_CACHE_DIR: zigCache } });
     copyFileSync(join(prefix, "bin", "ghostty-vt.wasm"), out);
   } finally {
     rmSync(prefix, { recursive: true, force: true });
+    rmSync(zigCache, { recursive: true, force: true });
   }
   return out;
 }
