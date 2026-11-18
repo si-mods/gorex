@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.41.1
+
+### Features
+
+* **projects:** delete a space: its projects move to Default, no tab closes; in the desktop's and Rex Go's Edit Spaces and the web space menu, with `gorex.space.delete` ([#786](https://github.com/si-mods/gorex/pull/786), [#787](https://github.com/si-mods/gorex/pull/787))
+
+### Bug Fixes
+
+* **projects:** each project in the sidebar keeps its own expanded state; choosing one closes no other ([#783](https://github.com/si-mods/gorex/pull/783))
+* **release:** fetch ghostty's Zig packages before the web wasm build, which a Zig 0.17 crash in fresh caches broke ([#784](https://github.com/si-mods/gorex/pull/784))
+
+### Build
+
+* cache the ghostty-vt wasm in the web-r2 jobs ([#788](https://github.com/si-mods/gorex/pull/788))
+
 ## 0.41.0
 
 ### ⚠ BREAKING CHANGES
