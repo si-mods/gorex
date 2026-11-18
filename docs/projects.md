@@ -39,6 +39,12 @@ GoRex's own protocol (`gorex.*` methods, the session server):
   only next to this table's mapping.
 - Rex Go's "Window" (#760) becomes "Tab", and "Block" in any string
   becomes "Pane".
+- Names: a space's is the name on its projects; a host's is its alias
+  in `hosts.json` (`internal/hosts`, `Label`) or, for this machine, the
+  name set in Settings; a project's is `Workspace.Name`, its folder's
+  name by default; a tab's is its title as today. Each is renamed in
+  place (the space picker's Edit Spaces…, a host's menu, a project's or
+  a tab's Rename…), and a rename touches nothing else.
 - GoRex's own methods and fields use `project`, `tab` and `pane`:
   `project_id`, `tab_id`, `pane_id`. Their values are the Rex IDs of the
   same things (`session:…`, `window:…`, `block:…`), so a client can pass
@@ -74,12 +80,24 @@ Made by the user on 2026-11-18, after a review of this design:
    tabs live, so every client the host lets in reads it.
 10. **One project per folder on a host**, whatever its space.
 11. **One "Tabs with no project" for each host**, shown in every space.
-12. **Projects homed on another host in v0.38.0** are not moved there:
-    their tabs become tabs with no project, with a note to make the
-    project again on that host.
+12. **Projects homed on another host in v0.38.0** are made on that host
+    when it connects, with the tabs they held there, and start no new
+    shell (revised after the review of #773; see Migration).
 13. **Clients cache each host's last projects**, to show an offline host;
     the cache is only shown, never changed.
 14. **Projects are in order of last use**, as Codex lists them.
+
+From the review of #773 by the author of #771:
+
+15. **Every level has a name the user can change.** A space, a host
+    (its alias), a project and a tab can each be renamed. A project's
+    name is its folder's name when it is made; Rename changes only the
+    name, never the folder or the tabs.
+16. **A project row has its own `+`**, which opens a tab in the
+    project's folder, as ⌘T does while the project is chosen.
+17. **The migration keeps what runs.** No shell stops or starts; tabs
+    keep their splits and their project as far as one host can hold
+    them.
 
 Kept from v0.38.0: the folder browser and `dir.list`, the rule that a new
 tab of a project starts in its folder, the folder check, and the Rex Go
@@ -205,7 +223,7 @@ The sidebar on the left, space Work, two hosts:
 ├───────────────────────────────┼──────────────────────────────────────────┤
 │ [H] This Mac                  │ ~/code/gorex $ go test ./...             │
 │   PROJECTS                  + │ ok   gorex   12.3s                       │
-│   ▾ [F] gorex   ~/code/gorex  │                                          │
+│   ▾ [F] gorex  ~/code/gorex + │                                          │
 │       ▸ dev                   │ ◀ dev is the tab shown here              │
 │         logs                  │                                          │
 │         review                │                                          │
@@ -276,8 +294,13 @@ A project's context menu:
   Remote Host sheet (#761). A host shows in a space when it is connected
   or keeps a project of the space. An offline host's projects show
   greyed, with their last tabs.
-- A project row expands to its tabs. Its context menu: New Tab, Rename,
-  Color, Move to Space, Reveal Folder (this host only), Close Project.
+- A project row expands to its tabs. Its `+` (shown on the row under
+  the pointer and on the chosen project's) opens a tab in the folder;
+  ⌘T does the same while the project is chosen. Its context menu: New
+  Tab, Rename, Color, Move to Space, Reveal Folder (this host only),
+  Close Project.
+- A host row's menu has Rename… (its alias) and New Tab with No
+  Project.
 - Projects of a host are in order of last use (`Used`), the latest
   first; those not used for 30 days go under a collapsed **Older**.
 - **Tabs with no project** shows in every space, collapsed by default,
@@ -422,6 +445,13 @@ GoRex's own methods use the words above:
 - `gorex.project.move {tab_id, project_id}` moves a tab, with its panes,
   between workspaces of this host. `project_id` "" moves it to the
   space's tabs with no project.
+- `gorex.project.adopt {project?: {name, dir, space}, tabs: [{title,
+  split}]}` makes the project when `project` is given and it does not
+  exist yet (its folder checked as above), and arranges panes that run
+  already into the tabs given, each `split` a tree of `pane_id`s as
+  `layout.Node`. It starts no shell and opens no tab of its own. A pane
+  it does not know is skipped; adopting again what is adopted changes
+  nothing. The migration uses it.
 - `gorex.project.update {project_id, name?, color?, space?}`.
 - `gorex.space.rename {from, to}` renames the space on every project of
   this host.
@@ -436,7 +466,13 @@ GoRex's own methods use the words above:
 
 ## Migration
 
-The server migrates its own layout once, as it loads it:
+No shell stops or starts. A tab keeps its splits, and its project, as
+far as one host can hold them: a tab now lives on one host, so a tab of
+v0.39.0 whose panes ran on several hosts becomes one tab on each, each
+with that host's part of the split.
+
+**On each server, as it loads its layout** (also after
+`gorex server upgrade`):
 
 - A workspace with a `Dir` and `Host` "" (a project of this machine)
   stays a project, in space "Default". Two of one folder become one,
@@ -444,25 +480,48 @@ The server migrates its own layout once, as it loads it:
 - A workspace with no `Dir` (an old space): its tabs of this machine go
   to the tabs with no project, and its name becomes a space name the
   client offers, so the user's old spaces come back in the picker.
-- A workspace whose `Host` is another host (a v0.38.0 project homed
-  there): its tabs of this machine go to the tabs with no project. The
-  client shows a note: "Make the project <name> again on <host>: its
-  folder is <dir>", with **New Project on <host>…**. Nothing is made on
-  the other host by itself.
-- Panes of other hosts in this machine's layout are dropped from it;
-  their sessions keep running on their hosts and show there, as tabs
-  with no project.
+- For every tab with panes of other hosts, the server keeps an
+  **adoption** in the layout (`Store.Adopt`): the host's machine, the
+  project when the workspace was homed there (name, folder, space), and
+  for each tab the part of its split that ran on that host, by the
+  panes' session IDs. It drops those panes from its own tab; a tab left
+  with no pane goes.
+- The old layout is kept as `layout.json.v039`.
 
-The old layout is kept as `layout.json.v039`. The migration only moves
-tabs between workspaces and stops no process, so it runs the same way
-after `gorex server upgrade`. Rex Go drops its manifest and reads
-projects from the hosts.
+**On the desktop, as each host connects**, the app sends that host its
+adoptions (`gorex.project.adopt`) and the server forgets each once the
+host answers:
+
+- A v0.38.0 project homed there is made on that host, and its tabs of
+  that host go into it with their splits.
+- The other tabs' panes of that host become tabs with no project there,
+  with their splits.
+- A host offline keeps its adoptions until it connects, however long;
+  meanwhile its panes show from the offline copy, if any, and the
+  project shows greyed under the host with a note "Waiting for <host>".
+- A pane whose session ended on its host meanwhile is skipped; an
+  adoption with nothing left is dropped.
+- A host of v0.38.0 to v0.40.x (no `gorex.projects` version 2) keeps the
+  adoption until it is upgraded.
+
+Rex Go drops its manifest and reads projects from the hosts.
+
+### Cases
+
+| Before (v0.39.0, this desktop) | After |
+| --- | --- |
+| Project gorex, folder here, tab dev split in 2 local panes | project gorex here, tab dev, same split |
+| Project trainer homed on office-h800, tab train: 1 pane there | project trainer made on office-h800, tab train in it |
+| Space Work, tab api split: local pane left, office-h800 pane right | tab api here (left pane), tab api on office-h800 (right pane), both with no project |
+| Project trainer homed on office-h800, tab mon: 2 panes there split, 1 local | tab mon in trainer on office-h800 with its 2-pane split; tab mon here with no project |
+| office-h800 offline at the upgrade | its adoption waits; done when it connects |
 
 ## Tests
 
-- Model: a layout of v0.39.0 migrates (a project here, a project homed
-  elsewhere, a space with no folder); a project round-trips with its
-  space; a tab moves between projects and keeps its panes' processes.
+- Model: every case of the Migration table, each checking that the same
+  shell processes run before and after; an adoption applied twice
+  changes nothing; a project round-trips with its space; a tab moves
+  between projects and keeps its panes' processes.
 - Rex API: `gorex.project.create` checks the folder and opens a tab in
   it; `gorex.project.move` keeps the tab's panes; old clients see their
   sessions as before.
@@ -478,10 +537,11 @@ projects from the hosts.
 Each phase is its own PR, run, reviewed and merged before the next.
 
 1. **Server model**: `Workspace.Space`, `Used`, one project per folder,
-   the `Host` field removed, the migration, `ShareLayout` removed, the
-   Rex API methods and fields, and tests.
-2. **Desktop window from the hosts' layouts**, then the sidebar and the
-   title bar: hosts, Projects, tabs with no project, move by drag and
+   the `Host` field removed, the server's migration and its adoptions,
+   `gorex.project.adopt`, `ShareLayout` removed, the Rex API methods and
+   fields, and tests of every case in Migration.
+2. **Desktop window from the hosts' layouts**, sending adoptions as
+   hosts connect, then the sidebar and the title bar: hosts, Projects, tabs with no project, move by drag and
    menu, the space picker, the offline copy. The new UI goes in files of
    its own (`projects_sidebar.go` and the like), not in `state.go`
    (`docs/lessons.md`).
