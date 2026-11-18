@@ -186,9 +186,23 @@ The sidebar on the left, space Work, two hosts:
 └───────────────────────────────┴──────────────────────────────────────────┘
 ```
 
-In these sketches `[H]` stands for Lucide's `monitor` icon, `[F]` for
-`folder`, `[S]` for `search`, `⌂` for `house`, `↑` for `arrow-up` and `⚙` for
-`settings`.
+The sketches use text marks for icons. In the UI each is a lucide SVG
+from `assets/icons/` (`DESIGN.md`), never the character:
+
+| Mark | Icon |
+| --- | --- |
+| `[H]` | `monitor` |
+| `[F]` | `folder` |
+| `[S]` | `search` |
+| `+` | `plus` |
+| `▾` `▸` `⌄` `›` | `chevron-down`, `chevron-right` |
+| `✓` | `check` |
+| `⌂` `↑` | `house`, `arrow-up` |
+| `⚙` | `settings` |
+| `☰` | `menu` |
+| `●` `○` | a host's state dot, drawn, not an icon |
+
+`◀` and `←` mark notes on a sketch; they are not drawn.
 
 The space picker:
 
@@ -217,8 +231,11 @@ A project's context menu:
 └──────────────────────────┘
 ```
 
-- A host shows when it is connected or keeps a project of the space. An
-  offline host's projects show greyed, with their last tabs.
+- The hosts are the ones the user added (`hosts.json`, read through
+  `internal/hosts`); a machine the tailnet finds shows only in the Add
+  Remote Host sheet (#761). A host shows in a space when it is connected
+  or keeps a project of the space. An offline host's projects show
+  greyed, with their last tabs.
 - A project row expands to its tabs. Its context menu: New Tab, Rename,
   Color, Move to Space, Reveal Folder (this host only), Close Project.
 - Projects of a host are in the order the user drags them; a new project
@@ -354,8 +371,10 @@ Rex's own methods keep Rex's words (`session`, `window`, `block`).
 GoRex's own methods use the words above:
 
 - `gorex.project.create {name, dir, space_id}` → `{project_id, tab_id}`.
-  It checks the folder (as `dir.list` does) and makes the project's
-  first tab in it.
+  The `dir` goes through `rex.VolumePath` first, so a device or pipe
+  path is refused (`docs/lessons.md`, "device paths"); then the folder
+  is checked as `dir.list` does, and the project's first tab starts in
+  it.
 - `gorex.project.move {tab_id, project_id}` moves a tab, with its panes,
   between workspaces of this host. `project_id` "" moves it to the
   space's tabs with no project.
@@ -385,8 +404,10 @@ On the first start of a version with this design:
 - Rex Go drops `home_machine` and `dir` from its manifest and reads
   projects from the hosts.
 
-The migration runs once and keeps the old layout as
-`layout.json.v039`.
+The server runs the migration once, as it loads the layout, and keeps
+the old layout as `layout.json.v039`. It runs the same way after
+`gorex server upgrade`, which keeps the sessions' shells: the migration
+moves tabs between workspaces and stops no process.
 
 ## Tests
 
@@ -410,7 +431,9 @@ Each phase is its own PR, run, reviewed and merged before the next.
 1. **Model**: `Workspace.Space`, the `Host` field removed, the migration
    of a host's own layout, the Rex API methods and fields, and tests.
 2. **Desktop sidebar and title bar**: hosts, Projects, tabs with no
-   project, move by drag and menu, the space picker.
+   project, move by drag and menu, the space picker. The new UI goes in
+   files of its own (`projects_sidebar.go` and the like), not in
+   `state.go` (`docs/lessons.md`).
 3. **Desktop migration of projects homed on other hosts.**
 4. **Rex Go**: spaces in the strip, projects under each host, create and
    move; "Window" becomes "Tab".
