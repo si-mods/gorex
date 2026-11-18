@@ -19,12 +19,12 @@ final class FakeCloud: CloudStore {
 /// The settings that sync through iCloud (docs/ios-icloud-sync.md): which
 /// side wins, what goes each way, and what stays on the device.
 nonisolated final class CloudSettingsTests: XCTestCase {
-    @MainActor private func make(maple: Bool = false) -> (CloudSettings, FakeCloud, UserDefaults) {
+    @MainActor private func make() -> (CloudSettings, FakeCloud, UserDefaults) {
         let suite = "cloud-\(UUID().uuidString)"
         let d = UserDefaults(suiteName: suite)!
         addTeardownBlock { UserDefaults().removePersistentDomain(forName: suite) }
         let cloud = FakeCloud()
-        return (CloudSettings(cloud: cloud, defaults: d, installed: { maple }), cloud, d)
+        return (CloudSettings(cloud: cloud, defaults: d), cloud, d)
     }
 
     @MainActor func testCloudWinsAtStart() {
@@ -66,7 +66,7 @@ nonisolated final class CloudSettingsTests: XCTestCase {
         // Only the keys named.
         XCTAssertNil(d.object(forKey: "minimumContrast"))
         // What came from the cloud does not go back.
-        s.defaultsChanged()
+        s.flush()
         XCTAssertTrue(cloud.writes.isEmpty)
     }
 
@@ -103,33 +103,14 @@ nonisolated final class CloudSettingsTests: XCTestCase {
         XCTAssertNil(d.object(forKey: "theme"))
     }
 
-    /// Maple Mono downloaded after launch is taken from the cloud then.
-    @MainActor func testRecheckAfterMapleDownload() {
-        var installed = false
-        let suite = "cloud-\(UUID().uuidString)"
-        let d = UserDefaults(suiteName: suite)!
-        addTeardownBlock { UserDefaults().removePersistentDomain(forName: suite) }
-        let cloud = FakeCloud()
-        let s = CloudSettings(cloud: cloud, defaults: d, installed: { installed })
-        d.set("Menlo", forKey: "fontFamily")
-        cloud.values["fontFamily"] = Maple.family
-        s.start()
-        XCTAssertEqual(d.string(forKey: "fontFamily"), "Menlo")
-        s.recheck("fontFamily")
-        XCTAssertEqual(d.string(forKey: "fontFamily"), "Menlo")
-        installed = true
-        s.recheck("fontFamily")
-        XCTAssertEqual(d.string(forKey: "fontFamily"), Maple.family)
-    }
-
     @MainActor func testLocalChangePushedAndRemoved() {
         let (s, cloud, d) = make()
         s.start()
         d.set("light", forKey: "scheme")
-        s.defaultsChanged()
+        s.flush()
         XCTAssertEqual(cloud.values["scheme"] as? String, "light")
         d.removeObject(forKey: "scheme")
-        s.defaultsChanged()
+        s.flush()
         XCTAssertNil(cloud.values["scheme"])
     }
 
@@ -139,41 +120,25 @@ nonisolated final class CloudSettingsTests: XCTestCase {
         cloud.values["clientLabel"] = "bob-phone"
         s.start()
         d.set("small", forKey: "dictationModel")
-        s.defaultsChanged()
+        s.flush()
         s.cloudChanged(keys: ["clientLabel"], reason: nil)
         XCTAssertEqual(d.string(forKey: "clientLabel"), "alice-phone")
         XCTAssertEqual(cloud.values["clientLabel"] as? String, "bob-phone")
         XCTAssertNil(cloud.values["dictationModel"])
     }
 
-    @MainActor func testMapleOnlyWhereInstalled() {
-        for installed in [false, true] {
-            let (s, cloud, d) = make(maple: installed)
-            d.set("Menlo", forKey: "fontFamily")
-            cloud.values["fontFamily"] = Maple.family
-            s.start()
-            XCTAssertEqual(d.string(forKey: "fontFamily"), installed ? Maple.family : "Menlo", "installed \(installed)")
-            // The cloud keeps it for the devices that have the font.
-            s.defaultsChanged()
-            XCTAssertEqual(cloud.values["fontFamily"] as? String, Maple.family)
-        }
-    }
-
-    /// Deleting Maple Mono on one device leaves it on the others.
-    @MainActor func testMapleDeleteStaysLocal() {
-        var installed = true
-        let suite = "cloud-\(UUID().uuidString)"
-        let d = UserDefaults(suiteName: suite)!
-        addTeardownBlock { UserDefaults().removePersistentDomain(forName: suite) }
-        let cloud = FakeCloud()
-        let s = CloudSettings(cloud: cloud, defaults: d, installed: { installed })
-        d.set(Maple.family, forKey: "fontFamily")
+    /// A change waits to settle: nothing is sent at once, and the last value is.
+    @MainActor func testChangeIsSentWhenSettled() {
+        let (s, cloud, d) = make()
         s.start()
-        XCTAssertEqual(cloud.values["fontFamily"] as? String, Maple.family)
-        installed = false
-        d.removeObject(forKey: "fontFamily")
+        d.set(13.0, forKey: "fontSize")
         s.defaultsChanged()
-        XCTAssertEqual(cloud.values["fontFamily"] as? String, Maple.family)
+        d.set(14.0, forKey: "fontSize")
+        s.defaultsChanged()
+        XCTAssertNil(cloud.values["fontSize"])
+        s.flush()
+        XCTAssertEqual(cloud.values["fontSize"] as? Double, 14.0)
+        XCTAssertEqual(cloud.writes, ["fontSize"])
     }
 
     @MainActor func testNoWriteWhenEqual() {
@@ -181,7 +146,7 @@ nonisolated final class CloudSettingsTests: XCTestCase {
         cloud.values = ["theme": "Nord"]
         d.set("Nord", forKey: "theme")
         s.start()
-        s.defaultsChanged()
+        s.flush()
         s.cloudChanged(keys: ["theme"], reason: nil)
         XCTAssertTrue(cloud.writes.isEmpty)
     }

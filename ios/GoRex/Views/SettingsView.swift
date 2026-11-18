@@ -259,7 +259,7 @@ private struct Preview: View {
             line(("?? ", 1), ("notes.txt", 17))
             line(("~/gorex ", 4), ("█", 18))
         }
-        .font(Fonts.face(family, size: 13))
+        .font(Fonts.face(TerminalView.family(family), size: 13))
         .lineLimit(1)
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(12)
@@ -301,6 +301,11 @@ private struct TerminalSettings: View {
     @AppStorage(Polish.modelKey) private var model = ""
     /// Polish's key, as the Keychain keeps it; empty, polish is off.
     @State private var key = Polish.savedKey ?? ""
+    /// The key as last read or saved, and whether the field was typed in
+    /// since: only then is it written, as iCloud may have brought a newer one.
+    @State private var loaded = Polish.savedKey ?? ""
+    @State private var edited = false
+    @Environment(\.scenePhase) private var phase
     @AppStorage(InputTrace.key) private var trace = false
 
     /// The minimum contrasts offered, 0 the default, off; a stored one not
@@ -337,7 +342,7 @@ private struct TerminalSettings: View {
                 ForEach(Dictation.Model.allCases, id: \.self, content: speech)
                 Group {
                     LabeledContent("API Key") {
-                        SecureField("Off", text: $key).onSubmit(saveKey)
+                        SecureField("Off", text: $key).onChange(of: key) { if key != loaded { edited = true } }.onSubmit(saveKey)
                     }
                     LabeledContent("Base URL") {
                         TextField(Polish.defaultBase, text: $base).keyboardType(.URL)
@@ -390,12 +395,21 @@ private struct TerminalSettings: View {
         .stopsDownload($stopping)
         // Saved when done, not per keystroke: it syncs to other devices.
         .onDisappear(perform: saveKey)
+        .onAppear {
+            guard !edited else { return }
+            loaded = Polish.savedKey ?? ""
+            key = loaded
+        }
+        .onChange(of: phase) { if phase != .active { saveKey() } }
         .navigationTitle("Terminal")
         .navigationBarTitleDisplayMode(.inline)
     }
 
     private func saveKey() {
-        if key != (Polish.savedKey ?? "") { Polish.savedKey = key }
+        guard edited else { return }
+        edited = false
+        loaded = key
+        Polish.savedKey = key
     }
 
     private func row(_ f: String, _ name: String) -> some View {
@@ -403,7 +417,7 @@ private struct TerminalSettings: View {
             HStack {
                 Text(name).font(Fonts.face(f, size: 17)).foregroundStyle(.primary)
                 Spacer()
-                if f == family { Image(systemName: "checkmark").fontWeight(.semibold) }
+                if f == TerminalView.family(family) { Image(systemName: "checkmark").fontWeight(.semibold) }
             }
         }
         .listRowBackground(Color.card)

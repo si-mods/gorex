@@ -45,29 +45,35 @@ GoRex.
   pushed. That also seeds a new iCloud account. These never delete a local value.
 - A server change names its keys: each is applied, and a key another device
   removed is removed here.
-- A change made here is pushed. A value is written only where it differs, and
-  only a change made on the device is pushed, so nothing loops and what came
-  from the cloud does not go back.
+- A change made here is pushed once it has settled, 1.5 s after the last one,
+  as a pinch zoom writes the size at each step and a text field at each
+  keystroke, and a partial value must not reach other devices. A value is
+  written only where it differs, and only a change made on the device is
+  pushed, so nothing loops and what came from the cloud does not go back.
 - Removing a key on a device removes it in the cloud too. An empty API key
   means polish is off, so clearing it clears it on every device.
-- The key is saved when its field is submitted or the page closes, not per
-  keystroke, so that a partial key does not sync.
+- The API key is saved when its field is submitted, the page closes or the
+  app leaves the foreground, and only if it was typed in, not per keystroke,
+  so that a partial key does not sync and a stale field does not overwrite a
+  key that iCloud brought.
 - The terminals are told as Settings tells them (`.terminalFont`,
   `.terminalTheme`, `.minimumContrast`), so open ones follow.
 
 ## Maple Mono
 
-The font family `Maple Mono NF CN` is downloaded per device. A device applies
-it from the cloud only when the font is installed there (and again when a
-download finishes); otherwise it keeps its
-own value and the cloud keeps Maple for the devices that have it. Deleting the
-font takes the family out of that device's settings only: the cloud keeps it.
+The font family `Maple Mono NF CN` is downloaded per device, yet it syncs as
+a plain string. Where the font is not installed, it is read as Ghostty's own
+font (`TerminalView.family`, also what Settings checks), and the stored value
+stays, so the font shows once it is downloaded. Deleting the font does not
+change the stored family.
 
 ## Key migration
 
-An older build kept the key in a local item. At launch, `Polish.syncKey()`
-saves it again as synchronizable, replacing a synced one, and removes the
-local one. The old item is the newest, as only an older build writes it.
+An older build kept the key in a local item. Once, at launch,
+`Polish.syncKey()` saves it as synchronizable and removes the local one. A
+synced key already there wins, as another device may have rotated it, and the
+local one only goes. `polishKeySynced` in `UserDefaults` records that it ran,
+or that no local item exists.
 
 ## Downgrade
 

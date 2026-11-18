@@ -51,22 +51,23 @@ final class CloudSettings {
     ]
 
     /// The instance the app runs, started at launch.
-    static let shared = CloudSettings(installed: { Maple.shared.installed })
+    static let shared = CloudSettings()
 
     private let cloud: CloudStore
     private let defaults: UserDefaults
-    /// Whether Maple Mono is on this device.
-    private let installed: () -> Bool
     /// What each key held in defaults when last looked at, so that only a
     /// change made here goes to the cloud, and what came from it goes back
     /// nowhere.
     private var known: [String: Value] = [:]
     private var started = false
+    /// The push that waits for a change to settle.
+    private var pending: Task<Void, Never>?
+    /// How long a change settles before it is sent.
+    static let settle = Duration.milliseconds(1500)
 
-    init(cloud: CloudStore = NSUbiquitousKeyValueStore.default, defaults: UserDefaults = .standard, installed: @escaping () -> Bool) {
+    init(cloud: CloudStore = NSUbiquitousKeyValueStore.default, defaults: UserDefaults = .standard) {
         self.cloud = cloud
         self.defaults = defaults
-        self.installed = installed
     }
 
     /// Takes what the cloud has, or gives what this device has, then follows
@@ -120,19 +121,25 @@ final class CloudSettings {
         }
     }
 
-    /// A key's cloud value, if it has one, taken again: Maple Mono came
-    /// after it was skipped.
-    func recheck(_ key: String) {
-        if let value = cloudValue(key) { apply(value, to: key) }
+    /// Defaults changed: send what this device changed once it settles, as
+    /// a pinch zoom writes the size at each step and a field at each
+    /// keystroke, and a half-typed value must not reach other devices.
+    func defaultsChanged() {
+        guard Self.keys.contains(where: { localValue($0.key) != known[$0.key] }) else { return }
+        pending?.cancel()
+        pending = Task { [weak self] in
+            try? await Task.sleep(for: Self.settle)
+            guard !Task.isCancelled else { return }
+            self?.flush()
+        }
     }
 
-    /// Defaults changed: send the synced keys that this device changed.
-    /// Maple Mono deleted here takes its family out of defaults; the cloud
-    /// keeps it for the devices that still have the font.
-    func defaultsChanged() {
+    /// Sends the synced keys that this device changed.
+    func flush() {
+        pending?.cancel()
+        pending = nil
         for k in Self.keys where localValue(k.key) != known[k.key] {
             known[k.key] = localValue(k.key)
-            if k.key == "fontFamily", known[k.key] == nil, cloudValue(k.key) == .string(Maple.family), !installed() { continue }
             push(k.key)
         }
     }
@@ -158,12 +165,8 @@ final class CloudSettings {
     }
 
     /// Writes the cloud's value to defaults, when it differs, and tells the
-    /// terminals. Maple Mono arrives only where it is installed.
+    /// terminals.
     private func apply(_ value: Value, to key: String) {
-        if key == "fontFamily", value == .string(Maple.family), !installed() {
-            known[key] = localValue(key)
-            return
-        }
         let changed = localValue(key) != value
         known[key] = value
         guard changed else { return }

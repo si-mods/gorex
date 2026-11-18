@@ -45,6 +45,8 @@ struct GoRexApp: App {
                 .onChange(of: phase) { _, p in
                     if p == .background {
                         away = .now
+                        // A setting changed just now goes before the app may end.
+                        CloudSettings.shared.flush()
                         HotspotShare.shared.handleBackground()
                     }
                     guard p == .active else { return }

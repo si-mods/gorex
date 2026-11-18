@@ -46,7 +46,6 @@ import zlib
             do {
                 try await fetch()
                 register()
-                CloudSettings.shared.recheck("fontFamily")
             } catch {
                 if !Task.isCancelled { self.error = error.localizedDescription }
             }
@@ -63,7 +62,9 @@ import zlib
         CTFontManagerUnregisterFontURLs(Self.files as CFArray, .process, nil)
         try? FileManager.default.removeItem(at: Self.dir)
         saved = []
-        if UserDefaults.standard.string(forKey: "fontFamily") == Self.family { UserDefaults.standard.removeObject(forKey: "fontFamily") }
+        // The family stays chosen, as it may sync to other devices; terminals
+        // read Ghostty's own while the font is away (TerminalView.family).
+        NotificationCenter.default.post(name: .terminalFont, object: nil)
     }
 
     /// Reads the zip's central directory, then each face not yet here; a

@@ -162,20 +162,26 @@ nonisolated extension Polish {
     }
 
     /// Moves a key that an older build kept on this device only to the
-    /// iCloud Keychain. The old item is the newest, as only an older build
-    /// writes it, so it replaces a synced one; then it goes.
+    /// iCloud Keychain, once. A synced key already there wins, as another
+    /// device may have changed it since; the local one goes either way.
     static func syncKey() {
+        let done = "polishKeySynced"
+        guard !UserDefaults.standard.bool(forKey: done) else { return }
         var local: CFTypeRef?
-        guard SecItemCopyMatching(query([kSecReturnData: true, kSecAttrSynchronizable: false]), &local) == errSecSuccess,
-              let data = local as? Data else { return }
-        var status = SecItemUpdate(query([kSecAttrSynchronizable: true]), [kSecValueData: data] as CFDictionary)
-        if status == errSecItemNotFound {
-            status = SecItemAdd(query([
+        let found = SecItemCopyMatching(query([kSecReturnData: true, kSecAttrSynchronizable: false]), &local)
+        // Not found is done; an error, as a locked device gives, tries again.
+        guard found == errSecSuccess, let data = local as? Data else {
+            if found == errSecItemNotFound { UserDefaults.standard.set(true, forKey: done) }
+            return
+        }
+        if SecItemCopyMatching(query([kSecAttrSynchronizable: true]), nil) != errSecSuccess {
+            let added = SecItemAdd(query([
                 kSecValueData: data, kSecAttrSynchronizable: true,
                 kSecAttrAccessible: kSecAttrAccessibleAfterFirstUnlock,
             ]), nil)
+            guard added == errSecSuccess else { return }
         }
-        guard status == errSecSuccess else { return }
         SecItemDelete(query([kSecAttrSynchronizable: false]))
+        UserDefaults.standard.set(true, forKey: done)
     }
 }
