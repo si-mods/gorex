@@ -332,6 +332,13 @@ final class SpaceStore {
         save()
     }
 
+    /// Sets a project's home to a folder on host: the host's machine as
+    /// its home is found by (Host.homeMachineKey), the machine last seen
+    /// while the host is offline, not its host ID.
+    func setHome(_ id: String, on host: Host, dir: String, now: Date = .now) {
+        setHome(id, machine: host.homeMachineKey, dir: dir, now: now)
+    }
+
     /// Sets a project's home: the machine of its home host and its folder
     /// there. A `dir` of "" removes the folder.
     func setHome(_ id: String, machine: String, dir: String, now: Date = .now) {

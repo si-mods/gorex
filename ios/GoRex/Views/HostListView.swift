@@ -624,7 +624,7 @@ struct HostListView: View {
     /// Makes a project of a folder on a host: the host keeps its home, and
     /// its first window opens there, in the folder.
     private func createProject(on host: Host, dir: String, name: String) {
-        let s = spaceStore.createSpace(name: name, homeMachine: host.spaceMachineKey, dir: dir)
+        let s = spaceStore.createSpace(name: name, homeMachine: host.homeMachineKey, dir: dir)
         withAnimation(.snappy) { chosen = s.id }
         let machine = homeMachine(of: host)
         openProject(s, on: host) {
@@ -650,8 +650,8 @@ struct HostListView: View {
     /// Gives a project another home: this device's manifest, the hosts that
     /// keep a session of it, and, by the desktop sync, the other desktops.
     private func changeFolder(_ id: String, on host: Host, dir: String) {
-        spaceStore.setHome(id, machine: host.spaceMachineKey, dir: dir)
-        setHomeOnHosts(id, machine: homeMachine(of: host) ?? host.spaceMachineKey, dir: dir)
+        spaceStore.setHome(id, on: host, dir: dir)
+        setHomeOnHosts(id, machine: host.homeMachineKey, dir: dir)
     }
 
     private func removeFolder(_ id: String) {

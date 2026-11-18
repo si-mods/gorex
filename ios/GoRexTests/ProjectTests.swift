@@ -298,6 +298,29 @@ nonisolated final class ProjectTests: XCTestCase {
         store.remove(config.id)
     }
 
+    /// Round 2: Change Folder while the project host is offline, after a
+    /// relaunch, keeps the host's machine as the project's home: not its
+    /// host ID, which no other device knows, and which would show the host
+    /// as not added.
+    @MainActor func testChangeFolderOfflineKeepsHomeMachine() throws {
+        let url = tempURL()
+        defer {
+            try? FileManager.default.removeItem(at: url)
+            try? FileManager.default.removeItem(at: SpaceStore.reportedURL(for: url))
+        }
+        let config = HostConfig(name: "office", url: URL(string: "http://127.0.0.1:1")!)
+        defer { Host.forgetMachine(config.id) }
+        Host(config).take(try Spaces.Answer(json: Data(#"{"machine_id":"m-old","sessions":[]}"#.utf8)))
+        let offline = Host(config)
+        XCTAssertNil(offline.machine)
+
+        let store = SpaceStore(fileURL: url)
+        let s = store.createSpace(name: "acme-api", homeMachine: "m-old", dir: "/srv/acme-api")
+        store.setHome(s.id, on: offline, dir: "/srv/acme-web")
+        XCTAssertEqual(store.space(id: s.id)?.home_machine, "m-old")
+        XCTAssertEqual(store.space(id: s.id)?.folder, "/srv/acme-web")
+    }
+
     // MARK: Rename and reports of other sessions
 
     @MainActor private func session(_ id: String, _ label: String, _ blocks: [String], project: SessionView.Project?) -> SpaceStore.HostSnapshot.Session {
