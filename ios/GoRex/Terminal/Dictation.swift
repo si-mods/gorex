@@ -149,6 +149,7 @@ import os
         if downloading == m { task?.cancel() }
         if m == model { models = nil }
         try? FileManager.default.removeItem(at: Self.dir(m))
+        try? FileManager.default.removeItem(at: Self.stage(m))
         installed.remove(m)
         if installed.isEmpty, downloading == m || progress == nil { try? FileManager.default.removeItem(at: Self.root) }
     }
@@ -229,6 +230,12 @@ import os
     nonisolated private static func dir(_ m: Model) -> URL {
         guard let repo = m.repo else { return speechDir }
         return root.appending(path: repo.name)
+    }
+
+    /// Where a release's archive and what it unpacks into live while it
+    /// downloads: beside the model, never in it.
+    nonisolated private static func stage(_ m: Model) -> URL {
+        root.appending(path: (m.repo?.name ?? m.rawValue) + ".release")
     }
 
     /// Whether a model is whole: the VAD's compiled model, with nothing
@@ -340,9 +347,14 @@ import os
     @concurrent nonisolated private static func tarball(_ m: Model, _ progress: @escaping @Sendable (Double) -> Void) async throws {
         guard let release = m.release else { return }
         let dir = dir(m)
-        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        // Its archive and what it unpacks into stand beside the model, so
+        // that neither a half download nor a file of the release's build
+        // lies beside the commit's, which get goes on from.
+        let stage = Self.stage(m)
+        let archive = stage.appending(path: release.asset).appendingPathExtension("partial")
+        let unpacked = stage.appending(path: "unpacked")
+        try FileManager.default.createDirectory(at: stage, withIntermediateDirectories: true)
         let url = URL(string: "\(releases)/\(release.asset)")!
-        let archive = dir.appending(path: release.asset).appendingPathExtension("partial")
         let size = try await length(of: url)
         var have = Int((try? archive.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0)
         if have > size {
@@ -374,8 +386,17 @@ import os
                 }
             }
         }
-        try TarBz2.extract(release.files, from: archive, into: dir, strip: 1) { progress(0.9 + 0.1 * $0) }
-        try? FileManager.default.removeItem(at: archive)
+        try? FileManager.default.removeItem(at: unpacked)
+        try TarBz2.extract(release.files, from: archive, into: unpacked, strip: 1) { progress(0.9 + 0.1 * $0) }
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        for f in release.files {
+            let from = unpacked.appending(path: f.path)
+            let to = dir.appending(path: f.path)
+            try FileManager.default.createDirectory(at: to.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try? FileManager.default.removeItem(at: to)
+            try FileManager.default.moveItem(at: from, to: to)
+        }
+        try? FileManager.default.removeItem(at: stage)
     }
 
     /// How big a release's asset is: a range asked for its first byte is
