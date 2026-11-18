@@ -111,6 +111,7 @@ func eachLeaf(s *savedStore, fn func(n *layout.Node)) {
 func (st *store) followHost(h *hostConn, c *rex.Client, hello rex.Hello, update func(func())) {
 	l := hostSyncOf(h)
 	l.old, l.conn = !hello.Can(rex.CapabilityProjects), c
+	st.retryAdoptions(h)
 	l.live = l.old // a host of projects is live once its layout came (takeHost)
 	if l.old {
 		l.out.use(nil, update, nil)

@@ -179,14 +179,6 @@ func (a *App) createProject(h *hostConn, dir, name string) {
 	})
 }
 
-// projectByID is the project of ID id, nil for none.
-func (a *App) projectByID(id string) *Workspace {
-	if a.st == nil {
-		return nil
-	}
-	return a.st.byID(id)
-}
-
 // openNewProject opens the New Project sheet, on this machine first.
 func (a *App) openNewProject() { a.openSheet(nil, "") }
 

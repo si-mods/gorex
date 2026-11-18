@@ -3,11 +3,13 @@ package main
 import (
 	"cmp"
 	"fmt"
+	"log"
 	"math"
 	"os"
 	"runtime"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/egoist/mygo"
@@ -60,7 +62,7 @@ type command struct {
 var clientBlockedActions = map[string]bool{
 	"app.quit": true, "app.updates": true, "server.restart": true, "config.reload": true,
 	"session.close": true, "tab.close": true, "pane.close": true, "pane.restart": true,
-	"screen.clear": true, "scrollback.clear": true, "tab.move_window": true,
+	"screen.clear": true, "scrollback.clear": true,
 	"mode.enter": true, "mode.exit": true, "mode.exit_all": true,
 	"rex.import": true,
 }
@@ -204,8 +206,56 @@ func newCustomCommands(cfg *config.Config) ([]*command, error) {
 	return out, nil
 }
 
-// lookupCommand returns the built-in action ID, nil when there is none.
-func lookupCommand(id string) *command { return commandsByID[id] }
+// lookupCommand returns the built-in action ID, nil when there is none:
+// an old ID of an action renamed is the action's, and one of an action
+// removed does nothing (oldAction), so that bindings of before keep
+// working (docs/lua.md).
+func lookupCommand(id string) *command {
+	if c := commandsByID[id]; c != nil {
+		return c
+	}
+	if to, ok := renamedActions[id]; ok {
+		return commandsByID[to]
+	}
+	return oldAction(id)
+}
+
+// renamedActions are the IDs of before of actions renamed since: New
+// Project with No Folder became New Tab with No Project
+// (docs/projects.md).
+var renamedActions = map[string]string{"session.new": "tab.new_no_project"}
+
+// removedActions are the IDs of actions docs/projects.md removed, which a
+// binding may still name: Toggle Sidebar View, Move Tab to New Window,
+// Change and Remove Project Folder.
+var removedActions = map[string]bool{
+	"sidebar.view.toggle": true, "tab.move_window": true,
+	"project.change_folder": true, "project.remove_folder": true,
+}
+
+var (
+	oldActionsMu sync.Mutex
+	oldActions   = map[string]*command{}
+)
+
+// oldAction is the action of a removed ID, which does nothing but log,
+// once; nil for an ID never an action's.
+func oldAction(id string) *command {
+	if !removedActions[id] {
+		return nil
+	}
+	oldActionsMu.Lock()
+	defer oldActionsMu.Unlock()
+	if c := oldActions[id]; c != nil {
+		return c
+	}
+	var once sync.Once
+	c := &command{ID: id, Name: func(locales.Messages) string { return id }, Hidden: true, Run: func(*App) {
+		once.Do(func() { log.Printf("gorex: the action %s was removed; a binding of it does nothing", id) })
+	}}
+	oldActions[id] = c
+	return c
+}
 
 // lookupCommand returns the action by ID, checking custom actions on a
 // before built-in actions.
@@ -217,7 +267,7 @@ func (a *App) lookupCommand(id string) *command {
 			}
 		}
 	}
-	return commandsByID[id]
+	return lookupCommand(id)
 }
 
 var (

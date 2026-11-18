@@ -32,17 +32,6 @@ func spaceColorHex(c string) (string, bool) {
 	return strings.ToLower(c), true
 }
 
-// nextSpaceColor is the color a new space takes: the first preset no space
-// uses, or, every one used, the preset the fewest do, the palette's order
-// settling ties.
-func (st *store) nextSpaceColor() string {
-	used := make([]string, len(st.workspaces))
-	for i, w := range st.workspaces {
-		used[i] = w.Color
-	}
-	return layout.NextColor(used)
-}
-
 // spaceColors are the colors of a window showing a space of color from
 // base: base itself when color names no color, else a copy of base whose
 // background gradient, tint and accent take the space's, so that a window

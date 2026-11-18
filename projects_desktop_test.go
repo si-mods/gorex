@@ -344,7 +344,14 @@ func names(ws []*Workspace) []string {
 // workspaces make them so. The app makes none: its projects come from
 // project.create.
 func (st *store) newTestSpace() *Workspace {
-	w := &Workspace{ID: layout.NewSpaceID(), Name: layout.SpaceName(st.taken), Color: st.nextSpaceColor()}
+	taken := func(name string) bool {
+		return slices.ContainsFunc(st.workspaces, func(w *Workspace) bool { return strings.EqualFold(w.Name, name) })
+	}
+	used := make([]string, len(st.workspaces))
+	for i, w := range st.workspaces {
+		used[i] = w.Color
+	}
+	w := &Workspace{ID: layout.NewSpaceID(), Name: layout.SpaceName(taken), Color: layout.NextColor(used)}
 	i := slices.IndexFunc(st.workspaces, func(o *Workspace) bool { return o.host != nil })
 	if i < 0 {
 		i = len(st.workspaces)
@@ -441,5 +448,97 @@ func TestSidebarFlatLayout(t *testing.T) {
 	}
 	if !tt.HasText("OLD-LAPTOP") || !tt.HasText(locales.ProjectsOfflineLabel()) {
 		t.Errorf("the header of a host away: %q", tt.Texts())
+	}
+}
+
+// TestMoveTabStaysOnItsHost: a tab moves only between workspaces of its
+// host. Its menu's Move to Project lists none of another host's, and a
+// move there, either way, does nothing: the tab's session runs on, where
+// it was.
+func TestMoveTabStaysOnItsHost(t *testing.T) {
+	a, tt, sock, remote := projectsApp(t)
+	space := ""
+	res, err := remote.Command(rex.LayoutCommand{Op: "project.create", Dir: testDir(t), Name: "trainer", SpaceName: &space})
+	if err != nil || res.Code != "" {
+		t.Fatalf("project.create on the host: %+v %v", res, err)
+	}
+	local := clientCommand(a, rex.LayoutCommand{Op: "project.create", Dir: appTempDir(t, a), Name: "acme-api", SpaceName: &space})
+	caughtUp(t, a, tt)
+	h := a.addHost(savedHost{ID: "h1", Name: "office-h800", Address: sock})
+	waitFor(t, tt, "the host's project", func() bool { w := a.st.byID(res.Space); return w != nil && !w.offline() })
+	there, here := a.st.byID(res.Space), a.st.byID(local.Space)
+
+	// This machine's tab, to the host's project.
+	tab := a.tab()
+	sid := tab.Focus.SID
+	if a.canMoveTab(tab, there) {
+		t.Fatal("a tab of this machine may move to a host's project")
+	}
+	name, detail := tab.label()
+	rightClick(t, tt, name+" "+detail)
+	if err := tt.ChooseMenuItem(locales.TabMoveSpace(), "trainer"); err == nil {
+		t.Error("Move to Project lists the host's project")
+	}
+	tt.CloseMenu()
+	a.moveTabToSpace(tab, there)
+	caughtUp(t, a, tt)
+	if !slices.Contains(a.tabs, tab) || !slices.Contains(sessionIDs(t, a.client), sid) {
+		t.Fatalf("the move to another host's project took the tab or ended its session")
+	}
+
+	// The host's tab, to this machine's project.
+	a.showWorkspace(there)
+	waitFor(t, tt, "the host's tab", func() bool { return a.ws == there && len(a.tabs) == 1 && a.tab().Focus != nil })
+	rt := a.tab()
+	rsid := rt.Focus.SID
+	if a.canMoveTab(rt, here) {
+		t.Fatal("a tab of a host may move to this machine's project")
+	}
+	a.moveTabToSpace(rt, here)
+	a.save()
+	tt.Frame()
+	if !slices.Contains(a.tabs, rt) || !slices.Contains(sessionIDs(t, remote), rsid) {
+		t.Fatalf("the move to this machine's project took the host's tab or ended its session")
+	}
+	_ = h
+}
+
+// TestOldActionIDs: an action ID of before keeps working: session.new is
+// New Tab with No Project, and a removed action does nothing, without an
+// error.
+func TestOldActionIDs(t *testing.T) {
+	if c := lookupCommand("session.new"); c == nil || c.ID != "tab.new_no_project" {
+		t.Errorf("session.new is %+v", c)
+	}
+	for _, id := range []string{"sidebar.view.toggle", "tab.move_window", "project.change_folder", "project.remove_folder"} {
+		c := lookupCommand(id)
+		if c == nil {
+			t.Fatalf("%s is no action", id)
+		}
+		if err := c.invoke(&App{}, nil); err != nil {
+			t.Errorf("%s: %v", id, err)
+		}
+	}
+	if lookupCommand("no.such.action") != nil {
+		t.Error("an ID never an action's is one")
+	}
+	if blockedFromClient("tab.move_window") {
+		t.Error("tab.move_window is still blocked")
+	}
+}
+
+// TestRefusedAdoptionWaits: an adoption its host refused goes again only
+// once the host connects anew, not as its layout changes.
+func TestRefusedAdoptionWaits(t *testing.T) {
+	h := newHostConn(savedHost{ID: "h1", Name: "office-h800"})
+	st := &store{hosts: []*hostConn{h}, adopting: map[string]bool{"ad1": true}, adoptRefused: map[string]*hostConn{"ad1": h}}
+	st.base.Adopt = []layout.Adoption{{ID: "ad1", Host: "h1"}}
+	st.sendAdoptions()
+	if !st.adopting["ad1"] {
+		t.Fatal("a refused adoption is free to go again on the same connection")
+	}
+	st.retryAdoptions(h)
+	if st.adopting["ad1"] || len(st.adoptRefused) != 0 {
+		t.Errorf("a new connection does not let it go again: %v %v", st.adopting, st.adoptRefused)
 	}
 }

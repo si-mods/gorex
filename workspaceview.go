@@ -59,17 +59,6 @@ func (a *App) askCloseWorkspace() {
 // its rows' corners are concentric with.
 const popR, popPad = 14, 6
 
-// spaceDot is the mark of a space's color before its name in the
-// popover: a dot of its base color, or only an outline for the default
-// look.
-func spaceDot(c *ui.Context, k *colors, w *Workspace) ui.Element {
-	dot := ui.Box(c).Size(8, 8).Radius(4).Shrink(0)
-	if hex, ok := spaceColorHex(w.Color); ok {
-		return dot.Background(ui.Hex(hex))
-	}
-	return dot.Border(1, k.textFaint)
-}
-
 // workspaceDetail says of a workspace its n tabs, and when another window
 // than a's shows it.
 func workspaceDetail(w *Workspace, a *App, n int) string {

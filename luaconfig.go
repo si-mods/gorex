@@ -113,7 +113,7 @@ func resolveAction(cmds []*command, id string) *command {
 			return c
 		}
 	}
-	return commandsByID[id]
+	return lookupCommand(id)
 }
 
 type shortcutBinding struct {

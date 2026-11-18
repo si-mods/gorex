@@ -83,8 +83,13 @@ func (st *store) sendAdoptions() {
 		log.Printf("gorex: sending %s its adoption %s: %d tabs", h.label(), id, len(x.Tabs))
 		st.sendOn(h, rex.LayoutCommand{Op: "project.adopt", Adopt: &x}, func(res rex.LayoutCommand) {
 			if res.Code != "" {
+				// Not again on this connection, as its layout changes: at
+				// the next (retryAdoptions).
 				log.Printf("gorex: %s did not adopt %s: %s", h.label(), id, res.Error)
-				delete(st.adopting, id)
+				if st.adoptRefused == nil {
+					st.adoptRefused = map[string]*hostConn{}
+				}
+				st.adoptRefused[id] = h
 				return
 			}
 			st.send(rex.LayoutCommand{Op: "adopt.taken", Target: id}, func(res rex.LayoutCommand) {
@@ -94,5 +99,16 @@ func (st *store) sendAdoptions() {
 				}
 			})
 		})
+	}
+}
+
+// retryAdoptions has the adoptions host h refused go to it again, as it
+// connects anew. Call it on the main thread.
+func (st *store) retryAdoptions(h *hostConn) {
+	for id, o := range st.adoptRefused {
+		if o == h {
+			delete(st.adoptRefused, id)
+			delete(st.adopting, id)
+		}
 	}
 }

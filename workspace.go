@@ -135,39 +135,6 @@ func (st *store) listOf(h *hostConn) (infos map[string]rex.SessionInfo, id strin
 	return h.infos, h.ID, true
 }
 
-// statusOn is the most urgent status of the workspace's sessions on host
-// h, from the window that shows it or, hidden, from the host's last
-// session list.
-func (st *store) statusOn(w *Workspace, h *hostConn) *rex.ProgramStatus {
-	if w.app == nil {
-		return st.hiddenStatus(w, h)
-	}
-	var all []rex.ProgramStatus
-	for _, t := range w.app.tabsOn(h) {
-		for _, p := range t.allPanes() {
-			if s := p.status(); s != nil {
-				all = append(all, *s)
-			}
-		}
-	}
-	return rex.MostUrgent(all, time.Time{})
-}
-
-// needsOn tells whether the workspace's sessions on host h need the user,
-// as a folded host's tabs tell: by a pane's attention or status, or,
-// hidden, by its sessions' last status (statusOn).
-func (st *store) needsOn(w *Workspace, h *hostConn) bool {
-	if w.app == nil {
-		return needsUser(st.statusOn(w, h))
-	}
-	for _, t := range w.app.tabsOn(h) {
-		if slices.ContainsFunc(t.allPanes(), func(p *Pane) bool { return p.needsYou() > 0 }) {
-			return true
-		}
-	}
-	return false
-}
-
 // recordSeen notes that a session's status was seen, for a server that
 // does not keep it (seenOf).
 func (st *store) recordSeen(sid string, at time.Time) {
@@ -273,6 +240,9 @@ type store struct {
 	// adopting are the adoptions on their way to their hosts, by ID
 	// (sendAdoptions).
 	adopting map[string]bool
+	// adoptRefused are the adoptions a host refused, by ID: they go to it
+	// again once it connects anew (retryAdoptions).
+	adoptRefused map[string]*hostConn
 }
 
 // The layout the server keeps, opaque to it: every workspace, and which
@@ -755,18 +725,6 @@ func (st *store) byID(id string) *Workspace {
 	return nil
 }
 
-// hostSIDs are the sessions of host h the layouts of the workspaces no
-// window shows name.
-func (st *store) hostSIDs(h *hostConn) map[string]bool {
-	out := map[string]bool{}
-	for _, w := range st.workspaces {
-		if w.app == nil {
-			st.visitSIDs(w, h.ID, func(sid string) { out[sid] = true })
-		}
-	}
-	return out
-}
-
 // addWorkspace is this machine's workspace of tabs with no project, made
 // when it has none, after its projects (docs/projects.md): a window with
 // nothing else to show shows it.
@@ -798,24 +756,6 @@ func (st *store) freshWorkspace() *Workspace {
 	}
 	st.workspaces = slices.Insert(st.workspaces, i, w)
 	return w
-}
-
-// taken tells whether a workspace has the name.
-func (st *store) taken(name string) bool {
-	return slices.ContainsFunc(st.workspaces, func(w *Workspace) bool { return strings.EqualFold(w.Name, name) })
-}
-
-// workspaceNamed returns the workspace with the name, as taken compares
-// them; nil for none or "".
-func (st *store) workspaceNamed(name string) *Workspace {
-	if name == "" {
-		return nil
-	}
-	i := slices.IndexFunc(st.workspaces, func(w *Workspace) bool { return strings.EqualFold(w.Name, name) })
-	if i < 0 {
-		return nil
-	}
-	return st.workspaces[i]
 }
 
 // remove forgets a workspace, and the window that shows it shows none.
@@ -1459,13 +1399,6 @@ func (a *App) showSpace(n int) {
 	a.showProjectN(n)
 }
 
-// newWorkspace shows this machine's tabs with no project in the window.
-func (a *App) newWorkspace() {
-	if a.st != nil {
-		a.showWorkspace(a.st.addWorkspace())
-	}
-}
-
 // newWindowCmd opens a window of a new workspace.
 func (a *App) newWindowCmd() {
 	if a.st != nil {
@@ -1561,7 +1494,9 @@ func (st *store) freeAfter(w *Workspace) *Workspace {
 // leaves with, as a closed last tab does, has it there.
 func (a *App) moveTabToSpace(t *Tab, w *Workspace) {
 	st := a.st
-	if st == nil || t == nil || w == nil || w == a.ws || !slices.Contains(a.tabs, t) || !slices.Contains(st.workspaces, w) {
+	if st == nil || !slices.Contains(st.workspaces, w) || !a.canMoveTab(t, w) {
+		// Another host's workspace would end the tab's sessions here and
+		// take none of them there: a tab lives on one host.
 		return
 	}
 	s := a.savedTab(t)

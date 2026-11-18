@@ -527,7 +527,7 @@ func (a *App) newTabIn(w *Workspace) {
 // another workspace of its host (docs/projects.md: a tab moves between
 // workspaces of one host, with its panes).
 func (a *App) canMoveTab(t *Tab, w *Workspace) bool {
-	return t != nil && w != nil && w != a.ws && a.ws != nil && w.host == a.ws.host && !w.offline() && slices.Contains(a.tabs, t)
+	return t != nil && w != nil && w != a.ws && a.ws != nil && w.host == a.ws.host && !w.offline() && serverMade(w.host) && slices.Contains(a.tabs, t)
 }
 
 // spacedComma is ", " and d, or "" for none.
