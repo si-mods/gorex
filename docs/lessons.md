@@ -128,6 +128,11 @@ Each item has a **Trigger** (what the diff shows), a **Check** (what the author 
 - **Check:** the author ran `golangci-lint` at the version `ci.yml` pins, for `GOOS` linux, windows and darwin, and `gofmt -l` on the changed files. `go vet` alone is not the lint job.
 - **Source:** #684 failed CI three times, one push at a time: `bodyclose` (lint), gofmt, and `TestNoInternalInit` (a rule test that `go vet` does not run); #672 needed a gofmt fix after review.
 
+### Full suite run while the machine is in use
+- **Trigger:** an author or an agent runs the full suites locally (`go test ./...`, `tools/verify -full`, the root package's tests) while someone works on the machine.
+- **Check:** run locally the tests of the packages the diff changes. The full suites, the root package's shards and the Windows job run in CI. A run that makes the machine lag is stopped and reported as not run locally, not left to finish.
+- **Source:** the maintenance audit of 0.38.0 ran three suites at once and made the host lag until the user stopped it. CI then passed every shard, and the one local failure (`TestProjectSetHome`) passed alone in 0.63 s.
+
 ### Shell pipeline with an early exit
 - **Trigger:** a script with `set -o pipefail` pipes into `head`, `grep -q`, `awk '... exit'` or anything else that stops reading early.
 - **Check:** the reader consumes all input, or the producer writes to a file first. Otherwise the producer gets SIGPIPE and the step fails.
