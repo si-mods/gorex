@@ -42,6 +42,8 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - A file link a program made, whose text may not be the file's name, now asks first: the alert shows the computer and the file's full path. Plain paths still open with one tap.
 - Projects: + stays in view, the folder browser has Use This Folder, Delete Project asks first, a project without a folder gets New Window, and menus say window, not tab.
 - A project whose computer is off says it is offline. Renaming a project keeps its folder and no longer leaves an empty project of the old name.
+- Spaces are back: pick one at the top, such as Work. Each computer lists its projects of that space, latest first; tap one for its tabs, or tap + by a computer to make a project from a folder.
+- Long-press a project to rename it, color it, move it to another space or close it; long-press a tab to move it to another project. A computer that is off shows its projects greyed.
 
 ## zh-Hans
 
@@ -76,3 +78,5 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - 程序生成的文件链接，其文字未必是文件名，现在点按后会先询问：提示框显示电脑名和文件的完整路径。普通路径仍然点一下就打开。
 - 项目：+ 始终可见；文件夹浏览器新增「使用此文件夹」；删除项目会先确认；没有文件夹的项目也能新建窗口；菜单统一称「窗口」，不再叫「标签页」。
 - 项目所在的电脑关机时，显示这台电脑已离线。重命名项目后，项目的文件夹保留，也不再多出一个旧名称的空项目。
+- 空间回来了：在顶部选一个空间，例如「工作」。每台电脑列出它在这个空间的项目，最近用过的在前；点项目查看它的标签页，点电脑旁的 + 用一个文件夹新建项目。
+- 长按项目可重命名、设颜色、移到别的空间或关闭；长按标签页可移到别的项目。关机的电脑以灰色显示它的项目。

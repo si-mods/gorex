@@ -11,8 +11,9 @@ import XCTest
     var respond: (_ method: String, _ payload: [String: Any]) -> [String: Any]? = { _, _ in [:] }
     /// A data connection, with its handshake message.
     var data: (_ conn: NWConnection, _ first: Data) -> Void = { c, _ in c.cancel() }
-    /// The features the welcome lists.
+    /// The features the welcome lists, and the versions it gives them.
     var features: [String] = []
+    var featureVersions: [String: Int] = [:]
     /// The API revision the welcome reports, for a test of an older server.
     var revision: Int?
     /// The methods called, in order.
@@ -58,6 +59,13 @@ import XCTest
     }
 
     func count(_ method: String) -> Int { calls.filter { $0 == method }.count }
+
+    /// The payloads of a method's calls, in order, and of its last call.
+    func payloads(of method: String) -> [[String: Any]] {
+        zip(calls, payloads).filter { $0.0 == method }.map(\.1)
+    }
+
+    func payload(_ method: String) -> [String: Any]? { payloads(of: method).last }
 
     /// Sends an event on every control connection.
     func event(_ payload: [String: Any]) {
@@ -115,6 +123,7 @@ import XCTest
                                           "client": ["id": "c\(controls.count)", "reconnect_token": "t\(controls.count)"],
                                           "features": features]
             if let revision { welcome["api_revision"] = revision }
+            if !featureVersions.isEmpty { welcome["feature_versions"] = featureVersions }
             Self.send(c, json: welcome)
         case "request":
             let method = m["method"] as? String ?? ""

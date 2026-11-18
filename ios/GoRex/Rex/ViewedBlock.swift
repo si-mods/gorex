@@ -4,7 +4,7 @@ import Foundation
 /// opening, never a source of truth. It is not the session's focus and is
 /// never sent to the server.
 struct ViewedBlockKey: Hashable {
-    /// Host.spaceMachineKey: the machine_id, or the host's UUID in Demo Mode.
+    /// Host.cacheKey: the host, by its ID.
     let machine: String
     let session: String
     let window: String

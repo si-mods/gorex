@@ -212,7 +212,7 @@ nonisolated final class ConnectionTests: XCTestCase {
                 c.cancel()
             }
         }
-        let closed = TerminalSession.State.failed(String(localized: "The window closed."))
+        let closed = TerminalSession.State.failed(String(localized: "The tab closed."))
         let s = TerminalSession(host: h, session: "s", block: "b")
         s.start()
         await until("window closed") { s.state == closed }
@@ -359,10 +359,8 @@ nonisolated final class ConnectionTests: XCTestCase {
         h.stop()
     }
 
-    /// Creating a session with a space label forwards `label`, and
-    /// `resolveSession(forBlock:fallback:)` resolves the new session ID
-    /// when `gorex.spaces_apply` moved the block to another session.
-    @MainActor func testNewSessionWithLabelAndResolveMovedBlock() async throws {
+    /// Creating a session with a label forwards `label`.
+    @MainActor func testNewSessionWithLabel() async throws {
         let rex = try FakeRex()
         defer { rex.stop() }
         rex.respond = { method, payload in
@@ -375,10 +373,6 @@ nonisolated final class ConnectionTests: XCTestCase {
                     "session_id": "session:temp",
                     "initial_windows": [["window_id": "window:1", "block_ids": ["block:1"]]],
                 ]
-            case "gorex.spaces_apply":
-                return ["applied": 1]
-            case "target.resolve":
-                return ["results": [["query": "block:1", "status": "ok", "target": ["session_id": "session:work"]]]]
             default:
                 return [:]
             }
@@ -391,8 +385,5 @@ nonisolated final class ConnectionTests: XCTestCase {
         let made = try await h.newSession(label: "Work")
         XCTAssertEqual(made?.0, "session:temp")
         XCTAssertEqual(made?.1, "block:1")
-
-        let resolved = await h.resolveSession(forBlock: "block:1", fallback: "session:temp")
-        XCTAssertEqual(resolved, "session:work")
     }
 }

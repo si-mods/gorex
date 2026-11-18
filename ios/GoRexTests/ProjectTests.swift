@@ -1,570 +1,372 @@
 import XCTest
 
-/// Projects: a space's home in the manifest, its merge and sync, and where
-/// a project's new window opens (docs/projects.md, Rex Go).
+/// Projects on each host, inside a space (docs/projects.md, Rex Go): what
+/// the host's welcome and sessions say, the Rex API calls the list makes,
+/// the spaces this device keeps, and the copy of a host's projects shown
+/// while it is away.
 nonisolated final class ProjectTests: XCTestCase {
-    @MainActor private func tempURL() -> URL {
-        FileManager.default.temporaryDirectory.appendingPathComponent("projects-\(UUID().uuidString).json")
+    // MARK: Welcome
+
+    /// A feature's version reads from each form a welcome may give it; a
+    /// feature with none has no version.
+    @MainActor func testFeatureVersions() {
+        func version(_ welcome: [String: Any]) -> Int? {
+            ControlConnection.features(of: welcome).1[Host.projectsFeature]
+        }
+        XCTAssertNil(version(["features": ["gorex.projects", "gorex.dir_list"]]))
+        XCTAssertTrue(ControlConnection.features(of: ["features": ["gorex.projects"]]).0.contains(Host.projectsFeature))
+        XCTAssertEqual(version(["features": ["gorex.projects"], "feature_versions": ["gorex.projects": 2]]), 2)
+        XCTAssertEqual(version(["features": [["name": "gorex.projects", "version": 2], "gorex.dir_list"]]), 2)
+        XCTAssertEqual(version(["features": ["gorex.projects.v2"]]), 2)
+        let (names, _) = ControlConnection.features(of: ["features": [["name": "gorex.projects", "version": 2], "gorex.dir_list"]])
+        XCTAssertEqual(names, [Host.projectsFeature, Host.dirListFeature])
     }
 
-    @MainActor private func view(_ session: String, _ blocks: [String]) -> SessionView {
-        SessionView(revision: 1, session_id: session, windows: [
-            .init(window_id: "w-" + session, focused_block_id: blocks.first, layers: [.init(blocks: blocks.map { .init(block_id: $0) })]),
+    /// Only a host whose welcome gives gorex.projects version 2 lists
+    /// projects; one of before keeps its sessions as before.
+    @MainActor func testOnlyVersionTwoHasProjects() async throws {
+        let cases: [([String], [String: Int], Bool)] = [
+            ([], [:], false), (["gorex.projects"], [:], false),
+            (["gorex.projects"], ["gorex.projects": 1], false), (["gorex.projects"], ["gorex.projects": 2], true),
+        ]
+        for (features, versions, want) in cases {
+            let (rex, h) = try await connect(features: features, versions: versions)
+            XCTAssertEqual(h.hasProjects, want, "\(features) \(versions)")
+            h.stop()
+            rex.stop()
+        }
+    }
+
+    // MARK: Sessions
+
+    /// A session's project reads its folder, space, last use and color; a
+    /// session of no project has none, and a malformed field reads empty.
+    @MainActor func testSessionViewProject() throws {
+        let good = #"{"payload":{"revision":1,"session_id":"s1","project":{"dir":"/srv/acme-api","space":"Work","used":"2026-11-18T09:30:00.123456789+08:00","color":"teal"}}}"#
+        let p = try XCTUnwrap(try SessionView(response: Data(good.utf8)).project)
+        XCTAssertEqual(p.dir, "/srv/acme-api")
+        XCTAssertEqual(p.space, "Work")
+        XCTAssertEqual(p.color, "teal")
+        XCTAssertEqual(p.used, Date(timeIntervalSince1970: 1_794_965_400))
+        let loose = #"{"payload":{"revision":1,"session_id":"s1","project":{}}}"#
+        XCTAssertEqual(try SessionView(response: Data(loose.utf8)).project?.dir, "")
+        let bad = #"{"payload":{"revision":1,"session_id":"s1","project":"nope"}}"#
+        XCTAssertEqual(try SessionView(response: Data(bad.utf8)).project?.dir, "")
+        XCTAssertNil(SessionView.Project.of([:]))
+        XCTAssertNil(SessionView.Project.of(["dir": ""]))
+        let listed = SessionView.Project.of(["dir": "/a", "space": "Life", "used": "2026-11-18T01:30:00Z"])
+        XCTAssertEqual(listed, .init(dir: "/a", space: "Life", used: Date(timeIntervalSince1970: 1_794_965_400)))
+        XCTAssertNil(SessionView.Project.time("0001-01-01T00:00:00Z"))
+        XCTAssertNil(SessionView.Project.time("yesterday"))
+    }
+
+    /// A host with projects lists its sessions with a folder as projects,
+    /// in their spaces, and the tabs of the others as tabs with no project.
+    @MainActor func testHostListsProjectsAndLooseTabs() async throws {
+        let (rex, h) = try await connect(features: [Host.projectsFeature], versions: [Host.projectsFeature: 2], sessions: [
+            session("session:api", "acme-api", project: ["dir": "/tmp/demo/acme-api", "space": "Work", "used": "2026-11-18T01:00:00Z"],
+                    tabs: [("window:dev", "dev"), ("window:logs", "logs")]),
+            session("session:site", "site", project: ["dir": "/tmp/demo/site", "space": ""], tabs: []),
+            session("session:loose", "", project: [:], tabs: [("window:scratch", "scratch")]),
+        ], spaceList: ["Work", "", "Old"])
+        defer { h.stop(); rex.stop() }
+        await until("the views") { h.sessions.allSatisfy { $0.view != nil } }
+        // The old space no project carries is offered, for the picker.
+        await until("the spaces offered") { h.offeredSpaces == ["Old"] }
+        let l = ProjectListing(host: h)
+        XCTAssertEqual(l.projects.map(\.name), ["acme-api", "site"])
+        XCTAssertEqual(l.projects[0].space, "Work")
+        XCTAssertEqual(l.projects[0].tabs.map(\.title), ["dev", "logs"])
+        XCTAssertEqual(l.projects[1].space, "")
+        XCTAssertEqual(l.loose.map(\.title), ["scratch"])
+        XCTAssertEqual(l.spaces, ["Work", ""])
+        XCTAssertEqual(l.pickerSpaces, ["Work", "", "Old"])
+    }
+
+    // MARK: Rex API calls
+
+    /// gorex.project.create sends the name, folder and space, and gives the
+    /// project and its first tab; the tab's block reads from its view.
+    @MainActor func testCreateProject() async throws {
+        let (rex, h) = try await connect(features: [Host.projectsFeature], versions: [Host.projectsFeature: 2])
+        defer { h.stop(); rex.stop() }
+        rex.respond = { method, _ in
+            switch method {
+            case "gorex.project.create": ["project_id": "session:api", "tab_id": "window:dev"]
+            case "session.view": ["revision": 1, "session_id": "session:api", "label": "acme-api",
+                                  "windows": [["window_id": "window:dev", "focused_block_id": "block:dev"]]]
+            default: [:]
+            }
+        }
+        let made = try await h.createProject(name: "acme-api", dir: "/tmp/demo/acme-api", space: "Work")
+        XCTAssertEqual(made, .made(project: "session:api", tab: "window:dev"))
+        let p = try XCTUnwrap(rex.payload("gorex.project.create"))
+        XCTAssertEqual(p["name"] as? String, "acme-api")
+        XCTAssertEqual(p["dir"] as? String, "/tmp/demo/acme-api")
+        XCTAssertEqual(p["space"] as? String, "Work")
+        let block = try await h.block(ofTab: "window:dev", in: "session:api")
+        XCTAssertEqual(block, "block:dev")
+    }
+
+    /// A folder that is a project already gives that project, told in the
+    /// answer or as an error.
+    @MainActor func testCreateProjectThatExists() async throws {
+        let (rex, h) = try await connect(features: [Host.projectsFeature], versions: [Host.projectsFeature: 2], sessions: [
+            session("session:api", "acme-api", project: ["dir": "/tmp/demo/acme-api", "space": "Life"], tabs: []),
         ])
-    }
-
-    // MARK: Manifest
-
-    /// A manifest of an app of before projects reads with no home known.
-    @MainActor func testManifestWithoutHomeDecodes() throws {
-        let json = #"{"version":1,"revision":3,"tombstones":[],"spaces":[{"id":"sp_a","name":"A","order":0,"updated_at":100,"members":[]}]}"#
-        let m = try JSONDecoder().decode(SpaceManifest.self, from: Data(json.utf8))
-        XCTAssertNil(m.spaces[0].home_machine)
-        XCTAssertNil(m.spaces[0].dir)
-        XCTAssertNil(m.spaces[0].folder)
-    }
-
-    /// The home decodes; an unknown type reads as nil and fails nothing.
-    @MainActor func testManifestHomeDecodesLeniently() throws {
-        let url = tempURL()
-        defer { try? FileManager.default.removeItem(at: url) }
-        let json = #"""
-        {"version":1,"revision":1,"tombstones":[],"spaces":[
-          {"id":"sp_a","name":"A","order":0,"updated_at":100,"members":[],"home_machine":"m-office","dir":"/home/demo/code/windflow"},
-          {"id":"sp_b","name":"B","order":1,"updated_at":100,"members":[],"home_machine":7,"dir":{"path":"/x"}},
-          {"id":"sp_c","name":"C","order":2,"updated_at":100,"members":[],"home_machine":"","dir":""}
-        ]}
-        """#
-        try Data(json.utf8).write(to: url)
-        let store = SpaceStore(fileURL: url)
-        let spaces = store.orderedSpaces
-        XCTAssertEqual(spaces.map(\.id), ["sp_a", "sp_b", "sp_c"])
-        XCTAssertEqual(spaces[0].home_machine, "m-office")
-        XCTAssertEqual(spaces[0].folder, "/home/demo/code/windflow")
-        XCTAssertNil(spaces[1].home_machine)
-        XCTAssertNil(spaces[1].dir)
-        XCTAssertEqual(spaces[2].dir, "")
-        XCTAssertNil(spaces[2].folder)
-    }
-
-    /// The home round-trips; a space with none known writes no keys, as an
-    /// older app's manifest has none.
-    @MainActor func testManifestHomeRoundTrips() throws {
-        let url = tempURL()
-        defer { try? FileManager.default.removeItem(at: url) }
-        let store = SpaceStore(fileURL: url)
-        let a = store.createSpace(name: "windflow", homeMachine: "m-office", dir: "/home/demo/code/windflow")
-        store.createSpace(name: "Loose")
-        let reloaded = SpaceStore(fileURL: url)
-        XCTAssertEqual(reloaded.space(id: a.id)?.home_machine, "m-office")
-        XCTAssertEqual(reloaded.space(id: a.id)?.dir, "/home/demo/code/windflow")
-        let text = String(decoding: try Data(contentsOf: url), as: UTF8.self)
-        XCTAssertEqual(text.components(separatedBy: "\"dir\"").count - 1, 1)
-    }
-
-    /// setHome sets the home and moves updated_at; a dir of "" clears both.
-    @MainActor func testSetHome() {
-        let url = tempURL()
-        defer { try? FileManager.default.removeItem(at: url) }
-        let store = SpaceStore(fileURL: url)
-        let s = store.createSpace(name: "windflow", now: Date(timeIntervalSince1970: 100))
-        store.setHome(s.id, machine: "m-office", dir: "/srv/windflow", now: Date(timeIntervalSince1970: 200))
-        XCTAssertEqual(store.space(id: s.id)?.folder, "/srv/windflow")
-        XCTAssertEqual(store.space(id: s.id)?.updated_at, 200)
-        store.setHome(s.id, machine: "m-office", dir: "", now: Date(timeIntervalSince1970: 300))
-        XCTAssertEqual(store.space(id: s.id)?.home_machine, "")
-        XCTAssertEqual(store.space(id: s.id)?.dir, "")
-    }
-
-    // MARK: Merge
-
-    /// An older app's newer copy drops the home: the local one stays.
-    @MainActor func testMergeKeepsLocalHomeDroppedByOlderApp() {
-        let local = CentralSpace(id: "sp1", name: "windflow", color: nil, order: 0, updated_at: 100, members: [],
-                                 home_machine: "m-office", dir: "/srv/windflow")
-        var remote = local
-        remote.name = "Windflow"
-        remote.updated_at = 200
-        remote.home_machine = nil
-        remote.dir = nil
-        let merged = SpaceStore.merged(local: SpaceManifest(spaces: [local]), remote: SpaceManifest(spaces: [remote]))
-        XCTAssertEqual(merged.spaces.first?.name, "Windflow")
-        XCTAssertEqual(merged.spaces.first?.home_machine, "m-office")
-        XCTAssertEqual(merged.spaces.first?.dir, "/srv/windflow")
-    }
-
-    /// A newer copy's home wins, a cleared one ("") too.
-    @MainActor func testMergeTakesNewerHome() {
-        let local = CentralSpace(id: "sp1", name: "w", color: nil, order: 0, updated_at: 100, members: [],
-                                 home_machine: "m-office", dir: "/srv/windflow")
-        var moved = local
-        moved.updated_at = 200
-        moved.home_machine = "m-laptop"
-        moved.dir = "/Users/demo/windflow"
-        var merged = SpaceStore.merged(local: SpaceManifest(spaces: [local]), remote: SpaceManifest(spaces: [moved]))
-        XCTAssertEqual(merged.spaces.first?.home_machine, "m-laptop")
-        XCTAssertEqual(merged.spaces.first?.dir, "/Users/demo/windflow")
-
-        var cleared = local
-        cleared.updated_at = 200
-        cleared.home_machine = ""
-        cleared.dir = ""
-        merged = SpaceStore.merged(local: SpaceManifest(spaces: [local]), remote: SpaceManifest(spaces: [cleared]))
-        XCTAssertEqual(merged.spaces.first?.dir, "")
-        XCTAssertNil(merged.spaces.first?.folder)
-    }
-
-    /// A home reaches a second device over iCloud.
-    @MainActor func testHomeSyncsOverICloud() {
-        final class MockKVS: SpaceKeyValueStore {
-            var storage: [String: Data] = [:]
-            func data(forKey aKey: String) -> Data? { storage[aKey] }
-            func set(_ aData: Data?, forKey aKey: String) { storage[aKey] = aData }
-            func synchronize() -> Bool { true }
+        defer { h.stop(); rex.stop() }
+        rex.respond = { method, _ in method == "gorex.project.create" ? ["code": "exists", "project_id": "session:api"] : [:] }
+        let told = try await h.createProject(name: "api", dir: "/tmp/demo/acme-api", space: "Work")
+        XCTAssertEqual(told, .exists(project: "session:api"))
+        rex.respond = { method, _ in
+            method == "gorex.project.create" ? ["error": ["code": "exists", "message": "a project of this folder exists"]] : [:]
         }
-        let urlA = tempURL(), urlB = tempURL()
-        defer {
-            try? FileManager.default.removeItem(at: urlA)
-            try? FileManager.default.removeItem(at: urlB)
+        let failed = try await h.createProject(name: "api", dir: "/tmp/demo/acme-api", space: "Work")
+        XCTAssertEqual(failed, .exists(project: "session:api"))
+        rex.respond = { method, _ in
+            method == "gorex.project.create" ? ["error": ["code": "exists", "message": "exists", "project_id": "session:other"]] : [:]
         }
-        let kvs = MockKVS()
-        let a = SpaceStore(fileURL: urlA, kvs: kvs)
-        let s = a.createSpace(name: "windflow", homeMachine: "m-office", dir: "/srv/windflow")
-        let b = SpaceStore(fileURL: urlB, kvs: kvs)
-        XCTAssertEqual(b.space(id: s.id)?.home_machine, "m-office")
-        XCTAssertEqual(b.space(id: s.id)?.folder, "/srv/windflow")
+        let named = try await h.createProject(name: "api", dir: "/tmp/demo/acme-api/", space: "Work")
+        XCTAssertEqual(named, .exists(project: "session:other"))
+        rex.respond = { method, _ in
+            method == "gorex.project.create" ? ["error": ["code": "exists", "message": "a project of this folder exists"]] : [:]
+        }
+        do {
+            _ = try await h.createProject(name: "x", dir: "/tmp/demo/other", space: "")
+            XCTFail("an exists of an unknown folder gave a project")
+        } catch {
+            XCTAssertEqual((error as? RexError)?.code, "exists")
+        }
     }
 
-    // MARK: Desktop sync
-
-    @MainActor private func host(_ machine: String, project: SessionView.Project?, projects: Bool = true) -> SpaceStore.HostSnapshot {
-        .init(machine: machine, online: true, sessions: [
-            .init(id: "s1", label: "windflow", view: view("s1", ["b1"]), remote: [], project: project),
-        ], projects: projects)
+    /// Move to Project, a project's update and a space's rename send what
+    /// the doc names, and leave out what does not change.
+    @MainActor func testMoveUpdateAndRenameSpace() async throws {
+        let (rex, h) = try await connect(features: [Host.projectsFeature], versions: [Host.projectsFeature: 2])
+        defer { h.stop(); rex.stop() }
+        try await h.moveTab("window:dev", to: "session:site")
+        try await h.moveTab("window:dev", to: "")
+        try await h.updateProject("session:api", space: "Life")
+        try await h.updateProject("session:api", name: "API", color: "teal")
+        try await h.renameSpace(from: "Work", to: "Office")
+        let moves = rex.payloads(of: "gorex.project.move")
+        XCTAssertEqual(moves.map { $0["tab_id"] as? String }, ["window:dev", "window:dev"])
+        XCTAssertEqual(moves.map { $0["project_id"] as? String }, ["session:site", ""])
+        let updates = rex.payloads(of: "gorex.project.update")
+        XCTAssertEqual(Set(updates[0].keys), ["project_id", "space"])
+        XCTAssertEqual(updates[0]["space"] as? String, "Life")
+        XCTAssertEqual(Set(updates[1].keys), ["project_id", "name", "color"])
+        let rename = try XCTUnwrap(rex.payload("gorex.space.rename"))
+        XCTAssertEqual(rename["from"] as? String, "Work")
+        XCTAssertEqual(rename["to"] as? String, "Office")
     }
 
-    /// A desktop's home fills a space whose home is not known.
-    @MainActor func testSyncAdoptsDesktopHome() {
-        let url = tempURL()
-        defer { try? FileManager.default.removeItem(at: url) }
-        let store = SpaceStore(fileURL: url)
-        store.sync(from: [host("m-office", project: .init(home_machine: "m-office", dir: "/srv/windflow"))])
-        let s = store.orderedSpaces.first
-        XCTAssertEqual(s?.home_machine, "m-office")
-        XCTAssertEqual(s?.folder, "/srv/windflow")
+    /// A new tab of a project opens with its folder as cwd.
+    @MainActor func testNewTabInFolder() async throws {
+        let (rex, h) = try await connect(features: [Host.projectsFeature], versions: [Host.projectsFeature: 2])
+        defer { h.stop(); rex.stop() }
+        rex.respond = { method, _ in method == "session.new_window" ? ["block_ids": ["block:new"]] : [:] }
+        let b = try await h.newWindow(in: "session:api", cwd: "/tmp/demo/acme-api")
+        XCTAssertEqual(b, "block:new")
+        let layout = try XCTUnwrap(rex.payload("session.new_window")?["layout"] as? [String: Any])
+        let options = (layout["block"] as? [String: Any])?["options"] as? [String: Any]
+        XCTAssertEqual(options?["cwd"] as? String, "/tmp/demo/acme-api")
     }
 
-    /// A desktop with no folder, or of before projects, leaves an unknown
-    /// home unknown, so that the sync does not clear other desktops' homes.
-    @MainActor func testSyncWithoutDesktopHomeKeepsUnknown() {
-        let url = tempURL()
-        defer { try? FileManager.default.removeItem(at: url) }
-        let store = SpaceStore(fileURL: url)
-        store.sync(from: [host("m-office", project: nil)])
-        XCTAssertNil(store.orderedSpaces.first?.dir)
-        store.sync(from: [host("m-old", project: .init(home_machine: "m-old", dir: "/x"), projects: false)])
-        XCTAssertNil(store.orderedSpaces.first?.dir)
+    // MARK: Demo Mode
+
+    /// Demo Mode's projects change on the phone as the server's would.
+    @MainActor func testDemoProjects() async throws {
+        let h = Host(Demo.config())
+        h.connect()
+        defer { h.stop() }
+        XCTAssertTrue(h.hasProjects)
+        let made = try await h.createProject(name: "windflow", dir: Demo.home + "/code/windflow", space: "Work")
+        guard case .made(let project, let tab) = made else { return XCTFail("\(made)") }
+        let block = try await h.block(ofTab: tab, in: project)
+        XCTAssertNotNil(block)
+        let again = try await h.createProject(name: "wf", dir: Demo.home + "/code/windflow", space: "")
+        XCTAssertEqual(again, .exists(project: project))
+        try await h.moveTab("w-shell", to: project)
+        XCTAssertEqual(h.sessions.first { $0.id == project }?.view?.windows?.map(\.window_id), [tab, "w-shell"])
+        try await h.moveTab("w-shell", to: "")
+        XCTAssertEqual(h.sessions.first { $0.id == Demo.loose }?.view?.windows?.map(\.window_id), ["w-shell"])
+        try await h.updateProject(project, name: "Windflow", color: "teal", space: "Life")
+        let p = try XCTUnwrap(h.sessions.first { $0.id == project })
+        XCTAssertEqual(p.label, "Windflow")
+        XCTAssertEqual(p.project?.color, "teal")
+        XCTAssertEqual(p.project?.space, "Life")
+        try await h.renameSpace(from: "Life", to: "Home")
+        XCTAssertEqual(Set(h.sessions.compactMap(\.project?.space)), ["", "Home"])
     }
 
-    /// A home set here stays while a desktop has not caught up; a home the
-    /// desktop changes afterwards is taken.
-    @MainActor func testSyncKeepsLocalHomeUntilDesktopChangesIt() {
-        let url = tempURL()
-        defer { try? FileManager.default.removeItem(at: url) }
-        let store = SpaceStore(fileURL: url)
-        let s = store.createSpace(name: "windflow", homeMachine: "m-office", dir: "/srv/new")
-        let old = SessionView.Project(home_machine: "m-office", dir: "/srv/old")
-        store.sync(from: [host("m-office", project: old)])
-        XCTAssertEqual(store.space(id: s.id)?.folder, "/srv/new")
-        store.sync(from: [host("m-office", project: old)])
-        XCTAssertEqual(store.space(id: s.id)?.folder, "/srv/new")
+    // MARK: Order
 
-        // The desktop's Change Folder.
-        store.sync(from: [host("m-office", project: .init(home_machine: "m-office", dir: "/srv/other"))])
-        XCTAssertEqual(store.space(id: s.id)?.folder, "/srv/other")
-
-        // The desktop's Remove Folder.
-        store.sync(from: [host("m-office", project: nil)])
-        XCTAssertEqual(store.space(id: s.id)?.dir, "")
+    /// Projects go latest used first; those not used for 30 days go to
+    /// Older; one never used counts as recent, after those used.
+    @MainActor func testOrderByLastUse() {
+        let now = Date(timeIntervalSince1970: 100 * 86400)
+        let items: [(String, Date?)] = [
+            ("old", now.addingTimeInterval(-40 * 86400)), ("new", now.addingTimeInterval(-60)),
+            ("never", nil), ("week", now.addingTimeInterval(-7 * 86400)), ("older", now.addingTimeInterval(-90 * 86400)),
+        ]
+        let (recent, older) = ProjectOrder.split(items, used: \.1, name: \.0, now: now)
+        XCTAssertEqual(recent.map(\.0), ["new", "week", "never"])
+        XCTAssertEqual(older.map(\.0), ["old", "older"])
     }
 
-    /// A desktop's Change Folder and Remove Folder made while the app was
-    /// closed are taken at the next launch, not sent back over them.
-    @MainActor func testDesktopChangeWhileClosedIsAdopted() {
-        let url = tempURL()
-        defer {
+    // MARK: Spaces
+
+    @MainActor private func book() -> (SpaceBook, UserDefaults, URL) {
+        let suite = "projects-\(UUID().uuidString)"
+        let d = UserDefaults(suiteName: suite)!
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("\(suite).json")
+        addTeardownBlock {
+            UserDefaults().removePersistentDomain(forName: suite)
             try? FileManager.default.removeItem(at: url)
-            try? FileManager.default.removeItem(at: SpaceStore.reportedURL(for: url))
         }
-        let first = SpaceStore(fileURL: url)
-        first.sync(from: [host("m-office", project: .init(home_machine: "m-office", dir: "/srv/old"))])
-        let id = first.orderedSpaces.first?.id ?? ""
-        XCTAssertEqual(first.space(id: id)?.folder, "/srv/old")
-
-        // The app relaunches; the desktop changed the folder meanwhile.
-        let second = SpaceStore(fileURL: url)
-        second.sync(from: [host("m-office", project: .init(home_machine: "m-office", dir: "/srv/new"))])
-        XCTAssertEqual(second.space(id: id)?.folder, "/srv/new")
-
-        // Again, and the desktop removed the folder meanwhile.
-        let third = SpaceStore(fileURL: url)
-        third.sync(from: [host("m-office", project: nil)])
-        XCTAssertEqual(third.space(id: id)?.dir, "")
+        return (SpaceBook(defaults: d, listingsURL: url), d, url)
     }
 
-    /// A home set on the phone that the desktop has not caught up with
-    /// stays after a relaunch too.
-    @MainActor func testLocalHomeStaysAfterRelaunch() {
-        let url = tempURL()
-        defer {
-            try? FileManager.default.removeItem(at: url)
-            try? FileManager.default.removeItem(at: SpaceStore.reportedURL(for: url))
+    /// The picker lists Default, the spaces carried and those made here, in
+    /// the user's order, then new ones by name; a made space drops once a
+    /// project carried it and none does any more.
+    @MainActor func testPickerSpaces() {
+        let (b, _, _) = book()
+        XCTAssertEqual(b.spaces(carried: []), [""])
+        XCTAssertEqual(b.spaces(carried: ["Work", "Life"]), ["", "Life", "Work"])
+        b.reorder(["Work", "", "Life"])
+        XCTAssertEqual(b.spaces(carried: ["Work", "Life", "Lab"]), ["Work", "", "Life", "Lab"])
+        XCTAssertEqual(b.add("  Side  ", carried: ["Work"]), "Side")
+        XCTAssertEqual(b.chosen, "Side")
+        XCTAssertNil(b.add("   ", carried: []))
+        XCTAssertEqual(b.spaces(carried: ["Work"]), ["Work", "", "Side"])
+        b.settle(carried: ["Work", "Side"])
+        XCTAssertEqual(b.made, [])
+        XCTAssertEqual(b.spaces(carried: ["Work"]), ["Work", ""])
+        // A made space no project carries can go.
+        b.add("Empty", carried: [])
+        b.remove("Empty")
+        XCTAssertEqual(b.spaces(carried: []), [""])
+        XCTAssertEqual(b.chosen, "")
+    }
+
+    /// A rename moves the space's place, color and choice at once, and
+    /// waits for each host until it is sent; a host away shows its last
+    /// projects under the new name meanwhile.
+    @MainActor func testRenameQueuesForEachHost() {
+        let (b, _, _) = book()
+        b.reorder(["Work", ""])
+        b.setColor("teal", for: "Work")
+        b.chosen = "Work"
+        b.remember(ProjectListing(projects: [.init(id: "p", name: "acme-api", dir: "/tmp/demo/acme-api", space: "Work", tabs: [])]), for: "away")
+        b.rename("Work", to: "Office", on: ["away", "here"])
+        XCTAssertEqual(b.order, ["Office", ""])
+        XCTAssertEqual(b.colors, ["Office": "teal"])
+        XCTAssertEqual(b.chosen, "Office")
+        XCTAssertEqual(b.renames["away"], [.init(from: "Work", to: "Office")])
+        XCTAssertEqual(b.listing(for: "away")?.spaces, ["Office"])
+        XCTAssertEqual(b.space("Work", on: "here"), "Office")
+        b.rename("Office", to: "Lab", on: ["away"])
+        XCTAssertEqual(b.space("Work", on: "away"), "Lab")
+        b.sent(.init(from: "Work", to: "Office"), to: "here")
+        XCTAssertNil(b.renames["here"])
+        XCTAssertEqual(b.renames["away"]?.count, 2)
+        // Default keeps its name.
+        b.rename("", to: "Home", on: ["here"])
+        XCTAssertNil(b.renames["here"])
+        b.forget(host: "away")
+        XCTAssertNil(b.renames["away"])
+        XCTAssertNil(b.listing(for: "away"))
+    }
+
+    /// What the book keeps is there at the next launch.
+    @MainActor func testBookPersists() {
+        let (b, d, url) = book()
+        b.reorder(["Life", ""])
+        b.setColor("rose", for: "Life")
+        b.add("Lab", carried: [])
+        b.rename("Life", to: "Home", on: ["h"])
+        b.remember(ProjectListing(projects: [.init(id: "p", name: "site", dir: "/tmp/demo/site", space: "",
+                                                   used: Date(timeIntervalSince1970: 1000), tabs: [.init(id: "w", title: "dev")])],
+                                  loose: [.init(id: "x", title: "scratch")]), for: "h")
+        let again = SpaceBook(defaults: d, listingsURL: url)
+        XCTAssertEqual(again.order, ["Home", ""])
+        XCTAssertEqual(again.colors, ["Home": "rose"])
+        XCTAssertEqual(again.made, ["Lab"])
+        XCTAssertEqual(again.chosen, "Lab")
+        XCTAssertEqual(again.renames["h"], [.init(from: "Life", to: "Home")])
+        XCTAssertEqual(again.listings, b.listings)
+    }
+
+    /// The manifest of before, its reports, its settings and each host's
+    /// last machine are dropped, not carried over.
+    @MainActor func testOldDataDropped() throws {
+        let suite = "old-\(UUID().uuidString)"
+        let d = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { UserDefaults().removePersistentDomain(forName: suite) }
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(suite)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        for name in ["spaces-manifest.json", "spaces-manifest.reported.json", "projects-cache.json"] {
+            try Data("{}".utf8).write(to: dir.appendingPathComponent(name))
         }
-        let old = SessionView.Project(home_machine: "m-office", dir: "/srv/old")
-        let first = SpaceStore(fileURL: url)
-        first.sync(from: [host("m-office", project: old)])
-        let id = first.orderedSpaces.first?.id ?? ""
-        first.setHome(id, machine: "m-office", dir: "/srv/phone")
-        let second = SpaceStore(fileURL: url)
-        second.sync(from: [host("m-office", project: old)])
-        XCTAssertEqual(second.space(id: id)?.folder, "/srv/phone")
-    }
-
-    // MARK: Home host offline
-
-    /// H1: a host keeps the machine it was last seen to be while offline
-    /// and after a relaunch, so that a project's home host offline reads
-    /// as offline, not as not added.
-    @MainActor func testHostKeepsLastMachineWhileOffline() throws {
-        let config = HostConfig(name: "office", url: URL(string: "http://127.0.0.1:1")!)
-        defer { Host.forgetMachine(config.id) }
-        let h = Host(config)
-        XCTAssertEqual(h.homeMachineKey, "host:\(config.id.uuidString)")
-        h.take(try Spaces.Answer(json: Data(#"{"machine_id":"m-office","sessions":[]}"#.utf8)))
-        XCTAssertEqual(h.homeMachineKey, "m-office")
-        h.take(nil)
-        XCTAssertNil(h.machine)
-        XCTAssertEqual(h.homeMachineKey, "m-office")
-        let relaunched = Host(config)
-        XCTAssertEqual(relaunched.homeMachineKey, "m-office")
-        let candidate = ProjectWindow.Candidate(id: relaunched.id, name: "office", machine: relaunched.homeMachineKey,
-                                                online: false, sessions: [])
-        XCTAssertEqual(ProjectWindow.plan(project(), hosts: [candidate]), .offline(host: config.id, name: "office"))
-        Host.forgetMachine(config.id)
-        XCTAssertEqual(Host(config).homeMachineKey, "host:\(config.id.uuidString)")
-    }
-
-    /// M1: a host whose address now leads to another computer is online
-    /// before /api/spaces tells its machine. Until then its sync is not
-    /// keyed by the machine it was last seen to be: the old computer's
-    /// members stay, and nothing is reported under its machine. A new
-    /// address forgets the machine the host was.
-    @MainActor func testHostNotReadYetIsNotTheLastMachine() async throws {
-        let saved = UserDefaults.standard.data(forKey: "hosts")
-        defer { UserDefaults.standard.set(saved, forKey: "hosts") }
-        UserDefaults.standard.removeObject(forKey: "hosts")
-        let url = tempURL()
-        defer {
-            try? FileManager.default.removeItem(at: url)
-            try? FileManager.default.removeItem(at: SpaceStore.reportedURL(for: url))
+        for key in ["spaceSync.icloud", "spaceSync.desktop", "spaceSync.primaryHost", "hostMachines", "grouping", "space", "hosts"] {
+            d.set("x", forKey: key)
         }
-        let (old, new) = (try FakeRex(), try FakeRex())
-        defer { old.stop(); new.stop() }
-        for r in [old, new] { r.respond = { m, _ in m == "session.bootstrap" ? ["attach_all": ["sessions": []]] : [:] } }
-        var config = HostConfig(name: "office", url: try await old.url())
-        defer { Host.forgetMachine(config.id) }
-        // The host was m-office, as a launch before read it.
-        Host(config).take(try Spaces.Answer(json: Data(#"{"machine_id":"m-office","sessions":[]}"#.utf8)))
-
-        let spaces = SpaceStore(fileURL: url)
-        let ops = spaces.createSpace(name: "acme-ops")
-        spaces.assign(machine: "m-office", block: "block:74", window: "w1", to: ops.id)
-
-        let store = HostStore()
-        store.add(config)
-        let h = try XCTUnwrap(store.host(config.id))
-        await until("online") { h.status == .online }
-        XCTAssertNil(h.machine)
-        XCTAssertFalse(h.spaceSnapshot.known)
-        XCTAssertNotEqual(h.spaceSnapshot.machine, "m-office")
-        spaces.sync(from: [h.spaceSnapshot])
-        XCTAssertEqual(spaces.space(id: ops.id)?.members.map(\.block_id), ["block:74"])
-        XCTAssertEqual(h.lastMachine, "m-office")
-
-        config.url = try await new.url()
-        store.update(config)
-        XCTAssertNil(h.lastMachine)
-        XCTAssertNil(Host(config).lastMachine)
-        store.remove(config.id)
-    }
-
-    /// Round 2: Change Folder while the project host is offline, after a
-    /// relaunch, keeps the host's machine as the project's home: not its
-    /// host ID, which no other device knows, and which would show the host
-    /// as not added.
-    @MainActor func testChangeFolderOfflineKeepsHomeMachine() throws {
-        let url = tempURL()
-        defer {
-            try? FileManager.default.removeItem(at: url)
-            try? FileManager.default.removeItem(at: SpaceStore.reportedURL(for: url))
+        SpaceBook.dropOldData(defaults: d, directory: dir)
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: dir.path), ["projects-cache.json"])
+        XCTAssertEqual(d.string(forKey: "hosts"), "x")
+        for key in ["spaceSync.icloud", "spaceSync.desktop", "spaceSync.primaryHost", "hostMachines", "grouping", "space"] {
+            XCTAssertNil(d.object(forKey: key), key)
         }
-        let config = HostConfig(name: "office", url: URL(string: "http://127.0.0.1:1")!)
-        defer { Host.forgetMachine(config.id) }
-        Host(config).take(try Spaces.Answer(json: Data(#"{"machine_id":"m-old","sessions":[]}"#.utf8)))
-        let offline = Host(config)
-        XCTAssertNil(offline.machine)
-
-        let store = SpaceStore(fileURL: url)
-        let s = store.createSpace(name: "acme-api", homeMachine: "m-old", dir: "/srv/acme-api")
-        store.setHome(s.id, on: offline, dir: "/srv/acme-web")
-        XCTAssertEqual(store.space(id: s.id)?.home_machine, "m-old")
-        XCTAssertEqual(store.space(id: s.id)?.folder, "/srv/acme-web")
     }
 
-    // MARK: Rename and reports of other sessions
-
-    @MainActor private func session(_ id: String, _ label: String, _ blocks: [String], project: SessionView.Project?) -> SpaceStore.HostSnapshot.Session {
-        .init(id: id, label: label, view: view(id, blocks), remote: [], project: project)
-    }
-
-    @MainActor private func snapshot(_ machine: String, known: Bool = true, _ sessions: [SpaceStore.HostSnapshot.Session]) -> SpaceStore.HostSnapshot {
-        .init(machine: machine, online: true, sessions: sessions, projects: true, known: known)
-    }
-
-    /// H2: renamed here, a project's windows go to a new desktop space of
-    /// the new name, which has no folder until gorex.spaces_apply gives it
-    /// one. That space's first report is not the desktop removing the
-    /// project's folder: the folder stays.
-    @MainActor func testNewSessionWithoutFolderKeepsProjectFolder() {
-        let url = tempURL()
-        defer {
-            try? FileManager.default.removeItem(at: url)
-            try? FileManager.default.removeItem(at: SpaceStore.reportedURL(for: url))
-        }
-        let home = SessionView.Project(home_machine: "m-office", dir: "/tmp/demo/acme-api")
-        let store = SpaceStore(fileURL: url)
-        let s = store.createSpace(name: "acme-api", homeMachine: "m-office", dir: home.dir)
-        store.sync(from: [snapshot("m-office", [session("s1", "acme-api", ["b1"], project: home)])])
-        store.renameSpace(s.id, to: "acme-web")
-        store.sync(from: [snapshot("m-office", [
-            session("s1", "acme-api", [], project: home),
-            session("s2", "acme-web", ["b1"], project: nil),
-        ])])
-        XCTAssertEqual(store.space(id: s.id)?.folder, "/tmp/demo/acme-api")
-        XCTAssertEqual(store.space(id: s.id)?.home_machine, "m-office")
-        // A relaunch, with the host back.
-        let again = SpaceStore(fileURL: url)
-        again.sync(from: [snapshot("m-office", [session("s2", "acme-web", ["b1"], project: nil)])])
-        XCTAssertEqual(again.space(id: s.id)?.folder, "/tmp/demo/acme-api")
-    }
-
-    /// H2: a host whose machine is not known yet, as just after it connects,
-    /// keys its reports by its host ID: they are not taken as the home's
-    /// changes, nor kept.
-    @MainActor func testReportsOfUnknownMachineAreIgnored() {
-        let url = tempURL()
-        defer {
-            try? FileManager.default.removeItem(at: url)
-            try? FileManager.default.removeItem(at: SpaceStore.reportedURL(for: url))
-        }
-        let home = SessionView.Project(home_machine: "m-office", dir: "/tmp/demo/acme-api")
-        let store = SpaceStore(fileURL: url)
-        let s = store.createSpace(name: "acme-api", homeMachine: "m-office", dir: home.dir)
-        let unknown = "host:" + UUID().uuidString
-        store.sync(from: [snapshot(unknown, known: false, [session("s1", "acme-api", ["b1"], project: home)])])
-        store.sync(from: [snapshot(unknown, known: false, [session("s1", "acme-api", ["b1"], project: nil)])])
-        XCTAssertEqual(store.space(id: s.id)?.folder, "/tmp/demo/acme-api")
-        store.sync(from: [snapshot("m-office", [session("s1", "acme-api", ["b1"], project: home)])])
-        XCTAssertEqual(store.space(id: s.id)?.folder, "/tmp/demo/acme-api")
-    }
-
-    /// H3: renamed here, the project's desktop session still reports the
-    /// old name until it is renamed there: no project of the old name is
-    /// made, and the session is renamed to the new name.
-    @MainActor func testRenameHereDoesNotRecreateOldName() {
-        let url = tempURL()
-        defer {
-            try? FileManager.default.removeItem(at: url)
-            try? FileManager.default.removeItem(at: SpaceStore.reportedURL(for: url))
-        }
-        let home = SessionView.Project(home_machine: "m-office", dir: "/tmp/demo/acme-api")
-        let store = SpaceStore(fileURL: url)
-        let s = store.createSpace(name: "acme-api", homeMachine: "m-office", dir: home.dir)
-        let before = snapshot("m-office", [session("s1", "acme-api", ["b1"], project: home)])
-        store.sync(from: [before])
-        XCTAssertEqual(store.renames(for: before).map(\.name), [])
-        store.renameSpace(s.id, to: "acme-web")
-        XCTAssertEqual(store.renames(for: before).map(\.session), ["s1"])
-        XCTAssertEqual(store.renames(for: before).map(\.name), ["acme-web"])
-
-        // The host has not caught up yet, as offline meanwhile.
-        store.sync(from: [before])
-        XCTAssertEqual(store.orderedSpaces.map(\.name), ["acme-web"])
-        XCTAssertEqual(store.space(id: s.id)?.members.map(\.block_id), ["b1"])
-        // Nor after a relaunch.
-        let again = SpaceStore(fileURL: url)
-        again.sync(from: [before])
-        XCTAssertEqual(again.orderedSpaces.map(\.name), ["acme-web"])
-        XCTAssertEqual(again.renames(for: before).map(\.name), ["acme-web"])
-
-        // Renamed there, it is the same project.
-        let after = snapshot("m-office", [session("s1", "acme-web", ["b1"], project: home)])
-        again.sync(from: [after])
-        XCTAssertEqual(again.orderedSpaces.map(\.name), ["acme-web"])
-        XCTAssertEqual(again.renames(for: after).map(\.name), [])
-    }
-
-    /// A project the desktop renames keeps its ID and folder here: the
-    /// manifest takes the new name, and makes no second project.
-    @MainActor func testRenameOnDesktopRenamesProject() {
-        let url = tempURL()
-        defer {
-            try? FileManager.default.removeItem(at: url)
-            try? FileManager.default.removeItem(at: SpaceStore.reportedURL(for: url))
-        }
-        let home = SessionView.Project(home_machine: "m-office", dir: "/tmp/demo/acme-api")
-        let store = SpaceStore(fileURL: url)
-        let s = store.createSpace(name: "acme-api", homeMachine: "m-office", dir: home.dir)
-        store.sync(from: [snapshot("m-office", [session("s1", "acme-api", ["b1"], project: home)])])
-        let after = snapshot("m-office", [session("s1", "acme-web", ["b1"], project: home)])
-        store.sync(from: [after])
-        XCTAssertEqual(store.orderedSpaces.map(\.id), [s.id])
-        XCTAssertEqual(store.space(id: s.id)?.name, "acme-web")
-        XCTAssertEqual(store.space(id: s.id)?.folder, "/tmp/demo/acme-api")
-        XCTAssertEqual(store.renames(for: after).map(\.name), [])
-    }
-
-    /// A session is not renamed to a name another session of its host has.
-    @MainActor func testNoRenameOntoAnotherSessionsName() {
-        let url = tempURL()
-        defer {
-            try? FileManager.default.removeItem(at: url)
-            try? FileManager.default.removeItem(at: SpaceStore.reportedURL(for: url))
-        }
-        let store = SpaceStore(fileURL: url)
-        let s = store.createSpace(name: "acme-api")
-        let before = snapshot("m-office", [session("s1", "acme-api", ["b1"], project: nil)])
-        store.sync(from: [before])
-        store.renameSpace(s.id, to: "acme-web")
-        let both = snapshot("m-office", [
-            session("s1", "acme-api", ["b1"], project: nil),
-            session("s2", "acme-web", ["b2"], project: nil),
-        ])
-        XCTAssertEqual(store.renames(for: both).map(\.name), [])
-    }
-
-    // MARK: New Window
-
-    @MainActor private func candidate(_ name: String, machine: String, online: Bool = true, sessions: [Host.Session] = []) -> ProjectWindow.Candidate {
-        .init(id: UUID(), name: name, machine: machine, online: online, sessions: sessions)
-    }
-
-    @MainActor private func project(dir: String? = "/srv/windflow") -> CentralSpace {
-        CentralSpace(id: "sp1", name: "windflow", color: nil, order: 0, updated_at: 0, members: [],
-                     home_machine: dir == nil ? nil : "m-office", dir: dir)
-    }
-
-    @MainActor func testPlanWithoutFolder() {
-        XCTAssertEqual(ProjectWindow.plan(project(dir: nil), hosts: [candidate("office", machine: "m-office")]), .noFolder)
-        XCTAssertEqual(ProjectWindow.plan(project(dir: ""), hosts: [candidate("office", machine: "m-office")]), .noFolder)
-    }
-
-    /// No host of the home's machine: no window, and none elsewhere.
-    @MainActor func testPlanUnknownHomeHost() {
-        XCTAssertEqual(ProjectWindow.plan(project(), hosts: [candidate("laptop", machine: "m-laptop")]), .unknownHost)
-    }
-
-    /// The home host offline: no window elsewhere.
-    @MainActor func testPlanOfflineHomeHost() {
-        let office = candidate("office", machine: "m-office", online: false)
-        let laptop = candidate("laptop", machine: "m-laptop")
-        XCTAssertEqual(ProjectWindow.plan(project(), hosts: [office, laptop]), .offline(host: office.id, name: "office"))
-    }
-
-    /// Of two entries of the home's machine, the one online opens it.
-    @MainActor func testPlanPrefersOnlineEntryOfHomeMachine() {
-        let lan = candidate("office (LAN)", machine: "m-office", online: false)
-        let tailnet = candidate("office", machine: "m-office")
-        XCTAssertEqual(ProjectWindow.plan(project(), hosts: [lan, tailnet]),
-                       .session(host: tailnet.id, label: "windflow", cwd: "/srv/windflow"))
-    }
-
-    /// The session that keeps the folder as its home: the server starts the
-    /// window there and checks the folder, so no cwd is sent.
-    @MainActor func testPlanSessionKeepingHome() {
-        let s = Host.Session(id: "s1", label: "Windflow", view: nil, project: .init(home_machine: "m-office", dir: "/srv/windflow"))
-        let office = candidate("office", machine: "m-office", sessions: [s])
-        XCTAssertEqual(ProjectWindow.plan(project(), hosts: [office]), .window(host: office.id, session: "s1", cwd: nil))
-    }
-
-    /// A session that does not keep the home, as of an older GoRex: the
-    /// window gets the folder as its cwd.
-    @MainActor func testPlanSessionWithoutHome() {
-        let s = Host.Session(id: "s1", label: "windflow", view: nil, project: nil)
-        let other = Host.Session(id: "s2", label: "windflow", view: nil, project: .init(home_machine: "m-office", dir: "/srv/old"))
-        let office = candidate("office", machine: "m-office", sessions: [s])
-        XCTAssertEqual(ProjectWindow.plan(project(), hosts: [office]), .window(host: office.id, session: "s1", cwd: "/srv/windflow"))
-        let office2 = candidate("office", machine: "m-office", sessions: [other])
-        XCTAssertEqual(ProjectWindow.plan(project(), hosts: [office2]), .window(host: office2.id, session: "s2", cwd: "/srv/windflow"))
-    }
-
-    /// The desktop's loose terminals are no project's session.
-    @MainActor func testPlanSkipsDesktopTerminals() {
-        let loose = Host.Session(id: SpaceStore.desktopTerminalsSessionID, label: "windflow", view: nil, project: nil)
-        let office = candidate("office", machine: "m-office", sessions: [loose])
-        XCTAssertEqual(ProjectWindow.plan(project(), hosts: [office]), .session(host: office.id, label: "windflow", cwd: "/srv/windflow"))
-    }
+    // MARK: Folders
 
     /// A cwd the server would leave for home when it is gone is checked
     /// first: a folder not there, or not readable, fails as folder_missing.
     @MainActor func testEnsureFolder() async throws {
-        try await ProjectWindow.ensureFolder("/srv/w") { Host.Folders(path: $0, parent: "/srv", home: "/home/demo", dirs: []) }
+        try await ProjectFolder.ensure("/srv/w") { Host.Folders(path: $0, parent: "/srv", home: "/home/demo", dirs: []) }
         for code in ["not_found", "denied"] {
             do {
-                try await ProjectWindow.ensureFolder("/srv/gone") {
+                try await ProjectFolder.ensure("/srv/gone") {
                     Host.Folders(path: $0, parent: "/srv", home: "/home/demo", dirs: [], code: code)
                 }
                 XCTFail("a \(code) folder passed")
             } catch {
-                XCTAssertTrue(ProjectWindow.folderMissing(error), "\(error)")
+                XCTAssertTrue(ProjectFolder.missing(error), "\(error)")
             }
         }
         // Demo Mode's tree: a folder gone fails, one there passes.
-        try await ProjectWindow.ensureFolder("~/code/windflow") { Demo.folders($0) }
+        try await ProjectFolder.ensure("~/code/windflow") { Demo.folders($0) }
         do {
-            try await ProjectWindow.ensureFolder("~/code/gone") { Demo.folders($0) }
+            try await ProjectFolder.ensure("~/code/gone") { Demo.folders($0) }
             XCTFail("a gone demo folder passed")
         } catch {
-            XCTAssertTrue(ProjectWindow.folderMissing(error))
+            XCTAssertTrue(ProjectFolder.missing(error))
         }
     }
 
     @MainActor func testFolderMissing() {
-        XCTAssertTrue(ProjectWindow.folderMissing(RexError(code: "conflict", message: "folder_missing: /srv/windflow is not a folder")))
-        XCTAssertFalse(ProjectWindow.folderMissing(RexError(code: "conflict", message: "Open the GoRex window on office")))
-        XCTAssertFalse(ProjectWindow.folderMissing(RexError(code: "not_found", message: "folder_missing")))
+        XCTAssertTrue(ProjectFolder.missing(RexError(code: "conflict", message: "folder_missing: /srv/windflow is not a folder")))
+        XCTAssertFalse(ProjectFolder.missing(RexError(code: "conflict", message: "Open the GoRex window on office")))
+        XCTAssertFalse(ProjectFolder.missing(RexError(code: "not_found", message: "folder_missing")))
     }
 
     @MainActor func testShortAndName() {
-        XCTAssertEqual(ProjectWindow.short("/Users/demo/code/gorex"), "~/code/gorex")
-        XCTAssertEqual(ProjectWindow.short("/home/demo"), "~")
-        XCTAssertEqual(ProjectWindow.short("/srv/windflow"), "/srv/windflow")
-        XCTAssertEqual(ProjectWindow.name(of: "/Users/demo/code/gorex/"), "gorex")
-        XCTAssertEqual(ProjectWindow.name(of: #"C:\src\windflow"#), "windflow")
+        XCTAssertEqual(ProjectFolder.short("/Users/demo/code/gorex"), "~/code/gorex")
+        XCTAssertEqual(ProjectFolder.short("/home/demo"), "~")
+        XCTAssertEqual(ProjectFolder.short("/srv/windflow"), "/srv/windflow")
+        XCTAssertEqual(ProjectFolder.name(of: "/Users/demo/code/gorex/"), "gorex")
+        XCTAssertEqual(ProjectFolder.name(of: #"C:\src\windflow"#), "windflow")
     }
 
-    // MARK: Wire
-
-    /// A view's project reads; a malformed one reads as no folder.
-    @MainActor func testSessionViewProject() throws {
-        let good = #"{"payload":{"revision":1,"session_id":"s1","project":{"home_machine":"m","dir":"/srv/w"}}}"#
-        XCTAssertEqual(try SessionView(response: Data(good.utf8)).project, .init(home_machine: "m", dir: "/srv/w"))
-        let bad = #"{"payload":{"revision":1,"session_id":"s1","project":"nope"}}"#
-        XCTAssertEqual(try SessionView(response: Data(bad.utf8)).project?.dir, "")
-        let none = #"{"payload":{"revision":1,"session_id":"s1"}}"#
-        XCTAssertNil(try SessionView(response: Data(none.utf8)).project)
-        XCTAssertNil(SessionView.Project.of(["home_machine": "m", "dir": ""]))
-        XCTAssertEqual(SessionView.Project.of(["home_machine": "m", "dir": "/a"])?.dir, "/a")
+    @MainActor func testProjectColors() {
+        XCTAssertEqual(ProjectColor.hex("teal"), 0x12A594)
+        XCTAssertEqual(ProjectColor.hex("#0090ff"), 0x0090FF)
+        XCTAssertNil(ProjectColor.hex(""))
+        XCTAssertNil(ProjectColor.hex("plaid"))
     }
 
     /// gorex.dir.list's answer, and a child's path.
@@ -586,5 +388,43 @@ nonisolated final class ProjectTests: XCTestCase {
         XCTAssertNil(Demo.folders("~/code/gorex/cmd").code)
         XCTAssertEqual(Demo.folders("~/nowhere").code, "not_found")
         XCTAssertEqual(Demo.folders("/").parent, "")
+    }
+
+    // MARK: Helpers
+
+    /// A session list entry of the fake server, with its view: tabs by ID
+    /// and name, each with one block.
+    @MainActor private func session(_ id: String, _ label: String, project: [String: Any], tabs: [(String, String)]) -> [String: Any] {
+        ["session_id": id, "label": label, "project": project, "view": [
+            "revision": 1, "session_id": id, "label": label, "project": project,
+            "windows": tabs.map { w, name in
+                ["window_id": w, "label": name, "focused_block_id": "block:" + w, "layers": [["blocks": [["block_id": "block:" + w]]]]] as [String: Any]
+            },
+        ] as [String: Any]]
+    }
+
+    /// A host online against a fake server of the features and versions
+    /// given, which lists the sessions given.
+    @MainActor private func connect(features: [String], versions: [String: Int], sessions: [[String: Any]] = [],
+                                     spaceList: [String] = []) async throws -> (FakeRex, Host) {
+        let rex = try FakeRex()
+        rex.features = features
+        rex.featureVersions = versions
+        let views = Dictionary(uniqueKeysWithValues: sessions.map { ($0["session_id"] as! String, $0["view"]!) })
+        rex.respond = { method, payload in
+            switch method {
+            case "session.bootstrap":
+                ["attach_all": ["sessions": sessions.map { $0.filter { $0.key != "view" } }]]
+            case "gorex.space.list":
+                ["spaces": spaceList]
+            case "session.attach":
+                (views[payload["session_id"] as? String ?? ""]).map { ["view": $0] } ?? [:]
+            default: [:]
+            }
+        }
+        let h = Host(HostConfig(name: "office", url: try await rex.url()))
+        h.connect()
+        await until("online") { h.status == .online }
+        return (rex, h)
     }
 }

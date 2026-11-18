@@ -75,7 +75,7 @@ nonisolated final class LANTokenTests: XCTestCase {
     /// The bearer goes on a request only for a host with a token: a
     /// tailcat host's never carries one, even with a token set.
     @MainActor func testBearerOnlyForTokenHost() throws {
-        let r = URLRequest(url: URL(string: "http://192.0.2.10:7297/api/spaces")!)
+        let r = URLRequest(url: URL(string: "http://192.0.2.10:7297/api/upload")!)
         XCTAssertEqual(r.authorized("test-token-AAAA").value(forHTTPHeaderField: "Authorization"), "Bearer test-token-AAAA")
         XCTAssertNil(r.authorized(nil).value(forHTTPHeaderField: "Authorization"))
         XCTAssertNil(r.authorized("").value(forHTTPHeaderField: "Authorization"))
@@ -87,17 +87,20 @@ nonisolated final class LANTokenTests: XCTestCase {
         XCTAssertNil(try XCTUnwrap(HostConfig(pairing: "https://mac-gorex.example.ts.net")).auth)
     }
 
-    /// HTTP requests (/api/spaces) and WebSocket upgrades (/api/control)
-    /// carry the bearer to the server.
+    /// HTTP requests (as /api/upload's) and WebSocket upgrades
+    /// (/api/control) carry the bearer to the server.
     @MainActor func testRequestsCarryBearer() async throws {
         let http = try FakeHTTP()
         defer { http.stop() }
         http.respond = { _ in (401, ["error": "token"]) }
         let base = try await http.url()
-        _ = try? await Spaces.read(from: base, auth: "test-token-AAAA")
+        let get = { (auth: String?) in
+            _ = try? await URLSession.shared.data(for: URLRequest(url: base.apiURL("/api/upload")).authorized(auth))
+        }
+        await get("test-token-AAAA")
         let c = ControlConnection(base: base, auth: "test-token-AAAA")
         _ = try? await c.open(token: nil)
-        _ = try? await Spaces.read(from: base, auth: nil)
+        await get(nil)
         await until("three requests") { http.requests.count == 3 }
         XCTAssertEqual(http.requests.map { $0.header("Authorization") },
                        ["Bearer test-token-AAAA", "Bearer test-token-AAAA", nil])

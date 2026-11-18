@@ -2,36 +2,6 @@
   "sourceLanguage": "en",
   "version": "1.0",
   "strings": {
-    "%@ is not on %@ any more. Change the project's folder to open a new window.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%2$@ 上已没有 %1$@。请更改项目的文件夹后再打开新窗口。"
-          }
-        }
-      }
-    },
-    "%@, the project host of %@, is offline. New windows of the project open only there.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%2$@ 的项目所在主机 %1$@ 已离线。项目的新窗口只会在那台主机上打开。"
-          }
-        }
-      }
-    },
-    "%@ is offline": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%@ 已离线"
-          }
-        }
-      }
-    },
     "%lld Images, New": {
       "localizations": {
         "en": {
@@ -226,16 +196,6 @@
         }
       }
     },
-    "By Host": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "按主机"
-          }
-        }
-      }
-    },
     "Camera Unavailable": {
       "localizations": {
         "zh-Hans": {
@@ -246,52 +206,12 @@
         }
       }
     },
-    "Can't Change the Folder": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "无法更改文件夹"
-          }
-        }
-      }
-    },
-    "Can't Close the Window": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "无法关闭窗口"
-          }
-        }
-      }
-    },
     "Can't Make a New Session": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
             "value": "无法新建会话"
-          }
-        }
-      }
-    },
-    "Can't Move the Window": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "无法移动窗口"
-          }
-        }
-      }
-    },
-    "Can't Open a New Window": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "无法新建窗口"
           }
         }
       }
@@ -311,27 +231,7 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "无法拆分面板"
-          }
-        }
-      }
-    },
-    "Change Folder": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "更改文件夹"
-          }
-        }
-      }
-    },
-    "Change Folder…": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "更改文件夹…"
+            "value": "无法拆分分屏"
           }
         }
       }
@@ -352,66 +252,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "选择文件夹"
-          }
-        }
-      }
-    },
-    "Choose a host first.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "请先选择主机。"
-          }
-        }
-      }
-    },
-    "Choose Folder…": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "选择文件夹…"
-          }
-        }
-      }
-    },
-    "Choose one to open new windows in it.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "选择一个文件夹，新窗口就会在其中打开。"
-          }
-        }
-      }
-    },
-    "Delete %@? Its %lld windows stay open, unassigned.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "删除项目 %1$@？其中的 %2$lld 个窗口保持打开，归入「未分组」。"
-          }
-        }
-      }
-    },
-    "Delete %@? Its window stays open, unassigned.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "删除项目 %@？其中的窗口保持打开，归入「未分组」。"
-          }
-        }
-      }
-    },
-    "Delete %@? No window is in it.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "删除项目 %@？其中没有窗口。"
           }
         }
       }
@@ -442,56 +282,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "主目录"
-          }
-        }
-      }
-    },
-    "Open On": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "打开于"
-          }
-        }
-      }
-    },
-    "Project host not added": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "未添加项目所在主机"
-          }
-        }
-      }
-    },
-    "New windows of the project open on this host, in this folder.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "项目的新窗口会在这台主机的这个文件夹中打开。"
-          }
-        }
-      }
-    },
-    "New windows of the project open on this host, in this folder. With no folder, the project only groups windows.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "项目的新窗口会在这台主机的这个文件夹中打开。不选文件夹时，项目只用于归组窗口。"
-          }
-        }
-      }
-    },
-    "No Folder": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "无文件夹"
           }
         }
       }
@@ -606,22 +396,12 @@
         }
       }
     },
-    "Remove Folder": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "移除文件夹"
-          }
-        }
-      }
-    },
     "Split Pane": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "拆分面板"
+            "value": "拆分分屏"
           }
         }
       }
@@ -631,7 +411,7 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "关闭面板"
+            "value": "关闭分屏"
           }
         }
       }
@@ -641,17 +421,7 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "无法关闭面板"
-          }
-        }
-      }
-    },
-    "Can't Rename the Window": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "无法重命名窗口"
+            "value": "无法关闭分屏"
           }
         }
       }
@@ -672,16 +442,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "取消"
-          }
-        }
-      }
-    },
-    "Choose a window in the list.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "在列表中选择一个窗口。"
           }
         }
       }
@@ -712,26 +472,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "关闭"
-          }
-        }
-      }
-    },
-    "Close Other Windows": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "关闭其他窗口"
-          }
-        }
-      }
-    },
-    "Close Window": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "关闭窗口"
           }
         }
       }
@@ -852,26 +592,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "台式机"
-          }
-        }
-      }
-    },
-    "By Project": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "按项目"
-          }
-        }
-      }
-    },
-    "By Project shows one project at a time, as the desktop's sidebar: switch projects at the top, and each lists its windows by host, those on your other hosts too. By Host lists each host's sessions.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "「按项目」像桌面端侧边栏一样一次显示一个项目：在顶部切换项目，每个项目按主机列出它的窗口，包括位于其他主机上的窗口。「按主机」列出每个主机的会话。"
           }
         }
       }
@@ -1012,16 +732,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "字号"
-          }
-        }
-      }
-    },
-    "Grouping": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "分组"
           }
         }
       }
@@ -1196,16 +906,6 @@
         }
       }
     },
-    "New Window": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "新建窗口"
-          }
-        }
-      }
-    },
     "No Access to the Microphone": {
       "localizations": {
         "zh-Hans": {
@@ -1232,16 +932,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "没有会话"
-          }
-        }
-      }
-    },
-    "No Window Open": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "未打开窗口"
           }
         }
       }
@@ -1351,7 +1041,7 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "切换到此面板。"
+            "value": "切换到此分屏。"
           }
         }
       }
@@ -1416,26 +1106,6 @@
         }
       }
     },
-    "Rename Window": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "重命名窗口"
-          }
-        }
-      }
-    },
-    "Rename Window…": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "重命名窗口…"
-          }
-        }
-      }
-    },
     "Reset Name": {
       "localizations": {
         "zh-Hans": {
@@ -1496,16 +1166,6 @@
         }
       }
     },
-    "Search windows": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "搜索窗口"
-          }
-        }
-      }
-    },
     "Server address": {
       "localizations": {
         "zh-Hans": {
@@ -1552,16 +1212,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "显示动态"
-          }
-        }
-      }
-    },
-    "Show All Windows": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "显示所有窗口"
           }
         }
       }
@@ -1656,16 +1306,6 @@
         }
       }
     },
-    "The project host of %@ is not added on this device. Add it in Settings, or change the project's folder.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "这台设备未添加 %@ 的项目所在主机。请在设置中添加它，或更改项目的文件夹。"
-          }
-        }
-      }
-    },
     "The host does not send files": {
       "localizations": {
         "zh-Hans": {
@@ -1712,16 +1352,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "无法读取终端快照。"
-          }
-        }
-      }
-    },
-    "The window closed.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "窗口已关闭。"
           }
         }
       }
@@ -1822,16 +1452,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "不支持的地址。请输入 http:// 或 https:// 地址，例如 http://192.168.1.2:7297。"
-          }
-        }
-      }
-    },
-    "Update GoRex": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "需更新 GoRex"
           }
         }
       }
@@ -1962,16 +1582,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "无法关闭会话"
-          }
-        }
-      }
-    },
-    "Close %@ and every window in it?": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "关闭 %@ 及其中所有窗口？"
           }
         }
       }
@@ -2352,16 +1962,6 @@
         }
       }
     },
-    "Close Session asks first, as it closes every window in the session.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "关闭会话会关闭其中所有窗口，所以会先确认。"
-          }
-        }
-      }
-    },
     "Dictate into the terminal. A correction erases what was dictated and types it again.": {
       "localizations": {
         "zh-Hans": {
@@ -2388,16 +1988,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "拖动摇杆发送方向键，按住不放会连发。修饰键在此期间保持按下。"
-          }
-        }
-      }
-    },
-    "Each host lists its sessions as cards, and each session its windows, with the tiles of the programs in them, as the desktop's tabs show them.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "每台主机以卡片列出会话，每个会话列出其窗口，并像桌面版的标签页一样显示其中程序的图块。"
           }
         }
       }
@@ -2442,16 +2032,6 @@
         }
       }
     },
-    "Every host in one list": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "所有主机，一个列表"
-          }
-        }
-      }
-    },
     "Every key on the bar gives a light tap as you press it.": {
       "localizations": {
         "zh-Hans": {
@@ -2492,32 +2072,12 @@
         }
       }
     },
-    "Fold hosts and sessions": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "折叠主机和会话"
-          }
-        }
-      }
-    },
     "Fonts and sizes": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
             "value": "字体与字号"
-          }
-        }
-      }
-    },
-    "Ghostty draws each window with Metal and encodes its keys, as Ghostty does on the Mac.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "每个窗口都由 Ghostty 用 Metal 绘制，按键也由 Ghostty 编码，与 Mac 上的 Ghostty 一致。"
           }
         }
       }
@@ -2632,26 +2192,6 @@
         }
       }
     },
-    "Long-press a session to rename or close it": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "长按会话以重命名或关闭"
-          }
-        }
-      }
-    },
-    "Long-press a window for its menu": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "长按窗口打开菜单"
-          }
-        }
-      }
-    },
     "Long-press to select": {
       "localizations": {
         "zh-Hans": {
@@ -2702,32 +2242,12 @@
         }
       }
     },
-    "New sessions and windows": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "新建会话和窗口"
-          }
-        }
-      }
-    },
     "Notifications": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
             "value": "通知"
-          }
-        }
-      }
-    },
-    "Notifications that programs send with OSC 9 or OSC 777 show as the system's, grouped by window.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "程序用 OSC 9 或 OSC 777 发出的通知以系统通知显示，并按窗口分组。"
           }
         }
       }
@@ -2882,16 +2402,6 @@
         }
       }
     },
-    "Rename Window, Reset Name, Move Up, Move Down, New Window, Close Window and Close Other Windows.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "重命名窗口、重置名称、上移、下移、新建窗口、关闭窗口和关闭其他窗口。"
-          }
-        }
-      }
-    },
     "Rex Go puts the terminals of your computers on your iPhone and iPad: a Ghostty terminal with a key bar, selection, scrolling and input made for touch.": {
       "localizations": {
         "zh-Hans": {
@@ -3022,16 +2532,6 @@
         }
       }
     },
-    "Tap a host's name to fold its sessions away, or a session's chevron to fold its windows.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "轻点主机名折叠其会话，轻点会话的箭头折叠其窗口。"
-          }
-        }
-      }
-    },
     "Tap a link to open it": {
       "localizations": {
         "zh-Hans": {
@@ -3062,32 +2562,12 @@
         }
       }
     },
-    "The + on a session's card opens a new window in it. The host's ⋯ menu has New Session, Reconnect and Remove.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "会话卡片上的 + 在其中打开新窗口。主机的 ⋯ 菜单里有新建会话、重新连接和移除。"
-          }
-        }
-      }
-    },
     "The command new terminals on a host run in place of its login shell.": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
             "value": "该主机上新终端运行的命令，用来代替登录 shell。"
-          }
-        }
-      }
-    },
-    "The eye lists the windows of every host by what their programs need: waiting for input first, then failed, done and working, with how long ago.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "眼睛图标按程序的状态列出所有主机的窗口：等待输入的在前，然后是失败、完成和运行中，并显示距今多久。"
           }
         }
       }
@@ -3162,16 +2642,6 @@
         }
       }
     },
-    "The search at the bottom filters the windows by title, in the list and under the eye.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "底部的搜索按标题筛选窗口，列表和动态视图都适用。"
-          }
-        }
-      }
-    },
     "The search at the bottom of Settings filters its rows.": {
       "localizations": {
         "zh-Hans": {
@@ -3208,16 +2678,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "轻点标题打开会话"
-          }
-        }
-      }
-    },
-    "The title shows the window's program and title. Tap it for the session's windows, New Window and Switch Session.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "标题显示窗口的程序和标题。轻点可查看会话的窗口、新建窗口和切换会话。"
           }
         }
       }
@@ -3358,16 +2818,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "⌘ 快捷键"
-          }
-        }
-      }
-    },
-    "⌘T opens a window, ⌘W closes it, ⌘O adds a file, ⇧⌘O a photo, ⌘K clears the screen and scrollback, and ⌘+, ⌘- and ⌘0 size the text. Hold ⌘ to see them.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "⌘T 新建窗口，⌘W 关闭，⌘O 添加文件，⇧⌘O 添加照片，⌘K 清除屏幕和回滚，⌘+、⌘- 和 ⌘0 调整字号。按住 ⌘ 可查看全部。"
           }
         }
       }
@@ -4322,32 +3772,12 @@
         }
       }
     },
-    "You're in demo mode. Add a host to run your own windows.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "你正在演示模式中。添加主机后即可运行你自己的窗口。"
-          }
-        }
-      }
-    },
     "Create": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
             "value": "创建"
-          }
-        }
-      }
-    },
-    "Delete Project": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "删除项目"
           }
         }
       }
@@ -4382,222 +3812,12 @@
         }
       }
     },
-    "Rename Project…": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "重命名项目…"
-          }
-        }
-      }
-    },
-    "Unassign from Project": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "移出项目"
-          }
-        }
-      }
-    },
-    "Unassigned": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "未分组"
-          }
-        }
-      }
-    },
-    "All Supporting Hosts": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "所有支持的主机"
-          }
-        }
-      }
-    },
-    "Assigned Panes": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "已归属窗格"
-          }
-        }
-      }
-    },
-    "Automatically applies iOS project assignments and folders back to online desktop hosts that support gorex.spaces_sync.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "自动将 iOS 端的项目分组与文件夹同步回支持 gorex.spaces_sync 的在线桌面主机。"
-          }
-        }
-      }
-    },
-    "Desktop Hosts": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "桌面主机"
-          }
-        }
-      }
-    },
-    "Last Desktop Sync": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "最近桌面同步"
-          }
-        }
-      }
-    },
-    "Last iCloud Sync": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "最近 iCloud 同步"
-          }
-        }
-      }
-    },
-    "Local Only": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "仅本地"
-          }
-        }
-      }
-    },
-    "Never": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "从未"
-          }
-        }
-      }
-    },
-    "Not Supported": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "不支持"
-          }
-        }
-      }
-    },
     "Ready": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
             "value": "就绪"
-          }
-        }
-      }
-    },
-    "Revision": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "版本"
-          }
-        }
-      }
-    },
-    "Project Sync": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "项目同步"
-          }
-        }
-      }
-    },
-    "Projects": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "项目数"
-          }
-        }
-      }
-    },
-    "Sync Now": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "立即同步"
-          }
-        }
-      }
-    },
-    "Sync to Desktop": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "同步到桌面端"
-          }
-        }
-      }
-    },
-    "Syncs your cross-host projects, their folders and window assignments across your Apple devices via iCloud.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "通过 iCloud 在你的 Apple 设备间同步跨主机项目、项目文件夹与窗口归属。"
-          }
-        }
-      }
-    },
-    "Target Desktop": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "目标桌面主机"
-          }
-        }
-      }
-    },
-    "iCloud On": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "iCloud 已开启"
-          }
-        }
-      }
-    },
-    "iCloud Sync": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "iCloud 同步"
           }
         }
       }
@@ -4627,7 +3847,7 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "这个面板出现过的图片会收集在这里：程序打印了路径的图片文件，以及直接画在终端里的图片。"
+            "value": "这个分屏出现过的图片会收集在这里：程序打印了路径的图片文件，以及直接画在终端里的图片。"
           }
         }
       }
@@ -4752,6 +3972,826 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "%@ Is a Project Already": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 已是项目"
+          }
+        }
+      }
+    },
+    "%@ is not on %@ any more, so no tab of %@ can open in it.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%2$@ 上已没有 %1$@，%3$@ 的标签页无法在其中打开。"
+          }
+        }
+      }
+    },
+    "%@ is not on %@ any more.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%2$@ 上已没有 %1$@。"
+          }
+        }
+      }
+    },
+    "A host that is offline shows its projects and their tabs greyed, as Rex Go last saw them.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "离线的主机以灰色显示它的项目和标签页，内容是 Rex Go 上次看到的样子。"
+          }
+        }
+      }
+    },
+    "A project from a folder": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "用文件夹新建项目"
+          }
+        }
+      }
+    },
+    "A space is the name on its projects. Renaming one renames it on every host; a host that is offline takes the new name when it connects.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "空间是项目上的名称。重命名空间会在每台主机上生效；离线的主机在连上后采用新名称。"
+          }
+        }
+      }
+    },
+    "Amber": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "琥珀色"
+          }
+        }
+      }
+    },
+    "Blue": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "蓝色"
+          }
+        }
+      }
+    },
+    "Green": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "绿色"
+          }
+        }
+      }
+    },
+    "Indigo": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "靛蓝色"
+          }
+        }
+      }
+    },
+    "Orange": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "橙色"
+          }
+        }
+      }
+    },
+    "Pink": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "粉色"
+          }
+        }
+      }
+    },
+    "Rose": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "玫红色"
+          }
+        }
+      }
+    },
+    "Teal": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "青色"
+          }
+        }
+      }
+    },
+    "Violet": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "紫色"
+          }
+        }
+      }
+    },
+    "Can't Change the Color": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法更改颜色"
+          }
+        }
+      }
+    },
+    "Can't Close the Project": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法关闭项目"
+          }
+        }
+      }
+    },
+    "Can't Close the Tab": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法关闭标签页"
+          }
+        }
+      }
+    },
+    "Can't Make the Project": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法新建项目"
+          }
+        }
+      }
+    },
+    "Can't Move the Project": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法移动项目"
+          }
+        }
+      }
+    },
+    "Can't Move the Tab": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法移动标签页"
+          }
+        }
+      }
+    },
+    "Can't Open a New Tab": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法新建标签页"
+          }
+        }
+      }
+    },
+    "Can't Rename the Project": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法重命名项目"
+          }
+        }
+      }
+    },
+    "Can't Rename the Tab": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法重命名标签页"
+          }
+        }
+      }
+    },
+    "Choose a tab in the list.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在列表中选择一个标签页。"
+          }
+        }
+      }
+    },
+    "Close %@ and every tab in it?": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "关闭 %@ 及其中所有标签页？"
+          }
+        }
+      }
+    },
+    "Close %@ and every tab in it? The programs in its tabs end.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "关闭 %@ 及其中所有标签页？标签页里的程序会结束。"
+          }
+        }
+      }
+    },
+    "Close Other Tabs": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "关闭其他标签页"
+          }
+        }
+      }
+    },
+    "Close Project": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "关闭项目"
+          }
+        }
+      }
+    },
+    "Close Project…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "关闭项目…"
+          }
+        }
+      }
+    },
+    "Close Tab": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "关闭标签页"
+          }
+        }
+      }
+    },
+    "Color": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "颜色"
+          }
+        }
+      }
+    },
+    "Default": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "默认"
+          }
+        }
+      }
+    },
+    "Each host lists its projects of the space, the latest used first; those not used for 30 days are under Older. Tabs with No Project shows in every space.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "每台主机列出当前空间的项目，最近用过的在前；30 天没用的放在「更早」下。「无项目的标签页」在每个空间都显示。"
+          }
+        }
+      }
+    },
+    "Edit Spaces": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "编辑空间"
+          }
+        }
+      }
+    },
+    "Edit Spaces…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "编辑空间…"
+          }
+        }
+      }
+    },
+    "Ghostty draws each terminal with Metal and encodes its keys, as Ghostty does on the Mac.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "每个终端都由 Ghostty 用 Metal 绘制，按键也由 Ghostty 编码，与 Mac 上的 Ghostty 一致。"
+          }
+        }
+      }
+    },
+    "Hosts that are away": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "离线的主机"
+          }
+        }
+      }
+    },
+    "Its folder is a project of %@ in %@.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "它的文件夹已是 %1$@ 上「%2$@」空间的项目。"
+          }
+        }
+      }
+    },
+    "Long-press a project for its menu": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "长按项目打开菜单"
+          }
+        }
+      }
+    },
+    "Long-press a tab for its menu": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "长按标签页打开菜单"
+          }
+        }
+      }
+    },
+    "Move to %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "移到「%@」"
+          }
+        }
+      }
+    },
+    "Move to Space": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "移到空间"
+          }
+        }
+      }
+    },
+    "New Project on %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在 %@ 上新建项目"
+          }
+        }
+      }
+    },
+    "New Space": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "新建空间"
+          }
+        }
+      }
+    },
+    "New Space…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "新建空间…"
+          }
+        }
+      }
+    },
+    "New Tab": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "新建标签页"
+          }
+        }
+      }
+    },
+    "New Tab with No Project": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "新建无项目的标签页"
+          }
+        }
+      }
+    },
+    "New Tab, Rename, Color, Move to Space and Close Project, which asks first.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "新建标签页、重命名、颜色、移到空间和关闭项目；关闭项目前会先确认。"
+          }
+        }
+      }
+    },
+    "No Color": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无颜色"
+          }
+        }
+      }
+    },
+    "No Project": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无项目"
+          }
+        }
+      }
+    },
+    "No Tab Open": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "未打开标签页"
+          }
+        }
+      }
+    },
+    "No projects in %@. Tap + to make one from a folder.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "「%@」里没有项目。轻点 + 用一个文件夹新建项目。"
+          }
+        }
+      }
+    },
+    "Notifications that programs send with OSC 9 or OSC 777 show as the system's, grouped by tab.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "程序用 OSC 9 或 OSC 777 发出的通知以系统通知显示，并按标签页分组。"
+          }
+        }
+      }
+    },
+    "Older": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "更早"
+          }
+        }
+      }
+    },
+    "Only the name changes: the folder and the tabs stay.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "只改名称，文件夹和标签页保持不变。"
+          }
+        }
+      }
+    },
+    "Projects under each host": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "每台主机下的项目"
+          }
+        }
+      }
+    },
+    "Rename": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "重命名"
+          }
+        }
+      }
+    },
+    "Rename Host": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "重命名主机"
+          }
+        }
+      }
+    },
+    "Rename Space": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "重命名空间"
+          }
+        }
+      }
+    },
+    "Rename Tab": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "重命名标签页"
+          }
+        }
+      }
+    },
+    "Rename Tab, Reset Name, Move Up, Move Down, Move to Project, New Tab, Close Tab and Close Other Tabs.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "重命名标签页、重置名称、上移、下移、移到项目、新建标签页、关闭标签页和关闭其他标签页。"
+          }
+        }
+      }
+    },
+    "Rename Tab…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "重命名标签页…"
+          }
+        }
+      }
+    },
+    "Rename…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "重命名…"
+          }
+        }
+      }
+    },
+    "Search tabs": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "搜索标签页"
+          }
+        }
+      }
+    },
+    "Show All Tabs": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "显示所有标签页"
+          }
+        }
+      }
+    },
+    "Show in %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在「%@」中显示"
+          }
+        }
+      }
+    },
+    "Space": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "空间"
+          }
+        }
+      }
+    },
+    "Spaces": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "空间"
+          }
+        }
+      }
+    },
+    "Tabs with No Project": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无项目的标签页"
+          }
+        }
+      }
+    },
+    "The + by a host browses its folders and makes a project of one. New Tab in a project opens on its host, in its folder.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "主机旁的 + 浏览它的文件夹，用其中一个新建项目。项目里的新标签页在它的主机上、它的文件夹中打开。"
+          }
+        }
+      }
+    },
+    "The eye lists the tabs of every host by what their programs need: waiting for input first, then failed, done and working, with how long ago.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "眼睛图标按程序的状态列出所有主机的标签页：等待输入的在前，然后是失败、完成和运行中，并显示距今多久。"
+          }
+        }
+      }
+    },
+    "The name shows on this device only.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这个名称只在本设备上显示。"
+          }
+        }
+      }
+    },
+    "The picker at the top shows one space at a time, such as Work or Life. New Space… adds one, and Edit Spaces… renames, colors and orders them.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "顶部的选择器一次显示一个空间，例如「工作」或「生活」。「新建空间…」添加空间，「编辑空间…」重命名空间、设颜色和排序。"
+          }
+        }
+      }
+    },
+    "The project's tabs open on %@, in this folder. A folder is one project: if it is one already, that project shows.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "项目的标签页在 %@ 上的这个文件夹中打开。一个文件夹只对应一个项目：它已是项目时，显示那个项目。"
+          }
+        }
+      }
+    },
+    "The search at the bottom filters the tabs by title, in the list and under the eye.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "底部的搜索按标题筛选标签页，列表和动态视图都适用。"
+          }
+        }
+      }
+    },
+    "The space stays here, empty, until a project moves into it.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这个空间会留在这里，保持为空，直到有项目移入。"
+          }
+        }
+      }
+    },
+    "The tab closed.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "标签页已关闭。"
+          }
+        }
+      }
+    },
+    "The title shows the tab's program and title. Tap it for the session's tabs, New Tab and Switch Session.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "标题显示标签页的程序和标题。轻点可查看会话的标签页、新建标签页和切换会话。"
+          }
+        }
+      }
+    },
+    "You're in demo mode. Add a host to run your own tabs.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "你正在演示模式中。添加主机后即可运行你自己的标签页。"
+          }
+        }
+      }
+    },
+    "⌘T opens a tab, ⌘W closes it, ⌘O adds a file, ⇧⌘O a photo, ⌘K clears the screen and scrollback, and ⌘+, ⌘- and ⌘0 size the text. Hold ⌘ to see them.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "⌘T 新建标签页，⌘W 关闭，⌘O 添加文件，⇧⌘O 添加照片，⌘K 清除屏幕和回滚，⌘+、⌘- 和 ⌘0 调整字号。按住 ⌘ 可查看全部。"
+          }
+        }
+      }
+    },
+    "This host lists no tabs with no project yet. Reconnect, and try again.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这台主机还没有列出无项目的标签页。请重新连接后再试。"
           }
         }
       }

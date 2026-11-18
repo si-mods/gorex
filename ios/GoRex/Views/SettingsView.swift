@@ -4,12 +4,10 @@ import SwiftUI
 /// page each, the client's label, and a search over the rows' titles.
 struct SettingsView: View {
     @Environment(HostStore.self) private var store
-    @Environment(SpaceStore.self) private var spaceStore
     @Environment(\.dismiss) private var dismiss
     @AppStorage("scheme") private var scheme = "dark"
     @AppStorage("theme") private var theme = TerminalTheme.standard
     @AppStorage("clientLabel") private var label = ""
-    @AppStorage(Grouping.key) private var grouping = Grouping.standard.rawValue
     @AppStorage(TailnetSettings.onKey) private var tailnet = false
     @State private var query = ""
 
@@ -22,9 +20,6 @@ struct SettingsView: View {
     }
 
     private static let schemes: [(String, LocalizedStringResource)] = [("system", "System"), ("dark", "Dark"), ("light", "Light")]
-    private static let groupings: [(String, LocalizedStringResource)] = [
-        (Grouping.spaces.rawValue, "By Project"), (Grouping.hosts.rawValue, "By Host"),
-    ]
 
     private var cards: [[Item]] {
         let version = Bundle.main.version
@@ -40,14 +35,7 @@ struct SettingsView: View {
              Item(title: "Tailscale", icon: AnyView(TailscaleGlyph.tile()),
                   value: String(localized: tailnet ? "On · Rex Go Only" : "Off"), page: AnyView(TailscaleView())),
              Item(title: "Share on Hotspot", icon: tile("personalhotspot", .green),
-                  value: String(localized: HotspotShare.shared.isSharing ? "On" : "Off"), page: AnyView(HotspotShareView())),
-             Item(title: "Grouping", icon: tile("rectangle.3.group.fill", .teal),
-                  value: String(localized: Self.groupings.first { $0.0 == Grouping(stored: grouping).rawValue }?.1 ?? "By Project"),
-                  page: AnyView(Choices(title: "Grouping", options: Self.groupings.map { ($0.0, String(localized: $0.1)) }, selection: $grouping,
-                                        footer: "By Project shows one project at a time, as the desktop's sidebar: switch projects at the top, and each lists its windows by host, those on your other hosts too. By Host lists each host's sessions."))),
-             Item(title: "Project Sync", icon: tile("icloud.and.arrow.up.fill", .cyan),
-                  value: spaceStore.iCloudSyncEnabled ? String(localized: "iCloud On") : String(localized: "Local Only"),
-                  page: AnyView(SpaceSyncView()))],
+                  value: String(localized: HotspotShare.shared.isSharing ? "On" : "Off"), page: AnyView(HotspotShareView()))],
             [Item(title: "Features", icon: tile("sparkles", .blue), page: AnyView(FeaturesView())),
              Item(title: "About", icon: tile("info.circle.fill", .gray),
                   value: "\(version) (\(build))", page: AnyView(AboutView(version: version, build: build)))],

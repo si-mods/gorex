@@ -32,7 +32,7 @@ struct RemoteHostsView: View {
                     }
                     .listRowBackground(Color.card)
                 } footer: {
-                    Text("You're in demo mode. Add a host to run your own windows.")
+                    Text("You're in demo mode. Add a host to run your own tabs.")
                 }
             }
             Section("Hosts") {
