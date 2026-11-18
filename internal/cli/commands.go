@@ -9,7 +9,6 @@ import (
 	"io"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"strings"
 	"sync"
 	"syscall"
@@ -19,6 +18,7 @@ import (
 	"github.com/egoist/mygo/plugins/terminal"
 
 	"gorex/internal/config"
+	"gorex/internal/hosts"
 	"gorex/internal/rex"
 	"gorex/internal/rexapi"
 )
@@ -200,15 +200,15 @@ func connect(errOut io.Writer) (*rex.Client, int) {
 		}
 		return c, ExitOK
 	}
-	f, err := loadHosts()
+	f, err := hosts.Load(rex.Dir())
 	if err != nil {
 		fmt.Fprintln(errOut, err)
 		return nil, ExitFailed
 	}
 	{
 		var manual, tailnet []savedHost
-		for _, h := range f.Hosts {
-			if h.ID == "" || h.Address == "" || !strings.EqualFold(h.Name, serverTarget) && !strings.EqualFold(h.Alias, serverTarget) {
+		for _, h := range f {
+			if !strings.EqualFold(h.Name, serverTarget) && !strings.EqualFold(h.Alias, serverTarget) {
 				continue
 			}
 			if rex.IsTailnetTarget(h.Address) {
@@ -736,16 +736,7 @@ func (c *nopConn) Close() error {
 
 // savedHost is a remote host as hosts.json keeps it. Address is a secret
 // and is never printed here.
-type savedHost struct {
-	ID      string `json:"id"`
-	Name    string `json:"name"`
-	Alias   string `json:"alias,omitempty"`
-	Address string `json:"address"`
-}
-
-type hostsFile struct {
-	Hosts []savedHost `json:"hosts"`
-}
+type savedHost = hosts.Host
 
 func hostsCmd(args []string, out, errOut io.Writer) (int, bool) {
 	if len(args) > 0 && args[0] == "ls" {
@@ -760,16 +751,10 @@ func hostsCmd(args []string, out, errOut io.Writer) (int, bool) {
 		fmt.Fprintln(errOut, "gorex hosts: use `gorex hosts [ls]`")
 		return ExitUsage, true
 	}
-	f, err := loadHosts()
+	f, err := hosts.Load(rex.Dir())
 	if err != nil {
 		fmt.Fprintln(errOut, err)
 		return ExitFailed, true
-	}
-	hosts := f.Hosts[:0]
-	for _, h := range f.Hosts {
-		if h.ID != "" && h.Address != "" {
-			hosts = append(hosts, h)
-		}
 	}
 	if *asJSON {
 		type shown struct {
@@ -777,8 +762,8 @@ func hostsCmd(args []string, out, errOut io.Writer) (int, bool) {
 			Name  string `json:"name"`
 			Alias string `json:"alias,omitempty"`
 		}
-		shownHosts := make([]shown, 0, len(hosts))
-		for _, h := range hosts {
+		shownHosts := make([]shown, 0, len(f))
+		for _, h := range f {
 			shownHosts = append(shownHosts, shown{ID: h.ID, Name: h.Name, Alias: h.Alias})
 		}
 		WriteJSON(out, shownHosts)
@@ -786,7 +771,7 @@ func hostsCmd(args []string, out, errOut io.Writer) (int, bool) {
 	}
 	tw := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
 	fmt.Fprintln(tw, "NAME\tALIAS\tID")
-	for _, h := range hosts {
+	for _, h := range f {
 		fmt.Fprintf(tw, "%s\t%s\t%s\n", printable(h.Name), printable(h.Alias), h.ID)
 	}
 	tw.Flush()
@@ -855,21 +840,6 @@ func writePair(out io.Writer, url string, asJSON bool) error {
 	}
 	_, err = fmt.Fprintf(out, "\nScan with Rex on a device on the same tailnet: %s\n", url)
 	return err
-}
-
-func loadHosts() (hostsFile, error) {
-	b, err := os.ReadFile(filepath.Join(rex.Dir(), "hosts.json"))
-	if errors.Is(err, os.ErrNotExist) {
-		return hostsFile{}, nil
-	}
-	if err != nil {
-		return hostsFile{}, err
-	}
-	var f hostsFile
-	if err := json.Unmarshal(b, &f); err != nil {
-		return hostsFile{}, errors.New("hosts.json is not valid: " + err.Error())
-	}
-	return f, nil
 }
 
 // contextValue keeps an environment value from adding lines or prompt text

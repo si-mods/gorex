@@ -652,6 +652,7 @@ image reaches a program as a file it opens, not as clipboard data.
 | `tools/remotectl` | acts as a remote client without the app: pubkey, regenerate, pair, probe over tailcat |
 | `CHANGELOG.md` | release notes: a `## <version>` section per release |
 | `internal/rex` | the session server and its client: PTYs, foreground processes, headless screens, the socket protocol |
+| `internal/hosts` | `hosts.json`: the hosts' schema, load, and atomic save, shared by the app, the CLI and the server |
 | `internal/rexapi` | `GoRex rexapi`, the gateway that serves Rex's API to Rex clients from the server the app runs |
 | `internal/rexpeer`, `internal/reximp` | Rex's API as a client, and importing a Rex session into GoRex as spaces, tabs and panes that mirror its blocks |
 | `internal/testrex` | a Rex server for tests, over GoRex's own session server, so the client and the importer have one to talk to |
