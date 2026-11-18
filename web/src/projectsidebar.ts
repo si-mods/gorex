@@ -11,7 +11,7 @@ import { t } from "./i18n";
 import { MenuItem, onMenu, openMenu, ownDrag, renameField } from "./manage";
 import { dirName, dotColor, groupProjects, HostModel, ProjectRow, TabRow } from "./projectmodel";
 import type { HostView, ProjectOps } from "./projectops";
-import { hostHead, hostRows, problemLine, redraw, renaming, sidebarApp, tilesRoom, windowRow } from "./sidebar";
+import { hostHead, problemLine, spaceName, redraw, renaming, sidebarApp, tilesRoom, windowRow } from "./sidebar";
 
 /** The colors a space can take, as a dot in the picker. */
 export const spaceColors = ["#e5484d", "#f76b15", "#e5a000", "#30a46c", "#3e63dd", "#8e4ec6"];
@@ -147,8 +147,7 @@ export function projectTree(nav: HTMLElement): boolean {
       hostSection(nav, h, c, v, now);
     } else if (c && !c.v2) {
       // A host with no projects of version 2: its sessions as before.
-      hostHead(nav, h, c);
-      hostRows(nav, c);
+      legacySection(nav, h, c);
     } else if (!c) {
       const head = hostHead(nav, h, undefined) as HTMLButtonElement;
       head.type = "button";
@@ -160,6 +159,42 @@ export function projectTree(nav: HTMLElement): boolean {
     }
   }
   return true;
+}
+
+/**
+ * A host with no projects of version 2, as one section header like the
+ * others: its name and state dot, and its sessions as rows under it, each
+ * opening to its tabs.
+ */
+function legacySection(nav: HTMLElement, h: Host, c: HostConn) {
+  const app = sidebarApp();
+  const head = hostHead(nav, h, c);
+  head.classList.add("flat");
+  if (!head.querySelector(".state-dot")) head.append(el("i", c.state === "connected" ? "host-dot on" : "host-dot off"));
+  problemLine(nav, c);
+  for (const s of c.sessions.values()) {
+    if (!s.view) continue;
+    const dim = c.state !== "connected";
+    const key = `${c.host.id}:${s.id}`;
+    const open = isOpen(key, true);
+    const row = el("div", "project");
+    if (dim) row.classList.add("dimmed");
+    if (renaming(c, s.id)) {
+      row.append(renameField(s.label, spaceName(s), t("renameSpaceLabel"), (name) => app.renamedSpace(c, s.id, name)));
+      nav.append(row);
+      continue;
+    }
+    const b = el("button", "project-main");
+    b.type = "button";
+    b.setAttribute("aria-expanded", String(open));
+    b.title = spaceName(s);
+    b.append(el("i", "color-dot none"), el("span", "name", spaceName(s)), el("span", "count", String((s.view.windows ?? []).length)));
+    b.onclick = () => toggle(key, open);
+    row.append(b, iconButton("plus", t("cmdNewWindow"), () => app.newWindow(c, s.id), !c.live));
+    onMenu(row, (x, y) => openMenu(x, y, app.spaceMenu(c, s.id), () => app.shown()?.focusKeys()));
+    nav.append(row);
+    if (open) tabs(nav, dim ? undefined : c, s.id, []);
+  }
 }
 
 /** A host's heading, its `+`, and its projects of the space. A host with no project of the space shows only while it is connected. */
@@ -185,7 +220,7 @@ function hostSection(nav: HTMLElement, h: Host, c: HostConn | undefined, v: Host
     nav.append(groupRow(key, open, t("projectsOlder"), older.length, undefined, !v.online));
     if (open) for (const p of older) projectRow(nav, model, conn, p, shown?.conn === c && shown?.session === p.id);
   }
-  if (model.loose && (v.online || model.loose.tabs.length)) loose(nav, model, conn, model.loose, shown?.conn === c && shown?.session === model.loose.id);
+  if (model.loose?.tabs.length) loose(nav, model, conn, model.loose, shown?.conn === c && shown?.session === model.loose.id);
   if (v.online && !recent.length && !older.length && !model.loose?.tabs.length) nav.append(el("div", "host-note", t("projectsEmpty")));
 }
 
