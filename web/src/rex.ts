@@ -14,6 +14,8 @@ import { joinHostURL, withToken } from "./share";
  * of language says them in the new one.
  */
 export class RexError extends Error {
+  /** The project an `exists` error names (gorex.project.create). */
+  projectID?: string;
   constructor(public code: string, message: Msg) {
     super(typeof message === "string" ? message : "");
     if (typeof message === "function") Object.defineProperty(this, "message", { get: message });
@@ -238,7 +240,11 @@ export class Control {
       const p = this.pending.get(m.id);
       if (!p) return;
       this.pending.delete(m.id);
-      if (m.error) p.reject(new RexError(m.error.code ?? "", m.error.message ?? ""));
+      if (m.error) {
+        const e = new RexError(m.error.code ?? "", m.error.message ?? "");
+        if (typeof m.error.project_id === "string") e.projectID = m.error.project_id;
+        p.reject(e);
+      }
       else p.resolve({ seq: m.seq ?? 0, payload: m.payload ?? {} });
     } else if (m.type === "event" && m.payload?.type) {
       let type: string = m.payload.type;

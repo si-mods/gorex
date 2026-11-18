@@ -251,8 +251,15 @@ export class HostConn {
 
   /** Makes a project from a folder of this host and opens its first tab there (gorex.project.create). */
   async projectCreate(name: string, dir: string, space: string): Promise<{ project_id: string; tab_id?: string; exists: boolean }> {
-    const r = (await this.call("gorex.project.create", { name, dir, space })).payload;
-    return { project_id: String(r?.project_id ?? ""), tab_id: r?.tab_id, exists: r?.code === "exists" };
+    try {
+      const r = (await this.call("gorex.project.create", { name, dir, space })).payload;
+      return { project_id: String(r?.project_id ?? ""), tab_id: r?.tab_id, exists: false };
+    } catch (e) {
+      // A folder that is a project already is an error that names the project.
+      const x = e as { code?: string; projectID?: string };
+      if (x?.code === "exists" && x.projectID) return { project_id: x.projectID, exists: true };
+      throw e;
+    }
   }
 
   /** Moves a tab, with its panes, to a project of this host; "" is the host's tabs with no project (gorex.project.move). */
@@ -268,6 +275,22 @@ export class HostConn {
   /** Renames a space on every project of this host (gorex.space.rename). */
   async spaceRename(from: string, to: string): Promise<void> {
     await this.call("gorex.space.rename", { from, to });
+    await this.readSpaces();
+  }
+
+  /** The space names this host offers, those of its projects first (gorex.space.list); "" is Default. */
+  offered: string[] = [];
+
+  /** Reads gorex.space.list; a failure keeps what was read. */
+  async readSpaces(): Promise<void> {
+    if (!this.v2) return;
+    try {
+      const r = (await this.call("gorex.space.list")).payload;
+      this.offered = (Array.isArray(r?.spaces) ? r.spaces : []).filter((x: unknown): x is string => typeof x === "string");
+      this.events.sessions(this, false);
+    } catch (e) {
+      console.warn("space list", e);
+    }
   }
 
   /** Closes a window of a session; nothing while there is no control connection. */
@@ -349,6 +372,7 @@ export class HostConn {
     try {
       await c.call("session.bootstrap", { event_scope: "all" });
       await this.list();
+      void this.readSpaces();
       this.spaceReader.ask();
       // Connected is the usual state: the status line says nothing, and an earlier problem goes.
       this.status("");

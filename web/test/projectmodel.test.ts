@@ -144,7 +144,7 @@ test("a storage that is missing, corrupt or throws does not stop the page", () =
 test("the offline copy keeps each host's projects, is replaced as the host is read, and reads back", () => {
   const mem = new Mem();
   const o = new Offline(mem);
-  const m = { host: "h1", name: "office", projects: [row("p", "Work", 1)], loose: { id: "l", tabs: [{ id: "w", title: "dev" }] } };
+  const m = { host: "h1", name: "office", offered: undefined, projects: [row("p", "Work", 1)], loose: { id: "l", tabs: [{ id: "w", title: "dev" }] } };
   o.put(m);
   const again = new Offline(mem);
   assert.deepEqual(again.get("h1"), m);
@@ -166,6 +166,7 @@ function fake(welcome: any, answers: Record<string, any> = {}) {
     welcome,
     call: async (method: string, payload: any) => {
       calls.push([method, payload]);
+      if (answers[method] instanceof Error) throw answers[method];
       return { seq: 1, payload: answers[method] ?? {} };
     },
   } as any;
@@ -192,10 +193,23 @@ test("project create, move, update and space rename call the host's methods with
     ["gorex.project.move", { tab_id: "window:1", project_id: "" }],
     ["gorex.project.update", { project_id: "session:1", name: "wf" }],
     ["gorex.space.rename", { from: "Work", to: "Job" }],
+    ["gorex.space.list", undefined],
   ]);
 });
 
-test("a folder that is a project already answers exists, with that project's ID", async () => {
-  const { c } = fake({ features: [] }, { "gorex.project.create": { code: "exists", project_id: "session:9" } });
-  assert.deepEqual(await c.projectCreate("x", "/work/x", ""), { project_id: "session:9", tab_id: undefined, exists: true });
+test("a folder that is a project already is an exists error that names the project", async () => {
+  const e = Object.assign(new Error("/work/x is a project already"), { code: "exists", projectID: "session:9" });
+  const { c } = fake({ features: [] }, { "gorex.project.create": e });
+  assert.deepEqual(await c.projectCreate("x", "/work/x", ""), { project_id: "session:9", exists: true });
+});
+
+test("gorex.space.list adds the names a host offers to the model, and the copy keeps them", async () => {
+  const { c } = fake({ features: ["gorex.projects"], feature_versions: { "gorex.projects": 2 } }, { "gorex.space.list": { spaces: ["Work", "", "Old"] } });
+  await c.readSpaces();
+  assert.deepEqual(c.offered, ["Work", "", "Old"]);
+  const m = hostModel({ host: { id: "h1", name: "x" }, sessions: [], offered: c.offered }, () => "");
+  assert.deepEqual(m.offered, ["Work", "", "Old"]);
+  const mem = new Mem();
+  new Offline(mem).put(m);
+  assert.deepEqual(new Offline(mem).get("h1")!.offered, ["Work", "", "Old"]);
 });

@@ -47,7 +47,7 @@ export function createProjectOps(deps: ProjectOpsDeps) {
     for (const h of deps.hosts()) {
       const c = deps.conn(h.id);
       if (isLive(c)) {
-        const model = hostModel({ host: c.host, sessions: c.sessions.values() }, (w) => windowTitle(c, w));
+        const model = hostModel({ host: c.host, sessions: c.sessions.values(), offered: c.offered }, (w) => windowTitle(c, w));
         offline.put(model);
         out.push({ model, online: true });
         continue;
@@ -62,7 +62,10 @@ export function createProjectOps(deps: ProjectOpsDeps) {
   /** The names of the spaces: carried by the projects of the hosts, and Default, and the ones made here. */
   function spaces(vs: HostView[] = views()): string[] {
     const carried = new Set<string>();
-    for (const v of vs) for (const p of v.model.projects) carried.add(store.mapSpace(v.model.host, p.space));
+    for (const v of vs) {
+      for (const p of v.model.projects) carried.add(store.mapSpace(v.model.host, p.space));
+      for (const n of v.model.offered ?? []) carried.add(store.mapSpace(v.model.host, n));
+    }
     if (vs.some((v) => v.online)) store.prune(carried);
     return store.names(carried);
   }

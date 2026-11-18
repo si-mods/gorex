@@ -61,17 +61,20 @@ export interface HostModel {
   projects: ProjectRow[];
   /** The host's tabs with no project; none when the host has not listed it. */
   loose?: { id: string; tabs: TabRow[] };
+  /** Space names the host offers though no project carries them (gorex.space.list). */
+  offered?: string[];
 }
 
 /** What the model reads of a host's connection. */
 export interface Source {
   host: { id: string; name: string };
   sessions: Iterable<{ id: string; label: string; project?: ProjectInfo; view?: any }>;
+  offered?: string[];
 }
 
 /** A host's model from its live sessions; `title` names a window of a view. */
 export function hostModel(c: Source, title: (w: any) => string): HostModel {
-  const m: HostModel = { host: c.host.id, name: c.host.name, projects: [] };
+  const m: HostModel = { host: c.host.id, name: c.host.name, projects: [], offered: c.offered?.length ? [...c.offered] : undefined };
   for (const s of c.sessions) {
     if (!s.project || !s.view) continue;
     const tabs = (s.view.windows ?? []).map((w: any) => ({ id: String(w.window_id), title: title(w) }));
@@ -284,6 +287,7 @@ function decode(j: any): Record<string, HostModel> {
       projects: (Array.isArray(m.projects) ? m.projects : [])
         .filter((p: any) => p && typeof p.id === "string")
         .map((p: any) => ({ id: p.id, name: str(p.name), dir: str(p.dir), space: str(p.space), used: typeof p.used === "number" ? p.used : 0, tabs: tabs(p.tabs) })),
+      offered: Array.isArray(m.offered) ? m.offered.filter((x: unknown) => typeof x === "string") : undefined,
       loose: m.loose && typeof m.loose.id === "string" ? { id: m.loose.id, tabs: tabs(m.loose.tabs) } : undefined,
     };
   }
