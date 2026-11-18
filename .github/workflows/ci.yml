@@ -2,7 +2,7 @@ name: CI
 
 on:
   # Docs-only changes start no run; workflow_dispatch runs it by hand.
-  # ios/WhatToTest.md stays in: the web job checks it. No other .md file is
+  # ios/WhatToTest.md stays in: the what-to-test job checks it. No other .md file is
   # an input to the code or the tests.
   pull_request:
     paths:
@@ -39,9 +39,68 @@ jobs:
   # pushes only); macOS-only issues still show on a developer's machine.
   # si-mods runs no job on GitHub's runners.
 
+  # Whether the change reaches past the iOS app. A change only to the
+  # Swift app (IOS_ONLY: its sources, tests, packages, scripts and
+  # project), docs, .md files or the TestFlight workflow runs only
+  # what-to-test here: the TestFlight workflow builds the app when it
+  # reaches main. Everything else runs all jobs, a new path too: ios/share
+  # and ios/tailnet are Go, and Go's tests and the web build read the files
+  # in READ_ELSEWHERE. An empty diff, a manual run, and a base that is not
+  # an ancestor (a new branch, a force-push) run all.
+  changes:
+    runs-on: instabox-medium
+    timeout-minutes: 5
+    outputs:
+      code: ${{ steps.diff.outputs.code }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - id: diff
+        env:
+          BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+          IOS_ONLY: '^(ios/(GoRex|GoRexTests|SherpaOnnx|scripts)/|ios/(project\.yml|\.gitignore)$|docs/|\.github/workflows/testflight\.yml$)|\.md$'
+          READ_ELSEWHERE: '^ios/GoRex/(Rex/RexProtocol\.gen\.swift|ghostty-themes\.json)$'
+        run: |
+          code=true
+          if [ "$GITHUB_EVENT_NAME" != workflow_dispatch ] && git merge-base --is-ancestor "$BASE" HEAD 2>/dev/null; then
+            files=$(git diff --name-only "$BASE" HEAD)
+            if [ -n "$files" ] &&
+              ! printf '%s\n' "$files" | grep -Ev "$IOS_ONLY" | grep -q . &&
+              ! printf '%s\n' "$files" | grep -Eq "$READ_ELSEWHERE"; then
+              code=false
+            fi
+          fi
+          echo "code=$code" | tee -a "$GITHUB_OUTPUT"
+
+  # What to Test comes from ios/WhatToTest.md, a bullet per locale, through
+  # ios/scripts/test-notes: a pull request that changes what a tester sees
+  # adds one, and one that reads like a commit subject fails. It runs on
+  # every pull request, the iOS app's alone too.
+  what-to-test:
+    if: github.event_name == 'pull_request'
+    runs-on: instabox-medium
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: ios/WhatToTest.md
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+        # The script that judges the pull request comes from the base commit,
+        # so the pull request cannot edit its own check. It reads the merge
+        # commit (HEAD here) by SHA: the objects are shared.
+        run: |
+          TO=$(git rev-parse HEAD)
+          git worktree add "$RUNNER_TEMP/base" "$BASE"
+          "$RUNNER_TEMP/base/ios/scripts/test-notes" check "$BASE" "$TO"
+
   # gofmt and vet, and each system's code cross-compiled. It runs on the
   # large box (8 vCPU, 16 GiB), as vet and lint compile everything.
   build:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: instabox-large
     timeout-minutes: 20
     steps:
@@ -102,29 +161,13 @@ jobs:
   # The web client's unit tests: its modules with no DOM, in Node
   # (web/test.mjs bundles web/test/*.test.ts and runs node --test). The
   # web build itself needs Zig and Ghostty, and is not run here.
-  #
-  # A pull request also checks what to test. What to Test comes from
-  # ios/WhatToTest.md, a bullet per locale, through ios/scripts/test-notes:
-  # a pull request that changes what a tester sees adds one, and one that
-  # reads like a commit subject fails.
   web:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: instabox-medium
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-      - name: ios/WhatToTest.md
-        if: github.event_name == 'pull_request'
-        env:
-          BASE: ${{ github.event.pull_request.base.sha }}
-        # The script that judges the pull request comes from the base commit,
-        # so the pull request cannot edit its own check. It reads the merge
-        # commit (HEAD here) by SHA: the objects are shared.
-        run: |
-          TO=$(git rev-parse HEAD)
-          git worktree add "$RUNNER_TEMP/base" "$BASE"
-          "$RUNNER_TEMP/base/ios/scripts/test-notes" check "$BASE" "$TO"
       - uses: actions/setup-node@v7
         with:
           node-version: 24
@@ -141,6 +184,8 @@ jobs:
   # machines take a third each; a fourth runs the other packages. With
   # build and web, that is five at a time.
   test-linux:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: instabox-medium
     # One run of a part that hangs, at 15 minutes, and the setup.
     timeout-minutes: 20
@@ -193,7 +238,8 @@ jobs:
           key: ${{ steps.cache.outputs.cache-primary-key }}
 
   test-windows:
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    needs: changes
+    if: needs.changes.outputs.code == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: [self-hosted, yibo-pc]
     timeout-minutes: 25
     steps:
@@ -217,7 +263,8 @@ jobs:
 
   # Builds web/dist (with files.json) and uploads it to Cloudflare R2 on pushes to main.
   web-r2:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: changes
+    if: needs.changes.outputs.code == 'true' && github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: instabox-medium
     timeout-minutes: 30
     steps:
