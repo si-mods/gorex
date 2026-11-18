@@ -15,6 +15,11 @@ Five layers, cheapest first. Use the lowest layer that can prove the behavior; s
 | 4. Session server over its socket | Sessions, attach, input/output, upgrade, PIDs | partly |
 | 5. iOS simulator (XCUITest + `simctl`) | The app's screens, keyboard, sheets, navigation | no |
 
+Fault scenarios — a dropped connection, a resize storm, a flooding program
+— live in `chaos_test.go` and run with `scripts/chaos.sh <dir>`, which
+leaves their screenshots in `<dir>`. `docs/chaos.md` lists each one with
+the invariant it attacks (`docs/invariants.md`).
+
 ## Safety rules (always)
 
 - **Never touch the user's real data dir or server.** The built app uses `~/Library/Application Support/GoRex`, `mygo dev` uses `GoRex Dev`. For any manual run set `GOREX_DIR` to a fresh short path, e.g. `/tmp/gxt` (Unix socket paths have a length limit, so keep it short).
