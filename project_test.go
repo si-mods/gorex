@@ -20,7 +20,7 @@ func setProjectHome(t *testing.T, a *App, tt *ui.Tester, host, dir string) {
 		t.Fatalf("space.home: %+v", res)
 	}
 	caughtUp(t, a, tt)
-	waitFor(t, tt, "the app to read the home", func() bool { return a.ws.Host == host && (sameDir(a.ws.Dir, dir) || a.ws.Dir == dir) })
+	waitFor(t, tt, "the app to read the home", func() bool { return host == "" && (sameDir(a.ws.Dir, dir) || a.ws.Dir == dir) })
 }
 
 // sameDir tells two paths of one directory, as a process resolves its own.
@@ -94,6 +94,11 @@ func TestNewTabInLocalProject(t *testing.T) {
 // focusLocal gives a tab of this machine the focus.
 func focusLocal(t *testing.T, a *App) {
 	t.Helper()
+	// A tab of this machine's is in one of its workspaces
+	// (docs/projects.md): the window shows its tabs with no project.
+	if a.ws != nil && a.ws.host != nil {
+		a.showWorkspace(a.st.addWorkspace())
+	}
 	a.active = slices.IndexFunc(a.tabs, func(t *Tab) bool { return t.host() == nil })
 	if a.tab() == nil || a.currentHost() != nil {
 		t.Fatal("no tab of this machine has the focus")

@@ -342,7 +342,7 @@ func TestFollowReconnectTwoWindows(t *testing.T) {
 	a, _ := newTestApp(t)
 	st := a.st
 	x := a.ws
-	b := st.openWindow(st.addWorkspace())
+	b := st.openWindow(st.newTestSpace())
 	y := b.ws
 	st.saveNow()
 	other, err := rex.ConnectExisting()
@@ -374,7 +374,7 @@ func TestFollowEmptiedAndGone(t *testing.T) {
 	a, _ := newTestApp(t)
 	st := a.st
 	x := a.ws
-	gone, left := st.addWorkspace(), st.addWorkspace()
+	gone, left := st.newTestSpace(), st.newTestSpace()
 	for i, w := range []*Workspace{gone, left} {
 		w.layout = savedLayout{Tabs: []savedTab{{ID: layout.NewTabID(), Root: &savedNode{URL: "https://example.com/", ID: fmt.Sprint("web", i)}}}}
 	}
@@ -405,7 +405,7 @@ func TestFollowTabToSpace(t *testing.T) {
 	a, _ := newTestApp(t)
 	st := a.st
 	x := a.ws
-	b := st.openWindow(st.addWorkspace())
+	b := st.openWindow(st.newTestSpace())
 	y := b.ws
 	b.newTab(testShell.dir)
 	if len(b.tabs) != 2 {
@@ -773,39 +773,6 @@ func TestSaveNowWhileMainBusy(t *testing.T) {
 	}
 	if got := savedWorkspaces(t, a.client).Sessions[0].Tabs[0].Name; got != "closing" {
 		t.Errorf("the server's tab is %q", got)
-	}
-}
-
-// TestRemoveHostKeepsWindow removes a host whose panes are all the
-// window's, which follows the server asynchronously: the window keeps its
-// space, and shows the new tab of this machine in place of the host's.
-func TestRemoveHostKeepsWindow(t *testing.T) {
-	a, tt := newTestApp(t)
-	h := newHostConn(savedHost{ID: "h1", Name: "studio"})
-	a.hosts = []*hostConn{h}
-	ws := a.ws
-	// Only a host's pane: the local tab goes.
-	local := a.tab()
-	rp := &Pane{ID: a.id(), SID: "far", host: h, info: rex.SessionInfo{ID: "far"}}
-	rt := a.makeTab("")
-	rt.Root = &Node{ID: a.id(), Pane: rp}
-	rp.Tab, rp.Node = rt, rt.Root
-	rt.setFocus(rp)
-	a.tabs = []*Tab{rt}
-	a.active = 0
-	a.closePanes([]*Tab{local})
-	followApp(t, a)
-	caughtUp(t, a, tt)
-	a.removeHost(h)
-	waitFor(t, tt, "a tab of this machine", func() bool {
-		return len(a.tabs) == 1 && a.tabs[0].Focus != nil && a.tabs[0].Focus.host == nil && a.tabs[0].Focus.SID != ""
-	})
-	if a.ws != ws || a.st.byID(ws.ID) == nil {
-		t.Errorf("the window left its space: %v", a.ws)
-	}
-	caughtUp(t, a, tt)
-	if a.err != "" {
-		t.Errorf("error %q", a.err)
 	}
 }
 
@@ -1257,34 +1224,4 @@ func TestUseRunsInFlightDone(t *testing.T) {
 		t.Errorf("the done ran twice: %+v", res)
 	case <-time.After(300 * time.Millisecond):
 	}
-}
-
-// TestRemoveHostNoSpace removes the host of every pane of a window that
-// shows no space: the window takes a space of its own for the new tab of
-// this machine, and the other window's space is left as it was.
-func TestRemoveHostNoSpace(t *testing.T) {
-	a, tt := newTestApp(t)
-	st := a.st
-	b := st.openWindow(st.addWorkspace())
-	followApp(t, a)
-	caughtUp(t, a, tt)
-	theirs := len(b.tabs)
-	h := newHostConn(savedHost{ID: "h1", Name: "studio"})
-	a.hosts = []*hostConn{h}
-	rp := &Pane{ID: a.id(), SID: "far", host: h, info: rex.SessionInfo{ID: "far"}}
-	rt := a.makeTab("")
-	rt.Root = &Node{ID: a.id(), Pane: rp}
-	rp.Tab, rp.Node = rt, rt.Root
-	rt.setFocus(rp)
-	a.closePanes(a.tabs)
-	a.ws.app, a.ws = nil, nil
-	a.tabs, a.active = []*Tab{rt}, 0
-	a.removeHost(h)
-	waitFor(t, tt, "a tab of this machine", func() bool {
-		return len(a.tabs) == 1 && a.tabs[0].Focus != nil && a.tabs[0].Focus.host == nil && a.tabs[0].Focus.SID != ""
-	})
-	if a.ws == nil || a.ws == b.ws || len(b.tabs) != theirs {
-		t.Errorf("window on %v, the other's space has %d tabs, had %d", a.ws, len(b.tabs), theirs)
-	}
-	quit(st)
 }

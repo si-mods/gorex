@@ -7,72 +7,11 @@ import (
 	"github.com/egoist/mygo/ui"
 
 	"gorex/locales"
-
-	"gorex/internal/layout"
 )
 
 // Run is set here: they open windows, whose debug hook lists the commands.
 func init() {
 	cmdNewWindow.Run = func(a *App) { a.newWindowCmd() }
-	cmdMoveTabWindow.Run = func(a *App) { a.moveTabToNewWindow(a.tab()) }
-}
-
-// workspaceChip shows the window's workspace, which the interface calls a
-// session: a click lists the workspaces, to show another, make one or
-// rename this one. In the sidebar it is wide, a row of its own. It has no
-// icon; a program at work shows its dots on its tab's row only.
-func (a *App) workspaceChip(c *ui.Context, k *colors, wide bool) {
-	w := a.ws
-	if w == nil {
-		return
-	}
-	// A project's folder shows under its name, after its home host's name
-	// when that is not this machine.
-	detail := a.projectDetail(w)
-	label := locales.SessionLabel(w.Name)
-	if detail != "" {
-		label += " · " + detail
-	}
-	chip := ui.Row(c.Key("session-chip")).Gap(7).Padding(3, 6, 3, 8).Radius(9).AlignItems(ui.Center).Cursor(ui.CursorPointer).
-		Role(ui.RoleButton).Label(label).Tooltip(label)
-	chip.ContextMenu(func(m *ui.Menu) { a.spaceMenu(m, true) })
-	switch {
-	case wide && detail != "" && !a.wsRenaming:
-		chip.Height(42).Grow(1).MinWidth(0)
-	case wide:
-		chip.Height(30).Grow(1).MinWidth(0)
-	default:
-		chip.MaxWidth(180).Shrink(0)
-	}
-	if chip.Hovered() || a.wsOpen {
-		chip.Background(k.hover)
-	}
-	if chip.Clicked() && !a.wsRenaming {
-		a.wsOpen = !a.wsOpen
-	}
-	chip.Children(func() {
-		if a.wsRenaming {
-			a.workspaceRenameField(c, k, w.Name)
-			return
-		}
-		if wide && detail != "" {
-			ui.Column(c).Grow(1).MinWidth(0).Gap(1).Children(func() {
-				ui.Text(c, w.Name).FontSize(13).FontWeight(600).TextColor(k.text.Alpha(0.85)).SingleLine().Ellipsis("…").MinWidth(0)
-				// The folder's own name, at its end, shows.
-				ui.Text(c, detail).FontSize(11).TextColor(k.textFaint).SingleLine().Ellipsis("…").TruncateMiddle().MinWidth(0)
-			})
-		} else {
-			name := ui.Text(c, w.Name).FontSize(13).FontWeight(600).TextColor(k.text.Alpha(0.85)).SingleLine().Ellipsis("…").MinWidth(0)
-			if wide {
-				name.Grow(1)
-			}
-		}
-		if s := a.st.status(w); needsUser(s) {
-			statusDot(c, k, s, 7)
-		}
-		glyphIcon(c, "chevron-down", 13, k.textFaint).Shrink(0)
-	})
-	a.workspacePopover(c, k, chip)
 }
 
 // workspaceRenameField renames the workspace in place, as tabs are: Enter
@@ -120,200 +59,6 @@ func (a *App) askCloseWorkspace() {
 // its rows' corners are concentric with.
 const popR, popPad = 14, 6
 
-// workspacePopover lists the workspaces under the chip, or the host
-// view's row of the window's space: their tabs, the window's checked, and
-// those other windows show; then New Session, Rename and Close. Opened by
-// the host view's Color…, it shows only the colors.
-func (a *App) workspacePopover(c *ui.Context, k *colors, anchor ui.Element) {
-	if !a.wsOpen {
-		a.wsColorOnly, a.wsShown = false, false
-	}
-	ui.PopoverBase(c, anchor, &a.wsOpen, func(panel ui.Element) {
-		_, winH := c.Size()
-		glassPanel(panel.Margin(8, 0, 0, 0).MaxHeight(winH-24-titleH).Width(280).Padding(popPad).Radius(popR), k.panel).Border(1, k.panelBorder).
-			Shadow(0, 12, 32, 0, k.shadowFocused)
-		if a.wsColorOnly {
-			ui.Scroll(c).MinHeight(0).Shrink(1).Children(func() {
-				ui.Column(c).Gap(2).Children(func() { a.spaceColorPicker(c, k) })
-			})
-			return
-		}
-		a.workspaceList(c, k)
-	})
-}
-
-// workspaceList is the popover's body: a row for each project and the
-// window's colors, which scroll when they do not fit, then the actions,
-// which stay in sight.
-func (a *App) workspaceList(c *ui.Context, k *colors) {
-	ui.Text(c, locales.SessionListTitle()).FontSize(12).FontWeight(600).TextColor(k.textFaint).Padding(6, 8, 4, 8).Shrink(0)
-	ui.Scroll(c.Key("project-list")).MinHeight(0).Shrink(1).Children(func() {
-		ui.Column(c).Gap(2).Children(func() {
-			for _, w := range a.st.workspaces {
-				a.workspaceRow(c, k, w)
-			}
-			a.spaceColorPicker(c, k)
-		})
-	})
-	a.wsShown = true
-	ui.Column(c).Gap(2).Shrink(0).Children(func() {
-		ui.Box(c).Height(1).Margin(4, 6).Background(k.panelBorder)
-		action := func(glyph, label string, run func()) {
-			row := ui.Row(c.Key("action-"+glyph)).Height(32).Padding(0, 8).Gap(9).Radius(concentric(popR, 1+popPad)).AlignItems(ui.Center).Cursor(ui.CursorPointer).
-				Role(ui.RoleButton).Label(label)
-			if row.Hovered() {
-				row.Background(k.hover)
-			}
-			if row.Clicked() {
-				a.wsOpen = false
-				a.later(c, run)
-			}
-			row.Children(func() {
-				glyphIcon(c, glyph, 15, k.textMuted).Shrink(0)
-				ui.Text(c, label).FontSize(13).TextColor(k.text).SingleLine().Ellipsis("…")
-			})
-		}
-		action("folder-plus", cmdNewProject.Title(), a.openNewProject)
-		action("plus", cmdNewSession.Title(), a.newWorkspace)
-		action("pencil", cmdRenameSession.Title(), a.startWorkspaceRename)
-		if w := a.ws; w != nil {
-			id := w.ID
-			action("folder-open", folderLabel(w), func() { a.openChangeFolder(id) })
-			if w.Dir != "" {
-				action("folder-minus", locales.ProjectRemoveFolder(), a.removeProjectFolder)
-			}
-		}
-		action("trash-2", cmdCloseSession.Title(), a.askCloseWorkspace)
-	})
-}
-
-// workspaceRow is a project's row in the popover: its color, its name,
-// and under it its folder, after its home host's name when that is not
-// this machine, or that it has none; a dot when its home host is not
-// connected or not known.
-func (a *App) workspaceRow(c *ui.Context, k *colors, w *Workspace) {
-	current := w == a.ws
-	tabs := workspaceDetail(w, a, w.tabCount())
-	detail := a.projectDetail(w)
-	if detail == "" {
-		detail = locales.ProjectNoFolder() + " · " + tabs
-	}
-	label := w.Name + ", " + detail
-	if w.Dir != "" {
-		label += ", " + tabs
-	}
-	row := ui.Row(c.Key(w.ID)).Height(40).Padding(0, 8).Gap(9).Radius(concentric(popR, 1+popPad)).AlignItems(ui.Center).Cursor(ui.CursorPointer).
-		Role(ui.RoleButton).Label(label)
-	if row.Hovered() {
-		row.Background(k.hover)
-	}
-	if current && !a.wsShown {
-		// As it opens, the popover shows the window's project.
-		row.ScrollIntoView()
-	}
-	if row.Clicked() {
-		a.wsOpen = false
-		a.later(c, func() { a.showWorkspace(w) })
-	}
-	row.Children(func() {
-		ui.Box(c).Size(15, 15).Shrink(0).Children(func() {
-			if current {
-				glyphIcon(c, "check", 15, k.text)
-			}
-		})
-		spaceDot(c, k, w)
-		ui.Column(c).Grow(1).MinWidth(0).Children(func() {
-			ui.Text(c, w.Name).FontSize(13.5).FontWeight(600).TextColor(k.text).SingleLine().Ellipsis("…")
-			ui.Text(c, detail).FontSize(11.5).TextColor(k.textFaint).SingleLine().Ellipsis("…").TruncateMiddle()
-		})
-		if tip, col, ok := a.homeTrouble(k, w); ok {
-			ui.Box(c).Size(7, 7).Radius(4).Background(col).Shrink(0).Role(ui.RoleImage).Label(tip).Tooltip(tip)
-		}
-		if s := a.st.status(w); s != nil && s.State != "idle" {
-			statusDot(c, k, s, 7)
-		}
-		if w.app != nil && !current {
-			glyphIcon(c, "app-window", 14, k.textFaint).Shrink(0).Tooltip(locales.SessionElsewhere())
-		}
-	})
-}
-
-// homeTrouble tells of project w's home host what its row's dot says:
-// that it is not connected, or that it is none of the user's hosts.
-func (a *App) homeTrouble(k *colors, w *Workspace) (tip string, col ui.Color, ok bool) {
-	if w.Dir == "" || w.Host == "" {
-		return "", col, false
-	}
-	h := a.projectHost(w)
-	switch {
-	case h == nil:
-		return locales.ProjectHomeUnknown(), k.danger, true
-	case h.current() == nil:
-		return locales.ProjectHomeOffline(h.label()), k.exited, true
-	}
-	return "", col, false
-}
-
-// spaceColorPicker is the popover's colors for the window's space: the
-// default look, the presets, and a field for a custom #rrggbb. A choice
-// keeps the popover open, so that the window shows it at once.
-func (a *App) spaceColorPicker(c *ui.Context, k *colors) {
-	if a.ws == nil {
-		return
-	}
-	ui.Text(c, locales.SpaceColor()).FontSize(12).FontWeight(600).TextColor(k.textFaint).Padding(10, 8, 4, 8)
-	base := colorsOf(c)
-	ui.Row(c).Gap(5).Wrap().Padding(0, 8, 4, 8).Children(func() {
-		a.spaceSwatch(c, k, "", locales.SpaceColorDefault(), base.bgMid, true)
-		for _, p := range layout.Palette {
-			a.spaceSwatch(c, k, p.ID, strings.ToUpper(p.ID[:1])+p.ID[1:], ui.Hex(p.Hex), false)
-		}
-	})
-	in := textField(c, k, &a.wsColorText, fieldRegular).Margin(0, 8, 6, 8).Placeholder(locales.SpaceColorCustom())
-	if in.Submitted() {
-		a.useSpaceColorText()
-	}
-}
-
-// spaceSwatch is one of the popover's colors: the space's own, ringed,
-// and the one that takes it when clicked. Outlined is the default look,
-// which shows the window's own gradient.
-func (a *App) spaceSwatch(c *ui.Context, k *colors, id, label string, face ui.Color, outlined bool) ui.Element {
-	b := ui.Box(c).Size(20, 20).Radius(10).Shrink(0).Cursor(ui.CursorPointer).Role(ui.RoleButton).Label(label).Tooltip(label).Background(face)
-	switch {
-	case a.ws != nil && a.ws.Color == id:
-		b.Border(2, k.text)
-	case outlined:
-		b.Border(1, k.textFaint)
-	}
-	if b.Clicked() {
-		a.setSpaceColor(id)
-	}
-	return b
-}
-
-// setSpaceColor gives the window's space a color, which the layout keeps.
-func (a *App) setSpaceColor(color string) {
-	if a.ws != nil && a.ws.Color != color {
-		a.ws.Color = color
-		a.changed()
-	}
-}
-
-// useSpaceColorText takes the color the picker's field holds, when it
-// names one: a preset's id, or a #rrggbb.
-func (a *App) useSpaceColorText() {
-	v := strings.TrimSpace(a.wsColorText)
-	hex, ok := spaceColorHex(v)
-	if !ok {
-		return
-	}
-	if strings.HasPrefix(v, "#") {
-		v = hex
-	}
-	a.setSpaceColor(v)
-}
-
 // spaceDot is the mark of a space's color before its name in the
 // popover: a dot of its base color, or only an outline for the default
 // look.
@@ -325,102 +70,6 @@ func spaceDot(c *ui.Context, k *colors, w *Workspace) ui.Element {
 	return dot.Border(1, k.textFaint)
 }
 
-// spaceStrip is the foot of the sidebar's spaces: a dot for each space,
-// the window's ringed, and a button that makes another, centered under
-// the tabs. A dot shows its space, or the window showing it.
-func (a *App) spaceStrip(c *ui.Context, k *colors) {
-	if a.st == nil {
-		ui.Spacer(c)
-		return
-	}
-	// The dots scroll sideways when they do not fit; the plus stays.
-	ui.Row(c).Grow(1).MinWidth(0).Gap(2).AlignItems(ui.Center).Justify(ui.Center).Children(func() {
-		ui.ScrollHorizontal(c.Key("project-strip")).MinWidth(0).Shrink(1).Children(func() {
-			ui.Row(c).Gap(2).AlignItems(ui.Center).Children(func() {
-				for i, w := range a.st.workspaces {
-					a.spaceDotButton(c, k, i, w)
-				}
-			})
-		})
-		if b := iconButton(c, k, "plus", cmdNewProject.Title(), 24, 13).Shrink(0).Tooltip(cmdNewProject.Title()); b.Clicked() {
-			a.later(c, a.openNewProject)
-		}
-	})
-}
-
-// spaceDotButton is a space's dot in the strip: a click shows it, and a
-// right click on the window's own space renames or closes it.
-func (a *App) spaceDotButton(c *ui.Context, k *colors, i int, w *Workspace) {
-	label := w.Name
-	if w.app != nil && w != a.ws {
-		label += " · " + locales.SessionElsewhere()
-	}
-	if i < 9 {
-		label += "  " + showSpaceKeys(i+1)
-	}
-	b := ui.Box(c).Size(24, 24).Shrink(0).Center().Radius(12).Cursor(ui.CursorPointer).Role(ui.RoleButton).Label(label).Tooltip(label)
-	if w == a.ws && a.stripShown != w {
-		// The window's project comes into view as the window shows it.
-		a.stripShown = w
-		b.ScrollIntoView()
-	}
-	if b.Hovered() {
-		b.Background(k.hover)
-	}
-	if w.app != nil && w != a.ws {
-		b.Opacity(0.5)
-	}
-	if b.Clicked() {
-		a.later(c, func() { a.showWorkspace(w) })
-	}
-	if w == a.ws {
-		b.ContextMenu(func(m *ui.Menu) { a.spaceMenu(m, false) })
-	}
-	b.Children(func() { spaceDotMark(c, k, w, w == a.ws) })
-}
-
-// spaceMenu is the right click menu of the window's own project, its
-// settings: rename it, color it where a popover can show the colors,
-// change or remove its folder, or close it.
-func (a *App) spaceMenu(m *ui.Menu, color bool) {
-	if m.Item(cmdRenameSession.Title()).Chosen() {
-		a.startWorkspaceRename()
-	}
-	if color && m.Item(locales.SpaceColor()+"…").Chosen() {
-		a.wsOpen, a.wsColorOnly = true, true
-	}
-	if w := a.ws; w != nil {
-		id := w.ID
-		if m.Item(folderLabel(w)).Chosen() {
-			a.openChangeFolder(id)
-		}
-		if w.Dir != "" && m.Item(locales.ProjectRemoveFolder()).Chosen() {
-			a.removeProjectFolder()
-		}
-	}
-	if m.Item(cmdCloseSession.Title()).Chosen() {
-		a.askCloseWorkspace()
-	}
-}
-
-// spaceDotMark is a space's color in the strip: a dot of its base color,
-// or only an outline for the default look; the window's own space sits in
-// a ring.
-func spaceDotMark(c *ui.Context, k *colors, w *Workspace, own bool) {
-	dot := func(size float32) ui.Element {
-		d := ui.Box(c).Size(size, size).Radius(size / 2)
-		if hex, ok := spaceColorHex(w.Color); ok {
-			return d.Background(ui.Hex(hex))
-		}
-		return d.Border(1.5, k.textFaint)
-	}
-	if !own {
-		dot(12)
-		return
-	}
-	ui.Box(c).Size(18, 18).Radius(9).Border(2, k.text).Center().Children(func() { dot(14) })
-}
-
 // workspaceDetail says of a workspace its n tabs, and when another window
 // than a's shows it.
 func workspaceDetail(w *Workspace, a *App, n int) string {
@@ -430,25 +79,34 @@ func workspaceDetail(w *Workspace, a *App, n int) string {
 	return locales.SessionTabs(n)
 }
 
-// sessionItems are the rows of the palette listing the workspaces: the
-// window's first, then the others in their order, and New Session.
+// sessionItems are the rows of the palette listing the projects of the
+// space shown and the hosts' tabs with no project: the window's first,
+// then the others in the sidebar's order, and New Project. A host's copy,
+// while it is away, is not listed.
 func (a *App) sessionItems(match func(string) bool) []paletteItem {
 	var items []paletteItem
 	if a.st == nil {
 		return nil
 	}
-	for _, w := range a.st.workspaces {
-		if !match(w.Name) {
+	for _, w := range a.pickerWorkspaces() {
+		name := w.Name
+		if w.Dir == "" {
+			name = locales.ProjectsNoProject()
+		}
+		if w.offline() || !match(name) {
 			continue
 		}
-		glyph := "layers"
+		glyph := "folder"
 		switch {
 		case w == a.ws:
 			glyph = "check"
 		case w.app != nil:
 			glyph = "app-window"
+		case w.Dir == "":
+			glyph = "layers"
 		}
-		it := paletteItem{title: w.Name, detail: workspaceDetail(w, a, w.tabCount()), glyph: glyph, status: a.st.status(w), run: func() { a.showWorkspace(w) }}
+		detail := a.hostName(w.host) + " · " + workspaceDetail(w, a, w.tabCount())
+		it := paletteItem{title: name, detail: detail, glyph: glyph, status: a.st.status(w), run: func() { a.showWorkspace(w) }}
 		if hex, ok := spaceColorHex(w.Color); ok {
 			it.dot, it.hasDot = ui.Hex(hex), true
 		}
@@ -462,7 +120,7 @@ func (a *App) sessionItems(match func(string) bool) []paletteItem {
 		items = append(items, paletteItem{title: title, keys: cmdNewProject.Keys, glyph: "folder-plus", run: a.openNewProject})
 	}
 	if title := cmdNewSession.Title(); match(title) || match(cmdNewSession.English()) {
-		items = append(items, paletteItem{title: title, keys: cmdNewSession.Keys, glyph: "plus", run: a.newWorkspace})
+		items = append(items, paletteItem{title: title, keys: cmdNewSession.Keys, glyph: "plus", run: func() { a.newNoProjectTab(a.currentHost()) }})
 	}
 	return items
 }

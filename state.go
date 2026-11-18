@@ -964,54 +964,59 @@ func (a *App) newTabOnIn(h *hostConn, dir string, strict bool) *Tab {
 	return t
 }
 
-// newTabAfterIn opens a tab with a shell in dir on host h: after tab
-// after, or last of the host's tabs when after is another host's. It opens
-// none while the host is not connected. The tab's first pane runs command
-// instead of the login shell. One of this machine the server makes, the
-// active tab, and returns once the window shows it, as tests have it, else
-// nil. One of a host shows as the host made its session, after the tab
-// active then, as a tab of the host asked for before it is. It starts in
-// dir or not at all when strict; one of this machine the server makes in
-// the folder of the window's project when dir is "", or fails.
+// newTabAfterIn opens a tab with a shell in dir on host h, nil for this
+// machine, after tab after: in the window's workspace when it is h's, else
+// in h's tabs with no project, which the window then shows. It opens none
+// while the host is not connected. The tab's first pane runs command
+// instead of the login shell. The host's server makes it, the active tab,
+// and it returns once the window shows it, as tests have it, else nil. It
+// starts in dir; in the folder of the project when dir is "", or fails
+// (strict is the server's then).
 func (a *App) newTabAfterIn(h *hostConn, dir string, strict bool, after *Tab, command []string) *Tab {
 	if a.offline(h) {
 		return nil
 	}
-	if h == nil {
-		c := rex.LayoutCommand{Op: "tab.create", Dir: dir, Command: command, Focus: true}
-		if a.ws != nil {
-			c.Space = a.ws.ID
+	w := a.ws
+	if w == nil || w.host != h {
+		w = nil
+		if a.st != nil {
+			w = a.st.noProjectOf(h)
 		}
-		if p := after.localPane(); p != nil {
-			c.After = p.SID
-		}
-		var t *Tab
-		a.ask(c, func(res rex.LayoutCommand) {
-			if res.Code == rex.FolderMissing {
-				log.Printf("no new tab: %s", res.Error)
-				a.folderMissing(dir)
-			}
-			t = a.tabByUID(res.Tab)
-		})
-		return t
+		after = nil
 	}
-	a.newPaneIn(h, rex.CreateOptions{Dir: dir, DirStrict: strict, Command: command}, func(p *Pane) bool {
-		t := a.makeTab("")
-		t.Root = &Node{ID: a.id(), Pane: p}
-		p.Tab, p.Node = t, t.Root
-		t.setFocus(p)
-		at := len(a.tabs)
-		if after := a.tab(); after != nil && after.host() == h {
-			at = a.active + 1
+	c := rex.LayoutCommand{Op: "tab.create", Dir: dir, Command: command, Focus: true}
+	if w != nil {
+		c.Space = w.ID
+	} else if h == nil {
+		w = a.st.addWorkspace()
+		c.Space = w.ID
+		a.st.queue()
+	}
+	if p := after.localPane(); p != nil {
+		c.After = p.SID
+	}
+	_ = strict
+	var t *Tab
+	a.askOn(h, c, func(res rex.LayoutCommand) {
+		if res.Code == rex.FolderMissing {
+			log.Printf("no new tab: %s", res.Error)
+			a.folderMissing(dir)
 		}
-		a.tabs = slices.Insert(a.tabs, at, t)
-		a.groupTabs()
-		a.active = slices.Index(a.tabs, t)
-		a.focusReq = p
-		a.changed()
-		return true
+		if res.Code != "" {
+			return
+		}
+		if w == nil && a.st != nil {
+			w = a.st.workspaceOfTab(h, res.Tab)
+		}
+		if w != nil && w != a.ws && a.st != nil && slices.Contains(a.st.workspaces, w) {
+			a.showWorkspace(w)
+		}
+		if t = a.tabByUID(res.Tab); t != nil && a.ws == w {
+			a.active = slices.Index(a.tabs, t)
+			a.focusReq = t.Focus
+		}
 	})
-	return nil
+	return t
 }
 
 // newBrowserTab opens a tab of a browser pane after the active tab, and
@@ -1040,237 +1045,31 @@ func (a *App) newPaneTab(p *Pane) *Tab {
 	return t
 }
 
-// newProjectTab is New Tab. In a project with a folder it opens a tab on
-// the project's home host in the folder, or none, with the reason, while
-// the host is unknown or not connected or the folder is gone: never one
-// elsewhere. In a project of no folder it opens one on the focused pane's
-// host in its directory, as before. A split starts where its pane
-// started, project or not.
+// newProjectTab is New Tab: a tab of the window's workspace, on its host;
+// in a project's folder, which its server starts it in or fails, saying
+// so, and starts none elsewhere (docs/projects.md, "New tabs and panes").
+// Of the tabs with no project, it starts where the focused pane is.
 func (a *App) newProjectTab() *Tab {
 	w := a.ws
-	if w == nil || w.Dir == "" {
+	if w == nil {
 		return a.newTab(a.currentDir())
 	}
-	if w.Host == "" {
-		// The server starts it in the folder, or fails with
-		// rex.FolderMissing and starts none.
-		return a.newTabOn(nil, "")
-	}
-	h := a.projectHost(w)
-	if h == nil {
-		return a.awaitProjectHost(w)
-	}
-	if _, ok := layout.HostMachine(w.Host); !ok && h.Machine != "" && a.st != nil {
-		// A home kept by the host's ID, of before homes named machines:
-		// by its machine, it outlives the host's removal and return.
-		a.ask(rex.LayoutCommand{Op: "space.home", Space: w.ID, Host: layout.MachineHost(h.Machine), Dir: w.Dir}, nil)
-	}
-	if rex.IsTailnetTarget(h.Address) && h.current() == nil {
-		// A host of the tailnet reconnects on its own: the tab opens once
-		// it has (takeProjectOpen).
-		a.waitProject(&projectOpen{space: w.ID, host: h})
-		a.connectHostNow(h)
+	if w.offline() {
+		a.offline(w.host)
 		return nil
 	}
-	return a.projectTabOn(h, w.Dir)
+	if w.Dir != "" {
+		return a.newTabOn(w.host, "")
+	}
+	return a.newTabOn(w.host, a.currentDir())
 }
 
-// projectOpen is a New Tab of the project of ID space that waits for its
-// home host to connect: the host, or the host of the machine, that none
-// of the app's hosts was known to be as the user asked.
-type projectOpen struct {
-	space, machine string
-	host           *hostConn
-}
-
-// projectWait is how long a New Tab waits for its project's home host to
-// connect; tests shorten it.
-var projectWait = 60 * time.Second
-
-// waitProject makes p the window's New Tab that waits for its home host,
-// in place of one before, and ends it, with a note, once projectWait went
-// by without the host.
-func (a *App) waitProject(p *projectOpen) {
-	a.projectOpen = p
-	update := a.updater()
-	time.AfterFunc(projectWait, func() {
-		update(func() {
-			if a.projectOpen != p {
-				return
-			}
-			a.endWait()
-			name := p.space
-			if w := a.ws; w != nil && w.ID == p.space {
-				name = w.Name
-			}
-			log.Printf("no new tab: the home host of project %s did not connect", p.space)
-			a.setNote(func(m locales.Messages) string { return m.ProjectHostTimeout(name) }, bannerNote{space: p.space})
-		})
-	})
-}
-
-// endWait ends the window's New Tab that waits for a project's home host.
-func (a *App) endWait() {
-	a.projectOpen = nil
-}
-
-// mayBeHome tells whether host h may turn out to be a project's home
-// machine as it connects: its machine is not known, and the app is
-// connecting to it.
-func mayBeHome(h *hostConn) bool {
-	return h.Machine == "" && h.current() == nil && h.running
-}
-
-// awaitProjectHost is New Tab of project w, whose home host is none the
-// app knows: a host whose machine the app has not learned, as one added
-// again, may be it; the app connects to those, and the tab opens once the
-// home host has (takeProjectOpen). With none to try, it opens none, and
-// says why.
-func (a *App) awaitProjectHost(w *Workspace) *Tab {
-	machine, ok := layout.HostMachine(w.Host)
-	unknown, tried := 0, false
-	for _, h := range a.hosts {
-		if !ok || h.Machine != "" {
-			continue
-		}
-		unknown++
-		if mayBeHome(h) {
-			tried = true
-		}
-	}
-	switch {
-	case tried:
-		log.Printf("new tab of project %s: connecting to find its home host %s", w.ID, w.Host)
-		a.waitProject(&projectOpen{space: w.ID, machine: machine})
-		name, dir := w.Name, w.Dir
-		a.setNote(func(m locales.Messages) string { return m.ProjectHostWaiting(name, dir) }, bannerNote{wait: true, space: w.ID})
-	case unknown > 0:
-		log.Printf("no new tab: the home host %s of project %s is not connected", w.Host, w.ID)
-		name, dir := w.Name, w.Dir
-		a.setNote(func(m locales.Messages) string { return m.ProjectHostOffline(name, dir) }, a.changeFolderButton(w.ID))
-	default:
-		log.Printf("no new tab: the home host %s of project %s is unknown", w.Host, w.ID)
-		name, dir := w.Name, w.Dir
-		a.setNote(func(m locales.Messages) string { return m.ProjectHostNotYours(name, dir) }, a.changeFolderButton(w.ID))
-	}
-	return nil
-}
-
-// takeProjectOpen opens the tab of the New Tab that waits for host h, now
-// connected and its machine learned, if h is the project's home. The tab
-// opens in the project the user asked in, while h is its home still, in
-// its folder now; a home moved meanwhile opens none, and says so. Once no
-// host may be the home machine (mayBeHome) and none is, the wait ends.
-// (A window that shows another project dropped its wait as it switched:
-// show.)
-func (a *App) takeProjectOpen(h *hostConn) {
-	p := a.projectOpen
-	if p == nil {
-		return
-	}
-	if p.host != h && (p.machine == "" || h.Machine != p.machine) {
-		if p.host == nil && !slices.ContainsFunc(a.hosts, mayBeHome) {
-			a.endWait()
-			log.Printf("no new tab: no host is the home machine %s of project %s", p.machine, p.space)
-			a.setNote(locales.Messages.ProjectHostNone, a.changeFolderButton(p.space))
-		}
-		return
-	}
-	a.projectOpen = nil
-	if w := a.ws; w == nil || w.ID != p.space || w.Dir == "" || a.projectHost(w) != h {
-		log.Printf("no new tab: %s connected, but it is not the home of project %s now", h.label(), p.space)
-		label := h.label()
-		a.setNote(func(m locales.Messages) string { return m.ProjectHomeMoved(label) }, bannerNote{space: p.space})
-		return
-	}
-	if n := a.errNote; n != nil && n.wait && a.noteShows() {
-		// The wait it said is over.
-		a.clearNote()
-	}
-	a.projectTabOn(h, a.ws.Dir)
-}
-
-// projectTabOn opens a tab of the window's project on its home host h in
-// dir, or none, with the reason: a host not connected says so, with
-// Retry and Change Folder…; a host whose server does not check the
-// folder (rex.CapabilitySpaceHome), as an older GoRex's, which would
-// start the shell at home when the folder is gone, opens none.
-func (a *App) projectTabOn(h *hostConn, dir string) *Tab {
-	var id, name string
-	if w := a.ws; w != nil {
-		id, name = w.ID, w.Name
-	}
-	if h.current() == nil {
-		log.Printf("no new tab in %s: the home host %s is not connected", dir, h.label())
-		shown := a.tildeOn(h, dir)
-		n := a.changeFolderButton(id)
-		n.action, n.run, n.alt, n.altRun = locales.Messages.HostsRetry, func() { a.retryProjectHost(id) }, n.action, n.run
-		a.setNote(func(m locales.Messages) string { return m.ProjectHostOffline(name, shown) }, n)
-		return nil
-	}
-	if !h.hello.Can(rex.CapabilitySpaceHome) {
-		log.Printf("no new tab in %s: the home host %s does not check project folders", dir, h.label())
-		label := h.label()
-		a.setNote(func(m locales.Messages) string { return m.ProjectHostOld(label, dir) }, bannerNote{space: id})
-		return nil
-	}
-	return a.newTabOnIn(h, dir, true)
-}
-
-// retryProjectHost connects again to the home host of the project of ID
-// id, the window's, and opens its New Tab once it has (takeProjectOpen),
-// or says, after projectWait, that it did not connect.
-func (a *App) retryProjectHost(id string) {
-	w := a.ws
-	if w == nil || w.ID != id || w.Dir == "" {
-		return
-	}
-	h := a.projectHost(w)
-	if h == nil {
-		a.newProjectTab()
-		return
-	}
-	if h.current() != nil {
-		a.projectTabOn(h, w.Dir)
-		return
-	}
-	a.waitProject(&projectOpen{space: id, host: h})
-	a.connectHostNow(h)
-	name, dir := w.Name, a.tildeOn(h, w.Dir)
-	a.setNote(func(m locales.Messages) string { return m.ProjectHostWaiting(name, dir) }, bannerNote{wait: true, space: id})
-}
-
-// projectHost is the home host of project w: the host of the machine it
-// names (layout.MachineHost), which is the same after the host is removed
-// and added again under a new ID, else the host of its ID, as a home of
-// before; nil for none, as of a host removed from hosts.json, which the
-// project keeps.
-func (a *App) projectHost(w *Workspace) *hostConn {
-	if w.Host == "" {
-		return nil
-	}
-	if m, ok := layout.HostMachine(w.Host); ok {
-		// Of two hosts of the machine, as its LAN and tailnet addresses,
-		// the connected one.
-		var found *hostConn
-		for _, h := range a.hosts {
-			if h.Machine != m {
-				continue
-			}
-			if h.current() != nil {
-				return h
-			}
-			if found == nil {
-				found = h
-			}
-		}
-		return found
-	}
-	return a.hostByID(w.Host)
-}
-
-// currentHost is the host of the focused pane, nil for this machine.
+// currentHost is the host of the window's workspace, nil for this
+// machine: a tab's panes are all of it.
 func (a *App) currentHost() *hostConn {
+	if a.ws != nil {
+		return a.ws.host
+	}
 	if t := a.tab(); t != nil && t.Focus != nil {
 		return t.Focus.host
 	}
@@ -1323,7 +1122,7 @@ func (a *App) splitPaneRun(old *Pane, vertical bool, dir string, command []strin
 	if a.offline(old.host) {
 		return nil
 	}
-	if old.host == nil {
+	if serverMade(old.host) {
 		return a.askPane(old, rex.LayoutCommand{Op: "pane.split", Vertical: vertical, Dir: dir, Command: command}, a.revealNew)
 	}
 	// A float splits the tab's tiled pane, not its own standalone node;
@@ -1411,18 +1210,24 @@ func (a *App) splitWith(old, p *Pane, vertical bool) {
 	a.changed()
 }
 
-// ask asks the server for a change of the layout that starts a session,
-// after the window's own changes (store.send): done runs with its answer
-// once the window shows it, made or not (Code). One it does not make shows
-// its error.
+// ask asks the server of the window's workspace's host for a change of
+// its layout (askOn).
 func (a *App) ask(c rex.LayoutCommand, done func(rex.LayoutCommand)) {
+	a.askOn(a.currentHost(), c, done)
+}
+
+// askOn asks the server of host h, nil for this machine, for a change of
+// the layout that may start a session, after the window's own changes
+// (store.sendOn): done runs with its answer once the window shows it,
+// made or not (Code). One it does not make shows its error.
+func (a *App) askOn(h *hostConn, c rex.LayoutCommand, done func(rex.LayoutCommand)) {
 	if a.st == nil {
 		if done != nil {
 			done(rex.LayoutCommand{Code: "desktop_unavailable", Error: "no session server"})
 		}
 		return
 	}
-	a.st.send(c, func(res rex.LayoutCommand) {
+	a.st.sendOn(h, c, func(res rex.LayoutCommand) {
 		switch res.Code {
 		case "":
 		case "read_only":
@@ -1454,8 +1259,9 @@ func (a *App) askPane(at *Pane, c rex.LayoutCommand, done func(*Pane)) *Pane {
 		c.Tab = at.Tab.UID
 	}
 	var p *Pane
-	a.ask(c, func(res rex.LayoutCommand) {
-		if p = a.localPane(res.New); p != nil && done != nil {
+	h := at.host
+	a.askOn(h, c, func(res rex.LayoutCommand) {
+		if p = a.paneOn(h, res.New); p != nil && done != nil {
 			done(p)
 		}
 	})
@@ -1479,7 +1285,7 @@ func (t *Tab) localPane() *Pane {
 		return nil
 	}
 	for _, p := range t.allPanes() {
-		if p.host == nil && p.SID != "" && !p.closed {
+		if p.SID != "" && !p.closed {
 			return p
 		}
 	}
@@ -1988,7 +1794,7 @@ func (a *App) newFloatThen(command []string, then func(*Pane)) *Pane {
 	if a.offline(h) {
 		return nil
 	}
-	if h == nil {
+	if serverMade(h) {
 		return a.askPane(t.Focus, rex.LayoutCommand{Op: "pane.split", Float: true, Dir: a.currentDir(), Command: command}, func(p *Pane) {
 			a.revealNew(p)
 			if then != nil {
@@ -3011,7 +2817,7 @@ func (st *store) poll(client *rex.Client, stop chan struct{}, update func(func()
 			// The same list too: apply also saves a layout changed a
 			// while ago, and retries a notification's click.
 			for _, a := range st.apps {
-				a.apply(nil, st.infos, hostLayout{})
+				a.apply(nil, st.infos)
 			}
 			if changed || tailnet != nil {
 				st.redraw()
@@ -3021,15 +2827,8 @@ func (st *store) poll(client *rex.Client, stop chan struct{}, update func(func()
 }
 
 // apply takes what the server of host h, nil for this machine's, said of
-// its sessions; l is the host's shared layout, when it was read, to open
-// new sessions in the tabs it shows them in.
-func (a *App) apply(h *hostConn, byID map[string]rex.SessionInfo, l hostLayout) {
-	if h != nil {
-		a.adopt(h, byID, l)
-		if l.syncNames {
-			a.syncHostNames(h, l)
-		}
-	}
+// its sessions.
+func (a *App) apply(h *hostConn, byID map[string]rex.SessionInfo) {
 	var events []map[string]string
 	for _, t := range a.tabs {
 		for _, p := range t.allPanes() {
@@ -3092,80 +2891,6 @@ func (a *App) apply(h *hostConn, byID map[string]rex.SessionInfo, l hostLayout) 
 	a.syncBadge()
 	if a.st != nil {
 		a.st.retryClick()
-	}
-}
-
-// syncHostNames updates the names of already-adopted remote tabs and panes
-// (and hidden workspace layouts) from the host's shared layout.
-func (a *App) syncHostNames(h *hostConn, l hostLayout) {
-	paneNames := map[string]string{}
-	tabNames := map[string]string{}
-	for _, st := range l.tabs {
-		if st.ID != "" {
-			tabNames[st.ID] = st.Name
-		}
-		for _, r := range st.Roots() {
-			for _, n := range layout.Leaves(r) {
-				if n.Host == "" && n.SID != "" {
-					paneNames[n.SID] = n.Name
-				}
-			}
-		}
-	}
-	changed := false
-	for _, t := range a.tabs {
-		// A tab takes the name of the host's tab of its lasting ID, even
-		// with panes split or moved here since, but not while a name
-		// given here waits to go there.
-		if t.host() == h && t.UID != "" {
-			if name, ok := tabNames[t.UID]; ok && t.Name != name && !h.renaming(renameKey{tab: true, id: t.UID}) {
-				t.Name = name
-				changed = true
-			}
-		}
-		for _, p := range t.allPanes() {
-			if p.host != h {
-				continue
-			}
-			if name, ok := paneNames[p.SID]; ok && p.Name != name && !h.renaming(renameKey{id: p.SID}) {
-				p.Name = name
-				changed = true
-			}
-		}
-	}
-	if changed {
-		a.changed()
-	}
-	if a.st == nil || len(a.st.apps) == 0 || a.st.apps[0] != a {
-		return
-	}
-	savedChanged := false
-	for _, w := range a.st.workspaces {
-		if w.app != nil {
-			continue
-		}
-		for i := range w.layout.Tabs {
-			st := &w.layout.Tabs[i]
-			if st.ID != "" && savedTabHost(*st) == h.ID {
-				if name, ok := tabNames[st.ID]; ok && st.Name != name && !h.renaming(renameKey{tab: true, id: st.ID}) {
-					st.Name = name
-					savedChanged = true
-				}
-			}
-			for _, r := range st.Roots() {
-				for _, n := range layout.Leaves(r) {
-					if n.Host == h.ID {
-						if name, ok := paneNames[n.SID]; ok && n.Name != name && !h.renaming(renameKey{id: n.SID}) {
-							n.Name = name
-							savedChanged = true
-						}
-					}
-				}
-			}
-		}
-	}
-	if savedChanged {
-		a.st.save()
 	}
 }
 
@@ -3846,4 +3571,29 @@ func (a *App) detachPane(p *Pane) {
 		t.setFocus(t.nextFocus(p))
 	}
 	p.Tab, p.Node = nil, nil
+}
+
+// splitNode puts pane p beside node n of tab t, after it (right or below)
+// when after, else before it, with ratio as the first side's share. The
+// tab shows all its tiled panes, as no pane fills it; its focus stays.
+func (a *App) splitNode(t *Tab, n *Node, p *Pane, after, vertical bool, ratio float32) {
+	if ratio == 0 {
+		ratio = 0.5
+	}
+	t.Zoom = nil
+	p.Tab = t
+	old := &Node{ID: a.id(), Pane: n.Pane, Parent: n, Vertical: n.Vertical, Ratio: n.Ratio, A: n.A, B: n.B}
+	if old.Pane != nil {
+		old.Pane.Node = old
+	}
+	if old.A != nil {
+		old.A.Parent, old.B.Parent = old, old
+	}
+	node := &Node{ID: a.id(), Pane: p, Parent: n}
+	p.Node = node
+	n.Pane, n.Vertical, n.Ratio = nil, vertical, min(max(ratio, 0.05), 0.95)
+	n.A, n.B = old, node
+	if !after {
+		n.A, n.B = node, old
+	}
 }

@@ -133,12 +133,8 @@ type AdoptTab struct {
 // machineHost starts a home host of a layout of v0.38.0 to v0.40.x that
 // names a machine (rex.MachineID) rather than a host of hosts.json: the
 // home of a project another device set on a machine this one has no host
-// of. The migration reads it (Migrate); the app still names a host so.
+// of. Only the migration reads it (Migrate).
 const machineHost = "machine:"
-
-// MachineHost is the home host of the machine of ID machine, which no
-// host of hosts.json is.
-func MachineHost(machine string) string { return machineHost + machine }
 
 // HostMachine is the machine a home host of MachineHost names, and
 // whether it is one.

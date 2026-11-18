@@ -3,7 +3,6 @@ package main
 import (
 	"bufio"
 	"bytes"
-	"cmp"
 	"encoding/json"
 	"fmt"
 	"image"
@@ -14,7 +13,6 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
-	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -57,55 +55,25 @@ func TestParseLayout(t *testing.T) {
 	}
 }
 
-// TestSpaceColor checks that the layout keeps a space's color, that a layout
-// of before colors parses, and is saved again without one.
-func TestSpaceColor(t *testing.T) {
-	s := layout.Parse([]byte(`{"version":2,"sessions":[{"id":"a","name":"icy-ridge","color":"rose"}],"windows":["a"]}`))
-	if len(s.Sessions) != 1 || s.Sessions[0].Color != "rose" {
-		t.Fatalf("parsed %+v", s.Sessions)
-	}
-	older := layout.Parse([]byte(`{"version":2,"sessions":[{"id":"a","name":"icy-ridge"}],"windows":["a"]}`))
-	if len(older.Sessions) != 1 || older.Sessions[0].Color != "" {
-		t.Fatalf("a layout of before colors parsed %+v", older.Sessions)
-	}
-	if b, err := json.Marshal(older); err != nil || strings.Contains(string(b), "color") {
-		t.Errorf("saved %s: %v", b, err)
-	}
-
-	// A new space is of the first color the palette has, which the server
-	// keeps with it.
-	a, _ := newTestApp(t)
-	st := a.st
-	first := a.ws
-	if first.Color != layout.Palette[0].ID {
-		t.Fatalf("the first space is of color %q", first.Color)
-	}
-	st.saveNow()
-	if got := savedWorkspaces(t, a.client).Sessions[0].Color; got != first.Color {
-		t.Errorf("the server keeps color %q, want %q", got, first.Color)
-	}
-	quit(st)
-}
-
 // TestSpaceColorsAssigned checks that new spaces take the palette's colors
 // in order, and that the tenth, every one taken, takes a spare.
 func TestSpaceColorsAssigned(t *testing.T) {
 	st := &store{}
 	for i, p := range layout.Palette {
-		if w := st.addWorkspace(); w.Color != p.ID {
+		if w := st.newTestSpace(); w.Color != p.ID {
 			t.Fatalf("space %d is of color %q, want %q", i+1, w.Color, p.ID)
 		}
 	}
-	if w := st.addWorkspace(); w.Color != layout.Palette[0].ID {
+	if w := st.newTestSpace(); w.Color != layout.Palette[0].ID {
 		t.Errorf("the tenth space is of color %q, want %q", w.Color, layout.Palette[0].ID)
 	}
 	// The least used, in the palette's order, once two are used twice.
-	if w := st.addWorkspace(); w.Color != layout.Palette[1].ID {
+	if w := st.newTestSpace(); w.Color != layout.Palette[1].ID {
 		t.Errorf("the eleventh space is of color %q, want %q", w.Color, layout.Palette[1].ID)
 	}
 	// A custom color takes no preset.
 	st.workspaces[0].Color = "#123456"
-	if w := st.addWorkspace(); w.Color != layout.Palette[0].ID {
+	if w := st.newTestSpace(); w.Color != layout.Palette[0].ID {
 		t.Errorf("with a custom color, rose is of color %q", w.Color)
 	}
 }
@@ -180,11 +148,11 @@ func TestWorkspacesSaved(t *testing.T) {
 	firstSIDs := sidsOf(a)
 	// A second workspace, which no window shows once the first is back,
 	// and a third in a window of its own.
-	a.newWorkspace()
+	a.showWorkspace(a.st.newTestSpace())
 	second := a.ws
 	a.newTab(testShell.dir)
 	secondSIDs := sidsOf(a)
-	b := st.openWindow(st.addWorkspace())
+	b := st.openWindow(st.newTestSpace())
 	third := b.ws
 	a.showWorkspace(first)
 	tt.Frame()
@@ -236,7 +204,7 @@ func TestWorkspacesSaved(t *testing.T) {
 func TestShowWorkspaceInOtherWindow(t *testing.T) {
 	a, _ := newTestApp(t)
 	st := a.st
-	b := st.openWindow(st.addWorkspace())
+	b := st.openWindow(st.newTestSpace())
 	st.raise(a)
 	mine := a.ws
 	sids := sidsOf(a)
@@ -244,7 +212,7 @@ func TestShowWorkspaceInOtherWindow(t *testing.T) {
 	if a.ws != mine || st.apps[0] != b || b.ws.app != b {
 		t.Fatalf("a shows %v, the front window is %p (b %p)", a.ws.Name, st.apps[0], b)
 	}
-	hidden := st.addWorkspace()
+	hidden := st.newTestSpace()
 	a.cycleWorkspace(1)
 	if a.ws != hidden || mine.app != nil || len(mine.layout.Tabs) != 1 {
 		t.Fatalf("Next Space shows %s", a.ws.Name)
@@ -283,7 +251,7 @@ func TestCloseWorkspace(t *testing.T) {
 	st := a.st
 	a.split(true)
 	first, sids := a.ws, sidsOf(a)
-	other := st.addWorkspace()
+	other := st.newTestSpace()
 	a.askCloseWorkspace()
 	tt.Frame()
 	if !tt.HasText(locales.SessionCloseTitle(first.Name)) || !tt.HasText(locales.SessionCloseBody(2)) {
@@ -319,54 +287,30 @@ func TestCloseWorkspace(t *testing.T) {
 }
 
 // TestLastTabClosesWorkspace checks that closing a workspace's last tab
-// forgets it, and shows a workspace no window shows.
+// keeps it, as its host keeps a project of no tab (docs/projects.md), and
+// shows a workspace no window shows.
 func TestLastTabClosesWorkspace(t *testing.T) {
 	a, _ := newTestApp(t)
 	st := a.st
 	first := a.ws
-	a.newWorkspace()
+	a.showWorkspace(a.st.newTestSpace())
 	second := a.ws
 	a.closeTab(a.tab())
-	if a.ws != first || slices.Contains(st.workspaces, second) || len(a.tabs) != 1 {
+	if a.ws != first || !slices.Contains(st.workspaces, second) || len(a.tabs) != 1 {
 		t.Errorf("after the last tab the window shows %v", a.ws)
-	}
-	quit(st)
-}
-
-// TestMoveTabToNewWindow checks that a tab moves to a new workspace in a
-// window of its own, its sessions going on, and that the last tab stays.
-func TestMoveTabToNewWindow(t *testing.T) {
-	a, _ := newTestApp(t)
-	st := a.st
-	a.newTab(testShell.dir)
-	moved := a.tab()
-	sid := moved.Focus.SID
-	a.moveTabToNewWindow(moved)
-	if len(a.tabs) != 1 || len(st.apps) != 2 || len(st.workspaces) != 2 {
-		t.Fatalf("%d tabs, %d windows, %d workspaces", len(a.tabs), len(st.apps), len(st.workspaces))
-	}
-	b := st.apps[0]
-	if b == a || b.ws == a.ws || len(b.tabs) != 1 || b.tab().Focus.SID != sid {
-		t.Fatalf("the new window has %q", sidsOf(b))
-	}
-	if !slices.Contains(liveSIDs(t, a.client), sid) {
-		t.Error("the moved tab's session ended")
-	}
-	a.moveTabToNewWindow(a.tab())
-	if len(a.tabs) != 1 || len(st.apps) != 2 {
-		t.Errorf("the last tab moved: %d tabs, %d windows", len(a.tabs), len(st.apps))
 	}
 	quit(st)
 }
 
 // TestMoveTabToSpace checks that a tab moves to another space, its
 // session going on: into the layout of one no window shows, into the
-// window that shows one, and that the last tab's move leaves the space.
+// window that shows one, and that the last tab's move leaves the space,
+// which stays (docs/projects.md).
 func TestMoveTabToSpace(t *testing.T) {
 	a, _ := newTestApp(t)
 	st := a.st
 	first := a.ws
-	hidden := st.addWorkspace()
+	hidden := st.newTestSpace()
 	a.newTab(testShell.dir)
 	moved := a.tab()
 	sid := moved.Focus.SID
@@ -387,7 +331,7 @@ func TestMoveTabToSpace(t *testing.T) {
 	if len(b.tabs) != 2 || b.tabs[1].Focus.SID != last || b.tabs[1].UID != uid {
 		t.Fatalf("the shown space has %q, want %s then %s, of tab ID %s", sidsOf(b), sid, last, uid)
 	}
-	if slices.Contains(st.workspaces, first) || !slices.Contains(liveSIDs(t, a.client), last) {
+	if !slices.Contains(st.workspaces, first) || !slices.Contains(liveSIDs(t, a.client), last) {
 		t.Errorf("after its last tab moved, the space stays or the session ended")
 	}
 	quit(st)
@@ -400,13 +344,13 @@ func TestWindowsCloseAndReopen(t *testing.T) {
 	a, _ := newTestApp(t)
 	st := a.st
 	st.started = true
-	b := st.openWindow(st.addWorkspace())
+	b := st.openWindow(st.newTestSpace())
 	bws := b.ws
 	st.closed(b)
 	if len(st.apps) != 1 || bws.app != nil || !slices.Contains(st.workspaces, bws) {
 		t.Fatalf("closing a window: %d windows, its workspace shown by %p", len(st.apps), bws.app)
 	}
-	c := st.openWindow(st.addWorkspace())
+	c := st.openWindow(st.newTestSpace())
 	st.raise(a)
 	st.secondInstance()
 	if st.apps[0] != a || len(st.apps) != 2 {
@@ -445,260 +389,10 @@ func TestOutboxOrder(t *testing.T) {
 	}
 }
 
-// TestSessionChip checks the session chip and its popover, above the tabs
-// and in the sidebar: it lists the workspaces, shows another, renames, and
-// the palette changes to one by its name.
-func TestSessionChip(t *testing.T) {
-	a, tt := newTestApp(t)
-	old := prefs
-	t.Cleanup(func() { prefs = old })
-	prefs = settings{}
-	st := a.st
-	first := a.ws
-	first.Name = "icy-ridge"
-	other := st.addWorkspace()
-	other.Name = "quiet-harbor"
-	tt.Frame()
-	if err := tt.Click(locales.SessionLabel("icy-ridge")); err != nil {
-		t.Fatalf("%v; texts %q", err, tt.Texts())
-	}
-	tt.Frame()
-	if !tt.HasText("quiet-harbor") || !tt.HasText(locales.SessionTabs(0)) || !tt.HasText(cmdNewSession.Title()) {
-		t.Fatalf("no list of workspaces; texts %q", tt.Texts())
-	}
-	if err := tt.Click("quiet-harbor"); err != nil {
-		t.Fatal(err)
-	}
-	tt.Frame()
-	tt.Frame()
-	if a.ws != other || a.wsOpen {
-		t.Fatalf("the window shows %s", a.ws.Name)
-	}
-	if got := a.windowTitle(); !regexp.MustCompile(`^quiet-harbor — `).MatchString(got) {
-		t.Errorf("window title %q", got)
-	}
-
-	// Rename Space edits the name in the chip.
-	a.startWorkspaceRename()
-	a.wsRenameText = ""
-	tt.Frame()
-	tt.Type("my-work")
-	tt.Key(0, ui.KeyEnter)
-	tt.Frame()
-	if other.Name != "my-work" || a.wsRenaming {
-		t.Errorf("renamed to %q", other.Name)
-	}
-
-	// The sidebar shows the chip too.
-	prefs = settings{TabPlacement: "left"}
-	tt.Frame()
-	if _, ok := tt.Find(locales.SessionLabel("my-work")); !ok {
-		t.Errorf("no session chip in the sidebar; texts %q", tt.Texts())
-	}
-
-	// Change Space… lists the workspaces by name.
-	a.openSessionPalette()
-	tt.Frame()
-	if !tt.HasText("icy-ridge") || a.paletteList != listSessions {
-		t.Fatalf("no workspaces in the palette; texts %q", tt.Texts())
-	}
-	tt.Type("icy")
-	tt.Key(0, ui.KeyEnter)
-	tt.Frame()
-	if a.ws != first {
-		t.Errorf("Change Space showed %s", a.ws.Name)
-	}
-	quit(st)
-}
-
-// TestSpaceColorPicker checks the popover's colors: a click takes one,
-// which the layout keeps, and Default gives the window its own back.
-func TestSpaceColorPicker(t *testing.T) {
-	a, tt := newTestApp(t)
-	st := a.st
-	tt.Frame()
-	if err := tt.Click(locales.SessionLabel(a.ws.Name)); err != nil {
-		t.Fatalf("%v; texts %q", err, tt.Texts())
-	}
-	tt.Frame()
-	if !tt.HasText(locales.SpaceColor()) || !tt.HasText(locales.SpaceColorDefault()) {
-		t.Fatalf("no colors in the popover; texts %q", tt.Texts())
-	}
-	if err := tt.Click("Blue"); err != nil {
-		t.Fatalf("%v; texts %q", err, tt.Texts())
-	}
-	tt.Frame()
-	if a.ws.Color != "blue" {
-		t.Errorf("the space is of color %q, want blue", a.ws.Color)
-	}
-	if !a.wsOpen {
-		t.Error("choosing a color closed the popover")
-	}
-	st.saveNow()
-	if got := savedWorkspaces(t, a.client).Sessions[0].Color; got != "blue" {
-		t.Errorf("the server keeps color %q, want blue", got)
-	}
-	if err := tt.Click(locales.SpaceColorDefault()); err != nil {
-		t.Fatal(err)
-	}
-	tt.Frame()
-	if a.ws.Color != "" {
-		t.Errorf("Default left the space of color %q", a.ws.Color)
-	}
-
-	// The field takes a custom #rrggbb, and leaves a color it cannot use.
-	a.wsColorText = " #ABCDEF "
-	a.useSpaceColorText()
-	if a.ws.Color != "#abcdef" {
-		t.Errorf("the field gave the space %q", a.ws.Color)
-	}
-	a.wsColorText = "nope"
-	a.useSpaceColorText()
-	if a.ws.Color != "#abcdef" {
-		t.Errorf("an unusable color became %q", a.ws.Color)
-	}
-	quit(st)
-}
-
-// TestShowSpace checks that Show Space counts the spaces from 1, that 9 is
-// the last, and that a number no space has does nothing.
-func TestShowSpace(t *testing.T) {
-	a, tt := newTestApp(t)
-	st := a.st
-	first := a.ws
-	second := st.addWorkspace()
-	third := st.addWorkspace()
-	tt.Frame()
-	a.showSpace(2)
-	tt.Frame()
-	if a.ws != second {
-		t.Fatalf("Show Space 2 shows %s", a.ws.Name)
-	}
-	a.showSpace(9)
-	tt.Frame()
-	if a.ws != third {
-		t.Fatalf("Show Space 9 shows %s", a.ws.Name)
-	}
-	a.showSpace(5)
-	tt.Frame()
-	if a.ws != third {
-		t.Errorf("Show Space 5 shows %s", a.ws.Name)
-	}
-	a.showSpace(0)
-	tt.Frame()
-	if a.ws != third {
-		t.Errorf("Show Space 0 shows %s", a.ws.Name)
-	}
-	a.showSpace(1)
-	tt.Frame()
-	if a.ws != first {
-		t.Errorf("Show Space 1 shows %s", a.ws.Name)
-	}
-	quit(st)
-}
-
 // spaceDotLabel is the label of a space's dot in the sidebar's strip: its
 // name, and its shortcut.
 func spaceDotLabel(i int, w *Workspace) string {
 	return w.Name + "  " + showSpaceKeys(i+1)
-}
-
-// TestSpaceStrip checks the dots at the foot of the sidebar: the 2nd shows
-// its space, and the plus button makes a space, which the window shows.
-func TestSpaceStrip(t *testing.T) {
-	a, tt := newTestApp(t)
-	old := prefs
-	t.Cleanup(func() { prefs = old })
-	prefs = settings{TabPlacement: "left"}
-	st := a.st
-	a.ws.Name = "icy-ridge"
-	a.ws.Color = "teal"
-	second := st.addWorkspace()
-	second.Name = "quiet-harbor"
-	second.Color = "blue"
-	third := st.addWorkspace()
-	third.Name = "misty-canyon"
-	third.Color = "#ff8800"
-	tt.Frame()
-	before := len(st.workspaces)
-	if _, ok := tt.Find(spaceDotLabel(1, second)); !ok {
-		t.Fatalf("no dot for %s; texts %q", second.Name, tt.Texts())
-	}
-	if err := tt.Click(spaceDotLabel(1, second)); err != nil {
-		t.Fatalf("%v; texts %q", err, tt.Texts())
-	}
-	tt.Frame()
-	tt.Frame()
-	if a.ws != second {
-		t.Fatalf("the 2nd dot shows %s", a.ws.Name)
-	}
-	// A right click on the window's own dot renames or closes its space;
-	// another's has no menu.
-	if err := tt.RightClick(spaceDotLabel(2, third)); err != nil {
-		t.Fatalf("%v; texts %q", err, tt.Texts())
-	}
-	tt.Frame()
-	if got := tt.Menu(); got != nil {
-		t.Errorf("another space's dot has the menu %q", got)
-	}
-	if err := tt.RightClick(spaceDotLabel(1, second)); err != nil {
-		t.Fatalf("%v; texts %q", err, tt.Texts())
-	}
-	tt.Frame()
-	if got := tt.Menu(); !slices.Contains(got, cmdRenameSession.Title()) || !slices.Contains(got, cmdCloseSession.Title()) {
-		t.Fatalf("the own dot's menu is %q", got)
-	}
-	if err := tt.ChooseMenuItem(cmdRenameSession.Title()); err != nil {
-		t.Fatal(err)
-	}
-	tt.Frame()
-	if !a.wsRenaming {
-		t.Error("Rename Space… did not open the space's name")
-	}
-	a.wsRenaming, a.wsRenameFocus = false, false
-	tt.Frame()
-	// The plus button opens New Project, and makes no project yet.
-	if err := tt.Click(cmdNewProject.Title()); err != nil {
-		t.Fatalf("%v; texts %q", err, tt.Texts())
-	}
-	tt.Frame()
-	tt.Frame()
-	if !a.sheet.open || a.sheet.space != "" || len(st.workspaces) != before {
-		t.Fatalf("the plus button: sheet open %v, %d projects made", a.sheet.open, len(st.workspaces)-before)
-	}
-	a.sheet.open = false
-	tt.Frame()
-	// The popover's New Project with No Folder makes one and shows it.
-	a.newWorkspace()
-	tt.Frame()
-	if len(st.workspaces) != before+1 || a.ws != st.workspaces[len(st.workspaces)-1] || a.ws.Dir != "" {
-		t.Errorf("New Project with No Folder made %d projects", len(st.workspaces)-before)
-	}
-	quit(st)
-}
-
-// TestSpaceStripKeys checks that the shortcut of a space shows it, as the
-// menu's keys do on the platform it runs on.
-func TestSpaceStripKeys(t *testing.T) {
-	a, tt := newTestApp(t)
-	old := prefs
-	t.Cleanup(func() { prefs = old })
-	prefs = settings{TabPlacement: "left"}
-	st := a.st
-	second := st.addWorkspace()
-	st.addWorkspace()
-	tt.Frame()
-	k := showSpaceKey(2)
-	if !tt.HasText(spaceDotLabel(1, second)) {
-		t.Fatalf("no dot for %s; texts %q", second.Name, tt.Texts())
-	}
-	tt.Key(k.Mods, k.Key)
-	tt.Frame()
-	tt.Frame()
-	if a.ws != second {
-		t.Fatalf("%s shows %s", k.String(), a.ws.Name)
-	}
-	quit(st)
 }
 
 // TestSpaceColorShots renders a window whose space is teal, light and
@@ -847,7 +541,7 @@ func TestSpaceStripShots(t *testing.T) {
 	st := a.st
 	a.ws.Color = "teal"
 	for _, c := range []string{"blue", "violet", ""} {
-		st.addWorkspace().Color = c
+		st.newTestSpace().Color = c
 	}
 	os.MkdirAll(dir, 0o755)
 	for _, dark := range []bool{false, true} {
@@ -956,8 +650,8 @@ func TestSessionShots(t *testing.T) {
 	st := a.st
 	a.ws.Name = "icy-ridge"
 	a.newTab(testShell.dir)
-	st.addWorkspace().Name = "quiet-harbor"
-	b := st.openWindow(st.addWorkspace())
+	st.newTestSpace().Name = "quiet-harbor"
+	b := st.openWindow(st.newTestSpace())
 	b.ws.Name = "misty-canyon"
 	os.MkdirAll(dir, 0o755)
 	for _, place := range []string{"", "left"} {
@@ -987,138 +681,6 @@ func TestSessionShots(t *testing.T) {
 	quit(st)
 }
 
-// TestAdoptAcrossWorkspaces checks that a host's session no tab shows
-// opens in the window focused last only, and not one a workspace no
-// window shows has a tab of.
-func TestAdoptAcrossWorkspaces(t *testing.T) {
-	a, _ := newTestApp(t)
-	st := a.st
-	h := newHostConn(savedHost{ID: "h1", Name: "studio"})
-	a.hosts = []*hostConn{h}
-	a.syncHosts()
-	hidden := st.addWorkspace()
-	hidden.layout = savedLayout{Tabs: []savedTab{{ID: "r1-tab", Root: &savedNode{SID: "r1", Host: "h1"}}}}
-	b := st.openWindow(st.addWorkspace())
-	byID := map[string]rex.SessionInfo{"r1": {ID: "r1"}, "r2": {ID: "r2"}}
-	for _, o := range a.peers() {
-		o.apply(h, byID, hostLayout{})
-	}
-	count := func(o *App, sid string) int {
-		n := 0
-		for _, s := range sidsOf(o) {
-			if s == sid {
-				n++
-			}
-		}
-		return n
-	}
-	if count(b, "r2") != 1 || count(a, "r2") != 0 {
-		t.Errorf("r2 opened %d times in the front window, %d in the other", count(b, "r2"), count(a, "r2"))
-	}
-	if count(a, "r1")+count(b, "r1") != 0 {
-		t.Error("a session of a hidden workspace opened again")
-	}
-	quit(st)
-}
-
-// TestAdoptIntoHostSpace checks that a new tab of a host's layout opens in
-// the space here of the name of the host's space it is in, the case aside:
-// into its layout when no window shows it, in the window that does, in a
-// new space of that name and color when none has it; and in the front
-// window as before when that is its space, the host's space has no name,
-// or the host shares no layout.
-func TestAdoptIntoHostSpace(t *testing.T) {
-	setup := func(t *testing.T) (*App, *hostConn) {
-		a, _ := newTestApp(t)
-		h := newHostConn(savedHost{ID: "h1", Name: "studio"})
-		a.hosts = []*hostConn{h}
-		a.syncHosts()
-		return a, h
-	}
-	byID := map[string]rex.SessionInfo{"r1": {ID: "r1"}}
-	in := func(name, color string) hostLayout {
-		return hostLayout{
-			tabs:   []savedTab{{ID: "r1-tab", Root: &savedNode{SID: "r1"}}},
-			spaces: []layout.Workspace{{Name: name, Color: color}},
-			named:  map[string]bool{"r1": true},
-		}
-	}
-	t.Run("unshown", func(t *testing.T) {
-		a, h := setup(t)
-		st := a.st
-		x := st.addWorkspace()
-		x.Name = "GoRex Web"
-		for range 2 {
-			a.adopt(h, byID, in("gorex web", ""))
-		}
-		if len(x.layout.Tabs) != 1 || x.layout.Tabs[0].Root.SID != "r1" || x.layout.Tabs[0].Root.Host != "h1" {
-			t.Fatalf("the space has %+v, want r1 of h1 once", x.layout.Tabs)
-		}
-		if slices.Contains(sidsOf(a), "r1") {
-			t.Error("the tab opened in the front window too")
-		}
-		quit(st)
-	})
-	t.Run("other window", func(t *testing.T) {
-		a, h := setup(t)
-		st := a.st
-		x := st.addWorkspace()
-		x.Name = "GoRex Web"
-		b := st.openWindow(x)
-		st.raise(a)
-		a.adopt(h, byID, in("GoRex Web", ""))
-		if !slices.Contains(sidsOf(b), "r1") || slices.Contains(sidsOf(a), "r1") {
-			t.Errorf("the space's window has %q, the front one %q", sidsOf(b), sidsOf(a))
-		}
-		quit(st)
-	})
-	t.Run("new space", func(t *testing.T) {
-		for _, c := range []struct{ color, want string }{
-			{layout.Palette[3].ID, layout.Palette[3].ID},
-			{"#12ab34", "#12ab34"},
-			{"nope", ""},
-		} {
-			a, h := setup(t)
-			st := a.st
-			n := len(st.workspaces)
-			a.adopt(h, byID, in("GoRex Web", c.color))
-			if len(st.workspaces) != n+1 {
-				t.Fatalf("%d spaces, want %d", len(st.workspaces), n+1)
-			}
-			w := st.workspaces[n]
-			if w.Name != "GoRex Web" || w.app != nil || len(w.layout.Tabs) != 1 || w.layout.Tabs[0].Root.SID != "r1" {
-				t.Errorf("the new space is %q, shown by %v, with %+v", w.Name, w.app, w.layout.Tabs)
-			}
-			if _, ok := spaceColorHex(w.Color); !ok || c.want != "" && w.Color != c.want {
-				t.Errorf("host color %q: the space has %q, want %q", c.color, w.Color, cmp.Or(c.want, "a preset"))
-			}
-			if slices.Contains(sidsOf(a), "r1") {
-				t.Error("the tab opened in the front window too")
-			}
-			quit(st)
-		}
-	})
-	t.Run("as before", func(t *testing.T) {
-		for _, c := range []struct {
-			name string
-			l    func(a *App) hostLayout
-		}{
-			{"this space", func(a *App) hostLayout { return in(strings.ToUpper(a.ws.Name), "") }},
-			{"no name", func(*App) hostLayout { return in("", "") }},
-			{"no layout", func(*App) hostLayout { return hostLayout{} }},
-		} {
-			a, h := setup(t)
-			st := a.st
-			n := len(st.workspaces)
-			a.adopt(h, byID, c.l(a))
-			if !slices.Contains(sidsOf(a), "r1") || len(st.workspaces) != n {
-				t.Errorf("%s: the front window has %q, %d spaces of %d", c.name, sidsOf(a), len(st.workspaces), n)
-			}
-			quit(st)
-		}
-	})
-}
-
 // TestDebugVerbs checks the debug hook's verbs of windows and workspaces:
 // "state" describes them, "win" targets a window by place, "focus-win"
 // fronts one, and "session", "rename-session", "cancel" and "confirm" act
@@ -1129,9 +691,9 @@ func TestDebugVerbs(t *testing.T) {
 	debugMain = func(fn func()) { fn() }
 	t.Cleanup(func() { debugMain = old })
 	st := a.st
-	b := st.openWindow(st.addWorkspace())
+	b := st.openWindow(st.newTestSpace())
 	a.ws.Name, b.ws.Name = "icy-ridge", "quiet-harbor"
-	hidden := st.addWorkspace()
+	hidden := st.newTestSpace()
 	hidden.Name = "misty-canyon"
 	dir := t.TempDir()
 	state := func() debugState {
@@ -1199,7 +761,7 @@ func TestHostsSavedThroughStore(t *testing.T) {
 	st := a.st
 	h1 := a.addHost(savedHost{ID: "h1", Name: "one", Address: "x1"})
 	t.Cleanup(h1.close)
-	b := st.openWindow(st.addWorkspace())
+	b := st.openWindow(st.newTestSpace())
 	st.closed(a)
 	h2 := b.addHost(savedHost{ID: "h2", Name: "two", Address: "x2"})
 	t.Cleanup(h2.close)
@@ -1239,6 +801,8 @@ func TestStartOnce(t *testing.T) {
 func TestReconnectUpdatesWindows(t *testing.T) {
 	a, _ := newTestApp(t)
 	st := a.st
+	st.newTestSpace()
+	st.saveNow()
 	sids, old := sidsOf(a), st.client
 	old.Close()
 	<-old.Closed() // its reader ends after Close returns
@@ -1273,7 +837,7 @@ func TestWorkspaceStatus(t *testing.T) {
 	// A hidden workspace's sessions come from the last list, with the
 	// seen times the window recorded, for a server that keeps none, and
 	// those the server keeps.
-	w := a.st.addWorkspace()
+	w := a.st.newTestSpace()
 	w.layout = savedLayout{Tabs: []savedTab{{Root: &savedNode{SID: p.SID}}}}
 	a.st.infos = map[string]rex.SessionInfo{p.SID: p.info}
 	if s := a.st.status(w); s != nil && s.State == "done" {
@@ -1467,7 +1031,7 @@ func countLists(t *testing.T) (*rex.Client, *atomic.Int32) {
 func TestPollServesEveryWindow(t *testing.T) {
 	a, _ := newTestApp(t)
 	st := a.st
-	b := st.openWindow(st.addWorkspace())
+	b := st.openWindow(st.newTestSpace())
 	client, lists := countLists(t)
 	stop := make(chan struct{})
 	st.polling = stop

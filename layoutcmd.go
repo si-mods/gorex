@@ -233,10 +233,14 @@ func coerceArgs(cmd *command, args map[string]any) map[string]any {
 }
 
 // localPane returns the pane of this machine's session sid, nil for none.
-func (a *App) localPane(sid string) *Pane {
+func (a *App) localPane(sid string) *Pane { return a.paneOn(nil, sid) }
+
+// paneOn returns the window's pane of session sid of host h, nil for this
+// machine; nil for none.
+func (a *App) paneOn(h *hostConn, sid string) *Pane {
 	for _, t := range a.tabs {
 		for _, p := range t.allPanes() {
-			if p.host == nil && sid != "" && p.SID == sid && !p.closed {
+			if p.host == h && sid != "" && p.SID == sid && !p.closed {
 				return p
 			}
 		}

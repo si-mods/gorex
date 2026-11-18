@@ -34,7 +34,7 @@ func TestSpaceKeepsPanes(t *testing.T) {
 	term, stream, sids := p.term, p.stream, sidsOf(a)
 	p.title = "vim"
 
-	a.newWorkspace()
+	a.showWorkspace(a.st.newTestSpace())
 	tt.Frame()
 	if first.kept == nil || first.app != nil || p.closed {
 		t.Fatalf("the space left kept %v, its pane closed %v", first.kept, p.closed)
@@ -71,9 +71,9 @@ func TestKeptSpaceInOtherWindow(t *testing.T) {
 	first := a.ws
 	a.split(true)
 	panes, sids := a.tab().allPanes(), sidsOf(a)
-	a.newWorkspace()
+	a.showWorkspace(a.st.newTestSpace())
 	tt.Frame()
-	b := st.openWindow(st.addWorkspace())
+	b := st.openWindow(st.newTestSpace())
 	b.showWorkspace(first)
 	if b.ws != first || first.app != b || first.kept != nil {
 		t.Fatalf("the other window shows %s, kept %v", b.ws.Name, first.kept)
@@ -106,7 +106,7 @@ func TestKeptPaneExits(t *testing.T) {
 	gone, stays := a.tabs[0].Focus, a.tabs[1]
 	shellUp(t, a, gone)
 	a.selectTab(1)
-	a.newWorkspace()
+	a.showWorkspace(a.st.newTestSpace())
 	followApp(t, a)
 	caughtUp(t, a, tt)
 	shown := slices.Clone(a.tabs)
@@ -135,14 +135,14 @@ func TestKeptPaneStatusAway(t *testing.T) {
 	first := a.ws
 	p := a.tab().Focus
 	p.info.LastOutput = time.Now()
-	a.newWorkspace()
+	a.showWorkspace(a.st.newTestSpace())
 	tt.Frame()
 	in := p.info
 	in.Statuses = []rex.ProgramStatus{{ID: "x", State: "blocked"}}
 	st.infos = map[string]rex.SessionInfo{p.SID: in}
 	a.showWorkspace(first)
 	tt.Frame()
-	a.apply(nil, st.infos, hostLayout{})
+	a.apply(nil, st.infos)
 	if !p.notified.IsZero() || p.attention || len(p.info.Statuses) != 1 {
 		t.Errorf("the pane came back notified %v, asking attention %v", !p.notified.IsZero(), p.attention)
 	}
@@ -157,7 +157,7 @@ func TestKeptSpaceEnds(t *testing.T) {
 	first := a.ws
 	p := a.tab().Focus
 	shellUp(t, a, p)
-	a.newWorkspace()
+	a.showWorkspace(a.st.newTestSpace())
 	followApp(t, a)
 	caughtUp(t, a, tt)
 	if err := a.client.Kill(p.SID); err != nil {
@@ -181,7 +181,7 @@ func TestFindClosesOnSpaceSwitch(t *testing.T) {
 	if a.findPane != p {
 		t.Fatal("find did not open")
 	}
-	a.newWorkspace()
+	a.showWorkspace(a.st.newTestSpace())
 	tt.Frame()
 	if a.findPane != nil {
 		t.Errorf("find stayed on %v after the space switch", a.findPane)
@@ -195,7 +195,7 @@ func TestClosedWindowClosesKept(t *testing.T) {
 	a, tt := newTestApp(t)
 	st := a.st
 	p := a.tab().Focus
-	a.newWorkspace()
+	a.showWorkspace(a.st.newTestSpace())
 	tt.Frame()
 	st.closed(a)
 	if !p.closed {

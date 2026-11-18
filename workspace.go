@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"fmt"
 	"log"
-	"os"
 	"runtime"
 	"slices"
 	"strings"
@@ -28,15 +27,15 @@ type Workspace struct {
 	// Color is the space's color: a preset id from layout.Palette, a custom
 	// "#rrggbb", or "" for the default look.
 	Color string
-	// Host and Dir are the space's home, a project's: its home host and
-	// its folder there; "" for a space of no folder. The server keeps the
-	// folder (space.home), always of this machine since the layout of
-	// docs/projects.md; Host is another host's only while the server has
-	// not refused it yet (phase 2 of docs/projects.md replaces this).
-	Host, Dir string
-	// fresh marks a project New Project made, whose first tab opens in
-	// its folder as the window shows it (show).
-	fresh bool
+	// Dir is the project's folder on its host, "" for the host's tabs with
+	// no project (docs/projects.md). Space is the space the project shows
+	// in, "" for Default, and Used when a tab of it last took input or was
+	// made: the host keeps them.
+	Dir, Space string
+	Used       time.Time
+	// host is the host whose layout keeps the workspace, nil for this
+	// machine's: its tabs and panes live there (hostlayout.go).
+	host *hostConn
 	// layout is its tabs while no window shows it; app is the window that
 	// shows it, whose tabs are then its own.
 	layout savedLayout
@@ -271,6 +270,9 @@ type store struct {
 	base     savedStore
 	out      outbox
 	readOnly bool
+	// adopting are the adoptions on their way to their hosts, by ID
+	// (sendAdoptions).
+	adopting map[string]bool
 }
 
 // The layout the server keeps, opaque to it: every workspace, and which
@@ -284,16 +286,25 @@ type savedWorkspace = layout.Workspace
 func (st *store) saved() savedStore {
 	s := savedStore{Version: layout.Version, Sessions: []savedWorkspace{}, Windows: st.windowIDs()}
 	for _, w := range st.workspaces {
-		l := w.layout
-		if w.app != nil {
-			l = w.app.snapshot()
+		if w.host != nil {
+			continue
 		}
-		s.Sessions = append(s.Sessions, savedWorkspace{ID: w.ID, Name: w.Name, Color: w.Color, Dir: w.Dir, Layout: l})
+		l := w.savedLayout()
+		s.Sessions = append(s.Sessions, savedWorkspace{ID: w.ID, Name: w.Name, Color: w.Color, Dir: w.Dir, Space: w.Space, Used: w.Used, Layout: l})
 		if len(s.Windows) > 0 && w.ID == s.Windows[0] {
 			s.Layout = l
 		}
 	}
 	return s
+}
+
+// savedLayout is the workspace's layout: its window's tabs, when one
+// shows it.
+func (w *Workspace) savedLayout() savedLayout {
+	if w.app != nil {
+		return w.app.snapshot()
+	}
+	return w.layout
 }
 
 // windowIDs are the workspaces of the windows, in the order of their
@@ -303,11 +314,13 @@ func (st *store) windowIDs() []string {
 	slices.SortFunc(apps, func(x, y *App) int { return x.slot - y.slot })
 	ids := []string{}
 	for _, a := range apps {
-		if a.ws != nil {
+		// A window that shows another host's project names none of this
+		// machine's: settings keep what it shows (shownKey).
+		if a.ws != nil && a.ws.host == nil {
 			ids = append(ids, a.ws.ID)
 		}
 	}
-	if len(ids) == 0 && st.lastClosed != nil && slices.Contains(st.workspaces, st.lastClosed) {
+	if len(ids) == 0 && st.lastClosed != nil && st.lastClosed.host == nil && slices.Contains(st.workspaces, st.lastClosed) {
 		ids = append(ids, st.lastClosed.ID)
 	}
 	return ids
@@ -329,6 +342,7 @@ func (st *store) queue() {
 		return
 	}
 	now := st.saved()
+	st.queueHosts()
 	if st.readOnly {
 		// The server takes no change of the app's: the window shows the
 		// server's layout again, and says why.
@@ -454,6 +468,7 @@ func (st *store) takeLayout(ls rex.LayoutState) bool {
 		st.takeKills(st.apps[0])
 	}
 	st.takeShow()
+	st.sendAdoptions()
 	return true
 }
 
@@ -534,12 +549,16 @@ func (st *store) takeShow() {
 // showFor is how long a client's request to show a space stands.
 const showFor = 30 * time.Second
 
-// reconcile makes the workspaces those of s, in its order, keeping the
-// workspace of each id it has: the windows show their spaces' tabs of s
-// (App.reconcile), and the spaces s.Windows says, by their places. A
-// space s no longer has goes; a window that showed it, or whose space s
-// left with no tabs, shows another no window does, or closes.
-func (st *store) reconcile(s savedStore) {
+// reconcile makes this machine's workspaces those of s (reconcileOn).
+func (st *store) reconcile(s savedStore) { st.reconcileOn(nil, s) }
+
+// reconcileOn makes host h's workspaces, nil for this machine's, those of
+// s, in its order, keeping the workspace of each id it has: the windows
+// show their spaces' tabs of s (App.reconcile), and, of this machine's,
+// the spaces s.Windows says, by their places. A workspace s no longer has
+// goes; a window that showed it, or whose workspace s left with no tabs,
+// shows another no window does, or closes. Other hosts' workspaces stay.
+func (st *store) reconcileOn(h *hostConn, s savedStore) {
 	st.placed = map[string]string{}
 	seen := map[string]bool{}
 	for _, sw := range s.Sessions {
@@ -555,16 +574,17 @@ func (st *store) reconcile(s savedStore) {
 		}
 	}
 	defer func() { st.placed = nil }()
-	var next, gone []*Workspace
+	var mine, gone []*Workspace
 	var homeless []*App
 	for _, sw := range s.Sessions {
 		w := st.byID(sw.ID)
-		if w == nil {
-			w = &Workspace{ID: sw.ID}
+		if w != nil && w.host != h {
+			continue // an ID of another host's, which this one cannot take
 		}
-		// A project of the layout is a folder of this machine's
-		// (docs/projects.md): no other home host.
-		w.Name, w.Color, w.Host, w.Dir = sw.Name, sw.Color, "", sw.Dir
+		if w == nil {
+			w = &Workspace{ID: sw.ID, host: h}
+		}
+		w.Name, w.Color, w.Dir, w.Space, w.Used = sw.Name, sw.Color, sw.Dir, sw.Space, sw.Used
 		if a := w.app; a != nil {
 			if !a.reconcile(sw.Layout) {
 				// Emptied by another client: the space stays, as Rex
@@ -578,11 +598,24 @@ func (st *store) reconcile(s savedStore) {
 			}
 			w.layout = sw.Layout
 		}
-		next = append(next, w)
+		mine = append(mine, w)
 	}
 	for _, w := range st.workspaces {
-		if !slices.Contains(next, w) {
+		if w.host == h && !slices.Contains(mine, w) {
 			gone = append(gone, w)
+		}
+	}
+	// This machine's first, then each host's, in the hosts' order.
+	var next []*Workspace
+	for _, o := range append([]*hostConn{nil}, st.hosts...) {
+		if o == h {
+			next = append(next, mine...)
+			continue
+		}
+		for _, w := range st.workspaces {
+			if w.host == o {
+				next = append(next, w)
+			}
 		}
 	}
 	st.workspaces = next
@@ -593,19 +626,24 @@ func (st *store) reconcile(s savedStore) {
 		}
 		st.remove(w)
 	}
-	// The windows show the spaces the layout says, by their places.
-	apps := slices.Clone(st.apps)
-	slices.SortFunc(apps, func(x, y *App) int { return x.slot - y.slot })
-	for i, a := range apps {
-		if i >= len(s.Windows) {
-			break
-		}
-		if w := st.byID(s.Windows[i]); w != nil && w != a.ws && w.app == nil && a.ws != nil {
-			a.park()
-			a.show(w)
-			homeless = slices.DeleteFunc(homeless, func(o *App) bool { return o == a })
+	if h == nil {
+		// The windows show the spaces the layout says, by their places;
+		// not one that shows another host's project, which is the
+		// window's own to show (settings).
+		apps := slices.Clone(st.apps)
+		slices.SortFunc(apps, func(x, y *App) int { return x.slot - y.slot })
+		for i, a := range apps {
+			if i >= len(s.Windows) {
+				break
+			}
+			if w := st.byID(s.Windows[i]); w != nil && w != a.ws && w.app == nil && a.ws != nil && a.ws.host == nil {
+				a.park()
+				a.show(w)
+				homeless = slices.DeleteFunc(homeless, func(o *App) bool { return o == a })
+			}
 		}
 	}
+	st.takeWanted()
 	st.rehome(homeless, false)
 }
 
@@ -616,7 +654,7 @@ func (st *store) rehome(apps []*App, fresh bool) {
 	for _, a := range apps {
 		var w *Workspace
 		for _, o := range st.workspaces {
-			if o.app == nil && o.tabCount() > 0 {
+			if o.app == nil && o.tabCount() > 0 && !o.offline() {
 				w = o
 				break
 			}
@@ -624,7 +662,7 @@ func (st *store) rehome(apps []*App, fresh bool) {
 		switch {
 		case w != nil:
 		case fresh:
-			w = st.addWorkspace()
+			w = st.freshWorkspace()
 		default:
 			if a.win != nil {
 				a.win.Close()
@@ -675,10 +713,12 @@ func (st *store) read() ([]byte, error) {
 // windows open last.
 func (st *store) loaded(raw []byte) []*Workspace {
 	s := layout.Parse(raw)
-	st.workspaces = nil
+	var mine []*Workspace
 	for _, sw := range s.Sessions {
-		st.workspaces = append(st.workspaces, &Workspace{ID: sw.ID, Name: sw.Name, Color: sw.Color, Dir: sw.Dir, layout: sw.Layout})
+		mine = append(mine, &Workspace{ID: sw.ID, Name: sw.Name, Color: sw.Color, Dir: sw.Dir, Space: sw.Space, Used: sw.Used, layout: sw.Layout})
 	}
+	// The hosts' workspaces stay, after this machine's.
+	st.workspaces = append(mine, slices.DeleteFunc(st.workspaces, func(w *Workspace) bool { return w.host == nil })...)
 	var open []*Workspace
 	for _, id := range s.Windows {
 		open = append(open, st.byID(id))
@@ -727,10 +767,36 @@ func (st *store) hostSIDs(h *hostConn) map[string]bool {
 	return out
 }
 
-// addWorkspace makes a workspace of a new name and color, last.
+// addWorkspace is this machine's workspace of tabs with no project, made
+// when it has none, after its projects (docs/projects.md): a window with
+// nothing else to show shows it.
 func (st *store) addWorkspace() *Workspace {
-	w := &Workspace{ID: layout.NewSpaceID(), Name: layout.SpaceName(st.taken), Color: st.nextSpaceColor()}
-	st.workspaces = append(st.workspaces, w)
+	if w := st.noProjectOf(nil); w != nil {
+		return w
+	}
+	w := &Workspace{ID: layout.NewSpaceID(), Name: layout.NoProjectName}
+	i := slices.IndexFunc(st.workspaces, func(o *Workspace) bool { return o.host != nil })
+	if i < 0 {
+		i = len(st.workspaces)
+	}
+	st.workspaces = slices.Insert(st.workspaces, i, w)
+	return w
+}
+
+// freshWorkspace is a workspace of this machine's no window shows, for a
+// window left with none: its tabs with no project, else, shown in another
+// window, a new workspace of tabs with no project.
+func (st *store) freshWorkspace() *Workspace {
+	w := st.addWorkspace()
+	if w.app == nil {
+		return w
+	}
+	w = &Workspace{ID: layout.NewSpaceID(), Name: layout.NoProjectName}
+	i := slices.IndexFunc(st.workspaces, func(o *Workspace) bool { return o.host != nil })
+	if i < 0 {
+		i = len(st.workspaces)
+	}
+	st.workspaces = slices.Insert(st.workspaces, i, w)
 	return w
 }
 
@@ -1087,6 +1153,10 @@ func (st *store) start() {
 	for _, w := range open {
 		st.openWindow(w)
 	}
+	st.loadHostCache()
+	for _, a := range st.apps {
+		a.wantShown()
+	}
 	st.takeShow()
 	st.save()
 }
@@ -1124,7 +1194,17 @@ func (st *store) openNew() {
 				return
 			}
 		}
-		st.openWindow(st.addWorkspace())
+		w := st.addWorkspace()
+		if w.app != nil {
+			// This machine's tabs with no project show already: another
+			// workspace no window shows, else none.
+			i := slices.IndexFunc(st.workspaces, func(o *Workspace) bool { return o.app == nil && !o.offline() })
+			if i < 0 {
+				return
+			}
+			w = st.workspaces[i]
+		}
+		st.openWindow(w)
 		st.takeShow()
 		st.save()
 	}
@@ -1233,19 +1313,13 @@ func (st *store) closed(a *App) {
 // tabs again, as they were; another window's kept tabs close, and the
 // space shows from its layout.
 func (a *App) show(w *Workspace) {
-	a.keepSpacesOpen(w)
 	if old := a.ws; old != nil && old != w {
 		a.park()
 	}
-	if p := a.projectOpen; p != nil && p.space != w.ID {
-		// A New Tab that waits for its project's host is the shown
-		// project's: another one shown, it ends.
-		a.endWait()
-		log.Printf("no new tab: the window left project %s while its home host connected", p.space)
-	}
 	// A note about another project is not this one's.
 	a.dropProjectNote(w.ID)
-	a.ws, w.app = w, a
+	a.ws, w.app, a.want = w, a, ""
+	a.noteShown(w)
 	if k := w.kept; k != nil && k.app == a {
 		w.kept = nil
 		a.tabs, a.active, a.focusReq, a.renaming = k.tabs, k.active, nil, nil
@@ -1272,15 +1346,14 @@ func (a *App) show(w *Workspace) {
 	a.tabs, a.active, a.focusReq, a.renaming = nil, 0, nil, nil
 	switch {
 	case a.reconcile(w.layout):
-	case w.fresh && w.Dir != "":
-		// New Project's first tab: in its folder, or none, with the
-		// reason. A project emptied otherwise opens one at home, as
-		// before.
-		w.fresh = false
+	case w.offline():
+		// A host's copy, while it is away: nothing opens there.
+	case w.Dir != "":
+		// A project emptied opens a tab in its folder, or none, with the
+		// reason.
 		a.newProjectTab()
 	default:
-		home, _ := os.UserHomeDir()
-		a.newTabOn(nil, home)
+		a.newTabOn(w.host, a.homeOf(w.host))
 	}
 	a.changed()
 }
@@ -1383,17 +1456,10 @@ func (a *App) showSpace(n int) {
 	if a.st == nil || n < 1 || n > 9 {
 		return
 	}
-	homes := a.st.workspaces
-	if n == 9 || n > len(homes) {
-		n = len(homes)
-	}
-	if n < 1 {
-		return
-	}
-	a.showWorkspace(homes[n-1])
+	a.showProjectN(n)
 }
 
-// newWorkspace shows a new workspace in the window.
+// newWorkspace shows this machine's tabs with no project in the window.
 func (a *App) newWorkspace() {
 	if a.st != nil {
 		a.showWorkspace(a.st.addWorkspace())
@@ -1445,11 +1511,11 @@ func (a *App) closeWorkspace() {
 		}
 	}
 	a.tabs = nil
-	next := st.hiddenAfter(w)
+	next := st.freeAfter(w)
 	st.remove(w)
 	a.detach()
 	if next == nil {
-		next = st.addWorkspace()
+		next = st.freshWorkspace()
 	}
 	a.show(next)
 	st.save()
@@ -1463,8 +1529,9 @@ func (a *App) emptied() bool {
 	if st == nil || w == nil {
 		return false
 	}
-	next := st.hiddenAfter(w)
-	st.remove(w)
+	// A project stays with no tab, as its host keeps it (docs/projects.md),
+	// and so do a host's tabs with no project: the window shows another.
+	next := st.freeAfter(w)
 	if next == nil {
 		st.save()
 		return false
@@ -1472,6 +1539,20 @@ func (a *App) emptied() bool {
 	a.show(next)
 	st.save()
 	return true
+}
+
+// freeAfter is the first workspace no window shows, with a tab, of a host
+// connected, after w in their order, else before it; nil for none.
+func (st *store) freeAfter(w *Workspace) *Workspace {
+	i := slices.Index(st.workspaces, w)
+	n := len(st.workspaces)
+	for d := 1; d <= n; d++ {
+		o := st.workspaces[((i+d)%n+n)%n]
+		if o != w && o.app == nil && !o.offline() && o.tabCount() > 0 {
+			return o
+		}
+	}
+	return nil
 }
 
 // moveTabToSpace moves a tab to the end of space w, its sessions going
@@ -1499,21 +1580,5 @@ func (a *App) moveTabToSpace(t *Tab, w *Workspace) {
 		w.layout.Tabs = append(w.layout.Tabs, s)
 	}
 	a.removeTab(t)
-	st.save()
-}
-
-// moveTabToNewWindow moves a tab to a new workspace, in a window of its
-// own, its sessions going on. The last tab stays.
-func (a *App) moveTabToNewWindow(t *Tab) {
-	st := a.st
-	if st == nil || t == nil || len(a.tabs) < 2 {
-		return
-	}
-	l := savedLayout{Tabs: []savedTab{a.savedTab(t)}}
-	a.closePanes([]*Tab{t})
-	a.removeTab(t)
-	w := st.addWorkspace()
-	w.layout = l
-	st.openWindow(w)
 	st.save()
 }

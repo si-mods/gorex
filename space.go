@@ -118,11 +118,7 @@ var (
 // colors are the window's: of the theme it shows in, tinted by the color
 // of the space it shows.
 func (a *App) colors(c *ui.Context) *colors {
-	color := ""
-	if a.ws != nil {
-		color = a.ws.Color
-	}
-	return spaceColors(colorsOf(c), color, c.Theme().Dark)
+	return spaceColors(colorsOf(c), a.windowColor(), c.Theme().Dark)
 }
 
 // spaceTint is h made usable as a tint: its saturation at most 85% and

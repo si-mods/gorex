@@ -146,7 +146,7 @@ func refresh(a *App) {
 	for _, in := range infos {
 		byID[in.ID] = in
 	}
-	a.apply(nil, byID, hostLayout{})
+	a.apply(nil, byID)
 }
 
 // waitFor runs frames until cond holds, or fails after a few seconds.
@@ -544,7 +544,7 @@ func TestSidebar(t *testing.T) {
 	first := a.tabs[0]
 	a.newTab(os.TempDir())
 	tt.Frame()
-	list, ok := tt.Find("Tabs")
+	_, ok := tt.Find("Tabs")
 	if !ok {
 		t.Fatalf("no sidebar; texts %q", tt.Texts())
 	}
@@ -553,8 +553,11 @@ func TestSidebar(t *testing.T) {
 	}
 
 	// Dropping the second tab at the first tab's leading edge reorders it.
-	x, y := list.X+60, list.Y+sideRowH*1.5+2
-	targetY := list.Y + 4
+	first.Name, a.tabs[1].Name = "first", "second"
+	tt.Frame()
+	r0, r1 := sidebarRow(t, tt, first), sidebarRow(t, tt, a.tabs[1])
+	x, y := r1.X+60, r1.Y+r1.H/2
+	targetY := r0.Y + 4
 	tt.Press(x, y)
 	tt.Frame()
 	for _, yy := range []float32{y - 4, y - 10, y - 20, targetY} {
@@ -696,9 +699,10 @@ func TestSidebarTabDropMerges(t *testing.T) {
 	if !ok {
 		t.Fatalf("no sidebar; texts %q", tt.Texts())
 	}
+	from, to := sidebarRow(t, tt, src), sidebarRow(t, tt, dst)
 	x := list.X + 60
-	fromY := list.Y + sideRowH/2 + 2
-	targetY := list.Y + sideRowH*1.5 + 2
+	fromY := from.Y + from.H/2
+	targetY := to.Y + to.H/2
 	tt.Press(x, fromY)
 	tt.Frame()
 	for _, y := range []float32{fromY + 4, fromY + 10, fromY + 20, targetY} {
@@ -742,139 +746,6 @@ func TestSidebarReveals(t *testing.T) {
 	tt.Frame()
 	if r, _ := tt.Find("Last "); r.Y < 620 {
 		t.Errorf("the list scrolled back to the chosen tab, at %v", r)
-	}
-}
-
-// TestSidebarFoldsHost: a click on a host's name folds its tabs away but
-// the one last chosen on it and those that need the user, and keeps the
-// fold in the settings; another brings them back. Choosing a tab of
-// another host leaves a folded host's rows as they are, the host's
-// new-tab button does not fold it, and removing a host forgets its fold.
-func TestSidebarFoldsHost(t *testing.T) {
-	old := prefs
-	t.Cleanup(func() { prefs = old })
-	a, tt := newTestApp(t)
-	prefs = settings{TabPlacement: "left", Animation: "off"}
-	h := newHostConn(savedHost{ID: "1", Name: "office"})
-	h.state = hostConnected
-	a.hosts = []*hostConn{h}
-	a.tabs[0].Name = "Other"
-	a.newTab(os.TempDir()).Name = "Needy"
-	a.newTab(os.TempDir()).Name = "Chosen"
-	// A tab of the remote host's.
-	rp := &Pane{ID: a.id(), SID: "far", host: h, info: rex.SessionInfo{ID: "far"}}
-	rt := a.makeTab("")
-	rt.Name, rt.Root = "Far", &Node{ID: a.id(), Pane: rp}
-	rp.Tab, rp.Node = rt, rt.Root
-	rt.setFocus(rp)
-	a.tabs = append(a.tabs, rt)
-	tt.Frame()
-	for _, name := range []string{"Other ", "Needy ", "Chosen ", "Far "} {
-		if !tt.HasText(name) {
-			t.Fatalf("the tab %q does not show; texts %q", name, tt.Texts())
-		}
-	}
-	if err := tt.Click(thisMachine()); err != nil {
-		t.Fatal(err)
-	}
-	tt.Frame()
-	if tt.HasText("Other ") || tt.HasText("Needy ") || !tt.HasText("Chosen ") {
-		t.Errorf("a folded host shows %q; want only its chosen tab", tt.Texts())
-	}
-	b, err := os.ReadFile(settingsPath())
-	if err != nil {
-		t.Fatal(err)
-	}
-	var saved settings
-	if err := json.Unmarshal(b, &saved); err != nil {
-		t.Fatal(err)
-	}
-	if !slices.Equal(saved.FoldedHosts, []string{"local"}) {
-		t.Errorf("the settings keep the folded hosts %q, want [local]", saved.FoldedHosts)
-	}
-
-	// A tab that needs the user shows in a folded host.
-	a.tabs[1].Focus.attention = true
-	tt.Frame()
-	if !tt.HasText("Needy ") {
-		t.Errorf("a folded host hides the tab that needs the user; texts %q", tt.Texts())
-	}
-	a.tabs[1].Focus.attention = false
-
-	// Choosing the other host's tab keeps the folded host's chosen tab.
-	a.selectTab(slices.Index(a.tabs, rt))
-	tt.Frame()
-	if !tt.HasText("Chosen ") || tt.HasText("Other ") {
-		t.Errorf("choosing another host's tab changed the folded host's rows: %q", tt.Texts())
-	}
-
-	// Its new-tab button opens a tab on it, folded or not.
-	r, _ := tt.Find(thisMachine())
-	tt.Move(r.X+r.W/2, r.Y+r.H/2)
-	tt.Frame()
-	n := len(a.tabs)
-	if err := tt.Click(locales.CmdNewTabOn(thisMachine())); err != nil {
-		t.Fatal(err)
-	}
-	tt.Frame()
-	if len(a.tabs) != n+1 || !slices.Contains(prefs.FoldedHosts, "local") {
-		t.Errorf("the new-tab button made %d tabs and left the folds %q", len(a.tabs)-n, prefs.FoldedHosts)
-	}
-
-	if err := tt.Click(thisMachine()); err != nil {
-		t.Fatal(err)
-	}
-	tt.Frame()
-	if !tt.HasText("Other ") || len(prefs.FoldedHosts) != 0 {
-		t.Errorf("an unfolded host shows %q, folds %q", tt.Texts(), prefs.FoldedHosts)
-	}
-
-	// Removing a folded host forgets its fold.
-	if err := tt.Click("office"); err != nil {
-		t.Fatal(err)
-	}
-	tt.Frame()
-	if !slices.Equal(prefs.FoldedHosts, []string{"1"}) {
-		t.Fatalf("the folds are %q, want [1]", prefs.FoldedHosts)
-	}
-	a.removeHost(h)
-	if len(prefs.FoldedHosts) != 0 {
-		t.Errorf("removing the host kept its fold: %q", prefs.FoldedHosts)
-	}
-}
-
-// TestCloseTabStaysOnHost: closing the chosen tab chooses the next tab of
-// its host, or the one before, not another host's: that tab would show in
-// the other host's fold.
-func TestCloseTabStaysOnHost(t *testing.T) {
-	old := prefs
-	t.Cleanup(func() { prefs = old })
-	a, tt := newTestApp(t)
-	prefs = settings{TabPlacement: "left", Animation: "off", FoldedHosts: []string{"1"}}
-	h := newHostConn(savedHost{ID: "1", Name: "office"})
-	h.state = hostConnected
-	a.hosts = []*hostConn{h}
-	a.tabs[0].Name = "Near"
-	a.newTab(os.TempDir()).Name = "Closed"
-	for _, name := range []string{"Far", "Chosen"} {
-		rp := &Pane{ID: a.id(), SID: name, host: h, info: rex.SessionInfo{ID: name}}
-		rt := a.makeTab("")
-		rt.Name, rt.Root = name, &Node{ID: a.id(), Pane: rp}
-		rp.Tab, rp.Node = rt, rt.Root
-		rt.setFocus(rp)
-		a.tabs = append(a.tabs, rt)
-	}
-	a.selectTab(3)
-	tt.Frame()
-	a.selectTab(1)
-	tt.Frame()
-	a.closeTab(a.tabs[1])
-	tt.Frame()
-	if got := a.tab().Name; got != "Near" {
-		t.Errorf("closing the chosen tab chose %q, want Near", got)
-	}
-	if tt.HasText("Far ") || !tt.HasText("Chosen ") {
-		t.Errorf("the folded host shows %q", tt.Texts())
 	}
 }
 
@@ -1130,4 +1001,15 @@ func caughtUp(t *testing.T, a *App, tt *ui.Tester) {
 		return err == nil && ls.Revision == a.st.out.revision() && !running
 	})
 	tt.Frame()
+}
+
+// sidebarRow is where the sidebar shows tab t's row.
+func sidebarRow(t *testing.T, tt *ui.Tester, tab *Tab) ui.Rect {
+	t.Helper()
+	name, detail := tab.label()
+	r, ok := tt.Find(name + " " + detail)
+	if !ok {
+		t.Fatalf("no row of tab %q; texts %q", name+" "+detail, tt.Texts())
+	}
+	return r
 }

@@ -33,10 +33,17 @@ type settings struct {
 	SidebarWidth    float32 `json:"sidebarWidth,omitempty"`
 	SidebarHidden   bool    `json:"sidebarHidden,omitempty"`
 	HidePaneHeaders bool    `json:"hidePaneHeaders,omitempty"`
-	// SidebarView is what the sidebar lists: "" the window's session's
-	// tabs under their hosts, "host" every session under the hosts it has
-	// tabs on.
-	SidebarView string `json:"sidebarView,omitempty"`
+	// What this client keeps of the projects of its hosts
+	// (docs/projects.md, "The desktop window"): the space shown, by name,
+	// "" for Default; the spaces' colors and order, and those made here
+	// that no project carries yet; the rows the sidebar opened or closed;
+	// the project each window shows, by its place; and the renames of
+	// spaces that wait for a host to connect (spaces.go).
+	Space        string                   `json:"space,omitempty"`
+	Spaces       []clientSpace            `json:"spaces,omitempty"`
+	Open         map[string]bool          `json:"sidebarOpen,omitempty"`
+	Shown        []string                 `json:"shownProjects,omitempty"`
+	SpaceRenames map[string][]spaceRename `json:"spaceRenames,omitempty"`
 	// HideDockBadge turns off the count of the panes that need the user on
 	// the app icon.
 	HideDockBadge bool `json:"hideDockBadge,omitempty"`
@@ -98,9 +105,6 @@ func loadSettings() {
 	}
 	if !slices.Contains(placements, prefs.TabPlacement) {
 		prefs.TabPlacement = ""
-	}
-	if !slices.Contains(sidebarViews, prefs.SidebarView) {
-		prefs.SidebarView = ""
 	}
 	if !slices.Contains(animations, prefs.Animation) {
 		prefs.Animation = ""

@@ -25,6 +25,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"gorex/internal/layout"
 	"gorex/internal/pairaddr"
 
 	"github.com/tailscale/tailcat"
@@ -1191,4 +1192,40 @@ func (c *tailcatConn) Close() error {
 	err := c.Conn.Close()
 	c.once.Do(func() { c.p.release(c.addr) })
 	return err
+}
+
+// remoteCommand tells whether a remote client may ask for the layout
+// command c. A client the host lets in arranges the host's tabs as its
+// own window does (docs/projects.md, "The desktop window"): tab.set and
+// layout.apply, of the host's own panes only. What names this machine's
+// windows, or what only its own window takes (kills, shows, adoptions),
+// stays local.
+func remoteCommand(c LayoutCommand) bool {
+	switch c.Op {
+	case "windows.set", "kills.taken", "show.taken", "adopt.taken":
+		return false
+	case "tab.set":
+		return c.TabLayout == nil || hostPanesOnly(*c.TabLayout)
+	case "layout.apply":
+		for _, x := range c.Batch {
+			if x.Op == "layout.apply" || !remoteCommand(x) {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+// hostPanesOnly tells that every pane of t is of this host: none names
+// another host, nor is a place a filtered layout kept for a pane the
+// client could not see.
+func hostPanesOnly(t layout.Tab) bool {
+	for _, r := range t.Roots() {
+		for _, n := range layout.Leaves(r) {
+			if n.Host != "" || n.Unavailable {
+				return false
+			}
+		}
+	}
+	return true
 }

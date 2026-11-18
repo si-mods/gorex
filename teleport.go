@@ -7,6 +7,7 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
+	"gorex/internal/layout"
 	"gorex/internal/rex"
 	"gorex/locales"
 )
@@ -164,35 +165,46 @@ func (a *App) teleport(p *Pane, h *hostConn) {
 }
 
 // teleported makes pane p, whose work went to host h, the session in
-// there: a tab of the host's in the window, as a tab's panes are all on
-// one machine, named as p's was, and p's own session ends.
+// there: a tab of the host's (docs/projects.md: a tab lives on one host),
+// with no project there, named as p's was, which the window shows; p's
+// own session ends.
 func (a *App) teleported(p *Pane, h *hostConn, in rex.SessionInfo) {
 	if p.closed || p.Tab == nil {
 		// Closed meanwhile, its session ended: the new one goes too.
 		h.kill(in.ID)
 		return
 	}
-	if in.Cols == 0 {
-		in.Cols, in.Rows = p.info.Cols, p.info.Rows
-	}
 	if p.teleportErr != "" && a.err == p.teleportErr {
 		a.err = ""
 	}
-	t := a.sessionTab(h, in)
-	np := t.Focus
-	np.Name = p.Name
+	title := ""
 	if len(p.Tab.allPanes()) == 1 {
-		t.Name = p.Tab.Name
+		title = p.Tab.Name
 	}
-	at := slices.Index(a.tabs, p.Tab) + 1
-	a.tabs = slices.Insert(a.tabs, at, t)
-	// p's tab goes with p when it was its last pane; the window, with a
-	// tab still, stays open.
+	split := &layout.Node{SID: in.ID, Name: p.Name}
 	a.closePane(p)
-	a.groupTabs()
-	a.selectTab(slices.Index(a.tabs, t))
-	a.focusReq = np
 	a.changed()
+	ad := layout.Adoption{ID: "teleport-" + in.ID, Tabs: []layout.AdoptTab{{Title: title, Split: split}}}
+	a.askOn(h, rex.LayoutCommand{Op: "project.adopt", Adopt: &ad}, func(rex.LayoutCommand) {
+		if a.st == nil {
+			return
+		}
+		w := a.st.noProjectOf(h)
+		for _, o := range a.st.hostWorkspaces(h) {
+			if slices.ContainsFunc(o.savedLayout().Tabs, func(t savedTab) bool {
+				return slices.ContainsFunc(t.Roots(), func(r *layout.Node) bool { return layout.Find(r, in.ID) != nil })
+			}) {
+				w = o
+			}
+		}
+		if w != nil {
+			a.showWorkspace(w)
+		}
+		if np := a.paneOn(h, in.ID); np != nil {
+			a.selectTab(slices.Index(a.tabs, np.Tab))
+			a.focusReq = np
+		}
+	})
 }
 
 // teleportOverlay frosts pane p while its teleport runs: where it goes,

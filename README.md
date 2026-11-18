@@ -72,60 +72,41 @@ and macOS, use **Check for Updates** in the app. See
   scrollback, with the match count and next/previous; Escape closes it.
   Command-click (Control-click elsewhere) opens URLs through the system,
   and file paths relative to the pane's program.
-- **Projects.** Like a Rex session, a project is a set of tabs of its own, with a
-  name such as `icy-ridge` and a color of its own, and each window shows
-  one. The project chip in the title bar, or atop the sidebar, lists the
-  projects with their tabs and the window that shows them, and makes,
-  renames and closes them; so do the Project menu and the command palette,
-  whose Change Project… finds one by its name. New Window opens a window of
-  a new project, and Move Tab to New Window moves a tab to one. Choosing a
-  project another window shows brings that window to the front. Closing a
-  window keeps its project, its programs running; Close Project asks, then
-  ends its terminals. GoRex opens again the windows open when it quit,
-  each on its project; terminals that no project has, as after a crash, get
-  tabs in the first.
-- **Project folders.** A project may be bound to a folder on one host, its
-  home host. **New Project…** (the sidebar's `+`, the command palette, the
-  Project menu) opens a sheet in three steps: the host (this machine or a
-  host of `hosts.json`; an offline host is shown but cannot be picked), the
-  folder (a browser of that host's folders with Home, Up, a typed path and,
-  for this machine, **Choose…** for the system picker), and the name, which
-  follows the folder's name until you type one (left empty, the name is the
-  folder's). Create makes the project
-  and opens its first tab in the folder. **New Project with No Folder**
-  makes a project that only groups terminals.
-  - New Tab in a project with a folder starts on the home host, in the
-    folder, even when the focused pane is on another host. A split or a
-    floating pane starts where the pane it comes from started. A project may
-    still hold terminals of several hosts.
-  - The project's context menu and the project popover have **Change
-    Folder…** (**Set Folder…** for a project with no folder) and **Remove
-    Folder**, beside Rename, Color and Close Project; Remove Folder's note
-    has **Undo**. The command palette has **Change Project Folder…** and
-    **Remove Project Folder**. The sidebar shows the folder under the
-    project's name, after the home host's name when that is not this
-    machine; the popover shows it under each project's name, with a dot
-    when the home host is not connected or not known.
-  - A folder that is gone fails New Tab with a note and a **Change
-    Folder…** button; the shell does not start in the home directory
-    instead. A tab that GoRex opens again after a restart is not checked
-    and starts at home as before.
-  - With the home host offline, New Tab fails with a note, with **Retry**
-    and **Change Folder…**, and does not start a tab elsewhere. A tailnet host that is online
-    but not connected yet connects first, and the tab then opens in the
-    folder.
-  - A project made before this has no folder and works as it did. A home
-    host removed from `hosts.json` leaves the folder in place and shows the
-    host as unknown; adding the host again restores it.
-  - Rex Go and the web client do the same: New Project with a folder
-    browser, a folder shown under the name, New Window in the folder on the
-    home host, and Change Folder… and Remove Folder. Rex Go and the web client
-    check the folder first and, when it is gone, show "Folder Not Found" with
-    Change Folder… instead of opening a window (Rex Go skips the check on a
-    host that does not list folders). With the home host not
-    connected, they say why and open nothing elsewhere. The home reaches
-    them through `gorex.projects` and `gorex.dir.list` (`docs/rex-api.md`)
-    and Rex Go's synced projects (`docs/ios-centralized-spaces.md`).
+- **Spaces, hosts, projects, tabs, panes** (`docs/projects.md`). A
+  project is a folder on one host; its tabs, splits, floating panes and
+  browser panes live in that host's layout, so every client of the host
+  (this app on another machine, Rex Go, the web client) sees the same
+  tabs. A space (Work, Life) is a name on projects.
+  - The sidebar has the space picker atop (New Space…, Edit Spaces… to
+    rename, color and order them), then each host you added: its
+    **PROJECTS** of the space, latest used first, those unused for 30 days
+    under a folded **Older**, and its **Tabs with no project**, which every
+    space shows. A project row opens on its tabs; its `+` (and ⌘T while it
+    is shown) opens a tab in its folder. Its menu has New Tab, Rename…,
+    Color, Move to Space, Reveal Folder (this machine's) and Close
+    Project…. A host's menu has Rename… (its alias) and New Tab with No
+    Project. Drag a tab onto a project of its host to move it there, its
+    programs running.
+  - With the tabs on top, the title bar shows `Space ▾` and `host ›
+    project ▾`, whose menu lists the space's hosts, their projects with
+    their tab counts, the tabs with no project, and New Project….
+  - **New Project…** (the `+` of a host's PROJECTS, the sidebar's foot, the
+    palette, the Project menu, ⇧⌘N) opens the folder sheet on that host:
+    browse its folders, name the project (the folder's name by default),
+    Create. The host makes the project in the space shown and its first
+    tab in the folder. A folder that is a project already shows that
+    project, and offers to move it to this space.
+  - A host that is away shows its projects greyed, as GoRex last saw them;
+    nothing in them opens until it connects.
+  - Each window keeps the project it shows, the space shown, the sidebar's
+    open rows and the spaces' colors and order in `settings.json`, for
+    this machine only.
+  - A layout of v0.38 to v0.40 is migrated once: this machine's projects
+    stay, old spaces' tabs become tabs with no project, and the panes
+    another host ran in this machine's tabs go to that host as it
+    connects (the sidebar says "Waiting for" the host until then), into
+    the project they were homed in there, with their splits, and no
+    program restarts.
 - **Single instance.** GoRex runs once: opened again, it brings the
   window used last to the front, or opens one. The installed app and
   `mygo dev`'s GoRex Dev each run once, apart, and an app given a
@@ -197,10 +178,10 @@ and macOS, use **Check for Updates** in the app. See
 | ⌃⌘= | | Equalize panes |
 | ⌘1…⌘9, ⇧⌘[ ⇧⌘], ⌃Tab | Ctrl+Shift+1…9, Ctrl+PageUp/PageDown, Ctrl+Tab | Switch tabs |
 | ⇧⌘R | Ctrl+Shift+R | Rename tab |
-| ⌘N | Ctrl+Shift+N | New window, of a new session |
+| ⌘N | Ctrl+Shift+N | New window, of a project no window shows |
 | ⇧⌘N | | New project… |
-| ⇧⌘O | Ctrl+Shift+O | Change session |
-| ⌃⌘] ⌃⌘[ | Ctrl+Shift+PageDown/PageUp | Next / previous session |
+| ⇧⌘O | Ctrl+Shift+O | Change project |
+| ⌃⌘] ⌃⌘[ | Ctrl+Shift+PageDown/PageUp | Next / previous project |
 | ⌘J | Ctrl+Shift+J | Jump to the pane that needs you |
 | ⇧⌘J | | List what needs you, by state, across windows and hosts |
 | ⌃⌘S | Ctrl+Shift+S | Hide or show the tabs' sidebar |

@@ -58,9 +58,13 @@ type App struct {
 	// that adds a host, which saves none of them itself; the store's when
 	// there is one, shared by the windows.
 	tailnetHosts []rex.TailnetHost
-	// projectOpen is the New Tab of a project that waits for its home
-	// host to connect (takeProjectOpen), nil for none.
-	projectOpen *projectOpen
+	// spaces is the space picker's state and its dialogs', and pickerOpen
+	// tells that the title bar's menu of projects shows.
+	spaces     spaceUI
+	pickerOpen bool
+	// want is the host's project the window showed last, by openKey, to
+	// show once the host's layout has it (takeWanted); "" for none.
+	want string
 
 	// focusReq asks the view to give the keyboard focus to a pane's
 	// terminal.

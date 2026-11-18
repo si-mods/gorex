@@ -611,6 +611,49 @@ What the design left open, and phase 1 (the server model) decided:
   them; then `space.create` and `session.create` make no second workspace
   with no folder.
 
+## Decided in phase 2
+
+What the design left open, and phase 2 (the desktop) decided:
+
+- **A client arranges a host's tabs.** A remote client the host lets in
+  may send `tab.set` and `layout.apply` (`rex.remoteCommand`), of the
+  host's own panes only: a leaf that names another host, or a place the
+  client could not see, is refused, and so are `windows.set`,
+  `kills.taken`, `show.taken` and `adopt.taken`, which stay the host's own
+  window's. The layout a peer reads keeps browser panes; a note's text
+  stays on its host, its place shows as an unavailable pane, and the app
+  arranges no tab that has one (`lockedTabs`).
+- **App and host forms.** In the app a host's pane names its host
+  (`Node.Host`), as before; the host's own layout names none. The app
+  turns one into the other as it takes and sends (`hostForm`,
+  `appForm`), and sends a host the changes of its workspaces through an
+  outbox of the host's, as it does this machine's.
+- **The tab a window shows is the window's.** The app sends a host no
+  change of a workspace's active tab, and a host's active tab moves no
+  window. Which project each window shows is kept in `settings.json`
+  (`shownProjects`, by the window's place); this machine's
+  `Store.Windows` names only its own workspaces. A window whose project
+  is a host's shows it again once the host's layout comes.
+- **Offline copy.** `hosts-layout.json` beside `hosts.json` keeps each
+  host's layout as the app last took it, written as it takes one.
+- **Hosts of v0.38.0 to v0.40.x** show each session as a tab with no
+  project there; the app arranges nothing on them, and their adoptions
+  wait ("Waiting for" the host) until they are upgraded.
+- **A project with no tab stays**, as its host keeps it; closing its last
+  tab shows the window another workspace.
+- **Space renames for a host away** wait in `settings.json`
+  (`spaceRenames`) and go as it connects.
+- **Teleport** (the app's) puts the session that arrives in the host's
+  tabs with no project (`project.adopt`), and the window shows it.
+- **Kills.** The app's own kills of hosts' sessions stay in `hosts.json`
+  (`Kills`), as before. The kills of other hosts a layout of v0.38.0 to
+  v0.40.x held for a host away, made by another client of this machine,
+  are dropped by the migration and not sent: such a session runs on until
+  it is closed there.
+- **`space.home`** stays on the server, for the deprecated
+  `gorex.project.set_home` of phase 1; the desktop no longer sends it, and
+  `Workspace.Host`, the home-host waits and `layout.MachineHost` are gone.
+
 ## Open
 
 - A project in more than one space: not planned; Move to Space is the
