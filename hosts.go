@@ -5,11 +5,9 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
-	"io/fs"
 	"log"
 	"maps"
 	"os"
@@ -21,6 +19,7 @@ import (
 
 	"github.com/egoist/mygo"
 
+	"gorex/internal/hosts"
 	"gorex/internal/layout"
 	"gorex/internal/rex"
 	"gorex/locales"
@@ -32,86 +31,35 @@ import (
 // in hosts.json, readable by the user only, and never logged nor shown.
 
 // savedHost is a remote host as hosts.json keeps it.
-type savedHost struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
-	// Alias is the name the user gave the host here, "" for none: the
-	// tailnet sets Name, never this.
-	Alias         string `json:"alias,omitempty"`
-	Address       string `json:"address"`
-	TailnetOpened bool   `json:"tailnetOpened,omitempty"`
-	// Machine is the machine the host is (rex.Hello.Machine), as it said
-	// when it last connected: the Rex API names the host's panes by it,
-	// for a phone that connects to that machine too.
-	Machine string `json:"machine,omitempty"`
-	// Glyph is the icon of the machine, as its last hello described it,
-	// "" before (hostConn.remoteGlyph).
-	Glyph string `json:"glyph,omitempty"`
-	// Icon is the icon the user chose for the host (hostIcons), "" to
-	// follow its machine's, Glyph.
-	Icon string `json:"icon,omitempty"`
-	// Kills are the sessions closed here while the host was away, to end
-	// there once connected again, though GoRex quit meanwhile.
-	Kills []string `json:"kills,omitempty"`
-}
+type savedHost = hosts.Host
 
 // label is the name the host shows by: its alias, else its name.
-func (s savedHost) label() string { return cmp.Or(s.Alias, s.Name) }
+func (h *hostConn) label() string { return h.savedHost.Label() }
 
-func hostsPath() string { return filepath.Join(rex.Dir(), "hosts.json") }
-
-type hostsFile struct {
-	Hosts []savedHost `json:"hosts"`
-}
+// hostsPath is the app's hosts.json, which the CLI and the server read.
+func hostsPath() string { return hosts.Path(rex.Dir()) }
 
 // loadHosts reads the saved hosts; none when the file does not exist. A
 // file that does not parse is moved aside, not lost: its addresses are
 // secrets that cannot be had again but from each host.
 func loadHosts() ([]savedHost, error) {
-	var f hostsFile
-	path := hostsPath()
-	b, err := os.ReadFile(path)
-	if errors.Is(err, fs.ErrNotExist) {
-		return nil, nil
+	dir := rex.Dir()
+	list, err := hosts.Load(dir)
+	if !errors.Is(err, hosts.ErrInvalid) {
+		return list, err
 	}
-	if err != nil {
-		return nil, err
+	path := hosts.Path(dir)
+	bad := path + ".bad-" + time.Now().Format("20060102-150405")
+	if err := os.Rename(path, bad); err != nil {
+		return nil, errors.New("gorex: hosts.json is not valid, and stays as it is")
 	}
-	if err := json.Unmarshal(b, &f); err != nil {
-		bad := path + ".bad-" + time.Now().Format("20060102-150405")
-		if err := os.Rename(path, bad); err != nil {
-			return nil, errors.New("gorex: hosts.json is not valid, and stays as it is")
-		}
-		os.Chmod(bad, 0o600)
-		return nil, fmt.Errorf("gorex: hosts.json is not valid: moved aside to %s", filepath.Base(bad))
-	}
-	// A host a coordinator network brought ("net:" and its key) went with
-	// the networks: no machine admits it as a member any more.
-	return slices.DeleteFunc(f.Hosts, func(h savedHost) bool {
-		return h.ID == "" || h.Address == "" || strings.HasPrefix(h.ID, "net:")
-	}), nil
+	os.Chmod(bad, 0o600)
+	return nil, fmt.Errorf("gorex: hosts.json is not valid: moved aside to %s", filepath.Base(bad))
 }
 
 // saveHosts writes the hosts, readable by the user only, atomically. It
 // does not write over a file it cannot read, nor one that does not parse.
-func saveHosts(hosts []savedHost) error {
-	b, err := json.MarshalIndent(hostsFile{hosts}, "", "  ")
-	if err != nil {
-		return err
-	}
-	path := hostsPath()
-	if old, err := os.ReadFile(path); err == nil {
-		if json.Unmarshal(old, &hostsFile{}) != nil {
-			return errors.New("gorex: hosts.json is not valid: not writing over it")
-		}
-	} else if !errors.Is(err, fs.ErrNotExist) {
-		return err
-	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		return err
-	}
-	return writeFileAtomic(path, b, 0o600)
-}
+func saveHosts(list []savedHost) error { return hosts.Save(rex.Dir(), list) }
 
 func newHostID() string {
 	b := make([]byte, 6)

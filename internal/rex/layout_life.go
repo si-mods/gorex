@@ -4,13 +4,11 @@ package rex
 
 import (
 	"cmp"
-	"encoding/json"
-	"os"
-	"path/filepath"
 	"slices"
 	"strings"
 	"time"
 
+	"gorex/internal/hosts"
 	"gorex/internal/layout"
 )
 
@@ -367,17 +365,10 @@ func hostLeaf(host, sid string) func(*layout.Node) bool {
 // hosts.json in dir, which the app keeps and others only read. A host the
 // app has not connected to since it kept machines is left out.
 func HostMachines(dir string) map[string]string {
-	var f struct {
-		Hosts []struct {
-			ID      string `json:"id"`
-			Machine string `json:"machine"`
-		} `json:"hosts"`
-	}
-	b, _ := os.ReadFile(filepath.Join(dir, "hosts.json"))
-	json.Unmarshal(b, &f)
+	list, _ := hosts.Load(dir)
 	out := map[string]string{}
-	for _, h := range f.Hosts {
-		if h.ID != "" && h.Machine != "" {
+	for _, h := range list {
+		if h.Machine != "" {
 			out[h.ID] = h.Machine
 		}
 	}
@@ -388,17 +379,10 @@ func HostMachines(dir string) map[string]string {
 // which the app keeps and the server only reads; an error code and its
 // message when it has none, or more than one.
 func (s *Server) hostAt(addr string) (id, code, msg string) {
-	var f struct {
-		Hosts []struct {
-			ID      string `json:"id"`
-			Address string `json:"address"`
-		} `json:"hosts"`
-	}
-	b, _ := os.ReadFile(filepath.Join(cmp.Or(s.dir, Dir()), "hosts.json"))
-	json.Unmarshal(b, &f)
+	list, _ := hosts.Load(cmp.Or(s.dir, Dir()))
 	var found []string
-	for _, h := range f.Hosts {
-		if addr = strings.TrimSpace(addr); addr != "" && h.ID != "" && strings.TrimSpace(h.Address) == addr {
+	for _, h := range list {
+		if addr = strings.TrimSpace(addr); addr != "" && strings.TrimSpace(h.Address) == addr {
 			found = append(found, h.ID)
 		}
 	}
