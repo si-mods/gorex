@@ -222,7 +222,12 @@ Each item has a **Trigger** (what the diff shows), a **Check** (what the author 
 ### "Same rule as X"
 - **Trigger:** code or a comment says it applies the same rule as another place.
 - **Check:** both places call one shared function, and both have a test.
-- **Source:** #717's `dir.list` said it used the same device-path rule as `openToSend`, but kept its own copy; `openToSend`'s copy had lost a backslash since #410 (both now share one helper, #723).
+- **Source:** #717's `dir.list` said it used the same device-path rule as `openToSend`, but kept its own copy; `openToSend`'s copy had lost a backslash since #410 (both now share one helper, #723). The Ghostty theme parser and the server's theme parser both read a hex color, but the server took only six digits, so a `#fff` theme worked in the app and vanished on a host.
+
+### Comment names a file
+- **Trigger:** a comment or doc points at a `.md` file or an issue.
+- **Check:** the file exists in the same tree; a missing issue link says what it would have said. `rules_test.go` enforced rules "of `TECH_DEBT.md`" from #617, a file the repository never had, so the reason for the rule was unrecoverable.
+- **Source:** #617.
 
 ### Unbounded work from a remote request
 - **Trigger:** a remote request reads a directory, a file or a list whose size the caller controls.
@@ -231,5 +236,20 @@ Each item has a **Trigger** (what the diff shows), a **Check** (what the author 
 
 ### Removing a feature
 - **Trigger:** the PR deletes a feature or a cleanup PR removes unused code.
-- **Check:** dead code goes with the feature. Run `staticcheck -checks U1000` for `GOOS=windows`, `linux` and `darwin`; code unused on one OS may be used on another.
+- **Check:** dead code goes with the feature. `go run ./tools/verify -audit` runs `deadcode` for linux, windows and darwin; code unused on one OS may be used on another.
 - **Source:** standing rule.
+
+### A rule with no gate
+- **Trigger:** `docs/lessons.md`, `REVIEW.md` or a comment states a rule that no test, lint or workflow runs.
+- **Check:** the rule names the command that runs it, and that command runs on every PR or on a schedule. A rule nobody runs is a wish: the dead wrappers `newTabAfter` and `newTabAfterRun` (#722) outlived their callers while this file told authors to run `staticcheck -checks U1000` (#668) by hand.
+- **Source:** #668, #722.
+
+### A check that cannot fail
+- **Trigger:** a PR adds a gate, script or tool that decides by an exit code.
+- **Check:** the PR shows it failing on a known-bad input before the merge. `deadcode` prints its findings and exits 0; a caller that trusted the exit code would pass every repository.
+- **Source:** `tools/verify -audit` (deadcode's exit code).
+
+### Dev-only switch in the release
+- **Trigger:** code reads an environment variable or flag that no doc, help text or test names.
+- **Check:** delete it, or document it and cover it with a test. `GOREX_REXAPI_PROXY` turned the gateway into a recording relay to any URL, with no doc and no test, compiled into every release.
+- **Source:** `internal/rexapi/traceproxy.go` (removed).

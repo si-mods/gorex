@@ -1441,7 +1441,7 @@ func (p *Pane) askAttention() {
 func (a *App) newTab(dir string) *Tab { return a.newTabOn(a.currentHost(), dir) }
 
 // newTabOn opens a tab with a shell in dir on host h, nil for this
-// machine, after the active tab (newTabAfter), and shows it.
+// machine, after the active tab, and shows it.
 func (a *App) newTabOn(h *hostConn, dir string) *Tab { return a.newTabOnIn(h, dir, false) }
 
 // newTabOnIn is newTabOn of a tab of a host that starts in dir or not at
@@ -1459,25 +1459,15 @@ func (a *App) newTabOnIn(h *hostConn, dir string, strict bool) *Tab {
 	return t
 }
 
-// newTabAfter opens a tab with a shell in dir on host h: after tab after,
-// or last of the host's tabs when after is another host's. It opens none
-// while the host is not connected.
-func (a *App) newTabAfter(h *hostConn, dir string, after *Tab) *Tab {
-	return a.newTabAfterRun(h, dir, after, nil)
-}
-
-// newTabAfterRun is newTabAfter for a tab whose first pane runs command
+// newTabAfterIn opens a tab with a shell in dir on host h: after tab
+// after, or last of the host's tabs when after is another host's. It opens
+// none while the host is not connected. The tab's first pane runs command
 // instead of the login shell. One of this machine the server makes, the
 // active tab, and returns once the window shows it, as tests have it, else
 // nil. One of a host shows as the host made its session, after the tab
-// active then, as a tab of the host asked for before it is.
-func (a *App) newTabAfterRun(h *hostConn, dir string, after *Tab, command []string) *Tab {
-	return a.newTabAfterIn(h, dir, false, after, command)
-}
-
-// newTabAfterIn is newTabAfterRun of a tab of a host that starts in dir or
-// not at all when strict. One of this machine the server makes in the
-// folder of the window's project when dir is "", or fails.
+// active then, as a tab of the host asked for before it is. It starts in
+// dir or not at all when strict; one of this machine the server makes in
+// the folder of the window's project when dir is "", or fails.
 func (a *App) newTabAfterIn(h *hostConn, dir string, strict bool, after *Tab, command []string) *Tab {
 	if a.offline(h) {
 		return nil

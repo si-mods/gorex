@@ -12,8 +12,8 @@ import (
 	"testing"
 )
 
-// TestNoNewRootInit enforces TECH_DEBT.md #8: package main must not add new
-// package-level init() functions beyond the existing baseline.
+// TestNoNewRootInit keeps package main from adding package-level init()
+// functions beyond the existing baseline: initialization stays explicit.
 func TestNoNewRootInit(t *testing.T) {
 	allowed := map[string]bool{
 		"commands.go":      true,
@@ -42,7 +42,7 @@ func TestNoNewRootInit(t *testing.T) {
 		for _, decl := range f.Decls {
 			fn, ok := decl.(*ast.FuncDecl)
 			if ok && fn.Recv == nil && fn.Name.Name == "init" {
-				t.Errorf("%s: new package-level init() is forbidden in package main (see TECH_DEBT.md #8)", name)
+				t.Errorf("%s: new package-level init() is forbidden in package main", name)
 			}
 		}
 	}

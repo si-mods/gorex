@@ -1,0 +1,27 @@
+name: Maintenance
+
+# The whole-repo audit that no pull request triggers, because the rot it
+# finds was merged earlier: dead code that no target reaches. Run by hand
+# with `go run ./tools/verify -audit`; docs/maintenance.md lists the checks
+# that need a reader.
+on:
+  schedule:
+    - cron: "17 3 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: instabox-medium
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: audit
+        env:
+          CGO_ENABLED: "0"
+        run: go run ./tools/verify -audit

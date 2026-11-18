@@ -8,14 +8,10 @@
 // Content-Length is the compressed size or none), else unknown and the bar
 // is indeterminate. ProgressView shows it, the same in every place.
 
-import { formatNumber, localize, Msg, msg, t } from "./i18n";
+import { formatSize, localize, Msg, msg, t } from "./i18n";
 
 /** Bytes as a short size, in the page's language: 412 KB, 6.1 MB. */
-export function formatBytes(n: number): string {
-  return n < 1e6
-    ? t("sizeKB", { size: formatNumber(Math.max(1, Math.round(n / 1e3))) })
-    : t("sizeMB", { size: formatNumber(n / 1e6, { minimumFractionDigits: 1, maximumFractionDigits: 1 }) });
-}
+export const formatBytes = (n: number): string => formatSize(n, 1000);
 
 type Progress = (received: number, total?: number) => void;
 

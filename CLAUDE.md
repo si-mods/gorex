@@ -4,6 +4,11 @@
 
 - Before you open or merge a PR, read `docs/lessons.md`. When a PR fixes, undoes or redoes an earlier one, add the lesson there.
 
+## Maintenance
+
+- Run `go run ./tools/verify -audit` monthly and before a release. It reports dead code that no target reaches, across linux, windows and darwin. A weekly workflow runs it too (`.github/workflows/maintenance.yml`); `docs/maintenance.md` lists the checks no tool runs.
+- Delete the tests and comments with the dead code, in the same PR. A finding that came from a merged PR adds an item to `docs/lessons.md`; a finding too big for the PR gets an issue with the reason.
+
 ## Design
 
 - Before adding or changing UI, read `DESIGN.md`. New overlays, pages and inactive states use its shaders (`paintFrost`, `paintBackground`, `dimmed`) and follow its rules.

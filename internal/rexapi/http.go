@@ -13,9 +13,6 @@ import (
 // API's own pages. A request from a web page whose origin the gateway does
 // not trust is refused on every path, before the access rule (checkOrigin).
 func (g *Gateway) Handler() http.Handler {
-	if relay := relayHandler(); relay != nil {
-		return relay
-	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/control", g.handleControl)
 	mux.HandleFunc("/api/data", g.handleData)
@@ -74,15 +71,23 @@ func serveHelp(w http.ResponseWriter, r *http.Request) {
 // revision 10's, and then GoRex's own methods.
 func serveLLMs(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	w.Write(llmsText)
-	w.Write(llmsRev11)
-	w.Write(llmsRev12)
-	w.Write(llmsGoRex)
-	w.Write(llmsSeeBlock)
-	w.Write(llmsSpacesApply)
-	w.Write(llmsProjects)
-	w.Write(llmsMergeWindows)
-	w.Write(llmsDirList)
+	for _, doc := range llmsDocs {
+		w.Write(doc)
+	}
+}
+
+// llmsDocs is the API document and its supplements, in the order they
+// are served. Adding a document means adding it here, once.
+var llmsDocs = [][]byte{
+	llmsText,
+	llmsRev11,
+	llmsRev12,
+	llmsGoRex,
+	llmsSeeBlock,
+	llmsSpacesApply,
+	llmsProjects,
+	llmsMergeWindows,
+	llmsDirList,
 }
 
 // llmsRev11 documents what revision 11 adds, which the revision 10
@@ -162,14 +167,8 @@ Example:
 func serveLLMsHTML(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	io.WriteString(w, "<!doctype html>\n<meta charset=\"utf-8\">\n<title>Rex API</title>\n<pre>")
-	io.WriteString(w, html.EscapeString(string(llmsText)))
-	io.WriteString(w, html.EscapeString(string(llmsRev11)))
-	io.WriteString(w, html.EscapeString(string(llmsRev12)))
-	io.WriteString(w, html.EscapeString(string(llmsGoRex)))
-	io.WriteString(w, html.EscapeString(string(llmsSeeBlock)))
-	io.WriteString(w, html.EscapeString(string(llmsSpacesApply)))
-	io.WriteString(w, html.EscapeString(string(llmsProjects)))
-	io.WriteString(w, html.EscapeString(string(llmsMergeWindows)))
-	io.WriteString(w, html.EscapeString(string(llmsDirList)))
+	for _, doc := range llmsDocs {
+		io.WriteString(w, html.EscapeString(string(doc)))
+	}
 	io.WriteString(w, "</pre>\n")
 }

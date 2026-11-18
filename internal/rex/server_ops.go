@@ -446,15 +446,15 @@ func toTerminalTheme(t *Theme) *terminal.Theme {
 	}
 	th := &terminal.Theme{}
 	set := false
-	if c, ok := parseHexColor(t.Foreground); ok {
+	if c, ok := ParseHexColor(t.Foreground); ok {
 		th.Foreground = c
 		set = true
 	}
-	if c, ok := parseHexColor(t.Background); ok {
+	if c, ok := ParseHexColor(t.Background); ok {
 		th.Background = c
 		set = true
 	}
-	if c, ok := parseHexColor(t.Cursor); ok {
+	if c, ok := ParseHexColor(t.Cursor); ok {
 		th.Cursor = c
 		set = true
 	}
@@ -467,7 +467,7 @@ func toTerminalTheme(t *Theme) *terminal.Theme {
 		if err != nil || i < 0 || i >= len(th.Palette) {
 			continue
 		}
-		if c, ok := parseHexColor(v); ok {
+		if c, ok := ParseHexColor(v); ok {
 			th.Palette[i] = c
 			set = true
 		}
@@ -478,14 +478,15 @@ func toTerminalTheme(t *Theme) *terminal.Theme {
 	return th
 }
 
-func parseHexColor(s string) (ui.Color, bool) {
-	s = strings.TrimPrefix(s, "#")
-	if len(s) != 6 {
+// ParseHexColor reads "#rgb" and "#rrggbb", with or without the #, and
+// false for other forms.
+func ParseHexColor(s string) (ui.Color, bool) {
+	h := strings.TrimPrefix(s, "#")
+	if len(h) != 3 && len(h) != 6 {
 		return ui.Color{}, false
 	}
-	v, err := strconv.ParseUint(s, 16, 24)
-	if err != nil {
+	if _, err := strconv.ParseUint(h, 16, 32); err != nil {
 		return ui.Color{}, false
 	}
-	return ui.Color{R: uint8(v >> 16), G: uint8(v >> 8), B: uint8(v), A: 255}, true
+	return ui.Hex("#" + h), true
 }

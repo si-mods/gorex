@@ -535,9 +535,25 @@ func verify(dir string, full bool, log io.Writer) (good bool, sum, failure, mode
 func main() {
 	full := flag.Bool("full", false, "also run the root package's tests (slow)")
 	hook := flag.Bool("hook", false, "run as a Claude Code PreToolUse hook (reads its JSON on stdin)")
+	whole := flag.Bool("audit", false, "run the whole-repo maintenance audit instead of the diff's checks")
 	flag.Parse()
 	if *hook {
 		os.Exit(hookMain(os.Stdin, os.Stderr, os.Stdout))
+	}
+	if *whole {
+		good, failure, sum, err := audit(".", os.Stdout)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "audit:", err)
+			os.Exit(1)
+		}
+		if !good {
+			fmt.Fprintln(os.Stderr, "\n"+failure)
+		}
+		fmt.Println("\n" + sum)
+		if !good {
+			os.Exit(1)
+		}
+		return
 	}
 	good, sum, failure, _, err := verify(".", *full, os.Stdout)
 	if err != nil {
