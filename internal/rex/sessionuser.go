@@ -4,6 +4,7 @@ package rex
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"os/user"
 	"strconv"
@@ -62,6 +63,20 @@ func sessionUserFromEnv() (*sessionUser, error) {
 		return nil, fmt.Errorf("rex: %s=%s: the server must run as root to run sessions as another user", EnvSessionUser, name)
 	}
 	return u, nil
+}
+
+// setSessionUser records the user the server runs its sessions as, and
+// says so when a server that runs as root was given none: its sessions
+// then run as root. A server that serves the handoff of an upgrade needs
+// it as much as one that starts by itself, or the sessions it starts
+// after the upgrade are the server's.
+func (s *Server) setSessionUser(u *sessionUser) {
+	s.sessUser = u
+	if u != nil {
+		s.home = u.home
+	} else if os.Geteuid() == 0 {
+		log.Printf("rex: the server runs as root: set %s to run sessions as a user", EnvSessionUser)
+	}
 }
 
 // lookupSessionUser reads the account name, its ids and groups, and the
