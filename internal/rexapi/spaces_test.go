@@ -216,7 +216,7 @@ func TestHostMachinesCached(t *testing.T) {
 	}
 	write := func(machine string, at time.Time) {
 		t.Helper()
-		os.WriteFile(path, []byte(`{"hosts":[{"id":"h1","machine":"`+machine+`"}]}`), 0o600)
+		os.WriteFile(path, []byte(`{"hosts":[{"id":"h1","address":"tcat://x","machine":"`+machine+`"}]}`), 0o600)
 		os.Chtimes(path, at, at)
 	}
 	at := time.Now().Add(-time.Hour).Truncate(time.Second)
