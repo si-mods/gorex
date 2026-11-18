@@ -41,7 +41,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - The Gallery now also finds images whose long paths a program like Claude Code wraps across lines, as on a Windows computer.
 - A file link a program made, whose text may not be the file's name, now asks first: the alert shows the computer and the file's full path. Plain paths still open with one tap.
 - Projects: + stays in view, the folder browser has Use This Folder, Delete Project asks first, a project without a folder gets New Window, and menus say window, not tab.
-- A project whose computer is off now says that computer is offline, and Change Folder shows its folder. Renaming a project no longer leaves a second, empty project of the old name, and its folder stays after the computer comes back.
+- A project whose computer is off says it is offline. Renaming a project keeps its folder and no longer leaves an empty project of the old name.
 
 ## zh-Hans
 
@@ -75,4 +75,4 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - 相册现在也能收到被 Claude Code 这类程序折成几行的长图片路径，例如 Windows 电脑上的截图路径。
 - 程序生成的文件链接，其文字未必是文件名，现在点按后会先询问：提示框显示电脑名和文件的完整路径。普通路径仍然点一下就打开。
 - 项目：+ 始终可见；文件夹浏览器新增「使用此文件夹」；删除项目会先确认；没有文件夹的项目也能新建窗口；菜单统一称「窗口」，不再叫「标签页」。
-- 项目所在的电脑关机时，现在会显示这台电脑已离线，「更改文件夹」也会显示项目的文件夹。重命名项目后不再多出一个旧名称的空项目，电脑重新连接后项目的文件夹也不会丢失。
+- 项目所在的电脑关机时，显示这台电脑已离线。重命名项目后，项目的文件夹保留，也不再多出一个旧名称的空项目。
