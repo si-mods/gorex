@@ -387,7 +387,249 @@ func TestCrumbs(t *testing.T) {
 			t.Errorf("tildePath(%q, %q) = %q, want %q", c[0], c[1], got, c[2])
 		}
 	}
-	if folderName(`C:\code\app\`) != "app" || folderName("/a/b") != "b" {
+	if folderName(`C:\code\app\`) != "app" || folderName("/a/b") != "b" || folderName(`\\srv\share\`) != "share" {
 		t.Error("folderName")
+	}
+	// A root has no name of its own: the project's is typed.
+	if folderName(`C:\`) != "" || folderName("/") != "" || folderName("D:") != "" {
+		t.Errorf("folderName of a root: %q %q", folderName(`C:\`), folderName("/"))
+	}
+}
+
+// TestFitCrumbs checks which steps of a breadcrumb show in the room
+// there is: all that fit; else the top, a menu of those left out and the
+// last three, two or one; at worst the menu and the last.
+func TestFitCrumbs(t *testing.T) {
+	w := func(n int, each float32) []float32 {
+		out := make([]float32, n)
+		for i := range out {
+			out[i] = each
+		}
+		return out
+	}
+	gap := float32(crumbGap)
+	for _, c := range []struct {
+		name   string
+		widths []float32
+		head   int
+		room   float32
+		want   []int
+	}{
+		{"all fit", w(4, 40), 0, 4*40 + 3*gap, []int{0, 1, 2, 3}},
+		{"top and the last three", w(7, 40), 0, 4*40 + 26 + 4*gap, []int{0, -1, 4, 5, 6}},
+		{"top and the last two", w(7, 40), 0, 3*40 + 26 + 3*gap, []int{0, -1, 5, 6}},
+		{"top and the last", w(7, 40), 0, 2*40 + 26 + 2*gap, []int{0, -1, 6}},
+		{"the menu and the last", w(7, 40), 0, 60, []int{-1, 6}},
+		{"a long last step stays", []float32{10, 40, 40, 400}, 0, 200, []int{-1, 3}},
+		// Windows: the drive is the top; the list of drives goes in the menu.
+		{"windows, all fit", w(3, 40), 1, 3*40 + 2*gap, []int{0, 1, 2}},
+		{"windows, the drives left out", w(5, 40), 1, 4*40 + 26 + 4*gap, []int{-1, 1, 2, 3, 4}},
+		{"windows, the drive and the last two", w(6, 40), 1, 3*40 + 26 + 3*gap, []int{1, -1, 4, 5}},
+	} {
+		got := fitCrumbs(c.widths, c.head, c.room, 26)
+		if !slices.Equal(got, c.want) {
+			t.Errorf("%s: %v, want %v", c.name, got, c.want)
+		}
+	}
+	if got := hiddenCrumbs([]int{1, -1, 4, 5}, 6); !slices.Equal(got, []int{0, 2, 3}) {
+		t.Errorf("hiddenCrumbs %v", got)
+	}
+}
+
+// deepTree makes root/<names...>, one inside the other, and returns the
+// deepest.
+func deepTree(t *testing.T, root string, names ...string) string {
+	t.Helper()
+	d := filepath.Join(append([]string{root}, names...)...)
+	if err := os.MkdirAll(d, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	return d
+}
+
+// TestProjectSheetBreadcrumb browses a deep folder of a long name: the
+// breadcrumb keeps its name whole and its top, and leaves the steps
+// between to its menu, which browses one.
+func TestProjectSheetBreadcrumb(t *testing.T) {
+	a, tt := newTestApp(t)
+	root := appTempDir(t, a)
+	long := "acme-api-service-gateway"
+	deep := deepTree(t, root, "code", "clients", "acme", "services", long)
+	a.openSheet("", nil, deep)
+	sheetShows(t, a, tt, deep)
+	tt.Frame()
+	if !tt.HasText(long) {
+		t.Fatalf("the last step of the breadcrumb is gone: %q", tt.Texts())
+	}
+	steps := crumbs(a.sheet.res.Path, a.sheet.windows())
+	top := steps[0].name
+	if a.sheet.windows() {
+		top = steps[1].name
+	}
+	if !tt.HasText(top) {
+		t.Errorf("the breadcrumb lacks its top %q: %q", top, tt.Texts())
+	}
+	if _, ok := tt.Find(locales.ProjectSheetMoreFolders()); !ok {
+		t.Fatalf("no menu of the steps left out: %q", tt.Texts())
+	}
+	// The field shows the path's end, the folder's name, while it has no
+	// focus.
+	if a.sheet.pathFocused || !tt.HasText(a.sheet.res.Path) {
+		t.Errorf("the path over the field: %q", tt.Texts())
+	}
+	click(t, tt, locales.ProjectSheetMoreFolders())
+	if m := tt.Menu(); !slices.Contains(m, "clients") || slices.Contains(m, long) {
+		t.Fatalf("the menu of the steps left out: %q", m)
+	}
+	if err := tt.ChooseMenuItem("clients"); err != nil {
+		t.Fatal(err)
+	}
+	sheetShows(t, a, tt, filepath.Join(root, "code", "clients"))
+}
+
+// TestProjectSheetKeys browses with the keyboard: Down and Up highlight
+// a folder, Enter opens it, Backspace and Alt+Up go up and highlight the
+// folder left; Enter in the name field creates the project.
+func TestProjectSheetKeys(t *testing.T) {
+	a, tt := newTestApp(t)
+	root := folderTree(t, appTempDir(t, a))
+	a.openSheet("", nil, root)
+	sheetShows(t, a, tt, root)
+
+	key := func(mods ui.Modifiers, k ui.Key) {
+		t.Helper()
+		tt.Key(mods, k)
+		tt.Frame()
+	}
+	key(0, ui.KeyDown)
+	key(0, ui.KeyDown)
+	if a.sheet.sel != 1 {
+		t.Fatalf("Down twice highlights %d", a.sheet.sel)
+	}
+	key(0, ui.KeyUp)
+	if a.sheet.sel != 0 {
+		t.Fatalf("Up highlights %d", a.sheet.sel)
+	}
+	key(0, ui.KeyEnter)
+	alpha := filepath.Join(root, "alpha")
+	sheetShows(t, a, tt, alpha)
+	if a.sheet.sel != -1 {
+		t.Errorf("a folder opened highlights %d", a.sheet.sel)
+	}
+	key(0, ui.KeyBackspace)
+	sheetShows(t, a, tt, root)
+	if a.sheet.sel != 0 {
+		t.Errorf("Backspace up highlights %d, not alpha", a.sheet.sel)
+	}
+	key(0, ui.KeyDown)
+	key(0, ui.KeyEnter)
+	beta := filepath.Join(root, "beta")
+	sheetShows(t, a, tt, beta)
+	// beta has no folders: what the list says, and the folder to use.
+	if !tt.HasText(locales.ProjectSheetEmpty()) || !tt.HasText(locales.ProjectSheetChosen(a.sheet.res.Path)) {
+		t.Errorf("an empty folder: %q", tt.Texts())
+	}
+	key(ui.Alt, ui.KeyUp)
+	sheetShows(t, a, tt, root)
+	if a.sheet.sel != 1 {
+		t.Errorf("Alt+Up highlights %d, not beta", a.sheet.sel)
+	}
+	if !a.sheet.open {
+		t.Fatal("the keys closed the sheet")
+	}
+
+	// Enter in the name field makes the project.
+	key(0, ui.KeyEnter)
+	sheetShows(t, a, tt, beta)
+	before := a.ws
+	tt.Frame()
+	// The field under its label, which shows the same text.
+	label, _ := tt.Find(locales.ProjectSheetName())
+	tt.ClickAt(label.X+20, label.Y+label.H+8+14)
+	tt.Frame()
+	if !tt.Focused(locales.ProjectSheetName()) {
+		t.Fatalf("the name field takes no focus; texts %q", tt.Texts())
+	}
+	a.sheet.name = ""
+	tt.Frame()
+	tt.Type("keyed")
+	key(0, ui.KeyEnter)
+	waitFor(t, tt, "the project made by Enter", func() bool { return a.ws != before && a.ws != nil && a.ws.Name == "keyed" })
+	if a.sheet.open || !sameDir(a.ws.Dir, beta) {
+		t.Errorf("Enter made %q in %q; sheet open %v", a.ws.Name, a.ws.Dir, a.sheet.open)
+	}
+}
+
+// TestProjectSheetCreateState checks when Create can go: a folder named
+// shows as the project's folder; the top of a disk, which has no name,
+// needs one typed; the list of drives, and a folder that cannot be read,
+// none.
+func TestProjectSheetCreateState(t *testing.T) {
+	a, tt := newTestApp(t)
+	root := folderTree(t, appTempDir(t, a))
+	a.openSheet("", nil, root)
+	sheetShows(t, a, tt, root)
+	tt.Frame()
+	if !a.sheet.ready() || !tt.HasText(locales.ProjectSheetChosen(a.sheet.res.Path)) {
+		t.Fatalf("a folder: ready %v, texts %q", a.sheet.ready(), tt.Texts())
+	}
+
+	top := "/"
+	if localWindows {
+		top = filepath.VolumeName(root) + `\`
+	}
+	a.sheet.browse(top)
+	sheetShows(t, a, tt, top)
+	tt.Frame()
+	if a.sheet.name != "" || a.sheet.ready() || !tt.HasText(locales.ProjectSheetNameNeeded()) {
+		t.Fatalf("the top of the disk: name %q, ready %v, texts %q", a.sheet.name, a.sheet.ready(), tt.Texts())
+	}
+	click(t, tt, locales.ProjectSheetCreate())
+	if !a.sheet.open {
+		t.Fatal("Create made a project of no name")
+	}
+	a.sheet.name = "disk"
+	tt.Frame()
+	if !a.sheet.ready() || !tt.HasText(locales.ProjectSheetChosen(a.sheet.res.Path)) {
+		t.Errorf("the top of the disk, named: ready %v, texts %q", a.sheet.ready(), tt.Texts())
+	}
+
+	if localWindows {
+		a.sheet.browse(rex.DirTop)
+		waitFor(t, tt, "the drives", func() bool { return !a.sheet.loading && a.sheet.asked && a.sheet.res.Path == rex.DirTop })
+		tt.Frame()
+		if a.sheet.ready() || !tt.HasText(locales.ProjectSheetNoChoice()) {
+			t.Errorf("the drives: ready %v, texts %q", a.sheet.ready(), tt.Texts())
+		}
+	}
+	a.sheet.browse(filepath.Join(root, "none"))
+	waitFor(t, tt, "a folder gone", func() bool { return !a.sheet.loading && a.sheet.asked && a.sheet.res.Code != "" })
+	tt.Frame()
+	if a.sheet.ready() || !tt.HasText(locales.ProjectSheetNoChoice()) {
+		t.Errorf("a folder gone: ready %v, texts %q", a.sheet.ready(), tt.Texts())
+	}
+}
+
+// TestProjectSheetHostUnknown opens Change Folder… of a project whose home
+// host is none of the user's: the sheet says so with its folder, and Use
+// This Folder waits for the user to browse.
+func TestProjectSheetHostUnknown(t *testing.T) {
+	a, tt := newTestApp(t)
+	far := "/srv/acme-api"
+	setProjectHome(t, a, tt, layout.MachineHost("machine-far"), far)
+	a.openChangeFolder(a.ws.ID)
+	sheetShows(t, a, tt, a.homeOf(nil))
+	tt.Frame()
+	if !tt.HasText(locales.ProjectSheetHostUnknown(far)) || a.sheet.ready() || !tt.HasText(locales.ProjectSheetBrowseFirst()) {
+		t.Fatalf("the sheet of an unknown host: ready %v, texts %q", a.sheet.ready(), tt.Texts())
+	}
+	click(t, tt, locales.ProjectSheetUse())
+	if !a.sheet.open || a.ws.Dir != far {
+		t.Fatalf("Use took the home folder: %q", a.ws.Dir)
+	}
+	click(t, tt, locales.ProjectSheetHome())
+	sheetShows(t, a, tt, a.homeOf(nil))
+	if !a.sheet.ready() {
+		t.Errorf("browsed, the folder cannot be used")
 	}
 }

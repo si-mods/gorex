@@ -13,6 +13,9 @@ import (
 
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/plugins/terminal"
+
+	"gorex/internal/layout"
+	"gorex/internal/rex"
 )
 
 // debugHook lets a script drive the app while GOREX_DEBUG names a
@@ -414,6 +417,17 @@ func (a *App) debug(dir, line string) {
 				if a.ws != nil {
 					a.setProjectHome(a.ws, a.hostByID(id), d, nil)
 				}
+			case "lost": // DIR: the window's project's home, DIR on a machine none of the hosts is
+				if w := a.ws; w != nil {
+					host := layout.MachineHost("machine-lost")
+					a.ask(rex.LayoutCommand{Op: "space.home", Space: w.ID, Host: host, Dir: rest}, func(res rex.LayoutCommand) {
+						if res.Code == "" {
+							w.Host, w.Dir = host, rest
+						}
+					})
+				}
+			case "down", "up": // the arrow keys in the folder list
+				a.sheet.step(map[string]int{"down": 1, "up": -1}[v])
 			}
 		})
 	case "tabs": // above, left or right: where the tabs go

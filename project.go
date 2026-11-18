@@ -199,8 +199,11 @@ func (a *App) openChangeFolder(id string) {
 	w := a.st.workspaces[i]
 	h := a.projectHost(w)
 	if w.Host != "" && h == nil {
-		// Its host is none of the user's: this machine's home to start.
+		// Its host is none of the user's: this machine's home to start,
+		// which the sheet does not take until the user browses, and the
+		// folder it had, shown.
 		a.openSheet(id, nil, "")
+		a.sheet.lost, a.sheet.held = w.Dir, true
 		return
 	}
 	a.openSheet(id, h, w.Dir)
