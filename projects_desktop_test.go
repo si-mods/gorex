@@ -613,3 +613,74 @@ func TestProjectsOpenIndependently(t *testing.T) {
 		t.Error("choosing alpha closed bravo")
 	}
 }
+
+// TestDeleteSpace: Edit Spaces… offers Delete Space… for every space but
+// Default; it asks first, then moves the space's projects to Default on
+// each host, closing no tab, drops the name from the picker, and shows
+// Default. A host offline gets the delete as it connects.
+func TestDeleteSpace(t *testing.T) {
+	a, tt, sock, remote := projectsApp(t)
+	work := "Work"
+	far, _ := remote.Command(rex.LayoutCommand{Op: "project.create", Dir: testDir(t), Name: "trainer", SpaceName: &work})
+	proxy := newHostProxy(t, sock)
+	h := a.addHost(savedHost{ID: "h1", Name: "office-h800", Address: proxy.path})
+	waitFor(t, tt, "the host's project", func() bool { w := a.st.byID(far.Space); return w != nil && !w.offline() })
+	proxy.setDown(true)
+	waitFor(t, tt, "the host to go", func() bool { return h.current() == nil && a.st.byID(far.Space).offline() })
+
+	res := clientCommand(a, rex.LayoutCommand{Op: "project.create", Dir: appTempDir(t, a), Name: "acme-api", SpaceName: &work})
+	caughtUp(t, a, tt)
+	api := a.st.byID(res.Space)
+	if api == nil {
+		t.Fatal("the project did not come")
+	}
+	setSpaceColorOf(work, "blue")
+	a.showSpaceNamed(work)
+	tabs := len(spaceOfStore(savedWorkspaces(t, a.client), api.ID).Tabs)
+	before := sessionIDs(t, a.client)
+
+	click(t, tt, locales.SpacePickerLabel(work))
+	click(t, tt, locales.SpaceEdit())
+	if n := strings.Count(strings.Join(tt.Texts(), "\n"), locales.SpaceDelete()); n != len(a.st.spaceNames())-1 {
+		t.Fatalf("%d Delete Space… for spaces %q; texts %q", n, a.st.spaceNames(), tt.Texts())
+	}
+	click(t, tt, locales.SpaceDelete())
+	if !tt.HasText(locales.SpaceDeleteTitle(work)) || !tt.HasText(locales.SpaceDeleteBody(1)) || !tt.HasText(locales.SpaceDeleteOffline()) {
+		t.Fatalf("the question: %q", tt.Texts())
+	}
+	if api.Space != work {
+		t.Fatal("the space went before the answer")
+	}
+	click(t, tt, locales.SpaceDeleteConfirm())
+	caughtUp(t, a, tt)
+	waitFor(t, tt, "the delete", func() bool {
+		sw := spaceOfStore(savedWorkspaces(t, a.client), api.ID)
+		return sw != nil && sw.Space == "" && api.Space == ""
+	})
+	if shownSpace() != "" || slices.Contains(a.st.spaceNames(), work) || clientSpaceOf(work) != nil {
+		t.Errorf("after the delete: shown %q, names %q", shownSpace(), a.st.spaceNames())
+	}
+	if len(spaceOfStore(savedWorkspaces(t, a.client), api.ID).Tabs) != tabs || !slices.Equal(sessionIDs(t, a.client), before) {
+		t.Error("the delete closed a tab or ended a session")
+	}
+	// The host away: its copy shows Default, and the delete waits for it.
+	if w := a.st.byID(far.Space); w.Space != "" {
+		t.Errorf("the copy of the host away: %+v", w)
+	}
+	if q := prefs.SpaceRenames["h1"]; len(q) != 1 || q[0] != (spaceRename{From: work}) {
+		t.Fatalf("the delete queued: %+v", prefs.SpaceRenames)
+	}
+	if hw := hostProject(t, remote, far.Space); hw.Space != work {
+		t.Fatalf("the host away moved already: %+v", hw)
+	}
+	proxy.setDown(false)
+	h.poke()
+	waitFor(t, tt, "the delete on the host", func() bool {
+		hw := hostProject(t, remote, far.Space)
+		return hw != nil && hw.Space == "" && len(prefs.SpaceRenames["h1"]) == 0
+	})
+	// A server of v0.41.0, of no spaces.delete, gets a rename to Default.
+	if c := (&store{}).spaceDeleteCommand(nil, work); c.Op != "spaces.rename" || c.From != work || c.To != "" {
+		t.Errorf("the command for an old server: %+v", c)
+	}
+}

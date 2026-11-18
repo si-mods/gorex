@@ -2624,6 +2624,35 @@
   "@spaceEditTitle": {
     "description": "Title of the Edit Spaces dialog."
   },
+  "spaceDelete": "Delete Space…",
+  "@spaceDelete": {
+    "description": "Edit Spaces: delete the space; its projects move to Default."
+  },
+  "spaceDeleteTitle": "Delete space {name}?",
+  "@spaceDeleteTitle": {
+    "description": "Title of the dialog that asks before a space is deleted.",
+    "placeholders": {
+      "name": {}
+    }
+  },
+  "spaceDeleteBody": "{n, plural, one {Its # project moves to Default.} other {Its # projects move to Default.}} No tab closes.",
+  "@spaceDeleteBody": {
+    "description": "Delete Space dialog: how many projects of the connected hosts move to Default.",
+    "placeholders": {
+      "n": {
+        "type": "int",
+        "example": "3"
+      }
+    }
+  },
+  "spaceDeleteOffline": "Projects of hosts that are offline move when they connect.",
+  "@spaceDeleteOffline": {
+    "description": "Delete Space dialog: shown when a host is offline."
+  },
+  "spaceDeleteConfirm": "Delete",
+  "@spaceDeleteConfirm": {
+    "description": "Delete Space dialog: the button that deletes the space."
+  },
   "spaceMoveDown": "Move Down",
   "@spaceMoveDown": {
     "description": "Edit Spaces: move the space down."
