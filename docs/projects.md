@@ -338,7 +338,10 @@ A project's context menu:
   window shows it.
 - A tab of a project the window does not show names itself as a shown
   one does: by the title its program set, its program's icon and its
-  folder, from the host's session list, with no pane attached.
+  folder, from the host's session list, with no pane attached. A shell at
+  its prompt names itself by the shell and its folder, shown or not: not
+  by the title, nor the done or error status, that a program that ended
+  there left.
 - Drag a tab onto a project of its host to move it there, with its panes
   and their processes.
 

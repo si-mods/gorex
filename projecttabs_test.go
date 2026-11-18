@@ -78,6 +78,53 @@ func TestLocalTabsKeepTheirTitles(t *testing.T) {
 	}
 }
 
+// TestHostShellTabDropsAnEndedProgramsTitle: a host's project whose tab's
+// session is a shell at its prompt, after Claude Code ended there. The
+// server still keeps the title Claude Code set, and the status it
+// reported last (done, which stays until seen). No window shows the
+// project: the sidebar names the tab by its shell and folder, as a shown
+// pane does, not by the ended program's title.
+func TestHostShellTabDropsAnEndedProgramsTitle(t *testing.T) {
+	a, tt := newTestApp(t)
+	old := prefs
+	t.Cleanup(func() { prefs = old })
+	prefs = settings{TabPlacement: "left", Animation: "off"}
+	const stale = "Projects V2"
+	done := &rex.ProgramStatus{State: "done", App: "claude", Progress: -1}
+	h := newHostConn(savedHost{ID: "h9", Name: "lab-box"})
+	h.state = hostConnected
+	h.infos = map[string]rex.SessionInfo{
+		// The status went with the program.
+		"r1": {ID: "r1", Shell: "zsh", Program: "zsh", Idle: true, Title: stale, Dir: "/srv/app"},
+		// The done status stays till seen.
+		"r2": {ID: "r2", Shell: "zsh", Program: "zsh", Idle: true, Title: stale, Dir: "/srv/app",
+			Status: done, Statuses: []rex.ProgramStatus{*done}},
+	}
+	a.hosts = append(a.hosts, h)
+	tabs := []savedTab{
+		{ID: "t1", Root: &layout.Node{SID: "r1", Host: h.ID, Dir: "/srv/app"}},
+		{ID: "t2", Root: &layout.Node{SID: "r2", Host: h.ID, Dir: "/srv/app"}},
+	}
+	w := &Workspace{ID: "hp", Name: "site", Dir: "/srv/app", Space: shownSpace(), host: h}
+	w.layout.Tabs = tabs
+	a.st.workspaces = append(a.st.workspaces, w)
+	setRowOpen(openKey(h, w.ID), true)
+	tt.Frame()
+	for i, tab := range tabs {
+		if name, _, _ := savedTabFace(tab, h.infos); name != "zsh" {
+			t.Errorf("tab %d, a shell at its prompt, is %q, want %q", i, name, "zsh")
+		}
+		// A shown pane of it, its terminal having read the same title.
+		p := &Pane{SID: tab.Root.SID, host: h, info: h.infos[tab.Root.SID], title: stale}
+		if name, _ := p.label(); name != "zsh" {
+			t.Errorf("pane %d, a shell at its prompt, is %q, want %q", i, name, "zsh")
+		}
+	}
+	if tt.HasText(stale) {
+		t.Errorf("the sidebar shows the ended program's title %q: %q", stale, tt.Texts())
+	}
+}
+
 // TestHostTabsKeepTheirTitles: a host's project with two tabs, whose
 // sessions run Claude Code and omp with titles of their own. No window
 // shows it: the sidebar names each tab by its title, with its program's

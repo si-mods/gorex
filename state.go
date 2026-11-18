@@ -2204,7 +2204,10 @@ func (p *Pane) label() (name, detail string) {
 		}
 		return in.Shell, shortDir(p.startDir)
 	}
-	if prog.Shell {
+	// A shell at its prompt is the shell, whatever a program that ended
+	// there left: its title, and its done or error status, which stays
+	// until seen and would name the program (ProgramName).
+	if prog.Shell || in.Idle && programOf(in.Program).Shell {
 		name := in.Program
 		if name == "" {
 			name = in.Shell
