@@ -525,6 +525,11 @@ its block ID (`pane_id`), so an ID from a Rex method passes unchanged.
   `color` `"default"` gives the default color back, `""` keeps it.
 - `gorex.space.rename {from, to}` → `{projects}`: every project of this
   host of space `from` goes to `to`.
+- `gorex.space.delete {name}` → `{projects}`: every project of this host
+  of space `name` goes to Default, and `name` leaves the names the host
+  offers. No tab closes and no shell stops. An empty `name` (Default)
+  fails with `bad_request`. A host of v0.41.0 has no such method; a
+  client sends it `gorex.space.rename {from: name, to: ""}` instead.
 - `gorex.space.list` → `{spaces}`: the names this host's projects carry,
   then those it offers though none does (the spaces of a layout of before
   projects). `""` is Default.

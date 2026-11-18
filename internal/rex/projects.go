@@ -24,8 +24,12 @@ import (
 // CapabilityProjects is what a server that keeps its projects as
 // docs/projects.md says does: the layout of layout.Version 3, and the
 // commands project.create, project.adopt, project.move, project.update,
-// spaces.rename and adopt.taken.
+// spaces.rename, spaces.delete and adopt.taken.
 const CapabilityProjects = "projects.v2"
+
+// CapabilitySpacesDelete is what a server that makes spaces.delete does;
+// a client sends one without it spaces.rename to Default instead.
+const CapabilitySpacesDelete = "spaces.delete"
 
 // migrateLayout makes the layout the server loaded, of v0.38.0 to v0.40.x,
 // one of this version (layout.Migrate), once: as a server starts and as
@@ -226,6 +230,16 @@ func renameSpace(st *layout.Store, c LayoutCommand) LayoutCommand {
 	}
 	carried(st, to)
 	return res
+}
+
+// deleteSpace makes spaces.delete: every project of the space From goes
+// to Default, and the name From is offered no more. Index is how many
+// projects it moved. Default (From "") is not deleted. No tab closes.
+func deleteSpace(st *layout.Store, c LayoutCommand) LayoutCommand {
+	if layout.Label(c.From) == "" {
+		return LayoutCommand{}
+	}
+	return renameSpace(st, LayoutCommand{From: c.From})
 }
 
 // adopt makes project.adopt: the tabs of Adopt, each a split of this

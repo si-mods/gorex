@@ -220,6 +220,7 @@ var methods = map[string]func(*control, args) (any, *apiError){
 	"gorex.project.move":   methodGorexProjectMove,
 	"gorex.project.update": methodGorexProjectUpdate,
 	"gorex.space.rename":   methodGorexSpaceRename,
+	"gorex.space.delete":   methodGorexSpaceDelete,
 	"gorex.space.list":     methodGorexSpaceList,
 	// Deprecated: for Rex Go 1.1 and the web client of v0.39.0.
 	"gorex.project.set_home": methodGorexProjectSetHome,

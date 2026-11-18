@@ -401,6 +401,38 @@ func methodGorexSpaceRename(c *control, a args) (any, *apiError) {
 	return map[string]int{"projects": res.Index}, nil
 }
 
+// methodGorexSpaceDelete deletes the space name of this host: every
+// project of it goes to Default, and the name is offered no more. No tab
+// closes. Default ("") is not deleted.
+func methodGorexSpaceDelete(c *control, a args) (any, *apiError) {
+	if aerr := c.projectsCan(); aerr != nil {
+		return nil, aerr
+	}
+	if aerr := a.only("name"); aerr != nil {
+		return nil, aerr
+	}
+	name, _, aerr := a.str("name")
+	if aerr != nil {
+		return nil, aerr
+	}
+	if strings.TrimSpace(name) == "" {
+		return nil, errBadRequest("Default is not deleted")
+	}
+	cmd := rex.LayoutCommand{Op: "spaces.delete", From: name}
+	if !c.g.hello.Can(rex.CapabilitySpacesDelete) {
+		// A server of v0.41.0: a rename to Default moves the projects.
+		cmd = rex.LayoutCommand{Op: "spaces.rename", From: name}
+	}
+	res, aerr := c.g.command(cmd)
+	if aerr != nil {
+		return nil, aerr
+	}
+	if _, aerr := c.g.afterCommand(nil); aerr != nil {
+		return nil, aerr
+	}
+	return map[string]int{"projects": res.Index}, nil
+}
+
 // methodGorexSpaceList lists the space names of this host: those its
 // projects carry, and those it offers though none does, as the spaces of
 // a layout of before projects.
@@ -625,6 +657,14 @@ var projectEntries = []map[string]any{
 		"{\n  \"from\": \"Work\",\n  \"to\": \"Job\"\n}",
 		"{\n  \"projects\": 3\n}",
 	),
+	projectEntry("gorex.space.delete", "Delete a space of this host: every project of it goes to Default, and the name is offered no more. No tab closes, no shell stops.",
+		map[string]any{"name": strProp("The space's name; not empty, as Default is not deleted.")},
+		[]any{"name"},
+		map[string]any{"type": "object", "properties": map[string]any{"projects": map[string]any{"type": "integer", "description": "How many projects moved to Default."}}, "required": []any{"projects"}, "additionalProperties": false},
+		"{\n  \"name\": \"Work\"\n}",
+		"{\n  \"projects\": 3\n}",
+		"An empty name fails with bad_request. A name of no project deletes the name alone, answering projects 0.",
+	),
 	projectEntry("gorex.project.set_home", "Deprecated: v0.38.0's way to give a session a folder of this machine, kept for Rex Go 1.1 and the web client of v0.39.0; use gorex.project.create. It goes once those clients are replaced.",
 		map[string]any{"session_id": strProp("The session."), "machine_id": strProp("This machine's ID; empty to clear the folder."), "dir": strProp("The folder, an absolute path on this machine.")},
 		[]any{"session_id", "machine_id"},
@@ -663,4 +703,6 @@ its window ID (` + "`tab_id`" + `) and a pane by its block ID (` + "`pane_id`" +
   tabs with no project.
 - ` + "`gorex.project.update {project_id, name?, color?, space?}`" + `.
 - ` + "`gorex.space.rename {from, to}`" + ` → ` + "`{projects}`" + `; ` + "`gorex.space.list`" + ` → ` + "`{spaces}`" + `.
+- ` + "`gorex.space.delete {name}`" + ` → ` + "`{projects}`" + `: every project of the space goes to Default and the name
+  is offered no more; no tab closes. An empty name fails with ` + "`bad_request`" + `.
 `)

@@ -311,3 +311,49 @@ func TestProjectFolderResolved(t *testing.T) {
 		t.Errorf("set_home of the link: %v", e)
 	}
 }
+
+// TestSpaceDelete moves a deleted space's projects to Default, drops the
+// name from those offered, and refuses Default.
+func TestSpaceDelete(t *testing.T) {
+	f := startFixture(t)
+	f.setLayout(layout.Store{Version: layout.Version, Spaces: []string{"Life"}})
+	c := f.dialControl()
+	c.hello(apiRevision)
+	p := callChecked(t, c, "gorex.project.create", map[string]any{"dir": t.TempDir(), "space": "Work"})["project_id"].(string)
+	if res := callChecked(t, c, "gorex.space.delete", map[string]any{"name": "Work"}); res["projects"] != float64(1) {
+		t.Errorf("space.delete answered %v", res)
+	}
+	if pr := projectOf(t, c, p); pr["space"] != nil {
+		t.Errorf("the project after the delete is %v", pr)
+	}
+	if res := callChecked(t, c, "gorex.space.delete", map[string]any{"name": "Life"}); res["projects"] != float64(0) {
+		t.Errorf("space.delete of an offered name answered %v", res)
+	}
+	if got := callChecked(t, c, "gorex.space.list", nil)["spaces"].([]any); !slices.Equal(got, []any{""}) {
+		t.Errorf("spaces after the delete: %v", got)
+	}
+	if e := failure(t, c.request("d", "gorex.space.delete", map[string]any{"name": ""})); e["code"] != "bad_request" {
+		t.Errorf("delete of Default: %v", e)
+	}
+}
+
+// TestSpaceRenameToDefault is what a client sends a host of v0.41.0, which
+// has no gorex.space.delete: a rename to "" moves the projects to Default
+// and drops the name.
+func TestSpaceRenameToDefault(t *testing.T) {
+	f := startFixture(t)
+	f.setLayout(layout.Store{Version: layout.Version, Spaces: []string{"Life"}})
+	c := f.dialControl()
+	c.hello(apiRevision)
+	p := callChecked(t, c, "gorex.project.create", map[string]any{"dir": t.TempDir(), "space": "Work"})["project_id"].(string)
+	if res := callChecked(t, c, "gorex.space.rename", map[string]any{"from": "Work", "to": ""}); res["projects"] != float64(1) {
+		t.Errorf("space.rename answered %v", res)
+	}
+	if pr := projectOf(t, c, p); pr["space"] != nil {
+		t.Errorf("the project after the rename is %v", pr)
+	}
+	callChecked(t, c, "gorex.space.rename", map[string]any{"from": "Life", "to": ""})
+	if got := callChecked(t, c, "gorex.space.list", nil)["spaces"].([]any); !slices.Equal(got, []any{""}) {
+		t.Errorf("spaces after the rename: %v", got)
+	}
+}

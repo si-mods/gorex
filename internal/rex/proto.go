@@ -144,7 +144,7 @@ const FolderMissing = "folder_missing"
 
 // capabilities are what a version 3 server does beyond version 2. A
 // client reads them from Hello and falls back when one is absent.
-var capabilities = []string{"layout.revision", "events.revision", CapabilityShutdownRestart, CapabilityShutdownIfIdle, CapabilitySnapshotGhostty, CapabilityInputEvents, CapabilityTerminalQuery, CapabilityFileTransfer, CapabilityFileTemp, CapabilityTeleport, CapabilityLayoutServer, CapabilityTabToSpace, CapabilityStatusSeen, CapabilityDirList, CapabilitySpaceHome, CapabilityProjects}
+var capabilities = []string{"layout.revision", "events.revision", CapabilityShutdownRestart, CapabilityShutdownIfIdle, CapabilitySnapshotGhostty, CapabilityInputEvents, CapabilityTerminalQuery, CapabilityFileTransfer, CapabilityFileTemp, CapabilityTeleport, CapabilityLayoutServer, CapabilityTabToSpace, CapabilityStatusSeen, CapabilityDirList, CapabilitySpaceHome, CapabilityProjects, CapabilitySpacesDelete}
 
 // Request is a line of the control connection, from the client.
 type Request struct {
@@ -287,8 +287,8 @@ type LayoutCommand struct {
 	// "pane.swap", "pane.move", "pane.restart", "tab.set", "windows.set",
 	// "layout.apply", "pane.teleporting", "pane.teleported", "kills.taken",
 	// "show.taken", "tab.to_space", "space.home", "project.create",
-	// "project.adopt", "project.move", "project.update", "spaces.rename"
-	// or "adopt.taken".
+	// "project.adopt", "project.move", "project.update", "spaces.rename",
+	// "spaces.delete" or "adopt.taken".
 	// space.home sets the folder Dir, absolute, of the workspace Space,
 	// which makes it a project of this machine; a Dir of "" clears it.
 	// Host must be "": a project of another host is made there
@@ -306,7 +306,9 @@ type LayoutCommand struct {
 	// to the project ToSpace, or to the tabs with no project; project.update
 	// renames the project Space (Name), colors it (Color) and moves it to
 	// the space SpaceName; spaces.rename moves every project of space From
-	// to space To, Index in the answer counting them. adopt.taken, a local
+	// to space To, Index in the answer counting them; spaces.delete moves
+	// every project of space From to Default and offers the name no more,
+	// Index counting them. adopt.taken, a local
 	// client's only, tells that the app's host adopted the adoption of ID
 	// Target (layout.Store.Adopt), which the server forgets.
 	// tab.to_space moves the tab, with its panes, their sessions, its
@@ -376,7 +378,8 @@ type LayoutCommand struct {
 	// Adopt is what project.adopt arranges (layout.Adoption): its project
 	// and its tabs, each a split of sessions of this machine.
 	Adopt *layout.Adoption `json:"adopt,omitempty"`
-	// From and To are the space names spaces.rename renames.
+	// From and To are the space names spaces.rename renames; From is the
+	// space spaces.delete deletes.
 	From string `json:"from,omitempty"`
 	To   string `json:"to,omitempty"`
 	// Host is a host of the window's, by its address as hosts.json has
