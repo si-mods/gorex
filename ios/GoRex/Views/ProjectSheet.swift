@@ -1,148 +1,72 @@
 import SwiftUI
 
-/// What the project sheet does: make a project, or change one's folder.
-enum ProjectSheetMode: Identifiable, Hashable {
-    case new
-    case change(String)
-
-    var id: String {
-        switch self {
-        case .new: "new"
-        case .change(let id): "change:" + id
-        }
-    }
-}
-
-/// New Project, and a project's Change Folder (docs/projects.md, Rex Go):
-/// a host, a folder on it browsed with gorex.dir.list, and a name, the
-/// folder's by default.
+/// New Project on a host (docs/projects.md, New Project): a folder on it,
+/// browsed with gorex.dir.list, and a name, the folder's by default. The
+/// project is made in the space shown, and its first tab opens in the
+/// folder.
 struct ProjectSheet: View {
-    let mode: ProjectSheetMode
-    /// The host, the folder and the name chosen. A new project with no
-    /// folder chosen has neither host nor folder: it only groups windows.
-    let done: (Host?, String?, String) -> Void
-    @Environment(HostStore.self) private var store
-    @Environment(SpaceStore.self) private var spaceStore
+    let host: Host
+    /// The space shown, which the project is made in.
+    let space: String
+    /// The folder and the name chosen.
+    let done: (String, String) -> Void
     @Environment(\.dismiss) private var dismiss
-    @State private var hostID: UUID?
     @State private var dir: String?
     @State private var name = ""
     /// Whether the user typed the name: then a folder chosen keeps it.
     @State private var named = false
-    @State private var started = false
-
-    private var host: Host? { hostID.flatMap { store.host($0) } }
-    private var isNew: Bool { mode == .new }
 
     var body: some View {
         NavigationStack {
             Form {
-                Section("Host") {
-                    ForEach(store.hosts) { h in hostRow(h) }
-                }
                 Section {
-                    if let host, let dir {
-                        NavigationLink {
-                            FolderBrowser(host: host, start: dir, choose: choose)
-                        } label: {
+                    NavigationLink {
+                        FolderBrowser(host: host, start: dir ?? "", choose: choose)
+                    } label: {
+                        if let dir {
                             Label {
-                                Text(verbatim: ProjectWindow.short(dir)).monospaced().lineLimit(1).truncationMode(.head)
+                                Text(verbatim: ProjectFolder.short(dir)).monospaced().lineLimit(1).truncationMode(.head)
                             } icon: {
                                 Image(systemName: "folder")
                             }
-                        }
-                    } else if let host {
-                        NavigationLink {
-                            FolderBrowser(host: host, start: "", choose: choose)
-                        } label: {
+                        } else {
                             Label("Choose a Folder", systemImage: "folder.badge.plus")
                         }
-                    } else {
-                        Text("Choose a host first.").foregroundStyle(.secondary)
                     }
                 } header: {
                     Text("Folder")
                 } footer: {
-                    if isNew {
-                        Text("New windows of the project open on this host, in this folder. With no folder, the project only groups windows.")
-                    } else {
-                        Text("New windows of the project open on this host, in this folder.")
-                    }
+                    Text("The project's tabs open on \(host.config.name), in this folder. A folder is one project: if it is one already, that project shows.")
                 }
-                if isNew {
-                    Section("Name") {
-                        TextField("Name", text: Binding { name } set: { name = $0; named = true })
-                    }
+                Section("Name") {
+                    TextField("Name", text: Binding { name } set: { name = $0; named = true })
+                }
+                Section {
+                    LabeledContent("Space", value: space)
                 }
             }
-            .navigationTitle(isNew ? "New Project" : "Change Folder")
+            .navigationTitle("New Project on \(host.config.name)")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button(isNew ? "Create" : "Save") {
+                    Button("Create") {
+                        guard let dir else { return }
                         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
-                        if let host, let dir {
-                            done(host, dir, trimmed.isEmpty ? ProjectWindow.name(of: dir) : trimmed)
-                        } else {
-                            done(nil, nil, trimmed)
-                        }
+                        done(dir, trimmed.isEmpty ? ProjectFolder.name(of: dir) : trimmed)
                         dismiss()
                     }
-                    .disabled(dir == nil && !(isNew && !name.trimmingCharacters(in: .whitespaces).isEmpty))
+                    .disabled(dir == nil)
                 }
             }
         }
-        .onAppear(perform: start)
-    }
-
-    /// A host to pick: one offline, or of a GoRex that lists no folders,
-    /// shows why it cannot be picked.
-    private func hostRow(_ h: Host) -> some View {
-        Button {
-            if hostID != h.id {
-                hostID = h.id
-                dir = nil
-            }
-        } label: {
-            HStack(spacing: 12) {
-                // A label, whose icon keeps its room as the text grows.
-                Label {
-                    Text(h.config.name).foregroundStyle(.primary)
-                } icon: {
-                    Image(systemName: h.config.symbol).foregroundStyle(.secondary)
-                }
-                Spacer(minLength: 8)
-                if h.status != .online {
-                    Text("Offline").foregroundStyle(.secondary)
-                } else if !h.listsFolders {
-                    Text("Update GoRex").foregroundStyle(.secondary)
-                } else if hostID == h.id {
-                    Image(systemName: "checkmark").foregroundStyle(.tint).fontWeight(.semibold)
-                }
-            }
-        }
-        .disabled(!h.listsFolders)
     }
 
     private func choose(_ path: String) {
         dir = path
-        if isNew, !named { name = ProjectWindow.name(of: path) }
-    }
-
-    private func start() {
-        guard !started else { return }
-        started = true
-        if case .change(let id) = mode, let s = spaceStore.space(id: id) {
-            let home = store.hosts.filter { $0.homeMachineKey == s.home_machine }
-            if let h = home.first(where: \.listsFolders) ?? home.first {
-                hostID = h.id
-                dir = s.folder
-            }
-        }
-        if hostID == nil { hostID = store.hosts.first(where: \.listsFolders)?.id }
+        if !named { name = ProjectFolder.name(of: path) }
     }
 }
 
@@ -177,7 +101,7 @@ struct FolderBrowser: View {
                 Section {
                     Button { use(listing.path) } label: {
                         Label {
-                            Text("Use This Folder: \(ProjectWindow.name(of: listing.path))")
+                            Text("Use This Folder: \(ProjectFolder.name(of: listing.path))")
                         } icon: {
                             Image(systemName: "checkmark.circle.fill")
                         }
@@ -224,7 +148,7 @@ struct FolderBrowser: View {
                         Text("No folders inside").foregroundStyle(.secondary)
                     }
                 } header: {
-                    Text(verbatim: ProjectWindow.short(listing.path))
+                    Text(verbatim: ProjectFolder.short(listing.path))
                 } footer: {
                     if listing.more { Text("Only the first 2000 folders are shown.") }
                 }
@@ -232,7 +156,7 @@ struct FolderBrowser: View {
                 HStack { Spacer(); ProgressView(); Spacer() }
             }
         }
-        .navigationTitle(listing.map { ProjectWindow.name(of: $0.path) } ?? String(localized: "Folder"))
+        .navigationTitle(listing.map { ProjectFolder.name(of: $0.path) } ?? String(localized: "Folder"))
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .confirmationAction) {

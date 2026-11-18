@@ -38,31 +38,51 @@ struct SessionView: Decodable {
         }
     }
 
-    /// A session's project home, GoRex's own (docs/rex-api.md, Projects):
-    /// the machine of its home host and its folder there. Read leniently:
-    /// a malformed one reads as no folder rather than failing the view.
+    /// A session's project, GoRex's own (docs/projects.md, Rex API): its
+    /// folder on the host, the space it shows in ("" is Default), when a
+    /// tab of it was last used, and its color. A host's tabs with no
+    /// project have a project with no folder. Read leniently: a malformed
+    /// field reads as empty rather than failing the view.
     struct Project: Decodable, Hashable {
-        var home_machine: String
         var dir: String
+        var space: String
+        var used: Date?
+        var color: String?
 
-        init(home_machine: String, dir: String) {
-            self.home_machine = home_machine
+        init(dir: String, space: String = "", used: Date? = nil, color: String? = nil) {
             self.dir = dir
+            self.space = space
+            self.used = used
+            self.color = color
         }
 
-        private enum CodingKeys: String, CodingKey { case home_machine, dir }
+        private enum CodingKeys: String, CodingKey { case dir, space, used, color }
 
         init(from decoder: Decoder) throws {
             let c = try? decoder.container(keyedBy: CodingKeys.self)
-            home_machine = (try? c?.decodeIfPresent(String.self, forKey: .home_machine)) ?? ""
             dir = (try? c?.decodeIfPresent(String.self, forKey: .dir)) ?? ""
+            space = (try? c?.decodeIfPresent(String.self, forKey: .space)) ?? ""
+            used = Self.time((try? c?.decodeIfPresent(String.self, forKey: .used)) ?? nil)
+            color = ((try? c?.decodeIfPresent(String.self, forKey: .color)) ?? nil).flatMap { $0.isEmpty ? nil : $0 }
         }
 
         /// The project of a session list's entry, as session.bootstrap and
-        /// session_created give it; nil when it has no folder.
+        /// session_created give it; nil for a session of no project.
         static func of(_ entry: Any?) -> Project? {
             guard let p = entry as? [String: Any], let dir = p["dir"] as? String, !dir.isEmpty else { return nil }
-            return Project(home_machine: p["home_machine"] as? String ?? "", dir: dir)
+            return Project(dir: dir, space: p["space"] as? String ?? "", used: time(p["used"] as? String),
+                           color: (p["color"] as? String).flatMap { $0.isEmpty ? nil : $0 })
+        }
+
+        /// A time as Go writes one, RFC 3339 with or without a fraction of
+        /// a second; nil for none, and for Go's zero time.
+        static func time(_ s: String?) -> Date? {
+            guard let s, !s.isEmpty else { return nil }
+            let f = ISO8601DateFormatter()
+            f.formatOptions = [.withInternetDateTime]
+            let whole = s.replacing(/\.[0-9]+/, with: "", maxReplacements: 1)
+            guard let d = f.date(from: whole), d.timeIntervalSince1970 > 0 else { return nil }
+            return d
         }
     }
 
@@ -70,7 +90,8 @@ struct SessionView: Decodable {
     var session_id: String
     var label: String?
     var windows: [Window]?
-    /// Left out by a session with no folder, and by servers of before.
+    /// Left out by servers of before projects; with no folder for the
+    /// host's tabs with no project.
     var project: Project?
 
     /// A view to show, as Demo Mode makes one; the server's arrive as JSON.

@@ -1,6 +1,6 @@
 # Rex Go: 以 iOS（+ iCloud）为中心化控制端的跨主机 Space 同步设计
 
-Status: approved (设计决策已确认). 阶段 1 至 3 已实现：阶段 1 见 #580，阶段 2 与 3 见 #581。Project 的主目录（`home_machine`、`dir`）见 3.1，设计见 [projects.md](projects.md)。
+Status: replaced by [projects.md](projects.md). Rex Go 不再保存 `SpaceManifest`，也不经 iCloud 同步；项目由各主机保存，Rex Go 从主机读取（projects.md 阶段 3）。以下为历史设计：阶段 1 见 #580，阶段 2 与 3 见 #581。
 
 ## 1. 背景与问题诊断
 

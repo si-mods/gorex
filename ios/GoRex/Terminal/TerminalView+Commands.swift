@@ -10,8 +10,8 @@ extension TerminalView {
         let plus = UIKeyCommand(action: #selector(bigger), input: "+", modifierFlags: .command)
         plus.attributes = .hidden
         return [
-            UIKeyCommand(title: String(localized: "New Window"), action: #selector(newTabKey), input: "t", modifierFlags: .command),
-            UIKeyCommand(title: String(localized: "Close Window"), action: #selector(closeTabKey), input: "w", modifierFlags: .command),
+            UIKeyCommand(title: String(localized: "New Tab"), action: #selector(newTabKey), input: "t", modifierFlags: .command),
+            UIKeyCommand(title: String(localized: "Close Tab"), action: #selector(closeTabKey), input: "w", modifierFlags: .command),
             UIKeyCommand(title: String(localized: "Split Pane"), action: #selector(newSplitKey), input: "d", modifierFlags: .command),
             // The key bar's uploads, which a hardware keyboard keeps away.
             UIKeyCommand(title: String(localized: "Add File"), action: #selector(addFileKey), input: "o", modifierFlags: .command),

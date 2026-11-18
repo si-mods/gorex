@@ -34,14 +34,15 @@ const featureProjectsVersion = 2
 const desktopSpace = "gorex-desktop-terminals"
 
 // projectInfo is a session's project as a client reads it: its folder, its
-// space ("" or left out for Default) and when it was used last; {} for the
-// host's tabs with no project. HomeMachine is this machine for a project,
+// space ("" or left out for Default), when it was used last and its color
+// (left out for none); {} for the host's tabs with no project. HomeMachine is this machine for a project,
 // as a client of v0.38.0 to v0.40.x reads it. Deprecated: a project is
 // always of its host.
 type projectInfo struct {
 	Dir         string `json:"dir,omitempty"`
 	Space       string `json:"space,omitempty"`
 	Used        string `json:"used,omitempty"`
+	Color       string `json:"color,omitempty"`
 	HomeMachine string `json:"home_machine,omitempty"`
 }
 
@@ -50,7 +51,7 @@ func (m *model) projectOf(ws *layout.Workspace) *projectInfo {
 	if ws.Dir == "" {
 		return &projectInfo{}
 	}
-	p := &projectInfo{Dir: ws.Dir, Space: ws.Space, HomeMachine: m.self}
+	p := &projectInfo{Dir: ws.Dir, Space: ws.Space, Color: ws.Color, HomeMachine: m.self}
 	if !ws.Used.IsZero() {
 		p.Used = ws.Used.UTC().Format(time.RFC3339)
 	}
@@ -501,11 +502,12 @@ func methodGorexProjectSetHome(c *control, a args) (any, *apiError) {
 // document's results.
 var projectSchema = map[string]any{
 	"type":        "object",
-	"description": "GoRex's own: the session's project, a folder of this host: its folder, its space (left out for Default) and when a tab of it last took input or was made (RFC 3339). {} for the host's tabs with no project. home_machine is this machine, for clients of v0.38.0 to v0.40.x; deprecated.",
+	"description": "GoRex's own: the session's project, a folder of this host: its folder, its space (left out for Default), when a tab of it last took input or was made (RFC 3339), and its color (a preset or #rrggbb, left out for the default). {} for the host's tabs with no project. home_machine is this machine, for clients of v0.38.0 to v0.40.x; deprecated.",
 	"properties": map[string]any{
 		"dir":          map[string]any{"type": "string"},
 		"space":        map[string]any{"type": "string"},
 		"used":         map[string]any{"type": "string"},
+		"color":        map[string]any{"type": "string"},
 		"home_machine": map[string]any{"type": "string"},
 	},
 	"additionalProperties": false,

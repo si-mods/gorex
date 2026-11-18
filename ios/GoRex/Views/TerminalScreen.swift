@@ -175,7 +175,7 @@ struct TerminalScreen: View {
                     Menu {
                         // The images the pane showed (docs/ios-pane-gallery.md).
                         if let g = session?.gallery { GalleryMenuItem(gallery: g) }
-                        Button("New Window", systemImage: "plus") { newTab() }
+                        Button("New Tab", systemImage: "plus") { newTab() }
                         Button("Split Pane", systemImage: "rectangle.split.2x1") { newSplit() }
                         if paneCellList.count > 1 {
                             Button("Close Pane", systemImage: "xmark.rectangle", role: .destructive) { closePane(currentTarget.block) }
@@ -337,7 +337,7 @@ struct TerminalScreen: View {
     }
 
     private static func key(for w: SessionView.Window, session: String, host: Host) -> ViewedBlockKey {
-        ViewedBlockKey(machine: host.spaceMachineKey, session: session, window: w.window_id)
+        ViewedBlockKey(machine: host.cacheKey, session: session, window: w.window_id)
     }
 
     /// The target as this device opens it: the pane it last viewed of the
@@ -801,15 +801,21 @@ struct TerminalScreen: View {
         }
     }
 
-    /// Opens a new window in the session, and goes to it.
+    /// Opens a new tab in the session, and goes to it: a project's in its
+    /// folder, checked first (docs/projects.md, New tabs and panes).
     private func newTab() {
+        let session = currentTarget.session
+        let dir = host.hasProjects ? host.sessions.first { $0.id == session }?.project?.dir : nil
         Task {
             do {
-                if let b = try await host.newWindow(in: currentTarget.session) {
-                    switchTo(TerminalTarget(host: host.id, session: currentTarget.session, block: b, title: ""), dir: 1)
+                if let dir, host.listsFolders { try await ProjectFolder.ensure(dir) { try await host.folders($0) } }
+                if let b = try await host.newWindow(in: session, cwd: dir) {
+                    switchTo(TerminalTarget(host: host.id, session: session, block: b, title: ""), dir: 1)
                 }
+            } catch let error where ProjectFolder.missing(error) {
+                failure = ("Folder Not Found", String(localized: "\(dir ?? "") is not on \(host.config.name) any more."))
             } catch {
-                failure = ("Can't Open a New Window", error.localizedDescription)
+                failure = ("Can't Open a New Tab", error.localizedDescription)
             }
         }
     }
@@ -823,7 +829,7 @@ struct TerminalScreen: View {
                 try await host.closeWindow(w.window_id, in: currentTarget.session)
                 go(nil)
             } catch {
-                failure = ("Can't Close the Window", error.localizedDescription)
+                failure = ("Can't Close the Tab", error.localizedDescription)
             }
         }
     }

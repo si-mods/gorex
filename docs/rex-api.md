@@ -483,13 +483,15 @@ its block ID (`pane_id`), so an ID from a Rex method passes unchanged.
 - Each session in `session.list`, `session_created` and every view carries
   `project`; `{}` for the tabs with no project. `space` is left out for
   Default, `used` (RFC 3339) until a tab of the project took input or was
-  made. `home_machine` is this machine, for clients of v0.38.0 to v0.40.x
+  made, `color` (a preset or `#rrggbb`) left out for the default color.
+  `home_machine` is this machine, for clients of v0.38.0 to v0.40.x
   (deprecated). Rex's apps ignore the field.
 
   ```json
   {"session_id": "session:…", "label": "windflow",
    "project": {"dir": "/home/me/code/windflow", "space": "Work",
-               "used": "2026-11-18T09:30:00Z", "home_machine": "9c63…"}}
+               "used": "2026-11-18T09:30:00Z", "color": "teal",
+               "home_machine": "9c63…"}}
   ```
 
 - `gorex.project.create {name, dir, space}` → `{project_id, tab_id}`: the
@@ -519,7 +521,8 @@ its block ID (`pane_id`), so an ID from a Rex method passes unchanged.
   moves a tab with its panes; `project_id` `""` is the tabs with no
   project. The project it leaves stays.
 - `gorex.project.update {project_id, name?, color?, space?}` →
-  `{project_id, project}`; `space` `""` is Default, left out keeps it.
+  `{project_id, project}`; `space` `""` is Default, left out keeps it;
+  `color` `"default"` gives the default color back, `""` keeps it.
 - `gorex.space.rename {from, to}` → `{projects}`: every project of this
   host of space `from` goes to `to`.
 - `gorex.space.list` → `{spaces}`: the names this host's projects carry,

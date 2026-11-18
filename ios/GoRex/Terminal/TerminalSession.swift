@@ -291,7 +291,7 @@ final class TerminalSession {
         d.onDrop = { [weak self, weak d] code in
             guard let self, d === self.data, !self.closed else { return }
             switch code {
-            case 4000: self.end(.failed(String(localized: "The window closed.")))
+            case 4000: self.end(.failed(String(localized: "The tab closed.")))
             case 1002, 1008: self.end(.failed(String(localized: "The server refused the terminal.")))
             default: self.retry(fresh: code == 1000 || code == 1013)
             }

@@ -27,23 +27,27 @@ enum Demo {
     static let logs = "b-logs"
     static let gpu = "b-gpu"
 
-    /// The host's sessions, as session.bootstrap would list them.
-    static func sessions() -> [Host.Session] {
+    /// The host's sessions, as session.bootstrap would list them: the
+    /// projects GoRex, in the Default space, and dotfiles, in Life and not
+    /// used for a while, and the tabs with no project.
+    static func sessions(now: Date = .now) -> [Host.Session] {
         [
             Host.Session(id: "s-work", label: "GoRex", view: SessionView(revision: 1, session_id: "s-work", label: "GoRex", windows: [
                 window("w-claude", [claude, logs, gpu], layout: workLayout()),
                 window("w-dashboard", [dashboard]),
                 window("w-tests", [tests]),
-            ]), project: .init(home_machine: machine, dir: home + "/code/gorex")),
+            ]), project: .init(dir: home + "/code/gorex", used: now.addingTimeInterval(-300))),
             Host.Session(id: "s-dotfiles", label: "dotfiles", view: SessionView(revision: 1, session_id: "s-dotfiles", label: "dotfiles", windows: [
                 window("w-git", [git]),
+            ]), project: .init(dir: home + "/dotfiles", space: "Life", used: now.addingTimeInterval(-40 * 86400))),
+            Host.Session(id: loose, label: "", view: SessionView(revision: 1, session_id: loose, windows: [
                 window("w-shell", [shell]),
             ])),
         ]
     }
 
-    /// The demo host's machine, as the spaces read it (Host.spaceMachineKey).
-    static var machine: String { "host:\(hostID.uuidString)" }
+    /// The session of the demo host's tabs with no project.
+    static let loose = "s-loose"
 
     /// The demo Mac's home directory.
     static let home = "/Users/demo"

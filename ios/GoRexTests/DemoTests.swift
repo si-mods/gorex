@@ -11,7 +11,7 @@ nonisolated final class DemoTests: XCTestCase {
         defer { h.stop() }
         XCTAssertTrue(h.isDemo)
         XCTAssertEqual(h.status, .online)
-        XCTAssertEqual(h.sessions.map(\.label), ["GoRex", "dotfiles"])
+        XCTAssertEqual(h.sessions.map(\.label), ["GoRex", "dotfiles", ""])
         let windows = h.sessions.flatMap { $0.view?.windows ?? [] }
         XCTAssertEqual(windows.count, 5)
         XCTAssertEqual(h.title(windows[0]), "Claude Code")
@@ -34,7 +34,7 @@ nonisolated final class DemoTests: XCTestCase {
 
         let made = try await h.newSession()
         let (session, block) = try XCTUnwrap(made)
-        XCTAssertEqual(h.sessions.count, 3)
+        XCTAssertEqual(h.sessions.count, 4)
         XCTAssertNotNil(h.blocks[block])
         XCTAssertEqual(h.sessions.last?.label, "New Session")
 
@@ -56,7 +56,7 @@ nonisolated final class DemoTests: XCTestCase {
         XCTAssertEqual(h.sessions.first?.view?.windows?.count, 3)
 
         try await h.closeSession(session)
-        XCTAssertEqual(h.sessions.count, 2)
+        XCTAssertEqual(h.sessions.count, 3)
         XCTAssertNil(h.blocks[block])
     }
 
@@ -66,7 +66,7 @@ nonisolated final class DemoTests: XCTestCase {
         let h = Host(Demo.config())
         h.connect()
         defer { h.stop() }
-        let s = TerminalSession(host: h, session: "s-dotfiles", block: Demo.shell)
+        let s = TerminalSession(host: h, session: Demo.loose, block: Demo.shell)
         let sink = Sink()
         s.output = sink
         s.start()

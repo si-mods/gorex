@@ -6,6 +6,9 @@ import UIKit
 struct RexError: LocalizedError {
     let code: String
     let message: String
+    /// The project an error of code exists names: the one of the folder
+    /// gorex.project.create was given.
+    var projectID: String? = nil
     var errorDescription: String? { message }
 }
 
@@ -80,6 +83,9 @@ final class ControlConnection {
     private(set) var apiRevision = revision
     /// The optional behaviors the server lists in its welcome.
     private(set) var features: Set<String> = []
+    /// The version the welcome gives a feature, as gorex.projects's 2
+    /// (docs/projects.md); a feature listed with none has none here.
+    private(set) var featureVersions: [String: Int] = [:]
 
     private let task: URLSessionWebSocketTask
     private var nextID = 0
@@ -133,9 +139,36 @@ final class ControlConnection {
         clientID = client?["id"] as? String ?? ""
         reconnectToken = client?["reconnect_token"] as? String
         if let rev = welcome["api_revision"] as? Int { apiRevision = rev }
-        features = Set(welcome["features"] as? [String] ?? [])
+        (features, featureVersions) = Self.features(of: welcome)
         Task { await receiveLoop() }
         Task { await pingLoop() }
+    }
+
+    /// The features a welcome lists, and the versions it gives them: a
+    /// feature is a name, or an object of a name and a version; a map
+    /// feature_versions, or a name ending in .v<n>, gives a version too.
+    static func features(of welcome: [String: Any]) -> (Set<String>, [String: Int]) {
+        var names = Set<String>(), versions: [String: Int] = [:]
+        func add(_ name: String, _ version: Int?) {
+            var name = name, version = version
+            if version == nil, let m = name.wholeMatch(of: /(.+)\.v([0-9]+)/) {
+                name = String(m.1)
+                version = Int(m.2)
+            }
+            names.insert(name)
+            if let version { versions[name] = max(versions[name] ?? 0, version) }
+        }
+        for f in welcome["features"] as? [Any] ?? [] {
+            if let name = f as? String {
+                add(name, nil)
+            } else if let o = f as? [String: Any], let name = (o["name"] ?? o["id"]) as? String {
+                add(name, o["version"] as? Int)
+            }
+        }
+        for (name, v) in welcome["feature_versions"] as? [String: Any] ?? [:] {
+            if let v = v as? Int { add(name, v) }
+        }
+        return (names, versions)
     }
 
     /// Calls a method and returns its result with the response's seq.
@@ -185,7 +218,8 @@ final class ControlConnection {
                 else { continue }
                 if m["type"] as? String == "response", let id = m["id"] as? String, let c = pending.removeValue(forKey: id) {
                     if let e = m["error"] as? [String: Any] {
-                        c.resume(throwing: RexError(code: e["code"] as? String ?? "", message: e["message"] as? String ?? ""))
+                        c.resume(throwing: RexError(code: e["code"] as? String ?? "", message: e["message"] as? String ?? "",
+                                               projectID: e["project_id"] as? String))
                     } else {
                         c.resume(returning: Reply(seq: m["seq"] as? Int ?? 0, payload: m["payload"] as? [String: Any] ?? [:], raw: raw))
                     }
@@ -244,7 +278,7 @@ extension URL {
         return c.url!
     }
 
-    /// The server's HTTP endpoint at path, as /api/upload and /api/spaces:
+    /// The server's HTTP endpoint at path, as /api/upload and /api/voice:
     /// this base's scheme, host and port.
     nonisolated func apiURL(_ path: String) -> URL {
         var c = URLComponents(url: self, resolvingAgainstBaseURL: false)!

@@ -3,7 +3,7 @@ import SwiftUI
 @main
 struct GoRexApp: App {
     @State private var store: HostStore
-    @State private var spaces: SpaceStore
+    @State private var spaces: SpaceBook
     @Environment(\.scenePhase) private var phase
     @AppStorage("scheme") private var scheme = "dark"
     /// When the app went to the background.
@@ -22,7 +22,8 @@ struct GoRexApp: App {
         Notifier.shared.start()
         let engine = TailnetEngine.shared
         _store = State(initialValue: HostStore())
-        _spaces = State(initialValue: SpaceStore(kvs: NSUbiquitousKeyValueStore.default, observeCloud: true))
+        SpaceBook.dropOldData()
+        _spaces = State(initialValue: SpaceBook())
         Task { await engine.apply() }
     }
 
@@ -46,7 +47,6 @@ struct GoRexApp: App {
                     let suspended = HostStore.suspended(since: away)
                     away = nil
                     HotspotShare.shared.handleForeground()
-                    spaces.pullFromKVS()
                     Task { await store.foreground(suspended: suspended) { await TailnetEngine.shared.resume() } }
                 }
                 .onChange(of: store.hosts.map(\.config)) { _, configs in

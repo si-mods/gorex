@@ -248,7 +248,8 @@ final class Host: Identifiable {
         let id: String
         var label: String
         var view: SessionView?
-        /// Its project's home, as the server reports it; nil with no folder.
+        /// Its project, as the server reports it; nil for a session of no
+        /// project, and on a host of before projects.
         var project: SessionView.Project?
     }
 
@@ -348,29 +349,14 @@ final class Host: Identifiable {
     /// was seen (gorex.see_block, docs/rex-api.md).
     static let seeFeature = "gorex.see_block"
 
-    /// The welcome's feature of a server that accepts passive space
-    /// synchronization from the control plane (`gorex.spaces_apply`).
-    static let spacesSyncFeature = "gorex.spaces_sync"
-
-    /// The welcome's feature of a server that keeps projects' homes
-    /// (`gorex.project.set_home`, the sessions' `project`).
+    /// The welcome's feature of a server that keeps projects; at version
+    /// 2, as folders on the host in spaces (docs/projects.md, Rex API).
     static let projectsFeature = "gorex.projects"
 
     /// The welcome's feature of a server that lists its directories
     /// (`gorex.dir.list`).
     static let dirListFeature = "gorex.dir_list"
 
-    /// The machine the host is, and the panes of other hosts in each of
-    /// its sessions' spaces, by session, as /api/spaces tells (Spaces);
-    /// nil and none from a server that doesn't.
-    private(set) var machine: String?
-    /// The machine the host was last seen to be, kept across launches
-    /// (lastMachinesKey), and forgotten when its address changes: a
-    /// project's home host offline is still found by its machine
-    /// (homeMachineKey). Only to show and find the home host: the sync
-    /// keys a host by the machine its connection read (spaceMachineKey).
-    private(set) var lastMachine: String?
-    private(set) var remote: [String: [Spaces.Member]] = [:]
     private(set) var control: ControlConnection?
 
     @ObservationIgnored private var gate = EventGate()
@@ -386,10 +372,6 @@ final class Host: Identifiable {
     @ObservationIgnored private var reread: Set<String> = []
     @ObservationIgnored private var wanted: [String: Int] = [:]
     @ObservationIgnored private var stopped = false
-    @ObservationIgnored private var readingSpaces = false
-    @ObservationIgnored private var spacesAgain = false
-    /// Reads a server's spaces, with the host's token; tests replace it.
-    @ObservationIgnored var spacesReader: (URL, String?, URLSession) async throws -> Spaces.Answer = Spaces.read
     /// The built-in Tailscale's proxy of the moment; nil while it isn't
     /// running. The app sets it.
     static var tailnetProxy: () -> LoopbackProxy? = { nil }
@@ -403,7 +385,6 @@ final class Host: Identifiable {
 
     init(_ config: HostConfig) {
         self.config = config
-        if config.demo != true { lastMachine = Self.lastMachines[config.id.uuidString] }
     }
 
     /// Whether the host's connections go through the built-in Tailscale.
@@ -474,8 +455,6 @@ final class Host: Identifiable {
             guard let self, c === self.control else { return }
             ConnectionLog.note("\(name): closed: \(error?.diagnosis ?? "by the app")")
             self.control = nil
-            // What the connection said of the spaces goes with it.
-            self.take(nil)
             let offline = Status.offline(error?.localizedDescription ?? "")
             if self.status != offline { self.status = offline }
             // Refused, it waits for a change: the engine running again, as
@@ -591,106 +570,29 @@ final class Host: Identifiable {
         }
         for e in gate.open(at: seq) { apply(e) }
         for s in sessions where s.view == nil { attach(s.id) }
-        readSpaces()
+        listSpaces()
     }
 
-    /// Reads the host's spaces again; one read at a time, repeated when
-    /// asked again meanwhile, as a session's view changed or a new
-    /// connection opened. Each read is of the connection of the moment,
-    /// and an answer applies only while that connection lasts.
-    private func readSpaces() {
-        guard !readingSpaces else {
-            spacesAgain = true
-            return
-        }
-        readingSpaces = true
+    /// The spaces the host offers though no project of it carries one, as
+    /// those of a layout of before projects, for the picker to list too
+    /// (gorex.space.list); none from a host of before projects.
+    private(set) var offeredSpaces: [String] = []
+
+    /// Reads the spaces the host offers, on the connection of the moment.
+    private func listSpaces() {
+        guard hasProjects, !isDemo, let c = control else { return }
         Task {
-            defer { readingSpaces = false }
-            repeat {
-                spacesAgain = false
-                guard let c = control else { break }
-                if !c.features.contains(Spaces.feature) {
-                    take(nil)
-                // A read that fails keeps what was read before.
-                } else if let s = try? session(), let a = try? await spacesReader(config.url, config.auth, s), c === control {
-                    take(a)
-                }
-            } while spacesAgain
+            guard let r = try? await c.call("gorex.space.list").payload, c === control else { return }
+            let all = r["spaces"] as? [String] ?? []
+            let carried = Set(sessions.compactMap(\.project?.space))
+            let offered = all.filter { !carried.contains($0) }
+            if offered != offeredSpaces { offeredSpaces = offered }
         }
     }
 
-    /// Keeps what /api/spaces answered; nil for a server that doesn't.
-    func take(_ a: Spaces.Answer?) {
-        let m = a.flatMap { $0.machine_id.isEmpty ? nil : $0.machine_id }
-        let r = Dictionary((a?.sessions ?? []).map { ($0.session_id, $0.remote_blocks) }) { first, _ in first }
-        if machine != m { machine = m }
-        if let m, m != lastMachine, !isDemo {
-            lastMachine = m
-            Self.lastMachines[id.uuidString] = m
-        }
-        if remote != r { remote = r }
-    }
-
-    /// The host as grouping by the desktop's spaces reads it; nil while
-    /// offline, when the list shows none of its sessions.
-    var crossHost: CrossHost.Source? {
-        if case .offline = status { return nil }
-        return CrossHost.Source(host: id, machine: machine, sessions: sessions.map {
-            .init(id: $0.id, view: $0.view, remote: remote[$0.id] ?? [])
-        })
-    }
-
-    /// The UserDefaults key of each host's last machine, by host ID.
-    static let lastMachinesKey = "hostMachines"
-
-    private static var lastMachines: [String: String] {
-        get { UserDefaults.standard.dictionary(forKey: lastMachinesKey) as? [String: String] ?? [:] }
-        set { UserDefaults.standard.set(newValue, forKey: lastMachinesKey) }
-    }
-
-    /// Forgets a host's last machine, as the host is removed.
-    static func forgetMachine(_ id: UUID) {
-        lastMachines[id.uuidString] = nil
-    }
-
-    /// Forgets the machine the host was, as its address changes: the new
-    /// address may be another computer.
-    func forgetLastMachine() {
-        lastMachine = nil
-        Self.forgetMachine(id)
-    }
-
-    /// The host's machine: the one it reports, else the one it was last
-    /// seen to be.
-    var knownMachine: String? { machine ?? lastMachine }
-
-    /// Durable machine key for `SpaceStore`, falling back to the host UUID
-    /// when this connection has not read the machine: a server that does
-    /// not report `machine_id` (e.g. Demo Mode), a host offline, or one
-    /// whose /api/spaces has not answered yet, which may be another
-    /// computer than the one it was.
-    var spaceMachineKey: String {
-        machine ?? "host:\(id.uuidString)"
-    }
-
-    /// The key a project's home host is found by: the machine last seen
-    /// too, so that a home host offline reads as offline, not as not added.
-    var homeMachineKey: String {
-        knownMachine ?? "host:\(id.uuidString)"
-    }
-
-    /// Snapshot of this host's current sessions and views for `SpaceStore`.
-    var spaceSnapshot: SpaceStore.HostSnapshot {
-        SpaceStore.HostSnapshot(
-            machine: spaceMachineKey,
-            online: status == .online,
-            sessions: sessions.map {
-                .init(id: $0.id, label: $0.label, view: $0.view, remote: remote[$0.id] ?? [], project: $0.project)
-            },
-            projects: supportsProjects,
-            known: machine != nil || isDemo
-        )
-    }
+    /// The key this device's caches know the host by, as the pane last
+    /// viewed of each tab: its ID.
+    var cacheKey: String { "host:\(id.uuidString)" }
 
     private func attach(_ id: String) {
         Task {
@@ -707,7 +609,6 @@ final class Host: Identifiable {
                !sessions.contains(where: { $0.id == id }) {
                 sessions.append(Session(id: id, label: s["label"] as? String ?? "", project: .of(s["project"])))
                 attach(id)
-                readSpaces()
             }
         case "session_destroyed":
             let id = e.payload["session_id"] as? String ?? e.sessionID
@@ -722,7 +623,6 @@ final class Host: Identifiable {
             if let id = e.sessionID, let rev = e.payload["revision"] as? Int, rev > revision(id) {
                 wanted[id] = max(wanted[id] ?? 0, rev)
                 refresh(id)
-                readSpaces()
             }
         case "block_event":
             guard let block = e.payload["block_id"] as? String, let p = e.payload["payload"] as? [String: Any] else { return }
@@ -764,7 +664,7 @@ final class Host: Identifiable {
     func title(_ w: SessionView.Window) -> String {
         if let t = w.name ?? w.block.flatMap({ paneTitle($0, in: w) }) { return t }
         let dir = sessions.first { $0.view?.windows?.contains { $0.window_id == w.window_id } == true }?.project?.dir
-        if let dir, !dir.isEmpty { return ProjectWindow.name(of: dir) }
+        if let dir, !dir.isEmpty { return ProjectFolder.name(of: dir) }
         if let p = w.block.flatMap({ blocks[$0]?.program }), !p.isEmpty { return p }
         return String(localized: "Shell")
     }
@@ -998,8 +898,6 @@ final class Host: Identifiable {
     private func becomeDemo() {
         sessions = Demo.sessions()
         blocks = Demo.blocks()
-        machine = nil
-        remote = [:]
     }
 
     /// A command typed in a demo terminal changes what the list shows, as
@@ -1221,10 +1119,12 @@ final class Host: Identifiable {
 
     // MARK: Projects
 
-    /// Whether the host keeps projects' homes (gorex.projects). Demo Mode's
-    /// does, on the phone.
-    var supportsProjects: Bool {
-        isDemo || (control?.features.contains(Self.projectsFeature) ?? false)
+    /// Whether the host keeps projects in spaces, gorex.projects at version
+    /// 2 (docs/projects.md): the list shows its projects and its tabs with
+    /// no project. A host of before shows its sessions as before. Demo
+    /// Mode's keeps them on the phone.
+    var hasProjects: Bool {
+        isDemo || (control?.featureVersions[Self.projectsFeature] ?? 0) >= 2
     }
 
     /// Whether the host lists its folders (gorex.dir.list), for a project's
@@ -1277,17 +1177,119 @@ final class Host: Identifiable {
         return Folders(try await live().call("gorex.dir.list", p).payload)
     }
 
-    /// Sets the home of a session's project, or clears it with a machine of
-    /// "" (gorex.project.set_home).
-    func setHome(session: String, machine: String, dir: String) async throws {
+    /// What gorex.project.create did: made the project with its first tab,
+    /// or found the folder a project of the host already.
+    enum ProjectCreated: Equatable {
+        case made(project: String, tab: String)
+        case exists(project: String)
+    }
+
+    /// Makes a project of a folder on the host, in a space ("" is Default),
+    /// with its first tab in the folder (gorex.project.create). A folder
+    /// that is a project already gives that project.
+    func createProject(name: String, dir: String, space: String) async throws -> ProjectCreated {
+        if isDemo { return demoCreateProject(name: name, dir: dir, space: space) }
+        do {
+            let r = try await live().call("gorex.project.create", ["name": name, "dir": dir, "space": space]).payload
+            guard let project = r["project_id"] as? String, !project.isEmpty else {
+                throw RexError(code: "protocol", message: "gorex.project.create gave no project_id")
+            }
+            if r["code"] as? String == "exists" { return .exists(project: project) }
+            guard let tab = r["tab_id"] as? String else {
+                throw RexError(code: "protocol", message: "gorex.project.create gave no tab_id")
+            }
+            return .made(project: project, tab: tab)
+        } catch let e as RexError where e.code == "exists" {
+            // Told as an error, which names the project, else the project
+            // is the one of the folder as the host lists it.
+            if let id = e.projectID, !id.isEmpty { return .exists(project: id) }
+            guard let s = sessions.first(where: { $0.project?.dir == dir }) else { throw e }
+            return .exists(project: s.id)
+        }
+    }
+
+    /// Moves a tab, with its panes and their programs, to another project
+    /// of the host, or with "" to its tabs with no project
+    /// (gorex.project.move).
+    func moveTab(_ tab: String, to project: String) async throws {
+        if isDemo { return demoMoveTab(tab, to: project) }
+        try await live().call("gorex.project.move", ["tab_id": tab, "project_id": project])
+    }
+
+    /// Changes a project's name, color or space; nil leaves it as it is
+    /// (gorex.project.update). The color "default" gives the default one
+    /// back: the server takes "" as no change.
+    func updateProject(_ project: String, name: String? = nil, color: String? = nil, space: String? = nil) async throws {
+        if isDemo { return demoUpdateProject(project, name: name, color: color, space: space) }
+        var p: [String: Any] = ["project_id": project]
+        p["name"] = name
+        p["color"] = color
+        p["space"] = space
+        try await live().call("gorex.project.update", p)
+    }
+
+    /// Renames a space on every project of the host (gorex.space.rename).
+    func renameSpace(from: String, to: String) async throws {
         if isDemo {
-            guard let i = sessions.firstIndex(where: { $0.id == session }) else { return }
-            sessions[i].project = machine.isEmpty || dir.isEmpty ? nil : .init(home_machine: machine, dir: dir)
+            for i in sessions.indices where sessions[i].project?.space == from { sessions[i].project?.space = to }
             return
         }
-        try await live().call("gorex.project.set_home", [
-            "session_id": session, "machine_id": machine, "dir": machine.isEmpty ? "" : dir,
-        ])
+        try await live().call("gorex.space.rename", ["from": from, "to": to])
+        listSpaces()
+    }
+
+    /// The block a tab's row opens, as the host shows it, else as the
+    /// project's view reads it now, as for the tab a call just made.
+    func block(ofTab tab: String, in project: String) async throws -> String? {
+        if let w = sessions.first(where: { $0.id == project })?.view?.windows?.first(where: { $0.window_id == tab }) {
+            return w.block
+        }
+        if isDemo { return nil }
+        let v = try SessionView(response: try await live().call("session.view", ["session_id": project]).raw)
+        setView(v)
+        return v.windows?.first { $0.window_id == tab }?.block
+    }
+
+    /// Opens a tab with no project, in the host's home directory, and
+    /// returns its session and block: in the session of the host's tabs
+    /// with no project. A host that has none yet, as a fresh one, makes it
+    /// with session.create, with the tab in it; the server lets the first
+    /// one be made (docs/projects.md, Phases).
+    func newLooseTab() async throws -> (String, String)? {
+        if let s = sessions.first(where: { $0.project == nil }) {
+            return try await newWindow(in: s.id).map { (s.id, $0) }
+        }
+        return try await newSession()
+    }
+
+    private func demoCreateProject(name: String, dir: String, space: String) -> ProjectCreated {
+        if let s = sessions.first(where: { $0.project?.dir == dir }) { return .exists(project: s.id) }
+        let id = Self.demoID("s"), window = Self.demoID("w"), block = Self.demoID("b")
+        sessions.append(Session(id: id, label: name, view: SessionView(revision: 0, session_id: id, label: name),
+                                project: .init(dir: dir, space: space, used: .now)))
+        demoAddWindow(window, block: block, to: sessions.count - 1)
+        return .made(project: id, tab: window)
+    }
+
+    private func demoMoveTab(_ tab: String, to project: String) {
+        guard let from = sessions.firstIndex(where: { $0.view?.windows?.contains { $0.window_id == tab } == true }),
+              var source = sessions[from].view, let j = source.windows?.firstIndex(where: { $0.window_id == tab }),
+              let moved = source.windows?.remove(at: j) else { return }
+        let to = project.isEmpty ? sessions.firstIndex { $0.project == nil } : sessions.firstIndex { $0.id == project }
+        guard let to, to != from else { return }
+        source.revision += 1
+        sessions[from].view = source
+        var target = sessions[to].view ?? SessionView(revision: 0, session_id: sessions[to].id)
+        target.windows = (target.windows ?? []) + [moved]
+        target.revision += 1
+        sessions[to].view = target
+    }
+
+    private func demoUpdateProject(_ project: String, name: String?, color: String?, space: String?) {
+        guard let i = sessions.firstIndex(where: { $0.id == project }), sessions[i].project != nil else { return }
+        if let name, !name.isEmpty { sessions[i].label = name }
+        if let color, !color.isEmpty { sessions[i].project?.color = color == "default" ? nil : color }
+        if let space { sessions[i].project?.space = space }
     }
 
     /// Names a window; an empty name gives back its default.
@@ -1303,59 +1305,6 @@ final class Host: Identifiable {
             return
         }
         try await live().call("session.set_window_label", ["session_id": session, "window_id": window, "label": label])
-    }
-
-    var supportsSpacesSync: Bool {
-        !isDemo && status == .online && (control?.features.contains(Self.spacesSyncFeature) ?? false)
-    }
-
-    /// Pushes centralized space assignments for blocks on this machine to
-    /// the desktop host (`gorex.spaces_apply`). Returns true when the server
-    /// moved at least one window into its assigned space. Renames, from
-    /// `SpaceStore.renames`, go first: a project renamed here renames its
-    /// session, which spaces_apply then finds by the new name, instead of
-    /// moving the windows to a new space and leaving the old one behind.
-    @discardableResult
-    func applySpaces(_ spaces: [CentralSpace], renames: [(session: String, name: String)] = []) async -> Bool {
-        guard supportsSpacesSync else { return false }
-        for r in renames {
-            try? await renameSession(r.session, to: r.name)
-        }
-        let m = spaceMachineKey
-        let projects = supportsProjects
-        let entries: [[String: Any]] = spaces.compactMap { s in
-            let ids = s.members.filter { $0.machine_id == m }.map(\.block_id)
-            guard !ids.isEmpty else { return nil }
-            var entry: [String: Any] = ["name": s.name, "block_ids": ids]
-            if let color = s.color, !color.isEmpty { entry["color"] = color }
-            // The home, once known: "" clears it; left out, it stays.
-            if projects, let dir = s.dir {
-                entry["dir"] = dir
-                entry["home_machine"] = dir.isEmpty ? "" : s.home_machine ?? ""
-            }
-            return entry
-        }
-        guard !entries.isEmpty else { return false }
-        let payload = (try? await live().call("gorex.spaces_apply", ["spaces": entries]))?.payload
-        return (payload?["applied"] as? Int ?? 0) > 0
-    }
-
-    /// Returns the current session ID holding `block`, checking the local
-    /// model first and falling back to `target.resolve` when a recent move
-    /// (such as `gorex.spaces_apply`) hasn't refreshed `sessions` yet.
-    func resolveSession(forBlock block: String, fallback: String) async -> String {
-        if let hit = sessions.first(where: { $0.view?.windows?.contains(where: { $0.blocks.contains(block) }) == true }) {
-            return hit.id
-        }
-        guard !isDemo,
-              let r = try? await live().call("target.resolve", ["kinds": ["block"], "queries": [block]]).payload,
-              let results = r["results"] as? [[String: Any]],
-              let first = results.first,
-              let target = first["target"] as? [String: Any],
-              let sid = target["session_id"] as? String,
-              !sid.isEmpty
-        else { return fallback }
-        return sid
     }
 
     /// Moves a window before another, or to the end when before is nil.
@@ -1489,7 +1438,6 @@ final class HostStore {
         hosts.first { $0.id == id }?.stop()
         hosts.removeAll { $0.id == id }
         tokens.set(nil, for: id)
-        Host.forgetMachine(id)
         save()
     }
 
@@ -1499,9 +1447,6 @@ final class HostStore {
         guard let h = host(config.id) else { return }
         let moved = h.config.url != config.url || h.config.transport != config.transport || h.config.auth != config.auth
         if h.config.auth != config.auth { tokens.set(config.auth, for: config.id) }
-        if h.config.url != config.url || h.config.tailcat?.address != config.tailcat?.address {
-            h.forgetLastMachine()
-        }
         h.config = config
         if moved { h.reconnect() }
         save()

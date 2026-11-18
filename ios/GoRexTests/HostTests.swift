@@ -235,8 +235,8 @@ nonisolated final class HostTests: XCTestCase {
             ["window_id": "window:0123abcd4567ef89", "label": "Window 4567ef89", "layers": [["blocks": [["block_id": "b"]]]]],
         ]]
         if let dir {
-            session["project"] = ["home_machine": "m", "dir": dir]
-            view["project"] = ["home_machine": "m", "dir": dir]
+            session["project"] = ["dir": dir]
+            view["project"] = ["dir": dir]
         }
         rex.respond = { [session, view] m, _ in
             switch m {
