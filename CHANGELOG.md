@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.40.1
+
+### Bug Fixes
+
+* **settings:** start the sidebar's server card at the top on Windows ([#769](https://github.com/si-mods/gorex/pull/769))
+
 ## 0.40.0
 
 ### Features
