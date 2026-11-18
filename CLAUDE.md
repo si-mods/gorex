@@ -45,5 +45,6 @@
 ## Verification
 
 - Before every push or PR, run the `verify` skill (`go run ./tools/verify`) and paste its summary as the PR body's `Verified:` line.
+- Run locally only the tests of the packages the diff changes. The full suites, the root package's shards and the Windows job run in CI. Stop a run that makes the machine lag, and write it as not run rather than letting it finish.
 - If a check still fails after three fix rounds, stop and bring in the user.
 - Reviews follow `REVIEW.md`, read from `origin/main` (`git show origin/main:REVIEW.md`), never from the PR branch.
