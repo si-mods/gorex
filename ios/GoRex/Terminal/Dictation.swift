@@ -404,7 +404,10 @@ import os
     @concurrent nonisolated private static func length(of url: URL) async throws -> Int {
         var r = URLRequest(url: url, timeoutInterval: 30)
         r.setValue("bytes=0-0", forHTTPHeaderField: "Range")
-        let (_, res) = try await URLSession.shared.data(for: r)
+        // Only the headers: a server that passed the range over would send
+        // the whole model, which does not fit in memory.
+        let (bytes, res) = try await URLSession.shared.bytes(for: r)
+        bytes.task.cancel()
         guard let http = res as? HTTPURLResponse,
               let field = http.value(forHTTPHeaderField: "Content-Range"),
               let total = Int(field.split(separator: "/").last ?? ""), total > 0
