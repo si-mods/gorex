@@ -1081,6 +1081,35 @@ func TestTellDuringReadIsTaken(t *testing.T) {
 	}
 }
 
+// TestTakeSkippedWhileACommandIsOnItsWay posts a take of a layout read
+// before the app's command, which the outbox sends meanwhile: the layout
+// does not show the command, so the app does not take it.
+func TestTakeSkippedWhileACommandIsOnItsWay(t *testing.T) {
+	a, _ := newTestApp(t)
+	a.saveNow()
+	ls, err := a.client.LayoutState()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var o outbox
+	took := 0
+	o.use(a.client, nil, func(rex.LayoutState) bool { took++; return true })
+	o.took(ls.Revision, ls.Layout)
+	o.mu.Lock()
+	o.running, o.sending = true, true // the run is sending a command
+	o.mu.Unlock()
+	o.takeOn(a.client, ls, o.sent, false)
+	if took != 0 {
+		t.Error("the app took a layout read before the command on its way")
+	}
+	o.mu.Lock()
+	again := o.check
+	o.mu.Unlock()
+	if !again {
+		t.Error("the outbox does not read the layout again after the command")
+	}
+}
+
 // TestTakeRefusedForASendIsNotHeld has the app refuse a take as a change
 // of its own waits to be sent (takeLayout's save), a change the outbox
 // takes off its queue before the take returns, as it runs on its own
