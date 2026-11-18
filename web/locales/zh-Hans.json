@@ -533,9 +533,7 @@
   "spaceCreate": "创建",
   "spaceRename": "重命名",
   "projectNewOn": "在 {host} 上新建项目",
-  "projectsOfflineNote": "未连接。显示上次所见内容。",
-  "projectsOlder": "更早（{n}）",
-  "projectsNoProject": "无项目的标签页（{n}）",
+  "projectsOlder": "更早",
   "projectNoProjectName": "无项目的标签页",
   "projectNewTabNoProject": "新建无项目标签页",
   "projectsEmpty": "此空间中没有项目。",
@@ -546,5 +544,6 @@
   "statusFolderMissing": "未打开标签页。“{name}”的文件夹 {dir} 不在 {host} 上。",
   "statusMoveTabFailed": "无法移动标签页：{error}",
   "statusMoveProjectFailed": "无法移动项目：{error}",
-  "statusRenameSpaceHostFailed": "无法在 {host} 上重命名空间：{error}"
+  "statusRenameSpaceHostFailed": "无法在 {host} 上重命名空间：{error}",
+  "hostOffline": "离线"
 }

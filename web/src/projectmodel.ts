@@ -18,13 +18,15 @@ export interface ProjectInfo {
   space: string;
   /** When a tab last took input or was made (ms); 0 when unknown. */
   used: number;
+  /** The project's color when the host says one. */
+  color?: string;
 }
 
 /** Reads a session's `project` as a host of version 2 writes it; none when the field is not an object. */
 export function parseProject(j: any): ProjectInfo | undefined {
   if (!j || typeof j !== "object" || Array.isArray(j)) return undefined;
   const t = typeof j.used === "string" ? Date.parse(j.used) : typeof j.used === "number" ? (j.used < 1e12 ? j.used * 1000 : j.used) : 0;
-  return { dir: typeof j.dir === "string" ? j.dir : "", space: typeof j.space === "string" ? j.space : "", used: Number.isFinite(t) && t > 0 ? t : 0 };
+  return { dir: typeof j.dir === "string" ? j.dir : "", space: typeof j.space === "string" ? j.space : "", used: Number.isFinite(t) && t > 0 ? t : 0, ...(typeof j.color === "string" && j.color ? { color: j.color } : {}) };
 }
 
 /** The welcome's version of a feature: a map of versions, or a feature written as an object. 0 when none. */
@@ -51,6 +53,7 @@ export interface ProjectRow {
   dir: string;
   space: string;
   used: number;
+  color?: string;
   tabs: TabRow[];
 }
 
@@ -82,7 +85,7 @@ export function hostModel(c: Source, title: (w: any) => string): HostModel {
       m.loose = { id: s.id, tabs };
       continue;
     }
-    m.projects.push({ id: s.id, name: s.label || s.view.label || "", dir: s.project.dir, space: s.project.space, used: s.project.used, tabs });
+    m.projects.push({ id: s.id, name: s.label || s.view.label || "", dir: s.project.dir, space: s.project.space, used: s.project.used, color: s.project.color, tabs });
   }
   return m;
 }
@@ -92,6 +95,17 @@ export function groupProjects(projects: ProjectRow[], space: string, now: number
   const mine = projects.filter((p) => p.space === space).sort((a, b) => b.used - a.used);
   const old = (p: ProjectRow) => p.used > 0 && now - p.used > olderDays * day;
   return { recent: mine.filter((p) => !old(p)), older: mine.filter(old) };
+}
+
+/** The colors a project's dot takes when the host names none: one of these, by its folder, so it stays the same. */
+export const dotColors = ["#e5484d", "#f76b15", "#e5a000", "#30a46c", "#3e63dd", "#8e4ec6"];
+
+/** A project's dot color: the host's, else one from its folder. */
+export function dotColor(dir: string, given?: string): string {
+  if (given) return given;
+  let h = 2166136261;
+  for (const c of dir) h = Math.imul(h ^ c.charCodeAt(0), 16777619) >>> 0;
+  return dotColors[(h >>> 8) % dotColors.length];
 }
 
 /** A folder's name in a path, for a project that has no name. */
@@ -286,7 +300,7 @@ function decode(j: any): Record<string, HostModel> {
       name: str(m.name),
       projects: (Array.isArray(m.projects) ? m.projects : [])
         .filter((p: any) => p && typeof p.id === "string")
-        .map((p: any) => ({ id: p.id, name: str(p.name), dir: str(p.dir), space: str(p.space), used: typeof p.used === "number" ? p.used : 0, tabs: tabs(p.tabs) })),
+        .map((p: any) => ({ id: p.id, name: str(p.name), dir: str(p.dir), space: str(p.space), used: typeof p.used === "number" ? p.used : 0, ...(typeof p.color === "string" ? { color: p.color } : {}), tabs: tabs(p.tabs) })),
       offered: Array.isArray(m.offered) ? m.offered.filter((x: unknown) => typeof x === "string") : undefined,
       loose: m.loose && typeof m.loose.id === "string" ? { id: m.loose.id, tabs: tabs(m.loose.tabs) } : undefined,
     };

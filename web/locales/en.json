@@ -2887,29 +2887,9 @@
       }
     }
   },
-  "projectsOfflineNote": "Not connected. Shown as last seen.",
-  "@projectsOfflineNote": {
-    "description": "Note under a host that is away: its projects are a copy, read-only."
-  },
-  "projectsOlder": "Older ({n})",
+  "projectsOlder": "Older",
   "@projectsOlder": {
-    "description": "Sidebar group of the projects not used for 30 days.",
-    "placeholders": {
-      "n": {
-        "type": "int",
-        "example": "3"
-      }
-    }
-  },
-  "projectsNoProject": "Tabs with no project ({n})",
-  "@projectsNoProject": {
-    "description": "Sidebar group of a host's tabs that belong to no project, with their count.",
-    "placeholders": {
-      "n": {
-        "type": "int",
-        "example": "2"
-      }
-    }
+    "description": "Sidebar group of the projects not used for 30 days; the count is beside it."
   },
   "projectNoProjectName": "Tabs with no project",
   "@projectNoProjectName": {
@@ -3010,5 +2990,9 @@
         "example": "No response"
       }
     }
+  },
+  "hostOffline": "offline",
+  "@hostOffline": {
+    "description": "Beside the name of a host that is not connected, in the projects sidebar."
   }
 }

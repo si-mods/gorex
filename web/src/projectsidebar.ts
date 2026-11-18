@@ -9,7 +9,7 @@ import type { Host } from "./hosts";
 import { icon } from "./hosts";
 import { t } from "./i18n";
 import { MenuItem, onMenu, openMenu, ownDrag, renameField } from "./manage";
-import { dirName, groupProjects, HostModel, ProjectRow, TabRow } from "./projectmodel";
+import { dirName, dotColor, groupProjects, HostModel, ProjectRow, TabRow } from "./projectmodel";
 import type { HostView, ProjectOps } from "./projectops";
 import { hostHead, hostRows, problemLine, redraw, renaming, sidebarApp, tilesRoom, windowRow } from "./sidebar";
 
@@ -169,30 +169,34 @@ function hostSection(nav: HTMLElement, h: Host, c: HostConn | undefined, v: Host
   const { recent, older } = groupProjects(mine, space, Date.now());
   if (!v.online && !recent.length && !older.length) return;
   const head = hostHead(nav, h, c);
+  head.classList.add("flat");
+  // The host's state, drawn: filled while it is connected, a ring while it is away. A reconnect or a failure has its own dot.
+  if (!head.querySelector(".state-dot")) head.append(el("i", v.online ? "host-dot on" : "host-dot off"));
+  if (!v.online) head.append(el("small", "host-offline", t("hostOffline")));
+  if (!v.online) head.classList.add("dimmed");
   const conn = v.online ? c : undefined;
   if (conn) head.append(iconButton("plus", t("projectNewOn", { host: h.name }), () => void ops.newProjectOn(conn)));
   if (c) problemLine(nav, c);
-  if (!v.online) nav.append(el("div", "host-note", t("projectsOfflineNote")));
   const shown = sidebarApp().shown();
   for (const p of recent) projectRow(nav, model, conn, p, shown?.conn === c && shown?.session === p.id);
   if (older.length) {
     const key = `older:${model.host}`;
     const open = isOpen(key, false);
-    nav.append(groupRow(key, open, t("projectsOlder", { n: older.length }), undefined, !v.online));
+    nav.append(groupRow(key, open, t("projectsOlder"), older.length, undefined, !v.online));
     if (open) for (const p of older) projectRow(nav, model, conn, p, shown?.conn === c && shown?.session === p.id);
   }
   if (model.loose && (v.online || model.loose.tabs.length)) loose(nav, model, conn, model.loose, shown?.conn === c && shown?.session === model.loose.id);
   if (v.online && !recent.length && !older.length && !model.loose?.tabs.length) nav.append(el("div", "host-note", t("projectsEmpty")));
 }
 
-/** A row that opens or shuts a group: its chevron and its words, and what it adds. */
-function groupRow(key: string, open: boolean, text: string, add: HTMLElement | undefined, dim: boolean): HTMLElement {
+/** A row that opens or shuts a group, at the project's level: its words and count, and what it adds. Its place of the dot is empty. */
+function groupRow(key: string, open: boolean, text: string, count: number, add: HTMLElement | undefined, dim: boolean): HTMLElement {
   const row = el("div", "project group");
   if (dim) row.classList.add("dimmed");
   const b = el("button", "project-main");
   b.type = "button";
   b.setAttribute("aria-expanded", String(open));
-  b.append(icon(open ? "chevron-down" : "chevron-right"), el("span", "name", text));
+  b.append(el("i", "color-dot none"), el("span", "name", text), el("span", "count", String(count)));
   b.onclick = () => toggle(key, open);
   row.append(b);
   if (add) row.append(add);
@@ -204,7 +208,7 @@ function loose(nav: HTMLElement, model: HostModel, c: HostConn | undefined, l: N
   const key = `loose:${model.host}`;
   const open = isOpen(key, shownHere);
   const add = c ? iconButton("plus", t("projectNewTabNoProject"), () => void ops.newTab(c, l.id)) : undefined;
-  const row = groupRow(key, open, t("projectsNoProject", { n: l.tabs.length }), add, !c);
+  const row = groupRow(key, open, t("projectNoProjectName"), l.tabs.length, add, !c);
   if (c) onMenu(row, (x, y) => openMenu(x, y, [{ label: t("projectNewTabNoProject"), run: () => void ops.newTab(c, l.id) }], () => sidebarApp().shown()?.focusKeys()));
   nav.append(row);
   if (open) tabs(nav, c, l.id, l.tabs);
@@ -228,11 +232,11 @@ function projectRow(nav: HTMLElement, model: HostModel, c: HostConn | undefined,
   const b = el("button", "project-main");
   b.type = "button";
   b.setAttribute("aria-expanded", String(open));
-  const text = el("span", "name", p.name || dirName(p.dir));
-  const dir = el("small", "project-line", p.dir);
-  text.append(dir);
+  // The folder is in the tooltip only.
   b.title = `${p.name || dirName(p.dir)}\n${p.dir}`;
-  b.append(icon(open ? "chevron-down" : "chevron-right"), icon("folder"), text);
+  const dot = el("i", "color-dot");
+  dot.style.background = dotColor(p.dir, p.color);
+  b.append(dot, el("span", "name", p.name || dirName(p.dir)));
   if (p.tabs.length) b.append(el("span", "count", String(p.tabs.length)));
   b.onclick = () => toggle(key, open);
   row.append(b);
