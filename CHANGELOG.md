@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.41.2
+
+### Bug Fixes
+
+* **projects:** tabs the window does not show take their session's title and program icon, not "Shell"; a new project no longer names its first tab after itself, and a first tab named so is cleared once; an empty "Tabs with no project" row is hidden; tabs sit flush under their project ([#793](https://github.com/si-mods/gorex/pull/793))
+* **web:** a project's tabs start at the project's leading edge, with no guide line ([#792](https://github.com/si-mods/gorex/pull/792))
+* **ios:** a project's tabs line up with the project row ([#796](https://github.com/si-mods/gorex/pull/796))
+* keep the new pane when a host pane restarts ([#791](https://github.com/si-mods/gorex/pull/791))
+* **server:** keep the session user across an in-place upgrade ([#795](https://github.com/si-mods/gorex/pull/795))
+* **ios:** make a resume use the session of its moment ([#785](https://github.com/si-mods/gorex/pull/785))
+
 ## 0.41.1
 
 ### Features
