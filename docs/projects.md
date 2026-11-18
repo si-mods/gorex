@@ -1,6 +1,6 @@
 # Projects: folders on each host, inside a space
 
-Status: proposed. Issues #519 and #771. Replaces the design of v0.38.0
+Status: approved (2026-11-18). Issues #519 and #771. Replaces the design of v0.38.0
 (#708), in which a project replaced a space. That design shipped in
 v0.38.0 and v0.39.0; the parts it keeps are marked below.
 
