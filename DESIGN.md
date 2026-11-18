@@ -156,8 +156,8 @@ system"), and no radius is picked on its own:
 
 ## Icons
 
-Every icon, on the desktop and in the web client, is a lucide SVG from
-`assets/icons/` (`programs.go` on the desktop, `icon(name)` in
-`web/src/hosts.ts` on the web). A Unicode character (✓ ✕ ⌄ +) never
-stands in for one: when an icon is missing, copy its lucide SVG into
-`assets/icons/`.
+Icons are SVGs: lucide ones from `assets/icons/`, and brand marks from
+`assets/brands/` (`programs.go` on the desktop, `icon(name)` in
+`web/src/hosts.ts` on the web). A new icon is never a Unicode character
+(✓ ✕ ⌄ +) standing in for one: when a lucide icon is missing, copy its SVG
+into `assets/icons/`.

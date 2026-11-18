@@ -6,9 +6,9 @@ Rules an agent cannot read from the code. Keep each line one that prevents a rea
 
 - `go tool mygo dev -background` runs GoRex Dev and rebuilds it on change. Always pass `-background` (a built binary: `MYGO_DEV_BACKGROUND=1`), so no window takes focus from the user. Use an isolated `GOREX_DIR`.
 - Check UI with the `GOREX_DEBUG` screenshot hook (`gorex-ui-testing` skill). Never send keystrokes to the desktop or take full-screen screenshots: keys reach whatever window is in front, and the shot captures private terminals.
-- `go test ./internal/<pkg> -run <Name>` for local tests, only of the packages the diff changes. The full suites, the root package's shards and the Windows job run in CI; the hook refuses `go test ./...` and the root package without `-run`. Stop a run that makes the machine lag, and report it as not run.
+- `go test ./internal/<pkg> -run <Name>` for local tests, only of the packages the diff changes. The full suites, the root package's shards and the Windows job run in CI; without `-run`, the hook refuses the root package and `...` patterns at the root or one level below (`./...`, `./internal/...`). Stop a run that makes the machine lag, and report it as not run.
 - `go run ./tools/verify` before every push or PR; paste its summary as the PR body's `Verified:` line. The hook runs it on `git push` and `gh pr create`.
-- `go tool mygo generate` rewrites `locales/catalog_gen.go` after a catalog change; commit it with the catalogs.
+- `go tool mygo generate` after a change to `locales/*.json`; commit what it writes (`locales/catalog_gen.go` among them) with the catalogs.
 
 ## Before you start
 
@@ -26,11 +26,12 @@ Rules an agent cannot read from the code. Keep each line one that prevents a rea
 
 - Do every change in its own worktree and branch. Do not edit in the main checkout; other sessions use it.
 - Create it from the latest `origin/main`: `git fetch origin && git worktree add -b <type>/<topic> .claude/worktrees/<topic> origin/main`.
+- When the change is done and verified, commit, push the branch and open a PR (see below).
 - After the PR merges, `git worktree remove .claude/worktrees/<topic>` and `git branch -D <branch>` (squash merges make `-d` refuse). Leave remote branches.
 
 ## Pull requests
 
-- PRs and issues go to `si-mods/gorex` only, never `egoist/gorex`. Pass `-R si-mods/gorex` to every `gh` write; the hook refuses one without it. If a remote points to `egoist/gorex`, stop and tell the user.
+- PRs and issues go to `si-mods/gorex` only, never `egoist/gorex`. Pass `-R si-mods/gorex` to every `gh` command, and check the URL it prints; the hook refuses a `gh` write without `-R`. Before any `gh` write, run `git remote -v`: if a remote points to `egoist/gorex`, stop and tell the user.
 - The repo is public. Code, tests, commits and PR text carry no real names, host names, user paths, LAN addresses, emails, keys or tailnet addresses; use placeholders such as `alice-laptop`.
 - Screenshots go on a `shots/pr-<n>` branch, linked by commit SHA, with made-up data only. `.github/workflows/delete-shots.yml` deletes the branch when the PR merges.
 - Reviews follow `REVIEW.md`, read from `origin/main` (`git show origin/main:REVIEW.md`), never from the PR branch.

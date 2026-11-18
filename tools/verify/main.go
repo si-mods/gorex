@@ -660,13 +660,22 @@ func hookMain(stdin io.Reader, stderr, stdout io.Writer) int {
 		return 0
 	}
 	cmd := in.ToolInput.Command
-	guard := guardReason(cmd)
+	dir := targetDir(in.Cwd, cmd)
+	var root string
+	var checked, rex bool
+	where := func() (string, string, bool) {
+		if !checked {
+			checked = true
+			r, err := repoRoot(dir)
+			root, rex = r, err == nil && isGoRex(r)
+		}
+		return root, dir, rex
+	}
+	guard := guardReason(cmd, where)
 	if guard == "" && !triggers(cmd) {
 		return 0
 	}
-	dir := targetDir(in.Cwd, cmd)
-	root, err := repoRoot(dir)
-	if err != nil || !isGoRex(root) {
+	if _, _, ok := where(); !ok {
 		return 0
 	}
 	if guard != "" {
