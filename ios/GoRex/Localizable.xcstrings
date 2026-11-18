@@ -276,6 +276,16 @@
         }
       }
     },
+    "Hugging Face and its mirror could not be reached.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hugging Face 和它的镜像站都无法连接。"
+          }
+        }
+      }
+    },
     "Hugging Face, its mirror and GitHub could not be reached.": {
       "localizations": {
         "zh-Hans": {

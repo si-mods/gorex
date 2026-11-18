@@ -278,8 +278,14 @@ import os
         try dir.setResourceValues(v)
         ModelHub.offlineMode = false
         defer { ModelHub.offlineMode = true }
+        let sources = await sources(m)
+        guard !sources.isEmpty else {
+            throw RexError(code: "dictation", message: m.release == nil
+                           ? String(localized: "Hugging Face and its mirror could not be reached.")
+                           : String(localized: "Hugging Face, its mirror and GitHub could not be reached."))
+        }
         var failure: Error?
-        for source in await sources(m) {
+        for source in sources {
             ModelRegistry.baseURL = source.url
             do {
                 try await ModelHub.download(.vad, to: MLModelConfigurationUtils.defaultModelsDirectory())
@@ -296,8 +302,8 @@ import os
                 failure = error
             }
         }
-        throw RexError(code: "dictation", message: String(localized: "Hugging Face, its mirror and GitHub could not be reached.")
-                       + (failure.map { " " + $0.localizedDescription } ?? ""))
+        // A source served, and failed: its error says the most about why.
+        throw failure ?? URLError(.cannotConnectToHost)
     }
 
     /// A place a model comes from: Hugging Face or its mirror, file by
