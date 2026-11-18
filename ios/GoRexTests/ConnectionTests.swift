@@ -359,6 +359,31 @@ nonisolated final class ConnectionTests: XCTestCase {
         h.stop()
     }
 
+    /// A stream that resumes after the app comes back makes its task on the
+    /// session of that time: the built-in Tailscale's proxy of a past run
+    /// leaves its session invalid, and a task on that one aborts the app.
+    @MainActor func testResumeUsesTheSessionOfNow() async throws {
+        let rex = try FakeRex()
+        defer { rex.stop() }
+        var firsts: [UInt8] = []
+        rex.data = { c, first in
+            firsts.append(first.first ?? 0)
+            FakeRex.send(c, FakeRex.welcome)
+        }
+        let opened = URLSession(configuration: .default)
+        let c = DataConnection(base: try await rex.url(), auth: nil)
+        try await c.open(ticket: "uH4mJKwzMarlTNT-UiyMog", session: opened)
+        c.suspend()
+        // The engine started over, as Host.session leaves the session of
+        // its past run; a task on it aborts the app once the invalidation
+        // has taken effect, as it has by the next foreground.
+        opened.invalidateAndCancel()
+        try await Task.sleep(for: .seconds(1))
+        try await c.resume(session: URLSession(configuration: .default))
+        XCTAssertEqual(firsts, [0x01, 0x02])
+        c.close()
+    }
+
     /// Creating a session with a label forwards `label`.
     @MainActor func testNewSessionWithLabel() async throws {
         let rex = try FakeRex()
