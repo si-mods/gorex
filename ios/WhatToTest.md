@@ -47,6 +47,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - Delete a space in Edit Spaces: swipe it or tap its red minus. Its projects move to Default and no tab closes; a computer that is off moves them when it connects.
 - Coming back to a terminal after the computer's Tailscale connection started over no longer closes the app: the terminal reconnects by itself.
 - A project's tabs and New Tab now line up with the project row instead of sitting indented.
+- On a phone that shows its clock at the side, such as a folded iPhone, a terminal's back button, title and menu stay in the bar at the top, and the terminal fills the width under the clock.
 
 ## zh-Hans
 
@@ -86,3 +87,4 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - 在「编辑空间」里可以删除空间：左滑它或点红色减号。它的项目移到「默认」，不会关闭任何标签页；关机的电脑在连上后再移动。
 - 电脑的 Tailscale 连接重连过之后，再回到终端不会再让应用退出：终端会自己重新连上。
 - 展开项目后，它的标签页和「新建标签页」与项目行左对齐，不再缩进。
+- 在时钟显示在侧边的手机上，例如折叠屏 iPhone，终端的返回按钮、标题和菜单留在顶部工具栏里，终端也铺满到时钟那一列下面。

@@ -26,6 +26,13 @@ struct TerminalScreen: View {
     @State private var diagnostics = false
     /// The height of the status bar.
     @State private var statusBar: CGFloat = 0
+    /// Whether the status bar is in a column at the side, as on a folded phone.
+    /// The header buttons then sit in a row at the top, and the terminal
+    /// reaches the edge of the window.
+    @State private var sideBar = false
+    /// Regular width has the split view's sidebar toggle in the bar, which
+    /// side mode would hide.
+    @Environment(\.horizontalSizeClass) private var width
     /// What is said while the mic is on, and whether it is finishing.
     @State private var said: Dictation.Said?
     @State private var busy = false
@@ -69,6 +76,8 @@ struct TerminalScreen: View {
         self.host = host
         self.go = go
         _currentTarget = State(initialValue: Self.remembered(target, host: host))
+        // From the first frame, so the bar does not show and then go.
+        _sideBar = State(initialValue: Self.sideStatusBar(Self.windowInsets))
     }
 
     var body: some View {
@@ -100,14 +109,17 @@ struct TerminalScreen: View {
         }
             .onGeometryChange(for: CGSize.self) { $0.size } action: { pageSize = $0 }
             .clipped()
-            .ignoresSafeArea(.container, edges: .top)
+            .ignoresSafeArea(.container, edges: Self.edges(side: sideBar, row: sideMode, insets: Self.windowInsets))
             .ignoresSafeArea(.keyboard)
             .overlay(alignment: .top) { if let p = session?.progress { ProgressLine(progress: p).padding(.top, statusBar).ignoresSafeArea(.container, edges: .top) } }
             .background {
                 // The status bar is the window's inset, read as the page's changes.
                 Color(cgColor: bg.cgColor)
                     .ignoresSafeArea()
-                    .onGeometryChange(for: CGSize.self) { $0.size } action: { _ in statusBar = Self.statusBar }
+                    .onGeometryChange(for: CGSize.self) { $0.size } action: { _ in
+                        statusBar = Self.statusBar
+                        sideBar = Self.sideStatusBar(Self.windowInsets)
+                    }
             }
             // What goes up under the status bar blurs and fades into the
             // background, for the clock over it.
@@ -170,23 +182,27 @@ struct TerminalScreen: View {
                 // window's menu, New Tab being in the session's sheet and on
                 // ⌘T, the split on ⌘D as the desktop's; the bar's glass
                 // draws them.
-                ToolbarItemGroup(placement: .topBarTrailing) {
-                    if !hasBar { mic }
-                    Menu {
-                        // The images the pane showed (docs/ios-pane-gallery.md).
-                        if let g = session?.gallery { GalleryMenuItem(gallery: g) }
-                        Button("New Tab", systemImage: "plus") { newTab() }
-                        Button("Split Pane", systemImage: "rectangle.split.2x1") { newSplit() }
-                        if paneCellList.count > 1 {
-                            Button("Close Pane", systemImage: "xmark.rectangle", role: .destructive) { closePane(currentTarget.block) }
+                if #available(iOS 27.1, *) {
+                    // The bar's buttons stay in its row: the system would
+                    // otherwise sink them into the clock's column, away
+                    // from the title, when the status bar is at a side.
+                    if sideMode {
+                        ToolbarItem(placement: .topBarLeading) {
+                            backButton
                         }
-                    } label: {
-                        Image(systemName: "ellipsis")
+                        .axisBehavior(.horizontalOnly)
                     }
-                    .galleryCover(session, title: title)
-                    .accessibilityLabel("More")
+                    ToolbarItemGroup(placement: .topBarTrailing) {
+                        barTrailing
+                    }
+                    .axisBehavior(.horizontalOnly)
+                } else {
+                    ToolbarItemGroup(placement: .topBarTrailing) {
+                        barTrailing
+                    }
                 }
             }
+            .navigationBarBackButtonHidden(sideMode)
             // The sheet takes the terminal's scheme as the bar does; the
             // one below does not reach it under a dark system.
             .sheet(isPresented: $sheet) { SessionSheet(target: currentTarget, host: host, go: { next in
@@ -206,6 +222,8 @@ struct TerminalScreen: View {
             .toolbarBackgroundVisibility(.hidden, for: .navigationBar)
             .toolbarColorScheme(scheme, for: .navigationBar)
             .environment(\.colorScheme, scheme)
+
+            .onChange(of: scheme, initial: true) { _, s in ScreenStyle.shared.terminal = s }
             .onAppear {
                 gone = false
                 let s = session ?? TerminalSession(host: host, session: currentTarget.session, block: currentTarget.block)
@@ -219,6 +237,7 @@ struct TerminalScreen: View {
             }
             .onDisappear {
                 gone = true
+                ScreenStyle.shared.terminal = nil
                 paneMapTask?.cancel()
                 terminal?.stopDictating()
                 dropIncoming()
@@ -269,9 +288,48 @@ struct TerminalScreen: View {
             }
     }
 
+    /// Whether the header sits in a row at the top: a status bar at the
+    /// side, in compact width.
+    private var sideMode: Bool { sideBar && width != .regular }
+
     /// The height of the status bar, the window's top inset.
-    private static var statusBar: CGFloat {
-        UIApplication.shared.connectedScenes.lazy.compactMap { ($0 as? UIWindowScene)?.keyWindow }.first?.safeAreaInsets.top ?? 0
+    private static var statusBar: CGFloat { windowInsets.top }
+
+    /// The key window's safe area insets.
+    private static var windowInsets: UIEdgeInsets {
+        return UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+            .first { $0.activationState == .foregroundActive }?.keyWindow?.safeAreaInsets ?? .zero
+    }
+
+    /// The edges the page reaches: the bar's column at the side, so the
+    /// grid fills the window. A phone gives both sides up, its page being the
+    /// window; a wide window gives up the column's own side only, or its page
+    /// would reach under the list.
+    private static func edges(side: Bool, row: Bool, insets: UIEdgeInsets) -> Edge.Set {
+        guard side else { return .top }
+        if row { return .horizontal }
+        let column: Edge.Set = insets.left > insets.right ? .leading : .trailing
+        return [.top, column]
+    }
+
+    /// Whether the insets put the status bar in a column at one side: a wide
+    /// inset on one side only, wider than the top. A phone turned sideways has
+    /// both sides alike, and an iPad has none.
+    private static func sideStatusBar(_ i: UIEdgeInsets) -> Bool {
+        let side = max(i.left, i.right)
+        return side >= 40 && min(i.left, i.right) < 10 && i.top < side
+    }
+
+    @ViewBuilder private var backButton: some View {
+        Button { go(nil) } label: {
+            Image(systemName: "chevron.left")
+        }
+        .accessibilityLabel("Back")
+    }
+
+    @ViewBuilder private var barTrailing: some View {
+        if !hasBar { mic }
+        moreMenu()
     }
 
     private var mic: Mic { Mic(terminal: { terminal }, said: $said, busy: $busy, asking: $asking, stopping: $stopping) }
@@ -615,6 +673,23 @@ struct TerminalScreen: View {
                 pages.append(Pane(session: s, block: block, x: 1, kept: true))
             }
         }
+    }
+
+    /// The window's menu, in the bar.
+    @ViewBuilder private func moreMenu() -> some View {
+        Menu {
+            // The images the pane showed (docs/ios-pane-gallery.md).
+            if let g = session?.gallery { GalleryMenuItem(gallery: g) }
+            Button("New Window", systemImage: "plus") { newTab() }
+            Button("Split Pane", systemImage: "rectangle.split.2x1") { newSplit() }
+            if paneCellList.count > 1 {
+                Button("Close Pane", systemImage: "xmark.rectangle", role: .destructive) { closePane(currentTarget.block) }
+            }
+        } label: {
+            Image(systemName: "ellipsis")
+        }
+        .galleryCover(session, title: title)
+        .accessibilityLabel("More")
     }
 
     @ViewBuilder private var principalTitlePill: some View {
