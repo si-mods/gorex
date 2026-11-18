@@ -49,6 +49,11 @@ jobs:
           [[ -z $x ]] || echo "DEVELOPER_DIR=$x/Contents/Developer" >> "$GITHUB_ENV"
       - run: xcodebuild -version
       - run: for t in asc xcodegen; do command -v "$t" >/dev/null || brew install "$t"; done
+      # ios/project.yml's minimumXcodeGenVersion: the Icon Composer icons
+      # (.icon folders) need 2.45.1; an older xcodegen the Mac kept upgrades.
+      - run: |
+          v=$(xcodegen --version | grep -Eo '[0-9]+(\.[0-9]+)+' | head -1)
+          [[ $(printf '%s\n' 2.45.1 "$v" | sort -V | head -1) == 2.45.1 ]] || brew upgrade xcodegen
       # The script pins Ghostty's commit and Zig's version.
       - uses: actions/cache/restore@v6
         id: ghostty-vt

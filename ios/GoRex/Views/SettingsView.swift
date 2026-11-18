@@ -10,6 +10,8 @@ struct SettingsView: View {
     @AppStorage("clientLabel") private var label = ""
     @AppStorage(TailnetSettings.onKey) private var tailnet = false
     @State private var query = ""
+    /// The icon on the Home Screen, for the row to name; the page changes it.
+    @State private var appIcon = AppIcon.current
 
     private struct Item: Identifiable {
         let title: LocalizedStringResource
@@ -29,7 +31,9 @@ struct SettingsView: View {
                   value: String(localized: Self.schemes.first { $0.0 == scheme }?.1 ?? "Dark"),
                   page: AnyView(Choices(title: "Interface", options: Self.schemes.map { ($0.0, String(localized: $0.1)) }, selection: $scheme))),
              Item(title: "Themes", icon: tile("paintpalette.fill", .pink), value: theme.isEmpty ? String(localized: "Host Colors") : theme,
-                  page: AnyView(Themes(selection: $theme)))],
+                  page: AnyView(Themes(selection: $theme))),
+             Item(title: "App Icon", icon: AnyView(appIcon.image(size: 30)), value: String(localized: appIcon.title),
+                  page: AnyView(AppIconView(current: $appIcon)))],
             [Item(title: "Terminal", icon: tile("apple.terminal.fill", .gray), page: AnyView(TerminalSettings())),
              Item(title: "Remote Hosts", icon: tile("globe", .orange), page: AnyView(RemoteHostsView())),
              Item(title: "Tailscale", icon: AnyView(TailscaleGlyph.tile()),
@@ -38,7 +42,7 @@ struct SettingsView: View {
                   value: String(localized: HotspotShare.shared.isSharing ? "On" : "Off"), page: AnyView(HotspotShareView()))],
             [Item(title: "Features", icon: tile("sparkles", .blue), page: AnyView(FeaturesView())),
              Item(title: "About", icon: tile("info.circle.fill", .gray),
-                  value: "\(version) (\(build))", page: AnyView(AboutView(version: version, build: build)))],
+                  value: "\(version) (\(build))", page: AnyView(AboutView(version: version, build: build, icon: appIcon)))],
         ]
     }
 
@@ -522,6 +526,8 @@ private struct InputTraceView: View {
 private struct AboutView: View {
     let version: String
     let build: String
+    /// The icon in use, as Settings keeps it.
+    let icon: AppIcon
     @Environment(HostStore.self) private var store
     /// Each host's Rex version, as server.version tells it.
     @State private var versions: [UUID: String] = [:]
@@ -549,8 +555,7 @@ private struct AboutView: View {
         List {
             Section {
                 VStack(spacing: 6) {
-                    Image("AboutIcon").resizable().frame(width: 110, height: 110)
-                        .clipShape(.rect(cornerRadius: 25, style: .continuous))
+                    icon.image(size: 110)
                         .padding(.bottom, 8)
                     Text(name).font(.largeTitle.bold())
                     Text("Version \(version) (\(build))").foregroundStyle(.secondary)
