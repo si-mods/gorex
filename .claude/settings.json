@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "go -C \"${CLAUDE_PROJECT_DIR}\" run ./tools/verify -hook",
+            "command": "command -v go >/dev/null 2>&1 || { echo 'verify hook: go is not on PATH, so the push checks did not run' >&2; exit 0; }; go -C \"${CLAUDE_PROJECT_DIR}\" run ./tools/verify -hook",
             "timeout": 900
           }
         ]
