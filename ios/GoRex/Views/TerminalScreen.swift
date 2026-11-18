@@ -109,7 +109,7 @@ struct TerminalScreen: View {
         }
             .onGeometryChange(for: CGSize.self) { $0.size } action: { pageSize = $0 }
             .clipped()
-            .ignoresSafeArea(.container, edges: sideMode ? [.top, .horizontal] : .top)
+            .ignoresSafeArea(.container, edges: Self.edges(side: sideBar, row: sideMode, insets: Self.windowInsets))
             .ignoresSafeArea(.keyboard)
             .overlay(alignment: .top) { if let p = session?.progress { ProgressLine(progress: p).padding(.top, statusBar).ignoresSafeArea(.container, edges: .top) } }
             .background {
@@ -168,10 +168,6 @@ struct TerminalScreen: View {
                 guard !Task.isCancelled else { return }
                 withAnimation(.easeOut(duration: 0.2)) { stalled = true }
             }
-            // At the side the bar's items would stack in the clock's column.
-            // The row below holds them at the top instead, and its height
-            // pushes the grid down.
-            .safeAreaInset(edge: .top, spacing: 0) { if sideMode { sideBarRow } }
             .navigationTitle(title.asText)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -186,11 +182,27 @@ struct TerminalScreen: View {
                 // window's menu, New Tab being in the session's sheet and on
                 // ⌘T, the split on ⌘D as the desktop's; the bar's glass
                 // draws them.
-                ToolbarItemGroup(placement: .topBarTrailing) {
-                    if !hasBar { mic }
-                    moreMenu()
+                if #available(iOS 27.1, *) {
+                    // The bar's buttons stay in its row: the system would
+                    // otherwise sink them into the clock's column, away
+                    // from the title, when the status bar is at a side.
+                    if sideMode {
+                        ToolbarItem(placement: .topBarLeading) {
+                            backButton
+                        }
+                        .axisBehavior(.horizontalOnly)
+                    }
+                    ToolbarItemGroup(placement: .topBarTrailing) {
+                        barTrailing
+                    }
+                    .axisBehavior(.horizontalOnly)
+                } else {
+                    ToolbarItemGroup(placement: .topBarTrailing) {
+                        barTrailing
+                    }
                 }
             }
+            .navigationBarBackButtonHidden(sideMode)
             // The sheet takes the terminal's scheme as the bar does; the
             // one below does not reach it under a dark system.
             .sheet(isPresented: $sheet) { SessionSheet(target: currentTarget, host: host, go: { next in
@@ -207,10 +219,11 @@ struct TerminalScreen: View {
                 }
                 .environment(\.colorScheme, scheme)
             }
-            .toolbar(sideMode ? .hidden : .automatic, for: .navigationBar)
             .toolbarBackgroundVisibility(.hidden, for: .navigationBar)
             .toolbarColorScheme(scheme, for: .navigationBar)
             .environment(\.colorScheme, scheme)
+
+            .onChange(of: scheme, initial: true) { _, s in ScreenStyle.shared.terminal = s }
             .onAppear {
                 gone = false
                 let s = session ?? TerminalSession(host: host, session: currentTarget.session, block: currentTarget.block)
@@ -224,6 +237,7 @@ struct TerminalScreen: View {
             }
             .onDisappear {
                 gone = true
+                ScreenStyle.shared.terminal = nil
                 paneMapTask?.cancel()
                 terminal?.stopDictating()
                 dropIncoming()
@@ -283,7 +297,19 @@ struct TerminalScreen: View {
 
     /// The key window's safe area insets.
     private static var windowInsets: UIEdgeInsets {
-        UIApplication.shared.connectedScenes.lazy.compactMap { ($0 as? UIWindowScene)?.keyWindow }.first?.safeAreaInsets ?? .zero
+        return UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+            .first { $0.activationState == .foregroundActive }?.keyWindow?.safeAreaInsets ?? .zero
+    }
+
+    /// The edges the page reaches: the bar's column at the side, so the
+    /// grid fills the window. A phone gives both sides up, its page being the
+    /// window; a wide window gives up the column's own side only, or its page
+    /// would reach under the list.
+    private static func edges(side: Bool, row: Bool, insets: UIEdgeInsets) -> Edge.Set {
+        guard side else { return .top }
+        if row { return .horizontal }
+        let column: Edge.Set = insets.left > insets.right ? .leading : .trailing
+        return [.top, column]
     }
 
     /// Whether the insets put the status bar in a column at one side: a wide
@@ -292,6 +318,18 @@ struct TerminalScreen: View {
     private static func sideStatusBar(_ i: UIEdgeInsets) -> Bool {
         let side = max(i.left, i.right)
         return side >= 40 && min(i.left, i.right) < 10 && i.top < side
+    }
+
+    @ViewBuilder private var backButton: some View {
+        Button { go(nil) } label: {
+            Image(systemName: "chevron.left")
+        }
+        .accessibilityLabel("Back")
+    }
+
+    @ViewBuilder private var barTrailing: some View {
+        if !hasBar { mic }
+        moreMenu()
     }
 
     private var mic: Mic { Mic(terminal: { terminal }, said: $said, busy: $busy, asking: $asking, stopping: $stopping) }
@@ -637,8 +675,8 @@ struct TerminalScreen: View {
         }
     }
 
-    /// The window's menu: in the bar, or as a glass circle in the row at the top.
-    @ViewBuilder private func moreMenu(circle: Bool = false) -> some View {
+    /// The window's menu, in the bar.
+    @ViewBuilder private func moreMenu() -> some View {
         Menu {
             // The images the pane showed (docs/ios-pane-gallery.md).
             if let g = session?.gallery { GalleryMenuItem(gallery: g) }
@@ -648,38 +686,10 @@ struct TerminalScreen: View {
                 Button("Close Pane", systemImage: "xmark.rectangle", role: .destructive) { closePane(currentTarget.block) }
             }
         } label: {
-            if circle {
-                Image(systemName: "ellipsis").font(.title3.weight(.medium)).frame(width: 38, height: 38)
-            } else {
-                Image(systemName: "ellipsis")
-            }
+            Image(systemName: "ellipsis")
         }
         .galleryCover(session, title: title)
         .accessibilityLabel("More")
-    }
-
-    /// The header's buttons and title in a row at the top, for a status bar
-    /// at the side. It sits in the safe area, so it stays clear of the clock.
-    private var sideBarRow: some View {
-        HStack(spacing: 12) {
-            Button { go(nil) } label: {
-                Image(systemName: "chevron.left").font(.title3.weight(.medium)).frame(width: 38, height: 38)
-            }
-            .buttonStyle(.glass)
-            .buttonBorderShape(.circle)
-            .accessibilityLabel("Back")
-            Spacer(minLength: 0)
-            principalTitlePill
-            Spacer(minLength: 0)
-            // The bar's glass drew the mic; here it has a circle of its own.
-            if !hasBar { mic.glassEffect(.regular.interactive(), in: .circle) }
-            moreMenu(circle: true)
-                .buttonStyle(.glass)
-                .buttonBorderShape(.circle)
-        }
-        .padding(.horizontal, 12)
-        .padding(.top, 6)
-        .padding(.bottom, 4)
     }
 
     @ViewBuilder private var principalTitlePill: some View {

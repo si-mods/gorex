@@ -1,5 +1,13 @@
 import SwiftUI
 
+/// The scheme the window takes while a terminal is on screen: the
+/// terminal's background, not Settings › Interface, so that the clock and
+/// the status bar keep their contrast over a light terminal.
+@Observable final class ScreenStyle {
+    static let shared = ScreenStyle()
+    var terminal: ColorScheme?
+}
+
 @main
 struct GoRexApp: App {
     @State private var store: HostStore
@@ -37,7 +45,7 @@ struct GoRexApp: App {
             HostListView()
                 .environment(store)
                 .environment(spaces)
-                .preferredColorScheme(Self.colorScheme(scheme))
+                .preferredColorScheme(ScreenStyle.shared.terminal ?? Self.colorScheme(scheme))
                 .onChange(of: phase) { _, p in
                     if p == .background {
                         away = .now
