@@ -513,46 +513,6 @@ func TestPaletteComesAndGoes(t *testing.T) {
 	}
 }
 
-// TestActivityDotBreathes: an activity dot's halo breathes, painting
-// again, with a style of animation, and stands still with Off.
-func TestActivityDotBreathes(t *testing.T) {
-	old := prefs
-	t.Cleanup(func() { prefs = old })
-	for _, tc := range styles {
-		t.Run(tc.name, func(t *testing.T) {
-			prefs = settings{Animation: tc.style}
-			tt := ui.NewTester(func(c *ui.Context) { activityDot(c, ui.RGBA(0, 120, 255, 1), 6) }, 40, 40)
-			tt.Frame()
-			before := slices.Clone(tt.Image().Pix)
-			tt.Advance(600 * time.Millisecond)
-			if pending := tt.FramePending(); pending != tc.moves {
-				t.Errorf("frame pending %v, want %v", pending, tc.moves)
-			}
-			if changed := !bytes.Equal(before, tt.Image().Pix); changed != tc.moves {
-				t.Errorf("the halo changed %v, want %v", changed, tc.moves)
-			}
-		})
-	}
-	t.Run("unfocused", func(t *testing.T) {
-		prefs = settings{}
-		breathing = false
-		t.Cleanup(func() { breathing = true })
-		tt := ui.NewTester(func(c *ui.Context) { activityDot(c, ui.RGBA(0, 120, 255, 1), 6) }, 40, 40)
-		tt.Frame()
-		before := slices.Clone(tt.Image().Pix)
-		tt.Advance(600 * time.Millisecond)
-		if tt.FramePending() || !bytes.Equal(before, tt.Image().Pix) {
-			t.Error("the halo breathes out of the focus")
-		}
-	})
-	if b := breath(time.Unix(0, 0)); b != 0 {
-		t.Errorf("breath at the epoch %v, want 0", b)
-	}
-	if b := breath(time.Unix(0, int64(breathPeriod))); b != 1 {
-		t.Errorf("breath a period on %v, want 1", b)
-	}
-}
-
 // TestWorkingDotsAnimate: workingDots pulses across frames with a style of
 // animation, and stands still with Off or when unfocused.
 func TestWorkingDotsAnimate(t *testing.T) {

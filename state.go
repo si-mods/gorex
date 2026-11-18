@@ -96,8 +96,6 @@ type Pane struct {
 	info rex.SessionInfo
 	// title is the last title the program set.
 	title string
-	// lastData is when the session last printed, in Unix nanoseconds.
-	lastData atomic.Int64
 	// attention marks a pane that rang the bell or whose program finished
 	// while it was out of sight; seen clears it. asked counts the times it
 	// came to ask for attention (askAttention), and popped is the last of
@@ -502,7 +500,6 @@ func (a *App) attach(p *Pane, cols, rows int) {
 	// The terminal's callbacks change the state on the main thread, in
 	// the window that made the pane, as long as it is open.
 	update := a.updater()
-	onData := func(int) { p.lastData.Store(time.Now().UnixNano()) }
 	p.seenFunc = func() {
 		a.tellSeen(p)
 		if a.st != nil {
@@ -521,7 +518,6 @@ func (a *App) attach(p *Pane, cols, rows int) {
 		// A host's streams claim the focus on each attach only while the
 		// user is at this machine.
 		p.remote.present = userPresent
-		p.remote.OnData = onData
 		p.remote.onChange = func() { update(func() {}) }
 		opts.Conn = p.remote
 	} else {
@@ -531,7 +527,6 @@ func (a *App) attach(p *Pane, cols, rows int) {
 		// last showed and takes nothing typed.
 		p.stream = newLocalStream(a.client, p.SID, cols, rows)
 		p.stream.SetPresent(userPresent)
-		p.stream.OnData = onData
 		p.stream.onChange = func() { update(func() {}) }
 		opts.Conn = p.stream
 	}

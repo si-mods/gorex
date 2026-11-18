@@ -20,11 +20,10 @@ import (
 )
 
 const (
-	gap       = 8  // between panes, and around them
-	titleH    = 44 // the title bar
-	windowR   = 16 // the window's corners where the system tells none, as macOS 27 draws them
-	headerH   = 33 // the panes' headers
-	activeFor = 1500 * time.Millisecond
+	gap     = 8  // between panes, and around them
+	titleH  = 44 // the title bar
+	windowR = 16 // the window's corners where the system tells none, as macOS 27 draws them
+	headerH = 33 // the panes' headers
 )
 
 // cardR is the panes' corners: concentric with the window's, which the
@@ -1488,45 +1487,14 @@ func (a *App) reconnecting(c *ui.Context, k *colors, p *Pane) {
 	})
 }
 
-// status is what a pane is doing.
-type status int
-
-const (
-	statusIdle      status = iota // a shell at its prompt
-	statusRunning                 // a program printing
-	statusQuiet                   // a program running quietly
-	statusAttention               // done or ringing out of sight
-)
-
-func (a *App) statusOf(c *ui.Context, p *Pane) status {
-	if p.attention {
-		return statusAttention
-	}
-	if s := p.status(); s != nil && s.State == "working" {
-		return statusRunning
-	}
-	if p.info.Idle || p.info.Program == "" || programOf(p.info.Program).Shell {
-		return statusIdle
-	}
-	last := time.Unix(0, p.lastData.Load())
-	if since := c.Now().Sub(last); since < activeFor {
-		c.After(activeFor - since)
-		return statusRunning
-	}
-	return statusQuiet
-}
-
-// activityBadge shows what a pane does: a pulse while its program
-// prints, a dot when it asks for attention.
+// activityBadge shows what a pane does: the dots of its record, or the
+// dot of a pane asking for attention.
 func (a *App) activityBadge(c *ui.Context, k *colors, p *Pane) {
 	if s := p.status(); needsUser(s) || s != nil && s.State == "working" && !p.attention {
 		statusDot(c, k, s, 6).Margin(0, 0, 0, 2)
 		return
 	}
-	switch a.statusOf(c, p) {
-	case statusRunning:
-		activityDot(c, k.busy, 6)
-	case statusAttention:
+	if p.attention {
 		attentionDot(c, k, p).Margin(0, 0, 0, 2).Tooltip(locales.PaneNeedsAttention())
 	}
 }
@@ -1636,46 +1604,9 @@ func statusTip(s *rex.ProgramStatus) string {
 }
 
 // breathing tells that the window being built has the focus, which the
-// activity dots breathe in: out of it, a program printing for hours would
+// working dots animate in: out of it, a program working for hours would
 // keep the window painting for nothing.
 var breathing = true
-
-// activityDot is the dot of a program printing: a solid dot in a soft
-// halo. With a style of animation the halo breathes while the window has
-// the focus, growing and fading in and out, all the dots in step;
-// otherwise it stands still.
-func activityDot(c *ui.Context, col ui.Color, size float32) ui.Element {
-	e := ui.Box(c).Size(size+6, size+6).Margin(0, 0, 0, 1).Tooltip(locales.PanePrinting())
-	breathes := breathing && motion(c) != nil
-	e.Draw(func(p *ui.Painter, r ui.Rect) {
-		cx, cy := r.X+r.W/2, r.Y+r.H/2
-		halo, alpha := size/2+2.5, float32(0.22)
-		if breathes {
-			k := breath(p.Now())
-			halo, alpha = size/2+1.5+1.5*k, 0.12+0.2*k
-			// Only the dot paints again, without building the view, and
-			// at a rate the slow change looks as smooth at.
-			p.AnimationFrameRate(30)
-		}
-		p.Fill(ui.Rect{X: cx - halo, Y: cy - halo, W: 2 * halo, H: 2 * halo}, col.Alpha(alpha), halo)
-		p.Fill(ui.Rect{X: cx - size/2, Y: cy - size/2, W: size, H: size}, col, size/2)
-	})
-	return e
-}
-
-// breathPeriod is how long a halo takes to grow, and as long to shrink.
-const breathPeriod = 1200 * time.Millisecond
-
-// breath is how far a breathing halo is grown at now, from 0 to 1: in and
-// out by breathPeriod, easing at both ends, from one epoch for all.
-func breath(now time.Time) float32 {
-	t := now.UnixNano() % int64(2*breathPeriod)
-	f := float32(t) / float32(breathPeriod)
-	if f > 1 {
-		f = 2 - f
-	}
-	return ui.EaseInOut(f)
-}
 
 // workingDots draws three dots that pulse and hop left-to-right while a
 // program is working, or stand still when unfocused or animation is off.
