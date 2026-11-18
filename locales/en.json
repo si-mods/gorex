@@ -2512,9 +2512,9 @@
   "@projectSheetDenied": {
     "description": "Folder browser: the host may not read the folder."
   },
-  "projectSheetEmpty": "No folders here.",
+  "projectSheetEmpty": "No subfolders. You can use this folder.",
   "@projectSheetEmpty": {
-    "description": "Folder browser: the folder has no folders in it."
+    "description": "Folder browser: the folder has no folders in it, and can be used as it is."
   },
   "projectSheetMore": "Only the first {n} folders are shown.",
   "@projectSheetMore": {
@@ -2529,6 +2529,46 @@
   "projectSheetDrives": "Drives",
   "@projectSheetDrives": {
     "description": "Folder browser: the top of a Windows machine, the list of its drives."
+  },
+  "projectSheetChosen": "Project folder: {path}",
+  "@projectSheetChosen": {
+    "description": "New Project sheet: over the buttons, the folder that Create or Use This Folder takes: the folder listed.",
+    "placeholders": {
+      "path": {
+        "type": "String",
+        "example": "/home/me/code/acme-api"
+      }
+    }
+  },
+  "projectSheetNoChoice": "Open a folder to choose it.",
+  "@projectSheetNoChoice": {
+    "description": "New Project sheet: over the buttons, when no folder can be taken, as in the list of drives or in a folder that cannot be read."
+  },
+  "projectSheetBrowseFirst": "Choose a host and open the project's folder.",
+  "@projectSheetBrowseFirst": {
+    "description": "Change Folder sheet: over the buttons, while the project's home host is unknown and the user has not browsed yet."
+  },
+  "projectSheetNameNeeded": "This folder has no name. Type a name for the project.",
+  "@projectSheetNameNeeded": {
+    "description": "New Project sheet: over the buttons, at the top of a drive or of the disk, whose folder gives no name."
+  },
+  "projectSheetNameHint": "Type a name",
+  "@projectSheetNameHint": {
+    "description": "New Project sheet: placeholder of the name field when the folder gives no name."
+  },
+  "projectSheetHostUnknown": "Previous host unknown: {dir}",
+  "@projectSheetHostUnknown": {
+    "description": "Change Folder sheet: at the top, when the project's home host is none of the user's hosts; dir is its folder there.",
+    "placeholders": {
+      "dir": {
+        "type": "String",
+        "example": "/srv/acme-api"
+      }
+    }
+  },
+  "projectSheetMoreFolders": "Folders above",
+  "@projectSheetMoreFolders": {
+    "description": "Folder browser: the breadcrumb's button that lists the folders it leaves out."
   },
   "projectChangeFolder": "Change Folder…",
   "@projectChangeFolder": {

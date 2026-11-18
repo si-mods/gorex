@@ -7496,16 +7496,18 @@ func (msgs Messages) ProjectSheetDenied() string {
 	return Catalog.Format(msgs.locale, "projectSheetDenied", nil)
 }
 
-// ProjectSheetEmpty says "No folders here."
+// ProjectSheetEmpty says "No subfolders. You can use this folder."
 // in the language the app shows.
 //
-// Folder browser: the folder has no folders in it.
+// Folder browser: the folder has no folders in it, and can be used as it
+// is.
 func ProjectSheetEmpty() string { return In(i18n.Locale()).ProjectSheetEmpty() }
 
-// ProjectSheetEmpty says "No folders here."
+// ProjectSheetEmpty says "No subfolders. You can use this folder."
 // in the language of msgs.
 //
-// Folder browser: the folder has no folders in it.
+// Folder browser: the folder has no folders in it, and can be used as it
+// is.
 func (msgs Messages) ProjectSheetEmpty() string {
 	return Catalog.Format(msgs.locale, "projectSheetEmpty", nil)
 }
@@ -7536,6 +7538,120 @@ func ProjectSheetDrives() string { return In(i18n.Locale()).ProjectSheetDrives()
 // Folder browser: the top of a Windows machine, the list of its drives.
 func (msgs Messages) ProjectSheetDrives() string {
 	return Catalog.Format(msgs.locale, "projectSheetDrives", nil)
+}
+
+// ProjectSheetChosen says "Project folder: {path}"
+// in the language the app shows.
+//
+// New Project sheet: over the buttons, the folder that Create or Use This
+// Folder takes: the folder listed.
+func ProjectSheetChosen(path string) string { return In(i18n.Locale()).ProjectSheetChosen(path) }
+
+// ProjectSheetChosen says "Project folder: {path}"
+// in the language of msgs.
+//
+// New Project sheet: over the buttons, the folder that Create or Use This
+// Folder takes: the folder listed.
+func (msgs Messages) ProjectSheetChosen(path string) string {
+	return Catalog.Format(msgs.locale, "projectSheetChosen", map[string]any{"path": path})
+}
+
+// ProjectSheetNoChoice says "Open a folder to choose it."
+// in the language the app shows.
+//
+// New Project sheet: over the buttons, when no folder can be taken, as in
+// the list of drives or in a folder that cannot be read.
+func ProjectSheetNoChoice() string { return In(i18n.Locale()).ProjectSheetNoChoice() }
+
+// ProjectSheetNoChoice says "Open a folder to choose it."
+// in the language of msgs.
+//
+// New Project sheet: over the buttons, when no folder can be taken, as in
+// the list of drives or in a folder that cannot be read.
+func (msgs Messages) ProjectSheetNoChoice() string {
+	return Catalog.Format(msgs.locale, "projectSheetNoChoice", nil)
+}
+
+// ProjectSheetBrowseFirst says "Choose a host and open the project's folder."
+// in the language the app shows.
+//
+// Change Folder sheet: over the buttons, while the project's home host is
+// unknown and the user has not browsed yet.
+func ProjectSheetBrowseFirst() string { return In(i18n.Locale()).ProjectSheetBrowseFirst() }
+
+// ProjectSheetBrowseFirst says "Choose a host and open the project's folder."
+// in the language of msgs.
+//
+// Change Folder sheet: over the buttons, while the project's home host is
+// unknown and the user has not browsed yet.
+func (msgs Messages) ProjectSheetBrowseFirst() string {
+	return Catalog.Format(msgs.locale, "projectSheetBrowseFirst", nil)
+}
+
+// ProjectSheetNameNeeded says "This folder has no name. Type a name for the project."
+// in the language the app shows.
+//
+// New Project sheet: over the buttons, at the top of a drive or of the
+// disk, whose folder gives no name.
+func ProjectSheetNameNeeded() string { return In(i18n.Locale()).ProjectSheetNameNeeded() }
+
+// ProjectSheetNameNeeded says "This folder has no name. Type a name for the project."
+// in the language of msgs.
+//
+// New Project sheet: over the buttons, at the top of a drive or of the
+// disk, whose folder gives no name.
+func (msgs Messages) ProjectSheetNameNeeded() string {
+	return Catalog.Format(msgs.locale, "projectSheetNameNeeded", nil)
+}
+
+// ProjectSheetNameHint says "Type a name"
+// in the language the app shows.
+//
+// New Project sheet: placeholder of the name field when the folder gives no
+// name.
+func ProjectSheetNameHint() string { return In(i18n.Locale()).ProjectSheetNameHint() }
+
+// ProjectSheetNameHint says "Type a name"
+// in the language of msgs.
+//
+// New Project sheet: placeholder of the name field when the folder gives no
+// name.
+func (msgs Messages) ProjectSheetNameHint() string {
+	return Catalog.Format(msgs.locale, "projectSheetNameHint", nil)
+}
+
+// ProjectSheetHostUnknown says "Previous host unknown: {dir}"
+// in the language the app shows.
+//
+// Change Folder sheet: at the top, when the project's home host is none of
+// the user's hosts; dir is its folder there.
+func ProjectSheetHostUnknown(dir string) string {
+	return In(i18n.Locale()).ProjectSheetHostUnknown(dir)
+}
+
+// ProjectSheetHostUnknown says "Previous host unknown: {dir}"
+// in the language of msgs.
+//
+// Change Folder sheet: at the top, when the project's home host is none of
+// the user's hosts; dir is its folder there.
+func (msgs Messages) ProjectSheetHostUnknown(dir string) string {
+	return Catalog.Format(msgs.locale, "projectSheetHostUnknown", map[string]any{"dir": dir})
+}
+
+// ProjectSheetMoreFolders says "Folders above"
+// in the language the app shows.
+//
+// Folder browser: the breadcrumb's button that lists the folders it leaves
+// out.
+func ProjectSheetMoreFolders() string { return In(i18n.Locale()).ProjectSheetMoreFolders() }
+
+// ProjectSheetMoreFolders says "Folders above"
+// in the language of msgs.
+//
+// Folder browser: the breadcrumb's button that lists the folders it leaves
+// out.
+func (msgs Messages) ProjectSheetMoreFolders() string {
+	return Catalog.Format(msgs.locale, "projectSheetMoreFolders", nil)
 }
 
 // ProjectChangeFolder says "Change Folder…"

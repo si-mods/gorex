@@ -184,10 +184,22 @@ type DirListResult struct {
      the folders below, Home, Up, and a field to type a path. For this
      machine, **Choose…** also opens the system folder picker.
   3. **Name**: the folder's name by default; a project made with an
-     empty name takes the folder's name.
+     empty name takes the folder's name. A root (`/`, `C:\`) has no
+     name: Create waits for one typed.
   4. **Create** makes the project and opens its first tab in the folder.
   A listing that arrives after the sheet moved to another host is
   dropped.
+  - The folder listed is the one chosen: a line over the buttons says
+    "Project folder: <path>", or why there is none (the list of drives,
+    a folder that cannot be read).
+  - The breadcrumb shows the top, the last steps that fit and, between
+    them, a menu of the steps left out; only a last step too long for
+    the row shortens, in its middle. The path field shows the path's end.
+  - Keys: Up and Down highlight a folder, Enter opens it; Backspace (out
+    of a text field) and Alt+Up go up; Enter in the name field creates.
+  - **Change Folder…** of a project whose home host is unknown says so
+    with its folder, and lists this machine's home, which it does not
+    use until the user browses.
 - **New Project with No Folder** stays, for a project that only groups
   terminals, as a space does.
 - **Project settings** (the project's context menu): Rename, Color,
