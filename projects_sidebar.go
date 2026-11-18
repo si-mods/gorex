@@ -102,7 +102,7 @@ func (a *App) projectsList(c *ui.Context, k *colors) {
 		if !a.hostShown(h, space) {
 			continue
 		}
-		ui.Column(c.Key("host-body-"+hostKey(h))).Gap(2).Padding(0, 0, 10, 0).Children(func() {
+		ui.Column(c.Key("host-body-"+hostKey(h))).Gap(rowGap).Padding(0, 0, 10, 0).Children(func() {
 			a.hostHeader(c, k, h)
 			recent, older := a.projectsOf(h, space)
 			for _, w := range recent {
@@ -237,18 +237,20 @@ func (a *App) projectRow(c *ui.Context, k *colors, w *Workspace, reserve float32
 	offline := w.offline()
 	detail := a.projectDetail(w)
 	row := ui.Row(c.Key("project-"+key)).Height(projectRowH).Shrink(0).Padding(0, 4, 0, 0).Gap(4).AlignItems(ui.Center).
-		Radius(pillRadius(projectRowH, 9)).Cursor(ui.CursorPointer).Role(ui.RoleButton).Selected(shown).Expanded(open).Label(name + spacedComma(detail))
+		Radius(pillRadius(projectRowH, 9)).Cursor(ui.CursorPointer).Role(ui.RoleButton).Expanded(open).Label(name + spacedComma(detail))
 	if detail != "" {
 		row.Tooltip(detail)
 	}
 	if anim := motion(c); anim != nil {
 		row.Transition(ui.ElementTransition{Animation: anim, Position: true, Enter: tabMotion, Exit: tabMotion})
 	}
+	// One row is filled, as chosen: the active tab, under the project that
+	// holds it, which shows as current by its weight and dot alone; the
+	// project's own row while its tabs are closed. Hover is the lighter
+	// face (DESIGN.md).
 	switch {
-	case shown && prefs.TabPlacement == "":
+	case shown && (!open || n == 0):
 		glassPill(row, k, projectRowH)
-	case shown:
-		row.Background(hoverFace(k))
 	case row.Hovered() && !offline:
 		row.Background(hoverFace(k))
 	}
@@ -310,7 +312,7 @@ func (a *App) projectRow(c *ui.Context, k *colors, w *Workspace, reserve float32
 	if !open || n == 0 {
 		return
 	}
-	list := ui.Column(c.Key("project-tabs-"+key)).Gap(2).Padding(0, 0, 0, dotRoom).Draw(func(p *ui.Painter, r ui.Rect) {
+	list := ui.Column(c.Key("project-tabs-"+key)).Gap(rowGap).Padding(0, 0, 0, dotRoom).Draw(func(p *ui.Painter, r ui.Rect) {
 		// The guide line that joins the tabs to their project, under its
 		// dot.
 		p.Fill(ui.Rect{X: r.X + dotRoom/2 - 0.5, Y: r.Y + 2, W: 1, H: r.H - 4}, k.textFaint.Alpha(0.4), 0.5)
@@ -328,6 +330,10 @@ func (a *App) projectRow(c *ui.Context, k *colors, w *Workspace, reserve float32
 		a.workspaceTabs(c, k, w, reserve, offline)
 	})
 }
+
+// rowGap is the room between the sidebar's rows, so that two filled
+// ones, a hovered and the chosen, never touch.
+const rowGap = 3
 
 // dotRoom is the room of a project's dot before its name, and the one step
 // its tabs come in under it, the guide line at its middle.

@@ -443,8 +443,32 @@ func TestSidebarFlatLayout(t *testing.T) {
 	if row.X > header.X+1 || tab.X-row.X < dotRoom-1 || tab.X-row.X > dotRoom+1 {
 		t.Errorf("header at x %v, project at %v, its tab at %v; want the project flush and its tab %v in", header.X, row.X, tab.X, dotRoom)
 	}
-	if _, inline := tt.Find(a.projectDetail(w)); inline {
+	if r, inline := tt.Find(a.projectDetail(w)); inline && r.X < sidebarWidthIn(1000) {
 		t.Errorf("the folder %q shows in the row", a.projectDetail(w))
+	}
+	// One row is filled: the active tab, not its project, which is
+	// filled once its tabs are closed.
+	face := func(r ui.Rect) [4]uint8 {
+		img := tt.Image()
+		c := img.RGBAAt(int(r.X+r.W*0.7), int(r.Y+r.H/2))
+		return [4]uint8{c.R, c.G, c.B, c.A}
+	}
+	// The window's gradient moves a little row to row: a fill is more.
+	same := func(x, y [4]uint8) bool {
+		d := 0
+		for i := range 3 {
+			d += max(int(x[i])-int(y[i]), int(y[i])-int(x[i]))
+		}
+		return d <= 6
+	}
+	empty := ui.Rect{X: row.X, Y: row.Y - hostHeaderH, W: row.W, H: row.H}
+	if !same(face(row), face(empty)) || same(face(tab), face(empty)) {
+		t.Errorf("the project's row is filled (%v) or its active tab is not (%v), the sidebar being %v", face(row), face(tab), face(empty))
+	}
+	setRowOpen(openKey(nil, w.ID), false)
+	tt.Frame()
+	if same(face(row), face(empty)) {
+		t.Error("the project of the closed tabs is not filled")
 	}
 	if !tt.HasText("OLD-LAPTOP") || !tt.HasText(locales.ProjectsOfflineLabel()) {
 		t.Errorf("the header of a host away: %q", tt.Texts())
