@@ -385,7 +385,13 @@ final class Host: Identifiable {
     /// Connections that failed in a row, for the wait before the next.
     @ObservationIgnored private var attempts = 0
     /// Those waiting for the host to be online.
-    @ObservationIgnored private var waiters: [CheckedContinuation<ControlConnection, Error>] = []
+    @ObservationIgnored private var waiters: [(id: UUID, continuation: CheckedContinuation<ControlConnection, Error>)] = []
+    /// Those waiting for the host to be online, for tests.
+    var waitingCount: Int { waiters.count }
+    /// The reads of blocks' titles, programs and statuses: a few at a time
+    /// on the control connection, so that a reconnect's reads leave room
+    /// for the calls of the moment, as opening a terminal.
+    let describes = BoundedTasks(limit: 4)
     @ObservationIgnored private var refreshing: Set<String> = []
     /// Sessions whose read titles, programs and records are being read
     /// again, as after a reconnect.
@@ -474,6 +480,7 @@ final class Host: Identifiable {
         }
         let c = ControlConnection(base: config.url, auth: config.auth, session: session)
         control = c
+        describes.cancelAll()
         gate = EventGate()
         c.onPing = { [weak self, weak c] rtt in
             guard let self, c === self.control else { return }
@@ -487,6 +494,7 @@ final class Host: Identifiable {
             guard let self, c === self.control else { return }
             ConnectionLog.note("\(name): closed: \(error?.diagnosis ?? "by the app")")
             self.control = nil
+            self.describes.cancelAll()
             self.pingMs = nil
             let offline = Status.offline(error?.localizedDescription ?? "")
             if self.status != offline { self.status = offline }
@@ -532,6 +540,7 @@ final class Host: Identifiable {
         pingMs = nil
         retry?.cancel()
         control?.close()
+        describes.cancelAll()
         proxySession?.session.invalidateAndCancel()
         proxySession = nil
         settle(.failure(CancellationError()))
@@ -591,14 +600,32 @@ final class Host: Identifiable {
         if isDemo { throw RexError(code: "offline", message: String(localized: "Demo Mode has no server.")) }
         if status == .online, let control { return control }
         if stopped { throw CancellationError() }
-        return try await withCheckedThrowingContinuation { waiters.append($0) }
+        // A waiter cancelled, as when its terminal closes, stops waiting
+        // now rather than when the host is next online.
+        let id = UUID()
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { c in
+                if Task.isCancelled {
+                    c.resume(throwing: CancellationError())
+                } else {
+                    waiters.append((id, c))
+                }
+            }
+        } onCancel: {
+            Task { @MainActor [weak self] in self?.cancelWaiter(id) }
+        }
+    }
+
+    private func cancelWaiter(_ id: UUID) {
+        guard let i = waiters.firstIndex(where: { $0.id == id }) else { return }
+        waiters.remove(at: i).continuation.resume(throwing: CancellationError())
     }
 
     /// Resumes those waiting for the host to be online.
     private func settle(_ r: Result<ControlConnection, Error>) {
         let w = waiters
         waiters = []
-        w.forEach { $0.resume(with: r) }
+        w.forEach { $0.continuation.resume(with: r) }
     }
 
     /// session.bootstrap for every session, then session.attach for those
@@ -783,7 +810,7 @@ final class Host: Identifiable {
         if sessions[i].project != project { sessions[i].project = project }
         let again = reread.remove(v.session_id) != nil
         for w in v.windows ?? [] {
-            for b in [w.block].compactMap(\.self) + w.panes where blocks[b]?.title == nil || again { describe(session: v.session_id, block: b) }
+            for b in w.blockIDs where blocks[b]?.title == nil || again { describe(session: v.session_id, block: b) }
         }
         prune()
     }
@@ -793,7 +820,7 @@ final class Host: Identifiable {
     /// reconnect: its blocks would look gone.
     private func prune() {
         guard sessions.allSatisfy({ $0.view != nil }) else { return }
-        let held = Set(sessions.flatMap { $0.view?.windows ?? [] }.flatMap { [$0.block].compactMap(\.self) + $0.panes })
+        let held = Set(sessions.flatMap { $0.view?.windows ?? [] }.flatMap(\.blockIDs))
         for id in blocks.keys where !held.contains(id) { blocks[id] = nil }
     }
 
@@ -808,18 +835,22 @@ final class Host: Identifiable {
         let hadProgram = b.program
         let hadRecords = b.statuses
         if hadTitle == nil { b.title = "" }
-        Task {
-            guard let c = control else { return }
+        // A few at a time; a disconnect cancels them, and the reconnect
+        // reads every block again.
+        describes.add(block) { [weak self] in
+            guard let self, let c = control else { return }
             if let t = try? await c.callBlock("title", session: session, block: block)["title"] as? String,
                b.title == "" || b.title == hadTitle {
                 b.title = t
             }
+            guard !Task.isCancelled else { return }
             if let p = try? await c.callBlock("process", session: session, block: block) {
                 let program = Self.program(p["foreground"])
                 if let program, b.program == nil || b.program == hadProgram {
                     b.program = program
                 }
             }
+            guard !Task.isCancelled else { return }
             if let p = try? await c.callBlock("program_status", session: session, block: block), let r = p["records"] as? [Any] {
                 b.raiseSeen(ProgramStatus.time(p["seen_at"]))
                 if b.statuses == nil || b.statuses == hadRecords {
