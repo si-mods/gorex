@@ -1,12 +1,19 @@
 // GoRex's web client on Cloudflare Workers: static assets only, no Worker
 // code. npm run deploy builds web/dist and runs wrangler deploy; see
-// docs/web-client.md. The name is the Worker's, and its workers.dev
-// address (https://gorex-web.<account>.workers.dev) is the origin a host
-// must trust: gorex rexapi web allow <that origin>.
+// docs/web-client.md. The name is the Worker's; the page is served at
+// https://web.gorex.uk, its custom domain in the gorex.uk zone, and that
+// origin is what a host must trust: gorex rexapi web allow
+// https://web.gorex.uk. The Worker's own address,
+// https://gorex-web.<account>.workers.dev, serves the same assets.
 {
   "name": "gorex-web",
   "compatibility_date": "2025-10-01",
   "assets": {
     "directory": "./dist"
-  }
+  },
+  // Declared here so every deploy keeps the address the page is published
+  // at; wrangler creates the custom domain's DNS record on the first deploy
+  // that needs it. Both need a token with Workers Routes: Edit and DNS: Edit
+  // on gorex.uk, on top of Workers Scripts: Edit.
+  "routes": [{ "pattern": "web.gorex.uk", "custom_domain": true }]
 }

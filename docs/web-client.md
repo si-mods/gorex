@@ -194,7 +194,7 @@ caller's address, not the page.
 The list is empty by default. Set it on the host:
 
 ```sh
-gorex rexapi web allow https://gorex-web.<account>.workers.dev
+gorex rexapi web allow https://web.gorex.uk
 gorex rexapi web allow http://127.0.0.1:5173    # the local dev server
 gorex rexapi web deny http://127.0.0.1:5173
 gorex rexapi web status
@@ -322,8 +322,11 @@ The page is static files: `web/dist`, which `npm run build` (that is,
 ### Cloudflare Workers
 
 `web/wrangler.jsonc` deploys `web/dist` as a Worker with static assets
-only, no Worker code, named `gorex-web`, at
-`https://gorex-web.<account>.workers.dev`. From `web/`:
+only, no Worker code, named `gorex-web`, published at
+`https://web.gorex.uk` — a custom domain of the `gorex.uk` zone, declared
+in that file so every deploy keeps it. The Worker's own address,
+`https://gorex-web.<account>.workers.dev`, serves the same assets. From
+`web/`:
 
 ```sh
 npm run deploy    # node build.mjs, then wrangler deploy
@@ -333,7 +336,7 @@ npm run deploy    # node build.mjs, then wrangler deploy
 in to Cloudflare the first time. Wrangler is not a dependency of the
 page, so `npm ci` in a build does not fetch it and its runtime. Then
 trust the page's origin on each host:
-`gorex rexapi web allow https://gorex-web.<account>.workers.dev`.
+`gorex rexapi web allow https://web.gorex.uk`.
 
 On a push to `main` that touches the page's files (`web/**`, `assets/**`,
 `ios/GoRex/ghostty-themes.json`, `go.mod`/`go.sum`), `.github/workflows/web.yml`
