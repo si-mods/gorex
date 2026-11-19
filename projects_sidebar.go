@@ -223,13 +223,12 @@ func (a *App) newNoProjectTab(h *hostConn) {
 }
 
 // projectRow is a project's row, or the host's tabs with no project's,
-// flush with the host's header: the project's color dot (none for the tabs
-// with no project), its name and its tabs' count; under the pointer and
-// while it is shown, the + that opens a tab in it in place of the count.
-// Its folder shows in its tooltip and, shown, in the title bar. A click
-// shows it, and on the project shown opens or closes its tabs; they come
-// under it one step in, joined to it by a guide line. A host's offline
-// copy shows greyed, and opens nothing.
+// flush with the host's header: a folder icon for a directory project
+// (none for the tabs with no project), its name and its tabs' count; under
+// the pointer and while it is shown, the + that opens a tab in it in place
+// of the count. Its folder shows in its tooltip and, shown, in the title
+// bar. A click shows it, and on the project shown opens or closes its
+// tabs. A host's offline copy shows greyed, and opens nothing.
 func (a *App) projectRow(c *ui.Context, k *colors, w *Workspace, reserve float32) {
 	key := openKey(w.host, w.ID)
 	shown := w == a.ws
@@ -269,15 +268,15 @@ func (a *App) projectRow(c *ui.Context, k *colors, w *Workspace, reserve float32
 	hovered := row.Hovered()
 	toggled := false
 	row.Children(func() {
-		// The dot's room opens and closes the tabs of any project, as a
+		// The icon's room opens and closes the tabs of any project, as a
 		// click on the row of the one shown does. It is as wide as the
-		// tabs' tiles: the dot starts where their tiles do, and the name
-		// where their titles do.
+		// tabs' tiles: the folder starts where their tiles do, and the
+		// name where their titles do.
 		fold := leadRoom(c.Key("fold"), reserve, projectRowH).
 			Role(ui.RoleDisclosure).Expanded(open).Label(locales.ProjectsTabsOf(name))
 		toggled = fold.Clicked()
 		if w.Dir != "" {
-			fold.Children(func() { spaceSwatchMark(c, k, w.Color, 9) })
+			fold.Children(func() { projectFolderIcon(c, k, w.Color) })
 		}
 		if shown && a.wsRenaming {
 			a.workspaceRenameField(c, k, w.Name)
@@ -340,13 +339,23 @@ const rowGap = 4
 
 // The rows of the sidebar under a host's header, its projects', Older's
 // and their tabs', start at one leading edge: sideLead in, then the room
-// of the tabs' tiles (tilesReserve), where a project's dot shows, then
-// sideGap, then the name or title. So a project's dot is where its tabs'
-// tiles start, and its name where their titles do.
+// of the tabs' tiles (tilesReserve), where a project's folder icon shows,
+// then sideGap, then the name or title. So a project's folder is where its
+// tabs' tiles start, and its name where their titles do.
 const (
 	sideLead = 9
 	sideGap  = 6
 )
+
+// projectFolderIcon draws a project row's folder icon, tinted by color
+// when set, matching iOS and web.
+func projectFolderIcon(c *ui.Context, k *colors, color string) ui.Element {
+	col := k.textMuted
+	if hex, ok := spaceColorHex(color); ok {
+		col = ui.Hex(hex)
+	}
+	return glyphIcon(c, "folder", 14, col).Shrink(0)
+}
 
 // leadRoom is the room before a row's name: as wide as the tabs' tiles,
 // what it holds at its start.
@@ -450,7 +459,11 @@ func (a *App) waitingRow(c *ui.Context, k *colors, h *hostConn, ad layout.Adopti
 	row := ui.Row(c.Key("waiting-"+ad.ID)).Height(projectRowH).Shrink(0).Padding(0, 10, 0, sideLead).Gap(sideGap).AlignItems(ui.Center).
 		Role(ui.RoleText).Label(name + ", " + note).Tooltip(tipText)
 	row.Children(func() {
-		leadRoom(c, reserve, projectRowH).Children(func() { spaceSwatchMark(c, k, "", 9) })
+		leadRoom(c, reserve, projectRowH).Children(func() {
+			if ad.Project != nil {
+				projectFolderIcon(c, k, "")
+			}
+		})
 		ui.Text(c, name).FontSize(fontBody).TextColor(k.text.Alpha(0.85)).SingleLine().Ellipsis("…").Shrink(1).MinWidth(0)
 		ui.Text(c, note).FontSize(fontCaption).TextColor(k.textFaint).SingleLine().Ellipsis("…").Grow(1).MinWidth(0).Padding(0, 0, 0, 6)
 	})

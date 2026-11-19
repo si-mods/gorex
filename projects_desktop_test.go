@@ -479,7 +479,7 @@ func TestSidebarFlatLayout(t *testing.T) {
 		t.Errorf("header at x %v, project at %v (%v wide), its tab at %v (%v wide); want both flush", header.X, row.X, row.W, tab.X, tab.W)
 	}
 	// The project's name starts where its tab's title does: after the
-	// room of the tiles, where the project's dot is.
+	// room of the tiles, where the project's folder icon is.
 	if text, ok := tt.Find("acme-api"); !ok || text.X != tab.X+sideLead+tilesReserve(a.tabs)+sideGap {
 		t.Errorf("the project's name at x %v, want %v", text.X, tab.X+sideLead+tilesReserve(a.tabs)+sideGap)
 	}
