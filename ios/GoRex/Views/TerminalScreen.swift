@@ -920,7 +920,7 @@ struct TerminalScreen: View {
         switch session?.state ?? .connecting {
         case .connecting:
             // A reconnect shows its note above the key bar instead.
-            if session?.reconnecting != true { ProgressView() }
+            if session?.reconnecting != true { PrismLoading() }
         case .live:
             EmptyView()
         case .exited(let code):
@@ -967,6 +967,50 @@ private struct Reconnecting: View {
         .padding(.horizontal, 16)
         .accessibilityElement(children: .combine)
         .allowsHitTesting(false)
+    }
+}
+
+/// What a terminal shows while its stream opens: the app's prism, its
+/// beam sweeping through the glass into the fan of colours and drawing
+/// back, as the icon holds it still. Reduce Motion shows it lit, still.
+private struct PrismLoading: View {
+    /// How far the beam's sweep has reached, as a fraction of the icon's
+    /// width: under 0 it is all out, over 1 all in.
+    @State private var edge: CGFloat = -0.2
+    @Environment(\.accessibilityReduceMotion) private var still
+
+    private let size: CGFloat = 72
+
+    var body: some View {
+        ZStack {
+            // The icon's layers, drawn as Icon Composer stacks them: the
+            // Ink gradient, the beam and the fan, the glass prism over
+            // them, as it draws the light passing through itself.
+            LinearGradient(colors: [Color(red: 0.215, green: 0.226, blue: 0.264),
+                                    Color(red: 0.092, green: 0.095, blue: 0.112)],
+                           startPoint: .top, endPoint: .bottom)
+            Image("PrismSpectrum").resizable()
+                .mask {
+                    LinearGradient(stops: [
+                        .init(color: .white, location: 0),
+                        .init(color: .white, location: max(edge - 0.14, 0)),
+                        .init(color: .clear, location: min(max(edge, 0.001), 1)),
+                        .init(color: .clear, location: 1),
+                    ], startPoint: .leading, endPoint: .trailing)
+                }
+            Image("PrismBody").resizable().opacity(0.7)
+        }
+        .frame(width: size, height: size)
+        .clipShape(.rect(cornerRadius: size * 0.2237, style: .continuous))
+        .shadow(color: .black.opacity(0.3), radius: 14, y: 6)
+        .onAppear {
+            guard !still else {
+                edge = 1.1
+                return
+            }
+            withAnimation(.easeInOut(duration: 1.5).repeatForever()) { edge = 1.1 }
+        }
+        .accessibilityLabel("Connecting…")
     }
 }
 
