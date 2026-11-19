@@ -1,4 +1,3 @@
-import CryptoKit
 import Foundation
 import Observation
 
@@ -76,6 +75,7 @@ final class WebClientStore {
 
     /// Downloads files.json from the configured R2 URL, fetches any missing or changed
     /// non-optional files, verifies SHA-256, and swaps them into WebClient/.
+    /// The disk work and the downloads run off the main actor (WebClientSync).
     @discardableResult
     func update() async -> Bool {
         guard let baseURL else {
@@ -95,47 +95,17 @@ final class WebClientStore {
             let index = try JSONDecoder().decode(FileIndex.self, from: indexData)
             let wanted = index.files.filter { $0.optional != true }
 
-            let fm = FileManager.default
-            let parent = directory.deletingLastPathComponent()
-            try fm.createDirectory(at: parent, withIntermediateDirectories: true)
-            let staging = parent.appendingPathComponent("WebClient.staging-\(UUID().uuidString)", isDirectory: true)
-            try fm.createDirectory(at: staging, withIntermediateDirectories: true)
-            defer { try? fm.removeItem(at: staging) }
-
             let total = wanted.count
             state = .downloading(done: 0, total: max(total, 1))
-
-            for (i, entry) in wanted.enumerated() {
-                let dst = staging.appendingPathComponent(entry.path)
-                try fm.createDirectory(at: dst.deletingLastPathComponent(), withIntermediateDirectories: true)
-
-                // Reuse already-cached file if its SHA-256 matches.
-                let cached = directory.appendingPathComponent(entry.path)
-                if let existing = try? Data(contentsOf: cached), sha256Hex(existing) == entry.sha256 {
-                    try existing.write(to: dst, options: .atomic)
-                } else {
-                    let fileURL = baseURL.appendingPathComponent(entry.path)
-                    let (data, fResp) = try await URLSession.shared.data(from: fileURL)
-                    if let http = fResp as? HTTPURLResponse, http.statusCode != 200 {
-                        throw NSError(domain: "WebClientStore", code: http.statusCode,
-                                      userInfo: [NSLocalizedDescriptionKey: "HTTP \(http.statusCode) fetching \(entry.path)"])
-                    }
-                    let got = sha256Hex(data)
-                    guard got == entry.sha256 else {
-                        throw NSError(domain: "WebClientStore", code: -1,
-                                      userInfo: [NSLocalizedDescriptionKey: "Checksum mismatch for \(entry.path)"])
-                    }
-                    try data.write(to: dst, options: .atomic)
+            try await WebClientSync.sync(
+                entries: wanted.map { WebClientSync.Entry(path: $0.path, sha256: $0.sha256) },
+                indexData: indexData,
+                into: directory,
+                fetch: WebClientSync.httpFetch(base: baseURL),
+                progress: { done in
+                    await self.setProgress(done: done, total: total)
                 }
-                state = .downloading(done: i + 1, total: max(total, 1))
-            }
-
-            try indexData.write(to: staging.appendingPathComponent("files.json"), options: .atomic)
-            if fm.fileExists(atPath: directory.path) {
-                _ = try fm.replaceItemAt(directory, withItemAt: staging)
-            } else {
-                try fm.moveItem(at: staging, to: directory)
-            }
+            )
             state = .ready
             return true
         } catch {
@@ -144,7 +114,8 @@ final class WebClientStore {
         }
     }
 
-    private func sha256Hex(_ data: Data) -> String {
-        SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+    private func setProgress(done: Int, total: Int) {
+        guard case .downloading = state else { return }
+        state = .downloading(done: done, total: max(total, 1))
     }
 }

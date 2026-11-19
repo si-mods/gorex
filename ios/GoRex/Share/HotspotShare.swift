@@ -46,6 +46,10 @@ final class HotspotShare: NSObject, TailnetShareDelegateProtocol {
     private var monitor: NWPathMonitor?
     private var bgTask: UIBackgroundTaskIdentifier = .invalid
     private var lastHosts: [HostConfig] = []
+    /// The TailnetShare* calls that can block (a 200 ms dial, the network
+    /// interfaces, a listener's start and stop) run off the main actor, in
+    /// the order they were asked for (#860).
+    @ObservationIgnored private let calls = ShareCalls()
 
     var shareURL: String? {
         guard !hotspotIP.isEmpty else { return nil }
@@ -62,7 +66,7 @@ final class HotspotShare: NSObject, TailnetShareDelegateProtocol {
     }
 
     func refreshHotspotIP() {
-        hotspotIP = TailnetShareHotspotIP()
+        calls.add { await self.loadHotspotIP() }
     }
 
     func start(configs: [HostConfig]) async {
@@ -79,14 +83,18 @@ final class HotspotShare: NSObject, TailnetShareDelegateProtocol {
 
         isSharing = true
         startMonitor()
-        startOrRestartListener()
+        await calls.add { await self.startOrRestartListener() }.value
     }
 
     func stop() {
         isSharing = false
         stopMonitor()
         endBackgroundTask()
-        TailnetShareStop()
+        calls.add {
+            await ShareCalls.offMain { TailnetShareStop() }
+            // A device change the server told before it stopped.
+            if !self.isSharing { self.devices = [] }
+        }
         devices = []
         pendingQueue = []
         pendingPrompt = nil
@@ -143,10 +151,13 @@ final class HotspotShare: NSObject, TailnetShareDelegateProtocol {
         endBackgroundTask()
         refreshHotspotIP()
         guard isSharing else { return }
-        if !TailnetShareAlive() {
-            startOrRestartListener()
+        calls.add {
+            guard self.isSharing else { return }
+            if !(await ShareCalls.offMain { TailnetShareAlive() }) {
+                await self.startOrRestartListener()
+            }
+            self.reloadDevices()
         }
-        reloadDevices()
     }
 
     // MARK: - TailnetShareDelegateProtocol
@@ -173,21 +184,54 @@ final class HotspotShare: NSObject, TailnetShareDelegateProtocol {
 
     // MARK: - Private
 
-    private func startOrRestartListener() {
-        refreshHotspotIP()
-        guard !hotspotIP.isEmpty else {
-            TailnetShareStop()
+    /// Reads the hotspot's address off the main actor. Only a ShareCalls
+    /// operation calls it.
+    @discardableResult
+    private func loadHotspotIP() async -> String {
+        hotspotIP = await ShareCalls.offMain { TailnetShareHotspotIP() }
+        return hotspotIP
+    }
+
+    /// Only a ShareCalls operation calls it, so that it runs in order with
+    /// the other Start and Stop calls.
+    private func startOrRestartListener() async {
+        guard isSharing else { return }
+        let ip = await loadHotspotIP()
+        guard !ip.isEmpty else {
+            await ShareCalls.offMain { TailnetShareStop() }
             return
         }
-        let addr = "\(hotspotIP):\(Self.port)"
+        let addr = "\(ip):\(Self.port)"
         let webDir = WebClientStore.shared.directory.path
         let phone = UIDevice.current.name
-        var err: NSError?
-        if TailnetShareStart(addr, webDir, phone, self, &err) {
+        // Go calls the delegate on its own threads already; its methods are
+        // nonisolated.
+        let delegate = UncheckedDelegate(value: self)
+        let (ok, message) = await ShareCalls.offMain { () -> (Bool, String?) in
+            var err: NSError?
+            let ok = TailnetShareStart(addr, webDir, phone, delegate.value, &err)
+            return (ok, err?.localizedDescription)
+        }
+        if ok {
             error = nil
             updateHosts(lastHosts)
         } else {
-            error = err?.localizedDescription
+            error = message
+        }
+    }
+
+    /// A path change: start the listener again on a new address, or when it
+    /// stopped listening. Only a ShareCalls operation calls it.
+    private func pathChanged() async {
+        guard isSharing else { return }
+        let oldIP = hotspotIP
+        let ip = await loadHotspotIP()
+        var restart = ip != oldIP
+        if !restart && !ip.isEmpty {
+            restart = !(await ShareCalls.offMain { TailnetShareAlive() })
+        }
+        if restart {
+            await startOrRestartListener()
         }
     }
 
@@ -214,11 +258,7 @@ final class HotspotShare: NSObject, TailnetShareDelegateProtocol {
         m.pathUpdateHandler = { [weak self] _ in
             Task { @MainActor in
                 guard let self, self.isSharing else { return }
-                let oldIP = self.hotspotIP
-                self.refreshHotspotIP()
-                if self.hotspotIP != oldIP || (!self.hotspotIP.isEmpty && !TailnetShareAlive()) {
-                    self.startOrRestartListener()
-                }
+                self.calls.add { await self.pathChanged() }
             }
         }
         m.start(queue: DispatchQueue(label: "dev.gorex.share.path"))
@@ -235,4 +275,9 @@ final class HotspotShare: NSObject, TailnetShareDelegateProtocol {
         UIApplication.shared.endBackgroundTask(bgTask)
         bgTask = .invalid
     }
+}
+
+/// Carries the share's delegate into a Go call off the main actor.
+private nonisolated struct UncheckedDelegate: @unchecked Sendable {
+    let value: any TailnetShareDelegateProtocol
 }

@@ -139,6 +139,8 @@ targets:
       - GoRex/Terminal/Polish.swift
       - GoRex/Tailnet/TailnetSettings.swift
       - GoRex/Views/ProgramTile.swift
+      - GoRex/Share/WebClientSync.swift
+      - GoRex/Share/ShareCalls.swift
       - path: ../internal/rexapi/testdata/rex-terminal-stream.bin
         buildPhase: resources
     dependencies:
