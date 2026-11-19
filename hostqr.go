@@ -42,8 +42,10 @@ type hostPairQR struct {
 	// put in it. It holds a credential, so the page keeps the image and
 	// says where it leads, never the link itself. webTrusted is whether
 	// this computer lets that page in (rexapi.LoadWeb).
+	webURL                     string
 	webImage                   ui.ImageSource
 	webTrusted, webAllowFailed bool
+	webOpenFailed              bool
 	webErr                     string
 }
 
@@ -78,12 +80,17 @@ func (a *App) openLocalPairQR() {
 		// listener that is off, holds no token or has no WebTransport leg
 		// gives no link: the page could not reach it anyway.
 		if web := remoteUI.lan.WebPairURL(remoteUI.lanStatus, rexapi.WebOrigin); web != "" {
+			page.webURL = web
 			page.webImage = qrImage(web)
 			page.webTrusted = trustsWebOrigin(rexapi.TailnetDir(), rexapi.WebOrigin)
 		}
 		remoteUI.pairQR = page
 	}
 }
+
+// openWebLink opens a page in the browser. A test replaces it, as the test
+// backend opens none.
+var openWebLink = mygo.Shell.OpenExternal
 
 // trustsWebOrigin tells whether this computer lets the page at origin in
 // (rexapi.LoadWeb), which the pair dialog's web tab adds when it does not.
@@ -237,7 +244,8 @@ func hostPairQRSheet(c *ui.Context, k *colors, page *hostPairQR) {
 			ui.Text(c, locales.HostsRexQRLoading()).FontSize(13).TextColor(k.textMuted).LineHeight(1.35)
 		case web && page.tab == 1:
 			ui.Text(c, locales.HostsPairWebHint(rexapi.WebOrigin)).FontSize(12.5).TextColor(k.textMuted).LineHeight(1.35)
-			pairQRCode(c, page.webImage, title)
+			// The browser this dialog runs beside is the usual one, so
+			// it opens there; the code is for a phone on the network.
 			if page.webTrusted {
 				ui.Text(c, locales.HostsPairWebTrusted()).FontSize(12).TextColor(k.textMuted).LineHeight(1.3)
 			} else {
@@ -253,6 +261,18 @@ func hostPairQRSheet(c *ui.Context, k *colors, page *hostPairQR) {
 			if page.webAllowFailed {
 				ui.Text(c, locales.HostsPairWebTrustFailed(page.webErr)).FontSize(12).TextColor(k.danger).LineHeight(1.3)
 			}
+			if ui.Button(c.Key("open-web"), locales.HostsPairWebOpen()).Clicked() {
+				if err := openWebLink(page.webURL); err != nil {
+					page.webOpenFailed, page.webErr = true, err.Error()
+				} else {
+					page.webOpenFailed = false
+				}
+			}
+			if page.webOpenFailed {
+				ui.Text(c, locales.HostsPairWebOpenFailed(page.webErr)).FontSize(12).TextColor(k.danger).LineHeight(1.3)
+			}
+			ui.Text(c, locales.HostsPairWebScan()).FontSize(12).TextColor(k.textMuted).LineHeight(1.3)
+			pairQRCode(c, page.webImage, title)
 		case page.image != nil:
 			hint := locales.HostsRexQRHint()
 			if page.direct {
