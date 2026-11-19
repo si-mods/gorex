@@ -297,9 +297,10 @@ enum GalleryImages {
         }.value
         if let kept { return kept }
         let r = try await gallery.thumbnails.run { try await download(e, session: session, maxBytes: maxThumbBytes) }
-        guard let data = r.data else { throw RexError(code: "protocol", message: "the download sent no file") }
+        guard let file = r.file else { throw RexError(code: "protocol", message: "the download sent no file") }
+        defer { try? FileManager.default.removeItem(at: file) }
         let image = try await Task.detached {
-            let image = try downsample(CGImageSourceCreateWithData(data as CFData, nil), side: thumbSide)
+            let image = try downsample(CGImageSourceCreateWithURL(file as CFURL, nil), side: thumbSide)
             try? FileManager.default.createDirectory(at: thumb.deletingLastPathComponent(), withIntermediateDirectories: true)
             try? image.jpegData(compressionQuality: 0.8)?.write(to: thumb)
             return image

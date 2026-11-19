@@ -6,7 +6,7 @@ enum Upload {
     static func send(_ file: URL, name: String, session: String, block: String,
                      control: ControlConnection, to base: URL, auth: String?,
                      urlSession: () throws -> URLSession = { .shared }) async throws {
-        let size = (try file.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
+        let size = try await Task.detached { (try file.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0 }.value
         let ref = "upload:\(UUID().uuidString.lowercased())"
         let reply = try await control.call(RexProtocol.methodTerminalUploadBegin, [
             "session_id": session,
@@ -20,11 +20,12 @@ enum Upload {
         let stream = try await BytesStream.open(ticket: ticket, to: base, auth: auth, urlSession: urlSession)
         defer { stream.close() }
 
-        let fh = try FileHandle(forReadingFrom: file)
-        defer { try? fh.close() }
         let chunkSize = RexProtocol.maxChunk
+        // The file is read off the main actor, a chunk at a time.
+        let fh = try await Task.detached { try FileHandle(forReadingFrom: file) }.value
+        defer { try? fh.close() }
         while true {
-            let chunk = try fh.read(upToCount: chunkSize) ?? Data()
+            let chunk = try await Task.detached { try fh.read(upToCount: chunkSize) ?? Data() }.value
             if chunk.isEmpty { break }
             try await stream.send(chunk)
         }

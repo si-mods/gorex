@@ -64,14 +64,35 @@ final class BytesStream {
         }
     }
 
-    /// Reads all remaining bytes until EOF (empty frame or normal closure 1000).
-    func readAll() async throws -> Data {
-        var out = Data()
-        while let chunk = try await receive() {
-            try Task.checkCancellation()
-            out.append(chunk)
+    /// Writes all remaining bytes, until EOF (empty frame or normal closure
+    /// 1000), to a new file at `url`, chunk by chunk: the file's size is
+    /// not held in memory, and the writes are off the main actor. A failure
+    /// or a cancel removes the file.
+    func readAll(to url: URL) async throws {
+        let fh: FileHandle
+        do {
+            fh = try await Task.detached {
+                try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+                guard FileManager.default.createFile(atPath: url.path, contents: nil) else {
+                    throw CocoaError(.fileWriteUnknown)
+                }
+                return try FileHandle(forWritingTo: url)
+            }.value
+        } catch {
+            try? FileManager.default.removeItem(at: url)
+            throw error
         }
-        return out
+        do {
+            while let chunk = try await receive() {
+                try Task.checkCancellation()
+                try await Task.detached { try fh.write(contentsOf: chunk) }.value
+            }
+            try await Task.detached { try fh.close() }.value
+        } catch {
+            try? fh.close()
+            try? FileManager.default.removeItem(at: url)
+            throw error
+        }
     }
 
     /// Waits for the server to close the stream normally (1000).
