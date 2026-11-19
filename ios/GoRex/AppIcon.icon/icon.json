@@ -1,105 +1,64 @@
 {
-  "fill-specializations": [
-    {
-      "value": {
-        "linear-gradient": [
-          "display-p3:0.22745,0.24706,0.29412,1.00000",
-          "display-p3:0.07843,0.09020,0.11373,1.00000"
-        ],
-        "orientation": {
-          "start": {
-            "x": 0.5,
-            "y": 0
-          },
-          "stop": {
-            "x": 0.5,
-            "y": 1
-          }
-        }
-      }
-    },
-    {
-      "appearance": "dark",
-      "value": {
-        "linear-gradient": [
-          "display-p3:0.16471,0.18039,0.21569,1.00000",
-          "display-p3:0.04706,0.05490,0.07059,1.00000"
-        ],
-        "orientation": {
-          "start": {
-            "x": 0.5,
-            "y": 0
-          },
-          "stop": {
-            "x": 0.5,
-            "y": 1
-          }
-        }
-      }
-    }
+  "features" : [
+    "refractivity"
   ],
-  "groups": [
-    {
-      "name": "Prism",
-      "layers": [
-        {
-          "name": "3-prism",
-          "image-name": "3-prism.svg",
-          "glass": true
-        }
-      ],
-      "shadow": {
-        "kind": "neutral",
-        "opacity": 0.5
-      },
-      "translucency": {
-        "enabled": true,
-        "value": 0.85
-      }
-    },
-    {
-      "name": "Light",
-      "layers": [
-        {
-          "name": "2-glow",
-          "image-name": "2-glow.svg",
-          "glass": false,
-          "fill": {
-            "linear-gradient": [
-              "display-p3:1.00000,1.00000,1.00000,1.00000",
-              "display-p3:0.68235,0.72549,0.80000,1.00000"
-            ],
-            "orientation": {
-              "start": {
-                "x": 0.5,
-                "y": 0
-              },
-              "stop": {
-                "x": 0.5,
-                "y": 1
-              }
-            }
-          }
-        },
-        {
-          "name": "1-beam",
-          "image-name": "1-beam.svg",
-          "glass": false
-        }
-      ],
-      "shadow": {
-        "kind": "none",
-        "opacity": 0
-      },
-      "translucency": {
-        "enabled": false,
-        "value": 0
-      }
-    }
-  ],
-  "supported-platforms": {
-    "squares": [
-      "iOS"
+  "fill" : {
+    "linear-gradient" : [
+      "display-p3:0.21481,0.22638,0.26366,1.00000",
+      "display-p3:0.09195,0.09492,0.11245,1.00000"
     ]
+  },
+  "groups" : [
+    {
+      "blend-mode" : "normal",
+      "blur-material" : null,
+      "layers" : [
+        {
+          "image-name" : "prism2.png",
+          "name" : "prism2",
+          "opacity" : 0.5
+        }
+      ],
+      "lighting" : "individual",
+      "refractivity" : {
+        "depth" : 0,
+        "enabled" : true,
+        "strength" : 0.5
+      },
+      "shadow" : {
+        "kind" : "neutral",
+        "opacity" : 0.5
+      },
+      "specular" : true,
+      "translucency" : {
+        "enabled" : true,
+        "value" : 1
+      }
+    },
+    {
+      "layers" : [
+        {
+          "glass" : false,
+          "image-name" : "color3.png",
+          "name" : "color3"
+        }
+      ],
+      "lighting" : "individual",
+      "shadow" : {
+        "kind" : "neutral",
+        "opacity" : 0.5
+      },
+      "specular" : false,
+      "translucency" : {
+        "enabled" : true,
+        "value" : 0.3
+      }
+    }
+  ],
+  "supported-platforms" : {
+    "circles" : [
+      "watchOS"
+    ],
+    "squares" : "shared"
   }
 }
