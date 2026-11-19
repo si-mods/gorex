@@ -90,6 +90,14 @@ Two things follow:
 - The server reads, as root, the files it resolves for a session: agent
   sessions under the user's `~/.claude`, omp's, teleported panes, and
   uploads. They are the session user's, and the session can write them.
+- A client's reads of any path go through the session user: `file.get`
+  (the Rex API's `download_begin`) and `dir.list` (`gorex.dir.list`)
+  run in a helper the server starts as that user from its own executable
+  (`gorex -session-read`), which clears the capabilities first. The helper
+  opens the file and hands the server its descriptor, or lists the
+  directory, so a client gets only what the session user may read: the
+  system checks the user's groups and ACLs. A file or directory only root
+  may read answers `permission denied` or `denied`, as for any user.
 
 Unset, sessions run as the server does, as before. The setting is
 Linux's: on macOS and Windows the app and the server are the user's, and

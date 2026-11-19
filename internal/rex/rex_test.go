@@ -28,6 +28,13 @@ func TestMain(m *testing.M) {
 		}
 		os.Exit(0)
 	}
+	// The helper a server reads as its session user with (sessionReadFlag).
+	if helper, err := SessionExecMain(os.Args[1:]); helper {
+		if err != nil {
+			log.Fatal(err)
+		}
+		os.Exit(0)
+	}
 	os.Exit(m.Run())
 }
 

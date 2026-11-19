@@ -644,8 +644,8 @@ through that host's own gateway.
   with mounts that hang may refuse listings till they return, or till
   the GoRex server restarts.
 - It is allowed to the callers that may take a file with
-  `download_begin` (the server's `file.get`), which reads any path as the
-  server's user already; through the gateway, those are the callers of
+  `download_begin` (the server's `file.get`), which reads any path the
+  sessions' user may read already; through the gateway, those are the callers of
   `session.create`. A stopping gateway refuses it with `conflict`, as it
   does `session.create`.
 - Errors: `bad_request` (an unknown or malformed argument),
