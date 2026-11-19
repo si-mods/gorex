@@ -123,13 +123,16 @@ func (st *store) hiddenStatus(w *Workspace, h *hostConn) *rex.ProgramStatus {
 }
 
 // savedTabStatus is the most urgent record of a tab of a workspace no
-// window shows, from its panes' sessions in the host's last list, as
-// Tab.status picks a shown tab's. Offline, or a session not listed yet,
-// has none.
-func (st *store) savedTabStatus(t savedTab, infos map[string]rex.SessionInfo) *rex.ProgramStatus {
+// window shows, from its panes' sessions of host id in the host's last
+// list, as Tab.status picks a shown tab's and visitSIDs picks a
+// workspace's. Offline, or a session not listed yet, has none.
+func (st *store) savedTabStatus(t savedTab, id string, infos map[string]rex.SessionInfo) *rex.ProgramStatus {
 	var all []rex.ProgramStatus
 	for _, root := range t.Roots() {
 		for _, n := range layout.Leaves(root) {
+			if n.SID == "" || n.Host != id {
+				continue
+			}
 			in, ok := infos[n.SID]
 			if !ok {
 				continue

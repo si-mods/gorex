@@ -414,7 +414,7 @@ func spaceTab(c *ui.Context, k *colors, key, name, detail string, s *rex.Program
 		ui.Box(c).Grow(1).MinWidth(0).Height(18).Draw(func(p *ui.Painter, r ui.Rect) {
 			fadeText(p, r, tabLabel(name, detail, k.textMuted, k.textFaint))
 		})
-		if statusShown(s) {
+		if needsUser(s) || s != nil && s.State == "working" {
 			statusDot(c, k, s, 5.5).Label(statusTip(s))
 		}
 	})

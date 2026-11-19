@@ -1489,7 +1489,7 @@ func (a *App) reconnecting(c *ui.Context, k *colors, p *Pane) {
 // activityBadge shows what a pane does: the dots of its record, or the
 // dot of a pane asking for attention.
 func (a *App) activityBadge(c *ui.Context, k *colors, p *Pane) {
-	if s := p.status(); statusShown(s) && !p.attention {
+	if s := p.status(); needsUser(s) || s != nil && s.State == "working" && !p.attention {
 		statusDot(c, k, s, 6).Margin(0, 0, 0, 2)
 		return
 	}
@@ -1558,12 +1558,6 @@ func keyframeAt(frames []ui.Keyframe, d time.Duration) float32 {
 // end the user did not see.
 func needsUser(s *rex.ProgramStatus) bool {
 	return s != nil && rex.StatusRank(s.State) >= rex.StatusRank("done")
-}
-
-// statusShown tells a record worth a dot beside a pane's or a tab's
-// name: one that needs the user, or one at work.
-func statusShown(s *rex.ProgramStatus) bool {
-	return needsUser(s) || s != nil && s.State == "working"
 }
 
 // statusDot shows a record a program reported: three animated dots while
