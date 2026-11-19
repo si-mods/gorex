@@ -160,4 +160,6 @@ Icons are SVGs: lucide ones from `assets/icons/`, and brand marks from
 `assets/brands/` (`programs.go` on the desktop, `icon(name)` in
 `web/src/hosts.ts` on the web). A new icon is never a Unicode character
 (✓ ✕ ⌄ +) standing in for one: when a lucide icon is missing, copy its SVG
-into `assets/icons/`.
+into `assets/icons/`. One bitmap stands beside them: the settings
+sidebar's server card shows the app's own icon (`resources/icon.png`,
+the prism the iOS app carries too), embedded and decoded by `appIcon`.

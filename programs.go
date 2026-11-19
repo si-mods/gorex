@@ -1,17 +1,64 @@
 package main
 
 import (
+	"bytes"
 	"embed"
+	"image"
+	"image/png"
 	"path"
 	"strings"
 
 	"github.com/egoist/mygo/ui"
 )
 
-//go:embed assets/icons/*.svg assets/brands/*.svg
+//go:embed assets/icons/*.svg assets/brands/*.svg resources/icon.png
 var assets embed.FS
 
 var svgs = map[string]*ui.SVG{}
+
+var appIconSrc ui.ImageSource
+
+// appIcon is the app's icon, for the server card of the settings window:
+// the same prism the iOS app carries. It is the squircle alone, the
+// canvas's margin and shadow cropped off, so that it fills the tile.
+func appIcon() ui.ImageSource {
+	if appIconSrc == nil {
+		data, err := assets.ReadFile("resources/icon.png")
+		if err != nil {
+			panic(err)
+		}
+		img, err := png.Decode(bytes.NewReader(data))
+		if err != nil {
+			panic(err)
+		}
+		appIconSrc = ui.NewBitmap(opaqueCrop(img))
+	}
+	return appIconSrc
+}
+
+// opaqueCrop is img without the rows and columns nothing is opaque on.
+func opaqueCrop(img image.Image) image.Image {
+	s, ok := img.(interface {
+		SubImage(image.Rectangle) image.Image
+	})
+	if !ok {
+		return img
+	}
+	b := img.Bounds()
+	r := image.Rectangle{Min: b.Max, Max: b.Min}
+	for y := b.Min.Y; y < b.Max.Y; y++ {
+		for x := b.Min.X; x < b.Max.X; x++ {
+			if _, _, _, a := img.At(x, y).RGBA(); a >= 0xfa00 {
+				r.Min.X, r.Min.Y = min(r.Min.X, x), min(r.Min.Y, y)
+				r.Max.X, r.Max.Y = max(r.Max.X, x+1), max(r.Max.Y, y+1)
+			}
+		}
+	}
+	if r.Empty() {
+		return img
+	}
+	return s.SubImage(r)
+}
 
 // icon returns an embedded SVG: "x" from the icons, "brand:git" from the
 // brands.

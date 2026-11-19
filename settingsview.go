@@ -365,9 +365,7 @@ func (a *App) serverCard(c *ui.Context, k *colors) {
 		a.showSection("server")
 	}
 	e.Children(func() {
-		ui.Box(c).Size(34, 34).Radius(9).Background(k.hover).Center().Shrink(0).Children(func() {
-			glyphIcon(c, "server", 19, k.text)
-		})
+		ui.Image(c, appIcon()).Size(34, 34).Shrink(0)
 		ui.Column(c).Grow(1).MinWidth(0).Gap(2).Children(func() {
 			ui.Text(c, locales.HostServer()).FontSize(13).FontWeight(600).TextColor(k.text).SingleLine().Ellipsis("…")
 			ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
