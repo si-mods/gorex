@@ -313,3 +313,23 @@ func TestWebCommand(t *testing.T) {
 		t.Error(err)
 	}
 }
+
+// TestAllowWebOrigin: allowing a page writes it once, normalized, for a
+// gateway that reads web.json again by itself.
+func TestAllowWebOrigin(t *testing.T) {
+	dir := t.TempDir()
+	added, err := AllowWebOrigin(dir, "HTTPS://Web.Gorex.uk")
+	if err != nil || !added {
+		t.Fatalf("allow: %v, %v", added, err)
+	}
+	c, err := LoadWeb(dir)
+	if err != nil || len(c.Origins) != 1 || c.Origins[0] != WebOrigin {
+		t.Fatalf("web.json: %+v, %v", c, err)
+	}
+	if added, err := AllowWebOrigin(dir, WebOrigin); err != nil || added {
+		t.Fatalf("allowing it again: %v, %v", added, err)
+	}
+	if _, err := AllowWebOrigin(dir, "not a page"); err == nil {
+		t.Fatal("an origin that is not one was accepted")
+	}
+}

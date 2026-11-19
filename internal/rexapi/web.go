@@ -73,6 +73,26 @@ func SaveWeb(dir string, c WebConfig) error {
 	return writeJSON(webConfPath(dir), c)
 }
 
+// AllowWebOrigin adds origin to the pages the gateway trusts, as
+// "gorex rexapi web allow" does, and reports whether it was new. A page
+// trusted already is left alone and nothing is written; a gateway that is
+// running reads web.json again within a second.
+func AllowWebOrigin(dir, origin string) (bool, error) {
+	o, err := NormalizeOrigin(origin)
+	if err != nil {
+		return false, err
+	}
+	c, err := LoadWeb(dir)
+	if err != nil {
+		return false, err
+	}
+	if slices.Contains(c.Origins, o) {
+		return false, nil
+	}
+	c.Origins = append(c.Origins, o)
+	return true, SaveWeb(dir, c)
+}
+
 // NormalizeHost reads a host name as a user types it for the Host check:
 // a DNS name, without a port, a scheme or a wildcard. It returns it in
 // lower case, without a trailing dot.

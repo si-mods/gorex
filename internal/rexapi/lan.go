@@ -11,6 +11,7 @@ import (
 	"net"
 	"net/http"
 	"net/netip"
+	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -165,6 +166,37 @@ func (c LANConfig) PairURL(s LANStatus) string {
 		return ""
 	}
 	return "http://" + bound.String() + "/#k=" + c.Token
+}
+
+// WebOrigin is the page the web client is published at: the origin a host
+// trusts, and the one a WebTransport pairing link opens.
+const WebOrigin = "https://web.gorex.uk"
+
+// WebPairURL is that page's address for this listener: the page, then the
+// gateway's WebTransport address, its certificate's hash and the pairing
+// token, all in the fragment, which a browser never sends anywhere
+// (gorex rexapi lan qr prints it, and the desktop's pair dialog shows it
+// as a code). Empty unless the listener is running with its WebTransport
+// legs, a token and a reachable address: the page cannot reach it
+// otherwise.
+func (c LANConfig) WebPairURL(s LANStatus, origin string) string {
+	if origin == "" || c.Token == "" || !s.Running || s.Error != "" ||
+		s.WTListening == "" || s.WTCertHash == "" {
+		return ""
+	}
+	addr := s.WTListening
+	// A wildcard bind names no address to dial: the default listen's host
+	// is the machine's own, which is what a device on the network opens.
+	if host, port, err := net.SplitHostPort(addr); err == nil && (host == "0.0.0.0" || host == "::" || host == "") {
+		if def, _ := DefaultLAN(); def != "" {
+			if defHost, _, err := net.SplitHostPort(def); err == nil && defHost != "" {
+				addr = net.JoinHostPort(defHost, port)
+			}
+		}
+	}
+	return fmt.Sprintf("%s/#host=%s&wt=sha256-%s&k=%s",
+		strings.TrimRight(origin, "/"), url.QueryEscape("https://"+addr),
+		url.QueryEscape(s.WTCertHash), url.QueryEscape(c.Token))
 }
 
 func saveLANStatus(dir string, s LANStatus) {
