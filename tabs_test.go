@@ -3,6 +3,7 @@ package main
 import (
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/egoist/mygo/ui"
 )
@@ -112,5 +113,36 @@ func TestRenameSelectsName(t *testing.T) {
 	tt.Frame()
 	if a.renameText != "P4 Renamed" {
 		t.Errorf("the field holds %q", a.renameText)
+	}
+}
+
+// TestActiveTabPaintsNoAccent checks that the active tab's look is its
+// pill's alone: Selected used to paint the theme's accent over the row,
+// hiding the pill, and the title bar's theme takes the accent from the
+// desktop's preferences, not the space's.
+func TestActiveTabPaintsNoAccent(t *testing.T) {
+	a, tt := newTestApp(t)
+	accent := ui.RGB(255, 0, 255)
+	tt.SetPreferences(ui.Preferences{Accent: accent})
+	tt.SetWindowActive(true)
+	// The row's colors fade to the accent over 160 ms: advance past
+	// the fade, so the pixels read its end, not its start.
+	tt.Advance(time.Second)
+	r := a.tabPill
+	if r.W <= 0 || r.H <= 0 {
+		t.Fatal("the active tab has no pill")
+	}
+	img := tt.Image()
+	matches := 0
+	for y := int(r.Y); y < int(r.Y+r.H); y++ {
+		for x := int(r.X); x < int(r.X+r.W); x++ {
+			c := img.RGBAAt(x, y)
+			if c.R == accent.R && c.G == accent.G && c.B == accent.B {
+				matches++
+			}
+		}
+	}
+	if matches > 0 {
+		t.Errorf("%d px in the pill's box show the theme's accent %#02x%02x%02x", matches, accent.R, accent.G, accent.B)
 	}
 }

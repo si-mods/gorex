@@ -191,7 +191,7 @@ func (a *App) tabItem(c *ui.Context, k *colors, i int, t *Tab, width float32, sq
 		shrink = 1
 	}
 	e := ui.Row(c.Key(t.ID)).Height(tabH).Basis(width).Shrink(shrink).MinWidth(64).
-		Padding(0, 10, 0, 10).Gap(6).AlignItems(ui.Center).Radius(tabH / 2).Role(ui.RoleTab).Selected(active)
+		Padding(0, 10, 0, 10).Gap(6).AlignItems(ui.Center).Radius(tabH / 2).Role(ui.RoleTab).AccessSelected(active)
 	name, detail := t.label()
 	e.Label(name + " " + detail)
 	if !active && e.Hovered() {
