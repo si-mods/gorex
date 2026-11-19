@@ -103,7 +103,10 @@ func (s *Server) doDirList(req Request, _ string, _ *keptConn) (any, error) {
 }
 
 // listDir lists the directories in path, of home when it is not absolute.
+// It stops reading once dirListTimeout has passed, when doDirList has
+// answered without it.
 func listDir(home, path string, hidden bool) (DirListResult, error) {
+	deadline := time.Now().Add(dirListTimeout.get())
 	if h, err := filepath.EvalSymlinks(home); err == nil {
 		home = h
 	}
@@ -141,7 +144,7 @@ func listDir(home, path string, hidden bool) (DirListResult, error) {
 		return dirCode(res, err)
 	}
 	defer f.Close()
-	dirs, more, err := firstDirs(f, DirListMax, func(e fs.DirEntry) bool {
+	dirs, more, err := firstDirs(f, DirListMax, deadline, func(e fs.DirEntry) bool {
 		if !hidden && isHiddenDir(e) {
 			return false
 		}
@@ -166,45 +169,76 @@ func listDir(home, path string, hidden bool) (DirListResult, error) {
 // dirListBatch is how many entries firstDirs reads at a time.
 const dirListBatch = 256
 
-// firstDirs reads the entries of d in batches and keeps the names of those
-// dir accepts: the first max in order (compareDirs), and whether there are
-// more. It holds at most 2*(max+1) names and one batch, however many
-// entries d has: when the names fill up, it sorts them and drops all but
-// the first max+1. An error after some entries were read ends the
-// listing with what it has; one before answers it.
-func firstDirs(d interface {
+// errDirListLate ends a listing past its deadline: doDirList has answered
+// the client already, and the listing frees its place in dirListsRunning.
+var errDirListLate = errors.New("rex: listing past its deadline")
+
+// dirReader reads a directory n entries at a time, as *os.File does.
+type dirReader interface {
 	ReadDir(n int) ([]fs.DirEntry, error)
-}, max int, dir func(fs.DirEntry) bool) ([]string, bool, error) {
-	names := []string{}
-	trim := func() {
-		slices.SortFunc(names, compareDirs)
-		if len(names) > max+1 {
-			names = names[:max+1]
-		}
+}
+
+// firstNames keeps the first limit names in order (compareDirs) of those
+// added, and whether there are more, in at most 2*(limit+1) names however
+// many are added: when they fill up, it sorts them and drops all but the
+// first limit+1.
+type firstNames struct {
+	limit int
+	names []string
+}
+
+func (f *firstNames) add(name string) {
+	f.names = append(f.names, name)
+	if len(f.names) >= 2*(f.limit+1) {
+		f.trim()
 	}
-	for read := false; ; read = true {
+}
+
+func (f *firstNames) trim() {
+	slices.SortFunc(f.names, compareDirs)
+	if len(f.names) > f.limit+1 {
+		f.names = f.names[:f.limit+1]
+	}
+}
+
+// first is the first limit names, never nil, and whether there are more.
+func (f *firstNames) first() ([]string, bool) {
+	f.trim()
+	if f.names == nil {
+		return []string{}, false
+	}
+	if len(f.names) > f.limit {
+		return f.names[:f.limit], true
+	}
+	return f.names, false
+}
+
+// firstDirs reads the entries of d in batches and keeps the names of those
+// keep accepts (firstNames): memory grows with limit, not with d. An error
+// after some entries were read ends the listing with what it has; an
+// error before any is returned. Past deadline it stops between batches
+// with errDirListLate.
+func firstDirs(d dirReader, limit int, deadline time.Time, keep func(fs.DirEntry) bool) ([]string, bool, error) {
+	f := firstNames{limit: limit}
+	for first := true; ; first = false {
 		entries, err := d.ReadDir(dirListBatch)
 		for _, e := range entries {
-			if !dir(e) {
-				continue
-			}
-			names = append(names, e.Name())
-			if len(names) >= 2*(max+1) {
-				trim()
+			if keep(e) {
+				f.add(e.Name())
 			}
 		}
 		if err != nil {
-			if err != io.EOF && !read && len(entries) == 0 {
+			if err != io.EOF && first && len(entries) == 0 {
 				return nil, false, err
 			}
 			break
 		}
+		if time.Now().After(deadline) {
+			return nil, false, errDirListLate
+		}
 	}
-	trim()
-	if len(names) > max {
-		return names[:max], true, nil
-	}
-	return names, false, nil
+	names, more := f.first()
+	return names, more, nil
 }
 
 // compareDirs orders directory names regardless of case, then by case.
