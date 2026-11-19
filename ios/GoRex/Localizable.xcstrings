@@ -4879,6 +4879,46 @@
           }
         }
       }
+    },
+    "Collapse Developer Mode": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "收起开发者模式"
+          }
+        }
+      }
+    },
+    "Developer Mode": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "开发者模式"
+          }
+        }
+      }
+    },
+    "No connection events yet.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "暂无连接事件。"
+          }
+        }
+      }
+    },
+    "Shows a floating connection bar over the app with live host status, network path, and recent connection events.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在应用顶部显示悬浮连接条，实时查看主机状态、网络路径和最近的连接事件。"
+          }
+        }
+      }
     }
   }
 }

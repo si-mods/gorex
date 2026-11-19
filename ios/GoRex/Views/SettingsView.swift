@@ -9,6 +9,7 @@ struct SettingsView: View {
     @AppStorage("theme") private var theme = TerminalTheme.standard
     @AppStorage("clientLabel") private var label = ""
     @AppStorage(TailnetSettings.onKey) private var tailnet = false
+    @AppStorage("developerMode") private var developerMode = false
     @State private var query = ""
     /// The icon on the Home Screen, for the row to name; the page changes it.
     @State private var appIcon = AppIcon.current
@@ -72,6 +73,17 @@ struct SettingsView: View {
                                 .onSubmit(sendLabel)
                         }
                         .listRowBackground(Color.card)
+                    }
+                }
+                if matches("Developer Mode") {
+                    Section {
+                        SettingsRow(icon: tile("wrench.and.screwdriver.fill", .orange), title: "Developer Mode") {
+                            Toggle("Developer Mode", isOn: $developerMode)
+                                .labelsHidden()
+                        }
+                        .listRowBackground(Color.card)
+                    } footer: {
+                        Text("Shows a floating connection bar over the app with live host status, network path, and recent connection events.")
                     }
                 }
             }

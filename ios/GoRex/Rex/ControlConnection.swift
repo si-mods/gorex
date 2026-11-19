@@ -73,6 +73,8 @@ final class ControlConnection {
     var onEvent: (RexEvent) -> Void = { _ in }
     /// Called once when the connection ends, by either side.
     var onClose: (Error?) -> Void = { _ in }
+    /// Called with the round-trip time of each successful WebSocket ping.
+    var onPing: ((Duration) -> Void)?
     /// How often to ping, how long a pong may take before the connection
     /// counts as dead, and how long a response may take.
     var pingEvery = Duration.seconds(30)
@@ -232,6 +234,23 @@ final class ControlConnection {
         }
     }
 
+    /// Sends a single WebSocket ping and returns its round-trip duration,
+    /// without failing the connection on timeout; nil if closed or errored.
+    func measurePing() async -> Duration? {
+        guard !closed else { return nil }
+        let sent = ContinuousClock.now
+        let error = await withCheckedContinuation { c in
+            let resumed = OSAllocatedUnfairLock(initialState: false)
+            task.sendPing { e in
+                if resumed.withLock({ let first = !$0; $0 = true; return first }) { c.resume(returning: e) }
+            }
+        }
+        guard error == nil, !closed else { return nil }
+        let rtt = sent.duration(to: .now)
+        onPing?(rtt)
+        return rtt
+    }
+
     /// Pings as the server does, so that a server that is gone, or a path
     /// that died without a word, is noticed: a pong that doesn't come in
     /// time ends the connection.
@@ -239,6 +258,7 @@ final class ControlConnection {
         while !closed {
             try? await Task.sleep(for: pingEvery)
             if closed { return }
+            let sent = ContinuousClock.now
             let deadline = Task { [weak self, pongWait] in
                 try await Task.sleep(for: pongWait)
                 self?.fail(RexError(code: "timeout", message: "no pong"))
@@ -252,7 +272,11 @@ final class ControlConnection {
                 }
             }
             deadline.cancel()
-            if let error { fail(error) }
+            if let error {
+                fail(error)
+            } else if !closed {
+                onPing?(sent.duration(to: .now))
+            }
         }
     }
 

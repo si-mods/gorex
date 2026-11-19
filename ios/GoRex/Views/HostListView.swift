@@ -31,6 +31,7 @@ struct HostListView: View {
     /// The projects and Older open, by HostSection's keys, kept across
     /// launches.
     @AppStorage("expanded") private var expandedText = ""
+    @AppStorage("developerMode") private var developerMode = false
     @State private var inbox = false
     @State private var query = ""
     @State private var settings = false
@@ -86,6 +87,12 @@ struct HostListView: View {
         }
         // And let go of on the bars.
         .onDrop(of: [Lifted.type], delegate: PageDrop())
+        .overlay(alignment: .top) {
+            if developerMode {
+                DeveloperModeOverlay()
+                    .padding(.top, (!path.isEmpty || width == .regular) ? 58 : (store.demo != nil ? 48 : 8))
+            }
+        }
         // A tapped notification opens its terminal.
         .onChange(of: Notifier.shared.opening, initial: true) { _, t in
             guard let t else { return }

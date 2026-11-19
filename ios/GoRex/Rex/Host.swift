@@ -358,6 +358,26 @@ final class Host: Identifiable {
     static let dirListFeature = "gorex.dir_list"
 
     private(set) var control: ControlConnection?
+    /// Developer Mode telemetry: when the current connect/reconnect cycle began,
+    /// how long the last successful connect took, the latest WebSocket ping RTT,
+    /// and whether a retry loop is active.
+    enum DevStatus: Equatable {
+        case ready
+        case reconnecting
+        case connecting
+        case offline
+    }
+    private(set) var reconnectSince: Date?
+    private(set) var connectDurationMs: Int?
+    private(set) var pingMs: Int?
+    private(set) var isRetrying = false
+
+    var devStatus: DevStatus {
+        if status == .online { return .ready }
+        if isRetrying { return .reconnecting }
+        if status == .connecting { return .connecting }
+        return .offline
+    }
 
     @ObservationIgnored private var gate = EventGate()
     @ObservationIgnored private var token: String?
@@ -427,12 +447,20 @@ final class Host: Identifiable {
             retry?.cancel()
             if sessions.isEmpty { becomeDemo() }
             status = .online
+            reconnectSince = nil
+            isRetrying = false
             return
         }
         retry?.cancel()
+        if reconnectSince == nil {
+            reconnectSince = .now
+        }
         if !again {
             attempts = 0
+            isRetrying = false
             status = .connecting
+        } else {
+            isRetrying = true
         }
         let name = "control \(config.url.host() ?? "")"
         let session: URLSession
@@ -441,12 +469,16 @@ final class Host: Identifiable {
         } catch {
             ConnectionLog.note("\(name): \(error.diagnosis)")
             status = .offline(error.localizedDescription)
-            scheduleRetry()
+            scheduleRetry(reason: error.localizedDescription)
             return
         }
         let c = ControlConnection(base: config.url, auth: config.auth, session: session)
         control = c
         gate = EventGate()
+        c.onPing = { [weak self, weak c] rtt in
+            guard let self, c === self.control else { return }
+            self.pingMs = max(0, Int(rtt / .milliseconds(1)))
+        }
         c.onEvent = { [weak self, weak c] e in
             guard let self, c === self.control else { return }
             for e in self.gate.receive(e) { self.apply(e) }
@@ -455,14 +487,17 @@ final class Host: Identifiable {
             guard let self, c === self.control else { return }
             ConnectionLog.note("\(name): closed: \(error?.diagnosis ?? "by the app")")
             self.control = nil
+            self.pingMs = nil
             let offline = Status.offline(error?.localizedDescription ?? "")
             if self.status != offline { self.status = offline }
             // Refused, it waits for a change: the engine running again, as
             // after a sign-in, or the app back in the foreground.
             if let error, (error as? RexError)?.code == "refused" {
+                self.isRetrying = false
                 self.settle(.failure(error))
             } else {
-                self.scheduleRetry()
+                if self.reconnectSince == nil { self.reconnectSince = .now }
+                self.scheduleRetry(reason: error?.localizedDescription)
             }
         }
         let began = ContinuousClock.now
@@ -472,10 +507,14 @@ final class Host: Identifiable {
                 try await c.open(token: token)
                 token = c.reconnectToken
                 try await bootstrap(c)
+                let elapsed = began.duration(to: .now)
+                connectDurationMs = max(0, Int(elapsed / .milliseconds(1)))
+                reconnectSince = nil
+                isRetrying = false
                 status = .online
                 attempts = 0
                 settle(.success(c))
-                ConnectionLog.note("\(name): online, \(began.duration(to: .now).ms)")
+                ConnectionLog.note("\(name): online, \(elapsed.ms)")
             } catch let e as RexError where e.code == "refused" && viaTailnet {
                 // The gateway lets in only whom it says (docs/ios-tailnet.md, Server).
                 c.close(RexError(code: e.code, message: String(localized: "Refused: sign Rex Go in as the Tailscale user who signed in the GoRex machine, not with a tagged key, or turn on --allow-tailnet-members there.")))
@@ -488,6 +527,9 @@ final class Host: Identifiable {
     /// Disconnects for good, as when the host is removed.
     func stop() {
         stopped = true
+        isRetrying = false
+        reconnectSince = nil
+        pingMs = nil
         retry?.cancel()
         control?.close()
         proxySession?.session.invalidateAndCancel()
@@ -516,9 +558,14 @@ final class Host: Identifiable {
 
     /// Connects again after a failure, waiting longer each time in a row,
     /// up to ten seconds, as long as it takes.
-    private func scheduleRetry() {
+    private func scheduleRetry(reason: String? = nil) {
         retry?.cancel()
         attempts += 1
+        isRetrying = true
+        if reconnectSince == nil { reconnectSince = .now }
+        if let reason, !reason.isEmpty {
+            ConnectionLog.note("\(config.name) reconnecting \(attempts) (\(reason))")
+        }
         let wait = Self.backoff(after: attempts)
         retry = Task {
             try? await Task.sleep(for: wait)
