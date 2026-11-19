@@ -16,7 +16,7 @@ jobs:
     timeout-minutes: 2
     env:
       # observe: a missing line is a warning. enforce: it fails the check.
-      MODE: observe
+      MODE: enforce
     steps:
       - name: Verified line
         # The title and body go through env, never into the script text.
