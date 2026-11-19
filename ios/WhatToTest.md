@@ -2,10 +2,7 @@
 
 A build's What to Test, per locale, is what its locale section here gained
 since the last build that uploaded: `ios/scripts/test-notes` sets `en-US`
-from `## en-US` and `zh-Hans` from `
-- Settings opens faster and typing in its search or Client Label stays smooth; the Dictation API key still saves when you press Return or leave the page.
-
-## zh-Hans`.
+from `## en-US` and `zh-Hans` from `## zh-Hans`.
 
 A pull request that changes what a tester sees adds one bullet to each
 section, in the app's terms: what they get to try, not how it is built. A
@@ -64,6 +61,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - Turn on Developer Mode in Settings for a floating connection bar: tap it to inspect your network path, host latency or reconnect times, and live connection events, and share, copy or clear them.
 - Sharing to a computer over Personal Hotspot: when you remove or deny that computer, or stop sharing, its open terminals disconnect at once.
 - Sending a photo or file, or opening a file path a terminal printed, no longer closes the app when the computer's Tailscale connection starts over at that moment.
+- Settings opens faster and typing in its search or Client Label stays smooth; the Dictation API key still saves when you press Return or leave the page.
 
 ## zh-Hans
 
