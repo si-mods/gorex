@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.44.3
+
+### Features
+
+* **ios:** add a Developer Mode floating connection HUD ([#849](https://github.com/si-mods/gorex/pull/849))
+
+### Bug Fixes
+
+* **projects:** name a shell at its prompt by its shell, not an ended program's title ([#801](https://github.com/si-mods/gorex/pull/801))
+* **rex:** read `file.get` and `dir.list` as the session user when `GOREX_SESSION_USER` is set ([#851](https://github.com/si-mods/gorex/pull/851))
+
 ## 0.44.2
 
 ### Features
