@@ -96,22 +96,27 @@ enum OpenedFiles {
         try? FileManager.default.removeItem(at: folder)
     }
 
-    /// Writes the file off the main thread, as up to 256 MiB takes a while.
+    /// Moves the file in off the main thread.
     static func save(_ r: DownloadResult, path: String) async throws -> URL {
-        try Task.checkCancellation()
+        // A cancelled download leaves no file.
+        if Task.isCancelled, let file = r.file {
+            try? FileManager.default.removeItem(at: file)
+            throw CancellationError()
+        }
         let folder = folder
         return try await Task.detached { try write(r, path: path, in: folder) }.value
     }
 
     nonisolated private static func write(_ r: DownloadResult, path: String, in folder: URL) throws -> URL {
-        guard let data = r.data else { throw RexError(code: "protocol", message: "the download sent no file") }
+        guard let file = r.file else { throw RexError(code: "protocol", message: "the download sent no file") }
         let dir = folder.appending(path: UUID().uuidString)
-        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         let url = dir.appending(path: FileLink.fileName(r.name, path: path))
         do {
-            try data.write(to: url)
+            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            try FileManager.default.moveItem(at: file, to: url)
         } catch {
             try? FileManager.default.removeItem(at: dir)
+            try? FileManager.default.removeItem(at: file)
             throw error
         }
         return url
