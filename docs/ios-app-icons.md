@@ -56,7 +56,8 @@ The light is a ray traced with Snell's law through the prism's outer faces
 - At the right face it bends away from the normal, and it comes out across a
   short part of that face, not from one point.
 - In Spectrum, red bends least and is at the top, violet bends most and is at
-  the bottom.
+  the bottom. The colours part at the first face: inside the glass the light
+  is already seven bands that spread toward the second face, not white.
 - The refractive index runs from 1.36 (red) to 1.64 (violet). Real glass
   spreads the colours by about 1°, a line too thin to see on an icon; the
   wider spread keeps every direction and the order true.
