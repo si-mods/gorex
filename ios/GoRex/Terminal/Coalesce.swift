@@ -59,8 +59,9 @@ final class FrameWork {
 }
 
 /// Calls its work once on the next frame each time it is armed, from a
-/// display link that waits paused in between. The link holds it until stop.
-final class NextFrame: NSObject {
+/// display link that waits paused in between. The link holds it weakly, and
+/// goes with it.
+final class NextFrame {
     private var link: CADisplayLink?
     private let work: () -> Void
 
@@ -68,9 +69,13 @@ final class NextFrame: NSObject {
         self.work = work
     }
 
+    isolated deinit {
+        link?.invalidate()
+    }
+
     func arm() {
         if link == nil {
-            let l = CADisplayLink(target: self, selector: #selector(tick))
+            let l = CADisplayLink(target: Target(self), selector: #selector(Target.tick))
             l.add(to: .main, forMode: .common)
             link = l
         }
@@ -82,8 +87,23 @@ final class NextFrame: NSObject {
         link = nil
     }
 
-    @objc private func tick(_ l: CADisplayLink) {
+    fileprivate func tick(_ l: CADisplayLink) {
         l.isPaused = true
         work()
+    }
+
+    /// The link's target, which the link retains: it holds its NextFrame
+    /// weakly, so the two do not keep each other.
+    private final class Target: NSObject {
+        weak var owner: NextFrame?
+
+        init(_ owner: NextFrame) {
+            self.owner = owner
+        }
+
+        @objc func tick(_ l: CADisplayLink) {
+            guard let owner else { return l.invalidate() }
+            owner.tick(l)
+        }
     }
 }
