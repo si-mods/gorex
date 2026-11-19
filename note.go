@@ -3,7 +3,6 @@ package main
 import (
 	"crypto/rand"
 	"encoding/hex"
-	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -224,33 +223,44 @@ func (a *App) newNotePane(id string) *Pane {
 	n := &notePane{id: id}
 	if !validNoteID(id) {
 		n.id = newNoteID()
-	} else if b, err := os.ReadFile(n.path()); err == nil {
-		n.text = string(b)
+	} else {
+		// A note that moves is made anew from its file: write what waits first.
+		notesDisk.flush(id)
+		if b, err := os.ReadFile(n.path()); err == nil {
+			n.text = string(b)
+		}
 	}
 	n.last = n.text
 	return &Pane{ID: a.id(), note: n}
 }
 
-// save writes the text to the note's file, whole and atomically, when it
-// changed.
+// save hands the text to the note's saver when it changed. The file is
+// written whole and atomically, off the UI thread, after the text has been
+// still for noteSaveDelay; a closed pane, a moved one and the app's quit
+// write it at once.
 func (n *notePane) save() {
-	if n == nil || n.text == n.last {
+	if n == nil || n.text == n.last || !validNoteID(n.id) {
 		return
 	}
 	n.last = n.text
-	if err := os.MkdirAll(noteDir(), 0o700); err != nil {
-		log.Printf("note pane: %v", err)
+	notesDisk.schedule(n.id, n.path(), n.text)
+}
+
+// flush writes the text that waits for its file, and returns when it is
+// on disk.
+func (n *notePane) flush() {
+	if n == nil {
 		return
 	}
-	if err := writeFileAtomic(n.path(), []byte(n.text), 0o600); err != nil {
-		log.Printf("note pane: %v", err)
-	}
+	n.save()
+	notesDisk.flush(n.id)
 }
 
 // destroy deletes the note's file, for a pane that is closed for good; a
 // pane that moves keeps it.
 func (n *notePane) destroy() {
 	if n != nil && validNoteID(n.id) {
+		notesDisk.drop(n.id)
 		os.Remove(n.path())
 	}
 }
