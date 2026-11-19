@@ -129,6 +129,8 @@ func restoredNotes(b *App) []*Pane {
 func typeNote(tt *ui.Tester, p *Pane, text string) {
 	p.note.text = text
 	tt.Frame()
+	// The file is written after a delay; the tests that read it do not wait.
+	p.note.flush()
 }
 
 func TestNoteLayout(t *testing.T) {
