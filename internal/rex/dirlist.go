@@ -66,7 +66,8 @@ func FillDirListsForTest() (restore func()) {
 var listDirFunc = listDir
 
 // doDirList lists the directories of a directory of this machine
-// (DirList), of the home directory of the user the sessions run as. It
+// (DirList), of the home directory of the user the sessions run as, and
+// as that user (listAsSession). It
 // answers within dirListTimeout: a listing that takes longer goes on
 // alone, counted in dirListsRunning till the system lets it go.
 func (s *Server) doDirList(req Request, _ string, _ *keptConn) (any, error) {
@@ -90,7 +91,7 @@ func (s *Server) doDirList(req Request, _ string, _ *keptConn) (any, error) {
 			done <- answer{err: err}
 			return
 		}
-		r, err := listDirFunc(home, o.Path, o.Hidden)
+		r, err := s.listAsSession(home, o.Path, o.Hidden)
 		done <- answer{r, err}
 	}()
 	timeout := dirListTimeout.get()

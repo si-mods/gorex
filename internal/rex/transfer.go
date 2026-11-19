@@ -333,7 +333,9 @@ func (s *Server) fileGet(conn net.Conn, first []byte, touch func(), answer func(
 	if err != nil {
 		return err
 	}
-	f, st, err := openToSend(path)
+	// As the session user: a server that runs as root sends only what
+	// its sessions may read.
+	f, st, err := s.openAsSession(path)
 	if err != nil {
 		return err
 	}

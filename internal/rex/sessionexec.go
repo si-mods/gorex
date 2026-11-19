@@ -22,6 +22,11 @@ const sessionExecFlag = "-session-exec"
 // user's sessions starts it as that user: it clears the capabilities the
 // server's ambient set leaves on a child, then runs the program.
 func SessionExecMain(args []string) (bool, error) {
+	// The helper that reads the file system as the session user
+	// (sessionReadFlag) is started the same way.
+	if len(args) > 0 && args[0] == sessionReadFlag {
+		return true, sessionReadMain(args[1:])
+	}
 	if len(args) == 0 || args[0] != sessionExecFlag {
 		return false, nil
 	}
