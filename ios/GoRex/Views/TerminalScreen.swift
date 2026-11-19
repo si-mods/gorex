@@ -979,16 +979,12 @@ private struct PrismLoading: View {
     @State private var edge: CGFloat = -0.2
     @Environment(\.accessibilityReduceMotion) private var still
 
-    private let size: CGFloat = 72
+    private let size: CGFloat = 80
 
     var body: some View {
         ZStack {
-            // The icon's layers, drawn as Icon Composer stacks them: the
-            // Ink gradient, the beam and the fan, the glass prism over
-            // them, as it draws the light passing through itself.
-            LinearGradient(colors: [Color(red: 0.215, green: 0.226, blue: 0.264),
-                                    Color(red: 0.092, green: 0.095, blue: 0.112)],
-                           startPoint: .top, endPoint: .bottom)
+            // The icon's art layers: the beam and the fan, the glass
+            // prism over them, as it draws the light passing through.
             Image("PrismSpectrum").resizable()
                 .mask {
                     LinearGradient(stops: [
@@ -998,11 +994,9 @@ private struct PrismLoading: View {
                         .init(color: .clear, location: 1),
                     ], startPoint: .leading, endPoint: .trailing)
                 }
-            Image("PrismBody").resizable().opacity(0.7)
+            Image("PrismBody").resizable().opacity(0.55)
         }
         .frame(width: size, height: size)
-        .clipShape(.rect(cornerRadius: size * 0.2237, style: .continuous))
-        .shadow(color: .black.opacity(0.3), radius: 14, y: 6)
         .onAppear {
             guard !still else {
                 edge = 1.1
