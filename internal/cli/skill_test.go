@@ -5,9 +5,28 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
+
+// Devin runs hooks through a POSIX shell even on Windows, so its hook
+// command is the sh form with the gorex.cmd shim; other agents keep
+// `cmd /c` on Windows.
+func TestHookCommandDevin(t *testing.T) {
+	got := hookCommand("devin", true)
+	if runtime.GOOS == "windows" {
+		want := `/bin/sh -c "gorex.cmd __internal session-start --agent devin --feature-pane-naming=true 2>/dev/null || true # gorex"`
+		if got != want {
+			t.Fatalf("hookCommand(devin): got %q, want %q", got, want)
+		}
+		if c := hookCommand("claude", true); !strings.Contains(c, `cmd /c "gorex `) {
+			t.Fatalf("hookCommand(claude) lost the cmd form: %q", c)
+		}
+	} else if got != `/bin/sh -c "gorex __internal session-start --agent devin --feature-pane-naming=true 2>/dev/null || true # gorex"` {
+		t.Fatalf("hookCommand(devin): got %q", got)
+	}
+}
 
 // tempHome is a home directory no agent is installed in yet.
 func tempHome(t *testing.T) string {

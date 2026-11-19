@@ -191,7 +191,9 @@ hook, added to `~/.claude/settings.json`, `~/.codex/hooks.json`,
 runs `gorex __internal session-start --agent NAME`, which prints the
 session, pane and connection for the agent's context — for Devin as the
 JSON `hookSpecificOutput.additionalContext` it expects — and labels the
-pane when `--pane-naming` is on. Only GoRex's own hook is added or removed:
+pane when `--pane-naming` is on. Devin runs hooks through a POSIX shell
+on every platform, so on Windows its command is
+`sh -c "gorex.cmd …"` rather than `cmd /c`. Only GoRex's own hook is added or removed:
 every other setting and hook is left as it was, and a settings file that
 is not valid JSON is reported as a conflict instead of rewritten.
 
