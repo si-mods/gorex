@@ -19,9 +19,11 @@ on:
 permissions:
   contents: read
 
-# Its own group: a pending run in "testflight" replaces older pending runs.
+# A group for each ref: GitHub keeps one pending run in a group and
+# cancels an older one, so one shared group dropped other branches' runs.
+# Runs of different refs wait for the runner instead.
 concurrency:
-  group: ios-test
+  group: ios-test-${{ inputs.ref }}
   cancel-in-progress: false
 
 defaults:
