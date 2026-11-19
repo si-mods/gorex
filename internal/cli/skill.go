@@ -231,6 +231,26 @@ func opencodeDir() (string, error) {
 	return filepath.Join(base, "opencode"), nil
 }
 
+func devinDir() (string, error) {
+	base := os.Getenv("XDG_CONFIG_HOME")
+	if base == "" {
+		if runtime.GOOS == "windows" {
+			d, err := os.UserConfigDir()
+			if err != nil {
+				return "", err
+			}
+			base = d
+		} else {
+			h, err := homeDir()
+			if err != nil {
+				return "", err
+			}
+			base = filepath.Join(h, ".config")
+		}
+	}
+	return filepath.Join(base, "devin"), nil
+}
+
 func piDir() (string, error) {
 	if v := os.Getenv("PI_CODING_AGENT_DIR"); v != "" {
 		return v, nil
@@ -300,6 +320,10 @@ func agents(project bool) ([]agentInfo, error) {
 	if err != nil {
 		return nil, err
 	}
+	devin, err := devinDir()
+	if err != nil {
+		return nil, err
+	}
 	shared, err := sharedSkillDir(project)
 	if err != nil {
 		return nil, err
@@ -311,6 +335,8 @@ func agents(project bool) ([]agentInfo, error) {
 	agyHook := filepath.Join(agyConfig, "hooks.json")
 	opencodeNative := filepath.Join(opencode, "skills", skillName)
 	piNative := filepath.Join(pi, "skills", skillName)
+	devinNative := filepath.Join(devin, "skills", skillName)
+	devinHook := filepath.Join(devin, "config.json")
 	if project {
 		wd, err := os.Getwd()
 		if err != nil {
@@ -323,6 +349,8 @@ func agents(project bool) ([]agentInfo, error) {
 		agyHook = filepath.Join(wd, ".agents", "hooks.json")
 		opencodeNative = filepath.Join(wd, ".opencode", "skills", skillName)
 		piNative = filepath.Join(wd, ".pi", "skills", skillName)
+		devinNative = filepath.Join(wd, ".devin", "skills", skillName)
+		devinHook = filepath.Join(wd, ".devin", "config.json")
 	}
 	return []agentInfo{
 		{
@@ -360,6 +388,13 @@ func agents(project bool) ([]agentInfo, error) {
 			SkillDir:       shared,
 			NativeSkillDir: piNative,
 			HookSkip:       "Pi has no command hooks",
+		},
+		{
+			ID:             "devin",
+			Detected:       isDir(devin),
+			SkillDir:       shared,
+			NativeSkillDir: devinNative,
+			HookPath:       devinHook,
 		},
 	}, nil
 }
@@ -401,7 +436,7 @@ func selectAgents(all []agentInfo, names []string, project bool) ([]agentInfo, e
 		for _, n := range names {
 			a, ok := byID[n]
 			if !ok {
-				return nil, fmt.Errorf("unknown agent %q (known agents: claude, codex, agy, opencode, pi)", n)
+				return nil, fmt.Errorf("unknown agent %q (known agents: claude, codex, agy, opencode, pi, devin)", n)
 			}
 			out = append(out, a)
 		}
@@ -668,7 +703,7 @@ func skillCmd(args []string, out, errOut io.Writer) (int, bool) {
 func skillRun(action string, args []string, out, errOut io.Writer) (int, bool) {
 	fs := flagSet("skill "+action, errOut)
 	var names agentList
-	fs.Var(&names, "agent", "agent to set up (claude, codex, agy, opencode, pi); repeatable")
+	fs.Var(&names, "agent", "agent to set up (claude, codex, agy, opencode, pi, devin); repeatable")
 	project := fs.Bool("project", false, "use the current repository")
 	dry := fs.Bool("dry-run", false, "report without changing")
 	force := fs.Bool("force", false, "replace a skill GoRex did not install")

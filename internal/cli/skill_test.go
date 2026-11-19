@@ -15,6 +15,7 @@ func tempHome(t *testing.T) string {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)
+	t.Setenv("APPDATA", filepath.Join(home, "AppData", "Roaming"))
 	t.Setenv("CLAUDE_CONFIG_DIR", "")
 	t.Setenv("CODEX_HOME", "")
 	t.Setenv("XDG_CONFIG_HOME", "")
@@ -110,7 +111,7 @@ func TestSkillSetupMergesHooks(t *testing.T) {
 func TestSkillDetectsAgents(t *testing.T) {
 	home := tempHome(t)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
-	mkdirs(t, filepath.Join(home, ".codex"), filepath.Join(home, ".config", "opencode"))
+	mkdirs(t, filepath.Join(home, ".codex"), filepath.Join(home, ".config", "opencode"), filepath.Join(home, ".config", "devin"))
 
 	code, _, out, errOut := runMain(t, "skill", "setup", "--json")
 	if code != ExitOK {
@@ -138,7 +139,7 @@ func TestSkillDetectsAgents(t *testing.T) {
 	for _, h := range st.Harnesses {
 		byID[h.ID] = h
 	}
-	if byID["claude"].Detected || !byID["codex"].Detected || !byID["opencode"].Detected || byID["pi"].Detected {
+	if byID["claude"].Detected || !byID["codex"].Detected || !byID["opencode"].Detected || byID["pi"].Detected || !byID["devin"].Detected {
 		t.Fatalf("detection %+v", byID)
 	}
 }
@@ -363,7 +364,7 @@ func TestSkillStatusJSONShape(t *testing.T) {
 		t.Fatalf("scope %v", raw["scope"])
 	}
 	hs, _ := raw["harnesses"].([]any)
-	if len(hs) != 5 {
+	if len(hs) != 6 {
 		t.Fatalf("harnesses %v", hs)
 	}
 }
@@ -497,6 +498,142 @@ func TestSessionStartAgy(t *testing.T) {
 		t.Fatalf("injectSteps %+v", payload.InjectSteps)
 	}
 	msg := payload.InjectSteps[0].SystemMessage.SystemMessage
+	if !strings.Contains(msg, "GOREX_SESSION=abc123") || !strings.Contains(msg, "Label the pane") ||
+		!strings.Contains(msg, "natural-language phrase") || strings.Contains(msg, "joined by hyphens") {
+		t.Fatalf("unexpected message %q", msg)
+	}
+}
+
+func TestSkillDevin(t *testing.T) {
+	home := tempHome(t)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	mkdirs(t, filepath.Join(home, ".config", "devin"))
+	hooksPath := filepath.Join(home, ".config", "devin", "config.json")
+	writeFile(t, hooksPath, `{
+  "theme": "x",
+  "hooks": {
+    "SessionStart": [{"hooks": [{"type": "command", "command": "other-hook"}]}]
+  }
+}`)
+
+	code, _, out, errOut := runMain(t, "skill", "setup", "--agent", "devin", "--pane-naming", "--json")
+	if code != ExitOK {
+		t.Fatalf("setup: %d %q %s", code, out, errOut)
+	}
+	skill := readFile(t, filepath.Join(home, ".agents", "skills", "gorex", "SKILL.md"))
+	if !strings.Contains(skill, skillMarker) || !strings.Contains(skill, "__internal skill") {
+		t.Fatalf("skill %q", skill)
+	}
+	after := readFile(t, hooksPath)
+	if !strings.Contains(after, `"theme": "x"`) || !strings.Contains(after, "other-hook") {
+		t.Fatalf("config.json lost a key or hook: %s", after)
+	}
+	if strings.Count(after, "# gorex") != 1 || !strings.Contains(after, "__internal session-start --agent devin --feature-pane-naming=true") {
+		t.Fatalf("config.json hook: %s", after)
+	}
+
+	code, _, out, errOut = runMain(t, "skill", "status", "--agent", "devin", "--json")
+	if code != ExitOK || !strings.Contains(out, `"state": "current"`) || !strings.Contains(out, `"state": "installed"`) || !strings.Contains(out, `"pane_naming": true`) {
+		t.Fatalf("status: %d %q %s", code, out, errOut)
+	}
+
+	// Changing --pane-naming replaces the existing hook.
+	code, _, out, errOut = runMain(t, "skill", "setup", "--agent", "devin", "--pane-naming=false", "--json")
+	if code != ExitOK || !strings.Contains(out, `"change": "replaced"`) {
+		t.Fatalf("replace pane-naming: %d %q %s", code, out, errOut)
+	}
+	if got := readFile(t, hooksPath); !strings.Contains(got, "--feature-pane-naming=false") || strings.Count(got, "# gorex") != 1 {
+		t.Fatalf("replaced hook: %s", got)
+	}
+
+	// --dry-run does not modify config.json.
+	code, _, out, errOut = runMain(t, "skill", "remove", "--agent", "devin", "--dry-run", "--json")
+	if code != ExitOK || !strings.Contains(out, `"change": "would remove"`) {
+		t.Fatalf("dry-run remove: %d %q %s", code, out, errOut)
+	}
+	if got := readFile(t, hooksPath); !strings.Contains(got, "# gorex") {
+		t.Fatalf("dry-run modified config.json: %s", got)
+	}
+
+	code, _, out, errOut = runMain(t, "skill", "remove", "--agent", "devin", "--json")
+	if code != ExitOK || !strings.Contains(out, `"change": "removed"`) {
+		t.Fatalf("remove: %d %q %s", code, out, errOut)
+	}
+	after = readFile(t, hooksPath)
+	if strings.Contains(after, "# gorex") || !strings.Contains(after, "other-hook") {
+		t.Fatalf("config.json after remove: %s", after)
+	}
+	if _, err := os.Stat(filepath.Join(home, ".agents", "skills", "gorex")); !os.IsNotExist(err) {
+		t.Fatalf("skill remains: %v", err)
+	}
+
+	// Conflict shapes in config.json are reported without rewriting.
+	for _, bad := range []string{`{"hooks":"not-obj"}`, `{"hooks":{"SessionStart":"not-arr"}}`, `{"hooks":{"SessionStart":[{"hooks":["not-obj"]}]}}`} {
+		writeFile(t, hooksPath, bad)
+		code, _, out, _ = runMain(t, "skill", "setup", "--agent", "devin", "--json")
+		if code != ExitFailed || !strings.Contains(out, `"change": "conflict"`) {
+			t.Fatalf("conflict %s: %d %q", bad, code, out)
+		}
+		if got := readFile(t, hooksPath); got != bad {
+			t.Fatalf("conflict modified config.json: %q", got)
+		}
+	}
+}
+
+func TestSkillDevinProject(t *testing.T) {
+	tempHome(t)
+	project := t.TempDir()
+	old, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(project); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Chdir(old) })
+
+	code, _, out, errOut := runMain(t, "skill", "setup", "--project", "--agent", "devin", "--json")
+	if code != ExitOK || !strings.Contains(out, `"change": "created"`) {
+		t.Fatalf("project setup: %d %q %s", code, out, errOut)
+	}
+	if _, err := os.Stat(filepath.Join(project, ".agents", "skills", "gorex", "SKILL.md")); err != nil {
+		t.Fatal(err)
+	}
+	if b := readFile(t, filepath.Join(project, ".devin", "config.json")); !strings.Contains(b, "__internal session-start --agent devin") {
+		t.Fatalf("project hook %q", b)
+	}
+	code, _, _, errOut = runMain(t, "skill", "remove", "--project", "--agent", "devin")
+	if code != ExitOK {
+		t.Fatalf("project remove: %d %s", code, errOut)
+	}
+	if _, err := os.Stat(filepath.Join(project, ".agents", "skills", "gorex")); !os.IsNotExist(err) {
+		t.Fatalf("project skill remains: %v", err)
+	}
+	if b := readFile(t, filepath.Join(project, ".devin", "config.json")); strings.Contains(b, "# gorex") {
+		t.Fatalf("project hook remains: %s", b)
+	}
+}
+
+func TestSessionStartDevin(t *testing.T) {
+	t.Setenv("GOREX_SESSION", "abc123")
+	t.Setenv("GOREX_PANE", "4")
+	code, _, out, _ := runMain(t, "__internal", "session-start", "--agent", "devin", "--feature-pane-naming=true")
+	if code != ExitOK {
+		t.Fatalf("code %d", code)
+	}
+	var payload struct {
+		HookSpecificOutput struct {
+			HookEventName     string `json:"hookEventName"`
+			AdditionalContext string `json:"additionalContext"`
+		} `json:"hookSpecificOutput"`
+	}
+	if err := json.Unmarshal([]byte(out), &payload); err != nil {
+		t.Fatalf("invalid json %q: %v", out, err)
+	}
+	if payload.HookSpecificOutput.HookEventName != "SessionStart" {
+		t.Fatalf("hookEventName %q", payload.HookSpecificOutput.HookEventName)
+	}
+	msg := payload.HookSpecificOutput.AdditionalContext
 	if !strings.Contains(msg, "GOREX_SESSION=abc123") || !strings.Contains(msg, "Label the pane") ||
 		!strings.Contains(msg, "natural-language phrase") || strings.Contains(msg, "joined by hyphens") {
 		t.Fatalf("unexpected message %q", msg)

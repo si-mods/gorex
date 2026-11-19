@@ -108,6 +108,15 @@ func sessionStartCmd(args []string, out io.Writer) (int, bool) {
 		})
 		return ExitOK, true
 	}
+	if *agent == "devin" {
+		WriteJSON(out, map[string]any{
+			"hookSpecificOutput": map[string]any{
+				"hookEventName":     "SessionStart",
+				"additionalContext": strings.TrimRight(msg.String(), "\n"),
+			},
+		})
+		return ExitOK, true
+	}
 	fmt.Fprint(out, msg.String())
 	return ExitOK, true
 }
