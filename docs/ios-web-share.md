@@ -124,7 +124,8 @@ knows the hotspot password is on that network, and the phone admits it
 by hand. Turning sharing off forgets every address.
 
 The share screen lists the admitted devices; each can be removed, which
-closes its connections.
+closes its connections, the proxied WebSockets included. Deny and
+stopping the share close them too.
 
 ### Addresses
 
@@ -241,7 +242,8 @@ progress, and reports say it fails after minutes locked. It is not used.
 - `ios/share`: the static files and their types; forwarding under
   `/h/<id>`, WebSocket upgrades included, to a test upstream
   (`httptest`, in `ios/share/share_test.go`), with `Origin` dropped; another origin refused;
-  admission: 403 before, served after, forgotten on stop; listening
+  admission: 403 before, served after, forgotten on stop; a live proxied
+  WebSocket closed, at both ends, on revoke, deny and stop; listening
   again after the listener closes.
 - `web/`: a host address with a path, for sockets, fetches, downloads
   and the diagnosis; the iPhone group shown only when `/share/hosts`
