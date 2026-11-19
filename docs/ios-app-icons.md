@@ -1,4 +1,4 @@
-# Rex Go: app icons
+# Rex Go and GoRex: app icons
 
 Status: implemented.
 
@@ -11,8 +11,9 @@ user choose another one in Settings.
 
 ## The icons
 
-- **Prism** is the default. A glass prism: white light goes in, and white light
-  that fades to silver comes out.
+- **Prism** is the default, drawn in Icon Composer: a glass prism on Ink, a
+  white beam goes in, and a warm fan of light (yellow, orange, pink, cyan)
+  comes out. The desktop app has the same icon (see Desktop).
 - **Spectrum** is an alternate. The same prism, and the light that comes out is
   in seven colours.
 - **Classic** is an alternate. The icon from before this change, one bitmap
@@ -36,20 +37,19 @@ The old `AppIcon.appiconset` is gone: the `.icon` bundle replaces it.
 
 ## The default icon's layers
 
-`AppIcon.icon` has three layers, from the back to the front:
+`AppIcon.icon` is an Icon Composer export, kept as it was made. Edit it in
+Icon Composer, not by hand. It has two groups:
 
-1. `1-beam`: the white light that goes into the prism, and its path inside
-   the glass, at 55% opacity.
-2. `2-glow`: the light that comes out. A flat shape: the layer's `fill` in
-   `icon.json`, a white-to-silver gradient, overrides the SVG's own colour. The
-   SVG's `#DCE3F0` only shows in a tool that ignores `icon.json`; change the
-   gradient in `icon.json`, not the SVG.
-3. `3-prism`: the prism, marked as glass.
+1. `prism2.png`: the prism, glass at 50% opacity, with refraction (strength
+   0.5) and full translucency, so the background and the light show through.
+2. `color3.png`: the beam and the fan of light, behind the prism.
+
+The background is the Ink gradient, in `icon.json`'s `fill`.
 
 ## The light follows refraction
 
-The light is a ray traced with Snell's law through the prism's outer faces
-(the triangle in `3-prism`, grown by its 60 px corner radius):
+In Spectrum, the light is a ray traced with Snell's law through the prism's
+outer faces (the triangle in `2-prism`, grown by its 60 px corner radius):
 
 - The beam meets the left face and bends toward the normal. Inside, it runs
   parallel to the base: the path of least deviation.
@@ -68,6 +68,23 @@ not bend at both faces reads as wrong.
 The layers are flat shapes. The system draws the glass, the highlights, the
 shadows and the dark and tinted looks. Do not draw them into the SVGs: they
 would be drawn twice.
+
+## Desktop
+
+The desktop app's icon is the same prism. `resources/icon.png` (GoRex) and
+`resources/icon-dev.png` (GoRex Dev) are 1024 px PNGs: the icon's layers
+drawn into the squircle of macOS icons (824 px, inset 100 px) with a soft
+shadow, as `tools/mkicon` drew the panes before. MyGo makes the macOS,
+Windows and Linux icons from them.
+
+- GoRex has the Ink background, as Rex Go.
+- GoRex Dev has a violet-to-magenta gradient behind the same prism, so that
+  the two read apart in the Dock.
+
+They are renders of the Icon Composer layers, not files a tool in the repo
+writes: when `AppIcon.icon` changes, render them again by hand, as the
+previews. `tools/mkicon` now draws only the web client's icons (`-web`),
+which still show the panes.
 
 ## The setting
 

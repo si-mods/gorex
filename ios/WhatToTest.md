@@ -56,6 +56,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - Rex Go has a new icon: a glass prism that light passes through. To choose another, open Settings > App Icon: Spectrum, or Classic, the icon from before.
 - The prism icons' light now bends where it enters and leaves the glass, as light does in a real prism.
 - In the Spectrum icon, the light now splits into its colours as soon as it enters the prism.
+- Rex Go has a new default icon: a clear glass prism that splits a white beam into warm light.
 
 ## zh-Hans
 
@@ -104,3 +105,4 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - Rex Go 换了新图标：一块让光穿过的玻璃棱镜。想换别的，打开「设置」>「应用图标」，可选「光谱」，或之前的「经典」图标。
 - 棱镜图标里的光现在在进入和离开玻璃时折射，和真实棱镜一样。
 - 「光谱」图标里的光一进入棱镜就分成各种颜色。
+- Rex Go 换了新的默认图标：一块透明的玻璃棱镜，把白光分成暖色的光。

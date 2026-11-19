@@ -1,11 +1,11 @@
-// Mkicon draws GoRex's icon, resources/icon.png: the window's gradient in
-// the squircle of macOS icons, with panes on it as the app splits them.
-// With -dev it draws the development app's, resources/icon-dev.png, in the
-// dark of its window, so that the two read apart in the Dock. With -web it
-// draws the web client's app icons into web/pwa (webIcons).
+// Mkicon draws the web client's app icons into web/pwa (webIcons): the
+// window's gradient in the squircle of macOS icons, with panes on it as the
+// app splits them.
 //
-//	go run ./tools/mkicon
-//	go run ./tools/mkicon -dev
+// The desktop app's icons, resources/icon.png and resources/icon-dev.png,
+// are the prism of Rex Go's icon now, rendered from its layers; mkicon no
+// longer draws them (docs/ios-app-icons.md, Desktop).
+//
 //	go run ./tools/mkicon -web
 package main
 
@@ -37,13 +37,13 @@ type colors struct {
 }
 
 func main() {
-	dev := flag.Bool("dev", false, "draw the development app's icon, resources/icon-dev.png, in dark colors")
 	web := flag.Bool("web", false, "draw the web client's app icons into web/pwa")
 	flag.Parse()
+	if !*web {
+		log.Fatal("mkicon draws only the web icons (-web); resources/icon.png and icon-dev.png are rendered from Rex Go's icon (docs/ios-app-icons.md, Desktop)")
+	}
 
-	// Resources of the icon, in the light of the window or, for the
-	// development app, in its dark.
-	out := "resources/icon.png"
+	// The icon's colours, in the light of the window.
 	c := colors{
 		bg:   []stop{{0, rgb(0xf7e4f6)}, {0.45, rgb(0xeedbe3)}, {0.7, rgb(0xeeddd0)}, {1, rgb(0xebdcb2)}},
 		pane: 250, paneBack: 175,
@@ -52,17 +52,6 @@ func main() {
 		snake: color.NRGBA{86, 141, 102, 255}, red: color.NRGBA{188, 83, 98, 255},
 		shade: color.RGBA{60, 30, 50, 46},
 	}
-	if *dev {
-		out = "resources/icon-dev.png"
-		c.bg = []stop{{0, rgb(0x2c2131)}, {0.45, rgb(0x231e27)}, {0.7, rgb(0x221f22)}, {1, rgb(0x2a2619)}}
-		c.pane, c.paneBack = 46, 26
-		c.ink = color.NRGBA{208, 208, 214, 255}
-		c.green = color.NRGBA{95, 211, 141, 255}
-		c.text, c.accent = color.NRGBA{174, 174, 178, 200}, color.NRGBA{255, 140, 156, 210}
-		c.snake, c.red = color.NRGBA{123, 216, 143, 255}, color.NRGBA{255, 107, 127, 255}
-		c.shade = color.RGBA{0, 0, 0, 110}
-	}
-
 	img := image.NewRGBA(image.Rect(0, 0, size, size))
 	// The squircle of macOS's icon grid: 824 wide, inset by 100.
 	x0, y0, w := float32(100), float32(100), float32(824)
@@ -70,11 +59,7 @@ func main() {
 	grad := gradient(size, c.bg)
 	fill(img, squircle(x0, y0, w, w, 186), grad)
 	panes(img, x0, y0, w, c)
-	if *web {
-		webIcons(img, grad, x0, y0, w, c)
-		return
-	}
-	save(out, img)
+	webIcons(img, grad, x0, y0, w, c)
 }
 
 // panes draws the panes on the squircle at x0, y0, w wide: one left above
