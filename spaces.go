@@ -357,7 +357,7 @@ type spaceUI struct {
 func (a *App) spacePicker(c *ui.Context, k *colors, wide bool) {
 	name := shownSpace()
 	label := locales.SpacePickerLabel(spaceLabel(name))
-	chip := ui.Row(c.Key("space-picker")).Height(28).Gap(7).Padding(0, 8, 0, 8).Radius(pillRadius(28, 9)).AlignItems(ui.Center).Cursor(ui.CursorPointer).
+	chip := ui.Row(c.Key("space-picker")).Height(28).Gap(8).Padding(0, 8, 0, 8).Radius(pillRadius(28, radiusM)).AlignItems(ui.Center).Cursor(ui.CursorPointer).
 		Role(ui.RoleButton).Label(label).Tooltip(label)
 	if wide {
 		chip.Grow(1).MinWidth(0)
@@ -372,15 +372,14 @@ func (a *App) spacePicker(c *ui.Context, k *colors, wide bool) {
 	}
 	chip.Children(func() {
 		spaceSwatchMark(c, k, spaceColor(name), 10)
-		t := ui.Text(c, spaceLabel(name)).FontSize(13).FontWeight(600).TextColor(k.text.Alpha(0.85)).SingleLine().Ellipsis("…").MinWidth(0)
+		t := ui.Text(c, spaceLabel(name)).FontSize(fontBody).FontWeight(600).TextColor(k.text.Alpha(0.85)).SingleLine().Ellipsis("…").MinWidth(0)
 		if wide {
 			t.Grow(1)
 		}
 		glyphIcon(c, "chevron-down", 13, k.textFaint).Shrink(0)
 	})
 	ui.PopoverBase(c, chip, &a.spaces.open, func(panel ui.Element) {
-		glassPanel(panel.Margin(6, 0, 0, 0).Width(240).Padding(popPad).Radius(popR), k.panel).Border(1, k.panelBorder).
-			Shadow(0, 12, 32, 0, k.shadowFocused)
+		popoverShadow(glassPanel(panel.Margin(6, 0, 0, 0).Width(240).Padding(popPad).Radius(popR), k.panel).Border(1, k.panelBorder), k)
 		ui.Column(c).Gap(2).Children(func() {
 			for _, n := range a.st.spaceNames() {
 				a.menuRow(c, k, "space-"+n, n == name, spaceLabel(n), "", func() {
@@ -419,9 +418,9 @@ func (a *App) menuRow(c *ui.Context, k *colors, key string, chosen bool, label, 
 		if mark != nil {
 			mark()
 		}
-		ui.Text(c, label).FontSize(13).TextColor(k.text).SingleLine().Ellipsis("…").Grow(1).MinWidth(0)
+		ui.Text(c, label).FontSize(fontBody).TextColor(k.text).SingleLine().Ellipsis("…").Grow(1).MinWidth(0)
 		if detail != "" {
-			ui.Text(c, detail).FontSize(11.5).TextColor(k.textFaint).SingleLine().Shrink(0)
+			ui.Text(c, detail).FontSize(fontFootnote).TextColor(k.textFaint).SingleLine().Shrink(0)
 		}
 	})
 	return row
@@ -459,9 +458,8 @@ func (a *App) spaceDialog(c *ui.Context, k *colors) {
 	ui.DialogBase(c.Key("space-dialog"), &open, func(backdrop, panel ui.Element) {
 		backdrop.Background(k.backdrop)
 		_, winH := c.Size()
-		glassPanel(panel.Width(400).MaxHeight(winH-24).Padding(20).Radius(16), k.panel).Border(1, k.panelBorder).
-			Shadow(0, 24, 60, -8, ui.RGBA(0, 0, 0, 0.28)).Role(ui.RoleDialog).Label(title)
-		ui.Text(c, title).FontSize(15).FontWeight(700).TextColor(k.text).Margin(0, 0, 10, 0)
+		dialogShadow(glassPanel(panel.Width(400).MaxHeight(winH-24).Padding(20).Radius(radiusXXL), k.panel).Border(1, k.panelBorder)).Role(ui.RoleDialog).Label(title)
+		ui.Text(c, title).FontSize(fontTitle).FontWeight(700).TextColor(k.text).Margin(0, 0, 10, 0)
 		if s.dialog == "new" {
 			in := textField(c.Key("space-name"), k, &s.name, fieldRegular).Label(locales.SpaceNameLabel()).Placeholder(locales.SpaceNameHint()).AutoFocus()
 			done := in.Submitted()
@@ -483,9 +481,9 @@ func (a *App) spaceDialog(c *ui.Context, k *colors) {
 		if s.dialog == "delete" {
 			n, away := a.spaceProjects(s.name)
 			ui.Column(c).Gap(6).Children(func() {
-				ui.Text(c, locales.SpaceDeleteBody(n)).FontSize(13).TextColor(k.textMuted).LineHeight(1.35)
+				ui.Text(c, locales.SpaceDeleteBody(n)).FontSize(fontBody).TextColor(k.textMuted).LineHeight(1.35)
 				if away {
-					ui.Text(c, locales.SpaceDeleteOffline()).FontSize(13).TextColor(k.textMuted).LineHeight(1.35)
+					ui.Text(c, locales.SpaceDeleteOffline()).FontSize(fontBody).TextColor(k.textMuted).LineHeight(1.35)
 				}
 			})
 			ui.Row(c).Gap(8).Justify(ui.End).Margin(14, 0, 0, 0).Children(func() {
@@ -527,7 +525,7 @@ func (a *App) spaceDialog(c *ui.Context, k *colors) {
 func (a *App) spaceEditRow(c *ui.Context, k *colors, i int, name string) {
 	s := &a.spaces
 	ui.Row(c.Key("edit-" + name)).Gap(6).AlignItems(ui.Center).Children(func() {
-		mark := ui.Box(c).Size(22, 22).Center().Radius(11).Cursor(ui.CursorPointer).Role(ui.RoleButton).Label(locales.SpaceColor()).Tooltip(locales.SpaceColor())
+		mark := ui.Box(c).Size(22, 22).Center().Radius(capsule(22)).Cursor(ui.CursorPointer).Role(ui.RoleButton).Label(locales.SpaceColor()).Tooltip(locales.SpaceColor())
 		mark.Children(func() { spaceSwatchMark(c, k, spaceColor(name), 12) })
 		mark.ContextMenu(func(m *ui.Menu) { spaceColorMenu(m, name) })
 		if mark.Clicked() {
@@ -542,7 +540,7 @@ func (a *App) spaceEditRow(c *ui.Context, k *colors, i int, name string) {
 			setSpaceColorOf(name, next)
 		}
 		if name == "" {
-			ui.Text(c, spaceLabel(name)).FontSize(13).TextColor(k.text).Grow(1).Padding(0, 6)
+			ui.Text(c, spaceLabel(name)).FontSize(fontBody).TextColor(k.text).Grow(1).Padding(0, 6)
 		} else {
 			if _, ok := s.names[name]; !ok {
 				s.names[name] = name

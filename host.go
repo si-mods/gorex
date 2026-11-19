@@ -38,7 +38,7 @@ func (a *App) hostButton(c *ui.Context, k *colors) {
 	}
 	b := iconButtonWith(c, k, glyph, label, 30, 16, a.hostOpen, func() {
 		if bad != nil {
-			ui.Box(c).Absolute().Top(5).Right(5).Size(7, 7).Radius(4).Background(hostDot(k, bad))
+			ui.Box(c).Absolute().Top(5).Right(5).Size(7, 7).Radius(capsule(7)).Background(hostDot(k, bad))
 		}
 	}).Tooltip(label)
 	if b.Clicked() {
@@ -179,8 +179,7 @@ func (a *App) hostPopover(c *ui.Context, k *colors, anchor ui.Element, name, gly
 		if r := anchor.Bounds(); r.H > 0 {
 			room = min(room, max(r.Y, winH-r.Y-r.H)-16)
 		}
-		glassPanel(panel.Margin(8, 0, 0, 0).MaxHeight(room).Width(300).Padding(14).Radius(14), k.panel).Border(1, k.panelBorder).
-			Shadow(0, 12, 32, 0, k.shadowFocused)
+		popoverShadow(glassPanel(panel.Margin(8, 0, 0, 0).MaxHeight(room).Width(300).Padding(14).Radius(radiusXL), k.panel).Border(1, k.panelBorder), k)
 		// A short window scrolls the panel's body.
 		ui.Scroll(c).MinHeight(0).Children(func() {
 			ui.Column(c).Gap(12).Children(func() { a.hostPanel(c, k, name, glyph) })
@@ -191,14 +190,14 @@ func (a *App) hostPopover(c *ui.Context, k *colors, anchor ui.Element, name, gly
 func (a *App) hostPanel(c *ui.Context, k *colors, name, glyph string) {
 	h := a.hello.Host
 	ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
-		ui.Box(c).Size(38, 38).Radius(10).Background(k.hover).Center().Children(func() {
+		ui.Box(c).Size(38, 38).Radius(radiusM).Background(k.hover).Center().Children(func() {
 			glyphIcon(c, glyph, 24, k.text)
 		})
 		ui.Column(c).Grow(1).MinWidth(0).Children(func() {
-			ui.Text(c, name).FontSize(14).FontWeight(700).TextColor(k.text).SingleLine().Ellipsis("…")
+			ui.Text(c, name).FontSize(fontTitle).FontWeight(700).TextColor(k.text).SingleLine().Ellipsis("…")
 			ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
-				ui.Box(c).Size(7, 7).Radius(4).Background(k.busy)
-				ui.Text(c, locales.HostConnected(thisMachine())).FontSize(12).TextColor(k.textFaint)
+				ui.Box(c).Size(7, 7).Radius(capsule(7)).Background(k.busy)
+				ui.Text(c, locales.HostConnected(thisMachine())).FontSize(fontSubhead).TextColor(k.textFaint)
 			})
 		})
 	})
@@ -208,21 +207,21 @@ func (a *App) hostPanel(c *ui.Context, k *colors, name, glyph string) {
 			return
 		}
 		ui.Row(c).Gap(12).Children(func() {
-			ui.Text(c, label).FontSize(12.5).TextColor(k.textFaint).Width(78)
-			ui.Text(c, value).FontSize(12.5).TextColor(k.text).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
+			ui.Text(c, label).FontSize(fontCallout).TextColor(k.textFaint).Width(78)
+			ui.Text(c, value).FontSize(fontCallout).TextColor(k.text).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
 		})
 	}
-	ui.Column(c).Gap(7).Children(func() { hostFacts(h, row) })
+	ui.Column(c).Gap(8).Children(func() { hostFacts(h, row) })
 	ui.Divider(c)
 	sessions, running := a.sessionCounts()
-	ui.Column(c).Gap(7).Children(func() {
+	ui.Column(c).Gap(8).Children(func() {
 		row(locales.HostServer(), a.serverUp(c))
 		row(locales.HostSessions(), locales.HostSessionCount(sessions, running))
 	})
 	ui.Divider(c)
 	a.hostsInPanel(c, k)
 	ui.Text(c, locales.HostNote()).
-		FontSize(11.5).TextColor(k.textFaint).LineHeight(1.35)
+		FontSize(fontFootnote).TextColor(k.textFaint).LineHeight(1.35)
 }
 
 // hostsInPanel leads, from the host's panel, to the remote hosts: it
@@ -233,9 +232,9 @@ func (a *App) hostsInPanel(c *ui.Context, k *colors) {
 	for _, h := range away {
 		status, _, _ := hostStatus(h)
 		ui.Row(c.Key(hostKey(h))).Gap(8).AlignItems(ui.Center).Children(func() {
-			ui.Box(c).Size(7, 7).Radius(4).Background(hostDot(k, h)).Shrink(0)
-			ui.Text(c, a.hostName(h)).FontSize(12.5).FontWeight(600).TextColor(k.text).MinWidth(0).SingleLine().Ellipsis("…")
-			ui.Text(c, status).FontSize(12.5).TextColor(k.textFaint).Shrink(0)
+			ui.Box(c).Size(7, 7).Radius(capsule(7)).Background(hostDot(k, h)).Shrink(0)
+			ui.Text(c, a.hostName(h)).FontSize(fontCallout).FontWeight(600).TextColor(k.text).MinWidth(0).SingleLine().Ellipsis("…")
+			ui.Text(c, status).FontSize(fontCallout).TextColor(k.textFaint).Shrink(0)
 		})
 	}
 	label := locales.HostsManage()

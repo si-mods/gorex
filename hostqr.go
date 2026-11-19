@@ -210,7 +210,7 @@ func qrImage(s string) ui.ImageSource {
 // inside the panel's corner radius.
 func pairQRCode(c *ui.Context, img ui.ImageSource, label string) {
 	ui.Row(c).Justify(ui.Center).Margin(2, 0, 2, 0).Children(func() {
-		ui.Column(c).Padding(10).Radius(12).Background(ui.RGB(255, 255, 255)).Children(func() {
+		ui.Column(c).Padding(10).Radius(radiusL).Background(ui.RGB(255, 255, 255)).Children(func() {
 			ui.Image(c, img).Size(240, 240).Label(label)
 		})
 	})
@@ -229,10 +229,10 @@ func hostPairQRSheet(c *ui.Context, k *colors, page *hostPairQR) {
 		// The backdrop dims the window; the glass is the panel's, as in
 		// the other sheets over the app.
 		backdrop.Background(k.backdrop)
-		glassPanel(panel.Width(380).Padding(20).Gap(12).Radius(16), k.panel).
-			Border(1, k.panelBorder).Shadow(0, 24, 60, -8, ui.RGBA(0, 0, 0, 0.28)).
+		dialogShadow(glassPanel(panel.Width(380).Padding(20).Gap(12).Radius(radiusXXL), k.panel).
+			Border(1, k.panelBorder)).
 			Role(ui.RoleDialog).Label(title)
-		ui.Text(c, title).FontSize(15).FontWeight(700).TextColor(k.text)
+		ui.Text(c, title).FontSize(fontTitle).FontWeight(700).TextColor(k.text)
 		// A listener with a web link offers both codes: this address's,
 		// for Rex, and the page's, for a browser on the same network.
 		web := page.webImage != nil
@@ -241,15 +241,15 @@ func hostPairQRSheet(c *ui.Context, k *colors, page *hostPairQR) {
 		}
 		switch {
 		case page.loading:
-			ui.Text(c, locales.HostsRexQRLoading()).FontSize(13).TextColor(k.textMuted).LineHeight(1.35)
+			ui.Text(c, locales.HostsRexQRLoading()).FontSize(fontBody).TextColor(k.textMuted).LineHeight(1.35)
 		case web && page.tab == 1:
-			ui.Text(c, locales.HostsPairWebHint(rexapi.WebOrigin)).FontSize(12.5).TextColor(k.textMuted).LineHeight(1.35)
+			ui.Text(c, locales.HostsPairWebHint(rexapi.WebOrigin)).FontSize(fontCallout).TextColor(k.textMuted).LineHeight(1.35)
 			// The browser this dialog runs beside is the usual one, so
 			// it opens there; the code is for a phone on the network.
 			if page.webTrusted {
-				ui.Text(c, locales.HostsPairWebTrusted()).FontSize(12).TextColor(k.textMuted).LineHeight(1.3)
+				ui.Text(c, locales.HostsPairWebTrusted()).FontSize(fontSubhead).TextColor(k.textMuted).LineHeight(1.3)
 			} else {
-				ui.Text(c, locales.HostsPairWebUntrusted()).FontSize(12).TextColor(k.textMuted).LineHeight(1.3)
+				ui.Text(c, locales.HostsPairWebUntrusted()).FontSize(fontSubhead).TextColor(k.textMuted).LineHeight(1.3)
 				if ui.Button(c.Key("trust-web"), locales.HostsPairWebTrust(rexapi.WebOrigin)).Clicked() {
 					if _, err := rexapi.AllowWebOrigin(rexapi.TailnetDir(), rexapi.WebOrigin); err != nil {
 						page.webAllowFailed, page.webErr = true, err.Error()
@@ -259,7 +259,7 @@ func hostPairQRSheet(c *ui.Context, k *colors, page *hostPairQR) {
 				}
 			}
 			if page.webAllowFailed {
-				ui.Text(c, locales.HostsPairWebTrustFailed(page.webErr)).FontSize(12).TextColor(k.danger).LineHeight(1.3)
+				ui.Text(c, locales.HostsPairWebTrustFailed(page.webErr)).FontSize(fontSubhead).TextColor(k.danger).LineHeight(1.3)
 			}
 			if ui.Button(c.Key("open-web"), locales.HostsPairWebOpen()).Clicked() {
 				if err := openWebLink(page.webURL); err != nil {
@@ -269,9 +269,9 @@ func hostPairQRSheet(c *ui.Context, k *colors, page *hostPairQR) {
 				}
 			}
 			if page.webOpenFailed {
-				ui.Text(c, locales.HostsPairWebOpenFailed(page.webErr)).FontSize(12).TextColor(k.danger).LineHeight(1.3)
+				ui.Text(c, locales.HostsPairWebOpenFailed(page.webErr)).FontSize(fontSubhead).TextColor(k.danger).LineHeight(1.3)
 			}
-			ui.Text(c, locales.HostsPairWebScan()).FontSize(12).TextColor(k.textMuted).LineHeight(1.3)
+			ui.Text(c, locales.HostsPairWebScan()).FontSize(fontSubhead).TextColor(k.textMuted).LineHeight(1.3)
 			pairQRCode(c, page.webImage, title)
 		case page.image != nil:
 			hint := locales.HostsRexQRHint()
@@ -285,21 +285,21 @@ func hostPairQRSheet(c *ui.Context, k *colors, page *hostPairQR) {
 					hint = locales.HostsLocalLanRexQRHint()
 				}
 			}
-			ui.Text(c, hint).FontSize(12.5).TextColor(k.textMuted).LineHeight(1.35)
+			ui.Text(c, hint).FontSize(fontCallout).TextColor(k.textMuted).LineHeight(1.35)
 			pairQRCode(c, page.image, title)
 			if !page.rexGo {
 				// The pairing token stays in the code and the copy, off
 				// the screen.
 				shown, _, _ := strings.Cut(page.address, "#")
-				ui.Text(c, shown).Font(monoFamily()).FontSize(12).TextColor(k.text).SingleLine().Label(shown)
+				ui.Text(c, shown).Font(monoFamily()).FontSize(fontSubhead).TextColor(k.text).SingleLine().Label(shown)
 			}
 		case page.rexGo:
-			ui.Text(c, locales.RemoteRexGoQRUnavailable()).FontSize(12.5).TextColor(k.textMuted).LineHeight(1.35)
+			ui.Text(c, locales.RemoteRexGoQRUnavailable()).FontSize(fontCallout).TextColor(k.textMuted).LineHeight(1.35)
 		default:
-			ui.Text(c, locales.HostsRexQRUnavailable()).FontSize(12.5).TextColor(k.textMuted).LineHeight(1.35)
+			ui.Text(c, locales.HostsRexQRUnavailable()).FontSize(fontCallout).TextColor(k.textMuted).LineHeight(1.35)
 		}
 		if page.copyFailed {
-			ui.Text(c, locales.HostsRexQRCopyFailed()).FontSize(12).TextColor(k.danger).LineHeight(1.3)
+			ui.Text(c, locales.HostsRexQRCopyFailed()).FontSize(fontSubhead).TextColor(k.danger).LineHeight(1.3)
 		}
 		ui.Row(c).Gap(8).Justify(ui.End).Margin(8, 0, 0, 0).Children(func() {
 			if ui.Button(c.Key("close"), locales.HostsLayoutClose()).Clicked() {

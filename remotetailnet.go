@@ -73,7 +73,7 @@ func (a *App) remoteTailnet(c *ui.Context, k *colors, tn *rex.TailnetStatus) {
 		// carry discovery, and Error says why.
 		groupRow(c, k, nil).Children(func() {
 			if tn.Account != "" {
-				ui.Text(c, locales.TailnetSignedIn(tn.Account)).FontSize(13).FontWeight(500).TextColor(k.text)
+				ui.Text(c, locales.TailnetSignedIn(tn.Account)).FontSize(fontBody).FontWeight(500).TextColor(k.text)
 			}
 			rowHint(c, k, tn.Device)
 			if !tn.Running && tn.Error != "" {

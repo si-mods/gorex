@@ -102,6 +102,8 @@ and the dim from `DESIGN.md`, not a variant of its own.
 - `TestBackgroundShader`, `TestDimmed` (`shader_test.go`).
 - `TestGlassDefaults`, `TestGlassPanelFlat`, `TestGlassWindow`
   (`glass_test.go`).
+- `TestDesignTokens` (`tokens_test.go`): type sizes, radii and shadows
+  come from `tokens.go`, and spacing is on the grid.
 
 ## What this list does not cover
 

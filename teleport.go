@@ -224,8 +224,8 @@ func (a *App) teleportOverlay(c *ui.Context, k *colors, p *Pane) {
 	title := locales.TeleportTitle(run.host.label())
 	ui.Column(c.Key("teleport")).Absolute().Top(0).Left(0).Right(0).Bottom(0).Justify(ui.Center).AlignItems(ui.Center).Gap(8).
 		Draw(func(pt *ui.Painter, r ui.Rect) { paintFrost(pt, r, 16, 0, k.panelGlass, k.panel) }).Label(title).Children(func() {
-		ui.Text(c, title).FontSize(14).FontWeight(600).TextColor(k.text)
-		ui.Text(c, step).FontSize(12.5).TextColor(k.textMuted)
+		ui.Text(c, title).FontSize(fontTitle).FontWeight(600).TextColor(k.text)
+		ui.Text(c, step).FontSize(fontCallout).TextColor(k.textMuted)
 		// A cancel stops the target before it starts the session.
 		if ui.Button(c.Key("cancel"), locales.TeleportCancel()).Clicked() {
 			run.cancel()
@@ -283,15 +283,14 @@ func (a *App) teleportConfirm(c *ui.Context, k *colors) {
 	reason := a.tabTeleportBlocked(ask.tab, ask.host)
 	ui.DialogBase(c, &ask.open, func(backdrop, panel ui.Element) {
 		backdrop.Background(k.backdrop)
-		glassPanel(panel.Width(380).Padding(20).Radius(16), k.panel).Border(1, k.panelBorder).
-			Shadow(0, 24, 60, -8, ui.RGBA(0, 0, 0, 0.28)).Shadow(0, 2, 6, 0, ui.RGBA(0, 0, 0, 0.06)).Role(ui.RoleDialog).Label(title)
+		dialogShadow(glassPanel(panel.Width(380).Padding(20).Radius(radiusXXL), k.panel).Border(1, k.panelBorder)).Role(ui.RoleDialog).Label(title)
 		ui.Column(c).Gap(10).Children(func() {
-			ui.Text(c, title).FontSize(15).FontWeight(700).TextColor(k.text)
+			ui.Text(c, title).FontSize(fontTitle).FontWeight(700).TextColor(k.text)
 			body := reason
 			if body == "" {
 				body = locales.TeleportAskBody(a.hostName(ask.host))
 			}
-			ui.Text(c, body).FontSize(13).TextColor(k.textMuted).LineHeight(1.35)
+			ui.Text(c, body).FontSize(fontBody).TextColor(k.textMuted).LineHeight(1.35)
 			ui.Row(c).Gap(8).Justify(ui.End).Margin(8, 0, 0, 0).Children(func() {
 				if ui.Button(c, locales.TeleportCancel()).Clicked() {
 					ask.open = false
