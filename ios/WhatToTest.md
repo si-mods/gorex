@@ -58,7 +58,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - In the Spectrum icon, the light now splits into its colours as soon as it enters the prism.
 - Rex Go has a new default icon: a clear glass prism that splits a white beam into warm light.
 - A terminal that runs Devin now shows Devin's mark on its tile, as Codex and Claude Code do.
-- Turn on Developer Mode in Settings to show a floating connection bar over the app: tap it to see your network path, each computer's latency or reconnect time, and recent connection events, and share, copy or clear them.
+- Turn on Developer Mode in Settings for a floating connection bar: tap it to inspect your network path, host latency or reconnect times, and live connection events, and share, copy or clear them.
 
 ## zh-Hans
 
