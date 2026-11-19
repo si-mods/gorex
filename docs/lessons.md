@@ -111,6 +111,11 @@ Each item has a **Trigger** (what the diff shows), a **Check** (what the author 
 - **Check:** the PR carries a screenshot, and the sizes come from a shared constant, not a literal.
 - **Source:** #605, #607, #608, #611 and #614 reset the same sizes within hours.
 
+### Selected paints the accent
+- **Trigger:** a row uses `.Selected(` and draws its own selected look, as a pill, a swatch or a check.
+- **Check:** use `.AccessSelected(`: `Selected` also fills the element with the theme's accent, which follows the desktop's accent and covers the element's own look.
+- **Source:** #836: on Windows the system accent showed purple over the active tab's pill.
+
 ## Tests and CI
 
 ### Async state in a test
