@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.44.2
+
+### Features
+
+* **ui:** add design tokens for type, radius and shadows ([#829](https://github.com/si-mods/gorex/pull/829))
+
+### Bug Fixes
+
+* **projects:** use folder icons for projects on desktop and web ([#832](https://github.com/si-mods/gorex/pull/832))
+* **tabs:** stop the active tab painting the system accent over its pill ([#836](https://github.com/si-mods/gorex/pull/836))
+* **projects:** keep a working session's dots on its tab's row ([#835](https://github.com/si-mods/gorex/pull/835))
+* **ui:** let a program's title that names itself reach its tab's label ([#837](https://github.com/si-mods/gorex/pull/837))
+
 ## 0.44.1
 
 ### Features
