@@ -124,9 +124,10 @@ and macOS, use **Check for Updates** in the app. See
   notification. A session's most urgent program status shows in the
   session picker and the sidebar.
 - **Agent skill and hooks.** `gorex skill setup` finds Claude Code, Codex,
-  OpenCode and Pi, installs a `gorex` skill into each, and adds a
-  session-start hook to Claude Code and Codex that tells the agent its
-  session and pane and how to drive GoRex from the command line. It adds
+  Antigravity CLI, Devin, OpenCode and Pi, installs a `gorex` skill into
+  each, and adds a session-start hook to Claude Code, Codex, Antigravity
+  CLI and Devin that tells the agent its session and pane and how to
+  drive GoRex from the command line. It adds
   only its own hook and leaves other settings, hooks and skills as they
   were; `gorex skill status` says what is installed, and `gorex skill
   remove` removes only what it added. `--project` keeps the skill in the
