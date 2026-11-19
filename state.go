@@ -2239,9 +2239,16 @@ func (p *Pane) label() (name, detail string) {
 func titleOfShell(title string, in rex.SessionInfo) bool {
 	l := strings.ToLower(title)
 	for _, w := range []string{strings.ToLower(in.Program), strings.ToLower(in.Shell)} {
+		if w == "" {
+			continue
+		}
 		// Windows's consoles title themselves with the shell's file:
-		// "C:\WINDOWS\system32\cmd.exe - ping".
-		if w != "" && (strings.HasPrefix(l, w) || strings.Contains(l, `\`+w+".exe")) {
+		// "cmd.exe", "C:\WINDOWS\system32\cmd.exe", or "- ping" while a
+		// child runs. A program's own title that starts with its name
+		// says more: "devin.exe: learn the design system".
+		if l == w || l == w+".exe" ||
+			strings.HasPrefix(l, w+" - ") || strings.HasPrefix(l, w+".exe - ") ||
+			strings.Contains(l, `\`+w+".exe") {
 			return true
 		}
 	}
