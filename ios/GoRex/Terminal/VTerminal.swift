@@ -5,10 +5,13 @@ import GhosttyVt
 /// A libghostty-vt terminal restored from a GHOSTSNP snapshot, which a
 /// terminal stream starts with. GhosttyKit cannot read a snapshot, so this
 /// one turns it into the escape sequences that draw the same screen.
-final class VTerminal {
+/// Nonisolated: TerminalFeed restores a snapshot off the main actor. Its
+/// terminal is its own, and libghostty-vt asks only that the calls on one
+/// terminal do not overlap, so one thread at a time may use it.
+nonisolated final class VTerminal {
     struct RGB: Equatable { var r, g, b: UInt8 }
 
-    nonisolated(unsafe) private let term: GhosttyTerminal
+    private let term: GhosttyTerminal
 
     /// Decodes a complete snapshot, or returns nil for a bad one.
     init?(snapshot: Data) {

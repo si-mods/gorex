@@ -101,6 +101,22 @@ final class ControlConnection {
     }
     private var closed = false
 
+    /// A message read off the main actor, and its bytes. JSON values,
+    /// which nothing mutates.
+    private nonisolated struct Incoming: @unchecked Sendable {
+        let message: [String: Any]
+        let raw: Data
+    }
+
+    /// Reads a message's JSON off the main actor (#844); nil for one that
+    /// is no JSON object.
+    @concurrent
+    private nonisolated static func decode(_ s: String) async -> Incoming? {
+        let raw = Data(s.utf8)
+        guard let m = try? JSONSerialization.jsonObject(with: raw) as? [String: Any] else { return nil }
+        return Incoming(message: m, raw: raw)
+    }
+
     init(base: URL, auth: String?, session: URLSession = .shared) {
         var request = URLRequest(url: base.rexURL("/api/control"))
         request.timeoutInterval = 10
@@ -214,10 +230,12 @@ final class ControlConnection {
     private func receiveLoop() async {
         do {
             while true {
+                // One message at a time: each is read before the next is
+                // taken, so they are handled in the order they came.
                 guard case .string(let s) = try await task.receive(),
-                      case let raw = Data(s.utf8),
-                      let m = try? JSONSerialization.jsonObject(with: raw) as? [String: Any]
+                      let incoming = await Self.decode(s)
                 else { continue }
+                let (m, raw) = (incoming.message, incoming.raw)
                 if m["type"] as? String == "response", let id = m["id"] as? String, let c = pending.removeValue(forKey: id) {
                     if let e = m["error"] as? [String: Any] {
                         c.resume(throwing: RexError(code: e["code"] as? String ?? "", message: e["message"] as? String ?? "",
