@@ -423,6 +423,33 @@ func TestProjectPicker(t *testing.T) {
 	waitFor(t, tt, "the project", func() bool { return a.ws == w && tt.HasText(thisMachine()+" › acme-api") })
 }
 
+// TestProjectRowWorkingDot: a project whose session works shows the
+// three dots of working on its row of the sidebar while another
+// workspace is the one shown, as its tabs' rows do while it shows: the
+// status a program reported does not hide with its tabs.
+func TestProjectRowWorkingDot(t *testing.T) {
+	a, tt := newTestApp(t)
+	old := prefs
+	t.Cleanup(func() { prefs = old })
+	prefs = settings{TabPlacement: "left", Animation: "off"}
+
+	p := a.tab().Focus
+	w := a.st.newTestSpace()
+	w.Dir = appTempDir(t, a)
+	w.layout = savedLayout{Tabs: []savedTab{{Root: &savedNode{SID: p.SID}}}}
+	work := rex.ProgramStatus{ID: "a", App: "claude-code", State: "working", Updated: time.Now()}
+	a.st.infos = map[string]rex.SessionInfo{p.SID: {ID: p.SID, Statuses: []rex.ProgramStatus{work}}}
+	tt.Frame()
+	if _, ok := tt.Find(statusTip(&work)); !ok {
+		t.Fatalf("the project of a working session shows no dots: %q", tt.Texts())
+	}
+	a.st.infos = map[string]rex.SessionInfo{p.SID: {ID: p.SID}}
+	tt.Frame()
+	if _, ok := tt.Find(statusTip(&work)); ok {
+		t.Fatal("the dots of no status show")
+	}
+}
+
 // TestProjectMenu: a project's menu has New Tab, Rename…, Color, Move to
 // Space, Reveal Folder (of this machine's) and Close Project…; Color
 // colors it on its host.
