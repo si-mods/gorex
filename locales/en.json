@@ -512,6 +512,10 @@
   "@hostServer": {
     "description": "Host panel row: the session server."
   },
+  "settingsServerCard": "GoRex Server",
+  "@settingsServerCard": {
+    "description": "Settings sidebar: title of the session server's card at the top."
+  },
   "hostSessions": "Terminals",
   "@hostSessions": {
     "description": "Host panel row: the terminals, which the session server runs."
