@@ -396,7 +396,7 @@ Nothing changes for the page to work:
   the app's own origin as the frame received it from the app's
   `postMessage` (`event.origin`), never a made-up one. The gateway
   checks it as for the browser (`checkOrigin`): the hosted page must be
-  allowed with `gorex rexapi web allow https://gorex-web.molty.workers.dev`,
+  allowed with `gorex rexapi web allow https://web.gorex.uk`,
   as today.
 - **Host**: the engine sends the peer's MagicDNS name as `Host` and as
   the TLS server name. `hostAllowed` (`host.go`) takes built-in
@@ -461,7 +461,7 @@ The node frame's policy:
 ```
 default-src 'none'; script-src 'self' 'wasm-unsafe-eval';
 connect-src 'self' https://controlplane.tailscale.com wss://controlplane.tailscale.com wss://*.tailscale.com;
-worker-src 'self'; frame-ancestors https://gorex-web.molty.workers.dev;
+worker-src 'self'; frame-ancestors https://web.gorex.uk;
 base-uri 'none'; form-action 'none'
 ```
 
