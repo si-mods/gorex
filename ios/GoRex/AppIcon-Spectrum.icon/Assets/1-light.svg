@@ -1,13 +1,14 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
   <clipPath id="c"><rect width="1024" height="1024"/></clipPath>
   <g clip-path="url(#c)">
-    <polygon points="392,470 1991.7,502.0 1987.2,593.3" fill="#FF3B30"/>
-    <polygon points="392,470 1987.2,593.3 1977.6,684.2" fill="#FF9500"/>
-    <polygon points="392,470 1977.6,684.2 1962.8,774.4" fill="#FFCC00"/>
-    <polygon points="392,470 1962.8,774.4 1942.8,863.6" fill="#34C759"/>
-    <polygon points="392,470 1942.8,863.6 1917.8,951.6" fill="#0A84FF"/>
-    <polygon points="392,470 1917.8,951.6 1887.8,1037.9" fill="#5856D6"/>
-    <polygon points="392,470 1887.8,1037.9 1852.9,1122.4" fill="#AF52DE"/>
-    <rect x="-72.2" y="461" width="473.2" height="18" rx="9" fill="#FFFFFF" transform="rotate(-21.481 392 470)"/>
+    <polygon points="698.5,466.6 2088.1,636.9 2083.4,715.0 703.9,476.4" fill="#FF3B30"/>
+    <polygon points="703.9,476.4 2083.4,715.0 2074.7,794.4 709.1,486.0" fill="#FF9500"/>
+    <polygon points="709.1,486.0 2074.7,794.4 2061.7,875.2 714.2,495.4" fill="#FFCC00"/>
+    <polygon points="714.2,495.4 2061.7,875.2 2043.7,958.1 719.2,504.6" fill="#34C759"/>
+    <polygon points="719.2,504.6 2043.7,958.1 2020.1,1043.3 724.1,513.6" fill="#0A84FF"/>
+    <polygon points="724.1,513.6 2020.1,1043.3 1989.5,1131.8 729.0,522.5" fill="#5856D6"/>
+    <polygon points="729.0,522.5 1989.5,1131.8 1950.1,1224.4 733.8,531.3" fill="#AF52DE"/>
+    <polygon points="-354.8,696.8 313.5,488.6 301.1,511.4 -367.2,719.5" fill="#FFFFFF"/>
+    <polygon points="313.5,488.6 698.5,466.6 733.8,531.3 301.1,511.4" fill="#FFFFFF" opacity="0.55"/>
   </g>
 </svg>
