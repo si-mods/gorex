@@ -3,6 +3,7 @@
 package rex
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -44,6 +45,7 @@ func TestStatusReply(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer c.Kill(info.ID)
 	st := c.Stream(info.ID, 80, 24)
 	defer st.Close()
 	// The bundled console's layout must be the one consoleSignal reads,
@@ -60,7 +62,10 @@ func TestStatusReply(t *testing.T) {
 			}
 		}
 		if time.Now().After(deadline) {
-			t.Fatalf("status %+v", l[0].Status)
+			if len(l) == 1 {
+				t.Fatalf("status %+v", l[0].Status)
+			}
+			t.Fatalf("%d sessions", len(l))
 		}
 	}
 }
@@ -108,7 +113,15 @@ func statusReplyHelper(t *testing.T) {
 		fmt.Println("TIMEOUT")
 	}
 	fmt.Print("\x1b]7501;state=done:msg=b2s=\x07")
-	time.Sleep(2 * time.Second)
+	// Stay until the console closes, so the session outlives the status
+	// write; closing the stream ends it, and stdin's read ends then.
+	one := make([]byte, 1)
+	for {
+		_, err := os.Stdin.Read(one)
+		if err != nil {
+			return
+		}
+	}
 }
 
 // installBundledConpty puts the resources' conpty.dll and OpenConsole.exe
@@ -139,6 +152,11 @@ func installBundledConpty(t *testing.T) {
 		b, err := os.ReadFile(from)
 		if err != nil {
 			t.Skipf("bundled ConPTY not in resources: %v", err)
+		}
+		// A run may leave the files, and a loaded DLL cannot be written:
+		// keep the ones already there when they are the same.
+		if have, err := os.ReadFile(to); err == nil && bytes.Equal(have, b) {
+			return
 		}
 		if err := os.MkdirAll(filepath.Dir(to), 0o755); err != nil {
 			t.Fatal(err)

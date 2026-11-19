@@ -38,7 +38,13 @@ var (
 
 func bundledConpty() *conptyAPI {
 	conptyOnce.Do(func() {
-		d := windows.NewLazyDLL("conpty.dll")
+		exe, err := os.Executable()
+		if err != nil {
+			return
+		}
+		// The path is absolute, beside the executable: no search order
+		// picks up a conpty.dll from the working directory or PATH.
+		d := windows.NewLazyDLL(filepath.Join(filepath.Dir(exe), "conpty.dll"))
 		if err := d.Load(); err != nil {
 			return
 		}
@@ -71,20 +77,20 @@ func createPseudoConsole(size windows.Coord, in, out windows.Handle, flags uint3
 	return windows.CreatePseudoConsole(size, in, out, flags, pconsole)
 }
 
-// closePseudoConsole and resizePseudoConsole keep calling the API of the
-// DLL that created console: a session the server took over on upgrade may
-// have an inbox console while newer ones have a bundled one.
-func closePseudoConsole(console windows.Handle, bundled bool) {
-	if bundled {
-		bundledConpty().close.Call(uintptr(console))
+// closePseudoConsole and resizePseudoConsole go through the bundled DLL
+// when there is one: a console this process made, which is the only kind
+// with a handle here, came from it too.
+func closePseudoConsole(console windows.Handle) {
+	if c := bundledConpty(); c != nil {
+		c.close.Call(uintptr(console))
 		return
 	}
 	windows.ClosePseudoConsole(console)
 }
 
-func resizePseudoConsole(console windows.Handle, size windows.Coord, bundled bool) error {
-	if bundled {
-		r, _, _ := bundledConpty().resize.Call(uintptr(console), uintptr(*(*uint32)(unsafe.Pointer(&size))))
+func resizePseudoConsole(console windows.Handle, size windows.Coord) error {
+	if c := bundledConpty(); c != nil {
+		r, _, _ := c.resize.Call(uintptr(console), uintptr(*(*uint32)(unsafe.Pointer(&size))))
 		if r != 0 {
 			return windows.Errno(r)
 		}
@@ -104,10 +110,7 @@ type pty struct {
 	// this one made (resumePTY); signal is its signal pipe
 	// (consoleSignal), 0 once closed or when it could not be read.
 	console, signal windows.Handle
-	// bundled says the bundled conpty.dll made the console and so closes
-	// and resizes it; the inbox API made a resumed console.
-	bundled bool
-	process windows.Handle // 0 once waited for
+	process         windows.Handle // 0 once waited for
 	// in takes what is typed, and out has what the console shows.
 	in, out   *os.File
 	processID int
@@ -142,7 +145,7 @@ func startPTY(sp sessionSpawn) (*pty, error) {
 		windows.CloseHandle(outR)
 		return nil, fmt.Errorf("pty: CreatePseudoConsole: %w", err)
 	}
-	p := &pty{console: console, bundled: bundledConpty() != nil, signal: consoleSignal(console), in: os.NewFile(uintptr(inW), "conpty-in"), out: os.NewFile(uintptr(outR), "conpty-out")}
+	p := &pty{console: console, signal: consoleSignal(console), in: os.NewFile(uintptr(inW), "conpty-in"), out: os.NewFile(uintptr(outR), "conpty-out")}
 	if err := p.spawn(sp.path, sp.argv, sp.dir, sp.env); err != nil {
 		p.close()
 		return nil, err
@@ -302,7 +305,7 @@ func (p *pty) close() error {
 		// Before Windows 11 24H2, ClosePseudoConsole waits for its output
 		// to be read, which read goes on doing.
 		go func() {
-			closePseudoConsole(console, p.bundled)
+			closePseudoConsole(console)
 			p.out.Close()
 		}()
 	case signal != 0:
@@ -320,7 +323,7 @@ func (p *pty) resize(cols, rows int) error {
 	c := coord(cols, rows)
 	switch {
 	case p.console != 0:
-		return resizePseudoConsole(p.console, c, p.bundled)
+		return resizePseudoConsole(p.console, c)
 	case p.signal != 0:
 		// What ResizePseudoConsole writes: the signal, then the size,
 		// little-endian.

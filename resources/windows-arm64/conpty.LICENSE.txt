@@ -1,6 +1,9 @@
-conpty.dll and <arch>\OpenConsole.exe are Microsoft.Windows.Console.ConPTY
+conpty.dll and arm64\OpenConsole.exe are Microsoft.Windows.Console.ConPTY
 1.24.261001001 from nuget.org, the ConPTY build of github.com/microsoft/terminal
-under the MIT License:
+under the MIT License. SHA-256 of these files:
+
+  conpty.dll             015cb55e4f82b0b2bf008dfd98a0398c8239db186b9a6846f66eb918cfe3dd17
+  arm64\OpenConsole.exe   5e4370eb99c591e2e68ed094079b56a16c9c5a00d1b76f684c46c9139439c303
 
 MIT License
 
