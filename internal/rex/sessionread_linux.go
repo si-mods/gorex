@@ -18,10 +18,13 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-// sessionReadCmd is the helper that reads as sp.user (sessionReadFlag),
-// with args. With no user, as in tests, it runs as the server's.
-func sessionReadCmd(ctx context.Context, sp spawner, args ...string) *exec.Cmd {
-	cmd := exec.CommandContext(ctx, sp.exe, append([]string{sessionReadFlag}, args...)...)
+// sessionReadCmd is the helper that reads as sp.user (sessionReadFlag):
+// op ("open" or "list") of r, which it reads on its input. With no user,
+// as in tests, it runs as the server's.
+func sessionReadCmd(ctx context.Context, sp spawner, op string, r sessionRead) *exec.Cmd {
+	cmd := exec.CommandContext(ctx, sp.exe, sessionReadFlag, op)
+	in, _ := json.Marshal(r)
+	cmd.Stdin = bytes.NewReader(in)
 	// The server's environment is not the user's to read.
 	cmd.Dir, cmd.Env = "/", []string{"PATH=/usr/bin:/bin", "HOME=" + sp.home()}
 	if u := sp.user; u != nil {
@@ -52,7 +55,7 @@ func openAsUserHelper(sp spawner, path string) (*os.File, fs.FileInfo, error) {
 	}
 	defer unix.Close(fds[0])
 	theirs := os.NewFile(uintptr(fds[1]), "session-read")
-	cmd := sessionReadCmd(context.Background(), sp, "open", path)
+	cmd := sessionReadCmd(context.Background(), sp, "open", sessionRead{Path: path})
 	cmd.ExtraFiles = []*os.File{theirs} // descriptor 3
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
@@ -87,11 +90,12 @@ func openAsUserHelper(sp spawner, path string) (*os.File, fs.FileInfo, error) {
 // receiveOpened reads the helper's answer on fd: the file it opened, or
 // the text of its error; neither when it ended without one.
 func receiveOpened(fd int, path string) (*os.File, string, error) {
-	buf, oob := make([]byte, 4096), make([]byte, unix.CmsgSpace(4))
-	var n, oobn int
+	// An error names the path, which may be as long as the system allows.
+	buf, oob := make([]byte, 64<<10), make([]byte, unix.CmsgSpace(4))
+	var n, oobn, flags int
 	var err error
 	for {
-		n, oobn, _, _, err = unix.Recvmsg(fd, buf, oob, unix.MSG_CMSG_CLOEXEC)
+		n, oobn, flags, _, err = unix.Recvmsg(fd, buf, oob, unix.MSG_CMSG_CLOEXEC)
 		if err != unix.EINTR {
 			break
 		}
@@ -108,6 +112,11 @@ func receiveOpened(fd int, path string) (*os.File, string, error) {
 		}
 	}
 	if len(files) == 0 {
+		// The system drops a descriptor it cannot give, as one past the
+		// server's limit, and says so.
+		if flags&unix.MSG_CTRUNC != 0 || string(buf[:n]) == "ok" {
+			return nil, "", fmt.Errorf("rex: %s: the descriptor opened as the session user was lost", path)
+		}
 		return nil, string(buf[:n]), nil
 	}
 	for _, extra := range files[1:] {
@@ -135,11 +144,7 @@ func sendOpened(path string) error {
 func listDirAsUserHelper(sp spawner, home, path string, hidden bool) (DirListResult, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), dirListTimeout.get()+5*time.Second)
 	defer cancel()
-	h := "0"
-	if hidden {
-		h = "1"
-	}
-	cmd := sessionReadCmd(ctx, sp, "list", home, path, h)
+	cmd := sessionReadCmd(ctx, sp, "list", sessionRead{Path: path, Home: home, Hidden: hidden})
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 	closeOnExecAll()

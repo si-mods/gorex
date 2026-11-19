@@ -5,6 +5,7 @@ package rex
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 )
@@ -13,13 +14,14 @@ import (
 // user its sessions run as (EnvSessionUser), before -server and the app's
 // own arguments:
 //
-//	gorex -session-read open PATH
-//	gorex -session-read list HOME PATH HIDDEN
+//	gorex -session-read open|list
 //
+// with a sessionRead as JSON on its input: the path stays out of the
+// helper's arguments, which every user of the machine may read.
 // The server starts it as that user, as it starts -session-exec, and it
 // clears the capabilities the server's ambient set leaves on it first.
-// "open" opens PATH as file.get sends it (openToSend) and hands the
-// descriptor back over the socket at descriptor 3; "list" lists PATH as
+// "open" opens the path as file.get sends it (openToSend) and hands the
+// descriptor back over the socket at descriptor 3; "list" lists it as
 // dir.list does (listDir) and writes the result as JSON. So a server that
 // runs as root sends and lists only what its session user may read: the
 // system decides, with that user's groups and ACLs, not a look at the
@@ -51,6 +53,13 @@ func (s *Server) listAsSession(home, path string, hidden bool) (DirListResult, e
 	return listDirAsUser(s.spawner(), home, path, hidden)
 }
 
+// sessionRead is what the helper reads, as JSON on its input.
+type sessionRead struct {
+	Path   string `json:"path"`
+	Home   string `json:"home,omitempty"`
+	Hidden bool   `json:"hidden,omitempty"`
+}
+
 // listAnswer is what "-session-read list" writes: the listing, or the
 // error's text.
 type listAnswer struct {
@@ -67,16 +76,20 @@ func sessionReadMain(args []string) error {
 	if err := dropCapabilities(); err != nil {
 		return err
 	}
-	switch {
-	case len(args) == 2 && args[0] == "open":
-		return sendOpened(args[1])
-	case len(args) == 4 && args[0] == "list":
-		var a listAnswer
-		var err error
-		if a.Result, err = listDir(args[1], args[2], args[3] == "1"); err != nil {
-			a.Error = err.Error()
-		}
-		return json.NewEncoder(os.Stdout).Encode(a)
+	var r sessionRead
+	if len(args) != 1 || (args[0] != "open" && args[0] != "list") {
+		return errors.New("gorex: " + sessionReadFlag + ": open or list, with what to read on the input")
 	}
-	return errors.New("gorex: " + sessionReadFlag + ": open PATH, or list HOME PATH HIDDEN")
+	if err := json.NewDecoder(os.Stdin).Decode(&r); err != nil {
+		return fmt.Errorf("gorex: %s: %w", sessionReadFlag, err)
+	}
+	if args[0] == "open" {
+		return sendOpened(r.Path)
+	}
+	var a listAnswer
+	var err error
+	if a.Result, err = listDir(r.Home, r.Path, r.Hidden); err != nil {
+		a.Error = err.Error()
+	}
+	return json.NewEncoder(os.Stdout).Encode(a)
 }
