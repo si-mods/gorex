@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.44.1
+
+### Features
+
+* **hostqr:** open the web client from the pair dialog ([#831](https://github.com/si-mods/gorex/pull/831))
+
+## 0.44.0
+
+### Features
+
+* **settings:** draw the app's icon on the server card ([#822](https://github.com/si-mods/gorex/pull/822))
+* set up the gorex skill and session-start hook for Devin ([#824](https://github.com/si-mods/gorex/pull/824))
+* **hostqr:** offer the web client's code in the pair dialog ([#828](https://github.com/si-mods/gorex/pull/828))
+
+### Bug Fixes
+
+* **web:** keep the workers.dev address when the custom domain is set ([#823](https://github.com/si-mods/gorex/pull/823))
+* **cli:** run Devin's Windows hook through sh, not cmd ([#825](https://github.com/si-mods/gorex/pull/825))
+* **rex:** read dir.list in batches and keep only the first names ([#826](https://github.com/si-mods/gorex/pull/826))
+* **rex:** use the packaged ConPTY so a program reads terminal replies ([#827](https://github.com/si-mods/gorex/pull/827))
+
 ## 0.43.0
 
 ### Features

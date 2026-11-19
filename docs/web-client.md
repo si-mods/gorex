@@ -336,7 +336,9 @@ npm run deploy    # node build.mjs, then wrangler deploy
 in to Cloudflare the first time. Wrangler is not a dependency of the
 page, so `npm ci` in a build does not fetch it and its runtime. Then
 trust the page's origin on each host:
-`gorex rexapi web allow https://web.gorex.uk`.
+`gorex rexapi web allow https://web.gorex.uk`. The desktop writes the same
+list from its Pair dialog: **Rex QR…** → **Web (LAN)** → **Allow
+https://web.gorex.uk**, and the same tab opens the page in a browser.
 
 On a push to `main` that touches the page's files (`web/**`, `assets/**`,
 `ios/GoRex/ghostty-themes.json`, `go.mod`/`go.sum`), `.github/workflows/web.yml`
