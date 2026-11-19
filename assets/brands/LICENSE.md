@@ -31,3 +31,4 @@ For more information, please see <https://creativecommons.org/publicdomain/zero/
 
 `omp.svg` is the logo of the omp project (omp.sh), kept here to identify that program. It is not covered by CC0 above.
 `antigravity.svg` is the logo of Google Antigravity, kept here to identify that program. It is not covered by CC0 above.
+`devin.svg` is the logo of Devin (devin.ai), from lobe-icons (MIT, https://github.com/lobehub/lobe-icons), kept here to identify that program. It is not covered by CC0 above.

@@ -62,6 +62,7 @@ var (
 			"codex":     {Name: "Codex", Glyph: "brand:openai", TileBg: ui.Hex("#f7f7f7"), TileFg: ui.Hex("#1a1a1a"), TileBorder: true},
 			"claude":    {Name: "Claude Code", Glyph: "brand:claude", TileBg: ui.Hex("#d97757"), TileFg: ui.Hex("#ffffff")},
 			"agy":       {Name: "Antigravity", Glyph: "brand:antigravity", TileBg: ui.Hex("#1a73e8"), TileFg: ui.Hex("#ffffff")},
+			"devin":     {Name: "Devin", Glyph: "brand:devin", TileBg: ui.Hex("#111111"), TileFg: ui.Hex("#ffffff")},
 			"node":      {Name: "Node", Glyph: "node-hex", TileBg: ui.Hex("#5fa04e"), TileFg: ui.Hex("#ffffff"), TileGlyph: "brand:nodedotjs"},
 			"bun":       {Name: "Bun", Glyph: "brand:bun", TileBg: ui.Hex("#fbf0df"), TileFg: ui.Hex("#3b2a20"), TileBorder: true},
 			"deno":      {Name: "Deno", Glyph: "brand:deno", TileBg: ui.Hex("#1b1b1b"), TileFg: ui.Hex("#ffffff")},

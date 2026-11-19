@@ -42,6 +42,7 @@ const programs = new Map<string, Program>(Object.entries({
   codex: p("Codex", "brand:openai", 0xf7f7f7, 0x1a1a1a, { tileBorder: true }),
   claude,
   agy,
+  devin: p("Devin", "brand:devin", 0x111111, 0xffffff),
   node: p("Node", "node-hex", 0x5fa04e, 0xffffff, { tileGlyph: "brand:nodedotjs" }),
   bun: p("Bun", "brand:bun", 0xfbf0df, 0x3b2a20, { tileBorder: true }),
   deno: p("Deno", "brand:deno", 0x1b1b1b, 0xffffff),
