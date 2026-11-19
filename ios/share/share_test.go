@@ -313,3 +313,89 @@ func TestShareProxySendsLANToken(t *testing.T) {
 		}
 	}
 }
+
+// TestShareCutsProxiedWebSocket closes a client's live proxied WebSocket,
+// and the upstream connection behind it, when the phone revokes or denies
+// the client or stops sharing. The proxy hijacks such connections, so the
+// HTTP server alone no longer tracks them.
+func TestShareCutsProxiedWebSocket(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		cut  func(*Server)
+	}{
+		{"revoke", func(s *Server) { s.Revoke("127.0.0.1") }},
+		{"deny", func(s *Server) { s.Deny("127.0.0.1") }},
+		{"stop", func(s *Server) { s.Stop() }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			upstreamDone := make(chan struct{})
+			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				c, err := websocket.Accept(w, r, &websocket.AcceptOptions{InsecureSkipVerify: true})
+				if err != nil {
+					return
+				}
+				defer close(upstreamDone)
+				defer c.CloseNow()
+				for {
+					mt, msg, err := c.Read(context.Background())
+					if err != nil {
+						return
+					}
+					if err := c.Write(context.Background(), mt, append([]byte("echo:"), msg...)); err != nil {
+						return
+					}
+				}
+			}))
+			defer upstream.Close()
+
+			srv, err := Start(Config{Addr: "127.0.0.1:0", PhoneName: "Test iPhone"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer srv.Stop()
+			hostsJSON, _ := json.Marshal([]Host{{ID: "mac1", Name: "MacBook", URL: upstream.URL, Transport: "system"}})
+			if err := srv.SetHosts(string(hostsJSON)); err != nil {
+				t.Fatal(err)
+			}
+			srv.Admit("127.0.0.1")
+
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			ws, resp, err := websocket.Dial(ctx, "ws://"+srv.Addr()+"/h/mac1/api/control", nil)
+			if resp != nil && resp.Body != nil {
+				resp.Body.Close()
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer ws.CloseNow()
+			if err := ws.Write(ctx, websocket.MessageText, []byte("hi")); err != nil {
+				t.Fatal(err)
+			}
+			if _, msg, err := ws.Read(ctx); err != nil || string(msg) != "echo:hi" {
+				t.Fatalf("ws echo = %q err=%v", msg, err)
+			}
+
+			tc.cut(srv)
+
+			readErr := make(chan error, 1)
+			go func() {
+				_, _, err := ws.Read(ctx)
+				readErr <- err
+			}()
+			select {
+			case err := <-readErr:
+				if err == nil || ctx.Err() != nil {
+					t.Fatalf("the client's WebSocket stayed open after %s: %v", tc.name, err)
+				}
+			case <-time.After(3 * time.Second):
+				t.Fatalf("the client's WebSocket stayed open after %s", tc.name)
+			}
+			select {
+			case <-upstreamDone:
+			case <-time.After(3 * time.Second):
+				t.Fatalf("the upstream WebSocket stayed open after %s", tc.name)
+			}
+		})
+	}
+}
