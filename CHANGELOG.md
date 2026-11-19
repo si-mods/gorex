@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.42.0
+
+### Features
+
+* **icon:** GoRex and Rex Go have a new icon: a glass prism that splits a white beam into warm light, made in Icon Composer; GoRex Dev shows it on a violet gradient ([#814](https://github.com/si-mods/gorex/pull/814))
+* **ios:** a Liquid Glass prism icon, and Settings > App Icon to pick Spectrum or Classic instead ([#808](https://github.com/si-mods/gorex/pull/808), [#811](https://github.com/si-mods/gorex/pull/811), [#812](https://github.com/si-mods/gorex/pull/812))
+* **ios:** sync the API key and settings through iCloud ([#798](https://github.com/si-mods/gorex/pull/798))
+* **ios:** put the space picker in the sidebar's bar on iPad ([#794](https://github.com/si-mods/gorex/pull/794))
+* **ios:** keep a terminal's bar buttons out of a status bar at the side ([#780](https://github.com/si-mods/gorex/pull/780))
+
+### Bug Fixes
+
+* **projects:** keep a named tab's program icon in the sidebar ([#813](https://github.com/si-mods/gorex/pull/813))
+* **projects:** take another host's panes out of this machine's layout as it loads ([#799](https://github.com/si-mods/gorex/pull/799))
+* **desktop:** drop the green activity dot from tabs and the pane bar ([#807](https://github.com/si-mods/gorex/pull/807))
+* **desktop:** projects show no folder, and an empty one opens no tab ([#806](https://github.com/si-mods/gorex/pull/806))
+* **ios:** a project's row no longer shows its folder ([#805](https://github.com/si-mods/gorex/pull/805))
+* **ios:** tile the tabs with no project instead of folding them ([#802](https://github.com/si-mods/gorex/pull/802))
+* **ios:** download a speech model from GitHub when Hugging Face cannot be reached ([#800](https://github.com/si-mods/gorex/pull/800))
+
+### CI
+
+* run only the iOS checks for a change to the iOS app alone ([#809](https://github.com/si-mods/gorex/pull/809))
+* **web:** deploy the web client to Cloudflare Workers on web pushes ([#804](https://github.com/si-mods/gorex/pull/804))
+
 ## 0.41.2
 
 ### Bug Fixes
