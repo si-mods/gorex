@@ -5,7 +5,7 @@ import Foundation
 enum Upload {
     static func send(_ file: URL, name: String, session: String, block: String,
                      control: ControlConnection, to base: URL, auth: String?,
-                     urlSession: URLSession = .shared) async throws {
+                     urlSession: () throws -> URLSession = { .shared }) async throws {
         let size = (try file.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
         let ref = "upload:\(UUID().uuidString.lowercased())"
         let reply = try await control.call(RexProtocol.methodTerminalUploadBegin, [

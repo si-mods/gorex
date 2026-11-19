@@ -13,7 +13,7 @@ enum Download {
     static func fetch(path: String, session: String, block: String,
                       ifNoneMatch: String? = nil, maxBytes: Int? = nil,
                       control: ControlConnection, to base: URL, auth: String?,
-                      urlSession: URLSession = .shared) async throws -> DownloadResult {
+                      urlSession: () throws -> URLSession = { .shared }) async throws -> DownloadResult {
         var args: [String: Any] = [
             "ref": "download:\(UUID().uuidString.lowercased())",
             "path": path,

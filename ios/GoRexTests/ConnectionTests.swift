@@ -2,6 +2,15 @@ import Foundation
 import Network
 import XCTest
 
+/// Signals once its session's invalidation has taken effect.
+nonisolated private final class Invalidation: NSObject, URLSessionDelegate, Sendable {
+    let done = DispatchSemaphore(value: 0)
+
+    func urlSession(_ session: URLSession, didBecomeInvalidWithError error: Error?) {
+        done.signal()
+    }
+}
+
 /// What the app does with its connections when the server misbehaves, the
 /// path dies or the host is offline, against a fake server.
 nonisolated final class ConnectionTests: XCTestCase {
@@ -382,6 +391,37 @@ nonisolated final class ConnectionTests: XCTestCase {
         try await c.resume(session: URLSession(configuration: .default))
         XCTAssertEqual(firsts, [0x01, 0x02])
         c.close()
+    }
+
+    /// A byte stream, as of an upload, a download or a tunnel, makes its
+    /// task on the session of the time its ticket comes: the built-in
+    /// Tailscale's proxy can start over during the ticket's round trip, and
+    /// a task on the session of before aborts the app.
+    @MainActor func testBytesStreamUsesTheSessionAfterItsTicket() async throws {
+        let rex = try FakeRex()
+        defer { rex.stop() }
+        let invalid = Invalidation()
+        var session = URLSession(configuration: .default, delegate: invalid, delegateQueue: nil)
+        var asked = 0
+        rex.respond = { method, _ in
+            guard method == "data.connect" else { return [:] }
+            // The engine started over during the round trip, as Host.session
+            // leaves the session of its past run; a task on it aborts the
+            // app once the invalidation has taken effect.
+            session.invalidateAndCancel()
+            XCTAssertEqual(invalid.done.wait(timeout: .now() + 5), .success)
+            session = URLSession(configuration: .default)
+            return ["ticket": "uH4mJKwzMarlTNT-UiyMog"]
+        }
+        rex.data = { c, _ in FakeRex.send(c, FakeRex.welcome) }
+        let control = ControlConnection(base: try await rex.url(), auth: nil)
+        try await control.open(token: nil)
+        let stream = try await Tunnel.connect(session: "s", block: "b", control: control,
+                                              to: try await rex.url(), auth: nil,
+                                              urlSession: { asked += 1; return session })
+        XCTAssertEqual(asked, 1)
+        stream.close()
+        control.close()
     }
 
     /// Creating a session with a label forwards `label`.
