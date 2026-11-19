@@ -42,9 +42,9 @@ type hostPairQR struct {
 	// put in it. It holds a credential, so the page keeps the image and
 	// says where it leads, never the link itself. webTrusted is whether
 	// this computer lets that page in (rexapi.LoadWeb).
-	webImage                  ui.ImageSource
+	webImage                   ui.ImageSource
 	webTrusted, webAllowFailed bool
-	webErr                    string
+	webErr                     string
 }
 
 // localRexPairs are this computer's Rex pairing addresses: the gateway's
