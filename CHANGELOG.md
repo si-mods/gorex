@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.43.0
+
+### Features
+
+* give the Devin program its brand tile on the desktop, web and iOS ([#818](https://github.com/si-mods/gorex/pull/818))
+
+### Documentation
+
+* **github:** give the PR template Problem, Cause, Fix and Test sections ([#819](https://github.com/si-mods/gorex/pull/819))
+* **github:** add screenshots and issue lines to the PR template ([#817](https://github.com/si-mods/gorex/pull/817))
+
+### CI
+
+* fail the PR verified check when the body misses its line ([#815](https://github.com/si-mods/gorex/pull/815))
+
 ## 0.42.0
 
 ### Features
