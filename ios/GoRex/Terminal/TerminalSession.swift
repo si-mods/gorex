@@ -86,7 +86,7 @@ final class TerminalSession {
     @ObservationIgnored private var drops = 0
     @ObservationIgnored private var opened = ContinuousClock.now
     /// Bytes to write, and whether a write is on its way.
-    @ObservationIgnored private var typed = Data()
+    @ObservationIgnored private var typed = PendingBytes()
     @ObservationIgnored private var typing = false
     /// The terminal of Demo Mode, which runs on the phone; nil for a
     /// host's, whose stream comes over a data connection.
@@ -467,18 +467,52 @@ final class TerminalSession {
                 // Offline, the write waits for the host.
                 if host.status != .online { setWaitingToSend(true) }
                 try await host.online().callBlock("write", session: session, block: block, ["data": text])
-                typed = Data(typed.dropFirst(n))
+                typed.removeFirst(n)
                 setWaitingToSend(false)
             } catch let e as RexError where e.code == "offline" {
                 setWaitingToSend(true)
                 try? await Task.sleep(for: .seconds(1))
             } catch {
                 log.error("dropped a write of \(n) bytes: \(error.localizedDescription, privacy: .public)")
-                typed = Data(typed.dropFirst(n))
+                typed.removeFirst(n)
                 setWaitingToSend(false)
             }
             typing = false
             write()
+        }
+    }
+}
+
+/// Bytes waiting to be written, taken from the front a write at a time. A
+/// write moves a cursor past what it took instead of copying the rest, and
+/// the bytes behind the cursor go once they are as many as those still
+/// waiting, so a paste of N bytes copies O(N) in all, not O(N²).
+nonisolated struct PendingBytes {
+    private var bytes = Data()
+    private var at = 0
+
+    /// The bytes still waiting.
+    var count: Int { bytes.count - at }
+    var isEmpty: Bool { count == 0 }
+    /// The bytes held, written ones included: never twice those waiting.
+    var held: Int { bytes.count }
+
+    static func += (p: inout PendingBytes, more: Data) { p.bytes += more }
+
+    /// What the next write takes from the bytes waiting (Data.nextWrite).
+    func nextWrite(max: Int, flush: Bool = false) -> (count: Int, text: String)? {
+        bytes[(bytes.startIndex + at)...].nextWrite(max: max, flush: flush)
+    }
+
+    /// Drops the first n bytes waiting, written.
+    mutating func removeFirst(_ n: Int) {
+        at += min(n, count)
+        if at == bytes.count {
+            bytes = Data()
+            at = 0
+        } else if at >= count {
+            bytes = Data(bytes[(bytes.startIndex + at)...])
+            at = 0
         }
     }
 }

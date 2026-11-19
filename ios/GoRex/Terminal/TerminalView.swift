@@ -111,12 +111,20 @@ final class TerminalView: UIView, TerminalOutput {
     var hasUnreadOutput = false { didSet { if hasUnreadOutput != oldValue { onScrollState?(scrolledUp, hasUnreadOutput) } } }
     var onScrollState: ((_ scrolledUp: Bool, _ unread: Bool) -> Void)?
 
+    /// What Ghostty's actions owe the view, done on the next frame
+    /// (TerminalView+Scroll's payOwed).
+    lazy var owed = FrameWork { [weak self] in self?.nextFrame.arm() }
+    lazy var nextFrame = NextFrame { [weak self] in self?.payOwed() }
+    /// The geometry Ghostty was last given: a layout of the same one gives
+    /// it nothing again.
+    private var applied: (size: CGSize, scale: CGFloat, top: CGFloat, bottom: CGFloat)?
+
     /// The keyboard's height over the terminal.
     private var keys: CGFloat = 0
     /// How far the keyboard reaches over the grid, past the band under it:
     /// how far the terminal slides up to keep its cursor clear. The bars
     /// ride the keyboard, and the grid ends above them.
-    private var covered: CGFloat {
+    var covered: CGFloat {
         guard band > 0 else { return keys }
         return max(0, keys - (superview?.safeAreaInsets.bottom ?? 0))
     }
@@ -276,6 +284,9 @@ final class TerminalView: UIView, TerminalOutput {
         held?.task.cancel()
         settling?.cancel()
         stopDictating()
+        nextFrame.stop()
+        _ = owed.take()
+        applied = nil
         guard let s = surface else { return }
         surface = nil
         output = -1
@@ -384,14 +395,18 @@ final class TerminalView: UIView, TerminalOutput {
             l.contentsScale = scale
         }
         CATransaction.commit()
-        ghostty_surface_set_content_scale(s, scale, scale)
-        // The grid starts below the bars, on either screen, and the lines
-        // above it in the scrollback fill the band under them. The terminal
-        // takes the two as one resize: Ghostty's IO thread waits 25 ms for
-        // the last. The grid ends above the band at the bottom, the bars'.
-        ghostty_surface_set_bottom_inset(s, band * scale)
-        ghostty_surface_set_top_inset(s, inset * scale)
-        ghostty_surface_set_size(s, UInt32(bounds.width * scale), UInt32(bounds.height * scale))
+        let bottom = band
+        if applied.map({ $0.size != bounds.size || $0.scale != scale || $0.top != inset || $0.bottom != bottom }) ?? true {
+            applied = (bounds.size, scale, inset, bottom)
+            ghostty_surface_set_content_scale(s, scale, scale)
+            // The grid starts below the bars, on either screen, and the lines
+            // above it in the scrollback fill the band under them. The terminal
+            // takes the two as one resize: Ghostty's IO thread waits 25 ms for
+            // the last. The grid ends above the band at the bottom, the bars'.
+            ghostty_surface_set_bottom_inset(s, bottom * scale)
+            ghostty_surface_set_top_inset(s, inset * scale)
+            ghostty_surface_set_size(s, UInt32(bounds.width * scale), UInt32(bounds.height * scale))
+        }
         syncing = true
         scroller.frame = bounds
         syncing = false
