@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"runtime"
 	"strings"
 )
 
@@ -57,6 +58,13 @@ func sessionStartCmd(args []string, out io.Writer) (int, bool) {
 	host := contextValue(os.Getenv("GOREX_HOST"))
 	client := contextValue(os.Getenv("GOREX_CLIENT"))
 
+	// Devin runs commands through a POSIX shell on Windows too, where the
+	// shim resolves as gorex.cmd, not gorex.
+	bin := "gorex"
+	if *agent == "devin" && runtime.GOOS == "windows" {
+		bin = "gorex.cmd"
+	}
+
 	var msg strings.Builder
 	fmt.Fprintln(&msg, "You're running in a GoRex terminal.")
 	fmt.Fprintln(&msg, "```text")
@@ -80,17 +88,17 @@ func sessionStartCmd(args []string, out io.Writer) (int, bool) {
 	fmt.Fprintln(&msg, "session or pane.")
 	fmt.Fprintln(&msg)
 	fmt.Fprintln(&msg, "These inherited IDs haven't been checked against the server. If a")
-	fmt.Fprintln(&msg, "target can't be found, run `gorex ls --json` to see the sessions on")
+	fmt.Fprintf(&msg, "target can't be found, run `%s ls --json` to see the sessions on\n", bin)
 	fmt.Fprintln(&msg, "the connected server.")
 	fmt.Fprintln(&msg)
-	fmt.Fprintln(&msg, "Use the `gorex` command to create sessions, split panes, run commands,")
+	fmt.Fprintf(&msg, "Use the `%s` command to create sessions, split panes, run commands,\n", bin)
 	fmt.Fprintln(&msg, "and read terminal output. The gorex skill provides instructions and")
-	fmt.Fprintln(&msg, "examples. If the skill isn't installed, run `gorex skill show` to read")
+	fmt.Fprintf(&msg, "examples. If the skill isn't installed, run `%s skill show` to read\n", bin)
 	fmt.Fprintln(&msg, "the same guide.")
 	if *naming {
 		fmt.Fprintln(&msg)
 		fmt.Fprintln(&msg, "Label the pane as part of handling the first request that identifies")
-		fmt.Fprintln(&msg, "the work. Run `gorex rename -s \"$GOREX_SESSION\" \"<label>\"`")
+		fmt.Fprintf(&msg, "the work. Run `%s rename -s \"$GOREX_SESSION\" \"<label>\"`\n", bin)
 		fmt.Fprintln(&msg, "without waiting for the user to ask, before loading the skill. Use a short")
 		fmt.Fprintln(&msg, "natural-language phrase in the user's language (for example, `Fix login")
 		fmt.Fprintln(&msg, "redirect` or `修复登录重定向`), not a hyphenated slug. Name the task or")

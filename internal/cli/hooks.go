@@ -25,6 +25,12 @@ func hookCommand(agent string, paneNaming bool) string {
 	// `gorex` is on PATH in every GoRex terminal, through GOREX_BIN_DIR's
 	// shim, so the hook keeps working when the app moves or updates.
 	if runtime.GOOS == "windows" {
+		if agent == "devin" {
+			// Devin runs hooks through a POSIX shell on Windows too,
+			// where `cmd /c` silently runs nothing; gorex.cmd is the shim
+			// name that shell resolves.
+			return fmt.Sprintf(`/bin/sh -c "gorex.cmd %s 2>/dev/null || true # gorex"`, name)
+		}
 		return fmt.Sprintf(`cmd /c "gorex %s 2>nul & rem # gorex"`, name)
 	}
 	return `/bin/sh -c "gorex ` + name + ` 2>/dev/null || true # gorex"`
