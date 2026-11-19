@@ -369,6 +369,11 @@ func TestLabels(t *testing.T) {
 	if n, d := p.label(); n != p.title || d != "" {
 		t.Errorf("agy titled label %q %q", n, d)
 	}
+	p.info.Program = "devin"
+	p.title = ""
+	if n, d := p.label(); n != "Devin" || d != short {
+		t.Errorf("devin label %q %q", n, d)
+	}
 	p.info, p.title = rex.SessionInfo{Shell: "zsh", Program: "ssh", Args: []string{"ssh", "-p", "22", "box.local"}}, ""
 	if n, d := p.label(); n != "SSH" || d != "box.local" {
 		t.Errorf("ssh label %q %q", n, d)

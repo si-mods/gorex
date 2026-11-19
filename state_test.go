@@ -211,6 +211,13 @@ func TestTileImageKey(t *testing.T) {
 	if tileImage(agy, false) == nil {
 		t.Error("no tile for agy")
 	}
+	devin := programOf("devin")
+	if devin.Name != "Devin" {
+		t.Errorf("devin program = %+v", devin)
+	}
+	if tileImage(devin, false) == nil {
+		t.Error("no tile for devin")
+	}
 	if b := tileImage(py, true); b == nil || bytes.Equal(b, light) {
 		t.Error("the dark appearance's tile is the light one")
 	}

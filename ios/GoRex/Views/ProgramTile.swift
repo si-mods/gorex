@@ -31,6 +31,7 @@ struct Program {
             "codex": .init(name: "Codex", glyph: "brand:openai", tileBg: 0xf7f7f7, tileFg: 0x1a1a1a, tileBorder: true),
             "claude": .init(name: "Claude Code", glyph: "brand:claude", tileBg: 0xd97757, tileFg: 0xffffff),
             "agy": .init(name: "Antigravity", glyph: "brand:antigravity", tileBg: 0x1a73e8, tileFg: 0xffffff),
+            "devin": .init(name: "Devin", glyph: "brand:devin", tileBg: 0x111111, tileFg: 0xffffff),
             "node": .init(name: "Node", glyph: "node-hex", tileBg: 0x5fa04e, tileFg: 0xffffff, tileGlyph: "brand:nodedotjs"),
             "bun": .init(name: "Bun", glyph: "brand:bun", tileBg: 0xfbf0df, tileFg: 0x3b2a20, tileBorder: true),
             "deno": .init(name: "Deno", glyph: "brand:deno", tileBg: 0x1b1b1b, tileFg: 0xffffff),
