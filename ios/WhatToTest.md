@@ -67,6 +67,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - Fast output, scrolling back and dragging a selection's handles feel smoother, and a large paste no longer stalls. Tell us if handles, scrolling or the keyboard slide lag or jump.
 - Settings opens faster and typing in its search or Client Label stays smooth; the Dictation API key still saves when you press Return or leave the page.
 - After you dictate and switch apps, Rex Go frees the speech model's memory at once and is less likely to close in the background. The next dictation takes a moment to load it.
+- Adding photos or files, and opening or sharing a large file from a terminal, no longer makes the app stutter or use a lot of memory.
 
 ## zh-Hans
 
@@ -126,3 +127,4 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - 大量输出、向上翻看和拖动选区把手时更流畅，粘贴大段文字也不再卡顿。如选区把手、滚动或键盘上方的上移有延迟或跳动，请告诉我们。
 - 设置页打开更快，在搜索框或设备标签中输入更流畅；听写 API 密钥仍会在按下回车或离开页面时保存。
 - 听写后切到别的应用，Rex Go 会立即释放语音模型占用的内存，在后台更不容易被系统关掉；下次听写要稍等它重新加载。
+- 添加照片或文件，以及从终端打开或分享大文件时，应用不再卡顿，也不再占用大量内存。
