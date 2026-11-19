@@ -55,6 +55,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - A project's row no longer puts its folder's path under the name: it shows the project's name, its tab count and its fold, as the desktop's list does.
 - Rex Go has a new icon: a glass prism that light passes through. To choose another, open Settings > App Icon: Spectrum, or Classic, the icon from before.
 - The prism icons' light now bends where it enters and leaves the glass, as light does in a real prism.
+- In the Spectrum icon, the light now splits into its colours as soon as it enters the prism.
 
 ## zh-Hans
 
@@ -102,3 +103,4 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - 项目行不再在名字下面显示文件夹路径：只显示项目名、标签页数量和展开箭头，和桌面版的列表一致。
 - Rex Go 换了新图标：一块让光穿过的玻璃棱镜。想换别的，打开「设置」>「应用图标」，可选「光谱」，或之前的「经典」图标。
 - 棱镜图标里的光现在在进入和离开玻璃时折射，和真实棱镜一样。
+- 「光谱」图标里的光一进入棱镜就分成各种颜色。
