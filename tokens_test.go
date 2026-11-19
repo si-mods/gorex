@@ -33,8 +33,9 @@ func TestDesignTokens(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%s: %v", path, err)
 		}
-		// The pane's own shadows, part of its drawing, are not tokens:
-		// DESIGN.md, Shadows, "Not on panes".
+		// The pane's own shadows and insets, part of its drawing, are not
+		// tokens: DESIGN.md, Spacing and Shadows, "Not on panes". The
+		// insets size the terminal's grid.
 		exempt := map[string]bool{"paneCard": true, "floatCell": true}
 		var enclosing string
 		ast.Inspect(f, func(n ast.Node) bool {
@@ -80,7 +81,7 @@ func TestDesignTokens(t *testing.T) {
 				}
 			case name == "Gap" || strings.HasPrefix(name, "Padding") || strings.HasPrefix(name, "Margin"):
 				for _, a := range call.Args {
-					if x, ok := num(a); ok && !grid[math.Abs(x)] {
+					if x, ok := num(a); ok && !grid[math.Abs(x)] && !exempt[enclosing] {
 						t.Errorf("%s: %s(%v) is off the spacing grid", at(), name, x)
 					}
 				}

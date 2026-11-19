@@ -223,7 +223,9 @@ new size is a change to this table, not a literal.
 Spacing (`Gap`, `Padding`, `Margin`) is on a 2px grid, with 4px steps
 from 8 up: 0, 2, 4, 6, 8, 10, 12, 14, 16, 20, 24, 32. An odd value is
 off the grid. Row heights are not spacing; they are named constants
-next to their views (`tabH`, `sideRowH`, `titleH`).
+next to their views (`tabH`, `sideRowH`, `titleH`). A pane's insets
+(`paneCard`) are not spacing either: they size the terminal's grid, and
+a change to them changes every pane's columns.
 
 - **Insets by layer.** A dialog's padding is 20, a popover's 14, a
   menu's 6; rows inside them are padded 8 to 14 on the sides.

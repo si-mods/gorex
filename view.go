@@ -856,7 +856,7 @@ func (a *App) paneCard(c *ui.Context, k *colors, t *Tab, p *Pane, held bool) ui.
 		} else {
 			top = 6
 		}
-		body := ui.Column(c).Grow(1).MinHeight(0).Padding(top, 6, 6, 6)
+		body := ui.Column(c).Grow(1).MinHeight(0).Padding(top, 5, 6, 5)
 		if held {
 			// A terminal that outgrows the body as the pane shrinks stays
 			// out of sight.
