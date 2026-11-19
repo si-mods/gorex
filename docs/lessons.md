@@ -114,7 +114,7 @@ Each item has a **Trigger** (what the diff shows), a **Check** (what the author 
 ### Selected paints the accent
 - **Trigger:** a row uses `.Selected(` and draws its own selected look, as a pill, a swatch or a check.
 - **Check:** use `.AccessSelected(`: `Selected` also fills the element with the theme's accent, which follows the desktop's accent and covers the element's own look.
-- **Source:** this fix (Windows accent showed purple through the tab pill).
+- **Source:** #836: on Windows the system accent showed purple over the active tab's pill.
 
 ## Tests and CI
 
