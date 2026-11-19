@@ -287,7 +287,7 @@ func (a *App) projectRow(c *ui.Context, k *colors, w *Workspace, reserve float32
 			weight = 600
 		}
 		ui.Text(c, name).FontSize(fontBody).FontWeight(weight).TextColor(k.text.Alpha(0.85)).SingleLine().Ellipsis("…").Grow(1).MinWidth(0)
-		if s := a.st.status(w); statusShown(s) {
+		if s := a.st.status(w); needsUser(s) {
 			statusDot(c, k, s, 7).Label(statusTip(s))
 		}
 		if !offline && (hovered || shown) {
@@ -376,7 +376,7 @@ func (a *App) workspaceTabs(c *ui.Context, k *colors, w *Workspace, reserve floa
 	if o := w.app; o != nil {
 		for i, t := range o.tabs {
 			name, detail := t.label()
-			if spaceTab(c, k, t.UID, name, detail, reserve, func() { a.tiles(c, k, t) }) {
+			if spaceTab(c, k, t.UID, name, detail, t.status(), reserve, func() { a.tiles(c, k, t) }) {
 				pick(i)
 			}
 		}
@@ -387,7 +387,7 @@ func (a *App) workspaceTabs(c *ui.Context, k *colors, w *Workspace, reserve floa
 	infos, _, _ := a.st.listOf(w.host)
 	for i, t := range w.layout.Tabs {
 		name, detail, prog := savedTabFace(t, infos)
-		if spaceTab(c, k, cmp.Or(t.ID, fmt.Sprint(i)), name, detail, reserve, func() {
+		if spaceTab(c, k, cmp.Or(t.ID, fmt.Sprint(i)), name, detail, a.st.savedTabStatus(t, infos), reserve, func() {
 			ui.Box(c).Size(tileW+2, tileH+4).Shrink(0).Draw(func(p *ui.Painter, r ui.Rect) {
 				drawTile(p, k, ui.Rect{X: r.X + 1, Y: r.Y + 2, W: tileW, H: tileH}, prog, true)
 			})

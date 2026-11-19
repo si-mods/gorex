@@ -423,11 +423,13 @@ func TestProjectPicker(t *testing.T) {
 	waitFor(t, tt, "the project", func() bool { return a.ws == w && tt.HasText(thisMachine()+" › acme-api") })
 }
 
-// TestProjectRowWorkingDot: a project whose session works shows the
-// three dots of working on its row of the sidebar while another
-// workspace is the one shown, as its tabs' rows do while it shows: the
-// status a program reported does not hide with its tabs.
-func TestProjectRowWorkingDot(t *testing.T) {
+// TestSpaceTabWorkingDot: a tab whose session works shows the three dots
+// of working at the end of its row under its project of the sidebar
+// while another workspace is the one shown, as it does at a shown tab's
+// end: showing the other workspace hides the tab, not its status. The
+// project's row and the title's chip keep to a status that needs the
+// user.
+func TestSpaceTabWorkingDot(t *testing.T) {
 	a, tt := newTestApp(t)
 	old := prefs
 	t.Cleanup(func() { prefs = old })
@@ -439,9 +441,28 @@ func TestProjectRowWorkingDot(t *testing.T) {
 	w.layout = savedLayout{Tabs: []savedTab{{Root: &savedNode{SID: p.SID}}}}
 	work := rex.ProgramStatus{ID: "a", App: "claude-code", State: "working", Updated: time.Now()}
 	a.st.infos = map[string]rex.SessionInfo{p.SID: {ID: p.SID, Statuses: []rex.ProgramStatus{work}}}
+	setRowOpen(openKey(nil, w.ID), true)
 	tt.Frame()
-	if _, ok := tt.Find(statusTip(&work)); !ok {
-		t.Fatalf("the project of a working session shows no dots: %q", tt.Texts())
+	dot, ok := tt.Find(statusTip(&work))
+	if !ok {
+		t.Fatalf("the tab of a working session shows no dots: %q", tt.Texts())
+	}
+	name, detail, _ := savedTabFace(w.layout.Tabs[0], a.st.infos)
+	row, ok := tt.Find(name + " " + detail)
+	if !ok {
+		t.Fatalf("the workspace's tab shows no row: %q", tt.Texts())
+	}
+	if dot.Y < row.Y || dot.Y+dot.H > row.Y+row.H {
+		t.Fatalf("the dots are not on the tab's row: dots %+v, row %+v", dot, row)
+	}
+	dots := 0
+	for _, s := range tt.Texts() {
+		if s == statusTip(&work) {
+			dots++
+		}
+	}
+	if dots != 1 {
+		t.Fatalf("the dots show %d times, not once on the tab's row: %q", dots, tt.Texts())
 	}
 	a.st.infos = map[string]rex.SessionInfo{p.SID: {ID: p.SID}}
 	tt.Frame()

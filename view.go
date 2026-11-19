@@ -1560,7 +1560,7 @@ func needsUser(s *rex.ProgramStatus) bool {
 	return s != nil && rex.StatusRank(s.State) >= rex.StatusRank("done")
 }
 
-// statusShown tells a record worth a dot beside a pane's or a project's
+// statusShown tells a record worth a dot beside a pane's or a tab's
 // name: one that needs the user, or one at work.
 func statusShown(s *rex.ProgramStatus) bool {
 	return needsUser(s) || s != nil && s.State == "working"

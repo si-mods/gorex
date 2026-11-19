@@ -122,6 +122,26 @@ func (st *store) hiddenStatus(w *Workspace, h *hostConn) *rex.ProgramStatus {
 	return rex.MostUrgent(all, time.Time{})
 }
 
+// savedTabStatus is the most urgent record of a tab of a workspace no
+// window shows, from its panes' sessions in the host's last list, as
+// Tab.status picks a shown tab's. Offline, or a session not listed yet,
+// has none.
+func (st *store) savedTabStatus(t savedTab, infos map[string]rex.SessionInfo) *rex.ProgramStatus {
+	var all []rex.ProgramStatus
+	for _, root := range t.Roots() {
+		for _, n := range layout.Leaves(root) {
+			in, ok := infos[n.SID]
+			if !ok {
+				continue
+			}
+			if s := rex.MostUrgent(in.Statuses, st.seenOf(n.SID, in)); s != nil {
+				all = append(all, *s)
+			}
+		}
+	}
+	return rex.MostUrgent(all, time.Time{})
+}
+
 // listOf is the last session list of host h, nil for this machine, and
 // the id the layouts name the host by; not ok while a host is not
 // connected, whose list is old.

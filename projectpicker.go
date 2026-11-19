@@ -72,8 +72,8 @@ func (a *App) projectPicker(c *ui.Context, k *colors) {
 		ui.Text(c, host).FontSize(fontBody).TextColor(k.textMuted).SingleLine().Ellipsis("…").Shrink(1).MinWidth(0)
 		glyphIcon(c, "chevron-right", 12, k.textFaint).Shrink(0)
 		ui.Text(c, name).FontSize(fontBody).FontWeight(600).TextColor(k.text.Alpha(0.85)).SingleLine().Ellipsis("…").Shrink(1).MinWidth(0)
-		if s := a.st.status(w); statusShown(s) {
-			statusDot(c, k, s, 7).Label(statusTip(s))
+		if s := a.st.status(w); needsUser(s) {
+			statusDot(c, k, s, 7)
 		}
 		glyphIcon(c, "chevron-down", 13, k.textFaint).Shrink(0)
 	})

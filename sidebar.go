@@ -397,8 +397,10 @@ func (a *App) hostSectionIcon(c *ui.Context, k *colors, h *hostConn) {
 
 // spaceTab is a tab of a session the window does not show, in the host
 // view: its tiles and its name, as the window's tabs show, but neither
-// chosen nor dragged. It reports whether it was clicked.
-func spaceTab(c *ui.Context, k *colors, key, name, detail string, reserve float32, tiles func()) bool {
+// chosen nor dragged; s is its panes' most urgent record, whose dot
+// ends the row as a shown tab's does. It reports whether it was
+// clicked.
+func spaceTab(c *ui.Context, k *colors, key, name, detail string, s *rex.ProgramStatus, reserve float32, tiles func()) bool {
 	e := ui.Row(c.Key("tab-"+key)).Height(sideRowH).Shrink(0).Padding(0, 6, 0, sideLead).Gap(sideGap).AlignItems(ui.Center).Radius(pillRadius(sideRowH, radiusM)).
 		Cursor(ui.CursorPointer).Role(ui.RoleButton).Label(name + " " + detail)
 	if anim := motion(c); anim != nil {
@@ -412,6 +414,9 @@ func spaceTab(c *ui.Context, k *colors, key, name, detail string, reserve float3
 		ui.Box(c).Grow(1).MinWidth(0).Height(18).Draw(func(p *ui.Painter, r ui.Rect) {
 			fadeText(p, r, tabLabel(name, detail, k.textMuted, k.textFaint))
 		})
+		if statusShown(s) {
+			statusDot(c, k, s, 5.5).Label(statusTip(s))
+		}
 	})
 	return e.Clicked()
 }
