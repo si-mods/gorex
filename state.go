@@ -2825,11 +2825,7 @@ func (st *store) poll(client *rex.Client, stop chan struct{}, update func(func()
 			if changed {
 				st.infos = byID
 			}
-			// The same list too: apply also saves a layout changed a
-			// while ago, and retries a notification's click.
-			for _, a := range st.apps {
-				a.apply(nil, st.infos)
-			}
+			st.pollRound(changed || tailnet != nil)
 			if changed || tailnet != nil {
 				st.redraw()
 			}
@@ -2837,9 +2833,9 @@ func (st *store) poll(client *rex.Client, stop chan struct{}, update func(func()
 	}
 }
 
-// apply takes what the server of host h, nil for this machine's, said of
-// its sessions.
-func (a *App) apply(h *hostConn, byID map[string]rex.SessionInfo) {
+// take takes into the window's panes what the server of host h, nil for
+// this machine's, said of its sessions (apply).
+func (a *App) take(h *hostConn, byID map[string]rex.SessionInfo) {
 	var events []map[string]string
 	for _, t := range a.tabs {
 		for _, p := range t.allPanes() {
@@ -2896,13 +2892,7 @@ func (a *App) apply(h *hostConn, byID map[string]rex.SessionInfo) {
 			a.luaConfig.Emit("program_status_changed", ev)
 		}
 	}
-	if a.saveDue && time.Since(a.lastSave) > time.Second && !a.gesturing() {
-		a.save()
-	}
-	a.syncBadge()
-	if a.st != nil {
-		a.st.retryClick()
-	}
+	a.saveIfDue()
 }
 
 // statusEvents are the program status changes of a pane, for the Lua
