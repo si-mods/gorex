@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.44.1
+
+### Features
+
+* **hostqr:** open the web client from the pair dialog ([#831](https://github.com/si-mods/gorex/pull/831))
+
 ## 0.44.0
 
 ### Features
