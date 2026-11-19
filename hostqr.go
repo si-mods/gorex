@@ -33,6 +33,18 @@ type hostPairQR struct {
 	// direct is that its address is the second one, for devices that dial
 	// this machine directly (Reachable at).
 	direct bool
+	// tab is the code the dialog shows when the listener has a web link
+	// too: 0 the address's own code, 1 the page's (rexapi.WebOrigin).
+	tab int
+	// webImage is the code for the page at rexapi.WebOrigin, opened with
+	// this listener's address, certificate hash and pairing token
+	// (rexapi.LANConfig.WebPairURL); nil when the listener has no leg to
+	// put in it. It holds a credential, so the page keeps the image and
+	// says where it leads, never the link itself. webTrusted is whether
+	// this computer lets that page in (rexapi.LoadWeb).
+	webImage                   ui.ImageSource
+	webTrusted, webAllowFailed bool
+	webErr                     string
 }
 
 // localRexPairs are this computer's Rex pairing addresses: the gateway's
@@ -61,8 +73,31 @@ func (a *App) openLocalPairQR() {
 	_, image := mobilePairQR(address)
 	if image != nil {
 		name, _, _ := a.hostIdentity()
-		remoteUI.pairQR = &hostPairQR{host: name, address: address, image: image, open: true, local: true, tailnet: tailnet}
+		page := &hostPairQR{host: name, address: address, image: image, open: true, local: true, tailnet: tailnet}
+		// The page's code, and whether this computer lets the page in. A
+		// listener that is off, holds no token or has no WebTransport leg
+		// gives no link: the page could not reach it anyway.
+		if web := remoteUI.lan.WebPairURL(remoteUI.lanStatus, rexapi.WebOrigin); web != "" {
+			page.webImage = qrImage(web)
+			page.webTrusted = trustsWebOrigin(rexapi.TailnetDir(), rexapi.WebOrigin)
+		}
+		remoteUI.pairQR = page
 	}
+}
+
+// trustsWebOrigin tells whether this computer lets the page at origin in
+// (rexapi.LoadWeb), which the pair dialog's web tab adds when it does not.
+func trustsWebOrigin(dir, origin string) bool {
+	c, err := rexapi.LoadWeb(dir)
+	if err != nil {
+		return false
+	}
+	for _, o := range c.Origins {
+		if o == origin {
+			return true
+		}
+	}
+	return false
 }
 
 func openHostPairQR(h *hostConn) {
@@ -164,10 +199,24 @@ func qrImage(s string) ui.ImageSource {
 	return img
 }
 
+// pairQRCode draws a pairing code: a scanner expects the white behind it,
+// inside the panel's corner radius.
+func pairQRCode(c *ui.Context, img ui.ImageSource, label string) {
+	ui.Row(c).Justify(ui.Center).Margin(2, 0, 2, 0).Children(func() {
+		ui.Column(c).Padding(10).Radius(radiusL).Background(ui.RGB(255, 255, 255)).Children(func() {
+			ui.Image(c, img).Size(240, 240).Label(label)
+		})
+	})
+}
+
 func hostPairQRSheet(c *ui.Context, k *colors, page *hostPairQR) {
 	title := locales.HostsRexQRTitle(page.host)
 	if page.rexGo {
 		title = locales.RemoteRexGoQRTitle(page.host)
+	}
+	// The web tab's code opens a browser, not Rex: it says so.
+	if page.webImage != nil && page.tab == 1 {
+		title = locales.HostsPairWebTitle(page.host)
 	}
 	ui.DialogBase(c, &page.open, func(backdrop, panel ui.Element) {
 		// The backdrop dims the window; the glass is the panel's, as in
@@ -177,9 +226,33 @@ func hostPairQRSheet(c *ui.Context, k *colors, page *hostPairQR) {
 			Border(1, k.panelBorder)).
 			Role(ui.RoleDialog).Label(title)
 		ui.Text(c, title).FontSize(fontTitle).FontWeight(700).TextColor(k.text)
+		// A listener with a web link offers both codes: this address's,
+		// for Rex, and the page's, for a browser on the same network.
+		web := page.webImage != nil
+		if web {
+			ui.Segmented(c, &page.tab, locales.HostsPairCodeAddress(), locales.HostsPairCodePage()).Label(title).Changed()
+		}
 		switch {
 		case page.loading:
 			ui.Text(c, locales.HostsRexQRLoading()).FontSize(fontBody).TextColor(k.textMuted).LineHeight(1.35)
+		case web && page.tab == 1:
+			ui.Text(c, locales.HostsPairWebHint(rexapi.WebOrigin)).FontSize(fontCallout).TextColor(k.textMuted).LineHeight(1.35)
+			pairQRCode(c, page.webImage, title)
+			if page.webTrusted {
+				ui.Text(c, locales.HostsPairWebTrusted()).FontSize(fontSubhead).TextColor(k.textMuted).LineHeight(1.3)
+			} else {
+				ui.Text(c, locales.HostsPairWebUntrusted()).FontSize(fontSubhead).TextColor(k.textMuted).LineHeight(1.3)
+				if ui.Button(c.Key("trust-web"), locales.HostsPairWebTrust(rexapi.WebOrigin)).Clicked() {
+					if _, err := rexapi.AllowWebOrigin(rexapi.TailnetDir(), rexapi.WebOrigin); err != nil {
+						page.webAllowFailed, page.webErr = true, err.Error()
+					} else {
+						page.webTrusted, page.webAllowFailed = true, false
+					}
+				}
+			}
+			if page.webAllowFailed {
+				ui.Text(c, locales.HostsPairWebTrustFailed(page.webErr)).FontSize(fontSubhead).TextColor(k.danger).LineHeight(1.3)
+			}
 		case page.image != nil:
 			hint := locales.HostsRexQRHint()
 			if page.direct {
@@ -193,13 +266,7 @@ func hostPairQRSheet(c *ui.Context, k *colors, page *hostPairQR) {
 				}
 			}
 			ui.Text(c, hint).FontSize(fontCallout).TextColor(k.textMuted).LineHeight(1.35)
-			// A QR code keeps its own white, the way a scanner expects,
-			// inside the panel's corner radius.
-			ui.Row(c).Justify(ui.Center).Margin(2, 0, 2, 0).Children(func() {
-				ui.Column(c).Padding(10).Radius(radiusL).Background(ui.RGB(255, 255, 255)).Children(func() {
-					ui.Image(c, page.image).Size(240, 240).Label(title)
-				})
-			})
+			pairQRCode(c, page.image, title)
 			if !page.rexGo {
 				// The pairing token stays in the code and the copy, off
 				// the screen.
@@ -218,7 +285,9 @@ func hostPairQRSheet(c *ui.Context, k *colors, page *hostPairQR) {
 			if ui.Button(c.Key("close"), locales.HostsLayoutClose()).Clicked() {
 				page.open = false
 			}
-			if page.image != nil && !page.rexGo {
+			// The web tab's code holds the token too: a copy of the other
+			// address's link would be a different code than the one shown.
+			if page.image != nil && !page.rexGo && !(web && page.tab == 1) {
 				label := locales.HostsRexQRCopy()
 				if page.copied {
 					label = locales.HostsRexQRCopied()

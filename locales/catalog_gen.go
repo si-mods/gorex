@@ -3266,6 +3266,88 @@ func (msgs Messages) HostsRexQRCopyFailed() string {
 	return Catalog.Format(msgs.locale, "hostsRexQRCopyFailed", nil)
 }
 
+// HostsPairCodeAddress says "This address"
+// in the language the app shows.
+func HostsPairCodeAddress() string { return In(i18n.Locale()).HostsPairCodeAddress() }
+
+// HostsPairCodeAddress says "This address"
+// in the language of msgs.
+func (msgs Messages) HostsPairCodeAddress() string {
+	return Catalog.Format(msgs.locale, "hostsPairCodeAddress", nil)
+}
+
+// HostsPairWebTitle says "Open {host} in the web client"
+// in the language the app shows.
+func HostsPairWebTitle(host string) string { return In(i18n.Locale()).HostsPairWebTitle(host) }
+
+// HostsPairWebTitle says "Open {host} in the web client"
+// in the language of msgs.
+func (msgs Messages) HostsPairWebTitle(host string) string {
+	return Catalog.Format(msgs.locale, "hostsPairWebTitle", map[string]any{"host": host})
+}
+
+// HostsPairCodePage says "Web (LAN)"
+// in the language the app shows.
+func HostsPairCodePage() string { return In(i18n.Locale()).HostsPairCodePage() }
+
+// HostsPairCodePage says "Web (LAN)"
+// in the language of msgs.
+func (msgs Messages) HostsPairCodePage() string {
+	return Catalog.Format(msgs.locale, "hostsPairCodePage", nil)
+}
+
+// HostsPairWebHint says "Scan this code to open this computer in the web client at {page}. The code holds this computer's pairing token, so th…"
+// in the language the app shows.
+func HostsPairWebHint(page string) string { return In(i18n.Locale()).HostsPairWebHint(page) }
+
+// HostsPairWebHint says "Scan this code to open this computer in the web client at {page}. The code holds this computer's pairing token, so th…"
+// in the language of msgs.
+func (msgs Messages) HostsPairWebHint(page string) string {
+	return Catalog.Format(msgs.locale, "hostsPairWebHint", map[string]any{"page": page})
+}
+
+// HostsPairWebUntrusted says "This computer does not let that page in yet: allow it, and the page can open this computer."
+// in the language the app shows.
+func HostsPairWebUntrusted() string { return In(i18n.Locale()).HostsPairWebUntrusted() }
+
+// HostsPairWebUntrusted says "This computer does not let that page in yet: allow it, and the page can open this computer."
+// in the language of msgs.
+func (msgs Messages) HostsPairWebUntrusted() string {
+	return Catalog.Format(msgs.locale, "hostsPairWebUntrusted", nil)
+}
+
+// HostsPairWebTrust says "Allow {page}"
+// in the language the app shows.
+func HostsPairWebTrust(page string) string { return In(i18n.Locale()).HostsPairWebTrust(page) }
+
+// HostsPairWebTrust says "Allow {page}"
+// in the language of msgs.
+func (msgs Messages) HostsPairWebTrust(page string) string {
+	return Catalog.Format(msgs.locale, "hostsPairWebTrust", map[string]any{"page": page})
+}
+
+// HostsPairWebTrusted says "That page may open this computer now."
+// in the language the app shows.
+func HostsPairWebTrusted() string { return In(i18n.Locale()).HostsPairWebTrusted() }
+
+// HostsPairWebTrusted says "That page may open this computer now."
+// in the language of msgs.
+func (msgs Messages) HostsPairWebTrusted() string {
+	return Catalog.Format(msgs.locale, "hostsPairWebTrusted", nil)
+}
+
+// HostsPairWebTrustFailed says "Could not save it: {error}"
+// in the language the app shows.
+func HostsPairWebTrustFailed(error string) string {
+	return In(i18n.Locale()).HostsPairWebTrustFailed(error)
+}
+
+// HostsPairWebTrustFailed says "Could not save it: {error}"
+// in the language of msgs.
+func (msgs Messages) HostsPairWebTrustFailed(error string) string {
+	return Catalog.Format(msgs.locale, "hostsPairWebTrustFailed", map[string]any{"error": error})
+}
+
 // TailnetMode says "Tailscale discovery and connections"
 // in the language the app shows.
 func TailnetMode() string { return In(i18n.Locale()).TailnetMode() }

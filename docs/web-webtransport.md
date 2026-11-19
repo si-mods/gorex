@@ -77,7 +77,7 @@ https://web.gorex.uk/?host=https%3A%2F%2F192.168.1.50%3A7298#wt=sha256-<base64ur
 
 #### Host UI & CLI (`hostqr.go`, `internal/rexapi/cli.go`)
 - **`gorex rexapi lan qr` (or `gorex rexapi web qr`):** Prints a terminal QR code + pairing URL for the active LAN IP(s) and current `wt` cert hash.
-- **Desktop app (`hostqr.go`):** In the existing Pair QR dialog, offer a **Web (LAN)** tab/toggle alongside the native Rex Go QR when `LANConfig.Enabled` is true, showing the `https://web.gorex.uk/?host=...#wt=...` QR code and a reminder if `https://web.gorex.uk` is not yet in `WebConfig.Origins` (with a one-click button to allow it).
+- **Desktop app (`hostqr.go`):** The Pair QR dialog of the local network listener has two tabs, **This address** (the native code) and **Web (LAN)**: the latter shows the `https://web.gorex.uk/#host=…&wt=sha256-…&k=…` code `rexapi.LANConfig.WebPairURL` builds, the same one `gorex rexapi lan qr` prints. The code holds the pairing token, so the tab shows the image only, never the link; and when `https://web.gorex.uk` is not in `WebConfig.Origins` yet it says so, with a button that adds it (`rexapi.AllowWebOrigin`, the same write `gorex rexapi web allow` makes). `TestLocalPairQRWebTab` covers it.
 
 ### 3. Web Client (`web/src/`)
 

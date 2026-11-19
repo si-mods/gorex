@@ -891,3 +891,32 @@ func TestLANMigrationUnsavedTokenStaysOff(t *testing.T) {
 		t.Errorf("the listener holds a token it could not save")
 	}
 }
+
+// TestWebPairURL: the page's link carries the gateway's address, its
+// certificate's hash and the pairing token in the fragment, and nothing
+// without a listener that can be reached there.
+func TestWebPairURL(t *testing.T) {
+	c := LANConfig{Token: "t0ken"}
+	s := LANStatus{Running: true, WTListening: "192.168.1.20:7298", WTCertHash: "abc"}
+	want := "https://web.gorex.uk/#host=https%3A%2F%2F192.168.1.20%3A7298&wt=sha256-abc&k=t0ken"
+	if got := c.WebPairURL(s, WebOrigin); got != want {
+		t.Fatalf("WebPairURL = %q, want %q", got, want)
+	}
+	if got := c.WebPairURL(s, "https://web.gorex.uk/"); got != want {
+		t.Errorf("a trailing slash changed the link: %q", got)
+	}
+	for name, tc := range map[string]struct {
+		c LANConfig
+		s LANStatus
+	}{
+		"no token":     {LANConfig{}, s},
+		"listener off": {c, LANStatus{}},
+		"no hash":      {c, LANStatus{Running: true, WTListening: "192.168.1.20:7298"}},
+		"no address":   {c, LANStatus{Running: true, WTCertHash: "abc"}},
+		"an error":     {c, LANStatus{Running: true, WTCertHash: "abc", WTListening: "192.168.1.20:7298", Error: "address already in use"}},
+	} {
+		if got := tc.c.WebPairURL(tc.s, WebOrigin); got != "" {
+			t.Errorf("%s: WebPairURL = %q, want none", name, got)
+		}
+	}
+}

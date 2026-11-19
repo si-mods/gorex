@@ -10,7 +10,6 @@ import (
 	"io/fs"
 	"net"
 	"net/http"
-	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -492,7 +491,7 @@ func printLAN(w io.Writer, c LANConfig, s LANStatus) {
 }
 
 func lanQRMain(dir string, args []string) int {
-	origin := "https://web.gorex.uk"
+	origin := WebOrigin
 	for i := 0; i < len(args); i++ {
 		if args[i] == "--origin" && i+1 < len(args) {
 			origin = strings.TrimRight(args[i+1], "/")
@@ -516,15 +515,7 @@ func lanQRMain(dir string, args []string) int {
 		fmt.Fprintln(os.Stderr, "gorex rexapi lan qr: WebTransport listener is not running (run gorex rexapi lan on)")
 		return 1
 	}
-	addr := s.WTListening
-	if host, port, err := net.SplitHostPort(addr); err == nil && (host == "0.0.0.0" || host == "::" || host == "") {
-		if defListen, _ := DefaultLAN(); defListen != "" {
-			if defHost, _, err := net.SplitHostPort(defListen); err == nil && defHost != "" {
-				addr = net.JoinHostPort(defHost, port)
-			}
-		}
-	}
-	pairURL := fmt.Sprintf("%s/#host=%s&wt=sha256-%s&k=%s", origin, url.QueryEscape("https://"+addr), url.QueryEscape(s.WTCertHash), url.QueryEscape(conf.Token))
+	pairURL := conf.WebPairURL(s, origin)
 	code, err := qr.Encode(pairURL, qr.M)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "gorex rexapi lan qr: %v\n", err)
