@@ -84,7 +84,8 @@ targets:
         UIAppFonts: [JetBrainsMono-Regular.ttf]
         CFBundleLocalizations: [en, zh-Hans]
         UILaunchScreen:
-          UIColorName: ""
+          UIColorName: LaunchBackground
+          UIImageName: LaunchIcon
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: false
         # A pointer's clicks come as its own touches, which select.
