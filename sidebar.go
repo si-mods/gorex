@@ -437,15 +437,19 @@ func savedTabLabel(t savedTab) (string, program) {
 // the program of its tile, as the window's tab would: from what its
 // machine's last session list (infos) says of its focused pane's session,
 // the title its program set, the program and its folder; else from what
-// the layout keeps (savedTabLabel). No pane attaches for it.
+// the layout keeps (savedTabLabel). A tab its user named keeps the name
+// but still takes its icon from the session. No pane attaches for it.
 func savedTabFace(t savedTab, infos map[string]rex.SessionInfo) (name, detail string, prog program) {
 	name, prog = savedTabLabel(t)
 	n := focusedLeaf(t)
 	in, ok := infos[n.SID]
-	if t.Name != "" || n.SID == "" || n.URL != "" || n.Kind == "note" || !ok || in.Exited {
+	if n.SID == "" || n.URL != "" || n.Kind == "note" || !ok || in.Exited {
 		return name, "", prog
 	}
 	p := &Pane{SID: n.SID, Name: n.Name, info: in, startDir: n.Dir}
+	if t.Name != "" {
+		return t.Name, "", p.program()
+	}
 	name, detail = p.label()
 	return name, detail, p.program()
 }

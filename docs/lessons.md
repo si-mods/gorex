@@ -99,6 +99,11 @@ Each item has a **Trigger** (what the diff shows), a **Check** (what the author 
 - **Check:** `ps ax -o pid,command | grep GoRex` and `lsof -p <pid> | grep 'Application Support/GoRex'` name every process writing the store, and `git describe` the binary, before the store is read as evidence. A build of before the model in the report writes that model back; close it and delete it.
 - **Source:** #799: an app of v0.34, relaunched from `launchd` twice against the same store, put a host's panes back tab by tab while the new app took the layout and split them.
 
+### One early return for several outputs
+- **Trigger:** a function returns more than one derived value (a tab's name and its icon, a label and its color), and one guard returns the fallback for all of them.
+- **Check:** each condition in the guard is needed by every output it skips. A test covers the case where one output has its own source and another uses the fallback, for example a named tab with a live session.
+- **Source:** #793 made `savedTabFace` skip the session for a tab with a name, so a named tab lost its program's icon; #810 split the name from the icon.
+
 ## Style
 
 ### Style or size change

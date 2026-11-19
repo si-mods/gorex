@@ -116,6 +116,12 @@ func TestHostTabsKeepTheirTitles(t *testing.T) {
 			t.Errorf("tab %d of the host's project has %q's icon, want %q's", i, prog.Name, want)
 		}
 	}
+	// A tab its user named keeps the name, with its program's icon (#810).
+	named := tabs[1]
+	named.Name = "Example tab"
+	if name, detail, prog := savedTabFace(named, h.infos); name != "Example tab" || detail != "" || prog.Name != "omp" {
+		t.Errorf("a named tab is %q %q with %q's icon, want %q with omp's", name, detail, prog.Name, "Example tab")
+	}
 	// With nothing listed of a session, the tab says its folder.
 	if name, _, _ := savedTabFace(tabs[0], nil); name != "app" {
 		t.Errorf("a tab with nothing listed is %q, want its folder", name)
