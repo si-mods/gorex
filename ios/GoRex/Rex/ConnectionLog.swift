@@ -1,24 +1,76 @@
 import Foundation
+import Observation
 import os
 
-/// The app's recent connection events, as the diagnostics sheet shows
-/// them: the last few hundred lines, in memory only, each also in the
-/// system log. Lines name hosts, never a ticket, token or password.
+/// The app's recent connection events, as the diagnostics sheet and Developer
+/// Mode overlay show them: the last few hundred lines, in memory only, each
+/// also in the system log. Lines name hosts, never a ticket, token or password.
 enum ConnectionLog {
+    struct Entry: Identifiable, Equatable {
+        let id: Int
+        let timestamp: Date
+        /// Compact timestamp for the Developer Mode log ("HH:mm:ss.S").
+        let shortTime: String
+        /// Full timestamp for exported diagnostics ("HH:mm:ss.SSS").
+        let fullTime: String
+        let message: String
+
+        var line: String { "\(fullTime) \(message)" }
+    }
+
+    @Observable
+    final class Store {
+        private(set) var entries: [Entry] = []
+        @ObservationIgnored private var nextID = 0
+
+        func append(timestamp: Date, shortTime: String, fullTime: String, message: String, limit: Int) {
+            nextID += 1
+            entries.append(Entry(id: nextID, timestamp: timestamp, shortTime: shortTime, fullTime: fullTime, message: message))
+            if entries.count > limit {
+                entries.removeFirst(entries.count - limit)
+            }
+        }
+
+        func clear() {
+            entries.removeAll()
+        }
+    }
+
     private static let log = Logger(subsystem: "dev.gorex.ios", category: "connection")
     private static let limit = 300
-    private(set) static var lines: [String] = []
-    private static let time = {
+    static let store = Store()
+
+    static var entries: [Entry] { store.entries }
+    static var lines: [String] { store.entries.map(\.line) }
+
+    private static let fullTime = {
         let f = DateFormatter()
         f.locale = Locale(identifier: "en_US_POSIX")
         f.dateFormat = "HH:mm:ss.SSS"
         return f
     }()
 
+    private static let shortTime = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = "HH:mm:ss.S"
+        return f
+    }()
+
     static func note(_ line: String) {
         log.notice("\(line, privacy: .public)")
-        lines.append(time.string(from: .now) + " " + line)
-        if lines.count > limit { lines.removeFirst(lines.count - limit) }
+        let now = Date.now
+        store.append(
+            timestamp: now,
+            shortTime: shortTime.string(from: now),
+            fullTime: fullTime.string(from: now),
+            message: line,
+            limit: limit
+        )
+    }
+
+    static func clear() {
+        store.clear()
     }
 }
 
