@@ -15,5 +15,9 @@
   // at; wrangler creates the custom domain's DNS record on the first deploy
   // that needs it. Both need a token with Workers Routes: Edit and DNS: Edit
   // on gorex.uk, on top of Workers Scripts: Edit.
-  "routes": [{ "pattern": "web.gorex.uk", "custom_domain": true }]
+  "routes": [{ "pattern": "web.gorex.uk", "custom_domain": true }],
+  // A route in this file turns workers.dev off unless it is asked for, and
+  // that address is where the page was published before web.gorex.uk: keep
+  // serving both.
+  "workers_dev": true
 }
