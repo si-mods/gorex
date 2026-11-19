@@ -57,6 +57,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - The prism icons' light now bends where it enters and leaves the glass, as light does in a real prism.
 - In the Spectrum icon, the light now splits into its colours as soon as it enters the prism.
 - Rex Go has a new default icon: a clear glass prism that splits a white beam into warm light.
+- A terminal that runs Devin now shows Devin's mark on its tile, as Codex and Claude Code do.
 
 ## zh-Hans
 
@@ -106,3 +107,4 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - 棱镜图标里的光现在在进入和离开玻璃时折射，和真实棱镜一样。
 - 「光谱」图标里的光一进入棱镜就分成各种颜色。
 - Rex Go 换了新的默认图标：一块透明的玻璃棱镜，把白光分成暖色的光。
+- 运行 Devin 的终端，它的图标块上现在显示 Devin 的标志，和 Codex、Claude Code 一样。
