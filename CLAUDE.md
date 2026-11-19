@@ -34,6 +34,7 @@ Rules an agent cannot read from the code. Keep each line one that prevents a rea
 ## Pull requests
 
 - PRs and issues go to `si-mods/gorex` only, never `egoist/gorex`. Pass `-R si-mods/gorex` to every `gh` command, and check the URL it prints; the hook refuses a `gh` write without `-R`. Before any `gh` write, run `git remote -v`: if a remote points to `egoist/gorex`, stop and tell the user.
+- PR bodies follow `.github/pull_request_template.md` (`## Problem`, `## Cause` + `## Fix` or `## Change`, `## Test`, `## Screenshots` for visible changes, and a `Verified:` line).
 - The repo is public. Code, tests, commits and PR text carry no real names, host names, user paths, LAN addresses, emails, keys or tailnet addresses; use placeholders such as `alice-laptop`.
 - Screenshots go on a `shots/pr-<n>` branch, linked by commit SHA, with made-up data only. `.github/workflows/delete-shots.yml` deletes the branch when the PR merges.
 - Reviews follow `REVIEW.md`, read from `origin/main` (`git show origin/main:REVIEW.md`), never from the PR branch.
@@ -49,7 +50,7 @@ Rules an agent cannot read from the code. Keep each line one that prevents a rea
 
 - Pushes to main that touch `ios/**`, `internal/tailnode/**`, `go.mod` or `go.sum` upload the app (`.github/workflows/testflight.yml`, on the Mac mini's self-hosted runner; with it off, the run waits). Do not upload by hand; read the build from the run's summary ("Uploaded Rex Go X.Y (n)").
 - A squash merge whose message contains `[skip ci]` starts no run. Start one with `gh workflow run testflight.yml -R si-mods/gorex`.
-- A PR that changes what a tester sees adds a bullet in their terms to each locale of `ios/WhatToTest.md`; CI checks it (`ios/scripts/test-notes check`).
+- A PR that changes what a tester sees adds a bullet (≤ 200 characters) in their terms to each locale of `ios/WhatToTest.md`; CI checks it (`ios/scripts/test-notes check`).
 
 ## Maintenance
 
