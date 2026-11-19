@@ -27,14 +27,14 @@ nonisolated final class UploadTests: XCTestCase {
         XCTAssertFalse(offline.canUpload)
     }
 
-    private func downloadBegin(_ rex: FakeRex) {
+    @MainActor private func downloadBegin(_ rex: FakeRex) {
         rex.respond = { method, _ in
-            method == RexProtocol.methodTerminalDownloadBegin
+            method == "com.superlogical.terminal.download_begin"
                 ? ["ticket": "uH4mJKwzMarlTNT-UiyMog", "name": "a.bin", "version": "v1", "size": 6] : [:]
         }
     }
 
-    private func fetch(_ rex: FakeRex) async throws -> DownloadResult {
+    @MainActor private func fetch(_ rex: FakeRex) async throws -> DownloadResult {
         let control = ControlConnection(base: try await rex.url(), auth: nil)
         try await control.open(token: nil)
         defer { control.close() }
