@@ -61,6 +61,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - Turn on Developer Mode in Settings for a floating connection bar: tap it to inspect your network path, host latency or reconnect times, and live connection events, and share, copy or clear them.
 - Sharing to a computer over Personal Hotspot: when you remove or deny that computer, or stop sharing, its open terminals disconnect at once.
 - Sending a photo or file, or opening a file path a terminal printed, no longer closes the app when the computer's Tailscale connection starts over at that moment.
+- Fast output, scrolling back and dragging a selection's handles feel smoother, and a large paste no longer stalls. Tell us if handles, scrolling or the keyboard slide lag or jump.
 
 ## zh-Hans
 
@@ -114,3 +115,4 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - 在「设置」里打开「开发者模式」，顶部会出现一个悬浮连接条；点开可查看当前网络路径、每台电脑的延迟或重连时长以及最近的连接日志，并支持分享、复制或清空。
 - 通过个人热点共享给电脑时：移除或拒绝这台电脑，或停止共享，它打开的终端会立即断开。
 - 发送照片或文件、点开终端里打印的文件路径时，即使电脑的 Tailscale 连接恰好在那一刻重连，应用也不会再退出。
+- 大量输出、向上翻看和拖动选区把手时更流畅，粘贴大段文字也不再卡顿。如选区把手、滚动或键盘上方的上移有延迟或跳动，请告诉我们。
