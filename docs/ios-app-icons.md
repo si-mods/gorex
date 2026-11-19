@@ -38,12 +38,31 @@ The old `AppIcon.appiconset` is gone: the `.icon` bundle replaces it.
 
 `AppIcon.icon` has three layers, from the back to the front:
 
-1. `1-beam`: the white light that goes into the prism.
+1. `1-beam`: the white light that goes into the prism, and its path inside
+   the glass, at 55% opacity.
 2. `2-glow`: the light that comes out. A flat shape: the layer's `fill` in
    `icon.json`, a white-to-silver gradient, overrides the SVG's own colour. The
    SVG's `#DCE3F0` only shows in a tool that ignores `icon.json`; change the
    gradient in `icon.json`, not the SVG.
 3. `3-prism`: the prism, marked as glass.
+
+## The light follows refraction
+
+The light is a ray traced with Snell's law through the prism's outer faces
+(the triangle in `3-prism`, grown by its 60 px corner radius):
+
+- The beam meets the left face and bends toward the normal. Inside, it runs
+  parallel to the base: the path of least deviation.
+- At the right face it bends away from the normal, and it comes out across a
+  short part of that face, not from one point.
+- In Spectrum, red bends least and is at the top, violet bends most and is at
+  the bottom.
+- The refractive index runs from 1.36 (red) to 1.64 (violet). Real glass
+  spreads the colours by about 1°, a line too thin to see on an icon; the
+  wider spread keeps every direction and the order true.
+
+If the prism moves or changes shape, trace the light again: a beam that does
+not bend at both faces reads as wrong.
 
 The layers are flat shapes. The system draws the glass, the highlights, the
 shadows and the dark and tinted looks. Do not draw them into the SVGs: they
