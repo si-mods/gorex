@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { HostConn as HostConnType } from "../src/hostconn";
-import { dirName, featureVersion, groupProjects, hostModel, Offline, parseProject, ProjectRow, SpaceStore } from "../src/projectmodel";
+import { dirName, featureVersion, groupProjects, hostModel, Offline, parseProject, projectColor, ProjectRow, SpaceStore } from "../src/projectmodel";
 
 // hostconn.ts imports the page's modules, which look at `window` as they load; a bare one is enough here.
 (globalThis as any).window ??= { addEventListener() {}, matchMedia: () => ({ matches: false, addEventListener() {} }) };
@@ -73,6 +73,15 @@ test("dirName is a folder's name on Unix and Windows", () => {
   assert.equal(dirName("/home/me/code/windflow/"), "windflow");
   assert.equal(dirName("C:\\work\\trainer"), "trainer");
   assert.equal(dirName("/"), "/");
+});
+
+test("projectColor maps preset IDs to hex and leaves unset colors muted", () => {
+  assert.equal(projectColor("rose"), "#e54666");
+  assert.equal(projectColor("blue"), "#0090ff");
+  assert.equal(projectColor("#123456"), "#123456");
+  assert.equal(projectColor(""), undefined);
+  assert.equal(projectColor(undefined), undefined);
+  assert.equal(projectColor("unknown"), undefined);
 });
 
 test("the picker lists the names the projects carry, Default, and the ones made here, in the user's order", () => {

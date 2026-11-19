@@ -9,7 +9,7 @@ import type { Host } from "./hosts";
 import { icon } from "./hosts";
 import { t } from "./i18n";
 import { MenuItem, onMenu, openMenu, ownDrag, renameField } from "./manage";
-import { dirName, dotColor, groupProjects, HostModel, ProjectRow, TabRow } from "./projectmodel";
+import { dirName, groupProjects, HostModel, projectColor, ProjectRow, TabRow } from "./projectmodel";
 import type { HostView, ProjectOps } from "./projectops";
 import { hostHead, problemLine, spaceName, redraw, renaming, sidebarApp, tilesRoom, windowRow } from "./sidebar";
 
@@ -271,9 +271,11 @@ function projectRow(nav: HTMLElement, model: HostModel, c: HostConn | undefined,
   b.setAttribute("aria-expanded", String(open));
   // The folder is in the tooltip only.
   b.title = `${p.name || dirName(p.dir)}\n${p.dir}`;
-  const dot = el("i", "color-dot");
-  dot.style.background = dotColor(p.dir, p.color);
-  b.append(dot, el("span", "name", p.name || dirName(p.dir)));
+  const folder = icon("folder");
+  folder.classList.add("project-icon");
+  const tint = projectColor(p.color);
+  if (tint) folder.style.color = tint;
+  b.append(folder, el("span", "name", p.name || dirName(p.dir)));
   if (p.tabs.length) b.append(el("span", "count", String(p.tabs.length)));
   b.onclick = () => toggle(key, open);
   row.append(b);
