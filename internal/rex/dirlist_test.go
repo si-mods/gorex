@@ -3,7 +3,11 @@
 package rex
 
 import (
+	"errors"
 	"fmt"
+	"io"
+	"io/fs"
+	"math/rand/v2"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -297,5 +301,81 @@ func TestDirListBusy(t *testing.T) {
 	defer dirListsRunning.Add(-maxDirListsRunning)
 	if _, err := c.DirList("", false); err == nil || err.Error() != errDirListBusy.Error() || !strings.HasPrefix(err.Error(), DirListBusy) {
 		t.Errorf("%v, want %v", err, errDirListBusy)
+	}
+}
+
+// fakeDir is a directory of names for firstDirs, read n at a time; a
+// name that ends in ".txt" is a file. err ends it after the names.
+type fakeDir struct {
+	names []string
+	err   error
+	reads []int
+}
+
+func (d *fakeDir) ReadDir(n int) ([]fs.DirEntry, error) {
+	d.reads = append(d.reads, n)
+	if len(d.names) == 0 {
+		if d.err != nil {
+			return nil, d.err
+		}
+		return nil, io.EOF
+	}
+	k := min(n, len(d.names))
+	var out []fs.DirEntry
+	for _, name := range d.names[:k] {
+		mode := fs.ModeDir
+		if strings.HasSuffix(name, ".txt") {
+			mode = 0
+		}
+		out = append(out, fs.FileInfoToDirEntry(fakeInfo{name, mode}))
+	}
+	d.names = d.names[k:]
+	return out, nil
+}
+
+type fakeInfo struct {
+	name string
+	mode fs.FileMode
+}
+
+func (i fakeInfo) Name() string       { return i.name }
+func (i fakeInfo) Size() int64        { return 0 }
+func (i fakeInfo) Mode() fs.FileMode  { return i.mode }
+func (i fakeInfo) ModTime() time.Time { return time.Time{} }
+func (i fakeInfo) IsDir() bool        { return i.mode.IsDir() }
+func (i fakeInfo) Sys() any           { return nil }
+
+// TestFirstDirs reads a directory in batches, never whole, and keeps the
+// first directories in order however the system returns them, files and
+// all (#726).
+func TestFirstDirs(t *testing.T) {
+	var names, want []string
+	for i := range 3000 {
+		names = append(names, fmt.Sprintf("d%04d", i), fmt.Sprintf("f%04d.txt", i))
+		want = append(want, fmt.Sprintf("d%04d", i))
+	}
+	rand.New(rand.NewPCG(1, 2)).Shuffle(len(names), func(i, j int) { names[i], names[j] = names[j], names[i] })
+	isDir := func(e fs.DirEntry) bool { return e.IsDir() }
+	for _, max := range []int{5, 2999, 3000, 3001} {
+		d := &fakeDir{names: slices.Clone(names)}
+		got, more, err := firstDirs(d, max, isDir)
+		w := want[:min(max, len(want))]
+		if err != nil || more != (max < len(want)) || !slices.Equal(got, w) {
+			t.Errorf("max %d: %d dirs %v more %v err %v; want %d more %v", max, len(got), got[:min(3, len(got))], more, err, len(w), max < len(want))
+		}
+		for _, n := range d.reads {
+			if n != dirListBatch {
+				t.Fatalf("max %d: ReadDir(%d), want batches of %d", max, n, dirListBatch)
+			}
+		}
+	}
+
+	boom := errors.New("boom")
+	if _, _, err := firstDirs(&fakeDir{err: boom}, 5, isDir); err != boom {
+		t.Errorf("error at first read: %v, want %v", err, boom)
+	}
+	got, more, err := firstDirs(&fakeDir{names: []string{"b", "a"}, err: boom}, 5, isDir)
+	if err != nil || more || !slices.Equal(got, []string{"a", "b"}) {
+		t.Errorf("error after entries: %v %v %v, want [a b] and no error", got, more, err)
 	}
 }

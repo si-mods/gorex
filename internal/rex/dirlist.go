@@ -5,6 +5,7 @@ package rex
 import (
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -135,37 +136,83 @@ func listDir(home, path string, hidden bool) (DirListResult, error) {
 		res.Code = DirNotFound
 		return res, nil
 	}
-	entries, err := os.ReadDir(real)
-	if err != nil && len(entries) == 0 {
+	f, err := os.Open(real)
+	if err != nil {
 		return dirCode(res, err)
 	}
-	for _, e := range entries {
-		name := e.Name()
+	defer f.Close()
+	dirs, more, err := firstDirs(f, DirListMax, func(e fs.DirEntry) bool {
 		if !hidden && isHiddenDir(e) {
-			continue
+			return false
 		}
-		if !e.IsDir() {
-			// A symlink, or a junction on Windows, counts when it leads
-			// to a directory.
-			if e.Type()&(fs.ModeSymlink|fs.ModeIrregular) == 0 {
-				continue
-			}
-			if st, err := os.Stat(filepath.Join(real, name)); err != nil || !st.IsDir() {
-				continue
-			}
+		if e.IsDir() {
+			return true
 		}
-		res.Dirs = append(res.Dirs, name)
-	}
-	slices.SortFunc(res.Dirs, func(a, b string) int {
-		if c := strings.Compare(strings.ToLower(a), strings.ToLower(b)); c != 0 {
-			return c
+		// A symlink, or a junction on Windows, counts when it leads to a
+		// directory.
+		if e.Type()&(fs.ModeSymlink|fs.ModeIrregular) == 0 {
+			return false
 		}
-		return strings.Compare(a, b)
+		st, err := os.Stat(filepath.Join(real, e.Name()))
+		return err == nil && st.IsDir()
 	})
-	if len(res.Dirs) > DirListMax {
-		res.Dirs, res.More = res.Dirs[:DirListMax], true
+	if err != nil {
+		return dirCode(res, err)
 	}
+	res.Dirs, res.More = dirs, more
 	return res, nil
+}
+
+// dirListBatch is how many entries firstDirs reads at a time.
+const dirListBatch = 256
+
+// firstDirs reads the entries of d in batches and keeps the names of those
+// dir accepts: the first max in order (compareDirs), and whether there are
+// more. It holds at most 2*(max+1) names and one batch, however many
+// entries d has: when the names fill up, it sorts them and drops all but
+// the first max+1. An error after some entries were read ends the
+// listing with what it has; one before answers it.
+func firstDirs(d interface {
+	ReadDir(n int) ([]fs.DirEntry, error)
+}, max int, dir func(fs.DirEntry) bool) ([]string, bool, error) {
+	names := []string{}
+	trim := func() {
+		slices.SortFunc(names, compareDirs)
+		if len(names) > max+1 {
+			names = names[:max+1]
+		}
+	}
+	for read := false; ; read = true {
+		entries, err := d.ReadDir(dirListBatch)
+		for _, e := range entries {
+			if !dir(e) {
+				continue
+			}
+			names = append(names, e.Name())
+			if len(names) >= 2*(max+1) {
+				trim()
+			}
+		}
+		if err != nil {
+			if err != io.EOF && !read && len(entries) == 0 {
+				return nil, false, err
+			}
+			break
+		}
+	}
+	trim()
+	if len(names) > max {
+		return names[:max], true, nil
+	}
+	return names, false, nil
+}
+
+// compareDirs orders directory names regardless of case, then by case.
+func compareDirs(a, b string) int {
+	if c := strings.Compare(strings.ToLower(a), strings.ToLower(b)); c != 0 {
+		return c
+	}
+	return strings.Compare(a, b)
 }
 
 // resolveDir is path, absolute and clean, as dir.list lists it: its
