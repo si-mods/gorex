@@ -3,7 +3,11 @@
 package rex
 
 import (
+	"errors"
 	"fmt"
+	"io"
+	"io/fs"
+	"math/rand/v2"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -297,5 +301,129 @@ func TestDirListBusy(t *testing.T) {
 	defer dirListsRunning.Add(-maxDirListsRunning)
 	if _, err := c.DirList("", false); err == nil || err.Error() != errDirListBusy.Error() || !strings.HasPrefix(err.Error(), DirListBusy) {
 		t.Errorf("%v, want %v", err, errDirListBusy)
+	}
+}
+
+// fakeDir is a directory of names for firstDirs, read n at a time; a
+// name that ends in ".txt" is a file. err comes with the last names, or
+// alone when there are none.
+type fakeDir struct {
+	names []string
+	err   error
+	reads []int
+}
+
+func (d *fakeDir) ReadDir(n int) ([]fs.DirEntry, error) {
+	d.reads = append(d.reads, n)
+	if len(d.names) == 0 {
+		if d.err != nil {
+			return nil, d.err
+		}
+		return nil, io.EOF
+	}
+	k := min(n, len(d.names))
+	var out []fs.DirEntry
+	for _, name := range d.names[:k] {
+		mode := fs.ModeDir
+		if strings.HasSuffix(name, ".txt") {
+			mode = 0
+		}
+		out = append(out, fs.FileInfoToDirEntry(fakeInfo{name, mode}))
+	}
+	d.names = d.names[k:]
+	if len(d.names) == 0 && d.err != nil {
+		err := d.err
+		d.err = nil
+		return out, err
+	}
+	return out, nil
+}
+
+type fakeInfo struct {
+	name string
+	mode fs.FileMode
+}
+
+func (i fakeInfo) Name() string       { return i.name }
+func (i fakeInfo) Size() int64        { return 0 }
+func (i fakeInfo) Mode() fs.FileMode  { return i.mode }
+func (i fakeInfo) ModTime() time.Time { return time.Time{} }
+func (i fakeInfo) IsDir() bool        { return i.mode.IsDir() }
+func (i fakeInfo) Sys() any           { return nil }
+
+// TestFirstDirs reads a directory in batches, never whole, holds no more
+// than twice the names it answers, and keeps the first directories in
+// order however the system returns them, files and all (#726).
+func TestFirstDirs(t *testing.T) {
+	var names, want []string
+	for i := range 3000 {
+		names = append(names, fmt.Sprintf("d%04d", i), fmt.Sprintf("f%04d.txt", i))
+		want = append(want, fmt.Sprintf("d%04d", i))
+	}
+	rand.New(rand.NewPCG(1, 2)).Shuffle(len(names), func(i, j int) { names[i], names[j] = names[j], names[i] })
+	later := time.Now().Add(time.Hour)
+	isDir := func(e fs.DirEntry) bool { return e.IsDir() }
+	for _, limit := range []int{5, 2999, 3000, 3001} {
+		d := &fakeDir{names: slices.Clone(names)}
+		kept := 0
+		got, more, err := firstDirs(d, limit, later, func(e fs.DirEntry) bool {
+			kept++
+			return isDir(e)
+		})
+		w := want[:min(limit, len(want))]
+		if err != nil || more != (limit < len(want)) || !slices.Equal(got, w) {
+			t.Errorf("limit %d: %d dirs %v more %v err %v; want %d more %v", limit, len(got), got[:min(3, len(got))], more, err, len(w), limit < len(want))
+		}
+		if kept != len(names) {
+			t.Errorf("limit %d: saw %d entries, want %d", limit, kept, len(names))
+		}
+		for _, n := range d.reads {
+			if n != dirListBatch {
+				t.Fatalf("limit %d: ReadDir(%d), want batches of %d", limit, n, dirListBatch)
+			}
+		}
+	}
+
+	boom := errors.New("boom")
+	if _, _, err := firstDirs(&fakeDir{err: boom}, 5, later, isDir); err != boom {
+		t.Errorf("error at first read: %v, want %v", err, boom)
+	}
+	got, more, err := firstDirs(&fakeDir{names: []string{"b", "a"}, err: boom}, 5, later, isDir)
+	if err != nil || more || !slices.Equal(got, []string{"a", "b"}) {
+		t.Errorf("error with the first entries: %v %v %v, want [a b] and no error", got, more, err)
+	}
+}
+
+// TestFirstNamesHoldsFew holds no more than 2*(limit+1) names, however
+// many are added, and keeps the first in order (#726).
+func TestFirstNamesHoldsFew(t *testing.T) {
+	f := firstNames{limit: 10}
+	for i := range 5000 {
+		f.add(fmt.Sprintf("d%04d", 4999-i))
+		if len(f.names) > 2*(f.limit+1) {
+			t.Fatalf("holds %d names after %d, want at most %d", len(f.names), i+1, 2*(f.limit+1))
+		}
+	}
+	got, more := f.first()
+	if !more || len(got) != 10 || got[0] != "d0000" || got[9] != "d0009" {
+		t.Errorf("first %v more %v, want d0000..d0009 and more", got, more)
+	}
+	if got, more := (&firstNames{limit: 10}).first(); got == nil || more {
+		t.Errorf("none: %v more %v, want [] and no more", got, more)
+	}
+}
+
+// TestFirstDirsDeadline stops reading between batches once the deadline
+// has passed, so a listing the client gave up on frees its place in
+// dirListsRunning.
+func TestFirstDirsDeadline(t *testing.T) {
+	var names []string
+	for i := range 10 * dirListBatch {
+		names = append(names, fmt.Sprintf("d%05d", i))
+	}
+	d := &fakeDir{names: names}
+	_, _, err := firstDirs(d, DirListMax, time.Now().Add(-time.Second), func(fs.DirEntry) bool { return true })
+	if err != errDirListLate || len(d.reads) != 1 {
+		t.Errorf("err %v after %d reads, want %v after 1", err, len(d.reads), errDirListLate)
 	}
 }
