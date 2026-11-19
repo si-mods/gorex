@@ -65,19 +65,22 @@ A single `WebTransport` session multiplexes all Rex API traffic over QUIC bidire
 ### 2. Pairing URL & QR Code
 
 #### URL Format
-Reuse `web/src/main.ts`'s `?host=` quick-link mechanism, passing the certificate hash in the **URL fragment** (`#`) so it is never sent to Cloudflare or logged in HTTP access logs:
+The page's link reuses `web/src/main.ts`'s quick-link mechanism. Everything lives in the **fragment** (`#`), which a browser never sends to Cloudflare and an HTTP access log never sees: the host's address, the certificate's hash and, since 0.43, the pairing token the gateway demands.
 
 ```text
-https://web.gorex.uk/?host=https%3A%2F%2F192.168.1.50%3A7298#wt=sha256-<base64url>
+https://web.gorex.uk/#host=https%3A%2F%2F192.168.1.50%3A7298&wt=sha256-<base64url>&k=<base64url>
 ```
 
-- `?host=...` identifies the host URL (`https://<lan-ip>:7298`).
-- `#wt=sha256-<base64url>` carries the 32-byte DER SHA-256 hash.
-- When `main.ts` reads `?host=`, it also parses `location.hash` for `wt=sha256-...`, stores `certHash` on the `Host` object in `localStorage` (`web/src/hosts.ts`), and strips both query and hash from the address bar via `history.replaceState`.
+- `host=` is the gateway's WebTransport address, `https://<lan-ip>:7298`. `main.ts` reads it from the fragment or, as older links had it, from the query.
+- `wt=sha256-<base64url>` is the 32-byte DER SHA-256 of the gateway's certificate, for `serverCertificateHashes`.
+- `k=<base64url>` is the listener's pairing token, which the page sends as `?k=` on each connection (`internal/rexapi/lan.go`). Only the fragment carries it: a query would go to the page's host.
+- `main.ts` stores the three on the `Host` object in `localStorage` (`web/src/hosts.ts`) and strips them from the address bar with `history.replaceState`.
+
+`rexapi.LANConfig.WebPairURL` builds this link from the listener's state; `gorex rexapi lan qr` and the desktop's pair dialog both use it, so neither can drift from the other.
 
 #### Host UI & CLI (`hostqr.go`, `internal/rexapi/cli.go`)
-- **`gorex rexapi lan qr` (or `gorex rexapi web qr`):** Prints a terminal QR code + pairing URL for the active LAN IP(s) and current `wt` cert hash.
-- **Desktop app (`hostqr.go`):** The Pair QR dialog of the local network listener has two tabs, **This address** (the native code) and **Web (LAN)**: the latter shows the `https://web.gorex.uk/#host=…&wt=sha256-…&k=…` code `rexapi.LANConfig.WebPairURL` builds, the same one `gorex rexapi lan qr` prints. The code holds the pairing token, so the tab shows the image only, never the link; and when `https://web.gorex.uk` is not in `WebConfig.Origins` yet it says so, with a button that adds it (`rexapi.AllowWebOrigin`, the same write `gorex rexapi web allow` makes). `TestLocalPairQRWebTab` covers it.
+- **`gorex rexapi lan qr` (or `gorex rexapi web qr`):** Prints the same link as a terminal QR code and as text — the active LAN address, the certificate's hash and the pairing token — and takes `--origin` for a page hosted somewhere else.
+- **Desktop app (`hostqr.go`):** the Pair dialog of the local network listener has two tabs, **This address** (the native code) and **Web (LAN)**. The web tab leads with **Open in Browser**, which hands this link to the default browser (`mygo.Shell.OpenExternal`; a failure is named in the dialog) — the dialog runs on the computer the page would open on — and under "Or scan this from a phone on the same network:" the link as a code, for a phone with no terminal at hand. The link holds the pairing token, so the tab shows the image only, never the link or a Copy, as the Rex Go code does; and when `https://web.gorex.uk` is not in `WebConfig.Origins` yet it says so, with a button that adds it (`rexapi.AllowWebOrigin`, the same write `gorex rexapi web allow` makes). `TestLocalPairQRWebTab` covers it.
 
 ### 3. Web Client (`web/src/`)
 
