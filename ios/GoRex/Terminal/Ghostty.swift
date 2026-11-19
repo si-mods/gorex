@@ -55,8 +55,12 @@ enum Ghostty {
         return c
     }
 
+    /// At most one tick waits on the main thread: a tick does all the work
+    /// that is ready, so the wakeups that come meanwhile are its own.
+    nonisolated private static let ticks = Coalesced()
+
     nonisolated private static func wakeup() {
-        DispatchQueue.main.async {
+        ticks.run {
             MainActor.assumeIsolated { if let app { ghostty_app_tick(app) } }
         }
     }
@@ -85,16 +89,14 @@ enum Ghostty {
             }
             return true
         case GHOSTTY_ACTION_SELECTION_CHANGED:
+            // The view does it once a frame, for all that came (FrameWork).
             DispatchQueue.main.async {
-                MainActor.assumeIsolated { views[key]?.view?.selectionMoved() }
+                MainActor.assumeIsolated { views[key]?.view?.owed.owe(.selection) }
             }
             return true
         case GHOSTTY_ACTION_SCROLLBAR:
             DispatchQueue.main.async {
-                MainActor.assumeIsolated {
-                    views[key]?.view?.selectionMoved()
-                    views[key]?.view?.syncScroll()
-                }
+                MainActor.assumeIsolated { views[key]?.view?.owed.owe([.selection, .scroll]) }
             }
             return true
         case GHOSTTY_ACTION_MOUSE_OVER_LINK:

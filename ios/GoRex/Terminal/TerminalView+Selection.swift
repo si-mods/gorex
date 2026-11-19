@@ -240,9 +240,17 @@ final class SelectionHandle: UIView {
     required init?(coder: NSCoder) { fatalError() }
 
     /// Stands the stem at a cell's top corner, a line high.
+    /// It draws again only when its size changes: a move keeps the drawing.
     func place(at p: CGPoint, height: CGFloat) {
         let k = Self.knob
-        frame = CGRect(x: p.x - k, y: start ? p.y - k : p.y, width: 2 * k, height: height + k)
+        let f = CGRect(x: p.x - k, y: start ? p.y - k : p.y, width: 2 * k, height: height + k)
+        let resized = f.size != frame.size
+        frame = f
+        if resized { setNeedsDisplay() }
+    }
+
+    override func tintColorDidChange() {
+        super.tintColorDidChange()
         setNeedsDisplay()
     }
 
