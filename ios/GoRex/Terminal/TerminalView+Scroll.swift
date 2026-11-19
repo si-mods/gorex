@@ -47,6 +47,14 @@ extension TerminalView: UIScrollViewDelegate {
         updateScrollState(at: scroller.contentOffset.y, end: end)
     }
 
+    /// Does what Ghostty's actions asked for since the last frame, once:
+    /// the handles first, as the scrollbar's action did them.
+    func payOwed() {
+        let k = owed.take()
+        if k.contains(.selection) { selectionMoved() }
+        if k.contains(.scroll) { syncScroll() }
+    }
+
     /// Slides again once Ghostty has drawn the output that came, which moves
     /// the cursor, a tick later: at most once a tick while output streams,
     /// and once more a tick after the last of it, which Ghostty may not have
@@ -60,6 +68,9 @@ extension TerminalView: UIScrollViewDelegate {
     /// spinner works. A need to come down that four ticks in a row ask for is
     /// where the program means to draw, and comes down then.
     func laterSlide() {
+        // With nothing over the grid, once a frame is drawn and the terminal
+        // rests at 0, a slide goes nowhere: none is owed.
+        if covered == 0, drawn, transform.ty == 0 { return }
         guard !slideWaits else { return slideAgain = true }
         slideWaits = true
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
