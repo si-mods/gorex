@@ -68,7 +68,7 @@ nonisolated final class CoalesceTests: XCTestCase {
     /// A paste drains in writes of at most 64 KiB, whole, in order, and what
     /// is held never grows past twice what still waits: the written bytes
     /// are not copied again on each write.
-    func testPendingBytesDrain() {
+    @MainActor func testPendingBytesDrain() {
         let text = String(repeating: "中\u{1}", count: 1_000_000)
         var p = PendingBytes()
         p += Data(text.utf8)
@@ -88,7 +88,7 @@ nonisolated final class CoalesceTests: XCTestCase {
     }
 
     /// A character cut off at the end waits, unless flushed, as Data's.
-    func testPendingBytesCutCharacter() {
+    @MainActor func testPendingBytesCutCharacter() {
         var p = PendingBytes()
         p += Data("ab中".utf8)
         p.removeFirst(1)

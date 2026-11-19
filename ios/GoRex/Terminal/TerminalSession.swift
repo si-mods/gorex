@@ -487,7 +487,7 @@ final class TerminalSession {
 /// write moves a cursor past what it took instead of copying the rest, and
 /// the bytes behind the cursor go once they are as many as those still
 /// waiting, so a paste of N bytes copies O(N) in all, not O(N²).
-nonisolated struct PendingBytes {
+struct PendingBytes {
     private var bytes = Data()
     private var at = 0
 
