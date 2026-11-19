@@ -156,12 +156,12 @@ func (a *App) hostHeader(c *ui.Context, k *colors, h *hostConn) {
 		a.askTeleport(dragged, h)
 	}
 	if dragged, over := ui.DragOver[*Tab](row); over && teleportsTo(dragged, h) {
-		row.Radius(pillRadius(hostHeaderH, 9)).Border(1.5, k.busy.Alpha(0.6))
+		row.Radius(pillRadius(hostHeaderH, radiusM)).Border(1.5, k.busy.Alpha(0.6))
 	}
 	row.ContextMenu(func(m *ui.Menu) { a.hostMenu(m, h) })
 	row.Children(func() {
-		ui.Text(c, strings.ToUpper(name)).FontSize(10.5).FontWeight(700).TextColor(k.textFaint).SingleLine().Ellipsis("…").Shrink(1).MinWidth(0)
-		dot := ui.Box(c).Size(6, 6).Radius(3).Shrink(0)
+		ui.Text(c, strings.ToUpper(name)).FontSize(fontCaption).FontWeight(700).TextColor(k.textFaint).SingleLine().Ellipsis("…").Shrink(1).MinWidth(0)
+		dot := ui.Box(c).Size(6, 6).Radius(capsule(6)).Shrink(0)
 		switch {
 		case !away:
 			dot.Background(k.textFaint)
@@ -175,7 +175,7 @@ func (a *App) hostHeader(c *ui.Context, k *colors, h *hostConn) {
 			dot.Role(ui.RoleImage).Label(label).Tooltip(label)
 		}
 		if away {
-			ui.Text(c, locales.ProjectsOfflineLabel()).FontSize(10.5).TextColor(k.textFaint).SingleLine().Shrink(0)
+			ui.Text(c, locales.ProjectsOfflineLabel()).FontSize(fontCaption).TextColor(k.textFaint).SingleLine().Shrink(0)
 		}
 		ui.Spacer(c)
 		if away {
@@ -241,7 +241,7 @@ func (a *App) projectRow(c *ui.Context, k *colors, w *Workspace, reserve float32
 	n := w.tabCount()
 	offline := w.offline()
 	row := ui.Row(c.Key("project-"+key)).Height(projectRowH).Shrink(0).Padding(0, 4, 0, sideLead).Gap(sideGap).AlignItems(ui.Center).
-		Radius(pillRadius(projectRowH, 9)).Cursor(ui.CursorPointer).Role(ui.RoleButton).Expanded(open).Label(name + spacedComma(workspaceDetail(w, a, n)))
+		Radius(pillRadius(projectRowH, radiusM)).Cursor(ui.CursorPointer).Role(ui.RoleButton).Expanded(open).Label(name + spacedComma(workspaceDetail(w, a, n)))
 	if anim := motion(c); anim != nil {
 		row.Transition(ui.ElementTransition{Animation: anim, Position: true, Enter: tabMotion, Exit: tabMotion})
 	}
@@ -287,7 +287,7 @@ func (a *App) projectRow(c *ui.Context, k *colors, w *Workspace, reserve float32
 		if shown {
 			weight = 600
 		}
-		ui.Text(c, name).FontSize(13).FontWeight(weight).TextColor(k.text.Alpha(0.85)).SingleLine().Ellipsis("…").Grow(1).MinWidth(0)
+		ui.Text(c, name).FontSize(fontBody).FontWeight(weight).TextColor(k.text.Alpha(0.85)).SingleLine().Ellipsis("…").Grow(1).MinWidth(0)
 		if s := a.st.status(w); needsUser(s) {
 			statusDot(c, k, s, 7).Label(statusTip(s))
 		}
@@ -298,7 +298,7 @@ func (a *App) projectRow(c *ui.Context, k *colors, w *Workspace, reserve float32
 			}
 			return
 		}
-		ui.Text(c, fmt.Sprint(n)).FontSize(11.5).TextColor(k.textFaint).Shrink(0).Padding(0, 6, 0, 0)
+		ui.Text(c, fmt.Sprint(n)).FontSize(fontFootnote).TextColor(k.textFaint).Shrink(0).Padding(0, 6, 0, 0)
 	})
 	if offline {
 		dimmed(row, 0.5)
@@ -336,7 +336,7 @@ func (a *App) projectRow(c *ui.Context, k *colors, w *Workspace, reserve float32
 
 // rowGap is the room between the sidebar's rows, so that two filled
 // ones, a hovered and the chosen, never touch.
-const rowGap = 3
+const rowGap = 4
 
 // The rows of the sidebar under a host's header, its projects', Older's
 // and their tabs', start at one leading edge: sideLead in, then the room
@@ -413,7 +413,7 @@ func (a *App) showWorkspaceTab(w *Workspace, i int) {
 // pointer. It reports whether it was clicked.
 func (a *App) foldRow(c *ui.Context, k *colors, key, label, count string, open bool, reserve float32) bool {
 	row := ui.Row(c.Key("fold-"+key)).Height(26).Shrink(0).Padding(0, 10, 0, sideLead).Gap(sideGap).AlignItems(ui.Center).
-		Radius(pillRadius(26, 9)).Cursor(ui.CursorPointer).Role(ui.RoleDisclosure).Expanded(open).Label(label)
+		Radius(pillRadius(26, radiusM)).Cursor(ui.CursorPointer).Role(ui.RoleDisclosure).Expanded(open).Label(label)
 	hovered := row.Hovered()
 	if hovered {
 		row.Background(hoverFace(k))
@@ -428,8 +428,8 @@ func (a *App) foldRow(c *ui.Context, k *colors, key, label, count string, open b
 				chevron.Rotate(-90)
 			}
 		})
-		ui.Text(c, label).FontSize(12.5).TextColor(k.textMuted).SingleLine().Grow(1).MinWidth(0)
-		ui.Text(c, count).FontSize(11.5).TextColor(k.textFaint).Shrink(0)
+		ui.Text(c, label).FontSize(fontCallout).TextColor(k.textMuted).SingleLine().Grow(1).MinWidth(0)
+		ui.Text(c, count).FontSize(fontFootnote).TextColor(k.textFaint).Shrink(0)
 	})
 	return row.Clicked()
 }
@@ -451,8 +451,8 @@ func (a *App) waitingRow(c *ui.Context, k *colors, h *hostConn, ad layout.Adopti
 		Role(ui.RoleText).Label(name + ", " + note).Tooltip(tipText)
 	row.Children(func() {
 		leadRoom(c, reserve, projectRowH).Children(func() { spaceSwatchMark(c, k, "", 9) })
-		ui.Text(c, name).FontSize(13).TextColor(k.text.Alpha(0.85)).SingleLine().Ellipsis("…").Shrink(1).MinWidth(0)
-		ui.Text(c, note).FontSize(11).TextColor(k.textFaint).SingleLine().Ellipsis("…").Grow(1).MinWidth(0).Padding(0, 0, 0, 6)
+		ui.Text(c, name).FontSize(fontBody).TextColor(k.text.Alpha(0.85)).SingleLine().Ellipsis("…").Shrink(1).MinWidth(0)
+		ui.Text(c, note).FontSize(fontCaption).TextColor(k.textFaint).SingleLine().Ellipsis("…").Grow(1).MinWidth(0).Padding(0, 0, 0, 6)
 	})
 	dimmed(row, 0.5)
 }

@@ -26,9 +26,9 @@ func textField(c *ui.Context, k *colors, value *string, size fieldSize) ui.Eleme
 	in := styledField(c, k, func(c *ui.Context) ui.Element { return ui.TextInput(c, value) }).PaddingY(0)
 	switch size {
 	case fieldCompact:
-		in.Height(22).FontSize(13).PaddingX(6)
+		in.Height(22).FontSize(fontBody).PaddingX(6)
 	default:
-		in.Height(28).FontSize(13).PaddingX(8)
+		in.Height(28).FontSize(fontBody).PaddingX(8)
 	}
 	return in
 }

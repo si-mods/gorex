@@ -490,9 +490,9 @@ func (a *App) fileDrop(c *ui.Context, k *colors, p *Pane, card, tv ui.Element) {
 	// What it says lets the drag through, to the terminal under it.
 	ui.Column(c.Key("file-drop")).Absolute().Top(0).Left(0).Right(0).Bottom(0).Justify(ui.Center).AlignItems(ui.Center).PassThrough().Children(func() {
 		const r = 12
-		frostPanel(ui.Row(c).Padding(8, 14).Radius(r).Shadow(0, 8, 24, 0, k.shadowFocused).MaxWidth(420).PassThrough(), k, r).
+		frostPanel(toastShadow(ui.Row(c).Padding(8, 14).Radius(r).MaxWidth(420).PassThrough(), k), k, r).
 			Children(func() {
-				ui.Text(c, label).FontSize(12.5).TextColor(k.text).PassThrough()
+				ui.Text(c, label).FontSize(fontCallout).TextColor(k.text).PassThrough()
 			})
 	})
 }
@@ -529,7 +529,8 @@ func (a *App) transfers(c *ui.Context, k *colors, p *Pane) {
 	}
 	r := concentric(a.cardR(), edge)
 	list := ui.Column(c.Key("transfers")).Absolute().Right(inset).Bottom(inset).Width(260).Padding(pad).Gap(2).
-		Radius(r).Shadow(0, 8, 24, 0, k.shadowFocused)
+		Radius(r)
+	toastShadow(list, k)
 	frostPanel(list, k, r)
 	anim := motion(c)
 	if anim != nil {
@@ -558,7 +559,7 @@ func (a *App) transfers(c *ui.Context, k *colors, p *Pane) {
 			}
 			row.Children(func() {
 				ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
-					ui.Text(c, x.name).FontSize(12.5).TextColor(k.text).SingleLine().Ellipsis("…").Grow(1).MinWidth(0)
+					ui.Text(c, x.name).FontSize(fontCallout).TextColor(k.text).SingleLine().Ellipsis("…").Grow(1).MinWidth(0)
 					if x.cancel != nil && !x.ok && !failed &&
 						iconButton(c, k, "x", locales.PaneTransferCancel(), 18, 11).Clicked() {
 						x.cancel()
@@ -568,7 +569,7 @@ func (a *App) transfers(c *ui.Context, k *colors, p *Pane) {
 				if !failed && !x.ok {
 					// The track is a pressed face of the panel's: k.track is
 					// the window background's, white on a light panel.
-					ui.Box(c).Height(3).Radius(1.5).Background(k.pressed).Draw(func(pt *ui.Painter, b ui.Rect) {
+					ui.Box(c).Height(3).Radius(capsule(3)).Background(k.pressed).Draw(func(pt *ui.Painter, b ui.Rect) {
 						// A download's size is not known before it begins.
 						if x.size > 0 {
 							b.W *= float32(x.done) / float32(x.size)
@@ -585,7 +586,7 @@ func (a *App) transfers(c *ui.Context, k *colors, p *Pane) {
 				case x.size == 0:
 					text = "…"
 				}
-				ui.Text(c, text).FontSize(11.5).TextColor(col).LineHeight(1.3)
+				ui.Text(c, text).FontSize(fontFootnote).TextColor(col).LineHeight(1.3)
 			})
 		}
 	})

@@ -57,7 +57,7 @@ func (a *App) askCloseWorkspace() {
 
 // popR and popPad are the workspace popover's radius and padding, which
 // its rows' corners are concentric with.
-const popR, popPad = 14, 6
+const popR, popPad = radiusXL, 6
 
 // workspaceDetail says of a workspace its n tabs, and when another window
 // than a's shows it.
@@ -129,11 +129,10 @@ func (a *App) workspaceConfirm(c *ui.Context, k *colors) {
 	was := a.wsConfirm
 	ui.DialogBase(c, &a.wsConfirm, func(backdrop, panel ui.Element) {
 		backdrop.Background(k.backdrop)
-		glassPanel(panel.Width(380).Padding(20).Radius(16), k.panel).Border(1, k.panelBorder).
-			Shadow(0, 24, 60, -8, ui.RGBA(0, 0, 0, 0.28)).Shadow(0, 2, 6, 0, ui.RGBA(0, 0, 0, 0.06)).Role(ui.RoleDialog).Label(locales.SessionCloseTitle(name))
+		dialogShadow(glassPanel(panel.Width(380).Padding(20).Radius(radiusXXL), k.panel).Border(1, k.panelBorder)).Role(ui.RoleDialog).Label(locales.SessionCloseTitle(name))
 		ui.Column(c).Gap(10).Children(func() {
-			ui.Text(c, locales.SessionCloseTitle(name)).FontSize(15).FontWeight(700).TextColor(k.text)
-			ui.Text(c, locales.SessionCloseBody(n)).FontSize(13).TextColor(k.textMuted).LineHeight(1.35)
+			ui.Text(c, locales.SessionCloseTitle(name)).FontSize(fontTitle).FontWeight(700).TextColor(k.text)
+			ui.Text(c, locales.SessionCloseBody(n)).FontSize(fontBody).TextColor(k.textMuted).LineHeight(1.35)
 			ui.Row(c).Gap(8).Justify(ui.End).Margin(8, 0, 0, 0).Children(func() {
 				if ui.Button(c, locales.SessionCancel()).Clicked() {
 					a.wsConfirm = false
@@ -155,7 +154,7 @@ func (a *App) workspaceConfirm(c *ui.Context, k *colors) {
 // dangerButton is a button that destroys: white on red, darker under the
 // pointer and pressed.
 func dangerButton(c *ui.Context, k *colors, label string) ui.Element {
-	b := ui.Row(c).Height(32).Padding(0, 14).Radius(8).AlignItems(ui.Center).Cursor(ui.CursorPointer).
+	b := ui.Row(c).Height(32).Padding(0, 14).Radius(radiusM).AlignItems(ui.Center).Cursor(ui.CursorPointer).
 		Role(ui.RoleButton).Label(label)
 	bg := k.danger
 	switch {
@@ -166,7 +165,7 @@ func dangerButton(c *ui.Context, k *colors, label string) ui.Element {
 	}
 	b.Background(bg).Transition(ui.ElementTransition{Colors: true, Duration: 120 * time.Millisecond})
 	b.Children(func() {
-		ui.Text(c, label).FontSize(13).FontWeight(600).TextColor(ui.Hex("#ffffff"))
+		ui.Text(c, label).FontSize(fontBody).FontWeight(600).TextColor(ui.Hex("#ffffff"))
 	})
 	return b
 }

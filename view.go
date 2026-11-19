@@ -856,7 +856,7 @@ func (a *App) paneCard(c *ui.Context, k *colors, t *Tab, p *Pane, held bool) ui.
 		} else {
 			top = 6
 		}
-		body := ui.Column(c).Grow(1).MinHeight(0).Padding(top, 5, 6, 5)
+		body := ui.Column(c).Grow(1).MinHeight(0).Padding(top, 6, 6, 6)
 		if held {
 			// A terminal that outgrows the body as the pane shrinks stays
 			// out of sight.
@@ -961,7 +961,7 @@ var findOpen = &ui.Motion{Collapse: true, Opacity: 0}
 // the buttons that step through the matches and close it.
 func (a *App) findBar(c *ui.Context, k *colors, p *Pane) ui.Element {
 	row := ui.Row(c.Key("find")).Height(30).Shrink(0).Padding(0, 8).Gap(6).AlignItems(ui.Center).
-		Background(k.hover).Radius(7)
+		Background(k.hover).Radius(radiusS)
 	// Not in a pane that moves, as fadeColors tells.
 	if anim := motion(c); anim != nil && fadeColors {
 		row.Transition(ui.ElementTransition{Animation: anim, Colors: true, Enter: findOpen})
@@ -991,7 +991,7 @@ func (a *App) findBar(c *ui.Context, k *colors, p *Pane) ui.Element {
 			return true
 		})
 		if count := a.findCount(); count != "" {
-			ui.Text(c.Key("count"), count).FontSize(11.5).TextColor(k.textMuted).Shrink(0)
+			ui.Text(c.Key("count"), count).FontSize(fontFootnote).TextColor(k.textMuted).Shrink(0)
 		}
 		if ui.Button(c.Key("prev"), "↑").Tooltip(locales.FindPrevious()).Clicked() {
 			a.findPrevious()
@@ -1023,7 +1023,7 @@ func (a *App) paneHeader(c *ui.Context, k *colors, t *Tab, p *Pane, focused, hov
 	}
 	name, detail := p.label()
 	prog := p.program()
-	h := ui.Row(c).Height(headerH).Padding(0, 8, 0, 12).Gap(7).AlignItems(ui.Center).MinWidth(0)
+	h := ui.Row(c).Height(headerH).Padding(0, 8, 0, 12).Gap(8).AlignItems(ui.Center).MinWidth(0)
 	h.ContextMenu(func(m *ui.Menu) { a.paneMenu(m, p) })
 	if f := p.float; f != nil {
 		a.dragFloat(c, f, h)
@@ -1049,7 +1049,7 @@ func (a *App) paneHeader(c *ui.Context, k *colors, t *Tab, p *Pane, focused, hov
 	}
 	h.Children(func() {
 		glyphIcon(c, prog.Glyph, 14.5, k.text)
-		ui.Row(c).Grow(1).MinWidth(0).Gap(5).AlignItems(ui.Center).ClipX().Children(func() {
+		ui.Row(c).Grow(1).MinWidth(0).Gap(6).AlignItems(ui.Center).ClipX().Children(func() {
 			ui.RichText(c, titleSpans(name, 12.5, 600, k.text)...).Label(name).SingleLine().Ellipsis("…").Shrink(0).MaxWidthPercent(80)
 			if detail != "" {
 				ui.RichText(c, titleSpans(detail, 12.5, 500, k.text.Alpha(0.86))...).Label(detail).SingleLine().Ellipsis("…").Shrink(1).MinWidth(0)
@@ -1134,7 +1134,7 @@ func (a *App) minimizedRail(c *ui.Context, k *colors, floats []*Float) {
 			}
 			name, _ := f.Pane.label()
 			label := locales.FloatRestore(name)
-			chip := ui.Row(c.Key(minimizedKey(f.Pane.ID))).Gap(6).Padding(4, 8).Radius(9).
+			chip := ui.Row(c.Key(minimizedKey(f.Pane.ID))).Gap(6).Padding(4, 8).Radius(radiusM).
 				AlignItems(ui.Center).Background(k.panel).Border(1, k.panelBorder).
 				Cursor(ui.CursorPointer).Role(ui.RoleButton).Label(label)
 			chip.Tooltip(label)
@@ -1143,7 +1143,7 @@ func (a *App) minimizedRail(c *ui.Context, k *colors, floats []*Float) {
 			}
 			chip.Children(func() {
 				glyphIcon(c, "square-terminal", 12, k.iconMuted)
-				ui.Text(c, name).FontSize(11.5).FontWeight(500).TextColor(k.text).
+				ui.Text(c, name).FontSize(fontFootnote).FontWeight(500).TextColor(k.text).
 					SingleLine().Ellipsis("…").MaxWidth(180)
 			})
 		}
@@ -1153,7 +1153,7 @@ func (a *App) minimizedRail(c *ui.Context, k *colors, floats []*Float) {
 // floatHandle is the row a float keeps when pane headers are off: a grip
 // that moves it, and its minimize, zoom and close buttons.
 func (a *App) floatHandle(c *ui.Context, k *colors, t *Tab, p *Pane, f *Float) {
-	h := ui.Row(c).Height(14).Shrink(0).Padding(0, 3, 0, 6).AlignItems(ui.Center).Cursor(ui.CursorMove)
+	h := ui.Row(c).Height(14).Shrink(0).Padding(0, 4, 0, 6).AlignItems(ui.Center).Cursor(ui.CursorMove)
 	a.dragFloat(c, f, h)
 	if h.Pressed() {
 		a.raiseFloat(f)
@@ -1242,7 +1242,7 @@ func (a *App) paneMenu(m *ui.Menu, p *Pane) {
 // to click. The row is posed faded while they hide, for the fade to start
 // from there.
 func (a *App) paneActions(c *ui.Context, k *colors, t *Tab, p *Pane, show bool) {
-	row := ui.Row(c).Gap(1).AlignItems(ui.Center)
+	row := ui.Row(c).Gap(2).AlignItems(ui.Center)
 	// The fade only paints, without building the view again.
 	anim := motion(c)
 	if !show {
@@ -1387,7 +1387,7 @@ func (a *App) browserHeader(c *ui.Context, k *colors, t *Tab, p *Pane, focused, 
 func (a *App) browserBody(c *ui.Context, k *colors, t *Tab, p *Pane) {
 	b := p.browser
 	if b.web == nil {
-		ui.Text(c, locales.BrowserUnavailable()).FontSize(13).TextColor(k.textFaint).Padding(12)
+		ui.Text(c, locales.BrowserUnavailable()).FontSize(fontBody).TextColor(k.textFaint).Padding(12)
 		return
 	}
 	wv := ui.WebView(c, b.web).Grow(1).MinHeight(0)
@@ -1419,7 +1419,7 @@ func (a *App) paneRename(c *ui.Context, k *colors) {
 		return
 	}
 	var in ui.Element
-	ui.Row(c).Height(headerH).Padding(0, 8, 0, 12).Gap(7).AlignItems(ui.Center).Children(func() {
+	ui.Row(c).Height(headerH).Padding(0, 8, 0, 12).Gap(8).AlignItems(ui.Center).Children(func() {
 		in = textField(c, k, &a.paneNameText, fieldCompact).Placeholder(p.labelName()).Grow(1).MinWidth(0).AutoFocus()
 	})
 	done := func(keep bool) {
@@ -1474,13 +1474,12 @@ func (a *App) reconnecting(c *ui.Context, k *colors, p *Pane) {
 		return
 	}
 	ui.Row(c).Absolute().Top(10).Left(0).Right(0).Justify(ui.Center).PassThrough().Children(func() {
-		ui.Row(c).Gap(10).Padding(8, 14, 8, 12).Radius(12).Background(k.panel).Border(1, k.panelBorder).
-			Shadow(0, 8, 24, 0, k.shadowFocused).AlignItems(ui.Center).MaxWidth(460).Label(title).Children(func() {
-			ui.Box(c).Size(8, 8).Radius(4).Background(k.attention).Shrink(0)
+		toastShadow(ui.Row(c).Gap(10).Padding(8, 14, 8, 12).Radius(radiusL).Background(k.panel).Border(1, k.panelBorder), k).AlignItems(ui.Center).MaxWidth(460).Label(title).Children(func() {
+			ui.Box(c).Size(8, 8).Radius(capsule(8)).Background(k.attention).Shrink(0)
 			ui.Column(c).Gap(2).MinWidth(0).Children(func() {
-				ui.Text(c, title).FontSize(12.5).FontWeight(600).TextColor(k.text)
+				ui.Text(c, title).FontSize(fontCallout).FontWeight(600).TextColor(k.text)
 				if detail != "" {
-					ui.Text(c, detail).FontSize(12).TextColor(k.textFaint).LineHeight(1.3)
+					ui.Text(c, detail).FontSize(fontSubhead).TextColor(k.textFaint).LineHeight(1.3)
 				}
 			})
 		})
@@ -1513,7 +1512,7 @@ var attentionPop = []ui.Keyframe{
 // tab's and its header's, at the same point of the pop, whenever it is
 // built, and none once it is over.
 func attentionDot(c *ui.Context, k *colors, panes ...*Pane) ui.Element {
-	dot := ui.Box(c).Size(7, 7).Radius(4).Background(k.attention)
+	dot := ui.Box(c).Size(7, 7).Radius(capsule(7)).Background(k.attention)
 	now := c.Now()
 	var at time.Time
 	for _, p := range panes {
@@ -1571,7 +1570,7 @@ func statusDot(c *ui.Context, k *colors, s *rex.ProgramStatus, size float32) ui.
 	if s.State == "error" {
 		col = k.danger
 	}
-	return ui.Box(c).Size(7, 7).Radius(4).Background(col).Shrink(0).Tooltip(statusTip(s))
+	return ui.Box(c).Size(7, 7).Radius(capsule(7)).Background(col).Shrink(0).Tooltip(statusTip(s))
 }
 
 // statusTip says what a record tells: the program, its state, why it
@@ -1677,14 +1676,13 @@ func (a *App) errorBanner(c *ui.Context, k *colors) {
 			banner.Transition(ui.ElementTransition{Animation: anim, Position: true, Enter: bannerMotion, Exit: bannerMotion})
 		}
 		banner.Children(func() {
-			ui.Row(c).Gap(10).Padding(8, 10, 8, 14).Radius(12).Background(k.panel).Border(1, k.panelBorder).
-				Shadow(0, 8, 24, 0, k.shadowFocused).AlignItems(ui.Center).Children(func() {
+			toastShadow(ui.Row(c).Gap(10).Padding(8, 10, 8, 14).Radius(radiusL).Background(k.panel).Border(1, k.panelBorder), k).AlignItems(ui.Center).Children(func() {
 				dot := k.danger
 				if n != nil && (n.wait || n.info) {
 					dot = k.busy
 				}
-				ui.Box(c).Size(8, 8).Radius(4).Background(dot)
-				ui.Text(c, a.errText()).FontSize(12.5).TextColor(k.text).MaxWidth(520)
+				ui.Box(c).Size(8, 8).Radius(capsule(8)).Background(dot)
+				ui.Text(c, a.errText()).FontSize(fontCallout).TextColor(k.text).MaxWidth(520)
 				button := func(key string, label func(locales.Messages) string, run func()) {
 					if label != nil && ui.Button(c.Key(key), say(label)).Clicked() {
 						a.clearNote()

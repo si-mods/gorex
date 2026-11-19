@@ -277,7 +277,7 @@ func (a *App) sidebar(c *ui.Context, k *colors, right bool) {
 			if iconButton(c, k, "settings-2", locales.SidebarSettings(), 30, 16).Tooltip(tip(locales.SidebarSettings(), &cmdSettings)).Clicked() {
 				a.openSettings()
 			}
-			np := ui.Row(c.Key("new-project")).Height(30).Padding(0, 8).Gap(7).Radius(pillRadius(30, 9)).AlignItems(ui.Center).Cursor(ui.CursorPointer).
+			np := ui.Row(c.Key("new-project")).Height(30).Padding(0, 8).Gap(8).Radius(pillRadius(30, radiusM)).AlignItems(ui.Center).Cursor(ui.CursorPointer).
 				Role(ui.RoleButton).Label(cmdNewProject.Title()).Tooltip(tip(cmdNewProject.Title(), &cmdNewProject)).Grow(1).MinWidth(0)
 			if np.Hovered() {
 				np.Background(hoverFace(k))
@@ -287,7 +287,7 @@ func (a *App) sidebar(c *ui.Context, k *colors, right bool) {
 			}
 			np.Children(func() {
 				glyphIcon(c, "folder-plus", 15, k.textMuted).Shrink(0)
-				ui.Text(c, cmdNewProject.Title()).FontSize(12.5).TextColor(k.textMuted).SingleLine().Ellipsis("…").MinWidth(0)
+				ui.Text(c, cmdNewProject.Title()).FontSize(fontCallout).TextColor(k.textMuted).SingleLine().Ellipsis("…").MinWidth(0)
 			})
 			a.hostButton(c, k)
 		})
@@ -336,7 +336,7 @@ func (a *App) sidebarTab(c *ui.Context, k *colors, i int, t *Tab, reserve float3
 	// Keyed by the tab's lasting ID, as spaceTab keys it: as the window
 	// goes to show another space, the rows of both stay, not close and
 	// open again.
-	e := ui.Row(c.Key("tab-"+t.UID)).Height(sideRowH).Shrink(0).Padding(0, 6, 0, sideLead).Gap(sideGap).AlignItems(ui.Center).Radius(pillRadius(sideRowH, 9)).
+	e := ui.Row(c.Key("tab-"+t.UID)).Height(sideRowH).Shrink(0).Padding(0, 6, 0, sideLead).Gap(sideGap).AlignItems(ui.Center).Radius(pillRadius(sideRowH, radiusM)).
 		Role(ui.RoleTab).Selected(active)
 	name, detail := t.label()
 	e.Label(name + " " + detail)
@@ -386,7 +386,7 @@ func (a *App) hostSectionIcon(c *ui.Context, k *colors, h *hostConn) {
 	box := ui.Box(c).Size(15, 15).Shrink(0).Children(func() {
 		glyphIcon(c, glyph, 15, k.textMuted)
 		if h != nil && h.state != hostConnected && h.state != hostConnecting {
-			ui.Box(c).Absolute().Right(-2).Bottom(-2).Size(7, 7).Radius(4).Background(hostDot(k, h))
+			ui.Box(c).Absolute().Right(-2).Bottom(-2).Size(7, 7).Radius(capsule(7)).Background(hostDot(k, h))
 		}
 	})
 	if h != nil {
@@ -399,7 +399,7 @@ func (a *App) hostSectionIcon(c *ui.Context, k *colors, h *hostConn) {
 // view: its tiles and its name, as the window's tabs show, but neither
 // chosen nor dragged. It reports whether it was clicked.
 func spaceTab(c *ui.Context, k *colors, key, name, detail string, reserve float32, tiles func()) bool {
-	e := ui.Row(c.Key("tab-"+key)).Height(sideRowH).Shrink(0).Padding(0, 6, 0, sideLead).Gap(sideGap).AlignItems(ui.Center).Radius(pillRadius(sideRowH, 9)).
+	e := ui.Row(c.Key("tab-"+key)).Height(sideRowH).Shrink(0).Padding(0, 6, 0, sideLead).Gap(sideGap).AlignItems(ui.Center).Radius(pillRadius(sideRowH, radiusM)).
 		Cursor(ui.CursorPointer).Role(ui.RoleButton).Label(name + " " + detail)
 	if anim := motion(c); anim != nil {
 		e.Transition(ui.ElementTransition{Animation: anim, Position: true, Enter: tabMotion, Exit: tabMotion})

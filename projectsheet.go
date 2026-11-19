@@ -331,13 +331,13 @@ func (a *App) projectSheetView(c *ui.Context, k *colors) {
 	ui.DialogBase(c.Key("project-sheet"), &s.open, func(backdrop, panel ui.Element) {
 		backdrop.Background(k.backdrop)
 		winW, winH := c.Size()
-		panel.Width(min(540, winW-24)).MaxHeight(winH - 24).Padding(20).Radius(16)
+		panel.Width(min(540, winW-24)).MaxHeight(winH - 24).Padding(20).Radius(radiusXXL)
 		sheetPanel(c, panel, k)
-		panel.Shadow(0, 24, 60, -8, ui.RGBA(0, 0, 0, 0.28)).Shadow(0, 2, 6, 0, ui.RGBA(0, 0, 0, 0.06)).Role(ui.RoleDialog).Label(title)
+		dialogShadow(panel).Role(ui.RoleDialog).Label(title)
 		// What does not fit a short window scrolls; the buttons stay.
 		ui.Scroll(c.Key("sheet-body")).MinHeight(0).Shrink(1).Children(func() {
 			ui.Column(c).Gap(8).Children(func() {
-				ui.Text(c, title).FontSize(15).FontWeight(700).TextColor(k.text).Margin(0, 0, 6, 0)
+				ui.Text(c, title).FontSize(fontTitle).FontWeight(700).TextColor(k.text).Margin(0, 0, 6, 0)
 				sheetLabel(c, k, locales.ProjectSheetHost())
 				a.sheetHosts(c, k)
 				sheetLabel(c, k, locales.ProjectSheetFolder())
@@ -389,7 +389,7 @@ func sheetPanel(c *ui.Context, panel ui.Element, k *colors) {
 
 // sheetLabel is the label over a part of the sheet.
 func sheetLabel(c *ui.Context, k *colors, text string) {
-	ui.Text(c, text).FontSize(12).FontWeight(600).TextColor(k.textMuted).Margin(4, 0, 0, 0)
+	ui.Text(c, text).FontSize(fontSubhead).FontWeight(600).TextColor(k.textMuted).Margin(4, 0, 0, 0)
 }
 
 // sheetChoice says, over the buttons, the folder Create or Use This Folder
@@ -412,7 +412,7 @@ func (a *App) sheetChoice(c *ui.Context, k *colors) {
 			return
 		}
 		glyphIcon(c, glyph, 14, k.textMuted).Shrink(0)
-		t := ui.Text(c, text).FontSize(12.5).TextColor(k.textMuted).SingleLine().TruncateMiddle().MinWidth(0)
+		t := ui.Text(c, text).FontSize(fontCallout).TextColor(k.textMuted).SingleLine().TruncateMiddle().MinWidth(0)
 		if dir != "" {
 			t.Tooltip(dir)
 		}
@@ -450,7 +450,7 @@ func (a *App) sheetHosts(c *ui.Context, k *colors) {
 				glyph = h.remoteGlyph()
 			}
 			chosen := a.sheet.host == h
-			b := ui.Row(c.Key("sheet-host-"+hostKey(h))).Height(28).Padding(0, 10).Gap(6).Radius(14).AlignItems(ui.Center).
+			b := ui.Row(c.Key("sheet-host-"+hostKey(h))).Height(28).Padding(0, 10).Gap(6).Radius(capsule(28)).AlignItems(ui.Center).
 				Role(ui.RoleRadio).Checked(chosen).Label(name).Border(1, k.panelBorder).Focusable()
 			switch {
 			case chosen:
@@ -470,7 +470,7 @@ func (a *App) sheetHosts(c *ui.Context, k *colors) {
 			}
 			b.Children(func() {
 				glyphIcon(c, glyph, 14, k.textMuted).Shrink(0)
-				ui.Text(c, name).FontSize(12.5).TextColor(k.text).SingleLine()
+				ui.Text(c, name).FontSize(fontCallout).TextColor(k.text).SingleLine()
 			})
 		}
 	})
@@ -505,7 +505,7 @@ func (a *App) sheetBrowser(c *ui.Context, k *colors, listH float32) {
 		}
 	})
 	a.sheetPath(c, k)
-	box := ui.Column(c.Key("folders")).Height(listH).Radius(10).Border(1, k.panelBorder).Clip().Focusable().Label(locales.ProjectSheetFolder())
+	box := ui.Column(c.Key("folders")).Height(listH).Radius(radiusM).Border(1, k.panelBorder).Clip().Focusable().Label(locales.ProjectSheetFolder())
 	if s.focusList {
 		box.Focus()
 		s.focusList = false
@@ -515,7 +515,7 @@ func (a *App) sheetBrowser(c *ui.Context, k *colors, listH float32) {
 	}
 	box.Children(func() {
 		say := func(text string) {
-			ui.Text(c, text).FontSize(12.5).TextColor(k.textMuted).Padding(12)
+			ui.Text(c, text).FontSize(fontCallout).TextColor(k.textMuted).Padding(12)
 		}
 		switch {
 		case s.host != nil && s.host.current() == nil:
@@ -540,14 +540,14 @@ func (a *App) sheetBrowser(c *ui.Context, k *colors, listH float32) {
 		reveal := s.reveal
 		s.reveal = false
 		ui.Scroll(c.Key("folder-list")).Grow(1).MinHeight(0).Padding(4).Children(func() {
-			ui.Column(c).Gap(1).Role(ui.RoleList).Label(locales.ProjectSheetFolder()).Children(func() {
+			ui.Column(c).Gap(2).Role(ui.RoleList).Label(locales.ProjectSheetFolder()).Children(func() {
 				glyph := "folder"
 				if win && r.Path == rex.DirTop {
 					glyph = "hard-drive"
 				}
 				for i, name := range r.Dirs {
 					sel := i == s.sel
-					row := ui.Row(c.Key("dir-"+name)).Height(28).Padding(0, 8).Gap(8).Radius(concentric(10, 5)).AlignItems(ui.Center).
+					row := ui.Row(c.Key("dir-"+name)).Height(28).Padding(0, 8).Gap(8).Radius(concentric(radiusM, 5)).AlignItems(ui.Center).
 						Cursor(ui.CursorPointer).Role(ui.RoleListItem).Label(name).Selected(sel)
 					switch {
 					case sel:
@@ -563,11 +563,11 @@ func (a *App) sheetBrowser(c *ui.Context, k *colors, listH float32) {
 					}
 					row.Children(func() {
 						glyphIcon(c, glyph, 15, k.textMuted).Shrink(0)
-						ui.Text(c, name).FontSize(13).TextColor(k.text).SingleLine().TruncateMiddle().MinWidth(0)
+						ui.Text(c, name).FontSize(fontBody).TextColor(k.text).SingleLine().TruncateMiddle().MinWidth(0)
 					})
 				}
 				if r.More {
-					ui.Text(c, locales.ProjectSheetMore(rex.DirListMax)).FontSize(11.5).TextColor(k.textMuted).Padding(6, 8)
+					ui.Text(c, locales.ProjectSheetMore(rex.DirListMax)).FontSize(fontFootnote).TextColor(k.textMuted).Padding(6, 8)
 				}
 			})
 		})
@@ -602,7 +602,7 @@ func (a *App) sheetPath(c *ui.Context, k *colors) {
 		in.TextColor(ui.Transparent)
 		// Over the field, where its text is: its padding and border.
 		ui.Row(c).Absolute().Left(9).Right(9).Top(0).Bottom(0).AlignItems(ui.Center).PassThrough().Children(func() {
-			ui.Text(c, s.path).FontSize(13).TextColor(k.text).SingleLine().TruncateStart().MinWidth(0)
+			ui.Text(c, s.path).FontSize(fontBody).TextColor(k.text).SingleLine().TruncateStart().MinWidth(0)
 		})
 	})
 }
@@ -617,7 +617,7 @@ const crumbGap = 11 + 2
 func (a *App) sheetCrumbs(c *ui.Context, k *colors) {
 	s := &a.sheet
 	r, win := s.res, s.windows()
-	row := ui.Row(c.Key("crumbs")).Grow(1).MinWidth(0).Gap(1).AlignItems(ui.Center).ClipX().Role(ui.RoleNavigation).Label(locales.ProjectSheetFolder())
+	row := ui.Row(c.Key("crumbs")).Grow(1).MinWidth(0).Gap(2).AlignItems(ui.Center).ClipX().Role(ui.RoleNavigation).Label(locales.ProjectSheetFolder())
 	room := row.Bounds().W
 	row.Children(func() {
 		if r.Path == "" {
@@ -651,7 +651,7 @@ func (a *App) sheetCrumbs(c *ui.Context, k *colors) {
 			}
 			if i < 0 {
 				hidden := hiddenCrumbs(shown, len(steps))
-				more := ui.Row(c.Key("crumb-more")).Height(24).Width(26).Radius(6).Center().Shrink(0).Cursor(ui.CursorPointer).
+				more := ui.Row(c.Key("crumb-more")).Height(24).Width(26).Radius(radiusS).Center().Shrink(0).Cursor(ui.CursorPointer).
 					Role(ui.RoleButton).Label(locales.ProjectSheetMoreFolders()).Tooltip(locales.ProjectSheetMoreFolders()).Focusable()
 				if more.Hovered() {
 					more.Background(k.hover)
@@ -667,7 +667,7 @@ func (a *App) sheetCrumbs(c *ui.Context, k *colors) {
 				continue
 			}
 			step, last := steps[i], i == len(steps)-1
-			e := ui.Row(c.Key("crumb-"+step.path)).Height(24).Padding(0, 5).Radius(6).AlignItems(ui.Center).
+			e := ui.Row(c.Key("crumb-"+step.path)).Height(24).Padding(0, 6).Radius(radiusS).AlignItems(ui.Center).
 				Role(ui.RoleButton).Label(step.path)
 			if !last {
 				e.Shrink(0).Cursor(ui.CursorPointer).Focusable()
@@ -682,7 +682,7 @@ func (a *App) sheetCrumbs(c *ui.Context, k *colors) {
 				e.Shrink(1).MinWidth(0)
 			}
 			e.Children(func() {
-				t := ui.Text(c, step.name).FontSize(12.5).SingleLine().MinWidth(0)
+				t := ui.Text(c, step.name).FontSize(fontCallout).SingleLine().MinWidth(0)
 				if last {
 					t.FontWeight(600).TextColor(k.text).TruncateMiddle()
 				} else {

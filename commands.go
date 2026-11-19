@@ -1390,8 +1390,10 @@ var (
 const paletteStagger = 8
 
 // paletteR and palettePad are the palette's radius and its list's
-// padding, which its rows' corners are concentric with.
-const paletteR, palettePad = 16, 6
+// padding, which its rows' corners are concentric with; paletteDrop is
+// how far below the title bar it opens.
+const paletteR, palettePad = radiusXXL, 6
+const paletteDrop = 78
 
 // palette draws the command palette, over the window.
 func (a *App) palette(c *ui.Context, k *colors) {
@@ -1437,12 +1439,12 @@ func (a *App) palette(c *ui.Context, k *colors) {
 	ui.DialogBase(c.Key("palette"), &a.paletteOpen, func(backdrop, panel ui.Element) {
 		// The backdrop dims the window; the glass is the panel's, which
 		// blurs only what it covers.
-		backdrop.Justify(ui.Start).Padding(78, 0, 0, 0).Background(k.backdrop)
+		backdrop.Justify(ui.Start).Padding(paletteDrop, 0, 0, 0).Background(k.backdrop)
 		// Under the glass setting the panel is Liquid Glass over the
 		// dimmed window, as the other floating layers are.
 		panel.Width(560).MaxHeight(440).Radius(paletteR)
 		frostPanel(panel, k, paletteR)
-		panel.Shadow(0, 24, 60, -8, ui.RGBA(0, 0, 0, 0.28)).Shadow(0, 2, 6, 0, ui.RGBA(0, 0, 0, 0.06)).Clip()
+		dialogShadow(panel).Clip()
 		if anim != nil {
 			backdrop.Transition(ui.ElementTransition{Duration: 150 * time.Millisecond, Colors: true, Enter: paletteFade, Exit: paletteFade})
 			pose := ui.Pose{}
@@ -1460,7 +1462,7 @@ func (a *App) palette(c *ui.Context, k *colors) {
 			case listNeeds:
 				placeholder = locales.NeedsPlaceholder()
 			}
-			in := ui.TextInputBase(c, &a.paletteQuery).Grow(1).FontSize(15).Placeholder(placeholder).AutoFocus()
+			in := ui.TextInputBase(c, &a.paletteQuery).Grow(1).FontSize(fontTitle).Placeholder(placeholder).AutoFocus()
 			if in.Changed() {
 				a.paletteSel, a.paletteSelID, reveal = 0, nil, true
 			}
@@ -1498,12 +1500,12 @@ func (a *App) palette(c *ui.Context, k *colors) {
 				if a.paletteList == listNeeds && strings.TrimSpace(a.paletteQuery) == "" {
 					text = locales.NeedsNothing()
 				}
-				ui.Text(c, text).FontSize(13).TextColor(k.textFaint).Padding(14)
+				ui.Text(c, text).FontSize(fontBody).TextColor(k.textFaint).Padding(14)
 			}
 			for i, it := range items {
 				if it.header {
 					ui.Row(c.Key(i)).Height(28).Padding(8, 10, 0, 10).AlignItems(ui.Center).Children(func() {
-						ui.Text(c, it.title).FontSize(11.5).FontWeight(600).TextColor(k.textFaint)
+						ui.Text(c, it.title).FontSize(fontFootnote).FontWeight(600).TextColor(k.textFaint)
 					})
 					continue
 				}
@@ -1535,7 +1537,7 @@ func (a *App) palette(c *ui.Context, k *colors) {
 				row.Children(func() {
 					glyphIcon(c, it.glyph, 15, k.textMuted)
 					if it.hasDot {
-						ui.Box(c).Size(8, 8).Radius(4).Background(it.dot).Shrink(0)
+						ui.Box(c).Size(8, 8).Radius(capsule(8)).Background(it.dot).Shrink(0)
 					}
 					// The title takes its width, the detail what is left.
 					ui.RichText(c, titleSpans(it.title, 13.5, 500, k.text)...).Label(it.title).SingleLine().Ellipsis("…").Shrink(0).MaxWidthPercent(70)
@@ -1553,13 +1555,13 @@ func (a *App) palette(c *ui.Context, k *colors) {
 						aside += when
 					}
 					if aside != "" {
-						ui.Text(c, aside).FontSize(12).TextColor(k.textFaint).SingleLine().Shrink(0)
+						ui.Text(c, aside).FontSize(fontSubhead).TextColor(k.textFaint).SingleLine().Shrink(0)
 					}
 					if s := it.status; s != nil && s.State != "idle" {
 						statusDot(c, k, s, 6)
 					}
 					if it.keys != "" {
-						ui.Text(c, it.keys).FontSize(12).TextColor(k.textFaint).Padding(2, 7).Radius(6).Background(k.hover).Shrink(0)
+						ui.Text(c, it.keys).FontSize(fontSubhead).TextColor(k.textFaint).Padding(2, 8).Radius(radiusS).Background(k.hover).Shrink(0)
 					}
 				})
 			}

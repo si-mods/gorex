@@ -385,7 +385,7 @@ func (a *App) hostsSettings(c *ui.Context, k *colors) {
 	settingsGroup(c, k, "", locales.HostsNote(), "", func() {
 		if len(a.hosts) == 0 {
 			groupRow(c, k, nil).Children(func() {
-				ui.Text(c, locales.HostsNone()).FontSize(13).TextColor(k.textFaint)
+				ui.Text(c, locales.HostsNone()).FontSize(fontBody).TextColor(k.textFaint)
 			})
 		}
 		for _, h := range a.hosts {
@@ -420,17 +420,17 @@ func (a *App) hostRow(c *ui.Context, k *colors, h *hostConn) {
 				if page.renaming == h.ID {
 					a.hostAliasField(c, k, h)
 				} else {
-					ui.Text(c, h.label()).FontSize(13).FontWeight(600).TextColor(k.text).SingleLine().Ellipsis("…")
+					ui.Text(c, h.label()).FontSize(fontBody).FontWeight(600).TextColor(k.text).SingleLine().Ellipsis("…")
 				}
 				ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
-					ui.Box(c).Size(7, 7).Radius(4).Background(hostDot(k, h)).Shrink(0)
-					ui.Text(c, label).FontSize(11.5).FontWeight(500).TextColor(k.textMuted)
+					ui.Box(c).Size(7, 7).Radius(capsule(7)).Background(hostDot(k, h)).Shrink(0)
+					ui.Text(c, label).FontSize(fontFootnote).FontWeight(500).TextColor(k.textMuted)
 					if up && h.hello.Host.Model != "" {
-						ui.Text(c, h.hello.Host.Model).FontSize(11.5).TextColor(k.textFaint).SingleLine().Ellipsis("…").MinWidth(0)
+						ui.Text(c, h.hello.Host.Model).FontSize(fontFootnote).TextColor(k.textFaint).SingleLine().Ellipsis("…").MinWidth(0)
 					}
 				})
 			})
-			ui.Text(c, locales.HostsSessions(sessions)).FontSize(11.5).TextColor(k.textFaint).Shrink(0)
+			ui.Text(c, locales.HostsSessions(sessions)).FontSize(fontFootnote).TextColor(k.textFaint).Shrink(0)
 			if up && ui.Button(c.Key("layout"), locales.HostsLayout()).Clicked() {
 				a.openHostLayout(h)
 			}
@@ -453,14 +453,14 @@ func (a *App) hostRow(c *ui.Context, k *colors, h *hostConn) {
 		})
 		// Said until the alias is typed again.
 		if page.renaming == h.ID && page.aliasTaken != "" && page.alias == page.aliasTaken {
-			ui.Text(c, locales.HostsNameTaken()).FontSize(12).TextColor(k.danger).LineHeight(1.3)
+			ui.Text(c, locales.HostsNameTaken()).FontSize(fontSubhead).TextColor(k.danger).LineHeight(1.3)
 		}
 		rowHint(c, k, detail)
 		if page.removing != h.ID {
 			return
 		}
-		ui.Column(c).Gap(8).Padding(8, 10).Radius(10).Background(k.hover).Children(func() {
-			ui.Text(c, locales.HostsRemoveAsk(h.label())).FontSize(12).TextColor(k.text).LineHeight(1.4)
+		ui.Column(c).Gap(8).Padding(8, 10).Radius(radiusM).Background(k.hover).Children(func() {
+			ui.Text(c, locales.HostsRemoveAsk(h.label())).FontSize(fontSubhead).TextColor(k.text).LineHeight(1.4)
 			ui.Row(c).Gap(8).Children(func() {
 				if ui.Button(c.Key("remove-yes"), locales.HostsRemove()).Clicked() {
 					page.removing = ""
@@ -581,12 +581,11 @@ func (a *App) hostLayoutSheet(c *ui.Context, k *colors) {
 	was := page.layoutOpen
 	ui.DialogBase(c, &page.layoutOpen, func(backdrop, panel ui.Element) {
 		backdrop.Background(k.backdrop)
-		glassPanel(panel.Width(620).MaxHeight(560).Padding(18).Gap(12).Radius(16), k.panel).Border(1, k.panelBorder).
-			Shadow(0, 24, 60, -8, ui.RGBA(0, 0, 0, 0.28)).Role(ui.RoleDialog).Label(locales.HostsLayoutTitle())
+		dialogShadow(glassPanel(panel.Width(620).MaxHeight(560).Padding(20).Gap(12).Radius(radiusXXL), k.panel).Border(1, k.panelBorder)).Role(ui.RoleDialog).Label(locales.HostsLayoutTitle())
 		ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
-			ui.Text(c, locales.HostsLayoutTitle()).FontSize(15).FontWeight(700).TextColor(k.text)
+			ui.Text(c, locales.HostsLayoutTitle()).FontSize(fontTitle).FontWeight(700).TextColor(k.text)
 			if page.layoutHost != nil {
-				ui.Text(c, page.layoutHost.label()).FontSize(12.5).TextColor(k.textFaint)
+				ui.Text(c, page.layoutHost.label()).FontSize(fontCallout).TextColor(k.textFaint)
 			}
 			ui.Spacer(c)
 			if page.layoutHost != nil && ui.Button(c, locales.HostsLayoutNewTab()).Clicked() {
@@ -597,29 +596,29 @@ func (a *App) hostLayoutSheet(c *ui.Context, k *colors) {
 			}
 		})
 		if page.layoutErr != "" {
-			ui.Text(c, page.layoutErr).FontSize(12.5).TextColor(k.danger).LineHeight(1.3)
+			ui.Text(c, page.layoutErr).FontSize(fontCallout).TextColor(k.danger).LineHeight(1.3)
 		}
 		if page.layoutLoading {
-			ui.Text(c, locales.HostsLayoutLoading()).FontSize(12.5).TextColor(k.textMuted)
+			ui.Text(c, locales.HostsLayoutLoading()).FontSize(fontCallout).TextColor(k.textMuted)
 		}
 		ui.Scroll(c).Grow(1).MinHeight(0).Children(func() {
 			ui.Column(c).Gap(10).Children(func() {
 				if len(page.layout.Sessions) == 0 && !page.layoutLoading && page.layoutErr == "" {
-					ui.Text(c, locales.HostsLayoutEmpty()).FontSize(12.5).TextColor(k.textFaint)
+					ui.Text(c, locales.HostsLayoutEmpty()).FontSize(fontCallout).TextColor(k.textFaint)
 				}
 				for _, w := range page.layout.Sessions {
 					ui.Column(c).Gap(4).Children(func() {
-						ui.Text(c, w.Name).FontSize(13).FontWeight(600).TextColor(k.text)
+						ui.Text(c, w.Name).FontSize(fontBody).FontWeight(600).TextColor(k.text)
 						for ti, t := range w.Tabs {
 							ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-								ui.Text(c, "  "+layoutTabName(t, ti)).FontSize(12.5).TextColor(k.textMuted).Grow(1).MinWidth(0)
+								ui.Text(c, "  "+layoutTabName(t, ti)).FontSize(fontCallout).TextColor(k.textMuted).Grow(1).MinWidth(0)
 								if sid := tabSID(t.Root); sid != "" && ui.Button(c.Key("close-tab-"+sid), locales.HostsLayoutCloseTab()).Clicked() {
 									a.hostLayoutCommand(page.layoutHost, rex.LayoutCommand{Op: "tab.close", SID: sid}, "")
 								}
 							})
 							lineRow := func(line layoutLine) {
 								ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-									ui.Text(c, line.text).Font(monoFamily()).FontSize(11.5).TextColor(k.textFaint).SingleLine().Ellipsis("…").Grow(1).MinWidth(0)
+									ui.Text(c, line.text).Font(monoFamily()).FontSize(fontFootnote).TextColor(k.textFaint).SingleLine().Ellipsis("…").Grow(1).MinWidth(0)
 									if line.sid != "" {
 										if ui.Button(c.Key("open-"+line.sid), locales.HostsLayoutOpen()).Clicked() {
 											a.openHostPane(page.layoutHost, line.sid)
@@ -831,19 +830,19 @@ func (a *App) foundHostRows(c *ui.Context, k *colors) {
 		return
 	}
 	ui.Column(c).Gap(6).Children(func() {
-		ui.Text(c, locales.HostsFound()).FontSize(12).FontWeight(600).TextColor(k.textMuted)
+		ui.Text(c, locales.HostsFound()).FontSize(fontSubhead).FontWeight(600).TextColor(k.textMuted)
 		for _, peer := range slices.Clone(found) {
 			saved := slices.ContainsFunc(a.hosts, func(h *hostConn) bool { return h.Address == peer.Target })
 			taken := !saved && nameTaken(peer.Name, nil, a.hosts)
 			ui.Row(c.Key("found-" + peer.Target)).Gap(8).AlignItems(ui.Center).Children(func() {
 				ui.Box(c).Size(16, 16).Shrink(0).Children(func() { glyphIcon(c, "server", 16, k.textMuted) })
 				ui.Column(c).Grow(1).MinWidth(0).Children(func() {
-					ui.Text(c, peer.Name).FontSize(12.5).FontWeight(500).TextColor(k.text).SingleLine().Ellipsis("…")
+					ui.Text(c, peer.Name).FontSize(fontCallout).FontWeight(500).TextColor(k.text).SingleLine().Ellipsis("…")
 					switch {
 					case saved:
-						ui.Text(c, locales.HostsAlreadySaved()).FontSize(11.5).TextColor(k.textFaint)
+						ui.Text(c, locales.HostsAlreadySaved()).FontSize(fontFootnote).TextColor(k.textFaint)
 					case taken:
-						ui.Text(c, locales.HostsNameTaken()).FontSize(11.5).TextColor(k.textFaint)
+						ui.Text(c, locales.HostsNameTaken()).FontSize(fontFootnote).TextColor(k.textFaint)
 					}
 				})
 				if saved || taken {
@@ -865,50 +864,49 @@ func (a *App) addHostSheet(c *ui.Context, k *colors) {
 	was := page.adding
 	ui.DialogBase(c, &page.adding, func(backdrop, panel ui.Element) {
 		backdrop.Background(k.backdrop)
-		glassPanel(panel.Width(440).Padding(18).Gap(12).Radius(16), k.panel).Border(1, k.panelBorder).
-			Shadow(0, 24, 60, -8, ui.RGBA(0, 0, 0, 0.28)).Role(ui.RoleDialog).Label(locales.HostsAddTitle())
-		ui.Text(c, locales.HostsAddTitle()).FontSize(15).FontWeight(700).TextColor(k.text)
+		dialogShadow(glassPanel(panel.Width(440).Padding(20).Gap(12).Radius(radiusXXL), k.panel).Border(1, k.panelBorder)).Role(ui.RoleDialog).Label(locales.HostsAddTitle())
+		ui.Text(c, locales.HostsAddTitle()).FontSize(fontTitle).FontWeight(700).TextColor(k.text)
 		switch page.stage {
 		case addConnecting:
 			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-				ui.Box(c).Size(7, 7).Radius(4).Background(k.attention)
-				ui.Text(c, locales.HostsConnectingTo(strings.TrimSpace(page.name))).FontSize(13).TextColor(k.textMuted)
+				ui.Box(c).Size(7, 7).Radius(capsule(7)).Background(k.attention)
+				ui.Text(c, locales.HostsConnectingTo(strings.TrimSpace(page.name))).FontSize(fontBody).TextColor(k.textMuted)
 			})
 		case addCode, addApproving:
 			host := strings.TrimSpace(page.name)
-			ui.Text(c, locales.HostsCodeIntro(host)).FontSize(13).TextColor(k.text).LineHeight(1.35)
-			ui.Column(c).Gap(4).Padding(12).Radius(10).Background(k.hover).AlignItems(ui.Center).Children(func() {
-				ui.Text(c, locales.HostsCode()).FontSize(11.5).FontWeight(600).TextColor(k.textFaint)
-				ui.Text(c, page.code).Font(monoFamily()).FontSize(32).FontWeight(700).TextColor(k.text).Label(page.code)
+			ui.Text(c, locales.HostsCodeIntro(host)).FontSize(fontBody).TextColor(k.text).LineHeight(1.35)
+			ui.Column(c).Gap(4).Padding(12).Radius(radiusM).Background(k.hover).AlignItems(ui.Center).Children(func() {
+				ui.Text(c, locales.HostsCode()).FontSize(fontFootnote).FontWeight(600).TextColor(k.textFaint)
+				ui.Text(c, page.code).Font(monoFamily()).FontSize(fontCode).FontWeight(700).TextColor(k.text).Label(page.code)
 			})
 			if page.stage == addApproving {
 				ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-					ui.Box(c).Size(7, 7).Radius(4).Background(k.attention)
-					ui.Text(c, locales.HostsWaiting()).FontSize(12.5).FontWeight(500).TextColor(k.textMuted)
+					ui.Box(c).Size(7, 7).Radius(capsule(7)).Background(k.attention)
+					ui.Text(c, locales.HostsWaiting()).FontSize(fontCallout).FontWeight(500).TextColor(k.textMuted)
 				})
-				ui.Text(c, locales.HostsCodeApprove(host)).FontSize(12).TextColor(k.textFaint).LineHeight(1.3)
+				ui.Text(c, locales.HostsCodeApprove(host)).FontSize(fontSubhead).TextColor(k.textFaint).LineHeight(1.3)
 			}
 		case addWaiting:
-			ui.Text(c, locales.HostsApprove(strings.TrimSpace(page.name))).FontSize(13).TextColor(k.text).LineHeight(1.35)
-			ui.Column(c).Gap(4).Padding(12).Radius(10).Background(k.hover).AlignItems(ui.Center).Children(func() {
-				ui.Text(c, locales.HostsFingerprint()).FontSize(11.5).FontWeight(600).TextColor(k.textFaint)
-				ui.Text(c, page.fingerprint).Font(monoFamily()).FontSize(22).FontWeight(700).TextColor(k.text).
+			ui.Text(c, locales.HostsApprove(strings.TrimSpace(page.name))).FontSize(fontBody).TextColor(k.text).LineHeight(1.35)
+			ui.Column(c).Gap(4).Padding(12).Radius(radiusM).Background(k.hover).AlignItems(ui.Center).Children(func() {
+				ui.Text(c, locales.HostsFingerprint()).FontSize(fontFootnote).FontWeight(600).TextColor(k.textFaint)
+				ui.Text(c, page.fingerprint).Font(monoFamily()).FontSize(fontCodeSmall).FontWeight(700).TextColor(k.text).
 					Label(locales.RemoteFingerprint(page.fingerprint))
 			})
 			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-				ui.Box(c).Size(7, 7).Radius(4).Background(k.attention)
-				ui.Text(c, locales.HostsWaiting()).FontSize(12.5).FontWeight(500).TextColor(k.textMuted)
+				ui.Box(c).Size(7, 7).Radius(capsule(7)).Background(k.attention)
+				ui.Text(c, locales.HostsWaiting()).FontSize(fontCallout).FontWeight(500).TextColor(k.textMuted)
 			})
-			ui.Text(c, locales.HostsApproveWhere()).FontSize(12).TextColor(k.textFaint).LineHeight(1.3)
+			ui.Text(c, locales.HostsApproveWhere()).FontSize(fontSubhead).TextColor(k.textFaint).LineHeight(1.3)
 			if page.note != nil {
-				ui.Text(c, page.note()).FontSize(12).TextColor(k.danger).LineHeight(1.3)
+				ui.Text(c, page.note()).FontSize(fontSubhead).TextColor(k.danger).LineHeight(1.3)
 			}
 		default:
-			ui.Text(c, locales.HostsAddNote()).FontSize(12).TextColor(k.textFaint).LineHeight(1.3)
+			ui.Text(c, locales.HostsAddNote()).FontSize(fontSubhead).TextColor(k.textFaint).LineHeight(1.3)
 			a.foundHostRows(c, k)
 			field := func(label string, input func() ui.Element) {
 				ui.Column(c).Gap(4).Children(func() {
-					ui.Text(c, label).FontSize(12).FontWeight(600).TextColor(k.textMuted)
+					ui.Text(c, label).FontSize(fontSubhead).FontWeight(600).TextColor(k.textMuted)
 					if input().Changed() {
 						page.formErr = nil
 					}
@@ -924,9 +922,9 @@ func (a *App) addHostSheet(c *ui.Context, k *colors) {
 			field(locales.HostsPairAs(), func() ui.Element {
 				return ui.TextInput(c.Key("pair-as"), &page.pairAs).Label(locales.HostsPairAs())
 			})
-			ui.Text(c, locales.HostsPairAsHint()).FontSize(12).TextColor(k.textFaint).Margin(-6, 0, 0, 0)
+			ui.Text(c, locales.HostsPairAsHint()).FontSize(fontSubhead).TextColor(k.textFaint).Margin(-6, 0, 0, 0)
 			if page.formErr != nil {
-				ui.Text(c, page.formErr()).FontSize(12).TextColor(k.danger).LineHeight(1.3)
+				ui.Text(c, page.formErr()).FontSize(fontSubhead).TextColor(k.danger).LineHeight(1.3)
 			}
 		}
 		ui.Row(c).Gap(8).Justify(ui.End).Padding(4, 0, 0, 0).Children(func() {

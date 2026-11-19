@@ -167,7 +167,7 @@ const (
 	settingsSidebarW = 220
 	settingsHeaderH  = 52
 	settingsPad      = 28
-	settingsGroupGap = 18
+	settingsGroupGap = 20
 	settingsHintW    = 560
 	settingsMaxW     = 720 // the settings column, at most
 )
@@ -285,7 +285,7 @@ func sectionTitle(id string) string {
 func (a *App) settingsTitleBar(c *ui.Context, k *colors) {
 	bar := c.TitleBar()
 	ui.Row(c).Height(settingsHeaderH).Shrink(0).Padding(0, max(bar.Right, 10), 0, settingsPad).Gap(14).AlignItems(ui.Center).DragWindow().Children(func() {
-		ui.Text(c, sectionTitle(settingsUI.section)).FontSize(15).FontWeight(700).TextColor(k.text).Grow(1).SingleLine().Ellipsis("…")
+		ui.Text(c, sectionTitle(settingsUI.section)).FontSize(fontTitle).FontWeight(700).TextColor(k.text).Grow(1).SingleLine().Ellipsis("…")
 		windowControls(c, k, settingsUI.win)
 	})
 }
@@ -297,7 +297,7 @@ const sidebarItemH = 32
 // active tab's face, and its icon and label in the accent.
 func (a *App) sidebarItem(c *ui.Context, k *colors, id, glyph string, tile ui.Color, label string) {
 	active := settingsUI.section == id
-	e := ui.Row(c.Key(id)).Height(sidebarItemH).Padding(0, 10).Gap(9).AlignItems(ui.Center).Radius(pillRadius(sidebarItemH, 10)).
+	e := ui.Row(c.Key(id)).Height(sidebarItemH).Padding(0, 10).Gap(10).AlignItems(ui.Center).Radius(pillRadius(sidebarItemH, radiusM)).
 		Cursor(ui.CursorPointer).Role(ui.RoleTab).Selected(active).Label(label)
 	if active {
 		glassPill(e, k, sidebarItemH)
@@ -315,10 +315,10 @@ func (a *App) sidebarItem(c *ui.Context, k *colors, id, glyph string, tile ui.Co
 	e.Children(func() {
 		// A white glyph on the section's color, whether it is chosen or
 		// not: the glass pill says which one is.
-		ui.Box(c).Size(22, 22).Radius(6).Background(tile).Center().Shrink(0).Children(func() {
+		ui.Box(c).Size(22, 22).Radius(radiusS).Background(tile).Center().Shrink(0).Children(func() {
 			glyphIcon(c, glyph, 14, ui.RGB(255, 255, 255))
 		})
-		ui.Text(c, label).FontSize(13).FontWeight(500).TextColor(text).SingleLine()
+		ui.Text(c, label).FontSize(fontBody).FontWeight(500).TextColor(text).SingleLine()
 	})
 }
 
@@ -351,7 +351,7 @@ func clientClosed(c *rex.Client) bool {
 func (a *App) serverCard(c *ui.Context, k *colors) {
 	label, dot, _ := a.serverState(k)
 	active := settingsUI.section == "server"
-	e := ui.Row(c.Key("server")).Gap(10).Padding(8, 10).Radius(14).AlignItems(ui.Center).Shrink(0).
+	e := ui.Row(c.Key("server")).Gap(10).Padding(8, 10).Radius(radiusXL).AlignItems(ui.Center).Shrink(0).
 		Cursor(ui.CursorPointer).Role(ui.RoleTab).Selected(active).Label(locales.SettingsServerCard()+", "+label).
 		Background(k.card).Border(1, k.cardBorder)
 	if active || e.Hovered() {
@@ -367,10 +367,10 @@ func (a *App) serverCard(c *ui.Context, k *colors) {
 	e.Children(func() {
 		ui.Image(c, appIcon()).Size(34, 34).Shrink(0)
 		ui.Column(c).Grow(1).MinWidth(0).Gap(2).Children(func() {
-			ui.Text(c, locales.SettingsServerCard()).FontSize(13).FontWeight(600).TextColor(k.text).SingleLine().Ellipsis("…")
+			ui.Text(c, locales.SettingsServerCard()).FontSize(fontBody).FontWeight(600).TextColor(k.text).SingleLine().Ellipsis("…")
 			ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
-				ui.Box(c).Size(7, 7).Radius(4).Background(dot).Shrink(0)
-				ui.Text(c, label).FontSize(11.5).TextColor(k.textFaint).SingleLine().Ellipsis("…").MinWidth(0)
+				ui.Box(c).Size(7, 7).Radius(capsule(7)).Background(dot).Shrink(0)
+				ui.Text(c, label).FontSize(fontFootnote).TextColor(k.textFaint).SingleLine().Ellipsis("…").MinWidth(0)
 			})
 		})
 	})
@@ -399,16 +399,16 @@ func (a *App) serverGroup(c *ui.Context, k *colors, name, glyph, sub, label stri
 	settingsGroup(c, k, "", "", locales.HostNote(), func() {
 		groupRow(c, k, nil).Children(func() {
 			ui.Row(c).Gap(12).AlignItems(ui.Center).Children(func() {
-				ui.Box(c).Size(44, 44).Radius(12).Background(k.hover).Center().Shrink(0).Children(func() {
+				ui.Box(c).Size(44, 44).Radius(radiusL).Background(k.hover).Center().Shrink(0).Children(func() {
 					glyphIcon(c, glyph, 26, k.text)
 				})
 				ui.Column(c).Grow(1).MinWidth(0).Gap(2).Children(func() {
-					ui.Text(c, name).FontSize(15).FontWeight(700).TextColor(k.text).SingleLine().Ellipsis("…")
-					ui.Text(c, sub).FontSize(12).TextColor(k.textFaint).SingleLine().Ellipsis("…")
+					ui.Text(c, name).FontSize(fontTitle).FontWeight(700).TextColor(k.text).SingleLine().Ellipsis("…")
+					ui.Text(c, sub).FontSize(fontSubhead).TextColor(k.textFaint).SingleLine().Ellipsis("…")
 				})
-				ui.Row(c).Gap(6).Padding(4, 10).Radius(12).AlignItems(ui.Center).Shrink(0).Background(dot.Alpha(0.14)).Children(func() {
-					ui.Box(c).Size(7, 7).Radius(4).Background(dot)
-					ui.Text(c, label).FontSize(12).FontWeight(600).TextColor(k.text).SingleLine()
+				ui.Row(c).Gap(6).Padding(4, 10).Radius(radiusL).AlignItems(ui.Center).Shrink(0).Background(dot.Alpha(0.14)).Children(func() {
+					ui.Box(c).Size(7, 7).Radius(capsule(7)).Background(dot)
+					ui.Text(c, label).FontSize(fontSubhead).FontWeight(600).TextColor(k.text).SingleLine()
 				})
 			})
 		})
@@ -430,8 +430,8 @@ func factRow(c *ui.Context, k *colors, label, value string) {
 	}
 	groupRow(c, k, label).Children(func() {
 		ui.Row(c).Gap(16).AlignItems(ui.Center).Children(func() {
-			ui.Text(c, label).FontSize(13).FontWeight(500).TextColor(k.text).Shrink(0)
-			ui.Text(c, value).FontSize(13).TextColor(k.textFaint).Grow(1).MinWidth(0).TextAlign(ui.End).SingleLine().Ellipsis("…").Selectable()
+			ui.Text(c, label).FontSize(fontBody).FontWeight(500).TextColor(k.text).Shrink(0)
+			ui.Text(c, value).FontSize(fontBody).TextColor(k.textFaint).Grow(1).MinWidth(0).TextAlign(ui.End).SingleLine().Ellipsis("…").Selectable()
 		})
 	})
 }
@@ -447,7 +447,7 @@ func settingsGroup(c *ui.Context, k *colors, label, note, foot string, body func
 		if label != "" || note != "" {
 			ui.Column(c).Gap(2).Padding(0, 14).Children(func() {
 				if label != "" {
-					ui.Text(c, label).FontSize(12).FontWeight(600).TextColor(k.text)
+					ui.Text(c, label).FontSize(fontSubhead).FontWeight(600).TextColor(k.text)
 				}
 				if note != "" {
 					rowHint(c, k, note)
@@ -458,11 +458,11 @@ func settingsGroup(c *ui.Context, k *colors, label, note, foot string, body func
 		groupRows = 0
 		ui.Column(c).Gap(2).Children(func() {
 			// A group has the face of the main window's terminals.
-			group := ui.Column(c).Radius(14).Clip().Border(1, k.cardBorder).Shadow(0, 1, 2, 0, k.shadow)
+			group := raisedShadow(ui.Column(c).Radius(radiusXL).Clip().Border(1, k.cardBorder), k)
 			terminalFace(c, k, group)
 			group.Children(body)
 			if foot != "" {
-				ui.Text(c, foot).FontSize(11.5).TextColor(k.textFaint).LineHeight(1.4).MaxWidth(settingsHintW).Padding(0, 14)
+				ui.Text(c, foot).FontSize(fontFootnote).TextColor(k.textFaint).LineHeight(1.4).MaxWidth(settingsHintW).Padding(0, 14)
 			}
 		})
 		groupRows = saved
@@ -479,14 +479,14 @@ func groupRow(c *ui.Context, k *colors, key any) ui.Element {
 	if key != nil {
 		c = c.Key(key)
 	}
-	return ui.Column(c).MinHeight(44).Padding(11, 14).Gap(4).Justify(ui.Center)
+	return ui.Column(c).MinHeight(44).Padding(12, 14).Gap(4).Justify(ui.Center)
 }
 
 // rowHint is the hint under a row's first line, across the row; nothing
 // when hint is "".
 func rowHint(c *ui.Context, k *colors, hint string) {
 	if hint != "" {
-		ui.Text(c, hint).FontSize(11.5).TextColor(k.textFaint).LineHeight(1.4).MaxWidth(settingsHintW)
+		ui.Text(c, hint).FontSize(fontFootnote).TextColor(k.textFaint).LineHeight(1.4).MaxWidth(settingsHintW)
 	}
 }
 
@@ -494,7 +494,7 @@ func rowHint(c *ui.Context, k *colors, hint string) {
 // at the right, centered on one line.
 func rowLine(c *ui.Context, k *colors, label string, control func()) {
 	ui.Row(c).Gap(16).AlignItems(ui.Center).Children(func() {
-		ui.Text(c, label).FontSize(13).FontWeight(500).TextColor(k.text).Grow(1).MinWidth(0)
+		ui.Text(c, label).FontSize(fontBody).FontWeight(500).TextColor(k.text).Grow(1).MinWidth(0)
 		if control != nil {
 			ui.Row(c).Gap(8).AlignItems(ui.Center).Shrink(0).Children(control)
 		}
@@ -562,7 +562,7 @@ func (a *App) appearanceText(c *ui.Context, k *colors) {
 	size := float64(termFont.Size)
 	hint := locales.SettingsTextSizeHint(float64(ghosttyRaw.fontSize(0)), float64(defaultFontSize))
 	settingRow(c, k, locales.SettingsTextSize(), hint, func() {
-		ui.Text(c, locales.SettingsTextSizeValue(size)).FontSize(13).TextColor(k.textMuted)
+		ui.Text(c, locales.SettingsTextSizeValue(size)).FontSize(fontBody).TextColor(k.textMuted)
 		if ui.Stepper(c, &size, 8, 32, 1).Label(locales.SettingsTextSize()).Changed() {
 			a.setFontSize(float32(size))
 		}
@@ -598,7 +598,7 @@ func (a *App) appearanceGlass(c *ui.Context, k *colors) {
 	})
 	opacity := float64(termOpacity())
 	settingRow(c, k, locales.SettingsTermOpacity(), locales.SettingsTermOpacityHint(), func() {
-		ui.Text(c, locales.SettingsTermOpacityValue(opacity)).FontSize(13).TextColor(k.textMuted)
+		ui.Text(c, locales.SettingsTermOpacityValue(opacity)).FontSize(fontBody).TextColor(k.textMuted)
 		if ui.StepSlider(c, &opacity, minTermOpacity, maxTermOpacity, 0.1).Label(locales.SettingsTermOpacity()).Width(160).Disabled(!glassy).Changed() {
 			a.setWindowPref(func(s *settings) { s.TermOpacity = float32(opacity) })
 		}
@@ -734,7 +734,7 @@ func (a *App) fontPreview(c *ui.Context, k *colors) {
 	if len(ghostty.Families) > 0 {
 		family = ghostty.Families[0]
 	}
-	ui.Column(c).Padding(12, 14).Radius(10).Gap(2).Background(th.Background).Border(1, k.cardBorder).Children(func() {
+	ui.Column(c).Padding(12, 14).Radius(radiusM).Gap(2).Background(th.Background).Border(1, k.cardBorder).Children(func() {
 		for _, line := range []string{"The quick brown fox jumps over the lazy dog", "0123456789 {}[]() => != <= ~/gorex $"} {
 			ui.Text(c, line).Font(family).FontSize(termFont.Size).TextColor(th.Foreground)
 		}
@@ -764,7 +764,7 @@ func (a *App) themeSettings(c *ui.Context, k *colors) {
 	// pick is a theme's card: a swatch of its colors, its name, and the
 	// ring of the chosen one.
 	pick := func(id, name, sub string, th *terminal.Theme, chosen bool, set string) {
-		card := ui.Column(c.Key(id)).Grow(1).Basis(0).MinWidth(0).Gap(6).Padding(5, 5, 8, 5).Radius(14).
+		card := ui.Column(c.Key(id)).Grow(1).Basis(0).MinWidth(0).Gap(6).Padding(6, 6, 8, 6).Radius(radiusXL).
 			Cursor(ui.CursorPointer).Role(ui.RoleButton).Selected(chosen).Label(name).
 			Background(k.card).Border(2, ui.Transparent)
 		if chosen {
@@ -776,23 +776,23 @@ func (a *App) themeSettings(c *ui.Context, k *colors) {
 			a.setPref(func(s *settings) { s.Theme = set })
 		}
 		card.Children(func() {
-			ui.Column(c).Height(76).Padding(10, 12).Gap(8).Radius(concentric(14, 2+5)).Background(th.Background).Border(1, k.cardBorder).Children(func() {
+			ui.Column(c).Height(76).Padding(10, 12).Gap(8).Radius(concentric(radiusXL, 2+6)).Background(th.Background).Border(1, k.cardBorder).Children(func() {
 				ui.Row(c).AlignItems(ui.Center).Children(func() {
-					ui.Text(c, "Aa").Font(monoFamily()).FontSize(15).FontWeight(700).TextColor(th.Foreground).Grow(1)
+					ui.Text(c, "Aa").Font(monoFamily()).FontSize(fontTitle).FontWeight(700).TextColor(th.Foreground).Grow(1)
 					if chosen {
 						glyphIcon(c, "check", 15, k.accent)
 					}
 				})
-				ui.Row(c).Gap(5).Children(func() {
+				ui.Row(c).Gap(6).Children(func() {
 					for _, i := range []int{1, 2, 4, 5} {
-						ui.Box(c).Size(12, 12).Radius(6).Background(th.Palette[i])
+						ui.Box(c).Size(12, 12).Radius(capsule(12)).Background(th.Palette[i])
 					}
 				})
 			})
-			ui.Column(c).Padding(0, 4).Gap(1).Children(func() {
-				ui.Text(c, name).FontSize(12.5).FontWeight(600).TextColor(k.text).SingleLine().Ellipsis("…")
+			ui.Column(c).Padding(0, 4).Gap(2).Children(func() {
+				ui.Text(c, name).FontSize(fontCallout).FontWeight(600).TextColor(k.text).SingleLine().Ellipsis("…")
 				if sub != "" {
-					ui.Text(c, sub).FontSize(11).TextColor(k.textFaint).SingleLine().Ellipsis("…")
+					ui.Text(c, sub).FontSize(fontCaption).TextColor(k.textFaint).SingleLine().Ellipsis("…")
 				}
 			})
 		})
@@ -832,7 +832,7 @@ func (a *App) themeSettings(c *ui.Context, k *colors) {
 		}
 	})
 	if len(names) > maxThemes {
-		ui.Text(c, locales.SettingsMoreThemes(len(names)-maxThemes)).FontSize(11.5).TextColor(k.textFaint).Padding(0, 14)
+		ui.Text(c, locales.SettingsMoreThemes(len(names)-maxThemes)).FontSize(fontFootnote).TextColor(k.textFaint).Padding(0, 14)
 	}
 }
 
@@ -875,7 +875,7 @@ func shortcutRows() []shortcutRow {
 func (a *App) keyboardSettings(c *ui.Context, k *colors) {
 	a.recordShortcut(c)
 	ui.Row(c).Gap(16).AlignItems(ui.Center).Padding(0, 0, 0, 14).Children(func() {
-		ui.Text(c, locales.SettingsKeyboardNote()).FontSize(11.5).TextColor(k.textFaint).LineHeight(1.4).Grow(1).MinWidth(0)
+		ui.Text(c, locales.SettingsKeyboardNote()).FontSize(fontFootnote).TextColor(k.textFaint).LineHeight(1.4).Grow(1).MinWidth(0)
 		resetAllButton(a, c)
 	})
 	if shortcutsUI.recording != nil {
@@ -887,17 +887,17 @@ func (a *App) keyboardSettings(c *ui.Context, k *colors) {
 					}
 				})
 				if shortcutsUI.err != "" {
-					ui.Text(c, shortcutsUI.err).FontSize(11.5).TextColor(k.danger).LineHeight(1.4)
+					ui.Text(c, shortcutsUI.err).FontSize(fontFootnote).TextColor(k.danger).LineHeight(1.4)
 				}
 			})
 		})
 	}
 	settingsGroup(c, k, "", "", "", func() {
 		for i, r := range shortcutRows() {
-			groupRow(c, k, i).MinHeight(40).Padding(7, 14).Children(func() {
+			groupRow(c, k, i).MinHeight(40).Padding(8, 14).Children(func() {
 				ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-					ui.Text(c, r.Title).FontSize(13).FontWeight(500).TextColor(k.text).Grow(1).MinWidth(0)
-					ui.Text(c, r.Keys).FontSize(12).TextColor(k.textMuted).Padding(2, 9).Radius(10).Background(k.hover).Shrink(0)
+					ui.Text(c, r.Title).FontSize(fontBody).FontWeight(500).TextColor(k.text).Grow(1).MinWidth(0)
+					ui.Text(c, r.Keys).FontSize(fontSubhead).TextColor(k.textMuted).Padding(2, 10).Radius(radiusM).Background(k.hover).Shrink(0)
 					if r.Command != nil {
 						if !blockedFromClient(r.Command.ID) && ui.Button(c.Key("change"), "Change").Clicked() {
 							a.startRecording(r.Command)
@@ -925,7 +925,7 @@ func (a *App) aboutSettings(c *ui.Context, k *colors) {
 					a.invokeCommand(&cmdUpdates, nil)
 				}
 			} else {
-				ui.Text(c, locales.SettingsUpdatesOff()).FontSize(11.5).TextColor(k.textFaint)
+				ui.Text(c, locales.SettingsUpdatesOff()).FontSize(fontFootnote).TextColor(k.textFaint)
 			}
 		})
 		settingRow(c, k, locales.SettingsFile(), settingsPath(), nil)

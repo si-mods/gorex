@@ -113,13 +113,13 @@ func tabWidth(c *ui.Context, t *Tab) float32 {
 
 // The badge of a remote host's tab: its text's size, and its widest.
 const (
-	badgeSize = 11
+	badgeSize = fontCaption
 	badgeMaxW = 90
 )
 
 // hostBadge names a tab's host, above, where tabs of every host mix.
 func hostBadge(c *ui.Context, k *colors, h *hostConn) {
-	ui.Text(c, h.label()).FontSize(badgeSize).FontWeight(600).TextColor(k.textMuted).Padding(1, 6).Radius(6).
+	ui.Text(c, h.label()).FontSize(badgeSize).FontWeight(600).TextColor(k.textMuted).Padding(2, 6).Radius(radiusS).
 		Background(k.hover).SingleLine().Ellipsis("…").MaxWidth(badgeMaxW + 12).Shrink(0)
 }
 
@@ -191,7 +191,7 @@ func (a *App) tabItem(c *ui.Context, k *colors, i int, t *Tab, width float32, sq
 		shrink = 1
 	}
 	e := ui.Row(c.Key(t.ID)).Height(tabH).Basis(width).Shrink(shrink).MinWidth(64).
-		Padding(0, 10, 0, 9).Gap(6).AlignItems(ui.Center).Radius(tabH / 2).Role(ui.RoleTab).Selected(active)
+		Padding(0, 10, 0, 10).Gap(6).AlignItems(ui.Center).Radius(tabH / 2).Role(ui.RoleTab).Selected(active)
 	name, detail := t.label()
 	e.Label(name + " " + detail)
 	if !active && e.Hovered() {
@@ -357,9 +357,9 @@ func (a *App) tabEnd(c *ui.Context, k *colors, t *Tab, hovered bool) {
 			a.later(c, func() { a.closeTab(t) })
 		}
 	} else if s := t.status(); needsUser(s) {
-		statusDot(c, k, s, 5.5).Margin(0, 5, 0, 0)
+		statusDot(c, k, s, 5.5).Margin(0, 6, 0, 0)
 	} else if t.attention() {
-		attentionDot(c, k, t.allPanes()...).Margin(0, 5, 0, 0)
+		attentionDot(c, k, t.allPanes()...).Margin(0, 6, 0, 0)
 	} else if s != nil && s.State == "working" {
 		statusDot(c, k, s, 5.5)
 	}

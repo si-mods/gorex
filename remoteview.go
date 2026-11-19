@@ -239,7 +239,7 @@ func (a *App) localAPI(c *ui.Context, k *colors) {
 	settingsGroup(c, k, locales.RemoteApiTitle(), "", locales.RemoteApiNote(), func() {
 		if settingsUI.apiErr != "" {
 			apiRow(c, k, locales.RemoteApiUrl(), false, func() {
-				ui.Text(c, locales.HostApiOff()).FontSize(11.5).TextColor(k.textFaint)
+				ui.Text(c, locales.HostApiOff()).FontSize(fontFootnote).TextColor(k.textFaint)
 			}, nil)
 		} else if settingsUI.apiLoaded {
 			factRow(c, k, locales.HostApiTitle(), locales.HostApiRevisions(info.APIRevision, info.ServerRevision, info.MinRevision))
@@ -251,7 +251,7 @@ func (a *App) localAPI(c *ui.Context, k *colors) {
 			}
 			if l.Primary {
 				apiRow(c, k, locales.RemoteApiUrl(), false, func() {
-					ui.Text(c, l.Endpoint).Font(monoFamily()).FontSize(11.5).TextColor(k.textFaint).SingleLine().Ellipsis("…").
+					ui.Text(c, l.Endpoint).Font(monoFamily()).FontSize(fontFootnote).TextColor(k.textFaint).SingleLine().Ellipsis("…").
 						Tooltip(l.Endpoint).Selectable()
 				}, func() {
 					if iconButton(c.Key("copy-api"), k, "copy", copyLabel("api"), 26, 15).Tooltip(copyLabel("api")).Clicked() {
@@ -270,7 +270,7 @@ func (a *App) localAPI(c *ui.Context, k *colors) {
 				case open:
 					statusLine(c, k, k.attention, label)
 				case label != "":
-					ui.Text(c, label).FontSize(11.5).TextColor(k.textFaint)
+					ui.Text(c, label).FontSize(fontFootnote).TextColor(k.textFaint)
 				}
 			}, nil)
 		}
@@ -348,13 +348,13 @@ func (a *App) lanRow(c *ui.Context, k *colors) {
 					}
 				}
 			})
-			ui.Text(c, locales.RemoteLanNetworks()).FontSize(13).FontWeight(500).TextColor(k.text)
+			ui.Text(c, locales.RemoteLanNetworks()).FontSize(fontBody).FontWeight(500).TextColor(k.text)
 			if len(conf.Allow) == 0 {
 				rowHint(c, k, locales.RemoteLanNoNetworks())
 			}
 			for _, n := range conf.Allow {
 				ui.Row(c.Key("net-" + n)).Gap(10).AlignItems(ui.Center).Children(func() {
-					ui.Text(c, n).Font(monoFamily()).FontSize(12.5).TextColor(k.text).Grow(1).MinWidth(0)
+					ui.Text(c, n).Font(monoFamily()).FontSize(fontCallout).TextColor(k.text).Grow(1).MinWidth(0)
 					if ui.Button(c.Key("rm"), locales.RemoteLanRemove()).Clicked() {
 						next := conf
 						next.Allow = slices.DeleteFunc(slices.Clone(conf.Allow), func(x string) bool { return x == n })
@@ -394,7 +394,7 @@ func apiRow(c *ui.Context, k *colors, title string, mono bool, under, control fu
 func apiLine(c *ui.Context, k *colors, title string, mono bool, under, control func()) {
 	ui.Row(c).Gap(12).AlignItems(ui.Center).Children(func() {
 		ui.Column(c).Grow(1).MinWidth(0).Gap(2).Children(func() {
-			t := ui.Text(c, title).FontSize(13).FontWeight(500).TextColor(k.text).SingleLine().Ellipsis("…")
+			t := ui.Text(c, title).FontSize(fontBody).FontWeight(500).TextColor(k.text).SingleLine().Ellipsis("…")
 			if mono {
 				t.Font(monoFamily()).Selectable()
 			}
@@ -628,13 +628,13 @@ func (a *App) copyAddress(direct bool) {
 
 // rowError says what went wrong, under a row's first line.
 func rowError(c *ui.Context, k *colors, msg string) {
-	ui.Text(c, msg).FontSize(11.5).TextColor(k.danger).LineHeight(1.4).MaxWidth(settingsHintW)
+	ui.Text(c, msg).FontSize(fontFootnote).TextColor(k.danger).LineHeight(1.4).MaxWidth(settingsHintW)
 }
 
 // remoteTile is the small grey tile of a row of the Remote page, with
 // its glyph.
 func remoteTile(c *ui.Context, k *colors, glyph string) {
-	ui.Box(c).Size(30, 30).Radius(8).Background(k.hover).Center().Shrink(0).Children(func() {
+	ui.Box(c).Size(30, 30).Radius(radiusM).Background(k.hover).Center().Shrink(0).Children(func() {
 		glyphIcon(c, glyph, 16, k.iconMuted)
 	})
 }
@@ -643,8 +643,8 @@ func remoteTile(c *ui.Context, k *colors, glyph string) {
 func statusLine(c *ui.Context, k *colors, dot ui.Color, label string) ui.Element {
 	var text ui.Element
 	ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
-		ui.Box(c).Size(7, 7).Radius(4).Background(dot).Shrink(0)
-		text = ui.Text(c, label).FontSize(11.5).FontWeight(500).TextColor(k.textMuted).MinWidth(0)
+		ui.Box(c).Size(7, 7).Radius(capsule(7)).Background(dot).Shrink(0)
+		text = ui.Text(c, label).FontSize(fontFootnote).FontWeight(500).TextColor(k.textMuted).MinWidth(0)
 	})
 	return text
 }
@@ -656,7 +656,7 @@ func tileLine(c *ui.Context, k *colors, glyph, title string, under, control func
 	ui.Row(c).Gap(12).AlignItems(ui.Center).Children(func() {
 		remoteTile(c, k, glyph)
 		ui.Column(c).Grow(1).MinWidth(0).Gap(2).Children(func() {
-			ui.Text(c, title).FontSize(13).FontWeight(500).TextColor(k.text).SingleLine().Ellipsis("…")
+			ui.Text(c, title).FontSize(fontBody).FontWeight(500).TextColor(k.text).SingleLine().Ellipsis("…")
 			if under != nil {
 				under()
 			}
@@ -687,7 +687,7 @@ func (a *App) remoteSettings(c *ui.Context, k *colors) {
 		if page.unreachable {
 			label, _, _ = remoteState(rex.RemoteStatus{}, true)
 		}
-		ui.Text(c, label).FontSize(12.5).TextColor(k.textFaint).Padding(0, 0, 0, 14)
+		ui.Text(c, label).FontSize(fontCallout).TextColor(k.textFaint).Padding(0, 0, 0, 14)
 		// The control server is the gateway's file, not the server's: it
 		// can be set, a bad one fixed, while the server does not answer.
 		settingsGroup(c, k, "", "", "", func() { a.remoteControlServer(c, k) })
@@ -759,11 +759,11 @@ func (a *App) remoteHeader(c *ui.Context, k *colors, st rex.RemoteStatus) {
 		on := st.Enabled && !page.unreachable
 		groupRow(c, k, nil).Children(func() {
 			ui.Row(c).Gap(12).AlignItems(ui.Center).Children(func() {
-				ui.Box(c).Size(40, 40).Radius(11).Background(k.accent).Center().Shrink(0).Children(func() {
+				ui.Box(c).Size(40, 40).Radius(radiusM).Background(k.accent).Center().Shrink(0).Children(func() {
 					glyphIcon(c, "globe", 22, ui.RGB(255, 255, 255))
 				})
-				ui.Column(c).Grow(1).MinWidth(0).Gap(3).Children(func() {
-					ui.Text(c, locales.RemoteConnect()).FontSize(15).FontWeight(600).TextColor(k.text)
+				ui.Column(c).Grow(1).MinWidth(0).Gap(4).Children(func() {
+					ui.Text(c, locales.RemoteConnect()).FontSize(fontTitle).FontWeight(600).TextColor(k.text)
 					statusLine(c, k, dot, label)
 				})
 				sw := ui.Switch(c.Key("allow"), &on).Label(locales.RemoteConnect()).Disabled(page.unreachable || page.busy)
@@ -830,7 +830,7 @@ func (a *App) remoteFirewall(c *ui.Context, k *colors, st rex.RemoteStatus) {
 		rowError(c, k, locales.RemoteFirewallBlockRule())
 	case "blocked":
 		ui.Row(c).Gap(16).AlignItems(ui.Center).Children(func() {
-			ui.Text(c, locales.RemoteFirewallBlocked(strconv.Itoa(rex.RemotePort))).FontSize(11.5).TextColor(k.danger).
+			ui.Text(c, locales.RemoteFirewallBlocked(strconv.Itoa(rex.RemotePort))).FontSize(fontFootnote).TextColor(k.danger).
 				LineHeight(1.4).Grow(1).MinWidth(0)
 			if ui.Button(c.Key("firewall-allow"), locales.RemoteFirewallAllow()).
 				Label(locales.RemoteReachableTitle() + ": " + locales.RemoteFirewallAllow()).Disabled(page.busy).Clicked() {
@@ -888,7 +888,7 @@ func (a *App) remoteDevices(c *ui.Context, k *colors, st rex.RemoteStatus) {
 		for _, p := range st.Pending {
 			groupRow(c, k, "pending:"+p.PublicKey).Children(func() {
 				tileLine(c, k, "laptop", p.Name, func() {
-					ui.Text(c, rex.Fingerprint(p.PublicKey)).Font(monoFamily()).FontSize(11.5).TextColor(k.textMuted).SingleLine().
+					ui.Text(c, rex.Fingerprint(p.PublicKey)).Font(monoFamily()).FontSize(fontFootnote).TextColor(k.textMuted).SingleLine().
 						Ellipsis("…").Tooltip(p.PublicKey)
 				}, func() {
 					if ui.Button(c.Key("r"), locales.RemoteReject()).Disabled(page.busy).Clicked() {
@@ -909,7 +909,7 @@ func (a *App) remoteDevices(c *ui.Context, k *colors, st rex.RemoteStatus) {
 		groupRow(c, k, nil).Children(func() {
 			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 				if !st.Enabled {
-					ui.Text(c, locales.RemotePairTurnOn()).FontSize(13).TextColor(k.textFaint).Grow(1).MinWidth(0)
+					ui.Text(c, locales.RemotePairTurnOn()).FontSize(fontBody).TextColor(k.textFaint).Grow(1).MinWidth(0)
 				} else {
 					ui.Spacer(c)
 				}
@@ -938,7 +938,7 @@ func (a *App) remoteClients(c *ui.Context, k *colors, st rex.RemoteStatus) {
 	page := &remoteUI
 	if len(st.Allowed) == 0 {
 		groupRow(c, k, nil).Children(func() {
-			ui.Text(c, locales.RemoteNoClients()).FontSize(13).TextColor(k.textFaint)
+			ui.Text(c, locales.RemoteNoClients()).FontSize(fontBody).TextColor(k.textFaint)
 		})
 	}
 	for _, client := range st.Allowed {
@@ -948,11 +948,11 @@ func (a *App) remoteClients(c *ui.Context, k *colors, st rex.RemoteStatus) {
 		}
 		row.Children(func() {
 			tileLine(c, k, "laptop", client.Name, func() {
-				ui.Text(c, shortKey(client.PublicKey)).Font(monoFamily()).FontSize(11.5).TextColor(k.textFaint).SingleLine().
+				ui.Text(c, shortKey(client.PublicKey)).Font(monoFamily()).FontSize(fontFootnote).TextColor(k.textFaint).SingleLine().
 					Tooltip(client.PublicKey)
 				if !client.LastSeen.IsZero() {
 					when, _ := ago(client.LastSeen, c.Now())
-					ui.Text(c, locales.RemoteLastSeen(when)).FontSize(11.5).TextColor(k.textFaint).SingleLine()
+					ui.Text(c, locales.RemoteLastSeen(when)).FontSize(fontFootnote).TextColor(k.textFaint).SingleLine()
 				}
 			}, func() {
 				if iconButton(c.Key("c"), k, "copy", locales.RemoteCopyKey(), 26, 15).Tooltip(locales.RemoteCopyKeyTip()).Clicked() {
@@ -974,7 +974,7 @@ func (a *App) pendingByAddress(c *ui.Context, k *colors, p rex.RemoteAddrPending
 	page := &remoteUI
 	groupRow(c, k, "pending-addr:"+p.Code).Gap(8).Children(func() {
 		tileLine(c, k, "laptop", p.Name, func() {
-			ui.Text(c, locales.RemotePairAddrFrom(p.Source)).Font(monoFamily()).FontSize(11.5).TextColor(k.textMuted).SingleLine().Ellipsis("…")
+			ui.Text(c, locales.RemotePairAddrFrom(p.Source)).Font(monoFamily()).FontSize(fontFootnote).TextColor(k.textMuted).SingleLine().Ellipsis("…")
 		}, func() {
 			if ui.Button(c.Key("r"), locales.RemoteReject()).Disabled(page.busy).Clicked() {
 				a.remoteDo(func(srv *rex.Client) error { return srv.RejectPairingCode(p.Code) }, nil)
@@ -983,7 +983,7 @@ func (a *App) pendingByAddress(c *ui.Context, k *colors, p rex.RemoteAddrPending
 				a.remoteDo(func(srv *rex.Client) error { return srv.ApprovePairingCode(p.Code) }, nil)
 			}
 		})
-		ui.Text(c, p.Code).Font(monoFamily()).FontSize(28).FontWeight(700).TextColor(k.text).Label(p.Code)
+		ui.Text(c, p.Code).Font(monoFamily()).FontSize(fontCode).FontWeight(700).TextColor(k.text).Label(p.Code)
 		if many {
 			rowHint(c, k, locales.RemotePairAddrMany())
 		} else {
@@ -997,7 +997,7 @@ func (a *App) pendingByAddress(c *ui.Context, k *colors, p rex.RemoteAddrPending
 func (a *App) addByKey(c *ui.Context, k *colors, st rex.RemoteStatus) {
 	page := &remoteUI
 	groupRow(c, k, nil).Gap(8).Children(func() {
-		ui.Text(c, locales.RemoteAddByKey()).FontSize(13).FontWeight(500).TextColor(k.text)
+		ui.Text(c, locales.RemoteAddByKey()).FontSize(fontBody).FontWeight(500).TextColor(k.text)
 		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 			if ui.TextInput(c.Key("name"), &page.name).Placeholder(locales.RemoteNamePlaceholder()).Label(locales.RemoteNameLabel()).Width(150).Shrink(0).Changed() {
 				page.addErr = false
@@ -1042,7 +1042,7 @@ func (a *App) remoteDetails(c *ui.Context, k *colors, st rex.RemoteStatus) {
 	}
 	row.Children(func() {
 		ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
-			ui.Text(c, label).FontSize(13).FontWeight(500).TextColor(k.accent)
+			ui.Text(c, label).FontSize(fontBody).FontWeight(500).TextColor(k.accent)
 			chevron := glyphIcon(c.Key("chevron"), "chevron-down", 11, k.accent).Shrink(0)
 			turn := float32(-90)
 			if page.details {
@@ -1092,15 +1092,15 @@ func (a *App) remoteDetails(c *ui.Context, k *colors, st rex.RemoteStatus) {
 	groupRow(c, k, nil).Children(func() {
 		ui.Row(c).Gap(16).AlignItems(ui.Center).Children(func() {
 			ui.Column(c).Grow(1).MinWidth(0).Gap(2).Children(func() {
-				ui.Text(c, locales.RemoteMyKey()).FontSize(13).FontWeight(500).TextColor(k.text)
+				ui.Text(c, locales.RemoteMyKey()).FontSize(fontBody).FontWeight(500).TextColor(k.text)
 				if page.myKey == "" {
-					ui.Text(c, locales.RemoteNoKey()).FontSize(11.5).TextColor(k.textFaint)
+					ui.Text(c, locales.RemoteNoKey()).FontSize(fontFootnote).TextColor(k.textFaint)
 					return
 				}
 				if fp := rex.Fingerprint(page.myKey); fp != "" {
-					ui.Text(c, locales.RemoteFingerprint(fp)).Font(monoFamily()).FontSize(12).TextColor(k.textMuted)
+					ui.Text(c, locales.RemoteFingerprint(fp)).Font(monoFamily()).FontSize(fontSubhead).TextColor(k.textMuted)
 				}
-				ui.Text(c, page.myKey).Font(monoFamily()).FontSize(10.5).TextColor(k.textFaint).LineHeight(1.4).Selectable()
+				ui.Text(c, page.myKey).Font(monoFamily()).FontSize(fontCaption).TextColor(k.textFaint).LineHeight(1.4).Selectable()
 			})
 			ui.Row(c).Gap(8).Shrink(0).Children(func() {
 				// Rex pairs by this machine's QR code; until an address
@@ -1142,8 +1142,8 @@ func (a *App) remoteAddress(c *ui.Context, k *colors, direct bool) {
 		}
 		ui.Row(c).Gap(16).AlignItems(ui.Center).Children(func() {
 			ui.Column(c).Grow(1).MinWidth(0).Gap(2).Children(func() {
-				ui.Text(c, title).FontSize(13).FontWeight(500).TextColor(k.text)
-				ui.Text(c, shown).Font(monoFamily()).FontSize(12).TextColor(k.textMuted).LineHeight(1.4)
+				ui.Text(c, title).FontSize(fontBody).FontWeight(500).TextColor(k.text)
+				ui.Text(c, shown).Font(monoFamily()).FontSize(fontSubhead).TextColor(k.textMuted).LineHeight(1.4)
 			})
 			if asking {
 				return
@@ -1170,7 +1170,7 @@ func (a *App) remoteAddress(c *ui.Context, k *colors, direct bool) {
 			return
 		}
 		ui.Text(c, locales.RemoteRegenerateNote()).
-			FontSize(12).TextColor(k.text).LineHeight(1.4).MaxWidth(settingsHintW)
+			FontSize(fontSubhead).TextColor(k.text).LineHeight(1.4).MaxWidth(settingsHintW)
 		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 			if ui.Button(c, locales.RemoteRegenerate()).Disabled(page.busy).Clicked() {
 				page.confirm, page.reveal, page.st.Address, page.st.ReachableAddress = false, false, "", ""

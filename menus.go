@@ -51,10 +51,9 @@ func menuStyleOf(k *colors, dark bool) *ui.MenuStyle {
 	}
 	m := &ui.MenuStyle{
 		Panel: func(panel ui.Element, level int) {
-			glassPanel(panel.Radius(12).Padding(5), k.panel).Border(1, k.panelBorder).
-				Shadow(0, 12, 32, 0, k.shadowFocused)
+			popoverShadow(glassPanel(panel.Radius(radiusL).Padding(6), k.panel).Border(1, k.panelBorder), k)
 		},
-		RowHeight: 24, RowRadius: concentric(12, 1+5), RowPadding: 10,
+		RowHeight: 24, RowRadius: concentric(radiusL, 6), RowPadding: 10,
 		Highlight: k.accent, HighlightText: accentText(dark),
 		Separator: k.panelBorder,
 		TextSize:  13,

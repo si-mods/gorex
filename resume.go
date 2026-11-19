@@ -117,11 +117,11 @@ func (a *App) runResume(p *Pane, cmd string) {
 func (a *App) resumeBar(c *ui.Context, k *colors, p *Pane) ui.Element {
 	h := p.resume
 	row := ui.Row(c.Key("resume")).Height(30).Shrink(0).Padding(0, 8).Gap(8).AlignItems(ui.Center).
-		Background(k.hover).Radius(7)
+		Background(k.hover).Radius(radiusS)
 	row.Children(func() {
-		ui.Text(c.Key("what"), locales.ResumeLastRun()).FontSize(12).TextColor(k.textMuted).
+		ui.Text(c.Key("what"), locales.ResumeLastRun()).FontSize(fontSubhead).TextColor(k.textMuted).
 			Shrink(0).SingleLine()
-		ui.Text(c.Key("cmd"), h.cmd).Font(monoFamily()).FontSize(11.5).TextColor(k.text.Alpha(0.8)).
+		ui.Text(c.Key("cmd"), h.cmd).Font(monoFamily()).FontSize(fontFootnote).TextColor(k.text.Alpha(0.8)).
 			Grow(1).Shrink(1).MinWidth(0).SingleLine().Ellipsis("…").Tooltip(h.cmd)
 		if h.cont != "" {
 			if ui.Button(c.Key("continue"), locales.ResumeContinue()).Tooltip(locales.ResumeContinueTip()).Clicked() {

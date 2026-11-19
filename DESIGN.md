@@ -6,6 +6,34 @@ build a new surface, overlay or visual state. GoRex's own drawn UI
 window or page reuses its colors, cards, title bar and selected states, not
 stock MyGo widgets.
 
+## Layers
+
+GoRex's design system has five layers. Each one is built from the one
+before it, and a change starts at the lowest layer it touches.
+
+| Layer | What it holds | Where |
+|---|---|---|
+| 1. Colors | Every color, in a light and a dark set | `style.go`, `colors` ([Colors](#colors)) |
+| 2. Styles | Type sizes, spacing, corners, shadows, glass, shaders | `tokens.go`, `glass.go`, `frost.go`, `dim.go` ([Type](#type), [Spacing](#spacing), [Corners](#corners), [Shadows](#shadows)) |
+| 3. Components | A control drawn the same way everywhere: a row, a field, a dot | [Components](#components) |
+| 4. Patterns | The smallest unit that does a user's task: a dialog, a menu, a toast | [Patterns](#patterns) |
+| 5. Decisions | Which of the above to use, and when not to | [Decisions](#decisions), and each section's "Where not" rules |
+
+A value in UI code comes from a layer, not from a literal: a color from
+`colors`, a type size, a radius or a shadow from `tokens.go`. Spacing is
+the one literal allowed, on the grid ([Spacing](#spacing)).
+`TestDesignTokens` (`tokens_test.go`) reads the root package's source
+and fails on a literal outside these rules.
+
+## Colors
+
+`colors` in `style.go` holds every color of GoRex's own UI, once in
+`lightColors` and once in `darkColors`; `colorsOf(c)` picks the set. A
+new color is a new field in both sets, named by its role (`panelSel`,
+`attention`), not by its hue. Brand marks and program colors
+(`programs.go`) and the user's own colors (workspace colors, terminal
+themes) are data, not part of this set.
+
 ## Shaders
 
 GoRex draws its glass, its window background and its inactive controls
@@ -152,7 +180,117 @@ system"), and no radius is picked on its own:
   27's) elsewhere and where macOS reports 0, as in full screen: Windows
   and Linux keep their panes' rounding (`cardR` 8) in every window state.
 - **Fixed**, a radius of its own: what sits away from any corner, as a
-  toast, a badge or a button in a dialog's padding.
+  toast, a badge or a button in a dialog's padding. A fixed radius is one
+  of five (`tokens.go`):
+
+  | Token | Radius | Use it for |
+  |---|---|---|
+  | `radiusS` | 6 | Key caps, badges, breadcrumb steps, icon tiles up to 24 |
+  | `radiusM` | 10 | Icon tiles from 30 to 40, buttons GoRex draws, cards inside a panel, lists in a sheet, the radius of a row with the glass setting off (`pillRadius`) |
+  | `radiusL` | 12 | Menus, toasts and banners, icon tiles from 44 |
+  | `radiusXL` | 14 | Popovers, Settings groups and cards |
+  | `radiusXXL` | 16 | Dialogs and sheets |
+
+- **A circle is a capsule.** A dot, a swatch or a round mark takes
+  `capsule(h)`, half its height, not a radius picked to look round.
+
+## Type
+
+GoRex's UI text takes one of eight sizes (`tokens.go`). The ramp
+follows macOS's, with two half steps that GoRex's dense rows use. A
+new size is a change to this table, not a literal.
+
+| Token | Size | Use it for |
+|---|---|---|
+| `fontCaption` | 11 | Sidebar section headers (upper case), notes beside a row, badges |
+| `fontFootnote` | 11.5 | Secondary lines under a title, host details, hints |
+| `fontSubhead` | 12 | Asides and key hints in the palette and menus, group headers |
+| `fontCallout` | 12.5 | Label and value rows in cards and popovers |
+| `fontBody` | 13 | Body text, rows, buttons, text fields |
+| `fontTitle` | 15 | Dialog and popover titles, the palette's input |
+| `fontCodeSmall` | 22 | A fingerprint shown to be compared |
+| `fontCode` | 28 | A pairing code shown to be typed |
+
+- **Weight carries the hierarchy within a size.** A title is 600 or
+  700, a label 500, the rest the regular weight; do not step a size up
+  to stand out.
+- **Terminal text is not on the ramp.** The terminal's font size
+  (`termFont.Size`) is the user's, and what follows it (the tab badge's
+  `badgeSize`, sizes relative to `termFont.Size`) keeps its own rule.
+
+## Spacing
+
+Spacing (`Gap`, `Padding`, `Margin`) is on a 2px grid, with 4px steps
+from 8 up: 0, 2, 4, 6, 8, 10, 12, 14, 16, 20, 24, 32. An odd value is
+off the grid. Row heights are not spacing; they are named constants
+next to their views (`tabH`, `sideRowH`, `titleH`).
+
+- **Insets by layer.** A dialog's padding is 20, a popover's 14, a
+  menu's 6; rows inside them are padded 8 to 14 on the sides.
+- **Gaps by kin.** Lines of one item stack 2 apart; an icon and its
+  label, 6 to 8; items of a list, 8 to 12; groups, 16 to 20.
+
+## Shadows
+
+A raised layer takes one of four shadows (`tokens.go`), by how far it
+floats over the page. Each is a function that adds the shadow to an
+element, as `dialogShadow(e)`.
+
+| Token | Shadow | Use it for |
+|---|---|---|
+| `raisedShadow` | (0, 1, 2) `k.shadow` | A card or group lying on the page: Settings groups |
+| `toastShadow` | (0, 8, 24) `k.shadowFocused` | Toasts and banners over a pane |
+| `popoverShadow` | (0, 12, 32) `k.shadowFocused` | Menus, popovers and pickers |
+| `dialogShadow` | (0, 24, 60, -8) black 0.28, and (0, 2, 6) black 0.06 | Dialogs and sheets over a backdrop |
+
+- **Not on panes.** A pane card's shadows (`paneCard`) and its lift while
+  it is dragged (`floatCell`, animated) are part of the pane, and the
+  shadows a painter draws (`tabs.go`) are part of their drawing; none is
+  a token. The active tab's pill has shadows of its own (`glassPill`),
+  as part of the pill.
+
+## Components
+
+A component is drawn by one function or one set of tokens, and every
+use of it looks the same. Before you draw one of these, use the one
+that exists.
+
+| Component | Built from | Code |
+|---|---|---|
+| Sidebar and tab rows | `sideRowH`, `pillRadius`, `glassPill`, `hoverFace`, `fontBody` | `sidebar.go`, `projects_sidebar.go`, `tabs.go` |
+| Text field | `field`, `fieldBorder`, `fontBody`, heights 22 and 28 | `fields.go` |
+| Status dot | 7 or 8 square, `capsule`, `busy`, `attention`, `exited`, `danger` | `hostDot`, `view.go` |
+| Key cap | `fontSubhead`, `radiusS`, `k.hover` | `commands.go`, `settingsview.go` |
+| Icon tile | a square of `k.hover`, `radiusS`, `radiusM` or `radiusL` by size, an icon from `assets/icons/` | `host.go`, `settingsview.go` |
+| Chip | a capsule row 28 high, `pillRadius` | `projectpicker.go`, `spaces.go` |
+
+## Patterns
+
+A pattern is the smallest unit that does a user's task. A new one reuses
+the parts of the one it is nearest to.
+
+| Pattern | Parts | Example |
+|---|---|---|
+| Dialog | `glassPanel(k.panel)`, `radiusXXL`, padding 20, `fontTitle` title, `dialogShadow`, a backdrop of `k.backdrop` | `teleport.go`, `workspaceview.go` |
+| Popover | `glassPanel(k.panel)`, `radiusXL`, padding 14, `popoverShadow` | `host.go` |
+| Menu | `glassPanel(k.panel)`, `radiusL`, padding 6, rows `concentric(radiusL, 6)` | `menus.go`, `docs/drawn-menus.md` |
+| Toast and banner | `k.panel`, `radiusL`, `toastShadow` | `view.go`, `upload.go` |
+| Palette | frost or glass, `fontTitle` input, rows `concentric` | `commands.go` |
+| Settings page | the window background, groups of `raisedShadow` and `radiusXL` | `settingsview.go` |
+
+## Decisions
+
+- **A dialog or a popover?** A choice the user must make before going
+  on, over a backdrop, is a dialog. A choice they can leave by clicking
+  away, next to what opened it, is a popover.
+- **A toast or a banner?** A toast tells of something done and goes. A
+  banner stays while its state lasts, as a pane that cannot attach.
+- **Do** take the nearest token. **Don't** add a size, radius or shadow
+  for one view: change the table, for every view.
+- **Do** tell states apart by color and weight. **Don't** tell them apart
+  by a size half a step bigger.
+- **Do** dim what is unavailable with `dimmed`. **Don't** dim with
+  `Opacity` where color is not the meaning ([Shaders](#where-not-to-use-them)).
 
 ## Icons
 
