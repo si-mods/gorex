@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
@@ -62,7 +63,7 @@ func TestLocalPairQRWebTab(t *testing.T) {
 	if page.tab != 1 {
 		t.Fatalf("the web tab was not chosen: %d", page.tab)
 	}
-	for _, s := range []string{locales.HostsPairWebHint(rexapi.WebOrigin), locales.HostsPairWebTrust(rexapi.WebOrigin)} {
+	for _, s := range []string{locales.HostsPairWebHint(rexapi.WebOrigin), locales.HostsPairWebTrust(rexapi.WebOrigin), locales.HostsPairWebOpen()} {
 		if !tt.HasText(s) {
 			t.Fatalf("no %q in %q", s, tt.Texts())
 		}
@@ -83,5 +84,31 @@ func TestLocalPairQRWebTab(t *testing.T) {
 	}
 	if !tt.HasText(locales.HostsPairWebTrusted()) {
 		t.Fatalf("no trusted line in %q", tt.Texts())
+	}
+
+	// The button the page is usually opened with opens the same link the
+	// code holds, token and all.
+	opened := ""
+	old := openWebLink
+	openWebLink = func(u string) error { opened = u; return nil }
+	t.Cleanup(func() { openWebLink = old })
+	if err := tt.Click(locales.HostsPairWebOpen()); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	want := remoteUI.lan.WebPairURL(remoteUI.lanStatus, rexapi.WebOrigin)
+	if opened != want || !strings.Contains(opened, "k="+token) || !strings.Contains(opened, "wt=sha256-"+hash) {
+		t.Fatalf("opened %q, want %q", opened, want)
+	}
+
+	// A browser that will not open says so.
+	openWebLink = func(string) error { return errors.New("no browser") }
+	if err := tt.Click(locales.HostsPairWebOpen()); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	tt.Frame()
+	if !tt.HasText(locales.HostsPairWebOpenFailed("no browser")) {
+		t.Fatalf("no failure line in %q", tt.Texts())
 	}
 }

@@ -3296,11 +3296,11 @@ func (msgs Messages) HostsPairCodePage() string {
 	return Catalog.Format(msgs.locale, "hostsPairCodePage", nil)
 }
 
-// HostsPairWebHint says "Scan this code to open this computer in the web client at {page}. The code holds this computer's pairing token, so th…"
+// HostsPairWebHint says "Open this computer in the web client at {page}, or scan the code from a phone on the same network. The code holds thi…"
 // in the language the app shows.
 func HostsPairWebHint(page string) string { return In(i18n.Locale()).HostsPairWebHint(page) }
 
-// HostsPairWebHint says "Scan this code to open this computer in the web client at {page}. The code holds this computer's pairing token, so th…"
+// HostsPairWebHint says "Open this computer in the web client at {page}, or scan the code from a phone on the same network. The code holds thi…"
 // in the language of msgs.
 func (msgs Messages) HostsPairWebHint(page string) string {
 	return Catalog.Format(msgs.locale, "hostsPairWebHint", map[string]any{"page": page})
@@ -3314,6 +3314,38 @@ func HostsPairWebUntrusted() string { return In(i18n.Locale()).HostsPairWebUntru
 // in the language of msgs.
 func (msgs Messages) HostsPairWebUntrusted() string {
 	return Catalog.Format(msgs.locale, "hostsPairWebUntrusted", nil)
+}
+
+// HostsPairWebOpen says "Open in Browser"
+// in the language the app shows.
+func HostsPairWebOpen() string { return In(i18n.Locale()).HostsPairWebOpen() }
+
+// HostsPairWebOpen says "Open in Browser"
+// in the language of msgs.
+func (msgs Messages) HostsPairWebOpen() string {
+	return Catalog.Format(msgs.locale, "hostsPairWebOpen", nil)
+}
+
+// HostsPairWebOpenFailed says "Could not open the browser: {error}"
+// in the language the app shows.
+func HostsPairWebOpenFailed(error string) string {
+	return In(i18n.Locale()).HostsPairWebOpenFailed(error)
+}
+
+// HostsPairWebOpenFailed says "Could not open the browser: {error}"
+// in the language of msgs.
+func (msgs Messages) HostsPairWebOpenFailed(error string) string {
+	return Catalog.Format(msgs.locale, "hostsPairWebOpenFailed", map[string]any{"error": error})
+}
+
+// HostsPairWebScan says "Or scan this from a phone on the same network:"
+// in the language the app shows.
+func HostsPairWebScan() string { return In(i18n.Locale()).HostsPairWebScan() }
+
+// HostsPairWebScan says "Or scan this from a phone on the same network:"
+// in the language of msgs.
+func (msgs Messages) HostsPairWebScan() string {
+	return Catalog.Format(msgs.locale, "hostsPairWebScan", nil)
 }
 
 // HostsPairWebTrust says "Allow {page}"
