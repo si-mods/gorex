@@ -120,21 +120,30 @@ final class HotspotShare: NSObject, TailnetShareDelegateProtocol {
         TailnetShareSetHosts(json, &err)
     }
 
+    // Admit, Deny and Revoke wait for a Start or Stop asked for before
+    // them: during a restart the server they act on is not there yet.
+
     func admit(_ ip: String) {
-        TailnetShareAdmit(ip)
         advancePrompt(handled: ip)
-        reloadDevices()
+        calls.add {
+            TailnetShareAdmit(ip)
+            self.reloadDevices()
+        }
     }
 
     func deny(_ ip: String) {
-        TailnetShareDeny(ip)
         advancePrompt(handled: ip)
-        reloadDevices()
+        calls.add {
+            TailnetShareDeny(ip)
+            self.reloadDevices()
+        }
     }
 
     func revoke(_ ip: String) {
-        TailnetShareRevoke(ip)
-        reloadDevices()
+        calls.add {
+            TailnetShareRevoke(ip)
+            self.reloadDevices()
+        }
     }
 
     func handleBackground() {
@@ -166,6 +175,8 @@ final class HotspotShare: NSObject, TailnetShareDelegateProtocol {
         guard let ip, !ip.isEmpty else { return }
         let ua = userAgent ?? "Browser"
         Task { @MainActor in
+            // The server can still ask while its Stop waits in `calls`.
+            guard self.isSharing else { return }
             let prompt = PendingPrompt(ip: ip, userAgent: ua)
             if self.pendingPrompt == nil {
                 self.pendingPrompt = prompt
