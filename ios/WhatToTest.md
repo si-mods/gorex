@@ -62,6 +62,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - Sharing to a computer over Personal Hotspot: when you remove or deny that computer, or stop sharing, its open terminals disconnect at once.
 - Sending a photo or file, or opening a file path a terminal printed, no longer closes the app when the computer's Tailscale connection starts over at that moment.
 - Settings opens faster and typing in its search or Client Label stays smooth; the Dictation API key still saves when you press Return or leave the page.
+- After you dictate and switch apps, Rex Go frees the speech model's memory at once and is less likely to close in the background. The next dictation takes a moment to load it.
 
 ## zh-Hans
 
@@ -116,3 +117,4 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - 通过个人热点共享给电脑时：移除或拒绝这台电脑，或停止共享，它打开的终端会立即断开。
 - 发送照片或文件、点开终端里打印的文件路径时，即使电脑的 Tailscale 连接恰好在那一刻重连，应用也不会再退出。
 - 设置页打开更快，在搜索框或设备标签中输入更流畅；听写 API 密钥仍会在按下回车或离开页面时保存。
+- 听写后切到别的应用，Rex Go 会立即释放语音模型占用的内存，在后台更不容易被系统关掉；下次听写要稍等它重新加载。
