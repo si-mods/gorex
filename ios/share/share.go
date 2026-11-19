@@ -99,7 +99,7 @@ type Server struct {
 	hosts      map[string]Host
 	hostOrder  []string
 	devices    map[string]*Device
-	conns      map[string]map[net.Conn]struct{}
+	conns      map[string]map[net.Conn]bool
 	dialProxy  DialFunc
 	dialSystem DialFunc
 	onPending  func(Device)
@@ -150,7 +150,7 @@ func Start(cfg Config) (*Server, error) {
 		phoneName:  cfg.PhoneName,
 		hosts:      make(map[string]Host),
 		devices:    make(map[string]*Device),
-		conns:      make(map[string]map[net.Conn]struct{}),
+		conns:      make(map[string]map[net.Conn]bool),
 		dialProxy:  cfg.DialProxy,
 		dialSystem: cfg.DialSystem,
 		onPending:  cfg.OnPending,
@@ -170,6 +170,9 @@ func Start(cfg Config) (*Server, error) {
 	s.srv = &http.Server{
 		Handler:   s,
 		ConnState: s.trackConn,
+		ConnContext: func(ctx context.Context, c net.Conn) context.Context {
+			return context.WithValue(ctx, connKey{}, c)
+		},
 	}
 	go func() {
 		_ = s.srv.Serve(ln)
@@ -194,7 +197,7 @@ func (s *Server) Stop() {
 			_ = c.Close()
 		}
 	}
-	s.conns = make(map[string]map[net.Conn]struct{})
+	s.conns = make(map[string]map[net.Conn]bool)
 	s.mu.Unlock()
 }
 
@@ -320,6 +323,10 @@ func (s *Server) takeConnsLocked(ip string) []net.Conn {
 	return out
 }
 
+// trackConn keeps each client's open connections in s.conns, by IP. The
+// value is true once the proxy hijacks the connection for a WebSocket. A
+// hijacked connection stays tracked until handleProxy returns, so Stop,
+// Revoke and Deny close it too.
 func (s *Server) trackConn(c net.Conn, st http.ConnState) {
 	ip := remoteIP(c.RemoteAddr().String())
 	if ip == "" {
@@ -331,19 +338,39 @@ func (s *Server) trackConn(c net.Conn, st http.ConnState) {
 	case http.StateNew:
 		set := s.conns[ip]
 		if set == nil {
-			set = make(map[net.Conn]struct{})
+			set = make(map[net.Conn]bool)
 			s.conns[ip] = set
 		}
-		set[c] = struct{}{}
-	case http.StateClosed, http.StateHijacked:
+		set[c] = false
+	case http.StateHijacked:
+		// Keep it: the server reports no StateClosed for a hijacked
+		// connection, so handleProxy untracks it when it is done.
 		if set := s.conns[ip]; set != nil {
-			delete(set, c)
-			if len(set) == 0 {
-				delete(s.conns, ip)
+			if _, ok := set[c]; ok {
+				set[c] = true
 			}
 		}
+	case http.StateClosed:
+		s.untrackLocked(ip, c, false)
 	}
 }
+
+// untrackLocked removes c from ip's connections. With onlyHijacked, it
+// leaves a connection the HTTP server still serves.
+func (s *Server) untrackLocked(ip string, c net.Conn, onlyHijacked bool) {
+	set := s.conns[ip]
+	hijacked, ok := set[c]
+	if !ok || (onlyHijacked && !hijacked) {
+		return
+	}
+	delete(set, c)
+	if len(set) == 0 {
+		delete(s.conns, ip)
+	}
+}
+
+// connKey is the request context key of the client's net.Conn.
+type connKey struct{}
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	ip := remoteIP(r.RemoteAddr)
@@ -491,6 +518,17 @@ func (s *Server) handleProxy(w http.ResponseWriter, r *http.Request) {
 				pr.Out.Header.Set("Authorization", "Bearer "+h.Token)
 			}
 		},
+	}
+	// A WebSocket upgrade hijacks the client's connection, and ServeHTTP
+	// returns only once both sides are closed. The server no longer reports
+	// that connection, so untrack it here.
+	if c, ok := r.Context().Value(connKey{}).(net.Conn); ok {
+		ip := remoteIP(c.RemoteAddr().String())
+		defer func() {
+			s.mu.Lock()
+			s.untrackLocked(ip, c, true)
+			s.mu.Unlock()
+		}()
 	}
 	rp.ServeHTTP(w, r)
 }

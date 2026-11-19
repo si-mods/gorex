@@ -8,14 +8,19 @@ final class BytesStream {
         self.task = task
     }
 
-    /// Connects to `/api/data` with `rex.data.bytes.v1`, sends HELLO(ticket), and awaits WELCOME.
-    static func open(ticket: String, to base: URL, auth: String?, urlSession: URLSession = .shared) async throws -> BytesStream {
+    /// Connects to `/api/data` with `rex.data.bytes.v1`, sends HELLO(ticket), and awaits WELCOME,
+    /// on the host's session (Host.session).
+    static func open(ticket: String, to base: URL, auth: String?,
+                     urlSession: () throws -> URLSession = { .shared }) async throws -> BytesStream {
         guard let hello = DataHandshake.hello(ticket: ticket) else {
             throw RexError(code: "protocol", message: "invalid data stream ticket")
         }
         var request = URLRequest(url: base.rexURL("/api/data"))
         request.timeoutInterval = 30
-        let task = urlSession.webSocketTask(with: request.withSubprotocol(RexProtocol.bytesProtocol).authorized(auth))
+        // A session of the built-in Tailscale's proxy is invalid once the
+        // proxy changes, as it can during the ticket's round trip, and a
+        // task on it aborts the app, so the session is the one of the moment.
+        let task = try urlSession().webSocketTask(with: request.withSubprotocol(RexProtocol.bytesProtocol).authorized(auth))
         task.resume()
         do {
             try await task.send(.data(hello))

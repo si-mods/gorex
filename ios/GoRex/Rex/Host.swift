@@ -855,7 +855,7 @@ final class Host: Identifiable {
             throw RexError(code: "not_supported", message: String(localized: "Server does not accept uploads"))
         }
         try await Upload.send(file, name: file.lastPathComponent, session: sid, block: block,
-                              control: c, to: config.url, auth: config.auth, urlSession: try self.session())
+                              control: c, to: config.url, auth: config.auth, urlSession: { try self.session() })
     }
 
     /// Whether the server supports rev 13+ file downloads.
@@ -872,7 +872,7 @@ final class Host: Identifiable {
         }
         return try await Download.fetch(path: path, session: sid, block: block,
                                         ifNoneMatch: ifNoneMatch, maxBytes: maxBytes,
-                                        control: c, to: config.url, auth: config.auth, urlSession: try self.session())
+                                        control: c, to: config.url, auth: config.auth, urlSession: { try self.session() })
     }
 
     /// Whether the server supports rev 14+ com.superlogical.tunnel blocks.
@@ -918,7 +918,7 @@ final class Host: Identifiable {
             throw RexError(code: "not_supported", message: String(localized: "Server does not support tunnels"))
         }
         return try await Tunnel.connect(session: session, block: block, dataRefID: dataRefID,
-                                        control: c, to: config.url, auth: config.auth, urlSession: try self.session())
+                                        control: c, to: config.url, auth: config.auth, urlSession: { try self.session() })
     }
 
     private func sessionID(forBlock block: String) -> String? {

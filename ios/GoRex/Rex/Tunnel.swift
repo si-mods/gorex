@@ -72,7 +72,7 @@ enum Tunnel {
     static func connect(session: String, block: String,
                         dataRefID: String? = nil,
                         control: ControlConnection, to base: URL, auth: String?,
-                        urlSession: URLSession = .shared) async throws -> BytesStream {
+                        urlSession: () throws -> URLSession = { .shared }) async throws -> BytesStream {
         let ref = dataRefID ?? "conn:\(UUID().uuidString.lowercased())"
         let reply = try await control.call("data.connect", [
             "session_id": session,

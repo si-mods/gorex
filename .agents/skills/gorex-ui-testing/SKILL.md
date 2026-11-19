@@ -190,6 +190,8 @@ xcrun xcresulttool export attachments --path /tmp/t.xcresult --output-path /tmp/
 
 `manifest.json` there maps each attachment's file name to its `suggestedHumanReadableName`; read the PNGs with the Read tool. Other queries worth knowing: `app.alerts`, `app.sheets`, `app.textFields`, `app.buttons`. If a tap should raise the software keyboard and does not, disconnect the simulator's hardware keyboard (its I/O menu), which suppresses it.
 
+To build and run `GoRexTests` for a branch on the Mac mini's runner, with no upload: `gh workflow run ios-test.yml -R si-mods/gorex --ref main -f ref=<branch> [-f only=GoRexTests/<Class>]` (`.github/workflows/ios-test.yml`; the file runs from main, so it works only once it is on main). The run's summary shows passed or failed, the tested SHA and the failing test lines; a failed run uploads the logs and the xcresult.
+
 Clean up: `xcrun simctl shutdown <UDID>` and `xcrun simctl uninstall <UDID> dev.gorex.ios`, then delete the derived data, result bundle and the patched `project.yml`. Never `simctl erase` or delete a device to get a clean state; `uninstall` and `defaults delete` are enough.
 
 ## Limits, so you say them in the report

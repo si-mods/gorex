@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.44.4
+
+### Bug Fixes
+
+* **note:** save a note 400 ms after the last edit, off the UI thread ([#865](https://github.com/si-mods/gorex/pull/865))
+* **ios/share:** close a client's WebSockets when Hotspot Share revokes or denies it, or stops ([#866](https://github.com/si-mods/gorex/pull/866))
+
+### Performance
+
+* **desktop:** an idle poll no longer updates every window, and counts the badge once per round ([#867](https://github.com/si-mods/gorex/pull/867))
+
 ## 0.44.3
 
 ### Features
