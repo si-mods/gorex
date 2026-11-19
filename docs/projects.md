@@ -244,18 +244,18 @@ The sidebar on the left, space Work, three hosts:
 │ ● ● ●   [■ Work ▾]            │ gorex › dev                          ⋯   │
 ├───────────────────────────────┼──────────────────────────────────────────┤
 │ THIS MAC  ●                 + │ ~/code/gorex $ go test ./...             │
-│ ● gorex                   3 + │ ok   gorex   12.3s                       │
+│ [F] gorex                 3 + │ ok   gorex   12.3s                       │
 │ ▣ dev                         │ ◀ dev is the tab shown here              │
 │ ▣ logs                        │                                          │
 │ ▣ review                      │                                          │
-│ ● notes                     1 │                                          │
+│ [F] notes                   1 │                                          │
 │   Tabs with no project      2 │                                          │
 │                               │                                          │
 │ OFFICE-H800  ●              + │                                          │
-│ ● trainer                   2 │                                          │
+│ [F] trainer                 2 │                                          │
 │                               │                                          │
 │ OLD-LAPTOP  ○ offline         │                                          │
-│ ● site (grey)               1 │                                          │
+│ [F] site (grey)             1 │                                          │
 ├───────────────────────────────┤                                          │
 │ ⚙   +  New Project…           │                                          │
 └───────────────────────────────┴──────────────────────────────────────────┘
@@ -267,7 +267,7 @@ from `assets/icons/` (`DESIGN.md`), never the character:
 | Mark | Icon |
 | --- | --- |
 | `[H]` | `monitor` |
-| `[F]` | `folder` |
+| `[F]` | `folder` (tinted by the project's color if set) |
 | `[S]` | `search` |
 | `+` | `plus` |
 | `▾` `▸` `⌄` `›` | `chevron-down`, `chevron-right` |
@@ -275,7 +275,7 @@ from `assets/icons/` (`DESIGN.md`), never the character:
 | `⌂` `↑` | `house`, `arrow-up` |
 | `⚙` | `settings` |
 | `☰` | `menu` |
-| `●` `○` | a host's state dot, a project's color dot, drawn, not icons |
+| `●` `○` | a host's state dot, drawn, not icons |
 | `▣` | a tab's program icon, its tile |
 
 `◀` and `←` mark notes on a sketch; they are not drawn.

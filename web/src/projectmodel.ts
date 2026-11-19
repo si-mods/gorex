@@ -97,15 +97,23 @@ export function groupProjects(projects: ProjectRow[], space: string, now: number
   return { recent: mine.filter((p) => !old(p)), older: mine.filter(old) };
 }
 
-/** The colors a project's dot takes when the host names none: one of these, by its folder, so it stays the same. */
-export const dotColors = ["#e5484d", "#f76b15", "#e5a000", "#30a46c", "#3e63dd", "#8e4ec6"];
+/** Preset project color IDs (internal/layout/names.go, Palette) mapped to hex. */
+export const projectColors: Record<string, string> = {
+  rose: "#e54666",
+  orange: "#f76b15",
+  amber: "#ffb224",
+  green: "#30a46c",
+  teal: "#12a594",
+  blue: "#0090ff",
+  indigo: "#3e63dd",
+  violet: "#8e4ec6",
+  pink: "#d6409f",
+};
 
-/** A project's dot color: the host's, else one from its folder. */
-export function dotColor(dir: string, given?: string): string {
-  if (given) return given;
-  let h = 2166136261;
-  for (const c of dir) h = Math.imul(h ^ c.charCodeAt(0), 16777619) >>> 0;
-  return dotColors[(h >>> 8) % dotColors.length];
+/** A project's icon tint: the host's preset or hex color, or undefined for the default muted icon. */
+export function projectColor(given?: string): string | undefined {
+  if (!given) return undefined;
+  return projectColors[given] ?? (given.startsWith("#") ? given : undefined);
 }
 
 /** A folder's name in a path, for a project that has no name. */
