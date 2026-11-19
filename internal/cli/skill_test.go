@@ -657,4 +657,13 @@ func TestSessionStartDevin(t *testing.T) {
 		!strings.Contains(msg, "natural-language phrase") || strings.Contains(msg, "joined by hyphens") {
 		t.Fatalf("unexpected message %q", msg)
 	}
+	// Devin's shell is POSIX on Windows too: the examples must name the
+	// shim it resolves there.
+	want := "`gorex rename -s"
+	if runtime.GOOS == "windows" {
+		want = "`gorex.cmd rename -s"
+	}
+	if !strings.Contains(msg, want) {
+		t.Fatalf("message has no %q: %q", want, msg)
+	}
 }

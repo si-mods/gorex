@@ -218,9 +218,9 @@ Each item has a **Trigger** (what the diff shows), a **Check** (what the author 
 - **Source:** #687's push hook runs the pushed checkout's `go test`, npm scripts and lint config.
 
 ### Hook command written for a shell the agent does not use
-- **Trigger:** the diff writes a hook `command` string for an agent (e.g. `hookCommand` in `internal/cli/hooks.go`).
-- **Check:** the command is run under the shell the agent actually spawns — on Windows some agents use `sh`, not `cmd`. A `cmd /c` command under `sh -c` fails silently: it parses but runs nothing.
-- **Source:** #824 wrote Devin's Windows hook as `cmd /c "gorex …"`, which Devin's `sh -c` runner never executed; verified end-to-end by a marker file, fixed in the follow-up PR.
+- **Trigger:** the diff writes a hook `command` string or injected context that names a command (e.g. `hookCommand` and `sessionstart.go` in `internal/cli/`).
+- **Check:** the commands run under the shell the agent actually spawns — on Windows some agents use `sh`, not `cmd`. A `cmd /c` command under `sh -c` fails silently: it parses but runs nothing. The same shell decides how the CLI name resolves: in `sh`, `gorex` does not match the `gorex.cmd` shim.
+- **Source:** #824 wrote Devin's Windows hook as `cmd /c "gorex …"`, which Devin's `sh -c` runner never executed, and its injected context said `gorex rename`, which devin's shell cannot resolve; verified end-to-end, fixed in the follow-up PR.
 
 ### Upgrade turns on a listener
 - **Trigger:** migration or upgrade code that enables a node, a listener or a network feature.
