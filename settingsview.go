@@ -352,7 +352,7 @@ func (a *App) serverCard(c *ui.Context, k *colors) {
 	label, dot, _ := a.serverState(k)
 	active := settingsUI.section == "server"
 	e := ui.Row(c.Key("server")).Gap(10).Padding(8, 10).Radius(14).AlignItems(ui.Center).Shrink(0).
-		Cursor(ui.CursorPointer).Role(ui.RoleTab).Selected(active).Label(locales.HostServer()+", "+label).
+		Cursor(ui.CursorPointer).Role(ui.RoleTab).Selected(active).Label(locales.SettingsServerCard()+", "+label).
 		Background(k.card).Border(1, k.cardBorder)
 	if active || e.Hovered() {
 		e.Background(k.cardFocused)
@@ -367,7 +367,7 @@ func (a *App) serverCard(c *ui.Context, k *colors) {
 	e.Children(func() {
 		ui.Image(c, appIcon()).Size(34, 34).Shrink(0)
 		ui.Column(c).Grow(1).MinWidth(0).Gap(2).Children(func() {
-			ui.Text(c, locales.HostServer()).FontSize(13).FontWeight(600).TextColor(k.text).SingleLine().Ellipsis("…")
+			ui.Text(c, locales.SettingsServerCard()).FontSize(13).FontWeight(600).TextColor(k.text).SingleLine().Ellipsis("…")
 			ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
 				ui.Box(c).Size(7, 7).Radius(4).Background(dot).Shrink(0)
 				ui.Text(c, label).FontSize(11.5).TextColor(k.textFaint).SingleLine().Ellipsis("…").MinWidth(0)

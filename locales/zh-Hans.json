@@ -116,6 +116,7 @@
   "hostSystem": "系统",
   "hostUser": "用户",
   "hostServer": "服务器",
+  "settingsServerCard": "GoRex 服务器",
   "hostSessions": "终端",
   "hostApiTitle": "Rex API",
   "hostApiRevisions": "revision {revision} · server {server} · min {min}",

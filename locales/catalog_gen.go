@@ -1662,6 +1662,20 @@ func (msgs Messages) HostServer() string {
 	return Catalog.Format(msgs.locale, "hostServer", nil)
 }
 
+// SettingsServerCard says "GoRex Server"
+// in the language the app shows.
+//
+// Settings sidebar: title of the session server's card at the top.
+func SettingsServerCard() string { return In(i18n.Locale()).SettingsServerCard() }
+
+// SettingsServerCard says "GoRex Server"
+// in the language of msgs.
+//
+// Settings sidebar: title of the session server's card at the top.
+func (msgs Messages) SettingsServerCard() string {
+	return Catalog.Format(msgs.locale, "settingsServerCard", nil)
+}
+
 // HostSessions says "Terminals"
 // in the language the app shows.
 //
