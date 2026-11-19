@@ -287,7 +287,7 @@ func (a *App) projectRow(c *ui.Context, k *colors, w *Workspace, reserve float32
 			weight = 600
 		}
 		ui.Text(c, name).FontSize(fontBody).FontWeight(weight).TextColor(k.text.Alpha(0.85)).SingleLine().Ellipsis("…").Grow(1).MinWidth(0)
-		if s := a.st.status(w); needsUser(s) || s != nil && s.State == "working" {
+		if s := a.st.status(w); statusShown(s) {
 			statusDot(c, k, s, 7).Label(statusTip(s))
 		}
 		if !offline && (hovered || shown) {
