@@ -376,7 +376,7 @@ func (a *App) workspaceTabs(c *ui.Context, k *colors, w *Workspace, reserve floa
 	if o := w.app; o != nil {
 		for i, t := range o.tabs {
 			name, detail := t.label()
-			if spaceTab(c, k, t.UID, name, detail, reserve, func() { a.tiles(c, k, t) }) {
+			if spaceTab(c, k, t.UID, name, detail, t.status(), reserve, func() { a.tiles(c, k, t) }) {
 				pick(i)
 			}
 		}
@@ -384,10 +384,10 @@ func (a *App) workspaceTabs(c *ui.Context, k *colors, w *Workspace, reserve floa
 	}
 	// Each tab names itself from what its host's last session list says
 	// of its session, as a window's tab does; no pane attaches for it.
-	infos, _, _ := a.st.listOf(w.host)
+	infos, id, _ := a.st.listOf(w.host)
 	for i, t := range w.layout.Tabs {
 		name, detail, prog := savedTabFace(t, infos)
-		if spaceTab(c, k, cmp.Or(t.ID, fmt.Sprint(i)), name, detail, reserve, func() {
+		if spaceTab(c, k, cmp.Or(t.ID, fmt.Sprint(i)), name, detail, a.st.savedTabStatus(t, id, infos), reserve, func() {
 			ui.Box(c).Size(tileW+2, tileH+4).Shrink(0).Draw(func(p *ui.Painter, r ui.Rect) {
 				drawTile(p, k, ui.Rect{X: r.X + 1, Y: r.Y + 2, W: tileW, H: tileH}, prog, true)
 			})
