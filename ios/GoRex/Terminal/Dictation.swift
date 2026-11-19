@@ -1,6 +1,7 @@
 import AVFoundation
 import FluidAudio
 import SherpaOnnxC
+import UIKit
 import os
 
 /// Dictation, after rootshell's: the mic records, and the model chosen
@@ -118,12 +119,40 @@ import os
     var error: String?
     private var task: Task<Void, Never>?
     /// The model loaded, and what unloads it once idle.
-    private var models: Task<(any Recogniser, VadManager), Error>?
+    var models: Task<(any Recogniser, VadManager), Error>?
     private var idle: Task<Void, Never>?
+    /// The listenings not yet ended, each recognising until its last
+    /// phrase is done: while one is, the app going to the background keeps
+    /// the model.
+    var listenings = 0
 
     private init() {
         // Loading never downloads: only download does.
         ModelHub.offlineMode = true
+        // A model weighs up to a gigabyte: it goes as memory runs short,
+        // and as the app leaves the screen with the mic off, rather than a
+        // minute later, when iOS may have ended the app for it.
+        let center = NotificationCenter.default
+        center.addObserver(forName: UIApplication.didReceiveMemoryWarningNotification, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.unload() }
+        }
+        center.addObserver(forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self, self.listenings == 0 else { return }
+                self.unload()
+            }
+        }
+    }
+
+    /// Whether a model is loaded, or loading.
+    var loaded: Bool { models != nil }
+
+    /// Unloads the model now. A listening still on keeps the one it has
+    /// until it ends; the next loads it again.
+    func unload() {
+        idle?.cancel()
+        idle = nil
+        models = nil
     }
 
     func download(_ m: Model) {
@@ -162,8 +191,10 @@ import os
         let models = self.models ?? Task { try await Self.load(model) }
         self.models = models
         let listening = Listening(models, longest: model.longest)
+        listenings += 1
         Task {
             _ = await listening.heard.result
+            listenings -= 1
             // A load that failed is tried again by the next.
             guard case .success = await models.result else {
                 if self.models == models { self.models = nil }
@@ -521,14 +552,29 @@ nonisolated final class Listening: Sendable {
     /// longest: the longest phrase the model takes, in samples.
     init(_ models: Task<(any Recogniser, VadManager), Error>, longest: Int) {
         let (said, show) = AsyncStream.makeStream(of: Dictation.Said.self, bufferingPolicy: .bufferingNewest(1))
-        let (audio, add) = AsyncStream.makeStream(of: [Float].self)
+        let (audio, add) = AsyncStream.makeStream(of: [Float].self, bufferingPolicy: .bufferingOldest(Self.backlog))
         self.said = said
         self.audio = add
         heard = Task { try await Self.run(audio, models, longest, show) }
     }
 
-    /// 16 kHz mono samples, in order; from the audio thread too.
-    func add(_ samples: [Float]) { audio.yield(samples) }
+    /// The most of the microphone's buffers that wait for the model, about
+    /// a minute of audio at ten a second: past them, what comes is dropped
+    /// rather than held without end while a model falls behind.
+    static let backlog = 600
+
+    /// 16 kHz mono samples, in order; from the audio thread too. False when
+    /// they are dropped, the backlog full or the listening over.
+    @discardableResult func add(_ samples: [Float]) -> Bool {
+        if case .enqueued = audio.yield(samples) { return true }
+        return false
+    }
+
+    /// Adds samples to the end of kept, and keeps its last n, in place.
+    static func keep(_ n: Int, of kept: inout [Float], adding samples: [Float]) {
+        kept += samples
+        if kept.count > n { kept.removeFirst(kept.count - n) }
+    }
 
     /// Stops listening, and gives all that was said, the phrase open
     /// recognised for good.
@@ -555,10 +601,13 @@ nonisolated final class Listening: Sendable {
         for await samples in audio {
             try Task.checkCancellation()
             pending += samples
-            while pending.count >= chunk {
-                try await ear.hear(Array(pending.prefix(chunk)))
-                pending.removeFirst(chunk)
+            // The chunks heard, then what is left moved to the front once.
+            var at = 0
+            while pending.count - at >= chunk {
+                try await ear.hear(Array(pending[at..<at + chunk]))
+                at += chunk
             }
+            pending.removeFirst(at)
         }
         try Task.checkCancellation()
         try await ear.end(pending)
@@ -611,7 +660,7 @@ nonisolated final class Listening: Sendable {
                 phrase += chunk
                 heard += chunk.count
             } else {
-                before = Array((before + chunk).suffix(6_400))
+                Listening.keep(6_400, of: &before, adding: chunk)
             }
             if r.event?.kind == .speechEnd, speaking {
                 speaking = false
@@ -728,14 +777,22 @@ actor Sherpa: Recogniser {
 
 /// The microphone while the mic is on: what it hears, as the models take
 /// it, 16 kHz mono floats, given as it comes. A call or a new route stops
-/// it.
-final class Recording {
-    nonisolated static let format = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 16_000, channels: 1, interleaved: false)!
+/// it. The audio session and the engine start and stop on a queue of their
+/// own, in turn: a stop, which waits on the system's audio, takes no time
+/// from the main thread, and the next start waits for it. The engine is
+/// used on that queue only.
+nonisolated final class Recording: @unchecked Sendable {
+    static let format = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 16_000, channels: 1, interleaved: false)!
+    private static let queue = DispatchQueue(label: "dev.gorex.recording", qos: .userInitiated)
     private let engine = AVAudioEngine()
 
     /// Starts the microphone; heard takes what it hears, on the audio
     /// thread.
     init(_ heard: @escaping @Sendable ([Float]) -> Void) throws {
+        try Self.queue.sync { try start(heard) }
+    }
+
+    private func start(_ heard: @escaping @Sendable ([Float]) -> Void) throws {
         let audio = AVAudioSession.sharedInstance()
         try audio.setCategory(.record)
         try audio.setActive(true)
@@ -752,13 +809,17 @@ final class Recording {
         do {
             try engine.start()
         } catch {
-            stop()
+            halt()
             throw error
         }
     }
 
-    /// Stops the microphone; others' sound comes back.
+    /// Stops the microphone; others' sound comes back, soon after.
     func stop() {
+        Self.queue.async { self.halt() }
+    }
+
+    private func halt() {
         engine.stop()
         engine.inputNode.removeTap(onBus: 0)
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
@@ -767,6 +828,9 @@ final class Recording {
     /// The microphone's format, converted.
     nonisolated struct Converter {
         private let converter: AVAudioConverter
+        /// What a buffer converts into: made for the first, and again only
+        /// for one larger, not for each as the audio thread takes it.
+        private(set) var out: AVAudioPCMBuffer?
 
         /// Nil for a microphone that hears nothing, as a simulator's.
         init?(from source: AVAudioFormat) {
@@ -777,9 +841,11 @@ final class Recording {
             converter = c
         }
 
-        func convert(_ buffer: AVAudioPCMBuffer) -> [Float] {
-            let frames = Double(buffer.frameLength) * Recording.format.sampleRate / buffer.format.sampleRate
-            guard let out = AVAudioPCMBuffer(pcmFormat: Recording.format, frameCapacity: AVAudioFrameCount(frames.rounded(.up)) + 16) else { return [] }
+        mutating func convert(_ buffer: AVAudioPCMBuffer) -> [Float] {
+            let frames = AVAudioFrameCount((Double(buffer.frameLength) * Recording.format.sampleRate / buffer.format.sampleRate).rounded(.up)) + 16
+            if (out?.frameCapacity ?? 0) < frames { out = AVAudioPCMBuffer(pcmFormat: Recording.format, frameCapacity: frames) }
+            guard let out else { return [] }
+            out.frameLength = 0
             // The converter asks until it has nothing more: the buffer once.
             var given = false
             _ = converter.convert(to: out, error: nil) { _, status in

@@ -29,6 +29,15 @@ All are in `ios/GoRex`:
 - `Assets.xcassets/IconPrism.imageset`, `IconSpectrum.imageset` and
   `IconClassic.imageset`: a 360 px square picture of each icon, for the app to
   show (see Previews).
+- `Assets.xcassets/LaunchIcon.imageset`: the Prism preview clipped to the
+  icon's squircle at 144 pt, the image the launch screen centers
+  (`UILaunchScreen` in `project.yml`, on `LaunchBackground`, which is
+  `Color.page`'s two shades, so the first frame is the host list's).
+- `Assets.xcassets/PrismBody.imageset` and `PrismSpectrum.imageset`: copies
+  of `AppIcon.icon`'s two layers, for `PrismLoading` (TerminalScreen): while
+  a terminal's stream opens, the prism and its light are drawn from them
+  without the icon's tile, and a mask sweeps the spectrum in and back out,
+  the beam's way through the glass.
 - `Views/AppIconView.swift`: the `AppIcon` enum and Settings' App Icon page.
 - `Views/SettingsView.swift`: the App Icon row, and About, which shows the
   icon in use.

@@ -1,4 +1,6 @@
 import AVFoundation
+import FluidAudio
+import UIKit
 import XCTest
 
 /// Dictation's phrases, joined as spoken.
@@ -156,6 +158,80 @@ nonisolated final class DictationTests: XCTestCase {
         XCTAssertEqual(UserDefaults.standard.string(forKey: "dictationModel"), "qwen3ASR")
         d.model = .senseVoice
         XCTAssertEqual(UserDefaults.standard.string(forKey: "dictationModel"), "senseVoice")
+    }
+
+    /// Memory running short unloads the model at once, as it would be a
+    /// minute after the mic went off.
+    @MainActor func testMemoryWarningUnloadsTheModel() {
+        let d = Dictation.shared
+        let was = (d.models, d.listenings)
+        defer { (d.models, d.listenings) = was }
+        d.models = Task { throw CancellationError() }
+        d.listenings = 1
+        XCTAssertTrue(d.loaded)
+        NotificationCenter.default.post(name: UIApplication.didReceiveMemoryWarningNotification, object: nil)
+        XCTAssertFalse(d.loaded)
+    }
+
+    /// The app going to the background unloads the model, but not while a
+    /// listening goes on.
+    @MainActor func testBackgroundUnloadsTheModelWithTheMicOff() {
+        let d = Dictation.shared
+        let was = (d.models, d.listenings)
+        defer { (d.models, d.listenings) = was }
+        d.models = Task { throw CancellationError() }
+        d.listenings = 1
+        NotificationCenter.default.post(name: UIApplication.didEnterBackgroundNotification, object: nil)
+        XCTAssertTrue(d.loaded)
+        d.listenings = 0
+        NotificationCenter.default.post(name: UIApplication.didEnterBackgroundNotification, object: nil)
+        XCTAssertFalse(d.loaded)
+    }
+
+    /// What the mic hears waits for the model up to the backlog, and no
+    /// more; none once the listening is over.
+    func testAudioWaitingForTheModelIsBounded() {
+        // A load that ends only with the test: the audio waits until then.
+        let (gate, open) = AsyncStream.makeStream(of: Void.self)
+        let models = Task<(any Recogniser, VadManager), Error> {
+            for await _ in gate {}
+            throw CancellationError()
+        }
+        defer { open.finish() }
+        let listening = Listening(models, longest: 16_000)
+        for i in 0..<Listening.backlog { XCTAssertTrue(listening.add([0, 0]), "\(i)") }
+        XCTAssertFalse(listening.add([0, 0]))
+        listening.cancel()
+        XCTAssertFalse(listening.add([0, 0]))
+    }
+
+    /// What came before speech keeps its last samples, in order.
+    func testKeepHoldsTheLastSamples() {
+        var kept: [Float] = []
+        Listening.keep(4, of: &kept, adding: [1, 2, 3])
+        XCTAssertEqual(kept, [1, 2, 3])
+        Listening.keep(4, of: &kept, adding: [4, 5])
+        XCTAssertEqual(kept, [2, 3, 4, 5])
+        Listening.keep(4, of: &kept, adding: [6, 7, 8, 9, 10])
+        XCTAssertEqual(kept, [7, 8, 9, 10])
+    }
+
+    /// The microphone's 48 kHz converts to 16 kHz in one buffer, made once
+    /// and used again for each buffer the mic gives.
+    func testConverterUsesOneBuffer() throws {
+        let source = try XCTUnwrap(AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 48_000, channels: 1, interleaved: false))
+        var c = try XCTUnwrap(Recording.Converter(from: source))
+        let input = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat: source, frameCapacity: 4_800))
+        input.frameLength = 4_800
+        for i in 0..<4_800 { input.floatChannelData![0][i] = sin(Float(i) * 0.05) }
+        var total = c.convert(input).count
+        let out = try XCTUnwrap(c.out)
+        for _ in 0..<4 {
+            total += c.convert(input).count
+            XCTAssertTrue(c.out === out)
+        }
+        // A converter keeps back a few samples it has not yet filtered.
+        XCTAssertEqual(Double(total), 8_000, accuracy: 200)
     }
 
     /// Fun-ASR-Nano and Qwen3-ASR recognise a clip through sherpa-onnx:
