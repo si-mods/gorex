@@ -18,7 +18,8 @@ struct SettingsView: View {
         let title: LocalizedStringResource
         let icon: AnyView
         var value: String?
-        let page: AnyView
+        /// Built when the row is opened, not when Settings draws.
+        let page: () -> AnyView
         var id: String { title.key }
     }
 
@@ -30,20 +31,20 @@ struct SettingsView: View {
         return [
             [Item(title: "Interface", icon: tile("circle.lefthalf.filled", .indigo),
                   value: String(localized: Self.schemes.first { $0.0 == scheme }?.1 ?? "Dark"),
-                  page: AnyView(Choices(title: "Interface", options: Self.schemes.map { ($0.0, String(localized: $0.1)) }, selection: $scheme))),
+                  page: { AnyView(Choices(title: "Interface", options: Self.schemes.map { ($0.0, String(localized: $0.1)) }, selection: $scheme)) }),
              Item(title: "Themes", icon: tile("paintpalette.fill", .pink), value: theme.isEmpty ? String(localized: "Host Colors") : theme,
-                  page: AnyView(Themes(selection: $theme))),
+                  page: { AnyView(Themes(selection: $theme)) }),
              Item(title: "App Icon", icon: AnyView(appIcon.image(size: 30)), value: String(localized: appIcon.title),
-                  page: AnyView(AppIconView(current: $appIcon)))],
-            [Item(title: "Terminal", icon: tile("apple.terminal.fill", .gray), page: AnyView(TerminalSettings())),
-             Item(title: "Remote Hosts", icon: tile("globe", .orange), page: AnyView(RemoteHostsView())),
+                  page: { AnyView(AppIconView(current: $appIcon)) })],
+            [Item(title: "Terminal", icon: tile("apple.terminal.fill", .gray), page: { AnyView(TerminalSettings()) }),
+             Item(title: "Remote Hosts", icon: tile("globe", .orange), page: { AnyView(RemoteHostsView()) }),
              Item(title: "Tailscale", icon: AnyView(TailscaleGlyph.tile()),
-                  value: String(localized: tailnet ? "On · Rex Go Only" : "Off"), page: AnyView(TailscaleView())),
+                  value: String(localized: tailnet ? "On · Rex Go Only" : "Off"), page: { AnyView(TailscaleView()) }),
              Item(title: "Share on Hotspot", icon: tile("personalhotspot", .green),
-                  value: String(localized: HotspotShare.shared.isSharing ? "On" : "Off"), page: AnyView(HotspotShareView()))],
-            [Item(title: "Features", icon: tile("sparkles", .blue), page: AnyView(FeaturesView())),
+                  value: String(localized: HotspotShare.shared.isSharing ? "On" : "Off"), page: { AnyView(HotspotShareView()) })],
+            [Item(title: "Features", icon: tile("sparkles", .blue), page: { AnyView(FeaturesView()) }),
              Item(title: "About", icon: tile("info.circle.fill", .gray),
-                  value: "\(version) (\(build))", page: AnyView(AboutView(version: version, build: build, icon: appIcon)))],
+                  value: "\(version) (\(build))", page: { AnyView(AboutView(version: version, build: build, icon: appIcon)) })],
         ]
     }
 
@@ -53,7 +54,7 @@ struct SettingsView: View {
                 ForEach(Array(cards.map { $0.filter { matches($0.title) } }.filter { !$0.isEmpty }.enumerated()), id: \.offset) { _, items in
                     Section {
                         ForEach(items) { item in
-                            NavigationLink { item.page } label: {
+                            NavigationLink { item.page() } label: {
                                 SettingsRow(icon: item.icon, title: item.title) {
                                     if let v = item.value { Text(v).foregroundStyle(.secondary).lineLimit(1) }
                                 }
@@ -316,10 +317,11 @@ private struct TerminalSettings: View {
     @AppStorage(Polish.baseKey) private var base = ""
     @AppStorage(Polish.modelKey) private var model = ""
     /// Polish's key, as the Keychain keeps it; empty, polish is off.
-    @State private var key = Polish.savedKey ?? ""
+    @State private var key = ""
     /// The key as last read or saved, and whether the field was typed in
     /// since: only then is it written, as iCloud may have brought a newer one.
-    @State private var loaded = Polish.savedKey ?? ""
+    /// Read from the Keychain on appear, once, not when the view is made.
+    @State private var loaded = ""
     @State private var edited = false
     @Environment(\.scenePhase) private var phase
     @AppStorage(InputTrace.key) private var trace = false
