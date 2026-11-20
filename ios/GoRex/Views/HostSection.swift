@@ -254,7 +254,7 @@ struct HostSection: View {
                 Button {
                     withAnimation(reduceMotion ? nil : .snappy) { if collapsed.contains(k) { collapsed.remove(k) } else { collapsed.insert(k) } }
                 } label: {
-                    ProjectRow(name: String(localized: "Tabs with no project"), color: nil, count: looseTabs.count, open: isOpen,
+                    ProjectRow(name: String(localized: "No Project"), color: nil, count: looseTabs.count, open: isOpen,
                                tiles: column, divider: isOpen)
                 }
                 .buttonStyle(.plain)
@@ -442,7 +442,7 @@ struct HostSection: View {
                     Button {
                         withAnimation(reduceMotion ? nil : .snappy) { if collapsed.contains(k) { collapsed.remove(k) } else { collapsed.insert(k) } }
                     } label: {
-                        ProjectRow(name: String(localized: "Tabs with no project"), color: nil, count: l.loose.count, open: isOpen,
+                        ProjectRow(name: String(localized: "No Project"), color: nil, count: l.loose.count, open: isOpen,
                                    tiles: Self.awayTiles, divider: isOpen)
                     }
                     .buttonStyle(.plain)
@@ -821,8 +821,7 @@ struct ProjectRow: View {
     var body: some View {
         HStack(spacing: 14) {
             FolderTile(color: color).frame(width: tiles, height: 16 * ProgramTiles.scale + 4, alignment: .leading)
-            // A narrow sidebar wraps a long name to a second line, not cuts it.
-            Text(verbatim: name).font(.body.weight(.semibold)).lineLimit(2)
+            Text(verbatim: name).font(.body.weight(.semibold)).lineLimit(1)
             Spacer(minLength: 8)
             if busy { ProgressView() }
             // Before the count, always shown; a project with no tab has none.
