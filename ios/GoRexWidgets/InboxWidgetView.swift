@@ -172,7 +172,7 @@ private struct Row: View {
                         if named { Text(verbatim: host.name + " · ").privacySensitive().layoutPriority(1) }
                         Text(item.detail.isEmpty ? item.window : item.detail).privacySensitive()
                         Spacer(minLength: 6)
-                        if let t = item.updated { ago(t).foregroundStyle(.tertiary) }
+                        if let t = item.updated { ago(t).foregroundStyle(.tertiary).layoutPriority(2) }
                     }
                     .font(.caption)
                     .foregroundStyle(.secondary)
