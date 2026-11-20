@@ -18,8 +18,11 @@ struct GoRexWidgets: WidgetBundle {
 struct TerminalActivityWidget: Widget {
     var body: some WidgetConfiguration {
         ActivityConfiguration(for: TerminalActivity.self) { c in
-            TerminalActivityFace(attributes: c.attributes, state: c.state, stale: c.isStale)
-                .padding(16)
+            // The card draws its own background; black under it, should
+            // any show, and white for the system's buttons over it.
+            TerminalActivityCard(attributes: c.attributes, state: c.state, stale: c.isStale)
+                .activityBackgroundTint(.black)
+                .activitySystemActionForegroundColor(.white)
                 .widgetURL(c.attributes.url)
         } dynamicIsland: { c in
             let paused = c.state.paused(stale: c.isStale)
