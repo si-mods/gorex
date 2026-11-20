@@ -32,7 +32,10 @@ struct TerminalActivityWidget: Widget {
                         .padding(.horizontal, 8)
                 }
             } compactLeading: {
+                // Off the island's round end by as much as from its top and
+                // bottom: without it the tile sat 7 pt from the end, 10 from those.
                 TerminalActivityTile(state: c.state, scale: 1).opacity(paused ? 0.5 : 1)
+                    .padding(.leading, 3)
             } compactTrailing: {
                 TerminalActivityMark(state: c.state, paused: paused)
             } minimal: {
