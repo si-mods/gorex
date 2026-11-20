@@ -4,7 +4,7 @@ import XCTest
 /// The hosts HotspotShare sends the share server (ShareHosts): each one's
 /// transport is the way the app reaches it now, not the stored switch —
 /// a tailcat host's is nil there, and the demo host is left out.
-final class ShareHostsTests: XCTestCase {
+nonisolated final class ShareHostsTests: XCTestCase {
     private struct Row: Decodable {
         let id: String
         let name: String
