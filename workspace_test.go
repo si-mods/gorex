@@ -389,12 +389,6 @@ func TestOutboxOrder(t *testing.T) {
 	}
 }
 
-// spaceDotLabel is the label of a space's dot in the sidebar's strip: its
-// name, and its shortcut.
-func spaceDotLabel(i int, w *Workspace) string {
-	return w.Name + "  " + showSpaceKeys(i+1)
-}
-
 // TestSpaceColorShots renders a window whose space is teal, light and
 // dark, into GOREX_SHOTS, to look at.
 func TestSpaceColorShots(t *testing.T) {
