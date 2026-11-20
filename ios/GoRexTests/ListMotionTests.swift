@@ -2,7 +2,7 @@ import SwiftUI
 import XCTest
 
 // The list's endless motion (#847): the working dots and the tiles' bounce
-// pause out of the front and off screen, and the key bar's mic and voice
+// pause out of the front (the dots off screen too), and the key bar's mic and voice
 // capsule are given again only when what they show changes.
 nonisolated final class ListMotionTests: XCTestCase {
     @MainActor func testListMotionRunsOnlyActiveOnScreenWithMotion() {
@@ -22,7 +22,8 @@ nonisolated final class ListMotionTests: XCTestCase {
     }
 
     @MainActor func testTileBounceKeyChangesAsMotionPausesAndResumes() {
-        // A resume must make a new animator, so the bounce starts again.
+        // A resume (the scene active again, Reduce Motion off) must make a
+        // new animator, so the bounce starts again.
         let running = TileBounceKey(motion: .attention, runs: true)
         let paused = TileBounceKey(motion: .attention, runs: false)
         XCTAssertNotEqual(running, paused)

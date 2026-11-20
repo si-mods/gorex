@@ -323,7 +323,8 @@ struct ProgramStatusMark: View {
 
 /// Whether a list's endless motion, the working dots and the tiles'
 /// bounce, runs: not with Reduce Motion, nor with the app out of the
-/// front (inactive or in the background), nor off screen. It is the same
+/// front (inactive or in the background), nor off screen (the dots only;
+/// a tile bounces off screen, see TileBounceModifier). It is the same
 /// motion when it runs; paused, nothing is seen moving.
 enum ListMotion {
     static func runs(reduceMotion: Bool, phase: ScenePhase, onScreen: Bool) -> Bool {
@@ -383,15 +384,15 @@ private struct TileBounceModifier: ViewModifier {
     let motion: TileMotion
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.scenePhase) private var phase
-    /// Whether the tile is on screen: a row scrolled away, or under the
-    /// terminal pushed over the list, disappears.
-    @State private var onScreen = true
 
     func body(content: Content) -> some View {
-        let key = TileBounceKey(motion: motion, runs: ListMotion.runs(reduceMotion: reduceMotion, phase: phase, onScreen: onScreen))
-        // Paused, the tile rests in place. Whether it runs is part of the
-        // animator's identity: a resume makes a new animator, which bounces
-        // from the start, as on the tile's first appearance.
+        // Out of the front, the tile rests in place. Whether it runs is part
+        // of the animator's identity: a resume makes a new animator, which
+        // bounces from the start, as on the tile's first appearance. It
+        // pauses by Reduce Motion and the scene's phase only, which a change
+        // of identity cannot touch; an appearance flag could, as the view
+        // replaced fires a disappear and an appear in no set order.
+        let key = TileBounceKey(motion: motion, runs: ListMotion.runs(reduceMotion: reduceMotion, phase: phase, onScreen: true))
         content
             .keyframeAnimator(initialValue: TileBounceValues(), repeating: key.repeats) { view, v in
                 view
@@ -460,7 +461,5 @@ private struct TileBounceModifier: ViewModifier {
                 }
             }
             .id(key)
-            .onAppear { onScreen = true }
-            .onDisappear { onScreen = false }
     }
 }
