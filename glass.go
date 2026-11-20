@@ -161,11 +161,11 @@ func glassPill(e ui.Element, k *colors, h float32) {
 // deeper shadow and a hairline, so that it stands over the group.
 func liftedPill(e ui.Element, k *colors, h float32) {
 	if !glassOn() {
-		e.Background(k.tabActive).Shadow(0, 1, 2, 0, k.shadow).Shadow(0, 2, 10, 0, k.liftShadow).Border(0.5, k.text.Alpha(0.08))
+		e.Background(k.tabActive).Shadow(0, 1, 2, 0, k.shadow).Shadow(0, 1, 4, 0, k.liftShadow).Border(0.5, k.text.Alpha(0.08))
 		return
 	}
 	e.Radius(h/2).Material(ui.SystemGlass{Tint: k.pillTint, Fallback: faceMaterial{k.pillLift}}).
-		Shadow(0, 1.5, 3.5, 0, k.pillShadow).Shadow(0, 2, 10, 0, k.liftShadow).Border(0.5, k.text.Alpha(0.08))
+		Shadow(0, 1.5, 3.5, 0, k.pillShadow).Shadow(0, 1, 4, 0, k.liftShadow).Border(0.5, k.text.Alpha(0.08))
 }
 
 // faceMaterial is a material of one color: the pill's where the system

@@ -322,7 +322,8 @@ A project's context menu:
   tabs.
 - A project row starts with its **folder tile**, in the room of the tabs'
   tiles, centred where a tab's front tile is: a tile of a tab's size
-  (`tileW`×`tileH`) and corners, in a neutral face, with a `folder` in it.
+  (`tileW`×`tileH`) and corners, in a neutral face, with a `folder` in it,
+  in the project's color (muted with none).
   A project and its tabs are marks of one kind, told apart by the folder and
   the programs' colors, so a project and a tab of one name read apart (#896;
   #832 drew a bare folder there, which read as a tab's tile).
@@ -336,7 +337,7 @@ A project's context menu:
   click on the chevron opens or closes that project's tabs alone.
 - A project row is flush with the header: the folder tile, its name, the
   chevron and its tab count on the right. Its folder's path is in no row or
-  tooltip, and its color in no row of the desktop's sidebar. A click on the
+  tooltip; its color is its folder's. A click on the
   row shows the project and opens it; on the project shown, it opens or
   closes that project's tabs, which come under it with no guide line, their
   tiles where the folder tile is. Each project keeps its

@@ -265,7 +265,7 @@ func (a *App) projectRow(c *ui.Context, k *colors, w *Workspace, reserve float32
 	row.Children(func() {
 		// The project's folder tile stands over its tabs' tiles, and its name
 		// over their titles.
-		leadRoom(c, reserve, projectRowH).Children(func() { projectFolderTile(c, k) })
+		leadRoom(c, reserve, projectRowH).Children(func() { projectFolderTile(c, k, w.Color) })
 		if shown && a.wsRenaming {
 			a.workspaceRenameField(c, k, w.Name)
 			return
@@ -399,9 +399,18 @@ func (a *App) noProjectSection(c *ui.Context, k *colors, w *Workspace, reserve f
 // side, so nothing in it moves as it comes and goes, and its corners are the pills' plus that
 // pad, so that both share one centre.
 func (a *App) projectGroup(c *ui.Context, k *colors, w *Workspace, reserve float32) {
-	g := ui.Column(c.Key("group-" + openKey(w.host, w.ID))).Gap(rowGap)
+	// Every project has the room of the face, so that choosing another moves
+	// nothing: only the face's color comes and goes, fading.
+	g := ui.Column(c.Key("group-" + openKey(w.host, w.ID))).Gap(rowGap).Radius(pillRadius(sideRowH, radiusM) + groupPad).Padding(groupPad).Margin(-groupPad)
 	if w == a.ws && rowOpen(openKey(w.host, w.ID), true) && w.tabCount() > 0 {
-		g.Background(k.groupFace).Radius(pillRadius(sideRowH, radiusM) + groupPad).Padding(groupPad).Margin(-groupPad)
+		g.Background(k.groupFace)
+	} else {
+		g.Background(k.groupFace.Alpha(0))
+	}
+	if anim := motion(c); anim != nil {
+		g.Transition(ui.ElementTransition{Animation: anim, Colors: true})
+	} else {
+		g.Transition(ui.ElementTransition{Colors: true, Duration: 160 * time.Millisecond})
 	}
 	g.Children(func() { a.projectRow(c, k, w, reserve) })
 }
@@ -424,13 +433,17 @@ const (
 )
 
 // projectFolderTile is a project's mark: a tile of a tab's size and corners
-// (drawTile), in a neutral face, with a folder in it, so that a project and
-// its tabs are marks of one kind, told apart by the folder and the colors
-// of the programs.
-func projectFolderTile(c *ui.Context, k *colors) {
+// (drawTile), in a neutral face, with a folder in it in the project's color
+// (muted with none), so that a project and its tabs are marks of one kind,
+// told apart by the folder and the colors of the programs.
+func projectFolderTile(c *ui.Context, k *colors, color string) {
+	col := k.textMuted
+	if hex, ok := spaceColorHex(color); ok {
+		col = ui.Hex(hex)
+	}
 	ui.Row(c).Width(tileW + 2).AlignItems(ui.Center).Justify(ui.Center).Shrink(0).Children(func() {
 		ui.Row(c).Size(tileW, tileH).Radius(4.5).Background(k.text.Alpha(0.09)).AlignItems(ui.Center).Justify(ui.Center).Children(func() {
-			glyphIcon(c, "folder", 11, k.textMuted).Shrink(0)
+			glyphIcon(c, "folder", 11, col).Shrink(0)
 		})
 	})
 }
@@ -547,7 +560,7 @@ func (a *App) waitingRow(c *ui.Context, k *colors, h *hostConn, ad layout.Adopti
 		Role(ui.RoleText).Label(name + ", " + note).Tooltip(tipText)
 	row.Children(func() {
 		if ad.Project != nil {
-			leadRoom(c, reserve, projectRowH).Children(func() { projectFolderTile(c, k) })
+			leadRoom(c, reserve, projectRowH).Children(func() { projectFolderTile(c, k, "") })
 			ui.Text(c, name).FontSize(fontBody).TextColor(k.text.Alpha(0.85)).SingleLine().Ellipsis("…").Shrink(1).MinWidth(0)
 		} else {
 			// The tabs with no project's is a label, as theirs is: no room

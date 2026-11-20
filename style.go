@@ -84,7 +84,7 @@ var lightColors = colors{
 	tabSep:      ui.RGBA(0, 0, 0, 0.13),
 	groupFace:   ui.RGBA(0, 0, 0, 0.045),
 	pillLift:    ui.RGBA(255, 255, 255, 0.92),
-	liftShadow:  ui.RGBA(0, 0, 0, 0.14),
+	liftShadow:  ui.RGBA(0, 0, 0, 0.06),
 
 	busy:      ui.Hex("#34a853"),
 	danger:    ui.Hex("#ef4444"),
@@ -134,7 +134,7 @@ var darkColors = colors{
 	tabSep:      ui.RGBA(255, 255, 255, 0.14),
 	groupFace:   ui.RGBA(255, 255, 255, 0.05),
 	pillLift:    ui.RGBA(255, 255, 255, 0.24),
-	liftShadow:  ui.RGBA(0, 0, 0, 0.35),
+	liftShadow:  ui.RGBA(0, 0, 0, 0.18),
 
 	busy:      ui.Hex("#4ade80"),
 	danger:    ui.Hex("#ef4444"),

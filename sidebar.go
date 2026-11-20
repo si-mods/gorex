@@ -265,15 +265,16 @@ func (a *App) sidebar(c *ui.Context, k *colors, right bool) {
 				a.windowControls(c, k)
 			}
 		})
+		padR, padL := sideInsets(right)
 		if picker && !unified {
-			ui.Row(c).Shrink(0).Padding(0, 6, 4, 6).Children(func() { a.spacePicker(c, k, true) })
+			ui.Row(c).Shrink(0).Padding(0, padR, 4, padL).Children(func() { a.spacePicker(c, k, true) })
 		}
-		ui.Scroll(c).Grow(1).MinHeight(0).Padding(2, 6, 6, 6).Children(func() {
+		ui.Scroll(c).Grow(1).MinHeight(0).Padding(2, padR, 6, padL).Children(func() {
 			ui.Column(c).Gap(2).Role(ui.RoleTabList).Label(locales.TabListLabel()).Children(func() {
 				a.projectsList(c, k)
 			})
 		})
-		ui.Row(c).Shrink(0).Padding(4, 6, 8, 6).Gap(2).AlignItems(ui.Center).Children(func() {
+		ui.Row(c).Shrink(0).Padding(4, padR, 8, padL).Gap(2).AlignItems(ui.Center).Children(func() {
 			if iconButton(c, k, "settings-2", locales.SidebarSettings(), 30, 16).Tooltip(tip(locales.SidebarSettings(), &cmdSettings)).Clicked() {
 				a.openSettings()
 			}
@@ -292,6 +293,18 @@ func (a *App) sidebar(c *ui.Context, k *colors, right bool) {
 			a.hostButton(c, k)
 		})
 	})
+}
+
+// sideInsets are the sidebar list's paddings on its right and its left:
+// the side the panes are on, inner, has the gap of the sidebar's edge
+// beyond it, so the list's rows, and the current project's face, keep as
+// far from the panes as from the window's edge.
+func sideInsets(right bool) (r, l float32) {
+	const window, panes = 12, 12 - gap
+	if right {
+		return window, panes
+	}
+	return panes, window
 }
 
 // sidebarEdge is the sidebar's inner edge, which drags its width; a double

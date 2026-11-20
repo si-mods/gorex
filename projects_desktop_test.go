@@ -551,6 +551,9 @@ func TestSidebarFlatLayout(t *testing.T) {
 		}
 		return d <= 6
 	}
+	// The current project's face fades in.
+	tt.Advance(time.Second)
+	tt.Frame()
 	empty := ui.Rect{X: row.X, Y: row.Y - hostHeaderH, W: row.W, H: row.H}
 	c := tt.Image().RGBAAt(int(row.X-2), int(row.Y+row.H/2))
 	group := [4]uint8{c.R, c.G, c.B, c.A}
@@ -1032,6 +1035,9 @@ func TestSidebarCurrentProjectGroup(t *testing.T) {
 	setRowOpen(openKey(nil, other.ID), true)
 	// The pixel just past a row's leading edge, inside the face's reach.
 	edge := func(text string) ([4]uint8, ui.Rect) {
+		tt.Frame()
+		// The face fades in and out.
+		tt.Advance(time.Second)
 		tt.Frame()
 		r, ok := tt.Find(text)
 		if !ok {
