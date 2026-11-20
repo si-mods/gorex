@@ -516,7 +516,7 @@ changes none of them is the same worker.
 ## Program tiles
 
 The sidebar's window rows and the pane headers show the program tiles of
-the iOS app (`ios/GoRex/Views/ProgramTile.swift`), drawn in CSS by
+the iOS app (`ios/Shared/Program.swift` and `ios/Shared/Tile.swift`), drawn in CSS by
 `web/src/programs.ts`: its table of programs, the lookup by process name
 (basename, a leading `-` dropped, a hash colour for an unknown program),
 the stack of up to three tiles of a window, and the dot of a program done

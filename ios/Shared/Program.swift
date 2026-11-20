@@ -17,7 +17,7 @@ extension Color {
 struct Program {
     var name = ""
     /// glyph is the program's icon; tileGlyph the one on its tile, glyph
-    /// when empty. "brand:x" is a mark of Assets.xcassets/Brands.
+    /// when empty. "brand:x" is a mark of Brands.xcassets/Brands.
     var glyph: String
     var tileBg: UInt32
     var tileFg: UInt32

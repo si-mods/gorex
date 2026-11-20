@@ -1,6 +1,6 @@
 import Foundation
 
-/// What the widgets show: the hosts' inboxes and windows as the app last
+/// What the widgets show: the hosts' inboxes as the app last
 /// saw them, a file the app writes and the widget extension reads
 /// (docs/ios-widgets.md, Snapshot). It is a saved format another build
 /// reads: v is the format, and fields are added as optional only. It is a
@@ -10,10 +10,9 @@ nonisolated struct WidgetSnapshot: Codable, Equatable, Sendable {
     static let format = 1
     /// The App Group the app and the extension share.
     static let group = "group.dev.gorex.ios"
-    /// The most items and windows written for one host, and the most
-    /// characters of a heading or a detail.
+    /// The most items written for one host, and the most characters of a
+    /// heading or a detail.
     static let maxItems = 20
-    static let maxWindows = 100
     static let maxText = 200
 
     var v = Self.format
@@ -31,8 +30,9 @@ nonisolated struct WidgetSnapshot: Codable, Equatable, Sendable {
         var online: Bool
         /// Its inbox, as Inbox.groups orders it.
         var items: [Item]
-        /// Every window, for the Terminal widget's picker.
-        var windows: [Window]
+        /// Every window, for the Terminal widget's picker (phase 2); none
+        /// written before it.
+        var windows: [Window]? = nil
     }
 
     /// A window in the inbox, as a row of it shows.

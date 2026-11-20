@@ -12,7 +12,7 @@ nonisolated final class WidgetTests: XCTestCase {
     }
 
     /// Demo Mode's host is written as any other: its inbox in Inbox.groups'
-    /// order, and every window.
+    /// order, and no windows before the Terminal widget.
     @MainActor func testSnapshotOfDemoHost() {
         let h = Host(Demo.config())
         h.connect()
@@ -25,12 +25,11 @@ nonisolated final class WidgetTests: XCTestCase {
         XCTAssertEqual(e.items.map(\.state), ["blocked", "done", "working"])
         XCTAssertEqual(e.items.first?.block, Demo.claude)
         XCTAssertEqual(e.items.first.map { Program.of($0.app).name }, "Claude Code")
-        XCTAssertEqual(e.windows.count, 5)
-        XCTAssertEqual(e.windows.first?.title, "Claude Code")
+        XCTAssertNil(e.windows)
     }
 
-    /// At most 20 items and 100 windows a host, text cut to 200
-    /// characters; a host gone offline keeps its windows and has no items.
+    /// At most 20 items a host, text cut to 200 characters; a host gone
+    /// offline has no items.
     @MainActor func testSnapshotCapsAndOffline() async throws {
         let rex = try FakeRex()
         defer { rex.stop() }
@@ -59,26 +58,26 @@ nonisolated final class WidgetTests: XCTestCase {
         XCTAssertEqual(e.items.first?.heading.count, 200)
         XCTAssertEqual(e.items.first?.detail.count, 200)
         XCTAssertEqual(e.items.last?.block, "b5")
-        XCTAssertEqual(e.windows.count, WidgetSnapshot.maxWindows)
-        XCTAssertEqual(e.windows.first.map { [$0.session, $0.block] }, ["s", "b0"])
 
         FakeRex.close(rex.controls[0], .protocolCode(.goingAway))
         await until("offline") { h.status != .online }
         e = WidgetPublisher.entry(h)
         XCTAssertFalse(e.online)
         XCTAssertEqual(e.items, [])
-        XCTAssertEqual(e.windows.count, WidgetSnapshot.maxWindows)
         XCTAssertEqual(WidgetSnapshot.cut("short"), "short")
     }
 
     /// Writes come at most once an interval, those asked meanwhile joining
     /// one; a write of what was written already is skipped, unless forced,
     /// as going to the background is. A change the hosts observe writes.
+    /// The clock and the waits are the test's: no time passes by itself.
     @MainActor func testPublisherCoalescesAndSkips() async throws {
         let url = temp()
         defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
         var reloads = 0
-        let p = WidgetPublisher(url: url, interval: .milliseconds(300), reload: { reloads += 1 })
+        var clock = Date(timeIntervalSince1970: 1_800_000_000)
+        var waits: [(TimeInterval, @MainActor () -> Void)] = []
+        let p = WidgetPublisher(url: url, interval: 1, now: { clock }, schedule: { waits.append(($0, $1)) }, reload: { reloads += 1 })
         let demo = Host(Demo.config())
         demo.connect()
         defer { demo.stop() }
@@ -87,34 +86,71 @@ nonisolated final class WidgetTests: XCTestCase {
         XCTAssertEqual(reloads, 1)
         XCTAssertEqual(WidgetSnapshot.read(from: url)?.hosts.map(\.name), ["Demo Mac"])
 
+        clock += 0.2
         p.publish()
         XCTAssertEqual(reloads, 1, "unchanged, not written")
 
+        clock += 0.3
         list = []
         p.changed()
         p.changed()
         p.changed()
-        try await Task.sleep(for: .milliseconds(100))
-        XCTAssertEqual(reloads, 1, "within the interval of the last write")
-        await until("one write") { reloads == 2 }
-        try await Task.sleep(for: .milliseconds(400))
-        XCTAssertEqual(reloads, 2, "the changes joined one write")
+        XCTAssertEqual(waits.count, 1, "the changes join one write")
+        XCTAssertEqual(try XCTUnwrap(waits.first).0, 0.5, accuracy: 0.001, "the rest of the interval since the last write")
+        XCTAssertEqual(reloads, 1)
+        clock += 0.5
+        waits.removeFirst().1()
+        XCTAssertEqual(reloads, 2)
         XCTAssertEqual(WidgetSnapshot.read(from: url)?.hosts, [])
 
-        let before = try XCTUnwrap(WidgetSnapshot.read(from: url)).written
-        try await Task.sleep(for: .milliseconds(1100))
+        // A write that came meanwhile leaves the wait with nothing to do.
+        p.changed()
         p.publish(force: true)
+        XCTAssertEqual(reloads, 3, "forced, written though unchanged")
+        waits.removeFirst().1()
         XCTAssertEqual(reloads, 3)
-        XCTAssertGreaterThan(try XCTUnwrap(WidgetSnapshot.read(from: url)).written, before)
 
         // The hosts read are observed: a command typed in the demo
-        // terminal changes a tile, and the snapshot follows.
+        // terminal changes a record, and the snapshot follows.
+        clock += 2
         list = [demo]
         p.publish()
         XCTAssertEqual(reloads, 4)
         demo.demoCommand("swift test", block: Demo.shell)
-        await until("observed write") { reloads == 5 }
-        XCTAssertEqual(WidgetSnapshot.read(from: url)?.hosts.first?.windows.first { $0.block == Demo.shell }?.app, "swift")
+        await until("observed") { !waits.isEmpty }
+        XCTAssertEqual(try XCTUnwrap(waits.first).0, 1, accuracy: 0.001, "an interval since the last write")
+        waits.removeFirst().1()
+        XCTAssertEqual(reloads, 5)
+        XCTAssertEqual(try XCTUnwrap(WidgetSnapshot.read(from: url)?.written).timeIntervalSince1970, clock.timeIntervalSince1970, accuracy: 1)
+        XCTAssertTrue(WidgetSnapshot.read(from: url)?.hosts.first?.items.contains { $0.block == Demo.shell } == true)
+    }
+
+    /// A host that connects, as at launch or back in the foreground, keeps
+    /// what was written of it last, from the file at the start; with none,
+    /// it is written offline, as a host that failed is.
+    @MainActor func testConnectingHostKeepsItsLastEntry() throws {
+        let url = temp()
+        defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+        let h = Host(HostConfig(name: "alice-laptop", url: URL(string: "http://alice-laptop.invalid:7297")!))
+        XCTAssertEqual(h.status, .connecting)
+        let item = WidgetSnapshot.Item(session: "s", block: "b", window: "api", app: "claude", state: "blocked", kind: nil, progress: nil,
+                                       heading: "Edit main.go?", detail: "", updated: nil)
+        let before = WidgetSnapshot.Host(id: h.id, name: "alice-laptop", icon: nil, online: true, items: [item])
+        try WidgetSnapshot(written: Date(timeIntervalSince1970: 1_800_000_000), hosts: [before]).write(to: url)
+
+        var reloads = 0
+        let p = WidgetPublisher(url: url, schedule: { _, _ in }, reload: { reloads += 1 })
+        p.start(hosts: { [h] })
+        XCTAssertEqual(reloads, 0, "nothing new to write")
+        XCTAssertEqual(WidgetSnapshot.read(from: url)?.hosts, [before])
+        p.publish(force: true)
+        XCTAssertEqual(WidgetSnapshot.read(from: url)?.hosts, [before])
+
+        let fresh = WidgetPublisher.entry(h)
+        XCTAssertFalse(fresh.online)
+        XCTAssertEqual(fresh.items, [])
+        let other = WidgetSnapshot.Host(id: UUID(), name: "bob-desktop", icon: nil, online: true, items: [item])
+        XCTAssertEqual(WidgetPublisher.entry(h, previous: [other]), fresh)
     }
 
     /// A file of another format, or one that does not decode, reads as
@@ -194,6 +230,8 @@ nonisolated final class WidgetTests: XCTestCase {
             ("small", .systemSmall, CGSize(width: 170, height: 170)),
             ("medium", .systemMedium, CGSize(width: 364, height: 170)),
             ("large", .systemLarge, CGSize(width: 364, height: 382)),
+            // The smallest phones' large widget.
+            ("large-small-phone", .systemLarge, CGSize(width: 338, height: 354)),
             ("circular", .accessoryCircular, CGSize(width: 76, height: 76)),
             ("rectangular", .accessoryRectangular, CGSize(width: 172, height: 76)),
             ("inline", .accessoryInline, CGSize(width: 257, height: 26)),
@@ -203,10 +241,11 @@ nonisolated final class WidgetTests: XCTestCase {
             ("-stale", InboxEntry(date: now, snapshot: s, stale: true)),
             ("-empty", InboxEntry(date: now, snapshot: WidgetSnapshot(written: now - 60, hosts: [s.hosts[0]].map { var h = $0; h.items = []; return h }))),
             ("-unread", InboxEntry(date: now, snapshot: nil)),
+            ("-worst", InboxEntry(date: now, snapshot: Self.worst(now: now - 120))),
         ]
         try FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
         for (name, family, size) in families {
-            for (suffix, entry) in entries where suffix == "" || family == .systemMedium || family == .systemSmall {
+            for (suffix, entry) in entries where suffix == "" || suffix == "-worst" || family == .systemMedium || family == .systemSmall {
                 for scheme in [ColorScheme.light, .dark] {
                     let accessory = [.accessoryCircular, .accessoryRectangular, .accessoryInline].contains(family)
                     let face = InboxContent(entry: entry, family: family)
@@ -225,5 +264,31 @@ nonisolated final class WidgetTests: XCTestCase {
                 }
             }
         }
+    }
+
+    /// The most the large widget draws: seven rows of three hosts under the
+    /// four names, more beyond, and two hosts offline; long text.
+    @MainActor static func worst(now: Date) -> WidgetSnapshot {
+        func item(_ b: String, _ app: String, _ state: String, _ heading: String, _ detail: String, ago: TimeInterval, progress: Int? = nil) -> WidgetSnapshot.Item {
+            .init(session: "s", block: b, window: "w-" + b, app: app, state: state, kind: nil, progress: progress,
+                  heading: heading, detail: detail, updated: now - ago)
+        }
+        let long = "Refactor the session store so that every pane keeps its scrollback across reconnects"
+        return WidgetSnapshot(written: now, hosts: [
+            .init(id: UUID(), name: "alice-laptop", icon: nil, online: true, items: [
+                item("1", "claude", "blocked", "Allow edits to 14 files in internal/session?", long, ago: 30),
+                item("2", "codex", "blocked", "Run go test ./...?", "Codex wants to run a command", ago: 90),
+                item("3", "cargo", "error", "Build failed", "error[E0308]: mismatched types in src/main.rs", ago: 400),
+                item("4", "python", "working", "Training", "Epoch 3 of 10", ago: 700),
+            ]),
+            .init(id: UUID(), name: "carol-workstation-with-a-long-name", icon: nil, online: true, items: [
+                item("5", "claude", "done", long, long, ago: 1200),
+                item("6", "node", "working", "Building", "Bundling 1,204 modules", ago: 60, progress: 42),
+                item("7", "go", "working", "Fuzzing", "Corpus 18,233 entries", ago: 3000),
+                item("8", "vim", "working", "Editing", "notes.md", ago: 5000),
+            ]),
+            .init(id: UUID(), name: "bob-desktop", icon: nil, online: false, items: []),
+            .init(id: UUID(), name: "dave-mini", icon: nil, online: false, items: []),
+        ])
     }
 }

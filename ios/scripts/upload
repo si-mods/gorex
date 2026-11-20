@@ -40,19 +40,22 @@ P
 # Build and release). So each bundle is signed ad hoc with its entitlements
 # before the export, the innermost first; the export signs it again, for
 # the distribution, with them.
-entitlements() { # FILE BUNDLE: the entitlements file, its variables filled in
-  local id
-  id=$(/usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$2/Info.plist")
-  sed -e "s/\$(TeamIdentifierPrefix)/57QL6YCAH5./g" -e "s/\$(CFBundleIdentifier)/$id/g" "$1" > "build/$id.entitlements"
-  echo "build/$id.entitlements"
+sign() { # BUNDLE [ENTITLEMENTS]: signs it ad hoc, with the entitlements
+  local id f
+  if [[ -z ${2:-} ]]; then codesign -f -s - "$1"; return; fi
+  id=$(/usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$1/Info.plist")
+  [[ -n $id ]] || { echo "no CFBundleIdentifier in $1" >&2; exit 1; }
+  f=build/$id.entitlements
+  sed -e "s/\$(TeamIdentifierPrefix)/57QL6YCAH5./g" -e "s/\$(CFBundleIdentifier)/$id/g" "$2" > "$f"
+  codesign -f -s - --entitlements "$f" "$1"
 }
 sign_entitlements() { # APP
   local f
   for f in "$1"/Frameworks/*.framework; do
-    if [[ -e $f ]]; then codesign -f -s - "$f"; fi
+    if [[ -e $f ]]; then sign "$f"; fi
   done
-  codesign -f -s - --entitlements "$(entitlements GoRexWidgets/GoRexWidgets.entitlements "$1/PlugIns/GoRexWidgets.appex")" "$1/PlugIns/GoRexWidgets.appex"
-  codesign -f -s - --entitlements "$(entitlements GoRex/GoRex.entitlements "$1")" "$1"
+  sign "$1/PlugIns/GoRexWidgets.appex" GoRexWidgets/GoRexWidgets.entitlements
+  sign "$1" GoRex/GoRex.entitlements
 }
 # The packages, GhosttyKit's binaries from GitHub among them, before the
 # archive: a download GitHub fails (a 504 at times) is tried again.

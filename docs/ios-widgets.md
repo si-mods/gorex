@@ -49,6 +49,8 @@ checked; to settle before or in the phase that needs it).
 
 ## What there is to show
 
+As it was before phase 1; what phase 1 changed is under Design.
+
 - `Host.inbox` (`ios/GoRex/Rex/Inbox.swift`) lists each window whose
   program needs the user or works, by its most urgent OSC 7501 record;
   `Inbox.groups` orders them blocked, error, done, working. Done and
@@ -138,15 +140,17 @@ is ever done.
 - A widget extension target `GoRexWidgets` in `ios/project.yml`
   (`app-extension`, `com.apple.widgetkit-extension`), bundle id
   `dev.gorex.ios.widgets`, embedded in the app. It links SwiftUI,
-  WidgetKit and AppIntents only: not GhosttyKit, Tailnet, FluidAudio or
+  WidgetKit and, from phase 2, AppIntents only: not GhosttyKit, Tailnet, FluidAudio or
   SherpaOnnx.
-- One `WidgetBundle` with the Inbox and Terminal widgets; the Live
-  Activity joins it later.
+- One `WidgetBundle`: the Inbox widget in phase 1, the Terminal widget
+  in phase 2; the Live Activity joins it later.
 - An App Group `group.dev.gorex.ios` on both the app and the extension.
 - Shared sources, compiled into both targets:
   - `WidgetSnapshot.swift`: the snapshot type, its reader and writer.
   - The `Program` table and `Color.attention` and `.done`, moved out of
-    `ProgramTile.swift` into a file without the app's views.
+    `ProgramTile.swift` into `ios/Shared/Program.swift`, without the
+    app's views; the tile itself and the progress ring into
+    `ios/Shared/Tile.swift`.
   - The brand marks: `ios/Shared/Brands.xcassets`, moved out of the
     app's catalog, in both targets' resources.
   - Not `Inbox.ago`: a string made when the widget draws stays as it is
@@ -176,9 +180,6 @@ One JSON file, `<App Group>/widgets/snapshot.json`, written atomically.
           "detail": "Claude wants to edit 2 files",
           "updated": "2026-11-20T09:29:41Z"
         }
-      ],
-      "windows": [
-        { "session": "s1", "block": "b3", "title": "api", "app": "claude" }
       ]
     }
   ]
@@ -186,11 +187,17 @@ One JSON file, `<App Group>/widgets/snapshot.json`, written atomically.
 ```
 
 - `items` is the host's inbox as `Inbox.groups` orders it, at most 20
-  per host. `windows` is every window, for the Terminal widget's picker,
-  at most 100 per host. `heading` and `detail` are cut to 200
-  characters.
-- A host that is not online is written with `online: false`, its last
-  `items` dropped (the inbox is empty then) and its `windows` kept.
+  per host. `heading` and `detail` are cut to 200 characters.
+- `windows` comes with phase 2, for the Terminal widget's picker: every
+  window, at most 100 per host. It is an optional field, not written in
+  phase 1, as window titles change often and each change would be a
+  write and a reload.
+- A host that connects (`Host.Status.connecting`: at launch, and back
+  in the foreground) is written as it was last written, from the file
+  at launch: it likely still shows what it showed, and a quick leave
+  would otherwise write its inbox away. A host that failed (offline,
+  retrying), or that connects with nothing written of it, is written
+  with `online: false` and no items (its inbox is empty then).
 - **Format.** This is a saved format another build reads
   ([irreversible.md](irreversible.md), class A): after an update, the
   new extension may read a file the old app wrote. Rules: `v` is the
@@ -198,8 +205,8 @@ One JSON file, `<App Group>/widgets/snapshot.json`, written atomically.
   shows "Open Rex Go" and nothing else; fields are added as optional
   only. The file is a cache: losing it loses nothing the next foreground
   doesn't rebuild.
-- **Writer.** A `WidgetPublisher` in the app watches the hosts' inbox
-  and windows, coalesces changes to one write per second, and skips a
+- **Writer.** A `WidgetPublisher` in the app watches the hosts' inbox,
+  coalesces changes to one write per second, and skips a
   write whose content (without `written`) is unchanged. After each write
   it calls `WidgetCenter.shared.reloadAllTimelines()`. On the move to
   the background it writes once more, inside a short
@@ -213,8 +220,11 @@ One JSON file, `<App Group>/widgets/snapshot.json`, written atomically.
 
 ### Freshness
 
-- Each entry shows `written` as relative time ("2 min ago"), which
-  moves without reloads.
+- Each entry of the Home Screen families shows `written` as relative
+  time ("Updated 2 minutes ago"), which moves without reloads. The Lock
+  Screen families have no room for it: they show only the stale
+  entry's "Open Rex Go to update" (rectangular, inline) or dim
+  (circular).
 - The provider returns two entries: now, and `written` + 10 minutes,
   which shows the content dimmed with "Open Rex Go to update".
 - An item's time counts from its `updated` as a date reference, so
@@ -229,21 +239,23 @@ Kind `Inbox`. Static configuration; all hosts. Its name in the widget
 gallery is "Activity" ("动态"), as the app's button that shows the
 inbox ("Show Activity").
 
-- **Small**: the top item's program tile, tinted by state, its heading,
-  and the counts below ("1 waiting · 3 working"). Nothing in the
+- **Small**: the top item's program tile with its state's dot, the
+  state's name in that dot's color, its heading, and the counts below ("1 waiting · 3 working"). Nothing in the
   inbox: "Nothing needs you" with the time.
 - **Medium**: up to 3 rows, as the status inbox draws them (tile,
   heading, host, state, time), then "+N more".
-- **Large**: up to 7 rows, grouped by state as `Inbox.groups` does.
+- **Large**: up to 7 rows, grouped by state as `Inbox.groups` does; on
+  a smaller phone, or with long text, as many as fit (`ViewThatFits`),
+  then "+N more".
 - **accessoryCircular** (Lock Screen): the needs-input count over the
   attention glyph; the working count when nothing waits.
 - **accessoryRectangular**: the top item's heading and state.
 - **accessoryInline**: the counts.
 - Rows are `Link`s to their terminals; the widget's background opens
   the inbox.
-- Heading and detail are `.privacySensitive()`.
-- Hosts not online at `written` show as one line, "alice-laptop
-  offline", under the rows.
+- Heading, detail and host names are `.privacySensitive()`.
+- Hosts not online at `written` show in one line under the rows: the
+  first by name, then how many more ("bob-desktop · Offline +1").
 
 ### Terminal widget
 
@@ -266,7 +278,8 @@ snapshot's `windows`.
   `Notifier.shared.opening` with `explicit: true`, as a notification
   tap does, and `inbox` to the inbox. The pairing code keeps its route.
 - A host that no longer exists opens the list. A window that no longer
-  exists opens its host.
+  exists opens as a notification's tap for it does: the URL's target
+  goes to `Notifier.shared.opening` unchecked.
 - Any app can open a `rexgo://` URL. These two only open what the user
   could open from the list; they do not type, create or close anything.
 

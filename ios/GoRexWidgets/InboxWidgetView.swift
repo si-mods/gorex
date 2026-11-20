@@ -46,7 +46,15 @@ struct InboxContent: View {
             case .accessoryRectangular: Rectangular(s: s, stale: entry.stale)
             case .accessoryInline: Text(entry.stale ? String(localized: "Open Rex Go to update") : s.counts(max: 2) ?? String(localized: "Nothing needs you"))
             case .systemSmall: Small(s: s, stale: entry.stale)
-            case .systemLarge: Rows(s: s, stale: entry.stale, max: 7, grouped: true)
+            case .systemLarge:
+                // Seven rows under four names fill a large widget on the
+                // larger phones; a smaller one shows as many as fit.
+                ViewThatFits(in: .vertical) {
+                    Rows(s: s, stale: entry.stale, max: 7, grouped: true)
+                    Rows(s: s, stale: entry.stale, max: 6, grouped: true)
+                    Rows(s: s, stale: entry.stale, max: 5, grouped: true)
+                    Rows(s: s, stale: entry.stale, max: 4, grouped: true)
+                }
             default: Rows(s: s, stale: entry.stale, max: 3, grouped: false)
             }
         } else {
@@ -160,7 +168,7 @@ private struct Row: View {
                         StateMark(item: item)
                     }
                     HStack(spacing: 0) {
-                        if named { Text(verbatim: host.name + " · ") }
+                        if named { Text(verbatim: host.name + " · ").privacySensitive() }
                         Text(item.detail.isEmpty ? item.window : item.detail).privacySensitive()
                         Spacer(minLength: 6)
                         if let t = item.updated { ago(t).foregroundStyle(.tertiary) }
@@ -174,15 +182,16 @@ private struct Row: View {
     }
 }
 
-/// The hosts that were not online, a line each, as the status inbox lists
-/// them under its rows.
+/// The hosts that were not online, in one line: the first by name, then
+/// how many more, as the status inbox lists them under its rows.
 private struct Away: View {
     let hosts: [WidgetSnapshot.Host]
 
     var body: some View {
-        ForEach(hosts) { h in
+        if let h = hosts.first {
             Label {
-                Text(verbatim: h.name + " · " + String(localized: "Offline"))
+                Text(verbatim: h.name + " · " + String(localized: "Offline") + (hosts.count > 1 ? " +\(hosts.count - 1)" : ""))
+                    .privacySensitive()
             } icon: {
                 Image(systemName: "wifi.slash")
             }
@@ -205,7 +214,8 @@ private struct Rows: View {
         let all = s.items
         let shown = Array(all.prefix(max))
         let named = s.hosts.count > 1
-        VStack(alignment: .leading, spacing: 8) {
+        // The large widget's seven rows under four names fit only closer.
+        VStack(alignment: .leading, spacing: grouped ? 5 : 8) {
             // Stale, the rows dim; what brings them up to date does not.
             Group {
                 if shown.isEmpty {
@@ -216,7 +226,7 @@ private struct Rows: View {
                         .frame(maxWidth: .infinity)
                 } else if grouped {
                     ForEach(Self.groups(shown), id: \.state) { g in
-                        Text(StateName.of(g.state)).font(.caption.weight(.semibold)).foregroundStyle(.gray)
+                        Text(StateName.of(g.state)).font(.caption2.weight(.semibold)).foregroundStyle(.gray)
                         ForEach(Array(g.rows.enumerated()), id: \.offset) { _, r in Row(host: r.host, item: r.item, named: named) }
                     }
                 } else {
@@ -225,19 +235,9 @@ private struct Rows: View {
             }
             .opacity(stale ? 0.5 : 1)
             Spacer(minLength: 0)
-            if grouped { Away(hosts: s.away) }
             HStack(spacing: 6) {
                 if all.count > shown.count { Text("+\(all.count - shown.count) more").font(.caption2.weight(.semibold)).foregroundStyle(.secondary) }
-                if !grouped, let h = s.away.first {
-                    Label {
-                        Text(verbatim: h.name + " · " + String(localized: "Offline") + (s.away.count > 1 ? " +\(s.away.count - 1)" : ""))
-                    } icon: {
-                        Image(systemName: "wifi.slash")
-                    }
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                }
+                Away(hosts: s.away)
                 Spacer(minLength: 4)
                 Freshness(s: s, stale: stale)
             }
@@ -283,7 +283,7 @@ private struct Small: View {
                     Image(systemName: "checkmark.circle").font(.title2).foregroundStyle(.secondary)
                     Spacer(minLength: 4)
                     Text("Nothing needs you").font(.headline).lineLimit(2)
-                    if let h = s.away.first { Text(verbatim: h.name + " · " + String(localized: "Offline")).font(.caption2).foregroundStyle(.secondary).lineLimit(1) }
+                    Away(hosts: s.away)
                 }
             }
             .opacity(stale ? 0.5 : 1)
@@ -388,9 +388,9 @@ extension WidgetSnapshot {
                 item("b3", "docs", "claude", "done", "Wrote the release notes", "CHANGELOG.md updated", ago: 900),
                 item("b4", "build", "cargo", "working", "Building", "Compiling 48 crates", ago: 120, progress: 65),
                 item("b5", "data", "python", "working", "Training", "Epoch 3 of 10", ago: 600),
-            ], windows: []),
+            ]),
             Host(id: UUID(uuidString: "00000000-0000-4000-8000-00000000b0b0")!, name: "bob-desktop", icon: "desktopcomputer", online: false,
-                 items: [], windows: []),
+                 items: []),
         ])
     }
 }
