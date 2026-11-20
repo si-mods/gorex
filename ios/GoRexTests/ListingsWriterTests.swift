@@ -4,7 +4,7 @@ import XCTest
 /// The hosts' last projects are written off the main actor: in order, the
 /// last state last, a burst as one write, and a pending one on going to the
 /// background.
-@MainActor final class ListingsWriterTests: XCTestCase {
+nonisolated final class ListingsWriterTests: XCTestCase {
     private nonisolated final class Log: @unchecked Sendable {
         let lock = NSLock()
         var seen: [[String]] = []
@@ -25,16 +25,16 @@ import XCTest
         var all: [[String]] { lock.lock(); defer { lock.unlock() }; return seen }
     }
 
-    private func state(_ key: String) -> [String: ProjectListing] {
+    @MainActor private func state(_ key: String) -> [String: ProjectListing] {
         [key: ProjectListing(projects: [], loose: [])]
     }
 
-    private func writer(_ log: Log, center: NotificationCenter = NotificationCenter()) -> ListingsWriter {
+    @MainActor private func writer(_ log: Log, center: NotificationCenter = NotificationCenter()) -> ListingsWriter {
         ListingsWriter(url: URL(fileURLWithPath: "/unused"), center: center) { _, l in log.add(l) }
     }
 
     /// Saves one after another are written in that order.
-    func testWritesKeepOrder() {
+    @MainActor func testWritesKeepOrder() {
         let log = Log()
         let w = writer(log)
         for k in ["a", "b", "c"] { w.save(state(k)); w.flush() }
@@ -42,7 +42,7 @@ import XCTest
     }
 
     /// While a write runs, a burst of saves makes one more write, of the last.
-    func testBurstCoalescesAndLastWins() {
+    @MainActor func testBurstCoalescesAndLastWins() {
         let log = Log()
         log.block = true
         let w = writer(log)
@@ -55,7 +55,7 @@ import XCTest
     }
 
     /// Going to the background writes what is pending before it returns.
-    func testBackgroundFlushes() {
+    @MainActor func testBackgroundFlushes() {
         let log = Log()
         let center = NotificationCenter()
         let w = writer(log, center: center)
@@ -66,7 +66,7 @@ import XCTest
     }
 
     /// The real write puts the listings in the file, and a new folder is made for it.
-    func testWritesFile() throws {
+    @MainActor func testWritesFile() throws {
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent("lw-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: dir) }
         let url = dir.appendingPathComponent("projects-cache.json")
