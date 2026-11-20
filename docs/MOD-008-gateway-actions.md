@@ -8,7 +8,7 @@ metadata:
 
 # MOD-008: Running config actions in the gateway
 
-Status: proposal.
+Status: phase 1 and 2 built (#924). Phase 3 not built.
 
 This doc decides that the GoRex gateway loads GoRex's Lua configuration and runs its actions for Rex clients. It extends [REF-005](REF-005-rex-api.md), and it builds the producer that [MOD-005](MOD-005-client-prompts.md) waits for. It follows [DOC-001](DOC-001-design-docs.md).
 
@@ -34,7 +34,7 @@ The user pays for it. An action such as "New worktree" works on the desktop and 
 - `client.set_script` Lua. It stays unsupported.
 - Actions on another server, and `client.perform`. They stay unsupported.
 - Moving the app's own action execution to the gateway. The app keeps its runtime for its keys.
-- Rex Go (iOS) prompts. Rex Go speaks GoRex's protocol, not the Rex API. A later IOS doc can add them.
+- Rex Go (iOS) prompts. Rex Go speaks GoRex's protocol, not the Rex API. A later IOS doc adds them, as agreed.
 - A mapping of every app-only built-in. The gateway performs a named set, below.
 
 ## Design
@@ -128,12 +128,6 @@ The user pays for it. An action such as "New worktree" works on the desktop and 
 
 ## Phases
 
-1. Load the file, list it in `client.keymap`, reload it in `server.config_reload`, and report diagnostics.
-2. Run the actions, check the args, enforce the deadline and map the nine built-in IDs.
+1. Load the file, list it in `client.keymap`, reload it in `server.config_reload`, and report diagnostics (#924).
+2. Run the actions, check the args, enforce the deadline and map the eight built-in IDs (#924).
 3. Give the actions `gorex.ui` through the MOD-005 broker.
-
-## Open questions
-
-1. Which built-in IDs does phase 2 perform? The table lists a starting set. The user decides whether the set is enough.
-2. Does the gateway load the file with the sandbox, or with the app's loader? The sandbox is recommended. The user decides, because it changes which files work on both sides.
-3. Should Rex Go show these prompts through GoRex's protocol later? That is a separate IOS doc. The user decides when it is needed.
