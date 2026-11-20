@@ -711,7 +711,7 @@ struct HostSection: View {
             }
             .buttonStyle(.plain)
             .hoverEffect(.highlight)
-            .matchedTransitionSource(id: ZoomSource.row(host: host.id, session: w.session.id, block: w.block), in: zoom)
+            .matchedTransitionSource(id: ZoomSource.row(host: host.id, session: w.session.id, window: w.window.window_id), in: zoom)
             let shown = shownBy[w.session.id] ?? []
             let place = RowPlace(host: host.id, session: w.session.id, window: w.window.window_id)
             let lifted = drag.map { !$0.dropped && $0.session.id == w.session.id && $0.window == w.window.window_id } ?? false

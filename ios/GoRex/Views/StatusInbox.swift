@@ -17,7 +17,6 @@ struct StatusInbox: View {
         let groups = Inbox.groups(store.hosts.flatMap { $0.inbox(matching: query) })
         // Hosts not online may need the user too: the inbox can't tell.
         let away = store.hosts.filter { $0.status != .online }
-        let firsts = Self.firsts(groups.filter { !collapsed.contains("inbox." + $0.state) }.flatMap { $0.items })
         if groups.isEmpty && away.isEmpty && !store.hosts.isEmpty {
             Text("Nothing needs you").foregroundStyle(.secondary).frame(maxWidth: .infinity).padding(.top, 40)
         }
@@ -25,7 +24,7 @@ struct StatusInbox: View {
         TimelineView(.everyMinute) { tl in
             VStack(alignment: .leading, spacing: 30) {
                 ForEach(groups, id: \.state) { g in
-                    section(g.state, g.items, firsts: firsts, now: tl.date)
+                    section(g.state, g.items, now: tl.date)
                 }
                 if !away.isEmpty {
                     VStack(alignment: .leading, spacing: 8) {
@@ -44,7 +43,7 @@ struct StatusInbox: View {
         }
     }
 
-    @ViewBuilder private func section(_ state: String, _ items: [InboxItem], firsts: Set<String>, now: Date) -> some View {
+    @ViewBuilder private func section(_ state: String, _ items: [InboxItem], now: Date) -> some View {
         let key = "inbox." + state
         let isCollapsed = collapsed.contains(key)
         VStack(alignment: .leading, spacing: 10) {
@@ -72,20 +71,13 @@ struct StatusInbox: View {
                             }
                             .buttonStyle(.plain)
                             .hoverEffect(.highlight)
-                            .matchedTransitionSource(id: ZoomSource.row(host: item.host, session: item.session, block: item.block), in: zoom)
-                            .modifier(MatchedPlace(place: firsts.contains(item.id) ? Self.place(item) : nil, own: .inbox(item.id), namespace: places))
+                            .matchedTransitionSource(id: ZoomSource.row(host: item.host, session: item.session, window: item.window.window_id), in: zoom)
+                            .modifier(MatchedPlace(place: Self.place(item), own: .inbox(item.id), namespace: places))
                         }
                     }
                 }
             }
         }
-    }
-
-    /// The rows that move to their tab's row in All Tabs: the first of
-    /// each window, of the sections open. The others fade.
-    private static func firsts(_ items: [InboxItem]) -> Set<String> {
-        var seen = Set<RowPlace>()
-        return Set(items.filter { seen.insert(place($0)).inserted }.map(\.id))
     }
 
     private static func place(_ item: InboxItem) -> RowPlace {

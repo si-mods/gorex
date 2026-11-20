@@ -38,7 +38,7 @@ struct HostListView: View {
     /// What the terminal open zooms out of: the row tapped, else none, for
     /// the standard push; and the button that opened Settings
     /// (docs/IOS-011-continuous-transitions.md).
-    @State private var zoomSource: ZoomSource?
+    @State private var zoomed: ZoomRecord?
     @State private var settingsSource: ZoomSource = .settings
     @Namespace private var zoom
     /// The rows that move between All Tabs and Activity.
@@ -96,7 +96,7 @@ struct HostListView: View {
                             // Out of the row tapped, and back into it; any
                             // other open pushes.
                             TerminalScreen(target: t, host: host, go: go).id(t)
-                                .modifier(ZoomFrom(source: zoomSource == ZoomSource(t) ? zoomSource : nil, namespace: zoom))
+                                .modifier(ZoomFrom(source: zoomed?.source(for: t), namespace: zoom))
                         }
                     }
                 }
@@ -195,7 +195,7 @@ struct HostListView: View {
     private func go(_ t: TerminalTarget?) {
         // Only a row's tap zooms: another terminal opens with the push. The
         // one shown keeps its zoom, to close into its row.
-        if let t, t != path.last { zoomSource = nil }
+        if let t, t != path.last { zoomed = nil }
         path = t.map { [$0] } ?? []
     }
 
@@ -206,7 +206,9 @@ struct HostListView: View {
             withAnimation(.easeInOut(duration: still ? 0.15 : 0.2)) { go(t) }
         } else {
             go(t)
-            zoomSource = ZoomSource(t)
+            // The source is fixed at the tap: a split or a focus change
+            // later cannot move it.
+            zoomed = ZoomSource.row(of: t, in: store).map { ZoomRecord(target: t, source: $0) }
         }
     }
 
@@ -564,14 +566,32 @@ private struct DemoBanner: View {
 /// What a terminal or a sheet zooms out of
 /// (docs/IOS-011-continuous-transitions.md).
 enum ZoomSource: Hashable {
-    /// A tab's row, by the target it opens: not its title, which changes.
-    case row(host: UUID, session: String, block: String)
+    /// A tab's row, by its window: not its title, which changes, nor its
+    /// focused pane, which a split moves.
+    case row(host: UUID, session: String, window: String)
     case settings
     case addHost
     /// A host's New Project button.
     case newProject(UUID)
 
-    init(_ t: TerminalTarget) { self = .row(host: t.host, session: t.session, block: t.block) }
+    /// The row of the window that holds the target's pane.
+    @MainActor static func row(of t: TerminalTarget, in store: HostStore) -> ZoomSource? {
+        guard let host = store.host(t.host),
+              let w = host.sessions.first(where: { $0.id == t.session })?.view?.windows?.first(where: { $0.holds(t.block) })
+        else { return nil }
+        return .row(host: t.host, session: t.session, window: w.window_id)
+    }
+}
+
+/// The terminal a row's tap opens, and the source it zooms out of.
+private struct ZoomRecord {
+    let target: TerminalTarget
+    let source: ZoomSource
+
+    /// The source, for that target only: compared by host, session and pane.
+    func source(for t: TerminalTarget) -> ZoomSource? {
+        t.host == target.host && t.session == target.session && t.block == target.block ? source : nil
+    }
 }
 
 /// A terminal's push: a zoom out of its source, else the standard one.
