@@ -1,7 +1,7 @@
 # Rex's apps
 
 Rex's own apps, the iPhone one among them, connect to GoRex as they
-connect to a Rex server. `GoRex rexapi` serves Rex's API, revision 12, from
+connect to a Rex server. `GoRex rexapi` serves Rex's API, revision 14, from
 the session server the GoRex app runs: the same WebSocket endpoints, the
 same messages, the same errors. Rex's apps need no change.
 
@@ -78,19 +78,19 @@ When the phone reaches this machine by its address on the local network,
 directly or through a VPN to it, Rex's app connects without Tailscale.
 Settings › Server › Local API › Serve Rex apps on the local network turns the listener on.
 It listens on this machine's private address with Rex's port, such as
-`192.168.88.119:7297`, and lets in that address's network, such as
-`192.168.88.0/24`; change either there. The same from the command line:
+`192.0.2.10:7297`, and lets in that address's network, such as
+`192.0.2.0/24`; change either there. The same from the command line:
 
 ```sh
 gorex rexapi lan on                 # this machine's address and network
-gorex rexapi lan allow 10.6.0.2     # the phone's VPN address, alone
-gorex rexapi lan deny 192.168.88.0/24
+gorex rexapi lan allow 198.51.100.2     # the phone's VPN address, alone
+gorex rexapi lan deny 192.0.2.0/24
 gorex rexapi lan listen 0.0.0.0:7297
 gorex rexapi lan status
 gorex rexapi lan token show         # the pairing token
 gorex rexapi lan token rotate       # a new one; every device must pair again
-gorex rexapi lan legacy add 192.168.88.40   # a device that cannot send a token
-gorex rexapi lan legacy remove 192.168.88.40
+gorex rexapi lan legacy add 192.0.2.40   # a device that cannot send a token
+gorex rexapi lan legacy remove 192.0.2.40
 gorex rexapi lan legacy list
 ```
 
@@ -104,7 +104,7 @@ on every request and WebSocket. The gateway compares it in constant time
 and takes `k` out of the request before anything logs it.
 
 - **Getting it.** The pairing code holds it in the URL's fragment, which
-  a client never sends: `http://192.168.88.119:7297/#k=<token>`. Scan
+  a client never sends: `http://192.0.2.10:7297/#k=<token>`. Scan
   **Settings › Server › Local API → Rex QR…**, or paste that URL by hand.
   The web pairing link of `gorex rexapi lan qr` carries it as `&k=` in
   the fragment; the web client reads it from the fragment only, never

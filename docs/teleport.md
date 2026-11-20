@@ -1,300 +1,169 @@
-# Teleport
+# Teleport: moving a pane's work to another host
 
-Teleport moves a pane's work to another machine: the code it works on,
-the coding agent's conversation, and what the terminal showed. The
-process does not move — no OS GoRex runs on can migrate a live process
-with its PTY. The work is packed on the source, unpacked on the target,
-and the program started again there, the way `claude --teleport` brings
-a web session to a local checkout.
+Status: phase 1 built (#199, #217, #233). The items in "Not in phase 1" are not built.
 
-After a teleport the pane is the new session on the target host, in a
-tab of that host's (see The app). The source session ends.
+Teleport moves the work of a pane to another machine. The work is the code that the pane works on, the conversation of the coding agent, and what the terminal showed. The process does not move, because no OS that GoRex runs on can migrate a live process with its PTY. GoRex packs the work on the source and unpacks it on the target. GoRex then starts the program again on the target. This is how `claude --teleport` brings a web session to a local checkout.
 
-## Scope
+After a teleport the pane is the new session on the target host. It is in a tab of that host (see The app). The source session ends.
 
-Phase 1 teleports a pane whose foreground is a coding agent GoRex knows,
-Claude Code or omp (oh-my-pi), or a shell at its prompt, inside a Git work tree, between two hosts GoRex already
-connects to (paired over tailcat, or system Tailscale), from this
-machine to a host. Anything else is refused with a reason:
+## Non-goals
 
-- a pane of another host: only this machine's server packs;
-- not a Git work tree (nothing to rebuild the directory from), a repo
-  with no commit, or one with no remote URL (nothing to clone);
-- the agent working (its conversation file is still being written:
-  its status says working, or it printed in the last two seconds, as its
-  spinner does); the user waits for it to be idle, or stops it first;
-- another program in the foreground (a server, an editor): its state is
-  in its process; so is a session started with a program rather than a
-  shell (`gorex new -- ping`), the program its own process, which the
-  target would make a shell of: an agent started so (`gorex new -- omp`)
-  too, as GoRex finds an agent's conversation only under a shell;
-- the target's server too old to have the `teleport` op.
+Phase 1 does not do these things:
 
-Windows hosts are in: either side may be macOS, Linux or Windows. What
-differs there is handled at the target, from the target's own rules:
-the work tree path (`%USERPROFILE%\repos`…), the conversation's
-directory name (Claude Code's slug of `C:\Users\…` is `C--Users-…`), and
-the resume command, quoted for the target pane's shell (PowerShell,
-cmd, POSIX, fish; the quoters of `resume.go`, now in
-`internal/rex/quote.go` for the server to type it). Line endings
-are Git's business: the patch is binary and applied by Git, which
-honours the target clone's `core.autocrlf`.
+- Merging work that went on at both ends. A teleport back to a directory that changed since the work left makes a new work tree there. The user merges the branches.
+- Cleaning the `.gorex/teleport/` work trees. The user runs `git worktree remove` by hand, or a later "Clean up teleports" command does it.
+- Agents other than Claude Code and omp (Codex keeps its conversations elsewhere). GoRex refuses these agents while they run. A shell goes.
 
-## What is packed
+## Design
 
-A package is one tar stream. Its manifest travels before it, in the line
-that asks for it (below): version, source host name, program (`claude` /
-`shell`), the session id, the repo's remote URLs (origin's first),
-branch, HEAD, the work tree's root on the source (for the conversation's
-`cwd`), the pane's directory relative to it, the work tree's root relative to
-the source's home (when under it), terminal size, the hop's
-link and the links of earlier hops of the work tree (Round trips), and
-the package's length.
+### Scope
+
+Phase 1 teleports a pane from this machine to a host. The pane must meet these conditions:
+
+- The foreground of the pane is a coding agent that GoRex knows (Claude Code or omp (oh-my-pi)), or a shell at its prompt.
+- The pane is inside a Git work tree.
+- The two hosts are hosts that GoRex already connects to (paired over tailcat, or system Tailscale).
+
+GoRex refuses anything else with a reason:
+
+- A pane of another host. Only the server of this machine packs.
+- A directory that is not a Git work tree (nothing to rebuild the directory from). A repo with no commit, or with no remote URL (nothing to clone), is also refused.
+- An agent that is working. Its conversation file is still being written. Its status says working, or it printed in the last two seconds, as its spinner does. The user waits for the agent to be idle, or stops it first.
+- Another program in the foreground (a server, an editor). The state of the program is in its process.
+- A session that started with a program and not with a shell (`gorex new -- ping`). The program is its own process, and the target would make a shell of it. This includes an agent that started this way (`gorex new -- omp`), because GoRex finds the conversation of an agent only under a shell.
+- A target whose server is too old to have the `teleport` op.
+
+Windows hosts are in. Either side can be macOS, Linux or Windows. The target handles what differs, with its own rules:
+
+- The path of the work tree (`%USERPROFILE%\repos`…).
+- The directory name of the conversation. The slug of Claude Code for `C:\Users\…` is `C--Users-…`.
+- The resume command, quoted for the shell of the target pane (PowerShell, cmd, POSIX, fish). These are the quoters that `resume.go` had, now in `internal/rex/quote.go` so that the server can type the command.
+
+Line endings are the business of Git. The patch is binary and Git applies it. Git honours the `core.autocrlf` of the target clone.
+
+### What is packed
+
+A package is one tar stream. Its manifest travels before it, in the line that asks for it (see Protocol). The manifest holds these items:
+
+- The version, the name of the source host, and the program (`claude` / `shell`).
+- The session id.
+- The remote URLs of the repo (the URL of origin first), the branch, and HEAD.
+- The root of the work tree on the source (for the `cwd` of the conversation).
+- The directory of the pane, relative to that root.
+- The root of the work tree, relative to the home of the source (when the root is under it).
+- The terminal size.
+- The link of the hop, and the links of earlier hops of the work tree (see Round trips).
+- The length of the package.
 
 | Part | Content |
 |---|---|
-| `repo.bundle` | `git bundle` of the commits reachable from HEAD that the remotes do not have, by what `git ls-remote` answers of their heads and tags now (a remote-tracking ref may be stale: a branch deleted after a squash merge); by the remote-tracking refs when no remote answers, as offline; empty when HEAD is pushed |
+| `repo.bundle` | `git bundle` of the commits reachable from HEAD that the remotes do not have. GoRex decides this by what `git ls-remote` answers now for the heads and tags of the remotes. A remote-tracking ref may be stale, for example a branch removed after a squash merge. When no remote answers, as offline, GoRex uses the remote-tracking refs. The bundle is empty when HEAD is pushed |
 | `worktree.patch` | `git diff --binary HEAD`: staged and unstaged changes |
-| `untracked.tar` | the regular files `git ls-files -o --exclude-standard` lists; ignored files and links stay behind |
+| `untracked.tar` | the regular files that `git ls-files -o --exclude-standard` lists. Ignored files and links stay behind |
 | `claude/<uuid>.jsonl` | the conversation, and its `<uuid>/` directory (subagents, tool results) when there is one |
-| `claude/file-history/<uuid>/<hex>@v<n>` | the backups `/rewind` restores files from (`<config>/file-history/<uuid>/`), regular files of that name only, but those only files outside the work tree have |
-| `omp/<time>_<id>.jsonl` | omp's conversation, the directory of the same name beside it (its artifacts, as `109.bash.log`), and `omp/blobs/<sha256>[.ext]`, the blobs of its data dir that the conversation quotes (`blob:sha256:<hex>`) |
-| `scrollback.txt` | the pane's text (`format` text), its last MiB, for the new pane to show, dimmed and without control characters, above the program |
+| `claude/file-history/<uuid>/<hex>@v<n>` | the backups that `/rewind` restores files from (`<config>/file-history/<uuid>/`). Only regular files of that name travel, and of those only the files outside the work tree |
+| `omp/<time>_<id>.jsonl` | the conversation of omp, the directory of the same name beside it (its artifacts, as `109.bash.log`), and `omp/blobs/<sha256>[.ext]`. The blobs are the blobs of its data dir that the conversation quotes (`blob:sha256:<hex>`) |
+| `scrollback.txt` | the text of the pane (`format` text), its last MiB. The new pane shows it above the program, dimmed and without control characters |
 
-Limits: the package is refused past 256 MiB, and `untracked.tar` past
-64 MiB, so a stray build output does not cross the network. Secrets in
-untracked files (`.env`) travel; the data plane is WireGuard end to end
-and the target is a host the user trusts with commands already.
+Limits: GoRex refuses a package over 256 MiB, and an `untracked.tar` over 64 MiB. So a stray build output does not cross the network. Secrets in untracked files (`.env`) travel. The data plane is WireGuard end to end, and the target is a host that the user already trusts with commands.
 
-## Unpacking on the target
+### Unpacking on the target
 
-0. **Back where it came from.** A teleport that comes back to a work tree
-   it left, untouched since, lands there instead of in a new work tree
-   (Round trips, below); steps 1 and 2 are skipped then.
-1. **Find the repo.** A local clone whose remote URL matches one of the
-   manifest's (`https://`, `ssh://` and `git@host:` spellings of one repo
-   match), among the directories the user works in on the target, as
-   GoRex knows them: the directories of the server's sessions, live and
-   those its journal recorded, and the `cwd` of each of Claude Code's
-   projects in the target's config dir (the first line that has one, of
-   one conversation per project). Each is resolved to its Git work tree
-   and repo by reading `.git` (a linked work tree's `.git` file and its
-   `commondir` lead to the repo, whose main work tree is the clone), and
-   the remotes are read from the repo's `config` file, with no `git` run
-   per directory (includes and `insteadOf` are not followed). GoRex
-   searches no fixed directories. None found: clone the first URL where
-   the source has its work tree relative to its home directory
-   (`~/work/x` on a Mac lands in `%USERPROFILE%\work\x` on Windows); a
-   clone of the repo there is taken as it is. When that path is another
-   directory, or the source's work tree was outside its home, clone to
-   `~/<repo name>`, with `-2`, `-3`… when taken. No URL (a repo never
-   pushed): refuse.
-2. **Make a work tree.** Never touch the clone's own checkout: fetch the
-   bundle, then `git worktree add -b teleport/<short-id> <clone>/.gorex/teleport/<short-id> <HEAD>`.
-   When HEAD is on the remote and the clone lacks it, fetch it first. The
-   clone's `.git/info/exclude` gets `/.gorex/`, so its own status does not
-   list the work trees.
-3. **Apply the changes.** `git apply --binary worktree.patch` to the
-   work tree (staged changes arrive unstaged), then unpack
-   `untracked.tar`: only regular files, each new, at a relative path
-   reached through no link. A failing apply aborts and removes the work
-   tree and its branch, as any failure after it does.
-4. **Place the conversation.** Rewrite the `cwd` field of every line of
-   the jsonl from the source path to the target path, and write it to
-   the target's Claude config dir under `projects/<slug(target cwd)>/`,
-   the slug being Claude Code's own (every character other than a
-   letter or digit becomes `-`; Claude Code's shortening of very long
-   paths is not followed). The config dir is the target server's
-   `CLAUDE_CONFIG_DIR`, else `~/.claude`.
+0. **Back where it came from.** A teleport can come back to a work tree that it left, untouched since. It lands there and not in a new work tree (see Round trips). GoRex then skips steps 1 and 2.
+1. **Find the repo.** The target looks for a local clone whose remote URL matches one of the URLs in the manifest. The `https://`, `ssh://` and `git@host:` spellings of one repo match. The target looks in the directories where the user works on the target, as GoRex knows them:
+   - The directories of the sessions of the server, live and recorded in its journal.
+   - The `cwd` of each project of Claude Code in the config dir of the target. For each project, GoRex reads one conversation and takes the first line that has a `cwd`.
 
-   omp's conversation goes the same way, under omp's data dir: its
-   file, keeping its `<time>_<id>.jsonl` name, and the directory of that
-   name beside it, into `sessions/<omp's slug of the target cwd>/`, its
-   `cwd` rewritten. omp's slug, as its `session-paths.ts` makes it: of
-   the real path, under the temporary directory `-tmp-` and the path from
-   it, under home `-` and the path from it, else `--<path>--`, each `/`,
-   `\` and `:` a `-` (`~/repos/gorex` is `-repos-gorex`, `C:\x` is
-   `--C--x--`). The data dir, as omp's `dirs.ts` has it, of the target
-   server's environment: `~/.omp/agent`, `PI_CONFIG_DIR` in place of
-   `.omp`, a profile's (`OMP_PROFILE`, `PI_PROFILE`) under `profiles/`,
-   `PI_CODING_AGENT_DIR` without one, `$XDG_DATA_HOME/omp` when it is
-   there. The blobs merge into its `blobs/` as Claude Code's file history
-   does (below). A message is the `id` of a line that is the
-   conversation, for the round trip's rule below, as `uuid` is Claude
-   Code's.
+   GoRex resolves each directory to its Git work tree and repo by reading `.git`. The `.git` file of a linked work tree and its `commondir` lead to the repo. The main work tree of that repo is the clone. GoRex reads the remotes from the `config` file of the repo. It runs no `git` for each directory. It does not follow includes and `insteadOf`. GoRex searches no fixed directories. If it finds no clone, it clones the first URL to the place where the source has its work tree, relative to its home directory. For example, `~/work/x` on a Mac lands in `%USERPROFILE%\work\x` on Windows. If a clone of the repo is already there, GoRex takes it as it is. If that path is another directory, GoRex clones to `~/<repo name>`. GoRex does the same when the work tree of the source was outside its home. It adds `-2`, `-3`… when the name is taken. If there is no URL (a repo never pushed), GoRex refuses.
+2. **Make a work tree.** GoRex never touches the own checkout of the clone. It fetches the bundle, then runs `git worktree add -b teleport/<short-id> <clone>/.gorex/teleport/<short-id> <HEAD>`. When HEAD is on the remote and the clone lacks it, GoRex fetches it first. GoRex adds `/.gorex/` to the `.git/info/exclude` of the clone, so the status of the clone does not list the work trees.
+3. **Apply the changes.** GoRex runs `git apply --binary worktree.patch` in the work tree (staged changes arrive unstaged). Then it unpacks `untracked.tar`. It takes only regular files. Each file must be new, at a relative path reached through no link. A failing apply aborts and removes the work tree and its branch. Any failure after it does the same.
+4. **Place the conversation.** GoRex rewrites the `cwd` field of every line of the jsonl from the source path to the target path. It writes the result to the Claude config dir of the target, under `projects/<slug(target cwd)>/`. The slug is the slug of Claude Code. Every character other than a letter or digit becomes `-`. GoRex does not follow the shortening that Claude Code does for very long paths. The config dir is the `CLAUDE_CONFIG_DIR` of the target server, else `~/.claude`.
 
-   A copy of the same uuid already here, in any project, is what a
-   round trip leaves: the conversation went A → B, the user went on at
-   B, and now comes back to A, which still has the copy it sent (the
-   source keeps its file: after a teleport it is an older version, and
-   nothing on the source changes it). The copies are compared by their
-   messages: the `uuid` of Claude Code's `user` and `assistant` lines,
-   the `id` of omp's `message`, `custom_message`, `branch_summary` and
-   `compaction` entries (those omp makes the model's context of). The
-   other lines do not count: summaries, snapshots, and what an agent
-   notes of itself, as the `session_exit` omp appends to the source's
-   copy once its pane ends after the teleport:
+   The conversation of omp goes the same way, under the data dir of omp. GoRex keeps the `<time>_<id>.jsonl` name of the file. It puts the file, and the directory of that name beside it, into `sessions/<omp's slug of the target cwd>/`. It rewrites the `cwd`. The slug of omp comes from its `session-paths.ts`:
+   - It starts from the real path.
+   - A path under the temporary directory becomes `-tmp-` and the path from it.
+   - A path under home becomes `-` and the path from it.
+   - Any other path becomes `--<path>--`.
+   - Each `/`, `\` and `:` becomes `-`.
 
-   - every message here is in the incoming one (the same, or it went on
-     elsewhere): the copies here, each `<uuid>.jsonl` and its `<uuid>/`
-     directory, move to a backup in the config dir, the incoming one is
-     written as above, and the backup goes once the session starts; a
-     failure before then moves them back, as they were;
-   - a message here is not in the incoming one: the conversation went on
-     on both machines, and the teleport is refused ("the conversation
-     went on here too"), nothing changed.
+   Examples: `~/repos/gorex` is `-repos-gorex`, and `C:\x` is `--C--x--`. The data dir comes from `dirs.ts` of omp, applied to the environment of the target server:
+   - `~/.omp/agent` is the default.
+   - `PI_CONFIG_DIR` replaces `.omp`.
+   - The directory of a profile (`OMP_PROFILE`, `PI_PROFILE`) is under `profiles/`.
+   - `PI_CODING_AGENT_DIR` applies when there is no profile.
+   - `$XDG_DATA_HOME/omp` applies when it is there.
 
-   This is decided once the package is in: the request carries no
-   message ids.
+   The blobs merge into the `blobs/` of omp, as the file history of Claude Code does (below). The `id` of a line is a message when the line is part of the conversation. The round trip rule below uses it, as it uses `uuid` for Claude Code.
 
-   File history, for `/rewind`: in the same pass as `cwd`, each
-   `file-history-snapshot` line's `trackedFileBackups` key under the
-   source's work tree becomes the same path under the target's (the
-   target's separators); a key outside it is dropped, as a rewind on
-   another machine must write nothing outside the work tree, and the
-   source does not send the backups only such keys name; a relative key
-   stays. Only the lines that change are written anew. The backups go to
-   `<config>/file-history/<uuid>/`: those not there are added; one there
-   already must be the same, else the history went on there too and the
-   teleport is refused. A failure removes only what it added.
-5. **Start the session.** `create` with the target directory and the
-   pane's size, the session's id the hop's link (which the source's window
-   knows by then, and waits for, rather than open it as a tab of its own;
-   the target's server gives it a tab there, as a remote client's),
-   then type `claude --resume <uuid>`, or `omp --resume <id>`, into the
-   shell (`ClaudeResume`, `ompResume`), so the shell stays when the agent
-   exits, as on the source. A shell GoRex
-   cannot quote for (nushell) is refused before the package is sent. A
-   shell pane only gets its directory.
+   A copy of the same uuid can already be here, in any project. This is what a round trip leaves. The conversation went A → B, the user went on at B, and now the conversation comes back to A. A still has the copy that it sent. The source keeps its file. After a teleport the file is an older version, and nothing on the source changes it. GoRex compares the copies by their messages:
+   - For Claude Code, the messages are the `uuid` of the `user` and `assistant` lines.
+   - For omp, the messages are the `id` of the `message`, `custom_message`, `branch_summary` and `compaction` entries. omp makes these entries the context of the model.
 
-   The answer goes once the session runs; a client gone by then, as a
-   cancel, gets nothing started: the session ends and what step 0–4 made
-   is undone. The target closes the connection once it kept what it made.
+   The other lines do not count. These are summaries, snapshots, and what an agent notes of itself. One example is the `session_exit` that omp appends to the copy on the source once its pane ends after the teleport. There are two cases:
+   - Every message here is in the incoming copy (the same, or the conversation went on elsewhere). The copies here move to a backup in the config dir. This holds each `<uuid>.jsonl` and its `<uuid>/` directory. GoRex writes the incoming copy as above. The backup goes once the session starts. A failure before then moves the copies back, as they were.
+   - A message here is not in the incoming copy. The conversation went on at both machines. GoRex refuses the teleport ("the conversation went on here too") and changes nothing.
 
-The target answers with the new session's id; the source app re-points
-the pane to it, then kills the source session. Until the answer comes,
-nothing on the source changes, so a failed teleport leaves the pane as
-it was.
+   GoRex decides this once the package is in. The request carries no message ids.
 
-## Round trips
+   File history, for `/rewind`: GoRex changes the file history in the same pass as `cwd`.
+   - In each `file-history-snapshot` line, a `trackedFileBackups` key under the work tree of the source becomes the same path under the work tree of the target. The path uses the separators of the target.
+   - GoRex drops a key outside the work tree. A rewind on another machine must write nothing outside the work tree. The source does not send the backups that only such keys name.
+   - A relative key stays.
+   - GoRex writes anew only the lines that change.
+   - The backups go to `<config>/file-history/<uuid>/`. GoRex adds those that are not there. A backup that is there already must be the same. If it is not, the history went on there too, and GoRex refuses the teleport.
+   - A failure removes only what GoRex added.
+5. **Start the session.** GoRex runs `create` with the target directory and the size of the pane. The session id is the link of the hop. By then the window of the source knows the link. The window waits for the session and does not open it as a tab of its own. The server of the target gives the session a tab there, as it does for a remote client. Then GoRex types `claude --resume <uuid>`, or `omp --resume <id>`, into the shell (`ClaudeResume`, `ompResume`). So the shell stays when the agent exits, as on the source. GoRex cannot quote for some shells (nushell). It refuses these shells before it sends the package. A shell pane receives only its directory.
 
-Each successful hop has a link, a random id. Each server keeps the hops
-it saw in `teleports.json` in its directory (readable by the user only):
-`{link, dir, departed, at}`, where `dir` is a work tree's root and
-`departed` its fingerprint as the work left it, "" for one the work
-landed in. The fingerprint is a SHA-256 of HEAD, the
-`git diff --binary HEAD` and the untracked files' names and contents:
-what a package takes of the work tree.
+   The target sends the answer once the session runs. A client can be gone by then, for example after a cancel. In that case nothing starts. The session ends and GoRex undoes what steps 0 to 4 made. The target closes the connection after it keeps what it made.
 
-- The source records `{L, its root, fingerprint}` as it packs, since
-  nothing tells it of the hop's end; the manifest carries `L` and the
-  links it has recorded of the same root, those of earlier hops.
-- The target records `{L, the work tree it landed in, ""}` once the
-  session starts.
-- The target looks the manifest's earlier links up in its own records:
-  a directory the work left by one of them, still a work tree of a clone
-  of the repo, whose fingerprint is still the one it left with, untouched
-  since. The most recent of those, if any, takes the work:
-  1. fetch the bundle or the remote into its repo, as step 2 does; its
-     HEAD must be an ancestor of the incoming one, else a new work tree
-     takes the work;
-  2. keep all it has, ignored files aside, as a commit of a temporary
-     index (`add -A`, `write-tree`, `commit-tree` on HEAD) under
-     `refs/gorex/teleport-backup/<L>`, and its index file; never the
-     stash;
-  3. remove its untracked files (they are in the backup), and
-     `git reset --hard` its branch, or detached HEAD, to the incoming
-     HEAD: a fast forward;
-  4. apply the changes and the untracked files, as step 3 does.
+The target answers with the id of the new session. The source app re-points the pane to it, then kills the source session. Until the answer comes, nothing on the source changes. So a failed teleport leaves the pane as it was.
 
-  A failure after the move puts it back as it was: `reset --hard` to its
-  old HEAD, the incoming untracked files removed, `read-tree -u --reset`
-  of the backup, its index file back, and the backup ref deleted. On
-  success the ref is deleted, and the record it left by gets `departed`
-  "": nothing is left to go back to.
-- A directory the user changed since it left is never touched: a new
-  work tree takes the work, as on a first hop.
+### Round trips
 
-So MacBook:`~/repos/x` → mini (new work tree W) → MacBook continues in
-`~/repos/x`, and mini → MacBook → mini again in W: round trips leave no
-work trees behind. The conversation follows step 4, in the project of
-the directory it lands in.
+Each successful hop has a link, a random id. Each server keeps the hops that it saw in `teleports.json` in its directory (readable by the user only). Each record is `{link, dir, departed, at}`. `dir` is the root of a work tree. `departed` is the fingerprint of the work tree as the work left it. It is "" for a work tree that the work landed in. The fingerprint is a SHA-256 of HEAD, the `git diff --binary HEAD`, and the names and contents of the untracked files. This is what a package takes of the work tree.
 
-## Protocol
+- The source records `{L, its root, fingerprint}` as it packs, because nothing tells it of the end of the hop. The manifest carries `L` and the links that the source recorded for the same root (those of earlier hops).
+- The target records `{L, the work tree it landed in, ""}` once the session starts.
+- The target looks up the earlier links of the manifest in its own records. It looks for a directory that the work left by one of these links. The directory must still be a work tree of a clone of the repo. Its fingerprint must still be the fingerprint that it left with, untouched since. The most recent such directory, if any, takes the work:
+  1. GoRex fetches the bundle or the remote into its repo, as step 2 does. Its HEAD must be an ancestor of the incoming HEAD. If not, a new work tree takes the work.
+  2. GoRex keeps all that the directory has, ignored files aside, as a commit of a temporary index (`add -A`, `write-tree`, `commit-tree` on HEAD) under `refs/gorex/teleport-backup/<L>`, and its index file. GoRex never uses the stash.
+  3. GoRex removes the untracked files of the directory (they are in the backup). Then it runs `git reset --hard` on its branch, or detached HEAD, to the incoming HEAD. This is a fast forward.
+  4. GoRex applies the changes and the untracked files, as step 3 does.
 
-One new server op, `teleport`, allowed to remote peers that may
-`create` (it runs a command, as `create` does) and only to them, on a
-connection of its own, as a file transfer's (`file.put`): the server
-routes it by its first line, and drops one of a remote peer that sends
-or takes nothing for 30 seconds while it waits on the peer. The request carries the manifest and the
-package's length; the server answers `{"ok":true}`, or refuses at once
-a manifest it does not take. The package then follows as raw bytes, the
-way a framed attach sends its snapshot after a header line
-(`SnapshotHeader`). The reply is a `Response` whose data is the new
-`SessionInfo`, or an error naming the step that failed. A server that
-has it says `teleport` in its hello's capabilities; one too old has the
-menu name it.
+  A failure after the move puts the directory back as it was:
+  - `reset --hard` to its old HEAD.
+  - The incoming untracked files are removed.
+  - `read-tree -u --reset` of the backup.
+  - Its index file comes back.
+  - The backup ref is removed.
 
-Packing happens on the source's own server (op `teleport.pack`, local
-socket only, on a connection of its own), which has the session's
-directory, the agent's process and its config dir (`AgentSession`,
-`AgentConfigDir`). Claude Code's conversation is the one its
-`sessions/<pid>.json` names; omp's the file its state dir's
-`terminal-sessions/<tty>` records for the pane's terminal (the tty's
-name past `/dev/`, as `ttys008`), its directory the pane's; with no such
-record, as on Windows, where omp keys a terminal by its emulator's
-environment, which GoRex's panes would share, the conversation of the
-pane's directory written last. Its dirs follow the process's
-environment and its `--profile` and `--session-dir`. It answers
-`{"ok":true}`, or the error, then a line of the manifest, then the
-package. The source app (or CLI) opens both connections as it opens a
-file transfer's (`openFile`), cancels by closing them, and pipes the
-package from its server to the target's; it holds no files.
+  On success GoRex removes the ref. The record that the work left by receives `departed` "". Nothing is left to go back to.
+- GoRex never touches a directory that the user changed since the work left it. A new work tree takes the work, as on a first hop.
 
-## The app
+Example: `alice-laptop:~/repos/x` → `bob-desktop` (new work tree W) → `alice-laptop` continues in `~/repos/x`. Also `bob-desktop` → `alice-laptop` → `bob-desktop` again in W. Round trips leave no work trees behind. The conversation follows step 4, in the project of the directory where it lands.
 
-- **Teleport to…** in the pane's menu and the command palette, listing
-  the connected hosts; disabled with the reason when the pane cannot
-  go.
-- A tab dragged onto another host's tab, or its header in the sidebar,
-  is outlined there rather than placed, and dropped asks to teleport its
-  pane there: a dialog with Cancel and Teleport, or the reason it cannot
-  go (a tab of more than one pane, the pane's, the host's).
-- While it runs, the pane shows a frosted overlay (`paintFrost`) with
-  the step and the host; Cancel closes the connections, and the target,
-  which looks at its connection before `create` and before it answers,
-  removes what it made; the client kills the session by its id too, in
-  case the answer crossed the cancel. A failure shows in the error banner,
-  as other errors do: until dismissed, or the pane's next teleport goes.
-- On success the pane is the remote session, in a tab of the host's: a
-  tab's panes are all on one machine, so the session opens as a tab among
-  the host's, named as the pane's tab was when the pane was its only one,
-  and the pane closes, ending its session.
-- `gorex teleport <pane> <host>` does the same from the CLI. The host is
-  named as `-S` names one: by its name as Remote Hosts shows it (a saved
-  host's, else a system Tailscale host's), or by its address; a name two
-  hosts have is refused. The CLI pipes the package, telling this
-  machine's server of the session before the host starts it
-  (`pane.teleporting`, which the layout notes so that the window opens no
-  tab of its own for it), then asks the server to show the pane as the
-  host's session
-  (`pane.teleported`, a local client's only), with or without a window:
-  the host's tab goes after the pane's, active, and the pane goes, its
-  session ending. It names the host by the address it dialed, which the
-  server matches against the hosts the app keeps in `hosts.json` (it
-  only reads it; a name may differ between them), and the server refuses
-  an address none of them, or two, have. A pane of the new session the
-  window placed meanwhile, as a host's new session, moves there rather
-  than show twice. With no pane of the source in the layout, the CLI ends
-  the source session itself; when the server cannot show the new
-  session, both stay, and it says so and exits 1.
+### Protocol
 
-## Not in phase 1
+There is one new server op, `teleport`. The server allows it to remote peers that may `create` (it runs a command, as `create` does), and only to them. It runs on a connection of its own, as a file transfer does (`file.put`). The server routes it by its first line. The server drops the connection of a remote peer that sends or takes nothing for 30 seconds while the server waits on the peer. The request carries the manifest and the length of the package. The server answers `{"ok":true}`, or refuses at once a manifest that it does not take. The package then follows as raw bytes. A framed attach sends its snapshot the same way after a header line (`SnapshotHeader`). The reply is a `Response` whose data is the new `SessionInfo`, or an error that names the step that failed. A server that has the op says `teleport` in the capabilities of its hello. For a server that is too old, the menu names the problem.
 
-- Merging work that went on at both ends: a teleport back to a
-  directory changed since it left makes a new work tree there, and the
-  user merges the branches.
-- Cleaning `.gorex/teleport/` work trees: `git worktree remove` by hand,
-  or a later "Clean up teleports" command.
-- Agents other than Claude Code and omp (Codex keeps its conversations
-  elsewhere): refused while they run; a shell goes.
+Packing happens on the own server of the source (op `teleport.pack`, local socket only, on a connection of its own). That server has the directory of the session, the process of the agent, and its config dir (`AgentSession`, `AgentConfigDir`).
+- For Claude Code, the conversation is the one that its `sessions/<pid>.json` names.
+- For omp, the conversation is the file that `terminal-sessions/<tty>` in its state dir records for the terminal of the pane. The tty name is the name past `/dev/`, as `ttys008`. The directory is the directory of the pane.
+- If there is no such record, as on Windows, GoRex uses the conversation of the directory of the pane that omp wrote last. On Windows omp keys a terminal by the environment of its emulator, which the panes of GoRex would share.
+- The dirs of omp follow the environment of the process and its `--profile` and `--session-dir`.
+
+The server answers `{"ok":true}`, or the error, then a line of the manifest, then the package. The source app (or CLI) opens both connections as it opens the connection of a file transfer (`openFile`). It cancels by closing them. It pipes the package from its server to the server of the target. It holds no files.
+
+### The app
+
+- **Teleport to…** is in the menu of the pane and in the command palette. It lists the connected hosts. It is disabled, with the reason, when the pane cannot go.
+- The user can drag a tab onto the tab of another host, or onto its header in the sidebar. The app outlines the target there and does not place the tab. When the user drops it, a dialog asks to teleport its pane there. The dialog has Cancel and Teleport. When the pane cannot go, the dialog shows the reason. The reason can be a tab of more than one pane, the pane, or the host.
+- While the teleport runs, the pane shows a frosted overlay (`paintFrost`) with the step and the host. Cancel closes the connections. The target looks at its connection before `create` and before it answers, and it removes what it made. The client also kills the session by its id, in case the answer crossed the cancel. A failure shows in the error banner, as other errors do. It stays until the user dismisses it, or until the next teleport of the pane.
+- On success the pane is the remote session, in a tab of the host. All panes of a tab are on one machine. So the session opens as a tab among the tabs of the host. It has the name of the tab of the pane, when the pane was its only pane. The pane closes and its session ends.
+- `gorex teleport <pane> <host>` does the same from the CLI.
+  - The host is named as `-S` names a host. Use its name as Remote Hosts shows it, or its address. The name is the name of a saved host, else the name of a system Tailscale host. GoRex refuses a name that two hosts have.
+  - The CLI pipes the package. It tells the server of this machine about the session before the host starts it (`pane.teleporting`). The layout notes this, so the window opens no tab of its own for the session.
+  - The CLI then asks the server to show the pane as the session of the host, with or without a window. This is `pane.teleported`, for a local client only. The tab of the host goes after the tab of the pane, active. The pane goes and its session ends.
+  - The CLI names the host by the address that it dialed. The server matches this address against the hosts that the app keeps in `hosts.json` (the server only reads it, and a name may differ between them). The server refuses an address that none of the hosts has, or that two of them have.
+  - The window can place a pane of the new session meanwhile, as a new session of a host. That pane moves to the new tab and does not show twice.
+  - With no pane of the source in the layout, the CLI ends the source session itself. When the server cannot show the new session, both sessions stay. The CLI says so and exits 1.

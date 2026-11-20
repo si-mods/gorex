@@ -1,536 +1,253 @@
 # Rex Go: Live Activities for sessions
 
-Status: phase 1 built (`TerminalActivity`, `TerminalLive`); phases 2
-and 3 proposed. Decided: phase 1 is the terminal
-activity (the terminal open when Rex Go leaves the foreground, kept
-connected for a short grace); the host sends the later updates, with
-the last hop replaceable; this document designs the direct last hop (an
-APNs key on the host) and leaves a relay for later. Rex Go is
-distributed to other people (public TestFlight, later the App Store),
-who can't hold the app's APNs key.
+Status: phase 1 built (#892, #900, #901). Phases 2 and 3 not built.
+
+Phase 1 is built as `TerminalActivity` and `TerminalLive`. Phases 2 and 3 are proposals. The team decided these points. Phase 1 is the terminal activity: the terminal that is open when Rex Go leaves the foreground, kept connected for a short grace. The host sends the later updates, and the last hop is replaceable. This doc designs the direct last hop (an APNs key on the host) and leaves a relay for later. Rex Go is distributed to other people (public TestFlight, later the App Store). They cannot hold the APNs key of the app. The names `HostActivity`, `push.register` and `push.seen` are phase 2 and 3 proposals. They are not in the code.
 
 ## Problem
 
-Rex Go shows what each session's program is doing (working, needs
-input, done, failed) in its status inbox, and posts a local
-notification when a program turns blocked. Both work only while the app
-runs. Once the phone locks or the user switches apps, iOS suspends Rex
-Go within seconds, the connections to the hosts close, and nothing
-reaches the phone until the app comes back to the foreground. An agent
-that waits for the user in that time waits unnoticed.
+Rex Go shows what the program of each session does (working, needs input, done, failed) in its status inbox. It posts a local notification when a program turns blocked. Both work only while the app runs. When the phone locks or the user switches apps, iOS suspends Rex Go within seconds. The connections to the hosts close. Nothing reaches the phone until the app comes back to the foreground. An agent that waits for the user in that time waits unnoticed.
 
-A Live Activity (ActivityKit) shows a task's state on the Lock Screen,
-in the Dynamic Island, on a paired Apple Watch, in CarPlay and in a
-paired Mac's menu bar. It is the place iOS gives to "an agent is working
-and may need you".
+A Live Activity (ActivityKit) shows the state of a task. It shows it on the Lock Screen, in the Dynamic Island and on a paired Apple Watch. It also shows it in CarPlay and in the menu bar of a paired Mac. It is the place that iOS gives to "an agent is working and may need you".
 
 ## Goal
 
-- When the user leaves Rex Go with a terminal open, that terminal shows
-  in the Dynamic Island and on the Lock Screen: its program, its state,
-  its latest line. Its stream stays connected for a short grace (about 25
-  seconds), so a quick switch to another app and back loses nothing;
-  after the grace the activity says it is paused, and coming back
-  resumes the stream as today.
-- A Live Activity that shows the session that most needs the user, and
-  how many others work, wait or finished.
-- It stays correct while Rex Go is suspended: a program that turns
-  blocked lights up the Lock Screen within seconds.
+- When the user leaves Rex Go with a terminal open, that terminal shows in the Dynamic Island and on the Lock Screen. The activity shows its program, its state and its latest line. Its stream stays connected for a short grace (about 25 seconds), so a quick switch to another app and back loses nothing. After the grace, the activity says that it is paused. When the user comes back, the stream resumes as today.
+- A Live Activity shows the session that most needs the user, and how many other sessions work, wait or finished.
+- It stays correct while Rex Go is suspended. A program that turns blocked lights up the Lock Screen within seconds.
 - The "needs input" notification arrives while Rex Go is suspended too.
-- It shows no state older than it admits: when updates stop, it says so.
-- Users whose hosts have no APNs key (everyone but the developer, until
-  a relay exists) get phase 1: the activity is live while Rex Go runs,
-  and once the app is suspended it freezes and shows as paused.
+- It shows no state older than it admits. When updates stop, it says so.
+- Users whose hosts have no APNs key get phase 1. This means everyone but the developer, until a relay exists. The activity is live while Rex Go runs. When the app is suspended, the activity freezes and shows as paused.
 
 ## Non-goals
 
-- **Acting from the Lock Screen.** Approving a permission or answering
-  a question from the activity would need the app to reach the host from
-  an intent. Later, if at all.
+- **Acting from the Lock Screen.** To approve a permission or answer a question from the activity, the app must reach the host from an intent. This is for later, if at all.
 - **One activity per session by default.** See Presentation.
-- **Keeping Rex Go running in the background** past the grace a
-  background task gives. See Options, b. The user chose the grace
-  (2026-11-20) over a background mode that would keep the connection
-  open: that mode breaks App Review Guideline 2.5.4 and drains the
-  battery.
-- **Programs that don't report.** The activity shows what OSC 7501
-  reports; GoRex installs no hooks to report for other programs.
-- **Direct APNs for other users.** Only the app's developer account can
-  have an APNs key for Rex Go; direct sending is the developer's path,
-  not a feature.
-- **A push relay.** It is what would bring phase 2 to other users; its
-  design is not decided here (Later).
-
-## Verified and assumed
-
-Statements below are marked **[code]** (read in this repository or
-rootshell's), **[doc]** (Apple's documentation, linked) or
-**[assumption]** (not checked; to settle before or during the phase
-that needs it).
-
-## What a session's state is
-
-- A program reports its state with OSC 7501
-  ([osc-7501.md](osc-7501.md)): `idle`, `working`, `blocked` (`kind`
-  permission, question or auth), `done` or `error`, with optional
-  progress, app, title and message. The docs name Claude Code and Pi as
-  senders; omp appears in test fixtures. **[code]** Whether every
-  version of those agents sends it was not checked. **[assumption]**
-- The session server parses the reports from each session's output and
-  keeps the records (`internal/rex/status.go`): at most 64 per session,
-  title up to 192 bytes, message up to 2048. A prompt (OSC 133;A) or a
-  reset drops all but `done` and `error`, which stay until seen.
-  `MostUrgent` picks the record that needs the user most
-  (`status.go`, `StatusRank`: blocked > error > done > working > idle).
-  Records survive an in-place upgrade, not a restart. **[code]**
-- The gateway emits `program_status_changed` and
-  `program_status_removed` block events when a block's records change
-  (`internal/rexapi/events_blocks.go`). **[code]**
-- Rex Go keeps one control connection per host with `event_scope: all`
-  (`ios/GoRex/Rex/Host.swift`, `bootstrap`), decodes records into
-  `Host.ProgramStatus`, and calls `Host.blocked` when a record turns
-  blocked; `Notifier` posts the local notification. `Host.inbox`
-  (`ios/GoRex/Rex/Inbox.swift`) lists each window by its most urgent
-  record; `seen` (which done and error records the user looked at) is
-  kept on the phone, apart from the server's own. **[code]**
-- Rex Go has no background modes, no entitlements for this, and no
-  push (`ios/project.yml`). Before phase 1 it asked for background time
-  (`beginBackgroundTask`) only to finish a write as it left
-  (`WidgetPublisher.flush`) and to keep sharing over a hotspot for a
-  while (`HotspotShare`). Its
-  built-in Tailscale stops with it ([ios-tailnet.md](ios-tailnet.md),
-  Non-goals); no code stops the engine on leaving, so it runs as long as
-  the app does, a background task included. **[code]**
-
-So in the foreground the state is current to within the gateway's
-watch interval; in the background it is current for a few seconds, then
-not at all. The host, though, always knows: its records don't depend on
-the phone.
-
-## ActivityKit constraints
-
-From Apple's documentation, checked 2026-11. Rex Go's deployment target
-is iOS 26, so every API below is available.
-
-- **Start.** `Activity.request(attributes:content:pushType:)` starts an
-  activity only while the app is in the foreground, or from a
-  `LiveActivityIntent`. A running app may update and end it in the
-  background. The activity itself runs in its own sandbox and **can't
-  reach the network**. **[doc]**
-  [Displaying live data](https://developer.apple.com/documentation/activitykit/displaying-live-data-with-live-activities),
-  [request](https://developer.apple.com/documentation/activitykit/activity/request(attributes:content:pushtype:))
-- **Lifetime.** Active for at most 8 hours; then the system ends it,
-  and it stays on the Lock Screen for at most 4 more (12 in all). An
-  ended activity's dismissal date can be any time within those 4 hours.
-  **[doc]**
-- **Size.** Static and dynamic data together at most 4 KB, for local
-  updates and pushes alike. The Lock Screen presentation is truncated
-  past 160 pt. Images larger than the presentation may keep the activity
-  from starting. **[doc]**
-- **Presentations.** All are required: Lock Screen, compact leading and
-  trailing, minimal, expanded (regions center, leading, trailing,
-  bottom). Compact and minimal may be narrowed
-  (`isDynamicIslandLimitedInWidth`); fit them in a 28 pt circle then.
-  `relevanceScore` picks which of an app's activities the Dynamic Island
-  shows. `supplementalActivityFamilies([.small, .medium])` adapts to
-  Apple Watch's Smart Stack, CarPlay (both compact) and StandBy. A
-  paired Mac shows them in the menu bar. iOS 27 shows them in the
-  Dynamic Island in landscape too. **[doc]**
-  [Custom views](https://developer.apple.com/documentation/activitykit/creating-custom-views-for-live-activities),
-  [WWDC26 223](https://developer.apple.com/videos/play/wwdc2026/223/)
-- **Animation.** At most 2 seconds, none in Always On. No free-running
-  animation; timer text (`Text(timerInterval:)`, `numericText`) and
-  progress views move without updates. **[doc]**
-  [Animating data updates](https://developer.apple.com/documentation/widgetkit/animating-data-updates-in-widgets-and-live-activities)
-- **Stale date.** Past `staleDate`, `isStale` turns true and the view
-  can say its data is old. **[doc]**
-- **Alerts.** An update with an `AlertConfiguration` (or a push with
-  `alert`) lights the screen and shows the expanded presentation, or a
-  banner without a Dynamic Island; Apple Watch shows its title and body.
-  **[doc]**
-- **Pushes.** `apns-push-type: liveactivity`, topic
-  `<bundle id>.push-type.liveactivity`, priority 5 or 10; `aps` has
-  `timestamp`, `event` (`start`, `update`, `end`), `content-state`,
-  `stale-date`, `dismissal-date`, `alert`, `relevance-score`. A push
-  wakes the widget extension to render, not the app. Each activity has
-  its own push token, which may change (`pushTokenUpdates`; the app gets
-  background time to handle a new one). Push-to-start tokens
-  (`pushToStartTokenUpdates`, iOS 17.2) start an activity remotely; the
-  payload must carry an `alert` and `attributes-type`; with
-  `input-push-token: 1` (iOS 18) the system wakes the app with the new
-  activity's update token. Broadcast channels (iOS 18) update many
-  activities with one push, can't start one, and are enabled only on
-  the developer portal. **[doc]**
-  [Push notifications](https://developer.apple.com/documentation/activitykit/starting-and-updating-live-activities-with-activitykit-push-notifications),
-  [Broadcast](https://developer.apple.com/documentation/usernotifications/setting-up-broadcast-push-notifications)
-- **Budget.** Priority 10 counts against an hourly budget and is
-  throttled past it; priority 5 does not count.
-  `NSSupportsLiveActivitiesFrequentUpdates` raises the budget; people
-  can turn it off (`frequentPushesEnabled`). Apple publishes no numbers.
-  **[doc]** How many activities one app may run at once is not
-  documented either. **[assumption]**
-- **APNs.** HTTP/2 only; token auth with a `.p8` key and an ES256 JWT
-  renewed at least hourly. Keys can be scoped to an environment, or to
-  chosen topics (bundle IDs) and an environment. **[doc]**
-  [Token-based connection](https://developer.apple.com/documentation/usernotifications/establishing-a-token-based-connection-to-apns),
-  [Sending requests](https://developer.apple.com/documentation/usernotifications/sending-notification-requests-to-apns),
-  [APNs key options](https://developer.apple.com/news/?id=wy4tb0uo)
-- **Target.** The UI lives in a widget extension; the app's Info.plist
-  sets `NSSupportsLiveActivities`. **[doc]**
-
-## Options for updates while Rex Go is suspended
-
-| | What the user sees | New infrastructure | Privacy and security | App Review | Outcome |
-| --- | --- | --- | --- | --- | --- |
-| a. Foreground only | Live in the app; frozen seconds after it leaves; "paused" past the stale date | none | none | low | phase 1, the base |
-| b. Keep the app alive | Live while iOS lets it be; drains the battery | none | none | high | rejected |
-| c. Host sends to APNs directly | Live | an APNs key on the host | content goes host → Apple only; the key is the developer account's | low | phase 2, developer only |
-| d. Host sends through a relay | Live | a relay holding the APNs key | state passes the relay and Apple | low | later, not designed here |
-| e. Silent push, Background App Refresh, NetworkExtension | Nothing reliable (NetworkExtension: live, at a system VPN's cost) | silent push needs d anyway | NetworkExtension brings the system VPN back | medium to high | rejected |
-
-**a. Foreground only.** The app starts and updates the activity while
-it runs and, at the background edge, sets a short stale date. A
-background task (`beginBackgroundTask`) buys about 30 seconds, which
-covers a quick switch to another app; the built-in Tailscale engine is
-suspended with the app anyway. While the app is in front, the inbox
-shows the same thing, so on its own it adds little. It is what users
-without a push path get.
-
-**b. Keeping the app alive.** The background modes that would do it are
-`audio` (silent audio), `location` and `voip`. None is what a terminal
-app does; App Review Guideline 2.5.4 allows background modes only for
-their intended purpose. rootshell declares `location`, but has a real
-location feature (its Location Diary). Rejected.
-
-**c and d: the host sends, the last hop varies.** The host is the one
-party that knows the state while the phone sleeps, so it computes the
-content state, builds the payloads and keeps the phone's tokens. Only
-the last hop differs:
-
-- **Direct**: the host signs the request with an APNs key configured on
-  it and sends it to Apple. No cloud service, and nothing leaves the
-  user's network but the push to Apple. But the key belongs to the
-  app's team, and anyone holding it can push to any Rex Go device whose
-  token they learn; a topic-specific key narrows that to Rex Go, not to
-  one user. So only the developer can have one. Built first: it proves
-  the whole chain (tokens, payloads, widget, entitlements, signing)
-  before any cloud service exists, and it stays the developer's path.
-- **Relay**: the host posts the same payloads to a relay, which holds
-  the key and sends. The only way to give other users phase 2, since
-  they can't hold the key. Later; see Later.
-
-**e. Others.**
-
-- Silent (background) pushes wake the app, but Apple asks for no more
-  than two or three an hour and may hold them back; they need a relay
-  anyway. **[doc]**
-  [Background updates](https://developer.apple.com/documentation/usernotifications/pushing-background-updates-to-your-app)
-- Background App Refresh runs when iOS decides, often hours apart, for
-  seconds: not enough to start the engine, reach a host and update.
-- A Packet Tunnel extension runs in the background and could hold the
-  host connections. It needs the system VPN, which
-  [ios-tailnet.md](ios-tailnet.md) removed on purpose, and has a tight
-  memory limit; whether it may call ActivityKit is unverified.
-  **[assumption]** Rejected.
+- **Keeping Rex Go running in the background** after the grace that a background task gives. See Alternatives, b. The user chose the grace (2026-11-20) over a background mode that keeps the connection open. That mode breaks App Review Guideline 2.5.4 and drains the battery.
+- **Programs that do not report.** The activity shows what OSC 7501 reports. GoRex installs no hooks to report for other programs.
+- **Direct APNs for other users.** Only the developer account of the app can have an APNs key for Rex Go. Direct sending is the path of the developer, not a feature.
+- **A push relay.** A relay would bring phase 2 to other users. This doc does not decide its design (see Later).
 
 ## Design
 
+### Verified and assumed
+
+The statements below carry one of three marks:
+
+- **[code]**: read in this repository, or in the repository of rootshell.
+- **[doc]**: from the documentation of Apple, with a link.
+- **[assumption]**: not checked. The team must settle it before or during the phase that needs it.
+
+### What a session's state is
+
+- A program reports its state with OSC 7501 ([osc-7501.md](osc-7501.md)). The states are `idle`, `working`, `blocked` (`kind` permission, question or auth), `done` and `error`. A report can have a progress, an app, a title and a message. The docs name Claude Code and Pi as senders. omp appears in test fixtures. **[code]** It is not checked if every version of those agents sends it. **[assumption]**
+- The session server parses the reports from the output of each session and keeps the records (`internal/rex/status.go`). It keeps at most 64 records for each session. A title has up to 192 bytes. A message has up to 2048 bytes. A prompt (OSC 133;A) or a reset drops all records except `done` and `error`. These two stay until the user sees them. `MostUrgent` picks the record that needs the user most (`status.go`, `StatusRank`: blocked > error > done > working > idle). Records survive an in-place upgrade. They do not survive a restart. **[code]**
+- The gateway emits the block events `program_status_changed` and `program_status_removed` when the records of a block change (`internal/rexapi/events_blocks.go`). **[code]**
+- Rex Go keeps one control connection for each host with `event_scope: all` (`ios/GoRex/Rex/Host.swift`, `bootstrap`). It decodes the records into `Host.ProgramStatus`. It calls `Host.blocked` when a record turns blocked. `Notifier` posts the local notification. `Host.inbox` (`ios/GoRex/Rex/Inbox.swift`) lists each window by its most urgent record. `seen` (which done and error records the user looked at) stays on the phone, apart from the own record of the server. **[code]**
+- Rex Go has no background modes, no entitlements for this, and no push (`ios/project.yml`). Before phase 1, it asked for background time (`beginBackgroundTask`) in only two cases. The first case is to finish a write as it left (`WidgetPublisher.flush`). The second case is to keep sharing over a hotspot for a while (`HotspotShare`). Its built-in Tailscale stops with it ([ios-tailnet.md](ios-tailnet.md), Non-goals). No code stops the engine on leaving. It therefore runs as long as the app does, a background task included. **[code]**
+
+In the foreground, the state is current to within the watch interval of the gateway. In the background, the state is current for a few seconds, then not at all. The host always knows the state, because its records do not depend on the phone.
+
+### ActivityKit constraints
+
+These constraints come from the documentation of Apple, checked 2026-11. The deployment target of Rex Go is iOS 26, so every API below is available.
+
+- **Start.** `Activity.request(attributes:content:pushType:)` starts an activity only while the app is in the foreground, or from a `LiveActivityIntent`. A running app can update and end it in the background. The activity itself runs in its own sandbox and **cannot reach the network**. **[doc]** [Displaying live data](https://developer.apple.com/documentation/activitykit/displaying-live-data-with-live-activities), [request](https://developer.apple.com/documentation/activitykit/activity/request(attributes:content:pushtype:))
+- **Lifetime.** The activity is active for at most 8 hours. Then the system ends it, and it stays on the Lock Screen for at most 4 more hours (12 in all). The dismissal date of an ended activity can be any time within those 4 hours. **[doc]**
+- **Size.** Static and dynamic data together are at most 4 KB, for local updates and pushes alike. The Lock Screen presentation is truncated past 160 pt. Images larger than the presentation may keep the activity from starting. **[doc]**
+- **Presentations.** All of these are required: Lock Screen, compact leading and trailing, minimal, and expanded (regions center, leading, trailing, bottom). The system may narrow compact and minimal (`isDynamicIslandLimitedInWidth`). Then they must fit in a 28 pt circle. `relevanceScore` picks which of the activities of an app the Dynamic Island shows. `supplementalActivityFamilies([.small, .medium])` adapts to the Smart Stack of Apple Watch, CarPlay (both compact) and StandBy. A paired Mac shows them in the menu bar. iOS 27 shows them in the Dynamic Island in landscape too. **[doc]** [Custom views](https://developer.apple.com/documentation/activitykit/creating-custom-views-for-live-activities), [WWDC26 223](https://developer.apple.com/videos/play/wwdc2026/223/)
+- **Animation.** An animation lasts at most 2 seconds, and none runs in Always On. No animation runs free. Timer text (`Text(timerInterval:)`, `numericText`) and progress views move without updates. **[doc]** [Animating data updates](https://developer.apple.com/documentation/widgetkit/animating-data-updates-in-widgets-and-live-activities)
+- **Stale date.** After `staleDate`, `isStale` turns true and the view can say that its data is old. **[doc]**
+- **Alerts.** An update with an `AlertConfiguration` (or a push with `alert`) lights the screen. It shows the expanded presentation, or a banner without a Dynamic Island. Apple Watch shows its title and body. **[doc]**
+- **Pushes.** These are the facts for a push. **[doc]** [Push notifications](https://developer.apple.com/documentation/activitykit/starting-and-updating-live-activities-with-activitykit-push-notifications), [Broadcast](https://developer.apple.com/documentation/usernotifications/setting-up-broadcast-push-notifications)
+  - The header is `apns-push-type: liveactivity`, the topic is `<bundle id>.push-type.liveactivity`, and the priority is 5 or 10.
+  - `aps` has `timestamp`, `event` (`start`, `update`, `end`), `content-state`, `stale-date`, `dismissal-date`, `alert` and `relevance-score`.
+  - A push wakes the widget extension to render. It does not wake the app.
+  - Each activity has its own push token, which may change (`pushTokenUpdates`). The app gets background time to handle a new token.
+  - Push-to-start tokens (`pushToStartTokenUpdates`, iOS 17.2) start an activity remotely. The payload must carry an `alert` and `attributes-type`. With `input-push-token: 1` (iOS 18), the system wakes the app with the update token of the new activity.
+  - Broadcast channels (iOS 18) update many activities with one push. They cannot start one. They are enabled only on the developer portal.
+- **Budget.** Priority 10 counts against an hourly budget and is throttled past it. Priority 5 does not count. `NSSupportsLiveActivitiesFrequentUpdates` raises the budget. People can turn it off (`frequentPushesEnabled`). Apple publishes no numbers. **[doc]** The documentation also does not say how many activities one app can run at once. **[assumption]**
+- **APNs.** APNs uses HTTP/2 only. It uses token auth with a `.p8` key and an ES256 JWT that the sender renews at least hourly. Keys can have the scope of one environment, or of chosen topics (bundle IDs) and an environment. **[doc]** [Token-based connection](https://developer.apple.com/documentation/usernotifications/establishing-a-token-based-connection-to-apns), [Sending requests](https://developer.apple.com/documentation/usernotifications/sending-notification-requests-to-apns), [APNs key options](https://developer.apple.com/news/?id=wy4tb0uo)
+- **Target.** The UI lives in a widget extension. The `Info.plist` of the app sets `NSSupportsLiveActivities`. **[doc]**
+
 ### Terminal activity (phase 1)
 
-What the app does today: on `.background`, `TerminalScreen` suspends
-every pane's stream at once (`pane.session.suspend()`), and resumes them
-on `.active`; the shell on the host keeps running. **[code]**
+Today the app does this. On `.background`, `TerminalScreen` suspends the stream of every pane at once (`pane.session.suspend()`). It resumes them on `.active`. The shell on the host keeps running. **[code]**
 
-`TerminalActivity`, one at a time, for the terminal on screen:
+`TerminalActivity` runs one at a time, for the terminal on screen:
 
 - **Attributes** (static): host id and name, session, block.
-- **Content state**: window title; program id (for the tile); the
-  block's most urgent OSC 7501 record's `state`, `kind`, `progress`,
-  `title` and `updated`, or none for a plain shell or an idle record;
-  `line`, what the program says it does, else the screen's line that
-  tells the latest state (Line, below); `connected` (whether the stream
-  is open). Titles and the host name are cut to 200 characters and 400
-  UTF-8 bytes, the line to 80 characters and 240 bytes, whole
-  characters only; with the longest of each, attributes and state stay
-  well under 4 KB (`TerminalLiveTests`).
-- **Seen**: done and error records the user saw don't count, as in the
-  inbox. The open screen marks a block's records seen as they come
-  (`Host.shown`), and tells the server (`gorex.see_block`), which tells
-  every client. In the background the user doesn't see the screen, so
-  `Host.shown` is false there (`Notifier.inFront`): a program that
-  finishes during the grace shows as done, here and on every client.
-  Back in front, the screen sees its block again, as it does when it
-  appears.
-- **Start**: when a terminal screen appears, in the foreground, as
-  `Activity.request` requires. While Rex Go is in front, iOS does not
-  show the app's own activity in the Dynamic Island. **[assumption]**
-  Settings › Live Activities off, or `areActivitiesEnabled` false: none.
-- **Update**: while the stream is open, on a record change or a change
-  of `line`, coalesced to one per two seconds. The stream's output marks
-  the line changed; the next update reads the screen's rows and the
-  cursor's row (`TerminalOutput.readRows`), and a new line comes in the
-  update after.
-- **Line** (`TerminalLive.state`, `TerminalActivity.screenLine`): what
-  the program says it does. Claude Code and Pi report it in their OSC
-  7501 records (`docs/osc-7501.md`): `msg` says what they do or wait
-  for, in any state, and a done record keeps the last as `last_msg`. A
-  screen tells it less well: its last non-empty line is a TUI agent's
-  status bar (Claude Code, Codex, Devin, Pi), never its state. So:
-  1. The block's most urgent record's `msg` (`Host.ProgramStatus
-     .mostUrgent`, which skips done and error records the user saw),
-     in any state, idle too, when it is not blank. It wins over the line
-     the screen read.
-  2. Else, when that record is done or failed, its `last_msg`, when it
-     is not blank.
+- **Content state**: the window title, and the program id (for the tile). It also has the `state`, `kind`, `progress`, `title` and `updated` of the most urgent OSC 7501 record of the block. For a plain shell or an idle record, it has none of these. It has `line`: what the program says it does, or else the line of the screen that tells the latest state (see **Line** below). It has `connected` (whether the stream is open). Titles and the host name are cut to 200 characters and 400 UTF-8 bytes. The line is cut to 80 characters and 240 bytes. The cut keeps whole characters only. With the longest of each, attributes and state stay well under 4 KB (`TerminalLiveTests`).
+- **Seen**: Done and error records that the user saw do not count, as in the inbox. The open screen marks the records of a block as seen when they come (`Host.shown`). It tells the server (`gorex.see_block`), and the server tells every client. In the background, the user does not see the screen. `Host.shown` is therefore false there (`Notifier.inFront`). A program that finishes during the grace shows as done, here and on every client. When the app is in front again, the screen sees its block again, as it does when it appears.
+- **Start**: when a terminal screen appears, in the foreground, as `Activity.request` requires. While Rex Go is in front, iOS does not show the activity of the app in the Dynamic Island. **[assumption]** If Settings › Live Activities is off, or `areActivitiesEnabled` is false, no activity starts.
+- **Update**: while the stream is open, on a record change or a change of `line`. The updates are coalesced to one for each two seconds. The output of the stream marks the line as changed. The next update reads the rows of the screen and the row of the cursor (`readRows` of `TerminalSession`). A new line comes in the update after that.
+- **Line** (`TerminalLive.state`, `TerminalActivity.screenLine`): what the program says it does. Claude Code and Pi report it in their OSC 7501 records (`docs/osc-7501.md`). `msg` says what they do or wait for, in any state. A done record keeps the last message as `last_msg`. A screen tells this less well. Its last non-empty line is the status bar of a TUI agent (Claude Code, Codex, Devin, Pi), never its state. The app therefore picks the line in this order:
+  1. The `msg` of the most urgent record of the block (`Host.ProgramStatus.mostUrgent`, which skips done and error records that the user saw). This applies in any state, idle too, when `msg` is not blank. It wins over the line that the screen read.
+  2. Else, when that record is done or failed, its `last_msg`, when it is not blank.
 
-  Line breaks in either are spaces. Else, for a program that reports no
-  message, the screen's line:
-  3. When the screen ends in a TUI's input, the line is the first
-     above the input that is not blank, a rule (box-drawing or block
-     characters, U+2500–U+259F, and spaces), a line in a box (it starts
-     and ends with a box's side) or one of the input's lines, without
-     its leading spaces. The input is found from the bottom, wherever
-     the cursor is: rows between two rules, at most 10, with at most 5
-     lines under the lower rule, that hold a prompt (`>`, `›`, `❯`, `❭`,
-     `▌`, `»`, `▶` after spaces and a box's side) or the cursor; or,
-     without rules, the lowest line that starts with a prompt shells do
-     not use (`›`, `❭`, `▌`), with a blank line or a rule above it and
-     at most 5 lines under it.
-  4. Else, with text under the cursor's row, a TUI with its cursor in
-     its input: as in 3, the input being the cursor's row and the lines
-     right above it up to the topmost that starts with a prompt.
-  5. Else, as for a shell or a program printing, the last line at or
-     above the cursor's row that is not blank. A shell's prompt at the
-     bottom, `❯` too, has no rules round it, and stays a shell's.
-  6. With no such line, the last non-empty line of the screen.
+  In both, line breaks become spaces. For a program that reports no message, the app uses a line of the screen:
 
-  The rows are read a row at a time, as Ghostty joins soft-wrapped rows
-  in one read; the cursor's row comes from Ghostty's IME point, as for
-  the terminal's slide (`TerminalView.drawnBottom`).
+  3. When the screen ends in the input of a TUI, the app uses the first line above the input that it does not skip. It skips blank lines and lines of the input. It skips rules: box-drawing or block characters (U+2500–U+259F) and spaces. It skips lines in a box, which start and end with a side of a box. The app removes the leading spaces of the line. The app finds the input from the bottom, wherever the cursor is. The input is rows between two rules, at most 10, with at most 5 lines under the lower rule. These rows hold a prompt (`>`, `›`, `❯`, `❭`, `▌`, `»`, `▶` after spaces and a side of a box) or the cursor. Without rules, the input is the lowest line that starts with a prompt that shells do not use (`›`, `❭`, `▌`). That line has a blank line or a rule above it and at most 5 lines under it.
+  4. Else, when text is under the row of the cursor, a TUI has its cursor in its input. The app does as in 3. The input is the row of the cursor and the lines directly above it, up to the topmost line that starts with a prompt.
+  5. Else, the app does as for a shell or a program that prints. It uses the last line that is not blank, at or above the row of the cursor. A shell prompt at the bottom, `❯` too, has no rules around it, so it stays a shell prompt.
+  6. If no such line exists, the app uses the last non-empty line of the screen.
 
-  Idle screens captured in a 100×40 terminal (`TerminalLiveTests`):
-  Claude Code draws its `❯` input between two rules, a status line and
-  a mode line under it, the cursor in the input, shown. Devin draws
-  from the top, not full-screen: `❭` input between rules, its status
-  bar under it, the cursor in the input, shown. Pi draws an editor with
-  no prompt between rules, three footer lines under it, the cursor in
-  the editor, hidden. Codex asked to sign in, so its input was not
-  captured. A program that hides its cursor under its last line, as an
-  Ink program may while it draws, is found by rule 3. A command's
-  output that ends in a prompt between rules, such as a quote in a
-  table, reads as an input: a known miss.
-- **Grace**: on `.background`, the screen no longer suspends the
-  streams at once. It asks for a background task
-  (`beginBackgroundTask`), keeps the streams and the built-in Tailscale
-  engine running, and keeps updating the activity. When the task's time
-  runs out (its expiration handler, or 25 seconds, whichever comes
-  first), it suspends the streams as today, updates the activity with
-  `connected: false` and a stale date of now, and ends the task. iOS
-  gives about 30 seconds; Apple does not promise a number.
-  **[assumption]** Without background time, the streams suspend at once.
-  Updates during the grace carry a stale date at its end plus 5
-  seconds, so an app stopped without notice still shows as paused. Each
-  update asks for a moment of background time of its own, to reach
-  ActivityKit before the app stops; that time ends as the update is
-  made, or as iOS takes it back. The paused update goes within the
-  grace's own task, which ends once ActivityKit has it, or at once when
-  iOS takes the time back. Dictation and a pane switch still
-  waiting stop at once, as before.
-- **Coming back during the grace** cancels it: nothing was suspended,
-  and the hosts' connections are not reset, since the app ran
-  (`BackgroundGrace.awake`, which `HostStore.suspended` measures from).
-- **Return**: on `.active`, streams resume as today; the activity
-  shows `connected: true` again.
-- **End**: when the terminal screen closes, or another terminal opens
-  (which starts its own); dismissed at once. One the user dismissed
-  stays so for that screen; a terminal opened later starts one again. At 8 hours iOS ends it; the
-  next foreground starts a new one.
-- **Presentations**: compact leading: the program's tile; compact
-  trailing: the state glyph, a progress ring, or a timer since
-  `updated`; minimal: the tile; expanded: tile and window title, host,
-  state, and `line` in a monospaced font (the system's: the extension
-  doesn't carry the terminal's font), all in the bottom region, under
-  the camera (the leading region sits in the island's top corner, which
-  cut the tile, #901); Lock Screen: the same rows. The
-  second row puts the state first, then the record's title and the host,
-  so a long host name cuts no state. A plain shell shows no mark beside
-  its tile, but in compact trailing. Paused (`connected: false` or
-  `isStale`): dimmed, "Paused — open Rex Go". `line`, the window's title
-  and the record's title are `.privacySensitive()`.
+  The app reads the rows one row at a time, because Ghostty joins soft-wrapped rows in one read. The row of the cursor comes from the IME point of Ghostty, as for the slide of the terminal (`TerminalView.drawnBottom`).
+
+  `TerminalLiveTests` has idle screens captured in a 100×40 terminal:
+
+  - Claude Code draws its `❯` input between two rules, with a status line and a mode line under it. The cursor is in the input and shows.
+  - Devin draws from the top, not full-screen. Its `❭` input is between rules, with its status bar under it. The cursor is in the input and shows.
+  - Pi draws an editor with no prompt between rules, with three footer lines under it. The cursor is in the editor and is hidden.
+  - Codex asked the user to sign in, so the capture has no Codex input.
+
+  Rule 3 finds a program that hides its cursor under its last line, as an Ink program may while it draws. The output of a command that ends in a prompt between rules, such as a quote in a table, reads as an input. This is a known miss.
+- **Grace**: On `.background`, the screen no longer suspends the streams at once. It asks for a background task (`beginBackgroundTask`). It keeps the streams and the built-in Tailscale engine running, and keeps updating the activity. The task ends when its time runs out (its expiration handler, or 25 seconds, whichever comes first). Then the screen suspends the streams as today. It updates the activity with `connected: false` and a stale date of now, and ends the task. iOS gives about 30 seconds. Apple does not promise a number. **[assumption]** Without background time, the streams suspend at once.
+  - Updates during the grace carry a stale date at the end of the grace plus 5 seconds. An app that stops without notice therefore still shows as paused.
+  - Each update asks for a moment of background time of its own, to reach ActivityKit before the app stops. That time ends when the update is made, or when iOS takes it back.
+  - The paused update goes within the task of the grace. The task ends when ActivityKit has the update, or at once when iOS takes the time back.
+  - Dictation and a pane switch that still waits stop at once, as before.
+- **Coming back during the grace** cancels the grace. Nothing was suspended. The connections of the hosts are not reset, because the app ran (`BackgroundGrace.awake`, from which `HostStore.suspended` measures).
+- **Return**: on `.active`, the streams resume as today. The activity shows `connected: true` again.
+- **End**: when the terminal screen closes, or when another terminal opens (which starts its own activity). The system dismisses it at once. An activity that the user dismissed stays dismissed for that screen. A terminal that opens later starts one again. At 8 hours, iOS ends the activity. The next foreground starts a new one.
+- **Presentations**:
+  - Compact leading: the tile of the program.
+  - Compact trailing: the state glyph, a progress ring, or a timer since `updated`.
+  - Minimal: the tile.
+  - Expanded: the tile and window title, the host, the state, and `line` in a monospaced font. The font is the font of the system, because the extension does not carry the font of the terminal. All of this is in the bottom region, under the camera. The leading region sits in the top corner of the island, which cut the tile (#901).
+  - Lock Screen: the same rows.
+  - The second row puts the state first. Then it shows the title of the record and the host. A long host name therefore cuts no state.
+  - A plain shell shows no mark beside its tile, but it shows one in compact trailing.
+  - A paused activity (`connected: false` or `isStale`) is dimmed and reads "Paused — open Rex Go".
+  - `line`, the title of the window and the title of the record are `.privacySensitive()`.
 - **Tap**: opens the terminal, as a notification tap does.
 
-It shares the widget extension `GoRexWidgets`
-([ios-widgets.md](ios-widgets.md)). The per-host activity below comes in
-phase 2, with the host's pushes; while both exist, the terminal activity
-wins in the Dynamic Island while it is connected (higher
-`relevanceScore`).
+The activity shares the widget extension `GoRexWidgets` ([ios-widgets.md](ios-widgets.md)). The per-host activity below comes in phase 2, with the pushes of the host. While both exist, the terminal activity wins in the Dynamic Island while it is connected (higher `relevanceScore`).
 
 ### Presentation (phase 2: per host)
 
-One activity per host, `HostActivity`, showing that host's most urgent
-record as `Host.inbox` and `Inbox.groups` rank it, and counts of the
-rest. Per host, because each host pushes for itself: a push replaces
-the whole content state, so two hosts sharing one activity would
-overwrite each other unless something merges them. Each
-host's `relevance-score` follows its top state (blocked highest), so the
-Dynamic Island shows the host that needs the user. Not per session,
-because:
+`HostActivity` is one activity for each host. It shows the most urgent record of that host, as `Host.inbox` and `Inbox.groups` rank it, and the counts of the rest. It is per host because each host pushes for itself. A push replaces the whole content state. If two hosts shared one activity, they would overwrite each other, unless something merges them. The `relevance-score` of each host follows its top state (blocked highest). The Dynamic Island therefore shows the host that needs the user. It is not per session, for these reasons:
 
-- The Dynamic Island shows one of an app's activities anyway.
-- The 8-hour limit, the push budget and the push token are per activity;
-  many short sessions would mean many starts, each with an alert.
-- The number of concurrent activities is limited and undocumented.
+- The Dynamic Island shows one of the activities of an app anyway.
+- The 8-hour limit, the push budget and the push token are per activity. Many short sessions would mean many starts, each with an alert.
+- The number of concurrent activities is limited and not documented.
 
-Per-host activities come with phase 2; phase 1 has only the terminal
-activity.
+Per-host activities come with phase 2. Phase 1 has only the terminal activity.
 
-Content state, all small fields, well under 4 KB:
+The content state has small fields, well under 4 KB:
 
-- `state` (the top record's), `kind`, `app` (program id, for the tile),
-  `progress`, `since` (when it began working, for the timer),
-  `updated`;
-- `heading` and `detail` (as `InboxItem` builds them); in pushes, Apple
-  sees them (Open questions);
-- `blocked`, `working`, `done`, `failed` counts;
+- `state` (of the top record), `kind`, `app` (program id, for the tile), `progress`, `since` (when it began to work, for the timer) and `updated`.
+- `heading` and `detail` (as `InboxItem` builds them). In pushes, Apple sees them (see Open questions).
+- The counts `blocked`, `working`, `done` and `failed`.
 - `target` (session and block of the top record).
 
-The host's name and id are static attributes, set at start.
+The host name and id are static attributes, set at start.
 
-Presentations:
+The presentations are:
 
-- **Compact leading**: the program's tile (`ProgramTile`'s artwork,
-  sized to the presentation), tinted by state: attention for blocked
-  and done, red for error.
-- **Compact trailing**: blocked: the needs-input glyph and the blocked
-  count; working with progress: a circular progress view; working
-  without: `Text(timerInterval:)` since `since`; done or failed: the
-  glyph. Narrowed: the glyph alone.
-- **Minimal**: the tinted tile, or the blocked count when more than one.
-- **Expanded**: leading: tile and host; center: heading (or the state's
-  name when there is none); trailing: the timer or "5m ago"; bottom:
-  detail, then the counts ("1 needs input · 3 working · 1 done").
-- **Lock Screen**: the host, then the top record as an inbox row (tile,
-  heading, state, time), then the counts; when `isStale`:
-  "Paused — open Rex Go to update".
-- Tapping opens the terminal of the top record, as a notification tap
-  does (`Notifier.opening`).
+- **Compact leading**: the tile of the program (the artwork of `ProgramTiles`, sized to the presentation), tinted by state. Attention is the tint for blocked and done, and red is the tint for error.
+- **Compact trailing**: For blocked, it shows the needs-input glyph and the blocked count. For working with progress, it shows a circular progress view. For working without progress, it shows `Text(timerInterval:)` since `since`. For done or failed, it shows the glyph. When narrowed, it shows the glyph alone.
+- **Minimal**: the tinted tile, or the blocked count when more than one record is blocked.
+- **Expanded**: Leading shows the tile and host. Center shows the heading (or the name of the state when there is none). Trailing shows the timer or "5m ago". Bottom shows the detail, then the counts ("1 needs input · 3 working · 1 done").
+- **Lock Screen**: the host, then the top record as an inbox row (tile, heading, state, time), then the counts. When `isStale`, it shows "Paused — open Rex Go to update".
+- A tap opens the terminal of the top record, as a notification tap does (`Notifier.opening`).
 
 ### Lifecycle (phase 2: per host)
 
-- **Start**: the app, in the foreground, when a host has a working or
-  blocked record and no activity; or, from phase 2, the host by
-  push-to-start when it has one and the phone has none for it.
-- **Update**: from the app on every inbox change, coalesced to one per
-  second, while it runs; from the host by push, from phase 2. Both carry
-  the record's time; the host's `timestamp` keeps an old push from
-  replacing newer state. **[assumption: how a local update and a push
-  order on the device]**
-- **End**: when no record is working or blocked and the done and error
-  ones were seen; dismissed after a few minutes. At 8 hours iOS ends it;
-  the next foreground or push-to-start begins a new one.
-- **Stale**: without a push path, 30 seconds after the app leaves the
-  foreground; with one, a few minutes ahead with each push, so a host
-  that goes away shows as stale.
+- **Start**: The app starts the activity, in the foreground, when a host has a working or blocked record and no activity. From phase 2, the host also starts it by push-to-start, when the host has such a record and the phone has no activity for it.
+- **Update**: The app updates the activity on every inbox change while the app runs. The updates are coalesced to one for each second. From phase 2, the host updates it by push. Both carry the time of the record. The `timestamp` of the host keeps an old push from replacing a newer state. **[assumption: how a local update and a push order on the device]**
+- **End**: The activity ends when no record is working or blocked and the user saw the done and error records. The system dismisses it after a few minutes. At 8 hours, iOS ends it. The next foreground or push-to-start starts a new one.
+- **Stale**: Without a push path, the activity is stale 30 seconds after the app leaves the foreground. With a push path, each push sets the stale date a few minutes ahead. A host that goes away therefore shows as stale.
 
 ### Notifications
 
 - Phase 1 keeps the local blocked notification as it is.
-- From phase 2, a blocked record updates the host's activity with an
-  alert at priority 10, which replaces the local blocked notification
-  (no double alert). When Live Activities are off, the host sends an
-  ordinary alert push instead, so "needs input" arrives while the app is
-  suspended either way. Taps open the terminal, as now.
+- From phase 2, a blocked record updates the activity of the host with an alert at priority 10. This replaces the local blocked notification, so there is no double alert. When Live Activities are off, the host sends an ordinary alert push instead. In both cases, "needs input" arrives while the app is suspended. Taps open the terminal, as now.
 
 ### Host sender
 
-One component on the host, in the process that runs the gateway, which
-already sees every block's records (`events_blocks.go`). **[code]** It:
+The sender is one component on the host. It runs in the process that runs the gateway, which already sees the records of every block (`events_blocks.go`). **[code]** The sender does these things:
 
-- keeps, per registered device: the environment (sandbox for Xcode
-  builds, production for TestFlight and the App Store), the
-  push-to-start token, the device token for alerts, the current
-  activity's update token, and the last state sent;
-- computes the host's content state with `rex.MostUrgent` over every
-  session, honoring the seen state the phone reports;
-- sends working and progress changes at priority 5, coalesced to one per
-  few seconds, and blocked, done and error at 10, once per change;
-- starts an activity by push-to-start (with `input-push-token: 1`) when
-  the phone has none for this host, ends it when nothing works or waits;
-- drops a token APNs rejects as unregistered or expired;
-- hands each request to a **last hop**. The last hop takes a built
-  request (kind, token, environment, priority, payload) and returns
-  APNs's answer; nothing else depends on which one runs. This document
-  builds one, `direct`; a relay would be another (Later).
+- It keeps these items for each registered device:
+  - the environment (sandbox for Xcode builds, production for TestFlight and the App Store)
+  - the push-to-start token
+  - the device token for alerts
+  - the update token of the current activity
+  - the last state sent
+- It computes the content state of the host with `rex.MostUrgent` over every session. It uses the seen state that the phone reports.
+- It sends working and progress changes at priority 5, coalesced to one for each few seconds. It sends blocked, done and error at priority 10, one time for each change.
+- It starts an activity by push-to-start (with `input-push-token: 1`) when the phone has none for this host. It ends the activity when nothing works or waits.
+- It drops a token that APNs rejects as unregistered or expired.
+- It hands each request to a **last hop**. The last hop takes a built request (kind, token, environment, priority, payload) and returns the answer of APNs. Nothing else depends on which last hop runs. This doc builds one last hop, `direct`. A relay would be another (see Later).
 
 #### Rex API: `push.register`
 
-A GoRex-only Rex API method. The phone calls it over the connection it
-already has, so the gateway's existing auth decides who may register.
-**[code]** for the gateway's auth, not for the method, which is new.
+`push.register` is a GoRex-only Rex API method. The phone calls it over the connection that it already has. The existing auth of the gateway therefore decides who can register. **[code]** for the auth of the gateway, not for the method, which is new.
 
-- Params: a device id (random, per install), environment, push-to-start
-  token, device token, the update token of this host's activity when
-  one runs, and whether Live Activities are on.
-- The phone calls it on every connect and whenever a token changes.
-- `push.seen` (or a field of the same call) reports which done and
-  error records the user saw, so the host stops alerting for them.
-  Today `seen` lives only on the phone.
-- `push.unregister` on sign-out or when the user turns it off.
+- Params:
+  - a device id (random, per install)
+  - the environment
+  - the push-to-start token and the device token
+  - the update token of the activity of this host, when one runs
+  - whether Live Activities are on
+- The phone calls it on every connect and when a token changes.
+- `push.seen` (or a field of the same call) reports which done and error records the user saw. The host then stops alerting for them. Today `seen` lives only on the phone.
+- `push.unregister` runs on sign-out or when the user turns it off.
 
-Known gap: an activity the host starts by push-to-start gets its update
-token on the phone, which iOS wakes briefly. The phone must hand it to
-the host in that time. On the local network or through a system VPN it
-may; through the built-in Tailscale, the engine has to start first.
-**[assumption]** Until the host has the token, it can't update that
-activity, only send alerts; the next foreground fixes it.
+Known gap: An activity that the host starts by push-to-start gets its update token on the phone, which iOS wakes briefly. The phone must hand the token to the host in that time. On the local network or through a system VPN, it may succeed. Through the built-in Tailscale, the engine must start first. **[assumption]** Until the host has the token, it cannot update that activity. It can only send alerts. The next foreground closes the gap.
 
 #### Direct last hop
 
-- Go's `net/http` speaks HTTP/2 over TLS by default; the JWT is ES256
-  over the `.p8` key (`crypto/ecdsa`), cached and renewed every
-  50 minutes. **[assumption: no third-party APNs library needed]**
-- The key: a topic-specific APNs key scoped to Rex Go's bundle id and
-  one environment. Whether such a key also covers the
-  `.push-type.liveactivity` topic is unverified. **[assumption]**
-- Configured with a command, for instance
-  `gorex push key <file.p8> --key-id … --team-id … --env production`,
-  which copies the key into GoRex's data dir (`rex.Dir()`) with mode
-  0600 (on Windows, an ACL for the user only). Never in the repository,
-  never in `hosts.json` or `remote.json`, never in logs.
-- Revocation: revoke the key on the developer portal, then
-  `gorex push key --remove`. A leaked key works until revoked.
-- Where a key is configured, the host sends directly; elsewhere it
-  doesn't send at all, and its phones get phase 1. Content goes from
-  the host to Apple only.
+- Go `net/http` speaks HTTP/2 over TLS by default. The JWT is ES256 over the `.p8` key (`crypto/ecdsa`), cached and renewed every 50 minutes. **[assumption: no third-party APNs library needed]**
+- The key is a topic-specific APNs key with the scope of the bundle id of Rex Go and one environment. It is not verified if such a key also covers the `.push-type.liveactivity` topic. **[assumption]**
+- The user configures the key with a command, for instance `gorex push key <file.p8> --key-id … --team-id … --env production`. The command copies the key into the data dir of GoRex (`rex.Dir()`) with mode 0600 (on Windows, an ACL for the user only). The key never goes in the repository, never in `hosts.json` or `remote.json`, and never in logs.
+- Revocation: revoke the key on the developer portal, then run `gorex push key --remove`. A leaked key works until someone revokes it.
+- Where a key is configured, the host sends directly. Elsewhere, it does not send at all, and its phones get phase 1. Content goes from the host to Apple only.
 
-## Build and release
+### Build and release
 
-- A widget extension target in `ios/project.yml` (xcodegen
-  `app-extension`, `com.apple.widgetkit-extension`), bundle id under
-  `dev.gorex.ios`, embedded in the app; the attributes type compiled
-  into both. It links SwiftUI and WidgetKit only, not GhosttyKit,
-  Tailnet or FluidAudio. **[code]** for what the app links. The Home
-  Screen widgets ([ios-widgets.md](ios-widgets.md)) add this target
-  first, as `GoRexWidgets`.
-- `NSSupportsLiveActivities` in the app's Info.plist; phase 2 also
-  `NSSupportsLiveActivitiesFrequentUpdates`.
-- Phase 1 needs no entitlement. From phase 2 the app needs the Push
-  Notifications capability (`aps-environment`), which also lets it
-  register for the alert pushes' device token.
-- TestFlight CI (`ios/scripts/upload`) archives with
-  `CODE_SIGNING_ALLOWED=NO` and signs at export, cloud-managed, with
-  `-allowProvisioningUpdates` and the App Store Connect API key. **[code]**
-  Whether that key may register the extension's App ID and enable push
-  without portal work depends on its role. **[assumption]** An archive
-  built unsigned may carry no entitlements, so the export could sign
-  the app without `aps-environment`; phase 2 may have to sign at
-  archive. Check the exported app's entitlements before relying on it.
-  **[assumption]**
-- TestFlight and App Store builds use production APNs; Xcode builds use
-  sandbox. The phone reports which in `push.register`, and a host's key
-  serves one environment.
-- Broadcast channels would need the portal by hand. This design doesn't
-  use them.
+- A widget extension target in `ios/project.yml` (xcodegen `app-extension`, `com.apple.widgetkit-extension`), with a bundle id under `dev.gorex.ios`, embedded in the app. The attributes type is compiled into both. It links SwiftUI and WidgetKit only. It does not link GhosttyKit, Tailnet or FluidAudio. **[code]** for what the app links. The Home Screen widgets ([ios-widgets.md](ios-widgets.md)) add this target first, as `GoRexWidgets`.
+- `NSSupportsLiveActivities` goes in the `Info.plist` of the app. Phase 2 also adds `NSSupportsLiveActivitiesFrequentUpdates`.
+- Phase 1 needs no entitlement. From phase 2, the app needs the Push Notifications capability (`aps-environment`). It also lets the app register for the device token of the alert pushes.
+- TestFlight CI (`ios/scripts/upload`) archives with `CODE_SIGNING_ALLOWED=NO`. It signs at export, cloud-managed, with `-allowProvisioningUpdates` and the App Store Connect API key. **[code]**
+  - Whether that key can register the App ID of the extension and enable push without portal work depends on its role. **[assumption]**
+  - An archive that is built unsigned may carry no entitlements. The export could then sign the app without `aps-environment`. Phase 2 may have to sign at archive.
+  - Check the entitlements of the exported app before relying on it. **[assumption]**
+- TestFlight and App Store builds use production APNs. Xcode builds use sandbox. The phone reports which environment it uses in `push.register`. A key of a host serves one environment.
+- Broadcast channels need the portal by hand. This design does not use them.
+
+## Alternatives
+
+These are the options for updates while Rex Go is suspended:
+
+| | What the user sees | New infrastructure | Privacy and security | App Review | Outcome |
+| --- | --- | --- | --- | --- | --- |
+| a. Foreground only | Live in the app. Frozen seconds after it leaves. "paused" past the stale date | none | none | low | phase 1, the base |
+| b. Keep the app alive | Live while iOS lets it be. Drains the battery | none | none | high | rejected |
+| c. Host sends to APNs directly | Live | an APNs key on the host | content goes host → Apple only. The key is the developer account's | low | phase 2, developer only |
+| d. Host sends through a relay | Live | a relay holding the APNs key | state passes the relay and Apple | low | later, not designed here |
+| e. Silent push, Background App Refresh, NetworkExtension | Nothing reliable (NetworkExtension: live, at the cost of a system VPN) | silent push needs d anyway | NetworkExtension brings the system VPN back | medium to high | rejected |
+
+**a. Foreground only.** The app starts and updates the activity while it runs. At the background edge, it sets a short stale date. A background task (`beginBackgroundTask`) buys about 30 seconds, which covers a quick switch to another app. The built-in Tailscale engine is suspended with the app anyway. While the app is in front, the inbox shows the same information. On its own, this option therefore adds little. It is what users without a push path get.
+
+**b. Keeping the app alive.** The background modes that could do it are `audio` (silent audio), `location` and `voip`. None of them is what a terminal app does. App Review Guideline 2.5.4 allows background modes only for their intended purpose. rootshell declares `location`, but it has a real location feature (its Location Diary). Rejected.
+
+**c and d: the host sends, the last hop varies.** The host is the one party that knows the state while the phone sleeps. It therefore computes the content state, builds the payloads and keeps the tokens of the phone. Only the last hop differs:
+
+- **Direct**: The host signs the request with an APNs key that is configured on it and sends the request to Apple. There is no cloud service. Nothing leaves the network of the user except the push to Apple. But the key belongs to the team of the app. Anyone who holds it can push to any Rex Go device whose token they learn. A topic-specific key narrows that to Rex Go, not to one user. So only the developer can have one. This option is built first. It proves the whole chain (tokens, payloads, widget, entitlements, signing) before any cloud service exists. It stays the path of the developer.
+- **Relay**: The host posts the same payloads to a relay, which holds the key and sends. It is the only way to give other users phase 2, because they cannot hold the key. It is for later (see Later).
+
+**e. Others.**
+
+- Silent (background) pushes wake the app. But Apple asks for no more than two or three each hour, and may hold them back. They need a relay anyway. **[doc]** [Background updates](https://developer.apple.com/documentation/usernotifications/pushing-background-updates-to-your-app)
+- Background App Refresh runs when iOS decides, often hours apart, for seconds. This is not enough to start the engine, reach a host and update.
+- A Packet Tunnel extension runs in the background and could hold the host connections. It needs the system VPN, which [ios-tailnet.md](ios-tailnet.md) removed on purpose. It has a tight memory limit. It is not verified if it can call ActivityKit. **[assumption]** Rejected.
+
+## Tests
+
+- Unit tests: the content state from records (ranking, counts, seen), coalescing, and the 4 KB limit with the longest title and message. Also JWT signing and renewal, and the direct last hop against a fake APNs server (HTTP/2, error answers, unregistered tokens).
+- Simulator on the Mac mini: start, update, stale and end. Pushes with `xcrun simctl push` or the Push Notifications Console.
+- On a phone: lock it with an agent that works on a host with a key, make it block, and see the alert. Push-to-start with the app suspended. A host without a key turns paused. Leave it past 8 hours.
 
 ## Phases
 
@@ -540,79 +257,33 @@ activity, only send alerts; the next foreground fixes it.
 | 2 | Host sender, `push.register`, direct last hop, alert pushes | 5–7 days | phones of hosts with a key: the developer's |
 | 3 | Follow a session not on screen (optional) | 2–3 days | as phase 2 |
 
-Efforts are rough estimates. **[assumption]**
+The efforts are rough estimates. **[assumption]**
 
-1. **Terminal activity**: `TerminalActivity` in `GoRexWidgets`, its
-   presentations, start and end with the terminal screen, the grace
-   before suspending the streams, the paused mark, the 8-hour restart.
-   Prerequisite: the widgets' phase 1 has added the extension and CI
-   signs it. Unsolved: everything after the grace.
-2. **Host sender, direct**: the sender and its last-hop interface,
-   `push.register` and seen, the direct last hop with the key command,
-   push-to-start, update tokens, the ordinary "needs input" alert push
-   while the app is suspended, the push entitlement and signing.
-   Content goes from the host to Apple only. Users without a key get
-   phase 1's behavior. Unsolved: the push-to-start token gap through the
-   built-in Tailscale; programs that don't report; records lost on a
-   server restart.
-3. **Follow a session not on screen**: a terminal activity started from
-   a session row's menu; actions from the activity stay out.
-
-## Test plan
-
-- Unit tests: content state from records (ranking, counts, seen),
-  coalescing, the 4 KB limit with the longest title and message; JWT
-  signing and renewal; the direct last hop against a fake APNs server
-  (HTTP/2, error answers, unregistered tokens).
-- Simulator on the Mac mini: start, update, stale, end; pushes with
-  `xcrun simctl push` or the Push Notifications Console.
-- On a phone: lock it with an agent working on a host with a key, make
-  it block, and see the alert; push-to-start with the app suspended;
-  a host without a key turning paused; leave it past 8 hours.
+1. **Terminal activity** (built, #892, #900, #901): `TerminalActivity` in `GoRexWidgets` and its presentations. The activity starts and ends with the terminal screen. It also has the grace before the streams suspend, the paused mark and the 8-hour restart. Prerequisite: phase 1 of the widgets adds the extension, and CI signs it. Unsolved: everything after the grace.
+2. **Host sender, direct** (not built): the sender and its last-hop interface, `push.register` and seen, and the direct last hop with the key command. It also has push-to-start, update tokens, the ordinary "needs input" alert push while the app is suspended, and the push entitlement and signing. Content goes from the host to Apple only. Users without a key get the behavior of phase 1. Unsolved: the push-to-start token gap through the built-in Tailscale, programs that do not report, and records lost on a server restart.
+3. **Follow a session not on screen** (not built): a terminal activity that starts from the menu of a session row. Actions from the activity stay out.
 
 ## Open questions
 
-1. Do phases 1 and 2 ship to TestFlight as they land, given that
-   testers without a key get phase 1's behavior only?
-2. Do direct pushes carry session titles and messages (Apple sees them
-   in transit), or only states, counts and program ids?
-3. How is the key configured on a host (the `gorex push key` command,
-   or Settings in the app), and on which hosts: every machine of the
-   developer, or one?
-4. Does the CI's App Store Connect key have the role to register the
-   extension's App ID and enable push without portal work, and does an
-   unsigned archive keep `aps-environment` at export? To check in
-   phase 1 and before phase 2.
-5. Does a topic-specific key scoped to Rex Go's bundle id cover the
-   `.push-type.liveactivity` topic, or is an environment-scoped key
-   needed?
+1. Do phases 1 and 2 ship to TestFlight as they land? Testers without a key get the behavior of phase 1 only.
+2. Do direct pushes carry session titles and messages (Apple sees them in transit), or only states, counts and program ids?
+3. How does the user configure the key on a host (the `gorex push key` command, or Settings in the app)? On which hosts: every machine of the developer, or one?
+4. Can the App Store Connect key of the CI register the App ID of the extension and enable push without portal work? Does an unsigned archive keep `aps-environment` at export? The team must check both points in phase 1 and before phase 2.
+5. Does a topic-specific key with the scope of the bundle id of Rex Go cover the `.push-type.liveactivity` topic? Or does the team need an environment-scoped key?
 
 ## Later: a relay
 
-Other users can't hold the app's APNs key, so a relay holding it is
-what would bring phase 2 to them. The sender's last hop is replaceable
-so a relay can be added without redoing the sender. Its design
-(operator, hosting, storage, auth between hosts and relay, what leaves
-the user's network, merging hosts into one activity) is deliberately
-not decided here.
+Other users cannot hold the APNs key of the app. A relay that holds the key would bring phase 2 to them. The last hop of the sender is replaceable, so the team can add a relay without a rework of the sender. This doc deliberately does not decide the design of the relay. These points are undecided:
+
+- the operator, the hosting and the storage
+- the auth between hosts and relay
+- what leaves the network of the user
+- how to merge hosts into one activity
 
 ## Reference: rootshell
 
-From its repository, read for this design. **[code]**
+This part comes from the repository of rootshell, which the team read for this design. **[code]**
 
-- Its widget extension shows coding agents as counts (working, needs
-  attention, idle) on the Lock Screen, in the Dynamic Island and on
-  Apple Watch. Counts update on the device in the foreground only; at
-  the background edge it publishes the last counts marked frozen, and
-  the view says they are paused. It starts its activities with
-  `pushType: nil`: no ActivityKit pushes.
-- It declares the `location` and `remote-notification` background
-  modes, and asks for about 30 seconds of background time on a switch.
-- Its agent notifications are ordinary alert pushes through its own
-  stateless relay: the APNs token is sealed in the sender credential by
-  the relay's key, the content is end-to-end encrypted to a key on the
-  device (X-Wing HPKE) and decrypted by a notification service
-  extension. A command-line client on each computer sends them from
-  agent hooks. That relay is the infrastructure rootshell depends on,
-  and it does not use it for Live Activities, whose pushes no extension
-  can decrypt.
+- Its widget extension shows coding agents as counts (working, needs attention, idle) on the Lock Screen, in the Dynamic Island and on Apple Watch. The counts update on the device in the foreground only. At the background edge, it publishes the last counts with a frozen mark, and the view says they are paused. It starts its activities with `pushType: nil`, so it has no ActivityKit pushes.
+- It declares the `location` and `remote-notification` background modes. It asks for about 30 seconds of background time on a switch.
+- Its agent notifications are ordinary alert pushes through its own stateless relay. The relay key seals the APNs token in the sender credential. The content is end-to-end encrypted to a key on the device (X-Wing HPKE) and a notification service extension decrypts it. A command-line client on each computer sends the pushes from agent hooks. That relay is the infrastructure that rootshell depends on. It does not use it for Live Activities, because no extension can decrypt their pushes.

@@ -1,144 +1,151 @@
-# Rex Go iOS：面板相册
+# Rex Go iOS: pane gallery
 
-Status: 已实现（分支 `feat/ios-session-gallery`），实现与设计不同之处见 §9。复用 `docs/web-open-files.md`「The iOS client」一节的下载代码（#721：`FileLink`、`TerminalView+Open.swift` 的 `OpenedFiles`）。
+Status: built (#736, #744, #749).
 
-## 1. 背景
+This doc defines a gallery of images for each terminal pane in Rex Go on iOS. The build differs from the design in some places. Section 9 lists the differences. The gallery reuses the download code of the section "The iOS client" in `docs/web-open-files.md` (#721: `FileLink`, and `OpenedFiles` in `TerminalView+Open.swift`).
 
-Claude Code 这类 agent 把生成的图片写到主机文件里，只在输出里打印路径。omp 这类程序用 Kitty 图片协议把图片直接画进终端。两种图片都会随输出滚走：一次对话里出现过的截图、图表，事后很难再找到。
+## 1. Problem
 
-本文在 iOS 端为每个终端面板建一个相册。终端右上角「More」菜单的第一项进入当前面板的相册页：网格列出这个面板出现过的全部图片，点按一张进入全屏浏览，左右滑动切换，像系统「照片」App。
+An agent such as Claude Code writes the images that it makes to files on the host. It prints only the path in its output. A program such as omp draws images directly into the terminal with the Kitty image protocol. Both kinds of image scroll away with the output. A screenshot or a chart that appeared in a conversation is hard to find later.
 
-## 2. 范围
+This doc adds a gallery for each terminal pane on iOS. The first item of the "More" menu at the top right of the terminal opens the gallery of the current pane. A grid lists all images that this pane showed. The user taps one image to see it full screen, and swipes left or right to change images, as in the system "Photos" app.
 
-- 收集：iOS 端扫描自己收到的终端输出。服务端不改，Rex API 不改。
-- 图片来源只有两种：
-  1. 输出中打印的图片文件路径。
-  2. Kitty 内联图片。
-- 用户上传给 agent 的图片不收集。
-- 相册按面板（主机 + 面板 `block_id`）区分。每个面板一个相册，同一会话的其他面板不共用。
+## 2. Scope
 
-已知限制：手机没有连接时产生的输出，iOS 只能从重新连接时的快照里看到。快照只含屏幕和服务端保留的回滚内容。超出这个范围的图片会漏掉。这是选择 iOS 端扫描的代价。
+- Collection: the iOS app scans the terminal output that it receives. The server does not change. The Rex API does not change.
+- The gallery has only two sources of images:
+  1. Image file paths that the output prints.
+  2. Kitty inline images.
+- The gallery does not collect images that the user uploads to the agent.
+- The gallery belongs to a pane (host plus pane `block_id`). Each pane has one gallery. Other panes of the same session do not share it.
 
-## 3. 收集
+Known limit: the phone may be disconnected while the pane makes output. iOS then sees that output only in the snapshot that it gets at reconnect. The snapshot holds only the screen and the scrollback that the server keeps. The gallery misses images outside this range. This is the cost of the choice to scan on iOS.
 
-### 3.1 扫描位置
+## 3. Collection
 
-`TerminalSession.receive`（`ios/GoRex/Terminal/TerminalSession.swift`）是全部输出进入终端的地方：
+### 3.1 Where the scan runs
 
-- `.snapshot`：连接或重连时的快照。`VTerminal.replay()` 生成要写入的字节，扫描这些字节。
-- `.output`：实时输出，扫描原始字节。
+`TerminalSession.receive` (`ios/GoRex/Terminal/TerminalSession.swift`) is the one place where all output enters the terminal. It handles two events:
 
-扫描器是一个 nonisolated 的纯逻辑类型，按面板保持状态，因为一个路径或一个 Kitty 序列可以被拆在两次 `receive` 之间。扫描在后台执行，不得阻塞写入终端。
+- `.snapshot`: the snapshot at connect or reconnect. `VTerminal.replay()` makes the bytes to write. The scanner scans these bytes.
+- `.output`: live output. The scanner scans the raw bytes.
 
-输出字节收 Kitty 图片、OSC 8 链接和打印的图片路径。打印的图片路径另从屏幕文字收（§3.4）：Claude Code 这类程序把长路径按屏幕宽度折成几行，每行用换行或光标移动隔开，下一行还带悬挂缩进，输出字节中没有一行含完整路径（用户，2026-11-18，Windows 主机上的 `C:\Users\…\shots\*.png` 一个都没收到）。
+The scanner is a nonisolated type of pure logic. It keeps state for each pane. A path or a Kitty sequence can split between two `receive` calls. The scan runs in the background. It must not block the write to the terminal.
 
+The output bytes supply Kitty images, OSC 8 links and printed image paths. The screen text supplies printed image paths too (section 3.4). Claude Code and similar programs wrap a long path to the screen width over several rows. They separate the rows with a line feed or a cursor move. The next row also has a hanging indent. So no row in the output bytes holds the full path. A user reported this on 2026-11-18. A Windows host printed `C:\Users\…\shots\*.png`, and the user received none of the images.
 
-### 3.2 图片路径
+### 3.2 Image paths
 
-- 识别规则与「点按路径打开文件」相同：复用那一节移植的 `pathAt` 规则和 OSC 8 `file://` 链接解析。OSC 8 链接只在可见文字就是它的目标路径时才收：目标与文字不同的链接，取文件前必须让用户看到真实目标并确认（`docs/lessons.md`「Link whose target differs from its text」），而相册会自动下载缩略图。
-- 也收 Windows 绝对路径：盘符加 `\` 或 `/`（`C:\dir\x.png`、`C:/dir/x.png`）。UNC 路径（`\\server\share\x.png`、`//server/share/x.png`）和设备路径不收：服务端拒绝它们，Windows 主机读 UNC 路径还会去连接那台机器（`docs/lessons.md`「Untrusted path to the host's filesystem」）。在引号中时读到对应的引号，所以带空格的路径也收。Windows 主机上的 Claude Code 打印的是这种路径。点按这种路径仍然不打开文件（`FileLink` 不收反斜杠和 `:`，与桌面端、web 端相同）；看这些图片的入口是相册。
-- 收集不受鼠标跟踪影响：Claude Code 这类程序开启鼠标跟踪后，点按路径会发给程序，相册仍然列出这些图片。
-- 只收扩展名为图片的路径：`png`、`jpg`、`jpeg`、`gif`、`webp`、`heic`、`avif`、`bmp`、`tiff`。SVG 不收：ImageIO 和 UIImage 都画不出它。
-- 路径从输出字节和屏幕文字两处收。输出字节扫描前去掉 CSI、OSC 等控制序列，只看可见文字，不拼接跨行的路径；跨行的长路径由屏幕文字按 §3.4 拼接。
-- 相对路径按记录时的形式保存，打开时由服务端按前台程序的当前目录解析（与点按打开相同）。当前目录变了以后，相对路径可能打不开；打不开的条目显示为「无法读取」，不自动删除，「文件不存在」也一样：对相对路径，这个回答不能说明文件真的不在。
-- 记录时不访问主机，不确认文件存在。缩略图第一次加载时才下载，下载失败的条目显示占位图。
-- 绝对路径（`/`、`~/`、盘符开头）的缩略图或原图下载，主机回答「文件不存在」（`no_file`）时，这一项从相册中去掉；相对路径不去掉（见上一条）：agent 在文字中提到的路径常常是例子或还没生成的文件（用户，2026-11-17）。去掉的路径不记入移除列表，所以它以后在实时输出中再次出现时会重新收入，到时文件已存在就正常显示。重连时的快照仍含原来那行文字，所以去掉的路径记入 `index.json` 的「不存在」列表（最多 2000 条），快照中再看到它时不收、不标为新图片；只有实时输出中再次打印才重新收入，并从列表中删去。其他错误（权限、文件夹、过大、连接断开）仍显示占位图，条目保留。
-- 全屏浏览中的图片因「文件不存在」被去掉时，浏览移到相邻的一张；相册空了就关闭浏览。
-- 缩略图下载的文件上限 32 MiB，同一时间最多下载 3 个；图片超过 50 百万像素时不生成缩略图，显示占位图。打开相册会一次下载可见格子的全部缩略图，这些上限防止内存耗尽。
-- 隐藏文字（SGR 8）里的路径不收：用户看不到它，而相册会自动下载缩略图。
-- 去重：同一面板中，同一路径只保留一条，时间取第一次出现。
+- The recognition rules are the same as the rules of "tap a path to open the file". The scanner reuses the path rules of that section: `FileLink.target` (`ios/GoRex/Terminal/FileLink.swift`), which follows `pathAt` of `web/src/links.ts`. It also reuses the parse of OSC 8 `file://` links. The scanner collects an OSC 8 link only when the visible text is the target path. Suppose the target differs from the text. Then the app must show the real target to the user. It must ask for a confirmation before it downloads the file (`docs/lessons.md`, "Link whose target differs from its text"). The gallery downloads thumbnails automatically, so it must not collect such a link.
+- The scanner also collects Windows absolute paths. These are a drive letter followed by `\` or `/` (`C:\dir\x.png`, `C:/dir/x.png`). The scanner does not collect UNC paths (`\\server\share\x.png`, `//server/share/x.png`) or device paths. The server refuses them. A Windows host that reads a UNC path also connects to that machine (`docs/lessons.md`, "Untrusted path to the host's filesystem"). Inside quotes, the scanner reads up to the matching quote, so paths with spaces are collected too. Claude Code on a Windows host prints this kind of path. A tap on such a path still does not open the file. `FileLink` does not accept a backslash or `:`, the same as the desktop and the web client. The gallery is the way to see these images.
+- Mouse tracking does not affect collection. A program such as Claude Code turns on mouse tracking. A tap on a path then goes to the program. The gallery still lists these images.
+- The scanner collects only paths with an image extension: `png`, `jpg`, `jpeg`, `gif`, `webp`, `heic`, `avif`, `bmp`, `tiff`. It does not collect SVG, because neither ImageIO nor UIImage can draw it.
+- The scanner collects paths from two places: the output bytes and the screen text. Before the scan, it removes control sequences (CSI, OSC and others) from the output bytes and reads only the visible text. It does not join a path across rows in the output bytes. The screen text supplies the joined long paths (section 3.4).
+- The app stores a relative path in the form in which it was recorded. When the user opens the image, the server resolves the path against the current directory of the foreground program, as for a tap-to-open. After the current directory changes, a relative path may fail to open. An entry that fails to open shows as "cannot read". The app does not remove it automatically. "File does not exist" gets the same treatment. For a relative path, this answer does not prove that the file is absent.
+- The app does not contact the host at record time. It does not check that the file exists. It downloads the thumbnail the first time the thumbnail loads. An entry whose download fails shows a placeholder.
+- The thumbnail or original of an absolute path may fail to download. An absolute path starts with `/`, `~/` or a drive letter. The host then answers "file does not exist" (`no_file`). The app then removes that entry from the gallery. It does not remove relative paths (see the previous item). Paths that an agent mentions in text are often examples, or files that do not exist yet (a user, 2026-11-17). The app does not add a removed path to the removal list. So the path is collected again when it appears later in live output. If the file exists by then, the entry shows normally. The snapshot at reconnect still holds the original line of text. So the app adds the removed path to a "does not exist" list in `index.json` (at most 2000 entries). The scanner does not collect the path when it sees it in a snapshot, and does not mark it as a new image. The scanner collects it again only when live output prints it again. It then removes the path from the list. Other errors (permission, folder, too large, connection lost) still show a placeholder. The entry stays.
+- The user may view an image full screen while the app removes it because the file does not exist. The viewer then moves to the next image. If the gallery becomes empty, the viewer closes.
+- The download limit for a thumbnail file is 32 MiB. The app downloads at most 3 files at the same time. For an image over 50 million pixels, the app makes no thumbnail and shows a placeholder. When the user opens the gallery, the app downloads the thumbnails of all visible cells at once. These limits prevent memory exhaustion.
+- The scanner does not collect paths in hidden text (SGR 8). The user cannot see such text, and the gallery downloads thumbnails automatically.
+- Deduplication: one pane keeps one entry for one path. The time is the time of the first appearance.
 
-### 3.3 Kitty 内联图片
+### 3.3 Kitty inline images
 
-- 从输出字节中截取 `ESC _ G … ESC \` 序列。服务端已把文件形式的图片改写为内联数据（`internal/rex/graphics.go`），所以 iOS 只处理内联的 `t=d`。
-- 按 Kitty 的分块规则（`m=1` 续块）拼接同一图片的数据，解 base64：
-  - `f=100`（PNG）：直接保存 PNG。
-  - `f=24`、`f=32`（RGB、RGBA 原始像素，带 `s`、`v` 尺寸）：转成 PNG 保存。
-  - 带压缩 `o=z`：先 zlib 解压。
-  - 其他格式：跳过。
-- 单张图片上限 4 MiB（与服务端 `maxGraphicsImage` 相同），超过的跳过。宽或高超过 16384 像素、或总像素超过 50 百万的跳过：尺寸来自程序的输出，不受信任，相乘会溢出，解码会耗尽内存。
-- 同一面板中，带同一图片号（`i=`）的新图片在上一张的 2 秒内到来时，替换上一张，不新增条目：程序用同一个号逐帧刷新动画或图表时，相册只留最后一帧。
-- 去重：按图片数据的 SHA-256。服务端在重连时会重放图片历史，同一张图不重复记录。
+- The scanner extracts `ESC _ G … ESC \` sequences from the output bytes. The server already rewrites image files into inline data (`internal/rex/graphics.go`). So iOS handles only inline `t=d`.
+- The scanner joins the data of one image by the chunk rule of Kitty (`m=1` means a continuation chunk). Then it decodes base64:
+  - `f=100` (PNG): the app saves the PNG as it is.
+  - `f=24` and `f=32` (RGB and RGBA raw pixels, with `s` and `v` for the size): the app converts the data to PNG and saves it.
+  - With compression `o=z`: the app decompresses with zlib first.
+  - Other formats: the scanner skips them.
+- The limit for one image is 4 MiB (the same as `maxGraphicsImage` of the server). The scanner skips larger images. It also skips an image with a width or height over 16384 pixels, or with more than 50 million pixels in total. The size comes from the output of a program, so the app does not trust it. The multiplication can overflow, and the decode can exhaust memory.
+- In one pane, a new image with the same image number (`i=`) can arrive within 2 seconds of the previous one. It then replaces the previous image and adds no entry. A program that refreshes an animation or a chart frame by frame with one number leaves only the last frame in the gallery.
+- Deduplication: by the SHA-256 of the image data. The server replays the image history at reconnect. The gallery does not record the same image twice.
 
-### 3.4 屏幕文字
+### 3.4 Screen text
 
-- 终端的输出停顿 0.3 秒后，从 Ghostty 读出屏幕的文字（`ghostty_surface_read_text`），交给扫描器在后台扫描。读的是终端画好的样子，程序的光标移动、局部重绘和 ConPTY 的改写都已生效。读取在 `TerminalView` 的写入队列上执行，不占主线程；surface 的释放排在同一队列上，所以读取时 surface 一定有效。
-- 读的范围：回滚不超过 200 行、且连同屏幕不超过 300 行时，读整个回滚和屏幕；否则只读屏幕。Ghostty 的坐标不能定位到屏幕上方的某一行回滚，读整个回滚又没有上限。
-- 连接或重连的快照写入终端后，也读一次。输出不停时，最多每 2 秒读一次。与上次读到的文字完全相同时跳过。
-- Ghostty 读出时已把软折行（终端自动换行）接成一行。
-- 拼接硬折行：一行按显示宽度（CJK 和 emoji 计 2）写满整行，行尾是路径字符，下一行去掉行首空格后以路径字符开头，并且上一行的最后一个词本身像路径的开头（含 `/` 或 `\`，或以 `~`、`.`、盘符开头），就把两行接起来；最多连续接 32 行。Claude Code 按单词折行，长路径常被整个推到下一行；上一行恰好写满、以 `to` 这样的普通词结尾时，不接，否则会拼出 `to/tmp/x.png` 这种用户没看到的路径，还会把真的 `/tmp/x.png` 当成片段删掉。只有接起来得到两边单独都没有的图片路径时才用拼接的结果，否则按原来的行扫描。上一行末尾已是完整的图片路径、下一行开头也是图片路径时不接，防止把列表中的两个路径接成一个。
-- 屏幕扫描的结果按快照处理（§3.2）：用户移除的路径和「不存在」列表中的路径不加回。按面板去重，重复读同一屏幕不产生新条目，也不标为新图片。
-- 输出字节的路径扫描保留：它收得到很快滚走的路径。字节扫描遇到折行的路径，只能收到后半段，例如 `apping-test/x.png`；屏幕拼接成功后删去这些片段（不记入移除列表或「不存在」列表），并记入每个面板的内存「片段」列表（最多 500 条）：重连的快照、或程序重画整个对话时，字节扫描再遇到这些片段不收，也不标为新图片。
-- 隐藏文字（SGR 8）：Ghostty 按原文读出隐藏的字符。字节扫描把隐藏文字中的路径记入每个面板的内存列表（最多 500 条），屏幕扫描跳过这些路径。程序把隐藏路径折成几行时，这个办法认不出，接起来的路径仍会收入；这种情况少见，暂不处理。
-- 不在读的范围、又不在快照中的路径收不到。
+- The terminal output stops for 0.3 seconds. The app then reads the screen text from Ghostty (`ghostty_surface_read_text`) and gives it to the scanner. The scanner scans it in the background. The app reads the text as the terminal drew it. Cursor moves of the program, partial redraws and rewrites by ConPTY have already taken effect. The read runs on the write queue of `TerminalView`. It does not use the main thread. The release of the surface runs on the same queue. So the surface is always valid during the read.
+- Read range: the app reads the whole scrollback and the screen when two conditions are true. The scrollback is at most 200 lines. The scrollback plus the screen is at most 300 lines. Otherwise it reads only the screen. The coordinates of Ghostty cannot locate one line of scrollback above the screen. Reading the whole scrollback has no limit.
+- The app also reads once after the snapshot of a connect or reconnect is written to the terminal. While output does not stop, the app reads at most once every 2 seconds. It skips a read when the text is exactly the same as the last text read.
+- Ghostty has already joined soft wraps (automatic wraps of the terminal) into one line when it reads.
+- Joining hard wraps: the scanner joins two rows when all of these conditions are true:
+  - A row fills the whole row width, measured in screen columns (CJK and emoji count as 2).
+  - The row ends with a path character.
+  - After the app removes the leading spaces, the next row starts with a path character.
+  - The last word of the first row itself looks like the start of a path. It contains `/` or `\`, or it starts with `~`, `.` or a drive letter.
+  
+  The scanner joins at most 32 rows in a chain. Claude Code wraps by word, so it often pushes a long path whole to the next row. Suppose the previous row is exactly full and ends with an ordinary word such as `to`. The scanner does not join the rows. If it did, it would build a path such as `to/tmp/x.png` that the user never saw. It would also remove the real `/tmp/x.png` as a fragment. The scanner uses the joined result only when the join gives an image path that neither row has alone. Otherwise it scans the original rows. Suppose the end of the previous row is already a complete image path, and the start of the next row is also an image path. The scanner does not join them. This prevents the join of two paths in a list into one path.
+- The scanner treats the result of a screen scan as a snapshot (section 3.2). It does not add back the paths that the user removed, or the paths in the "does not exist" list. It deduplicates by pane. Reading the same screen again makes no new entry and no new-image mark.
+- The scan of the output-byte paths stays. It collects paths that scroll away fast. When a path wraps, the byte scan gets only the second part, for example `apping-test/x.png`. After the screen join succeeds, the scanner removes these fragments. It does not add them to the removal list or the "does not exist" list. It adds them to an in-memory "fragment" list for each pane (at most 500 entries). The byte scan meets these fragments again in a reconnect snapshot, or when a program redraws the whole conversation. It then does not collect them, and does not mark them as new images.
+- Hidden text (SGR 8): Ghostty reads hidden characters as they are in the original. The byte scan records paths in hidden text in an in-memory list for each pane (at most 500 entries). The screen scan skips these paths. A program may fold a hidden path over several rows. This method does not recognize that case, and the app still collects the joined path. This case is rare. The design does not handle it now.
+- The scanner cannot collect a path that is outside the read range and not in the snapshot.
 
-## 4. 存储
+## 4. Storage
 
-- 位置：App 的 Application Support 目录下 `Gallery/<host>/<block_id>/`。不放进照片图库，不上传。
-- `index.json`：条目列表，每条包括：`id`、来源（`path` 或 `kitty`）、路径或文件名、首次出现时间、尺寸（已知时）。
-- Kitty 图片的 PNG 保存在本地，是原图。路径图片只缓存缩略图（最长边 512 px）；全屏查看时重新下载原图，查看结束后删除原图临时文件。
-- 每个面板最多 500 条，文件总大小最多 256 MiB。超过任一上限时删除最早的条目和它的文件。
-- 用户移除的条目（「从相册移除」「清空相册」）记入 `index.json` 的移除列表（路径或图片哈希），重连时快照和服务端重放的图片不再加回。移除列表最多 2000 条，最早的先删。
-- 面板在主机上关闭后，相册保留到用户删除，或 30 天未打开。
+- Location: `Gallery/<host>/<block_id>/` in the Application Support directory of the app. The app does not put the files in the Photos library. It does not upload them.
+- `index.json`: the list of entries. Each entry has `id`, the source (`path` or `kitty`), the path or file name, the time of the first appearance, and the size (when known).
+- The app saves the PNG of a Kitty image locally. It is the original. For a path image, the app caches only the thumbnail (longest side 512 px). For full-screen view, the app downloads the original again. It removes the temporary file of the original when the view ends.
+- Each pane has at most 500 entries and at most 256 MiB of file size in total. When either limit is exceeded, the app removes the oldest entries and their files.
+- The app records an entry that the user removes ("Remove from gallery", "Clear gallery") in the removal list of `index.json` (a path or an image hash). After a reconnect, the app does not add back the snapshot images or the images that the server replays. The removal list holds at most 2000 entries. The app removes the oldest first.
+- After the pane closes on the host, the gallery stays until the user removes it, or until 30 days pass without an open.
 
-## 5. 界面
+## 5. Interface
 
-### 5.1 入口
+### 5.1 Entry
 
-- 终端页右上角的「More」菜单（`TerminalScreen.swift` `ToolbarItemGroup(placement: .topBarTrailing)`）第一项是「Gallery」，带图片数量，图标 SF Symbol `photo.on.rectangle`。工具栏不加按钮：返回、标题、麦克风、More 已经占满 header，再加一个按钮会把标题挤成省略号（用户，2026-11-17）。
-- 「More」按钮上不加小圆点（用户，2026-11-17）。相册有新图片且用户还没看过时，只在菜单中「Gallery」一项标出新图片；打开相册后标记消失。
-- 相册没有图片时，「Gallery」一项仍然显示，打开后是空状态。
+- The first item of the "More" menu at the top right of the terminal page is "Gallery" (`TerminalScreen.swift`, `ToolbarItemGroup(placement: .topBarTrailing)`). It shows the number of images. Its icon is the SF Symbol `photo.on.rectangle`. The toolbar gets no new button. Back, the title, the microphone and More already fill the header. One more button would squeeze the title into an ellipsis (a user, 2026-11-17).
+- The "More" button gets no small dot (a user, 2026-11-17). When the gallery has new images that the user has not seen, only the "Gallery" item in the menu shows the new-image mark. The mark disappears after the user opens the gallery.
+- When the gallery has no images, the "Gallery" item still shows. It opens an empty state.
 
-### 5.2 相册页
+### 5.2 Gallery page
 
-- 以全屏 sheet 打开，配色跟随终端（与 SessionSheet 相同的 `colorScheme` 规则）。
-- 标题为面板名（与标题胶囊相同），副标题为图片数量。
-- 网格：方形缩略图，iPhone 竖屏 3 列、横屏 5 列，iPad 按宽度自适应。图片之间间距 2 pt，与「照片」相同。
-- 排序：按时间，最新的在底部。打开时滚动到底部。
-- 每张缩略图左下角用小图标区分来源：路径图片为 SF Symbol `doc`，Kitty 图片不加标记。
-- 没有图片时显示空状态：一句说明，说明相册收集哪两种图片。
-- 长按缩略图出菜单：「拷贝路径」（路径图片）、「分享」、「从相册移除」。
-- 右上角菜单：「选择」（多选后分享或移除）、「清空相册」（需要确认）。
+- It opens as a full-screen sheet. The colors follow the terminal (the same `colorScheme` rule as SessionSheet).
+- The title is the pane name (the same as the title capsule). The subtitle is the number of images.
+- Grid: square thumbnails. An iPhone has 3 columns in portrait and 5 columns in landscape. An iPad adapts to the width. The gap between images is 2 pt, the same as "Photos".
+- Order: by time, with the newest at the bottom. The grid scrolls to the bottom when it opens.
+- A small icon at the lower left of each thumbnail shows the source. A path image has the SF Symbol `doc`. A Kitty image has no mark.
+- With no images, the page shows an empty state. It has one sentence that says which two kinds of image the gallery collects.
+- A long press on a thumbnail opens a menu: "Copy path" (for path images), "Share", "Remove from gallery".
+- The menu at the top right has "Select" (select several, then share or remove) and "Clear gallery" (needs a confirmation).
 
-### 5.3 全屏浏览
+### 5.3 Full-screen view
 
-- 点按缩略图进入全屏，左右滑动切换，双指缩放，下滑关闭，单击切换工具栏显示。
-- 全屏显示的图片降采样后解码，长边不超过屏幕长边的点数乘 3（@3x 设备的原生像素），不解码原始分辨率。
-- 底部工具栏：分享（系统分享面板，可存入「照片」）。相册只属于当前面板，所以没有「回到来源面板」。
-- 顶部显示文件名和首次出现时间。
-- 路径图片加载原图时显示进度；失败时显示错误，错误文字与「点按路径打开文件」相同。
-- 非图片文件不进入相册，所以全屏浏览只处理图片，不用 QuickLook。
+- A tap on a thumbnail opens the full-screen view. A swipe left or right changes the image. A two-finger pinch zooms. A swipe down closes the view. A single tap shows or hides the toolbar.
+- The app decodes the full-screen image at reduced size. The long side is at most the long side of the screen in points times 3 (the native pixels of an @3x device). The app does not decode the original resolution.
+- The toolbar at the bottom has Share (the system share sheet, which can save to "Photos"). The gallery belongs to the current pane only, so it has no "go back to the source pane".
+- The top shows the file name and the time of the first appearance.
+- A path image shows progress while the original loads. When the load fails, the view shows an error. The error text is the same as for "tap a path to open the file".
+- Files that are not images do not enter the gallery. So the full-screen view handles only images and does not use QuickLook.
 
-## 6. 测试
+## 6. Tests
 
-- XCTest：
-  - 路径扫描：跨两次 `receive` 拆开的路径；带颜色序列的路径；非图片扩展名不收；重复路径只记一次。
-  - Kitty：分块拼接；PNG、RGB、RGBA、zlib；超过上限跳过；重放的同一图片按哈希去重。
-  - 存储：条目上限淘汰最早条目；索引读写往返。
-- 模拟器（macmini，`gorex-ui-testing`）：用临时服务端和编造的图片，在会话中打印两个图片路径，并用 `kitty +icat` 或等价的 `printf` 输出一张 Kitty 图片。检查：按钮出现小圆点；相册列出 3 张；全屏滑动、缩放、分享面板；断开重连后不重复。截图用编造的数据。
+- XCTest:
+  - Path scan: a path that splits across two `receive` calls. A path with color sequences. A non-image extension is not collected. A repeated path is recorded once.
+  - Kitty: chunk joining. PNG, RGB, RGBA and zlib. Images over the limits are skipped. A replayed image is deduplicated by hash.
+  - Storage: the entry limit evicts the oldest entry. The index reads and writes in a round trip.
+- Simulator (on a Mac, `gorex-ui-testing`): use a temporary server and made-up images. In a session, print two image paths. Output one Kitty image with `kitty +icat` or an equivalent `printf`. Check these points: the "Gallery" menu item shows the new-image mark. The gallery lists 3 images. Full-screen swipe, zoom and the share sheet work. No duplicates appear after a disconnect and reconnect. Screenshots use made-up data.
 
-## 7. 不做
+## 7. Non-goals
 
-- 服务端收集或跨设备同步相册。
-- 上传给 agent 的图片。
-- Sixel、iTerm2 OSC 1337 图片。
-- 视频、PDF 和其他文件。
+- Collection on the server, or gallery sync across devices.
+- Images that the user uploads to the agent.
+- Sixel and iTerm2 OSC 1337 images.
+- Video, PDF and other files.
 
-## 8. 已定
+## 8. Decisions
 
-- 相册按面板区分（用户，2026-11-17）。
-- 每个面板最多 500 条，30 天未打开的相册自动删除（用户，2026-11-17）。
+- The gallery belongs to a pane (a user, 2026-11-17).
+- Each pane has at most 500 entries. The app removes a gallery that nobody opened for 30 days automatically (a user, 2026-11-17).
 
-## 9. 实现与设计的不同
+## 9. Differences between the build and the design
 
-- 「30 天未打开」以 `index.json` 的 `used` 计：打开面板的终端或打开相册时更新。清理在本次运行创建第一个相册时执行。
-- 原图加载只显示转圈，没有百分比：`Download.fetch` 没有进度回调。
-- Kitty 图片的显示名是 `image-<哈希前 8 位>.png`。分享时复制成这个名字的临时文件，结束后删除。
-- 打开相册时终端键盘收起，关闭相册后不恢复，避免键盘盖住相册。
-- 新增 `NSPhotoLibraryAddUsageDescription`：没有它，分享面板里没有「存储图像」。
-- 扫描器在一个共用的串行队列（`dev.gorex.gallery`，qos utility）上运行；主线程每次收到输出只投递一次。
-- `DESIGN.md` 的着色器只用于桌面端；相册用系统 SwiftUI 和 glass 控件，与 iOS 其他页面相同。
-- 两个视图同时显示同一面板时（iPad 多窗口），两条输出流共用一个扫描器，状态会互相打断，可能漏收一张图。不常见，暂不处理。
-- §4 的 256 MiB 只计 Kitty PNG。路径图片的缩略图另计，最多 500 张 512 px 的 JPEG。
-- §3.3 的「同一图片号 2 秒内替换」只记在内存中，App 重启后从头算。被替换的条目取新的 id 和时间，排到最后。
-- 隐藏文字（SGR 8）的状态跨行保持，直到 SGR 0、28 或空参数。
+- "30 days without an open" counts from `used` in `index.json`. The app updates `used` when the user opens the terminal of the pane or opens the gallery. The cleanup runs when this run of the app creates its first gallery.
+- The load of an original shows only a spinner and no percentage. `Download.fetch` has no progress callback.
+- The name that the app shows for a Kitty image is `image-<first 8 characters of the hash>.png`. At share time, the app copies the image into a temporary file with this name. It removes the file afterward.
+- The terminal keyboard hides when the gallery opens. It does not return when the gallery closes. This keeps the keyboard from covering the gallery.
+- The build adds `NSPhotoLibraryAddUsageDescription`. Without it, the share sheet has no "Save Image".
+- The scanner runs on one shared serial queue (`dev.gorex.gallery`, qos utility). The main thread posts to it once for each output that it receives.
+- The shaders of `DESIGN.md` are for the desktop only. The gallery uses system SwiftUI and glass controls, the same as other iOS pages.
+- Two views may show the same pane at the same time (iPad multi-window). The two output streams then share one scanner, and their states interrupt each other. The scanner may miss one image. This case is not common. The design does not handle it now.
+- The 256 MiB of section 4 counts only Kitty PNG files. The thumbnails of path images count separately. They are at most 500 JPEG files of 512 px.
+- The rule in section 3.3, "same image number within 2 seconds replaces", lives only in memory. It restarts from zero after the app restarts. A replaced entry gets a new id and a new time, and moves to the end.
+- The hidden-text state (SGR 8) holds across lines until SGR 0, SGR 28 or an empty parameter.

@@ -1,40 +1,38 @@
 # Dragging a pane onto another pane
 
-Status: built; real-window checks on the Mac mini are open.
+Status: built (#148, #475). Real-window checks on a Mac are open.
 
-A pane (a block, in Rex's API) can be dragged by its header and dropped
-on another pane of the window. Where the pointer is in the target pane
-decides where the dragged pane goes: beside it on one of its four sides,
-or in its place. The tree of splits changes, the sessions keep running,
-and the panes move to their new places with the layout's animation.
+The user can drag a pane (a block, in Rex's API) by its header and drop it on another pane of the window. The position of the pointer in the target pane decides where the dragged pane goes. It goes beside the target on one of its four sides, or in its place. The tree of splits changes and the sessions keep running. The panes move to their new places with the animation of the layout.
 
-This follows Rex (Rex Beta, `SuperSplit`: `SuperSplitPaneDropDestination`,
-`SuperSplitPaneDropIndicator`, `dropZone`, `allowsLocalCenterDrop`,
-`swapAnimation`).
+This follows Rex (Rex Beta, `SuperSplit`: `SuperSplitPaneDropDestination`, `SuperSplitPaneDropIndicator`, `dropZone`, `allowsLocalCenterDrop`, `swapAnimation`).
 
-## What there is now
+## Problem
 
-- A tiled pane's header drags the pane (`paneHeader`, `browserHeader`:
-  `h.Drag(p)`). A float's header moves the float instead (`dragFloat`).
-- A pane card takes a dropped `*Pane` (`paneCard`, `view.go`) and calls
-  `movePaneToPane`. That always splits the target left and right, with the
-  dragged pane on the right, at half the target's width.
-- Over a card, the drag shows only a border on the whole card
-  (`k.busy.Alpha(0.6)`), so the user cannot see where the pane will go.
-- A tab's label takes a dropped `*Pane` and moves it to that tab
-  (`movePaneToTab`).
-- `pane.swap` and `pane.move` (Rex API, `layoutcmd.go`) swap two panes and
-  move a pane to another tab's pane, but only to the right or below.
+Before #148 the code worked as follows:
 
-The change is mostly in the target: zones, an indicator, and a placement
-that can put the pane before the target.
+- The header of a tiled pane drags the pane (`paneHeader`, `browserHeader`: `h.Drag(p)`). The header of a float moves the float instead (`dragFloat`).
+- A pane card takes a dropped `*Pane` (`paneCard`, `view.go`) and calls `movePaneToPane`. That always splits the target left and right. The dragged pane goes on the right, at half the width of the target.
+- Over a card, the drag shows only a border on the whole card (`k.busy.Alpha(0.6)`). So the user cannot see where the pane will go.
+- The label of a tab takes a dropped `*Pane` and moves it to that tab (`movePaneToTab`).
+- `pane.swap` and `pane.move` (Rex API, `layoutcmd.go`) swap two panes and move a pane to the pane of another tab. But they move it only to the right or below.
 
-## Behavior
+The change is mostly in the target: zones, an indicator, and a placement that can put the pane before the target.
 
-### Zones
+## Non-goals
 
-The target card is divided into five zones by the pointer's position in
-it, as a fraction of the card's width and height (`nx`, `ny`, 0 to 1):
+Rex does these things too. They are not in this change:
+
+- **Spring loading.** The user holds a dragged pane over a tab for a moment. This selects that tab, so that the user can drop the pane on one of its panes (`PaneDragTabSpringLoader`).
+- **New tab.** The user drops a pane on the empty part of the tab strip. This moves the pane to a new tab (`PaneDragNewTabDrop`, `PaneDropPlaceholderView`).
+- **Edges of the room.** The user drops on the outer edge of the room of the tab. This splits at the root, so the pane takes a whole side of the tab.
+
+## Design
+
+### Behavior
+
+#### Zones
+
+The pointer position in the target card divides the card into five zones. The position is a fraction of the width and height of the card (`nx`, `ny`, 0 to 1):
 
 ```
 +-----------------------+
@@ -48,13 +46,8 @@ it, as a fraction of the card's width and height (`nx`, `ny`, 0 to 1):
 +-----------------------+
 ```
 
-- **Center**: `|nx - 0.5| < 0.2` and `|ny - 0.5| < 0.2`. The two panes
-  swap places (`swapPanes`). Only within one tab, as Rex's "local center
-  drop"; from another tab there is no center zone, and the nearest edge
-  wins.
-- **Edges**: elsewhere, the nearest edge: the smallest of `nx`, `1 - nx`,
-  `ny`, `1 - ny`. The diagonals divide them. The dragged pane goes on that
-  side of the target, and takes half of the target's room.
+- **Center**: `|nx - 0.5| < 0.2` and `|ny - 0.5| < 0.2`. The two panes swap places (`swapPanes`). This works only within one tab, as Rex's "local center drop". From another tab there is no center zone, and the nearest edge wins.
+- **Edges**: everywhere else, the nearest edge wins. It is the smallest of `nx`, `1 - nx`, `ny`, `1 - ny`. The diagonals divide the edges. The dragged pane goes on that side of the target, and takes half of the room of the target.
 
 | Zone | Split | Dragged pane |
 |---|---|---|
@@ -63,83 +56,56 @@ it, as a fraction of the card's width and height (`nx`, `ny`, 0 to 1):
 | top | above and below (`Vertical: true`) | A |
 | bottom | above and below | B |
 
-The zones are a function of the card's bounds from the last frame and the
-pointer (`e.PointerPosition`, as `tabDropZoneAt` does for tabs). The
-constants (0.2 for the center, the diagonals) are a first guess: compare
-them with Rex Beta on the Mac mini and match it.
+The zones are a function of the bounds of the card from the last frame and the pointer (`e.PointerPosition`, as `tabDropZoneAt` does for tabs). The constants (0.2 for the center, the diagonals) are a first guess. Compare them with Rex Beta on a Mac and match it.
 
-### Indicator
+#### Indicator
 
 While a pane is over a target, the target shows where the pane would go:
 
-- A rounded rectangle over the half of the card that the dragged pane
-  would take (the left half for left, and so on), or over the whole card
-  for center.
-- Fill `k.busy.Alpha(0.18)`, border 1.5 `k.busy.Alpha(0.6)`, inset 4 from
-  the card, radius `cardR - 4`, so that its corners nest in the card's.
-- Drawn with `DrawOver` on the card. No shader or `Effect`: the card holds
-  a terminal, and `DESIGN.md` forbids effects on panes.
-- The rectangle moves between zones at once. A spring between zones is
-  left for later: MyGo has no simple way to spring one painted rectangle.
-- It replaces the border the card shows now.
+- A rounded rectangle covers the half of the card that the dragged pane would take (the left half for left, and so on). For center, it covers the whole card.
+- Fill `k.busy.Alpha(0.18)`, border 1.5 `k.busy.Alpha(0.6)`, inset 4 from the card, radius `cardR - 4`, so that its corners nest in the corners of the card.
+- GoRex draws it with `DrawOver` on the card. It uses no shader or `Effect`, because the card holds a terminal and `DESIGN.md` forbids effects on panes.
+- The rectangle moves between zones at once. A spring between zones is left for later, because MyGo has no simple way to spring one painted rectangle.
+- It replaces the border that the card showed before.
 
-### Source
+#### Source
 
-- The pane being dragged keeps its place until the drop. Its header is
-  `dimmed(h, 0.4)`, as a dragged tab is. The card itself is not dimmed:
-  it holds a terminal.
-- MyGo draws a copy of the header under the pointer (`Element.Drag`).
-  Nothing to add.
+- The pane that the user drags keeps its place until the drop. Its header is `dimmed(h, 0.4)`, as a dragged tab is. The card itself is not dimmed, because it holds a terminal.
+- MyGo draws a copy of the header under the pointer (`Element.Drag`). Nothing to add.
 - Escape cancels the drag (MyGo). Nothing moves.
 
-### What does not take the drop
+#### What does not take the drop
 
-The card takes the drag but shows no indicator, and the drop does
-nothing, when:
+In these cases the card takes the drag but shows no indicator, and the drop does nothing:
 
-- the target is the dragged pane;
-- the target is a float, or the dragged pane is a float (a float's header
-  moves the float; floats keep their own drag);
-- the two panes are on different hosts (`p.host != target.host`), as
-  `movePaneBeside` already refuses;
-- the target's tab is zoomed (only one pane shows; this does not happen
-  in the window, since the zoomed pane is the only target).
+- The target is the dragged pane.
+- The target is a float, or the dragged pane is a float. The header of a float moves the float, and floats keep their own drag.
+- The two panes are on different hosts (`p.host != target.host`), as `movePaneBeside` already refuses.
+- The tab of the target is zoomed. Only one pane shows, and this does not happen in the window, because the zoomed pane is the only target.
 
-Dropping a pane on a sibling that is its only neighbor still works: the
-tree is `[A | B]`, A dropped on B's top gives `[A / B]`.
+A drop on a sibling that is the only neighbor of the dragged pane still works. The tree is `[A | B]`. A dropped on the top of B gives `[A / B]`.
 
-### After the drop
+#### After the drop
 
-- The dragged pane takes focus (`setFocus`, `focusReq`), as now.
-- The layout is saved (`changed`).
-- Panes move to their new places with `paneTransition`, the animation
-  that splits and closes use. A swap moves both panes.
-- Each terminal resizes once, when it is at rest again (`held` in
-  `paneCell`), as for other layout changes.
+- The dragged pane takes focus (`setFocus`, `focusReq`), as before.
+- GoRex saves the layout (`changed`).
+- The panes move to their new places with the element transition that splits and closes use (`tr` in `paneCell`). A swap moves both panes.
+- Each terminal resizes once, when it is at rest again (`held` in `paneCell`), as for other layout changes.
 
-## Code
+### Code
 
-### State
+#### State
 
 `state.go`:
 
-- `placePane(t, p, target, vertical, ratio)` gets a `before bool`. With
-  `before`, the new split has the pane in A and the target in B, and the
-  ratio is the pane's share. Callers that exist pass `false`.
-- `movePaneBeside(p, target, vertical, before, ratio)` passes it on.
-  `movePaneToPane` keeps its behavior (right, half).
-- A new `dropPaneOn(p, target, zone)` (`dropPane` already closes a pane) does the drop: `swapPanes` for center,
-  else `movePaneBeside` with the zone's split and side, ratio 0.5. It does
-  the checks of "What does not take the drop" and returns whether it moved
-  anything.
+- `placePane(t, p, target, vertical, before, ratio)` takes a `before bool`. With `before`, the new split has the pane in A and the target in B, and the ratio is the share of the pane. Callers that existed before #148 pass `false`.
+- `movePaneBeside(p, target, vertical, before, ratio)` passes it on. `movePaneToPane` keeps its behavior (right, half).
 
-`detachPane` runs before `placePane`, and `unlinkTiled` copies the
-sibling into its parent node, so `target.Node` may change during the move.
-`unlinkTiled` already sets the pane's `Node` to its new node; `placePane`
-reads `target.Node` after the detach, so this works. A test covers it
-(dragging a pane onto its only sibling, each side).
+`panedrop.go`: `dropPaneOn(p, target, zone)` does the drop (`dropPane` already closes a pane). It calls `swapPanes` for center. Otherwise it calls `movePaneBeside` with the split and side of the zone, ratio 0.5. It does the checks of "What does not take the drop" and returns whether it moved anything.
 
-### View
+`detachPane` runs before `placePane`, and `unlinkTiled` copies the sibling into its parent node. So `target.Node` may change during the move. `unlinkTiled` already sets the `Node` of the pane to its new node. `placePane` reads `target.Node` after the detach, so this works. A test covers it (dragging a pane onto its only sibling, each side).
+
+#### View
 
 `view.go`, `paneCard`:
 
@@ -162,78 +128,39 @@ if dragged, ok := ui.Drop[*Pane](card); ok {
 }
 ```
 
-- **The drop takes the zone last shown** (`App.paneDrop`), not one found
-  again from the pointer: by the frame that sees the drop, the pointer
-  may have left the card, or the card moved.
-- **The drop runs after the pass** (`a.later`). Run while the pass builds
-  the panes, a swap would show the target's card again in the same pass,
-  still holding the drop, and swap the panes back
-  (`TestDragPaneToCenterSwaps`).
-
-- `paneDropZone(nx, ny float32, center bool) dropZone` is pure, and is
-  tested as `tabDropZone` is.
-- `paneDropZoneAt(e, dragged, target)` reads the pointer and bounds, and
-  answers `ok == false` for the cases that do not take the drop.
+- **The drop takes the zone last shown** (`App.paneDrop`), not a zone found again from the pointer. By the frame that sees the drop, the pointer may have left the card, or the card may have moved.
+- **The drop runs after the pass** (`a.later`). Suppose the drop ran while the pass builds the panes. A swap would show the card of the target again in the same pass, still holding the drop, and swap the panes back (`TestDragPaneToCenterSwaps`).
+- `paneDropZone(nx, ny float32, center bool) dropZone` is pure. Tests cover it as they cover `tabDropZone`.
+- `paneDropZoneAt(e, dragged, target)` reads the pointer and bounds. It answers `ok == false` for the cases that do not take the drop.
 - `drawPaneDrop(e, k, zone)` draws the indicator.
-- The header of the source: `if h.Dragging() { dimmed(h, 0.4) }` in
-  `paneHeader` and `browserHeader`.
+- The header of the source: `if h.Dragging() { dimmed(h, 0.4) }` in `paneHeader` and `browserHeader`.
 
-The new code goes in a new file, `panedrop.go`, with its tests in
-`panedrop_test.go`, so that `view.go` and `state.go` grow by a few lines.
+The new code is in a new file, `panedrop.go`, with its tests in `panedrop_test.go`. So `view.go` and `state.go` grow by a few lines.
 
-### Rex API
+#### Rex API
 
-Done separately (#475). `pane.move` takes `direction` `left`, `right`,
-`up` or `down`, the side of the target the pane goes on, and the target
-may be in the pane's own tab; `ratio` is the first side's share, as
-`movePaneBeside` takes it. So `session.move_block` takes `side` `before`,
-and an anchor in the block's own window, as Rex's document has them.
+This work was done separately (#475). `pane.move` takes `direction` `left`, `right`, `up` or `down`. This is the side of the target that the pane goes on. The target may be in the own tab of the pane. `ratio` is the share of the first side, as `movePaneBeside` takes it. So `session.move_block` takes `side` `before`, and an anchor in the own window of the block, as the document of Rex has them.
+
+### Risks
+
+- **Browser panes.** A web view is a native view over the window. On a Mac, a pane dropped on a page still lands. On the left edge it went left of the browser pane, and at the center the two swapped. It is not checked yet whether the indicator shows over the page, under the native view. If it does not, show it over the header, or overlay a drop layer over the web view while a pane drag is on.
+- **Hit testing.** The innermost element that takes `*Pane` gets the drag. Today only cards and tab labels take it. An element that takes `*Pane` and is added inside a card would take drags from the card.
 
 ## Tests
 
-Headless (`ui.NewTester`, `float_test.go` and `layoutcmd_test.go` show
-how):
+Headless (`ui.NewTester`, `float_test.go` and `layoutcmd_test.go` show how):
 
-- `paneDropZone`: each zone, the diagonals, the center with and without
-  `center`, a zero-size card.
-- `dropPaneOn`: each edge on a pane in a nested tree gives the expected tree
-  (orientation, A/B, ratio 0.5); center swaps; the cases that do not take
-  the drop change nothing; a pane dropped on its only sibling, each side;
-  a pane from another tab (the source tab closes when emptied, as now).
-- A drag in the tester: press a header, move onto another card's left
-  edge, release; the tree has the pane on the left and the layout was
-  saved.
+- `paneDropZone`: each zone, the diagonals, the center with and without `center`, a zero-size card.
+- `dropPaneOn`:
+  - Each edge on a pane in a nested tree gives the expected tree (orientation, A/B, ratio 0.5).
+  - Center swaps.
+  - The cases that do not take the drop change nothing.
+  - A pane dropped on its only sibling, each side.
+  - A pane from another tab. The source tab closes when it is empty, as before.
+- A drag in the tester: press a header, move onto the left edge of another card, release. The tree has the pane on the left and GoRex saved the layout.
 
-Real window, on the Mac mini with cua-driver (not on this MacBook):
+Real window, on a Mac with cua-driver (not on the development laptop):
 
-- Drag a pane onto each zone of another, with colored output in the
-  terminals; screenshot the indicator in each zone, dark and light, glass
-  on and off.
-- Record the screen for one drop and check that the move animates without
-  a frame of the panes at the wrong size (`verify glitches with screen
-  recording`).
+- Drag a pane onto each zone of another pane, with colored output in the terminals. Take a screenshot of the indicator in each zone, dark and light, glass on and off.
+- Record the screen for one drop. Check that the move animates without a frame of the panes at the wrong size (`verify glitches with screen recording`).
 - Compare with Rex Beta side by side: zone sizes, indicator look.
-
-## Risks
-
-- **Browser panes.** A web view is a native view over the window. On the
-  Mac mini a pane dropped on a page still lands: on its left edge it went
-  left of the browser pane, and at its center the two swapped. Whether the
-  indicator shows over the page, under the native view, is not checked
-  yet. If it does not, show it over the header, or overlay a drop layer
-  over the web view while a pane drag is on.
-- **Hit testing.** The innermost element that takes `*Pane` gets the
-  drag. Today only cards and tab labels take it. Something added inside a
-  card that takes `*Pane` would take drags from the card.
-
-## Later
-
-Rex does these too. They are not in this change:
-
-- **Spring loading.** Holding a dragged pane over a tab for a moment
-  selects that tab, so that the pane can be dropped on one of its panes
-  (`PaneDragTabSpringLoader`).
-- **New tab.** Dropping a pane on the empty part of the tab strip moves it
-  to a new tab (`PaneDragNewTabDrop`, `PaneDropPlaceholderView`).
-- **Edges of the room.** Dropping on the outer edge of the tab's room
-  splits at the root, so the pane takes a whole side of the tab.
