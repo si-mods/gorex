@@ -37,6 +37,14 @@ nonisolated final class ListMotionTests: XCTestCase {
         let panes = ["block:a", "block:b", "block:c"]
         let none = paneCells(layout: nil, panes: panes, name: { $0 }, record: { _ in nil })
         XCTAssertEqual(none.count, panes.count)
+        let missing = PaneLayout(split: PaneSplit(direction: "horizontal", ratio: 0.5,
+                                                  before: PaneLayout(block_id: "block:a"),
+                                                  after: PaneLayout(block_id: "block:b")))
+        XCTAssertEqual(paneCells(layout: missing, panes: panes, name: { $0 }, record: { _ in nil }).count, panes.count)
+        let extra = PaneLayout(split: PaneSplit(direction: "vertical", ratio: 0.5,
+                                                before: PaneLayout(block_id: "block:a"),
+                                                after: PaneLayout(block_id: "block:z")))
+        XCTAssertEqual(paneCells(layout: extra, panes: ["block:a", "block:b"], name: { $0 }, record: { _ in nil }).count, 2)
         XCTAssertEqual(paneCells(layout: nil, panes: [], name: { $0 }, record: { _ in nil }).count, 0)
     }
 }

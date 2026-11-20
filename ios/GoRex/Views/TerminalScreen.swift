@@ -1024,6 +1024,9 @@ private struct PrismLoading: View {
 /// first tap asks to download the models, and while they download it shows
 /// how far, and a tap asks to stop it. It goes off, typing nothing, as the
 /// screen goes or a call comes. It is on while something is said.
+///
+/// In the key bar it is given again only as what is said, or busy, changes
+/// (DictationShown): an input it shows besides those goes in there too.
 private struct Mic: View {
     let terminal: () -> TerminalView?
     @Binding var said: Dictation.Said?
@@ -1228,6 +1231,9 @@ private struct ProgressLine: View {
 /// What is said while the mic is on inside the key bar's horizontal voice
 /// capsule: waveform/sparkles, single-line trailing-scrolled text, cancel, and
 /// the red recording dot to finish and type into the terminal.
+///
+/// In the key bar it is given again only as what is said, or busy, changes
+/// (DictationShown): an input it shows besides those goes in there too.
 private struct VoiceCapsule: View {
     let said: Dictation.Said?
     @Binding var busy: Bool
