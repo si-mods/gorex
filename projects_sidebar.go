@@ -430,6 +430,11 @@ func disclosureChevron(c *ui.Context, k *colors, open bool) {
 	chevron.Rotate(animated(c, chevron, "fold", turn))
 }
 
+// folderSize is the box of a project's folder icon: the folder fills it
+// about as wide and tall as a program's tile (tileW×tileH) is, so that a
+// project's row and its tabs' rows weigh alike.
+const folderSize = 22
+
 // projectFolderIcon draws a project row's folder icon, tinted by color
 // when set, matching iOS and web.
 func projectFolderIcon(c *ui.Context, k *colors, color string) ui.Element {
@@ -437,7 +442,7 @@ func projectFolderIcon(c *ui.Context, k *colors, color string) ui.Element {
 	if hex, ok := spaceColorHex(color); ok {
 		col = ui.Hex(hex)
 	}
-	return glyphIcon(c, "folder", 14, col).Shrink(0)
+	return glyphIcon(c, "folder", folderSize, col).Shrink(0)
 }
 
 // leadRoom is the room before a row's name: as wide as the tabs' tiles,
