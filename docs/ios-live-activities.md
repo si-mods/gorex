@@ -124,7 +124,7 @@ Today the app does this. On `.background`, `TerminalScreen` suspends the stream 
   - A blocked program gives the card a thin rim in the attention color, as `keylineTint` gives the island.
   - A plain shell shows no mark beside its tile, but it shows one in compact trailing.
   - A paused activity (`connected: false` or `isStale`) is dimmed and reads "Paused — open Rex Go".
-  - `line`, the title of the window and the title of the record are `.privacySensitive()`.
+  - `line`, the title of the window, the host and (on the island) the title of the record are `.privacySensitive()`. The Lock Screen card shows no record title; its text stops growing at Dynamic Type xLarge.
 - **Tap**: opens the terminal, as a notification tap does.
 
 The activity shares the widget extension `GoRexWidgets` ([ios-widgets.md](ios-widgets.md)). The per-host activity below comes in phase 2, with the pushes of the host. While both exist, the terminal activity wins in the Dynamic Island while it is connected (higher `relevanceScore`).

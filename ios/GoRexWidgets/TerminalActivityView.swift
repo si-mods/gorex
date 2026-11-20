@@ -168,9 +168,15 @@ struct TerminalActivityCard: View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 6) {
                 TerminalActivityTile(state: state, scale: 0.8)
-                Text(verbatim: [program.name, attributes.hostName].filter { !$0.isEmpty }.joined(separator: " · "))
-                    .foregroundStyle(.white.opacity(0.75))
-                    .lineLimit(1)
+                // The host is hidden on a locked phone, as the island's is.
+                HStack(spacing: 0) {
+                    Text(verbatim: program.name)
+                    if !attributes.hostName.isEmpty {
+                        Text(verbatim: (program.name.isEmpty ? "" : " · ") + attributes.hostName).privacySensitive()
+                    }
+                }
+                .foregroundStyle(.white.opacity(0.75))
+                .lineLimit(1)
                 if let r = state.record {
                     Text(verbatim: TerminalActivityHeading.name(r.state))
                         .fontWeight(.semibold)
@@ -210,6 +216,9 @@ struct TerminalActivityCard: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        // Larger text stops at xLarge, so the card stays under the Lock
+        // Screen's 160 pt and the paused note, last, is not cut.
+        .dynamicTypeSize(...DynamicTypeSize.xLarge)
         .padding(16)
         .background { Self.background(program, paused: paused) }
         .overlay {
