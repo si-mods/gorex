@@ -8,7 +8,7 @@ metadata:
 
 # IOS-011: Continuous transitions between states
 
-Status: phase 1 built (#916). The device check of phase 1 is open. Phase 2 is a proposal (see "Revision: row push and steady list scheme").
+Status: phase 1 built (#916). The device check of phase 1 is open. Phase 2 is a proposal (#930, see "Revision: row push and steady list scheme").
 
 This doc finds the places in the iOS app where one state replaces the next with no relation between them. It defines a continuous transition for nine of them. In a continuous transition, the element that the user touches becomes a part of the next state. The doc changes only how one state becomes the next. Each action, each screen and each destination stays the same. It extends [`IOS-005`](IOS-005-pane-switching.md) (pane slides) and [`IOS-007`](IOS-007-pane-gallery.md) (gallery and pager). Phase 2 changes item 1 back to the standard push, and keeps the list's colour scheme when a terminal closes.
 
