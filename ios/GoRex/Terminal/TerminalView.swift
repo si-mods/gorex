@@ -181,10 +181,12 @@ final class TerminalView: UIView, TerminalOutput {
     private let reading = DispatchGroup()
     /// The hardware key held, and its repeat.
     private var held: (code: UIKeyboardHIDUsage, task: Task<Void, Never>)?
-    /// The microphone while the mic is on, what listens to it, what is
-    /// told what is said, and what tells it (dictate).
+    /// The microphone while the mic is on, or starts, what listens to it,
+    /// what is told what is said, what tells it, and what shows its level
+    /// (dictate).
     private var dictating: Dictating?
-    private typealias Dictating = (recording: Recording, listening: Listening, said: (Dictation.Said?) -> Void, told: Task<Void, Never>)
+    private typealias Dictating = (recording: Recording, listening: Listening, said: (Dictation.Said?) -> Void, told: Task<Void, Never>,
+                                   level: Task<Void, Never>)
     /// The dictation being finished (recognising its last phrase or polishing),
     /// so stopDictating can cancel it too.
     private var finishing: (task: Task<Void, Never>, listening: Listening, said: (Dictation.Said?) -> Void)?
@@ -687,10 +689,12 @@ final class TerminalView: UIView, TerminalOutput {
         shift = false
     }
 
-    /// Turns the mic on, and tells whether it is: what the microphone hears
-    /// is recognised as it comes, and said told what is said so far, and
-    /// nil as the mic goes off, by typeDictation or stopDictating. A first
-    /// tap asks for the microphone, and does no more.
+    /// Turns the mic on, and tells whether it starts: what the microphone
+    /// hears is recognised as it comes, and said told what is said so far,
+    /// from the moment it is on, and nil as the mic goes off, by
+    /// typeDictation or stopDictating. The microphone starts off the main
+    /// thread; a stop meanwhile wins, and one that can't start says why. A
+    /// first tap asks for the microphone, and does no more.
     func dictate(said: @escaping (Dictation.Said?) -> Void) -> Bool {
         guard dictating == nil else { return false }
         switch AVAudioApplication.shared.recordPermission {
@@ -705,29 +709,37 @@ final class TerminalView: UIView, TerminalOutput {
             break
         }
         let listening = Dictation.shared.listen()
-        do {
-            let recording = try Recording { s in
-                listening.add(s)
-                let rms = vDSP.rootMeanSquare(s)
-                Task { @MainActor in Dictation.shared.hear(rms) }
-            }
-            dictating = (recording, listening, said, Task {
-                for await s in listening.said { said(s) }
-                // Ended with the mic on, it failed.
-                if dictating?.listening === listening, mute() != nil {
-                    if case .failure(let e) = await listening.heard.result {
-                        alert(String(localized: "Can't Recognise Speech"), e.localizedDescription)
-                    }
-                    said(nil)
+        let recording = Recording()
+        let meter = Meter()
+        dictating = (recording, listening, said, Task {
+            for await s in listening.said { said(s) }
+            // Ended with the mic on, it failed.
+            if dictating?.listening === listening, mute() != nil {
+                if case .failure(let e) = await listening.heard.result {
+                    alert(String(localized: "Can't Recognise Speech"), e.localizedDescription)
                 }
-            })
-        } catch {
-            listening.cancel()
-            alert(String(localized: "Can't Record"), error.localizedDescription)
-            return false
-        }
-        said(Dictation.Said())
+                said(nil)
+            }
+        }, Dictation.shared.show(meter))
+        recording.start({ s in
+            listening.add(s)
+            meter.set(vDSP.rootMeanSquare(s))
+        }, done: { [weak self] r in self?.started(listening, r) })
         return true
+    }
+
+    /// The microphone started, or not, for a listening: on, if the mic
+    /// still is, it shows; one that can't record goes off and says why.
+    private func started(_ listening: Listening, _ r: Result<Bool, any Error>) {
+        guard let d = dictating, d.listening === listening else { return }
+        switch r {
+        case .success:
+            d.said(Dictation.Said())
+        case .failure(let e):
+            _ = mute()
+            listening.cancel()
+            alert(String(localized: "Can't Record"), e.localizedDescription)
+        }
     }
 
     /// Turns the mic off, and types what was said once its last phrase is
@@ -780,6 +792,7 @@ final class TerminalView: UIView, TerminalOutput {
         guard let d = dictating else { return nil }
         dictating = nil
         d.recording.stop()
+        d.level.cancel()
         Dictation.shared.levels = Dictation.shared.levels.map { _ in 0 }
         return d
     }

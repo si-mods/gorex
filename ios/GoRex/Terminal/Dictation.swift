@@ -1,6 +1,7 @@
 import AVFoundation
 import FluidAudio
 import SherpaOnnxC
+import Synchronization
 import UIKit
 import os
 
@@ -107,8 +108,13 @@ import os
             models = nil
         }
     }
-    /// The models on disk, whole.
-    private(set) var installed = Set(Model.allCases.filter(Dictation.present))
+    /// The models on disk, whole, as the last scan found them: none until
+    /// the first, which starts with Dictation, ends (installedModels).
+    private(set) var installed: Set<Model> = []
+    /// The scan for the models on disk while one runs, and the count of
+    /// those asked for: one that ends after a later one is passed over.
+    private var scanning: Task<Void, Never>?
+    private var scans = 0
     /// The microphone's last levels while the mic is on, 0 to 1, the
     /// newest last.
     var levels = [Float](repeating: 0, count: 5)
@@ -142,6 +148,38 @@ import os
                 self.unload()
             }
         }
+        // A few file checks and a directory listing, off the main actor.
+        scan()
+    }
+
+    /// Whether the last scan for the models on disk has ended.
+    var scanned: Bool { scanning == nil }
+
+    /// The models on disk, once the scan running ends: what the mic waits
+    /// for, so that it never offers to download a model already there.
+    func installedModels() async -> Set<Model> {
+        while let s = scanning { await s.value }
+        return installed
+    }
+
+    /// Scans the disk for the models whole on it, off the main actor; the
+    /// last scan asked for wins over one before it that ends after it.
+    @discardableResult private func scan() -> Task<Void, Never> {
+        scans += 1
+        let n = scans
+        let t = Task {
+            let found = await Self.onDisk()
+            guard n == scans else { return }
+            installed = found
+            scanning = nil
+        }
+        scanning = t
+        return t
+    }
+
+    /// The models whole on disk.
+    @concurrent nonisolated static func onDisk() async -> Set<Model> {
+        Set(Model.allCases.filter(present))
     }
 
     /// Whether a model is loaded, or loading.
@@ -165,7 +203,7 @@ import os
             } catch {
                 if !Task.isCancelled { self.error = error.localizedDescription }
             }
-            installed = Set(Model.allCases.filter(Self.present))
+            await scan().value
             progress = nil
         }
     }
@@ -180,6 +218,18 @@ import os
         try? FileManager.default.removeItem(at: Self.dir(m))
         try? FileManager.default.removeItem(at: Self.stage(m))
         installed.remove(m)
+        guard scanning != nil else { return dropVAD(after: m) }
+        // A scan begun before the files went may find them: one begun
+        // after does not, and the VAD waits for it.
+        scan()
+        Task {
+            _ = await installedModels()
+            dropVAD(after: m)
+        }
+    }
+
+    /// The VAD, with the last model deleted.
+    private func dropVAD(after m: Model) {
         if installed.isEmpty, downloading == m || progress == nil { try? FileManager.default.removeItem(at: Self.root) }
     }
 
@@ -212,6 +262,18 @@ import os
     /// Takes the level of samples the microphone heard.
     func hear(_ level: Float) {
         levels = levels.dropFirst() + [Self.level(of: level, after: levels.last ?? 0)]
+    }
+
+    /// Shows a meter's levels, each new one once, looking at most 30 times
+    /// a second, until cancelled.
+    func show(_ meter: Meter) -> Task<Void, Never> {
+        Task {
+            var count: UInt64 = 0
+            while !Task.isCancelled {
+                if let rms = meter.take(after: &count) { hear(rms) }
+                try? await Task.sleep(for: .seconds(1.0 / 30))
+            }
+        }
     }
 
     /// The level to show for samples of an RMS: from -50 dB to -10 dB, as
@@ -279,7 +341,7 @@ import os
     /// Whether a model is whole: the VAD's compiled model, with nothing
     /// left half downloaded; FluidAudio's check for SenseVoice, and
     /// another's files.
-    nonisolated private static func present(_ m: Model) -> Bool {
+    nonisolated static func present(_ m: Model) -> Bool {
         guard vadPresent else { return false }
         guard let repo = m.repo else { return SenseVoiceModels.modelsExist(at: speechDir, precision: precision) }
         if whole(repo.files, in: dir(m)) { return true }
@@ -547,27 +609,32 @@ nonisolated final class Listening: Sendable {
     let said: AsyncStream<Dictation.Said>
     /// All that was said, as finish gives it.
     let heard: Task<String, Error>
-    private let audio: AsyncStream<[Float]>.Continuation
+    /// What the microphone heard, waiting for the model.
+    private let audio: SampleRing
 
     /// longest: the longest phrase the model takes, in samples.
     init(_ models: Task<(any Recogniser, VadManager), Error>, longest: Int) {
         let (said, show) = AsyncStream.makeStream(of: Dictation.Said.self, bufferingPolicy: .bufferingNewest(1))
-        let (audio, add) = AsyncStream.makeStream(of: [Float].self, bufferingPolicy: .bufferingOldest(Self.backlog))
+        let audio = SampleRing(capacity: Self.backlog)
         self.said = said
-        self.audio = add
+        self.audio = audio
         heard = Task { try await Self.run(audio, models, longest, show) }
     }
 
-    /// The most of the microphone's buffers that wait for the model, about
-    /// a minute of audio at ten a second: past them, what comes is dropped
-    /// rather than held without end while a model falls behind.
-    static let backlog = 600
+    /// The most samples that wait for the model, a minute of audio: past
+    /// them, what comes is dropped rather than held without end while a
+    /// model falls behind.
+    static let backlog = 60 * 16_000
 
-    /// 16 kHz mono samples, in order; from the audio thread too. False when
-    /// they are dropped, the backlog full or the listening over.
+    /// 16 kHz mono samples, in order, from one thread at a time: the audio
+    /// thread's. False when they are dropped, the backlog full or the
+    /// listening over.
+    @discardableResult func add(_ samples: UnsafeBufferPointer<Float>) -> Bool {
+        audio.write(samples)
+    }
+
     @discardableResult func add(_ samples: [Float]) -> Bool {
-        if case .enqueued = audio.yield(samples) { return true }
-        return false
+        samples.withUnsafeBufferPointer { audio.write($0) }
     }
 
     /// Adds samples to the end of kept, and keeps its last n, in place.
@@ -589,30 +656,38 @@ nonisolated final class Listening: Sendable {
         heard.cancel()
     }
 
-    /// Hears the audio in the VAD's chunks, one at a time: while it
-    /// recognises, the audio waits.
-    @concurrent private static func run(_ audio: AsyncStream<[Float]>, _ models: Task<(any Recogniser, VadManager), Error>,
+    /// Hears the audio in the VAD's chunks, one at a time, each filled from
+    /// the ring as the audio comes: while it recognises, the audio waits.
+    @concurrent private static func run(_ audio: SampleRing, _ models: Task<(any Recogniser, VadManager), Error>,
                                         _ longest: Int, _ show: AsyncStream<Dictation.Said>.Continuation) async throws -> String {
         defer { show.finish() }
         let (speech, vad) = try await models.value
         var ear = Ear(speech: speech, vad: vad, longest: longest, show: show)
-        var pending: [Float] = []
-        let chunk = VadManager.chunkSize
-        for await samples in audio {
+        var chunk = [Float](repeating: 0, count: VadManager.chunkSize)
+        var filled = 0
+        while true {
             try Task.checkCancellation()
-            pending += samples
-            // The chunks heard, then what is left moved to the front once.
-            var at = 0
-            while pending.count - at >= chunk {
-                try await ear.hear(Array(pending[at..<at + chunk]))
-                at += chunk
+            // Over before the read: what came before the end is read.
+            let over = audio.finished
+            let n = chunk.withUnsafeMutableBufferPointer { audio.read(into: UnsafeMutableBufferPointer(rebasing: $0[filled...])) }
+            filled += n
+            if filled == chunk.count {
+                try await ear.hear(chunk)
+                filled = 0
+            } else if over {
+                break
+            } else {
+                try await Task.sleep(for: poll)
             }
-            pending.removeFirst(at)
         }
         try Task.checkCancellation()
-        try await ear.end(pending)
+        try await ear.end(Array(chunk[..<filled]))
         return ear.said.settled
     }
+
+    /// How long the audio is waited for when the ring has too little of it:
+    /// about half a microphone's buffer.
+    private static let poll = Duration.milliseconds(50)
 
     /// The phrase open, and how it is heard.
     private nonisolated struct Ear {
@@ -778,21 +853,28 @@ actor Sherpa: Recogniser {
 /// The microphone while the mic is on: what it hears, as the models take
 /// it, 16 kHz mono floats, given as it comes. A call or a new route stops
 /// it. The audio session and the engine start and stop on a queue of their
-/// own, in turn: a stop, which waits on the system's audio, takes no time
-/// from the main thread, and the next start waits for it. The engine is
-/// used on that queue only.
+/// own, in turn (Turns): both wait on the system's audio, and take no time
+/// from the main thread; a stop asked for as it starts wins, and the next
+/// start waits for it. The engine is made and used on that queue only.
 nonisolated final class Recording: @unchecked Sendable {
     static let format = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 16_000, channels: 1, interleaved: false)!
     private static let queue = DispatchQueue(label: "dev.gorex.recording", qos: .userInitiated)
-    private let engine = AVAudioEngine()
+    private lazy var engine = AVAudioEngine()
+    /// Whether a start began, on the queue: a stop with none has nothing
+    /// to stop.
+    private var begun = false
+    private let turns = Turns(on: Recording.queue)
 
-    /// Starts the microphone; heard takes what it hears, on the audio
-    /// thread.
-    init(_ heard: @escaping @Sendable ([Float]) -> Void) throws {
-        try Self.queue.sync { try start(heard) }
+    /// Starts the microphone, on its queue: heard takes what it hears, on
+    /// the audio thread, until the next convert; done is told on the main
+    /// actor whether it is on (false: a stop came first), or why it can't be.
+    func start(_ heard: @escaping @Sendable (UnsafeBufferPointer<Float>) -> Void,
+               done: @escaping @MainActor @Sendable (Result<Bool, any Error>) -> Void) {
+        turns.start({ try self.begin(heard) }, done: done)
     }
 
-    private func start(_ heard: @escaping @Sendable ([Float]) -> Void) throws {
+    private func begin(_ heard: @escaping @Sendable (UnsafeBufferPointer<Float>) -> Void) throws {
+        begun = true
         let audio = AVAudioSession.sharedInstance()
         try audio.setCategory(.record)
         try audio.setActive(true)
@@ -804,7 +886,8 @@ nonisolated final class Recording: @unchecked Sendable {
         }
         let converter = OSAllocatedUnfairLock(uncheckedState: c)
         input.installTap(onBus: 0, bufferSize: 4096, format: format) { @Sendable buffer, _ in
-            heard(converter.withLockUnchecked { $0.convert(buffer) })
+            // Given inside the lock: the samples are the converter's.
+            converter.withLockUnchecked { heard($0.convert(buffer)) }
         }
         do {
             try engine.start()
@@ -814,12 +897,14 @@ nonisolated final class Recording: @unchecked Sendable {
         }
     }
 
-    /// Stops the microphone; others' sound comes back, soon after.
+    /// Stops the microphone, or the start of it; others' sound comes back,
+    /// soon after.
     func stop() {
-        Self.queue.async { self.halt() }
+        turns.stop { self.halt() }
     }
 
     private func halt() {
+        guard begun else { return }
         engine.stop()
         engine.inputNode.removeTap(onBus: 0)
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
@@ -841,10 +926,12 @@ nonisolated final class Recording: @unchecked Sendable {
             converter = c
         }
 
-        mutating func convert(_ buffer: AVAudioPCMBuffer) -> [Float] {
+        /// The buffer converted, in out: good until the next convert, so
+        /// the audio thread makes no array for it.
+        mutating func convert(_ buffer: AVAudioPCMBuffer) -> UnsafeBufferPointer<Float> {
             let frames = AVAudioFrameCount((Double(buffer.frameLength) * Recording.format.sampleRate / buffer.format.sampleRate).rounded(.up)) + 16
             if (out?.frameCapacity ?? 0) < frames { out = AVAudioPCMBuffer(pcmFormat: Recording.format, frameCapacity: frames) }
-            guard let out else { return [] }
+            guard let out else { return UnsafeBufferPointer(start: nil, count: 0) }
             out.frameLength = 0
             // The converter asks until it has nothing more: the buffer once.
             var given = false
@@ -853,8 +940,123 @@ nonisolated final class Recording: @unchecked Sendable {
                 defer { given = true }
                 return given ? nil : buffer
             }
-            guard let c = out.floatChannelData?[0] else { return [] }
-            return Array(UnsafeBufferPointer(start: c, count: Int(out.frameLength)))
+            guard let c = out.floatChannelData?[0] else { return UnsafeBufferPointer(start: nil, count: 0) }
+            return UnsafeBufferPointer(start: c, count: Int(out.frameLength))
         }
+    }
+}
+
+/// Work started and stopped in turn on a serial queue, as the microphone
+/// is: a stop wins over a start asked for before it, which is passed over
+/// if it has not begun, and stopped after it if it has.
+nonisolated final class Turns: Sendable {
+    private let queue: DispatchQueue
+    private let stopped = Atomic<Bool>(false)
+
+    init(on queue: DispatchQueue) {
+        self.queue = queue
+    }
+
+    /// Queues start now, after what is queued; done is told, on the main
+    /// actor, whether it ran (false: a stop came first) or what it threw.
+    func start(_ start: @escaping @Sendable () throws -> Void, done: @escaping @MainActor @Sendable (Result<Bool, any Error>) -> Void) {
+        queue.async { [self] in
+            let r: Result<Bool, any Error> = stopped.load(ordering: .acquiring)
+                ? .success(false)
+                : Result { try start(); return true }
+            Task { @MainActor in done(r) }
+        }
+    }
+
+    /// Stops: a start not yet begun is passed over, and stop runs after one
+    /// that has.
+    func stop(_ stop: @escaping @Sendable () -> Void) {
+        stopped.store(true, ordering: .releasing)
+        queue.async(execute: stop)
+    }
+}
+
+/// Samples from one thread to another, as the audio thread gives what the
+/// microphone hears to the listening: lock-free, a writer and a reader,
+/// in a buffer made once. The audio thread neither allocates nor waits on
+/// a lock the reader could hold. A write that does not fit is dropped
+/// whole, as is one after finish.
+nonisolated final class SampleRing: @unchecked Sendable {
+    let capacity: Int
+    private let storage: UnsafeMutablePointer<Float>
+    /// The samples written, and read, since the start: the writer alone
+    /// stores the first, and the reader the second.
+    private let written = Atomic<Int>(0)
+    private let taken = Atomic<Int>(0)
+    private let over = Atomic<Bool>(false)
+
+    init(capacity: Int) {
+        precondition(capacity > 0)
+        self.capacity = capacity
+        storage = .allocate(capacity: capacity)
+    }
+
+    deinit { storage.deallocate() }
+
+    /// The samples waiting.
+    var count: Int { written.load(ordering: .acquiring) - taken.load(ordering: .acquiring) }
+
+    /// Whether no more is written: what was stays to be read.
+    var finished: Bool { over.load(ordering: .acquiring) }
+
+    func finish() { over.store(true, ordering: .releasing) }
+
+    /// Writes samples after those before; false, and none written, when
+    /// they do not all fit, or after finish. The writer only.
+    @discardableResult func write(_ samples: UnsafeBufferPointer<Float>) -> Bool {
+        guard !finished else { return false }
+        let w = written.load(ordering: .relaxed)
+        let n = samples.count
+        guard n <= capacity - (w - taken.load(ordering: .acquiring)) else { return false }
+        guard n > 0, let from = samples.baseAddress else { return true }
+        let at = w % capacity
+        let first = min(n, capacity - at)
+        (storage + at).update(from: from, count: first)
+        storage.update(from: from + first, count: n - first)
+        written.store(w + n, ordering: .releasing)
+        return true
+    }
+
+    /// Reads the oldest samples into out, as many as wait and fit; how
+    /// many. The reader only.
+    func read(into out: UnsafeMutableBufferPointer<Float>) -> Int {
+        let r = taken.load(ordering: .relaxed)
+        let n = min(out.count, written.load(ordering: .acquiring) - r)
+        guard n > 0, let to = out.baseAddress else { return 0 }
+        let at = r % capacity
+        let first = min(n, capacity - at)
+        to.update(from: storage + at, count: first)
+        (to + first).update(from: storage, count: n - first)
+        taken.store(r + n, ordering: .releasing)
+        return n
+    }
+}
+
+/// The microphone's level, from the audio thread to the main one, which
+/// looks at it at most once a frame (Dictation.show): no task or allocation
+/// for each buffer the microphone gives. A level is taken once, the newest,
+/// so the bars fall as levels come, not as frames do.
+nonisolated final class Meter: Sendable {
+    /// The count of levels set, high, and the newest's bits, low: one word,
+    /// so a level is never taken with another's count.
+    private let latest = Atomic<UInt64>(0)
+
+    /// Sets the newest RMS; one thread only, the audio thread.
+    func set(_ rms: Float) {
+        let count = (latest.load(ordering: .relaxed) >> 32) &+ 1
+        latest.store(count << 32 | UInt64(rms.bitPattern), ordering: .releasing)
+    }
+
+    /// The newest level set since count, which it moves on; nil for none.
+    func take(after count: inout UInt64) -> Float? {
+        let v = latest.load(ordering: .acquiring)
+        guard v >> 32 != count else { return nil }
+        count = v >> 32
+        return Float(bitPattern: UInt32(truncatingIfNeeded: v))
     }
 }
