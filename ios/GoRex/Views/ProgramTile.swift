@@ -240,9 +240,14 @@ private struct DoneDot: View {
 /// percentage progress, pulsing and hopping in a wave.
 struct WorkingDots: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.scenePhase) private var phase
+    /// Whether the dots are on screen: a row scrolled away, or under the
+    /// terminal pushed over the list, disappears.
+    @State private var onScreen = true
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 30, paused: reduceMotion)) { tl in
+        // Paused, the dots stay as they were: they move only where they show.
+        TimelineView(.animation(minimumInterval: 1.0 / 30, paused: !ListMotion.runs(reduceMotion: reduceMotion, phase: phase, onScreen: onScreen))) { tl in
             let t = reduceMotion ? 0 : tl.date.timeIntervalSinceReferenceDate
             HStack(spacing: 3) {
                 ForEach(0..<3, id: \.self) { i in
@@ -256,6 +261,8 @@ struct WorkingDots: View {
                 }
             }
         }
+        .onAppear { onScreen = true }
+        .onDisappear { onScreen = false }
         .accessibilityLabel("Working")
     }
 
@@ -314,6 +321,17 @@ struct ProgramStatusMark: View {
     }
 }
 
+/// Whether a list's endless motion, the working dots and the tiles'
+/// bounce, runs: not with Reduce Motion, nor with the app out of the
+/// front (inactive or in the background), nor off screen (the dots only;
+/// a tile bounces off screen, see TileBounceModifier). It is the same
+/// motion when it runs; paused, nothing is seen moving.
+enum ListMotion {
+    static func runs(reduceMotion: Bool, phase: ScenePhase, onScreen: Bool) -> Bool {
+        !reduceMotion && phase == .active && onScreen
+    }
+}
+
 /// How a program tile moves for its session's state, modeled on macOS Dock
 /// icon bounces:
 /// - `attention` (`blocked`, `error`): energetic double-hop repeating on a
@@ -346,6 +364,16 @@ extension View {
     }
 }
 
+/// A tile bounce's identity: its motion, and whether the list's motion
+/// runs. A change of either makes a new animator.
+struct TileBounceKey: Hashable {
+    let motion: TileMotion
+    let runs: Bool
+
+    /// Whether the animator repeats its keyframes.
+    var repeats: Bool { runs && motion.isRepeating }
+}
+
 private nonisolated struct TileBounceValues: Sendable {
     var offsetY: CGFloat = 0
     var scaleX: CGFloat = 1
@@ -355,10 +383,18 @@ private nonisolated struct TileBounceValues: Sendable {
 private struct TileBounceModifier: ViewModifier {
     let motion: TileMotion
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.scenePhase) private var phase
 
     func body(content: Content) -> some View {
+        // Out of the front, the tile rests in place. Whether it runs is part
+        // of the animator's identity: a resume makes a new animator, which
+        // bounces from the start, as on the tile's first appearance. It
+        // pauses by Reduce Motion and the scene's phase only, which a change
+        // of identity cannot touch; an appearance flag could, as the view
+        // replaced fires a disappear and an appear in no set order.
+        let key = TileBounceKey(motion: motion, runs: ListMotion.runs(reduceMotion: reduceMotion, phase: phase, onScreen: true))
         content
-            .keyframeAnimator(initialValue: TileBounceValues(), repeating: !reduceMotion && motion.isRepeating) { view, v in
+            .keyframeAnimator(initialValue: TileBounceValues(), repeating: key.repeats) { view, v in
                 view
                     .scaleEffect(x: v.scaleX, y: v.scaleY, anchor: .bottom)
                     .offset(y: v.offsetY)
@@ -424,6 +460,6 @@ private struct TileBounceModifier: ViewModifier {
                     }
                 }
             }
-            .id(motion)
+            .id(key)
     }
 }

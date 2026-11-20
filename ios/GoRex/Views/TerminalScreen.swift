@@ -95,7 +95,7 @@ struct TerminalScreen: View {
                 let current = pane.session === session
                 // Under the fingers too, layout snaps.
                 TerminalRepresentable(session: pane.session, newTab: newTab, closeTab: closeTab, newSplit: newSplit, mic: mic, voice: voiceCapsule, dictating: said != nil && current, snaps: switching > 0 || paneDrag != nil,
-                                      paneInset: paneCellList.count > 1 ? PaneBar.height + 20 : 0,
+                                      paneInset: paneCount > 1 ? PaneBar.height + 20 : 0,
                                       onPage: !pane.kept, current: current,
                                       onPaneDrag: { dragPane($0, $1, $2) },
                                       canSwipe: { switching == 0 && incoming == paneDrag?.pane && (terminal?.paneSwipeAllowed ?? false) })
@@ -140,9 +140,13 @@ struct TerminalScreen: View {
                         Reconnecting(waitingToSend: session.waitingToSend)
                             .transition(.move(edge: .bottom).combined(with: .opacity))
                     }
-                    if paneCellList.count > 1 {
-                        PaneBar(cells: paneCellList, current: currentTarget.block, program: { .of(host.blocks[$0]?.program) }, select: selectPane, newSplit: newSplit, close: closePane)
-                            .transition(.opacity.combined(with: .move(edge: .bottom)))
+                    if paneCount > 1 {
+                        // The panes' names and records are read in the bar's
+                        // own body: a title that changes redraws the bar alone.
+                        OwnBody {
+                            PaneBar(cells: paneCellList, current: currentTarget.block, program: { .of(host.blocks[$0]?.program) }, select: selectPane, newSplit: newSplit, close: closePane)
+                        }
+                        .transition(.opacity.combined(with: .move(edge: .bottom)))
                     }
                 }
                 .padding(.bottom, hasBar ? KeyBar.height + 10 : 10)
@@ -151,7 +155,7 @@ struct TerminalScreen: View {
             // moment after a switch, as Rex Go shows it.
             .overlay(alignment: .topTrailing) {
                 if paneMapShown {
-                    PaneMiniMap(cells: paneCellList, current: currentTarget.block, currentColor: paneAccent(currentTarget.block))
+                    OwnBody { PaneMiniMap(cells: paneCellList, current: currentTarget.block, currentColor: paneAccent(currentTarget.block)) }
                         .frame(width: 84, height: 56)
                         .padding(.top, 8)
                         .padding(.trailing, 12)
@@ -168,14 +172,16 @@ struct TerminalScreen: View {
                 guard !Task.isCancelled else { return }
                 withAnimation(.easeOut(duration: 0.2)) { stalled = true }
             }
-            .navigationTitle(title.asText)
+            // The title is read in a body of its own, as the pill's is: a
+            // terminal's title that changes does not draw the screen again.
+            .modifier(ScreenTitle(host: host, target: currentTarget))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 // The title floats in a capsule of glass, with the tile of
                 // the window's program, as its row in the list shows it; a
                 // tap opens the session's sheet.
                 ToolbarItem(placement: .principal) {
-                    principalTitlePill
+                    OwnBody { principalTitlePill }
                 }
                 .sharedBackgroundVisibility(.hidden)
                 // The mic where the terminal has no key bar, and the
@@ -361,15 +367,15 @@ struct TerminalScreen: View {
     /// The window's title as its row shows it, when the block open is the
     /// one in front, else as the row gave it, else its session's name, as
     /// for a new session.
-    private var title: String {
-        if let w = window, let pane = host.paneTitle(currentTarget.block, in: w), !pane.isEmpty { return pane }
-        let live = window.map { host.title($0) } ?? ""
-        return [live, currentTarget.title].first { !$0.isEmpty } ?? sessionLabel
-    }
+    private var title: String { Self.windowTitle(host: host, target: currentTarget) }
 
-    /// The name of the window's session.
-    private var sessionLabel: String {
-        hostSession?.label ?? ""
+    /// The title of a target's window, as `title` gives it.
+    fileprivate static func windowTitle(host: Host, target: TerminalTarget) -> String {
+        let session = host.sessions.first { $0.id == target.session }
+        let window = session?.view?.windows?.first { $0.holds(target.block) }
+        if let w = window, let pane = host.paneTitle(target.block, in: w), !pane.isEmpty { return pane }
+        let live = window.map { host.title($0) } ?? ""
+        return [live, target.title].first { !$0.isEmpty } ?? session?.label ?? ""
     }
 
     private var sessionWindows: [(block: String, window: SessionView.Window)] {
@@ -381,6 +387,10 @@ struct TerminalScreen: View {
         guard let w = window else { return nil }
         return Self.key(for: w, session: currentTarget.session, host: host)
     }
+
+    /// How many panes the window has: as many as `paneCellList` has
+    /// cells, read without the panes' names and records.
+    private var paneCount: Int { window?.panes.count ?? 0 }
 
     /// The window's panes as the map and the bar show them, from the view's
     /// split tree and the host's names and records.
@@ -682,13 +692,13 @@ struct TerminalScreen: View {
             if let g = session?.gallery { GalleryMenuItem(gallery: g) }
             Button("New Window", systemImage: "plus") { newTab() }
             Button("Split Pane", systemImage: "rectangle.split.2x1") { newSplit() }
-            if paneCellList.count > 1 {
+            if paneCount > 1 {
                 Button("Close Pane", systemImage: "xmark.rectangle", role: .destructive) { closePane(currentTarget.block) }
             }
         } label: {
             Image(systemName: "ellipsis")
         }
-        .galleryCover(session, title: title)
+        .modifier(TitledGalleryCover(session: session, host: host, target: currentTarget))
         .accessibilityLabel("More")
     }
 
@@ -1014,6 +1024,9 @@ private struct PrismLoading: View {
 /// first tap asks to download the models, and while they download it shows
 /// how far, and a tap asks to stop it. It goes off, typing nothing, as the
 /// screen goes or a call comes. It is on while something is said.
+///
+/// In the key bar it is given again only as what is said, or busy, changes
+/// (DictationShown): an input it shows besides those goes in there too.
 private struct Mic: View {
     let terminal: () -> TerminalView?
     @Binding var said: Dictation.Said?
@@ -1218,6 +1231,9 @@ private struct ProgressLine: View {
 /// What is said while the mic is on inside the key bar's horizontal voice
 /// capsule: waveform/sparkles, single-line trailing-scrolled text, cancel, and
 /// the red recording dot to finish and type into the terminal.
+///
+/// In the key bar it is given again only as what is said, or busy, changes
+/// (DictationShown): an input it shows besides those goes in there too.
 private struct VoiceCapsule: View {
     let said: Dictation.Said?
     @Binding var busy: Bool
@@ -1293,6 +1309,44 @@ private struct VoiceCapsule: View {
     }
 }
 
+/// Its content, made in a body of its own: what the content reads of an
+/// observed model, as the host's titles, draws this view again, not the one
+/// that holds it.
+private struct OwnBody<Content: View>: View {
+    @ViewBuilder let content: () -> Content
+
+    var body: some View { content() }
+}
+
+/// The screen's navigation title, read in the modifier's own body.
+private struct ScreenTitle: ViewModifier {
+    let host: Host
+    let target: TerminalTarget
+
+    func body(content: Content) -> some View {
+        content.navigationTitle(TerminalScreen.windowTitle(host: host, target: target).asText)
+    }
+}
+
+/// The pane's gallery, titled as the screen, the title read in the
+/// modifier's own body.
+private struct TitledGalleryCover: ViewModifier {
+    let session: TerminalSession?
+    let host: Host
+    let target: TerminalTarget
+
+    func body(content: Content) -> some View {
+        content.galleryCover(session, title: TerminalScreen.windowTitle(host: host, target: target))
+    }
+}
+
+/// What the mic and the voice capsule in the key bar show of the screen's
+/// state: their views are given again only when it changes.
+private struct DictationShown: Equatable {
+    let said: Dictation.Said?
+    let busy: Bool
+}
+
 private struct TerminalRepresentable: UIViewRepresentable {
     let session: TerminalSession
     let newTab: () -> Void
@@ -1316,9 +1370,21 @@ private struct TerminalRepresentable: UIViewRepresentable {
     /// selection, no full-screen program with the mouse, no pinch.
     let canSwipe: () -> Bool
 
-    struct Coordinator {
+    final class Coordinator {
         let mic: UIHostingController<Mic>
         let voice: UIHostingController<VoiceCapsule>
+        /// What the two were last given to show. Each update of the screen,
+        /// as a frame of a two-finger drag, makes them again; given again
+        /// only on a change, they do not lay out for nothing. Their
+        /// closures and bindings reach the screen's state, which they read
+        /// as they run, so the ones first given stay right.
+        var shown: ChangeGate<DictationShown>
+
+        init(mic: UIHostingController<Mic>, voice: UIHostingController<VoiceCapsule>, shown: DictationShown) {
+            self.mic = mic
+            self.voice = voice
+            self.shown = ChangeGate(shown)
+        }
     }
 
     /// The mic and the voice capsule in the key bar.
@@ -1329,7 +1395,7 @@ private struct TerminalRepresentable: UIViewRepresentable {
         let v = UIHostingController(rootView: voice)
         v.safeAreaRegions = []
         v.view.backgroundColor = .clear
-        return Coordinator(mic: m, voice: v)
+        return Coordinator(mic: m, voice: v, shown: DictationShown(said: voice.said, busy: voice.busy))
     }
 
     /// The view lands without the keyboard, and on a phone with its key
@@ -1366,8 +1432,10 @@ private struct TerminalRepresentable: UIViewRepresentable {
         v.onPaneDrag = onPaneDrag
         v.canSwipe = canSwipe
         v.setBottomEdgeColor(UIColor(cgColor: (session.background ?? .black).cgColor))
-        context.coordinator.mic.rootView = mic
-        context.coordinator.voice.rootView = voice
+        if context.coordinator.shown.update(DictationShown(said: voice.said, busy: voice.busy)) {
+            context.coordinator.mic.rootView = mic
+            context.coordinator.voice.rootView = voice
+        }
         v.terminal.bar.setVoice(active: dictating)
     }
 

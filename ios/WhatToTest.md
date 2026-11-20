@@ -73,6 +73,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - After a computer you added restarts GoRex, Rex Go reaches it again even while it was showing several of its terminals: they reconnect together, without a wait of 10 seconds or more.
 - The Inbox now stays smooth while a terminal title changes quickly; scrolling and tapping rows no longer stutter.
 - Rex Go shows its list sooner after you start it, and the list scrolls more smoothly when you have many computers and spaces.
+- A terminal whose title keeps changing, and a two-finger swipe between panes, look as before with fewer stutters; the list's working dots and bouncing tiles still move.
 
 ## zh-Hans
 
@@ -138,3 +139,4 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - 你添加的电脑重启 GoRex 后，即使 Rex Go 正开着它的几个终端，也能再次连上：这些终端一起重连，不再等待 10 秒以上。
 - 终端标题快速变化时，收件箱现在保持流畅，滚动和点按行不再卡顿。
 - 启动 Rex Go 后列表显示得更快；有很多电脑和空间时，列表滚动更流畅。
+- 标题不停变化的终端，以及双指在窗格间滑动，外观与以前相同，卡顿更少；列表中的工作圆点和跳动的图标仍照常运动。
