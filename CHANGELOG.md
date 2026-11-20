@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.45.0
+
+### Features
+
+* **desktop:** set a project apart from its tabs in the sidebar ([#907](https://github.com/si-mods/gorex/pull/907))
+* **rexapi:** walk back through a principal's focus at revision 19 ([#917](https://github.com/si-mods/gorex/pull/917))
+* **rexapi:** drop an event too large to send at revision 18 ([#914](https://github.com/si-mods/gorex/pull/914))
+* **rexapi:** report a terminal's listening ports at revisions 15 and 16 ([#912](https://github.com/si-mods/gorex/pull/912))
+* **ios:** carry the touched element into the next state ([#916](https://github.com/si-mods/gorex/pull/916))
+* **ios:** draw the Lock Screen card in two shades of the program's hue ([#919](https://github.com/si-mods/gorex/pull/919))
+* **ios:** draw the terminal activity's Lock Screen face as a bold card ([#913](https://github.com/si-mods/gorex/pull/913))
+
+### Bug Fixes
+
+* **ios:** show the program's own OSC 7501 message as the Live Activity line ([#910](https://github.com/si-mods/gorex/pull/910))
+* **ios:** show a TUI agent's latest line in the Live Activity, not its status bar ([#906](https://github.com/si-mods/gorex/pull/906))
+
 ## 0.44.5
 
 ### Features
