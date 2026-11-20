@@ -24,21 +24,29 @@ func portPIDs(root int) ([]int, bool) {
 	for len(queue) > 0 && len(out) < 4096 {
 		pid := queue[0]
 		queue = queue[1:]
-		b, err := os.ReadFile("/proc/" + strconv.Itoa(pid) + "/task/" + strconv.Itoa(pid) + "/children")
-		if err != nil {
+		// A child belongs to the thread that forked it, so every task of
+		// the process can list some.
+		paths, _ := filepath.Glob("/proc/" + strconv.Itoa(pid) + "/task/*/children")
+		if len(paths) == 0 {
 			if pid == root {
 				return out, false
 			}
 			continue
 		}
-		for _, f := range strings.Fields(string(b)) {
-			c, err := strconv.Atoi(f)
-			if err != nil || c <= 0 || seen[c] {
+		for _, path := range paths {
+			b, err := os.ReadFile(path)
+			if err != nil {
 				continue
 			}
-			seen[c] = true
-			out = append(out, c)
-			queue = append(queue, c)
+			for _, f := range strings.Fields(string(b)) {
+				c, err := strconv.Atoi(f)
+				if err != nil || c <= 0 || seen[c] {
+					continue
+				}
+				seen[c] = true
+				out = append(out, c)
+				queue = append(queue, c)
+			}
 		}
 	}
 	return out, ok
