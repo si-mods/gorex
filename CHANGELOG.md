@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.44.5
+
+### Features
+
+* **ios:** show the open terminal as a Live Activity ([#900](https://github.com/si-mods/gorex/pull/900))
+* **ios:** add the Activity widget ([#892](https://github.com/si-mods/gorex/pull/892))
+* **ios:** gather the developer settings on a page of their own ([#899](https://github.com/si-mods/gorex/pull/899))
+* **ios:** prism loading indicator and launch screen ([#871](https://github.com/si-mods/gorex/pull/871))
+* **desktop:** bounce a needy tab's program tile as iOS's does ([#898](https://github.com/si-mods/gorex/pull/898))
+
+### Bug Fixes
+
+* **ios:** lay the expanded Dynamic Island out under the camera ([#901](https://github.com/si-mods/gorex/pull/901))
+* **desktop:** draw a project's folder icon solid, as iOS does ([#895](https://github.com/si-mods/gorex/pull/895))
+* **ios:** open a byte stream on the session of its ticket's moment ([#839](https://github.com/si-mods/gorex/pull/839))
+
+### Performance
+
+* **rexapi:** publish the model from the pump; reads use the snapshot ([#893](https://github.com/si-mods/gorex/pull/893))
+* **ios:** move terminal drawing, dictation, transfers, sharing and list work off the main thread ([#872](https://github.com/si-mods/gorex/pull/872), [#873](https://github.com/si-mods/gorex/pull/873), [#874](https://github.com/si-mods/gorex/pull/874), [#875](https://github.com/si-mods/gorex/pull/875), [#877](https://github.com/si-mods/gorex/pull/877), [#878](https://github.com/si-mods/gorex/pull/878), [#881](https://github.com/si-mods/gorex/pull/881), [#884](https://github.com/si-mods/gorex/pull/884), [#886](https://github.com/si-mods/gorex/pull/886), [#887](https://github.com/si-mods/gorex/pull/887), [#888](https://github.com/si-mods/gorex/pull/888), [#889](https://github.com/si-mods/gorex/pull/889), [#890](https://github.com/si-mods/gorex/pull/890), [#891](https://github.com/si-mods/gorex/pull/891))
+
 ## 0.44.4
 
 ### Bug Fixes
