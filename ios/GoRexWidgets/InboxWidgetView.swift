@@ -168,12 +168,8 @@ private struct Row: View {
                         StateMark(item: item)
                     }
                     HStack(spacing: 0) {
-                        // The separator stays when a long host name is cut;
-                        // no-break spaces, as a Text drops a trailing space.
-                        if named {
-                            Text(verbatim: host.name).privacySensitive()
-                            Text(verbatim: "\u{00A0}·\u{00A0}").fixedSize()
-                        }
+                        // The detail is cut before the host and its separator.
+                        if named { Text(verbatim: host.name + " · ").privacySensitive().layoutPriority(1) }
                         Text(item.detail.isEmpty ? item.window : item.detail).privacySensitive()
                         Spacer(minLength: 6)
                         if let t = item.updated { ago(t).foregroundStyle(.tertiary) }
