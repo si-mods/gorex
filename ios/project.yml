@@ -130,6 +130,8 @@ targets:
       - GoRex/Terminal/TerminalNotifications.swift
       - GoRex/Terminal/TerminalSession.swift
       - GoRex/Terminal/Coalesce.swift
+      - GoRex/Terminal/LastDrawn.swift
+      - GoRex/Terminal/FDReader.swift
       - GoRex/Terminal/Maple.swift
       - GoRex/Terminal/WebLink.swift
       - GoRex/Terminal/FileLink.swift
