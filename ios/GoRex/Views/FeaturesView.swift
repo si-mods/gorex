@@ -88,7 +88,7 @@ struct FeaturesView: View {
         ]),
         ("Settings & About", [
             ("Search Settings", "The search at the bottom of Settings filters its rows."),
-            ("About", "The version, the device, iOS and each host's Rex version. Copy version or debug info for a problem report."),
+            ("About", "The version, the device, iOS and each host's Rex version. Settings › Developer copies version or debug info for a problem report."),
             ("Open source", "The licenses of the code, fonts and themes the app ships, and its source on GitHub."),
         ]),
     ]

@@ -9,7 +9,6 @@ struct SettingsView: View {
     @AppStorage("theme") private var theme = TerminalTheme.standard
     @AppStorage("clientLabel") private var label = ""
     @AppStorage(TailnetSettings.onKey) private var tailnet = false
-    @AppStorage("developerMode") private var developerMode = false
     @State private var query = ""
     /// The icon on the Home Screen, for the row to name; the page changes it.
     @State private var appIcon = AppIcon.current
@@ -44,7 +43,9 @@ struct SettingsView: View {
                   value: String(localized: HotspotShare.shared.isSharing ? "On" : "Off"), page: { AnyView(HotspotShareView()) })],
             [Item(title: "Features", icon: tile("sparkles", .blue), page: { AnyView(FeaturesView()) }),
              Item(title: "About", icon: tile("info.circle.fill", .gray),
-                  value: "\(version) (\(build))", page: { AnyView(AboutView(version: version, build: build, icon: appIcon)) })],
+                  value: "\(version) (\(build))", page: { AnyView(AboutView(version: version, build: build, icon: appIcon)) }),
+             Item(title: "Developer", icon: tile("wrench.and.screwdriver.fill", .orange),
+                  page: { AnyView(DeveloperView(version: version, build: build)) })],
         ]
     }
 
@@ -74,17 +75,6 @@ struct SettingsView: View {
                                 .onSubmit(sendLabel)
                         }
                         .listRowBackground(Color.card)
-                    }
-                }
-                if matches("Developer Mode") {
-                    Section {
-                        SettingsRow(icon: tile("wrench.and.screwdriver.fill", .orange), title: "Developer Mode") {
-                            Toggle("Developer Mode", isOn: $developerMode)
-                                .labelsHidden()
-                        }
-                        .listRowBackground(Color.card)
-                    } footer: {
-                        Text("Shows a floating connection bar over the app with live host status, network path, and recent connection events.")
                     }
                 }
             }
@@ -324,7 +314,6 @@ private struct TerminalSettings: View {
     @State private var loaded = ""
     @State private var edited = false
     @Environment(\.scenePhase) private var phase
-    @AppStorage(InputTrace.key) private var trace = false
 
     /// The minimum contrasts offered, 0 the default, off; a stored one not
     /// among them, by its number.
@@ -397,16 +386,6 @@ private struct TerminalSettings: View {
             } footer: {
                 Text("Turns text too close to its background black or white, colors programs set too, so it reads; its color is lost, so errors and warnings may look alike. Box drawing keeps its colors. Off shows programs' colors as they are.")
             }
-            Section {
-                Toggle("Record Keyboard Input", isOn: $trace)
-                    .onChange(of: trace) { if !trace { InputTrace.clear() } }
-                NavigationLink("Keyboard Input Log") { InputTraceView() }
-            } header: {
-                Text("Keyboard Input")
-            } footer: {
-                Text("Records what the keyboard sends the terminal, typed text included, to copy into a report of a keyboard bug. The log stays in memory until the app quits; turning recording off clears it.")
-            }
-            .listRowBackground(Color.card)
         }
         .scrollContentBackground(.hidden)
         .background(Color.page)
@@ -541,9 +520,40 @@ private struct InputTraceView: View {
     }
 }
 
+/// The app's name, commit, device and iOS version, as About shows them
+/// and the Developer page's report copies them.
+private struct DeviceFacts {
+    let name = Bundle.main.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String ?? "Rex Go"
+    /// The short git hash the upload builds from; empty for a local build.
+    let commit = Bundle.main.object(forInfoDictionaryKey: "GoRexCommit") as? String ?? ""
+    let system = UIDevice.current.systemName + " " + UIDevice.current.systemVersion
+
+    /// The hardware model, as iPhone18,2; the simulator names the one it
+    /// simulates.
+    let device: String = ProcessInfo.processInfo.environment["SIMULATOR_MODEL_IDENTIFIER"] ?? {
+        var u = utsname()
+        uname(&u)
+        return withUnsafeBytes(of: u.machine) { String(decoding: $0.prefix { $0 != 0 }, as: UTF8.self) }
+    }()
+}
+
+/// A host's Rex version while it is online, for About's list and the
+/// debug report.
+private func rex(_ h: Host, _ versions: [UUID: String]) -> String? {
+    h.status == .online ? versions[h.id].map { "Rex \($0)" } : nil
+}
+
+/// Each online host's Rex version, as server.version tells it.
+private func rexVersions(_ hosts: [Host]) async -> [UUID: String] {
+    var versions: [UUID: String] = [:]
+    for h in hosts where h.status == .online {
+        if let v = try? await h.control?.call("server.version").payload["rex_version"] as? String { versions[h.id] = v }
+    }
+    return versions
+}
+
 /// About, as Rex's iPhone app lays it out: the app and its version, the
-/// hosts' Rex versions, what to copy into a problem report, and the open
-/// source the app ships.
+/// hosts' Rex versions, and the open source the app ships.
 private struct AboutView: View {
     let version: String
     let build: String
@@ -552,21 +562,7 @@ private struct AboutView: View {
     @Environment(HostStore.self) private var store
     /// Each host's Rex version, as server.version tells it.
     @State private var versions: [UUID: String] = [:]
-    /// The row last copied, by its icon, for it to say so a moment.
-    @State private var copied: String?
-
-    private let name = Bundle.main.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String ?? "Rex Go"
-    /// The short git hash the upload builds from; empty for a local build.
-    private let commit = Bundle.main.object(forInfoDictionaryKey: "GoRexCommit") as? String ?? ""
-    private let system = UIDevice.current.systemName + " " + UIDevice.current.systemVersion
-
-    /// The hardware model, as iPhone18,2; the simulator names the one it
-    /// simulates.
-    private let device: String = ProcessInfo.processInfo.environment["SIMULATOR_MODEL_IDENTIFIER"] ?? {
-        var u = utsname()
-        uname(&u)
-        return withUnsafeBytes(of: u.machine) { String(decoding: $0.prefix { $0 != 0 }, as: UTF8.self) }
-    }()
+    private let facts = DeviceFacts()
 
     /// The open source the app ships, by its section in the notices.
     private static let components = [("Ghostty", "MIT"), ("JetBrains Mono", "SIL OFL 1.1"), ("rootshell", "MIT"),
@@ -578,7 +574,7 @@ private struct AboutView: View {
                 VStack(spacing: 6) {
                     icon.image(size: 110)
                         .padding(.bottom, 8)
-                    Text(name).font(.largeTitle.bold())
+                    Text(facts.name).font(.largeTitle.bold())
                     Text("Version \(version) (\(build))").foregroundStyle(.secondary)
                 }
                 .frame(maxWidth: .infinity)
@@ -586,29 +582,22 @@ private struct AboutView: View {
             }
             Section("Version Info") {
                 LabeledContent("Version", value: "\(version) (\(build))")
-                if !commit.isEmpty {
-                    LabeledContent("Commit") { Text(commit).monospaced() }
+                if !facts.commit.isEmpty {
+                    LabeledContent("Commit") { Text(facts.commit).monospaced() }
                 }
-                LabeledContent("Device", value: device)
+                LabeledContent("Device", value: facts.device)
                 // "System" is the interface's System elsewhere.
-                LabeledContent { Text(system) } label: { Text(LocalizedStringResource("About System", defaultValue: "System")) }
+                LabeledContent { Text(facts.system) } label: { Text(LocalizedStringResource("About System", defaultValue: "System")) }
             }
             .listRowBackground(Color.card)
             if !store.hosts.isEmpty {
                 Section("Hosts") {
                     ForEach(store.hosts) { h in
-                        LabeledContent(h.config.name, value: rex(h) ?? String(localized: "not connected"))
+                        LabeledContent(h.config.name, value: rex(h, versions) ?? String(localized: "not connected"))
                     }
                 }
                 .listRowBackground(Color.card)
             }
-            Section {
-                copy("Copy Version Info", icon: "info.circle", versionInfo)
-                copy("Copy Debug Info", icon: "doc.on.doc", debugInfo)
-            } footer: {
-                Text("Include version info when you report a problem. Debug info also describes the network and the hosts.")
-            }
-            .listRowBackground(Color.card)
             Section {
                 ForEach(Self.components, id: \.0) { name, license in
                     NavigationLink { Notices(section: name) } label: { LabeledContent(name, value: license) }
@@ -627,21 +616,63 @@ private struct AboutView: View {
         .background(Color.page)
         .navigationTitle("About")
         .navigationBarTitleDisplayMode(.inline)
-        .task(id: store.hosts.map(\.status)) {
-            for h in store.hosts where h.status == .online {
-                if let v = try? await h.control?.call("server.version").payload["rex_version"] as? String { versions[h.id] = v }
+        .task(id: store.hosts.map(\.status)) { versions = await rexVersions(store.hosts) }
+    }
+}
+
+/// The developer's page: the Developer Mode HUD's switch, keyboard input
+/// recording for a keyboard bug's report, and the version and debug info
+/// to copy into one.
+private struct DeveloperView: View {
+    let version: String
+    let build: String
+    @Environment(HostStore.self) private var store
+    @AppStorage("developerMode") private var developerMode = false
+    @AppStorage(InputTrace.key) private var trace = false
+    /// Each host's Rex version, as server.version tells it.
+    @State private var versions: [UUID: String] = [:]
+    /// The row last copied, by its icon, for it to say so a moment.
+    @State private var copied: String?
+    private let facts = DeviceFacts()
+
+    var body: some View {
+        List {
+            Section {
+                Toggle("Developer Mode", isOn: $developerMode)
+            } footer: {
+                Text("Shows a floating connection bar over the app with live host status, network path, and recent connection events.")
             }
+            .listRowBackground(Color.card)
+            Section {
+                Toggle("Record Keyboard Input", isOn: $trace)
+                    .onChange(of: trace) { if !trace { InputTrace.clear() } }
+                NavigationLink("Keyboard Input Log") { InputTraceView() }
+            } header: {
+                Text("Keyboard Input")
+            } footer: {
+                Text("Records what the keyboard sends the terminal, typed text included, to copy into a report of a keyboard bug. The log stays in memory until the app quits; turning recording off clears it.")
+            }
+            .listRowBackground(Color.card)
+            Section {
+                copy("Copy Version Info", icon: "info.circle", versionInfo)
+                copy("Copy Debug Info", icon: "doc.on.doc", debugInfo)
+            } header: {
+                Text("Problem Report")
+            } footer: {
+                Text("Include version info when you report a problem. Debug info also describes the network and the hosts.")
+            }
+            .listRowBackground(Color.card)
         }
+        .scrollContentBackground(.hidden)
+        .background(Color.page)
+        .navigationTitle("Developer")
+        .navigationBarTitleDisplayMode(.inline)
+        .task(id: store.hosts.map(\.status)) { versions = await rexVersions(store.hosts) }
         .task(id: copied) {
             try? await Task.sleep(for: .seconds(1.5))
             copied = nil
         }
         .sensoryFeedback(.success, trigger: copied) { _, new in new != nil }
-    }
-
-    /// A host's Rex version while it is online.
-    private func rex(_ h: Host) -> String? {
-        h.status == .online ? versions[h.id].map { "Rex \($0)" } : nil
     }
 
     private func copy(_ title: LocalizedStringKey, icon: String, _ text: String) -> some View {
@@ -660,9 +691,9 @@ private struct AboutView: View {
     // What the rows copy is for whoever reads the report: not localized.
 
     private var versionInfo: String {
-        ["\(name) \(version) (\(build))", commit.isEmpty ? nil : "Commit \(commit)", "Device \(device)", "System \(system)"]
+        ["\(facts.name) \(version) (\(build))", facts.commit.isEmpty ? nil : "Commit \(facts.commit)", "Device \(facts.device)", "System \(facts.system)"]
             .compactMap { $0 }.joined(separator: "\n")
-            + store.hosts.map { "\n\($0.config.name): \(rex($0) ?? "not connected")" }.joined()
+            + store.hosts.map { "\n\($0.config.name): \(rex($0, versions) ?? "not connected")" }.joined()
     }
 
     private var debugInfo: String {
