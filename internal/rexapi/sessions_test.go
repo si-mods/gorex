@@ -165,9 +165,11 @@ func TestIdleGatewayListsNothing(t *testing.T) {
 	}
 	f, n := countedFixture(t)
 	shellBlocks(t, f, 2)
-	// The facts read a sessions event schedules lands factsWait later;
-	// give it, and the first output's events, time to settle first.
-	time.Sleep(factsWait + time.Second)
+	// The shells' first output arms the facts timer, whose read lists the
+	// sessions too: wait until it read, and is not armed again.
+	waitFor(t, "the facts read", func() bool {
+		return f.g.factsReads.Load() > 0 && !f.g.factsArmed.Load()
+	})
 	asked := n.asked.Load()
 	time.Sleep(4 * 500 * time.Millisecond)
 	if got := n.asked.Load() - asked; got != 0 {

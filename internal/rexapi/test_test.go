@@ -149,6 +149,9 @@ func (f *fixture) setLayout(store layout.Store) {
 	if err != nil {
 		f.t.Fatal(err)
 	}
+	// After the first publish, so that read cannot see the new layout
+	// and leave the read its layout event asks for still due.
+	waitFor(f.t, "the first publish", func() bool { return f.g.ready.Load() })
 	if err := f.desk.SetLayout(raw); err != nil {
 		f.t.Fatal(err)
 	}

@@ -225,7 +225,7 @@ func (g *Gateway) afterCommand(shows func(*model) bool) (*model, *apiError) {
 	if ok {
 		return m, nil
 	}
-	if g.dead.Load() {
+	if g.gone() {
 		return m, errInternal("reading the layout: the GoRex server is gone")
 	}
 	return m, errConflict("GoRex did not show the change in time; it may still appear")
@@ -409,7 +409,7 @@ func methodSessionCreate(c *control, a args) (any, *apiError) {
 		created = append(created, w.ids...)
 	}
 	c.g.emitOwnerChanges(c.g.claimCreated(c.rec, s, created))
-	if fresh, err := c.g.reread(true); err == nil {
+	if fresh, err := c.g.rebuild(); err == nil {
 		m = fresh
 		if now := m.sessionOfSpace(space); now != nil {
 			s = now
@@ -570,9 +570,11 @@ func methodSessionNewWindow(c *control, a args) (any, *apiError) {
 				return nil, aerr
 			}
 		}
-	}
-	if fresh, err := c.g.reread(true); err == nil {
-		m = fresh
+		// The focus commands ran after afterCommand saw the window: read
+		// the layout once more, so the revision answered is theirs.
+		if fresh, aerr := c.g.afterCommand(nil); aerr == nil {
+			m = fresh
+		}
 	}
 	return newWindowResult{WindowID: w.id, BlockIDs: ids, Revision: revisionOf(m, s.id)}, nil
 }
@@ -735,9 +737,9 @@ func (g *Gateway) buildBeside(s *mSession, anchor *mBlock, tree *specTree, verti
 
 // splitsOf returns every split ID of a session's active view.
 func (g *Gateway) splitsOf(s *mSession) (map[string]bool, *apiError) {
-	m, err := g.reread(true)
-	if err != nil {
-		return nil, errInternal("reading the layout: %v", err)
+	m, aerr := g.modelReq()
+	if aerr != nil {
+		return nil, aerr
 	}
 	out := map[string]bool{}
 	if now := m.byID[s.id]; now != nil {

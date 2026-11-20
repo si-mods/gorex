@@ -1,6 +1,6 @@
 # The gateway's model
 
-Status: design. Tracked in #879.
+Status: implemented in #893. Tracked in #879.
 
 `GoRex rexapi` shows the app's layout to Rex clients as a model of
 sessions, windows and blocks (`internal/rexapi/model.go`). This document
@@ -79,8 +79,13 @@ event would be a new behavior for every subscriber, and
 doc does not need. The gateway copes on its own side instead: the stamp
 lands at most `refreshWait` (~1 s) after the `sessions` event that
 scheduled it (`refreshSoon`, `layout_life.go:26`), so on each `sessions`
-event `pump` also arms a `facts` timer `refreshWait` out; when it fires
-it runs one `reread(true)`. Stamped facts reach clients at the stamp's
+event `pump` also arms a `facts` timer `factsWait` out; when it fires
+it runs one `reread(true)`. `factsWait` is `refreshWait` plus 200 ms, a
+constant in `gateway.go`: `refreshWait` is unexported in `internal/rex`.
+The margin is enough because the server arms `refreshSoon` inside
+`notify`, before it sends the `sessions` event, so its timer always
+starts before the gateway's; the margin only has to cover the stamp's
+own run. Stamped facts reach clients at the stamp's
 own ~1 Hz cadence, at a cost of at most one layout read per second, and
 the safety tick covers whatever a quiet session misses. Reusing the
 session list for these facts was considered and dropped: `stamp` also
@@ -109,24 +114,27 @@ holds a waiter for the full `commandWait`.
 
 ### Requests read the snapshot
 
-`current()` goes away. Handlers call `modelNow()` (`gateway.go:442`),
-which already returns the last published immutable model.
+`current()` goes away. Handlers call `modelReq()`, which returns the
+last published immutable model (`modelNow()`) behind the two guards
+below.
 
 Two guards keep a snapshot honest where today's read could fail:
 
 - **Not ready yet**: `New` returns once the client's hello answers; it
   does not wait for the first publish, which may be slow on a loaded
-  server. Until the first publish lands, a `ready` flag is unset and
-  methods that need the model answer with an existing 500-class code
-  (`internal`) and a "not ready" message — a slow answer, not the wrong
+  server. Until the first publish lands, a `ready` flag is unset;
+  methods that need the model wait for it up to `commandWait`, then
+  answer with an existing 500-class code (`internal`) and a "not ready"
+  message — a slow answer, not the wrong
   `session_not_found`, and no new error code on the wire. The flag sets
   on the first publish and never clears.
 - **Connection gone**: `pump` returns on `Client.Closed()` and nothing
   starts it again — the gateway does not reconnect its client. `pump`
-  marks the gateway as it leaves, and reads that needed `current()`'s
-  error get the same 500 ("no connection to the GoRex server") instead
-  of a stale answer. `reread`'s own failure keeps the last model,
-  exactly as today.
+  marks the gateway as it leaves (a read also checks
+  `Client.Closed()`, so it need not wait for `pump`), and reads that
+  needed `current()`'s error get the same 500 ("reading the layout: the
+  GoRex server is gone") instead of a stale answer. `reread`'s own
+  failure keeps the last model, exactly as today.
 
 ### Read your own writes
 
@@ -137,15 +145,19 @@ give it back per path. The write paths sort into three groups:
    `projects.go`, `spaces_sync.go`, `movewindow.go`,
    `mergewindows.go`): 37 calls, 30 of them already followed by
    `afterCommand(shows)`; the rest are rollbacks and intermediate focus
-   steps the last `afterCommand` covers. The method waits
-   on `changed` until `shows(m)` or `commandWait`. To keep this at least
-   as fast as today's first 10 ms poll, `pump` skips the `settle` burst
-   while a waiter is registered and reads the layout as soon as the
-   event arrives. The answer then lands at event time: no socket reads
-   on the request path, no polling. (A `shows(modelNow())` check before
-   the wait is only an early exit for the case where a publish raced
-   ahead of the command's reply; it is usually false, since the snapshot
-   moves only on publish.)
+   steps the last `afterCommand` covers. (`session.new_window`'s focus
+   steps run after its `afterCommand`, so it calls `afterCommand(nil)`
+   once more for their revision.) `afterCommand` reads the layout once
+   on the request path, a `reread(true)` that also publishes: the server
+   usually applies a command before it answers it, so that one read
+   answers at once, and a no-op command, which sends no layout event and
+   so publishes nothing, does not wait `commandWait` for a publish that
+   never comes. `afterCommand(nil)` is that read alone. Only when
+   `shows` is still false does the method wait on `changed` until
+   `shows(m)` or `commandWait`. For that wait, `pump` skips the
+   `settle` burst while a waiter is registered and reads the layout as
+   soon as the event arrives: no polling, and at most the one read on
+   the request path.
 
 2. **Gateway-local writes that feed the model** — ownership and
    attachment changes live in the gateway, so no layout event announces
@@ -167,10 +179,14 @@ give it back per path. The write paths sort into three groups:
    as stale. `refreshMu` serializes these rebuilds with `pump`'s,
    keeping broadcast order.
 
-3. **Everything else is a pure read** and takes `modelNow()`:
+3. **Everything else is a pure read** and takes `modelReq()`:
    `sessionArg`/`attachedArg`/`attachedSessionArg`, `session.list`,
    `session.attach`/`attach_all`/`detach`, `status`, the projects,
-   spaces, target, upload, voice and client methods. `sessionsNow()`
+   spaces, target, upload, voice and client methods, and `splitsOf`
+   (`session.new_split` reads the splits before its command from the
+   same snapshot its arguments came from). `server.stop`'s idle check
+   is the exception: it needs the layout as it is now, so it still runs
+   `reread(true)`. `sessionsNow()`
    (`projects.go:273`) is unchanged. Writes that change neither the
    layout nor the model — `server.config_reload`'s generation, upload
    and download reservations, block themes (`g.themes` never enters
@@ -218,7 +234,7 @@ would make the post-local-change replies drop the change. Nothing in
 
 - A fake client that counts `Layout()` calls: a burst of read requests
   publishes nothing and makes zero socket reads; `afterCommand` makes
-  none on the request path.
+  one on the request path.
 - Read-your-writes: a write followed at once by a read on the same
   connection sees the write; with two clients and a fake client whose
   layout event arrives late, the writer's `afterCommand` still resolves

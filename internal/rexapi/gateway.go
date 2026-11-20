@@ -27,7 +27,8 @@ var (
 	// factsWait is how long after a sessions event the gateway reads the
 	// layout for the facts Server.refresh stamped (refreshWait plus a
 	// margin): the stamp sends no layout event, so the read is timed to
-	// land after it.
+	// land after it. The server arms its refreshWait timer before it
+	// sends the event, so the margin only covers the stamp's own run.
 	factsWait = 1200 * time.Millisecond
 	// helloWait is how long a control or data connection may take to
 	// send its hello.
@@ -135,8 +136,12 @@ type Gateway struct {
 	dead        atomic.Bool
 	waiters     atomic.Int32
 	layoutReads atomic.Int64
-	changed     chan struct{}
-	subscribed  bool
+	// factsArmed tells the facts timer runs; factsReads counts the layout
+	// reads it made. Tests read both.
+	factsArmed atomic.Bool
+	factsReads atomic.Int64
+	changed    chan struct{}
+	subscribed bool
 
 	// stopMu guards stopping, which tells that server.stop began: the
 	// server stops once. shutdown asks the GoRex server to stop, as the
@@ -344,6 +349,7 @@ func (g *Gateway) pump() {
 			if ev.Kind == "sessions" && facts == nil {
 				facts = time.NewTimer(factsWait)
 				factsDue = facts.C
+				g.factsArmed.Store(true)
 			}
 			if layout && g.waiters.Load() > 0 {
 				// A write's afterCommand waits on the publish: read the
@@ -369,6 +375,8 @@ func (g *Gateway) pump() {
 			facts = nil
 			factsDue = nil
 			g.reread(true)
+			g.factsReads.Add(1)
+			g.factsArmed.Store(false)
 		case <-ticker.C:
 			g.reread(true)
 		case <-g.opt.Client.Closed():
@@ -439,14 +447,17 @@ func (g *Gateway) changeWait() <-chan struct{} {
 // pump left on a closed client connection.
 func (g *Gateway) waitModel(shows func(*model) bool, deadline time.Time) (*model, bool) {
 	for {
+		// Take the channel before the model: a publish swaps the model
+		// before it closes the channel, so one that lands between the two
+		// reads closes this channel, and the wait below does not miss it.
+		ch := g.changeWait()
 		m := g.modelNow()
 		if m != nil && (shows == nil || shows(m)) {
 			return m, true
 		}
-		if g.dead.Load() || !time.Now().Before(deadline) {
+		if g.gone() || !time.Now().Before(deadline) {
 			return m, false
 		}
-		ch := g.changeWait()
 		timer := time.NewTimer(time.Until(deadline))
 		g.waiters.Add(1)
 		select {
@@ -464,14 +475,33 @@ func (g *Gateway) waitModel(shows func(*model) bool, deadline time.Time) (*model
 // fails when pump is gone, where a per-request read of the layout failed
 // before the model was publish-driven.
 func (g *Gateway) modelReq() (*model, *apiError) {
+	// A model published before the connection went is stale from then
+	// on: no event can tell of a change any more.
+	if g.gone() {
+		return g.modelNow(), errInternal("reading the layout: the GoRex server is gone")
+	}
 	m, ok := g.waitModel(func(*model) bool { return g.ready.Load() }, time.Now().Add(commandWait))
 	if ok {
 		return m, nil
 	}
-	if g.dead.Load() {
+	if g.gone() {
 		return m, errInternal("reading the layout: the GoRex server is gone")
 	}
 	return m, errInternal("the gateway is not ready yet")
+}
+
+// gone tells that the client connection is lost: pump left, or leaves as
+// soon as it sees the connection closed.
+func (g *Gateway) gone() bool {
+	if g.dead.Load() {
+		return true
+	}
+	select {
+	case <-g.opt.Client.Closed():
+		return true
+	default:
+		return false
+	}
 }
 
 // listSessions reads the session list, under refreshMu, when it changed
