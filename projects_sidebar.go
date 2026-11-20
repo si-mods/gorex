@@ -24,8 +24,10 @@ import (
 // Older.
 const olderAfter = 30 * 24 * time.Hour
 
-// projectRowH is the height of a project's row and of a host's.
-const projectRowH = 28
+// projectRowH is the height of a project's row: a tab's (sideRowH), so that
+// a project and its tabs are rows of one rhythm, and their pills, and the
+// current project's face, share one radius.
+const projectRowH = sideRowH
 
 // openKey names a row of the sidebar that opens and closes, in
 // settings.Open.
@@ -401,7 +403,7 @@ func (a *App) noProjectSection(c *ui.Context, k *colors, w *Workspace, reserve f
 func (a *App) projectGroup(c *ui.Context, k *colors, w *Workspace, reserve float32) {
 	// Every project has the room of the face, so that choosing another moves
 	// nothing: only the face's color comes and goes, fading.
-	g := ui.Column(c.Key("group-" + openKey(w.host, w.ID))).Gap(rowGap).Radius(pillRadius(sideRowH, radiusM) + groupPad).Padding(groupPad).Margin(-groupPad)
+	g := ui.Column(c.Key("group-"+openKey(w.host, w.ID))).Gap(rowGap).Radius(pillRadius(sideRowH, radiusM)+groupPad).Padding(groupPad).Margin(-groupEdge, -groupPad, -groupEdge, -groupPad)
 	if w == a.ws && rowOpen(openKey(w.host, w.ID), true) && w.tabCount() > 0 {
 		g.Background(k.groupFace)
 	} else {
@@ -415,8 +417,15 @@ func (a *App) projectGroup(c *ui.Context, k *colors, w *Workspace, reserve float
 	g.Children(func() { a.projectRow(c, k, w, reserve) })
 }
 
-// groupPad is the room between the current project's face and its rows.
-const groupPad = 4
+// groupPad is the room between the current project's face and its rows;
+// groupEdge the face's reach above and below them in the layout, short of
+// groupPad by enough that groupGap stays between the face and the rows of
+// the projects next to it.
+const (
+	groupPad  = 4
+	groupGap  = 2
+	groupEdge = (groupPad + rowGap - groupGap) / 2
+)
 
 // rowGap is the room between the sidebar's rows, so that two filled
 // ones, a hovered and the chosen, never touch.

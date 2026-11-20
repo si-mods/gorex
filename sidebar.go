@@ -300,7 +300,7 @@ func (a *App) sidebar(c *ui.Context, k *colors, right bool) {
 // beyond it, so the list's rows, and the current project's face, keep as
 // far from the panes as from the window's edge.
 func sideInsets(right bool) (r, l float32) {
-	const window, panes = 12, 12 - gap
+	const window, panes = 10, 10 - gap
 	if right {
 		return window, panes
 	}
