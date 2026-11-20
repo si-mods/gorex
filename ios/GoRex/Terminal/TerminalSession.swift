@@ -14,10 +14,15 @@ protocol TerminalOutput: AnyObject {
     /// it can, for the gallery (docs/ios-pane-gallery.md §3.4); done gets
     /// it and the screen's columns off the main thread.
     func readScreen(_ done: @escaping @Sendable (_ text: String, _ columns: Int) -> Void)
+    /// Reads the screen's rows, one string each, and the cursor's row
+    /// among them, nil where it cannot tell, for the Live Activity's line;
+    /// done gets them off the main thread.
+    func readRows(_ done: @escaping @Sendable (_ rows: [String], _ cursor: Int?) -> Void)
 }
 
 extension TerminalOutput {
     func readScreen(_ done: @escaping @Sendable (_ text: String, _ columns: Int) -> Void) {}
+    func readRows(_ done: @escaping @Sendable (_ rows: [String], _ cursor: Int?) -> Void) {}
 }
 
 /// One block's terminal on the phone: its data stream fed to the view's

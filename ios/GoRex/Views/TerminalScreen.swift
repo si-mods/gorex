@@ -399,8 +399,8 @@ struct TerminalScreen: View {
             return TerminalLive.state(title: Self.windowTitle(host: host, target: target), program: b?.program, records: b?.statuses ?? [],
                                       seen: b?.seen, connected: s.map { $0.state == .live && !$0.reconnecting } ?? false)
         }, readLine: { [weak s] done in
-            s?.output?.readScreen { text, _ in
-                let line = TerminalActivity.lastLine(text)
+            s?.output?.readRows { rows, cursor in
+                let line = TerminalActivity.screenLine(rows, cursor: cursor)
                 Task { @MainActor in done(line) }
             }
         }), owner: liveOwner)

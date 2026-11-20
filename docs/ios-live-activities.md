@@ -28,7 +28,7 @@ and may need you".
 
 - When the user leaves Rex Go with a terminal open, that terminal shows
   in the Dynamic Island and on the Lock Screen: its program, its state,
-  its last line. Its stream stays connected for a short grace (about 25
+  its latest line. Its stream stays connected for a short grace (about 25
   seconds), so a quick switch to another app and back loses nothing;
   after the grace the activity says it is paused, and coming back
   resumes the stream as today.
@@ -247,8 +247,8 @@ on `.active`; the shell on the host keeps running. **[code]**
 - **Content state**: window title; program id (for the tile); the
   block's most urgent OSC 7501 record's `state`, `kind`, `progress`,
   `title` and `updated`, or none for a plain shell or an idle record;
-  `line`, the last non-empty line of the screen, cut to 80 characters;
-  `connected` (whether the stream is open). Titles and the host name are
+  `line`, the line that tells the latest state (below), cut to 80
+  characters; `connected` (whether the stream is open). Titles and the host name are
   cut to 200 characters and 400 UTF-8 bytes, the line to 80 characters
   and 240 bytes, whole characters only; with the longest of each,
   attributes and state stay well under 4 KB (`TerminalLiveTests`).
@@ -266,8 +266,33 @@ on `.active`; the shell on the host keeps running. **[code]**
   Settings › Live Activities off, or `areActivitiesEnabled` false: none.
 - **Update**: while the stream is open, on a record change or a change
   of `line`, coalesced to one per two seconds. The stream's output marks
-  the line changed; the next update reads the screen
-  (`TerminalOutput.readScreen`), and a new line comes in the update after.
+  the line changed; the next update reads the screen's rows and the
+  cursor's row (`TerminalOutput.readRows`), and a new line comes in the
+  update after.
+- **Line** (`TerminalLive.state`, `TerminalActivity.screenLine`): the
+  last non-empty line of the screen is a TUI agent's status bar (Claude
+  Code, Codex, Devin, Pi), never its state, so:
+  1. When the block's most urgent record is `blocked` and has a `msg`,
+     the line is the message, its line breaks as spaces.
+  2. Else, with text under the cursor's row, the program is a TUI with
+     its cursor in its input: from the row above the input up, the first
+     line that is not blank, a rule of box-drawing or block characters
+     and spaces (U+2500–U+259F), a line in a box (it starts and ends with
+     a box's side), or one of the input's lines. The input is the
+     cursor's row and the lines right above it, up to the topmost that
+     starts with a prompt (`>`, `›`, `❯`, `▌`, `»`, `▶`), with no blank or
+     rule between. For Claude Code that is the spinner over the input.
+  3. Else, as for a shell or a program printing, the last line at or
+     above the cursor's row that is not blank.
+  4. With no cursor row, or no such line, the last non-empty line of the
+     screen, as before.
+
+  The rows are read a row at a time, as Ghostty joins soft-wrapped rows
+  in one read; the cursor's row comes from Ghostty's IME point, as for
+  the terminal's slide (`TerminalView.drawnBottom`). A TUI that leaves
+  its cursor under its last line has nothing under the cursor, and gets
+  rule 3: its last line. **[assumption]** Claude Code, Codex, Devin and Pi
+  keep the cursor in their input.
 - **Grace**: on `.background`, the screen no longer suspends the
   streams at once. It asks for a background task
   (`beginBackgroundTask`), keeps the streams and the built-in Tailscale

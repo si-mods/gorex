@@ -109,6 +109,174 @@ nonisolated final class TerminalLiveTests: XCTestCase {
         XCTAssertEqual(TerminalActivity.cut("short"), "short")
     }
 
+    /// A screen's rows, and the cursor's row: the one marked with a "|".
+    private static func screen(_ text: String) -> (rows: [String], cursor: Int?) {
+        var rows = text.components(separatedBy: "\n"), cursor: Int?
+        for (i, r) in rows.enumerated() where r.contains("|") {
+            cursor = i
+            rows[i] = r.replacingOccurrences(of: "|", with: " ")
+        }
+        return (rows, cursor)
+    }
+
+    private static func line(_ text: String) -> String {
+        let s = screen(text)
+        return TerminalActivity.screenLine(s.rows, cursor: s.cursor)
+    }
+
+    /// Claude Code: its spinner over the input between rules, or in a
+    /// box, with its mode and status lines under it.
+    func testScreenLineClaudeCode() {
+        XCTAssertEqual(Self.line("""
+        ● Read 3 files (ctrl+o to expand)
+
+        ● Update(internal/api/server.go)
+          ⎿  Updated internal/api/server.go with 4 additions
+
+        ✻ Refactoring… (1m 15s · esc to interrupt)
+
+        ────────────────────────────────────────────────────────────
+        > |
+        ────────────────────────────────────────────────────────────
+          ⏵⏵ bypass permissions on (shift+tab to cycle)
+                                                     ◯ IDE disconnected
+        """), "✻ Refactoring… (1m 15s · esc to interrupt)")
+
+        XCTAssertEqual(Self.line("""
+        ✶ Thinking… (12s · ↑ 1.2k tokens · esc to interrupt)
+
+        ╭──────────────────────────────────────────────────────╮
+        │ > fix the flaky test in store_test.go|                │
+        ╰──────────────────────────────────────────────────────╯
+          ? for shortcuts
+        """), "✶ Thinking… (12s · ↑ 1.2k tokens · esc to interrupt)")
+
+        // An input of two lines, the cursor on the second.
+        XCTAssertEqual(Self.line("""
+        ● Done. All 42 tests pass.
+
+        ────────────────────────────────────────
+        > now update the changelog
+          and the docs|
+        ────────────────────────────────────────
+          ⏵⏵ accept edits on (shift+tab to cycle)
+        """), "● Done. All 42 tests pass.")
+
+        // Text in a box above the input is skipped too.
+        XCTAssertEqual(Self.line("""
+        ✻ Compacting conversation… (40s)
+        ╭────────────────────────╮
+        │ Tip: press # to note │
+        ╰────────────────────────╯
+        ────────────────────────────
+        > |
+        ────────────────────────────
+          ? for shortcuts
+        """), "✻ Compacting conversation… (40s)")
+    }
+
+    /// Codex: its progress line, its input after a prompt, its context line.
+    func testScreenLineCodex() {
+        XCTAssertEqual(Self.line("""
+        • Explored
+          └ Read main.go, handler.go
+
+        • Working (23s • esc to interrupt)
+
+        › Summarize recent commits|
+
+          100% context left · ? for shortcuts
+        """), "• Working (23s • esc to interrupt)")
+    }
+
+    /// Devin: its status bar under the input, which today's line showed.
+    func testScreenLineDevin() {
+        XCTAssertEqual(Self.line("""
+          Edited src/app.ts (+12 -3)
+
+        ⠹ Running tests… (8s)
+
+        ▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔
+        ❯ |
+        ▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁
+        SWE-2 High · bypass    ctrl+o details · opt+t thinking
+        """), "⠹ Running tests… (8s)")
+    }
+
+    /// Pi: its working line over an editor between rules, a footer of two.
+    func testScreenLinePi() {
+        XCTAssertEqual(Self.line("""
+         Reading src/index.ts
+
+        ⠙ Working... (esc to interrupt)
+        ─────────────────────────────────────────
+         |
+        ─────────────────────────────────────────
+        ~/project (main)
+        ↑12k ↓3.4k $0.042  23.1%/200k  model-name
+        """), "⠙ Working... (esc to interrupt)")
+    }
+
+    /// A shell at its prompt shows the prompt's line; a command printing,
+    /// its last output; blank rows under the cursor don't count.
+    func testScreenLineShell() {
+        XCTAssertEqual(Self.line("""
+        alice@alice-laptop ~ % ls
+        Makefile  README.md  src
+        alice@alice-laptop ~ % |
+
+
+        """), "alice@alice-laptop ~ %")
+        XCTAssertEqual(Self.line("""
+        $ go test ./...
+        ok   example.com/app/store   0.412s
+        ok   example.com/app/api     1.208s
+        |
+
+        """), "ok   example.com/app/api     1.208s")
+        // A rule a command printed is a line like another.
+        XCTAssertEqual(Self.line("""
+        $ ./build.sh
+        ────────────
+        |
+        """), "────────────")
+    }
+
+    /// No cursor, a cursor out of the rows, or nothing above the input:
+    /// the screen's last line that is not blank, as before.
+    func testScreenLineFallback() {
+        XCTAssertEqual(TerminalActivity.screenLine([], cursor: nil), "")
+        XCTAssertEqual(TerminalActivity.screenLine(["", "  ", ""], cursor: 1), "")
+        XCTAssertEqual(TerminalActivity.screenLine(["one", "two", ""], cursor: nil), "two")
+        XCTAssertEqual(TerminalActivity.screenLine(["one", "two"], cursor: 5), "two")
+        XCTAssertEqual(Self.line("""
+        ──────
+        > |
+        ──────
+        status bar
+        """), "status bar")
+        let long = String(repeating: "界", count: 100)
+        XCTAssertEqual(TerminalActivity.screenLine([long, "|", "bar"], cursor: 1), String(repeating: "界", count: 80))
+    }
+
+    /// A blocked record's message is the line, in place of the screen's;
+    /// a working one's, or a blocked one with none, leaves the screen's.
+    @MainActor func testBlockedMessageIsTheLine() {
+        let blocked = Host.ProgramStatus(id: "a", state: "blocked", app: "claude-code", title: "Permission",
+                                         msg: "Allow Bash: rm -rf build?\nyes / no", updated: Date(timeIntervalSince1970: 10))
+        var s = TerminalLive.state(title: "api", program: nil, records: [blocked], seen: nil, line: "status bar", connected: true)
+        XCTAssertEqual(s.line, "Allow Bash: rm -rf build? yes / no")
+        var none = blocked
+        none.msg = nil
+        s = TerminalLive.state(title: "api", program: nil, records: [none], seen: nil, line: "status bar", connected: true)
+        XCTAssertEqual(s.line, "status bar")
+        let working = Host.ProgramStatus(id: "b", state: "working", msg: "Reading files", updated: Date(timeIntervalSince1970: 20))
+        s = TerminalLive.state(title: "api", program: nil, records: [working], seen: nil, line: "✻ Reading…", connected: true)
+        XCTAssertEqual(s.line, "✻ Reading…")
+        s = TerminalLive.state(title: "api", program: nil, records: [], seen: nil, line: "", connected: true)
+        XCTAssertEqual(s.line, "")
+    }
+
     /// Attributes and state together stay under ActivityKit's 4 KB with the
     /// longest of each field: titles and names cut to 200 characters and
     /// 400 bytes, the line to 80 characters and 240 bytes, whole characters

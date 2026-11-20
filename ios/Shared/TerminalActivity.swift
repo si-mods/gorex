@@ -2,7 +2,7 @@ import ActivityKit
 import Foundation
 
 /// The terminal on screen as a Live Activity: its program, its state and
-/// its last line on the Lock Screen and in the Dynamic Island
+/// its latest line on the Lock Screen and in the Dynamic Island
 /// (docs/ios-live-activities.md, Terminal activity). The app starts and
 /// updates it; the widget extension draws it. It is encoded with every
 /// update, attributes and state together under ActivityKit's 4 KB.
@@ -19,7 +19,8 @@ nonisolated struct TerminalActivity: ActivityAttributes, Hashable, Sendable {
         var program: String?
         /// The block's most urgent record; nil for none, as a plain shell.
         var record: Record?
-        /// The last line the screen shows that is not blank.
+        /// The line that tells the latest state: a blocked record's
+        /// message, else the line screenLine picks from the screen.
         var line: String
         /// Whether the stream is open; false once the app left it.
         var connected: Bool
@@ -64,6 +65,66 @@ nonisolated struct TerminalActivity: ActivityAttributes, Hashable, Sendable {
         var s = Substring(line)
         while s.last?.isWhitespace == true { s.removeLast() }
         return cut(String(s), maxLine, bytes: maxLineBytes)
+    }
+
+    /// The line of a screen's rows that tells the latest state, cursor the
+    /// cursor's row among them, cut as lastLine cuts. A program that draws
+    /// text under the cursor's row is a full-screen program with its cursor
+    /// in its input, and a status bar at the bottom: the line is the first
+    /// above its input that is not blank, a rule of box-drawing characters,
+    /// a line in a box, or the input's own prompt lines. Else, as for a
+    /// shell, it is the last line at or above the cursor's that is not
+    /// blank. Without a cursor, or with no such line, it is lastLine's.
+    static func screenLine(_ rows: [String], cursor: Int?) -> String {
+        let fallback = lastLine(rows.joined(separator: "\n"))
+        guard let c = cursor, rows.indices.contains(c) else { return fallback }
+        func blank(_ s: String) -> Bool { s.allSatisfy(\.isWhitespace) }
+        let pick: String?
+        if rows[(c + 1)...].contains(where: { !blank($0) }) {
+            // The input's lines: the cursor's row, and the lines right above
+            // it up to the topmost that starts with a prompt.
+            var top = c, k = c - 1
+            while k >= 0, !blank(rows[k]), !rule(rows[k]), !boxed(rows[k]) {
+                if prompt(rows[k]) { top = k }
+                k -= 1
+            }
+            pick = rows[..<top].last { !blank($0) && !rule($0) && !boxed($0) }
+        } else {
+            pick = rows[...c].last { !blank($0) }
+        }
+        guard let pick else { return fallback }
+        return lastLine(pick)
+    }
+
+    /// Box-drawing and block characters, which TUIs draw rules and boxes of.
+    private static func boxChar(_ c: Character) -> Bool {
+        c.unicodeScalars.allSatisfy { (0x2500...0x259F).contains($0.value) }
+    }
+
+    /// Characters a box's sides are drawn with.
+    private static let verticals: Set<Character> = ["│", "┃", "║", "╎", "╏", "┆", "┇", "┊", "┋", "┤", "├", "╢", "╟"]
+
+    /// A line of box-drawing characters and spaces only, such as a rule or
+    /// a box's top or bottom.
+    private static func rule(_ s: String) -> Bool {
+        s.contains { !$0.isWhitespace } && s.allSatisfy { $0.isWhitespace || boxChar($0) }
+    }
+
+    /// A line inside a box: it starts and ends with one of its sides.
+    private static func boxed(_ s: String) -> Bool {
+        let t = s.trimmingCharacters(in: .whitespaces)
+        guard t.count >= 2, let first = t.first, let last = t.last else { return false }
+        return verticals.contains(first) && verticals.contains(last)
+    }
+
+    /// Characters an input's prompt starts with.
+    private static let prompts: Set<Character> = [">", "›", "❯", "▌", "»", "▶"]
+
+    /// A line that starts with an input's prompt, after spaces and a box's
+    /// side.
+    private static func prompt(_ s: String) -> Bool {
+        let t = s.drop(while: { $0.isWhitespace || verticals.contains($0) })
+        return t.first.map { prompts.contains($0) } ?? false
     }
 
     /// What a tap opens: this terminal, as a widget's row opens one.

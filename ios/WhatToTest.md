@@ -81,6 +81,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - Add the Rex Go Activity widget to your Home Screen or Lock Screen: it shows what your agents wait for. Tap a row to open its terminal. It updates while Rex Go is open.
 - Leave Rex Go with a terminal open: the Lock Screen and the Dynamic Island show its program's state and last line. It stays connected for about 25 seconds, then shows as paused.
 - Long-press the Dynamic Island while a terminal shows there: the tile now sits on one row with the title and state, not cut off in the top corner.
+- With Claude Code, Codex or another agent running, leave Rex Go: the Lock Screen and Dynamic Island now show what it is doing, or the question it waits on, not its status bar.
 
 ## zh-Hans
 
@@ -154,3 +155,4 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - 把 Rex Go 的「动态」小组件添加到主屏幕或锁定屏幕：它显示智能体在等你处理的事。点一行即可打开对应终端。小组件在 Rex Go 打开时更新。
 - 打开终端时离开 Rex Go：锁定屏幕和灵动岛会显示它的程序状态和最后一行。连接会保持约 25 秒，之后显示为已暂停。
 - 终端显示在灵动岛上时长按它：程序图标现在和标题、状态在同一行，不再被顶部的圆角切掉。
+- 运行 Claude Code、Codex 等智能体时离开 Rex Go：锁定屏幕和灵动岛现在显示它正在做的事或它等你回答的问题，不再显示底部状态栏。
