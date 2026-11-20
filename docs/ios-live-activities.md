@@ -363,7 +363,9 @@ activity, only send alerts; the next foreground fixes it.
   `app-extension`, `com.apple.widgetkit-extension`), bundle id under
   `dev.gorex.ios`, embedded in the app; the attributes type compiled
   into both. It links SwiftUI and WidgetKit only, not GhosttyKit,
-  Tailnet or FluidAudio. **[code]** for what the app links.
+  Tailnet or FluidAudio. **[code]** for what the app links. The Home
+  Screen widgets ([ios-widgets.md](ios-widgets.md)) add this target
+  first, as `GoRexWidgets`.
 - `NSSupportsLiveActivities` in the app's Info.plist; phase 2 also
   `NSSupportsLiveActivitiesFrequentUpdates`.
 - Phase 1 needs no entitlement. From phase 2 the app needs the Push

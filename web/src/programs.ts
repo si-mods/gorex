@@ -1,5 +1,6 @@
 // How a program shows: its name and the tile of its windows. A copy of
-// the iOS app's ProgramTile.swift (itself GoRex's programs.go), drawn in
+// the iOS app's Program table (ios/Shared/Program.swift, itself GoRex's
+// programs.go) and its tiles (ios/Shared/Tile.swift), drawn in
 // CSS. The glyphs are the SVGs of assets/icons and assets/brands, which
 // web/build.mjs copies into dist; a mask paints them in the tile's colour,
 // as iOS draws its template images. The programs' names are theirs (as

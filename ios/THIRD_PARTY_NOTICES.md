@@ -524,7 +524,7 @@ SOFTWARE.
 
 ## Simple Icons (brand marks)
 
-The brand marks of `GoRex/Assets.xcassets/Brands`, on the tiles of window
+The brand marks of `Shared/Brands.xcassets/Brands`, on the tiles of window
 rows, are GoRex's `assets/brands`: Simple Icons, under CC0 1.0 Universal
 (public domain). The trademarks remain their owners'. omp's mark is drawn
 after omp.sh's favicon. https://simpleicons.org
