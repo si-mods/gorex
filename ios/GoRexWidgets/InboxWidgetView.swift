@@ -168,10 +168,11 @@ private struct Row: View {
                         StateMark(item: item)
                     }
                     HStack(spacing: 0) {
-                        // The separator stays when a long host name is cut.
+                        // The separator stays when a long host name is cut;
+                        // no-break spaces, as a Text drops a trailing space.
                         if named {
                             Text(verbatim: host.name).privacySensitive()
-                            Text(verbatim: " · ").fixedSize()
+                            Text(verbatim: "\u{00A0}·\u{00A0}").fixedSize()
                         }
                         Text(item.detail.isEmpty ? item.window : item.detail).privacySensitive()
                         Spacer(minLength: 6)
