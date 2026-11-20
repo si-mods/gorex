@@ -876,6 +876,14 @@ final class Host: Identifiable {
         return [argv0, p["name"] as? String].compactMap { $0 }.first { !$0.isEmpty }
     }
 
+    /// The TCP ports a block's programs listen on, with the processes
+    /// that hold them.
+    func ports(session: String, block: String) async throws -> Ports {
+        let raw = try await live().call("com.superlogical.terminal.ports",
+                                        ["session_id": session, "block_id": block, "args": [String: Any]()]).raw
+        return try Ports(response: raw)
+    }
+
     /// Whether the server supports rev 11+ file uploads.
     var canUpload: Bool {
         (control?.apiRevision ?? 0) >= RexProtocol.uploadRevision
