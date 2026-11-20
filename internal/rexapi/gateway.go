@@ -850,7 +850,7 @@ func (r *clientRecord) canPrompt(rev int) bool {
 	if r.prompting || r.lost || r.conn == nil {
 		return false
 	}
-	if r.info == nil || string(r.info.Kind) != "app" {
+	if r.info == nil || r.info.Kind != "app" {
 		return false
 	}
 	return rev >= promptRevision
