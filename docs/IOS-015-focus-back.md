@@ -8,7 +8,7 @@ metadata:
 
 # IOS-015: Going back to the previous pane
 
-Status: proposal.
+Status: accepted. Not implemented.
 
 This doc adds a Back action to Rex Go. It returns to the pane, tab or session the person viewed before, on this device only. It extends [IOS-005](IOS-005-pane-switching.md) and follows [DOC-001](DOC-001-design-docs.md).
 
@@ -42,6 +42,7 @@ There is no way back. A person who jumps to another session to answer an agent m
 - The walk goes through the panes of this device's places in the order the person viewed them. A place holds a host, a session, a tab and a pane.
 - A place that no longer exists is skipped, and the walk continues. A pane that closed is gone. A tab that closed is gone. A session that ended is gone.
 - Moving to a place opens its host first when the host is not connected. The app shows the host's connecting state as it does for any open.
+- The walk crosses hosts. A place on a host that is away opens that host first.
 - Opening any pane, tab or session records the place the person leaves. Opening the same place twice does not record it twice.
 - A closed pane under the current view records the pane that replaces it, as any change of view does. The person can then go back to the pane before the closed one.
 - The Back button hides in the full-screen terminal when the toolbar hides, and returns with it.
@@ -89,9 +90,3 @@ There is no way back. A person who jumps to another session to answer an agent m
 1. The list, its persistence and the walk.
 2. The Back button, its disabled state and the toolbar behavior.
 3. Host-away places, and the pane-switcher entry if the review keeps it.
-
-## Open questions
-
-1. Is 32 places enough? Options: 16, 32 or 64. The user decides after using it.
-2. Does Back cross hosts, or stay in the current host? Options: across hosts with an open, or current host only. The user decides.
-3. Does a place record the keyboard state or the scroll position? Options: no, or later with a per-place view. The author decides.

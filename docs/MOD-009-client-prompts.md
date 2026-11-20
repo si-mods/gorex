@@ -8,7 +8,7 @@ metadata:
 
 # MOD-009: Questions across GoRex's clients
 
-Status: proposal.
+Status: accepted. Not implemented.
 
 This doc adds a prompt channel to GoRex's own protocol, and the phone's prompt sheet. It is the GoRex-protocol counterpart of [MOD-005](MOD-005-client-prompts.md), which serves Rex's clients. It follows [DOC-001](DOC-001-design-docs.md).
 
@@ -53,7 +53,7 @@ The user pays for it: an action such as "New worktree" runs on the desktop and c
 
 - The server keeps one question, with its options, its deadline and the places that show it. A place is a client connection.
 - The server gives each connection its own call ID. The first answer wins, and every other connection receives `prompt_ended` with `answered`.
-- A connection shows one question at a time. A busy connection is skipped.
+- A connection shows one question at a time. A busy connection is skipped. A reconnecting client is removed from a question that is open.
 - A connection is eligible when its hello lists the prompt capability, it is connected and it shows no other question.
 - The deadline is the one the action asked for, from five minutes by default to one hour at most.
 - The action's own deadline stops while its question is open, then continues with the time it has left.
@@ -106,9 +106,3 @@ The user pays for it: an action such as "New worktree" runs on the desktop and c
 1. The server's registry and protocol, the app's producer and the desktop sheet.
 2. The phone's sheet, with input and pick.
 3. A bridge to the web client through the gateway, in a later doc.
-
-## Open questions
-
-1. Does the phone ever start an action? Options: no, or a palette on the phone that calls `gorex action run` on a host. The user decides.
-2. Does a question survive a client's reconnect? Options: no, the client is removed, or yes, with a new call ID. The author decides.
-3. Is the default timeout five minutes? Options: two, five or ten. The user decides.

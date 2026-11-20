@@ -8,7 +8,7 @@ metadata:
 
 # IOS-014: A pane's listening ports on Rex Go
 
-Status: proposal.
+Status: accepted. Not implemented.
 
 This doc adds a ports view to Rex Go for the open pane. It also adds a way to open a port in the phone's browser. It uses the server data that [MOD-004](MOD-004-terminal-ports.md) built. It extends [IOS-005](IOS-005-pane-switching.md) and follows [DOC-001](DOC-001-design-docs.md).
 
@@ -109,9 +109,3 @@ Rex Go cannot open the port in its browser either. A server that listens on 127.
 2. Opening a reachable port in Safari, and the copy action.
 3. The loopback relay on the host, with its close and its limit.
 4. A later doc: opening a page when the phone has no route to the host.
-
-## Open questions
-
-1. Which host address does `0.0.0.0` use when the app dialed a name with several addresses? The first one that answers, or the one the connection uses. The author decides after a test on a host with a LAN and a tailnet.
-2. Is 10 minutes the right life for a relay? Options: 5, 10 or 30 minutes. The user decides.
-3. Does the relay also bind the built-in Tailscale address, for a phone that has system Tailscale? Options: yes, later, or never. The user decides when someone needs it.
