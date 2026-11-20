@@ -83,17 +83,24 @@ would be drawn twice.
 The desktop app's icon is the same prism. `resources/icon.png` (GoRex) and
 `resources/icon-dev.png` (GoRex Dev) are 1024 px PNGs: the icon's layers
 drawn into the squircle of macOS icons (824 px, inset 100 px) with a soft
-shadow, as `tools/mkicon` drew the panes before. MyGo makes the macOS,
-Windows and Linux icons from them.
+shadow. MyGo makes the macOS, Windows and Linux icons from them.
 
 - GoRex has the Ink background, as Rex Go.
 - GoRex Dev has a violet-to-magenta gradient behind the same prism, so that
   the two read apart in the Dock.
 
+**The prism is solid.** iOS draws the glass, so the prism is a filled shape on
+the Home Screen. A bitmap that copies the layer's 50% opacity shows only its
+edges, a hollow outline, so both renders fill the body: inside the silhouette
+(`prism2.png`'s triangle, inset by the 30 px bevel), a gradient at 78%
+replaces what is there, `#FCFDFF` at the top to `#D6DCEA` at the bottom, and
+`#F6F1FF` to `#C4BAE2` for GoRex Dev. The beam and the fan of light keep
+their pixels, so the light still runs through the glass.
+
 They are renders of the Icon Composer layers, not files a tool in the repo
 writes: when `AppIcon.icon` changes, render them again by hand, as the
-previews. `tools/mkicon` now draws only the web client's icons (`-web`),
-which still show the panes.
+previews, and fill the body as above. `tools/mkicon` now draws only the web
+client's icons (`-web`), which still show the panes.
 
 ## The setting
 
