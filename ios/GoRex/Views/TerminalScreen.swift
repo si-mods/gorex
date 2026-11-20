@@ -16,6 +16,8 @@ struct TerminalScreen: View {
     @Environment(\.scenePhase) private var phase
     /// Whether the stream was left in the background, for a resume.
     @State private var suspended = false
+    /// This screen, as the Live Activity's owner (TerminalLive).
+    @State private var liveOwner = UUID()
     /// What failed last, and why, as the server says it.
     @State private var failure: (title: LocalizedStringKey, why: String)?
     /// The panes asked to close, until the server answers.
@@ -240,7 +242,9 @@ struct TerminalScreen: View {
                 if let keptPanes { keep(keptPanes) }
                 Notifier.shared.onScreen = currentTarget
                 host.see(session: currentTarget.session, block: currentTarget.block)
+                showActivity()
             }
+            .onChange(of: currentTarget) { showActivity() }
             .onDisappear {
                 gone = true
                 ScreenStyle.shared.terminal = nil
@@ -250,7 +254,11 @@ struct TerminalScreen: View {
                 host.see(session: currentTarget.session, block: currentTarget.block)
                 // Every stream closes; the panes kept off the page open
                 // again with the screen.
-                for p in pages { p.session.close() }
+                for p in pages {
+                    p.session.onOutput = nil
+                    p.session.close()
+                }
+                TerminalLive.shared.close(owner: liveOwner)
                 pages.removeAll { $0.session !== session }
                 if Notifier.shared.onScreen == currentTarget { Notifier.shared.onScreen = nil }
             }
@@ -280,12 +288,17 @@ struct TerminalScreen: View {
             .onChange(of: phase) { _, p in
                 // Inactive, as under Control Center or an alert, keeps it.
                 if p == .background {
-                    // A switch still waiting stops; the window's panes suspend.
+                    // A switch still waiting stops; the window's panes stay
+                    // open for a grace, then suspend (TerminalLive).
                     dropIncoming()
                     terminal?.stopDictating()
-                    for pane in pages where !pane.leaving { pane.session.suspend() }
-                    suspended = true
+                    TerminalLive.shared.background {
+                        for pane in pages where !pane.leaving { pane.session.suspend() }
+                        suspended = true
+                    }
                 }
+                // Back within the grace, nothing was suspended.
+                if p == .active { TerminalLive.shared.active() }
                 if p == .active, suspended {
                     for pane in pages where !pane.leaving { pane.session.resume() }
                     suspended = false
@@ -368,6 +381,26 @@ struct TerminalScreen: View {
     /// one in front, else as the row gave it, else its session's name, as
     /// for a new session.
     private var title: String { Self.windowTitle(host: host, target: currentTarget) }
+
+    /// Shows the terminal on the page as the Live Activity (TerminalLive),
+    /// in place of any other; its output updates the line.
+    private func showActivity() {
+        guard let s = session else { return }
+        for p in pages { p.session.onOutput = nil }
+        s.onOutput = { TerminalLive.shared.outputChanged() }
+        let (host, target) = (host, currentTarget)
+        let attributes = TerminalActivity(host: host.id, hostName: TerminalActivity.cut(host.config.name), session: target.session, block: target.block)
+        TerminalLive.shared.show(.init(attributes: attributes, state: { [weak s] away in
+            let b = host.blocks[target.block]
+            return TerminalLive.state(title: Self.windowTitle(host: host, target: target), program: b?.program, records: b?.statuses ?? [],
+                                      seen: b?.seen, away: away, connected: s.map { $0.state == .live && !$0.reconnecting } ?? false)
+        }, readLine: { [weak s] done in
+            s?.output?.readScreen { text, _ in
+                let line = TerminalActivity.lastLine(text)
+                Task { @MainActor in done(line) }
+            }
+        }), owner: liveOwner)
+    }
 
     /// The title of a target's window, as `title` gives it.
     fileprivate static func windowTitle(host: Host, target: TerminalTarget) -> String {

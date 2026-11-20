@@ -1,3 +1,4 @@
+import ActivityKit
 import SwiftUI
 import WidgetKit
 
@@ -7,6 +8,44 @@ import WidgetKit
 struct GoRexWidgets: WidgetBundle {
     var body: some Widget {
         InboxWidget()
+        TerminalActivityWidget()
+    }
+}
+
+/// The terminal open when the app left, on the Lock Screen and in the
+/// Dynamic Island (docs/ios-live-activities.md, Terminal activity); a
+/// tap opens it.
+struct TerminalActivityWidget: Widget {
+    var body: some WidgetConfiguration {
+        ActivityConfiguration(for: TerminalActivity.self) { c in
+            TerminalActivityFace(attributes: c.attributes, state: c.state, stale: c.isStale)
+                .padding(16)
+                .widgetURL(c.attributes.url)
+        } dynamicIsland: { c in
+            let paused = c.state.paused(stale: c.isStale)
+            return DynamicIsland {
+                DynamicIslandExpandedRegion(.leading) {
+                    TerminalActivityTile(state: c.state).opacity(paused ? 0.5 : 1)
+                }
+                DynamicIslandExpandedRegion(.trailing) {
+                    TerminalActivityMark(state: c.state, paused: paused, shell: false)
+                }
+                DynamicIslandExpandedRegion(.center) {
+                    TerminalActivityHeading(attributes: c.attributes, state: c.state).opacity(paused ? 0.5 : 1)
+                }
+                DynamicIslandExpandedRegion(.bottom) {
+                    TerminalActivityLine(state: c.state, paused: paused)
+                }
+            } compactLeading: {
+                TerminalActivityTile(state: c.state, scale: 1).opacity(paused ? 0.5 : 1)
+            } compactTrailing: {
+                TerminalActivityMark(state: c.state, paused: paused)
+            } minimal: {
+                TerminalActivityTile(state: c.state, scale: 1).opacity(paused ? 0.5 : 1)
+            }
+            .widgetURL(c.attributes.url)
+            .keylineTint(TerminalActivity.tint(c.state))
+        }
     }
 }
 

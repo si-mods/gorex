@@ -70,7 +70,8 @@ struct GoRexApp: App {
                         WidgetPublisher.shared.flush()
                     }
                     guard p == .active else { return }
-                    let suspended = HostStore.suspended(since: away)
+                    // A terminal's grace kept the app running past away.
+                    let suspended = HostStore.suspended(since: TerminalLive.shared.grace.awake(since: away))
                     away = nil
                     HotspotShare.shared.handleForeground()
                     Task { await store.foreground(suspended: suspended) { await TailnetEngine.shared.resume() } }

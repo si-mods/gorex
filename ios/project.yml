@@ -87,6 +87,9 @@ targets:
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         GoRexCommit: $(GOREX_COMMIT)
         ITSAppUsesNonExemptEncryption: false
+        # The terminal's Live Activity (docs/ios-live-activities.md), drawn
+        # by GoRexWidgets; local updates only, no push.
+        NSSupportsLiveActivities: true
         UIAppFonts: [JetBrainsMono-Regular.ttf]
         CFBundleLocalizations: [en, zh-Hans]
         UILaunchScreen:
@@ -156,6 +159,8 @@ targets:
       - Shared
       - GoRex/WidgetPublisher.swift
       - GoRexWidgets/InboxWidgetView.swift
+      - GoRexWidgets/TerminalActivityView.swift
+      - GoRex/Terminal/TerminalLive.swift
       - GoRex/Notifier.swift
       - GoRex/Views/TerminalTarget.swift
       - GoRex/Terminal/VTerminal.swift
