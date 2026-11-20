@@ -3,7 +3,7 @@
 
 //go:build js && wasm
 
-// The web client's tailnet engine (docs/web-tailscale.md): a Tailscale node
+// The web client's tailnet engine (docs/WEB-002-tailscale.md): a Tailscale node
 // compiled to WebAssembly that runs in the page, and reaches GoRex
 // gateways over its own userspace network stack. It starts from
 // tailscale.com/cmd/tsconnect/wasm (BSD-3-Clause), without SSH, LocalAPI,
@@ -83,7 +83,7 @@ func (s *persistStore) WriteState(id ipn.StateKey, bs []byte) error {
 }
 
 // node is one Tailscale device of the page, persistent ("Stay signed in")
-// or ephemeral ("This tab only") (docs/web-tailscale.md, State).
+// or ephemeral ("This tab only") (docs/WEB-002-tailscale.md, State).
 type node struct {
 	lb       *ipnlocal.LocalBackend
 	dialer   *tsdial.Dialer
