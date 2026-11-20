@@ -51,6 +51,7 @@ Rules an agent cannot read from the code. Keep each line one that prevents a rea
 - Pushes to main that touch `ios/**`, `internal/tailnode/**`, `go.mod` or `go.sum` upload the app (`.github/workflows/testflight.yml`, on the Mac mini's self-hosted runner; with it off, the run waits). Do not upload by hand; read the build from the run's summary ("Uploaded Rex Go X.Y (n)").
 - A squash merge whose message contains `[skip ci]` starts no run. Start one with `gh workflow run testflight.yml -R si-mods/gorex`.
 - A PR that changes what a tester sees adds a bullet (≤ 200 characters) in their terms to each locale of `ios/WhatToTest.md`; CI checks it (`ios/scripts/test-notes check`).
+- The TestFlight and Apple Developer Portal procedures live in the private `ios-dev` plugin (`/plugin install ios-dev@proem`), not in this repo: `asc-testflight`, `testflight-crashes`, `asc-devportal-identifiers`.
 
 ## Maintenance
 
