@@ -10,7 +10,7 @@ struct StatusInbox: View {
     @Environment(HostStore.self) private var store
 
     var body: some View {
-        let groups = Inbox.groups(store.hosts.flatMap(\.inbox).filter { $0.matches(query) })
+        let groups = Inbox.groups(store.hosts.flatMap { $0.inbox(matching: query) })
         // Hosts not online may need the user too: the inbox can't tell.
         let away = store.hosts.filter { $0.status != .online }
         if groups.isEmpty && away.isEmpty && !store.hosts.isEmpty {
@@ -59,13 +59,15 @@ struct StatusInbox: View {
             if !isCollapsed {
                 VStack(spacing: 12) {
                     ForEach(items) { item in
-                        Button {
-                            open(TerminalTarget(host: item.host, session: item.session, block: item.block, title: item.title, explicit: true))
-                        } label: {
-                            StatusRow(item: item, now: now)
+                        if let host = store.hosts.first(where: { $0.id == item.host }) {
+                            Button {
+                                open(TerminalTarget(host: item.host, session: item.session, block: item.block, title: host.title(item.window), explicit: true))
+                            } label: {
+                                StatusRow(host: host, item: item, now: now)
+                            }
+                            .buttonStyle(.plain)
+                            .hoverEffect(.highlight)
                         }
-                        .buttonStyle(.plain)
-                        .hoverEffect(.highlight)
                     }
                 }
             }
@@ -78,10 +80,15 @@ struct StatusInbox: View {
 }
 
 /// A window in the inbox: its program's tile, what its program tells, and
-/// how long ago.
+/// how long ago. It reads its own block's title and program, so a title
+/// that changes redraws this row only.
 private struct StatusRow: View {
+    let host: Host
     let item: InboxItem
     let now: Date
+
+    private var title: String { host.title(item.window) }
+    private var detail: String { item.detail(title: title) }
 
     var body: some View {
         HStack(spacing: 14) {
@@ -90,7 +97,7 @@ private struct StatusRow: View {
                 .scaleEffect(1.4)
                 .tileBounce(state: item.status.state)
                 .frame(width: 44, height: 44)
-            if item.detail.isEmpty {
+            if detail.isEmpty {
                 HStack(spacing: 8) {
                     headingText
                     Spacer(minLength: 4)
@@ -107,7 +114,7 @@ private struct StatusRow: View {
                         mark
                     }
                     HStack(spacing: 8) {
-                        Text(item.detail.asText).foregroundStyle(.secondary).lineLimit(1)
+                        Text(detail.asText).foregroundStyle(.secondary).lineLimit(1)
                         Spacer(minLength: 4)
                         agoText
                     }
@@ -125,7 +132,8 @@ private struct StatusRow: View {
     }
 
     private var headingText: some View {
-        Text(item.heading.isEmpty ? " " : item.heading.asText)
+        let heading = item.heading(title: title)
+        return Text(heading.isEmpty ? " " : heading.asText)
             .font(.body.weight(.medium))
             .lineLimit(1)
     }
@@ -141,7 +149,7 @@ private struct StatusRow: View {
     /// The program the record names when it is one known, else the block's.
     private var tile: Program {
         if let app = item.status.app, let p = Program.programs[app.lowercased()] { return p }
-        return .of(item.program)
+        return .of(host.blocks[item.block]?.program)
     }
 
     /// As the desktop's dot: the progress or the dots of work while
