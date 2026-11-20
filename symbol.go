@@ -24,6 +24,7 @@ var sfSymbols = map[string]string{
 	"cpu":                       "cpu",
 	"diff":                      "plus.forwardslash.minus",
 	"file-code":                 "doc.text",
+	"folder":                    "folder.fill",
 	"git-branch":                "arrow.triangle.branch",
 	"globe":                     "globe",
 	"info":                      "info.circle",
