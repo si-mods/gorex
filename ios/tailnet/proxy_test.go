@@ -106,7 +106,7 @@ func TestProxy(t *testing.T) {
 	}()
 	var dialed []string
 	p, err := startProxy(func(ctx context.Context, addr string) (net.Conn, error) {
-		return dialTailnet(ctx, func(context.Context) (*ipnstate.Status, error) { return tailnet("Running"), nil },
+		return dialTailnet(ctx, nil, func(context.Context) (*ipnstate.Status, error) { return tailnet("Running"), nil },
 			func(ctx context.Context, network, addr string) (net.Conn, error) {
 				dialed = append(dialed, addr)
 				return new(net.Dialer).DialContext(ctx, network, echo.Addr().String())

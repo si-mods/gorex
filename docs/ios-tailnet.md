@@ -150,7 +150,10 @@ loopback, user `tsnet` and a random password per process, so another app on
 the phone can't use it. It dials only the tailnet's devices: it takes
 the target's MagicDNS name (full or short) or address, looks it up among
 the node's current peers, and dials that peer's Tailscale address
-through the node. Anything else is refused: an unknown name, an address
+through the node. The status it looks in is kept between dials while a
+watch of the IPN bus (`Node.WatchPeers`) runs, and forgotten at each
+change of state, of self, or of a peer added, replaced or removed; a
+name it lacks is looked up in a new status. Anything else is refused: an unknown name, an address
 off the tailnet, or any address before the network map arrives. TLS is
 end to end: `URLSession` still verifies the gateway's `*.ts.net`
 certificate.

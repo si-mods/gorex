@@ -148,7 +148,16 @@ final class TailnetEngine {
                 // opens new sockets.
                 self.log.error("reset: \(error.localizedDescription, privacy: .public)")
             }
+            // The tailcat proxy may be new too. Read again here, off the
+            // main actor: tailcatProxyNow() would read it on the main
+            // actor, a check of the old one included, at the next
+            // session(). A session() meanwhile reads it as before.
+            let hadTailcat = self.tailcatProxy != nil
             self.tailcatProxy = nil
+            if hadTailcat {
+                let p = await Task.detached { try? Self.readProxy(run: 0) }.value
+                if self.tailcatProxy == nil { self.tailcatProxy = p }
+            }
             if TailnetSettings.isOn && self.proxy == nil && !started { await self.applyNow() }
         }
         return kept
