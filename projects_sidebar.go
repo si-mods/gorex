@@ -224,11 +224,12 @@ func (a *App) newNoProjectTab(h *hostConn) {
 	a.newTabOn(h, dir)
 }
 
-// projectRow is a project's row, flush with the host's header: the
-// chevron of its state (none with no tab), its name and its tabs' count; under the pointer and while it is shown, the + that
-// opens a tab in it in place of the count. Its folder shows in its tooltip and, shown, in the title
-// bar. A click shows it, and on the project shown opens or closes its
-// tabs. A host's offline copy shows greyed, and opens nothing.
+// projectRow is a project's row, flush with the host's header: its folder
+// tile, its name, the chevron of its state (none with no tab) and its
+// tabs' count; under the pointer and while it is shown, the + that opens a
+// tab in it in place of the count. Its folder shows in the title bar while
+// it is shown. A click shows it, and on the project shown opens or closes
+// its tabs. A host's offline copy shows greyed, and opens nothing.
 func (a *App) projectRow(c *ui.Context, k *colors, w *Workspace, reserve float32) {
 	key := openKey(w.host, w.ID)
 	shown := w == a.ws
@@ -268,17 +269,18 @@ func (a *App) projectRow(c *ui.Context, k *colors, w *Workspace, reserve float32
 		// The project's folder tile stands over its tabs' tiles, and its name
 		// over their titles.
 		leadRoom(c, reserve, projectRowH).Children(func() { projectFolderTile(c, k, w.Color) })
-		if shown && a.wsRenaming {
+		renaming := shown && a.wsRenaming
+		if renaming {
 			a.workspaceRenameField(c, k, w.Name)
-			return
-		}
-		weight := 500
-		if shown {
-			weight = 600
-		}
-		ui.Text(c, name).FontSize(fontBody).FontWeight(weight).TextColor(k.text.Alpha(0.85)).SingleLine().Ellipsis("…").Grow(1).MinWidth(0)
-		if s := a.st.status(w); needsUser(s) {
-			statusDot(c, k, s, 7).Label(statusTip(s))
+		} else {
+			weight := 500
+			if shown {
+				weight = 600
+			}
+			ui.Text(c, name).FontSize(fontBody).FontWeight(weight).TextColor(k.text.Alpha(0.85)).SingleLine().Ellipsis("…").Grow(1).MinWidth(0)
+			if s := a.st.status(w); needsUser(s) {
+				statusDot(c, k, s, 7).Label(statusTip(s))
+			}
 		}
 		// The chevron, before the count or the +, opens and closes the tabs
 		// of any project, as a click on the row of the one shown does. A
@@ -287,6 +289,9 @@ func (a *App) projectRow(c *ui.Context, k *colors, w *Workspace, reserve float32
 			fold := disclosureChevron(c.Key("fold"), k, open, projectRowH).
 				Cursor(ui.CursorPointer).Role(ui.RoleDisclosure).Expanded(open).Label(locales.ProjectsTabsOf(name))
 			toggled = fold.Clicked()
+		}
+		if renaming {
+			return
 		}
 		if !offline && (hovered || shown) {
 			label := locales.ProjectsNewTabIn(name)

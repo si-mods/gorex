@@ -348,10 +348,12 @@ func (a *App) sidebarTab(c *ui.Context, k *colors, i int, t *Tab, reserve float3
 		Role(ui.RoleTab).Selected(active)
 	name, detail := t.label()
 	e.Label(name + " " + detail)
-	if active && lifted {
-		liftedPill(e, k, sideRowH)
-	} else if active {
-		glassPill(e, k, sideRowH)
+	if active {
+		if lifted {
+			liftedPill(e, k, sideRowH)
+		} else {
+			glassPill(e, k, sideRowH)
+		}
 		// A tab chosen otherwise than in the list, as by its keys, scrolls
 		// into view, once: the list scrolls freely after.
 		if a.revealed != t {

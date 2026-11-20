@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -1066,5 +1067,47 @@ func TestSidebarCurrentProjectGroup(t *testing.T) {
 	}
 	if nameOpen.X != nameShut.X {
 		t.Errorf("the face moved the name: x %v open, %v closed", nameOpen.X, nameShut.X)
+	}
+}
+
+// TestSidebarRevealsActiveTabOnProjectFace: a tab of the project shown,
+// chosen by keys while it is out of the list's view, scrolls into view, on
+// the project's face as off it (#907: the lifted pill skipped the reveal).
+func TestSidebarRevealsActiveTabOnProjectFace(t *testing.T) {
+	a, tt, _, _ := projectsApp(t)
+	space := ""
+	res := clientCommand(a, rex.LayoutCommand{Op: "project.create", Dir: appTempDir(t, a), Name: "acme-api", SpaceName: &space})
+	caughtUp(t, a, tt)
+	w := a.st.byID(res.Space)
+	a.showWorkspace(w)
+	waitFor(t, tt, "the project's tab", func() bool { return a.ws == w && len(a.tabs) == 1 && a.tabs[0].Focus != nil })
+	for len(a.tabs) < 24 {
+		n := len(a.tabs)
+		a.newTab(w.Dir)
+		waitFor(t, tt, "another tab", func() bool { return len(a.tabs) == n+1 })
+	}
+	for i, tab := range a.tabs {
+		tab.Name = "tab " + strconv.Itoa(100+i)
+	}
+	setRowOpen(openKey(nil, w.ID), true)
+	a.selectTab(0)
+	tt.Frame()
+	tt.Advance(time.Second)
+	tt.Frame()
+	last := a.tabs[len(a.tabs)-1]
+	name, detail := last.label()
+	before, ok := tt.Find(name + " " + detail)
+	edge, _ := tt.Find("Sidebar Edge")
+	edgeH := edge.Y + edge.H
+	if !ok || before.Y < edgeH {
+		t.Skipf("the last tab is in view without scrolling (%+v, %v high): no overflow to test", before, edgeH)
+	}
+	a.selectTab(len(a.tabs) - 1)
+	tt.Frame()
+	tt.Advance(time.Second)
+	tt.Frame()
+	after, ok := tt.Find(name + " " + detail)
+	if !ok || after.Y+after.H > edgeH || after.Y >= before.Y {
+		t.Errorf("the active tab at %+v after choosing it (%+v before), the window %v high: not scrolled into view", after, before, edgeH)
 	}
 }
