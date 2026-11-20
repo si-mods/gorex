@@ -821,8 +821,8 @@ struct ProjectRow: View {
     var body: some View {
         HStack(spacing: 14) {
             FolderTile(color: color).frame(width: tiles, height: 16 * ProgramTiles.scale + 4, alignment: .leading)
-            // A narrow sidebar shrinks a long name a little before it cuts it.
-            Text(verbatim: name).font(.body.weight(.semibold)).lineLimit(1).minimumScaleFactor(0.7)
+            // A narrow sidebar wraps a long name to a second line, not cuts it.
+            Text(verbatim: name).font(.body.weight(.semibold)).lineLimit(2)
             Spacer(minLength: 8)
             if busy { ProgressView() }
             // Before the count, always shown; a project with no tab has none.
