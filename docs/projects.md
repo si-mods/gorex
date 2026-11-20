@@ -259,7 +259,7 @@ The sidebar on the left, space Work, three hosts:
 │ OLD-LAPTOP  ○ offline         │                                          │
 │ [▤] site (grey)           › 1 │                                          │
 ├───────────────────────────────┤                                          │
-│ ⚙   +  New Project…           │                                          │
+│ ⚙  [+F]                   [H] │                                          │
 └───────────────────────────────┴──────────────────────────────────────────┘
 ```
 
@@ -272,6 +272,7 @@ from `assets/icons/` (`DESIGN.md`), never the character:
 | `[F]` | `folder` |
 | `[▤]` | a project's folder tile in the desktop's sidebar: a tile of a tab's size and corners, neutral, with a `folder` in it |
 | `⌄` `›` | `chevron-down`, turned a quarter to the left when collapsed |
+| `[+F]` | `folder-plus`: New Project… at the sidebar's foot, an icon as the settings' is, its name in its tooltip |
 | `[S]` | `search` |
 | `+` | `plus` |
 | `▾` `▸` `⌄` `›` | `chevron-down`, `chevron-right` |

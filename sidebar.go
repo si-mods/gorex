@@ -278,18 +278,12 @@ func (a *App) sidebar(c *ui.Context, k *colors, right bool) {
 			if iconButton(c, k, "settings-2", locales.SidebarSettings(), 30, 16).Tooltip(tip(locales.SidebarSettings(), &cmdSettings)).Clicked() {
 				a.openSettings()
 			}
-			np := ui.Row(c.Key("new-project")).Height(30).Padding(0, 8).Gap(8).Radius(pillRadius(30, radiusM)).AlignItems(ui.Center).Cursor(ui.CursorPointer).
-				Role(ui.RoleButton).Label(cmdNewProject.Title()).Tooltip(tip(cmdNewProject.Title(), &cmdNewProject)).Grow(1).MinWidth(0)
-			if np.Hovered() {
-				np.Background(hoverFace(k))
-			}
-			if np.Clicked() {
+			// New Project is an icon as the settings' is, its name in its
+			// tooltip: a host's header has its + too, and ⇧⌘N.
+			if iconButton(c, k, "folder-plus", cmdNewProject.Title(), 30, 16).Tooltip(tip(cmdNewProject.Title(), &cmdNewProject)).Clicked() {
 				a.later(c, a.openNewProject)
 			}
-			np.Children(func() {
-				glyphIcon(c, "folder-plus", 15, k.textMuted).Shrink(0)
-				ui.Text(c, cmdNewProject.Title()).FontSize(fontCallout).TextColor(k.textMuted).SingleLine().Ellipsis("…").MinWidth(0)
-			})
+			ui.Spacer(c)
 			a.hostButton(c, k)
 		})
 	})
