@@ -24,6 +24,12 @@ var (
 	safetyEvery = 30 * time.Second
 	// settle is how long a burst of changes waits before one read.
 	settle = 20 * time.Millisecond
+	// factsWait is how long after a sessions event the gateway reads the
+	// layout for the facts Server.refresh stamped (refreshWait plus a
+	// margin): the stamp sends no layout event, so the read is timed to
+	// land after it. The server arms its refreshWait timer before it
+	// sends the event, so the margin only covers the stamp's own run.
+	factsWait = 1200 * time.Millisecond
 	// helloWait is how long a control or data connection may take to
 	// send its hello.
 	helloWait = 5 * time.Second
@@ -117,6 +123,25 @@ type Gateway struct {
 	// so that changes reach connections in the order they were read.
 	refreshMu sync.Mutex
 	mapper    *mapper
+
+	// seq counts the publishes; changed is closed and replaced under mu
+	// on each of them, so a waiter blocks on the channel for the next
+	// one. ready tells the first publish happened; dead tells pump left,
+	// the client connection gone. waiters counts the afterCommand waits
+	// in flight, so pump reads a layout event at once instead of after
+	// settle. layoutReads counts the layout reads over the socket; tests
+	// read it.
+	seq         atomic.Uint64
+	ready       atomic.Bool
+	dead        atomic.Bool
+	waiters     atomic.Int32
+	layoutReads atomic.Int64
+	// factsArmed tells the facts timer runs; factsReads counts the layout
+	// reads it made. Tests read both.
+	factsArmed atomic.Bool
+	factsReads atomic.Int64
+	changed    chan struct{}
+	subscribed bool
 
 	// stopMu guards stopping, which tells that server.stop began: the
 	// server stops once. shutdown asks the GoRex server to stop, as the
@@ -237,6 +262,7 @@ func New(opt Options) (*Gateway, error) {
 		generation:     1,
 		canLock:        hello.Keepalive > 0 && hello.Conn != "",
 		done:           make(chan struct{}),
+		changed:        make(chan struct{}),
 	}
 	if opt.TailnetDir != "" {
 		g.lan = newLANListener(g, opt.TailnetDir)
@@ -244,6 +270,10 @@ func New(opt Options) (*Gateway, error) {
 		g.tailnet = newTailnet(g, opt.TailnetDir, newTsnetNode)
 		g.tailnet.serve = g.serveOn
 	}
+	// Subscribe before pump starts so a layout event cannot land between
+	// the connection's hello and the subscription, where it would be lost
+	// until the safety read.
+	g.subscribed = opt.Client.Subscribe() == nil
 	g.wg.Add(1)
 	go g.pump()
 	g.wg.Add(1)
@@ -281,18 +311,27 @@ func (g *Gateway) Close() error {
 }
 
 // pump reads the layout as the server tells of changes, or polls it from
-// a server that tells of none.
+// a server that tells of none. It is the model's only builder but for the
+// synchronous rebuild a gateway-local change takes: every publish comes
+// from here or from rebuild, both under refreshMu.
 func (g *Gateway) pump() {
 	defer g.wg.Done()
-	subscribed := g.opt.Client.Subscribe() == nil
+	defer g.dead.Store(true)
+	subscribed := g.subscribed
 	every := pollEvery
 	if subscribed {
 		every = safetyEvery
 	}
+	g.reread(true)
 	ticker := time.NewTicker(every)
 	defer ticker.Stop()
 	var burst *time.Timer
 	var due <-chan time.Time
+	// facts is armed on a sessions event and reads the layout once for
+	// the stamp Server.refresh writes refreshWait later, which no layout
+	// event announces.
+	var facts *time.Timer
+	var factsDue <-chan time.Time
 	layout := false // a layout event came in the burst
 	for {
 		select {
@@ -307,6 +346,23 @@ func (g *Gateway) pump() {
 				continue
 			}
 			layout = layout || ev.Kind == "layout"
+			if ev.Kind == "sessions" && facts == nil {
+				facts = time.NewTimer(factsWait)
+				factsDue = facts.C
+				g.factsArmed.Store(true)
+			}
+			if layout && g.waiters.Load() > 0 {
+				// A write's afterCommand waits on the publish: read the
+				// change now rather than after the settle burst.
+				if burst != nil {
+					burst.Stop()
+					burst = nil
+					due = nil
+				}
+				g.reread(true)
+				layout = false
+				continue
+			}
 			if subscribed && burst == nil {
 				burst = time.NewTimer(settle)
 				due = burst.C
@@ -315,30 +371,34 @@ func (g *Gateway) pump() {
 			burst = nil
 			g.reread(layout)
 			layout = false
+		case <-factsDue:
+			facts = nil
+			factsDue = nil
+			g.reread(true)
+			g.factsReads.Add(1)
+			g.factsArmed.Store(false)
 		case <-ticker.C:
-			g.refresh()
+			g.reread(true)
 		case <-g.opt.Client.Closed():
 			return
 		}
 	}
 }
 
-// current reads the layout and returns the model as it is now.
-func (g *Gateway) current() (*model, error) {
-	return g.refresh()
-}
+// rebuild installs a model built on the layout as last read: for a
+// change the layout events cannot announce, of the gateway's own owners
+// and attachments. The caller answers from the model it returns.
+func (g *Gateway) rebuild() (*model, error) { return g.reread(false) }
 
-// refresh reads the layout, builds the model, tells the connections what
-// changed, and returns the new model. A read that fails leaves the last
+// reread builds and publishes the model, reading the layout over the
+// socket only when layout says it changed (or none was read yet), and
+// tells the connections what changed. A read that fails leaves the last
 // model in place.
-func (g *Gateway) refresh() (*model, error) { return g.reread(true) }
-
-// reread is refresh, which reads the layout again only when layout says
-// it changed: a change of the sessions alone leaves it.
 func (g *Gateway) reread(layout bool) (*model, error) {
 	g.refreshMu.Lock()
 	defer g.refreshMu.Unlock()
 	if layout || g.raw == nil {
+		g.layoutReads.Add(1)
 		raw, err := g.opt.Client.Layout()
 		if err != nil {
 			return g.modelNow(), err
@@ -355,11 +415,15 @@ func (g *Gateway) reread(layout bool) (*model, error) {
 	g.pruneOwners(m)
 	g.pruneAttachments(m)
 	old := g.model.Swap(m)
+	g.seq.Add(1)
+	g.ready.Store(true)
 	g.mu.Lock()
 	conns := make([]*control, 0, len(g.conns))
 	for c := range g.conns {
 		conns = append(conns, c)
 	}
+	close(g.changed)
+	g.changed = make(chan struct{})
 	g.mu.Unlock()
 	if old != nil {
 		events := diffModels(old, m)
@@ -369,6 +433,75 @@ func (g *Gateway) reread(layout bool) (*model, error) {
 	}
 	g.watchBlocks(m)
 	return m, nil
+}
+
+// changeWait returns the channel the next publish closes.
+func (g *Gateway) changeWait() <-chan struct{} {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return g.changed
+}
+
+// waitModel returns the first published model that shows true, checking
+// modelNow first. It reports false on the deadline, on g.done, or when
+// pump left on a closed client connection.
+func (g *Gateway) waitModel(shows func(*model) bool, deadline time.Time) (*model, bool) {
+	for {
+		// Take the channel before the model: a publish swaps the model
+		// before it closes the channel, so one that lands between the two
+		// reads closes this channel, and the wait below does not miss it.
+		ch := g.changeWait()
+		m := g.modelNow()
+		if m != nil && (shows == nil || shows(m)) {
+			return m, true
+		}
+		if g.gone() || !time.Now().Before(deadline) {
+			return m, false
+		}
+		timer := time.NewTimer(time.Until(deadline))
+		g.waiters.Add(1)
+		select {
+		case <-ch:
+		case <-g.done:
+		case <-g.opt.Client.Closed():
+		case <-timer.C:
+		}
+		timer.Stop()
+		g.waiters.Add(-1)
+	}
+}
+
+// modelReq is modelNow for a request: it waits out the first publish and
+// fails when pump is gone, where a per-request read of the layout failed
+// before the model was publish-driven.
+func (g *Gateway) modelReq() (*model, *apiError) {
+	// A model published before the connection went is stale from then
+	// on: no event can tell of a change any more.
+	if g.gone() {
+		return g.modelNow(), errInternal("reading the layout: the GoRex server is gone")
+	}
+	m, ok := g.waitModel(func(*model) bool { return g.ready.Load() }, time.Now().Add(commandWait))
+	if ok {
+		return m, nil
+	}
+	if g.gone() {
+		return m, errInternal("reading the layout: the GoRex server is gone")
+	}
+	return m, errInternal("the gateway is not ready yet")
+}
+
+// gone tells that the client connection is lost: pump left, or leaves as
+// soon as it sees the connection closed.
+func (g *Gateway) gone() bool {
+	if g.dead.Load() {
+		return true
+	}
+	select {
+	case <-g.opt.Client.Closed():
+		return true
+	default:
+		return false
+	}
 }
 
 // listSessions reads the session list, under refreshMu, when it changed
@@ -591,7 +724,7 @@ func (g *Gateway) resumeControl(c *control, token string) (*clientRecord, bool) 
 	g.rotateToken(rec)
 	g.emitOwnerChanges(g.restoreBlocks(rec))
 	g.emitConnectionState(rec, rec.attachedList(), "connected", time.Time{})
-	g.refresh()
+	g.rebuild()
 	return rec, true
 }
 
@@ -643,7 +776,7 @@ func (g *Gateway) dropControl(c *control, clean bool) {
 		rec.mu.Unlock()
 		g.emitOwnerChanges(g.releaseBlocks(rec, "lost"))
 		g.emitConnectionState(rec, attached, "lost", lostAt)
-		g.refresh()
+		g.rebuild()
 		return
 	}
 	rec.gone = true

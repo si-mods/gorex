@@ -1,6 +1,7 @@
 package rexapi
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"net"
@@ -148,9 +149,21 @@ func (f *fixture) setLayout(store layout.Store) {
 	if err != nil {
 		f.t.Fatal(err)
 	}
+	// After the first publish, so that read cannot see the new layout
+	// and leave the read its layout event asks for still due.
+	waitFor(f.t, "the first publish", func() bool { return f.g.ready.Load() })
 	if err := f.desk.SetLayout(raw); err != nil {
 		f.t.Fatal(err)
 	}
+	want, err := f.desk.Layout()
+	if err != nil {
+		f.t.Fatal(err)
+	}
+	waitFor(f.t, "the gateway to publish the layout", func() bool {
+		f.g.refreshMu.Lock()
+		defer f.g.refreshMu.Unlock()
+		return bytes.Equal(f.g.raw, want)
+	})
 }
 
 // dial opens a WebSocket to a path on the gateway.

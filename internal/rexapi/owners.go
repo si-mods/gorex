@@ -458,6 +458,10 @@ func (g *Gateway) renewOwned() {
 	g.ownMu.Unlock()
 	sort.Slice(changes, func(i, j int) bool { return changes[i].block < changes[j].block })
 	g.emitOwnerChanges(changes)
+	if len(changes) > 0 {
+		// Owners feed the model and no layout event announces them.
+		g.rebuild()
+	}
 }
 
 // takeOnInput gives a block back to a client that types into it, when the
@@ -474,6 +478,7 @@ func (g *Gateway) takeOnInput(rec *clientRecord, s *mSession, b *mBlock) {
 	}
 	_, changes := g.claimBlocks(rec, s, []string{b.id}, "take", "input")
 	g.emitOwnerChanges(changes)
+	g.rebuild()
 }
 
 // pruneOwners forgets the blocks a model no longer has, and the locks of

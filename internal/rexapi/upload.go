@@ -188,9 +188,9 @@ func (g *Gateway) handleUpload(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnsupportedMediaType, fmt.Sprintf("an upload's Content-Encoding is deflate-raw or none, not %q", enc))
 		return
 	}
-	m, err := g.current()
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, fmt.Sprintf("reading the layout: %v", err))
+	m, aerr := g.modelReq()
+	if aerr != nil {
+		writeError(w, aerr.Status, aerr.Message)
 		return
 	}
 	b := m.blockByID(q.Get("block_id"))

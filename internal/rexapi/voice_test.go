@@ -26,9 +26,9 @@ func TestVoice(t *testing.T) {
 	if slices.Contains(features, any("gorex.voice")) {
 		t.Fatalf("welcome features: %v", c.welcome["features"])
 	}
-	m, err := f.g.current()
-	if err != nil {
-		t.Fatal(err)
+	m, aerr := f.g.modelReq()
+	if aerr != nil {
+		t.Fatal(aerr)
 	}
 	sid := m.blockByID(block).sid
 	ws := f.dial("/api/voice?block_id=" + block)
@@ -57,9 +57,9 @@ func TestVoice(t *testing.T) {
 func TestVoiceEndedOnTheHost(t *testing.T) {
 	f := startFixture(t)
 	_, _, block := f.sessionWith(t, rex.CreateOptions{Command: []string{"/bin/sh", "-i"}})
-	m, err := f.g.current()
-	if err != nil {
-		t.Fatal(err)
+	m, aerr := f.g.modelReq()
+	if aerr != nil {
+		t.Fatal(aerr)
 	}
 	sid := m.blockByID(block).sid
 	ws := f.dial("/api/voice?block_id=" + block)

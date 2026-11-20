@@ -234,9 +234,9 @@ func (c *control) sessionArg(a args) (*mSession, *apiError) {
 	if aerr != nil {
 		return nil, aerr
 	}
-	m, err := c.g.current()
-	if err != nil {
-		return nil, errInternal("reading the layout: %v", err)
+	m, aerr := c.g.modelReq()
+	if aerr != nil {
+		return nil, aerr
 	}
 	s := m.byID[id]
 	if s == nil {
@@ -360,9 +360,6 @@ type configResult struct {
 
 func (g *Gateway) status(transport string) statusResult {
 	m := g.modelNow()
-	if fresh, err := g.current(); err == nil {
-		m = fresh
-	}
 	generation, hash, _ := g.keymapSettings()
 	return statusResult{
 		PID:          os.Getpid(),
@@ -411,9 +408,9 @@ type sessionsResult struct {
 }
 
 func methodSessionList(c *control, _ args) (any, *apiError) {
-	m, err := c.g.current()
-	if err != nil {
-		return nil, errInternal("reading the layout: %v", err)
+	m, aerr := c.g.modelReq()
+	if aerr != nil {
+		return nil, aerr
 	}
 	return sessionsResult{Sessions: m.list()}, nil
 }
@@ -429,9 +426,9 @@ func methodSessionAttach(c *control, a args) (any, *apiError) {
 	if aerr != nil {
 		return nil, aerr
 	}
-	m, err := c.g.current()
-	if err != nil {
-		return nil, errInternal("reading the layout: %v", err)
+	m, aerr := c.g.modelReq()
+	if aerr != nil {
+		return nil, aerr
 	}
 	s := m.byID[sid]
 	if s == nil {
@@ -451,9 +448,9 @@ func methodSessionAttachAll(c *control, a args) (any, *apiError) {
 	if aerr := checkScope(scope); aerr != nil {
 		return nil, aerr
 	}
-	m, err := c.g.current()
-	if err != nil {
-		return nil, errInternal("reading the layout: %v", err)
+	m, aerr := c.g.modelReq()
+	if aerr != nil {
+		return nil, aerr
 	}
 	c.rec.setAll(scope)
 	return sessionsResult{Sessions: m.list()}, nil
@@ -636,9 +633,9 @@ func methodSessionBootstrap(c *control, a args) (any, *apiError) {
 	if aerr != nil {
 		return nil, aerr
 	}
-	m, err := c.g.current()
-	if err != nil {
-		return nil, errInternal("reading the layout: %v", err)
+	m, aerr := c.g.modelReq()
+	if aerr != nil {
+		return nil, aerr
 	}
 	c.rec.setAll(scope)
 	res := bootstrapResult{
@@ -695,9 +692,9 @@ func methodSessionView(c *control, a args) (any, *apiError) {
 	if aerr != nil {
 		return nil, aerr
 	}
-	m, err := c.g.current()
-	if err != nil {
-		return nil, errInternal("reading the layout: %v", err)
+	m, aerr := c.g.modelReq()
+	if aerr != nil {
+		return nil, aerr
 	}
 	s := m.byID[sid]
 	if s == nil {
@@ -840,9 +837,9 @@ func methodDataConnect(c *control, a args) (any, *apiError) {
 	if subprotocol != "" && !wellFormedRef(subprotocol) {
 		return nil, errBadRequest("subprotocol is malformed")
 	}
-	m, err := c.g.current()
-	if err != nil {
-		return nil, errInternal("reading the layout: %v", err)
+	m, aerr := c.g.modelReq()
+	if aerr != nil {
+		return nil, aerr
 	}
 	s := m.byID[sid]
 	if s == nil {

@@ -383,7 +383,9 @@ func methodServerStop(c *control, a args) (any, *apiError) {
 		if !g.hello.Can(rex.CapabilityShutdownIfIdle) {
 			return refuse(errNotSupported("the GoRex server can't check that it is idle"))
 		}
-		m, merr := g.current()
+		// Idleness needs the layout as it is now, not the last snapshot:
+		// a block opened a moment ago must count.
+		m, merr := g.reread(true)
 		if merr != nil {
 			return refuse(errInternal("server.stop could not read the layout: %v", merr))
 		}

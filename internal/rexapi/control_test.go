@@ -261,7 +261,7 @@ func TestStalledClientHoldsNoOne(t *testing.T) {
 	stalled.queued = eventBacklog
 	stalled.mu.Unlock()
 	f.setLayout(layoutWithTabName(t, "work", "renamed"))
-	go f.g.refresh()
+	go f.g.rebuild()
 	select {
 	case <-stalled.done:
 	case <-time.After(5 * time.Second):

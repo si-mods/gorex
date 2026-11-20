@@ -96,9 +96,18 @@ func TestPeerListsAndMirrors(t *testing.T) {
 	}
 	defer peer.Close()
 
-	sessions, err := peer.Sessions(ctx)
-	if err != nil || len(sessions) != 1 || sessions[0].Label != "work" {
-		t.Fatalf("sessions %v %v", sessions, err)
+	// The gateway publishes the layout a moment after the server's event,
+	// so the list shows the session once that publish landed.
+	var sessions []Session
+	for wait := time.Now().Add(10 * time.Second); ; {
+		sessions, err = peer.Sessions(ctx)
+		if err == nil && len(sessions) == 1 && sessions[0].Label == "work" {
+			break
+		}
+		if time.Now().After(wait) {
+			t.Fatalf("sessions %v %v", sessions, err)
+		}
+		time.Sleep(20 * time.Millisecond)
 	}
 	sid := sessions[0].SessionID
 	view, err := peer.Attach(ctx, sid)

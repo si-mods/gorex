@@ -84,9 +84,9 @@ func (c *control) projectArg(a args, empty bool) (*mSession, *apiError) {
 		}
 		return nil, errBadRequest("project_id is required")
 	}
-	m, err := c.g.current()
-	if err != nil {
-		return nil, errInternal("reading the layout: %v", err)
+	m, aerr := c.g.modelReq()
+	if aerr != nil {
+		return nil, aerr
 	}
 	s := m.byID[id]
 	if s == nil || s.dir == "" {
@@ -183,9 +183,9 @@ func methodGorexProjectCreate(c *control, a args) (any, *apiError) {
 	if dir, aerr = folderThere(dir); aerr != nil {
 		return nil, aerr
 	}
-	m, err := c.g.current()
-	if err != nil {
-		return nil, errInternal("reading the layout: %v", err)
+	m, aerr := c.g.modelReq()
+	if aerr != nil {
+		return nil, aerr
 	}
 	for _, s := range m.sessions {
 		if s.dir != "" && layout.SameDir(s.dir, dir) {
@@ -443,9 +443,9 @@ func methodGorexSpaceList(c *control, a args) (any, *apiError) {
 	if aerr := a.only(); aerr != nil {
 		return nil, aerr
 	}
-	m, err := c.g.current()
-	if err != nil {
-		return nil, errInternal("reading the layout: %v", err)
+	m, aerr := c.g.modelReq()
+	if aerr != nil {
+		return nil, aerr
 	}
 	names := []string{}
 	for _, s := range m.sessions {

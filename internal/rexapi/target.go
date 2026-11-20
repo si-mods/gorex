@@ -153,9 +153,9 @@ func (g *Gateway) search(kinds []string, ctx targetContext, scope targetScope) (
 			return nil, errBadRequest("scope.window is only allowed when kinds is just block")
 		}
 	}
-	m, err := g.current()
-	if err != nil {
-		return nil, errInternal("reading the layout: %v", err)
+	m, aerr := g.modelReq()
+	if aerr != nil {
+		return nil, aerr
 	}
 	ts := &targetSearch{m: m, kinds: kinds, ctx: ctx, scope: scope, all: m.sessions}
 	ts.search = m.sessions
