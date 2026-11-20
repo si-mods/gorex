@@ -345,6 +345,14 @@ A project's context menu:
   the chosen project's) opens a tab in the folder; ⌘T does the same while
   the project is chosen. Its context menu: New Tab, Rename, Color, Move to
   Space, Reveal Folder (this host only), Close Project.
+- The project shown, while its tabs are open, has a **face** of its own
+  behind its row and its tabs (`groupFace`), so that it tells both where the
+  window is and which tabs are that project's; no other project has one.
+  The face reaches 4 past the rows on every side, so that nothing moves as
+  it comes and goes, and its corners are the pills' plus those 4, so that
+  both share one centre. The active tab's pill over it is lifted: a lighter
+  face where the system draws no glass, a deeper shadow and a hairline
+  (`liftedPill`).
 - Projects of a host are in order of last use (`Used`), the latest
   first; those not used for 30 days go under a collapsed **Older** row,
   at the projects' level, with the same chevron.

@@ -535,7 +535,8 @@ func TestSidebarFlatLayout(t *testing.T) {
 	if text, ok := tt.Find("acme-api"); !ok || text.X != want {
 		t.Errorf("the project's name at x %v, want %v", text.X, want)
 	}
-	// One row is filled: the active tab, not its project, which is
+	// One row is filled: the active tab, over the face of its project's
+	// group, which the project's row shows as it is; the project's row is
 	// filled once its tabs are closed.
 	face := func(r ui.Rect) [4]uint8 {
 		img := tt.Image()
@@ -551,8 +552,10 @@ func TestSidebarFlatLayout(t *testing.T) {
 		return d <= 6
 	}
 	empty := ui.Rect{X: row.X, Y: row.Y - hostHeaderH, W: row.W, H: row.H}
-	if !same(face(row), face(empty)) || same(face(tab), face(empty)) {
-		t.Errorf("the project's row is filled (%v) or its active tab is not (%v), the sidebar being %v", face(row), face(tab), face(empty))
+	c := tt.Image().RGBAAt(int(row.X-2), int(row.Y+row.H/2))
+	group := [4]uint8{c.R, c.G, c.B, c.A}
+	if same(group, face(empty)) || !same(face(row), group) || same(face(tab), group) {
+		t.Errorf("the group's face %v, the project's row %v, its active tab %v, the sidebar %v; want the row on the group's face and the tab filled over it", group, face(row), face(tab), face(empty))
 	}
 	setRowOpen(openKey(nil, w.ID), false)
 	tt.Frame()
@@ -1009,4 +1012,53 @@ func TestSidebarTabsWithNoProjectFlat(t *testing.T) {
 	// A click on its tab shows that workspace on it.
 	click(t, tt, name+" "+detail)
 	waitFor(t, tt, "the tab with no project shown", func() bool { return a.ws == loose })
+}
+
+// TestSidebarCurrentProjectGroup: the project shown, its tabs open, has a
+// face behind its row and tabs that reaches past the rows' edge; closed,
+// or another project open but not shown, has none, and the face moves no
+// name.
+func TestSidebarCurrentProjectGroup(t *testing.T) {
+	a, tt, _, _ := projectsApp(t)
+	space := ""
+	res := clientCommand(a, rex.LayoutCommand{Op: "project.create", Dir: appTempDir(t, a), Name: "acme-api", SpaceName: &space})
+	caughtUp(t, a, tt)
+	w := a.st.byID(res.Space)
+	res2 := clientCommand(a, rex.LayoutCommand{Op: "project.create", Dir: appTempDir(t, a), Name: "acme-web", SpaceName: &space})
+	caughtUp(t, a, tt)
+	other := a.st.byID(res2.Space)
+	a.showWorkspace(w)
+	waitFor(t, tt, "the project's tab", func() bool { return a.ws == w && len(a.tabs) == 1 && a.tabs[0].Focus != nil })
+	setRowOpen(openKey(nil, other.ID), true)
+	// The pixel just past a row's leading edge, inside the face's reach.
+	edge := func(text string) ([4]uint8, ui.Rect) {
+		tt.Frame()
+		r, ok := tt.Find(text)
+		if !ok {
+			t.Fatalf("no %q: %q", text, tt.Texts())
+		}
+		c := tt.Image().RGBAAt(int(r.X-sideGap-tilesReserve(a.tabs)-sideLead-2), int(r.Y+r.H/2))
+		return [4]uint8{c.R, c.G, c.B, c.A}, r
+	}
+	setRowOpen(openKey(nil, w.ID), true)
+	open, nameOpen := edge("acme-api")
+	otherOpen, _ := edge("acme-web")
+	setRowOpen(openKey(nil, w.ID), false)
+	shut, nameShut := edge("acme-api")
+	nearly := func(x, y [4]uint8) bool {
+		d := 0
+		for i := range 3 {
+			d += max(int(x[i])-int(y[i]), int(y[i])-int(x[i]))
+		}
+		return d <= 6
+	}
+	if nearly(open, shut) {
+		t.Error("the project shown, open, has no face of its own")
+	}
+	if !nearly(otherOpen, shut) {
+		t.Errorf("a project open but not shown has a face: %v, the window's %v", otherOpen, shut)
+	}
+	if nameOpen.X != nameShut.X {
+		t.Errorf("the face moved the name: x %v open, %v closed", nameOpen.X, nameShut.X)
+	}
 }

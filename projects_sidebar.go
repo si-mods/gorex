@@ -95,7 +95,7 @@ func (a *App) projectsList(c *ui.Context, k *colors) {
 		tabs := slices.Clone(a.tabs)
 		reserve := tilesReserve(tabs)
 		for i, t := range tabs {
-			a.sidebarTab(c, k, i, t, reserve)
+			a.sidebarTab(c, k, i, t, reserve, false)
 		}
 		return
 	}
@@ -109,7 +109,7 @@ func (a *App) projectsList(c *ui.Context, k *colors) {
 			a.hostHeader(c, k, h)
 			recent, older := a.projectsOf(h, space)
 			for _, w := range recent {
-				a.projectRow(c, k, w, reserve)
+				a.projectGroup(c, k, w, reserve)
 			}
 			if len(older) > 0 {
 				key := openKey(h, "older")
@@ -119,7 +119,7 @@ func (a *App) projectsList(c *ui.Context, k *colors) {
 				}
 				if open {
 					for _, w := range older {
-						a.projectRow(c, k, w, reserve)
+						a.projectGroup(c, k, w, reserve)
 					}
 				}
 			}
@@ -326,7 +326,7 @@ func (a *App) projectRow(c *ui.Context, k *colors, w *Workspace, reserve float32
 	list.Children(func() {
 		if shown {
 			for i, t := range slices.Clone(a.tabs) {
-				a.sidebarTab(c, k, i, t, reserve)
+				a.sidebarTab(c, k, i, t, reserve, true)
 			}
 			return
 		}
@@ -384,13 +384,30 @@ func (a *App) noProjectSection(c *ui.Context, k *colors, w *Workspace, reserve f
 	list.Children(func() {
 		if w == a.ws {
 			for i, t := range slices.Clone(a.tabs) {
-				a.sidebarTab(c, k, i, t, reserve)
+				a.sidebarTab(c, k, i, t, reserve, false)
 			}
 			return
 		}
 		a.workspaceTabs(c, k, w, reserve, offline)
 	})
 }
+
+// projectGroup draws project w's row and its tabs. The project shown with
+// its tabs open has a face of its own behind them, its active tab's pill
+// lifted over it (liftedPill): it tells where the window is, and which
+// tabs are that project's. The face reaches groupPad past the rows on every
+// side, so nothing in it moves as it comes and goes, and its corners are the pills' plus that
+// pad, so that both share one centre.
+func (a *App) projectGroup(c *ui.Context, k *colors, w *Workspace, reserve float32) {
+	g := ui.Column(c.Key("group-" + openKey(w.host, w.ID))).Gap(rowGap)
+	if w == a.ws && rowOpen(openKey(w.host, w.ID), true) && w.tabCount() > 0 {
+		g.Background(k.groupFace).Radius(pillRadius(sideRowH, radiusM) + groupPad).Padding(groupPad).Margin(-groupPad)
+	}
+	g.Children(func() { a.projectRow(c, k, w, reserve) })
+}
+
+// groupPad is the room between the current project's face and its rows.
+const groupPad = 4
 
 // rowGap is the room between the sidebar's rows, so that two filled
 // ones, a hovered and the chosen, never touch.

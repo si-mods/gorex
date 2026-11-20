@@ -331,7 +331,8 @@ func (a *App) sidebarEdge(c *ui.Context, k *colors, right bool) {
 
 // sidebarTab draws a tab in the sidebar: the tiles of its panes' programs,
 // its name and detail, and its close button or activity.
-func (a *App) sidebarTab(c *ui.Context, k *colors, i int, t *Tab, reserve float32) {
+// lifted draws the active tab's pill over its project's group face.
+func (a *App) sidebarTab(c *ui.Context, k *colors, i int, t *Tab, reserve float32, lifted bool) {
 	active := i == a.active
 	// Keyed by the tab's lasting ID, as spaceTab keys it: as the window
 	// goes to show another space, the rows of both stay, not close and
@@ -340,7 +341,9 @@ func (a *App) sidebarTab(c *ui.Context, k *colors, i int, t *Tab, reserve float3
 		Role(ui.RoleTab).Selected(active)
 	name, detail := t.label()
 	e.Label(name + " " + detail)
-	if active {
+	if active && lifted {
+		liftedPill(e, k, sideRowH)
+	} else if active {
 		glassPill(e, k, sideRowH)
 		// A tab chosen otherwise than in the list, as by its keys, scrolls
 		// into view, once: the list scrolls freely after.
