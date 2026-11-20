@@ -254,31 +254,9 @@ final class TerminalView: UIView, TerminalOutput {
     /// Passes what Ghostty encodes to the session, as it comes.
     private func read(_ fd: Int32) {
         guard fd >= 0 else { return }
-        input = Self.reader(fd, reading) { [weak self] got in
+        input = FDReader.start(fd, reading) { [weak self] got in
             DispatchQueue.main.async { MainActor.assumeIsolated { self?.session.type(got) } }
         }
-    }
-
-    /// Reads fd on a queue of its own, not the main actor's.
-    /// The reader is in group until it stops, by close or at the end of fd.
-    nonisolated private static func reader(_ fd: Int32, _ group: DispatchGroup, _ deliver: @escaping @Sendable (Data) -> Void) -> DispatchSourceRead {
-        _ = fcntl(fd, F_SETFL, fcntl(fd, F_GETFL) | O_NONBLOCK)
-        let source = DispatchSource.makeReadSource(fileDescriptor: fd, queue: DispatchQueue(label: "dev.gorex.ios.terminal.input"))
-        group.enter()
-        source.setCancelHandler { group.leave() }
-        source.setEventHandler {
-            var buf = [UInt8](repeating: 0, count: 16 << 10)
-            var got = Data()
-            while true {
-                let n = Darwin.read(fd, &buf, buf.count)
-                if n > 0 { got.append(buf, count: n); continue }
-                if n == 0 { source.cancel() }
-                break
-            }
-            if !got.isEmpty { deliver(got) }
-        }
-        source.resume()
-        return source
     }
 
     /// Frees the surface, once its last output is written.
@@ -464,21 +442,23 @@ final class TerminalView: UIView, TerminalOutput {
 
     /// The bottom of the last line of the screen with text under the
     /// cursor's, else the cursor's. Lines count from the cursor's: Ghostty
-    /// reads text at points of another origin than the cursor's.
+    /// reads text at points of another origin than the cursor's. A few
+    /// reads of runs of lines find it (LastDrawn), not one read a line.
     private func drawnBottom(under c: CGRect) -> CGFloat {
         guard let s = surface else { return c.maxY }
         let z = ghostty_surface_size(s), h = cell.height
         guard z.rows > 0, z.columns > 0, h > 0 else { return c.maxY }
-        let at = Int(((c.minY - inset) / h).rounded())
-        for row in stride(from: Int(z.rows) - 1, to: at, by: -1) {
-            let point = { (x: Int) in ghostty_point_s(tag: GHOSTTY_POINT_ACTIVE, coord: GHOSTTY_POINT_COORD_EXACT, x: UInt32(x), y: UInt32(row)) }
+        let at = Int(((c.minY - inset) / h).rounded()), last = Int(z.rows) - 1
+        guard at < last else { return c.maxY }
+        let point = { (x: Int, y: Int) in ghostty_point_s(tag: GHOSTTY_POINT_ACTIVE, coord: GHOSTTY_POINT_COORD_EXACT, x: UInt32(x), y: UInt32(y)) }
+        let row = LastDrawn.row(in: max(at + 1, 0)...last) { run in
             var t = ghostty_text_s()
-            guard ghostty_surface_read_text(s, ghostty_selection_s(top_left: point(0), bottom_right: point(Int(z.columns) - 1), rectangle: false), &t) else { continue }
+            guard ghostty_surface_read_text(s, ghostty_selection_s(top_left: point(0, run.lowerBound), bottom_right: point(Int(z.columns) - 1, run.upperBound), rectangle: false), &t) else { return false }
             defer { ghostty_surface_free_text(s, &t) }
-            let text = t.text.map { String(decoding: UnsafeRawBufferPointer(start: $0, count: Int(t.text_len)), as: UTF8.self) } ?? ""
-            if !text.allSatisfy(\.isWhitespace) { return c.maxY + CGFloat(row - at) * h }
+            guard let p = t.text else { return false }
+            return LastDrawn.hasText(UnsafeRawBufferPointer(start: p, count: Int(t.text_len)))
         }
-        return c.maxY
+        return row.map { c.maxY + CGFloat($0 - at) * h } ?? c.maxY
     }
 
     /// The text on the screen, as shown.
