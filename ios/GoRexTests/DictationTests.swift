@@ -2,6 +2,7 @@ import AVFoundation
 import FluidAudio
 import UIKit
 import XCTest
+import os
 
 /// Dictation's phrases, joined as spoken.
 nonisolated final class DictationTests: XCTestCase {
@@ -199,10 +200,158 @@ nonisolated final class DictationTests: XCTestCase {
         }
         defer { open.finish() }
         let listening = Listening(models, longest: 16_000)
-        for i in 0..<Listening.backlog { XCTAssertTrue(listening.add([0, 0]), "\(i)") }
-        XCTAssertFalse(listening.add([0, 0]))
+        XCTAssertEqual(Listening.backlog, 60 * 16_000)
+        let second = [Float](repeating: 0, count: 16_000)
+        for i in 0..<60 { XCTAssertTrue(listening.add(second), "\(i)") }
+        XCTAssertFalse(listening.add([0]))
         listening.cancel()
-        XCTAssertFalse(listening.add([0, 0]))
+        XCTAssertFalse(listening.add([]))
+    }
+
+    /// The ring gives the samples in the order written, across its end, and
+    /// holds no more than its capacity: a write that does not fit is
+    /// dropped whole, and none is taken after finish, what was written
+    /// staying to be read.
+    func testRingKeepsOrderAcrossItsEndAndItsBound() {
+        let ring = SampleRing(capacity: 5)
+        func write(_ s: [Float]) -> Bool { s.withUnsafeBufferPointer { ring.write($0) } }
+        func read(_ n: Int) -> [Float] {
+            var out = [Float](repeating: -1, count: n)
+            let got = out.withUnsafeMutableBufferPointer { ring.read(into: $0) }
+            return Array(out.prefix(got))
+        }
+        XCTAssertTrue(write([1, 2, 3]))
+        XCTAssertEqual(read(2), [1, 2])
+        // 4 to 7 wrap past the end: two at its last places, two at its first.
+        XCTAssertTrue(write([4, 5, 6, 7]))
+        XCTAssertEqual(ring.count, 5)
+        XCTAssertFalse(write([8]))
+        XCTAssertEqual(read(10), [3, 4, 5, 6, 7])
+        XCTAssertEqual(read(1), [])
+        XCTAssertTrue(write([8, 9, 10, 11, 12]))
+        XCTAssertFalse(write([1, 2, 3, 4, 5, 6]))
+        XCTAssertEqual(read(3), [8, 9, 10])
+        // Three places free, four asked for: none written.
+        XCTAssertFalse(write([13, 14, 15, 16]))
+        XCTAssertTrue(write([13, 14, 15]))
+        ring.finish()
+        XCTAssertTrue(ring.finished)
+        XCTAssertFalse(write([16]))
+        XCTAssertEqual(read(10), [11, 12, 13, 14, 15])
+    }
+
+    /// A writer on one thread and a reader on another: every sample comes
+    /// through once, in order, the ring a fraction of what passes.
+    func testRingPassesSamplesBetweenThreadsInOrder() {
+        let ring = SampleRing(capacity: 1_000)
+        let total = 200_000
+        DispatchQueue.global().async {
+            var next = 0
+            var piece = [Float](repeating: 0, count: 137)
+            while next < total {
+                let n = min(piece.count, total - next)
+                for i in 0..<n { piece[i] = Float(next + i) }
+                if piece.withUnsafeBufferPointer({ ring.write(UnsafeBufferPointer(rebasing: $0[..<n])) }) { next += n }
+            }
+            ring.finish()
+        }
+        var got = 0
+        var out = [Float](repeating: 0, count: 300)
+        var inOrder = true
+        while true {
+            let over = ring.finished
+            let n = out.withUnsafeMutableBufferPointer { ring.read(into: $0) }
+            for i in 0..<n where out[i] != Float(got + i) { inOrder = false }
+            got += n
+            if n == 0, over { break }
+        }
+        XCTAssertTrue(inOrder)
+        XCTAssertEqual(got, total)
+    }
+
+    /// The level shown is the newest the microphone gave, taken once.
+    func testMeterGivesTheNewestLevelOnce() {
+        let meter = Meter()
+        var count: UInt64 = 0
+        XCTAssertNil(meter.take(after: &count))
+        meter.set(0.1)
+        meter.set(0.2)
+        XCTAssertEqual(meter.take(after: &count), 0.2)
+        XCTAssertNil(meter.take(after: &count))
+        meter.set(0)
+        XCTAssertEqual(meter.take(after: &count), 0)
+        XCTAssertNil(meter.take(after: &count))
+    }
+
+    /// A stop asked for while the microphone starts wins: it runs after
+    /// the start, which is told it ran.
+    func testStopDuringStartRunsAfterIt() {
+        let queue = DispatchQueue(label: "test.turns")
+        let turns = Turns(on: queue)
+        let log = OSAllocatedUnfairLock(initialState: [String]())
+        let starting = DispatchSemaphore(value: 0)
+        let go = DispatchSemaphore(value: 0)
+        let done = expectation(description: "done")
+        turns.start({
+            starting.signal()
+            go.wait()
+            log.withLock { $0.append("start") }
+        }, done: { r in
+            XCTAssertEqual(try? r.get(), true)
+            done.fulfill()
+        })
+        starting.wait()
+        let stopped = expectation(description: "stopped")
+        turns.stop {
+            log.withLock { $0.append("stop") }
+            stopped.fulfill()
+        }
+        go.signal()
+        wait(for: [done, stopped], timeout: 10)
+        XCTAssertEqual(log.withLock { $0 }, ["start", "stop"])
+    }
+
+    /// A stop asked for before the start begins passes the start over; a
+    /// start that throws tells why.
+    func testStopBeforeStartPassesItOver() {
+        let queue = DispatchQueue(label: "test.turns")
+        let turns = Turns(on: queue)
+        let log = OSAllocatedUnfairLock(initialState: [String]())
+        // The queue busy until the stop is asked for.
+        let busy = DispatchSemaphore(value: 0)
+        queue.async { busy.wait() }
+        let done = expectation(description: "done")
+        turns.start({ log.withLock { $0.append("start") } }, done: { r in
+            XCTAssertEqual(try? r.get(), false)
+            done.fulfill()
+        })
+        let stopped = expectation(description: "stopped")
+        turns.stop {
+            log.withLock { $0.append("stop") }
+            stopped.fulfill()
+        }
+        busy.signal()
+        wait(for: [done, stopped], timeout: 10)
+        XCTAssertEqual(log.withLock { $0 }, ["stop"])
+
+        let failed = expectation(description: "failed")
+        Turns(on: queue).start({ throw CancellationError() }, done: { r in
+            if case .failure(let e) = r { XCTAssertTrue(e is CancellationError) } else { XCTFail("\(r)") }
+            failed.fulfill()
+        })
+        wait(for: [failed], timeout: 10)
+    }
+
+    /// The scan off the main actor finds what the scan on it did, and the
+    /// mic's wait for it gives that too.
+    @MainActor func testScanFindsTheModelsOnDisk() async {
+        let d = Dictation.shared
+        let found = await d.installedModels()
+        XCTAssertTrue(d.scanned)
+        XCTAssertEqual(found, Set(Dictation.Model.allCases.filter(Dictation.present)))
+        XCTAssertEqual(d.installed, found)
+        let again = await Dictation.onDisk()
+        XCTAssertEqual(again, found)
     }
 
     /// What came before speech keeps its last samples, in order.

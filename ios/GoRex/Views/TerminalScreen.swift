@@ -1067,13 +1067,28 @@ private struct Mic: View {
                     await terminal()?.typeDictation()
                     busy = false
                 }
-            } else if !dictation.installed.contains(dictation.model) {
-                asking = true
+            } else if dictation.scanned {
+                turnOn()
             } else {
-                _ = terminal()?.dictate { said = $0 }
+                // The scan for the models on disk, quick, ends first: the
+                // mic never offers to download one already there.
+                Task {
+                    _ = await dictation.installedModels()
+                    turnOn()
+                }
             }
         }
         .accessibilityAddTraits(on ? [.isButton, .isSelected] : .isButton)
+    }
+
+    /// Turns the mic on, or asks to download its model first.
+    private func turnOn() {
+        guard !busy, said == nil, dictation.progress == nil else { return }
+        if !dictation.installed.contains(dictation.model) {
+            asking = true
+        } else {
+            _ = terminal()?.dictate { said = $0 }
+        }
     }
 }
 
