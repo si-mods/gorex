@@ -183,6 +183,9 @@ private final class ZoomScroll: UIScrollView, UIScrollViewDelegate {
     private let imageView: UIImageView
     var tap: () -> Void = {}
     var close: () -> Void = {}
+    /// Keeps the cover's zoom from closing at a drag or a pinch on the
+    /// image: its own pull down closes it, and its own pinch zooms.
+    private let zoomGuard = ZoomGuard.make()
 
     init(image: UIImage) {
         imageView = UIImageView(image: image)
@@ -206,6 +209,7 @@ private final class ZoomScroll: UIScrollView, UIScrollViewDelegate {
         single.require(toFail: double)
         addGestureRecognizer(double)
         addGestureRecognizer(single)
+        addGestureRecognizer(zoomGuard)
     }
 
     required init?(coder: NSCoder) { fatalError() }

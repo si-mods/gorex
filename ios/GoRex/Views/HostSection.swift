@@ -18,9 +18,9 @@ struct HostSection: View {
     @Binding var expanded: Set<String>
     let query: String
     /// What the rows zoom the terminal out of, and move between the lists
-    /// in; places is nil under Reduce Motion.
+    /// in.
     let zoom: Namespace.ID
-    let places: Namespace.ID?
+    let places: Namespace.ID
     let open: (TerminalTarget) -> Void
     /// Opens a row's tab, from the row.
     let openRow: (TerminalTarget) -> Void
@@ -713,12 +713,13 @@ struct HostSection: View {
             .hoverEffect(.highlight)
             .matchedTransitionSource(id: ZoomSource.row(host: host.id, session: w.session.id, block: w.block), in: zoom)
             let shown = shownBy[w.session.id] ?? []
+            let place = RowPlace(host: host.id, session: w.session.id, window: w.window.window_id)
             let lifted = drag.map { !$0.dropped && $0.session.id == w.session.id && $0.window == w.window.window_id } ?? false
             row.onDrag { lift(w, shown: shown) }
                 .contextMenu { menu(w.session, w.window, shown: shown) }
                 .onDrop(of: [.text], delegate: RowDrop(pass: { pass(over: w) }, drop: { drop($0) }))
                 .opacity(lifted ? 0.4 : 1)
-                .modifier(MatchedPlace(id: RowPlace(host: host.id, session: w.session.id, window: w.window.window_id), namespace: places))
+                .modifier(MatchedPlace(place: place, own: .tab(place), namespace: places))
         }
     }
 }

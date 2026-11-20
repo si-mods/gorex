@@ -7,9 +7,9 @@ struct StatusInbox: View {
     let query: String
     @Binding var collapsed: Set<String>
     /// What the rows zoom the terminal out of, and move between the lists
-    /// in; places is nil under Reduce Motion.
+    /// in.
     let zoom: Namespace.ID
-    let places: Namespace.ID?
+    let places: Namespace.ID
     let open: (TerminalTarget) -> Void
     @Environment(HostStore.self) private var store
 
@@ -73,7 +73,7 @@ struct StatusInbox: View {
                             .buttonStyle(.plain)
                             .hoverEffect(.highlight)
                             .matchedTransitionSource(id: ZoomSource.row(host: item.host, session: item.session, block: item.block), in: zoom)
-                            .modifier(MatchedPlace(id: firsts.contains(item.id) ? Self.place(item) : nil, namespace: places))
+                            .modifier(MatchedPlace(place: firsts.contains(item.id) ? Self.place(item) : nil, own: .inbox(item.id), namespace: places))
                         }
                     }
                 }

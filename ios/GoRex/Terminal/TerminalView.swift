@@ -197,9 +197,7 @@ final class TerminalView: UIView, TerminalOutput {
         backgroundColor = UIColor(cgColor: (session.background ?? .black).cgColor)
         addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(tap)))
         addGestureRecognizer(longPress)
-        let pinch = UIPinchGestureRecognizer(target: self, action: #selector(self.pinch))
-        pinch.delegate = self
-        addGestureRecognizer(pinch)
+        addGestureRecognizer(UIPinchGestureRecognizer(target: self, action: #selector(pinch)))
         let drag = UIPanGestureRecognizer(target: self, action: #selector(self.drag))
         drag.allowedTouchTypes = [UITouch.TouchType.indirectPointer.rawValue as NSNumber]
         addGestureRecognizer(drag)
@@ -1019,6 +1017,9 @@ final class TerminalHost: UIView, UIGestureRecognizerDelegate {
     var canSwipe: (() -> Bool)?
     /// The two-finger drag between panes.
     private let paneDrag = UIPanGestureRecognizer()
+    /// Keeps the zoom's close out of the terminal, on while the screen was
+    /// pushed with the zoom; its swipe back stays on a standard push.
+    let zoomGuard = ZoomGuard.make()
     /// While a tab switch animates, layout passes place the terminal, its
     /// inset and the key bar at once, so they don't animate from .zero under
     /// the switch's spring.
@@ -1051,6 +1052,8 @@ final class TerminalHost: UIView, UIGestureRecognizerDelegate {
         // bar switches panes.
         paneDrag.isEnabled = false
         addGestureRecognizer(paneDrag)
+        zoomGuard.isEnabled = false
+        addGestureRecognizer(zoomGuard)
         let edge = bottomEdge
         edge.translatesAutoresizingMaskIntoConstraints = false
         addSubview(edge)

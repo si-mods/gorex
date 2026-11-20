@@ -58,8 +58,8 @@ struct GalleryView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var viewing: GalleryEntry?
     /// The image the pager shows, which its cover grows out of and shrinks
-    /// back into. A swipe changes it, not viewing, which would present the
-    /// cover again.
+    /// back into: nil for the one tapped, until a swipe. A swipe changes it,
+    /// not viewing, which would present the cover again.
     @State private var shown: String?
     @Namespace private var zoom
     @State private var selecting = false
@@ -83,8 +83,10 @@ struct GalleryView: View {
                         }
                     }
                     .defaultScrollAnchor(.bottom, for: .initialOffset)
-                    // The image the pager shows keeps its cell on screen, at
-                    // once, so the pager shrinks into it as it closes.
+                    // The image a swipe in the pager shows keeps its cell on
+                    // screen, at once, so the pager shrinks into it as it
+                    // closes; the tap's cell is on screen, and the zoom reads
+                    // its frame then.
                     .onChange(of: shown) { _, id in
                         guard viewing != nil, let id else { return }
                         var t = Transaction()
@@ -151,7 +153,7 @@ struct GalleryView: View {
                 if selecting {
                     if selected.remove(e.id) == nil { selected.insert(e.id) }
                 } else {
-                    shown = e.id
+                    shown = nil
                     viewing = e
                 }
             }

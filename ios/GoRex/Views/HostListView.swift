@@ -230,12 +230,12 @@ struct HostListView: View {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 30) {
                         if inbox {
-                            StatusInbox(query: query, collapsed: $collapsed, zoom: zoom, places: still ? nil : places, open: { openRow($0) })
+                            StatusInbox(query: query, collapsed: $collapsed, zoom: zoom, places: places, open: { openRow($0) })
                         } else {
                             if hasSpaces { ListPicker(wide: width == .regular) { picker(spaces: spaces, current: current) } }
                             ForEach(store.hosts.filter { shows($0, hasSpaces: hasSpaces, current: current) }) { host in
                                 HostSection(host: host, space: current, spaces: spaces, collapsed: $collapsed, expanded: expanded,
-                                            query: query, zoom: zoom, places: still ? nil : places,
+                                            query: query, zoom: zoom, places: places,
                                             open: { go($0) }, openRow: { openRow($0) }, newProject: { newProject = host })
                             }
                         }
@@ -295,6 +295,11 @@ struct HostListView: View {
         .searchToolbarBehavior(.minimize)
         .textInputAutocapitalization(.never)
         .autocorrectionDisabled()
+        // A host added from Add a Host takes the button away: Settings
+        // closes into its own button.
+        .onChange(of: store.hosts.isEmpty) { _, empty in
+            if !empty { settingsSource = .settings }
+        }
         .sheet(isPresented: $settings, onDismiss: {
             if let c = waiting { pairing = c }
             waiting = nil
@@ -577,6 +582,7 @@ private struct ZoomFrom: ViewModifier {
     func body(content: Content) -> some View {
         if let source {
             content.navigationTransition(.zoom(sourceID: source, in: namespace))
+                .environment(\.zoomed, true)
         } else {
             content.navigationTransition(.automatic)
         }
@@ -591,18 +597,26 @@ struct RowPlace: Hashable {
     let window: String
 }
 
+/// A row's id in the lists' namespace: its place, which the other list
+/// shares, or one of its own in its list, which nothing matches.
+enum RowMatch: Hashable {
+    case place(RowPlace)
+    case tab(RowPlace)
+    case inbox(String)
+}
+
 /// Moves a row to its place in the other list; a row with no place, or
-/// with no namespace under Reduce Motion, fades.
+/// any row under Reduce Motion, fades. One effect for both, so a change of
+/// Reduce Motion keeps the rows.
 struct MatchedPlace: ViewModifier {
-    let id: RowPlace?
-    let namespace: Namespace.ID?
+    let place: RowPlace?
+    /// The row's id when it fades.
+    let own: RowMatch
+    let namespace: Namespace.ID
+    @Environment(\.accessibilityReduceMotion) private var still
 
     func body(content: Content) -> some View {
-        if let id, let namespace {
-            content.matchedGeometryEffect(id: id, in: namespace)
-        } else {
-            content
-        }
+        content.matchedGeometryEffect(id: still ? own : place.map(RowMatch.place) ?? own, in: namespace)
     }
 }
 
