@@ -1570,6 +1570,26 @@ final class HostStore {
         proxied.filter { kept || $0.config.tailcat != nil }.forEach { $0.resume() }
     }
 
+    /// The phone changed network (NetworkPath). In the foreground, each
+    /// host with a control connection connects anew, whatever its reach,
+    /// as the connection can look open while its path died. Unlike
+    /// foreground, it leaves the engine be: the engine hears the change
+    /// itself, and a host behind it that comes too early tries again
+    /// (scheduleRetry). In the background, nothing: coming back to the
+    /// foreground sees to it.
+    func networkChanged(inFront: Bool) {
+        for h in Self.resumedOnNetworkChange(hosts, inFront: inFront) {
+            h.resume()
+            ConnectionLog.note("\(h.config.name): resumed after network change")
+        }
+    }
+
+    /// The hosts a change of network resumes: in the foreground, the real
+    /// ones with a control connection; in the background, none.
+    static func resumedOnNetworkChange(_ hosts: [Host], inFront: Bool) -> [Host] {
+        inFront ? hosts.filter { !$0.isDemo && $0.control != nil } : []
+    }
+
     /// Whether leaving the app asks iOS for a grace (BackgroundGrace): a
     /// real host has a control connection, or a terminal of one is open
     /// (terminal, its host). Demo Mode alone keeps nothing.

@@ -316,6 +316,12 @@ struct TerminalScreen: View {
                     if let keptPanes { keep(keptPanes) }
                 }
             }
+            // A new network: the streams continue on it at once, not after
+            // a drop is found. In the background, coming back resumes them.
+            .onChange(of: NetworkPath.shared.changes) {
+                guard phase == .active else { return }
+                for pane in pages where !pane.leaving { pane.session.resume() }
+            }
     }
 
     /// Whether the header sits in a row at the top: a status bar at the

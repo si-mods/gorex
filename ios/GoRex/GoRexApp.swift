@@ -38,7 +38,8 @@ struct GoRexApp: App {
     /// API key and the settings that sync through iCloud come in before
     /// Ghostty, which reads some. Ghostty, with the downloaded font, starts
     /// once the list is on screen (startGhostty), not before the first
-    /// frame. The widgets' snapshot follows the hosts from the start.
+    /// frame. The widgets' snapshot follows the hosts from the start, and
+    /// NetworkPath the network.
     init() {
         OpenedFiles.clean()
         Polish.syncKey()
@@ -48,6 +49,7 @@ struct GoRexApp: App {
         let store = HostStore()
         _store = State(initialValue: store)
         WidgetPublisher.shared.start(store)
+        NetworkPath.shared.start()
         SpaceBook.dropOldData()
         _spaces = State(initialValue: SpaceBook())
         Task { await engine.apply() }
@@ -102,6 +104,11 @@ struct GoRexApp: App {
                 }
                 .onChange(of: store.hosts.map(\.config)) { _, configs in
                     HotspotShare.shared.updateHosts(configs)
+                }
+                // A new network: the hosts reconnect at once, not after a ping
+                // finds the old path dead (docs/IOS-012-background-and-network-changes.md).
+                .onChange(of: NetworkPath.shared.changes) {
+                    store.networkChanged(inFront: phase == .active)
                 }
                 // Hosts the gateway refused try again as the engine runs anew.
                 .onChange(of: TailnetEngine.shared.status.state) { _, s in

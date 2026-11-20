@@ -87,6 +87,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - The Lock Screen card now uses calmer shades of the program's own color, keeps the same size in every state, and shows the timer after the state, clear of the large icon.
 - Open a tab, the title's sheet, Settings, New Project or a Gallery image: it now grows out of what you tapped, and shrinks back into it. The pane bar's highlight slides to the pane you choose.
 - Leave Rex Go from the host list, and a program that asks for your answer in the next few seconds now sends its notification, as it does when you leave from an open terminal.
+- Switch from Wi-Fi to cellular, or to another Wi-Fi, with a terminal open: it reconnects at once and goes on where it was, instead of freezing for a while.
 
 ## zh-Hans
 
@@ -166,3 +167,4 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - 锁定屏幕上的卡片现在用程序自己颜色的深浅两档，各种状态下大小不变，计时跟在状态后面，不再压在大图标上。
 - 打开标签页、标题的面板、设置、新建项目或图库图片：它现在从你点按的地方展开，关闭时缩回原处。窗格栏的高亮会滑到你选的窗格。
 - 从主机列表离开 Rex Go 后，几秒内需要你回答的程序现在也会发来通知，和从打开的终端离开时一样。
+- 打开终端时从 Wi-Fi 切到蜂窝网络，或换一个 Wi-Fi：终端立即重新连接，从断开处继续，不再卡住一段时间。
