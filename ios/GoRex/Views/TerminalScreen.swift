@@ -399,8 +399,8 @@ struct TerminalScreen: View {
             return TerminalLive.state(title: Self.windowTitle(host: host, target: target), program: b?.program, records: b?.statuses ?? [],
                                       seen: b?.seen, connected: s.map { $0.state == .live && !$0.reconnecting } ?? false)
         }, readLine: { [weak s] done in
-            s?.output?.readScreen { text, _ in
-                let line = TerminalActivity.lastLine(text)
+            s?.output?.readRows { rows, cursor in
+                let line = TerminalActivity.screenLine(rows, cursor: cursor)
                 Task { @MainActor in done(line) }
             }
         }), owner: liveOwner)
@@ -725,7 +725,7 @@ struct TerminalScreen: View {
     /// The window's menu, in the bar.
     @ViewBuilder private func moreMenu() -> some View {
         Menu {
-            // The images the pane showed (docs/ios-pane-gallery.md).
+            // The images the pane showed (docs/IOS-007-pane-gallery.md).
             if let g = session?.gallery { GalleryMenuItem(gallery: g) }
             Button("New Window", systemImage: "plus") { newTab() }
             Button("Split Pane", systemImage: "rectangle.split.2x1") { newSplit() }
@@ -924,7 +924,7 @@ struct TerminalScreen: View {
     }
 
     /// Opens a new tab in the session, and goes to it: a project's in its
-    /// folder, checked first (docs/projects.md, New tabs and panes).
+    /// folder, checked first (docs/MOD-002-projects.md, New tabs and panes).
     private func newTab() {
         let session = currentTarget.session
         let dir = host.hasProjects ? host.sessions.first { $0.id == session }?.project?.dir : nil

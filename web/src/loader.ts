@@ -1,4 +1,4 @@
-// Loading on demand (docs/web-client.md, Loading on demand): the files of
+// Loading on demand (docs/REF-007-web-client.md, Loading on demand): the files of
 // the build's asset manifest (build.mjs, Manifest), by name, and the
 // page's code chunks. The page loads a file when it needs it, not before:
 // the CJK font's chunks as the terminal draws their characters, the themes

@@ -52,6 +52,7 @@ type check struct {
 	pkgsList   []string // package directories for pkgsFor
 	skip       string
 	unverified bool
+	fn         func(root string, log io.Writer) error // an in-process check; no command runs
 }
 
 // facts are what plan needs to know about the machine.
@@ -66,7 +67,7 @@ type facts struct {
 // plan maps the changed files to the checks to run, cheapest first.
 func plan(files []string, f facts) []check {
 	var goFiles, goDirs []string
-	goAll, web, ios, gh := false, false, false, false
+	goAll, web, ios, gh, docs := false, false, false, false, false
 	seen := map[string]bool{}
 	for _, p := range files {
 		p = filepath.ToSlash(p)
@@ -84,6 +85,7 @@ func plan(files []string, f facts) []check {
 		web = web || strings.HasPrefix(p, "web/")
 		ios = ios || strings.HasPrefix(p, "ios/")
 		gh = gh || strings.HasPrefix(p, ".github/")
+		docs = docs || strings.HasPrefix(p, "docs/")
 	}
 	goChanged := goAll || len(goDirs) > 0
 	pkgs := goDirs
@@ -94,6 +96,9 @@ func plan(files []string, f facts) []check {
 	var cs []check
 	if len(goFiles) > 0 {
 		cs = append(cs, check{name: "gofmt", args: append([]string{"gofmt", "-l"}, goFiles...)})
+	}
+	if docs {
+		cs = append(cs, check{name: "design docs", fn: designDocsCheck})
 	}
 	if gh {
 		// The self-hosted runners' labels are not ones actionlint knows.
@@ -118,8 +123,9 @@ func plan(files []string, f facts) []check {
 		cs = append(cs, check{name: "web typecheck", dir: "web", args: []string{"npm", "run", "typecheck"}, skip: webSkip, unverified: webSkip != ""})
 	}
 	if goChanged {
+		// Only the packages that build for linux: web/tailnet builds for js/wasm only.
 		cs = append(cs, check{name: "golangci-lint", tool: golangciLint,
-			args: append([]string{"run"}, pkgs...), env: []string{"GOOS=linux", "CGO_ENABLED=0"}})
+			args: []string{"run", "{pkgs}"}, env: []string{"GOOS=linux", "CGO_ENABLED=0"}, pkgsFor: "linux", pkgsList: pkgs})
 	}
 	if web {
 		cs = append(cs, check{name: "web test", dir: "web", args: []string{"npm", "test"}, skip: webSkip, unverified: webSkip != ""})
@@ -166,12 +172,12 @@ func plan(files []string, f facts) []check {
 }
 
 // readOnlyPlan keeps the checks that only read and compile the branch
-// (gofmt, actionlint, vet, build) and skips the rest. Tests, npm scripts and
+// (gofmt, actionlint, design docs, vet, build) and skips the rest. Tests, npm scripts and
 // xcodebuild run the branch's code or scripts; golangci-lint reads the
 // branch's own config. A skip counts as NOT VERIFIED.
 func readOnlyPlan(cs []check) []check {
 	for i, c := range cs {
-		safe := c.name == "gofmt" || c.name == "actionlint" ||
+		safe := c.name == "gofmt" || c.name == "actionlint" || c.name == "design docs" ||
 			strings.HasPrefix(c.name, "vet ") || strings.HasPrefix(c.name, "build ")
 		if !safe && c.skip == "" {
 			cs[i].skip = "NOT VERIFIED: branch is not from si-mods; read-only checks only"
@@ -383,6 +389,17 @@ func run(root string, cs []check, log io.Writer) ([]result, string) {
 		case c.skip != "":
 			fmt.Fprintf(log, "== %s: skipped: %s\n", c.name, c.skip)
 			rs = append(rs, result{name: c.name, state: "skipped", note: c.skip, unverified: c.unverified})
+			continue
+		}
+		if c.fn != nil {
+			fmt.Fprintf(log, "== %s\n", c.name)
+			if err := c.fn(root, log); err != nil {
+				fmt.Fprintf(log, "== %s: FAILED\n", c.name)
+				rs = append(rs, result{name: c.name, state: "failed"})
+				return finish(rs, cs[len(rs):]), fmt.Sprintf("%s failed:\n%v", c.name, err)
+			}
+			fmt.Fprintf(log, "== %s: passed\n", c.name)
+			rs = append(rs, result{name: c.name, state: "passed"})
 			continue
 		}
 		args := c.args

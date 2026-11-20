@@ -2,7 +2,7 @@ package main
 
 import "slices"
 
-// What each window shows is the client's own (docs/projects.md, "The
+// What each window shows is the client's own (docs/MOD-002-projects.md, "The
 // desktop window"): this machine's layout keeps the windows of its own
 // projects (Store.Windows), and the settings what every window shows, a
 // host's project too, by the window's place (settings.Shown). A window

@@ -28,7 +28,7 @@ type Workspace struct {
 	// "#rrggbb", or "" for the default look.
 	Color string
 	// Dir is the project's folder on its host, "" for the host's tabs with
-	// no project (docs/projects.md). Space is the space the project shows
+	// no project (docs/MOD-002-projects.md). Space is the space the project shows
 	// in, "" for Default, and Used when a tab of it last took input or was
 	// made: the host keeps them.
 	Dir, Space string
@@ -749,7 +749,7 @@ func (st *store) byID(id string) *Workspace {
 }
 
 // addWorkspace is this machine's workspace of tabs with no project, made
-// when it has none, after its projects (docs/projects.md): a window with
+// when it has none, after its projects (docs/MOD-002-projects.md): a window with
 // nothing else to show shows it.
 func (st *store) addWorkspace() *Workspace {
 	if w := st.noProjectOf(nil); w != nil {
@@ -1488,7 +1488,7 @@ func (a *App) emptied() bool {
 	if st == nil || w == nil {
 		return false
 	}
-	// A project stays with no tab, as its host keeps it (docs/projects.md),
+	// A project stays with no tab, as its host keeps it (docs/MOD-002-projects.md),
 	// and so do a host's tabs with no project: the window shows another.
 	next := st.freeAfter(w)
 	if next == nil {

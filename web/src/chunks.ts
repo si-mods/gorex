@@ -1,4 +1,4 @@
-// The parts of the page's code loaded when first used (docs/web-client.md,
+// The parts of the page's code loaded when first used (docs/REF-007-web-client.md,
 // Loading on demand): esbuild cuts each dynamic import() into a chunk, and
 // a Chunk loads it through the loader (loader.ts) the first time the page
 // needs it, as the Settings dialog when it first opens. Once in, it runs

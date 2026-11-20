@@ -2,6 +2,7 @@ package rexapi
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"runtime"
 	"strings"
@@ -355,5 +356,78 @@ func BenchmarkEventFanout(b *testing.B) {
 			}
 			c.queued = 0
 		}
+	}
+}
+
+// TestEventDropped: an event too large for one message becomes
+// event_dropped at revision 18, and older connections keep the
+// connection and receive nothing in its place.
+func TestEventDropped(t *testing.T) {
+	rec := &clientRecord{id: "c1", all: true, scope: "all", attached: map[string]bool{}}
+	conn := func(rev int) *control {
+		return &control{rec: rec, rev: rev, out: make(chan outMsg, 4), done: make(chan struct{})}
+	}
+	huge := map[string]any{
+		"block_id": "b1", "creator_name": "com.superlogical.terminal", "name": "title_changed",
+		"payload": map[string]any{"title": strings.Repeat("x", maxMessage)},
+	}
+	chs := []change{{session: "S1", typ: "block_event", payload: huge}}
+
+	older := conn(17)
+	older.sendChanges(chs)
+	if len(older.out) != 0 {
+		t.Fatalf("revision 17 received %d events", len(older.out))
+	}
+	select {
+	case <-older.done:
+		t.Fatal("revision 17 lost the connection")
+	default:
+	}
+	// The sequence number of the dropped event is spent: the next event
+	// carries the one after it.
+	older.sendChanges([]change{{session: "S1", typ: "window_label_changed", payload: windowPayload{WindowID: "W1"}}})
+	if len(older.out) != 1 {
+		t.Fatalf("revision 17 received %d events after the dropped one", len(older.out))
+	}
+
+	newer := conn(18)
+	newer.sendChanges(chs)
+	if len(newer.out) != 1 {
+		t.Fatalf("revision 18 received %d events", len(newer.out))
+	}
+	var frame struct {
+		Seq     uint64 `json:"seq"`
+		Payload struct {
+			Type    string `json:"type"`
+			Payload struct {
+				SessionID string `json:"session_id"`
+				Event     struct {
+					Type    string         `json:"type"`
+					Payload map[string]any `json:"payload"`
+				} `json:"event"`
+			} `json:"payload"`
+		} `json:"payload"`
+	}
+	if err := json.Unmarshal((<-newer.out).data, &frame); err != nil {
+		t.Fatal(err)
+	}
+	if frame.Seq != 1 || frame.Payload.Type != "session_event" || frame.Payload.Payload.SessionID != "S1" {
+		t.Fatalf("frame = %+v", frame)
+	}
+	drop := frame.Payload.Payload.Event
+	if drop.Type != "event_dropped" {
+		t.Fatalf("event = %+v", drop)
+	}
+	want := map[string]any{
+		"event_type": "block_event", "session_id": "S1", "block_id": "b1",
+		"creator_name": "com.superlogical.terminal", "block_event_name": "title_changed",
+	}
+	for k, v := range want {
+		if drop.Payload[k] != v {
+			t.Errorf("payload[%s] = %v, want %v", k, drop.Payload[k], v)
+		}
+	}
+	if size, _ := drop.Payload["size"].(float64); size <= maxMessage {
+		t.Errorf("size = %v, want more than %d", drop.Payload["size"], maxMessage)
 	}
 }

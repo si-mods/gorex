@@ -90,7 +90,7 @@ export interface SocketLike {
 }
 
 /**
- * How the page reaches a host's gateway (docs/web-tailscale.md, Hosts and
+ * How the page reaches a host's gateway (docs/WEB-002-tailscale.md, Hosts and
  * transport): directly, with the browser's WebSocket and fetch, or
  * through the tailnet engine. Paths are the gateway's, such as
  * /api/control.

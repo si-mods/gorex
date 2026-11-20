@@ -20,7 +20,7 @@ import (
 // gateway's state directory. Native clients send no Origin header and
 // are not judged by it. A browser sends the page's origin with every
 // request, and the gateway serves a page only when its origin is in
-// Origins: the standalone web client (docs/web-client.md) wherever it is
+// Origins: the standalone web client (docs/REF-007-web-client.md) wherever it is
 // hosted. Without the list, any page a browser on an allowed network
 // opens could use the API as that browser, since the access rule judges
 // the caller's address, not the page. The list is empty by default.

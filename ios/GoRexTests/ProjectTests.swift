@@ -1,6 +1,6 @@
 import XCTest
 
-/// Projects on each host, inside a space (docs/projects.md, Rex Go): what
+/// Projects on each host, inside a space (docs/MOD-002-projects.md, Rex Go): what
 /// the host's welcome and sessions say, the Rex API calls the list makes,
 /// the spaces this device keeps, and the copy of a host's projects shown
 /// while it is away.

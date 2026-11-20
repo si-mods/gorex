@@ -859,6 +859,7 @@ func methodSessionCloseWindow(c *control, a args) (any, *apiError) {
 	if first == nil {
 		return nil, errNotFound("window %s has no block", windowID)
 	}
+	closed, hadFocus := c.lastFocus()
 	if _, aerr := c.g.command(rex.LayoutCommand{Op: "tab.close", Space: s.space, Tab: w.tab, SID: first.sid}); aerr != nil {
 		return nil, aerr
 	}
@@ -868,6 +869,9 @@ func methodSessionCloseWindow(c *control, a args) (any, *apiError) {
 	})
 	if aerr != nil {
 		return nil, aerr
+	}
+	if hadFocus && closed.session == s.id && closed.window == windowID {
+		m = c.focusBack(m, closed)
 	}
 	return revisionResult{Revision: revisionOf(m, s.id)}, nil
 }
@@ -2016,6 +2020,7 @@ func methodBlockClose(c *control, a args) (any, *apiError) {
 			return nil, errBadRequest("the block is the only one in its window")
 		}
 	}
+	closed, hadFocus := c.lastFocus()
 	if _, aerr := c.g.command(rex.LayoutCommand{Op: "pane.close", Space: s.space, SID: b.sid}); aerr != nil {
 		return nil, aerr
 	}
@@ -2025,6 +2030,9 @@ func methodBlockClose(c *control, a args) (any, *apiError) {
 	})
 	if aerr != nil {
 		return nil, aerr
+	}
+	if hadFocus && closed.session == s.id && closed.block == b.id {
+		m = c.focusBack(m, closed)
 	}
 	return map[string]any{"block_id": b.id, "revision": revisionOf(m, s.id)}, nil
 }

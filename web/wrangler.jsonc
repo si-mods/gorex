@@ -1,6 +1,6 @@
 // GoRex's web client on Cloudflare Workers: static assets only, no Worker
 // code. npm run deploy builds web/dist and runs wrangler deploy; see
-// docs/web-client.md. The name is the Worker's; the page is served at
+// docs/REF-007-web-client.md. The name is the Worker's; the page is served at
 // https://web.gorex.uk, its custom domain in the gorex.uk zone, and that
 // origin is what a host must trust: gorex rexapi web allow
 // https://web.gorex.uk. The Worker's own address,

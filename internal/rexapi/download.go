@@ -20,7 +20,7 @@ import (
 
 // A download is a file of a block's machine a web page reads, as the
 // desktop downloads a path printed in a pane of a host
-// (docs/web-open-files.md). It is GoRex's own, outside Rex's API, and
+// (docs/WEB-001-open-files.md). It is GoRex's own, outside Rex's API, and
 // takes two steps. com.superlogical.terminal.download_begin, on the
 // control connection, opens the file with file.get for the block's
 // session, so that it fails early with a clear error, and answers a

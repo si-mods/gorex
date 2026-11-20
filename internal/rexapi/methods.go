@@ -183,6 +183,7 @@ var methods = map[string]func(*control, args) (any, *apiError){
 	"session.focus_previous_pane":   methodSessionFocusPreviousPane,
 	"session.focus_next_window":     methodSessionFocusNextWindow,
 	"session.focus_previous_window": methodSessionFocusPreviousWindow,
+	"focus_history.reverse":         methodFocusHistoryReverse,
 	"session.zoom_block":            methodSessionZoomBlock,
 	"session.swap_blocks":           methodSessionSwapBlocks,
 	"session.move_block":            methodSessionMoveBlock,

@@ -20,7 +20,7 @@ import (
 // Teleport moves a pane's work to another machine: the Git work tree's
 // state, Claude Code's conversation and the scrollback, packed by this
 // machine's server ("teleport.pack") and unpacked by the target's
-// ("teleport"), which starts the program again there. docs/teleport.md
+// ("teleport"), which starts the program again there. docs/DSK-003-teleport.md
 // tells the whole of it.
 
 // CapabilityTeleport is what a server that takes a teleport says it does:

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Maple Mono NF CN for the web client (docs/web-client.md, Fonts): its four
+// Maple Mono NF CN for the web client (docs/REF-007-web-client.md, Fonts): its four
 // faces, from the pinned release, cut into woff2 chunks by unicode-range,
 // as Google Fonts cuts its CJK families, so that a page downloads only the
 // chunks of the characters it draws.

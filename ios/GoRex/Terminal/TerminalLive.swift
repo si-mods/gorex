@@ -2,7 +2,7 @@ import Foundation
 import Observation
 
 /// The terminal activity's logic, apart from ActivityKit, which a Driver
-/// stands for (docs/ios-live-activities.md, Terminal activity): one
+/// stands for (docs/IOS-006-live-activities.md, Terminal activity): one
 /// activity at a time, for the terminal on screen; its updates, at most one
 /// per interval; and the grace on leaving the app, during which the
 /// streams stay open, before they are suspended as they were before.
@@ -26,9 +26,10 @@ final class TerminalLive {
         func end()
     }
 
-    /// The terminal it shows. state reads the host and the stream, all but
-    /// the line, as of the moment; a change of what it read updates the
-    /// activity. readLine reads the screen's last line, maybe later, maybe
+    /// The terminal it shows. state reads the host and the stream as of
+    /// the moment, with the line only when a record's message is it; a
+    /// change of what it read updates the activity. readLine reads the
+    /// screen's line (TerminalActivity.screenLine), maybe later, maybe
     /// never, as a terminal not drawn yet has no screen.
     struct Source {
         let attributes: TerminalActivity
@@ -205,8 +206,9 @@ final class TerminalLive {
     }
 
     private func state(_ source: Source) -> TerminalActivity.ContentState {
+        // A line the state has, a record's message, wins.
         var s = source.state()
-        s.line = line
+        if s.line.isEmpty { s.line = line }
         return s
     }
 
@@ -222,10 +224,20 @@ final class TerminalLive {
     }
 
     /// The activity's state of a block's terminal: the window's title, the
-    /// tile, the block's most urgent record, the line cut short.
+    /// tile, the block's most urgent record, the line cut short: the
+    /// record's message, in any state, which says what the program does or
+    /// waits for; else, done or failed, the last message it had; else,
+    /// for a program that reports none, the screen's.
     static func state(title: String, program: String?, records: [Host.ProgramStatus], seen: Date?,
-                      line: String = "", connected: Bool) -> TerminalActivity.ContentState {
-        let r = Host.ProgramStatus.mostUrgent(records, seen: seen).flatMap { $0.state == "idle" ? nil : $0 }
+                      line screen: String = "", connected: Bool) -> TerminalActivity.ContentState {
+        let u = Host.ProgramStatus.mostUrgent(records, seen: seen)
+        let r = u.flatMap { $0.state == "idle" ? nil : $0 }
+        func text(_ s: String?) -> String? {
+            let t = s?.split(whereSeparator: \.isNewline).joined(separator: " ").trimmingCharacters(in: .whitespaces)
+            return t?.isEmpty == false ? t : nil
+        }
+        let finished = u?.state == "done" || u?.state == "error"
+        let line = text(u?.msg) ?? (finished ? text(u?.lastMsg) : nil) ?? screen
         return .init(title: TerminalActivity.cut(title), program: WidgetPublisher.program(r?.app, block: program),
                      record: r.map { .init(state: $0.state, kind: $0.kind, progress: $0.progress, title: $0.title.map { TerminalActivity.cut($0) }, updated: $0.updated) },
                      line: TerminalActivity.cut(line, TerminalActivity.maxLine, bytes: TerminalActivity.maxLineBytes), connected: connected)

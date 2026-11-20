@@ -23,7 +23,7 @@ func sessionCount(t *testing.T, c *Client) int {
 }
 
 // TestSpaceHome sets, checks and clears a space's folder, which the
-// desktop before docs/projects.md's phase 2 does: only one of this
+// desktop before docs/MOD-002-projects.md's phase 2 does: only one of this
 // machine, and only one project per folder.
 func TestSpaceHome(t *testing.T) {
 	_, c := applyFixture(t)

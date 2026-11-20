@@ -490,6 +490,11 @@ func (c *control) handle(req *request) {
 		return
 	}
 	payload, err := fn(c, args)
+	if err == nil && focusMethods[req.Method] {
+		if sid, _, aerr := args.str("session_id"); aerr == nil {
+			c.noteFocus(sid)
+		}
+	}
 	c.respond(req, payload, err)
 }
 
@@ -566,9 +571,19 @@ func (c *control) sendChanges(chs []change) {
 		data := strconv.AppendUint(append(make([]byte, 0, len(body)+48), `{"type":"event","seq":`...), c.seq, 10)
 		data = append(append(append(data, `,"payload":`...), body...), '}')
 		if len(data) > maxMessage {
-			c.mu.Unlock()
-			c.closeWith(1009, "event exceeds message limit")
-			return
+			// Revision 18 replaces the event instead of closing the
+			// connection. Older connections get nothing in its place.
+			if c.rev < eventDropRevision {
+				c.mu.Unlock()
+				continue
+			}
+			drop := droppedBody(ch, len(body))
+			data = strconv.AppendUint(append(make([]byte, 0, len(drop)+48), `{"type":"event","seq":`...), c.seq, 10)
+			data = append(append(append(data, `,"payload":`...), drop...), '}')
+			if len(data) > maxMessage {
+				c.mu.Unlock()
+				continue
+			}
 		}
 		if c.queued+len(data) > eventBacklog {
 			c.mu.Unlock()
@@ -594,8 +609,48 @@ func (c *control) sendChanges(chs []change) {
 	}
 }
 
+// eventDropRevision is when a too-large event became event_dropped
+// instead of the end of the connection.
+const eventDropRevision = 18
+
+// droppedBody builds the event_dropped that replaces a change too large
+// for one message: the name of the dropped event, its source and its
+// size, wrapped as the dropped event would have been.
+func droppedBody(ch *change, size int) []byte {
+	payload := map[string]any{"event_type": ch.typ, "size": size}
+	if ch.session != "" {
+		payload["session_id"] = ch.session
+	}
+	if ch.typ == "block_event" {
+		if m, ok := ch.payload.(map[string]any); ok {
+			for _, name := range []string{"block_id", "creator_name"} {
+				if v, ok := m[name]; ok {
+					payload[name] = v
+				}
+			}
+			if v, ok := m["name"]; ok {
+				payload["block_event_name"] = v
+			}
+		}
+	}
+	var body any
+	if ch.server {
+		body = innerEvent{Type: "event_dropped", Payload: payload}
+	} else {
+		body = sessionEvent{Type: "session_event", Payload: eventBody{
+			SessionID: ch.session,
+			Event:     innerEvent{Type: "event_dropped", Payload: payload},
+		}}
+	}
+	b, _ := json.Marshal(body)
+	return b
+}
+
 // wants tells whether this connection receives a change.
 func (c *control) wants(ch change) bool {
+	if ch.since > c.rev {
+		return false
+	}
 	rec := c.rec
 	if rec == nil {
 		return false

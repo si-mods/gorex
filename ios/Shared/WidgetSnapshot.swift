@@ -2,7 +2,7 @@ import Foundation
 
 /// What the widgets show: the hosts' inboxes as the app last
 /// saw them, a file the app writes and the widget extension reads
-/// (docs/ios-widgets.md, Snapshot). It is a saved format another build
+/// (docs/IOS-010-widgets.md, Snapshot). It is a saved format another build
 /// reads: v is the format, and fields are added as optional only. It is a
 /// cache: the next time the app is in front writes it anew.
 nonisolated struct WidgetSnapshot: Codable, Equatable, Sendable {

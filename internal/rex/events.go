@@ -46,12 +46,12 @@ func (s *Server) subscribe(write func([]byte), remote bool, transfers bool) *sub
 			sub.pending, sub.transfers = map[string]bool{}, nil
 			s.subMu.Unlock()
 			// The sessions first: a new tab's layout names a new session.
-			for _, kind := range []string{"sessions", "layout", "theme"} {
+			for _, kind := range []string{"sessions", "layout", "theme", "ports"} {
 				if !pending[kind] {
 					continue
 				}
 				if sub.remote {
-					if kind == "sessions" || kind == "theme" {
+					if kind == "sessions" || kind == "theme" || kind == "ports" {
 						continue
 					}
 				}
@@ -62,6 +62,11 @@ func (s *Server) subscribe(write func([]byte), remote bool, transfers bool) *sub
 				case "theme":
 					ev.Theme = s.currentTheme()
 					if ev.Theme == nil {
+						continue
+					}
+				case "ports":
+					ev.Ports = s.takePortsEvents()
+					if len(ev.Ports) == 0 {
 						continue
 					}
 				default:

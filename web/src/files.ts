@@ -1,5 +1,5 @@
 // Opening a host's file, as the desktop opens a path printed in a host's
-// pane (upload.go download), over the gateway (docs/web-open-files.md):
+// pane (upload.go download), over the gateway (docs/WEB-001-open-files.md):
 // download_begin on the control connection gives a ticket for one file, and
 // GET /api/download?ticket=… sends it. An image the page can show, and
 // whose first bytes are that image's, opens in the viewer (viewer.ts) from
@@ -9,7 +9,7 @@
 // browser cannot navigate to the host, so the page reads the file through
 // the transport and streams it to the browser's download through the
 // Service Worker (app.ts, streamSave), or, with no worker, holds it in a
-// blob that is saved and let go (docs/web-tailscale.md, Downloads).
+// blob that is saved and let go (docs/WEB-002-tailscale.md, Downloads).
 import { streamSave } from "./app";
 import { failure as fail, formatSize, Msg, PlainKey, t } from "./i18n";
 import { BytesStream, Control, describe, RexError, Transport } from "./rex";
@@ -134,7 +134,7 @@ interface Begun {
   type: string;
 }
 
-/** The status line's words for download_begin's errors (docs/web-open-files.md). */
+/** The status line's words for download_begin's errors (docs/WEB-001-open-files.md). */
 const errorText: Record<string, PlainKey> = {
   no_file: "errorNoFile",
   is_folder: "errorIsFolder",

@@ -12,7 +12,7 @@ import (
 	"gorex/internal/rex"
 )
 
-// The window shows the hosts' layouts (docs/projects.md, "The desktop
+// The window shows the hosts' layouts (docs/MOD-002-projects.md, "The desktop
 // window"): each project's tabs, splits, floats and browser panes live in
 // the layout of the project's host, this machine's in its own. A host's
 // workspaces are the store's as this machine's are (Workspace.host): the
@@ -134,7 +134,7 @@ func (st *store) lostHost(h *hostConn, c *rex.Client) {
 // workspaces take it, and the windows that show one of them its tabs
 // (App.reconcile). As takeLayout, it does not while a gesture runs or
 // while the app has changes of its own to send first. The tab a window
-// shows of a workspace is its own (docs/projects.md): the host's active
+// shows of a workspace is its own (docs/MOD-002-projects.md): the host's active
 // tab moves no window.
 func (st *store) takeHost(h *hostConn, c *rex.Client, ls rex.LayoutState) bool {
 	if h.current() != c || !slices.Contains(st.hosts, h) {
@@ -362,7 +362,7 @@ func (st *store) noProjectOf(h *hostConn) *Workspace {
 }
 
 // The copy kept of each host's layout, to show the host while it is away
-// (docs/projects.md, "Offline hosts"): its projects and their tabs as the
+// (docs/MOD-002-projects.md, "Offline hosts"): its projects and their tabs as the
 // app last took them, shown greyed, never changed or opened.
 
 // hostCachePath is the file of the copies, beside the hosts.
@@ -427,7 +427,7 @@ func (w *Workspace) offline() bool {
 }
 
 // sortedWorkspaces are ws by last use, the latest first, as Codex lists
-// projects (docs/projects.md): the same use keeps their order.
+// projects (docs/MOD-002-projects.md): the same use keeps their order.
 func sortedWorkspaces(ws []*Workspace) []*Workspace {
 	out := slices.Clone(ws)
 	sort.SliceStable(out, func(i, j int) bool { return out[i].Used.After(out[j].Used) })

@@ -372,7 +372,7 @@ func (s *Server) remoteSeen(peer string) {
 // attach to sessions. dir.list goes to the clients that may take a file
 // with file.get, which reads any path as the server's user already. Every
 // client the host lets in reads the layout and follows its changes: it is
-// where the host's projects and tabs live (docs/projects.md).
+// where the host's projects and tabs live (docs/MOD-002-projects.md).
 func remoteAllowed(op string) bool {
 	switch op {
 	case "hello", "ping", "list", "create", "kill", "resize", "focus", "input", "paste", "capture", "clients",
@@ -1196,7 +1196,7 @@ func (c *tailcatConn) Close() error {
 
 // remoteCommand tells whether a remote client may ask for the layout
 // command c. A client the host lets in arranges the host's tabs as its
-// own window does (docs/projects.md, "The desktop window"): tab.set and
+// own window does (docs/MOD-002-projects.md, "The desktop window"): tab.set and
 // layout.apply, of the host's own panes only. What names this machine's
 // windows, or what only its own window takes (kills, shows, adoptions),
 // stays local.

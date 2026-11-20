@@ -4,7 +4,7 @@ import Observation
 import Tailnet
 import UIKit
 
-/// Manages sharing the GoRex web client over Personal Hotspot (docs/ios-web-share.md).
+/// Manages sharing the GoRex web client over Personal Hotspot (docs/IOS-003-web-share.md).
 @MainActor
 @Observable
 final class HotspotShare: NSObject, TailnetShareDelegateProtocol {

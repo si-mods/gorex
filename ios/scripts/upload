@@ -36,7 +36,7 @@ P
 # cloud-managed one signs only at export. But the export signs each bundle
 # with the entitlements its archived signature carries, and an unsigned one
 # carries none: the App Group, which the widgets read the app's snapshot
-# through, and the iCloud key-value store went missing (docs/ios-widgets.md,
+# through, and the iCloud key-value store went missing (docs/IOS-010-widgets.md,
 # Build and release). So each bundle is signed ad hoc with its entitlements
 # before the export, the innermost first; the export signs it again, for
 # the distribution, with them.

@@ -7,7 +7,7 @@ import (
 )
 
 // v039 is a layout of version 2 (v0.38.0 to v0.40.x) with the Cases of
-// docs/projects.md's Migration: host "h1" is office-h800, of machine
+// docs/MOD-002-projects.md's Migration: host "h1" is office-h800, of machine
 // "m1"; a home of "machine:m1" is the same host.
 const v039 = `{"version":2,"windows":["gorex","work"],
 "teleports":[{"host":"h1","sid":"t1","from":"l9"}],"kills":[{"host":"h1","sid":"k1"}],
@@ -47,7 +47,7 @@ func sids(ws []Workspace) []string {
 }
 
 // TestMigrateCases checks each case of the Migration table of
-// docs/projects.md on the layout: what stays here, and what each host
+// docs/MOD-002-projects.md on the layout: what stays here, and what each host
 // adopts.
 func TestMigrateCases(t *testing.T) {
 	st, changed := Migrate([]byte(v039), machines)

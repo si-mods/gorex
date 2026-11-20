@@ -982,7 +982,7 @@
   per-user isolation; it is not implemented.
 - A Linux shared-server service and `gorex remote` administration commands
   (enable, address, pair, approve, revoke, share) are documented in
-  `docs/shared-server.md`.
+  `docs/REF-004-shared-server.md`.
 - Sessions carry the principal that created them; `gorex ls` shows local
   or the paired client's name.
 - Program status changes notify subscribers and carry their session IDs and

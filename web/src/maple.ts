@@ -1,4 +1,4 @@
-// Maple Mono NF CN, the terminal's CJK font (docs/web-client.md, Fonts):
+// Maple Mono NF CN, the terminal's CJK font (docs/REF-007-web-client.md, Fonts):
 // whatever the chosen font, the terminals' stack is that font, then Maple,
 // and the system's CJK font never draws.
 //

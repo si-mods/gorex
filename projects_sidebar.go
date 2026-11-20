@@ -13,7 +13,7 @@ import (
 	"gorex/locales"
 )
 
-// The sidebar of projects (docs/projects.md, "Sidebar"): the space picker
+// The sidebar of projects (docs/MOD-002-projects.md, "Sidebar"): the space picker
 // atop, then each host the user added, with its PROJECTS of the space
 // shown, in order of last use, those older than olderAfter under a folded
 // Older, and its tabs with no project, which every space shows. A project
@@ -88,7 +88,7 @@ func (a *App) projectsOf(h *hostConn, space string) (recent, older []*Workspace)
 	return recent, older
 }
 
-// projectsList is the sidebar's list (docs/projects.md, "Sidebar"): each
+// projectsList is the sidebar's list (docs/MOD-002-projects.md, "Sidebar"): each
 // host shown, as a section header, then its projects of the space, flush
 // with it, those not used for olderAfter under Older, the adoptions that
 // wait for it, and its tabs with no project, under a label of their own.
@@ -553,7 +553,7 @@ func (a *App) foldRow(c *ui.Context, k *colors, key, label, count string, open b
 }
 
 // waitingRow is a project, or tabs with no project, that an adoption
-// keeps for host h until it connects (docs/projects.md, Migration): at the
+// keeps for host h until it connects (docs/MOD-002-projects.md, Migration): at the
 // projects' level, greyed, with "Waiting for <host>".
 func (a *App) waitingRow(c *ui.Context, k *colors, h *hostConn, ad layout.Adoption, reserve float32) {
 	name, detail := locales.ProjectsNoProject(), ""
@@ -581,7 +581,7 @@ func (a *App) waitingRow(c *ui.Context, k *colors, h *hostConn, ad layout.Adopti
 	dimmed(row, 0.5)
 }
 
-// projectMenu is a project's menu (docs/projects.md): New Tab, Rename…,
+// projectMenu is a project's menu (docs/MOD-002-projects.md): New Tab, Rename…,
 // Color, Move to Space, Reveal Folder (this machine's), Close Project….
 func (a *App) projectMenu(m *ui.Menu, w *Workspace) {
 	if m.Item(locales.CmdNewTab()).Chosen() {
@@ -672,7 +672,7 @@ func (a *App) newTabIn(w *Workspace) {
 }
 
 // canMoveTab tells whether tab t of the window may move to workspace w:
-// another workspace of its host (docs/projects.md: a tab moves between
+// another workspace of its host (docs/MOD-002-projects.md: a tab moves between
 // workspaces of one host, with its panes).
 func (a *App) canMoveTab(t *Tab, w *Workspace) bool {
 	return t != nil && w != nil && w != a.ws && a.ws != nil && w.host == a.ws.host && !w.offline() && serverMade(w.host) && slices.Contains(a.tabs, t)

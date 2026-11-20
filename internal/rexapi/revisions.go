@@ -96,6 +96,17 @@ var methodSince = map[string]int{
 	"com.superlogical.terminal.upload_begin": 11,
 	// Revision 14 adds com.superlogical.tunnel and its info method.
 	"com.superlogical.tunnel.info": 14,
+	// Revision 15 adds the ports method.
+	"com.superlogical.terminal.ports": 15,
+	// Revision 19 adds the focus history walk.
+	"focus_history.reverse": 19,
+}
+
+// eventSince is when an event first appeared. A client at an older
+// revision does not receive it.
+var eventSince = map[string]int{
+	// Revision 16 adds the ports_changed block event.
+	"ports_changed": 16,
 }
 
 var (

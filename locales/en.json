@@ -2252,7 +2252,7 @@
   "canvasNewNote": "New Note",
   "cmdTeleport": "Teleport to",
   "@cmdTeleport": {
-    "description": "Pane menu: submenu of the hosts a pane's work moves to (docs/teleport.md)."
+    "description": "Pane menu: submenu of the hosts a pane's work moves to (docs/DSK-003-teleport.md)."
   },
   "cmdTeleportTo": "Teleport to {host}",
   "@cmdTeleportTo": {

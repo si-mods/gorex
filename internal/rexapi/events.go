@@ -8,6 +8,9 @@ type change struct {
 	server  bool
 	session string
 	typ     string
+	// since is the revision an event first appeared at; a connection
+	// older than it does not receive the event.
+	since   int
 	payload any
 	// body is the event as the connections get it but for its seq,
 	// encoded by the first one that sends it.

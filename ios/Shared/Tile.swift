@@ -32,7 +32,7 @@ struct ProgramTile: View {
                                   lineWidth: 0.5)
             }
             .overlay {
-                if glyph { glyphImage.foregroundStyle(Color(rgb: program.tileFg)).frame(width: 11 * k, height: 11 * k) }
+                if glyph { ProgramGlyph(program: program).foregroundStyle(Color(rgb: program.tileFg)).frame(width: 11 * k, height: 11 * k) }
             }
             .background {
                 // A dark rim on a dark page, a light one on a light page.
@@ -41,10 +41,14 @@ struct ProgramTile: View {
             }
             .shadow(color: .black.opacity(0.18), radius: 0.75 * k, y: 0.5 * k)
     }
+}
 
-    /// An SF Symbol where one is mapped, inset as symbol.go insets them,
-    /// else the brand's mark.
-    @ViewBuilder private var glyphImage: some View {
+/// The glyph on a program's tile, at any size: an SF Symbol where one is
+/// mapped, inset as symbol.go insets them, else the brand's mark.
+struct ProgramGlyph: View {
+    let program: Program
+
+    var body: some View {
         let g = program.tileGlyph.isEmpty ? program.glyph : program.tileGlyph
         if let sf = Program.symbols[g] {
             Image(systemName: sf).resizable().scaledToFit().scaleEffect(0.85)

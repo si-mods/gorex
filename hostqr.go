@@ -136,7 +136,7 @@ func openHostPairQR(h *hostConn) {
 }
 
 // openRexGoQR opens the pairing window and shows this machine's code for
-// Rex Go (docs/ios-tailcat.md, Pairing a phone). The address is asked for
+// Rex Go (docs/IOS-002-tailcat.md, Pairing a phone). The address is asked for
 // here and goes into the image only: never into the page, a log or the
 // clipboard. With direct it is the second address's, of Reachable at.
 func (a *App) openRexGoQR(direct bool) {

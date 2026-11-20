@@ -51,6 +51,10 @@ var blockEventSchemas = map[string]any{
 		},
 		"required": []string{"generation", "foreground"},
 	},
+	"ports_changed": map[string]any{
+		"type":        "object",
+		"description": "The TCP ports that the terminal's programs listen on, as com.superlogical.terminal.ports reports them.",
+	},
 	"program_status_removed": map[string]any{
 		"type": "object",
 		"properties": map[string]any{
@@ -110,9 +114,12 @@ func blockCreatorAPI() map[string]any {
 			methods[m.Name] = entry
 		}
 	}
-	// upload_begin postdates the snapshot the method list comes from;
-	// describe_block reports it like block_creator.list does.
+	// upload_begin and ports postdate the snapshot the method list comes
+	// from; describe_block reports them like block_creator.list does.
 	methods["upload_begin"] = uploadBeginEntry
+	if portsCreatorEntry != nil {
+		methods["ports"] = portsCreatorEntry
+	}
 	return map[string]any{"methods": methods, "events": blockEventSchemas}
 }
 
@@ -123,6 +130,31 @@ func blockCreatorAPI() map[string]any {
 //
 //go:embed testdata/rex-terminal-creator.json
 var terminalCreatorJSON []byte
+
+// portsMethodEntry is revision 15's ports method, as Rex describes it: a
+// terminal block method, with the schemas a creator lists.
+//
+//go:embed testdata/rex-ports-method.json
+var portsMethodJSON []byte
+
+var portsMethodEntry, portsCreatorEntry map[string]any
+
+func init() {
+	if json.Unmarshal(portsMethodJSON, &portsMethodEntry) != nil {
+		return
+	}
+	portsCreatorEntry = map[string]any{
+		"description":   portsMethodEntry["description"],
+		"input_schema":  portsMethodEntry["args_schema"],
+		"output_schema": portsMethodEntry["output_schema"],
+	}
+}
+
+// focusHistoryMethodJSON is revision 19's focus_history.reverse, as Rex
+// describes it. The snapshot the help document comes from predates it.
+//
+//go:embed testdata/rex-focus-history-method.json
+var focusHistoryMethodJSON []byte
 
 // uploadBeginEntry is the method entry revision 11's terminal creator
 // adds, which the revision 10 snapshot predates. Its prose and schemas
@@ -262,6 +294,9 @@ func methodBlockCreatorList(c *control, a args) (any, *apiError) {
 	if api, ok := creator["api"].(map[string]any); ok {
 		if methods, ok := api["methods"].(map[string]any); ok {
 			methods["upload_begin"] = uploadBeginEntry
+			if portsCreatorEntry != nil {
+				methods["ports"] = portsCreatorEntry
+			}
 		}
 	}
 	creators := []any{creator}
@@ -300,6 +335,9 @@ func helpDocument(rev int, withHTTP bool) map[string]json.RawMessage {
 		}
 		kept = append(kept, withProject(laterSchema(rev, m.Name, raw)))
 	}
+	if rev >= 19 {
+		kept = append(kept, focusHistoryMethodJSON)
+	}
 	kept = append(kept, ownMethods()...)
 	doc["methods"], _ = json.Marshal(kept)
 	var blocks []json.RawMessage
@@ -312,7 +350,7 @@ func helpDocument(rev int, withHTTP bool) map[string]json.RawMessage {
 			Creator string `json:"creator"`
 		}
 		if json.Unmarshal(raw, &b) == nil && b.Creator == creatorName {
-			keptBlocks = append(keptBlocks, raw)
+			keptBlocks = append(keptBlocks, withPortsMethod(raw))
 		}
 	}
 	doc["block_types"], _ = json.Marshal(keptBlocks)
@@ -344,6 +382,9 @@ func helpAllDocument(rev int) map[string]json.RawMessage {
 		}
 		kept = append(kept, withProject(laterSchema(rev, m.Name, raw)))
 	}
+	if rev >= 19 {
+		kept = append(kept, focusHistoryMethodJSON)
+	}
 	kept = append(kept, ownMethods()...)
 	doc["methods"], _ = json.Marshal(kept)
 	var blocks []json.RawMessage
@@ -361,10 +402,42 @@ func helpAllDocument(rev int) map[string]json.RawMessage {
 		if since, ok := creatorSince[b.Creator]; ok && rev < since {
 			continue
 		}
+		if b.Creator == creatorName {
+			raw = withPortsMethod(raw)
+		}
 		keptBlocks = append(keptBlocks, raw)
 	}
 	doc["block_types"], _ = json.Marshal(keptBlocks)
 	return doc
+}
+
+// withPortsMethod adds revision 15's ports method to a terminal creator's
+// method list, which the snapshot the document comes from predates.
+func withPortsMethod(raw json.RawMessage) json.RawMessage {
+	if portsMethodEntry == nil {
+		return raw
+	}
+	var block map[string]any
+	if json.Unmarshal(raw, &block) != nil {
+		return raw
+	}
+	methods, _ := block["methods"].([]any)
+	for _, m := range methods {
+		if entry, ok := m.(map[string]any); ok && entry["name"] == "ports" {
+			return raw
+		}
+	}
+	entry := make(map[string]any, len(portsMethodEntry))
+	for k, v := range portsMethodEntry {
+		entry[k] = v
+	}
+	entry["invoke"] = map[string]any{"method": creatorName + ".ports"}
+	block["methods"] = append(methods, entry)
+	out, err := json.Marshal(block)
+	if err != nil {
+		return raw
+	}
+	return out
 }
 
 // ownMethods are the help document's entries of GoRex's own methods,

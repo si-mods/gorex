@@ -127,7 +127,7 @@ func winPath(p string) bool {
 }
 
 // createProject makes a project named name of the folder dir on host h,
-// nil for this machine, in the space shown (docs/projects.md, "New
+// nil for this machine, in the space shown (docs/MOD-002-projects.md, "New
 // Project"): the host makes it and its first tab, in the folder, which
 // the window shows. A folder that is a project of the host already shows
 // that one, and, when it is in another space, asks to move it here.

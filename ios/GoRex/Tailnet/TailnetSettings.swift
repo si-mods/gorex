@@ -1,6 +1,6 @@
 import Foundation
 
-/// Settings › Tailscale, as UserDefaults keeps them (docs/ios-tailnet.md).
+/// Settings › Tailscale, as UserDefaults keeps them (docs/IOS-001-tailnet.md).
 enum TailnetSettings {
     static let onKey = "tailnet"
     static let controlKey = "tailnetControl"

@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// The space picker atop the list (docs/projects.md, Rex Go), or in a wide
+/// The space picker atop the list (docs/MOD-002-projects.md, Rex Go), or in a wide
 /// window's bar beside the search: the space shown, and a menu of the
 /// spaces, New Space… and Edit Spaces….
 struct SpacePicker: View {

@@ -496,6 +496,30 @@ final class TerminalView: UIView, TerminalOutput {
         }
     }
 
+    /// Reads the screen's rows off the main thread, after the writes queued
+    /// before it, a read a row: Ghostty joins soft-wrapped rows in one read,
+    /// which would not tell which row is the cursor's. The cursor's row is
+    /// read now, as drawnBottom reads it; output that moves it before the
+    /// rows are read marks the line changed again.
+    func readRows(_ done: @escaping @Sendable (_ rows: [String], _ cursor: Int?) -> Void) {
+        guard let s = surface else { return }
+        let z = ghostty_surface_size(s), rows = Int(z.rows), columns = Int(z.columns), h = cell.height
+        guard rows > 0, columns > 0 else { return }
+        let at = h > 0 ? Int(((cursor(width: nil).minY - inset) / h).rounded()) : -1
+        let row = (0..<rows).contains(at) ? at : nil
+        nonisolated(unsafe) let surface = s
+        writes.async {
+            let point = { (x: Int, y: Int) in ghostty_point_s(tag: GHOSTTY_POINT_ACTIVE, coord: GHOSTTY_POINT_COORD_EXACT, x: UInt32(x), y: UInt32(y)) }
+            let lines = (0..<rows).map { y -> String in
+                var t = ghostty_text_s()
+                guard ghostty_surface_read_text(surface, ghostty_selection_s(top_left: point(0, y), bottom_right: point(columns - 1, y), rectangle: false), &t) else { return "" }
+                defer { ghostty_surface_free_text(surface, &t) }
+                return t.text.map { String(decoding: UnsafeRawBufferPointer(start: $0, count: Int(t.text_len)), as: UTF8.self) } ?? ""
+            }
+            done(lines, row)
+        }
+    }
+
     /// Ghostty settled on a grid for the view's size: the block takes it.
     func resized(cols: Int, rows: Int, width: Int, height: Int) {
         guard cols > 0, rows > 0 else { return }

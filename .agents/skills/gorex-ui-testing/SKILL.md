@@ -17,7 +17,7 @@ Five layers, cheapest first. Use the lowest layer that can prove the behavior; s
 
 Fault scenarios — a dropped connection, a resize storm, a flooding program
 — live in `chaos_test.go` and run with `scripts/chaos.sh <dir>`, which
-leaves their screenshots in `<dir>`. `docs/chaos.md` lists each one with
+leaves their screenshots in `<dir>`. `docs/REF-008-chaos.md` lists each one with
 the invariant it attacks (`docs/invariants.md`).
 
 ## Safety rules (always)

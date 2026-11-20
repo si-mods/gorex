@@ -6912,14 +6912,14 @@ func (msgs Messages) CanvasNewNote() string {
 // in the language the app shows.
 //
 // Pane menu: submenu of the hosts a pane's work moves to
-// (docs/teleport.md).
+// (docs/DSK-003-teleport.md).
 func CmdTeleport() string { return In(i18n.Locale()).CmdTeleport() }
 
 // CmdTeleport says "Teleport to"
 // in the language of msgs.
 //
 // Pane menu: submenu of the hosts a pane's work moves to
-// (docs/teleport.md).
+// (docs/DSK-003-teleport.md).
 func (msgs Messages) CmdTeleport() string {
 	return Catalog.Format(msgs.locale, "cmdTeleport", nil)
 }

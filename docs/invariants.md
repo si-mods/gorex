@@ -2,7 +2,7 @@
 
 The behavior GoRex must not lose. Each item is a fact a user can see, the
 test that proves it today, and where a fault that breaks it is exercised
-(`docs/chaos.md`).
+(`docs/REF-008-chaos.md`).
 
 An agent works from this list. Before it changes state one of these items
 names, it reads the test. When the test is thin, it adds the case in the
@@ -108,4 +108,4 @@ and the dim from `DESIGN.md`, not a variant of its own.
 ## What this list does not cover
 
 Faults that need a real process, a window or a device run outside the
-suite. `docs/chaos.md` lists them with the evidence each run must leave.
+suite. `docs/REF-008-chaos.md` lists them with the evidence each run must leave.

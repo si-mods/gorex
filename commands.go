@@ -209,7 +209,7 @@ func newCustomCommands(cfg *config.Config) ([]*command, error) {
 // lookupCommand returns the built-in action ID, nil when there is none:
 // an old ID of an action renamed is the action's, and one of an action
 // removed does nothing (oldAction), so that bindings of before keep
-// working (docs/lua.md).
+// working (docs/REF-002-lua.md).
 func lookupCommand(id string) *command {
 	if c := commandsByID[id]; c != nil {
 		return c
@@ -222,10 +222,10 @@ func lookupCommand(id string) *command {
 
 // renamedActions are the IDs of before of actions renamed since: New
 // Project with No Folder became New Tab with No Project
-// (docs/projects.md).
+// (docs/MOD-002-projects.md).
 var renamedActions = map[string]string{"session.new": "tab.new_no_project"}
 
-// removedActions are the IDs of actions docs/projects.md removed, which a
+// removedActions are the IDs of actions docs/MOD-002-projects.md removed, which a
 // binding may still name: Toggle Sidebar View, Move Tab to New Window,
 // Change and Remove Project Folder.
 var removedActions = map[string]bool{

@@ -10,6 +10,9 @@ type procInfo struct {
 	name string
 	args []string
 	dir  string
+	// path is the executable's file, and uid the user id it runs as.
+	path string
+	uid  int
 }
 
 // interpreters run a script named by their first argument, which names

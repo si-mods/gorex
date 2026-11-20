@@ -21,7 +21,7 @@ func SameDir(a, b string) bool {
 }
 
 // Migrate reads raw, a layout the server keeps, and makes one of version 2
-// (v0.38.0 to v0.40.x) one of Version, as docs/projects.md's Migration
+// (v0.38.0 to v0.40.x) one of Version, as docs/MOD-002-projects.md's Migration
 // says; changed tells it did. It starts and ends nothing: every pane of
 // this host stays in a tab, with its split as far as one host holds it.
 //

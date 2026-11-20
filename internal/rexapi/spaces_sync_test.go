@@ -51,7 +51,7 @@ func TestGorexSpacesApply(t *testing.T) {
 		t.Fatalf("repeat applied = %d, want 0", got)
 	}
 
-	// A space no session is makes no workspace (docs/projects.md): its
+	// A space no session is makes no workspace (docs/MOD-002-projects.md): its
 	// windows go to the first workspace with no folder, work.
 	res = callChecked(t, c, "gorex.spaces_apply", map[string]any{
 		"spaces": []map[string]any{{"name": "infra", "color": "blue", "block_ids": []string{p1Block}}},

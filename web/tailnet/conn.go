@@ -3,7 +3,7 @@
 package main
 
 // HTTPS and WebSockets to a GoRex gateway over the node's network stack
-// (docs/web-tailscale.md, Engine): TCP to a peer's tailnet address on
+// (docs/WEB-002-tailscale.md, Engine): TCP to a peer's tailnet address on
 // port 443, TLS in Go with the LetsEncrypt roots of bakedroots (js/wasm
 // has no system roots), then HTTP/1.1. The host is always a peer's
 // MagicDNS name, sent as Host and as the TLS server name, and the page's

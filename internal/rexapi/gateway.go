@@ -154,8 +154,11 @@ type Gateway struct {
 	// inflight counts the calls being handled.
 	inflight atomic.Int32
 
-	mu      sync.Mutex
-	model   atomic.Pointer[model]
+	mu    sync.Mutex
+	model atomic.Pointer[model]
+	// focus is each principal's recent places, for focus_history.reverse.
+	focusMu sync.Mutex
+	focus   map[string]*focusHistory
 	conns   map[*control]struct{}
 	clients map[string]*clientRecord
 	tokens  map[string]*clientRecord
@@ -343,6 +346,10 @@ func (g *Gateway) pump() {
 			}
 			if ev.Kind == "theme" && ev.Theme != nil {
 				g.setHostTheme(ev.Theme)
+				continue
+			}
+			if ev.Kind == "ports" {
+				g.emitPorts(ev.Ports)
 				continue
 			}
 			layout = layout || ev.Kind == "layout"
@@ -966,13 +973,19 @@ func (g *Gateway) emitOwnerChanges(changes []ownerChange) {
 // emitSession sends a session event to the connections that receive the
 // session's events.
 func (g *Gateway) emitSession(sid, typ string, payload any) {
+	g.emitSessionSince(sid, typ, 0, payload)
+}
+
+// emitSessionSince sends a session event to the connections that receive
+// it and know its revision.
+func (g *Gateway) emitSessionSince(sid, typ string, since int, payload any) {
 	g.mu.Lock()
 	conns := make([]*control, 0, len(g.conns))
 	for c := range g.conns {
 		conns = append(conns, c)
 	}
 	g.mu.Unlock()
-	chs := []change{{session: sid, typ: typ, payload: payload}}
+	chs := []change{{session: sid, typ: typ, since: since, payload: payload}}
 	for _, c := range conns {
 		c.sendChanges(chs)
 	}

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Checks the web client's catalogs (web/locales/*.json, docs/web-client.md,
+// Checks the web client's catalogs (web/locales/*.json, docs/REF-007-web-client.md,
 // Languages) and writes src/locales.gen.ts from them: each language's
 // messages, without the metadata, and the type of every key's arguments,
 // so that t() of a key en.json does not have, or without an argument its

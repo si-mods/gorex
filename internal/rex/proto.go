@@ -293,7 +293,7 @@ type LayoutCommand struct {
 	// which makes it a project of this machine; a Dir of "" clears it.
 	// Host must be "": a project of another host is made there
 	// (remote_home), and a folder that is a project already fails with
-	// "exists", Space naming it. The desktop of before docs/projects.md's
+	// "exists", Space naming it. The desktop of before docs/MOD-002-projects.md's
 	// phase 2 sends it. A tab.create of no Dir in a project starts in its
 	// folder, or fails with FolderMissing when it is gone, and starts no
 	// session elsewhere (CapabilitySpaceHome).
@@ -598,7 +598,7 @@ type RemoteStatus struct {
 	// apart from Pending: each is approved by its code alone.
 	PendingByAddress []RemoteAddrPending `json:"pendingByAddress,omitempty"`
 	// ShareLayout is always true: every remote client reads this
-	// machine's layout (docs/projects.md). Deprecated: kept for an app of
+	// machine's layout (docs/MOD-002-projects.md). Deprecated: kept for an app of
 	// before, which shows its switch; this server ignores the switch.
 	// Before, it told that remote clients may read this machine's layout
 	// and subscribe to its changes.
@@ -667,6 +667,9 @@ type Event struct {
 	Transfer *Transfer `json:"transfer,omitempty"`
 	// Theme is the host terminal's default colors on a "theme" event.
 	Theme *Theme `json:"theme,omitempty"`
+	// Ports are the terminals whose listening sockets changed, on a
+	// "ports" event.
+	Ports []PortsEvent `json:"ports,omitempty"`
 }
 
 // Theme is the host terminal's default colors, as hex "#rrggbb" strings.

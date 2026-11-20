@@ -1,4 +1,4 @@
-// Package pairaddr is the wire of pairing by address (docs/host-links.md,
+// Package pairaddr is the wire of pairing by address (docs/NET-002-host-links.md,
 // "1. Identity") and its client half: internal/rex serves it, and the
 // desktop and Rex Go's engine (ios/tailnet) ask with it, the engine
 // without the server's packages.
