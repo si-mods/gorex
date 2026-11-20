@@ -71,6 +71,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - Adding photos or files, and opening or sharing a large file from a terminal, no longer makes the app stutter or use a lot of memory.
 - With many terminals open, coming back to the app and opening a terminal is quicker: their titles and programs now load a few at a time, behind the terminal you open.
 - After a computer you added restarts GoRex, Rex Go reaches it again even while it was showing several of its terminals: they reconnect together, without a wait of 10 seconds or more.
+- A terminal whose title keeps changing, and a two-finger swipe between panes, look as before with fewer stutters; the list's working dots and bouncing tiles still move.
 
 ## zh-Hans
 
@@ -134,3 +135,4 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - 添加照片或文件，以及从终端打开或分享大文件时，应用不再卡顿，也不再占用大量内存。
 - 打开很多终端时，回到 App 后打开终端更快了：各终端的标题和程序现在分批加载，不再挡住你要打开的终端。
 - 你添加的电脑重启 GoRex 后，即使 Rex Go 正开着它的几个终端，也能再次连上：这些终端一起重连，不再等待 10 秒以上。
+- 标题不停变化的终端，以及双指在窗格间滑动，外观与以前相同，卡顿更少；列表中的工作圆点和跳动的图标仍照常运动。
