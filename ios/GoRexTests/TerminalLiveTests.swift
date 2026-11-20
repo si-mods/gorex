@@ -759,6 +759,79 @@ nonisolated final class TerminalLiveTests: XCTestCase {
         await until("seen after") { rex.count("gorex.see_block") == 2 && h.status(["b"]) == nil }
     }
 
+    /// sRGB to OKLCH and back, against Björn Ottosson's values; a color
+    /// outside sRGB is clipped into it.
+    @MainActor func testOKLCH() {
+        let red = OKLCH(rgb: 0xff0000)
+        XCTAssertEqual(red.l, 0.62796, accuracy: 1e-4)
+        XCTAssertEqual(red.c, 0.25768, accuracy: 1e-4)
+        XCTAssertEqual(red.h, 29.234, accuracy: 1e-2)
+        let white = OKLCH(rgb: 0xffffff)
+        XCTAssertEqual(white.l, 1, accuracy: 1e-4)
+        XCTAssertEqual(white.c, 0, accuracy: 1e-4)
+        XCTAssertEqual(OKLCH(rgb: 0x0000ff).h, 264.05, accuracy: 1e-1)
+        for rgb: UInt32 in [0x000000, 0xffffff, 0xd97757, 0xf7f7f7, 0x111111, 0x1a73e8, 0x5fa04e, 0x7f52ff] {
+            XCTAssertEqual(OKLCH(rgb: rgb).rgb, rgb, String(rgb, radix: 16))
+        }
+        let out = OKLCH(l: 0.7, c: 0.4, h: 140).srgb
+        for v in [out.r, out.g, out.b] { XCTAssert((0...1).contains(v), "\(v)") }
+    }
+
+    /// The card's ground keeps the tile's hue; a neutral tile gets graphite.
+    @MainActor func testCardGround() {
+        let claude = Program.of("claude")
+        let g = TerminalActivityCard.ground(claude)
+        let k = OKLCH(rgb: claude.tileBg)
+        XCTAssertEqual(g.top.l, 0.40)
+        XCTAssertEqual(g.bottom.l, 0.20)
+        XCTAssertEqual(g.top.h, k.h)
+        XCTAssertEqual(g.top.c, min(k.c, 0.16) * 0.85, accuracy: 1e-9)
+        XCTAssertEqual(g.bottom.c, min(k.c, 0.16) * 0.55, accuracy: 1e-9)
+        // A strong tile's chroma is capped.
+        XCTAssertEqual(TerminalActivityCard.ground(Program.of("kotlin")).top.c, 0.16 * 0.85, accuracy: 1e-9)
+        for p in ["codex", "devin", "zsh", ""] {
+            let n = TerminalActivityCard.ground(Program.of(p))
+            XCTAssertEqual(n.top.h, 260, p)
+            XCTAssertEqual(n.top.c, 0.012 * 0.85, accuracy: 1e-9, p)
+        }
+    }
+
+    /// The Lock Screen card's states, as testCardHeight and testShots draw them.
+    @MainActor static func cardStates(_ program: String, now: Date) -> [(String, TerminalActivity.ContentState)] {
+        func record(_ state: String, progress: Int? = nil) -> TerminalActivity.Record {
+            .init(state: state, kind: nil, progress: progress, title: "Refactoring the store", updated: now - 252)
+        }
+        return [
+            ("working", .init(title: "api", program: program, record: record("working"), line: "Refactoring the session store", connected: true)),
+            ("progress", .init(title: "build", program: program, record: record("working", progress: 64), line: "Running the tests, 77 of 120", connected: true)),
+            ("blocked", .init(title: "api", program: program, record: record("blocked"),
+                              line: "Do you want to make this edit to internal/session/store.go?", connected: true)),
+            ("done", .init(title: "docs", program: program, record: record("done"), line: "Wrote the release notes", connected: true)),
+            ("error", .init(title: "web", program: program, record: record("error"), line: "", connected: true)),
+            ("paused", .init(title: "api", program: program, record: record("working"), line: "Refactoring the session store", connected: false)),
+            ("no-record", .init(title: "api", program: program, record: nil, line: "", connected: true)),
+            ("long", .init(title: String(repeating: "Refactor the session store ", count: 6), program: program, record: record("working"),
+                           line: String(repeating: "W", count: 80), connected: true)),
+        ]
+    }
+
+    /// The Lock Screen card is as tall in every state: its rows keep
+    /// their heights, the hero two lines, and paused takes the last row.
+    @MainActor func testCardHeight() throws {
+        let a = TerminalActivity(host: UUID(), hostName: "alice-laptop", session: "s1", block: "b1")
+        for program in ["claude", "codex", "devin", "zsh"] {
+            var heights: [String: CGFloat] = [:]
+            for (name, s) in Self.cardStates(program, now: Date()) {
+                let r = ImageRenderer(content: TerminalActivityCard(attributes: a, state: s, stale: false).frame(width: 370))
+                r.scale = 1
+                heights[name] = try XCTUnwrap(r.uiImage, name).size.height
+            }
+            print("card heights", program, heights.sorted { $0.key < $1.key })
+            XCTAssertEqual(Set(heights.values).count, 1, "\(program): \(heights)")
+            XCTAssertLessThanOrEqual(heights.values.max() ?? 0, 160, program)
+        }
+    }
+
     /// Draws each face, connected and paused, light and dark, as PNGs in
     /// GOREX_ACTIVITY_SHOTS; skipped without it. Drawn apart from
     /// ActivityKit: the Lock Screen's wallpaper and the Dynamic Island's
@@ -835,6 +908,16 @@ nonisolated final class TerminalLiveTests: XCTestCase {
                 .background(.black, in: Circle())
                 .padding(8).background(Color(white: 0.5))
                 .environment(\.colorScheme, .dark), "minimal-\(name)")
+        }
+        // The card alone, for each agent and state, as the Lock Screen
+        // clips it.
+        for program in ["claude", "codex", "devin"] {
+            for (name, s) in Self.cardStates(program, now: now) {
+                try write(TerminalActivityCard(attributes: short, state: s, stale: false)
+                    .frame(width: 370)
+                    .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+                    .environment(\.colorScheme, .dark), "card-\(program)-\(name)")
+            }
         }
     }
 }

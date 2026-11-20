@@ -147,20 +147,20 @@ struct TerminalActivityFace: View {
 }
 
 /// The Lock Screen's card: the program, the host, the state and the timer
-/// in a small row; what the program says in large bold type; the
-/// window's title under it. It is drawn on a gradient from the program's
-/// tile color to near black, with its glyph large and faint at the right,
-/// cut by the card's edge; the large line and the title keep clear of it. Paused, all but what
-/// brings it back dims. It draws its own padding and background, white
-/// on dark in either scheme.
+/// in a small row; what the program says in large bold type, two lines
+/// always kept for it; the window's title, or paused what brings it back,
+/// in a small row under it. Each row has a fixed height, so the card is
+/// as tall in every state. It is drawn on two shades of the tile's hue,
+/// with the glyph large and faint at the right, cut by the card's edge;
+/// every row stops before it. It draws its own padding and background,
+/// white on dark in either scheme.
 struct TerminalActivityCard: View {
     let attributes: TerminalActivity
     let state: TerminalActivity.ContentState
     let stale: Bool
 
-    /// The width the glyph shows of itself at the right, which the large
-    /// line and the title keep clear of; the small top row spans the card.
-    static let glyphShown: CGFloat = 84
+    /// The width at the right that the rows keep clear for the glyph.
+    static let glyphClear: CGFloat = 84
 
     var body: some View {
         let paused = state.paused(stale: stale)
@@ -168,67 +168,86 @@ struct TerminalActivityCard: View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 6) {
                 TerminalActivityTile(state: state, scale: 0.8)
-                // The host is hidden on a locked phone, as the island's is.
+                // The host is hidden on a locked phone, as the island's is;
+                // the host is cut first, then the name, then nothing else.
                 HStack(spacing: 0) {
-                    Text(verbatim: program.name)
+                    Text(verbatim: program.name).layoutPriority(1)
                     if !attributes.hostName.isEmpty {
                         Text(verbatim: (program.name.isEmpty ? "" : " · ") + attributes.hostName).privacySensitive()
                     }
                 }
-                .foregroundStyle(.white.opacity(0.75))
-                .lineLimit(1)
+                .foregroundStyle(.white.opacity(0.72))
                 if let r = state.record {
                     Text(verbatim: TerminalActivityHeading.name(r.state))
                         .fontWeight(.semibold)
                         .foregroundStyle(Self.tint(r.state))
-                        .lineLimit(1)
                         .fixedSize()
+                        .layoutPriority(1)
+                    meta(r)
+                        .foregroundStyle(.white.opacity(0.72))
+                        .monospacedDigit()
+                        .fixedSize()
+                        .layoutPriority(1)
                 }
-                Spacer(minLength: 4)
-                // First to get its width: a timer takes at most 44 pt.
-                TerminalActivityMark(state: state, paused: paused, shell: false, font: .caption.weight(.semibold))
-                    .layoutPriority(1)
             }
             .font(.caption)
+            .lineLimit(1)
+            .frame(height: 16)
             .opacity(paused ? 0.5 : 1)
             Text(verbatim: hero)
                 .font(.system(size: 21, weight: .bold))
                 .foregroundStyle(.white)
-                .lineLimit(2)
-                .minimumScaleFactor(0.8)
+                .lineLimit(2, reservesSpace: true)
                 .privacySensitive()
                 .opacity(paused ? 0.5 : 1)
-                .padding(.trailing, Self.glyphShown)
-            if !footer.isEmpty {
-                Text(verbatim: footer)
-                    .font(.caption)
-                    .foregroundStyle(.white.opacity(0.6))
-                    .lineLimit(1)
-                    .privacySensitive()
-                    .opacity(paused ? 0.5 : 1)
-                    .padding(.trailing, Self.glyphShown)
+            Group {
+                if paused {
+                    Text("Paused — open Rex Go")
+                        .fontWeight(.semibold)
+                        .foregroundStyle(.white.opacity(0.85))
+                } else {
+                    Text(verbatim: footer)
+                        .foregroundStyle(.white.opacity(0.58))
+                        .privacySensitive()
+                }
             }
-            if paused {
-                Text("Paused — open Rex Go")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.white.opacity(0.85))
-                    .lineLimit(1)
-            }
+            .font(.caption)
+            .lineLimit(1)
+            .frame(height: 16)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.trailing, Self.glyphClear)
         // Larger text stops at xLarge, so the card stays under the Lock
-        // Screen's 160 pt and the paused note, last, is not cut.
+        // Screen's 160 pt.
         .dynamicTypeSize(...DynamicTypeSize.xLarge)
         .padding(16)
         .background { Self.background(program, paused: paused) }
         .overlay {
-            if TerminalActivity.tint(state) != nil {
+            if !paused && state.record?.state == "blocked" {
                 ContainerRelativeShape().strokeBorder(Color.attention, lineWidth: 2)
             }
         }
-        // White on dark whatever the Lock Screen's scheme: secondary
-        // styles and the attention color take their dark-mode values.
+        // White on dark whatever the Lock Screen's scheme: the attention
+        // color takes its dark-mode value.
         .environment(\.colorScheme, .dark)
+    }
+
+    /// What follows a working state's name: the progress, else a timer
+    /// since it began; nothing for the other states, whose color tells.
+    @ViewBuilder private func meta(_ r: TerminalActivity.Record) -> some View {
+        switch r.state {
+        case "blocked", "done", "error": EmptyView()
+        default:
+            if let p = r.progress {
+                Text(verbatim: "· \(max(0, min(100, p)))%")
+            } else if let t = r.updated {
+                // A timer moves by itself, without updates.
+                HStack(spacing: 0) {
+                    Text(verbatim: "· ")
+                    Text(timerInterval: t...Date.distantFuture, countsDown: false)
+                }
+            }
+        }
     }
 
     /// What it says largest: the line, else the state's name, else the
@@ -244,37 +263,38 @@ struct TerminalActivityCard: View {
         state.line.isEmpty && state.record == nil ? "" : state.title
     }
 
-    /// A state's color, as its mark's: the attention color for blocked
-    /// and done, red for failed, and a light grey for working.
+    /// A state's color: the attention color for blocked, Rex's done blue
+    /// for done, red for failed, and a light grey for working.
     static func tint(_ state: String) -> Color {
         switch state {
-        case "blocked", "done": .attention
+        case "blocked": .attention
+        case "done": .done
         case "error": .red
-        default: .white.opacity(0.75)
+        default: .white.opacity(0.72)
         }
     }
 
-    /// The tile's color, darkened to at most a luminance that white text
-    /// reads on: a light tile, as Codex's, turns grey.
-    static func base(_ rgb: UInt32) -> Color {
-        let r = Double(rgb >> 16 & 0xff) / 255, g = Double(rgb >> 8 & 0xff) / 255, b = Double(rgb & 0xff) / 255
-        let luma = 0.2126 * r + 0.7152 * g + 0.0722 * b
-        let k = min(1, 0.42 / max(luma, 0.001))
-        return Color(red: r * k, green: g * k, blue: b * k)
+    /// The two shades of the ground, top left and bottom right: the
+    /// tile's hue and chroma (at most 0.16) at OKLCH lightness 0.40 and
+    /// 0.20. A neutral tile, as Codex's white or Devin's black, gets a
+    /// graphite with a cool cast.
+    static func ground(_ program: Program) -> (top: OKLCH, bottom: OKLCH) {
+        let k = OKLCH(rgb: program.tileBg)
+        let (c, h) = k.c < 0.035 ? (0.012, 260.0) : (min(k.c, 0.16), k.h)
+        return (OKLCH(l: 0.40, c: c * 0.85, h: h), OKLCH(l: 0.20, c: c * 0.55, h: h))
     }
 
     @ViewBuilder static func background(_ program: Program, paused: Bool) -> some View {
-        let near = Color(red: 0.05, green: 0.05, blue: 0.06)
+        let g = ground(program)
         ZStack {
-            LinearGradient(stops: [.init(color: base(program.tileBg), location: 0), .init(color: near, location: 0.85)],
-                           startPoint: .topLeading, endPoint: .bottomTrailing)
-            GeometryReader { g in
-                let size = g.size.height * 1.7
+            LinearGradient(colors: [g.top.color, g.bottom.color], startPoint: .topLeading, endPoint: .bottomTrailing)
+            // 190 pt, its right edge 56 pt past the card's.
+            GeometryReader { r in
                 ProgramGlyph(program: program)
                     .foregroundStyle(.white)
-                    .frame(width: size, height: size)
+                    .frame(width: 190, height: 190)
                     .opacity(paused ? 0.06 : 0.12)
-                    .position(x: g.size.width - glyphShown + size / 2, y: g.size.height / 2)
+                    .position(x: r.size.width + 56 - 95, y: r.size.height / 2)
             }
         }
         .clipped()

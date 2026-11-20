@@ -84,6 +84,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - With Claude Code, Codex or another agent running, leave Rex Go: the Lock Screen and Dynamic Island now show what it is doing, or the question it waits on, not its status bar.
 - Leave Rex Go while Claude Code or Pi works: the Lock Screen and Dynamic Island now show what it says it is doing, and once it finishes, what it did last.
 - Leave Rex Go with a terminal open and look at the Lock Screen: the card now shows what the program is doing in large type, on its own colors with its icon. The Dynamic Island looks as before.
+- The Lock Screen card now uses calmer shades of the program's own color, keeps the same size in every state, and shows the timer after the state, clear of the large icon.
 
 ## zh-Hans
 
@@ -160,3 +161,4 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - 运行 Claude Code、Codex 等智能体时离开 Rex Go：锁定屏幕和灵动岛现在显示它正在做的事或它等你回答的问题，不再显示底部状态栏。
 - Claude Code 或 Pi 工作时离开 Rex Go：锁定屏幕和灵动岛现在显示它自己报告正在做的事，完成后显示它最后做的事。
 - 打开终端时离开 Rex Go，看锁定屏幕：卡片现在用大字显示程序正在做的事，背景是程序自己的颜色和图标。灵动岛不变。
+- 锁定屏幕上的卡片现在用程序自己颜色的深浅两档，各种状态下大小不变，计时跟在状态后面，不再压在大图标上。
