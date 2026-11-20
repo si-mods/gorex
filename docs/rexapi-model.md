@@ -57,27 +57,42 @@ subscriber always sees them in its first read.
 ## Design
 
 One goroutine builds and publishes the model; everything else reads the
-last published one. The design rests on one invariant, which today is
-almost true:
+last published one. The design rests on one invariant, checked against
+`internal/rex`:
 
-> **Every change to the bytes `Client.Layout()` returns is preceded or
-> followed by a `layout` event.**
+> **Every change to the layout's arrangement is preceded or followed by
+> a `layout` event.**
 
-Checked against `internal/rex`: `setLayout` is the only runtime writer
-that mutates the arrangement, and it notifies on every byte difference;
-the load and migration writers run before subscriptions exist. The one
-gap is `Server.refresh()`'s fact stamp. The design adds
-`s.notify("layout")` to it: the revision already stays the same — the
-event only means "read the layout again" — and a `refreshSoon` batch
-already caps the stamp at ~1 Hz. That one line both closes the gap and
-makes title updates reach remote subscribers at the stamp's cadence
-instead of riding the next layout change.
+`setLayout` is the only runtime writer that mutates the arrangement, and
+it notifies on every byte difference; the load and migration writers
+(`server.go:363`, `migrateLayout`) run before subscriptions exist, so a
+subscriber always sees them in its first read.
+
+The fact stamp is the deliberate exception: `Server.refresh()`
+(`layout_life.go:36-56`) rewrites `s.layout` at the same revision with
+the facts the sessions sampled — directory, size, foreground program,
+agent session (`stamp`, `layout_apply.go:1495`) — and sends no event.
+Adding one would change the wire protocol: today a `layout` event always
+carries a new revision (`server.go:827-833`), so an unchanged-revision
+event would be a new behavior for every subscriber, and
+`docs/irreversible.md` puts the protocol behind a decision process this
+doc does not need. The gateway copes on its own side instead: the stamp
+lands at most `refreshWait` (~1 s) after the `sessions` event that
+scheduled it (`refreshSoon`, `layout_life.go:26`), so on each `sessions`
+event `pump` also arms a `facts` timer `refreshWait` out; when it fires
+it runs one `reread(true)`. Stamped facts reach clients at the stamp's
+own ~1 Hz cadence, at a cost of at most one layout read per second, and
+the safety tick covers whatever a quiet session misses. Reusing the
+session list for these facts was considered and dropped: `stamp` also
+writes size and agent-session fields the session list does not carry.
 
 ### pump is the only builder
 
 `reread` stays as it is — the socket read, `listSessions`, the build,
 the diff, the broadcast, all under `refreshMu` — but only `pump` calls
-the `reread(true)` form, on layout events and on the safety tick.
+the `reread(true)` form: on layout events, on the `facts` timer armed by
+`sessions` events, and on the safety tick. A `sessions` event itself
+still costs only a `reread(false)`, as today.
 `refreshMu` keeps its real job, ordering the events sent to connections
 and guarding `raw`/`desktop`; request handlers stop taking it for the
 model, and `sessionsNow()` keeps it for the session list exactly as
@@ -102,10 +117,10 @@ Two guards keep a snapshot honest where today's read could fail:
 - **Not ready yet**: `New` returns once the client's hello answers; it
   does not wait for the first publish, which may be slow on a loaded
   server. Until the first publish lands, a `ready` flag is unset and
-  methods that need the model answer a 503-class error
-  ("the gateway is not ready") — a slow answer, not the wrong
-  `session_not_found`. The flag sets on the first publish and never
-  clears.
+  methods that need the model answer with an existing 500-class code
+  (`internal`) and a "not ready" message — a slow answer, not the wrong
+  `session_not_found`, and no new error code on the wire. The flag sets
+  on the first publish and never clears.
 - **Connection gone**: `pump` returns on `Client.Closed()` and nothing
   starts it again — the gateway does not reconnect its client. `pump`
   marks the gateway as it leaves, and reads that needed `current()`'s
@@ -118,9 +133,11 @@ Two guards keep a snapshot honest where today's read could fail:
 `current()` gave every caller read-your-writes for free; snapshots must
 give it back per path. The write paths sort into three groups:
 
-1. **Layout commands** — the ~37 `g.command(...)` sites (`layout.go`,
-   `projects.go`, `spaces_sync.go`, `movewindow.go`, `mergewindows.go`).
-   Each is already followed by `afterCommand(shows)`. The method waits
+1. **Layout commands** — the `g.command(...)` sites (`layout.go`,
+   `projects.go`, `spaces_sync.go`, `movewindow.go`,
+   `mergewindows.go`): 37 calls, 30 of them already followed by
+   `afterCommand(shows)`; the rest are rollbacks and intermediate focus
+   steps the last `afterCommand` covers. The method waits
    on `changed` until `shows(m)` or `commandWait`. To keep this at least
    as fast as today's first 10 ms poll, `pump` skips the `settle` burst
    while a waiter is registered and reads the layout as soon as the
@@ -139,11 +156,16 @@ give it back per path. The write paths sort into three groups:
    (`layout.go:2048`, `:2064`), the `claimCreated` read
    (`layout.go:405`), `keepAttached` (`movewindow.go:109`),
    `cleanupClient`/`cleanupClientSession` (`lease.go:15`, `:24`),
-   `resumeControl` (`gateway.go:594`), `dropControl` (`gateway.go:646`).
-   An asynchronous `kick()` was considered and rejected for exactly this
-   reason: these callers answer from the model, so a coalesced publish
-   would let a client read its own write as stale. `refreshMu`
-   serializes these rebuilds with `pump`'s, keeping broadcast order.
+   `resumeControl` (`gateway.go:594`), `dropControl` (`gateway.go:646`),
+   `renewOwned` (`owners.go:460`, on the `renewLocks` goroutine) and
+   `takeOnInput` (`owners.go:476`, on the input path). The last two call
+   no `refresh()` today — the next request's `current()` picked their
+   change up — and without a rebuild their owner changes would go unseen
+   for up to `safetyEvery`. An asynchronous `kick()` was considered and
+   rejected for exactly this reason: these callers answer from the
+   model, so a coalesced publish would let a client read its own write
+   as stale. `refreshMu` serializes these rebuilds with `pump`'s,
+   keeping broadcast order.
 
 3. **Everything else is a pure read** and takes `modelNow()`:
    `sessionArg`/`attachedArg`/`attachedSessionArg`, `session.list`,
@@ -172,24 +194,25 @@ removes.
   `reread`, on the publishing side.
 - The poll fallback for a server without `Subscribe`: `pump` reads every
   `pollEvery`, publishes, and waiters wake the same way.
-- The wire protocol: clients see the same events in the same order.
+- The wire protocol: no new events and no new error codes, so clients
+  see the same events in the same order; a `layout` event keeps meaning
+  "the revision changed".
 
 ## Steps
 
-1. `internal/rex`: `Server.refresh()` notifies `layout` when a stamp
-   lands, with its test. This is the invariant the rest stands on.
-2. Gateway plumbing: `seq`, `changed`, the `ready` flag and the
-   closed-connection mark. `current()` still exists; nothing else
-   changes.
-3. `afterCommand` waits on `changed`; `pump` skips `settle` while a
+1. Gateway plumbing: `seq`, `changed`, the `ready` flag, the
+   closed-connection mark, and `pump`'s `facts` timer. `current()`
+   still exists; nothing else changes.
+2. `afterCommand` waits on `changed`; `pump` skips `settle` while a
    waiter is registered.
-4. Switch the pure-read sites to `modelNow()` and the group-2 sites to a
+3. Switch the pure-read sites to `modelNow()` and the group-2 sites to a
    synchronous `reread(false)` (renamed, e.g. `rebuild`); delete
    `current()` and `refresh()`.
 
-Steps 1–3 are independent of the call-site sweep in step 4, which is
-mechanical but not safe to split the other way: doing step 4 before
-steps 2–3 would make the post-local-change replies drop the change.
+Steps 1–2 are independent of the call-site sweep in step 3, which is
+mechanical but not safe to split the other way: doing step 3 first
+would make the post-local-change replies drop the change. Nothing in
+`internal/rex` or the protocol changes.
 
 ## Tests
 
@@ -201,8 +224,9 @@ steps 2–3 would make the post-local-change replies drop the change.
   layout event arrives late, the writer's `afterCommand` still resolves
   on publish, and the second client sees the change after the publish
   and not before.
-- `Server.refresh()`: a stamp publishes a `layout` event at an unchanged
-  revision, and a subscriber's re-read sees the new facts.
+- The `facts` timer: a `sessions` event arms it, a publish after
+  ~`refreshWait` picks up the facts `Server.refresh()` stamped, and a
+  second `sessions` event inside the window costs no extra layout read.
 - The settle skip: a registered waiter wakes on the event, not after
   `settle`.
 - Staleness: a closed client turns the next read into the 500
