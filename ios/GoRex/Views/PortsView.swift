@@ -55,7 +55,7 @@ struct PortsView: View {
     /// phone can reach the address.
     @ViewBuilder private func row(_ port: Ports.Port, in ports: Ports) -> some View {
         let process = ports.process(of: port)
-        let url = openURL(for: port)
+        let url = Ports.openURL(port: port, hostAddress: host.config.url.host())
         Button {
             if let url { UIApplication.shared.open(url) }
         } label: {
@@ -100,20 +100,6 @@ struct PortsView: View {
         }
         if let pid { return "\(name) (\(pid))" }
         return name
-    }
-
-    /// The address to open for a port, when the phone can reach it. A
-    /// loopback port is only on the host. Every address is reached by the
-    /// address the app dialed the host by.
-    private func openURL(for port: Ports.Port) -> URL? {
-        var name = port.address
-        if name == "127.0.0.1" || name == "::1" { return nil }
-        if name == "0.0.0.0" || name == "::" {
-            name = host.config.url.host() ?? ""
-        }
-        if name.isEmpty { return nil }
-        if name.contains(":") { name = "[\(name)]" }
-        return URL(string: "http://\(name):\(port.port)/")
     }
 
     private func poll() async {

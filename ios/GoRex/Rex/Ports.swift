@@ -46,4 +46,18 @@ struct Ports: Decodable, Equatable {
     func process(of port: Port) -> Process? {
         port.pid.flatMap { pid in processes.first { $0.pid == pid } }
     }
+
+    /// The URL to open for a port, when the phone can reach it. A loopback
+    /// address is only on the host. A wildcard address uses the host
+    /// address the app dialed.
+    static func openURL(port: Port, hostAddress: String?) -> URL? {
+        var name = port.address
+        if name == "127.0.0.1" || name == "::1" { return nil }
+        if name == "0.0.0.0" || name == "::" {
+            name = hostAddress ?? ""
+        }
+        if name.isEmpty { return nil }
+        if name.contains(":") { name = "[\(name)]" }
+        return URL(string: "http://\(name):\(port.port)/")
+    }
 }
