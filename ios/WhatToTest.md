@@ -74,6 +74,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - The Inbox now stays smooth while a terminal title changes quickly; scrolling and tapping rows no longer stutter.
 - Rex Go shows its list sooner after you start it, and the list scrolls more smoothly when you have many computers and spaces.
 - A terminal whose title keeps changing, and a two-finger swipe between panes, look as before with fewer stutters; the list's working dots and bouncing tiles still move.
+- The host list scrolls more smoothly with many tabs, and a host's last projects save without a pause. Tell us if they are missing when the host is away.
 
 ## zh-Hans
 
@@ -140,3 +141,4 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - 终端标题快速变化时，收件箱现在保持流畅，滚动和点按行不再卡顿。
 - 启动 Rex Go 后列表显示得更快；有很多电脑和空间时，列表滚动更流畅。
 - 标题不停变化的终端，以及双指在窗格间滑动，外观与以前相同，卡顿更少；列表中的工作圆点和跳动的图标仍照常运动。
+- 标签很多时，主机列表打开和滚动更流畅；改动后，主机最近的项目会无卡顿地保存。如果主机离线时看不到它最近的项目，请告诉我们。

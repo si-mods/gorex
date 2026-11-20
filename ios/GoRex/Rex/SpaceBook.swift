@@ -48,10 +48,12 @@ final class SpaceBook {
 
     @ObservationIgnored private let defaults: UserDefaults
     @ObservationIgnored private let listingsURL: URL
+    @ObservationIgnored private let writer: ListingsWriter
 
     init(defaults: UserDefaults = .standard, listingsURL: URL = SpaceBook.defaultListingsURL()) {
         self.defaults = defaults
         self.listingsURL = listingsURL
+        writer = ListingsWriter(url: listingsURL)
         let saved = defaults.data(forKey: Self.savedKey).flatMap { try? JSONDecoder().decode(Saved.self, from: $0) } ?? Saved()
         order = saved.order
         colors = saved.colors
@@ -211,10 +213,14 @@ final class SpaceBook {
         defaults.set(try? JSONEncoder().encode(s), forKey: Self.savedKey)
     }
 
+    /// Queues the listings for a write off the main actor.
     private func saveListings() {
-        guard let data = try? JSONEncoder().encode(listings) else { return }
-        try? FileManager.default.createDirectory(at: listingsURL.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try? data.write(to: listingsURL, options: .atomic)
+        writer.save(listings)
+    }
+
+    /// Returns once the listings saved so far are on disk.
+    func flush() {
+        writer.flush()
     }
 
     /// Drops what the app kept of spaces before projects lived on their
