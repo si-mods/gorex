@@ -505,7 +505,7 @@ func TestProjectMenu(t *testing.T) {
 // TestSidebarFlatLayout: a host is a section header, in capitals, with no
 // PROJECTS row; its projects are flush with it, their folder in no row or
 // tooltip; the tabs of the project shown come under it, their tiles where
-// its chevron is; a host away
+// its folder tile is; a host away
 // says "offline".
 func TestSidebarFlatLayout(t *testing.T) {
 	a, tt, _, _ := projectsApp(t)
@@ -530,7 +530,7 @@ func TestSidebarFlatLayout(t *testing.T) {
 		t.Errorf("header at x %v, project at %v (%v wide), its tab at %v (%v wide); want both flush", header.X, row.X, row.W, tab.X, tab.W)
 	}
 	// The project's name starts where its tab's title does: after the
-	// room of the tiles, where the project's chevron is.
+	// room of the tiles, where the project's folder tile is.
 	want := tab.X + sideLead + tilesReserve(a.tabs) + sideGap
 	if text, ok := tt.Find("acme-api"); !ok || text.X != want {
 		t.Errorf("the project's name at x %v, want %v", text.X, want)
@@ -888,11 +888,12 @@ func pixelsIn(img *image.RGBA, r ui.Rect) []color.RGBA {
 	return out
 }
 
-// TestSidebarDisclosureChevron: a project with tabs draws a chevron in the
-// room of its tabs' tiles, centred over the front tile, open or closed and with no pointer over it,
-// and it differs between the two; opening or closing moves neither the
-// chevron nor the project's name. A project
-// with no tab draws none, and its name starts where the other's does.
+// TestSidebarDisclosureChevron: a project with tabs draws a chevron after its
+// name, open or closed and with no pointer over it, and it differs between
+// the two; opening or closing moves neither the chevron nor the name. Its
+// folder tile is centred where its tabs' front tiles are. A project with no
+// tab draws no chevron, but its folder tile, and its name starts where the
+// other's does.
 func TestSidebarDisclosureChevron(t *testing.T) {
 	a, tt, _, _ := projectsApp(t)
 	space := ""
@@ -926,20 +927,31 @@ func TestSidebarDisclosureChevron(t *testing.T) {
 	if slices.Equal(pixOpen, pixShut) {
 		t.Error("the chevron looks the same open and closed")
 	}
-	// The chevron's room is the tiles', before the name; its glyph is
-	// centred where a tab's front tile is.
-	if chevOpen.X != nameOpen.X-sideGap-tilesReserve(a.tabs) {
-		t.Errorf("the chevron's room %+v is not the tiles' before the name at x %v", chevOpen, nameOpen.X)
+	// The chevron is after the name, near the row's end.
+	if chevOpen.X < nameOpen.X+nameOpen.W {
+		t.Errorf("the chevron %+v is not after the name %+v", chevOpen, nameOpen)
 	}
-	if mid := inkMid(tt.Image(), chevOpen); mid < chevOpen.X+1+tileW/2-2 || mid > chevOpen.X+1+tileW/2+2 {
-		t.Errorf("the chevron's ink is centred at x %v, want about %v, the front tile's centre", mid, chevOpen.X+1+tileW/2)
+	// The folder tile is in the tiles' room before the name, centred where
+	// a tab's front tile is.
+	room := func(name ui.Rect) ui.Rect {
+		r := tilesReserve(a.tabs)
+		return ui.Rect{X: name.X - sideGap - r, Y: name.Y, W: r, H: name.H}
 	}
-	// A project with no tab: no chevron, the name in the same column.
+	tile := room(nameOpen)
+	if mid := inkMid(tt.Image(), tile); mid < tile.X+1+tileW/2-2 || mid > tile.X+1+tileW/2+2 {
+		t.Errorf("the folder tile's ink is centred at x %v, want about %v, the front tile's centre", mid, tile.X+1+tileW/2)
+	}
+	// A project with no tab: no chevron, its folder tile and name in the
+	// same columns.
 	if _, ok := tt.Find(locales.ProjectsTabsOf("acme-empty")); ok {
 		t.Error("a project with no tab has a disclosure")
 	}
-	if n, ok := tt.Find("acme-empty"); !ok || n.X != nameOpen.X {
+	n, ok := tt.Find("acme-empty")
+	if !ok || n.X != nameOpen.X {
 		t.Errorf("the name of the project with no tab at %+v, want x %v", n, nameOpen.X)
+	}
+	if ok && !inkIn(tt.Image(), room(n)) {
+		t.Error("the project with no tab has no folder tile")
 	}
 }
 

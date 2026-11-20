@@ -244,20 +244,20 @@ The sidebar on the left, space Work, three hosts:
 │ ● ● ●   [■ Work ▾]            │ gorex › dev                          ⋯   │
 ├───────────────────────────────┼──────────────────────────────────────────┤
 │ THIS MAC  ●                 + │ ~/code/gorex $ go test ./...             │
-│  ⌄  gorex                 3 + │ ok   gorex   12.3s                       │
+│ [▤] gorex               ⌄ 3 + │ ok   gorex   12.3s                       │
 │  ▣  dev                       │ ◀ dev is the tab shown here              │
 │  ▣  logs                      │                                          │
 │  ▣  review                    │                                          │
-│  ›  notes                   1 │                                          │
+│ [▤] notes                 › 1 │                                          │
 │ Tabs with no project          │                                          │
 │  ▣  scratch                   │                                          │
 │  ▣  build                     │                                          │
 │                               │                                          │
 │ OFFICE-H800  ●              + │                                          │
-│  ›  trainer                 2 │                                          │
+│ [▤] trainer               › 2 │                                          │
 │                               │                                          │
 │ OLD-LAPTOP  ○ offline         │                                          │
-│  ›  site (grey)             1 │                                          │
+│ [▤] site (grey)           › 1 │                                          │
 ├───────────────────────────────┤                                          │
 │ ⚙   +  New Project…           │                                          │
 └───────────────────────────────┴──────────────────────────────────────────┘
@@ -269,7 +269,8 @@ from `assets/icons/` (`DESIGN.md`), never the character:
 | Mark | Icon |
 | --- | --- |
 | `[H]` | `monitor` |
-| `[F]` | `folder` (outside the desktop's sidebar) |
+| `[F]` | `folder` |
+| `[▤]` | a project's folder tile in the desktop's sidebar: a tile of a tab's size and corners, neutral, with a `folder` in it |
 | `⌄` `›` | `chevron-down`, turned a quarter to the left when collapsed |
 | `[S]` | `search` |
 | `+` | `plus` |
@@ -319,22 +320,26 @@ A project's context menu:
   has Rename… (its alias) and New Tab with No Project. An offline host's
   header says "offline", and its projects show greyed, with their last
   tabs.
-- A project row, and the Older row, start with a chevron, down when the
-  row is open and right when it is closed, at rest and not only under the
-  pointer. It is in the room of the tabs' tiles, centred where a tab's front
-  tile is, and the row has no folder icon: a folder and a tile in one column
-  read as rows of one kind (#896). A project with no tab has no chevron, as
-  it has nothing to open. Opening or closing a row moves no name: a
-  project's name is where its tabs' titles are, flush as before. The chevron
-  turns, and the project's tabs fold open and shut, with the sidebar's
-  motion (none with Animation off or reduced motion). A click on the
-  chevron opens or closes that project's tabs alone.
-- A project row is flush with the header: the chevron, its name, and its
-  tab count on the right. Its folder is in no row or tooltip, and its color
-  in no row of the desktop's sidebar. A click on the row shows the
-  project and opens it; on the project shown, it opens or closes that
-  project's tabs, which come under it with no guide line, their tiles where
-  the chevron is. Each project keeps its
+- A project row starts with its **folder tile**, in the room of the tabs'
+  tiles, centred where a tab's front tile is: a tile of a tab's size
+  (`tileW`×`tileH`) and corners, in a neutral face, with a `folder` in it.
+  A project and its tabs are marks of one kind, told apart by the folder and
+  the programs' colors, so a project and a tab of one name read apart (#896;
+  #832 drew a bare folder there, which read as a tab's tile).
+- A project row with tabs, and the Older row, have a **chevron** near their
+  end, before the tab count or the `+`: down when the row is open and right
+  when it is closed, at rest and not only under the pointer. A project with
+  no tab has none, as it has nothing to open. Opening or closing a row moves
+  no name and no mark: a project's name is where its tabs' titles are, flush
+  as before. The chevron turns, and the project's tabs fold open and shut,
+  with the sidebar's motion (none with Animation off or reduced motion). A
+  click on the chevron opens or closes that project's tabs alone.
+- A project row is flush with the header: the folder tile, its name, the
+  chevron and its tab count on the right. Its folder's path is in no row or
+  tooltip, and its color in no row of the desktop's sidebar. A click on the
+  row shows the project and opens it; on the project shown, it opens or
+  closes that project's tabs, which come under it with no guide line, their
+  tiles where the folder tile is. Each project keeps its
   own state, per client (`sidebarOpen`); choosing another project, in
   any way, closes none. Its `+` (shown on the row under the pointer and on
   the chosen project's) opens a tab in the folder; ⌘T does the same while
