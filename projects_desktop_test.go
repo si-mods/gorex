@@ -2,6 +2,8 @@ package main
 
 import (
 	"encoding/json"
+	"image"
+	"image/color"
 	"os"
 	"path/filepath"
 	"slices"
@@ -502,7 +504,8 @@ func TestProjectMenu(t *testing.T) {
 
 // TestSidebarFlatLayout: a host is a section header, in capitals, with no
 // PROJECTS row; its projects are flush with it, their folder in no row or
-// tooltip; the tabs of the project shown come one step in; a host away
+// tooltip; the tabs of the project shown come under it, their tiles where
+// its folder is; a host away
 // says "offline".
 func TestSidebarFlatLayout(t *testing.T) {
 	a, tt, _, _ := projectsApp(t)
@@ -528,8 +531,9 @@ func TestSidebarFlatLayout(t *testing.T) {
 	}
 	// The project's name starts where its tab's title does: after the
 	// room of the tiles, where the project's folder icon is.
-	if text, ok := tt.Find("acme-api"); !ok || text.X != tab.X+sideLead+tilesReserve(a.tabs)+sideGap {
-		t.Errorf("the project's name at x %v, want %v", text.X, tab.X+sideLead+tilesReserve(a.tabs)+sideGap)
+	want := tab.X + sideLead + discW + sideGap + tilesReserve(a.tabs) + sideGap
+	if text, ok := tt.Find("acme-api"); !ok || text.X != want {
+		t.Errorf("the project's name at x %v, want %v", text.X, want)
 	}
 	// One row is filled: the active tab, not its project, which is
 	// filled once its tabs are closed.
@@ -836,4 +840,153 @@ func hostProjectOf(t *testing.T, c *rex.Client, sid string) string {
 		}
 	}
 	return ""
+}
+
+// inkIn tells whether the sidebar's pixels in r differ from those of its
+// top-left corner, as a drawn glyph does.
+func inkIn(img *image.RGBA, r ui.Rect) bool {
+	base := img.RGBAAt(int(r.X), int(r.Y))
+	for y := int(r.Y); y < int(r.Y+r.H); y++ {
+		for x := int(r.X); x < int(r.X+r.W); x++ {
+			if img.RGBAAt(x, y) != base {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// pixelsIn copies the pixels of img in r.
+func pixelsIn(img *image.RGBA, r ui.Rect) []color.RGBA {
+	var out []color.RGBA
+	for y := int(r.Y); y < int(r.Y+r.H); y++ {
+		for x := int(r.X); x < int(r.X+r.W); x++ {
+			out = append(out, img.RGBAAt(x, y))
+		}
+	}
+	return out
+}
+
+// TestSidebarDisclosureChevron: a project with tabs draws a chevron in the
+// column before its folder, open or closed and with no pointer over it,
+// and it differs between the two; opening or closing moves neither the
+// chevron's column, the folder's room nor the project's name. A project
+// with no tab draws none, and its name starts where the other's does.
+func TestSidebarDisclosureChevron(t *testing.T) {
+	a, tt, _, _ := projectsApp(t)
+	space := ""
+	res := clientCommand(a, rex.LayoutCommand{Op: "project.create", Dir: appTempDir(t, a), Name: "acme-api", SpaceName: &space})
+	caughtUp(t, a, tt)
+	w := a.st.byID(res.Space)
+	a.showWorkspace(w)
+	waitFor(t, tt, "the project's tab", func() bool { return a.ws == w && len(a.tabs) == 1 && a.tabs[0].Focus != nil })
+	empty := &Workspace{ID: "empty", Name: "acme-empty", Dir: "/srv/empty", Space: shownSpace()}
+	a.st.workspaces = append(a.st.workspaces, empty)
+	fold := locales.ProjectsTabsOf("acme-api")
+
+	state := func(open bool) (name, chev ui.Rect, pix []color.RGBA) {
+		setRowOpen(openKey(nil, w.ID), open)
+		tt.Frame()
+		name, ok := tt.Find("acme-api")
+		chev, ok2 := tt.Find(fold)
+		if !ok || !ok2 {
+			t.Fatalf("open %v: no project name or chevron; texts %q", open, tt.Texts())
+		}
+		if !inkIn(tt.Image(), chev) {
+			t.Errorf("open %v: nothing is drawn in the disclosure column %+v", open, chev)
+		}
+		return name, chev, pixelsIn(tt.Image(), chev)
+	}
+	nameOpen, chevOpen, pixOpen := state(true)
+	nameShut, chevShut, pixShut := state(false)
+	if nameOpen != nameShut || chevOpen != chevShut {
+		t.Errorf("toggling moved the row: name %+v then %+v, chevron %+v then %+v", nameOpen, nameShut, chevOpen, chevShut)
+	}
+	if slices.Equal(pixOpen, pixShut) {
+		t.Error("the chevron looks the same open and closed")
+	}
+	if chevOpen.W != discW || chevOpen.X != nameOpen.X-sideGap-tilesReserve(a.tabs)-sideGap-discW {
+		t.Errorf("the chevron column %+v is not %v wide, before the folder's room", chevOpen, float32(discW))
+	}
+	// A project with no tab: no chevron, the name in the same column.
+	if _, ok := tt.Find(locales.ProjectsTabsOf("acme-empty")); ok {
+		t.Error("a project with no tab has a disclosure")
+	}
+	if n, ok := tt.Find("acme-empty"); !ok || n.X != nameOpen.X {
+		t.Errorf("the name of the project with no tab at %+v, want x %v", n, nameOpen.X)
+	}
+}
+
+// TestSidebarTabsWithNoProjectFlat: a host's tabs with no project are a
+// label with no chevron, and their tabs show with no expanding, while a
+// project is chosen, in the columns of a project's tabs; the label is a
+// drop target and has New Tab in its menu.
+func TestSidebarTabsWithNoProjectFlat(t *testing.T) {
+	a, tt, _, _ := projectsApp(t)
+	space := ""
+	res := clientCommand(a, rex.LayoutCommand{Op: "project.create", Dir: appTempDir(t, a), Name: "acme-api", SpaceName: &space})
+	caughtUp(t, a, tt)
+	w := a.st.byID(res.Space)
+	// The window's own tab has no project; a second joins it.
+	loose := a.st.noProjectOf(nil)
+	a.newNoProjectTab(nil)
+	waitFor(t, tt, "two tabs with no project", func() bool { return a.ws == loose && len(a.tabs) == 2 && a.tab().Focus != nil })
+	a.showWorkspace(w)
+	waitFor(t, tt, "the project", func() bool { return a.ws == w && loose.app == nil && len(loose.layout.Tabs) == 2 })
+	tt.Frame()
+	label, ok := tt.Find(locales.ProjectsNoProject())
+	if !ok {
+		t.Fatalf("no label for the tabs with no project: %q", tt.Texts())
+	}
+	if _, ok := tt.Find(locales.ProjectsTabsOf(locales.ProjectsNoProject())); ok {
+		t.Error("the tabs with no project have a disclosure")
+	}
+	// Closed, as a project's row would be, changes nothing.
+	setRowOpen(openKey(nil, loose.ID), false)
+	tt.Frame()
+	infos, _, _ := a.st.listOf(nil)
+	name, detail, _ := savedTabFace(loose.layout.Tabs[0], infos)
+	tab, ok := tt.Find(name + " " + detail)
+	if !ok {
+		t.Fatalf("a tab with no project is not shown without expanding: %q", tt.Texts())
+	}
+	row, _ := tt.Find("acme-api" + spacedComma(workspaceDetail(w, a, w.tabCount())))
+	if tab.X != row.X || tab.W != row.W {
+		t.Errorf("the tab with no project at x %v (%v wide), a project's row at %v (%v wide)", tab.X, tab.W, row.X, row.W)
+	}
+	if text, ok := tt.Find(locales.ProjectsNoProject()); !ok || text.X > row.X+sideLead+1 {
+		t.Errorf("the label at x %v, want it at the leading edge %v", label.X, row.X+sideLead)
+	}
+	// The label is no deeper than a project's chevron, and its tabs are
+	// under it, not above.
+	if tab.Y < label.Y+label.H {
+		t.Errorf("the tab at y %v is not under the label %+v", tab.Y, label)
+	}
+	// Its menu has New Tab alone.
+	rightClick(t, tt, locales.ProjectsNoProject())
+	if m := tt.Menu(); !slices.Contains(m, locales.CmdNewTab()) || slices.Contains(m, cmdRenameSession.Title()) {
+		t.Errorf("the menu of the tabs with no project: %q", m)
+	}
+	tt.CloseMenu()
+	// A click on its tab shows that workspace on it.
+	click(t, tt, name+" "+detail)
+	waitFor(t, tt, "the tab with no project shown", func() bool { return a.ws == loose })
+}
+
+// TestSidebarTileSmallerThanStrips: the sidebar's program tiles are smaller
+// than the tab strip's, about the size of a project's folder icon, and the
+// reserve of its rows follows.
+func TestSidebarTileSmallerThanStrips(t *testing.T) {
+	if sideTile.w >= tileW || sideTile.h >= tileH || sideTile.step >= tileStep {
+		t.Errorf("the sidebar's tile %+v is not smaller than the strip's %dx%d, step %d", sideTile, tileW, tileH, tileStep)
+	}
+	if stripTile.w != tileW || stripTile.h != tileH || stripTile.step != tileStep {
+		t.Errorf("the strip's tile changed: %+v", stripTile)
+	}
+	if got, want := tilesReserve(nil), sideTile.w+2; got != want {
+		t.Errorf("the reserve of one tile is %v, want %v", got, want)
+	}
+	if sideTile.h > 14 || sideTile.w > 18 {
+		t.Errorf("the sidebar's tile %+v is much bigger than the 14 px folder", sideTile)
+	}
 }

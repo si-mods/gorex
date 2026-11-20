@@ -330,8 +330,10 @@ func (a *App) sidebarEdge(c *ui.Context, k *colors, right bool) {
 }
 
 // sidebarTab draws a tab in the sidebar: the tiles of its panes' programs,
-// its name and detail, and its close button or activity.
-func (a *App) sidebarTab(c *ui.Context, k *colors, i int, t *Tab, reserve float32) {
+// its name and detail, and its close button or activity. disc leaves the
+// room of the disclosure column before them, as the rows under a host's
+// header have it.
+func (a *App) sidebarTab(c *ui.Context, k *colors, i int, t *Tab, reserve float32, disc bool) {
 	active := i == a.active
 	// Keyed by the tab's lasting ID, as spaceTab keys it: as the window
 	// goes to show another space, the rows of both stay, not close and
@@ -354,9 +356,12 @@ func (a *App) sidebarTab(c *ui.Context, k *colors, i int, t *Tab, reserve float3
 	a.tabEvents(c, e, k, i, t)
 	hovered := e.Hovered()
 	e.Children(func() {
+		if disc {
+			discRoom(c)
+		}
 		// The tiles take the room of the widest tab's, so that the names
 		// line up.
-		ui.Box(c).Width(reserve).Shrink(0).Children(func() { a.tiles(c, k, t) })
+		ui.Box(c).Width(reserve).Shrink(0).Children(func() { a.tilesOf(c, k, t, sideTile) })
 		a.tabRest(c, k, t, active, hovered)
 	})
 }
@@ -369,7 +374,7 @@ func tilesReserve(tabs []*Tab) float32 {
 	for _, t := range tabs {
 		most = max(most, min(len(t.panes()), 3))
 	}
-	return float32(tileW + tileStep*(most-1) + 2)
+	return sideTile.w + sideTile.step*float32(most-1) + 2
 }
 
 // hostSectionIcon is the icon of a host's machine before its name in the
@@ -410,6 +415,7 @@ func spaceTab(c *ui.Context, k *colors, key, name, detail string, s *rex.Program
 		e.Background(hoverFace(k))
 	}
 	e.Children(func() {
+		discRoom(c)
 		ui.Box(c).Width(reserve).Shrink(0).Children(tiles)
 		ui.Box(c).Grow(1).MinWidth(0).Height(18).Draw(func(p *ui.Painter, r ui.Rect) {
 			fadeText(p, r, tabLabel(name, detail, k.textMuted, k.textFaint))

@@ -180,11 +180,11 @@ func TestHostTabsKeepTheirTitles(t *testing.T) {
 	}
 	n := 0
 	for _, s := range tt.Texts() {
-		if s == locales.ProjectsTabsOf(locales.ProjectsNoProject()) { // one a row
+		if s == locales.ProjectsNoProject() { // one a label
 			n++
 		}
 	}
 	if n != 1 { // this machine's, which has the window's tab
-		t.Errorf("%d rows of tabs with no project, want this machine's alone: %q", n, tt.Texts())
+		t.Errorf("%d labels of tabs with no project, want this machine's alone: %q", n, tt.Texts())
 	}
 }

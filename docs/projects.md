@@ -244,18 +244,20 @@ The sidebar on the left, space Work, three hosts:
 │ ● ● ●   [■ Work ▾]            │ gorex › dev                          ⋯   │
 ├───────────────────────────────┼──────────────────────────────────────────┤
 │ THIS MAC  ●                 + │ ~/code/gorex $ go test ./...             │
-│ [F] gorex                 3 + │ ok   gorex   12.3s                       │
-│ ▣ dev                         │ ◀ dev is the tab shown here              │
-│ ▣ logs                        │                                          │
-│ ▣ review                      │                                          │
-│ [F] notes                   1 │                                          │
-│   Tabs with no project      2 │                                          │
+│ ⌄ [F] gorex               3 + │ ok   gorex   12.3s                       │
+│   ▣   dev                     │ ◀ dev is the tab shown here              │
+│   ▣   logs                    │                                          │
+│   ▣   review                  │                                          │
+│ › [F] notes                 1 │                                          │
+│ Tabs with no project          │                                          │
+│   ▣   scratch                 │                                          │
+│   ▣   build                   │                                          │
 │                               │                                          │
 │ OFFICE-H800  ●              + │                                          │
-│ [F] trainer                 2 │                                          │
+│ › [F] trainer               2 │                                          │
 │                               │                                          │
 │ OLD-LAPTOP  ○ offline         │                                          │
-│ [F] site (grey)             1 │                                          │
+│ › [F] site (grey)           1 │                                          │
 ├───────────────────────────────┤                                          │
 │ ⚙   +  New Project…           │                                          │
 └───────────────────────────────┴──────────────────────────────────────────┘
@@ -268,6 +270,7 @@ from `assets/icons/` (`DESIGN.md`), never the character:
 | --- | --- |
 | `[H]` | `monitor` |
 | `[F]` | `folder` (tinted by the project's color if set) |
+| `⌄` `›` | `chevron-down`, turned a quarter to the left when collapsed |
 | `[S]` | `search` |
 | `+` | `plus` |
 | `▾` `▸` `⌄` `›` | `chevron-down`, `chevron-right` |
@@ -316,26 +319,44 @@ A project's context menu:
   has Rename… (its alias) and New Tab with No Project. An offline host's
   header says "offline", and its projects show greyed, with their last
   tabs.
-- A project row is flush with the header: the project's color dot, its
-  name, and its tab count on the right, as Rex Go's list has it. Its
-  folder is in no row or tooltip. A click shows the project and expands
-  it; on the project shown, or on the dot of any, it expands or
-  collapses that project's tabs alone, which come under it flush with
-  it, with no guide line: a tab's program icon starts
-  where the project's dot does, and its title where the project's name
-  does. The rows of Older and of Tabs with no project line up the same. Each project keeps its
+- Every row under a host's header starts with a **disclosure column**, one
+  fixed width. A project row, and the Older row, draw a chevron in it, down
+  when the row is open and right when it is closed, at rest and not only
+  under the pointer; a project with no tab has none, as it has nothing to
+  open. Any other row leaves the column empty. The column comes before the
+  room of the tabs' tiles, so that opening or closing a row moves no name
+  and no icon: the project's folder is where its tabs' tiles are, and its
+  name where their titles are, flush as before. The chevron is the project's
+  disclosure: a click on it opens or closes that project's tabs alone.
+- A project row is flush with the header: the chevron, the project's folder
+  icon (the neutral `folder`, tinted by its color if set), its name, and its
+  tab count on the right. Its folder is in no row or tooltip. A click on the row shows the
+  project and opens it; on the project shown, it opens or closes that
+  project's tabs, which come under it with no guide line, their tiles where
+  the folder is. Each project keeps its
   own state, per client (`sidebarOpen`); choosing another project, in
   any way, closes none. Its `+` (shown on the row under the pointer and on
   the chosen project's) opens a tab in the folder; ⌘T does the same while
   the project is chosen. Its context menu: New Tab, Rename, Color, Move to
   Space, Reveal Folder (this host only), Close Project.
+- The program tiles in the sidebar are smaller than the tab strip's (16×12
+  against 21×16, the tiles behind peeking out by 4 against 5), so that a
+  tile reads about as big as the folder icon. The strip keeps its size.
 - Projects of a host are in order of last use (`Used`), the latest
   first; those not used for 30 days go under a collapsed **Older** row,
-  at the projects' level.
-- **Tabs with no project** is a row at the projects' level, with no dot,
-  last among the host's; it shows in every space, collapsed until chosen,
-  and expands the same way. With no tab, it does not show, unless the
-  window shows it.
+  at the projects' level, with the same chevron.
+- **Tabs with no project** is a light section label, not a project row: its
+  text small and muted, with no folder, no chevron and no count, left
+  where the chevron column starts. Its tabs are listed under it at all times,
+  with no collapse, their tiles and titles in the columns of a project's
+  tabs. It is last among the host's rows, and shows in every space. With no
+  tab, it does not show, unless the window shows it. A click on a tab shows
+  its workspace on that tab. The label stays a drop target for a tab of the
+  host's, which leaves its project (the project rows' drag highlight), has
+  the context menu of New Tab, and shows a `+` that opens one under the
+  pointer. A tab with no project that an adoption waits for (Migration) shows
+  as the same label, greyed, with "Waiting for <host>".
+- The web app keeps its current rows for now.
 - A tab of a project the window does not show names itself as a shown
   one does: by the title its program set, its program's icon and its
   folder, from the host's session list, with no pane attached. A shell at

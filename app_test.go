@@ -674,12 +674,12 @@ func TestSidebarTilesReserve(t *testing.T) {
 	t.Cleanup(func() { prefs = old })
 	a, _ := newTestApp(t)
 	tabs := []*Tab{a.tab()}
-	if got := tilesReserve(tabs); got != tileW+2 {
+	if got := tilesReserve(tabs); got != sideTile.w+2 {
 		t.Errorf("a tab alone reserves %v, past one tile", got)
 	}
 	a.split(false)
 	two := tilesReserve(tabs)
-	if two <= tileW+2 {
+	if two <= sideTile.w+2 {
 		t.Errorf("a tab of two panes reserves %v, no more than one tile", two)
 	}
 	a.split(false)
