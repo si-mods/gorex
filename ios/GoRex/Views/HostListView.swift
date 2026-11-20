@@ -173,13 +173,18 @@ struct HostListView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background { Color.page.ignoresSafeArea() }
             } else {
+                // Once for the list, not again for each host: each reads
+                // every host's projects.
+                let spaces = self.spaces
+                let current = Self.current(in: spaces, chosen: book.chosen)
+                let hasSpaces = self.hasSpaces
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 30) {
                         if inbox {
                             StatusInbox(query: query, collapsed: $collapsed, open: { go($0) })
                         } else {
-                            if hasSpaces { ListPicker(wide: width == .regular) { picker() } }
-                            ForEach(store.hosts.filter(shows)) { host in
+                            if hasSpaces { ListPicker(wide: width == .regular) { picker(spaces: spaces, current: current) } }
+                            ForEach(store.hosts.filter { shows($0, hasSpaces: hasSpaces, current: current) }) { host in
                                 HostSection(host: host, space: current, spaces: spaces, collapsed: $collapsed, expanded: expanded,
                                             query: query, open: { go($0) }, newProject: { newProject = host })
                             }
@@ -212,7 +217,7 @@ struct HostListView: View {
             // First on a wide window's sidebar, in the bar's row, whose
             // search and toggle it shares; atop the list on a narrow one.
             ToolbarItem(placement: .topBarLeading) {
-                if width == .regular, !inbox, hasSpaces { picker(place: .bar) }
+                if width == .regular, !inbox, hasSpaces { picker(spaces: spaces, current: current, place: .bar) }
             }
             ToolbarItemGroup(placement: .bottomBar) {
                 Button("Settings", systemImage: "gearshape") { settings = true }
@@ -236,7 +241,7 @@ struct HostListView: View {
     // MARK: Spaces
 
     /// The space shown, and the menu of the others.
-    private func picker(place: SpacePicker.Place = .list) -> some View {
+    private func picker(spaces: [String], current: String, place: SpacePicker.Place = .list) -> some View {
         SpacePicker(spaces: spaces, current: current, color: { Color(project: book.colors[$0]) },
                     choose: { s in withAnimation(.snappy) { book.chosen = s } },
                     add: { spaceName = ""; addingSpace = true },
@@ -273,13 +278,17 @@ struct HostListView: View {
 
     /// The space shown: the one chosen while the picker has it, else Default.
     private var current: String {
-        spaces.contains(book.chosen) ? book.chosen : ""
+        Self.current(in: spaces, chosen: book.chosen)
+    }
+
+    private static func current(in spaces: [String], chosen: String) -> String {
+        spaces.contains(chosen) ? chosen : ""
     }
 
     /// Whether a host shows in the space: one online or of before
     /// projects always; one away when it keeps a project of the space as
     /// last seen, or when nothing of it was seen, for its state to show.
-    private func shows(_ h: Host) -> Bool {
+    private func shows(_ h: Host, hasSpaces: Bool, current: String) -> Bool {
         if h.status == .online || !hasSpaces { return true }
         guard let l = book.listing(for: h.id.uuidString) else { return true }
         return l.spaces.contains(current)
