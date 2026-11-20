@@ -73,7 +73,6 @@ final class TerminalSession {
     @ObservationIgnored private var theme: [String: Any]?
     @ObservationIgnored private var hostTheme: [String: Any]?
     @ObservationIgnored nonisolated(unsafe) private var themeObserver: NSObjectProtocol?
-    @ObservationIgnored private var stream = TerminalStream(nonce: 0)
     @ObservationIgnored private var data: DataConnection
     @ObservationIgnored private var size: (cols: Int, rows: Int, cw: Int, ch: Int)?
     @ObservationIgnored private var sizing: Task<Void, Never>?
@@ -182,12 +181,13 @@ final class TerminalSession {
                 let c = DataConnection(base: host.config.url, auth: host.config.auth)
                 d = c
                 data = c
-                wire(c)
+                let feed = wire(c)
                 try await c.open(ticket: t, session: session)
+                // Before any of its bytes, which the feed takes in order.
+                feed.start(nonce: c.nonce)
                 guard g == generation else { return }
                 log.info("opened \(self.block, privacy: .public)")
                 opened = .now
-                stream = TerminalStream(nonce: c.nonce)
                 // One kept off the page gives back what the server restored.
                 if owns { await claim() } else { await giveBack() }
             } catch {
@@ -289,19 +289,25 @@ final class TerminalSession {
         Task { _ = try? await host.control?.call("session.disown_block", ["session_id": session, "block_ids": [block]]) }
     }
 
-    private func wire(_ d: DataConnection) {
+    /// Feeds the connection's bytes and drop to a TerminalFeed, which
+    /// frames them and restores the snapshot off the main actor, and hands
+    /// what it made to receive in order, while d is still the connection
+    /// and the session is not closed: a start opens a new one, with a
+    /// snapshot of its own.
+    private func wire(_ d: DataConnection) -> TerminalFeed {
+        let feed = TerminalFeed { [weak self, weak d] events in
+            guard let self, d === self.data, !self.closed else { return }
+            self.receive(events)
+        }
         d.onBytes = { [weak self, weak d] bytes in
             guard let self, d === self.data else { return }
-            self.receive(bytes)
+            feed.feed(bytes, size: self.size.map { .init(cols: $0.cols, rows: $0.rows, cellWidth: $0.cw, cellHeight: $0.ch) })
         }
         d.onDrop = { [weak self, weak d] code in
             guard let self, d === self.data, !self.closed else { return }
-            switch code {
-            case 4000: self.end(.failed(String(localized: "The tab closed.")))
-            case 1002, 1008: self.end(.failed(String(localized: "The server refused the terminal.")))
-            default: self.retry(fresh: code == 1000 || code == 1013)
-            }
+            feed.drop(code, generation: self.generation)
         }
+        return feed
     }
 
     /// Whether the stream is open or opening, not ended for good.
@@ -348,22 +354,19 @@ final class TerminalSession {
         return min(.milliseconds(250) * (1 << (n - 1)), .seconds(2))
     }
 
-    private func receive(_ bytes: Data) {
-        for item in stream.feed(bytes) {
-            switch item {
-            case .snapshot(let s):
-                guard let t = VTerminal(snapshot: s) else {
+    /// What the stream's feed made, in the order the bytes arrived.
+    private func receive(_ events: [TerminalFeed.Event]) {
+        for event in events {
+            switch event {
+            case .snapshot(let restored):
+                guard let restored else {
                     end(.failed(String(localized: "The terminal's snapshot could not be read.")))
                     return
                 }
-                // Drawn at the view's size, which the block takes next.
-                if let size { t.resize(cols: size.cols, rows: size.rows, cellWidth: size.cw, cellHeight: size.ch) }
-                hostTheme = t.theme
-                apply(theme: TerminalTheme.chosen?.message ?? t.theme)
-                // A reset first: the snapshot of a new stream replaces the screen.
-                let replay = t.replay()
-                write(Data("\u{1b}c".utf8) + replay)
-                gallery?.feed(replay, fresh: true, screen: output)
+                hostTheme = restored.theme
+                apply(theme: TerminalTheme.chosen?.message ?? restored.theme)
+                write(restored.screen)
+                gallery?.feed(restored.replay, fresh: true, screen: output)
                 state = .live
                 setReconnecting(false)
             case .output(let o):
@@ -380,6 +383,14 @@ final class TerminalSession {
                 default:
                     // A resize follows this view's size, which it set.
                     break
+                }
+            case .drop(let code, generation: let g):
+                // A resume or a start since the drop has handled it.
+                guard !closed, g == generation else { continue }
+                switch code {
+                case 4000: end(.failed(String(localized: "The tab closed.")))
+                case 1002, 1008: end(.failed(String(localized: "The server refused the terminal.")))
+                default: retry(fresh: code == 1000 || code == 1013)
                 }
             }
         }
