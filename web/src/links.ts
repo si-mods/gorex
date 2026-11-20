@@ -5,7 +5,7 @@
 // https. On a host whose gateway sends files (gorex.download), a file path
 // printed in the pane and a file:// hyperlink are links too, as the
 // desktop's in a host's pane (find.go isLink, upload.go download); files.ts
-// opens them. docs/web-client.md and docs/web-open-files.md have the rules.
+// opens them. docs/REF-007-web-client.md and docs/WEB-001-open-files.md have the rules.
 
 /** A row's text: its characters (code points) and the column each is in. */
 export interface RowText {
@@ -34,7 +34,7 @@ export interface Link {
   /**
    * For a file:// hyperlink (OSC 8) whose cells do not print its path: a
    * program may print chart.png over file:///home/u/.ssh/id_ed25519, so
-   * the page asks before it opens (docs/web-open-files.md).
+   * the page asks before it opens (docs/WEB-001-open-files.md).
    */
   hidden?: boolean;
 }

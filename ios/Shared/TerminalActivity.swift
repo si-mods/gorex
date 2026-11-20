@@ -3,7 +3,7 @@ import Foundation
 
 /// The terminal on screen as a Live Activity: its program, its state and
 /// its latest line on the Lock Screen and in the Dynamic Island
-/// (docs/ios-live-activities.md, Terminal activity). The app starts and
+/// (docs/IOS-006-live-activities.md, Terminal activity). The app starts and
 /// updates it; the widget extension draws it. It is encoded with every
 /// update, attributes and state together under ActivityKit's 4 KB.
 nonisolated struct TerminalActivity: ActivityAttributes, Hashable, Sendable {

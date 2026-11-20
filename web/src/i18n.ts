@@ -1,4 +1,4 @@
-// The page's languages (docs/web-client.md, Languages): the messages of
+// The page's languages (docs/REF-007-web-client.md, Languages): the messages of
 // web/locales, which web/i18n.mjs checks and writes into locales.gen.ts
 // with the type of each key's arguments, so that t() of an unknown key, or
 // without an argument its message needs, fails tsc. Both catalogs are in

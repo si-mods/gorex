@@ -1,5 +1,5 @@
 // What New Project, New Tab, Move to Project and the spaces' renames do
-// (docs/projects.md, Web client): the calls on the hosts' gateways, with the
+// (docs/MOD-002-projects.md, Web client): the calls on the hosts' gateways, with the
 // rules of projectmodel.ts. Bound to main's state as windowops.ts is.
 import type { Host } from "./hosts";
 import type { HostConn } from "./hostconn";

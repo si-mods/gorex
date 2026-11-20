@@ -1,4 +1,4 @@
-// The New Project sheet and Change Folder (docs/projects.md, Desktop): a
+// The New Project sheet and Change Folder (docs/MOD-002-projects.md, Desktop): a
 // host, a folder browsed through gorex.dir.list, a name. The state is
 // projects.ts's FolderBrowser; this draws it, as manage.ts's confirmDanger
 // draws its question (the same frosted dialog).

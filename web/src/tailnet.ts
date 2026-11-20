@@ -1,4 +1,4 @@
-// Built-in Tailscale in the page (docs/web-tailscale.md): the tailnet
+// Built-in Tailscale in the page (docs/WEB-002-tailscale.md): the tailnet
 // engine (web/tailnet, Go compiled to WebAssembly) loaded only when the
 // user turns Tailscale on, its node's state and sign-in, the GoRex hosts
 // found in its network map, and the transport that reaches them.
@@ -77,7 +77,7 @@ export type Status =
 
 /** How long the login URL may take before the page says control is not reached. */
 const loginWait = 25_000;
-/** A probe's wait, and how many run at once (docs/web-tailscale.md, Finding hosts). */
+/** A probe's wait, and how many run at once (docs/WEB-002-tailscale.md, Finding hosts). */
 const probeWait = 3_000;
 const probesAtOnce = 4;
 /** How often the network map is read again while running, besides its events. */
@@ -538,7 +538,7 @@ export class Tailnet {
   }
 
   /**
-   * The peers that may be GoRex gateways (docs/web-tailscale.md, Finding
+   * The peers that may be GoRex gateways (docs/WEB-002-tailscale.md, Finding
    * hosts): the signed-in user's own untagged devices, with Hostinfo.App
    * "gorex" or a name ending in -gorex. Online ones are asked for
    * /api/help, four at a time; one that answered stays listed, offline,

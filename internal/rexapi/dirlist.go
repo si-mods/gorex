@@ -7,7 +7,7 @@ import (
 )
 
 // gorex.dir.list lists the directories in a directory of this machine,
-// for a folder picker (docs/projects.md): the GoRex server's "dir.list"
+// for a folder picker (docs/MOD-002-projects.md): the GoRex server's "dir.list"
 // (rex.CapabilityDirList). It is allowed to the callers that may take a
 // file with download_begin, the server's file.get, which reads any path
 // as the server's user already; they are those of session.create: no

@@ -16,7 +16,7 @@ final class FakeCloud: CloudStore {
     func synchronize() -> Bool { true }
 }
 
-/// The settings that sync through iCloud (docs/ios-icloud-sync.md): which
+/// The settings that sync through iCloud (docs/IOS-008-icloud-sync.md): which
 /// side wins, what goes each way, and what stays on the device.
 nonisolated final class CloudSettingsTests: XCTestCase {
     @MainActor private func make() -> (CloudSettings, FakeCloud, UserDefaults) {

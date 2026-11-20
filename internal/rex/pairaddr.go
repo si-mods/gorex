@@ -25,7 +25,7 @@ import (
 	"tailscale.com/types/key"
 )
 
-// Pairing by address (docs/host-links.md, "1. Identity"): its wire and
+// Pairing by address (docs/NET-002-host-links.md, "1. Identity"): its wire and
 // client half are internal/pairaddr's, which Rex Go's engine shares; the
 // server half is here.
 const (

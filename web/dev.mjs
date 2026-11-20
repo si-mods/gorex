@@ -4,7 +4,7 @@
 // again on each change and copying index.html again when it changes. A
 // page served from loopback over plain http may open ws:// and wss://
 // connections, so it reaches both a local network gateway and a tailnet
-// one (docs/web-client.md). The host must trust its origin:
+// one (docs/REF-007-web-client.md). The host must trust its origin:
 // gorex rexapi web allow http://127.0.0.1:5173
 //
 // It builds the tailnet engine again when a Go file of web/tailnet changes

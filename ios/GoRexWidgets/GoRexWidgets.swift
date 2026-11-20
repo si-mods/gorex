@@ -2,7 +2,7 @@ import ActivityKit
 import SwiftUI
 import WidgetKit
 
-/// Rex Go's widgets (docs/ios-widgets.md). They show the snapshot the app
+/// Rex Go's widgets (docs/IOS-010-widgets.md). They show the snapshot the app
 /// writes (WidgetSnapshot); they reach no host.
 @main
 struct GoRexWidgets: WidgetBundle {
@@ -13,7 +13,7 @@ struct GoRexWidgets: WidgetBundle {
 }
 
 /// The terminal open when the app left, on the Lock Screen and in the
-/// Dynamic Island (docs/ios-live-activities.md, Terminal activity); a
+/// Dynamic Island (docs/IOS-006-live-activities.md, Terminal activity); a
 /// tap opens it.
 struct TerminalActivityWidget: Widget {
     var body: some WidgetConfiguration {

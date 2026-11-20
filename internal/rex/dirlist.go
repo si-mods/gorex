@@ -271,7 +271,7 @@ func resolveDir(path string) (string, error) {
 // (resolveDir), and whether it is a directory here: dir must be absolute
 // and not a device or pipe (VolumePath), which is checked before anything
 // reads it. Two paths of one folder, as /tmp/x and /private/tmp/x on
-// macOS, are one project's (docs/projects.md).
+// macOS, are one project's (docs/MOD-002-projects.md).
 func ProjectFolder(dir string) (string, bool) {
 	dir = strings.TrimSpace(dir)
 	if dir == "" || !filepath.IsAbs(dir) {

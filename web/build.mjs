@@ -5,7 +5,7 @@
 // asks for (fetched into a cache when ZIG is not set), and the
 // TypeScript client, bundled by esbuild. web/dist is what Cloudflare
 // serves (wrangler.jsonc) and what the dev server serves (dev.mjs).
-// It also builds the tailnet engine (web/tailnet, docs/web-tailscale.md)
+// It also builds the tailnet engine (web/tailnet, docs/WEB-002-tailscale.md)
 // with Go, when Go is installed: a page built without Go works, with no
 // built-in Tailscale.
 //
@@ -15,17 +15,17 @@
 // tailnet-<hash>.*, maple-*), which _headers keeps a year: a reload takes
 // them from the browser's cache. index.html names the script, and the
 // script names the asset manifest (assetDefines), which lists every file
-// the page loads by name (src/loader.ts; docs/web-client.md, Loading on
+// the page loads by name (src/loader.ts; docs/REF-007-web-client.md, Loading on
 // demand): the code chunks esbuild cuts at each import(), the terminal's
 // wasm, the themes, the Tailscale engine, and the terminal's CJK font,
 // Maple Mono NF CN, cut into chunks by web/fonts/maple.mjs.
 //
 // Before tsc it checks the catalogs of web/locales and writes
-// src/locales.gen.ts from them (i18n.mjs; docs/web-client.md, Languages):
+// src/locales.gen.ts from them (i18n.mjs; docs/REF-007-web-client.md, Languages):
 // a catalog error fails the build, and so does a missing translation in CI
 // ($CI set, or --ci).
 //
-// It also writes the page's app files (docs/web-client.md, App): the
+// It also writes the page's app files (docs/REF-007-web-client.md, App): the
 // manifest, its icons (web/pwa, drawn by go run ./tools/mkicon -web) and
 // sw.js, the Service Worker, with this build's version and files.
 //
@@ -33,7 +33,7 @@
 //
 // $GOREX_WEB_DIST builds into another directory than web/dist, as a check
 // beside a dev server that serves web/dist. The cache is $GOREX_WEB_CACHE, else $XDG_CACHE_HOME/gorex-web, else
-// ~/.cache/gorex-web. See docs/web-client.md.
+// ~/.cache/gorex-web. See docs/REF-007-web-client.md.
 import { execFile, execFileSync, execSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
@@ -176,7 +176,7 @@ async function wasm() {
 /**
  * The tailnet engine's build tags: tsconnect's own list, read from the
  * pinned tailscale.com so a bump keeps it current, and five features the
- * web node does not need (docs/web-tailscale.md, Build and size).
+ * web node does not need (docs/WEB-002-tailscale.md, Build and size).
  */
 const extraTags = ["ts_omit_c2n", "ts_omit_dns", "ts_omit_health", "ts_omit_ipnbus", "ts_omit_logtail"];
 
@@ -198,7 +198,7 @@ export async function buildTailnet() {
     goroot = (await run(go, ["env", "GOROOT"], { cwd: root })).stdout.trim();
     version = (await run(go, ["env", "GOVERSION"], { cwd: root })).stdout.trim();
   } catch {
-    console.warn("tailnet engine: skipped, Go is not installed (the page builds without built-in Tailscale; see docs/web-tailscale.md)");
+    console.warn("tailnet engine: skipped, Go is not installed (the page builds without built-in Tailscale; see docs/WEB-002-tailscale.md)");
     return undefined;
   }
   const started = Date.now();
@@ -318,7 +318,7 @@ function definesOf(assets, url) {
 
 /**
  * The asset manifest: the files of dist/assets the page loads by name
- * through its loader (src/loader.ts; docs/web-client.md, Loading on
+ * through its loader (src/loader.ts; docs/REF-007-web-client.md, Loading on
  * demand), each with its URL, size, the hash its name carries and its
  * kind. A lazy one, in assets/lazy/, is loaded only when the page needs
  * it: the Service Worker does not keep it, the loader's cache does once it
@@ -372,7 +372,7 @@ export class Manifest {
  * lazy chunks in the manifest: maple/<face>/<n> for each face and chunk,
  * and maple/index, which lists the faces and each chunk's unicode-range.
  * Its licence goes to fonts/. Without the faces, as offline with nothing
- * cached, it warns, and the page draws no CJK text (docs/web-client.md,
+ * cached, it warns, and the page draws no CJK text (docs/REF-007-web-client.md,
  * Fonts).
  */
 async function addMaple(dir, manifest) {
@@ -498,7 +498,7 @@ async function main() {
   const page = readFileSync(join(web, "index.html"), "utf8");
   if (!page.includes('src="app.js"')) throw new Error('index.html has no <script src="app.js">');
   writeFileSync(join(dist, "index.html"), page.replace('src="app.js"', `src="${appName}"`));
-  // Cloudflare's headers for the files (cache, CSP); see docs/web-client.md.
+  // Cloudflare's headers for the files (cache, CSP); see docs/REF-007-web-client.md.
   copyFileSync(join(web, "_headers"), join(dist, "_headers"));
   // The desktop's terminal font, which GoRex embeds too, with its licence.
   for (const f of readdirSync(join(root, "assets", "fonts"))) copyFileSync(join(root, "assets", "fonts", f), join(dist, "fonts", f));

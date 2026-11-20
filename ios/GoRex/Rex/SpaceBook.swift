@@ -1,7 +1,7 @@
 import Foundation
 import Observation
 
-/// The spaces as this device keeps them (docs/projects.md, Spaces). A
+/// The spaces as this device keeps them (docs/MOD-002-projects.md, Spaces). A
 /// space is only a name on the hosts' projects; this device keeps their
 /// order and colors, the spaces made here that no project carries yet,
 /// the renames and deletions still to reach hosts that were away, the
@@ -224,7 +224,7 @@ final class SpaceBook {
     }
 
     /// Drops what the app kept of spaces before projects lived on their
-    /// hosts: the manifest of docs/ios-centralized-spaces.md, what the
+    /// hosts: the manifest of docs/IOS-004-centralized-spaces.md, what the
     /// hosts' sessions reported to it, its sync settings, each host's last
     /// machine, the Grouping setting and the space shown. Nothing of it is
     /// carried over: the hosts keep the projects now.

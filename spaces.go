@@ -13,7 +13,7 @@ import (
 	"gorex/locales"
 )
 
-// Spaces (docs/projects.md, "Spaces"): a space is only a name on the
+// Spaces (docs/MOD-002-projects.md, "Spaces"): a space is only a name on the
 // projects of the hosts. The picker atop the sidebar lists the names the
 // hosts' projects carry, Default (a project of no space), the names the
 // hosts offer from their layouts of before projects (Store.Spaces), and

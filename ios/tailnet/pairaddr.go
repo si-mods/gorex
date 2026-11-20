@@ -1,6 +1,6 @@
 package tailnet
 
-// Pairing by address (docs/host-links.md, "Pairing by address"): Rex Go
+// Pairing by address (docs/NET-002-host-links.md, "Pairing by address"): Rex Go
 // asks a GoRex machine at an IP address, through its relay of Reachable
 // at, to allow this phone's tailcat key; the user compares the code both
 // show, and the machine's user approves. The address it then gets is a

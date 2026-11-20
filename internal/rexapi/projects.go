@@ -11,7 +11,7 @@ import (
 	"gorex/internal/rex"
 )
 
-// Projects (docs/projects.md): a host keeps its projects, each a folder of
+// Projects (docs/MOD-002-projects.md): a host keeps its projects, each a folder of
 // its own, as GoRex workspaces, which this API shows as sessions, and one
 // workspace of its tabs with no project. GoRex's own methods name them
 // with GoRex's words: project_id is the project's Rex session ID, tab_id a
@@ -242,7 +242,7 @@ type projectAdoptResult struct {
 // methodGorexProjectAdopt arranges panes that run already into the tabs
 // given, in the project given, made unless it is there: it starts no
 // shell and opens no tab of its own; a pane it does not know is skipped,
-// and adopting again changes nothing (docs/projects.md, Migration).
+// and adopting again changes nothing (docs/MOD-002-projects.md, Migration).
 func methodGorexProjectAdopt(c *control, a args) (any, *apiError) {
 	if aerr := c.projectsCan(); aerr != nil {
 		return nil, aerr
@@ -464,7 +464,7 @@ func methodGorexSpaceList(c *control, a args) (any, *apiError) {
 // methodGorexProjectSetHome is v0.38.0's gorex.project.set_home, kept for
 // Rex Go 1.1 and the web client of v0.39.0, which make a project as a
 // session.create and a set_home of its folder. Deprecated: it goes once
-// phases 3 and 4 of docs/projects.md ship. A home is a folder of this
+// phases 3 and 4 of docs/MOD-002-projects.md ship. A home is a folder of this
 // machine only (space.home): another machine's fails with bad_request; a
 // machine_id of "" clears it.
 func methodGorexProjectSetHome(c *control, a args) (any, *apiError) {

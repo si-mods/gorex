@@ -119,7 +119,7 @@ func TestNewProjectSheetLocal(t *testing.T) {
 
 // TestNewProjectSheetHost browses a remote host's folders, on a test
 // server: an offline host shows and cannot be chosen. Create makes the
-// project on that host (docs/projects.md), in the space shown, and the
+// project on that host (docs/MOD-002-projects.md), in the space shown, and the
 // window shows it, its first tab in the folder there.
 func TestNewProjectSheetHost(t *testing.T) {
 	a, tt := newTestApp(t)

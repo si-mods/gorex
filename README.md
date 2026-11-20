@@ -29,7 +29,7 @@ server over to the new version. After installing a newer build yourself,
 `gorex server upgrade` performs the handoff on macOS and Linux; it refuses
 a build whose modification time is not newer than the server's. On Windows
 and macOS, use **Check for Updates** in the app. See
-[the CLI reference](docs/cli.md#commands).
+[the CLI reference](docs/REF-001-cli.md#commands).
 
 ## What it does
 
@@ -64,7 +64,7 @@ and macOS, use **Check for Updates** in the app. See
   restarted (`gorex server restart`, or the app on Windows replacing an
   older one once asked) brings its sessions back as new shells at their
   panes' directories; Quit and End All ends them. How the server keeps
-  the screens: [docs/session-server.md](docs/session-server.md).
+  the screens: [docs/REF-006-session-server.md](docs/REF-006-session-server.md).
 - **Kitty graphics.** Images sent by file path are read where the program
   runs, including on a remote host, and are shown in-band; a window that
   attaches again replays them.
@@ -72,7 +72,7 @@ and macOS, use **Check for Updates** in the app. See
   scrollback, with the match count and next/previous; Escape closes it.
   Command-click (Control-click elsewhere) opens URLs through the system,
   and file paths relative to the pane's program.
-- **Spaces, hosts, projects, tabs, panes** (`docs/projects.md`). A
+- **Spaces, hosts, projects, tabs, panes** (`docs/MOD-002-projects.md`). A
   project is a folder on one host; its tabs, splits, floating panes and
   browser panes live in that host's layout, so every client of the host
   (this app on another machine, Rex Go, the web client) sees the same
@@ -368,7 +368,7 @@ What to know before turning it on:
   terminal of 1 to 1000 columns and rows, and 8 kills at once.
 
 The same address also serves Rex's API on its port, 7297, for Rex Go
-(see [docs/ios-tailcat.md](docs/ios-tailcat.md)). Rex's API commands
+(see [docs/IOS-002-tailcat.md](docs/IOS-002-tailcat.md)). Rex's API commands
 the layout, as a client may over 7464 too: an allowed key gets it; any
 other gets nothing there, and pairing stays on 7464. The session server hands each such connection to the Rex API
 gateway, which it runs while remote access is on, on the gateway's
@@ -406,11 +406,11 @@ reads it and `events` follows changes.
 
 A session attached by several clients takes the size of the one the
 user's focus is on, if that machine had input in the last minute; see
-[docs/session-size.md](docs/session-size.md).
+[docs/REF-003-session-size.md](docs/REF-003-session-size.md).
 
 For a Linux service shared by several paired clients, see
-[docs/shared-server.md](docs/shared-server.md). Per-user isolation and
-PAM login are a separate proposal: [docs/login-server-rfc.md](docs/login-server-rfc.md).
+[docs/REF-004-shared-server.md](docs/REF-004-shared-server.md). Per-user isolation and
+PAM login are a separate proposal: [docs/NET-001-login-server-rfc.md](docs/NET-001-login-server-rfc.md).
 
 Settings › Remote Hosts connects this machine to other machines' session
 servers, whose sessions then open in tabs of the window beside its own.
@@ -469,7 +469,7 @@ a tab of the host's, and its own session ends. Only a shell at its prompt
 or Claude Code or omp waiting for the user can go, from this machine;
 `gorex teleport PANE HOST` does the same from the command line. Dragging
 a tab of one pane onto another host's tabs, or its name in the sidebar,
-asks to teleport it there. See [docs/teleport.md](docs/teleport.md).
+asks to teleport it there. See [docs/DSK-003-teleport.md](docs/DSK-003-teleport.md).
 
 ## Importing a Rex session
 
@@ -525,7 +525,7 @@ through a Tailscale device of its own. A project is
 a Rex session, a tab a window, a pane a block, and a floating pane a
 floating layer; terminals stream as Ghostty snapshots, as Rex's do. Setup,
 pairing, what differs from a Rex server, and troubleshooting:
-[docs/rex-api.md](docs/rex-api.md).
+[docs/REF-005-rex-api.md](docs/REF-005-rex-api.md).
 
 ## Develop and build
 

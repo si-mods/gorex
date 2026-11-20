@@ -1042,7 +1042,7 @@ func (a *App) newPaneTab(p *Pane) *Tab {
 
 // newProjectTab is New Tab: a tab of the window's workspace, on its host;
 // in a project's folder, which its server starts it in or fails, saying
-// so, and starts none elsewhere (docs/projects.md, "New tabs and panes").
+// so, and starts none elsewhere (docs/MOD-002-projects.md, "New tabs and panes").
 // Of the tabs with no project, it starts where the focused pane is.
 func (a *App) newProjectTab() *Tab {
 	w := a.ws
@@ -1246,7 +1246,7 @@ func (a *App) askPane(at *Pane, c rex.LayoutCommand, done func(*Pane)) *Pane {
 	}
 	// The space is one of the layout the command goes to: the window's,
 	// when it shows that host's, which a pane of another host's in this
-	// machine's layout is not (docs/projects.md, "The desktop window").
+	// machine's layout is not (docs/MOD-002-projects.md, "The desktop window").
 	// None otherwise, and the server finds the pane in any of its spaces.
 	if a.ws != nil && a.ws.host == at.host {
 		c.Space = a.ws.ID

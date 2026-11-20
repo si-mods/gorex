@@ -2,7 +2,7 @@ import Foundation
 import Observation
 
 /// The terminal activity's logic, apart from ActivityKit, which a Driver
-/// stands for (docs/ios-live-activities.md, Terminal activity): one
+/// stands for (docs/IOS-006-live-activities.md, Terminal activity): one
 /// activity at a time, for the terminal on screen; its updates, at most one
 /// per interval; and the grace on leaving the app, during which the
 /// streams stay open, before they are suspended as they were before.

@@ -90,7 +90,7 @@ test("each window shows once: the first space to hold it", () => {
   assert.deepEqual(c.rows(other, "copy"), []);
 });
 
-// Decision 3 (docs/web-multihost.md): the page does not dedupe a machine
+// Decision 3 (docs/WEB-003-multihost.md): the page does not dedupe a machine
 // reached by two hosts: both stay in the list with all their windows. The
 // iOS test of the same name checks that a remote block resolves to the
 // first host of its machine; the port keeps that, and adds that CrossHost

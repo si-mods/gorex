@@ -1,4 +1,4 @@
-// Where the page was, kept in this browser (docs/web-multihost.md,
+// Where the page was, kept in this browser (docs/WEB-003-multihost.md,
 // Persistence): the shown window, by its host (gorex.place), and the
 // tailnet hosts the user connected once (gorex.tailnetOpened), which
 // connect again when built-in Tailscale finds them, and the direct hosts

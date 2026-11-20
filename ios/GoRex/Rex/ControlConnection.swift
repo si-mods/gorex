@@ -86,7 +86,7 @@ final class ControlConnection {
     /// The optional behaviors the server lists in its welcome.
     private(set) var features: Set<String> = []
     /// The version the welcome gives a feature, as gorex.projects's 2
-    /// (docs/projects.md); a feature listed with none has none here.
+    /// (docs/MOD-002-projects.md); a feature listed with none has none here.
     private(set) var featureVersions: [String: Int] = [:]
 
     private let task: URLSessionWebSocketTask

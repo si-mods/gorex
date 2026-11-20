@@ -8,7 +8,7 @@ import (
 	"gorex/locales"
 )
 
-// The title bar's `host › project ▾` (docs/projects.md, "Tabs on top"):
+// The title bar's `host › project ▾` (docs/MOD-002-projects.md, "Tabs on top"):
 // the host and the project the window shows, and a menu of the space's
 // hosts, their projects with their tabs' counts, their tabs with no
 // project, and New Project….

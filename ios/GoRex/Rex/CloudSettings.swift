@@ -11,7 +11,7 @@ protocol CloudStore: AnyObject {
 extension NSUbiquitousKeyValueStore: CloudStore {}
 
 /// The settings that follow the user to their other devices through iCloud
-/// (docs/ios-icloud-sync.md): each is mirrored between UserDefaults, which
+/// (docs/IOS-008-icloud-sync.md): each is mirrored between UserDefaults, which
 /// the app reads, and the iCloud key-value store. The API key is not here:
 /// it goes through the Keychain.
 final class CloudSettings {

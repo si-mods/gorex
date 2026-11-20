@@ -3,7 +3,7 @@
 // of its windows, their programs' tiles, titles and records, under their
 // host. It draws what each HostConn (hostconn.ts) holds, with its state:
 // a dot while it reconnects or fails, its problem's line, and its rows,
-// dimmed, as last seen while it is not connected (docs/web-multihost.md,
+// dimmed, as last seen while it is not connected (docs/WEB-003-multihost.md,
 // The sidebar). What its rows and menus do is the page's (main.ts,
 // SidebarApp). Its updates wait for the next animation frame, one per
 // frame for every host.
@@ -409,7 +409,7 @@ function hostSections(nav: HTMLElement) {
 
 /**
  * The sidebar's space view. Until spaces are grouped across hosts
- * (docs/web-multihost.md, PR 6), each connected host lists its own
+ * (docs/WEB-003-multihost.md, PR 6), each connected host lists its own
  * spaces, under its name once there is more than one host.
  */
 function spaceSections(nav: HTMLElement) {

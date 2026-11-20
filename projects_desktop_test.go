@@ -16,7 +16,7 @@ import (
 	"gorex/locales"
 )
 
-// Tests of the desktop of docs/projects.md, phase 2: the window shows the
+// Tests of the desktop of docs/MOD-002-projects.md, phase 2: the window shows the
 // hosts' layouts, the sidebar their projects, and the adoptions go to
 // their hosts.
 
@@ -69,7 +69,7 @@ func wsSIDs(w *layout.Workspace) (sids []string, hosted bool) {
 }
 
 // noHostLeaves fails when this machine's layout keeps a pane of another
-// host (docs/projects.md: it keeps only its own projects).
+// host (docs/MOD-002-projects.md: it keeps only its own projects).
 func noHostLeaves(t *testing.T, a *App) {
 	t.Helper()
 	for _, w := range savedWorkspaces(t, a.client).Sessions {
@@ -375,7 +375,7 @@ func names(ws []*Workspace) []string {
 
 // newTestSpace makes a workspace of this machine of a new name and color,
 // of no folder, last among this machine's, as a space was before projects
-// (docs/projects.md): the tests of what a window does with several
+// (docs/MOD-002-projects.md): the tests of what a window does with several
 // workspaces make them so. The app makes none: its projects come from
 // project.create.
 func (st *store) newTestSpace() *Workspace {
@@ -771,7 +771,7 @@ func TestDeleteSpace(t *testing.T) {
 
 // TestSplitOfHostPaneInThisMachinesTab: a layout of v0.40's kept another
 // host's panes in this machine's tabs, and a client of one may put one
-// back at any time (docs/projects.md, "The desktop window"). The split of
+// back at any time (docs/MOD-002-projects.md, "The desktop window"). The split of
 // such a pane is the host's to make, in the space the host keeps it in:
 // no error, and the pane beside it in the host's own tab.
 func TestSplitOfHostPaneInThisMachinesTab(t *testing.T) {

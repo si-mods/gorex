@@ -1,7 +1,7 @@
 #!/bin/sh
 # chaos.sh [OUT]: run the fault scenarios of chaos_test.go and write their
 # screenshots to OUT (default /tmp/gorex-chaos) for a person or an agent
-# to compare with the last run. docs/chaos.md lists the scenarios and the
+# to compare with the last run. docs/REF-008-chaos.md lists the scenarios and the
 # invariant each one attacks. Give the test names after OUT to run a part:
 #   chaos.sh /tmp/shots TestChaosBurstOutput
 set -eu

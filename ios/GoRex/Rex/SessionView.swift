@@ -38,7 +38,7 @@ struct SessionView: Decodable {
         }
     }
 
-    /// A session's project, GoRex's own (docs/projects.md, Rex API): its
+    /// A session's project, GoRex's own (docs/MOD-002-projects.md, Rex API): its
     /// folder on the host, the space it shows in ("" is Default), when a
     /// tab of it was last used, and its color. A host's tabs with no
     /// project have a project with no folder. Read leniently: a malformed

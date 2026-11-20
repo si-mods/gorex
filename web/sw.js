@@ -1,4 +1,4 @@
-// GoRex web client's Service Worker (docs/web-client.md, App). build.mjs
+// GoRex web client's Service Worker (docs/REF-007-web-client.md, App). build.mjs
 // writes this build's version and files into the two lines below; the dev
 // server serves a worker that only removes itself (dev.mjs).
 //

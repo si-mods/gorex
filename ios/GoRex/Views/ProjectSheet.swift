@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// New Project on a host (docs/projects.md, New Project): a folder on it,
+/// New Project on a host (docs/MOD-002-projects.md, New Project): a folder on it,
 /// browsed with gorex.dir.list, and a name, the folder's by default. The
 /// project is made in the space shown, and its first tab opens in the
 /// folder.

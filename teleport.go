@@ -22,7 +22,7 @@ type teleportRun struct {
 
 // teleportBlocked says why pane p cannot teleport now, "" when it can:
 // only a pane of this machine, a shell at its prompt, or Claude Code or
-// omp waiting for the user (docs/teleport.md).
+// omp waiting for the user (docs/DSK-003-teleport.md).
 func teleportBlocked(p *Pane) string {
 	switch {
 	case p.teleport != nil:
@@ -165,7 +165,7 @@ func (a *App) teleport(p *Pane, h *hostConn) {
 }
 
 // teleported makes pane p, whose work went to host h, the session in
-// there: a tab of the host's (docs/projects.md: a tab lives on one host),
+// there: a tab of the host's (docs/MOD-002-projects.md: a tab lives on one host),
 // with no project there, named as p's was, which the window shows; p's
 // own session ends.
 func (a *App) teleported(p *Pane, h *hostConn, in rex.SessionInfo) {

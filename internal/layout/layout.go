@@ -56,7 +56,7 @@ type Kill struct {
 }
 
 // Workspace is a workspace as the layout keeps it: a project, a folder of
-// this host's (docs/projects.md), or with no Dir the host's tabs with no
+// this host's (docs/MOD-002-projects.md), or with no Dir the host's tabs with no
 // project.
 type Workspace struct {
 	ID    string `json:"id"`

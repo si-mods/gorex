@@ -4,7 +4,7 @@
 //
 // The desktop app's icons, resources/icon.png and resources/icon-dev.png,
 // are the prism of Rex Go's icon now, rendered from its layers; mkicon no
-// longer draws them (docs/ios-app-icons.md, Desktop).
+// longer draws them (docs/IOS-009-app-icons.md, Desktop).
 //
 //	go run ./tools/mkicon -web
 package main
@@ -40,7 +40,7 @@ func main() {
 	web := flag.Bool("web", false, "draw the web client's app icons into web/pwa")
 	flag.Parse()
 	if !*web {
-		log.Fatal("mkicon draws only the web icons (-web); resources/icon.png and icon-dev.png are rendered from Rex Go's icon (docs/ios-app-icons.md, Desktop)")
+		log.Fatal("mkicon draws only the web icons (-web); resources/icon.png and icon-dev.png are rendered from Rex Go's icon (docs/IOS-009-app-icons.md, Desktop)")
 	}
 
 	// The icon's colours, in the light of the window.
@@ -112,7 +112,7 @@ func panes(img *image.RGBA, x0, y0, w float32, k colors) {
 	}
 }
 
-// webIcons writes the web client's app icons (docs/web-client.md, App):
+// webIcons writes the web client's app icons (docs/REF-007-web-client.md, App):
 // the icon as it is at 192 and 512 pixels, and a maskable one, whose
 // gradient fills the square and whose panes keep within the middle 80%
 // circle that a launcher's mask leaves, at 192 and 512 pixels and as

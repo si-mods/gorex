@@ -10,7 +10,7 @@ set -euo pipefail
 IOS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$IOS_DIR/.."
 
-# Tailscale's features the engine does without (docs/ios-tailnet.md, Size).
+# Tailscale's features the engine does without (docs/IOS-001-tailnet.md, Size).
 # Kept: netstack, serve, acme, dns, logtail, tailscaledhttps, cachenetmap
 # and ssh, which tsnet needs; ipnbus, for the status the app watches;
 # portmapper, for direct connections; tailnetlock, for tailnets that lock.

@@ -16,7 +16,7 @@ extension Color {
 
 /// The space chosen atop the list, and under it each host with its
 /// projects of the space and its tabs with no project, as the desktop's
-/// sidebar (docs/projects.md, Rex Go); a host of before projects lists its
+/// sidebar (docs/MOD-002-projects.md, Rex Go); a host of before projects lists its
 /// sessions. The eye lists instead the tabs by what their programs need.
 /// A wide window shows the list beside the terminal open; a narrow one
 /// pushes the terminal over the list.

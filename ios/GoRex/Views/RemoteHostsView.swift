@@ -351,7 +351,7 @@ private struct HostForm: View {
     }
 }
 
-/// Pairs with a GoRex machine by its Rex Go code (docs/ios-tailcat.md,
+/// Pairs with a GoRex machine by its Rex Go code (docs/IOS-002-tailcat.md,
 /// Pairing a phone): asks it to allow this phone, shows the fingerprint to
 /// compare with the one GoRex shows by the request, and adds the host,
 /// which connects once the request is approved there.
@@ -434,7 +434,7 @@ struct TailcatPairSheet: View {
 }
 
 /// Pairs with a GoRex machine by its IP address, through its own relay
-/// (docs/host-links.md, Pairing by address): shows the code to compare
+/// (docs/NET-002-host-links.md, Pairing by address): shows the code to compare
 /// with the one the machine shows, and once the user says they match and
 /// the machine approves, adds the host at the tailcat address it got, as
 /// a Rex Go code's. "They differ", an error or leaving saves nothing.

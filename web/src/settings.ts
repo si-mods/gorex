@@ -866,7 +866,7 @@ export class Settings {
   }
 
   /**
-   * Built-in Tailscale (docs/web-tailscale.md, Signing in): on or off, its
+   * Built-in Tailscale (docs/WEB-002-tailscale.md, Signing in): on or off, its
    * state and account, this device's name, the hosts it found, and how
    * long the sign-in lasts in this version.
    */

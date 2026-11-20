@@ -7,7 +7,7 @@ import (
 	"gorex/internal/rex"
 )
 
-// Adoptions (docs/projects.md, Migration, "On the desktop"): the panes
+// Adoptions (docs/MOD-002-projects.md, Migration, "On the desktop"): the panes
 // other hosts ran in this machine's tabs of v0.38.0 to v0.40.x, which the
 // migration took out and keeps in this machine's layout (Store.Adopt),
 // one per host and project. As each host connects, a host of projects,

@@ -12,7 +12,7 @@ final class PaneGallery {
     var presenting = false
     @ObservationIgnored nonisolated let dir: URL
     @ObservationIgnored private let worker: Worker
-    /// The downloads of thumbnails, three at once (docs/ios-pane-gallery.md).
+    /// The downloads of thumbnails, three at once (docs/IOS-007-pane-gallery.md).
     @ObservationIgnored let thumbnails = Limiter(3)
 
     /// One per pane, shared by its terminal and the screen.

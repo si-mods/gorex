@@ -1,6 +1,6 @@
 import SwiftUI
 
-// The terminal activity's faces (docs/ios-live-activities.md, Terminal
+// The terminal activity's faces (docs/IOS-006-live-activities.md, Terminal
 // activity), apart from ActivityKit's configuration, so that a test can
 // draw each one.
 

@@ -42,10 +42,10 @@ struct HostConfig: Codable, Identifiable, Hashable {
     enum Transport: String, Codable {
         /// The phone's own network, or the Tailscale app's VPN.
         case system
-        /// The built-in Tailscale's proxy (docs/ios-tailnet.md).
+        /// The built-in Tailscale's proxy (docs/IOS-001-tailnet.md).
         case tailnet
         /// The engine's tailcat client, through the same proxy
-        /// (docs/ios-tailcat.md).
+        /// (docs/IOS-002-tailcat.md).
         case tailcat
     }
 
@@ -346,11 +346,11 @@ final class Host: Identifiable {
     }
 
     /// The welcome's feature of a server that keeps when a block's status
-    /// was seen (gorex.see_block, docs/rex-api.md).
+    /// was seen (gorex.see_block, docs/REF-005-rex-api.md).
     static let seeFeature = "gorex.see_block"
 
     /// The welcome's feature of a server that keeps projects; at version
-    /// 2, as folders on the host in spaces (docs/projects.md, Rex API).
+    /// 2, as folders on the host in spaces (docs/MOD-002-projects.md, Rex API).
     static let projectsFeature = "gorex.projects"
 
     /// The welcome's feature of a server that lists its directories
@@ -524,7 +524,7 @@ final class Host: Identifiable {
                 settle(.success(c))
                 ConnectionLog.note("\(name): online, \(elapsed.ms)")
             } catch let e as RexError where e.code == "refused" && viaTailnet {
-                // The gateway lets in only whom it says (docs/ios-tailnet.md, Server).
+                // The gateway lets in only whom it says (docs/IOS-001-tailnet.md, Server).
                 c.close(RexError(code: e.code, message: String(localized: "Refused: sign Rex Go in as the Tailscale user who signed in the GoRex machine, not with a tagged key, or turn on --allow-tailnet-members there.")))
             } catch {
                 c.close(error)
@@ -1198,7 +1198,7 @@ final class Host: Identifiable {
     // MARK: Projects
 
     /// Whether the host keeps projects in spaces, gorex.projects at version
-    /// 2 (docs/projects.md): the list shows its projects and its tabs with
+    /// 2 (docs/MOD-002-projects.md): the list shows its projects and its tabs with
     /// no project. A host of before shows its sessions as before. Demo
     /// Mode's keeps them on the phone.
     var hasProjects: Bool {
@@ -1354,7 +1354,7 @@ final class Host: Identifiable {
     /// returns its session and block: in the session of the host's tabs
     /// with no project. A host that has none yet, as a fresh one, makes it
     /// with session.create, with the tab in it; the server lets the first
-    /// one be made (docs/projects.md, Phases).
+    /// one be made (docs/MOD-002-projects.md, Phases).
     func newLooseTab() async throws -> (String, String)? {
         if let s = sessions.first(where: { $0.project == nil }) {
             return try await newWindow(in: s.id).map { (s.id, $0) }
@@ -1557,7 +1557,7 @@ final class HostStore {
     /// runs on as before, the hosts on it then connect anew, as their
     /// connections to its proxy can look open while their tailnet side
     /// died. Started anew, its old run's connections end with it, and the
-    /// hosts connect, on a new session, once it runs (docs/ios-tailnet.md,
+    /// hosts connect, on a new session, once it runs (docs/IOS-001-tailnet.md,
     /// Lifecycle). The tailcat hosts connect anew either way: their
     /// clients outlive the tailnet's runs. The others reconnect if needed,
     /// at once.

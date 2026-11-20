@@ -34,7 +34,7 @@ type settings struct {
 	SidebarHidden   bool    `json:"sidebarHidden,omitempty"`
 	HidePaneHeaders bool    `json:"hidePaneHeaders,omitempty"`
 	// What this client keeps of the projects of its hosts
-	// (docs/projects.md, "The desktop window"): the space shown, by name,
+	// (docs/MOD-002-projects.md, "The desktop window"): the space shown, by name,
 	// "" for Default; the spaces' colors and order, and those made here
 	// that no project carries yet; the rows the sidebar opened or closed;
 	// the project each window shows, by its place; and the renames of

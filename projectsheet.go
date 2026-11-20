@@ -13,7 +13,7 @@ import (
 )
 
 // projectSheet is the New Project sheet: a host, a folder on it chosen by
-// browsing its directories (dir.list), and a name (docs/projects.md, "New
+// browsing its directories (dir.list), and a name (docs/MOD-002-projects.md, "New
 // Project"). A project's folder does not change: another folder is
 // another project.
 type projectSheet struct {

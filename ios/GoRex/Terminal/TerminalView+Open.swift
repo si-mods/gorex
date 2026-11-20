@@ -1,7 +1,7 @@
 import QuickLook
 import UIKit
 
-/// A file a tap opens (docs/web-open-files.md, The iOS client): a path the
+/// A file a tap opens (docs/WEB-001-open-files.md, The iOS client): a path the
 /// terminal printed, or a file:// link, downloaded from the host for this
 /// pane's block, so that a relative path resolves against the directory of
 /// its program, and shown by Quick Look, whose share button saves it or
