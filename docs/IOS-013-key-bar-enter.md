@@ -8,7 +8,7 @@ metadata:
 
 # IOS-013: Enter key on the key bar
 
-Status: proposal.
+Status: built (#934).
 
 ## Problem
 
