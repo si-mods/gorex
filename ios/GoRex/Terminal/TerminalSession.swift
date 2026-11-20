@@ -66,6 +66,9 @@ final class TerminalSession {
         }
     }
     @ObservationIgnored private var pending = Data()
+    /// Called as the program prints, for the terminal's Live Activity
+    /// (TerminalLive), which reads the screen's last line.
+    @ObservationIgnored var onOutput: (() -> Void)?
     /// The default colors: the theme chosen in Settings, else the
     /// snapshot's; a theme message from the server replaces them. Until
     /// the stream gives them, the chosen theme, else the background, so
@@ -398,6 +401,7 @@ final class TerminalSession {
 
     private func write(_ bytes: Data) {
         if let output { output.write(bytes) } else { pending += bytes }
+        onOutput?()
     }
 
     private func apply(theme t: [String: Any]) {

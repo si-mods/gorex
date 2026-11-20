@@ -1,8 +1,11 @@
 # Rex Go: Live Activities for sessions
 
-Status: proposed. Nothing built. Decided: the host sends the updates,
-with the last hop replaceable; this document designs the direct last
-hop (an APNs key on the host) and leaves a relay for later. Rex Go is
+Status: phase 1 built (`TerminalActivity`, `TerminalLive`); phases 2
+and 3 proposed. Decided: phase 1 is the terminal
+activity (the terminal open when Rex Go leaves the foreground, kept
+connected for a short grace); the host sends the later updates, with
+the last hop replaceable; this document designs the direct last hop (an
+APNs key on the host) and leaves a relay for later. Rex Go is
 distributed to other people (public TestFlight, later the App Store),
 who can't hold the app's APNs key.
 
@@ -23,6 +26,12 @@ and may need you".
 
 ## Goal
 
+- When the user leaves Rex Go with a terminal open, that terminal shows
+  in the Dynamic Island and on the Lock Screen: its program, its state,
+  its last line. Its stream stays connected for a short grace (about 25
+  seconds), so a quick switch to another app and back loses nothing;
+  after the grace the activity says it is paused, and coming back
+  resumes the stream as today.
 - A Live Activity that shows the session that most needs the user, and
   how many others work, wait or finished.
 - It stays correct while Rex Go is suspended: a program that turns
@@ -39,7 +48,11 @@ and may need you".
   a question from the activity would need the app to reach the host from
   an intent. Later, if at all.
 - **One activity per session by default.** See Presentation.
-- **Keeping Rex Go running in the background.** See Options, b.
+- **Keeping Rex Go running in the background** past the grace a
+  background task gives. See Options, b. The user chose the grace
+  (2026-11-20) over a background mode that would keep the connection
+  open: that mode breaks App Review Guideline 2.5.4 and drains the
+  battery.
 - **Programs that don't report.** The activity shows what OSC 7501
   reports; GoRex installs no hooks to report for other programs.
 - **Direct APNs for other users.** Only the app's developer account can
@@ -80,10 +93,14 @@ that needs it).
   (`ios/GoRex/Rex/Inbox.swift`) lists each window by its most urgent
   record; `seen` (which done and error records the user looked at) is
   kept on the phone, apart from the server's own. **[code]**
-- Rex Go has no background modes, no entitlements, no push, and no
-  background task (`ios/project.yml`; no `beginBackgroundTask` or
-  `BGTask` in `ios/`). Its built-in Tailscale stops with it
-  ([ios-tailnet.md](ios-tailnet.md), Non-goals). **[code]**
+- Rex Go has no background modes, no entitlements for this, and no
+  push (`ios/project.yml`). Before phase 1 it asked for background time
+  (`beginBackgroundTask`) only to finish a write as it left
+  (`WidgetPublisher.flush`) and to keep sharing over a hotspot for a
+  while (`HotspotShare`). Its
+  built-in Tailscale stops with it ([ios-tailnet.md](ios-tailnet.md),
+  Non-goals); no code stops the engine on leaving, so it runs as long as
+  the app does, a background task included. **[code]**
 
 So in the foreground the state is current to within the gateway's
 watch interval; in the background it is current for a few seconds, then
@@ -218,7 +235,84 @@ the last hop differs:
 
 ## Design
 
-### Presentation
+### Terminal activity (phase 1)
+
+What the app does today: on `.background`, `TerminalScreen` suspends
+every pane's stream at once (`pane.session.suspend()`), and resumes them
+on `.active`; the shell on the host keeps running. **[code]**
+
+`TerminalActivity`, one at a time, for the terminal on screen:
+
+- **Attributes** (static): host id and name, session, block.
+- **Content state**: window title; program id (for the tile); the
+  block's most urgent OSC 7501 record's `state`, `kind`, `progress`,
+  `title` and `updated`, or none for a plain shell or an idle record;
+  `line`, the last non-empty line of the screen, cut to 80 characters;
+  `connected` (whether the stream is open). Titles and the host name are
+  cut to 200 characters and 400 UTF-8 bytes, the line to 80 characters
+  and 240 bytes, whole characters only; with the longest of each,
+  attributes and state stay well under 4 KB (`TerminalLiveTests`).
+- **Seen**: done and error records the user saw don't count, as in the
+  inbox. The open screen marks a block's records seen as they come
+  (`Host.shown`), and tells the server (`gorex.see_block`), which tells
+  every client. In the background the user doesn't see the screen, so
+  `Host.shown` is false there (`Notifier.inFront`): a program that
+  finishes during the grace shows as done, here and on every client.
+  Back in front, the screen sees its block again, as it does when it
+  appears.
+- **Start**: when a terminal screen appears, in the foreground, as
+  `Activity.request` requires. While Rex Go is in front, iOS does not
+  show the app's own activity in the Dynamic Island. **[assumption]**
+  Settings › Live Activities off, or `areActivitiesEnabled` false: none.
+- **Update**: while the stream is open, on a record change or a change
+  of `line`, coalesced to one per two seconds. The stream's output marks
+  the line changed; the next update reads the screen
+  (`TerminalOutput.readScreen`), and a new line comes in the update after.
+- **Grace**: on `.background`, the screen no longer suspends the
+  streams at once. It asks for a background task
+  (`beginBackgroundTask`), keeps the streams and the built-in Tailscale
+  engine running, and keeps updating the activity. When the task's time
+  runs out (its expiration handler, or 25 seconds, whichever comes
+  first), it suspends the streams as today, updates the activity with
+  `connected: false` and a stale date of now, and ends the task. iOS
+  gives about 30 seconds; Apple does not promise a number.
+  **[assumption]** Without background time, the streams suspend at once.
+  Updates during the grace carry a stale date at its end plus 5
+  seconds, so an app stopped without notice still shows as paused. Each
+  update asks for a moment of background time of its own, to reach
+  ActivityKit before the app stops; that time ends as the update is
+  made, or as iOS takes it back. The paused update goes within the
+  grace's own task, which ends once ActivityKit has it, or at once when
+  iOS takes the time back. Dictation and a pane switch still
+  waiting stop at once, as before.
+- **Coming back during the grace** cancels it: nothing was suspended,
+  and the hosts' connections are not reset, since the app ran
+  (`BackgroundGrace.awake`, which `HostStore.suspended` measures from).
+- **Return**: on `.active`, streams resume as today; the activity
+  shows `connected: true` again.
+- **End**: when the terminal screen closes, or another terminal opens
+  (which starts its own); dismissed at once. One the user dismissed
+  stays so for that screen; a terminal opened later starts one again. At 8 hours iOS ends it; the
+  next foreground starts a new one.
+- **Presentations**: compact leading: the program's tile; compact
+  trailing: the state glyph, a progress ring, or a timer since
+  `updated`; minimal: the tile; expanded: tile and window title, host,
+  state, and `line` in a monospaced font (the system's: the extension
+  doesn't carry the terminal's font); Lock Screen: the same rows. The
+  second row puts the state first, then the record's title and the host,
+  so a long host name cuts no state. A plain shell shows no mark beside
+  its tile, but in compact trailing. Paused (`connected: false` or
+  `isStale`): dimmed, "Paused — open Rex Go". `line`, the window's title
+  and the record's title are `.privacySensitive()`.
+- **Tap**: opens the terminal, as a notification tap does.
+
+It shares the widget extension `GoRexWidgets`
+([ios-widgets.md](ios-widgets.md)). The per-host activity below comes in
+phase 2, with the host's pushes; while both exist, the terminal activity
+wins in the Dynamic Island while it is connected (higher
+`relevanceScore`).
+
+### Presentation (phase 2: per host)
 
 One activity per host, `HostActivity`, showing that host's most urgent
 record as `Host.inbox` and `Inbox.groups` rank it, and counts of the
@@ -234,9 +328,8 @@ because:
   many short sessions would mean many starts, each with an alert.
 - The number of concurrent activities is limited and undocumented.
 
-In phase 1, with no pushes, the app could merge all hosts into one
-activity; it uses the same per-host shape so phase 2 changes nothing
-on screen.
+Per-host activities come with phase 2; phase 1 has only the terminal
+activity.
 
 Content state, all small fields, well under 4 KB:
 
@@ -269,7 +362,7 @@ Presentations:
 - Tapping opens the terminal of the top record, as a notification tap
   does (`Notifier.opening`).
 
-### Lifecycle
+### Lifecycle (phase 2: per host)
 
 - **Start**: the app, in the foreground, when a host has a working or
   blocked record and no activity; or, from phase 2, the host by
@@ -390,16 +483,17 @@ activity, only send alerts; the next foreground fixes it.
 
 | Phase | Scope | Effort | Who gets live updates once suspended |
 | --- | --- | --- | --- |
-| 1 | Local-only activity | 3–4 days | nobody |
+| 1 | Terminal activity, ~25 s grace | 3–4 days | nobody |
 | 2 | Host sender, `push.register`, direct last hop, alert pushes | 5–7 days | phones of hosts with a key: the developer's |
-| 3 | Follow one session (optional) | 2–3 days | as phase 2 |
+| 3 | Follow a session not on screen (optional) | 2–3 days | as phase 2 |
 
 Efforts are rough estimates. **[assumption]**
 
-1. **Local activity**: the extension, the attributes, the
-   presentations; start, update and end from the inbox; the stale mark
-   at the background edge; the 8-hour restart. Prerequisite: CI signs
-   the extension. Unsolved: everything after the app is suspended.
+1. **Terminal activity**: `TerminalActivity` in `GoRexWidgets`, its
+   presentations, start and end with the terminal screen, the grace
+   before suspending the streams, the paused mark, the 8-hour restart.
+   Prerequisite: the widgets' phase 1 has added the extension and CI
+   signs it. Unsolved: everything after the grace.
 2. **Host sender, direct**: the sender and its last-hop interface,
    `push.register` and seen, the direct last hop with the key command,
    push-to-start, update tokens, the ordinary "needs input" alert push
@@ -408,8 +502,8 @@ Efforts are rough estimates. **[assumption]**
    phase 1's behavior. Unsolved: the push-to-start token gap through the
    built-in Tailscale; programs that don't report; records lost on a
    server restart.
-3. **Follow one session**: a per-session activity from a session row's
-   menu; actions from the activity stay out.
+3. **Follow a session not on screen**: a terminal activity started from
+   a session row's menu; actions from the activity stay out.
 
 ## Test plan
 

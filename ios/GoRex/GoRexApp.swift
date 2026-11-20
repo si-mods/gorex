@@ -62,6 +62,8 @@ struct GoRexApp: App {
                 .preferredColorScheme(ScreenStyle.shared.terminal ?? Self.colorScheme(scheme))
                 .onAppear(perform: Self.startGhostty)
                 .onChange(of: phase) { _, p in
+                    if p == .background { Notifier.shared.inFront = false }
+                    if p == .active { Notifier.shared.inFront = true }
                     if p == .background {
                         away = .now
                         // A setting changed just now goes before the app may end.
@@ -70,7 +72,8 @@ struct GoRexApp: App {
                         WidgetPublisher.shared.flush()
                     }
                     guard p == .active else { return }
-                    let suspended = HostStore.suspended(since: away)
+                    // A terminal's grace kept the app running past away.
+                    let suspended = HostStore.suspended(since: TerminalLive.shared.grace.awake(since: away))
                     away = nil
                     HotspotShare.shared.handleForeground()
                     Task { await store.foreground(suspended: suspended) { await TailnetEngine.shared.resume() } }

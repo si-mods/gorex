@@ -12,6 +12,10 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
 
     /// The terminal on screen, whose news the user sees there.
     @ObservationIgnored var onScreen: TerminalTarget?
+    /// Whether the app is in front: in the background, the terminal still
+    /// open is not seen, though its stream stays open for a while
+    /// (TerminalLive's grace).
+    @ObservationIgnored var inFront = true
     /// The terminal a tapped notification opens, for the list to go to.
     var opening: TerminalTarget?
 
@@ -19,12 +23,17 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
     /// which terminal is on screen.
     func start() {
         UNUserNotificationCenter.current().delegate = self
-        Host.shown = { host, block in Notifier.shared.onScreen?.host == host.id && Notifier.shared.onScreen?.block == block }
+        Host.shown = { host, block in Notifier.shared.shows(host: host.id, block: block) }
         Host.blocked = { host, session, block, r in
             let name = r.app ?? host.blocks[block]?.program ?? host.config.name
             Notifier.shared.post(String(localized: "\(name) needs input"), r.msg ?? r.title ?? "",
                                  host: host, session: session, block: block)
         }
+    }
+
+    /// Whether the user sees a block's terminal: on screen, the app in front.
+    func shows(host: UUID, block: String) -> Bool {
+        inFront && onScreen?.host == host && onScreen?.block == block
     }
 
     /// Posts a notification of a block's terminal, unless the user looks

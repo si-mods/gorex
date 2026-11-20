@@ -132,6 +132,16 @@
         }
       }
     },
+    "Paused — open Rex Go": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已暂停 — 打开 Rex Go 以继续"
+          }
+        }
+      }
+    },
     "Updated %@": {
       "localizations": {
         "zh-Hans": {
