@@ -86,12 +86,11 @@ func TestPortsEvent(t *testing.T) {
 	if _, err := exec.LookPath("python3"); err != nil {
 		t.Skip("no python3 for the test's listener")
 	}
-	oldEvery, oldActive, oldMin := portsScanEvery, portsActiveInterval, portsMinInterval
-	portsScanEvery, portsActiveInterval, portsMinInterval = 20*time.Millisecond, 50*time.Millisecond, 10*time.Millisecond
-	defer func() {
-		portsScanEvery, portsActiveInterval, portsMinInterval = oldEvery, oldActive, oldMin
-	}()
 	s, _ := testServer(t)
+	s.portsClock = &portsTiming{
+		every: 20 * time.Millisecond, min: 10 * time.Millisecond,
+		active: 50 * time.Millisecond, idle: 50 * time.Millisecond,
+	}
 	go s.portsLoop()
 	t.Cleanup(func() { s.quitOnce.Do(func() { close(s.quit) }) })
 	c := pipe(s, "")

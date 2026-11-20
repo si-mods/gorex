@@ -62,20 +62,31 @@ type PortsEvent struct {
 	Ports     PortsResult `json:"ports"`
 }
 
-// The scan's timings. A test sets them to be short, as it does with
-// helloHostWait.
-var (
-	// portsScanEvery is how often the server looks at which session is due.
-	portsScanEvery = time.Second
-	// portsMinInterval is the soonest a call may scan again: the server
-	// reuses the last look for up to this long.
-	portsMinInterval = 250 * time.Millisecond
-	// portsActiveInterval is the first interval, and the one a call, a
-	// new terminal or a change goes back to.
-	portsActiveInterval = 10 * time.Second
-	// portsIdleInterval is the slowest interval, once nothing changes.
-	portsIdleInterval = 5 * time.Minute
-)
+// portsTiming is how often the scan looks, and how soon a call may look
+// again. A test gives its server its own timings.
+type portsTiming struct {
+	every  time.Duration
+	min    time.Duration
+	active time.Duration
+	idle   time.Duration
+}
+
+// defaultPortsTiming is the scan's timing: every second the server looks
+// at which session is due; a call reuses a look for 250 ms; a terminal is
+// looked at every 10 seconds while it is active, and up to every 5
+// minutes while it is idle.
+var defaultPortsTiming = portsTiming{
+	every: time.Second, min: 250 * time.Millisecond,
+	active: 10 * time.Second, idle: 5 * time.Minute,
+}
+
+// portsTiming returns the timings of this server.
+func (s *Server) portsTiming() portsTiming {
+	if s.portsClock != nil {
+		return *s.portsClock
+	}
+	return defaultPortsTiming
+}
 
 // portsScan is one session's port state: the last look, the first time
 // each socket was seen, and the answer that look produced.
@@ -109,13 +120,14 @@ func (s *Server) portsState(sid string) *portsScan {
 func (s *Server) portsFor(ss *session) (PortsResult, error) {
 	now := time.Now()
 	st := s.portsState(ss.id)
+	timing := s.portsTiming()
 	st.mu.Lock()
-	if !st.last.IsZero() && now.Sub(st.last) < portsMinInterval {
+	if !st.last.IsZero() && now.Sub(st.last) < timing.min {
 		res := st.result
 		st.mu.Unlock()
 		return res, nil
 	}
-	st.interval = portsActiveInterval
+	st.interval = timing.active
 	st.mu.Unlock()
 	res, changed := s.scanPorts(ss, now)
 	if changed {
@@ -199,12 +211,13 @@ func (s *Server) scanPorts(ss *session, now time.Time) (PortsResult, bool) {
 	st.scanned = true
 	st.sig = sig
 	st.result = res
+	timing := s.portsTiming()
 	if active || changed {
-		st.interval = portsActiveInterval
+		st.interval = timing.active
 	} else {
-		st.interval = min(st.interval*2, portsIdleInterval)
-		if st.interval < portsActiveInterval {
-			st.interval = portsActiveInterval
+		st.interval = min(st.interval*2, timing.idle)
+		if st.interval < timing.active {
+			st.interval = timing.active
 		}
 	}
 	return res, changed
@@ -318,7 +331,7 @@ func (s *Server) hostUser() string {
 // portsLoop looks at each session when its interval has passed, and tells
 // the subscribers of a change.
 func (s *Server) portsLoop() {
-	t := time.NewTicker(portsScanEvery)
+	t := time.NewTicker(s.portsTiming().every)
 	defer t.Stop()
 	for {
 		select {
