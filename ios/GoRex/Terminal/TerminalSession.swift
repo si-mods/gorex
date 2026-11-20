@@ -238,6 +238,7 @@ final class TerminalSession {
                 guard g == generation else { return }
                 setReconnecting(false)
                 log.info("resumed \(self.block, privacy: .public)")
+                ConnectionLog.note("terminal \(block): resumed")
                 opened = .now
                 // A client that came back too late to resume lost the block.
                 // One kept off the page gives back what the server restored.
