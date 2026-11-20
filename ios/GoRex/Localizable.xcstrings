@@ -706,6 +706,16 @@
         }
       }
     },
+    "Enter": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "回车"
+          }
+        }
+      }
+    },
     "Enter the details of your Rex server.": {
       "localizations": {
         "zh-Hans": {
