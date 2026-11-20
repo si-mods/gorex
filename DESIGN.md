@@ -264,7 +264,7 @@ that exists.
 | Status dot | 7 or 8 square, `capsule`, `busy`, `attention`, `exited`, `danger` | `hostDot`, `view.go` |
 | Key cap | `fontSubhead`, `radiusS`, `k.hover` | `commands.go`, `settingsview.go` |
 | Icon tile | a square of `k.hover`, `radiusS`, `radiusM` or `radiusL` by size, an icon from `assets/icons/` | `host.go`, `settingsview.go` |
-| Program tile | `tileW`×`tileH` rounded card in the tab strip, `sideTile` (16×12) in the sidebar, about the size of a project's folder icon; `drawTile`; the front tile bounces while a pane needs the user, `tileBounces` at iOS's timings | `tabs.go` |
+| Program tile | `tileW`×`tileH` rounded card, `drawTile`; the front tile bounces while a pane needs the user, `tileBounces` at iOS's timings | `tabs.go` |
 | Chip | a capsule row 28 high, `pillRadius` | `projectpicker.go`, `spaces.go` |
 
 ## Patterns

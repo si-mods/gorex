@@ -23,17 +23,6 @@ const (
 	tileStep = 5 // how far each tile behind peeks out
 )
 
-// tileSize is the size of a program's tile and how far each tile behind
-// it peeks out.
-type tileSize struct{ w, h, step float32 }
-
-// stripTile is the tile of the tab strip; sideTile the sidebar's, smaller,
-// so that a tab's tile reads about as big as a project's folder icon.
-var (
-	stripTile = tileSize{tileW, tileH, tileStep}
-	sideTile  = tileSize{16, 12, 4}
-)
-
 // tabStrip draws the tabs, in a track as wide as they are, which shrinks
 // with them when the title bar has no room for them all. The track is part
 // of the title bar: its edges and the gaps between tabs drag the window.
@@ -602,10 +591,7 @@ func tileBounceAt(m tileMotion, now time.Time) (dy, sx, sy float32) {
 
 // tiles draws the tiles of a tab's programs: the focused pane's in front,
 // the others peeking out behind it.
-func (a *App) tiles(c *ui.Context, k *colors, t *Tab) { a.tilesOf(c, k, t, stripTile) }
-
-// tilesOf is tiles at size sz; the bounce scales with the tile's height.
-func (a *App) tilesOf(c *ui.Context, k *colors, t *Tab, sz tileSize) {
+func (a *App) tiles(c *ui.Context, k *colors, t *Tab) {
 	panes := t.panes()
 	front := t.Focus
 	var back []*Pane
@@ -624,24 +610,23 @@ func (a *App) tilesOf(c *ui.Context, k *colors, t *Tab, sz tileSize) {
 	if motion(c) != nil {
 		m = t.tileMotion()
 	}
-	w := sz.w + sz.step*float32(len(back)) + 2
-	scale := sz.h / tileH
-	ui.Box(c).Size(w, sz.h+4).Shrink(0).Draw(func(p *ui.Painter, r ui.Rect) {
+	w := float32(tileW + tileStep*len(back) + 2)
+	ui.Box(c).Size(w, tileH+4).Shrink(0).Draw(func(p *ui.Painter, r ui.Rect) {
 		y := r.Y + 2
 		for i := len(back) - 1; i >= 0; i-- {
-			x := r.X + 1 + sz.step*float32(i+1)
-			inset := float32(i+1) * 0.8 * scale
-			drawTile(p, ui.Rect{X: x, Y: y + inset, W: sz.w, H: sz.h - 2*inset}, back[i].program(), false)
+			x := r.X + 1 + float32(tileStep*(i+1))
+			inset := float32(i+1) * 0.8
+			drawTile(p, ui.Rect{X: x, Y: y + inset, W: tileW, H: tileH - 2*inset}, back[i].program(), false)
 		}
 		if front != nil {
-			fr := ui.Rect{X: r.X + 1, Y: y, W: sz.w, H: sz.h}
+			fr := ui.Rect{X: r.X + 1, Y: y, W: tileW, H: tileH}
 			if m == tileStill {
 				drawTile(p, fr, front.program(), true)
 			} else {
 				p.AnimationFrameRate(30)
 				dy, sx, sy := tileBounceAt(m, p.Now())
 				// iOS squashes about the tile's bottom edge, then lifts.
-				p.Transform(ui.Scaling(sx, sy).Then(ui.Translation(0, dy*scale)), fr.X+fr.W/2, fr.Y+fr.H, func() {
+				p.Transform(ui.Scaling(sx, sy).Then(ui.Translation(0, dy)), fr.X+fr.W/2, fr.Y+fr.H, func() {
 					drawTile(p, fr, front.program(), true)
 				})
 			}
@@ -652,9 +637,7 @@ func (a *App) tilesOf(c *ui.Context, k *colors, t *Tab, sz tileSize) {
 // drawTile draws a program's tile: a rounded card of its color, and its
 // glyph when it is in front.
 func drawTile(p *ui.Painter, r ui.Rect, prog program, glyph bool) {
-	// The radius and the glyph scale with the tile's width, tileW being the
-	// tab strip's: a tile behind, inset in height, keeps its radius.
-	rad := 4.5 * r.W / tileW
+	const rad = 4.5
 	p.Shadow(r, rad, 0, 0.5, 1.5, 0, ui.RGBA(0, 0, 0, 0.18))
 	p.Fill(r, prog.TileBg, rad)
 	if prog.TileBorder {
@@ -669,7 +652,7 @@ func drawTile(p *ui.Painter, r ui.Rect, prog program, glyph bool) {
 	if g == "" {
 		g = prog.Glyph
 	}
-	s := 11 * r.W / tileW
+	s := float32(11)
 	glyphIn(p, g, ui.Rect{X: r.X + (r.W-s)/2, Y: r.Y + (r.H-s)/2, W: s, H: s}, prog.TileFg)
 }
 

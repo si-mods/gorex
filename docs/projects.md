@@ -339,9 +339,6 @@ A project's context menu:
   the chosen project's) opens a tab in the folder; ⌘T does the same while
   the project is chosen. Its context menu: New Tab, Rename, Color, Move to
   Space, Reveal Folder (this host only), Close Project.
-- The program tiles in the sidebar are smaller than the tab strip's (16×12
-  against 21×16, the tiles behind peeking out by 4 against 5), so that a
-  tile reads about as big as the folder icon. The strip keeps its size.
 - Projects of a host are in order of last use (`Used`), the latest
   first; those not used for 30 days go under a collapsed **Older** row,
   at the projects' level, with the same chevron.

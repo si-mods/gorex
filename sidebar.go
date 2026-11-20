@@ -361,7 +361,7 @@ func (a *App) sidebarTab(c *ui.Context, k *colors, i int, t *Tab, reserve float3
 		}
 		// The tiles take the room of the widest tab's, so that the names
 		// line up.
-		ui.Box(c).Width(reserve).Shrink(0).Children(func() { a.tilesOf(c, k, t, sideTile) })
+		ui.Box(c).Width(reserve).Shrink(0).Children(func() { a.tiles(c, k, t) })
 		a.tabRest(c, k, t, active, hovered)
 	})
 }
@@ -374,7 +374,7 @@ func tilesReserve(tabs []*Tab) float32 {
 	for _, t := range tabs {
 		most = max(most, min(len(t.panes()), 3))
 	}
-	return sideTile.w + sideTile.step*float32(most-1) + 2
+	return float32(tileW + tileStep*(most-1) + 2)
 }
 
 // hostSectionIcon is the icon of a host's machine before its name in the

@@ -972,21 +972,3 @@ func TestSidebarTabsWithNoProjectFlat(t *testing.T) {
 	click(t, tt, name+" "+detail)
 	waitFor(t, tt, "the tab with no project shown", func() bool { return a.ws == loose })
 }
-
-// TestSidebarTileSmallerThanStrips: the sidebar's program tiles are smaller
-// than the tab strip's, about the size of a project's folder icon, and the
-// reserve of its rows follows.
-func TestSidebarTileSmallerThanStrips(t *testing.T) {
-	if sideTile.w >= tileW || sideTile.h >= tileH || sideTile.step >= tileStep {
-		t.Errorf("the sidebar's tile %+v is not smaller than the strip's %dx%d, step %d", sideTile, tileW, tileH, tileStep)
-	}
-	if stripTile.w != tileW || stripTile.h != tileH || stripTile.step != tileStep {
-		t.Errorf("the strip's tile changed: %+v", stripTile)
-	}
-	if got, want := tilesReserve(nil), sideTile.w+2; got != want {
-		t.Errorf("the reserve of one tile is %v, want %v", got, want)
-	}
-	if sideTile.h > 14 || sideTile.w > 18 {
-		t.Errorf("the sidebar's tile %+v is much bigger than the 14 px folder", sideTile)
-	}
-}

@@ -459,7 +459,7 @@ func (a *App) workspaceTabs(c *ui.Context, k *colors, w *Workspace, reserve floa
 	if o := w.app; o != nil {
 		for i, t := range o.tabs {
 			name, detail := t.label()
-			if spaceTab(c, k, t.UID, name, detail, t.status(), reserve, func() { a.tilesOf(c, k, t, sideTile) }) {
+			if spaceTab(c, k, t.UID, name, detail, t.status(), reserve, func() { a.tiles(c, k, t) }) {
 				pick(i)
 			}
 		}
@@ -471,8 +471,8 @@ func (a *App) workspaceTabs(c *ui.Context, k *colors, w *Workspace, reserve floa
 	for i, t := range w.layout.Tabs {
 		name, detail, prog := savedTabFace(t, infos)
 		if spaceTab(c, k, cmp.Or(t.ID, fmt.Sprint(i)), name, detail, a.st.savedTabStatus(t, id, infos), reserve, func() {
-			ui.Box(c).Size(sideTile.w+2, sideTile.h+4).Shrink(0).Draw(func(p *ui.Painter, r ui.Rect) {
-				drawTile(p, ui.Rect{X: r.X + 1, Y: r.Y + 2, W: sideTile.w, H: sideTile.h}, prog, true)
+			ui.Box(c).Size(tileW+2, tileH+4).Shrink(0).Draw(func(p *ui.Painter, r ui.Rect) {
+				drawTile(p, ui.Rect{X: r.X + 1, Y: r.Y + 2, W: tileW, H: tileH}, prog, true)
 			})
 		}) {
 			pick(i)
