@@ -5,7 +5,7 @@ package rexproto
 //go:generate go run gen.go
 
 const (
-	APIRevision                      = 16
+	APIRevision                      = 18
 	APIMinRevision                   = 0
 	UploadRevision                   = 11
 	DownloadRevision                 = 13
