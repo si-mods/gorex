@@ -216,22 +216,53 @@ nonisolated final class HostTests: XCTestCase {
         XCTAssertEqual(fired.names, ["a", "b"])
     }
 
-    /// A window with neither a name nor a title takes its project's
-    /// folder's name, else its program's, never the server's "Window <ID>".
-    @MainActor func testUntitledWindowTakesFolderOrProgramNotItsID() async throws {
-        let inFolder = try await untitledTitle(dir: "/tmp/demo/acme-api")
-        XCTAssertEqual(inFolder, "acme-api")
-        let loose = try await untitledTitle(dir: nil)
+    /// A window with neither a name nor a title takes its project's name,
+    /// else its program's, never the server's "Window <ID>".
+    @MainActor func testUntitledWindowTakesProjectOrProgramNotItsID() async throws {
+        let inFolder = try await untitledTitle(label: "acme", dir: "/tmp/demo/acme-api")
+        XCTAssertEqual(inFolder, "acme")
+        let loose = try await untitledTitle(label: "loose", dir: nil)
         XCTAssertEqual(loose, "zsh")
+    }
+
+    /// A project's rename shows in the title of its windows, which a row
+    /// and the terminal's header share: the name an unnamed window falls
+    /// back to follows session_label_changed.
+    @MainActor func testRenamedProjectShowsInWindowTitle() async throws {
+        let rex = try FakeRex()
+        defer { rex.stop() }
+        let dir = "/tmp/demo/oldname"
+        let session: [String: Any] = ["session_id": "p", "label": "oldname", "project": ["dir": dir]]
+        let view: [String: Any] = ["revision": 1, "session_id": "p", "label": "oldname", "project": ["dir": dir], "windows": [
+            ["window_id": "window:0123abcd4567ef89", "label": "Window 4567ef89", "layers": [["blocks": [["block_id": "b"]]]]],
+        ]]
+        rex.respond = { [session, view] m, _ in
+            switch m {
+            case "session.bootstrap":
+                ["attach_all": ["sessions": [session]], "selected_session": ["view": view]]
+            default: [:]
+            }
+        }
+        let h = Host(HostConfig(name: "test", url: try await rex.url()))
+        h.connect()
+        defer { h.stop() }
+        await until("read") { h.sessions.first?.view != nil }
+        let w = try XCTUnwrap(h.sessions.first?.view?.windows?.first)
+        XCTAssertEqual(h.title(w), "oldname")
+        rex.event(["type": "session_event", "payload": ["session_id": "p", "event": [
+            "type": "session_label_changed", "payload": ["label": "newname"],
+        ]]])
+        await until("renamed") { h.sessions.first?.label == "newname" }
+        XCTAssertEqual(h.title(w), "newname")
     }
 
     /// The title of a window with the server's default label, no name and
     /// no terminal title, in a session of a project with dir as its folder.
-    @MainActor private func untitledTitle(dir: String?) async throws -> String {
+    @MainActor private func untitledTitle(label: String, dir: String?) async throws -> String {
         let rex = try FakeRex()
         defer { rex.stop() }
-        var session: [String: Any] = ["session_id": "p", "label": "acme-api"]
-        var view: [String: Any] = ["revision": 1, "session_id": "p", "label": "acme-api", "windows": [
+        var session: [String: Any] = ["session_id": "p", "label": label]
+        var view: [String: Any] = ["revision": 1, "session_id": "p", "label": label, "windows": [
             ["window_id": "window:0123abcd4567ef89", "label": "Window 4567ef89", "layers": [["blocks": [["block_id": "b"]]]]],
         ]]
         if let dir {

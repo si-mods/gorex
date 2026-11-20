@@ -501,7 +501,7 @@ struct HostSection: View {
                 if host.listsFolders { try await ProjectFolder.ensure(dir) { try await host.folders($0) } }
                 if let b = try await host.newWindow(in: s.id, cwd: dir) {
                     expanded.insert(Self.key(host, s.id))
-                    open(TerminalTarget(host: host.id, session: s.id, block: b, title: s.label))
+                    open(TerminalTarget(host: host.id, session: s.id, block: b, title: ""))
                 }
             } catch let error where ProjectFolder.missing(error) {
                 missing = s
@@ -518,7 +518,7 @@ struct HostSection: View {
             defer { opening.remove(s.id) }
             do {
                 if let b = try await host.newWindow(in: s.id) {
-                    open(TerminalTarget(host: host.id, session: s.id, block: b, title: s.label))
+                    open(TerminalTarget(host: host.id, session: s.id, block: b, title: ""))
                 }
             } catch {
                 failure = ("Can't Open a New Tab", error.localizedDescription)

@@ -91,6 +91,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - Switch from Wi-Fi to cellular, or to another Wi-Fi, with a terminal open: it reconnects at once and goes on where it was, instead of freezing for a while.
 - Tap a tab in the list: the terminal slides in from the right again, and slides back as you swipe from the left edge. The list keeps its own light or dark look while a terminal opens or closes.
 - The iPhone key bar's first page now ends with Enter; Tab moved to the last page.
+- Renaming a project renames the title its unnamed windows show too, in the list and over a terminal.
 
 ## zh-Hans
 
@@ -174,3 +175,4 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - 打开终端时从 Wi-Fi 切到蜂窝网络，或换一个 Wi-Fi：终端立即重新连接，从断开处继续，不再卡住一段时间。
 - 点按列表中的标签页：终端又从右侧滑入，从左边缘轻扫即可滑回。打开或关闭终端时，列表保持它自己的浅色或深色外观。
 - 终端底部的按键栏，第一页末尾现在有回车键；Tab 移到了最后一页。
+- 重命名项目后，它未命名的窗口在列表里和终端标题栏也会显示项目的新名字。
