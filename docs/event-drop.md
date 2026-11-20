@@ -1,6 +1,6 @@
 # An event too large to send
 
-Status: proposal.
+Status: built (#914).
 
 This doc settles GoRex's behavior when one event is larger than one control message, at Rex API revision 18. It extends [rex-api.md](rex-api.md) and follows [design-docs.md](design-docs.md).
 
@@ -71,5 +71,5 @@ Rex revision 18 replaces the event with `event_dropped`. The connection stays op
 
 ## Phases
 
-1. The replacement, the block fields and the tests.
-2. The help entry and the revision change to 18.
+1. The replacement, the block fields and the tests (#914).
+2. The help entry and the revision change to 18 (#914).
