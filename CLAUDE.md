@@ -13,7 +13,7 @@ Rules an agent cannot read from the code. Keep each line one that prevents a rea
 ## Before you start
 
 - The main checkout is often far behind. `git fetch origin` and read code from `origin/main` before saying how GoRex works.
-- For a feature, search `docs/` for its topic first. Write or update the design doc before the code, and ship both in one PR.
+- For a feature, search `docs/` for its topic first. Write or update the design doc before the code (`docs/design-docs.md`), and ship both in one PR.
 - For UI, read `DESIGN.md`.
 - Before you change behavior `docs/invariants.md` names, read its test; a thin test gets the case in the same PR.
 - Before you change a saved file format, a session id, the wire protocol, a pairing secret or a release number, read `docs/irreversible.md`: stop, write numbered options, recommend one, wait.
