@@ -345,6 +345,10 @@ func (g *Gateway) pump() {
 				g.setHostTheme(ev.Theme)
 				continue
 			}
+			if ev.Kind == "ports" {
+				g.emitPorts(ev.Ports)
+				continue
+			}
 			layout = layout || ev.Kind == "layout"
 			if ev.Kind == "sessions" && facts == nil {
 				facts = time.NewTimer(factsWait)
@@ -966,13 +970,19 @@ func (g *Gateway) emitOwnerChanges(changes []ownerChange) {
 // emitSession sends a session event to the connections that receive the
 // session's events.
 func (g *Gateway) emitSession(sid, typ string, payload any) {
+	g.emitSessionSince(sid, typ, 0, payload)
+}
+
+// emitSessionSince sends a session event to the connections that receive
+// it and know its revision.
+func (g *Gateway) emitSessionSince(sid, typ string, since int, payload any) {
 	g.mu.Lock()
 	conns := make([]*control, 0, len(g.conns))
 	for c := range g.conns {
 		conns = append(conns, c)
 	}
 	g.mu.Unlock()
-	chs := []change{{session: sid, typ: typ, payload: payload}}
+	chs := []change{{session: sid, typ: typ, since: since, payload: payload}}
 	for _, c := range conns {
 		c.sendChanges(chs)
 	}

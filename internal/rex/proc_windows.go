@@ -26,7 +26,8 @@ var inspect = func(pid int) (p procInfo) {
 	buf := make([]uint16, windows.MAX_LONG_PATH)
 	n := uint32(len(buf))
 	if windows.QueryFullProcessImageName(h, 0, &buf[0], &n) == nil {
-		p.name = exeName(windows.UTF16ToString(buf[:n]))
+		p.path = windows.UTF16ToString(buf[:n])
+		p.name = exeName(p.path)
 	}
 	p.args = processArgs(h)
 	p.dir = processDir(h)

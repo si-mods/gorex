@@ -124,7 +124,7 @@ func statusSignature(info *rex.SessionInfo) string {
 
 // emitBlockEvent sends a block's event to the sessions that receive them.
 func (g *Gateway) emitBlockEvent(b *mBlock, name string, payload any) {
-	g.emitSession(b.session, "block_event", map[string]any{
+	g.emitSessionSince(b.session, "block_event", eventSince[name], map[string]any{
 		"block_id": b.id, "creator_name": creatorName, "name": name, "payload": payload,
 	})
 }
