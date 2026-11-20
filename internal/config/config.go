@@ -51,6 +51,37 @@ type Mode struct {
 	Once      bool
 }
 
+// UIOptions is one question an action asks the person.
+type UIOptions struct {
+	Kind        string // "input" or "pick"
+	Title       string
+	Placeholder string
+	Value       string
+	Confirm     string
+	Multiple    bool
+	AllowOther  bool
+	Items       []UIItem
+	Timeout     time.Duration
+}
+
+// UIItem is one choice of a pick prompt.
+type UIItem struct {
+	ID       string
+	Title    string
+	Subtitle string
+	Icon     string
+	Detail   string
+	Selected bool
+}
+
+// UIAnswer is the person's answer: text, one or more item IDs, or a
+// cancel.
+type UIAnswer struct {
+	Text      string
+	IDs       []string
+	Cancelled bool
+}
+
 // Config is a Lua configuration and the state its custom actions run in.
 type Config struct {
 	Bindings []Binding
@@ -61,6 +92,7 @@ type Config struct {
 	Events   []EventHandler
 	state    *lua.LState
 	invoke   func(string, map[string]any) error
+	ui       func(UIOptions) (UIAnswer, error)
 	invoking int
 	retire   bool
 }
@@ -136,6 +168,9 @@ func (c *Config) closeNow() {
 // SetInvoke gives custom actions their way to run a built-in action.
 func (c *Config) SetInvoke(fn func(string, map[string]any) error) { c.invoke = fn }
 
+// SetUI gives custom actions their way to ask the person a question.
+func (c *Config) SetUI(fn func(UIOptions) (UIAnswer, error)) { c.ui = fn }
+
 func (c *Config) table() *lua.LTable {
 	t := c.state.NewTable()
 	t.RawSetString("bind", c.state.NewFunction(c.bind))
@@ -144,7 +179,111 @@ func (c *Config) table() *lua.LTable {
 	t.RawSetString("action", c.state.NewFunction(c.action))
 	t.RawSetString("invoke", c.state.NewFunction(c.invokeFn))
 	t.RawSetString("on", c.state.NewFunction(c.on))
+	t.RawSetString("ui", c.uiTable())
 	return t
+}
+
+// uiTable is gorex.ui: the questions an action may ask.
+func (c *Config) uiTable() *lua.LTable {
+	t := c.state.NewTable()
+	t.RawSetString("input", c.state.NewFunction(c.uiInput))
+	t.RawSetString("pick", c.state.NewFunction(c.uiPick))
+	return t
+}
+
+// uiInput asks for one line of text, and returns it, or nil after a
+// cancel.
+func (c *Config) uiInput(l *lua.LState) int {
+	opts := parseUIOptions(l, "input")
+	if c.ui == nil {
+		l.RaiseError("gorex.ui: no prompt host")
+		return 0
+	}
+	ans, err := c.ui(opts)
+	if err != nil {
+		l.RaiseError("gorex.ui.input: %v", err)
+		return 0
+	}
+	if ans.Cancelled {
+		l.Push(lua.LNil)
+		return 1
+	}
+	l.Push(lua.LString(ans.Text))
+	return 1
+}
+
+// uiPick asks the person to choose, and returns one ID, the text they
+// typed, a table of IDs with multiple, or nil after a cancel.
+func (c *Config) uiPick(l *lua.LState) int {
+	opts := parseUIOptions(l, "pick")
+	if c.ui == nil {
+		l.RaiseError("gorex.ui: no prompt host")
+		return 0
+	}
+	ans, err := c.ui(opts)
+	if err != nil {
+		l.RaiseError("gorex.ui.pick: %v", err)
+		return 0
+	}
+	if ans.Cancelled {
+		l.Push(lua.LNil)
+		return 1
+	}
+	if opts.Multiple {
+		t := l.NewTable()
+		for _, id := range ans.IDs {
+			t.Append(lua.LString(id))
+		}
+		l.Push(t)
+		return 1
+	}
+	if len(ans.IDs) > 0 {
+		l.Push(lua.LString(ans.IDs[0]))
+		return 1
+	}
+	l.Push(lua.LString(ans.Text))
+	return 1
+}
+
+// parseUIOptions reads a prompt's table.
+func parseUIOptions(l *lua.LState, kind string) UIOptions {
+	t := l.CheckTable(1)
+	opts := UIOptions{
+		Kind:        kind,
+		Title:       lua.LVAsString(t.RawGetString("title")),
+		Placeholder: lua.LVAsString(t.RawGetString("placeholder")),
+		Value:       lua.LVAsString(t.RawGetString("value")),
+		Confirm:     lua.LVAsString(t.RawGetString("confirm")),
+		Multiple:    lua.LVAsBool(t.RawGetString("multiple")),
+		AllowOther:  lua.LVAsBool(t.RawGetString("allow_other")),
+		Timeout:     5 * time.Minute,
+	}
+	if n, ok := t.RawGetString("timeout_ms").(lua.LNumber); ok && n > 0 {
+		opts.Timeout = time.Duration(float64(n) * float64(time.Millisecond))
+		if opts.Timeout > time.Hour {
+			opts.Timeout = time.Hour
+		}
+	}
+	if items, ok := t.RawGetString("items").(*lua.LTable); ok {
+		items.ForEach(func(_, v lua.LValue) {
+			row, ok := v.(*lua.LTable)
+			if !ok {
+				return
+			}
+			item := UIItem{
+				ID:       lua.LVAsString(row.RawGetString("id")),
+				Title:    lua.LVAsString(row.RawGetString("title")),
+				Subtitle: lua.LVAsString(row.RawGetString("subtitle")),
+				Icon:     lua.LVAsString(row.RawGetString("icon")),
+				Detail:   lua.LVAsString(row.RawGetString("detail")),
+				Selected: lua.LVAsBool(row.RawGetString("selected")),
+			}
+			if item.ID != "" {
+				opts.Items = append(opts.Items, item)
+			}
+		})
+	}
+	return opts
 }
 
 func (c *Config) on(l *lua.LState) int {

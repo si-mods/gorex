@@ -8,7 +8,7 @@ metadata:
 
 # MOD-008: Running config actions in the gateway
 
-Status: phase 1 and 2 built (#924). Phase 3 not built.
+Status: built (#924, #931).
 
 This doc decides that the GoRex gateway loads GoRex's Lua configuration and runs its actions for Rex clients. It extends [REF-005](REF-005-rex-api.md), and it builds the producer that [MOD-005](MOD-005-client-prompts.md) waits for. It follows [DOC-001](DOC-001-design-docs.md).
 
@@ -130,4 +130,4 @@ The user pays for it. An action such as "New worktree" works on the desktop and 
 
 1. Load the file, list it in `client.keymap`, reload it in `server.config_reload`, and report diagnostics (#924).
 2. Run the actions, check the args, enforce the deadline and map the eight built-in IDs (#924).
-3. Give the actions `gorex.ui` through the MOD-005 broker.
+3. Give the actions `gorex.ui` through the MOD-005 broker (#931).

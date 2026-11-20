@@ -44,6 +44,11 @@ type control struct {
 	queued  int
 	pending map[string]bool
 
+	// ordered carries the requests that run in order, one at a time, so
+	// that the reader keeps reading the replies they wait for.
+	ordered     chan *request
+	orderedOnce sync.Once
+
 	ours      atomic.Bool
 	closeOnce sync.Once
 	// hold, when set by a test, runs before a request is handled, so
@@ -405,11 +410,35 @@ func (c *control) readLoop() {
 		c.mu.Unlock()
 		if orderedMethods[req.Method] {
 			// Ordered methods run one at a time on the connection, in
-			// the order they arrive, so this handles them inline.
-			c.handle(req)
+			// the order they arrive, on a goroutine of their own: the
+			// reader must keep reading, because an action in order waits
+			// for a client.reply on the same connection.
+			c.queueOrdered(req)
 			continue
 		}
 		go c.handle(req)
+	}
+}
+
+// queueOrdered hands an ordered request to the connection's ordered
+// goroutine, which runs them in the order they arrive.
+func (c *control) queueOrdered(req *request) {
+	c.orderedOnce.Do(func() {
+		c.ordered = make(chan *request, 64)
+		go func() {
+			for {
+				select {
+				case r := <-c.ordered:
+					c.handle(r)
+				case <-c.done:
+					return
+				}
+			}
+		}()
+	})
+	select {
+	case c.ordered <- req:
+	case <-c.done:
 	}
 }
 
@@ -662,6 +691,9 @@ func (c *control) wants(ch change) bool {
 		// The events of the whole server reach the connections that asked
 		// for all of them.
 		return scope == "all"
+	case "client_prompt_requested", "client_prompt_ended":
+		// A question goes only to the connections the asking action chose.
+		return true
 	case "tailscale_status_changed":
 		// Either scope of session.attach_all or session.bootstrap gets the
 		// server's Tailscale status, as the doc's event_scope says.
