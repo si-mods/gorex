@@ -74,7 +74,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - The Inbox now stays smooth while a terminal title changes quickly; scrolling and tapping rows no longer stutter.
 - Rex Go shows its list sooner after you start it, and the list scrolls more smoothly when you have many computers and spaces.
 - A terminal whose title keeps changing, and a two-finger swipe between panes, look as before with fewer stutters; the list's working dots and bouncing tiles still move.
-- The list of hosts opens and scrolls more smoothly with many tabs, and your hosts' last projects are saved without a pause when you change them. Tell us if a host's last projects are missing when it is away.
+- The host list scrolls more smoothly with many tabs, and a host's last projects save without a pause. Tell us if they are missing when the host is away.
 
 ## zh-Hans
 
