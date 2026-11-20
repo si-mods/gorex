@@ -14,7 +14,7 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
     @ObservationIgnored var onScreen: TerminalTarget?
     /// Whether the app is in front: in the background, the terminal still
     /// open is not seen, though its stream stays open for a while
-    /// (TerminalLive's grace).
+    /// (BackgroundGrace).
     @ObservationIgnored var inFront = true
     /// The terminal a tapped notification opens, for the list to go to.
     var opening: TerminalTarget?

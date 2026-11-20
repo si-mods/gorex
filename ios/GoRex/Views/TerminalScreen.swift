@@ -295,7 +295,8 @@ struct TerminalScreen: View {
                 // Inactive, as under Control Center or an alert, keeps it.
                 if p == .background {
                     // A switch still waiting stops; the window's panes stay
-                    // open for a grace, then suspend (TerminalLive).
+                    // open for the app's grace, then suspend: TerminalLive
+                    // registers it with the grace.
                     dropIncoming()
                     terminal?.stopDictating()
                     TerminalLive.shared.background {
