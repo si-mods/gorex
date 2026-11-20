@@ -1,8 +1,16 @@
-# Rex Go iOS: continuous transitions between states
+---
+name: IOS-011
+description: "Rex Go carries the element that the user touches into the next state, in nine places where the app now jumps from one state to the next. Use when you change a navigation, sheet, cover, pane bar or list animation in the iOS app."
+metadata:
+  created: "2026-11-20"
+  updated: "2026-11-20"
+---
+
+# IOS-011: Continuous transitions between states
 
 Status: proposal.
 
-This doc finds the places in the iOS app where one state replaces the next with no relation between them. It defines a continuous transition for nine of them. In a continuous transition, the element that the user touches becomes a part of the next state. The doc changes only how one state becomes the next. Each action, each screen and each destination stays the same. It extends `docs/ios-pane-switching.md` (pane slides) and `docs/ios-pane-gallery.md` (gallery and pager).
+This doc finds the places in the iOS app where one state replaces the next with no relation between them. It defines a continuous transition for nine of them. In a continuous transition, the element that the user touches becomes a part of the next state. The doc changes only how one state becomes the next. Each action, each screen and each destination stays the same. It extends [`IOS-005`](IOS-005-pane-switching.md) (pane slides) and [`IOS-007`](IOS-007-pane-gallery.md) (gallery and pager).
 
 ## Problem
 
@@ -31,7 +39,7 @@ The changes between the list, the terminal, the sheets and the covers are not co
 
 ## Non-goals
 
-- The terminal's pane and tab slides do not change. `docs/ios-pane-switching.md` owns them.
+- The terminal's pane and tab slides do not change. [`IOS-005`](IOS-005-pane-switching.md) owns them.
 - System menus and context menus do not change.
 - Window resizing and size-class changes are not transitions, so they get no animation.
 - The web client and the desktop app are not in scope.
