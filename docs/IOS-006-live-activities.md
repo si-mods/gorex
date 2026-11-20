@@ -3,7 +3,7 @@ name: IOS-006
 description: "Rex Go shows a terminal in the Dynamic Island and on the Lock Screen through Live Activities. Use when you change Live Activities or their line."
 metadata:
   created: "2026-11-17"
-  updated: "2026-11-20"
+  updated: "2026-11-21"
 ---
 
 # IOS-006: Rex Go: Live Activities for sessions
@@ -110,7 +110,7 @@ Today the app does this. On `.background`, `TerminalScreen` suspends the stream 
   - Codex asked the user to sign in, so the capture has no Codex input.
 
   Rule 3 finds a program that hides its cursor under its last line, as an Ink program may while it draws. The output of a command that ends in a prompt between rules, such as a quote in a table, reads as an input. This is a known miss.
-- **Grace**: On `.background`, the screen no longer suspends the streams at once. It asks for a background task (`beginBackgroundTask`). It keeps the streams and the built-in Tailscale engine running, and keeps updating the activity. The task ends when its time runs out (its expiration handler, or 25 seconds, whichever comes first). Then the screen suspends the streams as today. It updates the activity with `connected: false` and a stale date of now, and ends the task. iOS gives about 30 seconds. Apple does not promise a number. **[assumption]** Without background time, the streams suspend at once.
+- **Grace**: [`IOS-012`](IOS-012-background-and-network-changes.md) replaces this item. The grace becomes app-wide: it starts when any host is connected, and the terminal screen registers its work with it. Its end follows `backgroundTimeRemaining`. The text below describes the grace of phase 1 as it is built. On `.background`, the screen no longer suspends the streams at once. It asks for a background task (`beginBackgroundTask`). It keeps the streams and the built-in Tailscale engine running, and keeps updating the activity. The task ends when its time runs out (its expiration handler, or 25 seconds, whichever comes first). Then the screen suspends the streams as today. It updates the activity with `connected: false` and a stale date of now, and ends the task. iOS gives about 30 seconds. Apple does not promise a number. **[assumption]** Without background time, the streams suspend at once.
   - Updates during the grace carry a stale date at the end of the grace plus 5 seconds. An app that stops without notice therefore still shows as paused.
   - Each update asks for a moment of background time of its own, to reach ActivityKit before the app stops. That time ends when the update is made, or when iOS takes it back.
   - The paused update goes within the task of the grace. The task ends when ActivityKit has the update, or at once when iOS takes the time back.

@@ -10,7 +10,7 @@ metadata:
 
 Status: proposal.
 
-This doc extends the grace of [`IOS-006`](IOS-006-live-activities.md), section "Grace". It makes the grace app-wide, ties its end to the time that iOS gives, and adds a reconnect when the network changes. It compares Rex Go with rootshell, another iOS terminal, and takes two of its four methods. It does not keep the app running after the grace: [`IOS-006`](IOS-006-live-activities.md), Alternatives b, rejected that.
+Replaces: [`IOS-006`](IOS-006-live-activities.md), section "Grace". This doc makes the grace app-wide, ties its end to the time that iOS gives, and adds a reconnect when the network changes. It compares Rex Go with rootshell, another iOS terminal, and takes two of its four methods. It does not keep the app running after the grace: [`IOS-006`](IOS-006-live-activities.md), Alternatives b, rejected that.
 
 ## Problem
 
@@ -39,7 +39,7 @@ rootshell also saves its window state and its scrollback on the device before th
 - A program that asks for input during the grace posts a notification, from any screen.
 - The grace ends 5 seconds before `backgroundTimeRemaining` runs out, or after 25 seconds, whichever comes first. The paused update of the Live Activity has those 5 seconds.
 - A memory warning in the background ends the grace at once.
-- After a change of network in the foreground, each connected host and each open terminal reconnects within 2 seconds of the change. **[assumption]** The time to measure is from the log line `network <name>` to the log line `resumed <block>`.
+- After a change of network in the foreground, each connected host and each open terminal reconnects within 2 seconds of the change. **[assumption]** Diagnostics shows the time: from the `ConnectionLog` line `network changed: <name>` to the lines `<host>: resumed after network change` and `terminal <block>: resumed`.
 - No terminal loses output in these reconnects. A resume continues from the byte count.
 
 ## Non-goals
@@ -64,28 +64,36 @@ rootshell also saves its window state and its scrollback on the device before th
 On a network change in the foreground:
 
 1. The phone changes from Wi-Fi to cellular, from one Wi-Fi to another, or from no network to a network.
-2. Within 1 second, Rex Go reconnects each connected host and resumes each open terminal stream.
+2. At once, Rex Go reconnects each connected host and resumes each open terminal stream.
 3. A reconnect that takes more than a second shows the reconnect note, as today. A shorter one shows nothing.
 
 ### Model
 
 - **One grace for the app.** The app owns one `BackgroundGrace`. The grace starts on `.background` if a host has a control connection or a terminal has a stream. It does not start in Demo Mode with no real host. A host with no running program also starts it. The user chose this (2026-11-21) over a grace only for hosts with a running program, because one rule is simpler and a program can start to wait at any time.
-- **Work at the end of the grace.** Owners register their work with the grace. `TerminalLive` registers the suspend of the streams and the paused update. The grace runs all the work, then ends its task when all the work has finished, or at once when iOS takes the time back.
-- **The deadline.** The grace checks `backgroundTimeRemaining` every 5 seconds. It ends at `min(25 s, remaining − 5 s)`. A value that is not finite means that iOS gives no limit. Then the 25-second limit applies.
+- **Work at the end of the grace.** Owners register their work with the grace under a key: `register(key, work)`. `TerminalLive` registers the suspend of the streams and the paused update. The order of `start` and `register` on `.background` does not matter:
+  - Work registered before `start` waits for the end of the grace.
+  - Work registered while the grace runs is added to it.
+  - Work registered after the grace ended in this trip to the background runs at once.
+  - `unregister(key)` removes the work, as when the terminal screen closes.
+- **The end of the grace.** The grace runs all the work, then ends its task when all the work has finished, or at once when iOS takes the time back.
+- **Coming back.** The `.active` handler of `GoRexApp` calls `cancel()`, once, for the app. The registered work does not run. `TerminalLive.active` no longer cancels the grace. It still tells whether its own work ran, so the screen knows if it must resume.
+- **The deadline.** `backgroundTimeRemaining` is not useful at the moment of `.background`. One second after `start`, the grace reads it and schedules its end at `min(25 s, remaining − 5 s)` from then. A value that is not finite means that iOS gives no limit. Then the 25-second limit applies.
 - **A memory warning** during the grace ends it, as a deadline does.
-- **A network change** is a change of the interface or of its gateways, as `TailnetEngine.PathMonitor` already computes. The first value at start is not a change. Changes that come within 1 second of each other count as one change.
-- **The reconnect** on a network change runs the path of a return after a suspension: `HostStore.foreground(suspended: true)`. It resumes the tailnet engine first for hosts that use it. Then each open terminal calls `TerminalSession.resume`. In the background, a network change does nothing. The return to the foreground handles it.
+- **A network change** is a change of the interface or of its gateways, as `TailnetEngine.PathMonitor` computes it. The first value at start is not a change.
+- **The reconnect** on a network change acts on the first change at once. Changes in the next second give one more reconnect at the end of that second, not one for each change.
+- **What reconnects.** `HostStore.networkChanged()` calls `Host.resume()` on each host that has a control connection, whatever its reach. It does not use `HostStore.foreground`: that function resumes only hosts that are not on the system network, and it resets the tailnet engine. The engine already hears the change through `TailnetDefaultInterfaceChanged`. A host behind the engine that reconnects before the engine is ready fails, then tries again with the backoff of `Host.scheduleRetry`. Then each open terminal calls `TerminalSession.resume`.
+- **In the background**, a network change does nothing. The return to the foreground handles it.
 
 ### Code
 
-- `ios/GoRex/Terminal/TerminalLive.swift`: `BackgroundGrace` moves to its own file `ios/GoRex/BackgroundGrace.swift`. It gets a list of work items, the deadline from `backgroundTimeRemaining`, and `end(reason:)` for the memory warning. `TerminalLive` registers its work and does not own the grace.
-- `ios/GoRex/TerminalActivityKit.swift`: the shared grace moves to an app-wide `BackgroundGrace.shared` with the UIKit `begin` and `end`.
-- `ios/GoRex/GoRexApp.swift`: the `.background` handler starts the grace when `HostStore` has a connected host. `HostStore.suspended` keeps its use of `grace.awake`.
+- `ios/GoRex/Terminal/TerminalLive.swift`: `BackgroundGrace` moves to its own file `ios/GoRex/BackgroundGrace.swift`. It gets `register`, `unregister`, the deadline from `backgroundTimeRemaining`, and `end(reason:)` for the memory warning. `TerminalLive` registers its work, unregisters it in `close`, and no longer owns or cancels the grace.
+- `ios/GoRex/TerminalActivityKit.swift`: the construction of the grace with the UIKit `begin` and `end` moves to `BackgroundGrace.shared`.
+- `ios/GoRex/GoRexApp.swift`: the `.background` handler calls `BackgroundGrace.shared.start()` when `HostStore` has a connected host. The `.active` handler calls `cancel()`, and reads `BackgroundGrace.shared.awake(since:)` for `HostStore.suspended`.
 - `ios/GoRex/Views/TerminalScreen.swift`: the `.background` handler registers the suspend of its panes and no longer starts the grace.
-- `ios/GoRex/Rex/NetworkPath.swift`, new: one `NWPathMonitor` for the app. It publishes a counter that goes up on each change. `TailnetEngine.PathMonitor` reads the same source, so the app has one monitor.
-- `HostStore`: on each change of the counter, in the foreground, it calls `foreground(suspended: true)`.
+- `ios/GoRex/Rex/NetworkPath.swift`, new: one `NWPathMonitor` for the host connections. It runs from launch for the life of the app, with the interface filter of `TailnetEngine.PathMonitor`. It publishes a counter that goes up on each reconnect. `TailnetEngine.PathMonitor`, `NetworkDiagnostics` and `HotspotShare` keep their own monitors, which have other lifetimes.
+- `HostStore.networkChanged()`, new: on each change of the counter, in the foreground, it resumes the connected hosts.
 - `TerminalScreen`: on each change of the counter, in the foreground, it calls `resume()` on each pane that is not leaving.
-- Each reconnect writes `ConnectionLog.note("network changed: <name>")`, so a report shows the cause.
+- `ConnectionLog` gets the lines `network changed: <name>`, `<host>: resumed after network change` and `terminal <block>: resumed`, so Diagnostics shows the cause and the time.
 
 ## Alternatives
 
@@ -99,13 +107,14 @@ On a network change in the foreground:
 ## Tests
 
 - The grace runs the work of each owner, once, and ends its task after the last work: unit test in `GoRexTests`, with the fake `begin`, `end` and `schedule` that `TerminalLiveTests` uses today.
-- The deadline is `min(25, remaining − 5)`, and an infinite remaining gives 25: unit test.
+- The deadline is `min(25, remaining − 5)`, read one second after the start, and an infinite remaining gives 25: unit test.
+- Work registered before the start, during the grace and after its end runs once each, and `cancel` runs none: unit test.
 - A memory warning ends a running grace and does nothing with no grace: unit test.
 - The grace starts with a connected host and no terminal screen, and does not start with no host: unit test on the `.background` decision.
 - `TerminalLiveTests` keeps passing with the work moved out of `TerminalLive`.
-- Changes within 1 second count as one, and the first path value is not a change: unit test with a fake path source.
-- A network change in the foreground resumes the hosts and the terminals, and in the background does nothing: unit test on `HostStore` with fake hosts.
-- End to end, on a device from TestFlight: open a terminal that prints each second, turn Wi-Fi off, and read the time from `network` to `resumed` in Diagnostics. Do the same from the host list, then go to another app for 10 seconds while a program asks for input, and check the notification.
+- The first change reconnects at once, the changes in the next second give one more reconnect, and the first path value is not a change: unit test with a fake path source.
+- A network change in the foreground resumes every connected host, also one on the system network, and does not reset the tailnet engine. In the background it does nothing: unit test on `HostStore` with fake hosts.
+- End to end, on a device from TestFlight: open a terminal that prints each second, turn Wi-Fi off, and read the time from `network changed` to `resumed` in Diagnostics. Do the same from the host list, then go to another app for 10 seconds while a program asks for input, and check the notification.
 - `docs/invariants.md`: no item covers the grace or the iOS reconnect.
 
 ## Phases
@@ -115,4 +124,4 @@ On a network change in the foreground:
 
 ## Open questions
 
-1. **Time to measure the reconnect.** The 2-second goal is an estimate. The phase 2 PR measures it on a device and updates the goal.
+1. **Time to measure the reconnect.** The 2-second goal is an estimate. The phase 2 PR measures it on a device and updates the goal. The user accepts the measured value.
