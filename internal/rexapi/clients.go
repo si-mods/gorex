@@ -4,37 +4,39 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/coder/websocket"
 
+	"gorex/internal/config"
 	"gorex/internal/rex"
 )
 
-// configPath is where Rex keeps its configuration file; GoRex reads none,
-// and reports the path a client could create it at.
-func (g *Gateway) configPath() string { return filepath.Join(rex.Dir(), "init.lua") }
+// configPath is where GoRex keeps its configuration file.
+func (g *Gateway) configPath() string { return config.Path() }
 
 // keymapSettings returns the configuration generation, the file's hash
 // and the server's instance ID.
 func (g *Gateway) keymapSettings() (int, string, string) {
-	g.mu.Lock()
-	defer g.mu.Unlock()
-	return g.generation, g.keymapHash, g.instanceID
+	_, _, generation, hash := g.actionsInfo()
+	return generation, hash, g.instanceID
 }
 
-// methodServerConfigReload reloads the configuration file. GoRex has no
-// configuration file to read, so this counts the load and tells every
-// client its keymap may have changed.
+// methodServerConfigReload reloads the configuration file, keeping the
+// last good actions when it fails, and tells every client its keymap may
+// have changed.
 func methodServerConfigReload(c *control, a args) (any, *apiError) {
+	if aerr := a.only(); aerr != nil {
+		return nil, aerr
+	}
 	g := c.g
-	g.mu.Lock()
-	g.generation++
-	generation, hash := g.generation, g.keymapHash
-	g.mu.Unlock()
+	generation, hash, diagnostics := g.reloadActions()
+	if diagnostics == nil {
+		diagnostics = []keymapDiagnostic{}
+	}
 	g.emitServerEvent("keymap_changed", map[string]any{"generation": generation, "hash": hash})
-	return map[string]any{"generation": generation, "diagnostics": []any{}}, nil
+	return map[string]any{"generation": generation, "diagnostics": diagnostics}, nil
 }
 
 // emptyHostHash names the server's host list, which is always empty.
@@ -147,23 +149,30 @@ func methodClientKeymap(c *control, a args) (any, *apiError) {
 	if err := json.Unmarshal(raw, &in); err != nil {
 		return nil, errBadRequest("client.keymap request: %v", err)
 	}
-	bindings, modes, diags, aerr := resolveKeymap(in.Defaults, in.Overrides)
+	layer, configActions, configModes, configDiags, path, exists, generation, hash := c.g.configKeymap()
+	defaults := append([]keymapLayer{layer}, in.Defaults...)
+	bindings, modes, diags, aerr := resolveKeymap(defaults, in.Overrides)
 	if aerr != nil {
 		return nil, aerr
 	}
-	generation, hash, instance := c.g.keymapSettings()
+	diags = append(diags, configDiags...)
+	modes = mergeKeymapModes(modes, configModes)
 	var actions []keymapAction
-	if in.ServerActions == nil || (*in.ServerActions != "none" && *in.ServerActions != "configured") {
-		actions = terminalActions()
+	switch {
+	case in.ServerActions == nil || (*in.ServerActions != "none" && *in.ServerActions != "configured"):
+		actions = append(terminalActions(), configActions...)
+	case *in.ServerActions == "configured":
+		actions = configActions
 	}
+	sort.Slice(actions, func(i, j int) bool { return actions[i].Name < actions[j].Name })
 	return keymapResult{
 		Bindings:    bindings,
 		Diagnostics: diags,
 		Actions:     actions,
 		Modes:       modes,
 		Config: keymapConfigResult{
-			Path: c.g.configPath(), Exists: false,
-			Generation: generation, InstanceID: instance, Hash: hash,
+			Path: path, Exists: exists,
+			Generation: generation, InstanceID: c.g.instanceID, Hash: hash,
 		},
 	}, nil
 }
@@ -243,7 +252,21 @@ func methodClientAction(c *control, a args) (any, *apiError) {
 		return nil, aerr
 	}
 	if !strings.Contains(action, ".") {
-		return nil, errActionNotFound(action)
+		var callArgs map[string]any
+		if raw, ok := a["args"]; ok && string(raw) != "null" {
+			if err := json.Unmarshal(raw, &callArgs); err != nil {
+				return nil, errBadRequest("args is an object")
+			}
+		}
+		sid, _, aerr := a.str("session_id")
+		if aerr != nil {
+			return nil, aerr
+		}
+		block, _, aerr := a.str("block_id")
+		if aerr != nil {
+			return nil, aerr
+		}
+		return c.g.runConfigAction(c, action, origin, sid, block, callArgs)
 	}
 	i := strings.LastIndexByte(action, '.')
 	creator, short := action[:i], action[i+1:]

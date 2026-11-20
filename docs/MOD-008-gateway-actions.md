@@ -67,7 +67,6 @@ The user pays for it. An action such as "New worktree" works on the desktop and 
 | `pane.close` | `block.close` |
 | `pane.focus.left`, `pane.focus.right`, `pane.focus.up`, `pane.focus.down` | `session.focus_direction` |
 | `pane.zoom` | `session.zoom_block` |
-| `pane.float` | `session.float_block` |
 | `pane.swap` | `session.swap_blocks` |
 
 - `gorex.ui.input` and `gorex.ui.pick` use the prompt broker of MOD-005. The answer is the function's result, and a cancel is `nil`. A client at revision 16 or lower cannot answer, and the broker removes it from the set.
@@ -87,7 +86,7 @@ The user pays for it. An action such as "New worktree" works on the desktop and 
 
 - The sandbox differs from the app, which loads the same file with `os` and `io`. An action that reads an environment variable or a file at load time works in the app and fails in the gateway. The diagnostic names the line.
 - The file is loaded twice, once in the app and once in the gateway. The sandbox keeps the gateway's load free of side effects. Top-level code still runs twice, so the doc tells authors to keep the file to definitions.
-- The gateway maps nine built-in IDs. An action that needs an app-only action fails. The list can grow without a protocol change.
+- The gateway maps eight built-in IDs. An action that needs an app-only action fails. The list can grow without a protocol change. `session.float_block` is not implemented by GoRex, so `pane.float` is not in the set.
 
 ## Alternatives
 

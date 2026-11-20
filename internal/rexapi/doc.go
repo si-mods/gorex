@@ -70,14 +70,14 @@
 // | com.superlogical.terminal.resize, .size | the pixel size of a cell is ignored, and reported as 0 |
 // | com.superlogical.terminal.write, block.event | a session whose program ended answers ErrSessionEnded as internal |
 // | client.key | prefix reaches no Lua binding, so only key goes to the block; handled is always false |
-// | client.keymap | empty: GoRex has no configuration file nor Lua |
+// | client.keymap | the terminal's actions, and the configuration file's actions, bindings and modes |
 // | client.set_script | not_supported when it asks for scripts; an empty list succeeds |
-// | client.action | block methods only, named com.superlogical.terminal.*; Lua actions and other servers fail with not_found and not_supported |
+// | client.action | a block method, named com.superlogical.terminal.*, or an action of the configuration file; other servers fail with not_supported |
 // | client.perform | not_supported: GoRex does not ask clients to perform actions |
 // | client.reply | not_found: nothing waits for a reply |
 // | block.event | a mouse event's payload is action, button, mods, column and row, with revision 11's pixel (validated, and left unused, since GoRex keeps no pixel size for a cell) and buttons (the first held button becomes the event's button); a wheel event's payload is revision 11's deltas (delta_mode, delta_x, delta_y, delta_z), which the server turns into its discrete wheel events, one per line, where a page is 10 lines and a pixel is a 40th of one, and older clients' direction is still taken |
 // | block_creator.list, session.describe_block | api.events lists GoRex's terminal events (`bell`, `title_changed`, `pwd_changed`, `process_changed`, `program_status_changed`, `program_status_removed`, `child_exited`), which Rex's help document leaves out |
-// | server.config_reload | no configuration file: counts a generation and sends keymap_changed |
+// | server.config_reload | reads the configuration file again, keeps the last good actions and sends keymap_changed |
 // | hosts.list | an empty list; hosts.put and hosts.remove fail with not_supported |
 // | server.stop | stops the GoRex session server, the stop the app's Quit and end all makes: the layout is kept, so the next server starts the sessions again as new shells. Only over the local Unix socket (403 elsewhere), as Rex's. if_idle needs no Rex session (a workspace of the layout, with or without a window), no shell, none being started, no other client and no other call running, checked with the stop in one step; otherwise conflict, counting what is in use. It answers before the server stops; from then on the gateway takes no new connection (503) and no call that changes anything (conflict), closes the other control connections with 1001 (Going Away; Rex defines no event for it), and a second stop fails with conflict. It does not wait for the caller to close, as Rex does: the server stops 50 ms after it answers. With the desktop app open, the app sees the server go as a crash and starts a new one moments later, so the stop acts as a restart: quit the app to keep the server down |
 // | server.tailscale.* | built-in Tailscale is tsnet, a device of the gateway's own named <hostname>-gorex; the methods are for the local Unix socket only (403 elsewhere), as Rex's are; on Windows, where the socket gives no credentials, its file's permissions are the boundary |
