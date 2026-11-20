@@ -231,7 +231,10 @@ by Go.
 A tailcat dial has its own bounds, as `internal/rex`'s: 15 s in all,
 and 3 s for a try of a client that connected before. The SOCKS server's
 5 s would cut a client's first dial, which connects to DERP and shakes
-hands.
+hands. That server never cancels a dial when the app gives the
+connection up, as it does not read the app's side while it dials. So a
+dial ends at its 15 s, at a cancel by its caller, or when its host leaves
+the list or the key changes.
 
 tailcat's `createEngine` turns `netns` off for the whole process, so
 once a tailcat client starts the tailnet node no longer binds its
@@ -265,11 +268,16 @@ the server.
 
 A machine whose server restarted, as on an upgrade, forgot the client,
 and the client still trusts its old direct path and WireGuard session:
-left alone, it waits for WireGuard's rekey, 15 s and more. So a dial
-does as `internal/rex`'s: a client that connected before and fails its
-try pings the server and tries once more; failing again, with no other
-connection on it, it is dropped and a new client dials, within the
-15 s. The socket resets of a suspension run side by side, one per
+left alone, it waits for WireGuard's rekey, 15 s and more. So a client
+that connected before and fails its try is retired when the try ran out
+of time, or when no other connection uses it: it leaves the pool and
+closes, and a new client dials, within the 15 s. Its other connections
+go with it, as their server forgot them too, and two clients of one key
+take each other's packets. The dials that failed their try on it at the
+same time, and every dial after, take the one new client: none waits for
+the others, nor for an open connection the proxy keeps until it reads a
+FIN that never comes. A try that a port refused, while other connections
+use the client, keeps it. The socket resets of a suspension run side by side, one per
 client and the node's, so a stuck one holds up no other.
 
 ## Size

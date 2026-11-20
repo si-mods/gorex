@@ -83,22 +83,32 @@ func dial(ctx context.Context, addr string) (net.Conn, error) {
 	if id, port, ok := tailcatTarget(addr); ok {
 		return dialTailcat(ctx, id, port)
 	}
-	n, err := running()
-	if err != nil {
-		return nil, err
+	mu.Lock()
+	n, pc := node, peers
+	mu.Unlock()
+	if n == nil {
+		return nil, errors.New("tailnet not started")
 	}
-	return dialTailnet(ctx, n.StatusWithPeers, n.Dial, addr)
+	return dialTailnet(ctx, pc, n.StatusWithPeers, n.Dial, addr)
 }
 
 // dialTailnet dials the device addr names through the node: status gives
-// its peers and dial dials through it.
-func dialTailnet(ctx context.Context, status func(context.Context) (*ipnstate.Status, error),
+// its peers, kept in pc, and dial dials through it. A host the kept
+// status does not have is looked up in a new one: a peer added just now
+// may not be told yet.
+func dialTailnet(ctx context.Context, pc *peerCache, status func(context.Context) (*ipnstate.Status, error),
 	dial func(ctx context.Context, network, addr string) (net.Conn, error), addr string) (net.Conn, error) {
-	st, err := status(ctx)
+	st, kept, err := pc.status(ctx, status)
 	if err != nil {
 		return nil, err
 	}
 	to, err := peerAddr(st, addr)
+	if err != nil && kept {
+		if st, err = pc.fresh(ctx, status); err != nil {
+			return nil, err
+		}
+		to, err = peerAddr(st, addr)
+	}
 	if err != nil {
 		return nil, err
 	}

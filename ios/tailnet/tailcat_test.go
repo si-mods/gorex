@@ -388,15 +388,7 @@ func TestTailcatServerRestart(t *testing.T) {
 		t.Fatal(err)
 	}
 	c.Close()
-	ci, _ := tailcat.ParseAddr(m.ts.TailcatAddr())
-	m.ts.Close()
-	again := &tailcat.Server{Key: m.ts.Key, PresharedKey: m.ts.PresharedKey, Region: ci.Region[0], Logf: func(string, ...any) {}}
-	t.Cleanup(func() { again.Close() })
-	gw, err := again.Listen(context.Background(), "tcp", ":7297")
-	if err != nil {
-		t.Fatal(err)
-	}
-	go http.Serve(gw, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { io.WriteString(w, "again") }))
+	restart(t, m)
 	// The kept client fails one try (tailcatTry) against the new server,
 	// which has not met it, and a new client replaces it. A second try of
 	// the old client adds tailcatTry for nothing: its Ping returns at once,
@@ -411,6 +403,134 @@ func TestTailcatServerRestart(t *testing.T) {
 	if n := tailcatTries.Load() - tries; n != 1 {
 		t.Errorf("the kept client had %d tries after the restart, want 1", n)
 	}
+}
+
+// restart closes m's server and starts another of its key and address,
+// which has not met any client, serving "again" on 7297.
+func restart(t *testing.T, m *machine) {
+	t.Helper()
+	ci, _ := tailcat.ParseAddr(m.ts.TailcatAddr())
+	m.ts.Close()
+	again := &tailcat.Server{Key: m.ts.Key, PresharedKey: m.ts.PresharedKey, Region: ci.Region[0], Logf: func(string, ...any) {}}
+	t.Cleanup(func() { again.Close() })
+	gw, err := again.Listen(context.Background(), "tcp", ":7297")
+	if err != nil {
+		t.Fatal(err)
+	}
+	go http.Serve(gw, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { io.WriteString(w, "again") }))
+}
+
+// A machine whose server restarted while a connection of its client is
+// open, as one the proxy keeps until it reads a FIN that never comes: the
+// dials that come together all connect, through one new client. The
+// first try that runs out of time retires the kept client; no dial waits
+// for the others to end, as the kept client's open connection would make
+// it wait for ever.
+func TestTailcatRestartConcurrentDials(t *testing.T) {
+	defer func(d time.Duration) { tailcatTry = d }(tailcatTry)
+	tailcatTry = time.Second
+	Stop()
+	tailcatEnv(t)
+	m := newMachine(t)
+	addr := string(m.ts.TailcatAddr())
+	setHosts(t, tailcatHost{ID: "mac", Address: addr})
+	open, err := dialTailcat(context.Background(), "mac", 7465)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer open.Close()
+	tcMu.Lock()
+	old := tcClients[addr]
+	tcMu.Unlock()
+	restart(t, m)
+	const n = 3
+	conns := make(chan net.Conn, n)
+	errs := make(chan error, n)
+	for range n {
+		go func() {
+			c, err := dialTailcat(context.Background(), "mac", 7297)
+			if err != nil {
+				errs <- err
+				return
+			}
+			conns <- c
+		}()
+	}
+	var pools []*pooledTailcat
+	for range n {
+		select {
+		case err := <-errs:
+			t.Errorf("a dial after the restart: %v", err)
+		case c := <-conns:
+			pools = append(pools, c.(*tailcatConn).p)
+			c.Close()
+		}
+	}
+	tcMu.Lock()
+	dead := old.dead
+	tcMu.Unlock()
+	if !dead {
+		t.Error("the kept client was not retired")
+	}
+	for _, p := range pools {
+		if p == old || p != pools[0] {
+			t.Errorf("the dials used clients %p of %v; want one new client, not %p", p, pools, old)
+			break
+		}
+	}
+}
+
+// A dial ends when its caller cancels it, or when its host leaves the
+// list, but not at its caller's deadline: the proxy's SOCKS server gives
+// every dial five seconds, too short for a first dial.
+func TestTailcatDialCancel(t *testing.T) {
+	defer func(d, t time.Duration) { tailcatDial, tailcatTry = d, t }(tailcatDial, tailcatTry)
+	tailcatDial, tailcatTry = time.Minute, time.Minute
+	Stop()
+	tailcatEnv(t)
+	m := newMachine(t)
+	addr := string(m.ts.TailcatAddr())
+	setHosts(t, tailcatHost{ID: "mac", Address: addr})
+	past, done := context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
+	defer done()
+	c, err := dialTailcat(past, "mac", 7465)
+	if err != nil {
+		t.Fatalf("a dial whose deadline passed: %v", err)
+	}
+	c.Close()
+	// The machine is gone: a dial to it waits until something ends it.
+	m.ts.Close()
+	dialing := make(chan struct{}, 1)
+	tailcatDialing = func() { dialing <- struct{}{} }
+	defer func() { tailcatDialing = func() {} }()
+	hang := func(name string, ctx context.Context, end func()) {
+		t.Helper()
+		ended := make(chan error, 1)
+		go func() {
+			c, err := dialTailcat(ctx, "mac", 7297)
+			if c != nil {
+				c.Close()
+			}
+			ended <- err
+		}()
+		select {
+		case <-dialing:
+		case err := <-ended:
+			t.Fatalf("%s: the dial ended before it dialed: %v", name, err)
+		}
+		end()
+		select {
+		case err := <-ended:
+			if err == nil {
+				t.Errorf("%s: a dial to a machine that is gone connected", name)
+			}
+		case <-time.After(10 * time.Second):
+			t.Fatalf("%s: the dial went on", name)
+		}
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	hang("cancel", ctx, cancel)
+	hang("host removed", context.Background(), func() { setHosts(t) })
 }
 
 // A client with no connection for tailcatIdle closes; one with an open

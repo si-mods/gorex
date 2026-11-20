@@ -42,7 +42,26 @@ var (
 	// closes once it had no connection for tailcatIdle.
 	tcClients   = map[string]*pooledTailcat{}
 	tailcatIdle = 3 * time.Minute
+	// tcScopes ends the dials to each address: SetTailcatHosts cancels
+	// the scope of an address no host has any more, SetTailcatKey all.
+	tcScopes = map[string]tcScope{}
 )
+
+// tcScope is the context the dials to an address run in.
+type tcScope struct {
+	ctx    context.Context
+	cancel context.CancelFunc
+}
+
+// scopeLocked is the scope of the dials to addr. tcMu must be held.
+func scopeLocked(addr string) context.Context {
+	s, ok := tcScopes[addr]
+	if !ok {
+		s.ctx, s.cancel = context.WithCancel(context.Background())
+		tcScopes[addr] = s
+	}
+	return s.ctx
+}
 
 // NewTailcatKey makes a client key, for the app to keep in its Keychain
 // and pass to SetTailcatKey.
@@ -66,6 +85,10 @@ func SetTailcatKey(privateKey string) error {
 	tcKey = k
 	old := tcClients
 	tcClients = map[string]*pooledTailcat{}
+	for _, s := range tcScopes {
+		s.cancel() // dials of the old key
+	}
+	tcScopes = map[string]tcScope{}
 	tcMu.Unlock()
 	for _, p := range old {
 		go p.tc.Close() // a stuck bind would block the caller
@@ -123,6 +146,12 @@ func SetTailcatHosts(hostsJSON string) error {
 			go p.tc.Close()
 		}
 	}
+	for a, s := range tcScopes {
+		if !listed[a] {
+			delete(tcScopes, a)
+			s.cancel()
+		}
+	}
 	return nil
 }
 
@@ -166,34 +195,56 @@ var (
 // tailcatTries counts the tries of kept clients (a test reads it).
 var tailcatTries atomic.Int64
 
+// tailcatDialing is called once a dial counts on its client; a test
+// replaces it.
+var tailcatDialing = func() {}
+
 // pooledTailcat is the client of an address, as internal/rex's.
 type pooledTailcat struct {
 	tc    *tailcat.Client
 	conns int  // open, or being dialed
 	used  bool // it connected once
+	dead  bool // out of the pool and closed (retire, drop)
 	idle  *time.Timer
 }
 
-// dialTailcat connects to port on the tailcat host id.
+// dialTailcat connects to port on the tailcat host id, within
+// tailcatDial. A cancel of ctx ends the dial; ctx's deadline does not.
+// The proxy's SOCKS server (tailscale.com/net/socks5, handleTCP) gives
+// each dial a context of its own, context.Background with five seconds,
+// shorter than a client's first dial, which connects to DERP and shakes
+// hands. That context is never cancelled when the app gives a connection
+// up: the server does not read the app's side while it dials. So a dial
+// through the proxy runs on to tailcatDial, unless its host leaves the
+// list or the key changes (SetTailcatHosts, SetTailcatKey), which end it.
 func dialTailcat(ctx context.Context, id string, port uint16) (net.Conn, error) {
 	tcMu.Lock()
 	addr, ok := tcHosts[id]
+	var scope context.Context
+	if ok {
+		scope = scopeLocked(addr)
+	}
 	tcMu.Unlock()
 	if !ok {
 		return nil, errors.New("not a tailcat host: " + id)
 	}
-	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), tailcatDial)
+	dctx, cancel := context.WithTimeout(scope, tailcatDial)
 	defer cancel()
-	return dialAddr(ctx, addr, port)
+	stop := context.AfterFunc(ctx, func() {
+		if errors.Is(ctx.Err(), context.Canceled) {
+			cancel()
+		}
+	})
+	defer stop()
+	return dialAddr(dctx, addr, port)
 }
 
 // dialAddr connects to port at addr with the client of addr, as
 // internal/rex's dialTailcat: a client that connected before and fails
-// now may have a server that restarted and forgot it, so, when no other
-// connection uses it, a new client replaces it. (A Ping to register again
-// does not help: it returns at once for a client that was registered, so
-// the try after it only waited tailcatTry more.) A client other
-// connections use is never closed here: one slow dial says little of them.
+// now may have a server that restarted and forgot it, so a new client
+// replaces it (retire). (A Ping to register again does not help: it
+// returns at once for a client that was registered, so the try after it
+// only waited tailcatTry more.)
 func dialAddr(ctx context.Context, addr string, port uint16) (net.Conn, error) {
 	tcMu.Lock()
 	if tcKey.IsZero() {
@@ -211,23 +262,22 @@ func dialAddr(ctx context.Context, addr string, port uint16) (net.Conn, error) {
 	p.conns++
 	used := p.used
 	tcMu.Unlock()
+	tailcatDialing()
 
 	var c net.Conn
 	var err error
 	if used {
 		t0 := time.Now()
-		c, err = p.try(ctx, port)
-		if err != nil && ctx.Err() == nil && p.drop(addr) {
+		var timedOut bool
+		c, timedOut, err = p.try(ctx, port)
+		var fresh *pooledTailcat
+		if err != nil && ctx.Err() == nil {
+			fresh = p.retire(addr, timedOut)
+		}
+		if fresh != nil {
 			tried := time.Since(t0)
-			old := p
-			tcMu.Lock()
-			if p = tcClients[addr]; p == nil {
-				p = newPooledLocked(addr)
-			}
-			p.conns++
-			tcMu.Unlock()
-			go old.tc.Close()
-			old.release(addr)
+			p.release(addr)
+			p = fresh
 			c, err = p.tc.DialTCPPort(ctx, port)
 			// Only on this path, so a slow reconnect explains itself.
 			log.Printf("tailcat: the kept client's try failed after %v; a new client %s after %v more",
@@ -258,12 +308,48 @@ func newPooledLocked(addr string) *pooledTailcat {
 	return p
 }
 
-// try dials within tailcatTry.
-func (p *pooledTailcat) try(ctx context.Context, port uint16) (net.Conn, error) {
+// try dials within tailcatTry, and tells whether that time ran out.
+func (p *pooledTailcat) try(ctx context.Context, port uint16) (net.Conn, bool, error) {
 	tailcatTries.Add(1)
 	ctx, cancel := context.WithTimeout(ctx, tailcatTry)
 	defer cancel()
-	return p.tc.DialTCPPort(ctx, port)
+	c, err := p.tc.DialTCPPort(ctx, port)
+	return c, err != nil && ctx.Err() != nil, err
+}
+
+// retire is for a try of p that failed while its dial goes on. p goes
+// from the pool and closes when its server seems to have forgotten it:
+// the try ran out of time, or no other connection uses p. Its other
+// connections then go too: their server forgot them, and two clients of
+// one key take each other's packets (#212). It returns the client of addr
+// to dial with now, counted, or nil when p stays, as after a port that
+// refused while others use p. A dial whose try failed because another
+// retired p takes that new client too, and so does each dial after: none
+// waits for the others to end.
+func (p *pooledTailcat) retire(addr string, timedOut bool) *pooledTailcat {
+	tcMu.Lock()
+	defer tcMu.Unlock()
+	if !p.dead {
+		if tcClients[addr] != p || !timedOut && p.conns != 1 {
+			return nil
+		}
+		p.dead = true
+		delete(tcClients, addr)
+		go p.tc.Close()
+	}
+	if tcKey.IsZero() {
+		return nil
+	}
+	n := tcClients[addr]
+	if n == nil {
+		n = newPooledLocked(addr)
+	}
+	if n.idle != nil {
+		n.idle.Stop()
+		n.idle = nil
+	}
+	n.conns++
+	return n
 }
 
 // drop takes p out of the pool when the dial under way is its only
@@ -274,6 +360,7 @@ func (p *pooledTailcat) drop(addr string) bool {
 	if p.conns != 1 || tcClients[addr] != p {
 		return false
 	}
+	p.dead = true
 	delete(tcClients, addr)
 	return true
 }

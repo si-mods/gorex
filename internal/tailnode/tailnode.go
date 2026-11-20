@@ -100,6 +100,45 @@ func (n *Node) Watch(ctx context.Context, changed func()) {
 	}
 }
 
+// WatchPeers calls changed(true) once it watches the device, and again
+// each time its peers or its state may have changed (peersMayChange),
+// until ctx ends. It calls changed(false) when the watch breaks: until it
+// watches again, a change goes untold.
+func (n *Node) WatchPeers(ctx context.Context, changed func(watching bool)) {
+	// NotifyPeerPatches keeps an online or endpoint change a small patch,
+	// not a whole peer.
+	mask := ipn.NotifyInitialState | ipn.NotifyPeerChanges | ipn.NotifyPeerPatches
+	for ctx.Err() == nil {
+		if w, err := n.lc.WatchIPNBus(ctx, mask); err == nil {
+			for {
+				nt, err := w.Next()
+				if err != nil {
+					break
+				}
+				// The first, of NotifyInitialState, has the state.
+				if peersMayChange(nt) {
+					changed(true)
+				}
+			}
+			w.Close()
+		}
+		changed(false)
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(time.Second):
+		}
+	}
+}
+
+// peersMayChange tells whether nt may change the peers StatusWithPeers
+// gives, their names and addresses, or the device's state: a new state,
+// a new self, or a peer added, replaced or removed. A patch (online,
+// last seen, DERP home, endpoints) changes none of them.
+func peersMayChange(nt ipn.Notify) bool {
+	return nt.State != nil || nt.SelfChange != nil || len(nt.PeersChanged) > 0 || len(nt.PeersRemoved) > 0
+}
+
 // ListenTLS listens for HTTPS on port 443 of the tailnet. It blocks
 // until the device runs.
 func (n *Node) ListenTLS() (net.Listener, error) { return n.srv.ListenTLS("tcp", ":443") }

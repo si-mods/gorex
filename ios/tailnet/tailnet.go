@@ -52,6 +52,8 @@ var (
 	mu     sync.Mutex
 	node   *tailnode.Node
 	cancel context.CancelFunc
+	// peers keeps node's peers for the proxy's dials.
+	peers *peerCache
 	// stuck is a node whose socket reset didn't finish (ResetSockets).
 	stuck bool
 	// closeNode closes a node; tests replace it.
@@ -75,9 +77,11 @@ func Start(configJSON, stateDir string, cb Callback) error {
 		return err
 	}
 	ctx, stop := context.WithCancel(context.Background())
+	pc := &peerCache{}
 	mu.Lock()
-	node, cancel = n, stop
+	node, cancel, peers = n, stop, pc
 	mu.Unlock()
+	go n.WatchPeers(ctx, pc.changed)
 	if cb != nil {
 		go n.Watch(ctx, func() { cb.Changed(status(ctx, n)) })
 	}
@@ -253,7 +257,7 @@ func Proxy() (string, error) {
 func Stop() {
 	mu.Lock()
 	n, stop, s := node, cancel, stuck
-	node, cancel, stuck = nil, nil, false
+	node, cancel, stuck, peers = nil, nil, false, nil
 	mu.Unlock()
 	if n == nil {
 		return

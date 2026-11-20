@@ -9,7 +9,36 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"tailscale.com/ipn"
+	"tailscale.com/tailcfg"
 )
+
+// The peer watch tells a change of state, of self, or of a peer's
+// presence, names or addresses, and not a patch, which changes none.
+func TestPeersMayChange(t *testing.T) {
+	running := ipn.Running
+	for _, nt := range []ipn.Notify{
+		{State: &running},
+		{SelfChange: &tailcfg.Node{}},
+		{PeersChanged: []*tailcfg.Node{{}}},
+		{PeersRemoved: []tailcfg.NodeID{7}},
+	} {
+		if !peersMayChange(nt) {
+			t.Errorf("peersMayChange(%+v) = false", nt)
+		}
+	}
+	online := true
+	for _, nt := range []ipn.Notify{
+		{},
+		{PeerChangedPatch: []*tailcfg.PeerChange{{NodeID: 7, Online: &online}}},
+		{Health: nil, ErrMessage: new(string)},
+	} {
+		if peersMayChange(nt) {
+			t.Errorf("peersMayChange(%+v) = true", nt)
+		}
+	}
+}
 
 func TestHostnames(t *testing.T) {
 	for name, ok := range map[string]bool{"studio": true, "a": true, "a-b-1": true, "-a": false, "a-": false, "": false, "a_b": false, strings.Repeat("a", 64): false} {
