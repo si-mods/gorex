@@ -175,4 +175,4 @@ Phase 2, a proposal. This part replaces item 1 above, and the parts of Decisions
 
 ## Open questions
 
-1. **Which swipe back the user wants to keep (phase 2).** The #916 build has two interactive swipes back. A terminal that a row opened uses the zoom's swipe: the terminal shrinks toward its row under the finger. A terminal that a notification, a widget or the session sheet opened uses the standard swipe: the terminal slides to the right with the finger. Options: (a) the standard swipe for every terminal, as Behavior 1 says, (b) keep the zoom for item 1, with its swipe and its shrink into the row. The user decides.
+1. **Which swipe back the user wants to keep (phase 2).** The #916 build has two interactive swipes back. A terminal that a row opened uses the zoom's swipe: the terminal shrinks toward its row under the finger. Other terminals use the standard swipe: the terminal slides to the right with the finger. A notification, a widget or the session sheet opens these. Options: (a) the standard swipe for every terminal, as Behavior 1 says, (b) keep the zoom for item 1, with its swipe and its shrink into the row. The user decides.
