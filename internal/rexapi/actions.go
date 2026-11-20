@@ -10,6 +10,7 @@ import (
 	"math"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"gorex/internal/config"
@@ -194,8 +195,17 @@ func (g *Gateway) runConfigAction(c *control, name, origin, sid, block string, c
 	}
 	host := &actionHost{c: c, session: sid, block: block}
 	rt.cfg.SetInvoke(host.invoke)
-	ctx, cancel := context.WithTimeout(context.Background(), actionDeadline)
-	defer cancel()
+	ctx, cancel := context.WithCancel(context.Background())
+	clock := newActionClock(actionDeadline, cancel)
+	defer func() {
+		clock.stop()
+		cancel()
+	}()
+	rt.cfg.SetUI(func(opts config.UIOptions) (config.UIAnswer, error) {
+		clock.pause()
+		defer clock.resume()
+		return g.openPrompt(ctx, name, opts)
+	})
 	vals := map[string]any{"origin": origin}
 	if sid != "" {
 		vals["session_id"] = sid
@@ -204,12 +214,79 @@ func (g *Gateway) runConfigAction(c *control, name, origin, sid, block string, c
 		vals["block_id"] = block
 	}
 	if err := rt.cfg.InvokeWithin(ctx, name, vals, callArgs); err != nil {
-		if ctx.Err() == context.DeadlineExceeded {
+		if clock.expired() {
 			return nil, errorf("timeout", 408, "%s did not finish in %s", name, actionDeadline)
 		}
 		return nil, errInternal("%s: %v", name, err)
 	}
 	return actionResult{ClientActions: []any{}}, nil
+}
+
+// actionClock stops an action when its running time passes, and pauses
+// while a prompt is open, which does not count.
+type actionClock struct {
+	mu        sync.Mutex
+	timer     *time.Timer
+	remaining time.Duration
+	started   time.Time
+	paused    bool
+	fired     bool
+	cancel    context.CancelFunc
+}
+
+func newActionClock(d time.Duration, cancel context.CancelFunc) *actionClock {
+	k := &actionClock{remaining: d, started: time.Now(), cancel: cancel}
+	k.timer = time.AfterFunc(d, func() {
+		k.mu.Lock()
+		k.fired = true
+		k.mu.Unlock()
+		cancel()
+	})
+	return k
+}
+
+// pause stops the clock for a prompt.
+func (k *actionClock) pause() {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	if k.paused || k.fired {
+		return
+	}
+	if k.timer.Stop() {
+		k.remaining -= time.Since(k.started)
+	}
+	k.paused = true
+}
+
+// resume starts the clock again with what is left.
+func (k *actionClock) resume() {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	if !k.paused || k.fired {
+		return
+	}
+	k.paused = false
+	if k.remaining <= 0 {
+		k.fired = true
+		k.cancel()
+		return
+	}
+	k.started = time.Now()
+	k.timer.Reset(k.remaining)
+}
+
+// stop ends the clock.
+func (k *actionClock) stop() {
+	k.mu.Lock()
+	k.timer.Stop()
+	k.mu.Unlock()
+}
+
+// expired tells whether the running time passed.
+func (k *actionClock) expired() bool {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	return k.fired
 }
 
 // checkActionArgs checks a call's args against the action's declaration.
@@ -303,7 +380,17 @@ func (h *actionHost) invoke(id string, args map[string]any) error {
 		if err != nil {
 			return err
 		}
-		return h.call("session.set_window_label", map[string]any{"session_id": sid, "label": label})
+		m, aerr := h.c.g.modelReq()
+		if aerr != nil {
+			return errors.New(aerr.Message)
+		}
+		s := m.byID[sid]
+		if s == nil || s.active == "" {
+			return errors.New("the session has no window")
+		}
+		return h.call("session.set_window_label", map[string]any{
+			"session_id": sid, "window_id": s.active, "label": label,
+		})
 	case "pane.split.right", "pane.split.down":
 		sid, err := need()
 		if err != nil {

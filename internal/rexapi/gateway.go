@@ -205,6 +205,11 @@ type Gateway struct {
 	// actionsMu guards it and runs its actions one at a time.
 	actionsMu sync.Mutex
 	actions   *actionsRuntime
+	// prompts are the questions waiting for an answer: each connection's
+	// copy by call ID.
+	promptsMu sync.Mutex
+	prompts   map[string]*promptEntry
+	promptSeq int64
 	// canLock tells whether the server keeps the gateway's connection
 	// alive, which the size locks need.
 	canLock bool
@@ -305,6 +310,7 @@ func (g *Gateway) Close() error {
 		g.closing = true
 		g.mu.Unlock()
 		close(g.done)
+		g.cancelPrompts()
 		g.closeActions()
 		g.closeAllResources()
 		g.opt.Client.Close()
@@ -604,8 +610,11 @@ type clientRecord struct {
 	scope    string
 	lost     bool
 	lostAt   time.Time
-	timer    *time.Timer
-	gone     bool
+	// prompting tells that the client is showing a question, so a second
+	// one waits.
+	prompting bool
+	timer     *time.Timer
+	gone      bool
 	// owned are the blocks the client owned when its connection dropped,
 	// which it gets back when it reconnects, if no one took them since.
 	owned map[string]bool
@@ -831,6 +840,27 @@ func (r *clientRecord) attachedList() []string {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return r.attachedListLocked()
+}
+
+// canPrompt tells whether the client may be asked a question at this
+// revision.
+func (r *clientRecord) canPrompt(rev int) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.prompting || r.lost || r.conn == nil {
+		return false
+	}
+	if r.info == nil || string(r.info.Kind) != "app" {
+		return false
+	}
+	return rev >= promptRevision
+}
+
+// setPrompting records that the client shows a question, or stops.
+func (r *clientRecord) setPrompting(on bool) {
+	r.mu.Lock()
+	r.prompting = on
+	r.mu.Unlock()
 }
 
 // attachedTo tells whether the client attached to the session with

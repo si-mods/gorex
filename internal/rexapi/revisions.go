@@ -107,6 +107,9 @@ var methodSince = map[string]int{
 var eventSince = map[string]int{
 	// Revision 16 adds the ports_changed block event.
 	"ports_changed": 16,
+	// Revision 17 adds the client prompts.
+	"client_prompt_requested": 17,
+	"client_prompt_ended":     17,
 }
 
 var (
