@@ -1,6 +1,6 @@
 # A terminal's listening ports
 
-Status: proposal.
+Status: built (#912).
 
 This doc settles how GoRex reports the TCP ports that a terminal's programs listen on, at Rex API revisions 15 and 16. It extends [rex-api.md](rex-api.md) and follows [design-docs.md](design-docs.md).
 
@@ -96,8 +96,8 @@ The process set is the descendants of `SessionInfo.PID`, found by parent process
 
 ## Phases
 
-1. The server scan, the request op and the platform files.
-2. The gateway method, the event, the help entries and the revision change to 16.
+1. The server scan, the request op and the platform files (#912).
+2. The gateway method, the event, the help entries and the revision change to 16 (#912).
 
 ## Open questions
 
