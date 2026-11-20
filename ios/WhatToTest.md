@@ -87,7 +87,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - The Lock Screen card now uses calmer shades of the program's own color, keeps the same size in every state, and shows the timer after the state, clear of the large icon.
 - Open a tab, the title's sheet, Settings, New Project or a Gallery image: it now grows out of what you tapped, and shrinks back into it. The pane bar's highlight slides to the pane you choose.
 - Leave Rex Go from the host list, and a program that asks for your answer in the next few seconds now sends its notification, as it does when you leave from an open terminal.
-- Projects now start with a folder tile in their color, and the chevron sits before the tab count. On an iPad the open project has a soft face behind its tabs. Tabs with no project get a label.
+- Each project has its own card, a plain folder in its color and the chevron before its tab count. In the project list, light-page tiles lose their white ring. On an iPad the open project's card is shaded.
 
 ## zh-Hans
 
@@ -167,4 +167,4 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - 锁定屏幕上的卡片现在用程序自己颜色的深浅两档，各种状态下大小不变，计时跟在状态后面，不再压在大图标上。
 - 打开标签页、标题的面板、设置、新建项目或图库图片：它现在从你点按的地方展开，关闭时缩回原处。窗格栏的高亮会滑到你选的窗格。
 - 从主机列表离开 Rex Go 后，几秒内需要你回答的程序现在也会发来通知，和从打开的终端离开时一样。
-- 列表里的项目现在以带项目颜色的文件夹图块开头，与标签页的程序图块对齐，箭头移到标签数之前。在 iPad 上，你正在用的项目会有一块柔和的底面衬在它的标签页后面，打开的标签页会浮起。无项目的标签页列在自己的标题下。
+- 每个项目现在有自己的卡片，用不带底板的项目色文件夹，箭头在标签数之前。项目列表里的程序图标在浅色页面上不再有白色圈。在 iPad 上，正在用的项目卡片会略深一些。

@@ -8,6 +8,8 @@ struct ProgramTiles: View {
     /// The window's most urgent program state (idle, working, blocked, done,
     /// error), driving both the done dot and the front tile's bounce motion.
     var state: String? = nil
+    /// Whether a light page gets each tile a white ring behind it (ProgramTile).
+    var plate = true
 
     /// Points to a DIP of the desktop's tiles, which are 21×16.
     static let scale: CGFloat = 1.5
@@ -21,11 +23,11 @@ struct ProgramTiles: View {
         ZStack(alignment: .leading) {
             ForEach(Array(back.prefix(2).enumerated()).reversed(), id: \.offset) { i, p in
                 let inset = CGFloat(i + 1) * 0.8 * k
-                ProgramTile(program: .of(p), glyph: false)
+                ProgramTile(program: .of(p), glyph: false, plate: plate)
                     .frame(width: 21 * k, height: 16 * k - 2 * inset)
                     .offset(x: CGFloat(5 * (i + 1)) * k)
             }
-            ProgramTile(program: .of(front)).frame(width: 21 * k, height: 16 * k)
+            ProgramTile(program: .of(front), plate: plate).frame(width: 21 * k, height: 16 * k)
                 .overlay(alignment: .topTrailing) {
                     if done { DoneDot().offset(x: 2.5, y: -2.5) }
                 }

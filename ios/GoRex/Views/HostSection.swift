@@ -226,9 +226,10 @@ struct HostSection: View {
         let looseTabs = entries(loose.flatMap { s in (s.view?.windows ?? []).map { (s, $0) } })
         let column = tileColumn
         if !recent.isEmpty {
-            card {
-                ForEach(Array(recent.enumerated()), id: \.element.id) { i, s in
-                    project(s, tiles: column, divider: i < recent.count - 1 && !faced(recent[i + 1]) && !faced(s))
+            // A card for each project, a gap between them.
+            VStack(spacing: 12) {
+                ForEach(recent, id: .id) { s in
+                    card(face: faced(s)) { project(s, tiles: column, divider: false, grouped: false) }
                 }
             }
         } else if query.isEmpty {
@@ -239,7 +240,7 @@ struct HostSection: View {
         if !older.isEmpty {
             group("older", Text("Older"), count: older.count) {
                 ForEach(Array(older.enumerated()), id: \.element.id) { i, s in
-                    project(s, tiles: column, divider: i < older.count - 1 && !faced(older[i + 1]) && !faced(s))
+                    project(s, tiles: column, divider: i < older.count - 1 && !faced(older[i + 1]) && !faced(s), grouped: true)
                 }
             }
         }
@@ -279,7 +280,11 @@ struct HostSection: View {
     }
 
     /// A project's row, and under it, open, its tabs and New Tab.
-    private func project(_ s: Host.Session, tiles: CGFloat, divider: Bool) -> some View {
+    /// A project: its row, and open, its tabs and New Tab. Grouped, it is
+    /// one of several in a card (Older), and the window's project has a
+    /// face of its own inside it; else it has a card of its own, which is
+    /// that face.
+    private func project(_ s: Host.Session, tiles: CGFloat, divider: Bool, grouped: Bool) -> some View {
         let k = Self.key(host, s.id)
         let isOpen = expanded.contains(k) || !query.isEmpty
         let face = faced(s)
@@ -295,7 +300,7 @@ struct HostSection: View {
             if isOpen {
                 // One block, so that the tabs come and go as a whole.
                 VStack(spacing: 0) {
-                    rows(entries((s.view?.windows ?? []).map { (s, $0) }), more: true, tiles: tiles, onFace: face)
+                    rows(entries((s.view?.windows ?? []).map { (s, $0) }), more: true, tiles: tiles, onFace: face, grouped: grouped)
                     newTabRow { newProjectTab(s) }
                 }
                 .transition(reduceMotion ? .identity : .opacity.combined(with: .scale(scale: 0.96, anchor: .top)))
@@ -303,7 +308,9 @@ struct HostSection: View {
         }
         // Always drawn, shown by its opacity: choosing another project
         // moves nothing.
-        .background { ProjectFace().opacity(face ? 1 : 0).animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: face) }
+        .background {
+            if grouped { ProjectFace().opacity(face ? 1 : 0).animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: face) }
+        }
     }
 
     /// A project's menu (docs/MOD-002-projects.md, Desktop: a project's context
@@ -414,7 +421,7 @@ struct HostSection: View {
         return VStack(alignment: .leading, spacing: 12) {
             if case .offline(let why) = host.status { offline(why) } else { Text("Connecting…").foregroundStyle(.secondary) }
             if !recent.isEmpty {
-                card { ForEach(Array(recent.enumerated()), id: \.element.id) { i, p in awayProject(p, divider: i < recent.count - 1) } }
+                VStack(spacing: 12) { ForEach(recent, id: \.id) { p in card { awayProject(p, divider: false) } } }
             }
             if !older.isEmpty {
                 group("older", Text("Older"), count: older.count) {
@@ -734,16 +741,21 @@ struct HostSection: View {
         }
     }
 
-    private func card(@ViewBuilder _ content: () -> some View) -> some View {
+    private func card(face: Bool = false, @ViewBuilder _ content: () -> some View) -> some View {
         VStack(spacing: 0, content: content)
-            .background(.fill.quaternary)
+            .background {
+                Rectangle().fill(.fill.quaternary)
+                // The card of the project the window shows is its face.
+                Rectangle().fill(Color.primary.opacity(0.06)).opacity(face ? 1 : 0)
+                    .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: face)
+            }
             // The rows' highlights keep to the card's corners.
             .clipShape(.rect(cornerRadius: 22, style: .continuous))
     }
 
     /// The rows of a card, each with its tab's menu, and dragged onto
     /// another of its session to move there; more is a row after them.
-    private func rows(_ entries: [Entry], more: Bool = false, tiles column: CGFloat? = nil, onFace: Bool = false) -> some View {
+    private func rows(_ entries: [Entry], more: Bool = false, tiles column: CGFloat? = nil, onFace: Bool = false, grouped: Bool = true) -> some View {
         let windows = arranged(entries)
         // The room of the tiles of the tab with the most, so that the titles line up.
         let tiles = column ?? ProgramTiles.width(behind: windows.map(\.window.back.count).max() ?? 0)
@@ -758,13 +770,14 @@ struct HostSection: View {
                 openRow(TerminalTarget(host: host.id, session: w.session.id, block: w.block, title: host.title(w.window)))
             } label: {
                 WindowRow(host: host, block: w.block, window: w.window, tiles: tiles,
-                          divider: (more || i < windows.count - 1) && !shownTab(w) && !(i + 1 < windows.count && shownTab(windows[i + 1]))) {
+                          divider: (more || i < windows.count - 1) && !shownTab(w) && !(i + 1 < windows.count && shownTab(windows[i + 1])),
+                          plate: false) {
                     Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(.gray)
                 }
             }
             .buttonStyle(.plain)
             .hoverEffect(.highlight)
-            .background { if shownTab(w) { LiftedPill() } }
+            .background { if shownTab(w) { LiftedPill(grouped: grouped) } }
             .matchedTransitionSource(id: ZoomSource.row(host: host.id, session: w.session.id, window: w.window.window_id), in: zoom)
             let shown = shownBy[w.session.id] ?? []
             let place = RowPlace(host: host.id, session: w.session.id, window: w.window.window_id)
@@ -809,31 +822,17 @@ struct ProjectRow: View {
     }
 }
 
-/// A project's tile: the size and corners of a program tile, a neutral
-/// face, and a folder in the project's color (muted with none).
+/// A project's mark: a folder in the project's color (muted with none),
+/// with no plate, as big as a program tile and centred where its front
+/// tile stands.
 struct FolderTile: View {
     let color: String?
-    @Environment(\.colorScheme) private var scheme
 
     var body: some View {
         let k = ProgramTiles.scale
-        let card = RoundedRectangle(cornerRadius: 4.5 * k)
-        card.fill(scheme == .dark ? Color(white: 0.32) : Color.white)
-            .overlay {
-                card.fill(LinearGradient(stops: [.init(color: .white.opacity(0.18), location: 0), .init(color: .white.opacity(0), location: 0.5),
-                                                 .init(color: .black.opacity(0.06), location: 1)], startPoint: .top, endPoint: .bottom))
-            }
-            .overlay { card.strokeBorder(scheme == .dark ? Color.white.opacity(0.2) : Color.black.opacity(0.1), lineWidth: 0.5) }
-            .overlay {
-                Image(systemName: "folder.fill")
-                    .font(.system(size: 10.5 * k))
-                    .foregroundStyle(Color(project: color) ?? .secondary)
-            }
-            .background {
-                RoundedRectangle(cornerRadius: 4.5 * k + 0.75).fill(scheme == .dark ? .black.opacity(0.7) : .white.opacity(0.95))
-                    .padding(scheme == .dark ? -0.75 : -k)
-            }
-            .shadow(color: .black.opacity(0.18), radius: 0.75 * k, y: 0.5 * k)
+        Image(systemName: "folder.fill")
+            .font(.system(size: 20 * k * 0.9))
+            .foregroundStyle(Color(project: color) ?? .secondary)
             .frame(width: 21 * k, height: 16 * k)
             .padding(.leading, k)
             .accessibilityHidden(true)
@@ -857,15 +856,19 @@ private struct ProjectFace: View {
 /// The tab that is open on the face, lifted: a lighter face, a soft
 /// shadow and a hairline.
 private struct LiftedPill: View {
+    /// In a card shared with other projects it sits in the project's face
+    /// (4 pt in from the card, 8 pt in all); else the card is the face.
+    let grouped: Bool
     @Environment(\.colorScheme) private var scheme
 
     var body: some View {
-        let shape = RoundedRectangle(cornerRadius: 14, style: .continuous)
+        // The inner radius is the outer one less the padding between them.
+        let inset: CGFloat = grouped ? 8 : 4
+        let shape = RoundedRectangle(cornerRadius: 22 - inset, style: .continuous)
         shape.fill(scheme == .dark ? Color.white.opacity(0.13) : Color.white)
             .overlay { shape.strokeBorder(Color.primary.opacity(scheme == .dark ? 0.12 : 0.08), lineWidth: 0.5) }
             .shadow(color: .black.opacity(scheme == .dark ? 0.35 : 0.1), radius: 4, y: 1)
-            // Inside the face (4 pt from the card) by its 4 pt again.
-            .padding(.horizontal, 8)
+            .padding(.horizontal, inset)
             .padding(.vertical, 2)
     }
 }
