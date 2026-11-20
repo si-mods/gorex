@@ -16,7 +16,8 @@ struct TerminalScreen: View {
     @Environment(\.scenePhase) private var phase
     /// Whether the stream was left in the background, for a resume.
     @State private var suspended = false
-    /// This screen, as the Live Activity's owner (TerminalLive).
+    /// This screen, as the Live Activity's owner (TerminalLive) and the
+    /// window scheme's (ScreenStyle).
     @State private var liveOwner = UUID()
     /// What failed last, and why, as the server says it.
     @State private var failure: (title: LocalizedStringKey, why: String)?
@@ -24,6 +25,8 @@ struct TerminalScreen: View {
     @State private var closing: Set<String> = []
     /// Whether the session's sheet is open, as the title opens it.
     @State private var sheet = false
+    /// The session's sheet grows out of the title's pill, and shrinks back.
+    @Namespace private var zoom
     /// Whether the diagnostics of a failed terminal show.
     @State private var diagnostics = false
     /// The height of the status bar.
@@ -186,6 +189,7 @@ struct TerminalScreen: View {
                     OwnBody { principalTitlePill }
                 }
                 .sharedBackgroundVisibility(.hidden)
+                .matchedTransitionSource(id: "title", in: zoom)
                 // The mic where the terminal has no key bar, and the
                 // window's menu, New Tab being in the session's sheet and on
                 // ⌘T, the split on ⌘D as the desktop's; the bar's glass
@@ -215,7 +219,9 @@ struct TerminalScreen: View {
             // one below does not reach it under a dark system.
             .sheet(isPresented: $sheet) { SessionSheet(target: currentTarget, host: host, go: { next in
                 if let next { switchTo(next) } else { go(nil) }
-            }, newTab: newTab).environment(\.colorScheme, scheme) }
+            }, newTab: newTab)
+            .environment(\.colorScheme, scheme)
+            .navigationTransition(.zoom(sourceID: "title", in: zoom)) }
             .sheet(isPresented: $diagnostics) {
                 NavigationStack {
                     DiagnosticsView(address: host.config.url.host() ?? "", host: host.config, failure: session?.diagnosis)
@@ -231,7 +237,7 @@ struct TerminalScreen: View {
             .toolbarColorScheme(scheme, for: .navigationBar)
             .environment(\.colorScheme, scheme)
 
-            .onChange(of: scheme, initial: true) { _, s in ScreenStyle.shared.terminal = s }
+            .onChange(of: scheme, initial: true) { _, s in ScreenStyle.shared.set(s, by: liveOwner) }
             .onAppear {
                 gone = false
                 let s = session ?? TerminalSession(host: host, session: currentTarget.session, block: currentTarget.block)
@@ -247,7 +253,7 @@ struct TerminalScreen: View {
             .onChange(of: currentTarget) { showActivity() }
             .onDisappear {
                 gone = true
-                ScreenStyle.shared.terminal = nil
+                ScreenStyle.shared.clear(by: liveOwner)
                 paneMapTask?.cancel()
                 terminal?.stopDictating()
                 dropIncoming()
@@ -1483,6 +1489,7 @@ private struct TerminalRepresentable: UIViewRepresentable {
         if arrived, GCKeyboard.coalesced != nil { _ = v.terminal.becomeFirstResponder() }
         v.onPaneDrag = onPaneDrag
         v.canSwipe = canSwipe
+        v.zoomGuard.isEnabled = context.environment.zoomed
         v.setBottomEdgeColor(UIColor(cgColor: (session.background ?? .black).cgColor))
         if context.coordinator.shown.update(DictationShown(said: voice.said, busy: voice.busy)) {
             context.coordinator.mic.rootView = mic

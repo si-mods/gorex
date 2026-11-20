@@ -17,7 +17,13 @@ struct HostSection: View {
     /// The projects and Older open, by key.
     @Binding var expanded: Set<String>
     let query: String
+    /// What the rows zoom the terminal out of, and move between the lists
+    /// in.
+    let zoom: Namespace.ID
+    let places: Namespace.ID
     let open: (TerminalTarget) -> Void
+    /// Opens a row's tab, from the row.
+    let openRow: (TerminalTarget) -> Void
     /// Opens New Project on the host.
     let newProject: () -> Void
     @Environment(HostStore.self) private var store
@@ -140,6 +146,7 @@ struct HostSection: View {
                 .buttonStyle(.glass)
                 .buttonBorderShape(.circle)
                 .accessibilityLabel("New Project")
+                .matchedTransitionSource(id: ZoomSource.newProject(host.id), in: zoom)
             }
             Menu {
                 Button("Rename…", systemImage: "pencil") {
@@ -696,7 +703,7 @@ struct HostSection: View {
         let shownBy = RowGroups.shown(windows.map { ($0.session.id, $0.window.window_id) })
         return ForEach(Array(windows.enumerated()), id: \.element.id) { i, w in
             let row = Button {
-                open(TerminalTarget(host: host.id, session: w.session.id, block: w.block, title: host.title(w.window)))
+                openRow(TerminalTarget(host: host.id, session: w.session.id, block: w.block, title: host.title(w.window)))
             } label: {
                 WindowRow(host: host, block: w.block, window: w.window, tiles: tiles, divider: more || i < windows.count - 1) {
                     Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(.gray)
@@ -704,12 +711,15 @@ struct HostSection: View {
             }
             .buttonStyle(.plain)
             .hoverEffect(.highlight)
+            .matchedTransitionSource(id: ZoomSource.row(host: host.id, session: w.session.id, window: w.window.window_id), in: zoom)
             let shown = shownBy[w.session.id] ?? []
+            let place = RowPlace(host: host.id, session: w.session.id, window: w.window.window_id)
             let lifted = drag.map { !$0.dropped && $0.session.id == w.session.id && $0.window == w.window.window_id } ?? false
             row.onDrag { lift(w, shown: shown) }
                 .contextMenu { menu(w.session, w.window, shown: shown) }
                 .onDrop(of: [.text], delegate: RowDrop(pass: { pass(over: w) }, drop: { drop($0) }))
                 .opacity(lifted ? 0.4 : 1)
+                .modifier(MatchedPlace(place: place, own: .tab(place), namespace: places))
         }
     }
 }

@@ -6,6 +6,10 @@ import SwiftUI
 struct StatusInbox: View {
     let query: String
     @Binding var collapsed: Set<String>
+    /// What the rows zoom the terminal out of, and move between the lists
+    /// in.
+    let zoom: Namespace.ID
+    let places: Namespace.ID
     let open: (TerminalTarget) -> Void
     @Environment(HostStore.self) private var store
 
@@ -67,11 +71,17 @@ struct StatusInbox: View {
                             }
                             .buttonStyle(.plain)
                             .hoverEffect(.highlight)
+                            .matchedTransitionSource(id: ZoomSource.row(host: item.host, session: item.session, window: item.window.window_id), in: zoom)
+                            .modifier(MatchedPlace(place: Self.place(item), own: .inbox(item.id), namespace: places))
                         }
                     }
                 }
             }
         }
+    }
+
+    private static func place(_ item: InboxItem) -> RowPlace {
+        RowPlace(host: item.host, session: item.session, window: item.window.window_id)
     }
 
     static let names: [String: LocalizedStringKey] = [

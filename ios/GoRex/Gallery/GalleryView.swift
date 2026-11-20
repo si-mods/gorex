@@ -57,6 +57,11 @@ struct GalleryView: View {
     let title: String
     @Environment(\.dismiss) private var dismiss
     @State private var viewing: GalleryEntry?
+    /// The image the pager shows, which its cover grows out of and shrinks
+    /// back into: nil for the one tapped, until a swipe. A swipe changes it,
+    /// not viewing, which would present the cover again.
+    @State private var shown: String?
+    @Namespace private var zoom
     @State private var selecting = false
     @State private var selected: Set<String> = []
     @State private var clearing = false
@@ -71,12 +76,24 @@ struct GalleryView: View {
     var body: some View {
         NavigationStack {
             GeometryReader { geo in
-                ScrollView {
-                    LazyVGrid(columns: columns(geo.size), spacing: 2) {
-                        ForEach(gallery.entries) { cell($0) }
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        LazyVGrid(columns: columns(geo.size), spacing: 2) {
+                            ForEach(gallery.entries) { cell($0) }
+                        }
+                    }
+                    .defaultScrollAnchor(.bottom, for: .initialOffset)
+                    // The image a swipe in the pager shows keeps its cell on
+                    // screen, at once, so the pager shrinks into it as it
+                    // closes; the tap's cell is on screen, and the zoom reads
+                    // its frame then.
+                    .onChange(of: shown) { _, id in
+                        guard viewing != nil, let id else { return }
+                        var t = Transaction()
+                        t.disablesAnimations = true
+                        withTransaction(t) { proxy.scrollTo(id) }
                     }
                 }
-                .defaultScrollAnchor(.bottom, for: .initialOffset)
             }
             .overlay { if gallery.entries.isEmpty { empty } }
             .overlay { if preparing { ProgressView().controlSize(.large) } }
@@ -88,7 +105,9 @@ struct GalleryView: View {
         .onAppear { gallery.opened() }
         .onDisappear { preparation?.cancel() }
         .fullScreenCover(item: $viewing) { e in
-            GalleryPager(gallery: gallery, session: session, current: e.id)
+            GalleryPager(gallery: gallery, session: session,
+                         current: Binding { shown ?? e.id } set: { shown = $0 })
+                .navigationTransition(.zoom(sourceID: shown ?? e.id, in: zoom))
         }
         .sheet(item: $sharing, onDismiss: { GalleryImages.discard(shared); shared = [] }) { s in
             ShareSheet(items: s.urls).ignoresSafeArea()
@@ -118,6 +137,8 @@ struct GalleryView: View {
 
     private func cell(_ e: GalleryEntry) -> some View {
         GalleryCell(entry: e, gallery: gallery, session: session)
+            .matchedTransitionSource(id: e.id, in: zoom)
+            .id(e.id)
             .overlay(alignment: .bottomTrailing) {
                 if selecting {
                     Image(systemName: selected.contains(e.id) ? "checkmark.circle.fill" : "circle")
@@ -132,6 +153,7 @@ struct GalleryView: View {
                 if selecting {
                     if selected.remove(e.id) == nil { selected.insert(e.id) }
                 } else {
+                    shown = nil
                     viewing = e
                 }
             }

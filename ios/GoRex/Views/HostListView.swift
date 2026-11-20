@@ -35,6 +35,15 @@ struct HostListView: View {
     @State private var inbox = false
     @State private var query = ""
     @State private var settings = false
+    /// What the terminal open zooms out of: the row tapped, else none, for
+    /// the standard push; and the button that opened Settings
+    /// (docs/IOS-011-continuous-transitions.md).
+    @State private var zoomed: ZoomRecord?
+    @State private var settingsSource: ZoomSource = .settings
+    @Namespace private var zoom
+    /// The rows that move between All Tabs and Activity.
+    @Namespace private var places
+    @Environment(\.accessibilityReduceMotion) private var still
     /// The GoRex machine of a Rex Go code opened from outside, to pair with;
     /// waiting is one that waits for Settings to close first.
     @State private var pairing: HostConfig?
@@ -68,7 +77,10 @@ struct HostListView: View {
                     // A terminal of its own for each target: the last one
                     // closes as the next opens.
                     if let t = path.last, let host = store.host(t.host) {
+                        // A row tapped in the sidebar fades to its terminal
+                        // (openRow); every other open cuts.
                         TerminalScreen(target: t, host: host, go: go).id(t)
+                            .transition(.opacity)
                     } else {
                         ContentUnavailableView("No Tab Open", systemImage: "terminal",
                                                description: Text("Choose a tab in the list."))
@@ -80,7 +92,12 @@ struct HostListView: View {
                     // A terminal of its own here too: go replaces the path, which
                     // alone would keep the old one.
                     list.navigationDestination(for: TerminalTarget.self) { t in
-                        if let host = store.host(t.host) { TerminalScreen(target: t, host: host, go: go).id(t) }
+                        if let host = store.host(t.host) {
+                            // Out of the row tapped, and back into it; any
+                            // other open pushes.
+                            TerminalScreen(target: t, host: host, go: go).id(t)
+                                .modifier(ZoomFrom(source: zoomed?.source(for: t), namespace: zoom))
+                        }
                     }
                 }
             }
@@ -142,6 +159,7 @@ struct HostListView: View {
         .onChange(of: renameKey, initial: true) { _, _ in sendRenames() }
         .sheet(item: $newProject) { host in
             ProjectSheet(host: host, space: SpaceName.shown(current)) { dir, name in createProject(on: host, dir: dir, name: name) }
+                .navigationTransition(.zoom(sourceID: ZoomSource.newProject(host.id), in: zoom))
         }
         .sheet(isPresented: $editingSpaces) {
             EditSpaces(spaces: spaces, carried: carried, projects: projects(in:)) { from, to in
@@ -175,7 +193,23 @@ struct HostListView: View {
 
     /// Opens a terminal, in place of the one open; nil goes back to the list.
     private func go(_ t: TerminalTarget?) {
+        // Only a row's tap zooms: another terminal opens with the push. The
+        // one shown keeps its zoom, to close into its row.
+        if let t, t != path.last { zoomed = nil }
         path = t.map { [$0] } ?? []
+    }
+
+    /// Opens a row's tab: on a narrow window it zooms out of the row; on a
+    /// wide one the detail fades to it.
+    private func openRow(_ t: TerminalTarget) {
+        if width == .regular {
+            withAnimation(.easeInOut(duration: still ? 0.15 : 0.2)) { go(t) }
+        } else {
+            go(t)
+            // The source is fixed at the tap: a split or a focus change
+            // later cannot move it.
+            zoomed = ZoomSource.row(of: t, in: store).map { ZoomRecord(target: t, source: $0) }
+        }
     }
 
     private var list: some View {
@@ -183,7 +217,10 @@ struct HostListView: View {
             if store.hosts.isEmpty {
                 // As tall as the page, so that the welcome sits in its
                 // middle, above the keyboard or the bottom bar.
-                NoHostsView(tryDemo: { store.enterDemo() }, addHost: { settings = true })
+                NoHostsView(zoom: zoom, tryDemo: { store.enterDemo() }, addHost: {
+                    settingsSource = .addHost
+                    settings = true
+                })
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background { Color.page.ignoresSafeArea() }
             } else {
@@ -195,15 +232,20 @@ struct HostListView: View {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 30) {
                         if inbox {
-                            StatusInbox(query: query, collapsed: $collapsed, open: { go($0) })
+                            StatusInbox(query: query, collapsed: $collapsed, zoom: zoom, places: places, open: { openRow($0) })
                         } else {
                             if hasSpaces { ListPicker(wide: width == .regular) { picker(spaces: spaces, current: current) } }
                             ForEach(store.hosts.filter { shows($0, hasSpaces: hasSpaces, current: current) }) { host in
                                 HostSection(host: host, space: current, spaces: spaces, collapsed: $collapsed, expanded: expanded,
-                                            query: query, open: { go($0) }, newProject: { newProject = host })
+                                            query: query, zoom: zoom, places: places,
+                                            open: { go($0) }, openRow: { openRow($0) }, newProject: { newProject = host })
                             }
                         }
                     }
+                    // The rows the search keeps move to their places, and the
+                    // others fade; under Reduce Motion they change at once,
+                    // as a fade alone would still move the rows kept.
+                    .animation(still ? nil : .snappy, value: query)
                     .padding(.horizontal, 20)
                     .padding(.top, 12)
                     .padding(.bottom, 20)
@@ -233,10 +275,19 @@ struct HostListView: View {
             ToolbarItem(placement: .topBarLeading) {
                 if width == .regular, !inbox, hasSpaces { picker(spaces: spaces, current: current, place: .bar) }
             }
-            ToolbarItemGroup(placement: .bottomBar) {
-                Button("Settings", systemImage: "gearshape") { settings = true }
+            // An item of its own, for Settings to zoom out of.
+            ToolbarItem(placement: .bottomBar) {
+                Button("Settings", systemImage: "gearshape") {
+                    settingsSource = .settings
+                    settings = true
+                }
+            }
+            .matchedTransitionSource(id: ZoomSource.settings, in: zoom)
+            ToolbarItem(placement: .bottomBar) {
                 Button(inbox ? "Show All Tabs" : "Show Activity", systemImage: inbox ? "eye.slash" : "eye") {
-                    inbox.toggle()
+                    // A tab in both lists moves to its place in the other;
+                    // the rest fades, and all of it under Reduce Motion.
+                    withAnimation(still ? .easeInOut(duration: 0.15) : .snappy) { inbox.toggle() }
                 }
             }
             ToolbarSpacer(.flexible, placement: .bottomBar)
@@ -246,10 +297,15 @@ struct HostListView: View {
         .searchToolbarBehavior(.minimize)
         .textInputAutocapitalization(.never)
         .autocorrectionDisabled()
+        // A host added from Add a Host takes the button away: Settings
+        // closes into its own button.
+        .onChange(of: store.hosts.isEmpty) { _, empty in
+            if !empty { settingsSource = .settings }
+        }
         .sheet(isPresented: $settings, onDismiss: {
             if let c = waiting { pairing = c }
             waiting = nil
-        }) { SettingsView() }
+        }) { SettingsView().navigationTransition(.zoom(sourceID: settingsSource, in: zoom)) }
     }
 
     // MARK: Spaces
@@ -430,6 +486,8 @@ private struct ListPicker<Content: View>: View {
 /// What the list shows before any host is added: how Rex Go reaches a
 /// computer, and Demo Mode's way in.
 private struct NoHostsView: View {
+    /// Where Add a Host is the source Settings zooms out of.
+    let zoom: Namespace.ID
     let tryDemo: () -> Void
     let addHost: () -> Void
 
@@ -463,6 +521,7 @@ private struct NoHostsView: View {
                 }
                 .buttonStyle(.glass)
                 .controlSize(.large)
+                .matchedTransitionSource(id: ZoomSource.addHost, in: zoom)
             }
             .frame(maxWidth: 360)
             .padding(.top, 6)
@@ -501,6 +560,83 @@ private struct DemoBanner: View {
         .padding(.horizontal, 20)
         .padding(.top, 8)
         .padding(.bottom, 4)
+    }
+}
+
+/// What a terminal or a sheet zooms out of
+/// (docs/IOS-011-continuous-transitions.md).
+enum ZoomSource: Hashable {
+    /// A tab's row, by its window: not its title, which changes, nor its
+    /// focused pane, which a split moves.
+    case row(host: UUID, session: String, window: String)
+    case settings
+    case addHost
+    /// A host's New Project button.
+    case newProject(UUID)
+
+    /// The row of the window that holds the target's pane.
+    @MainActor static func row(of t: TerminalTarget, in store: HostStore) -> ZoomSource? {
+        guard let host = store.host(t.host),
+              let w = host.sessions.first(where: { $0.id == t.session })?.view?.windows?.first(where: { $0.holds(t.block) })
+        else { return nil }
+        return .row(host: t.host, session: t.session, window: w.window_id)
+    }
+}
+
+/// The terminal a row's tap opens, and the source it zooms out of.
+private struct ZoomRecord {
+    let target: TerminalTarget
+    let source: ZoomSource
+
+    /// The source, for that target only: compared by host, session and pane.
+    func source(for t: TerminalTarget) -> ZoomSource? {
+        t.host == target.host && t.session == target.session && t.block == target.block ? source : nil
+    }
+}
+
+/// A terminal's push: a zoom out of its source, else the standard one.
+private struct ZoomFrom: ViewModifier {
+    let source: ZoomSource?
+    let namespace: Namespace.ID
+
+    func body(content: Content) -> some View {
+        if let source {
+            content.navigationTransition(.zoom(sourceID: source, in: namespace))
+                .environment(\.zoomed, true)
+        } else {
+            content.navigationTransition(.automatic)
+        }
+    }
+}
+
+/// A tab's place in All Tabs and in Activity, by its window: its row
+/// moves from one list to the other.
+struct RowPlace: Hashable {
+    let host: UUID
+    let session: String
+    let window: String
+}
+
+/// A row's id in the lists' namespace: its place, which the other list
+/// shares, or one of its own in its list, which nothing matches.
+enum RowMatch: Hashable {
+    case place(RowPlace)
+    case tab(RowPlace)
+    case inbox(String)
+}
+
+/// Moves a row to its place in the other list; a row with no place, or
+/// any row under Reduce Motion, fades. One effect for both, so a change of
+/// Reduce Motion keeps the rows.
+struct MatchedPlace: ViewModifier {
+    let place: RowPlace?
+    /// The row's id when it fades.
+    let own: RowMatch
+    let namespace: Namespace.ID
+    @Environment(\.accessibilityReduceMotion) private var still
+
+    func body(content: Content) -> some View {
+        content.matchedGeometryEffect(id: still ? own : place.map(RowMatch.place) ?? own, in: namespace)
     }
 }
 

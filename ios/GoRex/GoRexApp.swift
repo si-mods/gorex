@@ -6,6 +6,20 @@ import SwiftUI
 @Observable final class ScreenStyle {
     static let shared = ScreenStyle()
     var terminal: ColorScheme?
+    /// The screen that set it. On an iPad the old screen fades out after
+    /// the new one set its scheme, and must not clear that one.
+    @ObservationIgnored private var owner: UUID?
+
+    func set(_ scheme: ColorScheme, by screen: UUID) {
+        owner = screen
+        terminal = scheme
+    }
+
+    func clear(by screen: UUID) {
+        guard owner == screen else { return }
+        owner = nil
+        terminal = nil
+    }
 }
 
 @main
