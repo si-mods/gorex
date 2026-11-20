@@ -389,7 +389,7 @@ func (a *App) workspaceTabs(c *ui.Context, k *colors, w *Workspace, reserve floa
 		name, detail, prog := savedTabFace(t, infos)
 		if spaceTab(c, k, cmp.Or(t.ID, fmt.Sprint(i)), name, detail, a.st.savedTabStatus(t, id, infos), reserve, func() {
 			ui.Box(c).Size(tileW+2, tileH+4).Shrink(0).Draw(func(p *ui.Painter, r ui.Rect) {
-				drawTile(p, k, ui.Rect{X: r.X + 1, Y: r.Y + 2, W: tileW, H: tileH}, prog, true)
+				drawTile(p, ui.Rect{X: r.X + 1, Y: r.Y + 2, W: tileW, H: tileH}, prog, true)
 			})
 		}) {
 			pick(i)

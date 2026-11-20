@@ -188,38 +188,34 @@ func TestNotificationImage(t *testing.T) {
 }
 
 // TestTileImageKey draws a tile for what it shows, not the program's
-// name: two names of one tile share it, one name of two colors does not,
-// nor do the dark appearance and the light, whose rims differ.
+// name: two names of one tile share it, one name of two colors does not.
 func TestTileImageKey(t *testing.T) {
 	py, ipy := programOf("python"), programOf("ipython")
 	other := py
 	other.TileBg = ui.Hex("#000000")
-	light := tileImage(py, false)
+	light := tileImage(py)
 	if light == nil {
 		t.Fatal("no tile")
 	}
-	if b := tileImage(ipy, false); &b[0] != &light[0] {
+	if b := tileImage(ipy); &b[0] != &light[0] {
 		t.Error("two names of one tile draw it twice")
 	}
-	if b := tileImage(other, false); b == nil || bytes.Equal(b, light) {
+	if b := tileImage(other); b == nil || bytes.Equal(b, light) {
 		t.Error("a tile of another color is the cached one")
 	}
 	agy := programOf("agy")
 	if agy.Name != "Antigravity" || agy != programOf("antigravity") || agy != programOf("antigravity-cli") {
 		t.Errorf("agy program = %+v", agy)
 	}
-	if tileImage(agy, false) == nil {
+	if tileImage(agy) == nil {
 		t.Error("no tile for agy")
 	}
 	devin := programOf("devin")
 	if devin.Name != "Devin" {
 		t.Errorf("devin program = %+v", devin)
 	}
-	if tileImage(devin, false) == nil {
+	if tileImage(devin) == nil {
 		t.Error("no tile for devin")
-	}
-	if b := tileImage(py, true); b == nil || bytes.Equal(b, light) {
-		t.Error("the dark appearance's tile is the light one")
 	}
 }
 

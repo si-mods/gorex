@@ -616,31 +616,29 @@ func (a *App) tiles(c *ui.Context, k *colors, t *Tab) {
 		for i := len(back) - 1; i >= 0; i-- {
 			x := r.X + 1 + float32(tileStep*(i+1))
 			inset := float32(i+1) * 0.8
-			drawTile(p, k, ui.Rect{X: x, Y: y + inset, W: tileW, H: tileH - 2*inset}, back[i].program(), false)
+			drawTile(p, ui.Rect{X: x, Y: y + inset, W: tileW, H: tileH - 2*inset}, back[i].program(), false)
 		}
 		if front != nil {
 			fr := ui.Rect{X: r.X + 1, Y: y, W: tileW, H: tileH}
 			if m == tileStill {
-				drawTile(p, k, fr, front.program(), true)
+				drawTile(p, fr, front.program(), true)
 			} else {
 				p.AnimationFrameRate(30)
 				dy, sx, sy := tileBounceAt(m, p.Now())
 				// iOS squashes about the tile's bottom edge, then lifts.
 				p.Transform(ui.Scaling(sx, sy).Then(ui.Translation(0, dy)), fr.X+fr.W/2, fr.Y+fr.H, func() {
-					drawTile(p, k, fr, front.program(), true)
+					drawTile(p, fr, front.program(), true)
 				})
 			}
 		}
 	})
 }
 
-// drawTile draws a program's tile: a rounded card of its color with a
-// light rim, and its glyph when it is in front.
-func drawTile(p *ui.Painter, k *colors, r ui.Rect, prog program, glyph bool) {
+// drawTile draws a program's tile: a rounded card of its color, and its
+// glyph when it is in front.
+func drawTile(p *ui.Painter, r ui.Rect, prog program, glyph bool) {
 	const rad = 4.5
 	p.Shadow(r, rad, 0, 0.5, 1.5, 0, ui.RGBA(0, 0, 0, 0.18))
-	rim := ui.Rect{X: r.X - 1, Y: r.Y - 1, W: r.W + 2, H: r.H + 2}
-	p.Fill(rim, k.tileRim, rad+1)
 	p.Fill(r, prog.TileBg, rad)
 	if prog.TileBorder {
 		p.Stroke(r, ui.RGBA(0, 0, 0, 0.12), rad, 0.5)
