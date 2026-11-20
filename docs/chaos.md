@@ -14,7 +14,7 @@ here writes into the repo.
 | Fault | Invariants | Automated check | Evidence |
 |---|---|---|---|
 | The server is killed (`SIGKILL`) | 2 | `TestCrashRestoresSessions` (`internal/rex/journal_test.go`) | Test log: sessions back with their ids and directories |
-| The server is upgraded in place | 1, 2 | `TestUpgradeKeepsSessions` (`internal/cli/update_unix_test.go`), `TestUpgradeKeepsAppliedLayout` (`internal/rex/upgrade_test.go`) | Test log: the same sessions, the same layout |
+| The server is upgraded in place | 1, 2 | `TestUpgradeServerKeepsSessions` (`internal/cli/update_unix_test.go`), `TestUpgradeKeepsAppliedLayout` (`internal/rex/upgrade_test.go`) | Test log: the same sessions, the same layout |
 | The connection drops | 1, 3 | `TestReconnectUpdatesWindows` (`workspace_test.go`), `TestChaosConnectionLoss` (`chaos_test.go`) | Test log: the same session, its terminal still holds the screen |
 | A client stalls or its address is blackholed | 5 | `TestStalledClientIsDropped`, `TestBlackholedAttachesAreDropped` (`internal/rex/stale_test.go`) | Test log: dropped, queue bounded |
 | A pane is killed while a layout applies | 3, 6 | `TestKillDuringApply`, `TestKilledPaneGoesAtOnce` (`internal/rex/layout_life_test.go`) | Test log: the pane leaves at once, no ghost |

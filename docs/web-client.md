@@ -279,7 +279,7 @@ browsers block `http://` and `ws://` from it as mixed content. So:
   address, `https://<machine>-gorex.<tailnet>.ts.net`, from built-in
   Tailscale.
 - A gateway's local network listener is plain http
-  (`http://192.168.1.2:7297`). Reach it from an http page: the local dev
+  (`http://192.0.2.2:7297`). Reach it from an http page: the local dev
   server.
 - Chrome's Local Network Access (below) lets an https page open `ws://`
   to a private or loopback IP address, `localhost` or a `.local` name,

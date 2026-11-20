@@ -1,46 +1,48 @@
-# Rex Go: 以 iOS（+ iCloud）为中心化控制端的跨主机 Space 同步设计
+# Rex Go: cross-host Space sync with iOS (and iCloud) as the central control app
 
-Status: replaced by [projects.md](projects.md). Rex Go 不再保存 `SpaceManifest`，也不经 iCloud 同步；项目由各主机保存，Rex Go 从主机读取（projects.md 阶段 3）。以下为历史设计：阶段 1 见 #580，阶段 2 与 3 见 #581。
+Status: replaced by [projects.md](projects.md).
 
-## 1. 背景与问题诊断
+This doc is history. Rex Go no longer stores `SpaceManifest`, and it no longer syncs through iCloud. Each host stores its projects, and Rex Go reads them from the host (projects.md, phase 3). The text below is the old design. Phase 1 is in #580. Phases 2 and 3 are in #581.
 
-iOS 端（Rex Go）作为纯控制端，自身不运行本地 shell 或 PTY，所有终端窗口均运行在各个 Remote Hosts（MacBook、Mac Mini、Linux 服务器等）上。
+## 1. Problem and diagnosis
 
-但当前的跨主机 Space 实现（[internal/rexapi/spaces.go](../internal/rexapi/spaces.go)、[ios/GoRex/Rex/Spaces.swift](../ios/GoRex/Rex/Spaces.swift)、[ios/GoRex/Views/HostListView.swift](../ios/GoRex/Views/HostListView.swift)）采用的是**去中心化的内存临时拼图**，存在以下结构性缺陷：
+The iOS app (Rex Go) is a pure control app. It runs no local shell or PTY. All terminal windows run on the remote hosts (MacBook, Mac mini, Linux servers and others).
 
-1. **无中心化持久化真相源，桌面离线即分组崩塌**：
-   - 每个 Host 各自通过 `GET /api/spaces` 汇报“我本地的某个 Space 引用了哪些其它 `machine_id` 的 `block_id`”。
-   - iOS 端的 `CrossHost` 只在内存中将**当前在线**的 Host 拼在一起。一旦记录了跨主机分组的桌面端（如 MacBook）休眠或离线，`Host.crossHost` 变为 `nil`，iOS 瞬间丢失所有跨主机分组，其余在线 Remote Hosts（如 Linux）的窗口退化回各自孤立的 `Desktop terminals`。
-2. **Space 以 `(host, session)` 为唯一键，多主机同名 Space 无法统一**：
-   - `HostListView` 直接把每个在线主机的 `sessions` 平铺到顶部 strip。若两台主机都有 `Work`，顶部会分裂为 `Work · MacBook` 和 `Work · Mac Studio` 两个独立胶囊，无法作为同一个跨主机工作区管理。
-3. **跨主机 `machine_id` 依赖桌面端 `hosts.json` 缓存**：
-   - [internal/rexapi/model.go](../internal/rexapi/model.go) 中 `mp.machines[n.Host]` 依赖桌面端 `hosts.json` 的 `HostMachines`。若桌面端尚未记录某远端主机的 `machine`，该远端 `remote_block` 会被静默跳过。
-4. **远端新建/孤立终端产生大量碎片 Space**：
-   - 在远端主机上通过 CLI 或 iOS 直接新建的终端（落在 `gorex-desktop-terminals`），只要未被某个桌面 Space 引用，`CrossHost.isGone` 就为 `false`，导致顶部 strip 为每台主机不断冒出 `Desktop terminals · <Host>` 胶囊。
-5. **iOS 无法主动定义与修改跨主机 Space**：
-   - 由于 iOS 没有自己的 `rex` 服务端和 `layout.json`，用户在手机端新建 Space、跨主机归类窗口时，当前架构没有统一的持久化载体。
+The cross-host Space code today uses a **decentralized, temporary patchwork in memory**. The code is in [internal/rexapi/spaces.go](../internal/rexapi/spaces.go), [ios/GoRex/Rex/Spaces.swift](../ios/GoRex/Rex/Spaces.swift) and [ios/GoRex/Views/HostListView.swift](../ios/GoRex/Views/HostListView.swift). This code has these structural defects:
 
----
-
-## 2. 设计目标与非目标
-
-### 目标
-
-- **控制端中心化**：以 iOS 端持久化的 `SpaceManifest` 作为跨主机 Space 分组的唯一中心依据（Source of Truth），通过 iCloud 在用户自己的 Apple 控制端设备（iPhone / iPad）间自动同步，**不依赖任何常开服务器或 Hub 主机**。
-- **桌面端被动同步**：当桌面端（Mac / Linux / Windows GoRex）在线时，由控制端将相关的 Space 归属被动同步给桌面端（同时兼容从桌面端 `layout.json` 合并新变更）；桌面端离线时，iOS 仍保有完整 Space 分组，不影响其余在线 Remote Hosts 的展示与操作。
-- **统一跨主机 Space 模型**：以全局 `space.id` 为一等公民，消除同名 Space 分裂与各 host 的 `Desktop terminals` 碎片胶囊。
-
-### 非目标
-
-- 不在 iOS 端运行本地 shell 或 PTY。
-- 不引入自建云端中继或中心账号服务器（复用 iCloud + 现有 `tailcat` / Tailscale / `rexapi`）。
-- 不破坏对老版本 `rexapi` 服务端的向后兼容（未升级的远端主机仍可作为普通主机接入并在中心 Manifest 中被分组）。
+1. **No central persistent source of truth. When the desktop goes offline, the groups collapse.**
+   - Each host reports through `GET /api/spaces` which `block_id` values of other `machine_id` values one of its local Spaces refers to.
+   - The `CrossHost` of the iOS app joins only the hosts that are **online now**, and only in memory. A desktop (for example a MacBook) can record a cross-host group. When that desktop sleeps or goes offline, `Host.crossHost` becomes `nil`. The iOS app loses all cross-host groups at once. The windows of the other online remote hosts (for example Linux) fall back to isolated `Desktop terminals` groups.
+2. **A Space has the key `(host, session)`. Several hosts cannot unify Spaces with the same name.**
+   - `HostListView` puts the `sessions` of each online host flat in the top strip. Suppose two hosts both have `Work`. The top strip then splits into two separate capsules, `Work · MacBook` and `Work · Mac Studio`. The user cannot manage them as one cross-host workspace.
+3. **The cross-host `machine_id` depends on the `hosts.json` cache of the desktop.**
+   - In [internal/rexapi/model.go](../internal/rexapi/model.go), `mp.machines[n.Host]` depends on `HostMachines` of the desktop `hosts.json`. The desktop may lack the recorded `machine` of a remote host. The code then skips the `remote_block` of that host without a message.
+4. **A new or orphan terminal on a remote host makes many fragment Spaces.**
+   - A user creates a terminal on the remote host with the CLI or directly on iOS. The terminal goes into `gorex-desktop-terminals`. While no desktop Space refers to it, `CrossHost.isGone` stays `false`. The top strip then keeps adding a `Desktop terminals · <Host>` capsule for each host.
+5. **The iOS app cannot define or change a cross-host Space by itself.**
+   - iOS has no `rex` server and no `layout.json` of its own. The user creates a Space on the phone and sorts windows across hosts. The current architecture has no single place that stores this.
 
 ---
 
-## 3. 核心数据模型：`SpaceManifest`
+## 2. Goals and non-goals
 
-将“Space 分组目录”从单机 `layout.json` 中抽离，定义为一份独立的跨主机索引结构：
+### Goals
+
+- **A central control app.** The `SpaceManifest` that the iOS app stores is the one central source of truth for cross-host Space groups. iCloud syncs it among the Apple control devices of the user (iPhone and iPad). It needs **no always-on server or Hub host**.
+- **Passive sync to the desktop.** When a desktop (GoRex on Mac, Linux or Windows) is online, the control app passively syncs the related Space membership to it. The design also accepts new changes that it merges from the `layout.json` of the desktop. When the desktop is offline, iOS still holds the full Space groups. This does not affect how the other online remote hosts show and operate.
+- **One unified cross-host Space model.** The global `space.id` is the first-class key. This removes the split of same-name Spaces and the `Desktop terminals` fragment capsules of each host.
+
+### Non-goals
+
+- Do not run a local shell or PTY on iOS.
+- Do not add a self-built cloud relay or a central account server. Reuse iCloud and the existing `tailcat`, Tailscale and `rexapi`.
+- Do not break backward compatibility with old `rexapi` servers. A remote host that is not upgraded can still join as a normal host, and the central manifest can still group it.
+
+---
+
+## 3. Core data model: `SpaceManifest`
+
+The design takes the "Space group directory" out of the `layout.json` of one machine. It defines an independent cross-host index structure:
 
 ```json
 {
@@ -87,50 +89,54 @@ iOS 端（Rex Go）作为纯控制端，自身不运行本地 shell 或 PTY，�
 }
 ```
 
-### 3.1 Project 的主目录：`home_machine` 与 `dir`
+### 3.1 The home of a Project: `home_machine` and `dir`
 
-Space 在用户界面中叫 Project（`docs/projects.md`）。Project 可绑定一个文件夹：主机与其上的目录。清单中的 Space 为此多两个可选字段，线上与代码名仍为 `CentralSpace`、`gorex.spaces`：
+In the user interface, a Space is called a Project (`docs/projects.md`). A Project can bind to a folder: a host and a directory on it. For this, a Space in the manifest gets two optional fields. The names on the wire and in the code stay `CentralSpace` and `gorex.spaces`:
 
 ```json
-{ "id": "sp_01J...", "name": "windflow", "home_machine": "9c63...", "dir": "/home/me/code/windflow", "members": [] }
+{ "id": "sp_01J...", "name": "windflow", "home_machine": "9c63...", "dir": "/home/alice/code/windflow", "members": [] }
 ```
 
-- `home_machine`：主目录所在主机的 `rex.MachineID`。各设备相同；`hosts.json` 的主机 ID 各设备不同，不可用。
-- `dir`：该主机上的绝对路径。缺省（nil）表示“未知”，即项目功能之前的 App 写出的清单；空字符串表示“无文件夹”。
-- 解码宽松：字段缺失或类型错误时读作 nil，清单仍可加载。
-- **iCloud 合并**：较新的一份没有主目录（旧版 App 丢掉了字段）时，保留本地的主目录；较新或已清除的主目录照常取用。
-- **桌面端同步**（`gorex.spaces_apply`，feature `gorex.projects`）：主目录已知时 iOS 发送 `home_machine` 与 `dir`；未知时不发送，桌面端保留自己的主目录；`dir` 为 `""` 表示清除。桌面端不认识该 `machine_id` 时保留文件夹，并把主目录主机显示为未知。结果中的 `homes` 为被改动的主目录数。
-- **桌面端到 iOS**：会话的 `project {home_machine, dir}` 字段（bootstrap、`session_created`、每个视图）被读取。iOS 尚不知道主目录的 Project 由桌面端的主目录填充；桌面端之后改动的主目录（如 Change Folder）会被采用；手机端已改而桌面端尚未跟上的主目录保持不变。为区分“桌面端改了”与“桌面端尚未跟上”，iOS 按主机的 `machine_id` 与会话 ID 记下每个会话最后报告的 Space、名称和主目录，存于本设备的 `spaces-manifest.reported.json`（与清单同目录，不进 iCloud）；因此 App 关闭期间桌面端所做的改动，在下次启动时被采用。只有同一会话自己的报告变化才算桌面端的改动：另一个会话（如 `gorex.spaces_apply` 为新名称新建、尚无主目录的 Space）首次报告无文件夹，不清除 Project 的文件夹。本次连接尚未读到主机的 `machine_id` 时（刚连上，`/api/spaces` 尚未回答），该主机按主机 ID 同步：其报告不被记录也不被采用，成员清理也不涉及任何机器的成员。iOS 记住每台主机最后的 `machine_id`（UserDefaults `hostMachines`），只用于显示和查找 Project 的主目录主机（主机离线时显示“已离线”，而不是“未添加”），不用于同步；主机地址改变时（可能是另一台电脑）该记录被清除。
-- **重命名**：在 iOS 上重命名的 Project，其桌面端会话仍报告旧名称时，仍归原 Project，不按旧名称新建；推送清单前，iOS 先用 `session.set_label` 把该会话改为新名称，`gorex.spaces_apply` 因而按新名称找到它，不再新建 Space 并留下旧的空 Space。桌面端重命名的会话（清单名称未变）则让 Project 改用新名称，ID 与文件夹不变。
-- **新窗口**：有文件夹的 Project 在主目录主机的网关上新建窗口，`cwd` 为该文件夹；主机不在线时说明原因，不在别处打开。凡带 `cwd` 的新建（New Project 的首个窗口、New Window）之前，先用 `gorex.dir.list` 检查该文件夹；文件夹已不存在则显示 “Folder Not Found”（带 Change Folder…），不打开窗口。不列出文件夹的主机（welcome 没有 `gorex.dir_list`）跳过该检查。Change Folder / Remove Folder 更新清单，并对在线且保有该 Project 会话的主机调用 `gorex.project.set_home`。
+- `home_machine`: the `rex.MachineID` of the host that holds the home directory. It is the same on all devices. The host ID of `hosts.json` differs on each device, so it cannot serve here.
+- `dir`: the absolute path on that host. The default (nil) means "unknown". This is a manifest that an app wrote before the project feature. The empty string means "no folder".
+- Decoding is lenient. When a field is missing or has the wrong type, the app reads it as nil. The manifest still loads.
+- **iCloud merge.** Suppose the newer copy has no home (an old app version dropped the fields). The app then keeps the local home. A home that is newer, or already cleared, is taken as usual.
+- **Sync to the desktop** (`gorex.spaces_apply`, feature `gorex.projects`). When the home is known, iOS sends `home_machine` and `dir`. When it is unknown, iOS does not send them, and the desktop keeps its own home. A `dir` of `""` clears the home. Suppose the desktop does not know the `machine_id`. It then keeps the folder and shows the home host as unknown. `homes` in the result is the number of homes that changed.
+- **Desktop to iOS.** The app reads the `project {home_machine, dir}` field of a session (in bootstrap, `session_created` and every view). The home of the desktop fills a Project whose home iOS does not know yet. The app takes a home that the desktop changes later (for example Change Folder). A home that the phone changed, and that the desktop has not yet followed, stays unchanged.
+- **How iOS tells the two cases apart.** The two cases are "the desktop changed it" and "the desktop has not yet followed". For each session, iOS records the Space, the name and the home that the session reported last. It keys the record by the `machine_id` of the host and the session ID. It stores the record on this device in `spaces-manifest.reported.json`. This file is in the same directory as the manifest and does not go to iCloud. So the app takes a change that the desktop made while the app was closed at the next start.
+  - Only a change in the report of the same session counts as a change by the desktop. Another session has its own first report. An example is a Space that `gorex.spaces_apply` creates for a new name and that has no home yet. Its first report says "no folder". This does not clear the folder of the Project.
+  - Suppose this connection has not yet read the `machine_id` of the host (the host just connected, and `/api/spaces` has not answered). The app then syncs that host by host ID. It does not record or take the report of that host. The member cleanup does not touch the members of any machine.
+- **Remembered `machine_id`.** iOS remembers the last `machine_id` of each host (UserDefaults `hostMachines`). It uses this only to show the home host of a Project and to find it. When the host is offline, the app shows "offline" and not "not added". It does not use this record for sync. When the address of a host changes (it may be another computer), the app clears the record.
+- **Rename.** A user renames a Project on iOS. The desktop session may still report the old name. The session then stays in the original Project, and the app does not create a new Project for the old name. Before iOS pushes the manifest, it changes the session to the new name with `session.set_label`. `gorex.spaces_apply` then finds the session by the new name. It does not create a new Space and leave an old empty Space. Suppose a user renames the session on the desktop and the manifest name is unchanged. The Project then uses the new name. Its ID and folder stay.
+- **New window.** A Project that has a folder creates a new window on the gateway of the home host. The `cwd` is that folder. When the host is not online, the app says why. It does not open the window elsewhere. Some creations carry a `cwd`: the first window of New Project, and New Window. Before each of them, the app checks the folder with `gorex.dir.list`. When the folder no longer exists, the app shows "Folder Not Found" (with Change Folder…). It opens no window. A host that does not list folders (its welcome has no `gorex.dir_list`) skips the check. Change Folder and Remove Folder update the manifest. They also call `gorex.project.set_home` on each host that is online and holds a session of that Project.
 
-### 关键设计点
+### Key design points
 
-1. **稳定锚点 `(machine_id, block_id)`**：
-   - `machine_id` 为机器持久身份（GoRex client key hash，与 [docs/rex-api.md](rex-api.md) 一致），不随 IP、Tailscale 域名或主机别名变化。
-   - `window_id` 作为辅助提示（同一窗口内多 pane 共享同一窗口归属，展示时按窗口去重）。
-2. **Space 作为一等公民**：
-   - 使用独立 `space.id`（UUID/ULID）作为主键，不再耦合 `(host.id, session.id)`。
-   - 即使某个 Space 下的所有主机暂时离线，该 Space 的定义（名称、颜色、排序、成员引用）依然完整保留。
-3. **Tombstones（墓碑记录）**：
-   - 记录近期删除的 Space 或手动移出的 Member，防止离线桌面端重连或 iCloud 同步延迟时“复活”已删除项（保留窗口期如 7 天后定期清理）。
+1. **Stable anchor `(machine_id, block_id)`.**
+   - `machine_id` is the persistent identity of the machine (the hash of the GoRex client key, as in [docs/rex-api.md](rex-api.md)). It does not change with the IP, the Tailscale domain name or the host alias.
+   - `window_id` is a helper hint. Several panes in one window share one window membership. The app lists them once for each window.
+2. **A Space is a first-class object.**
+   - The primary key is an independent `space.id` (UUID or ULID). It is no longer coupled to `(host.id, session.id)`.
+   - All hosts of a Space may be offline for a while. The definition of the Space (name, color, order and member references) stays complete.
+3. **Tombstones.**
+   - A tombstone records a Space that the user removed recently, or a member that the user removed by hand. It stops an offline desktop that reconnects from bringing back a removed item. It also covers the delay of an iCloud sync. The app cleans tombstones regularly after a retention window (for example 7 days).
 
 ---
 
-## 4. 中心化架构与同步机制
+## 4. Central architecture and sync
 
 ```text
                 ┌───────────────────────────────────┐
                 │       iCloud (KV / Drive)         │
-                │   iPhone ◄─── 同步 ───► iPad      │
+                │   iPhone ◄─── sync ───► iPad      │
                 └─────────────────▲─────────────────┘
                                   │
                                   ▼
 ┌───────────────────────────────────────────────────────────────────┐
-│                   iOS 控制端 (SpaceStore)                         │
-│        本地持久化 spaces-manifest.json（中心化分组依据）           │
+│                iOS control app (SpaceStore)                       │
+│     Local spaces-manifest.json (central grouping basis)           │
 └───────┬─────────────────────────┬─────────────────────────┬───────┘
-        │ 被动同步 (Read/Push)     │ Read / Attach           │ Read / Attach
+        │ passive sync (Read/Push)│ Read / Attach           │ Read / Attach
         ▼                         ▼                         ▼
 ┌───────────────┐         ┌───────────────┐         ┌───────────────┐
 │  Desktop Host │         │  Linux Host A │         │  Linux Host B │
@@ -138,81 +144,81 @@ Space 在用户界面中叫 Project（`docs/projects.md`）。Project 可绑定�
 └───────────────┘         └───────────────┘         └───────────────┘
 ```
 
-### 4.1 控制端本地持久化 + iCloud 同步（iOS 间）
+### 4.1 Local persistence of the control app, and iCloud sync (between iOS devices)
 
-1. **本地持久化**：
-   - 在 iOS `Application Support/spaces-manifest.json` 原子持久化 `SpaceManifest`，App 启动即加载，不等待任何 Host 上线。
-2. **iCloud 同步载体**：
-   - 推荐优先使用 **`NSUbiquitousKeyValueStore`**（或 iCloud Drive 协调文件 `NSFileCoordinator`）：
-     - `NSUbiquitousKeyValueStore` 延迟低、无需复杂数据库迁移，1 MB 容量上限对于纯 ID/元数据索引足够容纳数千个终端成员；
-     - 需在 [ios/project.yml](../ios/project.yml) 中为 `dev.gorex.ios` 启用 iCloud Key-Value Store entitlement。
-3. **多控制端冲突合并（LWW）**：
-   - 以 `space.updated_at` 与 `tombstones` 为准做实体级 Last-Write-Wins 合并：
-     - 若一端删除了 Space（有较新的 `deleted_at`），另一端未修改该 Space，则删除生效；
-     - 成员归属以较新的 `added_at` / `deleted_at` 为准，保证同一 `(machine_id, block_id)` 最多只归属一个 Space。
+1. **Local persistence.**
+   - The iOS app writes `SpaceManifest` atomically to `Application Support/spaces-manifest.json`. The app loads it at start. It does not wait for any host to come online.
+2. **iCloud sync carrier.**
+   - The recommended first choice is **`NSUbiquitousKeyValueStore`** (or an iCloud Drive coordinated file with `NSFileCoordinator`):
+     - `NSUbiquitousKeyValueStore` has low latency and needs no complex database migration. Its limit of 1 MB is enough for an index of only IDs and metadata. It holds thousands of terminal members.
+     - The app must enable the iCloud Key-Value Store entitlement for `dev.gorex.ios` in [ios/project.yml](../ios/project.yml).
+3. **Conflict merge among several control apps (LWW).**
+   - The merge is entity-level Last-Write-Wins. It uses `space.updated_at` and `tombstones`:
+     - One device removes a Space (it has a newer `deleted_at`), and the other device did not change that Space. The removal takes effect.
+     - Membership follows the newer `added_at` or `deleted_at`. This guarantees that one `(machine_id, block_id)` belongs to at most one Space.
 
-### 4.2 控制端与 Remote Hosts 同步（桌面端被动同步）
+### 4.2 Sync between the control app and the hosts (passive sync to the desktop)
 
-#### A. Host -> iOS：发现与增量合并
+#### A. Host to iOS: discovery and incremental merge
 
-每次 Host 连接成功并完成 `session.attach` 与 `GET /api/spaces` 后，执行增量合并（而非覆盖）：
+Each time a host connects and finishes `session.attach` and `GET /api/spaces`, the app runs an incremental merge (not an overwrite):
 
-1. **既有桌面 Space 导入**：
-   - 若桌面端报告了一个尚未出现在 `SpaceManifest` 中的 Space（且不在 `tombstones` 内），则将其导入为新 Space，并把它的本地窗口与 `remote_blocks` 写入 `members`。
-   - **修复 `machine_id` 缺失问题**：iOS 自己已直连所有已添加的 Remote Hosts 并知道每台的 `machine_id`，当桌面端因 `hosts.json` 未缓存而缺漏某 `remote_block` 时，控制端侧可直接基于已有的 `SpaceManifest` 补齐归属。
-2. **未归类终端（Unassigned）统一处理**：
-   - 在某台主机上通过 CLI / SSH 新建的终端（如落在 `gorex-desktop-terminals`）若不在任何 Space 的 `members` 中，**不再为每台主机生成 `Desktop terminals · <Host>` 胶囊**，而是统一汇总到一个虚拟的 **`Unassigned`（未分组）** 视图（或提示一键归入当前 Space）。
-   - 当用户在 iOS **当前选中的 Space** 内点击“新建窗口 / 新建终端”时，控制端在创建成功后直接将该新终端的 `(machine_id, block_id)` 写入当前 Space 的 `members`。
+1. **Import of the existing desktop Spaces.**
+   - Suppose the desktop reports a Space that is not yet in `SpaceManifest` and not in `tombstones`. The app imports it as a new Space. It writes the local windows of the desktop and its `remote_blocks` into `members`.
+   - **Fix for the missing `machine_id`.** The iOS app connects directly to all the remote hosts that the user added, and it knows the `machine_id` of each. The desktop may miss a `remote_block` because `hosts.json` has no cache of it. The control app can then complete the membership from the existing `SpaceManifest`.
+2. **One treatment for unassigned terminals.**
+   - A user creates a terminal on one host with the CLI or SSH (for example in `gorex-desktop-terminals`). Suppose that terminal is in the `members` of no Space. The app **no longer makes a `Desktop terminals · <Host>` capsule for each host**. It gathers these terminals in one virtual **`Unassigned`** view (or offers to add them to the current Space in one tap).
+   - The user taps "new window" or "new terminal" inside the **currently selected Space** on iOS. After the creation succeeds, the control app writes the `(machine_id, block_id)` of the new terminal into the `members` of the current Space.
 
-#### B. iOS -> Desktop：桌面端被动同步
+#### B. iOS to desktop: passive sync to the desktop
 
-- **适用对象**：运行完整桌面 UI（有 `layout.json`）的主机（Mac / Linux / Windows Desktop）。对于纯无头服务器（Headless `gorex -server`），其本身不维护跨主机桌面布局，无需接收写回，仅由 iOS 控制端持有分组即可。
-- **同步时机**：当桌面端在线且支持新能力 `gorex.spaces_sync` 时，iOS 在连上后比对 `revision` / 差异，将控制端发起的 Space 变更（重命名、新建 Space、把某窗口移入/移出 Space）下发给桌面端。
-- **协议扩展（`internal/rexapi`）**：
-  - 在 `welcome.features` 中新增 `gorex.spaces_sync`。
-  - 新增 RPC 方法 `gorex.spaces_apply`（或 `PUT /api/spaces/manifest`），由桌面端将与自己相关的 Space 变更安全地应用到 `layout.Store`（复用现有 `tab.to_space` / workspace 重命名逻辑，避免直接覆盖桌面端正在编辑的 pane 树）。
+- **Who it applies to.** Hosts that run the full desktop UI (they have `layout.json`): Mac, Linux and Windows Desktop. A pure headless server (headless `gorex -server`) keeps no cross-host desktop layout. It does not need to receive write-back. Only the iOS control app holds the groups.
+- **When it syncs.** The desktop is online and supports the new capability `gorex.spaces_sync`. After iOS connects, it compares `revision` or the differences. It sends the Space changes that the control app started to the desktop. These are rename, new Space, and moving a window into or out of a Space.
+- **Protocol extension (`internal/rexapi`).**
+  - Add `gorex.spaces_sync` to `welcome.features`.
+  - Add the RPC method `gorex.spaces_apply` (or `PUT /api/spaces/manifest`). The desktop applies the Space changes that relate to it safely to `layout.Store`. It reuses the existing `tab.to_space` and workspace rename logic. This avoids a direct overwrite of the pane tree that the desktop is editing.
 
-### 4.3 离线容错与僵尸成员清理（GC）
+### 4.3 Offline tolerance and cleanup of zombie members (GC)
 
-1. **主机离线不删分组**：
-   - 当某台主机处于 `.offline` 状态时，`SpaceManifest` 中属于该 `machine_id` 的 `members` 完整保留。
-   - 该 Space 依然正常出现在顶部 strip，Space 内属于其它**在线**主机的窗口正常显示和交互；离线主机仅在对应区块显示离线状态或按设置折叠。
-2. **安全垃圾回收（Safe GC）**：
-   - **触发条件**：只有当某个 `machine_id` **当前在线**、且已经完成该主机所有 sessions 的 `session.attach` 视图拉取后，若 `SpaceManifest` 中的某个 `block_id` 已不在该主机的任何窗口中，才将其从 `members` 中移除。
-   - 这样可以彻底避免主机暂时离线、网络抖动或刚重连尚未拉全视图时误删分组关系。
-
----
-
-## 5. iOS UI 与交互调整（`HostListView.swift`）
-
-1. **顶部 Space Strip**：
-   - 数据源从 `store.hosts.flatMap(...)` 切换为 `SpaceStore.spaces`（按 `order` 排序）。
-   - 仅当存在不属于任何 Space 的在线窗口时，在末尾（或固定入口）显示 `Unassigned` 胶囊。
-   - 增加 **+** 按钮或长按菜单：支持新建 Space、重命名、调整颜色、删除 Space。
-2. **Space 内窗口列表**：
-   - 按主机分组渲染当前 Space 关联的所有**在线**主机窗口；
-   - 窗口长按菜单增加 **“Move to Space…”**，可直接将任意远端主机上的窗口归入/移动到任意 Space（即使该窗口来自纯 Linux 服务器）。
-3. **保留 `By Host` 模式**：
-   - Settings 中的 `Grouping.hosts` 保持不变，作为按物理主机浏览的备选视图。
+1. **An offline host does not remove a group.**
+   - When a host is in the `.offline` state, `SpaceManifest` keeps all `members` of its `machine_id`.
+   - The Space still shows in the top strip as normal. The windows of the Space that belong to other **online** hosts show and work as normal. The offline host shows its offline state in its own block, or the block folds, as the setting says.
+2. **Safe garbage collection (Safe GC).**
+   - **Trigger.** A `machine_id` is **online now**, and the app pulled the views of all sessions of that host with `session.attach`. Only then, if a `block_id` in `SpaceManifest` is no longer in any window of that host, the app removes it from `members`.
+   - This fully avoids a wrong deletion of group relations. The host may be offline for a while, the network may jitter, or the host may just have reconnected without a full view.
 
 ---
 
-## 6. 分阶段实施路径
+## 5. iOS UI and interaction changes (`HostListView.swift`)
 
-1. **Phase 1 — iOS 控制端本地持久化 + 合并引擎（核心止血）**：
-   - 新增 `ios/GoRex/Rex/SpaceStore.swift`，实现 `SpaceManifest` 模型、本地 JSON 持久化、与各 Host `/api/spaces` 的增量合并逻辑、Safe GC 以及 `Unassigned` 聚合。
-   - 改造 `HostListView.swift` 从 `SpaceStore` 读取 Space 列表，支持手机端新建/重命名/移动窗口到 Space。
-   - **收益**：立刻解决“桌面离线丢分组”、“同名 Space 分裂”、“`Desktop terminals` 碎片化”三大核心痛点，且不依赖服务端发版。
-2. **Phase 2 — iCloud 多控制端同步**：
-   - 配置 `ios/project.yml` 的 iCloud entitlements，接入 `NSUbiquitousKeyValueStore` 同步 `SpaceManifest` 与 LWW 合并。
-   - **收益**：iPhone 与 iPad 之间实时共享同一份跨主机 Space 分组。
-3. **Phase 3 — 桌面端被动同步（`gorex.spaces_sync`）**：
-   - 在 `internal/rexapi/` 与桌面端 `layout` 应用层增加 `gorex.spaces_apply` 能力，让 iOS 端对 Space 的调整也能反向同步回在线的桌面端。
+1. **Top Space strip.**
+   - The data source changes from `store.hosts.flatMap(...)` to `SpaceStore.spaces` (sorted by `order`).
+   - The `Unassigned` capsule shows at the end (or as a fixed entry) only when an online window belongs to no Space.
+   - Add a **+** button or a long-press menu. It supports new Space, rename, change color and remove Space.
+2. **Window list inside a Space.**
+   - The list groups by host and shows the windows of all **online** hosts that the current Space relates to.
+   - The long-press menu of a window gets **"Move to Space…"**. The user can add or move any window on any remote host to any Space, even a window from a pure Linux server.
+3. **Keep the `By Host` mode.**
+   - `Grouping.hosts` in Settings stays unchanged. It is the alternative view for browsing by physical host.
 
 ---
 
-## 7. 已确认决策（Confirmed Decisions）
+## 6. Phases
 
-1. **iCloud 同步载体选型**：选用 **`NSUbiquitousKeyValueStore`**（零配置、毫秒级同步，1 MB 上限足够纯元数据索引；通过 `tombstones` 定期清理控制体积）。
-2. **同名 Space 的首次合并策略**：**默认按名称自动合并**为同一个跨主机 Space（首次接入多台桌面端时，同名 Space 归并至同一全局 `space.id`，后续也支持在 iOS 端手动重命名或拆分）。
-3. **桌面端与 iOS 的冲突优先级**：采用 **时间戳最新者胜（LWW）**，基于实体级 `updated_at` / `added_at` / `deleted_at` 自动合并。
+1. **Phase 1: local persistence in the iOS control app, and the merge engine (the core fix).**
+   - Add `ios/GoRex/Rex/SpaceStore.swift`. It implements the `SpaceManifest` model, local JSON persistence, the incremental merge with the `/api/spaces` of each host, Safe GC and the `Unassigned` grouping.
+   - Change `HostListView.swift` to read the Space list from `SpaceStore`. It supports new, rename and move window to Space on the phone.
+   - **Benefit.** It solves at once the three core pain points: "the desktop goes offline and the groups are lost", "same-name Spaces split" and "`Desktop terminals` fragments". It does not depend on a server release.
+2. **Phase 2: iCloud sync among several control apps.**
+   - Configure the iCloud entitlements in `ios/project.yml`. Connect `NSUbiquitousKeyValueStore` to sync `SpaceManifest`, with the LWW merge.
+   - **Benefit.** An iPhone and an iPad share the same cross-host Space groups in real time.
+3. **Phase 3: passive sync to the desktop (`gorex.spaces_sync`).**
+   - Add the `gorex.spaces_apply` capability in `internal/rexapi/` and in the desktop `layout` apply layer. The Space changes that the user makes on iOS then sync back to the online desktop.
+
+---
+
+## 7. Decisions
+
+1. **Choice of the iCloud sync carrier.** Use **`NSUbiquitousKeyValueStore`**. It needs no configuration and syncs in milliseconds. Its limit of 1 MB is enough for an index of only metadata. The app controls the size by cleaning `tombstones` regularly.
+2. **First merge of Spaces with the same name.** **By default, merge them by name automatically** into one cross-host Space. At the first connection of several desktops, Spaces with the same name merge into one global `space.id`. Later, the user can also rename or split them by hand on iOS.
+3. **Priority when the desktop and iOS conflict.** Use **last timestamp wins (LWW)**. The merge is automatic. It is based on the entity-level `updated_at`, `added_at` and `deleted_at`.

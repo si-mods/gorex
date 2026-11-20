@@ -1,56 +1,49 @@
 # Drawn context menus on Windows and Linux
 
-Status: built. MyGo's side is in the fork (`si-mods/mygo`, branch
-`feat/draw-menus`) and GoRex's is in `menus.go`. Real-window checks are
-open: the Mac mini comparison with `GOREX_DRAW_MENUS=1` and the Windows
-11 check.
+Status: built (#153). The Mac comparison and the Windows 11 check are open.
 
-On macOS, GoRex's context menus are the system's menus: Liquid Glass,
-rounded, with the system's type. On Windows they are Win32 popup menus.
-MyGo draws their items in a Fluent style on Windows 11
-(`internal/windows/menudraw.go`), but they still look out of place next to
-GoRex's glass windows. On Linux they are the toolkit's menus.
+MyGo's side is in the fork (`si-mods/mygo`, branch `feat/draw-menus`) and GoRex's side is in `menus.go`. Two real-window checks are open. One is the comparison on a Mac with `GOREX_DRAW_MENUS=1`. The other is the check on Windows 11.
 
-On Windows and Linux, GoRex will draw its context menus itself: a glass
-panel that looks like the macOS menu, so that the app looks the same on
-every platform. macOS keeps the system's menus.
+## Problem
 
-## What there is now
+On macOS, the context menus of GoRex are the menus of the system: Liquid Glass, rounded, with the type of the system. On Windows they are Win32 popup menus. MyGo draws their items in a Fluent style on Windows 11 (`internal/windows/menudraw.go`). But they still look out of place next to the glass windows of GoRex. On Linux they are the menus of the toolkit.
 
-- `Element.ContextMenu(build)` fills a `ui.Menu` and hands it to the host,
-  which shows the system's menu (`engine.showMenu` → `host.popupMenu` →
-  `Backend.PopupMenu`; `TrackPopupMenuEx` on Windows).
-- `Element.PopoverMenu(build)` (`ui/popovermenu.go`) takes the same
-  `build` and draws the menu in the window, as an overlay. It already has
-  everything a menu needs: submenus, check and radio marks, shortcuts,
-  disabled items, separators, keys (arrows, Home, End, type to select,
-  Enter, Escape, Left and Right for submenus), focus taken and given back,
-  a press outside closes it, flipping where the window has no room,
-  scrolling when it is taller than the window, and the menu roles for
-  assistive technology.
-- Its look comes from the theme only: `t.Background`, `t.Border`,
-  `t.Radius + 2`, a fixed shadow, the accent on the highlighted item. An
-  app cannot change it.
-- GoRex calls `ContextMenu` in four places: the tab (`tabs.go`), the pane
-  header and the browser header (`view.go`), and the workspace row
-  (`workspaceview.go`). Other menus come from MyGo's own elements:
-  - the terminal (`plugins/terminal/view.go`: Copy, Paste, …);
-  - text inputs and selectable text (`engine.editMenu`: Cut, Copy, Paste,
-    Select All);
-  - markdown and rich text, which notes use.
+Before #153 the code worked as follows:
 
-  Every one of them goes through `ContextMenu` or `openMenu`.
+- `Element.ContextMenu(build)` fills a `ui.Menu` and hands it to the host, which shows the menu of the system (`engine.showMenu` → `host.popupMenu` → `Backend.PopupMenu`, and `TrackPopupMenuEx` on Windows).
+- `Element.PopoverMenu(build)` (`ui/popovermenu.go`) takes the same `build` and draws the menu in the window, as an overlay. It already has everything that a menu needs:
+  - Submenus, check and radio marks, shortcuts, disabled items and separators.
+  - Keys: arrows, Home, End, type to select, Enter, Escape, and Left and Right for submenus.
+  - Focus taken and given back.
+  - A press outside closes the menu.
+  - Flipping where the window has no room, and scrolling when the menu is taller than the window.
+  - The menu roles for assistive technology.
+- Its look comes from the theme only: `t.Background`, `t.Border`, `t.Radius + 2`, a fixed shadow, and the accent on the highlighted item. An app cannot change it.
+- GoRex calls `ContextMenu` in these places:
+  - The tab (`tabs.go`).
+  - The pane header and the browser header (`view.go`).
+  - The canvas (`canvas.go`).
+  - The host and project rows of the sidebar (`projects_sidebar.go`).
+  - The color mark of a space (`spaces.go`).
+
+  Other menus come from the own elements of MyGo:
+  - The terminal (`plugins/terminal/view.go`: Copy, Paste, …).
+  - Text inputs and selectable text (`engine.editMenu`: Cut, Copy, Paste, Select All).
+  - Markdown and rich text, which notes use.
+
+  Every one of these goes through `ContextMenu` or `openMenu`.
+
+## Goal
+
+On Windows and Linux, GoRex draws its context menus itself. The menu is a glass panel that looks like the macOS menu, so that the app looks the same on every platform. macOS keeps the menus of the system.
 
 ## Design
 
-Two parts: a switch and a style hook in MyGo (the fork,
-`si-mods/mygo`), and the glass look and the switch turned on in GoRex.
+The design has two parts. MyGo (the fork, `si-mods/mygo`) gets a switch and a style hook. GoRex gets the glass look and turns the switch on.
 
 ### MyGo: draw every context menu
 
-A setting of the window's `ui.Context`, which the view sets each frame
-(a call that changes nothing is free), makes the window draw every
-context menu that it would hand to the system:
+A setting of the `ui.Context` of the window makes the window draw every context menu that it would hand to the system. The view sets it each frame (a call that changes nothing is free):
 
 ```go
 // SetDrawMenus makes the window draw its context menus, those of
@@ -60,24 +53,14 @@ func (c *Context) SetDrawMenus(on bool)
 func (c *Context) DrawMenus() bool
 ```
 
-- `ContextMenu` on a window with the switch on behaves as `PopoverMenu`:
-  the same `build`, the same `Chosen` in the frame after.
-- `editMenu` and `openMenu`, which build a `platform.Menu` without a
-  `build` function, show it drawn too. `drawMenu` then takes the
-  `platform.Menu` and the `commands` of the shown menu instead of calling
-  `build`, and a chosen editing command goes to `menuCommand` as now.
-- The menu opens where the system's would: at the pointer for a secondary
-  click, and below the focused element for the menu key or Shift+F10.
-- Not drawn: the web view's own menu (a page's context menu in a browser
-  pane, `WindowHandler.ContextMenu` with `Native` items). Those items run
-  inside WebView2, and only the system's menu can carry them. The menu bar
-  and the tray menu are not context menus, so they keep the system's
-  menus too.
+- `ContextMenu` on a window with the switch on behaves as `PopoverMenu`: the same `build`, the same `Chosen` in the frame after.
+- `editMenu` and `openMenu` build a `platform.Menu` without a `build` function. The window draws these menus too. `drawMenu` then takes the `platform.Menu` and the `commands` of the shown menu instead of calling `build`. A chosen editing command goes to `menuCommand` as before.
+- The menu opens where the menu of the system would open. For a secondary click it opens at the pointer. For the menu key or Shift+F10 it opens below the focused element.
+- Not drawn: the own menu of the web view (the context menu of a page in a browser pane, `WindowHandler.ContextMenu` with `Native` items). Those items run inside WebView2, and only the menu of the system can carry them. The menu bar and the tray menu are not context menus, so they keep the menus of the system too.
 
 ### MyGo: a style for drawn menus
 
-The theme gets a style for drawn menus. An app sets the parts it wants,
-and MyGo keeps its own look for the parts left at zero:
+The theme gets a style for drawn menus. An app sets the parts that it wants. MyGo keeps its own look for the parts that stay at zero:
 
 ```go
 type MenuStyle struct {
@@ -86,97 +69,67 @@ type MenuStyle struct {
 	Panel func(panel Element, level int)
 	// RowHeight is the least height of an item's row, RowRadius the
 	// radius of its highlight and RowPadding the room before and after
-	// its content (horizontal only); 0 keeps MyGo's.
+	// its content (horizontal only). 0 keeps MyGo's.
 	RowHeight, RowRadius, RowPadding float32
 	// Highlight and HighlightText color the item the pointer or the keys
-	// are on; zero keeps the accent.
+	// are on. Zero keeps the accent.
 	Highlight, HighlightText Color
-	// Separator colors the line between groups; zero keeps the border.
+	// Separator colors the line between groups. Zero keeps the border.
 	Separator Color
-	// TextSize is the size of an item's text; 0 keeps the theme's.
+	// TextSize is the size of an item's text. 0 keeps the theme's.
 	TextSize float32
 }
 ```
 
-`Theme.Menu *MenuStyle` holds it; nil keeps MyGo's look. `menuDraw.panel` and `menuDraw.item`
-read it. They do not change how the menu works.
+`Theme.Menu *MenuStyle` holds it. A nil value keeps the look of MyGo. `menuDraw.panel` and `menuDraw.item` read it. They do not change how the menu works.
 
 ### GoRex: the look
 
-GoRex sets `Theme.Menu` from `colors`, matching the macOS 26 menu. These
-values are a first guess; compare them with a native menu on the Mac mini
-and match it:
+GoRex sets `Theme.Menu` from `colors` (`menuStyleOf` and `menuTheme` in `menus.go`). The look matches the macOS 26 menu. The values below are the values of the code. They started as a first guess. Compare them with a native menu on a Mac and match it:
 
 | Part | Value |
 |---|---|
-| Panel | `glassPanel(panel, k.panel)` ([DESIGN.md, Glass](../DESIGN.md#glass)), radius 12, padding 5, border 1 `k.panelBorder`, shadow as the popovers' |
-| Row | least height 24, radius 7, horizontal padding 10 |
-| Text | 13, `k.text`; disabled `k.textFaint`; shortcut `k.textMuted`, right-aligned |
-| Highlight | `k.accent`, text white, as macOS shows it |
+| Panel | `glassPanel(panel, k.panel)` ([DESIGN.md, Glass](../DESIGN.md#glass)), radius 12 (`radiusL`), padding 6, border 1 `k.panelBorder`, shadow as the popovers' (`popoverShadow`) |
+| Row | least height 24, radius `concentric(radiusL, 6)`, horizontal padding 10 |
+| Text | 13, `k.text`. Disabled `k.textFaint`. Shortcut `k.textMuted`, right-aligned |
+| Highlight | `k.accent`, with the text color of `accentText(dark)`: dark on the light accent of a dark window, white on the other |
 | Separator | 1, `k.panelBorder`, inset 10, margin 5 above and below |
-| Submenu | opens beside its item, its first row level with it; the item stays tinted (`k.tabHover`) while the pointer is in the submenu |
+| Submenu | opens beside its item, its first row level with it. The item stays tinted (`k.tabHover`) while the pointer is in the submenu |
 
-- With the Glass setting off, or where the window shows no glass
-  (`windowGlass`), the panel takes the flat `k.panel` face, as the other
-  popovers do (`glassPanel` already does this).
-- Animation is not built: the menu shows and closes at once. MyGo has no
-  hook for a menu's motion in `MenuStyle`, and the popovers' motion is
-  GoRex's own transition on its overlays, which a menu of MyGo's does not
-  go through. It can follow if `MenuStyle` gets one.
+- With the Glass setting off, or where the window shows no glass (`windowGlass`), the panel takes the flat `k.panel` face. The other popovers do the same (`glassPanel` does this already).
+- Animation is not built. The menu shows and closes at once. MyGo has no hook for the motion of a menu in `MenuStyle`. The motion of the popovers is the own transition of GoRex on its overlays, and a menu of MyGo does not go through it. Animation can follow if `MenuStyle` gets a hook for it.
 
 ### GoRex: the switch
 
-`menus.go`: `drawMenusOn(goos, env)` is true on Windows and Linux, and on
-macOS only where `GOREX_DRAW_MENUS=1`, to compare the drawn menu side by
-side with the native one on the Mac mini. `setupMenus`, called each frame
-from the root of every window's view (the main windows and Settings),
-passes it to `c.SetDrawMenus` and sets `Theme.Menu`. The highlight is
-`k.accent` with white text.
+`menus.go`: `drawMenusOn(goos, env)` is true on Windows and Linux. On macOS it is true only where `GOREX_DRAW_MENUS=1`, to compare the drawn menu side by side with the native menu on a Mac. `setupMenus` passes the result to `c.SetDrawMenus`. The view of every window (the main windows and Settings) calls `setupMenus` each frame. The theme of the window (`widgetTheme`, or `menuTheme`) carries `Theme.Menu`.
 
-GoRex's four `ContextMenu` calls do not change.
+The `ContextMenu` calls of GoRex do not change.
 
-## Limits
+### Limits
 
-- **In the window.** A drawn menu cannot go past the window's edges, as
-  the system's can. `PopoverMenu` already flips to the other side where
-  the window has no room, and scrolls when the menu is taller than the
-  window. In a very small window a long menu scrolls.
-- **One window.** A menu shows in the window it opened in; it does not
-  float over other windows.
-- **Pages.** A web page's menu in a browser pane stays the system's.
+- **In the window.** A drawn menu cannot go past the edges of the window, as the menu of the system can. `PopoverMenu` already flips to the other side where the window has no room, and scrolls when the menu is taller than the window. In a very small window a long menu scrolls.
+- **One window.** A menu shows in the window that it opened in. It does not float over other windows.
+- **Pages.** The menu of a web page in a browser pane stays the menu of the system.
 
 ## Tests
 
 MyGo (`ui`, headless, with `NewTester`):
 
-- With `SetDrawMenus(true)`, a `ContextMenu` opens drawn and its item's
-  `Chosen` reports in the next frame. Do the same for a text input's
-  editing menu (Copy reaches the editor) and for the terminal's menu.
-- `MenuStyle`: zero values give the panel and rows of today's
-  `PopoverMenu` (its existing tests pass unchanged); set values reach the
-  panel and the rows.
-- With the switch off, nothing changes: the host's `popupMenu` is called.
+- With `SetDrawMenus(true)`, a `ContextMenu` opens drawn, and the `Chosen` of its item reports in the next frame. Do the same for the editing menu of a text input (Copy reaches the editor) and for the menu of the terminal.
+- `MenuStyle`: zero values give the panel and rows of the `PopoverMenu` of before (its existing tests pass unchanged). Set values reach the panel and the rows.
+- With the switch off, nothing changes: the `popupMenu` of the host is called.
 
 GoRex:
 
-- With drawn menus on, the pane header's and tab's menus open drawn, and
-  choosing "Rename" starts the rename (`ui.NewTester`), and `Theme.Menu` is set (`TestDrawnMenus`,
-  `TestMenuStyle`).
-- `TestDrawMenusOn`: on by default on Windows and Linux, off on
-  macOS unless `GOREX_DRAW_MENUS=1` is set.
+- With drawn menus on, the menus of the pane header and of the tab open drawn. Choosing "Rename" starts the rename (`ui.NewTester`). `Theme.Menu` is set (`TestDrawnMenus`, `TestMenuStyle`).
+- `TestDrawMenusOn`: on by default on Windows and Linux. Off on macOS unless `GOREX_DRAW_MENUS=1` is set.
 
 Real windows:
 
-- Mac mini, with `GOREX_DRAW_MENUS=1`: screenshot the drawn menu next to
-  the native one (tab, pane header, terminal), dark and light, glass on
-  and off. Match the metrics.
-- Yibo-PC (Windows 11): the user checks the menus on their desktop. The
-  agent cannot capture it: the user's session there is disconnected.
+- A Mac, with `GOREX_DRAW_MENUS=1`: take a screenshot of the drawn menu next to the native menu (tab, pane header, terminal). Do this dark and light, glass on and off. Match the metrics.
+- A Windows 11 test PC: the user checks the menus on the desktop. The agent cannot capture it, because the session of the user there is disconnected.
 
-## Order of work
+## Phases
 
-1. MyGo fork: `SetDrawMenus`, drawn editing and terminal menus,
-   `MenuStyle`, tests. A PR to `si-mods/mygo`; the user opens the
-   upstream PR if wanted.
-2. GoRex: bump the fork, set `Theme.Menu`, turn the switch on, tests, Mac
-   mini screenshots. A PR to `si-mods/gorex`.
+1. MyGo fork: `SetDrawMenus`, drawn editing and terminal menus, `MenuStyle`, tests. This is a PR to `si-mods/mygo`. The user opens the upstream PR if wanted.
+2. GoRex: bump the fork, set `Theme.Menu`, turn the switch on, tests, Mac screenshots. This is a PR to `si-mods/gorex` (#153).

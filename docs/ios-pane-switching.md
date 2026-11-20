@@ -1,137 +1,137 @@
-# Rex Go iOS：Tab 内面板访问与每端独立查看记录
+# Rex Go iOS: panes inside a tab, and a view record on each device
 
-Status: 第一阶段已实现，见 #639、#653 与 #665；第二、三阶段未实现（已按 Rex Beta 0.1.0 build 1987 与 Rex Go 0.1.0 build 1577 对照，并做去重审计）
+Status: phase 1 built (#639, #653, #665). Phases 2 and 3 not built.
 
-关联：#521（跨端保留分屏布局，并在 Rex Go iOS 访问同组所有面板）、#518（跨主机 Space 分组）、#520（跨端保留 Tab 与面板名称）。
+This doc lets Rex Go on iOS reach all panes of a tab, and keeps a separate "last viewed" record on each device. It relates to three issues. #521 asks to keep the split layout across clients, and to reach all panes of the group in Rex Go on iOS. #518 covers cross-host Space groups. #520 covers keeping tabs and pane names across clients. The doc compares the design with Rex Beta 0.1.0 build 1987 and Rex Go 0.1.0 build 1577. It also has a dedupe audit (section 2.2).
 
-## 1. 背景
+## 1. Problem
 
-桌面上一个 Tab 可以拆成多个面板（例如「训练 / 日志 / GPU」），服务端 `layout` 保存完整的 split 树、方向、比例、面板名与 revision。Web 客户端已经能渲染这棵树并拖动分隔条。
+On the desktop, one tab can split into several panes (for example "training / logs / GPU"). The server `layout` stores the full split tree, the directions, the ratios, the pane names and the revision. The web client already renders this tree and drags the dividers.
 
-GoRex 的 iOS 端目前只读 `session.view` 里的 `windows[].focused_block_id`，没有读取同一 Tab 的其他面板，也没有面板切换入口。结果是：
+The iOS app of GoRex reads only `windows[].focused_block_id` from `session.view`. It does not read the other panes of the same tab. It has no way to switch panes. The results are:
 
-- 手机只能打开每个 Tab 的聚焦面板，其余面板不可达；
-- 手机看不到同组还有哪些面板、各自叫什么、什么状态；
-- 若把“切换面板”实现成 `session.focus_block`，会同时改掉桌面端的焦点（共享 `Tab.Focus`），违反 #521 第 5 条。
+- The phone can open only the focused pane of each tab. The other panes are not reachable.
+- The phone cannot see which other panes the group has, what they are called, or what state they are in.
+- Suppose the app implements "switch pane" as `session.focus_block`. That call also changes the focus of the desktop, because the focus (`Tab.Focus`) is shared. This breaks rule 5 of #521.
 
-本文只解决“同一台机器上的终端面板”在 iOS 的访问，以及“查看哪个面板”不写共享布局。跨主机面板、浏览器/note 面板、另一台桌面的实时几何跟随不在本期范围，见 §7。
+This doc solves only two problems. The first is access on iOS to the terminal panes of one machine. The second is "which pane the user views" without a write to the shared layout. Panes of other hosts, browser or note panes, and live geometry follow of another desktop are not in this phase (section 7).
 
-## 2. 现状核查（main）
+## 2. Check of the current state (main)
 
-| 能力 | 现状 | 位置 |
+| Capability | Current state | Where |
 |---|---|---|
-| 布局真源 | 服务端保存 `layout.Store`：`Tab.Root` 树、`Vertical`/`Ratio`、`Tab.Focus`、`Tab.Zoom`、`Rev` | `internal/layout/layout.go:64-173` |
-| 布局写入 | 仅桌面 App（`tab.set`/`windows.set`）与布局命令；`layout.apply` 以 `Base` 做冲突校验 | `internal/rex/proto.go:99-115`、`internal/rex/layout_apply.go:27` |
-| Rex API 暴露 | `session.view` 的 `layer.layout` 是 `{rect, split:{split_id,direction,ratio,before,after}}`；`blocks[]` 按布局顺序 | `internal/rexapi/model.go:159-171,558-604` |
-| 面板操作 | `new_split / move_block / swap_blocks / resize_pane / focus_block / zoom_block / set_block_label / close_block` | `internal/rexapi/methods.go:173-188` |
-| Web | 渲染嵌套 split、分隔条、比例；点击面板会 `session.focus_block`，并跟随主机焦点 | `web/src/window.ts:141,161-270`、`web/src/main.ts:217` |
-| GoRex iOS | 只读 `windows[].focused_block_id` 与 `layers[].blocks`；按 window 列表/切换；无面板列表 | `ios/GoRex/Rex/SessionView.swift:73-110`、`ios/GoRex/Views/SessionSheet.swift:64-79` |
-| iOS 视图同步 | `session_view_changed` → 重读 `session.view` | `ios/GoRex/Rex/Host.swift:634,720-745` |
-| iOS 输入/尺寸 | 打开面板时 `own_block take` 并 `resize`；关闭时 `disown_block` | `ios/GoRex/Terminal/TerminalSession.swift:229-253,380-400` |
+| Source of truth for the layout | The server stores `layout.Store`: the `Tab.Root` tree, `Vertical` and `Ratio`, `Tab.Focus`, `Tab.Zoom`, `Rev` | `Store`, `Tab` and `Node` in `internal/layout/layout.go` |
+| Layout writes | Only the desktop app (`tab.set` and `windows.set`) and the layout commands. `layout.apply` checks conflicts with `Base` | `internal/rex/proto.go`, `internal/rex/layout_apply.go` |
+| Rex API exposure | The `layer.layout` of `session.view` is `{rect, split:{split_id,direction,ratio,before,after}}`. `blocks[]` follows the layout order | `layerView`, `layoutView` and `splitView` in `internal/rexapi/model.go` |
+| Pane operations | `new_split / move_block / swap_blocks / resize_pane / focus_block / zoom_block / set_block_label / close_block` | the method table in `internal/rexapi/methods.go` |
+| Web | It renders nested splits, dividers and ratios. A click on a pane calls `session.focus_block`, and the web client follows the focus of the host | `WindowView` in `web/src/window.ts`, and the `session.focus_block` call in `web/src/main.ts` |
+| GoRex iOS | It reads only `windows[].focused_block_id` and `layers[].blocks`. It lists and switches by window. It has no pane list | `SessionView.Window` in `ios/GoRex/Rex/SessionView.swift`, and `SessionSheet` in `ios/GoRex/Views/SessionSheet.swift` |
+| iOS view sync | `session_view_changed` makes the app read `session.view` again | `Host` in `ios/GoRex/Rex/Host.swift` |
+| iOS input and size | When a pane opens, the app sends `own_block take` and `resize`. When it closes, the app sends `disown_block` | `ios/GoRex/Terminal/TerminalSession.swift` |
 
-iOS 已经具备实现本期功能所需的数据：
+iOS already has the data that this phase needs:
 
-- `SessionView.Window.tiled` 是该 Tab 全部 tiled 面板的 **block ID，按布局顺序**（`SessionView.swift:98`，服务端按 `w.blocks` 顺序生成，`internal/rexapi/model.go:255-300`）；本期重命名为 `panes`，不保留别名；
-- 每个 block 的 label 在 `layers[].blocks[].label`；
-- 每个 block 的 title/program/status 已由 `Host.describe` 拉取并被 `block_event` 更新（`Host.swift:734-741,760+`）；
-- 服务端在会话 revision 变化时已推送事件，iOS 已能重读。
+- `SessionView.Window.tiled` was the list of **block IDs** of all tiled panes of the tab, **in layout order**. The server builds it in the order of `w.blocks` (`internal/rexapi/model.go`). This phase renamed it to `panes` and kept no alias.
+- The label of each block is in `layers[].blocks[].label`.
+- `Host.describe` already fetches the title, program and status of each block. `block_event` updates them.
+- The server already pushes events when the session revision changes. iOS already reads the view again.
 
-### 2.1 Rex 参考版本与结论
+### 2.1 Reference versions of Rex, and the conclusion
 
-参考：
+References:
 
-- 已安装 `Rex Beta.app` 0.1.0（build **1987**，`snapshot`，commit `6c4ecb4`），helper `rex 0.1.0-preview.19`，**API revision 14**；
-- `~/Downloads/Rex.dmg` payload 是 0.1.0（build **1642**，`preview`，commit `a92aace`），比已安装版本旧。本文的行为核对以已安装的 1987 为准；若要与 dmg 严格对齐，需注意这 345 个 build 的差异。
-- dmg 内 helper 的 `rex version` 在只读挂载下未取到（Gatekeeper/syspolicyd 持有镜像，命令超时）；API revision 以已安装的 helper 为准。
-- dmg 只有 macOS 客户端与 Rex Server helper，**没有 Rex Go iOS 二进制**；手机端交互无法从 dmg 复核，本文按 Rex Go 的公开实测交互（§2.1.1）设计，不是从 dmg 逐像素移植。
+- The installed `Rex Beta.app` 0.1.0 (build **1987**, `snapshot`, commit `6c4ecb4`). Its helper is `rex 0.1.0-preview.19`, with **API revision 14**.
+- The payload of `~/Downloads/Rex.dmg` is 0.1.0 (build **1642**, `preview`, commit `a92aace`). It is older than the installed version. This doc takes the behavior from the installed build 1987. For a strict match with the dmg, note the difference of 345 builds.
+- The `rex version` of the helper in the dmg could not be read on a read-only mount. Gatekeeper and syspolicyd held the image, and the command timed out. The API revision comes from the installed helper.
+- The dmg has only the macOS client and the Rex Server helper. It has **no Rex Go iOS binary**. The phone interaction cannot be checked against the dmg. This doc follows the public test of the Rex Go interaction (section 2.1.1). It is not a pixel-by-pixel port from the dmg.
 
-从 Rex 二进制内嵌的 API 文档与字符串得到的三条事实：
+The API documents and strings inside the Rex binaries give three facts:
 
-1. **Rex 的 focus 是共享的会话状态，不是每客户端状态**：`session.focus_block` 的说明是 “Focus a block, and make its window the active window if it isn't.”；`session.focus_direction` / `focus_next_pane` / `focus_previous_pane` 都直接改 session 的 focus。若 iOS 用 `session.focus_block` 来“切换查看”，必然改掉桌面焦点与 active window。
-2. **协议里没有 per-client view focus**：`client.list` / `client.inspect` 的 `ClientView` 只有 `client_id`、`principal`、`info`、`connected_at`、`connection_state`、`session_ids`、`actions`；没有“这个客户端正在看哪个 block/window”的字段。`session.attach` 的 `focused` 是尺寸归属/typist 语义，不是查看位置。
-3. **Rex 客户端确实把导航状态存在本地**：macOS 侧有 `WorkspaceLastFocusedSessionStore`、`WorkspaceSessionOrderStore`、`WorkspaceOpenWindowsStore`，以及命令面板里的 `PaneNavigatorCommandPalettePage`（“go to anything pane block tab session…”）。Mac 上所有 pane 同屏可见，选中 pane 直接调共享 focus；手机一次只看一个 pane，才需要额外的本地“我在看哪个”记录。
+1. **The focus of Rex is shared session state. It is not state for each client.** The description of `session.focus_block` is "Focus a block, and make its window the active window if it isn't." `session.focus_direction`, `focus_next_pane` and `focus_previous_pane` all change the focus of the session directly. Suppose iOS uses `session.focus_block` to "switch the view". The desktop focus and the active window then change without fail.
+2. **The protocol has no focus of the view for each client.** The `ClientView` of `client.list` and `client.inspect` has only `client_id`, `principal`, `info`, `connected_at`, `connection_state`, `session_ids` and `actions`. It has no field for "which block or window this client is looking at". The `focused` of `session.attach` means size ownership (typist). It does not mean a viewing position.
+3. **Rex clients do keep navigation state locally.** The macOS side has `WorkspaceLastFocusedSessionStore`, `WorkspaceSessionOrderStore` and `WorkspaceOpenWindowsStore`. The command palette has `PaneNavigatorCommandPalettePage` ("go to anything pane block tab session…"). On a Mac, all panes show on one screen, and a selected pane calls the shared focus directly. A phone shows one pane at a time. Only a phone needs an extra local record of "which one I am viewing".
 
-结论：**“本地查看记录”不是第二套焦点模型，而是一个客户端缓存**。它不参与布局、不参与 active window、不与别的设备同步；服务端仍只有一个 truth：`layout` + `Tab.Focus`。Rex 把窗口/会话导航状态放本地，正是同一条分界线的先例。
+The conclusion: **the "local view record" is not a second focus model. It is a client cache.** It takes no part in the layout or the active window, and it does not sync with other devices. The server still has one truth: `layout` and `Tab.Focus`. Rex keeps window and session navigation state locally. This is a precedent for the same dividing line.
 
-### 2.1.1 Rex Go 手机端（外部证据）
+### 2.1.1 Rex Go on the phone (external evidence)
 
-dmg 里没有 iOS 二进制，但 Rex Go 的 alpha 已通过 TestFlight 分发，公开实测记录了界面（DevelopersIO，2026-10-31，`Rex Dev 0.1.0 (1577)`）：
+The dmg has no iOS binary. The alpha of Rex Go is distributed through TestFlight, and a public test recorded its interface (DevelopersIO, 2026-10-31, `Rex Dev 0.1.0 (1577)`):
 
-- 一个 session 下可以有多个 Tab，每个 Tab 下多个 pane（用户确认；公开截图只展示了一个 Tab 打开的状态）。
-- 一个 Tab 的多个 panel 以**横向滑动**切换；文章原话：“Switching panes is intuitive with a horizontal swipe”。
-- 右上角显示**整张分屏布局的缩略图**，高亮当前 pane；文章截图说明：“The pane layout is shown at the top right and the pane switching buttons at the bottom”。
-- 底部是一排**面板切换按钮**（程序图标，当前项高亮），另有 `+` 按钮；截图里 3 个 pane 对应 3 个按钮。
-- 顶部是当前 Tab 的标题（程序 + 终端标题）与会话名（`gentle-moor ⌄`）；返回箭头回到上层列表，说明 Tab 有独立的列表轴 [INFERENCE]。
-- 同一篇文章确认多主机（MacBook / Mac mini）各自 session 列表可切换，CLI 的 `rex client ls` 里 iPhone 以 `platform=ios` 出现。
+- One session can have several tabs, and each tab has several panes (a user said so). The public screenshots show only the state with one tab open.
+- The user switches the panes of one tab with a **horizontal swipe**. The article says: "Switching panes is intuitive with a horizontal swipe".
+- The top right shows a **thumbnail of the whole split layout**, with the current pane highlighted. The screenshot caption says: "The pane layout is shown at the top right and the pane switching buttons at the bottom".
+- The bottom has a row of **pane switch buttons** (program icons, the current one highlighted) and a `+` button. The screenshot with 3 panes has 3 buttons.
+- The top shows the title of the current tab (program plus terminal title) and the session name (`gentle-moor ⌄`). The back arrow returns to the upper list. This means the tab has its own list axis [INFERENCE].
+- The same article states that the user can switch among the session lists of several hosts (MacBook and Mac mini). In `rex client ls` of the CLI, the iPhone appears with `platform=ios`.
 
-结论：Rex Go 的模型是 **session → window(tab) → pane 两轴**，不是“一个 Tab 只能看一个 pane”。GoRex 的 iOS 不需要发明第三套呈现，直接按这个交互做：Tab 轴沿用现有 `SessionSheet`，pane 轴新增“缩略图 + 底部按钮 + 横向滑动”。缩略图需要读 `layer.layout` 的 rect/split，但**只读**，不写布局。
+The conclusion: the model of Rex Go is **session → window (tab) → pane, with two axes**. It is not "one tab can show only one pane". The iOS app of GoRex does not need to invent a third presentation. It follows this interaction directly. The tab axis keeps the existing `SessionSheet`. The pane axis adds a thumbnail, a bottom button bar and a swipe. The thumbnail reads the rect and split of `layer.layout`, **read-only**. It never writes the layout.
 
-除文章与截图明确描述的部分外，手势阈值、底部按钮的排序算法、`+` 的确切语义在参考版本中未观察到；本文按 GoRex 现有实现与布局顺序推断（标 `[INFERENCE]`），实现时以可用设备复核。
+The article and the screenshots do not describe some details. These are the gesture thresholds, the sort rule of the bottom buttons and the exact meaning of `+`. They were not observed in the reference versions. This doc infers them from the existing GoRex implementation and the layout order (marked `[INFERENCE]`). Check them on a real device when you implement them.
 
-### 2.2 去重审计（本设计不引入第二套）
+### 2.2 Dedupe audit (this design adds no second system)
 
-| 关注点 | 已有真源/机制 | 本设计的处理 | 是否新增重复 |
+| Concern | Existing source or mechanism | How this design treats it | New duplicate? |
 |---|---|---|---|
-| 布局结构、顺序、方向、比例 | `layout.Store`（服务端） | 只读 `session.view` | 否 |
-| 焦点、键盘、active window | `Tab.Focus` / `active_window_id` | 不写；只在本地无记录时回退 | 否 |
-| 面板集合 | `SessionView.Window.tiled`（已按布局顺序） | **重命名**为 `panes` 并更新全部调用点 | 否（不加别名） |
-| 面板名称 | `blocks[].label` + `Host.title` 链 | 把 `Host.title` 抽出 block 参数，窗口标题/面板按钮共用 | 否（不写第二套回退） |
-| 面板状态 | `Host.status([block])` | 直接复用 | 否 |
-| 每设备查看位置 | 无 | 一个本地小缓存（`UserDefaults`） | 新增，但不是真源 |
-| 持久化 | 现有 `UserDefaults` 用法、`SpaceStore` | 复用 `UserDefaults`；不新建同步体系 | 否 |
-| Tab 轴 UI | 现有 `SessionSheet`（window 列表） | 保留；本期不改 | 否 |
-| Pane 轴 UI | 无 | 缩略图 + 底部按钮 + 滑动，均来自同一 `layer.layout`/`panes` | 新增视图，但不是新数据源 |
-| 协议/服务端 | Rex API | 零改动 | 否 |
+| Layout structure, order, direction, ratio | `layout.Store` (server) | Read `session.view` only | No |
+| Focus, keyboard, active window | `Tab.Focus` and `active_window_id` | No write. Use it only as a fallback when the local record is missing | No |
+| Pane set | `SessionView.Window.tiled` (already in layout order) | **Rename** to `panes` and update all call sites | No (no alias) |
+| Pane name | `blocks[].label` and the `Host.title` chain | Move `Host.title` out into a function with a block parameter. The window title and the pane button share it | No (no second fallback) |
+| Pane state | `Host.status([block])` | Reuse it directly | No |
+| View position for each device | None | A small local cache (`UserDefaults`) | New, but not a source of truth |
+| Persistence | The existing `UserDefaults` use. (`SpaceStore`, which this audit named, is removed. Projects replace it, `docs/projects.md`) | Reuse `UserDefaults`. Build no new sync system | No |
+| Tab axis UI | The existing `SessionSheet` (window list) | Keep it. No change in this phase | No |
+| Pane axis UI | None | Thumbnail, bottom buttons and swipe. All come from the same `layer.layout` and `panes` | New view, but not a new data source |
+| Protocol and server | Rex API | No change | No |
 
-明确否决的方案：
+Options that the design rejects:
 
-- **服务端 per-client `view_focus` 字段**：Rex 没有；会变成第二套焦点，还要定义冲突与清理。只有“换一台新手机也记得”才需要，本期不做。
-- **`Window.panes` 与 `tiled` 并存**：重复 API，最终会漂移；直接重命名。
-- **独立的名称/状态解析**：与 `Host.title`、`Host.status` 漂移；只抽公共函数。
-- **把每个 pane 当伪 window 列表**：重复条目、重复 attach 风险，也违反“同组”语义。
-- **另做一个面板列表页**：Rex Go 已给出“缩略图 + 底部条”两个互补入口；再加第三个列表只会重复。
-- **iCloud 同步查看位置**：与“各端独立”相反。
+- **A server field `view_focus` for each client.** Rex has none. It would become a second focus, and the design would need rules for conflicts and cleanup. Only the case "a new phone also remembers" needs it. This phase does not do it.
+- **`Window.panes` next to `tiled`.** This duplicates the API, and the two would drift. The design renames instead.
+- **A separate resolver for name and state.** It would drift from `Host.title` and `Host.status`. The design only extracts shared functions.
+- **Treat each pane as a fake window list.** This gives duplicate entries and a risk of a duplicate attach. It also breaks the meaning of "the same group".
+- **A separate pane list page.** Rex Go already gives two complementary entries, the thumbnail and the bottom bar. A third list would only repeat them.
+- **iCloud sync of the view position.** This is the opposite of "each device is independent".
 
-## 3. 目标与非目标
+## 3. Goals and non-goals
 
-### 目标
+### Goals
 
-1. 在 session 的 Tab（window）轴下，iOS 列出当前 Tab 的全部 tiled 面板（缩略图 + 底部条）；当前面板显示名称，所有面板有状态标记与可访问名称（tooltip/VoiceOver）；Tab 轴沿用现有 window 列表。
-2. 按 Rex Go 的交互提供 pane 切换：右上角布局缩略图（高亮当前面板）、底部面板按钮、横向滑动；切换后面板仍连接原会话，不创建新终端、不丢归属。
-3. 切换只影响本机 iPhone 的显示；不改共享布局的 `Focus`/`Zoom`/`Root`/`Ratio`，也不强制桌面一起切。
-4. 每台 iPhone 独立记住“每个 window 上次看的面板”，重开回到自己的面板。
-5. 桌面布局变化（新增/关闭/重命名面板、比例变化）经现有 revision 同步到 iOS 列表；桌面结构保持不变。
-6. 旋转、键盘弹出、全屏查看属于本地呈现；语义上不写布局。
+1. Under the tab (window) axis of a session, iOS lists all tiled panes of the current tab (thumbnail and bottom bar). The current pane shows its name. Every pane has a state mark and an accessible name (tooltip and VoiceOver). The tab axis keeps the existing window list.
+2. iOS switches panes as Rex Go does: the layout thumbnail at the top right (current pane highlighted), the bottom pane buttons and the swipe. After a switch, the pane stays connected to the original session. The app creates no new terminal and loses no ownership.
+3. A switch affects only what this iPhone shows. It does not change `Focus`, `Zoom`, `Root` or `Ratio` of the shared layout. It does not force the desktop to switch.
+4. Each iPhone remembers independently "the pane last viewed in each window". After a reopen, it returns to its own pane.
+5. A layout change on the desktop (a new, closed or renamed pane, a ratio change) reaches the iOS list through the existing revision. The desktop structure stays unchanged.
+6. Rotation, keyboard appearance and full-screen view are local presentation. They do not write the layout.
 
-### 非目标
+### Non-goals
 
-- 不把桌面宫格作为可编辑的分屏布局搬到手机；右上角缩略图只读显示方向/比例，iOS 不做分隔条拖动。
-- 在 iPhone 上编辑共享布局：关闭、重命名面板、拖动分隔条仍只在桌面；iOS 只新建一次 split（新增一个面板），与新 Tab 同级。
-- 跨主机面板、浏览器/note 面板的完整呈现（§7）。
-- 另一台 GoRex 桌面收养远端布局后的实时几何跟随（§7.3）。
-- 改变多端共享 PTY 的输入/尺寸语义（§5.7 说明现状）。
+- Do not bring the desktop grid to the phone as an editable split layout. The thumbnail at the top right shows only the direction and ratio, read-only. iOS has no divider drag.
+- Do not edit the shared layout on the iPhone. Closing a pane, renaming a pane and dragging a divider stay on the desktop. iOS only creates one split (adds one pane), at the same level as a new tab.
+- Do not show panes of other hosts, or browser and note panes, in full (section 7).
+- Do not do the live geometry follow after another GoRex desktop adopts a remote layout (section 7.3).
+- Do not change the input and size semantics of a PTY that several clients share (section 5.7 describes the current state).
 
-## 4. 术语：layout focus 与 viewed block
+## 4. Terms: layout focus and viewed block
 
-| 概念 | 归属 | 作用 | 本期是否改变 |
+| Concept | Owner | Role | Changed in this phase? |
 |---|---|---|---|
-| **layout focus** | 服务端 `layout.Tab.Focus` | 桌面键盘焦点、Tab 标题回退、split/move/close 的锚点、客户端 view 的 `focused_block_id`、active window 的锚点 | 不改 |
-| **viewed block** | 每个客户端本地的一格缓存 | “我这一端上次看的是哪个 block” | iOS 新增；仅 UI 记忆 |
+| **layout focus** | the server `layout.Tab.Focus` | Desktop keyboard focus. The fallback for the tab title. The anchor of split, move and close. The `focused_block_id` of the client view. The anchor of the active window | No |
+| **viewed block** | a one-cell cache on each client | "The block that this client viewed last" | New on iOS. UI memory only |
 
-规则：
+Rules:
 
-- viewed block 不是焦点、不是会话状态、不是布局字段；它没有服务端表示，也不参与 revision。
-- iOS 的 viewed block **永远不写** `session.focus_block` / `session.zoom_block` / 任何 `LayoutCommand`。
-- layout focus 只作为 iOS 的 fallback（本机没有记录或记录失效时）。
-- 桌面端继续用 layout focus 作为自己的“正在看哪个面板”；Web 同屏显示全部面板，不需要 viewed block，其点击面板仍是显式远程操作（现状不改）。
+- The viewed block is not a focus, not session state and not a layout field. It has no server representation and takes no part in the revision.
+- The viewed block of iOS **never writes** `session.focus_block`, `session.zoom_block` or any `LayoutCommand`.
+- iOS uses the layout focus only as a fallback (when the device has no record, or the record is invalid).
+- The desktop keeps the layout focus as its own "which pane is being viewed". The web client shows all panes on one screen and does not need a viewed block. A click on a pane in the web client stays an explicit remote operation (no change).
 
-## 5. 设计
+## 5. Design
 
-### 5.1 数据来源与顺序
+### 5.1 Data source and order
 
-两件事分开：
+Two things are separate:
 
-1. **成员与顺序**：`SessionView.Window.tiled` 已经是该 Tab 全部 tiled 面板的 block ID，按布局顺序。本期把它**重命名**为 `panes`，并更新全部调用点（`Host.swift`、`HostListView.swift`、`Inbox.swift`），**不保留别名**：
+1. **Members and order.** `SessionView.Window.tiled` was already the list of block IDs of all tiled panes of the tab, in layout order. This phase **renamed** it to `panes` and updated all call sites (`Host.swift`, `HostListView.swift`, `Inbox.swift`). It kept **no alias**:
 
 ```swift
 var panes: [String] {
@@ -139,7 +139,7 @@ var panes: [String] {
 }
 ```
 
-2. **几何**：为右上角缩略图与点击命中，解码 tiled layer 已有的 `layout`（与 Web 使用的同一份数据，不新增服务端字段）：
+2. **Geometry.** For the thumbnail at the top right and for hit testing, the app decodes the `layout` that the tiled layer already has. The web client uses the same data. The design adds no server field.
 
 ```swift
 struct PaneLayout: Decodable {
@@ -155,15 +155,15 @@ struct PaneSplit: Decodable {
 }
 ```
 
-- `layout` 只用于**画缩略图与命中**；成员、顺序、名称、状态仍来自 `blocks`/`panes`，不解析出第二个面板列表。
-- 缩略图只画 `panes` 里的 block：遍历 `layout` 时，叶子若不在 `panes` 中（浮层、被过滤的面板）就跳过；保证缩略图与底部条永远是同一个集合，不会出现“图里有、按钮没有”。
-- `rect` 缺失时按 `split.direction/ratio` 递归计算（纯函数，同 `assignRect` 的算法）；不要因为服务端省略 rect 就不画。
-- 不新增 `Layer.kind`：rexapi 固定先输出 tiled layer、再输出 floating layers（`internal/rexapi/model.go:558-604`），`layers.first` 就是 tiled。只有将来把浮层也列进面板组时，才需要 `kind`。
-- 浮层本期不列入面板组；画布 Tab（无 tiled layer）不产生缩略图与面板列表。
+- The app uses `layout` only to **draw the thumbnail and for hit testing**. Members, order, names and states still come from `blocks` and `panes`. The app does not parse a second pane list out of `layout`.
+- The thumbnail draws only the blocks in `panes`. While the app walks `layout`, it skips a leaf that is not in `panes` (a float, or a filtered pane). So the thumbnail and the bottom bar always show the same set. The thumbnail never has a cell that the bar lacks.
+- When `rect` is missing, the app computes it recursively from `split.direction` and `ratio` (a pure function, in `paneCells` in `ios/GoRex/Rex/PaneGeometry.swift`). The thumbnail must not be skipped because the server omitted a rect.
+- The design adds no `Layer.kind`. `rexapi` always outputs the tiled layer first and the floating layers after it (`internal/rexapi/model.go`, where the window view fills `Layers`). So `layers.first` is the tiled layer. A `kind` is needed only when floats join the pane group later.
+- This phase does not list floats in the pane group. A canvas tab (no tiled layer) makes no thumbnail and no pane list.
 
-### 5.2 名称与状态
+### 5.2 Name and state
 
-不写第二套回退链。把现有窗口标题里的“面板名”部分抽成一个函数，窗口标题与面板按钮共用（`Host.title` 现在的链是 `window.name` → `blockName(focused)` → 终端标题 → `window.label`）：
+The design adds no second fallback chain. It extracts the "pane name" part of the window title into one function. The window title and the pane button share it. (The current `Host.title` chain is `window.name` → `blockName(focused)` → terminal title → `window.label`.)
 
 ```swift
 // One chain for both a window's title and a pane row.
@@ -171,186 +171,186 @@ func paneTitle(_ block: String) -> String?   // blockName → blocks[block].titl
 func title(_ w: SessionView.Window) -> String // w.name → paneTitle(resolved block) → w.label
 ```
 
-名称优先级保持现状：
+The name priority stays as it is now:
 
-1. `blocks[].label`（用户命名，`blockName` 已过滤默认 `"shell"`，`SessionView.swift:87-95`）；
-2. `host.blocks[block]?.title`（终端标题）；
-3. 程序名。
+1. `blocks[].label` (the name that the user gave. `SessionView.blockName` already filters out the default `"shell"`).
+2. `host.blocks[block]?.title` (the terminal title).
+3. The program name.
 
-面板按钮最后回退到 `"Terminal"`；窗口行仍回退到 `window.label`，与今天一致。
+The pane button falls back last to `"Terminal"`. The window row still falls back to `window.label`, as today.
 
-状态：对单个 block 调用现有 `host.status([block])`（`Host.swift:677-685`），呈现为与窗口行相同的 `ProgramStatusMark`。窗口行仍显示整窗最紧急状态，不新增聚合器。
+State: for one block, the app calls the existing `host.status([block])` (`Host.status`). It shows the result as the same `ProgramStatusMark` that the window row uses. The window row still shows the most urgent state of the whole window. The design adds no aggregator.
 
-### 5.3 viewed block 的本地缓存与解析
+### 5.3 The local cache of the viewed block, and its resolution
 
-新增 `ios/GoRex/Rex/ViewedBlock.swift`（一个缓存，不是焦点系统）：
+`ios/GoRex/Rex/ViewedBlock.swift` is a cache. It is not a focus system:
 
 ```swift
 struct ViewedBlockKey: Hashable {
-    let machine: String   // Host.spaceMachineKey：machine_id，Demo 时回退 host UUID
+    let machine: String   // Host.cacheKey: "host:<UUID>", the host by its ID
     let session: String
     let window: String
 }
 
 @MainActor
 final class ViewedBlockStore {
-    static let shared = ViewedBlockStore()  // UserDefaults；按 App 安装，不同步
+    static let shared = ViewedBlockStore()  // UserDefaults; by App install, not synced
     func block(for key: ViewedBlockKey) -> String?
     func set(_ block: String, for key: ViewedBlockKey)
     func forget(_ key: ViewedBlockKey)
 }
 ```
 
-- 存储位置：`UserDefaults`，key 形如 `viewedBlock.v1.<machine>.<session>.<window>`；与现有 `backgrounds` 等本地偏好同一机制（`TerminalSession.swift` 的 `UserDefaults` 用法）。不写 iCloud，因为需求是“各端独立”。
-- 权威性：缓存只影响“先显示哪个”，**从不**决定 block 是否存在、名称、顺序或状态；这些全部来自 `session.view`。记录失效就丢弃。
-- 解析顺序（打开某个 window 时）：
-  1. 显式导航目标（通知/Inbox/深链传入的 block）；
-  2. 本地 `ViewedBlockStore` 记录，且该 block 仍在该 window 的 `panes` 中；
-  3. `window.focused_block_id`；
-  4. `panes.first`。
-- 写入时机：用户从缩略图/底部条/滑动选择，或窗口列表打开某个 window 后解析出 block。
-- 失效：block 不在 `panes` 中即忽略并清理该条目；window 消失时清理该 window 条目（可在收到 revision 后懒清理）。
-- key 的 `machine` 用 `spaceMachineKey`：首次连上、`/api/spaces` 尚未报告 `machine_id` 时是 `host:<UUID>`，之后会变成真实 `machine_id`。这种切换只会让旧 key 变成 miss，不会串设备；不做迁移，交给懒清理。
+- Storage location: `UserDefaults`. The build keeps all entries in one dictionary under the key `viewedBlocks.v1`. The dictionary key joins the parts `machine`, `session` and `window` with a unit separator. This is the same mechanism as the existing local preferences such as `backgrounds` (the `UserDefaults` use in `TerminalSession.swift`). The cache does not write to iCloud, because the requirement is "each device is independent".
+- Authority: the cache decides only "which pane shows first". It **never** decides whether a block exists, or its name, order or state. All of these come from `session.view`. An invalid record is dropped.
+- Resolution order (when a window opens):
+  1. The explicit navigation target (a block that a notification, the Inbox or a deep link passes).
+  2. The record of `ViewedBlockStore` on this device, when that block is still in `panes` of the window.
+  3. `window.focused_block_id`.
+  4. `panes.first`.
+- When the app writes: the user selects a pane from the thumbnail, the bottom bar or the swipe. It also writes when the user opens a window from the window list and the app resolves a block.
+- Invalidation: when a block is not in `panes`, the app ignores it and cleans up that entry. When a window disappears, the app cleans up the entry of that window (it can clean up lazily after it receives a revision).
+- The `machine` part of the key is `Host.cacheKey`, which is `host:<UUID>`. The UUID is the ID of the host in the app. The key never changes when the app learns the `machine_id` later. (An earlier version of this doc used `spaceMachineKey`, which was `host:<UUID>` before `/api/spaces` reported the `machine_id`. That function no longer exists.)
 
-### 5.4 切换流程
+### 5.4 Switch flow
 
-所有 pane 入口（横向滑动、缩略图点击、底部按钮）都走同一个 `selectPane(block)`：
+All pane entries (horizontal swipe, thumbnail tap, bottom button) go through the same `selectPane(block)`:
 
-1. `ViewedBlockStore.set(block, key)`；
-2. `switchTo(TerminalTarget(host:session:block:))` —— 现有实现先启动新 `TerminalSession`、滑入、再关闭旧流（`TerminalScreen.swift:281-330`）；
-3. **不调用**任何布局命令（`session.focus_block`、`zoom_block`、`pane.*` 都不调用）。
+1. `ViewedBlockStore.set(block, key)`.
+2. `switchTo(TerminalTarget(host:session:block:))`. The existing implementation (`switchTo` in `ios/GoRex/Views/TerminalScreen.swift`) first starts a new `TerminalSession`, slides it in, and then closes the old stream.
+3. **The app calls no** layout command (`session.focus_block`, `zoom_block` and `pane.*` are all not called).
 
-Tab 切换不进 `selectPane`：仍走现有 window 列表/pill 手势，并各自保留自己的 viewed block。
+A tab switch does not go through `selectPane`. It still uses the existing window list and the pill gesture. Each tab keeps its own viewed block.
 
-注意：`switchTo` 目前的方向按 window 索引计算，面板间切换会得到 `+1`。实现时按面板在 `panes` 中的索引差决定滑动方向；索引相同（理论上不发生）则淡入。滑动到第一个/最后一个面板时停住，不循环到另一个 Tab——Rex Go 的滑动只在当前 Tab 内。
+Note: `switchTo` currently computes the direction from the window index. A switch between panes then gives `+1`. When you implement this, decide the slide direction from the index difference of the panes in `panes`. When the indexes are equal (in theory this does not happen), fade in. When the user slides to the first or last pane, the slide stops. It does not loop into another tab. The slide of Rex Go stays inside the current tab.
 
-### 5.5 UI（按 Rex Go）
+### 5.5 UI (as in Rex Go)
 
-两层轴分开：
+The two axes are separate:
 
-- **Tab 轴**：沿用现有 `SessionSheet` 的 window 列表与 pill 的 window 手势；不在其中展开面板行（避免与 pane 轴重复）。
-- **Pane 轴**：当前 Tab 内两个入口，共用 `panes` 与 `selectPane`：
-  1. **底部面板条**：每个 pane 一个程序图标按钮（`ProgramTile` 的 21×16 原生比例），当前项是一圈紧贴 tile 的淡色背景；按钮上叠加该 pane 的状态点（blocked 黄、error 红、done 蓝、working 小灰点）。`+` 在胶囊外单独一个圆钮。`accessibilityLabel` 用 `paneTitle(block)` + 状态。
-  2. **双指滑动**：在终端页面上用双指朝上/下/左/右轻扫，切到该方向相邻的 pane（按 `PaneLayout` 的位置找，内容跟手：左扫切到右边的 pane，上扫切到下面的 pane）；该方向没有 pane 时不动，不跨 Tab。单指仍用于滚动、选择和点按。选中文本、鼠标捕获的全屏程序（vim/Claude Code）或切换进行中时，手势让位给终端。
-- **布局缩略图**：没有单独的 panes icon。切换 pane 后，缩略图在工具栏右侧（ellipsis 下方）浮出一次，显示 `PaneLayout` 的 rect/split；当前 pane 用其程序 tile 的颜色，其余灰色。约 4 秒后自动淡出。缩略图只作指示，不接收点按和滑动，触摸穿过它落到终端；方向切换由终端页面的双指滑动完成（45° 锥形范围找最近的 pane）。当前格的颜色用 0.25s 淡入淡出。直接点底部条也可切换。切 Tab 不触发。
-- **单 pane**：`panes.count == 1` 时隐藏 icon 与底部条，保持今天的面板；工具栏菜单的 Split Pane（与 ⌘D）仍是入口。
-- **标题**：沿用现有 pill，显示当前 pane 的 `paneTitle`/程序与 Tab 名。**去掉标题里的 `ProgramTiles` 堆叠**（同组信息已由缩略图与底部条表达），只保留一个当前程序图标。
-- **拆分入口**：当前 pane 就地拆出一个新 shell（`session.new_split`，`direction: horizontal`、`side: after`、`focus: false`），随后切到新面板，桌面布局焦点不变。三个入口共用同一实现：底部条胶囊外的 `+`、工具栏菜单的 Split Pane、外接键盘的 ⌘D（与桌面 Split Right 同键）。单面板窗口只有后两者。`+` 不再表示 New Tab。
-- **底部安全区**：面板条在 KeyBar 之上；键盘出现时，它跟着键盘上移，KeyBar 仍在它下面。终端 `paneInset` 让光标保持在两者之上。
+- **Tab axis.** It keeps the window list of the existing `SessionSheet` and the window gesture of the pill. The app does not expand pane rows inside it. This avoids a repeat of the pane axis.
+- **Pane axis.** The current tab has two entries. They share `panes` and `selectPane`:
+  1. **The bottom pane bar.** Each pane has one program icon button (`ProgramTile` at its native ratio of 21×16). The current item has a light background that fits close around its tile. The app overlays the state dot of that pane on the button (blocked yellow, error red, done blue, working small gray dot). The `+` is a separate round button outside the capsule. `accessibilityLabel` uses `paneTitle(block)` plus the state.
+  2. **Two-finger swipe.** On the terminal page, the user flicks up, down, left or right with two fingers. This switches to the adjacent pane in that direction. The app finds it by the position in `PaneLayout`. The content follows the fingers: a left swipe goes to the pane on the right, and an up swipe goes to the pane below. When no pane exists in that direction, nothing moves. It never crosses into another tab. One finger still scrolls, selects and taps. The gesture yields to the terminal in three cases. The first case is selected text. The second case is a full-screen program that captures the mouse (vim, Claude Code). The third case is a switch in progress.
+- **Layout thumbnail.** There is no separate panes icon. After a pane switch, the thumbnail pops up once on the right of the toolbar (below the ellipsis). It shows the rect and split of `PaneLayout`. The current pane uses the color of its program tile, and the other panes are gray. After about 4 seconds, it fades out by itself. The thumbnail is only an indicator. It takes no taps and no swipes, and touches pass through it to the terminal. The two-finger swipe on the terminal page changes the direction (a 45° cone finds the nearest pane). The color of the current cell fades in and out in 0.25 s. A tap on the bottom bar also switches. A tab switch does not trigger it.
+- **A single pane.** When `panes.count == 1`, the app hides the icon and the bottom bar, and keeps the pane as it is today. The Split Pane item of the toolbar menu (and ⌘D) is still an entry.
+- **Title.** It keeps the existing pill. It shows the `paneTitle` or program of the current pane and the tab name. **It drops the `ProgramTiles` stack in the title**, because the thumbnail and the bottom bar already show the group information. It keeps one icon of the current program.
+- **Split entry.** The current pane splits in place and creates a new shell (`session.new_split`, `direction: horizontal`, `side: after`, `focus: false`). The app then switches to the new pane. The desktop layout focus does not change. Three entries share one implementation. They are the `+` outside the capsule of the bottom bar and the Split Pane item of the toolbar menu. The third entry is ⌘D on an external keyboard, the same key as Split Right on the desktop. A window with one pane has only the last two. `+` no longer means New Tab.
+- **Bottom safe area.** The pane bar is above the KeyBar. When the keyboard appears, the pane bar moves up with the keyboard, and the KeyBar stays below it. The `paneInset` of the terminal keeps the cursor above both.
 
-缩略图说明**位置/方向/比例**，底部条给出**顺序与切换**；两者来自同一份 `panes`/`PaneLayout`，不新增第二份面板数据。
+The thumbnail shows **position, direction and ratio**. The bottom bar gives **order and switching**. Both come from the same `panes` and `PaneLayout`. The design adds no second copy of the pane data.
 
-### 5.6 同步与失效
+### 5.6 Sync and invalidation
 
-- 服务端布局变化 → `session_view_changed` → iOS 重读 view（现有链路）。
-- 缩略图与底部条随 `panes`/`PaneLayout` 更新：新增/关闭/重命名/重排/拖比例都会反映。
-- 正在查看的 block 被关闭：
-  - 数据流以 4000 结束（`TerminalSession.swift` 的 `onDrop`）；
-  - 本期行为：停留在结束状态，不自动切 pane；返回列表可从同组其他面板重新打开。
-- 正在查看的 block 被桌面移动到另一个 window：block 仍存在于 session，`holds` 会命中新 window；保持当前连接，缩略图/底部条按新的 window 归属显示。
-- 桌面 zoom：`Tab.Zoom` 只影响桌面显示；iOS 仍可查看其他面板，不改变桌面 zoom。
-- 打开/切换面板会调用现有 `host.see(session:block:)`，把该 block 的 done/error 记录标记为已读。这个“已读”是服务端共享状态（`Host.swift:688-705`），不是布局或焦点：用户确实看到了该面板，本期保留；若要求“手机看了也不清桌面的已读”，需要另做 per-client seen，不在本期。
+- A server layout change sends `session_view_changed`, and iOS reads the view again (the existing chain).
+- The thumbnail and the bottom bar update with `panes` and `PaneLayout`. A new, closed, renamed or reordered pane, and a ratio drag, all show.
+- The viewed block closes:
+  - The data stream ends with code 4000 (the `onDrop` handler that `ios/GoRex/Terminal/TerminalSession.swift` sets on the stream).
+  - Behavior in this phase: the view stays in the ended state. It does not switch pane by itself. The user can go back to the list and reopen another pane of the same group.
+- The desktop moves the viewed block to another window: the block still exists in the session, and `holds` (`SessionView.holds`) matches the new window. The app keeps the current connection. The thumbnail and the bottom bar show the new window membership.
+- Desktop zoom: `Tab.Zoom` affects only what the desktop shows. iOS can still view the other panes. It does not change the desktop zoom.
+- When the app opens or switches a pane, it calls the existing `host.see(session:block:)`. This marks the done and error records of that block as read. This "read" is shared server state (`Host.see`). It is not layout or focus. The user did see the pane, so this phase keeps it. Suppose a requirement says "a view on the phone must not clear the read mark on the desktop". That needs a separate seen state for each client, and it is not in this phase.
 
-### 5.7 共享输入与尺寸（现状语义，需在 PR 描述与帮助中写明）
+### 5.7 Shared input and size (current semantics, to state in the PR description and in help)
 
-本期不改变以下行为，但必须让评审与用户明确：
+This phase does not change the behaviors below. Reviewers and users must still know them:
 
-1. **多端可同时输入**：输入不被 owner 校验，服务端按写入串行排队（`internal/rex/session.go:661-697`、`internal/rexapi/input.go:95-135`）。iPhone 与桌面可以同时打字，字符交错，不会创建第二个 PTY。
-2. **尺寸是共享的**：iOS 打开面板会 `own_block take`（`TerminalSession.swift:229-243`），网关替它持有该 session 的 size lock（`internal/rexapi/owners.go:107-136`），PTY 变成手机网格；桌面此期间的 resize 被忽略，关闭面板时 `disown_block` 后桌面尺寸恢复（`state.go:3269-3276`）。
-3. 因此“切换面板”会让桌面终端发生**内容重排**（不是布局/分屏结构变化）。这是为了手机可读性而保留的现状。
-4. 键盘弹出不 resize（`TerminalView.swift:361` 的注释与实现）；旋转会 `fit` → `resize`（`TerminalSession.swift:380-400`）。
-5. 备选方案（后续，不在本期）：只读预览时跳过 `own_block`/`resize`，使用会话当前尺寸；用户首次输入时再取尺寸。需要单独的 UX 决策。
+1. **Several clients can type at the same time.** The server does not check the owner for input. It queues writes in order (`(*session).input` in `internal/rex/session.go` and `internal/rexapi/input.go`). An iPhone and a desktop can type at the same time, and the characters interleave. No second PTY is created.
+2. **The size is shared.** When iOS opens a pane, it sends `own_block take` (`ios/GoRex/Terminal/TerminalSession.swift`). The gateway holds the size lock of that session for iOS (`(*Gateway).tookOwnership` in `internal/rexapi/owners.go`). The PTY takes the grid of the phone. The desktop ignores its own resizes during that time. When the app closes the pane and sends `disown_block`, the desktop size returns (`(*session).endSizeLockLocked` in `internal/rex/session.go`).
+3. So a "pane switch" makes the desktop terminal **reflow its content**. This is not a change of the layout or the split structure. The design keeps this current state so the phone stays readable.
+4. The keyboard does not resize (the comment and the code of `keyboard(_:)` in `ios/GoRex/Terminal/TerminalView.swift`). A rotation calls `fit` and then `resize` (`fit` in `ios/GoRex/Terminal/TerminalSession.swift`).
+5. An alternative (later, not in this phase): for a read-only preview, skip `own_block` and `resize` and use the current size of the session. Take the size when the user first types. This needs a separate UX decision.
 
-## 6. 代码改动清单
+## 6. Code change list
 
-iOS（本期全部改动）：
+iOS (all changes of this phase):
 
-- `ios/GoRex/Rex/SessionView.swift`：`tiled` 重命名为 `panes`（更新全部调用点）；新增只读 `PaneLayout`/`PaneSplit`，解码 tiled layer 的 `layout`；抽取 `paneTitle`。
-- `ios/GoRex/Rex/ViewedBlock.swift`（新增）：`ViewedBlockKey`、`ViewedBlockStore`（本地缓存）。
-- `ios/GoRex/Rex/Host.swift`：`paneTitle` 与现有 `title(_:)` 共用；不新增 API 调用。
-- `ios/GoRex/Rex/PaneGeometry.swift`（新增）：`PaneCell`、`PaneRecord`、`paneCells`、`paneNeighbor`，无 UI 依赖。
-- `ios/GoRex/Views/PaneSwitcher.swift`（新增）：`PaneMiniMap`（浮动图，仅作指示）、`PaneBar`（底部图标条与紧凑状态点）。
-- `ios/GoRex/Views/TerminalScreen.swift`：打开时按 §5.3 解析；`selectPane`；页面级双指四方向滑动；pane 切换后浮出缩略图并自动淡出；接入底部条，并协调 KeyBar 的底部 inset。
-- `ios/GoRex/Views/SessionSheet.swift`：保持 window/session 列表，不展开 pane 行。
-- `ios/GoRexTests/PaneSwitcherTests.swift`（新增）：嵌套 split 几何、行 fallback、缺失 block、pane 步进边界、viewed block 持久化。
+- `ios/GoRex/Rex/SessionView.swift`: rename `tiled` to `panes` (update all call sites). Add the read-only `PaneLayout` and `PaneSplit`, which decode the `layout` of the tiled layer. Extract `paneTitle`.
+- `ios/GoRex/Rex/ViewedBlock.swift` (new): `ViewedBlockKey` and `ViewedBlockStore` (the local cache).
+- `ios/GoRex/Rex/Host.swift`: `paneTitle` and the existing `title(_:)` share code. No new API call.
+- `ios/GoRex/Rex/PaneGeometry.swift` (new): `PaneCell`, `PaneRecord`, `paneCells` and `paneNeighbor`, with no UI dependency.
+- `ios/GoRex/Views/PaneSwitcher.swift` (new): `PaneMiniMap` (the floating map, an indicator only) and `PaneBar` (the bottom icon bar and the compact state dots).
+- `ios/GoRex/Views/TerminalScreen.swift`: resolve at open as section 5.3 says. Add `selectPane` and the page-level two-finger swipe in four directions. Add the thumbnail that pops up and fades out after a pane switch. Add the bottom bar, and coordinate it with the bottom inset of the KeyBar.
+- `ios/GoRex/Views/SessionSheet.swift`: keep the window and session list. Do not expand pane rows.
+- `ios/GoRexTests/PaneSwitcherTests.swift` (new): nested split geometry, row fallback, a missing block, the pane step boundary, and persistence of the viewed block.
 
-Go / Web：**无改动**。若后续做 §7.2，再改 `internal/rexapi`。
+Go and web: **no change**. If section 7.2 is done later, `internal/rexapi` changes then.
 
-## 7. 边界与后续
+## 7. Boundaries and follow-up
 
-### 7.1 本期已明确不做
+### 7.1 Explicitly not done in this phase
 
-- **跨主机面板**：`filterNode` 丢弃 `Host != ""` 的面板（`internal/rexapi/model.go:450-457`）；`GET /api/spaces` 只给 `machine_id + block_id`（`internal/rexapi/spaces.go:19-49`），没有 Tab、顺序、名称。因此一台机器上的 Tab 若混有其他主机的面板，iOS 无法重建“同组全部面板”。
-- **浏览器 / note 面板**：没有会话，无法“连接原运行会话”，只能占位。
-- **浮层与画布**：本期列表只含 tiled 面板；画布 Tab 不列。
+- **Panes of other hosts.** `filterNode` drops the panes that have `Host != ""` (`internal/rexapi/model.go`). `GET /api/spaces` gives only `machine_id + block_id` (`internal/rexapi/spaces.go`). It has no tab, order or name. So suppose a tab on one machine mixes in panes of other hosts. iOS cannot rebuild "all panes of the same group".
+- **Browser and note panes.** They have no session. The app cannot "connect to the original running session". It can only show a placeholder.
+- **Floats and canvas.** The list in this phase has only tiled panes. A canvas tab is not listed.
 
-### 7.2 跨主机面板（需要协议扩展，另立设计）
+### 7.2 Panes of other hosts (needs a protocol extension, a separate design)
 
-二选一：
+Choose one of two options:
 
-1. 扩展 `/api/spaces`：按 Tab 给出 `remote_panes[{machine_id, block_id, session_id, label, index, ratio}]`；iOS 再直连对应机器取状态。
-2. 新增 `gorex.tab_panes` 只读方法，由服务端合并本机与他机信息；需要桌面端 `hosts.json` 已有 machine 映射。
+1. Extend `/api/spaces`: for each tab, give `remote_panes[{machine_id, block_id, session_id, label, index, ratio}]`. iOS then connects directly to the corresponding machine and reads the state.
+2. Add a read-only method `gorex.tab_panes`. The server merges the information of this machine and other machines. This needs the machine mapping that the desktop `hosts.json` already has. The code does not have `gorex.tab_panes` today. It was only an option in this doc and was never built.
 
-风险：跨主机面板的状态/名称由两台服务器各自维护，revision 不一致；需要定义合并与过期策略。
+Risk: two servers each maintain the state and name of a cross-host pane, and their revisions do not match. The design must define a merge rule and an expiry rule.
 
-### 7.3 另一台桌面的几何跟随
+### 7.3 Geometry follow on another desktop
 
-远端桌面收养布局时已保留方向/比例/名称（`hosts.go:867-1010`），但之后只同步名称（`state.go:3319`），不同步比例/方向/顺序。若 #521 中的“换到其他电脑”要求实时镜像，需要新增布局 reconcile；与本地 zoom/focus/拖动冲突，建议独立设计。
+When a remote desktop adopts a layout, it keeps the direction, ratio and name (the adoption code in `adoptions.go` and `internal/layout`). After that, it syncs only the name. It does not sync the ratio, direction or order. Suppose "switch to another computer" in #521 needs a live mirror. The code then needs a new layout reconcile. It conflicts with local zoom, focus and drag. We recommend a separate design.
 
-## 8. 测试与验收
+## 8. Tests and acceptance
 
-### 单元测试
+### Unit tests
 
-- fixture JSON（三层嵌套 split + floats + 默认/自定义 label）→ `panes` 顺序、`paneTitle` 回退、`PaneLayout` 的 rect/split、单面板状态。
-- `ViewedBlockStore`：无记录→focused；有记录且有效→记录；记录失效→focused；focused 缺失→first；持久化读写；清理。
-- 切换 resolver 不调用任何网络方法（通过依赖注入或 spy 验证）。
+- Fixture JSON has three levels of nested splits, floats, and default and custom labels. The test checks the order of `panes`, the `paneTitle` fallback, the rect and split of `PaneLayout`, and the state of a single pane.
+- `ViewedBlockStore`: no record → focused. A valid record → the record. An invalid record → focused. A missing focused → first. Persistent read and write. Cleanup.
+- The switch resolver calls no network method (check with dependency injection or a spy).
 
-### 手工 / 端到端（Mac mini + CuaDriver，按私有测试流程）
+### Manual and end-to-end (a Mac mini with CuaDriver, by the private test process)
 
-1. 桌面打开一个 Tab，拆成 3 个面板，分别命名；再开第二个 Tab（单面板或双面板）。
-2. iPhone（模拟器或真机）连接同一 host：
-   - 打开第一个 Tab：右上角缩略图与桌面形状一致，当前 pane 高亮；底部 3 个程序按钮，当前项高亮；
-   - 点缩略图的另一格 / 底部另一个按钮 / 横向滑动，三种方式都切到对应 pane；
-   - 切到第二个 Tab，再切回第一个：各自回到自己的 viewed block。
-3. 在 iPhone 切换面板前后记录桌面 `layout.json` 的 `tabs[].focus`、`zoom`、`root` 的 `ratio/vertical` 与 `rev`：必须不变（`rev` 不因 iOS 查看而增加）。
-4. iPhone 关闭重开 / 杀掉 App：每个 Tab 回到自己上次的面板；桌面的聚焦面板不变。
-5. 桌面新增/关闭/重命名一个面板、拖动分隔条：iPhone 缩略图与底部条在 revision 后更新（形状/比例/名称/状态）；桌面结构不变。
-6. 两端同时输入：都能写入同一会话（预期交错），不出现第二个 session。
-7. 旋转 iPhone / 弹出键盘：不改布局；PTY 尺寸按 §5.7 变化并在断开后恢复。
-8. 在 vim / Claude Code 中选中文本或启用鼠标捕获时横向滑动：不误切 pane；普通滚动/选择优先。
+1. On the desktop, open a tab and split it into 3 panes. Name each one. Then open a second tab (one pane or two panes).
+2. Connect an iPhone (simulator or real device) to the same host:
+   - Open the first tab. The thumbnail at the top right has the same shape as the desktop, and the current pane is highlighted. The bottom has 3 program buttons, and the current one is highlighted.
+   - Tap another cell of the thumbnail, tap another bottom button, or swipe horizontally. All three ways switch to the matching pane.
+   - Switch to the second tab and then back to the first. Each tab returns to its own viewed block.
+3. Record these values of the desktop `layout.json` before and after the pane switch on the iPhone: `tabs[].focus`, `zoom`, the `ratio/vertical` of `root`, and `rev`. They must not change (`rev` must not increase because of an iOS view).
+4. Close and reopen the iPhone app, or kill it. Each tab returns to its own last pane. The focused pane of the desktop does not change.
+5. On the desktop, add, close or rename a pane, and drag a divider. After the revision, the thumbnail and the bottom bar on the iPhone update (shape, ratio, name, state). The desktop structure does not change.
+6. Type on both ends at the same time. Both can write to the same session (the expected result is interleaving). No second session appears.
+7. Rotate the iPhone and show the keyboard. The layout does not change. The PTY size changes as section 5.7 says, and it recovers after the disconnect.
+8. In vim or Claude Code, select text or turn on mouse capture, and swipe horizontally. The app must not switch panes by mistake. Normal scroll and select have priority.
 
-### 验收标准（对应 #521）
+### Acceptance criteria (for #521)
 
-- [ ] 同组面板成员、顺序、方向、比例在 iOS 缩略图可见且与桌面一致；桌面结构保持。
-- [ ] iPhone 一次显示一个面板，并能看到/切换到同组其他面板（缩略图、底部按钮、横向滑动）。
-- [ ] 当前面板显示名称，底部条/缩略图对每个面板显示状态标记与可访问名称；连接原运行会话，不重复、不丢归属。
-- [ ] 手机切换不改变桌面 layout focus / zoom / split 结构。
-- [ ] 每个 Tab 独立记住自己的面板；桌面调整布局后 iOS 缩略图与底部条同步。
+- [ ] The members, order, direction and ratio of the group panes are visible in the iOS thumbnail and match the desktop. The desktop structure stays unchanged.
+- [ ] The iPhone shows one pane at a time. It can see and switch to the other panes of the group (thumbnail, bottom button, horizontal swipe).
+- [ ] The current pane shows its name. The bottom bar and the thumbnail show a state mark and an accessible name for each pane. The pane connects to the original running session, with no duplicate and no lost ownership.
+- [ ] A switch on the phone does not change the desktop layout focus, zoom or split structure.
+- [ ] Each tab remembers its own pane independently. After the desktop adjusts the layout, the iOS thumbnail and bottom bar sync.
 
-## 9. 分阶段
+## 9. Phases
 
-1. **Phase 1（本文）**：`panes` 重命名、`PaneLayout` 解码、缩略图、底部面板条、横向滑动、本地 viewed block 缓存与失效回退。无 Go/协议改动。
-2. **Phase 2**：浮层/画布分组；pane 名称的更多呈现（如长按 tooltip）；Rex Go 交互细节对齐。
-3. **Phase 3（另立设计）**：跨主机面板（§7.2）与另一台桌面几何跟随（§7.3）。
+1. **Phase 1 (this doc, built in #639, #653 and #665)**: the `panes` rename, `PaneLayout` decode, the thumbnail, the bottom pane bar and the swipe. It also has the local viewed block cache with its invalidation fallback. It has no Go or protocol change.
+2. **Phase 2**: group floats and canvas. More presentation of pane names (for example a tooltip on long press). Match more details of the Rex Go interaction.
+3. **Phase 3 (a separate design)**: panes of other hosts (section 7.2) and the geometry follow on another desktop (section 7.3).
 
-## 10. 风险与未决问题
+## 10. Risks and open questions
 
-1. **尺寸抢占**：打开面板即改桌面 PTY 尺寸，可能被误认为“手机改了我的布局”。需要文案/帮助说明，或实现“只读预览不取尺寸”。
-2. **多端同时输入**：共享 PTY 是产品既有语义，但用户在手机上边看边敲可能打扰桌面操作；是否需要在 iPhone 显示“他人正在输入/共享中”提示，未决。
-3. **面板关闭时自动切换**：可能打断用户阅读输出；备选是停留在结束画面并提供“同组其他面板”入口。
-4. **手势冲突**：页面级横向滑动必须让位给文本选择、滚动和鼠标捕获的全屏程序；否则 vim/Claude Code 里会误切 pane。需要手势识别优先级测试。
-5. **缩略图命中**：pane 多时格子很小，单格点击可能难；底部面板条是 44pt 的保底入口。
-6. **本地记录与显式导航冲突**：通知/Inbox 打开特定 block 必须优先，需在实现中集中 resolver，避免各入口各写一套。
-7. **缓存不是真源**：实现时禁止用缓存判断 block 存在/可见；每次以最新 `session.view` 校验，否则会出现“缩略图里有、服务端没有”的漂移。
-8. **Rex Go 仍是 alpha**：参考版本 0.1.0 (1577)，无法确认它在滑动时是否调用 `session.focus_block`。本设计明确不调用，以满足 #521 的“不强制桌面”；若上游后来改为共享焦点，也不跟。
-9. 是否把浮层也纳入“同组面板”需要产品确认。
+1. **Size grab.** Opening a pane changes the PTY size of the desktop. A user may think that "the phone changed my layout". The app needs text or help that explains this. Another option is to build "a read-only preview that does not take the size".
+2. **Typing at the same time.** A shared PTY is existing product semantics. But a user who types on the phone while watching may disturb the work on the desktop. Open question: does the iPhone need a hint "another person is typing / sharing"?
+3. **Auto switch when a pane closes.** It may interrupt the reading of the output. The alternative is to stay on the ended screen and offer an entry to "other panes of the same group".
+4. **Gesture conflict.** The page-level horizontal swipe must yield to text selection, scrolling and full-screen programs that capture the mouse. Otherwise vim and Claude Code switch panes by mistake. The work needs a test of gesture recognizer priority.
+5. **Thumbnail hit test.** When there are many panes, the cells are small, and a tap on one cell may be hard. The bottom pane bar is the fallback entry, with a 44 pt target.
+6. **A local record conflicts with explicit navigation.** A notification or the Inbox that opens a specific block must have priority. The implementation needs one central resolver. Each entry must not write its own.
+7. **The cache is not a source of truth.** The implementation must not use the cache to decide whether a block exists or is visible. It must check against the latest `session.view` each time. Otherwise a drift appears: "the thumbnail has it, the server does not".
+8. **Rex Go is still alpha.** The reference version is 0.1.0 (1577). We cannot tell whether Rex Go calls `session.focus_block` on a swipe. This design explicitly does not call it, to meet "do not force the desktop" of #521. If upstream later changes to a shared focus, we do not follow.
+9. Open question: should floats join the "group panes"? Product must decide.
 
-## 11. 关联
+## 11. Related
 
-- #521 跨端保留终端分屏布局，并在 Rex Go iOS 访问同组所有面板。
-- #518 所有设备共用用途分组（已由 `SpaceStore` 承担，本设计只复用 `spaceMachineKey` 作为持久 key）。
-- #520 跨端保留 Tab 与面板名称（名称数据已具备，展示属本期；跨端同步属 #520）。
-- `docs/rex-api.md`：Rex API 的布局/空间/尺寸锁语义。
-- `docs/ios-centralized-spaces.md`：iOS 中心化分组与 `machine_id` 约定。
-- 本机参考：`Rex Beta.app` 0.1.0（build 1987，snapshot，commit `6c4ecb4`），helper 0.1.0-preview.19，API revision 14；`~/Downloads/Rex.dmg` 为 0.1.0（build 1642，preview，commit `a92aace`）。证据来自 bundle 内嵌的 API 文档与字符串，不来自 changelog。
-- Rex Go 手机端：TestFlight `Rex Dev 0.1.0 (1577)`，界面与交互见 DevelopersIO 2026-10-31 的实测：<https://dev.classmethod.jp/en/articles/reona-superlogical-rex-beta-try/>（缩略图、底部面板条、横向滑动、多主机）。
+- #521: keep the terminal split layout across clients, and reach all panes of the group in Rex Go iOS.
+- #518: all devices share one grouping by purpose. `SpaceStore` once carried it. [projects.md](projects.md) replaced it. This design no longer reuses `spaceMachineKey`. It uses `Host.cacheKey` as the persistent key.
+- #520: keep tabs and pane names across clients (the name data is already there, and this phase shows it. The cross-client sync belongs to #520).
+- `docs/rex-api.md`: the semantics of layout, spaces and size locks in the Rex API.
+- `docs/ios-centralized-spaces.md`: history. It described the central grouping on iOS and the `machine_id` convention. [projects.md](projects.md) replaced it.
+- Local reference: `Rex Beta.app` 0.1.0 (build 1987, snapshot, commit `6c4ecb4`), helper 0.1.0-preview.19, API revision 14. `~/Downloads/Rex.dmg` is 0.1.0 (build 1642, preview, commit `a92aace`). The evidence comes from the API documents and strings inside the bundle, not from a changelog.
+- Rex Go on the phone: TestFlight `Rex Dev 0.1.0 (1577)`. For its interface and interaction, see the DevelopersIO test of 2026-10-31: <https://dev.classmethod.jp/en/articles/reona-superlogical-rex-beta-try/> (thumbnail, bottom pane bar, horizontal swipe, several hosts).
