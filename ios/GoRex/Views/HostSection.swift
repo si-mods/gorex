@@ -228,7 +228,7 @@ struct HostSection: View {
         if !recent.isEmpty {
             // A card for each project, a gap between them.
             VStack(spacing: 12) {
-                ForEach(recent, id: .id) { s in
+                ForEach(recent) { s in
                     card(face: faced(s)) { project(s, tiles: column, divider: false, grouped: false) }
                 }
             }
