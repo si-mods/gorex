@@ -1570,24 +1570,27 @@ final class HostStore {
         proxied.filter { kept || $0.config.tailcat != nil }.forEach { $0.resume() }
     }
 
-    /// The phone changed network (NetworkPath). In the foreground, each
-    /// host with a control connection connects anew, whatever its reach,
-    /// as the connection can look open while its path died. Unlike
+    /// The phone changed network (NetworkPath). Unless in the background
+    /// (inactive counts as the foreground), each host with a control
+    /// connection connects anew, whatever its reach, as the connection can
+    /// look open while its path died; so does one waiting in its retry
+    /// backoff, which dials now rather than after up to ten seconds. Unlike
     /// foreground, it leaves the engine be: the engine hears the change
     /// itself, and a host behind it that comes too early tries again
     /// (scheduleRetry). In the background, nothing: coming back to the
     /// foreground sees to it.
-    func networkChanged(inFront: Bool) {
-        for h in Self.resumedOnNetworkChange(hosts, inFront: inFront) {
+    func networkChanged(inBackground: Bool) {
+        for h in Self.resumedOnNetworkChange(hosts, inBackground: inBackground) {
             h.resume()
             ConnectionLog.note("\(h.config.name): resumed after network change")
         }
     }
 
-    /// The hosts a change of network resumes: in the foreground, the real
-    /// ones with a control connection; in the background, none.
-    static func resumedOnNetworkChange(_ hosts: [Host], inFront: Bool) -> [Host] {
-        inFront ? hosts.filter { !$0.isDemo && $0.control != nil } : []
+    /// The hosts a change of network resumes: out of the background, the
+    /// real ones with a control connection or waiting to retry; in the
+    /// background, none.
+    static func resumedOnNetworkChange(_ hosts: [Host], inBackground: Bool) -> [Host] {
+        inBackground ? [] : hosts.filter { !$0.isDemo && ($0.control != nil || $0.isRetrying) }
     }
 
     /// Whether leaving the app asks iOS for a grace (BackgroundGrace): a

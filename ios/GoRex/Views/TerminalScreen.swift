@@ -318,8 +318,10 @@ struct TerminalScreen: View {
             }
             // A new network: the streams continue on it at once, not after
             // a drop is found. In the background, coming back resumes them.
+            // Inactive (Control Center, a call) is not the background: the
+            // network can change there.
             .onChange(of: NetworkPath.shared.changes) {
-                guard phase == .active else { return }
+                guard phase != .background else { return }
                 for pane in pages where !pane.leaving { pane.session.resume() }
             }
     }

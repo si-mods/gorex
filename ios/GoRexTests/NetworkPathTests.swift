@@ -39,9 +39,29 @@ nonisolated final class NetworkPathTests: XCTestCase {
         XCTAssertEqual(n.changes, 2, "nothing changed in the next second")
 
         p.tell("")
-        XCTAssertEqual(n.changes, 3, "no network is a change too, at once")
+        XCTAssertEqual(n.changes, 2, "no network is no reconnect: there is nothing to dial")
+        p.tell("en0")
+        XCTAssertEqual(n.changes, 3, "from no network to a network, at once")
         w.run()
         XCTAssertEqual(n.changes, 3)
+    }
+
+    /// A change to no network in the second after a reconnect drops the
+    /// change waiting for the second's end; the one back to a network
+    /// after it reconnects.
+    @MainActor func testNoNetworkDropsPendingChange() {
+        let p = Path(), w = Waits()
+        let n = NetworkPath(source: p.source, schedule: w.schedule)
+        n.start()
+        p.tell("en0")
+        p.tell("pdp_ip0")
+        XCTAssertEqual(n.changes, 1)
+        p.tell("en0")
+        p.tell("")
+        w.run()
+        XCTAssertEqual(n.changes, 1, "the pending change to a network is dropped")
+        p.tell("en0")
+        XCTAssertEqual(n.changes, 2, "back to a network, at once")
     }
 
     /// A second start watches no second path.
@@ -53,9 +73,9 @@ nonisolated final class NetworkPathTests: XCTestCase {
         XCTAssertEqual(started, 1)
     }
 
-    /// In the foreground a change of network resumes the real hosts with a
-    /// control connection, whatever their reach; not the demo host nor one
-    /// not connected; in the background, none. HostStore has no hold of
+    /// Out of the background a change of network resumes the real hosts
+    /// with a control connection, whatever their reach, and those waiting
+    /// to retry; not the demo host nor one idle; in the background, none. HostStore has no hold of
     /// the tailnet engine (TailnetEngine is not in this target), so the
     /// change cannot reset it.
     @MainActor func testResumedOnNetworkChange() async throws {
@@ -71,8 +91,15 @@ nonisolated final class NetworkPathTests: XCTestCase {
         defer { h.stop() }
         await until("online") { h.status == .online }
 
-        XCTAssertEqual(HostStore.resumedOnNetworkChange([demo, h, idle], inFront: true).map(\.id), [h.id])
-        XCTAssertTrue(HostStore.resumedOnNetworkChange([demo, h, idle], inFront: false).isEmpty)
+        XCTAssertEqual(HostStore.resumedOnNetworkChange([demo, h, idle], inBackground: false).map(\.id), [h.id])
+        XCTAssertTrue(HostStore.resumedOnNetworkChange([demo, h, idle], inBackground: true).isEmpty)
+
+        // A host that cannot connect waits in its retry backoff.
+        let down = Host(HostConfig(name: "carol-server", url: try XCTUnwrap(URL(string: "http://127.0.0.1:1"))))
+        down.connect()
+        defer { down.stop() }
+        await until("retrying") { down.isRetrying }
+        XCTAssertEqual(HostStore.resumedOnNetworkChange([idle, down], inBackground: false).map(\.id), [down.id])
     }
 
     /// The store's hosts connect anew on a change in the foreground, on a
@@ -94,10 +121,10 @@ nonisolated final class NetworkPathTests: XCTestCase {
         await until("online") { h.status == .online }
         let first = try XCTUnwrap(h.control)
 
-        store.networkChanged(inFront: false)
+        store.networkChanged(inBackground: true)
         XCTAssertTrue(h.control === first, "the background keeps the connection")
 
-        store.networkChanged(inFront: true)
+        store.networkChanged(inBackground: false)
         XCTAssertFalse(h.control === first, "a new connection")
         await until("online again") { h.status == .online && r.count("session.bootstrap") == 2 }
     }

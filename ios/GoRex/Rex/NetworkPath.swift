@@ -6,10 +6,11 @@ import Observation
 /// the app's life: a change of the interface or of its gateways, as
 /// TailnetEngine.PathMonitor tells them, asks the hosts and the open
 /// terminal to reconnect at once (docs/IOS-012-background-and-network-changes.md).
-/// The first network told is no change. A change reconnects at once; the
-/// changes in the second after it give one more reconnect, at that
-/// second's end, not one each. The engine's monitor, Diagnostics' and the
-/// hotspot's keep their own, which have other lifetimes.
+/// The first network told is no change. A change to a network reconnects
+/// at once; one to none does not, as dialing with no route only fails and
+/// drops streams that could resume. The changes in the second after a
+/// reconnect give one more, at that second's end, not one each. The
+/// engine's monitor, Diagnostics' and the hotspot's keep their own, which have other lifetimes.
 @Observable final class NetworkPath {
     /// Starts telling each network as it is: its interface's name, "" for
     /// none, and what makes it this network, the name and the gateways.
@@ -47,7 +48,11 @@ import Observation
     private func see(name: String, network: String) {
         defer { told = network }
         guard let last = told, last != network else { return }
-        if quiet {
+        if name.isEmpty {
+            // No route: nothing to dial. The change to a network comes next.
+            ConnectionLog.note("network changed: none")
+            pending = nil
+        } else if quiet {
             pending = name
         } else {
             reconnect(name)
@@ -55,7 +60,7 @@ import Observation
     }
 
     private func reconnect(_ name: String) {
-        ConnectionLog.note("network changed: \(name.isEmpty ? "none" : name)")
+        ConnectionLog.note("network changed: \(name)")
         changes += 1
         quiet = true
         schedule(1) { [weak self] in
@@ -78,7 +83,8 @@ import Observation
             let name = path.status == .satisfied
                 ? path.availableInterfaces.first { [.wifi, .wiredEthernet, .cellular].contains($0.type) }?.name ?? ""
                 : ""
-            let network = "\(name) \(name.isEmpty ? [] : path.gateways)"
+            // Sorted: a reordering of the gateways is no change.
+            let network = "\(name) \(name.isEmpty ? [] : path.gateways.map { "\($0)" }.sorted())"
             Task { @MainActor in told(name, network) }
         }
         m.start(queue: DispatchQueue(label: "dev.gorex.ios.network.path"))

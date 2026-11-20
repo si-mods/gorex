@@ -61,10 +61,10 @@ rootshell also saves its window state and its scrollback on the device before th
 5. When the grace ends, the open terminal suspends its streams as today. The Live Activity says that it is paused.
 6. When the user comes back after the grace, the hosts and the streams resume as today (`HostStore.foreground`).
 
-On a network change in the foreground:
+On a network change, in the foreground or while the app is inactive (Control Center, a call):
 
 1. The phone changes from Wi-Fi to cellular, from one Wi-Fi to another, or from no network to a network.
-2. At once, Rex Go reconnects each connected host and resumes each open terminal stream.
+2. At once, Rex Go reconnects each connected host and each host that waits to retry, and resumes each open terminal stream.
 3. A reconnect that takes more than a second shows the reconnect note, as today. A shorter one shows nothing.
 
 ### Model
@@ -79,10 +79,11 @@ On a network change in the foreground:
 - **Coming back.** The `.active` handler of `GoRexApp` calls `cancel()`, once, for the app. The registered work does not run. `TerminalLive.active` no longer cancels the grace. It still tells whether its own work ran, so the screen knows if it must resume.
 - **The deadline.** `backgroundTimeRemaining` is not useful at the moment of `.background`. One second after `start`, the grace reads it and schedules its end at `min(25 s, remaining − 5 s)` from then. A value that is not finite means that iOS gives no limit. Then the 25-second limit applies.
 - **A memory warning** during the grace ends it, as a deadline does.
-- **A network change** is a change of the interface or of its gateways, as `TailnetEngine.PathMonitor` computes it. The first value at start is not a change.
+- **A network change** is a change of the interface or of its gateways, as `TailnetEngine.PathMonitor` computes it. `NetworkPath` sorts the gateways first, so a new order is not a change. The first value at start is not a change.
+- **A change to no network** does not reconnect. With no route a dial only fails, and it drops streams that could resume. `NetworkPath` keeps the value, writes `network changed: none` in the log, and drops a reconnect that waits for the end of the second. The change from no network to a network reconnects at once.
 - **The reconnect** on a network change acts on the first change at once. Changes in the next second give one more reconnect at the end of that second, not one for each change.
-- **What reconnects.** `HostStore.networkChanged()` calls `Host.resume()` on each host that has a control connection, whatever its reach. It does not use `HostStore.foreground`: that function resumes only hosts that are not on the system network, and it resets the tailnet engine. The engine already hears the change through `TailnetDefaultInterfaceChanged`. A host behind the engine that reconnects before the engine is ready fails, then tries again with the backoff of `Host.scheduleRetry`. Then each open terminal calls `TerminalSession.resume`.
-- **In the background**, a network change does nothing. The return to the foreground handles it.
+- **What reconnects.** `HostStore.networkChanged(inBackground:)` calls `Host.resume()` on each real host that has a control connection, whatever its reach, and on each real host that has none and waits in its retry backoff (`isRetrying`). For the second kind, `resume()` cancels the pending retry and dials at once, so the host does not wait up to 10 seconds after a change from no network to a network. It logs `<host>: resumed after network change` for both kinds. It does not use `HostStore.foreground`: that function resumes only hosts that are not on the system network, and it resets the tailnet engine. The engine already hears the change through `TailnetDefaultInterfaceChanged`. A host behind the engine that reconnects before the engine is ready fails, then tries again with the backoff of `Host.scheduleRetry`. Then each open terminal calls `TerminalSession.resume`.
+- **In the background** (`scenePhase` is `.background`), a network change does nothing. The return to the foreground handles it. The phase `.inactive` is not the background: the user can turn Wi-Fi off in Control Center while the app is inactive, so the change acts there.
 
 ### Code
 
@@ -91,8 +92,8 @@ On a network change in the foreground:
 - `ios/GoRex/GoRexApp.swift`: the `.background` handler calls `BackgroundGrace.shared.start()` when `HostStore` has a connected host. The `.active` handler calls `cancel()`, and reads `BackgroundGrace.shared.awake(since:)` for `HostStore.suspended`.
 - `ios/GoRex/Views/TerminalScreen.swift`: the `.background` handler registers the suspend of its panes and no longer starts the grace.
 - `ios/GoRex/Rex/NetworkPath.swift`, new: one `NWPathMonitor` for the host connections. It runs from launch for the life of the app, with the interface filter of `TailnetEngine.PathMonitor`. It publishes a counter that goes up on each reconnect. `TailnetEngine.PathMonitor`, `NetworkDiagnostics` and `HotspotShare` keep their own monitors, which have other lifetimes.
-- `HostStore.networkChanged()`, new: on each change of the counter, in the foreground, it resumes the connected hosts.
-- `TerminalScreen`: on each change of the counter, in the foreground, it calls `resume()` on each pane that is not leaving.
+- `HostStore.networkChanged()`, new: on each change of the counter, unless in the background, it resumes the connected hosts and the hosts that wait to retry.
+- `TerminalScreen`: on each change of the counter, unless in the background, it calls `resume()` on each pane that is not leaving.
 - `ConnectionLog` gets the lines `network changed: <name>`, `<host>: resumed after network change` and `terminal <block>: resumed`, so Diagnostics shows the cause and the time.
 
 ## Alternatives
@@ -113,7 +114,9 @@ On a network change in the foreground:
 - The grace starts with a connected host and no terminal screen, and does not start with no host: unit test on the `.background` decision.
 - `TerminalLiveTests` keeps passing with the work moved out of `TerminalLive`.
 - The first change reconnects at once, the changes in the next second give one more reconnect, and the first path value is not a change: unit test with a fake path source.
-- A network change in the foreground resumes every connected host, also one on the system network, and does not reset the tailnet engine. In the background it does nothing: unit test on `HostStore` with fake hosts.
+- A network change out of the background resumes every connected host, also one on the system network, and each real host that waits to retry. It does not resume the demo host or an idle host, and does not reset the tailnet engine. In the background it does nothing: unit test on `HostStore` with fake hosts.
+- A change to no network updates the told network but does not raise the counter. A reconnect that waits for the end of the second is dropped by it. The change from no network to a network reconnects at once: unit tests with a fake path source.
+- The gateways in a new order are not a change: not unit tested, because the system path is not fakeable. The sort is one line in `NetworkPath.system`.
 - End to end, on a device from TestFlight: open a terminal that prints each second, turn Wi-Fi off, and read the time from `network changed` to `resumed` in Diagnostics. Do the same from the host list, then go to another app for 10 seconds while a program asks for input, and check the notification.
 - `docs/invariants.md`: no item covers the grace or the iOS reconnect.
 

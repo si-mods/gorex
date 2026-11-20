@@ -108,7 +108,7 @@ struct GoRexApp: App {
                 // A new network: the hosts reconnect at once, not after a ping
                 // finds the old path dead (docs/IOS-012-background-and-network-changes.md).
                 .onChange(of: NetworkPath.shared.changes) {
-                    store.networkChanged(inFront: phase == .active)
+                    store.networkChanged(inBackground: phase == .background)
                 }
                 // Hosts the gateway refused try again as the engine runs anew.
                 .onChange(of: TailnetEngine.shared.status.state) { _, s in
