@@ -19,8 +19,9 @@ nonisolated struct TerminalActivity: ActivityAttributes, Hashable, Sendable {
         var program: String?
         /// The block's most urgent record; nil for none, as a plain shell.
         var record: Record?
-        /// The line that tells the latest state: a blocked record's
-        /// message, else the line screenLine picks from the screen.
+        /// The line that tells the latest state: the record's message
+        /// (TerminalLive.state), else the line screenLine picks from the
+        /// screen.
         var line: String
         /// Whether the stream is open; false once the app left it.
         var connected: Bool

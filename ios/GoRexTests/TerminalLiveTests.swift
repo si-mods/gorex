@@ -352,49 +352,59 @@ nonisolated final class TerminalLiveTests: XCTestCase {
         """), "$")
     }
 
-    /// A blocked record's message is the line, in place of the screen's;
-    /// a working one's, or a blocked one with none, leaves the screen's.
-    @MainActor func testBlockedMessageIsTheLine() {
-        let blocked = Host.ProgramStatus(id: "a", state: "blocked", app: "claude-code", title: "Permission",
-                                         msg: "Allow Bash: rm -rf build?\nyes / no", updated: Date(timeIntervalSince1970: 10))
-        var s = TerminalLive.state(title: "api", program: nil, records: [blocked], seen: nil, line: "status bar", connected: true)
-        XCTAssertEqual(s.line, "Allow Bash: rm -rf build? yes / no")
-        var none = blocked
-        none.msg = nil
-        s = TerminalLive.state(title: "api", program: nil, records: [none], seen: nil, line: "status bar", connected: true)
-        XCTAssertEqual(s.line, "status bar")
-        let working = Host.ProgramStatus(id: "b", state: "working", msg: "Reading files", updated: Date(timeIntervalSince1970: 20))
-        s = TerminalLive.state(title: "api", program: nil, records: [working], seen: nil, line: "✻ Reading…", connected: true)
-        XCTAssertEqual(s.line, "✻ Reading…")
-        s = TerminalLive.state(title: "api", program: nil, records: [], seen: nil, line: "", connected: true)
-        XCTAssertEqual(s.line, "")
+    /// The most urgent record's message is the line, in any state; done or
+    /// failed, the last message it had; else the screen's. A blank one is
+    /// none, and line breaks are spaces.
+    @MainActor func testRecordMessageIsTheLine() {
+        func line(_ r: [Host.ProgramStatus], seen: Date? = nil) -> String {
+            TerminalLive.state(title: "api", program: nil, records: r, seen: seen, line: "status bar", connected: true).line
+        }
+        let at = Date(timeIntervalSince1970: 10)
+        XCTAssertEqual(line([.init(id: "a", state: "blocked", app: "claude-code", title: "Permission", msg: "Allow Bash: rm -rf build?\nyes / no", updated: at)]),
+                       "Allow Bash: rm -rf build? yes / no")
+        XCTAssertEqual(line([.init(id: "a", state: "blocked", msg: nil, updated: at)]), "status bar")
+        XCTAssertEqual(line([.init(id: "a", state: "working", msg: "Waiting for the dev build", lastMsg: "Older", updated: at)]), "Waiting for the dev build")
+        XCTAssertEqual(line([.init(id: "a", state: "working", msg: " \n ", lastMsg: "Older", updated: at)]), "status bar", "lastMsg only once done")
+        XCTAssertEqual(line([.init(id: "a", state: "idle", msg: "Ready", updated: at)]), "Ready")
+        XCTAssertEqual(line([.init(id: "a", state: "done", lastMsg: "Correct the lint count", updated: at)]), "Correct the lint count")
+        XCTAssertEqual(line([.init(id: "a", state: "error", msg: "Build failed", lastMsg: "Older", updated: at)]), "Build failed")
+        XCTAssertEqual(line([.init(id: "a", state: "done", lastMsg: "Correct the lint count", updated: at)], seen: at), "status bar", "a seen done record does not count")
+        // The most urgent record's own: the blocked one, not the working one's.
+        XCTAssertEqual(line([.init(id: "w", state: "working", msg: "Reading files", updated: at),
+                             .init(id: "b", state: "blocked", msg: "Allow edit?", updated: at)]), "Allow edit?")
+        XCTAssertEqual(line([.init(id: "w", state: "working", msg: "Reading files", updated: at),
+                             .init(id: "d", state: "done", lastMsg: "Wrote it", updated: at)], seen: at), "Reading files", "seen done skipped")
+        XCTAssertEqual(line([]), "status bar")
+        XCTAssertEqual(TerminalLive.state(title: "", program: nil, records: [], seen: nil, connected: true).line, "")
     }
 
-    /// Through the activity: a blocked record's message wins over the line
-    /// the screen read, and the screen's comes back once it is answered.
-    @MainActor func testBlockedMessageWinsOverScreen() {
+    /// Through the activity: a record's message wins over the line the
+    /// screen read; done, its last message; with none, the screen's.
+    @MainActor func testRecordMessageWinsOverScreen() {
         let d = FakeDriver(), w = Waits(), t = Tasks()
         let clock = Date(timeIntervalSince1970: 1_800_000_000)
         let l = live(d, w, t) { clock }
-        var records = [Host.ProgramStatus(id: "a", state: "blocked", app: "claude-code", msg: "Allow Bash: make test?", updated: clock)]
+        var records = [Host.ProgramStatus(id: "a", state: "working", app: "claude-code", msg: "Waiting for the dev build", updated: clock)]
         l.show(source(state: { TerminalLive.state(title: "api", program: nil, records: records, seen: nil, connected: true) },
                       lines: { done in done("SWE-2 High · bypass") }), owner: UUID())
         w.run()
-        XCTAssertEqual(l.sent?.line, "Allow Bash: make test?")
+        XCTAssertEqual(l.sent?.line, "Waiting for the dev build")
 
-        records[0].msg = "   "
-        l.changed()
-        w.run()
+        func step(_ change: () -> Void) {
+            change()
+            l.changed()
+            w.run()
+        }
+        step { records[0].msg = "   " }
         XCTAssertEqual(l.sent?.line, "SWE-2 High · bypass", "a blank message is none")
-        records[0].msg = "Allow Bash: make test?"
-        l.changed()
-        w.run()
+        step { records[0].state = "blocked"; records[0].msg = "Allow Bash: make test?" }
         XCTAssertEqual(l.sent?.line, "Allow Bash: make test?")
-        records[0].state = "working"
-        l.changed()
-        w.run()
-        XCTAssertEqual(l.sent?.line, "SWE-2 High · bypass")
-        XCTAssertEqual(d.updates.map(\.state.line), ["SWE-2 High · bypass", "Allow Bash: make test?", "SWE-2 High · bypass"])
+        step { records[0].state = "done"; records[0].msg = nil; records[0].lastMsg = "Correct the lint count" }
+        XCTAssertEqual(l.sent?.line, "Correct the lint count")
+        step { records = [] }
+        XCTAssertEqual(l.sent?.line, "SWE-2 High · bypass", "no record: the screen's")
+        XCTAssertEqual(d.updates.map(\.state.line),
+                       ["SWE-2 High · bypass", "Allow Bash: make test?", "Correct the lint count", "SWE-2 High · bypass"])
     }
 
     /// Attributes and state together stay under ActivityKit's 4 KB with the
