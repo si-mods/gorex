@@ -295,7 +295,7 @@ struct HostSection: View {
             if isOpen {
                 // One block, so that the tabs come and go as a whole.
                 VStack(spacing: 0) {
-                    rows(entries((s.view?.windows ?? []).map { (s, $0) }), more: true, tiles: tiles, lift: face)
+                    rows(entries((s.view?.windows ?? []).map { (s, $0) }), more: true, tiles: tiles, onFace: face)
                     newTabRow { newProjectTab(s) }
                 }
                 .transition(reduceMotion ? .identity : .opacity.combined(with: .scale(scale: 0.96, anchor: .top)))
@@ -743,13 +743,13 @@ struct HostSection: View {
 
     /// The rows of a card, each with its tab's menu, and dragged onto
     /// another of its session to move there; more is a row after them.
-    private func rows(_ entries: [Entry], more: Bool = false, tiles column: CGFloat? = nil, lift: Bool = false) -> some View {
+    private func rows(_ entries: [Entry], more: Bool = false, tiles column: CGFloat? = nil, onFace: Bool = false) -> some View {
         let windows = arranged(entries)
         // The room of the tiles of the tab with the most, so that the titles line up.
         let tiles = column ?? ProgramTiles.width(behind: windows.map(\.window.back.count).max() ?? 0)
         // The tab the window shows, on the face of its project: lifted.
         let shownTab: (Entry) -> Bool = { w in
-            lift && current.map { $0.host == host.id && $0.session == w.session.id && w.window.holds($0.block) } ?? false
+            onFace && current.map { $0.host == host.id && $0.session == w.session.id && w.window.holds($0.block) } ?? false
         }
         // Each session's rows, in order, made once for the card.
         let shownBy = RowGroups.shown(windows.map { ($0.session.id, $0.window.window_id) })
