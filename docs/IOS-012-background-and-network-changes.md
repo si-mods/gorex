@@ -8,7 +8,7 @@ metadata:
 
 # IOS-012: Connections across the background and network changes
 
-Status: phase 1 built (#NNN). Phase 2 not built.
+Status: phase 1 built (#929). Phase 2 not built.
 
 Replaces: [`IOS-006`](IOS-006-live-activities.md), section "Grace". This doc makes the grace app-wide, ties its end to the time that iOS gives, and adds a reconnect when the network changes. It compares Rex Go with rootshell, another iOS terminal, and takes two of its four methods. It does not keep the app running after the grace: [`IOS-006`](IOS-006-live-activities.md), Alternatives b, rejected that.
 
