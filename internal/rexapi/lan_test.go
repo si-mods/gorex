@@ -385,9 +385,8 @@ func TestServerRunsGateway(t *testing.T) {
 	}
 	// Off, the server runs no gateway. Supervise looks again every tick
 	// and has none to start: wait for many ticks, not for the real ones.
-	oldEvery := superviseEvery
-	superviseEvery = 10 * time.Millisecond
-	t.Cleanup(func() { superviseEvery = oldEvery })
+	superviseEveryNS.Store(int64(10 * time.Millisecond))
+	t.Cleanup(func() { superviseEveryNS.Store(0) })
 	if err := SaveLAN(state, LANConfig{Listen: "127.0.0.1:0", Allow: []string{"127.0.0.1"}}); err != nil {
 		t.Fatal(err)
 	}

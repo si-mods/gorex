@@ -132,7 +132,7 @@ func (a *App) view(c *ui.Context) {
 	// A popover's rows took their colors as they were made.
 	c.SetTheme(c.Theme().WithAccent(k.accent))
 	rootBackground(c, k.bgBottom) // SetTheme gave the root the theme's
-	if a.saveDue && time.Since(a.lastSave) > saveDelay && !a.gesturing() {
+	if a.saveDue && time.Since(a.lastSave) > saveDelay() && !a.gesturing() {
 		a.save()
 	}
 	// The window's title, which the Window menu and Mission Control show,

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"sync/atomic"
 	"time"
 
 	"gorex/internal/rex"
@@ -35,14 +36,22 @@ func (a *App) apply(h *hostConn, byID map[string]rex.SessionInfo) {
 	}
 }
 
-// saveDelay is how long a change waits before it is saved. A test sets it
-// to be short.
-var saveDelay = time.Second
+// saveDelayNS is how long a change waits before it is saved, in
+// nanoseconds, when not zero. A test sets it to be short. It is atomic:
+// the window's goroutines read it.
+var saveDelayNS atomic.Int64
+
+func saveDelay() time.Duration {
+	if n := saveDelayNS.Load(); n > 0 {
+		return time.Duration(n)
+	}
+	return time.Second
+}
 
 // saveIfDue saves the layout once a change waited saveDelay, and no
 // gesture moves it.
 func (a *App) saveIfDue() {
-	if a.saveDue && time.Since(a.lastSave) > saveDelay && !a.gesturing() {
+	if a.saveDue && time.Since(a.lastSave) > saveDelay() && !a.gesturing() {
 		a.save()
 	}
 }

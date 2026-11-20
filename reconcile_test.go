@@ -662,9 +662,8 @@ func exitLater() []string { return []string{testShell.path, "-c", "sleep 30"} }
 // window keeps the ratio its own while the pointer holds it, and sends it
 // once, as one tab.set, when it lets go.
 func TestGestureSendsOneTabSet(t *testing.T) {
-	old := saveDelay
-	saveDelay = 50 * time.Millisecond
-	t.Cleanup(func() { saveDelay = old })
+	saveDelayNS.Store(int64(50 * time.Millisecond))
+	t.Cleanup(func() { saveDelayNS.Store(0) })
 	a, tt := newTestApp(t)
 	a.split(false)
 	tab := a.tab()
@@ -702,7 +701,7 @@ func TestGestureSendsOneTabSet(t *testing.T) {
 	caughtUp(t, a, tt)
 	// Once is all: a second tab.set would come when a change had waited
 	// saveDelay, so wait several times that, frames running, to see none.
-	for end := time.Now().Add(6 * saveDelay); time.Now().Before(end); {
+	for end := time.Now().Add(6 * saveDelay()); time.Now().Before(end); {
 		time.Sleep(10 * time.Millisecond)
 		tt.Frame()
 	}
