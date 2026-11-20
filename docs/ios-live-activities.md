@@ -298,7 +298,9 @@ on `.active`; the shell on the host keeps running. **[code]**
   trailing: the state glyph, a progress ring, or a timer since
   `updated`; minimal: the tile; expanded: tile and window title, host,
   state, and `line` in a monospaced font (the system's: the extension
-  doesn't carry the terminal's font); Lock Screen: the same rows. The
+  doesn't carry the terminal's font), all in the bottom region, under
+  the camera (the leading region sits in the island's top corner, which
+  cut the tile, #901); Lock Screen: the same rows. The
   second row puts the state first, then the record's title and the host,
   so a long host name cuts no state. A plain shell shows no mark beside
   its tile, but in compact trailing. Paused (`connected: false` or
