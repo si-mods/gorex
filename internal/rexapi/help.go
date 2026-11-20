@@ -117,7 +117,9 @@ func blockCreatorAPI() map[string]any {
 	// upload_begin and ports postdate the snapshot the method list comes
 	// from; describe_block reports them like block_creator.list does.
 	methods["upload_begin"] = uploadBeginEntry
-	methods["ports"] = portsCreatorEntry
+	if portsCreatorEntry != nil {
+		methods["ports"] = portsCreatorEntry
+	}
 	return map[string]any{"methods": methods, "events": blockEventSchemas}
 }
 
@@ -286,7 +288,9 @@ func methodBlockCreatorList(c *control, a args) (any, *apiError) {
 	if api, ok := creator["api"].(map[string]any); ok {
 		if methods, ok := api["methods"].(map[string]any); ok {
 			methods["upload_begin"] = uploadBeginEntry
-			methods["ports"] = portsCreatorEntry
+			if portsCreatorEntry != nil {
+				methods["ports"] = portsCreatorEntry
+			}
 		}
 	}
 	creators := []any{creator}
@@ -398,6 +402,9 @@ func helpAllDocument(rev int) map[string]json.RawMessage {
 // withPortsMethod adds revision 15's ports method to a terminal creator's
 // method list, which the snapshot the document comes from predates.
 func withPortsMethod(raw json.RawMessage) json.RawMessage {
+	if portsMethodEntry == nil {
+		return raw
+	}
 	var block map[string]any
 	if json.Unmarshal(raw, &block) != nil {
 		return raw
