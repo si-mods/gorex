@@ -38,13 +38,18 @@ extension TerminalView: UIDocumentPickerDelegate {
 
     func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
         upload { dir in
-            // The copies move in with the photos', to go when they are sent.
-            try urls.enumerated().map { i, u in
-                let to = dir.appending(path: String(i))
-                try FileManager.default.createDirectory(at: to, withIntermediateDirectories: true)
-                try FileManager.default.moveItem(at: u, to: to.appending(path: u.lastPathComponent))
-                return to.appending(path: u.lastPathComponent)
-            }
+            try await Task.detached { try Self.stage(urls, into: dir) }.value
+        }
+    }
+
+    /// The copies move in with the photos', to go when they are sent. The
+    /// file work is off the main actor: the caller runs this detached.
+    nonisolated private static func stage(_ urls: [URL], into dir: URL) throws -> [URL] {
+        try urls.enumerated().map { i, u in
+            let to = dir.appending(path: String(i))
+            try FileManager.default.createDirectory(at: to, withIntermediateDirectories: true)
+            try FileManager.default.moveItem(at: u, to: to.appending(path: u.lastPathComponent))
+            return to.appending(path: u.lastPathComponent)
         }
     }
 
@@ -61,7 +66,7 @@ extension TerminalView: UIDocumentPickerDelegate {
             } catch {
                 failed(error)
             }
-            try? FileManager.default.removeItem(at: dir)
+            await Task.detached { try? FileManager.default.removeItem(at: dir) }.value
             bar.uploading -= 1
         }
     }
@@ -71,7 +76,7 @@ extension TerminalView: UIDocumentPickerDelegate {
     private static func photo(_ p: NSItemProvider, into dir: URL) async throws -> URL {
         let type = p.registeredTypeIdentifiers.first { UTType($0)?.conforms(to: .image) == true } ?? UTType.image.identifier
         let name = p.suggestedName
-        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        try await Task.detached { try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true) }.value
         return try await withCheckedThrowingContinuation { c in
             // The file the provider gives, on a queue of its own, is gone
             // once this returns.

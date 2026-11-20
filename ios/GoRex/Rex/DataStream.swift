@@ -36,9 +36,10 @@ enum DataHandshake: Equatable {
 /// Splits a terminal stream ("The Terminal Stream") into the Ghostty
 /// snapshot it starts with, the program's output, and Rex's own messages,
 /// `ESC _ rex1;<nonce>;<json> ESC \`, in order. Bytes may arrive split
-/// anywhere.
-struct TerminalStream {
-    enum Item {
+/// anywhere. Nonisolated: TerminalFeed runs it off the main actor.
+nonisolated struct TerminalStream {
+    /// JSON values, which nothing mutates.
+    enum Item: @unchecked Sendable {
         case snapshot(Data)
         case output(Data)
         case message([String: Any])
@@ -47,6 +48,9 @@ struct TerminalStream {
     let nonce: UInt64
     private var buf = Data()
     private var snapshotDone = false
+    /// Where the next snapshot record not yet walked starts, from the
+    /// start of buf, while the snapshot arrives.
+    private var snapshotAt = 10
 
     init(nonce: UInt64) { self.nonce = nonce }
 
@@ -59,7 +63,7 @@ struct TerminalStream {
         buf.append(data)
         var items: [Item] = []
         if !snapshotDone {
-            guard let n = Self.snapshotLength(buf) else { return [] }
+            guard let n = Self.snapshotLength(buf, from: &snapshotAt) else { return [] }
             items.append(.snapshot(buf.prefix(n)))
             buf = Data(buf.dropFirst(n))
             snapshotDone = true
@@ -109,15 +113,23 @@ struct TerminalStream {
     /// envelope ("GHOSTSNP", version) and records of tag (u16), payload
     /// length (u32), CRC (u32) and payload.
     static func snapshotLength(_ d: Data) -> Int? {
-        let b = [UInt8](d.prefix(10))
-        guard b.count == 10 else { return nil }
-        var at = d.startIndex + 10
-        while d.endIndex - at >= 10 {
-            let tag = UInt16(d[at]) | UInt16(d[at + 1]) << 8
-            let len = (0..<4).reduce(0) { $0 | Int(d[at + 2 + $1]) << (8 * $1) }
+        var at = 10
+        return snapshotLength(d, from: &at)
+    }
+
+    /// As snapshotLength(_:), from at, the offset of the first record not
+    /// yet walked, which it moves past each whole record it walks. A
+    /// snapshot that arrives in many parts is walked once, not again from
+    /// its start for each part (#844).
+    static func snapshotLength(_ d: Data, from at: inout Int) -> Int? {
+        guard d.count >= 10 else { return nil }
+        while d.count - at >= 10 {
+            let p = d.startIndex + at
+            let tag = UInt16(d[p]) | UInt16(d[p + 1]) << 8
+            let len = (0..<4).reduce(0) { $0 | Int(d[p + 2 + $1]) << (8 * $1) }
             let next = at + 10 + len
-            if next > d.endIndex { return nil }
-            if tag == 6 { return next - d.startIndex } // FINISH
+            if next > d.count { return nil }
+            if tag == 6 { return next } // FINISH
             at = next
         }
         return nil

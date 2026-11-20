@@ -164,6 +164,13 @@ extension SessionView.Window {
         block == b || panes.contains(b)
     }
 
+    /// The blocks it holds, each once: the one its row opens, then the
+    /// tiled ones in layout order.
+    var blockIDs: [String] {
+        var seen = Set<String>()
+        return ([block].compactMap(\.self) + panes).filter { seen.insert($0).inserted }
+    }
+
     /// The blocks tiled behind the one its row opens.
     var back: [String] {
         panes.filter { $0 != block }

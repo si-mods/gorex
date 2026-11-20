@@ -101,6 +101,30 @@ final class ControlConnection {
     }
     private var closed = false
 
+    /// A message read off the main actor, and its bytes. JSON values,
+    /// which nothing mutates.
+    private nonisolated struct Incoming: @unchecked Sendable {
+        let message: [String: Any]
+        let raw: Data
+    }
+
+    /// A message at least this long is read off the main actor; a shorter
+    /// one costs less to read than the move does.
+    static let offMainLength = 32 << 10
+
+    /// Reads a message's JSON; nil for one that is no JSON object.
+    private nonisolated static func decode(_ s: String) -> Incoming? {
+        let raw = Data(s.utf8)
+        guard let m = try? JSONSerialization.jsonObject(with: raw) as? [String: Any] else { return nil }
+        return Incoming(message: m, raw: raw)
+    }
+
+    /// Reads a long message's JSON off the main actor (#844).
+    @concurrent
+    private nonisolated static func decodeOffMain(_ s: String) async -> Incoming? {
+        decode(s)
+    }
+
     init(base: URL, auth: String?, session: URLSession = .shared) {
         var request = URLRequest(url: base.rexURL("/api/control"))
         request.timeoutInterval = 10
@@ -214,10 +238,14 @@ final class ControlConnection {
     private func receiveLoop() async {
         do {
             while true {
-                guard case .string(let s) = try await task.receive(),
-                      case let raw = Data(s.utf8),
-                      let m = try? JSONSerialization.jsonObject(with: raw) as? [String: Any]
-                else { continue }
+                // One message at a time: each is read before the next is
+                // taken, so they are handled in the order they came.
+                guard case .string(let s) = try await task.receive() else { continue }
+                let incoming = s.utf8.count >= Self.offMainLength ? await Self.decodeOffMain(s) : Self.decode(s)
+                // Closed while it was read: what it tells is not wanted.
+                if closed { return }
+                guard let incoming else { continue }
+                let (m, raw) = (incoming.message, incoming.raw)
                 if m["type"] as? String == "response", let id = m["id"] as? String, let c = pending.removeValue(forKey: id) {
                     if let e = m["error"] as? [String: Any] {
                         c.resume(throwing: RexError(code: e["code"] as? String ?? "", message: e["message"] as? String ?? "",
