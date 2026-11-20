@@ -471,7 +471,12 @@ private struct TerminalSettings: View {
         return Button {
             if downloading, dictation.progress != nil { stopping = true; return }
             dictation.model = m
-            if !dictation.installed.contains(m), dictation.progress == nil { dictation.download(m) }
+            // The scan for the models on disk, quick, ends first: a model
+            // already there is not downloaded again.
+            Task {
+                let installed = await dictation.installedModels()
+                if !installed.contains(m), dictation.progress == nil, dictation.model == m { dictation.download(m) }
+            }
         } label: {
             VStack(alignment: .leading, spacing: 4) {
                 HStack {
@@ -482,7 +487,9 @@ private struct TerminalSettings: View {
                         Image(systemName: "stop.circle").accessibilityLabel("Cancel")
                     } else {
                         Text(m.size.formatted(.byteCount(style: .file))).foregroundStyle(.secondary)
-                        if !dictation.installed.contains(m) { Image(systemName: "arrow.down.circle").accessibilityLabel("Download") }
+                        if dictation.scanned, !dictation.installed.contains(m) {
+                            Image(systemName: "arrow.down.circle").accessibilityLabel("Download")
+                        }
                     }
                     if m == dictation.model { Image(systemName: "checkmark").fontWeight(.semibold) }
                 }
