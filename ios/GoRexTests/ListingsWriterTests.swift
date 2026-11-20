@@ -4,8 +4,8 @@ import XCTest
 /// The hosts' last projects are written off the main actor: in order, the
 /// last state last, a burst as one write, and a pending one on going to the
 /// background.
-nonisolated final class ListingsWriterTests: XCTestCase {
-    private final class Log: @unchecked Sendable {
+@MainActor final class ListingsWriterTests: XCTestCase {
+    private nonisolated final class Log: @unchecked Sendable {
         let lock = NSLock()
         var seen: [[String]] = []
         let started = DispatchSemaphore(value: 0)
