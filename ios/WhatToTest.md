@@ -2,10 +2,7 @@
 
 A build's What to Test, per locale, is what its locale section here gained
 since the last build that uploaded: `ios/scripts/test-notes` sets `en-US`
-from `## en-US` and `zh-Hans` from `
-- The Inbox now stays smooth while a terminal title changes quickly; scrolling and tapping rows no longer stutter.
-
-## zh-Hans`.
+from `## en-US` and `zh-Hans` from `## zh-Hans`.
 
 A pull request that changes what a tester sees adds one bullet to each
 section, in the app's terms: what they get to try, not how it is built. A
@@ -74,6 +71,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - Adding photos or files, and opening or sharing a large file from a terminal, no longer makes the app stutter or use a lot of memory.
 - With many terminals open, coming back to the app and opening a terminal is quicker: their titles and programs now load a few at a time, behind the terminal you open.
 - After a computer you added restarts GoRex, Rex Go reaches it again even while it was showing several of its terminals: they reconnect together, without a wait of 10 seconds or more.
+- The Inbox now stays smooth while a terminal title changes quickly; scrolling and tapping rows no longer stutter.
 
 ## zh-Hans
 
