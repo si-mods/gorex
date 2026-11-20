@@ -696,8 +696,9 @@ func TestGestureSendsOneTabSet(t *testing.T) {
 		tt.Frame()
 	}
 	waitFor(t, tt, "the drag's save", func() bool { r, _ := state(); return r != rev })
-	time.Sleep(1200 * time.Millisecond)
-	tt.Frame()
+	// The window has the server's answer to its save: no change of its own
+	// is on its way, and the server's layout is the one the window shows.
+	caughtUp(t, a, tt)
 	r, got := state()
 	if r != rev+1 || got == ratio || got != tab.Root.Ratio {
 		t.Errorf("after the drag: revision %d (from %d), ratio %v, the window's %v", r, rev, got, tab.Root.Ratio)

@@ -108,6 +108,10 @@ func serverOp(op string) serverOpFunc {
 	}
 }
 
+// helloHostWait is how long a hello waits for the machine's description. A
+// test sets it to be short.
+var helloHostWait = 3 * time.Second
+
 func (s *Server) doHello(_ Request, peer string, kept *keptConn) (any, error) {
 	h := Hello{
 		Version:      ProtocolVersion,
@@ -123,7 +127,7 @@ func (s *Server) doHello(_ Request, peer string, kept *keptConn) (any, error) {
 	select {
 	case <-s.hostDone:
 		h.Host = s.host
-	case <-time.After(3 * time.Second):
+	case <-time.After(helloHostWait):
 	}
 	// The pairing address is for a remote peer's QR code. A local
 	// client never shows it, and asking the gateway for it would wait

@@ -301,6 +301,10 @@ func remoteOn(dir string) bool {
 // after an in-place upgrade.
 const retryEvery = time.Second
 
+// superviseEvery is how often Supervise looks at Wanted again. A test sets
+// it to be short.
+var superviseEvery = time.Second
+
 // Supervise runs in the GoRex server (rex.OnServe) until stop closes: it
 // runs the gateway while Wanted says so, and stops it when none of
 // remote access, the local network and built-in Tailscale is on, so that
@@ -312,7 +316,7 @@ func Supervise(stop <-chan struct{}) {
 	var done chan error
 	var retryAt time.Time
 	lastErr := ""
-	tick := time.NewTicker(time.Second)
+	tick := time.NewTicker(superviseEvery)
 	defer tick.Stop()
 	end := func() {
 		if runStop != nil {

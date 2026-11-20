@@ -383,14 +383,18 @@ func TestServerRunsGateway(t *testing.T) {
 		}
 		waitFor(t, "the gateway to stop with the server", func() bool { return !gatewayRuns() })
 	}
-	// Off, the server runs no gateway.
+	// Off, the server runs no gateway. Supervise looks again every tick
+	// and has none to start: wait for many ticks, not for the real ones.
+	oldEvery := superviseEvery
+	superviseEvery = 10 * time.Millisecond
+	t.Cleanup(func() { superviseEvery = oldEvery })
 	if err := SaveLAN(state, LANConfig{Listen: "127.0.0.1:0", Allow: []string{"127.0.0.1"}}); err != nil {
 		t.Fatal(err)
 	}
 	served := make(chan error, 1)
 	go func() { served <- rex.Serve() }()
 	waitFor(t, "the server", func() bool { _, err := os.Stat(rex.SocketPath()); return err == nil })
-	time.Sleep(2 * time.Second)
+	time.Sleep(200 * time.Millisecond) // about twenty ticks of Supervise
 	if gatewayRuns() {
 		t.Error("the server runs a gateway with nothing to serve")
 	}

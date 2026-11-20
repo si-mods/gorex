@@ -447,7 +447,12 @@ func TestWriterClosesOnFailedWrite(t *testing.T) {
 		a.writer()
 		close(done)
 	}()
-	time.Sleep(500 * time.Millisecond) // past the write's deadline
+	// The writer returns once its write failed, past the write's deadline.
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the writer does not return after its write failed")
+	}
 	client.SetReadDeadline(time.Now().Add(2 * time.Second))
 	_, err := client.Read(make([]byte, 64))
 	if ne, ok := err.(net.Error); ok && ne.Timeout() {
