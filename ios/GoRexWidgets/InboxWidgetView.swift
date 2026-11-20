@@ -168,9 +168,9 @@ private struct Row: View {
                         StateMark(item: item)
                     }
                     HStack(spacing: 0) {
-                        // The detail is cut before the host and its separator.
-                        if named { Text(verbatim: host.name + " · ").privacySensitive().layoutPriority(1) }
-                        Text(item.detail.isEmpty ? item.window : item.detail).privacySensitive()
+                        // One text, cut at its end; the time stays whole.
+                        let detail = item.detail.isEmpty ? item.window : item.detail
+                        Text(verbatim: named ? host.name + " · " + detail : detail).privacySensitive()
                         Spacer(minLength: 6)
                         if let t = item.updated { ago(t).foregroundStyle(.tertiary).layoutPriority(2) }
                     }
