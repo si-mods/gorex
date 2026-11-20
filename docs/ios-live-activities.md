@@ -272,27 +272,43 @@ on `.active`; the shell on the host keeps running. **[code]**
 - **Line** (`TerminalLive.state`, `TerminalActivity.screenLine`): the
   last non-empty line of the screen is a TUI agent's status bar (Claude
   Code, Codex, Devin, Pi), never its state, so:
-  1. When the block's most urgent record is `blocked` and has a `msg`,
-     the line is the message, its line breaks as spaces.
-  2. Else, with text under the cursor's row, the program is a TUI with
-     its cursor in its input: from the row above the input up, the first
-     line that is not blank, a rule of box-drawing or block characters
-     and spaces (U+2500–U+259F), a line in a box (it starts and ends with
-     a box's side), or one of the input's lines. The input is the
-     cursor's row and the lines right above it, up to the topmost that
-     starts with a prompt (`>`, `›`, `❯`, `▌`, `»`, `▶`), with no blank or
-     rule between. For Claude Code that is the spinner over the input.
-  3. Else, as for a shell or a program printing, the last line at or
-     above the cursor's row that is not blank.
-  4. With no cursor row, or no such line, the last non-empty line of the
-     screen, as before.
+  1. When the block's most urgent record is `blocked` and has a `msg`
+     that is not blank, the line is the message, its line breaks as
+     spaces. It wins over the line the screen read.
+  2. Else, when the screen ends in a TUI's input, the line is the first
+     above the input that is not blank, a rule (box-drawing or block
+     characters, U+2500–U+259F, and spaces), a line in a box (it starts
+     and ends with a box's side) or one of the input's lines, without
+     its leading spaces. The input is found from the bottom, wherever
+     the cursor is: rows between two rules, at most 10, with at most 5
+     lines under the lower rule, that hold a prompt (`>`, `›`, `❯`, `❭`,
+     `▌`, `»`, `▶` after spaces and a box's side) or the cursor; or,
+     without rules, the lowest line that starts with a prompt shells do
+     not use (`›`, `❭`, `▌`), with a blank line or a rule above it and
+     at most 5 lines under it.
+  3. Else, with text under the cursor's row, a TUI with its cursor in
+     its input: as in 2, the input being the cursor's row and the lines
+     right above it up to the topmost that starts with a prompt.
+  4. Else, as for a shell or a program printing, the last line at or
+     above the cursor's row that is not blank. A shell's prompt at the
+     bottom, `❯` too, has no rules round it, and stays a shell's.
+  5. With no such line, the last non-empty line of the screen.
 
   The rows are read a row at a time, as Ghostty joins soft-wrapped rows
   in one read; the cursor's row comes from Ghostty's IME point, as for
-  the terminal's slide (`TerminalView.drawnBottom`). A TUI that leaves
-  its cursor under its last line has nothing under the cursor, and gets
-  rule 3: its last line. **[assumption]** Claude Code, Codex, Devin and Pi
-  keep the cursor in their input.
+  the terminal's slide (`TerminalView.drawnBottom`).
+
+  Idle screens captured in a 100×40 terminal (`TerminalLiveTests`):
+  Claude Code draws its `❯` input between two rules, a status line and
+  a mode line under it, the cursor in the input, shown. Devin draws
+  from the top, not full-screen: `❭` input between rules, its status
+  bar under it, the cursor in the input, shown. Pi draws an editor with
+  no prompt between rules, three footer lines under it, the cursor in
+  the editor, hidden. Codex asked to sign in, so its input was not
+  captured. A program that hides its cursor under its last line, as an
+  Ink program may while it draws, is found by rule 2. A command's
+  output that ends in a prompt between rules, such as a quote in a
+  table, reads as an input: a known miss.
 - **Grace**: on `.background`, the screen no longer suspends the
   streams at once. It asks for a background task
   (`beginBackgroundTask`), keeps the streams and the built-in Tailscale

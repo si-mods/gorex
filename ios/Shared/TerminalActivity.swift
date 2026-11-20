@@ -68,33 +68,78 @@ nonisolated struct TerminalActivity: ActivityAttributes, Hashable, Sendable {
     }
 
     /// The line of a screen's rows that tells the latest state, cursor the
-    /// cursor's row among them, cut as lastLine cuts. A program that draws
-    /// text under the cursor's row is a full-screen program with its cursor
-    /// in its input, and a status bar at the bottom: the line is the first
-    /// above its input that is not blank, a rule of box-drawing characters,
-    /// a line in a box, or the input's own prompt lines. Else, as for a
-    /// shell, it is the last line at or above the cursor's that is not
-    /// blank. Without a cursor, or with no such line, it is lastLine's.
+    /// cursor's row among them, cut as lastLine cuts. A TUI agent draws its
+    /// input near the bottom with its status lines under it, and the line
+    /// is the first above its input that is not blank, a rule, a line in a
+    /// box or the input's own; it is found by its input, wherever the
+    /// cursor is (inputTop), or, failing that, by text under the cursor's
+    /// row. Else, as for a shell, it is the last line at or above the
+    /// cursor's that is not blank. With no such line, it is lastLine's.
     static func screenLine(_ rows: [String], cursor: Int?) -> String {
-        let fallback = lastLine(rows.joined(separator: "\n"))
-        guard let c = cursor, rows.indices.contains(c) else { return fallback }
-        func blank(_ s: String) -> Bool { s.allSatisfy(\.isWhitespace) }
-        let pick: String?
-        if rows[(c + 1)...].contains(where: { !blank($0) }) {
-            // The input's lines: the cursor's row, and the lines right above
-            // it up to the topmost that starts with a prompt.
-            var top = c, k = c - 1
-            while k >= 0, !blank(rows[k]), !rule(rows[k]), !boxed(rows[k]) {
-                if prompt(rows[k]) { top = k }
-                k -= 1
-            }
-            pick = rows[..<top].last { !blank($0) && !rule($0) && !boxed($0) }
-        } else {
-            pick = rows[...c].last { !blank($0) }
+        let c = cursor.flatMap { rows.indices.contains($0) ? $0 : nil }
+        var top = inputTop(rows, cursor: c)
+        if top == nil, let c, rows[(c + 1)...].contains(where: { !blank($0) }) {
+            top = promptTop(rows, from: c)
         }
-        guard let pick else { return fallback }
-        return lastLine(pick)
+        let pick: String?
+        if let top {
+            pick = rows[..<top].last { !blank($0) && !rule($0) && !boxed($0) }
+                .map { String($0.drop(while: \.isWhitespace)) }
+        } else {
+            pick = c.flatMap { at in rows[...at].last { !blank($0) } }
+        }
+        return lastLine(pick ?? rows.joined(separator: "\n"))
     }
+
+    /// The most status lines under a TUI's input, and the most rows of it.
+    private static let maxFooter = 5
+    private static let maxInput = 10
+
+    /// The top row of a TUI's input drawn at the bottom of the screen, nil
+    /// for none: rows between two rules, under which at most maxFooter
+    /// lines follow, holding a prompt or the cursor (Claude Code, Devin,
+    /// Pi); or, without rules, the lowest line that starts with a prompt
+    /// only TUIs draw, with a blank line or a rule above its lines and at
+    /// most maxFooter lines under it (Codex). A shell's prompt at the
+    /// bottom has neither, nor does a table a command printed, without a
+    /// prompt in it or the cursor.
+    private static func inputTop(_ rows: [String], cursor: Int?) -> Int? {
+        guard var i = rows.lastIndex(where: { !blank($0) }) else { return nil }
+        let last = i
+        var footer = 0
+        while !rule(rows[i]) {
+            if !blank(rows[i]) {
+                if i < last, tuiPrompt(rows[i]) {
+                    let t = promptTop(rows, from: i)
+                    return t == 0 || blank(rows[t - 1]) || rule(rows[t - 1]) ? t : nil
+                }
+                footer += 1
+                if footer > maxFooter { return nil }
+            }
+            guard i > 0 else { return nil }
+            i -= 1
+        }
+        let bottom = i
+        var j = bottom - 1
+        while j >= 0, bottom - j <= maxInput + 1, !rule(rows[j]) { j -= 1 }
+        guard j >= 0, rule(rows[j]) else { return nil }
+        let inside = (j + 1)..<bottom
+        guard inside.contains(where: { prompt(rows[$0]) }) || cursor.map { inside.contains($0) } == true else { return nil }
+        return j
+    }
+
+    /// The top of an input whose last row is row: it and the lines right
+    /// above it up to the topmost that starts with a prompt.
+    private static func promptTop(_ rows: [String], from row: Int) -> Int {
+        var top = row, k = row - 1
+        while k >= 0, !blank(rows[k]), !rule(rows[k]), !boxed(rows[k]) {
+            if prompt(rows[k]) { top = k }
+            k -= 1
+        }
+        return top
+    }
+
+    private static func blank(_ s: String) -> Bool { s.allSatisfy(\.isWhitespace) }
 
     /// Box-drawing and block characters, which TUIs draw rules and boxes of.
     private static func boxChar(_ c: Character) -> Bool {
@@ -117,14 +162,21 @@ nonisolated struct TerminalActivity: ActivityAttributes, Hashable, Sendable {
         return verticals.contains(first) && verticals.contains(last)
     }
 
-    /// Characters an input's prompt starts with.
-    private static let prompts: Set<Character> = [">", "›", "❯", "▌", "»", "▶"]
+    /// Characters an input's prompt starts with, and those of them shells
+    /// do not use: Codex's, Devin's and others'.
+    private static let prompts: Set<Character> = [">", "›", "❯", "❭", "▌", "»", "▶"]
+    private static let tuiPrompts: Set<Character> = ["›", "❭", "▌"]
 
     /// A line that starts with an input's prompt, after spaces and a box's
     /// side.
     private static func prompt(_ s: String) -> Bool {
         let t = s.drop(while: { $0.isWhitespace || verticals.contains($0) })
         return t.first.map { prompts.contains($0) } ?? false
+    }
+
+    private static func tuiPrompt(_ s: String) -> Bool {
+        let t = s.drop(while: { $0.isWhitespace || verticals.contains($0) })
+        return t.first.map { tuiPrompts.contains($0) } ?? false
     }
 
     /// What a tap opens: this terminal, as a widget's row opens one.
