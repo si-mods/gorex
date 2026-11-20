@@ -105,7 +105,8 @@ func unsupportedMethod(method string) *apiError {
 // none of them, but the rule is kept for the methods it will add.
 var orderedMethods = map[string]bool{
 	"block.close": true, "block.event": true, "client.action": true, "client.key": true,
-	"session.close_layer": true, "session.close_window": true, "session.detach_block": true,
+	"focus_history.reverse": true,
+	"session.close_layer":   true, "session.close_window": true, "session.detach_block": true,
 	"session.disown_block": true, "session.float_block": true, "session.focus_block": true,
 	"session.focus_direction": true, "session.focus_next_pane": true, "session.focus_next_window": true,
 	"session.focus_previous_pane": true, "session.focus_previous_window": true, "session.focus_window": true,

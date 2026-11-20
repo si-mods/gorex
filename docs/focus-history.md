@@ -1,6 +1,6 @@
 # Returning to the previous pane
 
-Status: proposal.
+Status: built (#917).
 
 This doc settles the per-principal focus history and the method `focus_history.reverse` at Rex API revision 19. It extends [rex-api.md](rex-api.md) and follows [design-docs.md](design-docs.md).
 
@@ -49,13 +49,13 @@ The history key follows the principal.
 
 - An entry holds `seq`, `session`, `window` and `block`. The history is a most-recent-first list with 64 entries and one counter.
 - The gateway records an entry after a call from that principal that leaves a focused block. The calls are `session.focus_block`, `session.focus_window`, `session.focus_direction`, `session.focus_next_pane`, `session.focus_previous_pane`, `session.focus_next_window`, `session.focus_previous_window`, `session.new_split`, `session.new_window`, `session.new_block` and `session.new_layer`. The close calls are `session.close_window`, `session.close_layer`, `session.detach_block` and `block.close`.
-- A new entry replaces an older entry for the same block.
+- A place that is already the newest is not added again.
 - `focus_history.reverse` runs these steps:
   1. Check the filters. An unknown `session_id` is `session_not_found`. A `session_id` without attachment is `conflict`.
   2. Start at the current focus of the principal, or at the focus of the model when the principal has no entry.
   3. Walk from the newest entry to the oldest. Skip an entry that is gone, that equals the current focus, that fails a filter or that is not older than the cursor.
   4. Focus the first entry that remains. Answer `reversed: true` with the session, the tab and the pane. If no entry remains, answer `reversed: false`.
-- A close from that principal checks whether the closed pane or tab held its focus. If it did, the gateway focuses the newest entry that still exists after the close. If no entry exists, the choice of the server stays.
+- A close from that principal checks whether the closed pane or tab held its focus. If it did, the gateway focuses the newest entry that still exists after the close. If no entry exists, the choice of the server stays. The behavior covers `session.close_window` and `block.close`; `session.close_layer` and `session.detach_block` are not implemented by GoRex yet, and their behavior lands with them.
 
 ### Code
 
@@ -99,9 +99,9 @@ The history key follows the principal.
 
 ## Phases
 
-1. The history and `focus_history.reverse`.
-2. The close-focus behavior.
-3. The help entry and the revision change to 19.
+1. The history and `focus_history.reverse` (#917).
+2. The close-focus behavior (#917).
+3. The help entry and the revision change to 19 (#917).
 
 ## Open questions
 

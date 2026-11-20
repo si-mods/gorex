@@ -154,8 +154,11 @@ type Gateway struct {
 	// inflight counts the calls being handled.
 	inflight atomic.Int32
 
-	mu      sync.Mutex
-	model   atomic.Pointer[model]
+	mu    sync.Mutex
+	model atomic.Pointer[model]
+	// focus is each principal's recent places, for focus_history.reverse.
+	focusMu sync.Mutex
+	focus   map[string]*focusHistory
 	conns   map[*control]struct{}
 	clients map[string]*clientRecord
 	tokens  map[string]*clientRecord
