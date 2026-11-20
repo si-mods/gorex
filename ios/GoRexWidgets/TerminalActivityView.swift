@@ -149,8 +149,8 @@ struct TerminalActivityFace: View {
 /// The Lock Screen's card: the program, the host, the state and the timer
 /// in a small row; what the program says in large bold type; the
 /// window's title under it. It is drawn on a gradient from the program's
-/// tile color to near black, with its glyph large at the right, cut by
-/// the card's edge; the text keeps clear of it. Paused, all but what
+/// tile color to near black, with its glyph large and faint at the right,
+/// cut by the card's edge; the large line and the title keep clear of it. Paused, all but what
 /// brings it back dims. It draws its own padding and background, white
 /// on dark in either scheme.
 struct TerminalActivityCard: View {
@@ -158,8 +158,8 @@ struct TerminalActivityCard: View {
     let state: TerminalActivity.ContentState
     let stale: Bool
 
-    /// The width the glyph shows of itself at the right, which the text
-    /// keeps clear of.
+    /// The width the glyph shows of itself at the right, which the large
+    /// line and the title keep clear of; the small top row spans the card.
     static let glyphShown: CGFloat = 84
 
     var body: some View {
@@ -171,7 +171,6 @@ struct TerminalActivityCard: View {
                 Text(verbatim: [program.name, attributes.hostName].filter { !$0.isEmpty }.joined(separator: " · "))
                     .foregroundStyle(.white.opacity(0.75))
                     .lineLimit(1)
-                    .layoutPriority(-1)
                 if let r = state.record {
                     Text(verbatim: TerminalActivityHeading.name(r.state))
                         .fontWeight(.semibold)
@@ -180,7 +179,9 @@ struct TerminalActivityCard: View {
                         .fixedSize()
                 }
                 Spacer(minLength: 4)
+                // First to get its width: a timer takes at most 44 pt.
                 TerminalActivityMark(state: state, paused: paused, shell: false, font: .caption.weight(.semibold))
+                    .layoutPriority(1)
             }
             .font(.caption)
             .opacity(paused ? 0.5 : 1)
@@ -191,6 +192,7 @@ struct TerminalActivityCard: View {
                 .minimumScaleFactor(0.8)
                 .privacySensitive()
                 .opacity(paused ? 0.5 : 1)
+                .padding(.trailing, Self.glyphShown)
             if !footer.isEmpty {
                 Text(verbatim: footer)
                     .font(.caption)
@@ -198,6 +200,7 @@ struct TerminalActivityCard: View {
                     .lineLimit(1)
                     .privacySensitive()
                     .opacity(paused ? 0.5 : 1)
+                    .padding(.trailing, Self.glyphShown)
             }
             if paused {
                 Text("Paused — open Rex Go")
@@ -207,7 +210,6 @@ struct TerminalActivityCard: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.trailing, Self.glyphShown)
         .padding(16)
         .background { Self.background(program, paused: paused) }
         .overlay {
