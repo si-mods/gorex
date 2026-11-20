@@ -822,17 +822,22 @@ struct ProjectRow: View {
     }
 }
 
-/// A project's mark: a folder in the project's color (muted with none),
-/// with no plate, as big as a program tile and centred where its front
-/// tile stands.
+/// A project's mark, as the desktop's projectFolderTile: a tile of a
+/// program tile's size and corners, in a neutral face (the text color at
+/// 9%), with a folder in the project's color (muted with none). No white
+/// plate, no shadow.
 struct FolderTile: View {
     let color: String?
 
     var body: some View {
         let k = ProgramTiles.scale
-        Image(systemName: "folder.fill")
-            .font(.system(size: 20 * k * 0.9))
-            .foregroundStyle(Color(project: color) ?? .secondary)
+        RoundedRectangle(cornerRadius: 4.5 * k, style: .continuous)
+            .fill(Color.primary.opacity(0.09))
+            .overlay {
+                Image(systemName: "folder.fill")
+                    .font(.system(size: 9 * k))
+                    .foregroundStyle(Color(project: color) ?? .secondary)
+            }
             .frame(width: 21 * k, height: 16 * k)
             .padding(.leading, k)
             .accessibilityHidden(true)

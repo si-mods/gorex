@@ -10,7 +10,7 @@ struct ProgramTile: View {
     /// Points to a DIP of the tile: lists use ProgramTiles.scale (1.5),
     /// and the phone's pane bar draws the same tile at its own 21x16 size.
     var scale: CGFloat = 1.5
-    /// Whether a light page gets the tile a white ring behind it. The
+    /// Whether a light page gets the tile a white ring and a shadow. The
     /// project list sets it off: its tiles stand on the card as they do
     /// on a dark page. Others (pane bar, widgets) keep the ring.
     var plate = true
@@ -45,7 +45,7 @@ struct ProgramTile: View {
                         .padding(scheme == .dark ? -0.75 : -k)
                 }
             }
-            .shadow(color: .black.opacity(0.18), radius: 0.75 * k, y: 0.5 * k)
+            .shadow(color: .black.opacity(scheme == .dark || plate ? 0.18 : 0), radius: 0.75 * k, y: 0.5 * k)
     }
 }
 
