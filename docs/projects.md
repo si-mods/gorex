@@ -244,20 +244,20 @@ The sidebar on the left, space Work, three hosts:
 │ ● ● ●   [■ Work ▾]            │ gorex › dev                          ⋯   │
 ├───────────────────────────────┼──────────────────────────────────────────┤
 │ THIS MAC  ●                 + │ ~/code/gorex $ go test ./...             │
-│ ⌄ [F] gorex               3 + │ ok   gorex   12.3s                       │
-│   ▣   dev                     │ ◀ dev is the tab shown here              │
-│   ▣   logs                    │                                          │
-│   ▣   review                  │                                          │
-│ › [F] notes                 1 │                                          │
+│  ⌄  gorex                 3 + │ ok   gorex   12.3s                       │
+│  ▣  dev                       │ ◀ dev is the tab shown here              │
+│  ▣  logs                      │                                          │
+│  ▣  review                    │                                          │
+│  ›  notes                   1 │                                          │
 │ Tabs with no project          │                                          │
-│   ▣   scratch                 │                                          │
-│   ▣   build                   │                                          │
+│  ▣  scratch                   │                                          │
+│  ▣  build                     │                                          │
 │                               │                                          │
 │ OFFICE-H800  ●              + │                                          │
-│ › [F] trainer               2 │                                          │
+│  ›  trainer                 2 │                                          │
 │                               │                                          │
 │ OLD-LAPTOP  ○ offline         │                                          │
-│ › [F] site (grey)           1 │                                          │
+│  ›  site (grey)             1 │                                          │
 ├───────────────────────────────┤                                          │
 │ ⚙   +  New Project…           │                                          │
 └───────────────────────────────┴──────────────────────────────────────────┘
@@ -269,7 +269,7 @@ from `assets/icons/` (`DESIGN.md`), never the character:
 | Mark | Icon |
 | --- | --- |
 | `[H]` | `monitor` |
-| `[F]` | `folder` (tinted by the project's color if set) |
+| `[F]` | `folder` (outside the desktop's sidebar) |
 | `⌄` `›` | `chevron-down`, turned a quarter to the left when collapsed |
 | `[S]` | `search` |
 | `+` | `plus` |
@@ -319,21 +319,22 @@ A project's context menu:
   has Rename… (its alias) and New Tab with No Project. An offline host's
   header says "offline", and its projects show greyed, with their last
   tabs.
-- Every row under a host's header starts with a **disclosure column**, one
-  fixed width. A project row, and the Older row, draw a chevron in it, down
-  when the row is open and right when it is closed, at rest and not only
-  under the pointer; a project with no tab has none, as it has nothing to
-  open. Any other row leaves the column empty. The column comes before the
-  room of the tabs' tiles, so that opening or closing a row moves no name
-  and no icon: the project's folder is where its tabs' tiles are, and its
-  name where their titles are, flush as before. The chevron is the project's
-  disclosure: a click on it opens or closes that project's tabs alone.
-- A project row is flush with the header: the chevron, the project's folder
-  icon (the neutral `folder`, tinted by its color if set), its name, and its
-  tab count on the right. Its folder is in no row or tooltip. A click on the row shows the
+- A project row, and the Older row, start with a chevron, down when the
+  row is open and right when it is closed, at rest and not only under the
+  pointer. It is in the room of the tabs' tiles, centred where a tab's front
+  tile is, and the row has no folder icon: a folder and a tile in one column
+  read as rows of one kind (#896). A project with no tab has no chevron, as
+  it has nothing to open. Opening or closing a row moves no name: a
+  project's name is where its tabs' titles are, flush as before. The chevron
+  turns, and the project's tabs fold open and shut, with the sidebar's
+  motion (none with Animation off or reduced motion). A click on the
+  chevron opens or closes that project's tabs alone.
+- A project row is flush with the header: the chevron, its name, and its
+  tab count on the right. Its folder is in no row or tooltip, and its color
+  in no row of the desktop's sidebar. A click on the row shows the
   project and opens it; on the project shown, it opens or closes that
   project's tabs, which come under it with no guide line, their tiles where
-  the folder is. Each project keeps its
+  the chevron is. Each project keeps its
   own state, per client (`sidebarOpen`); choosing another project, in
   any way, closes none. Its `+` (shown on the row under the pointer and on
   the chosen project's) opens a tab in the folder; ⌘T does the same while
@@ -343,8 +344,8 @@ A project's context menu:
   first; those not used for 30 days go under a collapsed **Older** row,
   at the projects' level, with the same chevron.
 - **Tabs with no project** is a light section label, not a project row: its
-  text small and muted, with no folder, no chevron and no count, left
-  where the chevron column starts. Its tabs are listed under it at all times,
+  text small and muted, with no chevron and no count, at the rows' leading
+  edge. Its tabs are listed under it at all times,
   with no collapse, their tiles and titles in the columns of a project's
   tabs. It is last among the host's rows, and shows in every space. With no
   tab, it does not show, unless the window shows it. A click on a tab shows

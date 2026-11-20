@@ -505,7 +505,7 @@ func TestProjectMenu(t *testing.T) {
 // TestSidebarFlatLayout: a host is a section header, in capitals, with no
 // PROJECTS row; its projects are flush with it, their folder in no row or
 // tooltip; the tabs of the project shown come under it, their tiles where
-// its folder is; a host away
+// its chevron is; a host away
 // says "offline".
 func TestSidebarFlatLayout(t *testing.T) {
 	a, tt, _, _ := projectsApp(t)
@@ -530,8 +530,8 @@ func TestSidebarFlatLayout(t *testing.T) {
 		t.Errorf("header at x %v, project at %v (%v wide), its tab at %v (%v wide); want both flush", header.X, row.X, row.W, tab.X, tab.W)
 	}
 	// The project's name starts where its tab's title does: after the
-	// room of the tiles, where the project's folder icon is.
-	want := tab.X + sideLead + discW + sideGap + tilesReserve(a.tabs) + sideGap
+	// room of the tiles, where the project's chevron is.
+	want := tab.X + sideLead + tilesReserve(a.tabs) + sideGap
 	if text, ok := tt.Find("acme-api"); !ok || text.X != want {
 		t.Errorf("the project's name at x %v, want %v", text.X, want)
 	}
@@ -856,6 +856,27 @@ func inkIn(img *image.RGBA, r ui.Rect) bool {
 	return false
 }
 
+// inkMid is the middle x of what is drawn in r, unlike its first pixel by
+// more than the window's gradient: the left and right edges of the ink.
+func inkMid(img *image.RGBA, r ui.Rect) float32 {
+	base := img.RGBAAt(int(r.X), int(r.Y))
+	lo, hi := -1, -1
+	for y := int(r.Y); y < int(r.Y+r.H); y++ {
+		for x := int(r.X); x < int(r.X+r.W); x++ {
+			c := img.RGBAAt(x, y)
+			d := max(int(c.R)-int(base.R), int(base.R)-int(c.R)) + max(int(c.G)-int(base.G), int(base.G)-int(c.G)) + max(int(c.B)-int(base.B), int(base.B)-int(c.B))
+			if d < 24 {
+				continue
+			}
+			if lo < 0 || x < lo {
+				lo = x
+			}
+			hi = max(hi, x)
+		}
+	}
+	return float32(lo+hi+1) / 2
+}
+
 // pixelsIn copies the pixels of img in r.
 func pixelsIn(img *image.RGBA, r ui.Rect) []color.RGBA {
 	var out []color.RGBA
@@ -868,9 +889,9 @@ func pixelsIn(img *image.RGBA, r ui.Rect) []color.RGBA {
 }
 
 // TestSidebarDisclosureChevron: a project with tabs draws a chevron in the
-// column before its folder, open or closed and with no pointer over it,
+// room of its tabs' tiles, centred over the front tile, open or closed and with no pointer over it,
 // and it differs between the two; opening or closing moves neither the
-// chevron's column, the folder's room nor the project's name. A project
+// chevron nor the project's name. A project
 // with no tab draws none, and its name starts where the other's does.
 func TestSidebarDisclosureChevron(t *testing.T) {
 	a, tt, _, _ := projectsApp(t)
@@ -905,8 +926,13 @@ func TestSidebarDisclosureChevron(t *testing.T) {
 	if slices.Equal(pixOpen, pixShut) {
 		t.Error("the chevron looks the same open and closed")
 	}
-	if chevOpen.W != discW || chevOpen.X != nameOpen.X-sideGap-tilesReserve(a.tabs)-sideGap-discW {
-		t.Errorf("the chevron column %+v is not %v wide, before the folder's room", chevOpen, float32(discW))
+	// The chevron's room is the tiles', before the name; its glyph is
+	// centred where a tab's front tile is.
+	if chevOpen.X != nameOpen.X-sideGap-tilesReserve(a.tabs) {
+		t.Errorf("the chevron's room %+v is not the tiles' before the name at x %v", chevOpen, nameOpen.X)
+	}
+	if mid := inkMid(tt.Image(), chevOpen); mid < chevOpen.X+1+tileW/2-2 || mid > chevOpen.X+1+tileW/2+2 {
+		t.Errorf("the chevron's ink is centred at x %v, want about %v, the front tile's centre", mid, chevOpen.X+1+tileW/2)
 	}
 	// A project with no tab: no chevron, the name in the same column.
 	if _, ok := tt.Find(locales.ProjectsTabsOf("acme-empty")); ok {

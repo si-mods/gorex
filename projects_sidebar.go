@@ -95,7 +95,7 @@ func (a *App) projectsList(c *ui.Context, k *colors) {
 		tabs := slices.Clone(a.tabs)
 		reserve := tilesReserve(tabs)
 		for i, t := range tabs {
-			a.sidebarTab(c, k, i, t, reserve, false)
+			a.sidebarTab(c, k, i, t, reserve)
 		}
 		return
 	}
@@ -223,8 +223,7 @@ func (a *App) newNoProjectTab(h *hostConn) {
 }
 
 // projectRow is a project's row, flush with the host's header: the
-// chevron of its state (none with no tab), its folder icon, its name and
-// its tabs' count; under the pointer and while it is shown, the + that
+// chevron of its state (none with no tab), its name and its tabs' count; under the pointer and while it is shown, the + that
 // opens a tab in it in place of the count. Its folder shows in its tooltip and, shown, in the title
 // bar. A click shows it, and on the project shown opens or closes its
 // tabs. A host's offline copy shows greyed, and opens nothing.
@@ -265,19 +264,15 @@ func (a *App) projectRow(c *ui.Context, k *colors, w *Workspace, reserve float32
 	toggled := false
 	row.Children(func() {
 		// The chevron opens and closes the tabs of any project, as a click
-		// on the row of the one shown does. A project with no tab has none:
-		// there is nothing to open, and its column stays empty. The folder
-		// starts where the tabs' tiles do, and the name where their titles
-		// do.
+		// on the row of the one shown does; it stands over its tabs' tiles,
+		// and the name over their titles. A project with no tab has none:
+		// there is nothing to open.
+		fold := leadRoom(c.Key("fold"), reserve, projectRowH)
 		if n > 0 {
-			fold := discRoom(c.Key("fold")).Height(projectRowH).Cursor(ui.CursorPointer).
-				Role(ui.RoleDisclosure).Expanded(open).Label(locales.ProjectsTabsOf(name))
+			fold.Cursor(ui.CursorPointer).Role(ui.RoleDisclosure).Expanded(open).Label(locales.ProjectsTabsOf(name))
 			toggled = fold.Clicked()
 			fold.Children(func() { disclosureChevron(c, k, open) })
-		} else {
-			discRoom(c)
 		}
-		leadRoom(c, reserve, projectRowH).Children(func() { projectFolderIcon(c, k, w.Color) })
 		if shown && a.wsRenaming {
 			a.workspaceRenameField(c, k, w.Name)
 			return
@@ -330,7 +325,7 @@ func (a *App) projectRow(c *ui.Context, k *colors, w *Workspace, reserve float32
 	list.Children(func() {
 		if shown {
 			for i, t := range slices.Clone(a.tabs) {
-				a.sidebarTab(c, k, i, t, reserve, true)
+				a.sidebarTab(c, k, i, t, reserve)
 			}
 			return
 		}
@@ -388,7 +383,7 @@ func (a *App) noProjectSection(c *ui.Context, k *colors, w *Workspace, reserve f
 	list.Children(func() {
 		if w == a.ws {
 			for i, t := range slices.Clone(a.tabs) {
-				a.sidebarTab(c, k, i, t, reserve, true)
+				a.sidebarTab(c, k, i, t, reserve)
 			}
 			return
 		}
@@ -401,48 +396,27 @@ func (a *App) noProjectSection(c *ui.Context, k *colors, w *Workspace, reserve f
 const rowGap = 4
 
 // The rows of the sidebar under a host's header, its projects', Older's
-// and their tabs', start at one leading edge: sideLead in, then the
-// disclosure column (discW), where a project's chevron shows, then sideGap,
-// then the room of the tabs' tiles (tilesReserve), where a project's folder
-// icon shows, then sideGap, then the name or title. So a project's folder
-// is where its tabs' tiles start, and its name where their titles do, open
-// or closed.
+// and their tabs', start at one leading edge: sideLead in, then the room
+// of the tabs' tiles (tilesReserve), where a project's chevron shows, then
+// sideGap, then the name or title. So a project's chevron is over its tabs'
+// tiles, and its name over their titles, open or closed.
 const (
 	sideLead = 9
 	sideGap  = 6
-	discW    = 14
 )
 
-// discRoom is the disclosure column at the start of a row under a host's
-// header: empty, but for the chevron of a row that opens and closes.
-func discRoom(c *ui.Context) ui.Element {
-	return ui.Row(c).Width(discW).AlignItems(ui.Center).Justify(ui.Center).Shrink(0)
-}
-
 // disclosureChevron is the chevron of a row that opens and closes what is
-// under it: down while open, right while closed.
+// under it, down while open and right while closed, centred where the
+// front tile of a tab is (tiles), so that it lines up with the tabs'.
 func disclosureChevron(c *ui.Context, k *colors, open bool) {
-	chevron := glyphIcon(c.Key("chevron"), "chevron-down", 11, k.textFaint).Shrink(0)
-	turn := float32(-90)
-	if open {
-		turn = 0
-	}
-	chevron.Rotate(animated(c, chevron, "fold", turn))
-}
-
-// folderSize is the box of a project's folder icon: the folder fills it
-// about as wide and tall as a program's tile (tileW×tileH) is, so that a
-// project's row and its tabs' rows weigh alike.
-const folderSize = 22
-
-// projectFolderIcon draws a project row's folder icon, tinted by color
-// when set, matching iOS and web.
-func projectFolderIcon(c *ui.Context, k *colors, color string) ui.Element {
-	col := k.textMuted
-	if hex, ok := spaceColorHex(color); ok {
-		col = ui.Hex(hex)
-	}
-	return glyphIcon(c, "folder", folderSize, col).Shrink(0)
+	ui.Row(c).Width(tileW + 2).AlignItems(ui.Center).Justify(ui.Center).Shrink(0).Children(func() {
+		chevron := glyphIcon(c.Key("chevron"), "chevron-down", 12, k.textMuted).Shrink(0)
+		turn := float32(-90)
+		if open {
+			turn = 0
+		}
+		chevron.Rotate(animated(c, chevron, "fold", turn))
+	})
 }
 
 // leadRoom is the room before a row's name: as wide as the tabs' tiles,
@@ -516,8 +490,7 @@ func (a *App) foldRow(c *ui.Context, k *colors, key, label, count string, open b
 		row.Background(hoverFace(k))
 	}
 	row.Children(func() {
-		discRoom(c).Height(26).Children(func() { disclosureChevron(c, k, open) })
-		leadRoom(c, reserve, 26)
+		leadRoom(c, reserve, 26).Children(func() { disclosureChevron(c, k, open) })
 		ui.Text(c, label).FontSize(fontCallout).TextColor(k.textMuted).SingleLine().Grow(1).MinWidth(0)
 		ui.Text(c, count).FontSize(fontFootnote).TextColor(k.textFaint).Shrink(0)
 	})
@@ -541,8 +514,7 @@ func (a *App) waitingRow(c *ui.Context, k *colors, h *hostConn, ad layout.Adopti
 		Role(ui.RoleText).Label(name + ", " + note).Tooltip(tipText)
 	row.Children(func() {
 		if ad.Project != nil {
-			discRoom(c)
-			leadRoom(c, reserve, projectRowH).Children(func() { projectFolderIcon(c, k, "") })
+			leadRoom(c, reserve, projectRowH)
 			ui.Text(c, name).FontSize(fontBody).TextColor(k.text.Alpha(0.85)).SingleLine().Ellipsis("…").Shrink(1).MinWidth(0)
 		} else {
 			// The tabs with no project's is a label, as theirs is: no room
