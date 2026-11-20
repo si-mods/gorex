@@ -30,6 +30,10 @@ type colors struct {
 	tabHover ui.Color
 	// pillTint tints the system's glass of the active tab's pill.
 	pillTint ui.Color
+	// groupFace is the face of the sidebar's current project, its row and
+	// tabs; pillLift the active tab's pill on it, lighter than pillFace,
+	// and liftShadow its shadow, so that it stands over the group's face.
+	groupFace, pillLift, liftShadow ui.Color
 
 	busy, attention, exited, danger ui.Color
 
@@ -78,6 +82,9 @@ var lightColors = colors{
 	tabHover:    ui.RGBA(0, 0, 0, 0.05),
 	pillTint:    ui.RGBA(29, 29, 29, 0.25),
 	tabSep:      ui.RGBA(0, 0, 0, 0.13),
+	groupFace:   ui.RGBA(0, 0, 0, 0.045),
+	pillLift:    ui.RGBA(255, 255, 255, 0.92),
+	liftShadow:  ui.RGBA(0, 0, 0, 0.06),
 
 	busy:      ui.Hex("#34a853"),
 	danger:    ui.Hex("#ef4444"),
@@ -125,6 +132,9 @@ var darkColors = colors{
 	tabHover:    ui.RGBA(255, 255, 255, 0.10),
 	pillTint:    ui.Transparent,
 	tabSep:      ui.RGBA(255, 255, 255, 0.14),
+	groupFace:   ui.RGBA(255, 255, 255, 0.05),
+	pillLift:    ui.RGBA(255, 255, 255, 0.24),
+	liftShadow:  ui.RGBA(0, 0, 0, 0.18),
 
 	busy:      ui.Hex("#4ade80"),
 	danger:    ui.Hex("#ef4444"),

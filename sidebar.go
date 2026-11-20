@@ -265,33 +265,40 @@ func (a *App) sidebar(c *ui.Context, k *colors, right bool) {
 				a.windowControls(c, k)
 			}
 		})
+		padR, padL := sideInsets(right)
 		if picker && !unified {
-			ui.Row(c).Shrink(0).Padding(0, 6, 4, 6).Children(func() { a.spacePicker(c, k, true) })
+			ui.Row(c).Shrink(0).Padding(0, padR, 4, padL).Children(func() { a.spacePicker(c, k, true) })
 		}
-		ui.Scroll(c).Grow(1).MinHeight(0).Padding(2, 6, 6, 6).Children(func() {
+		ui.Scroll(c).Grow(1).MinHeight(0).Padding(2, padR, 6, padL).Children(func() {
 			ui.Column(c).Gap(2).Role(ui.RoleTabList).Label(locales.TabListLabel()).Children(func() {
 				a.projectsList(c, k)
 			})
 		})
-		ui.Row(c).Shrink(0).Padding(4, 6, 8, 6).Gap(2).AlignItems(ui.Center).Children(func() {
+		ui.Row(c).Shrink(0).Padding(4, padR, 8, padL).Gap(2).AlignItems(ui.Center).Children(func() {
 			if iconButton(c, k, "settings-2", locales.SidebarSettings(), 30, 16).Tooltip(tip(locales.SidebarSettings(), &cmdSettings)).Clicked() {
 				a.openSettings()
 			}
-			np := ui.Row(c.Key("new-project")).Height(30).Padding(0, 8).Gap(8).Radius(pillRadius(30, radiusM)).AlignItems(ui.Center).Cursor(ui.CursorPointer).
-				Role(ui.RoleButton).Label(cmdNewProject.Title()).Tooltip(tip(cmdNewProject.Title(), &cmdNewProject)).Grow(1).MinWidth(0)
-			if np.Hovered() {
-				np.Background(hoverFace(k))
-			}
-			if np.Clicked() {
+			// New Project is an icon as the settings' is, its name in its
+			// tooltip: a host's header has its + too, and ⇧⌘N.
+			if iconButton(c, k, "folder-plus", cmdNewProject.Title(), 30, 16).Tooltip(tip(cmdNewProject.Title(), &cmdNewProject)).Clicked() {
 				a.later(c, a.openNewProject)
 			}
-			np.Children(func() {
-				glyphIcon(c, "folder-plus", 15, k.textMuted).Shrink(0)
-				ui.Text(c, cmdNewProject.Title()).FontSize(fontCallout).TextColor(k.textMuted).SingleLine().Ellipsis("…").MinWidth(0)
-			})
+			ui.Spacer(c)
 			a.hostButton(c, k)
 		})
 	})
+}
+
+// sideInsets are the sidebar list's paddings on its right and its left:
+// the side the panes are on, inner, has the gap of the sidebar's edge
+// beyond it, so the list's rows, and the current project's face, keep as
+// far from the panes as from the window's edge.
+func sideInsets(right bool) (r, l float32) {
+	const window, panes = 10, 10 - gap
+	if right {
+		return window, panes
+	}
+	return panes, window
 }
 
 // sidebarEdge is the sidebar's inner edge, which drags its width; a double
@@ -331,7 +338,8 @@ func (a *App) sidebarEdge(c *ui.Context, k *colors, right bool) {
 
 // sidebarTab draws a tab in the sidebar: the tiles of its panes' programs,
 // its name and detail, and its close button or activity.
-func (a *App) sidebarTab(c *ui.Context, k *colors, i int, t *Tab, reserve float32) {
+// lifted draws the active tab's pill over its project's group face.
+func (a *App) sidebarTab(c *ui.Context, k *colors, i int, t *Tab, reserve float32, lifted bool) {
 	active := i == a.active
 	// Keyed by the tab's lasting ID, as spaceTab keys it: as the window
 	// goes to show another space, the rows of both stay, not close and
@@ -341,7 +349,11 @@ func (a *App) sidebarTab(c *ui.Context, k *colors, i int, t *Tab, reserve float3
 	name, detail := t.label()
 	e.Label(name + " " + detail)
 	if active {
-		glassPill(e, k, sideRowH)
+		if lifted {
+			liftedPill(e, k, sideRowH)
+		} else {
+			glassPill(e, k, sideRowH)
+		}
 		// A tab chosen otherwise than in the list, as by its keys, scrolls
 		// into view, once: the list scrolls freely after.
 		if a.revealed != t {

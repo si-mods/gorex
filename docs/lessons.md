@@ -121,6 +121,11 @@ Each item has a **Trigger** (what the diff shows), a **Check** (what the author 
 - **Check:** the PR carries a screenshot, and the sizes come from a shared constant, not a literal.
 - **Source:** #605, #607, #608, #611 and #614 reset the same sizes within hours.
 
+### Sidebar row marks
+- **Trigger:** the diff changes the mark at the start of a sidebar row (`projectRow`, `foldRow`, `sidebarTab`, `spaceTab`): an icon, its size or its column.
+- **Check:** the PR shows a project open with two tabs next to a closed one, light and dark, on the user's real sessions or a scene like #896's, and the user sees it in the app before the merge: a mark that reads well alone can read as the same kind of row beside a tab's tile.
+- **Source:** #806 drew no folder, #832 drew one, #895 filled it, and #907 took it out for a chevron, then brought it back as a neutral tile of a tab's size with the chevron at the row's end, after the user compared rendered options.
+
 ### Selected paints the accent
 - **Trigger:** a row uses `.Selected(` and draws its own selected look, as a pill, a swatch or a check.
 - **Check:** use `.AccessSelected(`: `Selected` also fills the element with the theme's accent, which follows the desktop's accent and covers the element's own look.

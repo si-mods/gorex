@@ -637,7 +637,7 @@ func (a *App) tiles(c *ui.Context, k *colors, t *Tab) {
 // drawTile draws a program's tile: a rounded card of its color, and its
 // glyph when it is in front.
 func drawTile(p *ui.Painter, r ui.Rect, prog program, glyph bool) {
-	const rad = 4.5
+	const rad = radiusTile
 	p.Shadow(r, rad, 0, 0.5, 1.5, 0, ui.RGBA(0, 0, 0, 0.18))
 	p.Fill(r, prog.TileBg, rad)
 	if prog.TileBorder {

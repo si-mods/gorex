@@ -166,20 +166,22 @@ This sketch shows the sidebar on the left, with space Work and three hosts:
 │ ● ● ●   [■ Work ▾]            │ gorex › dev                          ⋯   │
 ├───────────────────────────────┼──────────────────────────────────────────┤
 │ THIS MAC  ●                 + │ ~/code/gorex $ go test ./...             │
-│ [F] gorex                 3 + │ ok   gorex   12.3s                       │
-│ ▣ dev                         │ ◀ dev is the tab shown here              │
-│ ▣ logs                        │                                          │
-│ ▣ review                      │                                          │
-│ [F] notes                   1 │                                          │
-│   Tabs with no project      2 │                                          │
+│ [▤] gorex               ⌄ 3 + │ ok   gorex   12.3s                       │
+│  ▣  dev                       │ ◀ dev is the tab shown here              │
+│  ▣  logs                      │                                          │
+│  ▣  review                    │                                          │
+│ [▤] notes                 › 1 │                                          │
+│ Tabs with no project          │                                          │
+│  ▣  scratch                   │                                          │
+│  ▣  build                     │                                          │
 │                               │                                          │
 │ ALICE-TOWER  ●              + │                                          │
-│ [F] trainer                 2 │                                          │
+│ [▤] trainer               › 2 │                                          │
 │                               │                                          │
 │ OLD-LAPTOP  ○ offline         │                                          │
-│ [F] site (grey)             1 │                                          │
+│ [▤] site (grey)           › 1 │                                          │
 ├───────────────────────────────┤                                          │
-│ ⚙   +  New Project…           │                                          │
+│ ⚙  [+F]                   [H] │                                          │
 └───────────────────────────────┴──────────────────────────────────────────┘
 ```
 
@@ -189,6 +191,8 @@ The sketches use text marks for icons. In the UI, each mark is a lucide SVG from
 | --- | --- |
 | `[H]` | `monitor` |
 | `[F]` | `folder` (tinted by the color of the project if set) |
+| `[▤]` | the folder tile of a project in the desktop sidebar: a tile with the size and corners of a tab tile, in a neutral face, with a `folder` in the color of the project |
+| `[+F]` | `folder-plus`: New Project… at the foot of the sidebar |
 | `[S]` | `search` |
 | `+` | `plus` |
 | `▾` `▸` `⌄` `›` | `chevron-down`, `chevron-right` |
@@ -230,13 +234,19 @@ This sketch shows the context menu of a project:
 
 - The hosts are the hosts that the user added (`hosts.json`, read through `internal/hosts`). A machine that the tailnet finds shows only in the Add Remote Host sheet (#761). A host shows in a space when it is connected or keeps a project of the space.
 - A host is a section header. It is not indented. It is small and in capitals. It has its state dot and the `+` button that makes a project there. The context menu of the host has Rename… (its alias) and New Tab with No Project. The header of an offline host says "offline". Its projects show greyed, with their last tabs.
-- A project row is flush with the header. It shows the color dot of the project, its name, and its tab count on the right, as the list of Rex Go does. The folder is in no row or tooltip.
-- A click on a project row shows the project and expands it. On the project shown, or on the dot of any project, a click expands or collapses the tabs of that project alone. The tabs come under the project, flush with it, with no guide line. The program icon of a tab starts where the dot of the project starts. The title of a tab starts where the name of the project starts. The rows of Older and of Tabs with no project line up the same way.
-- Each project keeps its own expanded state, per client (`sidebarOpen`). Choosing another project, in any way, closes none.
+- A project row is flush with the header. It is as high as a tab row (`sideRowH`). It shows the folder tile of the project, its name, a chevron, and its tab count on the right. The folder path is in no row or tooltip.
+- The folder tile is in the room of the tab tiles. It is centred where the front tile of a tab is. It has the size and corners of a tab tile (`tileW`×`tileH`) and a neutral face. The folder in it has the color of the project, or the muted color when the project has none. So a project and its tabs have marks of one kind, and the folder and the colors of the programs tell them apart (#896). #832 drew a bare folder there, and it read as a tab tile.
+- The chevron is near the end of the row, before the tab count or the `+`. It shows at rest, not only under the pointer. It points down when the row is open and right when it is closed. A project with no tab has no chevron. The Older row has the same chevron.
+- A click on a project row shows the project and opens it. On the project shown, or on the chevron of any project, a click opens or closes the tabs of that project alone. The tabs come under the project, flush with it, with no guide line. The tile of a tab is where the folder tile of the project is. The title of a tab starts where the name of the project starts. Opening or closing moves no name and no mark. The chevron turns, and the tab list folds open and shut, with the motion of the sidebar (none with Animation off or reduced motion).
+- The project that the window shows, while its tabs are open, has a **face** of its own behind its row and its tabs (`groupFace`). No other project has one. The face tells where the window is and which tabs belong to the project. The face reaches 4 px past the rows. Its corner radius is the pill radius plus those 4 px, so both corners share one centre. Every project keeps the room of the face, so choosing another project moves nothing: only the color of the face fades in and out. A 2 px gap stays between the face and the rows of the projects next to it. The pill of the active tab on the face is lifted (`liftedPill`): it has a lighter face where the system draws no glass, a soft shadow and a hairline.
+- The list, the space picker and the foot of the sidebar keep 10 px from the edge of the window and from the panes (`sideInsets`). The side next to the panes has the 8 px edge of the sidebar beyond it.
+- Each project keeps its own open state, per client (`sidebarOpen`). Choosing another project, in any way, closes none.
 - The `+` of a project row opens a tab in the folder. It shows on the row under the pointer and on the chosen project. ⌘T does the same while the project is chosen.
 - The context menu of a project has these items: New Tab, Rename, Color, Move to Space, Reveal Folder (this host only) and Close Project.
 - The projects of a host are in order of last use (`Used`), the latest first. The projects that the user did not use for 30 days go under a collapsed **Older** row, at the level of the projects.
-- **Tabs with no project** is a row at the level of the projects. It has no dot. It is the last row of the host. It shows in every space and is collapsed until the user chooses it. It expands the same way. With no tab, it does not show, unless the window shows it.
+- **Tabs with no project** is a light section label, not a project row. Its text is small and muted. It has no chevron and no count, and it is at the leading edge of the rows. Its tabs are always listed under it, with no collapse, in the columns of the tabs of a project. It is the last group of the host and shows in every space. With no tab, it does not show, unless the window shows it. A click on a tab shows its workspace on that tab. The label is a drop target for a tab of the host, which then leaves its project. It has New Tab in its context menu and a `+` under the pointer. A tab with no project that an adoption waits for (Migration) shows as the same label, greyed, with "Waiting for <host>".
+- New Project… at the foot of the sidebar is an icon, as Settings is. Its name is in its tooltip. The header of each host has its `+` too, and ⇧⌘N works.
+- The web client keeps its current rows for now.
 - A tab of a project that the window does not show names itself as a shown tab does. It uses the title that its program set, the icon of its program and its folder. These come from the session list of the host. No pane is attached. A shell at its prompt names itself by the shell and its folder, shown or not. It does not use the title or the done or error status that a program left when it ended there.
 - The user drags a tab onto a project of its host to move it there, with its panes and their processes.
 
