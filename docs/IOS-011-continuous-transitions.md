@@ -8,9 +8,9 @@ metadata:
 
 # IOS-011: Continuous transitions between states
 
-Status: built (#916). A check on a device is open (see Tests).
+Status: built (#916, #930). The device check in Tests is open.
 
-This doc finds the places in the iOS app where one state replaces the next with no relation between them. It defines a continuous transition for nine of them. In a continuous transition, the element that the user touches becomes a part of the next state. The doc changes only how one state becomes the next. Each action, each screen and each destination stays the same. It extends [`IOS-005`](IOS-005-pane-switching.md) (pane slides) and [`IOS-007`](IOS-007-pane-gallery.md) (gallery and pager).
+This doc finds the places in the iOS app where one state replaces the next with no relation between them. It defines a continuous transition for nine of them. In a continuous transition, the element that the user touches becomes a part of the next state. The doc changes only how one state becomes the next. Each action, each screen and each destination stays the same. It extends [`IOS-005`](IOS-005-pane-switching.md) (pane slides) and [`IOS-007`](IOS-007-pane-gallery.md) (gallery and pager). Phase 2 changes item 1 back to the standard push, and keeps the list's colour scheme when a terminal closes.
 
 ## Problem
 
@@ -110,11 +110,47 @@ These are the answers to the open questions of the proposal.
 
 The data, the protocol and the saved files do not change. No item touches `docs/irreversible.md`.
 
+### Revision: row push and steady list scheme
+
+Phase 2 (#930). This part replaces item 1 above, and the parts of Decisions 1 and 2 that are about the terminal.
+
+#### Problem
+
+- **The zoom of item 1 looks wrong in both ways.** A user of #916 reported that the open and the close both look awkward. The terminal fills the screen, and its row is a strip about 54 points high. On open, the zoom stretches the strip into the screen. On close, it squashes the screen into the strip, much more in height than in width. So the terminal looks like a dark bar that grows or collapses, not like the row. The zoom works well only when the source and the destination have a similar shape. Examples are a thumbnail and its image (item 4), and the title pill and its sheet (item 2).
+- **The list can change its colour scheme in one frame.** A user reported that the return to the list feels abrupt. The probable cause is in the code. Nobody saw it on a device yet. While a terminal is open, `ScreenStyle` sets the colour scheme of the whole window to the terminal's scheme (`.preferredColorScheme` in `GoRexApp.swift`). The list behind the terminal gets that scheme too.
+  - On open, `TerminalScreen` sets the scheme when it appears. So the list changes at the first frame of the push.
+  - On close, `TerminalScreen.onDisappear` clears the scheme after the pop ends. So the list changes at the last frame.
+  - This occurs only when the terminal's scheme differs from the app's scheme.
+
+#### Behavior
+
+1. A tap on a tab's row opens the terminal with the standard push, as before #916. Back, the edge swipe and the full-width swipe back close it with the standard pop. A swipe follows the finger, and the user can cancel it half way. A user reported that the interactive swipe back is very smooth, and it must stay so. The #916 build had two swipes back. In the zoom's swipe, the terminal shrinks toward its row. In the standard swipe, it slides to the right. The user chose the standard one, where the terminal slides to the right.
+2. On iPhone, the list and its bars always show the app's own scheme: Settings › Interface, else the system's scheme. A terminal with another scheme changes neither the list nor its bars, during the push or the pop. The terminal and its bar keep the terminal's scheme, as now. Limit: UIKit draws the search field and the glass of the bars. They can still follow the window's scheme. A device check decides. If they follow it, a later change sets the scheme on the UIKit side too.
+3. Only the status bar follows the window's scheme. It changes when the terminal appears, and when the path becomes empty.
+   - The system Back button, the custom Back button, Close Tab, a removed host and a widget empty the path when the pop starts. So the status bar changes at the start of the pop.
+   - The edge swipe and the full-width swipe empty the path only when the pop completes. SwiftUI tells the app nothing when a swipe starts. So the status bar changes at the end of a swipe.
+4. On iPad, the sidebar keeps its current behaviour: it follows the scheme of the terminal beside it. The list and the terminal show at the same time there, so one scheme for the window looks better.
+5. Items 2 to 9 do not change. The gallery keeps its zoom and its `ZoomGuard`. Item 6 keeps its fade on iPad.
+
+#### Code
+
+| File | Change |
+| --- | --- |
+| `HostListView.swift` | Remove `ZoomFrom`, `ZoomRecord`, `ZoomSource.row` and `ZoomSource.row(of:in:)`, and the `zoomed` state. `openRow` keeps the fade on regular width, and calls `go` on compact width. `.onChange(of: path)` releases `ScreenStyle` when the path becomes empty, whatever emptied it. On compact width, `list` gets the app's own scheme with `.environment(\.colorScheme, …)` and `.toolbarColorScheme(…, for: .navigationBar)` and `.toolbarColorScheme(…, for: .bottomBar)`. |
+| `HostSection.swift`, `StatusInbox.swift` | Remove `matchedTransitionSource` from the `WindowRow` and `StatusRow` buttons. Item 7's `MatchedPlace` stays. |
+| `TerminalView.swift`, `TerminalScreen.swift` | Remove `TerminalHost.zoomGuard` and the line in `TerminalRepresentable` that turns it on. |
+| `ZoomGuard.swift` | Remove the `zoomed` environment value. The comment names only the gallery. |
+| `GoRexApp.swift` | `ScreenStyle` gets `release()`, which clears the scheme for every screen. `clear(by:)` stays for `onDisappear`. `ScreenStyle` also keeps the system's scheme as observable state. It reads the window scene's trait collection, which the window's `preferredColorScheme` does not change. `registerForTraitChanges` on the scene updates it when the system changes between light and dark. |
+| `docs/lessons.md` | The phase 2 code PR undoes a part of #916, so it adds a lesson. A zoom transition needs a source and a destination of a similar shape. |
+
 ## Alternatives
 
 - **A custom `UIViewControllerAnimatedTransitioning` for item 1**: it gives full control of timing and the morph of the title into the pill. It needs a UIKit navigation controller in place of `NavigationStack`, which is a navigation change. It lost.
 - **`matchedGeometryEffect` from the row to the pill for item 1**: it works only inside one view tree. The list and the terminal are in different navigation destinations. It lost.
 - **A morph of each part for items 1 and 2**: an example is the title into the title. The system zoom moves the whole source as one shape. A morph of each part needs the custom transition above. It lost for the same reason.
+- **Phase 2: a zoom out of the host's card**: the card is taller than a row, but still much shorter than the screen. The squash stays. It lost.
+- **Phase 2: a zoom on open only, and a standard pop on close**: SwiftUI uses one transition for both ways. It lost.
+- **Phase 2: the row's title moves into the title pill**: the list and the terminal are in different navigation destinations. So no shared element crosses the push. It lost for the same reason as the morph above.
 - **A fixed duration of 450 to 700 ms for the system zoom**: the request for this work proposed it. The API does not accept a duration. Other iOS apps use the system timing, so it lost.
 
 ## Tests
@@ -128,4 +164,11 @@ The data, the protocol and the saved files do not change. No item touches `docs/
 - The current `GoRexTests` and UI tests pass. The change is visual only, so it adds no unit test.
 - Build: the Mac mini runner builds the app and runs `GoRexTests` for the branch (`.github/workflows/ios-test.yml`).
 - Open check on a device: the zoom's pinch and drag down against the terminal's pinch, scroll and two-finger pane drag. Also the recording that `docs/lessons.md` asks for. No Mac with a simulator was available for #916.
+- Phase 2, on a device: open a terminal from a row in All Tabs and in Activity. Close it with the system Back button, the edge swipe and the full-width swipe. Do this with a terminal scheme that is the same as the app's scheme, and with one that differs. The list and its bars must not change at the first frame of the push or at the last frame of the pop. Also change the system scheme with the list on screen, while Settings › Interface follows the system. On iPad, the sidebar must still follow the terminal's scheme. Also check that SwiftUI empties the path at the start of a pop from a button, as Behavior 3 expects. Also check the search field and the glass of the bottom bar through the push and the pop. The gallery's zoom, close and pinch must work as in phase 1.
+- Phase 2: the Mac mini runner builds the branch and runs `GoRexTests` (`ios-test.yml`).
 - `docs/invariants.md` names no behavior that this change touches.
+
+## Phases
+
+1. Items 1 to 9: #916.
+2. Revision: row push and steady list scheme: #930.

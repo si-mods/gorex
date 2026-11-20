@@ -17,8 +17,8 @@ struct HostSection: View {
     /// The projects and Older open, by key.
     @Binding var expanded: Set<String>
     let query: String
-    /// What the rows zoom the terminal out of, and move between the lists
-    /// in.
+    /// What New Project's sheet zooms out of, and the rows move between
+    /// the lists in.
     let zoom: Namespace.ID
     let places: Namespace.ID
     let open: (TerminalTarget) -> Void
@@ -711,7 +711,6 @@ struct HostSection: View {
             }
             .buttonStyle(.plain)
             .hoverEffect(.highlight)
-            .matchedTransitionSource(id: ZoomSource.row(host: host.id, session: w.session.id, window: w.window.window_id), in: zoom)
             let shown = shownBy[w.session.id] ?? []
             let place = RowPlace(host: host.id, session: w.session.id, window: w.window.window_id)
             let lifted = drag.map { !$0.dropped && $0.session.id == w.session.id && $0.window == w.window.window_id } ?? false
