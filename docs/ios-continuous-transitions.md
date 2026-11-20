@@ -19,7 +19,7 @@ The changes between the list, the terminal, the sheets and the covers are not co
 | 5 | `.searchable` in `HostListView` (both) | Type in "Search tabs" | The list changes on each key with no animation. Projects open at once. |
 | 6 | `NavigationSplitView` detail (iPad) | Tap a row in the sidebar | A hard cut, because the detail has `.id(t)`. |
 | 7 | Bottom bar of `HostListView` (both) | "Show Activity" or "Show All Tabs" | `inbox.toggle()` replaces the whole list with no animation. |
-| 8 | Settings button, New Project, Edit Spaces (both) | Open the sheet | A standard sheet from the bottom edge. |
+| 8 | Settings button, Add Host, New Project `+`, Edit Spaces (both) | Open the sheet | A standard sheet from the bottom edge. |
 | 9 | `PaneBar` + button, Close Pane, ⌘D (both) | Split or close a pane | The terminal slides (`switchTo`). The bar's tiles appear and go away with no animation when `session.view` changes. |
 
 ## Goal
@@ -41,23 +41,23 @@ The changes between the list, the terminal, the sheets and the covers are not co
 
 ### Behavior
 
-**1. Tab row → terminal (iPhone).** The row grows into the terminal. Back, or the edge swipe, shrinks the terminal into the row. If the row is not on screen, the system uses its standard push. This occurs for an open from a notification, a widget or a row in a collapsed group. On iPad, item 6 applies.
+**1. Tab row → terminal (iPhone).** The row grows into the terminal. Back, or the edge swipe, shrinks the terminal into the row. Only a tap on a row in the list or in Activity uses the zoom. A zoom with no source starts from the centre of the screen. So all other opens keep the standard push: a notification, a widget, the session sheet and `switchTo` to another session or host. On iPad, item 6 applies.
 
-**2. Title pill → session sheet.** The sheet grows out of the glass pill. Close, a drag down or a choice in the sheet shrinks it back into the pill. A choice of another tab then slides the panes, as it does now.
+**2. Title pill → session sheet.** The sheet grows out of the glass pill. Close, a drag down or a choice in the sheet shrinks it back into the pill. A choice of another tab in the same session then slides the panes, as it does now. A choice of a tab in another session replaces the path (`go`). On iPhone, that open keeps the standard push (item 1). On iPad, it keeps the hard cut (item 6).
 
 **3. Pane bar highlight.** One highlight moves from the old tile to the new tile. The tiles do not move. The highlight follows each pane change: a tap, a swipe, a two-finger drag that completes, a split and a close.
 
-**4. Gallery thumbnail ↔ pager.** The tapped thumbnail grows into the full image. When the user swipes to another image, the source changes to that image's cell. Close, or the pull down, shrinks the image into its own cell in the grid.
+**4. Gallery thumbnail ↔ pager.** The tapped thumbnail grows into the full image. When the user swipes to another image, the source changes to that image's cell. Close, or the pull down, shrinks the image into its own cell in the grid. Before the close, the grid scrolls that cell into view.
 
 **5. Search tabs.** While the user types, the rows that still match slide to their new places. The other rows fade out. The projects that open for the search open with the same motion. The search field does not change. The system already moves it (`.searchToolbarBehavior(.minimize)`).
 
-**6. iPad sidebar → detail.** The old terminal cross-fades into the new one, inside the detail pane only. The sidebar does not move. The title pill pushes from the side of the chosen row, as it does for a tab switch.
+**6. iPad sidebar → detail.** After a tap on a row in the sidebar, the old terminal cross-fades into the new one, inside the detail pane only. The title pill is part of the new terminal, so it cross-fades with it. The sidebar does not move. All other opens keep the hard cut. Examples are Back, a notification, a widget, the session sheet and `switchTo` to another session.
 
-**7. Activity ↔ All Tabs.** A tab that shows in both lists moves from its place in one list to its place in the other. The other rows and the headers fade.
+**7. Activity ↔ All Tabs.** A tab (a window) that shows in both lists moves from its place in one list to its place in the other. Activity can show more than one row for one window, one for each pane with activity. Only the first of those rows moves. The other rows and the headers fade.
 
-**8. Sheets from buttons.** The Settings sheet grows out of the gear button in the bottom bar. New Project and Edit Spaces open from items in a system menu. The menu closes before the sheet opens, so these two sheets have no source on screen. They keep the standard sheet (see Open questions).
+**8. Sheets from buttons.** The Settings sheet grows out of the button that opened it: the gear in the bottom bar, or Add Host in `NoHostsView`. The New Project sheet grows out of the `+` button in the host's header. Edit Spaces opens from an item in the space picker's menu. The menu closes before the sheet opens, so Edit Spaces has no source on screen. It keeps the standard sheet (see Open questions).
 
-**9. Split and close in the pane bar.** On a split, the new tile grows in at its place, and the tiles after it move to make room. Then the new pane slides in, as it does now. On a close, the tile shrinks away, and the other tiles close the gap.
+**9. Split and close in the pane bar.** On a split, the new tile grows in at its place, and the tiles after it move to make room. Then the new pane slides in, as it does now. On a close, the tile shrinks away, and the other tiles close the gap. The bar shows only when the window has two or more panes. So a split from one pane to two keeps the slide of the whole bar from the bottom. A close from two panes to one does the same.
 
 ### Model
 
@@ -80,14 +80,14 @@ The rules below apply to all nine items.
 
 | # | Files | Change |
 | --- | --- | --- |
-| 1 | `HostListView.swift`, `HostSection.swift`, `StatusInbox.swift` | A `@Namespace` in `HostListView`, passed to the rows. `matchedTransitionSource(id:in:)` on each `WindowRow` button. `.navigationTransition(.zoom(sourceID:in:))` on the `TerminalScreen` in `navigationDestination`. The id is the host, session and block, not the whole `TerminalTarget`, because `title` and `explicit` can differ. |
+| 1 | `HostListView.swift`, `HostSection.swift`, `StatusInbox.swift` | A `@Namespace` in `HostListView`, passed to the rows. `matchedTransitionSource(id:in:)` on each `WindowRow` button in `HostSection.rows` and each `StatusRow` button in `StatusInbox`. The id is the host, session and block of the target that the row opens. It is not the whole `TerminalTarget`, because `title` and `explicit` can differ. The row's `open` sets a `zoomSource` state in `HostListView`. `navigationDestination` applies `.navigationTransition(.zoom(sourceID:in:))` only when `zoomSource` matches the target, and `.automatic` in all other cases. |
 | 2 | `TerminalScreen.swift` | A `@Namespace`. `matchedTransitionSource` on the principal `ToolbarItem` of the pill. `.navigationTransition(.zoom)` on the `SessionSheet` content. |
 | 3 | `PaneSwitcher.swift` | A `@Namespace` in `PaneBar`. `matchedGeometryEffect(id: "current", in:)` on the highlight `RoundedRectangle`. The bar's `.animation(.snappy, value: current)` stays. |
-| 4 | `GalleryView.swift`, `GalleryPager.swift` | `matchedTransitionSource(id: entry.id, in:)` on `GalleryCell`. `.navigationTransition(.zoom)` on the cover, with the pager's `current` as the source id. Before the close, the grid scrolls the source cell into view. |
+| 4 | `GalleryView.swift`, `GalleryPager.swift` | `matchedTransitionSource(id: entry.id, in:)` on `GalleryCell`. A new `@State shown` in `GalleryView` holds the image on screen. The pager's `current` becomes a `@Binding` to `shown`. `viewing` does not change on a swipe, because a new `viewing` presents the cover again. `.navigationTransition(.zoom)` on the cover uses `shown` as the source id. A `ScrollViewReader` scrolls the grid to `shown` before the close. |
 | 5 | `HostListView.swift` | `.animation(.snappy, value: query)` on the list's `LazyVStack`. |
-| 6 | `HostListView.swift` | On regular width only, `.transition(.opacity)` on the detail's `TerminalScreen`, and `withAnimation` in `go`. |
-| 7 | `HostListView.swift`, `HostSection.swift`, `StatusInbox.swift` | `withAnimation(.snappy)` on `inbox.toggle()`. `matchedGeometryEffect` with the namespace of item 1 and the same id on the rows of both lists. |
-| 8 | `HostListView.swift` | `matchedTransitionSource` on the Settings button. `.navigationTransition(.zoom)` on `SettingsView`. |
+| 6 | `HostListView.swift` | On regular width only, `.transition(.opacity)` on the detail's `TerminalScreen`. `withAnimation` goes in the sidebar rows' `open` closure only, not in `go`, because `go` has many other callers. |
+| 7 | `HostListView.swift`, `HostSection.swift`, `StatusInbox.swift` | `withAnimation(.snappy)` on `inbox.toggle()`. A second `@Namespace`, apart from the one of item 1. `matchedGeometryEffect` on the rows of both lists, with the host, session and `window_id` as the id. A `StatusRow` uses `item.window`. In `StatusInbox`, only the first row of each window gets the id. |
+| 8 | `HostListView.swift`, `HostSection.swift` | The Settings button moves out of the `ToolbarItemGroup` into its own `ToolbarItem`, which gets `matchedTransitionSource`. The Add Host button of `NoHostsView` is a second source. A state records which button opened Settings. The `+` button of `HostSection.header` is the New Project source. `.navigationTransition(.zoom)` on `SettingsView` and `ProjectSheet`. |
 | 9 | `PaneSwitcher.swift` | `.transition(.scale.combined(with: .opacity))` on each tile. `.animation(.snappy, value: cells.map(\.block))` on the bar. |
 
 The data, the protocol and the saved files do not change. No item touches `docs/irreversible.md`.
@@ -97,7 +97,7 @@ The data, the protocol and the saved files do not change. No item touches `docs/
 - **A custom `UIViewControllerAnimatedTransitioning` for item 1**: it gives full control of timing and the morph of the title into the pill. It needs a UIKit navigation controller in place of `NavigationStack`, which is a navigation change. It lost.
 - **`matchedGeometryEffect` from the row to the pill for item 1**: it works only inside one view tree. The list and the terminal are in different navigation destinations. It lost.
 - **A morph of each part for items 1 and 2**: an example is the title into the title. The system zoom moves the whole source as one shape. A morph of each part needs the custom transition above. It lost for the same reason.
-- **Durations from the general guide (450 to 700 ms) for the system zoom**: the API does not accept a duration. Other iOS apps use the system timing, so it lost.
+- **A fixed duration of 450 to 700 ms for the system zoom**: the request for this work proposed it. The API does not accept a duration. Other iOS apps use the system timing, so it lost.
 
 ## Tests
 
@@ -105,7 +105,7 @@ The data, the protocol and the saved files do not change. No item touches `docs/
 - Data: long and short titles, and a gallery image that fails to load. Also the first and last row of a card, an empty gallery and a scrolled list.
 - Interruption: fast repeated taps, Back during the animation, a drag down or an edge swipe cancelled half way.
 - iPhone and iPad, light and dark, reduced motion on, VoiceOver, and a hardware keyboard (⌘T, ⌘D).
-- Item 1: the terminal's scroll and two-finger pane drag still work with the zoom's dismiss gestures present.
+- Item 1: the terminal's scroll and two-finger pane drag still work with the zoom's dismiss gestures present. A notification, a widget and the session sheet still open with the standard push.
 - Headless screenshots with the `gorex-ui-testing` skill: at rest, each screen is the same as before.
 - The current `GoRexTests` and UI tests pass. The change is visual only, so it adds no unit test.
 - `docs/invariants.md` names no behavior that this change touches.
@@ -122,12 +122,12 @@ Each item is one PR. The order is by value and cost.
 6. Item 6, iPad detail cross-fade.
 7. Item 9, split and close in the pane bar.
 8. Item 7, Activity ↔ All Tabs.
-9. Item 8, Settings sheet.
+9. Item 8, Settings and New Project sheets.
 
 ## Open questions
 
 1. **The zoom's dismiss gestures on the terminal (item 1).** The zoom adds a drag down and a pinch to close. These can conflict with the terminal's scroll and two-finger pane drag. Options: (a) keep them, (b) allow only the edge swipe, if the iOS 26 SDK has a modifier for it, (c) keep the standard push. The user decides after a simulator recording.
 2. **Back after a tab switch (item 1).** The user can switch tabs inside the terminal, so the tab shown can differ from the row that opened it. If SwiftUI reads the source id when the terminal closes, Back shrinks into the row of the tab shown. If not, Back shrinks into the row that opened it. A simulator test finds out. The user decides whether (b) is acceptable.
 3. **The highlight's stretch (item 3).** Options: (a) a plain slide, (b) the leading edge moves first and the trailing edge follows, with a squash of about 15%. Option (a) is the recommendation. Option (b) needs a custom animation. The user decides.
-4. **Sheets from menu items (item 8).** New Project and Edit Spaces open from a system menu that closes first. Options: (a) keep the standard sheet, (b) use the menu's button as the source. The recommendation is (a). The user decides.
+4. **Edit Spaces (item 8).** It opens from a system menu that closes first. Options: (a) keep the standard sheet, (b) use the menu's button as the source. The recommendation is (a). The user decides.
 5. **Matched rows in item 7.** Rows out of view in a `LazyVStack` have no frame, so they can only fade. Options: (a) match the rows on screen and fade the rest, (b) fade the whole list. The recommendation is (a). The user decides.
