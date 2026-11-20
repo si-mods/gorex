@@ -35,10 +35,14 @@ func (a *App) apply(h *hostConn, byID map[string]rex.SessionInfo) {
 	}
 }
 
-// saveIfDue saves the layout once a change waited a second, and no
+// saveDelay is how long a change waits before it is saved. A test sets it
+// to be short.
+var saveDelay = time.Second
+
+// saveIfDue saves the layout once a change waited saveDelay, and no
 // gesture moves it.
 func (a *App) saveIfDue() {
-	if a.saveDue && time.Since(a.lastSave) > time.Second && !a.gesturing() {
+	if a.saveDue && time.Since(a.lastSave) > saveDelay && !a.gesturing() {
 		a.save()
 	}
 }
