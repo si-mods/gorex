@@ -475,6 +475,120 @@ func (a *App) tabMenu(m *ui.Menu, t *Tab) {
 	}
 }
 
+// tileMotion is how a tab's front tile moves for what its panes need, as
+// iOS's TileMotion (ios/GoRex/Views/ProgramTile.swift): a Dock icon's
+// bounce, attention's urgent, done's a calmer hop, still for the rest.
+type tileMotion int
+
+const (
+	tileStill tileMotion = iota
+	tileDone
+	tileAttention
+)
+
+// tileMotion returns how the tab's front tile bounces: for the pane that
+// most needs the user, which drives the bounce as the most urgent state
+// does on iOS, where the attention of a bell or an unseen end bounces as
+// a blocked program does.
+func (t *Tab) tileMotion() tileMotion {
+	rank := 0
+	for _, p := range t.allPanes() {
+		rank = max(rank, p.needsYou())
+	}
+	switch {
+	case rank >= rex.StatusRank("error"), rank == 1:
+		return tileAttention
+	case rank == rex.StatusRank("done"):
+		return tileDone
+	}
+	return tileStill
+}
+
+// tileBounce is a tileMotion's keyframe tracks and their cycle, at the
+// timings of iOS's TileBounceModifier, its offsets two thirds of iOS's
+// for the smaller tile. EaseInOut stands for iOS's CubicKeyframe, the
+// closest of MyGo's easings; the tail holds the rest, as iOS's
+// LinearKeyframe does.
+type tileBounce struct {
+	cycle      time.Duration
+	dy, sx, sy []ui.Keyframe
+}
+
+var tileBounces = map[tileMotion]tileBounce{
+	tileAttention: {
+		cycle: 1600 * time.Millisecond,
+		dy: []ui.Keyframe{
+			{At: 0, Value: 0},
+			{At: 160 * time.Millisecond, Value: -4.333, Ease: ui.EaseInOut},
+			{At: 300 * time.Millisecond, Value: 0, Ease: ui.EaseInOut},
+			{At: 420 * time.Millisecond, Value: -1.733, Ease: ui.EaseInOut},
+			{At: 540 * time.Millisecond, Value: 0, Ease: ui.EaseInOut},
+			{At: 1600 * time.Millisecond, Value: 0, Ease: ui.Linear},
+		},
+		sx: []ui.Keyframe{
+			{At: 0, Value: 1},
+			{At: 60 * time.Millisecond, Value: 0.96, Ease: ui.EaseInOut},
+			{At: 160 * time.Millisecond, Value: 1, Ease: ui.EaseInOut},
+			{At: 300 * time.Millisecond, Value: 1.05, Ease: ui.EaseInOut},
+			{At: 420 * time.Millisecond, Value: 1, Ease: ui.EaseInOut},
+			{At: 540 * time.Millisecond, Value: 1.02, Ease: ui.EaseInOut},
+			{At: 620 * time.Millisecond, Value: 1, Ease: ui.EaseInOut},
+			{At: 1600 * time.Millisecond, Value: 1, Ease: ui.Linear},
+		},
+		sy: []ui.Keyframe{
+			{At: 0, Value: 1},
+			{At: 60 * time.Millisecond, Value: 1.05, Ease: ui.EaseInOut},
+			{At: 160 * time.Millisecond, Value: 1, Ease: ui.EaseInOut},
+			{At: 300 * time.Millisecond, Value: 0.94, Ease: ui.EaseInOut},
+			{At: 420 * time.Millisecond, Value: 1, Ease: ui.EaseInOut},
+			{At: 540 * time.Millisecond, Value: 0.97, Ease: ui.EaseInOut},
+			{At: 620 * time.Millisecond, Value: 1, Ease: ui.EaseInOut},
+			{At: 1600 * time.Millisecond, Value: 1, Ease: ui.Linear},
+		},
+	},
+	tileDone: {
+		cycle: 2400 * time.Millisecond,
+		dy: []ui.Keyframe{
+			{At: 0, Value: 0},
+			{At: 160 * time.Millisecond, Value: -3.333, Ease: ui.EaseInOut},
+			{At: 300 * time.Millisecond, Value: 0, Ease: ui.EaseInOut},
+			{At: 410 * time.Millisecond, Value: -1.333, Ease: ui.EaseInOut},
+			{At: 520 * time.Millisecond, Value: 0, Ease: ui.EaseInOut},
+			{At: 2400 * time.Millisecond, Value: 0, Ease: ui.Linear},
+		},
+		sx: []ui.Keyframe{
+			{At: 0, Value: 1},
+			{At: 60 * time.Millisecond, Value: 0.97, Ease: ui.EaseInOut},
+			{At: 160 * time.Millisecond, Value: 1, Ease: ui.EaseInOut},
+			{At: 300 * time.Millisecond, Value: 1.04, Ease: ui.EaseInOut},
+			{At: 410 * time.Millisecond, Value: 1, Ease: ui.EaseInOut},
+			{At: 520 * time.Millisecond, Value: 1, Ease: ui.EaseInOut},
+			{At: 2400 * time.Millisecond, Value: 1, Ease: ui.Linear},
+		},
+		sy: []ui.Keyframe{
+			{At: 0, Value: 1},
+			{At: 60 * time.Millisecond, Value: 1.04, Ease: ui.EaseInOut},
+			{At: 160 * time.Millisecond, Value: 1, Ease: ui.EaseInOut},
+			{At: 300 * time.Millisecond, Value: 0.95, Ease: ui.EaseInOut},
+			{At: 410 * time.Millisecond, Value: 1, Ease: ui.EaseInOut},
+			{At: 520 * time.Millisecond, Value: 1, Ease: ui.EaseInOut},
+			{At: 2400 * time.Millisecond, Value: 1, Ease: ui.Linear},
+		},
+	},
+}
+
+// tileBounceAt is where motion's bounce puts the front tile at now: how
+// far it is up, and its squash and stretch. The phase is now's share of
+// the cycle, so every needy tab hops together, as Dock icons do.
+func tileBounceAt(m tileMotion, now time.Time) (dy, sx, sy float32) {
+	b, ok := tileBounces[m]
+	if !ok {
+		return 0, 1, 1
+	}
+	d := time.Duration(now.UnixMilli()%int64(b.cycle/time.Millisecond)) * time.Millisecond
+	return keyframeAt(b.dy, d), keyframeAt(b.sx, d), keyframeAt(b.sy, d)
+}
+
 // tiles draws the tiles of a tab's programs: the focused pane's in front,
 // the others peeking out behind it.
 func (a *App) tiles(c *ui.Context, k *colors, t *Tab) {
@@ -489,6 +603,13 @@ func (a *App) tiles(c *ui.Context, k *colors, t *Tab) {
 	if len(back) > 2 {
 		back = back[:2]
 	}
+	// The front tile bounces while a pane needs the user, as a Dock icon
+	// does: it tells of an unfocused window too, so it keeps at it where
+	// the working dots stand still.
+	m := tileStill
+	if motion(c) != nil {
+		m = t.tileMotion()
+	}
 	w := float32(tileW + tileStep*len(back) + 2)
 	ui.Box(c).Size(w, tileH+4).Shrink(0).Draw(func(p *ui.Painter, r ui.Rect) {
 		y := r.Y + 2
@@ -498,7 +619,17 @@ func (a *App) tiles(c *ui.Context, k *colors, t *Tab) {
 			drawTile(p, k, ui.Rect{X: x, Y: y + inset, W: tileW, H: tileH - 2*inset}, back[i].program(), false)
 		}
 		if front != nil {
-			drawTile(p, k, ui.Rect{X: r.X + 1, Y: y, W: tileW, H: tileH}, front.program(), true)
+			fr := ui.Rect{X: r.X + 1, Y: y, W: tileW, H: tileH}
+			if m == tileStill {
+				drawTile(p, k, fr, front.program(), true)
+			} else {
+				p.AnimationFrameRate(30)
+				dy, sx, sy := tileBounceAt(m, p.Now())
+				// iOS squashes about the tile's bottom edge, then lifts.
+				p.Transform(ui.Scaling(sx, sy).Then(ui.Translation(0, dy)), fr.X+fr.W/2, fr.Y+fr.H, func() {
+					drawTile(p, k, fr, front.program(), true)
+				})
+			}
 		}
 	})
 }

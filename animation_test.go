@@ -12,6 +12,7 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
+	"gorex/internal/rex"
 	"gorex/locales"
 )
 
@@ -750,6 +751,108 @@ func TestTabSwitchSlideAnimates(t *testing.T) {
 			}
 			if rest1 <= rest0 {
 				t.Errorf("rest1=%v <= rest0=%v, want pill on tab 1 to the right of tab 0", rest1, rest0)
+			}
+		})
+	}
+}
+
+// TestTileBounce: the front tile of a tab whose pane needs the user
+// bounces across frames with a style of animation, and stands still with
+// Off; a quiet tab's tiles keep still either way.
+func TestTileBounce(t *testing.T) {
+	old := prefs
+	t.Cleanup(func() { prefs = old })
+	for _, tc := range styles {
+		t.Run(tc.name, func(t *testing.T) {
+			prefs = settings{Animation: tc.style}
+			a := &App{}
+			p := &Pane{attention: true}
+			tab := &Tab{Root: &Node{Pane: p}, Focus: p}
+			tt := ui.NewTester(func(c *ui.Context) {
+				k := colorsOf(c)
+				a.tiles(c, k, tab)
+			}, 40, 40)
+			tt.Frame()
+			before := slices.Clone(tt.Image().Pix)
+			moved := false
+			// Over more than a cycle the hops show, whenever they fall.
+			for range 10 {
+				tt.Advance(170 * time.Millisecond)
+				tt.Frame()
+				moved = moved || !bytes.Equal(before, tt.Image().Pix)
+			}
+			if moved != tc.moves {
+				t.Errorf("the tile moved %v, want %v", moved, tc.moves)
+			}
+			if pending := tt.FramePending(); pending != tc.moves {
+				t.Errorf("frame pending %v, want %v", pending, tc.moves)
+			}
+		})
+	}
+	t.Run("quiet", func(t *testing.T) {
+		prefs = settings{}
+		a := &App{}
+		p := &Pane{}
+		tab := &Tab{Root: &Node{Pane: p}, Focus: p}
+		tt := ui.NewTester(func(c *ui.Context) {
+			k := colorsOf(c)
+			a.tiles(c, k, tab)
+		}, 40, 40)
+		tt.Frame()
+		before := slices.Clone(tt.Image().Pix)
+		tt.Advance(300 * time.Millisecond)
+		tt.Frame()
+		if tt.FramePending() {
+			t.Error("a quiet tab's tiles keep the window painting")
+		}
+		if !bytes.Equal(before, tt.Image().Pix) {
+			t.Error("a quiet tab's tile moved")
+		}
+	})
+	// tileBounceAt: at the cycle's start and in the rest it ends with the
+	// tile sits still; at the hop's top it is up, and a cycle on it is
+	// where it was, every needy tab with it.
+	base := time.Unix(0, 0)
+	if dy, sx, sy := tileBounceAt(tileAttention, base); dy != 0 || sx != 1 || sy != 1 {
+		t.Errorf("at the cycle's start the tile is %v,%v,%v, want at rest", dy, sx, sy)
+	}
+	if dy, _, _ := tileBounceAt(tileAttention, base.Add(160*time.Millisecond)); dy != -4.333 {
+		t.Errorf("at the hop's top dy = %v, want -4.333", dy)
+	}
+	if dy, sx, sy := tileBounceAt(tileAttention, base.Add(time.Second)); dy != 0 || sx != 1 || sy != 1 {
+		t.Errorf("at rest the tile is %v,%v,%v, want 0,1,1", dy, sx, sy)
+	}
+	cycle := tileBounces[tileAttention].cycle
+	got1, _, _ := tileBounceAt(tileAttention, base.Add(80*time.Millisecond))
+	got2, _, _ := tileBounceAt(tileAttention, base.Add(80*time.Millisecond+cycle))
+	if got1 != got2 {
+		t.Errorf("a cycle on dy = %v, was %v", got2, got1)
+	}
+	if dy, _, _ := tileBounceAt(tileDone, base.Add(160*time.Millisecond)); dy != -3.333 {
+		t.Errorf("done's hop tops at dy = %v, want -3.333", dy)
+	}
+	// The most urgent pane drives the bounce, as on iOS, and a bell
+	// bounces as a blocked program does.
+	status := func(state string) *Tab {
+		p := &Pane{info: rex.SessionInfo{Statuses: []rex.ProgramStatus{{State: state, Updated: time.Now()}}}}
+		return &Tab{Root: &Node{Pane: p}, Focus: p}
+	}
+	for _, tc := range []struct {
+		name string
+		tab  *Tab
+		want tileMotion
+	}{
+		{"bell", &Tab{Root: &Node{Pane: &Pane{attention: true}}}, tileAttention},
+		{"blocked", status("blocked"), tileAttention},
+		{"error", status("error"), tileAttention},
+		{"done", status("done"), tileDone},
+		{"working", status("working"), tileStill},
+		{"idle", status("idle"), tileStill},
+		{"none", status(""), tileStill},
+	} {
+		t.Run("motion/"+tc.name, func(t *testing.T) {
+			if m := tc.tab.tileMotion(); m != tc.want {
+				t.Errorf("tileMotion = %v, want %v", m, tc.want)
 			}
 		})
 	}
