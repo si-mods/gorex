@@ -29,6 +29,9 @@ const (
 	radiusL   = 12
 	radiusXL  = 14
 	radiusXXL = 16
+	// radiusTile is a program's tile (drawTile), and a project's folder
+	// tile in the sidebar, which matches it.
+	radiusTile = 4.5
 )
 
 // capsule is the corner radius of a circle or a pill h DIPs high: half

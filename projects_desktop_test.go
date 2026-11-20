@@ -1057,7 +1057,7 @@ func TestSidebarCurrentProjectGroup(t *testing.T) {
 		for i := range 3 {
 			d += max(int(x[i])-int(y[i]), int(y[i])-int(x[i]))
 		}
-		return d <= 6
+		return d <= 12
 	}
 	if nearly(open, shut) {
 		t.Error("the project shown, open, has no face of its own")

@@ -351,7 +351,7 @@ func (a *App) noProjectSection(c *ui.Context, k *colors, w *Workspace, reserve f
 	name := locales.ProjectsNoProject()
 	offline := w.offline()
 	row := ui.Row(c.Key("project-"+key)).Height(26).Shrink(0).Padding(0, 4, 0, sideLead).Gap(sideGap).AlignItems(ui.Center).
-		Radius(pillRadius(26, radiusM)).Cursor(ui.CursorPointer).Role(ui.RoleButton).Label(name)
+		Radius(pillRadius(26, radiusM)).Cursor(ui.CursorPointer).Role(ui.RoleButton).Label(name + spacedComma(workspaceDetail(w, a, w.tabCount())))
 	if anim := motion(c); anim != nil {
 		row.Transition(ui.ElementTransition{Animation: anim, Position: true, Enter: tabMotion, Exit: tabMotion})
 	}
@@ -456,7 +456,7 @@ func projectFolderTile(c *ui.Context, k *colors, color string) {
 		col = ui.Hex(hex)
 	}
 	ui.Row(c).Width(tileW + 2).AlignItems(ui.Center).Justify(ui.Center).Shrink(0).Children(func() {
-		ui.Row(c).Size(tileW, tileH).Radius(4.5).Background(k.text.Alpha(0.09)).AlignItems(ui.Center).Justify(ui.Center).Children(func() {
+		ui.Row(c).Size(tileW, tileH).Radius(radiusTile).Background(k.text.Alpha(0.09)).AlignItems(ui.Center).Justify(ui.Center).Children(func() {
 			glyphIcon(c, "folder", 11, col).Shrink(0)
 		})
 	})
