@@ -57,6 +57,16 @@ Each item has a **Trigger** (what the diff shows), a **Check** (what the author 
 - **Check:** the PR carries a simulator screenshot or recording, and says what was not tested. "In progress" at merge time means not ready.
 - **Source:** #616 merged in progress. The key bar and bottom edge were redone five times (#616, #631, #637, #643, #648); animations went back and forth (#590→#595, #593→#597, #594→#603).
 
+### A Live Activity or widget face
+- **Trigger:** the diff changes a Live Activity's or widget's view, or the regions it is placed in.
+- **Check:** the PR shows it as the system draws it: an activity on the simulator's Dynamic Island (expanded, compact, minimal) or a widget on its Home Screen. An `ImageRenderer` picture shows the view, not where the system puts it.
+- **Source:** #900 checked its faces with `ImageRenderer` pictures only; on a device the expanded island cut the tile in its leading region's corner, apart from the heading (#901).
+
+### An entitlement in a TestFlight build
+- **Trigger:** a PR adds an entitlement or capability to the app or an extension.
+- **Check:** the exported IPA's `codesign -d --entitlements :-` shows it (`DESTINATION=export ios/scripts/upload`), and the App ID has the capability on the portal.
+- **Source:** the archive was built unsigned and signed only at export, which drops entitlements: #798's iCloud key-value store never reached TestFlight until #892 signed them in before the export.
+
 ### Removing an iOS entitlement or capability
 - **Trigger:** a PR removes an iOS entitlement or capability.
 - **Check:** search `docs/` for features or designs that may need it again, and say in the PR that a later PR re-adding it must also re-enable it on the App ID.
