@@ -183,10 +183,11 @@ final class TerminalSession {
                 data = c
                 let feed = wire(c)
                 try await c.open(ticket: t, session: session)
+                // Before any of its bytes, which the feed takes in order.
+                feed.start(nonce: c.nonce)
                 guard g == generation else { return }
                 log.info("opened \(self.block, privacy: .public)")
                 opened = .now
-                feed.start(nonce: c.nonce)
                 // One kept off the page gives back what the server restored.
                 if owns { await claim() } else { await giveBack() }
             } catch {
@@ -290,10 +291,12 @@ final class TerminalSession {
 
     /// Feeds the connection's bytes and drop to a TerminalFeed, which
     /// frames them and restores the snapshot off the main actor, and hands
-    /// what it made to receive in order, while d is still the connection.
+    /// what it made to receive in order, while d is still the connection
+    /// and the session is not closed: a start opens a new one, with a
+    /// snapshot of its own.
     private func wire(_ d: DataConnection) -> TerminalFeed {
         let feed = TerminalFeed { [weak self, weak d] events in
-            guard let self, d === self.data else { return }
+            guard let self, d === self.data, !self.closed else { return }
             self.receive(events)
         }
         d.onBytes = { [weak self, weak d] bytes in
@@ -302,7 +305,7 @@ final class TerminalSession {
         }
         d.onDrop = { [weak self, weak d] code in
             guard let self, d === self.data, !self.closed else { return }
-            feed.drop(code)
+            feed.drop(code, generation: self.generation)
         }
         return feed
     }
@@ -381,8 +384,9 @@ final class TerminalSession {
                     // A resize follows this view's size, which it set.
                     break
                 }
-            case .drop(let code):
-                guard !closed else { return }
+            case .drop(let code, generation: let g):
+                // A resume or a start since the drop has handled it.
+                guard !closed, g == generation else { continue }
                 switch code {
                 case 4000: end(.failed(String(localized: "The tab closed.")))
                 case 1002, 1008: end(.failed(String(localized: "The server refused the terminal.")))

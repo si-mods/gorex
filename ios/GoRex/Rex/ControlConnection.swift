@@ -108,13 +108,21 @@ final class ControlConnection {
         let raw: Data
     }
 
-    /// Reads a message's JSON off the main actor (#844); nil for one that
-    /// is no JSON object.
-    @concurrent
-    private nonisolated static func decode(_ s: String) async -> Incoming? {
+    /// A message at least this long is read off the main actor; a shorter
+    /// one costs less to read than the move does.
+    static let offMainLength = 32 << 10
+
+    /// Reads a message's JSON; nil for one that is no JSON object.
+    private nonisolated static func decode(_ s: String) -> Incoming? {
         let raw = Data(s.utf8)
         guard let m = try? JSONSerialization.jsonObject(with: raw) as? [String: Any] else { return nil }
         return Incoming(message: m, raw: raw)
+    }
+
+    /// Reads a long message's JSON off the main actor (#844).
+    @concurrent
+    private nonisolated static func decodeOffMain(_ s: String) async -> Incoming? {
+        decode(s)
     }
 
     init(base: URL, auth: String?, session: URLSession = .shared) {
@@ -232,9 +240,11 @@ final class ControlConnection {
             while true {
                 // One message at a time: each is read before the next is
                 // taken, so they are handled in the order they came.
-                guard case .string(let s) = try await task.receive(),
-                      let incoming = await Self.decode(s)
-                else { continue }
+                guard case .string(let s) = try await task.receive() else { continue }
+                let incoming = s.utf8.count >= Self.offMainLength ? await Self.decodeOffMain(s) : Self.decode(s)
+                // Closed while it was read: what it tells is not wanted.
+                if closed { return }
+                guard let incoming else { continue }
                 let (m, raw) = (incoming.message, incoming.raw)
                 if m["type"] as? String == "response", let id = m["id"] as? String, let c = pending.removeValue(forKey: id) {
                     if let e = m["error"] as? [String: Any] {

@@ -88,7 +88,7 @@ nonisolated final class TerminalFeedTests: XCTestCase {
         XCTAssertEqual(restored.screen.dropFirst(2), restored.replay)
         XCTAssertTrue(String(decoding: restored.replay, as: UTF8.self).contains("hello"))
         XCTAssertEqual(got.events.filter { if case .snapshot = $0 { true } else { false } }.count, 1)
-        guard case .drop(1000)? = got.events.last else { return XCTFail("the last event is not the drop") }
+        guard case .drop(1000, generation: _)? = got.events.last else { return XCTFail("the last event is not the drop") }
         XCTAssertEqual(got.output, output)
         // The message between the output it came between.
         var before = Data()

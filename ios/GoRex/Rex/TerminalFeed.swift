@@ -14,8 +14,9 @@ nonisolated final class TerminalFeed: @unchecked Sendable {
         case snapshot(Restored?)
         case output(Data)
         case message([String: Any])
-        /// The connection dropped, with its close code.
-        case drop(Int)
+        /// The connection dropped, with its close code, while the
+        /// session's generation was the one given.
+        case drop(Int, generation: Int)
     }
 
     /// A snapshot restored at the view's size.
@@ -24,7 +25,7 @@ nonisolated final class TerminalFeed: @unchecked Sendable {
         let replay: Data
         /// The reset and the replay: what the terminal gets.
         let screen: Data
-        /// Its default colors, as a theme message gives them.
+        /// Its default colours, as a theme message gives them.
         let theme: [String: Any]
     }
 
@@ -63,9 +64,10 @@ nonisolated final class TerminalFeed: @unchecked Sendable {
         }
     }
 
-    /// Tells of a drop, after the bytes taken before it.
-    func drop(_ code: Int) {
-        queue.async { self.send([.drop(code)]) }
+    /// Tells of a drop, after the bytes taken before it, with the
+    /// generation of the session at the drop.
+    func drop(_ code: Int, generation: Int = 0) {
+        queue.async { self.send([.drop(code, generation: generation)]) }
     }
 
     /// Decodes a snapshot, draws it at size when given, and turns it into
