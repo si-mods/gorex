@@ -215,6 +215,7 @@ func resetTailcat() (wait func()) {
 				tcMu.Lock()
 				if tcClients[s.addr] == s.p {
 					delete(tcClients, s.addr)
+					s.p.dead = true // its dials take a new client (retire)
 				}
 				tcMu.Unlock()
 				go s.p.tc.Close()
