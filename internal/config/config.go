@@ -290,8 +290,16 @@ func (c *Config) invokeFn(l *lua.LState) int {
 	return 0
 }
 
-// Invoke runs a custom action with ctx and args.
-func (c *Config) Invoke(name string, ctx, args map[string]any) error {
+// Invoke runs a custom action with ctx and args, for at most 5 seconds.
+func (c *Config) Invoke(name string, ctxVals, args map[string]any) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	return c.InvokeWithin(ctx, name, ctxVals, args)
+}
+
+// InvokeWithin runs a custom action with ctxVals and args, and stops it
+// when ctx ends. It returns the action's error, or one naming the action.
+func (c *Config) InvokeWithin(ctx context.Context, name string, ctxVals, args map[string]any) error {
 	if c == nil || c.state == nil {
 		return errors.New("config: no Lua state")
 	}
@@ -307,11 +315,9 @@ func (c *Config) Invoke(name string, ctx, args map[string]any) error {
 			continue
 		}
 		c.state.Push(a.run)
-		c.state.Push(goTable(c.state, ctx))
+		c.state.Push(goTable(c.state, ctxVals))
 		c.state.Push(goTable(c.state, args))
-		cctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		c.state.SetContext(cctx)
+		c.state.SetContext(ctx)
 		err := c.state.PCall(2, 0, nil)
 		c.state.RemoveContext()
 		return err

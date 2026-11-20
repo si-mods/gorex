@@ -201,10 +201,10 @@ type Gateway struct {
 	// tunnels are com.superlogical.tunnel blocks, keyed by block ID.
 	tunnels map[string]*tunnelBlock
 
-	// generation counts the loads the configuration file had, which
-	// server.config_reload makes; keymapHash names the file's contents.
-	generation int
-	keymapHash string
+	// actions is the configuration the gateway runs actions from;
+	// actionsMu guards it and runs its actions one at a time.
+	actionsMu sync.Mutex
+	actions   *actionsRuntime
 	// canLock tells whether the server keeps the gateway's connection
 	// alive, which the size locks need.
 	canLock bool
@@ -262,7 +262,6 @@ func New(opt Options) (*Gateway, error) {
 		downloads:      map[string]*download{},
 		byteDownloads:  map[string]*download{},
 		tunnels:        map[string]*tunnelBlock{},
-		generation:     1,
 		canLock:        hello.Keepalive > 0 && hello.Conn != "",
 		done:           make(chan struct{}),
 		changed:        make(chan struct{}),
@@ -306,6 +305,7 @@ func (g *Gateway) Close() error {
 		g.closing = true
 		g.mu.Unlock()
 		close(g.done)
+		g.closeActions()
 		g.closeAllResources()
 		g.opt.Client.Close()
 		g.wg.Wait()
