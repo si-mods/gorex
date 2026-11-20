@@ -115,8 +115,13 @@ Today the app does this. On `.background`, `TerminalScreen` suspends the stream 
   - Compact trailing: the state glyph, a progress ring, or a timer since `updated`.
   - Minimal: the tile.
   - Expanded: the tile and window title, the host, the state, and `line` in a monospaced font. The font is the font of the system, because the extension does not carry the font of the terminal. All of this is in the bottom region, under the camera. The leading region sits in the top corner of the island, which cut the tile (#901).
-  - Lock Screen: the same rows.
-  - The second row puts the state first. Then it shows the title of the record and the host. A long host name therefore cuts no state.
+    - The second row puts the state first. Then it shows the title of the record and the host. A long host name therefore cuts no state.
+  - Lock Screen: a card of its own (`TerminalActivityCard`), not the expanded face. It has three rows:
+    - A small top row: the tile, the name of the program, the host and the name of the state. The state has the color of its mark. At the right is the mark: the state glyph, a progress ring, or the timer since `updated`.
+    - `line` in a large bold font of the system, not monospaced, on at most two lines. If `line` is empty, the name of the state shows (for example "Needs Input"). A shell with no record and no line shows the title of the window.
+    - A small bottom row: the title of the window, in grey. It is not there when the large row shows it.
+  - The card draws its own background, the same in light and dark: a gradient from the tile color of the program at the top left to near black. A light tile color is darkened, so that white text stays readable. The glyph of the tile shows large and faint at the right, 1.7 times the height of the card, cut by its right edge. The text stops before the glyph. `activityBackgroundTint` is black and the system buttons are white. With the longest rows the card stays under the 160 pt limit of the Lock Screen.
+  - A blocked program gives the card a thin rim in the attention color, as `keylineTint` gives the island.
   - A plain shell shows no mark beside its tile, but it shows one in compact trailing.
   - A paused activity (`connected: false` or `isStale`) is dimmed and reads "Paused — open Rex Go".
   - `line`, the title of the window and the title of the record are `.privacySensitive()`.

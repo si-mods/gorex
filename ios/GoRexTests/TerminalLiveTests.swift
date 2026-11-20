@@ -761,8 +761,8 @@ nonisolated final class TerminalLiveTests: XCTestCase {
 
     /// Draws each face, connected and paused, light and dark, as PNGs in
     /// GOREX_ACTIVITY_SHOTS; skipped without it. Drawn apart from
-    /// ActivityKit: the Lock Screen's card and the Dynamic Island's black
-    /// are drawn here.
+    /// ActivityKit: the Lock Screen's wallpaper and the Dynamic Island's
+    /// black are drawn here.
     @MainActor func testShots() throws {
         guard let dir = ProcessInfo.processInfo.environment["GOREX_ACTIVITY_SHOTS"] else { throw XCTSkip("GOREX_ACTIVITY_SHOTS not set") }
         try FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
@@ -781,6 +781,12 @@ nonisolated final class TerminalLiveTests: XCTestCase {
             ("error", short, .init(title: "web", program: "codex", record: record("error", "Tests failed"), line: "FAIL  3 of 120 tests", connected: true)),
             ("shell", short, .init(title: "~/src/gorex", program: "zsh", record: nil, line: "alice@alice-laptop gorex % git status", connected: true)),
             ("paused", short, .init(title: "api", program: "claude", record: record("working", "Refactoring the store"), line: "✻ Refactoring… (1m 15s · esc to interrupt)", connected: false)),
+            ("msg", short, .init(title: "docs", program: "claude", record: record("working", nil), line: "Editing docs/projects.md", connected: true)),
+            ("question", short, .init(title: "api", program: "claude", record: record("blocked", nil), line: "Should I also update the tests for the store?", connected: true)),
+            ("two-lines", short, .init(title: "api", program: "claude", record: record("working", nil),
+                                       line: "Reading internal/session/store.go to find where the scrollback is kept on reconnect", connected: true)),
+            ("no-line", short, .init(title: "api", program: "claude", record: record("blocked", nil), line: "", connected: true)),
+            ("shell-empty", short, .init(title: "~/src/gorex", program: "zsh", record: nil, line: "", connected: true)),
             ("worst", long, .init(title: String(repeating: "Refactor the session store so that every pane keeps its scrollback ", count: 3),
                                   program: "claude", record: record("blocked", "Allow edits to 14 files in internal/session and internal/rexapi?"),
                                   line: String(repeating: "W", count: 80), connected: true)),
@@ -796,12 +802,12 @@ nonisolated final class TerminalLiveTests: XCTestCase {
         for (name, a, s) in cases {
             for scheme in [ColorScheme.light, .dark] {
                 let suffix = scheme == .dark ? "dark" : "light"
-                // The Lock Screen: a card over the wallpaper, 160 pt at most.
-                try write(TerminalActivityFace(attributes: a, state: s, stale: false)
-                    .padding(16)
+                // The Lock Screen: a card over the wallpaper, 160 pt at most;
+                // the card draws its own background.
+                try write(TerminalActivityCard(attributes: a, state: s, stale: false)
                     .frame(width: 370)
                     .frame(maxHeight: 160)
-                    .background(scheme == .dark ? Color(white: 0.12).opacity(0.85) : Color(white: 0.97).opacity(0.85), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+                    .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
                     .padding(12)
                     .background(LinearGradient(colors: [Color(red: 0.2, green: 0.25, blue: 0.45), Color(red: 0.55, green: 0.35, blue: 0.5)], startPoint: .top, endPoint: .bottom))
                     .environment(\.colorScheme, scheme), "lock-\(name)-\(suffix)")
