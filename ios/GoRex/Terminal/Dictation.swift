@@ -859,10 +859,9 @@ actor Sherpa: Recogniser {
 nonisolated final class Recording: @unchecked Sendable {
     static let format = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 16_000, channels: 1, interleaved: false)!
     private static let queue = DispatchQueue(label: "dev.gorex.recording", qos: .userInitiated)
-    private lazy var engine = AVAudioEngine()
-    /// Whether a start began, on the queue: a stop with none has nothing
-    /// to stop.
-    private var begun = false
+    /// The engine, once a start begins: a stop with none has nothing to
+    /// stop.
+    private var engine: AVAudioEngine?
     private let turns = Turns(on: Recording.queue)
 
     /// Starts the microphone, on its queue: heard takes what it hears, on
@@ -874,7 +873,8 @@ nonisolated final class Recording: @unchecked Sendable {
     }
 
     private func begin(_ heard: @escaping @Sendable (UnsafeBufferPointer<Float>) -> Void) throws {
-        begun = true
+        let engine = AVAudioEngine()
+        self.engine = engine
         let audio = AVAudioSession.sharedInstance()
         try audio.setCategory(.record)
         try audio.setActive(true)
@@ -904,7 +904,7 @@ nonisolated final class Recording: @unchecked Sendable {
     }
 
     private func halt() {
-        guard begun else { return }
+        guard let engine else { return }
         engine.stop()
         engine.inputNode.removeTap(onBus: 0)
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
