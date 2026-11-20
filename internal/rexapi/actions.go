@@ -15,16 +15,6 @@ import (
 	"gorex/internal/config"
 )
 
-// methodFor returns a method handler by name. It is set in init so that
-// the methods table's initialization does not depend on this file.
-var methodFor func(string) func(*control, args) (any, *apiError)
-
-func init() {
-	methodFor = func(name string) func(*control, args) (any, *apiError) {
-		return methods[name]
-	}
-}
-
 // actionDeadline is how long one configured action may run. A test sets
 // it to be short.
 var actionDeadline = 30 * time.Second
@@ -377,12 +367,37 @@ func (h *actionHost) call(method string, payload map[string]any) error {
 	if aerr != nil {
 		return errors.New(aerr.Message)
 	}
-	fn := methodFor(method)
+	fn := actionMethod(method)
 	if fn == nil {
 		return fmt.Errorf("%s is not supported by the gateway", method)
 	}
 	if _, aerr := fn(h.c, ar); aerr != nil {
 		return errors.New(aerr.Message)
+	}
+	return nil
+}
+
+// actionMethod returns the handler of a method that a configured action
+// may run. The table is spelled out so that this file does not depend on
+// the methods table, which names the action handler.
+func actionMethod(name string) func(*control, args) (any, *apiError) {
+	switch name {
+	case "session.new_window":
+		return methodSessionNewWindow
+	case "session.close_window":
+		return methodSessionCloseWindow
+	case "session.set_window_label":
+		return methodSessionSetWindowLabel
+	case "session.new_split":
+		return methodSessionNewSplit
+	case "block.close":
+		return methodBlockClose
+	case "session.focus_direction":
+		return methodSessionFocusDirection
+	case "session.zoom_block":
+		return methodSessionZoomBlock
+	case "session.swap_blocks":
+		return methodSessionSwapBlocks
 	}
 	return nil
 }
