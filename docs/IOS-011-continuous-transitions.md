@@ -124,7 +124,7 @@ Phase 2, a proposal. This part replaces item 1 above, and the parts of Decisions
 
 #### Behavior
 
-1. A tap on a tab's row opens the terminal with the standard push, as before #916. Back, the edge swipe and the full-width swipe back close it with the standard pop. A swipe follows the finger, and the user can cancel it half way.
+1. A tap on a tab's row opens the terminal with the standard push, as before #916. Back, the edge swipe and the full-width swipe back close it with the standard pop. A swipe follows the finger, and the user can cancel it half way. A user reported that the interactive swipe back of the #916 build is very smooth, and it must stay so (see Open questions, 1).
 2. On iPhone, the list and its bars always show the app's own scheme: Settings › Interface, else the system's scheme. A terminal with another scheme changes neither the list nor its bars, during the push or the pop. The terminal and its bar keep the terminal's scheme, as now.
 3. Only the status bar follows the window's scheme. It changes when the terminal appears, and when the path becomes empty.
    - The system Back button, the custom Back button, Close Tab, a removed host and a widget empty the path when the pop starts. So the status bar changes at the start of the pop.
@@ -172,3 +172,7 @@ Phase 2, a proposal. This part replaces item 1 above, and the parts of Decisions
 
 1. Items 1 to 9: #916.
 2. Revision: row push and steady list scheme: proposal.
+
+## Open questions
+
+1. **Which swipe back the user wants to keep (phase 2).** The #916 build has two interactive swipes back. A terminal that a row opened uses the zoom's swipe: the terminal shrinks toward its row under the finger. A terminal that a notification, a widget or the session sheet opened uses the standard swipe: the terminal slides to the right with the finger. Options: (a) the standard swipe for every terminal, as Behavior 1 says, (b) keep the zoom for item 1, with its swipe and its shrink into the row. The user decides.
