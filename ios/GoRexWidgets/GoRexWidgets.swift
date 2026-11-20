@@ -24,17 +24,12 @@ struct TerminalActivityWidget: Widget {
         } dynamicIsland: { c in
             let paused = c.state.paused(stale: c.isStale)
             return DynamicIsland {
-                DynamicIslandExpandedRegion(.leading) {
-                    TerminalActivityTile(state: c.state).opacity(paused ? 0.5 : 1)
-                }
-                DynamicIslandExpandedRegion(.trailing) {
-                    TerminalActivityMark(state: c.state, paused: paused, shell: false)
-                }
-                DynamicIslandExpandedRegion(.center) {
-                    TerminalActivityHeading(attributes: c.attributes, state: c.state).opacity(paused ? 0.5 : 1)
-                }
+                // All in the bottom region, under the camera, as on the Lock
+                // Screen: the leading region sits in the island's top corner,
+                // which cut the tile and set it apart from the heading.
                 DynamicIslandExpandedRegion(.bottom) {
-                    TerminalActivityLine(state: c.state, paused: paused)
+                    TerminalActivityFace(attributes: c.attributes, state: c.state, stale: c.isStale)
+                        .padding(.horizontal, 8)
                 }
             } compactLeading: {
                 TerminalActivityTile(state: c.state, scale: 1).opacity(paused ? 0.5 : 1)
