@@ -1,8 +1,9 @@
 # Rex Go: widgets
 
-Status: proposed. Nothing built. Rex Go has no widget extension
-(`ios/project.yml` has two targets, the app and its tests), and no code
-in `ios/` uses WidgetKit.
+Status: phase 1 built (the `GoRexWidgets` target, the snapshot and its
+writer, the Inbox widget, `rexgo://open` and `inbox`); TestFlight does
+not sign it with the App Group yet (see Build and release). Phases 2
+and 3 are not built.
 
 ## Problem
 
@@ -44,6 +45,7 @@ list in between. Rex Go puts nothing there.
 Statements are marked **[code]** (read in this repository), **[doc]**
 (Apple's documentation or WWDC session, linked) or **[assumption]** (not
 checked; to settle before or in the phase that needs it).
+**[checked]** marks what was tried on the Mac mini and seen to hold.
 
 ## What there is to show
 
@@ -145,9 +147,12 @@ is ever done.
   - `WidgetSnapshot.swift`: the snapshot type, its reader and writer.
   - The `Program` table and `Color.attention` and `.done`, moved out of
     `ProgramTile.swift` into a file without the app's views.
-  - `Inbox.ago`, or a copy of it in the snapshot file.
-  - The brand marks: a second asset catalog with `Brands`, or the
-    folder in both targets' resources.
+  - The brand marks: `ios/Shared/Brands.xcassets`, moved out of the
+    app's catalog, in both targets' resources.
+  - Not `Inbox.ago`: a string made when the widget draws stays as it is
+    till the next reload. The widget's times are SwiftUI's date
+    references (`Text(.currentDate, format: .reference(to:))`, "2
+    minutes ago"), which move by themselves.
 
 ### Snapshot
 
@@ -212,18 +217,20 @@ One JSON file, `<App Group>/widgets/snapshot.json`, written atomically.
   moves without reloads.
 - The provider returns two entries: now, and `written` + 10 minutes,
   which shows the content dimmed with "Open Rex Go to update".
-- A working item's time counts from its `updated`
-  (`Text(date, style: .relative)`), so "working · 5m" keeps moving.
+- An item's time counts from its `updated` as a date reference, so
+  "5 minutes ago" keeps moving.
   Whether that is right after the snapshot goes stale is the reason for
   the dimmed look.
 - Reload policy `.never`: only the app asks for reloads.
 
 ### Inbox widget
 
-Kind `Inbox`. Static configuration; all hosts.
+Kind `Inbox`. Static configuration; all hosts. Its name in the widget
+gallery is "Activity" ("动态"), as the app's button that shows the
+inbox ("Show Activity").
 
 - **Small**: the top item's program tile, tinted by state, its heading,
-  and the counts below ("1 needs input · 3 working"). Nothing in the
+  and the counts below ("1 waiting · 3 working"). Nothing in the
   inbox: "Nothing needs you" with the time.
 - **Medium**: up to 3 rows, as the status inbox draws them (tile,
   heading, host, state, time), then "+N more".
@@ -273,14 +280,27 @@ snapshot's `windows`.
 - The extension's App ID and the App Group must exist on the developer
   portal. TestFlight CI (`ios/scripts/upload`) signs at export,
   cloud-managed, with `-allowProvisioningUpdates` and the App Store
-  Connect API key. **[code]** Whether that key may register the
-  extension's App ID and the App Group without portal work depends on
-  its role. **[assumption]** Check the exported app and extension
-  entitlements before the first upload.
-- An archive built with `CODE_SIGNING_ALLOWED=NO` may carry no
-  entitlements, so the App Group may be missing after export.
-  **[assumption]**, the same open question as
-  [ios-live-activities.md](ios-live-activities.md).
+  Connect API key. **[code]** On 2026-11-20 the portal had the App ID
+  `dev.gorex.ios` with one capability (In-App Purchase), no
+  `dev.gorex.ios.widgets`, and so no App Group on either.
+  **[checked]** with `asc bundle-ids capabilities list`. Whether the
+  key may register them on its own depends on its role.
+  **[assumption]**
+- **An archive built with `CODE_SIGNING_ALLOWED=NO` carries no
+  entitlements, and the export adds none.** **[checked]** The CI's
+  archive of build 1.1 (158) is unsigned; exported again to a local
+  folder with the CI's options (`destination` `export`), its app holds
+  only `application-identifier`, `team-identifier`, `get-task-allow`
+  and `beta-reports-active`: not the iCloud key-value store that
+  `GoRex.entitlements` names. So, as the upload is now, the App Group
+  is missing from the app and the extension at export: the app finds
+  no container and writes nothing, and the widget shows "Open Rex Go".
+  An archive of this branch built the same way embeds
+  `GoRexWidgets.appex`, unsigned. Before widgets reach testers, the
+  upload must sign the archive with its entitlements (or re-sign it
+  with them before the export), and the App IDs must have the App
+  Group; checked on an exported build, not assumed. The same holds for
+  [ios-live-activities.md](ios-live-activities.md)'s `aps-environment`.
 - `ios/WhatToTest.md` gets a bullet per locale in the PR that ships each
   widget.
 - No Push Notifications capability: this design sends no pushes.
@@ -317,13 +337,15 @@ Efforts are rough estimates. **[assumption]**
 
 ## Open questions
 
-1. Phase 1 widgets show what the app saw when it last ran. Is that
-   useful enough to ship before the Live Activity, or should both ship
-   together?
-2. Should the Lock Screen show headings at all when unlocked, or only
-   counts and program tiles?
+1. Decided: phase 1 ships to TestFlight when merged, before any Live
+   Activity.
+2. Decided: the Lock Screen shows headings, `.privacySensitive()`, with
+   no setting of its own.
 3. Does the CI's App Store Connect key have the role to register the
-   extension's App ID and the App Group, and does an unsigned archive
-   keep the App Group at export?
-4. Should a tap on a done or error row mark it seen, as opening it from
-   the inbox does?
+   extension's App ID and the App Group? An unsigned archive does not
+   keep entitlements at export (Build and release): how should the
+   upload sign the archive?
+4. Decided: a tap from a widget does not mark done or error records
+   seen. It only opens the terminal, as a notification's tap does; the
+   terminal, as it shows, marks its block's records seen as it always
+   does (`TerminalScreen`, `Host.see`).

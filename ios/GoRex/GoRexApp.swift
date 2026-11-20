@@ -24,14 +24,16 @@ struct GoRexApp: App {
     /// API key and the settings that sync through iCloud come in before
     /// Ghostty, which reads some. Ghostty, with the downloaded font, starts
     /// once the list is on screen (startGhostty), not before the first
-    /// frame.
+    /// frame. The widgets' snapshot follows the hosts from the start.
     init() {
         OpenedFiles.clean()
         Polish.syncKey()
         CloudSettings.shared.start()
         Notifier.shared.start()
         let engine = TailnetEngine.shared
-        _store = State(initialValue: HostStore())
+        let store = HostStore()
+        _store = State(initialValue: store)
+        WidgetPublisher.shared.start(store)
         SpaceBook.dropOldData()
         _spaces = State(initialValue: SpaceBook())
         Task { await engine.apply() }
@@ -65,6 +67,7 @@ struct GoRexApp: App {
                         // A setting changed just now goes before the app may end.
                         CloudSettings.shared.flush()
                         HotspotShare.shared.handleBackground()
+                        WidgetPublisher.shared.flush()
                     }
                     guard p == .active else { return }
                     let suspended = HostStore.suspended(since: away)

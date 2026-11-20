@@ -41,12 +41,17 @@ targets:
     platform: iOS
     sources:
       - GoRex
+      # What the widgets share with the app: the snapshot, the programs'
+      # tiles and the brand marks.
+      - Shared
       - path: THIRD_PARTY_NOTICES.md
         buildPhase: resources
       # The desktop app's JetBrains Mono, for the font previews.
       - path: ../assets/fonts/JetBrainsMono-Regular.ttf
         buildPhase: resources
     dependencies:
+      # The widgets (docs/ios-widgets.md), embedded in PlugIns.
+      - target: GoRexWidgets
       # libghostty-vt reads the snapshot a stream starts with.
       - framework: Frameworks/GhosttyVt.xcframework
         embed: false
@@ -64,6 +69,7 @@ targets:
         SWIFT_OBJC_BRIDGING_HEADER: GoRex/GoRex-Bridging-Header.h
         PRODUCT_BUNDLE_IDENTIFIER: dev.gorex.ios
         # iCloud key-value store: the settings that sync (CloudSettings).
+        # App Group: the widgets' snapshot (WidgetSnapshot).
         CODE_SIGN_ENTITLEMENTS: GoRex/GoRex.entitlements
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         # The icons Settings > App Icon offers besides AppIcon (docs/ios-app-icons.md).
@@ -112,6 +118,33 @@ targets:
         CFBundleURLTypes:
           - CFBundleURLName: dev.gorex.ios
             CFBundleURLSchemes: [rexgo]
+  # The Home Screen and Lock Screen widgets (docs/ios-widgets.md). They
+  # read the snapshot the app writes to the App Group, and link none of
+  # the app's frameworks.
+  GoRexWidgets:
+    type: app-extension
+    platform: iOS
+    sources:
+      - GoRexWidgets
+      - Shared
+    dependencies:
+      - sdk: SwiftUI.framework
+      - sdk: WidgetKit.framework
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.gorex.ios.widgets
+        CODE_SIGN_ENTITLEMENTS: GoRexWidgets/GoRexWidgets.entitlements
+        TARGETED_DEVICE_FAMILY: "1,2"
+        SKIP_INSTALL: YES
+    info:
+      path: GoRexWidgets/Info.plist
+      properties:
+        CFBundleDisplayName: Rex Go
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        CFBundleLocalizations: [en, zh-Hans]
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
   # Hostless, so that it also runs without xcodebuild:
   # xcrun simctl spawn booted .../xctest GoRexTests.xctest
   GoRexTests:
@@ -120,6 +153,9 @@ targets:
     sources:
       - GoRexTests
       - GoRex/Rex
+      - Shared
+      - GoRex/WidgetPublisher.swift
+      - GoRexWidgets/InboxWidgetView.swift
       - GoRex/Notifier.swift
       - GoRex/Views/TerminalTarget.swift
       - GoRex/Terminal/VTerminal.swift
@@ -156,6 +192,8 @@ targets:
     settings:
       base:
         GENERATE_INFOPLIST_FILE: true
+        # An identifier, for its asset catalog (the brand marks) to load.
+        PRODUCT_BUNDLE_IDENTIFIER: dev.gorex.ios.tests
         # Archive.swift reads bzip2, as the app does.
         OTHER_LDFLAGS: -lbz2
         SWIFT_OBJC_BRIDGING_HEADER: GoRex/GoRex-Bridging-Header.h

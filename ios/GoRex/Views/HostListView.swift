@@ -99,9 +99,23 @@ struct HostListView: View {
             go(t)
             Notifier.shared.opening = nil
         }
-        // A Rex Go code opened from the camera pairs, once Settings, open
-        // over the list, has closed.
+        // A widget's tap opens a terminal, as a notification's does, or the
+        // inbox; a host gone opens the list. A Rex Go code opened from the
+        // camera pairs, once Settings, open over the list, has closed.
         .onOpenURL { url in
+            if let link = WidgetLink(url: url) {
+                switch link {
+                case let .open(host, session, block) where store.host(host) != nil:
+                    Notifier.shared.opening = TerminalTarget(host: host, session: session, block: block, title: "", explicit: true)
+                case .open:
+                    go(nil)
+                case .inbox:
+                    // Beside a terminal the list shows already.
+                    if width != .regular { go(nil) }
+                    inbox = true
+                }
+                return
+            }
             guard let c = HostConfig(tailcat: url.absoluteString),
                   let t = c.tailcat, store.host(tailcat: t.address) == nil else { return }
             if settings {

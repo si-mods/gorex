@@ -45,7 +45,7 @@ gained() { # FROM LOCALE TO: the bullets TO has that FROM had not
 # What the app is, to a tester: its sources, not its tests, builds or notes.
 # Not APP: that is the app's App Store Connect ID, from scripts/asc-env, which
 # the notes below are set on.
-APP_PATHS='ios/GoRex ios/project.yml ios/share ios/tailnet internal/tailnode'
+APP_PATHS='ios/GoRex ios/GoRexWidgets ios/Shared ios/project.yml ios/share ios/tailnet internal/tailnode'
 
 check() { # BASE [TO]: what the pull request in BASE..TO owes testers
 	local base=$1 to=${2:-HEAD} from app locale bullets b bad=0 re=
