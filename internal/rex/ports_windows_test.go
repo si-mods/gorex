@@ -13,15 +13,17 @@ import (
 func TestWindowsRows(t *testing.T) {
 	v4 := make([]byte, 4+24)
 	binary.LittleEndian.PutUint32(v4[0:], 1)
-	copy(v4[4:8], net.IPv4(127, 0, 0, 1).To4())
-	binary.BigEndian.PutUint16(v4[8:10], 8080)
-	binary.LittleEndian.PutUint32(v4[20:24], 42)
+	row4 := v4[4:]
+	copy(row4[4:8], net.IPv4(127, 0, 0, 1).To4())
+	binary.BigEndian.PutUint16(row4[8:10], 8080)
+	binary.LittleEndian.PutUint32(row4[20:24], 42)
 
 	v6 := make([]byte, 4+56)
 	binary.LittleEndian.PutUint32(v6[0:], 1)
-	copy(v6[4:20], net.ParseIP("::1").To16())
-	binary.BigEndian.PutUint16(v6[20:22], 443)
-	binary.LittleEndian.PutUint32(v6[52:56], 43)
+	row6 := v6[4:]
+	copy(row6[0:16], net.ParseIP("::1").To16())
+	binary.BigEndian.PutUint16(row6[20:22], 443)
+	binary.LittleEndian.PutUint32(row6[52:56], 43)
 
 	want := map[int]bool{42: true, 43: true}
 	got := append(windowsRows(v4, false, want), windowsRows(v6, true, want)...)
