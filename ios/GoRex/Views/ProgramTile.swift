@@ -363,6 +363,16 @@ extension View {
     }
 }
 
+/// A tile bounce's identity: its motion, and whether the list's motion
+/// runs. A change of either makes a new animator.
+struct TileBounceKey: Hashable {
+    let motion: TileMotion
+    let runs: Bool
+
+    /// Whether the animator repeats its keyframes.
+    var repeats: Bool { runs && motion.isRepeating }
+}
+
 private nonisolated struct TileBounceValues: Sendable {
     var offsetY: CGFloat = 0
     var scaleX: CGFloat = 1
@@ -378,10 +388,12 @@ private struct TileBounceModifier: ViewModifier {
     @State private var onScreen = true
 
     func body(content: Content) -> some View {
-        // Paused, the tile rests in place, and bounces again from the start
-        // as it shows, as it does when it first appears.
+        let key = TileBounceKey(motion: motion, runs: ListMotion.runs(reduceMotion: reduceMotion, phase: phase, onScreen: onScreen))
+        // Paused, the tile rests in place. Whether it runs is part of the
+        // animator's identity: a resume makes a new animator, which bounces
+        // from the start, as on the tile's first appearance.
         content
-            .keyframeAnimator(initialValue: TileBounceValues(), repeating: motion.isRepeating && ListMotion.runs(reduceMotion: reduceMotion, phase: phase, onScreen: onScreen)) { view, v in
+            .keyframeAnimator(initialValue: TileBounceValues(), repeating: key.repeats) { view, v in
                 view
                     .scaleEffect(x: v.scaleX, y: v.scaleY, anchor: .bottom)
                     .offset(y: v.offsetY)
@@ -447,7 +459,7 @@ private struct TileBounceModifier: ViewModifier {
                     }
                 }
             }
-            .id(motion)
+            .id(key)
             .onAppear { onScreen = true }
             .onDisappear { onScreen = false }
     }

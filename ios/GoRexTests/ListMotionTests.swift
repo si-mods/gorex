@@ -21,6 +21,18 @@ nonisolated final class ListMotionTests: XCTestCase {
         XCTAssertFalse(TileMotion(state: nil).isRepeating)
     }
 
+    @MainActor func testTileBounceKeyChangesAsMotionPausesAndResumes() {
+        // A resume must make a new animator, so the bounce starts again.
+        let running = TileBounceKey(motion: .attention, runs: true)
+        let paused = TileBounceKey(motion: .attention, runs: false)
+        XCTAssertNotEqual(running, paused)
+        XCTAssertEqual(running, TileBounceKey(motion: .attention, runs: true))
+        XCTAssertNotEqual(running, TileBounceKey(motion: .done, runs: true))
+        XCTAssertTrue(running.repeats)
+        XCTAssertFalse(paused.repeats)
+        XCTAssertFalse(TileBounceKey(motion: .none, runs: true).repeats)
+    }
+
     @MainActor func testChangeGatePassesOnlyChanges() {
         var gate = ChangeGate(Dictation.Said?.none)
         XCTAssertFalse(gate.update(nil), "the same value again is no change")
