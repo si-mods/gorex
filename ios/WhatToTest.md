@@ -77,6 +77,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - Tapping the mic no longer holds up the app while the microphone starts, and the level bars stay smooth while you dictate. Tell us if the mic misses your first words, or stays on after you stop it.
 - The host list scrolls more smoothly with many tabs, and a host's last projects save without a pause. Tell us if they are missing when the host is away.
 - With the keyboard up, a busy terminal stays smooth and still slides up just enough to show your cursor's line and what is drawn under it. Tell us if a line you need hides behind the keyboard.
+- Developer Mode, keyboard input recording and the version and debug info copies moved out of About and Terminal into their own page, Settings › Developer.
 
 ## zh-Hans
 
@@ -146,3 +147,4 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - 点麦克风时，应用不再在麦克风启动期间卡住，听写时的音量条也更流畅。如果麦克风漏掉你开头说的话，或停止后仍在录音，请告诉我们。
 - 标签很多时，主机列表打开和滚动更流畅；改动后，主机最近的项目会无卡顿地保存。如果主机离线时看不到它最近的项目，请告诉我们。
 - 键盘弹出时，输出很多的终端更流畅，并且仍只上移到刚好露出光标所在行及其下方绘制的内容。如果需要的行被键盘挡住，请告诉我们。
+- 「开发者模式」「记录键盘输入」以及拷贝版本、调试信息的按钮，从「关于」和「终端」里挪到了单独一页：「设置 › 开发者」。

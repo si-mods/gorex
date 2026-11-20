@@ -2742,12 +2742,12 @@
         }
       }
     },
-    "The version, the device, iOS and each host's Rex version. Copy version or debug info for a problem report.": {
+    "The version, the device, iOS and each host's Rex version. Settings › Developer copies version or debug info for a problem report.": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "显示版本、设备、iOS 版本和每台主机的 Rex 版本。报告问题时可拷贝版本信息或调试信息。"
+            "value": "显示版本、设备、iOS 版本和每台主机的 Rex 版本。在「设置 › 开发者」里可复制版本或调试信息用于问题报告。"
           }
         }
       }
@@ -4916,6 +4916,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "在应用顶部显示悬浮连接条，实时查看主机状态、网络路径和最近的连接事件。"
+          }
+        }
+      }
+    },
+    "Developer": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "开发者"
+          }
+        }
+      }
+    },
+    "Problem Report": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "问题报告"
           }
         }
       }
