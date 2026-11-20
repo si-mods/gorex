@@ -83,6 +83,8 @@ type Server struct {
 	// change (notify).
 	subMu sync.Mutex
 	subs  map[*subscriber]struct{}
+	// portsClock, when a test sets it, replaces the scan's timings.
+	portsClock *portsTiming
 	// ports is the scan of each session's listening sockets, and the
 	// changes the subscribers have not been told of yet.
 	portsMu     sync.Mutex
