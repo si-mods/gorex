@@ -71,40 +71,7 @@ struct HostListView: View {
 
     var body: some View {
         Group {
-            if width == .regular {
-                NavigationSplitView {
-                    list
-                } detail: {
-                    // A terminal of its own for each target: the last one
-                    // closes as the next opens.
-                    if let t = path.last, let host = store.host(t.host) {
-                        // A row tapped in the sidebar fades to its terminal
-                        // (openRow); every other open cuts.
-                        TerminalScreen(target: t, host: host, go: go).id(t)
-                            .transition(.opacity)
-                    } else {
-                        ContentUnavailableView("No Tab Open", systemImage: "terminal",
-                                               description: Text("Choose a tab in the list."))
-                            .background(Color.page)
-                    }
-                }
-            } else {
-                NavigationStack(path: $path) {
-                    // The list and its bars keep the app's scheme under a
-                    // terminal's, through the push and the pop.
-                    list
-                        .environment(\.colorScheme, own)
-                        .toolbarColorScheme(own, for: .navigationBar)
-                        .toolbarColorScheme(own, for: .bottomBar)
-                        // A terminal of its own here too: go replaces the path, which
-                        // alone would keep the old one.
-                        .navigationDestination(for: TerminalTarget.self) { t in
-                            if let host = store.host(t.host) {
-                                TerminalScreen(target: t, host: host, go: go).id(t)
-                            }
-                        }
-                }
-            }
+            if width == .regular { split } else { stack }
         }
         // And let go of on the bars.
         .onDrop(of: [Lifted.type], delegate: PageDrop())
@@ -199,6 +166,45 @@ struct HostListView: View {
         .alert(failure?.title ?? "", isPresented: Binding { failure != nil } set: { if !$0 { failure = nil } }) {
         } message: {
             Text(failure?.why ?? "")
+        }
+    }
+
+    /// The sidebar and the terminal beside it, on a wide window.
+    private var split: some View {
+        NavigationSplitView {
+            list
+        } detail: {
+            // A terminal of its own for each target: the last one
+            // closes as the next opens.
+            if let t = path.last, let host = store.host(t.host) {
+                // A row tapped in the sidebar fades to its terminal
+                // (openRow); every other open cuts.
+                TerminalScreen(target: t, host: host, go: go).id(t)
+                    .transition(.opacity)
+            } else {
+                ContentUnavailableView("No Tab Open", systemImage: "terminal",
+                                       description: Text("Choose a tab in the list."))
+                    .background(Color.page)
+            }
+        }
+    }
+
+    /// The list, and the terminal pushed over it, on a narrow window.
+    private var stack: some View {
+        NavigationStack(path: $path) {
+            // The list and its bars keep the app's scheme under a
+            // terminal's, through the push and the pop.
+            list
+                .environment(\.colorScheme, own)
+                .toolbarColorScheme(own, for: .navigationBar)
+                .toolbarColorScheme(own, for: .bottomBar)
+                // A terminal of its own here too: go replaces the path, which
+                // alone would keep the old one.
+                .navigationDestination(for: TerminalTarget.self) { t in
+                    if let host = store.host(t.host) {
+                        TerminalScreen(target: t, host: host, go: go).id(t)
+                    }
+                }
         }
     }
 
