@@ -667,6 +667,9 @@ type Event struct {
 	Transfer *Transfer `json:"transfer,omitempty"`
 	// Theme is the host terminal's default colors on a "theme" event.
 	Theme *Theme `json:"theme,omitempty"`
+	// Ports are the terminals whose listening sockets changed, on a
+	// "ports" event.
+	Ports []PortsEvent `json:"ports,omitempty"`
 }
 
 // Theme is the host terminal's default colors, as hex "#rrggbb" strings.

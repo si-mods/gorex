@@ -10,14 +10,17 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-// procPidinfo is libproc's proc_pidinfo, loaded on first use.
+// libproc's functions, loaded on first use.
 var (
-	procOnce    sync.Once
-	procPidinfo func(pid, flavor int32, arg uint64, buf unsafe.Pointer, size int32) int32
+	procOnce          sync.Once
+	procPidinfo       func(pid, flavor int32, arg uint64, buf unsafe.Pointer, size int32) int32
+	procPidfdinfo     func(pid, fd, flavor int32, buf unsafe.Pointer, size int32) int32
+	procListchildpids func(ppid int32, buf unsafe.Pointer, size int32) int32
 )
 
 const (
 	procPidVnodePathInfo = 9
+	procPidTBSDInfo      = 3
 	// struct proc_vnodepathinfo: two vnode_info_path, each a vnode_info
 	// (152 bytes) and a path of MAXPATHLEN bytes; the first is the
 	// current directory.
@@ -31,6 +34,8 @@ func loadLibproc() {
 		return
 	}
 	purego.RegisterLibFunc(&procPidinfo, lib, "proc_pidinfo")
+	purego.RegisterLibFunc(&procPidfdinfo, lib, "proc_pidfdinfo")
+	purego.RegisterLibFunc(&procListchildpids, lib, "proc_listchildpids")
 }
 
 // inspect returns the name, arguments and working directory of a process.
@@ -45,7 +50,7 @@ var inspect = func(pid int) (p procInfo) {
 		}
 		p.name = string(comm)
 	}
-	p.args, _ = procArgs(pid, false)
+	p.path, p.args, _ = procArgs(pid, false)
 	procOnce.Do(loadLibproc)
 	if procPidinfo != nil {
 		var buf [2 * (vnodeInfoSize + maxPathLen)]byte
@@ -56,23 +61,29 @@ var inspect = func(pid int) (p procInfo) {
 			}
 			p.dir = string(path)
 		}
+		// struct proc_bsdinfo: pbi_uid is a uint32 at offset 20.
+		var bsd [136]byte
+		if procPidinfo(int32(pid), procPidTBSDInfo, 0, unsafe.Pointer(&bsd[0]), int32(len(bsd))) > 0 {
+			p.uid = int(binary.LittleEndian.Uint32(bsd[20:24]))
+		}
 	}
 	return p
 }
 
-// procArgs returns the arguments and the environment of a process, from
-// kern.procargs2: argc, the executable's path, NULs, the arguments and
-// then the environment, each ending in a NUL. withEnv reads the
-// environment too.
-func procArgs(pid int, withEnv bool) (args, env []string) {
+// procArgs returns the executable's path, the arguments and the
+// environment of a process, from kern.procargs2: argc, the executable's
+// path, NULs, the arguments and then the environment, each ending in a
+// NUL. withEnv reads the environment too.
+func procArgs(pid int, withEnv bool) (exe string, args, env []string) {
 	raw, err := unix.SysctlRaw("kern.procargs2", pid)
 	if err != nil || len(raw) <= 4 {
-		return nil, nil
+		return "", nil, nil
 	}
 	argc := int(binary.LittleEndian.Uint32(raw))
 	rest := raw[4:]
 	// The executable's path, then NULs up to the arguments.
 	if i := bytes.IndexByte(rest, 0); i >= 0 {
+		exe = string(rest[:i])
 		rest = rest[i:]
 	}
 	for len(rest) > 0 && rest[0] == 0 {
@@ -93,7 +104,7 @@ func procArgs(pid int, withEnv bool) (args, env []string) {
 		}
 		rest = rest[min(i+1, len(rest)):]
 	}
-	return args, env
+	return exe, args, env
 }
 
 // procEnv returns the variable name of a process's environment, "" when
@@ -106,7 +117,7 @@ func procEnv(pid int, name string) string {
 // once, at the first call.
 func procEnvOf(pid int) func(name string) string {
 	return envReader(func() []string {
-		_, env := procArgs(pid, true)
+		_, _, env := procArgs(pid, true)
 		return env
 	})
 }

@@ -22,6 +22,7 @@ var blockMethods = map[string]func(*control, *mSession, *mBlock, args) (any, *ap
 	"pwd":            blockPwd,
 	"title":          blockTitle,
 	"process":        blockProcess,
+	"ports":          blockPorts,
 	"program_status": blockProgramStatus,
 	"modes":          blockModes,
 	"clear":          blockClear,

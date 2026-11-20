@@ -83,6 +83,11 @@ type Server struct {
 	// change (notify).
 	subMu sync.Mutex
 	subs  map[*subscriber]struct{}
+	// ports is the scan of each session's listening sockets, and the
+	// changes the subscribers have not been told of yet.
+	portsMu     sync.Mutex
+	ports       map[string]*portsScan
+	portsEvents map[string]PortsResult
 	// puts are the partials the puts of this run opened, by path, and the
 	// peer of each, until it is finished or aborted: an abort after the
 	// session ended takes only these.
@@ -410,6 +415,7 @@ func (s *Server) serve() error {
 		close(s.hostDone)
 	}()
 	go s.watchIdle()
+	go s.portsLoop()
 	s.remoteLoad()
 	go func() {
 		<-s.quit

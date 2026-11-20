@@ -596,6 +596,9 @@ func (c *control) sendChanges(chs []change) {
 
 // wants tells whether this connection receives a change.
 func (c *control) wants(ch change) bool {
+	if ch.since > c.rev {
+		return false
+	}
 	rec := c.rec
 	if rec == nil {
 		return false

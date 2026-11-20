@@ -90,6 +90,10 @@ func serverOp(op string) serverOpFunc {
 		})
 	case "capture":
 		return withSession(doCapture)
+	case "ports":
+		return withSession(func(s *Server, ss *session, _ Request, _ string, _ *keptConn) (any, error) {
+			return s.portsFor(ss)
+		})
 	case "focus":
 		return withSession(doFocus)
 	case "resync":
