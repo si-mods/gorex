@@ -17,26 +17,34 @@ struct GoRexApp: App {
     /// When the app went to the background.
     @State private var away: Date?
 
-    /// Ghostty starts with the app, as in rootshell, not in a terminal's
-    /// push; the notifications too, for a tap that launches it. A
-    /// downloaded font is known before. So does the built-in Tailscale,
-    /// when on: the hosts on it wait for it to run. The engine comes
-    /// before the hosts, which tell it those paired over tailcat. The files
-    /// a run opened from its hosts go. The API key and the settings that
-    /// sync through iCloud come in after the font, which one names, and
-    /// before Ghostty, which reads some.
+    /// The notifications start with the app, for a tap that launches it.
+    /// So does the built-in Tailscale, when on: the hosts on it wait for
+    /// it to run. The engine comes before the hosts, which tell it those
+    /// paired over tailcat. The files a run opened from its hosts go. The
+    /// API key and the settings that sync through iCloud come in before
+    /// Ghostty, which reads some. Ghostty, with the downloaded font, starts
+    /// once the list is on screen (startGhostty), not before the first
+    /// frame.
     init() {
         OpenedFiles.clean()
-        Maple.shared.register()
         Polish.syncKey()
         CloudSettings.shared.start()
-        _ = Ghostty.app
         Notifier.shared.start()
         let engine = TailnetEngine.shared
         _store = State(initialValue: HostStore())
         SpaceBook.dropOldData()
         _spaces = State(initialValue: SpaceBook())
         Task { await engine.apply() }
+    }
+
+    /// Starts Ghostty, as in rootshell, not in a terminal's push, but on
+    /// the main queue's next turn after the list appears, so that its
+    /// start and the font's registration (some 40 MB) do not hold the
+    /// first frame. A terminal open before then, as a notification's tap
+    /// opens one at launch, finds it all the same: Ghostty.app starts on
+    /// its first use, and registers the font first.
+    static func startGhostty() {
+        DispatchQueue.main.async { _ = Ghostty.app }
     }
 
     /// The color scheme of Settings › Interface; nil follows the system.
@@ -50,6 +58,7 @@ struct GoRexApp: App {
                 .environment(store)
                 .environment(spaces)
                 .preferredColorScheme(ScreenStyle.shared.terminal ?? Self.colorScheme(scheme))
+                .onAppear(perform: Self.startGhostty)
                 .onChange(of: phase) { _, p in
                     if p == .background {
                         away = .now
