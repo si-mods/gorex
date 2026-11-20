@@ -8,7 +8,7 @@ metadata:
 
 # IOS-011: Continuous transitions between states
 
-Status: phase 1 built (#916). The device check of phase 1 is open. Phase 2 is a proposal (#930, see "Revision: row push and steady list scheme").
+Status: built (#916, #930). The device check in Tests is open.
 
 This doc finds the places in the iOS app where one state replaces the next with no relation between them. It defines a continuous transition for nine of them. In a continuous transition, the element that the user touches becomes a part of the next state. The doc changes only how one state becomes the next. Each action, each screen and each destination stays the same. It extends [`IOS-005`](IOS-005-pane-switching.md) (pane slides) and [`IOS-007`](IOS-007-pane-gallery.md) (gallery and pager). Phase 2 changes item 1 back to the standard push, and keeps the list's colour scheme when a terminal closes.
 
@@ -112,7 +112,7 @@ The data, the protocol and the saved files do not change. No item touches `docs/
 
 ### Revision: row push and steady list scheme
 
-Phase 2, a proposal. This part replaces item 1 above, and the parts of Decisions 1 and 2 that are about the terminal.
+Phase 2 (#930). This part replaces item 1 above, and the parts of Decisions 1 and 2 that are about the terminal.
 
 #### Problem
 
@@ -124,7 +124,7 @@ Phase 2, a proposal. This part replaces item 1 above, and the parts of Decisions
 
 #### Behavior
 
-1. A tap on a tab's row opens the terminal with the standard push, as before #916. Back, the edge swipe and the full-width swipe back close it with the standard pop. A swipe follows the finger, and the user can cancel it half way. A user reported that the interactive swipe back of the #916 build is very smooth, and it must stay so (see Open questions, 1).
+1. A tap on a tab's row opens the terminal with the standard push, as before #916. Back, the edge swipe and the full-width swipe back close it with the standard pop. A swipe follows the finger, and the user can cancel it half way. A user reported that the interactive swipe back is very smooth, and it must stay so. The #916 build had two swipes back. In the zoom's swipe, the terminal shrinks toward its row. In the standard swipe, it slides to the right. The user chose the standard one, where the terminal slides to the right.
 2. On iPhone, the list and its bars always show the app's own scheme: Settings › Interface, else the system's scheme. A terminal with another scheme changes neither the list nor its bars, during the push or the pop. The terminal and its bar keep the terminal's scheme, as now.
 3. Only the status bar follows the window's scheme. It changes when the terminal appears, and when the path becomes empty.
    - The system Back button, the custom Back button, Close Tab, a removed host and a widget empty the path when the pop starts. So the status bar changes at the start of the pop.
@@ -171,8 +171,4 @@ Phase 2, a proposal. This part replaces item 1 above, and the parts of Decisions
 ## Phases
 
 1. Items 1 to 9: #916.
-2. Revision: row push and steady list scheme: proposal.
-
-## Open questions
-
-1. **Which swipe back the user wants to keep (phase 2).** The #916 build has two interactive swipes back. A terminal that a row opened uses the zoom's swipe: the terminal shrinks toward its row under the finger. Other terminals use the standard swipe: the terminal slides to the right with the finger. A notification, a widget or the session sheet opens these. Option (a): the standard swipe for every terminal, as Behavior 1 says. Option (b): keep the zoom for item 1, with its swipe and its shrink into the row. The user decides.
+2. Revision: row push and steady list scheme: #930.

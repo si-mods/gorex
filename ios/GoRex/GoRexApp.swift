@@ -6,6 +6,9 @@ import SwiftUI
 @Observable final class ScreenStyle {
     static let shared = ScreenStyle()
     var terminal: ColorScheme?
+    /// The system's scheme, from the window scene, which the window's
+    /// preferredColorScheme does not change; nil until a window shows.
+    var system: ColorScheme?
     /// The screen that set it. On an iPad the old screen fades out after
     /// the new one set its scheme, and must not clear that one.
     @ObservationIgnored private var owner: UUID?
@@ -19,6 +22,40 @@ import SwiftUI
         guard owner == screen else { return }
         owner = nil
         terminal = nil
+    }
+
+    /// Clears it, whichever screen set it: the list is back.
+    func release() {
+        owner = nil
+        terminal = nil
+    }
+}
+
+/// Keeps ScreenStyle's system scheme current, from the scene of the
+/// window it shows in.
+private struct SystemScheme: UIViewRepresentable {
+    func makeUIView(context: Context) -> SystemSchemeView { SystemSchemeView() }
+    func updateUIView(_ v: SystemSchemeView, context: Context) {}
+}
+
+private final class SystemSchemeView: UIView {
+    private weak var scene: UIWindowScene?
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        isUserInteractionEnabled = false
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        guard let s = window?.windowScene, s !== scene else { return }
+        scene = s
+        ScreenStyle.shared.system = ColorScheme(s.traitCollection.userInterfaceStyle)
+        s.registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (s: UIWindowScene, _: UITraitCollection) in
+            ScreenStyle.shared.system = ColorScheme(s.traitCollection.userInterfaceStyle)
+        }
     }
 }
 
@@ -76,6 +113,7 @@ struct GoRexApp: App {
                 .environment(store)
                 .environment(spaces)
                 .preferredColorScheme(ScreenStyle.shared.terminal ?? Self.colorScheme(scheme))
+                .background { SystemScheme().accessibilityHidden(true) }
                 .onAppear(perform: Self.startGhostty)
                 .onChange(of: phase) { _, p in
                     if p == .background { Notifier.shared.inFront = false }

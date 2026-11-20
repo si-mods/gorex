@@ -35,15 +35,16 @@ struct HostListView: View {
     @State private var inbox = false
     @State private var query = ""
     @State private var settings = false
-    /// What the terminal open zooms out of: the row tapped, else none, for
-    /// the standard push; and the button that opened Settings
+    /// The button that opened Settings, for it to zoom out of
     /// (docs/IOS-011-continuous-transitions.md).
-    @State private var zoomed: ZoomRecord?
     @State private var settingsSource: ZoomSource = .settings
     @Namespace private var zoom
     /// The rows that move between All Tabs and Activity.
     @Namespace private var places
     @Environment(\.accessibilityReduceMotion) private var still
+    @AppStorage("scheme") private var scheme = "dark"
+    /// The window's scheme, a terminal's while one is open.
+    @Environment(\.colorScheme) private var windowScheme
     /// The GoRex machine of a Rex Go code opened from outside, to pair with;
     /// waiting is one that waits for Settings to close first.
     @State private var pairing: HostConfig?
@@ -89,16 +90,19 @@ struct HostListView: View {
                 }
             } else {
                 NavigationStack(path: $path) {
-                    // A terminal of its own here too: go replaces the path, which
-                    // alone would keep the old one.
-                    list.navigationDestination(for: TerminalTarget.self) { t in
-                        if let host = store.host(t.host) {
-                            // Out of the row tapped, and back into it; any
-                            // other open pushes.
-                            TerminalScreen(target: t, host: host, go: go).id(t)
-                                .modifier(ZoomFrom(source: zoomed?.source(for: t), namespace: zoom))
+                    // The list and its bars keep the app's scheme under a
+                    // terminal's, through the push and the pop.
+                    list
+                        .environment(\.colorScheme, own)
+                        .toolbarColorScheme(own, for: .navigationBar)
+                        .toolbarColorScheme(own, for: .bottomBar)
+                        // A terminal of its own here too: go replaces the path, which
+                        // alone would keep the old one.
+                        .navigationDestination(for: TerminalTarget.self) { t in
+                            if let host = store.host(t.host) {
+                                TerminalScreen(target: t, host: host, go: go).id(t)
+                            }
                         }
-                    }
                 }
             }
         }
@@ -143,6 +147,12 @@ struct HostListView: View {
             }
         }
         .sheet(item: $pairing) { TailcatPairSheet(code: $0) }
+        // The list back on screen gives the window its scheme back as the
+        // path empties, at the start of a pop from a button; the terminal
+        // clears it only at the pop's end.
+        .onChange(of: path) { _, p in
+            if p.isEmpty { ScreenStyle.shared.release() }
+        }
         // A host gone, as Demo Mode's, closes the terminals open on it, and
         // this device forgets its projects.
         .onChange(of: store.hosts.map(\.id)) { old, ids in
@@ -193,23 +203,23 @@ struct HostListView: View {
 
     /// Opens a terminal, in place of the one open; nil goes back to the list.
     private func go(_ t: TerminalTarget?) {
-        // Only a row's tap zooms: another terminal opens with the push. The
-        // one shown keeps its zoom, to close into its row.
-        if let t, t != path.last { zoomed = nil }
         path = t.map { [$0] } ?? []
     }
 
-    /// Opens a row's tab: on a narrow window it zooms out of the row; on a
-    /// wide one the detail fades to it.
+    /// Opens a row's tab: on a wide window the detail fades to it; a
+    /// narrow one pushes it.
     private func openRow(_ t: TerminalTarget) {
         if width == .regular {
             withAnimation(.easeInOut(duration: still ? 0.15 : 0.2)) { go(t) }
         } else {
             go(t)
-            // The source is fixed at the tap: a split or a focus change
-            // later cannot move it.
-            zoomed = ZoomSource.row(of: t, in: store).map { ZoomRecord(target: t, source: $0) }
         }
+    }
+
+    /// The app's own scheme: Settings › Interface, else the system's, which
+    /// ScreenStyle knows once a window shows.
+    private var own: ColorScheme {
+        GoRexApp.colorScheme(scheme) ?? ScreenStyle.shared.system ?? windowScheme
     }
 
     private var list: some View {
@@ -232,7 +242,7 @@ struct HostListView: View {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 30) {
                         if inbox {
-                            StatusInbox(query: query, collapsed: $collapsed, zoom: zoom, places: places, open: { openRow($0) })
+                            StatusInbox(query: query, collapsed: $collapsed, places: places, open: { openRow($0) })
                         } else {
                             if hasSpaces { ListPicker(wide: width == .regular) { picker(spaces: spaces, current: current) } }
                             ForEach(store.hosts.filter { shows($0, hasSpaces: hasSpaces, current: current) }) { host in
@@ -563,50 +573,12 @@ private struct DemoBanner: View {
     }
 }
 
-/// What a terminal or a sheet zooms out of
-/// (docs/IOS-011-continuous-transitions.md).
+/// What a sheet zooms out of (docs/IOS-011-continuous-transitions.md).
 enum ZoomSource: Hashable {
-    /// A tab's row, by its window: not its title, which changes, nor its
-    /// focused pane, which a split moves.
-    case row(host: UUID, session: String, window: String)
     case settings
     case addHost
     /// A host's New Project button.
     case newProject(UUID)
-
-    /// The row of the window that holds the target's pane.
-    @MainActor static func row(of t: TerminalTarget, in store: HostStore) -> ZoomSource? {
-        guard let host = store.host(t.host),
-              let w = host.sessions.first(where: { $0.id == t.session })?.view?.windows?.first(where: { $0.holds(t.block) })
-        else { return nil }
-        return .row(host: t.host, session: t.session, window: w.window_id)
-    }
-}
-
-/// The terminal a row's tap opens, and the source it zooms out of.
-private struct ZoomRecord {
-    let target: TerminalTarget
-    let source: ZoomSource
-
-    /// The source, for that target only: compared by host, session and pane.
-    func source(for t: TerminalTarget) -> ZoomSource? {
-        t.host == target.host && t.session == target.session && t.block == target.block ? source : nil
-    }
-}
-
-/// A terminal's push: a zoom out of its source, else the standard one.
-private struct ZoomFrom: ViewModifier {
-    let source: ZoomSource?
-    let namespace: Namespace.ID
-
-    func body(content: Content) -> some View {
-        if let source {
-            content.navigationTransition(.zoom(sourceID: source, in: namespace))
-                .environment(\.zoomed, true)
-        } else {
-            content.navigationTransition(.automatic)
-        }
-    }
 }
 
 /// A tab's place in All Tabs and in Activity, by its window: its row

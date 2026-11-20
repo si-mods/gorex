@@ -1498,7 +1498,6 @@ private struct TerminalRepresentable: UIViewRepresentable {
         if arrived, GCKeyboard.coalesced != nil { _ = v.terminal.becomeFirstResponder() }
         v.onPaneDrag = onPaneDrag
         v.canSwipe = canSwipe
-        v.zoomGuard.isEnabled = context.environment.zoomed
         v.setBottomEdgeColor(UIColor(cgColor: (session.background ?? .black).cgColor))
         if context.coordinator.shown.update(DictationShown(said: voice.said, busy: voice.busy)) {
             context.coordinator.mic.rootView = mic

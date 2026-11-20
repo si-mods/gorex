@@ -3,12 +3,12 @@ import UIKit
 import UIKit.UIGestureRecognizerSubclass
 
 /// Keeps a zoom transition's interactive close (a drag down, a pinch) from
-/// starting inside a view whose own drags and pinches mean something else,
-/// as a terminal's or a gallery image's (IOS-011). It begins at the first
-/// touch and holds until the last lifts, and the pans and pinches of the
-/// views above wait for it to fail: the edge swipe back and the scroll
-/// views above, as a pager's, keep working; the view's own recognisers,
-/// and those under it, are never held.
+/// starting inside a view whose own drags and pinches mean something else:
+/// the gallery's image (IOS-011). It begins at the first touch and holds
+/// until the last lifts, and the pans and pinches of the views above wait
+/// for it to fail: the edge swipe back and the scroll views above, as a
+/// pager's, keep working; the view's own recognisers, and those under it,
+/// are never held.
 final class ZoomGuard: UIGestureRecognizer, UIGestureRecognizerDelegate {
     /// A guard that takes no touch from any other recogniser.
     static func make() -> ZoomGuard {
@@ -52,10 +52,4 @@ final class ZoomGuard: UIGestureRecognizer, UIGestureRecognizerDelegate {
         guard other is UIPanGestureRecognizer || other is UIPinchGestureRecognizer else { return false }
         return !(other is UIScreenEdgePanGestureRecognizer) && !(theirs is UIScrollView)
     }
-}
-
-extension EnvironmentValues {
-    /// Whether the terminal on screen was pushed with the zoom out of its
-    /// row, so that its guard keeps the zoom's close out of the terminal.
-    @Entry var zoomed = false
 }
