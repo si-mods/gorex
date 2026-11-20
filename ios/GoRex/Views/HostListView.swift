@@ -147,11 +147,12 @@ struct HostListView: View {
             }
         }
         .sheet(item: $pairing) { TailcatPairSheet(code: $0) }
-        // The list back on screen gives the window its scheme back as the
-        // path empties, at the start of a pop from a button; the terminal
-        // clears it only at the pop's end.
+        // On a narrow window, the list back on screen gives the window its
+        // scheme back as the path empties, at the start of a pop from a
+        // button; the terminal clears it only at the pop's end. An iPad's
+        // sidebar keeps following the terminal beside it.
         .onChange(of: path) { _, p in
-            if p.isEmpty { ScreenStyle.shared.release() }
+            if p.isEmpty, width != .regular { ScreenStyle.shared.release() }
         }
         // A host gone, as Demo Mode's, closes the terminals open on it, and
         // this device forgets its projects.

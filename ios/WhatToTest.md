@@ -88,6 +88,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - Open a tab, the title's sheet, Settings, New Project or a Gallery image: it now grows out of what you tapped, and shrinks back into it. The pane bar's highlight slides to the pane you choose.
 - Leave Rex Go from the host list, and a program that asks for your answer in the next few seconds now sends its notification, as it does when you leave from an open terminal.
 - Switch from Wi-Fi to cellular, or to another Wi-Fi, with a terminal open: it reconnects at once and goes on where it was, instead of freezing for a while.
+- Tap a tab in the list: the terminal slides in from the right again, and slides back as you swipe from the left edge. The list keeps its own light or dark look while a terminal opens or closes.
 
 ## zh-Hans
 
@@ -168,3 +169,4 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - 打开标签页、标题的面板、设置、新建项目或图库图片：它现在从你点按的地方展开，关闭时缩回原处。窗格栏的高亮会滑到你选的窗格。
 - 从主机列表离开 Rex Go 后，几秒内需要你回答的程序现在也会发来通知，和从打开的终端离开时一样。
 - 打开终端时从 Wi-Fi 切到蜂窝网络，或换一个 Wi-Fi：终端立即重新连接，从断开处继续，不再卡住一段时间。
+- 点按列表中的标签页：终端又从右侧滑入，从左边缘轻扫即可滑回。打开或关闭终端时，列表保持它自己的浅色或深色外观。
