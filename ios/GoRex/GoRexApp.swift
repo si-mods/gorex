@@ -151,6 +151,8 @@ struct GoRexApp: App {
                 // Hosts the gateway refused try again as the engine runs anew.
                 .onChange(of: TailnetEngine.shared.status.state) { _, s in
                     if s == "Running" { store.hosts.forEach { $0.reconnectIfNeeded() } }
+                    // The way a host marked tailnet is reached changed with it.
+                    HotspotShare.shared.updateHosts(store.hosts.map(\.config))
                 }
         }
     }

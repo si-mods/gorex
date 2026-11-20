@@ -25,17 +25,6 @@ final class HotspotShare: NSObject, TailnetShareDelegateProtocol {
         var id: String { ip }
     }
 
-    private struct ShareHostPayload: Encodable {
-        let id: String
-        let name: String
-        let icon: String
-        let url: String
-        let transport: String
-        /// The LAN gateway's token: the share proxy sends it to the host
-        /// as Authorization: Bearer and never gives it to the browser.
-        let token: String?
-    }
-
     private(set) var isSharing = false
     private(set) var hotspotIP = ""
     private(set) var error: String?
@@ -104,18 +93,7 @@ final class HotspotShare: NSObject, TailnetShareDelegateProtocol {
     func updateHosts(_ configs: [HostConfig]) {
         lastHosts = configs
         guard isSharing else { return }
-        let payload = configs.map { c in
-            ShareHostPayload(
-                id: c.id.uuidString,
-                name: c.name,
-                icon: c.icon ?? "laptop",
-                url: c.url.absoluteString,
-                transport: (c.transport ?? .system).rawValue,
-                token: c.auth
-            )
-        }
-        guard let data = try? JSONEncoder().encode(payload),
-              let json = String(data: data, encoding: .utf8) else { return }
+        guard let json = ShareHosts.json(configs, tailnetOn: TailnetSettings.isOn) else { return }
         var err: NSError?
         TailnetShareSetHosts(json, &err)
     }

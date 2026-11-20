@@ -4,8 +4,8 @@ import XCTest
 // GoRex module to import, and `@testable import GoRex` stopped the target
 // building when #612 added it.
 nonisolated final class RexParityTests: XCTestCase {
-    @MainActor func testProtocolConstantsMatchRev14() {
-        XCTAssertEqual(RexProtocol.apiRevision, 14)
+    @MainActor func testProtocolConstantsMatchRev19() {
+        XCTAssertEqual(RexProtocol.apiRevision, 19)
         XCTAssertEqual(RexProtocol.downloadRevision, 13)
         XCTAssertEqual(RexProtocol.tunnelRevision, 14)
         XCTAssertEqual(RexProtocol.terminalProtocol, "rex.data.terminal.v1")

@@ -45,7 +45,7 @@ It listens on one port, 7300, of the address of the hotspot, and serves these pa
 | `/share/state` | the poll of the admission page (see Admission) |
 | `/h/<id>/…` | forwarded to the gateway of host `<id>`, without the prefix |
 
-The id is the id of the host in the app (`HostConfig.id`), so a host keeps its path across shares. The host list comes from Swift as JSON, as `SetTailcatHosts` does today, and changes with it.
+The id is the id of the host in the app (`HostConfig.id`), so a host keeps its path across shares. The host list comes from Swift as JSON, as `SetTailcatHosts` does today, and changes with it. Each host's transport in it is the way the app reaches the host (`reach` in `ios/GoRex/Rex/Host.swift`: its tailcat client, the built-in Tailscale while it is on, else the system's way) — not the stored `transport`, which is nil on a tailcat host and stays "tailnet" while the engine is off. The demo host is left out: it answers nothing away from the app.
 
 ### Forwarding
 

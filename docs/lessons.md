@@ -282,7 +282,7 @@ Each item has a **Trigger** (what the diff shows), a **Check** (what the author 
 ### "Same rule as X"
 - **Trigger:** code or a comment says it applies the same rule as another place.
 - **Check:** both places call one shared function, and both have a test.
-- **Source:** #717's `dir.list` said it used the same device-path rule as `openToSend`, but kept its own copy; `openToSend`'s copy had lost a backslash since #410 (both now share one helper, #723). The Ghostty theme parser and the server's theme parser both read a hex color, but the server took only six digits, so a `#fff` theme worked in the app and vanished on a host.
+- **Source:** #717's `dir.list` said it used the same device-path rule as `openToSend`, but kept its own copy; `openToSend`'s copy had lost a backslash since #410 (both now share one helper, #723). The Ghostty theme parser and the server's theme parser both read a hex color, but the server took only six digits, so a `#fff` theme worked in the app and vanished on a host. #556's hotspot share copied "how the app reaches a host" as `config.transport ?? .system` while the app itself uses `reach`, so every tailcat host and every tailnet host with the engine off failed through the share with a 502 (both now share `reach` via `ShareHosts.json`).
 
 ### Comment names a file
 - **Trigger:** a comment or doc points at a `.md` file or an issue.
