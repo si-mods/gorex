@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -301,6 +302,18 @@ func remoteOn(dir string) bool {
 // after an in-place upgrade.
 const retryEvery = time.Second
 
+// superviseEveryNS is how often, in nanoseconds, Supervise looks at Wanted
+// again, when not zero. A test sets it to be short. It is atomic: a
+// Supervise of an earlier server may still run.
+var superviseEveryNS atomic.Int64
+
+func superviseEvery() time.Duration {
+	if n := superviseEveryNS.Load(); n > 0 {
+		return time.Duration(n)
+	}
+	return time.Second
+}
+
 // Supervise runs in the GoRex server (rex.OnServe) until stop closes: it
 // runs the gateway while Wanted says so, and stops it when none of
 // remote access, the local network and built-in Tailscale is on, so that
@@ -312,7 +325,7 @@ func Supervise(stop <-chan struct{}) {
 	var done chan error
 	var retryAt time.Time
 	lastErr := ""
-	tick := time.NewTicker(time.Second)
+	tick := time.NewTicker(superviseEvery())
 	defer tick.Stop()
 	end := func() {
 		if runStop != nil {

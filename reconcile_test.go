@@ -662,6 +662,8 @@ func exitLater() []string { return []string{testShell.path, "-c", "sleep 30"} }
 // window keeps the ratio its own while the pointer holds it, and sends it
 // once, as one tab.set, when it lets go.
 func TestGestureSendsOneTabSet(t *testing.T) {
+	saveDelayNS.Store(int64(50 * time.Millisecond))
+	t.Cleanup(func() { saveDelayNS.Store(0) })
 	a, tt := newTestApp(t)
 	a.split(false)
 	tab := a.tab()
@@ -696,8 +698,14 @@ func TestGestureSendsOneTabSet(t *testing.T) {
 		tt.Frame()
 	}
 	waitFor(t, tt, "the drag's save", func() bool { r, _ := state(); return r != rev })
-	time.Sleep(1200 * time.Millisecond)
-	tt.Frame()
+	caughtUp(t, a, tt)
+	// Once is all: a second tab.set would come when a change had waited
+	// saveDelay, so wait several times that, frames running, to see none.
+	for end := time.Now().Add(6 * saveDelay()); time.Now().Before(end); {
+		time.Sleep(10 * time.Millisecond)
+		tt.Frame()
+	}
+	caughtUp(t, a, tt)
 	r, got := state()
 	if r != rev+1 || got == ratio || got != tab.Root.Ratio {
 		t.Errorf("after the drag: revision %d (from %d), ratio %v, the window's %v", r, rev, got, tab.Root.Ratio)

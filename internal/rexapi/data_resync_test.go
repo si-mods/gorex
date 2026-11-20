@@ -392,10 +392,10 @@ func TestDataCollapse(t *testing.T) {
 func TestDataSlowReader(t *testing.T) {
 	p := &attachProxy{}
 	f := proxyFixture(t, p)
-	session, block, _ := floodSession(t, f, "forever")
+	session, block, sid := floodSession(t, f, "forever")
 	ws, _, _ := openData(t, f, session, block)
 	readData(t, ws)
-	time.Sleep(5 * time.Second)
+	printedBeyond(t, f, sid, floodLead)
 	got, resyncs := 0, 0
 	end := time.Now().Add(2 * time.Second)
 	for time.Now().Before(end) {
@@ -414,6 +414,19 @@ func TestDataSlowReader(t *testing.T) {
 	if n := p.serverEnded.Load(); n != 0 {
 		t.Errorf("the server ended %d attaches", n)
 	}
+}
+
+// floodLead is how many bytes a flooding session prints, with its client
+// away or not reading, for the stream to fall far behind: many times what
+// the server queues for a client (maxQueuedBytes) and a stream collapses.
+const floodLead = 32 << 20
+
+// printedBeyond waits until session sid printed n more bytes than it had,
+// as a flood does while its client is away.
+func printedBeyond(t *testing.T, f *fixture, sid string, n uint64) {
+	t.Helper()
+	from := output(t, f, sid)
+	waitFor(t, "the flood to run ahead of the client", func() bool { return output(t, f, sid) >= from+n })
 }
 
 // output is how many bytes session sid printed.
@@ -512,11 +525,11 @@ func TestDataResyncEnds(t *testing.T) {
 func TestDataResumeDuringFlood(t *testing.T) {
 	p := &attachProxy{}
 	f := proxyFixture(t, p)
-	session, block, _ := floodSession(t, f, "forever")
+	session, block, sid := floodSession(t, f, "forever")
 	ws, token, nonce := openData(t, f, session, block)
 	count := len(readData(t, ws))
 	ws.CloseNow()
-	time.Sleep(2 * time.Second)
+	printedBeyond(t, f, sid, floodLead)
 
 	start := time.Now()
 	ws, _ = resumeData(t, f, token, count)
