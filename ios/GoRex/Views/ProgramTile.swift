@@ -240,9 +240,14 @@ private struct DoneDot: View {
 /// percentage progress, pulsing and hopping in a wave.
 struct WorkingDots: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.scenePhase) private var phase
+    /// Whether the dots are on screen: a row scrolled away, or under the
+    /// terminal pushed over the list, disappears.
+    @State private var onScreen = true
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 30, paused: reduceMotion)) { tl in
+        // Paused, the dots stay as they were: they move only where they show.
+        TimelineView(.animation(minimumInterval: 1.0 / 30, paused: !ListMotion.runs(reduceMotion: reduceMotion, phase: phase, onScreen: onScreen))) { tl in
             let t = reduceMotion ? 0 : tl.date.timeIntervalSinceReferenceDate
             HStack(spacing: 3) {
                 ForEach(0..<3, id: \.self) { i in
@@ -256,6 +261,8 @@ struct WorkingDots: View {
                 }
             }
         }
+        .onAppear { onScreen = true }
+        .onDisappear { onScreen = false }
         .accessibilityLabel("Working")
     }
 
@@ -314,6 +321,16 @@ struct ProgramStatusMark: View {
     }
 }
 
+/// Whether a list's endless motion, the working dots and the tiles'
+/// bounce, runs: not with Reduce Motion, nor with the app out of the
+/// front (inactive or in the background), nor off screen. It is the same
+/// motion when it runs; paused, nothing is seen moving.
+enum ListMotion {
+    static func runs(reduceMotion: Bool, phase: ScenePhase, onScreen: Bool) -> Bool {
+        !reduceMotion && phase == .active && onScreen
+    }
+}
+
 /// How a program tile moves for its session's state, modeled on macOS Dock
 /// icon bounces:
 /// - `attention` (`blocked`, `error`): energetic double-hop repeating on a
@@ -355,10 +372,16 @@ private nonisolated struct TileBounceValues: Sendable {
 private struct TileBounceModifier: ViewModifier {
     let motion: TileMotion
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.scenePhase) private var phase
+    /// Whether the tile is on screen: a row scrolled away, or under the
+    /// terminal pushed over the list, disappears.
+    @State private var onScreen = true
 
     func body(content: Content) -> some View {
+        // Paused, the tile rests in place, and bounces again from the start
+        // as it shows, as it does when it first appears.
         content
-            .keyframeAnimator(initialValue: TileBounceValues(), repeating: !reduceMotion && motion.isRepeating) { view, v in
+            .keyframeAnimator(initialValue: TileBounceValues(), repeating: motion.isRepeating && ListMotion.runs(reduceMotion: reduceMotion, phase: phase, onScreen: onScreen)) { view, v in
                 view
                     .scaleEffect(x: v.scaleX, y: v.scaleY, anchor: .bottom)
                     .offset(y: v.offsetY)
@@ -425,5 +448,7 @@ private struct TileBounceModifier: ViewModifier {
                 }
             }
             .id(motion)
+            .onAppear { onScreen = true }
+            .onDisappear { onScreen = false }
     }
 }
