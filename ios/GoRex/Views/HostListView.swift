@@ -78,7 +78,7 @@ struct HostListView: View {
         .overlay(alignment: .top) {
             if developerMode {
                 DeveloperModeOverlay()
-                    .padding(.top, (!path.isEmpty || width == .regular) ? 58 : (store.demo != nil ? 48 : 8))
+                    .padding(.top, overlayTop)
             }
         }
         // A tapped notification opens its terminal.
@@ -114,13 +114,6 @@ struct HostListView: View {
             }
         }
         .sheet(item: $pairing) { TailcatPairSheet(code: $0) }
-        // On a narrow window, the list back on screen gives the window its
-        // scheme back as the path empties, at the start of a pop from a
-        // button; the terminal clears it only at the pop's end. An iPad's
-        // sidebar keeps following the terminal beside it.
-        .onChange(of: path) { _, p in
-            if p.isEmpty, width != .regular { ScreenStyle.shared.release() }
-        }
         // A host gone, as Demo Mode's, closes the terminals open on it, and
         // this device forgets its projects.
         .onChange(of: store.hosts.map(\.id)) { old, ids in
@@ -206,6 +199,20 @@ struct HostListView: View {
                     }
                 }
         }
+        // The list back on screen gives the window its scheme back as the
+        // path empties, at the start of a pop from a button; the terminal
+        // clears it only at the pop's end. An iPad's sidebar keeps
+        // following the terminal beside it, so this is the narrow window's.
+        .onChange(of: path) { _, p in
+            if p.isEmpty { ScreenStyle.shared.release() }
+        }
+    }
+
+    /// The developer overlay's room at the top: under the bar beside a
+    /// terminal, else under the demo's banner, else at the top.
+    private var overlayTop: CGFloat {
+        if !path.isEmpty || width == .regular { return 58 }
+        return store.demo != nil ? 48 : 8
     }
 
     /// Opens a terminal, in place of the one open; nil goes back to the list.
