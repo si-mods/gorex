@@ -25,27 +25,27 @@ struct InboxItem: Identifiable {
     let session: String
     /// The block its row opens.
     let block: String
-    /// The window's title, as its row in the list has it.
-    let title: String
-    /// The foreground program of its block.
-    let program: String?
+    /// Its window. The title and the program are not kept here: reading
+    /// them in the list's body would make it depend on every block, so
+    /// a row reads its own (Host.title, Block.program).
+    let window: SessionView.Window
     let status: Host.ProgramStatus
     var id: String { "\(host)/\(session)/\(block)" }
 
     /// The first line: the record's title, else the window's.
-    var heading: String { status.title ?? title }
+    func heading(title: String) -> String { status.title ?? title }
     /// The second line: the record's message, else, once done or failed,
     /// what it did last, else the window's title; empty when that only
     /// repeats the first.
-    var detail: String {
+    func detail(title: String) -> String {
         let finished = status.state == "done" || status.state == "error"
         let d = status.msg ?? (finished ? status.lastMsg : nil) ?? title
-        return d == heading ? "" : d
+        return d == heading(title: title) ? "" : d
     }
 
     /// Whether a search matches it, by what its row shows.
-    func matches(_ query: String) -> Bool {
-        query.isEmpty || [heading, detail, title].contains { $0.localizedCaseInsensitiveContains(query) }
+    func matches(_ query: String, title: String) -> Bool {
+        query.isEmpty || [heading(title: title), detail(title: title), title].contains { $0.localizedCaseInsensitiveContains(query) }
     }
 }
 
@@ -77,7 +77,11 @@ enum Inbox {
 extension Host {
     /// The windows that need the user or work, each by the record of its
     /// blocks that most needs the user; none while not online.
-    var inbox: [InboxItem] {
+    var inbox: [InboxItem] { inbox(matching: "") }
+
+    /// The same, those a search matches. Window titles are read only for a
+    /// search, so without one the result does not depend on any title.
+    func inbox(matching query: String) -> [InboxItem] {
         guard status == .online else { return [] }
         return sessions.flatMap { s in
             (s.view?.windows ?? []).compactMap { w -> InboxItem? in
@@ -90,7 +94,8 @@ extension Host {
                     }
                 }
                 guard let pick, Inbox.states.contains(pick.status.state) else { return nil }
-                return InboxItem(host: id, session: s.id, block: pick.block, title: title(w), program: blocks[pick.block]?.program, status: pick.status)
+                let item = InboxItem(host: id, session: s.id, block: pick.block, window: w, status: pick.status)
+                return query.isEmpty || item.matches(query, title: title(w)) ? item : nil
             }
         }
     }

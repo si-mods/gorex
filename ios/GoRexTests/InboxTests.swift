@@ -56,7 +56,7 @@ nonisolated final class InboxTests: XCTestCase {
     /// Groups go blocked, error, done, working, the newest first in each.
     @MainActor func testGroups() {
         func item(_ b: String, _ r: Host.ProgramStatus) -> InboxItem {
-            InboxItem(host: UUID(), session: "s", block: b, title: b, program: nil, status: r)
+            InboxItem(host: UUID(), session: "s", block: b, window: .init(window_id: "w"), status: r)
         }
         let items = [item("w1", record("x", "working", at: 1)), item("d1", record("x", "done", at: 1)),
                      item("b1", record("x", "blocked", at: 1)), item("b2", record("x", "blocked", at: 2)),
@@ -70,32 +70,32 @@ nonisolated final class InboxTests: XCTestCase {
     @MainActor func testItemText() {
         var r = record("x", "blocked")
         r.msg = "Allow?"
-        let a = InboxItem(host: UUID(), session: "s", block: "b", title: "zsh", program: nil, status: r)
-        XCTAssertEqual(a.heading, "zsh")
-        XCTAssertEqual(a.detail, "Allow?")
+        let a = InboxItem(host: UUID(), session: "s", block: "b", window: .init(window_id: "w"), status: r)
+        XCTAssertEqual(a.heading(title: "zsh"), "zsh")
+        XCTAssertEqual(a.detail(title: "zsh"), "Allow?")
         r.msg = nil
         r.title = "Edit"
-        let b = InboxItem(host: UUID(), session: "s", block: "b", title: "zsh", program: nil, status: r)
-        XCTAssertEqual(b.heading, "Edit")
-        XCTAssertEqual(b.detail, "zsh")
-        let c = InboxItem(host: UUID(), session: "s", block: "b", title: "Edit", program: nil, status: r)
-        XCTAssertEqual(c.detail, "")
-        XCTAssertTrue(a.matches("allow") && a.matches("ZSH") && a.matches(""))
-        XCTAssertFalse(a.matches("edit"))
+        let b = InboxItem(host: UUID(), session: "s", block: "b", window: .init(window_id: "w"), status: r)
+        XCTAssertEqual(b.heading(title: "zsh"), "Edit")
+        XCTAssertEqual(b.detail(title: "zsh"), "zsh")
+        let c = InboxItem(host: UUID(), session: "s", block: "b", window: .init(window_id: "w"), status: r)
+        XCTAssertEqual(c.detail(title: "Edit"), "")
+        XCTAssertTrue(a.matches("allow", title: "zsh") && a.matches("ZSH", title: "zsh") && a.matches("", title: "zsh"))
+        XCTAssertFalse(a.matches("edit", title: "zsh"))
         // A record done without a message shows the last one it carried.
         var d = record("x", "done")
         d.lastMsg = "Testing"
-        let e = InboxItem(host: UUID(), session: "s", block: "b", title: "zsh", program: nil, status: d)
-        XCTAssertEqual(e.detail, "Testing")
-        XCTAssertTrue(e.matches("test"))
+        let e = InboxItem(host: UUID(), session: "s", block: "b", window: .init(window_id: "w"), status: d)
+        XCTAssertEqual(e.detail(title: "zsh"), "Testing")
+        XCTAssertTrue(e.matches("test", title: "zsh"))
         d.msg = "Uploading"
-        let f = InboxItem(host: UUID(), session: "s", block: "b", title: "zsh", program: nil, status: d)
-        XCTAssertEqual(f.detail, "Uploading")
-        XCTAssertFalse(f.matches("test"))
+        let f = InboxItem(host: UUID(), session: "s", block: "b", window: .init(window_id: "w"), status: d)
+        XCTAssertEqual(f.detail(title: "zsh"), "Uploading")
+        XCTAssertFalse(f.matches("test", title: "zsh"))
         // Working without a message: its last one is of an earlier step.
         var g = record("x", "working")
         g.lastMsg = "Testing"
-        XCTAssertEqual(InboxItem(host: UUID(), session: "s", block: "b", title: "zsh", program: nil, status: g).detail, "")
+        XCTAssertEqual(InboxItem(host: UUID(), session: "s", block: "b", window: .init(window_id: "w"), status: g).detail(title: "zsh"), "")
     }
 
     /// A host lists its windows by their tiled blocks' records, leaves out
@@ -126,7 +126,7 @@ nonisolated final class InboxTests: XCTestCase {
         h.connect()
         defer { h.stop() }
         await until("read") { h.status == .online && h.blocks.values.filter { $0.statuses != nil }.count == 3 }
-        XCTAssertEqual(h.inbox.map(\.title), ["One"])
+        XCTAssertEqual(h.inbox.map { h.title($0.window) }, ["One"])
         XCTAssertEqual(h.inbox.first?.status.state, "done")
         XCTAssertEqual(h.inbox.first?.block, "b")
         h.see(session: "s", block: "a")
@@ -134,6 +134,47 @@ nonisolated final class InboxTests: XCTestCase {
         h.see(session: "s", block: "b")
         XCTAssertEqual(h.inbox.first?.status.state, "working")
         XCTAssertEqual(h.inbox.first?.block, "a")
+    }
+
+    /// Without a search, the inbox reads no title, so a title that changes
+    /// does not invalidate what read it; a search matches by title.
+    @MainActor func testInboxReadsTitlesOnlyForASearch() async throws {
+        let rex = try FakeRex()
+        defer { rex.stop() }
+        // No label, so the window is titled by its block's title.
+        let view: [String: Any] = ["revision": 1, "session_id": "s", "label": "s", "windows": [
+            ["window_id": "w", "layers": [["blocks": [["block_id": "b"]]]]],
+        ]]
+        rex.respond = { m, _ in
+            switch m {
+            case "session.bootstrap":
+                ["attach_all": ["sessions": [["session_id": "s", "label": "s"]]], "selected_session": ["view": view]]
+            case "com.superlogical.terminal.program_status":
+                ["records": [["id": "x", "state": "blocked"]]]
+            default: [:]
+            }
+        }
+        let h = Host(HostConfig(name: "test", url: try await rex.url()))
+        h.connect()
+        defer { h.stop() }
+        await until("read") { h.status == .online && h.blocks["b"]?.statuses != nil }
+        let block = try XCTUnwrap(h.blocks["b"])
+        block.title = "build"
+        block.program = "make"
+
+        var changed = false
+        let items = withObservationTracking({ h.inbox }, onChange: { changed = true })
+        XCTAssertEqual(items.count, 1)
+        block.title = "test"
+        block.program = "go"
+        XCTAssertFalse(changed, "the inbox without a search depends on a title or program")
+
+        var searched = false
+        let found = withObservationTracking({ h.inbox(matching: "TEST") }, onChange: { searched = true })
+        XCTAssertEqual(found.map(\.block), ["b"])
+        XCTAssertTrue(h.inbox(matching: "build").isEmpty)
+        block.title = "build"
+        XCTAssertTrue(searched, "a search depends on the title")
     }
 
     /// A block on screen sees its records as they come.
