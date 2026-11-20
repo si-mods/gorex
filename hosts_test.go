@@ -80,42 +80,6 @@ func startHostServer(t *testing.T) (string, *rex.Client) {
 	return sock, c
 }
 
-// hostDesk opens the host's own window on the host server at sock: it
-// takes the server's layout commands, and answers each as made. With no
-// window, the server gives each session a client starts a tab of its own
-// (doCreate), which a client can read before the layout that splits it
-// into a tab comes. A host whose window splits a pane does not.
-func hostDesk(t *testing.T, sock string) {
-	t.Helper()
-	desk, err := rex.ConnectSocket(sock)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { desk.Close() })
-	go func() {
-		for {
-			cmd, err := desk.TakeCommand()
-			if err != nil {
-				return
-			}
-			if cmd != nil {
-				desk.CommandDone(*cmd)
-			}
-		}
-	}()
-	// The server counts the window once it took its first take: a command
-	// for the window then waits for it rather than fails.
-	probe, err := rex.ConnectSocket(sock)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer probe.Close()
-	waitForThat(t, func() bool {
-		res, err := probe.Command(rex.LayoutCommand{Op: "action", Action: "test.probe"})
-		return err == nil && res.Code != "desktop_unavailable"
-	}, "the host's window")
-}
-
 // hostProxy forwards the connections of a socket of its own to a host's,
 // as a network between them that drops: down closes them all and refuses
 // new ones until up. While gate is set, new connections wait for it to

@@ -800,18 +800,6 @@ func gateUploads(t *testing.T) (release func()) {
 	return sync.OnceFunc(func() { close(gate) })
 }
 
-// movedPane is the pane of sid in b, nil when none.
-func movedPane(b *App, sid string) *Pane {
-	for _, t := range b.tabs {
-		for _, q := range t.allPanes() {
-			if q.SID == sid {
-				return q
-			}
-		}
-	}
-	return nil
-}
-
 // TestClosedPaneDropsItsPaste closes a pane while a file dropped on it
 // waits to go: the upload stops and its session's list goes with it.
 func TestClosedPaneDropsItsPaste(t *testing.T) {
