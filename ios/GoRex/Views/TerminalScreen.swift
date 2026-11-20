@@ -297,8 +297,12 @@ struct TerminalScreen: View {
                         suspended = true
                     }
                 }
-                // Back within the grace, nothing was suspended.
-                if p == .active { TerminalLive.shared.active() }
+                // Back within the grace, nothing was suspended. What the
+                // terminal's program reported meanwhile is seen now.
+                if p == .active {
+                    TerminalLive.shared.active()
+                    host.see(session: currentTarget.session, block: currentTarget.block)
+                }
                 if p == .active, suspended {
                     for pane in pages where !pane.leaving { pane.session.resume() }
                     suspended = false
@@ -390,10 +394,10 @@ struct TerminalScreen: View {
         s.onOutput = { TerminalLive.shared.outputChanged() }
         let (host, target) = (host, currentTarget)
         let attributes = TerminalActivity(host: host.id, hostName: TerminalActivity.cut(host.config.name), session: target.session, block: target.block)
-        TerminalLive.shared.show(.init(attributes: attributes, state: { [weak s] away in
+        TerminalLive.shared.show(.init(attributes: attributes, state: { [weak s] in
             let b = host.blocks[target.block]
             return TerminalLive.state(title: Self.windowTitle(host: host, target: target), program: b?.program, records: b?.statuses ?? [],
-                                      seen: b?.seen, away: away, connected: s.map { $0.state == .live && !$0.reconnecting } ?? false)
+                                      seen: b?.seen, connected: s.map { $0.state == .live && !$0.reconnecting } ?? false)
         }, readLine: { [weak s] done in
             s?.output?.readScreen { text, _ in
                 let line = TerminalActivity.lastLine(text)

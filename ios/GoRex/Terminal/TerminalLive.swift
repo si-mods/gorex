@@ -14,21 +14,25 @@ final class TerminalLive {
         /// Whether the activity started last still runs: iOS ends one after
         /// 8 hours.
         var running: Bool { get }
+        /// Whether the user dismissed the activity started last.
+        var dismissed: Bool { get }
         /// Starts an activity, in place of any other.
         func start(_ attributes: TerminalActivity, _ state: TerminalActivity.ContentState)
-        func update(_ state: TerminalActivity.ContentState, stale: Date?)
+        /// Updates it. Without done, the update asks for background time of
+        /// its own to finish in; with done, it asks for none, and calls done
+        /// once ActivityKit has it, as a background task ends.
+        func update(_ state: TerminalActivity.ContentState, stale: Date?, done: (() -> Void)?)
         /// Ends it, dismissed at once.
         func end()
     }
 
     /// The terminal it shows. state reads the host and the stream, all but
-    /// the line, as of the moment, given when the app left the foreground,
-    /// nil while in front; a change of what it read updates the activity.
-    /// readLine reads the screen's last line, maybe later, maybe never, as
-    /// a terminal not drawn yet has no screen.
+    /// the line, as of the moment; a change of what it read updates the
+    /// activity. readLine reads the screen's last line, maybe later, maybe
+    /// never, as a terminal not drawn yet has no screen.
     struct Source {
         let attributes: TerminalActivity
-        let state: (_ away: Date?) -> TerminalActivity.ContentState
+        let state: () -> TerminalActivity.ContentState
         let readLine: (_ done: @escaping @MainActor @Sendable (String) -> Void) -> Void
     }
 
@@ -45,6 +49,8 @@ final class TerminalLive {
     /// The screen whose terminal it shows, and the terminal.
     private(set) var owner: UUID?
     private var source: Source?
+    /// The screen whose activity the user dismissed: it starts none again.
+    private var declined: UUID?
     /// The line read last, and whether output came since it was read.
     private var line = ""
     private var lineDirty = false
@@ -71,8 +77,10 @@ final class TerminalLive {
 
     /// A terminal screen shows a terminal, in the foreground: its activity
     /// starts, in place of another screen's or another terminal's. The same
-    /// terminal again only updates, or starts anew once iOS ended it.
+    /// terminal again only updates, or starts anew once iOS ended it; one the
+    /// user dismissed stays so for the screen.
     func show(_ s: Source, owner o: UUID) {
+        noteDismissed()
         let same = owner == o && source?.attributes == s.attributes
         if !same {
             if owner != nil { driver.end() }
@@ -95,6 +103,7 @@ final class TerminalLive {
         driver.end()
         owner = nil
         source = nil
+        declined = nil
         sent = nil
         due = nil
         paused = false
@@ -113,9 +122,9 @@ final class TerminalLive {
     func background(suspend: @escaping () -> Void) {
         away = now()
         paused = false
-        grace.start { [weak self] in
+        grace.start { [weak self] finished in
             suspend()
-            self?.pause()
+            if let self { self.pause(finished) } else { finished() }
         }
         publish(force: true)
     }
@@ -130,6 +139,7 @@ final class TerminalLive {
         let resume = paused
         away = nil
         paused = false
+        noteDismissed()
         if owner != nil, !driver.running { start() }
         publish(force: true)
         return resume
@@ -150,13 +160,21 @@ final class TerminalLive {
         }
     }
 
+    /// The user dismissed the screen's activity: the screen starts none again.
+    private func noteDismissed() {
+        if let owner, driver.dismissed { declined = owner }
+    }
+
     private func start() {
-        guard let source, driver.enabled else { return }
+        guard let source, driver.enabled, declined != owner else { return }
         let s = state(source)
         driver.start(source.attributes, s)
         sent = s
         lastUpdate = now()
     }
+
+    /// Whether an activity shows, for updates to go to.
+    private var showing: Bool { driver.enabled && driver.running }
 
     /// Builds the state, watching what it reads, and sends it unless it is
     /// the one sent last; forced, it sends it anyway, with its stale date.
@@ -168,8 +186,9 @@ final class TerminalLive {
         } onChange: { [weak self] in
             Task { @MainActor in self?.changed() }
         }
-        if force || s != sent, driver.enabled, driver.running {
-            driver.update(s, stale: away.map { $0.addingTimeInterval(grace.limit + 5) })
+        guard showing else { return }
+        if force || s != sent {
+            driver.update(s, stale: away.map { $0.addingTimeInterval(grace.limit + 5) }, done: nil)
             sent = s
             lastUpdate = now()
         }
@@ -186,44 +205,44 @@ final class TerminalLive {
     }
 
     private func state(_ source: Source) -> TerminalActivity.ContentState {
-        var s = source.state(away)
+        var s = source.state()
         s.line = line
         return s
     }
 
-    /// The grace ran out: the activity says the stream closed, stale now.
-    private func pause() {
+    /// The grace ran out: the activity says the stream closed, stale now,
+    /// within the grace's background time, which ends once it is sent.
+    private func pause(_ finished: @escaping () -> Void) {
         paused = true
         due = nil
-        guard var s = sent else { return }
+        guard var s = sent, showing else { return finished() }
         s.connected = false
-        if driver.running { driver.update(s, stale: now()) }
         sent = s
+        driver.update(s, stale: now(), done: finished)
     }
 
     /// The activity's state of a block's terminal: the window's title, the
-    /// tile, the block's most urgent record, the line cut short. In the
-    /// background, records that came since the app left count as not seen,
-    /// though the screen, still open, marked them.
-    static func state(title: String, program: String?, records: [Host.ProgramStatus], seen: Date?, away: Date?,
+    /// tile, the block's most urgent record, the line cut short.
+    static func state(title: String, program: String?, records: [Host.ProgramStatus], seen: Date?,
                       line: String = "", connected: Bool) -> TerminalActivity.ContentState {
-        let seen = away.map { a in seen.map { min($0, a) } } ?? seen
         let r = Host.ProgramStatus.mostUrgent(records, seen: seen).flatMap { $0.state == "idle" ? nil : $0 }
         return .init(title: TerminalActivity.cut(title), program: WidgetPublisher.program(r?.app, block: program),
                      record: r.map { .init(state: $0.state, kind: $0.kind, progress: $0.progress, title: $0.title.map { TerminalActivity.cut($0) }, updated: $0.updated) },
-                     line: TerminalActivity.cut(line, TerminalActivity.maxLine), connected: connected)
+                     line: TerminalActivity.cut(line, TerminalActivity.maxLine, bytes: TerminalActivity.maxLineBytes), connected: connected)
     }
 }
 
 /// The time iOS gives a backgrounded app to finish (a background task),
 /// used to keep the terminal's streams open for a while: it ends after
 /// limit seconds, or as iOS takes the time back, whichever comes first,
-/// calling its work once, and the task ends exactly once, at the end or as
-/// the app comes back.
+/// calling its work once. The task ends exactly once: as the work says it
+/// finished, at once as iOS takes the time back, or as the app comes back.
 final class BackgroundGrace {
     /// Asks for background time, calling expired as iOS takes it back; nil
     /// when iOS gives none.
     typealias Begin = (_ expired: @escaping @MainActor () -> Void) -> Int?
+    /// The work at the grace's end, which calls finished when done.
+    typealias Work = (_ finished: @escaping () -> Void) -> Void
 
     let limit: TimeInterval
     private let begin: Begin
@@ -232,7 +251,7 @@ final class BackgroundGrace {
     private let schedule: TerminalLive.Schedule
 
     private var task: Int?
-    private var work: (() -> Void)?
+    private var work: Work?
     private var generation = 0
     /// When the app was last kept running: the grace's end.
     private(set) var keptUntil: Date?
@@ -250,23 +269,38 @@ final class BackgroundGrace {
 
     /// Starts the grace, which calls work as it ends. Without background
     /// time, work runs at once, as the app may stop any moment.
-    func start(_ work: @escaping () -> Void) {
+    func start(_ work: @escaping Work) {
         guard !running else { return }
+        // The last grace's task, should its work still be finishing.
+        finish()
         generation += 1
         let g = generation
         self.work = work
-        task = begin { [weak self] in self?.expire(g) }
-        guard task != nil else { return expire(g) }
-        schedule(limit) { [weak self] in self?.expire(g) }
+        task = begin { [weak self] in self?.expire(g, byIOS: true) }
+        guard task != nil else { return expire(g, byIOS: false) }
+        schedule(limit) { [weak self] in self?.expire(g, byIOS: false) }
     }
 
-    /// The grace ends with its work, then its task.
-    private func expire(_ g: Int) {
-        guard g == generation, let w = work else { return }
+    /// The grace ends with its work, then its task: once the work finished,
+    /// or at once when iOS takes the time back, which it may do while the
+    /// work finishes.
+    private func expire(_ g: Int, byIOS: Bool) {
+        guard g == generation else { return }
+        guard let w = work else {
+            if byIOS { finish() }
+            return
+        }
         work = nil
         keptUntil = now()
-        w()
-        finish()
+        if byIOS {
+            w {}
+            finish()
+        } else {
+            w { [weak self] in
+                guard let self, self.generation == g else { return }
+                self.finish()
+            }
+        }
     }
 
     /// The app came back during the grace: it ends without its work. True

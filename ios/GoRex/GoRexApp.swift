@@ -62,6 +62,8 @@ struct GoRexApp: App {
                 .preferredColorScheme(ScreenStyle.shared.terminal ?? Self.colorScheme(scheme))
                 .onAppear(perform: Self.startGhostty)
                 .onChange(of: phase) { _, p in
+                    if p == .background { Notifier.shared.inFront = false }
+                    if p == .active { Notifier.shared.inFront = true }
                     if p == .background {
                         away = .now
                         // A setting changed just now goes before the app may end.

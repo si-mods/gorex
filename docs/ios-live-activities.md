@@ -28,7 +28,7 @@ and may need you".
 
 - When the user leaves Rex Go with a terminal open, that terminal shows
   in the Dynamic Island and on the Lock Screen: its program, its state,
-  its last line. Its stream stays connected for a short grace (about 30
+  its last line. Its stream stays connected for a short grace (about 25
   seconds), so a quick switch to another app and back loses nothing;
   after the grace the activity says it is paused, and coming back
   resumes the stream as today.
@@ -95,7 +95,9 @@ that needs it).
   kept on the phone, apart from the server's own. **[code]**
 - Rex Go has no background modes, no entitlements for this, and no
   push (`ios/project.yml`). Before phase 1 it asked for background time
-  (`beginBackgroundTask`) only to finish a write as it left. Its
+  (`beginBackgroundTask`) only to finish a write as it left
+  (`WidgetPublisher.flush`) and to keep sharing over a hotspot for a
+  while (`HotspotShare`). Its
   built-in Tailscale stops with it ([ios-tailnet.md](ios-tailnet.md),
   Non-goals); no code stops the engine on leaving, so it runs as long as
   the app does, a background task included. **[code]**
@@ -247,13 +249,17 @@ on `.active`; the shell on the host keeps running. **[code]**
   `title` and `updated`, or none for a plain shell or an idle record;
   `line`, the last non-empty line of the screen, cut to 80 characters;
   `connected` (whether the stream is open). Titles and the host name are
-  cut to 200 characters; with the longest of each, attributes and state
-  encode to under 3 KB (`TerminalLiveTests`).
+  cut to 200 characters and 400 UTF-8 bytes, the line to 80 characters
+  and 240 bytes, whole characters only; with the longest of each,
+  attributes and state stay well under 4 KB (`TerminalLiveTests`).
 - **Seen**: done and error records the user saw don't count, as in the
   inbox. The open screen marks a block's records seen as they come
-  (`Host.shown`), in the background too; so, once the app left, records
-  updated since then count as not seen, or a program that finished
-  during the grace would never show as done.
+  (`Host.shown`), and tells the server (`gorex.see_block`), which tells
+  every client. In the background the user doesn't see the screen, so
+  `Host.shown` is false there (`Notifier.inFront`): a program that
+  finishes during the grace shows as done, here and on every client.
+  Back in front, the screen sees its block again, as it does when it
+  appears.
 - **Start**: when a terminal screen appears, in the foreground, as
   `Activity.request` requires. While Rex Go is in front, iOS does not
   show the app's own activity in the Dynamic Island. **[assumption]**
@@ -274,7 +280,10 @@ on `.active`; the shell on the host keeps running. **[code]**
   Updates during the grace carry a stale date at its end plus 5
   seconds, so an app stopped without notice still shows as paused. Each
   update asks for a moment of background time of its own, to reach
-  ActivityKit before the app stops. Dictation and a pane switch still
+  ActivityKit before the app stops; that time ends as the update is
+  made, or as iOS takes it back. The paused update goes within the
+  grace's own task, which ends once ActivityKit has it, or at once when
+  iOS takes the time back. Dictation and a pane switch still
   waiting stop at once, as before.
 - **Coming back during the grace** cancels it: nothing was suspended,
   and the hosts' connections are not reset, since the app ran
@@ -282,7 +291,8 @@ on `.active`; the shell on the host keeps running. **[code]**
 - **Return**: on `.active`, streams resume as today; the activity
   shows `connected: true` again.
 - **End**: when the terminal screen closes, or another terminal opens
-  (which starts its own); dismissed at once. At 8 hours iOS ends it; the
+  (which starts its own); dismissed at once. One the user dismissed
+  stays so for that screen; a terminal opened later starts one again. At 8 hours iOS ends it; the
   next foreground starts a new one.
 - **Presentations**: compact leading: the program's tile; compact
   trailing: the state glyph, a progress ring, or a timer since
@@ -473,7 +483,7 @@ activity, only send alerts; the next foreground fixes it.
 
 | Phase | Scope | Effort | Who gets live updates once suspended |
 | --- | --- | --- | --- |
-| 1 | Terminal activity, ~30 s grace | 3–4 days | nobody |
+| 1 | Terminal activity, ~25 s grace | 3–4 days | nobody |
 | 2 | Host sender, `push.register`, direct last hop, alert pushes | 5–7 days | phones of hosts with a key: the developer's |
 | 3 | Follow a session not on screen (optional) | 2–3 days | as phase 2 |
 

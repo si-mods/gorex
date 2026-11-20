@@ -22,6 +22,8 @@ final class ActivityKitDriver: TerminalLive.Driver {
         return a.activityState == .active || a.activityState == .stale
     }
 
+    var dismissed: Bool { activity?.activityState == .dismissed }
+
     func start(_ attributes: TerminalActivity, _ state: TerminalActivity.ContentState) {
         // One at a time: those of an earlier run too.
         end()
@@ -32,14 +34,25 @@ final class ActivityKitDriver: TerminalLive.Driver {
         }
     }
 
-    func update(_ state: TerminalActivity.ContentState, stale: Date?) {
+    func update(_ state: TerminalActivity.ContentState, stale: Date?, done: (() -> Void)?) {
+        guard let activity else {
+            done?()
+            return
+        }
         // Activity is not Sendable; ActivityKit takes its calls from any thread.
-        guard let activity else { return }
         nonisolated(unsafe) let a = activity
         let c = content(state, stale: stale)
-        // Its own background time, so that an update made as the app leaves
-        // gets to ActivityKit before the app stops.
-        finishing { await a.update(c) }
+        if let done {
+            // Within the caller's background time.
+            Task {
+                await a.update(c)
+                done()
+            }
+        } else {
+            // Its own background time, so that an update made as the app
+            // leaves gets to ActivityKit before the app stops.
+            finishing { await a.update(c) }
+        }
     }
 
     func end() {
@@ -56,12 +69,25 @@ final class ActivityKitDriver: TerminalLive.Driver {
         ActivityContent(state: s, staleDate: stale, relevanceScore: s.connected ? 100 : 50)
     }
 
+    /// Runs work in background time of its own, which ends once, as the
+    /// work finishes or as iOS takes the time back, whichever comes first.
     private func finishing(_ work: @escaping @Sendable () async -> Void) {
-        let app = UIApplication.shared
-        let t = app.beginBackgroundTask(withName: "terminal activity", expirationHandler: nil)
+        let task = OneTask()
+        task.id = UIApplication.shared.beginBackgroundTask(withName: "terminal activity") { MainActor.assumeIsolated { task.end() } }
         Task {
             await work()
-            if t != .invalid { app.endBackgroundTask(t) }
+            task.end()
+        }
+    }
+
+    /// A background task that ends once.
+    private final class OneTask {
+        var id = UIBackgroundTaskIdentifier.invalid
+
+        func end() {
+            guard id != .invalid else { return }
+            UIApplication.shared.endBackgroundTask(id)
+            id = .invalid
         }
     }
 }

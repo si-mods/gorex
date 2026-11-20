@@ -10,6 +10,9 @@ nonisolated final class TerminalLiveTests: XCTestCase {
     @MainActor final class FakeDriver: TerminalLive.Driver {
         var enabled = true
         var running = false
+        var dismissed = false
+        /// The done of each update that has one, for the test to call.
+        var dones: [() -> Void] = []
         var calls: [String] = []
         var started: [TerminalActivity] = []
         var updates: [(state: TerminalActivity.ContentState, stale: Date?)] = []
@@ -20,14 +23,16 @@ nonisolated final class TerminalLiveTests: XCTestCase {
             running = true
         }
 
-        func update(_ state: TerminalActivity.ContentState, stale: Date?) {
-            calls.append("update")
+        func update(_ state: TerminalActivity.ContentState, stale: Date?, done: (() -> Void)?) {
+            calls.append(done == nil ? "update" : "update in grace")
             updates.append((state, stale))
+            if let done { dones.append(done) }
         }
 
         func end() {
             calls.append("end")
             running = false
+            dismissed = false
         }
     }
 
@@ -63,38 +68,30 @@ nonisolated final class TerminalLiveTests: XCTestCase {
 
     /// The block's most urgent record, as the inbox ranks them: blocked over
     /// error over done over working, the latest of those alike; idle shows
-    /// none. Done and error records seen don't count, but in the background
-    /// those since the app left do, though the open screen marked them.
+    /// none. Done and error records seen don't count.
     @MainActor func testStateRanksOneBlock() {
         let rs = [Self.record("a", "working", at: 100, progress: 40), Self.record("b", "done", at: 200, title: "Wrote it"),
                   Self.record("c", "blocked", at: 50, title: "Edit main.go?", app: "claude-code")]
-        var s = TerminalLive.state(title: "api", program: "zsh", records: rs, seen: nil, away: nil, connected: true)
+        var s = TerminalLive.state(title: "api", program: "zsh", records: rs, seen: nil, connected: true)
         XCTAssertEqual(s.record?.state, "blocked")
         XCTAssertEqual(s.record?.title, "Edit main.go?")
         XCTAssertEqual(s.program, "claude-code", "a known program the record names gives the tile")
         XCTAssertEqual(s.title, "api")
 
-        s = TerminalLive.state(title: "api", program: "zsh", records: Array(rs.prefix(2)), seen: nil, away: nil, connected: true)
+        s = TerminalLive.state(title: "api", program: "zsh", records: Array(rs.prefix(2)), seen: nil, connected: true)
         XCTAssertEqual(s.record?.state, "done")
         XCTAssertEqual(s.program, "zsh", "no app: the block's program")
-        s = TerminalLive.state(title: "api", program: nil, records: Array(rs.prefix(2)), seen: Date(timeIntervalSince1970: 200), away: nil, connected: true)
+        s = TerminalLive.state(title: "api", program: nil, records: Array(rs.prefix(2)), seen: Date(timeIntervalSince1970: 200), connected: true)
         XCTAssertEqual(s.record?.state, "working", "the done record was seen")
         XCTAssertEqual(s.record?.progress, 40)
-        s = TerminalLive.state(title: "api", program: nil, records: Array(rs.prefix(2)), seen: Date(timeIntervalSince1970: 200),
-                               away: Date(timeIntervalSince1970: 150), connected: true)
-        XCTAssertEqual(s.record?.state, "done", "done after the app left: not seen")
-        s = TerminalLive.state(title: "api", program: nil, records: Array(rs.prefix(2)), seen: Date(timeIntervalSince1970: 200),
-                               away: Date(timeIntervalSince1970: 250), connected: true)
-        XCTAssertEqual(s.record?.state, "working", "done before the app left, and seen")
-
         let two = [Self.record("x", "working", at: 10), Self.record("y", "working", at: 20, title: "later")]
-        XCTAssertEqual(TerminalLive.state(title: "", program: nil, records: two, seen: nil, away: nil, connected: true).record?.title, "later")
-        XCTAssertNil(TerminalLive.state(title: "", program: nil, records: [Self.record("i", "idle", at: 1)], seen: nil, away: nil, connected: true).record)
-        XCTAssertNil(TerminalLive.state(title: "", program: nil, records: [], seen: nil, away: nil, connected: false).record)
+        XCTAssertEqual(TerminalLive.state(title: "", program: nil, records: two, seen: nil, connected: true).record?.title, "later")
+        XCTAssertNil(TerminalLive.state(title: "", program: nil, records: [Self.record("i", "idle", at: 1)], seen: nil, connected: true).record)
+        XCTAssertNil(TerminalLive.state(title: "", program: nil, records: [], seen: nil, connected: false).record)
     }
 
     /// The line is the screen's last that is not blank, its trailing spaces
-    /// gone, cut to 80 characters, whole characters.
+    /// gone, cut to 80 characters and 240 bytes, whole characters.
     func testLastLine() {
         XCTAssertEqual(TerminalActivity.lastLine("one\ntwo  \n   \n\n"), "two")
         XCTAssertEqual(TerminalActivity.lastLine("  indented\n"), "  indented")
@@ -104,28 +101,38 @@ nonisolated final class TerminalLiveTests: XCTestCase {
         let long = String(repeating: "界", count: 100)
         XCTAssertEqual(TerminalActivity.lastLine("x\n" + long), String(repeating: "界", count: 80))
         let emoji = String(repeating: "👩‍💻", count: 90)
-        XCTAssertEqual(TerminalActivity.lastLine(emoji).count, 80)
+        XCTAssertEqual(TerminalActivity.lastLine(emoji), String(repeating: "👩‍💻", count: 21), "11 bytes each")
+        // Characters of many combining marks: what does not fit goes whole.
+        let marks = "e" + String(repeating: "\u{301}", count: 30)
+        XCTAssertEqual(TerminalActivity.lastLine(String(repeating: marks, count: 10)), String(repeating: marks, count: 3))
+        XCTAssertEqual(TerminalActivity.lastLine("ab" + String(repeating: "\u{301}", count: 200)), "a")
+        XCTAssertEqual(TerminalActivity.cut("short"), "short")
     }
 
     /// Attributes and state together stay under ActivityKit's 4 KB with the
-    /// longest of each field: titles and names cut to 200 characters of
-    /// three bytes each, the line to 80 of the widest characters.
+    /// longest of each field: titles and names cut to 200 characters and
+    /// 400 bytes, the line to 80 characters and 240 bytes, whole characters
+    /// of three bytes, of many combining marks or of a ZWJ sequence.
     @MainActor func testSizeUnderLimit() throws {
-        let wide = String(repeating: "界", count: 1000)
-        let attributes = TerminalActivity(host: UUID(), hostName: TerminalActivity.cut(wide), session: String(repeating: "s", count: 64),
-                                          block: String(repeating: "b", count: 64))
-        var r = Self.record(String(repeating: "i", count: 64), "blocked", at: 1_800_000_000, title: wide, app: String(repeating: "a", count: 64), progress: 100)
-        r.kind = "permission"
-        let s = TerminalLive.state(title: wide, program: String(repeating: "p", count: 64), records: [r], seen: nil, away: nil,
-                                   line: String(repeating: "👩‍💻", count: 200), connected: true)
-        XCTAssertEqual(s.title.count, 200)
-        XCTAssertEqual(s.record?.title?.count, 200)
-        XCTAssertEqual(s.line.count, 80)
-        let size = try JSONEncoder().encode(attributes).count + JSONEncoder().encode(s).count
-        XCTAssertLessThan(size, 4096, "\(size) bytes")
+        let marks = "e" + String(repeating: "\u{301}", count: 30)
+        for wide in [String(repeating: "界", count: 1000), String(repeating: marks, count: 100), String(repeating: "👩‍💻", count: 300)] {
+            let attributes = TerminalActivity(host: UUID(), hostName: TerminalActivity.cut(wide), session: String(repeating: "s", count: 64),
+                                              block: String(repeating: "b", count: 64))
+            var r = Self.record(String(repeating: "i", count: 64), "blocked", at: 1_800_000_000, title: wide, app: String(repeating: "a", count: 64), progress: 100)
+            r.kind = "permission"
+            let s = TerminalLive.state(title: wide, program: String(repeating: "p", count: 64), records: [r], seen: nil, line: wide, connected: true)
+            for (field, max) in [(s.title, 400), (s.record?.title ?? "", 400), (s.line, 240), (attributes.hostName, 400)] {
+                XCTAssertLessThanOrEqual(field.utf8.count, max)
+                XCTAssertGreaterThan(field.utf8.count, max - 61, "cut no shorter than one character needs")
+                XCTAssertTrue(wide.hasPrefix(field), "whole characters")
+            }
+            let size = try JSONEncoder().encode(attributes).count + JSONEncoder().encode(s).count
+            XCTAssertLessThan(size, 4096, "\(size) bytes")
+        }
+        XCTAssertEqual(TerminalLive.state(title: String(repeating: "x", count: 300), program: nil, records: [], seen: nil, connected: true).title.count, 200)
     }
 
-    @MainActor private func source(block: String = "b1", state: @escaping (Date?) -> TerminalActivity.ContentState,
+    @MainActor private func source(block: String = "b1", state: @escaping () -> TerminalActivity.ContentState,
                                    lines: @escaping (@escaping @MainActor @Sendable (String) -> Void) -> Void = { _ in }) -> TerminalLive.Source {
         .init(attributes: TerminalActivity(host: UUID(uuidString: "00000000-0000-4000-8000-00000000a11c")!, hostName: "alice-laptop", session: "s1", block: block),
               state: state, readLine: lines)
@@ -152,7 +159,7 @@ nonisolated final class TerminalLiveTests: XCTestCase {
         var screen = "$ make"
         var reads = 0
         let owner = UUID()
-        l.show(source(state: { _ in .init(title: m.title, line: "", connected: m.connected) }, lines: { done in
+        l.show(source(state: { .init(title: m.title, line: "", connected: m.connected) }, lines: { done in
             reads += 1
             done(screen)
         }), owner: owner)
@@ -208,7 +215,7 @@ nonisolated final class TerminalLiveTests: XCTestCase {
         let d = FakeDriver(), w = Waits(), t = Tasks()
         var clock = Date(timeIntervalSince1970: 1_800_000_000)
         let l = live(d, w, t) { clock }
-        l.show(source(state: { _ in .init(title: "api", line: "", connected: true) }), owner: UUID())
+        l.show(source(state: { .init(title: "api", line: "", connected: true) }), owner: UUID())
         var suspends = 0
         l.background { suspends += 1 }
         XCTAssertTrue(l.grace.running)
@@ -236,17 +243,23 @@ nonisolated final class TerminalLiveTests: XCTestCase {
         var clock = Date(timeIntervalSince1970: 1_800_000_000)
         let l = live(d, w, t) { clock }
         let m = Model()
-        l.show(source(state: { _ in .init(title: m.title, line: "", connected: true) }), owner: UUID())
+        l.show(source(state: { .init(title: m.title, line: "", connected: true) }), owner: UUID())
         var suspends = 0
         l.background { suspends += 1 }
         XCTAssertEqual(w.all.map(\.wait), [25])
         clock += 25
         w.run()
         XCTAssertEqual(suspends, 1)
-        XCTAssertEqual(t.ended, [1])
         XCTAssertTrue(l.paused)
+        // The paused update goes within the grace's own task, no other.
+        XCTAssertEqual(d.calls.last, "update in grace")
         XCTAssertEqual(d.updates.last?.state.connected, false)
         XCTAssertEqual(d.updates.last?.stale, clock)
+        XCTAssertEqual(t.begun, 1)
+        XCTAssertEqual(t.ended, [], "until ActivityKit has it")
+        d.dones[0]()
+        XCTAssertEqual(t.ended, [1])
+        d.dones[0]()
         let updates = d.updates.count
         t.expirations[1]?()
         XCTAssertEqual(suspends, 1)
@@ -272,12 +285,14 @@ nonisolated final class TerminalLiveTests: XCTestCase {
         let d = FakeDriver(), w = Waits(), t = Tasks()
         let clock = Date(timeIntervalSince1970: 1_800_000_000)
         let l = live(d, w, t) { clock }
-        l.show(source(state: { _ in .init(title: "api", line: "", connected: true) }), owner: UUID())
+        l.show(source(state: { .init(title: "api", line: "", connected: true) }), owner: UUID())
         var suspends = 0
         l.background { suspends += 1 }
         t.expirations[1]?()
         XCTAssertEqual(suspends, 1)
-        XCTAssertEqual(t.ended, [1])
+        XCTAssertEqual(t.ended, [1], "ended in the handler, not after the update")
+        XCTAssertEqual(d.calls.last, "update in grace")
+        d.dones.removeFirst()()
         w.run()
         XCTAssertEqual(suspends, 1)
         XCTAssertEqual(t.ended, [1])
@@ -297,7 +312,26 @@ nonisolated final class TerminalLiveTests: XCTestCase {
         XCTAssertEqual(t.begun, 2)
         w.run()
         XCTAssertEqual(suspends, 3)
+        // iOS takes the time back while the paused update goes: the task
+        // ends then, once.
+        XCTAssertEqual(t.ended, [1])
+        t.expirations[2]?()
         XCTAssertEqual(t.ended, [1, 2])
+        d.dones.removeFirst()()
+        XCTAssertEqual(t.ended, [1, 2])
+        XCTAssertTrue(l.active())
+
+        // A grace that starts while the last one's update still goes ends
+        // the last one's task first.
+        l.background { suspends += 1 }
+        w.run()
+        XCTAssertEqual(t.ended, [1, 2])
+        XCTAssertTrue(l.active())
+        l.background { suspends += 1 }
+        XCTAssertEqual(t.ended, [1, 2, 3])
+        d.dones.removeFirst()()
+        XCTAssertEqual(t.ended, [1, 2, 3])
+        XCTAssertTrue(l.grace.running)
     }
 
     /// One activity at a time: another terminal's ends it and starts its
@@ -309,7 +343,7 @@ nonisolated final class TerminalLiveTests: XCTestCase {
         let clock = Date(timeIntervalSince1970: 1_800_000_000)
         let l = live(d, w, t) { clock }
         let a = UUID(), b = UUID()
-        let state: (Date?) -> TerminalActivity.ContentState = { _ in .init(title: "api", line: "", connected: true) }
+        let state: () -> TerminalActivity.ContentState = { .init(title: "api", line: "", connected: true) }
         l.show(source(block: "b1", state: state), owner: a)
         l.show(source(block: "b1", state: state), owner: a)
         XCTAssertEqual(d.calls, ["start b1"], "the same terminal again only updates")
@@ -349,6 +383,82 @@ nonisolated final class TerminalLiveTests: XCTestCase {
         w.run()
         XCTAssertEqual(suspends, 1)
         XCTAssertEqual(d.calls, [])
+    }
+
+    /// One the user dismissed starts no more for its screen, as it comes
+    /// back to the foreground or switches panes; another screen's starts.
+    @MainActor func testDismissedStaysDismissed() {
+        let d = FakeDriver(), w = Waits(), t = Tasks()
+        let l = live(d, w, t) { Date(timeIntervalSince1970: 1_800_000_000) }
+        let a = UUID(), b = UUID()
+        let state: () -> TerminalActivity.ContentState = { .init(title: "api", line: "", connected: true) }
+        l.show(source(block: "b1", state: state), owner: a)
+        d.running = false
+        d.dismissed = true
+        l.active()
+        l.show(source(block: "b1", state: state), owner: a)
+        l.show(source(block: "b2", state: state), owner: a)
+        XCTAssertEqual(d.started.map(\.block), ["b1"])
+        l.show(source(block: "b3", state: state), owner: b)
+        XCTAssertEqual(d.started.map(\.block), ["b1", "b3"])
+    }
+
+    /// The screen is read for the line only while an activity shows.
+    @MainActor func testNoReadWithoutActivity() {
+        let d = FakeDriver(), w = Waits(), t = Tasks()
+        let l = live(d, w, t) { Date(timeIntervalSince1970: 1_800_000_000) }
+        d.enabled = false
+        var reads = 0
+        l.show(source(state: { .init(title: "api", line: "", connected: true) }, lines: { _ in reads += 1 }), owner: UUID())
+        l.outputChanged()
+        w.run()
+        XCTAssertEqual(reads, 0)
+        d.enabled = true
+        l.active()
+        XCTAssertEqual(d.started.count, 1)
+        XCTAssertEqual(reads, 1)
+    }
+
+    /// A program that finishes while the app is in the background is not
+    /// seen, though its terminal is still open: not here, and not on the
+    /// server, which would tell every client. Back in front, the screen
+    /// sees it, as it does when it appears.
+    @MainActor func testFinishedInBackgroundNotSeen() async throws {
+        let rex = try FakeRex()
+        defer { rex.stop() }
+        rex.features = [Host.seeFeature]
+        rex.respond = { m, _ in m == "session.bootstrap" ? ["attach_all": ["sessions": [["session_id": "s", "label": "s"]]]] : [:] }
+        let n = Notifier()
+        Host.shown = { n.shows(host: $0.id, block: $1) }
+        defer { Host.shown = nil }
+        let h = Host(HostConfig(name: "alice-laptop", url: try await rex.url()))
+        h.connect()
+        defer { h.stop() }
+        await until("online") { h.status == .online }
+        n.onScreen = TerminalTarget(host: h.id, session: "s", block: "b", title: "api")
+        func done(_ at: String) {
+            rex.event(["type": "session_event", "payload": ["session_id": "s", "event": [
+                "type": "block_event", "payload": ["block_id": "b", "name": "program_status_changed", "payload": [
+                    "records": [["id": "claude", "state": "done", "updated_at": at]]]],
+            ]]])
+        }
+        // In front: seen as it comes.
+        done("2026-11-20T10:00:00Z")
+        await until("seen") { rex.count("gorex.see_block") == 1 && h.status(["b"]) == nil }
+
+        // In the background: not seen.
+        n.inFront = false
+        done("2026-11-20T10:01:00Z")
+        await until("done") { h.blocks["b"]?.statuses?.first?.updated == Date(timeIntervalSince1970: 1_795_168_860) }
+        XCTAssertEqual(h.status(["b"])?.state, "done")
+        XCTAssertEqual(rex.count("gorex.see_block"), 1)
+        XCTAssertEqual(TerminalLive.state(title: "api", program: nil, records: h.blocks["b"]?.statuses ?? [], seen: h.blocks["b"]?.seen,
+                                          connected: true).record?.state, "done")
+
+        // Back in front: the screen sees it.
+        n.inFront = true
+        h.see(session: "s", block: "b")
+        await until("seen after") { rex.count("gorex.see_block") == 2 && h.status(["b"]) == nil }
     }
 
     /// Draws each face, connected and paused, light and dark, as PNGs in

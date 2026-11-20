@@ -35,13 +35,26 @@ nonisolated struct TerminalActivity: ActivityAttributes, Hashable, Sendable {
         var updated: Date?
     }
 
-    /// The most characters of the line, and of a title or a name.
+    /// The most characters of the line, and of a title or a name, and the
+    /// most bytes of each, for characters of many combining marks.
     static let maxLine = 80
+    static let maxLineBytes = 240
     static let maxText = 200
+    static let maxTextBytes = 400
 
-    /// The text cut to max characters.
-    static func cut(_ s: String, _ max: Int = maxText) -> String {
-        s.count > max ? String(s.prefix(max)) : s
+    /// The text cut to at most max characters and at most bytes UTF-8
+    /// bytes, whole characters only.
+    static func cut(_ s: String, _ max: Int = maxText, bytes: Int = maxTextBytes) -> String {
+        if s.utf8.count <= bytes, s.count <= max { return s }
+        var n = 0, used = 0, end = s.startIndex
+        for c in s {
+            let b = c.utf8.count
+            if n == max || used + b > bytes { break }
+            n += 1
+            used += b
+            end = s.index(after: end)
+        }
+        return String(s[..<end])
     }
 
     /// The last line of a screen's text that is not blank, without the
@@ -50,7 +63,7 @@ nonisolated struct TerminalActivity: ActivityAttributes, Hashable, Sendable {
         let line = text.split(whereSeparator: \.isNewline).last { !$0.allSatisfy(\.isWhitespace) } ?? ""
         var s = Substring(line)
         while s.last?.isWhitespace == true { s.removeLast() }
-        return cut(String(s), maxLine)
+        return cut(String(s), maxLine, bytes: maxLineBytes)
     }
 
     /// What a tap opens: this terminal, as a widget's row opens one.
