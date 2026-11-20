@@ -238,7 +238,8 @@ struct HostListView: View {
                             ForEach(store.hosts.filter { shows($0, hasSpaces: hasSpaces, current: current) }) { host in
                                 HostSection(host: host, space: current, spaces: spaces, collapsed: $collapsed, expanded: expanded,
                                             query: query, zoom: zoom, places: places,
-                                            open: { go($0) }, openRow: { openRow($0) }, newProject: { newProject = host })
+                                            open: { go($0) }, openRow: { openRow($0) }, newProject: { newProject = host },
+                                            current: width == .regular ? path.last : nil)
                             }
                         }
                     }

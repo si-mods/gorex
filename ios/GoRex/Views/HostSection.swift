@@ -26,7 +26,11 @@ struct HostSection: View {
     let openRow: (TerminalTarget) -> Void
     /// Opens New Project on the host.
     let newProject: () -> Void
+    /// The terminal the window shows beside the list; nil on a narrow
+    /// window, where the list is the whole page and no project is current.
+    var current: TerminalTarget?
     @Environment(HostStore.self) private var store
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(SpaceBook.self) private var book
     /// The sessions whose new tab is on its way.
     @State private var opening: Set<String> = []
@@ -220,9 +224,12 @@ struct HostSection: View {
         let (recent, older) = ProjectOrder.split(mine, used: { $0.project?.used }, name: \.label)
         let loose = host.sessions.filter { $0.project == nil }
         let looseTabs = entries(loose.flatMap { s in (s.view?.windows ?? []).map { (s, $0) } })
+        let column = tileColumn
         if !recent.isEmpty {
             card {
-                ForEach(Array(recent.enumerated()), id: \.element.id) { i, s in project(s, divider: i < recent.count - 1) }
+                ForEach(Array(recent.enumerated()), id: \.element.id) { i, s in
+                    project(s, tiles: column, divider: i < recent.count - 1 && !faced(recent[i + 1]) && !faced(s))
+                }
             }
         } else if query.isEmpty {
             Text("No projects in \(SpaceName.shown(space)). Tap + to make one from a folder.")
@@ -231,37 +238,72 @@ struct HostSection: View {
         }
         if !older.isEmpty {
             group("older", Text("Older"), count: older.count) {
-                ForEach(Array(older.enumerated()), id: \.element.id) { i, s in project(s, divider: i < older.count - 1) }
+                ForEach(Array(older.enumerated()), id: \.element.id) { i, s in
+                    project(s, tiles: column, divider: i < older.count - 1 && !faced(older[i + 1]) && !faced(s))
+                }
             }
         }
-        // The tabs with no project are tiled, not grouped: their rows and
-        // New Tab, with no row of their own to fold.
+        // The tabs with no project sit under a light label of their own,
+        // always listed: nothing to fold.
         if query.isEmpty || !looseTabs.isEmpty {
-            card {
-                rows(looseTabs, more: true)
-                newTabRow { newLooseTab() }
+            VStack(alignment: .leading, spacing: 6) {
+                sectionLabel
+                card {
+                    rows(looseTabs, more: true, tiles: column)
+                    newTabRow { newLooseTab() }
+                }
             }
         }
     }
 
+    private var sectionLabel: some View {
+        Text("Tabs with no project")
+            .font(.footnote.weight(.medium))
+            .foregroundStyle(.secondary)
+            .padding(.leading, 16)
+            .accessibilityAddTraits(.isHeader)
+    }
+
+    /// The width of the tile column of every row of the host, so that the
+    /// names and titles line up, and opening a project moves none.
+    private var tileColumn: CGFloat {
+        let most = host.sessions.flatMap { $0.view?.windows ?? [] }.map(\.back.count).max() ?? 0
+        return ProgramTiles.width(behind: most)
+    }
+
+    /// Whether the window shows this project, with its tabs open: it has
+    /// a face of its own.
+    private func faced(_ s: Host.Session) -> Bool {
+        guard let c = current, c.host == host.id, c.session == s.id else { return false }
+        return expanded.contains(Self.key(host, s.id)) || !query.isEmpty
+    }
+
     /// A project's row, and under it, open, its tabs and New Tab.
-    @ViewBuilder private func project(_ s: Host.Session, divider: Bool) -> some View {
+    private func project(_ s: Host.Session, tiles: CGFloat, divider: Bool) -> some View {
         let k = Self.key(host, s.id)
         let isOpen = expanded.contains(k) || !query.isEmpty
-        Button { toggle(k) } label: {
-            ProjectRow(name: s.label, color: s.project?.color,
-                       count: s.view?.windows?.count ?? 0, open: isOpen, busy: opening.contains(s.id), divider: divider || isOpen)
-        }
-        .buttonStyle(.plain)
-        .hoverEffect(.highlight)
-        .contextMenu { projectMenu(s) }
-        .accessibilityHint(isOpen ? "Collapse" : "Expand")
-        if isOpen {
-            Group {
-                rows(entries((s.view?.windows ?? []).map { (s, $0) }), more: true)
-                newTabRow { newProjectTab(s) }
+        let face = faced(s)
+        return VStack(spacing: 0) {
+            Button { toggle(k) } label: {
+                ProjectRow(name: s.label, color: s.project?.color, count: s.view?.windows?.count ?? 0, open: isOpen,
+                           busy: opening.contains(s.id), tiles: tiles, divider: (divider || isOpen) && !face)
+            }
+            .buttonStyle(.plain)
+            .hoverEffect(.highlight)
+            .contextMenu { projectMenu(s) }
+            .accessibilityHint(isOpen ? "Collapse" : "Expand")
+            if isOpen {
+                // One block, so that the tabs come and go as a whole.
+                VStack(spacing: 0) {
+                    rows(entries((s.view?.windows ?? []).map { (s, $0) }), more: true, tiles: tiles, lift: face)
+                    newTabRow { newProjectTab(s) }
+                }
+                .transition(reduceMotion ? .identity : .opacity.combined(with: .scale(scale: 0.96, anchor: .top)))
             }
         }
+        // Always drawn, shown by its opacity: choosing another project
+        // moves nothing.
+        .background { ProjectFace().opacity(face ? 1 : 0).animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: face) }
     }
 
     /// A project's menu (docs/MOD-002-projects.md, Desktop: a project's context
@@ -325,8 +367,8 @@ struct HostSection: View {
                 HStack(spacing: 12) {
                     title.font(.body.weight(.semibold)).foregroundStyle(.secondary)
                     Spacer(minLength: 8)
-                    Text(verbatim: "\(count)").foregroundStyle(.secondary).monospacedDigit()
                     Chevron(open: isOpen)
+                    Text(verbatim: "\(count)").foregroundStyle(.secondary).monospacedDigit()
                 }
                 .padding(.horizontal, 16)
                 .frame(minHeight: 50)
@@ -354,7 +396,7 @@ struct HostSection: View {
     }
 
     private func toggle(_ k: String) {
-        withAnimation(.snappy) { if expanded.contains(k) { expanded.remove(k) } else { expanded.insert(k) } }
+        withAnimation(reduceMotion ? nil : .snappy) { if expanded.contains(k) { expanded.remove(k) } else { expanded.insert(k) } }
     }
 
     /// Whether a project shows by the search: by its name, or a tab's title.
@@ -380,7 +422,10 @@ struct HostSection: View {
                 }
             }
             if !l.loose.isEmpty {
-                card { awayTabs(l.loose) }
+                VStack(alignment: .leading, spacing: 6) {
+                    sectionLabel
+                    card { awayTabs(l.loose, inset: 16 + Self.awayTiles + 14) }
+                }
             }
         }
         .saturation(0)
@@ -392,12 +437,15 @@ struct HostSection: View {
         let k = Self.key(host, p.id)
         let isOpen = expanded.contains(k)
         Button { toggle(k) } label: {
-            ProjectRow(name: p.name, color: p.color, count: p.tabs.count, open: isOpen, divider: divider || isOpen)
+            ProjectRow(name: p.name, color: p.color, count: p.tabs.count, open: isOpen, tiles: Self.awayTiles, divider: divider || isOpen)
         }
         .buttonStyle(.plain)
-        // No tile to line up with the folder's icon: the titles start at the project's name.
-        if isOpen { awayTabs(p.tabs, inset: 52) }
+        // No program tile to line up with the folder tile: the titles start at the project's name.
+        if isOpen { awayTabs(p.tabs, inset: 16 + Self.awayTiles + 14) }
     }
+
+    /// The tile column of a host away: no tab shows tiles.
+    private static let awayTiles = ProgramTiles.width(behind: 0)
 
     private func awayTabs(_ tabs: [ProjectListing.Tab], inset: CGFloat = 16) -> some View {
         ForEach(Array(tabs.enumerated()), id: \.element.id) { i, t in
@@ -407,7 +455,7 @@ struct HostSection: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.leading, inset)
                 .padding(.trailing, 16)
-                .frame(minHeight: 46)
+                .frame(minHeight: 50)
                 .overlay(alignment: .bottom) { if i < tabs.count - 1 { RowDivider(inset: inset) } }
         }
     }
@@ -695,22 +743,28 @@ struct HostSection: View {
 
     /// The rows of a card, each with its tab's menu, and dragged onto
     /// another of its session to move there; more is a row after them.
-    private func rows(_ entries: [Entry], more: Bool = false) -> some View {
+    private func rows(_ entries: [Entry], more: Bool = false, tiles column: CGFloat? = nil, lift: Bool = false) -> some View {
         let windows = arranged(entries)
         // The room of the tiles of the tab with the most, so that the titles line up.
-        let tiles = ProgramTiles.width(behind: windows.map(\.window.back.count).max() ?? 0)
+        let tiles = column ?? ProgramTiles.width(behind: windows.map(\.window.back.count).max() ?? 0)
+        // The tab the window shows, on the face of its project: lifted.
+        let shownTab: (Entry) -> Bool = { w in
+            lift && current.map { $0.host == host.id && $0.session == w.session.id && w.window.holds($0.block) } ?? false
+        }
         // Each session's rows, in order, made once for the card.
         let shownBy = RowGroups.shown(windows.map { ($0.session.id, $0.window.window_id) })
         return ForEach(Array(windows.enumerated()), id: \.element.id) { i, w in
             let row = Button {
                 openRow(TerminalTarget(host: host.id, session: w.session.id, block: w.block, title: host.title(w.window)))
             } label: {
-                WindowRow(host: host, block: w.block, window: w.window, tiles: tiles, divider: more || i < windows.count - 1) {
+                WindowRow(host: host, block: w.block, window: w.window, tiles: tiles,
+                          divider: (more || i < windows.count - 1) && !shownTab(w) && !(i + 1 < windows.count && shownTab(windows[i + 1]))) {
                     Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(.gray)
                 }
             }
             .buttonStyle(.plain)
             .hoverEffect(.highlight)
+            .background { if shownTab(w) { LiftedPill() } }
             .matchedTransitionSource(id: ZoomSource.row(host: host.id, session: w.session.id, window: w.window.window_id), in: zoom)
             let shown = shownBy[w.session.id] ?? []
             let place = RowPlace(host: host.id, session: w.session.id, window: w.window.window_id)
@@ -724,37 +778,95 @@ struct HostSection: View {
     }
 }
 
-/// A project's row: its folder's icon in the project's color, its name,
-/// the number of its tabs, and whether it is open.
+/// A project's row: its folder tile in the column of the tabs' program
+/// tiles, its name, a chevron when it has tabs, and the number of them.
 struct ProjectRow: View {
     let name: String
     let color: String?
     let count: Int
     let open: Bool
     var busy = false
+    /// The width of the tile column, as the tab rows below have it.
+    let tiles: CGFloat
     var divider = false
 
     var body: some View {
-        HStack(spacing: 12) {
-            // Only a mark: the row reads as its name.
-            Image(systemName: "folder.fill")
-                .foregroundStyle(Color(project: color) ?? .secondary)
-                .frame(width: 24)
-                .accessibilityHidden(true)
+        HStack(spacing: 14) {
+            FolderTile(color: color).frame(width: tiles, height: 16 * ProgramTiles.scale + 4, alignment: .leading)
             Text(verbatim: name).font(.body.weight(.semibold)).lineLimit(1)
             Spacer(minLength: 8)
-            if busy {
-                ProgressView()
-            } else {
-                Text(verbatim: "\(count)").foregroundStyle(.secondary).monospacedDigit()
-            }
-            Chevron(open: open)
+            if busy { ProgressView() }
+            // Before the count, always shown; a project with no tab has none.
+            if count > 0 { Chevron(open: open) }
+            Text(verbatim: "\(count)").foregroundStyle(.secondary).monospacedDigit()
         }
         .padding(.horizontal, 16)
-        .padding(.vertical, 8)
-        .frame(minHeight: 54)
+        .padding(.vertical, 11)
+        // As a tab's row.
+        .frame(minHeight: 50)
         .contentShape(.rect)
-        .overlay(alignment: .bottom) { if divider { RowDivider(inset: 52) } }
+        .overlay(alignment: .bottom) { if divider { RowDivider(inset: 16 + tiles + 14) } }
+    }
+}
+
+/// A project's tile: the size and corners of a program tile, a neutral
+/// face, and a folder in the project's color (muted with none).
+struct FolderTile: View {
+    let color: String?
+    @Environment(\.colorScheme) private var scheme
+
+    var body: some View {
+        let k = ProgramTiles.scale
+        let card = RoundedRectangle(cornerRadius: 4.5 * k)
+        card.fill(scheme == .dark ? Color(white: 0.32) : Color.white)
+            .overlay {
+                card.fill(LinearGradient(stops: [.init(color: .white.opacity(0.18), location: 0), .init(color: .white.opacity(0), location: 0.5),
+                                                 .init(color: .black.opacity(0.06), location: 1)], startPoint: .top, endPoint: .bottom))
+            }
+            .overlay { card.strokeBorder(scheme == .dark ? Color.white.opacity(0.2) : Color.black.opacity(0.1), lineWidth: 0.5) }
+            .overlay {
+                Image(systemName: "folder.fill")
+                    .font(.system(size: 10.5 * k))
+                    .foregroundStyle(Color(project: color) ?? .secondary)
+            }
+            .background {
+                RoundedRectangle(cornerRadius: 4.5 * k + 0.75).fill(scheme == .dark ? .black.opacity(0.7) : .white.opacity(0.95))
+                    .padding(scheme == .dark ? -0.75 : -k)
+            }
+            .shadow(color: .black.opacity(0.18), radius: 0.75 * k, y: 0.5 * k)
+            .frame(width: 21 * k, height: 16 * k)
+            .padding(.leading, k)
+            .accessibilityHidden(true)
+    }
+}
+
+/// The face behind the project the window shows, its row and its tabs:
+/// 4 pt in from the card, and 18 pt round, a row's 14 pt and that 4, so
+/// that its corners share the centre of the card's (22 pt).
+private struct ProjectFace: View {
+    @Environment(\.colorScheme) private var scheme
+
+    var body: some View {
+        let shape = RoundedRectangle(cornerRadius: 18, style: .continuous)
+        shape.fill(Color.primary.opacity(scheme == .dark ? 0.07 : 0.055))
+            .overlay { shape.strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5) }
+            .padding(4)
+    }
+}
+
+/// The tab that is open on the face, lifted: a lighter face, a soft
+/// shadow and a hairline.
+private struct LiftedPill: View {
+    @Environment(\.colorScheme) private var scheme
+
+    var body: some View {
+        let shape = RoundedRectangle(cornerRadius: 14, style: .continuous)
+        shape.fill(scheme == .dark ? Color.white.opacity(0.13) : Color.white)
+            .overlay { shape.strokeBorder(Color.primary.opacity(scheme == .dark ? 0.12 : 0.08), lineWidth: 0.5) }
+            .shadow(color: .black.opacity(scheme == .dark ? 0.35 : 0.1), radius: 4, y: 1)
+            // Inside the face (4 pt from the card) by its 4 pt again.
+            .padding(.horizontal, 8)
+            .padding(.vertical, 2)
     }
 }
 

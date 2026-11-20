@@ -1346,6 +1346,16 @@
         }
       }
     },
+    "Tabs with no project": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无项目的标签页"
+          }
+        }
+      }
+    },
     "Terminal": {
       "localizations": {
         "zh-Hans": {

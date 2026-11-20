@@ -3,7 +3,7 @@ name: MOD-002
 description: "Projects are folders on each host, inside a space, and hosts own them. Use when you change spaces, projects or where layouts live."
 metadata:
   created: "2026-11-17"
-  updated: "2026-11-20"
+  updated: "2026-11-21"
 ---
 
 # MOD-002: Projects: folders on each host, inside a space
@@ -192,6 +192,7 @@ The sketches use text marks for icons. In the UI, each mark is a lucide SVG from
 | `[H]` | `monitor` |
 | `[F]` | `folder` (tinted by the color of the project if set) |
 | `[▤]` | the folder tile of a project in the desktop sidebar: a tile with the size and corners of a tab tile, in a neutral face, with a `folder` in the color of the project |
+| `[T]` | the program tile of a tab, in the sketch of Rex Go |
 | `[+F]` | `folder-plus`: New Project… at the foot of the sidebar |
 | `[S]` | `search` |
 | `+` | `plus` |
@@ -332,27 +333,34 @@ The folder check of v0.38.0 stays. A missing folder fails with a note and offers
 │ ☰        Work ▾             [S] │   ← space picker
 ├─────────────────────────────────┤
 │ [H] This Mac                  + │   ← + makes a project here
-│   [F] gorex                 3 ⌄ │
-│       dev                    ›  │
-│       logs                   ›  │
-│       review                 ›  │
+│   [▤] gorex               ⌄ 3   │
+│       [T] dev              ›    │
+│       [T] logs             ›    │
+│       [T] review           ›    │
 │       + New Tab                 │
-│   [F] notes                 1 › │
-│       dev                    ›  │
-│       logs                   ›  │
+│   [▤] notes               › 1   │
+│                                 │
+│   Tabs with no project          │   ← a label, no chevron
+│       [T] zsh              ›    │
 │       + New Tab                 │
 │                                 │
 │ [H] alice-tower  ●            + │
-│   [F] trainer               2 › │
+│   [▤] trainer             › 2   │
 │                                 │
 │ [H] old-laptop   ○ offline      │
-│   [F] site                  0 › │
+│   [▤] site                  0   │   ← no tab, no chevron
 └─────────────────────────────────┘
 ```
 
 - The top shows the space picker, not a strip of projects.
-- Each host lists its projects of the space, in order of last use. Then it lists its tabs with no project, tiled flat. Each tab has a row. A New Tab row comes after them. These tabs have no row of their own to fold. A project expands to its tabs and a New Tab row.
-- The row of a project shows its folder icon in its color, its name, its tab count and whether it is open. The list does not show the folder itself, as on the desktop and the web client.
+- Each host lists its projects of the space, in order of last use. Then it lists its tabs with no project, under a label of their own. Each tab has a row. A New Tab row comes after them. The label does not fold. A project expands to its tabs and a New Tab row.
+- The row of a project shows its folder tile, its name, a chevron and its tab count. The list does not show the folder itself, as on the desktop and the web client. The rows follow the desktop sidebar (#907), adapted to touch and to the system's list:
+  - **Folder tile.** The tile has the size and corners of a program tile (21×16 DIP at the scale of the tab rows) and a neutral face. The folder in it has the color of the project, or the muted color when the project has none. It stands in the column of the program tiles. The name of the project starts where the titles of the tabs start. One column width serves every row of a host, taken from the tab with the most tiles behind its front tile, so opening a project moves no name.
+  - **Chevron.** The chevron comes after the name, before the tab count, and always shows. It points right when the project is closed and down when it is open, and it turns with the opening. A project with no tab has no chevron. The Older row has the same chevron before its count.
+  - **One height.** A project row and a tab row are 50 pt high at least, and grow with Dynamic Type. Both keep a touch target of 44 pt.
+  - **Current project.** On a wide window (iPad, the sidebar beside a terminal) the project that holds the open terminal, while its tabs are open, has a **face** behind its row, its tabs and its New Tab row. The face is inset 4 pt from the card. Its corner radius is 18 pt, the 14 pt radius of a row's pill plus those 4 pt, so both corners share the centre of the card's corner. The face is always drawn and fades in and out with its opacity, so nothing moves. The tab that is open is lifted on the face: a lighter face, a soft shadow and a hairline. On a narrow window (iPhone) the list is the whole page and the terminal covers it, so no project is current and no face shows. The projects there keep the tile, the chevron and the height.
+  - **Opening.** The tabs of a project and its New Tab row come and go as one block, with the opening of the chevron: they fade and shrink to the row above. With Reduce Motion they change at once.
+  - **Tabs with no project.** A light section label, "Tabs with no project", stands over the card of these tabs, at the leading edge of the rows. It has no chevron and no count. The tabs are always listed under it, with a New Tab row, with no folding. They use the same tile column as the projects.
 - An offline host shows its projects greyed, from the copy that the app kept when it last saw them.
 - The `+ ` of the host opens the folder browser of v0.38.0 on that host and makes the project (`gorex.project.create`).
 - New Tab in a project opens on its host with `cwd` set to the folder.
