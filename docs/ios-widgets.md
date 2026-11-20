@@ -1,9 +1,9 @@
 # Rex Go: widgets
 
 Status: phase 1 built (the `GoRexWidgets` target, the snapshot and its
-writer, the Inbox widget, `rexgo://open` and `inbox`); TestFlight does
-not sign it with the App Group yet (see Build and release). Phases 2
-and 3 are not built.
+writer, the Inbox widget, `rexgo://open` and `inbox`), and signed with
+the App Group at export (see Build and release). Phases 2 and 3 are not
+built.
 
 ## Problem
 
@@ -277,29 +277,33 @@ snapshot's `windows`.
 
 ## Build and release
 
-- The extension's App ID and the App Group must exist on the developer
-  portal. TestFlight CI (`ios/scripts/upload`) signs at export,
-  cloud-managed, with `-allowProvisioningUpdates` and the App Store
-  Connect API key. **[code]** On 2026-11-20 the portal had the App ID
-  `dev.gorex.ios` with one capability (In-App Purchase), no
-  `dev.gorex.ios.widgets`, and so no App Group on either.
-  **[checked]** with `asc bundle-ids capabilities list`. Whether the
-  key may register them on its own depends on its role.
-  **[assumption]**
-- **An archive built with `CODE_SIGNING_ALLOWED=NO` carries no
-  entitlements, and the export adds none.** **[checked]** The CI's
-  archive of build 1.1 (158) is unsigned; exported again to a local
-  folder with the CI's options (`destination` `export`), its app holds
-  only `application-identifier`, `team-identifier`, `get-task-allow`
-  and `beta-reports-active`: not the iCloud key-value store that
-  `GoRex.entitlements` names. So, as the upload is now, the App Group
-  is missing from the app and the extension at export: the app finds
-  no container and writes nothing, and the widget shows "Open Rex Go".
-  An archive of this branch built the same way embeds
-  `GoRexWidgets.appex`, unsigned. Before widgets reach testers, the
-  upload must sign the archive with its entitlements (or re-sign it
-  with them before the export), and the App IDs must have the App
-  Group; checked on an exported build, not assumed. The same holds for
+- The App Group `group.dev.gorex.ios` is on the developer portal, on
+  the App IDs `dev.gorex.ios` (with iCloud) and `dev.gorex.ios.widgets`.
+  **[checked]** `asc bundle-ids capabilities list` shows `APP_GROUPS`
+  on both and `ICLOUD` on the app's; the API does not list a
+  capability's groups, but the profiles the export fetched name
+  `group.dev.gorex.ios` for both.
+- TestFlight CI (`ios/scripts/upload`) archives unsigned
+  (`CODE_SIGNING_ALLOWED=NO`), as the Mac holds no signing identity, and
+  signs at export, cloud-managed, with `-allowProvisioningUpdates` and
+  the App Store Connect API key. **[code]**
+- **An unsigned archive carries no entitlements, and the export adds
+  none.** **[checked]** The CI's archive of build 1.1 (158), exported
+  again to a local folder, held only `application-identifier`,
+  `team-identifier`, `get-task-allow` and `beta-reports-active`: not
+  the iCloud key-value store that `GoRex.entitlements` names. So builds
+  up to 158 lack it, and would have lacked the App Group.
+- So `upload` signs each bundle of the archive ad hoc with its
+  entitlements (`$(TeamIdentifierPrefix)` and `$(CFBundleIdentifier)`
+  filled in) before the export, which signs them again for the
+  distribution and keeps them. **[checked]** `DESTINATION=export
+  BUILD=1 scripts/upload` on this branch exported an IPA (nothing
+  uploaded) signed by the cloud-managed Apple Distribution certificate,
+  whose `GoRex.app` holds `com.apple.security.application-groups`
+  `[group.dev.gorex.ios]` and
+  `com.apple.developer.ubiquity-kvstore-identifier`, and whose
+  `GoRexWidgets.appex` holds the App Group; `codesign --verify --deep
+  --strict` passes. The same step will carry
   [ios-live-activities.md](ios-live-activities.md)'s `aps-environment`.
 - `ios/WhatToTest.md` gets a bullet per locale in the PR that ships each
   widget.
@@ -341,10 +345,9 @@ Efforts are rough estimates. **[assumption]**
    Activity.
 2. Decided: the Lock Screen shows headings, `.privacySensitive()`, with
    no setting of its own.
-3. Does the CI's App Store Connect key have the role to register the
-   extension's App ID and the App Group? An unsigned archive does not
-   keep entitlements at export (Build and release): how should the
-   upload sign the archive?
+3. Settled: the App IDs and the App Group are on the portal, and the
+   upload signs the archive ad hoc with its entitlements before the
+   export (Build and release).
 4. Decided: a tap from a widget does not mark done or error records
    seen. It only opens the terminal, as a notification's tap does; the
    terminal, as it shows, marks its block's records seen as it always
