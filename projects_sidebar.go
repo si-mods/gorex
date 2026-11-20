@@ -318,8 +318,12 @@ func (a *App) projectRow(c *ui.Context, k *colors, w *Workspace, reserve float32
 		return
 	}
 	// The tabs come under their project with their tiles where its folder
-	// is, not one step in.
+	// is, not one step in. The list folds open and shut as a whole, as a
+	// tab does: its rows' own motion runs only in a list that stays.
 	list := ui.Column(c.Key("project-tabs-" + key)).Gap(rowGap)
+	if anim := motion(c); anim != nil {
+		list.Transition(ui.ElementTransition{Animation: anim, Position: true, Enter: tabMotion, Exit: tabMotion})
+	}
 	if offline {
 		dimmed(list, 0.5)
 	}
@@ -419,9 +423,11 @@ func discRoom(c *ui.Context) ui.Element {
 // under it: down while open, right while closed.
 func disclosureChevron(c *ui.Context, k *colors, open bool) {
 	chevron := glyphIcon(c.Key("chevron"), "chevron-down", 11, k.textFaint).Shrink(0)
-	if !open {
-		chevron.Rotate(-90)
+	turn := float32(-90)
+	if open {
+		turn = 0
 	}
+	chevron.Rotate(animated(c, chevron, "fold", turn))
 }
 
 // projectFolderIcon draws a project row's folder icon, tinted by color
