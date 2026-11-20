@@ -197,7 +197,9 @@ final class TerminalView: UIView, TerminalOutput {
         backgroundColor = UIColor(cgColor: (session.background ?? .black).cgColor)
         addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(tap)))
         addGestureRecognizer(longPress)
-        addGestureRecognizer(UIPinchGestureRecognizer(target: self, action: #selector(pinch)))
+        let pinch = UIPinchGestureRecognizer(target: self, action: #selector(self.pinch))
+        pinch.delegate = self
+        addGestureRecognizer(pinch)
         let drag = UIPanGestureRecognizer(target: self, action: #selector(self.drag))
         drag.allowedTouchTypes = [UITouch.TouchType.indirectPointer.rawValue as NSNumber]
         addGestureRecognizer(drag)

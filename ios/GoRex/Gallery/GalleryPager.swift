@@ -9,7 +9,8 @@ import UIKit
 struct GalleryPager: View {
     let gallery: PaneGallery
     let session: TerminalSession
-    @State var current: String
+    /// The image on screen, the gallery's, which the cover zooms from.
+    @Binding var current: String
     @State private var chrome = true
     /// The files of the pages loaded, to share.
     @State private var files: [String: URL] = [:]

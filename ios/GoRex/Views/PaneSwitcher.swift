@@ -70,6 +70,9 @@ struct PaneBar: View {
     let select: (String) -> Void
     let newSplit: () -> Void
     let close: (String) -> Void
+    /// One highlight moves from tile to tile, as the current pane changes.
+    @Namespace private var highlight
+    @Environment(\.accessibilityReduceMotion) private var still
 
     var body: some View {
         HStack(spacing: 8) {
@@ -90,9 +93,13 @@ struct PaneBar: View {
                             .padding(4)
                             .background {
                                 if cell.block == current {
-                                    RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                        .fill(Color.accentColor.opacity(0.3))
-                                        .strokeBorder(Color.accentColor.opacity(0.8), lineWidth: 1)
+                                    // Reduce Motion fades it from tile to
+                                    // tile, with no slide.
+                                    if still {
+                                        currentMark
+                                    } else {
+                                        currentMark.matchedGeometryEffect(id: "current", in: highlight)
+                                    }
                                 }
                             }
                             .contentShape(.rect)
@@ -105,6 +112,9 @@ struct PaneBar: View {
                     .contextMenu {
                         Button("Close Pane", systemImage: "xmark.rectangle", role: .destructive) { close(cell.block) }
                     }
+                    // A split's tile grows in and a closed one shrinks
+                    // away; Reduce Motion only fades them.
+                    .transition(still ? AnyTransition.opacity : .scale.combined(with: .opacity))
                 }
             }
             .padding(.horizontal, 6)
@@ -121,7 +131,16 @@ struct PaneBar: View {
             .accessibilityLabel("Split Pane")
             .glassEffect(.regular.interactive(), in: .circle)
         }
-        .animation(.snappy, value: current)
+        .animation(still ? .easeInOut(duration: 0.15) : .snappy, value: current)
+        // The other tiles make room for a split's, and close a closed one's gap.
+        .animation(still ? .easeInOut(duration: 0.15) : .snappy, value: cells.map(\.block))
+    }
+
+    /// The current pane's highlight, behind its tile.
+    private var currentMark: some View {
+        RoundedRectangle(cornerRadius: 6, style: .continuous)
+            .fill(Color.accentColor.opacity(0.3))
+            .strokeBorder(Color.accentColor.opacity(0.8), lineWidth: 1)
     }
 }
 

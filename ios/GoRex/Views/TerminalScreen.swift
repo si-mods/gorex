@@ -24,6 +24,8 @@ struct TerminalScreen: View {
     @State private var closing: Set<String> = []
     /// Whether the session's sheet is open, as the title opens it.
     @State private var sheet = false
+    /// The session's sheet grows out of the title's pill, and shrinks back.
+    @Namespace private var zoom
     /// Whether the diagnostics of a failed terminal show.
     @State private var diagnostics = false
     /// The height of the status bar.
@@ -186,6 +188,7 @@ struct TerminalScreen: View {
                     OwnBody { principalTitlePill }
                 }
                 .sharedBackgroundVisibility(.hidden)
+                .matchedTransitionSource(id: "title", in: zoom)
                 // The mic where the terminal has no key bar, and the
                 // window's menu, New Tab being in the session's sheet and on
                 // ⌘T, the split on ⌘D as the desktop's; the bar's glass
@@ -215,7 +218,9 @@ struct TerminalScreen: View {
             // one below does not reach it under a dark system.
             .sheet(isPresented: $sheet) { SessionSheet(target: currentTarget, host: host, go: { next in
                 if let next { switchTo(next) } else { go(nil) }
-            }, newTab: newTab).environment(\.colorScheme, scheme) }
+            }, newTab: newTab)
+            .environment(\.colorScheme, scheme)
+            .navigationTransition(.zoom(sourceID: "title", in: zoom)) }
             .sheet(isPresented: $diagnostics) {
                 NavigationStack {
                     DiagnosticsView(address: host.config.url.host() ?? "", host: host.config, failure: session?.diagnosis)

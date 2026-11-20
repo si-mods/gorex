@@ -55,3 +55,13 @@ extension TerminalView {
         sizeLabel.alpha = 1
     }
 }
+
+/// A pinch in the terminal sizes the font, never closes the screen: the
+/// zoom transition's pinch to close, on a view above, waits for this one to
+/// fail (IOS-011).
+extension TerminalView: UIGestureRecognizerDelegate {
+    func gestureRecognizer(_ g: UIGestureRecognizer, shouldBeRequiredToFailBy other: UIGestureRecognizer) -> Bool {
+        guard g is UIPinchGestureRecognizer, other is UIPinchGestureRecognizer, let v = other.view else { return false }
+        return v !== self && isDescendant(of: v)
+    }
+}
