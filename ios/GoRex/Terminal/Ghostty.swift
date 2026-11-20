@@ -6,7 +6,10 @@ import UIKit
 /// app on the main thread, and the actions a surface sends reach its view
 /// there.
 enum Ghostty {
+    /// It starts on its first use, after GoRexApp's init. The downloaded
+    /// font is known before, for a terminal that names it.
     static let app: ghostty_app_t? = {
+        Maple.shared.register()
         guard ghostty_init(0, nil) == 0, let config = config("minimum-contrast = \(TerminalView.minimumContrast)") else { return nil }
         var runtime = ghostty_runtime_config_s(
             userdata: nil,
