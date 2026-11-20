@@ -9,7 +9,10 @@ import UIKit
 /// Its end runs the work its owners registered, once each; work registered
 /// after the end, in the same trip to the background, runs at once. The
 /// task ends exactly once: as all the work says it finished, at once as
-/// iOS takes the time back, or as the app comes back.
+/// iOS takes the time back, or as the app comes back, when that is before
+/// the grace ended or the work finished (the task stays open for work that
+/// still waits for its finished callback, until it is done, the next start
+/// or iOS takes the time back).
 final class BackgroundGrace {
     /// Asks for background time, calling expired as iOS takes it back; nil
     /// when iOS gives none.
@@ -74,6 +77,21 @@ final class BackgroundGrace {
     /// Removes the work of an owner, which is not to run.
     func unregister(_ key: AnyHashable) {
         works[key] = nil
+    }
+
+    /// Skips the grace of this trip to the background, when none is needed:
+    /// the work registered so far runs at once, and so does the work
+    /// registered after it, as without background time.
+    func skip() {
+        guard !running else { return }
+        finish()
+        generation += 1
+        over = true
+        unfinished = 0
+        keptUntil = now()
+        let all = Array(works.values)
+        works = [:]
+        run(all, byIOS: false)
     }
 
     /// Starts the grace. Without background time, it ends at once, as the
@@ -142,7 +160,10 @@ final class BackgroundGrace {
     }
 
     /// The app came back: a grace still running ends without its work,
-    /// and the work registered is dropped. True when one was running.
+    /// and the work registered is dropped. True when one was running. A
+    /// grace that ended already keeps its task open for work that still
+    /// waits for its finished callback, until that is done, the next start
+    /// or iOS takes the time back.
     @discardableResult
     func cancel() -> Bool {
         works = [:]

@@ -64,6 +64,32 @@ nonisolated final class BackgroundGraceTests: XCTestCase {
         XCTAssertEqual(ran.count, 3)
     }
 
+    /// With no grace needed, the work runs at once, once, whether it was
+    /// registered before the skip or after; the next trip waits again.
+    @MainActor func testSkipRunsAtOnce() {
+        let w = Waits(), t = Tasks()
+        let g = grace(w, t)
+        var ran = 0
+        g.register("a") { _ in ran += 1 }
+        g.skip()
+        XCTAssertEqual(ran, 1, "registered, then skipped")
+        g.cancel()
+
+        g.skip()
+        g.register("b") { _ in ran += 1 }
+        XCTAssertEqual(ran, 2, "skipped, then registered")
+        runOut(w)
+        XCTAssertEqual(ran, 2)
+        XCTAssertEqual(t.begun, 0)
+
+        g.cancel()
+        g.register("c") { _ in ran += 1 }
+        XCTAssertEqual(ran, 2, "the next trip waits")
+        g.start()
+        runOut(w)
+        XCTAssertEqual(ran, 3)
+    }
+
     /// The app comes back: no work runs, the task ends once, and the work
     /// registered is dropped.
     @MainActor func testCancelRunsNone() {

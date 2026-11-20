@@ -81,7 +81,12 @@ struct GoRexApp: App {
                     if p == .background {
                         away = .now
                         // Any host's connection stays open a while, not only an open terminal's.
-                        if HostStore.needsGrace(store.hosts, terminal: TerminalLive.shared.host) { BackgroundGrace.shared.start() }
+                        if HostStore.needsGrace(store.hosts, terminal: TerminalLive.shared.host) {
+                            BackgroundGrace.shared.start()
+                        } else {
+                            // No grace: the terminal's work runs at once.
+                            BackgroundGrace.shared.skip()
+                        }
                         // A setting changed just now goes before the app may end.
                         CloudSettings.shared.flush()
                         HotspotShare.shared.handleBackground()
