@@ -8,7 +8,7 @@ metadata:
 
 # IOS-012: Connections across the background and network changes
 
-Status: proposal.
+Status: accepted. Not implemented.
 
 Replaces: [`IOS-006`](IOS-006-live-activities.md), section "Grace". This doc makes the grace app-wide, ties its end to the time that iOS gives, and adds a reconnect when the network changes. It compares Rex Go with rootshell, another iOS terminal, and takes two of its four methods. It does not keep the app running after the grace: [`IOS-006`](IOS-006-live-activities.md), Alternatives b, rejected that.
 
@@ -120,8 +120,4 @@ On a network change in the foreground:
 ## Phases
 
 1. App-wide grace, deadline from `backgroundTimeRemaining`, end on a memory warning.
-2. Reconnect on a network change, with the shared `NWPathMonitor`.
-
-## Open questions
-
-1. **Time to measure the reconnect.** The 2-second goal is an estimate. The phase 2 PR measures it on a device and updates the goal. The user accepts the measured value.
+2. Reconnect on a network change, with the shared `NWPathMonitor`. The 2-second goal is an estimate: this PR measures it on a device and writes the measured value in Goal, for the user to accept.
