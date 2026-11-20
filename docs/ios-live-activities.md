@@ -28,7 +28,7 @@ and may need you".
 
 - When the user leaves Rex Go with a terminal open, that terminal shows
   in the Dynamic Island and on the Lock Screen: its program, its state,
-  its last line. Its stream stays connected for a short grace (about 25
+  its latest line. Its stream stays connected for a short grace (about 25
   seconds), so a quick switch to another app and back loses nothing;
   after the grace the activity says it is paused, and coming back
   resumes the stream as today.
@@ -247,8 +247,8 @@ on `.active`; the shell on the host keeps running. **[code]**
 - **Content state**: window title; program id (for the tile); the
   block's most urgent OSC 7501 record's `state`, `kind`, `progress`,
   `title` and `updated`, or none for a plain shell or an idle record;
-  `line`, the last non-empty line of the screen, cut to 80 characters;
-  `connected` (whether the stream is open). Titles and the host name are
+  `line`, the line that tells the latest state (below), cut to 80
+  characters; `connected` (whether the stream is open). Titles and the host name are
   cut to 200 characters and 400 UTF-8 bytes, the line to 80 characters
   and 240 bytes, whole characters only; with the longest of each,
   attributes and state stay well under 4 KB (`TerminalLiveTests`).
@@ -266,8 +266,49 @@ on `.active`; the shell on the host keeps running. **[code]**
   Settings › Live Activities off, or `areActivitiesEnabled` false: none.
 - **Update**: while the stream is open, on a record change or a change
   of `line`, coalesced to one per two seconds. The stream's output marks
-  the line changed; the next update reads the screen
-  (`TerminalOutput.readScreen`), and a new line comes in the update after.
+  the line changed; the next update reads the screen's rows and the
+  cursor's row (`TerminalOutput.readRows`), and a new line comes in the
+  update after.
+- **Line** (`TerminalLive.state`, `TerminalActivity.screenLine`): the
+  last non-empty line of the screen is a TUI agent's status bar (Claude
+  Code, Codex, Devin, Pi), never its state, so:
+  1. When the block's most urgent record is `blocked` and has a `msg`
+     that is not blank, the line is the message, its line breaks as
+     spaces. It wins over the line the screen read.
+  2. Else, when the screen ends in a TUI's input, the line is the first
+     above the input that is not blank, a rule (box-drawing or block
+     characters, U+2500–U+259F, and spaces), a line in a box (it starts
+     and ends with a box's side) or one of the input's lines, without
+     its leading spaces. The input is found from the bottom, wherever
+     the cursor is: rows between two rules, at most 10, with at most 5
+     lines under the lower rule, that hold a prompt (`>`, `›`, `❯`, `❭`,
+     `▌`, `»`, `▶` after spaces and a box's side) or the cursor; or,
+     without rules, the lowest line that starts with a prompt shells do
+     not use (`›`, `❭`, `▌`), with a blank line or a rule above it and
+     at most 5 lines under it.
+  3. Else, with text under the cursor's row, a TUI with its cursor in
+     its input: as in 2, the input being the cursor's row and the lines
+     right above it up to the topmost that starts with a prompt.
+  4. Else, as for a shell or a program printing, the last line at or
+     above the cursor's row that is not blank. A shell's prompt at the
+     bottom, `❯` too, has no rules round it, and stays a shell's.
+  5. With no such line, the last non-empty line of the screen.
+
+  The rows are read a row at a time, as Ghostty joins soft-wrapped rows
+  in one read; the cursor's row comes from Ghostty's IME point, as for
+  the terminal's slide (`TerminalView.drawnBottom`).
+
+  Idle screens captured in a 100×40 terminal (`TerminalLiveTests`):
+  Claude Code draws its `❯` input between two rules, a status line and
+  a mode line under it, the cursor in the input, shown. Devin draws
+  from the top, not full-screen: `❭` input between rules, its status
+  bar under it, the cursor in the input, shown. Pi draws an editor with
+  no prompt between rules, three footer lines under it, the cursor in
+  the editor, hidden. Codex asked to sign in, so its input was not
+  captured. A program that hides its cursor under its last line, as an
+  Ink program may while it draws, is found by rule 2. A command's
+  output that ends in a prompt between rules, such as a quote in a
+  table, reads as an input: a known miss.
 - **Grace**: on `.background`, the screen no longer suspends the
   streams at once. It asks for a background task
   (`beginBackgroundTask`), keeps the streams and the built-in Tailscale

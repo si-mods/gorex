@@ -26,9 +26,10 @@ final class TerminalLive {
         func end()
     }
 
-    /// The terminal it shows. state reads the host and the stream, all but
-    /// the line, as of the moment; a change of what it read updates the
-    /// activity. readLine reads the screen's last line, maybe later, maybe
+    /// The terminal it shows. state reads the host and the stream as of
+    /// the moment, with the line only when a blocked record's message is
+    /// it; a change of what it read updates the activity. readLine reads
+    /// the screen's line (TerminalActivity.screenLine), maybe later, maybe
     /// never, as a terminal not drawn yet has no screen.
     struct Source {
         let attributes: TerminalActivity
@@ -205,8 +206,9 @@ final class TerminalLive {
     }
 
     private func state(_ source: Source) -> TerminalActivity.ContentState {
+        // A line the state has, a blocked record's message, wins.
         var s = source.state()
-        s.line = line
+        if s.line.isEmpty { s.line = line }
         return s
     }
 
@@ -222,10 +224,15 @@ final class TerminalLive {
     }
 
     /// The activity's state of a block's terminal: the window's title, the
-    /// tile, the block's most urgent record, the line cut short.
+    /// tile, the block's most urgent record, the line cut short: the
+    /// record's message when it is blocked and has one, which says what
+    /// it waits for, else the screen's.
     static func state(title: String, program: String?, records: [Host.ProgramStatus], seen: Date?,
-                      line: String = "", connected: Bool) -> TerminalActivity.ContentState {
+                      line screen: String = "", connected: Bool) -> TerminalActivity.ContentState {
         let r = Host.ProgramStatus.mostUrgent(records, seen: seen).flatMap { $0.state == "idle" ? nil : $0 }
+        let msg = r.flatMap { $0.state == "blocked" ? $0.msg : nil }
+            .map { $0.split(whereSeparator: \.isNewline).joined(separator: " ").trimmingCharacters(in: .whitespaces) }
+        let line = msg.flatMap { $0.isEmpty ? nil : $0 } ?? screen
         return .init(title: TerminalActivity.cut(title), program: WidgetPublisher.program(r?.app, block: program),
                      record: r.map { .init(state: $0.state, kind: $0.kind, progress: $0.progress, title: $0.title.map { TerminalActivity.cut($0) }, updated: $0.updated) },
                      line: TerminalActivity.cut(line, TerminalActivity.maxLine, bytes: TerminalActivity.maxLineBytes), connected: connected)
