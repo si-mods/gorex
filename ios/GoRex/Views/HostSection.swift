@@ -244,25 +244,32 @@ struct HostSection: View {
                 }
             }
         }
-        // The tabs with no project sit under a light label of their own,
-        // always listed: nothing to fold.
+        // The tabs with no project are a group like a project: a card with
+        // a row of its own, open at first.
         if query.isEmpty || !looseTabs.isEmpty {
-            VStack(alignment: .leading, spacing: 6) {
-                sectionLabel
-                card {
-                    rows(looseTabs, more: true, tiles: column)
-                    newTabRow { newLooseTab() }
+            let k = Self.key(host, "loose")
+            let isOpen = !collapsed.contains(k) || !query.isEmpty
+            let face = isOpen && current.map { c in c.host == host.id && loose.contains { $0.id == c.session } } ?? false
+            card(face: face) {
+                Button {
+                    withAnimation(reduceMotion ? nil : .snappy) { if collapsed.contains(k) { collapsed.remove(k) } else { collapsed.insert(k) } }
+                } label: {
+                    ProjectRow(name: String(localized: "Tabs with no project"), color: nil, count: looseTabs.count, open: isOpen,
+                               tiles: column, divider: isOpen)
+                }
+                .buttonStyle(.plain)
+                .hoverEffect(.highlight)
+                .contextMenu { Button("New Tab", systemImage: "plus") { newLooseTab() } }
+                .accessibilityHint(isOpen ? "Collapse" : "Expand")
+                if isOpen {
+                    VStack(spacing: 0) {
+                        rows(looseTabs, more: true, tiles: column, onFace: face, grouped: false)
+                        newTabRow { newLooseTab() }
+                    }
+                    .transition(reduceMotion ? .identity : .opacity.combined(with: .scale(scale: 0.96, anchor: .top)))
                 }
             }
         }
-    }
-
-    private var sectionLabel: some View {
-        Text("Tabs with no project")
-            .font(.footnote.weight(.medium))
-            .foregroundStyle(.secondary)
-            .padding(.leading, 16)
-            .accessibilityAddTraits(.isHeader)
     }
 
     /// The width of the tile column of every row of the host, so that the
@@ -429,9 +436,17 @@ struct HostSection: View {
                 }
             }
             if !l.loose.isEmpty {
-                VStack(alignment: .leading, spacing: 6) {
-                    sectionLabel
-                    card { awayTabs(l.loose, inset: 16 + Self.awayTiles + 14) }
+                let k = Self.key(host, "loose")
+                let isOpen = !collapsed.contains(k)
+                card {
+                    Button {
+                        withAnimation(reduceMotion ? nil : .snappy) { if collapsed.contains(k) { collapsed.remove(k) } else { collapsed.insert(k) } }
+                    } label: {
+                        ProjectRow(name: String(localized: "Tabs with no project"), color: nil, count: l.loose.count, open: isOpen,
+                                   tiles: Self.awayTiles, divider: isOpen)
+                    }
+                    .buttonStyle(.plain)
+                    if isOpen { awayTabs(l.loose, inset: 16 + Self.awayTiles + 14) }
                 }
             }
         }
