@@ -416,12 +416,12 @@ nonisolated final class ProjectTests: XCTestCase {
     /// A card's rows group by session as the filter of each row did.
     func testShownGroupsRowsBySession() {
         let rows = [("a", "1"), ("b", "2"), ("a", "3"), ("c", "4"), ("b", "5"), ("a", "6")].map { (session: $0.0, window: $0.1) }
-        let grouped = HostSection.shown(rows)
+        let grouped = RowGroups.shown(rows)
         XCTAssertEqual(Set(grouped.keys), ["a", "b", "c"])
         for r in rows {
             XCTAssertEqual(grouped[r.session], rows.filter { $0.session == r.session }.map(\.window))
         }
-        XCTAssertTrue(HostSection.shown([]).isEmpty)
+        XCTAssertTrue(RowGroups.shown([]).isEmpty)
     }
 
     /// What the book keeps is there at the next launch.

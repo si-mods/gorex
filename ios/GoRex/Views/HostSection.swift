@@ -658,11 +658,6 @@ struct HostSection: View {
         return windows.sorted { (order.firstIndex(of: $0.window.window_id) ?? .max) < (order.firstIndex(of: $1.window.window_id) ?? .max) }
     }
 
-    /// The window IDs of each session among a card's rows, in the rows' order.
-    static func shown(_ rows: [(session: String, window: String)]) -> [String: [String]] {
-        rows.reduce(into: [:]) { $0[$1.session, default: []].append($1.window) }
-    }
-
     /// A tab's row in a card.
     private struct Entry {
         let session: Host.Session
@@ -698,7 +693,7 @@ struct HostSection: View {
         // The room of the tiles of the tab with the most, so that the titles line up.
         let tiles = ProgramTiles.width(behind: windows.map(\.window.back.count).max() ?? 0)
         // Each session's rows, in order, made once for the card.
-        let shownBy = Self.shown(windows.map { ($0.session.id, $0.window.window_id) })
+        let shownBy = RowGroups.shown(windows.map { ($0.session.id, $0.window.window_id) })
         return ForEach(Array(windows.enumerated()), id: \.element.id) { i, w in
             let row = Button {
                 open(TerminalTarget(host: host.id, session: w.session.id, block: w.block, title: host.title(w.window)))
