@@ -150,6 +150,12 @@ func init() {
 	}
 }
 
+// focusHistoryMethodJSON is revision 19's focus_history.reverse, as Rex
+// describes it. The snapshot the help document comes from predates it.
+//
+//go:embed testdata/rex-focus-history-method.json
+var focusHistoryMethodJSON []byte
+
 // uploadBeginEntry is the method entry revision 11's terminal creator
 // adds, which the revision 10 snapshot predates. Its prose and schemas
 // come from Rex 0.1.0 (1861)'s own doc; the limits the schemas leave out
@@ -329,6 +335,9 @@ func helpDocument(rev int, withHTTP bool) map[string]json.RawMessage {
 		}
 		kept = append(kept, withProject(laterSchema(rev, m.Name, raw)))
 	}
+	if rev >= 19 {
+		kept = append(kept, focusHistoryMethodJSON)
+	}
 	kept = append(kept, ownMethods()...)
 	doc["methods"], _ = json.Marshal(kept)
 	var blocks []json.RawMessage
@@ -372,6 +381,9 @@ func helpAllDocument(rev int) map[string]json.RawMessage {
 			continue
 		}
 		kept = append(kept, withProject(laterSchema(rev, m.Name, raw)))
+	}
+	if rev >= 19 {
+		kept = append(kept, focusHistoryMethodJSON)
 	}
 	kept = append(kept, ownMethods()...)
 	doc["methods"], _ = json.Marshal(kept)

@@ -490,6 +490,11 @@ func (c *control) handle(req *request) {
 		return
 	}
 	payload, err := fn(c, args)
+	if err == nil && focusMethods[req.Method] {
+		if sid, _, aerr := args.str("session_id"); aerr == nil {
+			c.noteFocus(sid)
+		}
+	}
 	c.respond(req, payload, err)
 }
 

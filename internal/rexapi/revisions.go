@@ -98,6 +98,8 @@ var methodSince = map[string]int{
 	"com.superlogical.tunnel.info": 14,
 	// Revision 15 adds the ports method.
 	"com.superlogical.terminal.ports": 15,
+	// Revision 19 adds the focus history walk.
+	"focus_history.reverse": 19,
 }
 
 // eventSince is when an event first appeared. A client at an older
