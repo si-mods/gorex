@@ -1,9 +1,10 @@
 # Rex's apps
 
 Rex's own apps, the iPhone one among them, connect to GoRex as they
-connect to a Rex server. `GoRex rexapi` serves Rex's API, revision 12, from
+connect to a Rex server. `GoRex rexapi` serves Rex's API, revision 14, from
 the session server the GoRex app runs: the same WebSocket endpoints, the
-same messages, the same errors. Rex's apps need no change.
+same messages, the same errors. Rex's apps need no change. The road to
+Rex's revision 19 is [rex-api-rev-19.md](rex-api-rev-19.md).
 
 ## How it works
 
