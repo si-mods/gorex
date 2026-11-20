@@ -3112,7 +3112,7 @@ func (a *App) notifyPane(p *Pane, prog string, icon program, title, body string)
 		Subtitle: src,
 		Body:     body,
 		Group:    key,
-		Image:    tileImage(icon, appearanceDark()),
+		Image:    tileImage(icon),
 	})
 	if a.st != nil {
 		if a.st.shown == nil {
@@ -3122,21 +3122,21 @@ func (a *App) notifyPane(p *Pane, prog string, icon program, title, body string)
 	}
 }
 
-// tileImage is the tile of prog, as tabs show it in the dark appearance
-// or the light, as a PNG of 72 pixels square; nil for a shell, which has
-// no program to show. Each tile is drawn once, in a frame of its own,
-// which ui.Render draws on the main thread: call it there, out of a frame
-// the windows build, as the updates that notify are. One MyGo refuses to
-// draw gives none, and is drawn again the next time.
-func tileImage(prog program, dark bool) []byte {
+// tileImage is the tile of prog, as a PNG of 72 pixels square; nil for a
+// shell, which has no program to show. Each tile is drawn once, in a
+// frame of its own, which ui.Render draws on the main thread: call it
+// there, out of a frame the windows build, as the updates that notify
+// are. One MyGo refuses to draw gives none, and is drawn again the next
+// time.
+func tileImage(prog program) []byte {
 	if prog.Name == "" || prog.Shell {
 		return nil
 	}
-	key := tileKey{prog.Glyph, prog.TileGlyph, prog.TileBg, prog.TileFg, prog.TileBorder, dark}
+	key := tileKey{prog.Glyph, prog.TileGlyph, prog.TileBg, prog.TileFg, prog.TileBorder}
 	if b, ok := tileImages[key]; ok {
 		return b
 	}
-	b := drawTileImage(prog, dark)
+	b := drawTileImage(prog)
 	if b == nil {
 		return nil
 	}
@@ -3150,23 +3150,19 @@ func tileImage(prog program, dark bool) []byte {
 // drawTileImage draws the tile of tileImage on a window of no background:
 // the tile's corners stay clear. A view MyGo refuses to draw, as its
 // headless runtime panics, gives none.
-func drawTileImage(prog program, dark bool) (out []byte) {
+func drawTileImage(prog program) (out []byte) {
 	defer func() {
 		if r := recover(); r != nil {
 			log.Printf("gorex: drawing the tile of %s: %v", prog.Name, r)
 			out = nil
 		}
 	}()
-	k := &lightColors
-	if dark {
-		k = &darkColors
-	}
 	img := ui.Render(func(c *ui.Context) {
 		t := *c.Theme()
 		t.Background = ui.RGBA(0, 0, 0, 0)
 		c.SetTheme(&t)
 		ui.Box(c).Size(24, 24).Draw(func(p *ui.Painter, r ui.Rect) {
-			drawTile(p, k, ui.Rect{X: r.X + (r.W-tileW)/2, Y: r.Y + (r.H-tileH)/2, W: tileW, H: tileH}, prog, true)
+			drawTile(p, ui.Rect{X: r.X + (r.W-tileW)/2, Y: r.Y + (r.H-tileH)/2, W: tileW, H: tileH}, prog, true)
 		})
 	}, 24, 24, 3)
 	var buf bytes.Buffer
@@ -3176,11 +3172,11 @@ func drawTileImage(prog program, dark bool) (out []byte) {
 	return buf.Bytes()
 }
 
-// tileKey is what a tile shows: its glyphs and colors, and the appearance.
+// tileKey is what a tile shows: its glyphs and colors.
 type tileKey struct {
 	glyph, tileGlyph string
 	bg, fg           ui.Color
-	border, dark     bool
+	border           bool
 }
 
 // tileImages are the PNGs of tileImage, 512 at most.
