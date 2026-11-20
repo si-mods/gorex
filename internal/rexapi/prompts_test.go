@@ -177,3 +177,41 @@ gorex.action{name = "ask", run = function(ctx, args) gorex.ui.input{title = "Nam
 	result(t, readResponse(t, c, "reply"))
 	result(t, readResponse(t, c, "run"))
 }
+
+// TestPromptErrorIsShortened: a long refusal message reaches the action
+// shortened.
+func TestPromptErrorIsShortened(t *testing.T) {
+	writeConfig(t, `
+gorex.action{name = "ask", run = function(ctx, args) gorex.ui.input{title = "Name"} end}
+`)
+	f := startFixture(t)
+	c, other, sid := promptClients(t, f)
+	c.send(map[string]any{"type": "request", "id": "run", "method": "client.action",
+		"payload": map[string]any{"action": "ask", "session_id": sid}})
+	mine := readServerEvent(t, c, "client_prompt_requested")
+	theirs := readServerEvent(t, other, "client_prompt_requested")
+	// The second refusal is the one the action sees.
+	other.send(map[string]any{"type": "request", "id": "first", "method": "client.reply",
+		"payload": map[string]any{"call_id": theirs["call_id"], "error": map[string]any{"code": "not_supported", "message": "no"}}})
+	result(t, readResponse(t, other, "first"))
+	long := strings.Repeat("x", 5000)
+	c.send(map[string]any{"type": "request", "id": "reply", "method": "client.reply",
+		"payload": map[string]any{"call_id": mine["call_id"], "error": map[string]any{"code": "not_supported", "message": long}}})
+	result(t, readResponse(t, c, "reply"))
+	e := failure(t, readResponse(t, c, "run"))
+	msg := e["message"].(string)
+	longest, run := 0, 0
+	for _, r := range msg {
+		if r == 'x' {
+			run++
+			if run > longest {
+				longest = run
+			}
+			continue
+		}
+		run = 0
+	}
+	if longest > 4096 || !strings.Contains(msg, "…") {
+		t.Fatalf("the refusal kept %d bytes", longest)
+	}
+}

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strconv"
 	"time"
+	"unicode/utf8"
 
 	"gorex/internal/config"
 )
@@ -181,6 +182,13 @@ func (g *Gateway) replyPrompt(c *control, callID string, rawResult json.RawMessa
 			msg := failure.Message
 			if msg == "" {
 				msg = failure.Code
+			}
+			if len(msg) > 4096 {
+				cut := 4096
+				for cut > 0 && !utf8.RuneStart(msg[cut]) {
+					cut--
+				}
+				msg = msg[:cut] + "…"
 			}
 			select {
 			case e.call.answer <- promptResult{err: fmt.Errorf("no app could show the prompt: %s", msg)}:
