@@ -65,9 +65,9 @@ func (g *Gateway) handleSpaces(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusMethodNotAllowed, "spaces are a GET")
 		return
 	}
-	m, err := g.current()
-	if err != nil {
-		writeError(w, http.StatusServiceUnavailable, "reading the layout: "+err.Error())
+	m, aerr := g.modelReq()
+	if aerr != nil {
+		writeError(w, aerr.Status, aerr.Message)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")

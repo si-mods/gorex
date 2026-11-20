@@ -35,9 +35,9 @@ func (g *Gateway) handleVoice(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "the GoRex server takes no voice")
 		return
 	}
-	m, err := g.current()
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, fmt.Sprintf("reading the layout: %v", err))
+	m, aerr := g.modelReq()
+	if aerr != nil {
+		writeError(w, aerr.Status, aerr.Message)
 		return
 	}
 	b := m.blockByID(r.URL.Query().Get("block_id"))

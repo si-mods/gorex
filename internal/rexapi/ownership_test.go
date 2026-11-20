@@ -234,9 +234,9 @@ func TestOwnershipReconnect(t *testing.T) {
 // firstSID returns the GoRex session of a block, from the gateway's model.
 func (f *fixture) firstSID(t *testing.T, sid string) string {
 	t.Helper()
-	m, err := f.g.current()
-	if err != nil {
-		t.Fatal(err)
+	m, aerr := f.g.modelReq()
+	if aerr != nil {
+		t.Fatal(aerr)
 	}
 	s := m.byID[sid]
 	if s == nil || len(s.blocks) == 0 {

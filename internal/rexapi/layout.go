@@ -200,26 +200,33 @@ func layoutError(g *Gateway, res rex.LayoutCommand) *apiError {
 	return errConflict("%s: %s", res.Code, res.Error)
 }
 
-// afterCommand reads the layout again, and waits until shows is true, or
-// the app's change is too long coming.
+// afterCommand waits for a publish until shows is true, or the app's
+// change is too long coming. A nil shows asks for the model as of now:
+// a no-op command publishes nothing, so it reads the layout once itself.
 func (g *Gateway) afterCommand(shows func(*model) bool) (*model, *apiError) {
-	m, err := g.current()
-	if err != nil {
-		return m, errInternal("reading the layout: %v", err)
-	}
-	if shows == nil || shows(m) {
-		return m, nil
-	}
-	deadline := time.Now().Add(commandWait)
-	for time.Now().Before(deadline) {
-		time.Sleep(10 * time.Millisecond)
-		m, err = g.current()
+	if shows == nil {
+		m, err := g.reread(true)
 		if err != nil {
 			return m, errInternal("reading the layout: %v", err)
 		}
-		if shows(m) {
-			return m, nil
-		}
+		return m, nil
+	}
+	// The command the caller just ran may have applied already: read the
+	// layout once as refresh() used to, and only wait for a publish when
+	// the server applies the change after answering the command.
+	m, err := g.reread(true)
+	if err != nil {
+		return m, errInternal("reading the layout: %v", err)
+	}
+	if shows(m) {
+		return m, nil
+	}
+	m, ok := g.waitModel(shows, time.Now().Add(commandWait))
+	if ok {
+		return m, nil
+	}
+	if g.dead.Load() {
+		return m, errInternal("reading the layout: the GoRex server is gone")
 	}
 	return m, errConflict("GoRex did not show the change in time; it may still appear")
 }
@@ -402,7 +409,7 @@ func methodSessionCreate(c *control, a args) (any, *apiError) {
 		created = append(created, w.ids...)
 	}
 	c.g.emitOwnerChanges(c.g.claimCreated(c.rec, s, created))
-	if fresh, err := c.g.current(); err == nil {
+	if fresh, err := c.g.reread(true); err == nil {
 		m = fresh
 		if now := m.sessionOfSpace(space); now != nil {
 			s = now
@@ -564,7 +571,7 @@ func methodSessionNewWindow(c *control, a args) (any, *apiError) {
 			}
 		}
 	}
-	if fresh, err := c.g.current(); err == nil {
+	if fresh, err := c.g.reread(true); err == nil {
 		m = fresh
 	}
 	return newWindowResult{WindowID: w.id, BlockIDs: ids, Revision: revisionOf(m, s.id)}, nil
@@ -728,7 +735,7 @@ func (g *Gateway) buildBeside(s *mSession, anchor *mBlock, tree *specTree, verti
 
 // splitsOf returns every split ID of a session's active view.
 func (g *Gateway) splitsOf(s *mSession) (map[string]bool, *apiError) {
-	m, err := g.current()
+	m, err := g.reread(true)
 	if err != nil {
 		return nil, errInternal("reading the layout: %v", err)
 	}
@@ -1334,7 +1341,7 @@ func methodSessionSwapBlocks(c *control, a args) (any, *apiError) {
 			if _, aerr := c.focusBlock(s, f); aerr != nil {
 				return nil, aerr
 			}
-			if m, err := c.g.current(); err == nil {
+			if m, aerr := c.g.modelReq(); aerr == nil {
 				return revisionResult{Revision: revisionOf(m, s.id)}, nil
 			}
 		}
@@ -1855,9 +1862,9 @@ func methodSessionListBlocks(c *control, a args) (any, *apiError) {
 	if aerr != nil {
 		return nil, aerr
 	}
-	m, err := c.g.current()
-	if err != nil {
-		return nil, errInternal("reading the layout: %v", err)
+	m, aerr := c.g.modelReq()
+	if aerr != nil {
+		return nil, aerr
 	}
 	now := m.byID[s.id]
 	if now == nil {
@@ -1939,9 +1946,9 @@ func methodSessionDescribeBlock(c *control, a args) (any, *apiError) {
 	if !present || blockID == "" {
 		return nil, errBadRequest("block_id is required")
 	}
-	m, err := c.g.current()
-	if err != nil {
-		return nil, errInternal("reading the layout: %v", err)
+	m, aerr := c.g.modelReq()
+	if aerr != nil {
+		return nil, aerr
 	}
 	now := m.byID[s.id]
 	if now == nil {
@@ -2045,7 +2052,7 @@ func methodSessionOwnBlock(c *control, a args) (any, *apiError) {
 	}
 	blocks, changes := c.g.claimBlocks(c.rec, s, ids, mode, mode)
 	c.g.emitOwnerChanges(changes)
-	c.g.refresh()
+	c.g.rebuild()
 	return claimsResult{Blocks: blocks}, nil
 }
 
@@ -2061,7 +2068,7 @@ func methodSessionDisownBlock(c *control, a args) (any, *apiError) {
 	}
 	blocks, changes := c.g.giveUp(c.rec, s, ids)
 	c.g.emitOwnerChanges(changes)
-	c.g.refresh()
+	c.g.rebuild()
 	return claimsResult{Blocks: blocks}, nil
 }
 

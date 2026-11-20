@@ -106,7 +106,7 @@ func methodGorexMoveWindow(c *control, a args) (any, *apiError) {
 	}
 	if changes := c.g.keepAttached(blocks, toID); len(changes) > 0 {
 		c.g.emitOwnerChanges(changes)
-		if now, err := c.g.refresh(); err == nil {
+		if now, err := c.g.reread(true); err == nil {
 			m = now
 		}
 	}

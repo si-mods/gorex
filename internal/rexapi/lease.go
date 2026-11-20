@@ -12,7 +12,7 @@ func (g *Gateway) cleanupClient(rec *clientRecord, attached []string, reason str
 	g.cancelStreams(rec.id)
 	g.dropTickets(rec.id, "")
 	g.dropUploads(rec.id, "")
-	g.refresh()
+	g.rebuild()
 }
 
 // cleanupClientSession drops a client's per-session reservations,
@@ -21,10 +21,10 @@ func (g *Gateway) cleanupClientSession(rec *clientRecord, sid string) {
 	g.dropTickets(rec.id, sid)
 	g.dropUploads(rec.id, sid)
 	g.emitClientEvent(rec, sid, "client_disconnected")
-	if m, err := g.current(); err == nil {
+	if m, aerr := g.modelReq(); aerr == nil {
 		if s := m.byID[sid]; s != nil {
 			g.emitOwnerChanges(g.releaseIn(rec, s, "disconnect"))
-			g.refresh()
+			g.rebuild()
 		}
 	}
 }
