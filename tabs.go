@@ -652,9 +652,9 @@ func (a *App) tilesOf(c *ui.Context, k *colors, t *Tab, sz tileSize) {
 // drawTile draws a program's tile: a rounded card of its color, and its
 // glyph when it is in front.
 func drawTile(p *ui.Painter, r ui.Rect, prog program, glyph bool) {
-	// The radius and the glyph scale with the tile's height, 16 being the
-	// tab strip's.
-	rad := 4.5 * r.H / tileH
+	// The radius and the glyph scale with the tile's width, tileW being the
+	// tab strip's: a tile behind, inset in height, keeps its radius.
+	rad := 4.5 * r.W / tileW
 	p.Shadow(r, rad, 0, 0.5, 1.5, 0, ui.RGBA(0, 0, 0, 0.18))
 	p.Fill(r, prog.TileBg, rad)
 	if prog.TileBorder {
@@ -669,7 +669,7 @@ func drawTile(p *ui.Painter, r ui.Rect, prog program, glyph bool) {
 	if g == "" {
 		g = prog.Glyph
 	}
-	s := 11 * r.H / tileH
+	s := 11 * r.W / tileW
 	glyphIn(p, g, ui.Rect{X: r.X + (r.W-s)/2, Y: r.Y + (r.H-s)/2, W: s, H: s}, prog.TileFg)
 }
 
