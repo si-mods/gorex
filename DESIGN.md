@@ -276,7 +276,7 @@ the parts of the one it is nearest to.
 |---|---|---|
 | Dialog | `glassPanel(k.panel)`, `radiusXXL`, padding 20, `fontTitle` title, `dialogShadow`, a backdrop of `k.backdrop` | `teleport.go`, `workspaceview.go` |
 | Popover | `glassPanel(k.panel)`, `radiusXL`, padding 14, `popoverShadow` | `host.go` |
-| Menu | `glassPanel(k.panel)`, `radiusL`, padding 6, rows `concentric(radiusL, 6)` | `menus.go`, `docs/drawn-menus.md` |
+| Menu | `glassPanel(k.panel)`, `radiusL`, padding 6, rows `concentric(radiusL, 6)` | `menus.go`, `docs/DSK-001-drawn-menus.md` |
 | Toast and banner | `k.panel`, `radiusL`, `toastShadow` | `view.go`, `upload.go` |
 | Palette | frost or glass, `fontTitle` input, rows `concentric` | `commands.go` |
 | Settings page | the window background, groups of `raisedShadow` and `radiusXL` | `settingsview.go` |

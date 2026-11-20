@@ -1,6 +1,6 @@
 // The hosts this page connects to, as the iOS app keeps them (ios/GoRex/Rex/Host.swift):
 // a name, the gateway's URL and an icon, kept in this browser. The page is
-// hosted on its own (docs/web-client.md), so it has no host of its own: the
+// hosted on its own (docs/REF-007-web-client.md), so it has no host of its own: the
 // user adds each one, and each one must trust this page's origin. Hosts
 // found on the tailnet by built-in Tailscale (tailnet.ts) are listed in a
 // group of their own, and not kept.
@@ -279,7 +279,7 @@ export interface HostLink {
 
 /**
  * Above how many connected hosts the lists say that each one costs
- * (docs/web-multihost.md, Decisions, 5). Not a cap.
+ * (docs/WEB-003-multihost.md, Decisions, 5). Not a cap.
  */
 export const manyHosts = 8;
 

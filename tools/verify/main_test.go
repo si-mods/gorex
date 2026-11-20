@@ -43,7 +43,7 @@ func TestPlan(t *testing.T) {
 		want  []string
 	}{
 		{"nothing", nil, win, nil},
-		{"docs only", []string{"docs/lessons.md", "README.md"}, win, nil},
+		{"docs only", []string{"docs/lessons.md", "README.md"}, win, []string{"design docs"}},
 		{"sub package", []string{"internal/rex/server.go"}, win,
 			append(append([]string{"gofmt"}, goChecks...), "golangci-lint", "go test")},
 		{"root package", []string{"app.go"}, win,
@@ -80,7 +80,11 @@ func TestPlanPackages(t *testing.T) {
 	if got := find(cs, "go test").pkgsList; !reflect.DeepEqual(got, []string{"./internal/rex", "./internal/cli"}) {
 		t.Errorf("test pkgs = %q (root must not be in it)", got)
 	}
-	if got := find(cs, "golangci-lint"); got.tool != golangciLint || !reflect.DeepEqual(got.args, []string{"run", "./internal/rex", ".", "./internal/cli"}) {
+	// The lint runs only on packages that build for linux, so a js/wasm-only package
+	// such as web/tailnet does not fail it.
+	if got := find(cs, "golangci-lint"); got.tool != golangciLint || got.pkgsFor != "linux" ||
+		!reflect.DeepEqual(got.args, []string{"run", "{pkgs}"}) ||
+		!reflect.DeepEqual(got.pkgsList, []string{"./internal/rex", ".", "./internal/cli"}) {
 		t.Errorf("lint = %+v", got)
 	}
 	if !strings.Contains(find(cs, "web test").skip, "npm ci") {

@@ -2,8 +2,8 @@
 // the user's tailnet, in the app's process, and tailcat clients of GoRex
 // machines (tailcat.go), with a SOCKS5 proxy on loopback through which the
 // app reaches hosts by either. No system VPN is involved. gomobile binds
-// it for Swift (ios/scripts/build-tailnet); docs/ios-tailnet.md and
-// docs/ios-tailcat.md have the design.
+// it for Swift (ios/scripts/build-tailnet); docs/IOS-001-tailnet.md and
+// docs/IOS-002-tailcat.md have the design.
 package tailnet
 
 import (

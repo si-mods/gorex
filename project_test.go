@@ -95,7 +95,7 @@ func TestNewTabInLocalProject(t *testing.T) {
 func focusLocal(t *testing.T, a *App) {
 	t.Helper()
 	// A tab of this machine's is in one of its workspaces
-	// (docs/projects.md): the window shows its tabs with no project.
+	// (docs/MOD-002-projects.md): the window shows its tabs with no project.
 	if a.ws != nil && a.ws.host != nil {
 		a.showWorkspace(a.st.addWorkspace())
 	}

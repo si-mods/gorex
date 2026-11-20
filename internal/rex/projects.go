@@ -15,14 +15,14 @@ import (
 	"gorex/internal/layout"
 )
 
-// Projects (docs/projects.md): a host keeps its projects, each a folder of
+// Projects (docs/MOD-002-projects.md): a host keeps its projects, each a folder of
 // its own, as workspaces of its layout, and one workspace of its tabs with
 // no project. The commands of this file make and change them; the
 // migration makes a layout of v0.38.0 to v0.40.x one of them once, as the
 // server loads it.
 
 // CapabilityProjects is what a server that keeps its projects as
-// docs/projects.md says does: the layout of layout.Version 3, and the
+// docs/MOD-002-projects.md says does: the layout of layout.Version 3, and the
 // commands project.create, project.adopt, project.move, project.update,
 // spaces.rename, spaces.delete and adopt.taken.
 const CapabilityProjects = "projects.v2"
@@ -75,7 +75,7 @@ func (s *Server) migrateLayout() {
 // projects that keeps some, as a layout of before projects did and a
 // client of one may put back, into an adoption for each host, as the
 // migration leaves them (layout.RepairHostPanes): this machine's layout
-// keeps no pane of another host (docs/projects.md, "The desktop window").
+// keeps no pane of another host (docs/MOD-002-projects.md, "The desktop window").
 // It changes nothing for a layout that keeps this machine's panes only.
 func (s *Server) repairHostPanes(machineOf func(host string) string) {
 	s.mu.Lock()
@@ -105,7 +105,7 @@ const tabNamesMark = "layout.tabnames"
 // unnameProjectTabs clears, once, the name of each project's tab named
 // exactly as its project: project.create of v0.41.0 and v0.41.1 gave a
 // project's first tab the project's name, which hid the tab's title for
-// good (docs/projects.md, "Decided in phase 2"). The tabs with no project
+// good (docs/MOD-002-projects.md, "Decided in phase 2"). The tabs with no project
 // keep theirs. It runs as the layout loads (migrateLayout), and notes in
 // tabNamesMark that it ran, so that a tab the user names so later keeps
 // its name; running it again changes nothing.
@@ -219,7 +219,7 @@ func (s *Server) createProject(st *layout.Store, c LayoutCommand, a *applying) L
 	st.Sessions = append(st.Sessions, w)
 	carried(st, w.Space)
 	// The project's name is not its first tab's: a tab names itself by its
-	// title (docs/projects.md, Names).
+	// title (docs/MOD-002-projects.md, Names).
 	tab := s.createTab(st, LayoutCommand{Space: w.ID, Command: c.Command, Focus: c.Focus}, a)
 	if tab.Code != "" {
 		return tab

@@ -287,7 +287,7 @@ func TestCloseWorkspace(t *testing.T) {
 }
 
 // TestLastTabClosesWorkspace checks that closing a workspace's last tab
-// keeps it, as its host keeps a project of no tab (docs/projects.md), and
+// keeps it, as its host keeps a project of no tab (docs/MOD-002-projects.md), and
 // shows a workspace no window shows.
 func TestLastTabClosesWorkspace(t *testing.T) {
 	a, _ := newTestApp(t)
@@ -305,7 +305,7 @@ func TestLastTabClosesWorkspace(t *testing.T) {
 // TestMoveTabToSpace checks that a tab moves to another space, its
 // session going on: into the layout of one no window shows, into the
 // window that shows one, and that the last tab's move leaves the space,
-// which stays (docs/projects.md).
+// which stays (docs/MOD-002-projects.md).
 func TestMoveTabToSpace(t *testing.T) {
 	a, _ := newTestApp(t)
 	st := a.st

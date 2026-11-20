@@ -5,7 +5,7 @@ import XCTest
 
 /// The widgets' snapshot: what the app writes of its hosts, how often, how
 /// a widget reads it, and the links a widget's tap opens
-/// (docs/ios-widgets.md).
+/// (docs/IOS-010-widgets.md).
 nonisolated final class WidgetTests: XCTestCase {
     @MainActor private func temp() -> URL {
         FileManager.default.temporaryDirectory.appending(path: "widgets-\(UUID().uuidString)/snapshot.json")

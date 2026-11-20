@@ -37,7 +37,7 @@ import (
 	"tailscale.com/types/key"
 )
 
-// Reachable at: the machine as its own relay (docs/host-links.md, "2.
+// Reachable at: the machine as its own relay (docs/NET-002-host-links.md, "2.
 // Path"). The server runs a DERP relay on an address of this machine and
 // a second tailcat server, of the same keys, homed on it: a tailcat node
 // listens through one relay only, so each address has its own. The second

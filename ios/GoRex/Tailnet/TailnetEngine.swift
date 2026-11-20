@@ -7,9 +7,9 @@ import Tailnet
 
 /// Rex Go's built-in Tailscale: the Go engine of ios/tailnet, a device of
 /// its own on the tailnet in the app's process, whose loopback proxy the
-/// hosts on `.tailnet` go through (docs/ios-tailnet.md). The same proxy
+/// hosts on `.tailnet` go through (docs/IOS-001-tailnet.md). The same proxy
 /// reaches the hosts paired over tailcat, with the device on or off
-/// (docs/ios-tailcat.md).
+/// (docs/IOS-002-tailcat.md).
 @Observable
 final class TailnetEngine {
     static let shared = TailnetEngine()
@@ -112,7 +112,7 @@ final class TailnetEngine {
     /// Back from a suspension, which reclaims the engine's sockets: opens
     /// them anew, the tailcat clients' and, while it runs, the device's;
     /// when the device's fail, starts it anew, with a new proxy
-    /// (docs/ios-tailnet.md, Lifecycle). One that is on but failed to
+    /// (docs/IOS-001-tailnet.md, Lifecycle). One that is on but failed to
     /// start starts again. Tells whether the device runs as before. The
     /// proxy may be new, when iOS reclaimed the old one's listener: the
     /// hosts' next session() then makes a new URLSession.
@@ -166,7 +166,7 @@ final class TailnetEngine {
     /// Asks the GoRex machine at a tailcat address to pair with this
     /// phone by its device name, making the phone's key first if it has
     /// none, and returns the fingerprint the machine shows by the request
-    /// (docs/ios-tailcat.md, Pairing a phone).
+    /// (docs/IOS-002-tailcat.md, Pairing a phone).
     func pair(address: String) async throws -> String {
         TailnetSettings.makeName()
         let name = TailnetSettings.name
@@ -180,7 +180,7 @@ final class TailnetEngine {
     }
 
     /// Asks the GoRex machine at an IP address, IP or IP:PORT, to pair with
-    /// this phone through its own relay (docs/host-links.md, Pairing by
+    /// this phone through its own relay (docs/NET-002-host-links.md, Pairing by
     /// address), making the phone's key first if it has none, and returns
     /// the code to compare with the one the machine shows.
     func pairByAddress(_ address: String) async throws -> String {

@@ -7,7 +7,7 @@ import WidgetKit
 /// change, at most once an interval, and only what changed; then asks
 /// WidgetKit to draw the widgets again, which is free while the app is in
 /// front. Going to the background, it writes once more, so the snapshot's
-/// time is when the user left (docs/ios-widgets.md, Writer).
+/// time is when the user left (docs/IOS-010-widgets.md, Writer).
 final class WidgetPublisher {
     static let shared = WidgetPublisher()
 

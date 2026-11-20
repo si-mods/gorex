@@ -9,7 +9,7 @@ import (
 	"gorex/internal/rex"
 )
 
-// teleportCmd moves a pane's work to a host (docs/teleport.md): this
+// teleportCmd moves a pane's work to a host (docs/DSK-003-teleport.md): this
 // machine's server packs it, the host's starts it again, and the layout
 // shows the pane as the host's session; the pane's own session ends.
 func teleportCmd(args []string, out, errOut io.Writer) (int, bool) {

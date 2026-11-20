@@ -140,7 +140,7 @@ func (s *Server) filterLayoutNode(n *layout.Node) *layout.Node {
 		return nil
 	}
 	// A browser pane is the host's pane as its terminals are: a client
-	// that arranges the host's tabs keeps it (docs/projects.md). A note's
+	// that arranges the host's tabs keeps it (docs/MOD-002-projects.md). A note's
 	// text is this machine's: its place stays, as an unavailable pane's,
 	// so that the tab is not arranged without it.
 	if n.SID == "" && n.A == nil && n.B == nil {

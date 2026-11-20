@@ -1,4 +1,4 @@
-// The desktop's spaces across hosts, outside Rex's API (docs/rex-api.md,
+// The desktop's spaces across hosts, outside Rex's API (docs/REF-005-rex-api.md,
 // Spaces across hosts): a gateway that lists gorex.spaces answers
 // GET /api/spaces with its machine and, for each session whose space holds
 // panes of other machines, those panes. CrossHost is a port of Rex Go's

@@ -2,7 +2,7 @@ import ImageIO
 import SwiftUI
 import UIKit
 
-/// The first item of the terminal's More menu (docs/ios-pane-gallery.md):
+/// The first item of the terminal's More menu (docs/IOS-007-pane-gallery.md):
 /// the images' count, and whether some are new. It sets a flag the screen
 /// reads (galleryCover), as the menu's own views go when it closes.
 struct GalleryMenuItem: View {
@@ -49,7 +49,7 @@ private struct GalleryCover: ViewModifier {
     }
 }
 
-/// A pane's gallery (docs/ios-pane-gallery.md): its images in a grid of
+/// A pane's gallery (docs/IOS-007-pane-gallery.md): its images in a grid of
 /// squares as Photos shows them, the newest at the bottom, where it opens.
 struct GalleryView: View {
     let gallery: PaneGallery

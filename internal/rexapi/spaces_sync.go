@@ -30,7 +30,7 @@ type spacesApplyResult struct {
 // methodGorexSpacesApply applies centralized space groupings from the control
 // plane onto this machine's layout: moving local windows/tabs into the
 // sessions of their assigned spaces. A space no session is makes none
-// (docs/projects.md: one workspace with no folder per host): its windows
+// (docs/MOD-002-projects.md: one workspace with no folder per host): its windows
 // go to the tabs with no project, but those of a project.
 func methodGorexSpacesApply(c *control, a args) (any, *apiError) {
 	if !c.g.hello.Can(rex.CapabilityTabToSpace) {
@@ -77,7 +77,7 @@ func methodGorexSpacesApply(c *control, a args) (any, *apiError) {
 			continue
 		}
 
-		// A space is a name on projects now (docs/projects.md): a space no
+		// A space is a name on projects now (docs/MOD-002-projects.md): a space no
 		// session is makes no workspace. Its tabs go to the host's tabs
 		// with no project, but those of a project, which stay in it.
 		toNoProject := target == nil

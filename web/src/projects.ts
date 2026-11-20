@@ -1,4 +1,4 @@
-// Projects (docs/projects.md): the folder browser's state over
+// Projects (docs/MOD-002-projects.md): the folder browser's state over
 // gorex.dir.list and the rules of New Project. What a host's projects, spaces
 // and tabs are is projectmodel.ts's.
 

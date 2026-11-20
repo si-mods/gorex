@@ -7,7 +7,7 @@ import (
 
 // RepairHostPanes takes the panes of other hosts out of st, a layout of
 // Version, as a layout of before projects, or a client of one, leaves
-// them (docs/projects.md, "The desktop window": this machine's layout
+// them (docs/MOD-002-projects.md, "The desktop window": this machine's layout
 // keeps no pane of another host): each goes into an Adoption for its
 // host, of its tab's part of the split, as Migrate makes them, and a tab
 // left with no pane goes, as a space left with no tab that was no

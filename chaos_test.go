@@ -18,7 +18,7 @@ import (
 )
 
 // The scenarios below break the app on purpose and check that the
-// invariants of docs/invariants.md hold. docs/chaos.md names each one,
+// invariants of docs/invariants.md hold. docs/REF-008-chaos.md names each one,
 // the invariant it attacks and the evidence it leaves. Their screenshots
 // go to GOREX_SHOTS when it names a directory; `chaos.sh` sets it.
 

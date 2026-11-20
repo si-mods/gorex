@@ -132,7 +132,7 @@ export class TerminalView {
   /**
    * Whether the pane is kept off the stage (park): its stream stays open and
    * its terminal takes the bytes, but it does not paint, does not own its
-   * block and does not size it (docs/web-multihost.md, Kept windows).
+   * block and does not size it (docs/WEB-003-multihost.md, Kept windows).
    */
   private parked = false;
 

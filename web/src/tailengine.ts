@@ -1,6 +1,6 @@
-// Built-in Tailscale's engine (tailnet.ts, docs/web-tailscale.md): the
+// Built-in Tailscale's engine (tailnet.ts, docs/WEB-002-tailscale.md): the
 // code that runs only once the user turns Tailscale on, a chunk of its own
-// (docs/web-client.md, Loading on demand). It loads the engine through the
+// (docs/REF-007-web-client.md, Loading on demand). It loads the engine through the
 // loader (loader.ts): Go's wasm_exec.js (tailnet/exec), then the gzipped
 // module (tailnet/engine), which the loader's cache keeps; and it carries
 // HTTPS and WebSockets to a host over the engine's node.

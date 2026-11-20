@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // The web client's unit tests (npm test), for its modules with no DOM
-// (docs/web-multihost.md, Decisions 8). The sources import without
+// (docs/WEB-003-multihost.md, Decisions 8). The sources import without
 // extensions, which Node does not load as they are, so this bundles each
 // test/*.test.ts with esbuild into a directory of its own and runs the
 // bundles with node --test.

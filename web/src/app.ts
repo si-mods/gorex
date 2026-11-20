@@ -1,4 +1,4 @@
-// The page as an app (docs/web-client.md, App): the Service Worker that
+// The page as an app (docs/REF-007-web-client.md, App): the Service Worker that
 // keeps it offline (sw.js) and the prompt when a new version waits, the
 // browser's install prompt for Settings, Keyboard Lock in the app's own
 // window, and downloads streamed through the worker (files.ts).

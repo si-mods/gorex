@@ -4,7 +4,7 @@ import ImageIO
 import UniformTypeIdentifiers
 import XCTest
 
-/// A pane's gallery (docs/ios-pane-gallery.md): the image paths and Kitty
+/// A pane's gallery (docs/IOS-007-pane-gallery.md): the image paths and Kitty
 /// images its output shows, found across reads, and kept on disk.
 nonisolated final class GalleryTests: XCTestCase {
     private func scan(_ parts: String...) -> [GalleryScanner.Found] {

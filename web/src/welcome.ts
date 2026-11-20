@@ -1,4 +1,4 @@
-// The first screen, while no host is chosen (docs/web-client.md, Hosts):
+// The first screen, while no host is chosen (docs/REF-007-web-client.md, Hosts):
 // what the page is, and two ways to reach a GoRex computer. Sign in with
 // Tailscale opens the guide (guide.ts); Connect by address shows the host
 // form (hosts.ts) in place of the choices. How a host trusts the page is

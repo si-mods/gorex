@@ -3,7 +3,7 @@ import Foundation
 import ImageIO
 import UniformTypeIdentifiers
 
-/// Finds the images a pane's output shows (docs/ios-pane-gallery.md): the
+/// Finds the images a pane's output shows (docs/IOS-007-pane-gallery.md): the
 /// image files a program prints the paths of, by the rules a tap on a path
 /// follows (FileLink), and the pictures it draws in band with Kitty's
 /// graphics protocol. It keeps its state between reads, as a path or an
@@ -230,7 +230,7 @@ nonisolated struct GalleryScanner {
     static let maxScreenRows = 300
     static let maxScrollback = 200
 
-    /// The image paths the rows of the screen show (docs/ios-pane-gallery.md
+    /// The image paths the rows of the screen show (docs/IOS-007-pane-gallery.md
     /// §3.4), as Ghostty reads them out: soft-wrapped rows come as one. A
     /// program as Claude Code wraps a long path itself, a row full to the
     /// last column and the rest on the next, after an indent: such rows are

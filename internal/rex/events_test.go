@@ -381,7 +381,7 @@ func BenchmarkEventSessions(b *testing.B) {
 }
 
 // TestShareLayoutGone: every remote client reads the layout, with no
-// setting (docs/projects.md); an app of before that turns Share Layout
+// setting (docs/MOD-002-projects.md); an app of before that turns Share Layout
 // off changes nothing, and the status says the layout is shared.
 func TestShareLayoutGone(t *testing.T) {
 	s := &Server{layout: []byte(`{"tabs":[]}`)}
@@ -434,7 +434,7 @@ func TestFilterLayout(t *testing.T) {
 func TestFilterLayoutFocusAcrossBrowser(t *testing.T) {
 	// A tab of a terminal, a browser pane and a terminal, focused on the
 	// last: the browser pane is the host's, as its terminals are, and
-	// stays in the peer's layout (docs/projects.md), the focus with it.
+	// stays in the peer's layout (docs/MOD-002-projects.md), the focus with it.
 	raw := []byte(`{"version":2,"sessions":[{"id":"w","name":"w","tabs":[{"root":{"a":{"sid":"a"},"b":{"a":{"url":"https://example.com/"},"b":{"sid":"b"}}},"focus":2}]}],"windows":["w"]}`)
 	s := &Server{
 		sessions: map[string]*session{"a": {id: "a", owner: "p"}, "b": {id: "b", owner: "p"}},
@@ -463,7 +463,7 @@ func TestFilterLayoutFocusAcrossBrowser(t *testing.T) {
 // TestRemoteArranges: a client the host lets in arranges the host's tabs
 // (tab.set, layout.apply) as its window does, but never with another
 // host's pane or a place it could not see, nor what names the host's own
-// windows, kills, shows or adoptions (docs/projects.md).
+// windows, kills, shows or adoptions (docs/MOD-002-projects.md).
 func TestRemoteArranges(t *testing.T) {
 	tab := func(n layout.Node) *layout.Tab { return &layout.Tab{ID: "t", Root: &n} }
 	for _, c := range []struct {
@@ -555,7 +555,7 @@ func TestFilterLayoutFloats(t *testing.T) {
 // and leaves out a tab with nothing left.
 // TestFilterLayoutKeepsBrowserFloats: browser panes are the host's, tiled
 // and floating, and stay in a peer's layout with their places and the
-// focus (docs/projects.md).
+// focus (docs/MOD-002-projects.md).
 func TestFilterLayoutKeepsBrowserFloats(t *testing.T) {
 	raw := []byte(`{"version":2,"sessions":[{"id":"w","name":"w","active":0,"tabs":[
 		{"root":{"url":"https://tiled.example/"},"focus":0,"floats":[{"pane":{"url":"https://float.example/"}},{"pane":{"sid":"a"},"x":0.1},{"pane":{"sid":"c"},"x":0.2}],"focusFloat":3}

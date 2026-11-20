@@ -3,7 +3,7 @@ import XCTest
 
 /// The terminal's Live Activity, apart from ActivityKit: its content, its
 /// updates, the grace on leaving the app, and when it starts and ends
-/// (docs/ios-live-activities.md, Terminal activity). The clock and the
+/// (docs/IOS-006-live-activities.md, Terminal activity). The clock and the
 /// waits are the test's: no time passes by itself.
 nonisolated final class TerminalLiveTests: XCTestCase {
     /// What the controller asked of ActivityKit.
@@ -781,7 +781,7 @@ nonisolated final class TerminalLiveTests: XCTestCase {
             ("error", short, .init(title: "web", program: "codex", record: record("error", "Tests failed"), line: "FAIL  3 of 120 tests", connected: true)),
             ("shell", short, .init(title: "~/src/gorex", program: "zsh", record: nil, line: "alice@alice-laptop gorex % git status", connected: true)),
             ("paused", short, .init(title: "api", program: "claude", record: record("working", "Refactoring the store"), line: "✻ Refactoring… (1m 15s · esc to interrupt)", connected: false)),
-            ("msg", short, .init(title: "docs", program: "claude", record: record("working", nil), line: "Editing docs/projects.md", connected: true)),
+            ("msg", short, .init(title: "docs", program: "claude", record: record("working", nil), line: "Editing docs/MOD-002-projects.md", connected: true)),
             ("question", short, .init(title: "api", program: "claude", record: record("blocked", nil), line: "Should I also update the tests for the store?", connected: true)),
             ("two-lines", short, .init(title: "api", program: "claude", record: record("working", nil),
                                        line: "Reading internal/session/store.go to find where the scrollback is kept on reconnect", connected: true)),

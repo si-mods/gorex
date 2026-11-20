@@ -1,7 +1,7 @@
 // The window's shortcuts: the desktop's (commands.go) where a browser lets
 // a page have them, and Alt+Shift chords for the ones it keeps (Ctrl/Cmd+W,
 // Ctrl/Cmd+T, Ctrl+Tab). Keys are matched by their place (code), so that
-// a layout or Option's characters do not change them. docs/web-client.md
+// a layout or Option's characters do not change them. docs/REF-007-web-client.md
 // lists them, and the Settings dialog's Keyboard section (shortcutGroups).
 
 import { PlainKey, t } from "./i18n";

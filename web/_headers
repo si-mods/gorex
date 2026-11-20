@@ -1,5 +1,5 @@
 # Cloudflare Workers static assets: headers for web/dist (build.mjs copies
-# this file there); see docs/web-client.md. The script and its code chunks,
+# this file there); see docs/REF-007-web-client.md. The script and its code chunks,
 # the wasm, the asset manifest, the themes and the tailnet engine are in
 # /assets under names that carry a hash of their content, so they are kept
 # a year (immutable): a reload takes them from the browser's cache without
@@ -8,7 +8,7 @@
 # kept a day. A path that two rules match gets both rules'
 # headers, so the rules below set different headers or match different
 # paths. The Tailscale hosts in connect-src are what built-in Tailscale
-# needs (docs/web-tailscale.md, CSP); http: and https: already cover them,
+# needs (docs/WEB-002-tailscale.md, CSP); http: and https: already cover them,
 # for the hosts the user adds, but they stay named for when that narrows.
 # sw.js, the Service Worker, and the manifest are revalidated on every load
 # too, so that a new build is found; the app icons in /pwa are kept a day.

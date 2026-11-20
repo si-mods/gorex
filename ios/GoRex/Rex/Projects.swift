@@ -1,7 +1,7 @@
 import Foundation
 
 /// A project's folder, as the list and the folder sheet show it, and the
-/// check made before a tab opens in it (docs/projects.md).
+/// check made before a tab opens in it (docs/MOD-002-projects.md).
 enum ProjectFolder {
     /// Whether an error is the server's note that a project's folder is
     /// gone (conflict, folder_missing).
@@ -45,7 +45,7 @@ enum SpaceName {
 }
 
 /// Projects in order of last use, the latest first, as Codex lists them;
-/// those not used for 30 days go apart, under Older (docs/projects.md).
+/// those not used for 30 days go apart, under Older (docs/MOD-002-projects.md).
 /// A project never used, as one a migration made, counts as recent, after
 /// those used.
 enum ProjectOrder {
@@ -65,7 +65,7 @@ enum ProjectOrder {
 
 /// A host's projects and its tabs with no project, as the list showed
 /// them: kept on this device, to show greyed while the host is away
-/// (docs/projects.md, Offline hosts). Only shown, never changed; it is
+/// (docs/MOD-002-projects.md, Offline hosts). Only shown, never changed; it is
 /// replaced as the host connects.
 struct ProjectListing: Codable, Equatable {
     struct Tab: Codable, Equatable, Identifiable {

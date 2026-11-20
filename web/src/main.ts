@@ -2,7 +2,7 @@
 // window's panes, live, over the same API the iOS app speaks. The page is
 // hosted on its own; each host is one the user added (hosts.ts), or one
 // built-in Tailscale found on the tailnet (tailnet.ts). Every host stays
-// connected at once (docs/web-multihost.md), each in its HostConn.
+// connected at once (docs/WEB-003-multihost.md), each in its HostConn.
 import { onAppChange, startApp } from "./app";
 import { Chunk } from "./chunks";
 import { Ghostty } from "./ghostty";
@@ -104,7 +104,7 @@ let shown: WindowView | undefined;
 
 /**
  * How many windows stay live: the shown one and the ones shown before it,
- * across hosts (docs/web-multihost.md, Kept windows). A constant, not a
+ * across hosts (docs/WEB-003-multihost.md, Kept windows). A constant, not a
  * setting: each kept pane holds a stream, a terminal and a canvas.
  */
 const keptWindows = 4;

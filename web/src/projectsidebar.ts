@@ -1,4 +1,4 @@
-// The sidebar and the bar of projects (docs/projects.md, Web client): the
+// The sidebar and the bar of projects (docs/MOD-002-projects.md, Web client): the
 // space picker, each host with its projects of the space in order of last
 // use, Older, and Tabs with no project; a project expands to its tabs and a
 // New Tab. A host that is away shows its copy, greyed and read-only. Hosts

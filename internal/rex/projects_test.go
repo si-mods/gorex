@@ -63,7 +63,7 @@ func localPanes(st layout.Store) []string {
 }
 
 // TestMigrateKeepsShells loads a layout of v0.39.0 with every case of
-// docs/projects.md's Migration table, of real shells of this machine and
+// docs/MOD-002-projects.md's Migration table, of real shells of this machine and
 // panes of host h1, and migrates it as a server does as it starts or
 // resumes after an upgrade: the same shells run, with the same processes,
 // each in a tab still, and none starts as the lost panes are restored;
@@ -276,7 +276,7 @@ func TestProjectCreate(t *testing.T) {
 		t.Errorf("workspaces after the refusals: %+v", st.Sessions)
 	}
 	// A project's name is not its first tab's: the tab names itself by
-	// its title, as every tab does (docs/projects.md, Names).
+	// its title, as every tab does (docs/MOD-002-projects.md, Names).
 	named := command(t, c, LayoutCommand{Op: "project.create", Dir: realDir(t, t.TempDir()), Name: "acme", Command: cmd})
 	if p := spaceOf(t, c, named.Space); p == nil || p.Name != "acme" || len(p.Tabs) != 1 || p.Tabs[0].Name != "" {
 		t.Errorf("the project named acme is %+v", p)

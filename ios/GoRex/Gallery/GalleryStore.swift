@@ -67,7 +67,7 @@ extension GalleryIndex {
     }
 }
 
-/// A pane's gallery on disk (docs/ios-pane-gallery.md, Storage): index.json,
+/// A pane's gallery on disk (docs/IOS-007-pane-gallery.md, Storage): index.json,
 /// the PNG of each Kitty image under files/, and a thumbnail of each image
 /// file of the host under thumbs/, whose original is downloaded to view.
 /// It is not thread-safe: one queue uses it.

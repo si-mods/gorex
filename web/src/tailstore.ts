@@ -1,5 +1,5 @@
 // IndexedDB persistence and multi-tab coordination for built-in Tailscale
-// (docs/web-tailscale.md, State & Tabs). No DOM here so Node tests can
+// (docs/WEB-002-tailscale.md, State & Tabs). No DOM here so Node tests can
 // exercise the coordination logic directly.
 
 const dbName = "gorex-tailnet";

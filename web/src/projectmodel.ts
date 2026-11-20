@@ -1,4 +1,4 @@
-// Projects, spaces and tabs as the web client shows them (docs/projects.md,
+// Projects, spaces and tabs as the web client shows them (docs/MOD-002-projects.md,
 // Web client): what a host's sessions say, grouped for the sidebar. A host
 // keeps its projects (a session with a folder, in a space) and one session
 // of tabs with no project. A space is only a name on projects; this client

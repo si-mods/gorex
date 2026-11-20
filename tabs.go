@@ -435,7 +435,7 @@ func (a *App) tabMenu(m *ui.Menu, t *Tab) {
 		a.moveTab(t, i+1)
 	}
 	// Move to Project lists the other workspaces of the tab's host, which
-	// keeps its panes' sessions (docs/projects.md): a tab lives on one host.
+	// keeps its panes' sessions (docs/MOD-002-projects.md): a tab lives on one host.
 	var to []*Workspace
 	if a.st != nil {
 		to = slices.DeleteFunc(slices.Clone(a.st.workspaces), func(w *Workspace) bool { return !a.canMoveTab(t, w) })

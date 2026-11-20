@@ -1,7 +1,7 @@
 package tailnet
 
 // Rex Go as a remote client of GoRex machines, over their tailcat address,
-// as a GoRex desktop is (docs/ios-tailcat.md). The proxy (proxy.go) dials
+// as a GoRex desktop is (docs/IOS-002-tailcat.md). The proxy (proxy.go) dials
 // a host as <id>.tailcat.invalid; the app keeps the client key in its
 // Keychain and passes it in, Go never writes it.
 

@@ -1,7 +1,7 @@
 import Foundation
 
 /// What a tapped link that is not a web or mail link opens, as the desktop
-/// and the web client find it (web/src/links.ts, docs/web-open-files.md): a
+/// and the web client find it (web/src/links.ts, docs/WEB-001-open-files.md): a
 /// file of the host, by a path Ghostty matched in the text or by a file://
 /// URL, or a web address printed without its scheme. Ghostty matches only
 /// paths with a slash, so a bare file name, as notes.md, is no link here.
