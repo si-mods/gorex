@@ -75,6 +75,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - Rex Go shows its list sooner after you start it, and the list scrolls more smoothly when you have many computers and spaces.
 - A terminal whose title keeps changing, and a two-finger swipe between panes, look as before with fewer stutters; the list's working dots and bouncing tiles still move.
 - Tapping the mic no longer holds up the app while the microphone starts, and the level bars stay smooth while you dictate. Tell us if the mic misses your first words, or stays on after you stop it.
+- The host list scrolls more smoothly with many tabs, and a host's last projects save without a pause. Tell us if they are missing when the host is away.
 
 ## zh-Hans
 
@@ -142,3 +143,4 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - 启动 Rex Go 后列表显示得更快；有很多电脑和空间时，列表滚动更流畅。
 - 标题不停变化的终端，以及双指在窗格间滑动，外观与以前相同，卡顿更少；列表中的工作圆点和跳动的图标仍照常运动。
 - 点麦克风时，应用不再在麦克风启动期间卡住，听写时的音量条也更流畅。如果麦克风漏掉你开头说的话，或停止后仍在录音，请告诉我们。
+- 标签很多时，主机列表打开和滚动更流畅；改动后，主机最近的项目会无卡顿地保存。如果主机离线时看不到它最近的项目，请告诉我们。

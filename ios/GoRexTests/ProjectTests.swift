@@ -413,6 +413,17 @@ nonisolated final class ProjectTests: XCTestCase {
         XCTAssertEqual(order, ["gorex.space.rename", "gorex.space.delete"])
     }
 
+    /// A card's rows group by session as the filter of each row did.
+    @MainActor func testShownGroupsRowsBySession() {
+        let rows = [("a", "1"), ("b", "2"), ("a", "3"), ("c", "4"), ("b", "5"), ("a", "6")].map { (session: $0.0, window: $0.1) }
+        let grouped = RowGroups.shown(rows)
+        XCTAssertEqual(Set(grouped.keys), ["a", "b", "c"])
+        for r in rows {
+            XCTAssertEqual(grouped[r.session], rows.filter { $0.session == r.session }.map(\.window))
+        }
+        XCTAssertTrue(RowGroups.shown([]).isEmpty)
+    }
+
     /// What the book keeps is there at the next launch.
     @MainActor func testBookPersists() {
         let (b, d, url) = book()
@@ -423,6 +434,7 @@ nonisolated final class ProjectTests: XCTestCase {
         b.remember(ProjectListing(projects: [.init(id: "p", name: "site", dir: "/tmp/demo/site", space: "",
                                                    used: Date(timeIntervalSince1970: 1000), tabs: [.init(id: "w", title: "dev")])],
                                   loose: [.init(id: "x", title: "scratch")]), for: "h")
+        b.flush()
         let again = SpaceBook(defaults: d, listingsURL: url)
         XCTAssertEqual(again.order, ["Home", ""])
         XCTAssertEqual(again.colors, ["Home": "rose"])
