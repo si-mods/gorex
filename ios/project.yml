@@ -161,6 +161,7 @@ targets:
       - GoRexWidgets/InboxWidgetView.swift
       - GoRexWidgets/TerminalActivityView.swift
       - GoRex/Terminal/TerminalLive.swift
+      - GoRex/BackgroundGrace.swift
       - GoRex/Notifier.swift
       - GoRex/Views/TerminalTarget.swift
       - GoRex/Terminal/VTerminal.swift

@@ -80,14 +80,17 @@ struct GoRexApp: App {
                     if p == .active { Notifier.shared.inFront = true }
                     if p == .background {
                         away = .now
+                        // Any host's connection stays open a while, not only an open terminal's.
+                        if HostStore.needsGrace(store.hosts, terminal: TerminalLive.shared.host) { BackgroundGrace.shared.start() }
                         // A setting changed just now goes before the app may end.
                         CloudSettings.shared.flush()
                         HotspotShare.shared.handleBackground()
                         WidgetPublisher.shared.flush()
                     }
                     guard p == .active else { return }
-                    // A terminal's grace kept the app running past away.
-                    let suspended = HostStore.suspended(since: TerminalLive.shared.grace.awake(since: away))
+                    // The grace kept the app running past away; back now, it ends.
+                    let suspended = HostStore.suspended(since: BackgroundGrace.shared.awake(since: away))
+                    BackgroundGrace.shared.cancel()
                     away = nil
                     HotspotShare.shared.handleForeground()
                     Task { await store.foreground(suspended: suspended) { await TailnetEngine.shared.resume() } }

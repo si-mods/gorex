@@ -446,6 +446,20 @@ nonisolated final class TerminalLiveTests: XCTestCase {
         return TerminalLive(driver: driver, interval: 2, now: clock, schedule: waits.schedule, grace: grace)
     }
 
+    /// The app leaves the foreground: the screen registers its work, and
+    /// the app starts the grace, as GoRexApp does.
+    @MainActor private func leave(_ l: TerminalLive, _ suspend: @escaping () -> Void) {
+        l.background(suspend: suspend)
+        l.grace.start()
+    }
+
+    /// The app is in front again: the screen's active, and the app's cancel.
+    @MainActor private func back(_ l: TerminalLive) -> Bool {
+        let resume = l.active()
+        l.grace.cancel()
+        return resume
+    }
+
     /// Updates come at most once per two seconds, the changes meanwhile
     /// joining one; one of the same state is not sent. A change of what the
     /// state reads, and output that changes the line, both update.
@@ -515,16 +529,17 @@ nonisolated final class TerminalLiveTests: XCTestCase {
         let l = live(d, w, t) { clock }
         l.show(source(state: { .init(title: "api", line: "", connected: true) }), owner: UUID())
         var suspends = 0
-        l.background { suspends += 1 }
+        leave(l) { suspends += 1 }
         XCTAssertTrue(l.grace.running)
         XCTAssertEqual(t.begun, 1)
         XCTAssertEqual(d.updates.last?.stale, clock + 30, "it goes stale should the app stop unannounced")
         XCTAssertNil(l.grace.awake(since: clock), "a grace keeps the app running")
         clock += 10
-        XCTAssertFalse(l.active(), "nothing to resume")
+        XCTAssertFalse(back(l), "nothing to resume")
         XCTAssertEqual(t.ended, [1])
         XCTAssertNil(d.updates.last?.stale, "in front again, not stale")
         XCTAssertEqual(l.grace.awake(since: clock - 10), clock, "running till now")
+        w.run()
         w.run()
         t.expirations[1]?()
         XCTAssertEqual(suspends, 0)
@@ -543,7 +558,10 @@ nonisolated final class TerminalLiveTests: XCTestCase {
         let m = Model()
         l.show(source(state: { .init(title: m.title, line: "", connected: true) }), owner: UUID())
         var suspends = 0
-        l.background { suspends += 1 }
+        leave(l) { suspends += 1 }
+        XCTAssertEqual(w.all.map(\.wait), [1], "the time left is read a second later")
+        clock += 1
+        w.run()
         XCTAssertEqual(w.all.map(\.wait), [25])
         clock += 25
         w.run()
@@ -569,8 +587,8 @@ nonisolated final class TerminalLiveTests: XCTestCase {
         XCTAssertEqual(d.updates.count, updates)
 
         clock += 60
-        XCTAssertEqual(l.grace.awake(since: clock - 85), clock - 60, "the app ran till the grace's end")
-        XCTAssertTrue(l.active(), "the screen resumes the streams")
+        XCTAssertEqual(l.grace.awake(since: clock - 86), clock - 60, "the app ran till the grace's end")
+        XCTAssertTrue(back(l), "the screen resumes the streams")
         XCTAssertFalse(l.paused)
         XCTAssertEqual(d.updates.last?.state.connected, true)
         XCTAssertEqual(d.updates.last?.state.title, "other")
@@ -585,29 +603,31 @@ nonisolated final class TerminalLiveTests: XCTestCase {
         let l = live(d, w, t) { clock }
         l.show(source(state: { .init(title: "api", line: "", connected: true) }), owner: UUID())
         var suspends = 0
-        l.background { suspends += 1 }
+        leave(l) { suspends += 1 }
         t.expirations[1]?()
         XCTAssertEqual(suspends, 1)
         XCTAssertEqual(t.ended, [1], "ended in the handler, not after the update")
         XCTAssertEqual(d.calls.last, "update in grace")
         d.dones.removeFirst()()
         w.run()
+        w.run()
         XCTAssertEqual(suspends, 1)
         XCTAssertEqual(t.ended, [1])
-        XCTAssertTrue(l.active())
+        XCTAssertTrue(back(l))
 
         t.gives = false
-        l.background { suspends += 1 }
+        leave(l) { suspends += 1 }
         XCTAssertEqual(suspends, 2, "suspended at once")
         XCTAssertFalse(l.grace.running)
         XCTAssertEqual(t.ended, [1], "no task to end")
-        XCTAssertTrue(l.active())
+        XCTAssertTrue(back(l))
 
-        // Leaving twice runs one grace.
+        // Leaving twice runs one grace, with the work registered last.
         t.gives = true
-        l.background { suspends += 1 }
-        l.background { suspends += 100 }
+        leave(l) { suspends += 100 }
+        leave(l) { suspends += 1 }
         XCTAssertEqual(t.begun, 2)
+        w.run()
         w.run()
         XCTAssertEqual(suspends, 3)
         // iOS takes the time back while the paused update goes: the task
@@ -617,15 +637,16 @@ nonisolated final class TerminalLiveTests: XCTestCase {
         XCTAssertEqual(t.ended, [1, 2])
         d.dones.removeFirst()()
         XCTAssertEqual(t.ended, [1, 2])
-        XCTAssertTrue(l.active())
+        XCTAssertTrue(back(l))
 
         // A grace that starts while the last one's update still goes ends
         // the last one's task first.
-        l.background { suspends += 1 }
+        leave(l) { suspends += 1 }
+        w.run()
         w.run()
         XCTAssertEqual(t.ended, [1, 2])
-        XCTAssertTrue(l.active())
-        l.background { suspends += 1 }
+        XCTAssertTrue(back(l))
+        leave(l) { suspends += 1 }
         XCTAssertEqual(t.ended, [1, 2, 3])
         d.dones.removeFirst()()
         XCTAssertEqual(t.ended, [1, 2, 3])
@@ -634,7 +655,8 @@ nonisolated final class TerminalLiveTests: XCTestCase {
 
     /// One activity at a time: another terminal's ends it and starts its
     /// own; the close of a screen no longer shown does nothing; the close of
-    /// the one shown ends it and its grace. Off in Settings, none starts.
+    /// the one shown ends it, and its work at the grace's end does not run,
+    /// though the app's grace goes on. Off in Settings, none starts.
     /// One iOS ended, at 8 hours, starts anew in the foreground.
     @MainActor func testStartAndEnd() {
         let d = FakeDriver(), w = Waits(), t = Tasks()
@@ -659,15 +681,19 @@ nonisolated final class TerminalLiveTests: XCTestCase {
         l.active()
         XCTAssertEqual(d.started.map(\.block), ["b1", "b2", "b3", "b3"])
 
-        // Closed during a grace: the grace ends, without suspending.
+        // Closed during a grace: the grace goes on, for the hosts, and ends
+        // without suspending.
         var suspends = 0
-        l.background { suspends += 1 }
+        leave(l) { suspends += 1 }
         l.close(owner: b)
         XCTAssertEqual(d.calls.last, "end")
-        XCTAssertEqual(t.ended, [1])
+        XCTAssertTrue(l.grace.running)
         XCTAssertNil(l.owner)
         w.run()
+        w.run()
         XCTAssertEqual(suspends, 0)
+        XCTAssertEqual(t.ended, [1])
+        XCTAssertFalse(back(l))
 
         // Live Activities off: no activity, but the grace still keeps the streams.
         d.enabled = false
@@ -676,8 +702,9 @@ nonisolated final class TerminalLiveTests: XCTestCase {
         l.changed()
         w.run()
         XCTAssertEqual(d.calls, [])
-        l.background { suspends += 1 }
+        leave(l) { suspends += 1 }
         XCTAssertTrue(l.grace.running)
+        w.run()
         w.run()
         XCTAssertEqual(suspends, 1)
         XCTAssertEqual(d.calls, [])

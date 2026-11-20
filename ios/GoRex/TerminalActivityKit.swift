@@ -2,13 +2,8 @@ import ActivityKit
 import UIKit
 
 extension TerminalLive {
-    /// The app's: ActivityKit's activities, and UIKit's background time.
-    static let shared = TerminalLive(driver: ActivityKitDriver(), grace: BackgroundGrace(
-        begin: { expired in
-            let t = UIApplication.shared.beginBackgroundTask(withName: "terminal grace") { MainActor.assumeIsolated { expired() } }
-            return t == .invalid ? nil : t.rawValue
-        },
-        end: { UIApplication.shared.endBackgroundTask(UIBackgroundTaskIdentifier(rawValue: $0)) }))
+    /// The app's: ActivityKit's activities, and the app's grace.
+    static let shared = TerminalLive(driver: ActivityKitDriver(), grace: .shared)
 }
 
 /// TerminalLive's driver on ActivityKit: local updates only, no push.

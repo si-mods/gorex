@@ -86,6 +86,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - Leave Rex Go with a terminal open and look at the Lock Screen: the card now shows what the program is doing in large type, on its own colors with its icon. The Dynamic Island looks as before.
 - The Lock Screen card now uses calmer shades of the program's own color, keeps the same size in every state, and shows the timer after the state, clear of the large icon.
 - Open a tab, the title's sheet, Settings, New Project or a Gallery image: it now grows out of what you tapped, and shrinks back into it. The pane bar's highlight slides to the pane you choose.
+- Leave Rex Go from the host list, and a program that asks for your answer in the next few seconds now sends its notification, as it does when you leave from an open terminal.
 
 ## zh-Hans
 
@@ -164,3 +165,4 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - 打开终端时离开 Rex Go，看锁定屏幕：卡片现在用大字显示程序正在做的事，背景是程序自己的颜色和图标。灵动岛不变。
 - 锁定屏幕上的卡片现在用程序自己颜色的深浅两档，各种状态下大小不变，计时跟在状态后面，不再压在大图标上。
 - 打开标签页、标题的面板、设置、新建项目或图库图片：它现在从你点按的地方展开，关闭时缩回原处。窗格栏的高亮会滑到你选的窗格。
+- 从主机列表离开 Rex Go 后，几秒内需要你回答的程序现在也会发来通知，和从打开的终端离开时一样。

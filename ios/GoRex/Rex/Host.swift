@@ -1570,6 +1570,13 @@ final class HostStore {
         proxied.filter { kept || $0.config.tailcat != nil }.forEach { $0.resume() }
     }
 
+    /// Whether leaving the app asks iOS for a grace (BackgroundGrace): a
+    /// real host has a control connection, or a terminal of one is open
+    /// (terminal, its host). Demo Mode alone keeps nothing.
+    static func needsGrace(_ hosts: [Host], terminal: UUID?) -> Bool {
+        hosts.contains { !$0.isDemo && ($0.control != nil || $0.id == terminal) }
+    }
+
     /// Whether the app, in the background since away, was likely
     /// suspended: more than 5 s ago.
     static func suspended(since away: Date?, now: Date = .now) -> Bool {
