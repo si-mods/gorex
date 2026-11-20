@@ -247,11 +247,12 @@ on `.active`; the shell on the host keeps running. **[code]**
 - **Content state**: window title; program id (for the tile); the
   block's most urgent OSC 7501 record's `state`, `kind`, `progress`,
   `title` and `updated`, or none for a plain shell or an idle record;
-  `line`, the line that tells the latest state (below), cut to 80
-  characters; `connected` (whether the stream is open). Titles and the host name are
-  cut to 200 characters and 400 UTF-8 bytes, the line to 80 characters
-  and 240 bytes, whole characters only; with the longest of each,
-  attributes and state stay well under 4 KB (`TerminalLiveTests`).
+  `line`, what the program says it does, else the screen's line that
+  tells the latest state (Line, below); `connected` (whether the stream
+  is open). Titles and the host name are cut to 200 characters and 400
+  UTF-8 bytes, the line to 80 characters and 240 bytes, whole
+  characters only; with the longest of each, attributes and state stay
+  well under 4 KB (`TerminalLiveTests`).
 - **Seen**: done and error records the user saw don't count, as in the
   inbox. The open screen marks a block's records seen as they come
   (`Host.shown`), and tells the server (`gorex.see_block`), which tells
@@ -269,13 +270,22 @@ on `.active`; the shell on the host keeps running. **[code]**
   the line changed; the next update reads the screen's rows and the
   cursor's row (`TerminalOutput.readRows`), and a new line comes in the
   update after.
-- **Line** (`TerminalLive.state`, `TerminalActivity.screenLine`): the
-  last non-empty line of the screen is a TUI agent's status bar (Claude
-  Code, Codex, Devin, Pi), never its state, so:
-  1. When the block's most urgent record is `blocked` and has a `msg`
-     that is not blank, the line is the message, its line breaks as
-     spaces. It wins over the line the screen read.
-  2. Else, when the screen ends in a TUI's input, the line is the first
+- **Line** (`TerminalLive.state`, `TerminalActivity.screenLine`): what
+  the program says it does. Claude Code and Pi report it in their OSC
+  7501 records (`docs/osc-7501.md`): `msg` says what they do or wait
+  for, in any state, and a done record keeps the last as `last_msg`. A
+  screen tells it less well: its last non-empty line is a TUI agent's
+  status bar (Claude Code, Codex, Devin, Pi), never its state. So:
+  1. The block's most urgent record's `msg` (`Host.ProgramStatus
+     .mostUrgent`, which skips done and error records the user saw),
+     in any state, idle too, when it is not blank. It wins over the line
+     the screen read.
+  2. Else, when that record is done or failed, its `last_msg`, when it
+     is not blank.
+
+  Line breaks in either are spaces. Else, for a program that reports no
+  message, the screen's line:
+  3. When the screen ends in a TUI's input, the line is the first
      above the input that is not blank, a rule (box-drawing or block
      characters, U+2500–U+259F, and spaces), a line in a box (it starts
      and ends with a box's side) or one of the input's lines, without
@@ -286,13 +296,13 @@ on `.active`; the shell on the host keeps running. **[code]**
      without rules, the lowest line that starts with a prompt shells do
      not use (`›`, `❭`, `▌`), with a blank line or a rule above it and
      at most 5 lines under it.
-  3. Else, with text under the cursor's row, a TUI with its cursor in
-     its input: as in 2, the input being the cursor's row and the lines
+  4. Else, with text under the cursor's row, a TUI with its cursor in
+     its input: as in 3, the input being the cursor's row and the lines
      right above it up to the topmost that starts with a prompt.
-  4. Else, as for a shell or a program printing, the last line at or
+  5. Else, as for a shell or a program printing, the last line at or
      above the cursor's row that is not blank. A shell's prompt at the
      bottom, `❯` too, has no rules round it, and stays a shell's.
-  5. With no such line, the last non-empty line of the screen.
+  6. With no such line, the last non-empty line of the screen.
 
   The rows are read a row at a time, as Ghostty joins soft-wrapped rows
   in one read; the cursor's row comes from Ghostty's IME point, as for
@@ -306,7 +316,7 @@ on `.active`; the shell on the host keeps running. **[code]**
   no prompt between rules, three footer lines under it, the cursor in
   the editor, hidden. Codex asked to sign in, so its input was not
   captured. A program that hides its cursor under its last line, as an
-  Ink program may while it draws, is found by rule 2. A command's
+  Ink program may while it draws, is found by rule 3. A command's
   output that ends in a prompt between rules, such as a quote in a
   table, reads as an input: a known miss.
 - **Grace**: on `.background`, the screen no longer suspends the

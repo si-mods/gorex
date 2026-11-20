@@ -82,6 +82,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - Leave Rex Go with a terminal open: the Lock Screen and the Dynamic Island show its program's state and latest line. It stays connected for about 25 seconds, then shows as paused.
 - Long-press the Dynamic Island while a terminal shows there: the tile now sits on one row with the title and state, not cut off in the top corner.
 - With Claude Code, Codex or another agent running, leave Rex Go: the Lock Screen and Dynamic Island now show what it is doing, or the question it waits on, not its status bar.
+- Leave Rex Go while Claude Code or Pi works: the Lock Screen and Dynamic Island now show what it says it is doing, and once it finishes, what it did last.
 
 ## zh-Hans
 
@@ -156,3 +157,4 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - 打开终端时离开 Rex Go：锁定屏幕和灵动岛会显示它的程序状态和最新的一行。连接会保持约 25 秒，之后显示为已暂停。
 - 终端显示在灵动岛上时长按它：程序图标现在和标题、状态在同一行，不再被顶部的圆角切掉。
 - 运行 Claude Code、Codex 等智能体时离开 Rex Go：锁定屏幕和灵动岛现在显示它正在做的事或它等你回答的问题，不再显示底部状态栏。
+- Claude Code 或 Pi 工作时离开 Rex Go：锁定屏幕和灵动岛现在显示它自己报告正在做的事，完成后显示它最后做的事。
