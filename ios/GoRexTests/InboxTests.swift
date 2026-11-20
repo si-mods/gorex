@@ -1,3 +1,4 @@
+import Observation
 import XCTest
 
 /// How the inbox picks a window's record, groups the windows, and drops
@@ -162,19 +163,19 @@ nonisolated final class InboxTests: XCTestCase {
         block.title = "build"
         block.program = "make"
 
-        var changed = false
-        let items = withObservationTracking({ h.inbox }, onChange: { changed = true })
+        let changed = Flag()
+        let items = withObservationTracking({ h.inbox }, onChange: { changed.set = true })
         XCTAssertEqual(items.count, 1)
         block.title = "test"
         block.program = "go"
-        XCTAssertFalse(changed, "the inbox without a search depends on a title or program")
+        XCTAssertFalse(changed.set, "the inbox without a search depends on a title or program")
 
-        var searched = false
-        let found = withObservationTracking({ h.inbox(matching: "TEST") }, onChange: { searched = true })
+        let searched = Flag()
+        let found = withObservationTracking({ h.inbox(matching: "TEST") }, onChange: { searched.set = true })
         XCTAssertEqual(found.map(\.block), ["b"])
         XCTAssertTrue(h.inbox(matching: "build").isEmpty)
         block.title = "build"
-        XCTAssertTrue(searched, "a search depends on the title")
+        XCTAssertTrue(searched.set, "a search depends on the title")
     }
 
     /// A block on screen sees its records as they come.
@@ -314,4 +315,10 @@ nonisolated final class InboxTests: XCTestCase {
         try await Task.sleep(for: .milliseconds(200))
         XCTAssertEqual(rex.count("gorex.see_block"), 0)
     }
+}
+
+/// Whether an observation fired, as it fires on the thread that changes
+/// what it read.
+nonisolated private final class Flag: @unchecked Sendable {
+    var set = false
 }
