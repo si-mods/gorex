@@ -420,6 +420,11 @@ final class Host: Identifiable {
     /// Tells the engine the hosts, as their list changes, for it to reach
     /// those with a tailcat address. The app sets it.
     static var tailcatHosts: ([HostConfig]) -> Void = { _ in }
+    /// Tells the engine a dial through its proxy failed, so that it reads
+    /// the proxy again at once rather than at the next resume: iOS may
+    /// have taken the listener in a suspension no resume has seen. The
+    /// app sets it.
+    static var proxyFailed: () -> Void = {}
     @ObservationIgnored private var proxySession: (proxy: LoopbackProxy, session: URLSession)?
 
     init(_ config: HostConfig) {
@@ -540,6 +545,9 @@ final class Host: Identifiable {
                 // The gateway lets in only whom it says (docs/IOS-001-tailnet.md, Server).
                 c.close(RexError(code: e.code, message: String(localized: "Refused: sign Rex Go in as the Tailscale user who signed in the GoRex machine, not with a tagged key, or turn on --allow-tailnet-members there.")))
             } catch {
+                // A dial through the proxy that fails may be a listener
+                // iOS took: the engine reads the proxy again at once.
+                if config.reach(tailnetOn: TailnetSettings.isOn) != .system { Self.proxyFailed() }
                 c.close(error)
             }
         }

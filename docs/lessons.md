@@ -82,6 +82,11 @@ Each item has a **Trigger** (what the diff shows), a **Check** (what the author 
 - **Check:** the new chain shares the existing one's order — a window's `name` before its pane's title — or calls it, and a test pins an input where the two orders differ.
 - **Source:** #639's `windowTitle` checked the pane's title before the window's name, so a renamed tab's header kept the pane's title while its row showed the name; the fix restored `w.name` first.
 
+### A resource iOS can take back is refreshed on failure too
+- **Trigger:** the diff caches or keeps a resource iOS can reclaim while suspended — a proxy listener, a socket — and refreshes it only on a lifecycle event.
+- **Check:** the consumer drops or re-reads it on the failure it causes too; a resume that races the failure leaves a window in which every use fails at once.
+- **Source:** #884 re-read the tailcat proxy only in `TailnetEngine.resume()`, after the socket reset's wait; a suspension's dials then reached the dead listener and failed at once, so every tailcat host showed "can't reach the server" for a stretch after each unlock.
+
 ## Fixes
 
 ### Path shared by local panes, remote hosts and iOS
