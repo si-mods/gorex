@@ -8,7 +8,7 @@ metadata:
 
 # IOS-018: Predictive echo
 
-Status: proposal.
+Status: built (#960, #962).
 
 ## Problem
 
@@ -35,9 +35,9 @@ Settings › Terminal gains a "Predictive Echo" toggle, on by default. With it o
 
 ### The model
 
-A new `Predictor` type, one for each `TerminalSession`, holds open guesses. A guess is a glyph at a cell position with a deadline.
+A new `Predictor` type, one for each `TerminalView`, holds open guesses. A guess is a glyph at a cell position with a deadline. The view owns it because the view owns the facts a guess needs: the surface's cursor and cell size, the screen mode and the text of the cursor's line.
 
-`TerminalSession.type(bytes)` gives the encoded bytes to the predictor before they queue for the `write` call. The predictor reads its own keys:
+`TerminalView`'s input path gives the encoded bytes to the predictor before `TerminalSession.type` queues them. The predictor reads its own keys:
 
 - A printable character predicts its glyph at the cursor, and the cursor moves right, with a wrap at the edge.
 - Return predicts a new line.
@@ -46,9 +46,9 @@ A new `Predictor` type, one for each `TerminalSession`, holds open guesses. A gu
 
 A guess ends in one of three ways:
 
-1. Output written to its cell covers it. The data stream's `write` clears covered guesses.
+1. Output written to its cell shows it or covers it. Each `write` to the surface starts a short wait, then the view compares the guesses with the rows and the cursor the surface reports: a guess whose cell shows its glyph or another one ends.
 2. Its deadline passes. The deadline is two round-trip times of the host, at least half a second and at most five seconds.
-3. The stream reconnects, resumes or resets. The predictor clears all guesses.
+3. The cursor retreats or runs past where the guesses put it, the surface closes or its grid remaps on a resize. The predictor clears all guesses. A reconnect's writes and cursor moves end them the same way.
 
 The overlay draws over the terminal's surface. It never feeds bytes into the emulator, so a wrong guess can never corrupt the terminal's state.
 
@@ -62,9 +62,9 @@ The predictor stays on the safe side:
 
 ### The code
 
-- `ios/GoRex/Terminal/Predictor.swift`: the guesses, the keys it reads, the deadlines, and the list the overlay draws.
-- `ios/GoRex/Terminal/TerminalSession.swift`: `type` gives the predictor the bytes, and the output path clears covered guesses.
-- `ios/GoRex/Views/TerminalScreen.swift`: the overlay of underlined cells over the surface.
+- `ios/GoRex/Terminal/Predictor.swift`: the guesses, the keys it reads, the deadlines and the resolve rules.
+- `ios/GoRex/Terminal/PredictionOverlay.swift`: the view that draws underlined cells over the surface.
+- `ios/GoRex/Terminal/TerminalView.swift`: the input path gives the predictor the bytes, each output `write` schedules a resolve, and `close` and `resized` clear the guesses.
 - `ios/GoRex/Views/SettingsView.swift`: the toggle, a new `UserDefaults` key `predictiveEcho`, true by default.
 
 ## Alternatives

@@ -183,6 +183,7 @@ targets:
       - GoRex/Terminal/Archive.swift
       - GoRex/Terminal/Dictation.swift
       - GoRex/Terminal/Polish.swift
+      - GoRex/Terminal/Predictor.swift
       - GoRex/Tailnet/TailnetSettings.swift
       - GoRex/Views/ProgramTile.swift
       - GoRex/Share/WebClientSync.swift
