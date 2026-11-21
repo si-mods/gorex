@@ -91,7 +91,7 @@ func (a *App) projectsOf(h *hostConn, space string) (recent, older []*Workspace)
 // projectsList is the sidebar's list (docs/MOD-002-projects.md, "Sidebar"): each
 // host shown, as a section header, then its projects of the space, flush
 // with it, those not used for olderAfter under Older, the adoptions that
-// wait for it, and its tabs with no project, under a label of their own.
+// wait for it, and its tabs with no project, as a group like a project.
 func (a *App) projectsList(c *ui.Context, k *colors) {
 	if a.st == nil {
 		tabs := slices.Clone(a.tabs)
@@ -131,7 +131,7 @@ func (a *App) projectsList(c *ui.Context, k *colors) {
 			// Tabs with no project shows while it has a tab, or the
 			// window shows it.
 			if w := a.st.noProjectOf(h); w != nil && (w.tabCount() > 0 || w == a.ws) {
-				a.noProjectSection(c, k, w, reserve)
+				a.projectGroup(c, k, w, reserve)
 			}
 		})
 	}
@@ -224,7 +224,7 @@ func (a *App) newNoProjectTab(h *hostConn) {
 	a.newTabOn(h, dir)
 }
 
-// projectRow is a project's row, flush with the host's header: its folder
+// projectRow is a project's row (and the header of a host's tabs with no project, named so, open at first), flush with the host's header: its folder
 // tile, its name, the chevron of its state (none with no tab) and its
 // tabs' count; under the pointer and while it is shown, the + that opens a
 // tab in it in place of the count. Its folder shows in the title bar while
@@ -233,8 +233,11 @@ func (a *App) newNoProjectTab(h *hostConn) {
 func (a *App) projectRow(c *ui.Context, k *colors, w *Workspace, reserve float32) {
 	key := openKey(w.host, w.ID)
 	shown := w == a.ws
-	open := rowOpen(key, shown)
+	open := rowOpen(key, shown || w.Dir == "")
 	name := w.Name
+	if w.Dir == "" {
+		name = locales.ProjectsNoProject()
+	}
 	n := w.tabCount()
 	offline := w.offline()
 	row := ui.Row(c.Key("project-"+key)).Height(projectRowH).Shrink(0).Padding(0, 4, 0, sideLead).Gap(sideGap).AlignItems(ui.Center).
@@ -334,64 +337,6 @@ func (a *App) projectRow(c *ui.Context, k *colors, w *Workspace, reserve float32
 		if shown {
 			for i, t := range slices.Clone(a.tabs) {
 				a.sidebarTab(c, k, i, t, reserve, true)
-			}
-			return
-		}
-		a.workspaceTabs(c, k, w, reserve, offline)
-	})
-}
-
-// noProjectSection is a host's tabs with no project: a light label, as a
-// section's, with no folder, chevron or count, and its tabs flat under it
-// at all times, as the tabs of a project are. The label stays a drop
-// target that takes a tab out of its project, and has New Tab in its menu
-// and, under the pointer, a + for one. A click on it shows the workspace.
-func (a *App) noProjectSection(c *ui.Context, k *colors, w *Workspace, reserve float32) {
-	key := openKey(w.host, w.ID)
-	name := locales.ProjectsNoProject()
-	offline := w.offline()
-	row := ui.Row(c.Key("project-"+key)).Height(26).Shrink(0).Padding(0, 4, 0, sideLead).Gap(sideGap).AlignItems(ui.Center).
-		Radius(pillRadius(26, radiusM)).Cursor(ui.CursorPointer).Role(ui.RoleButton).Label(name + spacedComma(workspaceDetail(w, a, w.tabCount())))
-	if anim := motion(c); anim != nil {
-		row.Transition(ui.ElementTransition{Animation: anim, Position: true, Enter: tabMotion, Exit: tabMotion})
-	}
-	if dragged, ok := ui.Drop[*Tab](row); ok && a.canMoveTab(dragged, w) {
-		a.later(c, func() { a.moveTabToSpace(dragged, w) })
-	}
-	if dragged, over := ui.DragOver[*Tab](row); over && a.canMoveTab(dragged, w) {
-		row.Border(1.5, k.busy.Alpha(0.6))
-	}
-	if !offline {
-		row.ContextMenu(func(m *ui.Menu) { a.projectMenu(m, w) })
-	}
-	hovered := row.Hovered()
-	row.Children(func() {
-		ui.Text(c, name).FontSize(fontCallout).TextColor(k.textMuted).SingleLine().Ellipsis("…").Grow(1).MinWidth(0)
-		if !offline && hovered {
-			label := locales.ProjectsNewTabIn(name)
-			if iconButton(c, k, "plus", label, 20, 13).Tooltip(tip(label, &cmdNewTab)).Clicked() {
-				a.later(c, func() { a.newTabIn(w) })
-			}
-		}
-	})
-	if offline {
-		dimmed(row, 0.5)
-		row.Tooltip(locales.ProjectsOffline(a.hostName(w.host)))
-	}
-	if row.Clicked() && !offline && w != a.ws {
-		a.later(c, func() { a.showWorkspace(w) })
-	}
-	if w.tabCount() == 0 {
-		return
-	}
-	list := ui.Column(c.Key("project-tabs-" + key)).Gap(rowGap)
-	if offline {
-		dimmed(list, 0.5)
-	}
-	list.Children(func() {
-		if w == a.ws {
-			for i, t := range slices.Clone(a.tabs) {
-				a.sidebarTab(c, k, i, t, reserve, false)
 			}
 			return
 		}

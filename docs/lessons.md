@@ -131,6 +131,12 @@ Each item has a **Trigger** (what the diff shows), a **Check** (what the author 
 - **Check:** the PR shows a project open with two tabs next to a closed one, light and dark, on the user's real sessions or a scene like #896's, and the user sees it in the app before the merge: a mark that reads well alone can read as the same kind of row beside a tab's tile.
 - **Source:** #806 drew no folder, #832 drew one, #895 filled it, and #907 took it out for a chevron, then brought it back as a neutral tile of a tab's size with the chevron at the row's end, after the user compared rendered options.
 
+### A group with a header of its own
+- **Trigger:** the diff draws a sidebar group (a project, Older, tabs with no project) with its own row builder instead of projectGroup and projectRow.
+- **Check:** reuse the project's row and group; a second builder drifts from it in the tile, chevron, face and motion, and the next change has to fix both.
+- **Source:** #907 drew tabs with no project as a light label (
+oProjectSection) beside the project row; this PR draws it with projectGroup, so that it matches Rex Go's group (#933).
+
 ### Selected paints the accent
 - **Trigger:** a row uses `.Selected(` and draws its own selected look, as a pill, a swatch or a check.
 - **Check:** use `.AccessSelected(`: `Selected` also fills the element with the theme's accent, which follows the desktop's accent and covers the element's own look.
