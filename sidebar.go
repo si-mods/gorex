@@ -315,7 +315,10 @@ func listReach(right bool) (r, l float32) {
 // sidebarEdge is the sidebar's inner edge, which drags its width; a double
 // click gives it its default width back.
 func (a *App) sidebarEdge(c *ui.Context, k *colors, right bool) {
-	e := ui.Box(c.Key("sidebar-edge")).Width(gap).Shrink(0).Cursor(ui.CursorResizeColumn).Role(ui.RoleSplitter).Label(locales.SidebarEdge())
+	e := ui.Box(c.Key("sidebar-edge")).Width(gap).Shrink(0).Cursor(ui.CursorResizeColumn).Role(ui.RoleSplitter).Label(locales.SidebarEdge()).
+		// Over the list, whose box reaches over the edge (listReach), so the
+		// edge keeps its whole width for the pointer.
+		ZIndex(1)
 	// The width follows the pointer from where the drag began, so that the
 	// edge comes back under it after a bound stopped it.
 	winW, _ := c.Size()
