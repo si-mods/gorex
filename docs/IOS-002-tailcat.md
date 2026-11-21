@@ -135,7 +135,7 @@ Revoking is the Remove of the allowlist. The phone connections close, and the ma
 - Tailnet names dial the tailnet as today.
 - The proxy refuses anything else.
 
-The proxy is one for each process, not one for each run of the tailnet node. So it serves tailcat hosts with the node stopped. iOS can reclaim the listening socket of a suspended app (TN2277). The next `Proxy()` replaces a proxy whose listener died. The new proxy has a new port and a new password. The next session of the hosts goes through it.
+The proxy is one for each process, not one for each run of the tailnet node. So it serves tailcat hosts with the node stopped. iOS can reclaim the listening socket of a suspended app (TN2277). The next `Proxy()` replaces a proxy whose listener died. The new proxy has a new port and a new password. The next session of the hosts goes through it. The app keeps the address it read, though, and a suspension it has not resumed from leaves a dead one in place, so a dial through it fails at once. A failed dial has the engine read it again (`TailnetEngine.reproxy`), and `resume()` reads it before the socket reset's wait, so the next session goes through a live listener.
 
 | Call | Does |
 | --- | --- |

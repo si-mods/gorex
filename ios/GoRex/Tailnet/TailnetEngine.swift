@@ -60,7 +60,7 @@ final class TailnetEngine {
     @ObservationIgnored private var run = 0
     /// The proxy as the tailcat hosts use it, read when first needed and
     /// again after a suspension, which may take its listener.
-    @ObservationIgnored private var tailcatProxy: LoopbackProxy?
+    @ObservationIgnored private(set) var tailcatProxy: LoopbackProxy?
     /// Whether a host is paired over tailcat: the path monitor then runs
     /// with the device off too.
     @ObservationIgnored private var hasTailcat = false
@@ -83,6 +83,7 @@ final class TailnetEngine {
         }
         Host.tailcatProxy = { TailnetEngine.shared.tailcatProxyNow() }
         Host.tailcatHosts = { TailnetEngine.shared.setTailcatHosts($0) }
+        Host.proxyFailed = { Task { await TailnetEngine.shared.reproxy() } }
         _ = try? useTailcatKey(create: false)
     }
 
@@ -124,6 +125,16 @@ final class TailnetEngine {
             var started = false
             // In the chain, no proxy is a start that failed.
             let device = TailnetSettings.isOn && self.proxy != nil && self.status.isRunning
+            // The tailcat proxy anew, before the reset's wait: iOS may
+            // have taken its listener, and a dial while the reset runs
+            // then reaches a live one. Read off the main actor, as
+            // tailcatProxyNow() does on a session()'s own read.
+            let hadTailcat = self.tailcatProxy != nil
+            self.tailcatProxy = nil
+            if hadTailcat {
+                let p = await Task.detached { try? Self.readProxy(run: 0) }.value
+                if self.tailcatProxy == nil { self.tailcatProxy = p }
+            }
             do {
                 try await Task.detached {
                     var error: NSError?
@@ -147,16 +158,6 @@ final class TailnetEngine {
                 // The device's state changed meanwhile; its next start
                 // opens new sockets.
                 self.log.error("reset: \(error.localizedDescription, privacy: .public)")
-            }
-            // The tailcat proxy may be new too. Read again here, off the
-            // main actor: tailcatProxyNow() would read it on the main
-            // actor, a check of the old one included, at the next
-            // session(). A session() meanwhile reads it as before.
-            let hadTailcat = self.tailcatProxy != nil
-            self.tailcatProxy = nil
-            if hadTailcat {
-                let p = await Task.detached { try? Self.readProxy(run: 0) }.value
-                if self.tailcatProxy == nil { self.tailcatProxy = p }
             }
             if TailnetSettings.isOn && self.proxy == nil && !started { await self.applyNow() }
         }
@@ -229,6 +230,20 @@ final class TailnetEngine {
         guard (try? useTailcatKey(create: false)) == true else { return nil }
         if tailcatProxy == nil { tailcatProxy = try? Self.readProxy(run: 0) }
         return tailcatProxy
+    }
+
+    /// A dial through the proxy failed, so it is read again at once —
+    /// `Proxy()` starts a new listener for one iOS took back in a
+    /// suspension no resume() has seen; without this, every dial until
+    /// the next resume() fails against the dead listener
+    /// (docs/IOS-002-tailcat.md, the proxy). Read off the caller's actor.
+    func reproxy(read: @Sendable (Int) throws -> LoopbackProxy = Self.readProxy) async {
+        guard let p = try? await Task.detached { try read(0) }.value else { return }
+        tailcatProxy = p
+        if let q = proxy {
+            let r = LoopbackProxy(port: p.port, password: p.password, run: q.run)
+            if r != q { proxy = r }
+        }
     }
 
     /// Tells the engine the hosts paired over tailcat, by id and address.
