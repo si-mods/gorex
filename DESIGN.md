@@ -276,6 +276,7 @@ the parts of the one it is nearest to.
 |---|---|---|
 | Dialog | `glassPanel(k.panel)`, `radiusXXL`, padding 20, `fontTitle` title, `dialogShadow`, a backdrop of `k.backdrop` | `teleport.go`, `workspaceview.go` |
 | Popover | `glassPanel(k.panel)`, `radiusXL`, padding 14, `popoverShadow` | `host.go` |
+| Popconfirm | a popover from the button that asked, 280 wide: `fontTitle` title, one line of what ends, Cancel, which has the focus so that keys typed on for the terminal cancel, and a `dangerButton` that names the action | `closeconfirm.go` |
 | Menu | `glassPanel(k.panel)`, `radiusL`, padding 6, rows `concentric(radiusL, 6)` | `menus.go`, `docs/DSK-001-drawn-menus.md` |
 | Toast and banner | `k.panel`, `radiusL`, `toastShadow` | `view.go`, `upload.go` |
 | Palette | frost or glass, `fontTitle` input, rows `concentric` | `commands.go` |
@@ -286,6 +287,11 @@ the parts of the one it is nearest to.
 - **A dialog or a popover?** A choice the user must make before going
   on, over a backdrop, is a dialog. A choice they can leave by clicking
   away, next to what opened it, is a popover.
+- **Ask before closing?** Closing one item asks only when it ends a
+  running program: a tab or a pane whose program runs asks with a
+  popconfirm from its close button, and a shell at its prompt closes at
+  once. A bulk action, as Close Other Tabs or Close Space, always asks,
+  with a dialog that says how much ends.
 - **A toast or a banner?** A toast tells of something done and goes. A
   banner stays while its state lasts, as a pane that cannot attach.
 - **Do** take the nearest token. **Don't** add a size, radius or shadow

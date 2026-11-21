@@ -270,7 +270,9 @@ func (a *App) sidebar(c *ui.Context, k *colors, right bool) {
 			ui.Row(c).Shrink(0).Padding(0, padR, 4, padL).Children(func() { a.spacePicker(c, k, true) })
 		}
 		reachR, reachL := listReach(right)
-		ui.Scroll(c).Grow(1).MinHeight(0).Margin(0, -reachR, 0, -reachL).Padding(2, padR+reachR, 6, padL+reachL).Children(func() {
+		list := ui.Scroll(c).Grow(1).MinHeight(0).Margin(0, -reachR, 0, -reachL).Padding(2, padR+reachR, 6, padL+reachL)
+		a.sideList = list.Bounds()
+		list.Children(func() {
 			ui.Column(c).Gap(2).Role(ui.RoleTabList).Label(locales.TabListLabel()).Children(func() {
 				a.projectsList(c, k)
 			})

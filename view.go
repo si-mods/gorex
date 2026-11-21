@@ -122,6 +122,8 @@ func (a *App) view(c *ui.Context) {
 	a.palette(c, k)
 	a.promptPanel(c, k)
 	a.workspaceConfirm(c, k)
+	a.closeOthersConfirm(c, k)
+	a.closeAskFallback(c, k)
 	a.spaceDialog(c, k)
 	a.projectSheetView(c, k)
 	a.teleportConfirm(c, k)
@@ -1174,9 +1176,11 @@ func (a *App) floatHandle(c *ui.Context, k *colors, t *Tab, p *Pane, f *Float) {
 			t.setFocus(p)
 			a.toggleZoom()
 		}
-		if iconButton(c, k, "x", locales.CmdClosePane(), 18, 11).Tooltip(locales.CmdClosePane()).Clicked() {
-			a.later(c, func() { a.closePane(p) })
+		x := iconButton(c, k, "x", locales.CmdClosePane(), 18, 11).Tooltip(locales.CmdClosePane())
+		if x.Clicked() {
+			a.later(c, func() { a.askClosePane(p) })
 		}
+		a.closeConfirm(c, k, x, t, p)
 	})
 }
 
@@ -1243,6 +1247,8 @@ func (a *App) paneMenu(m *ui.Menu, p *Pane) {
 // to click. The row is posed faded while they hide, for the fade to start
 // from there.
 func (a *App) paneActions(c *ui.Context, k *colors, t *Tab, p *Pane, show bool) {
+	// They stay while the close button asks before closing.
+	show = show || a.asking(t, p)
 	row := ui.Row(c).Gap(2).AlignItems(ui.Center)
 	// The fade only paints, without building the view again.
 	anim := motion(c)
@@ -1297,9 +1303,11 @@ func (a *App) paneActions(c *ui.Context, k *colors, t *Tab, p *Pane, show bool) 
 			t.setFocus(p)
 			a.toggleZoom()
 		}
-		if naturalIconButton(c, k, "x", locales.CmdClosePane(), 26, 16).Tooltip(tip(locales.CmdClosePane(), &cmdClosePane)).Clicked() {
-			a.later(c, func() { a.closePane(p) })
+		x := naturalIconButton(c, k, "x", locales.CmdClosePane(), 26, 16).Tooltip(tip(locales.CmdClosePane(), &cmdClosePane))
+		if x.Clicked() {
+			a.later(c, func() { a.askClosePane(p) })
 		}
+		a.closeConfirm(c, k, x, t, p)
 	})
 }
 

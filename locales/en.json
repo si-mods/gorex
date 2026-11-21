@@ -372,7 +372,65 @@
   },
   "tabCloseOthers": "Close Other Tabs",
   "@tabCloseOthers": {
-    "description": "Tab context menu: close every tab but this one."
+    "description": "Tab context menu: close every tab but this one. Also the button of the question it asks first."
+  },
+  "closeOthersTitle": "{n, plural, one {Close # other tab?} other {Close # other tabs?}}",
+  "@closeOthersTitle": {
+    "description": "Title of the question before Close Other Tabs: how many tabs it closes.",
+    "placeholders": {
+      "n": {
+        "type": "int",
+        "example": "3"
+      }
+    }
+  },
+  "closeOthersBody": "{n, plural, one {Its terminal ends, and the program running in it. This can't be undone.} other {Their # terminals end, and the programs running in them. This can't be undone.}}",
+  "@closeOthersBody": {
+    "description": "Body of the question before Close Other Tabs: how many terminals of the other tabs end.",
+    "placeholders": {
+      "n": {
+        "type": "int",
+        "example": "5"
+      }
+    }
+  },
+  "closeOthersBodyIdle": "{n, plural, =0 {This can't be undone.} one {Its terminal ends. This can't be undone.} other {Their # terminals end. This can't be undone.}}",
+  "@closeOthersBodyIdle": {
+    "description": "Body of the question before Close Other Tabs when no program runs in the other tabs: how many terminals end.",
+    "placeholders": {
+      "n": {
+        "type": "int",
+        "example": "5"
+      }
+    }
+  },
+  "closeRunningTitle": "{name} is running",
+  "@closeRunningTitle": {
+    "description": "Title of the question before closing a tab or a pane that runs a program: the program's name.",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "sleep"
+      }
+    }
+  },
+  "closeRunningPane": "Closing the pane ends its session and the program.",
+  "@closeRunningPane": {
+    "description": "Body of the question before closing a pane that runs a program."
+  },
+  "closeRunningTab": "{n, plural, one {Closing the tab ends its session and the program.} other {Closing the tab ends its # sessions and their programs.}}",
+  "@closeRunningTab": {
+    "description": "Body of the question before closing a tab where a program runs: how many sessions it ends.",
+    "placeholders": {
+      "n": {
+        "type": "int",
+        "example": "2"
+      }
+    }
+  },
+  "closeEndSession": "End Session",
+  "@closeEndSession": {
+    "description": "Button of the question before closing a tab or a pane that runs a program: close it and end its session."
   },
   "sidebarHide": "Hide Sidebar",
   "@sidebarHide": {
@@ -1782,7 +1840,7 @@
   },
   "sessionCancel": "Cancel",
   "@sessionCancel": {
-    "description": "Button of the question before closing a space: keep it."
+    "description": "Button of a question before closing a space, tabs or a pane: keep them."
   },
   "sessionTabsElsewhere": "{n, plural, one {# tab · In another window} other {# tabs · In another window}}",
   "@sessionTabsElsewhere": {

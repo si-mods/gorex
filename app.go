@@ -154,6 +154,15 @@ type App struct {
 	// teleportAsk is the question after a tab was dropped on another
 	// host's place in the tabs.
 	teleportAsk teleportAsk
+	// closeAsk is the question before closing a tab or a pane that runs a
+	// program; closeOthers the tab whose Close Other Tabs asks first.
+	closeAsk        closeAsk
+	closeOthers     *Tab
+	closeOthersOpen bool
+	// sideList is where the sidebar's list of tabs showed in the last
+	// frame, which a tab's row scrolled out of leaves its close button
+	// clipped.
+	sideList ui.Rect
 	// paletteFresh tells that the palette was just opened: the frame that
 	// shows it first poses it where it comes in from.
 	paletteFresh bool
