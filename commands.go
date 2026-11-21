@@ -593,8 +593,9 @@ var (
 	cmdChangeSession = command{ID: "session.switch", Name: locales.Messages.CmdChangeSession, Accel: "CmdOrCtrl+Shift+O", Keys: "⇧⌘O", Other: ctrlShift(ui.KeyO), Run: func(a *App) { a.openSessionPalette() }}
 	cmdNextSession   = command{ID: "session.next", Name: locales.Messages.CmdNextSession, Accel: "CmdOrCtrl+Ctrl+]", Keys: "⌃⌘]", Other: shortcut{ui.Ctrl | ui.Shift, ui.KeyPageDown}, Run: func(a *App) { a.cycleWorkspace(1) }}
 	cmdPrevSession   = command{ID: "session.previous", Name: locales.Messages.CmdPreviousSession, Accel: "CmdOrCtrl+Ctrl+[", Keys: "⌃⌘[", Other: shortcut{ui.Ctrl | ui.Shift, ui.KeyPageUp}, Run: func(a *App) { a.cycleWorkspace(-1) }}
-	cmdRenameSession = command{ID: "session.rename", Name: locales.Messages.CmdRenameSession, Run: func(a *App) { a.startWorkspaceRename() }}
-	cmdCloseSession  = command{ID: "session.close", Name: locales.Messages.CmdCloseSession, Run: func(a *App) { a.askCloseWorkspace() }}
+	cmdRenameSession = command{ID: "session.rename", Name: locales.Messages.CmdRenameSession, Run: func(a *App) { a.startWorkspaceRename() },
+		Available: func(a *App) bool { return a.ws != nil && a.ws.Dir != "" }}
+	cmdCloseSession = command{ID: "session.close", Name: locales.Messages.CmdCloseSession, Run: func(a *App) { a.askCloseWorkspace() }}
 	// cmdRevealFolder shows the window's project's folder in the system's
 	// file manager: of this machine's projects only.
 	cmdRevealFolder = command{ID: "project.reveal", Name: locales.Messages.CmdRevealProjectFolder, Run: func(a *App) { a.revealProject(a.ws) },

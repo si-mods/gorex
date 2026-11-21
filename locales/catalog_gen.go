@@ -7746,16 +7746,16 @@ func (msgs Messages) ProjectsNewTabIn(name string) string {
 	return Catalog.Format(msgs.locale, "projectsNewTabIn", map[string]any{"name": name})
 }
 
-// ProjectsNoProject says "Tabs with no project"
+// ProjectsNoProject says "No Project"
 // in the language the app shows.
 //
-// Sidebar and picker: a host's tabs that belong to no project.
+// Sidebar and picker: the group of a host's tabs that belong to no project.
 func ProjectsNoProject() string { return In(i18n.Locale()).ProjectsNoProject() }
 
-// ProjectsNoProject says "Tabs with no project"
+// ProjectsNoProject says "No Project"
 // in the language of msgs.
 //
-// Sidebar and picker: a host's tabs that belong to no project.
+// Sidebar and picker: the group of a host's tabs that belong to no project.
 func (msgs Messages) ProjectsNoProject() string {
 	return Catalog.Format(msgs.locale, "projectsNoProject", nil)
 }

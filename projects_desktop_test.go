@@ -962,11 +962,13 @@ func TestSidebarDisclosureChevron(t *testing.T) {
 	}
 }
 
-// TestSidebarTabsWithNoProjectFlat: a host's tabs with no project are a
-// label with no chevron, and their tabs show with no expanding, while a
-// project is chosen, in the columns of a project's tabs; the label is a
-// drop target and has New Tab in its menu.
-func TestSidebarTabsWithNoProjectFlat(t *testing.T) {
+// TestSidebarTabsWithNoProjectGroup: a host's tabs with no project are a
+// group shaped like a project: a header row with a folder tile in the
+// muted tint, the label, a chevron, and their tabs under it, in a
+// project's columns, open at first. The chevron and a click on the shown
+// group's row close and open its tabs; the row is a drop target for a tab
+// of a project and has New Tab in its menu.
+func TestSidebarTabsWithNoProjectGroup(t *testing.T) {
 	a, tt, _, _ := projectsApp(t)
 	space := ""
 	res := clientCommand(a, rex.LayoutCommand{Op: "project.create", Dir: appTempDir(t, a), Name: "acme-api", SpaceName: &space})
@@ -983,31 +985,53 @@ func TestSidebarTabsWithNoProjectFlat(t *testing.T) {
 	if !ok {
 		t.Fatalf("no label for the tabs with no project: %q", tt.Texts())
 	}
-	if _, ok := tt.Find(locales.ProjectsTabsOf(locales.ProjectsNoProject())); ok {
-		t.Error("the tabs with no project have a disclosure")
+	// A folder tile in the tiles' room before the label, as a project has,
+	// and a chevron after it.
+	tile := ui.Rect{X: label.X - sideGap - tilesReserve(a.tabs), Y: label.Y, W: tilesReserve(a.tabs), H: label.H}
+	if !inkIn(tt.Image(), tile) {
+		t.Error("the tabs with no project have no folder tile")
 	}
-	// Closed, as a project's row would be, changes nothing.
-	setRowOpen(openKey(nil, loose.ID), false)
-	tt.Frame()
+	chev, ok := tt.Find(locales.ProjectsTabsOf(locales.ProjectsNoProject()))
+	if !ok || chev.X < label.X+label.W || !inkIn(tt.Image(), chev) {
+		t.Errorf("the tabs with no project have no chevron after the label %+v: %+v, %v", label, chev, ok)
+	}
+	// Open at first: the tabs are under the label, in a project's columns.
 	infos, _, _ := a.st.listOf(nil)
 	name, detail, _ := savedTabFace(loose.layout.Tabs[0], infos)
 	tab, ok := tt.Find(name + " " + detail)
 	if !ok {
-		t.Fatalf("a tab with no project is not shown without expanding: %q", tt.Texts())
+		t.Fatalf("a tab with no project is not shown at first: %q", tt.Texts())
 	}
 	row, _ := tt.Find("acme-api" + spacedComma(workspaceDetail(w, a, w.tabCount())))
 	if tab.X != row.X || tab.W != row.W {
 		t.Errorf("the tab with no project at x %v (%v wide), a project's row at %v (%v wide)", tab.X, tab.W, row.X, row.W)
 	}
-	if text, ok := tt.Find(locales.ProjectsNoProject()); !ok || text.X > row.X+sideLead+1 {
-		t.Errorf("the label at x %v, want it at the leading edge %v", label.X, row.X+sideLead)
+	if label.X > row.X+sideLead+tileW+sideGap+4 {
+		t.Errorf("the label at x %v, want it where a project's name is", label.X)
 	}
-	// The label is no deeper than a project's chevron, and its tabs are
-	// under it, not above.
 	if tab.Y < label.Y+label.H {
 		t.Errorf("the tab at y %v is not under the label %+v", tab.Y, label)
 	}
-	// Its menu has New Tab alone.
+	// The chevron closes and opens the tabs, moving neither the label nor
+	// the chevron.
+	key := openKey(nil, loose.ID)
+	setRowOpen(key, false)
+	tt.Frame()
+	if _, ok := tt.Find(name + " " + detail); ok {
+		t.Error("the tabs with no project show while closed")
+	}
+	if l2, ok := tt.Find(locales.ProjectsNoProject()); !ok || l2 != label {
+		t.Errorf("closing moved the label: %+v, was %+v", l2, label)
+	}
+	setRowOpen(key, true)
+	tt.Frame()
+	if _, ok := tt.Find(name + " " + detail); !ok {
+		t.Error("the tabs with no project do not show once open")
+	}
+	// A tab of a project can move here; its menu has New Tab alone.
+	if !a.canMoveTab(a.tab(), loose) {
+		t.Error("a tab of a project cannot move to the tabs with no project")
+	}
 	rightClick(t, tt, locales.ProjectsNoProject())
 	if m := tt.Menu(); !slices.Contains(m, locales.CmdNewTab()) || slices.Contains(m, cmdRenameSession.Title()) {
 		t.Errorf("the menu of the tabs with no project: %q", m)
@@ -1016,6 +1040,49 @@ func TestSidebarTabsWithNoProjectFlat(t *testing.T) {
 	// A click on its tab shows that workspace on it.
 	click(t, tt, name+" "+detail)
 	waitFor(t, tt, "the tab with no project shown", func() bool { return a.ws == loose })
+	// Shown, a click on its row closes it, as a project's row does.
+	tt.Frame()
+	click(t, tt, locales.ProjectsNoProject())
+	waitFor(t, tt, "the shown group closed", func() bool { return !rowOpen(key, true) })
+}
+
+// TestSidebarNoProjectGroupFace: while the tab shown has no project and the
+// group is open, the group has the face a project has; another project's
+// being shown, or the group closed, it has none.
+func TestSidebarNoProjectGroupFace(t *testing.T) {
+	a, tt, _, _ := projectsApp(t)
+	space := ""
+	res := clientCommand(a, rex.LayoutCommand{Op: "project.create", Dir: appTempDir(t, a), Name: "acme-api", SpaceName: &space})
+	caughtUp(t, a, tt)
+	w := a.st.byID(res.Space)
+	loose := a.st.noProjectOf(nil)
+	waitFor(t, tt, "the tab with no project", func() bool { return a.ws == loose && len(a.tabs) == 1 && a.tab().Focus != nil })
+	edge := func() [4]uint8 {
+		tt.Frame()
+		tt.Advance(time.Second)
+		tt.Frame()
+		r, ok := tt.Find(locales.ProjectsNoProject())
+		if !ok {
+			t.Fatalf("no label: %q", tt.Texts())
+		}
+		c := tt.Image().RGBAAt(int(r.X-sideGap-tilesReserve(a.tabs)-sideLead-2), int(r.Y+r.H/2))
+		return [4]uint8{c.R, c.G, c.B, c.A}
+	}
+	setRowOpen(openKey(nil, loose.ID), true)
+	open := edge()
+	setRowOpen(openKey(nil, loose.ID), false)
+	shut := edge()
+	if open == shut {
+		t.Error("the tabs with no project, shown and open, have no face")
+	}
+	setRowOpen(openKey(nil, loose.ID), true)
+	a.showWorkspace(w)
+	waitFor(t, tt, "the project", func() bool { return a.ws == w })
+	away := edge()
+	setRowOpen(openKey(nil, loose.ID), false)
+	if shutAway := edge(); away != shutAway {
+		t.Errorf("the group has a face while a project is shown: %v, closed %v", away, shutAway)
+	}
 }
 
 // TestSidebarCurrentProjectGroup: the project shown, its tabs open, has a
@@ -1110,4 +1177,31 @@ func TestSidebarRevealsActiveTabOnProjectFace(t *testing.T) {
 	if !ok || after.Y+after.H > edgeH || after.Y >= before.Y {
 		t.Errorf("the active tab at %+v after choosing it (%+v before), the window %v high: not scrolled into view", after, before, edgeH)
 	}
+}
+
+// TestNoProjectCannotBeRenamed: with the tabs with no project shown, Rename
+// Project is not available, starts no field and leaves the name that the
+// layout finds them by (layout.NoProjectName).
+func TestNoProjectCannotBeRenamed(t *testing.T) {
+	a, tt, _, _ := projectsApp(t)
+	loose := a.st.noProjectOf(nil)
+	waitFor(t, tt, "the tab with no project", func() bool { return a.ws == loose && len(a.tabs) == 1 && a.tab().Focus != nil })
+	if cmdRenameSession.Available != nil && cmdRenameSession.Available(a) {
+		t.Error("Rename Project is available on the tabs with no project")
+	}
+	a.startWorkspaceRename()
+	tt.Frame()
+	if a.wsRenaming {
+		t.Error("a rename of the tabs with no project started")
+	}
+	if loose.Name != layout.NoProjectName {
+		t.Errorf("the name is %q, want %q", loose.Name, layout.NoProjectName)
+	}
+	// Forced on, the sidebar still draws no field.
+	a.wsRenaming = true
+	tt.Frame()
+	if _, ok := tt.Find(locales.ProjectsNoProject()); !ok {
+		t.Errorf("a rename field replaced the label: %q", tt.Texts())
+	}
+	a.wsRenaming = false
 }

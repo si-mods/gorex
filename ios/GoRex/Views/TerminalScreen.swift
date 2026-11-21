@@ -46,6 +46,10 @@ struct TerminalScreen: View {
     @State private var stopping = false
     /// Whether the terminal has the key bar, which holds the mic.
     @State private var hasBar = TerminalView.hasBar
+    /// The ports the pane listens on, for the bar's button.
+    @State private var ports: Ports?
+    /// Whether the ports sheet shows.
+    @State private var portsOpen = false
     @State private var currentTarget: TerminalTarget
     @State private var pillDrag: CGFloat = 0
     /// The way the last switch went, 1 from the right, -1 from the left,
@@ -222,6 +226,10 @@ struct TerminalScreen: View {
             }, newTab: newTab)
             .environment(\.colorScheme, scheme)
             .navigationTransition(.zoom(sourceID: "title", in: zoom)) }
+            .sheet(isPresented: $portsOpen) {
+                PortsView(host: host, target: currentTarget)
+            }
+            .task(id: currentTarget.block) { await watchPorts() }
             .sheet(isPresented: $diagnostics) {
                 NavigationStack {
                     DiagnosticsView(address: host.config.url.host() ?? "", host: host.config, failure: session?.diagnosis)
@@ -367,6 +375,12 @@ struct TerminalScreen: View {
 
     @ViewBuilder private var barTrailing: some View {
         if !hasBar { mic }
+        if let ports, !ports.ports.isEmpty {
+            Button { portsOpen = true } label: {
+                Image(systemName: "network")
+            }
+            .accessibilityLabel(Text("Ports, \(ports.ports.count)"))
+        }
         moreMenu()
     }
 
@@ -381,6 +395,16 @@ struct TerminalScreen: View {
                 busy = false
             }
         })
+    }
+
+    /// Keeps the bar's ports button current: the pane's ports, every five
+    /// seconds while the screen shows.
+    private func watchPorts() async {
+        ports = nil
+        while !Task.isCancelled {
+            ports = try? await host.ports(session: currentTarget.session, block: currentTarget.block)
+            try? await Task.sleep(for: .seconds(5))
+        }
     }
 
     /// The terminal showing the session.
