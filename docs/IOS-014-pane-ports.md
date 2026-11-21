@@ -8,7 +8,7 @@ metadata:
 
 # IOS-014: A pane's listening ports on Rex Go
 
-Status: phases 1 and 2 built (#939). Phase 3 not built.
+Status: phases 1–3 built (#939, #947).
 
 This doc adds a ports view to Rex Go for the open pane. It also adds a way to open a port in the phone's browser. It uses the server data that [MOD-004](MOD-004-terminal-ports.md) built. It extends [IOS-005](IOS-005-pane-switching.md) and follows [DOC-001](DOC-001-design-docs.md).
 
@@ -108,5 +108,5 @@ Rex Go cannot open the port in its browser either. A server that listens on 127.
 
 1. The ports call in the app and the sheet, with the refresh. No server change (#939).
 2. The top-bar button, the session row, opening a reachable port in Safari and the copy action (#939).
-3. The loopback relay on the host, with its close and its limit.
+3. The loopback relay on the host, with its close and its limit (#947).
 4. A later doc: opening a page when the phone has no route to the host.
