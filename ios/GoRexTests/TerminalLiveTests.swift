@@ -109,6 +109,41 @@ nonisolated final class TerminalLiveTests: XCTestCase {
         XCTAssertEqual(TerminalActivity.cut("short"), "short")
     }
 
+    /// The activity's text and a notification's come without what a
+    /// terminal's escapes leave, and without the characters iOS draws as
+    /// nothing or as a box; CJK text and emoji stay, joiners and marks too.
+    func testShownText() {
+        XCTAssertEqual("plain ascii".shownText, "plain ascii")
+        XCTAssertEqual("\u{1B}[31mred\u{1B}[0m".shownText, "red")
+        XCTAssertEqual("\u{1B}]9;note\u{07}after".shownText, "after")
+        XCTAssertEqual("\u{1B}]9;note\u{1B}\\after".shownText, "after")
+        XCTAssertEqual("\u{1B}]9;note\u{9C}after".shownText, "after", "an 8-bit ST ends it")
+        XCTAssertEqual("\u{9D}9;note\u{9C}after".shownText, "after", "an 8-bit OSC too")
+        XCTAssertEqual("a\u{1B}\u{1B}[0mb".shownText, "ab", "a doubled ESC starts its own sequence")
+        XCTAssertEqual("\u{1B}c\u{1B}(Bplain".shownText, "plain", "two-character escapes")
+        XCTAssertEqual("\u{9B}31mred".shownText, "red", "an 8-bit CSI")
+        XCTAssertEqual("a\u{07}b\u{08}c\u{7F}".shownText, "abc")
+        XCTAssertEqual("\u{200E}left\u{200F}\u{200B} right".shownText, "left right")
+        XCTAssertEqual("\u{E0B0} main \u{E0B2}".shownText, " main ")
+        XCTAssertEqual("\u{10EEEE}x".shownText, "x", "a picture's placeholder")
+        XCTAssertEqual("bad\u{FFFD}here".shownText, "badhere")
+        let kept = "中文 🏴󠁧󠁢󠁳󠁣󠁴󠁿 👩‍💻 e\u{301}"
+        XCTAssertEqual(kept.shownText, kept, "CJK, emoji, their joiners and marks stay")
+    }
+
+    /// The line and a record's text reach the activity filtered: a Nerd
+    /// Font icon leaves no box, an escape sequence no text.
+    @MainActor func testStateShowsFilteredText() {
+        XCTAssertEqual(TerminalActivity.lastLine("\u{1B}[32m✓ done\u{1B}[0m  "), "✓ done")
+        XCTAssertEqual(TerminalActivity.lastLine("main \u{E0B2}"), "main")
+        let r = Host.ProgramStatus(id: "a", state: "blocked", title: "\u{E0B1} Edit?",
+                                   msg: "\u{1B}[1mAllow\u{1B}[0m \u{1B}]8;;x\u{07}edits?")
+        let s = TerminalLive.state(title: "\u{E0B0}api", program: nil, records: [r], seen: nil, connected: true)
+        XCTAssertEqual(s.title, "api")
+        XCTAssertEqual(s.record?.title, "Edit?")
+        XCTAssertEqual(s.line, "Allow edits?")
+    }
+
     /// A screen's rows, and the cursor's row: the one marked with a "|".
     private static func screen(_ text: String) -> (rows: [String], cursor: Int?) {
         var rows = text.components(separatedBy: "\n"), cursor: Int?
@@ -893,6 +928,13 @@ nonisolated final class TerminalLiveTests: XCTestCase {
             ("worst-paused", long, .init(title: String(repeating: "Refactor the session store so that every pane keeps its scrollback ", count: 3),
                                          program: "claude", record: record("blocked", "Allow edits to 14 files in internal/session and internal/rexapi?"),
                                          line: String(repeating: "W", count: 80), connected: false)),
+            // What a program sends as it is, before shownText: an escape
+            // sequence and Nerd Font icons, which drew as text and boxes.
+            ("raw", short, .init(title: "\u{E0B0}api", program: "claude", record: record("blocked", "\u{E0B1} Edit main.go?"),
+                                 line: "\u{1B}[1mAllow\u{1B}[0m \u{E0B2}edits?", connected: true)),
+            ("filtered", short, TerminalLive.state(title: "\u{E0B0}api", program: "claude",
+                records: [.init(id: "f", state: "blocked", title: "\u{E0B1} Edit main.go?",
+                                msg: "\u{1B}[1mAllow\u{1B}[0m \u{E0B2}edits?")], seen: nil, connected: true)),
         ]
         func write(_ v: some View, _ name: String) throws {
             let r = ImageRenderer(content: v)

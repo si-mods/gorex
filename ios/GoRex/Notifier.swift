@@ -42,9 +42,9 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
         if UIApplication.shared.applicationState == .active, onScreen?.host == host.id, onScreen?.block == block { return }
         let window = host.blocks[block]?.title.flatMap { $0.isEmpty ? nil : $0 }
         let c = UNMutableNotificationContent()
-        c.title = (title.isEmpty ? host.blocks[block]?.program ?? window ?? host.config.name : title).asText
-        c.subtitle = [window, host.config.name].compactMap(\.self).joined(separator: " · ").asText
-        c.body = body
+        c.title = (title.isEmpty ? host.blocks[block]?.program ?? window ?? host.config.name : title).shownText.asText
+        c.subtitle = [window, host.config.name].compactMap(\.self).joined(separator: " · ").shownText.asText
+        c.body = body.shownText
         c.sound = .default
         // One window's notifications group together.
         c.threadIdentifier = "\(host.id.uuidString) \(block)"
