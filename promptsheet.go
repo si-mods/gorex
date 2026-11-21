@@ -62,6 +62,7 @@ func (a *App) promptEvent(p *rex.PromptEvent) {
 		a.promptText = p.Spec.Value
 		a.promptOther = ""
 		a.promptPicked = map[string]bool{}
+		a.promptSel = 0
 		for _, it := range p.Spec.Items {
 			if it.Selected {
 				a.promptPicked[it.ID] = true
@@ -142,17 +143,33 @@ func (a *App) promptPanel(c *ui.Context, k *colors) {
 			return
 		}
 		// A pick: its items, a check on the chosen ones, and Other when the
-		// action allows text in their place.
-		submit := false
+		// action allows text in their place. The keyboard moves over the
+		// items, Enter answers, and with several, Space checks one.
+		sel := min(max(a.promptSel, 0), len(spec.Items)-1)
+		a.promptSel = sel
+		if c.Shortcut(0, ui.KeyDown) {
+			a.promptSel = min(sel+1, len(spec.Items)-1)
+		}
+		if c.Shortcut(0, ui.KeyUp) {
+			a.promptSel = max(sel-1, 0)
+		}
+		if c.Shortcut(0, ui.KeySpace) && spec.Multiple && len(spec.Items) > 0 {
+			id := spec.Items[sel].ID
+			a.promptPicked[id] = !a.promptPicked[id]
+		}
+		submit := c.Shortcut(0, ui.KeyEnter)
 		ui.Scroll(c.Key("prompt-items")).MinHeight(0).Shrink(1).Children(func() {
 			ui.Column(c).Gap(4).Children(func() {
-				for _, it := range spec.Items {
+				for i, it := range spec.Items {
 					item := it
 					row := ui.Row(c.Key("prompt-"+item.ID)).Height(38).Padding(0, 10).Gap(10).
 						Radius(concentric(radiusXXL, 1)).AlignItems(ui.Center).Cursor(ui.CursorPointer)
 					chosen := a.promptPicked[item.ID]
-					if chosen {
+					switch {
+					case chosen:
 						row = row.Background(k.panelSel)
+					case i == sel:
+						row = row.Background(k.hover)
 					}
 					row.Children(func() {
 						ui.Column(c).Grow(1).Gap(1).Children(func() {
@@ -169,6 +186,7 @@ func (a *App) promptPanel(c *ui.Context, k *colors) {
 						}
 					})
 					if row.Clicked() {
+						a.promptSel = i
 						if spec.Multiple {
 							a.promptPicked[item.ID] = !chosen
 						} else {
@@ -195,16 +213,24 @@ func (a *App) promptPanel(c *ui.Context, k *colors) {
 		})
 		if submit {
 			open = false
-			if spec.AllowOther && other != "" {
+			switch {
+			case spec.AllowOther && other != "":
 				a.answerPrompt(rex.PromptAnswer{Text: other})
-			} else {
+			case spec.Multiple:
 				ids := make([]string, 0, len(spec.Items))
 				for _, it := range spec.Items {
 					if a.promptPicked[it.ID] {
 						ids = append(ids, it.ID)
 					}
 				}
-				a.answerPrompt(rex.PromptAnswer{IDs: ids})
+				if len(ids) > 0 {
+					a.answerPrompt(rex.PromptAnswer{IDs: ids})
+				} else {
+					open = true
+				}
+			case len(spec.Items) > 0:
+				// One item: Enter answers the row it is on.
+				a.answerPrompt(rex.PromptAnswer{IDs: []string{spec.Items[sel].ID}})
 			}
 		}
 	})
