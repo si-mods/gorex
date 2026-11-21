@@ -64,7 +64,7 @@ nonisolated struct TerminalActivity: ActivityAttributes, Hashable, Sendable {
     /// maxLine characters.
     static func lastLine(_ text: String) -> String {
         let line = text.split(whereSeparator: \.isNewline).last { !$0.allSatisfy(\.isWhitespace) } ?? ""
-        var s = Substring(line.shownText)
+        var s = String(line).shownText[...]
         while s.last?.isWhitespace == true { s.removeLast() }
         return cut(String(s), maxLine, bytes: maxLineBytes)
     }
