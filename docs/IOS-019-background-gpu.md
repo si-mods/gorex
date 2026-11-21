@@ -37,7 +37,7 @@ iOS does not allow GPU work in a suspended app. A frame that commits while the a
 
 ### Behavior
 
-Nothing the user sees changes. The terminal still freezes when the app leaves the foreground and draws again when it comes back. A transient resign, such as Control Center, pauses the terminal for the moment and puts it back.
+Nothing the user sees changes. The terminal still freezes when the app leaves the foreground and draws again when it comes back. A transient resign, such as Control Center or a call banner, pauses the terminal for a beat — the system does not say which resign is a lock — and the surfaces resume while the sheet is still open.
 
 ### Model
 
@@ -47,7 +47,9 @@ Every change of the latch is mirrored into `ghostty_presentation_set_allowed`, G
 
 On `willResignActive`, before the secure snapshot, every live surface is also occluded and drained (`ghostty_surface_drain_renderer_to_idle`, 100 ms each). The gate blocks commits, but the drain confirms each renderer paused and stops its display link, as rootshell's `pauseRenderersForSecureSnapshot` does. The surfaces come from `Ghostty.views`, the registry the actions already use.
 
-On `didBecomeActive` the latch clears and each surface's occlusion goes back to its page. This also covers the resign that never became a background: Control Center sends no `willEnterForeground`, so the views' own `show()` cannot reach it.
+The resign hides its reason: lock, Control Center and a call banner all send the same notification, and the snapshot window must be covered for each. So a transient resign pauses too — but half a second later the state tells them apart. Still `.inactive`, not backgrounded, and protected data still available means a sheet, not a lock; a deferred check then reopens the gate and restores each surface's occlusion, so the terminal draws again while the sheet is still up. On a real lock the app is backgrounded and its protected data gone, so the check passes nothing. A generation counter cancels a stale check when a new resign arms again.
+
+On `didBecomeActive` the latch clears and each surface's occlusion goes back to its page. This also covers the resign that never became a background and whose deferred check did not fire: Control Center dismissed quickly sends no `willEnterForeground`, so the views' own `show()` cannot reach it.
 
 A surface created while the latch is armed asks for `initially_visible = false`, so it starts occluded instead of presenting out of the foreground.
 
@@ -62,6 +64,7 @@ These are app-level notifications, as the gate is process-wide: a scene phase of
 
 - **Gate only, on `didEnterBackground` (#963).** It leaves the lock-screen snapshot window and the background launch open. This doc's design replaces it.
 - **Drain without the gate.** The drain confirms the renderer idle but blocks no later commit: a direct draw or a queued occlusion could still present after it. The gate is the backstop every path goes through, so both stay.
+- **Pause only on a real lock.** No notification names the reason for a resign. `protectedDataWillBecomeUnavailable` is the closest signal but never fires on a device without a passcode, leaving its lock snapshot uncovered. Rejected; the pause is unconditional and the deferred check recovers the transient case.
 - **Clear on `willEnterForeground`.** The notification fires while the device is still locked. A queued occlusion could then draw into a lock transition. Rejected; `didBecomeActive` is the only safe edge.
 - **Occlusion only, as before #963.** It is asynchronous and arrives after the snapshot. Rejected.
 
@@ -69,4 +72,5 @@ These are app-level notifications, as the gate is process-wide: a scene phase of
 
 - `xcodebuild` builds the app for the simulator, as `docs/lessons.md` ("Any change under ios/**") asks.
 - On a device or a simulator: a terminal with running output goes to the background, locks and unlocks, and returns. The output continues, and no watchdog or GPU message shows in the device log.
+- A terminal with running output under Control Center resumes drawing with the sheet still open, after a short freeze.
 - `docs/invariants.md` has no item for the renderer's background state.

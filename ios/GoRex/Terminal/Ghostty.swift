@@ -49,6 +49,8 @@ enum Ghostty {
         didSet { ghostty_presentation_set_allowed(!secureDrawProhibited) }
     }
 
+    private static var secureGeneration = 0
+
     private static func watchBackground() {
         ghostty_presentation_set_allowed(false)
         let center = NotificationCenter.default
@@ -56,7 +58,7 @@ enum Ghostty {
             MainActor.assumeIsolated { secure() }
         }
         center.addObserver(forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: .main) { _ in
-            MainActor.assumeIsolated { secureDrawProhibited = true }
+            MainActor.assumeIsolated { secure(pause: false) }
         }
         center.addObserver(forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main) { _ in
             MainActor.assumeIsolated { unsecure() }
@@ -64,15 +66,29 @@ enum Ghostty {
     }
 
     /// Arms the latch and pauses every surface before the lock screen's
-    /// snapshot: the bounded drain confirms no frame is in the GPU. A
-    /// transient resign (Control Center, a banner) pauses too; the active
-    /// that follows puts them back.
-    private static func secure() {
+    /// snapshot: the bounded drain confirms no frame is in the GPU. The
+    /// resign hides its reason — lock, a transient sheet and a call all
+    /// send the same notification — so a transient resign pauses too. Half
+    /// a second on, the state tells it apart: still inactive but neither
+    /// locked nor backgrounded means a sheet, where drawing is allowed
+    /// and the snapshot is already taken, and the surfaces resume there.
+    private static func secure(pause: Bool = true) {
+        secureGeneration += 1
+        let generation = secureGeneration
         secureDrawProhibited = true
+        guard pause else { return }
         for view in views.values.lazy.compactMap(\.view) {
             guard let s = view.surface else { continue }
             ghostty_surface_set_occlusion(s, false)
             _ = ghostty_surface_drain_renderer_to_idle(s, 100_000_000)
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            MainActor.assumeIsolated {
+                guard secureDrawProhibited, generation == secureGeneration,
+                      UIApplication.shared.applicationState == .inactive,
+                      UIApplication.shared.isProtectedDataAvailable else { return }
+                unsecure()
+            }
         }
     }
 
