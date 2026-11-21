@@ -1,14 +1,14 @@
 ---
-name: IOS-016
+name: IOS-017
 description: "Rex Go shows a question from one of the host's actions and answers it, as Rex API revision 17 defines. Use when you change the prompt sheet, the prompt events, or the reply the app sends."
 metadata:
   created: "2026-11-21"
   updated: "2026-11-21"
 ---
 
-# IOS-016: A host's question on the phone
+# IOS-017: A host's question on the phone
 
-Status: built (#953).
+Status: built.
 
 This doc adds the prompt sheet to Rex Go. The gateway already sends a question to every app that can show it, at Rex API revision 17 ([MOD-005](MOD-005-client-prompts.md)). The app ignored those events, so the phone could not answer. The sheet is the last part of the phone's client features: the ports sheet ([IOS-014](IOS-014-pane-ports.md)), the focus back ([IOS-015](IOS-015-focus-back.md)) and this sheet.
 
