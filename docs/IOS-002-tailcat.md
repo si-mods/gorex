@@ -3,7 +3,7 @@ name: IOS-002
 description: "Rex Go connects to a GoRex machine as a tailcat client, as a desktop does. Use when you change tailcat on iOS or the gateway on the tailcat address."
 metadata:
   created: "2026-11-10"
-  updated: "2026-11-20"
+  updated: "2026-11-21"
 ---
 
 # IOS-002: Rex Go over tailcat
@@ -116,7 +116,7 @@ rexgo://tailcat?a=<tailcat address>&n=<machine name>
 
 The address is a secret (README). The dialog shows the code and says so. GoRex never logs the code or copies it.
 
-Rex Go takes the code from the scanner of Add Host, or from the camera app through the `rexgo` scheme that Rex Go already registers. Then Rex Go does these steps:
+Rex Go takes the code from the scanner of Add Host, from a picture of it that the user picks in the scanner, or from the camera app through the `rexgo` scheme that Rex Go already registers. Then Rex Go does these steps:
 
 1. It makes its client key if it has none (Keychain, this device only).
 2. It asks to pair with its device name (`rexgo-xxxx`, IOS-001-tailnet.md).

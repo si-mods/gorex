@@ -4949,6 +4949,26 @@
           }
         }
       }
+    },
+    "Choose Photo": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "选择照片"
+          }
+        }
+      }
+    },
+    "No QR code in this photo.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这张照片里没有二维码。"
+          }
+        }
+      }
     }
   }
 }

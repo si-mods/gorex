@@ -1,12 +1,17 @@
+import CoreImage
+import PhotosUI
 import SwiftUI
 import VisionKit
 
 /// The camera, looking for a QR code. Each code it sees goes to onScan,
-/// which returns why it isn't one to pair with, or nil when it is.
+/// which returns why it isn't one to pair with, or nil when it is. The
+/// toolbar's photo button reads the codes of a picture instead: a user
+/// who has the code as a screenshot scans it the same way.
 struct QRScanner: View {
     let onScan: (String) -> String?
     @Environment(\.dismiss) private var dismiss
     @State private var problem: String?
+    @State private var photo: PhotosPickerItem?
 
     var body: some View {
         NavigationStack {
@@ -29,7 +34,14 @@ struct QRScanner: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel", systemImage: "xmark", role: .cancel) { dismiss() } }
+                ToolbarItem(placement: .primaryAction) {
+                    PhotosPicker(selection: $photo, matching: .images, photoLibrary: .shared()) {
+                        Image(systemName: "photo")
+                    }
+                    .accessibilityLabel("Choose Photo")
+                }
             }
+            .onChange(of: photo) { _, item in Task { await picked(item) } }
         }
         #if DEBUG
         // The simulator has no camera: -pair <code> stands in for a scan.
@@ -39,6 +51,26 @@ struct QRScanner: View {
 
     private func scanned(_ code: String) {
         problem = onScan(code)
+    }
+
+    /// Reads the photo picked: each QR code of it goes to onScan until
+    /// one takes it, as the camera's codes do.
+    private func picked(_ item: PhotosPickerItem?) async {
+        // Back to nil, so picking the same picture again runs too.
+        guard let item else { return }
+        photo = nil
+        guard let data = try? await item.loadTransferable(type: Data.self),
+              let image = CIImage(data: data) else { return }
+        let detector = CIDetector(ofType: CIDetectorTypeQRCode, context: nil, options: [CIDetectorAccuracy: CIDetectorAccuracyHigh])
+        let codes = (detector?.features(in: image) ?? []).compactMap { ($0 as? CIQRCodeFeature)?.messageString }
+        guard !codes.isEmpty else {
+            problem = String(localized: "No QR code in this photo.")
+            return
+        }
+        for code in codes {
+            guard let why = onScan(code) else { return }
+            problem = why
+        }
     }
 }
 
