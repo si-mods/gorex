@@ -250,7 +250,7 @@ func windowControls(c *ui.Context, k *colors, win *mygo.Window) {
 				win.Maximize()
 			}
 		}
-		b := ui.Box(c).Size(30, 30).Center().Radius(30 / 2.6).Cursor(ui.CursorPointer).Role(ui.RoleButton).Label(locales.WindowClose()).Tooltip(locales.WindowClose())
+		b := ui.Box(c).Size(30, 30).Center().Radius(capsule(30)).Cursor(ui.CursorPointer).Role(ui.RoleButton).Label(locales.WindowClose()).Tooltip(locales.WindowClose())
 		col := k.iconMuted
 		if b.Pressed() {
 			b.Background(closeRed.Alpha(0.8))

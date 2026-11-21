@@ -23,7 +23,8 @@ A value in UI code comes from a layer, not from a literal: a color from
 `colors`, a type size, a radius or a shadow from `tokens.go`. Spacing is
 the one literal allowed, on the grid ([Spacing](#spacing)).
 `TestDesignTokens` (`tokens_test.go`) reads the root package's source
-and fails on a literal outside these rules.
+and fails on a literal outside these rules, written as a number or
+worked out of numbers (`30 / 2.6`).
 
 ## Colors
 
@@ -199,7 +200,8 @@ system"), and no radius is picked on its own:
   | `radiusXL` | 14 | Popovers, Settings groups and cards |
   | `radiusXXL` | 16 | Dialogs and sheets |
 
-- **A circle is a capsule.** A dot, a swatch or a round mark takes
+- **A circle is a capsule.** A dot, a swatch, a round mark or a round
+  button, as the title bar's minimize, maximize and close, takes
   `capsule(h)`, half its height, not a radius picked to look round.
 
 ## Type
