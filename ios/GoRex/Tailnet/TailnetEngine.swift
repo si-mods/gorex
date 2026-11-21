@@ -238,7 +238,7 @@ final class TailnetEngine {
     /// the next resume() fails against the dead listener
     /// (docs/IOS-002-tailcat.md, the proxy). Read off the caller's actor.
     func reproxy() async {
-        guard let p = await Task.detached({ try? Self.readProxy(run: 0) }).value else { return }
+        guard let p = await Task.detached { try? Self.readProxy(run: 0) }.value else { return }
         tailcatProxy = p
         if let q = proxy {
             let r = LoopbackProxy(port: p.port, password: p.password, run: q.run)
