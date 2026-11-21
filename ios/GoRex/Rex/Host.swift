@@ -746,6 +746,13 @@ final class Host: Identifiable {
         return String(localized: "Shell")
     }
 
+    /// A window's title for the pane shown, as its row names it: the name
+    /// the user gave the window, else that pane's name or terminal title;
+    /// nil when the pane has none, for `title(_:)`'s fallbacks to run.
+    func title(_ w: SessionView.Window, pane block: String) -> String? {
+        w.name ?? paneTitle(block, in: w)
+    }
+
     /// The record of blocks that most needs the user, as the desktop's dot
     /// shows it: one blocked first; done and error records seen do not count.
     func status(_ blocks: [String]) -> ProgramStatus? {

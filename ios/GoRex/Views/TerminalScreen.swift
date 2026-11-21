@@ -445,11 +445,12 @@ struct TerminalScreen: View {
         }), owner: liveOwner)
     }
 
-    /// The title of a target's window, as `title` gives it.
+    /// The title of a target's window, as `title` gives it: the name the
+    /// user gave the window first, then the pane's title, as a row shows it.
     fileprivate static func windowTitle(host: Host, target: TerminalTarget) -> String {
         let session = host.sessions.first { $0.id == target.session }
         let window = session?.view?.windows?.first { $0.holds(target.block) }
-        if let w = window, let pane = host.paneTitle(target.block, in: w), !pane.isEmpty { return pane }
+        if let w = window, let t = host.title(w, pane: target.block), !t.isEmpty { return t }
         let live = window.map { host.title($0) } ?? ""
         return [live, target.title].first { !$0.isEmpty } ?? session?.label ?? ""
     }

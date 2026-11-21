@@ -256,6 +256,41 @@ nonisolated final class HostTests: XCTestCase {
         XCTAssertEqual(h.title(w), "newname")
     }
 
+    /// The title over a terminal follows the row's order: a name the user
+    /// gave the window wins over the pane's terminal title, and an unnamed
+    /// window still shows the pane's title.
+    @MainActor func testNamedWindowTitleWinsOverPaneTitleInHeader() async throws {
+        let rex = try FakeRex()
+        defer { rex.stop() }
+        let session: [String: Any] = ["session_id": "p", "label": "p"]
+        let view: [String: Any] = ["revision": 1, "session_id": "p", "label": "p", "windows": [
+            ["window_id": "w", "label": "mytab", "layers": [["blocks": [["block_id": "b"]]]]],
+            ["window_id": "u", "layers": [["blocks": [["block_id": "c"]]]]],
+        ]]
+        rex.respond = { [session, view] m, _ in
+            switch m {
+            case "session.bootstrap":
+                ["attach_all": ["sessions": [session]], "selected_session": ["view": view]]
+            default: [:]
+            }
+        }
+        let h = Host(HostConfig(name: "test", url: try await rex.url()))
+        h.connect()
+        defer { h.stop() }
+        await until("read") { h.sessions.first?.view != nil }
+        for (block, t) in [("b", "prog title"), ("c", "other title")] {
+            rex.event(["type": "session_event", "payload": ["session_id": "p", "event": [
+                "type": "block_event", "payload": ["block_id": block, "name": "title_changed", "payload": ["title": t]],
+            ]]])
+        }
+        await until("titled") { h.blocks["b"]?.title == "prog title" && h.blocks["c"]?.title == "other title" }
+        let windows = try XCTUnwrap(h.sessions.first?.view?.windows)
+        let w = try XCTUnwrap(windows.first { $0.window_id == "w" })
+        let u = try XCTUnwrap(windows.first { $0.window_id == "u" })
+        XCTAssertEqual(h.title(w, pane: "b"), "mytab")
+        XCTAssertEqual(h.title(u, pane: "c"), "other title")
+    }
+
     /// The title of a window with the server's default label, no name and
     /// no terminal title, in a session of a project with dir as its folder.
     @MainActor private func untitledTitle(label: String, dir: String?) async throws -> String {
