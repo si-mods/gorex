@@ -134,8 +134,7 @@ Each item has a **Trigger** (what the diff shows), a **Check** (what the author 
 ### A group with a header of its own
 - **Trigger:** the diff draws a sidebar group (a project, Older, tabs with no project) with its own row builder instead of projectGroup and projectRow.
 - **Check:** reuse the project's row and group; a second builder drifts from it in the tile, chevron, face and motion, and the next change has to fix both.
-- **Source:** #907 drew tabs with no project as a light label (
-oProjectSection) beside the project row; this PR draws it with projectGroup, so that it matches Rex Go's group (#933).
+- **Source:** #907 drew tabs with no project as a light label (`noProjectSection`) beside the project row; #938 draws it with `projectGroup`, so that it matches Rex Go's group (#933).
 
 ### Selected paints the accent
 - **Trigger:** a row uses `.Selected(` and draws its own selected look, as a pill, a swatch or a check.

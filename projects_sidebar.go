@@ -224,7 +224,8 @@ func (a *App) newNoProjectTab(h *hostConn) {
 	a.newTabOn(h, dir)
 }
 
-// projectRow is a project's row (and the header of a host's tabs with no project, named so, open at first), flush with the host's header: its folder
+// projectRow is a project's row, and the header of a host's No Project
+// group (named so, open at first), flush with the host's header: its folder
 // tile, its name, the chevron of its state (none with no tab) and its
 // tabs' count; under the pointer and while it is shown, the + that opens a
 // tab in it in place of the count. Its folder shows in the title bar while
@@ -272,7 +273,7 @@ func (a *App) projectRow(c *ui.Context, k *colors, w *Workspace, reserve float32
 		// The project's folder tile stands over its tabs' tiles, and its name
 		// over their titles.
 		leadRoom(c, reserve, projectRowH).Children(func() { projectFolderTile(c, k, w.Color) })
-		renaming := shown && a.wsRenaming
+		renaming := shown && a.wsRenaming && w.Dir != ""
 		if renaming {
 			a.workspaceRenameField(c, k, w.Name)
 		} else {
@@ -502,9 +503,10 @@ func (a *App) foldRow(c *ui.Context, k *colors, key, label, count string, open b
 	return row.Clicked()
 }
 
-// waitingRow is a project, or tabs with no project, that an adoption
-// keeps for host h until it connects (docs/MOD-002-projects.md, Migration): at the
-// projects' level, greyed, with "Waiting for <host>".
+// waitingRow is a project, or No Project, that an adoption keeps for host h
+// until it connects (docs/MOD-002-projects.md, Migration): at the projects'
+// level, greyed, with a project's folder tile and name, and "Waiting for
+// <host>".
 func (a *App) waitingRow(c *ui.Context, k *colors, h *hostConn, ad layout.Adoption, reserve float32) {
 	name, detail := locales.ProjectsNoProject(), ""
 	if p := ad.Project; p != nil {
@@ -518,14 +520,9 @@ func (a *App) waitingRow(c *ui.Context, k *colors, h *hostConn, ad layout.Adopti
 	row := ui.Row(c.Key("waiting-"+ad.ID)).Height(projectRowH).Shrink(0).Padding(0, 10, 0, sideLead).Gap(sideGap).AlignItems(ui.Center).
 		Role(ui.RoleText).Label(name + ", " + note).Tooltip(tipText)
 	row.Children(func() {
-		if ad.Project != nil {
-			leadRoom(c, reserve, projectRowH).Children(func() { projectFolderTile(c, k, "") })
-			ui.Text(c, name).FontSize(fontBody).TextColor(k.text.Alpha(0.85)).SingleLine().Ellipsis("…").Shrink(1).MinWidth(0)
-		} else {
-			// The tabs with no project's is a label, as theirs is: no room
-			// for an icon.
-			ui.Text(c, name).FontSize(fontCallout).TextColor(k.textMuted).SingleLine().Ellipsis("…").Shrink(1).MinWidth(0)
-		}
+		// A project or No Project, the folder tile and name of a project's row.
+		leadRoom(c, reserve, projectRowH).Children(func() { projectFolderTile(c, k, "") })
+		ui.Text(c, name).FontSize(fontBody).TextColor(k.text.Alpha(0.85)).SingleLine().Ellipsis("…").Shrink(1).MinWidth(0)
 		ui.Text(c, note).FontSize(fontCaption).TextColor(k.textFaint).SingleLine().Ellipsis("…").Grow(1).MinWidth(0).Padding(0, 0, 0, 6)
 	})
 	dimmed(row, 0.5)

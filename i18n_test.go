@@ -168,9 +168,18 @@ func TestSpaceChipInChinese(t *testing.T) {
 	isolateSettings(t, "")
 	_, tt := newTestApp(t)
 	inChinese(t, tt)
-	for _, s := range []string{"空间 默认", "无项目的标签页"} {
-		if !tt.HasText(s) {
-			t.Fatalf("no %q in Chinese; texts %q", s, tt.Texts())
+	// Each text is the Chinese catalog's, and not the English one, so that a
+	// missing translation fails and a change of copy does not.
+	zh, en := locales.In("zh-Hans"), locales.In("en")
+	for _, c := range []struct{ zh, en string }{
+		{zh.SpacePickerLabel(zh.SpaceDefault()), en.SpacePickerLabel(en.SpaceDefault())},
+		{zh.ProjectsNoProject(), en.ProjectsNoProject()},
+	} {
+		if c.zh == c.en {
+			t.Errorf("%q is not translated", c.en)
+		}
+		if !tt.HasText(c.zh) {
+			t.Errorf("no %q in Chinese; texts %q", c.zh, tt.Texts())
 		}
 	}
 }

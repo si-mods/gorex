@@ -1178,3 +1178,30 @@ func TestSidebarRevealsActiveTabOnProjectFace(t *testing.T) {
 		t.Errorf("the active tab at %+v after choosing it (%+v before), the window %v high: not scrolled into view", after, before, edgeH)
 	}
 }
+
+// TestNoProjectCannotBeRenamed: with the tabs with no project shown, Rename
+// Project is not available, starts no field and leaves the name that the
+// layout finds them by (layout.NoProjectName).
+func TestNoProjectCannotBeRenamed(t *testing.T) {
+	a, tt, _, _ := projectsApp(t)
+	loose := a.st.noProjectOf(nil)
+	waitFor(t, tt, "the tab with no project", func() bool { return a.ws == loose && len(a.tabs) == 1 && a.tab().Focus != nil })
+	if cmdRenameSession.Available != nil && cmdRenameSession.Available(a) {
+		t.Error("Rename Project is available on the tabs with no project")
+	}
+	a.startWorkspaceRename()
+	tt.Frame()
+	if a.wsRenaming {
+		t.Error("a rename of the tabs with no project started")
+	}
+	if loose.Name != layout.NoProjectName {
+		t.Errorf("the name is %q, want %q", loose.Name, layout.NoProjectName)
+	}
+	// Forced on, the sidebar still draws no field.
+	a.wsRenaming = true
+	tt.Frame()
+	if _, ok := tt.Find(locales.ProjectsNoProject()); !ok {
+		t.Errorf("a rename field replaced the label: %q", tt.Texts())
+	}
+	a.wsRenaming = false
+}
