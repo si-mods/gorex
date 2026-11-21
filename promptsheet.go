@@ -111,7 +111,9 @@ func (a *App) promptPanel(c *ui.Context, k *colors) {
 	}()
 	ui.DialogBase(c.Key("prompt"), &open, func(backdrop, panel ui.Element) {
 		backdrop.Background(k.backdrop)
-		dialogShadow(frostPanel(panel.Width(460).MaxHeight(560).Padding(20).Radius(radiusXXL), k, radiusXXL)).
+		// Opaque, of the window's theme: the system's glass takes the system's
+		// appearance, which an app theme of the other one makes unreadable.
+		dialogShadow(panel.Width(460).MaxHeight(560).Padding(20).Radius(radiusXXL).Background(k.panel).Border(1, k.panelBorder)).
 			Role(ui.RoleDialog).Label(spec.Title)
 		if p2 := p.Action; p2 != "" {
 			ui.Text(c, p2).FontSize(fontFootnote).TextColor(k.textFaint).Margin(0, 0, 4, 0)
