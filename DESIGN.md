@@ -148,8 +148,11 @@ before. Three things make it up:
   takes `k.panelGlass` over it, as the frost does: dense enough that
   `k.text` and `k.textMuted` keep 4.5:1 over the glass at its lightest
   and its darkest (`TestGlassPanelReads`). Text and icons on a panel's
-  glass take `k.text` or `k.textMuted`, a key cap `k.textMuted` on
-  `k.hover`, as the palette's do; `k.textFaint` falls under 3:1 there.
+  glass take `k.text` or `k.textMuted`, a key cap `k.textMuted` on a
+  face of `k.panel`, as the palette's do; `k.textFaint` falls under 3:1
+  there. `TestGlassInk` fails on `k.textFaint` in a function that calls
+  `glassPanel`, `frostPanel` or `panelMaterial`, or in what it calls that
+  takes `*colors`.
 - **Over the window's glass, the system's glass.** `glass.Glass` reads
   only what the page painted: under the clear sidebar and strip that is
   nothing, and it turns dark. Glass over them is `ui.SystemGlass`, which
@@ -272,7 +275,7 @@ that exists.
 | Sidebar and tab rows | `sideRowH`, `pillRadius`, `glassPill`, `hoverFace`, `fontBody` | `sidebar.go`, `projects_sidebar.go`, `tabs.go` |
 | Text field | `field`, `fieldBorder`, `fontBody`, heights 22 and 28 | `fields.go` |
 | Status dot | 7 or 8 square, `capsule`, `busy`, `attention`, `exited`, `danger` | `hostDot`, `view.go` |
-| Key cap | `fontSubhead`, `radiusS`, `k.textMuted` on `k.hover` | `commands.go`, `settingsview.go` |
+| Key cap | `fontSubhead`, `radiusS`, `k.textMuted` on `k.panel` in a 1px `k.panelBorder` | `commands.go`, `settingsview.go` |
 | Icon tile | a square of `k.hover`, `radiusS`, `radiusM` or `radiusL` by size, an icon from `assets/icons/` | `host.go`, `settingsview.go` |
 | Program tile | `tileW`×`tileH` rounded card, `drawTile`; the front tile bounces while a pane needs the user, `tileBounces` at iOS's timings | `tabs.go` |
 | Chip | a capsule row 28 high, `pillRadius` | `projectpicker.go`, `spaces.go` |

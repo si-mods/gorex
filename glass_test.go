@@ -126,7 +126,8 @@ func TestWindowCorner(t *testing.T) {
 
 // TestGlassPanelReads checks that the text of a glass panel reads
 // whatever is behind it, in both appearances: k.text and k.textMuted keep
-// 4.5:1 on panelGlass laid over MyGo's glass at its lightest and darkest.
+// 4.5:1 on panelGlass laid over MyGo's glass at its lightest and darkest,
+// and a key cap's k.textMuted on its face of k.panel.
 // MyGo's regular glass maps black to 54% and white to 100% in a light
 // window, and to 15% and 51% in a dark one (glass.paint).
 func TestGlassPanelReads(t *testing.T) {
@@ -135,6 +136,9 @@ func TestGlassPanelReads(t *testing.T) {
 		k        *colors
 		low, top float64
 	}{{"light", &lightColors, 0.54, 1}, {"dark", &darkColors, 0.15, 0.51}} {
+		if r := contrast(tc.k.textMuted, tc.k.panel); r < 4.5 {
+			t.Errorf("%s: a key cap reads %.2f:1, want 4.5:1", tc.name, r)
+		}
 		g, ok := panelMaterial(tc.k).Fallback.(paneGlass)
 		if !ok || g.face != tc.k.panelGlass {
 			t.Fatalf("%s: the panel's glass is %#v, want MyGo's under panelGlass", tc.name, panelMaterial(tc.k).Fallback)

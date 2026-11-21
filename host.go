@@ -197,7 +197,7 @@ func (a *App) hostPanel(c *ui.Context, k *colors, name, glyph string) {
 			ui.Text(c, name).FontSize(fontTitle).FontWeight(700).TextColor(k.text).SingleLine().Ellipsis("…")
 			ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
 				ui.Box(c).Size(7, 7).Radius(capsule(7)).Background(k.busy)
-				ui.Text(c, locales.HostConnected(thisMachine())).FontSize(fontSubhead).TextColor(k.textFaint)
+				ui.Text(c, locales.HostConnected(thisMachine())).FontSize(fontSubhead).TextColor(k.textMuted)
 			})
 		})
 	})
@@ -207,7 +207,7 @@ func (a *App) hostPanel(c *ui.Context, k *colors, name, glyph string) {
 			return
 		}
 		ui.Row(c).Gap(12).Children(func() {
-			ui.Text(c, label).FontSize(fontCallout).TextColor(k.textFaint).Width(78)
+			ui.Text(c, label).FontSize(fontCallout).TextColor(k.textMuted).Width(78)
 			ui.Text(c, value).FontSize(fontCallout).TextColor(k.text).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
 		})
 	}
@@ -221,7 +221,7 @@ func (a *App) hostPanel(c *ui.Context, k *colors, name, glyph string) {
 	ui.Divider(c)
 	a.hostsInPanel(c, k)
 	ui.Text(c, locales.HostNote()).
-		FontSize(fontFootnote).TextColor(k.textFaint).LineHeight(1.35)
+		FontSize(fontFootnote).TextColor(k.textMuted).LineHeight(1.35)
 }
 
 // hostsInPanel leads, from the host's panel, to the remote hosts: it
@@ -234,7 +234,7 @@ func (a *App) hostsInPanel(c *ui.Context, k *colors) {
 		ui.Row(c.Key(hostKey(h))).Gap(8).AlignItems(ui.Center).Children(func() {
 			ui.Box(c).Size(7, 7).Radius(capsule(7)).Background(hostDot(k, h)).Shrink(0)
 			ui.Text(c, a.hostName(h)).FontSize(fontCallout).FontWeight(600).TextColor(k.text).MinWidth(0).SingleLine().Ellipsis("…")
-			ui.Text(c, status).FontSize(fontCallout).TextColor(k.textFaint).Shrink(0)
+			ui.Text(c, status).FontSize(fontCallout).TextColor(k.textMuted).Shrink(0)
 		})
 	}
 	label := locales.HostsManage()

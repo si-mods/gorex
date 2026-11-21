@@ -1619,7 +1619,7 @@ func (a *App) palette(c *ui.Context, k *colors) {
 						statusDot(c, k, s, 6)
 					}
 					if it.keys != "" {
-						ui.Text(c, it.keys).FontSize(fontSubhead).TextColor(k.textMuted).Padding(2, 8).Radius(radiusS).Background(k.hover).Shrink(0)
+						ui.Text(c, it.keys).FontSize(fontSubhead).TextColor(k.textMuted).Padding(2, 8).Radius(radiusS).Background(k.panel).Border(1, k.panelBorder).Shrink(0)
 					}
 				})
 			}
