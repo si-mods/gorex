@@ -109,6 +109,7 @@ func (a *App) promptPanel(c *ui.Context, k *colors) {
 	defer func() {
 		if !open && a.prompt == p {
 			// The backdrop, or Escape, closed it: the action gets a cancel.
+			log.Printf("gorex: prompt closed unanswered: kind=%s submit=%v picked=%v other=%q", spec.Kind, false, a.promptPicked, a.promptOther)
 			a.answerPrompt(rex.PromptAnswer{Cancelled: true})
 		}
 	}()
