@@ -30,8 +30,10 @@ type control struct {
 	// transport is how the client reached the gateway: the methods that
 	// administer it are for its local socket only.
 	transport string
-	// remote is the client's address, which the gateway logs.
+	// remote is the client's address, which the gateway logs, and local
+	// the host address it reached, which a relay binds.
 	remote string
+	local  string
 	rec    *clientRecord
 	// rev is the API revision this connection speaks, the newest both
 	// sides know. Requests and results are translated to and from it.
@@ -82,7 +84,7 @@ func (g *Gateway) handleControl(w http.ResponseWriter, r *http.Request) {
 	}
 	ws.SetReadLimit(maxMessage)
 	c := &control{
-		g: g, ws: ws, transport: transportOf(r), remote: r.RemoteAddr,
+		g: g, ws: ws, transport: transportOf(r), remote: r.RemoteAddr, local: localHost(r),
 		out:     make(chan outMsg, 1<<16),
 		done:    make(chan struct{}),
 		pending: map[string]bool{},

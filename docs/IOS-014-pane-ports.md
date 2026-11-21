@@ -47,7 +47,7 @@ Rex Go cannot open the port in its browser either. A server that listens on 127.
 - The button fetches when the pane appears and every five seconds while the terminal shows. The sheet fetches every two seconds while it is open.
 - The list shows `No listening ports` when it is empty. It shows `Some processes could not be checked` when the status is `partial`. It shows `This host cannot list ports` when it is `unsupported`.
 - A pull refreshes the list. The sheet fetches again every two seconds while it is open, and stops when it closes.
-- Closing the sheet closes a relay that the sheet opened, unless the person chose **Keep open**.
+- The sheet's **Close** button closes the relays the sheet opened. A relay that the person leaves open ends at its time.
 
 ### Model
 
@@ -72,12 +72,12 @@ Rex Go cannot open the port in its browser either. A server that listens on 127.
 - `ios/GoRex/Views/TerminalScreen.swift`: the ports button in `barTrailing`, and the sheet it opens.
 - `ios/GoRex/Rex/Host.swift`: `openPort`, which asks the host for the relay address and closes it.
 - Rex Go is a Rex API client: its hello says kind `app` and the newest revision. It calls `com.superlogical.terminal.ports` on its control connection with `session_id`, `block_id` and empty `args`, and reads the gateway's answer. No server change.
-- Phase 2 adds a GoRex request, `session.open_port`, to `internal/rex/server_ops.go`. It takes the session, the block and the port, and answers `{url, expires_at}`. A second operation, `session.close_port`, ends it. The listener forwards bytes with `io.Copy` in both directions.
+- Phase 3 adds the gateway's own methods `gorex.port.open` and `gorex.port.close` in `internal/rexapi/relay.go`. Open takes the session, the block and the port, checks that the pane listens on it on loopback, and answers `{url, expires_at}`. Close ends the relay. The relay binds the local address of the control connection, so the phone's browser reaches the same host address it dialed. A connection over the Unix socket or tailcat has no such address, and the method refuses it.
 - The app never connects to the relay itself. It only shows the URL, and Safari fetches it.
 
 ## Alternatives
 
-- **Live updates from `ports_changed`**: the server does not send ports events to remote subscribers, and the app is one. Polling for two seconds while one sheet is open costs less than a protocol change. A later change can send the events.
+- **Live updates from `ports_changed`**: the gateway sends the event at revision 16, so the app can follow it. Polling one sheet for two seconds is smaller, and a later change can use the events.
 - **An HTTP reverse proxy on the host**: it adds paths, headers and a WebSocket upgrade to write and test. A raw TCP relay is smaller and handles every protocol.
 - **Opening the page inside Rex Go**: the app would need a stream for the page over its own connection and a web view. It is the only way when the phone has no route, and it is a doc of its own.
 - **Only a copy button**: it leaves the person to paste an address that a loopback port does not have. Lost.
@@ -93,7 +93,7 @@ Rex Go cannot open the port in its browser either. A server that listens on 127.
 ## Migration
 
 - There is no saved data and no Rex API change. The app's request and the relay are GoRex's own.
-- An older server answers the relay request with an error, and the sheet shows `Update the host to open this port`. The list works on an older server, because the `ports` request is from revision 15.
+- An older gateway has no `gorex.port.open`, and the sheet shows the error it answers. The list still works on a gateway of revision 15 or later.
 - A server older than revision 15 shows `Update the host to list ports`.
 
 ## Tests
