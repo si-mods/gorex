@@ -157,7 +157,7 @@ func TestRelayFeature(t *testing.T) {
 		}
 	}
 	f := startFixture(t)
-	c, _, _ := f.sessionWith(t, rex.CreateOptions{Command: []string{"true"}})
+	c, _, _ := f.sessionWith(t, rex.CreateOptions{})
 	if features, _ := c.welcome["features"].([]any); !slices.Contains(features, any(featurePortRelay)) {
 		t.Errorf("a local network client's welcome lacks %s: %v", featurePortRelay, features)
 	}
