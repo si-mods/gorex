@@ -21,6 +21,9 @@ const (
 	tileW    = 21
 	tileH    = 16
 	tileStep = 5 // how far each tile behind peeks out
+	// tileSlot is the room of one tile: its width and a point of air each
+	// side, which the sidebar's marks (a folder tile, a tab's tiles) share.
+	tileSlot = tileW + 2
 )
 
 // tabStrip draws the tabs, in a track as wide as they are, which shrinks

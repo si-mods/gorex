@@ -1137,6 +1137,106 @@ func TestSidebarCurrentProjectGroup(t *testing.T) {
 	}
 }
 
+// TestSidebarProjectGroupFaceNotClipped: the face of the project shown
+// reaches groupPad past its rows on both sides of the list, with the sidebar
+// on the left and on the right, so the list's clip does not cut it on the
+// panes' side (#923). It samples the outermost pixel of the face on each side, with
+// no time passing: with Animation off the face comes at once.
+func TestSidebarProjectGroupFaceNotClipped(t *testing.T) {
+	for _, placement := range []string{"left", "right"} {
+		t.Run(placement, func(t *testing.T) {
+			a, tt, _, _ := projectsApp(t)
+			prefs.TabPlacement = placement
+			space := ""
+			res := clientCommand(a, rex.LayoutCommand{Op: "project.create", Dir: appTempDir(t, a), Name: "acme-api", SpaceName: &space})
+			caughtUp(t, a, tt)
+			w := a.st.byID(res.Space)
+			a.showWorkspace(w)
+			waitFor(t, tt, "the project's tab", func() bool { return a.ws == w && len(a.tabs) == 1 && a.tabs[0].Focus != nil })
+			// Pixels at the outermost reach of the face: its edge on the
+			// window's side, and on the panes' side the sidebar's edge.
+			// With Animation off the face comes at once: no time passes.
+			sample := func() (window, panes [4]uint8) {
+				tt.Frame()
+				tt.Frame()
+				name, ok := tt.Find("acme-api")
+				if !ok {
+					t.Fatalf("no project row: %q", tt.Texts())
+				}
+				edge, ok := tt.Find(locales.SidebarEdge())
+				if !ok {
+					t.Fatalf("no sidebar edge: %q", tt.Texts())
+				}
+				img := tt.Image()
+				y := int(name.Y + name.H/2)
+				wx, px := 10-groupPad, int(edge.X)+1
+				if placement == "right" {
+					wx, px = img.Bounds().Dx()-(10-groupPad)-1, int(edge.X+edge.W)-1
+				}
+				at := func(x int) [4]uint8 {
+					c := img.RGBAAt(x, y)
+					return [4]uint8{c.R, c.G, c.B, c.A}
+				}
+				return at(wx), at(px)
+			}
+			setRowOpen(openKey(nil, w.ID), false)
+			shutWindow, shutPanes := sample()
+			setRowOpen(openKey(nil, w.ID), true)
+			openWindow, openPanes := sample()
+			if openWindow == shutWindow {
+				t.Errorf("no face on the window's side: %v open, %v shut", openWindow, shutWindow)
+			}
+			if openPanes == shutPanes {
+				t.Errorf("the face is clipped on the panes' side: %v open, %v shut", openPanes, shutPanes)
+			}
+		})
+	}
+}
+
+// TestSidebarEdgeDragsAcrossItsWidth: the sidebar's edge takes the pointer
+// over its whole width, with the sidebar on either side: the list's box
+// reaches over the edge for the project face (listReach), and must not take
+// the pointer from it.
+func TestSidebarEdgeDragsAcrossItsWidth(t *testing.T) {
+	for _, placement := range []string{"left", "right"} {
+		t.Run(placement, func(t *testing.T) {
+			a, tt, _, _ := projectsApp(t)
+			prefs.TabPlacement = placement
+			space := ""
+			res := clientCommand(a, rex.LayoutCommand{Op: "project.create", Dir: appTempDir(t, a), Name: "acme-api", SpaceName: &space})
+			caughtUp(t, a, tt)
+			w := a.st.byID(res.Space)
+			a.showWorkspace(w)
+			waitFor(t, tt, "the project's tab", func() bool { return a.ws == w && len(a.tabs) == 1 && a.tabs[0].Focus != nil })
+			tt.Frame()
+			for _, off := range []float32{0.5, gap / 2, gap - 0.5} {
+				prefs.SidebarWidth = 0
+				tt.Frame()
+				edge, ok := tt.Find(locales.SidebarEdge())
+				if !ok {
+					t.Fatalf("no sidebar edge: %q", tt.Texts())
+				}
+				dx := float32(30)
+				if placement == "right" {
+					dx = -dx
+				}
+				x, y := edge.X+off, edge.Y+edge.H/2
+				tt.Press(x, y)
+				tt.Frame()
+				tt.Move(x+dx/2, y)
+				tt.Frame()
+				tt.Move(x+dx, y)
+				tt.Frame()
+				tt.Release(x+dx, y)
+				tt.Frame()
+				if got := sidebarWidth(); got != sidebarDefaultW+30 {
+					t.Errorf("a drag from %v px into the edge: width %v, want %v", off, got, sidebarDefaultW+30)
+				}
+			}
+		})
+	}
+}
+
 // TestSidebarRevealsActiveTabOnProjectFace: a tab of the project shown,
 // chosen by keys while it is out of the list's view, scrolls into view, on
 // the project's face as off it (#907: the lifted pill skipped the reveal).
@@ -1164,7 +1264,7 @@ func TestSidebarRevealsActiveTabOnProjectFace(t *testing.T) {
 	last := a.tabs[len(a.tabs)-1]
 	name, detail := last.label()
 	before, ok := tt.Find(name + " " + detail)
-	edge, _ := tt.Find("Sidebar Edge")
+	edge, _ := tt.Find(locales.SidebarEdge())
 	edgeH := edge.Y + edge.H
 	if !ok || before.Y < edgeH {
 		t.Skipf("the last tab is in view without scrolling (%+v, %v high): no overflow to test", before, edgeH)

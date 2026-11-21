@@ -269,7 +269,8 @@ func (a *App) sidebar(c *ui.Context, k *colors, right bool) {
 		if picker && !unified {
 			ui.Row(c).Shrink(0).Padding(0, padR, 4, padL).Children(func() { a.spacePicker(c, k, true) })
 		}
-		ui.Scroll(c).Grow(1).MinHeight(0).Padding(2, padR, 6, padL).Children(func() {
+		reachR, reachL := listReach(right)
+		ui.Scroll(c).Grow(1).MinHeight(0).Margin(0, -reachR, 0, -reachL).Padding(2, padR+reachR, 6, padL+reachL).Children(func() {
 			ui.Column(c).Gap(2).Role(ui.RoleTabList).Label(locales.TabListLabel()).Children(func() {
 				a.projectsList(c, k)
 			})
@@ -301,10 +302,23 @@ func sideInsets(right bool) (r, l float32) {
 	return panes, window
 }
 
+// listReach is how far the sidebar list's box reaches past its insets on its
+// right and its left, so that the scroll's clip holds the current project's
+// face (groupPad past the rows) on the panes' side, where the inset is
+// short of groupPad. The list's padding grows by the same amount, so no row
+// moves; the reach lies over the sidebar's edge, which has no content.
+func listReach(right bool) (r, l float32) {
+	pr, pl := sideInsets(right)
+	return max(groupPad-pr, 0), max(groupPad-pl, 0)
+}
+
 // sidebarEdge is the sidebar's inner edge, which drags its width; a double
 // click gives it its default width back.
 func (a *App) sidebarEdge(c *ui.Context, k *colors, right bool) {
-	e := ui.Box(c.Key("sidebar-edge")).Width(gap).Shrink(0).Cursor(ui.CursorResizeColumn).Role(ui.RoleSplitter).Label(locales.SidebarEdge())
+	e := ui.Box(c.Key("sidebar-edge")).Width(gap).Shrink(0).Cursor(ui.CursorResizeColumn).Role(ui.RoleSplitter).Label(locales.SidebarEdge()).
+		// Over the list, whose box reaches over the edge (listReach), so the
+		// edge keeps its whole width for the pointer.
+		ZIndex(1)
 	// The width follows the pointer from where the drag began, so that the
 	// edge comes back under it after a bound stopped it.
 	winW, _ := c.Size()
@@ -381,7 +395,7 @@ func tilesReserve(tabs []*Tab) float32 {
 	for _, t := range tabs {
 		most = max(most, min(len(t.panes()), 3))
 	}
-	return float32(tileW + tileStep*(most-1) + 2)
+	return float32(tileSlot + tileStep*(most-1))
 }
 
 // hostSectionIcon is the icon of a host's machine before its name in the
