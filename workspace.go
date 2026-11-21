@@ -942,6 +942,9 @@ func (st *store) adopt(client *rex.Client) bool {
 		}
 		if next != nil {
 			st.client = next
+			// The connection after an upgrade or a restart is a client
+			// too, and says what this one does before it says hello.
+			next.DeclareCapabilities(rex.CapabilityPrompts)
 			st.hello, err = next.Hello()
 		}
 	}
