@@ -21,10 +21,32 @@ struct SpacePicker: View {
     let add: () -> Void
     let edit: () -> Void
     var place: Place = .list
-    @State private var open = false
+    /// Atop the list: whether the panel is open. The list draws the panel
+    /// under the capsule (SpacePanelLayer), with no arrow; the bar, which
+    /// has no room below it of its own, opens a popover instead.
+    var panel: Binding<Bool>?
+    @State private var popover = false
 
     var body: some View {
-        Button { open = true } label: {
+        if let panel {
+            capsule { withAnimation(.snappy) { panel.wrappedValue = true } }
+                .anchorPreference(key: SpacePickerBounds.self, value: .bounds) { $0 }
+                // The panel goes with the picker, as Activity takes its place.
+                .onDisappear { panel.wrappedValue = false }
+        } else {
+            capsule { popover = true }
+                .popover(isPresented: $popover, attachmentAnchor: .rect(.bounds), arrowEdge: .top) {
+                    SpacePanel(spaces: spaces, current: current, color: color, count: count,
+                               choose: { s in popover = false; choose(s) },
+                               add: { popover = false; add() },
+                               edit: { popover = false; edit() })
+                        .presentationCompactAdaptation(.popover)
+                }
+        }
+    }
+
+    private func capsule(_ open: @escaping () -> Void) -> some View {
+        Button(action: open) {
             if place == .list {
                 // Glass of its own over the page; a bar's own is behind it,
                 // and two glass effects nest.
@@ -38,13 +60,6 @@ struct SpacePicker: View {
         .buttonStyle(.plain)
         .accessibilityLabel("Space")
         .accessibilityValue(SpaceName.shown(current))
-        .popover(isPresented: $open, attachmentAnchor: .rect(.bounds), arrowEdge: .top) {
-            SpacePanel(spaces: spaces, current: current, color: color, count: count,
-                       choose: { s in open = false; choose(s) },
-                       add: { open = false; add() },
-                       edit: { open = false; edit() })
-                .presentationCompactAdaptation(.popover)
-        }
     }
 
     private var label: some View {
@@ -66,8 +81,65 @@ struct SpacePicker: View {
     }
 }
 
+/// Where the list's picker is, for the panel to open under it.
+struct SpacePickerBounds: PreferenceKey {
+    static var defaultValue: Anchor<CGRect>? { nil }
+
+    static func reduce(value: inout Anchor<CGRect>?, nextValue: () -> Anchor<CGRect>?) {
+        value = value ?? nextValue()
+    }
+}
+
+/// The panel atop the list, over the page: it grows from the capsule's
+/// corner, 8 pt under it, and a tap beside it closes it. It keeps 16 pt
+/// from the foot of the page and scrolls its spaces past that.
+struct SpacePanelLayer: View {
+    let anchor: Anchor<CGRect>?
+    @Binding var open: Bool
+    let spaces: [String]
+    let current: String
+    let color: (String) -> Color?
+    let count: (String) -> Int
+    let choose: (String) -> Void
+    let add: () -> Void
+    let edit: () -> Void
+
+    var body: some View {
+        GeometryReader { g in
+            if open, let anchor {
+                let r = g[anchor]
+                ZStack(alignment: .topLeading) {
+                    Color.clear
+                        .contentShape(.rect)
+                        .onTapGesture { close() }
+                        .accessibilityHidden(true)
+                    SpacePanel(spaces: spaces, current: current, color: color, count: count,
+                               choose: { s in close(); choose(s) },
+                               add: { close(); add() },
+                               edit: { close(); edit() })
+                        .frame(maxHeight: max(160, g.size.height - r.maxY - 8 - 16), alignment: .top)
+                        .fixedSize(horizontal: true, vertical: false)
+                        .glassEffect(.regular, in: .rect(cornerRadius: SpacePanel.radius, style: .continuous))
+                        .shadow(color: .black.opacity(0.16), radius: 24, y: 8)
+                        .offset(x: r.minX, y: r.maxY + 8)
+                        .transition(.scale(0.85, anchor: .topLeading).combined(with: .opacity))
+                        .accessibilityAddTraits(.isModal)
+                        .accessibilityAction(.escape) { close() }
+                }
+            }
+        }
+    }
+
+    private func close() {
+        withAnimation(.snappy) { open = false }
+    }
+}
+
 /// The panel the picker opens: a header with Edit, each space with its
 /// color and its projects, the one shown marked, and New Space last.
+/// Its metrics keep to a 4 pt grid, and its corners nest: a row's face
+/// sits `inset` in from the panel's edge, so its radius is the panel's
+/// less that inset.
 struct SpacePanel: View {
     let spaces: [String]
     let current: String
@@ -79,6 +151,12 @@ struct SpacePanel: View {
     /// The width of the color squares' column, which the plus of New
     /// Space shares; it grows with the text.
     @ScaledMetric(relativeTo: .body) private var mark: CGFloat = 16
+
+    static let radius: CGFloat = 28
+    /// The panel's padding on every side.
+    static let inset: CGFloat = 8
+    /// The padding inside a row, and in the header.
+    static let pad: CGFloat = 12
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -93,10 +171,10 @@ struct SpacePanel: View {
                 }
                 .buttonStyle(.borderless)
                 .accessibilityLabel("Edit Spaces")
+                .accessibilityInputLabels([Text("Edit"), Text("Edit Spaces")])
             }
-            .padding(.horizontal, 18)
-            .padding(.top, 16)
-            .padding(.bottom, 10)
+            .padding(.horizontal, Self.pad)
+            .frame(minHeight: 44)
             // The spaces scroll when the screen has no room for them all, at
             // a large text size or with many spaces; the header and New
             // Space stay in view.
@@ -105,35 +183,33 @@ struct SpacePanel: View {
                 ScrollView { rows }
                     .scrollBounceBehavior(.basedOnSize)
             }
-            VStack(spacing: 0) {
-                Divider().padding(.vertical, 6).padding(.horizontal, 12)
-                Button(action: add) {
-                    HStack(spacing: 12) {
-                        Image(systemName: "plus")
-                            .font(.subheadline.weight(.semibold))
-                            .frame(width: mark)
-                        Text("New Space")
-                            .lineLimit(1)
-                        Spacer()
-                    }
-                    .padding(.horizontal, 12)
-                    .frame(minHeight: 44)
-                    .contentShape(.rect)
+            Divider()
+                .padding(.horizontal, Self.pad)
+                .padding(.vertical, 4)
+            Button(action: add) {
+                HStack(spacing: Self.pad) {
+                    Image(systemName: "plus")
+                        .font(.subheadline.weight(.semibold))
+                        .frame(width: mark)
+                    Text("New Space")
+                        .lineLimit(1)
+                    Spacer()
                 }
-                .buttonStyle(.plain)
-                .foregroundStyle(.tint)
+                .padding(.horizontal, Self.pad)
+                .frame(minHeight: 44)
+                .contentShape(.rect)
             }
-            .padding(.horizontal, 6)
-            .padding(.bottom, 10)
+            .buttonStyle(.plain)
+            .foregroundStyle(.tint)
         }
-        .frame(minWidth: 290, idealWidth: 290)
+        .padding(Self.inset)
+        .frame(minWidth: 288, idealWidth: 288)
     }
 
     private var rows: some View {
-        VStack(spacing: 2) {
+        VStack(spacing: 4) {
             ForEach(spaces, id: \.self) { s in row(s) }
         }
-        .padding(.horizontal, 6)
     }
 
     /// A space's row: its color, its name and its projects; the one shown
@@ -141,11 +217,11 @@ struct SpacePanel: View {
     private func row(_ s: String) -> some View {
         let on = s == current
         return Button { choose(s) } label: {
-            HStack(spacing: 12) {
-                RoundedRectangle(cornerRadius: 5, style: .continuous)
+            HStack(spacing: Self.pad) {
+                RoundedRectangle(cornerRadius: 4, style: .continuous)
                     .fill(color(s) ?? Color.secondary.opacity(0.45))
                     .frame(width: mark, height: mark)
-                VStack(alignment: .leading, spacing: 1) {
+                VStack(alignment: .leading, spacing: 0) {
                     Text(verbatim: SpaceName.shown(s))
                         .font(.body.weight(on ? .semibold : .regular))
                         .lineLimit(1)
@@ -163,11 +239,11 @@ struct SpacePanel: View {
                         .accessibilityHidden(true)
                 }
             }
-            .padding(.horizontal, 12)
+            .padding(.horizontal, Self.pad)
             .frame(minHeight: 52)
             .background {
                 if on {
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    RoundedRectangle(cornerRadius: Self.radius - Self.inset, style: .continuous)
                         .fill((color(s) ?? .primary).opacity(0.12))
                 }
             }
