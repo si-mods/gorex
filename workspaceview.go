@@ -41,7 +41,9 @@ func (a *App) workspaceRenameField(c *ui.Context, k *colors, name string) {
 
 // startWorkspaceRename opens the field that renames the workspace.
 func (a *App) startWorkspaceRename() {
-	if a.ws != nil {
+	// The tabs with no project have no name to change: layout.RepairHostPanes
+	// finds them by it.
+	if a.ws != nil && a.ws.Dir != "" {
 		a.wsOpen, a.wsRenaming, a.wsRenameText, a.wsRenameFocus = false, true, a.ws.Name, false
 		a.focusReq = nil // the field takes the focus
 	}
