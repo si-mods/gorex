@@ -110,6 +110,7 @@ func (a *App) promptPanel(c *ui.Context, k *colors) {
 		}
 	}()
 	ui.DialogBase(c.Key("prompt"), &open, func(backdrop, panel ui.Element) {
+		dialogEnter(c, backdrop, panel)
 		backdrop.Background(k.backdrop)
 		// Opaque, of the window's theme: the system's glass takes the system's
 		// appearance, which an app theme of the other one makes unreadable.

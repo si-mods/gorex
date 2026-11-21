@@ -379,6 +379,7 @@ func (a *App) spacePicker(c *ui.Context, k *colors, wide bool) {
 		glyphIcon(c, "chevron-down", 13, k.textFaint).Shrink(0)
 	})
 	ui.PopoverBase(c, chip, &a.spaces.open, func(panel ui.Element) {
+		popoverMotion(c, chip, panel)
 		menuStyleOf(k, c.Theme().Dark).Panel(panel.Margin(6, 0, 0, 0).Width(240), 0)
 		ui.Column(c).Children(func() {
 			for _, n := range a.st.spaceNames() {
@@ -475,6 +476,7 @@ func (a *App) spaceDialog(c *ui.Context, k *colors) {
 		title = locales.SpaceDeleteTitle(s.name)
 	}
 	ui.DialogBase(c.Key("space-dialog"), &open, func(backdrop, panel ui.Element) {
+		dialogEnter(c, backdrop, panel)
 		backdrop.Background(k.backdrop)
 		_, winH := c.Size()
 		dialogShadow(glassPanel(panel.Width(400).MaxHeight(winH-24).Padding(20).Radius(radiusXXL), k).Border(1, k.panelBorder)).Role(ui.RoleDialog).Label(title)

@@ -857,3 +857,86 @@ func TestTileBounce(t *testing.T) {
 		})
 	}
 }
+
+// TestOverlaysAnimate: a popover grows from its anchor and a dialog comes
+// in as the palette does, and both go out with an exit of their own; with
+// Off, or while the desktop asks for less motion, they show and go at
+// once.
+func TestOverlaysAnimate(t *testing.T) {
+	old := prefs
+	t.Cleanup(func() { prefs = old })
+	for _, tc := range []struct {
+		name, style string
+		reduce      bool
+		moves       bool
+	}{
+		{"snappy", "", false, true},
+		{"natural", "natural", false, true},
+		{"off", "off", false, false},
+		{"reduce motion", "", true, false},
+	} {
+		for _, kind := range []string{"popover", "dialog"} {
+			t.Run(tc.name+"/"+kind, func(t *testing.T) {
+				prefs = settings{Animation: tc.style}
+				open := false
+				tt := ui.NewTester(func(c *ui.Context) {
+					anchor := ui.Box(c.Key("anchor")).Size(80, 30).Margin(20).Background(ui.Hex("#888888"))
+					body := func(e ui.Element) {
+						e.Width(200).Height(120).Background(ui.Hex("#d02020"))
+					}
+					if kind == "popover" {
+						ui.PopoverBase(c, anchor, &open, func(panel ui.Element) {
+							popoverMotion(c, anchor, panel)
+							body(panel)
+						})
+						return
+					}
+					ui.DialogBase(c, &open, func(backdrop, panel ui.Element) {
+						dialogEnter(c, backdrop, panel)
+						backdrop.Background(ui.RGBA(0, 0, 0, 0.4))
+						body(panel)
+					})
+				}, 400, 300)
+				tt.SetPreferences(ui.Preferences{ReduceMotion: tc.reduce})
+				tt.Frame()
+				shot := func() []byte { return slices.Clone(tt.Image().Pix) }
+				closed := shot()
+				open = true
+				tt.Frame()
+				tt.Advance(30 * time.Millisecond)
+				tt.Frame()
+				mid := shot()
+				settle(tt)
+				shown := shot()
+				if bytes.Equal(shown, closed) {
+					t.Fatal("the overlay does not show")
+				}
+				if got := !bytes.Equal(mid, shown); got != tc.moves {
+					t.Errorf("opening: moving %v, want %v", got, tc.moves)
+				}
+				// Closed, it is on its way out for a moment, as the palette is.
+				open = false
+				tt.Frame()
+				tt.Advance(30 * time.Millisecond)
+				tt.Frame()
+				if got := !bytes.Equal(shot(), closed); got != tc.moves {
+					t.Errorf("closing: still shows %v, want %v", got, tc.moves)
+				}
+				// The exit is shorter than the entry's 150 ms.
+				tt.Advance(durExit)
+				tt.Frame()
+				if !bytes.Equal(shot(), closed) {
+					t.Error("the overlay was not gone after its exit")
+				}
+				// Opened again, it comes in again.
+				open = true
+				tt.Frame()
+				tt.Advance(30 * time.Millisecond)
+				tt.Frame()
+				if got := !bytes.Equal(shot(), shown); got != tc.moves {
+					t.Errorf("opening again: moving %v, want %v", got, tc.moves)
+				}
+			})
+		}
+	}
+}

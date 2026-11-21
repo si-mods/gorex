@@ -282,6 +282,7 @@ func (a *App) teleportConfirm(c *ui.Context, k *colors) {
 	title := locales.TeleportAskTitle(name, a.hostName(ask.host))
 	reason := a.tabTeleportBlocked(ask.tab, ask.host)
 	ui.DialogBase(c, &ask.open, func(backdrop, panel ui.Element) {
+		dialogEnter(c, backdrop, panel)
 		backdrop.Background(k.backdrop)
 		dialogShadow(glassPanel(panel.Width(380).Padding(20).Radius(radiusXXL), k).Border(1, k.panelBorder)).Role(ui.RoleDialog).Label(title)
 		ui.Column(c).Gap(10).Children(func() {

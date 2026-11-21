@@ -308,14 +308,22 @@ slide. The timings below are for what a spring does not move.
 
 | Token | Value | Use |
 |---|---|---|
-| `durEnter` | 150 ms, ease out | The dimmed window behind the palette coming in |
-| `durExit` | 120 ms, ease in | The palette going out |
+| `durEnter` | 150 ms, ease out | A popover or a dialog coming in; the dimmed window behind a dialog |
+| `durExit` | 120 ms, ease in | A popover, a dialog or the palette going out |
 | `durExitMove` | 180 ms, ease in | What a spring brought in going out: a pane, a tab, a row, the banner, the tab left behind |
 | `durHover` | 120 ms, ease out | A color following the pointer (`hoverFade`) |
 
 - **Enter eases out, exit eases in, and the exit is the shorter.** Give
   every `Exit` its timing with `exitIn`, so that it does not go back on the
   entry's spring. Do not animate layout on hover.
+- **A popover grows from its trigger.** `popoverMotion` scales it from 0.96
+  and fades it in, around the corner of its anchor that it meets: the top
+  where it opens below, the bottom where it opens above. It shrinks back
+  to that corner as it closes. Call it in every `PopoverBase`.
+- **A dialog comes in as the palette does.** `dialogEnter` poses the panel
+  from `paletteFrom` (6 up, 0.96, faded) and fades the backdrop; the
+  palette calls `dialogMotion` with its own `paletteFresh`. Call it in every
+  `DialogBase`.
 - A new fade or exit takes a token above. Do not write a duration at the
   call site.
 
@@ -356,8 +364,8 @@ what it does not cover.
   | Design system pass ([note](https://x.com/Kubai087/status/2123266417671958600)) | Values from tokens, not literals; spacing on the grid; gaps inside a group smaller than gaps between groups; a box's padding even on its sides where its role calls for it | [Layers](#layers), [Spacing](#spacing). The desktop's grid is 2 px with 4 px steps from 8; Rex Go keeps to 4 pt |
   | [009 Overlays](https://vibedesign.tips/009-overlays/) | A tooltip, a popover, a confirmation, a dialog, a drawer or a page by what it asks of the user | [Decisions](#decisions): a dialog or a popover |
   | [011 Easing curves](https://vibedesign.tips/011-easing-curves/) | A curve for each kind of motion: things that appear ease out, things that leave ease in, moves within a screen ease in and out | Rex Go: `docs/IOS-011-continuous-transitions.md`, Timing. The desktop: [Motion](#motion) |
-  | [015 UI continuity](https://vibedesign.tips/015-ui-continuity/) | A panel, a sheet or a page grows from what opened it | Rex Go only: `docs/IOS-011-continuous-transitions.md` |
-  | Popover origin ([note](https://x.com/Kubai087/status/2123076115464098210)) | A menu or a popover scales from its trigger's corner, not from its center | |
+  | [015 UI continuity](https://vibedesign.tips/015-ui-continuity/) | A panel, a sheet or a page grows from what opened it | Rex Go: `docs/IOS-011-continuous-transitions.md`. The desktop: [Motion](#motion), `popoverMotion` and `dialogEnter` |
+  | Popover origin ([note](https://x.com/Kubai087/status/2123076115464098210)) | A menu or a popover scales from its trigger's corner, not from its center | [Motion](#motion): `popoverMotion` |
   | [016 Toast or notification](https://vibedesign.tips/016-toast-or-notification/), [017 Loading states](https://vibedesign.tips/017-loading-states/), Empty states ([note](https://x.com/Kubai087/status/2113849121299894727)) | The message, wait or empty list fits what happened | |
   | [020 Choice controls](https://vibedesign.tips/020-choice-controls/) | A switch, a segmented control, a menu or a list by the number of choices and when they take effect | |
 

@@ -1504,12 +1504,7 @@ func (a *App) palette(c *ui.Context, k *colors) {
 		frostPanel(panel, k, paletteR)
 		dialogShadow(panel).Clip()
 		if anim != nil {
-			backdrop.Transition(exitIn(ui.ElementTransition{Duration: durEnter, Ease: ui.EaseOut, Colors: true, Enter: paletteFade, Exit: paletteFade}, durExit))
-			pose := ui.Pose{}
-			if fresh {
-				pose = paletteFrom
-			}
-			panel.TransformOrigin(0.5, 0).AnimatePose(pose, *anim)
+			dialogMotion(c, backdrop, panel, fresh)
 		}
 		ui.Row(c).Padding(12, 16).Gap(10).AlignItems(ui.Center).BorderWidth(0, 0, 1, 0).BorderColor(k.panelBorder).Children(func() {
 			glyphIcon(c, "search", 17, k.textMuted)

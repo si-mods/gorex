@@ -47,6 +47,76 @@ func exitIn(t ui.ElementTransition, d time.Duration) ui.ElementTransition {
 // hoverFade is the transition of a color that follows the pointer.
 var hoverFade = ui.ElementTransition{Colors: true, Duration: durHover, Ease: ui.EaseOut}
 
+// popFrom is where a popover grows from as it opens, and shrinks to as it
+// closes: a little smaller, and faded.
+var popFrom = &ui.Motion{Scale: 0.96, Opacity: 0}
+
+// popoverMotion makes the panel of a popover grow from the corner of its
+// anchor, and shrink back to it as it closes, nothing while the desktop
+// asks for less motion. Call it in the popover's function, with the
+// popover's anchor.
+func popoverMotion(c *ui.Context, anchor, panel ui.Element) {
+	if motion(c) == nil {
+		return
+	}
+	// The corner that meets the anchor: the top where the panel opens
+	// below it, the bottom above it. Its first frame has no bounds yet, and
+	// opens below the anchor in the window's upper half, above in its lower.
+	ab, pb := anchor.Bounds(), panel.Bounds()
+	_, winH := c.Size()
+	ox, oy := float32(0), float32(0)
+	switch {
+	case pb.W > 0 && pb.H > 0:
+		ox = min(max((ab.X+ab.W/2-pb.X)/pb.W, 0), 1)
+		if pb.Y+pb.H/2 < ab.Y+ab.H/2 {
+			oy = 1
+		}
+	case ab.Y+ab.H/2 > float32(winH)/2:
+		oy = 1
+	}
+	panel.TransformOrigin(ox, oy)
+	panel.Transition(exitIn(ui.ElementTransition{Colors: true, Duration: durEnter, Ease: ui.EaseOut, Enter: popFrom, Exit: popFrom}, durExit))
+}
+
+// dialogMotion makes a dialog come in as the palette does, its panel from a
+// little above and smaller, the dimmed window behind it fading in, and
+// both go out fading, nothing while the desktop asks for less motion.
+// Call it in the dialog's function; fresh tells that the dialog opens in
+// this frame, as dialogFresh does.
+func dialogMotion(c *ui.Context, backdrop, panel ui.Element, fresh bool) {
+	anim := motion(c)
+	if anim == nil {
+		return
+	}
+	backdrop.Transition(exitIn(ui.ElementTransition{Duration: durEnter, Ease: ui.EaseOut, Colors: true, Enter: paletteFade, Exit: paletteFade}, durExit))
+	pose := ui.Pose{}
+	if fresh {
+		pose = paletteFrom
+	}
+	panel.TransformOrigin(0.5, 0).AnimatePose(pose, *anim)
+}
+
+// dialogFresh tells whether the dialog whose panel it is opens in this
+// frame, and asks for the frame after, which starts the panel moving.
+func dialogFresh(c *ui.Context, panel ui.Element) bool {
+	shown := ui.Local(panel, "dialog-shown", func() bool { return false })
+	if *shown {
+		return false
+	}
+	*shown = true
+	c.AnimationFrame()
+	return true
+}
+
+// dialogEnter is dialogMotion for a dialog that has no state of its own
+// to tell it opens.
+func dialogEnter(c *ui.Context, backdrop, panel ui.Element) {
+	if motion(c) == nil {
+		return
+	}
+	dialogMotion(c, backdrop, panel, dialogFresh(c, panel))
+}
+
 // motion is the spring that moves the panes and the sidebar: the user's
 // style, nil for none, as while the desktop asks for less motion.
 func motion(c *ui.Context) *ui.Animation {
