@@ -101,6 +101,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - A project's card opens and folds with the same animation as No Project's.
 - A page a pane serves only on the computer now says so in Ports, and Open on the phone appears when your phone shares the computer’s network.
 - A paired computer that failed to reach after the phone slept finds the new way to it on the next try now, instead of failing for a while.
+- This build only restores the update the last upload failed to reach you with; nothing new to try.
 
 ## zh-Hans
 
@@ -194,3 +195,4 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - 项目卡片展开和收起现在有了和「无项目」一样的动画。
 - 面板里只在本机开放的端口，在手机不在同一网络时会标明「Only on the host’s network」，不再显示点了会失败的「在手机上打开」。
 - 手机休眠后连不上的已配对电脑，现在下一次连接就会走新通道，不再一直失败。
+- 本次构建只是补上了上一次未能送出的更新，没有新内容可测。
