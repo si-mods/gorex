@@ -194,6 +194,9 @@ export function cursorSeq(): string | undefined {
 /** Whether the panes show their headers, as the desktop's paneHeaders: always, but when hidden with the tabs at the left. */
 export const paneHeaders = () => !prefs.hidePaneHeaders || prefs.tabPlacement !== "left";
 
+/** Snappy's spring has a little bounce (animation.go); Natural's settles without one. */
+export const motionEase = () => (prefs.animation === "natural" ? "cubic-bezier(0.22, 1, 0.36, 1)" : "cubic-bezier(0.3, 1.25, 0.5, 1)");
+
 /**
  * How long the panes take to move, in ms, as the desktop's springs take
  * (animation.go: Snappy 320 ms, Natural 500 ms); 0 with Off, or while the

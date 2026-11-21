@@ -176,7 +176,9 @@ export function createProjectOps(deps: ProjectOpsDeps) {
   async function moveTab(conn: HostConn, session: string, window: string, target: string) {
     if (target === session) return;
     try {
-      await conn.projectMove(window, target);
+      // The host's tabs with no project are addressed with "", not with their session's ID.
+      const dest = conn.sessions.get(target);
+      await conn.projectMove(window, dest?.project && !dest.project.dir ? "" : target);
       await Promise.all([conn.refresh(session, true), conn.refresh(target, true)]);
       deps.redraw();
     } catch (e) {

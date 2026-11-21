@@ -7,12 +7,13 @@
 import type { HostConn } from "./hostconn";
 import type { Host } from "./hosts";
 import { icon } from "./hosts";
+import { motionEase, motionMs } from "./prefs";
 import { tilesWidth } from "./programs";
 import { t } from "./i18n";
 import { MenuItem, onMenu, openMenu, ownDrag, renameField } from "./manage";
 import { dirName, groupLook, GroupLook, groupProjects, HostModel, projectColor, ProjectRow, TabRow } from "./projectmodel";
 import type { HostView, ProjectOps } from "./projectops";
-import { hostHead, problemLine, spaceName, redraw, renaming, sidebarApp, tilesRoom, windowRow } from "./sidebar";
+import { hostHead, problemLine, setTileColumn, spaceName, redraw, renaming, sidebarApp, tilesRoom, windowRow } from "./sidebar";
 
 /** The colors a space can take, as a dot in the picker. */
 export const spaceColors = ["#e5484d", "#f76b15", "#e5a000", "#30a46c", "#3e63dd", "#8e4ec6"];
@@ -36,14 +37,58 @@ try {
 
 /** The groups that fold open or shut on the next draw: the sidebar is made again at each change, so the motion is played on the new elements. */
 const folds = new Map<string, "open" | "close">();
+let first = true;
+
+/** The sessions whose tabs the list shows: the open groups of the space shown, and No Project. */
+function listedSessions(vs: HostView[], space: string): { view?: any }[] {
+  const app = sidebarApp();
+  const out: { view?: any }[] = [];
+  const shown = app.shown();
+  for (const v of vs) {
+    const c = v.online ? app.conn(v.model.host) : undefined;
+    if (!c) continue;
+    const mine = v.model.projects.map((p) => ({ ...p, space: ops.store.mapSpace(v.model.host, p.space) }));
+    const { recent, older } = groupProjects(mine, space, Date.now());
+    const seen = (id: string) => shown?.conn === c && shown?.session === id;
+    const add = (id: string, key: string, fallback: boolean, tabs: number) => {
+      const s = c.sessions.get(id);
+      if (s && tabs > 0 && isOpen(key, fallback)) out.push(s);
+    };
+    for (const p of recent) add(p.id, `${v.model.host}:${p.id}`, seen(p.id), p.tabs.length);
+    if (isOpen(`older:${v.model.host}`, false)) for (const p of older) add(p.id, `${v.model.host}:${p.id}`, seen(p.id), p.tabs.length);
+    if (v.model.loose) add(v.model.loose.id, `loose:${v.model.host}`, true, v.model.loose.tabs.length);
+  }
+  return out;
+}
+
+/** The groups that have the face now: the shown project, open with tabs, or No Project. */
+function shownFaces(vs: HostView[], space: string): Set<string> {
+  const out = new Set<string>();
+  const app = sidebarApp();
+  const shown = app.shown();
+  for (const v of vs) {
+    const c = v.online ? app.conn(v.model.host) : undefined;
+    if (!c || shown?.conn !== c) continue;
+    const mine = v.model.projects.map((p) => ({ ...p, space: ops.store.mapSpace(v.model.host, p.space) }));
+    const { recent, older } = groupProjects(mine, space, Date.now());
+    const olderOpen = isOpen(`older:${v.model.host}`, false);
+    for (const p of [...recent, ...(olderOpen ? older : [])]) {
+      const key = `${v.model.host}:${p.id}`;
+      if (p.id === shown.session && groupLook(isOpen(key, true), true, p.tabs.length).face) out.add(key);
+    }
+    const l = v.model.loose;
+    if (l && l.id === shown.session && groupLook(isOpen(`loose:${v.model.host}`, true), true, l.tabs.length).face) out.add(`loose:${v.model.host}`);
+  }
+  return out;
+}
+
 /** The groups that had the face in the last draw and in this one, so that the face fades in and out. */
 let faces = new Set<string>();
 let nextFaces = new Set<string>();
-const motionMs = 200;
-const motionEase = "cubic-bezier(0.2, 0, 0, 1)";
 
+/** Whether the groups hold still: Animation Off or a system that asks for less motion, the panes' rule. */
 function reduced(): boolean {
-  return typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
+  return motionMs() === 0;
 }
 
 /** Whether a project's (or a group's) tabs show: the user's choice, else the project shown, else shut. */
@@ -157,9 +202,12 @@ export function projectTree(nav: HTMLElement): boolean {
   nav.classList.add("ptree");
   // One column of tab tiles for the whole list, so that every name and every title start at one place.
   column = tilesWidth(0);
-  for (const h of app.hosts()) for (const s of app.conn(h.id)?.sessions.values() ?? []) if (s.view) column = Math.max(column, tilesRoom(s.view));
+  for (const s of listedSessions(vs, ops.space(vs))) if (s.view) column = Math.max(column, tilesRoom(s.view));
+  setTileColumn(column);
   nav.append(picker());
-  faces = nextFaces;
+  // The first draw has no earlier face to fade from.
+  faces = first ? shownFaces(vs, ops.space(vs)) : nextFaces;
+  first = false;
   nextFaces = new Set();
   const now = ops.space(vs);
   const byHost = new Map(vs.map((v) => [v.model.host, v]));
@@ -294,7 +342,7 @@ function groupHead(o: Head): HTMLElement {
     chev.append(glyph);
     b.append(chev);
     const fold = folds.get(o.key);
-    if (fold && !reduced()) glyph.animate([{ transform: `rotate(${fold === "open" ? -90 : 0}deg)` }, { transform: `rotate(${fold === "open" ? 0 : -90}deg)` }], { duration: motionMs, easing: motionEase });
+    if (fold && !reduced()) glyph.animate([{ transform: `rotate(${fold === "open" ? -90 : 0}deg)` }, { transform: `rotate(${fold === "open" ? 0 : -90}deg)` }], { duration: motionMs(), easing: motionEase() });
   }
   if (o.count) b.append(el("span", "count", String(o.count)));
   if (o.look.chevron !== "none") b.onclick = () => toggle(o.key, open);
@@ -316,7 +364,7 @@ function projectGroup(key: string, look: GroupLook, head: HTMLElement, tabs: (()
     nextFaces.add(key);
   }
   const animate = !reduced();
-  if (animate && look.face !== faces.has(key)) face.animate({ opacity: look.face ? [0, 1] : [1, 0] }, { duration: motionMs, easing: motionEase });
+  if (animate && look.face !== faces.has(key)) face.animate({ opacity: look.face ? [0, 1] : [1, 0] }, { duration: motionMs(), easing: motionEase() });
   const fold = folds.get(key);
   if (tabs && (look.chevron === "open" || (fold === "close" && look.chevron !== "none"))) {
     const box = tabs();
@@ -328,7 +376,7 @@ function projectGroup(key: string, look: GroupLook, head: HTMLElement, tabs: (()
         box.style.overflow = "hidden";
         const from = { height: "0px", marginTop: "0px", opacity: 0 };
         const to = { height: `${h}px`, marginTop: "2px", opacity: 1 };
-        const a = box.animate(opening ? [from, to] : [to, from], { duration: motionMs, easing: motionEase });
+        const a = box.animate(opening ? [from, to] : [to, from], { duration: motionMs(), easing: motionEase() });
         a.onfinish = () => {
           box.style.overflow = "";
           if (!opening) box.remove();
