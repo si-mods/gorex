@@ -87,7 +87,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - The Lock Screen card now uses calmer shades of the program's own color, keeps the same size in every state, and shows the timer after the state, clear of the large icon.
 - Open a tab, the title's sheet, Settings, New Project or a Gallery image: it now grows out of what you tapped, and shrinks back into it. The pane bar's highlight slides to the pane you choose.
 - Leave Rex Go from the host list, and a program that asks for your answer in the next few seconds now sends its notification, as it does when you leave from an open terminal.
-- Each project has its own card, a folder tile in its color and the chevron before its tab count. No Project is a card you can fold, too. Tiles lose their white ring on a light page. On an iPad the open card is shaded.
+- Each project has its own card with a folder tile and the chevron before its tab count. No Project folds, too. Tiles lose their white ring on a light page. On an iPad the open card is shaded.
 
 ## zh-Hans
 
