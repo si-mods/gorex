@@ -38,7 +38,7 @@ struct SessionSheet: View {
                     Button { portsShown = true } label: {
                         Row(icon: "network", title: Text("Ports"), divider: false) {
                             if let portCount, portCount > 0 {
-                                Text("\(portCount)").foregroundStyle(.secondary)
+                                Text(String(portCount)).foregroundStyle(.secondary)
                             }
                         }
                     }

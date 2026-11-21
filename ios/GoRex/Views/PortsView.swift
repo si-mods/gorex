@@ -61,7 +61,7 @@ struct PortsView: View {
         } label: {
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 6) {
-                    Text("\(port.port)").font(.body.weight(.semibold).monospacedDigit())
+                    Text(String(port.port)).font(.body.weight(.semibold).monospacedDigit())
                     Text("·").foregroundStyle(.tertiary)
                     Text(port.address).font(.subheadline).foregroundStyle(.secondary)
                     Spacer(minLength: 8)
