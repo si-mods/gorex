@@ -4440,16 +4440,6 @@
         }
       }
     },
-    "Edit Spaces…": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "编辑空间…"
-          }
-        }
-      }
-    },
     "Ghostty draws each terminal with Metal and encodes its keys, as Ghostty does on the Mac.": {
       "localizations": {
         "zh-Hans": {
@@ -4536,16 +4526,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "新建空间"
-          }
-        }
-      }
-    },
-    "New Space…": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "新建空间…"
           }
         }
       }
@@ -4810,12 +4790,12 @@
         }
       }
     },
-    "The picker at the top shows one space at a time, such as Work or Life. New Space… adds one, and Edit Spaces… renames, colors and orders them.": {
+    "The picker at the top shows one space at a time, such as Work or Life. Tap it to see every space with its projects: New Space adds one, and Edit renames, colors and orders them.": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "顶部的选择器一次显示一个空间，例如「工作」或「生活」。「新建空间…」添加空间，「编辑空间…」重命名空间、设颜色和排序。"
+            "value": "顶部的选择器一次显示一个空间，例如「工作」或「生活」。点按它可查看每个空间及其项目：「新建空间」添加空间，「编辑」重命名空间、设颜色和排序。"
           }
         }
       }
