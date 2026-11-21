@@ -927,6 +927,8 @@ nonisolated final class TerminalLiveTests: XCTestCase {
                                          line: String(repeating: "W", count: 80), connected: false)),
             // What a program sends as it is, before shownText: an escape
             // sequence and Nerd Font icons, which drew as text and boxes.
+            ("raw", short, .init(title: "\u{E0B0}api", program: "claude", record: record("blocked", "\u{E0B1} Edit main.go?"),
+                                 line: "\u{1B}[1mAllow\u{1B}[0m \u{E0B2}edits?", connected: true)),
             ("filtered", short, TerminalLive.state(title: "\u{E0B0}api", program: "claude",
                 records: [.init(id: "f", state: "blocked", title: "\u{E0B1} Edit main.go?",
                                 msg: "\u{1B}[1mAllow\u{1B}[0m \u{E0B2}edits?")], seen: nil, connected: true)),
