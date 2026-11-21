@@ -129,7 +129,7 @@ Each item has a **Trigger** (what the diff shows), a **Check** (what the author 
 ### Sidebar row marks
 - **Trigger:** the diff changes the mark at the start of a sidebar row (`projectRow`, `foldRow`, `sidebarTab`, `spaceTab`): an icon, its size or its column.
 - **Check:** the PR shows a project open with two tabs next to a closed one, light and dark, on the user's real sessions or a scene like #896's, and the user sees it in the app before the merge: a mark that reads well alone can read as the same kind of row beside a tab's tile.
-- **Source:** #806 drew no folder, #832 drew one, #895 filled it, and #907 took it out for a chevron, then brought it back as a neutral tile of a tab's size with the chevron at the row's end, after the user compared rendered options.
+- **Source:** #806 drew no folder, #832 drew one, #895 filled it, and #907 took it out for a chevron, then brought it back as a neutral tile of a tab's size with the chevron at the row's end, after the user compared rendered options. #832 and #775 drew the web client's rows apart from the desktop's; the web client took the same tile, chevron, face and No Project group in its own PR, from the same design (#896, #933).
 
 ### A group with a header of its own
 - **Trigger:** the diff draws a sidebar group (a project, Older, tabs with no project) with its own row builder instead of projectGroup and projectRow.

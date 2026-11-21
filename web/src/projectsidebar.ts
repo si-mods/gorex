@@ -7,9 +7,10 @@
 import type { HostConn } from "./hostconn";
 import type { Host } from "./hosts";
 import { icon } from "./hosts";
+import { tilesWidth } from "./programs";
 import { t } from "./i18n";
 import { MenuItem, onMenu, openMenu, ownDrag, renameField } from "./manage";
-import { dirName, groupProjects, HostModel, projectColor, ProjectRow, TabRow } from "./projectmodel";
+import { dirName, groupLook, GroupLook, groupProjects, HostModel, projectColor, ProjectRow, TabRow } from "./projectmodel";
 import type { HostView, ProjectOps } from "./projectops";
 import { hostHead, problemLine, spaceName, redraw, renaming, sidebarApp, tilesRoom, windowRow } from "./sidebar";
 
@@ -17,6 +18,8 @@ import { hostHead, problemLine, spaceName, redraw, renaming, sidebarApp, tilesRo
 export const spaceColors = ["#e5484d", "#f76b15", "#e5a000", "#30a46c", "#3e63dd", "#8e4ec6"];
 
 let ops: ProjectOps;
+/** The width of the column of tab tiles in the list being drawn. */
+let column = tilesWidth(0);
 
 /** Sets what the projects do; once, as the page starts. */
 export function initProjectView(o: ProjectOps) {
@@ -31,6 +34,18 @@ try {
   // Nothing kept: the defaults.
 }
 
+/** The groups that fold open or shut on the next draw: the sidebar is made again at each change, so the motion is played on the new elements. */
+const folds = new Map<string, "open" | "close">();
+/** The groups that had the face in the last draw and in this one, so that the face fades in and out. */
+let faces = new Set<string>();
+let nextFaces = new Set<string>();
+const motionMs = 200;
+const motionEase = "cubic-bezier(0.2, 0, 0, 1)";
+
+function reduced(): boolean {
+  return typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
+
 /** Whether a project's (or a group's) tabs show: the user's choice, else the project shown, else shut. */
 function isOpen(key: string, fallback: boolean): boolean {
   return expanded.get(key) ?? fallback;
@@ -38,6 +53,7 @@ function isOpen(key: string, fallback: boolean): boolean {
 
 function toggle(key: string, now: boolean) {
   expanded.set(key, !now);
+  folds.set(key, now ? "close" : "open");
   try {
     localStorage.setItem(expandedKey, JSON.stringify(Object.fromEntries(expanded)));
   } catch {
@@ -138,7 +154,13 @@ export function projectTree(nav: HTMLElement): boolean {
   const vs = ops.views();
   const v2 = app.hosts().some((h) => app.conn(h.id)?.v2);
   if (!vs.length && !v2) return false;
+  nav.classList.add("ptree");
+  // One column of tab tiles for the whole list, so that every name and every title start at one place.
+  column = tilesWidth(0);
+  for (const h of app.hosts()) for (const s of app.conn(h.id)?.sessions.values() ?? []) if (s.view) column = Math.max(column, tilesRoom(s.view));
   nav.append(picker());
+  faces = nextFaces;
+  nextFaces = new Set();
   const now = ops.space(vs);
   const byHost = new Map(vs.map((v) => [v.model.host, v]));
   for (const h of app.hosts()) {
@@ -159,6 +181,7 @@ export function projectTree(nav: HTMLElement): boolean {
       problemLine(nav, c);
     }
   }
+  folds.clear();
   return true;
 }
 
@@ -194,7 +217,7 @@ function legacySection(nav: HTMLElement, h: Host, c: HostConn) {
     row.append(b, iconButton("plus", t("cmdNewWindow"), () => app.newWindow(c, s.id), !c.live));
     onMenu(row, (x, y) => openMenu(x, y, app.spaceMenu(c, s.id), () => app.shown()?.focusKeys()));
     nav.append(row);
-    if (open) tabs(nav, dim ? undefined : c, s.id, []);
+    if (open) nav.append(tabs(dim ? undefined : c, s.id, []));
   }
 }
 
@@ -218,91 +241,166 @@ function hostSection(nav: HTMLElement, h: Host, c: HostConn | undefined, v: Host
   if (older.length) {
     const key = `older:${model.host}`;
     const open = isOpen(key, false);
-    nav.append(groupRow(key, open, t("projectsOlder"), older.length, undefined, !v.online));
+    const look = groupLook(open, false, older.length);
+    const row = groupHead({ key, look, name: t("projectsOlder"), count: older.length, room: column, dim: !v.online });
+    row.classList.add("group");
+    nav.append(projectGroup(key, look, row, undefined));
     if (open) for (const p of older) projectRow(nav, model, conn, p, shown?.conn === c && shown?.session === p.id);
   }
   if (model.loose?.tabs.length) loose(nav, model, conn, model.loose, shown?.conn === c && shown?.session === model.loose.id);
   if (v.online && !recent.length && !older.length && !model.loose?.tabs.length) nav.append(el("div", "host-note", t("projectsEmpty")));
 }
 
-/** A row that opens or shuts a group, at the project's level: its words and count, and what it adds. Its place of the dot is empty. */
-function groupRow(key: string, open: boolean, text: string, count: number, add: HTMLElement | undefined, dim: boolean): HTMLElement {
-  const row = el("div", "project group");
-  if (dim) row.classList.add("dimmed");
+/** What a group's head shows: its mark, name, chevron and count. */
+interface Head {
+  key: string;
+  look: GroupLook;
+  name: string;
+  title?: string;
+  count: number;
+  /** The folder's color; muted with none. */
+  tint?: string;
+  /** The width of the column of the tab tiles, so that the name starts where the tabs' titles do. */
+  room: number;
+  dim: boolean;
+}
+
+/**
+ * A group's head row, built the same for a project, Older and No Project: a
+ * neutral tile of a tab's size with a folder in it, the name on one line, the
+ * chevron at the end (none with no tabs) and the count.
+ */
+function groupHead(o: Head): HTMLElement {
+  const row = el("div", "project");
+  if (o.dim) row.classList.add("dimmed");
+  if (o.look.pill) row.classList.add("open");
+  if (o.look.face) row.classList.add("current");
   const b = el("button", "project-main");
   b.type = "button";
-  b.setAttribute("aria-expanded", String(open));
-  b.append(el("i", "color-dot none"), el("span", "name", text), el("span", "count", String(count)));
-  b.onclick = () => toggle(key, open);
+  if (o.title) b.title = o.title;
+  const slot = el("span", "folder-slot");
+  slot.style.width = `${o.room}px`;
+  const tile = el("i", "folder-tile");
+  const folder = icon("folder");
+  if (o.tint) folder.style.color = o.tint;
+  tile.append(folder);
+  slot.append(tile);
+  b.append(slot, el("span", "name", o.name));
+  const open = o.look.chevron === "open";
+  if (o.look.chevron !== "none") {
+    b.setAttribute("aria-expanded", String(open));
+    const chev = el("i", "chev");
+    const glyph = icon("chevron-down");
+    chev.append(glyph);
+    b.append(chev);
+    const fold = folds.get(o.key);
+    if (fold && !reduced()) glyph.animate([{ transform: `rotate(${fold === "open" ? -90 : 0}deg)` }, { transform: `rotate(${fold === "open" ? 0 : -90}deg)` }], { duration: motionMs, easing: motionEase });
+  }
+  if (o.count) b.append(el("span", "count", String(o.count)));
+  if (o.look.chevron !== "none") b.onclick = () => toggle(o.key, open);
   row.append(b);
-  if (add) row.append(add);
   return row;
 }
 
-/** The tabs of a host's one session of tabs with no project: in every space, shut at first. */
-function loose(nav: HTMLElement, model: HostModel, c: HostConn | undefined, l: NonNullable<HostModel["loose"]>, shownHere: boolean) {
-  const key = `loose:${model.host}`;
-  const open = isOpen(key, shownHere);
-  const add = c ? iconButton("plus", t("projectNewTabNoProject"), () => void ops.newTab(c, l.id)) : undefined;
-  const row = groupRow(key, open, t("projectNoProjectName"), l.tabs.length, add, !c);
-  if (c) onMenu(row, (x, y) => openMenu(x, y, [{ label: t("projectNewTabNoProject"), run: () => void ops.newTab(c, l.id) }], () => sidebarApp().shown()?.focusKeys()));
-  nav.append(row);
-  if (open) tabs(nav, c, l.id, l.tabs);
+/**
+ * A group: its head, and its tabs under it in a box that folds open and shut.
+ * Every group keeps the face's room; only the shown one, while open, has the
+ * face's color, which fades in and out. `tabs` builds the box, or is none.
+ */
+function projectGroup(key: string, look: GroupLook, head: HTMLElement, tabs: (() => HTMLElement) | undefined): HTMLElement {
+  const g = el("div", "pgroup");
+  const face = el("i", "face-bg");
+  g.append(face, head);
+  if (look.face) {
+    g.classList.add("face");
+    nextFaces.add(key);
+  }
+  const animate = !reduced();
+  if (animate && look.face !== faces.has(key)) face.animate({ opacity: look.face ? [0, 1] : [1, 0] }, { duration: motionMs, easing: motionEase });
+  const fold = folds.get(key);
+  if (tabs && (look.chevron === "open" || (fold === "close" && look.chevron !== "none"))) {
+    const box = tabs();
+    g.append(box);
+    if (fold && animate) {
+      const opening = fold === "open";
+      queueMicrotask(() => {
+        const h = box.offsetHeight;
+        box.style.overflow = "hidden";
+        const from = { height: "0px", marginTop: "0px", opacity: 0 };
+        const to = { height: `${h}px`, marginTop: "2px", opacity: 1 };
+        const a = box.animate(opening ? [from, to] : [to, from], { duration: motionMs, easing: motionEase });
+        a.onfinish = () => {
+          box.style.overflow = "";
+          if (!opening) box.remove();
+        };
+      });
+    } else if (fold === "close") {
+      box.remove();
+    }
+  }
+  return g;
 }
 
-/** A project's row: its name and folder, its `+`, its menu; and its tabs while it is open. */
+/** A host's one session of tabs with no project, as a group named for it: in every space, open at first. */
+function loose(nav: HTMLElement, model: HostModel, c: HostConn | undefined, l: NonNullable<HostModel["loose"]>, shownHere: boolean) {
+  const key = `loose:${model.host}`;
+  const open = isOpen(key, true);
+  const look = groupLook(open, shownHere, l.tabs.length);
+  const row = groupHead({ key, look, name: t("projectNoProjectName"), count: l.tabs.length, room: column, dim: !c });
+  row.dataset.host = model.host;
+  row.dataset.session = l.id;
+  if (c) {
+    row.append(iconButton("plus", t("projectNewTabNoProject"), () => void ops.newTab(c, l.id)));
+    onMenu(row, (x, y) => openMenu(x, y, [{ label: t("projectNewTabNoProject"), run: () => void ops.newTab(c, l.id) }], () => sidebarApp().shown()?.focusKeys()));
+    dropTarget(row, c, l.id);
+  }
+  nav.append(projectGroup(key, look, row, () => tabs(c, l.id, l.tabs)));
+}
+
+/** A tab of this host dropped on the row moves into the session, with its panes and their programs. */
+function dropTarget(row: HTMLElement, c: HostConn, session: string) {
+  row.addEventListener("dragover", (e) => {
+    const d = ownDrag(e);
+    if (!d || d.kind !== "window" || d.host !== c.host.id || d.session === session) return;
+    e.preventDefault();
+    e.dataTransfer!.dropEffect = "move";
+    row.dataset.drop = "into";
+  });
+  row.addEventListener("dragleave", (e) => {
+    if (!(e.relatedTarget instanceof Node && row.contains(e.relatedTarget))) delete row.dataset.drop;
+  });
+  row.addEventListener("drop", (e) => {
+    const d = ownDrag(e);
+    delete row.dataset.drop;
+    if (!d || d.kind !== "window" || d.host !== c.host.id || d.session === session) return;
+    e.preventDefault();
+    void ops.moveTab(c, d.session, d.window, session);
+  });
+}
+
+/** A project's group: its row (name, `+`, menu, drop target), and its tabs while it is open. */
 function projectRow(nav: HTMLElement, model: HostModel, c: HostConn | undefined, p: ProjectRow, shownHere: boolean) {
   const app = sidebarApp();
   const key = `${model.host}:${p.id}`;
   const open = isOpen(key, shownHere);
-  const row = el("div", "project");
-  row.dataset.host = model.host;
-  row.dataset.session = p.id;
-  if (!c) row.classList.add("dimmed");
-  // One fill for the chosen place: the active tab when it shows, else the project row. The project that holds a shown tab is only marked current.
-  if (shownHere) row.classList.add(open ? "current" : "open");
+  const look = groupLook(open, shownHere, p.tabs.length);
+  const name = p.name || dirName(p.dir);
   if (c && renaming(c, p.id)) {
-    row.append(renameField(p.name, dirName(p.dir), t("renameSpaceLabel"), (name) => app.renamedSpace(c, p.id, name)));
-    nav.append(row);
+    const field = el("div", "project");
+    field.append(renameField(p.name, dirName(p.dir), t("renameSpaceLabel"), (to) => app.renamedSpace(c, p.id, to)));
+    nav.append(projectGroup(key, { ...look, chevron: "none" }, field, undefined));
     return;
   }
-  const b = el("button", "project-main");
-  b.type = "button";
-  b.setAttribute("aria-expanded", String(open));
   // The folder is in the tooltip only.
-  b.title = `${p.name || dirName(p.dir)}\n${p.dir}`;
-  const folder = icon("folder");
-  folder.classList.add("project-icon");
-  const tint = projectColor(p.color);
-  if (tint) folder.style.color = tint;
-  b.append(folder, el("span", "name", p.name || dirName(p.dir)));
-  if (p.tabs.length) b.append(el("span", "count", String(p.tabs.length)));
-  b.onclick = () => toggle(key, open);
-  row.append(b);
+  const row = groupHead({ key, look, name, title: `${name}\n${p.dir}`, count: p.tabs.length, tint: projectColor(p.color), room: column, dim: !c });
+  row.dataset.host = model.host;
+  row.dataset.session = p.id;
   if (c) {
     row.append(iconButton("plus", t("cmdNewWindow"), () => void ops.newTab(c, p.id)));
     onMenu(row, (x, y) => openMenu(x, y, projectMenu(c, p), () => app.shown()?.focusKeys()));
-    // A tab of this host dropped here moves into the project, with its panes and their programs.
-    row.addEventListener("dragover", (e) => {
-      const d = ownDrag(e);
-      if (!d || d.kind !== "window" || d.host !== c.host.id || d.session === p.id) return;
-      e.preventDefault();
-      e.dataTransfer!.dropEffect = "move";
-      row.dataset.drop = "into";
-    });
-    row.addEventListener("dragleave", (e) => {
-      if (!(e.relatedTarget instanceof Node && row.contains(e.relatedTarget))) delete row.dataset.drop;
-    });
-    row.addEventListener("drop", (e) => {
-      const d = ownDrag(e);
-      delete row.dataset.drop;
-      if (!d || d.kind !== "window" || d.host !== c.host.id || d.session === p.id) return;
-      e.preventDefault();
-      void ops.moveTab(c, d.session, d.window, p.id);
-    });
+    dropTarget(row, c, p.id);
   }
-  nav.append(row);
-  if (open) tabs(nav, c, p.id, p.tabs);
+  nav.append(projectGroup(key, look, row, () => tabs(c, p.id, p.tabs)));
 }
 
 /** A project's context menu: New Tab, Rename…, Move to Space, Close Project…. */
@@ -323,21 +421,21 @@ function projectMenu(c: HostConn, p: ProjectRow): MenuItem[] {
 }
 
 /** The tabs under a project: live rows with their menus and drags, or the copy's names. */
-function tabs(nav: HTMLElement, c: HostConn | undefined, session: string, rows: TabRow[]) {
+function tabs(c: HostConn | undefined, session: string, rows: TabRow[]): HTMLElement {
   const s = c?.sessions.get(session);
   const box = el("div", "project-tabs");
   if (c && s?.view) {
-    const room = tilesRoom(s.view);
-    for (const w of s.view.windows ?? []) box.append(windowRow(c, session, w, room));
+    for (const w of s.view.windows ?? []) box.append(windowRow(c, session, w, column));
     box.append(newTabRow(c, session));
   } else {
     for (const r of rows) {
       const row = el("div", "window dimmed copy");
+      row.style.paddingLeft = `${12 + column + 8}px`;
       row.append(el("span", "title", r.title));
       box.append(row);
     }
   }
-  nav.append(box);
+  return box;
 }
 
 function newTabRow(c: HostConn, session: string): HTMLElement {

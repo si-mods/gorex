@@ -2923,9 +2923,9 @@
   "@projectsOlder": {
     "description": "Sidebar group of the projects not used for 30 days; the count is beside it."
   },
-  "projectNoProjectName": "Tabs with no project",
+  "projectNoProjectName": "No Project",
   "@projectNoProjectName": {
-    "description": "A host's tabs that belong to no project, as a target of Move to Project and in the project menu."
+    "description": "The group of a host's tabs that belong to no project: its name in the sidebar, as a target of Move to Project and in the project menu."
   },
   "projectNewTabNoProject": "New Tab with No Project",
   "@projectNewTabNoProject": {
