@@ -92,6 +92,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - Tap a tab in the list: the terminal slides in from the right again, and slides back as you swipe from the left edge. The list keeps its own light or dark look while a terminal opens or closes.
 - The iPhone key bar's first page now ends with Enter; Tab moved to the last page.
 - Renaming a project renames the title its unnamed windows show too, in the list and over a terminal.
+- When a program in a pane listens on a port, its terminal shows a globe in the top bar; tap it to see the port, its address and the program, and open a reachable one in Safari.
 
 ## zh-Hans
 
@@ -176,3 +177,4 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - 点按列表中的标签页：终端又从右侧滑入，从左边缘轻扫即可滑回。打开或关闭终端时，列表保持它自己的浅色或深色外观。
 - 终端底部的按键栏，第一页末尾现在有回车键；Tab 移到了最后一页。
 - 重命名项目后，它未命名的窗口在列表里和终端标题栏也会显示项目的新名字。
+- 面板里的程序开始监听端口后，终端顶栏会出现一个地球按钮；点开能看到端口、地址和程序，能直连的端口可以直接在 Safari 打开。
