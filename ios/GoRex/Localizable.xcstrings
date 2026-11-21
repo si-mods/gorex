@@ -66,16 +66,6 @@
         }
       }
     },
-    "A typed character shows at once under the cursor, underlined as a guess that the host's answer replaces.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "键入的字符会立即以带下划线的猜测显示在光标处，主机的回应到达后将其替换。"
-          }
-        }
-      }
-    },
     "About": {
       "localizations": {
         "zh-Hans": {
@@ -1142,16 +1132,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "正在润色"
-          }
-        }
-      }
-    },
-    "Predictive Echo": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "预测回显"
           }
         }
       }
