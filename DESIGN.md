@@ -295,6 +295,38 @@ the parts of the one it is nearest to.
 - **Do** dim what is unavailable with `dimmed`. **Don't** dim with
   `Opacity` where color is not the meaning ([Shaders](#where-not-to-use-them)).
 
+## Vibe Design Tips
+
+Every UI change, on the desktop, the web client and Rex Go (iOS), is
+checked against the rules of Kubai's [Vibe Design Tips](https://vibedesign.tips/)
+before its screenshots go to review. The `kubai-design-tips` skill holds
+them (`/kubai-design-tips`, or a tip by its number; install it from
+https://vibedesign.tips/downloads/INSTALL.md). Where a tip and this
+document disagree, this document wins, and the tip is the default for
+what it does not cover.
+
+- **Rules: check them on every change.**
+
+  | Tip | What to check | Here |
+  |---|---|---|
+  | [004 Continuous corners](https://vibedesign.tips/004-continuous-corners/) | An inner radius is the outer radius less the padding between them; no radius under 4; pills and circles stay round | [Corners](#corners): `concentric`, `capsule` |
+  | Design system pass ([note](https://x.com/Kubai087/status/2123266417671958600)) | Values from tokens, not literals; spacing on the grid; gaps inside a group smaller than gaps between groups; a box's padding even on its sides where its role calls for it | [Layers](#layers), [Spacing](#spacing). The desktop's grid is 2 px with 4 px steps from 8; Rex Go keeps to 4 pt |
+  | [009 Overlays](https://vibedesign.tips/009-overlays/) | A tooltip, a popover, a confirmation, a dialog, a drawer or a page by what it asks of the user | [Decisions](#decisions): a dialog or a popover |
+  | [011 Easing curves](https://vibedesign.tips/011-easing-curves/) | A curve for each kind of motion: things that appear ease out, things that leave ease in, moves within a screen ease in and out | Rex Go: `docs/IOS-011-continuous-transitions.md`, Timing. The desktop: none yet |
+  | [015 UI continuity](https://vibedesign.tips/015-ui-continuity/) | A panel, a sheet or a page grows from what opened it | Rex Go only: `docs/IOS-011-continuous-transitions.md` |
+  | Popover origin ([note](https://x.com/Kubai087/status/2123076115464098210)) | A menu or a popover scales from its trigger's corner, not from its center | |
+  | [016 Toast or notification](https://vibedesign.tips/016-toast-or-notification/), [017 Loading states](https://vibedesign.tips/017-loading-states/), Empty states ([note](https://x.com/Kubai087/status/2113849121299894727)) | The message, wait or empty list fits what happened | |
+  | [020 Choice controls](https://vibedesign.tips/020-choice-controls/) | A switch, a segmented control, a menu or a list by the number of choices and when they take effect | |
+
+  The checks of 009, 016, 017 and 020 find what is wrong and say what to
+  use instead; a change that alters how a screen looks then follows the
+  next rule.
+
+- **Effects: offer them, don't apply them.** A tip's look (010 Liquid
+  glass, a segmented control in place of a menu, scroll cards) changes
+  how GoRex looks. Show it to the user as an option with screenshots, and
+  apply it only once they choose it.
+
 ## Icons
 
 Icons are SVGs: lucide ones from `assets/icons/`, and brand marks from
