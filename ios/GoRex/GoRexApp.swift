@@ -112,6 +112,7 @@ struct GoRexApp: App {
             HostListView()
                 .environment(store)
                 .environment(spaces)
+                .promptSheet(store)
                 .preferredColorScheme(ScreenStyle.shared.terminal ?? Self.colorScheme(scheme))
                 .background { SystemScheme().accessibilityHidden(true) }
                 .onAppear(perform: Self.startGhostty)

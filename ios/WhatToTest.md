@@ -103,6 +103,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - A paired computer that failed to reach after the phone slept finds the new way to it on the next try now, instead of failing for a while.
 - This build only restores the update the last upload failed to reach you with; nothing new to try.
 - Once more this build restores the same update; nothing new to try.
+- An action that asks for a name or a choice, such as a new worktree, now asks on your phone too: answer it there, or cancel, and every device closes.
 
 ## zh-Hans
 
@@ -198,3 +199,4 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - 手机休眠后连不上的已配对电脑，现在下一次连接就会走新通道，不再一直失败。
 - 本次构建只是补上了上一次未能送出的更新，没有新内容可测。
 - 本次构建仍是补上同一份更新，没有新内容可测。
+- 需要你填名字或做选择的操作（比如新建工作树）现在也会在手机上弹出提问：在手机上填写或取消，所有设备会一起关闭。
