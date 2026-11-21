@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.47.0
+
+### Features
+
+* **desktop, web, ios:** ask a config action's question across GoRex's clients ([#959](https://github.com/si-mods/gorex/pull/959))
+* **rexapi:** relay a pane's loopback port for the phone ([#947](https://github.com/si-mods/gorex/pull/947))
+* **web:** bring the project sidebar in line with the desktop ([#943](https://github.com/si-mods/gorex/pull/943))
+* **ios:** answer an action's question on the phone ([#957](https://github.com/si-mods/gorex/pull/957))
+* **ios:** read a pairing code from a photo in the scanner ([#958](https://github.com/si-mods/gorex/pull/958))
+* **ios:** block GPU presentation while the app is in the background ([#963](https://github.com/si-mods/gorex/pull/963))
+* **ios:** secure the lock-screen snapshot window and background launches ([#964](https://github.com/si-mods/gorex/pull/964))
+* **ios:** pull to refresh reconnects the hosts not online ([#945](https://github.com/si-mods/gorex/pull/945))
+
+### Bug Fixes
+
+* **desktop:** give the question an opaque panel of the window's theme ([#961](https://github.com/si-mods/gorex/pull/961))
+* **ios:** drop escape codes and undrawable glyphs from a notification's text ([#956](https://github.com/si-mods/gorex/pull/956))
+* **ios:** reread the proxy at once when a dial through it fails ([#951](https://github.com/si-mods/gorex/pull/951))
+* **ios:** offer the loopback relay only on the host's network ([#950](https://github.com/si-mods/gorex/pull/950))
+* **ios:** animate the project cards' fold like No Project's ([#948](https://github.com/si-mods/gorex/pull/948))
+* **ios:** let a renamed tab's name show over its terminal ([#949](https://github.com/si-mods/gorex/pull/949))
+* **ios:** re-inject the root's objects into sheets an iOS app on Mac drops ([#946](https://github.com/si-mods/gorex/pull/946))
+
 ## 0.46.0
 
 ### Features
