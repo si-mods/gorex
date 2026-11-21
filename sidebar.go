@@ -432,7 +432,7 @@ func spaceTab(c *ui.Context, k *colors, key, name, detail string, s *rex.Program
 	e := ui.Row(c.Key("tab-"+key)).Height(sideRowH).Shrink(0).Padding(0, 6, 0, sideLead).Gap(sideGap).AlignItems(ui.Center).Radius(pillRadius(sideRowH, radiusM)).
 		Cursor(ui.CursorPointer).Role(ui.RoleButton).Label(name + " " + detail)
 	if anim := motion(c); anim != nil {
-		e.Transition(ui.ElementTransition{Animation: anim, Position: true, Enter: tabMotion, Exit: tabMotion})
+		e.Transition(exitIn(ui.ElementTransition{Animation: anim, Position: true, Enter: tabMotion, Exit: tabMotion}, durExitMove))
 	}
 	if e.Hovered() {
 		e.Background(hoverFace(k))

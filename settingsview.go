@@ -304,7 +304,7 @@ func (a *App) sidebarItem(c *ui.Context, k *colors, id, glyph string, tile ui.Co
 	} else if e.Hovered() {
 		e.Background(hoverFace(k))
 	}
-	e.Transition(ui.ElementTransition{Colors: true, Duration: 160 * time.Millisecond})
+	e.Transition(hoverFade)
 	if e.Clicked() {
 		a.showSection(id)
 	}
@@ -360,7 +360,7 @@ func (a *App) serverCard(c *ui.Context, k *colors) {
 	if active {
 		e.Border(1, k.accent.Alpha(0.55))
 	}
-	e.Transition(ui.ElementTransition{Colors: true, Duration: 160 * time.Millisecond})
+	e.Transition(hoverFade)
 	if e.Clicked() {
 		a.showSection("server")
 	}

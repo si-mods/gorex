@@ -2,7 +2,6 @@ package main
 
 import (
 	"strings"
-	"time"
 
 	"github.com/egoist/mygo/ui"
 
@@ -168,7 +167,7 @@ func dangerButton(c *ui.Context, k *colors, label string) ui.Element {
 	case b.Hovered():
 		bg = bg.Mix(ui.Hex("#000000"), 0.12)
 	}
-	b.Background(bg).Transition(ui.ElementTransition{Colors: true, Duration: 120 * time.Millisecond})
+	b.Background(bg).Transition(hoverFade)
 	b.Children(func() {
 		ui.Text(c, label).FontSize(fontBody).FontWeight(600).TextColor(ui.Hex("#ffffff"))
 	})

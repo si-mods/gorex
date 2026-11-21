@@ -22,6 +22,31 @@ var (
 	springBack = ui.Animation{Spring: ui.SpringOptions{Duration: 450 * time.Millisecond, Bounce: 0.3}}
 )
 
+// The timings of what the springs do not move: a layer that fades in or
+// out, a color that follows the pointer. An entry eases out, an exit eases
+// in and is shorter than its entry; DESIGN.md, Motion, says which to use.
+const (
+	// durEnter is how long a popover or a dialog takes to come in.
+	durEnter = 150 * time.Millisecond
+	// durExit is how long a popover, a dialog or the palette takes to go.
+	durExit = 120 * time.Millisecond
+	// durExitMove is how long what a spring brought in takes to go: a pane,
+	// a tab, a row, the banner, the tab being left.
+	durExitMove = 180 * time.Millisecond
+	// durHover is how long a color takes to follow the pointer.
+	durHover = 120 * time.Millisecond
+)
+
+// exitIn makes the Exit of t ease in over d, in place of its entry's
+// spring or curve.
+func exitIn(t ui.ElementTransition, d time.Duration) ui.ElementTransition {
+	t.ExitDuration, t.ExitEase = d, ui.EaseIn
+	return t
+}
+
+// hoverFade is the transition of a color that follows the pointer.
+var hoverFade = ui.ElementTransition{Colors: true, Duration: durHover, Ease: ui.EaseOut}
+
 // motion is the spring that moves the panes and the sidebar: the user's
 // style, nil for none, as while the desktop asks for less motion.
 func motion(c *ui.Context) *ui.Animation {
@@ -65,7 +90,8 @@ func (a *App) paneTransition(c *ui.Context, t *Tab) *ui.ElementTransition {
 	moving := !drag && now.Before(t.settle)
 	// Colors, which a cell has none of, when nothing else: none set would
 	// move them all.
-	return &ui.ElementTransition{Animation: anim, Position: moving, Size: moving, Colors: !moving, Enter: pop, Exit: pop}
+	tr := exitIn(ui.ElementTransition{Animation: anim, Position: moving, Size: moving, Colors: !moving, Enter: pop, Exit: pop}, durExitMove)
+	return &tr
 }
 
 // fadeColors tells whether the elements being built fade their colors as

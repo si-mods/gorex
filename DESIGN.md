@@ -296,6 +296,29 @@ the parts of the one it is nearest to.
 | Palette | frost or glass, `fontTitle` input, rows `concentric` | `commands.go` |
 | Settings page | the window background, groups of `raisedShadow` and `radiusXL` | `settingsview.go` |
 
+## Motion
+
+Motion comes from two kinds of token, in `animation.go`. Everything goes
+through `motion(c)`: with Animation set to Off, or while the desktop asks
+for less motion, nothing below moves and a layer shows and goes at once.
+
+The user's spring (`snappy` or `natural`) moves what stays on screen and
+brings in what has a place: panes, tabs, rows, the banner, the tab
+slide. The timings below are for what a spring does not move.
+
+| Token | Value | Use |
+|---|---|---|
+| `durEnter` | 150 ms, ease out | The dimmed window behind the palette coming in |
+| `durExit` | 120 ms, ease in | The palette going out |
+| `durExitMove` | 180 ms, ease in | What a spring brought in going out: a pane, a tab, a row, the banner, the tab left behind |
+| `durHover` | 120 ms, ease out | A color following the pointer (`hoverFade`) |
+
+- **Enter eases out, exit eases in, and the exit is the shorter.** Give
+  every `Exit` its timing with `exitIn`, so that it does not go back on the
+  entry's spring. Do not animate layout on hover.
+- A new fade or exit takes a token above. Do not write a duration at the
+  call site.
+
 ## Decisions
 
 - **A dialog or a popover?** A choice the user must make before going
@@ -332,7 +355,7 @@ what it does not cover.
   | [004 Continuous corners](https://vibedesign.tips/004-continuous-corners/) | An inner radius is the outer radius less the padding between them; no radius under 4; pills and circles stay round | [Corners](#corners): `concentric`, `capsule` |
   | Design system pass ([note](https://x.com/Kubai087/status/2123266417671958600)) | Values from tokens, not literals; spacing on the grid; gaps inside a group smaller than gaps between groups; a box's padding even on its sides where its role calls for it | [Layers](#layers), [Spacing](#spacing). The desktop's grid is 2 px with 4 px steps from 8; Rex Go keeps to 4 pt |
   | [009 Overlays](https://vibedesign.tips/009-overlays/) | A tooltip, a popover, a confirmation, a dialog, a drawer or a page by what it asks of the user | [Decisions](#decisions): a dialog or a popover |
-  | [011 Easing curves](https://vibedesign.tips/011-easing-curves/) | A curve for each kind of motion: things that appear ease out, things that leave ease in, moves within a screen ease in and out | Rex Go: `docs/IOS-011-continuous-transitions.md`, Timing. The desktop: none yet |
+  | [011 Easing curves](https://vibedesign.tips/011-easing-curves/) | A curve for each kind of motion: things that appear ease out, things that leave ease in, moves within a screen ease in and out | Rex Go: `docs/IOS-011-continuous-transitions.md`, Timing. The desktop: [Motion](#motion) |
   | [015 UI continuity](https://vibedesign.tips/015-ui-continuity/) | A panel, a sheet or a page grows from what opened it | Rex Go only: `docs/IOS-011-continuous-transitions.md` |
   | Popover origin ([note](https://x.com/Kubai087/status/2123076115464098210)) | A menu or a popover scales from its trigger's corner, not from its center | |
   | [016 Toast or notification](https://vibedesign.tips/016-toast-or-notification/), [017 Loading states](https://vibedesign.tips/017-loading-states/), Empty states ([note](https://x.com/Kubai087/status/2113849121299894727)) | The message, wait or empty list fits what happened | |

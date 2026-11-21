@@ -534,7 +534,7 @@ func (a *App) transfers(c *ui.Context, k *colors, p *Pane) {
 	frostPanel(list, k, r)
 	anim := motion(c)
 	if anim != nil {
-		list.Transition(ui.ElementTransition{Animation: anim, Position: true, Enter: bannerMotion, Exit: bannerMotion})
+		list.Transition(exitIn(ui.ElementTransition{Animation: anim, Position: true, Enter: bannerMotion, Exit: bannerMotion}, durExitMove))
 	}
 	// A row clicked away goes once the list is built.
 	var gone *fileTransfer
@@ -545,7 +545,7 @@ func (a *App) transfers(c *ui.Context, k *colors, p *Pane) {
 		for _, x := range ts.list {
 			row := ui.Column(c.Key(x)).Padding(6, 8).Gap(4).Radius(concentric(r, pad))
 			if anim != nil {
-				row.Transition(ui.ElementTransition{Animation: anim, Position: true, Size: true, Enter: bannerMotion, Exit: bannerMotion})
+				row.Transition(exitIn(ui.ElementTransition{Animation: anim, Position: true, Size: true, Enter: bannerMotion, Exit: bannerMotion}, durExitMove))
 			}
 			failed := x.err != ""
 			if failed {

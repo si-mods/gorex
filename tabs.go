@@ -63,7 +63,7 @@ func (a *App) tabStrip(c *ui.Context, k *colors) {
 					sep.Background(k.tabSep)
 				}
 				if anim != nil {
-					sep.Transition(ui.ElementTransition{Animation: anim, Position: true, Colors: true, Enter: tabMotion, Exit: tabMotion})
+					sep.Transition(exitIn(ui.ElementTransition{Animation: anim, Position: true, Colors: true, Enter: tabMotion, Exit: tabMotion}, durExitMove))
 				}
 			}
 			el := a.tabItem(c, k, i, t, widths[i], squeeze)
@@ -249,9 +249,9 @@ var tabMotion = &ui.Motion{Collapse: true, Opacity: 0}
 // closes; without, only its colors fade.
 func (a *App) tabEvents(c *ui.Context, e ui.Element, k *colors, i int, t *Tab) {
 	if anim := motion(c); anim != nil {
-		e.Transition(ui.ElementTransition{Animation: anim, Colors: true, Position: true, Enter: tabMotion, Exit: tabMotion})
+		e.Transition(exitIn(ui.ElementTransition{Animation: anim, Colors: true, Position: true, Enter: tabMotion, Exit: tabMotion}, durExitMove))
 	} else {
-		e.Transition(ui.ElementTransition{Colors: true, Duration: 160 * time.Millisecond})
+		e.Transition(hoverFade)
 	}
 	e.Drag(t)
 	// A tab of another host's takes a tab dropped on it to that host: it

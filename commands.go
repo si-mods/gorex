@@ -1504,7 +1504,7 @@ func (a *App) palette(c *ui.Context, k *colors) {
 		frostPanel(panel, k, paletteR)
 		dialogShadow(panel).Clip()
 		if anim != nil {
-			backdrop.Transition(ui.ElementTransition{Duration: 150 * time.Millisecond, Colors: true, Enter: paletteFade, Exit: paletteFade})
+			backdrop.Transition(exitIn(ui.ElementTransition{Duration: durEnter, Ease: ui.EaseOut, Colors: true, Enter: paletteFade, Exit: paletteFade}, durExit))
 			pose := ui.Pose{}
 			if fresh {
 				pose = paletteFrom
