@@ -581,7 +581,7 @@ func (a *App) hostLayoutSheet(c *ui.Context, k *colors) {
 	was := page.layoutOpen
 	ui.DialogBase(c, &page.layoutOpen, func(backdrop, panel ui.Element) {
 		backdrop.Background(k.backdrop)
-		dialogShadow(glassPanel(panel.Width(620).MaxHeight(560).Padding(20).Gap(12).Radius(radiusXXL), k.panel).Border(1, k.panelBorder)).Role(ui.RoleDialog).Label(locales.HostsLayoutTitle())
+		dialogShadow(glassPanel(panel.Width(620).MaxHeight(560).Padding(20).Gap(12).Radius(radiusXXL), k).Border(1, k.panelBorder)).Role(ui.RoleDialog).Label(locales.HostsLayoutTitle())
 		ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
 			ui.Text(c, locales.HostsLayoutTitle()).FontSize(fontTitle).FontWeight(700).TextColor(k.text)
 			if page.layoutHost != nil {
@@ -864,7 +864,7 @@ func (a *App) addHostSheet(c *ui.Context, k *colors) {
 	was := page.adding
 	ui.DialogBase(c, &page.adding, func(backdrop, panel ui.Element) {
 		backdrop.Background(k.backdrop)
-		dialogShadow(glassPanel(panel.Width(440).Padding(20).Gap(12).Radius(radiusXXL), k.panel).Border(1, k.panelBorder)).Role(ui.RoleDialog).Label(locales.HostsAddTitle())
+		dialogShadow(glassPanel(panel.Width(440).Padding(20).Gap(12).Radius(radiusXXL), k).Border(1, k.panelBorder)).Role(ui.RoleDialog).Label(locales.HostsAddTitle())
 		ui.Text(c, locales.HostsAddTitle()).FontSize(fontTitle).FontWeight(700).TextColor(k.text)
 		switch page.stage {
 		case addConnecting:

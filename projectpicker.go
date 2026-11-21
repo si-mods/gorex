@@ -79,7 +79,7 @@ func (a *App) projectPicker(c *ui.Context, k *colors) {
 	})
 	ui.PopoverBase(c, chip, &a.pickerOpen, func(panel ui.Element) {
 		_, winH := c.Size()
-		popoverShadow(glassPanel(panel.Margin(6, 0, 0, 0).Width(340).MaxHeight(winH-24-titleH).Padding(popPad).Radius(popR), k.panel).Border(1, k.panelBorder), k)
+		popoverShadow(glassPanel(panel.Margin(6, 0, 0, 0).Width(340).MaxHeight(winH-24-titleH).Padding(popPad).Radius(popR), k).Border(1, k.panelBorder), k)
 		ui.Scroll(c.Key("picker-list")).MinHeight(0).Shrink(1).Children(func() {
 			ui.Column(c).Gap(2).Children(func() { a.pickerList(c, k) })
 		})

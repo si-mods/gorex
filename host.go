@@ -179,7 +179,7 @@ func (a *App) hostPopover(c *ui.Context, k *colors, anchor ui.Element, name, gly
 		if r := anchor.Bounds(); r.H > 0 {
 			room = min(room, max(r.Y, winH-r.Y-r.H)-16)
 		}
-		popoverShadow(glassPanel(panel.Margin(8, 0, 0, 0).MaxHeight(room).Width(300).Padding(14).Radius(radiusXL), k.panel).Border(1, k.panelBorder), k)
+		popoverShadow(glassPanel(panel.Margin(8, 0, 0, 0).MaxHeight(room).Width(300).Padding(14).Radius(radiusXL), k).Border(1, k.panelBorder), k)
 		// A short window scrolls the panel's body.
 		ui.Scroll(c).MinHeight(0).Children(func() {
 			ui.Column(c).Gap(12).Children(func() { a.hostPanel(c, k, name, glyph) })

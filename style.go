@@ -41,7 +41,9 @@ type colors struct {
 	// a pane: opaque, so that the text they cover shows through nowhere.
 	panel, panelBorder, panelSel, backdrop ui.Color
 	// panelGlass is panel as the palette lays it over the blurred window,
-	// translucent where panel is opaque.
+	// translucent where panel is opaque, and as a panel lays it over
+	// MyGo's glass (glassPanel): dense enough that k.text and k.textMuted
+	// read on it whatever is behind it.
 	panelGlass ui.Color
 	// field is the face of a text field, which is opaque as panel, and its
 	// outline.

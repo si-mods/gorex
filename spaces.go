@@ -379,7 +379,7 @@ func (a *App) spacePicker(c *ui.Context, k *colors, wide bool) {
 		glyphIcon(c, "chevron-down", 13, k.textFaint).Shrink(0)
 	})
 	ui.PopoverBase(c, chip, &a.spaces.open, func(panel ui.Element) {
-		popoverShadow(glassPanel(panel.Margin(6, 0, 0, 0).Width(240).Padding(popPad).Radius(popR), k.panel).Border(1, k.panelBorder), k)
+		popoverShadow(glassPanel(panel.Margin(6, 0, 0, 0).Width(240).Padding(popPad).Radius(popR), k).Border(1, k.panelBorder), k)
 		ui.Column(c).Gap(2).Children(func() {
 			for _, n := range a.st.spaceNames() {
 				a.menuRow(c, k, "space-"+n, n == name, spaceLabel(n), "", func() {
@@ -458,7 +458,7 @@ func (a *App) spaceDialog(c *ui.Context, k *colors) {
 	ui.DialogBase(c.Key("space-dialog"), &open, func(backdrop, panel ui.Element) {
 		backdrop.Background(k.backdrop)
 		_, winH := c.Size()
-		dialogShadow(glassPanel(panel.Width(400).MaxHeight(winH-24).Padding(20).Radius(radiusXXL), k.panel).Border(1, k.panelBorder)).Role(ui.RoleDialog).Label(title)
+		dialogShadow(glassPanel(panel.Width(400).MaxHeight(winH-24).Padding(20).Radius(radiusXXL), k).Border(1, k.panelBorder)).Role(ui.RoleDialog).Label(title)
 		ui.Text(c, title).FontSize(fontTitle).FontWeight(700).TextColor(k.text).Margin(0, 0, 10, 0)
 		if s.dialog == "new" {
 			in := textField(c.Key("space-name"), k, &s.name, fieldRegular).Label(locales.SpaceNameLabel()).Placeholder(locales.SpaceNameHint()).AutoFocus()
