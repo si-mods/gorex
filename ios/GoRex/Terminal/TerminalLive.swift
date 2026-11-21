@@ -239,13 +239,15 @@ final class TerminalLive {
         let u = Host.ProgramStatus.mostUrgent(records, seen: seen)
         let r = u.flatMap { $0.state == "idle" ? nil : $0 }
         func text(_ s: String?) -> String? {
-            let t = s?.split(whereSeparator: \.isNewline).joined(separator: " ").trimmingCharacters(in: .whitespaces)
+            let t = s?.split(whereSeparator: \.isNewline).joined(separator: " ").shownText
+                .trimmingCharacters(in: .whitespaces)
             return t?.isEmpty == false ? t : nil
         }
         let finished = u?.state == "done" || u?.state == "error"
-        let line = text(u?.msg) ?? (finished ? text(u?.lastMsg) : nil) ?? screen
-        return .init(title: TerminalActivity.cut(title), program: WidgetPublisher.program(r?.app, block: program),
-                     record: r.map { .init(state: $0.state, kind: $0.kind, progress: $0.progress, title: $0.title.map { TerminalActivity.cut($0) }, updated: $0.updated) },
+        let line = text(u?.msg) ?? (finished ? text(u?.lastMsg) : nil) ?? screen.shownText
+        func shown(_ s: String) -> String { TerminalActivity.cut(s.shownText.trimmingCharacters(in: .whitespaces)) }
+        return .init(title: shown(title), program: WidgetPublisher.program(r?.app, block: program),
+                     record: r.map { .init(state: $0.state, kind: $0.kind, progress: $0.progress, title: $0.title.map(shown), updated: $0.updated) },
                      line: TerminalActivity.cut(line, TerminalActivity.maxLine, bytes: TerminalActivity.maxLineBytes), connected: connected)
     }
 }

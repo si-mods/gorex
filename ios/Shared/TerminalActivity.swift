@@ -60,10 +60,11 @@ nonisolated struct TerminalActivity: ActivityAttributes, Hashable, Sendable {
     }
 
     /// The last line of a screen's text that is not blank, without the
-    /// spaces at its end, cut to maxLine characters.
+    /// spaces at its end or what iOS cannot show (shownText), cut to
+    /// maxLine characters.
     static func lastLine(_ text: String) -> String {
         let line = text.split(whereSeparator: \.isNewline).last { !$0.allSatisfy(\.isWhitespace) } ?? ""
-        var s = Substring(line)
+        var s = Substring(line.shownText)
         while s.last?.isWhitespace == true { s.removeLast() }
         return cut(String(s), maxLine, bytes: maxLineBytes)
     }
