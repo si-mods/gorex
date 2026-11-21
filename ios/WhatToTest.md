@@ -10,6 +10,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 `web` job of `.github/workflows/ci.yml` fails it.
 
 ## en-US
+- Predictive Echo: no visible change in this update; it only fixes the build.
 - Typing in a terminal shows each character at once now, underlined until the computer answers. Predictive Echo in Settings > Terminal turns it off.
 
 - Tapping a notification opens its terminal, and the app stays open.
@@ -108,6 +109,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - Leaving the app while a terminal runs: its drawing now stops completely before the app suspends, so a graphics-related quit in the background cannot happen.
 
 ## zh-Hans
+- 预测回显：本次更新没有看得见的变化，只是修复构建。
 - 在终端打字现在会立即显示字符，带下划线直到电脑回应。可在「设置 › Terminal › Predictive Echo」关闭。
 
 - 点通知栏的通知会打开它对应的终端，应用不再因此退出。
