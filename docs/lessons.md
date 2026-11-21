@@ -77,6 +77,11 @@ Each item has a **Trigger** (what the diff shows), a **Check** (what the author 
 - **Check:** search `docs/` for features or designs that may need it again, and say in the PR that a later PR re-adding it must also re-enable it on the App ID.
 - **Source:** #581 added the iCloud key-value store entitlement, #778 removed it with space sync, and #798 adds it back for settings sync.
 
+### A second chain that resolves the same title
+- **Trigger:** the diff resolves a title, name or label that another function already resolves for the same thing (the terminal header's `windowTitle` next to `Host.title`).
+- **Check:** the new chain shares the existing one's order — a window's `name` before its pane's title — or calls it, and a test pins an input where the two orders differ.
+- **Source:** #639's `windowTitle` checked the pane's title before the window's name, so a renamed tab's header kept the pane's title while its row showed the name; the fix restored `w.name` first.
+
 ## Fixes
 
 ### Path shared by local panes, remote hosts and iOS

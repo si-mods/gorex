@@ -97,6 +97,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - Pull down on the list of computers: your hand feels a tap, and every computer that is not connected dials again at once.
 - On a Mac, Add Host › Set Up Manually, a host's details, pairing, Settings and Edit Spaces no longer quit the app.
 - A pane’s page that only the computer could reach now opens on your phone: in Ports, tap Open on the phone beside a port such as 127.0.0.1, and Safari shows it on the same Wi-Fi.
+- Renaming a tab now also renames the title over its terminal, not just its row in the list.
 
 ## zh-Hans
 
@@ -186,3 +187,4 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - 在电脑列表中下拉刷新：手会感到一下轻点，所有未连接的电脑会立即重新连接。
 - 在 Mac 上，「添加主机 › 手动设置」、主机详情、配对、「设置」和「编辑空间」不再让应用退出。
 - 只在本机开放的网页现在能在手机上打开：在端口列表里点 127.0.0.1 端口旁的「在手机上打开」，同一 Wi-Fi 下 Safari 就会显示。
+- 重命名标签页后，它打开的终端上方标题也会跟着改成新名字，不再只是列表里那一行更新。
