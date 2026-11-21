@@ -73,7 +73,8 @@ nonisolated private enum Shown {
             case 0x5B: return csi(s, from: i + 1)
             case 0x5D, 0x50, 0x58, 0x5E, 0x5F: return text(s, from: i + 1)
             case 0x30...0x7E: return i + 1  // A two-character escape, such as ESC c.
-            default:  // Intermediates, then a final byte.
+            default:  // Intermediates, then a final byte; another escape starts its own.
+                guard !starts(s[i].value) else { return i }
                 var j = i
                 while j < s.count, (0x20...0x2F).contains(s[j].value) { j += 1 }
                 return min(j + 1, s.count)
@@ -88,11 +89,12 @@ nonisolated private enum Shown {
         return min(i + 1, s.count)
     }
 
-    /// After OSC's, DCS's, SOS's, PM's and APC's text: its BEL or ST.
+    /// After OSC's, DCS's, SOS's, PM's and APC's text: its BEL, its
+    /// 8-bit ST or its ESC \.
     private static func text(_ s: [Unicode.Scalar], from start: Int) -> Int {
         var i = start
         while i < s.count {
-            if s[i].value == 0x07 { return i + 1 }
+            if s[i].value == 0x07 || s[i].value == 0x9C { return i + 1 }
             if s[i].value == 0x1B, i + 1 < s.count, s[i + 1].value == 0x5C { return i + 2 }
             i += 1
         }
