@@ -733,12 +733,15 @@ final class Host: Identifiable {
 
     /// A window's title, as the desktop names a tab: its name when it has
     /// one, else its focused pane's name, else its terminal's title, else
-    /// its project's folder's name, else its program, as the desktop names
-    /// a tab with none; never the server's "Window <ID>".
+    /// its project's name, or its folder's name when it has none, else its
+    /// program; never the server's "Window <ID>".
     func title(_ w: SessionView.Window) -> String {
         if let t = w.name ?? w.block.flatMap({ paneTitle($0, in: w) }) { return t }
-        let dir = sessions.first { $0.view?.windows?.contains { $0.window_id == w.window_id } == true }?.project?.dir
-        if let dir, !dir.isEmpty { return ProjectFolder.name(of: dir) }
+        let session = sessions.first { $0.view?.windows?.contains { $0.window_id == w.window_id } == true }
+        if let dir = session?.project?.dir, !dir.isEmpty {
+            let name = session?.label ?? ""
+            return name.isEmpty ? ProjectFolder.name(of: dir) : name
+        }
         if let p = w.block.flatMap({ blocks[$0]?.program }), !p.isEmpty { return p }
         return String(localized: "Shell")
     }
@@ -1568,6 +1571,29 @@ final class HostStore {
         let proxied = hosts.filter(forced)
         let kept = await resume()
         proxied.filter { kept || $0.config.tailcat != nil }.forEach { $0.resume() }
+    }
+
+    /// The phone changed network (NetworkPath). Unless in the background
+    /// (inactive counts as the foreground), each host with a control
+    /// connection connects anew, whatever its reach, as the connection can
+    /// look open while its path died; so does one waiting in its retry
+    /// backoff, which dials now rather than after up to ten seconds. Unlike
+    /// foreground, it leaves the engine be: the engine hears the change
+    /// itself, and a host behind it that comes too early tries again
+    /// (scheduleRetry). In the background, nothing: coming back to the
+    /// foreground sees to it.
+    func networkChanged(inBackground: Bool) {
+        for h in Self.resumedOnNetworkChange(hosts, inBackground: inBackground) {
+            h.resume()
+            ConnectionLog.note("\(h.config.name): resumed after network change")
+        }
+    }
+
+    /// The hosts a change of network resumes: out of the background, the
+    /// real ones with a control connection or waiting to retry; in the
+    /// background, none.
+    static func resumedOnNetworkChange(_ hosts: [Host], inBackground: Bool) -> [Host] {
+        inBackground ? [] : hosts.filter { !$0.isDemo && ($0.control != nil || $0.isRetrying) }
     }
 
     /// Whether leaving the app asks iOS for a grace (BackgroundGrace): a

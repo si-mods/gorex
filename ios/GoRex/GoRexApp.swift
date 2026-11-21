@@ -6,6 +6,9 @@ import SwiftUI
 @Observable final class ScreenStyle {
     static let shared = ScreenStyle()
     var terminal: ColorScheme?
+    /// The system's scheme, from the window scene, which the window's
+    /// preferredColorScheme does not change; nil until a window shows.
+    var system: ColorScheme?
     /// The screen that set it. On an iPad the old screen fades out after
     /// the new one set its scheme, and must not clear that one.
     @ObservationIgnored private var owner: UUID?
@@ -19,6 +22,40 @@ import SwiftUI
         guard owner == screen else { return }
         owner = nil
         terminal = nil
+    }
+
+    /// Clears it, whichever screen set it: the list is back.
+    func release() {
+        owner = nil
+        terminal = nil
+    }
+}
+
+/// Keeps ScreenStyle's system scheme current, from the scene of the
+/// window it shows in.
+private struct SystemScheme: UIViewRepresentable {
+    func makeUIView(context: Context) -> SystemSchemeView { SystemSchemeView() }
+    func updateUIView(_ v: SystemSchemeView, context: Context) {}
+}
+
+private final class SystemSchemeView: UIView {
+    private weak var scene: UIWindowScene?
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        isUserInteractionEnabled = false
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        guard let s = window?.windowScene, s !== scene else { return }
+        scene = s
+        ScreenStyle.shared.system = ColorScheme(s.traitCollection.userInterfaceStyle)
+        s.registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (s: UIWindowScene, _: UITraitCollection) in
+            ScreenStyle.shared.system = ColorScheme(s.traitCollection.userInterfaceStyle)
+        }
     }
 }
 
@@ -38,7 +75,8 @@ struct GoRexApp: App {
     /// API key and the settings that sync through iCloud come in before
     /// Ghostty, which reads some. Ghostty, with the downloaded font, starts
     /// once the list is on screen (startGhostty), not before the first
-    /// frame. The widgets' snapshot follows the hosts from the start.
+    /// frame. The widgets' snapshot follows the hosts from the start, and
+    /// NetworkPath the network.
     init() {
         OpenedFiles.clean()
         Polish.syncKey()
@@ -48,6 +86,7 @@ struct GoRexApp: App {
         let store = HostStore()
         _store = State(initialValue: store)
         WidgetPublisher.shared.start(store)
+        NetworkPath.shared.start()
         SpaceBook.dropOldData()
         _spaces = State(initialValue: SpaceBook())
         Task { await engine.apply() }
@@ -74,6 +113,7 @@ struct GoRexApp: App {
                 .environment(store)
                 .environment(spaces)
                 .preferredColorScheme(ScreenStyle.shared.terminal ?? Self.colorScheme(scheme))
+                .background { SystemScheme().accessibilityHidden(true) }
                 .onAppear(perform: Self.startGhostty)
                 .onChange(of: phase) { _, p in
                     if p == .background { Notifier.shared.inFront = false }
@@ -103,9 +143,16 @@ struct GoRexApp: App {
                 .onChange(of: store.hosts.map(\.config)) { _, configs in
                     HotspotShare.shared.updateHosts(configs)
                 }
+                // A new network: the hosts reconnect at once, not after a ping
+                // finds the old path dead (docs/IOS-012-background-and-network-changes.md).
+                .onChange(of: NetworkPath.shared.changes) {
+                    store.networkChanged(inBackground: phase == .background)
+                }
                 // Hosts the gateway refused try again as the engine runs anew.
                 .onChange(of: TailnetEngine.shared.status.state) { _, s in
                     if s == "Running" { store.hosts.forEach { $0.reconnectIfNeeded() } }
+                    // The way a host marked tailnet is reached changed with it.
+                    HotspotShare.shared.updateHosts(store.hosts.map(\.config))
                 }
         }
     }

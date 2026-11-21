@@ -57,6 +57,11 @@ Each item has a **Trigger** (what the diff shows), a **Check** (what the author 
 - **Check:** the PR carries a simulator screenshot or recording, and says what was not tested. "In progress" at merge time means not ready.
 - **Source:** #616 merged in progress. The key bar and bottom edge were redone five times (#616, #631, #637, #643, #648); animations went back and forth (#590→#595, #593→#597, #594→#603).
 
+### Zoom transition between different shapes
+- **Trigger:** the diff adds a zoom transition (`navigationTransition(.zoom)`, `matchedTransitionSource`).
+- **Check:** the source and the destination have a similar shape, such as a thumbnail and its image. A list row that opens a full screen uses the standard push.
+- **Source:** #916 zoomed a terminal out of its 54-point row. A user found both the open and the close awkward, and #930 restored the standard push.
+
 ### A Live Activity or widget face
 - **Trigger:** the diff changes a Live Activity's or widget's view, or the regions it is placed in.
 - **Check:** the PR shows it as the system draws it: an activity on the simulator's Dynamic Island (expanded, compact, minimal) or a widget on its Home Screen. An `ImageRenderer` picture shows the view, not where the system puts it.
@@ -277,7 +282,7 @@ Each item has a **Trigger** (what the diff shows), a **Check** (what the author 
 ### "Same rule as X"
 - **Trigger:** code or a comment says it applies the same rule as another place.
 - **Check:** both places call one shared function, and both have a test.
-- **Source:** #717's `dir.list` said it used the same device-path rule as `openToSend`, but kept its own copy; `openToSend`'s copy had lost a backslash since #410 (both now share one helper, #723). The Ghostty theme parser and the server's theme parser both read a hex color, but the server took only six digits, so a `#fff` theme worked in the app and vanished on a host.
+- **Source:** #717's `dir.list` said it used the same device-path rule as `openToSend`, but kept its own copy; `openToSend`'s copy had lost a backslash since #410 (both now share one helper, #723). The Ghostty theme parser and the server's theme parser both read a hex color, but the server took only six digits, so a `#fff` theme worked in the app and vanished on a host. #556's hotspot share copied "how the app reaches a host" as `config.transport ?? .system` while the app itself uses `reach`, so every tailcat host and every tailnet host with the engine off failed through the share with a 502 (both now share `reach` via `ShareHosts.json`).
 
 ### Comment names a file
 - **Trigger:** a comment or doc points at a `.md` file or an issue.

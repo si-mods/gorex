@@ -1017,9 +1017,6 @@ final class TerminalHost: UIView, UIGestureRecognizerDelegate {
     var canSwipe: (() -> Bool)?
     /// The two-finger drag between panes.
     private let paneDrag = UIPanGestureRecognizer()
-    /// Keeps the zoom's close out of the terminal, on while the screen was
-    /// pushed with the zoom; its swipe back stays on a standard push.
-    let zoomGuard = ZoomGuard.make()
     /// While a tab switch animates, layout passes place the terminal, its
     /// inset and the key bar at once, so they don't animate from .zero under
     /// the switch's spring.
@@ -1052,8 +1049,6 @@ final class TerminalHost: UIView, UIGestureRecognizerDelegate {
         // bar switches panes.
         paneDrag.isEnabled = false
         addGestureRecognizer(paneDrag)
-        zoomGuard.isEnabled = false
-        addGestureRecognizer(zoomGuard)
         let edge = bottomEdge
         edge.translatesAutoresizingMaskIntoConstraints = false
         addSubview(edge)
@@ -1307,12 +1302,13 @@ final class KeyBar: UIView {
 
         let escape = key("escape", String(localized: "Esc"), "escape")
         let tab = key("arrow.right.to.line", String(localized: "Tab"), "tab")
+        let enter = key("return", String(localized: "Enter"), "enter")
         let tilde = text("~"), pipe = text("|"), slash = text("/"), dash = text("-")
         let first = [escape, ctrl, alt, shift, tab]
         let second = [tilde, pipe, slash, dash]
         // Every key taps the hand as it goes down, as the keyboard's do.
         // Backspace, the arrows and the stick tap on their own as they repeat.
-        for b in [more, keyboard] + first + second {
+        for b in [more, keyboard] + first + second + [enter] {
             b.addAction(UIAction { [tick] _ in tick.impactOccurred() }, for: .touchDown)
         }
 
@@ -1337,9 +1333,9 @@ final class KeyBar: UIView {
         }
         let delete = repeating("delete.left", String(localized: "Delete"), "backspace")
 
-        // Three pages of four slots, the last half empty, inset from the
+        // Three pages of four slots, the last one short, inset from the
         // capsule's ends, each page as wide as the capsule.
-        let pages = UIStackView(arrangedSubviews: [[escape, ctrl, alt, tab], [shift, slash, dash, delete], [tilde, pipe]].map { keys in
+        let pages = UIStackView(arrangedSubviews: [[escape, ctrl, alt, enter], [shift, slash, dash, delete], [tilde, pipe, tab]].map { keys in
             let page = UIStackView(arrangedSubviews: keys + (keys.count..<4).map { _ in UIView() })
             page.distribution = .fillEqually
             page.isLayoutMarginsRelativeArrangement = true

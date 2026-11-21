@@ -187,6 +187,7 @@ targets:
       - GoRex/Views/ProgramTile.swift
       - GoRex/Share/WebClientSync.swift
       - GoRex/Share/ShareCalls.swift
+      - GoRex/Share/ShareHosts.swift
       - path: ../internal/rexapi/testdata/rex-terminal-stream.bin
         buildPhase: resources
     dependencies:

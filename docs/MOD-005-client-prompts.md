@@ -8,7 +8,7 @@ metadata:
 
 # MOD-005: Asking the person a question
 
-Status: proposal.
+Status: built (#931).
 
 This doc settles GoRex's support for Rex API revision 17. At revision 17, an action asks the person a question and every app can show the question. The doc extends [REF-005-rex-api.md](REF-005-rex-api.md) and follows [DOC-001-design-docs.md](DOC-001-design-docs.md).
 
@@ -97,11 +97,6 @@ In this doc, an app is a client of kind `app`. An action is a `gorex.action` fro
 
 ## Phases
 
-1. Config actions in the gateway. This is the producer.
-2. The prompt registry, `client.reply` and the tests.
-3. The help entries. The revision number needs no change when 18 and 19 land first.
-
-## Open questions
-
-1. Does the gateway run `init.lua`, or does the app run it and ask the gateway to send the prompt? Option one gives Rex clients the GoRex actions. Option two keeps Lua in the app. The user decides, because the answer changes where Lua runs.
-2. Which actions get prompts first? Candidates are the new-worktree action, a project picker and a destructive confirm. The author decides.
+1. Config actions in the gateway. This is the producer (#924).
+2. The prompt registry, `client.reply` and the tests (#931).
+3. The help entries. The revision number needs no change when 18 and 19 land first (#931).

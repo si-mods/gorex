@@ -342,23 +342,30 @@ func methodClientPerform(c *control, a args) (any, *apiError) {
 	return nil, errNotSupported("GoRex does not ask its clients to perform actions")
 }
 
-// methodClientReply answers a client_call_requested or
-// client_perform_requested event. GoRex sends neither, so nothing waits.
+// methodClientReply answers a client_prompt_requested event. GoRex sends
+// no client_call_requested or client_perform_requested.
 func methodClientReply(c *control, a args) (any, *apiError) {
-	if _, aerr := a.reqStr("call_id"); aerr != nil {
+	callID, aerr := a.reqStr("call_id")
+	if aerr != nil {
 		return nil, aerr
 	}
-	_, hasResult := a["result"]
-	raw, hasError := a["error"]
+	rawResult, hasResult := a["result"]
+	rawError, hasError := a["error"]
 	if hasResult == hasError {
 		return nil, errBadRequest("send a result or an error, not both")
 	}
-	if hasError && string(raw) != "null" {
+	if hasError && string(rawError) != "null" {
 		if _, _, aerr := a.obj("error"); aerr != nil {
 			return nil, aerr
 		}
 	}
-	return nil, errNotFound("nothing is waiting for that call")
+	if aerr := a.only("call_id", "result", "error"); aerr != nil {
+		return nil, aerr
+	}
+	if aerr := c.g.replyPrompt(c, callID, rawResult, hasResult, rawError, hasError); aerr != nil {
+		return nil, aerr
+	}
+	return struct{}{}, nil
 }
 
 // methodServerStop stops the GoRex session server, as the app does when

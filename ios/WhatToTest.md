@@ -65,6 +65,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - Sending a photo or file, or opening a file path a terminal printed, no longer closes the app when the computer's Tailscale connection starts over at that moment.
 - Opening a terminal, switching panes and reconnecting no longer freeze the app while the screen loads. Tell us if a screen opens blank or wrong, or output comes out of order.
 - Share on Hotspot: Download or Update Web Client now finishes sooner, and the app stays smooth while it runs, as you start or stop sharing, and when you come back to the app.
+- Share on Hotspot: a computer added by its Rex Go code, or reached over Tailscale, now connects from the page on the laptop instead of failing with a 502.
 - Fast output, scrolling back and dragging a selection's handles feel smoother, and a large paste no longer stalls. Tell us if handles, scrolling or the keyboard slide lag or jump.
 - Settings opens faster and typing in its search or Client Label stays smooth; the Dictation API key still saves when you press Return or leave the page.
 - After you dictate and switch apps, Rex Go frees the speech model's memory at once and is less likely to close in the background. The next dictation takes a moment to load it.
@@ -87,6 +88,10 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - The Lock Screen card now uses calmer shades of the program's own color, keeps the same size in every state, and shows the timer after the state, clear of the large icon.
 - Open a tab, the title's sheet, Settings, New Project or a Gallery image: it now grows out of what you tapped, and shrinks back into it. The pane bar's highlight slides to the pane you choose.
 - Leave Rex Go from the host list, and a program that asks for your answer in the next few seconds now sends its notification, as it does when you leave from an open terminal.
+- Switch from Wi-Fi to cellular, or to another Wi-Fi, with a terminal open: it reconnects at once and goes on where it was, instead of freezing for a while.
+- Tap a tab in the list: the terminal slides in from the right again, and slides back as you swipe from the left edge. The list keeps its own light or dark look while a terminal opens or closes.
+- The iPhone key bar's first page now ends with Enter; Tab moved to the last page.
+- Renaming a project renames the title its unnamed windows show too, in the list and over a terminal.
 - Each project has its own card with a folder tile and the chevron before its tab count. No Project folds, too. Tiles lose their white ring on a light page. On an iPad the open card is shaded.
 
 ## zh-Hans
@@ -145,6 +150,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - 发送照片或文件、点开终端里打印的文件路径时，即使电脑的 Tailscale 连接恰好在那一刻重连，应用也不会再退出。
 - 打开终端、切换窗格和重新连接时，加载画面不再让应用卡住。如画面打开后空白或错误，或输出顺序错乱，请告诉我们。
 - 个人热点共享：下载或更新网页客户端现在更快完成；下载期间、开始或停止共享时，以及回到应用时，界面都不再卡顿。
+- 个人热点共享：通过 Rex Go 码添加、或经 Tailscale 连接的电脑，现在能在笔记本的共享页面里正常连接，不再报 502。
 - 大量输出、向上翻看和拖动选区把手时更流畅，粘贴大段文字也不再卡顿。如选区把手、滚动或键盘上方的上移有延迟或跳动，请告诉我们。
 - 设置页打开更快，在搜索框或设备标签中输入更流畅；听写 API 密钥仍会在按下回车或离开页面时保存。
 - 听写后切到别的应用，Rex Go 会立即释放语音模型占用的内存，在后台更不容易被系统关掉；下次听写要稍等它重新加载。
@@ -167,4 +173,8 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - 锁定屏幕上的卡片现在用程序自己颜色的深浅两档，各种状态下大小不变，计时跟在状态后面，不再压在大图标上。
 - 打开标签页、标题的面板、设置、新建项目或图库图片：它现在从你点按的地方展开，关闭时缩回原处。窗格栏的高亮会滑到你选的窗格。
 - 从主机列表离开 Rex Go 后，几秒内需要你回答的程序现在也会发来通知，和从打开的终端离开时一样。
+- 打开终端时从 Wi-Fi 切到蜂窝网络，或换一个 Wi-Fi：终端立即重新连接，从断开处继续，不再卡住一段时间。
+- 点按列表中的标签页：终端又从右侧滑入，从左边缘轻扫即可滑回。打开或关闭终端时，列表保持它自己的浅色或深色外观。
+- 终端底部的按键栏，第一页末尾现在有回车键；Tab 移到了最后一页。
+- 重命名项目后，它未命名的窗口在列表里和终端标题栏也会显示项目的新名字。
 - 每个项目现在有自己的卡片，用项目色的文件夹图块，箭头在标签数之前。「无项目」也是可折叠的卡片。项目列表里的程序图标在浅色页面上不再有白色圈。在 iPad 上，正在用的项目卡片会略深一些。

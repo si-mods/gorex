@@ -17,8 +17,8 @@ struct HostSection: View {
     /// The projects and Older open, by key.
     @Binding var expanded: Set<String>
     let query: String
-    /// What the rows zoom the terminal out of, and move between the lists
-    /// in.
+    /// What New Project's sheet zooms out of, and the rows move between
+    /// the lists in.
     let zoom: Namespace.ID
     let places: Namespace.ID
     let open: (TerminalTarget) -> Void
@@ -576,7 +576,7 @@ struct HostSection: View {
                 if host.listsFolders { try await ProjectFolder.ensure(dir) { try await host.folders($0) } }
                 if let b = try await host.newWindow(in: s.id, cwd: dir) {
                     expanded.insert(Self.key(host, s.id))
-                    open(TerminalTarget(host: host.id, session: s.id, block: b, title: s.label))
+                    open(TerminalTarget(host: host.id, session: s.id, block: b, title: ""))
                 }
             } catch let error where ProjectFolder.missing(error) {
                 missing = s
@@ -593,7 +593,7 @@ struct HostSection: View {
             defer { opening.remove(s.id) }
             do {
                 if let b = try await host.newWindow(in: s.id) {
-                    open(TerminalTarget(host: host.id, session: s.id, block: b, title: s.label))
+                    open(TerminalTarget(host: host.id, session: s.id, block: b, title: ""))
                 }
             } catch {
                 failure = ("Can't Open a New Tab", error.localizedDescription)
@@ -798,7 +798,6 @@ struct HostSection: View {
             .buttonStyle(.plain)
             .hoverEffect(.highlight)
             .background { if shownTab(w) { LiftedPill(grouped: grouped) } }
-            .matchedTransitionSource(id: ZoomSource.row(host: host.id, session: w.session.id, window: w.window.window_id), in: zoom)
             let shown = shownBy[w.session.id] ?? []
             let place = RowPlace(host: host.id, session: w.session.id, window: w.window.window_id)
             let lifted = drag.map { !$0.dropped && $0.session.id == w.session.id && $0.window == w.window.window_id } ?? false
