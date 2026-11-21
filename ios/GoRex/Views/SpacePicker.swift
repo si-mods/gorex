@@ -117,14 +117,21 @@ struct SpacePanelLayer: View {
                                choose: { s in close(); choose(s) },
                                add: { close(); add() },
                                edit: { close(); edit() })
-                        .frame(maxHeight: max(160, g.size.height - r.maxY - 8 - 16), alignment: .top)
                         .fixedSize(horizontal: true, vertical: false)
+                        // The glass hugs the panel: the cap below only
+                        // limits it, and the room under a short panel stays
+                        // the page's.
                         .glassEffect(.regular, in: .rect(cornerRadius: SpacePanel.radius, style: .continuous))
                         .shadow(color: .black.opacity(0.16), radius: 24, y: 8)
-                        .offset(x: r.minX, y: r.maxY + 8)
-                        .transition(.scale(0.85, anchor: .topLeading).combined(with: .opacity))
+                        .frame(maxHeight: max(160, g.size.height - r.maxY - 8 - 16), alignment: .top)
                         .accessibilityAddTraits(.isModal)
                         .accessibilityAction(.escape) { close() }
+                        // Laid out over the whole layer, so that the scale
+                        // can grow from the capsule's corner.
+                        .padding(.leading, r.minX)
+                        .padding(.top, r.maxY + 8)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                        .transition(.scale(0.85, anchor: origin(r, in: g.size)).combined(with: .opacity))
                 }
             }
         }
@@ -132,6 +139,12 @@ struct SpacePanelLayer: View {
 
     private func close() {
         withAnimation(.snappy) { open = false }
+    }
+
+    /// The capsule's bottom-left corner, as a point of the layer.
+    private func origin(_ r: CGRect, in size: CGSize) -> UnitPoint {
+        guard size.width > 0, size.height > 0 else { return .topLeading }
+        return UnitPoint(x: r.minX / size.width, y: r.maxY / size.height)
     }
 }
 
