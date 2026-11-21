@@ -3,7 +3,7 @@ name: IOS-009
 description: "The app icons of Rex Go and GoRex: layered icons for iOS 26 and the icons a user can choose. Use when you change an app icon."
 metadata:
   created: "2026-11-19"
-  updated: "2026-11-20"
+  updated: "2026-11-21"
 ---
 
 # IOS-009: Rex Go and GoRex: app icons
@@ -82,6 +82,10 @@ Settings has an App Icon row after Themes. The row shows the icon in use and its
 #### Nil for the default
 
 Set the default icon with nil. **Never** set it with `"AppIcon"`. Developers report that in iOS 26.1 a call with the name of the primary icon works once. Then every later call to change the icon fails until the device restarts. For this reason, `AppIcon.alternateName` is nil for Prism. Do not "simplify" it to the name of the bundle.
+
+#### The icon on a notification
+
+The system draws the icon on a notification's banner; the app has no say in it and no API to change it. iOS holds a cached copy of it: after an app update or a change of icon, a new notification can still show the old icon until the device restarts. A notification already in Notification Center keeps the icon it came with. This is a known iOS issue; a restart is the only fix.
 
 ### Build
 
