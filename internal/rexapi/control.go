@@ -140,6 +140,9 @@ func (g *Gateway) handleControl(w http.ResponseWriter, r *http.Request) {
 		APIRevision:       rev,
 		APIServerRevision: apiRevision,
 	}
+	if c.canRelay() {
+		wel.Features = append(wel.Features, featurePortRelay)
+	}
 	if err := c.writeSync(wel); err != nil {
 		ws.CloseNow()
 		return

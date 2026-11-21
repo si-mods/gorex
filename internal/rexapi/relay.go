@@ -17,7 +17,20 @@ const (
 	relayIdle = 2 * time.Minute
 	// relayLimit is how many relays one gateway keeps at once.
 	relayLimit = 8
+	// featurePortRelay is the welcome feature that says a browser on this
+	// client's network can open a relay this connection starts. A client
+	// over the Unix socket, GoRex's tailcat or a bare TCP socket gets no
+	// feature, and Rex Go's Ports sheet offers no Open on the phone.
+	featurePortRelay = "gorex.port_relay"
 )
+
+// canRelay tells whether a browser on the client's network can reach a
+// relay this connection opens. Only the local network counts: the phone's
+// browser shares it, while GoRex's tailcat and the host's own tailnet are
+// inside the app and no browser uses them.
+func (c *control) canRelay() bool {
+	return c.transport == transportLAN && c.local != ""
+}
 
 // relay forwards connections on a host address to a loopback port of a
 // pane, for a phone whose browser cannot reach the loopback port itself.
@@ -267,9 +280,12 @@ func methodPortOpen(c *control, a args) (any, *apiError) {
 	if !loopback {
 		return nil, errNotFound("the pane does not listen on %d on loopback", port)
 	}
+	// The method itself also serves a TCP socket, which a test uses;
+	// the welcome's feature is what keeps a browser's client from asking
+	// over a connection that no browser shares.
 	switch c.transport {
-	case "unix", "tailcat":
-		return nil, errNotSupported("this connection has no network address a browser can open")
+	case transportUnix, transportTailcat:
+		return nil, errNotSupported("this connection is not on the host's network, so a browser cannot open it")
 	}
 	if c.local == "" {
 		return nil, errNotSupported("the gateway does not know this connection's address")

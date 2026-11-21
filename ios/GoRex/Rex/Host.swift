@@ -357,7 +357,20 @@ final class Host: Identifiable {
     /// (`gorex.dir.list`).
     static let dirListFeature = "gorex.dir_list"
 
+    /// The welcome's feature of a connection that reached the host on its
+    /// own network, so a browser on the phone reaches a relay it opens for
+    /// a pane's loopback port (`gorex.port_relay`, docs/IOS-014).
+    static let portRelayFeature = "gorex.port_relay"
+
     private(set) var control: ControlConnection?
+
+    /// Whether this connection reached the host on its own network, so a
+    /// relay's address opens in the phone's browser; a connection through
+    /// GoRex's relay gets no such address.
+    var canRelayPorts: Bool {
+        !isDemo && status == .online && (control?.features.contains(Self.portRelayFeature) ?? false)
+    }
+
     /// Developer Mode telemetry: when the current connect/reconnect cycle began,
     /// how long the last successful connect took, the latest WebSocket ping RTT,
     /// and whether a retry loop is active.

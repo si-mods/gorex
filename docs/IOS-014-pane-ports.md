@@ -43,7 +43,8 @@ Rex Go cannot open the port in its browser either. A server that listens on 127.
 - The session sheet gains a **Ports** row. It shows the count when the pane listens, such as `2`.
 - The row opens a sheet for the pane that is open. Each line shows the port, the address, the process name and the process ID, such as `5173 · 127.0.0.1 · node (81301)`.
 - A port on an address the phone can reach opens Safari with one tap. The line shows the address it will open.
-- A port on 127.0.0.1 or ::1 shows `Only on the host`. A button, **Open on the phone**, creates the relay and opens the address it returns.
+- A port on 127.0.0.1 or ::1 shows `Only on the host`. A button, **Open on the phone**, creates the relay and opens the address it returns; it is offered only when the welcome lists `gorex.port_relay`, which a connection on the host's network gets.
+- A connection through GoRex's own relay (tailcat) or the local socket gets no `gorex.port_relay`: the browser on the phone has no route to the host, so the row shows `Only on the host's network` and no button.
 - The button fetches when the pane appears and every five seconds while the terminal shows. The sheet fetches every two seconds while it is open.
 - The list shows `No listening ports` when it is empty. It shows `Some processes could not be checked` when the status is `partial`. It shows `This host cannot list ports` when it is `unsupported`.
 - A pull refreshes the list. The sheet fetches again every two seconds while it is open, and stops when it closes.
@@ -93,12 +94,13 @@ Rex Go cannot open the port in its browser either. A server that listens on 127.
 ## Migration
 
 - There is no saved data and no Rex API change. The app's request and the relay are GoRex's own.
-- An older gateway has no `gorex.port.open`, and the sheet shows the error it answers. The list still works on a gateway of revision 15 or later.
+- An older gateway has no `gorex.port.open` and no `gorex.port_relay` feature, so the sheet offers no relay. The list still works on a gateway of revision 15 or later.
 - A server older than revision 15 shows `Update the host to list ports`.
 
 ## Tests
 
 - A unit test builds the URL from each kind of address: `0.0.0.0`, `::`, a LAN address, 127.0.0.1 and a link-local IPv6 address.
+- A test checks that only a local-network connection lists `gorex.port_relay`, and that a tailnet, tailcat or TCP socket's welcome does not.
 - A host test with a session that listens on 127.0.0.1 checks the list, the process name and the ID.
 - A relay test opens a relay to a test listener and checks that bytes flow both ways, and that the relay closes at its limit.
 - A UI check on the simulator, and then on the Mac mini, shows the sheet, the empty state, the partial state and the open action.
