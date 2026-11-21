@@ -939,7 +939,7 @@ final class Host: Identifiable {
             do {
                 _ = try await c.call("client.reply", ["call_id": prompt.callID, "result": result])
             } catch {
-                ConnectionLog.note("\(name): prompt answer: \(error.localizedDescription)")
+                ConnectionLog.note("\(self.config.name): prompt answer: \(error.localizedDescription)")
             }
         }
     }
