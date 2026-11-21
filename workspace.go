@@ -422,8 +422,24 @@ func (st *store) follow(c *rex.Client) {
 	}
 	st.out.follow(c)
 	for ev := range c.Events() {
-		if ev.Kind == "layout" {
+		switch ev.Kind {
+		case "layout":
 			st.out.tell(c, ev.Revision)
+		case "prompt":
+			if ev.Prompt == nil {
+				continue
+			}
+			p := ev.Prompt
+			// The first window shows it; a question asked by an action of
+			// this app waits for the answer meanwhile.
+			done := make(chan struct{})
+			go mygo.RunOnMain(func() {
+				if a := st.commandApp(); a != nil {
+					a.promptEvent(p)
+				}
+				close(done)
+			})
+			<-done
 		}
 	}
 }
@@ -884,6 +900,9 @@ func (st *store) connect() bool {
 func (st *store) adopt(client *rex.Client) bool {
 	var err error
 	st.client, st.errMsg = client, nil
+	// This window shows the questions a config action asks, and answers
+	// them, as every client that can (docs/MOD-009-client-prompts.md).
+	client.DeclareCapabilities(rex.CapabilityPrompts)
 	st.hello, err = client.Hello()
 	if err == nil && staleServer(st.hello) {
 		// A server a build before this one started runs that build's
@@ -923,6 +942,9 @@ func (st *store) adopt(client *rex.Client) bool {
 		}
 		if next != nil {
 			st.client = next
+			// The connection after an upgrade or a restart is a client
+			// too, and says what this one does before it says hello.
+			next.DeclareCapabilities(rex.CapabilityPrompts)
 			st.hello, err = next.Hello()
 		}
 	}

@@ -22,12 +22,20 @@ type subscriber struct {
 	transfers     []Transfer
 	wake          chan struct{}
 	done          chan struct{}
+	// write sends a line on the connection, as the subscriber's events
+	// go, and a prompt's.
+	write func([]byte)
+	// prompts tells that the connection's hello lists CapabilityPrompts,
+	// and busy that it shows a question now; the prompt registry reads
+	// both under subMu.
+	prompts bool
+	busy    bool
 }
 
 // subscribe tells write, a control connection's, of the changes to come,
 // and of the transfers when transfers, until unsubscribe.
 func (s *Server) subscribe(write func([]byte), remote bool, transfers bool) *subscriber {
-	sub := &subscriber{remote: remote, pending: map[string]bool{}, wantTransfers: transfers, wake: make(chan struct{}, 1), done: make(chan struct{})}
+	sub := &subscriber{remote: remote, pending: map[string]bool{}, wantTransfers: transfers, wake: make(chan struct{}, 1), done: make(chan struct{}), write: write}
 	s.subMu.Lock()
 	if s.subs == nil {
 		s.subs = map[*subscriber]struct{}{}
@@ -89,6 +97,7 @@ func (s *Server) unsubscribe(sub *subscriber) {
 	s.subMu.Lock()
 	delete(s.subs, sub)
 	s.subMu.Unlock()
+	s.dropPrompts(sub)
 	close(sub.done)
 }
 

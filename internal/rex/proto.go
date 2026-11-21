@@ -130,6 +130,12 @@ const CapabilityStatusSeen = "status.seen"
 // machine says it does: the "dir.list" op (DirList).
 const CapabilityDirList = "dir.list"
 
+// CapabilityPrompts is a client's, not the server's: the client shows the
+// questions a config action asks and answers them, and the server sends it
+// prompt events (docs/MOD-009-client-prompts.md). The server's own
+// CapabilityPrompts in Hello says it asks them.
+const CapabilityPrompts = "prompts"
+
 // CapabilitySpaceHome is what a server that keeps a space's home, a
 // project's folder, says it does: the "space.home" command, a tab.create
 // that starts in the folder of a space whose home is this machine, and
@@ -144,7 +150,7 @@ const FolderMissing = "folder_missing"
 
 // capabilities are what a version 3 server does beyond version 2. A
 // client reads them from Hello and falls back when one is absent.
-var capabilities = []string{"layout.revision", "events.revision", CapabilityShutdownRestart, CapabilityShutdownIfIdle, CapabilitySnapshotGhostty, CapabilityInputEvents, CapabilityTerminalQuery, CapabilityFileTransfer, CapabilityFileTemp, CapabilityTeleport, CapabilityLayoutServer, CapabilityTabToSpace, CapabilityStatusSeen, CapabilityDirList, CapabilitySpaceHome, CapabilityProjects, CapabilitySpacesDelete}
+var capabilities = []string{"layout.revision", "events.revision", CapabilityShutdownRestart, CapabilityShutdownIfIdle, CapabilitySnapshotGhostty, CapabilityInputEvents, CapabilityTerminalQuery, CapabilityFileTransfer, CapabilityFileTemp, CapabilityTeleport, CapabilityLayoutServer, CapabilityTabToSpace, CapabilityStatusSeen, CapabilityDirList, CapabilitySpaceHome, CapabilityProjects, CapabilitySpacesDelete, CapabilityPrompts}
 
 // Request is a line of the control connection, from the client.
 type Request struct {
@@ -210,6 +216,18 @@ type Request struct {
 	// Client is the id an attach gave (Attach.Client) of the stream
 	// "resync" sends the session's screen again on.
 	Client string `json:"client,omitempty"`
+	// Prompt, on "prompt.open", is the question a config action asks
+	// (docs/MOD-009-client-prompts.md). PromptTimeout is how long the
+	// server waits for an answer, in milliseconds: 0 is five minutes.
+	Prompt        *PromptSpec `json:"prompt,omitempty"`
+	PromptTimeout int         `json:"promptTimeout,omitempty"`
+	// PromptAction names the action that asks, which the clients show.
+	PromptAction string `json:"promptAction,omitempty"`
+	// CallID names the question a client answers, of "prompt.answer",
+	// and of the prompt events.
+	CallID string `json:"callId,omitempty"`
+	// Answer is "prompt.answer"'s answer.
+	Answer *PromptAnswer `json:"answer,omitempty"`
 	// Bytes is what "input" types into the session.
 	Bytes []byte `json:"bytes,omitempty"`
 	// Paste is the text "paste" writes to the session's program as a
@@ -670,6 +688,60 @@ type Event struct {
 	// Ports are the terminals whose listening sockets changed, on a
 	// "ports" event.
 	Ports []PortsEvent `json:"ports,omitempty"`
+	// Prompt is the question a config action asks, or its end, on a
+	// "prompt" event.
+	Prompt *PromptEvent `json:"prompt,omitempty"`
+}
+
+// PromptSpec is a question a config action asks: one line of text, or one
+// or more items of a list (docs/MOD-009-client-prompts.md).
+type PromptSpec struct {
+	// Kind is "input" or "pick".
+	Kind        string       `json:"kind"`
+	Title       string       `json:"title"`
+	Placeholder string       `json:"placeholder,omitempty"`
+	Value       string       `json:"value,omitempty"`
+	Confirm     string       `json:"confirm,omitempty"`
+	Multiple    bool         `json:"multiple,omitempty"`
+	AllowOther  bool         `json:"allowOther,omitempty"`
+	Items       []PromptItem `json:"items,omitempty"`
+}
+
+// PromptItem is one item of a pick.
+type PromptItem struct {
+	ID       string `json:"id"`
+	Title    string `json:"title"`
+	Subtitle string `json:"subtitle,omitempty"`
+	Icon     string `json:"icon,omitempty"`
+	Detail   string `json:"detail,omitempty"`
+	Selected bool   `json:"selected,omitempty"`
+}
+
+// PromptAnswer is what a client answers: text for an input or an
+// allow_other pick, IDs for a pick, or Cancelled.
+type PromptAnswer struct {
+	Text      string   `json:"text,omitempty"`
+	IDs       []string `json:"ids,omitempty"`
+	Cancelled bool     `json:"cancelled,omitempty"`
+	// Unsupported says that this client cannot show the question: it is
+	// removed from it, and the others keep it.
+	Unsupported bool `json:"unsupported,omitempty"`
+}
+
+// PromptEvent is a "prompt" event: a question the client shows, or the
+// end of one that another client answered, or that timed out or was
+// cancelled.
+type PromptEvent struct {
+	// Op is "requested" or "ended".
+	Op     string      `json:"op"`
+	CallID string      `json:"callId"`
+	Spec   *PromptSpec `json:"spec,omitempty"`
+	// TimeoutMS is how long the action waits, on "requested".
+	TimeoutMS int `json:"timeoutMs,omitempty"`
+	// Reason is "answered", "timeout" or "cancelled", on "ended".
+	Reason string `json:"reason,omitempty"`
+	// Action names the action that asks.
+	Action string `json:"action,omitempty"`
 }
 
 // Theme is the host terminal's default colors, as hex "#rrggbb" strings.

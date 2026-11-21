@@ -194,6 +194,17 @@ func (a *App) command(c rex.LayoutCommand) rex.LayoutCommand {
 			}
 		}
 		args = coerceArgs(cmd, args)
+		// A custom action may ask a question, and waits for its answer
+		// while the window shows it: it runs off the main thread, and the
+		// command answers that it started, as the question outlives the
+		// command's wait.
+		if a.runCustom(cmd, args, func(err error) {
+			if err != nil {
+				a.err = err.Error()
+			}
+		}) {
+			return res
+		}
 		if err := cmd.invoke(a, args); err != nil {
 			return fail("action_failed", err.Error())
 		}
