@@ -220,6 +220,19 @@ struct HostListView: View {
         path = t.map { [$0] } ?? []
     }
 
+    /// A pull to refresh (docs/IOS-016-pull-refresh.md): the hand feels a
+    /// tap, and each host not online dials at once. The refresh control
+    /// stays while a host still dials, up to three seconds.
+    private func refresh() async {
+        Haptics.refreshed()
+        store.reconnectDown()
+        let end = ContinuousClock.now + .seconds(3)
+        while ContinuousClock.now < end,
+              store.hosts.contains(where: { !$0.isDemo && $0.status == .connecting }) {
+            try? await Task.sleep(for: .milliseconds(80))
+        }
+    }
+
     /// Opens a row's tab: on a wide window the detail fades to it; a
     /// narrow one pushes it.
     private func openRow(_ t: TerminalTarget) {
@@ -280,6 +293,7 @@ struct HostListView: View {
                 // left the tab's black there.
                 .background { Color.page.ignoresSafeArea() }
                 .scrollEdgeEffectStyle(.soft, for: .all)
+                .refreshable { await refresh() }
             }
         }
         // Demo Mode's banner stays in place as the list scrolls, so that
