@@ -169,7 +169,7 @@ func (a *App) promptPanel(c *ui.Context, k *colors) {
 						row = row.Background(k.hover)
 					}
 					row.Children(func() {
-						ui.Column(c).Grow(1).Gap(1).Children(func() {
+						ui.Column(c).Grow(1).Gap(2).Children(func() {
 							ui.Text(c, item.Title).FontSize(fontBody).TextColor(k.text)
 							if item.Subtitle != "" {
 								ui.Text(c, item.Subtitle).FontSize(fontFootnote).TextColor(k.textMuted)
