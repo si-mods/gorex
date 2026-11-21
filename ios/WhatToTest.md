@@ -94,6 +94,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - Renaming a project renames the title its unnamed windows show too, in the list and over a terminal.
 - Each project has its own card with a folder tile and the chevron before its tab count. No Project folds, too. Tiles lose their white ring on a light page. On an iPad the open card is shaded.
 - When a program in a pane listens on a port, its terminal shows a globe in the top bar; tap it to see the port, its address and the program, and open a reachable one in Safari.
+- Pull down on the list of computers: your hand feels a tap, and every computer that is not connected dials again at once.
 
 ## zh-Hans
 
@@ -180,3 +181,4 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - 重命名项目后，它未命名的窗口在列表里和终端标题栏也会显示项目的新名字。
 - 每个项目现在有自己的卡片，用项目色的文件夹图块，箭头在标签数之前。「无项目」也是可折叠的卡片。项目列表里的程序图标在浅色页面上不再有白色圈。在 iPad 上，正在用的项目卡片会略深一些。
 - 面板里的程序开始监听端口后，终端顶栏会出现一个地球按钮；点开能看到端口、地址和程序，能直连的端口可以直接在 Safari 打开。
+- 在电脑列表中下拉刷新：手会感到一下轻点，所有未连接的电脑会立即重新连接。

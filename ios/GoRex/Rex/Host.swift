@@ -1604,6 +1604,19 @@ final class HostStore {
         inBackground ? [] : hosts.filter { !$0.isDemo && ($0.control != nil || $0.isRetrying) }
     }
 
+    /// A pull to refresh in the host list (docs/IOS-016-pull-refresh.md):
+    /// each real host that is not online connects anew at once — one
+    /// waiting in its retry backoff dials now rather than after up to
+    /// ten seconds, one refused dials again, one mid-dial starts over.
+    func reconnectDown() {
+        for h in Self.resumedOnRefresh(hosts) { h.resume() }
+    }
+
+    /// The hosts a pull to refresh resumes: the real ones not online.
+    static func resumedOnRefresh(_ hosts: [Host]) -> [Host] {
+        hosts.filter { !$0.isDemo && $0.status != .online }
+    }
+
     /// Whether leaving the app asks iOS for a grace (BackgroundGrace): a
     /// real host has a control connection, or a terminal of one is open
     /// (terminal, its host). Demo Mode alone keeps nothing.

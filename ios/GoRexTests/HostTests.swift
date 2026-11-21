@@ -722,6 +722,56 @@ nonisolated final class HostTests: XCTestCase {
         XCTAssertEqual(rex.controls.count, 1, "the system host connected anew")
     }
 
+    /// A pull to refresh resumes each real host that is not online: one
+    /// waiting in its retry backoff, and one that never connected; not
+    /// the online host nor the demo host (docs/IOS-016-pull-refresh.md).
+    @MainActor func testResumedOnRefresh() async throws {
+        let demo = Host(Demo.config())
+        demo.connect()
+        defer { demo.stop() }
+        let rex = try FakeRex()
+        defer { rex.stop() }
+        let online = Host(HostConfig(name: "alice-laptop", url: try await rex.url()))
+        online.connect()
+        defer { online.stop() }
+        await until("online") { online.status == .online }
+        let down = Host(HostConfig(name: "carol-server", url: try XCTUnwrap(URL(string: "http://127.0.0.1:1"))))
+        down.connect()
+        defer { down.stop() }
+        await until("retrying") { down.isRetrying }
+        let idle = Host(HostConfig(name: "bob-desktop", url: try await rex.url()))
+        defer { idle.stop() }
+        XCTAssertEqual(HostStore.resumedOnRefresh([demo, online, down, idle]).map(\.id), [down.id, idle.id])
+    }
+
+    /// reconnectDown dials anew the store's hosts that are not online —
+    /// one waiting in its retry backoff dials at once — while an online
+    /// host keeps its connection.
+    @MainActor func testReconnectDown() async throws {
+        let saved = UserDefaults.standard.data(forKey: "hosts")
+        defer { UserDefaults.standard.set(saved, forKey: "hosts") }
+        UserDefaults.standard.removeObject(forKey: "hosts")
+        let r = try FakeRex()
+        defer { r.stop() }
+        r.respond = { m, _ in m == "session.bootstrap" ? ["attach_all": ["sessions": []]] : [:] }
+        let store = HostStore()
+        let up = HostConfig(name: "alice-laptop", url: try await r.url())
+        let down = HostConfig(name: "carol-server", url: try XCTUnwrap(URL(string: "http://127.0.0.1:1")))
+        store.add(up)
+        store.add(down)
+        defer { store.remove(up.id); store.remove(down.id) }
+        let uh = try XCTUnwrap(store.host(up.id))
+        let dh = try XCTUnwrap(store.host(down.id))
+        await until("up online") { uh.status == .online }
+        await until("down retrying") { dh.isRetrying }
+        let first = try XCTUnwrap(uh.control)
+
+        store.reconnectDown()
+        XCTAssertTrue(uh.control === first, "the online host keeps its connection")
+        XCTAssertEqual(dh.status, .connecting, "the down host dials at once")
+        await until("retrying again") { dh.isRetrying }
+    }
+
     /// A title's symbols show as text: iOS draws "✳" as an emoji without U+FE0E.
     func testTitleSymbolsAsText() {
         XCTAssertEqual("✳ sioux/jnj".asText, "✳\u{FE0E} sioux/jnj")
