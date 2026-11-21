@@ -2,7 +2,7 @@ import Foundation
 
 /// A question a host's action asks, from `client_prompt_requested`, and
 /// the answer `client.reply` carries (docs/MOD-005-client-prompts.md).
-struct Prompt: Identifiable, Equatable {
+nonisolated struct Prompt: Identifiable, Equatable {
     let callID: String
     let action: String
     let spec: Spec
@@ -82,7 +82,7 @@ struct Prompt: Identifiable, Equatable {
     }
 }
 
-extension Prompt.Item {
+nonisolated extension Prompt.Item {
     /// Reads one item of a pick, or nil when it has no ID or title.
     init?(_ raw: [String: Any]) {
         guard let id = raw["id"] as? String, let title = raw["title"] as? String else { return nil }
