@@ -72,6 +72,10 @@ func (a *App) promptEvent(p *rex.PromptEvent) {
 			a.prompt = nil
 		}
 	}
+	// The question comes between frames: draw it now.
+	if a.win != nil {
+		a.win.Update(func() {})
+	}
 }
 
 // answerPrompt answers the question this window shows, and clears it.
