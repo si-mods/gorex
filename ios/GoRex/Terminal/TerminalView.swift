@@ -247,7 +247,10 @@ final class TerminalView: UIView, TerminalOutput {
         c.scale_factor = traitCollection.displayScale
         c.font_size = Float(Self.fontSize)
         c.use_external_io = true
-        c.initially_visible = onPage
+        // A surface is born visible, its display link running: one made
+        // while the draw latch is armed starts occluded instead, or it
+        // presents while the app is out of the foreground.
+        c.initially_visible = onPage && !Ghostty.secureDrawProhibited
         guard let s = ghostty_surface_new(app, &c) else { return }
         surface = s
         Ghostty.register(self, for: s)
