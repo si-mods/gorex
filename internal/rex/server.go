@@ -83,6 +83,13 @@ type Server struct {
 	// change (notify).
 	subMu sync.Mutex
 	subs  map[*subscriber]struct{}
+	// promptMu guards the questions a config action asks: prompts are the
+	// open ones by their per-connection call ID, and promptSeq numbers
+	// them (docs/MOD-009-client-prompts.md). It also guards each
+	// subscriber's prompts and busy flags.
+	promptMu  sync.Mutex
+	prompts   map[string]*promptPlace
+	promptSeq int64
 	// portsClock, when a test sets it, replaces the scan's timings.
 	portsClock *portsTiming
 	// ports is the scan of each session's listening sockets, and the
@@ -592,6 +599,9 @@ func (s *Server) control(conn net.Conn, r *bufio.Reader, first []byte, peer stri
 	}()
 	var kept *keptConn
 	var sub *subscriber
+	// promptCapable is what the connection's hello last said: whether it
+	// shows the questions a config action asks.
+	promptCapable := false
 	defer func() {
 		if kept != nil {
 			s.unkeep(kept)
@@ -637,9 +647,14 @@ func (s *Server) control(conn net.Conn, r *bufio.Reader, first []byte, peer stri
 			if req.Op == "hello" && req.Keepalive && kept == nil {
 				kept = s.keep(conn, peer)
 			}
+			if req.Op == "hello" {
+				promptCapable = slices.Contains(req.Capabilities, CapabilityPrompts)
+				s.setPromptCapable(sub, promptCapable)
+			}
 			// Before the answer: no change after it goes untold.
 			if req.Op == "subscribe" && sub == nil {
 				sub = s.subscribe(write, remote, req.Transfers)
+				s.setPromptCapable(sub, promptCapable)
 			}
 			// Kills wait for the session to end, layout commands for the
 			// app, and an answer of no window for the server's change:
@@ -654,7 +669,29 @@ func (s *Server) control(conn net.Conn, r *bufio.Reader, first []byte, peer stri
 				// show in them.
 				go s.placeOrphans()
 			}
-			if req.Op == "kill" || req.Op == "command" || req.Op == "command.take" || req.Op == "command.done" {
+			if req.Op == "prompt.open" {
+				// The question waits for an answer from any client, or for
+				// its time: the connection's other requests, the answer
+				// among them, go on meanwhile.
+				gone := gone
+				go func() {
+					ans, err := s.openPrompt(req.Prompt, req.PromptAction, time.Duration(req.PromptTimeout)*time.Millisecond, gone)
+					res := Response{ID: req.ID}
+					if err != nil {
+						res.Error = err.Error()
+					} else {
+						res.Data, _ = json.Marshal(ans)
+					}
+					reply(res)
+				}()
+			} else if req.Op == "prompt.answer" {
+				var res Response
+				res.ID = req.ID
+				if err := s.answerPrompt(sub, req.CallID, req.Answer); err != nil {
+					res.Error = err.Error()
+				}
+				reply(res)
+			} else if req.Op == "kill" || req.Op == "command" || req.Op == "command.take" || req.Op == "command.done" {
 				aside <- struct{}{}
 				kept := kept // a later hello sets it, as this runs
 				go func() {

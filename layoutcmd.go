@@ -72,6 +72,10 @@ func (st *store) takeCommands(client *rex.Client, update func(func())) {
 				continue // answered
 			}
 			res = *answer
+			if res.Code == "async" {
+				// A custom action runs on; its end answers the command.
+				continue
+			}
 		case <-time.After(rex.AppCommandTimeout):
 			res = rex.LayoutCommand{ID: cmd.ID, Code: "layout_timeout", Error: "the GoRex window does not answer; the change may still appear"}
 		}
@@ -194,6 +198,20 @@ func (a *App) command(c rex.LayoutCommand) rex.LayoutCommand {
 			}
 		}
 		args = coerceArgs(cmd, args)
+		// A custom action may ask a question, and waits for its answer
+		// while the window shows it: it runs off the main thread and
+		// answers the command when it ends.
+		if a.runCustom(cmd, args, func(err error) {
+			done := rex.LayoutCommand{ID: c.ID}
+			if err != nil {
+				done.Code, done.Error = "action_failed", err.Error()
+			}
+			if a.client != nil {
+				_ = a.client.CommandDone(done)
+			}
+		}) {
+			return rex.LayoutCommand{ID: c.ID, Code: "async"}
+		}
 		if err := cmd.invoke(a, args); err != nil {
 			return fail("action_failed", err.Error())
 		}

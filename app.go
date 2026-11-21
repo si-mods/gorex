@@ -101,6 +101,12 @@ type App struct {
 	paneRenaming  *Pane
 	paneNameText  string
 	paneNameFocus bool
+	// prompt is the question a config action asked, which this window
+	// shows, with the answer being typed (docs/MOD-009-client-prompts.md).
+	prompt       *rex.PromptEvent
+	promptText   string
+	promptPicked map[string]bool
+	promptOther  string
 	// contentFocus tells that a pane's content took the keyboard as the
 	// active tab's panes were built, and pageHover the browser pane whose
 	// page the pointer was over. A press on a page gives the page the

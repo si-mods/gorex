@@ -120,6 +120,7 @@ func (a *App) view(c *ui.Context) {
 	}
 	a.shortcuts(c)
 	a.palette(c, k)
+	a.promptPanel(c, k)
 	a.workspaceConfirm(c, k)
 	a.spaceDialog(c, k)
 	a.projectSheetView(c, k)

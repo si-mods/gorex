@@ -188,7 +188,13 @@ func newCustomCommands(cfg *config.Config) ([]*command, error) {
 			ID:   ca.Name,
 			Name: func(locales.Messages) string { return title },
 			Args: args,
+			// Custom actions run off the main thread: one that asks a
+			// question waits for its answer while the window shows it
+			// (docs/MOD-009-client-prompts.md).
+			Custom: true,
 			RunArgs: func(app *App, args map[string]any) error {
+				clock, ctx := newActionClock(actionLimit)
+				defer clock.stop()
 				cfg.SetInvoke(func(id string, args map[string]any) error {
 					if blockedFromClient(id) {
 						return fmt.Errorf("%s is not allowed from an action", id)
@@ -197,9 +203,28 @@ func newCustomCommands(cfg *config.Config) ([]*command, error) {
 					if cmd == nil {
 						return fmt.Errorf("no action %q", id)
 					}
-					return cmd.invoke(app, args)
+					// The action runs off the main thread; the window's
+					// actions run on it.
+					var err error
+					done := make(chan struct{})
+					go mygo.RunOnMain(func() {
+						err = cmd.invoke(app, args)
+						close(done)
+					})
+					<-done
+					return err
 				})
-				return cfg.Invoke(ca.Name, map[string]any{"origin": "action"}, args)
+				cfg.SetUI(func(opts config.UIOptions) (config.UIAnswer, error) {
+					// The question's time does not count.
+					clock.pause()
+					defer clock.resume()
+					return app.askUI(ca.Name, opts)
+				})
+				err := cfg.InvokeWithin(ctx, ca.Name, map[string]any{"origin": "action"}, args)
+				if err != nil && clock.expiredTime() {
+					return fmt.Errorf("%s did not finish in %s", ca.Name, actionLimit)
+				}
+				return err
 			},
 		})
 	}
@@ -1026,9 +1051,37 @@ func (a *App) invokeCommand(cmd *command, args map[string]any) {
 	if cmd.Passthrough && cmd.Available != nil && !cmd.Available(a) {
 		return
 	}
+	if a.runCustom(cmd, args, func(err error) {
+		if err != nil {
+			a.err = err.Error()
+		}
+	}) {
+		return
+	}
 	if err := cmd.invoke(a, args); err != nil {
 		a.err = err.Error()
 	}
+}
+
+// runCustom runs a custom action off the main thread, as a question it
+// asks waits while the window shows it, and reports its end on the main
+// thread. It returns false for a built-in action, which runs now.
+func (a *App) runCustom(cmd *command, args map[string]any, report func(error)) bool {
+	if !cmd.Custom {
+		return false
+	}
+	go func() {
+		err := cmd.invoke(a, args)
+		if report != nil {
+			done := make(chan struct{})
+			go mygo.RunOnMain(func() {
+				report(err)
+				close(done)
+			})
+			<-done
+		}
+	}()
+	return true
 }
 
 func (a *App) closeFocused() {

@@ -46,6 +46,10 @@ type Client struct {
 	lost      bool // the attached were closed
 	pinging   sync.Once
 
+	// caps are what this client does beyond the protocol, which its hello
+	// tells the server (DeclareCapabilities).
+	caps []string
+
 	// events are the changes the server told of (Subscribe); eventsOnce
 	// closes the channel when the connection ends.
 	events     chan Event
@@ -433,7 +437,10 @@ func (c *Client) exchange(req Request, timeout time.Duration) (Response, error) 
 // starts pinging once the server says it keeps it so; an older server
 // does not, and it goes on as before.
 func (c *Client) Hello() (h Hello, err error) {
-	err = c.call(Request{Op: "hello", Keepalive: c.keepalive}, &h)
+	c.mu.Lock()
+	caps := append([]string(nil), c.caps...)
+	c.mu.Unlock()
+	err = c.call(Request{Op: "hello", Keepalive: c.keepalive, Capabilities: caps}, &h)
 	if err == nil && c.keepalive && h.Keepalive > 0 && h.Conn != "" {
 		c.pinging.Do(func() {
 			c.mu.Lock()
@@ -447,6 +454,30 @@ func (c *Client) Hello() (h Hello, err error) {
 		})
 	}
 	return
+}
+
+// DeclareCapabilities tells the server what this client does beyond the
+// protocol, before Hello: CapabilityPrompts for one that shows the
+// questions a config action asks (docs/MOD-009-client-prompts.md).
+func (c *Client) DeclareCapabilities(caps ...string) {
+	c.mu.Lock()
+	c.caps = append(c.caps, caps...)
+	c.mu.Unlock()
+}
+
+// PromptOpen asks every client that can show a question to show spec, as
+// action, and waits for the first answer or timeout. A server before the
+// capability answers an error.
+func (c *Client) PromptOpen(action string, spec PromptSpec, timeout time.Duration) (PromptAnswer, error) {
+	var ans PromptAnswer
+	wait := timeout + 10*time.Second
+	err := c.callWithin(Request{Op: "prompt.open", Prompt: &spec, PromptAction: action, PromptTimeout: int(timeout / time.Millisecond)}, &ans, wait)
+	return ans, err
+}
+
+// PromptReply answers the question that came with callID.
+func (c *Client) PromptReply(callID string, ans PromptAnswer) error {
+	return c.call(Request{Op: "prompt.answer", CallID: callID, Answer: &ans}, nil)
 }
 
 // Subscribe asks the server to tell this connection of the changes of
