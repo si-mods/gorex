@@ -10,6 +10,10 @@ struct PortsView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var ports: Ports?
     @State private var failure: String?
+    /// The relays opened from this sheet, by port.
+    @State private var relays: [Int: URL] = [:]
+    /// The port whose relay is opening.
+    @State private var opening: Int?
 
     var body: some View {
         NavigationStack {
@@ -43,7 +47,14 @@ struct PortsView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Close", systemImage: "xmark", role: .close) { dismiss() }
+                    Button("Close", systemImage: "xmark", role: .close) {
+                        Task {
+                            for port in relays.keys {
+                                await host.closePort(session: target.session, block: target.block, port: port)
+                            }
+                            dismiss()
+                        }
+                    }
                 }
             }
             .refreshable { await fetch() }
@@ -56,35 +67,51 @@ struct PortsView: View {
     @ViewBuilder private func row(_ port: Ports.Port, in ports: Ports) -> some View {
         let process = ports.process(of: port)
         let url = Ports.openURL(port: port, hostAddress: host.config.url.host())
-        Button {
-            if let url { UIApplication.shared.open(url) }
-        } label: {
-            VStack(alignment: .leading, spacing: 3) {
-                HStack(spacing: 6) {
-                    Text(String(port.port)).font(.body.weight(.semibold).monospacedDigit())
-                    Text("·").foregroundStyle(.tertiary)
-                    Text(port.address).font(.subheadline).foregroundStyle(.secondary)
-                    Spacer(minLength: 8)
-                    if url != nil {
-                        Image(systemName: "arrow.up.right.square").foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 6) {
+            Button {
+                if let url { UIApplication.shared.open(url) }
+            } label: {
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack(spacing: 6) {
+                        Text(String(port.port)).font(.body.weight(.semibold).monospacedDigit())
+                        Text("·").foregroundStyle(.tertiary)
+                        Text(port.address).font(.subheadline).foregroundStyle(.secondary)
+                        Spacer(minLength: 8)
+                        if url != nil {
+                            Image(systemName: "arrow.up.right.square").foregroundStyle(.secondary)
+                        }
+                    }
+                    if let process {
+                        Text(processLine(process, pid: port.pid))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
                     }
                 }
-                if let process {
-                    Text(processLine(process, pid: port.pid))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
-                if url == nil {
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .disabled(url == nil)
+            if url == nil {
+                HStack(spacing: 8) {
                     Text("Only on the host")
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                    Spacer(minLength: 8)
+                    Button {
+                        Task { await openRelay(port.port) }
+                    } label: {
+                        if opening == port.port {
+                            ProgressView().controlSize(.small)
+                        } else {
+                            Label("Open on the phone", systemImage: "iphone.and.arrow.forward")
+                        }
+                    }
+                    .font(.callout)
+                    .disabled(opening != nil)
                 }
             }
-            .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
-        .disabled(url == nil)
         .contextMenu {
             Button("Copy Address", systemImage: "doc.on.doc") {
                 UIPasteboard.general.string = "\(port.address):\(port.port)"
@@ -100,6 +127,25 @@ struct PortsView: View {
         }
         if let pid { return "\(name) (\(pid))" }
         return name
+    }
+
+    /// Opens a relay to a loopback port and sends Safari to it.
+    private func openRelay(_ port: Int) async {
+        opening = port
+        defer { opening = nil }
+        do {
+            let url: URL
+            if let open = relays[port] {
+                url = open
+            } else {
+                url = try await host.openPort(session: target.session, block: target.block, port: port)
+                relays[port] = url
+            }
+            failure = nil
+            await UIApplication.shared.open(url)
+        } catch {
+            failure = error.localizedDescription
+        }
     }
 
     private func poll() async {

@@ -210,6 +210,12 @@ type Gateway struct {
 	promptsMu sync.Mutex
 	prompts   map[string]*promptEntry
 	promptSeq int64
+	// relays forward a phone's browser to a pane's loopback port. The
+	// times are a test's; zero uses the defaults.
+	relaysMu  sync.Mutex
+	relays    map[string]*relay
+	relayTTL  time.Duration
+	relayIdle time.Duration
 	// canLock tells whether the server keeps the gateway's connection
 	// alive, which the size locks need.
 	canLock bool
@@ -311,6 +317,7 @@ func (g *Gateway) Close() error {
 		g.mu.Unlock()
 		close(g.done)
 		g.cancelPrompts()
+		g.closeRelays()
 		g.closeActions()
 		g.closeAllResources()
 		g.opt.Client.Close()

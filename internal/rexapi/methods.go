@@ -199,6 +199,8 @@ var methods = map[string]func(*control, args) (any, *apiError){
 	"client.set_label":              methodClientSetLabel,
 	"client.keymap":                 methodClientKeymap,
 	"client.set_script":             methodClientSetScript,
+	"gorex.port.open":               methodPortOpen,
+	"gorex.port.close":              methodPortClose,
 	"client.action":                 methodClientAction,
 	"client.perform":                methodClientPerform,
 	"client.reply":                  methodClientReply,

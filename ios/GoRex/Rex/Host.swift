@@ -876,6 +876,23 @@ final class Host: Identifiable {
         return [argv0, p["name"] as? String].compactMap { $0 }.first { !$0.isEmpty }
     }
 
+    /// Opens a relay from the host's own address to a pane's loopback
+    /// port, for the phone's browser, and returns the address to open.
+    func openPort(session: String, block: String, port: Int) async throws -> URL {
+        let r = try await live().call("gorex.port.open",
+                                      ["session_id": session, "block_id": block, "port": port]).payload
+        guard let text = r["url"] as? String, let url = URL(string: text) else {
+            throw RexError(code: "internal", message: String(localized: "The host answered no address."))
+        }
+        return url
+    }
+
+    /// Closes a relay that openPort opened.
+    func closePort(session: String, block: String, port: Int) async {
+        _ = try? await live().call("gorex.port.close",
+                                   ["session_id": session, "block_id": block, "port": port])
+    }
+
     /// The TCP ports a block's programs listen on, with the processes
     /// that hold them.
     func ports(session: String, block: String) async throws -> Ports {
