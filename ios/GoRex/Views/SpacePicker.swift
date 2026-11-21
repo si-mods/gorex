@@ -1,8 +1,8 @@
 import SwiftUI
 
 /// The space picker atop the list (docs/MOD-002-projects.md, Rex Go), or in a wide
-/// window's bar beside the search: the space shown, and a menu of the
-/// spaces, New Space… and Edit Spaces….
+/// window's bar beside the search: the space shown, and a panel of the
+/// spaces, with Edit and New Space.
 struct SpacePicker: View {
     /// Where the picker shows: a wide window's bar packs its items at the
     /// start, so one wider than there is room for goes into the menu beside
@@ -15,22 +15,16 @@ struct SpacePicker: View {
     let spaces: [String]
     let current: String
     let color: (String) -> Color?
+    /// The projects of a space.
+    let count: (String) -> Int
     let choose: (String) -> Void
     let add: () -> Void
     let edit: () -> Void
     var place: Place = .list
+    @State private var open = false
 
     var body: some View {
-        Menu {
-            Picker("Space", selection: Binding { current } set: { choose($0) }) {
-                ForEach(spaces, id: \.self) { s in
-                    Text(verbatim: SpaceName.shown(s)).tag(s)
-                }
-            }
-            Divider()
-            Button("New Space…", systemImage: "plus") { add() }
-            Button("Edit Spaces…", systemImage: "pencil") { edit() }
-        } label: {
+        Button { open = true } label: {
             if place == .list {
                 // Glass of its own over the page; a bar's own is behind it,
                 // and two glass effects nest.
@@ -44,6 +38,13 @@ struct SpacePicker: View {
         .buttonStyle(.plain)
         .accessibilityLabel("Space")
         .accessibilityValue(SpaceName.shown(current))
+        .popover(isPresented: $open, attachmentAnchor: .rect(.bounds), arrowEdge: .top) {
+            SpacePanel(spaces: spaces, current: current, color: color, count: count,
+                       choose: { s in open = false; choose(s) },
+                       add: { open = false; add() },
+                       edit: { open = false; edit() })
+                .presentationCompactAdaptation(.popover)
+        }
     }
 
     private var label: some View {
@@ -62,6 +63,102 @@ struct SpacePicker: View {
         .foregroundStyle(.primary)
         .padding(.horizontal, bar ? 12 : 16)
         .frame(minHeight: 44)
+    }
+}
+
+/// The panel the picker opens: a header with Edit, each space with its
+/// color and its projects, the one shown marked, and New Space last.
+struct SpacePanel: View {
+    let spaces: [String]
+    let current: String
+    let color: (String) -> Color?
+    let count: (String) -> Int
+    let choose: (String) -> Void
+    let add: () -> Void
+    let edit: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                Text("Spaces")
+                    .font(.headline)
+                    .accessibilityAddTraits(.isHeader)
+                Spacer()
+                Button(action: edit) {
+                    Text("Edit")
+                        .font(.subheadline.weight(.semibold))
+                }
+                .buttonStyle(.borderless)
+            }
+            .padding(.horizontal, 18)
+            .padding(.top, 16)
+            .padding(.bottom, 10)
+            VStack(spacing: 2) {
+                ForEach(spaces, id: \.self) { s in row(s) }
+                Divider().padding(.vertical, 6).padding(.horizontal, 12)
+                Button(action: add) {
+                    HStack(spacing: 12) {
+                        Image(systemName: "plus")
+                            .font(.subheadline.weight(.semibold))
+                            .frame(width: 16)
+                        Text("New Space")
+                            .lineLimit(1)
+                        Spacer()
+                    }
+                    .padding(.horizontal, 12)
+                    .frame(minHeight: 44)
+                    .contentShape(.rect)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.tint)
+            }
+            .padding(.horizontal, 6)
+            .padding(.bottom, 10)
+        }
+        .frame(minWidth: 290, idealWidth: 290)
+    }
+
+    /// A space's row: its color, its name and its projects; the one shown
+    /// is bold, checked and tinted.
+    private func row(_ s: String) -> some View {
+        let on = s == current
+        return Button { choose(s) } label: {
+            HStack(spacing: 12) {
+                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                    .fill(color(s) ?? Color.secondary.opacity(0.45))
+                    .frame(width: 16, height: 16)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(verbatim: SpaceName.shown(s))
+                        .font(.body.weight(on ? .semibold : .regular))
+                        .lineLimit(1)
+                    Text(projects(count(s)))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+                Spacer(minLength: 8)
+                if on {
+                    Image(systemName: "checkmark")
+                        .font(.subheadline.weight(.bold))
+                        .foregroundStyle(color(s) ?? .primary)
+                }
+            }
+            .padding(.horizontal, 12)
+            .frame(minHeight: 52)
+            .background {
+                if on {
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .fill((color(s) ?? .primary).opacity(0.12))
+                }
+            }
+            .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(on ? .isSelected : [])
+    }
+
+    private func projects(_ n: Int) -> String {
+        n == 0 ? String(localized: "No projects") : String(localized: "\(n) projects")
     }
 }
 

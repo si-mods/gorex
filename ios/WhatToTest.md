@@ -10,6 +10,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 `web` job of `.github/workflows/ci.yml` fails it.
 
 ## en-US
+- Tapping the space at the top opens a panel that shows each space's color and projects; Edit and New Space are in it.
 - Predictive Echo: no visible change in this update; it only fixes the build.
 - Typing in a terminal shows each character at once now, underlined until the computer answers. Predictive Echo in Settings > Terminal turns it off.
 
@@ -110,6 +111,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - Locking the phone while a terminal runs: its drawing now stops for the lock screen's snapshot too. Pulling down Control Center only freezes it for a moment, then it resumes behind the panel.
 
 ## zh-Hans
+- 点按顶部的空间会打开一个面板，显示每个空间的颜色和项目数；编辑和新建空间都在面板里。
 - 预测回显：本次更新没有看得见的变化，只是修复构建。
 - 在终端打字现在会立即显示字符，带下划线直到电脑回应。可在「设置 › Terminal › Predictive Echo」关闭。
 
