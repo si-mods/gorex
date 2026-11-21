@@ -1137,6 +1137,62 @@ func TestSidebarCurrentProjectGroup(t *testing.T) {
 	}
 }
 
+// TestSidebarProjectGroupFaceNotClipped: the face of the project shown
+// reaches groupPad past its rows on both sides of the list, with the sidebar
+// on the left and on the right, so the list's clip does not cut it on the
+// panes' side (#923). It samples the outermost pixel of the face on each side, with
+// no time passing: with Animation off the face comes at once.
+func TestSidebarProjectGroupFaceNotClipped(t *testing.T) {
+	for _, placement := range []string{"left", "right"} {
+		t.Run(placement, func(t *testing.T) {
+			a, tt, _, _ := projectsApp(t)
+			prefs.TabPlacement = placement
+			space := ""
+			res := clientCommand(a, rex.LayoutCommand{Op: "project.create", Dir: appTempDir(t, a), Name: "acme-api", SpaceName: &space})
+			caughtUp(t, a, tt)
+			w := a.st.byID(res.Space)
+			a.showWorkspace(w)
+			waitFor(t, tt, "the project's tab", func() bool { return a.ws == w && len(a.tabs) == 1 && a.tabs[0].Focus != nil })
+			// Pixels at the outermost reach of the face: its edge on the
+			// window's side, and on the panes' side the sidebar's edge.
+			// With Animation off the face comes at once: no time passes.
+			sample := func() (window, panes [4]uint8) {
+				tt.Frame()
+				tt.Frame()
+				name, ok := tt.Find("acme-api")
+				if !ok {
+					t.Fatalf("no project row: %q", tt.Texts())
+				}
+				edge, ok := tt.Find("Sidebar Edge")
+				if !ok {
+					t.Fatalf("no sidebar edge: %q", tt.Texts())
+				}
+				img := tt.Image()
+				y := int(name.Y + name.H/2)
+				wx, px := 10-groupPad, int(edge.X)+1
+				if placement == "right" {
+					wx, px = img.Bounds().Dx()-(10-groupPad)-1, int(edge.X+edge.W)-1
+				}
+				at := func(x int) [4]uint8 {
+					c := img.RGBAAt(x, y)
+					return [4]uint8{c.R, c.G, c.B, c.A}
+				}
+				return at(wx), at(px)
+			}
+			setRowOpen(openKey(nil, w.ID), false)
+			shutWindow, shutPanes := sample()
+			setRowOpen(openKey(nil, w.ID), true)
+			openWindow, openPanes := sample()
+			if openWindow == shutWindow {
+				t.Errorf("no face on the window's side: %v open, %v shut", openWindow, shutWindow)
+			}
+			if openPanes == shutPanes {
+				t.Errorf("the face is clipped on the panes' side: %v open, %v shut", openPanes, shutPanes)
+			}
+		})
+	}
+}
+
 // TestSidebarRevealsActiveTabOnProjectFace: a tab of the project shown,
 // chosen by keys while it is out of the list's view, scrolls into view, on
 // the project's face as off it (#907: the lifted pill skipped the reveal).

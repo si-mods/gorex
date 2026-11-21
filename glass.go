@@ -156,16 +156,23 @@ func glassPill(e ui.Element, k *colors, h float32) {
 		Shadow(0, 1.5, 3.5, 0, k.pillShadow)
 }
 
+// The hairline of a lifted pill: its width and the strength of the text
+// color it is drawn in.
+const (
+	liftBorderW     = 0.5
+	liftBorderAlpha = 0.08
+)
+
 // liftedPill is glassPill for the active tab on its project's group face
 // (projectGroup): a lighter face where the system draws no glass, a
 // deeper shadow and a hairline, so that it stands over the group.
 func liftedPill(e ui.Element, k *colors, h float32) {
 	if !glassOn() {
-		e.Background(k.tabActive).Shadow(0, 1, 2, 0, k.shadow).Shadow(0, 1, 4, 0, k.liftShadow).Border(0.5, k.text.Alpha(0.08))
+		e.Background(k.tabActive).Shadow(0, 1, 2, 0, k.shadow).Shadow(0, 1, 4, 0, k.liftShadow).Border(liftBorderW, k.text.Alpha(liftBorderAlpha))
 		return
 	}
 	e.Radius(h/2).Material(ui.SystemGlass{Tint: k.pillTint, Fallback: faceMaterial{k.pillLift}}).
-		Shadow(0, 1.5, 3.5, 0, k.pillShadow).Shadow(0, 1, 4, 0, k.liftShadow).Border(0.5, k.text.Alpha(0.08))
+		Shadow(0, 1.5, 3.5, 0, k.pillShadow).Shadow(0, 1, 4, 0, k.liftShadow).Border(liftBorderW, k.text.Alpha(liftBorderAlpha))
 }
 
 // faceMaterial is a material of one color: the pill's where the system

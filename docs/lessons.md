@@ -146,6 +146,11 @@ Each item has a **Trigger** (what the diff shows), a **Check** (what the author 
 - **Check:** reuse the project's row and group; a second builder drifts from it in the tile, chevron, face and motion, and the next change has to fix both.
 - **Source:** #907 drew tabs with no project as a light label (`noProjectSection`) beside the project row; #938 draws it with `projectGroup`, so that it matches Rex Go's group (#933).
 
+### A mark that reaches past its container
+- **Trigger:** the diff draws something past its rows with a negative margin or a pad (`projectGroup`'s face, `groupPad`), inside a scroll or a clip.
+- **Check:** the clip's box has room for the reach on both sides, with the sidebar on the left and on the right, and a test samples the outermost pixel on each side. `sideInsets` gives the panes' side less room than the window's.
+- **Source:** #907's face reached 4 px past the rows where the list had 2 px on the panes' side, so the scroll cut its corners there (#923).
+
 ### Selected paints the accent
 - **Trigger:** a row uses `.Selected(` and draws its own selected look, as a pill, a swatch or a check.
 - **Check:** use `.AccessSelected(`: `Selected` also fills the element with the theme's accent, which follows the desktop's accent and covers the element's own look.

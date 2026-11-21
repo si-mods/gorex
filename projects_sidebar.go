@@ -350,7 +350,8 @@ func (a *App) projectRow(c *ui.Context, k *colors, w *Workspace, reserve float32
 // lifted over it (liftedPill): it tells where the window is, and which
 // tabs are that project's. The face reaches groupPad past the rows on every
 // side, so nothing in it moves as it comes and goes, and its corners are the pills' plus that
-// pad, so that both share one centre.
+// pad, so that both share one centre. With Animation off the face comes and
+// goes at once.
 func (a *App) projectGroup(c *ui.Context, k *colors, w *Workspace, reserve float32) {
 	// Every project has the room of the face, so that choosing another moves
 	// nothing: only the face's color comes and goes, fading.
@@ -360,10 +361,9 @@ func (a *App) projectGroup(c *ui.Context, k *colors, w *Workspace, reserve float
 	} else {
 		g.Background(k.groupFace.Alpha(0))
 	}
+	// With Animation off the face changes at once.
 	if anim := motion(c); anim != nil {
 		g.Transition(ui.ElementTransition{Animation: anim, Colors: true})
-	} else {
-		g.Transition(ui.ElementTransition{Colors: true, Duration: 160 * time.Millisecond})
 	}
 	g.Children(func() { a.projectRow(c, k, w, reserve) })
 }
@@ -392,6 +392,15 @@ const (
 	sideGap  = 6
 )
 
+// folderTileAlpha is the strength of the neutral face of a project's folder
+// tile; chevronRoom the width of a disclosure chevron's room; foldRowH the
+// height of a fold row, as Older.
+const (
+	folderTileAlpha = 0.09
+	chevronRoom     = 16
+	foldRowH        = 26
+)
+
 // projectFolderTile is a project's mark: a tile of a tab's size and corners
 // (drawTile), in a neutral face, with a folder in it in the project's color
 // (muted with none), so that a project and its tabs are marks of one kind,
@@ -401,8 +410,8 @@ func projectFolderTile(c *ui.Context, k *colors, color string) {
 	if hex, ok := spaceColorHex(color); ok {
 		col = ui.Hex(hex)
 	}
-	ui.Row(c).Width(tileW + 2).AlignItems(ui.Center).Justify(ui.Center).Shrink(0).Children(func() {
-		ui.Row(c).Size(tileW, tileH).Radius(radiusTile).Background(k.text.Alpha(0.09)).AlignItems(ui.Center).Justify(ui.Center).Children(func() {
+	ui.Row(c).Width(tileSlot).AlignItems(ui.Center).Justify(ui.Center).Shrink(0).Children(func() {
+		ui.Row(c).Size(tileW, tileH).Radius(radiusTile).Background(k.text.Alpha(folderTileAlpha)).AlignItems(ui.Center).Justify(ui.Center).Children(func() {
 			glyphIcon(c, "folder", 11, col).Shrink(0)
 		})
 	})
@@ -412,7 +421,7 @@ func projectFolderTile(c *ui.Context, k *colors, color string) {
 // under it, near the row's end: down while open, right while closed,
 // turning with the sidebar's motion. h is the row's height.
 func disclosureChevron(c *ui.Context, k *colors, open bool, h float32) ui.Element {
-	room := ui.Row(c).Width(16).Height(h).AlignItems(ui.Center).Justify(ui.Center).Shrink(0)
+	room := ui.Row(c).Width(chevronRoom).Height(h).AlignItems(ui.Center).Justify(ui.Center).Shrink(0)
 	room.Children(func() {
 		chevron := glyphIcon(c.Key("chevron"), "chevron-down", 11, k.textFaint).Shrink(0)
 		turn := float32(-90)
@@ -455,7 +464,7 @@ func (a *App) workspaceTabs(c *ui.Context, k *colors, w *Workspace, reserve floa
 	for i, t := range w.layout.Tabs {
 		name, detail, prog := savedTabFace(t, infos)
 		if spaceTab(c, k, cmp.Or(t.ID, fmt.Sprint(i)), name, detail, a.st.savedTabStatus(t, id, infos), reserve, func() {
-			ui.Box(c).Size(tileW+2, tileH+4).Shrink(0).Draw(func(p *ui.Painter, r ui.Rect) {
+			ui.Box(c).Size(tileSlot, tileH+4).Shrink(0).Draw(func(p *ui.Painter, r ui.Rect) {
 				drawTile(p, ui.Rect{X: r.X + 1, Y: r.Y + 2, W: tileW, H: tileH}, prog, true)
 			})
 		}) {
@@ -488,16 +497,16 @@ func (a *App) showWorkspaceTab(w *Workspace, i int) {
 // under it, as Older: its chevron, its label and a count. It reports
 // whether it was clicked.
 func (a *App) foldRow(c *ui.Context, k *colors, key, label, count string, open bool, reserve float32) bool {
-	row := ui.Row(c.Key("fold-"+key)).Height(26).Shrink(0).Padding(0, 10, 0, sideLead).Gap(sideGap).AlignItems(ui.Center).
-		Radius(pillRadius(26, radiusM)).Cursor(ui.CursorPointer).Role(ui.RoleDisclosure).Expanded(open).Label(label)
+	row := ui.Row(c.Key("fold-"+key)).Height(foldRowH).Shrink(0).Padding(0, 10, 0, sideLead).Gap(sideGap).AlignItems(ui.Center).
+		Radius(pillRadius(foldRowH, radiusM)).Cursor(ui.CursorPointer).Role(ui.RoleDisclosure).Expanded(open).Label(label)
 	hovered := row.Hovered()
 	if hovered {
 		row.Background(hoverFace(k))
 	}
 	row.Children(func() {
-		leadRoom(c, reserve, 26)
+		leadRoom(c, reserve, foldRowH)
 		ui.Text(c, label).FontSize(fontCallout).TextColor(k.textMuted).SingleLine().Grow(1).MinWidth(0)
-		disclosureChevron(c, k, open, 26)
+		disclosureChevron(c, k, open, foldRowH)
 		ui.Text(c, count).FontSize(fontFootnote).TextColor(k.textFaint).Shrink(0)
 	})
 	return row.Clicked()
