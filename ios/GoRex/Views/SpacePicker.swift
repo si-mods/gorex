@@ -92,12 +92,20 @@ struct SpacePanel: View {
                         .font(.subheadline.weight(.semibold))
                 }
                 .buttonStyle(.borderless)
+                .accessibilityLabel("Edit Spaces")
             }
             .padding(.horizontal, 18)
             .padding(.top, 16)
             .padding(.bottom, 10)
-            VStack(spacing: 2) {
-                ForEach(spaces, id: \.self) { s in row(s) }
+            // The spaces scroll when the screen has no room for them all, at
+            // a large text size or with many spaces; the header and New
+            // Space stay in view.
+            ViewThatFits(in: .vertical) {
+                rows
+                ScrollView { rows }
+                    .scrollBounceBehavior(.basedOnSize)
+            }
+            VStack(spacing: 0) {
                 Divider().padding(.vertical, 6).padding(.horizontal, 12)
                 Button(action: add) {
                     HStack(spacing: 12) {
@@ -119,6 +127,13 @@ struct SpacePanel: View {
             .padding(.bottom, 10)
         }
         .frame(minWidth: 290, idealWidth: 290)
+    }
+
+    private var rows: some View {
+        VStack(spacing: 2) {
+            ForEach(spaces, id: \.self) { s in row(s) }
+        }
+        .padding(.horizontal, 6)
     }
 
     /// A space's row: its color, its name and its projects; the one shown
@@ -144,6 +159,8 @@ struct SpacePanel: View {
                     Image(systemName: "checkmark")
                         .font(.subheadline.weight(.bold))
                         .foregroundStyle(color(s) ?? .primary)
+                        // The row says Selected already.
+                        .accessibilityHidden(true)
                 }
             }
             .padding(.horizontal, 12)
