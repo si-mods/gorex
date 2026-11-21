@@ -39,7 +39,9 @@ func (a *App) askUI(action string, opts config.UIOptions) (config.UIAnswer, erro
 			Icon: it.Icon, Detail: it.Detail, Selected: it.Selected,
 		})
 	}
+	log.Printf("gorex: asking %q (%s)", spec.Title, action)
 	ans, err := c.PromptOpen(action, spec, opts.Timeout)
+	log.Printf("gorex: asked %q: %+v %v", spec.Title, ans, err)
 	if err != nil {
 		return config.UIAnswer{}, err
 	}
@@ -50,6 +52,7 @@ func (a *App) askUI(action string, opts config.UIOptions) (config.UIAnswer, erro
 // that another device answered, or that timed out. Call it on the main
 // thread.
 func (a *App) promptEvent(p *rex.PromptEvent) {
+	log.Printf("gorex: prompt event %s %s", p.Op, p.CallID)
 	switch p.Op {
 	case "requested":
 		if p.Spec == nil {
