@@ -76,6 +76,9 @@ struct SpacePanel: View {
     let choose: (String) -> Void
     let add: () -> Void
     let edit: () -> Void
+    /// The width of the color squares' column, which the plus of New
+    /// Space shares; it grows with the text.
+    @ScaledMetric(relativeTo: .body) private var mark: CGFloat = 16
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -100,7 +103,7 @@ struct SpacePanel: View {
                     HStack(spacing: 12) {
                         Image(systemName: "plus")
                             .font(.subheadline.weight(.semibold))
-                            .frame(width: 16)
+                            .frame(width: mark)
                         Text("New Space")
                             .lineLimit(1)
                         Spacer()
@@ -126,7 +129,7 @@ struct SpacePanel: View {
             HStack(spacing: 12) {
                 RoundedRectangle(cornerRadius: 5, style: .continuous)
                     .fill(color(s) ?? Color.secondary.opacity(0.45))
-                    .frame(width: 16, height: 16)
+                    .frame(width: mark, height: mark)
                 VStack(alignment: .leading, spacing: 1) {
                     Text(verbatim: SpaceName.shown(s))
                         .font(.body.weight(on ? .semibold : .regular))
