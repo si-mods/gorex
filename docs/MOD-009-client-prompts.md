@@ -8,7 +8,7 @@ metadata:
 
 # MOD-009: Questions across GoRex's clients
 
-Status: built (#958).
+Status: built (#959).
 
 This doc adds a prompt channel to GoRex's own protocol, and the desktop app's prompt sheet. It is the GoRex-protocol counterpart of [MOD-005](MOD-005-client-prompts.md), which serves Rex's clients, the phone among them ([IOS-017](IOS-017-prompt-sheet.md)). It follows [DOC-001](DOC-001-design-docs.md).
 
@@ -107,6 +107,6 @@ The user pays for it: an action such as "New worktree" runs on the desktop and c
 
 ## Phases
 
-1. The server's registry and protocol, the app's producer and the desktop sheet (#958).
+1. The server's registry and protocol, the app's producer and the desktop sheet (#959).
 2. The phone's sheet, with input and pick: [MOD-005](MOD-005-client-prompts.md) and [IOS-017](IOS-017-prompt-sheet.md).
 3. A bridge from the app's channel to the gateway's Rex broker, so that an app-side action asks the phone, in a later doc.
