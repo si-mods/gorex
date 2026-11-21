@@ -94,21 +94,23 @@ struct PortsView: View {
             .disabled(url == nil)
             if url == nil {
                 HStack(spacing: 8) {
-                    Text("Only on the host")
+                    Text(host.canRelayPorts ? "Only on the host" : "Only on the host's network")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     Spacer(minLength: 8)
-                    Button {
-                        Task { await openRelay(port.port) }
-                    } label: {
-                        if opening == port.port {
-                            ProgressView().controlSize(.small)
-                        } else {
-                            Label("Open on the phone", systemImage: "iphone.and.arrow.forward")
+                    if host.canRelayPorts {
+                        Button {
+                            Task { await openRelay(port.port) }
+                        } label: {
+                            if opening == port.port {
+                                ProgressView().controlSize(.small)
+                            } else {
+                                Label("Open on the phone", systemImage: "iphone.and.arrow.forward")
+                            }
                         }
+                        .font(.callout)
+                        .disabled(opening != nil)
                     }
-                    .font(.callout)
-                    .disabled(opening != nil)
                 }
             }
         }

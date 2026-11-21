@@ -5,6 +5,7 @@ import (
 	"net"
 	"net/http"
 	"os/exec"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -130,5 +131,34 @@ func TestPortOpenRelaysAListedLoopbackPort(t *testing.T) {
 		"session_id": sid, "block_id": block, "port": 1,
 	})); e["code"] != "not_found" {
 		t.Fatalf("a port that is not listed: %v", e)
+	}
+}
+
+// TestRelayFeature: the welcome lists gorex.port_relay only for a client
+// that reached the host on a network its browser shares.
+func TestRelayFeature(t *testing.T) {
+	cases := []struct {
+		name      string
+		transport string
+		local     string
+		want      bool
+	}{
+		{"lan", transportLAN, "192.168.1.5", true},
+		{"local network, seen as tcp", transportTCP, "192.168.1.5", true},
+		{"tailnet", transportTailscale, "100.64.0.5", false},
+		{"tailcat", transportTailcat, "100.64.0.5", false},
+		{"unix", transportUnix, "", false},
+		{"tcp without an address", transportTCP, "", false},
+	}
+	for _, tc := range cases {
+		c := &control{transport: tc.transport, local: tc.local}
+		if got := c.canRelay(); got != tc.want {
+			t.Errorf("%s: canRelay = %v, want %v", tc.name, got, tc.want)
+		}
+	}
+	f := startFixture(t)
+	c, _, _ := f.sessionWith(t, rex.CreateOptions{})
+	if features, _ := c.welcome["features"].([]any); !slices.Contains(features, any(featurePortRelay)) {
+		t.Errorf("a local network client's welcome lacks %s: %v", featurePortRelay, features)
 	}
 }
