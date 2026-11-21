@@ -201,21 +201,21 @@ func (a *App) promptPanel(c *ui.Context, k *colors) {
 			textField(c.Key("prompt-other"), k, &a.promptOther, fieldRegular).
 				Placeholder("Other").Margin(8, 0, 0, 0)
 		}
-		chosen := len(a.promptPicked) > 0
 		other := strings.TrimSpace(a.promptOther)
 		ui.Row(c).Gap(8).Justify(ui.End).Margin(14, 0, 0, 0).Children(func() {
 			if ui.Button(c, "Cancel").Clicked() {
 				open = false
 			}
-			disabled := !chosen && !(spec.AllowOther && other != "")
-			if ui.PrimaryButton(c, confirmLabel(spec)).Disabled(disabled).Clicked() && !disabled {
+			// The confirm takes the keyboard, so that Return answers the
+			// row the keyboard is on rather than cancelling.
+			if ui.PrimaryButton(c, confirmLabel(spec)).AutoFocus().Clicked() {
 				submit = true
 			}
 		})
 		if submit {
-			open = false
 			switch {
 			case spec.AllowOther && other != "":
+				open = false
 				a.answerPrompt(rex.PromptAnswer{Text: other})
 			case spec.Multiple:
 				ids := make([]string, 0, len(spec.Items))
@@ -225,12 +225,12 @@ func (a *App) promptPanel(c *ui.Context, k *colors) {
 					}
 				}
 				if len(ids) > 0 {
+					open = false
 					a.answerPrompt(rex.PromptAnswer{IDs: ids})
-				} else {
-					open = true
 				}
 			case len(spec.Items) > 0:
-				// One item: Enter answers the row it is on.
+				// One item: Return answers the row it is on.
+				open = false
 				a.answerPrompt(rex.PromptAnswer{IDs: []string{spec.Items[sel].ID}})
 			}
 		}
