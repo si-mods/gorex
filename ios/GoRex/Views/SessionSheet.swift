@@ -10,6 +10,9 @@ struct SessionSheet: View {
     @Environment(\.dismiss) private var dismiss
     /// How tall the sheet's content is, for a sheet as tall as it.
     @State private var height: CGFloat = 0
+    /// Whether the ports sheet shows, and how many the pane has.
+    @State private var portsShown = false
+    @State private var portCount: Int?
 
     var body: some View {
         let session = host.sessions.first { $0.id == target.session }
@@ -32,6 +35,14 @@ struct SessionSheet: View {
                     }
                     .padding(.bottom, 8)
                     if let session { windows(session) }
+                    Button { portsShown = true } label: {
+                        Row(icon: "network", title: Text("Ports"), divider: false) {
+                            if let portCount, portCount > 0 {
+                                Text(String(portCount)).foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                    .background(.fill.quaternary, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
                     Button {
                         dismiss()
                         newTab()
@@ -57,6 +68,12 @@ struct SessionSheet: View {
         .buttonStyle(.plain)
         .presentationDetents([height > 0 ? .height(height) : .medium, .large])
         .presentationDragIndicator(.hidden)
+        .task {
+            portCount = (try? await host.ports(session: target.session, block: target.block))?.ports.count
+        }
+        .sheet(isPresented: $portsShown) {
+            PortsView(host: host, target: target)
+        }
     }
 
     /// The session's windows, as its card in the list, with a check on the
