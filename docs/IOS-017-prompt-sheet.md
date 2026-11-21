@@ -8,7 +8,7 @@ metadata:
 
 # IOS-017: A host's question on the phone
 
-Status: built.
+Status: built (#957).
 
 This doc adds the prompt sheet to Rex Go. The gateway already sends a question to every app that can show it, at Rex API revision 17 ([MOD-005](MOD-005-client-prompts.md)). The app ignored those events, so the phone could not answer. The sheet is the last part of the phone's client features: the ports sheet ([IOS-014](IOS-014-pane-ports.md)), the focus back ([IOS-015](IOS-015-focus-back.md)) and this sheet.
 
@@ -86,5 +86,5 @@ A config action on the host calls `rex.ui.input` or `rex.ui.pick`. The gateway s
 
 ## Phases
 
-1. The model, the sheet, the events and the reply (#953).
+1. The model, the sheet, the events and the reply (#957).
 2. A later doc: a notification for a question that arrives while the app is away.
