@@ -206,6 +206,13 @@ export function redraw() {
   schedule();
 }
 
+/** The width of the column of tab tiles that the projects' list drew with; none when another list is drawn. */
+let tileColumn: number | undefined;
+
+export function setTileColumn(n: number | undefined) {
+  tileColumn = n;
+}
+
 function blockRows(c: HostConn, block: string) {
   for (const b of shownBlocks(c)) app.see(c, b);
   const nav = list();
@@ -216,7 +223,7 @@ function blockRows(c: HostConn, block: string) {
       if (!leavesOf(layoutOf(w)).includes(block)) continue;
       const b = nav.querySelector<HTMLElement>(`.window[data-host="${CSS.escape(c.host.id)}"][data-window="${CSS.escape(w.window_id)}"] > .block`);
       if (!b) return redraw();
-      fillWindow(c, b, w, tilesRoom(v));
+      fillWindow(c, b, w, tileColumn ?? tilesRoom(v));
     }
   }
 }
@@ -240,6 +247,7 @@ export function sidebar(force = false) {
   whole = false;
   changed.clear();
   const nav = document.createElement("nav");
+  tileColumn = undefined;
   if (!prefs.tabPlacement) {
     if (!projectBar(nav, c)) tabBar(nav, c);
   } else if (!projectTree(nav)) {

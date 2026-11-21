@@ -326,3 +326,19 @@ function decode(j: any): Record<string, HostModel> {
   }
   return out;
 }
+
+/** How a group of the sidebar (a project, Older, No Project) looks: its chevron, and where the shown place is marked. */
+export interface GroupLook {
+  /** "none" with no tabs; else the way the chevron points. */
+  chevron: "none" | "closed" | "open";
+  /** The group has the face behind its row and tabs: it is shown, open, with tabs. */
+  face: boolean;
+  /** The row itself is filled as the chosen place: shown, with no face. */
+  pill: boolean;
+}
+
+/** The look of a group that is `open`, is the place `shown`, and has `tabs` tabs. */
+export function groupLook(open: boolean, shown: boolean, tabs: number): GroupLook {
+  const face = shown && open && tabs > 0;
+  return { chevron: tabs === 0 ? "none" : open ? "open" : "closed", face, pill: shown && !face };
+}

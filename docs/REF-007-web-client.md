@@ -1151,7 +1151,7 @@ folders.
   (`gorex.web.spaces`, `gorex.web.expanded`); the page works without it.
 - **Under each host**, its projects of the shown space in order of last use
   (`project.used`), those unused for 30 days under a collapsed **Older**,
-  and the host's **Tabs with no project** (`project: {}`), shut at first and
+  and the host's **No Project** group (`project: {}`), open at first and
   shown in every space. A project's row opens its tabs and a New Tab row;
   its `+` and New Tab send `session.new_window` with `cwd` set to the
   project's folder; a tab of no project has no `cwd`. A folder that is gone

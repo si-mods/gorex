@@ -22,6 +22,10 @@
     --muted: #8e8e93;
     --hover: rgba(255, 255, 255, 0.10);
     --pill: rgba(255, 255, 255, 0.16);
+    /* The shown project's face, its active tab lifted on it (the desktop's groupFace, pillLift, liftShadow). */
+    --group-face: rgba(255, 255, 255, 0.05);
+    --pill-lift: rgba(255, 255, 255, 0.24);
+    --lift-shadow: rgba(0, 0, 0, 0.18);
     /* The tiles' outer rim, dark on a dark page and light on a light one; the dot of a program done. */
     --tile-rim: rgba(0, 0, 0, 0.7);
     --tile-rim-w: 0.5px;
@@ -61,6 +65,9 @@
     --muted: #6c6c70;
     --hover: rgba(0, 0, 0, 0.07);
     --pill: rgba(0, 0, 0, 0.12);
+    --group-face: rgba(0, 0, 0, 0.045);
+    --pill-lift: rgba(255, 255, 255, 0.92);
+    --lift-shadow: rgba(0, 0, 0, 0.06);
     --tile-rim: rgba(255, 255, 255, 0.95);
     --tile-rim-w: 1px;
     --dot-rim: rgba(255, 255, 255, 0.95);
@@ -215,35 +222,56 @@
   .window[data-drop="into"] { box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--busy) 60%, transparent); }
   /* Projects (projectsidebar.ts): a host's projects of the space, a row each with its folder and `+`, its tabs
      under it; the space picker is a chip at the top. A host that is away shows its copy, dimmed (DESIGN.md). */
-  .project { display: flex; align-items: center; margin: 1px 0; border-radius: 999px; }
+  .project { display: flex; align-items: center; min-height: 32px; margin: 1px 0; border-radius: 999px; }
   .project:hover { background: var(--hover); }
   .project.open { background: var(--pill); }
   .project.current .name { font-weight: 600; }
-  .project-tabs .window { margin: 1px 0; }
   .project[data-drop="into"] { box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--busy) 60%, transparent); }
   .project-main {
-    display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; padding: 5px 4px 5px 8px; border: 0;
+    display: flex; align-items: center; gap: 8px; flex: 1; align-self: stretch; min-width: 0; padding: 6px 4px 6px 12px; border: 0;
     background: none; color: var(--text); font: inherit; text-align: left; cursor: pointer;
   }
   .project-main .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .project-main .count { flex: none; margin-left: auto; padding-left: 8px; color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
-  .project-main .name { flex: 0 1 auto; }
+  .project-main .count { flex: none; padding-left: 4px; color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
   .project.group .project-main { color: var(--muted); }
   .project > button.icon { margin-right: 4px; display: none; }
   .project:hover > button.icon, .project.open > button.icon, .project.current > button.icon, .project:focus-within > button.icon { display: flex; }
   /* A touch screen has no hover: the row's + stays. */
   @media (hover: none) { .project > button.icon { display: flex; } }
   .project-main .color-dot.none { background: none; box-shadow: none; }
-  /* A project's tabs: one step in, under a thin guide line. */
-  /* A project's tabs start at the project's leading edge: the tab's icon where the folder icon starts, its title under
-     the project's name (a single tile is 23px wide: the folder is 14px, so its margin makes up the rest). */
-  .project-tabs { margin: 0 0 2px; }
-  .project-tabs button.block { padding-left: 8px; }
   .project-main .color-dot { margin-right: 14px; }
-  .project-main .project-icon { width: 14px; height: 14px; margin-right: 9px; color: var(--muted); }
-  .project-tabs .window.copy { padding: 6px 12px 6px 39px; color: var(--text); cursor: default; }
+  /* A project's mark: a neutral tile of a tab's size and corners (21x16, radius 4.5) in the room of the tab tiles,
+     with the folder in it in the project's color, muted with none. The name starts where the tabs' titles do. */
+  .folder-slot { position: relative; flex: none; height: 20px; }
+  .folder-tile {
+    position: absolute; left: 1px; top: 2px; display: flex; align-items: center; justify-content: center; width: 21px; height: 16px;
+    border-radius: 4.5px; background: color-mix(in srgb, var(--text) 9%, transparent); color: var(--muted);
+  }
+  .folder-tile .pane-icon { width: 11px; height: 11px; }
+  /* The chevron at the row's end, before the count: right when shut, down when open. */
+  .chev { flex: none; display: flex; align-items: center; justify-content: center; width: 16px; color: color-mix(in srgb, var(--muted) 70%, transparent); }
+  .chev .pane-icon { width: 11px; height: 11px; transform: rotate(-90deg); }
+  .project-main[aria-expanded="true"] .chev .pane-icon { transform: none; }
+  /* A group (a project, Older, No Project): rows 2px apart. Every group keeps room for the face, 4px past its rows, a
+     radius of the pill's 16px and those 4px, so showing another project moves nothing and only the face's color fades. */
+  #list:has(nav.ptree) { margin: 0 -6px; padding: 0 6px; }
+  nav.ptree { padding: 0 2px; }
+  .pgroup { position: relative; margin: -2px -4px; padding: 4px; border-radius: 20px; }
+  .pgroup > :not(.face-bg) { position: relative; }
+  .pgroup .project, .pgroup .project-tabs .window { margin: 0; }
+  .face-bg { position: absolute; inset: 0; border-radius: inherit; background: var(--group-face); opacity: 0; pointer-events: none; }
+  .pgroup.face > .face-bg { opacity: 1; }
+  /* The active tab of the face is lifted: a lighter face, a soft shadow and a hairline. */
+  .pgroup.face .window.open {
+    background: var(--pill-lift);
+    box-shadow: 0 1px 2px var(--shadow), 0 1px 4px var(--lift-shadow), inset 0 0 0 0.5px color-mix(in srgb, var(--text) 8%, transparent);
+  }
+  /* A group's tabs, flush with its row: the tab's tile where the folder tile is, its title under the name. */
+  .project-tabs { display: flex; flex-direction: column; gap: 2px; margin: 2px 0 0; }
+  .project-tabs button.block { padding-left: 12px; }
+  .project-tabs .window.copy { padding: 6px 12px 6px 43px; color: var(--text); cursor: default; }
   .new-tab {
-    display: flex; align-items: center; gap: 8px; width: 100%; padding: 5px 12px 5px 8px; border: 0; border-radius: 999px;
+    display: flex; align-items: center; gap: 8px; width: 100%; min-height: 32px; padding: 5px 12px; border: 0; border-radius: 999px;
     background: none; color: var(--muted); font: inherit; text-align: left; cursor: pointer;
   }
   .new-tab:hover:not(:disabled) { background: var(--hover); color: var(--text); }

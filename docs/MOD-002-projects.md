@@ -247,7 +247,7 @@ This sketch shows the context menu of a project:
 - The projects of a host are in order of last use (`Used`), the latest first. The projects that the user did not use for 30 days go under a collapsed **Older** row, at the level of the projects.
 - **No Project** (the tabs with no project) is a group shaped like a project (projectGroup), the same as on Rex Go. Its header row has the folder tile in the muted tint (no project color), the label (one line, cut with an ellipsis, never wrapped), the chevron and the count, and a `+` in place of the count under the pointer or while it is shown. Its tabs come under it in the columns of the tabs of a project, and fold open and shut with the same motion. It is open at first, unlike a project that the window does not show, and keeps its open state per client as a project does (no new setting). It is the last group of the host and shows in every space. With no tab, it does not show, unless the window shows it. While the window shows it, with its tabs open, it has the face and its active tab is lifted, as a project's. A click on its row shows it, and on the one shown opens or closes its tabs. A click on a tab shows its workspace on that tab. The row is a drop target for a tab of the host, which then leaves its project. It has New Tab in its context menu. No Project that an adoption waits for (Migration) shows with the same folder tile and name as a waiting project, greyed, with "Waiting for <host>".
 - New Project… at the foot of the sidebar is an icon, as Settings is. Its name is in its tooltip. The header of each host has its `+` too, and ⇧⌘N works.
-- The web client keeps its current rows for now.
+- The web client has the same rows (below, Web client).
 - A tab of a project that the window does not show names itself as a shown tab does. It uses the title that its program set, the icon of its program and its folder. These come from the session list of the host. No pane is attached. A shell at its prompt names itself by the shell and its folder, shown or not. It does not use the title or the done or error status that a program left when it ended there.
 - The user drags a tab onto a project of its host to move it there, with its panes and their processes.
 
@@ -370,7 +370,14 @@ The folder check of v0.38.0 stays. A missing folder fails with a note and offers
 
 ### Web client
 
-The web client is the same as Rex Go, for the host that the page is connected to and its hosts. Its tabs with no project are under a row of their own.
+The web client is the same as Rex Go, for the host that the page is connected to and its hosts. Its sidebar has the rows of the desktop (#896; #832 and #775 drew its own):
+
+- A project, Older and No Project are groups built by one function (`projectGroup`, `groupHead` in `web/src/projectsidebar.ts`). The head row is as high as a tab row (32 px). It has a neutral tile of a tab's program tile (21x16 px, radius 4.5 px) with the folder in the project's color (muted with none), the name on one line cut with an ellipsis, the chevron and the tab count. The tile column is as wide as the widest tab tile column of the list, so every name and every tab title start at one place.
+- The chevron is at the row's end, before the count: right when shut, down when open, with `aria-expanded` on the row's button. A group with no tabs has none. It turns, and the tabs fold open and shut, in 200 ms. With `prefers-reduced-motion` they change at once. The sidebar is made again at each change, so the motion plays on the new elements (`folds`).
+- The shown project, while open with tabs, has a face (`groupLook`, `.pgroup.face`): 4 px past its rows, radius 20 px (the pill's 16 px and the 4 px). Its active tab is lifted (`--pill-lift`, a soft shadow, a hairline). Every group keeps the room of the face, so showing another project moves nothing, and only the color fades. Rows of two groups are 6 px apart (2 px between a face and the next group's rows). The list keeps 10 px from the sidebar's edges.
+- **No Project** is the group of the host's tabs with no project: the catalog name `projectNoProjectName` ("No Project", zh-Hans 「无项目」), a muted folder tile, the chevron and the count, a `+` and the menu with New Tab, and a drop target that moves a tab out of its project (`gorex.project.move`, as before). It is open at first and keeps its open state in `gorex.web.expanded` as a project does. It is not renamable. It has the face while the shown tab has no project.
+- New Project… at the sidebar's foot is the `folder-plus` icon alone; the name is its title and `aria-label`.
+- No wire protocol or saved file changes: `gorex.web.expanded` keeps its format.
 
 ### Rex API
 

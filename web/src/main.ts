@@ -1357,7 +1357,7 @@ document.fonts.addEventListener("loadingdone", () => {
   add.type = "button";
   add.className = "icon";
   add.id = "new-space";
-  add.append(icon("plus"));
+  add.append(icon("folder-plus"));
   localize(add, () => {
     add.title = t("cmdNewSpace");
     add.setAttribute("aria-label", add.title);

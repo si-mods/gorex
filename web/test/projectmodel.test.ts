@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { HostConn as HostConnType } from "../src/hostconn";
-import { dirName, featureVersion, groupProjects, hostModel, Offline, parseProject, projectColor, ProjectRow, SpaceStore } from "../src/projectmodel";
+import { dirName, featureVersion, groupLook, groupProjects, hostModel, Offline, parseProject, projectColor, ProjectRow, SpaceStore } from "../src/projectmodel";
 
 // hostconn.ts imports the page's modules, which look at `window` as they load; a bare one is enough here.
 (globalThis as any).window ??= { addEventListener() {}, matchMedia: () => ({ matches: false, addEventListener() {} }) };
@@ -262,4 +262,38 @@ test("space delete calls gorex.space.delete, and a host of v0.41.0 a rename to D
   ]);
   const other = Object.assign(new Error("denied"), { code: "forbidden" });
   await assert.rejects(fake(v2, { "gorex.space.delete": other }).c.spaceDelete("Work"), /denied/);
+});
+
+test("a group points its chevron by its state, and none with no tabs", () => {
+  assert.equal(groupLook(true, false, 2).chevron, "open");
+  assert.equal(groupLook(false, false, 2).chevron, "closed");
+  // A project, Older or No Project with no tab has no chevron, open or not.
+  assert.equal(groupLook(true, false, 0).chevron, "none");
+  assert.equal(groupLook(false, true, 0).chevron, "none");
+});
+
+test("only the shown group, open with tabs, has the face; shut or empty, its row is filled instead", () => {
+  assert.deepEqual(groupLook(true, true, 3), { chevron: "open", face: true, pill: false });
+  assert.deepEqual(groupLook(false, true, 3), { chevron: "closed", face: false, pill: true });
+  assert.deepEqual(groupLook(true, true, 0), { chevron: "none", face: false, pill: true });
+  // A group the window does not show has neither, open or shut.
+  assert.deepEqual(groupLook(true, false, 3), { chevron: "open", face: false, pill: false });
+  assert.deepEqual(groupLook(false, false, 3), { chevron: "closed", face: false, pill: false });
+});
+
+test("Move to Project sends \"\" for the tabs with no project, and the session's ID for a project", async () => {
+  const { createProjectOps } = await import("../src/projectops");
+  const sent: [string, string][] = [];
+  const conn: any = {
+    sessions: new Map<string, any>([
+      ["p1", { id: "p1", project: { dir: "/work/acme-api" } }],
+      ["l1", { id: "l1", project: { dir: "" } }],
+    ]),
+    projectMove: async (tab: string, project: string) => void sent.push([tab, project]),
+    refresh: async () => {},
+  };
+  const ops = createProjectOps({ redraw() {}, status() {} } as any);
+  await ops.moveTab(conn, "p1", "w1", "l1");
+  await ops.moveTab(conn, "l1", "w2", "p1");
+  assert.deepEqual(sent, [["w1", ""], ["w2", "p1"]]);
 });

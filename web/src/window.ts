@@ -7,7 +7,7 @@ import type { HostConn } from "./hostconn";
 import { localize, t } from "./i18n";
 import { draggable, DropZone, onMenu, ownDrag, paneDropZone } from "./manage";
 import { PaneHost, TerminalView } from "./pane";
-import { motionMs, prefs } from "./prefs";
+import { motionEase, motionMs } from "./prefs";
 import { extractDroppedFiles } from "./upload";
 
 export type { FloatingLayer, LayoutNode };
@@ -458,8 +458,7 @@ export class WindowView {
    */
   private moving(ms: number) {
     this.stage.style.setProperty("--motion", `${ms}ms`);
-    // Snappy's spring has a little bounce (animation.go); Natural's settles without one.
-    this.stage.style.setProperty("--ease", prefs.animation === "natural" ? "cubic-bezier(0.22, 1, 0.36, 1)" : "cubic-bezier(0.3, 1.25, 0.5, 1)");
+    this.stage.style.setProperty("--ease", motionEase());
     this.stage.classList.add("moving");
     for (const p of this.panes.values()) p.held = true;
     clearTimeout(this.settleTimer);

@@ -539,7 +539,7 @@
   "spaceRename": "重命名",
   "projectNewOn": "在 {host} 上新建项目",
   "projectsOlder": "更早",
-  "projectNoProjectName": "无项目的标签页",
+  "projectNoProjectName": "无项目",
   "projectNewTabNoProject": "新建无项目标签页",
   "projectsEmpty": "此空间中没有项目。",
   "projectMoveSpace": "移到空间",

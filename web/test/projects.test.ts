@@ -204,3 +204,12 @@ test("goNearest lists the nearest folder that exists above a missing one", async
   await b.goNearest("/home/me");
   assert.equal(b.missing, undefined);
 });
+
+test("No Project is a plain name in every catalog, apart from the tab it makes", () => {
+  for (const lang of ["en", "zh-Hans"]) {
+    const c = JSON.parse(readFileSync(join(process.cwd(), "locales", `${lang}.json`), "utf8")) as Record<string, string>;
+    const name = c.projectNoProjectName;
+    assert.ok(name && !name.includes("{"), `${lang}: a group name is one plain line`);
+    assert.notEqual(name, c.projectNewTabNoProject);
+  }
+});
