@@ -129,8 +129,23 @@ final class Predictor {
     }
 
     /// How many cells a character takes: a plain one one, a wide or
-    /// fullwidth one two.
+    /// fullwidth one two, as the terminals' own wide ranges name them.
     static func width(_ c: Character) -> Int {
-        c.unicodeScalars.contains { $0.properties.eastAsianWidth == .wide || $0.properties.eastAsianWidth == .fullwidth } ? 2 : 1
+        c.unicodeScalars.contains { s in Self.wide.contains { $0.contains(s.value) } } ? 2 : 1
     }
+
+    /// The wide and fullwidth ranges, after wcwidth: CJK, Hangul and the
+    /// fullwidth forms, emoji's own blocks among them.
+    private static let wide: [ClosedRange<UInt32>] = [
+        0x1100 ... 0x115F,  // Hangul Jamo
+        0x2329 ... 0x232A,  // angle brackets
+        0x2E80 ... 0xA4CF,  // CJK Radicals through Yi
+        0xAC00 ... 0xD7A3,  // Hangul Syllables
+        0xF900 ... 0xFAFF,  // CJK Compatibility Ideographs
+        0xFE30 ... 0xFE6F,  // CJK Compatibility Forms
+        0xFF00 ... 0xFF60,  // Fullwidth Forms
+        0xFFE0 ... 0xFFE6,  // fullwidth signs
+        0x1F300 ... 0x1FAFF,  // emoji
+        0x20000 ... 0x3FFFD,  // CJK Extension B and later
+    ]
 }
