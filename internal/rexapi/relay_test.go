@@ -144,11 +144,11 @@ func TestRelayFeature(t *testing.T) {
 		want      bool
 	}{
 		{"lan", transportLAN, "192.168.1.5", true},
+		{"local network, seen as tcp", transportTCP, "192.168.1.5", true},
 		{"tailnet", transportTailscale, "100.64.0.5", false},
 		{"tailcat", transportTailcat, "100.64.0.5", false},
 		{"unix", transportUnix, "", false},
-		{"tcp", transportTCP, "127.0.0.1", false},
-		{"lan without an address", transportLAN, "", false},
+		{"tcp without an address", transportTCP, "", false},
 	}
 	for _, tc := range cases {
 		c := &control{transport: tc.transport, local: tc.local}
@@ -158,7 +158,7 @@ func TestRelayFeature(t *testing.T) {
 	}
 	f := startFixture(t)
 	c, _, _ := f.sessionWith(t, rex.CreateOptions{Command: []string{"true"}})
-	if features, _ := c.welcome["features"].([]any); slices.Contains(features, any(featurePortRelay)) {
-		t.Errorf("a TCP socket's welcome lists %s: %v", featurePortRelay, features)
+	if features, _ := c.welcome["features"].([]any); !slices.Contains(features, any(featurePortRelay)) {
+		t.Errorf("a local network client's welcome lacks %s: %v", featurePortRelay, features)
 	}
 }

@@ -100,7 +100,7 @@ Rex Go cannot open the port in its browser either. A server that listens on 127.
 ## Tests
 
 - A unit test builds the URL from each kind of address: `0.0.0.0`, `::`, a LAN address, 127.0.0.1 and a link-local IPv6 address.
-- A test checks that only a local-network connection lists `gorex.port_relay`, and that a tailnet, tailcat or TCP socket's welcome does not.
+- A test checks that a local-network connection lists `gorex.port_relay`, whose callers Rex sees as plain TCP ones, and that a tailnet, tailcat or Unix socket's welcome does not.
 - A host test with a session that listens on 127.0.0.1 checks the list, the process name and the ID.
 - A relay test opens a relay to a test listener and checks that bytes flow both ways, and that the relay closes at its limit.
 - A UI check on the simulator, and then on the Mac mini, shows the sheet, the empty state, the partial state and the open action.

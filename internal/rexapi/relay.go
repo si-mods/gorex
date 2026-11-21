@@ -19,7 +19,7 @@ const (
 	relayLimit = 8
 	// featurePortRelay is the welcome feature that says a browser on this
 	// client's network can open a relay this connection starts. A client
-	// over the Unix socket, GoRex's tailcat or a bare TCP socket gets no
+	// over the Unix socket, GoRex's tailcat or the host's tailnet gets no
 	// feature, and Rex Go's Ports sheet offers no Open on the phone.
 	featurePortRelay = "gorex.port_relay"
 )
@@ -27,9 +27,14 @@ const (
 // canRelay tells whether a browser on the client's network can reach a
 // relay this connection opens. Only the local network counts: the phone's
 // browser shares it, while GoRex's tailcat and the host's own tailnet are
-// inside the app and no browser uses them.
+// inside the app and no browser uses them. The local network's callers
+// are what Rex sees as plain TCP ones.
 func (c *control) canRelay() bool {
-	return c.transport == transportLAN && c.local != ""
+	switch c.transport {
+	case transportTCP, transportLAN:
+		return c.local != ""
+	}
+	return false
 }
 
 // relay forwards connections on a host address to a loopback port of a
