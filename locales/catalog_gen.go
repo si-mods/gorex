@@ -1326,14 +1326,14 @@ func (msgs Messages) CloseOthersTitle(n int) string {
 	return Catalog.Format(msgs.locale, "closeOthersTitle", map[string]any{"n": n})
 }
 
-// CloseOthersBody says "{n, plural, one {Their terminal ends, and the program running in it. This can't be undone.} other {Their # terminals …"
+// CloseOthersBody says "{n, plural, one {Its terminal ends, and the program running in it. This can't be undone.} other {Their # terminals en…"
 // in the language the app shows.
 //
 // Body of the question before Close Other Tabs: how many terminals of the
 // other tabs end.
 func CloseOthersBody(n int) string { return In(i18n.Locale()).CloseOthersBody(n) }
 
-// CloseOthersBody says "{n, plural, one {Their terminal ends, and the program running in it. This can't be undone.} other {Their # terminals …"
+// CloseOthersBody says "{n, plural, one {Its terminal ends, and the program running in it. This can't be undone.} other {Their # terminals en…"
 // in the language of msgs.
 //
 // Body of the question before Close Other Tabs: how many terminals of the

@@ -384,7 +384,7 @@
       }
     }
   },
-  "closeOthersBody": "{n, plural, one {Their terminal ends, and the program running in it. This can't be undone.} other {Their # terminals end, and the programs running in them. This can't be undone.}}",
+  "closeOthersBody": "{n, plural, one {Its terminal ends, and the program running in it. This can't be undone.} other {Their # terminals end, and the programs running in them. This can't be undone.}}",
   "@closeOthersBody": {
     "description": "Body of the question before Close Other Tabs: how many terminals of the other tabs end.",
     "placeholders": {
