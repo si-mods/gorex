@@ -39,9 +39,7 @@ func (a *App) askUI(action string, opts config.UIOptions) (config.UIAnswer, erro
 			Icon: it.Icon, Detail: it.Detail, Selected: it.Selected,
 		})
 	}
-	log.Printf("gorex: asking %q (%s)", spec.Title, action)
 	ans, err := c.PromptOpen(action, spec, opts.Timeout)
-	log.Printf("gorex: asked %q: %+v %v", spec.Title, ans, err)
 	if err != nil {
 		return config.UIAnswer{}, err
 	}
@@ -52,7 +50,6 @@ func (a *App) askUI(action string, opts config.UIOptions) (config.UIAnswer, erro
 // that another device answered, or that timed out. Call it on the main
 // thread.
 func (a *App) promptEvent(p *rex.PromptEvent) {
-	log.Printf("gorex: prompt event %s %s", p.Op, p.CallID)
 	switch p.Op {
 	case "requested":
 		if p.Spec == nil {
@@ -109,13 +106,12 @@ func (a *App) promptPanel(c *ui.Context, k *colors) {
 	defer func() {
 		if !open && a.prompt == p {
 			// The backdrop, or Escape, closed it: the action gets a cancel.
-			log.Printf("gorex: prompt closed unanswered: kind=%s submit=%v picked=%v other=%q", spec.Kind, false, a.promptPicked, a.promptOther)
 			a.answerPrompt(rex.PromptAnswer{Cancelled: true})
 		}
 	}()
 	ui.DialogBase(c.Key("prompt"), &open, func(backdrop, panel ui.Element) {
 		backdrop.Background(k.backdrop)
-		dialogShadow(glassPanel(panel.Width(460).MaxHeight(560).Padding(20).Radius(radiusXXL), k.panel).Border(1, k.panelBorder)).
+		dialogShadow(frostPanel(panel.Width(460).MaxHeight(560).Padding(20).Radius(radiusXXL), k, radiusXXL)).
 			Role(ui.RoleDialog).Label(spec.Title)
 		if p2 := p.Action; p2 != "" {
 			ui.Text(c, p2).FontSize(fontFootnote).TextColor(k.textFaint).Margin(0, 0, 4, 0)

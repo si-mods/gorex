@@ -1,6 +1,6 @@
 ---
 name: MOD-009
-description: "An action on the desktop asks a question, and every GoRex client, the phone among them, can show it and answer it. Use when you change gorex.ui, the server's prompt broker, or the prompt sheet on a client."
+description: "An action on the desktop asks a question, and every GoRex client that can show it does; the phone answers the gateway's actions through the Rex API broker. Use when you change gorex.ui, the server's prompt broker, or the prompt sheet on a client."
 metadata:
   created: "2026-11-21"
   updated: "2026-11-21"
@@ -8,30 +8,31 @@ metadata:
 
 # MOD-009: Questions across GoRex's clients
 
-Status: accepted. Not implemented.
+Status: built (#958).
 
-This doc adds a prompt channel to GoRex's own protocol, and the phone's prompt sheet. It is the GoRex-protocol counterpart of [MOD-005](MOD-005-client-prompts.md), which serves Rex's clients. It follows [DOC-001](DOC-001-design-docs.md).
+This doc adds a prompt channel to GoRex's own protocol, and the desktop app's prompt sheet. It is the GoRex-protocol counterpart of [MOD-005](MOD-005-client-prompts.md), which serves Rex's clients, the phone among them ([IOS-017](IOS-017-prompt-sheet.md)). It follows [DOC-001](DOC-001-design-docs.md).
 
 ## Problem
 
 `gorex.ui` exists in `internal/config`, but the app sets no host for it (`SetUI` is called only by the gateway). An action that asks a question in the app fails with `gorex.ui: no prompt host`.
 
-The gateway's producer and broker, [MOD-008](MOD-008-gateway-actions.md) and MOD-005, serve Rex's clients. Rex Go is not a Rex client. It speaks GoRex's protocol, so it receives none of those questions.
+The gateway's producer and broker, [MOD-008](MOD-008-gateway-actions.md) and MOD-005, serve the gateway's actions and Rex's clients. The app's actions run in the app, on Lua ([REF-002](REF-002-lua.md)), and their questions have no channel to the app's other clients. Rex Go is a Rex client of the gateway, so this doc's channel serves the desktop app's windows; the phone's questions come through MOD-005.
 
 The user pays for it: an action such as "New worktree" runs on the desktop and cannot ask the person on the phone.
 
 ## Goal
 
 - An action that runs in the app can ask a question, and it receives the answer.
-- Every connected GoRex client that supports prompts shows the question, the phone among them. The first answer ends it everywhere.
+- Every connected GoRex client that supports prompts shows the question, which is each window of the desktop app. The first answer ends it everywhere.
 - A timeout, a cancel or a closed client ends the question for everyone.
 - The question time does not count toward the action's time limit.
 - A server that does not support prompts answers the action with a clear error.
 
 ## Non-goals
 
-- Rex's own clients and the Rex API broker. MOD-005 and MOD-008 keep their own.
+- Rex's own clients, the Rex API broker and the phone's sheet. MOD-005, MOD-008 and [IOS-017](IOS-017-prompt-sheet.md) keep their own.
 - The web client. It reaches GoRex through the Rex API gateway, so a later doc can bridge the two brokers.
+- An app-side action asking the phone. Its question needs the bridge below.
 - Running config actions on the phone. This doc only answers their questions.
 - Actions that the gateway runs. Their prompts stay with the Rex broker.
 - A shared record of past answers.
@@ -41,9 +42,9 @@ The user pays for it: an action such as "New worktree" runs on the desktop and c
 ### Behavior
 
 - The person runs an action on the desktop, from a key, the palette or `gorex action run`. The action calls `gorex.ui.input` or `gorex.ui.pick`.
-- Every GoRex client that can show the question does so. That is each window of the desktop app, each connected phone, and any later client that supports prompts.
-- The person answers on the phone. The other clients close the question, and the desktop action continues with the answer.
-- The desktop app shows its own question too, so one device is enough.
+- Every GoRex client that can show the question does so. That is each window of the desktop app, and any later client that lists the capability.
+- The person answers in one window. The other windows close the question, and the action continues with the answer.
+- The window that asked shows its own question too, so one window is enough.
 - A person closes a question. The other devices close it, and the action receives a cancel.
 - No device answers within the timeout. Every device closes it, and the action receives a timeout error.
 - A device cannot show the question. It answers `not_supported`, and the other devices keep it.
@@ -68,10 +69,13 @@ The user pays for it: an action such as "New worktree" runs on the desktop and c
   - The server sends `prompt_requested` to each eligible connection, with its call ID.
   - A client's `prompt.answer` request carries its call ID and the answer.
   - The server sends `prompt_ended` to the connections whose question ended.
-- `luaconfig.go`, `commands.go`: the app sets the `gorex.ui` host to a call on the app's server connection. It runs the action with a clock that stops while a question is open. `internal/config` already has `UIOptions`, `UIAnswer`, `SetUI` and `InvokeWithin`.
-- `ios/GoRex/Rex/Host.swift`: the prompt events and the `prompt.answer` request.
-- `ios/GoRex/Views/PromptSheet.swift`: an input sheet or a pick sheet, with the items, the confirm label and the cancel.
-- A client that cannot show a prompt answers `not_supported` once, and the server removes it from the question.
+- `commands.go`, `layoutcmd.go`, `keymap.go`: the app runs a custom action off the main thread, so that the window draws while its question waits, and answers the command that started it without waiting for the answer.
+- `commands.go`: the app sets the `gorex.ui` host to `askUI`, which opens the question on the app's server connection, and runs the action with `actionClock`.
+- `actionclock.go`: the action's time, which pauses while a question is open.
+- `promptsheet.go`: the question's panel over the window, an input or a pick, with Cancel and the confirm; the keyboard moves over a pick's items, and Return answers the row it is on.
+- `internal/rex/client.go`: `DeclareCapabilities`, `PromptOpen` and `PromptReply`; `workspace.go` declares the capability before each hello, the upgrade's connection included, and shows the events.
+- A server without the capability answers `prompt.open` with "unknown op", and the action fails with a message that names the server.
+- A client that cannot show a prompt answers `unsupported` once, and the server removes it from the question.
 
 ## Alternatives
 
@@ -95,14 +99,14 @@ The user pays for it: an action such as "New worktree" runs on the desktop and c
 
 ## Tests
 
-- A server test with two clients checks that both receive the question, that the first answer wins, and that the second receives `prompt_ended` with `answered`.
-- Tests for a timeout, a cancel, `not_supported` with one and with two clients, a wrong item and a busy client.
-- An app test with a fake `gorex.ui` host checks that the action's deadline stops during a question and continues after it.
-- An iOS unit test checks the event decoding and the answer's shape. A UI check on the simulator and the Mac mini shows an input and a pick.
+- `TestPromptFirstAnswerWins`, with two clients: both receive the question, the first answer wins and reaches the asker, and the second client receives `ended` with `answered`; a late answer is refused.
+- `TestPromptTimeout`, `TestPromptCancel`, `TestPromptUnsupported`, `TestPromptUnsupportedByAll`, `TestPromptPickChecks`, `TestPromptBusyClient` and `TestPromptSpecChecks` cover the rest of the model.
+- `TestActionClockPauses`: a question's time does not count toward the action's, and the time it had left continues after the answer.
+- A run of the real app on the Mac mini, with a config action that asks, showed an input and a pick, and the action's Lua received the typed text, the chosen ID and `nil` for a cancel.
 - This change touches no item in [invariants.md](invariants.md).
 
 ## Phases
 
-1. The server's registry and protocol, the app's producer and the desktop sheet.
-2. The phone's sheet, with input and pick.
-3. A bridge to the web client through the gateway, in a later doc.
+1. The server's registry and protocol, the app's producer and the desktop sheet (#958).
+2. The phone's sheet, with input and pick: [MOD-005](MOD-005-client-prompts.md) and [IOS-017](IOS-017-prompt-sheet.md).
+3. A bridge from the app's channel to the gateway's Rex broker, so that an app-side action asks the phone, in a later doc.

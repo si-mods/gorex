@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"strconv"
 	"strings"
 	"time"
@@ -81,10 +80,6 @@ func (s *Server) openPrompt(spec *PromptSpec, action string, timeout time.Durati
 		b   []byte
 	}
 	var sends []send
-	log.Printf("rex: prompt open: %d subs", len(subs))
-	for _, sub := range subs {
-		log.Printf("rex: prompt open: sub prompts=%v busy=%v remote=%v", sub.prompts, sub.busy, sub.remote)
-	}
 	s.promptMu.Lock()
 	if s.prompts == nil {
 		s.prompts = map[string]*promptPlace{}
