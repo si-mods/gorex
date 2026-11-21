@@ -13,7 +13,8 @@ import (
 
 // glassSurfaces are the calls that give a panel its glass (DESIGN.md,
 // Glass): what is drawn in the function that calls one is drawn on glass.
-var glassSurfaces = map[string]bool{"glassPanel": true, "frostPanel": true, "panelMaterial": true}
+// menuStyleOf is the menus' and the pickers' way to their glass panel.
+var glassSurfaces = map[string]bool{"glassPanel": true, "frostPanel": true, "panelMaterial": true, "menuStyleOf": true}
 
 // drawsWithColors tells that fn takes GoRex's colors, as what draws does:
 // the calls TestGlassInk follows from a glass panel, and not the commands
