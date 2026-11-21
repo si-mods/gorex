@@ -323,6 +323,9 @@ struct HostListView: View {
         .onChange(of: expanded) { _, s in
             expandedText = s.sorted().joined(separator: "\n")
         }
+        // The space panel goes with the picker, should its own close not
+        // run as Activity takes the picker's place.
+        .onChange(of: inbox) { spacePanel = false }
         .onChange(of: expandedText) { _, t in
             expanded = Set(t.split(separator: "\n").map(String.init))
         }

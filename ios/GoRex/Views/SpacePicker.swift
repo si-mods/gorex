@@ -124,6 +124,9 @@ struct SpacePanelLayer: View {
                         .glassEffect(.regular, in: .rect(cornerRadius: SpacePanel.radius, style: .continuous))
                         .shadow(color: .black.opacity(0.16), radius: 24, y: 8)
                         .frame(maxHeight: max(160, g.size.height - r.maxY - 8 - 16), alignment: .top)
+                        // One element holding the rows, modal, so that
+                        // VoiceOver keeps to the panel while it is open.
+                        .accessibilityElement(children: .contain)
                         .accessibilityAddTraits(.isModal)
                         .accessibilityAction(.escape) { close() }
                         // Laid out over the whole layer, so that the scale
@@ -164,6 +167,8 @@ struct SpacePanel: View {
     /// The width of the color squares' column, which the plus of New
     /// Space shares; it grows with the text.
     @ScaledMetric(relativeTo: .body) private var mark: CGFloat = 16
+    /// VoiceOver goes to the header as the panel opens.
+    @AccessibilityFocusState private var heading: Bool
 
     static let radius: CGFloat = 28
     /// The panel's padding on every side.
@@ -177,6 +182,7 @@ struct SpacePanel: View {
                 Text("Spaces")
                     .font(.headline)
                     .accessibilityAddTraits(.isHeader)
+                    .accessibilityFocused($heading)
                 Spacer()
                 Button(action: edit) {
                     Text("Edit")
@@ -217,6 +223,7 @@ struct SpacePanel: View {
         }
         .padding(Self.inset)
         .frame(minWidth: 288, idealWidth: 288)
+        .onAppear { heading = true }
     }
 
     private var rows: some View {
