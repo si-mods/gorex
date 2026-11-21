@@ -10,6 +10,7 @@ enum Ghostty {
     /// font is known before, for a terminal that names it.
     static let app: ghostty_app_t? = {
         Maple.shared.register()
+        watchBackground()
         guard ghostty_init(0, nil) == 0, let config = config("minimum-contrast = \(TerminalView.minimumContrast)") else { return nil }
         var runtime = ghostty_runtime_config_s(
             userdata: nil,
@@ -35,6 +36,21 @@ enum Ghostty {
 
     static func unregister(_ surface: ghostty_surface_t) {
         views[Int(bitPattern: surface)] = nil
+    }
+
+    /// No surface presents a frame while the app is in the background, which
+    /// iOS forbids: a process-wide gate, synchronous when it closes, that
+    /// drops the frames not yet committed and lets the ones in flight finish
+    /// (docs/IOS-019-background-gpu.md). The app-level notifications fit the
+    /// gate: one scene's phase must not stop a scene that stays active.
+    private static func watchBackground() {
+        let center = NotificationCenter.default
+        center.addObserver(forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: .main) { _ in
+            ghostty_presentation_set_allowed(false)
+        }
+        center.addObserver(forName: UIApplication.willEnterForegroundNotification, object: nil, queue: .main) { _ in
+            ghostty_presentation_set_allowed(true)
+        }
     }
 
     /// A config of Ghostty's lines over its defaults: a remote terminal's,
