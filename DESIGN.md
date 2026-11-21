@@ -276,7 +276,7 @@ that exists.
 | Icon tile | a square of `k.hover`, `radiusS`, `radiusM` or `radiusL` by size, an icon from `assets/icons/` | `host.go`, `settingsview.go` |
 | Program tile | `tileW`×`tileH` rounded card, `drawTile`; the front tile bounces while a pane needs the user, `tileBounces` at iOS's timings | `tabs.go` |
 | Chip | a capsule row 28 high, `pillRadius` | `projectpicker.go`, `spaces.go` |
-| Menu row | `menuStyleOf`'s `RowHeight` 24, `RowPadding` 10 and `RowRadius`, `fontBody`; under the pointer its `Highlight` (`k.accent`), with all on it in `HighlightText` | MyGo's drawn menus (`menus.go`), and `menuRow` (`spaces.go`) for the pickers |
+| Menu row | `menuStyleOf`'s `RowHeight` 24, `RowPadding` 10 and `RowRadius`, `fontBody`; under the pointer its `Highlight` (`k.accent`), with all on it in `HighlightText`, a space's dot ringed in it; an inert row (an away host's project) none | MyGo's drawn menus (`menus.go`), and `menuRow` (`spaces.go`) for the pickers |
 
 ## Patterns
 

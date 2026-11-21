@@ -91,11 +91,13 @@ func (a *App) projectPicker(c *ui.Context, k *colors) {
 // pickerList is the picker's hosts and their workspaces.
 func (a *App) pickerList(c *ui.Context, k *colors) {
 	space := shownSpace()
+	// A host's header lines up with its rows.
+	pad := menuStyleOf(k, c.Theme().Dark).RowPadding
 	for _, h := range a.allHosts() {
 		if !a.hostShown(h, space) {
 			continue
 		}
-		ui.Row(c.Key("picker-host-"+hostKey(h))).Height(26).Padding(4, 8, 0, 8).Gap(6).AlignItems(ui.Center).Children(func() {
+		ui.Row(c.Key("picker-host-"+hostKey(h))).Height(26).Padding(4, pad, 0, pad).Gap(6).AlignItems(ui.Center).Children(func() {
 			a.hostSectionIcon(c, k, h)
 			ui.Text(c, a.hostName(h)).FontSize(fontSubhead).FontWeight(600).TextColor(k.textMuted).SingleLine().Ellipsis("…").Grow(1).MinWidth(0)
 		})
@@ -109,14 +111,16 @@ func (a *App) pickerList(c *ui.Context, k *colors) {
 			if w.Dir == "" {
 				name, glyph = locales.ProjectsNoProject(), "layers"
 			}
+			// A host's copy, while it is away, is listed but cannot be
+			// shown: its row is inert.
 			offline := w.offline()
-			row := a.menuRow(c, k, "picker-"+openKey(h, w.ID), w == a.ws, name, fmt.Sprint(w.tabCount()), func(ink ui.Color) {
+			var run func()
+			if !offline {
+				run = func() { a.showWorkspace(w) }
+			}
+			row := a.menuRow(c, k, "picker-"+openKey(h, w.ID), w == a.ws, name, fmt.Sprint(w.tabCount()), func(ink ui.Color, _ bool) {
 				glyphIcon(c, glyph, 14, ink).Shrink(0)
-			}, func() {
-				if !offline {
-					a.showWorkspace(w)
-				}
-			})
+			}, run)
 			if offline {
 				dimmed(row, 0.5)
 			}

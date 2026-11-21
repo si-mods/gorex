@@ -187,3 +187,45 @@ func TestSpacePickerIsMenu(t *testing.T) {
 		t.Errorf("the hovered row reads %v, want the menus' highlight %v", got, want)
 	}
 }
+
+// TestMenuRowInert checks that a menu row with nothing to run, as an away
+// host's project in the project picker, takes no highlight under the
+// pointer and runs nothing, as a drawn menu's disabled item.
+func TestMenuRowInert(t *testing.T) {
+	a := &App{}
+	old := prefs
+	t.Cleanup(func() { prefs = old })
+	prefs.Animation = "off"
+	m := menuStyleOf(&lightColors, false)
+	for _, inert := range []bool{false, true} {
+		ran := false
+		var run func()
+		if !inert {
+			run = func() { ran = true }
+		}
+		tt := ui.NewTester(func(c *ui.Context) {
+			c.Root().Background(lightColors.panel)
+			ui.Column(c).Width(200).Padding(6).Children(func() {
+				a.menuRow(c, &lightColors, "row", false, "acme-api", "", nil, run)
+			})
+		}, 220, 40)
+		tt.Frame()
+		r, ok := tt.Find("acme-api")
+		if !ok {
+			t.Fatal("no row")
+		}
+		tt.Move(r.X+r.W/2, r.Y+r.H/2)
+		tt.Frame()
+		img := tt.Image()
+		o := img.PixOffset(int(r.X+m.RowPadding/2), int(r.Y+r.H/2))
+		lit := [3]uint8(img.Pix[o:o+3]) == [3]uint8{m.Highlight.R, m.Highlight.G, m.Highlight.B}
+		if lit == inert {
+			t.Errorf("inert %v: the hovered row lit %v, want %v", inert, lit, !inert)
+		}
+		tt.ClickAt(r.X+r.W/2, r.Y+r.H/2)
+		tt.Frame()
+		if inert && ran {
+			t.Error("the inert row ran")
+		}
+	}
+}

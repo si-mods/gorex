@@ -382,8 +382,13 @@ func (a *App) spacePicker(c *ui.Context, k *colors, wide bool) {
 		menuStyleOf(k, c.Theme().Dark).Panel(panel.Margin(6, 0, 0, 0).Width(240), 0)
 		ui.Column(c).Children(func() {
 			for _, n := range a.st.spaceNames() {
-				a.menuRow(c, k, "space-"+n, n == name, spaceLabel(n), "", func(ui.Color) {
-					spaceSwatchMark(c, k, spaceColor(n), 10)
+				a.menuRow(c, k, "space-"+n, n == name, spaceLabel(n), "", func(ink ui.Color, hot bool) {
+					dot := spaceSwatchMark(c, k, spaceColor(n), 10)
+					if hot {
+						// On the highlight a ring in its ink keeps the dot,
+						// whose color may be the highlight's, in sight.
+						dot.Border(1, ink)
+					}
 				}, func() { a.showSpaceNamed(n) })
 			}
 			ui.Box(c).Height(1).Margin(4, 6).Background(k.panelBorder)
@@ -398,20 +403,28 @@ func (a *App) spacePicker(c *ui.Context, k *colors, wide bool) {
 }
 
 // menuRow is a row of a popover menu of GoRex's own, the space picker's
-// or the project picker's: a check when chosen, a mark drawn in ink, its
-// label and a detail; a click closes the menus and runs run. It is a row
-// of the drawn menus (menuStyleOf): their height, padding and radius, and
-// under the pointer their highlight, everything on it in its text color.
-func (a *App) menuRow(c *ui.Context, k *colors, key string, chosen bool, label, detail string, mark func(ink ui.Color), run func()) ui.Element {
+// or the project picker's: a check when chosen, a mark drawn in ink (hot
+// on the highlight), its label and a detail; a click closes the menus and
+// runs run. It is a row of the drawn menus (menuStyleOf): their height,
+// padding and radius, and under the pointer their highlight, everything
+// on it in its text color. With run nil the row is inert, as a drawn
+// menu's disabled item: no highlight, no click; the caller dims it.
+func (a *App) menuRow(c *ui.Context, k *colors, key string, chosen bool, label, detail string, mark func(ink ui.Color, hot bool), run func()) ui.Element {
 	m := menuStyleOf(k, c.Theme().Dark)
-	row := ui.Row(c.Key(key)).Height(m.RowHeight).Padding(0, m.RowPadding).Gap(8).Radius(m.RowRadius).AlignItems(ui.Center).Cursor(ui.CursorPointer).
+	row := ui.Row(c.Key(key)).Height(m.RowHeight).Padding(0, m.RowPadding).Gap(8).Radius(m.RowRadius).AlignItems(ui.Center).
 		Role(ui.RoleMenuItem).Label(label)
+	if run == nil {
+		row.AccessDisabled(true)
+	} else {
+		row.Cursor(ui.CursorPointer)
+	}
 	ink, muted := k.text, k.textMuted
-	if row.Hovered() {
+	hot := run != nil && row.Hovered()
+	if hot {
 		row.Background(m.Highlight)
 		ink, muted = m.HighlightText, m.HighlightText
 	}
-	if row.Clicked() {
+	if run != nil && row.Clicked() {
 		a.closeMenus()
 		a.later(c, run)
 	}
@@ -422,7 +435,7 @@ func (a *App) menuRow(c *ui.Context, k *colors, key string, chosen bool, label, 
 			}
 		})
 		if mark != nil {
-			mark(muted)
+			mark(muted, hot)
 		}
 		ui.Text(c, label).FontSize(fontBody).TextColor(ink).SingleLine().Ellipsis("…").Grow(1).MinWidth(0)
 		if detail != "" {
@@ -443,7 +456,7 @@ func spaceSwatchMark(c *ui.Context, k *colors, color string, size float32) ui.El
 	if hex, ok := spaceColorHex(color); ok {
 		return dot.Background(ui.Hex(hex))
 	}
-	return dot.Border(1, k.textFaint)
+	return dot.Border(1, k.textMuted)
 }
 
 // spaceDialog is the dialog of New Space… or Edit Spaces…, while one
