@@ -370,9 +370,10 @@ struct HostListView: View {
 
     // MARK: Spaces
 
-    /// The space shown, and the menu of the others.
+    /// The space shown, and the panel of the others.
     private func picker(spaces: [String], current: String, place: SpacePicker.Place = .list) -> some View {
         SpacePicker(spaces: spaces, current: current, color: { Color(project: book.colors[$0]) },
+                    count: { s in store.hosts.reduce(0) { $0 + (listing($1)?.projects.filter { $0.space == s }.count ?? 0) } },
                     choose: { s in withAnimation(.snappy) { book.chosen = s } },
                     add: { spaceName = ""; addingSpace = true },
                     edit: { editingSpaces = true },
