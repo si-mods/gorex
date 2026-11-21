@@ -332,7 +332,7 @@ func (a *App) projectSheetView(c *ui.Context, k *colors) {
 		backdrop.Background(k.backdrop)
 		winW, winH := c.Size()
 		panel.Width(min(540, winW-24)).MaxHeight(winH - 24).Padding(20).Radius(radiusXXL)
-		sheetPanel(c, panel, k)
+		frostPanel(panel, k, radiusXXL)
 		dialogShadow(panel).Role(ui.RoleDialog).Label(title)
 		// What does not fit a short window scrolls; the buttons stay.
 		ui.Scroll(c.Key("sheet-body")).MinHeight(0).Shrink(1).Children(func() {
@@ -373,18 +373,6 @@ func (a *App) projectSheetView(c *ui.Context, k *colors) {
 			a.focusReq = t.Focus
 		}
 	}
-}
-
-// sheetPanel gives the sheet's panel its face, as frostPanel does. Under
-// the glass setting in a light window, MyGo's glass takes panelGlass over
-// it, the tint the frost has without the setting: bare, it shows the panes
-// behind it grey, and the sheet's grey text does not read on that.
-func sheetPanel(c *ui.Context, panel ui.Element, k *colors) {
-	if glassOn() && !c.Theme().Dark {
-		panel.Border(1, k.panelBorder).Material(ui.SystemGlass{Fallback: paneGlass{face: k.panelGlass, flat: k.panel}})
-		return
-	}
-	frostPanel(panel, k, 16)
 }
 
 // sheetLabel is the label over a part of the sheet.

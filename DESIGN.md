@@ -23,7 +23,8 @@ A value in UI code comes from a layer, not from a literal: a color from
 `colors`, a type size, a radius or a shadow from `tokens.go`. Spacing is
 the one literal allowed, on the grid ([Spacing](#spacing)).
 `TestDesignTokens` (`tokens_test.go`) reads the root package's source
-and fails on a literal outside these rules.
+and fails on a literal outside these rules, written as a number or
+worked out of numbers (`30 / 2.6`).
 
 ## Colors
 
@@ -112,7 +113,7 @@ before. Three things make it up:
 | Glass | Code | Use it for |
 |---|---|---|
 | The window's material: what is behind the window, frosted by the system | `glass.go`, `glassVibrancy`, `WindowOptions.Vibrancy`, `Window.SetVibrancy` | The windows, main and Settings. `VibrancyGlass` on macOS (from 26; before, MyGo shows the popover material), `VibrancyGlass` on Windows 11 (Acrylic, which shows the desktop blurred), none on Linux. |
-| Layers over the page: the system's glass, else MyGo's | `glass.go`, `glassPanel(e, flat)`, `paneGlass{face, flat}`, `glass_other.go` | Popovers, dialogs and the palette's panel: `ui.SystemGlass`, with `paneGlass` (MyGo's `glass.Glass` on a GPU off macOS) where the system draws none. |
+| Layers over the page: the system's glass, else MyGo's | `glass.go`, `glassPanel(e, k)`, `paneGlass{face, flat}`, `glass_other.go` | Popovers, menus, dialogs and the palette's panel: `ui.SystemGlass`, with `paneGlass` (MyGo's `glass.Glass` on a GPU off macOS, under `k.panelGlass`) where the system draws none. |
 | The system's glass in an element: AppKit's `NSGlassEffectView` under its box | `glass.go`, `glassPill`, `ui.SystemGlass{Tint, Fallback}` | The panes, tiled and floating, tinted by their face (`glassTint`), with `faceMaterial` and `paneGlass` where the system draws none. The active tab's pill, in the sidebar, the tab strip and Settings, as Rex's: no tint dark, `pillTint` light; `faceMaterial{k.pillFace}` where the system draws none (before macOS 26, Windows, Linux, tests). On the sidebar's current project face (`groupFace`) it is `liftedPill`: `pillLift` where the system draws none, `liftShadow` and a hairline. |
 | Frost: the window behind, blurred and tinted | `frost.go`, `paintFrost` | A panel with the glass setting off, as the palette's, whose backdrop only dims it. |
 
@@ -138,9 +139,20 @@ before. Three things make it up:
   fills. The palette's backdrop only dims (`k.backdrop`), so that the
   glass is the panel's alone and blurs only what it covers: a blur over
   the whole window reads as a smeared window, not as glass. A new
-  popover, dialog or floating panel takes `glassPanel(panel, k.panel)`
+  popover, dialog or floating panel takes `glassPanel(panel, k)`
   in place of `Background(k.panel)`, with its radius and border as
   before.
+- **Text reads on the glass, whatever is behind it.** MyGo's glass
+  alone shows a dark terminal grey in a light window, and a light one
+  grey in a dark window. A panel's glass (`glassPanel`, `panelMaterial`)
+  takes `k.panelGlass` over it, as the frost does: dense enough that
+  `k.text` and `k.textMuted` keep 4.5:1 over the glass at its lightest
+  and its darkest (`TestGlassPanelReads`). Text and icons on a panel's
+  glass take `k.text` or `k.textMuted`, a key cap `k.textMuted` on a
+  face of `k.panel`, as the palette's do; `k.textFaint` falls under 3:1
+  there. `TestGlassInk` fails on `k.textFaint` in a function that calls
+  `glassPanel`, `frostPanel` or `panelMaterial`, or in what it calls that
+  takes `*colors`.
 - **Over the window's glass, the system's glass.** `glass.Glass` reads
   only what the page painted: under the clear sidebar and strip that is
   nothing, and it turns dark. Glass over them is `ui.SystemGlass`, which
@@ -191,7 +203,8 @@ system"), and no radius is picked on its own:
   | `radiusXL` | 14 | Popovers, Settings groups and cards |
   | `radiusXXL` | 16 | Dialogs and sheets |
 
-- **A circle is a capsule.** A dot, a swatch or a round mark takes
+- **A circle is a capsule.** A dot, a swatch, a round mark or a round
+  button, as the title bar's minimize, maximize and close, takes
   `capsule(h)`, half its height, not a radius picked to look round.
 
 ## Type
@@ -262,10 +275,11 @@ that exists.
 | Sidebar and tab rows | `sideRowH`, `pillRadius`, `glassPill`, `hoverFace`, `fontBody` | `sidebar.go`, `projects_sidebar.go`, `tabs.go` |
 | Text field | `field`, `fieldBorder`, `fontBody`, heights 22 and 28 | `fields.go` |
 | Status dot | 7 or 8 square, `capsule`, `busy`, `attention`, `exited`, `danger` | `hostDot`, `view.go` |
-| Key cap | `fontSubhead`, `radiusS`, `k.hover` | `commands.go`, `settingsview.go` |
+| Key cap | `fontSubhead`, `radiusS`; on glass (the palette), `k.textMuted` on `k.panel` in a 1px `k.panelBorder`; on an opaque card (Settings), on `k.hover` | `commands.go`, `settingsview.go` |
 | Icon tile | a square of `k.hover`, `radiusS`, `radiusM` or `radiusL` by size, an icon from `assets/icons/` | `host.go`, `settingsview.go` |
 | Program tile | `tileW`×`tileH` rounded card, `drawTile`; the front tile bounces while a pane needs the user, `tileBounces` at iOS's timings | `tabs.go` |
 | Chip | a capsule row 28 high, `pillRadius` | `projectpicker.go`, `spaces.go` |
+| Menu row | `menuStyleOf`'s `RowHeight` 24, `RowPadding` 10 and `RowRadius`, `fontBody`; under the pointer its `Highlight` (`k.accent`), with all on it in `HighlightText`, a space's dot ringed in it; an inert row (an away host's project) none | MyGo's drawn menus (`menus.go`), and `menuRow` (`spaces.go`) for the pickers |
 
 ## Patterns
 
@@ -276,7 +290,7 @@ the parts of the one it is nearest to.
 |---|---|---|
 | Dialog | `glassPanel(k.panel)`, `radiusXXL`, padding 20, `fontTitle` title, `dialogShadow`, a backdrop of `k.backdrop` | `teleport.go`, `workspaceview.go` |
 | Popover | `glassPanel(k.panel)`, `radiusXL`, padding 14, `popoverShadow` | `host.go` |
-| Menu | `glassPanel(k.panel)`, `radiusL`, padding 6, rows `concentric(radiusL, 6)` | `menus.go`, `docs/DSK-001-drawn-menus.md` |
+| Menu | `glassPanel(k.panel)`, `radiusL`, padding 6, rows `concentric(radiusL, 6)`: all of it `menuStyleOf`'s | `menus.go`, `docs/DSK-001-drawn-menus.md`; the space and project pickers (`spaces.go`, `projectpicker.go`) |
 | Toast and banner | `k.panel`, `radiusL`, `toastShadow` | `view.go`, `upload.go` |
 | Palette | frost or glass, `fontTitle` input, rows `concentric` | `commands.go` |
 | Settings page | the window background, groups of `raisedShadow` and `radiusXL` | `settingsview.go` |

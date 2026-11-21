@@ -57,10 +57,6 @@ func (a *App) askCloseWorkspace() {
 	}
 }
 
-// popR and popPad are the workspace popover's radius and padding, which
-// its rows' corners are concentric with.
-const popR, popPad = radiusXL, 6
-
 // workspaceDetail says of a workspace its n tabs, and when another window
 // than a's shows it.
 func workspaceDetail(w *Workspace, a *App, n int) string {
@@ -131,7 +127,7 @@ func (a *App) workspaceConfirm(c *ui.Context, k *colors) {
 	was := a.wsConfirm
 	ui.DialogBase(c, &a.wsConfirm, func(backdrop, panel ui.Element) {
 		backdrop.Background(k.backdrop)
-		dialogShadow(glassPanel(panel.Width(380).Padding(20).Radius(radiusXXL), k.panel).Border(1, k.panelBorder)).Role(ui.RoleDialog).Label(locales.SessionCloseTitle(name))
+		dialogShadow(glassPanel(panel.Width(380).Padding(20).Radius(radiusXXL), k).Border(1, k.panelBorder)).Role(ui.RoleDialog).Label(locales.SessionCloseTitle(name))
 		ui.Column(c).Gap(10).Children(func() {
 			ui.Text(c, locales.SessionCloseTitle(name)).FontSize(fontTitle).FontWeight(700).TextColor(k.text)
 			ui.Text(c, locales.SessionCloseBody(n)).FontSize(fontBody).TextColor(k.textMuted).LineHeight(1.35)

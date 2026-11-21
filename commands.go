@@ -1512,7 +1512,7 @@ func (a *App) palette(c *ui.Context, k *colors) {
 			panel.TransformOrigin(0.5, 0).AnimatePose(pose, *anim)
 		}
 		ui.Row(c).Padding(12, 16).Gap(10).AlignItems(ui.Center).BorderWidth(0, 0, 1, 0).BorderColor(k.panelBorder).Children(func() {
-			glyphIcon(c, "search", 17, k.textFaint)
+			glyphIcon(c, "search", 17, k.textMuted)
 			placeholder := locales.PalettePlaceholder()
 			switch a.paletteList {
 			case listSessions:
@@ -1520,7 +1520,7 @@ func (a *App) palette(c *ui.Context, k *colors) {
 			case listNeeds:
 				placeholder = locales.NeedsPlaceholder()
 			}
-			in := ui.TextInputBase(c, &a.paletteQuery).Grow(1).FontSize(fontTitle).Placeholder(placeholder).AutoFocus()
+			in := ui.TextInputBase(c, &a.paletteQuery).Grow(1).FontSize(fontTitle).Placeholder(placeholder).PlaceholderColor(k.textMuted).AutoFocus()
 			if in.Changed() {
 				a.paletteSel, a.paletteSelID, reveal = 0, nil, true
 			}
@@ -1558,12 +1558,12 @@ func (a *App) palette(c *ui.Context, k *colors) {
 				if a.paletteList == listNeeds && strings.TrimSpace(a.paletteQuery) == "" {
 					text = locales.NeedsNothing()
 				}
-				ui.Text(c, text).FontSize(fontBody).TextColor(k.textFaint).Padding(14)
+				ui.Text(c, text).FontSize(fontBody).TextColor(k.textMuted).Padding(14)
 			}
 			for i, it := range items {
 				if it.header {
 					ui.Row(c.Key(i)).Height(28).Padding(8, 10, 0, 10).AlignItems(ui.Center).Children(func() {
-						ui.Text(c, it.title).FontSize(fontFootnote).FontWeight(600).TextColor(k.textFaint)
+						ui.Text(c, it.title).FontSize(fontFootnote).FontWeight(600).TextColor(k.textMuted)
 					})
 					continue
 				}
@@ -1600,7 +1600,7 @@ func (a *App) palette(c *ui.Context, k *colors) {
 					// The title takes its width, the detail what is left.
 					ui.RichText(c, titleSpans(it.title, 13.5, 500, k.text)...).Label(it.title).SingleLine().Ellipsis("…").Shrink(0).MaxWidthPercent(70)
 					if it.detail != "" {
-						ui.RichText(c, titleSpans(it.detail, 13, 400, k.textFaint)...).Label(it.detail).SingleLine().Ellipsis("…").Shrink(1).MinWidth(0)
+						ui.RichText(c, titleSpans(it.detail, 13, 400, k.textMuted)...).Label(it.detail).SingleLine().Ellipsis("…").Shrink(1).MinWidth(0)
 					}
 					ui.Spacer(c)
 					aside := it.aside
@@ -1613,13 +1613,13 @@ func (a *App) palette(c *ui.Context, k *colors) {
 						aside += when
 					}
 					if aside != "" {
-						ui.Text(c, aside).FontSize(fontSubhead).TextColor(k.textFaint).SingleLine().Shrink(0)
+						ui.Text(c, aside).FontSize(fontSubhead).TextColor(k.textMuted).SingleLine().Shrink(0)
 					}
 					if s := it.status; s != nil && s.State != "idle" {
 						statusDot(c, k, s, 6)
 					}
 					if it.keys != "" {
-						ui.Text(c, it.keys).FontSize(fontSubhead).TextColor(k.textFaint).Padding(2, 8).Radius(radiusS).Background(k.hover).Shrink(0)
+						ui.Text(c, it.keys).FontSize(fontSubhead).TextColor(k.textMuted).Padding(2, 8).Radius(radiusS).Background(k.panel).Border(1, k.panelBorder).Shrink(0)
 					}
 				})
 			}
