@@ -159,6 +159,10 @@ type App struct {
 	closeAsk        closeAsk
 	closeOthers     *Tab
 	closeOthersOpen bool
+	// sideList is where the sidebar's list of tabs showed in the last
+	// frame, which a tab's row scrolled out of leaves its close button
+	// clipped.
+	sideList ui.Rect
 	// paletteFresh tells that the palette was just opened: the frame that
 	// shows it first poses it where it comes in from.
 	paletteFresh bool

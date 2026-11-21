@@ -276,7 +276,7 @@ the parts of the one it is nearest to.
 |---|---|---|
 | Dialog | `glassPanel(k.panel)`, `radiusXXL`, padding 20, `fontTitle` title, `dialogShadow`, a backdrop of `k.backdrop` | `teleport.go`, `workspaceview.go` |
 | Popover | `glassPanel(k.panel)`, `radiusXL`, padding 14, `popoverShadow` | `host.go` |
-| Popconfirm | a popover from the button that asked, 280 wide: `fontTitle` title, one line of what ends, Cancel and a `dangerButton` that names the action and takes Enter | `closeconfirm.go` |
+| Popconfirm | a popover from the button that asked, 280 wide: `fontTitle` title, one line of what ends, Cancel, which has the focus so that keys typed on for the terminal cancel, and a `dangerButton` that names the action | `closeconfirm.go` |
 | Menu | `glassPanel(k.panel)`, `radiusL`, padding 6, rows `concentric(radiusL, 6)` | `menus.go`, `docs/DSK-001-drawn-menus.md` |
 | Toast and banner | `k.panel`, `radiusL`, `toastShadow` | `view.go`, `upload.go` |
 | Palette | frost or glass, `fontTitle` input, rows `concentric` | `commands.go` |

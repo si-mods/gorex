@@ -94,6 +94,7 @@
   "tabCloseOthers": "关闭其他标签页",
   "closeOthersTitle": "{n, plural, other {关闭其他 # 个标签页？}}",
   "closeOthersBody": "{n, plural, other {它们的 # 个终端将结束，其中运行的程序也会停止。此操作无法撤销。}}",
+  "closeOthersBodyIdle": "{n, plural, =0 {此操作无法撤销。} other {它们的 # 个终端将结束。此操作无法撤销。}}",
   "closeRunningTitle": "{name} 正在运行",
   "closeRunningPane": "关闭此窗格会结束它的会话和程序。",
   "closeRunningTab": "{n, plural, other {关闭此标签页会结束它的 # 个会话和其中的程序。}}",

@@ -4,8 +4,11 @@ import (
 	"os"
 	"slices"
 	"testing"
+	"time"
 
 	"github.com/egoist/mygo/ui"
+
+	"gorex/internal/rex"
 )
 
 // runs makes the pane look as if a program ran in its foreground.
@@ -27,7 +30,8 @@ func anchored(t *testing.T, tt *ui.Tester, label string) {
 
 // TestCloseTabAsksWhileRunning checks Close Tab: a tab of idle shells
 // closes at once; one where a program runs asks, and ends its sessions
-// only after End Session or Enter, while Cancel and Escape keep it.
+// only after End Session, while Cancel, Escape, and Enter or Space typed
+// on for the terminal keep it.
 func TestCloseTabAsksWhileRunning(t *testing.T) {
 	a, tt := newTestApp(t)
 	idle := a.newTab(os.TempDir())
@@ -41,40 +45,89 @@ func TestCloseTabAsksWhileRunning(t *testing.T) {
 	busy := a.newTab(os.TempDir())
 	p := busy.Focus
 	tt.Frame()
-	for _, keep := range []func(){
-		func() {
+	for name, keep := range map[string]func(){
+		"Cancel": func() {
 			if err := tt.Click("Cancel"); err != nil {
 				t.Fatalf("%v; texts %q", err, tt.Texts())
 			}
 		},
-		func() { tt.Key(0, ui.KeyEscape) },
+		"Escape": func() { tt.Key(0, ui.KeyEscape) },
+		"Enter":  func() { tt.Key(0, ui.KeyEnter) },
+		"Space":  func() { tt.Key(0, ui.KeySpace) },
 	} {
 		runs(p)
 		a.closeActiveTab()
 		tt.Frame()
 		if !a.closeAsk.open || !tt.HasText("sleep is running") {
-			t.Fatalf("closing a running tab did not ask; texts %q", tt.Texts())
+			t.Fatalf("%s: closing a running tab did not ask; texts %q", name, tt.Texts())
 		}
 		if !slices.Contains(a.tabs, busy) || p.closed {
-			t.Fatal("the tab closed before the answer")
+			t.Fatalf("%s: the tab closed before the answer", name)
 		}
 		anchored(t, tt, "Close Tab")
 		keep()
 		tt.Frame()
 		tt.Frame()
 		if a.closeAsk.open || !slices.Contains(a.tabs, busy) || p.closed {
-			t.Fatalf("the question was kept: open %v, tab kept %v", a.closeAsk.open, slices.Contains(a.tabs, busy))
+			t.Fatalf("%s did not keep the tab: open %v, tab kept %v", name, a.closeAsk.open, slices.Contains(a.tabs, busy))
 		}
 	}
 
 	runs(p)
 	a.closeActiveTab()
 	tt.Frame()
-	tt.Key(0, ui.KeyEnter)
+	if err := tt.Click("End Session"); err != nil {
+		t.Fatalf("%v; texts %q", err, tt.Texts())
+	}
 	tt.Frame()
 	tt.Frame()
 	if slices.Contains(a.tabs, busy) || !p.closed {
-		t.Fatalf("Enter did not end the session: tab kept %v; texts %q", slices.Contains(a.tabs, busy), tt.Texts())
+		t.Fatalf("End Session did not end the session: tab kept %v", slices.Contains(a.tabs, busy))
+	}
+}
+
+// TestCloseAsksWhatRuns checks which panes count as running: a session
+// started with a command asks though its program is in the foreground of
+// none, and a shell at its prompt with a done or error record not seen
+// yet does not.
+func TestCloseAsksWhatRuns(t *testing.T) {
+	a, tt := newTestApp(t)
+	p := a.tab().Focus
+	p.info = rex.SessionInfo{Program: "npm", Idle: true, Command: true}
+	if !p.running() {
+		t.Error("a command session does not count as running")
+	}
+	for _, state := range []string{"done", "error"} {
+		p.info = rex.SessionInfo{Program: "zsh", Idle: true, Statuses: []rex.ProgramStatus{{State: state, Updated: time.Now()}}}
+		if p.running() {
+			t.Errorf("a shell at its prompt with a %s record counts as running", state)
+		}
+	}
+	for _, state := range []string{"working", "blocked"} {
+		p.info = rex.SessionInfo{Program: "zsh", Idle: true, Statuses: []rex.ProgramStatus{{State: state, Updated: time.Now()}}}
+		if !p.running() {
+			t.Errorf("a %s record does not count as running", state)
+		}
+	}
+
+	cmd := a.newTab(os.TempDir())
+	cmd.Focus.info = rex.SessionInfo{Program: "npm", Idle: true, Command: true}
+	tt.Frame()
+	a.closeActiveTab()
+	tt.Frame()
+	if !a.closeAsk.open || !tt.HasText("npm is running") {
+		t.Fatalf("closing a command session did not ask; texts %q", tt.Texts())
+	}
+	tt.Key(0, ui.KeyEscape)
+	tt.Frame()
+
+	done := a.newTab(os.TempDir())
+	done.Focus.info = rex.SessionInfo{Program: "zsh", Idle: true, Statuses: []rex.ProgramStatus{{State: "done", Updated: time.Now()}}}
+	tt.Frame()
+	a.closeActiveTab()
+	tt.Frame()
+	if slices.Contains(a.tabs, done) || a.closeAsk.open {
+		t.Fatalf("an idle shell with a done record did not close at once")
 	}
 }
 
@@ -116,12 +169,28 @@ func TestCloseOtherTabsAsks(t *testing.T) {
 	a, tt := newTestApp(t)
 	keep := a.tab()
 	a.newTab(os.TempDir())
-	a.newTab(os.TempDir())
+	a.newPaneTab(a.newNotePane(""))
 	tt.Frame()
 	a.askCloseOthers(keep)
 	tt.Frame()
 	if !tt.HasText("Close 2 other tabs?") || len(a.tabs) != 3 {
 		t.Fatalf("no question; %d tabs; texts %q", len(a.tabs), tt.Texts())
+	}
+	// The note is no terminal, and no program runs in the other tabs.
+	if !tt.HasText("Its terminal ends. This can't be undone.") {
+		t.Fatalf("the body counts other than the terminals; texts %q", tt.Texts())
+	}
+	tt.Key(0, ui.KeyEnter)
+	tt.Frame()
+	tt.Frame()
+	if len(a.tabs) != 3 || a.closeOthersOpen {
+		t.Fatalf("Enter did not cancel: %d tabs, open %v", len(a.tabs), a.closeOthersOpen)
+	}
+	runs(a.tabs[1].Focus)
+	a.askCloseOthers(keep)
+	tt.Frame()
+	if !tt.HasText("Its terminal ends, and the program running in it. This can't be undone.") {
+		t.Fatalf("the body does not say the program ends; texts %q", tt.Texts())
 	}
 	if err := tt.Click("Cancel"); err != nil {
 		t.Fatal(err)
@@ -140,5 +209,51 @@ func TestCloseOtherTabsAsks(t *testing.T) {
 	tt.Frame()
 	if len(a.tabs) != 1 || a.tabs[0] != keep {
 		t.Fatalf("%d tabs left, want the one kept", len(a.tabs))
+	}
+}
+
+// TestCloseAskOutOfView checks the questions whose close button does not
+// show: a tab's row scrolled out of the sidebar asks with the dialog, and
+// a pane of a space the window no longer shows is not closed.
+func TestCloseAskOutOfView(t *testing.T) {
+	a, tt := newTestApp(t)
+	old := prefs
+	t.Cleanup(func() { prefs = old })
+	prefs.TabPlacement = "left"
+	tt.SetSize(1000, 320)
+	first := a.tab()
+	for range 14 {
+		a.newTab(os.TempDir())
+	}
+	tt.Frame()
+	tt.Frame()
+	runs(first.Focus)
+	a.askCloseTab(first)
+	tt.Frame()
+	tt.Frame()
+	q, ok := tt.Find("sleep is running")
+	if !ok || !a.closeAsk.open {
+		t.Fatalf("no question; texts %q", tt.Texts())
+	}
+	// The row's button is clipped: the question is the dialog, over the
+	// panes, not a popover from the button.
+	if list := a.sideList; q.W == 0 || q.X < list.X+list.W {
+		t.Errorf("the question at %+v is not the dialog beside the list %+v", q, list)
+	}
+
+	// The question outlives the space it asked about: answered after the
+	// window shows another space, it closes nothing.
+	p := a.tab().Focus
+	runs(p)
+	a.askClosePane(p)
+	was := a.ws
+	a.createProject(nil, appTempDir(t, a), "other")
+	waitFor(t, tt, "the other project", func() bool { return a.ws != was })
+	if slices.Contains(a.tabs, p.Tab) {
+		t.Fatal("the window still shows the space")
+	}
+	a.endAsked()
+	if p.closed {
+		t.Error("a pane of a space no longer shown was closed")
 	}
 }
