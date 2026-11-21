@@ -11,7 +11,10 @@ struct QRScanner: View {
     var body: some View {
         NavigationStack {
             Group {
-                if DataScannerViewController.isSupported && DataScannerViewController.isAvailable {
+                // On a Mac the class still reports supported and available, but the
+                // scanner has no working implementation there and crashes when created.
+                if DataScannerViewController.isSupported && DataScannerViewController.isAvailable
+                    && !ProcessInfo.processInfo.isiOSAppOnMac && !ProcessInfo.processInfo.isMacCatalystApp {
                     Scanner(onCode: scanned).ignoresSafeArea()
                 } else {
                     ContentUnavailableView("Camera Unavailable", systemImage: "camera",
