@@ -354,11 +354,13 @@ func tabsCanMerge(src, dst *Tab) bool {
 // tabEnd draws the end of a tab: its close button while hovered, else the
 // dot of its record, or of its attention.
 func (a *App) tabEnd(c *ui.Context, k *colors, t *Tab, hovered bool) {
-	if hovered && len(a.tabs) > 1 {
+	// The button stays while it asks before closing, which it anchors.
+	if asking := a.asking(t, nil); hovered && len(a.tabs) > 1 || asking {
 		x := iconButton(c, k, "x", locales.CmdCloseTab(), 18, 12).Tooltip(locales.CmdCloseTab())
 		if x.Clicked() {
-			a.later(c, func() { a.closeTab(t) })
+			a.later(c, func() { a.askCloseTab(t) })
 		}
+		a.closeConfirm(c, k, x, t, nil)
 	} else if s := t.status(); needsUser(s) {
 		statusDot(c, k, s, 5.5).Margin(0, 6, 0, 0)
 	} else if t.attention() {
@@ -465,16 +467,10 @@ func (a *App) tabMenu(m *ui.Menu, t *Tab) {
 		a.newProjectTab()
 	}
 	if m.Item(locales.CmdCloseTab()).Chosen() {
-		a.laterService(func() { a.closeTab(t) })
+		a.laterService(func() { a.askCloseTab(t) })
 	}
 	if m.Item(locales.TabCloseOthers()).Disabled(len(a.tabs) < 2).Chosen() {
-		a.laterService(func() {
-			for _, o := range slices.Clone(a.tabs) {
-				if o != t {
-					a.closeTab(o)
-				}
-			}
-		})
+		a.laterService(func() { a.askCloseOthers(t) })
 	}
 }
 

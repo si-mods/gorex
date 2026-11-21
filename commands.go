@@ -1090,13 +1090,13 @@ func (a *App) runCustom(cmd *command, args map[string]any, report func(error)) b
 
 func (a *App) closeFocused() {
 	if t := a.tab(); t != nil && t.Focus != nil {
-		a.closePane(t.Focus)
+		a.askClosePane(t.Focus)
 	}
 }
 
 func (a *App) closeActiveTab() {
 	if t := a.tab(); t != nil {
-		a.closeTab(t)
+		a.askCloseTab(t)
 	}
 }
 
