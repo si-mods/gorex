@@ -248,7 +248,9 @@ struct HostSection: View {
         // a row of its own, open at first.
         if query.isEmpty || !looseTabs.isEmpty {
             let k = Self.key(host, "loose")
-            let isOpen = !collapsed.contains(k) || !query.isEmpty
+            // With no tab it is like a project with none: nothing to fold.
+            let empty = looseTabs.isEmpty
+            let isOpen = empty || !collapsed.contains(k) || !query.isEmpty
             let face = isOpen && current.map { c in c.host == host.id && loose.contains { $0.id == c.session } } ?? false
             card(face: face) {
                 Button {
@@ -258,9 +260,10 @@ struct HostSection: View {
                                tiles: column, divider: isOpen)
                 }
                 .buttonStyle(.plain)
+                .disabled(empty)
                 .hoverEffect(.highlight)
                 .contextMenu { Button("New Tab", systemImage: "plus") { newLooseTab() } }
-                .accessibilityHint(isOpen ? "Collapse" : "Expand")
+                .accessibilityHint(empty ? "" : isOpen ? "Collapse" : "Expand")
                 if isOpen {
                     VStack(spacing: 0) {
                         rows(looseTabs, more: true, tiles: column, onFace: face, grouped: false)
@@ -446,6 +449,8 @@ struct HostSection: View {
                                    tiles: Self.awayTiles, divider: isOpen)
                     }
                     .buttonStyle(.plain)
+                    .hoverEffect(.highlight)
+                    .accessibilityHint(isOpen ? "Collapse" : "Expand")
                     if isOpen { awayTabs(l.loose, inset: 16 + Self.awayTiles + 14) }
                 }
             }
@@ -765,7 +770,7 @@ struct HostSection: View {
                     .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: face)
             }
             // The rows' highlights keep to the card's corners.
-            .clipShape(.rect(cornerRadius: 22, style: .continuous))
+            .clipShape(.rect(cornerRadius: CardShape.radius, style: .continuous))
     }
 
     /// The rows of a card, each with its tab's menu, and dragged onto
@@ -859,17 +864,26 @@ struct FolderTile: View {
     }
 }
 
+/// The corners of a card and of what sits in it: an inner radius is the
+/// outer one less the padding between them, so the corners share a centre.
+private enum CardShape {
+    /// A card's corner radius.
+    static let radius: CGFloat = 22
+    /// The room between a card and the face in it, and between a face and
+    /// a lifted tab.
+    static let pad: CGFloat = 4
+}
+
 /// The face behind the project the window shows, its row and its tabs:
-/// 4 pt in from the card, and 18 pt round, a row's 14 pt and that 4, so
-/// that its corners share the centre of the card's (22 pt).
+/// one pad in from the card, with the card's radius less that pad.
 private struct ProjectFace: View {
     @Environment(\.colorScheme) private var scheme
 
     var body: some View {
-        let shape = RoundedRectangle(cornerRadius: 18, style: .continuous)
+        let shape = RoundedRectangle(cornerRadius: CardShape.radius - CardShape.pad, style: .continuous)
         shape.fill(Color.primary.opacity(scheme == .dark ? 0.07 : 0.055))
             .overlay { shape.strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5) }
-            .padding(4)
+            .padding(CardShape.pad)
     }
 }
 
@@ -883,8 +897,8 @@ private struct LiftedPill: View {
 
     var body: some View {
         // The inner radius is the outer one less the padding between them.
-        let inset: CGFloat = grouped ? 8 : 4
-        let shape = RoundedRectangle(cornerRadius: 22 - inset, style: .continuous)
+        let inset: CGFloat = grouped ? 2 * CardShape.pad : CardShape.pad
+        let shape = RoundedRectangle(cornerRadius: CardShape.radius - inset, style: .continuous)
         shape.fill(scheme == .dark ? Color.white.opacity(0.13) : Color.white)
             .overlay { shape.strokeBorder(Color.primary.opacity(scheme == .dark ? 0.12 : 0.08), lineWidth: 0.5) }
             .shadow(color: .black.opacity(scheme == .dark ? 0.35 : 0.1), radius: 4, y: 1)
