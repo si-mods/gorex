@@ -79,9 +79,9 @@ func (a *App) projectPicker(c *ui.Context, k *colors) {
 	})
 	ui.PopoverBase(c, chip, &a.pickerOpen, func(panel ui.Element) {
 		_, winH := c.Size()
-		popoverShadow(glassPanel(panel.Margin(6, 0, 0, 0).Width(340).MaxHeight(winH-24-titleH).Padding(popPad).Radius(popR), k).Border(1, k.panelBorder), k)
+		menuStyleOf(k, c.Theme().Dark).Panel(panel.Margin(6, 0, 0, 0).Width(340).MaxHeight(winH-24-titleH), 0)
 		ui.Scroll(c.Key("picker-list")).MinHeight(0).Shrink(1).Children(func() {
-			ui.Column(c).Gap(2).Children(func() { a.pickerList(c, k) })
+			ui.Column(c).Children(func() { a.pickerList(c, k) })
 		})
 		ui.Box(c).Height(1).Margin(4, 6).Background(k.panelBorder).Shrink(0)
 		a.menuRow(c, k, "picker-new", false, cmdNewProject.Title(), cmdNewProject.Keys, nil, a.openNewProject).Shrink(0)
@@ -110,8 +110,8 @@ func (a *App) pickerList(c *ui.Context, k *colors) {
 				name, glyph = locales.ProjectsNoProject(), "layers"
 			}
 			offline := w.offline()
-			row := a.menuRow(c, k, "picker-"+openKey(h, w.ID), w == a.ws, name, fmt.Sprint(w.tabCount()), func() {
-				glyphIcon(c, glyph, 14, k.textMuted).Shrink(0)
+			row := a.menuRow(c, k, "picker-"+openKey(h, w.ID), w == a.ws, name, fmt.Sprint(w.tabCount()), func(ink ui.Color) {
+				glyphIcon(c, glyph, 14, ink).Shrink(0)
 			}, func() {
 				if !offline {
 					a.showWorkspace(w)

@@ -379,10 +379,10 @@ func (a *App) spacePicker(c *ui.Context, k *colors, wide bool) {
 		glyphIcon(c, "chevron-down", 13, k.textFaint).Shrink(0)
 	})
 	ui.PopoverBase(c, chip, &a.spaces.open, func(panel ui.Element) {
-		popoverShadow(glassPanel(panel.Margin(6, 0, 0, 0).Width(240).Padding(popPad).Radius(popR), k).Border(1, k.panelBorder), k)
-		ui.Column(c).Gap(2).Children(func() {
+		menuStyleOf(k, c.Theme().Dark).Panel(panel.Margin(6, 0, 0, 0).Width(240), 0)
+		ui.Column(c).Children(func() {
 			for _, n := range a.st.spaceNames() {
-				a.menuRow(c, k, "space-"+n, n == name, spaceLabel(n), "", func() {
+				a.menuRow(c, k, "space-"+n, n == name, spaceLabel(n), "", func(ui.Color) {
 					spaceSwatchMark(c, k, spaceColor(n), 10)
 				}, func() { a.showSpaceNamed(n) })
 			}
@@ -397,13 +397,19 @@ func (a *App) spacePicker(c *ui.Context, k *colors, wide bool) {
 	})
 }
 
-// menuRow is a row of a popover menu of GoRex's own: a check when chosen,
-// a mark, its label and a detail; a click closes the menus and runs run.
-func (a *App) menuRow(c *ui.Context, k *colors, key string, chosen bool, label, detail string, mark func(), run func()) ui.Element {
-	row := ui.Row(c.Key(key)).Height(30).Padding(0, 8).Gap(8).Radius(concentric(popR, 1+popPad)).AlignItems(ui.Center).Cursor(ui.CursorPointer).
+// menuRow is a row of a popover menu of GoRex's own, the space picker's
+// or the project picker's: a check when chosen, a mark drawn in ink, its
+// label and a detail; a click closes the menus and runs run. It is a row
+// of the drawn menus (menuStyleOf): their height, padding and radius, and
+// under the pointer their highlight, everything on it in its text color.
+func (a *App) menuRow(c *ui.Context, k *colors, key string, chosen bool, label, detail string, mark func(ink ui.Color), run func()) ui.Element {
+	m := menuStyleOf(k, c.Theme().Dark)
+	row := ui.Row(c.Key(key)).Height(m.RowHeight).Padding(0, m.RowPadding).Gap(8).Radius(m.RowRadius).AlignItems(ui.Center).Cursor(ui.CursorPointer).
 		Role(ui.RoleMenuItem).Label(label)
+	ink, muted := k.text, k.textMuted
 	if row.Hovered() {
-		row.Background(k.hover)
+		row.Background(m.Highlight)
+		ink, muted = m.HighlightText, m.HighlightText
 	}
 	if row.Clicked() {
 		a.closeMenus()
@@ -412,15 +418,15 @@ func (a *App) menuRow(c *ui.Context, k *colors, key string, chosen bool, label, 
 	row.Children(func() {
 		ui.Box(c).Size(14, 14).Shrink(0).Children(func() {
 			if chosen {
-				glyphIcon(c, "check", 14, k.text)
+				glyphIcon(c, "check", 14, ink)
 			}
 		})
 		if mark != nil {
-			mark()
+			mark(muted)
 		}
-		ui.Text(c, label).FontSize(fontBody).TextColor(k.text).SingleLine().Ellipsis("…").Grow(1).MinWidth(0)
+		ui.Text(c, label).FontSize(fontBody).TextColor(ink).SingleLine().Ellipsis("…").Grow(1).MinWidth(0)
 		if detail != "" {
-			ui.Text(c, detail).FontSize(fontFootnote).TextColor(k.textFaint).SingleLine().Shrink(0)
+			ui.Text(c, detail).FontSize(fontFootnote).TextColor(muted).SingleLine().Shrink(0)
 		}
 	})
 	return row

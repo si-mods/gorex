@@ -57,10 +57,6 @@ func (a *App) askCloseWorkspace() {
 	}
 }
 
-// popR and popPad are the workspace popover's radius and padding, which
-// its rows' corners are concentric with.
-const popR, popPad = radiusXL, 6
-
 // workspaceDetail says of a workspace its n tabs, and when another window
 // than a's shows it.
 func workspaceDetail(w *Workspace, a *App, n int) string {

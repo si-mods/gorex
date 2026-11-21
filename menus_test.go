@@ -158,3 +158,32 @@ func TestDrawnMenus(t *testing.T) {
 		t.Error("Rename Pane did not start the rename")
 	}
 }
+
+// TestSpacePickerIsMenu checks that the space picker's rows are the drawn
+// menus' rows (DESIGN.md, Menu): their height, and under the pointer their
+// highlight.
+func TestSpacePickerIsMenu(t *testing.T) {
+	a, tt := newTestApp(t)
+	old := prefs
+	t.Cleanup(func() { prefs = old })
+	prefs.Animation = "off"
+	a.spaces.open = true
+	tt.Frame()
+	r, ok := tt.Find(locales.SpaceNew())
+	if !ok {
+		t.Fatalf("the picker has no New Space…: %q", tt.Texts())
+	}
+	m := menuStyleOf(&lightColors, false)
+	if r.H != m.RowHeight {
+		t.Errorf("New Space…'s row is %v high, want the menus' %v", r.H, m.RowHeight)
+	}
+	tt.Move(r.X+r.W/2, r.Y+r.H/2)
+	tt.Frame()
+	img := tt.Image()
+	// The row's padding, before its check's box, shows its face.
+	o := img.PixOffset(int(r.X+m.RowPadding/2), int(r.Y+r.H/2))
+	got := [3]uint8(img.Pix[o : o+3])
+	if want := [3]uint8{m.Highlight.R, m.Highlight.G, m.Highlight.B}; got != want {
+		t.Errorf("the hovered row reads %v, want the menus' highlight %v", got, want)
+	}
+}

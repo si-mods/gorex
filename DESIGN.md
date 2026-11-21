@@ -276,6 +276,7 @@ that exists.
 | Icon tile | a square of `k.hover`, `radiusS`, `radiusM` or `radiusL` by size, an icon from `assets/icons/` | `host.go`, `settingsview.go` |
 | Program tile | `tileW`×`tileH` rounded card, `drawTile`; the front tile bounces while a pane needs the user, `tileBounces` at iOS's timings | `tabs.go` |
 | Chip | a capsule row 28 high, `pillRadius` | `projectpicker.go`, `spaces.go` |
+| Menu row | `menuStyleOf`'s `RowHeight` 24, `RowPadding` 10 and `RowRadius`, `fontBody`; under the pointer its `Highlight` (`k.accent`), with all on it in `HighlightText` | MyGo's drawn menus (`menus.go`), and `menuRow` (`spaces.go`) for the pickers |
 
 ## Patterns
 
@@ -286,7 +287,7 @@ the parts of the one it is nearest to.
 |---|---|---|
 | Dialog | `glassPanel(k.panel)`, `radiusXXL`, padding 20, `fontTitle` title, `dialogShadow`, a backdrop of `k.backdrop` | `teleport.go`, `workspaceview.go` |
 | Popover | `glassPanel(k.panel)`, `radiusXL`, padding 14, `popoverShadow` | `host.go` |
-| Menu | `glassPanel(k.panel)`, `radiusL`, padding 6, rows `concentric(radiusL, 6)` | `menus.go`, `docs/DSK-001-drawn-menus.md` |
+| Menu | `glassPanel(k.panel)`, `radiusL`, padding 6, rows `concentric(radiusL, 6)`: all of it `menuStyleOf`'s | `menus.go`, `docs/DSK-001-drawn-menus.md`; the space and project pickers (`spaces.go`, `projectpicker.go`) |
 | Toast and banner | `k.panel`, `radiusL`, `toastShadow` | `view.go`, `upload.go` |
 | Palette | frost or glass, `fontTitle` input, rows `concentric` | `commands.go` |
 | Settings page | the window background, groups of `raisedShadow` and `radiusXL` | `settingsview.go` |
