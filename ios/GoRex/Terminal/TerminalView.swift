@@ -22,6 +22,14 @@ import UIKit
 /// (TerminalView+Commands); a pointer's click and drag selects.
 final class TerminalView: UIView, TerminalOutput {
     let session: TerminalSession
+    /// The typed keys' unconfirmed echoes, drawn over the surface as
+    /// underlined guesses (docs/IOS-018-predictive-echo.md).
+    let predictor = Predictor()
+    private lazy var guessesView = PredictionOverlay(in: self)
+    /// Whether a resolve of the guesses waits for a write's parse, and the
+    /// task that drops them at their deadline.
+    private var guessResolvePending = false
+    private var guessDeadline: Task<Void, Never>?
     /// The font size chosen in Settings.
     static var fontSize: CGFloat {
         let v = UserDefaults.standard.double(forKey: "fontSize")
@@ -248,6 +256,7 @@ final class TerminalView: UIView, TerminalOutput {
         read(ghostty_surface_response_read_fd(s))
         session.output = self
         addScroller()
+        addSubview(guessesView)
         setNeedsLayout()
     }
 
@@ -255,7 +264,7 @@ final class TerminalView: UIView, TerminalOutput {
     private func read(_ fd: Int32) {
         guard fd >= 0 else { return }
         input = FDReader.start(fd, reading) { [weak self] got in
-            DispatchQueue.main.async { MainActor.assumeIsolated { self?.session.type(got) } }
+            DispatchQueue.main.async { MainActor.assumeIsolated { self?.typed(got) } }
         }
     }
 
@@ -267,6 +276,8 @@ final class TerminalView: UIView, TerminalOutput {
         nextFrame.stop()
         _ = owed.take()
         applied = nil
+        predictor.clear()
+        guessDeadline?.cancel()
         guard let s = surface else { return }
         surface = nil
         output = -1
@@ -298,6 +309,7 @@ final class TerminalView: UIView, TerminalOutput {
         wrote += 1
         if scrolledUp { hasUnreadOutput = true }
         laterSlide()
+        resolveGuessesSoon()
         writes.async {
             bytes.withUnsafeBytes { p in
                 var at = 0
@@ -306,6 +318,91 @@ final class TerminalView: UIView, TerminalOutput {
                     if n > 0 { at += n } else if errno != EINTR { return }
                 }
             }
+        }
+    }
+
+    /// A key Ghostty encoded: the predictor guesses it before the session
+    /// sends it, so the guess draws in the same frame.
+    private func typed(_ bytes: Data) {
+        predict(bytes)
+        session.type(bytes)
+    }
+
+    /// A key's guesses, where the surface's own facts reach: its cursor,
+    /// its screen mode, its cursor line's text and the host's ping.
+    private func predict(_ bytes: Data) {
+        defer { guessesView.setNeedsDisplay() }
+        guard let s = surface, let (col, row) = cursorCell() else { predictor.clear(); return }
+        let z = ghostty_surface_size(s), cols = Int(z.columns), rows = Int(z.rows)
+        predictor.type(bytes, context: .init(col: col, row: row, cols: cols, rows: rows,
+                                             guarded: ghostty_surface_is_alternate_active(s) || ghostty_surface_mouse_captured(s),
+                                             secret: secret(row: row, cols: cols),
+                                             rtt: .milliseconds(session.host.pingMs ?? 0)),
+                       now: .now)
+        scheduleGuessDeadline()
+    }
+
+    /// The real cursor's cell, as drawnBottom reads its row.
+    private func cursorCell() -> (col: Int, row: Int)? {
+        guard let s = surface else { return nil }
+        let z = ghostty_surface_size(s), c = cell
+        guard z.columns > 0, z.rows > 0, c.width > 0, c.height > 0 else { return nil }
+        let cur = cursor(width: nil)
+        return (Int((cur.minX / c.width).rounded()), Int(((cur.minY - inset) / c.height).rounded()))
+    }
+
+    /// The text of a row of the active screen, as drawnBottom reads runs
+    /// of lines; nil where the read fails.
+    private func line(_ row: Int, cols: Int) -> String? {
+        guard let s = surface, cols > 0, row >= 0 else { return nil }
+        let point = { (x: Int, y: Int) in ghostty_point_s(tag: GHOSTTY_POINT_ACTIVE, coord: GHOSTTY_POINT_COORD_EXACT, x: UInt32(x), y: UInt32(y)) }
+        var t = ghostty_text_s()
+        guard ghostty_surface_read_text(s, ghostty_selection_s(top_left: point(0, row), bottom_right: point(cols - 1, row), rectangle: false), &t) else { return nil }
+        defer { ghostty_surface_free_text(s, &t) }
+        return t.text.map { String(decoding: UnsafeRawBufferPointer(start: $0, count: Int(t.text_len)), as: UTF8.self) }
+    }
+
+    /// Whether the cursor's line asks for a secret, where a guess could
+    /// show one that was never meant to echo.
+    private func secret(row: Int, cols: Int) -> Bool {
+        guard let l = line(row, cols: cols) else { return false }
+        return l.range(of: #"\b(password|passphrase|pin)\b"#, options: [.regularExpression, .caseInsensitive]) != nil
+    }
+
+    /// The guesses' resolve once the surface has had a moment to parse
+    /// what a write fed it, at most one wait at a time.
+    private func resolveGuessesSoon() {
+        guard !guessResolvePending else { return }
+        guessResolvePending = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.09) { [weak self] in
+            guard let self else { return }
+            guessResolvePending = false
+            resolveGuesses()
+        }
+    }
+
+    /// Where output went, drop the guesses it showed or overwrote; the
+    /// rest keep to their deadline.
+    private func resolveGuesses() {
+        defer { guessesView.setNeedsDisplay() }
+        guard !predictor.open.isEmpty, let s = surface, let (col, row) = cursorCell() else { return }
+        let cols = Int(ghostty_surface_size(s).columns)
+        var lines: [Int: String] = [:]
+        for r in Set(predictor.open.map(\.row)) {
+            if let l = line(r, cols: cols) { lines[r] = l }
+        }
+        predictor.resolve(real: (col, row), lines: lines, now: .now)
+        scheduleGuessDeadline()
+    }
+
+    /// The guesses' expiry, at the nearest deadline once at a time.
+    private func scheduleGuessDeadline() {
+        guard guessDeadline == nil, let at = predictor.open.map(\.deadline).min() else { return }
+        guessDeadline = Task { [weak self] in
+            try? await Task.sleep(until: at)
+            guard let self else { return }
+            guessDeadline = nil
+            resolveGuesses()
         }
     }
 
@@ -365,6 +462,7 @@ final class TerminalView: UIView, TerminalOutput {
 
     override func layoutSubviews() {
         super.layoutSubviews()
+        guessesView.frame = bounds
         guard let s = surface else { return }
         let scale = traitCollection.displayScale
         // The renderer's layer does not follow the view's size by itself.
@@ -524,6 +622,7 @@ final class TerminalView: UIView, TerminalOutput {
     func resized(cols: Int, rows: Int, width: Int, height: Int) {
         guard cols > 0, rows > 0 else { return }
         session.fit(cols: cols, rows: rows, cellWidth: width / cols, cellHeight: height / rows)
+        predictor.clear()
         if sizeLabel.alpha > 0 { showSize() }
         slide(duration: 0)
     }

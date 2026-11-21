@@ -10,6 +10,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 `web` job of `.github/workflows/ci.yml` fails it.
 
 ## en-US
+- Typing in a terminal shows each character at once now, underlined until the computer answers. Predictive Echo in Settings > Terminal turns it off.
 
 - Tapping a notification opens its terminal, and the app stays open.
 - The mic in the key bar now taps your hand as its keys do, as your finger goes down.
@@ -106,6 +107,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - Add Host › Pair via QR Code now has a photo button at the top: pick a picture or screenshot that shows the code, and Rex Go reads it.
 
 ## zh-Hans
+- 在终端打字现在会立即显示字符，带下划线直到电脑回应。可在「设置 › Terminal › Predictive Echo」关闭。
 
 - 点通知栏的通知会打开它对应的终端，应用不再因此退出。
 - 键盘栏的麦克风现在和旁边的按键一样，手指按下时就震动一下。
