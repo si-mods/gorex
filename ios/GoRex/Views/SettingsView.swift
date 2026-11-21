@@ -303,7 +303,6 @@ private struct TerminalSettings: View {
     @AppStorage("fontSize") private var fontSize = 12.0
     @AppStorage("fontFamily") private var family = ""
     @AppStorage("minimumContrast") private var contrast = 0.0
-    @AppStorage(Predictor.key) private var predictiveEcho = true
     /// Polish's service; empty is the default.
     @AppStorage(Polish.baseKey) private var base = ""
     @AppStorage(Polish.modelKey) private var model = ""
@@ -336,12 +335,6 @@ private struct TerminalSettings: View {
             }
             .onChange(of: fontSize) { NotificationCenter.default.post(name: .terminalFont, object: nil) }
             .onChange(of: family) { NotificationCenter.default.post(name: .terminalFont, object: nil) }
-            .listRowBackground(Color.card)
-            Section {
-                Toggle("Predictive Echo", isOn: $predictiveEcho)
-            } footer: {
-                Text("A typed character shows at once under the cursor, underlined as a guess that the host's answer replaces.")
-            }
             .listRowBackground(Color.card)
             Section("Font") {
                 ForEach(Fonts.all, id: \.family) { row($0.family, $0.name) }
