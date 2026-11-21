@@ -113,7 +113,9 @@ struct HostListView: View {
                 pairing = c
             }
         }
-        .sheet(item: $pairing) { TailcatPairSheet(code: $0) }
+        // As in RemoteHostsView: a sheet on a Mac loses the injected
+        // objects, so the store goes back in.
+        .sheet(item: $pairing) { TailcatPairSheet(code: $0).environment(store) }
         // A host gone, as Demo Mode's, closes the terminals open on it, and
         // this device forgets its projects.
         .onChange(of: store.hosts.map(\.id)) { old, ids in
@@ -132,12 +134,15 @@ struct HostListView: View {
             ProjectSheet(host: host, space: SpaceName.shown(current)) { dir, name in createProject(on: host, dir: dir, name: name) }
                 .navigationTransition(.zoom(sourceID: ZoomSource.newProject(host.id), in: zoom))
         }
+        // A sheet on a Mac loses the injected objects; the space book
+        // goes back in.
         .sheet(isPresented: $editingSpaces) {
             EditSpaces(spaces: spaces, carried: carried, projects: projects(in:)) { from, to in
                 book.rename(from, to: to, on: spaceHosts)
             } delete: { name in
                 book.delete(name, on: spaceHosts)
             }
+            .environment(book)
         }
         .alert("New Space", isPresented: $addingSpace) {
             TextField("Name", text: $spaceName)
@@ -341,10 +346,12 @@ struct HostListView: View {
         .onChange(of: store.hosts.isEmpty) { _, empty in
             if !empty { settingsSource = .settings }
         }
+        // A sheet on a Mac loses the injected objects; the store goes
+        // back in.
         .sheet(isPresented: $settings, onDismiss: {
             if let c = waiting { pairing = c }
             waiting = nil
-        }) { SettingsView().navigationTransition(.zoom(sourceID: settingsSource, in: zoom)) }
+        }) { SettingsView().environment(store).navigationTransition(.zoom(sourceID: settingsSource, in: zoom)) }
     }
 
     // MARK: Spaces

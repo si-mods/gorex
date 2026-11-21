@@ -69,21 +69,26 @@ struct RemoteHostsView: View {
         .navigationTitle("Remote Hosts")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { EditButton() }
+        // A sheet of an iOS app on a Mac loses the objects the app
+        // injected at the root; the store goes back in for its views.
         .sheet(item: $sheet) { s in
-            switch s {
-            case .connect:
-                ConnectSheet(manual: { sheet = .manual }, scan: { sheet = .scan })
-            case .manual:
-                HostForm(config: nil) { sheet = .pairAddress($0, $1) }
-            case .scan:
-                QRScanner(onScan: pair)
-            case .details(let c):
-                HostForm(config: c)
-            case .pair(let c):
-                TailcatPairSheet(code: c)
-            case .pairAddress(let address, let c):
-                AddressPairSheet(address: address, host: c) { sheet = .details($0) }
+            Group {
+                switch s {
+                case .connect:
+                    ConnectSheet(manual: { sheet = .manual }, scan: { sheet = .scan })
+                case .manual:
+                    HostForm(config: nil) { sheet = .pairAddress($0, $1) }
+                case .scan:
+                    QRScanner(onScan: pair)
+                case .details(let c):
+                    HostForm(config: c)
+                case .pair(let c):
+                    TailcatPairSheet(code: c)
+                case .pairAddress(let address, let c):
+                    AddressPairSheet(address: address, host: c) { sheet = .details($0) }
+                }
             }
+            .environment(store)
         }
     }
 
