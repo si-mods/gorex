@@ -394,6 +394,16 @@
       }
     }
   },
+  "closeOthersBodyIdle": "{n, plural, =0 {This can't be undone.} one {Its terminal ends. This can't be undone.} other {Their # terminals end. This can't be undone.}}",
+  "@closeOthersBodyIdle": {
+    "description": "Body of the question before Close Other Tabs when no program runs in the other tabs: how many terminals end.",
+    "placeholders": {
+      "n": {
+        "type": "int",
+        "example": "5"
+      }
+    }
+  },
   "closeRunningTitle": "{name} is running",
   "@closeRunningTitle": {
     "description": "Title of the question before closing a tab or a pane that runs a program: the program's name.",

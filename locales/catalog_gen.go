@@ -1342,6 +1342,22 @@ func (msgs Messages) CloseOthersBody(n int) string {
 	return Catalog.Format(msgs.locale, "closeOthersBody", map[string]any{"n": n})
 }
 
+// CloseOthersBodyIdle says "{n, plural, =0 {This can't be undone.} one {Its terminal ends. This can't be undone.} other {Their # terminals end. T…"
+// in the language the app shows.
+//
+// Body of the question before Close Other Tabs when no program runs in the
+// other tabs: how many terminals end.
+func CloseOthersBodyIdle(n int) string { return In(i18n.Locale()).CloseOthersBodyIdle(n) }
+
+// CloseOthersBodyIdle says "{n, plural, =0 {This can't be undone.} one {Its terminal ends. This can't be undone.} other {Their # terminals end. T…"
+// in the language of msgs.
+//
+// Body of the question before Close Other Tabs when no program runs in the
+// other tabs: how many terminals end.
+func (msgs Messages) CloseOthersBodyIdle(n int) string {
+	return Catalog.Format(msgs.locale, "closeOthersBodyIdle", map[string]any{"n": n})
+}
+
 // CloseRunningTitle says "{name} is running"
 // in the language the app shows.
 //
