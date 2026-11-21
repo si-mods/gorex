@@ -29,7 +29,10 @@ struct HostListView: View {
     /// The hosts and the sessions folded away.
     @State private var collapsed: Set<String> = []
     /// The projects and Older open, by HostSection's keys, kept across
-    /// launches.
+    /// launches in a default. The set lives in the view's state, like
+    /// collapsed: a write to AppStorage reaches the views a beat later,
+    /// with no animation.
+    @State private var expanded: Set<String> = []
     @AppStorage("expanded") private var expandedText = ""
     @AppStorage("developerMode") private var developerMode = false
     @State private var inbox = false
@@ -67,6 +70,11 @@ struct HostListView: View {
         let project: String
         let name: String
         let space: String
+    }
+
+    init() {
+        _expanded = State(initialValue: Set(UserDefaults.standard.string(forKey: "expanded")?
+            .split(separator: "\n").map(String.init) ?? []))
     }
 
     var body: some View {
@@ -277,11 +285,9 @@ struct HostListView: View {
                             StatusInbox(query: query, collapsed: $collapsed, places: places, open: { openRow($0) })
                         } else {
                             if hasSpaces { ListPicker(wide: width == .regular) { picker(spaces: spaces, current: current) } }
-                            ForEach(store.hosts.filter { shows($0, hasSpaces: hasSpaces, current: current) }) { host in
-                                HostSection(host: host, space: current, spaces: spaces, collapsed: $collapsed, expanded: expanded,
-                                            query: query, zoom: zoom, places: places,
-                                            open: { go($0) }, openRow: { openRow($0) }, newProject: { newProject = host },
-                                            current: width == .regular ? path.last : nil)
+                            let hosts = store.hosts.filter { shows($0, hasSpaces: hasSpaces, current: current) }
+                            ForEach(hosts) { host in
+                                section(host, current: current, spaces: spaces)
                             }
                         }
                     }
@@ -308,6 +314,14 @@ struct HostListView: View {
                 DemoBanner { go(nil); store.exitDemo() }
                     .background(Color.page)
             }
+        }
+        // The default keeps the open set across launches and windows:
+        // one way for this view's writes, the other for another's.
+        .onChange(of: expanded) { _, s in
+            expandedText = s.sorted().joined(separator: "\n")
+        }
+        .onChange(of: expandedText) { _, t in
+            expanded = Set(t.split(separator: "\n").map(String.init))
         }
         // A row let go of off the cards goes back to its place.
         .onDrop(of: [Lifted.type], delegate: PageDrop())
@@ -410,18 +424,16 @@ struct HostListView: View {
         return l.spaces.contains(current)
     }
 
-    /// The projects open in the list, and the hosts' Older, by
-    /// HostSection's keys.
-    private var expanded: Binding<Set<String>> {
-        Binding {
-            Set(expandedText.split(separator: "\n").map(String.init))
-        } set: {
-            expandedText = $0.sorted().joined(separator: "\n")
-        }
+    /// A host's section of the list, as the body's ForEach builds it.
+    private func section(_ host: Host, current: String, spaces: [String]) -> HostSection {
+        HostSection(host: host, space: current, spaces: spaces, collapsed: $collapsed, expanded: $expanded,
+                    query: query, zoom: zoom, places: places,
+                    open: { go($0) }, openRow: { openRow($0) }, newProject: { newProject = host },
+                    current: width == .regular ? path.last : nil)
     }
 
     private func expand(_ host: Host, _ project: String) {
-        expanded.wrappedValue.insert(HostSection.key(host, project))
+        expanded.insert(HostSection.key(host, project))
     }
 
     /// What, changed, makes the copy of a host's projects worth keeping
