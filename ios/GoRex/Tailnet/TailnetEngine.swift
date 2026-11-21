@@ -237,8 +237,8 @@ final class TailnetEngine {
     /// suspension no resume() has seen; without this, every dial until
     /// the next resume() fails against the dead listener
     /// (docs/IOS-002-tailcat.md, the proxy). Read off the caller's actor.
-    func reproxy(read: @Sendable (Int) throws -> LoopbackProxy = Self.readProxy) async {
-        guard let p = try? await Task.detached { try read(0) }.value else { return }
+    func reproxy() async {
+        guard let p = await Task.detached({ try? Self.readProxy(run: 0) }).value else { return }
         tailcatProxy = p
         if let q = proxy {
             let r = LoopbackProxy(port: p.port, password: p.password, run: q.run)
