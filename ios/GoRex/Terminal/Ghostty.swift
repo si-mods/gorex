@@ -38,18 +38,52 @@ enum Ghostty {
         views[Int(bitPattern: surface)] = nil
     }
 
-    /// No surface presents a frame while the app is in the background, which
-    /// iOS forbids: a process-wide gate, synchronous when it closes, that
-    /// drops the frames not yet committed and lets the ones in flight finish
-    /// (docs/IOS-019-background-gpu.md). The app-level notifications fit the
-    /// gate: one scene's phase must not stop a scene that stays active.
+    /// No surface presents a frame while the app is out of the foreground,
+    /// which iOS forbids and whose lock-screen snapshot kills for it: the
+    /// latch arms at resign-active and at enter-background, and it clears
+    /// only when the app is active again. It is born armed: a launch
+    /// straight into the background gets neither notification. The gate it
+    /// mirrors into is process-wide, synchronous when it closes, and drops
+    /// the frames not yet committed (docs/IOS-019-background-gpu.md).
+    private(set) static var secureDrawProhibited = true {
+        didSet { ghostty_presentation_set_allowed(!secureDrawProhibited) }
+    }
+
     private static func watchBackground() {
+        ghostty_presentation_set_allowed(false)
         let center = NotificationCenter.default
-        center.addObserver(forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: .main) { _ in
-            ghostty_presentation_set_allowed(false)
+        center.addObserver(forName: UIApplication.willResignActiveNotification, object: nil, queue: .main) { _ in
+            MainActor.assumeIsolated { secure() }
         }
-        center.addObserver(forName: UIApplication.willEnterForegroundNotification, object: nil, queue: .main) { _ in
-            ghostty_presentation_set_allowed(true)
+        center.addObserver(forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: .main) { _ in
+            MainActor.assumeIsolated { secureDrawProhibited = true }
+        }
+        center.addObserver(forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main) { _ in
+            MainActor.assumeIsolated { unsecure() }
+        }
+    }
+
+    /// Arms the latch and pauses every surface before the lock screen's
+    /// snapshot: the bounded drain confirms no frame is in the GPU. A
+    /// transient resign (Control Center, a banner) pauses too; the active
+    /// that follows puts them back.
+    private static func secure() {
+        secureDrawProhibited = true
+        for view in views.values.lazy.compactMap(\.view) {
+            guard let s = view.surface else { continue }
+            ghostty_surface_set_occlusion(s, false)
+            _ = ghostty_surface_drain_renderer_to_idle(s, 100_000_000)
+        }
+    }
+
+    /// Opens the gate and puts each surface's occlusion back on its page:
+    /// a resign that never became a background gets no willEnterForeground,
+    /// so the views' own show() cannot cover it.
+    private static func unsecure() {
+        secureDrawProhibited = false
+        for view in views.values.lazy.compactMap(\.view) {
+            guard let s = view.surface else { continue }
+            ghostty_surface_set_occlusion(s, view.onPage)
         }
     }
 

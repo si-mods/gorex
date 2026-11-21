@@ -105,6 +105,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - The line on the Lock Screen and a program's notification now leave out escape codes and the characters that drew as boxes.
 - Add Host › Pair via QR Code now has a photo button at the top: pick a picture or screenshot that shows the code, and Rex Go reads it.
 - Leaving the app while a terminal runs: its drawing now stops completely before the app suspends, so a graphics-related quit in the background cannot happen.
+- Locking the phone or pulling down Control Center while a terminal runs: its drawing now stops for the lock screen's snapshot too, and starts again when you come back.
 
 ## zh-Hans
 
@@ -202,3 +203,4 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - 锁屏上的那行字和程序发来的通知会去掉转义码和画成方块的字符，中文和表情照常显示。
 - 「添加主机 › 扫码配对」顶部新增照片按钮：选一张带有配对二维码的截图或照片，Rex Go 就能读取。
 - 终端运行中离开应用：它的绘制现在会在应用挂起前彻底停下，不再可能在后台因图形问题被关掉。
+- 终端运行中锁屏或下拉控制中心：绘制现在也会为锁屏快照停下，回来后继续。
