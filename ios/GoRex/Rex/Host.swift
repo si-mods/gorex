@@ -320,6 +320,9 @@ final class Host: Identifiable {
     /// Whether the host is Demo Mode's, which runs on the phone.
     var isDemo: Bool { config.demo == true }
     private(set) var status = Status.connecting
+    /// The question an action of this host asks now, which the app shows
+    /// and answers (docs/MOD-005-client-prompts.md); nil for none.
+    private(set) var prompt: Prompt?
     private(set) var sessions: [Session] = []
     /// What each block shows, by block. The dictionary changes only as
     /// blocks come; a block's own changes redraw only the views that read
@@ -514,6 +517,7 @@ final class Host: Identifiable {
             self.control = nil
             self.describes.cancelAll()
             self.pingMs = nil
+            self.prompt = nil
             let offline = Status.offline(error?.localizedDescription ?? "")
             if self.status != offline { self.status = offline }
             // Refused, it waits for a change: the engine running again, as
@@ -719,6 +723,10 @@ final class Host: Identifiable {
                 wanted[id] = max(wanted[id] ?? 0, rev)
                 refresh(id)
             }
+        case "client_prompt_requested":
+            prompt = Prompt.from(e.payload)
+        case "client_prompt_ended":
+            if let id = e.payload["call_id"] as? String, prompt?.callID == id { prompt = nil }
         case "block_event":
             guard let block = e.payload["block_id"] as? String, let p = e.payload["payload"] as? [String: Any] else { return }
             // Observation skips a value set again unchanged.
@@ -919,6 +927,21 @@ final class Host: Identifiable {
     func closePort(session: String, block: String, port: Int) async {
         _ = try? await live().call("gorex.port.close",
                                    ["session_id": session, "block_id": block, "port": port])
+    }
+
+    /// Answers the host's question, which ends it on the other apps, and
+    /// on this one.
+    func answer(_ prompt: Prompt, _ answer: Prompt.Answer) {
+        guard let c = control else { return }
+        if self.prompt?.callID == prompt.callID { self.prompt = nil }
+        let result = answer.result
+        Task {
+            do {
+                _ = try await c.call("client.reply", ["call_id": prompt.callID, "result": result])
+            } catch {
+                ConnectionLog.note("\(self.config.name): prompt answer: \(error.localizedDescription)")
+            }
+        }
     }
 
     /// The TCP ports a block's programs listen on, with the processes
