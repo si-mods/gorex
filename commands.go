@@ -203,15 +203,14 @@ func newCustomCommands(cfg *config.Config) ([]*command, error) {
 					if cmd == nil {
 						return fmt.Errorf("no action %q", id)
 					}
-					// The action runs off the main thread; the window's
-					// actions run on it.
+					// The action runs off the main thread of the app; a
+					// built-in action changes the window, so it runs on it.
+					// A headless view test has no loop to run it on.
+					if app.win == nil {
+						return cmd.invoke(app, args)
+					}
 					var err error
-					done := make(chan struct{})
-					go mygo.RunOnMain(func() {
-						err = cmd.invoke(app, args)
-						close(done)
-					})
-					<-done
+					mygo.RunOnMain(func() { err = cmd.invoke(app, args) })
 					return err
 				})
 				cfg.SetUI(func(opts config.UIOptions) (config.UIAnswer, error) {
@@ -1070,15 +1069,20 @@ func (a *App) runCustom(cmd *command, args map[string]any, report func(error)) b
 	if !cmd.Custom {
 		return false
 	}
+	// A headless view test has no window and no event loop to draw the
+	// question: it runs the action on its own thread, as the app did
+	// before the question's panel, and sees the effect at once.
+	if a.win == nil {
+		err := cmd.invoke(a, args)
+		if report != nil {
+			report(err)
+		}
+		return true
+	}
 	go func() {
 		err := cmd.invoke(a, args)
 		if report != nil {
-			done := make(chan struct{})
-			go mygo.RunOnMain(func() {
-				report(err)
-				close(done)
-			})
-			<-done
+			mygo.RunOnMain(func() { report(err) })
 		}
 	}()
 	return true

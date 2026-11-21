@@ -13,7 +13,24 @@ import (
 func promptClients(t *testing.T, n int) (*Client, []*Client) {
 	t.Helper()
 	t.Setenv("GOREX_DIR", t.TempDir())
-	go Serve()
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		Serve()
+	}()
+	t.Cleanup(func() {
+		// The server holds the layout file open, which Windows will not
+		// let the test remove: stop it through its socket.
+		if c, err := ConnectSocket(SocketPath()); err == nil {
+			_ = c.Shutdown()
+			c.Close()
+		}
+		select {
+		case <-done:
+		case <-time.After(10 * time.Second):
+			t.Error("the server did not stop")
+		}
+	})
 	var first *Client
 	deadline := time.Now().Add(5 * time.Second)
 	for {
