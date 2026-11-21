@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.46.0
+
+### Features
+
+* **desktop:** list tabs with no project as a group like a project, named No Project ([#938](https://github.com/si-mods/gorex/pull/938))
+* **ios:** give each project its own card with a folder tile, and fold No Project like a project ([#933](https://github.com/si-mods/gorex/pull/933))
+* **ios:** show a pane's listening ports and open one ([#939](https://github.com/si-mods/gorex/pull/939))
+* **ios:** put Enter on the key bar's first page ([#934](https://github.com/si-mods/gorex/pull/934))
+* **ios:** open a terminal with the standard push, and keep the list scheme steady ([#930](https://github.com/si-mods/gorex/pull/930))
+* **ios:** reconnect hosts and terminals at once when the network changes ([#932](https://github.com/si-mods/gorex/pull/932))
+* **ios:** keep host connections for an app-wide grace in the background ([#929](https://github.com/si-mods/gorex/pull/929))
+* **rexapi:** ask the person a question through the gateway ([#931](https://github.com/si-mods/gorex/pull/931))
+* **rexapi:** run the configuration's actions in the gateway ([#924](https://github.com/si-mods/gorex/pull/924))
+
+### Bug Fixes
+
+* **ios:** let a project's rename show in its windows' titles ([#936](https://github.com/si-mods/gorex/pull/936))
+* **ios:** reach each shared host the way the app reaches it ([#935](https://github.com/si-mods/gorex/pull/935))
+* **rex:** give each server its own ports timings ([#928](https://github.com/si-mods/gorex/pull/928))
+* **rex:** find a process's children under every thread ([#926](https://github.com/si-mods/gorex/pull/926))
+
 ## 0.45.0
 
 ### Features
