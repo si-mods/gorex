@@ -3,7 +3,7 @@ import XCTest
 
 /// What a `client_prompt_requested` event becomes, and the result a
 /// `client.reply` carries (docs/MOD-005-client-prompts.md).
-nonisolated final class PromptTests: XCTestCase {
+@MainActor final class PromptTests: XCTestCase {
     func testInputPrompt() throws {
         let payload: [String: Any] = [
             "call_id": "7", "action": "New worktree",
