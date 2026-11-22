@@ -85,6 +85,45 @@ nonisolated final class ProjectTests: XCTestCase {
         XCTAssertEqual(l.pickerSpaces, ["Work", "", "Old"])
     }
 
+    /// The copy kept for a host away holds each tab's pane programs, the
+    /// front one first, for its tiles; a pane whose program was never
+    /// read lists none. A copy a build before tiles wrote has no programs,
+    /// and decodes as none.
+    @MainActor func testListingKeepsPrograms() async throws {
+        let rex = try FakeRex()
+        defer { rex.stop() }
+        rex.features = [Host.projectsFeature]
+        rex.featureVersions = [Host.projectsFeature: 2]
+        let project: [String: Any] = ["dir": "/tmp/demo/acme-api", "space": "", "home_machine": "m-office"]
+        let view: [String: Any] = ["revision": 1, "session_id": "s", "label": "acme-api", "project": project, "windows": [
+            ["window_id": "w1", "focused_block_id": "b1", "layers": [["blocks": [["block_id": "b1"], ["block_id": "b2"]]]]],
+            ["window_id": "w2", "focused_block_id": "b3", "layers": [["blocks": [["block_id": "b3"]]]]],
+        ]]
+        let names = ["b1": "nvim", "b2": "top"]
+        rex.respond = { m, p in
+            switch m {
+            case "session.bootstrap":
+                ["attach_all": ["sessions": [["session_id": "s", "label": "acme-api", "project": project]]], "selected_session": ["view": view]]
+            case "com.superlogical.terminal.process":
+                names[p["block_id"] as? String ?? ""].map { ["foreground": ["name": $0]] } ?? [:]
+            default: [:]
+            }
+        }
+        let h = Host(HostConfig(name: "office", url: try await rex.url()))
+        h.connect()
+        defer { h.stop() }
+        await until("the programs") { h.blocks["b1"]?.program == "nvim" && h.blocks["b2"]?.program == "top" }
+        let l = ProjectListing(host: h)
+        XCTAssertEqual(l.projects[0].tabs.map(\.id), ["w1", "w2"])
+        XCTAssertEqual(l.projects[0].tabs[0].programs, ["nvim", "top"] as [String?])
+        let t2 = try XCTUnwrap(l.projects[0].tabs[1].programs)
+        XCTAssertEqual(t2, [nil])
+        // A copy written before tiles has no programs, and decodes as none.
+        let old = #"{"x":{"projects":[],"loose":[{"id":"w","title":"t"}]}}"#
+        let decoded = try JSONDecoder().decode([String: ProjectListing].self, from: Data(old.utf8))
+        XCTAssertNil(decoded["x"]?.loose[0].programs)
+    }
+
     // MARK: Rex API calls
 
     /// gorex.project.create sends the name, folder and space, and gives the

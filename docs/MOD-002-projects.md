@@ -129,7 +129,7 @@ The window of the desktop shows the layouts of the hosts. It no longer keeps a l
 - The layout of this machine keeps the projects of this machine. It keeps no pane of another host. The migration drops `Node.Host`, `Kills` and `Teleports` of the panes of other hosts.
 - Each client keeps these items in its own settings. They are the space shown, and the project and the tab shown in each window. They are also the size of the window and the width of the sidebar. The last items are the projects that are expanded, and the colors and order of the spaces.
 - `ShareLayout` goes. A client that the host lets in (the Remote Access list, a paired device) reads the layout and follows its changes. It already attaches to the sessions in the same way.
-- **Offline hosts.** Each client keeps a copy of the projects of each host and the names of their tabs, as it last saw them. It shows them greyed while the host is away. The user cannot change or open anything in the copy. The client replaces the copy when the host connects.
+- **Offline hosts.** Each client keeps a copy of the projects of each host and the names and pane programs of their tabs, as it last saw them. It shows them greyed while the host is away, each tab with the tile of the program it ran. The user cannot change or open anything in the copy. The client replaces the copy when the host connects.
 
 ### Listing a directory
 
