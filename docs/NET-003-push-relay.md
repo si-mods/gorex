@@ -8,7 +8,7 @@ metadata:
 
 # NET-003: Push relay: Live Activity pushes for every host
 
-Status: partly built. The host's sender (`internal/push`, `gorex.push.register`/`gorex.push.unregister`) and the relay service (the private `si-mods/gorex-relay` repository) exist; the phone's bind client is in progress. The team decided these points on 2026-11-22.
+Status: built. The host's sender (`internal/push`) is in #995, the relay is the private `si-mods/gorex-relay` repository, and this is the phone's half. The team decided these points on 2026-11-22.
 
 This doc designs the relay that [IOS-006](IOS-006-live-activities.md) left open ("Later: a relay"). It replaces the direct last hop of that doc: no host ever holds an APNs key. Phase 2 of IOS-006 uses this relay as its only last hop.
 

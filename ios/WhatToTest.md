@@ -12,6 +12,8 @@ bullet that reads like a commit subject is one testers cannot read, and the
 ## en-US
 - Coming back from another app, or the phone's network or VPN changing, no longer starts a terminal's screen over for a drop it could ride out: it picks the stream up where it was.
 - Searching the tab list, Activity or Settings now says when nothing matches; empty spots name their state, and a failed ports page or web client download offers Try again.
+- Leave Rex Go with a terminal open: the Lock Screen and Dynamic Island keep updating while the app sleeps when the computer reaches the push relay; they pause when the computer or relay is gone.
+
 - The Live Activity shows the working line above a Devin terminal's input again, instead of the title bar drawn over it.
 - The Live Activity shows a Devin terminal's status dot as a small bullet again, not as a big emoji button.
 - The agent launcher menu, its settings sheet and the icons' spoken labels are now translated, so in Chinese they no longer show English.
@@ -124,6 +126,8 @@ bullet that reads like a commit subject is one testers cannot read, and the
 ## zh-Hans
 - 从其他 App 返回，或手机网络/VPN 变化后，终端现在会续上原来的连接，不再为一阵可容忍的断线重新加载画面。
 - 在标签页列表、「动态」或「设置」中搜索无结果时，现在会提示没有匹配项；空的位置会说明状态，端口页或网页客户端加载失败时可点「重试」。
+- 开着终端退出 Rex Go：只要电脑能连上推送中继，锁屏和灵动岛在应用休眠期间也会持续更新；只有电脑或中继断开时才显示为暂停。
+
 - 实时活动恢复显示 Devin 终端输入框上方的工作状态行，不再选中画在上面的标题分隔线。
 - 实时活动中 Devin 终端的状态点恢复为小圆点，不再显示为一颗大号 emoji 按钮。
 - 「快捷启动」菜单、它的设置页和启动图标的语音朗读标签已翻译为中文，中文界面下不再显示英文。
