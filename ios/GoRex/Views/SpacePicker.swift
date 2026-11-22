@@ -1,30 +1,5 @@
 import SwiftUI
 
-/// The elements the capsule and its panel share as one opens into the
-/// other: the glass, and each space's color and name
-/// (docs/IOS-011-continuous-transitions.md, the space panel).
-enum SpaceMatch: Hashable {
-    case chrome
-    case chip(String)
-    case name(String)
-}
-
-/// A shared element of the capsule and its panel, when a namespace joins
-/// them; a nil one leaves the view plain.
-private struct SpaceMatched: ViewModifier {
-    let id: SpaceMatch
-    let ns: Namespace.ID?
-    let source: Bool
-
-    func body(content: Content) -> some View {
-        if let ns {
-            content.matchedGeometryEffect(id: id, in: ns, isSource: source)
-        } else {
-            content
-        }
-    }
-}
-
 /// A part of the panel that appears once the glass is mostly open: the
 /// header first, then each row 30 ms after the last.
 private struct Reveal: ViewModifier {
@@ -64,21 +39,7 @@ struct SpacePicker: View {
     /// under the capsule (SpacePanelLayer), with no arrow; the bar, which
     /// has no room below it of its own, opens a popover instead.
     var panel: Binding<Bool>?
-    /// The namespace the list's panel shares with the capsule, so the
-    /// capsule's glass and its space's color and name can carry into the
-    /// panel. Nil under Reduce Motion, and for the bar's popover.
-    var ns: Namespace.ID?
-    /// The capsule's end of those shared elements. They are matched only
-    /// while the panel is closed: a shared element that stays matched
-    /// keeps its counterpart pinned to its frame, so opening takes the
-    /// capsule's end out of the match and lets the panel's parts leave
-    /// from where it was.
-    private var match: Namespace.ID? { still || (panel?.wrappedValue ?? false) ? nil : ns }
     @State private var popover = false
-    /// The capsule's own content while the panel is open: it leaves as the
-    /// panel's glass takes the capsule's frame, and returns as the glass
-    /// lands back on it.
-    @State private var shown = true
     /// VoiceOver comes back to the capsule as the panel closes.
     @AccessibilityFocusState private var focus: Bool
     @Environment(\.accessibilityReduceMotion) private var still
@@ -86,12 +47,8 @@ struct SpacePicker: View {
     var body: some View {
         if let panel {
             capsule { withAnimation(still ? .easeInOut(duration: 0.15) : .snappy) { panel.wrappedValue = true } }
-                .opacity(shown ? 1 : 0)
                 .accessibilityFocused($focus)
-                .onChange(of: panel.wrappedValue, initial: true) { was, open in
-                    withAnimation(open ? .easeOut(duration: 0.1) : .easeIn(duration: 0.12).delay(0.3)) {
-                        shown = still || !open
-                    }
+                .onChange(of: panel.wrappedValue) { was, open in
                     if was && !open { focus = true }
                 }
                 .anchorPreference(key: SpacePickerBounds.self, value: .bounds) { $0 }
@@ -116,7 +73,6 @@ struct SpacePicker: View {
                 // own glass is behind it, and two glass effects nest.
                 label
                     .glassEffect(.regular.interactive(), in: .capsule)
-                    .modifier(SpaceMatched(id: .chrome, ns: match, source: true))
             } else {
                 // A name longer than the room ends in an ellipsis, leaving
                 // the search and the toggle their places.
@@ -134,12 +90,10 @@ struct SpacePicker: View {
             RoundedRectangle(cornerRadius: 4, style: .continuous)
                 .fill(color(current) ?? Color.secondary.opacity(0.5))
                 .frame(width: 14, height: 14)
-                .modifier(SpaceMatched(id: .chip(current), ns: match, source: true))
             Text(verbatim: SpaceName.shown(current))
                 .font(bar ? .title3.bold() : .title2.bold())
                 .lineLimit(1)
                 .contentTransition(.opacity)
-                .modifier(SpaceMatched(id: .name(current), ns: match, source: true))
             Image(systemName: "chevron.down")
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(.secondary)
@@ -159,11 +113,10 @@ struct SpacePickerBounds: PreferenceKey {
     }
 }
 
-/// The panel atop the list, over the page: it is the capsule's glass grown
-/// into the panel's, 8 pt under the capsule. Its content stays out of view
-/// until the glass is mostly open (the stagger in SpacePanel), so the glass
-/// is the only thing that changes shape, and a tap beside it closes it. It
-/// keeps 16 pt from the foot of the page and scrolls its spaces past that.
+/// The panel atop the list, over the page: it grows from the capsule's
+/// corner, 8 pt under it, and a tap beside it closes it. Its content
+/// staggers in once the glass is mostly open (SpacePanel). It keeps
+/// 16 pt from the foot of the page and scrolls its spaces past that.
 struct SpacePanelLayer: View {
     let anchor: Anchor<CGRect>?
     @Binding var open: Bool
@@ -174,12 +127,9 @@ struct SpacePanelLayer: View {
     let choose: (String) -> Void
     let add: () -> Void
     let edit: () -> Void
-    /// The namespace the capsule shares; nil under Reduce Motion, when
-    /// nothing moves.
-    var ns: Namespace.ID?
     @Environment(\.accessibilityReduceMotion) private var still
-    /// Set while the panel travels back to the capsule; it is only removed
-    /// once it is gone, so a removed panel can never leave a hittable ghost.
+    /// Set while the panel is on its way out, so the leaving view can
+    /// never take the next tap where it is going.
     @State private var leaving = false
 
     var body: some View {
@@ -195,65 +145,44 @@ struct SpacePanelLayer: View {
                                choose: { s in close(); choose(s) },
                                add: { close(); add() },
                                edit: { close(); edit() },
-                               ns: match, stagger: !still)
+                               stagger: !still)
                         .fixedSize(horizontal: true, vertical: false)
                         // The glass hugs the panel: the cap below only
                         // limits it, and the room under a short panel stays
                         // the page's.
-                        .glassEffect(.regular, in: .rect(cornerRadius: leaving ? r.height / 2 : SpacePanel.radius, style: .continuous))
+                        .glassEffect(.regular, in: .rect(cornerRadius: SpacePanel.radius, style: .continuous))
                         .shadow(color: .black.opacity(0.16), radius: 24, y: 8)
                         .frame(maxHeight: max(160, g.size.height - r.maxY - 8 - 16), alignment: .top)
-                        .modifier(SpaceMatched(id: .chrome, ns: match, source: false))
-                        // The way back is the same morph, reversed: the
-                        // frame and the corners travel to the capsule's
-                        // while the rows clip under them.
-                        .frame(width: leaving ? r.width : nil,
-                               height: leaving ? r.height : nil,
-                               alignment: .topLeading)
-                        .clipped()
-                        .offset(y: leaving ? -(r.height + 8) : 0)
-                        .opacity(leaving ? 0 : 1)
                         // One element holding the rows, modal, so that
                         // VoiceOver keeps to the panel while it is open.
                         .accessibilityElement(children: .contain)
                         .accessibilityAddTraits(.isModal)
                         .accessibilityAction(.escape) { close() }
-                        // Laid out over the whole layer, so the glass can
-                        // grow from the capsule's frame: it stays opaque
-                        // the whole way, and only on the way back does it
-                        // fade as it shrinks.
+                        // Laid out over the whole layer, so that the scale
+                        // can grow from the capsule's corner.
                         .padding(.leading, r.minX)
                         .padding(.top, r.maxY + 8)
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                        .transition(still ? .opacity : .asymmetric(insertion: .identity, removal: .opacity))
+                        .transition(still ? .opacity : .scale(scale: 0.85, anchor: origin(r, in: g.size)).combined(with: .opacity))
                 }
                 // Nothing in the layer answers a touch once it is going:
-                // a removed panel's remnant takes the touches of what was
-                // under it, so it leaves the tree untouchable and unmatched.
+                // the leaving view can no longer be tapped where it was.
                 .allowsHitTesting(!leaving)
             }
         }
         .onChange(of: open) { _, isOpen in if isOpen { leaving = false } }
     }
 
-    /// The shared elements' namespace: nil under Reduce Motion and while
-    /// the panel is going, so its removal pairs with nothing and leaves
-    /// no remnant.
-    private var match: Namespace.ID? { still || leaving ? nil : ns }
-
     private func close() {
         guard !leaving else { return }
-        if still {
-            withAnimation(.easeInOut(duration: 0.15)) { open = false }
-            return
-        }
-        withAnimation(.snappy) { leaving = true }
-        // The panel leaves the tree once its travel is over: a closed panel
-        // removed only then can no longer be tapped where it used to be.
-        Task {
-            try? await Task.sleep(for: .milliseconds(450))
-            if leaving { open = false; leaving = false }
-        }
+        leaving = true
+        withAnimation(still ? .easeInOut(duration: 0.15) : .snappy) { open = false }
+    }
+
+    /// The capsule's bottom-left corner, as a point of the layer.
+    private func origin(_ r: CGRect, in size: CGSize) -> UnitPoint {
+        guard size.width > 0, size.height > 0 else { return .topLeading }
+        return UnitPoint(x: r.minX / size.width, y: r.maxY / size.height)
     }
 }
 
@@ -270,10 +199,6 @@ struct SpacePanel: View {
     let choose: (String) -> Void
     let add: () -> Void
     let edit: () -> Void
-    /// The namespace the rows share with the capsule, so the space shown
-    /// trades its color and name with it. Nil for a plain panel, as the
-    /// bar's popover's, and under Reduce Motion.
-    var ns: Namespace.ID? = nil
     /// Whether the parts come in one by one once the glass is open.
     var stagger: Bool = false
     /// The staggered parts' entrance, replayed on each open.
@@ -373,12 +298,10 @@ struct SpacePanel: View {
                 RoundedRectangle(cornerRadius: 4, style: .continuous)
                     .fill(color(s) ?? Color.secondary.opacity(0.45))
                     .frame(width: mark, height: mark)
-                    .modifier(SpaceMatched(id: .chip(s), ns: ns, source: false))
                 VStack(alignment: .leading, spacing: 0) {
                     Text(verbatim: SpaceName.shown(s))
                         .font(.body.weight(on ? .semibold : .regular))
                         .lineLimit(1)
-                        .modifier(SpaceMatched(id: .name(s), ns: ns, source: false))
                     Text(projects(count(s)))
                         .font(.caption)
                         .foregroundStyle(.secondary)

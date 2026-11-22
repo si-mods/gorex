@@ -44,8 +44,6 @@ struct HostListView: View {
     @Namespace private var zoom
     /// The rows that move between All Tabs and Activity.
     @Namespace private var places
-    /// The elements the space capsule and its panel share.
-    @Namespace private var spaceNS
     @Environment(\.accessibilityReduceMotion) private var still
     @AppStorage("scheme") private var scheme = "dark"
     /// The window's scheme, a terminal's while one is open.
@@ -389,8 +387,7 @@ struct HostListView: View {
                     add: { spaceName = ""; addingSpace = true },
                     edit: { editingSpaces = true },
                     place: place,
-                    panel: place == .list ? $spacePanel : nil,
-                    ns: place == .list ? spaceNS : nil)
+                    panel: place == .list ? $spacePanel : nil)
     }
 
     /// The panel of the list's picker, over the page, under the picker.
@@ -400,8 +397,7 @@ struct HostListView: View {
                         count: projectCount,
                         choose: { s in withAnimation(still ? .easeInOut(duration: 0.15) : .snappy) { book.chosen = s } },
                         add: { spaceName = ""; addingSpace = true },
-                        edit: { editingSpaces = true },
-                        ns: spaceNS)
+                        edit: { editingSpaces = true })
     }
 
     /// A space's projects across the hosts, an away host's as last seen.
