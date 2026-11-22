@@ -3,14 +3,14 @@ name: IOS-006
 description: "Rex Go shows a terminal in the Dynamic Island and on the Lock Screen through Live Activities. Use when you change Live Activities or their line."
 metadata:
   created: "2026-11-17"
-  updated: "2026-11-21"
+  updated: "2026-11-22"
 ---
 
 # IOS-006: Rex Go: Live Activities for sessions
 
 Status: phase 1 built (#892, #900, #901). Phases 2 and 3 not built.
 
-Phase 1 is built as `TerminalActivity` and `TerminalLive`. Phases 2 and 3 are proposals. The team decided these points. Phase 1 is the terminal activity: the terminal that is open when Rex Go leaves the foreground, kept connected for a short grace. The host sends the later updates, and the last hop is replaceable. This doc designs the direct last hop (an APNs key on the host) and leaves a relay for later. Rex Go is distributed to other people (public TestFlight, later the App Store). They cannot hold the APNs key of the app. The names `HostActivity`, `push.register` and `push.seen` are phase 2 and 3 proposals. They are not in the code.
+Phase 1 is built as `TerminalActivity` and `TerminalLive`. Phases 2 and 3 are proposals. The team decided these points. Phase 1 is the terminal activity: the terminal that is open when Rex Go leaves the foreground, kept connected for a short grace. The host sends the later updates through the push relay of [NET-003](NET-003-push-relay.md); no host holds an APNs key, so every paired phone can get phase 2. Rex Go is distributed to other people (public TestFlight, later the App Store). The names `HostActivity`, `push.register` and `push.seen` are phase 2 and 3 proposals. They are not in the code.
 
 ## Problem
 
@@ -25,7 +25,7 @@ A Live Activity (ActivityKit) shows the state of a task. It shows it on the Lock
 - It stays correct while Rex Go is suspended. A program that turns blocked lights up the Lock Screen within seconds.
 - The "needs input" notification arrives while Rex Go is suspended too.
 - It shows no state older than it admits. When updates stop, it says so.
-- Users whose hosts have no APNs key get phase 1. This means everyone but the developer, until a relay exists. The activity is live while Rex Go runs. When the app is suspended, the activity freezes and shows as paused.
+- A phone whose host or relay cannot push falls back to phase 1. The activity is live while Rex Go runs. When the app is suspended, the activity freezes and shows as paused.
 
 ## Non-goals
 
@@ -33,8 +33,8 @@ A Live Activity (ActivityKit) shows the state of a task. It shows it on the Lock
 - **One activity per session by default.** See Presentation.
 - **Keeping Rex Go running in the background** after the grace that a background task gives. See Alternatives, b. The user chose the grace (2026-11-20) over a background mode that keeps the connection open. That mode breaks App Review Guideline 2.5.4 and drains the battery.
 - **Programs that do not report.** The activity shows what OSC 7501 reports. GoRex installs no hooks to report for other programs.
-- **Direct APNs for other users.** Only the developer account of the app can have an APNs key for Rex Go. Direct sending is the path of the developer, not a feature.
-- **A push relay.** A relay would bring phase 2 to other users. This doc does not decide its design (see Later).
+- **An APNs key on a host.** Only the developer account of the app can have an APNs key for Rex Go. The key lives on the relay ([NET-003](NET-003-push-relay.md)), never on a host.
+- **Push-to-start.** The app starts the activity in the foreground, as in phase 1.
 
 ## Design
 
@@ -185,40 +185,32 @@ The presentations are:
 The sender is one component on the host. It runs in the process that runs the gateway, which already sees the records of every block (`events_blocks.go`). **[code]** The sender does these things:
 
 - It keeps these items for each registered device:
-  - the environment (sandbox for Xcode builds, production for TestFlight and the App Store)
-  - the push-to-start token
-  - the device token for alerts
-  - the update token of the current activity
+  - the device key of the phone ([NET-003](NET-003-push-relay.md), Parties and keys)
+  - the target (session and block of the terminal on screen, or none)
   - the last state sent
-- It computes the content state of the host with `rex.MostUrgent` over every session. It uses the seen state that the phone reports.
+- It computes the content state of the target of each device. It uses the seen state that the phone reports.
 - It sends working and progress changes at priority 5, coalesced to one for each few seconds. It sends blocked, done and error at priority 10, one time for each change.
-- It starts an activity by push-to-start (with `input-push-token: 1`) when the phone has none for this host. It ends the activity when nothing works or waits.
-- It drops a token that APNs rejects as unregistered or expired.
-- It hands each request to a **last hop**. The last hop takes a built request (kind, token, environment, priority, payload) and returns the answer of APNs. Nothing else depends on which last hop runs. This doc builds one last hop, `direct`. A relay would be another (see Later).
+- It sends each update to the relay of [NET-003](NET-003-push-relay.md), addressed to the device key and signed with the push key of the host. The relay drops tokens that APNs rejects; the host never sees a token.
+- It sends a last update with `connected: false` when the control connection of the device closes.
 
 #### Rex API: `push.register`
 
 `push.register` is a GoRex-only Rex API method. The phone calls it over the connection that it already has. The existing auth of the gateway therefore decides who can register. **[code]** for the auth of the gateway, not for the method, which is new.
 
 - Params:
-  - a device id (random, per install)
-  - the environment
-  - the push-to-start token and the device token
-  - the update token of the activity of this host, when one runs
+  - the device key of the phone ([NET-003](NET-003-push-relay.md), Parties and keys)
+  - the target: session and block of the terminal on screen, or none
   - whether Live Activities are on
-- The phone calls it on every connect and when a token changes.
+- The result carries the push key of the host and the URL of the relay.
+- The phone calls it on every connect and when the target changes.
 - `push.seen` (or a field of the same call) reports which done and error records the user saw. The host then stops alerting for them. Today `seen` lives only on the phone.
 - `push.unregister` runs on sign-out or when the user turns it off.
 
-Known gap: An activity that the host starts by push-to-start gets its update token on the phone, which iOS wakes briefly. The phone must hand the token to the host in that time. On the local network or through a system VPN, it may succeed. Through the built-in Tailscale, the engine must start first. **[assumption]** Until the host has the token, it cannot update that activity. It can only send alerts. The next foreground closes the gap.
+The phone never gives the host a push token. The token binds at the relay directly, on the public network. The token gap that push-to-start had (the phone must reach the host in the short wake) does not apply: the relay needs no tailnet.
 
-#### Direct last hop
+#### Last hop: the relay
 
-- Go `net/http` speaks HTTP/2 over TLS by default. The JWT is ES256 over the `.p8` key (`crypto/ecdsa`), cached and renewed every 50 minutes. **[assumption: no third-party APNs library needed]**
-- The key is a topic-specific APNs key with the scope of the bundle id of Rex Go and one environment. It is not verified if such a key also covers the `.push-type.liveactivity` topic. **[assumption]**
-- The user configures the key with a command, for instance `gorex push key <file.p8> --key-id … --team-id … --env production`. The command copies the key into the data dir of GoRex (`rex.Dir()`) with mode 0600 (on Windows, an ACL for the user only). The key never goes in the repository, never in `hosts.json` or `remote.json`, and never in logs.
-- Revocation: revoke the key on the developer portal, then run `gorex push key --remove`. A leaked key works until someone revokes it.
-- Where a key is configured, the host sends directly. Elsewhere, it does not send at all, and its phones get phase 1. Content goes from the host to Apple only.
+The last hop is the relay of [NET-003](NET-003-push-relay.md). The host posts built requests to it, signed with its push key. The relay holds the APNs key, checks signatures against its bindings, and forwards to APNs. A host needs no key and no configuration: the URL of the relay ships with the server.
 
 ### Build and release
 
@@ -229,7 +221,7 @@ Known gap: An activity that the host starts by push-to-start gets its update tok
   - Whether that key can register the App ID of the extension and enable push without portal work depends on its role. **[assumption]**
   - An archive that is built unsigned may carry no entitlements. The export could then sign the app without `aps-environment`. Phase 2 may have to sign at archive.
   - Check the entitlements of the exported app before relying on it. **[assumption]**
-- TestFlight and App Store builds use production APNs. Xcode builds use sandbox. The phone reports which environment it uses in `push.register`. A key of a host serves one environment.
+- TestFlight and App Store builds use production APNs. Xcode builds use sandbox. The phone reports which environment it uses when it binds at the relay. The relay holds one key for each environment.
 - Broadcast channels need the portal by hand. This design does not use them.
 
 ## Alternatives
@@ -240,18 +232,18 @@ These are the options for updates while Rex Go is suspended:
 | --- | --- | --- | --- | --- | --- |
 | a. Foreground only | Live in the app. Frozen seconds after it leaves. "paused" past the stale date | none | none | low | phase 1, the base |
 | b. Keep the app alive | Live while iOS lets it be. Drains the battery | none | none | high | rejected |
-| c. Host sends to APNs directly | Live | an APNs key on the host | content goes host → Apple only. The key is the developer account's | low | phase 2, developer only |
-| d. Host sends through a relay | Live | a relay holding the APNs key | state passes the relay and Apple | low | later, not designed here |
+| c. Host sends to APNs directly | Live | an APNs key on the host | content goes host → Apple only. The key is the developer account's | low | rejected: only the developer could hold the key |
+| d. Host sends through a relay | Live | a relay holding the APNs key | state passes the relay and Apple | low | phase 2, [NET-003](NET-003-push-relay.md) |
 | e. Silent push, Background App Refresh, NetworkExtension | Nothing reliable (NetworkExtension: live, at the cost of a system VPN) | silent push needs d anyway | NetworkExtension brings the system VPN back | medium to high | rejected |
 
 **a. Foreground only.** The app starts and updates the activity while it runs. At the background edge, it sets a short stale date. A background task (`beginBackgroundTask`) buys about 30 seconds, which covers a quick switch to another app. The built-in Tailscale engine is suspended with the app anyway. While the app is in front, the inbox shows the same information. On its own, this option therefore adds little. It is what users without a push path get.
 
 **b. Keeping the app alive.** The background modes that could do it are `audio` (silent audio), `location` and `voip`. None of them is what a terminal app does. App Review Guideline 2.5.4 allows background modes only for their intended purpose. rootshell declares `location`, but it has a real location feature (its Location Diary). Rejected.
 
-**c and d: the host sends, the last hop varies.** The host is the one party that knows the state while the phone sleeps. It therefore computes the content state, builds the payloads and keeps the tokens of the phone. Only the last hop differs:
+**c and d: the host sends, the last hop varies.** The host is the one party that knows the state while the phone sleeps. It therefore computes the content state and builds the payloads. Only the last hop differs:
 
-- **Direct**: The host signs the request with an APNs key that is configured on it and sends the request to Apple. There is no cloud service. Nothing leaves the network of the user except the push to Apple. But the key belongs to the team of the app. Anyone who holds it can push to any Rex Go device whose token they learn. A topic-specific key narrows that to Rex Go, not to one user. So only the developer can have one. This option is built first. It proves the whole chain (tokens, payloads, widget, entitlements, signing) before any cloud service exists. It stays the path of the developer.
-- **Relay**: The host posts the same payloads to a relay, which holds the key and sends. It is the only way to give other users phase 2, because they cannot hold the key. It is for later (see Later).
+- **Direct**: The host signs the request with an APNs key that is configured on it and sends the request to Apple. There is no cloud service. Nothing leaves the network of the user except the push to Apple. But the key belongs to the team of the app. Anyone who holds it can push to any Rex Go device whose token they learn. A topic-specific key narrows that to Rex Go, not to one user. So only the developer can have one. Rejected: it cannot serve other users.
+- **Relay**: The host posts the payloads to a relay, which holds the key and sends. It is the only way to give other users phase 2. Chosen: [NET-003](NET-003-push-relay.md).
 
 **e. Others.**
 
@@ -261,40 +253,33 @@ These are the options for updates while Rex Go is suspended:
 
 ## Tests
 
-- Unit tests: the content state from records (ranking, counts, seen), coalescing, and the 4 KB limit with the longest title and message. Also JWT signing and renewal, and the direct last hop against a fake APNs server (HTTP/2, error answers, unregistered tokens).
+- Unit tests: the content state from records (ranking, counts, seen), coalescing, and the 4 KB limit with the longest title and message. Also the sender against a fake relay, and the relay against a fake APNs server (HTTP/2, error answers, unregistered tokens).
 - Simulator on the Mac mini: start, update, stale and end. Pushes with `xcrun simctl push` or the Push Notifications Console.
-- On a phone: lock it with an agent that works on a host with a key, make it block, and see the alert. Push-to-start with the app suspended. A host without a key turns paused. Leave it past 8 hours.
+- On a phone: lock it with an agent that works, make it block, and see the island update. A host the relay cannot reach turns paused. Leave it past 8 hours.
 
 ## Phases
 
 | Phase | Scope | Effort | Who gets live updates once suspended |
 | --- | --- | --- | --- |
 | 1 | Terminal activity, ~25 s grace | 3–4 days | nobody |
-| 2 | Host sender, `push.register`, direct last hop, alert pushes | 5–7 days | phones of hosts with a key: the developer's |
+| 2 | Host sender, `push.register`, the relay, alert pushes | 5–7 days | every paired phone whose host reaches the relay |
 | 3 | Follow a session not on screen (optional) | 2–3 days | as phase 2 |
 
 The efforts are rough estimates. **[assumption]**
 
 1. **Terminal activity** (built, #892, #900, #901): `TerminalActivity` in `GoRexWidgets` and its presentations. The activity starts and ends with the terminal screen. It also has the grace before the streams suspend, the paused mark and the 8-hour restart. Prerequisite: phase 1 of the widgets adds the extension, and CI signs it. Unsolved: everything after the grace.
-2. **Host sender, direct** (not built): the sender and its last-hop interface, `push.register` and seen, and the direct last hop with the key command. It also has push-to-start, update tokens, the ordinary "needs input" alert push while the app is suspended, and the push entitlement and signing. Content goes from the host to Apple only. Users without a key get the behavior of phase 1. Unsolved: the push-to-start token gap through the built-in Tailscale, programs that do not report, and records lost on a server restart.
+2. **Host sender through the relay** (not built): the sender, `push.register` and seen, and the relay of [NET-003](NET-003-push-relay.md). It also has the ordinary "needs input" alert push while the app is suspended, and the push entitlement and signing. Content goes from the host through the relay to Apple. A phone whose host cannot reach the relay gets the behavior of phase 1. Unsolved: programs that do not report, and records lost on a server restart.
 3. **Follow a session not on screen** (not built): a terminal activity that starts from the menu of a session row. Actions from the activity stay out.
 
 ## Open questions
 
-1. Do phases 1 and 2 ship to TestFlight as they land? Testers without a key get the behavior of phase 1 only.
-2. Do direct pushes carry session titles and messages (Apple sees them in transit), or only states, counts and program ids?
-3. How does the user configure the key on a host (the `gorex push key` command, or Settings in the app)? On which hosts: every machine of the developer, or one?
-4. Can the App Store Connect key of the CI register the App ID of the extension and enable push without portal work? Does an unsigned archive keep `aps-environment` at export? The team must check both points in phase 1 and before phase 2.
-5. Does a topic-specific key with the scope of the bundle id of Rex Go cover the `.push-type.liveactivity` topic? Or does the team need an environment-scoped key?
+1. Do phases 1 and 2 ship to TestFlight as they land?
+2. The pushes carry the same texts the activity shows (title, line, record message). The relay and Apple see them in transit, in plain text, as [NET-003](NET-003-push-relay.md) says. Decided 2026-11-22.
+3. Can the App Store Connect key of the CI register the App ID of the extension and enable push without portal work? Does an unsigned archive keep `aps-environment` at export? The team must check both points in phase 1 and before phase 2.
 
-## Later: a relay
+## Later: a relay — decided
 
-Other users cannot hold the APNs key of the app. A relay that holds the key would bring phase 2 to them. The last hop of the sender is replaceable, so the team can add a relay without a rework of the sender. This doc deliberately does not decide the design of the relay. These points are undecided:
-
-- the operator, the hosting and the storage
-- the auth between hosts and relay
-- what leaves the network of the user
-- how to merge hosts into one activity
+The relay is designed in [NET-003](NET-003-push-relay.md), decided 2026-11-22. It answers the points this doc left open: si-mods operates it at `relay.gorex.uk`; a host signs its requests with a push key that the phone learns over the control connection; a phone binds its activity tokens to a device key and a host key; tokens never reach the host; the content state crosses the relay in plain text, and the relay stores no content.
 
 ## Reference: rootshell
 
