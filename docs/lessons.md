@@ -99,6 +99,11 @@ Each item has a **Trigger** (what the diff shows), a **Check** (what the author 
 - **Check:** the recognizer's test input comes from a real capture, or the variants a real producer emits are listed. `TerminalActivity.rule` knew a line of box-drawing characters but not the titled edge TUI agents draw.
 - **Source:** this PR.
 
+### A fixture's character copied by eye
+- **Trigger:** the diff writes a fixture whose non-ASCII characters are typed from what a capture looks like.
+- **Check:** the characters come from the capture's bytes, not its look — `capture --raw`, then the codepoints. Two glyphs identical in a terminal font can be different scalars with different behavior elsewhere: Devin's status dot is U+23FA, not the U+25CF it looks like, and iOS draws the first as an emoji where Unicode asks for the text style.
+- **Source:** this PR.
+
 ### Path shared by local panes, remote hosts and iOS
 - **Trigger:** the diff changes a path that local panes, remote hosts and iOS all use (stream, attach, resume, size, reconnect).
 - **Check:** every consumer is listed, and all are fixed in this PR with one policy.

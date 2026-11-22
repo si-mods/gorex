@@ -8,7 +8,10 @@ extension String {
     /// controls but tab and line breaks, the bidi controls and zero-width
     /// characters, private-use glyphs (a Nerd Font icon, a picture's
     /// placeholder), noncharacters and U+FFFD. Emoji, CJK text and the
-    /// joiners of emoji sequences stay.
+    /// joiners of emoji sequences stay. A character that can be an emoji
+    /// but whose default style is text (⏺, ❤) gets U+FE0E behind it:
+    /// iOS draws the emoji style where Unicode asks for text, and a
+    /// terminal's ⏺ is a bullet, not a button.
     nonisolated var shownText: String {
         let scalars = Array(unicodeScalars)
         // The common case, plain ASCII: nothing to drop.
@@ -23,7 +26,10 @@ extension String {
                 i = Shown.end(scalars, at: i)
                 continue
             }
-            if Shown.keeps(v) { out.append(scalars[i]) }
+            if Shown.keeps(v) {
+                out.append(scalars[i])
+                if Shown.textStyled(scalars, at: i) { out.append("\u{FE0E}") }
+            }
             i += 1
         }
         return String(out)
@@ -47,6 +53,22 @@ nonisolated private enum Shown {
         // Noncharacters, and the replacement character of broken UTF-8.
         case 0xFDD0...0xFDEF, 0xFFFD: return false
         default: return v & 0xFFFE != 0xFFFE
+        }
+    }
+
+    /// Whether the scalar at i needs U+FE0E to draw the text style that
+    /// is its default: an emoji-capable character iOS would draw as an
+    /// emoji where Unicode says text (⏺, ❤, ☀), but not one that is
+    /// already part of an emoji sequence — a char with its own FE0E or
+    /// FE0F, one a ZWJ joins, a keycap's, or one a skin tone modifies.
+    static func textStyled(_ s: [Unicode.Scalar], at i: Int) -> Bool {
+        let p = s[i].properties
+        guard s[i].value > 0x7F, p.isEmoji, !p.isEmojiPresentation else { return false }
+        if i > 0, s[i - 1].value == 0x200D { return false }
+        guard i + 1 < s.count else { return true }
+        switch s[i + 1].value {
+        case 0xFE0E, 0xFE0F, 0x200D, 0x20E3, 0x1F3FB...0x1F3FF: return false
+        default: return true
         }
     }
 

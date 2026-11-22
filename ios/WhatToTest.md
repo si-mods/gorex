@@ -11,6 +11,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 
 ## en-US
 - The Live Activity shows the working line above a Devin terminal's input again, instead of the title bar drawn over it.
+- The Live Activity shows a Devin terminal's status dot as a small bullet again, not as a big emoji button.
 - The agent launcher menu, its settings sheet and the icons' spoken labels are now translated, so in Chinese they no longer show English.
 - Under each project, the New Tab row now ends with icons of the agent CLIs on that computer (such as Claude Code or Codex) and a ▾ menu: tap one to open that agent in the project folder.
 - The Live Activity no longer shows leftover glyphs or bare rules where the latest line goes; such a line stays empty.
@@ -120,6 +121,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 
 ## zh-Hans
 - 实时活动恢复显示 Devin 终端输入框上方的工作状态行，不再选中画在上面的标题分隔线。
+- 实时活动中 Devin 终端的状态点恢复为小圆点，不再显示为一颗大号 emoji 按钮。
 - 「快捷启动」菜单、它的设置页和启动图标的语音朗读标签已翻译为中文，中文界面下不再显示英文。
 - 每个项目的「新建标签页」一行右侧会显示该电脑已安装 Agent CLI 的图标（如 Claude Code、Codex）和 ▾ 菜单：点按即可在项目目录中直接启动对应 Agent，退出后自动关闭标签页。
 - 实时活动的最新一行不再显示残留的特殊字符或纯分割线；这样的行现在留空。
