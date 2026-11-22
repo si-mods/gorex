@@ -2,13 +2,27 @@ import ActivityKit
 import UIKit
 
 extension TerminalLive {
-    /// The app's: ActivityKit's activities, and the app's grace.
-    static let shared = TerminalLive(driver: ActivityKitDriver(), grace: .shared)
+    /// The app's: ActivityKit's activities, and the app's grace. The
+    /// activity's push tokens bind at the hosts' relays (PushTokens,
+    /// docs/NET-003-push-relay.md).
+    static let shared: TerminalLive = {
+        let driver = ActivityKitDriver()
+        driver.onToken = { host, token in
+            let hex = token.map { String(format: "%02x", $0) }.joined()
+            PushTokens.shared.bind(tokenHex: hex, host: host)
+        }
+        return TerminalLive(driver: driver, grace: .shared)
+    }()
 }
 
-/// TerminalLive's driver on ActivityKit: local updates only, no push.
+/// TerminalLive's driver on ActivityKit.
 final class ActivityKitDriver: TerminalLive.Driver {
     private var activity: Activity<TerminalActivity>?
+    /// Called with each push token an activity gets: its host
+    /// (attributes.host) and the token's bytes. The app sets it.
+    var onToken: @MainActor (UUID, Data) -> Void = { _, _ in }
+    /// The consumption of the activity's token updates.
+    private var tokenTask: Task<Void, Never>?
 
     var enabled: Bool { ActivityAuthorizationInfo().areActivitiesEnabled }
 
@@ -23,7 +37,16 @@ final class ActivityKitDriver: TerminalLive.Driver {
         // One at a time: those of an earlier run too.
         end()
         do {
-            activity = try Activity.request(attributes: attributes, content: content(state, stale: nil), pushType: nil)
+            let a = try Activity.request(attributes: attributes, content: content(state, stale: nil), pushType: .token)
+            activity = a
+            // The token it may have had at once, and each next one.
+            nonisolated(unsafe) let b = a
+            let host = attributes.host
+            let onToken = self.onToken
+            tokenTask = Task {
+                if let t = b.pushToken { onToken(host, t) }
+                for await t in b.pushTokenUpdates { onToken(host, t) }
+            }
         } catch {
             print("terminal activity: \(error)")
         }
@@ -52,6 +75,8 @@ final class ActivityKitDriver: TerminalLive.Driver {
 
     func end() {
         activity = nil
+        tokenTask?.cancel()
+        tokenTask = nil
         for each in Activity<TerminalActivity>.activities {
             nonisolated(unsafe) let a = each
             finishing { await a.end(nil, dismissalPolicy: .immediate) }

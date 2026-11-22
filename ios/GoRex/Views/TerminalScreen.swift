@@ -273,6 +273,8 @@ struct TerminalScreen: View {
                     p.session.close()
                 }
                 TerminalLive.shared.close(owner: liveOwner)
+                // No terminal on screen: the host's pushes have no target.
+                host.setPushTarget()
                 pages.removeAll { $0.session !== session }
                 if Notifier.shared.onScreen == currentTarget { Notifier.shared.onScreen = nil }
             }
@@ -443,6 +445,8 @@ struct TerminalScreen: View {
                 Task { @MainActor in done(line) }
             }
         }), owner: liveOwner)
+        // The pushes the host sends are for this terminal (gorex.push).
+        host.setPushTarget(session: target.session, block: target.block)
     }
 
     /// The title of a target's window, as `title` gives it: the name the

@@ -1,3 +1,4 @@
+import ActivityKit
 import Foundation
 import Network
 import Observation
@@ -409,6 +410,11 @@ final class Host: Identifiable {
     /// a pane's loopback port (`gorex.port_relay`, docs/IOS-014).
     static let portRelayFeature = "gorex.port_relay"
 
+    /// The welcome's feature of a server that pushes the Live Activity's
+    /// updates through the push relay (`gorex.push.register`,
+    /// docs/NET-003-push-relay.md).
+    static let pushFeature = "gorex.push"
+
     private(set) var control: ControlConnection?
 
     /// Whether this connection reached the host on its own network, so a
@@ -472,6 +478,12 @@ final class Host: Identifiable {
     /// have taken the listener in a suspension no resume has seen. The
     /// app sets it.
     static var proxyFailed: () -> Void = {}
+    /// The coordinator of the activities' push tokens (PushTokens,
+    /// docs/NET-003-push-relay.md); a test's stands in.
+    static var pushTokens: () -> PushTokens = { PushTokens.shared }
+    /// The terminal on screen the host's pushes are for, registered with
+    /// it (pushTarget); nil while no terminal shows.
+    @ObservationIgnored private(set) var pushTarget: (session: String, block: String)?
     @ObservationIgnored private var proxySession: (proxy: LoopbackProxy, session: URLSession)?
 
     init(_ config: HostConfig) {
@@ -612,6 +624,8 @@ final class Host: Identifiable {
         reconnectSince = nil
         pingMs = nil
         retry?.cancel()
+        unregisterPush()
+        Self.pushTokens().drop(host: id)
         control?.close()
         describes.cancelAll()
         proxySession?.session.invalidateAndCancel()
@@ -723,6 +737,7 @@ final class Host: Identifiable {
         for s in sessions where s.view == nil { attach(s.id) }
         listSpaces()
         listAgents()
+        registerPush()
     }
 
     /// The spaces the host offers though no project of it carries one, as
@@ -750,6 +765,51 @@ final class Host: Identifiable {
             let found = Agent.parse(r)
             if found != agents { agents = found }
         }
+    }
+
+    /// The terminal on screen, as the Live Activity's pushes are for it
+    /// (docs/NET-003-push-relay.md): registered with the host on each
+    /// change, and again on each connect (bootstrap). nil registers with
+    /// no target, as the screen closing does.
+    func setPushTarget(session: String? = nil, block: String? = nil) {
+        let next = session.flatMap { s in block.map { (session: s, block: $0) } }
+        guard next?.session != pushTarget?.session || next?.block != pushTarget?.block else { return }
+        pushTarget = next
+        registerPush()
+    }
+
+    /// Registers the device key and the terminal on screen with the host
+    /// (gorex.push.register, docs/NET-003-push-relay.md): its answer — the
+    /// host's push key and the relay's URL — goes to PushTokens for the
+    /// activity's tokens to bind to. Nothing on a demo host or a server
+    /// without gorex.push, which keeps phase 1.
+    private func registerPush() {
+        guard !isDemo, let c = control, c.features.contains(Self.pushFeature) else { return }
+        let tokens = Self.pushTokens()
+        let device = tokens.deviceKey
+        guard !device.isEmpty else { return }
+        var args: [String: Any] = ["device": device,
+                                   "live_activities": ActivityAuthorizationInfo().areActivitiesEnabled]
+        if let t = pushTarget {
+            args["session_id"] = t.session
+            args["block_id"] = t.block
+        }
+        Task {
+            guard let r = try? await c.call("gorex.push.register", args).payload, c === control else { return }
+            guard let key = r["host"] as? String, !key.isEmpty else { return }
+            let relay = (r["relay"] as? String).flatMap { URL(string: $0) } ?? PushTokens.defaultRelay
+            tokens.set(host: id, target: PushTarget(key: key, relay: relay))
+        }
+    }
+
+    /// The host is removed: the device unregisters
+    /// (gorex.push.unregister, docs/NET-003-push-relay.md), sent without
+    /// its answer awaited as the connection closes right after.
+    private func unregisterPush() {
+        guard !isDemo, let c = control, c.features.contains(Self.pushFeature) else { return }
+        let device = Self.pushTokens().deviceKey
+        guard !device.isEmpty else { return }
+        c.tell("gorex.push.unregister", ["device": device])
     }
 
     /// The key this device's caches know the host by, as the pane last

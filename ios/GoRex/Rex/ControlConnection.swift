@@ -225,6 +225,18 @@ final class ControlConnection {
         return (r.seq, r.payload, r.raw)
     }
 
+    /// Sends a request whose answer is not awaited, for a call made as
+    /// the connection closes (gorex.push.unregister): the send is queued
+    /// before the close is, best effort.
+    func tell(_ method: String, _ payload: [String: Any]? = nil) {
+        guard !closed else { return }
+        nextID += 1
+        var req: [String: Any] = ["type": "request", "id": String(nextID), "method": method]
+        req["payload"] = payload
+        guard let data = try? JSONSerialization.data(withJSONObject: req) else { return }
+        task.send(.string(String(decoding: data, as: UTF8.self))) { _ in }
+    }
+
     /// Calls a block method, such as com.superlogical.terminal.title.
     @discardableResult
     func callBlock(_ method: String, session: String, block: String, _ args: [String: Any] = [:]) async throws -> [String: Any] {

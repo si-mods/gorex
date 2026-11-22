@@ -88,8 +88,10 @@ targets:
         GoRexCommit: $(GOREX_COMMIT)
         ITSAppUsesNonExemptEncryption: false
         # The terminal's Live Activity (docs/IOS-006-live-activities.md), drawn
-        # by GoRexWidgets; local updates only, no push.
+        # by GoRexWidgets; pushes through the relay keep it going while the
+        # app is suspended (docs/NET-003-push-relay.md).
         NSSupportsLiveActivities: true
+        NSSupportsLiveActivitiesFrequentUpdates: true
         UIAppFonts: [JetBrainsMono-Regular.ttf]
         CFBundleLocalizations: [en, zh-Hans]
         UILaunchScreen:
@@ -156,6 +158,7 @@ targets:
     sources:
       - GoRexTests
       - GoRex/Rex
+      - GoRex/Push
       - Shared
       - GoRex/WidgetPublisher.swift
       - GoRexWidgets/InboxWidgetView.swift
