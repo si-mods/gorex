@@ -23,6 +23,13 @@ import XCTest
     /// The reconnect token of each hello, in order; each welcome gives
     /// "t" and its connection's number.
     private(set) var tokens: [String?] = []
+    /// How each connection that ended went, in order: the code its close
+    /// frame carried, or nil for a bare drop. URLSession sends a close
+    /// frame on every task end, so a server counts "leaving for good" by
+    /// the code — normalClosure — not by whether a frame came.
+    private(set) var ends: [NWProtocolWebSocket.CloseCode?] = []
+    /// The close code each connection's close frame carried.
+    private var clean = [ObjectIdentifier: NWProtocolWebSocket.CloseCode]()
 
     private let listener: NWListener
     private var seq = 0
@@ -100,9 +107,17 @@ import XCTest
     }
 
     private func receive(_ c: NWConnection, first: Bool) {
-        c.receiveMessage { [weak self] content, _, _, error in
+        c.receiveMessage { [weak self] content, context, _, error in
             MainActor.assumeIsolated {
-                guard let self, error == nil, let content else { return }
+                guard let self else { return }
+                if let m = context?.protocolMetadata(definition: NWProtocolWebSocket.definition) as? NWProtocolWebSocket.Metadata,
+                   m.opcode == .close {
+                    self.clean[ObjectIdentifier(c)] = m.closeCode
+                }
+                guard error == nil, let content else {
+                    self.ends.append(self.clean[ObjectIdentifier(c)])
+                    return
+                }
                 if first, content.first == 0x01 || content.first == 0x02 {
                     self.data(c, content)
                     return

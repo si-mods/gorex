@@ -27,12 +27,13 @@ import Observation
     @ObservationIgnored private let source: Source
     @ObservationIgnored private let schedule: Schedule
     @ObservationIgnored private var watching: AnyObject?
-    /// The last network told; nil before the first.
+    /// The last network told, and its interface's name; nil before the first.
     @ObservationIgnored private var told: String?
+    @ObservationIgnored private var toldName: String?
     /// Within the second after a reconnect.
     @ObservationIgnored private var quiet = false
-    /// The interface's name of a change in that second, to reconnect at its end.
-    @ObservationIgnored private var pending: String?
+    /// The interface's name and kind of a change in that second, to reconnect at its end.
+    @ObservationIgnored private var pending: (name: String, kind: String)?
 
     init(source: @escaping Source, schedule: @escaping Schedule = WidgetPublisher.after) {
         self.source = source
@@ -46,30 +47,33 @@ import Observation
     }
 
     private func see(name: String, network: String) {
-        defer { told = network }
+        defer { told = network; toldName = name }
         guard let last = told, last != network else { return }
+        // A gateways-only change, as a VPN's routes flapping while Wi-Fi
+        // stays, reads differently than the interface's change.
+        let kind = toldName == name ? "gateways" : "interface"
         if name.isEmpty {
             // No route: nothing to dial. The change to a network comes next.
             ConnectionLog.note("network changed: none")
             pending = nil
         } else if quiet {
-            pending = name
+            pending = (name, kind)
         } else {
-            reconnect(name)
+            reconnect(name, kind)
         }
     }
 
-    private func reconnect(_ name: String) {
-        ConnectionLog.note("network changed: \(name)")
+    private func reconnect(_ name: String, _ kind: String) {
+        ConnectionLog.note("network changed: \(name), \(kind)")
         changes += 1
         quiet = true
         schedule(1) { [weak self] in
             guard let self else { return }
             self.quiet = false
             // One more for all the second's changes.
-            if let name = self.pending {
+            if let p = self.pending {
                 self.pending = nil
-                self.reconnect(name)
+                self.reconnect(p.name, p.kind)
             }
         }
     }

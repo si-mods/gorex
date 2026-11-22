@@ -139,7 +139,9 @@ func TestDuplicateRequestID(t *testing.T) {
 }
 
 // TestReconnect checks that an abnormal end keeps the client for a
-// reconnect, and that a close frame does not.
+// reconnect — a dropped TCP, but also a close frame that is not normal:
+// iOS sends one on every task end, and codes it goingAway for a resume —
+// and that a normal close does not.
 func TestReconnect(t *testing.T) {
 	f := startFixture(t)
 	f.setLayout(standardLayout())
@@ -197,6 +199,31 @@ func TestReconnect(t *testing.T) {
 	ev := c4.nextType("event")
 	if ev["seq"] != float64(1) {
 		t.Errorf("first event after a reconnect: %v", ev)
+	}
+
+	// A goingAway close — an iOS resume's — keeps the client too: only a
+	// normal close ends it.
+	c6 := f.dialControl()
+	w6 := c6.hello(apiRevision)
+	id6, token6 := welcomeID(t, w6), welcomeToken(t, w6)
+	c6.request("a", "session.attach", map[string]any{"session_id": ids["work"]})
+	c6.ws.Close(websocket.StatusGoingAway, "")
+	waitFor(t, "the going-away client to be kept", func() bool {
+		f.g.mu.Lock()
+		rec := f.g.clients[id6]
+		f.g.mu.Unlock()
+		if rec == nil {
+			return false
+		}
+		lost, _ := rec.state()
+		return lost
+	})
+
+	c7 := f.dialControl()
+	c7.send(map[string]any{"type": "hello", "api_revision": apiRevision, "reconnect_token": token6})
+	w7 := c7.nextType("welcome")
+	if cl := w7["client"].(map[string]any); cl["resumed"] != true || cl["id"] != id6 {
+		t.Errorf("a goingAway close did not resume: %v", w7)
 	}
 }
 

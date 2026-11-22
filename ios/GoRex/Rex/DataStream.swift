@@ -165,10 +165,14 @@ final class DataConnection {
     private let base: URL
     /// The host's LAN token (HostConfig.auth).
     private let auth: String?
+    /// What the log adds after the host, to tell streams of one host
+    /// apart: the block a terminal's stream is for.
+    private let tag: String
 
-    init(base: URL, auth: String?) {
+    init(base: URL, auth: String?, tag: String = "") {
         self.base = base
         self.auth = auth
+        self.tag = tag
     }
 
     /// Opens the stream with a ticket, on the host's session (Host.session).
@@ -186,6 +190,8 @@ final class DataConnection {
 
     /// Drops the connection, leaving the stream for a resume.
     func suspend() {
+        guard task != nil else { return }
+        ConnectionLog.note("\(name): suspended by the app")
         task?.cancel(with: .goingAway, reason: nil)
         task = nil
     }
@@ -238,7 +244,7 @@ final class DataConnection {
     }
 
     /// The connection as the log names it.
-    private var name: String { "data \(base.host() ?? "")" }
+    private var name: String { tag.isEmpty ? "data \(base.host() ?? "")" : "data \(base.host() ?? "") \(tag)" }
 
     private func read(_ t: URLSessionWebSocketTask) async {
         do {
@@ -251,7 +257,8 @@ final class DataConnection {
         } catch {
             if t === task {
                 task = nil
-                ConnectionLog.note("\(name): dropped, close code \(t.closeCode.rawValue): \(error.diagnosis)")
+                let reason = t.closeReason.map { String(decoding: $0, as: UTF8.self) } ?? ""
+                ConnectionLog.note("\(name): dropped, close code \(t.closeCode.rawValue)\(reason.isEmpty ? "" : " \(reason)"): \(error.diagnosis)")
                 onDrop(t.closeCode.rawValue)
             }
         }

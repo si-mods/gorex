@@ -10,6 +10,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 `web` job of `.github/workflows/ci.yml` fails it.
 
 ## en-US
+- Coming back from another app, or the phone's network or VPN changing, no longer starts a terminal's screen over for a drop it could ride out: it picks the stream up where it was.
 - The Live Activity shows the working line above a Devin terminal's input again, instead of the title bar drawn over it.
 - The Live Activity shows a Devin terminal's status dot as a small bullet again, not as a big emoji button.
 - The agent launcher menu, its settings sheet and the icons' spoken labels are now translated, so in Chinese they no longer show English.
@@ -120,6 +121,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - The space panel now grows out of the space button at the top, and the space you pick slides back into it; with Reduce Motion on it only fades.
 
 ## zh-Hans
+- 从其他 App 返回，或手机网络/VPN 变化后，终端现在会续上原来的连接，不再为一阵可容忍的断线重新加载画面。
 - 实时活动恢复显示 Devin 终端输入框上方的工作状态行，不再选中画在上面的标题分隔线。
 - 实时活动中 Devin 终端的状态点恢复为小圆点，不再显示为一颗大号 emoji 按钮。
 - 「快捷启动」菜单、它的设置页和启动图标的语音朗读标签已翻译为中文，中文界面下不再显示英文。

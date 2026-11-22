@@ -768,9 +768,9 @@ func (g *Gateway) rotateToken(rec *clientRecord) string {
 	return token
 }
 
-// dropControl ends a connection. A connection that closed with a close
-// frame ends its client at once; one that dropped keeps it for a
-// reconnect when it had something to keep.
+// dropControl ends a connection. A connection the client closed with a
+// normal close ends its client at once; one that ended any other way
+// keeps it for a reconnect when it had something to keep.
 func (g *Gateway) dropControl(c *control, clean bool) {
 	g.mu.Lock()
 	delete(g.conns, c)

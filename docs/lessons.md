@@ -109,6 +109,11 @@ Each item has a **Trigger** (what the diff shows), a **Check** (what the author 
 - **Check:** every consumer is listed, and all are fixed in this PR with one policy.
 - **Source:** the lost terminal stream took #641, #654 and #663 in two days because #641 fixed local panes only.
 
+### A deliberate reconnect goes away, it does not close normally
+- **Trigger:** the diff ends a connection it means to reopen at once (reconnect, resume, network change).
+- **Check:** the end's close code is not normalClosure — on Apple, `cancel(with: .goingAway)` — since URLSessionWebSocketTask sends a close frame on every task end (a bare `cancel()` included; measured on the iOS simulator, where macOS's URLSession sends none). The server keeps the client, its streams and its tickets for the reconnect grace unless the close is normal; it is what a reconnect needs kept.
+- **Source:** iOS `Host.resume()` sent a normal closure on every reconnect, so each return to the foreground raced every terminal's RESUME against `cleanupClient`; the loser got `data connection refused (0x01)` and started over with a ticket and a snapshot. The first fix tried `task.cancel()` for a bare drop, which the iOS simulator proved still closes — the test caught it.
+
 ### Value reset after a round trip
 - **Trigger:** the diff clears or resets a field (revision, counter, pending flag) after a call that reads or writes remote state.
 - **Check:** the reset compares with the value read before the call and applies only if it did not change. What arrived during the call is kept.
