@@ -3456,12 +3456,22 @@
         }
       }
     },
-    "Not connected yet. Rex Go keeps trying: approve this phone on the machine.": {
+    "Not connected yet.": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "尚未连接。Rex Go 会继续尝试：请在那台电脑上批准本机。"
+            "value": "尚未连接。"
+          }
+        }
+      }
+    },
+    "Rex Go keeps trying: approve this phone on the machine.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rex Go 会继续尝试：请在那台电脑上批准本机。"
           }
         }
       }
@@ -3526,12 +3536,22 @@
         }
       }
     },
-    "The pairing didn't match. The machine may have let in an unknown device: remove its newest device in its Settings › Server › Devices.": {
+    "The pairing didn't match.": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "配对不一致。那台电脑可能放进了一台未知设备：请在它的 设置 › 服务器 › 设备 中移除最新的设备。"
+            "value": "配对不一致。"
+          }
+        }
+      }
+    },
+    "The machine may have let in an unknown device: remove its newest device in its Settings › Server › Devices.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "那台电脑可能放进了一台未知设备：请在它的 设置 › 服务器 › 设备 中移除最新的设备。"
           }
         }
       }
@@ -5134,12 +5154,12 @@
         }
       }
     },
-    "Couldn't pair. Try again on both devices.": {
+    "Couldn't pair.": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "配对失败，请在两台设备上重试。"
+            "value": "配对失败。"
           }
         }
       }

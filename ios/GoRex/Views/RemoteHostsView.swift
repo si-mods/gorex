@@ -369,7 +369,9 @@ struct TailcatPairSheet: View {
     @Environment(HostStore.self) private var store
     @Environment(\.dismiss) private var dismiss
     @State private var fingerprint: String?
-    @State private var problem: String?
+    /// Why the sheet stopped: the pair failed, or the approval window
+    /// ran out while the host keeps trying on its own.
+    @State private var end: PairEnd?
     /// Whether the host stays: it came online, or waiting timed out while
     /// it may be approved. Any other way out takes it back.
     @State private var kept = false
@@ -379,13 +381,26 @@ struct TailcatPairSheet: View {
 
     private var online: Bool { store.host(code.id)?.status == .online }
     /// Added, and waiting for the approval.
-    private var waiting: Bool { fingerprint != nil && problem == nil && !online }
+    private var waiting: Bool { fingerprint != nil && end == nil && !online }
 
     var body: some View {
         VStack(spacing: 16) {
             Text("Pair with \(code.name)").font(.title2.bold())
-            if let problem {
-                Text(problem).foregroundStyle(.secondary)
+            if let end {
+                ContentUnavailableView {
+                    Label(end == .failed ? "Couldn't pair." : "Not connected yet.",
+                          systemImage: end == .failed ? "exclamationmark.triangle" : "clock")
+                } description: {
+                    Text(end == .failed
+                         ? "Check the connection and try again."
+                         : "Rex Go keeps trying: approve this phone on the machine.")
+                } actions: {
+                    if end == .failed {
+                        Button("Try again") { retry() }
+                            .buttonStyle(.glassProminent)
+                            .foregroundStyle(Color.page)
+                    }
+                }
             } else if let fingerprint {
                 if online {
                     Text("Paired. Rex Go is connected.").foregroundStyle(.secondary)
@@ -400,7 +415,7 @@ struct TailcatPairSheet: View {
                 ProgressView()
             }
             Spacer(minLength: 12)
-            Button(waiting || fingerprint == nil && problem == nil ? "Cancel" : "Done") { finish() }
+            Button(waiting || fingerprint == nil && end == nil ? "Cancel" : "Done") { finish() }
                 .buttonStyle(.glass)
                 .font(.headline)
                 .controlSize(.extraLarge)
@@ -432,14 +447,29 @@ struct TailcatPairSheet: View {
             guard !online else { return }
             // Not approved yet, or still connecting: it stays, and tries on.
             kept = true
-            problem = String(localized: "Not connected yet. Rex Go keeps trying: approve this phone on the machine.")
+            end = .stillTrying
         } catch is CancellationError {
         } catch {
-            problem = String(localized: "Couldn't pair. Try again on both devices.")
+            end = .failed
         }
     }
 
+    private func retry() {
+        end = nil
+        fingerprint = nil
+        Task { await pair() }
+    }
+
     private func finish() { dismiss() }
+}
+
+/// Why a pair sheet stopped: it failed and can retry, or the
+/// codes did not match, which the user settles by leaving.
+private enum PairEnd {
+    case failed
+    case mismatch
+    /// The approval window ran out; the host keeps trying on its own.
+    case stillTrying
 }
 
 /// Pairs with a GoRex machine by its IP address, through its own relay
@@ -457,20 +487,28 @@ private struct AddressPairSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var code: String?
     @State private var matched = false
-    @State private var problem: String?
+    @State private var end: PairEnd?
     /// The wait for the approval, cancelled when the sheet goes.
     @State private var confirming: Task<Void, Never>?
-
-    /// The pairing did not match, the codes or the machine's answer.
-    private var warning: String {
-        String(localized: "The pairing didn't match. The machine may have let in an unknown device: remove its newest device in its Settings › Server › Devices.")
-    }
 
     var body: some View {
         VStack(spacing: 16) {
             Text("Pair with \(host.name)").font(.title2.bold())
-            if let problem {
-                Text(problem).foregroundStyle(.secondary)
+            if let end {
+                ContentUnavailableView {
+                    Label(end == .mismatch ? "The pairing didn't match." : "Couldn't pair.",
+                          systemImage: end == .mismatch ? "exclamationmark.shield" : "exclamationmark.triangle")
+                } description: {
+                    Text(end == .mismatch
+                         ? "The machine may have let in an unknown device: remove its newest device in its Settings › Server › Devices."
+                         : "Check the connection and try again.")
+                } actions: {
+                    if end == .failed {
+                        Button("Try again") { retry() }
+                            .buttonStyle(.glassProminent)
+                            .foregroundStyle(Color.page)
+                    }
+                }
             } else if let code {
                 if matched {
                     Text("On \(host.name), open Settings › Server › Devices and approve the request showing this code.")
@@ -498,7 +536,7 @@ private struct AddressPairSheet: View {
                 ProgressView()
             }
             Spacer(minLength: 12)
-            Button(problem == nil ? "Cancel" : "Done") { dismiss() }
+            Button(end == nil ? "Cancel" : "Done") { dismiss() }
                 .buttonStyle(.glass)
                 .font(.headline)
                 .controlSize(.extraLarge)
@@ -506,24 +544,34 @@ private struct AddressPairSheet: View {
         .multilineTextAlignment(.center)
         .padding(24)
         .presentationDetents([.medium, .large])
-        .interactiveDismissDisabled(code != nil && problem == nil)
-        .task {
-            do {
-                let c = try await TailnetEngine.shared.pairByAddress(address)
-                // Left while it asked: the request goes.
-                if Task.isCancelled {
-                    TailnetEngine.shared.cancelAddressPairing(code: c)
-                    return
-                }
-                code = c
-            } catch {
-                problem = String(localized: "Couldn't pair. Try again on both devices.")
-            }
-        }
+        .interactiveDismissDisabled(code != nil && end == nil)
+        .task { await ask() }
         .onDisappear {
             confirming?.cancel()
             if let code { TailnetEngine.shared.cancelAddressPairing(code: code) }
         }
+    }
+
+    private func ask() async {
+        do {
+            let c = try await TailnetEngine.shared.pairByAddress(address)
+            // Left while it asked: the request goes.
+            if Task.isCancelled {
+                TailnetEngine.shared.cancelAddressPairing(code: c)
+                return
+            }
+            code = c
+        } catch {
+            end = .failed
+        }
+    }
+
+    private func retry() {
+        if let code { TailnetEngine.shared.cancelAddressPairing(code: code) }
+        code = nil
+        matched = false
+        end = nil
+        Task { await ask() }
     }
 
     private func confirm() {
@@ -545,15 +593,14 @@ private struct AddressPairSheet: View {
                 store.add(h)
                 dismiss()
             } catch {
-                problem = TailnetEngine.shared.isAddressPairingWarning(error)
-                    ? warning : String(localized: "Couldn't pair. Try again on both devices.")
+                end = TailnetEngine.shared.isAddressPairingWarning(error) ? .mismatch : .failed
             }
         }
     }
 
     private func differ() {
         guard let code else { return }
-        problem = warning
+        end = .mismatch
         TailnetEngine.shared.mismatchAddressPairing(code: code)
     }
 }
