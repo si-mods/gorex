@@ -5124,16 +5124,6 @@
         }
       }
     },
-    "Couldn't reach it. Trying again.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "连不上，正在重试。"
-          }
-        }
-      }
-    },
     "Couldn't reach the host.": {
       "localizations": {
         "zh-Hans": {

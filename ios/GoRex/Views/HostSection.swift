@@ -209,29 +209,20 @@ struct HostSection: View {
             switch host.status {
             case .connecting where host.sessions.isEmpty:
                 Text("Connecting…").foregroundStyle(.secondary)
-            case .offline(let why):
-                offline(why)
+            case .offline:
+                offline()
             default:
                 sessions
             }
         }
     }
 
-    /// A host that cannot connect: Offline, and under it why in the
-    /// user's terms. The raw error stays where diagnostics shows it
-    /// (NetworkDiagnostics, the developer page's debug info).
-    private func offline(_ why: String) -> some View {
-        Label {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Offline")
-                if !why.isEmpty {
-                    Text("Couldn't reach it. Trying again.").font(.subheadline)
-                }
-            }
-        } icon: {
-            Image(systemName: "wifi.slash").symbolRenderingMode(.hierarchical)
-        }
-        .foregroundStyle(.secondary)
+    /// A host that cannot connect. The raw error stays where diagnostics
+    /// shows it (NetworkDiagnostics, the developer page's debug info).
+    private func offline() -> some View {
+        Label("Offline", systemImage: "wifi.slash")
+            .symbolRenderingMode(.hierarchical)
+            .foregroundStyle(.secondary)
     }
 
     /// The host's projects of the space, Older, and its tabs with no
@@ -521,7 +512,7 @@ struct HostSection: View {
         let tiles = Self.awayTiles(mine.flatMap(\.tabs) + l.loose)
         let (recent, older) = ProjectOrder.split(mine, used: \.used, name: \.name)
         return VStack(alignment: .leading, spacing: 12) {
-            if case .offline(let why) = host.status { offline(why) } else { Text("Connecting…").foregroundStyle(.secondary) }
+            if case .offline = host.status { offline() } else { Text("Connecting…").foregroundStyle(.secondary) }
             if !recent.isEmpty {
                 VStack(spacing: 12) { ForEach(recent, id: \.id) { p in card { awayProject(p, tiles: tiles, divider: false) } } }
             }
