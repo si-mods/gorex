@@ -25,28 +25,6 @@ private struct SpaceMatched: ViewModifier {
     }
 }
 
-/// The panel's size as laid out, for the glass beside it to keep as it
-/// grows out of the capsule.
-struct SpacePanelSize: PreferenceKey {
-    static var defaultValue: CGSize = .zero
-
-    static func reduce(value: inout CGSize, nextValue: () -> CGSize) {
-        value = nextValue()
-    }
-}
-
-/// The panel's content: it comes in once the glass is half open, and it
-/// leaves in the first part of the close. Under Reduce Motion (`still`)
-/// it is a plain cross-fade.
-private struct PanelContentFade: Transition {
-    let still: Bool
-
-    func body(content: Content, phase: TransitionPhase) -> some View {
-        let t = phase.value
-        return content.opacity(still ? 1 - abs(t) : t < 0 ? max(0, 1 + t * 2) : max(0, 1 - t * 3))
-    }
-}
-
 /// A part of the panel that appears once the glass is mostly open: the
 /// header first, then each row 30 ms after the last.
 private struct Reveal: ViewModifier {
@@ -175,11 +153,11 @@ struct SpacePickerBounds: PreferenceKey {
     }
 }
 
-/// The panel atop the list, over the page: the capsule's glass grows into
-/// the panel's glass 8 pt under the capsule, the capsule's color and name
-/// move into the row of the space shown, and a tap beside the panel closes
-/// it. It keeps 16 pt from the foot of the page and scrolls its spaces past
-/// that.
+/// The panel atop the list, over the page: it is the capsule's glass grown
+/// into the panel's, 8 pt under the capsule. Its content stays out of view
+/// until the glass is mostly open (the stagger in SpacePanel), so the glass
+/// is the only thing that changes shape, and a tap beside it closes it. It
+/// keeps 16 pt from the foot of the page and scrolls its spaces past that.
 struct SpacePanelLayer: View {
     let anchor: Anchor<CGRect>?
     @Binding var open: Bool
@@ -194,8 +172,6 @@ struct SpacePanelLayer: View {
     /// nothing moves.
     var ns: Namespace.ID?
     @Environment(\.accessibilityReduceMotion) private var still
-    /// The panel's laid-out size, which the glass keeps as it grows.
-    @State private var size = CGSize.zero
 
     var body: some View {
         GeometryReader { g in
@@ -206,16 +182,6 @@ struct SpacePanelLayer: View {
                         .contentShape(.rect)
                         .onTapGesture { close() }
                         .accessibilityHidden(true)
-                    // A sibling of the content, so the glass can grow out
-                    // of the capsule while the content fades in late. Its
-                    // own frame is the panel's, measured beside it.
-                    Color.clear
-                        .frame(width: size.width, height: size.height)
-                        .glassEffect(.regular, in: .rect(cornerRadius: SpacePanel.radius, style: .continuous))
-                        .shadow(color: .black.opacity(0.16), radius: 24, y: 8)
-                        .modifier(SpaceMatched(id: .chrome, ns: match, source: false))
-                        .position(x: r.minX + size.width / 2, y: r.maxY + 8 + size.height / 2)
-                        .transition(.opacity)
                     SpacePanel(spaces: spaces, current: current, color: color, count: count,
                                choose: { s in close(); choose(s) },
                                add: { close(); add() },
@@ -225,25 +191,26 @@ struct SpacePanelLayer: View {
                         // The glass hugs the panel: the cap below only
                         // limits it, and the room under a short panel stays
                         // the page's.
+                        .glassEffect(.regular, in: .rect(cornerRadius: SpacePanel.radius, style: .continuous))
+                        .shadow(color: .black.opacity(0.16), radius: 24, y: 8)
                         .frame(maxHeight: max(160, g.size.height - r.maxY - 8 - 16), alignment: .top)
-                        .background(
-                            GeometryReader { p in
-                                Color.clear.preference(key: SpacePanelSize.self, value: p.size)
-                            }
-                        )
+                        .modifier(SpaceMatched(id: .chrome, ns: match, source: false))
+                        // One element holding the rows, modal, so that
+                        // VoiceOver keeps to the panel while it is open.
                         .accessibilityElement(children: .contain)
                         .accessibilityAddTraits(.isModal)
                         .accessibilityAction(.escape) { close() }
                         // Laid out over the whole layer, so the glass can
-                        // grow from the capsule's frame.
+                        // grow from the capsule's frame: it stays opaque
+                        // the whole way, and only on the way back does it
+                        // fade as it shrinks.
                         .padding(.leading, r.minX)
                         .padding(.top, r.maxY + 8)
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                        .transition(PanelContentFade(still: still))
+                        .transition(still ? .opacity : .asymmetric(insertion: .identity, removal: .opacity))
                 }
             }
         }
-        .onPreferenceChange(SpacePanelSize.self) { size = $0 }
     }
 
     /// The shared elements' namespace: nil under Reduce Motion.

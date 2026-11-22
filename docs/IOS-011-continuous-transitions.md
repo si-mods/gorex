@@ -149,7 +149,7 @@ Phase 3. The space picker atop the list was left out of phases 1 and 2. Its pane
 
 #### Behavior
 
-- On open, the capsule's glass grows into the panel's glass: one element, from the capsule's frame to the panel's frame (`matchedGeometryEffect` on `SpaceMatch.chrome`). The capsule's own content leaves in the first 100 ms; the panel's content comes in once the glass is half open (`LateFade`, a phase transition), and each row fades in 30 ms after the last. A tap on a space, a tap beside the panel and Escape close it the same way, in reverse.
+- On open, the capsule's glass grows into the panel's glass: one element, from the capsule's frame to the panel's frame (`matchedGeometryEffect` on `SpaceMatch.chrome`). The capsule's own content leaves in the first 100 ms; the panel's content comes in once the glass is mostly open, and each row fades in 30 ms after the last. The whole panel is the shared element, glass and content together, so the morph bends nothing that shows. On close it fades as it shrinks back. A tap on a space, a tap beside the panel and Escape close it the same way, in reverse.
 - The capsule's color and name move into the row of the space shown (`SpaceMatch.chip` and `SpaceMatch.name`: the capsule is the source, the rows are the targets). On a choice, the chosen space's color and name move back into the capsule as the glass shrinks into it. A close with no choice returns the space shown before.
 - Under Reduce Motion nothing moves and nothing is shared: the panel cross-fades for 150 ms under the capsule, which stays. Every `.snappy` here and in the `chosen` writes that drive it falls back to `.easeInOut(duration: 0.15)`, as item 7 does. The rule is in `DESIGN.md`, Motion.
 - The closes that a state change drives — Activity taking the picker's place, the capsule leaving the list — are animated like a tap beside the panel. They were hard cuts.
@@ -160,7 +160,7 @@ Phase 3. The space picker atop the list was left out of phases 1 and 2. Its pane
 
 | File | Change |
 | --- | --- |
-| `SpacePicker.swift` | `ns: Namespace.ID?` joins the capsule and the panel layer. The capsule is the source of `SpaceMatch.chrome`, `.chip(current)` and `.name(current)`; it fades out on open and back in at the end of the close. `SpacePanelLayer` draws the glass as a sibling of the content, measured by `SpacePanelSize`, so the glass can morph while the content fades with `LateFade`. `SpacePanel` gets `stagger` and `ns`; each row's color and name are targets of the capsule's sources. `@AccessibilityFocusState` on the capsule takes the focus back on close. Reduce Motion skips every match and stagger. |
+| `SpacePicker.swift` | `ns: Namespace.ID?` joins the capsule and the panel layer. The capsule is the source of `SpaceMatch.chrome`, `.chip(current)` and `.name(current)`; it fades out on open and back in at the end of the close. The whole panel, glass and content, is the `chrome` target, so nothing that shows changes shape; its parts stay hidden until `SpacePanel`'s `stagger` brings them in, each row 30 ms after the last. Each row's color and name are targets of the capsule's sources. `@AccessibilityFocusState` on the capsule takes the focus back on close. Reduce Motion skips every match and stagger. |
 | `HostListView.swift` | A `spaceNS` namespace. The `inbox` close and the `book.chosen` writes take the `still`-aware animation. |
 | `DESIGN.md` | The reduced-motion rule for both apps, in Motion. |
 
