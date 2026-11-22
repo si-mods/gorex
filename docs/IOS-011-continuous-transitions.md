@@ -3,7 +3,7 @@ name: IOS-011
 description: "Rex Go carries the element that the user touches into the next state, in nine places where the app jumped before. Use when you change a navigation, sheet, cover, pane bar or list animation in the iOS app."
 metadata:
   created: "2026-11-20"
-  updated: "2026-11-20"
+  updated: "2026-11-22"
 ---
 
 # IOS-011: Continuous transitions between states
@@ -63,7 +63,7 @@ The changes between the list, the terminal, the sheets and the covers are not co
 
 **7. Activity ↔ All Tabs.** A tab (a window) that shows in both lists moves from its place in one list to its place in the other. Activity shows at most one row for each window. The other rows and the headers fade. Each card of All Tabs clips its rows. So a row that moves into a card shows only inside the card.
 
-**8. Sheets from buttons.** The Settings sheet grows out of the button that opened it: the gear in the bottom bar, or Add Host in `NoHostsView`. The New Project sheet grows out of the `+` button in the host's header. Edit Spaces opens from an item in the space picker's menu. The menu closes before the sheet opens, so Edit Spaces has no source on screen. It keeps the standard sheet (see Decisions, 4).
+**8. Sheets from buttons.** The Settings sheet grows out of the button that opened it: the gear in the bottom bar, or Add Host in `NoHostsView`. The New Project sheet grows out of the `+` button in the host's header. Edit Spaces opens from Edit in the header of the space picker's panel. The panel closes before the sheet opens, so Edit Spaces has no source on screen. It keeps the standard sheet (see Decisions, 4).
 
 **9. Split and close in the pane bar.** On a split, the new tile grows in at its place, and the tiles after it move to make room. Then the new pane slides in, as it does now. On a close, the tile shrinks away, and the other tiles close the gap. The bar shows only when the window has two or more panes. So a split from one pane to two keeps the slide of the whole bar from the bottom. A close from two panes to one does the same.
 
@@ -91,7 +91,7 @@ These are the answers to the open questions of the proposal.
 1. **The zoom's dismiss gestures (items 1 and 4).** The iOS 26 SDK has no SwiftUI modifier that allows only the edge swipe. A probe build on the CI Mac showed this. So a `ZoomGuard` on the terminal and on the gallery image holds the zoom's drag down and pinch. The edge swipe back stays. The terminal keeps its scroll, its pinch for the font size and its two-finger pane drag. In a terminal that the zoom opened, the full-width swipe back works only from the edge.
 2. **Back after a tab switch (item 1).** Back shrinks the terminal into the row that opened it. A tab switch, a split or a focus change inside the terminal does not change the source. A Done or Failed row leaves Activity when its terminal opens, because the terminal marks it as seen. Then Back has no row, and the system closes the terminal without a source.
 3. **The highlight (item 3).** A plain slide, with no stretch.
-4. **Edit Spaces (item 8).** It keeps the standard sheet, because it opens from a menu that closes first.
+4. **Edit Spaces (item 8).** It keeps the standard sheet, because it opens from a panel that closes first.
 5. **Rows out of view (item 7).** The rows on screen move. The rows out of view fade.
 
 ### Code

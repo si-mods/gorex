@@ -11,6 +11,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 
 ## en-US
 - Predictive Echo is removed: typed characters echo normally again, and the Settings > Terminal switch is gone.
+- Tapping the space at the top opens a panel that shows each space's color and projects; Edit and New Space are in it.
 - Predictive Echo: no visible change in this update; it only fixes the build.
 - Typing in a terminal shows each character at once now, underlined until the computer answers. Predictive Echo in Settings > Terminal turns it off.
 
@@ -112,6 +113,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 
 ## zh-Hans
 - 预测回显已移除：打字恢复正常的回显方式，「设置 › Terminal」里的开关也没有了。
+- 点按顶部的空间会打开一个面板，显示每个空间的颜色和项目数；编辑和新建空间都在面板里。
 - 预测回显：本次更新没有看得见的变化，只是修复构建。
 - 在终端打字现在会立即显示字符，带下划线直到电脑回应。可在「设置 › Terminal › Predictive Echo」关闭。
 

@@ -57,6 +57,8 @@ struct HostListView: View {
     @State private var addingSpace = false
     @State private var spaceName = ""
     @State private var editingSpaces = false
+    /// Whether the panel of the list's space picker is open.
+    @State private var spacePanel = false
     /// The project New Project found the folder to be already, in another
     /// space: to move it here, or to show it there.
     @State private var existing: Existing?
@@ -305,6 +307,7 @@ struct HostListView: View {
                 .background { Color.page.ignoresSafeArea() }
                 .scrollEdgeEffectStyle(.soft, for: .all)
                 .refreshable { await refresh() }
+                .overlayPreferenceValue(SpacePickerBounds.self) { spacePanelLayer($0, spaces: spaces, current: current) }
             }
         }
         // Demo Mode's banner stays in place as the list scrolls, so that
@@ -320,6 +323,9 @@ struct HostListView: View {
         .onChange(of: expanded) { _, s in
             expandedText = s.sorted().joined(separator: "\n")
         }
+        // The space panel goes with the picker, should its own close not
+        // run as Activity takes the picker's place.
+        .onChange(of: inbox) { spacePanel = false }
         .onChange(of: expandedText) { _, t in
             expanded = Set(t.split(separator: "\n").map(String.init))
         }
@@ -370,13 +376,31 @@ struct HostListView: View {
 
     // MARK: Spaces
 
-    /// The space shown, and the menu of the others.
+    /// The space shown, and the panel of the others: atop the list the
+    /// list draws it (spacePanelLayer), in the bar a popover does.
     private func picker(spaces: [String], current: String, place: SpacePicker.Place = .list) -> some View {
         SpacePicker(spaces: spaces, current: current, color: { Color(project: book.colors[$0]) },
+                    count: projectCount,
                     choose: { s in withAnimation(.snappy) { book.chosen = s } },
                     add: { spaceName = ""; addingSpace = true },
                     edit: { editingSpaces = true },
-                    place: place)
+                    place: place,
+                    panel: place == .list ? $spacePanel : nil)
+    }
+
+    /// The panel of the list's picker, over the page, under the picker.
+    private func spacePanelLayer(_ anchor: Anchor<CGRect>?, spaces: [String], current: String) -> some View {
+        SpacePanelLayer(anchor: anchor, open: $spacePanel, spaces: spaces, current: current,
+                        color: { Color(project: book.colors[$0]) },
+                        count: projectCount,
+                        choose: { s in withAnimation(.snappy) { book.chosen = s } },
+                        add: { spaceName = ""; addingSpace = true },
+                        edit: { editingSpaces = true })
+    }
+
+    /// A space's projects across the hosts, an away host's as last seen.
+    private func projectCount(_ s: String) -> Int {
+        store.hosts.reduce(0) { $0 + (listing($1)?.projects.filter { $0.space == s }.count ?? 0) }
     }
 
     /// Whether a host keeps projects, connected or as last seen: only then

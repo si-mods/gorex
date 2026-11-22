@@ -1,8 +1,8 @@
 import SwiftUI
 
 /// The space picker atop the list (docs/MOD-002-projects.md, Rex Go), or in a wide
-/// window's bar beside the search: the space shown, and a menu of the
-/// spaces, New Space… and Edit Spaces….
+/// window's bar beside the search: the space shown, and a panel of the
+/// spaces, with Edit and New Space.
 struct SpacePicker: View {
     /// Where the picker shows: a wide window's bar packs its items at the
     /// start, so one wider than there is room for goes into the menu beside
@@ -15,22 +15,38 @@ struct SpacePicker: View {
     let spaces: [String]
     let current: String
     let color: (String) -> Color?
+    /// The projects of a space.
+    let count: (String) -> Int
     let choose: (String) -> Void
     let add: () -> Void
     let edit: () -> Void
     var place: Place = .list
+    /// Atop the list: whether the panel is open. The list draws the panel
+    /// under the capsule (SpacePanelLayer), with no arrow; the bar, which
+    /// has no room below it of its own, opens a popover instead.
+    var panel: Binding<Bool>?
+    @State private var popover = false
 
     var body: some View {
-        Menu {
-            Picker("Space", selection: Binding { current } set: { choose($0) }) {
-                ForEach(spaces, id: \.self) { s in
-                    Text(verbatim: SpaceName.shown(s)).tag(s)
+        if let panel {
+            capsule { withAnimation(.snappy) { panel.wrappedValue = true } }
+                .anchorPreference(key: SpacePickerBounds.self, value: .bounds) { $0 }
+                // The panel goes with the picker, as Activity takes its place.
+                .onDisappear { panel.wrappedValue = false }
+        } else {
+            capsule { popover = true }
+                .popover(isPresented: $popover, attachmentAnchor: .rect(.bounds), arrowEdge: .top) {
+                    SpacePanel(spaces: spaces, current: current, color: color, count: count,
+                               choose: { s in popover = false; choose(s) },
+                               add: { popover = false; add() },
+                               edit: { popover = false; edit() })
+                        .presentationCompactAdaptation(.popover)
                 }
-            }
-            Divider()
-            Button("New Space…", systemImage: "plus") { add() }
-            Button("Edit Spaces…", systemImage: "pencil") { edit() }
-        } label: {
+        }
+    }
+
+    private func capsule(_ open: @escaping () -> Void) -> some View {
+        Button(action: open) {
             if place == .list {
                 // Glass of its own over the page; a bar's own is behind it,
                 // and two glass effects nest.
@@ -62,6 +78,203 @@ struct SpacePicker: View {
         .foregroundStyle(.primary)
         .padding(.horizontal, bar ? 12 : 16)
         .frame(minHeight: 44)
+    }
+}
+
+/// Where the list's picker is, for the panel to open under it.
+struct SpacePickerBounds: PreferenceKey {
+    static var defaultValue: Anchor<CGRect>? { nil }
+
+    static func reduce(value: inout Anchor<CGRect>?, nextValue: () -> Anchor<CGRect>?) {
+        value = value ?? nextValue()
+    }
+}
+
+/// The panel atop the list, over the page: it grows from the capsule's
+/// corner, 8 pt under it, and a tap beside it closes it. It keeps 16 pt
+/// from the foot of the page and scrolls its spaces past that.
+struct SpacePanelLayer: View {
+    let anchor: Anchor<CGRect>?
+    @Binding var open: Bool
+    let spaces: [String]
+    let current: String
+    let color: (String) -> Color?
+    let count: (String) -> Int
+    let choose: (String) -> Void
+    let add: () -> Void
+    let edit: () -> Void
+
+    var body: some View {
+        GeometryReader { g in
+            if open, let anchor {
+                let r = g[anchor]
+                ZStack(alignment: .topLeading) {
+                    Color.clear
+                        .contentShape(.rect)
+                        .onTapGesture { close() }
+                        .accessibilityHidden(true)
+                    SpacePanel(spaces: spaces, current: current, color: color, count: count,
+                               choose: { s in close(); choose(s) },
+                               add: { close(); add() },
+                               edit: { close(); edit() })
+                        .fixedSize(horizontal: true, vertical: false)
+                        // The glass hugs the panel: the cap below only
+                        // limits it, and the room under a short panel stays
+                        // the page's.
+                        .glassEffect(.regular, in: .rect(cornerRadius: SpacePanel.radius, style: .continuous))
+                        .shadow(color: .black.opacity(0.16), radius: 24, y: 8)
+                        .frame(maxHeight: max(160, g.size.height - r.maxY - 8 - 16), alignment: .top)
+                        // One element holding the rows, modal, so that
+                        // VoiceOver keeps to the panel while it is open.
+                        .accessibilityElement(children: .contain)
+                        .accessibilityAddTraits(.isModal)
+                        .accessibilityAction(.escape) { close() }
+                        // Laid out over the whole layer, so that the scale
+                        // can grow from the capsule's corner.
+                        .padding(.leading, r.minX)
+                        .padding(.top, r.maxY + 8)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                        .transition(.scale(0.85, anchor: origin(r, in: g.size)).combined(with: .opacity))
+                }
+            }
+        }
+    }
+
+    private func close() {
+        withAnimation(.snappy) { open = false }
+    }
+
+    /// The capsule's bottom-left corner, as a point of the layer.
+    private func origin(_ r: CGRect, in size: CGSize) -> UnitPoint {
+        guard size.width > 0, size.height > 0 else { return .topLeading }
+        return UnitPoint(x: r.minX / size.width, y: r.maxY / size.height)
+    }
+}
+
+/// The panel the picker opens: a header with Edit, each space with its
+/// color and its projects, the one shown marked, and New Space last.
+/// Its metrics keep to a 4 pt grid, and its corners nest: a row's face
+/// sits `inset` in from the panel's edge, so its radius is the panel's
+/// less that inset.
+struct SpacePanel: View {
+    let spaces: [String]
+    let current: String
+    let color: (String) -> Color?
+    let count: (String) -> Int
+    let choose: (String) -> Void
+    let add: () -> Void
+    let edit: () -> Void
+    /// The width of the color squares' column, which the plus of New
+    /// Space shares; it grows with the text.
+    @ScaledMetric(relativeTo: .body) private var mark: CGFloat = 16
+    /// VoiceOver goes to the header as the panel opens.
+    @AccessibilityFocusState private var heading: Bool
+
+    static let radius: CGFloat = 28
+    /// The panel's padding on every side.
+    static let inset: CGFloat = 8
+    /// The padding inside a row, and in the header.
+    static let pad: CGFloat = 12
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                Text("Spaces")
+                    .font(.headline)
+                    .accessibilityAddTraits(.isHeader)
+                    .accessibilityFocused($heading)
+                Spacer()
+                Button(action: edit) {
+                    Text("Edit")
+                        .font(.subheadline.weight(.semibold))
+                }
+                .buttonStyle(.borderless)
+                .accessibilityLabel("Edit Spaces")
+                .accessibilityInputLabels([Text("Edit"), Text("Edit Spaces")])
+            }
+            .padding(.horizontal, Self.pad)
+            .frame(minHeight: 44)
+            // The spaces scroll when the screen has no room for them all, at
+            // a large text size or with many spaces; the header and New
+            // Space stay in view.
+            ViewThatFits(in: .vertical) {
+                rows
+                ScrollView { rows }
+                    .scrollBounceBehavior(.basedOnSize)
+            }
+            Divider()
+                .padding(.horizontal, Self.pad)
+                .padding(.vertical, 4)
+            Button(action: add) {
+                HStack(spacing: Self.pad) {
+                    Image(systemName: "plus")
+                        .font(.subheadline.weight(.semibold))
+                        .frame(width: mark)
+                    Text("New Space")
+                        .lineLimit(1)
+                    Spacer()
+                }
+                .padding(.horizontal, Self.pad)
+                .frame(minHeight: 44)
+                .contentShape(.rect)
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.tint)
+        }
+        .padding(Self.inset)
+        .frame(minWidth: 288, idealWidth: 288)
+        .onAppear { heading = true }
+    }
+
+    private var rows: some View {
+        VStack(spacing: 4) {
+            ForEach(spaces, id: \.self) { s in row(s) }
+        }
+    }
+
+    /// A space's row: its color, its name and its projects; the one shown
+    /// is bold, checked and tinted.
+    private func row(_ s: String) -> some View {
+        let on = s == current
+        return Button { choose(s) } label: {
+            HStack(spacing: Self.pad) {
+                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                    .fill(color(s) ?? Color.secondary.opacity(0.45))
+                    .frame(width: mark, height: mark)
+                VStack(alignment: .leading, spacing: 0) {
+                    Text(verbatim: SpaceName.shown(s))
+                        .font(.body.weight(on ? .semibold : .regular))
+                        .lineLimit(1)
+                    Text(projects(count(s)))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+                Spacer(minLength: 8)
+                if on {
+                    Image(systemName: "checkmark")
+                        .font(.subheadline.weight(.bold))
+                        .foregroundStyle(color(s) ?? .primary)
+                        // The row says Selected already.
+                        .accessibilityHidden(true)
+                }
+            }
+            .padding(.horizontal, Self.pad)
+            .frame(minHeight: 52)
+            .background {
+                if on {
+                    RoundedRectangle(cornerRadius: Self.radius - Self.inset, style: .continuous)
+                        .fill((color(s) ?? .primary).opacity(0.12))
+                }
+            }
+            .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(on ? .isSelected : [])
+    }
+
+    private func projects(_ n: Int) -> String {
+        n == 0 ? String(localized: "No projects") : String(localized: "\(n) projects")
     }
 }
 
