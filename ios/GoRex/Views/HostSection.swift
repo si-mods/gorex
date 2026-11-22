@@ -428,6 +428,7 @@ struct HostSection: View {
     private func away(_ l: ProjectListing) -> some View {
         let mine = l.projects.filter { $0.space == space }
         let tiles = Self.awayTiles(mine.flatMap(\.tabs) + l.loose)
+        let (recent, older) = ProjectOrder.split(mine, used: \.used, name: \.name)
         return VStack(alignment: .leading, spacing: 12) {
             if case .offline(let why) = host.status { offline(why) } else { Text("Connecting…").foregroundStyle(.secondary) }
             if !recent.isEmpty {
