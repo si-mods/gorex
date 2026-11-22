@@ -8,7 +8,7 @@ metadata:
 
 # IOS-006: Rex Go: Live Activities for sessions
 
-Status: phase 1 built (#892, #900, #901). Phase 2 in part — the sender, `push.register`, the relay and the blocked record's alert push — is built; the per-host activity, and phase 3, are not.
+Status: phase 1 built (#892, #900, #901). Phase 2 in part — the sender, `push.register`, the relay and the blocked record's alert push — is built (#995, #996, #1001); its actions and per-host activity, and phase 3, are proposals.
 
 Phase 1 is built as `TerminalActivity` and `TerminalLive`. The rest of phase 2 and phase 3 are proposals. The team decided these points. Phase 1 is the terminal activity: the terminal that is open when Rex Go leaves the foreground, kept connected for a short grace. The host sends the later updates through the push relay of [NET-003](NET-003-push-relay.md); no host holds an APNs key, so every paired phone can get phase 2. Rex Go is distributed to other people (public TestFlight, later the App Store). The names `HostActivity` and `push.seen` are phase 2 and 3 proposals, not in the code; `push.register` is built as `gorex.push.register`.
 
@@ -29,7 +29,7 @@ A Live Activity (ActivityKit) shows the state of a task. It shows it on the Lock
 
 ## Non-goals
 
-- **Acting from the Lock Screen.** To approve a permission or answer a question from the activity, the app must reach the host from an intent. This is for later, if at all.
+- **Free-text answers from the Lock Screen.** A `question` kind takes text the activity cannot hold; only the fixed answers of `permission` and `auth` get buttons (see Actions).
 - **One activity per session by default.** See Presentation.
 - **Keeping Rex Go running in the background** after the grace that a background task gives. See Alternatives, b. The user chose the grace (2026-11-20) over a background mode that keeps the connection open. That mode breaks App Review Guideline 2.5.4 and drains the battery.
 - **Programs that do not report.** The activity shows what OSC 7501 reports. GoRex installs no hooks to report for other programs.
@@ -139,6 +139,17 @@ Today the app does this. On `.background`, `TerminalScreen` suspends the stream 
 - **Tap**: opens the terminal, as a notification tap does.
 
 The activity shares the widget extension `GoRexWidgets` ([IOS-010-widgets.md](IOS-010-widgets.md)). The per-host activity below comes in phase 2, with the pushes of the host. While both exist, the terminal activity wins in the Dynamic Island while it is connected (higher `relevanceScore`).
+
+### Actions (phase 2b: from the activity)
+
+A blocked record asks for the user, and most asks one of two answers. The activity can take the answer itself, so a plain yes or no never needs the app opened. iOS lets a Live Activity's views hold `Button(intent:)`; a widget button's intent runs as an `AppIntent` in the app's process for a few seconds, without bringing it to the front (`openAppWhenRun` false). A `LiveActivityIntent` runs in the widget extension instead — it can draw the activity but holds no host connection, so it cannot answer the host. The buttons therefore use an `AppIntent`. **[doc]** [Adding interactivity](https://developer.apple.com/documentation/widgetkit/adding-interactivity-to-widgets-and-live-activities)
+
+- **Buttons.** While the top record is `blocked` with `kind` `permission` or `auth`, the Lock Screen card's bottom row and the expanded bottom region show Approve and Deny. A `question` kind shows none — the tap opens the terminal as today. Compact and minimal fit no buttons; they tap through as today. The attributes already carry host id, session and block, and the state carries `kind`; an intent takes them from the rendered activity.
+- **What the buttons send.** OSC 7501 carries no answer channel ([MOD-001](MOD-001-osc-7501.md)); the answer is bytes on the block's stdin, through the control connection's input path, as typed input is sent today. Approve sends Return, which takes the default choice the prompt offers — a permission prompt highlights the grant. Deny sends Escape. **[assumption: each agent's prompt takes Return as approve and Escape as deny; one that does not gets a wrong key and stays blocked, and the island still shows it]**
+- **The intent.** `ApproveIntent` and `DenyIntent` (one file, shared by the app and the extension) carry host id, session and block. `perform()` brings up the control connection — the same bootstrap a foreground open does, minus the views — checks the block's record is still blocked, writes the bytes and returns. It updates no activity itself; the next push, or the next local update, draws the resolved state.
+- **Time.** iOS gives an intent seconds. A LAN connect is fast; the built-in Tailscale engine takes seconds to come up and can outrun the budget. **[assumption]** On a timeout or a dead host the intent fails and the activity stays as it was; the user taps through to the terminal.
+- **Locked.** The Lock Screen and the island take the tap while the phone is locked; holding the phone is the authority to approve, as a notification action is. **[assumption: the doc does not say the system asks for Face ID before a widget `AppIntent`]**
+- **Two taps** are safe: the second finds the record resolved or sends a harmless extra key.
 
 ### Presentation (phase 2: per host)
 
@@ -263,6 +274,7 @@ These are the options for updates while Rex Go is suspended:
 | --- | --- | --- | --- |
 | 1 | Terminal activity, ~25 s grace | 3–4 days | nobody |
 | 2 | Host sender, `push.register`, the relay, alert pushes | 5–7 days | every paired phone whose host reaches the relay |
+| 2b | Approve or deny a blocked record from the activity | 2–3 days | as phase 2 |
 | 3 | Follow a session not on screen (optional) | 2–3 days | as phase 2 |
 
 The efforts are rough estimates. **[assumption]**
