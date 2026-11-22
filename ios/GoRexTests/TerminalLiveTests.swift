@@ -960,6 +960,11 @@ nonisolated final class TerminalLiveTests: XCTestCase {
             ("filtered", short, TerminalLive.state(title: "\u{E0B0}api", program: "claude",
                 records: [.init(id: "f", state: "blocked", title: "\u{E0B1} Edit main.go?",
                                 msg: "\u{1B}[1mAllow\u{1B}[0m \u{E0B2}edits?")], seen: nil, connected: true)),
+            // A separator or a box's edge as the line: the state drops it
+            // (TerminalLive.state), and the card falls back to the title.
+            ("rule", short, .init(title: "api", program: "devin", record: nil,
+                                  line: String(repeating: "─", count: 80), connected: true)),
+            ("rule-dropped", short, .init(title: "api", program: "devin", record: nil, line: "", connected: true)),
         ]
         func write(_ v: some View, _ name: String) throws {
             let r = ImageRenderer(content: v)
