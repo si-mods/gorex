@@ -116,7 +116,9 @@ func TestDevicesButtons(t *testing.T) {
 	a := &App{}
 	settingsUI.section = "server"
 	remoteUI.loaded, remoteUI.st, remoteUI.err = true, rex.RemoteStatus{Enabled: true}, nil
-	tt := ui.NewTester(a.settingsView, 780, 1400)
+	// The host key row adds to the details, so the window needs the
+	// height the row costs, or the add-by-key form's buttons leave it.
+	tt := ui.NewTester(a.settingsView, 780, 1600)
 	tt.Frame()
 	if err := tt.Click(locales.RemoteShowDetails()); err != nil {
 		t.Fatal(err)
