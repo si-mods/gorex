@@ -5073,6 +5073,136 @@
           }
         }
       }
+    },
+    "No listening ports": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "没有监听的端口"
+          }
+        }
+      }
+    },
+    "A program in this pane is not listening on a TCP port.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这个分屏中的程序没有在监听 TCP 端口。"
+          }
+        }
+      }
+    },
+    "Couldn't load ports": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "端口列表加载失败"
+          }
+        }
+      }
+    },
+    "Check the connection and try again.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "检查连接后重试。"
+          }
+        }
+      }
+    },
+    "Try again": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "重试"
+          }
+        }
+      }
+    },
+    "Couldn't reach it. Trying again.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "连不上，正在重试。"
+          }
+        }
+      }
+    },
+    "Couldn't reach the host.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "连不上主机。"
+          }
+        }
+      }
+    },
+    "Couldn't pair. Try again on both devices.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "配对失败，请在两台设备上重试。"
+          }
+        }
+      }
+    },
+    "No hosts yet": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "还没有主机"
+          }
+        }
+      }
+    },
+    "No windows": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "没有窗口"
+          }
+        }
+      }
+    },
+    "No matching themes": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "没有匹配的主题"
+          }
+        }
+      }
+    },
+    "No devices admitted yet": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "还没有已允许的设备"
+          }
+        }
+      }
+    },
+    "Couldn't download the web client.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "网页客户端下载失败。"
+          }
+        }
+      }
     }
   }
 }

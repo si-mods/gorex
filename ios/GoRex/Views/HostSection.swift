@@ -217,9 +217,21 @@ struct HostSection: View {
         }
     }
 
+    /// A host that cannot connect: Offline, and under it why in the
+    /// user's terms. The raw error stays where diagnostics shows it
+    /// (NetworkDiagnostics, the developer page's debug info).
     private func offline(_ why: String) -> some View {
-        Label(why.isEmpty ? String(localized: "Offline") : String(localized: "Offline: \(why)"), systemImage: "wifi.slash")
-            .foregroundStyle(.secondary)
+        Label {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Offline")
+                if !why.isEmpty {
+                    Text("Couldn't reach it. Trying again.").font(.subheadline)
+                }
+            }
+        } icon: {
+            Image(systemName: "wifi.slash").symbolRenderingMode(.hierarchical)
+        }
+        .foregroundStyle(.secondary)
     }
 
     /// The host's projects of the space, Older, and its tabs with no

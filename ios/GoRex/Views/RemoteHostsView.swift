@@ -36,6 +36,10 @@ struct RemoteHostsView: View {
                 }
             }
             Section("Hosts") {
+                if hosts.isEmpty {
+                    EmptyState("No hosts yet", symbol: "desktopcomputer")
+                        .listRowBackground(Color.card)
+                }
                 ForEach(hosts) { h in
                     HostRow(host: h) { sheet = .details(h.config) }
                 }
@@ -431,7 +435,7 @@ struct TailcatPairSheet: View {
             problem = String(localized: "Not connected yet. Rex Go keeps trying: approve this phone on the machine.")
         } catch is CancellationError {
         } catch {
-            problem = String(localized: "Couldn't pair: \(error.localizedDescription)")
+            problem = String(localized: "Couldn't pair. Try again on both devices.")
         }
     }
 
@@ -513,7 +517,7 @@ private struct AddressPairSheet: View {
                 }
                 code = c
             } catch {
-                problem = String(localized: "Couldn't pair: \(error.localizedDescription)")
+                problem = String(localized: "Couldn't pair. Try again on both devices.")
             }
         }
         .onDisappear {
@@ -542,7 +546,7 @@ private struct AddressPairSheet: View {
                 dismiss()
             } catch {
                 problem = TailnetEngine.shared.isAddressPairingWarning(error)
-                    ? warning : String(localized: "Couldn't pair: \(error.localizedDescription)")
+                    ? warning : String(localized: "Couldn't pair. Try again on both devices.")
             }
         }
     }

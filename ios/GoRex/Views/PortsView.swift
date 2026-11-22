@@ -18,9 +18,10 @@ struct PortsView: View {
     var body: some View {
         NavigationStack {
             List {
-                if let failure {
+                if let failure, ports != nil {
                     Section {
                         Label(failure, systemImage: "exclamationmark.triangle")
+                            .symbolRenderingMode(.hierarchical)
                             .foregroundStyle(.secondary)
                     }
                 }
@@ -40,6 +41,24 @@ struct PortsView: View {
                                 Text("Some processes could not be checked.")
                             }
                         }
+                    }
+                }
+            }
+            // Until the first answer, and after one that failed with
+            // nothing to show: the state's own place, page size.
+            .overlay {
+                if ports == nil {
+                    if failure != nil {
+                        ContentUnavailableView {
+                            Label("Couldn't load ports", systemImage: "network")
+                        } description: {
+                            Text("Check the connection and try again.")
+                        } actions: {
+                            Button("Try again") { Task { await fetch() } }
+                                .buttonStyle(.glass)
+                        }
+                    } else {
+                        ProgressView()
                     }
                 }
             }

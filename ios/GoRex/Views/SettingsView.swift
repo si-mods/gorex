@@ -50,9 +50,10 @@ struct SettingsView: View {
     }
 
     var body: some View {
+        let shown = cards.map { $0.filter { matches($0.title) } }.filter { !$0.isEmpty }
         NavigationStack {
             List {
-                ForEach(Array(cards.map { $0.filter { matches($0.title) } }.filter { !$0.isEmpty }.enumerated()), id: \.offset) { _, items in
+                ForEach(Array(shown.enumerated()), id: \.offset) { _, items in
                     Section {
                         ForEach(items) { item in
                             NavigationLink { item.page() } label: {
@@ -80,6 +81,7 @@ struct SettingsView: View {
             }
             .scrollContentBackground(.hidden)
             .background(Color.page)
+            .overlay { if shown.isEmpty && !matches("Label") { ContentUnavailableView.search(text: query) } }
             .searchable(text: $query, prompt: "Search Settings")
             .textInputAutocapitalization(.never)
             .autocorrectionDisabled()
@@ -192,6 +194,10 @@ private struct Themes: View {
                 row(nil)
             }
             ForEach(shown, id: \.name) { row($0) }
+            if shown.isEmpty {
+                EmptyState("No matching themes", symbol: "paintpalette")
+                    .listRowBackground(Color.card)
+            }
         }
         .scrollContentBackground(.hidden)
         .background(Color.page)

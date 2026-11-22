@@ -287,9 +287,17 @@ struct HostListView: View {
                             StatusInbox(query: query, collapsed: $collapsed, places: places, open: { openRow($0) })
                         } else {
                             if hasSpaces { ListPicker(wide: width == .regular) { picker(spaces: spaces, current: current) } }
-                            let hosts = store.hosts.filter { shows($0, hasSpaces: hasSpaces, current: current) }
-                            ForEach(hosts) { host in
-                                section(host, current: current, spaces: spaces)
+                            if noMatch(current: current) {
+                                // Every section the search leaves empty:
+                                // name the state in place of the blank.
+                                ContentUnavailableView.search(text: query)
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.top, 40)
+                            } else {
+                                let hosts = store.hosts.filter { shows($0, hasSpaces: hasSpaces, current: current) }
+                                ForEach(hosts) { host in
+                                    section(host, current: current, spaces: spaces)
+                                }
                             }
                         }
                     }
@@ -448,6 +456,32 @@ struct HostListView: View {
         if h.status == .online || !hasSpaces { return true }
         guard let l = book.listing(for: h.id.uuidString) else { return true }
         return l.spaces.contains(current)
+    }
+
+    /// Whether the search leaves nothing under the headers: no row of any
+    /// section drawn matches it.
+    private func noMatch(current: String) -> Bool {
+        !query.isEmpty && !store.hosts.contains { draws($0, current: current) }
+    }
+
+    /// Whether a host's section draws a row of its own under the search:
+    /// a project it keeps of the space, or a tab, whose name matches; the
+    /// search does not filter a host away or one of before projects, so
+    /// those always count.
+    private func draws(_ h: Host, current: String) -> Bool {
+        guard shows(h, hasSpaces: hasSpaces, current: current) else { return false }
+        if h.status != .online || !h.hasProjects { return true }
+        let key = h.id.uuidString
+        return h.sessions.contains { s in
+            if s.project == nil {
+                return (s.view?.windows ?? []).contains {
+                    $0.block != nil && h.title($0).localizedCaseInsensitiveContains(query)
+                }
+            }
+            guard s.project.map({ book.space($0.space, on: key) == current }) ?? false else { return false }
+            return s.label.localizedCaseInsensitiveContains(query)
+                || (s.view?.windows ?? []).contains { h.title($0).localizedCaseInsensitiveContains(query) }
+        }
     }
 
     /// A host's section of the list, as the body's ForEach builds it.
