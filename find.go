@@ -102,10 +102,14 @@ func (a *App) resumeFind() bool {
 	return true
 }
 
-// findCount says how the search goes.
+// findCount says how the search goes: nothing on no query, no matches on
+// none, else the count of them and the one selected.
 func (a *App) findCount() string {
 	if a.findText == "" {
 		return ""
+	}
+	if a.findStatus.Total == 0 {
+		return locales.FindNoMatches()
 	}
 	return locales.FindCount(strconv.Itoa(a.findStatus.Selected), strconv.Itoa(a.findStatus.Total))
 }

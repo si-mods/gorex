@@ -92,11 +92,13 @@ func (a *App) projectPicker(c *ui.Context, k *colors) {
 }
 
 // pickerList is the picker's hosts and their workspaces, the i'th parts
-// of the menu still opening.
+// of the menu still opening, or the empty state of a space with no
+// projects.
 func (a *App) pickerList(c *ui.Context, k *colors, entering bool, i *int) {
 	space := shownSpace()
 	// A host's header lines up with its rows.
 	pad := menuStyleOf(k, c.Theme().Dark).RowPadding
+	listed := 0
 	for _, h := range a.allHosts() {
 		if !a.hostShown(h, space) {
 			continue
@@ -111,6 +113,7 @@ func (a *App) pickerList(c *ui.Context, k *colors, entering bool, i *int) {
 		if w := a.st.noProjectOf(h); w != nil {
 			ws = append(ws, w)
 		}
+		listed += len(ws)
 		for _, w := range ws {
 			name, glyph := w.Name, "folder"
 			if w.Dir == "" {
@@ -132,5 +135,13 @@ func (a *App) pickerList(c *ui.Context, k *colors, entering bool, i *int) {
 				dimmed(row, 0.5)
 			}
 		}
+	}
+	if listed == 0 {
+		// No workspace to list: the row offers the first
+		// (docs/DSK-006-empty-states.md).
+		menuReveal(c, emptyRow(c, k, "picker-empty", locales.EmptyNoProjects(), emptyAction{cmdNewProject.Title(), func() {
+			a.later(c, a.openNewProject)
+		}}), entering, *i)
+		*i++
 	}
 }

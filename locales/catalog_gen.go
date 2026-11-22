@@ -1198,6 +1198,20 @@ func (msgs Messages) PaletteNoMatches() string {
 	return Catalog.Format(msgs.locale, "paletteNoMatches", nil)
 }
 
+// PaletteNoMatchesFor says "No matches for “{query}”"
+// in the language the app shows.
+//
+// Shown in the command palette when nothing matches the query typed.
+func PaletteNoMatchesFor(query string) string { return In(i18n.Locale()).PaletteNoMatchesFor(query) }
+
+// PaletteNoMatchesFor says "No matches for “{query}”"
+// in the language of msgs.
+//
+// Shown in the command palette when nothing matches the query typed.
+func (msgs Messages) PaletteNoMatchesFor(query string) string {
+	return Catalog.Format(msgs.locale, "paletteNoMatchesFor", map[string]any{"query": query})
+}
+
 // PaletteTabKeys says "Tab {n}"
 // in the language the app shows.
 //
@@ -3080,6 +3094,20 @@ func (msgs Messages) SettingsSearchThemes() string {
 	return Catalog.Format(msgs.locale, "settingsSearchThemes", nil)
 }
 
+// SettingsThemeNoMatch says "No themes match “{query}”."
+// in the language the app shows.
+//
+// Under the theme search field when no theme's name matches the query.
+func SettingsThemeNoMatch(query string) string { return In(i18n.Locale()).SettingsThemeNoMatch(query) }
+
+// SettingsThemeNoMatch says "No themes match “{query}”."
+// in the language of msgs.
+//
+// Under the theme search field when no theme's name matches the query.
+func (msgs Messages) SettingsThemeNoMatch(query string) string {
+	return Catalog.Format(msgs.locale, "settingsThemeNoMatch", map[string]any{"query": query})
+}
+
 // SettingsGorexColors says "GoRex's colors"
 // in the language the app shows.
 //
@@ -3122,6 +3150,52 @@ func SettingsKeyboardNote() string { return In(i18n.Locale()).SettingsKeyboardNo
 // Note at the top of the Keyboard section.
 func (msgs Messages) SettingsKeyboardNote() string {
 	return Catalog.Format(msgs.locale, "settingsKeyboardNote", nil)
+}
+
+// SettingsPressShortcut says "Press the new shortcut for {title}"
+// in the language the app shows.
+//
+// Line shown while a new keyboard shortcut is recorded. title is the
+// command's name.
+func SettingsPressShortcut(title string) string {
+	return In(i18n.Locale()).SettingsPressShortcut(title)
+}
+
+// SettingsPressShortcut says "Press the new shortcut for {title}"
+// in the language of msgs.
+//
+// Line shown while a new keyboard shortcut is recorded. title is the
+// command's name.
+func (msgs Messages) SettingsPressShortcut(title string) string {
+	return Catalog.Format(msgs.locale, "settingsPressShortcut", map[string]any{"title": title})
+}
+
+// SettingsCancel says "Cancel"
+// in the language the app shows.
+//
+// Button: stop recording the new keyboard shortcut.
+func SettingsCancel() string { return In(i18n.Locale()).SettingsCancel() }
+
+// SettingsCancel says "Cancel"
+// in the language of msgs.
+//
+// Button: stop recording the new keyboard shortcut.
+func (msgs Messages) SettingsCancel() string {
+	return Catalog.Format(msgs.locale, "settingsCancel", nil)
+}
+
+// SettingsChange says "Change"
+// in the language the app shows.
+//
+// Keyboard section row button: record a new shortcut for the command.
+func SettingsChange() string { return In(i18n.Locale()).SettingsChange() }
+
+// SettingsChange says "Change"
+// in the language of msgs.
+//
+// Keyboard section row button: record a new shortcut for the command.
+func (msgs Messages) SettingsChange() string {
+	return Catalog.Format(msgs.locale, "settingsChange", nil)
 }
 
 // SettingsShowTabRange says "Show Tab 1…9"
@@ -5772,6 +5846,20 @@ func (msgs Messages) FindCount(selected string, total string) string {
 	return Catalog.Format(msgs.locale, "findCount", map[string]any{"selected": selected, "total": total})
 }
 
+// FindNoMatches says "No matches"
+// in the language the app shows.
+//
+// Find bar: the query matched nothing in the scrollback.
+func FindNoMatches() string { return In(i18n.Locale()).FindNoMatches() }
+
+// FindNoMatches says "No matches"
+// in the language of msgs.
+//
+// Find bar: the query matched nothing in the scrollback.
+func (msgs Messages) FindNoMatches() string {
+	return Catalog.Format(msgs.locale, "findNoMatches", nil)
+}
+
 // HostsLayout says "Layout"
 // in the language the app shows.
 //
@@ -7902,6 +7990,22 @@ func (msgs Messages) ProjectsNoProject() string {
 	return Catalog.Format(msgs.locale, "projectsNoProject", nil)
 }
 
+// EmptyNoProjects says "No projects yet."
+// in the language the app shows.
+//
+// Empty state of the project sidebar and the project picker when the host
+// or the space has no projects.
+func EmptyNoProjects() string { return In(i18n.Locale()).EmptyNoProjects() }
+
+// EmptyNoProjects says "No projects yet."
+// in the language of msgs.
+//
+// Empty state of the project sidebar and the project picker when the host
+// or the space has no projects.
+func (msgs Messages) EmptyNoProjects() string {
+	return Catalog.Format(msgs.locale, "emptyNoProjects", nil)
+}
+
 // ProjectsOffline says "{host} is not connected: its projects as last seen"
 // in the language the app shows.
 //
@@ -8240,4 +8344,74 @@ func ProjectsOfflineLabel() string { return In(i18n.Locale()).ProjectsOfflineLab
 // Sidebar: beside the header of a host that is not connected.
 func (msgs Messages) ProjectsOfflineLabel() string {
 	return Catalog.Format(msgs.locale, "projectsOfflineLabel", nil)
+}
+
+// EmptyNoTab says "No tab open"
+// in the language the app shows.
+//
+// Empty state of the main area of a window with no tab.
+func EmptyNoTab() string { return In(i18n.Locale()).EmptyNoTab() }
+
+// EmptyNoTab says "No tab open"
+// in the language of msgs.
+//
+// Empty state of the main area of a window with no tab.
+func (msgs Messages) EmptyNoTab() string {
+	return Catalog.Format(msgs.locale, "emptyNoTab", nil)
+}
+
+// EmptyNoTabNote says "Tabs run shells, agents, browsers and notes."
+// in the language the app shows.
+//
+// Under the title of the no-tab empty state: what a tab is for.
+func EmptyNoTabNote() string { return In(i18n.Locale()).EmptyNoTabNote() }
+
+// EmptyNoTabNote says "Tabs run shells, agents, browsers and notes."
+// in the language of msgs.
+//
+// Under the title of the no-tab empty state: what a tab is for.
+func (msgs Messages) EmptyNoTabNote() string {
+	return Catalog.Format(msgs.locale, "emptyNoTabNote", nil)
+}
+
+// PromptCancel says "Cancel"
+// in the language the app shows.
+//
+// Button of a prompt sheet: answer nothing.
+func PromptCancel() string { return In(i18n.Locale()).PromptCancel() }
+
+// PromptCancel says "Cancel"
+// in the language of msgs.
+//
+// Button of a prompt sheet: answer nothing.
+func (msgs Messages) PromptCancel() string {
+	return Catalog.Format(msgs.locale, "promptCancel", nil)
+}
+
+// PromptOther says "Other"
+// in the language the app shows.
+//
+// Placeholder of a prompt sheet's free-text answer.
+func PromptOther() string { return In(i18n.Locale()).PromptOther() }
+
+// PromptOther says "Other"
+// in the language of msgs.
+//
+// Placeholder of a prompt sheet's free-text answer.
+func (msgs Messages) PromptOther() string {
+	return Catalog.Format(msgs.locale, "promptOther", nil)
+}
+
+// PromptSend says "Send"
+// in the language the app shows.
+//
+// Confirm button of a prompt sheet with no label of its own.
+func PromptSend() string { return In(i18n.Locale()).PromptSend() }
+
+// PromptSend says "Send"
+// in the language of msgs.
+//
+// Confirm button of a prompt sheet with no label of its own.
+func (msgs Messages) PromptSend() string {
+	return Catalog.Format(msgs.locale, "promptSend", nil)
 }

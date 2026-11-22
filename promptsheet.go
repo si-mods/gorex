@@ -10,6 +10,7 @@ import (
 
 	"gorex/internal/config"
 	"gorex/internal/rex"
+	"gorex/locales"
 )
 
 // actionLimit is how long a config action may run, apart from the time its
@@ -129,7 +130,7 @@ func (a *App) promptPanel(c *ui.Context, k *colors) {
 				Placeholder(spec.Placeholder).AutoFocus()
 			submit := in.Submitted()
 			ui.Row(c).Gap(8).Justify(ui.End).Margin(14, 0, 0, 0).Children(func() {
-				if ui.Button(c, "Cancel").Clicked() {
+				if ui.Button(c, locales.PromptCancel()).Clicked() {
 					open = false
 				}
 				if ui.PrimaryButton(c, confirmLabel(spec)).Clicked() {
@@ -198,11 +199,11 @@ func (a *App) promptPanel(c *ui.Context, k *colors) {
 		})
 		if spec.AllowOther {
 			textField(c.Key("prompt-other"), k, &a.promptOther, fieldRegular).
-				Placeholder("Other").Margin(8, 0, 0, 0)
+				Placeholder(locales.PromptOther()).Margin(8, 0, 0, 0)
 		}
 		other := strings.TrimSpace(a.promptOther)
 		ui.Row(c).Gap(8).Justify(ui.End).Margin(14, 0, 0, 0).Children(func() {
-			if ui.Button(c, "Cancel").Clicked() {
+			if ui.Button(c, locales.PromptCancel()).Clicked() {
 				open = false
 			}
 			// The confirm takes the keyboard, so that Return answers the
@@ -241,5 +242,5 @@ func confirmLabel(spec *rex.PromptSpec) string {
 	if spec.Confirm != "" {
 		return spec.Confirm
 	}
-	return "Send"
+	return locales.PromptSend()
 }

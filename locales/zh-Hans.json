@@ -84,6 +84,7 @@
   "paletteTitle": "命令面板",
   "palettePlaceholder": "输入命令或窗格名称…",
   "paletteNoMatches": "无匹配项",
+  "paletteNoMatchesFor": "没有“{query}”的匹配项",
   "paletteTabKeys": "标签页 {n}",
   "tabListLabel": "标签页",
   "tabResetName": "重置名称",
@@ -211,9 +212,13 @@
   "settingsUseGhostty": "使用 Ghostty 配置",
   "settingsUseGhosttyHint": "清除这些选择，改用 Ghostty 的配置（否则使用 GoRex 的默认值）。",
   "settingsSearchThemes": "搜索主题",
+  "settingsThemeNoMatch": "没有匹配“{query}”的主题。",
   "settingsGorexColors": "GoRex 的配色",
   "settingsMoreThemes": "还有 {count} 个：输入关键词以缩小范围。",
   "settingsKeyboardNote": "GoRex 的快捷键优先于终端按键。Ghostty 的键位绑定在其配置中设置。",
+  "settingsPressShortcut": "按下 {title} 的新快捷键",
+  "settingsCancel": "取消",
+  "settingsChange": "更改",
   "settingsShowTabRange": "显示标签页 1…9",
   "settingsShowSpaceRange": "显示第 1 至 9 个项目",
   "@settingsShowSpaceRange": {
@@ -457,6 +462,7 @@
       "total": {}
     }
   },
+  "findNoMatches": "无匹配项",
   "hostsLayout": "布局",
   "@hostsLayout": {
     "description": "Remote host layout sheet."
@@ -684,6 +690,7 @@
   "projectsNewOn": "在 {host} 上新建项目…",
   "projectsNewTabIn": "在 {name} 中新建标签页",
   "projectsNoProject": "无项目",
+  "emptyNoProjects": "尚无项目。",
   "projectsOffline": "{host} 未连接：显示的是上次看到的项目",
   "projectsOlder": "更早",
   "projectsWaitingFor": "正在等待 {host}",
@@ -707,5 +714,10 @@
   "spacesTitle": "空间",
   "spaceProjects": "{count, plural, =0 {没有项目} other {# 个项目}}",
   "projectsTabsOf": "{name} 的标签页",
-  "projectsOfflineLabel": "离线"
+  "projectsOfflineLabel": "离线",
+  "emptyNoTab": "没有打开的标签页",
+  "emptyNoTabNote": "标签页运行 shell、agent、浏览器和便签。",
+  "promptCancel": "取消",
+  "promptOther": "其他",
+  "promptSend": "发送"
 }

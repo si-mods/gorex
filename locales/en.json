@@ -336,6 +336,13 @@
   "@paletteNoMatches": {
     "description": "Shown in the command palette when nothing matches the query."
   },
+  "paletteNoMatchesFor": "No matches for “{query}”",
+  "@paletteNoMatchesFor": {
+    "description": "Shown in the command palette when nothing matches the query typed.",
+    "placeholders": {
+      "query": {}
+    }
+  },
   "paletteTabKeys": "Tab {n}",
   "@paletteTabKeys": {
     "description": "Badge of a pane's row in the palette: the number of its tab.",
@@ -1052,6 +1059,13 @@
   "@settingsSearchThemes": {
     "description": "Placeholder and label of the theme search field."
   },
+  "settingsThemeNoMatch": "No themes match “{query}”.",
+  "@settingsThemeNoMatch": {
+    "description": "Under the theme search field when no theme's name matches the query.",
+    "placeholders": {
+      "query": {}
+    }
+  },
   "settingsGorexColors": "GoRex's colors",
   "@settingsGorexColors": {
     "description": "Caption of the Follow Ghostty config theme when Ghostty sets no theme."
@@ -1069,6 +1083,21 @@
   "settingsKeyboardNote": "GoRex's shortcuts, which come before the terminal's keys. Ghostty keybinds are set in its config.",
   "@settingsKeyboardNote": {
     "description": "Note at the top of the Keyboard section."
+  },
+  "settingsPressShortcut": "Press the new shortcut for {title}",
+  "@settingsPressShortcut": {
+    "description": "Line shown while a new keyboard shortcut is recorded. title is the command's name.",
+    "placeholders": {
+      "title": {}
+    }
+  },
+  "settingsCancel": "Cancel",
+  "@settingsCancel": {
+    "description": "Button: stop recording the new keyboard shortcut."
+  },
+  "settingsChange": "Change",
+  "@settingsChange": {
+    "description": "Keyboard section row button: record a new shortcut for the command."
   },
   "settingsShowTabRange": "Show Tab 1…9",
   "@settingsShowTabRange": {
@@ -1922,6 +1951,10 @@
       "total": {}
     }
   },
+  "findNoMatches": "No matches",
+  "@findNoMatches": {
+    "description": "Find bar: the query matched nothing in the scrollback."
+  },
   "hostsLayout": "Layout",
   "@hostsLayout": {
     "description": "Remote host layout sheet."
@@ -2663,6 +2696,10 @@
   "@projectsNoProject": {
     "description": "Sidebar and picker: the group of a host's tabs that belong to no project."
   },
+  "emptyNoProjects": "No projects yet.",
+  "@emptyNoProjects": {
+    "description": "Empty state of the project sidebar and the project picker when the host or the space has no projects."
+  },
   "projectsOffline": "{host} is not connected: its projects as last seen",
   "@projectsOffline": {
     "description": "Tooltip of a project of a host that is away.",
@@ -2784,5 +2821,25 @@
   "projectsOfflineLabel": "offline",
   "@projectsOfflineLabel": {
     "description": "Sidebar: beside the header of a host that is not connected."
+  },
+  "emptyNoTab": "No tab open",
+  "@emptyNoTab": {
+    "description": "Empty state of the main area of a window with no tab."
+  },
+  "emptyNoTabNote": "Tabs run shells, agents, browsers and notes.",
+  "@emptyNoTabNote": {
+    "description": "Under the title of the no-tab empty state: what a tab is for."
+  },
+  "promptCancel": "Cancel",
+  "@promptCancel": {
+    "description": "Button of a prompt sheet: answer nothing."
+  },
+  "promptOther": "Other",
+  "@promptOther": {
+    "description": "Placeholder of a prompt sheet's free-text answer."
+  },
+  "promptSend": "Send",
+  "@promptSend": {
+    "description": "Confirm button of a prompt sheet with no label of its own."
   }
 }
