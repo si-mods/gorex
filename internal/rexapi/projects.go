@@ -39,11 +39,12 @@ const desktopSpace = "gorex-desktop-terminals"
 // as a client of v0.38.0 to v0.40.x reads it. Deprecated: a project is
 // always of its host.
 type projectInfo struct {
-	Dir         string `json:"dir,omitempty"`
-	Space       string `json:"space,omitempty"`
-	Used        string `json:"used,omitempty"`
-	Color       string `json:"color,omitempty"`
-	HomeMachine string `json:"home_machine,omitempty"`
+	Dir         string    `json:"dir,omitempty"`
+	Space       string    `json:"space,omitempty"`
+	Used        string    `json:"used,omitempty"`
+	Color       string    `json:"color,omitempty"`
+	HomeMachine string    `json:"home_machine,omitempty"`
+	Launchers   *[]string `json:"launchers,omitempty"`
 }
 
 // projectOf is the project of workspace ws as a client reads it.
@@ -52,6 +53,13 @@ func (m *model) projectOf(ws *layout.Workspace) *projectInfo {
 		return &projectInfo{}
 	}
 	p := &projectInfo{Dir: ws.Dir, Space: ws.Space, Color: ws.Color, HomeMachine: m.self}
+	if ws.Launchers != nil {
+		cp := slices.Clone(*ws.Launchers)
+		if cp == nil {
+			cp = []string{}
+		}
+		p.Launchers = &cp
+	}
 	if !ws.Used.IsZero() {
 		p.Used = ws.Used.UTC().Format(time.RFC3339)
 	}
@@ -338,7 +346,7 @@ func methodGorexProjectUpdate(c *control, a args) (any, *apiError) {
 	if aerr := c.projectsCan(); aerr != nil {
 		return nil, aerr
 	}
-	if aerr := a.only("project_id", "name", "color", "space"); aerr != nil {
+	if aerr := a.only("project_id", "name", "color", "space", "launchers"); aerr != nil {
 		return nil, aerr
 	}
 	p, aerr := c.projectArg(a, false)
@@ -360,6 +368,23 @@ func methodGorexProjectUpdate(c *control, a args) (any, *apiError) {
 	cmd := rex.LayoutCommand{Op: "project.update", Space: p.space, Name: name, Color: color}
 	if hasSpace {
 		cmd.SpaceName = &space
+	}
+	if raw, hasLaunchers := a["launchers"]; hasLaunchers {
+		if !c.g.hello.Can(rex.CapabilityAgents) {
+			return nil, errNotSupported("the GoRex server does not keep pinned launchers; update GoRex")
+		}
+		if strings.TrimSpace(string(raw)) == "null" {
+			cmd.ResetLaunchers = true
+		} else {
+			var list []string
+			if err := json.Unmarshal(raw, &list); err != nil {
+				return nil, errBadRequest("launchers must be an array of strings or null")
+			}
+			if list == nil {
+				list = []string{}
+			}
+			cmd.Launchers = &list
+		}
 	}
 	if _, aerr := c.g.command(cmd); aerr != nil {
 		return nil, aerr
@@ -541,6 +566,7 @@ var projectSchema = map[string]any{
 		"used":         map[string]any{"type": "string"},
 		"color":        map[string]any{"type": "string"},
 		"home_machine": map[string]any{"type": "string"},
+		"launchers":    map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
 	},
 	"additionalProperties": false,
 }
@@ -643,8 +669,14 @@ var projectEntries = []map[string]any{
 		"{\n  \"project_id\": \"session:<uuid>\",\n  \"tab_id\": \"window:<uuid>\"\n}",
 		"The project the tab leaves stays, with no tab perhaps.",
 	),
-	projectEntry("gorex.project.update", "Rename a project, color it, or move it to another space. Its folder does not change.",
-		map[string]any{"project_id": strProp("The project, a session."), "name": strProp("Its new name; empty keeps it."), "color": strProp("A preset color, a #rrggbb, or default; empty keeps it."), "space": strProp("Its space; empty for Default, left out to keep it.")},
+	projectEntry("gorex.project.update", "Rename a project, color it, move it to another space, or configure its pinned quick launchers. Its folder does not change.",
+		map[string]any{
+			"project_id": strProp("The project, a session."),
+			"name":       strProp("Its new name; empty keeps it."),
+			"color":      strProp("A preset color, a #rrggbb, or default; empty keeps it."),
+			"space":      strProp("Its space; empty for Default, left out to keep it."),
+			"launchers":  map[string]any{"type": []any{"array", "null"}, "items": map[string]any{"type": "string"}, "description": "Pinned agent CLI IDs; null resets to all detected CLIs, [] hides all."},
+		},
 		[]any{"project_id"},
 		map[string]any{"type": "object", "properties": map[string]any{"project_id": strProp(""), "project": projectSchema}, "required": []any{"project_id"}, "additionalProperties": false},
 		"{\n  \"project_id\": \"session:<uuid>\",\n  \"space\": \"Life\"\n}",

@@ -112,6 +112,8 @@ type hostConn struct {
 	attempt int           // of the attempt under way, or the next one
 	reason  func() string // why it is not connected, said when drawn
 	hello   rex.Hello
+	// agents are the known agent CLIs installed on this host (agents.list).
+	agents []rex.AgentInfo
 	// closed are the sessions closed here since the host connected, which
 	// adopt does not open again though a list still has them.
 	closed map[string]bool
@@ -488,6 +490,17 @@ func (a *App) runHost(h *hostConn, update func(func())) {
 					a.st.followHost(h, c, hello, update)
 				}
 			})
+			if hello.Can(rex.CapabilityAgents) {
+				go func(cl *rex.Client) {
+					if res, err := cl.AgentsList(); err == nil {
+						update(func() {
+							if h.current() == cl {
+								h.agents = res.Agents
+							}
+						})
+					}
+				}(c)
+			}
 			since := time.Now()
 			h.runKills(c)
 			a.watchHost(h, c, update)

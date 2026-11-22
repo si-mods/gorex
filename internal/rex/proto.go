@@ -130,6 +130,10 @@ const CapabilityStatusSeen = "status.seen"
 // machine says it does: the "dir.list" op (DirList).
 const CapabilityDirList = "dir.list"
 
+// CapabilityAgents is what a server that detects installed agent CLIs
+// says it does: the "agents.list" op (AgentsResult).
+const CapabilityAgents = "agents.list"
+
 // CapabilityPrompts is a client's, not the server's: the client shows the
 // questions a config action asks and answers them, and the server sends it
 // prompt events (docs/MOD-009-client-prompts.md). The server's own
@@ -150,7 +154,7 @@ const FolderMissing = "folder_missing"
 
 // capabilities are what a version 3 server does beyond version 2. A
 // client reads them from Hello and falls back when one is absent.
-var capabilities = []string{"layout.revision", "events.revision", CapabilityShutdownRestart, CapabilityShutdownIfIdle, CapabilitySnapshotGhostty, CapabilityInputEvents, CapabilityTerminalQuery, CapabilityFileTransfer, CapabilityFileTemp, CapabilityTeleport, CapabilityLayoutServer, CapabilityTabToSpace, CapabilityStatusSeen, CapabilityDirList, CapabilitySpaceHome, CapabilityProjects, CapabilitySpacesDelete, CapabilityPrompts}
+var capabilities = []string{"layout.revision", "events.revision", CapabilityShutdownRestart, CapabilityShutdownIfIdle, CapabilitySnapshotGhostty, CapabilityInputEvents, CapabilityTerminalQuery, CapabilityFileTransfer, CapabilityFileTemp, CapabilityTeleport, CapabilityLayoutServer, CapabilityTabToSpace, CapabilityStatusSeen, CapabilityDirList, CapabilityAgents, CapabilitySpaceHome, CapabilityProjects, CapabilitySpacesDelete, CapabilityPrompts}
 
 // Request is a line of the control connection, from the client.
 type Request struct {
@@ -389,6 +393,11 @@ type LayoutCommand struct {
 	// ToSpace is the space tab.to_space moves the tab to, by ID; of
 	// project.move, the project, "" for the tabs with no project.
 	ToSpace string `json:"to_space,omitempty"`
+	// Launchers sets a project's pinned agent CLI IDs on project.update
+	// (nil leaves it unchanged; non-nil empty slice pins none).
+	// ResetLaunchers resets it back to default (all detected CLIs).
+	Launchers      *[]string `json:"launchers,omitempty"`
+	ResetLaunchers bool      `json:"reset_launchers,omitempty"`
 	// SpaceName is the space of a project (layout.Workspace.Space) that
 	// project.create and project.update give it, "" for Default; nil
 	// gives Default to a new one and keeps an existing one's.
@@ -1101,6 +1110,24 @@ type DirListResult struct {
 	// More tells that Path holds more than DirListMax: Dirs are the first.
 	More bool   `json:"more"`
 	Code string `json:"code,omitempty"`
+}
+
+// AgentInfo describes a known agent CLI installed on the server's machine
+// ("agents.list", CapabilityAgents, docs/MOD-010-agent-launchers.md).
+type AgentInfo struct {
+	// ID is the canonical program key matching programs.go (for example
+	// "claude", "codex", "agy", "omp", "devin").
+	ID string `json:"id"`
+	// Name is the human-readable display name.
+	Name string `json:"name"`
+	// Command is the argv that launches the agent directly so exiting it
+	// ends the session.
+	Command []string `json:"command"`
+}
+
+// AgentsResult is the answer to "agents.list".
+type AgentsResult struct {
+	Agents []AgentInfo `json:"agents"`
 }
 
 // DirTop is the DirList.Path of the top of a machine: on Windows, the

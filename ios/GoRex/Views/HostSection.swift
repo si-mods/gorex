@@ -53,6 +53,8 @@ struct HostSection: View {
     @State private var renamingHost = false
     /// The project whose folder is gone, which can only be closed.
     @State private var missing: Host.Session?
+    /// The project whose pinned quick launchers are being configured.
+    @State private var configuringLaunchers: Host.Session?
 
     /// The key of a project or Older of a host, as expanded keeps it.
     static func key(_ host: Host, _ id: String) -> String { host.id.uuidString + "|" + id }
@@ -100,6 +102,11 @@ struct HostSection: View {
             }
         } message: { _ in
             Text("Only the name changes: the folder and the tabs stay.")
+        }
+        .sheet(item: $configuringLaunchers) { s in
+            ProjectLaunchersSheet(host: host, sessionID: s.id, projectName: s.label) { why in
+                failure = ("Can't Update Quick Launchers", why)
+            }
         }
         .alert("Rename Host", isPresented: $renamingHost) {
             TextField(host.config.name, text: $name)
@@ -311,7 +318,7 @@ struct HostSection: View {
                 // One block, so that the tabs come and go as a whole.
                 VStack(spacing: 0) {
                     rows(entries((s.view?.windows ?? []).map { (s, $0) }), more: true, tiles: tiles, onFace: face, grouped: grouped)
-                    newTabRow { newProjectTab(s) }
+                    projectNewTabRow(s)
                 }
                 .transition(reduceMotion ? .identity : .opacity.combined(with: .scale(scale: 0.96, anchor: .top)))
             }
@@ -353,6 +360,9 @@ struct HostSection: View {
                 }
                 .disabled(sp == space)
             }
+        }
+        if !host.agents.isEmpty {
+            Button("Quick Launchers…", systemImage: "bolt") { configuringLaunchers = s }
         }
         Divider()
         Button("Close Project…", systemImage: "xmark", role: .destructive) { closingProject = s }
@@ -396,6 +406,75 @@ struct HostSection: View {
             .accessibilityHint(isOpen ? "Collapse" : "Expand")
             if isOpen { content() }
         }
+    }
+
+    /// A project's bottom row: the New Tab row of No Project, and, when
+    /// the host offers agent CLIs, a right-side cluster of the project's
+    /// pinned glyphs and a ▾ menu of them all
+    /// (docs/MOD-010-agent-launchers.md).
+    @ViewBuilder private func projectNewTabRow(_ s: Host.Session) -> some View {
+        if host.agents.isEmpty {
+            newTabRow { newProjectTab(s) }
+        } else {
+            let glyphs = Host.launcherGlyphs(s.project?.launchers, of: host.agents)
+            HStack(spacing: 0) {
+                Button { newProjectTab(s) } label: {
+                    Label("New Tab", systemImage: "plus")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.leading, 16)
+                        .frame(minHeight: 44)
+                        .contentShape(.rect)
+                }
+                .buttonStyle(.plain)
+                .hoverEffect(.highlight)
+                ForEach(glyphs) { agent in
+                    Button { newProjectTab(s, command: agent.command) } label: {
+                        ProgramGlyph(program: .of(agent.id))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 14, height: 14)
+                            .frame(width: 28, height: 44)
+                            .contentShape(.rect)
+                    }
+                    .buttonStyle(.plain)
+                    .hoverEffect(.highlight)
+                    .accessibilityLabel("New \(agent.name) Tab")
+                }
+                Menu { agentMenu(s) } label: {
+                    Image(systemName: "chevron.down")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 28, height: 44)
+                        .contentShape(.rect)
+                }
+                .buttonStyle(.plain)
+                .hoverEffect(.highlight)
+                .accessibilityLabel("Quick Launchers")
+                .padding(.trailing, 12)
+            }
+            .disabled(opening.contains(s.id))
+            .opacity(opening.contains(s.id) ? 0.5 : 1)
+        }
+    }
+
+    /// The ▾ menu of a project's launcher cluster: every agent CLI the
+    /// host has, its brand tile and name, then how to choose the pins.
+    @ViewBuilder private func agentMenu(_ s: Host.Session) -> some View {
+        ForEach(host.agents) { agent in
+            Button { newProjectTab(s, command: agent.command) } label: {
+                // An iOS menu item renders one icon and one plain-text
+                // title: no place for a pin check (the sheet shows them).
+                Label {
+                    Text(agent.name)
+                } icon: {
+                    ProgramTile(program: .of(agent.id), scale: 1, plate: false)
+                        .frame(width: 21, height: 16)
+                }
+            }
+        }
+        Divider()
+        Button("Configure Pinned…", systemImage: "pin") { configuringLaunchers = s }
     }
 
     private func newTabRow(_ action: @escaping () -> Void) -> some View {
@@ -576,14 +655,14 @@ struct HostSection: View {
 
     /// Opens a tab of a project on its host, in its folder, and goes to
     /// it. A folder gone opens nothing: it offers to close the project.
-    private func newProjectTab(_ s: Host.Session) {
+    private func newProjectTab(_ s: Host.Session, command: [String]? = nil) {
         guard let dir = s.project?.dir else { return newWindow(s) }
         opening.insert(s.id)
         Task {
             defer { opening.remove(s.id) }
             do {
                 if host.listsFolders { try await ProjectFolder.ensure(dir) { try await host.folders($0) } }
-                if let b = try await host.newWindow(in: s.id, cwd: dir) {
+                if let b = try await host.newWindow(in: s.id, cwd: dir, command: command) {
                     expanded.insert(Self.key(host, s.id))
                     open(TerminalTarget(host: host.id, session: s.id, block: b, title: ""))
                 }
@@ -993,5 +1072,78 @@ private struct SessionMenu: ViewModifier {
         Task {
             do { try await body() } catch { failure = (title, error.localizedDescription) }
         }
+    }
+}
+
+/// Sheet for configuring which installed agent CLIs are pinned in a project's
+/// New Tab row (docs/MOD-010-agent-launchers.md).
+private struct ProjectLaunchersSheet: View {
+    let host: Host
+    let sessionID: String
+    let projectName: String
+    let onError: (String) -> Void
+    @Environment(\.dismiss) private var dismiss
+
+    private var currentLaunchers: [String]? {
+        host.sessions.first(where: { $0.id == sessionID })?.project?.launchers
+    }
+
+    private func isPinned(_ id: String) -> Bool {
+        guard let pinned = currentLaunchers else { return true }
+        return pinned.contains(id)
+    }
+
+    private func setPinned(_ id: String, on: Bool) {
+        var next = currentLaunchers ?? host.agents.map(\.id)
+        if on {
+            if !next.contains(id) {
+                next = host.agents.map(\.id).filter { $0 == id || next.contains($0) }
+            }
+        } else {
+            next.removeAll { $0 == id }
+        }
+        let value: [String]? = (next == host.agents.map(\.id)) ? nil : next
+        Task {
+            do { try await host.updateProject(sessionID, launchers: .some(value)) } catch { onError(error.localizedDescription) }
+        }
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    ForEach(host.agents) { agent in
+                        Toggle(isOn: Binding(get: { isPinned(agent.id) }, set: { setPinned(agent.id, on: $0) })) {
+                            HStack(spacing: 12) {
+                                ProgramTile(program: .of(agent.id), plate: false)
+                                    .frame(width: 21 * ProgramTiles.scale, height: 16 * ProgramTiles.scale)
+                                Text(agent.name)
+                            }
+                        }
+                    }
+                } header: {
+                    Text(projectName)
+                } footer: {
+                    Text("Pinned agent CLIs appear in this project's quick-launcher row. Turn all off to show New Tab.")
+                }
+                if currentLaunchers != nil {
+                    Section {
+                        Button("Show All Installed") {
+                            Task {
+                                do { try await host.updateProject(sessionID, launchers: .some(nil)) } catch { onError(error.localizedDescription) }
+                            }
+                        }
+                    }
+                }
+            }
+            .navigationTitle("Quick Launchers")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { dismiss() }
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
     }
 }

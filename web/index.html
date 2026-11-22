@@ -277,6 +277,13 @@
   .new-tab:hover:not(:disabled) { background: var(--hover); color: var(--text); }
   .new-tab:disabled { filter: grayscale(1); opacity: 0.4; cursor: default; }
   .new-tab .pane-icon { width: 14px; height: 14px; margin-right: 9px; }
+  /* On a host with agent CLIs the New Tab row keeps a cluster at its end
+     (projectsidebar.ts, MOD-010): the pinned agents' brand glyphs and the
+     menu's chevron as icon buttons of the +'s weight; the tiles' colours
+     stay the tabs'. */
+  .new-tab-row { display: flex; align-items: center; }
+  .new-tab-row > .new-tab { width: auto; flex: 1; min-width: 0; }
+  .agent-cluster { display: flex; align-items: center; gap: 2px; flex: none; padding-right: 8px; }
   .host-note { padding: 2px 12px 4px 34px; color: var(--muted); font-size: 12px; }
   .host-head > button.icon { margin-right: -6px; }
   /* The projects' sidebar: a host is a section header, flush left, its state drawn beside the name, its + at the end. */
@@ -441,6 +448,9 @@
   .context-item:hover:not(:disabled), .context-item:focus-visible, .context-item[aria-haspopup]:focus { background: var(--hover); outline: none; }
   .context-item:disabled { color: var(--muted); cursor: default; }
   .context-item .pane-icon { width: 12px; height: 12px; color: var(--muted); }
+  /* A brand tile as an item's mark (a menu item's `tile`), the pane title's size; overflow
+     stays visible, the item's rows clip their text. */
+  .context-item .tile { position: relative; flex: none; overflow: visible; zoom: 0.85; }
   .context-sep { height: 1px; margin: 4px 6px; background: var(--panel-edge); }
   /* Close Space's question (manage.ts), as the desktop's workspaceConfirm: a frosted panel, radius 16, over a
      backdrop that only dims; Cancel and the red button. */

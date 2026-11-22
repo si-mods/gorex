@@ -360,6 +360,50 @@ final class Host: Identifiable {
     /// (`gorex.dir.list`).
     static let dirListFeature = "gorex.dir_list"
 
+    /// The welcome's feature of a server that detects installed agent CLIs
+    /// (`gorex.agents.list`, docs/MOD-010-agent-launchers.md).
+    static let agentsFeature = "gorex.agents"
+
+    /// An installed agent CLI reported by the host (`gorex.agents.list`).
+    struct Agent: Equatable, Identifiable {
+        var id: String
+        var name: String
+        var command: [String]
+
+        static func parse(_ payload: [String: Any]) -> [Agent] {
+            let list = payload["agents"] as? [[String: Any]] ?? []
+            return list.compactMap { item in
+                guard let id = item["id"] as? String, !id.isEmpty,
+                      let cmd = item["command"] as? [String], !cmd.isEmpty else { return nil }
+                let name = item["name"] as? String ?? Program.of(id).name
+                return Agent(id: id, name: name, command: cmd)
+            }
+        }
+    }
+
+    /// Installed known agent CLIs on this host, in display order; empty
+    /// when none are installed or the server lacks `gorex.agents`.
+    private(set) var agents: [Agent] = []
+
+    /// The most pinned agent CLIs a project's New Tab row shows as glyph
+    /// buttons; its menu lists every installed one
+    /// (docs/MOD-010-agent-launchers.md).
+    static let launcherGlyphCap = 3
+
+    /// The installed agent CLIs a project's pinned launchers keep, in
+    /// display order; nil pins all of them, an empty list pins none.
+    static func pinnedAgents(_ launchers: [String]?, of agents: [Agent]) -> [Agent] {
+        guard let launchers else { return agents }
+        let allowed = Set(launchers)
+        return agents.filter { allowed.contains($0.id) }
+    }
+
+    /// The pinned agent CLIs a New Tab row shows as glyph buttons: the
+    /// first launcherGlyphCap of them.
+    static func launcherGlyphs(_ launchers: [String]?, of agents: [Agent]) -> [Agent] {
+        Array(pinnedAgents(launchers, of: agents).prefix(launcherGlyphCap))
+    }
+
     /// The welcome's feature of a connection that reached the host on its
     /// own network, so a browser on the phone reaches a relay it opens for
     /// a pane's loopback port (`gorex.port_relay`, docs/IOS-014).
@@ -473,6 +517,7 @@ final class Host: Identifiable {
             // foreground, keeps what the user has done since.
             retry?.cancel()
             if sessions.isEmpty { becomeDemo() }
+            if agents.isEmpty { agents = Demo.agents }
             status = .online
             reconnectSince = nil
             isRetrying = false
@@ -670,6 +715,7 @@ final class Host: Identifiable {
         for e in gate.open(at: seq) { apply(e) }
         for s in sessions where s.view == nil { attach(s.id) }
         listSpaces()
+        listAgents()
     }
 
     /// The spaces the host offers though no project of it carries one, as
@@ -686,6 +732,16 @@ final class Host: Identifiable {
             let carried = Set(sessions.compactMap(\.project?.space))
             let offered = all.filter { !carried.contains($0) }
             if offered != offeredSpaces { offeredSpaces = offered }
+        }
+    }
+
+    /// Reads the installed agent CLIs the host offers (gorex.agents.list).
+    private func listAgents() {
+        guard !isDemo, let c = control, c.features.contains(Self.agentsFeature) else { return }
+        Task {
+            guard let r = try? await c.call("gorex.agents.list").payload, c === control else { return }
+            let found = Agent.parse(r)
+            if found != agents { agents = found }
         }
     }
 
@@ -1140,7 +1196,7 @@ final class Host: Identifiable {
 
     /// Adds a window to a demo session, as the server would.
     @discardableResult
-    private func demoAddWindow(_ id: String, block: String, to i: Int) -> String {
+    private func demoAddWindow(_ id: String, block: String, to i: Int, command: [String]? = nil) -> String {
         var view = sessions[i].view ?? SessionView(revision: 0, session_id: sessions[i].id)
         view.windows = (view.windows ?? []) + [
             SessionView.Window(window_id: id, focused_block_id: block,
@@ -1149,24 +1205,30 @@ final class Host: Identifiable {
         view.revision += 1
         sessions[i].view = view
         let b = Block()
-        b.title = "Shell"
-        b.program = "zsh"
+        if let first = command?.first, !first.isEmpty {
+            let p = Program.of(first)
+            b.title = p.name.isEmpty ? first : p.name
+            b.program = first
+        } else {
+            b.title = "Shell"
+            b.program = "zsh"
+        }
         blocks[block] = b
         return block
     }
 
-    /// Opens a new window running the shell, in cwd when given, and
-    /// returns its block. Without a cwd, a session whose project's home is
-    /// this host starts it in the folder, or fails with conflict
-    /// (folder_missing) when the folder is gone.
-    func newWindow(in session: String, cwd: String? = nil) async throws -> String? {
+    /// Opens a new window running the shell (or command when given), in cwd
+    /// when given, and returns its block. Without a cwd, a session whose
+    /// project's home is this host starts it in the folder, or fails with
+    /// conflict (folder_missing) when the folder is gone.
+    func newWindow(in session: String, cwd: String? = nil, command: [String]? = nil) async throws -> String? {
         if isDemo {
             guard let i = sessions.firstIndex(where: { $0.id == session }) else { return nil }
             let window = Self.demoID("w"), block = Self.demoID("b")
-            return demoAddWindow(window, block: block, to: i)
+            return demoAddWindow(window, block: block, to: i, command: command)
         }
         let r = try await live().call("session.new_window", [
-            "session_id": session, "focus": false, "layout": ["block": shell(cwd: cwd)],
+            "session_id": session, "focus": false, "layout": ["block": shell(cwd: cwd, command: command)],
         ]).payload
         return (r["block_ids"] as? [Any])?.first as? String
     }
@@ -1264,10 +1326,10 @@ final class Host: Identifiable {
     /// in cwd when given.
     private var shell: [String: Any] { shell(cwd: nil) }
 
-    private func shell(cwd: String?) -> [String: Any] {
+    private func shell(cwd: String?, command: [String]? = nil) -> [String: Any] {
         var block: [String: Any] = ["flavor": "com.superlogical.terminal.shell"]
         var options: [String: Any] = [:]
-        let argv = HostConfig.argv(config.command ?? "")
+        let argv = (command?.isEmpty == false ? command : nil) ?? HostConfig.argv(config.command ?? "")
         if !argv.isEmpty { options["command"] = argv }
         if let cwd, !cwd.isEmpty { options["cwd"] = cwd }
         if !options.isEmpty { block["options"] = options }
@@ -1373,15 +1435,19 @@ final class Host: Identifiable {
         try await live().call("gorex.project.move", ["tab_id": tab, "project_id": project])
     }
 
-    /// Changes a project's name, color or space; nil leaves it as it is
-    /// (gorex.project.update). The color "default" gives the default one
-    /// back: the server takes "" as no change.
-    func updateProject(_ project: String, name: String? = nil, color: String? = nil, space: String? = nil) async throws {
-        if isDemo { return demoUpdateProject(project, name: name, color: color, space: space) }
+    /// Changes a project's name, color, space or pinned launchers; nil leaves
+    /// a field as it is (gorex.project.update). The color "default" gives the
+    /// default one back: the server takes "" as no change. For launchers,
+    /// `.some(nil)` resets to all detected CLIs, `.some(ids)` pins those IDs.
+    func updateProject(_ project: String, name: String? = nil, color: String? = nil, space: String? = nil, launchers: [String]?? = nil) async throws {
+        if isDemo { return demoUpdateProject(project, name: name, color: color, space: space, launchers: launchers) }
         var p: [String: Any] = ["project_id": project]
         p["name"] = name
         p["color"] = color
         p["space"] = space
+        if let launchers {
+            p["launchers"] = launchers ?? NSNull()
+        }
         try await live().call("gorex.project.update", p)
     }
 
@@ -1464,11 +1530,12 @@ final class Host: Identifiable {
         sessions[to].view = target
     }
 
-    private func demoUpdateProject(_ project: String, name: String?, color: String?, space: String?) {
+    private func demoUpdateProject(_ project: String, name: String?, color: String?, space: String?, launchers: [String]?? = nil) {
         guard let i = sessions.firstIndex(where: { $0.id == project }), sessions[i].project != nil else { return }
         if let name, !name.isEmpty { sessions[i].label = name }
         if let color, !color.isEmpty { sessions[i].project?.color = color == "default" ? nil : color }
         if let space { sessions[i].project?.space = space }
+        if let launchers { sessions[i].project?.launchers = launchers }
     }
 
     /// Names a window; an empty name gives back its default.

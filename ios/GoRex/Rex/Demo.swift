@@ -52,6 +52,13 @@ enum Demo {
     /// The demo Mac's home directory.
     static let home = "/Users/demo"
 
+    /// Installed agent CLIs on the demo Mac (gorex.agents.list).
+    static let agents: [Host.Agent] = [
+        .init(id: "claude", name: "Claude Code", command: ["claude"]),
+        .init(id: "codex", name: "Codex", command: ["codex"]),
+        .init(id: "agy", name: "Antigravity", command: ["agy"]),
+    ]
+
     /// The demo Mac's folders, by path, for New Project's folder browser.
     private static let tree: [String: [String]] = [
         "/": ["Applications", "Library", "System", "Users"],

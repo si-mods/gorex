@@ -10,6 +10,7 @@ import (
 	"github.com/egoist/mygo/ui"
 
 	"gorex/internal/layout"
+	"gorex/internal/rex"
 	"gorex/locales"
 )
 
@@ -339,9 +340,16 @@ func (a *App) projectRow(c *ui.Context, k *colors, w *Workspace, reserve float32
 			for i, t := range slices.Clone(a.tabs) {
 				a.sidebarTab(c, k, i, t, reserve, true)
 			}
-			return
+		} else {
+			a.workspaceTabs(c, k, w, reserve, offline)
 		}
-		a.workspaceTabs(c, k, w, reserve, offline)
+		// The New Tab row only under the shown project's tabs; the others'
+		// new tabs come from the + of their rows.
+		if shown && !offline && w.Dir != "" {
+			if agents := a.agentsOf(w.host); len(agents) > 0 {
+				a.projectNewTabRow(c, k, w, agents, reserve)
+			}
+		}
 	})
 }
 
@@ -572,6 +580,9 @@ func (a *App) projectMenu(m *ui.Menu, w *Workspace) {
 			}
 		}
 	})
+	if agents := a.agentsOf(w.host); len(agents) > 0 {
+		m.Submenu("Quick Launchers", func(sm *ui.Menu) { a.projectLaunchersMenu(sm, w, agents) })
+	}
 	if w.host == nil && m.Item(cmdRevealFolder.Title()).Chosen() {
 		a.revealProject(w)
 	}
@@ -612,9 +623,195 @@ func (a *App) revealProject(w *Workspace) {
 	a.services.OpenURL(fileURL(w.Dir))
 }
 
+// cloneStringSlicePtr returns a deep copy of a *[]string (preserving nil vs empty).
+func cloneStringSlicePtr(p *[]string) *[]string {
+	if p == nil {
+		return nil
+	}
+	cp := slices.Clone(*p)
+	if cp == nil {
+		cp = []string{}
+	}
+	return &cp
+}
+
+// agentsOf returns the installed agent CLIs detected on host h (nil for
+// this machine).
+func (a *App) agentsOf(h *hostConn) []rex.AgentInfo {
+	if h != nil {
+		return h.agents
+	}
+	if a.st != nil {
+		return a.st.agents
+	}
+	return nil
+}
+
+// pinnedAgents returns the host's installed agent CLIs filtered by project
+// w's pinned launchers (nil means all detected; empty means none).
+func (a *App) pinnedAgents(w *Workspace) []rex.AgentInfo {
+	all := a.agentsOf(w.host)
+	if w.Launchers == nil {
+		return all
+	}
+	out := make([]rex.AgentInfo, 0, len(all))
+	for _, ag := range all {
+		if slices.Contains(*w.Launchers, ag.ID) {
+			out = append(out, ag)
+		}
+	}
+	return out
+}
+
+// setProjectLaunchers updates project w's pinned quick launchers and saves.
+func (a *App) setProjectLaunchers(w *Workspace, launchers *[]string) {
+	if w == nil || w.offline() || a.st == nil {
+		return
+	}
+	w.Launchers = cloneStringSlicePtr(launchers)
+	a.st.save()
+}
+
+// toggleProjectLauncher toggles agent id in project w's pinned quick launchers.
+func (a *App) toggleProjectLauncher(w *Workspace, id string) {
+	all := a.agentsOf(w.host)
+	var ids []string
+	if w.Launchers == nil {
+		for _, ag := range all {
+			if ag.ID != id {
+				ids = append(ids, ag.ID)
+			}
+		}
+	} else {
+		cur := *w.Launchers
+		if slices.Contains(cur, id) {
+			for _, x := range cur {
+				if x != id {
+					ids = append(ids, x)
+				}
+			}
+		} else {
+			for _, ag := range all {
+				if ag.ID == id || slices.Contains(cur, ag.ID) {
+					ids = append(ids, ag.ID)
+				}
+			}
+		}
+	}
+	allIDs := make([]string, len(all))
+	for i, ag := range all {
+		allIDs[i] = ag.ID
+	}
+	if slices.Equal(ids, allIDs) {
+		a.setProjectLaunchers(w, nil)
+		return
+	}
+	if ids == nil {
+		ids = []string{}
+	}
+	a.setProjectLaunchers(w, &ids)
+}
+
+// projectLaunchersMenu fills m with a project's pin toggles for its agent
+// launchers (docs/MOD-010-agent-launchers.md): each installed agent CLI
+// checked while the project pins it, and Show All Installed while a pick
+// is kept. The project menu's Quick Launchers submenu and the New Tab
+// row's menu share it.
+func (a *App) projectLaunchersMenu(m *ui.Menu, w *Workspace, agents []rex.AgentInfo) {
+	for _, ag := range agents {
+		agent := ag
+		pinned := w.Launchers == nil || slices.Contains(*w.Launchers, agent.ID)
+		if m.Item(agent.Name).Checked(pinned).Chosen() {
+			a.laterService(func() { a.toggleProjectLauncher(w, agent.ID) })
+		}
+	}
+	if w.Launchers != nil {
+		m.Separator()
+		if m.Item("Show All Installed").Chosen() {
+			a.laterService(func() { a.setProjectLaunchers(w, nil) })
+		}
+	}
+}
+
+// projectAgentMenu is the menu of a New Tab row's chevron (docs/MOD-010):
+// every installed agent CLI with its brand mark, checked while the project
+// pins it — chosen, it opens a tab that runs it — then the project's pin
+// toggles, the project menu's own.
+func (a *App) projectAgentMenu(c *ui.Context, m *ui.Menu, w *Workspace, agents []rex.AgentInfo) {
+	for _, ag := range agents {
+		agent := ag
+		pinned := w.Launchers == nil || slices.Contains(*w.Launchers, agent.ID)
+		if m.Item(agent.Name).Icon(menuIcon(programOf(agent.ID).Glyph)).Checked(pinned).Chosen() {
+			a.later(c, func() { a.newTabInWithCommand(w, agent.Command) })
+		}
+	}
+	m.Separator()
+	m.Submenu("Quick Launchers", func(sm *ui.Menu) { a.projectLaunchersMenu(sm, w, agents) })
+}
+
+// projectNewTabRow is the New Tab row under an open project's tabs, on a
+// host with agent CLIs (docs/MOD-010-agent-launchers.md): the + where the
+// tabs' tiles stand and the words where their titles are open a plain
+// shell tab in the project's folder. At the row's end a cluster holds the
+// first three of the project's pinned agents as monochrome brand glyphs at
+// the +'s and chevron's weight — the tiles' colors stay the tabs' — each
+// opening a tab that runs it, and the chevron of the menu of every
+// installed one. With none pinned the cluster is the chevron alone.
+func (a *App) projectNewTabRow(c *ui.Context, k *colors, w *Workspace, agents []rex.AgentInfo, reserve float32) {
+	row := ui.Row(c.Key("new-tab-"+openKey(w.host, w.ID))).Height(sideRowH).Shrink(0).Padding(0, 4, 0, sideLead).Gap(sideGap).AlignItems(ui.Center)
+	row.Children(func() {
+		// The shell's part fills the row, so the cluster's buttons keep
+		// their own hovers at its end.
+		label := locales.ProjectsNewTabIn(w.Name)
+		add := ui.Row(c.Key("add")).Grow(1).MinWidth(0).Height(sideRowH).Gap(sideGap).AlignItems(ui.Center).
+			Radius(pillRadius(sideRowH, radiusM)).Cursor(ui.CursorPointer).Role(ui.RoleButton).Label(label).Tooltip(label)
+		if add.Hovered() {
+			add.Background(hoverFace(k))
+		}
+		add.Children(func() {
+			leadRoom(c, reserve, sideRowH).Children(func() {
+				ui.Row(c).Width(tileSlot).AlignItems(ui.Center).Justify(ui.Center).Children(func() {
+					glyphIcon(c, "plus", 13, k.textMuted).Shrink(0)
+				})
+			})
+			ui.Text(c, locales.CmdNewTab()).FontSize(fontBody).TextColor(k.textMuted).SingleLine().Ellipsis("…").Shrink(1).MinWidth(0)
+		})
+		if add.Clicked() {
+			a.later(c, func() { a.newTabIn(w) })
+		}
+		ui.Row(c.Key("cluster")).Gap(2).AlignItems(ui.Center).Shrink(0).Children(func() {
+			pinned := a.pinnedAgents(w)
+			for _, ag := range pinned[:min(3, len(pinned))] {
+				agent := ag
+				b := ui.Box(c.Key("agent-"+agent.ID)).Size(20, 20).Radius(capsule(20)).Center().Shrink(0).
+					Cursor(ui.CursorPointer).Role(ui.RoleButton).Label(agent.Name).Tooltip(agent.Name)
+				col := k.textMuted
+				if b.Hovered() {
+					b.Background(k.hover)
+					col = k.text
+				}
+				b.Children(func() {
+					ui.Icon(c, icon(programOf(agent.ID).Glyph)).Size(13, 13).TextColor(col)
+				})
+				if b.Clicked() {
+					a.later(c, func() { a.newTabInWithCommand(w, agent.Command) })
+				}
+			}
+			more := iconButton(c, k, "chevron-down", "Quick Launchers", 20, 11).Tooltip("Quick Launchers")
+			more.Menu(func(m *ui.Menu) { a.projectAgentMenu(c, m, w, agents) })
+		})
+	})
+}
+
 // newTabIn opens a tab in workspace w, shown then: in its folder for a
 // project (New Tab of its row, and ⌘T while it is shown).
 func (a *App) newTabIn(w *Workspace) {
+	a.newTabInWithCommand(w, nil)
+}
+
+// newTabInWithCommand opens a tab in workspace w running command (nil for
+// the login shell).
+func (a *App) newTabInWithCommand(w *Workspace, command []string) {
 	if w == nil || w.offline() {
 		return
 	}
@@ -624,7 +821,7 @@ func (a *App) newTabIn(w *Workspace) {
 			return
 		}
 	}
-	a.newProjectTab()
+	a.newProjectTabWithCommand(command)
 }
 
 // canMoveTab tells whether tab t of the window may move to workspace w:

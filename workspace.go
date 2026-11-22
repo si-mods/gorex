@@ -33,6 +33,9 @@ type Workspace struct {
 	// made: the host keeps them.
 	Dir, Space string
 	Used       time.Time
+	// Launchers are the pinned agent CLI IDs for this project's quick
+	// launcher row (nil = all detected, non-nil empty = none).
+	Launchers *[]string
 	// host is the host whose layout keeps the workspace, nil for this
 	// machine's: its tabs and panes live there (hostlayout.go).
 	host *hostConn
@@ -196,6 +199,7 @@ func (w *Workspace) tabCount() int {
 type store struct {
 	client *rex.Client
 	hello  rex.Hello
+	agents []rex.AgentInfo
 	errMsg func(locales.Messages) string
 	hosts  []*hostConn
 	// tailnetHosts are the GoRex hosts the tailnet showed, as its last
@@ -283,7 +287,7 @@ func (st *store) saved() savedStore {
 			continue
 		}
 		l := w.savedLayout()
-		s.Sessions = append(s.Sessions, savedWorkspace{ID: w.ID, Name: w.Name, Color: w.Color, Dir: w.Dir, Space: w.Space, Used: w.Used, Layout: l})
+		s.Sessions = append(s.Sessions, savedWorkspace{ID: w.ID, Name: w.Name, Color: w.Color, Dir: w.Dir, Space: w.Space, Used: w.Used, Launchers: cloneStringSlicePtr(w.Launchers), Layout: l})
 		if len(s.Windows) > 0 && w.ID == s.Windows[0] {
 			s.Layout = l
 		}
@@ -593,7 +597,7 @@ func (st *store) reconcileOn(h *hostConn, s savedStore) {
 		if w == nil {
 			w = &Workspace{ID: sw.ID, host: h}
 		}
-		w.Name, w.Color, w.Dir, w.Space, w.Used = sw.Name, sw.Color, sw.Dir, sw.Space, sw.Used
+		w.Name, w.Color, w.Dir, w.Space, w.Used, w.Launchers = sw.Name, sw.Color, sw.Dir, sw.Space, sw.Used, cloneStringSlicePtr(sw.Launchers)
 		if a := w.app; a != nil {
 			if !a.reconcile(sw.Layout) {
 				// Emptied by another client: the space stays, as Rex
@@ -724,7 +728,7 @@ func (st *store) loaded(raw []byte) []*Workspace {
 	s := layout.Parse(raw)
 	var mine []*Workspace
 	for _, sw := range s.Sessions {
-		mine = append(mine, &Workspace{ID: sw.ID, Name: sw.Name, Color: sw.Color, Dir: sw.Dir, Space: sw.Space, Used: sw.Used, layout: sw.Layout})
+		mine = append(mine, &Workspace{ID: sw.ID, Name: sw.Name, Color: sw.Color, Dir: sw.Dir, Space: sw.Space, Used: sw.Used, Launchers: cloneStringSlicePtr(sw.Launchers), layout: sw.Layout})
 	}
 	// The hosts' workspaces stay, after this machine's.
 	st.workspaces = append(mine, slices.DeleteFunc(st.workspaces, func(w *Workspace) bool { return w.host == nil })...)
@@ -960,6 +964,18 @@ func (st *store) adopt(client *rex.Client) bool {
 	}
 	update := func(fn func()) { go mygo.RunOnMain(fn) }
 	st.use(st.client, update)
+	if err == nil && st.hello.Can(rex.CapabilityAgents) {
+		go func(cl *rex.Client) {
+			if res, err := cl.AgentsList(); err == nil {
+				update(func() {
+					if st.client == cl {
+						st.agents = res.Agents
+						st.redraw()
+					}
+				})
+			}
+		}(st.client)
+	}
 	go st.takeCommands(st.client, update)
 	go st.follow(st.client)
 	// The windows open take the new connection, attached again to their

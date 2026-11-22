@@ -88,6 +88,7 @@ var llmsDocs = [][]byte{
 	llmsProjects,
 	llmsMergeWindows,
 	llmsDirList,
+	llmsAgents,
 }
 
 // llmsRev11 documents what revision 11 adds, which the revision 10

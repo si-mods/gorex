@@ -9,7 +9,7 @@ import { icon } from "./hosts";
 import { t } from "./i18n";
 
 /** An item of a menu: its words and what it runs, or a submenu; or a line between groups. */
-export type MenuItem = { label: string; /** A second line under the label. */ detail?: string; /** A tooltip. */ title?: string; run?: () => void; disabled?: boolean; submenu?: MenuItem[]; /** A check before the label: the item is the one chosen. */ checked?: boolean; /** A dot of this color before the label. */ color?: string } | "separator";
+export type MenuItem = { label: string; /** A second line under the label. */ detail?: string; /** A tooltip. */ title?: string; run?: () => void; disabled?: boolean; submenu?: MenuItem[]; /** A check before the label: the item is the one chosen. */ checked?: boolean; /** A dot of this color before the label. */ color?: string; /** A mark before the label, where a color dot would go: a program's tile. */ tile?: HTMLElement } | "separator";
 
 /** The menu open, one at a time, and what closes it. */
 let shown: { el: HTMLElement; done: AbortController; closed?: () => void } | undefined;
@@ -81,7 +81,7 @@ function panel(items: MenuItem[], signal: AbortSignal): HTMLElement {
     const label = document.createElement("span");
     label.textContent = it.label;
     if (it.title) b.title = it.title;
-    if (it.checked !== undefined || it.color) {
+    if (it.checked !== undefined || it.color || it.tile) {
       const mark = document.createElement("span");
       mark.className = "context-mark";
       if (it.checked) mark.append(icon("check"));
@@ -92,6 +92,7 @@ function panel(items: MenuItem[], signal: AbortSignal): HTMLElement {
         dot.style.background = it.color;
         b.append(dot);
       }
+      if (it.tile) b.append(it.tile);
     }
     if (it.detail) {
       const text = document.createElement("div");
