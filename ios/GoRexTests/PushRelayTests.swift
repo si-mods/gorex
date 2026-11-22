@@ -69,6 +69,35 @@ nonisolated final class PushRelayTests: XCTestCase {
         XCTAssertTrue(try signature(r, keys))
     }
 
+    /// A start bind carries kind "start" and the attributes type on top
+    /// of the bind's fields; a start unbind narrows the app's token to
+    /// this pairing by the host's key.
+    @MainActor func testStartBindAndUnbind() async throws {
+        let keys = MemoryPushKeys(), s = Sender()
+        let r = relay(s, keys)
+        await r.bindStart(token: "st", attributesType: "TerminalActivity", target: target())
+        await r.unbindStart(token: "st", attributesType: "TerminalActivity", target: target())
+        XCTAssertEqual(s.requests.count, 2)
+
+        let bind = s.requests[0]
+        XCTAssertEqual(bind.url?.absoluteString, "https://relay.gorex.uk/v1/bind")
+        var json = try XCTUnwrap(JSONSerialization.jsonObject(with: XCTUnwrap(bind.httpBody)) as? [String: Any])
+        XCTAssertEqual(json["kind"] as? String, "start")
+        XCTAssertEqual(json["attributes_type"] as? String, "TerminalActivity")
+        XCTAssertEqual(json["token"] as? String, "st")
+        XCTAssertEqual(json["device"] as? String, keys.publicKeyB64)
+        XCTAssertEqual(json["host"] as? String, "aG9zdC1rZXk")
+        XCTAssertTrue(try signature(bind, keys))
+
+        let unbind = s.requests[1]
+        XCTAssertEqual(unbind.url?.absoluteString, "https://relay.gorex.uk/v1/unbind")
+        json = try XCTUnwrap(JSONSerialization.jsonObject(with: XCTUnwrap(unbind.httpBody)) as? [String: Any])
+        XCTAssertEqual(json["kind"] as? String, "start")
+        XCTAssertEqual(json["attributes_type"] as? String, "TerminalActivity")
+        XCTAssertEqual(json["host"] as? String, "aG9zdC1rZXk", "the host narrows it to this pairing")
+        XCTAssertTrue(try signature(unbind, keys))
+    }
+
     /// A send that throws, an error status, and an {"error": ...} answer
     /// all pass quietly — binding is best effort.
     @MainActor func testFailuresOnlyLog() async {

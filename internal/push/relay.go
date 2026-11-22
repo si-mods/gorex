@@ -26,13 +26,36 @@ type Alert struct {
 	Body  string `json:"body,omitempty"`
 }
 
+// AttributesTypeTerminalActivity is the attributes type a start push
+// names: TerminalActivity's type name, as Apple's "attributes-type"
+// takes it (ios/Shared/TerminalActivity.swift).
+const AttributesTypeTerminalActivity = "TerminalActivity"
+
+// Attributes is TerminalActivity's static part, which a start push
+// carries: the phone's id and name for the host — which only the phone
+// knows, so gorex.push.register carries them at version 2 — and the
+// session and block the activity opens (ios/Shared/TerminalActivity.swift).
+type Attributes struct {
+	Host     string `json:"host"`
+	HostName string `json:"hostName"`
+	Session  string `json:"session"`
+	Block    string `json:"block"`
+}
+
 // PushRequest is a POST /v1/push's body.
 type PushRequest struct {
 	// Device is the phone's device key, base64.
 	Device string `json:"device"`
-	// Event is "update" or "end".
+	// Event is "update", "end" or "start".
 	Event        string       `json:"event"`
 	ContentState ContentState `json:"content_state"`
+	// AttributesType and Attributes go with a "start" event: the
+	// attributes type and the static attributes the activity starts
+	// with. InputPushToken asks iOS to wake the app with the new
+	// activity's update token, so later updates reach it.
+	AttributesType string      `json:"attributes_type,omitempty"`
+	Attributes     *Attributes `json:"attributes,omitempty"`
+	InputPushToken bool        `json:"input_push_token,omitempty"`
 	// StaleDate and DismissalDate are unix seconds, left out when zero.
 	StaleDate     int64  `json:"stale_date,omitempty"`
 	DismissalDate int64  `json:"dismissal_date,omitempty"`

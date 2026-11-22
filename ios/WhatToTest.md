@@ -11,6 +11,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 
 ## en-US
 - A program that finished while Rex Go slept, one you already saw on the Lock Screen or Dynamic Island, no longer counts as new when you come back.
+- Leave Rex Go with no terminal open and a program waits for you: the Lock Screen and Dynamic Island can now start its activity on their own, so the alert still reaches you.
 - Leave Rex Go with a terminal open and a program waits for you: its alert now arrives pushed from the computer through the relay, lighting the screen, in place of the app's own notification.
 - Coming back from another app, or the phone's network or VPN changing, no longer starts a terminal's screen over for a drop it could ride out: it picks the stream up where it was.
 - Searching the tab list, Activity or Settings now says when nothing matches; empty spots name their state, and a failed ports page or web client download offers Try again.
@@ -129,6 +130,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 
 ## zh-Hans
 - 程序在应用休眠期间完成时，若你已在锁屏或灵动岛上看到它，回来后不再计为未读。
+- 没开终端就退出 Rex Go，程序等待你处理时：锁屏和灵动岛现在也能自己亮起这条提醒，照常送达。
 - 开着终端退出 Rex Go 后，程序等待你处理时会由电脑推送提醒并点亮屏幕，取代应用自己发出的「需要输入」通知。
 - 从其他 App 返回，或手机网络/VPN 变化后，终端现在会续上原来的连接，不再为一阵可容忍的断线重新加载画面。
 - 在标签页列表、「动态」或「设置」中搜索无结果时，现在会提示没有匹配项；空的位置会说明状态，端口页或网页客户端加载失败时可点「重试」。

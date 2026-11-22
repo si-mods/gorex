@@ -18,6 +18,9 @@ const (
 	// CoalesceEvery is the least time between two coalesced updates of
 	// one device.
 	CoalesceEvery = 2 * time.Second
+	// StartMinGap is the least time between two start pushes to one
+	// device (NET-003, Push-to-start).
+	StartMinGap = 5 * time.Minute
 	// postWait is how long a post to the relay may take.
 	postWait = 10 * time.Second
 )
@@ -37,6 +40,12 @@ type registration struct {
 	device    string
 	sessionID string
 	blockID   string
+	// phoneHost and hostName are the phone's id and name for the host,
+	// as gorex.push.register carries them at version 2: a start push's
+	// attributes need them. Empty, a register of version 1, the device
+	// takes no start push.
+	phoneHost string
+	hostName  string
 	// liveActivities is the register call's flag of the phone's Live
 	// Activities being on: a blocked record's urgent push then carries
 	// an alert, the local notification it replaces.
@@ -63,6 +72,9 @@ type Sender struct {
 	// relay is the URL the register method answers with.
 	relay string
 	key   *Keypair
+	// hostName is this host's name, a start push's attributes' fallback
+	// when the register carried none.
+	hostName string
 	// keyErr is why the push key failed to load, when it did.
 	keyErr error
 	log    func(format string, args ...any)
@@ -72,18 +84,27 @@ type Sender struct {
 
 	mu   sync.Mutex
 	regs map[any]*registration
+	// starts is each device's session and block a start push went out
+	// for while it stayed blocked — device, session and block joined by
+	// a NUL: none goes twice for one session and block until it unblocks.
+	// lastStart is when each device's last start went.
+	starts    map[string]struct{}
+	lastStart map[string]time.Time
 }
 
-// NewSender makes a sender to the relay at relay, the push key of dir.
-// A key that cannot load is logged and turns the sender into no-ops that
-// report it on register.
-func NewSender(relay, dir string, logf func(format string, args ...any)) *Sender {
+// NewSender makes a sender to the relay at relay, the push key of dir,
+// for the host named name. A key that cannot load is logged and turns
+// the sender into no-ops that report it on register.
+func NewSender(relay, dir, name string, logf func(format string, args ...any)) *Sender {
 	s := &Sender{
-		relay: relay,
-		log:   logf,
-		now:   time.Now,
-		after: func(d time.Duration, f func()) { time.AfterFunc(d, f) },
-		regs:  map[any]*registration{},
+		relay:     relay,
+		hostName:  name,
+		log:       logf,
+		now:       time.Now,
+		after:     func(d time.Duration, f func()) { time.AfterFunc(d, f) },
+		regs:      map[any]*registration{},
+		starts:    map[string]struct{}{},
+		lastStart: map[string]time.Time{},
 	}
 	if s.log == nil {
 		s.log = func(string, ...any) {}
@@ -112,8 +133,10 @@ func (s *Sender) Relay() string {
 // Register binds conn to device, targeting the terminal of sessionID and
 // blockID — "" for both when none — and returns the host's public key
 // for the register method's result. Registering again moves the binding
-// to the new target.
-func (s *Sender) Register(conn any, device, sessionID, blockID string, liveActivities bool) (string, error) {
+// to the new target. phoneHost and hostName are the phone's id and name
+// for the host, which a start push's attributes need (version 2 of
+// gorex.push.register; "" before it).
+func (s *Sender) Register(conn any, device, sessionID, blockID string, liveActivities bool, phoneHost, hostName string) (string, error) {
 	if s == nil {
 		return "", errNoSender
 	}
@@ -122,7 +145,8 @@ func (s *Sender) Register(conn any, device, sessionID, blockID string, liveActiv
 	if s.key == nil {
 		return "", s.keyErr
 	}
-	s.regs[conn] = &registration{device: device, sessionID: sessionID, blockID: blockID, liveActivities: liveActivities}
+	s.regs[conn] = &registration{device: device, sessionID: sessionID, blockID: blockID,
+		liveActivities: liveActivities, phoneHost: phoneHost, hostName: hostName}
 	return s.key.PublicB64(), nil
 }
 
@@ -142,28 +166,36 @@ func (s *Sender) Unregister(conn any) {
 // Changed tells the sender that the block's program status changed: each
 // device registered for it gets the new state, at priority 10 at once
 // when a blocked, done or error record newly tops the rest, else
-// coalesced at priority 5.
-func (s *Sender) Changed(blockID string, info *rex.SessionInfo, windowTitle, blockProgram, blockLabel, sessionLabel string) {
+// coalesced at priority 5. A device registered with no target — its
+// phone suspended or on no terminal — gets a start push for the block
+// instead, when the new top record is a blocked one (maybeStart).
+func (s *Sender) Changed(blockID, sessionID string, info *rex.SessionInfo, windowTitle, blockProgram, blockLabel, sessionLabel string) {
 	if s == nil {
 		return
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	st := StateFor(info, windowTitle, blockProgram, blockLabel, sessionLabel)
+	u := rex.MostUrgent(info.Statuses, info.StatusSeen)
 	for conn, r := range s.regs {
-		if r.blockID != blockID {
+		if u == nil || u.State != "blocked" {
+			// The block unblocked: a start push for it may go again
+			// (maybeStart), also after sendStart retargeted the
+			// registration to it.
+			delete(s.starts, r.device+"\x00"+sessionID+"\x00"+blockID)
+		}
+		if r.blockID == blockID {
+			s.changed(conn, r, st, u)
 			continue
 		}
-		s.changed(conn, r, StateFor(info, windowTitle, blockProgram, blockLabel, sessionLabel), rex.MostUrgent(info.Statuses, info.StatusSeen))
+		s.maybeStart(r, sessionID, blockID, st, u)
 	}
 }
 
 // changed decides what one registration does with a new state. Its
 // caller holds s.mu.
 func (s *Sender) changed(conn any, r *registration, st ContentState, u *rex.ProgramStatus) {
-	urgent := ""
-	if u != nil {
-		urgent = u.ID + "\x00" + u.State
-	}
+	urgent := urgentKey(u)
 	alert := u != nil && urgent != r.urgent &&
 		(u.State == "blocked" || u.State == "done" || u.State == "error")
 	r.urgent = urgent
@@ -190,6 +222,77 @@ func (s *Sender) changed(conn any, r *registration, st ContentState, u *rex.Prog
 	}
 	r.hasPending = false
 	s.send(r, st, PriorityCoalesced, nil)
+}
+
+// urgentKey names the record a registration's last urgent push was for,
+// as "id\x00state"; "" for none.
+func urgentKey(u *rex.ProgramStatus) string {
+	if u == nil {
+		return ""
+	}
+	return u.ID + "\x00" + u.State
+}
+
+// maybeStart decides whether a change of a block the device did not
+// register for starts its Live Activity by push (NET-003, Push-to-start,
+// and IOS-006's Start): only a device with no target, whose register
+// carried its host id (version 2) and Live Activities on, takes one —
+// a register without them keeps phase 2 — and only a blocked record,
+// once for the session and block while it stays blocked, and at most one
+// for the device each StartMinGap. Its caller holds s.mu.
+func (s *Sender) maybeStart(r *registration, sessionID, blockID string, st ContentState, u *rex.ProgramStatus) {
+	if r.blockID != "" {
+		return // the phone's terminal is elsewhere: no start
+	}
+	if u == nil || u.State != "blocked" {
+		return // Changed re-arms the dedupe on this path
+	}
+	key := r.device + "\x00" + sessionID + "\x00" + blockID
+	if _, sent := s.starts[key]; sent {
+		return
+	}
+	if r.phoneHost == "" || !r.liveActivities {
+		return
+	}
+	if now := s.now(); now.Sub(s.lastStart[r.device]) < StartMinGap {
+		return
+	} else {
+		s.lastStart[r.device] = now
+	}
+	s.starts[key] = struct{}{}
+	s.sendStart(r, sessionID, blockID, st, u)
+}
+
+// sendStart posts the start push that begins the device's activity of
+// the blocked block remotely, then retargets the registration to it: the
+// token the woken app binds for the new activity (input-push-token)
+// takes this block's updates then. Its caller holds s.mu.
+func (s *Sender) sendStart(r *registration, sessionID, blockID string, st ContentState, u *rex.ProgramStatus) {
+	hostName := r.hostName
+	if hostName == "" {
+		hostName = s.hostName
+	}
+	if s.client != nil {
+		s.post(PushRequest{
+			Device:         r.device,
+			Event:          "start",
+			AttributesType: AttributesTypeTerminalActivity,
+			Attributes: &Attributes{
+				Host:     r.phoneHost,
+				HostName: cut(hostName, MaxText, MaxTextBytes),
+				Session:  sessionID,
+				Block:    blockID,
+			},
+			ContentState:   st,
+			StaleDate:      s.now().Add(StaleAfter).Unix(),
+			Alert:          alertFor(st, u),
+			InputPushToken: true,
+			Priority:       PriorityAlert,
+		})
+	}
+	r.sessionID, r.blockID = sessionID, blockID
+	r.urgent = urgentKey(u)
+	r.last, r.sentAt = st, s.now()
 }
 
 // alertFor is a blocked record's push alert: "<app> needs input", the

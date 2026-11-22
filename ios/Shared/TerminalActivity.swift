@@ -27,6 +27,10 @@ nonisolated struct TerminalActivity: ActivityAttributes, Hashable, Sendable {
         var connected: Bool
     }
 
+    /// Its name as a start push's attributes-type and the relay's start
+    /// binding carry it (docs/NET-003-push-relay.md, Push to start).
+    static let attributesType = "TerminalActivity"
+
     /// An OSC 7501 record, as a status inbox's row shows it.
     struct Record: Codable, Hashable, Sendable {
         /// The record's id, as program_status reports it, "" for the

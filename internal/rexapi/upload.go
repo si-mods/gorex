@@ -129,10 +129,17 @@ func (g *Gateway) features() []string {
 // featureVersions are the versions of the welcome's features that have
 // one (welcome.FeatureVersions).
 func (g *Gateway) featureVersions() map[string]int {
-	if !g.hello.Can(rex.CapabilityProjects) {
-		return nil
+	var m map[string]int
+	if g.hello.Can(rex.CapabilityProjects) {
+		m = map[string]int{featureProjects: featureProjectsVersion}
 	}
-	return map[string]int{featureProjects: featureProjectsVersion}
+	if g.hello.Can(rex.CapabilityPush) {
+		if m == nil {
+			m = map[string]int{}
+		}
+		m[featurePush] = featurePushVersion
+	}
+	return m
 }
 
 // uploadResult is an upload's answer.
