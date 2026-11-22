@@ -983,6 +983,12 @@ nonisolated final class TerminalLiveTests: XCTestCase {
             ("rule", short, .init(title: "api", program: "devin", record: nil,
                                   line: String(repeating: "─", count: 80), connected: true)),
             ("rule-dropped", short, .init(title: "api", program: "devin", record: nil, line: "", connected: true)),
+            // A box's edge that carries the window's title was the line
+            // too; the pick is the working line above the input now.
+            ("titled", short, .init(title: "api session", program: "devin", record: nil,
+                                    line: "──────────── api session ────────────", connected: true)),
+            ("titled-picked", short, .init(title: "api session", program: "devin", record: nil,
+                                         line: "⠙ Running tools… (2m 1s)", connected: true)),
         ]
         func write(_ v: some View, _ name: String) throws {
             let r = ImageRenderer(content: v)
