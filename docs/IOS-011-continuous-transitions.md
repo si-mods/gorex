@@ -194,4 +194,4 @@ Phase 3. The space picker atop the list was left out of phases 1 and 2. Its pane
 
 1. Items 1 to 9: #916.
 2. Revision: row push and steady list scheme: #930.
-3. Revision: the space panel.
+3. Revision: the space panel: #977.
