@@ -242,10 +242,6 @@ struct HostSection: View {
                     card(face: faced(s)) { project(s, tiles: column, divider: false, grouped: false) }
                 }
             }
-        } else if query.isEmpty {
-            Text("No projects in \(SpaceName.shown(space)). Tap + to make one from a folder.")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
         }
         if !older.isEmpty {
             group("older", Text("Older"), count: older.count) {
