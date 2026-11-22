@@ -35,7 +35,7 @@ nonisolated final class PushKeysTests: XCTestCase {
         let s = try P256.Signing.ECDSASignature(derRepresentation: sig)
         let pub = try P256.Signing.PublicKey(derRepresentation: XCTUnwrap(Data(base64Encoded: k.publicKeyB64)))
         XCTAssertTrue(pub.isValidSignature(s, for: body))
-        XCTAssertFalse(pub.isValidSignature(s, for: body + " "))
+        XCTAssertFalse(pub.isValidSignature(s, for: body + Data(" ".utf8)))
     }
 
     /// One round trip through the real Keychain, where the test runs
@@ -47,7 +47,7 @@ nonisolated final class PushKeysTests: XCTestCase {
         if status == errSecMissingEntitlement { throw XCTSkip("no Keychain in this test process (\(status))") }
         XCTAssertEqual(status, errSecSuccess)
         XCTAssertEqual(k.load()?.publicKey.derRepresentation, made.publicKey.derRepresentation)
-        XCTAssertFalse(k.sign(Data("body".utf8)).isEmpty)
+        XCTAssertFalse(try k.sign(Data("body".utf8)).isEmpty)
         k.forget()
         XCTAssertNil(k.load())
     }
