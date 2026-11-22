@@ -110,7 +110,9 @@ struct FolderBrowser: View {
             }
             if let failure {
                 Section {
-                    Label(failure, systemImage: "exclamationmark.triangle").foregroundStyle(.secondary)
+                    Label(failure, systemImage: "exclamationmark.triangle")
+                        .symbolRenderingMode(.hierarchical)
+                        .foregroundStyle(.secondary)
                 }
             }
             if let listing {
@@ -118,6 +120,7 @@ struct FolderBrowser: View {
                     Section {
                         Label(code == "denied" ? "You can't read this folder." : "This folder is not there.",
                               systemImage: "exclamationmark.triangle")
+                            .symbolRenderingMode(.hierarchical)
                             .foregroundStyle(.secondary)
                     }
                 }
@@ -196,8 +199,21 @@ struct FolderBrowser: View {
                 failure = nil
             } catch {
                 guard n == asked else { return }
-                failure = error.localizedDescription
+                // The way to the host broken is one thing, the host's own
+                // answer another: only the first reads as "couldn't reach".
+                failure = error.isConnectionFailure
+                    ? String(localized: "Couldn't reach the host.") : error.localizedDescription
             }
         }
+    }
+}
+
+extension Error {
+    /// Whether the failure is the path to the host, not the host's answer:
+    /// a URL error, or a call that never reached the server.
+    fileprivate var isConnectionFailure: Bool {
+        if self is URLError { return true }
+        if let e = self as? RexError { return ["offline", "timeout", "closed"].contains(e.code) }
+        return false
     }
 }

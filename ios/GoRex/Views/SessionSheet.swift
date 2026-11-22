@@ -82,6 +82,11 @@ struct SessionSheet: View {
         let windows = (s.view?.windows ?? []).compactMap { w in w.block.map { (block: $0, window: w) } }
         let tiles = ProgramTiles.width(behind: windows.map(\.window.back.count).max() ?? 0)
         return VStack(spacing: 0) {
+            if windows.isEmpty {
+                EmptyState("No windows", symbol: "rectangle.on.rectangle")
+                    .padding(.horizontal, 16)
+                    .frame(minHeight: 50)
+            }
             ForEach(Array(windows.enumerated()), id: \.element.window.window_id) { i, w in
                 let open = w.window.holds(target.block)
                 Button {

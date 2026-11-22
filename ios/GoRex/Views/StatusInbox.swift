@@ -16,7 +16,18 @@ struct StatusInbox: View {
         // Hosts not online may need the user too: the inbox can't tell.
         let away = store.hosts.filter { $0.status != .online }
         if groups.isEmpty && away.isEmpty && !store.hosts.isEmpty {
-            Text("Nothing needs you").foregroundStyle(.secondary).frame(maxWidth: .infinity).padding(.top, 40)
+            if query.isEmpty {
+                // All done: nothing the search took away.
+                Label("Nothing needs you", systemImage: "checkmark.circle")
+                    .symbolRenderingMode(.hierarchical)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, 40)
+            } else {
+                ContentUnavailableView.search(text: query)
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, 40)
+            }
         }
         // The times go on as the minutes do.
         TimelineView(.everyMinute) { tl in
@@ -30,7 +41,7 @@ struct StatusInbox: View {
                             Label {
                                 Text(verbatim: h.config.name + " · " + (h.status == .connecting ? String(localized: "Connecting…") : String(localized: "Offline")))
                             } icon: {
-                                Image(systemName: "wifi.slash")
+                                Image(systemName: "wifi.slash").symbolRenderingMode(.hierarchical)
                             }
                         }
                     }

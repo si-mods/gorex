@@ -113,11 +113,15 @@ struct HotspotShareView: View {
                         case .ready:
                             Text("Ready")
                                 .foregroundStyle(.green)
-                        case .failed(let msg):
-                            Text(msg)
-                                .font(.footnote)
-                                .foregroundStyle(.red)
-                                .lineLimit(2)
+                        case .failed:
+                            VStack(alignment: .trailing, spacing: 4) {
+                                Text("Couldn't download the web client.")
+                                    .font(.footnote)
+                                    .foregroundStyle(.red)
+                                    .lineLimit(2)
+                                Button("Try again") { Task { await webStore.update() } }
+                                    .font(.footnote)
+                            }
                         }
                     }
                     .listRowBackground(Color.card)
