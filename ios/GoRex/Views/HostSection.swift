@@ -427,15 +427,16 @@ struct HostSection: View {
     /// no project as last seen, greyed, to read only.
     private func away(_ l: ProjectListing) -> some View {
         let mine = l.projects.filter { $0.space == space }
+        let tiles = Self.awayTiles(mine.flatMap(\.tabs) + l.loose)
         let (recent, older) = ProjectOrder.split(mine, used: \.used, name: \.name)
         return VStack(alignment: .leading, spacing: 12) {
             if case .offline(let why) = host.status { offline(why) } else { Text("Connecting…").foregroundStyle(.secondary) }
             if !recent.isEmpty {
-                VStack(spacing: 12) { ForEach(recent, id: \.id) { p in card { awayProject(p, divider: false) } } }
+                VStack(spacing: 12) { ForEach(recent, id: \.id) { p in card { awayProject(p, tiles: tiles, divider: false) } } }
             }
             if !older.isEmpty {
                 group("older", Text("Older"), count: older.count) {
-                    ForEach(Array(older.enumerated()), id: \.element.id) { i, p in awayProject(p, divider: i < older.count - 1) }
+                    ForEach(Array(older.enumerated()), id: \.element.id) { i, p in awayProject(p, tiles: tiles, divider: i < older.count - 1) }
                 }
             }
             if !l.loose.isEmpty {
@@ -446,12 +447,12 @@ struct HostSection: View {
                         withAnimation(reduceMotion ? nil : .snappy) { if collapsed.contains(k) { collapsed.remove(k) } else { collapsed.insert(k) } }
                     } label: {
                         ProjectRow(name: String(localized: "No Project"), color: nil, count: l.loose.count, open: isOpen,
-                                   tiles: Self.awayTiles, divider: isOpen)
+                                   tiles: tiles, divider: isOpen)
                     }
                     .buttonStyle(.plain)
                     .hoverEffect(.highlight)
                     .accessibilityHint(isOpen ? "Collapse" : "Expand")
-                    if isOpen { awayTabs(l.loose, inset: 16 + Self.awayTiles + 14) }
+                    if isOpen { awayTabs(l.loose, tiles: tiles) }
                 }
             }
         }
@@ -460,30 +461,38 @@ struct HostSection: View {
         .accessibilityHint("Offline")
     }
 
-    @ViewBuilder private func awayProject(_ p: ProjectListing.Project, divider: Bool) -> some View {
+    @ViewBuilder private func awayProject(_ p: ProjectListing.Project, tiles: CGFloat, divider: Bool) -> some View {
         let k = Self.key(host, p.id)
         let isOpen = expanded.contains(k)
         Button { toggle(k) } label: {
-            ProjectRow(name: p.name, color: p.color, count: p.tabs.count, open: isOpen, tiles: Self.awayTiles, divider: divider || isOpen)
+            ProjectRow(name: p.name, color: p.color, count: p.tabs.count, open: isOpen, tiles: tiles, divider: divider || isOpen)
         }
         .buttonStyle(.plain)
-        // No program tile to line up with the folder tile: the titles start at the project's name.
-        if isOpen { awayTabs(p.tabs, inset: 16 + Self.awayTiles + 14) }
+        if isOpen { awayTabs(p.tabs, tiles: tiles) }
     }
 
-    /// The tile column of a host away: no tab shows tiles.
-    private static let awayTiles = ProgramTiles.width(behind: 0)
+    /// The tile column of a host away: the room the tabs' tiles need, as
+    /// their copies list a program or none.
+    private static func awayTiles(_ tabs: [ProjectListing.Tab]) -> CGFloat {
+        ProgramTiles.width(behind: tabs.map { max(0, ($0.programs?.count ?? 1) - 1) }.max() ?? 0)
+    }
 
-    private func awayTabs(_ tabs: [ProjectListing.Tab], inset: CGFloat = 16) -> some View {
+    private func awayTabs(_ tabs: [ProjectListing.Tab], tiles: CGFloat) -> some View {
         ForEach(Array(tabs.enumerated()), id: \.element.id) { i, t in
-            Text(verbatim: t.title.isEmpty ? " " : t.title.asText)
-                .foregroundStyle(.primary.opacity(0.8))
-                .lineLimit(1)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.leading, inset)
-                .padding(.trailing, 16)
-                .frame(minHeight: 50)
-                .overlay(alignment: .bottom) { if i < tabs.count - 1 { RowDivider(inset: inset) } }
+            // A copy written before tiles has no programs: the shell tile
+            // stands for them, as for a program not yet read.
+            let programs: [String?] = t.programs ?? [nil]
+            HStack(spacing: 14) {
+                ProgramTiles(front: programs.first ?? nil, back: Array(programs.dropFirst()), plate: false)
+                    .frame(width: tiles, height: 16 * ProgramTiles.scale + 4, alignment: .leading)
+                Text(verbatim: t.title.isEmpty ? " " : t.title.asText)
+                    .foregroundStyle(.primary.opacity(0.8))
+                    .lineLimit(1)
+                Spacer(minLength: 8)
+            }
+            .padding(.horizontal, 16)
+            .frame(minHeight: 50)
+            .overlay(alignment: .bottom) { if i < tabs.count - 1 { RowDivider(inset: 16 + tiles + 14) } }
         }
     }
 

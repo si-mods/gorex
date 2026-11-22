@@ -10,6 +10,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 `web` job of `.github/workflows/ci.yml` fails it.
 
 ## en-US
+- A computer that is off shows its tabs' program tiles too now, greyed with them, instead of their names only.
 - Predictive Echo is removed: typed characters echo normally again, and the Settings > Terminal switch is gone.
 - Tapping the space at the top opens a panel that shows each space's color and projects; Edit and New Space are in it.
 - Predictive Echo: no visible change in this update; it only fixes the build.
@@ -112,6 +113,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - Locking the phone while a terminal runs: its drawing now stops for the lock screen's snapshot too. Pulling down Control Center only freezes it for a moment, then it resumes behind the panel.
 
 ## zh-Hans
+- 电脑离线时，它灰显的窗口列表现在也会显示每个窗口的程序图标，不再只有名字。
 - 预测回显已移除：打字恢复正常的回显方式，「设置 › Terminal」里的开关也没有了。
 - 点按顶部的空间会打开一个面板，显示每个空间的颜色和项目数；编辑和新建空间都在面板里。
 - 预测回显：本次更新没有看得见的变化，只是修复构建。

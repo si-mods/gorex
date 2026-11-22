@@ -71,6 +71,9 @@ struct ProjectListing: Codable, Equatable {
     struct Tab: Codable, Equatable, Identifiable {
         var id: String
         var title: String
+        /// The programs of its panes, the front one first, as the tiles
+        /// showed them; nil in a copy a build before them wrote.
+        var programs: [String?]?
     }
 
     struct Project: Codable, Equatable, Identifiable {
@@ -99,7 +102,11 @@ struct ProjectListing: Codable, Equatable {
     /// and the tabs of the others.
     init(host: Host) {
         func tabs(_ s: Host.Session) -> [Tab] {
-            (s.view?.windows ?? []).map { Tab(id: $0.window_id, title: host.title($0)) }
+            (s.view?.windows ?? []).map { w in
+                let ids = [w.block] + w.back.map { $0 as String? }
+                return Tab(id: w.window_id, title: host.title(w),
+                           programs: ids.map { $0.flatMap { host.blocks[$0]?.program } })
+            }
         }
         for s in host.sessions {
             if let p = s.project {
