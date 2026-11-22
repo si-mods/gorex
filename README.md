@@ -381,7 +381,8 @@ The address names the DERP relay where clients meet the server when
 they cannot connect directly: by default one of tailcat's free relays,
 picked once. A relay of one's own takes its place: **Relay** in Settings
 › Remote, or `gorex remote relay derp.example.com` (`gorex remote relay
-default` goes back). Give a host name, with `:PORT` when not 443, and not
+default` goes back); `gorex remote relay gorex` names the relay the team
+runs. Give a host name, with `:PORT` when not 443, and not
 an IP address: `derper` serves a certificate for its host name. The
 relay is Tailscale's `derper`, on any machine clients can reach:
 

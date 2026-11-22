@@ -157,14 +157,24 @@ func scrub(s string, addrs ...string) string {
 // looks like a part of one or of a key, for an error to show or log.
 func Scrub(s string, addrs ...string) string { return scrub(s, addrs...) }
 
+// publicRelayHost is the team's DERP relay of
+// docs/NET-004-public-relay.md, which the name gorex chooses for
+// remote.relay: the name is saved, so an address of before the alias is
+// the same one.
+const publicRelayHost = "derp.gorex.uk"
+
 // NormalizeRelay checks a relay of one's own, a DERP server's host name
 // with its port when not 443, and returns it trimmed; "" is tailcat's own
-// relays. An IP address is refused: derper --hostname serves a
-// certificate for a name, which TLS to an address would not match.
+// relays, and "gorex" the team's. An IP address is refused: derper
+// --hostname serves a certificate for a name, which TLS to an address
+// would not match.
 func NormalizeRelay(s string) (string, error) {
 	s = strings.TrimSpace(s)
 	if s == "" {
 		return "", nil
+	}
+	if s == "gorex" {
+		return publicRelayHost, nil
 	}
 	host := s
 	if h, p, err := net.SplitHostPort(s); err == nil {
@@ -781,6 +791,9 @@ func (s *Server) remoteStatusLocked(tailnet *TailnetStatus) RemoteStatus {
 		Allowed: slices.Clone(r.cfg.Allowed), LastError: r.lastErr,
 		ShareLayout: true, RemoteControl: r.cfg.RemoteControl,
 		ReachableAt: r.cfg.ReachableAt, ReachableError: r.ownErr,
+	}
+	if !r.cfg.NodeKey.IsZero() {
+		st.PublicKey = r.cfg.NodeKey.Public().String()
 	}
 	if r.own != nil {
 		st.ReachableAddress = string(r.own.addr)

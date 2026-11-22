@@ -4022,6 +4022,38 @@ func (msgs Messages) RemoteMyKeyNote() string {
 	return Catalog.Format(msgs.locale, "remoteMyKeyNote", nil)
 }
 
+// RemoteHostKey says "Host key"
+// in the language the app shows.
+//
+// Row title: the node public key of this machine's remote access, beside
+// its address, which a relay operator's list names to let it on.
+func RemoteHostKey() string { return In(i18n.Locale()).RemoteHostKey() }
+
+// RemoteHostKey says "Host key"
+// in the language of msgs.
+//
+// Row title: the node public key of this machine's remote access, beside
+// its address, which a relay operator's list names to let it on.
+func (msgs Messages) RemoteHostKey() string {
+	return Catalog.Format(msgs.locale, "remoteHostKey", nil)
+}
+
+// RemoteHostKeyNote says "The key remote access serves by. A relay that admits a list of keys, as the team's, wants it sent to its operator."
+// in the language the app shows.
+//
+// Note under the host key row: what the key is for, and that a relay with
+// an allowlist wants it.
+func RemoteHostKeyNote() string { return In(i18n.Locale()).RemoteHostKeyNote() }
+
+// RemoteHostKeyNote says "The key remote access serves by. A relay that admits a list of keys, as the team's, wants it sent to its operator."
+// in the language of msgs.
+//
+// Note under the host key row: what the key is for, and that a relay with
+// an allowlist wants it.
+func (msgs Messages) RemoteHostKeyNote() string {
+	return Catalog.Format(msgs.locale, "remoteHostKeyNote", nil)
+}
+
 // RemoteShowDetails says "Show Details"
 // in the language the app shows.
 //
@@ -6190,32 +6222,32 @@ func (msgs Messages) RemoteRelayPlaceholder() string {
 	return Catalog.Format(msgs.locale, "remoteRelayPlaceholder", nil)
 }
 
-// RemoteRelayNote says "A relay server of your own, by its host name, such as relay.example.com, in place of the default relays. The address …"
+// RemoteRelayNote says "A relay server of your own, by its host name, such as relay.example.com, or gorex for the team's relay, in place of t…"
 // in the language the app shows.
 //
-// Hint under the relay field.
+// Hint under the relay field; gorex is the alias of the team's relay.
 func RemoteRelayNote() string { return In(i18n.Locale()).RemoteRelayNote() }
 
-// RemoteRelayNote says "A relay server of your own, by its host name, such as relay.example.com, in place of the default relays. The address …"
+// RemoteRelayNote says "A relay server of your own, by its host name, such as relay.example.com, or gorex for the team's relay, in place of t…"
 // in the language of msgs.
 //
-// Hint under the relay field.
+// Hint under the relay field; gorex is the alias of the team's relay.
 func (msgs Messages) RemoteRelayNote() string {
 	return Catalog.Format(msgs.locale, "remoteRelayNote", nil)
 }
 
-// RemoteRelayInvalid says "Enter a host name, such as relay.example.com, with :port when not 443: not an IP address, and no https://. Leave it e…"
+// RemoteRelayInvalid says "Enter a host name, such as relay.example.com, or gorex for the team's relay, with :port when not 443: not an IP addre…"
 // in the language the app shows.
 //
 // Error under the relay field when what was typed is not a host name or
-// address with an optional port.
+// address with an optional port; gorex is the alias of the team's relay.
 func RemoteRelayInvalid() string { return In(i18n.Locale()).RemoteRelayInvalid() }
 
-// RemoteRelayInvalid says "Enter a host name, such as relay.example.com, with :port when not 443: not an IP address, and no https://. Leave it e…"
+// RemoteRelayInvalid says "Enter a host name, such as relay.example.com, or gorex for the team's relay, with :port when not 443: not an IP addre…"
 // in the language of msgs.
 //
 // Error under the relay field when what was typed is not a host name or
-// address with an optional port.
+// address with an optional port; gorex is the alias of the team's relay.
 func (msgs Messages) RemoteRelayInvalid() string {
 	return Catalog.Format(msgs.locale, "remoteRelayInvalid", nil)
 }

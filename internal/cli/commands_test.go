@@ -166,6 +166,33 @@ func TestCLI(t *testing.T) {
 	}
 }
 
+// gorex remote key prints this machine's client key, and remote relay
+// gorex sets the team's relay by its name, which remote status shows;
+// remote access stays off here, so no relay starts and no host key yet.
+func TestRemoteKeyAndRelayAlias(t *testing.T) {
+	startServer(t)
+	code, _, out, errOut := runMain(t, "remote", "key")
+	if code != ExitOK {
+		t.Fatalf("remote key: %d %s", code, errOut)
+	}
+	if _, err := rex.NormalizePublicKey(strings.TrimSpace(out)); err != nil {
+		t.Fatalf("remote key printed %q: %v", out, err)
+	}
+	code, _, out, errOut = runMain(t, "remote", "relay", "gorex")
+	if code != ExitOK {
+		t.Fatalf("remote relay gorex: %d %s", code, errOut)
+	}
+	// The enrollment hint wants the host's key, which remote access makes
+	// when turned on: nothing prints while off.
+	if out != "" {
+		t.Errorf("remote relay gorex printed %q", out)
+	}
+	_, _, out, _ = runMain(t, "remote", "status")
+	if !strings.Contains(out, "relay=derp.gorex.uk") {
+		t.Errorf("remote status after relay gorex: %q", out)
+	}
+}
+
 // gorex remote reachable sets Reachable at, which remote status shows;
 // remote access stays off here, so no relay starts.
 func TestRemoteReachable(t *testing.T) {

@@ -1060,6 +1060,9 @@ func (a *App) remoteDetails(c *ui.Context, k *colors, st rex.RemoteStatus) {
 			a.remoteAddress(c, k, true)
 		}
 	}
+	if st.Enabled {
+		a.remoteHostKey(c, k, st)
+	}
 	if st.Tailnet != nil {
 		tailnet := st.Tailnet.Enabled
 		note := locales.TailnetModeNote()
@@ -1181,6 +1184,34 @@ func (a *App) remoteAddress(c *ui.Context, k *colors, direct bool) {
 				page.confirm = false
 			}
 		})
+	})
+}
+
+// remoteHostKey is the host key row, beside the address in the details:
+// the node public key of this machine's remote access, which the relay's
+// operator lets it on by (docs/NET-004-public-relay.md). It copies, as
+// This machine's key does.
+func (a *App) remoteHostKey(c *ui.Context, k *colors, st rex.RemoteStatus) {
+	groupRow(c, k, "hostkey").Children(func() {
+		ui.Row(c).Gap(16).AlignItems(ui.Center).Children(func() {
+			ui.Column(c).Grow(1).MinWidth(0).Gap(2).Children(func() {
+				ui.Text(c, locales.RemoteHostKey()).FontSize(fontBody).FontWeight(500).TextColor(k.text)
+				if st.PublicKey == "" {
+					ui.Text(c, locales.RemoteNoKey()).FontSize(fontFootnote).TextColor(k.textFaint)
+					return
+				}
+				if fp := rex.Fingerprint(st.PublicKey); fp != "" {
+					ui.Text(c, locales.RemoteFingerprint(fp)).Font(monoFamily()).FontSize(fontSubhead).TextColor(k.textMuted)
+				}
+				ui.Text(c, st.PublicKey).Font(monoFamily()).FontSize(fontCaption).TextColor(k.textFaint).LineHeight(1.4).Selectable()
+			})
+			ui.Row(c).Gap(8).Shrink(0).Children(func() {
+				if ui.Button(c.Key("copy-host"), copyLabel("host")).Disabled(st.PublicKey == "").Clicked() {
+					copyText("host", st.PublicKey)
+				}
+			})
+		})
+		rowHint(c, k, locales.RemoteHostKeyNote())
 	})
 }
 
