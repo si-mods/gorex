@@ -92,7 +92,12 @@ Each item has a **Trigger** (what the diff shows), a **Check** (what the author 
 ### A filter on some paths to the same place
 - **Trigger:** the diff filters or validates a value that reaches one destination by more than one path.
 - **Check:** every path to the destination gets the filter, or one choke point sees them all; a test drives each path.
-- **Source:** #956 filtered a record's message and title for the Live Activity but the line the screen reads (`readLine` → `TerminalLive.state(_:)`) reached it unfiltered; it also lets a rule line through, which the card draws as bare lines.
+- **Source:** #956 filtered a record's message and title for the Live Activity but the line the screen reads (`readLine` → `TerminalLive.state(_:)`) reached it unfiltered; it also lets a rule line through, which the card draws as bare lines (#980). The check still passed a box's edge that carries a title (──── title ────), which Devin draws over its input; the fixture drew a plain rule where the real screen does not.
+
+### A pattern checked on its minimal form
+- **Trigger:** the diff adds or uses a recognizer (a predicate, a grammar, a delimiter) whose test input is the simplest case.
+- **Check:** the recognizer's test input comes from a real capture, or the variants a real producer emits are listed. `TerminalActivity.rule` knew a line of box-drawing characters but not the titled edge TUI agents draw.
+- **Source:** this PR.
 
 ### Path shared by local panes, remote hosts and iOS
 - **Trigger:** the diff changes a path that local panes, remote hosts and iOS all use (stream, attach, resume, size, reconnect).

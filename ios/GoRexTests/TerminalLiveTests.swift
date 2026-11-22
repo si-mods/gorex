@@ -167,6 +167,12 @@ nonisolated final class TerminalLiveTests: XCTestCase {
         records = [.init(id: "a", state: "working", msg: "──────", updated: clock)]
         l.outputChanged(); w.run(); w.run()
         XCTAssertEqual(l.sent?.line, "building it")
+
+        // A box's edge that carries a title is a rule as well.
+        records = []
+        screen = "──────────── api session ────────────"
+        l.outputChanged(); w.run(); w.run()
+        XCTAssertEqual(l.sent?.line, "", "a titled edge is no line either")
     }
 
     /// A screen's rows, and the cursor's row: the one marked with a "|".
@@ -257,6 +263,18 @@ nonisolated final class TerminalLiveTests: XCTestCase {
         ⠹ Running tests… (8s)
 
         ▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔
+        ❯ |
+        ▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁
+        SWE-2 High · bypass    ctrl+o details · opt+t thinking
+        """), "⠹ Running tests… (8s)")
+
+        // The input's top edge carries the window's title; it is an edge
+        // still, not the line.
+        XCTAssertEqual(Self.line("""
+          Edited src/app.ts (+12 -3)
+
+        ⠹ Running tests… (8s)
+        ──────────── api session ────────────
         ❯ |
         ▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁
         SWE-2 High · bypass    ctrl+o details · opt+t thinking
@@ -352,7 +370,7 @@ nonisolated final class TerminalLiveTests: XCTestCase {
         let screen = Self.rows([
             1: "⠀⣴⣾⣶⡄⠀⠀⠀⠀", 2: "⠀⠛⠿⠟⠻⣶⣾⣶⡄  Devin CLI", 3: "⠀⣤⣶⣦⣴⠿⢿⠿⠃  v3000.0", 4: "⠀⠻⢿⠿⠃⠀⠀⠀⠀",
             6: " Pro · 40% remaining (resets in 1d 19h)", 8: " ● ~/project",
-            9: Self.rule, 10: "❭ Ask Devin to build features, fix bugs, or work on your code", 11: Self.rule,
+            9: "──────────── iOS project ────────────", 10: "❭ Ask Devin to build features, fix bugs, or work on your code", 11: Self.rule,
             12: "SWE-2 High · bypass                                     Press Ctrl+O to view the full thinking trace",
         ])
         XCTAssertEqual(TerminalActivity.screenLine(screen, cursor: 10), "● ~/project")
@@ -965,6 +983,12 @@ nonisolated final class TerminalLiveTests: XCTestCase {
             ("rule", short, .init(title: "api", program: "devin", record: nil,
                                   line: String(repeating: "─", count: 80), connected: true)),
             ("rule-dropped", short, .init(title: "api", program: "devin", record: nil, line: "", connected: true)),
+            // A box's edge that carries the window's title was the line
+            // too; the pick is the working line above the input now.
+            ("titled", short, .init(title: "api session", program: "devin", record: nil,
+                                    line: "──────────── api session ────────────", connected: true)),
+            ("titled-picked", short, .init(title: "api session", program: "devin", record: nil,
+                                         line: "⠙ Running tools… (2m 1s)", connected: true)),
         ]
         func write(_ v: some View, _ name: String) throws {
             let r = ImageRenderer(content: v)

@@ -152,9 +152,16 @@ nonisolated struct TerminalActivity: ActivityAttributes, Hashable, Sendable {
     private static let verticals: Set<Character> = ["│", "┃", "║", "╎", "╏", "┆", "┇", "┊", "┋", "┤", "├", "╢", "╟"]
 
     /// A line of box-drawing characters and spaces only, such as a rule or
-    /// a box's top or bottom.
+    /// a box's top or bottom; or the edge of a box that carries a title,
+    /// drawn as a run of them on each side (──── title ────): it opens
+    /// with two or more and ends with one. A side of a box alone opens
+    /// none (│ text │), nor does a tree's ├─.
     static func rule(_ s: String) -> Bool {
-        s.contains { !$0.isWhitespace } && s.allSatisfy { $0.isWhitespace || boxChar($0) }
+        guard s.contains(where: { !$0.isWhitespace }) else { return false }
+        if s.allSatisfy({ $0.isWhitespace || boxChar($0) }) { return true }
+        let t = s.trimmingCharacters(in: .whitespaces)
+        let lead = t.prefix(while: boxChar).count
+        return lead >= 2 && t.last.map(boxChar) == true
     }
 
     /// A line inside a box: it starts and ends with one of its sides.
