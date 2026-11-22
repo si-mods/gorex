@@ -172,6 +172,10 @@ struct SpacePanelLayer: View {
     /// nothing moves.
     var ns: Namespace.ID?
     @Environment(\.accessibilityReduceMotion) private var still
+    /// A fresh identity on each open: a shared element's slot keeps the
+    /// frame it was dismissed at, and a reused one reopens pinned to the
+    /// capsule instead of growing out of it.
+    @State private var gen = 0
 
     var body: some View {
         GeometryReader { g in
@@ -187,6 +191,7 @@ struct SpacePanelLayer: View {
                                add: { close(); add() },
                                edit: { close(); edit() },
                                ns: match, stagger: !still)
+                        .id(gen)
                         .fixedSize(horizontal: true, vertical: false)
                         // The glass hugs the panel: the cap below only
                         // limits it, and the room under a short panel stays
@@ -210,6 +215,9 @@ struct SpacePanelLayer: View {
                         .transition(still ? .opacity : .asymmetric(insertion: .identity, removal: .opacity))
                 }
             }
+        }
+        .onChange(of: open) { _, o in
+            if o { gen += 1 }
         }
     }
 
