@@ -1189,6 +1189,12 @@ var sizeLease = newDuration(30 * time.Second)
 // (libghostty-vt), so the size waits for the drag to settle.
 var resizeSettle = newDuration(150 * time.Millisecond)
 
+// ResizeSettle is how long a size the windows ask for must hold before
+// the session takes it: a window's own terminal takes a size it asked
+// for no sooner, or it lays out at another size what the program drew
+// for the one the session still has.
+func ResizeSettle() time.Duration { return resizeSettle.get() }
+
 // resize takes the size the windows ask for once it settled
 // (resizeSettle): not while an owner holds the size (lockSize). An
 // explicit size (resizeNow, lockSize, lockedResize, unlockSize) is taken

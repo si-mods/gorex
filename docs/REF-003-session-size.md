@@ -3,7 +3,7 @@ name: REF-003
 description: "How one session gets one terminal size when several clients attach: authority, focus claims and the idle policy. Use when you change sizes or attach."
 metadata:
   created: "2026-10-29"
-  updated: "2026-11-20"
+  updated: "2026-11-22"
 ---
 
 # REF-003: Session size with several clients
@@ -216,6 +216,17 @@ the size another machine gave may lag that long; the session's own replay
 of a full-screen program arrives in between, and the capture that follows
 the pane's new size replaces it.
 
+A pane's own resize settles at the session before its terminal takes it
+(`sizeWait`, `sizeSettle`): the session applies an asked size once it
+held still (150 ms, `resizeSettle`), and a terminal ahead of it would
+lay out at the new width what the program drew for the old — what the
+reflow made of that stays in its scrollback, which a resync's replay of
+the session does not mend (it resets the screen, and scrollback above
+the screen is its own). Programs that keep scrollback at the old width
+across a resize, rather than drawing it again, keep the difference for
+good. A size the session already shows, as an explicit size taken at
+once (`unlockSize`), waits for nothing.
+
 ## A divider drag
 
 A drag of the divider between panes is one size, not one per frame. The
@@ -225,13 +236,13 @@ width on the way the program would lay its output out where it, told of
 one size at the end, never wrapped it, and a program that draws in place,
 as an agent's interface, would draw its screen again and again.
 
-The terminal takes the drag's size once the pointer lets go, before the
-session does (it settles, 150 ms): what the program prints meanwhile, as
-a shell reparks its prompt, lays out at a size the session did not draw
-for. Taking the size asks for the session's screen, as following another
-client's size does, and cuts the pane's history to the session's screen
-and the last 64 KB of it (`resyncHistory`). A press that ends where it
-began takes no size, and asks for nothing.
+The terminal takes the drag's size once the pointer lets go, as the
+session does (it settles, 150 ms, `sizeWait`): what the program prints
+on the way may still lay out at a size the session did not draw for, so
+the take asks for the session's screen, as following another client's
+size does, and cuts the pane's history to the session's screen and the
+last 64 KB of it (`resyncHistory`). A press that ends where it began
+takes no size, and asks for nothing.
 
 ## Limits
 
