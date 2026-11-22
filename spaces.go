@@ -378,26 +378,31 @@ func (a *App) spacePicker(c *ui.Context, k *colors, wide bool) {
 		}
 		glyphIcon(c, "chevron-down", 13, k.textFaint).Shrink(0)
 	})
-	popoverBase(c, chip, &a.spaces.open, func(panel ui.Element) {
+	popoverBase(c, chip, &a.spaces.open, func(panel ui.Element, entering bool) {
 		menuStyleOf(k, c.Theme().Dark).Panel(panel.Margin(6, 0, 0, 0).Width(240), 0)
+		// The menu's parts come in one after another, a step apart.
+		i := 0
 		ui.Column(c).Children(func() {
 			for _, n := range a.st.spaceNames() {
-				a.menuRow(c, k, "space-"+n, n == name, spaceLabel(n), "", func(ink ui.Color, hot bool) {
+				menuReveal(c, a.menuRow(c, k, "space-"+n, n == name, spaceLabel(n), "", func(ink ui.Color, hot bool) {
 					dot := spaceSwatchMark(c, k, spaceColor(n), 10)
 					if hot {
 						// On the highlight a ring in its ink keeps the dot,
 						// whose color may be the highlight's, in sight.
 						dot.Border(1, ink)
 					}
-				}, func() { a.showSpaceNamed(n) })
+				}, func() { a.showSpaceNamed(n) }), entering, i)
+				i++
 			}
-			ui.Box(c).Height(1).Margin(4, 6).Background(k.panelBorder)
-			a.menuRow(c, k, "space-new", false, locales.SpaceNew(), "", nil, func() {
+			menuReveal(c, ui.Box(c).Height(1).Margin(4, 6).Background(k.panelBorder), entering, i)
+			i++
+			menuReveal(c, a.menuRow(c, k, "space-new", false, locales.SpaceNew(), "", nil, func() {
 				a.spaces.dialog, a.spaces.name = "new", ""
-			})
-			a.menuRow(c, k, "space-edit", false, locales.SpaceEdit(), "", nil, func() {
+			}), entering, i)
+			i++
+			menuReveal(c, a.menuRow(c, k, "space-edit", false, locales.SpaceEdit(), "", nil, func() {
 				a.spaces.dialog, a.spaces.names = "edit", map[string]string{}
-			})
+			}), entering, i)
 		})
 	})
 }

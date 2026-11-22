@@ -891,7 +891,7 @@ func TestOverlaysAnimate(t *testing.T) {
 						e.Width(200).Height(120).Background(ui.Hex("#d02020"))
 					}
 					if kind == "popover" {
-						popoverBase(c, anchor, &open, func(panel ui.Element) {
+						popoverBase(c, anchor, &open, func(panel ui.Element, entering bool) {
 							body(panel)
 						})
 						return
@@ -998,7 +998,7 @@ func TestPopoverKeyStaysOwn(t *testing.T) {
 	open, fresh := false, 0
 	tt := ui.NewTester(func(c *ui.Context) {
 		anchor := ui.Box(c.Key("anchor")).Size(80, 30).Margin(20).Background(ui.Hex("#888888"))
-		popoverBase(c, anchor, &open, func(panel ui.Element) { panel.Width(200).Height(120) })
+		popoverBase(c, anchor, &open, func(panel ui.Element, entering bool) { panel.Width(200).Height(120) })
 		next := ui.Box(c).Size(40, 40)
 		ui.Local(next, "probe", func() bool { fresh++; return true })
 	}, 400, 300)
@@ -1025,7 +1025,7 @@ func TestPopoverGatedReopenAnimates(t *testing.T) {
 			popoverIdle(c, anchor)
 			return
 		}
-		popoverBase(c, anchor, &open, func(panel ui.Element) {
+		popoverBase(c, anchor, &open, func(panel ui.Element, entering bool) {
 			panel.Width(200).Height(120).Background(ui.Hex("#d02020"))
 		})
 	}, 400, 300)
@@ -1042,5 +1042,86 @@ func TestPopoverGatedReopenAnimates(t *testing.T) {
 		}
 		open = false
 		settle(tt)
+	}
+}
+
+// TestMenuRevealStaggers: menuReveal's parts come in a step apart as
+// their menu opens: a late row waits while an early one is on the way
+// already, and all rest together; with Off none waits.
+func TestMenuRevealStaggers(t *testing.T) {
+	old := prefs
+	t.Cleanup(func() { prefs = old })
+	for _, tc := range styles {
+		t.Run(tc.name, func(t *testing.T) {
+			prefs = settings{Animation: tc.style}
+			open := false
+			tt := ui.NewTester(func(c *ui.Context) {
+				anchor := ui.Box(c.Key("anchor")).Size(80, 30).Margin(20).Background(ui.Hex("#888888"))
+				popoverBase(c, anchor, &open, func(panel ui.Element, entering bool) {
+					ui.Column(c).Children(func() {
+						menuReveal(c, ui.Box(c.Key("r0")).Height(20).Label("r0"), entering, 0)
+						menuReveal(c, ui.Box(c.Key("r3")).Height(20).Label("r3"), entering, 3)
+					})
+				})
+			}, 400, 300)
+			gap := func() float32 {
+				r0, _ := tt.Find("r0")
+				r3, _ := tt.Find("r3")
+				return r3.Y - r0.Y
+			}
+			open = true
+			settle(tt)
+			rest := gap()
+			// Reopen, and watch the entrance: row 3 waits its steps while
+			// row 0 is on the way, so the gap between them narrows before
+			// they rest together.
+			open = false
+			settle(tt)
+			open = true
+			tt.Frame()
+			tt.Frame()
+			tt.Advance(60 * time.Millisecond)
+			tt.Frame()
+			mid := gap()
+			settle(tt)
+			if tc.moves {
+				if d := rest - mid; d < 0.5 {
+					t.Errorf("the rows went together: mid gap %v, rest %v", mid, rest)
+				}
+				if g := gap(); g != rest {
+					t.Errorf("at rest the gap is %v, want %v", g, rest)
+				}
+			} else if mid != rest {
+				t.Errorf("with animations off the gap moved: %v, rest %v", mid, rest)
+			}
+		})
+	}
+}
+
+// TestSpaceMenuStaggers: the space picker's menu reveals its parts as it
+// opens: a row is away from its place on the first frame, home at rest;
+// with Off it is there at once.
+func TestSpaceMenuStaggers(t *testing.T) {
+	old := prefs
+	t.Cleanup(func() { prefs = old })
+	edit := locales.SpaceEdit()
+	for _, tc := range styles {
+		t.Run(tc.name, func(t *testing.T) {
+			a, tt := newTestApp(t)
+			prefs = settings{Animation: tc.style}
+			tt.Frame()
+			settle(tt)
+			a.spaces.open = true
+			tt.Frame()
+			early, ok := tt.Find(edit)
+			if !ok {
+				t.Fatalf("no %q; texts %q", edit, tt.Texts())
+			}
+			settle(tt)
+			rest, _ := tt.Find(edit)
+			if moving := early != rest; moving != tc.moves {
+				t.Errorf("%q at %v, at rest %v: moving %v, want %v", edit, early, rest, moving, tc.moves)
+			}
+		})
 	}
 }

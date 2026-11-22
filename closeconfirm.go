@@ -134,7 +134,7 @@ func (a *App) closeConfirm(c *ui.Context, k *colors, anchor ui.Element, t *Tab, 
 		return
 	}
 	a.closeAsk.shown = true
-	popoverBase(c, anchor, &a.closeAsk.open, func(panel ui.Element) {
+	popoverBase(c, anchor, &a.closeAsk.open, func(panel ui.Element, _ bool) {
 		popoverShadow(glassPanel(panel.Margin(8, 0, 0, 0).Width(280).Padding(14).Radius(radiusXL), k).Border(1, k.panelBorder), k)
 		a.closeAskBody(c, k, panel)
 	})

@@ -62,6 +62,28 @@ type popoverRec struct {
 	key           string
 }
 
+// menuStep is how far a menu's parts come in after one another while its
+// panel opens: the iOS picker's panel staggers its rows the same way
+// (docs/MOD-002-projects.md).
+const menuStep = 30 * time.Millisecond
+
+// menuReveal is the entrance of a menu's part, the i'th of them: the
+// frame the panel opens it shows nothing, and on the way to its place it
+// fades up a step after the part before it, so the menu comes in as its
+// parts arriving rather than the one block the panel's own pose would
+// show. Nothing while the desktop asks for less motion, nor past the
+// opening frames: e then rests where the layout puts it.
+func menuReveal(c *ui.Context, e ui.Element, entering bool, i int) ui.Element {
+	if motion(c) == nil {
+		return e
+	}
+	pose := ui.Pose{}
+	if entering {
+		pose = ui.Pose{Fade: 1, Y: -4}
+	}
+	return e.AnimatePose(pose, ui.Animation{Duration: durEnter, Ease: ui.EaseOut, Delay: time.Duration(i) * menuStep})
+}
+
 // popoverBase is ui.PopoverBase with motion: the panel grows from the
 // corner of its anchor that it meets, and shrinks back to it as it closes,
 // nothing while the desktop asks for less motion. It grows with a pose,
@@ -75,9 +97,11 @@ type popoverRec struct {
 // from there. Each opening has a key of the window's size and the anchor's
 // place, so that it is a new panel then. Call it in every frame, open or
 // not; a caller that skips it while closed calls popoverIdle instead.
-func popoverBase(c *ui.Context, anchor ui.Element, open *bool, fn func(panel ui.Element)) {
+// fn gets entering, the panel's first frame, for the parts it builds to
+// come in one after another (menuReveal).
+func popoverBase(c *ui.Context, anchor ui.Element, open *bool, fn func(panel ui.Element, entering bool)) {
 	if motion(c) == nil {
-		ui.PopoverBase(c, anchor, open, fn)
+		ui.PopoverBase(c, anchor, open, func(panel ui.Element) { fn(panel, false) })
 		return
 	}
 	rec := ui.Local(anchor, "popover-motion", func() popoverRec { return popoverRec{} })
@@ -93,7 +117,7 @@ func popoverBase(c *ui.Context, anchor ui.Element, open *bool, fn func(panel ui.
 		pc = c.Key(rec.key)
 	}
 	ui.PopoverBase(pc, anchor, open, func(panel ui.Element) {
-		fn(panel)
+		fn(panel, !rec.entered)
 		pose, anim := ui.Pose{}, ui.Animation{Duration: durEnter, Ease: ui.EaseOut}
 		if !rec.entered {
 			// Posed small for a frame, then at rest on the way.
