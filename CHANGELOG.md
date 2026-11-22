@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.49.0
+
+### Features
+
+* **projects:** quick-launch agent CLIs from the New Tab row ([#975](https://github.com/si-mods/gorex/pull/975))
+* **cli:** update any Linux install, not only the user one ([#979](https://github.com/si-mods/gorex/pull/979))
+
+### Bug Fixes
+
+* **i18n:** localize the agent-launcher strings ([#984](https://github.com/si-mods/gorex/pull/984))
+* **ios:** animate the space picker's menu over a steady capsule ([#977](https://github.com/si-mods/gorex/pull/977))
+* **ios:** drop the tab count from a project's row ([#978](https://github.com/si-mods/gorex/pull/978))
+* **ios:** filter the screen's line for the Live Activity and skip a bare rule ([#980](https://github.com/si-mods/gorex/pull/980))
+* **panes:** take an own resize once it settles at the session ([efc017f](https://github.com/si-mods/gorex/commit/efc017fb))
+
 ## 0.48.0
 
 ### Features
