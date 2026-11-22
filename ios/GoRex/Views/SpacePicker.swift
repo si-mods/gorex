@@ -192,7 +192,7 @@ struct SpacePanelLayer: View {
                                choose: { s in close(); choose(s) },
                                add: { close(); add() },
                                edit: { close(); edit() },
-                               ns: match, stagger: !still)
+                               ns: match, stagger: !still, open: open)
                         .fixedSize(horizontal: true, vertical: false)
                         // The glass hugs the panel: the cap below only
                         // limits it, and the room under a short panel stays
@@ -246,8 +246,16 @@ struct SpacePanel: View {
     var ns: Namespace.ID? = nil
     /// Whether the parts come in one by one once the glass is open.
     var stagger: Bool = false
+    /// Whether the panel is open; false as it travels back to the
+    /// capsule, when its parts are out of reach too.
+    var open: Bool = true
     /// The staggered parts' entrance, replayed on each open.
     @State private var revealed = false
+    /// Whether the parts take touches. They sit out of view until the
+    /// entrance has played, but an ongoing touch can still land on one
+    /// as the glass goes past: nothing takes a touch until the panel is
+    /// mostly open, nor once it has started back.
+    @State private var armed = false
     /// The width of the color squares' column, which the plus of New
     /// Space shares; it grows with the text.
     @ScaledMetric(relativeTo: .body) private var mark: CGFloat = 16
@@ -314,7 +322,14 @@ struct SpacePanel: View {
         }
         .padding(Self.inset)
         .frame(minWidth: 288, idealWidth: 288)
+        .allowsHitTesting(armed || !stagger)
         .onAppear { revealed = true; heading = true }
+        .task {
+            guard stagger else { return }
+            try? await Task.sleep(for: .milliseconds(320))
+            armed = true
+        }
+        .onChange(of: open) { _, o in if !o { armed = false } }
     }
 
     private var rows: some View {
