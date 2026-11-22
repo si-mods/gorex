@@ -51,6 +51,8 @@ func TestFocusFollowsWindow(t *testing.T) {
 	a, tt := newTestApp(t)
 	p := a.tab().Focus
 	waitFor(t, tt, "the shell", func() bool { return p.term != nil && strings.Contains(p.term.Text(), testShell.prompt) })
+	cols, rows := waitTermSize(t, tt, p)
+	paneSize := fmt.Sprintf("%dx%d", cols, rows)
 	// A device of another machine types into the pane's session: the
 	// session follows it.
 	// A device that keeps its connection alive, as another machine's does:
@@ -73,8 +75,6 @@ func TestFocusFollowsWindow(t *testing.T) {
 	}
 	waitSessionSize(t, tt, a.client, p.SID, "130x44")
 	// The active tab changes: the pane shown claims the size, at once.
-	cols, rows := p.term.Size()
-	paneSize := fmt.Sprintf("%dx%d", cols, rows)
 	tt.Frame()
 	a.newTab(os.TempDir())
 	tt.Frame()
@@ -109,7 +109,7 @@ func TestFocusNeedsPresence(t *testing.T) {
 	a, tt := newTestApp(t)
 	p := a.tab().Focus
 	waitFor(t, tt, "the shell", func() bool { return p.term != nil && strings.Contains(p.term.Text(), testShell.prompt) })
-	cols, rows := p.term.Size()
+	cols, rows := waitTermSize(t, tt, p)
 	paneSize := fmt.Sprintf("%dx%d", cols, rows)
 	// The user leaves the machine: no input comes to it.
 	testPresent.Store(false)
