@@ -379,11 +379,16 @@ func (a *App) spacePicker(c *ui.Context, k *colors, wide bool) {
 		glyphIcon(c, "chevron-down", 13, k.textFaint).Shrink(0)
 	})
 	ui.PopoverBase(c, chip, &a.spaces.open, func(panel ui.Element) {
-		popoverShadow(glassPanel(panel.Margin(6, 0, 0, 0).Width(240).Padding(popPad).Radius(popR), k.panel).Border(1, k.panelBorder), k)
-		ui.Column(c).Gap(2).Children(func() {
+		menuStyleOf(k, c.Theme().Dark).Panel(panel.Margin(6, 0, 0, 0).Width(240), 0)
+		ui.Column(c).Children(func() {
 			for _, n := range a.st.spaceNames() {
-				a.menuRow(c, k, "space-"+n, n == name, spaceLabel(n), "", func() {
-					spaceSwatchMark(c, k, spaceColor(n), 10)
+				a.menuRow(c, k, "space-"+n, n == name, spaceLabel(n), "", func(ink ui.Color, hot bool) {
+					dot := spaceSwatchMark(c, k, spaceColor(n), 10)
+					if hot {
+						// On the highlight a ring in its ink keeps the dot,
+						// whose color may be the highlight's, in sight.
+						dot.Border(1, ink)
+					}
 				}, func() { a.showSpaceNamed(n) })
 			}
 			ui.Box(c).Height(1).Margin(4, 6).Background(k.panelBorder)
@@ -397,30 +402,44 @@ func (a *App) spacePicker(c *ui.Context, k *colors, wide bool) {
 	})
 }
 
-// menuRow is a row of a popover menu of GoRex's own: a check when chosen,
-// a mark, its label and a detail; a click closes the menus and runs run.
-func (a *App) menuRow(c *ui.Context, k *colors, key string, chosen bool, label, detail string, mark func(), run func()) ui.Element {
-	row := ui.Row(c.Key(key)).Height(30).Padding(0, 8).Gap(8).Radius(concentric(popR, 1+popPad)).AlignItems(ui.Center).Cursor(ui.CursorPointer).
+// menuRow is a row of a popover menu of GoRex's own, the space picker's
+// or the project picker's: a check when chosen, a mark drawn in ink (hot
+// on the highlight), its label and a detail; a click closes the menus and
+// runs run. It is a row of the drawn menus (menuStyleOf): their height,
+// padding and radius, and under the pointer their highlight, everything
+// on it in its text color. With run nil the row is inert, as a drawn
+// menu's disabled item: no highlight, no click; the caller dims it.
+func (a *App) menuRow(c *ui.Context, k *colors, key string, chosen bool, label, detail string, mark func(ink ui.Color, hot bool), run func()) ui.Element {
+	m := menuStyleOf(k, c.Theme().Dark)
+	row := ui.Row(c.Key(key)).Height(m.RowHeight).Padding(0, m.RowPadding).Gap(8).Radius(m.RowRadius).AlignItems(ui.Center).
 		Role(ui.RoleMenuItem).Label(label)
-	if row.Hovered() {
-		row.Background(k.hover)
+	if run == nil {
+		row.AccessDisabled(true)
+	} else {
+		row.Cursor(ui.CursorPointer)
 	}
-	if row.Clicked() {
+	ink, muted := k.text, k.textMuted
+	hot := run != nil && row.Hovered()
+	if hot {
+		row.Background(m.Highlight)
+		ink, muted = m.HighlightText, m.HighlightText
+	}
+	if run != nil && row.Clicked() {
 		a.closeMenus()
 		a.later(c, run)
 	}
 	row.Children(func() {
 		ui.Box(c).Size(14, 14).Shrink(0).Children(func() {
 			if chosen {
-				glyphIcon(c, "check", 14, k.text)
+				glyphIcon(c, "check", 14, ink)
 			}
 		})
 		if mark != nil {
-			mark()
+			mark(muted, hot)
 		}
-		ui.Text(c, label).FontSize(fontBody).TextColor(k.text).SingleLine().Ellipsis("…").Grow(1).MinWidth(0)
+		ui.Text(c, label).FontSize(fontBody).TextColor(ink).SingleLine().Ellipsis("…").Grow(1).MinWidth(0)
 		if detail != "" {
-			ui.Text(c, detail).FontSize(fontFootnote).TextColor(k.textFaint).SingleLine().Shrink(0)
+			ui.Text(c, detail).FontSize(fontFootnote).TextColor(muted).SingleLine().Shrink(0)
 		}
 	})
 	return row
@@ -437,7 +456,7 @@ func spaceSwatchMark(c *ui.Context, k *colors, color string, size float32) ui.El
 	if hex, ok := spaceColorHex(color); ok {
 		return dot.Background(ui.Hex(hex))
 	}
-	return dot.Border(1, k.textFaint)
+	return dot.Border(1, k.textMuted)
 }
 
 // spaceDialog is the dialog of New Space… or Edit Spaces…, while one
@@ -458,7 +477,7 @@ func (a *App) spaceDialog(c *ui.Context, k *colors) {
 	ui.DialogBase(c.Key("space-dialog"), &open, func(backdrop, panel ui.Element) {
 		backdrop.Background(k.backdrop)
 		_, winH := c.Size()
-		dialogShadow(glassPanel(panel.Width(400).MaxHeight(winH-24).Padding(20).Radius(radiusXXL), k.panel).Border(1, k.panelBorder)).Role(ui.RoleDialog).Label(title)
+		dialogShadow(glassPanel(panel.Width(400).MaxHeight(winH-24).Padding(20).Radius(radiusXXL), k).Border(1, k.panelBorder)).Role(ui.RoleDialog).Label(title)
 		ui.Text(c, title).FontSize(fontTitle).FontWeight(700).TextColor(k.text).Margin(0, 0, 10, 0)
 		if s.dialog == "new" {
 			in := textField(c.Key("space-name"), k, &s.name, fieldRegular).Label(locales.SpaceNameLabel()).Placeholder(locales.SpaceNameHint()).AutoFocus()

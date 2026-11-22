@@ -67,6 +67,27 @@ func TestDesignTokens(t *testing.T) {
 							return -x, true
 						}
 					}
+				case *ast.ParenExpr:
+					return num(v.X)
+				case *ast.BinaryExpr:
+					// A literal worked out, as 30 / 2.6, is a literal too.
+					x, okx := num(v.X)
+					y, oky := num(v.Y)
+					if !okx || !oky {
+						break
+					}
+					switch v.Op {
+					case token.ADD:
+						return x + y, true
+					case token.SUB:
+						return x - y, true
+					case token.MUL:
+						return x * y, true
+					case token.QUO:
+						if y != 0 {
+							return x / y, true
+						}
+					}
 				}
 				return 0, false
 			}

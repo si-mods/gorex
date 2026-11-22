@@ -229,7 +229,7 @@ func hostPairQRSheet(c *ui.Context, k *colors, page *hostPairQR) {
 		// The backdrop dims the window; the glass is the panel's, as in
 		// the other sheets over the app.
 		backdrop.Background(k.backdrop)
-		dialogShadow(glassPanel(panel.Width(380).Padding(20).Gap(12).Radius(radiusXXL), k.panel).
+		dialogShadow(glassPanel(panel.Width(380).Padding(20).Gap(12).Radius(radiusXXL), k).
 			Border(1, k.panelBorder)).
 			Role(ui.RoleDialog).Label(title)
 		ui.Text(c, title).FontSize(fontTitle).FontWeight(700).TextColor(k.text)

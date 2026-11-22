@@ -1,6 +1,7 @@
 package main
 
 import (
+	"math"
 	"runtime"
 	"testing"
 	"time"
@@ -56,10 +57,12 @@ func TestGlassPersisted(t *testing.T) {
 func TestGlassPanelFlat(t *testing.T) {
 	isolateSettings(t, "")
 	face := ui.Hex("#3366cc")
+	k := lightColors
+	k.panel = face
 	px := func(glassy bool) [4]uint8 {
 		prefs.NoGlass = !glassy
 		img := ui.NewTester(func(c *ui.Context) {
-			glassPanel(ui.Box(c).Size(40, 40).Radius(8), face)
+			glassPanel(ui.Box(c).Size(40, 40).Radius(8), &k)
 		}, 60, 60).Image()
 		o := img.PixOffset(20, 20)
 		return [4]uint8(img.Pix[o : o+4])
@@ -119,4 +122,44 @@ func TestWindowCorner(t *testing.T) {
 	if windowCorner != want {
 		t.Fatalf("windowCorner = %d on %s, want %d", windowCorner, runtime.GOOS, want)
 	}
+}
+
+// TestGlassPanelReads checks that the text of a glass panel reads
+// whatever is behind it, in both appearances: k.text and k.textMuted keep
+// 4.5:1 on panelGlass laid over MyGo's glass at its lightest and darkest,
+// and a key cap's k.textMuted on its face of k.panel.
+// MyGo's regular glass maps black to 54% and white to 100% in a light
+// window, and to 15% and 51% in a dark one (glass.paint).
+func TestGlassPanelReads(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		k        *colors
+		low, top float64
+	}{{"light", &lightColors, 0.54, 1}, {"dark", &darkColors, 0.15, 0.51}} {
+		if r := contrast(tc.k.textMuted, tc.k.panel); r < 4.5 {
+			t.Errorf("%s: a key cap reads %.2f:1, want 4.5:1", tc.name, r)
+		}
+		g, ok := panelMaterial(tc.k).Fallback.(paneGlass)
+		if !ok || g.face != tc.k.panelGlass {
+			t.Fatalf("%s: the panel's glass is %#v, want MyGo's under panelGlass", tc.name, panelMaterial(tc.k).Fallback)
+		}
+		for _, behind := range []float64{tc.low, tc.top} {
+			bg := over(g.face, behind*255)
+			for _, ink := range []struct {
+				name string
+				c    ui.Color
+			}{{"text", tc.k.text}, {"textMuted", tc.k.textMuted}} {
+				if r := contrast(ink.c, bg); r < 4.5 {
+					t.Errorf("%s: %s on the glass at %.0f%% reads %.2f:1, want 4.5:1", tc.name, ink.name, behind*100, r)
+				}
+			}
+		}
+	}
+}
+
+// over is c laid over a grey of level v, from 0 to 255.
+func over(c ui.Color, v float64) ui.Color {
+	a := float64(c.A) / 255
+	mix := func(x uint8) uint8 { return uint8(math.Round(float64(x)*a + v*(1-a))) }
+	return ui.RGBA(mix(c.R), mix(c.G), mix(c.B), 1)
 }

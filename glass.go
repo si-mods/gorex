@@ -115,15 +115,23 @@ func (g paneGlass) PaintMaterial(p *ui.Painter, box ui.Rect, radii [4]float32) {
 	}
 }
 
-// glassPanel gives e, a popover's or a dialog's panel or the active tab's
-// pill, the glass under the setting, and the flat face flat without it.
-func glassPanel(e ui.Element, flat ui.Color) ui.Element {
+// glassPanel gives e, a popover's, a menu's or a dialog's panel, the glass
+// under the setting, and k.panel without it.
+func glassPanel(e ui.Element, k *colors) ui.Element {
 	if glassOn() {
 		// The system's glass, as the panes under it are: in-window glass
 		// over their holes would read them as black.
-		return e.Material(ui.SystemGlass{Fallback: paneGlass{flat: flat}})
+		return e.Material(panelMaterial(k))
 	}
-	return e.Background(flat)
+	return e.Background(k.panel)
+}
+
+// panelMaterial is the glass of glassPanel: the system's, else MyGo's
+// with k.panelGlass over it, as the frost has. Bare, MyGo's glass shows a
+// dark terminal behind it grey in a light window, and a light one grey in
+// a dark window, and the panel's text does not read on that grey.
+func panelMaterial(k *colors) ui.SystemGlass {
+	return ui.SystemGlass{Fallback: paneGlass{face: k.panelGlass, flat: k.panel}}
 }
 
 // pillRadius is the corner radius of a tab's row h DIPs high, the same

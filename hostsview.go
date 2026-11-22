@@ -581,11 +581,11 @@ func (a *App) hostLayoutSheet(c *ui.Context, k *colors) {
 	was := page.layoutOpen
 	ui.DialogBase(c, &page.layoutOpen, func(backdrop, panel ui.Element) {
 		backdrop.Background(k.backdrop)
-		dialogShadow(glassPanel(panel.Width(620).MaxHeight(560).Padding(20).Gap(12).Radius(radiusXXL), k.panel).Border(1, k.panelBorder)).Role(ui.RoleDialog).Label(locales.HostsLayoutTitle())
+		dialogShadow(glassPanel(panel.Width(620).MaxHeight(560).Padding(20).Gap(12).Radius(radiusXXL), k).Border(1, k.panelBorder)).Role(ui.RoleDialog).Label(locales.HostsLayoutTitle())
 		ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
 			ui.Text(c, locales.HostsLayoutTitle()).FontSize(fontTitle).FontWeight(700).TextColor(k.text)
 			if page.layoutHost != nil {
-				ui.Text(c, page.layoutHost.label()).FontSize(fontCallout).TextColor(k.textFaint)
+				ui.Text(c, page.layoutHost.label()).FontSize(fontCallout).TextColor(k.textMuted)
 			}
 			ui.Spacer(c)
 			if page.layoutHost != nil && ui.Button(c, locales.HostsLayoutNewTab()).Clicked() {
@@ -604,7 +604,7 @@ func (a *App) hostLayoutSheet(c *ui.Context, k *colors) {
 		ui.Scroll(c).Grow(1).MinHeight(0).Children(func() {
 			ui.Column(c).Gap(10).Children(func() {
 				if len(page.layout.Sessions) == 0 && !page.layoutLoading && page.layoutErr == "" {
-					ui.Text(c, locales.HostsLayoutEmpty()).FontSize(fontCallout).TextColor(k.textFaint)
+					ui.Text(c, locales.HostsLayoutEmpty()).FontSize(fontCallout).TextColor(k.textMuted)
 				}
 				for _, w := range page.layout.Sessions {
 					ui.Column(c).Gap(4).Children(func() {
@@ -618,7 +618,7 @@ func (a *App) hostLayoutSheet(c *ui.Context, k *colors) {
 							})
 							lineRow := func(line layoutLine) {
 								ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-									ui.Text(c, line.text).Font(monoFamily()).FontSize(fontFootnote).TextColor(k.textFaint).SingleLine().Ellipsis("…").Grow(1).MinWidth(0)
+									ui.Text(c, line.text).Font(monoFamily()).FontSize(fontFootnote).TextColor(k.textMuted).SingleLine().Ellipsis("…").Grow(1).MinWidth(0)
 									if line.sid != "" {
 										if ui.Button(c.Key("open-"+line.sid), locales.HostsLayoutOpen()).Clicked() {
 											a.openHostPane(page.layoutHost, line.sid)
@@ -840,9 +840,9 @@ func (a *App) foundHostRows(c *ui.Context, k *colors) {
 					ui.Text(c, peer.Name).FontSize(fontCallout).FontWeight(500).TextColor(k.text).SingleLine().Ellipsis("…")
 					switch {
 					case saved:
-						ui.Text(c, locales.HostsAlreadySaved()).FontSize(fontFootnote).TextColor(k.textFaint)
+						ui.Text(c, locales.HostsAlreadySaved()).FontSize(fontFootnote).TextColor(k.textMuted)
 					case taken:
-						ui.Text(c, locales.HostsNameTaken()).FontSize(fontFootnote).TextColor(k.textFaint)
+						ui.Text(c, locales.HostsNameTaken()).FontSize(fontFootnote).TextColor(k.textMuted)
 					}
 				})
 				if saved || taken {
@@ -864,7 +864,7 @@ func (a *App) addHostSheet(c *ui.Context, k *colors) {
 	was := page.adding
 	ui.DialogBase(c, &page.adding, func(backdrop, panel ui.Element) {
 		backdrop.Background(k.backdrop)
-		dialogShadow(glassPanel(panel.Width(440).Padding(20).Gap(12).Radius(radiusXXL), k.panel).Border(1, k.panelBorder)).Role(ui.RoleDialog).Label(locales.HostsAddTitle())
+		dialogShadow(glassPanel(panel.Width(440).Padding(20).Gap(12).Radius(radiusXXL), k).Border(1, k.panelBorder)).Role(ui.RoleDialog).Label(locales.HostsAddTitle())
 		ui.Text(c, locales.HostsAddTitle()).FontSize(fontTitle).FontWeight(700).TextColor(k.text)
 		switch page.stage {
 		case addConnecting:
@@ -876,7 +876,7 @@ func (a *App) addHostSheet(c *ui.Context, k *colors) {
 			host := strings.TrimSpace(page.name)
 			ui.Text(c, locales.HostsCodeIntro(host)).FontSize(fontBody).TextColor(k.text).LineHeight(1.35)
 			ui.Column(c).Gap(4).Padding(12).Radius(radiusM).Background(k.hover).AlignItems(ui.Center).Children(func() {
-				ui.Text(c, locales.HostsCode()).FontSize(fontFootnote).FontWeight(600).TextColor(k.textFaint)
+				ui.Text(c, locales.HostsCode()).FontSize(fontFootnote).FontWeight(600).TextColor(k.textMuted)
 				ui.Text(c, page.code).Font(monoFamily()).FontSize(fontCode).FontWeight(700).TextColor(k.text).Label(page.code)
 			})
 			if page.stage == addApproving {
@@ -884,12 +884,12 @@ func (a *App) addHostSheet(c *ui.Context, k *colors) {
 					ui.Box(c).Size(7, 7).Radius(capsule(7)).Background(k.attention)
 					ui.Text(c, locales.HostsWaiting()).FontSize(fontCallout).FontWeight(500).TextColor(k.textMuted)
 				})
-				ui.Text(c, locales.HostsCodeApprove(host)).FontSize(fontSubhead).TextColor(k.textFaint).LineHeight(1.3)
+				ui.Text(c, locales.HostsCodeApprove(host)).FontSize(fontSubhead).TextColor(k.textMuted).LineHeight(1.3)
 			}
 		case addWaiting:
 			ui.Text(c, locales.HostsApprove(strings.TrimSpace(page.name))).FontSize(fontBody).TextColor(k.text).LineHeight(1.35)
 			ui.Column(c).Gap(4).Padding(12).Radius(radiusM).Background(k.hover).AlignItems(ui.Center).Children(func() {
-				ui.Text(c, locales.HostsFingerprint()).FontSize(fontFootnote).FontWeight(600).TextColor(k.textFaint)
+				ui.Text(c, locales.HostsFingerprint()).FontSize(fontFootnote).FontWeight(600).TextColor(k.textMuted)
 				ui.Text(c, page.fingerprint).Font(monoFamily()).FontSize(fontCodeSmall).FontWeight(700).TextColor(k.text).
 					Label(locales.RemoteFingerprint(page.fingerprint))
 			})
@@ -897,12 +897,12 @@ func (a *App) addHostSheet(c *ui.Context, k *colors) {
 				ui.Box(c).Size(7, 7).Radius(capsule(7)).Background(k.attention)
 				ui.Text(c, locales.HostsWaiting()).FontSize(fontCallout).FontWeight(500).TextColor(k.textMuted)
 			})
-			ui.Text(c, locales.HostsApproveWhere()).FontSize(fontSubhead).TextColor(k.textFaint).LineHeight(1.3)
+			ui.Text(c, locales.HostsApproveWhere()).FontSize(fontSubhead).TextColor(k.textMuted).LineHeight(1.3)
 			if page.note != nil {
 				ui.Text(c, page.note()).FontSize(fontSubhead).TextColor(k.danger).LineHeight(1.3)
 			}
 		default:
-			ui.Text(c, locales.HostsAddNote()).FontSize(fontSubhead).TextColor(k.textFaint).LineHeight(1.3)
+			ui.Text(c, locales.HostsAddNote()).FontSize(fontSubhead).TextColor(k.textMuted).LineHeight(1.3)
 			a.foundHostRows(c, k)
 			field := func(label string, input func() ui.Element) {
 				ui.Column(c).Gap(4).Children(func() {
@@ -922,7 +922,7 @@ func (a *App) addHostSheet(c *ui.Context, k *colors) {
 			field(locales.HostsPairAs(), func() ui.Element {
 				return ui.TextInput(c.Key("pair-as"), &page.pairAs).Label(locales.HostsPairAs())
 			})
-			ui.Text(c, locales.HostsPairAsHint()).FontSize(fontSubhead).TextColor(k.textFaint).Margin(-6, 0, 0, 0)
+			ui.Text(c, locales.HostsPairAsHint()).FontSize(fontSubhead).TextColor(k.textMuted).Margin(-6, 0, 0, 0)
 			if page.formErr != nil {
 				ui.Text(c, page.formErr()).FontSize(fontSubhead).TextColor(k.danger).LineHeight(1.3)
 			}

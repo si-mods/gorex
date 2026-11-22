@@ -577,7 +577,7 @@ func (a *App) transfers(c *ui.Context, k *colors, p *Pane) {
 						}
 					})
 				}
-				text, col := locales.PaneTransferProgress(byteSize(x.done), byteSize(x.size)), k.textFaint
+				text, col := locales.PaneTransferProgress(byteSize(x.done), byteSize(x.size)), k.textMuted
 				switch {
 				case failed:
 					text, col = x.err, k.danger
