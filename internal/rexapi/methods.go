@@ -217,6 +217,7 @@ var methods = map[string]func(*control, args) (any, *apiError){
 	"gorex.move_block_to_new_window": methodGorexMoveBlockToNewWindow,
 	"gorex.see_block":                methodGorexSeeBlock,
 	"gorex.dir.list":                 methodGorexDirList,
+	"gorex.agents.list":              methodGorexAgentsList,
 	// Projects (projects.go).
 	"gorex.project.create": methodGorexProjectCreate,
 	"gorex.project.adopt":  methodGorexProjectAdopt,

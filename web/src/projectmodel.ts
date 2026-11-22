@@ -20,13 +20,22 @@ export interface ProjectInfo {
   used: number;
   /** The project's color when the host says one. */
   color?: string;
+  /** Pinned agent CLI IDs for the project's quick-launcher bar; undefined means all detected. */
+  launchers?: string[];
 }
 
 /** Reads a session's `project` as a host of version 2 writes it; none when the field is not an object. */
 export function parseProject(j: any): ProjectInfo | undefined {
   if (!j || typeof j !== "object" || Array.isArray(j)) return undefined;
   const t = typeof j.used === "string" ? Date.parse(j.used) : typeof j.used === "number" ? (j.used < 1e12 ? j.used * 1000 : j.used) : 0;
-  return { dir: typeof j.dir === "string" ? j.dir : "", space: typeof j.space === "string" ? j.space : "", used: Number.isFinite(t) && t > 0 ? t : 0, ...(typeof j.color === "string" && j.color ? { color: j.color } : {}) };
+  const launchers = Array.isArray(j.launchers) ? j.launchers.filter((x: unknown): x is string => typeof x === "string") : undefined;
+  return {
+    dir: typeof j.dir === "string" ? j.dir : "",
+    space: typeof j.space === "string" ? j.space : "",
+    used: Number.isFinite(t) && t > 0 ? t : 0,
+    ...(typeof j.color === "string" && j.color ? { color: j.color } : {}),
+    ...(launchers !== undefined ? { launchers } : {}),
+  };
 }
 
 /** The welcome's version of a feature: a map of versions, or a feature written as an object. 0 when none. */

@@ -1097,18 +1097,30 @@ func (a *App) newPaneTab(p *Pane) *Tab {
 // so, and starts none elsewhere (docs/MOD-002-projects.md, "New tabs and panes").
 // Of the tabs with no project, it starts where the focused pane is.
 func (a *App) newProjectTab() *Tab {
+	return a.newProjectTabWithCommand(nil)
+}
+
+// newProjectTabWithCommand opens a tab in the window's workspace running
+// command (nil for the login shell).
+func (a *App) newProjectTabWithCommand(command []string) *Tab {
 	w := a.ws
 	if w == nil {
-		return a.newTab(a.currentDir())
+		return a.newTabAfterIn(a.currentHost(), a.currentDir(), false, a.tab(), command)
 	}
 	if w.offline() {
 		a.offline(w.host)
 		return nil
 	}
+	dir := a.currentDir()
 	if w.Dir != "" {
-		return a.newTabOn(w.host, "")
+		dir = ""
 	}
-	return a.newTabOn(w.host, a.currentDir())
+	t := a.newTabAfterIn(w.host, dir, false, a.tab(), command)
+	if t != nil {
+		a.active = slices.Index(a.tabs, t)
+		a.focusReq = t.Focus
+	}
+	return t
 }
 
 // currentHost is the host of the window's workspace, nil for this

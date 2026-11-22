@@ -4,11 +4,11 @@
 // New Tab. A host that is away shows its copy, greyed and read-only. Hosts
 // with no projects of version 2 keep the rows of sidebar.ts. The rules are
 // projectmodel.ts's; the calls are projectops.ts's.
-import type { HostConn } from "./hostconn";
+import type { Agent, HostConn } from "./hostconn";
 import type { Host } from "./hosts";
 import { icon } from "./hosts";
 import { motionEase, motionMs } from "./prefs";
-import { tilesWidth } from "./programs";
+import { glyphUrl, programOf, smallTile, tilesWidth } from "./programs";
 import { t } from "./i18n";
 import { MenuItem, onMenu, openMenu, ownDrag, renameField } from "./manage";
 import { dirName, groupLook, GroupLook, groupProjects, HostModel, projectColor, ProjectRow, TabRow } from "./projectmodel";
@@ -463,6 +463,7 @@ function projectMenu(c: HostConn, p: ProjectRow): MenuItem[] {
       label: t("projectMoveSpace"),
       submenu: ops.spaces().map((n) => ({ label: ops.label(n), checked: n === here, run: () => void ops.moveProjectToSpace(c, p.id, n) })),
     },
+    ...(c.agents.length > 0 ? [{ label: "Quick Launchers", submenu: launcherPinItems(c, p.id) }] : []),
     "separator",
     { label: t("cmdCloseSpace"), run: () => app.closeSpace(c, p.id) },
   ];
@@ -486,13 +487,102 @@ function tabs(c: HostConn | undefined, session: string, rows: TabRow[]): HTMLEle
   return box;
 }
 
+/**
+ * The pin toggles of a project's agent launchers (docs/MOD-010): a check
+ * per installed agent, and Show All Installed while a pick is kept. The
+ * project menu's Quick Launchers submenu and the New Tab row's menu share
+ * the list.
+ */
+function launcherPinItems(c: HostConn, session: string): MenuItem[] {
+  const pinned = c.sessions.get(session)?.project?.launchers;
+  return [
+    ...c.agents.map((a) => {
+      const on = pinned === undefined || pinned.includes(a.id);
+      return {
+        label: a.name,
+        checked: on,
+        run: () => {
+          const all = c.agents.map((x) => x.id);
+          const cur = pinned ?? all;
+          const next = on ? cur.filter((x) => x !== a.id) : all.filter((x) => x === a.id || cur.includes(x));
+          const same = next.length === all.length && next.every((x, i) => x === all[i]);
+          void ops.setProjectLaunchers(c, session, same ? null : next);
+        },
+      };
+    }),
+    ...(pinned !== undefined
+      ? (["separator", { label: "Show All Installed", run: () => void ops.setProjectLaunchers(c, session, null) }] as MenuItem[])
+      : []),
+  ];
+}
+
+/**
+ * The menu of a New Tab row's chevron (docs/MOD-010): every installed
+ * agent, its brand tile, its name and a check while the project pins it —
+ * a click opens a tab that runs it — then the project's pin toggles, the
+ * project menu's own.
+ */
+function agentMenu(c: HostConn, session: string): MenuItem[] {
+  const pinned = c.sessions.get(session)?.project?.launchers;
+  return [
+    ...c.agents.map((a) => ({
+      label: a.name,
+      tile: smallTile(programOf(a.id)),
+      checked: pinned === undefined || pinned.includes(a.id),
+      disabled: !c.live,
+      run: () => void ops.newTab(c, session, a.command),
+    })),
+    "separator" as const,
+    { label: "Quick Launchers", submenu: launcherPinItems(c, session) },
+  ];
+}
+
+/** A pinned agent's button on the New Tab row: its brand glyph in the text's colour, as pane icons are — the tiles' colours stay the tabs'. */
+function agentButton(c: HostConn, session: string, a: Agent): HTMLButtonElement {
+  const b = el("button", "icon");
+  b.type = "button";
+  b.title = a.name;
+  b.setAttribute("aria-label", `${t("cmdNewWindow")} (${a.name})`);
+  const g = el("i", "pane-icon");
+  g.style.setProperty("--icon", `url(${glyphUrl(programOf(a.id).glyph)})`);
+  b.append(g);
+  b.disabled = !c.live;
+  b.onclick = (e) => {
+    e.stopPropagation();
+    void ops.newTab(c, session, a.command);
+  };
+  return b;
+}
+
+/**
+ * The New Tab row under a session's tabs (docs/MOD-010): the `+` and the
+ * words open a plain shell tab. On a host with agent CLIs a cluster at the
+ * row's end holds the first three pinned agents' glyphs and the chevron of
+ * the menu of every installed one; with none pinned the cluster is the
+ * chevron alone.
+ */
 function newTabRow(c: HostConn, session: string): HTMLElement {
+  const s = c.sessions.get(session);
   const b = el("button", "new-tab");
   b.type = "button";
   b.append(icon("plus"), el("span", undefined, t("cmdNewWindow")));
   b.disabled = !c.live;
   b.onclick = () => void ops.newTab(c, session);
-  return b;
+  if (!s?.project?.dir || c.agents.length === 0) return b;
+  const pinned = s.project.launchers;
+  const agents = pinned === undefined ? c.agents : c.agents.filter((a) => pinned.includes(a.id));
+  const row = el("div", "new-tab-row");
+  row.append(b);
+  const cluster = el("span", "agent-cluster");
+  for (const a of agents.slice(0, 3)) cluster.append(agentButton(c, session, a));
+  const more = iconButton("chevron-down", "Quick Launchers", () => {
+    const r = more.getBoundingClientRect();
+    openMenu(r.left, r.bottom + 4, agentMenu(c, session), () => sidebarApp().shown()?.focusKeys());
+  }, !c.live);
+  more.setAttribute("aria-haspopup", "menu");
+  cluster.append(more);
+  row.append(cluster);
+  return row;
 }
 
 /** Shows a project: its active tab. */

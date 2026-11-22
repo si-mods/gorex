@@ -286,6 +286,15 @@ func updateProject(st *layout.Store, c LayoutCommand) LayoutCommand {
 		w.Space = spaceName(c.SpaceName)
 		carried(st, w.Space)
 	}
+	if c.ResetLaunchers {
+		w.Launchers = nil
+	} else if c.Launchers != nil {
+		cp := slices.Clone(*c.Launchers)
+		if cp == nil {
+			cp = []string{}
+		}
+		w.Launchers = &cp
+	}
 	res.Space = w.ID
 	return res
 }

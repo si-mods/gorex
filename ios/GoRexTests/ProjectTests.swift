@@ -574,6 +574,45 @@ nonisolated final class ProjectTests: XCTestCase {
         XCTAssertEqual(Demo.folders("/").parent, "")
     }
 
+    /// gorex.agents.list's answer parses valid agent records and skips invalid ones.
+    @MainActor func testAgentParsing() {
+        let parsed = Host.Agent.parse(["agents": [
+            ["id": "claude", "name": "Claude Code", "command": ["/bin/zsh", "-lic", "exec claude"]],
+            ["id": "codex", "command": ["codex"]],
+            ["id": "", "command": ["bad"]],
+            ["id": "agy", "command": []],
+        ]])
+        XCTAssertEqual(parsed, [
+            Host.Agent(id: "claude", name: "Claude Code", command: ["/bin/zsh", "-lic", "exec claude"]),
+            Host.Agent(id: "codex", name: "Codex", command: ["codex"]),
+        ])
+        XCTAssertFalse(Demo.agents.isEmpty)
+
+        let pDefault = SessionView.Project.of(["dir": "/code/demo"])
+        XCTAssertNil(pDefault?.launchers)
+        let pPinned = SessionView.Project.of(["dir": "/code/demo", "launchers": ["claude"]])
+        XCTAssertEqual(pPinned?.launchers, ["claude"])
+        let pNone = SessionView.Project.of(["dir": "/code/demo", "launchers": [String]()])
+        XCTAssertEqual(pNone?.launchers, [])
+    }
+
+    /// A project's pinned launchers filter the host's agents in display
+    /// order, and its New Tab row shows glyphs for the first
+    /// launcherGlyphCap of them only (docs/MOD-010-agent-launchers.md).
+    @MainActor func testPinnedAgents() {
+        let agents = ["claude", "codex", "agy", "omp", "devin"].map {
+            Host.Agent(id: $0, name: $0, command: [$0])
+        }
+        XCTAssertEqual(Host.pinnedAgents(nil, of: agents).map(\.id), ["claude", "codex", "agy", "omp", "devin"])
+        XCTAssertEqual(Host.pinnedAgents(["devin", "claude"], of: agents).map(\.id), ["claude", "devin"])
+        XCTAssertEqual(Host.pinnedAgents(["gone"], of: agents), [])
+        XCTAssertEqual(Host.pinnedAgents([], of: agents), [])
+        XCTAssertEqual(Host.launcherGlyphs(nil, of: agents).map(\.id), ["claude", "codex", "agy"])
+        XCTAssertEqual(Host.launcherGlyphs(["omp", "devin", "codex", "agy"], of: agents).map(\.id), ["codex", "agy", "omp"])
+        XCTAssertEqual(Host.launcherGlyphs([], of: agents), [])
+        XCTAssertEqual(Host.launcherGlyphCap, 3)
+    }
+
     // MARK: Helpers
 
     /// A session list entry of the fake server, with its view: tabs by ID

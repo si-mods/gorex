@@ -48,15 +48,19 @@ struct SessionView: Decodable {
         var space: String
         var used: Date?
         var color: String?
+        /// Pinned agent CLI IDs for this project's quick-launcher bar; nil
+        /// means default (all detected agent CLIs on the host), empty means none.
+        var launchers: [String]?
 
-        init(dir: String, space: String = "", used: Date? = nil, color: String? = nil) {
+        init(dir: String, space: String = "", used: Date? = nil, color: String? = nil, launchers: [String]? = nil) {
             self.dir = dir
             self.space = space
             self.used = used
             self.color = color
+            self.launchers = launchers
         }
 
-        private enum CodingKeys: String, CodingKey { case dir, space, used, color }
+        private enum CodingKeys: String, CodingKey { case dir, space, used, color, launchers }
 
         init(from decoder: Decoder) throws {
             let c = try? decoder.container(keyedBy: CodingKeys.self)
@@ -64,6 +68,7 @@ struct SessionView: Decodable {
             space = (try? c?.decodeIfPresent(String.self, forKey: .space)) ?? ""
             used = Self.time((try? c?.decodeIfPresent(String.self, forKey: .used)) ?? nil)
             color = ((try? c?.decodeIfPresent(String.self, forKey: .color)) ?? nil).flatMap { $0.isEmpty ? nil : $0 }
+            launchers = (try? c?.decodeIfPresent([String].self, forKey: .launchers)) ?? nil
         }
 
         /// The project of a session list's entry, as session.bootstrap and
@@ -71,7 +76,8 @@ struct SessionView: Decodable {
         static func of(_ entry: Any?) -> Project? {
             guard let p = entry as? [String: Any], let dir = p["dir"] as? String, !dir.isEmpty else { return nil }
             return Project(dir: dir, space: p["space"] as? String ?? "", used: time(p["used"] as? String),
-                           color: (p["color"] as? String).flatMap { $0.isEmpty ? nil : $0 })
+                           color: (p["color"] as? String).flatMap { $0.isEmpty ? nil : $0 },
+                           launchers: p["launchers"] as? [String])
         }
 
         /// A time as Go writes one, RFC 3339 with or without a fraction of

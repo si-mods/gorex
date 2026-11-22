@@ -31,6 +31,13 @@ export interface Session {
   lastWindow?: string;
 }
 
+/** An installed agent CLI a host reports (gorex.agents.list): its program id, its name and the argv a tab runs. */
+export interface Agent {
+  id: string;
+  name: string;
+  command: string[];
+}
+
 /** What a host's connection tells the page. */
 export interface HostEvents {
   /** The link state or the problem changed. */
@@ -220,10 +227,13 @@ export class HostConn {
     return c ? c.call(method, payload) : Promise.reject(new Error("not connected"));
   }
 
-  /** Makes a window in a session, running the shell; its ID. */
-  async newWindow(session: string, cwd?: string): Promise<string | undefined> {
+  /** Makes a window in a session, running the shell or command; its ID. */
+  async newWindow(session: string, cwd?: string, command?: string[]): Promise<string | undefined> {
     const block: any = { flavor: "com.superlogical.terminal.shell" };
-    if (cwd) block.options = { cwd };
+    const options: any = {};
+    if (cwd) options.cwd = cwd;
+    if (command && command.length > 0) options.command = command;
+    if (Object.keys(options).length > 0) block.options = options;
     const r = (await this.call("session.new_window", { session_id: session, focus: false, layout: { block } })).payload;
     return r.window_id;
   }
@@ -267,8 +277,8 @@ export class HostConn {
     await this.call("gorex.project.move", { tab_id: tab, project_id: project });
   }
 
-  /** Changes a project's name, color or space (gorex.project.update). */
-  async projectUpdate(project: string, fields: { name?: string; color?: string; space?: string }): Promise<void> {
+  /** Changes a project's name, color, space or pinned launchers (gorex.project.update). */
+  async projectUpdate(project: string, fields: { name?: string; color?: string; space?: string; launchers?: string[] | null }): Promise<void> {
     await this.call("gorex.project.update", { project_id: project, ...fields });
   }
 
@@ -293,6 +303,24 @@ export class HostConn {
     }
     await this.readSpaces();
     return Number(r?.projects ?? 0);
+  }
+
+  /** Installed known agent CLIs reported by this host (gorex.agents.list). */
+  agents: Agent[] = [];
+
+  /** Reads gorex.agents.list when the host advertises gorex.agents. */
+  async readAgents(): Promise<void> {
+    if (!this.control?.features.has("gorex.agents")) return;
+    try {
+      const r = (await this.call("gorex.agents.list")).payload;
+      const list = Array.isArray(r?.agents) ? r.agents : [];
+      this.agents = list
+        .filter((x: any) => x && typeof x.id === "string" && x.id && Array.isArray(x.command) && x.command.length > 0)
+        .map((x: any) => ({ id: x.id, name: typeof x.name === "string" ? x.name : x.id, command: x.command.map(String) }));
+      this.events.sessions(this, false);
+    } catch (e) {
+      console.warn("agents list", e);
+    }
   }
 
   /** The space names this host offers, those of its projects first (gorex.space.list); "" is Default. */
@@ -390,6 +418,7 @@ export class HostConn {
       await c.call("session.bootstrap", { event_scope: "all" });
       await this.list();
       void this.readSpaces();
+      void this.readAgents();
       this.spaceReader.ask();
       // Connected is the usual state: the status line says nothing, and an earlier problem goes.
       this.status("");

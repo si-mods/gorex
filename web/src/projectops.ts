@@ -150,7 +150,7 @@ export function createProjectOps(deps: ProjectOpsDeps) {
   }
 
   /** New Tab: in a project, on its host in its folder; with no project, in the home directory. */
-  async function newTab(conn: HostConn, session: string) {
+  async function newTab(conn: HostConn, session: string, command?: string[]) {
     if (!conn.v2) return deps.plainWindow(conn, session);
     const s = conn.sessions.get(session);
     const cwd = s?.project?.dir || undefined;
@@ -158,7 +158,7 @@ export function createProjectOps(deps: ProjectOpsDeps) {
     try {
       // The folder is checked first: a host's gateway may start the shell elsewhere when it is gone.
       if (cwd && conn.listsDirs && (await conn.dirList(cwd)).code) return folderGone(conn, s, cwd);
-      const id = await conn.newWindow(session, cwd);
+      const id = await conn.newWindow(session, cwd, command);
       if (id) deps.want(since, { host: conn.host.id, session, window: id });
       await conn.refresh(session);
       deps.showWanted();
@@ -288,7 +288,23 @@ export function createProjectOps(deps: ProjectOpsDeps) {
     deps.redraw();
   }
 
-  return { store, views, spaces, space, label, newProject, newProjectOn, newTab, moveTab, renameProject, moveProjectToSpace, newSpace, renameSpace, deleteSpace, flush, isLive };
+  /** Sets a project's pinned quick launchers; null resets to all detected CLIs. */
+  async function setProjectLaunchers(conn: HostConn, session: string, launchers: string[] | null) {
+    const s = conn.sessions.get(session);
+    if (!s?.project) return;
+    const was = s.project.launchers;
+    s.project = { ...s.project, launchers: launchers === null ? undefined : launchers };
+    deps.redraw();
+    try {
+      await conn.projectUpdate(session, { launchers });
+    } catch (e) {
+      if (s.project) s.project = { ...s.project, launchers: was };
+      deps.status(() => t("statusMoveProjectFailed", { error: describe(e) }));
+      deps.redraw();
+    }
+  }
+
+  return { store, views, spaces, space, label, newProject, newProjectOn, newTab, moveTab, renameProject, moveProjectToSpace, setProjectLaunchers, newSpace, renameSpace, deleteSpace, flush, isLive };
 }
 
 export type ProjectOps = ReturnType<typeof createProjectOps>;

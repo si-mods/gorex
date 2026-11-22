@@ -71,6 +71,10 @@ type Workspace struct {
 	Dir string `json:"dir,omitempty"`
 	// Used is when a tab of the project last took input or was made.
 	Used time.Time `json:"used,omitzero"`
+	// Launchers are the pinned agent CLI IDs shown in this project's quick
+	// launcher bar (docs/MOD-010-agent-launchers.md). nil means all detected
+	// agent CLIs; a non-nil empty slice means none (plain New Tab).
+	Launchers *[]string `json:"launchers,omitempty"`
 	Layout
 }
 

@@ -135,7 +135,7 @@ export function programName(fg: any): string | undefined {
 const hex = (n: number) => "#" + n.toString(16).padStart(6, "0");
 
 /** The glyph's mask: icons are SVGs of assets/icons, brand marks of assets/brands. */
-function glyphUrl(g: string): string {
+export function glyphUrl(g: string): string {
   return g.startsWith("brand:") ? `brands/${g.slice(6)}.svg` : `icons/${g}.svg`;
 }
 
