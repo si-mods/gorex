@@ -362,7 +362,10 @@ func TestFloatMorphs(t *testing.T) {
 			// label, shows in the first frame against where it rests.
 			step := func(what, label string, change func() bool) {
 				t.Helper()
-				c, r := p.term.Size()
+				// settle runs the test's clock, not the wall clock the
+				// session's resize settles by: the terminal takes the
+				// size it rests at after that.
+				c, r := waitTermSize(t, tt, p)
 				start := [2]int{c, r}
 				if !change() {
 					t.Fatalf("%s: nothing changed", what)
