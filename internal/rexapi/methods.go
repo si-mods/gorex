@@ -272,6 +272,11 @@ func (c *control) hearsOf(sid string) bool {
 	return all || c.rec.attachedTo(sid)
 }
 
+// RexVersion is the version string server.version reports: the app's,
+// which main sets from mygo's; a build outside a bundle keeps the
+// placeholder.
+var RexVersion = "0.0.0-gorex"
+
 // versionResult is server.version's result.
 type versionResult struct {
 	RexVersion     string  `json:"rex_version"`
@@ -300,7 +305,7 @@ func methodServerVersion(*control, args) (any, *apiError) {
 			}
 		}
 	}
-	return versionResult{RexVersion: "0.0.0-gorex", Platform: platform(), Commit: commit, BuiltAt: &builtAt, Dirty: dirty, APIRevision: apiRevision}, nil
+	return versionResult{RexVersion: RexVersion, Platform: platform(), Commit: commit, BuiltAt: &builtAt, Dirty: dirty, APIRevision: apiRevision}, nil
 }
 
 // statusResult is server.status's result.
