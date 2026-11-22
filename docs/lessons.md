@@ -134,6 +134,11 @@ Each item has a **Trigger** (what the diff shows), a **Check** (what the author 
 - **Check:** each condition in the guard is needed by every output it skips. A test covers the case where one output has its own source and another uses the fallback, for example a named tab with a live session.
 - **Source:** #793 made `savedTabFace` skip the session for a tab with a name, so a named tab lost its program's icon; #810 split the name from the icon.
 
+### User-facing text outside the catalogs
+- **Trigger:** a diff adds a user-facing string on any surface.
+- **Check:** the string is in that surface's catalog — `ios/GoRex/Localizable.xcstrings`, `locales/*.json` (then `go tool mygo generate`) or `web/locales/*.json` (then `node web/i18n.mjs`) — not a literal. iOS `String(localized:)` and `LocalizedStringKey` fall back to the key, so the app builds and looks right in English while every other locale shows English too.
+- **Source:** #975 shipped the agent launchers' labels raw; a Chinese sidebar read "Quick Launchers" while everything around it was translated.
+
 ## Style
 
 ### Style or size change

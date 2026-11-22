@@ -581,7 +581,7 @@ func (a *App) projectMenu(m *ui.Menu, w *Workspace) {
 		}
 	})
 	if agents := a.agentsOf(w.host); len(agents) > 0 {
-		m.Submenu("Quick Launchers", func(sm *ui.Menu) { a.projectLaunchersMenu(sm, w, agents) })
+		m.Submenu(locales.ProjectQuickLaunchers(), func(sm *ui.Menu) { a.projectLaunchersMenu(sm, w, agents) })
 	}
 	if w.host == nil && m.Item(cmdRevealFolder.Title()).Chosen() {
 		a.revealProject(w)
@@ -727,7 +727,7 @@ func (a *App) projectLaunchersMenu(m *ui.Menu, w *Workspace, agents []rex.AgentI
 	}
 	if w.Launchers != nil {
 		m.Separator()
-		if m.Item("Show All Installed").Chosen() {
+		if m.Item(locales.ProjectLaunchersShowAll()).Chosen() {
 			a.laterService(func() { a.setProjectLaunchers(w, nil) })
 		}
 	}
@@ -746,7 +746,7 @@ func (a *App) projectAgentMenu(c *ui.Context, m *ui.Menu, w *Workspace, agents [
 		}
 	}
 	m.Separator()
-	m.Submenu("Quick Launchers", func(sm *ui.Menu) { a.projectLaunchersMenu(sm, w, agents) })
+	m.Submenu(locales.ProjectQuickLaunchers(), func(sm *ui.Menu) { a.projectLaunchersMenu(sm, w, agents) })
 }
 
 // projectNewTabRow is the New Tab row under an open project's tabs, on a
@@ -797,7 +797,7 @@ func (a *App) projectNewTabRow(c *ui.Context, k *colors, w *Workspace, agents []
 					a.later(c, func() { a.newTabInWithCommand(w, agent.Command) })
 				}
 			}
-			more := iconButton(c, k, "chevron-down", "Quick Launchers", 20, 11).Tooltip("Quick Launchers")
+			more := iconButton(c, k, "chevron-down", locales.ProjectQuickLaunchers(), 20, 11).Tooltip(locales.ProjectQuickLaunchers())
 			more.Menu(func(m *ui.Menu) { a.projectAgentMenu(c, m, w, agents) })
 		})
 	})

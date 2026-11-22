@@ -7786,6 +7786,22 @@ func (msgs Messages) HostRename() string {
 	return Catalog.Format(msgs.locale, "hostRename", nil)
 }
 
+// ProjectLaunchersShowAll says "Show All Installed"
+// in the language the app shows.
+//
+// Quick Launchers submenu: clear the project's pin list so every detected
+// agent CLI is pinned again.
+func ProjectLaunchersShowAll() string { return In(i18n.Locale()).ProjectLaunchersShowAll() }
+
+// ProjectLaunchersShowAll says "Show All Installed"
+// in the language of msgs.
+//
+// Quick Launchers submenu: clear the project's pin list so every detected
+// agent CLI is pinned again.
+func (msgs Messages) ProjectLaunchersShowAll() string {
+	return Catalog.Format(msgs.locale, "projectLaunchersShowAll", nil)
+}
+
 // ProjectCloseAsk says "Close Project…"
 // in the language the app shows.
 //
@@ -7812,6 +7828,22 @@ func ProjectMoveToSpace() string { return In(i18n.Locale()).ProjectMoveToSpace()
 // Project menu: submenu of the spaces the project moves to.
 func (msgs Messages) ProjectMoveToSpace() string {
 	return Catalog.Format(msgs.locale, "projectMoveToSpace", nil)
+}
+
+// ProjectQuickLaunchers says "Quick Launchers"
+// in the language the app shows.
+//
+// Project menu and the New Tab row's chevron: the submenu of agent CLIs the
+// project pins for quick launch.
+func ProjectQuickLaunchers() string { return In(i18n.Locale()).ProjectQuickLaunchers() }
+
+// ProjectQuickLaunchers says "Quick Launchers"
+// in the language of msgs.
+//
+// Project menu and the New Tab row's chevron: the submenu of agent CLIs the
+// project pins for quick launch.
+func (msgs Messages) ProjectQuickLaunchers() string {
+	return Catalog.Format(msgs.locale, "projectQuickLaunchers", nil)
 }
 
 // ProjectSheetTitleOn says "New Project on {host}"

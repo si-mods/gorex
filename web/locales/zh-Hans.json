@@ -541,6 +541,8 @@
   "projectsOlder": "更早",
   "projectNoProjectName": "无项目",
   "projectNewTabNoProject": "新建无项目标签页",
+  "projectLaunchersShowAll": "显示全部已安装",
+  "projectQuickLaunchers": "快捷启动",
   "projectsEmpty": "此空间中没有项目。",
   "projectMoveSpace": "移到空间",
   "projectExistsTitle": "“{name}”已是项目",
