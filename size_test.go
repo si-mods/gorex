@@ -88,6 +88,42 @@ func TestPaneKeepsItsSizeAsTheAuthority(t *testing.T) {
 	waitSessionSize(t, tt, a.client, p.SID, fmt.Sprintf("%dx%d", cols, rows))
 }
 
+// TestPaneTakesItsSizeOnceSettled: the pane's terminal keeps the
+// session's size for the settle after the view asked for another, so
+// that what the program prints meanwhile, drawn for the size the
+// session still has, lays out at it. A terminal ahead of the session
+// wraps it at a width the program did not draw for, and the scrollback
+// that leaves is not the one a resync replays.
+func TestPaneTakesItsSizeOnceSettled(t *testing.T) {
+	old := sizeSettle
+	sizeSettle = 400 * time.Millisecond
+	t.Cleanup(func() { sizeSettle = old })
+	a, tt := newTestApp(t)
+	tt.Frame()
+	p := a.tab().Focus
+	if p == nil || p.term == nil {
+		t.Fatal("no pane")
+	}
+	waitFor(t, tt, "the pane's stream", func() bool {
+		return p.stream != nil && p.stream.ClientID() != ""
+	})
+	refresh(a)
+	tt.Frame()
+	beforeC, _ := p.term.Size()
+	tt.SetSize(700, 500)
+	tt.Frame()
+	if cols, _ := p.term.Size(); cols != beforeC {
+		t.Fatalf("the terminal took the asked size before the session could")
+	}
+	waitFor(t, tt, "the pane to take its size once it settled", func() bool {
+		cols, _ := p.term.Size()
+		askedCols, _ := p.askedSize()
+		return cols == askedCols
+	})
+	cols, rows := p.term.Size()
+	waitSessionSize(t, tt, a.client, p.SID, fmt.Sprintf("%dx%d", cols, rows))
+}
+
 // TestPaneReturnsToItsSize: the pane takes the session's size back once
 // its own stream is the authority again, which typing there makes it.
 func TestPaneReturnsToItsSize(t *testing.T) {

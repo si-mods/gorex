@@ -104,6 +104,9 @@ func settle(tt *ui.Tester) {
 func TestTerminalHoldsSizeWhileMoving(t *testing.T) {
 	old := prefs
 	t.Cleanup(func() { prefs = old })
+	oldSettle := sizeSettle
+	sizeSettle = 0
+	t.Cleanup(func() { sizeSettle = oldSettle })
 	for _, tc := range []struct{ name, style string }{
 		{"snappy", ""},
 		{"natural", "natural"},
@@ -225,6 +228,9 @@ func TestTerminalHoldsSizeWhileMoving(t *testing.T) {
 func TestDividerDragHoldsTerminals(t *testing.T) {
 	old := prefs
 	t.Cleanup(func() { prefs = old })
+	oldSettle := sizeSettle
+	sizeSettle = 0
+	t.Cleanup(func() { sizeSettle = oldSettle })
 	for _, st := range styles {
 		t.Run(st.name, func(t *testing.T) {
 			prefs = settings{Animation: st.style}

@@ -142,18 +142,29 @@ type Pane struct {
 	// has to be mended from too.
 	followed bool
 	// held counts the frames in which the pane's terminal may still take
-	// the size a divider drag gave it: it takes that size once the hold
-	// ends, before the session does, so what the program prints in
-	// between lays out at a size the session did not draw for, which the
-	// session's screen mends. A hold that ends at the size it began takes
-	// no size, and asks for no screen.
+	// the size a divider drag gave it: the take mends its screen (held's
+	// resyncPane), which output on the way as the session resized may
+	// have laid out at a size the program did not draw for. A hold that
+	// ends at the size it began takes no size, and asks for no screen.
 	held int
+	// waitCols and waitRows are the size the pane's view last asked the
+	// session for while its terminal still waits for it (sizeWait),
+	// waitAt is when the pane asked for it, waitMend tells that a
+	// divider drag's hold ended inside the wait, whose screen the take
+	// mends then (held), and waitTimer pokes a frame when the wait ends.
+	waitCols, waitRows int
+	waitAt             time.Time
+	waitMend           bool
+	waitTimer          *time.Timer
 }
 
 // end lets the pane go from its window: its terminal closes. Its
 // transfers go on, as its session does, moved or detached.
 func (p *Pane) end() {
 	p.closed = true
+	if p.waitTimer != nil {
+		p.waitTimer.Stop()
+	}
 	if p.term != nil {
 		p.term.Close()
 	}
@@ -774,13 +785,54 @@ func (a *App) syncSize(p *Pane) {
 	}
 	if c, r := p.term.Size(); c == cols && r == rows {
 		p.followed = theirs
+		p.waitCols, p.waitRows, p.waitMend = 0, 0, false
+		return
+	}
+	if !theirs && a.sizeWait(p, cols, rows) {
 		return
 	}
 	p.term.Resize(cols, rows)
-	if theirs || p.followed || p.held > 0 {
+	mend := p.waitMend
+	p.waitCols, p.waitRows, p.waitMend = 0, 0, false
+	if theirs || p.followed || p.held > 0 || mend {
 		a.resyncPane(p, cols, rows)
 	}
 	p.followed, p.held = theirs, 0
+}
+
+// sizeSettle is how long a pane's terminal waits past the last size its
+// view asked for before it takes it (sizeWait): the session takes the
+// size once it held that long (resizeSettle).
+var sizeSettle = rex.ResizeSettle()
+
+// sizeWait tells whether the pane's terminal waits for the session to
+// take the size its view asked for. A size the session has settles
+// first: the terminal, taking the new one then, lays each byte out at
+// the size the program drew it for, while one ahead of the session
+// wraps at a width the program did not draw for, and what the reflow
+// made of that stays in its scrollback, which a resync's replay of the
+// session mends only on the screen. A size the session already shows,
+// as an explicit size taken at once (unlockSize), waits for nothing.
+func (a *App) sizeWait(p *Pane, cols, rows int) bool {
+	if p.waitCols != cols || p.waitRows != rows {
+		p.waitCols, p.waitRows, p.waitAt = cols, rows, time.Now()
+		p.waitMend = false
+	}
+	p.waitMend = p.waitMend || p.held > 0
+	if p.info.Cols == cols && p.info.Rows == rows {
+		return false
+	}
+	d := time.Until(p.waitAt.Add(sizeSettle))
+	if d <= 0 {
+		return false
+	}
+	if p.waitTimer == nil {
+		update := a.updater()
+		p.waitTimer = time.AfterFunc(d, func() {
+			update(func() { p.waitTimer = nil })
+		})
+	}
+	return true
 }
 
 // holdGrace is how many frames a pane's terminal may take to follow the
