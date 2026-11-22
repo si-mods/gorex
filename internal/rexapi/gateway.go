@@ -10,6 +10,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"gorex/internal/push"
 	"gorex/internal/rex"
 )
 
@@ -47,6 +48,9 @@ var (
 	// change, a second more than the server waits for the app: the
 	// app's answer comes once it saved the layout.
 	commandWait = rex.CommandTimeout + time.Second
+	// pushRelayURL is the push relay the host sends Live Activity
+	// updates through (docs/NET-003-push-relay.md); "" pushes none.
+	pushRelayURL = "https://relay.gorex.uk"
 	// ticketWait is how long a data connection ticket works.
 	ticketWait = 60 * time.Second
 	// resumeBytes is how many stream bytes a waiting data stream keeps
@@ -216,6 +220,10 @@ type Gateway struct {
 	relays    map[string]*relay
 	relayTTL  time.Duration
 	relayIdle time.Duration
+	// push sends Live Activity updates to registered devices through the
+	// push relay (internal/push): gorex.push.register binds a connection,
+	// watchBlocks tells it of a block's changes, dropControl of an end.
+	push *push.Sender
 	// canLock tells whether the server keeps the gateway's connection
 	// alive, which the size locks need.
 	canLock bool
@@ -273,6 +281,7 @@ func New(opt Options) (*Gateway, error) {
 		downloads:      map[string]*download{},
 		byteDownloads:  map[string]*download{},
 		tunnels:        map[string]*tunnelBlock{},
+		push:           push.NewSender(pushRelayURL, rex.Dir(), logf),
 		canLock:        hello.Keepalive > 0 && hello.Conn != "",
 		done:           make(chan struct{}),
 		changed:        make(chan struct{}),
@@ -775,6 +784,9 @@ func (g *Gateway) dropControl(c *control, clean bool) {
 	g.mu.Lock()
 	delete(g.conns, c)
 	g.mu.Unlock()
+	if g.push != nil {
+		g.push.Detached(c)
+	}
 	g.dropDownloads(c)
 	rec := c.rec
 	if rec == nil {

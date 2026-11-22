@@ -120,6 +120,9 @@ func (g *Gateway) features() []string {
 	if g.hello.Can(rex.CapabilityProjects) {
 		features = append(features, featureProjects)
 	}
+	if g.hello.Can(rex.CapabilityPush) {
+		features = append(features, featurePush)
+	}
 	return features
 }
 

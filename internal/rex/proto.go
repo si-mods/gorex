@@ -68,6 +68,9 @@ import (
 // or failing with "folder_missing", and CreateOptions.DirStrict. Still
 // within 3, the capability "projects.v2": a host keeps its projects, a
 // folder each, and its tabs with no project (CapabilityProjects).
+// Still within 3, the capability "gorex.push": the gateway pushes Live
+// Activity updates through the push relay (CapabilityPush,
+// docs/NET-003-push-relay.md).
 const ProtocolVersion = 3
 
 // CapabilityShutdownRestart is what a server that stops to be replaced — one
@@ -154,7 +157,7 @@ const FolderMissing = "folder_missing"
 
 // capabilities are what a version 3 server does beyond version 2. A
 // client reads them from Hello and falls back when one is absent.
-var capabilities = []string{"layout.revision", "events.revision", CapabilityShutdownRestart, CapabilityShutdownIfIdle, CapabilitySnapshotGhostty, CapabilityInputEvents, CapabilityTerminalQuery, CapabilityFileTransfer, CapabilityFileTemp, CapabilityTeleport, CapabilityLayoutServer, CapabilityTabToSpace, CapabilityStatusSeen, CapabilityDirList, CapabilityAgents, CapabilitySpaceHome, CapabilityProjects, CapabilitySpacesDelete, CapabilityPrompts}
+var capabilities = []string{"layout.revision", "events.revision", CapabilityShutdownRestart, CapabilityShutdownIfIdle, CapabilitySnapshotGhostty, CapabilityInputEvents, CapabilityTerminalQuery, CapabilityFileTransfer, CapabilityFileTemp, CapabilityTeleport, CapabilityLayoutServer, CapabilityTabToSpace, CapabilityStatusSeen, CapabilityDirList, CapabilityAgents, CapabilitySpaceHome, CapabilityProjects, CapabilitySpacesDelete, CapabilityPrompts, CapabilityPush}
 
 // Request is a line of the control connection, from the client.
 type Request struct {
