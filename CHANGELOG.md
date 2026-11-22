@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.49.1
+
+### Bug Fixes
+
+* **desktop:** drop the tab count from a project's row ([#985](https://github.com/si-mods/gorex/pull/985))
+* **web:** drop the tab count from a project's row ([#987](https://github.com/si-mods/gorex/pull/987))
+
 ## 0.49.0
 
 ### Features
