@@ -122,6 +122,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - Leaving the app while a terminal runs: its drawing now stops completely before the app suspends, so a graphics-related quit in the background cannot happen.
 - Locking the phone while a terminal runs: its drawing now stops for the lock screen's snapshot too. Pulling down Control Center only freezes it for a moment, then it resumes behind the panel.
 - The space panel now grows out of the space button at the top, and the space you pick slides back into it; with Reduce Motion on it only fades.
+- A computer with no project in the space you picked no longer shows a note under its name; the + beside it still makes one from a folder.
 
 ## zh-Hans
 - 从其他 App 返回，或手机网络/VPN 变化后，终端现在会续上原来的连接，不再为一阵可容忍的断线重新加载画面。
@@ -236,3 +237,4 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - 终端运行中离开应用：它的绘制现在会在应用挂起前彻底停下，不再可能在后台因图形问题被关掉。
 - 终端运行中锁屏：绘制现在也会为锁屏快照停下。下拉控制中心只停一瞬，面板还开着时就恢复绘制。
 - 顶部的空间面板现在从空间按钮本身展开，选中的空间会滑回按钮里；开启「减弱动态效果」时只淡入淡出。
+- 所选空间里没有项目的电脑，名称下不再显示说明文字；用旁边的 + 仍可从文件夹新建项目。

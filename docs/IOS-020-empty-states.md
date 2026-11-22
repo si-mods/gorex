@@ -55,6 +55,8 @@ The title always names the state in the app's voice: terse, sentence case, for e
 | Pair sheets | Pairing failed | `Couldn't pair. Try again on both devices.` |
 | Host section, offline | The host cannot connect | `Offline`, then `Couldn't reach it. Trying again.` |
 
+The host section in a space with no projects is the one exception: it shows its header and the `+` alone, with no line. The empty area is the host's own content, and the `+` beside it names the way to fill it.
+
 ### Failed loads
 
 The view maps the error at the display site, not in the model. The model keeps the raw error for diagnostics. A URL error or a `RexError` of a call that never reached the server (`offline`, `timeout`, `closed`) reads as `Couldn't reach …`. A load that offers a retry puts a `Try again` button in the state.

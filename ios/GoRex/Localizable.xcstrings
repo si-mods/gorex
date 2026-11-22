@@ -4680,16 +4680,6 @@
         }
       }
     },
-    "No projects in %@. Tap + to make one from a folder.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "「%@」里没有项目。轻点 + 用一个文件夹新建项目。"
-          }
-        }
-      }
-    },
     "Notifications that programs send with OSC 9 or OSC 777 show as the system's, grouped by tab.": {
       "localizations": {
         "zh-Hans": {
