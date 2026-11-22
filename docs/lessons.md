@@ -109,6 +109,11 @@ Each item has a **Trigger** (what the diff shows), a **Check** (what the author 
 - **Check:** every consumer is listed, and all are fixed in this PR with one policy.
 - **Source:** the lost terminal stream took #641, #654 and #663 in two days because #641 fixed local panes only.
 
+### A deliberate reconnect is a drop, not a close
+- **Trigger:** the diff closes a connection it means to reopen at once (reconnect, resume, network change).
+- **Check:** the close carries no close frame. A clean close tells the server the client is gone: it ends the client, its streams and its tickets at once, which is what the reconnect needs kept. Only a bare drop keeps them for the reconnect grace.
+- **Source:** iOS `Host.resume()` sent a normal closure on every reconnect, so each return to the foreground raced every terminal's RESUME against `cleanupClient`; the loser got `data connection refused (0x01)` and started over with a ticket and a snapshot.
+
 ### Value reset after a round trip
 - **Trigger:** the diff clears or resets a field (revision, counter, pending flag) after a call that reads or writes remote state.
 - **Check:** the reset compares with the value read before the call and applies only if it did not change. What arrived during the call is kept.

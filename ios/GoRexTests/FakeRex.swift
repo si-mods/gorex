@@ -23,6 +23,12 @@ import XCTest
     /// The reconnect token of each hello, in order; each welcome gives
     /// "t" and its connection's number.
     private(set) var tokens: [String?] = []
+    /// How each connection that ended went, in order: true when a close
+    /// frame came first (what a server counts as "clean"), false for a
+    /// bare drop, which keeps the client for a reconnect.
+    private(set) var ends: [Bool] = []
+    /// The connections a close frame reached.
+    private var clean = Set<ObjectIdentifier>()
 
     private let listener: NWListener
     private var seq = 0
@@ -100,9 +106,16 @@ import XCTest
     }
 
     private func receive(_ c: NWConnection, first: Bool) {
-        c.receiveMessage { [weak self] content, _, _, error in
+        c.receiveMessage { [weak self] content, context, _, error in
             MainActor.assumeIsolated {
-                guard let self, error == nil, let content else { return }
+                guard let self else { return }
+                if (context?.protocolMetadata(definition: NWProtocolWebSocket.definition) as? NWProtocolWebSocket.Metadata)?.opcode == .close {
+                    self.clean.insert(ObjectIdentifier(c))
+                }
+                guard error == nil, let content else {
+                    self.ends.append(self.clean.contains(ObjectIdentifier(c)))
+                    return
+                }
                 if first, content.first == 0x01 || content.first == 0x02 {
                     self.data(c, content)
                     return

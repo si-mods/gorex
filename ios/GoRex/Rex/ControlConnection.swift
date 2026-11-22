@@ -83,6 +83,9 @@ final class ControlConnection {
     private(set) var clientID = ""
     private(set) var reconnectToken: String?
     private(set) var apiRevision = revision
+    /// The close code and reason the other end's close frame carried, if
+    /// any, as a log line shows them ("code 1001: data provider canceled").
+    private(set) var peerClose: String?
     /// The optional behaviors the server lists in its welcome.
     private(set) var features: Set<String> = []
     /// The version the welcome gives a feature, as gorex.projects's 2
@@ -235,6 +238,14 @@ final class ControlConnection {
         finish(error)
     }
 
+    /// Ends the connection as a dead path does, with no close frame: the
+    /// server keeps the client for a reconnect, where a close ends it
+    /// and the streams and tickets it keeps at once.
+    func drop() {
+        task.cancel()
+        finish(nil)
+    }
+
     private func receiveLoop() async {
         do {
             while true {
@@ -258,6 +269,10 @@ final class ControlConnection {
                 }
             }
         } catch {
+            if task.closeCode != .invalid {
+                let reason = task.closeReason.map { String(decoding: $0, as: UTF8.self) } ?? ""
+                peerClose = "code \(task.closeCode.rawValue)\(reason.isEmpty ? "" : ": \(reason)")"
+            }
             finish(error)
         }
     }

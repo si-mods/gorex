@@ -562,7 +562,9 @@ nonisolated final class HostTests: XCTestCase {
     }
 
     /// A resumed host connects anew though its connection looks open,
-    /// continuing its client; a reconnect starts a new one.
+    /// continuing its client; it drops the old connection without a
+    /// close frame, so the server keeps the client and its streams for
+    /// the reconnect. A reconnect and a stop close, ending the client.
     @MainActor func testResumeKeepsTheClient() async throws {
         let rex = try FakeRex()
         defer { rex.stop() }
@@ -573,9 +575,16 @@ nonisolated final class HostTests: XCTestCase {
         await until("online") { h.status == .online }
         h.resume()
         await until("resumed") { rex.controls.count == 2 && h.status == .online }
+        await until("the first connection ended") { rex.ends.count == 1 }
+        XCTAssertEqual(rex.ends, [false], "a resume drops, not closes: a close would end the client at once")
         h.reconnect()
         await until("reconnected") { rex.controls.count == 3 && h.status == .online }
+        await until("the second connection ended") { rex.ends.count == 2 }
+        XCTAssertEqual(rex.ends, [false, true], "a reconnect ends the client it leaves")
         XCTAssertEqual(rex.tokens, [nil, "t1", nil])
+        h.stop()
+        await until("stopped") { rex.ends.count == 3 }
+        XCTAssertEqual(rex.ends, [false, true, true])
     }
 
     /// A terminal opened as its host connects, as from a notification on a

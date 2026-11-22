@@ -122,7 +122,9 @@ struct GoRexApp: App {
                     if p == .background {
                         away = .now
                         // Any host's connection stays open a while, not only an open terminal's.
-                        if HostStore.needsGrace(store.hosts, terminal: TerminalLive.shared.host) {
+                        let grace = HostStore.needsGrace(store.hosts, terminal: TerminalLive.shared.host)
+                        ConnectionLog.note("app: background\(grace ? ", grace" : "")")
+                        if grace {
                             BackgroundGrace.shared.start()
                         } else {
                             // No grace: the terminal's work runs at once.
@@ -133,9 +135,17 @@ struct GoRexApp: App {
                         HotspotShare.shared.handleBackground()
                         WidgetPublisher.shared.flush()
                     }
+                    if p == .inactive {
+                        // Inactive counts as the foreground: a network
+                        // change while Control Center is down still acts.
+                        ConnectionLog.note("app: inactive")
+                    }
                     guard p == .active else { return }
                     // The grace kept the app running past away; back now, it ends.
-                    let suspended = HostStore.suspended(since: BackgroundGrace.shared.awake(since: away))
+                    let woke = BackgroundGrace.shared.awake(since: away)
+                    let suspended = HostStore.suspended(since: woke)
+                    let since = woke.map { " (\(Int(-$0.timeIntervalSinceNow)) s away)" } ?? ""
+                    ConnectionLog.note("app: active\(suspended ? since : "")")
                     BackgroundGrace.shared.cancel()
                     away = nil
                     HotspotShare.shared.handleForeground()

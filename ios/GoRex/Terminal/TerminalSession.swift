@@ -110,7 +110,7 @@ final class TerminalSession {
         self.block = block
         self.owns = owns
         gallery = host.isDemo ? nil : PaneGallery.of(host: host.id.uuidString, block: block)
-        data = DataConnection(base: host.config.url, auth: host.config.auth)
+        data = DataConnection(base: host.config.url, auth: host.config.auth, tag: block)
         // The demo has no host colors: it takes the chosen theme, else the
         // one the app starts with.
         let theme = host.isDemo
@@ -186,7 +186,7 @@ final class TerminalSession {
                 // started over since the last connect (Host.session).
                 let session = try host.session()
                 // What ends this generation closes the connection it opens.
-                let c = DataConnection(base: host.config.url, auth: host.config.auth)
+                let c = DataConnection(base: host.config.url, auth: host.config.auth, tag: block)
                 d = c
                 data = c
                 let feed = wire(c)
@@ -246,6 +246,7 @@ final class TerminalSession {
             } catch {
                 guard g == generation else { return }
                 log.info("resume failed, starting over: \(error.localizedDescription, privacy: .public)")
+                ConnectionLog.note("terminal \(block): resume failed: \(error.diagnosis), starting over")
                 retry(fresh: true)
             }
         }

@@ -558,7 +558,7 @@ final class Host: Identifiable {
         }
         c.onClose = { [weak self, weak c] error in
             guard let self, c === self.control else { return }
-            ConnectionLog.note("\(name): closed: \(error?.diagnosis ?? "by the app")")
+            ConnectionLog.note("\(name): closed: \(error?.diagnosis ?? "by the app")\(c?.peerClose.map { ", \($0)" } ?? "")")
             self.control = nil
             self.describes.cancelAll()
             self.pingMs = nil
@@ -596,7 +596,10 @@ final class Host: Identifiable {
             } catch {
                 // A dial through the proxy that fails may be a listener
                 // iOS took: the engine reads the proxy again at once.
-                if config.reach(tailnetOn: TailnetSettings.isOn) != .system { Self.proxyFailed() }
+                if config.reach(tailnetOn: TailnetSettings.isOn) != .system {
+                    ConnectionLog.note("\(name): dial through the proxy failed")
+                    Self.proxyFailed()
+                }
                 c.close(error)
             }
         }
@@ -620,13 +623,16 @@ final class Host: Identifiable {
     /// client end.
     func reconnect() {
         token = nil
-        resume()
+        control?.close()
+        connect()
     }
 
     /// Connects anew, continuing the client, as after a suspension: the
-    /// connection can look open while its path died.
+    /// connection can look open while its path died. It drops without a
+    /// close frame, so the server keeps the client, its streams and its
+    /// tickets for the reconnect; a close would end them at once.
     func resume() {
-        control?.close()
+        control?.drop()
         connect()
     }
 
@@ -1713,18 +1719,22 @@ final class HostStore {
         guard suspended else { return }
         let proxied = hosts.filter(forced)
         let kept = await resume()
-        proxied.filter { kept || $0.config.tailcat != nil }.forEach { $0.resume() }
+        proxied.filter { kept || $0.config.tailcat != nil }.forEach {
+            $0.resume()
+            ConnectionLog.note("\($0.config.name): resumed after a suspension")
+        }
     }
 
     /// The phone changed network (NetworkPath). Unless in the background
-    /// (inactive counts as the foreground), each host with a control
-    /// connection connects anew, whatever its reach, as the connection can
-    /// look open while its path died; so does one waiting in its retry
-    /// backoff, which dials now rather than after up to ten seconds. Unlike
-    /// foreground, it leaves the engine be: the engine hears the change
-    /// itself, and a host behind it that comes too early tries again
-    /// (scheduleRetry). In the background, nothing: coming back to the
-    /// foreground sees to it.
+    /// (inactive counts as the foreground), each host the system's way
+    /// reaches connects anew, as its connection can look open while its
+    /// path died; so does one waiting in its retry backoff, which dials
+    /// now rather than after up to ten seconds. A host behind the engine
+    /// is left to it: its connection rides the proxy's loopback, which a
+    /// change of the phone's path cannot strand, and the engine hears the
+    /// change itself (scheduleRetry retries one that comes too early).
+    /// In the background, nothing: coming back to the foreground sees to
+    /// it.
     func networkChanged(inBackground: Bool) {
         for h in Self.resumedOnNetworkChange(hosts, inBackground: inBackground) {
             h.resume()
@@ -1733,10 +1743,13 @@ final class HostStore {
     }
 
     /// The hosts a change of network resumes: out of the background, the
-    /// real ones with a control connection or waiting to retry; in the
-    /// background, none.
-    static func resumedOnNetworkChange(_ hosts: [Host], inBackground: Bool) -> [Host] {
-        inBackground ? [] : hosts.filter { !$0.isDemo && ($0.control != nil || $0.isRetrying) }
+    /// real ones on the system's way — whose connection rides the path
+    /// that changed, as a proxied one's does not — and those waiting to
+    /// retry; in the background, none.
+    static func resumedOnNetworkChange(_ hosts: [Host], inBackground: Bool, tailnetOn: Bool = TailnetSettings.isOn) -> [Host] {
+        inBackground ? [] : hosts.filter {
+            !$0.isDemo && ($0.isRetrying || ($0.control != nil && $0.config.reach(tailnetOn: tailnetOn) == .system))
+        }
     }
 
     /// A pull to refresh in the host list (docs/IOS-016-pull-refresh.md):
