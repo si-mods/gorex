@@ -65,7 +65,7 @@ Run `go test -count=1 ./...` and `go vet ./...`, plus `GOOS=windows go build ./.
 
 `debug.go`: when `GOREX_DEBUG=<dir>` is set, the app reads `<dir>/do` every 150 ms and runs each line, then deletes the file. **Read `debug.go` for the current verbs**; on `main` these are:
 
-- `shot [name.png]`: capture the main window's content (`Window.CapturePage`, no traffic lights). `sshot name.png` captures the settings window. A browser pane's page is a native web view under the content, which `shot` leaves as a hole: `webshot name.png` captures the focused browser pane's page itself.
+- `shot [name.png]`: capture the main window's content (`Window.CapturePage`, no traffic lights). `sshot name.png` captures the settings window. A browser pane's page is a native web view under the content, which `shot` leaves as a hole: `webshot name.png` captures the focused browser pane's page itself. The system's glass panes (`ui.SystemGlass`, an NSGlassEffectView beside the web view) also read as black holes in `shot`: shoot panels with the glass setting off (`"noGlass": true` in settings.json, which paints their flat colors) or with the real-window capture below.
 - `appearance light|dark|system`, `size W H`, `sleep 300ms`, `type text`, where `\r` is Enter and `\e` is Esc.
 - `tab N`, `focus N`, `name TEXT`, `zoom`, `close`.
 - `resume run|continue`: clicks Run Again or Continue on the focused pane's resume strip.
