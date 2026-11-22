@@ -1297,6 +1297,14 @@
   "@remoteMyKeyNote": {
     "description": "Note of that card."
   },
+  "remoteHostKey": "Host key",
+  "@remoteHostKey": {
+    "description": "Row title: the node public key of this machine's remote access, beside its address, which a relay operator's list names to let it on."
+  },
+  "remoteHostKeyNote": "The key remote access serves by. A relay that admits a list of keys, as the team's, wants it sent to its operator.",
+  "@remoteHostKeyNote": {
+    "description": "Note under the host key row: what the key is for, and that a relay with an allowlist wants it."
+  },
   "remoteShowDetails": "Show Details",
   "@remoteShowDetails": {
     "description": "Remote page: the disclosure at the bottom of the Devices card that shows this machine's address and key, as Rex's Show Details."
@@ -2059,13 +2067,13 @@
   "@remoteRelayPlaceholder": {
     "description": "Placeholder of the empty relay field: left empty, tailcat's own free relays are used."
   },
-  "remoteRelayNote": "A relay server of your own, by its host name, such as relay.example.com, in place of the default relays. The address names it, so changing it makes a new address; the keys stay.",
+  "remoteRelayNote": "A relay server of your own, by its host name, such as relay.example.com, or gorex for the team's relay, in place of the default relays. The address names it, so changing it makes a new address; the keys stay. The team's relay admits the keys on its operator's list: send it the host key.",
   "@remoteRelayNote": {
-    "description": "Hint under the relay field."
+    "description": "Hint under the relay field; gorex is the alias of the team's relay."
   },
-  "remoteRelayInvalid": "Enter a host name, such as relay.example.com, with :port when not 443: not an IP address, and no https://. Leave it empty for the default relays.",
+  "remoteRelayInvalid": "Enter a host name, such as relay.example.com, or gorex for the team's relay, with :port when not 443: not an IP address, and no https://. Leave it empty for the default relays.",
   "@remoteRelayInvalid": {
-    "description": "Error under the relay field when what was typed is not a host name or address with an optional port."
+    "description": "Error under the relay field when what was typed is not a host name or address with an optional port; gorex is the alias of the team's relay."
   },
   "remoteReachableTitle": "Reachable at",
   "@remoteReachableTitle": {

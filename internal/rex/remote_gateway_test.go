@@ -23,6 +23,8 @@ import (
 func TestNormalizeRelay(t *testing.T) {
 	for in, want := range map[string]string{
 		"":                          "",
+		"gorex":                     "derp.gorex.uk",
+		" gorex ":                   "derp.gorex.uk",
 		"  derp.example.com ":       "derp.example.com",
 		"derp.example.com:8443":     "derp.example.com:8443",
 		"localhost":                 "localhost",

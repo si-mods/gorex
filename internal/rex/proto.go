@@ -611,6 +611,10 @@ type RemoteStatus struct {
 	// Relay is the DERP relay of one's own the address names, "" for
 	// tailcat's.
 	Relay string `json:"relay,omitempty"`
+	// PublicKey is the host's node public key, which a relay operator's
+	// list names to let this machine on (docs/NET-004-public-relay.md);
+	// "" until remote access has keys.
+	PublicKey string `json:"publicKey,omitempty"`
 	// ReachableAt is the address where this machine is its own relay, ""
 	// while off; ReachableAddress, a secret as Address, the second tailcat
 	// address while its relay runs, and ReachableError why it does not.

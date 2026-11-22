@@ -116,7 +116,9 @@ func TestDevicesButtons(t *testing.T) {
 	a := &App{}
 	settingsUI.section = "server"
 	remoteUI.loaded, remoteUI.st, remoteUI.err = true, rex.RemoteStatus{Enabled: true}, nil
-	tt := ui.NewTester(a.settingsView, 780, 1400)
+	// The host key row adds to the details, so the window needs the
+	// height the row costs, or the add-by-key form's buttons leave it.
+	tt := ui.NewTester(a.settingsView, 780, 1600)
 	tt.Frame()
 	if err := tt.Click(locales.RemoteShowDetails()); err != nil {
 		t.Fatal(err)
@@ -289,6 +291,61 @@ func TestRemoteOff(t *testing.T) {
 	tt.Frame()
 	if tt.HasText(locales.RemoteMyKey()) {
 		t.Error("Hide Details did not hide them")
+	}
+}
+
+// TestRemoteHostKeyRow: with remote access on, the details show the
+// host's node key beside its address, its fingerprint and a Copy, for the
+// list a relay's operator keeps; off, the row is gone. The copy itself
+// runs mygo.Clipboard.Write, which needs the app: the headless tester
+// does not click it, as for the other copy buttons.
+func TestRemoteHostKeyRow(t *testing.T) {
+	isolateSettings(t, "")
+	registerFonts()
+	t.Cleanup(stopRemotePoll)
+	a := &App{}
+	settingsUI.section = "server"
+	remoteUI.loaded, remoteUI.err, remoteUI.details = true, nil, true
+	remoteUI.st = rex.RemoteStatus{Enabled: true, Running: true, PublicKey: testKey}
+	tt := ui.NewTester(a.settingsView, 780, 1600)
+	tt.Frame()
+	for _, s := range []string{locales.RemoteHostKey(), locales.RemoteFingerprint(rex.Fingerprint(testKey)),
+		testKey, locales.RemoteHostKeyNote(), locales.RemoteCopy()} {
+		if !tt.HasText(s) {
+			t.Errorf("no %q in %q", s, tt.Texts())
+		}
+	}
+	remoteUI.st.Enabled = false
+	tt.Frame()
+	if tt.HasText(locales.RemoteHostKey()) {
+		t.Error("the host key shows with remote access off")
+	}
+}
+
+// TestRemoteRelayAlias: the relay row takes gorex, the team's relay its
+// hint names: the save passes the field's check and asks the server,
+// which is not there in the test.
+func TestRemoteRelayAlias(t *testing.T) {
+	isolateSettings(t, "")
+	registerFonts()
+	t.Setenv("GOREX_DIR", t.TempDir())
+	t.Cleanup(stopRemotePoll)
+	a := &App{}
+	settingsUI.section = "server"
+	remoteUI.loaded, remoteUI.st, remoteUI.details = true, rex.RemoteStatus{Enabled: true}, true
+	remoteUI.relay, remoteUI.relayEdited, remoteUI.relayErr = "gorex", true, ""
+	tt := ui.NewTester(a.settingsView, 780, 1400)
+	tt.Frame()
+	if !strings.Contains(locales.RemoteRelayNote(), "gorex") {
+		t.Fatal("the relay hint does not name gorex")
+	}
+	title, _ := tt.Find(locales.RemoteRelay())
+	for x := float32(770); x > title.X+title.W && remoteUI.relayErr == ""; x -= 4 {
+		tt.ClickAt(x, title.Y+title.H/2)
+		tt.Frame()
+	}
+	if remoteUI.relayErr != locales.RemoteNotConnected() {
+		t.Errorf("gorex refused: %q, want the server's unreachable answer", remoteUI.relayErr)
 	}
 }
 
