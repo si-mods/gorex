@@ -820,10 +820,11 @@ struct HostSection: View {
 }
 
 /// A project's row: its folder tile in the column of the tabs' program
-/// tiles, its name, a chevron when it has tabs, and the number of them.
+/// tiles, its name, and a chevron when it has tabs.
 struct ProjectRow: View {
     let name: String
     let color: String?
+    /// The number of tabs: a project with none has no chevron to open it.
     let count: Int
     let open: Bool
     var busy = false
@@ -837,9 +838,8 @@ struct ProjectRow: View {
             Text(verbatim: name).font(.body.weight(.semibold)).lineLimit(1)
             Spacer(minLength: 8)
             if busy { ProgressView() }
-            // Before the count, always shown; a project with no tab has none.
+            // Always shown; a project with no tab has none.
             if count > 0 { Chevron(open: open) }
-            Text(verbatim: "\(count)").foregroundStyle(.secondary).monospacedDigit()
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 11)
