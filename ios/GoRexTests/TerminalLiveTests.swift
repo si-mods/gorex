@@ -144,6 +144,31 @@ nonisolated final class TerminalLiveTests: XCTestCase {
         XCTAssertEqual(s.line, "Allow edits?")
     }
 
+    /// The line the screen reads passes the same filter as a record's,
+    /// and a rule alone is none: on the card it draws lines of nothing.
+    @MainActor func testScreenLineShownFiltered() {
+        let d = FakeDriver(), w = Waits(), t = Tasks()
+        let clock = Date(timeIntervalSince1970: 1_800_000_000)
+        let l = live(d, w, t) { clock }
+        var records = [Host.ProgramStatus]()
+        var screen = "main \u{E0B2}"
+        l.show(source(state: { TerminalLive.state(title: "api", program: nil, records: records, seen: nil, connected: true) },
+                      lines: { done in done(screen) }), owner: UUID())
+        w.run()
+        XCTAssertEqual(l.sent?.line, "main", "the screen's line is filtered as a record's is")
+
+        // A box's edge caught mid-draw, or a separator a command printed.
+        screen = String(repeating: "─", count: 100)
+        l.outputChanged(); w.run(); w.run()
+        XCTAssertEqual(l.sent?.line, "", "a rule alone is no line")
+
+        // A message of rules is none either: the screen's line is there.
+        screen = "building it"
+        records = [.init(id: "a", state: "working", msg: "──────", updated: clock)]
+        l.outputChanged(); w.run(); w.run()
+        XCTAssertEqual(l.sent?.line, "building it")
+    }
+
     /// A screen's rows, and the cursor's row: the one marked with a "|".
     private static func screen(_ text: String) -> (rows: [String], cursor: Int?) {
         var rows = text.components(separatedBy: "\n"), cursor: Int?
@@ -935,6 +960,11 @@ nonisolated final class TerminalLiveTests: XCTestCase {
             ("filtered", short, TerminalLive.state(title: "\u{E0B0}api", program: "claude",
                 records: [.init(id: "f", state: "blocked", title: "\u{E0B1} Edit main.go?",
                                 msg: "\u{1B}[1mAllow\u{1B}[0m \u{E0B2}edits?")], seen: nil, connected: true)),
+            // A separator or a box's edge as the line: the state drops it
+            // (TerminalLive.state), and the card falls back to the title.
+            ("rule", short, .init(title: "api", program: "devin", record: nil,
+                                  line: String(repeating: "─", count: 80), connected: true)),
+            ("rule-dropped", short, .init(title: "api", program: "devin", record: nil, line: "", connected: true)),
         ]
         func write(_ v: some View, _ name: String) throws {
             let r = ImageRenderer(content: v)

@@ -89,6 +89,11 @@ Each item has a **Trigger** (what the diff shows), a **Check** (what the author 
 
 ## Fixes
 
+### A filter on some paths to the same place
+- **Trigger:** the diff filters or validates a value that reaches one destination by more than one path.
+- **Check:** every path to the destination gets the filter, or one choke point sees them all; a test drives each path.
+- **Source:** #956 filtered a record's message and title for the Live Activity but the line the screen reads (`readLine` → `TerminalLive.state(_:)`) reached it unfiltered; it also lets a rule line through, which the card draws as bare lines.
+
 ### Path shared by local panes, remote hosts and iOS
 - **Trigger:** the diff changes a path that local panes, remote hosts and iOS all use (stream, attach, resume, size, reconnect).
 - **Check:** every consumer is listed, and all are fixed in this PR with one policy.

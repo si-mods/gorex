@@ -153,7 +153,7 @@ nonisolated struct TerminalActivity: ActivityAttributes, Hashable, Sendable {
 
     /// A line of box-drawing characters and spaces only, such as a rule or
     /// a box's top or bottom.
-    private static func rule(_ s: String) -> Bool {
+    static func rule(_ s: String) -> Bool {
         s.contains { !$0.isWhitespace } && s.allSatisfy { $0.isWhitespace || boxChar($0) }
     }
 
