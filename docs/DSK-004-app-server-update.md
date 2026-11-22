@@ -3,7 +3,7 @@ name: DSK-004
 description: "An update moves the session server to the new build while the app windows stay open. Use when you change app updates or server upgrades."
 metadata:
   created: "2026-11-09"
-  updated: "2026-11-20"
+  updated: "2026-11-22"
 ---
 
 # DSK-004: Updating the server without restarting the app
@@ -65,6 +65,18 @@ On macOS the new executable has no stable path until the app exits. The staged b
 - `rex.ServerExecutable()` is the target of an in-place upgrade. `adopt` upgrades a server of another build to the copy of this build.
 - Not built: after the updater stages an update, the app copies the **staged** bundle to `Versions/<new build>/`. The app then upgrades the server to it before the app restarts (step 2). Today the app makes the copy at the next launch, from the installed app.
 - On Linux, `Install` replaces the file in place and the path stays the same. No copy is needed. The server upgrades to the same path.
+
+### CLI updates install in place (Linux)
+
+`gorex update` first required the per-user install of `install.sh`. It now
+replaces the files beside the executable wherever it runs from, when the
+user running the command can write that directory: `mygo.Updater.Install`
+targets the directory of the executable on Linux, and the server that runs
+from the same path takes the new build through the handoff of `gorex
+server upgrade`. The install path stays the same, so no versioned copy is
+needed, as with an app-initiated update. A build a dpkg package installed
+is updated by that package, and the command names the package before it
+installs.
 
 This step opened one question: a copy of `GoRex.app`, or a small helper bundle of its own as Rex has (`LSUIElement`, its own bundle id)? The answer is the copy. The copy keeps the bundle id and the Team ID of the app, and so keeps the privacy grants that the user gave the app. A new bundle id would ask for them again. A Dock icon is not a risk, because the server is a `launchd` job and not an app that LaunchServices opens.
 

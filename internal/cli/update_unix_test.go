@@ -103,3 +103,27 @@ func copyUpgradeBuild(from, to string) error {
 	}
 	return err
 }
+
+// An update replaces the files beside the executable, so the install must be
+// one the user can write; the user install of install.sh is not the only one.
+func TestCheckInstalledDir(t *testing.T) {
+	dir := t.TempDir()
+	exe := filepath.Join(dir, "gorex")
+	if err := os.WriteFile(exe, []byte("build"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := checkInstalledDir(exe); err != nil {
+		t.Fatalf("writable dir: %v", err)
+	}
+	if os.Geteuid() == 0 {
+		t.Skip("root writes a directory without its permission bits")
+	}
+	if err := os.Chmod(dir, 0o555); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Chmod(dir, 0o755) })
+	err := checkInstalledDir(exe)
+	if err == nil || !strings.Contains(err.Error(), dir) {
+		t.Fatalf("read-only dir: %v; want an error naming %s", err, dir)
+	}
+}

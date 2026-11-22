@@ -23,8 +23,9 @@ or download `gorex-setup-*-amd64.exe` / `gorex-setup-*-arm64.exe` from
 irm https://github.com/si-mods/gorex/releases/latest/download/install.ps1 | iex
 ```
 
-On Linux, the per-user install links `gorex` in `~/.local/bin`. Run
-`gorex update` to install a signed update and hand an active local session
+On Linux, `gorex update` installs a signed update where GoRex runs from,
+which the user running it must be able to write: the per-user install, or a
+system install such as one under `/opt`. It hands an active local session
 server over to the new version. After installing a newer build yourself,
 `gorex server upgrade` performs the handoff on macOS and Linux; it refuses
 a build whose modification time is not newer than the server's. On Windows

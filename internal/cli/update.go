@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 
 	"gorex/internal/rex"
 )
@@ -49,4 +50,17 @@ func upgradeServer(c *rex.Client, hello rex.Hello, exe string, out io.Writer) er
 	next.Close()
 	fmt.Fprintln(out, "upgraded in place; terminal sessions kept")
 	return nil
+}
+
+// checkInstalledDir reports why the GoRex at exe cannot update itself. An
+// update replaces the files next to the executable, so that directory must
+// be writable by the user running the command: the per-user install of
+// install.sh, or a system install that its owner updates.
+func checkInstalledDir(exe string) error {
+	dir := filepath.Dir(exe)
+	probe, err := os.MkdirTemp(dir, ".gorex-update-")
+	if err != nil {
+		return fmt.Errorf("cannot write to %s, where GoRex is installed; run gorex update as the user that installed it: %w", dir, err)
+	}
+	return os.Remove(probe)
 }
