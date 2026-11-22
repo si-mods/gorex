@@ -1054,57 +1054,76 @@ func TestMenuRevealStaggers(t *testing.T) {
 	for _, tc := range styles {
 		t.Run(tc.name, func(t *testing.T) {
 			prefs = settings{Animation: tc.style}
-			open := false
+			open, hit := false, false
 			tt := ui.NewTester(func(c *ui.Context) {
 				anchor := ui.Box(c.Key("anchor")).Size(80, 30).Margin(20).Background(ui.Hex("#888888"))
 				popoverBase(c, anchor, &open, func(panel ui.Element, entering bool) {
 					ui.Column(c).Children(func() {
-						menuReveal(c, ui.Box(c.Key("r0")).Height(20).Label("r0"), entering, 0)
-						menuReveal(c, ui.Box(c.Key("r3")).Height(20).Label("r3"), entering, 3)
+						menuReveal(c, ui.Box(c.Key("r0")).Size(60, 20).Background(ui.Hex("#ff0000")).Label("r0"), entering, 0)
+						b3 := ui.Box(c.Key("r3")).Size(60, 20).Background(ui.Hex("#0000ff")).Label("r3").Cursor(ui.CursorPointer)
+						if b3.Clicked() {
+							hit = true
+						}
+						menuReveal(c, b3, entering, 3)
 					})
 				})
 			}, 400, 300)
-			gap := func() float32 {
-				r0, _ := tt.Find("r0")
-				r3, _ := tt.Find("r3")
-				return r3.Y - r0.Y
+			at := func(r ui.Rect) bool {
+				// The pixel at the box's heart differs from the bare
+				// backdrop past its right edge once the box shows at all.
+				img := tt.Image()
+				cx, cy := int(r.X+r.W/2), int(r.Y+r.H/2)
+				return img.RGBAAt(cx, cy) != img.RGBAAt(int(r.X+r.W)+8, cy)
 			}
 			open = true
 			settle(tt)
-			rest := gap()
-			// Reopen, and watch the entrance: row 3 waits its steps while
-			// row 0 is on the way, so the gap between them narrows before
-			// they rest together.
+			// Reopen, and watch the entrance: row 3 fades in steps behind
+			// row 0, which the glass's opening leads.
 			open = false
 			settle(tt)
+			hit = false
 			open = true
 			tt.Frame()
+			tt.Advance(menuRows + menuStep)
 			tt.Frame()
-			tt.Advance(60 * time.Millisecond)
-			tt.Frame()
-			mid := gap()
-			settle(tt)
+			r0, _ := tt.Find("r0")
+			r3, _ := tt.Find("r3")
 			if tc.moves {
-				if d := rest - mid; d < 0.5 {
-					t.Errorf("the rows went together: mid gap %v, rest %v", mid, rest)
+				if at(r3) {
+					t.Errorf("r3 shows before its step at %v", tt.Now())
 				}
-				if g := gap(); g != rest {
-					t.Errorf("at rest the gap is %v, want %v", g, rest)
+				if !at(r0) {
+					t.Errorf("r0 still dark at %v", tt.Now())
 				}
-			} else if mid != rest {
-				t.Errorf("with animations off the gap moved: %v, rest %v", mid, rest)
+				// A part still dim takes no click.
+				tt.ClickAt(r3.X+r3.W/2, r3.Y+r3.H/2)
+				tt.Frame()
+				if hit {
+					t.Errorf("a dim row answered the click")
+				}
+			} else if !at(r3) {
+				t.Errorf("with animations off r3 is not there at once")
+			}
+			settle(tt)
+			if !at(r3) {
+				t.Errorf("r3 never came in")
+			}
+			tt.ClickAt(r3.X+r3.W/2, r3.Y+r3.H/2)
+			tt.Frame()
+			if !hit {
+				t.Errorf("a revealed row did not answer the click")
 			}
 		})
 	}
 }
 
-// TestSpaceMenuStaggers: the space picker's menu reveals its parts as it
-// opens: a row is away from its place on the first frame, home at rest;
-// with Off it is there at once.
+// TestSpaceMenuStaggers: the space picker's menu reveals its parts once
+// its glass is mostly open: the last is still dark where it stands on the
+// opening frames, home at rest; with Off it is there at once.
 func TestSpaceMenuStaggers(t *testing.T) {
 	old := prefs
 	t.Cleanup(func() { prefs = old })
-	edit := locales.SpaceEdit()
+	newRow := locales.SpaceNew()
 	for _, tc := range styles {
 		t.Run(tc.name, func(t *testing.T) {
 			a, tt := newTestApp(t)
@@ -1113,14 +1132,37 @@ func TestSpaceMenuStaggers(t *testing.T) {
 			settle(tt)
 			a.spaces.open = true
 			tt.Frame()
-			early, ok := tt.Find(edit)
-			if !ok {
-				t.Fatalf("no %q; texts %q", edit, tt.Texts())
+			tt.Advance(menuLead + 40*time.Millisecond)
+			tt.Frame()
+			inked := func() int {
+				r, ok := tt.Find(newRow)
+				if !ok {
+					return -1
+				}
+				img := tt.Image()
+				bg := img.RGBAAt(int(r.X)+2, int(r.Y+r.H/2))
+				n := 0
+				for x := int(r.X) + 10; x < int(r.X+r.W)-4; x++ {
+					for y := int(r.Y) + 2; y < int(r.Y+r.H)-2; y++ {
+						if img.RGBAAt(x, y) != bg {
+							n++
+						}
+					}
+				}
+				return n
 			}
+			mid := inked()
 			settle(tt)
-			rest, _ := tt.Find(edit)
-			if moving := early != rest; moving != tc.moves {
-				t.Errorf("%q at %v, at rest %v: moving %v, want %v", edit, early, rest, moving, tc.moves)
+			rest := inked()
+			if tc.moves {
+				if mid != 0 {
+					t.Errorf("the last row shows %d px before its step", mid)
+				}
+				if rest < 20 {
+					t.Errorf("at rest the last row shows %d px", rest)
+				}
+			} else if rest < 20 {
+				t.Errorf("with animations off the last row shows %d px", rest)
 			}
 		})
 	}

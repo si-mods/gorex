@@ -379,32 +379,117 @@ func (a *App) spacePicker(c *ui.Context, k *colors, wide bool) {
 		glyphIcon(c, "chevron-down", 13, k.textFaint).Shrink(0)
 	})
 	popoverBase(c, chip, &a.spaces.open, func(panel ui.Element, entering bool) {
-		menuStyleOf(k, c.Theme().Dark).Panel(panel.Margin(6, 0, 0, 0).Width(240), 0)
+		m := menuStyleOf(k, c.Theme().Dark)
+		m.Panel(panel.Margin(6, 0, 0, 0).Width(260), 0)
 		// The menu's parts come in one after another, a step apart.
 		i := 0
 		ui.Column(c).Children(func() {
+			menuReveal(c, a.spaceMenuHead(c, k), entering, i)
+			i++
 			for _, n := range a.st.spaceNames() {
-				menuReveal(c, a.menuRow(c, k, "space-"+n, n == name, spaceLabel(n), "", func(ink ui.Color, hot bool) {
-					dot := spaceSwatchMark(c, k, spaceColor(n), 10)
-					if hot {
-						// On the highlight a ring in its ink keeps the dot,
-						// whose color may be the highlight's, in sight.
-						dot.Border(1, ink)
-					}
-				}, func() { a.showSpaceNamed(n) }), entering, i)
+				menuReveal(c, a.spaceMenuRow(c, k, m, n, n == name), entering, i)
 				i++
 			}
 			menuReveal(c, ui.Box(c).Height(1).Margin(4, 6).Background(k.panelBorder), entering, i)
 			i++
-			menuReveal(c, a.menuRow(c, k, "space-new", false, locales.SpaceNew(), "", nil, func() {
-				a.spaces.dialog, a.spaces.name = "new", ""
-			}), entering, i)
-			i++
-			menuReveal(c, a.menuRow(c, k, "space-edit", false, locales.SpaceEdit(), "", nil, func() {
-				a.spaces.dialog, a.spaces.names = "edit", map[string]string{}
-			}), entering, i)
+			menuReveal(c, a.spaceMenuNew(c, k, m), entering, i)
 		})
 	})
+}
+
+// spaceMenuHead is the head of the space picker's menu: its title and
+// the Edit button that opens Edit Spaces…, as the iOS picker's panel
+// has them.
+func (a *App) spaceMenuHead(c *ui.Context, k *colors) ui.Element {
+	head := ui.Row(c.Key("space-head")).Height(28).Padding(0, 10).Gap(8).AlignItems(ui.Center)
+	head.Children(func() {
+		ui.Text(c, locales.SpacesTitle()).FontSize(fontFootnote).FontWeight(600).TextColor(k.textMuted).SingleLine()
+		ui.Box(c).Grow(1)
+		edit := ui.Row(c.Key("space-edit")).Radius(radiusS).Padding(2, 4, 2, 4).Cursor(ui.CursorPointer).
+			Role(ui.RoleButton).Label(locales.SpaceEdit())
+		if edit.Hovered() {
+			edit.Background(hoverFace(k))
+		}
+		if edit.Clicked() {
+			a.closeMenus()
+			a.later(c, func() { a.spaces.dialog, a.spaces.names = "edit", map[string]string{} })
+		}
+		edit.Children(func() {
+			ui.Text(c, locales.MenuEdit()).FontSize(fontBody).FontWeight(600).TextColor(k.accent).SingleLine()
+		})
+	})
+	return head
+}
+
+// spaceMenuRow is the menu's row of the space n: a swatch of its color,
+// its name above how many projects it has, and a check in its color when
+// it is the space shown, whose name is semibold and row washed in it
+// then. A click shows the space.
+func (a *App) spaceMenuRow(c *ui.Context, k *colors, m *ui.MenuStyle, n string, on bool) ui.Element {
+	row := ui.Row(c.Key("space-"+n)).Height(44).Padding(0, m.RowPadding).Gap(8).Radius(m.RowRadius).AlignItems(ui.Center).
+		Role(ui.RoleMenuItem).Label(spaceLabel(n)).AccessSelected(on).Cursor(ui.CursorPointer)
+	ink, muted := k.text, k.textMuted
+	tint := k.textMuted
+	if hex, ok := spaceColorHex(spaceColor(n)); ok {
+		tint = ui.Hex(hex)
+	}
+	hot := row.Hovered()
+	if hot {
+		row.Background(m.Highlight)
+		ink, muted = m.HighlightText, m.HighlightText
+	} else if on {
+		row.Background(tint.Alpha(0.12))
+	}
+	if row.Clicked() {
+		a.closeMenus()
+		a.later(c, func() { a.showSpaceNamed(n) })
+	}
+	row.Children(func() {
+		dot := spaceSwatchMark(c, k, spaceColor(n), 12)
+		if hot {
+			// On the highlight a ring in its ink keeps the dot, whose
+			// color may be the highlight's, in sight.
+			dot.Border(1, ink)
+		}
+		ui.Column(c).Grow(1).MinWidth(0).Children(func() {
+			weight := 400
+			if on {
+				weight = 600
+			}
+			ui.Text(c, spaceLabel(n)).FontSize(fontBody).FontWeight(weight).TextColor(ink).SingleLine().Ellipsis("…")
+			projs, _ := a.spaceProjects(n)
+			ui.Text(c, locales.SpaceProjects(projs)).FontSize(fontFootnote).TextColor(muted).SingleLine().Ellipsis("…")
+		})
+		if on {
+			mark := tint
+			if hot {
+				mark = ink
+			}
+			glyphIcon(c, "check", 14, mark).Shrink(0)
+		}
+	})
+	return row
+}
+
+// spaceMenuNew is the menu's last row, New Space…, in the accent with a
+// plus as the iOS picker shows it.
+func (a *App) spaceMenuNew(c *ui.Context, k *colors, m *ui.MenuStyle) ui.Element {
+	row := ui.Row(c.Key("space-new")).Height(m.RowHeight).Padding(0, m.RowPadding).Gap(8).Radius(m.RowRadius).AlignItems(ui.Center).
+		Role(ui.RoleMenuItem).Label(locales.SpaceNew()).Cursor(ui.CursorPointer)
+	ink := k.accent
+	if row.Hovered() {
+		row.Background(m.Highlight)
+		ink = m.HighlightText
+	}
+	if row.Clicked() {
+		a.closeMenus()
+		a.later(c, func() { a.spaces.dialog, a.spaces.name = "new", "" })
+	}
+	row.Children(func() {
+		ui.Box(c).Size(12, 12).Shrink(0).Children(func() { glyphIcon(c, "plus", 11, ink) })
+		ui.Text(c, locales.SpaceNew()).FontSize(fontBody).TextColor(ink).SingleLine().Ellipsis("…").Grow(1).MinWidth(0)
+	})
+	return row
 }
 
 // menuRow is a row of a popover menu of GoRex's own, the space picker's

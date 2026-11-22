@@ -322,6 +322,8 @@ slide. The timings below are for what a spring does not move.
 | `durExit` | 120 ms, ease in | A popover, a dialog or the palette going out |
 | `durExitMove` | 180 ms, ease in | What a spring brought in going out: a pane, a tab, a row, the banner, the tab left behind |
 | `durHover` | 120 ms, ease out | A color following the pointer (`hoverFade`) |
+| `menuLead` | 120 ms | When a menu's first part starts to fade in, once its panel's glass is mostly open (`menuReveal`) |
+| `menuRows` | 180 ms | When the rest of a menu's parts start to fade in (`menuReveal`) |
 | `menuStep` | 30 ms | A menu's parts coming in after one another while its panel opens (`menuReveal`) |
 
 - **Enter eases out, exit eases in, and the exit is the shorter.** Give
@@ -331,11 +333,13 @@ slide. The timings below are for what a spring does not move.
   and fades it in, around the corner of its anchor that it meets: the top
   where it opens below, the bottom where it opens above. It shrinks back
   to that corner as it closes. Use it in place of every `ui.PopoverBase`.
-- **A menu's parts come in one after another.** While its panel opens, a
-  menu's rows arrive a `menuStep` apart, each fading up into its place
+- **A menu's parts fade in one after another.** Once its panel's glass is
+  mostly open, a menu's first part fades in at `menuLead` and the rest a
+  `menuStep` apart from `menuRows`, each in its place, none moving
   (`menuReveal`, from `popoverBase`'s `entering`), rather than the one
-  block the panel's pose would show. Nothing is staggered under less
-  motion.
+  block the panel's pose would show — the iOS picker's entrance. Until a
+  part is in it takes no clicks, so a row still dim cannot answer the
+  touch meant for what it covers. Nothing is staggered under less motion.
 - **A dialog comes in as the palette does.** `dialogEnter` poses the panel
   from `paletteFrom` (6 up, 0.96, faded) and fades the backdrop; the
   palette calls `dialogMotion` with its own `paletteFresh`. Call it in every

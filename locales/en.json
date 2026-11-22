@@ -2761,6 +2761,19 @@
       "name": {}
     }
   },
+  "spacesTitle": "Spaces",
+  "@spacesTitle": {
+    "description": "Space picker: the menu's heading."
+  },
+  "spaceProjects": "{count, plural, =0 {No projects} one {# project} other {# projects}}",
+  "@spaceProjects": {
+    "description": "Space picker: a space row's count of its projects.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "projectsTabsOf": "Tabs of {name}",
   "@projectsTabsOf": {
     "description": "Sidebar: the chevron that shows or hides a project's tabs.",

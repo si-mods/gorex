@@ -62,26 +62,47 @@ type popoverRec struct {
 	key           string
 }
 
-// menuStep is how far a menu's parts come in after one another while its
-// panel opens: the iOS picker's panel staggers its rows the same way
-// (docs/MOD-002-projects.md).
-const menuStep = 30 * time.Millisecond
+// A menu's parts fade in where they stand once its panel's glass is
+// mostly open: the first at menuLead, the rest a menuStep apart from
+// menuRows on, the iOS picker's timings (docs/MOD-002-projects.md).
+const (
+	menuLead = 120 * time.Millisecond
+	menuRows = 180 * time.Millisecond
+	menuStep = 30 * time.Millisecond
+)
 
 // menuReveal is the entrance of a menu's part, the i'th of them: the
-// frame the panel opens it shows nothing, and on the way to its place it
-// fades up a step after the part before it, so the menu comes in as its
-// parts arriving rather than the one block the panel's own pose would
-// show. Nothing while the desktop asks for less motion, nor past the
-// opening frames: e then rests where the layout puts it.
+// frame the panel opens it shows nothing, and it fades in at its place a
+// step after the part before it, so the menu comes in as its parts
+// arriving rather than the one block the panel's own pose would show.
+// Until it is in it takes no clicks, so a row still dim cannot answer the
+// touch meant for what it covers. Nothing while the desktop asks for
+// less motion, nor past the opening frames: e then rests where the
+// layout puts it.
 func menuReveal(c *ui.Context, e ui.Element, entering bool, i int) ui.Element {
 	if motion(c) == nil {
 		return e
 	}
-	pose := ui.Pose{}
-	if entering {
-		pose = ui.Pose{Fade: 1, Y: -4}
+	delay := menuLead
+	if i > 0 {
+		delay = menuRows + time.Duration(i-1)*menuStep
 	}
-	return e.AnimatePose(pose, ui.Animation{Duration: durEnter, Ease: ui.EaseOut, Delay: time.Duration(i) * menuStep})
+	opened := ui.Local(e, "menu-opened", func() time.Time { return c.Now() })
+	if entering {
+		// Dark for the opening frame; from the next the pose heads for
+		// its place, held until the part's delay and fading in over
+		// durEnter. Posed on every frame, as popoverBase's panel is.
+		*opened = c.Now()
+		e = e.AnimatePose(ui.Pose{Fade: 1}, ui.Animation{})
+		c.AnimationFrame()
+	} else {
+		e = e.AnimatePose(ui.Pose{}, ui.Animation{Duration: durEnter, Ease: ui.EaseIn, Delay: delay})
+	}
+	if left := opened.Add(delay + durEnter).Sub(c.Now()); left > 0 {
+		e.Disabled(true).DimDisabled(false)
+		c.After(left)
+	}
+	return e
 }
 
 // popoverBase is ui.PopoverBase with motion: the panel grows from the
