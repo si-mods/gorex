@@ -3,7 +3,7 @@ name: IOS-011
 description: "Rex Go carries the element that the user touches into the next state, in nine places where the app jumped before. Use when you change a navigation, sheet, cover, pane bar or list animation in the iOS app."
 metadata:
   created: "2026-11-20"
-  updated: "2026-11-20"
+  updated: "2026-11-22"
 ---
 
 # IOS-011: Continuous transitions between states

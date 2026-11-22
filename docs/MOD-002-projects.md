@@ -3,7 +3,7 @@ name: MOD-002
 description: "Projects are folders on each host, inside a space, and hosts own them. Use when you change spaces, projects or where layouts live."
 metadata:
   created: "2026-11-17"
-  updated: "2026-11-21"
+  updated: "2026-11-22"
 ---
 
 # MOD-002: Projects: folders on each host, inside a space
