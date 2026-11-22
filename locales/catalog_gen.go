@@ -1299,15 +1299,125 @@ func (msgs Messages) TabMoveDown() string {
 // TabCloseOthers says "Close Other Tabs"
 // in the language the app shows.
 //
-// Tab context menu: close every tab but this one.
+// Tab context menu: close every tab but this one. Also the button of the
+// question it asks first.
 func TabCloseOthers() string { return In(i18n.Locale()).TabCloseOthers() }
 
 // TabCloseOthers says "Close Other Tabs"
 // in the language of msgs.
 //
-// Tab context menu: close every tab but this one.
+// Tab context menu: close every tab but this one. Also the button of the
+// question it asks first.
 func (msgs Messages) TabCloseOthers() string {
 	return Catalog.Format(msgs.locale, "tabCloseOthers", nil)
+}
+
+// CloseOthersTitle says "{n, plural, one {Close # other tab?} other {Close # other tabs?}}"
+// in the language the app shows.
+//
+// Title of the question before Close Other Tabs: how many tabs it closes.
+func CloseOthersTitle(n int) string { return In(i18n.Locale()).CloseOthersTitle(n) }
+
+// CloseOthersTitle says "{n, plural, one {Close # other tab?} other {Close # other tabs?}}"
+// in the language of msgs.
+//
+// Title of the question before Close Other Tabs: how many tabs it closes.
+func (msgs Messages) CloseOthersTitle(n int) string {
+	return Catalog.Format(msgs.locale, "closeOthersTitle", map[string]any{"n": n})
+}
+
+// CloseOthersBody says "{n, plural, one {Its terminal ends, and the program running in it. This can't be undone.} other {Their # terminals en…"
+// in the language the app shows.
+//
+// Body of the question before Close Other Tabs: how many terminals of the
+// other tabs end.
+func CloseOthersBody(n int) string { return In(i18n.Locale()).CloseOthersBody(n) }
+
+// CloseOthersBody says "{n, plural, one {Its terminal ends, and the program running in it. This can't be undone.} other {Their # terminals en…"
+// in the language of msgs.
+//
+// Body of the question before Close Other Tabs: how many terminals of the
+// other tabs end.
+func (msgs Messages) CloseOthersBody(n int) string {
+	return Catalog.Format(msgs.locale, "closeOthersBody", map[string]any{"n": n})
+}
+
+// CloseOthersBodyIdle says "{n, plural, =0 {This can't be undone.} one {Its terminal ends. This can't be undone.} other {Their # terminals end. T…"
+// in the language the app shows.
+//
+// Body of the question before Close Other Tabs when no program runs in the
+// other tabs: how many terminals end.
+func CloseOthersBodyIdle(n int) string { return In(i18n.Locale()).CloseOthersBodyIdle(n) }
+
+// CloseOthersBodyIdle says "{n, plural, =0 {This can't be undone.} one {Its terminal ends. This can't be undone.} other {Their # terminals end. T…"
+// in the language of msgs.
+//
+// Body of the question before Close Other Tabs when no program runs in the
+// other tabs: how many terminals end.
+func (msgs Messages) CloseOthersBodyIdle(n int) string {
+	return Catalog.Format(msgs.locale, "closeOthersBodyIdle", map[string]any{"n": n})
+}
+
+// CloseRunningTitle says "{name} is running"
+// in the language the app shows.
+//
+// Title of the question before closing a tab or a pane that runs a program:
+// the program's name.
+func CloseRunningTitle(name string) string { return In(i18n.Locale()).CloseRunningTitle(name) }
+
+// CloseRunningTitle says "{name} is running"
+// in the language of msgs.
+//
+// Title of the question before closing a tab or a pane that runs a program:
+// the program's name.
+func (msgs Messages) CloseRunningTitle(name string) string {
+	return Catalog.Format(msgs.locale, "closeRunningTitle", map[string]any{"name": name})
+}
+
+// CloseRunningPane says "Closing the pane ends its session and the program."
+// in the language the app shows.
+//
+// Body of the question before closing a pane that runs a program.
+func CloseRunningPane() string { return In(i18n.Locale()).CloseRunningPane() }
+
+// CloseRunningPane says "Closing the pane ends its session and the program."
+// in the language of msgs.
+//
+// Body of the question before closing a pane that runs a program.
+func (msgs Messages) CloseRunningPane() string {
+	return Catalog.Format(msgs.locale, "closeRunningPane", nil)
+}
+
+// CloseRunningTab says "{n, plural, one {Closing the tab ends its session and the program.} other {Closing the tab ends its # sessions and th…"
+// in the language the app shows.
+//
+// Body of the question before closing a tab where a program runs: how many
+// sessions it ends.
+func CloseRunningTab(n int) string { return In(i18n.Locale()).CloseRunningTab(n) }
+
+// CloseRunningTab says "{n, plural, one {Closing the tab ends its session and the program.} other {Closing the tab ends its # sessions and th…"
+// in the language of msgs.
+//
+// Body of the question before closing a tab where a program runs: how many
+// sessions it ends.
+func (msgs Messages) CloseRunningTab(n int) string {
+	return Catalog.Format(msgs.locale, "closeRunningTab", map[string]any{"n": n})
+}
+
+// CloseEndSession says "End Session"
+// in the language the app shows.
+//
+// Button of the question before closing a tab or a pane that runs a
+// program: close it and end its session.
+func CloseEndSession() string { return In(i18n.Locale()).CloseEndSession() }
+
+// CloseEndSession says "End Session"
+// in the language of msgs.
+//
+// Button of the question before closing a tab or a pane that runs a
+// program: close it and end its session.
+func (msgs Messages) CloseEndSession() string {
+	return Catalog.Format(msgs.locale, "closeEndSession", nil)
 }
 
 // SidebarHide says "Hide Sidebar"
@@ -5431,13 +5541,13 @@ func (msgs Messages) SessionCloseBody(n int) string {
 // SessionCancel says "Cancel"
 // in the language the app shows.
 //
-// Button of the question before closing a space: keep it.
+// Button of a question before closing a space, tabs or a pane: keep them.
 func SessionCancel() string { return In(i18n.Locale()).SessionCancel() }
 
 // SessionCancel says "Cancel"
 // in the language of msgs.
 //
-// Button of the question before closing a space: keep it.
+// Button of a question before closing a space, tabs or a pane: keep them.
 func (msgs Messages) SessionCancel() string {
 	return Catalog.Format(msgs.locale, "sessionCancel", nil)
 }

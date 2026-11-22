@@ -506,7 +506,7 @@ func (a *App) spaceDialog(c *ui.Context, k *colors) {
 				}
 			})
 			ui.Row(c).Gap(8).Justify(ui.End).Margin(14, 0, 0, 0).Children(func() {
-				if ui.Button(c, locales.SessionCancel()).Clicked() {
+				if cancelButton(c, locales.SessionCancel()).Clicked() {
 					open = false
 				}
 				if dangerButton(c, k, locales.SpaceDeleteConfirm()).Clicked() {

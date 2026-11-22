@@ -132,7 +132,7 @@ func (a *App) workspaceConfirm(c *ui.Context, k *colors) {
 			ui.Text(c, locales.SessionCloseTitle(name)).FontSize(fontTitle).FontWeight(700).TextColor(k.text)
 			ui.Text(c, locales.SessionCloseBody(n)).FontSize(fontBody).TextColor(k.textMuted).LineHeight(1.35)
 			ui.Row(c).Gap(8).Justify(ui.End).Margin(8, 0, 0, 0).Children(func() {
-				if ui.Button(c, locales.SessionCancel()).Clicked() {
+				if cancelButton(c, locales.SessionCancel()).Clicked() {
 					a.wsConfirm = false
 				}
 				if dangerButton(c, k, cmdCloseSession.Title()).Clicked() {
@@ -147,6 +147,13 @@ func (a *App) workspaceConfirm(c *ui.Context, k *colors) {
 			a.focusReq = t.Focus
 		}
 	}
+}
+
+// cancelButton is the button that backs out of a question beside a
+// dangerButton: the stock button in dangerButton's height and radius, so
+// that the two match.
+func cancelButton(c *ui.Context, label string) ui.Element {
+	return ui.Button(c, label).Height(32).Radius(radiusM)
 }
 
 // dangerButton is a button that destroys: white on red, darker under the
