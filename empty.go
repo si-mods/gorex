@@ -28,7 +28,7 @@ func emptyPage(c *ui.Context, k *colors, draw func(p *ui.Painter, r ui.Rect, k *
 			}
 			ui.Text(c, title).FontSize(fontTitle).FontWeight(600).TextColor(k.text).Label(title).TextAlign(ui.Center)
 			if note != "" {
-				ui.Text(c, note).FontSize(fontBody).TextColor(k.textFaint).Label(note).TextAlign(ui.Center).MaxWidth(400)
+				ui.Text(c, note).FontSize(fontBody).TextColor(k.textMuted).Label(note).TextAlign(ui.Center).MaxWidth(400)
 			}
 			if primary.label != "" || ghost.label != "" {
 				ui.Row(c).Gap(8).AlignItems(ui.Center).Margin(8, 0, 0, 0).Children(func() {
@@ -61,12 +61,12 @@ func emptyCard(c *ui.Context, k *colors, key, glyph, title string, ghost emptyAc
 	return row
 }
 
-// emptyRow is the empty state of a list: one line in textFaint, with a
-// ghost button at its end where a next step exists.
+// emptyRow is the empty state of a list: one muted line, with a ghost
+// button at its end where a next step exists.
 func emptyRow(c *ui.Context, k *colors, key, title string, ghost emptyAction) ui.Element {
 	row := ui.Row(c.Key(key)).Height(28).Padding(0, 10).Gap(8).AlignItems(ui.Center)
 	row.Children(func() {
-		ui.Text(c, title).FontSize(fontBody).TextColor(k.textFaint).Label(title).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
+		ui.Text(c, title).FontSize(fontBody).TextColor(k.textMuted).Label(title).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
 		if ghost.label != "" && emptyLink(c, k, ghost.label).Clicked() {
 			ghost.run()
 		}
@@ -74,11 +74,11 @@ func emptyRow(c *ui.Context, k *colors, key, title string, ghost emptyAction) ui
 	return row
 }
 
-// emptyMenu is the empty state of a menu or a status line: one faint line
+// emptyMenu is the empty state of a menu or a status line: one muted line
 // at a drawn menu row's metrics, no picture and no button.
 func emptyMenu(c *ui.Context, k *colors, key, text string) ui.Element {
 	return ui.Row(c.Key(key)).Height(24).Padding(0, 10).AlignItems(ui.Center).Children(func() {
-		ui.Text(c, text).FontSize(fontBody).TextColor(k.textFaint).Label(text).SingleLine().Ellipsis("…")
+		ui.Text(c, text).FontSize(fontBody).TextColor(k.textMuted).Label(text).SingleLine().Ellipsis("…")
 	})
 }
 

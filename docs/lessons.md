@@ -176,6 +176,11 @@ Each item has a **Trigger** (what the diff shows), a **Check** (what the author 
 - **Check:** use `.AccessSelected(`: `Selected` also fills the element with the theme's accent, which follows the desktop's accent and covers the element's own look.
 - **Source:** #836: on Windows the system accent showed purple over the active tab's pill.
 
+### Faint ink on glass
+- **Trigger:** text in something a `glassPanel`, `frostPanel`, `panelMaterial` or `menuStyleOf` call gives its panel — a menu, a picker, a dialog.
+- **Check:** `k.textMuted` or stronger; `k.textFaint` does not read over what the glass shows. `TestGlassInk` follows the calls from each glass surface and rejects `textFaint` in what they draw; `go run ./tools/verify` skips the root package, so run `go test . -run TestGlassInk` before pushing a UI change.
+- **Source:** #991's empty menu lines used `textFaint` and the Linux root shard rejected them while the local verify stayed green.
+
 ## Tests and CI
 
 ### Async state in a test
