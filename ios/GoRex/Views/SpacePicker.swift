@@ -68,6 +68,12 @@ struct SpacePicker: View {
     /// capsule's glass and its space's color and name can carry into the
     /// panel. Nil under Reduce Motion, and for the bar's popover.
     var ns: Namespace.ID?
+    /// The capsule's end of those shared elements. They are matched only
+    /// while the panel is closed: a shared element that stays matched
+    /// keeps its counterpart pinned to its frame, so opening takes the
+    /// capsule's end out of the match and lets the panel's parts leave
+    /// from where it was.
+    private var match: Namespace.ID? { still || (panel?.wrappedValue ?? false) ? nil : ns }
     @State private var popover = false
     /// The capsule's own content while the panel is open: it leaves as the
     /// panel's glass takes the capsule's frame, and returns as the glass
@@ -110,7 +116,7 @@ struct SpacePicker: View {
                 // own glass is behind it, and two glass effects nest.
                 label
                     .glassEffect(.regular.interactive(), in: .capsule)
-                    .modifier(SpaceMatched(id: .chrome, ns: ns, source: true))
+                    .modifier(SpaceMatched(id: .chrome, ns: match, source: true))
             } else {
                 // A name longer than the room ends in an ellipsis, leaving
                 // the search and the toggle their places.
@@ -128,12 +134,12 @@ struct SpacePicker: View {
             RoundedRectangle(cornerRadius: 4, style: .continuous)
                 .fill(color(current) ?? Color.secondary.opacity(0.5))
                 .frame(width: 14, height: 14)
-                .modifier(SpaceMatched(id: .chip(current), ns: ns, source: true))
+                .modifier(SpaceMatched(id: .chip(current), ns: match, source: true))
             Text(verbatim: SpaceName.shown(current))
                 .font(bar ? .title3.bold() : .title2.bold())
                 .lineLimit(1)
                 .contentTransition(.opacity)
-                .modifier(SpaceMatched(id: .name(current), ns: ns, source: true))
+                .modifier(SpaceMatched(id: .name(current), ns: match, source: true))
             Image(systemName: "chevron.down")
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(.secondary)
@@ -172,10 +178,6 @@ struct SpacePanelLayer: View {
     /// nothing moves.
     var ns: Namespace.ID?
     @Environment(\.accessibilityReduceMotion) private var still
-    /// A fresh identity on each open: a shared element's slot keeps the
-    /// frame it was dismissed at, and a reused one reopens pinned to the
-    /// capsule instead of growing out of it.
-    @State private var gen = 0
 
     var body: some View {
         GeometryReader { g in
@@ -191,7 +193,6 @@ struct SpacePanelLayer: View {
                                add: { close(); add() },
                                edit: { close(); edit() },
                                ns: match, stagger: !still)
-                        .id(gen)
                         .fixedSize(horizontal: true, vertical: false)
                         // The glass hugs the panel: the cap below only
                         // limits it, and the room under a short panel stays
@@ -215,9 +216,6 @@ struct SpacePanelLayer: View {
                         .transition(still ? .opacity : .asymmetric(insertion: .identity, removal: .opacity))
                 }
             }
-        }
-        .onChange(of: open) { _, o in
-            if o { gen += 1 }
         }
     }
 
