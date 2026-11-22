@@ -200,18 +200,19 @@ struct SpacePanelLayer: View {
                         // The glass hugs the panel: the cap below only
                         // limits it, and the room under a short panel stays
                         // the page's.
-                        .glassEffect(.regular, in: .rect(cornerRadius: SpacePanel.radius, style: .continuous))
+                        .glassEffect(.regular, in: .rect(cornerRadius: leaving ? r.height / 2 : SpacePanel.radius, style: .continuous))
                         .shadow(color: .black.opacity(0.16), radius: 24, y: 8)
                         .frame(maxHeight: max(160, g.size.height - r.maxY - 8 - 16), alignment: .top)
                         .modifier(SpaceMatched(id: .chrome, ns: match, source: false))
-                        // The way back: the whole panel shrinks and fades
-                        // into the capsule it grew from, carrying the
-                        // picked space's row with it.
-                        .scaleEffect(leaving ? 0.15 : 1, anchor: UnitPoint(
-                            x: r.width / 2 / 288,
-                            y: -(8 + r.height / 2) / 300))
+                        // The way back is the same morph, reversed: the
+                        // frame and the corners travel to the capsule's
+                        // while the rows clip under them.
+                        .frame(width: leaving ? r.width : nil,
+                               height: leaving ? r.height : nil,
+                               alignment: .topLeading)
+                        .clipped()
+                        .offset(y: leaving ? -(r.height + 8) : 0)
                         .opacity(leaving ? 0 : 1)
-                        .allowsHitTesting(!leaving)
                         // One element holding the rows, modal, so that
                         // VoiceOver keeps to the panel while it is open.
                         .accessibilityElement(children: .contain)
@@ -226,13 +227,19 @@ struct SpacePanelLayer: View {
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                         .transition(still ? .opacity : .asymmetric(insertion: .identity, removal: .opacity))
                 }
+                // Nothing in the layer answers a touch once it is going:
+                // a removed panel's remnant takes the touches of what was
+                // under it, so it leaves the tree untouchable and unmatched.
+                .allowsHitTesting(!leaving)
             }
         }
         .onChange(of: open) { _, isOpen in if isOpen { leaving = false } }
     }
 
-    /// The shared elements' namespace: nil under Reduce Motion.
-    private var match: Namespace.ID? { still ? nil : ns }
+    /// The shared elements' namespace: nil under Reduce Motion and while
+    /// the panel is going, so its removal pairs with nothing and leaves
+    /// no remnant.
+    private var match: Namespace.ID? { still || leaving ? nil : ns }
 
     private func close() {
         guard !leaving else { return }
