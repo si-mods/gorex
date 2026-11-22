@@ -170,8 +170,7 @@ func menuIcon(name string) *mygo.MenuIcon {
 // hostPopover opens the host's panel from its anchor, a margin below it,
 // or above where there is no room below.
 func (a *App) hostPopover(c *ui.Context, k *colors, anchor ui.Element, name, glyph string) {
-	ui.PopoverBase(c, anchor, &a.hostOpen, func(panel ui.Element) {
-		popoverMotion(c, anchor, panel)
+	popoverBase(c, anchor, &a.hostOpen, func(panel ui.Element) {
 		_, winH := c.Size()
 		// No higher than the room on the side it opens on, the larger:
 		// above the button at the sidebar's foot, it would otherwise cover

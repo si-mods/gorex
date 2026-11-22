@@ -378,8 +378,7 @@ func (a *App) spacePicker(c *ui.Context, k *colors, wide bool) {
 		}
 		glyphIcon(c, "chevron-down", 13, k.textFaint).Shrink(0)
 	})
-	ui.PopoverBase(c, chip, &a.spaces.open, func(panel ui.Element) {
-		popoverMotion(c, chip, panel)
+	popoverBase(c, chip, &a.spaces.open, func(panel ui.Element) {
 		menuStyleOf(k, c.Theme().Dark).Panel(panel.Margin(6, 0, 0, 0).Width(240), 0)
 		ui.Column(c).Children(func() {
 			for _, n := range a.st.spaceNames() {

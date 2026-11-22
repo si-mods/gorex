@@ -885,8 +885,7 @@ func TestOverlaysAnimate(t *testing.T) {
 						e.Width(200).Height(120).Background(ui.Hex("#d02020"))
 					}
 					if kind == "popover" {
-						ui.PopoverBase(c, anchor, &open, func(panel ui.Element) {
-							popoverMotion(c, anchor, panel)
+						popoverBase(c, anchor, &open, func(panel ui.Element) {
 							body(panel)
 						})
 						return
@@ -937,6 +936,48 @@ func TestOverlaysAnimate(t *testing.T) {
 					t.Errorf("opening again: moving %v, want %v", got, tc.moves)
 				}
 			})
+		}
+	}
+}
+
+// TestPopoverOpensAbove: a popover that opens above its anchor, in a short
+// window at the sidebar's foot, grows from the anchor: on no frame of its
+// opening are its rows above where they rest, or outside the window, as
+// they were when a Transition of the panel laid it out again and slid it
+// down from above the window's top.
+func TestPopoverOpensAbove(t *testing.T) {
+	old := prefs
+	t.Cleanup(func() { prefs = old })
+	a, tt := newTestApp(t)
+	prefs = settings{TabPlacement: "left"}
+	a.hello.Host.Name = "Testbook"
+	tt.Frame()
+	// Opened and closed before, as in a window used a while, and then
+	// shortened while the copy of the panel is still leaving.
+	a.hostOpen = true
+	tt.Frame()
+	a.hostOpen = false
+	tt.Frame()
+	tt.SetSize(900, 300)
+	tt.Frame()
+	a.hostOpen = true
+	var rows [][2]float32
+	for range 12 {
+		tt.Frame()
+		top, ok1 := tt.Find("Testbook")
+		server, ok2 := tt.Find(locales.HostServer())
+		if !ok1 || !ok2 {
+			t.Fatalf("the panel does not show; texts %q", tt.Texts())
+		}
+		rows = append(rows, [2]float32{top.Y, server.Y})
+		tt.Advance(20 * time.Millisecond)
+	}
+	settle(tt)
+	top, _ := tt.Find("Testbook")
+	server, _ := tt.Find(locales.HostServer())
+	for i, r := range rows {
+		if r[0] < 0 || r[0] < top.Y-0.5 || r[1] < server.Y-0.5 {
+			t.Errorf("frame %d: the rows are at %v, above where they rest (%v, %v) or out of the window", i, r, top.Y, server.Y)
 		}
 	}
 }

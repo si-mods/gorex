@@ -47,35 +47,74 @@ func exitIn(t ui.ElementTransition, d time.Duration) ui.ElementTransition {
 // hoverFade is the transition of a color that follows the pointer.
 var hoverFade = ui.ElementTransition{Colors: true, Duration: durHover, Ease: ui.EaseOut}
 
-// popFrom is where a popover grows from as it opens, and shrinks to as it
-// closes: a little smaller, and faded.
-var popFrom = &ui.Motion{Scale: 0.96, Opacity: 0}
+// popFrom is where a popover goes as it closes, and popPose where it grows
+// from as it opens: a little smaller, and faded.
+var (
+	popFrom = &ui.Motion{Scale: 0.96, Opacity: 0}
+	popPose = ui.Pose{Scale: 0.96, Fade: 1}
+)
 
-// popoverMotion makes the panel of a popover grow from the corner of its
-// anchor, and shrink back to it as it closes, nothing while the desktop
-// asks for less motion. Call it in the popover's function, with the
-// popover's anchor.
-func popoverMotion(c *ui.Context, anchor, panel ui.Element) {
+// popoverRec is what popoverBase keeps of a popover from frame to frame:
+// whether it was open, whether its panel has been asked to rest, and the
+// key of its panel.
+type popoverRec struct {
+	open, entered bool
+	key           string
+}
+
+// popoverBase is ui.PopoverBase with motion: the panel grows from the
+// corner of its anchor that it meets, and shrinks back to it as it closes,
+// nothing while the desktop asks for less motion. It grows with a pose,
+// which does not touch the layout: an Enter of a Transition lays the
+// panel out at each size on the way, and its rows squeeze. It goes with
+// the Exit of a Transition, which keeps a copy of it leaving.
+//
+// A panel opened while the copy of one it closed still leaves comes back
+// from where the copy shows (MyGo's Transition), which is no place for it
+// where the window or the anchor moved meanwhile: its rows would slide in
+// from there. Each opening has a key of the window's size and the anchor's
+// place, so that it is a new panel then.
+func popoverBase(c *ui.Context, anchor ui.Element, open *bool, fn func(panel ui.Element)) {
 	if motion(c) == nil {
+		ui.PopoverBase(c, anchor, open, fn)
 		return
 	}
-	// The corner that meets the anchor: the top where the panel opens
-	// below it, the bottom above it. Its first frame has no bounds yet, and
-	// opens below the anchor in the window's upper half, above in its lower.
+	rec := ui.Local(anchor, "popover-motion", func() popoverRec { return popoverRec{} })
+	if *open && !rec.open {
+		w, h := c.Size()
+		rec.key, rec.entered = fmt.Sprint("popover ", w, h, anchor.Bounds()), false
+	}
+	rec.open = *open
+	ui.PopoverBase(c.Key(rec.key), anchor, open, func(panel ui.Element) {
+		fn(panel)
+		pose, anim := ui.Pose{}, ui.Animation{Duration: durEnter, Ease: ui.EaseOut}
+		if !rec.entered {
+			// Posed small for a frame, then at rest on the way.
+			pose, rec.entered = popPose, true
+			c.AnimationFrame()
+		}
+		panel.TransformOrigin(popoverOrigin(c, anchor, panel)).AnimatePose(pose, anim)
+		panel.Transition(exitIn(ui.ElementTransition{Colors: true, Exit: popFrom}, durExit))
+	})
+}
+
+// popoverOrigin is the corner of the panel that meets its anchor, as
+// fractions of the panel: the top where it opens below the anchor, the
+// bottom above it. Its first frame has no bounds yet, and opens below the
+// anchor in the window's upper half, above in its lower.
+func popoverOrigin(c *ui.Context, anchor, panel ui.Element) (x, y float32) {
 	ab, pb := anchor.Bounds(), panel.Bounds()
 	_, winH := c.Size()
-	ox, oy := float32(0), float32(0)
 	switch {
 	case pb.W > 0 && pb.H > 0:
-		ox = min(max((ab.X+ab.W/2-pb.X)/pb.W, 0), 1)
+		x = min(max((ab.X+ab.W/2-pb.X)/pb.W, 0), 1)
 		if pb.Y+pb.H/2 < ab.Y+ab.H/2 {
-			oy = 1
+			y = 1
 		}
 	case ab.Y+ab.H/2 > float32(winH)/2:
-		oy = 1
+		y = 1
 	}
-	panel.TransformOrigin(ox, oy)
-	panel.Transition(exitIn(ui.ElementTransition{Colors: true, Duration: durEnter, Ease: ui.EaseOut, Enter: popFrom, Exit: popFrom}, durExit))
+	return x, y
 }
 
 // dialogMotion makes a dialog come in as the palette does, its panel from a
