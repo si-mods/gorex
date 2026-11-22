@@ -326,7 +326,9 @@ func TestDataResyncNoOutput(t *testing.T) {
 	settled(t, f, sid) // the shell printed its last prompt
 	p.drop(0)
 	waitFor(t, "the second attach", func() bool { return p.attaches() == 2 })
-	time.Sleep(300 * time.Millisecond) // its snapshot read
+	// The resync's snapshot shows the screen again, so the stream has read
+	// it: a cold libghostty-vt cache can make that take seconds.
+	readUntil(t, ws, "before-drop")
 	p.drop(1)
 	expectClose(t, ws, websocket.StatusInternalError)
 	if n := p.attaches(); n != 2 {
