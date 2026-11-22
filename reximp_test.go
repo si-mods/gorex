@@ -25,9 +25,13 @@ import (
 func TestRexImportCreatesSpaces(t *testing.T) {
 	a, tt := newTestApp(t)
 	go a.st.takeCommands(a.client, a.post)
-	stop := make(chan struct{})
-	t.Cleanup(func() { close(stop) })
+	stop, framed := make(chan struct{}), make(chan struct{})
+	t.Cleanup(func() {
+		close(stop)
+		<-framed // no Frame call outlives the test
+	})
 	go func() {
+		defer close(framed)
 		for {
 			select {
 			case <-stop:

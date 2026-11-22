@@ -756,7 +756,9 @@ func TestLostStreamWaitsForItsInput(t *testing.T) {
 		t.Errorf("an attached stream says it was lost for %v", d)
 	}
 	s.mu.Lock()
-	s.detached, s.detachedAt = true, time.Now()
+	// A millisecond back: a coarse clock (Windows) can read the same
+	// instant twice, and a duration of 0.
+	s.detached, s.detachedAt = true, time.Now().Add(-time.Millisecond)
 	s.mu.Unlock()
 	if d := s.DetachedFor(); d <= 0 || d >= streamNoteDelay {
 		t.Errorf("a stream just lost says it was lost for %v, want under %v", d, streamNoteDelay)
