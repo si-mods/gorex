@@ -442,11 +442,11 @@ func withPortsMethod(raw json.RawMessage) json.RawMessage {
 
 // ownMethods are the help document's entries of GoRex's own methods,
 // which Rex's document does not have: gorex.move_window,
-// gorex.see_block, gorex.merge_windows, gorex.move_block_to_new_window and
-// gorex.dir.list.
+// gorex.see_block, gorex.merge_windows, gorex.move_block_to_new_window,
+// gorex.dir.list and gorex.push.*.
 func ownMethods() []json.RawMessage {
 	var out []json.RawMessage
-	for _, e := range append([]map[string]any{moveWindowEntry, seeBlockEntry, mergeWindowsEntry, newWindowFromBlockEntry, spacesApplyEntry, dirListEntry, agentsListEntry, portOpenEntry, portCloseEntry}, projectEntries...) {
+	for _, e := range append([]map[string]any{moveWindowEntry, seeBlockEntry, mergeWindowsEntry, newWindowFromBlockEntry, spacesApplyEntry, dirListEntry, agentsListEntry, portOpenEntry, portCloseEntry, pushRegisterEntry, pushUnregisterEntry}, projectEntries...) {
 		if raw, err := json.Marshal(e); err == nil {
 			out = append(out, raw)
 		}

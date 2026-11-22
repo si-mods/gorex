@@ -73,6 +73,7 @@ func (g *Gateway) watchBlocks(m *model) {
 		}
 		if sig := statusSignature(&info); sig != w.status {
 			g.emitBlockEvent(b, "program_status_changed", statusPayload(&info))
+			g.pushChanged(b, m, &info)
 			if removed := removedStatusIDs(w.statusIDs, info.Statuses); len(removed) > 0 {
 				g.emitBlockEvent(b, "program_status_removed", map[string]any{"ids": removed, "reason": "removed"})
 			}
@@ -120,6 +121,23 @@ func statusSignature(info *rex.SessionInfo) string {
 		b.WriteByte(1)
 	}
 	return b.String()
+}
+
+// pushChanged hands a block's new session info to the push sender, which
+// pushes the Live Activity updates of the devices registered for it
+// (internal/push).
+func (g *Gateway) pushChanged(b *mBlock, m *model, info *rex.SessionInfo) {
+	if g.push == nil {
+		return
+	}
+	var windowTitle, sessionLabel string
+	if s := m.byID[b.session]; s != nil {
+		sessionLabel = s.label
+		if w := s.windowOf(b); w != nil {
+			windowTitle = w.label
+		}
+	}
+	g.push.Changed(b.id, info, windowTitle, info.Program, b.label, sessionLabel)
 }
 
 // emitBlockEvent sends a block's event to the sessions that receive them.

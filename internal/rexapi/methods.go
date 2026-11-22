@@ -218,6 +218,8 @@ var methods = map[string]func(*control, args) (any, *apiError){
 	"gorex.see_block":                methodGorexSeeBlock,
 	"gorex.dir.list":                 methodGorexDirList,
 	"gorex.agents.list":              methodGorexAgentsList,
+	"gorex.push.register":            methodGorexPushRegister,
+	"gorex.push.unregister":          methodGorexPushUnregister,
 	// Projects (projects.go).
 	"gorex.project.create": methodGorexProjectCreate,
 	"gorex.project.adopt":  methodGorexProjectAdopt,
