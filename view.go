@@ -221,7 +221,22 @@ func (a *App) panes(c *ui.Context, k *colors, left, right float32) {
 		col.Children(func() {
 			a.tabContent(c, k, t)
 		})
+	} else {
+		col.Children(func() {
+			a.emptyNoTab(c, k)
+		})
 	}
+}
+
+// emptyNoTab is the empty state of the main area with no tab open
+// (docs/DSK-006-empty-states.md): a wireframe of a window and its tabs,
+// the buttons that make the first — a new tab, and the command palette.
+func (a *App) emptyNoTab(c *ui.Context, k *colors) {
+	emptyPage(c, k, func(p *ui.Painter, r ui.Rect, k *colors) {
+		drawEmptyScene(p, r, k, true, c.Theme().Dark)
+	}, locales.EmptyNoTab(), locales.EmptyNoTabNote(),
+		emptyAction{locales.CmdNewTab(), func() { a.newProjectTab() }},
+		emptyAction{locales.CmdCommandPalette(), func() { a.openPalette() }})
 }
 
 // windowControls draws the buttons that minimize, maximize and close the
@@ -1396,7 +1411,13 @@ func (a *App) browserHeader(c *ui.Context, k *colors, t *Tab, p *Pane, focused, 
 func (a *App) browserBody(c *ui.Context, k *colors, t *Tab, p *Pane) {
 	b := p.browser
 	if b.web == nil {
-		ui.Text(c, locales.BrowserUnavailable()).FontSize(fontBody).TextColor(k.textFaint).Padding(12)
+		var reload emptyAction
+		if b.addr != "" {
+			reload = emptyAction{locales.BrowserReload(), func() { a.navigateBrowser(p, b.addr) }}
+		}
+		emptyPage(c, k, func(p *ui.Painter, r ui.Rect, k *colors) {
+			drawEmptyScene(p, r, k, b.addr != "", c.Theme().Dark)
+		}, locales.BrowserUnavailable(), "", emptyAction{}, reload)
 		return
 	}
 	wv := ui.WebView(c, b.web).Grow(1).MinHeight(0)

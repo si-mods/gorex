@@ -20,6 +20,9 @@ type colors struct {
 
 	text, textMuted, textFaint, iconMuted ui.Color
 	hover, pressed                        ui.Color
+	// emptyMark is the slate of an empty state's picture: its placeholder
+	// bars and its one accent.
+	emptyMark ui.Color
 
 	track, trackBorder, tabActive, tabSep ui.Color
 	// pillFace and pillShadow are the active tab's pill under the glass
@@ -73,6 +76,7 @@ var lightColors = colors{
 	textMuted: ui.Hex("#636366"),
 	textFaint: ui.Hex("#8e8e93"),
 	iconMuted: ui.Hex("#8a8a8f"),
+	emptyMark: ui.Hex("#7a869d"),
 	hover:     ui.RGBA(0, 0, 0, 0.055),
 	pressed:   ui.RGBA(0, 0, 0, 0.1),
 
@@ -123,6 +127,7 @@ var darkColors = colors{
 	textMuted: ui.Hex("#aeaeb2"),
 	textFaint: ui.Hex("#8e8e93"),
 	iconMuted: ui.Hex("#98989d"),
+	emptyMark: ui.Hex("#9aa4b8"),
 	hover:     ui.RGBA(255, 255, 255, 0.08),
 	pressed:   ui.RGBA(255, 255, 255, 0.14),
 

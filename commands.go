@@ -1549,11 +1549,15 @@ func (a *App) palette(c *ui.Context, k *colors) {
 		}
 		ui.Scroll(c).Height(float32(min(listH+12, 384))).Padding(palettePad).Children(func() {
 			if empty {
-				text := locales.PaletteNoMatches()
-				if a.paletteList == listNeeds && strings.TrimSpace(a.paletteQuery) == "" {
+				q := strings.TrimSpace(a.paletteQuery)
+				text := locales.PaletteNoMatchesFor(q)
+				switch {
+				case a.paletteList == listNeeds && q == "":
 					text = locales.NeedsNothing()
+				case q == "":
+					text = locales.PaletteNoMatches()
 				}
-				ui.Text(c, text).FontSize(fontBody).TextColor(k.textMuted).Padding(14)
+				emptyMenu(c, k, "palette-empty", text)
 			}
 			for i, it := range items {
 				if it.header {

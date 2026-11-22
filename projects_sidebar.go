@@ -111,6 +111,16 @@ func (a *App) projectsList(c *ui.Context, k *colors) {
 		ui.Column(c.Key("host-body-"+hostKey(h))).Gap(rowGap).Padding(0, 0, 10, 0).Children(func() {
 			a.hostHeader(c, k, h)
 			recent, older := a.projectsOf(h, space)
+			np := a.st.noProjectOf(h)
+			npShown := np != nil && (np.tabCount() > 0 || np == a.ws)
+			if len(recent) == 0 && len(older) == 0 && len(a.st.waitingOn(h)) == 0 && (!npShown || np.tabCount() == 0) {
+				// The host has no project and no tab of one: the card, not
+				// a bare group (docs/DSK-006-empty-states.md).
+				emptyCard(c, k, "empty-"+hostKey(h), "folder", locales.EmptyNoProjects(), emptyAction{cmdNewProject.Title(), func() {
+					a.later(c, func() { a.openNewProjectOn(h) })
+				}})
+				return
+			}
 			for _, w := range recent {
 				a.projectGroup(c, k, w, reserve)
 			}
@@ -131,8 +141,8 @@ func (a *App) projectsList(c *ui.Context, k *colors) {
 			}
 			// Tabs with no project shows while it has a tab, or the
 			// window shows it.
-			if w := a.st.noProjectOf(h); w != nil && (w.tabCount() > 0 || w == a.ws) {
-				a.projectGroup(c, k, w, reserve)
+			if npShown {
+				a.projectGroup(c, k, np, reserve)
 			}
 		})
 	}

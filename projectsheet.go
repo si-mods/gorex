@@ -504,7 +504,7 @@ func (a *App) sheetBrowser(c *ui.Context, k *colors, listH float32) {
 	}
 	box.Children(func() {
 		say := func(text string) {
-			ui.Text(c, text).FontSize(fontCallout).TextColor(k.textMuted).Padding(12)
+			emptyMenu(c, k, "sheet-"+text, text)
 		}
 		switch {
 		case s.host != nil && s.host.current() == nil:

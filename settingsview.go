@@ -813,6 +813,9 @@ func (a *App) themeSettings(c *ui.Context, k *colors) {
 		sub = ghosttyRaw.Theme
 	}
 	names := themeNames(terminal.GhosttyThemes(), settingsUI.themeQuery)
+	if len(names) == 0 && settingsUI.themeQuery != "" {
+		emptyMenu(c, k, "themes-empty", locales.SettingsThemeNoMatch(settingsUI.themeQuery))
+	}
 	shown := append([]string{""}, names[:min(len(names), maxThemes)]...)
 	ui.Column(c).Gap(10).Children(func() {
 		for row := 0; row < len(shown); row += themeColumns {
@@ -881,8 +884,8 @@ func (a *App) keyboardSettings(c *ui.Context, k *colors) {
 	if shortcutsUI.recording != nil {
 		settingsGroup(c, k, "", "", "", func() {
 			groupRow(c, k, nil).Children(func() {
-				rowLine(c, k, "Press the new shortcut for "+shortcutsUI.recording.Title(), func() {
-					if ui.Button(c, "Cancel").Clicked() {
+				rowLine(c, k, locales.SettingsPressShortcut(shortcutsUI.recording.Title()), func() {
+					if ui.Button(c, locales.SettingsCancel()).Clicked() {
 						a.stopRecording()
 					}
 				})
@@ -899,7 +902,7 @@ func (a *App) keyboardSettings(c *ui.Context, k *colors) {
 					ui.Text(c, r.Title).FontSize(fontBody).FontWeight(500).TextColor(k.text).Grow(1).MinWidth(0)
 					ui.Text(c, r.Keys).FontSize(fontSubhead).TextColor(k.textMuted).Padding(2, 10).Radius(radiusM).Background(k.hover).Shrink(0)
 					if r.Command != nil {
-						if !blockedFromClient(r.Command.ID) && ui.Button(c.Key("change"), "Change").Clicked() {
+						if !blockedFromClient(r.Command.ID) && ui.Button(c.Key("change"), locales.SettingsChange()).Clicked() {
 							a.startRecording(r.Command)
 						}
 						reset := ui.Button(c.Key("reset"), locales.SettingsReset()).Disabled(!r.Overridden)
