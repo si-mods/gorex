@@ -212,9 +212,13 @@ final class TerminalLive {
     }
 
     private func state(_ source: Source) -> TerminalActivity.ContentState {
-        // A line the state has, a record's message, wins.
+        // A line the state has, a record's message, wins; a rule alone is
+        // none: a box's edge or a separator a command printed says nothing.
         var s = source.state()
-        if s.line.isEmpty { s.line = line }
+        if s.line.isEmpty || TerminalActivity.rule(s.line) {
+            let l = line.shownText.trimmingCharacters(in: .whitespaces)
+            s.line = TerminalActivity.rule(l) ? "" : l
+        }
         return s
     }
 
