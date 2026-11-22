@@ -8186,6 +8186,34 @@ func (msgs Messages) SpacePickerLabel(name string) string {
 	return Catalog.Format(msgs.locale, "spacePickerLabel", map[string]any{"name": name})
 }
 
+// SpacesTitle says "Spaces"
+// in the language the app shows.
+//
+// Space picker: the menu's heading.
+func SpacesTitle() string { return In(i18n.Locale()).SpacesTitle() }
+
+// SpacesTitle says "Spaces"
+// in the language of msgs.
+//
+// Space picker: the menu's heading.
+func (msgs Messages) SpacesTitle() string {
+	return Catalog.Format(msgs.locale, "spacesTitle", nil)
+}
+
+// SpaceProjects says "{count, plural, =0 {No projects} one {# project} other {# projects}}"
+// in the language the app shows.
+//
+// Space picker: a space row's count of its projects.
+func SpaceProjects(count int) string { return In(i18n.Locale()).SpaceProjects(count) }
+
+// SpaceProjects says "{count, plural, =0 {No projects} one {# project} other {# projects}}"
+// in the language of msgs.
+//
+// Space picker: a space row's count of its projects.
+func (msgs Messages) SpaceProjects(count int) string {
+	return Catalog.Format(msgs.locale, "spaceProjects", map[string]any{"count": count})
+}
+
 // ProjectsTabsOf says "Tabs of {name}"
 // in the language the app shows.
 //

@@ -704,6 +704,8 @@
   "spaceNew": "新建空间…",
   "spaceNewTitle": "新建空间",
   "spacePickerLabel": "空间 {name}",
+  "spacesTitle": "空间",
+  "spaceProjects": "{count, plural, =0 {没有项目} other {# 个项目}}",
   "projectsTabsOf": "{name} 的标签页",
   "projectsOfflineLabel": "离线"
 }

@@ -168,6 +168,7 @@ func TestProjectsSidebarSpaces(t *testing.T) {
 	}
 	// The picker shows Default.
 	click(t, tt, locales.SpacePickerLabel(work))
+	settle(tt) // the menu's parts take no clicks until they are in
 	click(t, tt, locales.SpaceDefault())
 	waitFor(t, tt, "Default", func() bool { return shownSpace() == "" && tt.HasText("notes") && !tt.HasText("acme-api") })
 
@@ -735,6 +736,7 @@ func TestDeleteSpace(t *testing.T) {
 	before := sessionIDs(t, a.client)
 
 	click(t, tt, locales.SpacePickerLabel(work))
+	settle(tt) // the menu's parts take no clicks until they are in
 	click(t, tt, locales.SpaceEdit())
 	if n := strings.Count(strings.Join(tt.Texts(), "\n"), locales.SpaceDelete()); n != len(a.st.spaceNames())-1 {
 		t.Fatalf("%d Delete Space… for spaces %q; texts %q", n, a.st.spaceNames(), tt.Texts())

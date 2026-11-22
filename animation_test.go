@@ -891,7 +891,7 @@ func TestOverlaysAnimate(t *testing.T) {
 						e.Width(200).Height(120).Background(ui.Hex("#d02020"))
 					}
 					if kind == "popover" {
-						popoverBase(c, anchor, &open, func(panel ui.Element) {
+						popoverBase(c, anchor, &open, func(panel ui.Element, entering bool) {
 							body(panel)
 						})
 						return
@@ -998,7 +998,7 @@ func TestPopoverKeyStaysOwn(t *testing.T) {
 	open, fresh := false, 0
 	tt := ui.NewTester(func(c *ui.Context) {
 		anchor := ui.Box(c.Key("anchor")).Size(80, 30).Margin(20).Background(ui.Hex("#888888"))
-		popoverBase(c, anchor, &open, func(panel ui.Element) { panel.Width(200).Height(120) })
+		popoverBase(c, anchor, &open, func(panel ui.Element, entering bool) { panel.Width(200).Height(120) })
 		next := ui.Box(c).Size(40, 40)
 		ui.Local(next, "probe", func() bool { fresh++; return true })
 	}, 400, 300)
@@ -1025,7 +1025,7 @@ func TestPopoverGatedReopenAnimates(t *testing.T) {
 			popoverIdle(c, anchor)
 			return
 		}
-		popoverBase(c, anchor, &open, func(panel ui.Element) {
+		popoverBase(c, anchor, &open, func(panel ui.Element, entering bool) {
 			panel.Width(200).Height(120).Background(ui.Hex("#d02020"))
 		})
 	}, 400, 300)
@@ -1042,5 +1042,128 @@ func TestPopoverGatedReopenAnimates(t *testing.T) {
 		}
 		open = false
 		settle(tt)
+	}
+}
+
+// TestMenuRevealStaggers: menuReveal's parts come in a step apart as
+// their menu opens: a late row waits while an early one is on the way
+// already, and all rest together; with Off none waits.
+func TestMenuRevealStaggers(t *testing.T) {
+	old := prefs
+	t.Cleanup(func() { prefs = old })
+	for _, tc := range styles {
+		t.Run(tc.name, func(t *testing.T) {
+			prefs = settings{Animation: tc.style}
+			open, hit := false, false
+			tt := ui.NewTester(func(c *ui.Context) {
+				anchor := ui.Box(c.Key("anchor")).Size(80, 30).Margin(20).Background(ui.Hex("#888888"))
+				popoverBase(c, anchor, &open, func(panel ui.Element, entering bool) {
+					ui.Column(c).Children(func() {
+						menuReveal(c, ui.Box(c.Key("r0")).Size(60, 20).Background(ui.Hex("#ff0000")).Label("r0"), entering, 0)
+						b3 := ui.Box(c.Key("r3")).Size(60, 20).Background(ui.Hex("#0000ff")).Label("r3").Cursor(ui.CursorPointer)
+						if b3.Clicked() {
+							hit = true
+						}
+						menuReveal(c, b3, entering, 3)
+					})
+				})
+			}, 400, 300)
+			at := func(r ui.Rect) bool {
+				// The pixel at the box's heart differs from the bare
+				// backdrop past its right edge once the box shows at all.
+				img := tt.Image()
+				cx, cy := int(r.X+r.W/2), int(r.Y+r.H/2)
+				return img.RGBAAt(cx, cy) != img.RGBAAt(int(r.X+r.W)+8, cy)
+			}
+			open = true
+			settle(tt)
+			// Reopen, and watch the entrance: row 3 fades in steps behind
+			// row 0, which the glass's opening leads.
+			open = false
+			settle(tt)
+			hit = false
+			open = true
+			tt.Frame()
+			tt.Advance(menuRows + menuStep)
+			tt.Frame()
+			r0, _ := tt.Find("r0")
+			r3, _ := tt.Find("r3")
+			if tc.moves {
+				if at(r3) {
+					t.Errorf("r3 shows before its step at %v", tt.Now())
+				}
+				if !at(r0) {
+					t.Errorf("r0 still dark at %v", tt.Now())
+				}
+				// A part still dim takes no click.
+				tt.ClickAt(r3.X+r3.W/2, r3.Y+r3.H/2)
+				tt.Frame()
+				if hit {
+					t.Errorf("a dim row answered the click")
+				}
+			} else if !at(r3) {
+				t.Errorf("with animations off r3 is not there at once")
+			}
+			settle(tt)
+			if !at(r3) {
+				t.Errorf("r3 never came in")
+			}
+			tt.ClickAt(r3.X+r3.W/2, r3.Y+r3.H/2)
+			tt.Frame()
+			if !hit {
+				t.Errorf("a revealed row did not answer the click")
+			}
+		})
+	}
+}
+
+// TestSpaceMenuStaggers: the space picker's menu reveals its parts once
+// its glass is mostly open: the last is still dark where it stands on the
+// opening frames, home at rest; with Off it is there at once.
+func TestSpaceMenuStaggers(t *testing.T) {
+	old := prefs
+	t.Cleanup(func() { prefs = old })
+	newRow := locales.SpaceNew()
+	for _, tc := range styles {
+		t.Run(tc.name, func(t *testing.T) {
+			a, tt := newTestApp(t)
+			prefs = settings{Animation: tc.style}
+			tt.Frame()
+			settle(tt)
+			a.spaces.open = true
+			tt.Frame()
+			tt.Advance(menuLead + 40*time.Millisecond)
+			tt.Frame()
+			inked := func() int {
+				r, ok := tt.Find(newRow)
+				if !ok {
+					return -1
+				}
+				img := tt.Image()
+				bg := img.RGBAAt(int(r.X)+2, int(r.Y+r.H/2))
+				n := 0
+				for x := int(r.X) + 10; x < int(r.X+r.W)-4; x++ {
+					for y := int(r.Y) + 2; y < int(r.Y+r.H)-2; y++ {
+						if img.RGBAAt(x, y) != bg {
+							n++
+						}
+					}
+				}
+				return n
+			}
+			mid := inked()
+			settle(tt)
+			rest := inked()
+			if tc.moves {
+				if mid != 0 {
+					t.Errorf("the last row shows %d px before its step", mid)
+				}
+				if rest < 20 {
+					t.Errorf("at rest the last row shows %d px", rest)
+				}
+			} else if rest < 20 {
+				t.Errorf("with animations off the last row shows %d px", rest)
+			}
+		})
 	}
 }

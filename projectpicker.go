@@ -77,19 +77,23 @@ func (a *App) projectPicker(c *ui.Context, k *colors) {
 		}
 		glyphIcon(c, "chevron-down", 13, k.textFaint).Shrink(0)
 	})
-	popoverBase(c, chip, &a.pickerOpen, func(panel ui.Element) {
+	popoverBase(c, chip, &a.pickerOpen, func(panel ui.Element, entering bool) {
 		_, winH := c.Size()
 		menuStyleOf(k, c.Theme().Dark).Panel(panel.Margin(6, 0, 0, 0).Width(340).MaxHeight(winH-24-titleH), 0)
+		// The menu's parts come in one after another, a step apart.
+		i := 0
 		ui.Scroll(c.Key("picker-list")).MinHeight(0).Shrink(1).Children(func() {
-			ui.Column(c).Children(func() { a.pickerList(c, k) })
+			ui.Column(c).Children(func() { a.pickerList(c, k, entering, &i) })
 		})
-		ui.Box(c).Height(1).Margin(4, 6).Background(k.panelBorder).Shrink(0)
-		a.menuRow(c, k, "picker-new", false, cmdNewProject.Title(), cmdNewProject.Keys, nil, a.openNewProject).Shrink(0)
+		menuReveal(c, ui.Box(c).Height(1).Margin(4, 6).Background(k.panelBorder).Shrink(0), entering, i)
+		i++
+		menuReveal(c, a.menuRow(c, k, "picker-new", false, cmdNewProject.Title(), cmdNewProject.Keys, nil, a.openNewProject).Shrink(0), entering, i)
 	})
 }
 
-// pickerList is the picker's hosts and their workspaces.
-func (a *App) pickerList(c *ui.Context, k *colors) {
+// pickerList is the picker's hosts and their workspaces, the i'th parts
+// of the menu still opening.
+func (a *App) pickerList(c *ui.Context, k *colors, entering bool, i *int) {
 	space := shownSpace()
 	// A host's header lines up with its rows.
 	pad := menuStyleOf(k, c.Theme().Dark).RowPadding
@@ -97,10 +101,11 @@ func (a *App) pickerList(c *ui.Context, k *colors) {
 		if !a.hostShown(h, space) {
 			continue
 		}
-		ui.Row(c.Key("picker-host-"+hostKey(h))).Height(26).Padding(4, pad, 0, pad).Gap(6).AlignItems(ui.Center).Children(func() {
+		menuReveal(c, ui.Row(c.Key("picker-host-"+hostKey(h))).Height(26).Padding(4, pad, 0, pad).Gap(6).AlignItems(ui.Center).Children(func() {
 			a.hostSectionIcon(c, k, h)
 			ui.Text(c, a.hostName(h)).FontSize(fontSubhead).FontWeight(600).TextColor(k.textMuted).SingleLine().Ellipsis("…").Grow(1).MinWidth(0)
-		})
+		}), entering, *i)
+		*i++
 		recent, older := a.projectsOf(h, space)
 		ws := append(recent, older...)
 		if w := a.st.noProjectOf(h); w != nil {
@@ -121,6 +126,8 @@ func (a *App) pickerList(c *ui.Context, k *colors) {
 			row := a.menuRow(c, k, "picker-"+openKey(h, w.ID), w == a.ws, name, fmt.Sprint(w.tabCount()), func(ink ui.Color, _ bool) {
 				glyphIcon(c, glyph, 14, ink).Shrink(0)
 			}, run)
+			menuReveal(c, row, entering, *i)
+			*i++
 			if offline {
 				dimmed(row, 0.5)
 			}
