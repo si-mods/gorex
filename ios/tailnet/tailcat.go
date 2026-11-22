@@ -203,7 +203,7 @@ var tailcatDialing = func() {}
 type pooledTailcat struct {
 	tc    *tailcat.Client
 	conns int  // open, or being dialed
-	used  bool // it connected once
+	used  bool // it connected once and no socket reset stranded it since
 	dead  bool // out of the pool and closed (retire, drop)
 	idle  *time.Timer
 }

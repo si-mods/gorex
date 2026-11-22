@@ -3,7 +3,7 @@ name: IOS-002
 description: "Rex Go connects to a GoRex machine as a tailcat client, as a desktop does. Use when you change tailcat on iOS or the gateway on the tailcat address."
 metadata:
   created: "2026-11-10"
-  updated: "2026-11-21"
+  updated: "2026-11-22"
 ---
 
 # IOS-002: Rex Go over tailcat
@@ -161,6 +161,8 @@ The `createEngine` function of tailcat turns `netns` off for the whole process. 
 ### Lifecycle
 
 The tailcat client is `magicsock`. So the network of the phone and the suspension hit it as they hit the tailnet node (IOS-001-tailnet.md, Lifecycle). The news of the path monitor goes to it too. The socket reset after a suspension binds it again. The reset carries over with no hook upstream. The `lb.sys` of a tailcat client is the same `tsd.System` as the `Server.Sys()` of tsnet. The engine reaches it the same way, through unexported fields. The tests of these fields fail when they move. If they move, the smallest upstream ask is `(*Client).Sys()`. Then `Host.resume()` runs, which keeps the sessions on the server.
+
+A rebound client is cold: its DERP connection is dead and a new path costs seconds, so its next dial gets the whole 15 s, as a fresh client's, not the 3 s a try gets — a try tells a restarted server, and a suspension is not one. A dial that kept the try here paid it, plus the start of the client the try retired, and a connect after a suspension took about nine seconds. So the reset also starts the client back to a path ahead of that dial (`warm`): a meow ping opens the relay connection anew and has the server add the client as a peer again, which a server restarted in the suspension needs too, and a disco ping finds a path and shakes hands. The dial then only sends.
 
 A machine whose server restarted, as on an upgrade, forgot the client. The client still trusts its old direct path and its WireGuard session. If the engine leaves the client alone, it waits for the rekey of WireGuard, 15 s and more. So the engine retires a client that connected before and fails its try. It retires the client when the try ran out of time, or when no other connection uses the client. The client leaves the pool and closes, and a new client dials, within the 15 s. The other connections of the old client go with it, because their server forgot them too. Two clients of one key take the packets of each other.
 

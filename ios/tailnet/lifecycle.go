@@ -13,6 +13,7 @@ import (
 	"maps"
 	"reflect"
 	"sync"
+	"sync/atomic"
 	"time"
 	"unsafe"
 
@@ -206,11 +207,20 @@ type systemPeers struct {
 // resetTailcat starts resetting the sockets of each started tailcat
 // client, each on its own, and returns a function that waits for them.
 // One stuck leaves the pool and closes by itself; the next dial makes
-// another.
+// another. A client whose sockets come back is cold again: its next
+// dial gets the full bound, as a fresh client's, not the three seconds
+// a try gets — a try tells a restarted server, and a suspension is not
+// one. And warm starts it back to a path, so the dial that comes finds
+// the relay connection and the handshake already made.
 func resetTailcat() (wait func()) {
 	var wg sync.WaitGroup
 	for _, s := range tailcatSystems() {
 		wg.Go(func() {
+			tcMu.Lock()
+			if tcClients[s.addr] == s.p {
+				s.p.used = false
+			}
+			tcMu.Unlock()
 			if errors.Is(resetSockets(s.sys, s.peers), errStuck) {
 				tcMu.Lock()
 				if tcClients[s.addr] == s.p {
@@ -219,10 +229,31 @@ func resetTailcat() (wait func()) {
 				}
 				tcMu.Unlock()
 				go s.p.tc.Close()
+				return
 			}
+			tailcatWarms.Add(1)
+			go warm(s.p)
 		})
 	}
 	return wg.Wait
+}
+
+// tailcatWarms counts the clients a socket reset started to warm; a test
+// reads it.
+var tailcatWarms atomic.Int64
+
+// warm starts a reset client back to a path, ahead of the dial that asks
+// for it: the meow ping opens the relay connection anew and has the
+// server add the client as a peer again, as it must for a server
+// restarted in the suspension, and the disco ping finds a path and
+// shakes hands. The dial that follows only sends.
+func warm(p *pooledTailcat) {
+	ctx, cancel := context.WithTimeout(context.Background(), tailcatDial)
+	defer cancel()
+	if _, err := p.tc.Ping(ctx); err != nil {
+		return
+	}
+	_, _ = p.tc.DiscoPing(ctx)
 }
 
 // tailcatSystems is the subsystems of each started tailcat client, with
