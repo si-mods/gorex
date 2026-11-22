@@ -260,7 +260,7 @@ function legacySection(nav: HTMLElement, h: Host, c: HostConn) {
     b.type = "button";
     b.setAttribute("aria-expanded", String(open));
     b.title = spaceName(s);
-    b.append(el("i", "color-dot none"), el("span", "name", spaceName(s)), el("span", "count", String((s.view.windows ?? []).length)));
+    b.append(el("i", "color-dot none"), el("span", "name", spaceName(s)));
     b.onclick = () => toggle(key, open);
     row.append(b, iconButton("plus", t("cmdNewWindow"), () => app.newWindow(c, s.id), !c.live));
     onMenu(row, (x, y) => openMenu(x, y, app.spaceMenu(c, s.id), () => app.shown()?.focusKeys()));
@@ -299,13 +299,13 @@ function hostSection(nav: HTMLElement, h: Host, c: HostConn | undefined, v: Host
   if (v.online && !recent.length && !older.length && !model.loose?.tabs.length) nav.append(el("div", "host-note", t("projectsEmpty")));
 }
 
-/** What a group's head shows: its mark, name, chevron and count. */
+/** What a group's head shows: its mark, name, chevron, and its count when it has one (Older). */
 interface Head {
   key: string;
   look: GroupLook;
   name: string;
   title?: string;
-  count: number;
+  count?: number;
   /** The folder's color; muted with none. */
   tint?: string;
   /** The width of the column of the tab tiles, so that the name starts where the tabs' titles do. */
@@ -316,7 +316,7 @@ interface Head {
 /**
  * A group's head row, built the same for a project, Older and No Project: a
  * neutral tile of a tab's size with a folder in it, the name on one line, the
- * chevron at the end (none with no tabs) and the count.
+ * chevron at the end (none with no tabs), and the count of an Older group.
  */
 function groupHead(o: Head): HTMLElement {
   const row = el("div", "project");
@@ -394,7 +394,7 @@ function loose(nav: HTMLElement, model: HostModel, c: HostConn | undefined, l: N
   const key = `loose:${model.host}`;
   const open = isOpen(key, true);
   const look = groupLook(open, shownHere, l.tabs.length);
-  const row = groupHead({ key, look, name: t("projectNoProjectName"), count: l.tabs.length, room: column, dim: !c });
+  const row = groupHead({ key, look, name: t("projectNoProjectName"), room: column, dim: !c });
   row.dataset.host = model.host;
   row.dataset.session = l.id;
   if (c) {
@@ -440,7 +440,7 @@ function projectRow(nav: HTMLElement, model: HostModel, c: HostConn | undefined,
     return;
   }
   // The folder is in the tooltip only.
-  const row = groupHead({ key, look, name, title: `${name}\n${p.dir}`, count: p.tabs.length, tint: projectColor(p.color), room: column, dim: !c });
+  const row = groupHead({ key, look, name, title: `${name}\n${p.dir}`, tint: projectColor(p.color), room: column, dim: !c });
   row.dataset.host = model.host;
   row.dataset.session = p.id;
   if (c) {
