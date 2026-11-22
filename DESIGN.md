@@ -308,7 +308,7 @@ slide. The timings below are for what a spring does not move.
 
 | Token | Value | Use |
 |---|---|---|
-| `durEnter` | 150 ms, ease out | A popover or a dialog coming in; the dimmed window behind a dialog |
+| `durEnter` | 150 ms, ease out | A popover coming in; the dimmed window behind a dialog (its panel comes in on the Animation setting's spring, as the palette) |
 | `durExit` | 120 ms, ease in | A popover, a dialog or the palette going out |
 | `durExitMove` | 180 ms, ease in | What a spring brought in going out: a pane, a tab, a row, the banner, the tab left behind |
 | `durHover` | 120 ms, ease out | A color following the pointer (`hoverFade`) |

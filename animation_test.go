@@ -981,3 +981,60 @@ func TestPopoverOpensAbove(t *testing.T) {
 		}
 	}
 }
+
+// TestPopoverKeyStaysOwn checks that popoverBase's key goes to its panel
+// alone: closed, it builds none, and the element after it keeps its state
+// as the popover opens and closes.
+func TestPopoverKeyStaysOwn(t *testing.T) {
+	old := prefs
+	t.Cleanup(func() { prefs = old })
+	prefs = settings{}
+	open, fresh := false, 0
+	tt := ui.NewTester(func(c *ui.Context) {
+		anchor := ui.Box(c.Key("anchor")).Size(80, 30).Margin(20).Background(ui.Hex("#888888"))
+		popoverBase(c, anchor, &open, func(panel ui.Element) { panel.Width(200).Height(120) })
+		next := ui.Box(c).Size(40, 40)
+		ui.Local(next, "probe", func() bool { fresh++; return true })
+	}, 400, 300)
+	for _, o := range []bool{false, true, false, true, false} {
+		open = o
+		settle(tt)
+	}
+	if fresh != 1 {
+		t.Errorf("the element after the popover was built anew %d times as it opened and closed, want once", fresh)
+	}
+}
+
+// TestPopoverGatedReopenAnimates checks a popover whose caller skips
+// popoverBase while it is closed, as closeConfirm does: with popoverIdle in
+// those frames, its next opening grows again.
+func TestPopoverGatedReopenAnimates(t *testing.T) {
+	old := prefs
+	t.Cleanup(func() { prefs = old })
+	prefs = settings{}
+	open := false
+	tt := ui.NewTester(func(c *ui.Context) {
+		anchor := ui.Box(c.Key("anchor")).Size(80, 30).Margin(20).Background(ui.Hex("#888888"))
+		if !open {
+			popoverIdle(c, anchor)
+			return
+		}
+		popoverBase(c, anchor, &open, func(panel ui.Element) {
+			panel.Width(200).Height(120).Background(ui.Hex("#d02020"))
+		})
+	}, 400, 300)
+	shot := func() []byte { return slices.Clone(tt.Image().Pix) }
+	for i := range 2 {
+		open = true
+		tt.Frame()
+		tt.Advance(30 * time.Millisecond)
+		tt.Frame()
+		mid := shot()
+		settle(tt)
+		if bytes.Equal(mid, shot()) {
+			t.Errorf("opening %d: the panel is at rest 30 ms in, want it growing", i+1)
+		}
+		open = false
+		settle(tt)
+	}
+}

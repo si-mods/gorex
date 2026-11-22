@@ -123,12 +123,14 @@ func (a *App) endAsked() {
 // or of p when p is set, while it asks about closing it.
 func (a *App) closeConfirm(c *ui.Context, k *colors, anchor ui.Element, t *Tab, p *Pane) {
 	if !a.asking(t, p) {
+		popoverIdle(c, anchor)
 		return
 	}
 	// A tab's row scrolled out of the sidebar's list leaves the question
 	// to the dialog: its button is clipped.
 	if r, list := anchor.Bounds(), a.sideList; p == nil && prefs.TabPlacement != "" && r.H > 0 && list.H > 0 &&
 		(r.Y+r.H/2 < list.Y || r.Y+r.H/2 > list.Y+list.H) {
+		popoverIdle(c, anchor)
 		return
 	}
 	a.closeAsk.shown = true

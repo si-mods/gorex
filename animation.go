@@ -73,7 +73,8 @@ type popoverRec struct {
 // from where the copy shows (MyGo's Transition), which is no place for it
 // where the window or the anchor moved meanwhile: its rows would slide in
 // from there. Each opening has a key of the window's size and the anchor's
-// place, so that it is a new panel then.
+// place, so that it is a new panel then. Call it in every frame, open or
+// not; a caller that skips it while closed calls popoverIdle instead.
 func popoverBase(c *ui.Context, anchor ui.Element, open *bool, fn func(panel ui.Element)) {
 	if motion(c) == nil {
 		ui.PopoverBase(c, anchor, open, fn)
@@ -85,7 +86,13 @@ func popoverBase(c *ui.Context, anchor ui.Element, open *bool, fn func(panel ui.
 		rec.key, rec.entered = fmt.Sprint("popover ", w, h, anchor.Bounds()), false
 	}
 	rec.open = *open
-	ui.PopoverBase(c.Key(rec.key), anchor, open, func(panel ui.Element) {
+	// The key is the panel's: closed, PopoverBase builds none, and the key
+	// would go to whatever the caller builds next.
+	pc := c
+	if *open {
+		pc = c.Key(rec.key)
+	}
+	ui.PopoverBase(pc, anchor, open, func(panel ui.Element) {
 		fn(panel)
 		pose, anim := ui.Pose{}, ui.Animation{Duration: durEnter, Ease: ui.EaseOut}
 		if !rec.entered {
@@ -96,6 +103,16 @@ func popoverBase(c *ui.Context, anchor ui.Element, open *bool, fn func(panel ui.
 		panel.TransformOrigin(popoverOrigin(c, anchor, panel)).AnimatePose(pose, anim)
 		panel.Transition(exitIn(ui.ElementTransition{Colors: true, Exit: popFrom}, durExit))
 	})
+}
+
+// popoverIdle tells popoverBase that the popover of anchor is closed in a
+// frame its caller does not call popoverBase, so that its next opening
+// grows again, with a key of its own.
+func popoverIdle(c *ui.Context, anchor ui.Element) {
+	if motion(c) == nil {
+		return
+	}
+	ui.Local(anchor, "popover-motion", func() popoverRec { return popoverRec{} }).open = false
 }
 
 // popoverOrigin is the corner of the panel that meets its anchor, as
