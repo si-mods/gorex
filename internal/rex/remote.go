@@ -1064,17 +1064,17 @@ type pooledTailcat struct {
 	tc    *tailcat.Client
 	conns int  // open, or being dialed
 	used  bool // it connected once
+	dead  bool // out of the pool and closed (retire, drop)
 	idle  *time.Timer
 }
 
 // dialTailcat connects to RemotePort at addr with the tailcat client of
 // addr. A client that connected before and fails now may have a server
-// that restarted and forgot it: when no other connection uses it, another
-// client replaces it. (A Ping to register again does not help: it returns
-// at once for a client that was registered, so the try after it only
-// waited tailcatTry more.) A client other connections use is never closed
-// here: one slow dial says little of them, and a restarted server's close
-// soon. A dial its caller gave up (canceled) closes no client.
+// that restarted and forgot it, so a new client replaces it (retire), as
+// in ios/tailnet/tailcat.go. (A Ping to register again does not help: it
+// returns at once for a client that was registered, so the try after it
+// only waited tailcatTry more.) A dial its caller gave up (canceled)
+// closes no client.
 func dialTailcat(ctx context.Context, addr string) (net.Conn, error) {
 	k, err := remoteClientKey()
 	if err != nil {
@@ -1096,18 +1096,16 @@ func dialTailcat(ctx context.Context, addr string) (net.Conn, error) {
 	var c net.Conn
 	if used {
 		t0 := time.Now()
-		c, err = p.try(ctx, tailcatTry)
-		if err != nil && ctx.Err() == nil && p.drop(addr) {
+		var timedOut bool
+		c, timedOut, err = p.try(ctx)
+		var fresh *pooledTailcat
+		if err != nil && ctx.Err() == nil {
+			fresh = p.retire(addr, timedOut)
+		}
+		if fresh != nil {
 			tried := time.Since(t0)
-			old := p
-			tailcatMu.Lock()
-			if p = tailcatClients[addr]; p == nil {
-				p = newPooledTailcat(addr, k)
-			}
-			p.conns++
-			tailcatMu.Unlock()
-			old.tc.Close()
-			old.release(addr)
+			p.release(addr)
+			p = fresh
 			c, err = p.tc.DialTCPPort(ctx, RemotePort)
 			// Only on this path, so a slow reconnect explains itself.
 			log.Printf("rex: the kept tailcat client's try failed after %v; a new client %s after %v more",
@@ -1130,6 +1128,38 @@ func dialTailcat(ctx context.Context, addr string) (net.Conn, error) {
 	return &tailcatConn{Conn: c, p: p, addr: addr}, nil
 }
 
+// retire is for a try of p that failed while its dial goes on. p goes
+// from the pool and closes when its server seems to have forgotten it:
+// the try ran out of time, or no other connection uses p. Its other
+// connections then go too: their server forgot them, and two clients of
+// one key take each other's packets (#212). It returns the client of addr
+// to dial with now, counted, or nil when p stays, as after a port that
+// refused while others use p. A dial whose try failed because another
+// retired p takes that new client too, and so does each dial after: none
+// waits for the others to end. A new client has p's key.
+func (p *pooledTailcat) retire(addr string, timedOut bool) *pooledTailcat {
+	tailcatMu.Lock()
+	defer tailcatMu.Unlock()
+	if !p.dead {
+		if tailcatClients[addr] != p || !timedOut && p.conns != 1 {
+			return nil
+		}
+		p.dead = true
+		delete(tailcatClients, addr)
+		go p.tc.Close()
+	}
+	n := tailcatClients[addr]
+	if n == nil {
+		n = newPooledTailcat(addr, p.tc.Key)
+	}
+	if n.idle != nil {
+		n.idle.Stop()
+		n.idle = nil
+	}
+	n.conns++
+	return n
+}
+
 // drop takes p out of the pool when the dial under way is its only
 // connection, and reports whether it did.
 func (p *pooledTailcat) drop(addr string) bool {
@@ -1138,6 +1168,7 @@ func (p *pooledTailcat) drop(addr string) bool {
 	if p.conns != 1 || tailcatClients[addr] != p {
 		return false
 	}
+	p.dead = true
 	delete(tailcatClients, addr)
 	return true
 }
@@ -1149,12 +1180,13 @@ func newPooledTailcat(addr string, k key.NodePrivate) *pooledTailcat {
 	return p
 }
 
-// try dials within d.
-func (p *pooledTailcat) try(ctx context.Context, d time.Duration) (net.Conn, error) {
+// try dials within tailcatTry, and tells whether that time ran out.
+func (p *pooledTailcat) try(ctx context.Context) (net.Conn, bool, error) {
 	tailcatTries.Add(1)
-	ctx, cancel := context.WithTimeout(ctx, d)
+	ctx, cancel := context.WithTimeout(ctx, tailcatTry)
 	defer cancel()
-	return p.tc.DialTCPPort(ctx, RemotePort)
+	c, err := p.tc.DialTCPPort(ctx, RemotePort)
+	return c, err != nil && ctx.Err() != nil, err
 }
 
 // release counts a connection of p closed, and closes p after a while
