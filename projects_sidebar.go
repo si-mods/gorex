@@ -227,11 +227,11 @@ func (a *App) newNoProjectTab(h *hostConn) {
 
 // projectRow is a project's row, and the header of a host's No Project
 // group (named so, open at first), flush with the host's header: its folder
-// tile, its name, the chevron of its state (none with no tab) and its
-// tabs' count; under the pointer and while it is shown, the + that opens a
-// tab in it in place of the count. Its folder shows in the title bar while
-// it is shown. A click shows it, and on the project shown opens or closes
-// its tabs. A host's offline copy shows greyed, and opens nothing.
+// tile, its name and the chevron of its state (none with no tab); under the
+// pointer and while it is shown, the + that opens a tab in it, after the
+// chevron. Its folder shows in the title bar while it is shown. A click
+// shows it, and on the project shown opens or closes its tabs. A host's
+// offline copy shows greyed, and opens nothing.
 func (a *App) projectRow(c *ui.Context, k *colors, w *Workspace, reserve float32) {
 	key := openKey(w.host, w.ID)
 	shown := w == a.ws
@@ -287,9 +287,9 @@ func (a *App) projectRow(c *ui.Context, k *colors, w *Workspace, reserve float32
 				statusDot(c, k, s, 7).Label(statusTip(s))
 			}
 		}
-		// The chevron, before the count or the +, opens and closes the tabs
-		// of any project, as a click on the row of the one shown does. A
-		// project with no tab has none: there is nothing to open.
+		// The chevron, at the end of the row before the +, opens and closes
+		// the tabs of any project, as a click on the row of the one shown
+		// does. A project with no tab has none: there is nothing to open.
 		if n > 0 {
 			fold := disclosureChevron(c.Key("fold"), k, open, projectRowH).
 				Cursor(ui.CursorPointer).Role(ui.RoleDisclosure).Expanded(open).Label(locales.ProjectsTabsOf(name))
@@ -303,9 +303,7 @@ func (a *App) projectRow(c *ui.Context, k *colors, w *Workspace, reserve float32
 			if iconButton(c, k, "plus", label, 20, 13).Tooltip(tip(label, &cmdNewTab)).Clicked() {
 				a.later(c, func() { a.newTabIn(w) })
 			}
-			return
 		}
-		ui.Text(c, fmt.Sprint(n)).FontSize(fontFootnote).TextColor(k.textFaint).Shrink(0).Padding(0, 6, 0, 0)
 	})
 	if offline {
 		dimmed(row, 0.5)
