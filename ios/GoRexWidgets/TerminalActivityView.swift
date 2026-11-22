@@ -1,3 +1,4 @@
+import AppIntents
 import SwiftUI
 
 // The terminal activity's faces (docs/IOS-006-live-activities.md, Terminal
@@ -7,6 +8,10 @@ import SwiftUI
 extension TerminalActivity.ContentState {
     /// Whether it shows as paused: the stream closed, or the state is old.
     func paused(stale: Bool) -> Bool { !connected || stale }
+
+    /// Whether it takes the buttons: the top record is one a key answers
+    /// (TerminalActivity.Record.answerable).
+    nonisolated var showsActions: Bool { record?.answerable == true }
 }
 
 /// The program's tile, as the inbox's rows show it.
@@ -98,6 +103,37 @@ struct TerminalActivityHeading: View {
     }
 }
 
+/// The activity's answers to the blocked record it shows
+/// (docs/IOS-006-live-activities.md, Actions): Deny sends Escape,
+/// Approve Return, each in the app's process, without the app coming to
+/// the front. Only while the top record is one they answer; a question
+/// kind shows none, a tap opening the terminal as before. They do not
+/// show paused: the row then says what brings the app back instead. A
+/// suspended app with the host pushing is not paused — pushes hold
+/// connected — so the buttons still answer from the Lock Screen.
+struct TerminalActivityActions: View {
+    let attributes: TerminalActivity
+    /// On the Lock Screen card the buttons tint white, so the prominent
+    /// one's label goes dark on its white fill; on the dark island the
+    /// accent tint keeps its own contrast.
+    var onCard = false
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Button(intent: DenyIntent(host: attributes.host, session: attributes.session, block: attributes.block)) {
+                Text("Deny")
+            }
+            .buttonStyle(.bordered)
+            Button(intent: ApproveIntent(host: attributes.host, session: attributes.session, block: attributes.block)) {
+                Text("Approve")
+            }
+            .buttonStyle(.borderedProminent)
+            .foregroundStyle(onCard ? .black : .white)
+        }
+        .controlSize(.small)
+    }
+}
+
 /// The last line the terminal shows, in a monospaced font; paused, what
 /// brings it back.
 struct TerminalActivityLine: View {
@@ -142,6 +178,12 @@ struct TerminalActivityFace: View {
             }
             .opacity(paused ? 0.5 : 1)
             TerminalActivityLine(state: state, paused: paused)
+            if !paused, state.showsActions {
+                HStack {
+                    Spacer(minLength: 0)
+                    TerminalActivityActions(attributes: attributes)
+                }
+            }
         }
     }
 }
@@ -206,14 +248,23 @@ struct TerminalActivityCard: View {
                         .fontWeight(.semibold)
                         .foregroundStyle(.white.opacity(0.85))
                 } else {
-                    Text(verbatim: footer)
-                        .foregroundStyle(.white.opacity(0.58))
-                        .privacySensitive()
+                    HStack(spacing: 8) {
+                        Text(verbatim: footer)
+                            .foregroundStyle(.white.opacity(0.58))
+                            .privacySensitive()
+                        Spacer(minLength: 0)
+                        if state.showsActions {
+                            TerminalActivityActions(attributes: attributes, onCard: true)
+                                .tint(.white)
+                        }
+                    }
                 }
             }
             .font(.caption)
             .lineLimit(1)
-            .frame(height: 16)
+            // The buttons take more than 16 pt: the row grows only while
+            // they show.
+            .frame(minHeight: 16)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.trailing, Self.glyphClear)
