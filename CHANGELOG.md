@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.48.0
+
+### Features
+
+* **tabs:** ask before closing a tab or pane that runs a program ([#971](https://github.com/si-mods/gorex/pull/971))
+* **desktop:** ease exits in and grow overlays from where they open ([#974](https://github.com/si-mods/gorex/pull/974))
+* **ios:** open a panel of the spaces from the space picker ([#969](https://github.com/si-mods/gorex/pull/969))
+* **ios:** keep pane programs in the offline copy, show their tiles ([#973](https://github.com/si-mods/gorex/pull/973))
+
+### Bug Fixes
+
+* **desktop:** readable text on glass, one close-button shape, pickers as menus ([#972](https://github.com/si-mods/gorex/pull/972))
+* **sidebar:** do not clip the current project's face on the panes' side ([#968](https://github.com/si-mods/gorex/pull/968))
 ## 0.47.0
 
 ### Features
