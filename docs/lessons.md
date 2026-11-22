@@ -109,6 +109,11 @@ Each item has a **Trigger** (what the diff shows), a **Check** (what the author 
 - **Check:** every consumer is listed, and all are fixed in this PR with one policy.
 - **Source:** the lost terminal stream took #641, #654 and #663 in two days because #641 fixed local panes only.
 
+### One of the two tailcat pools
+- **Trigger:** the diff changes the client pool of `ios/tailnet/tailcat.go` or of `internal/rex/remote.go` (`dialAddr`, `dialTailcat`, `try`, `retire`, `drop`, `release`).
+- **Check:** the other pool gets the same rule in the same PR, with a test of the same case, or the PR says why it differs.
+- **Source:** #713 changed both pools. #884 gave iOS `retire` only, so the desktop still kept a client that an open connection used. After a server restart, that connection made the host unreachable from the desktop (#751).
+
 ### A deliberate reconnect goes away, it does not close normally
 - **Trigger:** the diff ends a connection it means to reopen at once (reconnect, resume, network change).
 - **Check:** the end's close code is not normalClosure — on Apple, `cancel(with: .goingAway)` — since URLSessionWebSocketTask sends a close frame on every task end (a bare `cancel()` included; measured on the iOS simulator, where macOS's URLSession sends none). The server keeps the client, its streams and its tickets for the reconnect grace unless the close is normal; it is what a reconnect needs kept.
