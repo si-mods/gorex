@@ -33,6 +33,11 @@ func main() {
 	rex.RexPairURL = rexapi.PairURL
 	rex.TailnetNode = rexapi.DesktopNode
 	rex.EnableBuiltinTailscale = rexapi.EnableBuiltinTailscale
+	// server.version reports the app's version, marked as GoRex's; a
+	// build outside a bundle has none and keeps the placeholder.
+	if v := mygo.App.Version(); v != "" {
+		rexapi.RexVersion = v + "-gorex"
+	}
 	// The state of the sessions lives in the app's data directory, which
 	// the server it starts takes from GOREX_DIR: "GoRex", or "GoRex Dev"
 	// under mygo dev, which keeps the installed app's sessions apart. A plain

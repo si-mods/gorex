@@ -136,6 +136,12 @@ func TestContract(t *testing.T) {
 		ver["api_revision"] != float64(apiRevision) {
 		t.Errorf("version: %v", ver)
 	}
+	// main sets RexVersion from the app's: server.version reports it.
+	defer func(v string) { RexVersion = v }(RexVersion)
+	RexVersion = "1.2.3-test"
+	if ver = callChecked(t, c, "server.version", nil); ver["rex_version"] != "1.2.3-test" {
+		t.Errorf("version: %v", ver)
+	}
 	status := callChecked(t, c, "server.status", nil)
 	if status["session_count"] != float64(2) || status["host_id"] == nil {
 		t.Errorf("status: %v", status)
