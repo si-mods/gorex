@@ -133,6 +133,7 @@ func (a *App) closeConfirm(c *ui.Context, k *colors, anchor ui.Element, t *Tab, 
 	}
 	a.closeAsk.shown = true
 	ui.PopoverBase(c, anchor, &a.closeAsk.open, func(panel ui.Element) {
+		popoverMotion(c, anchor, panel)
 		popoverShadow(glassPanel(panel.Margin(8, 0, 0, 0).Width(280).Padding(14).Radius(radiusXL), k).Border(1, k.panelBorder), k)
 		a.closeAskBody(c, k, panel)
 	})
@@ -154,6 +155,7 @@ func (a *App) closeAskFallback(c *ui.Context, k *colors) {
 		return
 	}
 	ui.DialogBase(c, &ask.open, func(backdrop, panel ui.Element) {
+		dialogEnter(c, backdrop, panel)
 		backdrop.Background(k.backdrop)
 		dialogShadow(glassPanel(panel.Width(320).Padding(20).Radius(radiusXXL), k).Border(1, k.panelBorder))
 		a.closeAskBody(c, k, panel)
@@ -231,6 +233,7 @@ func (a *App) closeOthersConfirm(c *ui.Context, k *colors) {
 		body = locales.CloseOthersBodyIdle(n)
 	}
 	ui.DialogBase(c, &a.closeOthersOpen, func(backdrop, panel ui.Element) {
+		dialogEnter(c, backdrop, panel)
 		backdrop.Background(k.backdrop)
 		dialogShadow(glassPanel(panel.Width(380).Padding(20).Radius(radiusXXL), k).Border(1, k.panelBorder)).Role(ui.RoleDialog).Label(title)
 		ui.Column(c).Gap(10).Children(func() {
