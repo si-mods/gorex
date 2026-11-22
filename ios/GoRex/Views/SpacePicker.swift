@@ -178,6 +178,9 @@ struct SpacePanelLayer: View {
     /// nothing moves.
     var ns: Namespace.ID?
     @Environment(\.accessibilityReduceMotion) private var still
+    /// Set while the panel travels back to the capsule; it is only removed
+    /// once it is gone, so a removed panel can never leave a hittable ghost.
+    @State private var leaving = false
 
     var body: some View {
         GeometryReader { g in
@@ -192,7 +195,7 @@ struct SpacePanelLayer: View {
                                choose: { s in close(); choose(s) },
                                add: { close(); add() },
                                edit: { close(); edit() },
-                               ns: match, stagger: !still, open: open)
+                               ns: match, stagger: !still)
                         .fixedSize(horizontal: true, vertical: false)
                         // The glass hugs the panel: the cap below only
                         // limits it, and the room under a short panel stays
@@ -201,6 +204,14 @@ struct SpacePanelLayer: View {
                         .shadow(color: .black.opacity(0.16), radius: 24, y: 8)
                         .frame(maxHeight: max(160, g.size.height - r.maxY - 8 - 16), alignment: .top)
                         .modifier(SpaceMatched(id: .chrome, ns: match, source: false))
+                        // The way back: the whole panel shrinks and fades
+                        // into the capsule it grew from, carrying the
+                        // picked space's row with it.
+                        .scaleEffect(leaving ? 0.15 : 1, anchor: UnitPoint(
+                            x: r.width / 2 / 288,
+                            y: -(8 + r.height / 2) / 300))
+                        .opacity(leaving ? 0 : 1)
+                        .allowsHitTesting(!leaving)
                         // One element holding the rows, modal, so that
                         // VoiceOver keeps to the panel while it is open.
                         .accessibilityElement(children: .contain)
@@ -217,13 +228,25 @@ struct SpacePanelLayer: View {
                 }
             }
         }
+        .onChange(of: open) { _, isOpen in if isOpen { leaving = false } }
     }
 
     /// The shared elements' namespace: nil under Reduce Motion.
     private var match: Namespace.ID? { still ? nil : ns }
 
     private func close() {
-        withAnimation(still ? .easeInOut(duration: 0.15) : .snappy) { open = false }
+        guard !leaving else { return }
+        if still {
+            withAnimation(.easeInOut(duration: 0.15)) { open = false }
+            return
+        }
+        withAnimation(.snappy) { leaving = true }
+        // The panel leaves the tree once its travel is over: a closed panel
+        // removed only then can no longer be tapped where it used to be.
+        Task {
+            try? await Task.sleep(for: .milliseconds(450))
+            if leaving { open = false; leaving = false }
+        }
     }
 }
 
@@ -246,9 +269,6 @@ struct SpacePanel: View {
     var ns: Namespace.ID? = nil
     /// Whether the parts come in one by one once the glass is open.
     var stagger: Bool = false
-    /// Whether the panel is open; false as it travels back to the
-    /// capsule, when its parts are out of reach too.
-    var open: Bool = true
     /// The staggered parts' entrance, replayed on each open.
     @State private var revealed = false
     /// Whether the parts take touches. They sit out of view until the
@@ -329,7 +349,6 @@ struct SpacePanel: View {
             try? await Task.sleep(for: .milliseconds(320))
             armed = true
         }
-        .onChange(of: open) { _, o in if !o { armed = false } }
     }
 
     private var rows: some View {
