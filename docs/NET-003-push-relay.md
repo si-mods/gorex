@@ -8,7 +8,7 @@ metadata:
 
 # NET-003: Push relay: Live Activity pushes for every host
 
-Status: built. The host's sender (`internal/push`) is in #995, the relay is the private `si-mods/gorex-relay` repository, and this is the phone's half. The team decided these points on 2026-11-22.
+Status: built. The host's sender (`internal/push`) is in #995, the relay is the private `si-mods/gorex-relay` repository, and this is the phone's half; a blocked record's urgent push carries the alert that replaces the phone's local notification. The team decided these points on 2026-11-22.
 
 This doc designs the relay that [IOS-006](IOS-006-live-activities.md) left open ("Later: a relay"). It replaces the direct last hop of that doc: no host ever holds an APNs key. Phase 2 of IOS-006 uses this relay as its only last hop.
 
@@ -29,7 +29,7 @@ An update of a Live Activity through APNs needs a `.p8` key of the team of the a
 
 - **End-to-end encryption of the content.** The widget extension renders the push directly. No extension can decrypt it. The relay and Apple see the content state in plain text.
 - **A direct last hop.** No host holds an APNs key. The earlier direct design of [IOS-006](IOS-006-live-activities.md) is dropped.
-- **Alert pushes in place of the local blocked notification.** The alert field is in the API. The swap of the local notification is a later change of IOS-006.
+- **Alert pushes in place of the local blocked notification.** The alert field is in the API. The swap itself is of the host's sender and the app (IOS-006), not of the relay.
 - **Push-to-start.** The app starts the activity in the foreground, as today.
 
 ## Design
@@ -113,7 +113,6 @@ The relay sends to `api.push.apple.com` or `api.sandbox.push.apple.com` by the b
 
 1. Which Apple topic list shows for a topic-specific key, and whether `dev.gorex.ios.push-type.liveactivity` needs its own entry or comes with the app.
 2. Whether an unsigned archive keeps `aps-environment` at export (as [IOS-006](IOS-006-live-activities.md) asks).
-3. The alert push and the swap of the local blocked notification.
 
 ## References
 

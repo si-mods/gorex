@@ -50,7 +50,8 @@ func methodGorexPushRegister(c *control, a args) (any, *apiError) {
 	if hasSession != hasBlock {
 		return nil, errBadRequest("session_id and block_id come together or not at all")
 	}
-	if _, _, aerr := a.boolean("live_activities"); aerr != nil {
+	live, _, aerr := a.boolean("live_activities")
+	if aerr != nil {
 		return nil, aerr
 	}
 	if hasSession {
@@ -62,7 +63,7 @@ func methodGorexPushRegister(c *control, a args) (any, *apiError) {
 			return nil, errNotFound("no block %s in %s", bid, s.id)
 		}
 	}
-	host, err := c.g.push.Register(c, device, sid, bid)
+	host, err := c.g.push.Register(c, device, sid, bid, live)
 	if err != nil {
 		return nil, errInternal("%v", err)
 	}
@@ -93,7 +94,7 @@ var pushRegisterEntry = map[string]any{
 			"device":          map[string]any{"type": "string", "description": "The phone's device key: its public P-256 key in base64, at most 200 characters. The pushes are addressed to it, and it signs the token bindings at the relay."},
 			"session_id":      map[string]any{"type": "string", "description": "The session of the terminal on screen, with block_id; both, or neither."},
 			"block_id":        map[string]any{"type": "string", "description": "The block of the terminal on screen, with session_id; both, or neither."},
-			"live_activities": map[string]any{"type": "boolean", "description": "Whether the phone has Live Activities on."},
+			"live_activities": map[string]any{"type": "boolean", "description": "Whether the phone has Live Activities on; a blocked record's urgent push then carries an alert."},
 		},
 		"required":             []any{"device"},
 		"additionalProperties": false,
@@ -151,7 +152,8 @@ Arguments:
 - ` + "`device`" + ` (string, required): The phone's device key: its public P-256 key in base64, at most 200 characters.
 - ` + "`session_id`" + `, ` + "`block_id`" + ` (strings): The terminal on screen. Both, or neither; an unknown session fails with
   ` + "`session_not_found`" + `, an unknown block with ` + "`not_found`" + `.
-- ` + "`live_activities`" + ` (boolean, optional): Whether the phone has Live Activities on.
+- ` + "`live_activities`" + ` (boolean, optional): Whether the phone has Live Activities on; a blocked record's urgent
+  push then carries an alert.
 
 The result has ` + "`host`" + `, the host's public P-256 key (PKIX DER in base64) to bind activity tokens to at the
 relay, and ` + "`relay`" + `, the relay's URL.

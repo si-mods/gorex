@@ -310,7 +310,11 @@ final class Host: Identifiable {
     }
 
     /// Called when a program turns blocked, as it waits for the user: the
-    /// host, the session, the block and the record.
+    /// host, the session, the block and the record. A host that pushes
+    /// (its gorex.push.register answered) alerts by push instead, while
+    /// the phone has Live Activities on, so blocked is not called for it
+    /// and the local notification does not post twice
+    /// (docs/NET-003-push-relay.md).
     static var blocked: ((Host, String, String, ProgramStatus) -> Void)?
     /// Whether a block of the host is on screen, where the user sees its
     /// records as they come.
@@ -481,6 +485,9 @@ final class Host: Identifiable {
     /// The coordinator of the activities' push tokens (PushTokens,
     /// docs/NET-003-push-relay.md); a test's stands in.
     static var pushTokens: () -> PushTokens = { PushTokens.shared }
+    /// Whether the phone has Live Activities on, as gorex.push.register
+    /// reports (registerPush); a test's stands in.
+    static var liveActivitiesOn: () -> Bool = { ActivityAuthorizationInfo().areActivitiesEnabled }
     /// The terminal on screen the host's pushes are for, registered with
     /// it (pushTarget); nil while no terminal shows.
     @ObservationIgnored private(set) var pushTarget: (session: String, block: String)?
@@ -789,7 +796,7 @@ final class Host: Identifiable {
         let device = tokens.deviceKey
         guard !device.isEmpty else { return }
         var args: [String: Any] = ["device": device,
-                                   "live_activities": ActivityAuthorizationInfo().areActivitiesEnabled]
+                                   "live_activities": Self.liveActivitiesOn()]
         if let t = pushTarget {
             args["session_id"] = t.session
             args["block_id"] = t.block
@@ -864,7 +871,10 @@ final class Host: Identifiable {
                 b.raiseSeen(ProgramStatus.time(p["seen_at"]))
                 if let s = e.sessionID, Self.shown?(self, block) == true { see(session: s, block: block) }
                 for r in now where r.state == "blocked" && !was.contains(where: { $0.id == r.id && $0.state == "blocked" }) {
-                    if let s = e.sessionID { Self.blocked?(self, s, block, r) }
+                    // A host that pushes alerts by push, while the phone has Live Activities on.
+                    if let s = e.sessionID, Self.pushTokens().targets[id] == nil || !Self.liveActivitiesOn() {
+                        Self.blocked?(self, s, block, r)
+                    }
                 }
             case "program_status_removed":
                 let ids = p["ids"] as? [String] ?? []
