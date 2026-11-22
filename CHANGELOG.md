@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.50.0
+
+### Features
+
+* **desktop:** send Live Activity updates through the push relay ([#995](https://github.com/si-mods/gorex/pull/995))
+* **ios:** bind the Live Activity's push tokens at the relay ([#996](https://github.com/si-mods/gorex/pull/996))
+* **desktop:** bring the iOS space picker's panel to the desktop ([#989](https://github.com/si-mods/gorex/pull/989))
+* **desktop:** shared empty states for blank and no-result surfaces ([#991](https://github.com/si-mods/gorex/pull/991))
+* **ios:** shared empty states and no-results views ([#992](https://github.com/si-mods/gorex/pull/992))
+
+### Bug Fixes
+
+* **ios:** keep the client across a resume — the close code, not the frame, decides ([#993](https://github.com/si-mods/gorex/pull/993))
+* **ios:** give the text style a terminal's emoji-capable chars ask for ([#990](https://github.com/si-mods/gorex/pull/990))
+
 ## 0.49.1
 
 ### Bug Fixes
