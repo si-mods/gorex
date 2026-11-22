@@ -26,6 +26,9 @@ const ReferenceDate = 978307200
 // Record is the pushed form of a program-status record: the fields of
 // TerminalActivity.Record.
 type Record struct {
+	// ID is the record's, "" for the root record: the phone reports it
+	// seen (gorex.push.seen), so it goes even when empty.
+	ID    string `json:"id"`
 	State string `json:"state"`
 	Kind  string `json:"kind,omitempty"`
 	// Progress is nil when the record reports none; Updated the seconds
@@ -57,7 +60,7 @@ func StateFor(info *rex.SessionInfo, windowTitle, blockProgram, blockLabel, sess
 	var rec *Record
 	program := blockProgram
 	if u != nil && u.State != "idle" {
-		rec = &Record{State: u.State, Kind: u.Kind}
+		rec = &Record{ID: u.ID, State: u.State, Kind: u.Kind}
 		if u.Progress >= 0 {
 			p := u.Progress
 			rec.Progress = &p

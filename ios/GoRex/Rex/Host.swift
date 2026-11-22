@@ -488,6 +488,10 @@ final class Host: Identifiable {
     /// Whether the phone has Live Activities on, as gorex.push.register
     /// reports (registerPush); a test's stands in.
     static var liveActivitiesOn: () -> Bool = { ActivityAuthorizationInfo().areActivitiesEnabled }
+    /// Re-checks what the Live Activity of a host shows, so a seen
+    /// report that could not go while the host was offline goes now
+    /// (gorex.push.seen, TerminalLive.reportSeen). The app sets it.
+    static var activitySeen: @MainActor (UUID) -> Void = { _ in }
     /// The terminal on screen the host's pushes are for, registered with
     /// it (pushTarget); nil while no terminal shows.
     @ObservationIgnored private(set) var pushTarget: (session: String, block: String)?
@@ -806,6 +810,9 @@ final class Host: Identifiable {
             guard let key = r["host"] as? String, !key.isEmpty else { return }
             let relay = (r["relay"] as? String).flatMap { URL(string: $0) } ?? PushTokens.defaultRelay
             tokens.set(host: id, target: PushTarget(key: key, relay: relay))
+            // Its pushes are live: a seen report that could not go
+            // while the connection was down goes now (gorex.push.seen).
+            Self.activitySeen(id)
         }
     }
 
@@ -817,6 +824,20 @@ final class Host: Identifiable {
         let device = Self.pushTokens().deviceKey
         guard !device.isEmpty else { return }
         c.tell("gorex.push.unregister", ["device": device])
+    }
+
+    /// The done or error records the Live Activity showed are seen
+    /// (gorex.push.seen, docs/NET-003-push-relay.md): told of them as
+    /// the app comes back to the foreground, the host stops counting
+    /// them as new, on every client — as the screen's gorex.see_block
+    /// does. Its answer is whether the report went: a server without
+    /// gorex.push, or one not connected, is not told; one without the
+    /// method answers an error nothing reads.
+    @discardableResult
+    func pushSeen(session: String, block: String, records: [String]) -> Bool {
+        guard !isDemo, !records.isEmpty, let c = control, c.features.contains(Self.pushFeature) else { return false }
+        c.tell("gorex.push.seen", ["session_id": session, "block_id": block, "record_ids": records])
+        return true
     }
 
     /// The key this device's caches know the host by, as the pane last

@@ -8,7 +8,7 @@ metadata:
 
 # NET-003: Push relay: Live Activity pushes for every host
 
-Status: built. The host's sender (`internal/push`) is in #995, the relay is the private `si-mods/gorex-relay` repository, and this is the phone's half; a blocked record's urgent push carries the alert that replaces the phone's local notification. The team decided these points on 2026-11-22.
+Status: built. The host's sender (`internal/push`) is in #995, the relay is the private `si-mods/gorex-relay` repository, and this is the phone's half; a blocked record's urgent push carries the alert that replaces the phone's local notification, and `gorex.push.seen` reports the records the activity showed. The team decided these points on 2026-11-22.
 
 This doc designs the relay that [IOS-006](IOS-006-live-activities.md) left open ("Later: a relay"). It replaces the direct last hop of that doc: no host ever holds an APNs key. Phase 2 of IOS-006 uses this relay as its only last hop.
 
@@ -63,9 +63,15 @@ The host never learns whether the phone still listens. A dead token is removed w
 
 The host builds the `TerminalActivity.ContentState` of the target:
 
-- `record`, `program`, `connected`: as the app computes them today.
+- `record`, `program`, `connected`: as the app computes them today. `record` also carries `id` — `""` for the root record — so the phone can report `gorex.push.seen` for what the activity showed.
 - `title`: the title of the window, from the session view of the server. A rename that synced to the server shows.
 - `line`: the `msg` (or `last_msg` for done and error) of the most urgent record. The host has no screen, so the screen-line fallback of phase 1 does not apply. A program that reports no message gets no line.
+
+### Seen
+
+A done or error record the user saw on the Live Activity is not news: when the app returns to the foreground it calls `gorex.push.seen` with the session, the block and the ids of the done and error records the activity's content state shows, and the host marks them seen as `gorex.see_block` does — the block's `seen_at` rises to the latest named record's `updated_at`, so every client stops counting them as new. The app reports the record the activity shows — the last state a local update or a push left — so a record that came and went in the background without reaching the activity is not marked. The report goes once for each record the activity shows, again when the record changes and when the activity ends; a host it could not reach is told once its `gorex.push.register` answers again.
+
+The report names records by `id`, not at block granularity as `gorex.see_block` does with a time: the app knows exactly which records the activity showed, while a `seen_at` from it would have the app guess where its view left off — and two records can share an `updated_at` second. An `id` the host has no record of, as one a pushed update reported that has since gone, is skipped.
 
 ### Relay API
 
@@ -81,7 +87,7 @@ The relay sends to `api.push.apple.com` or `api.sandbox.push.apple.com` by the b
 
 ### Rex API
 
-`gorex.push.register` and `gorex.push.unregister` are additive, feature-gated (`gorex.push`, version 1). An old server answers `not_supported`; the phone then skips the relay path and keeps phase 1. An old phone calls nothing; the host does nothing.
+`gorex.push.register`, `gorex.push.seen` and `gorex.push.unregister` are additive, feature-gated (`gorex.push`, version 1). `gorex.push.seen` takes `session_id`, `block_id` and `record_ids` — the ids of the done and error records the activity showed, as `program_status` reports them — and needs the seen capability too; it answers an empty object, and skips an id the block has no record of. An old server answers `not_supported`; the phone then skips the relay path and keeps phase 1, and sends no `gorex.push.seen`. A server with `gorex.push` from before it answers `method_not_found`, which the phone sends the report without awaiting and ignores. An old phone calls nothing; the host does nothing.
 
 ### Security
 

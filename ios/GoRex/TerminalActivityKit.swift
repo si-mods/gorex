@@ -33,6 +33,13 @@ final class ActivityKitDriver: TerminalLive.Driver {
 
     var dismissed: Bool { activity?.activityState == .dismissed }
 
+    var shown: (attributes: TerminalActivity, state: TerminalActivity.ContentState)? {
+        // One of an earlier run, which the process no longer holds, is
+        // among ActivityKit's own list.
+        guard let a = activity ?? Activity<TerminalActivity>.activities.first else { return nil }
+        return (a.attributes, a.content.state)
+    }
+
     func start(_ attributes: TerminalActivity, _ state: TerminalActivity.ContentState) {
         // One at a time: those of an earlier run too.
         end()

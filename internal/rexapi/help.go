@@ -446,7 +446,7 @@ func withPortsMethod(raw json.RawMessage) json.RawMessage {
 // gorex.dir.list and gorex.push.*.
 func ownMethods() []json.RawMessage {
 	var out []json.RawMessage
-	for _, e := range append([]map[string]any{moveWindowEntry, seeBlockEntry, mergeWindowsEntry, newWindowFromBlockEntry, spacesApplyEntry, dirListEntry, agentsListEntry, portOpenEntry, portCloseEntry, pushRegisterEntry, pushUnregisterEntry}, projectEntries...) {
+	for _, e := range append([]map[string]any{moveWindowEntry, seeBlockEntry, mergeWindowsEntry, newWindowFromBlockEntry, spacesApplyEntry, dirListEntry, agentsListEntry, portOpenEntry, portCloseEntry, pushRegisterEntry, pushSeenEntry, pushUnregisterEntry}, projectEntries...) {
 		if raw, err := json.Marshal(e); err == nil {
 			out = append(out, raw)
 		}

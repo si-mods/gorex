@@ -17,6 +17,10 @@ final class TerminalLive {
         var running: Bool { get }
         /// Whether the user dismissed the activity started last.
         var dismissed: Bool { get }
+        /// What the activity shows: the terminal, and the state a local
+        /// update or a push left; nil while none runs. A push may have
+        /// written the state while the app was away.
+        var shown: (attributes: TerminalActivity, state: TerminalActivity.ContentState)? { get }
         /// Starts an activity, in place of any other.
         func start(_ attributes: TerminalActivity, _ state: TerminalActivity.ContentState)
         /// Updates it. Without done, the update asks for background time of
@@ -41,6 +45,12 @@ final class TerminalLive {
     /// Runs work after a wait, in seconds; a test runs it when it chooses.
     typealias Schedule = (TimeInterval, @escaping @MainActor () -> Void) -> Void
 
+    /// Tells of the done or error records a Live Activity showed —
+    /// host, session, block and the records' ids — for gorex.push.seen;
+    /// the app sets it. Its answer is whether the report went: it did
+    /// not reach an offline host, nor one without gorex.push.
+    static var seen: @MainActor (_ host: UUID, _ session: String, _ block: String, _ records: [String]) -> Bool = { _, _, _, _ in false }
+
     let grace: BackgroundGrace
     private let driver: Driver
     /// The least time between two updates, in seconds.
@@ -63,6 +73,8 @@ final class TerminalLive {
     /// The state sent last, and when.
     private(set) var sent: TerminalActivity.ContentState?
     private var lastUpdate: Date?
+    /// The record reportSeen last told of; a changed one tells again.
+    private var seenReported: TerminalActivity.Record?
     /// The update waiting, by its number; nil for none.
     private var due: Int?
     private var count = 0
@@ -89,11 +101,14 @@ final class TerminalLive {
         noteDismissed()
         let same = owner == o && source?.attributes == s.attributes
         if !same {
+            // The activity it ends may have been seen, as a close's.
+            if owner != nil { reportSeen() }
             if owner != nil { driver.end() }
             owner = o
             sent = nil
             line = ""
             due = nil
+            seenReported = nil
         }
         source = s
         lineDirty = true
@@ -106,6 +121,7 @@ final class TerminalLive {
     /// nothing.
     func close(owner o: UUID) {
         guard owner == o else { return }
+        reportSeen()
         grace.unregister(key)
         driver.end()
         owner = nil
@@ -147,9 +163,30 @@ final class TerminalLive {
         away = nil
         paused = false
         noteDismissed()
+        // What the activity showed while the app was away, before the
+        // publish below writes over it, may have been seen.
+        reportSeen()
         if owner != nil, !driver.running { start() }
         publish(force: true)
         return resume
+    }
+
+    /// The app is in front again, or the activity ends: the done or
+    /// error record the activity shows may have been seen then, so the
+    /// host is told of it, once for each the activity shows
+    /// (gorex.push.seen, docs/NET-003-push-relay.md). Pass a host to
+    /// report only its activity's, as when it comes back online.
+    func reportSeen(host: UUID? = nil) {
+        guard let shown = driver.shown, host == nil || shown.attributes.host == host else { return }
+        let r = shown.state.record
+        guard r != seenReported else { return }
+        guard let r, r.state == "done" || r.state == "error", let id = r.id else {
+            seenReported = r
+            return
+        }
+        if Self.seen(shown.attributes.host, shown.attributes.session, shown.attributes.block, [id]) {
+            seenReported = r
+        }
     }
 
     /// Something the activity shows changed: an update within the interval
@@ -251,7 +288,7 @@ final class TerminalLive {
         let line = text(u?.msg) ?? (finished ? text(u?.lastMsg) : nil) ?? screen.shownText
         func shown(_ s: String) -> String { TerminalActivity.cut(s.shownText.trimmingCharacters(in: .whitespaces)) }
         return .init(title: shown(title), program: WidgetPublisher.program(r?.app, block: program),
-                     record: r.map { .init(state: $0.state, kind: $0.kind, progress: $0.progress, title: $0.title.map(shown), updated: $0.updated) },
+                     record: r.map { .init(id: $0.id, state: $0.state, kind: $0.kind, progress: $0.progress, title: $0.title.map(shown), updated: $0.updated) },
                      line: TerminalActivity.cut(line, TerminalActivity.maxLine, bytes: TerminalActivity.maxLineBytes), connected: connected)
     }
 }
