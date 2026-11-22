@@ -129,6 +129,12 @@ nonisolated final class TerminalLiveTests: XCTestCase {
         XCTAssertEqual("bad\u{FFFD}here".shownText, "badhere")
         let kept = "中文 🏴󠁧󠁢󠁳󠁣󠁴󠁿 👩‍💻 e\u{301}"
         XCTAssertEqual(kept.shownText, kept, "CJK, emoji, their joiners and marks stay")
+        XCTAssertEqual("\u{23FA} ~/project".shownText, "\u{23FA}\u{FE0E} ~/project",
+                       "a bullet iOS draws as an emoji gets the text style")
+        XCTAssertEqual("a \u{2600} day".shownText, "a \u{2600}\u{FE0E} day")
+        XCTAssertEqual("\u{2764}\u{FE0F} it".shownText, "\u{2764}\u{FE0F} it", "an explicit emoji stays one")
+        XCTAssertEqual("\u{2764}\u{200D}\u{1F525}".shownText, "\u{2764}\u{200D}\u{1F525}", "a ZWJ family's too")
+        XCTAssertEqual("\u{1F389} shipped".shownText, "\u{1F389} shipped", "a character whose only style is emoji stays an emoji")
     }
 
     /// The line and a record's text reach the activity filtered: a Nerd
@@ -173,6 +179,12 @@ nonisolated final class TerminalLiveTests: XCTestCase {
         screen = "──────────── api session ────────────"
         l.outputChanged(); w.run(); w.run()
         XCTAssertEqual(l.sent?.line, "", "a titled edge is no line either")
+
+        // Devin's status dot is U+23FA, which iOS draws as a button where
+        // Unicode asks for the text style: the line asks for the text.
+        screen = "\u{23FA} ~/project"
+        l.outputChanged(); w.run(); w.run()
+        XCTAssertEqual(l.sent?.line, "\u{23FA}\u{FE0E} ~/project")
     }
 
     /// A screen's rows, and the cursor's row: the one marked with a "|".
@@ -356,7 +368,7 @@ nonisolated final class TerminalLiveTests: XCTestCase {
             38: "  🏢 Example Org  🖥 alice-laptop  📁 ~/project  🤖 Model  📟 v2.1.0",
             39: "  ⏵⏵ bypass permissions on (shift+tab to cycle)",
         ])
-        XCTAssertEqual(TerminalActivity.screenLine(screen, cursor: 36), "✔ Update installed · Restart to update")
+        XCTAssertEqual(TerminalActivity.screenLine(screen, cursor: 36), "\u{2714}\u{FE0E} Update installed · Restart to update")
         screen[34] = "✻ Refactoring… (1m 15s · esc to interrupt)"
         XCTAssertEqual(TerminalActivity.screenLine(screen, cursor: 36), "✻ Refactoring… (1m 15s · esc to interrupt)")
         XCTAssertEqual(TerminalActivity.screenLine(screen, cursor: 39), "✻ Refactoring… (1m 15s · esc to interrupt)", "cursor on the last status line")
@@ -369,12 +381,12 @@ nonisolated final class TerminalLiveTests: XCTestCase {
     func testScreenLineDevinCaptured() {
         let screen = Self.rows([
             1: "⠀⣴⣾⣶⡄⠀⠀⠀⠀", 2: "⠀⠛⠿⠟⠻⣶⣾⣶⡄  Devin CLI", 3: "⠀⣤⣶⣦⣴⠿⢿⠿⠃  v3000.0", 4: "⠀⠻⢿⠿⠃⠀⠀⠀⠀",
-            6: " Pro · 40% remaining (resets in 1d 19h)", 8: " ● ~/project",
+            6: " Pro · 40% remaining (resets in 1d 19h)", 8: " \u{23FA} ~/project",
             9: "──────────── iOS project ────────────", 10: "❭ Ask Devin to build features, fix bugs, or work on your code", 11: Self.rule,
             12: "SWE-2 High · bypass                                     Press Ctrl+O to view the full thinking trace",
         ])
-        XCTAssertEqual(TerminalActivity.screenLine(screen, cursor: 10), "● ~/project")
-        XCTAssertEqual(TerminalActivity.screenLine(screen, cursor: 13), "● ~/project", "cursor under the status bar")
+        XCTAssertEqual(TerminalActivity.screenLine(screen, cursor: 10), "\u{23FA}\u{FE0E} ~/project")
+        XCTAssertEqual(TerminalActivity.screenLine(screen, cursor: 13), "\u{23FA}\u{FE0E} ~/project", "cursor under the status bar")
     }
 
     /// Pi idle, as captured: an editor with no prompt between rules, the
@@ -989,6 +1001,12 @@ nonisolated final class TerminalLiveTests: XCTestCase {
                                     line: "──────────── api session ────────────", connected: true)),
             ("titled-picked", short, .init(title: "api session", program: "devin", record: nil,
                                          line: "⠙ Running tools… (2m 1s)", connected: true)),
+            // Devin's status dot is U+23FA, which iOS draws as an emoji
+            // button; shownText asks for the text style with U+FE0E.
+            ("emoji", short, .init(title: "api session", program: "devin", record: nil,
+                                   line: "\u{23FA} ~/repos/gorex", connected: true)),
+            ("emoji-text", short, .init(title: "api session", program: "devin", record: nil,
+                                        line: "\u{23FA} ~/repos/gorex".shownText, connected: true)),
         ]
         func write(_ v: some View, _ name: String) throws {
             let r = ImageRenderer(content: v)
