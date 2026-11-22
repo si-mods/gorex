@@ -226,6 +226,7 @@ func hostPairQRSheet(c *ui.Context, k *colors, page *hostPairQR) {
 		title = locales.HostsPairWebTitle(page.host)
 	}
 	ui.DialogBase(c, &page.open, func(backdrop, panel ui.Element) {
+		dialogEnter(c, backdrop, panel)
 		// The backdrop dims the window; the glass is the panel's, as in
 		// the other sheets over the app.
 		backdrop.Background(k.backdrop)

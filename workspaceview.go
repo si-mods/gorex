@@ -2,7 +2,6 @@ package main
 
 import (
 	"strings"
-	"time"
 
 	"github.com/egoist/mygo/ui"
 
@@ -126,6 +125,7 @@ func (a *App) workspaceConfirm(c *ui.Context, k *colors) {
 	name := a.ws.Name
 	was := a.wsConfirm
 	ui.DialogBase(c, &a.wsConfirm, func(backdrop, panel ui.Element) {
+		dialogEnter(c, backdrop, panel)
 		backdrop.Background(k.backdrop)
 		dialogShadow(glassPanel(panel.Width(380).Padding(20).Radius(radiusXXL), k).Border(1, k.panelBorder)).Role(ui.RoleDialog).Label(locales.SessionCloseTitle(name))
 		ui.Column(c).Gap(10).Children(func() {
@@ -168,7 +168,7 @@ func dangerButton(c *ui.Context, k *colors, label string) ui.Element {
 	case b.Hovered():
 		bg = bg.Mix(ui.Hex("#000000"), 0.12)
 	}
-	b.Background(bg).Transition(ui.ElementTransition{Colors: true, Duration: 120 * time.Millisecond})
+	b.Background(bg).Transition(hoverFade)
 	b.Children(func() {
 		ui.Text(c, label).FontSize(fontBody).FontWeight(600).TextColor(ui.Hex("#ffffff"))
 	})

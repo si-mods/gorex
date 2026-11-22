@@ -857,3 +857,184 @@ func TestTileBounce(t *testing.T) {
 		})
 	}
 }
+
+// TestOverlaysAnimate: a popover grows from its anchor and a dialog comes
+// in as the palette does, and both go out with an exit of their own; with
+// Off, or while the desktop asks for less motion, they show and go at
+// once.
+func TestOverlaysAnimate(t *testing.T) {
+	old := prefs
+	t.Cleanup(func() { prefs = old })
+	for _, tc := range []struct {
+		name, style string
+		reduce      bool
+		moves       bool
+	}{
+		{"snappy", "", false, true},
+		{"natural", "natural", false, true},
+		{"off", "off", false, false},
+		{"reduce motion", "", true, false},
+	} {
+		for _, kind := range []string{"popover", "dialog"} {
+			t.Run(tc.name+"/"+kind, func(t *testing.T) {
+				prefs = settings{Animation: tc.style}
+				open := false
+				tt := ui.NewTester(func(c *ui.Context) {
+					anchor := ui.Box(c.Key("anchor")).Size(80, 30).Margin(20).Background(ui.Hex("#888888"))
+					body := func(e ui.Element) {
+						e.Width(200).Height(120).Background(ui.Hex("#d02020"))
+					}
+					if kind == "popover" {
+						popoverBase(c, anchor, &open, func(panel ui.Element) {
+							body(panel)
+						})
+						return
+					}
+					ui.DialogBase(c, &open, func(backdrop, panel ui.Element) {
+						dialogEnter(c, backdrop, panel)
+						backdrop.Background(ui.RGBA(0, 0, 0, 0.4))
+						body(panel)
+					})
+				}, 400, 300)
+				tt.SetPreferences(ui.Preferences{ReduceMotion: tc.reduce})
+				tt.Frame()
+				shot := func() []byte { return slices.Clone(tt.Image().Pix) }
+				closed := shot()
+				open = true
+				tt.Frame()
+				tt.Advance(30 * time.Millisecond)
+				tt.Frame()
+				mid := shot()
+				settle(tt)
+				shown := shot()
+				if bytes.Equal(shown, closed) {
+					t.Fatal("the overlay does not show")
+				}
+				if got := !bytes.Equal(mid, shown); got != tc.moves {
+					t.Errorf("opening: moving %v, want %v", got, tc.moves)
+				}
+				// Closed, it is on its way out for a moment, as the palette is.
+				open = false
+				tt.Frame()
+				tt.Advance(30 * time.Millisecond)
+				tt.Frame()
+				if got := !bytes.Equal(shot(), closed); got != tc.moves {
+					t.Errorf("closing: still shows %v, want %v", got, tc.moves)
+				}
+				// The exit is shorter than the entry's 150 ms.
+				tt.Advance(durExit)
+				tt.Frame()
+				if !bytes.Equal(shot(), closed) {
+					t.Error("the overlay was not gone after its exit")
+				}
+				// Opened again, it comes in again.
+				open = true
+				tt.Frame()
+				tt.Advance(30 * time.Millisecond)
+				tt.Frame()
+				if got := !bytes.Equal(shot(), shown); got != tc.moves {
+					t.Errorf("opening again: moving %v, want %v", got, tc.moves)
+				}
+			})
+		}
+	}
+}
+
+// TestPopoverOpensAbove: a popover that opens above its anchor, in a short
+// window at the sidebar's foot, grows from the anchor: on no frame of its
+// opening are its rows above where they rest, or outside the window, as
+// they were when a Transition of the panel laid it out again and slid it
+// down from above the window's top.
+func TestPopoverOpensAbove(t *testing.T) {
+	old := prefs
+	t.Cleanup(func() { prefs = old })
+	a, tt := newTestApp(t)
+	prefs = settings{TabPlacement: "left"}
+	a.hello.Host.Name = "Testbook"
+	tt.Frame()
+	// Opened and closed before, as in a window used a while, and then
+	// shortened while the copy of the panel is still leaving.
+	a.hostOpen = true
+	tt.Frame()
+	a.hostOpen = false
+	tt.Frame()
+	tt.SetSize(900, 300)
+	tt.Frame()
+	a.hostOpen = true
+	var rows [][2]float32
+	for range 12 {
+		tt.Frame()
+		top, ok1 := tt.Find("Testbook")
+		server, ok2 := tt.Find(locales.HostServer())
+		if !ok1 || !ok2 {
+			t.Fatalf("the panel does not show; texts %q", tt.Texts())
+		}
+		rows = append(rows, [2]float32{top.Y, server.Y})
+		tt.Advance(20 * time.Millisecond)
+	}
+	settle(tt)
+	top, _ := tt.Find("Testbook")
+	server, _ := tt.Find(locales.HostServer())
+	for i, r := range rows {
+		if r[0] < 0 || r[0] < top.Y-0.5 || r[1] < server.Y-0.5 {
+			t.Errorf("frame %d: the rows are at %v, above where they rest (%v, %v) or out of the window", i, r, top.Y, server.Y)
+		}
+	}
+}
+
+// TestPopoverKeyStaysOwn checks that popoverBase's key goes to its panel
+// alone: closed, it builds none, and the element after it keeps its state
+// as the popover opens and closes.
+func TestPopoverKeyStaysOwn(t *testing.T) {
+	old := prefs
+	t.Cleanup(func() { prefs = old })
+	prefs = settings{}
+	open, fresh := false, 0
+	tt := ui.NewTester(func(c *ui.Context) {
+		anchor := ui.Box(c.Key("anchor")).Size(80, 30).Margin(20).Background(ui.Hex("#888888"))
+		popoverBase(c, anchor, &open, func(panel ui.Element) { panel.Width(200).Height(120) })
+		next := ui.Box(c).Size(40, 40)
+		ui.Local(next, "probe", func() bool { fresh++; return true })
+	}, 400, 300)
+	for _, o := range []bool{false, true, false, true, false} {
+		open = o
+		settle(tt)
+	}
+	if fresh != 1 {
+		t.Errorf("the element after the popover was built anew %d times as it opened and closed, want once", fresh)
+	}
+}
+
+// TestPopoverGatedReopenAnimates checks a popover whose caller skips
+// popoverBase while it is closed, as closeConfirm does: with popoverIdle in
+// those frames, its next opening grows again.
+func TestPopoverGatedReopenAnimates(t *testing.T) {
+	old := prefs
+	t.Cleanup(func() { prefs = old })
+	prefs = settings{}
+	open := false
+	tt := ui.NewTester(func(c *ui.Context) {
+		anchor := ui.Box(c.Key("anchor")).Size(80, 30).Margin(20).Background(ui.Hex("#888888"))
+		if !open {
+			popoverIdle(c, anchor)
+			return
+		}
+		popoverBase(c, anchor, &open, func(panel ui.Element) {
+			panel.Width(200).Height(120).Background(ui.Hex("#d02020"))
+		})
+	}, 400, 300)
+	shot := func() []byte { return slices.Clone(tt.Image().Pix) }
+	for i := range 2 {
+		open = true
+		tt.Frame()
+		tt.Advance(30 * time.Millisecond)
+		tt.Frame()
+		mid := shot()
+		settle(tt)
+		if bytes.Equal(mid, shot()) {
+			t.Errorf("opening %d: the panel is at rest 30 ms in, want it growing", i+1)
+		}
+		open = false
+		settle(tt)
+	}
+}

@@ -329,6 +329,7 @@ func (a *App) projectSheetView(c *ui.Context, k *colors) {
 	title := locales.ProjectSheetTitleOn(a.hostName(s.host))
 	was := s.open
 	ui.DialogBase(c.Key("project-sheet"), &s.open, func(backdrop, panel ui.Element) {
+		dialogEnter(c, backdrop, panel)
 		backdrop.Background(k.backdrop)
 		winW, winH := c.Size()
 		panel.Width(min(540, winW-24)).MaxHeight(winH - 24).Padding(20).Radius(radiusXXL)

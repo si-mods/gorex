@@ -244,7 +244,7 @@ func (a *App) projectRow(c *ui.Context, k *colors, w *Workspace, reserve float32
 	row := ui.Row(c.Key("project-"+key)).Height(projectRowH).Shrink(0).Padding(0, 4, 0, sideLead).Gap(sideGap).AlignItems(ui.Center).
 		Radius(pillRadius(projectRowH, radiusM)).Cursor(ui.CursorPointer).Role(ui.RoleButton).Expanded(open).Label(name + spacedComma(workspaceDetail(w, a, n)))
 	if anim := motion(c); anim != nil {
-		row.Transition(ui.ElementTransition{Animation: anim, Position: true, Enter: tabMotion, Exit: tabMotion})
+		row.Transition(exitIn(ui.ElementTransition{Animation: anim, Position: true, Enter: tabMotion, Exit: tabMotion}, durExitMove))
 	}
 	// One row is filled, as chosen: the active tab, under the project that
 	// holds it, which shows as current by its weight and dot alone; the
@@ -329,7 +329,7 @@ func (a *App) projectRow(c *ui.Context, k *colors, w *Workspace, reserve float32
 	// tab does: its rows' own motion runs only in a list that stays.
 	list := ui.Column(c.Key("project-tabs-" + key)).Gap(rowGap)
 	if anim := motion(c); anim != nil {
-		list.Transition(ui.ElementTransition{Animation: anim, Position: true, Enter: tabMotion, Exit: tabMotion})
+		list.Transition(exitIn(ui.ElementTransition{Animation: anim, Position: true, Enter: tabMotion, Exit: tabMotion}, durExitMove))
 	}
 	if offline {
 		dimmed(list, 0.5)

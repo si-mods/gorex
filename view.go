@@ -261,7 +261,7 @@ func windowControls(c *ui.Context, k *colors, win *mygo.Window) {
 			b.Background(closeRed)
 			col = ui.Hex("#ffffff")
 		}
-		b.Transition(ui.ElementTransition{Colors: true, Duration: 120 * time.Millisecond})
+		b.Transition(hoverFade)
 		b.Children(func() {
 			glyphIcon(c, "x", 17, col)
 		})
@@ -314,7 +314,7 @@ func drawIconButton(c *ui.Context, k *colors, name, label string, size, iconSize
 		b.Background(k.hover)
 	}
 	if fadeColors {
-		b.Transition(ui.ElementTransition{Colors: true, Duration: 120 * time.Millisecond})
+		b.Transition(hoverFade)
 	}
 	col := k.iconMuted
 	if b.Hovered() || active {
@@ -338,11 +338,11 @@ func (a *App) tabContent(c *ui.Context, k *colors, t *Tab) {
 	a.syncNoteItem()
 	room := ui.Box(c.Key(roomKey(t.ID))).Grow(1).MinWidth(0).MinHeight(0)
 	if anim := motion(c); anim != nil && a.tabSlideDir != 0 {
-		room.Transition(ui.ElementTransition{
+		room.Transition(exitIn(ui.ElementTransition{
 			Animation: anim,
 			Enter:     &ui.Motion{XPercent: a.tabSlideDir, Opacity: 0},
 			Exit:      &ui.Motion{XPercent: -a.tabSlideDir, Opacity: 0},
-		})
+		}, durExitMove))
 	}
 	bounds := room.Bounds()
 	// A tab shown the first time has no bounds yet: the last tab's room
@@ -845,7 +845,7 @@ func (a *App) paneCard(c *ui.Context, k *colors, t *Tab, p *Pane, held bool) ui.
 			Shadow(0, 6, 22, -2, shadow)
 	}
 	if fadeColors {
-		card.Transition(ui.ElementTransition{Colors: true, Duration: 160 * time.Millisecond})
+		card.Transition(hoverFade)
 	}
 	hovered := card.Hovered()
 	card.Children(func() {
@@ -1682,7 +1682,7 @@ func (a *App) errorBanner(c *ui.Context, k *colors) {
 		// as it covers the window.
 		banner := ui.Row(c.Key("error-banner")).Absolute().Bottom(18).Left(0).Right(0).Justify(ui.Center).PassThrough().ZIndex(-1)
 		if anim := motion(c); anim != nil {
-			banner.Transition(ui.ElementTransition{Animation: anim, Position: true, Enter: bannerMotion, Exit: bannerMotion})
+			banner.Transition(exitIn(ui.ElementTransition{Animation: anim, Position: true, Enter: bannerMotion, Exit: bannerMotion}, durExitMove))
 		}
 		banner.Children(func() {
 			toastShadow(ui.Row(c).Gap(10).Padding(8, 10, 8, 14).Radius(radiusL).Background(k.panel).Border(1, k.panelBorder), k).AlignItems(ui.Center).Children(func() {

@@ -22,6 +22,157 @@ var (
 	springBack = ui.Animation{Spring: ui.SpringOptions{Duration: 450 * time.Millisecond, Bounce: 0.3}}
 )
 
+// The timings of what the springs do not move: a layer that fades in or
+// out, a color that follows the pointer. An entry eases out, an exit eases
+// in and is shorter than its entry; DESIGN.md, Motion, says which to use.
+const (
+	// durEnter is how long a popover or a dialog takes to come in.
+	durEnter = 150 * time.Millisecond
+	// durExit is how long a popover, a dialog or the palette takes to go.
+	durExit = 120 * time.Millisecond
+	// durExitMove is how long what a spring brought in takes to go: a pane,
+	// a tab, a row, the banner, the tab being left.
+	durExitMove = 180 * time.Millisecond
+	// durHover is how long a color takes to follow the pointer.
+	durHover = 120 * time.Millisecond
+)
+
+// exitIn makes the Exit of t ease in over d, in place of its entry's
+// spring or curve.
+func exitIn(t ui.ElementTransition, d time.Duration) ui.ElementTransition {
+	t.ExitDuration, t.ExitEase = d, ui.EaseIn
+	return t
+}
+
+// hoverFade is the transition of a color that follows the pointer.
+var hoverFade = ui.ElementTransition{Colors: true, Duration: durHover, Ease: ui.EaseOut}
+
+// popFrom is where a popover goes as it closes, and popPose where it grows
+// from as it opens: a little smaller, and faded.
+var (
+	popFrom = &ui.Motion{Scale: 0.96, Opacity: 0}
+	popPose = ui.Pose{Scale: 0.96, Fade: 1}
+)
+
+// popoverRec is what popoverBase keeps of a popover from frame to frame:
+// whether it was open, whether its panel has been asked to rest, and the
+// key of its panel.
+type popoverRec struct {
+	open, entered bool
+	key           string
+}
+
+// popoverBase is ui.PopoverBase with motion: the panel grows from the
+// corner of its anchor that it meets, and shrinks back to it as it closes,
+// nothing while the desktop asks for less motion. It grows with a pose,
+// which does not touch the layout: an Enter of a Transition lays the
+// panel out at each size on the way, and its rows squeeze. It goes with
+// the Exit of a Transition, which keeps a copy of it leaving.
+//
+// A panel opened while the copy of one it closed still leaves comes back
+// from where the copy shows (MyGo's Transition), which is no place for it
+// where the window or the anchor moved meanwhile: its rows would slide in
+// from there. Each opening has a key of the window's size and the anchor's
+// place, so that it is a new panel then. Call it in every frame, open or
+// not; a caller that skips it while closed calls popoverIdle instead.
+func popoverBase(c *ui.Context, anchor ui.Element, open *bool, fn func(panel ui.Element)) {
+	if motion(c) == nil {
+		ui.PopoverBase(c, anchor, open, fn)
+		return
+	}
+	rec := ui.Local(anchor, "popover-motion", func() popoverRec { return popoverRec{} })
+	if *open && !rec.open {
+		w, h := c.Size()
+		rec.key, rec.entered = fmt.Sprint("popover ", w, h, anchor.Bounds()), false
+	}
+	rec.open = *open
+	// The key is the panel's: closed, PopoverBase builds none, and the key
+	// would go to whatever the caller builds next.
+	pc := c
+	if *open {
+		pc = c.Key(rec.key)
+	}
+	ui.PopoverBase(pc, anchor, open, func(panel ui.Element) {
+		fn(panel)
+		pose, anim := ui.Pose{}, ui.Animation{Duration: durEnter, Ease: ui.EaseOut}
+		if !rec.entered {
+			// Posed small for a frame, then at rest on the way.
+			pose, rec.entered = popPose, true
+			c.AnimationFrame()
+		}
+		panel.TransformOrigin(popoverOrigin(c, anchor, panel)).AnimatePose(pose, anim)
+		panel.Transition(exitIn(ui.ElementTransition{Colors: true, Exit: popFrom}, durExit))
+	})
+}
+
+// popoverIdle tells popoverBase that the popover of anchor is closed in a
+// frame its caller does not call popoverBase, so that its next opening
+// grows again, with a key of its own.
+func popoverIdle(c *ui.Context, anchor ui.Element) {
+	if motion(c) == nil {
+		return
+	}
+	ui.Local(anchor, "popover-motion", func() popoverRec { return popoverRec{} }).open = false
+}
+
+// popoverOrigin is the corner of the panel that meets its anchor, as
+// fractions of the panel: the top where it opens below the anchor, the
+// bottom above it. Its first frame has no bounds yet, and opens below the
+// anchor in the window's upper half, above in its lower.
+func popoverOrigin(c *ui.Context, anchor, panel ui.Element) (x, y float32) {
+	ab, pb := anchor.Bounds(), panel.Bounds()
+	_, winH := c.Size()
+	switch {
+	case pb.W > 0 && pb.H > 0:
+		x = min(max((ab.X+ab.W/2-pb.X)/pb.W, 0), 1)
+		if pb.Y+pb.H/2 < ab.Y+ab.H/2 {
+			y = 1
+		}
+	case ab.Y+ab.H/2 > float32(winH)/2:
+		y = 1
+	}
+	return x, y
+}
+
+// dialogMotion makes a dialog come in as the palette does, its panel from a
+// little above and smaller, the dimmed window behind it fading in, and
+// both go out fading, nothing while the desktop asks for less motion.
+// Call it in the dialog's function; fresh tells that the dialog opens in
+// this frame, as dialogFresh does.
+func dialogMotion(c *ui.Context, backdrop, panel ui.Element, fresh bool) {
+	anim := motion(c)
+	if anim == nil {
+		return
+	}
+	backdrop.Transition(exitIn(ui.ElementTransition{Duration: durEnter, Ease: ui.EaseOut, Colors: true, Enter: paletteFade, Exit: paletteFade}, durExit))
+	pose := ui.Pose{}
+	if fresh {
+		pose = paletteFrom
+	}
+	panel.TransformOrigin(0.5, 0).AnimatePose(pose, *anim)
+}
+
+// dialogFresh tells whether the dialog whose panel it is opens in this
+// frame, and asks for the frame after, which starts the panel moving.
+func dialogFresh(c *ui.Context, panel ui.Element) bool {
+	shown := ui.Local(panel, "dialog-shown", func() bool { return false })
+	if *shown {
+		return false
+	}
+	*shown = true
+	c.AnimationFrame()
+	return true
+}
+
+// dialogEnter is dialogMotion for a dialog that has no state of its own
+// to tell it opens.
+func dialogEnter(c *ui.Context, backdrop, panel ui.Element) {
+	if motion(c) == nil {
+		return
+	}
+	dialogMotion(c, backdrop, panel, dialogFresh(c, panel))
+}
+
 // motion is the spring that moves the panes and the sidebar: the user's
 // style, nil for none, as while the desktop asks for less motion.
 func motion(c *ui.Context) *ui.Animation {
@@ -65,7 +216,8 @@ func (a *App) paneTransition(c *ui.Context, t *Tab) *ui.ElementTransition {
 	moving := !drag && now.Before(t.settle)
 	// Colors, which a cell has none of, when nothing else: none set would
 	// move them all.
-	return &ui.ElementTransition{Animation: anim, Position: moving, Size: moving, Colors: !moving, Enter: pop, Exit: pop}
+	tr := exitIn(ui.ElementTransition{Animation: anim, Position: moving, Size: moving, Colors: !moving, Enter: pop, Exit: pop}, durExitMove)
+	return &tr
 }
 
 // fadeColors tells whether the elements being built fade their colors as
