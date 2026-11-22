@@ -143,6 +143,27 @@ Phase 2 (#930). This part replaces item 1 above, and the parts of Decisions 1 an
 | `GoRexApp.swift` | `ScreenStyle` gets `release()`, which clears the scheme for every screen. `clear(by:)` stays for `onDisappear`. `ScreenStyle` also keeps the system's scheme as observable state. It reads the window scene's trait collection, which the window's `preferredColorScheme` does not change. `registerForTraitChanges` on the scene updates it when the system changes between light and dark. |
 | `docs/lessons.md` | The phase 2 code PR undoes a part of #916, so it adds a lesson. A zoom transition needs a source and a destination of a similar shape. |
 
+### Revision: the space panel
+
+Phase 3. The space picker atop the list was left out of phases 1 and 2. Its panel scaled in from the capsule's corner at 85% of its size — a second element, with the capsule staying behind it — but its rows appeared as one block, and it had no reduced-motion form at all. The rules of this doc apply to it as they do to the others: the control opens what it controls.
+
+#### Behavior
+
+- The capsule stays on screen the whole time; the panel grows from its bottom-left corner, as before (`.scale(0.85, anchor:)` and `.opacity` on `.snappy`). What is new is the panel's entrance: once the glass is mostly open, the header comes in first and each row 30 ms after the last. On close the panel shrinks back into the capsule's corner and fades, the reverse of the way in. A tap on a space, a tap beside the panel and Escape close it the same way.
+- On a choice, the capsule's name cross-fades to the chosen space (`contentTransition`); the capsule never leaves.
+- Under Reduce Motion nothing scales and nothing staggers: the panel cross-fades for 150 ms under the capsule. Every `.snappy` here and in the `chosen` writes that drive it falls back to `.easeInOut(duration: 0.15)`, as item 7 does. The rule is in `DESIGN.md`, Motion.
+- The closes that a state change drives — Activity taking the picker's place, the capsule leaving the list — are animated like a tap beside the panel. They were hard cuts.
+- VoiceOver keeps its rules: the panel's header takes the focus on open, and on close the focus goes back to the capsule.
+- The wide window's `.bar` picker keeps the system popover. Edit Spaces keeps the standard sheet (Decisions, 4).
+
+#### Code
+
+| File | Change |
+| --- | --- |
+| `SpacePicker.swift` | The capsule keeps its place always; only its name cross-fades on a choice. `SpacePanel` gets `stagger`: `Reveal` keeps the header, the rows, the divider and New Space out of view until the entrance has played, each 30 ms after the last, and the parts take no touch until `armed` says the panel is mostly open. `SpacePanelLayer` keeps the scale-from-the-corner transition; `leaving` renders the layer untouchable from the first frame of the way out, so a leaving view can take none of the taps meant for what shows under it. `@AccessibilityFocusState` on the capsule takes the focus back on close. Reduce Motion skips the stagger and scales nothing. |
+| `HostListView.swift` | The `inbox` close and the `book.chosen` writes take the `still`-aware animation. |
+| `DESIGN.md` | The reduced-motion rule for both apps, in Motion. |
+
 ## Alternatives
 
 - **A custom `UIViewControllerAnimatedTransitioning` for item 1**: it gives full control of timing and the morph of the title into the pill. It needs a UIKit navigation controller in place of `NavigationStack`, which is a navigation change. It lost.
@@ -152,6 +173,7 @@ Phase 2 (#930). This part replaces item 1 above, and the parts of Decisions 1 an
 - **Phase 2: a zoom on open only, and a standard pop on close**: SwiftUI uses one transition for both ways. It lost.
 - **Phase 2: the row's title moves into the title pill**: the list and the terminal are in different navigation destinations. So no shared element crosses the push. It lost for the same reason as the morph above.
 - **A fixed duration of 450 to 700 ms for the system zoom**: the request for this work proposed it. The API does not accept a duration. Other iOS apps use the system timing, so it lost.
+- **Phase 3: `matchedGeometryEffect` between the capsule and the panel**: tried first (`SpaceMatch` on the glass, the color and the name). The panel's non-source stayed pinned to the source's frame after removal and kept taking touches where the capsule is, reopening needed the sources unmatched while open, and the move still read worse than the scale it replaced. The capsule stays and the panel scales in instead. It lost.
 
 ## Tests
 
@@ -162,6 +184,7 @@ Phase 2 (#930). This part replaces item 1 above, and the parts of Decisions 1 an
 - Item 1: the terminal's scroll and two-finger pane drag still work with the zoom's dismiss gestures present. A notification, a widget and the session sheet still open with the standard push.
 - Headless screenshots with the `gorex-ui-testing` skill: at rest, each screen is the same as before.
 - The current `GoRexTests` and UI tests pass. The change is visual only, so it adds no unit test.
+- Phase 3 adds `GoRexUITests.SpacePickerMorphTests`: demo mode, open the panel, pick Life, open it again and tap beside it to close. The second open is the case that caught the close's touch leak: a removed panel kept taking touches where the capsule is, so a UI test with no in-between assertion passed while the picker's next tap fired New Space.
 - Build: the Mac mini runner builds the app and runs `GoRexTests` for the branch (`.github/workflows/ios-test.yml`).
 - Open check on a device: the zoom's pinch and drag down against the terminal's pinch, scroll and two-finger pane drag. Also the recording that `docs/lessons.md` asks for. No Mac with a simulator was available for #916.
 - Phase 2, on a device: open a terminal from a row in All Tabs and in Activity. Close it with the system Back button, the edge swipe and the full-width swipe. Do this with a terminal scheme that is the same as the app's scheme, and with one that differs. The list and its bars must not change at the first frame of the push or at the last frame of the pop. Also change the system scheme with the list on screen, while Settings › Interface follows the system. On iPad, the sidebar must still follow the terminal's scheme. Also check that SwiftUI empties the path at the start of a pop from a button, as Behavior 3 expects. Also check the search field and the glass of the bottom bar through the push and the pop. The gallery's zoom, close and pinch must work as in phase 1.
@@ -172,3 +195,4 @@ Phase 2 (#930). This part replaces item 1 above, and the parts of Decisions 1 an
 
 1. Items 1 to 9: #916.
 2. Revision: row push and steady list scheme: #930.
+3. Revision: the space panel: #977.

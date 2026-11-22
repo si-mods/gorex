@@ -302,6 +302,16 @@ Motion comes from two kinds of token, in `animation.go`. Everything goes
 through `motion(c)`: with Animation set to Off, or while the desktop asks
 for less motion, nothing below moves and a layer shows and goes at once.
 
+**Less motion, everywhere.** Reduced motion keeps the change of state and
+drops the movement and the scaling. What the user asks for still happens;
+it only stops traveling. On the desktop a layer shows and goes at once,
+through `motion(c)`. On iOS every app animation reads
+`accessibilityReduceMotion` (the `still` or `reduceMotion` environment
+value) and falls back to a cross-fade of about 150 ms; the system's own
+transitions, such as the zoom, follow the OS. An iOS animation with no
+gate is a bug, not a choice (`docs/IOS-011-continuous-transitions.md`,
+Reduced motion).
+
 The user's spring (`snappy` or `natural`) moves what stays on screen and
 brings in what has a place: panes, tabs, rows, the banner, the tab
 slide. The timings below are for what a spring does not move.

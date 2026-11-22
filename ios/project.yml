@@ -204,6 +204,17 @@ targets:
         # Archive.swift reads bzip2, as the app does.
         OTHER_LDFLAGS: -lbz2
         SWIFT_OBJC_BRIDGING_HEADER: GoRex/GoRex-Bridging-Header.h
+  GoRexUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - GoRexUITests
+    dependencies:
+      - target: GoRex
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: true
+        SWIFT_DEFAULT_ACTOR_ISOLATION: nonisolated
 schemes:
   GoRex:
     build:
@@ -212,3 +223,4 @@ schemes:
     test:
       targets:
         - GoRexTests
+        - GoRexUITests

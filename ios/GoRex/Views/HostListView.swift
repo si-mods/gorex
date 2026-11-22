@@ -325,7 +325,9 @@ struct HostListView: View {
         }
         // The space panel goes with the picker, should its own close not
         // run as Activity takes the picker's place.
-        .onChange(of: inbox) { spacePanel = false }
+        .onChange(of: inbox) { _, _ in
+            withAnimation(still ? .easeInOut(duration: 0.15) : .snappy) { spacePanel = false }
+        }
         .onChange(of: expandedText) { _, t in
             expanded = Set(t.split(separator: "\n").map(String.init))
         }
@@ -381,7 +383,7 @@ struct HostListView: View {
     private func picker(spaces: [String], current: String, place: SpacePicker.Place = .list) -> some View {
         SpacePicker(spaces: spaces, current: current, color: { Color(project: book.colors[$0]) },
                     count: projectCount,
-                    choose: { s in withAnimation(.snappy) { book.chosen = s } },
+                    choose: { s in withAnimation(still ? .easeInOut(duration: 0.15) : .snappy) { book.chosen = s } },
                     add: { spaceName = ""; addingSpace = true },
                     edit: { editingSpaces = true },
                     place: place,
@@ -393,7 +395,7 @@ struct HostListView: View {
         SpacePanelLayer(anchor: anchor, open: $spacePanel, spaces: spaces, current: current,
                         color: { Color(project: book.colors[$0]) },
                         count: projectCount,
-                        choose: { s in withAnimation(.snappy) { book.chosen = s } },
+                        choose: { s in withAnimation(still ? .easeInOut(duration: 0.15) : .snappy) { book.chosen = s } },
                         add: { spaceName = ""; addingSpace = true },
                         edit: { editingSpaces = true })
     }
