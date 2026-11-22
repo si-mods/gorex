@@ -253,7 +253,9 @@ func TestPaneShowsTheSessionAfterADrag(t *testing.T) {
 	if p.term == nil {
 		t.Fatal("no terminal")
 	}
-	before, _ := p.term.Size()
+	// settle runs the test's clock, not the wall clock the session's
+	// resize settles by: the terminal takes the split's size after that.
+	before, _ := waitTermSize(t, tt, p)
 	d, ok := tt.Find("Divider")
 	if !ok {
 		t.Fatalf("no divider; texts %q", tt.Texts())

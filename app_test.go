@@ -162,6 +162,23 @@ func waitFor(t *testing.T, tt *ui.Tester, what string, cond func() bool) {
 	}
 }
 
+// waitTermSize runs frames until the pane's terminal has the size its
+// view asks for, and returns it. The terminal takes a size of its own
+// only once the session's resize settled (sizeWait): read before then,
+// its size is the one the session had.
+func waitTermSize(t *testing.T, tt *ui.Tester, p *Pane) (cols, rows int) {
+	t.Helper()
+	waitFor(t, tt, "the pane's terminal to take its size", func() bool {
+		if p.term == nil {
+			return false
+		}
+		ac, ar := p.askedSize()
+		cols, rows = p.term.Size()
+		return ac > 0 && ar > 0 && cols == ac && rows == ar
+	})
+	return cols, rows
+}
+
 func TestPanesAndTabs(t *testing.T) {
 	a, tt := newTestApp(t)
 	tab := a.tab()
