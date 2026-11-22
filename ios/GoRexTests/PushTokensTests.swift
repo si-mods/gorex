@@ -111,6 +111,54 @@ nonisolated final class PushTokensTests: XCTestCase {
         XCTAssertEqual(r.binds.first?.target.relay.absoluteString, "https://relay.example")
     }
 
+    /// A host that pushes alerts by push: while its register's target is
+    /// there and the phone has Live Activities on, a blocked record does
+    /// not call blocked, so the local notification the alert replaces
+    /// does not post twice. With Live Activities off — the urgent push
+    /// then carries no alert — it tells as before.
+    @MainActor func testPushingHostSkipsTheLocalTell() async throws {
+        let rex = try FakeRex()
+        defer { rex.stop() }
+        rex.features = ["gorex.push"]
+        rex.respond = { m, _ in
+            switch m {
+            case "session.bootstrap": ["attach_all": ["sessions": []]]
+            case "gorex.push.register": ["host": "aG9zdA", "relay": "https://relay.example"]
+            default: [:]
+            }
+        }
+        let p = PushTokens(keys: MemoryPushKeys(), relay: FakeRelay())
+        let wasTokens = Host.pushTokens, wasOn = Host.liveActivitiesOn
+        Host.pushTokens = { p }
+        Host.liveActivitiesOn = { true }
+        defer { Host.pushTokens = wasTokens; Host.liveActivitiesOn = wasOn }
+        var told = 0
+        Host.blocked = { _, _, _, _ in told += 1 }
+        defer { Host.blocked = nil }
+        let h = Host(HostConfig(name: "test", url: try await rex.url()))
+        h.connect()
+        defer { h.stop() }
+        await until("the target") { p.targets[h.id] != nil }
+        func records(_ rs: [String: Any]...) {
+            rex.event(["type": "session_event", "payload": ["session_id": "s", "event": [
+                "type": "block_event", "payload": ["block_id": "b", "name": "program_status_changed",
+                                                   "payload": ["records": rs]],
+            ]]])
+        }
+
+        records(["id": "claude", "state": "blocked", "app": "claude"])
+        await until("the record") { h.blocks["b"]?.statuses?.first?.state == "blocked" }
+        try? await Task.sleep(for: .milliseconds(100))
+        XCTAssertEqual(told, 0, "the push carries the alert: no local tell")
+
+        Host.liveActivitiesOn = { false }
+        records(["id": "claude", "state": "working", "app": "claude"])
+        await until("working") { h.blocks["b"]?.statuses?.first?.state == "working" }
+        records(["id": "claude", "state": "blocked", "app": "claude"])
+        await until("blocked again") { h.blocks["b"]?.statuses?.first?.state == "blocked" }
+        XCTAssertEqual(told, 1)
+    }
+
     /// A server without gorex.push gets no register, and the demo host
     /// none either.
     @MainActor func testNoFeatureNoRegister() async throws {

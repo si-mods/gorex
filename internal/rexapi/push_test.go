@@ -110,6 +110,10 @@ func TestGorexPush(t *testing.T) {
 	if stale, _ := req["stale_date"].(float64); stale <= 0 {
 		t.Errorf("stale_date: %v", req["stale_date"])
 	}
+	// The register had live_activities on, so the blocked push alerts.
+	if a, _ := req["alert"].(map[string]any); a["title"] != "claude needs input" || a["body"] != "needs input" {
+		t.Errorf("alert: %v", req["alert"])
+	}
 
 	// Unregister stops the pushes.
 	callChecked(t, c, "gorex.push.unregister", nil)

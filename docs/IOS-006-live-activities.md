@@ -8,9 +8,9 @@ metadata:
 
 # IOS-006: Rex Go: Live Activities for sessions
 
-Status: phase 1 built (#892, #900, #901). Phases 2 and 3 not built.
+Status: phase 1 built (#892, #900, #901). Phase 2 in part — the sender, `push.register`, the relay and the blocked record's alert push — is built; the per-host activity, and phase 3, are not.
 
-Phase 1 is built as `TerminalActivity` and `TerminalLive`. Phases 2 and 3 are proposals. The team decided these points. Phase 1 is the terminal activity: the terminal that is open when Rex Go leaves the foreground, kept connected for a short grace. The host sends the later updates through the push relay of [NET-003](NET-003-push-relay.md); no host holds an APNs key, so every paired phone can get phase 2. Rex Go is distributed to other people (public TestFlight, later the App Store). The names `HostActivity`, `push.register` and `push.seen` are phase 2 and 3 proposals. They are not in the code.
+Phase 1 is built as `TerminalActivity` and `TerminalLive`. The rest of phase 2 and phase 3 are proposals. The team decided these points. Phase 1 is the terminal activity: the terminal that is open when Rex Go leaves the foreground, kept connected for a short grace. The host sends the later updates through the push relay of [NET-003](NET-003-push-relay.md); no host holds an APNs key, so every paired phone can get phase 2. Rex Go is distributed to other people (public TestFlight, later the App Store). The names `HostActivity` and `push.seen` are phase 2 and 3 proposals, not in the code; `push.register` is built as `gorex.push.register`.
 
 ## Problem
 
@@ -268,7 +268,7 @@ These are the options for updates while Rex Go is suspended:
 The efforts are rough estimates. **[assumption]**
 
 1. **Terminal activity** (built, #892, #900, #901): `TerminalActivity` in `GoRexWidgets` and its presentations. The activity starts and ends with the terminal screen. It also has the grace before the streams suspend, the paused mark and the 8-hour restart. Prerequisite: phase 1 of the widgets adds the extension, and CI signs it. Unsolved: everything after the grace.
-2. **Host sender through the relay** (not built): the sender, `push.register` and seen, and the relay of [NET-003](NET-003-push-relay.md). It also has the ordinary "needs input" alert push while the app is suspended, and the push entitlement and signing. Content goes from the host through the relay to Apple. A phone whose host cannot reach the relay gets the behavior of phase 1. Unsolved: programs that do not report, and records lost on a server restart.
+2. **Host sender through the relay** (built in part): the sender, `push.register` and the relay of [NET-003](NET-003-push-relay.md) are in, and a blocked record's urgent push carries the alert that replaces the local notification; `seen` and the rest below are not. It also has the ordinary "needs input" alert push while the app is suspended, and the push entitlement and signing. Content goes from the host through the relay to Apple. A phone whose host cannot reach the relay gets the behavior of phase 1. Unsolved: programs that do not report, and records lost on a server restart.
 3. **Follow a session not on screen** (not built): a terminal activity that starts from the menu of a session row. Actions from the activity stay out.
 
 ## Open questions

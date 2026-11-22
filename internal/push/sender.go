@@ -37,6 +37,10 @@ type registration struct {
 	device    string
 	sessionID string
 	blockID   string
+	// liveActivities is the register call's flag of the phone's Live
+	// Activities being on: a blocked record's urgent push then carries
+	// an alert, the local notification it replaces.
+	liveActivities bool
 	// last is the state sent last, sentAt when.
 	last   ContentState
 	sentAt time.Time
@@ -109,7 +113,7 @@ func (s *Sender) Relay() string {
 // blockID — "" for both when none — and returns the host's public key
 // for the register method's result. Registering again moves the binding
 // to the new target.
-func (s *Sender) Register(conn any, device, sessionID, blockID string) (string, error) {
+func (s *Sender) Register(conn any, device, sessionID, blockID string, liveActivities bool) (string, error) {
 	if s == nil {
 		return "", errNoSender
 	}
@@ -118,7 +122,7 @@ func (s *Sender) Register(conn any, device, sessionID, blockID string) (string, 
 	if s.key == nil {
 		return "", s.keyErr
 	}
-	s.regs[conn] = &registration{device: device, sessionID: sessionID, blockID: blockID}
+	s.regs[conn] = &registration{device: device, sessionID: sessionID, blockID: blockID, liveActivities: liveActivities}
 	return s.key.PublicB64(), nil
 }
 
@@ -165,7 +169,11 @@ func (s *Sender) changed(conn any, r *registration, st ContentState, u *rex.Prog
 	r.urgent = urgent
 	if alert {
 		r.due, r.hasPending = false, false
-		s.send(r, st, PriorityAlert)
+		var a *Alert
+		if u.State == "blocked" && r.liveActivities {
+			a = alertFor(st, u)
+		}
+		s.send(r, st, PriorityAlert, a)
 		return
 	}
 	if !r.hasPending && reflect.DeepEqual(st, r.last) {
@@ -181,7 +189,22 @@ func (s *Sender) changed(conn any, r *registration, st ContentState, u *rex.Prog
 		return
 	}
 	r.hasPending = false
-	s.send(r, st, PriorityCoalesced)
+	s.send(r, st, PriorityCoalesced, nil)
+}
+
+// alertFor is a blocked record's push alert: "<app> needs input", the
+// title of the local notification it replaces (IOS-006, Notifications),
+// named by the state's program or title, and the record's message as
+// the body.
+func alertFor(st ContentState, u *rex.ProgramStatus) *Alert {
+	name := st.Program
+	if name == "" {
+		name = st.Title
+	}
+	return &Alert{
+		Title: cut(strings.TrimSpace(name+" needs input"), MaxText, MaxTextBytes),
+		Body:  cut(statusText(u.Message()), MaxText, MaxTextBytes),
+	}
 }
 
 // flush sends the state a coalesced update waited with, unless the
@@ -198,12 +221,13 @@ func (s *Sender) flush(conn any, r *registration) {
 	}
 	r.hasPending = false
 	if !reflect.DeepEqual(r.pending, r.last) {
-		s.send(r, r.pending, PriorityCoalesced)
+		s.send(r, r.pending, PriorityCoalesced, nil)
 	}
 }
 
-// send posts the update, its caller holding s.mu.
-func (s *Sender) send(r *registration, st ContentState, priority int) {
+// send posts the update, its caller holding s.mu. alert, when not nil,
+// is the push's alert: it lights the phone's screen.
+func (s *Sender) send(r *registration, st ContentState, priority int, alert *Alert) {
 	r.last = st
 	r.sentAt = s.now()
 	if s.client == nil {
@@ -214,6 +238,7 @@ func (s *Sender) send(r *registration, st ContentState, priority int) {
 		Event:        "update",
 		ContentState: st,
 		StaleDate:    r.sentAt.Add(StaleAfter).Unix(),
+		Alert:        alert,
 		Priority:     priority,
 	})
 }

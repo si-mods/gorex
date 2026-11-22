@@ -10,6 +10,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 `web` job of `.github/workflows/ci.yml` fails it.
 
 ## en-US
+- Leave Rex Go with a terminal open and a program waits for you: its alert now arrives pushed from the computer through the relay, lighting the screen, in place of the app's own notification.
 - Coming back from another app, or the phone's network or VPN changing, no longer starts a terminal's screen over for a drop it could ride out: it picks the stream up where it was.
 - Searching the tab list, Activity or Settings now says when nothing matches; empty spots name their state, and a failed ports page or web client download offers Try again.
 - Leave Rex Go with a terminal open: the Lock Screen and Dynamic Island keep updating while the app sleeps when the computer reaches the push relay; they pause when the computer or relay is gone.
@@ -125,6 +126,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - A computer with no project in the space you picked no longer shows a note under its name; the + beside it still makes one from a folder.
 
 ## zh-Hans
+- 开着终端退出 Rex Go 后，程序等待你处理时会由电脑推送提醒并点亮屏幕，取代应用自己发出的「需要输入」通知。
 - 从其他 App 返回，或手机网络/VPN 变化后，终端现在会续上原来的连接，不再为一阵可容忍的断线重新加载画面。
 - 在标签页列表、「动态」或「设置」中搜索无结果时，现在会提示没有匹配项；空的位置会说明状态，端口页或网页客户端加载失败时可点「重试」。
 - 开着终端退出 Rex Go：只要电脑能连上推送中继，锁屏和灵动岛在应用休眠期间也会持续更新；只有电脑或中继断开时才显示为暂停。

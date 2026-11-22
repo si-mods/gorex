@@ -313,7 +313,7 @@ func deviceKey(t *testing.T) string {
 func TestSenderCoalesces(t *testing.T) {
 	ts := newTestSender(t)
 	dev := deviceKey(t)
-	if _, err := ts.Register("conn", dev, "s", "b"); err != nil {
+	if _, err := ts.Register("conn", dev, "s", "b", false); err != nil {
 		t.Fatal(err)
 	}
 	info := &rex.SessionInfo{Program: "zsh", Statuses: []rex.ProgramStatus{
@@ -346,7 +346,7 @@ func TestSenderCoalesces(t *testing.T) {
 // priority 10, inside the coalescing window too.
 func TestSenderAlerts(t *testing.T) {
 	ts := newTestSender(t)
-	ts.Register("conn", deviceKey(t), "s", "b")
+	ts.Register("conn", deviceKey(t), "s", "b", false)
 	info := &rex.SessionInfo{Statuses: []rex.ProgramStatus{
 		{ID: "r", State: "working", Msg: "one"},
 	}}
@@ -372,12 +372,70 @@ func TestSenderAlerts(t *testing.T) {
 	}
 }
 
+// TestSenderAlertPush: the urgent push of a record that newly turns
+// blocked carries an alert — "<app> needs input", the record's message
+// as the body — when the device's register had Live Activities on. A
+// repeated or done record, a coalesced update and a register with the
+// flag off carry none.
+func TestSenderAlertPush(t *testing.T) {
+	ts := newTestSender(t)
+	if _, err := ts.Register("conn", deviceKey(t), "s", "b", true); err != nil {
+		t.Fatal(err)
+	}
+	info := &rex.SessionInfo{Program: "zsh", Statuses: []rex.ProgramStatus{
+		{ID: "r", State: "working", Msg: "one"},
+	}}
+	ts.Changed("b", info, "w", "zsh", "", "")
+	waitPush(t, "the working push", func() bool { return ts.relay.count() == 1 })
+	if ts.relay.last(t)["alert"] != nil {
+		t.Errorf("a working update alerted: %v", ts.relay.last(t))
+	}
+
+	// The block's program names the title when the record has no app.
+	info.Statuses[0].State = "blocked"
+	info.Statuses[0].Msg = "Allow it?"
+	ts.Changed("b", info, "w", "zsh", "", "")
+	waitPush(t, "the alert push", func() bool { return ts.relay.count() == 2 })
+	a, _ := ts.relay.last(t)["alert"].(map[string]any)
+	if a["title"] != "zsh needs input" || a["body"] != "Allow it?" {
+		t.Errorf("alert: %v", ts.relay.last(t)["alert"])
+	}
+
+	// The same urgent record again coalesces, without an alert.
+	info.Statuses[0].Msg = "still there?"
+	ts.Changed("b", info, "w", "zsh", "", "")
+	ts.advance(3 * time.Second)
+	waitPush(t, "the coalesced push", func() bool { return ts.relay.count() == 3 })
+	if last := ts.relay.last(t); last["priority"] != float64(5) || last["alert"] != nil {
+		t.Errorf("coalesced push: %v", last)
+	}
+
+	// A done record that newly tops the rest is urgent but alerts not.
+	info.Statuses = []rex.ProgramStatus{{ID: "d", State: "done", App: "claude", LastMsg: "built", Updated: ts.now}}
+	ts.Changed("b", info, "w", "zsh", "", "")
+	waitPush(t, "the done push", func() bool { return ts.relay.count() == 4 })
+	if last := ts.relay.last(t); last["priority"] != float64(10) || last["alert"] != nil {
+		t.Errorf("done push: %v", last)
+	}
+
+	// A register with the flag off pushes the urgent update without one.
+	if _, err := ts.Register("conn", deviceKey(t), "s", "b", false); err != nil {
+		t.Fatal(err)
+	}
+	info.Statuses = []rex.ProgramStatus{{ID: "r2", State: "blocked", App: "claude", Msg: "Again?"}}
+	ts.Changed("b", info, "w", "zsh", "", "")
+	waitPush(t, "the flag-off push", func() bool { return ts.relay.count() == 5 })
+	if last := ts.relay.last(t); last["priority"] != float64(10) || last["alert"] != nil {
+		t.Errorf("flag off push: %v", last)
+	}
+}
+
 // TestDetachedPush: a connection's end sends a last update, connected
 // false, stale now.
 func TestDetachedPush(t *testing.T) {
 	ts := newTestSender(t)
 	dev := deviceKey(t)
-	ts.Register("conn", dev, "s", "b")
+	ts.Register("conn", dev, "s", "b", false)
 	info := &rex.SessionInfo{Statuses: []rex.ProgramStatus{{State: "working", Msg: "one"}}}
 	ts.Changed("b", info, "w", "", "", "")
 	waitPush(t, "the first push", func() bool { return ts.relay.count() == 1 })
@@ -405,7 +463,7 @@ func TestDetachedPush(t *testing.T) {
 // TestUnregisterPush: an unregistered connection gets no more updates.
 func TestUnregisterPush(t *testing.T) {
 	ts := newTestSender(t)
-	ts.Register("conn", deviceKey(t), "s", "b")
+	ts.Register("conn", deviceKey(t), "s", "b", false)
 	ts.Unregister("conn")
 	ts.Changed("b", &rex.SessionInfo{Statuses: []rex.ProgramStatus{{State: "blocked"}}}, "w", "", "", "")
 	ts.advance(3 * time.Second)
@@ -420,7 +478,7 @@ func TestNoRelay(t *testing.T) {
 	if s.Relay() != "" {
 		t.Error("relay URL with no relay")
 	}
-	if _, err := s.Register("conn", "device", "s", "b"); err != nil {
+	if _, err := s.Register("conn", "device", "s", "b", false); err != nil {
 		t.Fatal(err)
 	}
 	s.Changed("b", &rex.SessionInfo{Statuses: []rex.ProgramStatus{{State: "blocked"}}}, "w", "", "", "")
@@ -431,7 +489,7 @@ func TestNoRelay(t *testing.T) {
 // key register answers with.
 func TestSenderSigns(t *testing.T) {
 	ts := newTestSender(t)
-	host, err := ts.Register("conn", deviceKey(t), "s", "b")
+	host, err := ts.Register("conn", deviceKey(t), "s", "b", false)
 	if err != nil {
 		t.Fatal(err)
 	}
