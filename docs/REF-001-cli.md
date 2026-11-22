@@ -3,7 +3,7 @@ name: REF-001
 description: "The `gorex` command line: the commands that drive sessions without a window, and the agent hooks. Use when you add or change a CLI command."
 metadata:
   created: "2026-10-28"
-  updated: "2026-11-20"
+  updated: "2026-11-22"
 ---
 
 # REF-001: gorex command line
@@ -122,10 +122,15 @@ wins over `-s`. An ambiguous target exits 3. `rename` gives a pane a label.
   newer than the server's, as for an app-initiated upgrade. The exact
   build already running is a no-op; an older build, or a different path
   with the same modification time, is refused.
-- `update` checks the signed release feed for the Linux per-user install.
-  It installs the update without opening a window and hands over the
-  running server when there is one. Use the same `GOREX_DIR` as the
-  server if you set one. On macOS use Check for Updates in the app.
+- `update` checks the signed release feed and installs a newer version
+  where the executable is on Linux: the directory it runs from, which the
+  user running the command must be able to write, so a system install
+  under `/opt` takes its owner or `sudo`. It installs without opening a
+  window and hands the running server over to the new build, which keeps
+  its sessions. Use the same `GOREX_DIR` as the server if you set one.
+  When a dpkg package installed the build, `update` names it first: that
+  package replaces the build at its next upgrade. On macOS use Check for
+  Updates in the app.
 - `rex-import` reads a Rex server and makes its sessions in GoRex: a space
   per session, a tab per window, a pane per block. Each pane runs this
   program's `rex-mirror`, which draws the Rex block and types into it, or

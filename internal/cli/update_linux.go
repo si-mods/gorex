@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/egoist/mygo"
@@ -15,14 +17,12 @@ import (
 )
 
 func updateLocal(out io.Writer) error {
-	home, err := os.UserHomeDir()
-	if err != nil {
+	exe, _ := rex.Executable()
+	if err := checkInstalledDir(exe); err != nil {
 		return err
 	}
-	exe, _ := rex.Executable()
-	installed, err := filepath.EvalSymlinks(filepath.Join(home, ".local", "gorex.app", "gorex"))
-	if err != nil || exe != installed {
-		return errors.New("use the GoRex user install from install.sh")
+	if pkg := packageOf(exe); pkg != "" {
+		fmt.Fprintf(out, "note: %s is part of the %s package; that package replaces this build at its next upgrade\n", exe, pkg)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
@@ -72,4 +72,20 @@ func updateLocal(out io.Writer) error {
 		return fmt.Errorf("the update was installed, but the server could not upgrade; retry with gorex server upgrade: %w", err)
 	}
 	return nil
+}
+
+// packageOf returns the dpkg package that installed exe, or "" when none did,
+// or when the system has no dpkg. An update of the install leaves that
+// package's records behind, so the command says so first.
+func packageOf(exe string) string {
+	dpkg, err := exec.LookPath("dpkg-query")
+	if err != nil {
+		return ""
+	}
+	data, err := exec.Command(dpkg, "-S", exe).Output()
+	if err != nil {
+		return ""
+	}
+	name, _, _ := strings.Cut(strings.TrimSpace(string(data)), ": ")
+	return strings.TrimSpace(name)
 }
