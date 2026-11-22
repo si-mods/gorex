@@ -76,7 +76,17 @@ from the same path takes the new build through the handoff of `gorex
 server upgrade`. The install path stays the same, so no versioned copy is
 needed, as with an app-initiated update. A build a dpkg package installed
 is updated by that package, and the command names the package before it
-installs.
+installs. With no server running, the command installs and stops: the
+next start runs the new build.
+
+The session handoff needs the server the command connects to, and that is
+the one of its `GOREX_DIR`: a service that keeps its data directory of its
+own is updated with the same environment, as in `sudo env
+GOREX_DIR=/var/lib/gorex /opt/gorex/gorex update`. Without it the files are
+installed and the running server keeps its build; a restart starts the new
+build with new shells, which is the session loss the update exists to
+avoid. The same goes for a server the user cannot reach: the command fails
+before it installs.
 
 This step opened one question: a copy of `GoRex.app`, or a small helper bundle of its own as Rex has (`LSUIElement`, its own bundle id)? The answer is the copy. The copy keeps the bundle id and the Team ID of the app, and so keeps the privacy grants that the user gave the app. A new bundle id would ask for them again. A Dock icon is not a risk, because the server is a `launchd` job and not an app that LaunchServices opens.
 
