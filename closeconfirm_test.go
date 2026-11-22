@@ -257,3 +257,33 @@ func TestCloseAskOutOfView(t *testing.T) {
 		t.Error("a pane of a space no longer shown was closed")
 	}
 }
+
+// TestConfirmButtonsMatch checks that a question's Cancel and its red
+// button round their corners alike: Cancel is the stock button, whose
+// theme radius is not dangerButton's radiusM unless cancelButton sets it.
+func TestConfirmButtonsMatch(t *testing.T) {
+	k := lightColors
+	bg := ui.Hex("#00ff00")
+	// corner counts the pixels of the button's top left 14 by 14 corner
+	// that show the background alone, untouched by the button's edge.
+	corner := func(button func(c *ui.Context)) int {
+		img := ui.NewTester(func(c *ui.Context) {
+			ui.Column(c).Size(200, 60).Background(bg).AlignItems(ui.Start).Children(func() { button(c) })
+		}, 200, 60).Image()
+		n := 0
+		for y := range 14 {
+			for x := range 14 {
+				o := img.PixOffset(x, y)
+				if p := img.Pix[o : o+3]; p[0] < 16 && p[1] > 240 && p[2] < 16 {
+					n++
+				}
+			}
+		}
+		return n
+	}
+	cancel := corner(func(c *ui.Context) { cancelButton(c, "Cancel") })
+	danger := corner(func(c *ui.Context) { dangerButton(c, &k, "End Session") })
+	if d := cancel - danger; d < -2 || d > 2 {
+		t.Errorf("Cancel's corner leaves %d pixels of the background, the red button's %d; want the same radius", cancel, danger)
+	}
+}

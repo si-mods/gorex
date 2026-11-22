@@ -133,7 +133,7 @@ func (a *App) closeConfirm(c *ui.Context, k *colors, anchor ui.Element, t *Tab, 
 	}
 	a.closeAsk.shown = true
 	ui.PopoverBase(c, anchor, &a.closeAsk.open, func(panel ui.Element) {
-		popoverShadow(glassPanel(panel.Margin(8, 0, 0, 0).Width(280).Padding(14).Radius(radiusXL), k.panel).Border(1, k.panelBorder), k)
+		popoverShadow(glassPanel(panel.Margin(8, 0, 0, 0).Width(280).Padding(14).Radius(radiusXL), k).Border(1, k.panelBorder), k)
 		a.closeAskBody(c, k, panel)
 	})
 	a.closeAskDone()
@@ -155,7 +155,7 @@ func (a *App) closeAskFallback(c *ui.Context, k *colors) {
 	}
 	ui.DialogBase(c, &ask.open, func(backdrop, panel ui.Element) {
 		backdrop.Background(k.backdrop)
-		dialogShadow(glassPanel(panel.Width(320).Padding(20).Radius(radiusXXL), k.panel).Border(1, k.panelBorder))
+		dialogShadow(glassPanel(panel.Width(320).Padding(20).Radius(radiusXXL), k).Border(1, k.panelBorder))
 		a.closeAskBody(c, k, panel)
 	})
 	a.closeAskDone()
@@ -187,7 +187,7 @@ func (a *App) closeAskBody(c *ui.Context, k *colors, panel ui.Element) {
 		ui.Text(c, locales.CloseRunningTitle(name)).FontSize(fontTitle).FontWeight(700).TextColor(k.text).SingleLine().Ellipsis("…")
 		ui.Text(c, body).FontSize(fontBody).TextColor(k.textMuted).LineHeight(1.35)
 		ui.Row(c).Gap(8).Justify(ui.End).Margin(6, 0, 0, 0).Children(func() {
-			if ui.Button(c, locales.SessionCancel()).AutoFocus().Clicked() {
+			if cancelButton(c, locales.SessionCancel()).AutoFocus().Clicked() {
 				a.closeAsk.open = false
 			}
 			if dangerButton(c, k, locales.CloseEndSession()).Focusable().Clicked() {
@@ -232,12 +232,12 @@ func (a *App) closeOthersConfirm(c *ui.Context, k *colors) {
 	}
 	ui.DialogBase(c, &a.closeOthersOpen, func(backdrop, panel ui.Element) {
 		backdrop.Background(k.backdrop)
-		dialogShadow(glassPanel(panel.Width(380).Padding(20).Radius(radiusXXL), k.panel).Border(1, k.panelBorder)).Role(ui.RoleDialog).Label(title)
+		dialogShadow(glassPanel(panel.Width(380).Padding(20).Radius(radiusXXL), k).Border(1, k.panelBorder)).Role(ui.RoleDialog).Label(title)
 		ui.Column(c).Gap(10).Children(func() {
 			ui.Text(c, title).FontSize(fontTitle).FontWeight(700).TextColor(k.text)
 			ui.Text(c, body).FontSize(fontBody).TextColor(k.textMuted).LineHeight(1.35)
 			ui.Row(c).Gap(8).Justify(ui.End).Margin(8, 0, 0, 0).Children(func() {
-				if ui.Button(c, locales.SessionCancel()).AutoFocus().Clicked() {
+				if cancelButton(c, locales.SessionCancel()).AutoFocus().Clicked() {
 					a.closeOthersOpen = false
 				}
 				if dangerButton(c, k, locales.TabCloseOthers()).Focusable().Clicked() {
