@@ -143,6 +143,27 @@ Phase 2 (#930). This part replaces item 1 above, and the parts of Decisions 1 an
 | `GoRexApp.swift` | `ScreenStyle` gets `release()`, which clears the scheme for every screen. `clear(by:)` stays for `onDisappear`. `ScreenStyle` also keeps the system's scheme as observable state. It reads the window scene's trait collection, which the window's `preferredColorScheme` does not change. `registerForTraitChanges` on the scene updates it when the system changes between light and dark. |
 | `docs/lessons.md` | The phase 2 code PR undoes a part of #916, so it adds a lesson. A zoom transition needs a source and a destination of a similar shape. |
 
+### Revision: the space panel
+
+Phase 3. The space picker atop the list was left out of phases 1 and 2. Its panel scaled in from the capsule's corner, but as a second element at 85% of its size, with the capsule staying behind it, and it had no reduced-motion form at all. The rules of this doc apply to it as they do to the others: the control opens what it controls.
+
+#### Behavior
+
+- On open, the capsule's glass grows into the panel's glass: one element, from the capsule's frame to the panel's frame (`matchedGeometryEffect` on `SpaceMatch.chrome`). The capsule's own content leaves in the first 100 ms; the panel's content comes in once the glass is half open (`LateFade`, a phase transition), and each row fades in 30 ms after the last. A tap on a space, a tap beside the panel and Escape close it the same way, in reverse.
+- The capsule's color and name move into the row of the space shown (`SpaceMatch.chip` and `SpaceMatch.name`: the capsule is the source, the rows are the targets). On a choice, the chosen space's color and name move back into the capsule as the glass shrinks into it. A close with no choice returns the space shown before.
+- Under Reduce Motion nothing moves and nothing is shared: the panel cross-fades for 150 ms under the capsule, which stays. Every `.snappy` here and in the `chosen` writes that drive it falls back to `.easeInOut(duration: 0.15)`, as item 7 does. The rule is in `DESIGN.md`, Motion.
+- The closes that a state change drives — Activity taking the picker's place, the capsule leaving the list — are animated like a tap beside the panel. They were hard cuts.
+- VoiceOver keeps its rules: the panel's header takes the focus on open, and on close the focus goes back to the capsule.
+- The wide window's `.bar` picker keeps the system popover. Edit Spaces keeps the standard sheet (Decisions, 4).
+
+#### Code
+
+| File | Change |
+| --- | --- |
+| `SpacePicker.swift` | `ns: Namespace.ID?` joins the capsule and the panel layer. The capsule is the source of `SpaceMatch.chrome`, `.chip(current)` and `.name(current)`; it fades out on open and back in at the end of the close. `SpacePanelLayer` draws the glass as a sibling of the content, measured by `SpacePanelSize`, so the glass can morph while the content fades with `LateFade`. `SpacePanel` gets `stagger` and `ns`; each row's color and name are targets of the capsule's sources. `@AccessibilityFocusState` on the capsule takes the focus back on close. Reduce Motion skips every match and stagger. |
+| `HostListView.swift` | A `spaceNS` namespace. The `inbox` close and the `book.chosen` writes take the `still`-aware animation. |
+| `DESIGN.md` | The reduced-motion rule for both apps, in Motion. |
+
 ## Alternatives
 
 - **A custom `UIViewControllerAnimatedTransitioning` for item 1**: it gives full control of timing and the morph of the title into the pill. It needs a UIKit navigation controller in place of `NavigationStack`, which is a navigation change. It lost.
@@ -172,3 +193,4 @@ Phase 2 (#930). This part replaces item 1 above, and the parts of Decisions 1 an
 
 1. Items 1 to 9: #916.
 2. Revision: row push and steady list scheme: #930.
+3. Revision: the space panel.

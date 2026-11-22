@@ -111,6 +111,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - Add Host › Pair via QR Code now has a photo button at the top: pick a picture or screenshot that shows the code, and Rex Go reads it.
 - Leaving the app while a terminal runs: its drawing now stops completely before the app suspends, so a graphics-related quit in the background cannot happen.
 - Locking the phone while a terminal runs: its drawing now stops for the lock screen's snapshot too. Pulling down Control Center only freezes it for a moment, then it resumes behind the panel.
+- The space panel now grows out of the space button at the top, and the space you pick slides back into it; with Reduce Motion on it only fades.
 
 ## zh-Hans
 - 电脑离线时，它灰显的窗口列表现在也会显示每个窗口的程序图标，不再只有名字。
@@ -214,3 +215,4 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - 「添加主机 › 扫码配对」顶部新增照片按钮：选一张带有配对二维码的截图或照片，Rex Go 就能读取。
 - 终端运行中离开应用：它的绘制现在会在应用挂起前彻底停下，不再可能在后台因图形问题被关掉。
 - 终端运行中锁屏：绘制现在也会为锁屏快照停下。下拉控制中心只停一瞬，面板还开着时就恢复绘制。
+- 顶部的空间面板现在从空间按钮本身展开，选中的空间会滑回按钮里；开启「减弱动态效果」时只淡入淡出。

@@ -44,6 +44,8 @@ struct HostListView: View {
     @Namespace private var zoom
     /// The rows that move between All Tabs and Activity.
     @Namespace private var places
+    /// The elements the space capsule and its panel share.
+    @Namespace private var spaceNS
     @Environment(\.accessibilityReduceMotion) private var still
     @AppStorage("scheme") private var scheme = "dark"
     /// The window's scheme, a terminal's while one is open.
@@ -325,7 +327,9 @@ struct HostListView: View {
         }
         // The space panel goes with the picker, should its own close not
         // run as Activity takes the picker's place.
-        .onChange(of: inbox) { spacePanel = false }
+        .onChange(of: inbox) { _, _ in
+            withAnimation(still ? .easeInOut(duration: 0.15) : .snappy) { spacePanel = false }
+        }
         .onChange(of: expandedText) { _, t in
             expanded = Set(t.split(separator: "\n").map(String.init))
         }
@@ -381,11 +385,12 @@ struct HostListView: View {
     private func picker(spaces: [String], current: String, place: SpacePicker.Place = .list) -> some View {
         SpacePicker(spaces: spaces, current: current, color: { Color(project: book.colors[$0]) },
                     count: projectCount,
-                    choose: { s in withAnimation(.snappy) { book.chosen = s } },
+                    choose: { s in withAnimation(still ? .easeInOut(duration: 0.15) : .snappy) { book.chosen = s } },
                     add: { spaceName = ""; addingSpace = true },
                     edit: { editingSpaces = true },
                     place: place,
-                    panel: place == .list ? $spacePanel : nil)
+                    panel: place == .list ? $spacePanel : nil,
+                    ns: place == .list ? spaceNS : nil)
     }
 
     /// The panel of the list's picker, over the page, under the picker.
@@ -393,9 +398,10 @@ struct HostListView: View {
         SpacePanelLayer(anchor: anchor, open: $spacePanel, spaces: spaces, current: current,
                         color: { Color(project: book.colors[$0]) },
                         count: projectCount,
-                        choose: { s in withAnimation(.snappy) { book.chosen = s } },
+                        choose: { s in withAnimation(still ? .easeInOut(duration: 0.15) : .snappy) { book.chosen = s } },
                         add: { spaceName = ""; addingSpace = true },
-                        edit: { editingSpaces = true })
+                        edit: { editingSpaces = true },
+                        ns: spaceNS)
     }
 
     /// A space's projects across the hosts, an away host's as last seen.

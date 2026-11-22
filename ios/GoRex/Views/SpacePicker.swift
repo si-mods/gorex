@@ -1,5 +1,66 @@
 import SwiftUI
 
+/// The elements the capsule and its panel share as one opens into the
+/// other: the glass, and each space's color and name
+/// (docs/IOS-011-continuous-transitions.md, the space panel).
+enum SpaceMatch: Hashable {
+    case chrome
+    case chip(String)
+    case name(String)
+}
+
+/// A shared element of the capsule and its panel, when a namespace joins
+/// them; a nil one leaves the view plain.
+private struct SpaceMatched: ViewModifier {
+    let id: SpaceMatch
+    let ns: Namespace.ID?
+    let source: Bool
+
+    func body(content: Content) -> some View {
+        if let ns {
+            content.matchedGeometryEffect(id: id, in: ns, isSource: source)
+        } else {
+            content
+        }
+    }
+}
+
+/// The panel's size as laid out, for the glass beside it to keep as it
+/// grows out of the capsule.
+struct SpacePanelSize: PreferenceKey {
+    static var defaultValue: CGSize = .zero
+
+    static func reduce(value: inout CGSize, nextValue: () -> CGSize) {
+        value = nextValue()
+    }
+}
+
+/// The panel's content: it comes in once the glass is half open, and it
+/// leaves in the first part of the close. Under Reduce Motion (`still`)
+/// it is a plain cross-fade.
+private struct PanelContentFade: Transition {
+    let still: Bool
+
+    func body(content: Content, phase: TransitionPhase) -> some View {
+        let t = phase.value
+        return content.opacity(still ? 1 - abs(t) : t < 0 ? max(0, 1 + t * 2) : max(0, 1 - t * 3))
+    }
+}
+
+/// A part of the panel that appears once the glass is mostly open: the
+/// header first, then each row 30 ms after the last.
+private struct Reveal: ViewModifier {
+    let stagger: Bool
+    let revealed: Bool
+    let delay: Double
+
+    func body(content: Content) -> some View {
+        content
+            .opacity(!stagger || revealed ? 1 : 0)
+            .animation(.easeIn(duration: 0.15).delay(delay), value: revealed)
+    }
+}
+
 /// The space picker atop the list (docs/MOD-002-projects.md, Rex Go), or in a wide
 /// window's bar beside the search: the space shown, and a panel of the
 /// spaces, with Edit and New Space.
@@ -25,14 +86,33 @@ struct SpacePicker: View {
     /// under the capsule (SpacePanelLayer), with no arrow; the bar, which
     /// has no room below it of its own, opens a popover instead.
     var panel: Binding<Bool>?
+    /// The namespace the list's panel shares with the capsule, so the
+    /// capsule's glass and its space's color and name can carry into the
+    /// panel. Nil under Reduce Motion, and for the bar's popover.
+    var ns: Namespace.ID?
     @State private var popover = false
+    /// The capsule's own content while the panel is open: it leaves as the
+    /// panel's glass takes the capsule's frame, and returns as the glass
+    /// lands back on it.
+    @State private var shown = true
+    /// VoiceOver comes back to the capsule as the panel closes.
+    @AccessibilityFocusState private var focus: Bool
+    @Environment(\.accessibilityReduceMotion) private var still
 
     var body: some View {
         if let panel {
-            capsule { withAnimation(.snappy) { panel.wrappedValue = true } }
+            capsule { withAnimation(still ? .easeInOut(duration: 0.15) : .snappy) { panel.wrappedValue = true } }
+                .opacity(shown ? 1 : 0)
+                .accessibilityFocused($focus)
+                .onChange(of: panel.wrappedValue, initial: true) { was, open in
+                    withAnimation(open ? .easeOut(duration: 0.1) : .easeIn(duration: 0.12).delay(0.3)) {
+                        shown = still || !open
+                    }
+                    if was && !open { focus = true }
+                }
                 .anchorPreference(key: SpacePickerBounds.self, value: .bounds) { $0 }
                 // The panel goes with the picker, as Activity takes its place.
-                .onDisappear { panel.wrappedValue = false }
+                .onDisappear { withAnimation(still ? .easeInOut(duration: 0.15) : .snappy) { panel.wrappedValue = false } }
         } else {
             capsule { popover = true }
                 .popover(isPresented: $popover, attachmentAnchor: .rect(.bounds), arrowEdge: .top) {
@@ -48,9 +128,11 @@ struct SpacePicker: View {
     private func capsule(_ open: @escaping () -> Void) -> some View {
         Button(action: open) {
             if place == .list {
-                // Glass of its own over the page; a bar's own is behind it,
-                // and two glass effects nest.
-                label.glassEffect(.regular.interactive(), in: .capsule)
+                // The glass is the element the panel grows out of. A bar's
+                // own glass is behind it, and two glass effects nest.
+                label
+                    .glassEffect(.regular.interactive(), in: .capsule)
+                    .modifier(SpaceMatched(id: .chrome, ns: ns, source: true))
             } else {
                 // A name longer than the room ends in an ellipsis, leaving
                 // the search and the toggle their places.
@@ -68,9 +150,12 @@ struct SpacePicker: View {
             RoundedRectangle(cornerRadius: 4, style: .continuous)
                 .fill(color(current) ?? Color.secondary.opacity(0.5))
                 .frame(width: 14, height: 14)
+                .modifier(SpaceMatched(id: .chip(current), ns: ns, source: true))
             Text(verbatim: SpaceName.shown(current))
                 .font(bar ? .title3.bold() : .title2.bold())
                 .lineLimit(1)
+                .contentTransition(.opacity)
+                .modifier(SpaceMatched(id: .name(current), ns: ns, source: true))
             Image(systemName: "chevron.down")
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(.secondary)
@@ -90,9 +175,11 @@ struct SpacePickerBounds: PreferenceKey {
     }
 }
 
-/// The panel atop the list, over the page: it grows from the capsule's
-/// corner, 8 pt under it, and a tap beside it closes it. It keeps 16 pt
-/// from the foot of the page and scrolls its spaces past that.
+/// The panel atop the list, over the page: the capsule's glass grows into
+/// the panel's glass 8 pt under the capsule, the capsule's color and name
+/// move into the row of the space shown, and a tap beside the panel closes
+/// it. It keeps 16 pt from the foot of the page and scrolls its spaces past
+/// that.
 struct SpacePanelLayer: View {
     let anchor: Anchor<CGRect>?
     @Binding var open: Bool
@@ -103,6 +190,12 @@ struct SpacePanelLayer: View {
     let choose: (String) -> Void
     let add: () -> Void
     let edit: () -> Void
+    /// The namespace the capsule shares; nil under Reduce Motion, when
+    /// nothing moves.
+    var ns: Namespace.ID?
+    @Environment(\.accessibilityReduceMotion) private var still
+    /// The panel's laid-out size, which the glass keeps as it grows.
+    @State private var size = CGSize.zero
 
     var body: some View {
         GeometryReader { g in
@@ -113,41 +206,51 @@ struct SpacePanelLayer: View {
                         .contentShape(.rect)
                         .onTapGesture { close() }
                         .accessibilityHidden(true)
+                    // A sibling of the content, so the glass can grow out
+                    // of the capsule while the content fades in late. Its
+                    // own frame is the panel's, measured beside it.
+                    Color.clear
+                        .frame(width: size.width, height: size.height)
+                        .glassEffect(.regular, in: .rect(cornerRadius: SpacePanel.radius, style: .continuous))
+                        .shadow(color: .black.opacity(0.16), radius: 24, y: 8)
+                        .modifier(SpaceMatched(id: .chrome, ns: match, source: false))
+                        .position(x: r.minX + size.width / 2, y: r.maxY + 8 + size.height / 2)
+                        .transition(.opacity)
                     SpacePanel(spaces: spaces, current: current, color: color, count: count,
                                choose: { s in close(); choose(s) },
                                add: { close(); add() },
-                               edit: { close(); edit() })
+                               edit: { close(); edit() },
+                               ns: match, stagger: !still)
                         .fixedSize(horizontal: true, vertical: false)
                         // The glass hugs the panel: the cap below only
                         // limits it, and the room under a short panel stays
                         // the page's.
-                        .glassEffect(.regular, in: .rect(cornerRadius: SpacePanel.radius, style: .continuous))
-                        .shadow(color: .black.opacity(0.16), radius: 24, y: 8)
                         .frame(maxHeight: max(160, g.size.height - r.maxY - 8 - 16), alignment: .top)
-                        // One element holding the rows, modal, so that
-                        // VoiceOver keeps to the panel while it is open.
+                        .background(
+                            GeometryReader { p in
+                                Color.clear.preference(key: SpacePanelSize.self, value: p.size)
+                            }
+                        )
                         .accessibilityElement(children: .contain)
                         .accessibilityAddTraits(.isModal)
                         .accessibilityAction(.escape) { close() }
-                        // Laid out over the whole layer, so that the scale
-                        // can grow from the capsule's corner.
+                        // Laid out over the whole layer, so the glass can
+                        // grow from the capsule's frame.
                         .padding(.leading, r.minX)
                         .padding(.top, r.maxY + 8)
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                        .transition(.scale(0.85, anchor: origin(r, in: g.size)).combined(with: .opacity))
+                        .transition(PanelContentFade(still: still))
                 }
             }
         }
+        .onPreferenceChange(SpacePanelSize.self) { size = $0 }
     }
+
+    /// The shared elements' namespace: nil under Reduce Motion.
+    private var match: Namespace.ID? { still ? nil : ns }
 
     private func close() {
-        withAnimation(.snappy) { open = false }
-    }
-
-    /// The capsule's bottom-left corner, as a point of the layer.
-    private func origin(_ r: CGRect, in size: CGSize) -> UnitPoint {
-        guard size.width > 0, size.height > 0 else { return .topLeading }
-        return UnitPoint(x: r.minX / size.width, y: r.maxY / size.height)
+        withAnimation(still ? .easeInOut(duration: 0.15) : .snappy) { open = false }
     }
 }
 
@@ -164,6 +267,14 @@ struct SpacePanel: View {
     let choose: (String) -> Void
     let add: () -> Void
     let edit: () -> Void
+    /// The namespace the rows share with the capsule, so the space shown
+    /// trades its color and name with it. Nil for a plain panel, as the
+    /// bar's popover's, and under Reduce Motion.
+    var ns: Namespace.ID? = nil
+    /// Whether the parts come in one by one once the glass is open.
+    var stagger: Bool = false
+    /// The staggered parts' entrance, replayed on each open.
+    @State private var revealed = false
     /// The width of the color squares' column, which the plus of New
     /// Space shares; it grows with the text.
     @ScaledMetric(relativeTo: .body) private var mark: CGFloat = 16
@@ -175,6 +286,10 @@ struct SpacePanel: View {
     static let inset: CGFloat = 8
     /// The padding inside a row, and in the header.
     static let pad: CGFloat = 12
+
+    /// The delay of the first row, and the step between them.
+    private static let rowDelay = 0.18
+    private static let rowStep = 0.03
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -194,6 +309,7 @@ struct SpacePanel: View {
             }
             .padding(.horizontal, Self.pad)
             .frame(minHeight: 44)
+            .modifier(Reveal(stagger: stagger, revealed: revealed, delay: 0.12))
             // The spaces scroll when the screen has no room for them all, at
             // a large text size or with many spaces; the header and New
             // Space stay in view.
@@ -205,6 +321,7 @@ struct SpacePanel: View {
             Divider()
                 .padding(.horizontal, Self.pad)
                 .padding(.vertical, 4)
+                .modifier(Reveal(stagger: stagger, revealed: revealed, delay: Self.rowDelay + Double(spaces.count) * Self.rowStep))
             Button(action: add) {
                 HStack(spacing: Self.pad) {
                     Image(systemName: "plus")
@@ -220,31 +337,34 @@ struct SpacePanel: View {
             }
             .buttonStyle(.plain)
             .foregroundStyle(.tint)
+            .modifier(Reveal(stagger: stagger, revealed: revealed, delay: Self.rowDelay + Double(spaces.count + 1) * Self.rowStep))
         }
         .padding(Self.inset)
         .frame(minWidth: 288, idealWidth: 288)
-        .onAppear { heading = true }
+        .onAppear { revealed = true; heading = true }
     }
 
     private var rows: some View {
         VStack(spacing: 4) {
-            ForEach(spaces, id: \.self) { s in row(s) }
+            ForEach(Array(spaces.enumerated()), id: \.element) { i, s in row(s, at: i) }
         }
     }
 
     /// A space's row: its color, its name and its projects; the one shown
     /// is bold, checked and tinted.
-    private func row(_ s: String) -> some View {
+    private func row(_ s: String, at i: Int) -> some View {
         let on = s == current
         return Button { choose(s) } label: {
             HStack(spacing: Self.pad) {
                 RoundedRectangle(cornerRadius: 4, style: .continuous)
                     .fill(color(s) ?? Color.secondary.opacity(0.45))
                     .frame(width: mark, height: mark)
+                    .modifier(SpaceMatched(id: .chip(s), ns: ns, source: false))
                 VStack(alignment: .leading, spacing: 0) {
                     Text(verbatim: SpaceName.shown(s))
                         .font(.body.weight(on ? .semibold : .regular))
                         .lineLimit(1)
+                        .modifier(SpaceMatched(id: .name(s), ns: ns, source: false))
                     Text(projects(count(s)))
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -271,6 +391,7 @@ struct SpacePanel: View {
         }
         .buttonStyle(.plain)
         .accessibilityAddTraits(on ? .isSelected : [])
+        .modifier(Reveal(stagger: stagger, revealed: revealed, delay: Self.rowDelay + Double(i) * Self.rowStep))
     }
 
     private func projects(_ n: Int) -> String {
