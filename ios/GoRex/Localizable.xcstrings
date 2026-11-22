@@ -4330,6 +4330,16 @@
         }
       }
     },
+    "Can't Update Quick Launchers": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法更新快捷启动"
+          }
+        }
+      }
+    },
     "Choose a tab in the list.": {
       "localizations": {
         "zh-Hans": {
@@ -4546,6 +4556,66 @@
           "stringUnit": {
             "state": "translated",
             "value": "新建无项目的标签页"
+          }
+        }
+      }
+    },
+    "Configure Pinned…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "配置固定项…"
+          }
+        }
+      }
+    },
+    "New %@ Tab": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "新建 %@ 标签页"
+          }
+        }
+      }
+    },
+    "Pinned agent CLIs appear in this project's quick-launcher row. Turn all off to show New Tab.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "固定的 Agent CLI 会显示在此项目的快捷启动栏中。全部关闭则恢复显示「新建标签页」。"
+          }
+        }
+      }
+    },
+    "Quick Launchers": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "快捷启动"
+          }
+        }
+      }
+    },
+    "Quick Launchers…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "快捷启动…"
+          }
+        }
+      }
+    },
+    "Show All Installed": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "显示全部已安装"
           }
         }
       }

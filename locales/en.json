@@ -2622,6 +2622,10 @@
   "@hostRename": {
     "description": "Host menu in the sidebar: rename the host's alias."
   },
+  "projectLaunchersShowAll": "Show All Installed",
+  "@projectLaunchersShowAll": {
+    "description": "Quick Launchers submenu: clear the project's pin list so every detected agent CLI is pinned again."
+  },
   "projectCloseAsk": "Close Project…",
   "@projectCloseAsk": {
     "description": "Project menu: close the project, after a question."
@@ -2629,6 +2633,10 @@
   "projectMoveToSpace": "Move to Space",
   "@projectMoveToSpace": {
     "description": "Project menu: submenu of the spaces the project moves to."
+  },
+  "projectQuickLaunchers": "Quick Launchers",
+  "@projectQuickLaunchers": {
+    "description": "Project menu and the New Tab row's chevron: the submenu of agent CLIs the project pins for quick launch."
   },
   "projectSheetTitleOn": "New Project on {host}",
   "@projectSheetTitleOn": {

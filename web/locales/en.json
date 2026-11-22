@@ -2931,6 +2931,14 @@
   "@projectNewTabNoProject": {
     "description": "Menu item and tooltip: a tab in the host's home directory, in no project."
   },
+  "projectLaunchersShowAll": "Show All Installed",
+  "@projectLaunchersShowAll": {
+    "description": "Quick Launchers submenu: clear the project's pin list so every detected agent CLI is pinned again."
+  },
+  "projectQuickLaunchers": "Quick Launchers",
+  "@projectQuickLaunchers": {
+    "description": "Project menu and the New Tab row's chevron: the submenu of agent CLIs the project pins for quick launch."
+  },
   "projectsEmpty": "No projects in this space.",
   "@projectsEmpty": {
     "description": "Note under a connected host that has no project in the space shown."

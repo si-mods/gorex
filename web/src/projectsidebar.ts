@@ -463,7 +463,7 @@ function projectMenu(c: HostConn, p: ProjectRow): MenuItem[] {
       label: t("projectMoveSpace"),
       submenu: ops.spaces().map((n) => ({ label: ops.label(n), checked: n === here, run: () => void ops.moveProjectToSpace(c, p.id, n) })),
     },
-    ...(c.agents.length > 0 ? [{ label: "Quick Launchers", submenu: launcherPinItems(c, p.id) }] : []),
+    ...(c.agents.length > 0 ? [{ label: t("projectQuickLaunchers"), submenu: launcherPinItems(c, p.id) }] : []),
     "separator",
     { label: t("cmdCloseSpace"), run: () => app.closeSpace(c, p.id) },
   ];
@@ -511,7 +511,7 @@ function launcherPinItems(c: HostConn, session: string): MenuItem[] {
       };
     }),
     ...(pinned !== undefined
-      ? (["separator", { label: "Show All Installed", run: () => void ops.setProjectLaunchers(c, session, null) }] as MenuItem[])
+      ? (["separator", { label: t("projectLaunchersShowAll"), run: () => void ops.setProjectLaunchers(c, session, null) }] as MenuItem[])
       : []),
   ];
 }
@@ -533,7 +533,7 @@ function agentMenu(c: HostConn, session: string): MenuItem[] {
       run: () => void ops.newTab(c, session, a.command),
     })),
     "separator" as const,
-    { label: "Quick Launchers", submenu: launcherPinItems(c, session) },
+    { label: t("projectQuickLaunchers"), submenu: launcherPinItems(c, session) },
   ];
 }
 
@@ -575,7 +575,7 @@ function newTabRow(c: HostConn, session: string): HTMLElement {
   row.append(b);
   const cluster = el("span", "agent-cluster");
   for (const a of agents.slice(0, 3)) cluster.append(agentButton(c, session, a));
-  const more = iconButton("chevron-down", "Quick Launchers", () => {
+  const more = iconButton("chevron-down", t("projectQuickLaunchers"), () => {
     const r = more.getBoundingClientRect();
     openMenu(r.left, r.bottom + 4, agentMenu(c, session), () => sidebarApp().shown()?.focusKeys());
   }, !c.live);

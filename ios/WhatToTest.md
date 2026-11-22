@@ -10,6 +10,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 `web` job of `.github/workflows/ci.yml` fails it.
 
 ## en-US
+- The agent launcher menu, its settings sheet and the icons' spoken labels are now translated, so in Chinese they no longer show English.
 - Under each project, the New Tab row now ends with icons of the agent CLIs on that computer (such as Claude Code or Codex) and a ▾ menu: tap one to open that agent in the project folder.
 - The Live Activity no longer shows leftover glyphs or bare rules where the latest line goes; such a line stays empty.
 - Projects in the list no longer end with a tab count; each row keeps its folder tile, name and chevron.
@@ -117,6 +118,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - The space panel now grows out of the space button at the top, and the space you pick slides back into it; with Reduce Motion on it only fades.
 
 ## zh-Hans
+- 「快捷启动」菜单、它的设置页和启动图标的语音朗读标签已翻译为中文，中文界面下不再显示英文。
 - 每个项目的「新建标签页」一行右侧会显示该电脑已安装 Agent CLI 的图标（如 Claude Code、Codex）和 ▾ 菜单：点按即可在项目目录中直接启动对应 Agent，退出后自动关闭标签页。
 - 实时活动的最新一行不再显示残留的特殊字符或纯分割线；这样的行现在留空。
 - 项目列表里的每个项目行不再在末尾显示标签页数，只保留文件夹图块、项目名和箭头。
