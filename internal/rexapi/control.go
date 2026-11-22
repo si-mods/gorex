@@ -378,9 +378,13 @@ func (c *control) readLoop() {
 		typ, data, err := c.ws.Read(context.Background())
 		if err != nil {
 			tracef("control %s ended: %v", c.rec.id, err)
-			// A close frame from the client ends its client at once; any
-			// other end keeps it for a reconnect.
-			clean = websocket.CloseStatus(err) >= 0 && !c.ours.Load()
+			// A normal close ends its client at once; any other end —
+			// goingAway, a codeless or protocol close, a dropped TCP —
+			// keeps it for a reconnect, as the data endpoint keeps a
+			// stream unless its connection closed with 1000. iOS sends a
+			// close frame on every task end, so only the code separates
+			// leaving for good from leaving for a moment.
+			clean = websocket.CloseStatus(err) == websocket.StatusNormalClosure && !c.ours.Load()
 			// The writer and the keepalive end with the connection.
 			c.closeWith(websocket.StatusNormalClosure, "")
 			return

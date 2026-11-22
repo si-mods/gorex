@@ -23,12 +23,13 @@ import XCTest
     /// The reconnect token of each hello, in order; each welcome gives
     /// "t" and its connection's number.
     private(set) var tokens: [String?] = []
-    /// How each connection that ended went, in order: true when a close
-    /// frame came first (what a server counts as "clean"), false for a
-    /// bare drop, which keeps the client for a reconnect.
-    private(set) var ends: [Bool] = []
-    /// The connections a close frame reached.
-    private var clean = Set<ObjectIdentifier>()
+    /// How each connection that ended went, in order: the code its close
+    /// frame carried, or nil for a bare drop. URLSession sends a close
+    /// frame on every task end, so a server counts "leaving for good" by
+    /// the code — normalClosure — not by whether a frame came.
+    private(set) var ends: [NWProtocolWebSocket.CloseCode?] = []
+    /// The close code each connection's close frame carried.
+    private var clean = [ObjectIdentifier: NWProtocolWebSocket.CloseCode]()
 
     private let listener: NWListener
     private var seq = 0
@@ -109,11 +110,12 @@ import XCTest
         c.receiveMessage { [weak self] content, context, _, error in
             MainActor.assumeIsolated {
                 guard let self else { return }
-                if (context?.protocolMetadata(definition: NWProtocolWebSocket.definition) as? NWProtocolWebSocket.Metadata)?.opcode == .close {
-                    self.clean.insert(ObjectIdentifier(c))
+                if let m = context?.protocolMetadata(definition: NWProtocolWebSocket.definition) as? NWProtocolWebSocket.Metadata,
+                   m.opcode == .close {
+                    self.clean[ObjectIdentifier(c)] = m.closeCode
                 }
                 guard error == nil, let content else {
-                    self.ends.append(self.clean.contains(ObjectIdentifier(c)))
+                    self.ends.append(self.clean[ObjectIdentifier(c)])
                     return
                 }
                 if first, content.first == 0x01 || content.first == 0x02 {

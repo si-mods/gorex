@@ -628,9 +628,10 @@ final class Host: Identifiable {
     }
 
     /// Connects anew, continuing the client, as after a suspension: the
-    /// connection can look open while its path died. It drops without a
-    /// close frame, so the server keeps the client, its streams and its
-    /// tickets for the reconnect; a close would end them at once.
+    /// connection can look open while its path died. It goes away
+    /// instead of closing, so the server keeps the client, its streams
+    /// and its tickets for the reconnect; a normal close would end them
+    /// at once.
     func resume() {
         control?.drop()
         connect()

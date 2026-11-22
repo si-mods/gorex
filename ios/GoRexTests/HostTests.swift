@@ -1,3 +1,4 @@
+import Network
 import Observation
 import XCTest
 
@@ -562,9 +563,11 @@ nonisolated final class HostTests: XCTestCase {
     }
 
     /// A resumed host connects anew though its connection looks open,
-    /// continuing its client; it drops the old connection without a
-    /// close frame, so the server keeps the client and its streams for
-    /// the reconnect. A reconnect and a stop close, ending the client.
+    /// continuing its client; it ends the old connection with a goingAway
+    /// close rather than a normal one — URLSession always sends a close
+    /// frame, and only a normalClosure ends the client at once — so the
+    /// server keeps the client and its streams for the reconnect. A
+    /// reconnect and a stop close normally, ending the client.
     @MainActor func testResumeKeepsTheClient() async throws {
         let rex = try FakeRex()
         defer { rex.stop() }
@@ -576,15 +579,16 @@ nonisolated final class HostTests: XCTestCase {
         h.resume()
         await until("resumed") { rex.controls.count == 2 && h.status == .online }
         await until("the first connection ended") { rex.ends.count == 1 }
-        XCTAssertEqual(rex.ends, [false], "a resume drops, not closes: a close would end the client at once")
+        let ends: [NWProtocolWebSocket.CloseCode?] = [.protocolCode(.goingAway), .protocolCode(.normalClosure), .protocolCode(.normalClosure)]
+        XCTAssertEqual(rex.ends, Array(ends.prefix(1)), "a resume goes away, not closes: a normal close would end the client at once")
         h.reconnect()
         await until("reconnected") { rex.controls.count == 3 && h.status == .online }
         await until("the second connection ended") { rex.ends.count == 2 }
-        XCTAssertEqual(rex.ends, [false, true], "a reconnect ends the client it leaves")
+        XCTAssertEqual(rex.ends, Array(ends.prefix(2)), "a reconnect ends the client it leaves")
         XCTAssertEqual(rex.tokens, [nil, "t1", nil])
         h.stop()
         await until("stopped") { rex.ends.count == 3 }
-        XCTAssertEqual(rex.ends, [false, true, true])
+        XCTAssertEqual(rex.ends, ends)
     }
 
     /// A terminal opened as its host connects, as from a notification on a

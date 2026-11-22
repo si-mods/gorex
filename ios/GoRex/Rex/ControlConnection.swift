@@ -238,11 +238,13 @@ final class ControlConnection {
         finish(error)
     }
 
-    /// Ends the connection as a dead path does, with no close frame: the
-    /// server keeps the client for a reconnect, where a close ends it
-    /// and the streams and tickets it keeps at once.
+    /// Ends the connection with a goingAway close, as a suspension
+    /// would, rather than a normal one: URLSession sends a close frame
+    /// on every task end, and the server keeps the client for a
+    /// reconnect unless the frame says normalClosure, which ends it and
+    /// the streams and tickets it keeps at once.
     func drop() {
-        task.cancel()
+        task.cancel(with: .goingAway, reason: nil)
         finish(nil)
     }
 
