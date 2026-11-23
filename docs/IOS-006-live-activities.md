@@ -8,7 +8,7 @@ metadata:
 
 # IOS-006: Rex Go: Live Activities for sessions
 
-Status: phase 1 built (#892, #900, #901). Phase 2 in part — the sender, `push.register`, the relay and the blocked record's alert push — is built (#995, #996, #1001); its actions and per-host activity, and phase 3, are proposals.
+Status: phase 1 built (#892, #900, #901). Phase 2 in part — the sender, `push.register`, the relay and the blocked record's alert push — is built (#995, #996, #1001); its actions are built (this PR); its per-host activity, and phase 3, are proposals.
 
 Phase 1 is built as `TerminalActivity` and `TerminalLive`. The rest of phase 2 and phase 3 are proposals. The team decided these points. Phase 1 is the terminal activity: the terminal that is open when Rex Go leaves the foreground, kept connected for a short grace. The host sends the later updates through the push relay of [NET-003](NET-003-push-relay.md); no host holds an APNs key, so every paired phone can get phase 2. Rex Go is distributed to other people (public TestFlight, later the App Store). The names `HostActivity` and `push.seen` are phase 2 and 3 proposals, not in the code; `push.register` is built as `gorex.push.register`.
 

@@ -1727,6 +1727,7 @@ final class HostStore {
         hosts = saved.map(Host.init)
         Host.tailcatHosts(saved)
         hosts.forEach { $0.connect() }
+        Self.current = self
     }
 
     /// The Demo Mode host, while the user explores one.

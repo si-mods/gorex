@@ -124,6 +124,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - Locking the phone while a terminal runs: its drawing now stops for the lock screen's snapshot too. Pulling down Control Center only freezes it for a moment, then it resumes behind the panel.
 - The space panel now grows out of the space button at the top, and the space you pick slides back into it; with Reduce Motion on it only fades.
 - A computer with no project in the space you picked no longer shows a note under its name; the + beside it still makes one from a folder.
+- While a program waits for your answer, the Lock Screen card and the expanded Dynamic Island show Approve and Deny: tap once to answer without opening Rex Go.
 
 ## zh-Hans
 - 开着终端退出 Rex Go 后，程序等待你处理时会由电脑推送提醒并点亮屏幕，取代应用自己发出的「需要输入」通知。
@@ -240,3 +241,4 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - 终端运行中锁屏：绘制现在也会为锁屏快照停下。下拉控制中心只停一瞬，面板还开着时就恢复绘制。
 - 顶部的空间面板现在从空间按钮本身展开，选中的空间会滑回按钮里；开启「减弱动态效果」时只淡入淡出。
 - 所选空间里没有项目的电脑，名称下不再显示说明文字；用旁边的 + 仍可从文件夹新建项目。
+- 程序等你回答时，锁定屏幕卡片和展开的灵动岛会显示「拒绝」和「批准」：点一下即可答复，不用打开 Rex Go。
