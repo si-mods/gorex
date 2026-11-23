@@ -1532,6 +1532,10 @@
       }
     }
   },
+  "tcUnreachableText": "This device is paired, but the host did not answer over the tailcat link. Check that it is on and that remote access stays enabled there.",
+  "@tcUnreachableText": {
+    "description": "A tailcat host's problem, under problemUnreachableTitle: the device paired earlier, and the tunnel still does not answer."
+  },
   "tcPair": "Pair",
   "@tcPair": {
     "description": "Button of a tailcat host's problem: asks the host to pair again."

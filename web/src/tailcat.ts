@@ -86,7 +86,7 @@ export class Tailcat {
   private listeners = new Set<() => void>();
   private pending = false;
   /** Each host's pairing: asked once, then the fingerprint the host shows while the user decides, the refusal, or a relay a browser cannot use. */
-  private readonly pairing = new Map<string, { asked?: boolean; ownRelay?: boolean; fingerprint?: string; error?: Msg }>();
+  private readonly pairing = new Map<string, { asked?: boolean; ownRelay?: boolean; fingerprint?: string; error?: Msg; paired?: boolean }>();
   /** The engine's module, loaded once per page. */
   private engine?: Promise<void>;
   /** The code that runs only with the engine (catengine.ts). */
@@ -117,8 +117,16 @@ export class Tailcat {
     return "ready";
   }
 
+  /** The load in flight: two callers share it, or the second one's acquire loses the ifAvailable lock to the first and wrongly marks this tab another tab's. */
+  private ensuring?: Promise<EngineCat | undefined>;
+
   /** The engine, loaded and running with this tab's key; undefined while it cannot. */
-  private async ensure(): Promise<EngineCat | undefined> {
+  private ensure(): Promise<EngineCat | undefined> {
+    this.ensuring ??= this.ensureInner().finally(() => (this.ensuring = undefined));
+    return this.ensuring;
+  }
+
+  private async ensureInner(): Promise<EngineCat | undefined> {
     if (this.node) return this.node;
     if (!(await this.ensureEngine())) return undefined;
     if (!this.persist) {
@@ -268,10 +276,16 @@ export class Tailcat {
       this.pairing.set(h.id, { fingerprint });
     } catch (e) {
       const m = e instanceof Error ? e.message : String(e);
-      const err: Msg = /not pairing/.test(m)
-        ? () => t("tcNotPairing", { host: h.name })
-        : () => m;
-      this.pairing.set(h.id, { error: err });
+      if (/allowed there already/.test(m)) {
+        // Approved in an earlier ask: the host is paired, and a connect
+        // that still fails is unreachable, not refused.
+        this.pairing.set(h.id, { asked: true, paired: true });
+      } else {
+        const err: Msg = /not pairing/.test(m)
+          ? () => t("tcNotPairing", { host: h.name })
+          : () => m;
+        this.pairing.set(h.id, { error: err });
+      }
     }
     this.changed();
   }
@@ -308,6 +322,9 @@ export class Tailcat {
     if (st.ownRelay) {
       return problem(() => t("tcOwnRelayTitle"), () => t("tcOwnRelayText"));
     }
+    if (st.paired) {
+      return problem(() => t("problemUnreachableTitle"), () => t("tcUnreachableText"));
+    }
     if (st.error) {
       const err = st.error;
       return problem(() => t("problemRefusedTitle"), () => msg(err));
@@ -323,13 +340,24 @@ export class Tailcat {
 
   /** The transport to a paired host. */
   transport(h: TailcatHost): Transport {
-    // The engine's code is in only once it loaded; a host that connects loads it first (ensure).
     this.addresses.add(h.address);
-    if (!this.code) {
-      void this.ensure();
-      return { kind: "tailcat", socket: () => { throw new TypeError(t("tcIsOff")); }, fetch: () => Promise.reject(new TypeError(t("tcIsOff"))) };
-    }
-    return this.code.tailcatTransport(() => this.node, h.address);
+    if (!this.code) void this.ensure();
+    // A HostConn keeps the transport it is made with, so the engine's is
+    // resolved a call at a time: made while the engine still loads, this
+    // transport comes alive once it has, instead of failing every retry.
+    return {
+      kind: "tailcat",
+      socket: (path, protocol) => {
+        const tr = this.code?.tailcatTransport(() => this.node, h.address);
+        if (!tr) throw new TypeError(t("tcIsOff"));
+        return tr.socket(path, protocol);
+      },
+      fetch: (path, init) => {
+        const tr = this.code?.tailcatTransport(() => this.node, h.address);
+        if (!tr) return Promise.reject(new TypeError(t("tcIsOff")));
+        return tr.fetch(path, init);
+      },
+    };
   }
 
   /** Drops a removed host's client. */

@@ -124,6 +124,11 @@ Each item has a **Trigger** (what the diff shows), a **Check** (what the author 
 - **Check:** the reset compares with the value read before the call and applies only if it did not change. What arrived during the call is kept.
 - **Source:** the outbox (#230) cleared the revision a layout event told while its read of the layout was on its way, so another client's change was not shown until the next one (#692).
 
+### A promise or stub stands in for async work
+- **Trigger:** the diff hands out a value before async work fills it in: a lazily-built object, an ifAvailable acquisition, a stub that throws until ready.
+- **Check:** concurrent callers share one in-flight promise, so a loser's side effects cannot write wrong state; and a stub handed out early resolves to the real thing per call, since a caller keeps the reference it was given.
+- **Source:** #1053's `Tailcat.ensure()` let two callers race `TabCoordinator.acquire()`, and the loser marked the device in use by another tab while the winner built the node — the page hung at "asking to pair" with a live tunnel. Its `transport()` also returned a stub that threw until the engine loaded; `HostConn` kept that stub, so every retry failed on it even after the engine was up.
+
 ### Fix for an unexplained failure
 - **Trigger:** a `fix` PR for a failure whose cause the PR does not prove.
 - **Check:** the PR adds the log line that explains the failure next time.
