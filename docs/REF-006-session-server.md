@@ -376,8 +376,13 @@ journal.
 Windows has no `exec`: the server starts the new executable as a process
 that inherits each console's handles, its signal pipe among them, and
 exits once that one serves (`upgrade_windows.go`). A console ends only
-when its signal pipe breaks, so the programs keep running. When the
-server could not read a console's signal pipe, or the upgrade fails, a
+when its signal pipe breaks, so the programs keep running. The two live
+side by side for that moment, so the run that stops closes the journal
+once it has recorded its stop (`stopForUpgrade`): on Windows a rename
+fails over a file another process has open, and the server that takes its
+place compacts the journal as it starts. A run whose upgrade failed
+reopens the journal and goes on (`goOn`). When the server could not read
+a console's signal pipe, or the upgrade fails, a
 newer app asks the user, then restarts the server (`adopt` in
 `workspace.go`); the sessions come back as new shells, as after a
 restart.

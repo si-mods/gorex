@@ -190,6 +190,27 @@ func (j *journal) close() {
 	}
 }
 
+// reopen opens the journal again for a run whose stop, recorded for an
+// upgrade, is not its last: the upgrade failed and the run goes on, so the
+// entries it records from now come after the start it records next.
+func (j *journal) reopen() {
+	if j == nil {
+		return
+	}
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	if !j.closed {
+		return
+	}
+	j.closed, j.ended = false, false
+	f, err := os.OpenFile(journalPath(), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+	if err != nil {
+		log.Printf("rex: the layout journal: %v", err)
+		return
+	}
+	j.f, j.n = f, 0
+}
+
 // readJournal reads the entries the journal keeps, ignoring a line a run cut
 // short.
 func readJournal() []journalEntry {
