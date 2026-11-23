@@ -1,13 +1,19 @@
 #!/usr/bin/env bash
 # Creates the draft GitHub release of mygo.json's version, as mygo's
 # -upload does (cmd/mygo/publish.go publishGitHub): tag and title v<version>,
-# notes from the "## <version>" section of CHANGELOG.md. It does nothing when
-# the release exists. Run it before the jobs that upload, so that they
-# find the release and none creates it at the same time as another.
+# notes from the "## <version>" section of CHANGELOG.md, target the commit
+# the run builds (GITHUB_SHA, else HEAD). It does nothing when the release
+# exists. Run it before the jobs that upload, so that they find the release
+# and none creates it at the same time as another.
+#
+# Without a target, GitHub makes the tag only when the draft is published,
+# at the default branch's head then: a PR merged between the build and the
+# publish lands in the tag but not in the apps (v0.52.0, v0.53.0).
 #
 #   draft-release.sh [-R owner/repo] [--dry-run]
 #
-# --dry-run prints the title and notes and touches nothing on GitHub.
+# --dry-run prints the title, the target and the notes and touches nothing
+# on GitHub.
 # Run it at the repository root. Needs gh and jq.
 set -euo pipefail
 
@@ -24,6 +30,7 @@ done
 [ -n "$repo" ] || repo=${REPO:-$(jq -r .updates.github mygo.json)}
 version=${VERSION:-$(jq -r .version mygo.json)}
 tag=v$version
+target=${GITHUB_SHA:-$(git rev-parse HEAD)}
 
 # Same as update.ReleaseNotes: the lines under "## <version>", also
 # "## [<version>]" and "## [<version>](link)", or with text after the
@@ -49,11 +56,11 @@ notes=$(printf '%s\n' "$notes" | awk 'NF { started = 1 } started { lines[++n] = 
 [ -n "$notes" ] || { echo "CHANGELOG.md has no notes for $version: add a \"## $version\" section" >&2; exit 1; }
 
 if [ "$dry" = 1 ]; then
-  printf '%s\n' "$tag" "$notes"
+  printf '%s\n' "$tag" "target $target" "$notes"
   exit 0
 fi
 if gh release view "$tag" --repo "$repo" >/dev/null 2>&1; then
   echo "Release $tag of $repo exists"
   exit 0
 fi
-gh release create "$tag" --repo "$repo" --draft --title "$tag" --notes "$notes"
+gh release create "$tag" --repo "$repo" --draft --target "$target" --title "$tag" --notes "$notes"
