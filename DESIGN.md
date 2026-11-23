@@ -360,6 +360,11 @@ slide. The timings below are for what a spring does not move.
   with a dialog that says how much ends.
 - **A toast or a banner?** A toast tells of something done and goes. A
   banner stays while its state lasts, as a pane that cannot attach.
+- **What does a click on a window behind do?** It brings the window to
+  the front and does nothing else (`ConsumeActivationClick`), so it
+  cannot switch a tab, focus another pane or press a button the user
+  has not seen yet. The cost: the window's own title bar drags it only
+  once it is in front.
 - **Do** take the nearest token. **Don't** add a size, radius or shadow
   for one view: change the table, for every view.
 - **Do** tell states apart by color and weight. **Don't** tell them apart

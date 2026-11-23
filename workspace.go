@@ -1237,6 +1237,9 @@ var newWindow = func(a *App) *mygo.Window {
 		Vibrancy:             glassVibrancy(),
 		Transparent:          glassTransparent(),
 		Content:              ui.View(a.view),
+		// A click that brings the window to the front only does that; see
+		// DESIGN.md, Decisions.
+		ConsumeActivationClick: true,
 	}
 	if ownControls {
 		// The title bar draws the window's controls (windowControls); the
