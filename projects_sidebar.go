@@ -118,7 +118,7 @@ func (a *App) projectsList(c *ui.Context, k *colors) {
 				// a bare group (docs/DSK-006-empty-states.md).
 				emptyCard(c, k, "empty-"+hostKey(h), "folder", locales.EmptyNoProjects(), emptyAction{cmdNewProject.Title(), func() {
 					a.later(c, func() { a.openNewProjectOn(h) })
-				}})
+				}}, reserve)
 				return
 			}
 			for _, w := range recent {

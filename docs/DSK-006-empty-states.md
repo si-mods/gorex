@@ -42,7 +42,7 @@ One component draws the empty states. `empty.go` gives four sizes: `page`, `card
 | Size | Shape | Where |
 | --- | --- | --- |
 | `page` | A picture, a title in `fontTitle`, a note in `fontBody` `textFaint`, and up to two buttons. The group is centered and sits about 40% down the area. | the main area with no tab, the failed browser pane |
-| `card` | One row: a 40×40 tile with a 22 DIP icon in `iconMuted`, the title, and a ghost button at the end. The tile uses `radiusM` over `k.hover`. | the project sidebar when a host has no projects |
+| `card` | One row at a sidebar row's height (`projectRowH`): a tile of a tab tile's size in the tile column, the icon in `iconMuted`, the title in `fontBody` `textMuted`, and a ghost button at the end. | the project sidebar when a host has no projects |
 | `row` | One line of `textFaint`, with an optional ghost button at the end. | the project picker with no entries |
 | `menu` | One faint line. No picture, no button. | the command palette, the theme picker, the New Project sheet's status lines |
 

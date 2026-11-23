@@ -32,6 +32,28 @@ func TestEmptyNoTab(t *testing.T) {
 	}
 }
 
+// TestSidebarEmptyCard shows the sidebar's empty card when a host has no
+// projects and no tabs: the row keeps a project row's height so the list
+// reads as one rhythm (docs/DSK-006-empty-states.md).
+func TestSidebarEmptyCard(t *testing.T) {
+	a, tt := newTestApp(t)
+	old := prefs
+	t.Cleanup(func() { prefs = old })
+	prefs = settings{TabPlacement: "left", Animation: "off"}
+	a.closeTab(a.tab())
+	tt.Frame()
+	r, ok := tt.Find(locales.EmptyNoProjects())
+	if !ok {
+		t.Fatalf("no empty card; texts %q", tt.Texts())
+	}
+	if r.H != projectRowH {
+		t.Errorf("empty card height %v, want %v (a project row's)", r.H, projectRowH)
+	}
+	if !tt.HasText(cmdNewProject.Title()) {
+		t.Errorf("no New Project action; texts %q", tt.Texts())
+	}
+}
+
 // TestPaletteNoMatchesFor names the query when the palette matches
 // nothing.
 func TestPaletteNoMatchesFor(t *testing.T) {

@@ -45,15 +45,22 @@ func emptyPage(c *ui.Context, k *colors, draw func(p *ui.Painter, r ui.Rect, k *
 	})
 }
 
-// emptyCard is the empty state of a section's rows: one row with a 40×40
-// tile and an icon in iconMuted, the title, and a ghost button at the end.
-func emptyCard(c *ui.Context, k *colors, key, glyph, title string, ghost emptyAction) ui.Element {
-	row := ui.Row(c.Key(key)).Height(56).Padding(0, 10).Gap(10).AlignItems(ui.Center)
+// emptyCard is the empty state of a section's rows: one row at the
+// sidebar's own rhythm — a tile of a program tile's size in the tile
+// column (reserve wide), an icon in iconMuted, the title, and a ghost
+// button at the end.
+func emptyCard(c *ui.Context, k *colors, key, glyph, title string, ghost emptyAction, reserve float32) ui.Element {
+	row := ui.Row(c.Key(key)).Height(projectRowH).Shrink(0).Padding(0, 4, 0, sideLead).Gap(sideGap).AlignItems(ui.Center).
+		Label(title)
 	row.Children(func() {
-		ui.Box(c).Size(40, 40).Radius(radiusM).Background(k.hover).Center().Shrink(0).Children(func() {
-			glyphIcon(c, glyph, 22, k.iconMuted)
+		leadRoom(c, reserve, projectRowH).Children(func() {
+			ui.Row(c).Width(tileSlot).AlignItems(ui.Center).Justify(ui.Center).Children(func() {
+				ui.Row(c).Size(tileW, tileH).Radius(radiusTile).Background(k.text.Alpha(folderTileAlpha)).AlignItems(ui.Center).Justify(ui.Center).Children(func() {
+					glyphIcon(c, glyph, 11, k.iconMuted).Shrink(0)
+				})
+			})
 		})
-		ui.Text(c, title).FontSize(fontBody).FontWeight(500).TextColor(k.text).Label(title).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
+		ui.Text(c, title).FontSize(fontBody).FontWeight(500).TextColor(k.textMuted).Label(title).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
 		if ghost.label != "" && emptyLink(c, k, ghost.label).Clicked() {
 			ghost.run()
 		}
