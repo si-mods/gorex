@@ -30,7 +30,7 @@ import { execFileSync } from "node:child_process";
 import { copyFileSync, watch, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { addTailnet, appOptions, assetDefines, buildTailnet, dist, esbuild, Manifest } from "./build.mjs";
+import { addTailcat, addTailnet, appOptions, assetDefines, buildTailcat, buildTailnet, dist, esbuild, Manifest } from "./build.mjs";
 import { generateOrFail } from "./i18n.mjs";
 
 const web = dirname(fileURLToPath(import.meta.url));
@@ -77,9 +77,11 @@ async function rebuildTailnet() {
   building = true;
   try {
     const tn = await buildTailnet();
-    if (tn) {
+    const tc = await buildTailcat();
+    if (tn || tc) {
       const m = Manifest.read(dist, manifestURL);
-      addTailnet(dist, m, tn);
+      if (tn) addTailnet(dist, m, tn);
+      if (tc) addTailcat(dist, m, tc);
       m.rewrite(dist, manifestURL);
     }
   } catch (e) {
@@ -91,11 +93,13 @@ async function rebuildTailnet() {
     rebuildTailnet();
   }
 }
-watch(join(web, "tailnet"), { recursive: true }, (_, file) => {
-  if (!file?.endsWith(".go")) return;
-  clearTimeout(timer);
-  timer = setTimeout(rebuildTailnet, 300);
-});
+for (const dir of ["tailnet", "tailcat", "jsbridge"]) {
+  watch(join(web, dir), { recursive: true }, (_, file) => {
+    if (!file?.endsWith(".go")) return;
+    clearTimeout(timer);
+    timer = setTimeout(rebuildTailnet, 300);
+  });
+}
 // The catalogs: checked and generated again as they change.
 let i18nTimer;
 watch(join(web, "locales"), (_, file) => {

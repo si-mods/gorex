@@ -54,17 +54,18 @@ NET-002's client table names the way in for the web client: tailcat compiled to 
 
 ### The engine
 
-`web/tailcat` is a `package main` for `GOOS=js GOARCH=wasm`, beside `web/tailnet`. It sets one global, `gorexTailcat(config, emit)`, and shares the tailnet engine's seam: the build step, the hashed compressed asset, lazy loading and the calls `request` and `socket` that the page's `Transport` wraps.
+`web/tailcat` is a `package main` for `GOOS=js GOARCH=wasm`, beside `web/tailnet`. It sets one global, `gorexTailcat(config)`, and shares the tailnet engine's seam: the build step, the hashed compressed asset, lazy loading and the calls `request` and `socket` that the page's `Transport` wraps. What the two engines share across the js boundary — the promise, the streamed answer and the WebSocket over a dialed connection — lives in `web/jsbridge`.
 
 Its calls:
 
 | Call | Does |
 | --- | --- |
 | `key()` | the device public key, `nodekey:` and hex, as a machine's allowlist shows it |
+| `privkey()` | the device private key's text, for the page to keep in IndexedDB |
+| `check(address)` | parses an address, and says when its region is a machine's own relay |
 | `pair(address, name)` | one `remote.pair` to `RemotePort`, answering the fingerprint or the server's error |
-| `request(address, method, path, headers, body)` | HTTP/1.1 to the gateway on the tailcat address, port 7297 |
-| `socket(address, path, protocol)` | a WebSocket to the gateway, with `web/tailnet/wsclient` over the same connection |
-| `status(address)` | a disco ping's answer for the host row's path line, if the surface wants it |
+| `request(address, method, path, headers, body, timeoutMs)` | HTTP/1.1 to the gateway on the tailcat address, port 7297 |
+| `socket(address, path, protocol, emit)` | a WebSocket to the gateway, with `web/tailnet/wsclient` over the same connection |
 | `close(address)` | drops the client of an address, for Disconnect and host removal |
 
 The differences from the tailnet engine:
@@ -80,8 +81,8 @@ The device key is a `key.NodePrivate` the engine makes on first use. The page pe
 
 ### The page
 
-- `web/src/tailcat.ts` mirrors `web/src/tailnet.ts`: it owns the engine's lifecycle, the key store, the tab lock (the same Web Lock and `BroadcastChannel` mechanism) and `transport(address)`, a `Transport` on the engine's `request` and `socket`.
-- A host entry gains `transport: "tailcat"` and the address. The host list, Settings › Hosts, the dots and Connect/Disconnect treat it as every host. The page keeps the address as a secret: it is the pre-shared key of the host, and the page neither logs it nor puts it in a URL.
+- `web/src/tailcat.ts` mirrors `web/src/tailnet.ts`: it owns the engine's lifecycle, the key store (`web/src/catstore.ts`), the tab lock (the same Web Lock and `BroadcastChannel` mechanism) and `transport(host)`, a `Transport` on the engine's `request` and `socket`, made in `web/src/catengine.ts`.
+- A host entry gains `kind: "tailcat"` and `address`. Its `url` holds only the label "tailcat": the address is the pre-shared key of the host, a secret the page neither shows nor logs nor puts in a URL. The host list, Settings › Hosts, the dots and Connect/Disconnect treat it as every host.
 - The pairing surface shows the fingerprint, the name it asks with and the states: waiting for approval, refused, and the relay certificate error of Behavior step 8.
 - The tab lock is required, not optional: two tabs with the same key are two tailcat clients of one key.
 - The `connect-src` of the page needs no change. `web/_headers` already allows `wss:` generally, which covers DERP to any relay host.
@@ -124,7 +125,7 @@ Nothing else about a relay changes. It sees node public keys, ciphertext, and th
 ## Migration
 
 - No host changes: no saved file, no protocol, no listener.
-- A host entry in `gorex.hosts` gains `transport` and `address`. An older page reads an entry it cannot use; the field names keep today's shape, and a page older than this work simply does not produce such entries.
+- A host entry in `gorex.hosts` gains `kind` and `address`. An older page reads an entry it cannot use; the field names keep today's shape, and a page older than this work simply does not produce such entries.
 - Removing the page's storage ends the device until the key is paired again; the host's allowlist entry stays until the user removes it.
 
 ## Tests

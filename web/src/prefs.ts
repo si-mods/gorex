@@ -52,6 +52,10 @@ export interface Prefs {
   tailscaleOn: boolean;
   /** Whether a persistent Tailscale node has ever completed sign-in (so a later NeedsLogin means expired/revoked). */
   tailscaleSignedIn: boolean;
+  /** The tailcat device name pairing asks with, "" for a new web-xxxx per tab (tailcat.ts). */
+  tailcatName: string;
+  /** Whether the tailcat device key is kept in IndexedDB or lives this tab only (tailcat.ts). */
+  tailcatPersist: boolean;
   /** The page's language, as "zh-Hans", or "" for System: the browser's languages (i18n.ts). */
   language: string;
   /** User-edited keyboard shortcut overrides by command id (keys.ts). */
@@ -117,6 +121,8 @@ const defaults = (): Prefs => ({
   tailscalePersist: true,
   tailscaleOn: false,
   tailscaleSignedIn: false,
+  tailcatName: "",
+  tailcatPersist: true,
   language: "",
 });
 
@@ -148,6 +154,8 @@ function load(): Prefs {
       if (typeof j.tailscalePersist === "boolean") p.tailscalePersist = j.tailscalePersist;
       p.tailscaleOn = j.tailscaleOn === true;
       p.tailscaleSignedIn = j.tailscaleSignedIn === true;
+      if (typeof j.tailcatName === "string") p.tailcatName = j.tailcatName;
+      if (typeof j.tailcatPersist === "boolean") p.tailcatPersist = j.tailcatPersist;
       if (typeof j.language === "string") p.language = j.language;
       Object.assign(p, glassPrefs(j));
       if (j.shortcuts && typeof j.shortcuts === "object" && !Array.isArray(j.shortcuts)) {

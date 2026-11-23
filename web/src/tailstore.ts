@@ -4,7 +4,7 @@
 
 const dbName = "gorex-tailnet";
 const storeName = "state";
-const lockName = "gorex-tailnet-node";
+const tailnetLockName = "gorex-tailnet-node";
 const channelName = "gorex-tailnet";
 
 function openDB(): Promise<IDBDatabase> {
@@ -119,6 +119,11 @@ function defaultChannel(): ChannelAPI | undefined {
   return typeof BroadcastChannel !== "undefined" ? (new BroadcastChannel(channelName) as unknown as ChannelAPI) : undefined;
 }
 
+/** A channel maker of another name, for a second kind of shared thing (tailcat's key). */
+export function channelNamed(name: string): () => ChannelAPI | undefined {
+  return () => (typeof BroadcastChannel !== "undefined" ? (new BroadcastChannel(name) as unknown as ChannelAPI) : undefined);
+}
+
 /**
  * Coordinates a single persistent Tailscale node across browser tabs and
  * PWA windows: one tab holds the Web Lock; another tab sees it is in use
@@ -134,6 +139,7 @@ export class TabCoordinator {
   constructor(
     private locks: LockAPI | undefined = defaultLocks(),
     private makeChannel: () => ChannelAPI | undefined = defaultChannel,
+    private lockName: string = tailnetLockName,
   ) {}
 
   private ensureChannel(handlers: TabHandlers) {
@@ -169,7 +175,7 @@ export class TabCoordinator {
     }
     return new Promise<boolean>((resolve) => {
       let settled = false;
-      void this.locks!.request(lockName, { ifAvailable: true }, (lock) => {
+      void this.locks!.request(this.lockName, { ifAvailable: true }, (lock) => {
         if (!lock) {
           if (!settled) {
             settled = true;
@@ -210,7 +216,7 @@ export class TabCoordinator {
     }
     return new Promise<void>((resolve) => {
       let settled = false;
-      void this.locks!.request(lockName, {}, () => {
+      void this.locks!.request(this.lockName, {}, () => {
         this.held = true;
         const wait = new Promise<void>((rel) => {
           this.holdRelease = rel;

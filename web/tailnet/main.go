@@ -28,6 +28,7 @@ import (
 	"syscall/js"
 	"time"
 
+	"gorex/web/jsbridge"
 	"tailscale.com/control/controlclient"
 	"tailscale.com/ipn"
 	"tailscale.com/ipn/ipnauth"
@@ -226,7 +227,7 @@ func (n *node) api() map[string]any {
 			return nil
 		}),
 		"logout": fn(func([]js.Value) any {
-			return promise(func() (any, error) {
+			return jsbridge.Promise(func() (any, error) {
 				ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
 				defer cancel()
 				return nil, n.lb.Logout(ctx, ipnauth.Self)
@@ -243,7 +244,7 @@ func (n *node) api() map[string]any {
 		}),
 		"rename": fn(func(args []js.Value) any {
 			name := args[0].String()
-			return promise(func() (any, error) {
+			return jsbridge.Promise(func() (any, error) {
 				_, err := n.lb.EditPrefs(&ipn.MaskedPrefs{Prefs: ipn.Prefs{Hostname: name}, HostnameSet: true})
 				return nil, err
 			})
@@ -398,23 +399,4 @@ func peerAddrIn(nm *netmap.NetworkMap, name string) (netip.Addr, bool) {
 		return v6, v6.IsValid()
 	}
 	return netip.Addr{}, false
-}
-
-// promise runs f on a goroutine and settles a JS promise with its result,
-// or rejects it with its error's text.
-func promise(f func() (any, error)) js.Value {
-	var handler js.Func
-	handler = js.FuncOf(func(this js.Value, args []js.Value) any {
-		resolve, reject := args[0], args[1]
-		go func() {
-			defer handler.Release()
-			if v, err := f(); err != nil {
-				reject.Invoke(js.Global().Get("Error").New(err.Error()))
-			} else {
-				resolve.Invoke(v)
-			}
-		}()
-		return nil
-	})
-	return js.Global().Get("Promise").New(handler)
 }

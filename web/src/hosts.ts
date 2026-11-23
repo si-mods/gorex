@@ -13,11 +13,21 @@ import type { Tailnet, TailnetHost } from "./tailnet";
 export interface Host {
   id: string;
   name: string;
-  /** The gateway, as http(s)://host[:port] or http://host[:port]/h/<id> when shared. */
+  /**
+   * The gateway, as http(s)://host[:port] or http://host[:port]/h/<id>
+   * when shared. A tailcat host's is only a label ("tailcat"): its real
+   * address is a secret in `address`.
+   */
   url: string;
   /** One of icons' names. */
   icon: string;
-  kind?: "direct" | "tailnet" | "share";
+  kind?: "direct" | "tailnet" | "tailcat" | "share";
+  /**
+   * A tailcat host's address, "tc…" (docs/WEB-006-tailcat.md): the
+   * pre-shared key of the host, a secret. The page keeps it, sends it to
+   * the tailcat engine only, and never shows it.
+   */
+  address?: string;
   /** Base64url SHA-256 of the host's self-signed ECDSA cert for WebTransport. */
   certHash?: string;
   /** The LAN gateway's pairing token (base64url), sent as ?k= on each connection. Kept in this browser's storage like the rest. */
@@ -42,7 +52,11 @@ export function loadHosts(): Host[] {
   try {
     const list = JSON.parse(localStorage.getItem(listKey) ?? "[]");
     return Array.isArray(list)
-      ? list.filter((h) => typeof h?.id === "string" && typeof h.url === "string" && typeof h.name === "string").map((h) => ({ icon: "laptop", ...h }))
+      ? list.filter((h) => typeof h?.id === "string" && typeof h.url === "string" && typeof h.name === "string").map((h) => {
+          const host = { icon: "laptop", ...h };
+          if (host.kind === "tailcat" && typeof host.address !== "string") delete host.kind;
+          return host;
+        })
       : [];
   } catch {
     return [];
@@ -95,6 +109,30 @@ export function parsePairingLink(search: string, hash: string): { url: string; c
   const k = f.get("k") || undefined;
   return { url: r.url, certHash: wt, ...(k ? { token: k } : {}) };
 }
+/**
+ * A tailcat address, as the host's QR dialog shows it: the rexgo link
+ * (`rexgo://tailcat?a=tc…&n=name`) or the bare "tc…" string
+ * (docs/WEB-006-tailcat.md). Returns the address and the name the link
+ * carries, or undefined when it is not one (a gateway URL then).
+ */
+export function parseTailcatAddress(typed: string): { address: string; name?: string } | undefined {
+  const s = typed.trim();
+  if (/^tc[0-9A-Za-z_-]{8,}$/.test(s)) return { address: s };
+  let u: URL;
+  try {
+    u = new URL(s);
+  } catch {
+    return undefined;
+  }
+  if (u.protocol !== "rexgo:" || u.hostname !== "tailcat") return undefined;
+  const a = u.searchParams.get("a") ?? "";
+  if (!/^tc[0-9A-Za-z_-]{8,}$/.test(a)) return undefined;
+  const n = u.searchParams.get("n") ?? undefined;
+  return { address: a, ...(n ? { name: n } : {}) };
+}
+
+
+
 /** A host's name until the user gives one: the first label of a DNS name, else the whole host (an IP address). */
 export function defaultName(url: string): string {
   const h = new URL(url).hostname;
@@ -637,8 +675,10 @@ export class HostList {
     const url = el("input", "theme-search");
     // An example address, as GoRex shows its local network one; not translated.
     url.placeholder = "192.168.1.20:7297";
-    url.value = h?.url ?? "";
-    url.required = true;
+    // A tailcat host's address is a secret: the form does not show it
+    // back. Left empty, the edit keeps it.
+    url.value = h?.kind === "tailcat" ? "" : h?.url ?? "";
+    url.required = h?.kind !== "tailcat";
     url.autocomplete = "off";
     url.spellcheck = false;
     const name = el("input", "theme-search");
@@ -689,15 +729,44 @@ export class HostList {
     buttons.append(cancel, save);
     form.onsubmit = (e) => {
       e.preventDefault();
-      const r = hostURL(url.value);
-      if ("error" in r) {
-        error.textContent = r.error;
+      // A tailcat address first: a "tc…" string or the rexgo link; else
+      // a gateway URL. One that looks like a tailcat address but is not
+      // parses as neither: say so, rather than take it as a DNS name.
+      const typed = url.value.trim();
+      const tc = parseTailcatAddress(typed);
+      const looksTailcat = /^tc/i.test(typed) || /^rexgo:/i.test(typed);
+      if (!tc && looksTailcat) {
+        error.textContent = t("hostTailcatInvalid");
         url.focus();
         return;
       }
-      const label = name.value.trim() || defaultName(r.url);
-      const changed = !h || h.url !== r.url;
-      const next: Host = { id: h?.id ?? newID(), name: label, url: r.url, icon: chosenIcon };
+      let hurl: string;
+      let secret: string | undefined;
+      let label: string;
+      let kind: Host["kind"];
+      if (tc) {
+        hurl = "tailcat";
+        secret = tc.address;
+        label = name.value.trim() || tc.name || t("hostTailcatName");
+        kind = "tailcat";
+      } else if (h?.kind === "tailcat" && !typed) {
+        // The edit left the secret's field empty: the address stays.
+        hurl = h.url;
+        secret = h.address;
+        label = name.value.trim() || h.name;
+        kind = "tailcat";
+      } else {
+        const r = hostURL(typed);
+        if ("error" in r) {
+          error.textContent = r.error;
+          url.focus();
+          return;
+        }
+        hurl = r.url;
+        label = name.value.trim() || defaultName(r.url);
+      }
+      const changed = !h || h.url !== hurl || h.address !== secret || h.kind !== kind;
+      const next: Host = { id: h?.id ?? newID(), name: label, url: hurl, icon: chosenIcon, ...(kind ? { kind } : {}), ...(secret ? { address: secret } : {}) };
       this.hosts = h ? this.hosts.map((x) => (x.id === h.id ? next : x)) : [...this.hosts, next];
       saveHosts(this.hosts);
       done("save");

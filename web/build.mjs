@@ -184,13 +184,13 @@ const extraTags = ["ts_omit_c2n", "ts_omit_dns", "ts_omit_health", "ts_omit_ipnb
 const assetLimit = 25 * 1024 * 1024;
 
 /**
- * Builds the tailnet engine: the module, gzipped (only the compressed
- * file is shipped, under Cloudflare's 25 MiB a file, and the page unpacks
- * it with DecompressionStream), and Go's wasm_exec.js of the same
- * toolchain, which addTailnet lists in the manifest. Without Go it
- * returns undefined; a build that fails throws.
+ * Builds a wasm engine of web/ (tailnet or tailcat): the module, gzipped
+ * (only the compressed file is shipped, under Cloudflare's 25 MiB a file,
+ * and the page unpacks it with DecompressionStream), and Go's
+ * wasm_exec.js of the same toolchain, which addEngine lists in the
+ * manifest. Without Go it returns undefined; a build that fails throws.
  */
-export async function buildTailnet() {
+export async function buildEngine(pkg) {
   const run = promisify(execFile);
   const go = process.env.GO || "go";
   let goroot, version;
@@ -198,31 +198,41 @@ export async function buildTailnet() {
     goroot = (await run(go, ["env", "GOROOT"], { cwd: root })).stdout.trim();
     version = (await run(go, ["env", "GOVERSION"], { cwd: root })).stdout.trim();
   } catch {
-    console.warn("tailnet engine: skipped, Go is not installed (the page builds without built-in Tailscale; see docs/WEB-002-tailscale.md)");
+    console.warn(`${pkg} engine: skipped, Go is not installed (the page builds without it; see docs/WEB-002-tailscale.md)`);
     return undefined;
   }
   const started = Date.now();
   const tags = (await run(go, ["run", "./web/tailnet/tags/tags.go"], { cwd: root })).stdout.trim();
-  const tmp = mkdtempSync(join(tmpdir(), "gorex-tailnet-"));
+  const tmp = mkdtempSync(join(tmpdir(), `gorex-${pkg}-`));
   try {
-    const out = join(tmp, "tailnet.wasm");
+    const out = join(tmp, `${pkg}.wasm`);
     const env = { ...process.env, GOOS: "js", GOARCH: "wasm", CGO_ENABLED: "0", GOEXPERIMENT: "nojsonv2" };
-    console.log(`> GOOS=js GOARCH=wasm GOEXPERIMENT=nojsonv2 go build -trimpath -ldflags "-s -w" -tags <tsconnect's,${extraTags.join(",")}> ./web/tailnet`);
-    await run(go, ["build", "-trimpath", "-ldflags", "-s -w", "-tags", [tags, ...extraTags].join(","), "-o", out, "./web/tailnet"], {
+    console.log(`> GOOS=js GOARCH=wasm GOEXPERIMENT=nojsonv2 go build -trimpath -ldflags "-s -w" -tags <tsconnect's,${extraTags.join(",")}> ./web/${pkg}`);
+    await run(go, ["build", "-trimpath", "-ldflags", "-s -w", "-tags", [tags, ...extraTags].join(","), "-o", out, `./web/${pkg}`], {
       cwd: root, env, maxBuffer: 16 << 20,
     });
     const raw = readFileSync(out);
     const gz = gzipSync(raw, { level: 9 });
-    if (gz.length > assetLimit) throw new Error(`the gzipped tailnet engine is ${gz.length} bytes, over Cloudflare's ${assetLimit}`);
+    if (gz.length > assetLimit) throw new Error(`the gzipped ${pkg} engine is ${gz.length} bytes, over Cloudflare's ${assetLimit}`);
     const exec = readFileSync(join(goroot, "lib", "wasm", "wasm_exec.js"));
     const mb = (n) => (n / 1e6).toFixed(2) + " MB";
-    console.log(`tailnet engine: ${version}, ${mb(gz.length)} gzipped (${mb(raw.length)} raw), ${((Date.now() - started) / 1000).toFixed(1)} s`);
+    console.log(`${pkg} engine: ${version}, ${mb(gz.length)} gzipped (${mb(raw.length)} raw), ${((Date.now() - started) / 1000).toFixed(1)} s`);
     return { engine: gz, exec };
   } catch (e) {
-    throw new Error(`tailnet engine: ${e.stderr || e.message}`);
+    throw new Error(`${pkg} engine: ${e.stderr || e.message}`);
   } finally {
     rmSync(tmp, { recursive: true, force: true });
   }
+}
+
+/** Builds the tailnet engine (buildEngine). */
+export async function buildTailnet() {
+  return buildEngine("tailnet");
+}
+
+/** Builds the tailcat engine (buildEngine). */
+export async function buildTailcat() {
+  return buildEngine("tailcat");
 }
 
 /** The client's commit, short, with "-dirty" for uncommitted changes; "" outside a checkout. */
@@ -236,18 +246,28 @@ function commit() {
 }
 
 /**
- * Lists the tailnet engine (buildTailnet) in the manifest, lazy: the page
- * loads it only when the user turns Tailscale on (tailnet/engine, the
- * gzipped module; tailnet/exec, wasm_exec.js). The engine files the
- * manifest listed before go.
+ * Lists a wasm engine (buildEngine) in the manifest, lazy: the page loads
+ * it only when it needs it (<pkg>/engine, the gzipped module;
+ * <pkg>/exec, wasm_exec.js). The engine files the manifest listed
+ * before go.
  */
-export function addTailnet(dir, manifest, tn) {
-  for (const n of ["tailnet/engine", "tailnet/exec"]) {
+export function addEngine(dir, manifest, pkg, en) {
+  for (const n of [`${pkg}/engine`, `${pkg}/exec`]) {
     const had = manifest.assets[n];
     if (had) rmSync(join(dir, had.url), { force: true });
   }
-  manifest.add(dir, "tailnet/engine", tn.engine, "tailnet", ".wasm.gz", "data", true);
-  manifest.add(dir, "tailnet/exec", tn.exec, "tailnet", ".js", "script", true);
+  manifest.add(dir, `${pkg}/engine`, en.engine, pkg, ".wasm.gz", "data", true);
+  manifest.add(dir, `${pkg}/exec`, en.exec, pkg, ".js", "script", true);
+}
+
+/** Lists the tailnet engine in the manifest (addEngine). */
+export function addTailnet(dir, manifest, tn) {
+  addEngine(dir, manifest, "tailnet", tn);
+}
+
+/** Lists the tailcat engine in the manifest (addEngine). */
+export function addTailcat(dir, manifest, tc) {
+  addEngine(dir, manifest, "tailcat", tc);
 }
 
 /**
@@ -494,6 +514,9 @@ async function main() {
   // Built-in Tailscale's engine, which the page loads only when the user turns it on.
   const tn = await buildTailnet();
   if (tn) addTailnet(dist, manifest, tn);
+  // The tailcat engine, which the page loads only when a tailcat host needs it.
+  const tc = await buildTailcat();
+  if (tc) addTailcat(dist, manifest, tc);
   const appName = await buildApp(manifest);
   const page = readFileSync(join(web, "index.html"), "utf8");
   if (!page.includes('src="app.js"')) throw new Error('index.html has no <script src="app.js">');
@@ -539,7 +562,7 @@ function writeFileIndex(dir) {
         bytes: data.length,
         sha256: createHash("sha256").update(data).digest("hex"),
       };
-      if (rel.startsWith("assets/lazy/tailnet-")) entry.optional = true;
+      if (rel.startsWith("assets/lazy/tailnet-") || rel.startsWith("assets/lazy/tailcat-")) entry.optional = true;
       files.push(entry);
     }
   };
