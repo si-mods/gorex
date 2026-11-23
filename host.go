@@ -220,8 +220,6 @@ func (a *App) hostPanel(c *ui.Context, k *colors, name, glyph string) {
 	})
 	ui.Divider(c)
 	a.hostsInPanel(c, k)
-	ui.Text(c, locales.HostNote()).
-		FontSize(fontFootnote).TextColor(k.textMuted).LineHeight(1.35)
 }
 
 // hostsInPanel leads, from the host's panel, to the remote hosts: it

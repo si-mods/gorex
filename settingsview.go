@@ -396,10 +396,10 @@ func (a *App) serverSettings(c *ui.Context, k *colors) {
 	a.remoteSettings(c, k)
 }
 
-// serverGroup is the server page's card: the machine, its state, and the
-// server's and the machine's facts, and the host's note under it.
+// serverGroup is the server page's card: the machine and its state, and
+// the server's and the machine's facts.
 func (a *App) serverGroup(c *ui.Context, k *colors, name, glyph, sub, label string, dot ui.Color, h rex.HostInfo) {
-	settingsGroup(c, k, "", "", locales.HostNote(), func() {
+	settingsGroup(c, k, "", "", "", func() {
 		groupRow(c, k, nil).Children(func() {
 			ui.Row(c).Gap(12).AlignItems(ui.Center).Children(func() {
 				ui.Box(c).Size(44, 44).Radius(radiusL).Background(k.hover).Center().Shrink(0).Children(func() {
