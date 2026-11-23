@@ -267,7 +267,7 @@ and `minimum-contrast` to open panes; the other options apply to new
 panes.
 
 `minimum-contrast` is 3 unless Ghostty's config or Settings ▸ Terminal
-▸ Minimum contrast (`minimumContrast` in settings.json) sets it: text
+▸ Minimum contrast (`terminal.minimumContrast` in settings.json) sets it: text
 closer than that to its background, colors programs set too (ANSI, 256
 and RGB), turns lighter or darker in its hue, in local and remote panes
 alike; box drawing keeps its colors. 1 turns the correction off. Unset,

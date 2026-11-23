@@ -124,7 +124,7 @@ before. Three things make it up:
   (`rootBackground`), the background paint as a wash (`paintBackground`
   at `backgroundAlpha`, 0.3 of the gradients, which keeps the window's
   and the workspace's colors), and the terminals' face fade by the
-  Terminal opacity setting (`terminalOpacity`, 0.3 to 1, 0.8 by default;
+  Terminal opacity setting (`terminal.opacity`, 0.3 to 1, 0.8 by default;
   in `cardFace`); terminal panes are the system's glass, tinted by that
   face at 0.4 (`glassTint`; a configured theme's whole). Browser panes
   keep their face.

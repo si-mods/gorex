@@ -1,7 +1,9 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
+	"log"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -56,7 +58,7 @@ func TestWithPrefsPrecedence(t *testing.T) {
 	}
 	yes, no := true, false
 	got := raw.withPrefs(settings{
-		Font: "Cascadia Mono", Theme: "Nord", Cursor: "underline", CursorBlink: &yes, CopyOnSelect: &no,
+		TermFont: "Cascadia Mono", TermTheme: "Nord", TermCursor: "underline", TermCursorBlink: &yes, TermCopyOnSelect: &no,
 	})
 	if !reflect.DeepEqual(got.Families, []string{"Cascadia Mono"}) || got.Theme != "Nord" ||
 		got.Cursor != terminal.CursorUnderline || got.NoBlink || got.CopyOnSelect != terminal.CopyOnSelectNone {
@@ -66,14 +68,14 @@ func TestWithPrefsPrecedence(t *testing.T) {
 		t.Error("the config's background stayed over the user's theme")
 	}
 	// A false choice is a choice: blink off wins over Ghostty's blinking.
-	if got := (ghosttyConfig{}).withPrefs(settings{CursorBlink: &no}); !got.NoBlink {
+	if got := (ghosttyConfig{}).withPrefs(settings{TermCursorBlink: &no}); !got.NoBlink {
 		t.Error("blink off was lost")
 	}
 	// The raw configuration is not touched, nor is an unknown cursor taken.
 	if raw.Theme != "Dracula" || raw.Background == nil || raw.Families[0] != "Fira Code" {
 		t.Error("withPrefs changed the raw config")
 	}
-	if got := raw.withPrefs(settings{Cursor: "wavy"}); got.Cursor != terminal.CursorBar {
+	if got := raw.withPrefs(settings{TermCursor: "wavy"}); got.Cursor != terminal.CursorBar {
 		t.Error("an unknown cursor style was taken")
 	}
 }
@@ -84,7 +86,7 @@ func TestReloadKeepsPrefs(t *testing.T) {
 	write := isolateSettings(t, "cursor-style = bar\nfont-family = Fira Code\ncursor-style-blink = false\n")
 	loadGhostty()
 	a := &App{}
-	a.setCursor(func(s *settings) { s.Cursor = "underline" })
+	a.setCursor(func(s *settings) { s.TermCursor = "underline" })
 	if ghostty.Cursor != terminal.CursorUnderline || !ghostty.NoBlink {
 		t.Fatalf("cursor %v, no blink %v: the pref should win, and Ghostty's blink stay", ghostty.Cursor, ghostty.NoBlink)
 	}
@@ -100,13 +102,13 @@ func TestReloadKeepsPrefs(t *testing.T) {
 		t.Errorf("font %q: Ghostty's new family was not taken", termFont.Family)
 	}
 	// A font of the user's wins over the reload too.
-	a.setPref(func(s *settings) { s.Font = "Cascadia Mono" })
+	a.setPref(func(s *settings) { s.TermFont = "Cascadia Mono" })
 	a.reloadGhostty()
 	if !strings.HasPrefix(termFont.Family, "Cascadia Mono") {
 		t.Errorf("font %q: the user's family was lost", termFont.Family)
 	}
 	// Back to Ghostty's.
-	a.setPref(func(s *settings) { s.Font = "" })
+	a.setPref(func(s *settings) { s.TermFont = "" })
 	if !strings.HasPrefix(termFont.Family, "Hack") {
 		t.Errorf("font %q: clearing the pref did not follow Ghostty", termFont.Family)
 	}
@@ -125,7 +127,7 @@ func TestMinimumContrastPrecedence(t *testing.T) {
 		{0, 1, 1},
 		{1, 0, 1},
 	} {
-		got := ghosttyConfig{MinimumContrast: tc.ghostty}.withPrefs(settings{MinimumContrast: tc.pref})
+		got := ghosttyConfig{MinimumContrast: tc.ghostty}.withPrefs(settings{TermMinContrast: tc.pref})
 		if got.MinimumContrast != tc.want {
 			t.Errorf("ghostty %v, pref %v: %v, want %v", tc.ghostty, tc.pref, got.MinimumContrast, tc.want)
 		}
@@ -136,7 +138,7 @@ func TestMinimumContrastPrecedence(t *testing.T) {
 		t.Fatal(err)
 	}
 	for raw, want := range map[string]float32{
-		`{"minimumContrast": 0.5}`: 1, `{"minimumContrast": 22}`: 21, `{"minimumContrast": 1}`: 1, `{}`: defaultMinContrast,
+		`{"terminal.minimumContrast": 0.5}`: 1, `{"terminal.minimumContrast": 22}`: 21, `{"terminal.minimumContrast": 1}`: 1, `{}`: defaultMinContrast,
 	} {
 		if err := os.WriteFile(settingsPath(), []byte(raw), 0o600); err != nil {
 			t.Fatal(err)
@@ -155,7 +157,7 @@ func TestSettingsPersist(t *testing.T) {
 		t.Errorf("zero settings wrote %s, not {}", b)
 	}
 	yes := true
-	want := settings{Appearance: "dark", FontSize: 14, Font: "Hack", Theme: "Nord", Cursor: "bar", CursorBlink: &yes,
+	want := settings{Appearance: "dark", FontSize: 14, TermFont: "Hack", TermTheme: "Nord", TermCursor: "bar", TermCursorBlink: &yes,
 		TabPlacement: "left", SidebarWidth: 280, SidebarHidden: true, HidePaneHeaders: true, Animation: "natural"}
 	prefs = want
 	saveSettings()
@@ -237,7 +239,7 @@ func TestUserThemeWinsOverGhosttyColors(t *testing.T) {
 	if termLight.Background != ui.Hex("#123456") {
 		t.Fatal("Ghostty's background was not taken")
 	}
-	prefs.Theme = "Nord"
+	prefs.TermTheme = "Nord"
 	ghostty = ghosttyRaw.withPrefs(prefs)
 	applyGhostty()
 	nord, err := terminal.GhosttyTheme("Nord")
@@ -367,5 +369,154 @@ func TestSidebarStylePrefs(t *testing.T) {
 	}
 	if _, ok := prefs.SidebarColors["track"]; ok {
 		t.Error("bad color kept")
+	}
+}
+
+const oldTerminalSettings = `{
+  "font": "Hack",
+  "theme": "Nord",
+  "cursor": "bar",
+  "cursorBlink": false,
+  "copyOnSelect": true,
+  "minimumContrast": 4.5,
+  "terminalOpacity": 0.8,
+  "fontSize": 14,
+  "sidebarWidth":   280,
+  "future.key": {"a": [1,   2]}
+}`
+
+// settingsOnDisk reads settings.json as a raw object.
+func settingsOnDisk(t *testing.T) map[string]json.RawMessage {
+	t.Helper()
+	b, err := os.ReadFile(settingsPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(b, &raw); err != nil {
+		t.Fatal(err)
+	}
+	return raw
+}
+
+// TestMigrateTerminalSettings: the old terminal keys move to terminal.* at
+// load, the file keeps a backup, other keys keep their values, and a second
+// load writes nothing (docs/DSK-009).
+func TestMigrateTerminalSettings(t *testing.T) {
+	isolateSettings(t, "")
+	path := settingsPath()
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(oldTerminalSettings), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	loadSettings()
+	no, yes := false, true
+	if prefs.TermFont != "Hack" || prefs.TermTheme != "Nord" || prefs.TermCursor != "bar" ||
+		prefs.TermCursorBlink == nil || *prefs.TermCursorBlink != no ||
+		prefs.TermCopyOnSelect == nil || *prefs.TermCopyOnSelect != yes ||
+		prefs.TermMinContrast != 4.5 || prefs.TermOpacity != 0.8 || prefs.FontSize != 14 {
+		t.Errorf("migrated values not loaded: %+v", prefs)
+	}
+	raw := settingsOnDisk(t)
+	for old, key := range settingsKeyRenames {
+		if _, ok := raw[old]; ok {
+			t.Errorf("old key %q is still in the file", old)
+		}
+		if _, ok := raw[key]; !ok {
+			t.Errorf("new key %q is not in the file", key)
+		}
+	}
+	if string(raw["future.key"]) != `{"a": [1,   2]}` || string(raw["sidebarWidth"]) != "280" {
+		t.Errorf("other keys changed: %s, %s", raw["future.key"], raw["sidebarWidth"])
+	}
+	if b, err := os.ReadFile(path + ".bak"); err != nil || string(b) != oldTerminalSettings {
+		t.Errorf("backup is %q (%v), want the original bytes", b, err)
+	}
+
+	// A second load finds nothing to migrate: it writes neither file.
+	before, _ := os.ReadFile(path)
+	if err := os.Remove(path + ".bak"); err != nil {
+		t.Fatal(err)
+	}
+	prefs = settings{}
+	loadSettings()
+	if _, err := os.Stat(path + ".bak"); err == nil {
+		t.Error("the second load wrote the backup again")
+	}
+	if after, _ := os.ReadFile(path); string(after) != string(before) {
+		t.Errorf("the second load changed the file:\n%s\n%s", before, after)
+	}
+	if prefs.TermTheme != "Nord" {
+		t.Errorf("second load theme %q", prefs.TermTheme)
+	}
+}
+
+// TestMigrateKeepsNewKey: with both keys, the new one wins and the old goes.
+func TestMigrateKeepsNewKey(t *testing.T) {
+	isolateSettings(t, "")
+	if err := os.MkdirAll(filepath.Dir(settingsPath()), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	os.WriteFile(settingsPath(), []byte(`{"theme": "Old", "terminal.theme": "New"}`), 0o600)
+	loadSettings()
+	if prefs.TermTheme != "New" {
+		t.Errorf("theme %q, want New", prefs.TermTheme)
+	}
+	raw := settingsOnDisk(t)
+	if _, ok := raw["theme"]; ok || string(raw["terminal.theme"]) != `"New"` {
+		t.Errorf("file has %v", raw)
+	}
+}
+
+// TestMigrateAbsentPointers: a file with no cursorBlink or copyOnSelect
+// leaves them nil, so Ghostty's values apply, and a file with no old key is
+// not touched.
+func TestMigrateAbsentPointers(t *testing.T) {
+	isolateSettings(t, "")
+	if err := os.MkdirAll(filepath.Dir(settingsPath()), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	os.WriteFile(settingsPath(), []byte(`{"font": "Hack"}`), 0o600)
+	loadSettings()
+	if prefs.TermCursorBlink != nil || prefs.TermCopyOnSelect != nil || prefs.TermFont != "Hack" {
+		t.Errorf("prefs %+v", prefs)
+	}
+	const fresh = `{"terminal.font":"Hack"}`
+	os.Remove(settingsPath() + ".bak")
+	os.WriteFile(settingsPath(), []byte(fresh), 0o600)
+	loadSettings()
+	if b, _ := os.ReadFile(settingsPath()); string(b) != fresh {
+		t.Errorf("a file with new keys only was rewritten: %s", b)
+	}
+	if _, err := os.Stat(settingsPath() + ".bak"); err == nil {
+		t.Error("a file with new keys only got a backup")
+	}
+}
+
+// TestMigrateWriteFailure: when the migration cannot write, the load still
+// uses the migrated values and logs the error. A directory in the place of
+// settings.json.bak makes the write fail on every platform.
+func TestMigrateWriteFailure(t *testing.T) {
+	isolateSettings(t, "")
+	path := settingsPath()
+	if err := os.MkdirAll(path+".bak", 0o700); err != nil {
+		t.Fatal(err)
+	}
+	const old = `{"theme": "Nord"}`
+	os.WriteFile(path, []byte(old), 0o600)
+	var logs bytes.Buffer
+	log.SetOutput(&logs)
+	defer log.SetOutput(os.Stderr)
+	loadSettings()
+	if prefs.TermTheme != "Nord" {
+		t.Errorf("theme %q, want the migrated Nord", prefs.TermTheme)
+	}
+	if !strings.Contains(logs.String(), "gorex settings") {
+		t.Errorf("no error logged: %q", logs.String())
+	}
+	if b, _ := os.ReadFile(path); string(b) != old {
+		t.Errorf("file %q changed without a backup", b)
 	}
 }

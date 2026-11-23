@@ -1,9 +1,11 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"log"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -70,22 +72,23 @@ type settings struct {
 	// TermOpacity is how opaque the terminals' background is over the
 	// window's glass, from 0.3 to 1, or 0 for defaultTermOpacity.
 	NoGlass     bool    `json:"noGlass,omitempty"`
-	TermOpacity float32 `json:"terminalOpacity,omitempty"`
+	TermOpacity float32 `json:"terminal.opacity,omitempty"`
 	// Canvas lays every tab out as an infinite canvas of free panes
 	// (canvas.go), an experiment, off by default.
 	Canvas bool `json:"canvas,omitempty"`
 
-	// The rest, when set, win over Ghostty's configuration, which wins over
-	// GoRex's defaults. Empty and nil follow Ghostty.
-	Font         string `json:"font,omitempty"`   // a font family
-	Theme        string `json:"theme,omitempty"`  // a Ghostty theme's name
-	Cursor       string `json:"cursor,omitempty"` // "block", "bar" or "underline"
-	CursorBlink  *bool  `json:"cursorBlink,omitempty"`
-	CopyOnSelect *bool  `json:"copyOnSelect,omitempty"`
-	// MinimumContrast is the least contrast of text with its background,
+	// The terminal.* keys, when set, win over Ghostty's configuration, which
+	// wins over GoRex's defaults (docs/DSK-009-terminal-settings.md). Empty
+	// and nil follow Ghostty. terminal.opacity is TermOpacity, above.
+	TermFont         string `json:"terminal.font,omitempty"`   // a font family
+	TermTheme        string `json:"terminal.theme,omitempty"`  // a Ghostty theme's name
+	TermCursor       string `json:"terminal.cursor,omitempty"` // "block", "bar" or "underline"
+	TermCursorBlink  *bool  `json:"terminal.cursorBlink,omitempty"`
+	TermCopyOnSelect *bool  `json:"terminal.copyOnSelect,omitempty"`
+	// TermMinContrast is the least contrast of text with its background,
 	// from 1 (no correction) to 21; 0 follows Ghostty's minimum-contrast,
 	// else defaultMinContrast.
-	MinimumContrast float32 `json:"minimumContrast,omitempty"`
+	TermMinContrast float32 `json:"terminal.minimumContrast,omitempty"`
 
 	// IconPacks lists active community program icon pack IDs in priority
 	// order; IconPackPriority is "pack" (default) or "osc".
@@ -112,9 +115,79 @@ var prefs settings
 
 func settingsPath() string { return filepath.Join(rex.Dir(), "settings.json") }
 
+// settingsKeyRenames maps the keys settings.json had to the ones that
+// replace them (docs/DSK-009-terminal-settings.md).
+var settingsKeyRenames = map[string]string{
+	"font":            "terminal.font",
+	"theme":           "terminal.theme",
+	"cursor":          "terminal.cursor",
+	"cursorBlink":     "terminal.cursorBlink",
+	"copyOnSelect":    "terminal.copyOnSelect",
+	"minimumContrast": "terminal.minimumContrast",
+	"terminalOpacity": "terminal.opacity",
+}
+
+// migrateSettings renames the old keys of a settings object to the new ones
+// and reports whether it changed anything. A new key that is already there
+// wins over its old key; the old key goes either way. The values stay raw,
+// so keys it does not know keep theirs exactly.
+func migrateSettings(raw map[string]json.RawMessage) bool {
+	changed := false
+	for old, key := range settingsKeyRenames {
+		v, ok := raw[old]
+		if !ok {
+			continue
+		}
+		if _, has := raw[key]; !has {
+			raw[key] = v
+		}
+		delete(raw, old)
+		changed = true
+	}
+	return changed
+}
+
+// marshalRawObject writes a raw object one key to a line, in key order, with
+// each value as it was: json.Marshal would compact it.
+func marshalRawObject(raw map[string]json.RawMessage) []byte {
+	var buf bytes.Buffer
+	buf.WriteString("{")
+	for i, k := range slices.Sorted(maps.Keys(raw)) {
+		if i > 0 {
+			buf.WriteString(",")
+		}
+		kb, _ := json.Marshal(k)
+		buf.WriteString("\n  ")
+		buf.Write(kb)
+		buf.WriteString(": ")
+		buf.Write(raw[k])
+	}
+	buf.WriteString("\n}\n")
+	return buf.Bytes()
+}
+
+// migrateSettingsFile applies migrateSettings to the file's bytes: it keeps
+// the original in settings.json.bak and writes the migrated object. It
+// returns the bytes to decode, which are the migrated ones even when a
+// write fails.
+func migrateSettingsFile(b []byte) []byte {
+	var raw map[string]json.RawMessage
+	if json.Unmarshal(b, &raw) != nil || !migrateSettings(raw) {
+		return b
+	}
+	out := marshalRawObject(raw)
+	path := settingsPath()
+	if err := writeFileAtomic(path+".bak", b, 0o600); err != nil {
+		log.Printf("gorex settings: backup: %v", err)
+	} else if err := writeFileAtomic(path, out, 0o600); err != nil {
+		log.Printf("gorex settings: migrate: %v", err)
+	}
+	return out
+}
+
 func loadSettings() {
 	if b, err := os.ReadFile(settingsPath()); err == nil {
-		json.Unmarshal(b, &prefs)
+		json.Unmarshal(migrateSettingsFile(b), &prefs)
 	}
 	// A size out of range counts as none: Ghostty's font-size, or the default.
 	if prefs.FontSize < 6 || prefs.FontSize > 40 {
@@ -130,10 +203,10 @@ func loadSettings() {
 		prefs.TermOpacity = 0
 	}
 	// A ratio is clamped to 1–21 as Ghostty's is; 0 (or NaN) follows Ghostty.
-	if c := prefs.MinimumContrast; c != c {
-		prefs.MinimumContrast = 0
+	if c := prefs.TermMinContrast; c != c {
+		prefs.TermMinContrast = 0
 	} else if c != 0 {
-		prefs.MinimumContrast = min(max(c, 1), 21)
+		prefs.TermMinContrast = min(max(c, 1), 21)
 	}
 	if prefs.SidebarWidth < sidebarMinW || prefs.SidebarWidth > sidebarMaxW {
 		prefs.SidebarWidth = 0
@@ -242,28 +315,28 @@ var cursorStyles = map[string]terminal.CursorStyle{
 // A theme of the user's replaces the configuration's colors too, as they
 // were meant for the other theme.
 func (c ghosttyConfig) withPrefs(p settings) ghosttyConfig {
-	if p.Font != "" {
-		c.Families = []string{p.Font}
+	if p.TermFont != "" {
+		c.Families = []string{p.TermFont}
 	}
-	if p.Theme != "" {
-		c.Theme = p.Theme
+	if p.TermTheme != "" {
+		c.Theme = p.TermTheme
 		c.Background, c.Foreground, c.CursorColor, c.CursorText = nil, nil, nil, nil
 		c.SelectionBg, c.SelectionFg, c.Palette = nil, nil, nil
 	}
-	if s, ok := cursorStyles[p.Cursor]; ok {
+	if s, ok := cursorStyles[p.TermCursor]; ok {
 		c.Cursor = s
 	}
-	if p.CursorBlink != nil {
-		c.NoBlink = !*p.CursorBlink
+	if p.TermCursorBlink != nil {
+		c.NoBlink = !*p.TermCursorBlink
 	}
-	if p.CopyOnSelect != nil {
+	if p.TermCopyOnSelect != nil {
 		c.CopyOnSelect = terminal.CopyOnSelectNone
-		if *p.CopyOnSelect {
+		if *p.TermCopyOnSelect {
 			c.CopyOnSelect = terminal.CopyOnSelectClipboard
 		}
 	}
-	if p.MinimumContrast != 0 {
-		c.MinimumContrast = p.MinimumContrast
+	if p.TermMinContrast != 0 {
+		c.MinimumContrast = p.TermMinContrast
 	}
 	if c.MinimumContrast == 0 {
 		c.MinimumContrast = defaultMinContrast
