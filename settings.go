@@ -127,13 +127,27 @@ var settingsKeyRenames = map[string]string{
 	"terminalOpacity": "terminal.opacity",
 }
 
-// migrateSettings renames the old keys of a settings object to the new ones
-// and reports whether it changed anything. A new key that is already there
-// wins over its old key; the old key goes either way. The values stay raw,
-// so keys it does not know keep theirs exactly.
-func migrateSettings(raw map[string]json.RawMessage) bool {
+// tokenRenames maps the color tokens of docs/DSK-007-sidebar-style.md to
+// the role names that replace them (docs/DSK-008-theme.md). They live in
+// the object of sidebarColorsKey.
+var tokenRenames = map[string]string{
+	"groupFace":  "sideBar.activeGroupBackground",
+	"pillLift":   "sideBar.activeGroupTabBackground",
+	"liftShadow": "sideBar.activeGroupTabShadow",
+	"track":      "sideBar.trackBackground",
+	"tabSep":     "sideBar.tabSeparator",
+	"tabHover":   "sideBar.tabHoverBackground",
+	"tabActive":  "sideBar.tabActiveBackground",
+}
+
+const sidebarColorsKey = "sidebar.colorCustomizations"
+
+// renameJSONKeys renames the keys of raw by renames, keeping the values raw. A
+// new key that is already there wins over its old key; the old key goes
+// either way. It reports whether it changed anything.
+func renameJSONKeys(raw map[string]json.RawMessage, renames map[string]string) bool {
 	changed := false
-	for old, key := range settingsKeyRenames {
+	for old, key := range renames {
 		v, ok := raw[old]
 		if !ok {
 			continue
@@ -147,22 +161,47 @@ func migrateSettings(raw map[string]json.RawMessage) bool {
 	return changed
 }
 
-// marshalRawObject writes a raw object one key to a line, in key order, with
-// each value as it was: json.Marshal would compact it.
-func marshalRawObject(raw map[string]json.RawMessage) []byte {
-	var buf bytes.Buffer
+// migrateSettings renames the old keys of a settings object to the new ones,
+// and the old color tokens in its sidebar.colorCustomizations to role names,
+// and reports whether it changed anything. A new name that is already there
+// wins over its old one; the old one goes either way. The values stay raw,
+// so keys it does not know keep theirs exactly.
+func migrateSettings(raw map[string]json.RawMessage) bool {
+	changed := renameJSONKeys(raw, settingsKeyRenames)
+	var colors map[string]json.RawMessage
+	if json.Unmarshal(raw[sidebarColorsKey], &colors) == nil && renameJSONKeys(colors, tokenRenames) {
+		var buf bytes.Buffer
+		writeRawObject(&buf, colors, "  ")
+		raw[sidebarColorsKey] = buf.Bytes()
+		changed = true
+	}
+	return changed
+}
+
+// writeRawObject writes a raw object one key to a line, in key order, with
+// each value as it was: json.Marshal would compact it. indent is the
+// object's own indentation.
+func writeRawObject(buf *bytes.Buffer, raw map[string]json.RawMessage, indent string) {
 	buf.WriteString("{")
 	for i, k := range slices.Sorted(maps.Keys(raw)) {
 		if i > 0 {
 			buf.WriteString(",")
 		}
 		kb, _ := json.Marshal(k)
-		buf.WriteString("\n  ")
+		buf.WriteString("\n" + indent + "  ")
 		buf.Write(kb)
 		buf.WriteString(": ")
 		buf.Write(raw[k])
 	}
-	buf.WriteString("\n}\n")
+	buf.WriteString("\n" + indent + "}")
+}
+
+// marshalRawObject writes a settings object as writeRawObject does, ending
+// in a newline.
+func marshalRawObject(raw map[string]json.RawMessage) []byte {
+	var buf bytes.Buffer
+	writeRawObject(&buf, raw, "")
+	buf.WriteString("\n")
 	return buf.Bytes()
 }
 

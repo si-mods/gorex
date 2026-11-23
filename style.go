@@ -174,6 +174,31 @@ func isDark(c ui.Color) bool {
 	return int(c.R)*299+int(c.G)*587+int(c.B)*114 < 128*1000
 }
 
+// ladderOf returns the palette whose text ladder reads on a face of the
+// given lightness: k itself when that is k's own lightness, else the
+// palette of the other appearance.
+func ladderOf(k *colors, dark bool) *colors {
+	if dark == isDark(k.panel) {
+		return k
+	}
+	if dark {
+		return &darkColors
+	}
+	return &lightColors
+}
+
+// withLadder returns k with the text ladder of ref: k itself when ref is k,
+// else a copy.
+func withLadder(k, ref *colors) *colors {
+	if ref == k {
+		return k
+	}
+	h := *k
+	h.text, h.textMuted, h.textFaint, h.iconMuted = ref.text, ref.textMuted, ref.textFaint, ref.iconMuted
+	h.hover, h.pressed = ref.hover, ref.pressed
+	return &h
+}
+
 // headerColors returns k's colors for a pane header drawn on bg: its own,
 // or those of the palette of bg's lightness when the pane takes a terminal
 // background of the other appearance, as a light window over a dark
@@ -181,17 +206,70 @@ func isDark(c ui.Color) bool {
 // the header, rather than turning black on a dark one, and the card's
 // edge is not a white ring around a dark face.
 func headerColors(k *colors, bg ui.Color) *colors {
-	if isDark(bg) == isDark(k.panel) {
+	ref := ladderOf(k, isDark(bg))
+	if ref == k {
 		return k
 	}
-	ref := &lightColors
-	if isDark(bg) {
-		ref = &darkColors
+	h := withLadder(k, ref)
+	h.cardBorder, h.cardBorderFocused = ref.cardBorder, ref.cardBorderFocused
+	return h
+}
+
+// faceRole names a face of the palette that the user may override
+// (docs/DSK-008-theme.md): the faces of the sidebar's settings.
+type faceRole int
+
+const (
+	roleActiveGroupBackground    faceRole = iota // sideBar.activeGroupBackground, groupFace
+	roleActiveGroupTabBackground                 // sideBar.activeGroupTabBackground, pillLift
+	roleTrackBackground                          // sideBar.trackBackground, track
+	roleTabHoverBackground                       // sideBar.tabHoverBackground, tabHover
+	roleTabActiveBackground                      // sideBar.tabActiveBackground, tabActive
+)
+
+// faceColors is a face with the colors that show on it, as one value: the
+// text ladder and the hover faces of the palette whose lightness is the
+// face's. Code that draws on the face takes them from here, so that a face
+// the user sets cannot keep text that does not read on it.
+type faceColors struct {
+	face                                  ui.Color
+	text, textMuted, textFaint, iconMuted ui.Color
+	hover, pressed                        ui.Color
+}
+
+// surface resolves role in k: the face k has for it, with the ladder of
+// the palette of the face's lightness. A face that is not opaque counts as
+// laid over k's panel, so a translucent face of the palette (white at 14%
+// in a dark one) has the lightness of what it makes of the panel. A built-in
+// face has its own palette's lightness, so it gets the palette's ladder.
+func surface(k *colors, role faceRole) faceColors {
+	var face ui.Color
+	switch role {
+	case roleActiveGroupBackground:
+		face = k.groupFace
+	case roleActiveGroupTabBackground:
+		face = k.pillLift
+	case roleTrackBackground:
+		face = k.track
+	case roleTabHoverBackground:
+		face = k.tabHover
+	case roleTabActiveBackground:
+		face = k.tabActive
+	}
+	ref := ladderOf(k, isDark(face.Over(k.panel)))
+	return faceColors{face, ref.text, ref.textMuted, ref.textFaint, ref.iconMuted, ref.hover, ref.pressed}
+}
+
+// on returns k with s's ladder: what a surface's content draws with. It
+// is k itself when the ladder is k's own.
+func (s faceColors) on(k *colors) *colors {
+	if s.text == k.text && s.textMuted == k.textMuted && s.textFaint == k.textFaint && s.iconMuted == k.iconMuted &&
+		s.hover == k.hover && s.pressed == k.pressed {
+		return k
 	}
 	h := *k
-	h.text, h.textMuted, h.textFaint, h.iconMuted = ref.text, ref.textMuted, ref.textFaint, ref.iconMuted
-	h.hover, h.pressed = ref.hover, ref.pressed
-	h.cardBorder, h.cardBorderFocused = ref.cardBorder, ref.cardBorderFocused
+	h.text, h.textMuted, h.textFaint, h.iconMuted = s.text, s.textMuted, s.textFaint, s.iconMuted
+	h.hover, h.pressed = s.hover, s.pressed
 	return &h
 }
 

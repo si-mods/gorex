@@ -337,10 +337,10 @@ func TestSidebarStylePrefs(t *testing.T) {
 		"sidebar.icons": "text",
 		"sidebar.selection": "wobbly",
 		"sidebar.colorCustomizations": {
-			"groupFace": "#2a2a3d",
-			"pillLift": {"light": "#ffffff", "dark": "#3a3a52"},
+			"sideBar.activeGroupBackground": "#2a2a3d",
+			"sideBar.activeGroupTabBackground": {"light": "#ffffff", "dark": "#3a3a52"},
 			"nope": "#000000",
-			"track": "not a color"
+			"sideBar.trackBackground": "not a color"
 		}
 	}`), 0o600); err != nil {
 		t.Fatal(err)
@@ -367,7 +367,7 @@ func TestSidebarStylePrefs(t *testing.T) {
 	if _, ok := prefs.SidebarColors["nope"]; ok {
 		t.Error("unknown token kept")
 	}
-	if _, ok := prefs.SidebarColors["track"]; ok {
+	if _, ok := prefs.SidebarColors["sideBar.trackBackground"]; ok {
 		t.Error("bad color kept")
 	}
 }
@@ -518,5 +518,133 @@ func TestMigrateWriteFailure(t *testing.T) {
 	}
 	if b, _ := os.ReadFile(path); string(b) != old {
 		t.Errorf("file %q changed without a backup", b)
+	}
+}
+
+const oldTokenSettings = `{
+  "future.key": {"a": [1,   2]},
+  "sidebar.colorCustomizations": {
+    "groupFace": "#2a2a3d",
+    "liftShadow": "#00000033",
+    "pillLift": { "light": "#ffffff",   "dark": "#3a3a52" },
+    "tabActive": "#e8e8ee",
+    "tabHover": "#ffffff1a",
+    "tabSep": "#ffffff22",
+    "track": "#00000011"
+  },
+  "sidebar.selection": "fill"
+}`
+
+// colorsOnDisk reads the sidebar.colorCustomizations object of
+// settings.json.
+func colorsOnDisk(t *testing.T) map[string]json.RawMessage {
+	t.Helper()
+	var colors map[string]json.RawMessage
+	if err := json.Unmarshal(settingsOnDisk(t)["sidebar.colorCustomizations"], &colors); err != nil {
+		t.Fatal(err)
+	}
+	return colors
+}
+
+func writeSettings(t *testing.T, s string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(settingsPath()), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(settingsPath(), []byte(s), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestMigrateSidebarTokens: a file with the seven DSK-007 tokens loads with
+// the same colors, and the file then has only role names with the exact
+// values and a backup of the original (docs/DSK-008).
+func TestMigrateSidebarTokens(t *testing.T) {
+	isolateSettings(t, "")
+	writeSettings(t, oldTokenSettings)
+	loadSettings()
+	want := map[string]string{
+		"sideBar.activeGroupBackground":    `"#2a2a3d"`,
+		"sideBar.activeGroupTabBackground": `{ "light": "#ffffff",   "dark": "#3a3a52" }`,
+		"sideBar.activeGroupTabShadow":     `"#00000033"`,
+		"sideBar.trackBackground":          `"#00000011"`,
+		"sideBar.tabSeparator":             `"#ffffff22"`,
+		"sideBar.tabHoverBackground":       `"#ffffff1a"`,
+		"sideBar.tabActiveBackground":      `"#e8e8ee"`,
+	}
+	if len(prefs.SidebarColors) != len(want) {
+		t.Fatalf("loaded %v", prefs.SidebarColors)
+	}
+	d := sidebarPalette(&darkColors, true)
+	if d.groupFace != ui.Hex("#2a2a3d") || d.tabActive != ui.Hex("#e8e8ee") || d.pillLift != ui.Hex("#3a3a52") ||
+		d.liftShadow != ui.Hex("#00000033") || d.track != ui.Hex("#00000011") || d.tabSep != ui.Hex("#ffffff22") || d.tabHover != ui.Hex("#ffffff1a") {
+		t.Errorf("the palette lost an old token: %+v", d)
+	}
+	disk := colorsOnDisk(t)
+	if len(disk) != len(want) {
+		t.Errorf("the file has %v", disk)
+	}
+	for name, v := range want {
+		if string(disk[name]) != v {
+			t.Errorf("%s on disk is %s, want %s", name, disk[name], v)
+		}
+	}
+	if string(settingsOnDisk(t)["future.key"]) != `{"a": [1,   2]}` {
+		t.Error("another key changed")
+	}
+	if b, err := os.ReadFile(settingsPath() + ".bak"); err != nil || string(b) != oldTokenSettings {
+		t.Errorf("backup %q (%v), want the original bytes", b, err)
+	}
+
+	// Idempotent: a second load changes nothing and writes no backup.
+	before, _ := os.ReadFile(settingsPath())
+	os.Remove(settingsPath() + ".bak")
+	prefs = settings{}
+	loadSettings()
+	if after, _ := os.ReadFile(settingsPath()); string(after) != string(before) {
+		t.Errorf("the second load changed the file:\n%s\n%s", before, after)
+	}
+	if _, err := os.Stat(settingsPath() + ".bak"); err == nil {
+		t.Error("the second load wrote the backup again")
+	}
+}
+
+// TestMigrateTokenBothNames: with an old token and its role name, the role
+// name's value wins and the old token goes.
+func TestMigrateTokenBothNames(t *testing.T) {
+	isolateSettings(t, "")
+	writeSettings(t, `{"sidebar.colorCustomizations": {"tabActive": "#111111", "sideBar.tabActiveBackground": "#222222"}}`)
+	loadSettings()
+	disk := colorsOnDisk(t)
+	if len(disk) != 1 || string(disk["sideBar.tabActiveBackground"]) != `"#222222"` {
+		t.Errorf("file has %v", disk)
+	}
+	if got := sidebarPalette(&darkColors, true).tabActive; got != ui.Hex("#222222") {
+		t.Errorf("tabActive %v, want the role name's", got)
+	}
+}
+
+// TestMigrateTerminalAndTokens: one load migrates the DSK-009 keys and the
+// DSK-007 tokens together, with one backup that holds the original bytes.
+func TestMigrateTerminalAndTokens(t *testing.T) {
+	isolateSettings(t, "")
+	const both = `{
+  "theme": "Nord",
+  "sidebar.colorCustomizations": {"tabActive": "#e8e8ee"}
+}`
+	writeSettings(t, both)
+	loadSettings()
+	raw := settingsOnDisk(t)
+	if _, ok := raw["theme"]; ok || string(raw["terminal.theme"]) != `"Nord"` {
+		t.Errorf("terminal key not migrated: %v", raw)
+	}
+	if disk := colorsOnDisk(t); len(disk) != 1 || string(disk["sideBar.tabActiveBackground"]) != `"#e8e8ee"` {
+		t.Errorf("token not migrated: %v", disk)
+	}
+	if b, err := os.ReadFile(settingsPath() + ".bak"); err != nil || string(b) != both {
+		t.Errorf("backup %q (%v), want the original bytes", b, err)
+	}
+	if prefs.TermTheme != "Nord" || sidebarPalette(&darkColors, true).tabActive != ui.Hex("#e8e8ee") {
+		t.Error("migrated values not loaded")
 	}
 }

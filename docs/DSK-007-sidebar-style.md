@@ -3,12 +3,12 @@ name: DSK-007
 description: "The user can set the sidebar's look, density and structure through flat dotted keys in settings.json, as VS Code's settings are. Use when you change the sidebar's colors, metrics, grouping or its settings."
 metadata:
   created: "2026-11-23"
-  updated: "2026-11-23"
+  updated: "2026-11-24"
 ---
 
 # DSK-007: Sidebar style settings
 
-Status: proposal.
+Status: built (#1055).
 
 This doc decides the settings.json keys that style the desktop sidebar. It extends the palette rules of `DESIGN.md` and the projects model of [MOD-002](MOD-002-projects.md). The keys are flat and dotted, as VS Code's settings are: `sidebar.rowHeight`, `sidebar.groupBy`, `sidebar.colorCustomizations`.
 
@@ -47,9 +47,9 @@ The user writes `sidebar.*` keys in `settings.json`. They take effect on the nex
   "sidebar.icons": "text",
   "sidebar.selection": "fill",
   "sidebar.colorCustomizations": {
-    "groupFace": "#2a2a3d",
-    "pillLift": { "light": "#ffffff", "dark": "#3a3a52" },
-    "track": "#00000033"
+    "sideBar.activeGroupBackground": "#2a2a3d",
+    "sideBar.activeGroupTabBackground": { "light": "#ffffff", "dark": "#3a3a52" },
+    "sideBar.trackBackground": "#00000033"
   }
 }
 ```
@@ -67,15 +67,15 @@ The metric keys, each a number clamped to a range and reset to the default outsi
 
 `sidebar.icons` is `tiles` or `text`, "" for `tiles`. `text` draws no program tiles on tab rows and draws a project's folder glyph alone, without its tile face; the names' room shrinks to a tile's width so the rows still line up with the project rows' glyphs. `sidebar.selection` is `pill` or `fill`, "" for `pill`. `fill` paints a chosen row a plain face at `tabActive` with a `radiusM` corner — the look of a text-first list — instead of the glass pill of the other chosen controls.
 
-`sidebar.colorCustomizations` maps one of these palette tokens to a color: `groupFace`, `pillLift`, `liftShadow`, `track`, `tabSep`, `tabHover`, `tabActive`. A value is `#RRGGBB` or `#RRGGBBAA`, or an object `{ "light": <hex>, "dark": <hex> }` for different values per appearance. A single value applies to both appearances. An unknown token or a bad value is dropped at load with a warning. [DSK-008](DSK-008-theme.md) renames these tokens to role names such as `sideBar.tabActiveBackground`, and migrates the user's file at load.
+`sidebar.colorCustomizations` maps one of these role names to a color: `sideBar.activeGroupBackground`, `sideBar.activeGroupTabBackground`, `sideBar.activeGroupTabShadow`, `sideBar.trackBackground`, `sideBar.tabSeparator`, `sideBar.tabHoverBackground`, `sideBar.tabActiveBackground`. A value is `#RRGGBB` or `#RRGGBBAA`, or an object `{ "light": <hex>, "dark": <hex> }` for different values per appearance. A single value applies to both appearances. An unknown name or a bad value is dropped at load with a warning. The first build of this doc used the names `groupFace`, `pillLift`, `liftShadow`, `track`, `tabSep`, `tabHover` and `tabActive`. [DSK-008](DSK-008-theme.md) renamed them, and GoRex renames them in the user's file at load (`migrateSettings`; the original stays in `settings.json.bak`). A face that the user sets also sets the text on it: the resolver (`surface` in `style.go`) gives the row's text the ladder of the face's lightness.
 
 ### Model
 
-`settings` in `settings.go` gains the flat fields with their dotted JSON names: `SidebarRowHeight`, `SidebarIndent`, `SidebarFontSize`, `SidebarGroupPad`, `SidebarGroupBy`, `SidebarIcons`, `SidebarSelection`, `SidebarColors`. `SidebarColors` keeps the raw messages so the file round-trips the user's exact text; `checkSidebarColors` validates tokens and values at load and drops the bad ones with a log line.
+`settings` in `settings.go` gains the flat fields with their dotted JSON names: `SidebarRowHeight`, `SidebarIndent`, `SidebarFontSize`, `SidebarGroupPad`, `SidebarGroupBy`, `SidebarIcons`, `SidebarSelection`, `SidebarColors`. `SidebarColors` keeps the raw messages so the file round-trips the user's exact text; `checkSidebarColors` validates role names and values at load and drops the bad ones with a log line.
 
 Resolution is read-time and cheap: `sidebarRowH`, `sidebarLead`, `sidebarFont`, `sidebarGroupPad` and `sidebarGroupEdge` return the pref or the constant; `sidebarPalette(k, dark)` returns a copy of the palette with the valid overrides applied. The sidebar applies the palette once in `App.sidebar`, so every row, pill and face under it draws with it and the window's other surfaces keep the base palette. The resolved metrics are data at use, not source literals, so `TestDesignTokens` sees nothing new.
 
-Compatibility: an older build ignores the dotted keys on read (unknown JSON fields) and drops them when it rewrites `settings.json`, the same contract every setting has. No migration: every key is optional and additive.
+Compatibility: an older build ignores the dotted keys on read (unknown JSON fields) and drops them when it rewrites `settings.json`, the same contract every setting has. No migration for the dotted keys: every key is optional and additive. The color names are the exception: an older build does not know the role names and drops them at load with a warning.
 
 ### Code
 
