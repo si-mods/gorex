@@ -375,6 +375,7 @@ struct TailcatPairSheet: View {
     /// Whether the host stays: it came online, or waiting timed out while
     /// it may be approved. Any other way out takes it back.
     @State private var kept = false
+    @State private var copied = false
 
     /// How long the sheet waits for the approval: GoRex's pairing window.
     private static let wait = Duration.seconds(5 * 60)
@@ -399,6 +400,7 @@ struct TailcatPairSheet: View {
                         Button("Try again") { retry() }
                             .buttonStyle(.glassProminent)
                             .foregroundStyle(Color.page)
+                        copyButton()
                     }
                 }
             } else if let fingerprint {
@@ -461,7 +463,26 @@ struct TailcatPairSheet: View {
         Task { await pair() }
     }
 
+    /// The button under a failed pair: the recent connection log, headed by
+    /// the versions a report dates by, on the pasteboard.
+    private func copyButton() -> some View {
+        Button(copied ? "Copied" : "Copy diagnostics") {
+            UIPasteboard.general.string = diagnosticsText()
+            copied = true
+            Task { try? await Task.sleep(for: .seconds(1.5)); copied = false }
+        }
+        .buttonStyle(.glass)
+    }
+
     private func finish() { dismiss() }
+}
+
+/// The text a pair sheet's Copy puts on the pasteboard: the app's and
+/// iOS's versions, then the recent connection events.
+private func diagnosticsText() -> String {
+    let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "0"
+    let head = "Rex Go \(Bundle.main.version) (\(build)), iOS \(UIDevice.current.systemVersion), \(Date.now.ISO8601Format())"
+    return ([head] + ConnectionLog.lines).joined(separator: "\n")
 }
 
 /// Why a pair sheet stopped: it failed and can retry, or the
@@ -489,6 +510,7 @@ private struct AddressPairSheet: View {
     @State private var code: String?
     @State private var matched = false
     @State private var end: PairEnd?
+    @State private var copied = false
     /// The wait for the approval, cancelled when the sheet goes.
     @State private var confirming: Task<Void, Never>?
 
@@ -508,6 +530,12 @@ private struct AddressPairSheet: View {
                         Button("Try again") { retry() }
                             .buttonStyle(.glassProminent)
                             .foregroundStyle(Color.page)
+                        Button(copied ? "Copied" : "Copy diagnostics") {
+                            UIPasteboard.general.string = diagnosticsText()
+                            copied = true
+                            Task { try? await Task.sleep(for: .seconds(1.5)); copied = false }
+                        }
+                        .buttonStyle(.glass)
                     }
                 }
             } else if let code {
