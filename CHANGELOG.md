@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.55.0
+
+### Features
+
+* **icons:** community program icon packs, with registry search and a Settings browser ([#1042](https://github.com/si-mods/gorex/pull/1042), [#1043](https://github.com/si-mods/gorex/pull/1043))
+* **remote:** show how each remote host's link runs — transport, direct/relay path, connect and ping times; the remote layout sheet is removed ([#1037](https://github.com/si-mods/gorex/pull/1037))
+* **ios:** log pairing failures with the reason, keep the connection log across restarts, and copy it from a failed pair ([#1038](https://github.com/si-mods/gorex/pull/1038))
+* **protocol:** support OSC 7502 custom program icons ([#1040](https://github.com/si-mods/gorex/pull/1040))
+* **ios:** suggest a readable tailnet name, settable before enable ([#1027](https://github.com/si-mods/gorex/pull/1027))
+* **ios:** drag a host's header to reorder the list ([#1035](https://github.com/si-mods/gorex/pull/1035))
+
+### Bug Fixes
+
+* **desktop:** drop the note under the host and the server card ([#1036](https://github.com/si-mods/gorex/pull/1036))
+
 ## 0.54.0
 
 ### Features
