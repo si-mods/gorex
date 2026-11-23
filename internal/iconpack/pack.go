@@ -18,7 +18,10 @@ import (
 	"gorex/internal/rex"
 )
 
-const maxManifestBytes = 1 << 20 // 1 MiB
+const (
+	maxManifestBytes = 1 << 20   // 1 MiB
+	maxAssetBytes    = 32 * 1024 // matches rex maxIconBytes
+)
 
 // ColorVariant overrides tile colors for light or dark appearance.
 type ColorVariant struct {
@@ -158,7 +161,7 @@ func LoadPack(dir string) (*Pack, error) {
 		if err != nil {
 			return nil, fmt.Errorf("%s (%s): %w", m.ID, key, err)
 		}
-		iconBytes, err := os.ReadFile(assetPath)
+		iconBytes, err := readLimited(assetPath, maxAssetBytes)
 		if err != nil {
 			return nil, fmt.Errorf("%s (%s): %w", m.ID, key, err)
 		}
@@ -193,7 +196,7 @@ func LoadRegistry(packsDir, configDir string, packIDs []string, overrides []conf
 		if !filepath.IsAbs(assetPath) && configDir != "" {
 			assetPath = filepath.Join(configDir, assetPath)
 		}
-		raw, err := os.ReadFile(assetPath)
+		raw, err := readLimited(assetPath, maxAssetBytes)
 		if err != nil {
 			warnings = append(warnings, fmt.Sprintf("program_icon %q: %v", rule.Name, err))
 			continue
@@ -328,7 +331,7 @@ func InstallGit(repoURL, packsDir, overrideID string) (*Pack, error) {
 		return nil, err
 	}
 	defer os.RemoveAll(tmp)
-	cmd := exec.Command("git", "clone", "--depth", "1", repoURL, tmp)
+	cmd := exec.Command("git", "clone", "--depth", "1", "--", repoURL, tmp)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return nil, fmt.Errorf("git clone: %w: %s", err, strings.TrimSpace(string(out)))
 	}
@@ -474,4 +477,20 @@ func copyDir(src, dst string) error {
 		}
 		return os.WriteFile(target, data, 0o644)
 	})
+}
+
+func readLimited(path string, maxBytes int64) ([]byte, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	b, err := io.ReadAll(io.LimitReader(f, maxBytes+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(b)) > maxBytes {
+		return nil, fmt.Errorf("file exceeds %d bytes", maxBytes)
+	}
+	return b, nil
 }
