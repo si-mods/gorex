@@ -39,7 +39,7 @@ The work keeps the current look. It makes the values consistent. It does not cha
 
 ## Non-goals
 
-- Terminal colors stay in the Ghostty configuration and in the `theme` setting. The terminal is a second lightness domain. The framework adapts the chrome to the terminal. It does not change the terminal colors.
+- Terminal colors stay in the Ghostty configuration and in the terminal theme setting. [DSK-009](DSK-009-terminal-settings.md) moves that setting from `theme` to `terminal.theme`. The terminal is a second lightness domain. The framework adapts the chrome to the terminal. It does not change the terminal colors.
 - The glass stays a user setting (`noGlass`). A theme does not change the glass setting.
 - iOS and the web client keep their palettes. The first scope is the desktop chrome.
 - No migration of `settings.json` occurs. Each key that the user has keeps its meaning.
@@ -61,7 +61,7 @@ A theme is a manifest of seeds and optional role overrides:
 }
 ```
 
-The user selects a theme with a new settings key, `appTheme`. Its value is the name of a manifest. The `theme` key keeps its current meaning, the name of a Ghostty theme. Open question 1 records the key name.
+The user selects a theme with a new settings key, `appTheme`. Its value is the name of a manifest. The name of a Ghostty theme stays in the terminal settings, `theme` now and `terminal.theme` after [DSK-009](DSK-009-terminal-settings.md). Open question 1 records the key name.
 
 Resolution has four layers. Each layer overwrites the layer before it:
 
@@ -141,7 +141,7 @@ A theme manifest is data: hex values and enum names. It contains no code, no pat
 
 ## Migration
 
-No settings change is necessary. The built-in seeds make the current palettes again. The `theme` key keeps the Ghostty theme name. Each `sidebar.colorCustomizations` token maps onto a role name. The seven DSK-007 tokens keep their names as roles. An older build ignores the `appTheme` key, because `loadSettings` ignores unknown keys.
+No settings change is necessary. The built-in seeds make the current palettes again. The Ghostty theme name stays in `theme`, or in `terminal.theme` after DSK-009. Each `sidebar.colorCustomizations` token maps onto a role name. The seven DSK-007 tokens keep their names as roles. An older build ignores the `appTheme` key, because `loadSettings` ignores unknown keys.
 
 ## Tests
 
@@ -150,7 +150,7 @@ No settings change is necessary. The built-in seeds make the current palettes ag
 - **Ink**: A material over a backdrop that the code cannot read resolves the ink of the theme at the dense tint.
 - **Reduce Transparency**: With `ReduceTransparency` true, a material role resolves to an opaque face.
 - **Manifest**: The load step removes a manifest with a bad seed or an unknown role and logs a warning. It does not stop the app.
-- **Settings**: A `settings.json` with both `theme` and `appTheme` keeps the Ghostty theme and selects the manifest.
+- **Settings**: A `settings.json` with both `terminal.theme` and `appTheme` keeps the Ghostty theme and selects the manifest.
 
 No item in `docs/invariants.md` covers the palette.
 
@@ -165,7 +165,7 @@ No item in `docs/invariants.md` covers the palette.
 1. **Settings key for the theme**: The user decides. The options are:
    1. A new key `appTheme` (recommended). Nothing breaks. An older build ignores it.
    2. A new dotted key `appearance.theme`, as the DSK-007 keys are. Nothing breaks. It starts an `appearance.*` group with one key.
-   3. Use `theme` for the manifest and move the Ghostty theme name to `terminal.theme`. This needs a migration. An older build reads the manifest name as a Ghostty theme name and does not find that theme.
+   3. Use `theme` for the manifest, after DSK-009 moves the Ghostty theme name to `terminal.theme`. An older build still reads `theme` as a Ghostty theme name. It then does not find the theme, and during the DSK-009 transition the two values collide in one key.
 2. **Role names**: Keep the DSK-007 tokens (`tabActive`, `groupFace`) or rename them to tokens in the style of VS Code (`sideBar.*`). A rename breaks settings. Keeping the tokens keeps compatibility but also keeps flat names. The user decides.
 3. **Seed count**: Seven seeds is an estimate. The derivation table gives the real count in phase 2.
 4. **Motion in the manifest**: Easing curves and durations are tokens, as colors are. The manifest can carry them later. The `animation` setting can already stop all motion. This is deferred to phase 3.
