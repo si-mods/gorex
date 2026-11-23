@@ -8,7 +8,7 @@ metadata:
 
 # WEB-005: Liquid glass over the terminals
 
-Status: built (#PR).
+Status: built (#1048).
 
 This doc decides the material of the web client's surfaces that float over the terminal canvas. It extends [`REF-007`](REF-007-web-client.md), sections Themes and Settings. The desktop and Rex Go use the system's glass already (`DESIGN.md`, Glass); this doc changes only `web/`.
 
