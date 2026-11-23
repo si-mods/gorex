@@ -388,16 +388,17 @@ async function main() {
 /**
  * The stage as the page starts: the place kept, once its host has read
  * its sessions, else the first host's first window. A tailnet host's
- * place waits for built-in Tailscale to find it.
+ * place is none: its discovery takes a while and the first screen does
+ * not wait on it; the host still connects once Tailscale finds it.
  */
 function startAtPlace(p: Place | undefined) {
   const direct = [...hostList.hosts, ...(shared?.hosts ?? [])];
   // A host the user disconnected is no place: it stays disconnected.
   const h = p && direct.find((x) => x.id === p.host && !off.has(x.id));
-  if (p && (h || (isTailnetID(p.host) && tailnetOpened().has(p.host)))) {
+  if (p && h) {
     pending = p;
     select(h);
-    if (h) showPending(conns.get(h.id)!);
+    showPending(conns.get(h.id)!);
     return;
   }
   const first = direct.find((x) => !off.has(x.id));
