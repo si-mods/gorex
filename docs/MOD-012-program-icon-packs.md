@@ -33,7 +33,7 @@ This doc defines declarative community icon packs for GoRex programs and project
 
 Users place or install an icon pack under `<configDir>/icon-packs/<pack-id>/` and select active packs in settings or `init.lua` (for example `rex.icon_packs = { "catppuccin-programs" }`).
 
-When rendering a pane header, tab tile, or command palette item, GoRex resolves the icon in order: explicit user/Lua override, runtime `OSC 7502` icon (`SessionInfo.ProgramIcon`), active community icon packs (in configured order), built-in `programOf` table, and finally the generic terminal glyph. A user setting can invert the pack vs. `OSC 7502` precedence when a user wants pack icons to override self-reporting tools.
+When rendering a pane header, tab tile, or command palette item, GoRex resolves the icon in order: explicit user/Lua override, active community icon packs (in configured order), runtime `OSC 7502` icon (`SessionInfo.ProgramIcon`), built-in `programOf` table, and finally the generic terminal glyph. A user setting or `init.lua` option lets users invert the pack vs. `OSC 7502` precedence when they want self-reporting programs to win.
 
 For remote hosts, the client resolves pack entries locally from `SessionInfo.ProgramName()` and `SessionInfo.Dir` (for directory markers when known), requiring zero extra bytes over the wire. Optionally, `rex.icon_pack` Lua helpers can also register or emit icons dynamically.
 
@@ -109,5 +109,4 @@ Existing configurations without `icon-packs` behave identically to today. Older 
 
 ## Open questions
 
-1. **Precedence toggle**: Should `OSC 7502` beat an active icon pack by default, or should user-installed packs beat `OSC 7502`? (Proposal: `OSC 7502` beats packs by default, with a setting or Lua option to invert.)
-2. **Remote directory markers**: Should the session server expose lightweight project marker hints in `SessionInfo`, or should packs match `ProgramName()` / `Args` only on remote hosts?
+1. **Remote directory markers**: Should the session server expose lightweight project marker hints in `SessionInfo`, or should packs match `ProgramName()` / `Args` only on remote hosts?
