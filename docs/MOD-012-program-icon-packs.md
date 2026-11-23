@@ -8,7 +8,7 @@ metadata:
 
 # MOD-012: Community Program Icon Packs
 
-Status: accepted.
+Status: phase 2 built. Phase 3 (iOS and Web pack matching) not built.
 
 This doc defines declarative community icon packs for GoRex programs. It builds on [`MOD-011`](MOD-011-program-icons.md) and [`REF-002`](REF-002-lua.md).
 
@@ -32,11 +32,11 @@ This doc defines declarative community icon packs for GoRex programs. It builds 
 
 ### Behavior
 
-Users place or install an icon pack under `<configDir>/icon-packs/<pack-id>/` and select active packs in settings or `init.lua` (for example `rex.icon_packs = { "catppuccin-programs" }`).
+Users place or install an icon pack under `<configDir>/icon-packs/<pack-id>/` and select active packs in `settings.json` (`iconPacks`) or `init.lua` (for example `gorex.icon_packs({ "catppuccin-programs" })`).
 
-When rendering a pane header, tab tile, or command palette item, GoRex resolves the icon in order: explicit user/Lua override, active community icon packs (in configured order), runtime `OSC 7502` icon (`SessionInfo.ProgramIcon`), built-in `programOf` table, and finally the generic terminal glyph. A user setting or `init.lua` option lets users invert the pack vs. `OSC 7502` precedence when they want self-reporting programs to win.
+When rendering a pane header, tab tile, or command palette item, GoRex resolves the icon in order: explicit user/Lua override (`gorex.program_icon`), active community icon packs (in configured order), runtime `OSC 7502` icon (`SessionInfo.ProgramIcon`), built-in `programOf` table, and finally the generic terminal glyph. `iconPackPriority` in `settings.json` or `gorex.icon_pack_priority("osc")` in `init.lua` inverts the pack vs. `OSC 7502` precedence when users want self-reporting programs to win.
 
-For both local and remote hosts, the client resolves pack entries locally from `SessionInfo.ProgramName()` and `SessionInfo.Args`, requiring zero directory I/O and zero extra bytes over the wire. Optionally, `rex.icon_pack` Lua helpers can also register or emit icons dynamically.
+For both local and remote hosts, the client resolves pack entries locally from `SessionInfo.ProgramName()` and `SessionInfo.Args`, requiring zero directory I/O and zero extra bytes over the wire.
 
 ### Model
 
@@ -70,10 +70,10 @@ Each entry supports `icon` (relative path to `.svg` or `.png`), `mode` (`mono` o
 
 ### Code
 
-- `internal/iconpack/pack.go`: `Pack`, `Entry`, `LoadPack`, `Registry.Resolve(info rex.SessionInfo, dark bool) *rex.ProgramIcon`, path traversal checks, and SVG/PNG validation shared with `internal/rex/icon.go`.
-- `internal/config/`: `IconPacks []string` setting, `IconPackPriority` precedence toggle, and `init.lua` bindings (`rex.icon_packs`, `rex.register_icon_pack`).
-- `program_icon.go`, `state.go`: consult the active `iconpack.Registry` inside `Pane.program()` while reusing `customIconSVG` and `customIconBitmap`.
-- `internal/cli/pack.go`: optional `gorex pack install|ls|rm` helper to manage `<configDir>/icon-packs/`.
+- `internal/iconpack/pack.go`: `Pack`, `Entry`, `LoadPack`, `Registry.Resolve`, path traversal checks, and shared `rex.BuildProgramIcon` validation.
+- `internal/config/config.go`: `Dir()`, `ProgramIconRule`, `gorex.icon_packs`, `gorex.icon_pack_priority`, and `gorex.program_icon`.
+- `program_icon.go`, `luaconfig.go`, `settings.go`, `state.go`: load active `iconpack.Registry` and consult it inside `Pane.program()`.
+- `internal/cli/pack.go`: `gorex pack ls|install|rm` to manage `<configDir>/icon-packs/`.
 
 ## Alternatives
 

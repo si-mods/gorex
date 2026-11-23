@@ -145,50 +145,79 @@ func (ic *programIcon) apply(body string) {
 			dataArg = v
 		}
 	}
-	if dataArg == "" || (format != "svg" && format != "png") {
+	if dataArg == "" {
 		return
 	}
 	raw, ok := decodeBase64Bytes(dataArg)
-	if !ok || len(raw) == 0 || len(raw) > maxIconBytes {
+	if !ok {
 		return
 	}
-	switch format {
-	case "svg":
-		if !validateSVG(raw) {
-			return
-		}
-		if mode == "" {
-			mode = "mono"
-		}
-		if mode != "mono" && mode != "color" {
-			return
-		}
-	case "png":
-		if !validatePNG(raw) {
-			return
-		}
-		if mode == "" {
-			mode = "color"
-		}
-		if mode != "color" {
-			return
-		}
-	}
-	encoded := base64.StdEncoding.EncodeToString(raw)
-	sum := sha256.Sum256([]byte(format + "\x00" + mode + "\x00" + bg + "\x00" + fg + "\x00" + encoded))
-	next := &ProgramIcon{
-		Format: format,
-		Mode:   mode,
-		Data:   encoded,
-		Bg:     bg,
-		Fg:     fg,
-		Hash:   hex.EncodeToString(sum[:8]),
+	next, ok := BuildProgramIcon(format, mode, bg, fg, raw)
+	if !ok {
+		return
 	}
 	if programIconEqual(ic.icon, next) {
 		return
 	}
 	ic.icon = next
 	ic.updates++
+}
+
+// BuildProgramIcon validates format ("svg" or "png"), mode ("mono" or "color"),
+// optional hex colors, and raw icon bytes (up to maxIconBytes), returning a
+// normalized ProgramIcon ready for caching and wire transport.
+func BuildProgramIcon(format, mode, bg, fg string, raw []byte) (*ProgramIcon, bool) {
+	format = strings.ToLower(strings.TrimSpace(format))
+	mode = strings.ToLower(strings.TrimSpace(mode))
+	if (format != "svg" && format != "png") || len(raw) == 0 || len(raw) > maxIconBytes {
+		return nil, false
+	}
+	if bg != "" {
+		c, ok := parseHexColor(bg)
+		if !ok {
+			return nil, false
+		}
+		bg = c
+	}
+	if fg != "" {
+		c, ok := parseHexColor(fg)
+		if !ok {
+			return nil, false
+		}
+		fg = c
+	}
+	switch format {
+	case "svg":
+		if !validateSVG(raw) {
+			return nil, false
+		}
+		if mode == "" {
+			mode = "mono"
+		}
+		if mode != "mono" && mode != "color" {
+			return nil, false
+		}
+	case "png":
+		if !validatePNG(raw) {
+			return nil, false
+		}
+		if mode == "" {
+			mode = "color"
+		}
+		if mode != "color" {
+			return nil, false
+		}
+	}
+	encoded := base64.StdEncoding.EncodeToString(raw)
+	sum := sha256.Sum256([]byte(format + "\x00" + mode + "\x00" + bg + "\x00" + fg + "\x00" + encoded))
+	return &ProgramIcon{
+		Format: format,
+		Mode:   mode,
+		Data:   encoded,
+		Bg:     bg,
+		Fg:     fg,
+		Hash:   hex.EncodeToString(sum[:8]),
+	}, true
 }
 
 func programIconEqual(a, b *ProgramIcon) bool {

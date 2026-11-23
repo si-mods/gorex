@@ -11,6 +11,8 @@ import (
 	"testing"
 
 	"github.com/egoist/mygo/ui"
+	"gorex/internal/config"
+	"gorex/internal/iconpack"
 	"gorex/internal/rex"
 )
 
@@ -58,6 +60,49 @@ func TestPaneProgramWithCustomIcon(t *testing.T) {
 	}
 	if s := customIconSVG(ic); s == nil {
 		t.Fatalf("customIconSVG returned nil")
+	}
+}
+
+func TestPaneProgramWithIconPack(t *testing.T) {
+	packsDir := t.TempDir()
+	packDir := filepath.Join(packsDir, "community")
+	if err := os.MkdirAll(filepath.Join(packDir, "icons"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	svg := `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M2 2h20v20H2z"/></svg>`
+	if err := os.WriteFile(filepath.Join(packDir, "icons", "tf.svg"), []byte(svg), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	manifest := `{"schema":1,"id":"community","name":"Community","programs":{"terraform":{"icon":"icons/tf.svg","bg":"#7b42bc","fg":"#ffffff"}}}`
+	if err := os.WriteFile(filepath.Join(packDir, "pack.json"), []byte(manifest), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	reg, warns := iconpack.LoadRegistry(packsDir, "", []string{"community"}, []config.ProgramIconRule(nil), "")
+	if len(warns) != 0 {
+		t.Fatalf("unexpected warnings: %v", warns)
+	}
+	setActiveIconPacks(reg)
+	t.Cleanup(func() { setActiveIconPacks(nil) })
+
+	osc := &rex.ProgramIcon{
+		Format: "svg",
+		Mode:   "mono",
+		Data:   base64.StdEncoding.EncodeToString([]byte(svg)),
+		Bg:     "#000000",
+		Hash:   "osc99999",
+	}
+	p := &Pane{
+		info: rex.SessionInfo{
+			Shell:       "bash",
+			Program:     "terraform",
+			Idle:        false,
+			ProgramIcon: osc,
+		},
+	}
+	got := p.program()
+	if got.Icon == nil || got.TileBg != ui.Hex("#7b42bc") {
+		t.Fatalf("expected pack icon (#7b42bc) to override OSC 7502 by default, got %+v", got)
 	}
 }
 

@@ -82,12 +82,28 @@ type UIAnswer struct {
 	Cancelled bool
 }
 
+// ProgramIconRule is an explicit program icon override from init.lua.
+type ProgramIconRule struct {
+	Name   string
+	Icon   string
+	Format string
+	Mode   string
+	Bg     string
+	Fg     string
+}
+
 // Config is a Lua configuration and the state its custom actions run in.
 type Config struct {
 	Bindings []Binding
 	Actions  []Action
 	Modes    []Mode
 	Warnings []string
+	// IconPacks are the active community icon pack IDs in priority order.
+	IconPacks []string
+	// IconPackPriority is "pack" (default) or "osc", or "" when unset.
+	IconPackPriority string
+	// ProgramIcons are explicit icon overrides registered via gorex.program_icon.
+	ProgramIcons []ProgramIconRule
 	// Events are the handlers gorex.on registered.
 	Events   []EventHandler
 	state    *lua.LState
@@ -179,6 +195,9 @@ func (c *Config) table() *lua.LTable {
 	t.RawSetString("action", c.state.NewFunction(c.action))
 	t.RawSetString("invoke", c.state.NewFunction(c.invokeFn))
 	t.RawSetString("on", c.state.NewFunction(c.on))
+	t.RawSetString("icon_packs", c.state.NewFunction(c.iconPacksFn))
+	t.RawSetString("icon_pack_priority", c.state.NewFunction(c.iconPackPriorityFn))
+	t.RawSetString("program_icon", c.state.NewFunction(c.programIconFn))
 	t.RawSetString("ui", c.uiTable())
 	return t
 }
@@ -505,6 +524,70 @@ func Path() string {
 		base = filepath.Join(home, ".config")
 	}
 	return filepath.Join(base, "gorex", "init.lua")
+}
+
+// Dir returns the configuration directory holding init.lua, or "" when none.
+func Dir() string {
+	p := Path()
+	if p == "" {
+		return ""
+	}
+	return filepath.Dir(p)
+}
+
+func (c *Config) iconPacksFn(l *lua.LState) int {
+	var packs []string
+	if l.GetTop() == 1 {
+		if tbl, ok := l.Get(1).(*lua.LTable); ok {
+			tbl.ForEach(func(_, v lua.LValue) {
+				if s := strings.TrimSpace(v.String()); s != "" {
+					packs = append(packs, s)
+				}
+			})
+			c.IconPacks = packs
+			return 0
+		}
+	}
+	for i := 1; i <= l.GetTop(); i++ {
+		if s := strings.TrimSpace(l.CheckString(i)); s != "" {
+			packs = append(packs, s)
+		}
+	}
+	c.IconPacks = packs
+	return 0
+}
+
+func (c *Config) iconPackPriorityFn(l *lua.LState) int {
+	p := strings.ToLower(strings.TrimSpace(l.CheckString(1)))
+	if p != "pack" && p != "osc" {
+		l.ArgError(1, "expected 'pack' or 'osc'")
+		return 0
+	}
+	c.IconPackPriority = p
+	return 0
+}
+
+func (c *Config) programIconFn(l *lua.LState) int {
+	name := strings.TrimSpace(l.CheckString(1))
+	if name == "" {
+		l.ArgError(1, "program name must not be empty")
+		return 0
+	}
+	t := l.CheckTable(2)
+	rule := ProgramIconRule{
+		Name:   name,
+		Icon:   strings.TrimSpace(lua.LVAsString(t.RawGetString("icon"))),
+		Format: strings.TrimSpace(lua.LVAsString(t.RawGetString("format"))),
+		Mode:   strings.TrimSpace(lua.LVAsString(t.RawGetString("mode"))),
+		Bg:     strings.TrimSpace(lua.LVAsString(t.RawGetString("bg"))),
+		Fg:     strings.TrimSpace(lua.LVAsString(t.RawGetString("fg"))),
+	}
+	if rule.Icon == "" {
+		l.ArgError(2, "icon path is required")
+		return 0
+	}
+	c.ProgramIcons = append(c.ProgramIcons, rule)
+	return 0
 }
 
 // getenv is a variable for tests.

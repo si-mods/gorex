@@ -3,7 +3,7 @@ name: REF-002
 description: "The Lua configuration in `init.lua`: keybindings, modes, actions, events and app overrides. Use when you change what the Lua config can do."
 metadata:
   created: "2026-10-29"
-  updated: "2026-11-20"
+  updated: "2026-11-23"
 ---
 
 # REF-002: Lua configuration
@@ -58,6 +58,19 @@ gorex.bind("cmd+shift+j", "scratch", { dir = "/tmp" })
 Custom actions appear in the palette and in `gorex action run`. Argument
 types are `string`, `number`, `integer`, `boolean` and `any`; a trailing
 `?` makes one optional. `gorex.invoke` runs a built-in action by ID.
+
+## Program icons
+
+```lua
+gorex.icon_packs({ "catppuccin-programs" })
+gorex.icon_pack_priority("pack") -- or "osc"
+gorex.program_icon("terraform", { icon = "icons/tf.svg", mode = "mono", bg = "#7b42bc", fg = "#ffffff" })
+```
+
+`gorex.icon_packs` activates community icon packs installed under
+`icon-packs/` beside `init.lua` (see `docs/MOD-012-program-icon-packs.md`).
+`gorex.program_icon` registers an explicit override for a program or
+subcommand, taking precedence over both icon packs and `OSC 7502`.
 
 ## Events
 
