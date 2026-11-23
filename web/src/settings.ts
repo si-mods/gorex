@@ -1,8 +1,8 @@
 // The Settings dialog, as the desktop's settings window (settingsview.go):
 // the host's card and the sections at the left, each with its coloured
 // tile, and the chosen section at the right, its settings in grouped cards
-// (settingsGroup, settingRow). It keeps what a browser has: no glass and no
-// Dock badge; updates are the Service Worker's
+// (settingsGroup, settingRow). It keeps what a browser has: its own Glass,
+// over the terminals only (docs/WEB-005-liquid-glass.md), and no Dock badge; updates are the Service Worker's
 // (About checks for one). Each change is kept
 // (prefs.ts) and applied to the open panes at once by the page; a change
 // of language draws the dialog again in the new one.
@@ -13,7 +13,7 @@ import {
   resetShortcut, setRecordingShortcuts, shortcutGroups, trySetShortcut,
 } from "./keys";
 import {
-  Animation, Appearance, CursorStyle, glassTintStep, maxFontSize, maxGlassTint, minFontSize, prefs, Prefs, setPrefs, SidebarView, TabPlacement, textSize, clearAll,
+  Animation, Appearance, CursorStyle, glassOn, glassTintStep, maxFontSize, maxGlassTint, minFontSize, prefs, Prefs, setPrefs, SidebarView, TabPlacement, textSize, clearAll,
 } from "./prefs";
 import { formatDate, formatList, Language, languages, onLanguageChange, PlainKey, setLanguage, t, tIn } from "./i18n";
 import { blockedCJK, ensure, ensureLatin, mapleFamily, noMaple } from "./maple";
@@ -533,8 +533,18 @@ export class Settings {
       ),
     );
 
-    // The glass's tint over the terminals (docs/WEB-005-liquid-glass.md), one for each scheme, as the text size's stepper.
+    // The Glass switch (docs/WEB-005-liquid-glass.md), as the desktop's, off until set; while on, the glass's tint
+    // over the terminals, one for each scheme, as the text size's stepper.
     const glass = group(this.page);
+    const tints: HTMLElement[] = [];
+    row(
+      glass, t("settingsGlass"), t("settingsGlassHint"),
+      toggle(t("settingsGlass"), glassOn(), (on) => {
+        setPrefs({ glass: on || undefined });
+        for (const r of tints) r.hidden = !on;
+        this.app.apply("glass");
+      }),
+    );
     for (const [k, label] of [["glassLight", t("settingsGlassLight")], ["glassDark", t("settingsGlassDark")]] as const) {
       const shown = el("span", "settings-value", "");
       const less = el("button", "pane-action settings-step");
@@ -564,7 +574,9 @@ export class Settings {
       const stepper = el("span", "settings-stepper");
       stepper.append(less, more);
       // One hint, under the second row: it says the same of both.
-      row(glass, label, k === "glassDark" ? t("settingsGlassHint") : "", shown, stepper, back);
+      const r = row(glass, label, k === "glassDark" ? t("settingsGlassTintHint") : "", shown, stepper, back);
+      r.hidden = !glassOn();
+      tints.push(r);
     }
 
     const text = group(this.page);

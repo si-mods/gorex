@@ -1,6 +1,6 @@
 ---
 name: WEB-005
-description: "The web client's panels and menus that float over the terminals are liquid glass: a tint, ink and density that follow the terminal under them, and a rim lens in Chromium. Use when you change the find bar, the update or loading panels, the upload panel, the selection or context menus, the floating dock, or the Glass tint settings in web/."
+description: "The web client's panels and menus that float over the terminals are liquid glass: a tint, ink and density that follow the terminal under them, and a rim lens in Chromium. Use when you change the find bar, the update or loading panels, the upload panel, the selection or context menus, the floating dock, or the Glass switch and Glass tint settings in web/."
 metadata:
   created: "2026-11-23"
   updated: "2026-11-23"
@@ -20,7 +20,8 @@ The surfaces over the terminals were a flat panel (`--panel`, 78 % to 82 % opaqu
 
 - The seven surfaces below show the terminal through them, sharp enough to see that it is text, and keep their text at 4.5:1 or more at the default tint.
 - In the light scheme, a surface over a dark part of the terminal turns to dark glass with light ink, and back, without flicker.
-- Settings › Appearance has one Glass tint for the light scheme and one for the dark scheme.
+- Settings › Appearance has a Glass switch, off until set. Off, the surfaces are as they were before this doc, and the glass runs no code.
+- While Glass is on, Settings › Appearance has one Glass tint for the light scheme and one for the dark scheme.
 - `--fg`, `--ui` and `--bg` are gone or defined.
 
 ## Non-goals
@@ -31,6 +32,14 @@ The surfaces over the terminals were a flat panel (`--panel`, 78 % to 82 % opaqu
 ## Design
 
 ### Behavior
+
+Settings › Appearance has a **Glass** switch, with the desktop's name for its Glass setting. It is off until the user turns it on.
+
+- **Off** (the default): the seven surfaces below look as before this doc: --panel, the 1 px --panel-edge border, their blur (none on the find bar) and their own shadow. glass.ts runs nothing: no observer, no timer, no reading of the terminal and no lens filter. The two Glass tint rows are hidden.
+- **On**: the surfaces are glass, as the rest of this section says. The Glass tint rows show.
+- The switch acts at once, with no reload. Off removes every observer, timer, lens <svg> and value that the glass put on a surface.
+- The web's default differs from the desktop's. The desktop's Glass is on until set (
+oGlass in settings.json). The web's is off until set (glass in gorex.settings, 	rue for on), because the user chose that for the web client.
 
 | Surface | Selector | Rim lens and colour split |
 | --- | --- | --- |
@@ -62,7 +71,8 @@ There are three states. Each is one set of `--glass-*` tokens in `web/index.html
 - **Density.** `glass.ts` reads a 5 by 3 grid of points under the surface. It drops the 2 darkest and the 2 brightest, and averages the rest. Luminance is (0.299 R + 0.587 G + 0.114 B) / 255. Texture is the brightest sample's luminance less the darkest's. Chroma is the mean's largest channel less its smallest, over 255. Density = 0.55 × closeness of the luminance to the ink's + 0.7 × texture + 0.3 × chroma, from 0 to 1. The alpha moves from thin to dense with it.
 - **Ink choice.** The dark scheme always takes light ink. The light scheme takes light ink under a luminance of 0.45 and dark ink over 0.55. Between, the ink stays as it was. Without a reading yet, the light scheme takes the ink it showed last (`gorex.glassInk` in `localStorage`, in `try`/`catch`).
 - **Saturation kept.** Over a coloured backdrop the glass keeps less of its saturation: `max(0.45, 1 − 0.75 × chroma)` of it.
-- **Glass tint.** Settings › Appearance has Glass tint, light and Glass tint, dark: 0 % to 150 %, in steps of 10 %, 100 % until set (`glassLight` and `glassDark` in `gorex.settings`). The scale multiplies the alpha. Under 100 % it also moves the brightness and saturation lift and the inner light towards none. At 0 % only the blur, the edge, the shadow and the rim lens stay. Each scheme keeps its own value. The tokens are registered with `@property`, so a change of scheme, of state or of the setting glides in 0.35 s.
+- **Glass switch.** `glass: true` in `gorex.settings` turns the glass on; any other value, or none, is off (`glassPrefs` in `prefs.ts`). On, `applyGlass(true)` sets `data-glass="on"` on `<html>`, and every glass rule in `index.html` is under `:root[data-glass="on"]`. Off, `applyGlass(false)` removes the attribute and stops the glass.
+- **Glass tint.** While Glass is on, Settings › Appearance has Glass tint, light and Glass tint, dark: 0 % to 150 %, in steps of 10 %, 100 % until set (`glassLight` and `glassDark` in `gorex.settings`). The scale multiplies the alpha. Under 100 % it also moves the brightness and saturation lift and the inner light towards none. At 0 % only the blur, the edge, the shadow and the rim lens stay. Each scheme keeps its own value. The tokens are registered with `@property`, so a change of scheme, of state or of the setting glides in 0.35 s.
 
 ### Reading the terminal
 
@@ -93,7 +103,7 @@ On the four panels, the backdrop filter ends with `url(#gorex-lens-N)`. Each sur
 
 - `web/index.html`: the `--glass-*` tokens and their `@property` rules, the surfaces' rule, the inner light, the ink's blend, the row highlight, and the reduced-transparency and forced-colours rules. `--ui` is defined as the body's family. `var(--fg)` became `var(--text)`, and `var(--bg)` became `var(--hover)`, as `.sheet-field`'s.
 - `web/src/glassmath.ts`: the reading, the ink, the density, the materials, the contrast model and the displacement map, with no DOM.
-- `web/src/glass.ts`: `startGlass`, `glassRedrawn`, `applyGlassTint`, the sampling and the lens filters.
+- `web/src/glass.ts`: `applyGlass` (starts and stops the glass, and puts the tint scales on), `glassRunning`, `glassRedrawn` (nothing while off), the sampling and the lens filters.
 - `web/src/prefs.ts`, `web/src/settings.ts`, `web/src/main.ts` (`applyPrefs("glass")`), `web/src/pane.ts` (the redraw hook), `web/locales/*.json`.
 
 ## Alternatives
@@ -104,7 +114,8 @@ On the four panels, the backdrop filter ends with `url(#gorex-lens-N)`. Each sur
 
 ## Tests
 
-- `web/test/glass.test.ts`: the luminance, the trimmed mean, the texture and the chroma; the ink and its hysteresis; the density; the saturation kept; the tint scale; the rim width, the rim offset and the displacement map (the middle is neutral, each edge bends inward, the corners outside the arc are neutral).
+- `web/test/glass.test.ts`: `glassPrefs` (unset and every value but `true` are off; tints out of 0 to 1.5 are dropped); the glass does not run before `applyGlass(true)`, and `glassRedrawn` then starts nothing; the luminance, the trimmed mean, the texture and the chroma; the ink and its hysteresis; the density; the saturation kept; the tint scale; the rim width, the rim offset and the displacement map (the middle is neutral, each edge bends inward, the corners outside the arc are neutral).
 - Contrast: the same file models the glass (backdrop filter, tint, inner light at its brightest) and the ink's blend. It checks 4.5:1 for the primary ink at the default tint over black, Gruvbox Dark, a busy Gruvbox Dark (7 of 15 points on text), white with Window set to Dark, a busy Gruvbox Light, red, and grey at 0.45, 0.5 and 0.55 with both inks. The contrast is to the glass over the reading's mean. One glyph's pixel under a 2 px blur can still be brighter. The secondary ink on light glass (`rgb(60 60 67)` at 70 %, multiplied) reaches about 4.4:1 at most even over white, so it is for secondary text only.
-- Screenshots: a headless Chromium, before and after, in the light and the dark scheme, over a busy terminal, with the find bar, a loading panel, the selection's menu and a context menu.
+- Headless Chromium, with the switch unset: the computed styles of the seven surfaces are those of `origin/main`, and no lens `<svg>` is in the page. On: the glass is back. Off again: the styles are back to `origin/main`'s.
+- Screenshots: a headless Chromium, with the switch on, before and after, in the light and the dark scheme, over a busy terminal, with the find bar, a loading panel, the selection's menu and a context menu.
 - `docs/invariants.md`: no item is touched.

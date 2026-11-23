@@ -1246,6 +1246,14 @@
   "@settingsLarger": {
     "description": "Screen reader label of the text size stepper's plus button."
   },
+  "settingsGlass": "Glass",
+  "@settingsGlass": {
+    "description": "Settings › Appearance: the switch that floats the find bar, the menus and the panels over the terminals as glass; the desktop's Glass setting's name."
+  },
+  "settingsGlassHint": "Float the find bar, menus and panels over the terminals as glass.",
+  "@settingsGlassHint": {
+    "description": "Hint under the Glass switch."
+  },
   "settingsGlassLight": "Glass tint, light",
   "@settingsGlassLight": {
     "description": "Settings › Appearance: how strong the tint of the glass panels over the terminals is in the light appearance."
@@ -1254,8 +1262,8 @@
   "@settingsGlassDark": {
     "description": "Settings › Appearance: how strong the tint of the glass panels over the terminals is in the dark appearance."
   },
-  "settingsGlassHint": "The tint of the panels over the terminals, such as Find and the menus. Less shows more of the terminal; at 0 only the blur and the edge stay.",
-  "@settingsGlassHint": {
+  "settingsGlassTintHint": "The tint of the panels over the terminals, such as Find and the menus. Less shows more of the terminal; at 0 only the blur and the edge stay.",
+  "@settingsGlassTintHint": {
     "description": "Hint under the two Glass tint settings."
   },
   "settingsGlassValue": "{percent}%",

@@ -7,6 +7,10 @@ import {
   contrast, density, displacementMap, filterAmount, glassColor, Ink, inkOn, luminance, materialOf, materials, maxOffset,
   nextInk, readBackdrop, RGB, rimOffset, rimWidth, saturationKept, Scheme, tintAlpha, trimmedMean,
 } from "../src/glassmath";
+// prefs and i18n import each other (through maple and the loader): i18n first, or the cycle reads prefs before it is set.
+import "../src/i18n";
+import { glassPrefs } from "../src/prefs";
+import { glassRedrawn, glassRunning } from "../src/glass";
 
 const near = (a: number, b: number, eps = 1e-6) => assert.ok(Math.abs(a - b) <= eps, `${a} is not ${b}`);
 /** 15 samples, as the 5 by 3 grid: n of the text's colour, the rest the background's. */
@@ -150,4 +154,22 @@ test("displacementMap bends only the rim, inward, and keeps the corners outside 
   // The value is the offset: 128 + 127 rimOffset / maxOffset.
   const d = 3;
   assert.equal(at(60, d)[1], Math.round(128 + (127 * rimOffset(d + 0.5, rim)) / maxOffset(rim)));
+});
+
+
+test("glassPrefs: the Glass setting is off until set to true; a tint only in 0..1.5", () => {
+  // Unset: off, as the web's default (the desktop's is on).
+  assert.deepEqual(glassPrefs({}), {});
+  assert.deepEqual(glassPrefs({ glass: true }), { glass: true });
+  for (const v of [false, "true", 1, null]) assert.deepEqual(glassPrefs({ glass: v }), {});
+  assert.deepEqual(glassPrefs({ glassLight: 0, glassDark: 1.5 }), { glassLight: 0, glassDark: 1.5 });
+  assert.deepEqual(glassPrefs({ glassLight: -0.1, glassDark: 1.6 }), {});
+  assert.deepEqual(glassPrefs({ glassLight: "1" }), {});
+});
+
+test("the glass does not run until applyGlass(true), and a redraw starts nothing", () => {
+  assert.equal(glassRunning(), false);
+  // With no window here, a timer it tried to start would throw.
+  assert.doesNotThrow(() => glassRedrawn());
+  assert.equal(glassRunning(), false);
 });

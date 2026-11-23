@@ -1455,7 +1455,7 @@ What differs: the desktop's panes are the window's glass, which a page
 cannot show, so the pane here is the theme's background. There is no
 scroll bar. What floats over a pane (the find bar, the selection's and
 right click's menus, the upload, update and loading panels, the dock's
-buttons) is liquid glass that reads the terminal under it
+buttons) is liquid glass that reads the terminal under it, while the Glass setting is on
 ([`WEB-005`](WEB-005-liquid-glass.md)).
 
 ## Settings
@@ -1478,7 +1478,7 @@ page and every open pane.
 | Section | Settings |
 |---|---|
 | Host (the card) | The host of the shown window, its address and its connection (connected, connecting, unreachable, with the reason), this page's origin, and the command that makes a host trust it. |
-| Appearance | Window: System, Light or Dark for the page's colours; System follows the terminal's background, as the desktop's System follows the theme's colours. Tab placement: Above (until set), Left Side or Right Side; Sidebar view: Spaces or Hosts, shown while the tabs are in a sidebar (see Tab placement and the sidebar view). Show pane headers: off hides the headers only while the tabs are at the left, as the desktop's. Animation style: Snappy (until set), Natural or Off (see Split panes). Glass tint, light and Glass tint, dark: the tint of the glass panels over the terminals, 0 % to 150 %, 100 % until set, with Reset (see [`WEB-005`](WEB-005-liquid-glass.md)). Text size, 8 to 32 whole CSS pixels, 15 until set, with Reset. Language: System, English or 简体中文 (see Languages). |
+| Appearance | Window: System, Light or Dark for the page's colours; System follows the terminal's background, as the desktop's System follows the theme's colours. Tab placement: Above (until set), Left Side or Right Side; Sidebar view: Spaces or Hosts, shown while the tabs are in a sidebar (see Tab placement and the sidebar view). Show pane headers: off hides the headers only while the tabs are at the left, as the desktop's. Animation style: Snappy (until set), Natural or Off (see Split panes). Glass: the find bar, the menus and the panels over the terminals as liquid glass, off until set (the desktop's is on); while on, Glass tint, light and Glass tint, dark: their tint, 0 % to 150 %, 100 % until set, with Reset (see [`WEB-005`](WEB-005-liquid-glass.md)). Text size, 8 to 32 whole CSS pixels, 15 until set, with Reset. Language: System, English or 简体中文 (see Languages). |
 | Terminal | Font: JetBrains Mono or Maple Mono NF CN, which the page brings, or a common monospaced family installed on the device (told by measuring text in it), with a preview in the theme's colours; CJK is Maple's in every font (see Fonts). Cursor style (Block, Bar, Underline) and Cursor blink. Copy on selection (off until set). Minimum contrast: the default (3), Off, 2, 3, 4.5 (WCAG AA) or 7 (WCAG AAA). Reset to Defaults forgets the font, cursor, copy on selection and contrast. |
 | Theme | The theme picker (see Themes). |
 | Keyboard | The shortcuts (see Shortcuts), with this system's keys. |

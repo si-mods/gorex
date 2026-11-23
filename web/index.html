@@ -1124,7 +1124,7 @@
     width: 24px; height: 24px; border: 0; border-radius: 5px;
     background: transparent; color: var(--text); cursor: pointer;
   }
-  .find-btn:hover:not(:disabled) { background: var(--hover); }
+  .find-btn:hover:not(:disabled) { background: var(--panel-edge); }
   .find-btn:disabled { opacity: 0.4; cursor: default; }
   .find-btn svg { width: 14px; height: 14px; }
 
@@ -1192,13 +1192,15 @@
     font: 11px/1.3 var(--ui); cursor: pointer;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
   }
-  .float-dock-btn:hover { --glass-hover: 1.14; }
+  .float-dock-btn:hover { filter: brightness(1.1); }
 
-  /* The liquid glass (docs/WEB-005-liquid-glass.md) of the surfaces that float over the terminals. Each changes only
-     its tint (background), its material (backdrop-filter, then the rim lens glass.ts makes, --glass-lens), its edge
-     (box-shadow) and its ink (color); its border keeps its width, clear. Inside, --text, --muted, --hover and
-     --panel-edge take the glass's ink, row highlight and hairline, so the rows and controls follow it. */
-  :is(.update, .chunk-load, .pane-upload, .find-bar, .select-menu, .context-menu, .float-dock-btn) {
+  /* The liquid glass (docs/WEB-005-liquid-glass.md) of the surfaces that float over the terminals, while the Glass
+     setting is on (glass.ts sets data-glass="on" on <html>; off, the rules above stand, as before the glass). Each
+     changes only its tint (background), its material (backdrop-filter, then the rim lens glass.ts makes,
+     --glass-lens), its edge (box-shadow) and its ink (color); its border keeps its width, clear. Inside, --text,
+     --muted, --hover and --panel-edge take the glass's ink, row highlight and hairline, so the rows and controls
+     follow it. */
+  :root[data-glass="on"] :is(.update, .chunk-load, .pane-upload, .find-bar, .select-menu, .context-menu, .float-dock-btn) {
     --text: var(--glass-ink);
     --muted: var(--glass-ink-2);
     --hover: var(--glass-row);
@@ -1214,11 +1216,13 @@
       --glass-ink 0.35s, --glass-ink-2 0.35s, --glass-icon 0.35s, --glass-density 0.35s, --glass-sat-kept 0.35s, --glass-scale 0.35s,
       --glass-hover 0.15s, --glass-hairline 0.35s, box-shadow 0.35s;
   }
-  :is(.chunk-load, .float-dock-btn) { position: relative; }
+  :root[data-glass="on"] :is(.chunk-load, .float-dock-btn) { position: relative; }
+  /* A hovered dock button: its tint about 14% denser, in place of the brightness filter. */
+  :root[data-glass="on"] .float-dock-btn:hover { filter: none; --glass-hover: 1.14; }
   /* The inner light: a highlight from the top left, white to clear by 55%, and soft glows at the rim, brighter at
      the top and the left, a little shade at the bottom. Under the content, over the tint; a third as strong on dark
      glass, and thinner with the tint scale under 1. */
-  :is(.update, .chunk-load, .pane-upload, .find-bar, .select-menu, .context-menu, .float-dock-btn)::before {
+  :root[data-glass="on"] :is(.update, .chunk-load, .pane-upload, .find-bar, .select-menu, .context-menu, .float-dock-btn)::before {
     content: ""; position: absolute; inset: -1px; z-index: -1; border-radius: inherit; pointer-events: none;
     opacity: calc(var(--glass-light) * min(1, var(--glass-scale)));
     background: radial-gradient(130% 170% at 0% 0%, rgb(255 255 255 / 0.3), transparent 55%);
@@ -1226,28 +1230,29 @@
       inset 0 -2px 3px rgb(0 0 0 / 0.06);
   }
   /* The ink's text: multiplied on light glass, added on dark (--glass-blend). Icons are opaque, faded by opacity. */
-  :is(.update-text, .load-title, .load-count, .load-error, .pane-upload-name, .pane-upload-count, .find-count,
+  :root[data-glass="on"] :is(.update-text, .load-title, .load-count, .load-error, .pane-upload-name, .pane-upload-count, .find-count,
     .context-item > span:not(.context-mark), .context-text, .select-menu-item > span) { mix-blend-mode: var(--glass-blend); }
-  :is(.update, .chunk-load, .pane-upload, .find-bar, .select-menu, .context-menu) .pane-icon { color: var(--glass-icon); opacity: var(--glass-icon-alpha); }
-  .context-item .pane-icon, .context-item:disabled .pane-icon { opacity: var(--glass-icon-alpha-2); }
+  :root[data-glass="on"] :is(.update, .chunk-load, .pane-upload, .find-bar, .select-menu, .context-menu) .pane-icon { color: var(--glass-icon); opacity: var(--glass-icon-alpha); }
+  :root[data-glass="on"] :is(.context-item .pane-icon, .context-item:disabled .pane-icon) { opacity: var(--glass-icon-alpha-2); }
   /* A highlighted row: white over light glass, with a white stroke; never a grey wash. */
-  :is(.context-item:hover:not(:disabled), .context-item:focus-visible, .select-menu-item:hover:not(:disabled), .find-btn:hover:not(:disabled)) {
+  :root[data-glass="on"] .find-btn:hover:not(:disabled) { background: var(--hover); }
+  :root[data-glass="on"] :is(.context-item:hover:not(:disabled), .context-item:focus-visible, .select-menu-item:hover:not(:disabled), .find-btn:hover:not(:disabled)) {
     box-shadow: inset 0 0 0 0.5px var(--glass-row-stroke);
   }
   /* A progress bar's track is a hairline's tone, not the row highlight's white. */
-  .chunk-load .load-bar { background: var(--glass-hairline); }
-  .context-item[aria-haspopup]:focus { background: var(--glass-row-on); box-shadow: inset 0 0 0 0.5px var(--glass-row-stroke); }
+  :root[data-glass="on"] .chunk-load .load-bar { background: var(--glass-hairline); }
+  :root[data-glass="on"] .context-item[aria-haspopup]:focus { background: var(--glass-row-on); box-shadow: inset 0 0 0 0.5px var(--glass-row-stroke); }
   /* Less transparency, or the system's colours: a solid surface in the same tint, no backdrop, no inner light. */
   @media (prefers-reduced-transparency: reduce), (forced-colors: active) {
-    :is(.update, .chunk-load, .pane-upload, .find-bar, .select-menu, .context-menu, .float-dock-btn) {
+    :root[data-glass="on"] :is(.update, .chunk-load, .pane-upload, .find-bar, .select-menu, .context-menu, .float-dock-btn) {
       background: var(--glass-tint); -webkit-backdrop-filter: none; backdrop-filter: none;
     }
-    :is(.update, .chunk-load, .pane-upload, .find-bar, .select-menu, .context-menu, .float-dock-btn)::before { display: none; }
-    :is(.update-text, .load-title, .load-count, .load-error, .pane-upload-name, .pane-upload-count, .find-count,
-      .context-item > span:not(.context-mark), .context-text, .select-menu-item > span) { mix-blend-mode: normal; }
+    :root[data-glass="on"] :is(.update, .chunk-load, .pane-upload, .find-bar, .select-menu, .context-menu, .float-dock-btn)::before { display: none; }
+    :root[data-glass="on"] :is(.update-text, .load-title, .load-count, .load-error, .pane-upload-name, .pane-upload-count, .find-count,
+    .context-item > span:not(.context-mark), .context-text, .select-menu-item > span) { mix-blend-mode: normal; }
   }
   @media (forced-colors: active) {
-    :is(.update, .chunk-load, .pane-upload, .find-bar, .select-menu, .context-menu, .float-dock-btn) { border-color: CanvasText; }
+    :root[data-glass="on"] :is(.update, .chunk-load, .pane-upload, .find-bar, .select-menu, .context-menu, .float-dock-btn) { border-color: CanvasText; }
   }
 </style>
 </head>

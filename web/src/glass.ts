@@ -1,8 +1,9 @@
 // The liquid glass of what floats over the terminals (docs/WEB-005-liquid-glass.md):
 // index.html draws the material from its --glass-* tokens; this module reads
 // the terminal under each surface to choose its ink and its tint's density,
-// keeps the Glass tint settings on the page, and gives the larger surfaces a
-// rim lens (an SVG displacement filter) where the browser can show one.
+// keeps the Glass settings on the page, and gives the larger surfaces a rim
+// lens (an SVG displacement filter) where the browser can show one. With the
+// Glass setting off (until set) it runs nothing.
 import { Backdrop, displacementMap, Ink, maxOffset, nextInk, readBackdrop, rimWidth, RGB, saturationKept, Scheme, density } from "./glassmath";
 import { prefs } from "./prefs";
 
@@ -58,47 +59,66 @@ function remember(ink: Ink) {
   }
 }
 
-/** Puts the Glass tint settings on the page: each scheme's scale; index.html takes the shown scheme's, and glides to it. */
-export function applyGlassTint() {
-  const root = document.documentElement.style;
-  root.setProperty("--glass-scale-light", String(prefs.glassLight ?? 1));
-  root.setProperty("--glass-scale-dark", String(prefs.glassDark ?? 1));
-}
+/** The observers of the page while the glass runs: new surfaces, and the scheme. */
+let watchers: MutationObserver[] = [];
 
-/** Starts the glass: finds its surfaces as they come, reads under them, and puts the tint settings on. */
-export function startGlass() {
-  applyGlassTint();
+/** Whether the glass runs: the Glass setting on, and applyGlass called since. */
+export const glassRunning = () => watchers.length > 0;
+
+/**
+ * Puts the Glass settings on the page. On: data-glass="on" on <html> (index.html's glass rules), each
+ * scheme's tint scale (index.html takes the shown scheme's, and glides to it), and the glass starts: it
+ * finds its surfaces as they come and reads under them. Off: the attribute goes, and so do every observer,
+ * timer, lens filter and value the glass put on a surface, so the surfaces are as they were without it.
+ */
+export function applyGlass(on: boolean) {
+  const root = document.documentElement;
+  root.style.setProperty("--glass-scale-light", String(prefs.glassLight ?? 1));
+  root.style.setProperty("--glass-scale-dark", String(prefs.glassDark ?? 1));
+  if (on === glassRunning()) return;
+  if (!on) {
+    for (const w of watchers) w.disconnect();
+    watchers = [];
+    clearTimeout(sampleTimer);
+    sampleTimer = undefined;
+    for (const e of [...tracked.keys()]) drop(e, true);
+    delete root.dataset.glass;
+    return;
+  }
+  root.dataset.glass = "on";
   const ua = navigator.userAgent;
   // An SVG filter in backdrop-filter shows in Chromium only: Firefox does not, and Safari parses it and drops the blur.
   lensOK =
     typeof CSS !== "undefined" && CSS.supports("backdrop-filter", "url(#a)") && !/firefox/i.test(ua) &&
     !(/AppleWebKit/.test(ua) && !/Chrome|Chromium|Edg\//.test(ua));
-  new MutationObserver((records) => {
+  const added = new MutationObserver((records) => {
     let removed = false;
     for (const r of records) {
       for (const n of r.addedNodes) if (n instanceof HTMLElement) find(n);
       if (r.removedNodes.length) removed = true;
     }
     if (removed) for (const e of tracked.keys()) if (!e.isConnected) drop(e);
-  }).observe(document.body, { childList: true, subtree: true });
+  });
+  added.observe(document.body, { childList: true, subtree: true });
   // The scheme changes the ink and the material: read again.
-  new MutationObserver(() => {
+  const schemes = new MutationObserver(() => {
     for (const e of tracked.keys()) {
       const s = tracked.get(e)!;
       s.ink = undefined;
       e.dataset.glassInk = scheme() === "light" ? rememberedInk() : "light";
     }
     sampleSoon(true);
-  }).observe(document.documentElement, { attributes: true, attributeFilter: ["data-scheme"] });
+  });
+  schemes.observe(root, { attributes: true, attributeFilter: ["data-scheme"] });
+  watchers = [added, schemes];
   find(document.body);
 }
 
-/** The terminals drew: read under the shown surfaces again, at most once a second, when the page is idle. */
+/** The terminals drew: read under the shown surfaces again, at most once a second, when the page is idle. Nothing while the glass is off. */
 export function glassRedrawn() {
-  if (!tracked.size || sampleTimer !== undefined) return;
+  if (!tracked.size || sampleTimer !== undefined || !glassRunning()) return;
   sampleSoon(false);
 }
-
 function find(root: HTMLElement) {
   if (root.matches(surfaces)) track(root);
   for (const e of root.querySelectorAll<HTMLElement>(surfaces)) track(e);
@@ -128,11 +148,12 @@ function track(e: HTMLElement) {
     s.resize.observe(e);
   }
   requestAnimationFrame(() => {
-    if (shown(e)) sampleOne(e);
+    if (tracked.has(e) && shown(e)) sampleOne(e);
   });
 }
 
-function drop(e: HTMLElement) {
+/** Stops following a surface; clean also takes off what the glass put on it (the glass turned off). */
+function drop(e: HTMLElement, clean = false) {
   const s = tracked.get(e);
   if (!s) return;
   s.watch.disconnect();
@@ -142,6 +163,10 @@ function drop(e: HTMLElement) {
     s.lens.svg.remove();
   }
   tracked.delete(e);
+  if (clean) {
+    delete e.dataset.glassInk;
+    for (const p of ["--glass-density", "--glass-sat-kept", "--glass-lens"]) e.style.removeProperty(p);
+  }
 }
 
 function sampleSoon(now: boolean) {

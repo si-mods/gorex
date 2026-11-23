@@ -17,7 +17,7 @@ import { Asset, loader } from "./loader";
 import { closeMenu, openMenu } from "./manage";
 import { describe, TerminalView } from "./pane";
 import { ensureLatin, initMaple, mapleFamily, onChunk } from "./maple";
-import { fontFamily, paneHeaders, prefs } from "./prefs";
+import { fontFamily, glassOn, paneHeaders, prefs } from "./prefs";
 import { LoadState, ProgressView } from "./progress";
 import { closeTailnet, isTailnetID, loadHostsOff, openTailnet, Place, saveHostsOff, savePlace, startPlace, tailnetOpened } from "./place";
 import { programOf } from "./programs";
@@ -31,7 +31,7 @@ import { Tailnet, TailnetHost } from "./tailnet";
 import { webTransport } from "./webtransport";
 import { desktopTheme, Theme } from "./terminal";
 import { isLight, startTheme, ThemeEntry, themeColours } from "./themes";
-import { applyGlassTint, startGlass } from "./glass";
+import { applyGlass } from "./glass";
 import type { Welcome } from "./welcome";
 import { borderLeaf, WindowHost, WindowView } from "./window";
 import { createWindowOps, windowIDs, windowOf } from "./windowops";
@@ -190,7 +190,7 @@ function applyPrefs(what: "appearance" | "tabs" | "headers" | "animation" | "fon
       panes.forEach((p) => p.applyCursor(reset));
       break;
     case "glass":
-      applyGlassTint();
+      applyGlass(glassOn());
       break;
   }
 }
@@ -313,8 +313,8 @@ function bootProgress() {
 
 async function main() {
   status(() => t("statusLoading"));
-  // The glass of the panels over the terminals, the loading ones among them (glass.ts).
-  startGlass();
+  // The glass of the panels over the terminals, the loading ones among them, while the Glass setting is on (glass.ts).
+  applyGlass(glassOn());
   const boot = bootProgress();
   try {
     // The font too: the cells are measured from it.
