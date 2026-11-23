@@ -4,8 +4,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
-  contrast, density, displacementMap, filterAmount, glassColor, Ink, inkOn, luminance, materialOf, materials, maxOffset,
-  nextInk, readBackdrop, RGB, rimOffset, rimWidth, saturationKept, Scheme, tintAlpha, trimmedMean,
+  contrast, density, displacementMap, edgeContrast, filterAmount, glassColor, Ink, inkOn, lift, luminance, materialOf, materials, maxOffset,
+  nextInk, outlineAlpha, readBackdrop, RGB, rimOffset, rimWidth, saturationKept, Scheme, tintAlpha, trimmedMean,
 } from "../src/glassmath";
 // prefs and i18n import each other (through maple and the loader): i18n first, or the cycle reads prefs before it is set.
 import "../src/i18n";
@@ -54,9 +54,11 @@ test("nextInk: light ink under 0.45, dark over 0.55, the ink kept between", () =
   assert.equal(nextInk("light", 0.51), "dark");
 });
 
-test("density: closeness to the ink's brightness, texture and chroma, clamped to 0..1", () => {
-  near(density(readBackdrop(grid([255, 255, 255])), "dark"), 0);
+test("density: closeness to the ink's brightness, the lift, texture and chroma, clamped to 0..1", () => {
+  // White under light glass: far from the dark ink, but the glass's own white (lift 1).
+  near(density(readBackdrop(grid([255, 255, 255])), "dark"), 0.35);
   near(density(readBackdrop(grid([255, 255, 255])), "light"), 0.55);
+  near(density(readBackdrop(grid([128, 128, 128])), "dark"), 0.55 * (1 - 128 / 255));
   near(density(readBackdrop(grid([0, 0, 0], [255, 255, 255], 5)), "dark"), 1);
   const red = readBackdrop(grid([255, 0, 0]));
   near(density(red, "light"), Math.min(1, 0.55 * (1 - Math.abs(red.luminance - 1)) + 0.3));
@@ -115,6 +117,49 @@ test("text in the primary ink keeps 4.5:1 at the default tint over every backdro
       const ratio = contrast(inkOn(glass, k, "primary"), glass);
       assert.ok(ratio >= 4.5, `${name}, ${k} ink: ${ratio.toFixed(2)}:1`);
     }
+  }
+});
+
+/** Light terminal backgrounds, flat (a prompt's empty screen), as the glass reads them. */
+const lightThemes: [string, RGB][] = [
+  ["white (Builtin Light)", [255, 255, 255]],
+  ["GoRex's light terminal", [251, 251, 251]],
+  ["Gruvbox Light", [251, 241, 199]],
+  ["iTerm2 Solarized Light", [253, 246, 227]],
+];
+
+test("lift: none to 0.55 and from light ink, full from 0.9", () => {
+  near(lift(readBackdrop(grid([140, 140, 140])), "dark"), 0);
+  near(lift(readBackdrop(grid([255, 255, 255])), "dark"), 1);
+  near(lift(readBackdrop(grid([184, 184, 184])), "dark"), (184 / 255 - 0.55) / 0.35);
+  for (const c of [[0, 0, 0], [40, 40, 40], [255, 255, 255]] as RGB[]) near(lift(readBackdrop(grid(c)), "light"), 0);
+});
+
+test("light glass over a light terminal shows its edge: outline 1.4:1 or more, and no grey wash", () => {
+  for (const [name, bg] of lightThemes) {
+    const b = readBackdrop(grid(bg));
+    const ink = nextInk("light", b.luminance);
+    assert.equal(ink, "dark", name);
+    const m = materialOf("light", ink);
+    const l = lift(b, ink);
+    const ratio = edgeContrast(b.mean, m, l);
+    assert.ok(ratio >= 1.4, `${name}: edge ${ratio.toFixed(2)}:1`);
+    // The face (away from the inner light) is not darker than the terminal around it: white glass, not grey.
+    const face = glassColor(b.mean, { ...m, light: 0 }, density(b, ink), 1, saturationKept(b.chroma));
+    assert.ok(contrast(face, [0, 0, 0]) >= contrast(b.mean, [0, 0, 0]) - 1e-9, `${name}: face ${face.map(Math.round)} is darker than ${bg}`);
+    // And not dark enough to read as a grey line: the outline stays under a fifth of black.
+    assert.ok(outlineAlpha(m, l) < 0.2, `${name}: outline alpha ${outlineAlpha(m, l)}`);
+  }
+});
+
+test("the lift leaves the dark materials as they were", () => {
+  for (const [scheme, bg] of [["light", [40, 40, 40]], ["light", [0, 0, 0]], ["dark", [40, 40, 40]], ["dark", [251, 241, 199]], ["dark", [255, 255, 255]]] as [Scheme, RGB][]) {
+    const b = readBackdrop(grid(bg));
+    const ink = nextInk(scheme, b.luminance);
+    const m = materialOf(scheme, ink);
+    near(lift(b, ink), 0);
+    near(outlineAlpha(m, 0), m.outline);
+    near(density(b, ink), Math.min(1, 0.55 * (1 - Math.abs(b.luminance - 1)) + 0.7 * b.texture + 0.3 * b.chroma));
   }
 });
 
