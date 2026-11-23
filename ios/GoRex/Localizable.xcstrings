@@ -750,6 +750,16 @@
         }
       }
     },
+    "Draws pairs like != and => as one glyph, in fonts that have the shapes.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在具备相应字形的字体中，把 !=、=> 这样的字符对绘制为一个字形。"
+          }
+        }
+      }
+    },
     "Edit Host": {
       "localizations": {
         "zh-Hans": {
@@ -946,6 +956,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "左方向键"
+          }
+        }
+      }
+    },
+    "Ligatures": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "连字"
           }
         }
       }

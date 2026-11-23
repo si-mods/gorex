@@ -6,6 +6,6 @@ extension Notification.Name {
     static let minimumContrast = Notification.Name("minimumContrast")
     /// Settings changed the terminal theme.
     static let terminalTheme = Notification.Name("terminalTheme")
-    /// Settings changed the terminal font family or size.
+    /// Settings changed the terminal font family, size or ligatures.
     static let terminalFont = Notification.Name("terminalFont")
 }
