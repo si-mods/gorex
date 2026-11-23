@@ -20,12 +20,14 @@ on:
 
 permissions:
   contents: read
-  # The last upload's commit, for What to Test; the guard job cancels this
-  # workflow's older runs.
-  actions: write
+  actions: read # the last upload's commit, for What to Test
 
 concurrency:
-  group: testflight
+  # Per ref: a dispatch on another branch uploads nothing (both jobs are
+  # main's), so it must not cancel main's run.
+  group: testflight-${{ github.ref }}
+  # A burst of merges uploads its last one: each run cancels the one before
+  # it, as it uploads its commits too.
   cancel-in-progress: true
 
 defaults:
@@ -40,6 +42,12 @@ jobs:
     if: github.ref == 'refs/heads/main'
     runs-on: instabox-medium
     timeout-minutes: 5
+    # Only the guard cancels runs and reads their annotations: the upload
+    # on the Mac mini does not get those rights.
+    permissions:
+      contents: read
+      actions: write
+      checks: read
     steps:
       - uses: actions/checkout@v7
       - name: gh and jq

@@ -59,8 +59,9 @@ by_group() {
 		return
 	fi
 	for job in $jobs; do
-		gh api "repos/$repo/check-runs/$job/annotations" --jq '.[].message' |
-			grep -q 'higher priority waiting request' && return 0
+		# Read whole, then match: grep -q on the pipe can stop gh early, and
+		# pipefail would take its SIGPIPE for "no".
+		[[ $(gh api "repos/$repo/check-runs/$job/annotations" --jq '.[].message') == *'higher priority waiting request'* ]] && return 0
 	done
 	return 1
 }
@@ -77,7 +78,9 @@ for st in in_progress queued waiting pending requested; do
 	while IFS=$'\t' read -r id run_url sha at; do
 		[ -n "$id" ] || continue
 		seen="$seen$id "
-		act gh api -X POST "repos/$repo/actions/runs/$id/cancel"
+		# A 409: the group's own cancel got there first.
+		act gh api -X POST "repos/$repo/actions/runs/$id/cancel" ||
+			echo "::warning::Cancelling TestFlight run $id failed; the testflight group may have cancelled it already"
 		echo "::warning::Cancelled TestFlight run $run_url (sha ${sha:0:8}, started $at): superseded by $url, which uploads its commits too"
 		note "$run_url" "$sha" "$at" "cancelled by this guard: superseded by $url, which uploads its commits too"
 	done < <(runs "$st")
