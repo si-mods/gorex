@@ -258,6 +258,29 @@ func TestTerminalTheme(t *testing.T) {
 	}
 }
 
+// TestProcessForegroundChild: a session started with a command reports
+// its program in the foreground, where the command is the session's own
+// process rather than one a shell runs.
+func TestProcessForegroundChild(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the test's program is a Unix one")
+	}
+	f := startFixture(t)
+	c, sid, block := f.sessionWith(t, rex.CreateOptions{Command: []string{"sleep", "60"}})
+	var fg map[string]any
+	waitFor(t, "the foreground program", func() bool {
+		p, ok := blockCall(t, c, sid, block, "process", nil)["foreground"].(map[string]any)
+		if ok && p["name"] == "sleep" {
+			fg = p
+		}
+		return fg != nil
+	})
+	child := blockCall(t, c, sid, block, "process", nil)["child"].(map[string]any)
+	if fg["pid"] != child["pid"] {
+		t.Errorf("foreground %v is not the session's child", fg)
+	}
+}
+
 // TestTerminalEndedSession: a block whose program ended still answers the
 // queries of what it showed.
 func TestTerminalEndedSession(t *testing.T) {

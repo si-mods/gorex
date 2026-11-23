@@ -404,7 +404,10 @@ func blockProcess(c *control, s *mSession, b *mBlock, a args) (any, *apiError) {
 		Name: filepath.Base(info.Shell), Path: info.Shell,
 	}
 	out["child"] = child
-	if info.Foreground > 0 && info.Foreground != info.PID {
+	// The process that has the terminal: a program the child runs, or the
+	// child itself, which a shell at its prompt and a command session's
+	// program both are.
+	if info.Foreground > 0 {
 		fg := processInfo{
 			PID: info.Foreground, UserID: currentUID(), User: c.g.user,
 			Name: info.Program, Cwd: info.Dir,
