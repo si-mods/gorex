@@ -85,9 +85,10 @@ type session struct {
 	pendingResize *time.Timer
 	pendingCols   int
 	pendingRows   int
-	// status is what the program reported of itself; ran, that a look
-	// found a program in the foreground.
+	// status is what the program reported of itself; icon is its custom
+	// icon (OSC 7502); ran, that a look found a program in the foreground.
 	status programStatus
+	icon   programIcon
 	ran    bool
 	// reaped tells that the process ended, with code; exited, that what
 	// it printed was read too.
@@ -620,6 +621,7 @@ func (s *session) run(wait func() int) {
 		s.clearPendingResizeLocked()
 		s.clearSizeLockLocked()
 		s.status.drop()
+		s.icon.drop()
 		for a := range s.clients {
 			a.finish()
 		}
@@ -846,6 +848,9 @@ func (s *session) emit(data []byte, graphics []graphicsSeq, n int) {
 	beforeStatus := s.status.updates
 	queries := s.status.feed(data)
 	statusChanged := s.status.updates != beforeStatus
+	beforeIcon := s.icon.updates
+	iconQueries := s.icon.feed(data)
+	iconChanged := s.icon.updates != beforeIcon
 	s.output += uint64(n)
 	s.lastOutput = time.Now()
 	s.sampler.ask()
@@ -853,12 +858,15 @@ func (s *session) emit(data []byte, graphics []graphicsSeq, n int) {
 		a.send(data)
 	}
 	s.mu.Unlock()
-	if statusChanged {
+	if statusChanged || iconChanged {
 		s.notify()
 	}
 	// The server answers, as the windows' terminals do not.
 	for range queries {
 		s.write(statusReply)
+	}
+	for range iconQueries {
+		s.write(iconReply)
 	}
 }
 
@@ -1749,7 +1757,7 @@ func (s *session) info() SessionInfo {
 		s.see(SessionInfo{Title: in.Title, PID: in.PID, Foreground: in.Foreground, Idle: in.Idle, Program: in.Program, Args: in.Args,
 			Dir: in.Dir, AgentSession: in.AgentSession, AgentConfigDir: in.AgentConfigDir, agentFile: in.agentFile})
 	}
-	in.Statuses, in.StatusSeen = s.status.list(), s.status.seen
+	in.Statuses, in.StatusSeen, in.ProgramIcon = s.status.list(), s.status.seen, s.icon.get()
 	s.mu.Unlock()
 	in.Status = MostUrgent(in.Statuses, time.Time{})
 	return in
@@ -1814,6 +1822,7 @@ func (s *session) see(now SessionInfo) {
 	// program is idle all along.
 	if now.Idle && was.PID != 0 && !was.Idle {
 		s.status.drop()
+		s.icon.drop()
 	}
 	if now.Title != was.Title || now.Program != was.Program || now.Dir != was.Dir || now.Idle != was.Idle || !slices.Equal(now.Args, was.Args) ||
 		now.AgentSession != was.AgentSession || now.AgentConfigDir != was.AgentConfigDir {

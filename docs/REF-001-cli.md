@@ -45,6 +45,7 @@ gorex new [--dir DIR] [--json] [-- COMMAND...]
 gorex split [-s SESSION] [--down] [--dir DIR] [--json] [-- COMMAND...]
 gorex close [-s SESSION] [--tab] [--json]
 gorex rename [-s SESSION] [--json] NAME
+gorex icon [--bg HEX] [--fg HEX] [--mode mono|color] [--format svg|png] FILE|clear
 gorex send [-s SESSION] [--enter] [--json] TEXT...
 gorex paste [-s SESSION] [--json] TEXT...
 gorex capture [-s SESSION] [--history BYTES] [--raw] [--json]

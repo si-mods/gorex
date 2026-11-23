@@ -455,6 +455,22 @@ func TestResumeKeepsStatusSeen(t *testing.T) {
 	}
 }
 
+// TestResumeKeepsProgramIcon hands over a session with a custom OSC 7502 icon.
+func TestResumeKeepsProgramIcon(t *testing.T) {
+	s := &session{cols: 80, rows: 24, p: &pty{}, exited: true}
+	s.icon.feed([]byte("\x1b]7502;format=svg:bg=112233:data=PHN2Zy8-\x07"))
+	if s.icon.get() == nil {
+		t.Fatal("icon not parsed")
+	}
+	r, err := resumeSession(s.state(), func() {})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !programIconEqual(r.icon.get(), s.icon.get()) {
+		t.Errorf("icon %+v after handoff, want %+v", r.icon.get(), s.icon.get())
+	}
+}
+
 // TestResumeSessionUser serves an upgrade's handoff, as the new executable
 // of an upgrade does: the sessions it starts after it run as the user the
 // server was told (EnvSessionUser), as one that starts by itself does, not

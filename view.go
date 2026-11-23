@@ -1066,7 +1066,7 @@ func (a *App) paneHeader(c *ui.Context, k *colors, t *Tab, p *Pane, focused, hov
 		a.focusReq = p
 	}
 	h.Children(func() {
-		glyphIcon(c, prog.Glyph, 14.5, k.text)
+		programIconEl(c, prog.Icon, prog.Glyph, 14.5, k.text)
 		ui.Row(c).Grow(1).MinWidth(0).Gap(6).AlignItems(ui.Center).ClipX().Children(func() {
 			ui.RichText(c, titleSpans(name, 12.5, 600, k.text)...).Label(name).SingleLine().Ellipsis("…").Shrink(0).MaxWidthPercent(80)
 			if detail != "" {
