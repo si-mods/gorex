@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.56.0
+
+### Features
+
+* **web:** connect to hosts over tailcat ([#1053](https://github.com/si-mods/gorex/pull/1053))
+* **desktop:** `sidebar.*` style keys in settings.json ([#1055](https://github.com/si-mods/gorex/pull/1055))
+* **desktop:** `terminal.*` keys in settings.json, migrated at load ([#1061](https://github.com/si-mods/gorex/pull/1061))
+
+### Bug Fixes
+
+* **desktop:** carry the user's environment to Windows sessions and agents — a persistent variable such as `CLAUDE_CONFIG_DIR` set after the server started now reaches them, and an agent launches through the user's PowerShell ([#1060](https://github.com/si-mods/gorex/pull/1060))
+* **web:** share tailcat's init across callers, resolve its transport late ([#1054](https://github.com/si-mods/gorex/pull/1054))
+* **web:** stack the terminal's menu vertically, as the app's menus ([#1057](https://github.com/si-mods/gorex/pull/1057))
+* **web:** the first screen does not restore a tailnet place ([#1058](https://github.com/si-mods/gorex/pull/1058))
+* **desktop:** draw a pane card's edge in the palette of its terminal face ([#1059](https://github.com/si-mods/gorex/pull/1059))
+
 ## 0.55.1
 
 ### Features
