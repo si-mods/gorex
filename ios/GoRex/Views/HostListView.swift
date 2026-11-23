@@ -314,11 +314,7 @@ struct HostListView: View {
                             } else {
                                 let hosts = store.hosts.filter { shows($0, hasSpaces: hasSpaces, current: current) }
                                 ForEach(arranged(hosts)) { host in
-                                    section(host, current: current, spaces: spaces)
-                                        .opacity(hostDrag?.host == host.id ? 0.4 : 1)
-                                        .onDrop(of: [Lifted.hostType], delegate: RowDrop(type: Lifted.hostType,
-                                                                                         pass: { passHost(over: host) },
-                                                                                         drop: { dropHost($0) }))
+                                    sectionDrop(host, current: current, spaces: spaces)
                                 }
                                 // A host let go of under the last section
                                 // lands at the list's end.
@@ -418,7 +414,7 @@ struct HostListView: View {
         .sheet(isPresented: $settings, onDismiss: {
             if let c = waiting { pairing = c }
             waiting = nil
-        }) { SettingsView().environment(store).navigationTransition(.zoom(sourceID: settingsSource, in: zoom)) }
+        }) { settingsSheet }
     }
 
     // MARK: Spaces
@@ -530,6 +526,21 @@ struct HostListView: View {
                     open: { go($0) }, openRow: { openRow($0) }, newProject: { newProject = host },
                     current: width == .regular ? path.last : nil,
                     liftHost: query.isEmpty && !host.isDemo ? { self.liftHost(host) } : nil)
+    }
+
+    /// The settings sheet's content, of its own for the type-checker.
+    private var settingsSheet: some View {
+        SettingsView().environment(store).navigationTransition(.zoom(sourceID: settingsSource, in: zoom))
+    }
+
+    /// A host's section as a drag's drop target: the dragged one dims,
+    /// and the others make way as it passes over them.
+    private func sectionDrop(_ host: Host, current: String, spaces: [String]) -> some View {
+        section(host, current: current, spaces: spaces)
+            .opacity(hostDrag?.host == host.id ? 0.4 : 1)
+            .onDrop(of: [Lifted.hostType], delegate: RowDrop(type: Lifted.hostType,
+                                                             pass: { passHost(over: host) },
+                                                             drop: { dropHost($0) }))
     }
 
     private func expand(_ host: Host, _ project: String) {
