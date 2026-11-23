@@ -447,21 +447,49 @@ func (s *session) resyncClient(id, peer string, cols, rows int) error {
 // title, graphics and rows: bin restores in a terminal no program runs,
 // whose escape sequences are the session's.
 func renderResync(bin []byte, title string, graphics []byte, rows int) ([]byte, error) {
+	snap, _, err := renderSnapshot(bin, title, graphics, rows, resyncHistory)
+	return snap, err
+}
+
+// renderSnapshot returns what snapshotLocked's escape-sequence path
+// returns for an attach with history, rendered off the session's lock
+// from bin, the session's Ghostty binary snapshot, and its title,
+// graphics and rows; cut is what trimSnapshot reports.
+func renderSnapshot(bin []byte, title string, graphics []byte, rows, history int) (snap []byte, cut bool, err error) {
 	pr, pw := io.Pipe()
 	defer pw.Close()
 	term, err := terminal.New(terminal.Options{Conn: quietConn{pr}, Scrollback: scrollback})
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	defer term.Close()
 	if err := term.RestoreGhosttySnapshot(bin); err != nil {
-		return nil, err
+		return nil, false, err
 	}
-	snap, _ := trimSnapshot(append(term.Snapshot(), graphics...), rows, resyncHistory)
+	snap = append(term.Snapshot(), graphics...)
+	if history > 0 {
+		snap, cut = trimSnapshot(snap, rows, history)
+	}
 	if title != "" {
 		snap = append([]byte("\x1b]2;"+title+"\x07"), snap...)
 	}
-	return snap, nil
+	return snap, cut, nil
+}
+
+// attachSnapshot returns what snapshotLocked returns for o, rendered off
+// the session's lock from bin, the Ghostty binary snapshot taken at the
+// attach: it is nil when the render fails, and the attach takes the
+// snapshot under the lock instead.
+func attachSnapshot(o Attach, bin []byte, title string, graphics []byte, cols, rows int) []byte {
+	snap, cut, err := renderSnapshot(bin, title, graphics, rows, o.History)
+	if err != nil {
+		return nil
+	}
+	if !o.Framed {
+		return snap
+	}
+	head, _ := json.Marshal(SnapshotHeader{Snapshot: len(snap), Cols: cols, Rows: rows, Truncated: cut})
+	return append(append(head, '\n'), snap...)
 }
 
 // quietConn connects a terminal no program runs: what it answers goes
@@ -885,8 +913,18 @@ func (s *session) attach(conn net.Conn, peer string, o Attach, via net.Conn, typ
 	}
 	s.mu.Lock()
 	s.waitBatchLocked()
-	snap := s.snapshotLocked(o)
-	a.first = snap
+	// An attach of escape sequences renders the scrollback off the lock,
+	// from the binary snapshot, as a resync does (attachSnapshot): the
+	// render describes the screen at this point, and output after it
+	// reaches the client through its queue. A session that exited or
+	// whose binary snapshot fails renders under the lock.
+	var bin []byte
+	if o.Snapshot != SnapshotGhostty && !s.exited {
+		bin, _ = s.vt.GhosttySnapshot()
+	}
+	if bin == nil {
+		a.first = s.snapshotLocked(o)
+	}
 	prev := s.authorityLocked()
 	exited := s.exited
 	if exited {
@@ -901,7 +939,24 @@ func (s *session) attach(conn net.Conn, peer string, o Attach, via net.Conn, typ
 	}
 	pty := o.Focused && !exited && s.followAuthorityLocked(prev)
 	cols, rows := s.cols, s.rows
+	var title string
+	var graphics []byte
+	if bin != nil {
+		title, graphics = s.vt.Title(), s.graphics.replay()
+	}
 	s.mu.Unlock()
+	if bin != nil {
+		if a.first = attachSnapshot(o, bin, title, graphics, cols, rows); a.first == nil {
+			// The render failed: drop what queued meanwhile and take the
+			// snapshot under the lock, as a resync's fallback does.
+			s.mu.Lock()
+			a.mu.Lock()
+			a.pending, a.queued = nil, 0
+			a.mu.Unlock()
+			a.first = s.snapshotLocked(o)
+			s.mu.Unlock()
+		}
+	}
 	conn.Write([]byte(`{"ok":true}` + "\n"))
 	go a.writer()
 	if pty {
