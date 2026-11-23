@@ -4,7 +4,7 @@
 // keeps the Glass settings on the page, and gives the larger surfaces a rim
 // lens (an SVG displacement filter) where the browser can show one. With the
 // Glass setting off (until set) it runs nothing.
-import { Backdrop, displacementMap, Ink, maxOffset, nextInk, readBackdrop, rimWidth, RGB, saturationKept, Scheme, density } from "./glassmath";
+import { Backdrop, displacementMap, Ink, lift, maxOffset, nextInk, readBackdrop, rimWidth, RGB, saturationKept, Scheme, density } from "./glassmath";
 import { prefs } from "./prefs";
 
 /** The surfaces of glass, as index.html lists them. */
@@ -106,6 +106,7 @@ export function applyGlass(on: boolean) {
       const s = tracked.get(e)!;
       s.ink = undefined;
       e.dataset.glassInk = scheme() === "light" ? rememberedInk() : "light";
+      e.style.setProperty("--glass-lift", "0");
     }
     sampleSoon(true);
   });
@@ -165,7 +166,7 @@ function drop(e: HTMLElement, clean = false) {
   tracked.delete(e);
   if (clean) {
     delete e.dataset.glassInk;
-    for (const p of ["--glass-density", "--glass-sat-kept", "--glass-lens"]) e.style.removeProperty(p);
+    for (const p of ["--glass-density", "--glass-sat-kept", "--glass-lift", "--glass-lens"]) e.style.removeProperty(p);
   }
 }
 
@@ -269,7 +270,7 @@ function samples(e: HTMLElement): { cells: RGB[]; parts: RGB[] } | undefined {
     return undefined;
   }
 }
-/** Reads under one surface and sets its ink, its density and the saturation it keeps. */
+/** Reads under one surface and sets its ink, its density, its lift and the saturation it keeps. */
 function sampleOne(e: HTMLElement) {
   const s = tracked.get(e);
   if (!s) return;
@@ -277,11 +278,13 @@ function sampleOne(e: HTMLElement) {
   const got = samples(e);
   let ink: Ink;
   let d = 1;
+  let l = 0;
   let kept = 1;
   if (got) {
     const b: Backdrop = readBackdrop(got.cells, got.parts);
     ink = nextInk(sc, b.luminance, s.ink);
     d = density(b, ink);
+    l = lift(b, ink);
     kept = saturationKept(b.chroma);
   } else {
     // Unreadable: the theme's ink on a dense tint.
@@ -291,6 +294,7 @@ function sampleOne(e: HTMLElement) {
   if (e.dataset.glassInk !== ink) e.dataset.glassInk = ink;
   e.style.setProperty("--glass-density", d.toFixed(3));
   e.style.setProperty("--glass-sat-kept", kept.toFixed(3));
+  e.style.setProperty("--glass-lift", l.toFixed(3));
   if (sc === "light") remember(ink);
 }
 

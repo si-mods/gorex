@@ -191,6 +191,11 @@ Each item has a **Trigger** (what the diff shows), a **Check** (what the author 
 - **Check:** `k.textMuted` or stronger; `k.textFaint` does not read over what the glass shows. `TestGlassInk` follows the calls from each glass surface and rejects `textFaint` in what they draw; `go run ./tools/verify` skips the root package, so run `go test . -run TestGlassInk` before pushing a UI change.
 - **Source:** #991's empty menu lines used `textFaint` and the Linux root shard rejected them while the local verify stayed green.
 
+### Glass tuned for its ink only
+- **Trigger:** the diff changes `density`, `materials` or the `--glass-*` edge tokens in `web/src/glassmath.ts` or `web/index.html`.
+- **Check:** the glass is checked against the backdrop as well as against its ink: over a flat backdrop as bright as its own tint (white glass over a light terminal), its edge keeps 1.4:1 (`edgeContrast` in `web/test/glass.test.ts`). The PR shows the light scheme over Gruvbox Light, iTerm2 Solarized Light and Builtin Light.
+- **Source:** #1048 made the density follow only the backdrop's closeness to the ink, so white glass over a light terminal stayed thin with a 6 % outline (1.14:1) and its edge did not show; the lift in the PR after it fixed that.
+
 ## Tests and CI
 
 ### Async state in a test

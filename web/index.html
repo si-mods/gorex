@@ -68,6 +68,8 @@
   /* What glass.ts measures under each surface: how dense its tint is (0 thin, 1 dense) and how much saturation it keeps. */
   @property --glass-density { syntax: "<number>"; inherits: true; initial-value: 1; }
   @property --glass-sat-kept { syntax: "<number>"; inherits: true; initial-value: 1; }
+  /* And how close it is to the light glass's own white (0 none, 1 full; 0 on dark glass and in the dark scheme). */
+  @property --glass-lift { syntax: "<number>"; inherits: true; initial-value: 0; }
   /* Settings › Appearance's Glass tint, per scheme (0 to 1.5), and a hovered surface's lift. */
   @property --glass-scale { syntax: "<number>"; inherits: true; initial-value: 1; }
   @property --glass-hover { syntax: "<number>"; inherits: true; initial-value: 1; }
@@ -1211,9 +1213,10 @@
     background: color-mix(in srgb, var(--glass-tint) calc(100% * min(1, (var(--glass-thin) + (var(--glass-dense) - var(--glass-thin)) * var(--glass-density)) * var(--glass-scale) * var(--glass-hover))), transparent);
     -webkit-backdrop-filter: blur(2px) saturate(calc(1 + (var(--glass-sat) * var(--glass-sat-kept) - 1) * min(1, var(--glass-scale)))) brightness(calc(1 + (var(--glass-bright) - 1) * min(1, var(--glass-scale))));
     backdrop-filter: blur(2px) saturate(calc(1 + (var(--glass-sat) * var(--glass-sat-kept) - 1) * min(1, var(--glass-scale)))) brightness(calc(1 + (var(--glass-bright) - 1) * min(1, var(--glass-scale)))) var(--glass-lens,);
-    box-shadow: var(--glass-edge);
+    /* The material's edge, then the lift's darker outline and shadow: white glass over a light backdrop has no edge of its own. */
+    box-shadow: var(--glass-edge), 0 0 0 0.5px rgb(0 0 0 / calc(0.13 * var(--glass-lift))), 0 4px 16px rgb(0 0 0 / calc(0.1 * var(--glass-lift)));
     transition: --glass-tint 0.35s, --glass-thin 0.35s, --glass-dense 0.35s, --glass-bright 0.35s, --glass-sat 0.35s, --glass-light 0.35s,
-      --glass-ink 0.35s, --glass-ink-2 0.35s, --glass-icon 0.35s, --glass-density 0.35s, --glass-sat-kept 0.35s, --glass-scale 0.35s,
+      --glass-ink 0.35s, --glass-ink-2 0.35s, --glass-icon 0.35s, --glass-density 0.35s, --glass-sat-kept 0.35s, --glass-lift 0.35s, --glass-scale 0.35s,
       --glass-hover 0.15s, --glass-hairline 0.35s, box-shadow 0.35s;
   }
   :root[data-glass="on"] :is(.chunk-load, .float-dock-btn) { position: relative; }

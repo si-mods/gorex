@@ -65,14 +65,28 @@ export function nextInk(scheme: Scheme, lum: number, prev?: Ink): Ink {
 
 const clamp = (v: number, lo = 0, hi = 1) => Math.min(hi, Math.max(lo, v));
 
+/** The luminances where the light glass's lift starts (none) and is full: a backdrop near the glass's own white. */
+export const liftFrom = 0.55;
+export const liftFull = 0.9;
+
+/**
+ * How close the backdrop is to the light glass's own white, 0 to 1: none
+ * up to a luminance of 0.55, full from 0.9. White glass over a light
+ * backdrop has no edge of its own, so the lift makes its tint denser and its
+ * outline and shadow darker. Light ink (dark glass, and the dark scheme)
+ * has none: the dark materials keep their edge.
+ */
+export const lift = (b: Backdrop, ink: Ink): number => (ink === "dark" ? clamp((b.luminance - liftFrom) / (liftFull - liftFrom)) : 0);
+
 /**
  * How dense the tint is, 0 (thin) to 1 (dense): denser when the backdrop's
  * brightness is close to the ink's (the ink would fade into it), when it is
- * busy, and when it is coloured.
+ * close to the light glass's white (the lift), when it is busy, and when it
+ * is coloured.
  */
 export function density(b: Backdrop, ink: Ink): number {
   const closeness = 1 - Math.abs(b.luminance - (ink === "light" ? 1 : 0));
-  return clamp(0.55 * closeness + 0.7 * b.texture + 0.3 * b.chroma);
+  return clamp(0.55 * closeness + 0.35 * lift(b, ink) + 0.7 * b.texture + 0.3 * b.chroma);
 }
 
 /** How much of the material's saturation the glass keeps over a coloured backdrop, 0.45 to 1. */
@@ -89,18 +103,37 @@ export interface Material {
   saturate: number;
   /** The inner light's strength: 1 on light glass, about a third on dark glass. */
   light: number;
+  /** The alpha of the dark 0.5 px outline of its edge, before the lift. */
+  outline: number;
 }
 
 /** The three materials, as index.html's tokens: light glass in the light scheme, dark glass in it, and the dark scheme's glass. */
 export const materials: Record<"lightGlass" | "darkGlass" | "darkScheme", Material> = {
-  lightGlass: { tint: [255, 255, 255], thin: 0.06, dense: 0.22, brightness: 1.06, saturate: 1.8, light: 1 },
-  darkGlass: { tint: [16, 18, 22], thin: 0.1, dense: 0.62, brightness: 0.85, saturate: 1.7, light: 0.33 },
-  darkScheme: { tint: [20, 20, 24], thin: 0.16, dense: 0.9, brightness: 0.8, saturate: 1.6, light: 0.33 },
+  lightGlass: { tint: [255, 255, 255], thin: 0.06, dense: 0.22, brightness: 1.06, saturate: 1.8, light: 1, outline: 0.06 },
+  darkGlass: { tint: [16, 18, 22], thin: 0.1, dense: 0.62, brightness: 0.85, saturate: 1.7, light: 0.33, outline: 0.4 },
+  darkScheme: { tint: [20, 20, 24], thin: 0.16, dense: 0.9, brightness: 0.8, saturate: 1.6, light: 0.33, outline: 0.5 },
 };
 
 /** The material in use for a scheme and an ink. */
 export const materialOf = (scheme: Scheme, ink: Ink): Material =>
   scheme === "dark" ? materials.darkScheme : ink === "dark" ? materials.lightGlass : materials.darkGlass;
+
+/** The lift's own outline and drop shadow, as index.html's: black at 0.13 and at 0.1 times the lift, over the material's edge. */
+export const liftOutline = 0.13;
+export const liftShadow = 0.1;
+
+/** The alpha of a surface's outline: the material's, with the lift's outline over it. */
+export const outlineAlpha = (m: Material, l: number): number => 1 - (1 - m.outline) * (1 - liftOutline * l);
+
+/**
+ * How well the edge shows: the contrast of the outline, black at its alpha
+ * over the backdrop, with the backdrop (WCAG 2's ratio). WEB-005 asks 1.4:1
+ * of light glass over a light backdrop.
+ */
+export const edgeContrast = (backdrop: RGB, m: Material, l: number): number => {
+  const a = outlineAlpha(m, l);
+  return contrast(backdrop.map((v) => v * (1 - a)) as RGB, backdrop);
+};
 
 /** The tint's alpha: thin to dense by density, times the tint scale (Settings, 0 to 1.5). */
 export const tintAlpha = (m: Material, d: number, scale: number): number => clamp((m.thin + (m.dense - m.thin) * d) * scale);
