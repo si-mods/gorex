@@ -837,11 +837,8 @@ func TestTileBounce(t *testing.T) {
 	if got1 != got2 {
 		t.Errorf("a cycle on dy = %v, was %v", got2, got1)
 	}
-	if dy, _, _ := tileBounceAt(tileDone, base.Add(160*time.Millisecond)); dy != -3.333 {
-		t.Errorf("done's hop tops at dy = %v, want -3.333", dy)
-	}
-	// The most urgent pane drives the bounce, as on iOS, and a bell
-	// bounces as a blocked program does.
+	// Only blocked, error, and bell bounce; done shows a corner dot instead
+	// and stays still.
 	status := func(state string) *Tab {
 		p := &Pane{info: rex.SessionInfo{Statuses: []rex.ProgramStatus{{State: state, Updated: time.Now()}}}}
 		return &Tab{Root: &Node{Pane: p}, Focus: p}
@@ -854,7 +851,7 @@ func TestTileBounce(t *testing.T) {
 		{"bell", &Tab{Root: &Node{Pane: &Pane{attention: true}}}, tileAttention},
 		{"blocked", status("blocked"), tileAttention},
 		{"error", status("error"), tileAttention},
-		{"done", status("done"), tileDone},
+		{"done", status("done"), tileStill},
 		{"working", status("working"), tileStill},
 		{"idle", status("idle"), tileStill},
 		{"none", status(""), tileStill},
@@ -865,6 +862,32 @@ func TestTileBounce(t *testing.T) {
 			}
 		})
 	}
+	t.Run("done-dot", func(t *testing.T) {
+		prefs = settings{}
+		a := &App{}
+		draw := func(tab *Tab) ([]byte, bool) {
+			tt := ui.NewTester(func(c *ui.Context) {
+				k := colorsOf(c)
+				a.tiles(c, k, tab)
+			}, 40, 40)
+			tt.Frame()
+			pix := slices.Clone(tt.Image().Pix)
+			tt.Advance(300 * time.Millisecond)
+			tt.Frame()
+			return pix, tt.FramePending() || !bytes.Equal(pix, tt.Image().Pix)
+		}
+		quietPix, quietMoved := draw(status("idle"))
+		donePix, doneMoved := draw(status("done"))
+		if quietMoved {
+			t.Error("quiet tab's tile moved")
+		}
+		if doneMoved {
+			t.Error("done tab's tile bounced; want still with corner dot")
+		}
+		if bytes.Equal(quietPix, donePix) {
+			t.Error("done tab's tile looks identical to idle; want blue corner dot")
+		}
+	})
 }
 
 // TestOverlaysAnimate: a popover grows from its anchor and a dialog comes

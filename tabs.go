@@ -475,30 +475,25 @@ func (a *App) tabMenu(m *ui.Menu, t *Tab) {
 }
 
 // tileMotion is how a tab's front tile moves for what its panes need, as
-// iOS's TileMotion (ios/GoRex/Views/ProgramTile.swift): a Dock icon's
-// bounce, attention's urgent, done's a calmer hop, still for the rest.
+// a Dock icon's bounce: only attention (blocked, error, or a bell)
+// bounces; done shows a corner dot instead and stays still.
 type tileMotion int
 
 const (
 	tileStill tileMotion = iota
-	tileDone
 	tileAttention
 )
 
-// tileMotion returns how the tab's front tile bounces: for the pane that
-// most needs the user, which drives the bounce as the most urgent state
-// does on iOS, where the attention of a bell or an unseen end bounces as
-// a blocked program does.
+// tileMotion returns how the tab's front tile bounces: only when a pane
+// needs the user (blocked, error, or a bell/unseen end asking for
+// attention); done stays still and shows a blue corner dot instead.
 func (t *Tab) tileMotion() tileMotion {
 	rank := 0
 	for _, p := range t.allPanes() {
 		rank = max(rank, p.needsYou())
 	}
-	switch {
-	case rank >= rex.StatusRank("error"), rank == 1:
+	if rank >= rex.StatusRank("error") || rank == 1 {
 		return tileAttention
-	case rank == rex.StatusRank("done"):
-		return tileDone
 	}
 	return tileStill
 }
@@ -545,35 +540,6 @@ var tileBounces = map[tileMotion]tileBounce{
 			{At: 1600 * time.Millisecond, Value: 1, Ease: ui.Linear},
 		},
 	},
-	tileDone: {
-		cycle: 2400 * time.Millisecond,
-		dy: []ui.Keyframe{
-			{At: 0, Value: 0},
-			{At: 160 * time.Millisecond, Value: -3.333, Ease: ui.EaseInOut},
-			{At: 300 * time.Millisecond, Value: 0, Ease: ui.EaseInOut},
-			{At: 410 * time.Millisecond, Value: -1.333, Ease: ui.EaseInOut},
-			{At: 520 * time.Millisecond, Value: 0, Ease: ui.EaseInOut},
-			{At: 2400 * time.Millisecond, Value: 0, Ease: ui.Linear},
-		},
-		sx: []ui.Keyframe{
-			{At: 0, Value: 1},
-			{At: 60 * time.Millisecond, Value: 0.97, Ease: ui.EaseInOut},
-			{At: 160 * time.Millisecond, Value: 1, Ease: ui.EaseInOut},
-			{At: 300 * time.Millisecond, Value: 1.04, Ease: ui.EaseInOut},
-			{At: 410 * time.Millisecond, Value: 1, Ease: ui.EaseInOut},
-			{At: 520 * time.Millisecond, Value: 1, Ease: ui.EaseInOut},
-			{At: 2400 * time.Millisecond, Value: 1, Ease: ui.Linear},
-		},
-		sy: []ui.Keyframe{
-			{At: 0, Value: 1},
-			{At: 60 * time.Millisecond, Value: 1.04, Ease: ui.EaseInOut},
-			{At: 160 * time.Millisecond, Value: 1, Ease: ui.EaseInOut},
-			{At: 300 * time.Millisecond, Value: 0.95, Ease: ui.EaseInOut},
-			{At: 410 * time.Millisecond, Value: 1, Ease: ui.EaseInOut},
-			{At: 520 * time.Millisecond, Value: 1, Ease: ui.EaseInOut},
-			{At: 2400 * time.Millisecond, Value: 1, Ease: ui.Linear},
-		},
-	},
 }
 
 // tileBounceAt is where motion's bounce puts the front tile at now: how
@@ -609,6 +575,10 @@ func (a *App) tiles(c *ui.Context, k *colors, t *Tab) {
 	if motion(c) != nil {
 		m = t.tileMotion()
 	}
+	done := false
+	if s := t.status(); s != nil && s.State == "done" {
+		done = true
+	}
 	w := float32(tileW + tileStep*len(back) + 2)
 	ui.Box(c).Size(w, tileH+4).Shrink(0).Draw(func(p *ui.Painter, r ui.Rect) {
 		y := r.Y + 2
@@ -621,16 +591,56 @@ func (a *App) tiles(c *ui.Context, k *colors, t *Tab) {
 			fr := ui.Rect{X: r.X + 1, Y: y, W: tileW, H: tileH}
 			if m == tileStill {
 				drawTile(p, fr, front.program(), true)
+				if done {
+					drawDoneDot(p, fr, k)
+				}
 			} else {
 				p.AnimationFrameRate(30)
 				dy, sx, sy := tileBounceAt(m, p.Now())
 				// iOS squashes about the tile's bottom edge, then lifts.
 				p.Transform(ui.Scaling(sx, sy).Then(ui.Translation(0, dy)), fr.X+fr.W/2, fr.Y+fr.H, func() {
 					drawTile(p, fr, front.program(), true)
+					if done {
+						drawDoneDot(p, fr, k)
+					}
 				})
 			}
 		}
 	})
+}
+
+// drawDoneDot draws the blue unseen-done dot at the top-right corner of
+// a program tile, matching iOS's DoneDot (ios/GoRex/Views/ProgramTile.swift).
+func drawDoneDot(p *ui.Painter, fr ui.Rect, k *colors) {
+	const (
+		dotSize = float32(5)
+		rimPad  = float32(0.75)
+		outer   = dotSize + 2*rimPad
+	)
+	rim := ui.RGBA(255, 255, 255, 0.95)
+	if isDark(k.panel) {
+		rim = ui.RGBA(0, 0, 0, 0.85)
+	}
+	outerR := ui.Rect{
+		X: fr.X + fr.W + 1 - outer,
+		Y: fr.Y - 1.5,
+		W: outer,
+		H: outer,
+	}
+	p.Fill(outerR, rim, outer/2)
+	innerR := ui.Rect{
+		X: outerR.X + rimPad,
+		Y: outerR.Y + rimPad,
+		W: dotSize,
+		H: dotSize,
+	}
+	p.Fill(innerR, k.done, dotSize/2)
+	p.FillGradient(innerR, ui.LinearGradient{
+		From:  ui.RGBA(255, 255, 255, 0.3),
+		To:    ui.RGBA(255, 255, 255, 0),
+		Angle: 180,
+		End:   0.5,
+	}, dotSize/2)
 }
 
 // drawTile draws a program's tile: a rounded card of its color, and its
