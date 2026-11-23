@@ -463,11 +463,14 @@ func TestStatusListsListeners(t *testing.T) {
 		return out
 	}
 
+	// The socket serves before --listen's port is registered (serve.go):
+	// a client that reaches the first asks again until both are listed.
 	cur := dial(apiRevision)
-	got := listeners(cur)
-	if len(got) != 2 {
-		t.Fatalf("listeners = %v, want the socket and --listen's", got)
-	}
+	var got []map[string]any
+	waitFor(t, "the socket and --listen's listeners", func() bool {
+		got = listeners(cur)
+		return len(got) == 2
+	})
 	if got[0]["endpoint"] != unixEndpoint(sock) || got[0]["transport"] != "unix" || got[0]["primary"] != true ||
 		got[0]["addresses"].([]any)[0] != sock || got[0]["admission"] != nilIfEmpty(unixAdmission) {
 		t.Errorf("primary = %v", got[0])
