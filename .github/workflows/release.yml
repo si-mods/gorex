@@ -25,15 +25,18 @@ permissions:
 
 concurrency:
   group: release
-  # A newer dispatch supersedes one in flight or queued: the old run's apps
-  # and its draft would be of an older main. The guard job names the run it
-  # cancelled and why; the cancelled run's page cannot carry the reason.
-  cancel-in-progress: true
+  # A newer full dispatch (target all) supersedes one in flight or queued:
+  # the old run's apps and its draft would be of an older main. A partial
+  # one (unix, windows, web) waits instead: it must not cancel the other
+  # platforms of a full release. The guard job names the run it cancelled
+  # and why; the cancelled run's page cannot carry the reason.
+  cancel-in-progress: ${{ inputs.target == 'all' }}
 
 jobs:
-  # Cancels the runs this dispatch supersedes and refuses a stale dispatch —
-  # one whose commit main left while it queued on the group: its apps would
-  # ship the older code. Runs first and cheap, before the builders.
+  # For a full dispatch, cancels the runs it supersedes and deletes the
+  # drafts they left of another version; for any dispatch, warns when main
+  # left its commit while it queued. Runs first and cheap, before the
+  # builders.
   guard:
     if: github.ref == 'refs/heads/main'
     runs-on: instabox-medium
@@ -48,6 +51,7 @@ jobs:
           $sudo apt-get install -y -q gh jq
       - env:
           GH_TOKEN: ${{ github.token }}
+          TARGET: ${{ inputs.target }}
         run: .github/scripts/release-guard.sh
 
   # Creates the draft release, which the builds upload to, if there is none.

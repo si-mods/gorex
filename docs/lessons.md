@@ -258,6 +258,11 @@ Each item has a **Trigger** (what the diff shows), a **Check** (what the author 
 - **Check:** the draft is created with `--target` the commit the run builds, and after publishing `git rev-parse v<version>^{commit}` equals the release run's `headSha`.
 - **Source:** the draft had no target, so GitHub tagged main's head at publish: v0.52.0's tag holds #1017 and v0.53.0's holds #1018, neither in its apps. Those tags stay; the script now passes `--target`.
 
+### Release run that cancels another
+- **Trigger:** the diff touches `concurrency` in `release.yml` or the cancels and deletes of `.github/scripts/release-guard.sh`.
+- **Check:** only a full dispatch (`target: all`) cancels a run; a partial one waits. A cancel is attributed to the release group only by GitHub's "higher priority waiting request" annotation. A draft is deleted only if it is a draft, of another version, and its run has stopped. The PR shows a `DRY_RUN=1` run.
+- **Source:** #1025 cancelled any run in flight on any dispatch, so a `web` or `windows` dispatch would cut the other platforms out of a full release; it left a superseded version's draft behind, named a run cancelled by hand as superseded, and failed a release whose commit main had left although #1023 had pinned its tag. #1029 fixes all four.
+
 ### New CI gate
 - **Trigger:** the diff turns on `-race`, adds a shard, or adds a gate to `ci.yml`.
 - **Check:** the gate was run with `-count 10` on every platform it gates. One clean run does not show a test is free of races.
