@@ -643,10 +643,6 @@
       }
     }
   },
-  "hostNote": "Sessions live in the server: quit GoRex and they keep running, and come back as they were when it opens again.",
-  "@hostNote": {
-    "description": "Note at the foot of the host panel."
-  },
   "hostDurSeconds": "{n}s",
   "@hostDurSeconds": {
     "description": "A duration under a minute.",

@@ -816,9 +816,9 @@ func TestSidebarHostButton(t *testing.T) {
 	if panel.Y < 0 || panel.Y+panel.H > btn.Y {
 		t.Errorf("the panel's row is at %v, over the button at %v or out of the window", panel, btn)
 	}
-	// With no hosts saved, it adds one; it notes where sessions live.
-	if !tt.HasText(locales.HostsAdd()) || tt.HasText(locales.HostsManage()) || !tt.HasText(locales.HostNote()) {
-		t.Errorf("with no hosts the panel has no add button or no note; texts %q", tt.Texts())
+	// With no hosts saved, it adds one.
+	if !tt.HasText(locales.HostsAdd()) || tt.HasText(locales.HostsManage()) {
+		t.Errorf("with no hosts the panel has no add button; texts %q", tt.Texts())
 	}
 
 	// A host that is not connected shows in the label, in the worst's name.
@@ -873,7 +873,7 @@ func TestSidebarHostButton(t *testing.T) {
 	if slices.Contains(tt.Texts(), locales.SettingsHosts()) || tt.HasText(locales.CmdNewTabOn("office")) || tt.HasText(locales.HostsAdd()) {
 		t.Errorf("the panel lists the remote hosts; texts %q", tt.Texts())
 	}
-	if inPanel("office") != 1 || !tt.HasText(status) || !tt.HasText(locales.HostsManage()) || !tt.HasText(locales.HostNote()) {
+	if inPanel("office") != 1 || !tt.HasText(status) || !tt.HasText(locales.HostsManage()) {
 		t.Errorf("the panel does not tell the failed host or lead to the Remote page; texts %q", tt.Texts())
 	}
 	a.hosts = []*hostConn{{savedHost: savedHost{ID: "3", Name: "fine"}, state: hostConnected}}

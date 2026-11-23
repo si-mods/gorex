@@ -1910,20 +1910,6 @@ func (msgs Messages) HostSessionCount(open int, running int) string {
 	return Catalog.Format(msgs.locale, "hostSessionCount", map[string]any{"open": open, "running": running})
 }
 
-// HostNote says "Sessions live in the server: quit GoRex and they keep running, and come back as they were when it opens again."
-// in the language the app shows.
-//
-// Note at the foot of the host panel.
-func HostNote() string { return In(i18n.Locale()).HostNote() }
-
-// HostNote says "Sessions live in the server: quit GoRex and they keep running, and come back as they were when it opens again."
-// in the language of msgs.
-//
-// Note at the foot of the host panel.
-func (msgs Messages) HostNote() string {
-	return Catalog.Format(msgs.locale, "hostNote", nil)
-}
-
 // HostDurSeconds says "{n}s"
 // in the language the app shows.
 //
