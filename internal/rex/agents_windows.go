@@ -15,18 +15,18 @@ import (
 // exec.LookPath, then in the current registry PATH and common user tool
 // directories (matching magpie's FindTool). Only .exe and .cmd files are
 // accepted so CreateProcess never receives an extensionless npm sh shim.
-func detectAgents(home, _ string) []AgentInfo {
+func detectAgents(home, shell string) []AgentInfo {
 	extraDirs := windowsAgentDirs(home)
 	out := []AgentInfo{}
 	for _, a := range knownAgents {
 		if path, err := exec.LookPath(a.ID); err == nil {
-			if cmd, ok := windowsAgentCommand(path); ok {
+			if cmd, ok := windowsAgentCommand(path, shell); ok {
 				out = append(out, AgentInfo{ID: a.ID, Name: a.Name, Command: cmd})
 				continue
 			}
 		}
 		if path, ok := findWindowsTool(extraDirs, a.ID); ok {
-			if cmd, ok := windowsAgentCommand(path); ok {
+			if cmd, ok := windowsAgentCommand(path, shell); ok {
 				out = append(out, AgentInfo{ID: a.ID, Name: a.Name, Command: cmd})
 			}
 		}
@@ -34,23 +34,53 @@ func detectAgents(home, _ string) []AgentInfo {
 	return out
 }
 
-// windowsAgentCommand is the argv to launch an agent at path: an image
-// CreateProcess runs (.exe, .com) as is, a script of the command
-// interpreter (.cmd, .bat — how npm installs CLIs on Windows) through
-// %COMSPEC% /c, since CreateProcess cannot run it. Other extensions (an
-// extensionless npm shim, .ps1) do not launch.
-func windowsAgentCommand(path string) ([]string, bool) {
-	switch strings.ToLower(filepath.Ext(path)) {
-	case ".exe", ".com":
-		return []string{path}, true
-	case ".cmd", ".bat":
-		comspec := os.Getenv("COMSPEC")
-		if comspec == "" {
-			comspec = "cmd.exe"
+// agentShellLookPath resolves a shell's path; tests override it.
+var agentShellLookPath = exec.LookPath
+
+// windowsAgentShell is the PowerShell a new tab of the session's user
+// runs: the user's own shell when it is one, else the first PowerShell on
+// PATH. "" leaves the agent to run directly.
+func windowsAgentShell(shell string) string {
+	for _, sh := range []string{shell, os.Getenv("SHELL"), "pwsh.exe", "powershell.exe"} {
+		if sh == "" {
+			continue
 		}
-		return []string{comspec, "/c", path}, true
+		if p, err := agentShellLookPath(sh); err == nil {
+			switch ShellName(p) {
+			case "pwsh", "powershell":
+				return p
+			}
+		}
 	}
-	return nil, false
+	return ""
+}
+
+// windowsAgentCommand is the argv to launch an agent at path. A PowerShell
+// runs it with &, so the profile's environment (a CLAUDE_CONFIG_DIR it
+// sets, a proxy it exports) reaches the agent, as a shell -lic does on
+// Unix. Without a PowerShell, an image CreateProcess runs (.exe, .com)
+// runs as is, and a script of the command interpreter (.cmd, .bat — how
+// npm installs CLIs on Windows) runs through %COMSPEC% /c, since
+// CreateProcess cannot run it. Other extensions (an extensionless npm
+// shim, .ps1) do not launch.
+func windowsAgentCommand(path, shell string) ([]string, bool) {
+	ext := strings.ToLower(filepath.Ext(path))
+	switch ext {
+	case ".exe", ".com", ".cmd", ".bat":
+	default:
+		return nil, false
+	}
+	if sh := windowsAgentShell(shell); sh != "" {
+		return []string{sh, "-Command", "& " + powerShellQuoted(path) + "; exit $LASTEXITCODE"}, true
+	}
+	if ext == ".exe" || ext == ".com" {
+		return []string{path}, true
+	}
+	comspec := os.Getenv("COMSPEC")
+	if comspec == "" {
+		comspec = "cmd.exe"
+	}
+	return []string{comspec, "/c", path}, true
 }
 
 func windowsAgentDirs(home string) []string {
