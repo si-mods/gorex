@@ -550,7 +550,7 @@ nonisolated final class HostTests: XCTestCase {
         for _ in 0..<50 {
             XCTAssertNotNil(TailnetSettings.defaultName(device: "iPhone").wholeMatch(of: /iphone-rex-[a-z]{4}/))
         }
-        XCTAssertNotNil(TailnetSettings.defaultName(device: "Alice's iPhone").wholeMatch(of: /alice-s-iphone-rex-[a-z]{4}/))
+        XCTAssertNotNil(TailnetSettings.defaultName(device: "Alice's iPhone").wholeMatch(of: /alices-iphone-rex-[a-z]{4}/))
         XCTAssertNotNil(TailnetSettings.defaultName(device: "").wholeMatch(of: /rex-[a-z]{4}/))
         XCTAssertNotNil(TailnetSettings.defaultName(device: "— —").wholeMatch(of: /rex-[a-z]{4}/))
         let d = UserDefaults.standard, saved = d.string(forKey: TailnetSettings.nameKey)
