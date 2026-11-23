@@ -471,9 +471,14 @@ func (a *App) workspaceTabs(c *ui.Context, k *colors, w *Workspace, reserve floa
 	infos, id, _ := a.st.listOf(w.host)
 	for i, t := range w.layout.Tabs {
 		name, detail, prog := savedTabFace(t, infos)
-		if spaceTab(c, k, cmp.Or(t.ID, fmt.Sprint(i)), name, detail, a.st.savedTabStatus(t, id, infos), reserve, func() {
+		s := a.st.savedTabStatus(t, id, infos)
+		if spaceTab(c, k, cmp.Or(t.ID, fmt.Sprint(i)), name, detail, s, reserve, func() {
 			ui.Box(c).Size(tileSlot, tileH+4).Shrink(0).Draw(func(p *ui.Painter, r ui.Rect) {
-				drawTile(p, ui.Rect{X: r.X + 1, Y: r.Y + 2, W: tileW, H: tileH}, prog, true)
+				fr := ui.Rect{X: r.X + 1, Y: r.Y + 2, W: tileW, H: tileH}
+				drawTile(p, fr, prog, true)
+				if s != nil && s.State == "done" {
+					drawDoneDot(p, fr, k)
+				}
 			})
 		}) {
 			pick(i)

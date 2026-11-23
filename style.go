@@ -38,7 +38,7 @@ type colors struct {
 	// and liftShadow its shadow, so that it stands over the group's face.
 	groupFace, pillLift, liftShadow ui.Color
 
-	busy, attention, exited, danger ui.Color
+	busy, attention, done, exited, danger ui.Color
 
 	// panel is the face of popovers, dialogs and the rows that float over
 	// a pane: opaque, so that the text they cover shows through nowhere.
@@ -95,6 +95,7 @@ var lightColors = colors{
 	busy:      ui.Hex("#34a853"),
 	danger:    ui.Hex("#ef4444"),
 	attention: ui.Hex("#f59e0b"),
+	done:      ui.Hex("#7aa0c2"),
 	exited:    ui.Hex("#a1a1a6"),
 
 	panel:       ui.Hex("#fcfcfd"),
@@ -146,6 +147,7 @@ var darkColors = colors{
 	busy:      ui.Hex("#4ade80"),
 	danger:    ui.Hex("#ef4444"),
 	attention: ui.Hex("#fbbf24"),
+	done:      ui.Hex("#7aa0c2"),
 	exited:    ui.Hex("#636366"),
 
 	panel:       ui.Hex("#26262a"),
