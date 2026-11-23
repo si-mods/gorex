@@ -20,6 +20,31 @@ nonisolated final class DeveloperModeTests: XCTestCase {
         XCTAssertTrue(ConnectionLog.lines.isEmpty)
     }
 
+    @MainActor func testConnectionLogFileRoundTripAndClear() throws {
+        let dir = FileManager.default.temporaryDirectory.appending(path: "gorex-tests-\(UUID().uuidString)", isDirectory: true)
+        let url = dir.appending(path: "connection.log")
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        let file = ConnectionLog.File(url: url)
+        file.append("01:02:03.001 first event")
+        file.append("01:02:03.002 second event")
+        // read() lands after the writes queued before it.
+        XCTAssertEqual(file.read(), ["01:02:03.001 first event", "01:02:03.002 second event"])
+
+        // A new run's store fills from the file, ids continuing past it.
+        let store = ConnectionLog.Store(lines: file.read())
+        XCTAssertEqual(store.entries.map(\.line), ["01:02:03.001 first event", "01:02:03.002 second event"])
+        XCTAssertEqual(store.entries[0].message, "first event")
+        XCTAssertEqual(store.entries[0].shortTime, "01:02:03.0")
+        store.append(timestamp: .now, shortTime: "01:02:03.5", fullTime: "01:02:03.500", message: "third event", limit: 2000)
+        XCTAssertEqual(store.entries.last?.id, 3)
+        XCTAssertEqual(store.entries.last?.line, "01:02:03.500 third event")
+
+        file.clear()
+        XCTAssertFalse(FileManager.default.fileExists(atPath: url.path))
+        XCTAssertEqual(file.read(), [])
+    }
+
     @MainActor func testNetworkSummaryLineVariants() {
         let base = Date(timeIntervalSince1970: 1_700_000_000)
         let now = base.addingTimeInterval(81.34)

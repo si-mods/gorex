@@ -450,6 +450,7 @@ struct TailcatPairSheet: View {
             end = .stillTrying
         } catch is CancellationError {
         } catch {
+            ConnectionLog.note("pair \(code.name): \(error.diagnosis)")
             end = .failed
         }
     }
@@ -562,6 +563,7 @@ private struct AddressPairSheet: View {
             }
             code = c
         } catch {
+            ConnectionLog.note("pair \(host.name): \(error.diagnosis)")
             end = .failed
         }
     }
@@ -593,7 +595,12 @@ private struct AddressPairSheet: View {
                 store.add(h)
                 dismiss()
             } catch {
-                end = TailnetEngine.shared.isAddressPairingWarning(error) ? .mismatch : .failed
+                if TailnetEngine.shared.isAddressPairingWarning(error) {
+                    end = .mismatch
+                } else {
+                    ConnectionLog.note("pair \(host.name): \(error.diagnosis)")
+                    end = .failed
+                }
             }
         }
     }
