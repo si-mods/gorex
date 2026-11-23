@@ -378,6 +378,13 @@ func (c *Client) ping(every, timeout time.Duration) {
 	}
 }
 
+// Ping measures a request's round trip to the server, for display.
+func (c *Client) Ping(timeout time.Duration) (rtt time.Duration, err error) {
+	start := time.Now()
+	err = c.callWithin(Request{Op: "ping"}, nil, timeout)
+	return time.Since(start), err
+}
+
 // call sends a request and decodes the response's data into out.
 func (c *Client) call(req Request, out any) error {
 	return c.callWithin(req, out, callTimeout.get())

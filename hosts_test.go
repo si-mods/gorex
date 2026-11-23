@@ -1674,25 +1674,30 @@ func TestHostPathShows(t *testing.T) {
 			Direct: true, Endpoint: "192.0.2.10:41641", LatencySeconds: 0.032,
 		}, nil
 	}
-	t.Cleanup(func() { tailcatStatus = old })
+	oldPing := hostPing
+	hostPing = func(*rex.Client, time.Duration) (time.Duration, error) {
+		return 32 * time.Millisecond, nil
+	}
+	t.Cleanup(func() { tailcatStatus, hostPing = old, oldPing })
 
 	f := newFakeHost(t, fakeApproved)
 	h := a.addHost(savedHost{ID: "h1", Name: "ws-01", Address: f.path})
 	waitFor(t, tt, "the host to connect", func() bool { return h.state == hostConnected })
 	a.client = h.current() // the op's client; the stub answers for it
-	waitFor(t, tt, "the path line", func() bool {
-		return tt.HasText("direct 192.0.2.10:41641 · 32 ms")
+	h.connectMs = 214      // the fake's dial is faster than a millisecond
+	waitFor(t, tt, "the diagnostics line", func() bool {
+		return tt.HasText("direct 192.0.2.10:41641 · connect 214 ms · ping 32 ms") && tt.HasText("tailcat")
 	})
 	if pings.Load() == 0 {
 		t.Error("no ping ran")
 	}
 
-	// A host of the tailnet says it goes over Tailscale, and is not
-	// pinged.
+	// A host of the tailnet is tagged tailnet, and its link is not
+	// pinged through the server.
 	tn := newHostConn(savedHost{ID: "h2", Name: "tail-node", Address: "tailscale:user:abc123"})
 	tn.state = hostConnected
 	a.hosts = append(a.hosts, tn)
-	waitFor(t, tt, "the tailnet line", func() bool { return tt.HasText("via Tailscale") })
+	waitFor(t, tt, "the tailnet tag", func() bool { return tt.HasText("tailnet") })
 	before := pings.Load()
 	for range 3 {
 		tt.Frame()

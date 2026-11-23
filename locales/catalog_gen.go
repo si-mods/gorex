@@ -5142,54 +5142,98 @@ func (msgs Messages) HostsSessions(n int) string {
 	return Catalog.Format(msgs.locale, "hostsSessions", map[string]any{"n": n})
 }
 
-// HostsPathDirect says "direct {endpoint} · {ms} ms"
+// HostsPathDirect says "direct {endpoint}"
 // in the language the app shows.
 //
 // Remote Hosts page: under a connected host, its link goes over a direct
-// path to the endpoint; ms is the round trip in milliseconds.
-func HostsPathDirect(endpoint string, ms int) string {
-	return In(i18n.Locale()).HostsPathDirect(endpoint, ms)
-}
+// path to the endpoint.
+func HostsPathDirect(endpoint string) string { return In(i18n.Locale()).HostsPathDirect(endpoint) }
 
-// HostsPathDirect says "direct {endpoint} · {ms} ms"
+// HostsPathDirect says "direct {endpoint}"
 // in the language of msgs.
 //
 // Remote Hosts page: under a connected host, its link goes over a direct
-// path to the endpoint; ms is the round trip in milliseconds.
-func (msgs Messages) HostsPathDirect(endpoint string, ms int) string {
-	return Catalog.Format(msgs.locale, "hostsPathDirect", map[string]any{"endpoint": endpoint, "ms": ms})
+// path to the endpoint.
+func (msgs Messages) HostsPathDirect(endpoint string) string {
+	return Catalog.Format(msgs.locale, "hostsPathDirect", map[string]any{"endpoint": endpoint})
 }
 
-// HostsPathRelay says "via {relay} · {ms} ms"
+// HostsPathRelay says "via {relay}"
 // in the language the app shows.
 //
 // Remote Hosts page: under a connected host, its link goes through the
-// relay named; ms is the round trip in milliseconds.
-func HostsPathRelay(relay string, ms int) string { return In(i18n.Locale()).HostsPathRelay(relay, ms) }
+// relay named.
+func HostsPathRelay(relay string) string { return In(i18n.Locale()).HostsPathRelay(relay) }
 
-// HostsPathRelay says "via {relay} · {ms} ms"
+// HostsPathRelay says "via {relay}"
 // in the language of msgs.
 //
 // Remote Hosts page: under a connected host, its link goes through the
-// relay named; ms is the round trip in milliseconds.
-func (msgs Messages) HostsPathRelay(relay string, ms int) string {
-	return Catalog.Format(msgs.locale, "hostsPathRelay", map[string]any{"relay": relay, "ms": ms})
+// relay named.
+func (msgs Messages) HostsPathRelay(relay string) string {
+	return Catalog.Format(msgs.locale, "hostsPathRelay", map[string]any{"relay": relay})
 }
 
-// HostsPathTailnet says "via Tailscale"
+// HostsDiagTagTailcat says "tailcat"
 // in the language the app shows.
 //
-// Remote Hosts page: under a connected host found through Tailscale, its
-// link goes over the tailnet, which needs no measure.
-func HostsPathTailnet() string { return In(i18n.Locale()).HostsPathTailnet() }
+// Remote Hosts page: tag of a host linked over tailcat (the protocol's
+// name, not translated).
+func HostsDiagTagTailcat() string { return In(i18n.Locale()).HostsDiagTagTailcat() }
 
-// HostsPathTailnet says "via Tailscale"
+// HostsDiagTagTailcat says "tailcat"
 // in the language of msgs.
 //
-// Remote Hosts page: under a connected host found through Tailscale, its
-// link goes over the tailnet, which needs no measure.
-func (msgs Messages) HostsPathTailnet() string {
-	return Catalog.Format(msgs.locale, "hostsPathTailnet", nil)
+// Remote Hosts page: tag of a host linked over tailcat (the protocol's
+// name, not translated).
+func (msgs Messages) HostsDiagTagTailcat() string {
+	return Catalog.Format(msgs.locale, "hostsDiagTagTailcat", nil)
+}
+
+// HostsDiagTagTailnet says "tailnet"
+// in the language the app shows.
+//
+// Remote Hosts page: tag of a host linked over the tailnet.
+func HostsDiagTagTailnet() string { return In(i18n.Locale()).HostsDiagTagTailnet() }
+
+// HostsDiagTagTailnet says "tailnet"
+// in the language of msgs.
+//
+// Remote Hosts page: tag of a host linked over the tailnet.
+func (msgs Messages) HostsDiagTagTailnet() string {
+	return Catalog.Format(msgs.locale, "hostsDiagTagTailnet", nil)
+}
+
+// HostsDiagConnect says "connect {ms} ms"
+// in the language the app shows.
+//
+// Remote Hosts page: how long the current connection to the host took to
+// establish; ms in milliseconds.
+func HostsDiagConnect(ms int) string { return In(i18n.Locale()).HostsDiagConnect(ms) }
+
+// HostsDiagConnect says "connect {ms} ms"
+// in the language of msgs.
+//
+// Remote Hosts page: how long the current connection to the host took to
+// establish; ms in milliseconds.
+func (msgs Messages) HostsDiagConnect(ms int) string {
+	return Catalog.Format(msgs.locale, "hostsDiagConnect", map[string]any{"ms": ms})
+}
+
+// HostsDiagPing says "ping {ms} ms"
+// in the language the app shows.
+//
+// Remote Hosts page: the control round trip to the host measured last; ms
+// in milliseconds.
+func HostsDiagPing(ms int) string { return In(i18n.Locale()).HostsDiagPing(ms) }
+
+// HostsDiagPing says "ping {ms} ms"
+// in the language of msgs.
+//
+// Remote Hosts page: the control round trip to the host measured last; ms
+// in milliseconds.
+func (msgs Messages) HostsDiagPing(ms int) string {
+	return Catalog.Format(msgs.locale, "hostsDiagPing", map[string]any{"ms": ms})
 }
 
 // CmdNewTabOn says "New Tab on {host}"

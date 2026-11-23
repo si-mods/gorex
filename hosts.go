@@ -120,6 +120,10 @@ type hostConn struct {
 	path       *rex.TailcatStatus
 	pathAt     time.Time
 	pathAsking bool
+	// connectMs is the last connect's dial and hello; pingMs is the
+	// control round trip measured last, -1 until it is. Both reset on
+	// every (re)connect: they describe the connection, not the host.
+	connectMs, pingMs int
 	// closed are the sessions closed here since the host connected, which
 	// adopt does not open again though a list still has them.
 	closed map[string]bool
@@ -156,7 +160,7 @@ type hostConn struct {
 }
 
 func newHostConn(h savedHost) *hostConn {
-	return &hostConn{savedHost: h, retry: make(chan struct{}, 1), stop: make(chan struct{})}
+	return &hostConn{savedHost: h, pingMs: -1, retry: make(chan struct{}, 1), stop: make(chan struct{})}
 }
 
 // listed is what the host's last list says of session sid, while the host
@@ -473,6 +477,7 @@ func (a *App) runHost(h *hostConn, update func(func())) {
 			case <-ctx.Done():
 			}
 		}()
+		dialAt := time.Now()
 		c, hello, why, _ := connectHost(ctx, h.Address)
 		cancel()
 		if c != nil {
@@ -489,6 +494,7 @@ func (a *App) runHost(h *hostConn, update func(func())) {
 			logged.log(name, nil)
 			update(func() {
 				h.state, h.reason, h.hello, h.closed = hostConnected, nil, hello, nil
+				h.connectMs, h.pingMs, h.path, h.pathAt = int(time.Since(dialAt).Milliseconds()), -1, nil, time.Time{}
 				if h.learn(hello) && h.persist != nil {
 					h.persist()
 				}

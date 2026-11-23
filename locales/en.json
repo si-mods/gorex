@@ -1663,37 +1663,53 @@
       }
     }
   },
-  "hostsPathDirect": "direct {endpoint} · {ms} ms",
+  "hostsPathDirect": "direct {endpoint}",
   "@hostsPathDirect": {
-    "description": "Remote Hosts page: under a connected host, its link goes over a direct path to the endpoint; ms is the round trip in milliseconds.",
+    "description": "Remote Hosts page: under a connected host, its link goes over a direct path to the endpoint.",
     "placeholders": {
       "endpoint": {
         "type": "String",
         "example": "192.0.2.10:41641"
-      },
+      }
+    }
+  },
+  "hostsPathRelay": "via {relay}",
+  "@hostsPathRelay": {
+    "description": "Remote Hosts page: under a connected host, its link goes through the relay named.",
+    "placeholders": {
+      "relay": {
+        "type": "String",
+        "example": "derp.example.com"
+      }
+    }
+  },
+  "hostsDiagTagTailcat": "tailcat",
+  "@hostsDiagTagTailcat": {
+    "description": "Remote Hosts page: tag of a host linked over tailcat (the protocol's name, not translated)."
+  },
+  "hostsDiagTagTailnet": "tailnet",
+  "@hostsDiagTagTailnet": {
+    "description": "Remote Hosts page: tag of a host linked over the tailnet."
+  },
+  "hostsDiagConnect": "connect {ms} ms",
+  "@hostsDiagConnect": {
+    "description": "Remote Hosts page: how long the current connection to the host took to establish; ms in milliseconds.",
+    "placeholders": {
+      "ms": {
+        "type": "int",
+        "example": "214"
+      }
+    }
+  },
+  "hostsDiagPing": "ping {ms} ms",
+  "@hostsDiagPing": {
+    "description": "Remote Hosts page: the control round trip to the host measured last; ms in milliseconds.",
+    "placeholders": {
       "ms": {
         "type": "int",
         "example": "32"
       }
     }
-  },
-  "hostsPathRelay": "via {relay} · {ms} ms",
-  "@hostsPathRelay": {
-    "description": "Remote Hosts page: under a connected host, its link goes through the relay named; ms is the round trip in milliseconds.",
-    "placeholders": {
-      "relay": {
-        "type": "String",
-        "example": "derp.example.com"
-      },
-      "ms": {
-        "type": "int",
-        "example": "210"
-      }
-    }
-  },
-  "hostsPathTailnet": "via Tailscale",
-  "@hostsPathTailnet": {
-    "description": "Remote Hosts page: under a connected host found through Tailscale, its link goes over the tailnet, which needs no measure."
   },
   "cmdNewTabOn": "New Tab on {host}",
   "@cmdNewTabOn": {

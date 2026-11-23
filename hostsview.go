@@ -410,11 +410,6 @@ func (a *App) hostsSettings(c *ui.Context, k *colors) {
 func (a *App) hostRow(c *ui.Context, k *colors, h *hostConn) {
 	page := &hostsUI
 	label, detail, up := hostStatus(h)
-	if up {
-		// How the link runs goes under the state, once measured; asking
-		// starts here, off the UI thread, while the row shows.
-		detail = a.hostPath(h)
-	}
 	sessions := a.sessionsOn(h)
 	groupRow(c, k, h.ID).Gap(8).Children(func() {
 		ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
@@ -461,6 +456,11 @@ func (a *App) hostRow(c *ui.Context, k *colors, h *hostConn) {
 			ui.Text(c, locales.HostsNameTaken()).FontSize(fontSubhead).TextColor(k.danger).LineHeight(1.3)
 		}
 		rowHint(c, k, detail)
+		if up {
+			// How the link runs goes under the state, once measured;
+			// asking starts here, off the UI thread, while the row shows.
+			a.hostDiag(c, k, h)
+		}
 		if page.removing != h.ID {
 			return
 		}
@@ -479,30 +479,46 @@ func (a *App) hostRow(c *ui.Context, k *colors, h *hostConn) {
 	})
 }
 
-// hostPath says how the link to h runs, "" until the server measured
-// it; a host of the tailnet goes over it, which needs no measure. Call
-// it on the main thread.
-func (a *App) hostPath(h *hostConn) string {
-	if rex.IsTailnetTarget(h.Address) {
-		return locales.HostsPathTailnet()
-	}
+// hostDiag draws how the link to a connected host runs: the transport
+// as a tag, then the path it took and the link's numbers, each once
+// measured. Asking starts here, off the UI thread, while the row shows.
+// Call it on the main thread.
+func (a *App) hostDiag(c *ui.Context, k *colors, h *hostConn) {
 	a.refreshHostPath(h)
-	if h.path == nil {
-		return ""
+	tag := locales.HostsDiagTagTailcat()
+	var segs []string
+	if rex.IsTailnetTarget(h.Address) {
+		tag = locales.HostsDiagTagTailnet()
+	} else if h.path != nil {
+		if s := hostPathLine(h.path); s != "" {
+			segs = append(segs, s)
+		}
 	}
-	return hostPathLine(h.path)
+	if h.connectMs > 0 {
+		segs = append(segs, locales.HostsDiagConnect(h.connectMs))
+	}
+	if h.pingMs >= 0 {
+		segs = append(segs, locales.HostsDiagPing(h.pingMs))
+	}
+	ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+		ui.Box(c).Radius(capsule(9)).Background(k.panelSel).Padding(1, 6).Children(func() {
+			ui.Text(c, tag).FontSize(fontCaption).FontWeight(600).TextColor(k.accent)
+		})
+		if len(segs) > 0 {
+			ui.Text(c, strings.Join(segs, " · ")).FontSize(fontFootnote).TextColor(k.textFaint).SingleLine().Ellipsis("…")
+		}
+	})
 }
 
 // hostPathLine is the row's line of a measured link: the direct
-// endpoint, or the relay the link goes through, and the round trip. A
-// pong that names neither says nothing.
+// endpoint, or the relay the link goes through. A pong that names
+// neither says nothing.
 func hostPathLine(st *rex.TailcatStatus) string {
-	ms := int(st.LatencySeconds*1000 + 0.5)
 	switch {
 	case st.Direct:
-		return locales.HostsPathDirect(st.Endpoint, ms)
+		return locales.HostsPathDirect(st.Endpoint)
 	case st.Relay != "":
-		return locales.HostsPathRelay(st.Relay, ms)
+		return locales.HostsPathRelay(st.Relay)
 	}
 	return ""
 }
@@ -511,15 +527,24 @@ func hostPathLine(st *rex.TailcatStatus) string {
 // or none, is asked again while the row shows.
 var hostPathFresh = 30 * time.Second
 
+// hostDiagTimeout bounds a measure's asks, as tailcatStatus's own does.
+const hostDiagTimeout = 8 * time.Second
+
 // tailcatStatus asks the local server how the link to a host's address
 // runs; tests replace it.
 var tailcatStatus = func(srv *rex.Client, addr string) (rex.TailcatStatus, error) {
 	return srv.TailcatStatus(addr)
 }
 
-// refreshHostPath asks the server how the link to h runs, not while the
-// last measure is fresh nor while an ask is under way; the answer lands
-// on the main thread. Call it on the main thread.
+// hostPing measures the control round trip to the host; tests replace it.
+var hostPing = func(c *rex.Client, timeout time.Duration) (time.Duration, error) {
+	return c.Ping(timeout)
+}
+
+// refreshHostPath asks the server how the link to h runs and pings its
+// control connection, not while the last measure is fresh nor while an
+// ask is under way; the answers land on the main thread. Call it on the
+// main thread.
 func (a *App) refreshHostPath(h *hostConn) {
 	srv := a.client
 	if srv == nil || h.pathAsking || time.Since(h.pathAt) < hostPathFresh {
@@ -527,15 +552,34 @@ func (a *App) refreshHostPath(h *hostConn) {
 	}
 	h.pathAsking = true
 	addr := h.Address
+	cl := h.current()
+	tailnet := rex.IsTailnetTarget(addr)
 	update := a.settingsUpdate()
 	go func() {
-		st, err := tailcatStatus(srv, addr)
+		var st *rex.TailcatStatus
+		if !tailnet {
+			if s, err := tailcatStatus(srv, addr); err == nil {
+				st = &s
+			}
+		}
+		ping := -1
+		if cl != nil {
+			if d, err := hostPing(cl, hostDiagTimeout); err == nil {
+				ping = int(d.Milliseconds())
+			}
+		}
 		update(func() {
 			h.pathAsking = false
 			// Asked, answered or not: another comes once this is stale.
 			h.pathAt = time.Now()
-			if err == nil {
-				h.path = &st
+			if h.current() != cl {
+				return // the answer is of a connection gone since
+			}
+			if st != nil {
+				h.path = st
+			}
+			if ping >= 0 {
+				h.pingMs = ping
 			}
 		})
 	}()
