@@ -738,9 +738,6 @@ func (a *App) removeHost(h *hostConn) {
 	if !slices.Contains(a.hosts, h) {
 		return
 	}
-	if hostsUI.layoutHost == h {
-		closeHostLayout()
-	}
 	if hostsUI.renaming == h.ID {
 		closeHostRename()
 	}

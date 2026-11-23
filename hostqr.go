@@ -303,7 +303,7 @@ func hostPairQRSheet(c *ui.Context, k *colors, page *hostPairQR) {
 			ui.Text(c, locales.HostsRexQRCopyFailed()).FontSize(fontSubhead).TextColor(k.danger).LineHeight(1.3)
 		}
 		ui.Row(c).Gap(8).Justify(ui.End).Margin(8, 0, 0, 0).Children(func() {
-			if ui.Button(c.Key("close"), locales.HostsLayoutClose()).Clicked() {
+			if ui.Button(c.Key("close"), locales.HostsRexQRClose()).Clicked() {
 				page.open = false
 			}
 			// The web tab's code holds the token too: a copy of the other

@@ -6,13 +6,11 @@ import (
 	"net/netip"
 	"os"
 	"slices"
-	"strconv"
 	"strings"
 	"time"
 
 	"github.com/egoist/mygo/ui"
 
-	"gorex/internal/layout"
 	"gorex/internal/rex"
 	"gorex/locales"
 )
@@ -39,12 +37,6 @@ var hostsUI struct {
 	alias                 string             // the alias as it is typed
 	aliasFocus            bool               // the alias field had the focus
 	aliasTaken            string             // the alias refused, another host's
-	layoutOpen            bool
-	layoutHost            *hostConn
-	layout                savedStore
-	layoutErr             string
-	layoutLoading         bool
-	layoutAt              time.Time
 }
 
 type addStage int
@@ -400,9 +392,6 @@ func (a *App) hostsSettings(c *ui.Context, k *colors) {
 	if page.adding {
 		a.addHostSheet(c, k)
 	}
-	if page.layoutOpen {
-		a.hostLayoutSheet(c, k)
-	}
 }
 
 // hostRow is a saved host: its icon, a menu that chooses it, its state,
@@ -431,9 +420,6 @@ func (a *App) hostRow(c *ui.Context, k *colors, h *hostConn) {
 				})
 			})
 			ui.Text(c, locales.HostsSessions(sessions)).FontSize(fontFootnote).TextColor(k.textFaint).Shrink(0)
-			if up && ui.Button(c.Key("layout"), locales.HostsLayout()).Clicked() {
-				a.openHostLayout(h)
-			}
 			tailnet := rex.IsTailnetTarget(h.Address)
 			if tailnet && up && ui.Button(c.Key("rex-qr"), locales.HostsRexQR()).Clicked() {
 				openHostPairQR(h)
@@ -641,285 +627,6 @@ func (a *App) setHostAlias(h *hostConn, alias string) bool {
 		a.st.redraw()
 	}
 	return true
-}
-
-// openHostLayout shows h's layout read-only.
-func (a *App) openHostLayout(h *hostConn) {
-	page := &hostsUI
-	page.layoutOpen, page.layoutHost = true, h
-	page.layout, page.layoutErr, page.layoutLoading, page.layoutAt = savedStore{}, "", false, time.Time{}
-	a.refreshHostLayout()
-}
-
-// refreshHostLayout reads the host's layout, at most once a second.
-func (a *App) refreshHostLayout() {
-	page := &hostsUI
-	h := page.layoutHost
-	if h == nil || page.layoutLoading || time.Since(page.layoutAt) < time.Second {
-		return
-	}
-	if h.update == nil {
-		return
-	}
-	c := h.current()
-	if c == nil {
-		label, _, _ := hostStatus(h)
-		page.layoutErr = label
-		return
-	}
-	page.layoutLoading = true
-	go func() {
-		raw, err := c.Layout()
-		h.update(func() {
-			page := &hostsUI
-			if page.layoutHost != h {
-				return
-			}
-			page.layoutLoading, page.layoutAt = false, time.Now()
-			if err != nil {
-				page.layoutErr = err.Error()
-				return
-			}
-			page.layoutErr = ""
-			page.layout = layout.Parse(raw)
-		})
-	}()
-}
-
-// hostLayoutSheet lists the host's workspaces, tabs and panes, read-only.
-func (a *App) hostLayoutSheet(c *ui.Context, k *colors) {
-	page := &hostsUI
-	was := page.layoutOpen
-	ui.DialogBase(c, &page.layoutOpen, func(backdrop, panel ui.Element) {
-		dialogEnter(c, backdrop, panel)
-		backdrop.Background(k.backdrop)
-		dialogShadow(glassPanel(panel.Width(620).MaxHeight(560).Padding(20).Gap(12).Radius(radiusXXL), k).Border(1, k.panelBorder)).Role(ui.RoleDialog).Label(locales.HostsLayoutTitle())
-		ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
-			ui.Text(c, locales.HostsLayoutTitle()).FontSize(fontTitle).FontWeight(700).TextColor(k.text)
-			if page.layoutHost != nil {
-				ui.Text(c, page.layoutHost.label()).FontSize(fontCallout).TextColor(k.textMuted)
-			}
-			ui.Spacer(c)
-			if page.layoutHost != nil && ui.Button(c, locales.HostsLayoutNewTab()).Clicked() {
-				a.hostLayoutCommand(page.layoutHost, rex.LayoutCommand{Op: "tab.create"}, "")
-			}
-			if ui.Button(c, locales.HostsLayoutClose()).Clicked() {
-				page.layoutOpen = false
-			}
-		})
-		if page.layoutErr != "" {
-			ui.Text(c, page.layoutErr).FontSize(fontCallout).TextColor(k.danger).LineHeight(1.3)
-		}
-		if page.layoutLoading {
-			ui.Text(c, locales.HostsLayoutLoading()).FontSize(fontCallout).TextColor(k.textMuted)
-		}
-		ui.Scroll(c).Grow(1).MinHeight(0).Children(func() {
-			ui.Column(c).Gap(10).Children(func() {
-				if len(page.layout.Sessions) == 0 && !page.layoutLoading && page.layoutErr == "" {
-					ui.Text(c, locales.HostsLayoutEmpty()).FontSize(fontCallout).TextColor(k.textMuted)
-				}
-				for _, w := range page.layout.Sessions {
-					ui.Column(c).Gap(4).Children(func() {
-						ui.Text(c, w.Name).FontSize(fontBody).FontWeight(600).TextColor(k.text)
-						for ti, t := range w.Tabs {
-							ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-								ui.Text(c, "  "+layoutTabName(t, ti)).FontSize(fontCallout).TextColor(k.textMuted).Grow(1).MinWidth(0)
-								if sid := tabSID(t.Root); sid != "" && ui.Button(c.Key("close-tab-"+sid), locales.HostsLayoutCloseTab()).Clicked() {
-									a.hostLayoutCommand(page.layoutHost, rex.LayoutCommand{Op: "tab.close", SID: sid}, "")
-								}
-							})
-							lineRow := func(line layoutLine) {
-								ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-									ui.Text(c, line.text).Font(monoFamily()).FontSize(fontFootnote).TextColor(k.textMuted).SingleLine().Ellipsis("…").Grow(1).MinWidth(0)
-									if line.sid != "" {
-										if ui.Button(c.Key("open-"+line.sid), locales.HostsLayoutOpen()).Clicked() {
-											a.openHostPane(page.layoutHost, line.sid)
-										}
-										if ui.Button(c.Key("focus-"+line.sid), locales.HostsLayoutFocus()).Clicked() {
-											a.focusHostPane(page.layoutHost, line.sid)
-										}
-										for _, dir := range []struct{ name, label string }{
-											{"left", "←"}, {"right", "→"}, {"up", "↑"}, {"down", "↓"},
-										} {
-											label := map[string]string{
-												"left": locales.HostsLayoutLeft(), "right": locales.HostsLayoutRight(),
-												"up": locales.HostsLayoutUp(), "down": locales.HostsLayoutDown(),
-											}[dir.name]
-											if ui.Button(c.Key("resize-"+line.sid+"-"+dir.name), dir.label).Tooltip(label).Clicked() {
-												a.hostLayoutCommand(page.layoutHost, rex.LayoutCommand{
-													Op: "pane.resize", SID: line.sid, Direction: dir.name, Amount: 0.05,
-												}, "")
-											}
-										}
-									}
-								})
-							}
-							for _, line := range layoutLines(t.Root, 2) {
-								lineRow(line)
-							}
-							// A float's session lists under the tree's, with
-							// the same buttons.
-							for _, f := range t.Floats {
-								if f.Pane == nil {
-									continue
-								}
-								for _, line := range layoutLines(f.Pane, 2) {
-									lineRow(line)
-								}
-							}
-						}
-					})
-				}
-			})
-		})
-		// The sheet reads the layout again each second while it shows.
-		a.refreshHostLayout()
-		c.After(time.Second)
-	})
-	if was && !page.layoutOpen {
-		closeHostLayout()
-	}
-}
-
-// closeHostLayout forgets the sheet's host and state.
-func closeHostLayout() {
-	page := &hostsUI
-	page.layoutOpen, page.layoutHost = false, nil
-	page.layout, page.layoutErr, page.layoutLoading, page.layoutAt = savedStore{}, "", false, time.Time{}
-}
-
-func tabSID(n *savedNode) string {
-	for _, l := range layout.Leaves(n) {
-		if l.SID != "" {
-			return l.SID
-		}
-	}
-	return ""
-}
-
-// hostLayoutCommand asks the host app to change its layout, then reloads
-// the sheet's copy.
-func (a *App) hostLayoutCommand(h *hostConn, cmd rex.LayoutCommand, errText string) {
-	c := h.current()
-	if c == nil || h.update == nil {
-		hostsUI.layoutErr = errText
-		return
-	}
-	go func() {
-		res, err := c.Command(cmd)
-		h.update(func() {
-			page := &hostsUI
-			if err != nil {
-				page.layoutErr = err.Error()
-			} else if res.Code != "" {
-				page.layoutErr = res.Error
-			} else {
-				page.layoutErr = ""
-			}
-			page.layoutAt = time.Time{}
-			a.refreshHostLayout()
-		})
-	}()
-}
-
-func layoutTabName(t savedTab, at int) string {
-	if t.Name != "" {
-		return t.Name
-	}
-	return "Tab " + strconv.Itoa(at+1)
-}
-
-type layoutLine struct {
-	text string
-	sid  string
-}
-
-func layoutLines(n *savedNode, depth int) []layoutLine {
-	if n == nil {
-		return nil
-	}
-	prefix := strings.Repeat("  ", depth)
-	if n.SID != "" || n.A == nil && n.B == nil || n.Unavailable {
-		name := n.Name
-		if name == "" {
-			name = n.SID
-		}
-		dir := n.Dir
-		if dir != "" {
-			name += " — " + dir
-		}
-		return []layoutLine{{text: prefix + name, sid: n.SID}}
-	}
-	return append(layoutLines(n.A, depth), layoutLines(n.B, depth)...)
-}
-
-// openHostPane shows a host session in a tab of this window, or focuses
-// the pane that already shows it.
-func (a *App) openHostPane(h *hostConn, sid string) {
-	if h == nil {
-		return
-	}
-	for ti, t := range a.tabs {
-		for _, p := range t.allPanes() {
-			if p.host == h && p.SID == sid {
-				a.selectTab(ti)
-				a.revealPane(p)
-				t.setFocus(p)
-				a.focusReq = p
-				return
-			}
-		}
-	}
-	c := h.current()
-	if c == nil || h.update == nil {
-		return
-	}
-	go func() {
-		infos, err := c.List()
-		if err != nil {
-			h.update(func() { hostsUI.layoutErr = err.Error() })
-			return
-		}
-		var in rex.SessionInfo
-		found := false
-		for _, o := range infos {
-			if o.ID == sid && !o.Exited {
-				in, found = o, true
-				break
-			}
-		}
-		h.update(func() {
-			if !found {
-				hostsUI.layoutErr = locales.HostsLayoutNoSession()
-				return
-			}
-			a.tabs = append(a.tabs, a.sessionTab(h, in))
-			a.active = len(a.tabs) - 1
-			a.focusReq = a.tab().Focus
-			a.changed()
-		})
-	}()
-}
-
-// focusHostPane asks the host app to focus a pane it shared.
-func (a *App) focusHostPane(h *hostConn, sid string) {
-	if h == nil {
-		return
-	}
-	c := h.current()
-	if c == nil || h.update == nil {
-		return
-	}
-	go func() {
-		_, err := c.Command(rex.LayoutCommand{Op: "pane.focus", SID: sid})
-		h.update(func() {
-			if err != nil {
-				hostsUI.layoutErr = err.Error()
-			} else {
-				hostsUI.layoutErr = ""
-			}
-		})
-	}()
 }
 
 // hostDot is the color of a host's state.

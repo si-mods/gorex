@@ -1432,17 +1432,6 @@ func TestHostAlias(t *testing.T) {
 	}
 }
 
-func TestLayoutLines(t *testing.T) {
-	n := &savedNode{A: &savedNode{Name: "left", SID: "a", Dir: "/tmp"}, B: &savedNode{Name: "right", SID: "b"}}
-	lines := layoutLines(n, 1)
-	if len(lines) != 2 || lines[0].text != "  left — /tmp" || lines[0].sid != "a" || lines[1].text != "  right" || lines[1].sid != "b" {
-		t.Fatalf("lines %+v", lines)
-	}
-	if got := layoutTabName(savedTab{}, 2); got != "Tab 3" {
-		t.Fatalf("tab %q", got)
-	}
-}
-
 // TestTakeKillsOnce takes the layout's kills with no server to tell: the
 // app keeps them to end once its hosts are read (3), all of a host's in
 // one save of hosts.json (4); it tells the server of one of a host it does
