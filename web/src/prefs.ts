@@ -56,7 +56,34 @@ export interface Prefs {
   language: string;
   /** User-edited keyboard shortcut overrides by command id (keys.ts). */
   shortcuts?: Record<string, string>;
+  /**
+   * The Glass setting: the surfaces over the terminals as liquid glass
+   * (docs/WEB-005-liquid-glass.md). Unset is off, unlike the desktop's
+   * (noGlass, on until set): the user chose it for the web client.
+   */
+  glass?: boolean;
+  /** The glass's tint in the light and the dark scheme, 0 to 1.5; unset is 1. */
+  glassLight?: number;
+  glassDark?: number;
 }
+
+/** The glass settings kept in j, as load keeps them: glass only when true, a tint only in 0 to 1.5. */
+export function glassPrefs(j: Record<string, unknown>): Pick<Prefs, "glass" | "glassLight" | "glassDark"> {
+  const p: Pick<Prefs, "glass" | "glassLight" | "glassDark"> = {};
+  if (j.glass === true) p.glass = true;
+  for (const k of ["glassLight", "glassDark"] as const) {
+    const v = j[k];
+    if (typeof v === "number" && v >= 0 && v <= maxGlassTint) p[k] = v;
+  }
+  return p;
+}
+
+/** Whether the glass is on. */
+export const glassOn = () => prefs.glass === true;
+
+/** The Glass tint settings' range and step. */
+export const maxGlassTint = 1.5;
+export const glassTintStep = 0.1;
 
 /**
  * The terminals' text size until set, in whole CSS pixels. The desktop's
@@ -122,6 +149,7 @@ function load(): Prefs {
       p.tailscaleOn = j.tailscaleOn === true;
       p.tailscaleSignedIn = j.tailscaleSignedIn === true;
       if (typeof j.language === "string") p.language = j.language;
+      Object.assign(p, glassPrefs(j));
       if (j.shortcuts && typeof j.shortcuts === "object" && !Array.isArray(j.shortcuts)) {
         const out: Record<string, string> = {};
         for (const [k, v] of Object.entries(j.shortcuts)) {

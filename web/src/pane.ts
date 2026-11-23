@@ -1,6 +1,7 @@
 // One pane of a window: a block's terminal, its stream fed to
 // libghostty-vt, drawn on its own canvas, the keys typed written back.
 import { FindBar } from "./find";
+import { glassRedrawn } from "./glass";
 import { Ghostty } from "./ghostty";
 import { shortcut } from "./keys";
 import { loader } from "./loader";
@@ -520,6 +521,8 @@ export class TerminalView {
       });
       this.full = false;
       this.pointer.drawn();
+      // The glass over the terminal reads it again, later and at most once a second (glass.ts).
+      glassRedrawn();
       this.placeInput();
       // The next phase of the blink.
       clearTimeout(this.blinkTimer);

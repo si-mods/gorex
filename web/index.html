@@ -44,6 +44,98 @@
     --sep: rgba(255, 255, 255, 0.10);
     /* The desktop terminals' family (style.go, defaultFontFamily). */
     --mono: "JetBrains Mono", "SF Mono", Menlo, monospace;
+    /* The page's own family, the body's. */
+    --ui: system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  /* The liquid glass of what floats over the terminals (docs/WEB-005-liquid-glass.md; glass.ts, glassmath.ts's
+     materials mirror these numbers). One set of tokens per state: the dark scheme's glass here, the light scheme's
+     light glass with dark ink and its dark glass with light ink below. Registered, so that a change of state glides. */
+  @property --glass-tint { syntax: "<color>"; inherits: true; initial-value: transparent; }
+  @property --glass-thin { syntax: "<number>"; inherits: true; initial-value: 0; }
+  @property --glass-dense { syntax: "<number>"; inherits: true; initial-value: 0; }
+  @property --glass-bright { syntax: "<number>"; inherits: true; initial-value: 1; }
+  @property --glass-sat { syntax: "<number>"; inherits: true; initial-value: 1; }
+  @property --glass-light { syntax: "<number>"; inherits: true; initial-value: 0; }
+  @property --glass-ink { syntax: "<color>"; inherits: true; initial-value: black; }
+  @property --glass-ink-2 { syntax: "<color>"; inherits: true; initial-value: black; }
+  @property --glass-icon { syntax: "<color>"; inherits: true; initial-value: black; }
+  @property --glass-icon-alpha { syntax: "<number>"; inherits: true; initial-value: 1; }
+  @property --glass-icon-alpha-2 { syntax: "<number>"; inherits: true; initial-value: 1; }
+  @property --glass-row { syntax: "<color>"; inherits: true; initial-value: transparent; }
+  @property --glass-row-on { syntax: "<color>"; inherits: true; initial-value: transparent; }
+  @property --glass-row-stroke { syntax: "<color>"; inherits: true; initial-value: transparent; }
+  @property --glass-hairline { syntax: "<color>"; inherits: true; initial-value: transparent; }
+  /* What glass.ts measures under each surface: how dense its tint is (0 thin, 1 dense) and how much saturation it keeps. */
+  @property --glass-density { syntax: "<number>"; inherits: true; initial-value: 1; }
+  @property --glass-sat-kept { syntax: "<number>"; inherits: true; initial-value: 1; }
+  /* Settings › Appearance's Glass tint, per scheme (0 to 1.5), and a hovered surface's lift. */
+  @property --glass-scale { syntax: "<number>"; inherits: true; initial-value: 1; }
+  @property --glass-hover { syntax: "<number>"; inherits: true; initial-value: 1; }
+  :root {
+    --glass-scale-light: 1;
+    --glass-scale-dark: 1;
+    --glass-scale: var(--glass-scale-dark);
+    --glass-tint: rgb(20 20 24);
+    --glass-thin: 0.16;
+    --glass-dense: 0.9;
+    --glass-bright: 0.8;
+    --glass-sat: 1.6;
+    --glass-light: 0.33;
+    --glass-ink: rgb(255 255 255 / 0.94);
+    --glass-ink-2: rgb(235 235 245 / 0.64);
+    --glass-icon: rgb(255 255 255);
+    --glass-icon-alpha: 0.94;
+    --glass-icon-alpha-2: 0.64;
+    --glass-blend: plus-lighter;
+    --glass-row: rgb(255 255 255 / 0.12);
+    --glass-row-on: rgb(255 255 255 / 0.2);
+    --glass-row-stroke: rgb(255 255 255 / 0.1);
+    --glass-hairline: rgb(255 255 255 / 0.14);
+    --glass-edge: inset 1.5px 1.5px 1px -1px rgb(255 255 255 / 0.32), inset -1.5px -1.5px 1px -1px rgb(255 255 255 / 0.18),
+      inset 0 0 0 0.5px rgb(255 255 255 / 0.1), 0 0 0 0.5px rgb(0 0 0 / 0.5), 0 8px 28px rgb(0 0 0 / 0.32);
+  }
+  /* The light scheme: light glass, dark ink. */
+  :root[data-scheme="light"] {
+    --glass-scale: var(--glass-scale-light);
+    --glass-tint: rgb(255 255 255);
+    --glass-thin: 0.06;
+    --glass-dense: 0.22;
+    --glass-bright: 1.06;
+    --glass-sat: 1.8;
+    --glass-light: 1;
+    --glass-ink: rgb(0 0 0 / 0.86);
+    --glass-ink-2: rgb(60 60 67 / 0.7);
+    --glass-icon: rgb(0 0 0);
+    --glass-icon-alpha: 0.86;
+    --glass-icon-alpha-2: 0.7;
+    --glass-blend: multiply;
+    --glass-row: rgb(255 255 255 / 0.42);
+    --glass-row-on: rgb(255 255 255 / 0.76);
+    --glass-row-stroke: rgb(255 255 255 / 0.9);
+    --glass-hairline: rgb(0 0 0 / 0.1);
+    --glass-edge: inset 1.5px 1.5px 1px -1px rgb(255 255 255 / 0.95), inset -1.5px -1.5px 1px -1px rgb(255 255 255 / 0.55),
+      inset 0 0 0 0.5px rgb(255 255 255 / 0.3), 0 0 0 0.5px rgb(0 0 0 / 0.06), 0 6px 24px rgb(0 0 0 / 0.08);
+  }
+  /* The light scheme over a dark part of a terminal (glass.ts sets data-glass-ink): dark glass, light ink. */
+  :root[data-scheme="light"] [data-glass-ink="light"] {
+    --glass-tint: rgb(16 18 22);
+    --glass-thin: 0.1;
+    --glass-dense: 0.62;
+    --glass-bright: 0.85;
+    --glass-sat: 1.7;
+    --glass-light: 0.33;
+    --glass-ink: rgb(255 255 255 / 0.94);
+    --glass-ink-2: rgb(235 235 245 / 0.64);
+    --glass-icon: rgb(255 255 255);
+    --glass-icon-alpha: 0.94;
+    --glass-icon-alpha-2: 0.64;
+    --glass-blend: plus-lighter;
+    --glass-row: rgb(255 255 255 / 0.14);
+    --glass-row-on: rgb(255 255 255 / 0.24);
+    --glass-row-stroke: rgb(255 255 255 / 0.12);
+    --glass-hairline: rgb(255 255 255 / 0.16);
+    --glass-edge: inset 0 1px 0 0 rgb(255 255 255 / 0.22), inset 0 0 0 0 transparent,
+      inset 0 0 0 0 transparent, 0 0 0 0.5px rgb(0 0 0 / 0.4), 0 6px 24px rgb(0 0 0 / 0.16);
   }
   * { box-sizing: border-box; }
   html, body { height: 100%; margin: 0; }
@@ -54,7 +146,7 @@
     grid-template-rows: minmax(0, 1fr) auto;
     background: var(--page);
     color: var(--text);
-    font: 13px system-ui, -apple-system, "Segoe UI", sans-serif;
+    font: 13px var(--ui);
   }
   :root { --edge: rgba(255, 255, 255, 0.05); --edge-focus: rgba(255, 255, 255, 0.14); --panel: rgba(44, 44, 48, 0.78); --panel-edge: rgba(255, 255, 255, 0.12); --shadow: rgba(0, 0, 0, 0.25); --shadow-focus: rgba(0, 0, 0, 0.4); }
   /* The light scheme, for a light terminal background or the Window setting (main.ts sets data-scheme). */
@@ -1017,12 +1109,12 @@
     padding: 4px 6px; border-radius: 8px;
     background: var(--panel); border: 1px solid var(--panel-edge);
     box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
-    font: 12px/1.3 var(--ui); color: var(--fg);
+    font: 12px/1.3 var(--ui); color: var(--text);
   }
   .find-bar[hidden] { display: none; }
   .find-input {
     width: 170px; padding: 3px 6px; border: 1px solid var(--panel-edge);
-    border-radius: 5px; background: var(--bg); color: var(--fg);
+    border-radius: 5px; background: var(--hover); color: var(--text);
     font: inherit; outline: none;
   }
   .find-input:focus { border-color: var(--accent, #58a6ff); }
@@ -1030,7 +1122,7 @@
   .find-btn {
     display: inline-flex; align-items: center; justify-content: center;
     width: 24px; height: 24px; border: 0; border-radius: 5px;
-    background: transparent; color: var(--fg); cursor: pointer;
+    background: transparent; color: var(--text); cursor: pointer;
   }
   .find-btn:hover:not(:disabled) { background: var(--panel-edge); }
   .find-btn:disabled { opacity: 0.4; cursor: default; }
@@ -1049,18 +1141,18 @@
     display: flex; flex-direction: column;
     background: var(--panel); border: 1px solid var(--panel-edge);
     border-radius: 12px; box-shadow: 0 18px 48px rgba(0, 0, 0, 0.48);
-    overflow: hidden; font-family: var(--ui); color: var(--fg);
+    overflow: hidden; font-family: var(--ui); color: var(--text);
   }
   .palette-input {
     width: 100%; box-sizing: border-box; padding: 12px 14px;
     border: 0; border-bottom: 1px solid var(--panel-edge);
-    background: transparent; color: var(--fg); font: 14px/1.4 var(--ui); outline: none;
+    background: transparent; color: var(--text); font: 14px/1.4 var(--ui); outline: none;
   }
   .palette-list { overflow-y: auto; padding: 6px; display: flex; flex-direction: column; gap: 2px; }
   .palette-row {
     display: flex; align-items: center; justify-content: space-between; gap: 12px;
     width: 100%; padding: 8px 10px; border: 0; border-radius: 7px;
-    background: transparent; color: var(--fg); font: 13px/1.35 var(--ui);
+    background: transparent; color: var(--text); font: 13px/1.35 var(--ui);
     text-align: left; cursor: pointer;
   }
   .palette-row.selected, .palette-row:hover { background: var(--panel-edge); }
@@ -1074,7 +1166,7 @@
   .settings-key-controls { display: inline-flex; align-items: center; gap: 6px; }
   .settings-key-btn {
     padding: 3px 9px; border-radius: 6px; border: 1px solid var(--panel-edge);
-    background: var(--bg); color: var(--fg); font: 12px/1.4 var(--mono, monospace); cursor: pointer;
+    background: var(--hover); color: var(--text); font: 12px/1.4 var(--mono, monospace); cursor: pointer;
   }
   .settings-key-btn:hover { border-color: var(--muted); }
   .settings-key-btn.recording { border-color: var(--accent, #58a6ff); color: var(--accent, #58a6ff); }
@@ -1096,11 +1188,72 @@
   .float-dock-btn {
     padding: 4px 10px; border-radius: 99px;
     border: 1px solid var(--panel-edge);
-    background: var(--panel); color: var(--fg);
+    background: var(--panel); color: var(--text);
     font: 11px/1.3 var(--ui); cursor: pointer;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
   }
   .float-dock-btn:hover { filter: brightness(1.1); }
+
+  /* The liquid glass (docs/WEB-005-liquid-glass.md) of the surfaces that float over the terminals, while the Glass
+     setting is on (glass.ts sets data-glass="on" on <html>; off, the rules above stand, as before the glass). Each
+     changes only its tint (background), its material (backdrop-filter, then the rim lens glass.ts makes,
+     --glass-lens), its edge (box-shadow) and its ink (color); its border keeps its width, clear. Inside, --text,
+     --muted, --hover and --panel-edge take the glass's ink, row highlight and hairline, so the rows and controls
+     follow it. */
+  :root[data-glass="on"] :is(.update, .chunk-load, .pane-upload, .find-bar, .select-menu, .context-menu, .float-dock-btn) {
+    --text: var(--glass-ink);
+    --muted: var(--glass-ink-2);
+    --hover: var(--glass-row);
+    --panel-edge: var(--glass-hairline);
+    isolation: isolate;
+    border-color: transparent;
+    color: var(--glass-ink);
+    background: color-mix(in srgb, var(--glass-tint) calc(100% * min(1, (var(--glass-thin) + (var(--glass-dense) - var(--glass-thin)) * var(--glass-density)) * var(--glass-scale) * var(--glass-hover))), transparent);
+    -webkit-backdrop-filter: blur(2px) saturate(calc(1 + (var(--glass-sat) * var(--glass-sat-kept) - 1) * min(1, var(--glass-scale)))) brightness(calc(1 + (var(--glass-bright) - 1) * min(1, var(--glass-scale))));
+    backdrop-filter: blur(2px) saturate(calc(1 + (var(--glass-sat) * var(--glass-sat-kept) - 1) * min(1, var(--glass-scale)))) brightness(calc(1 + (var(--glass-bright) - 1) * min(1, var(--glass-scale)))) var(--glass-lens,);
+    box-shadow: var(--glass-edge);
+    transition: --glass-tint 0.35s, --glass-thin 0.35s, --glass-dense 0.35s, --glass-bright 0.35s, --glass-sat 0.35s, --glass-light 0.35s,
+      --glass-ink 0.35s, --glass-ink-2 0.35s, --glass-icon 0.35s, --glass-density 0.35s, --glass-sat-kept 0.35s, --glass-scale 0.35s,
+      --glass-hover 0.15s, --glass-hairline 0.35s, box-shadow 0.35s;
+  }
+  :root[data-glass="on"] :is(.chunk-load, .float-dock-btn) { position: relative; }
+  /* A hovered dock button: its tint about 14% denser, in place of the brightness filter. */
+  :root[data-glass="on"] .float-dock-btn:hover { filter: none; --glass-hover: 1.14; }
+  /* The inner light: a highlight from the top left, white to clear by 55%, and soft glows at the rim, brighter at
+     the top and the left, a little shade at the bottom. Under the content, over the tint; a third as strong on dark
+     glass, and thinner with the tint scale under 1. */
+  :root[data-glass="on"] :is(.update, .chunk-load, .pane-upload, .find-bar, .select-menu, .context-menu, .float-dock-btn)::before {
+    content: ""; position: absolute; inset: -1px; z-index: -1; border-radius: inherit; pointer-events: none;
+    opacity: calc(var(--glass-light) * min(1, var(--glass-scale)));
+    background: radial-gradient(130% 170% at 0% 0%, rgb(255 255 255 / 0.3), transparent 55%);
+    box-shadow: inset 0 1px 2px rgb(255 255 255 / 0.5), inset 1px 0 2px rgb(255 255 255 / 0.3), inset 0 0 8px rgb(255 255 255 / 0.16),
+      inset 0 -2px 3px rgb(0 0 0 / 0.06);
+  }
+  /* The ink's text: multiplied on light glass, added on dark (--glass-blend). Icons are opaque, faded by opacity. */
+  :root[data-glass="on"] :is(.update-text, .load-title, .load-count, .load-error, .pane-upload-name, .pane-upload-count, .find-count,
+    .context-item > span:not(.context-mark), .context-text, .select-menu-item > span) { mix-blend-mode: var(--glass-blend); }
+  :root[data-glass="on"] :is(.update, .chunk-load, .pane-upload, .find-bar, .select-menu, .context-menu) .pane-icon { color: var(--glass-icon); opacity: var(--glass-icon-alpha); }
+  :root[data-glass="on"] :is(.context-item .pane-icon, .context-item:disabled .pane-icon) { opacity: var(--glass-icon-alpha-2); }
+  /* A highlighted row: white over light glass, with a white stroke; never a grey wash. */
+  :root[data-glass="on"] .find-btn:hover:not(:disabled) { background: var(--hover); }
+  :root[data-glass="on"] :is(.context-item:hover:not(:disabled), .context-item:focus-visible, .select-menu-item:hover:not(:disabled), .find-btn:hover:not(:disabled)) {
+    box-shadow: inset 0 0 0 0.5px var(--glass-row-stroke);
+  }
+  /* A progress bar's track is a hairline's tone, not the row highlight's white. */
+  :root[data-glass="on"] .chunk-load .load-bar { background: var(--glass-hairline); }
+  :root[data-glass="on"] .context-item[aria-haspopup]:focus { background: var(--glass-row-on); box-shadow: inset 0 0 0 0.5px var(--glass-row-stroke); }
+  /* Less transparency, or the system's colours: a solid surface in the same tint, no backdrop, no inner light. */
+  @media (prefers-reduced-transparency: reduce), (forced-colors: active) {
+    :root[data-glass="on"] :is(.update, .chunk-load, .pane-upload, .find-bar, .select-menu, .context-menu, .float-dock-btn) {
+      background: var(--glass-tint); -webkit-backdrop-filter: none; backdrop-filter: none;
+    }
+    :root[data-glass="on"] :is(.update, .chunk-load, .pane-upload, .find-bar, .select-menu, .context-menu, .float-dock-btn)::before { display: none; }
+    :root[data-glass="on"] :is(.update-text, .load-title, .load-count, .load-error, .pane-upload-name, .pane-upload-count, .find-count,
+    .context-item > span:not(.context-mark), .context-text, .select-menu-item > span) { mix-blend-mode: normal; }
+  }
+  @media (forced-colors: active) {
+    :root[data-glass="on"] :is(.update, .chunk-load, .pane-upload, .find-bar, .select-menu, .context-menu, .float-dock-btn) { border-color: CanvasText; }
+  }
 </style>
 </head>
 <body>

@@ -17,7 +17,7 @@ import { Asset, loader } from "./loader";
 import { closeMenu, openMenu } from "./manage";
 import { describe, TerminalView } from "./pane";
 import { ensureLatin, initMaple, mapleFamily, onChunk } from "./maple";
-import { fontFamily, paneHeaders, prefs } from "./prefs";
+import { fontFamily, glassOn, paneHeaders, prefs } from "./prefs";
 import { LoadState, ProgressView } from "./progress";
 import { closeTailnet, isTailnetID, loadHostsOff, openTailnet, Place, saveHostsOff, savePlace, startPlace, tailnetOpened } from "./place";
 import { programOf } from "./programs";
@@ -31,6 +31,7 @@ import { Tailnet, TailnetHost } from "./tailnet";
 import { webTransport } from "./webtransport";
 import { desktopTheme, Theme } from "./terminal";
 import { isLight, startTheme, ThemeEntry, themeColours } from "./themes";
+import { applyGlass } from "./glass";
 import type { Welcome } from "./welcome";
 import { borderLeaf, WindowHost, WindowView } from "./window";
 import { createWindowOps, windowIDs, windowOf } from "./windowops";
@@ -157,7 +158,7 @@ function linkOf(h: Host | undefined): HostLink {
 }
 
 /** Applies a changed setting to the page and to every open pane, as the desktop's applyPrefs. */
-function applyPrefs(what: "appearance" | "tabs" | "headers" | "animation" | "font" | "cursor" | "contrast", reset = false) {
+function applyPrefs(what: "appearance" | "tabs" | "headers" | "animation" | "font" | "cursor" | "contrast" | "glass", reset = false) {
   const panes = livePanes();
   switch (what) {
     case "appearance":
@@ -187,6 +188,9 @@ function applyPrefs(what: "appearance" | "tabs" | "headers" | "animation" | "fon
       break;
     case "cursor":
       panes.forEach((p) => p.applyCursor(reset));
+      break;
+    case "glass":
+      applyGlass(glassOn());
       break;
   }
 }
@@ -309,6 +313,8 @@ function bootProgress() {
 
 async function main() {
   status(() => t("statusLoading"));
+  // The glass of the panels over the terminals, the loading ones among them, while the Glass setting is on (glass.ts).
+  applyGlass(glassOn());
   const boot = bootProgress();
   try {
     // The font too: the cells are measured from it.
