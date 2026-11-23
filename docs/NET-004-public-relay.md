@@ -3,12 +3,12 @@ name: NET-004
 description: "A DERP relay that si-mods operates for the team at derp.gorex.uk, for hosts that should not depend on the tailcat fleet. Use when you change the private relay, the remote.relay setting or the path a host's address names."
 metadata:
   created: "2026-11-22"
-  updated: "2026-11-22"
+  updated: "2026-11-23"
 ---
 
 # NET-004: A private relay for host links
 
-Status: phase 2 built (#1005). Phase 1 is in si-mods/gorex-relay.
+Status: built and running at derp.gorex.uk (si-mods/gorex-relay#1, #1005). A host on the `gorex` alias passed the allowlist live.
 
 This doc designs the public relay that phase 7 of [NET-002](NET-002-host-links.md) names, sized down to a private one: it serves the team by an allowlist of node keys. It runs next to the push relay of [NET-003](NET-003-push-relay.md) on the same machine, and shares nothing with it.
 
