@@ -378,3 +378,8 @@ Each item has a **Trigger** (what the diff shows), a **Check** (what the author 
 - **Trigger:** a feature depends on what a terminal does with an escape sequence, and the tests that exercise it run on unix.
 - **Check:** ConPTY is not a byte pipe: its input turns text into input events and its output rewrites sequences, so a query's answer or a report may never cross it. Windows needs its own end-to-end test of the exchange, not a port of the unix assumption.
 - **Source:** OSC 7501 reports worked on unix and macOS while the inbox ConPTY dropped the server's answer on Windows; shipping the packaged ConPTY fixed it (#827).
+
+### A look on one platform
+- **Trigger:** a PR adds a state or surface that shows on the desktop but not on iOS, or the reverse.
+- **Check:** where the data is the same, the two platforms show the same thing; a divergence needs the design doc to name it as decided, or it drifts.
+- **Source:** the sidebar's empty-projects card (#991) existed only on the desktop; #1018 drops it so an empty host shows just its header, as iOS does.
