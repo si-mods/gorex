@@ -29,6 +29,10 @@ struct HostSection: View {
     /// The terminal the window shows beside the list; nil on a narrow
     /// window, where the list is the whole page and no project is current.
     var current: TerminalTarget?
+    /// Lifts the section into a drag that reorders the hosts
+    /// (docs/IOS-021-host-drag.md); nil where the host cannot move, so
+    /// its header has no drag source.
+    var liftHost: (() -> NSItemProvider)?
     @Environment(HostStore.self) private var store
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(SpaceBook.self) private var book
@@ -186,6 +190,8 @@ struct HostSection: View {
         }
         .foregroundStyle(.primary)
         .contentShape(.rect)
+        // A long press lifts the host, to move it in the list.
+        .modifier(HostLift(lift: liftHost))
         .onTapGesture {
             withAnimation(.snappy) { if isCollapsed { collapsed.remove(hostKey) } else { collapsed.insert(hostKey) } }
         }
@@ -1024,6 +1030,20 @@ private struct StateDot: View {
             .background(Circle().fill(online ? Color.green : Color.clear))
             .frame(width: 8, height: 8)
             .accessibilityLabel(online ? "Online" : "Offline")
+    }
+}
+
+/// The header's drag source, when the host can move: with no lift the
+/// header starts no drag, so a long press answers as before.
+private struct HostLift: ViewModifier {
+    let lift: (() -> NSItemProvider)?
+
+    func body(content: Content) -> some View {
+        if let lift {
+            content.onDrag(lift)
+        } else {
+            content
+        }
     }
 }
 

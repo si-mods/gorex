@@ -706,6 +706,42 @@ nonisolated final class HostTests: XCTestCase {
         XCTAssertNil(store.host(tailcat: "tcx"))
     }
 
+    /// The list's drop reorders the real hosts by their ids and saves the
+    /// order; the demo host keeps its place, and an order that no longer
+    /// matches the hosts — one missing or a foreign id — changes nothing.
+    @MainActor func testMoveToOrder() throws {
+        let saved = UserDefaults.standard.data(forKey: "hosts")
+        defer {
+            if let saved { UserDefaults.standard.set(saved, forKey: "hosts") }
+            else { UserDefaults.standard.removeObject(forKey: "hosts") }
+        }
+        UserDefaults.standard.removeObject(forKey: "hosts")
+        let store = HostStore()
+        store.enterDemo()
+        let demo = try XCTUnwrap(store.demo)
+        let a = HostConfig(name: "alice-laptop", url: try XCTUnwrap(URL(string: "http://127.0.0.1:1")))
+        let b = HostConfig(name: "bob-desktop", url: try XCTUnwrap(URL(string: "http://127.0.0.1:2")))
+        let c = HostConfig(name: "carol-server", url: try XCTUnwrap(URL(string: "http://127.0.0.1:3")))
+        store.add(a)
+        store.add(b)
+        store.add(c)
+        defer { store.hosts.forEach { $0.stop() } }
+        XCTAssertEqual(store.hosts.map(\.id), [demo.id, a.id, b.id, c.id])
+
+        // The order the drag ends with: the demo id stays in it.
+        store.move(toOrder: [c.id, demo.id, a.id, b.id])
+        XCTAssertEqual(store.hosts.map(\.id), [demo.id, c.id, a.id, b.id])
+        let configs = UserDefaults.standard.data(forKey: "hosts")
+            .flatMap { try? JSONDecoder().decode([HostConfig].self, from: $0) } ?? []
+        XCTAssertEqual(configs.map(\.id), [c.id, a.id, b.id])
+
+        // A host gone or added mid-drag: the order applies to nothing.
+        store.move(toOrder: [c.id, a.id])
+        store.move(toOrder: [c.id, a.id, UUID()])
+        store.move(toOrder: [c.id, a.id, a.id])
+        XCTAssertEqual(store.hosts.map(\.id), [demo.id, c.id, a.id, b.id])
+    }
+
     /// Away more than 5 s, the app was likely suspended.
     @MainActor func testSuspended() {
         let now = Date()
