@@ -1,20 +1,28 @@
 import SwiftUI
 
 /// New Project on a host (docs/MOD-002-projects.md, New Project): a folder on it,
-/// browsed with gorex.dir.list, and a name, the folder's by default. The
-/// project is made in the space shown, and its first tab opens in the
-/// folder.
+/// browsed with gorex.dir.list, a name, the folder's by default, and the
+/// space to make it in, the one shown by default. The project's first tab
+/// opens in the folder.
 struct ProjectSheet: View {
     let host: Host
-    /// The space shown, which the project is made in.
-    let space: String
-    /// The folder and the name chosen.
-    let done: (String, String) -> Void
+    /// The spaces the Space row lists.
+    let spaces: [String]
+    /// The folder, the name and the space chosen.
+    let done: (String, String, String) -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var dir: String?
     @State private var name = ""
     /// Whether the user typed the name: then a folder chosen keeps it.
     @State private var named = false
+    @State private var space: String
+
+    init(host: Host, spaces: [String], space: String, done: @escaping (String, String, String) -> Void) {
+        self.host = host
+        self.spaces = spaces
+        self.done = done
+        _space = State(initialValue: space)
+    }
 
     var body: some View {
         NavigationStack {
@@ -42,7 +50,13 @@ struct ProjectSheet: View {
                     TextField("Name", text: Binding { name } set: { name = $0; named = true })
                 }
                 Section {
-                    LabeledContent("Space", value: space)
+                    Picker("Space", selection: $space) {
+                        ForEach(spaces, id: \.self) { s in
+                            Text(verbatim: SpaceName.shown(s)).tag(s)
+                        }
+                    }
+                    // The list's own Space button is under the sheet.
+                    .accessibilityIdentifier("projectSpace")
                 }
             }
             .navigationTitle("New Project on \(host.config.name)")
@@ -55,7 +69,7 @@ struct ProjectSheet: View {
                     Button("Create") {
                         guard let dir else { return }
                         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
-                        done(dir, trimmed.isEmpty ? ProjectFolder.name(of: dir) : trimmed)
+                        done(dir, trimmed.isEmpty ? ProjectFolder.name(of: dir) : trimmed, space)
                         dismiss()
                     }
                     .disabled(dir == nil)

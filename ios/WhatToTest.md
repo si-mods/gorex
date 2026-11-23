@@ -128,6 +128,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - The space panel now grows out of the space button at the top, and the space you pick slides back into it; with Reduce Motion on it only fades.
 - A computer with no project in the space you picked no longer shows a note under its name; the + beside it still makes one from a folder.
 - While a program waits for your answer, the Lock Screen card and the expanded Dynamic Island show Approve and Deny: tap once to answer without opening Rex Go.
+- New Project's Space row is a picker now: choose the space the project goes into, which starts as the one you were viewing.
 
 ## zh-Hans
 - 手机休眠一段时间后回到 Rex Go，已配对的电脑现在一两秒就能重新连上，不再要等十秒上下。
@@ -248,3 +249,4 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - 顶部的空间面板现在从空间按钮本身展开，选中的空间会滑回按钮里；开启「减弱动态效果」时只淡入淡出。
 - 所选空间里没有项目的电脑，名称下不再显示说明文字；用旁边的 + 仍可从文件夹新建项目。
 - 程序等你回答时，锁定屏幕卡片和展开的灵动岛会显示「拒绝」和「批准」：点一下即可答复，不用打开 Rex Go。
+- 新建项目表单里的「空间」现在可以点选了：项目建在你选的空间里，默认是你正在查看的空间。
