@@ -2,6 +2,8 @@ package main
 
 import (
 	"cmp"
+	"encoding/json"
+	"log"
 
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
@@ -25,6 +27,122 @@ const (
 // placements are the values of TabPlacement, in the order of the settings'
 // control: above, the left side, the right side.
 var placements = []string{"", "left", "right"}
+
+// sidebarRowH, sidebarLead, sidebarFont and sidebarGroupPad are the
+// sidebar's metrics: the user's sidebar.* settings over the constants
+// (docs/DSK-007-sidebar-style.md).
+func sidebarRowH() float32 {
+	if v := prefs.SidebarRowHeight; v != 0 {
+		return v
+	}
+	return sideRowH
+}
+
+func sidebarLead() float32 {
+	if v := prefs.SidebarIndent; v != 0 {
+		return v
+	}
+	return sideLead
+}
+
+func sidebarFont(def float32) float32 {
+	if v := prefs.SidebarFontSize; v != 0 {
+		return v
+	}
+	return def
+}
+
+func sidebarGroupPad() float32 {
+	if v := prefs.SidebarGroupPad; v != 0 {
+		return v
+	}
+	return groupPad
+}
+
+func sidebarGroupEdge() float32 {
+	return (sidebarGroupPad() + rowGap - groupGap) / 2
+}
+
+// sidebarColorTokens are the palette fields a sidebar.colorCustomizations
+// key may set: the sidebar's own, not the window's globals.
+var sidebarColorTokens = map[string]func(*colors, ui.Color){
+	"groupFace":  func(k *colors, c ui.Color) { k.groupFace = c },
+	"pillLift":   func(k *colors, c ui.Color) { k.pillLift = c },
+	"liftShadow": func(k *colors, c ui.Color) { k.liftShadow = c },
+	"track":      func(k *colors, c ui.Color) { k.track = c },
+	"tabSep":     func(k *colors, c ui.Color) { k.tabSep = c },
+	"tabHover":   func(k *colors, c ui.Color) { k.tabHover = c },
+	"tabActive":  func(k *colors, c ui.Color) { k.tabActive = c },
+}
+
+// sidebarPalette is the palette with the user's sidebar colors applied. It
+// returns a copy: lightColors and darkColors are shared.
+func sidebarPalette(k *colors, dark bool) *colors {
+	if len(prefs.SidebarColors) == 0 {
+		return k
+	}
+	out := *k
+	for token, raw := range prefs.SidebarColors {
+		set, ok := sidebarColorTokens[token]
+		if !ok {
+			continue
+		}
+		if col, ok := parseStyleColor(raw, dark); ok {
+			set(&out, col)
+		}
+	}
+	return &out
+}
+
+// parseStyleColor resolves a sidebar.colorCustomizations value: a hex
+// string, or an object {"light","dark"} for different values per
+// appearance.
+func parseStyleColor(raw json.RawMessage, dark bool) (ui.Color, bool) {
+	var s string
+	if json.Unmarshal(raw, &s) == nil {
+		return hexColor(s)
+	}
+	var pair struct {
+		Light string `json:"light"`
+		Dark  string `json:"dark"`
+	}
+	if json.Unmarshal(raw, &pair) != nil {
+		return ui.Color{}, false
+	}
+	s = pair.Light
+	if dark {
+		s = pair.Dark
+	}
+	return hexColor(s)
+}
+
+// hexColor parses a hex color without ui.Hex's panic on bad input.
+func hexColor(s string) (col ui.Color, ok bool) {
+	defer func() {
+		if recover() != nil {
+			ok = false
+		}
+	}()
+	return ui.Hex(s), true
+}
+
+// checkSidebarColors drops invalid sidebar.colorCustomizations entries at
+// load and says why, once.
+func checkSidebarColors() {
+	for token, raw := range prefs.SidebarColors {
+		if _, ok := sidebarColorTokens[token]; !ok {
+			log.Printf("gorex settings: sidebar.colorCustomizations: unknown token %q", token)
+			delete(prefs.SidebarColors, token)
+			continue
+		}
+		_, light := parseStyleColor(raw, false)
+		_, dark := parseStyleColor(raw, true)
+		if !light || !dark {
+			log.Printf("gorex settings: sidebar.colorCustomizations: bad color for %q", token)
+			delete(prefs.SidebarColors, token)
+		}
+	}
+}
 
 func sidebarWidth() float32 {
 	if w := prefs.SidebarWidth; w != 0 {
@@ -234,6 +352,7 @@ func (a *App) sidebarButton(c *ui.Context, k *colors, right bool) {
 // foot. With own controls on the left, its head holds the space picker
 // beside the button, and the pane bar has the title buttons.
 func (a *App) sidebar(c *ui.Context, k *colors, right bool) {
+	k = sidebarPalette(k, c.Theme().Dark)
 	bar := c.TitleBar()
 	picker := a.st != nil
 	unified := !right && ownControls
@@ -306,12 +425,12 @@ func sideInsets(right bool) (r, l float32) {
 
 // listReach is how far the sidebar list's box reaches past its insets on its
 // right and its left, so that the scroll's clip holds the current project's
-// face (groupPad past the rows) on the panes' side, where the inset is
-// short of groupPad. The list's padding grows by the same amount, so no row
+// face (the group pad past the rows) on the panes' side, where the inset
+// is short of it. The list's padding grows by the same amount, so no row
 // moves; the reach lies over the sidebar's edge, which has no content.
 func listReach(right bool) (r, l float32) {
 	pr, pl := sideInsets(right)
-	return max(groupPad-pr, 0), max(groupPad-pl, 0)
+	return max(sidebarGroupPad()-pr, 0), max(sidebarGroupPad()-pl, 0)
 }
 
 // sidebarEdge is the sidebar's inner edge, which drags its width; a double
@@ -360,15 +479,15 @@ func (a *App) sidebarTab(c *ui.Context, k *colors, i int, t *Tab, reserve float3
 	// Keyed by the tab's lasting ID, as spaceTab keys it: as the window
 	// goes to show another space, the rows of both stay, not close and
 	// open again.
-	e := ui.Row(c.Key("tab-"+t.UID)).Height(sideRowH).Shrink(0).Padding(0, 6, 0, sideLead).Gap(sideGap).AlignItems(ui.Center).Radius(pillRadius(sideRowH, radiusM)).
+	e := ui.Row(c.Key("tab-"+t.UID)).Height(sidebarRowH()).Shrink(0).Padding(0, 6, 0, sidebarLead()).Gap(sideGap).AlignItems(ui.Center).Radius(pillRadius(sidebarRowH(), radiusM)).
 		Role(ui.RoleTab).Selected(active)
 	name, detail := t.label()
 	e.Label(name + " " + detail)
 	if active {
 		if lifted {
-			liftedPill(e, k, sideRowH)
+			liftedPill(e, k, sidebarRowH())
 		} else {
-			glassPill(e, k, sideRowH)
+			glassPill(e, k, sidebarRowH())
 		}
 		// A tab chosen otherwise than in the list, as by its keys, scrolls
 		// into view, once: the list scrolls freely after.
@@ -429,7 +548,7 @@ func (a *App) hostSectionIcon(c *ui.Context, k *colors, h *hostConn) {
 // ends the row as a shown tab's does. It reports whether it was
 // clicked.
 func spaceTab(c *ui.Context, k *colors, key, name, detail string, s *rex.ProgramStatus, reserve float32, tiles func()) bool {
-	e := ui.Row(c.Key("tab-"+key)).Height(sideRowH).Shrink(0).Padding(0, 6, 0, sideLead).Gap(sideGap).AlignItems(ui.Center).Radius(pillRadius(sideRowH, radiusM)).
+	e := ui.Row(c.Key("tab-"+key)).Height(sidebarRowH()).Shrink(0).Padding(0, 6, 0, sidebarLead()).Gap(sideGap).AlignItems(ui.Center).Radius(pillRadius(sidebarRowH(), radiusM)).
 		Cursor(ui.CursorPointer).Role(ui.RoleButton).Label(name + " " + detail)
 	if anim := motion(c); anim != nil {
 		e.Transition(exitIn(ui.ElementTransition{Animation: anim, Position: true, Enter: tabMotion, Exit: tabMotion}, durExitMove))

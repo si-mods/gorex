@@ -33,6 +33,16 @@ type settings struct {
 	SidebarWidth    float32 `json:"sidebarWidth,omitempty"`
 	SidebarHidden   bool    `json:"sidebarHidden,omitempty"`
 	HidePaneHeaders bool    `json:"hidePaneHeaders,omitempty"`
+	// The sidebar.* keys style the sidebar (docs/DSK-007-sidebar-style.md):
+	// flat dotted keys as VS Code's settings are. The metrics clamp to a
+	// range, 0 for the default; sidebar.colorCustomizations maps one of the
+	// sidebar's palette tokens to "#rrggbb[aa]" or a {"light","dark"} pair.
+	SidebarRowHeight float32                    `json:"sidebar.rowHeight,omitempty"`
+	SidebarIndent    float32                    `json:"sidebar.indent,omitempty"`
+	SidebarFontSize  float32                    `json:"sidebar.fontSize,omitempty"`
+	SidebarGroupPad  float32                    `json:"sidebar.groupPadding,omitempty"`
+	SidebarGroupBy   string                     `json:"sidebar.groupBy,omitempty"`
+	SidebarColors    map[string]json.RawMessage `json:"sidebar.colorCustomizations,omitempty"`
 	// What this client keeps of the projects of its hosts
 	// (docs/MOD-002-projects.md, "The desktop window"): the space shown, by name,
 	// "" for Default; the spaces' colors and order, and those made here
@@ -126,6 +136,16 @@ func loadSettings() {
 	if prefs.SidebarWidth < sidebarMinW || prefs.SidebarWidth > sidebarMaxW {
 		prefs.SidebarWidth = 0
 	}
+	// The sidebar style metrics keep 0 for the default; a value outside its
+	// range falls back to it, as the other metrics do.
+	prefs.SidebarRowHeight = clampMetric(prefs.SidebarRowHeight, 24, 48)
+	prefs.SidebarIndent = clampMetric(prefs.SidebarIndent, 0, 24)
+	prefs.SidebarFontSize = clampMetric(prefs.SidebarFontSize, 10, 16)
+	prefs.SidebarGroupPad = clampMetric(prefs.SidebarGroupPad, 0, 12)
+	if prefs.SidebarGroupBy != "host" && prefs.SidebarGroupBy != "flat" {
+		prefs.SidebarGroupBy = ""
+	}
+	checkSidebarColors()
 	// A language of the file may be spelled otherwise (zh-hans, zh-CN): keep
 	// the app's own spelling of the one it matches, or none.
 	if prefs.Language != "" {
@@ -137,6 +157,15 @@ func loadSettings() {
 	// The file is the one place that says the language: "" follows the
 	// system's, whatever the app kept before.
 	setLocale(prefs.Language)
+}
+
+// clampMetric zeroes a metric outside lo–hi, so 0 keeps meaning "the
+// default" and an out-of-range value falls back to it.
+func clampMetric(v, lo, hi float32) float32 {
+	if v < lo || v > hi {
+		return 0
+	}
+	return v
 }
 
 func saveSettings() {
