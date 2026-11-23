@@ -501,7 +501,7 @@ func (a *App) hostDiag(c *ui.Context, k *colors, h *hostConn) {
 		segs = append(segs, locales.HostsDiagPing(h.pingMs))
 	}
 	ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-		ui.Box(c).Radius(capsule(9)).Background(k.panelSel).Padding(1, 6).Children(func() {
+		ui.Box(c).Radius(capsule(9)).Background(k.panelSel).Padding(2, 6).Children(func() {
 			ui.Text(c, tag).FontSize(fontCaption).FontWeight(600).TextColor(k.accent)
 		})
 		if len(segs) > 0 {
