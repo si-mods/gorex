@@ -26,3 +26,16 @@ func TestHeaderColors(t *testing.T) {
 		t.Fatal("a header on the window's own background took another palette")
 	}
 }
+
+// TestHeaderColorsCardBorder checks that a light window over a dark terminal
+// face draws the dark palette's card edge, not a white ring, and the reverse.
+func TestHeaderColorsCardBorder(t *testing.T) {
+	dark := headerColors(&lightColors, ui.Hex("#262626"))
+	if dark.cardBorder != darkColors.cardBorder || dark.cardBorderFocused != darkColors.cardBorderFocused {
+		t.Fatalf("a dark face kept the light card edge: %v, focused %v", dark.cardBorder, dark.cardBorderFocused)
+	}
+	light := headerColors(&darkColors, ui.Hex("#fbfbfb"))
+	if light.cardBorder != lightColors.cardBorder || light.cardBorderFocused != lightColors.cardBorderFocused {
+		t.Fatalf("a light face kept the dark card edge: %v, focused %v", light.cardBorder, light.cardBorderFocused)
+	}
+}

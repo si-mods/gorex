@@ -829,15 +829,16 @@ func (a *App) divider(c *ui.Context, k *colors, n *Node, s share, bounds ui.Rect
 func (a *App) paneCard(c *ui.Context, k *colors, t *Tab, p *Pane, held bool) ui.Element {
 	focused := t.Focus == p
 	card := ui.Column(c.Key(p.ID)).Radius(a.cardR()).Clip().MinWidth(0).MinHeight(0)
-	border, shadow := k.cardBorder, k.shadow
-	if focused {
-		border, shadow = k.cardBorderFocused, k.shadowFocused
-	}
 	// With the configuration's colors, the card takes the theme's
-	// background, under its header too.
+	// background, under its header too, and its edge the palette of that
+	// background's lightness.
 	hk := k
 	if termOpaque {
 		hk = headerColors(k, cardFace(c, k, focused, false))
+	}
+	border, shadow := hk.cardBorder, k.shadow
+	if focused {
+		border, shadow = hk.cardBorderFocused, k.shadowFocused
 	}
 	// The card and its float's cell take one face: the cell's, of another
 	// color, would show at the card's rounded corners.
