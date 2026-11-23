@@ -620,9 +620,9 @@
   .select-handle.end::after { bottom: 0; }
   /* A transparent border widens where a finger takes it by 16px, as iOS's point(inside:), around the same box. */
   .select-handle { box-sizing: content-box; border: 16px solid transparent; margin: -16px; }
-  /* The selection's menu, as iOS's edit menu: a small glass panel, as the app's popovers (blur 24), its row concentric. */
+  /* The selection's menu: a small glass panel of vertical rows, as the app's menus (context-menu, radiusL). */
   .select-menu {
-    position: absolute; z-index: 4; display: flex; padding: 4px; border-radius: 12px;
+    position: absolute; z-index: 4; display: flex; flex-direction: column; padding: 4px; border-radius: 12px;
     background: var(--panel); border: 1px solid var(--panel-edge); color: var(--text);
     -webkit-backdrop-filter: blur(24px); backdrop-filter: blur(24px); box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
   }
