@@ -96,6 +96,7 @@ func (a *App) loadLuaConfig() error {
 	a.keys = d
 	a.custom = cmds
 	a.luaConfig = cfg
+	reloadIconPacks(cfg)
 	if a.st != nil {
 		a.st.noAccel = taken
 		mygo.App.SetMenu(a.st.menu())

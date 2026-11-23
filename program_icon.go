@@ -2,10 +2,15 @@ package main
 
 import (
 	"bytes"
+	"cmp"
 	"encoding/base64"
 	"image/png"
+	"log"
+	"sync"
 
 	"github.com/egoist/mygo/ui"
+	"gorex/internal/config"
+	"gorex/internal/iconpack"
 	"gorex/internal/rex"
 )
 
@@ -14,7 +19,48 @@ const maxCustomIconCache = 256
 var (
 	customSVGCache    = map[string]*ui.SVG{}
 	customBitmapCache = map[string]ui.ImageSource{}
+
+	iconPackMu      sync.RWMutex
+	activeIconPacks *iconpack.Registry
 )
+
+func setActiveIconPacks(reg *iconpack.Registry) {
+	iconPackMu.Lock()
+	activeIconPacks = reg
+	iconPackMu.Unlock()
+}
+
+func resolveCustomIcon(progName string, args []string, oscIcon *rex.ProgramIcon, dark bool) *rex.ProgramIcon {
+	iconPackMu.RLock()
+	reg := activeIconPacks
+	iconPackMu.RUnlock()
+	if reg == nil {
+		return oscIcon
+	}
+	return reg.Resolve(progName, args, oscIcon, dark)
+}
+
+func reloadIconPacks(cfg *config.Config) {
+	packIDs := prefs.IconPacks
+	priority := prefs.IconPackPriority
+	var overrides []config.ProgramIconRule
+	if cfg != nil {
+		if len(cfg.IconPacks) > 0 {
+			packIDs = cfg.IconPacks
+		}
+		priority = cmp.Or(cfg.IconPackPriority, priority)
+		overrides = cfg.ProgramIcons
+	}
+	if len(packIDs) == 0 && len(overrides) == 0 {
+		setActiveIconPacks(nil)
+		return
+	}
+	reg, warns := iconpack.LoadRegistry(iconpack.Dir(), config.Dir(), packIDs, overrides, priority)
+	for _, w := range warns {
+		log.Printf("gorex iconpack: %s", w)
+	}
+	setActiveIconPacks(reg)
+}
 
 // programWithIcon applies a program's custom OSC 7502 icon onto base.
 func programWithIcon(base program, ic *rex.ProgramIcon) program {

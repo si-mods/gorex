@@ -2223,17 +2223,18 @@ func (p *Pane) program() program {
 	if p.note != nil {
 		return noteProgram
 	}
-	var prog program
+	var name string
 	switch {
 	case p.info.Status != nil && p.info.Status.App != "":
-		prog = programOf(p.info.ProgramName())
+		name = p.info.ProgramName()
 	case p.info.Idle || p.info.Program == "":
-		prog = programOf(p.info.Shell)
+		name = p.info.Shell
 	default:
-		prog = programOf(p.info.ProgramName())
+		name = p.info.ProgramName()
 	}
-	if p.info.ProgramIcon != nil {
-		return programWithIcon(prog, p.info.ProgramIcon)
+	prog := programOf(name)
+	if ic := resolveCustomIcon(name, p.info.Args, p.info.ProgramIcon, appearanceDark()); ic != nil {
+		return programWithIcon(prog, ic)
 	}
 	return prog
 }

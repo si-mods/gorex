@@ -74,6 +74,11 @@ type settings struct {
 	// from 1 (no correction) to 21; 0 follows Ghostty's minimum-contrast,
 	// else defaultMinContrast.
 	MinimumContrast float32 `json:"minimumContrast,omitempty"`
+
+	// IconPacks lists active community program icon pack IDs in priority
+	// order; IconPackPriority is "pack" (default) or "osc".
+	IconPacks        []string `json:"iconPacks,omitempty"`
+	IconPackPriority string   `json:"iconPackPriority,omitempty"`
 }
 
 // defaultMinContrast is the minimum contrast when neither the user nor

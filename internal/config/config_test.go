@@ -142,3 +142,25 @@ end)
 		t.Fatalf("event got %q", got)
 	}
 }
+
+func TestIconPackConfig(t *testing.T) {
+	path := write(t, `
+gorex.icon_packs({ "catppuccin-programs", "custom" })
+gorex.icon_pack_priority("osc")
+gorex.program_icon("terraform", { icon = "icons/tf.svg", mode = "mono", bg = "#7b42bc", fg = "#ffffff" })
+`)
+	c, err := LoadCheck(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	if len(c.IconPacks) != 2 || c.IconPacks[0] != "catppuccin-programs" || c.IconPacks[1] != "custom" {
+		t.Fatalf("IconPacks = %v", c.IconPacks)
+	}
+	if c.IconPackPriority != "osc" {
+		t.Fatalf("IconPackPriority = %q, want osc", c.IconPackPriority)
+	}
+	if len(c.ProgramIcons) != 1 || c.ProgramIcons[0].Name != "terraform" || c.ProgramIcons[0].Bg != "#7b42bc" {
+		t.Fatalf("ProgramIcons = %+v", c.ProgramIcons)
+	}
+}
