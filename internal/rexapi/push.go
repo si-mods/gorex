@@ -2,6 +2,7 @@ package rexapi
 
 import (
 	"encoding/base64"
+	"time"
 
 	"gorex/internal/rex"
 )
@@ -13,11 +14,14 @@ import (
 // phone binds its activity's push tokens to.
 // gorex.push.unregister drops the binding, as when the terminal closes
 // or pairing ends. The connection's end also sends one last update,
-// connected false, and drops it (dropControl). The welcome lists
-// featurePush when the server pushes.
+// connected false, and drops it (dropControl).
+// gorex.push.seen tells which done and error records the activity
+// showed, so they stop counting as new, as gorex.see_block does for a
+// screen. The welcome lists featurePush when the server pushes.
 
 // featurePush is the welcome's feature of a gateway that pushes Live
-// Activity updates (gorex.push.register, gorex.push.unregister).
+// Activity updates (gorex.push.register, gorex.push.unregister,
+// gorex.push.seen).
 const featurePush = "gorex.push"
 
 // methodGorexPushRegister binds the connection to a device key, with or
@@ -82,6 +86,64 @@ func methodGorexPushUnregister(c *control, a args) (any, *apiError) {
 	return struct{}{}, nil
 }
 
+// methodGorexPushSeen marks the records record_ids names as seen, as
+// gorex.see_block does: the Live Activity the phone watched showed them,
+// so they stop counting as new, on every client.
+func methodGorexPushSeen(c *control, a args) (any, *apiError) {
+	if !c.g.hello.Can(rex.CapabilityPush) {
+		return nil, errNotSupported("the GoRex server does not push Live Activities; update GoRex")
+	}
+	if !c.g.hello.Can(rex.CapabilityStatusSeen) {
+		return nil, errNotSupported("the GoRex server does not keep what was seen; update GoRex")
+	}
+	if aerr := a.only("session_id", "block_id", "record_ids"); aerr != nil {
+		return nil, aerr
+	}
+	s, aerr := c.attachedArg(a)
+	if aerr != nil {
+		return nil, aerr
+	}
+	id, aerr := a.reqStr("block_id")
+	if aerr != nil {
+		return nil, aerr
+	}
+	b := s.findBlock(id)
+	if b == nil {
+		return nil, errNotFound("no block %s in %s", id, s.id)
+	}
+	ids, present, aerr := a.strs("record_ids")
+	if aerr != nil {
+		return nil, aerr
+	}
+	if !present {
+		return nil, errBadRequest("record_ids is required")
+	}
+	info, aerr := c.g.blockInfo(b)
+	if aerr != nil {
+		return nil, aerr
+	}
+	// An id the block has no record of — one a pushed update reported
+	// that has since gone — is skipped. The latest named record's
+	// update is the seen time, as gorex.see_block's seen_at is.
+	want := map[string]bool{}
+	for _, id := range ids {
+		want[id] = true
+	}
+	var at time.Time
+	for _, r := range info.Statuses {
+		if (r.State == "done" || r.State == "error") && want[r.ID] && r.Updated.After(at) {
+			at = r.Updated
+		}
+	}
+	if at.IsZero() {
+		return struct{}{}, nil
+	}
+	if err := c.g.opt.Client.SeeStatus(b.sid, at); err != nil {
+		return nil, errNotFound("block %s has no session", b.id)
+	}
+	return struct{}{}, nil
+}
+
 // pushRegisterEntry is gorex.push.register's entry of the help document,
 // in the shape of Rex's own.
 var pushRegisterEntry = map[string]any{
@@ -117,6 +179,37 @@ var pushRegisterEntry = map[string]any{
 	},
 }
 
+// pushSeenEntry is gorex.push.seen's entry of the help document, in the
+// shape of Rex's own.
+var pushSeenEntry = map[string]any{
+	"name":        "gorex.push.seen",
+	"description": "Tell which of a block's done and error records the Live Activity showed, so that every client stops showing them as new, as gorex.see_block does for a screen. GoRex's own method: use it only when the welcome's features list gorex.push.",
+	"invoke":      map[string]any{"method": "gorex.push.seen"},
+	"input_schema": map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"session_id": map[string]any{"type": "string", "description": "The session the block is in."},
+			"block_id":   map[string]any{"type": "string", "description": "The block the activity shows."},
+			"record_ids": map[string]any{"type": "array", "items": map[string]any{"type": "string"},
+				"description": "The ids of the done and error records the activity's content state showed, as program_status reports them; the root record's is the empty string."},
+		},
+		"required":             []any{"session_id", "block_id", "record_ids"},
+		"additionalProperties": false,
+	},
+	"output_schema": map[string]any{
+		"type":                 "object",
+		"additionalProperties": false,
+	},
+	"request_example":  "{\n  \"session_id\": \"session:<uuid>\",\n  \"block_id\": \"block:<uuid>\",\n  \"record_ids\": [\"build\", \"tests\"]\n}",
+	"response_example": "{}",
+	"validation_notes": []any{
+		"The block's seen_at rises to the latest named record's updated_at, as gorex.see_block's call does: it only moves forward, and never past the latest done or error record.",
+		"A record_id the block has no record of, or one that is not done or error, is skipped; a call that names none changes nothing and still succeeds.",
+		"The connection must be attached to session_id, or hear of every session's events, or the call fails with conflict. An unknown block fails with not_found.",
+		"A server that does not push, whose welcome doesn't list gorex.push, fails with not_supported.",
+	},
+}
+
 // pushUnregisterEntry is gorex.push.unregister's entry of the help
 // document, in the shape of Rex's own.
 var pushUnregisterEntry = map[string]any{
@@ -139,8 +232,8 @@ var pushUnregisterEntry = map[string]any{
 	},
 }
 
-// llmsPush documents gorex.push.register and gorex.push.unregister,
-// after GoRex's other methods.
+// llmsPush documents gorex.push.register, gorex.push.seen and
+// gorex.push.unregister, after GoRex's other methods.
 var llmsPush = []byte(`
 ### gorex.push.register
 
@@ -174,6 +267,40 @@ Example arguments:
   "session_id": "session:<uuid>",
   "block_id": "block:<uuid>",
   "live_activities": true
+}
+` + "```" + `
+
+### gorex.push.seen
+
+Feature: ` + "`gorex.push`" + `. Tell which of a block's done and error records the Live Activity showed, so that
+every client stops showing them as new, as ` + "`gorex.see_block`" + ` does for a screen.
+
+Arguments:
+
+- ` + "`session_id`" + ` (string, required): The session the block is in.
+- ` + "`block_id`" + ` (string, required): The block the activity shows.
+- ` + "`record_ids`" + ` (array of strings, required): The ids of the done and error records the activity's content
+  state showed, as ` + "`com.superlogical.terminal.program_status`" + ` reports them; the root record's is ` + "`\"\"`" + `.
+
+The result is an empty object.
+
+Notes:
+
+- The block's ` + "`seen_at`" + ` rises to the latest named record's ` + "`updated_at`" + `, as ` + "`gorex.see_block`" + `'s call does: it
+  only moves forward, and never past the latest done or error record.
+- A ` + "`record_ids`" + ` entry the block has no record of, or one that is not done or error, is skipped; a call
+  that names none changes nothing and still succeeds.
+- The connection must be attached to ` + "`session_id`" + `, or hear of every session's events, or the call fails
+  with ` + "`conflict`" + `. An unknown block fails with ` + "`not_found`" + `. A server that doesn't push fails with
+  ` + "`not_supported`" + `.
+
+Example arguments:
+
+` + "```json" + `
+{
+  "session_id": "session:<uuid>",
+  "block_id": "block:<uuid>",
+  "record_ids": ["build", "tests"]
 }
 ` + "```" + `
 

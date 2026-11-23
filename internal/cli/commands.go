@@ -147,7 +147,7 @@ Usage:
   gorex hosts [ls] [--json]
   gorex [-S HOST] pair [--json]
   gorex skill show|setup|status|remove [--agent NAME] [--project] [--dry-run] [--json]
-  gorex remote status [--json] | tailscale on|off | address | relay HOST|default | reachable IP|off | enable | disable | control on|off | pair start|stop | pending | approve KEY|CODE | reject KEY|CODE | allow NAME KEY | revoke KEY
+  gorex remote status [--json] | tailscale on|off | address | key | relay HOST|default | reachable IP|off | enable | disable | control on|off | pair start|stop | pending | approve KEY|CODE | reject KEY|CODE | allow NAME KEY | revoke KEY
   gorex server restart | upgrade
   gorex update (Linux)
   gorex config path | config check [FILE] | config reload
@@ -1003,7 +1003,7 @@ func remoteCmd(args []string, out, errOut io.Writer) (int, bool) {
 		return ExitUsage, true
 	}
 	usage := func() (int, bool) {
-		fmt.Fprintln(errOut, "gorex remote: status | tailscale on|off | address | relay HOST|default | reachable IP|off | enable | disable | control on|off | pair start|stop | pending | approve KEY|CODE | reject KEY|CODE | allow NAME KEY | revoke KEY")
+		fmt.Fprintln(errOut, "gorex remote: status | tailscale on|off | address | key | relay HOST|default | reachable IP|off | enable | disable | control on|off | pair start|stop | pending | approve KEY|CODE | reject KEY|CODE | allow NAME KEY | revoke KEY")
 		return ExitUsage, true
 	}
 	if len(args) == 0 {
@@ -1032,9 +1032,19 @@ func remoteCmd(args []string, out, errOut io.Writer) (int, bool) {
 		return args[1] == "on", true
 	}
 	var run func(*rex.Client) error
+	// after runs on a change that worked, as the relay's enrollment hint.
+	var after func(*rex.Client)
 	switch args[0] {
 	case "status":
 	case "address":
+	case "key":
+		// The key of this machine as a remote client, for a host's
+		// allowlist or a relay operator's: no server needed.
+		if !need(1) {
+			return ExitUsage, true
+		}
+		fmt.Fprintln(out, rex.ClientPublicKey())
+		return ExitOK, true
 	case "enable":
 		if !need(1) {
 			return ExitUsage, true
@@ -1053,11 +1063,22 @@ func remoteCmd(args []string, out, errOut io.Writer) (int, bool) {
 		if relay == "default" {
 			relay = ""
 		}
-		if _, err := rex.NormalizeRelay(relay); err != nil {
+		var err error
+		if relay, err = rex.NormalizeRelay(relay); err != nil {
 			fmt.Fprintln(errOut, err)
 			return ExitUsage, true
 		}
 		run = func(c *rex.Client) error { return c.SetRelay(relay) }
+		if relay != "" {
+			// The relay's list admits the host by its node key: show the
+			// one to send its operator, once the host has keys.
+			after = func(c *rex.Client) {
+				if st, err := c.RemoteStatus(); err == nil && st.PublicKey != "" {
+					fmt.Fprintf(out, "key=%s\n", st.PublicKey)
+					fmt.Fprintln(out, "send it to the relay's operator, whose list lets the host on")
+				}
+			}
+		}
 	case "reachable":
 		if !need(2) {
 			return ExitUsage, true
@@ -1141,13 +1162,14 @@ func remoteCmd(args []string, out, errOut io.Writer) (int, bool) {
 			RemoteControl bool               `json:"remoteControl"`
 			Allowed       int                `json:"allowed"`
 			Relay         string             `json:"relay"`
+			PublicKey     string             `json:"publicKey,omitempty"`
 			ReachableAt   string             `json:"reachableAt"`
 			Reachable     bool               `json:"reachable"`
 			ReachableErr  string             `json:"reachableError,omitempty"`
 			Firewall      string             `json:"reachableFirewall,omitempty"`
 			Tailnet       *rex.TailnetStatus `json:"tailnet,omitempty"`
 		}{st.Enabled, st.Running, st.RemoteControl, len(st.Allowed), st.Relay,
-			st.ReachableAt, st.ReachableAddress != "", st.ReachableError, st.ReachableFirewall, st.Tailnet}
+			st.PublicKey, st.ReachableAt, st.ReachableAddress != "", st.ReachableError, st.ReachableFirewall, st.Tailnet}
 		if asJSON {
 			WriteJSON(out, shown)
 			return ExitOK, true
@@ -1158,6 +1180,9 @@ func remoteCmd(args []string, out, errOut io.Writer) (int, bool) {
 		}
 		fmt.Fprintf(out, "enabled=%v running=%v control=%v allowed=%d relay=%s\n",
 			shown.Enabled, shown.Running, shown.RemoteControl, shown.Allowed, relay)
+		if st.PublicKey != "" {
+			fmt.Fprintf(out, "key=%s\n", st.PublicKey)
+		}
 		if shown.ReachableAt != "" {
 			fmt.Fprintf(out, "reachable=%s running=%v\n", shown.ReachableAt, shown.Reachable)
 			if shown.ReachableErr != "" {
@@ -1229,6 +1254,9 @@ func remoteCmd(args []string, out, errOut io.Writer) (int, bool) {
 	if err := run(c); err != nil {
 		fmt.Fprintln(errOut, err)
 		return codeFor(err), true
+	}
+	if after != nil {
+		after(c)
 	}
 	return ExitOK, true
 }

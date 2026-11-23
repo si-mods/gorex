@@ -326,11 +326,30 @@ func TestDataResyncNoOutput(t *testing.T) {
 	settled(t, f, sid) // the shell printed its last prompt
 	p.drop(0)
 	waitFor(t, "the second attach", func() bool { return p.attaches() == 2 })
-	time.Sleep(300 * time.Millisecond) // its snapshot read
+	// The resync's snapshot shows the screen again, so the stream has read
+	// it: a cold libghostty-vt cache can make that take seconds. The text
+	// counts only after the reset, not as the first attach's leftover.
+	readAfterReset(t, ws, "before-drop")
 	p.drop(1)
 	expectClose(t, ws, websocket.StatusInternalError)
 	if n := p.attaches(); n != 2 {
 		t.Errorf("%d attaches, want 2", n)
+	}
+}
+
+// readAfterReset reads until marker follows a resync's reset: what came
+// before the reset, as the first attach's output left unread, does not count.
+func readAfterReset(t *testing.T, ws *websocket.Conn, marker string) {
+	t.Helper()
+	got := readUntil(t, ws, resyncReset)
+	for deadline := time.Now().Add(10 * time.Second); ; {
+		if bytes.Contains(got[bytes.Index(got, []byte(resyncReset)):], []byte(marker)) {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("no %q after the reset in %d bytes: %q", marker, len(got), got)
+		}
+		got = append(got, readData(t, ws)...)
 	}
 }
 

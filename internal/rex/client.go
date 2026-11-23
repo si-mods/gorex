@@ -903,8 +903,9 @@ func (c *Client) RemoteStatus() (s RemoteStatus, err error) {
 func (c *Client) EnableRemote() error { return c.call(Request{Op: "remote.enable"}, nil) }
 
 // SetRelay sets the DERP relay of the server's address: a host of one's
-// own, as derp.example.com, or "" for tailcat's. A change makes a new
-// address; the keys stay.
+// own, as derp.example.com, "gorex" for the team's
+// (docs/NET-004-public-relay.md), or "" for tailcat's. A change makes a
+// new address; the keys stay.
 func (c *Client) SetRelay(relay string) error {
 	return c.call(Request{Op: "remote.relaySet", Relay: relay}, nil)
 }

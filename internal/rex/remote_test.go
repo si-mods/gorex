@@ -298,6 +298,35 @@ func TestRemoteLifecycle(t *testing.T) {
 	}
 }
 
+// TestRemoteStatusKey: the status reports the host's node public key,
+// for the list a relay's operator keeps; "" until remote access has keys.
+func TestRemoteStatusKey(t *testing.T) {
+	s, _ := testServer(t)
+	c := pipe(s, "")
+	defer c.Close()
+	if st, err := c.RemoteStatus(); err != nil || st.PublicKey != "" {
+		t.Fatalf("status before keys %+v, %v", st, err)
+	}
+	// The gorex alias saves the relay's name, remote access off.
+	if err := c.SetRelay("gorex"); err != nil {
+		t.Fatal(err)
+	}
+	if st, _ := c.RemoteStatus(); st.Relay != "derp.gorex.uk" || readConfig(t).Relay != "derp.gorex.uk" {
+		t.Errorf("relay %q, saved %q", st.Relay, readConfig(t).Relay)
+	}
+	if err := c.SetRelay(""); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.EnableRemote(); err != nil {
+		t.Fatal(err)
+	}
+	st := waitRunning(t, c, true)
+	want := readConfig(t).NodeKey.Public().String()
+	if st.PublicKey != want {
+		t.Errorf("publicKey %q, want %q", st.PublicKey, want)
+	}
+}
+
 func TestRemotePairing(t *testing.T) {
 	s, _ := testServer(t)
 	c := pipe(s, "")

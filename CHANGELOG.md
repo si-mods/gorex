@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.51.0
+
+### Features
+
+* **desktop:** alert pushes replace the local blocked notification ([#1001](https://github.com/si-mods/gorex/pull/1001))
+* **remote:** the gorex alias for the team's DERP relay ([#1005](https://github.com/si-mods/gorex/pull/1005))
+
+### Bug Fixes
+
+* **desktop:** retire a tailcat client whose try timed out, also when a connection uses it, so a host stays reachable after its server restarts ([#1009](https://github.com/si-mods/gorex/pull/1009))
+
 ## 0.50.0
 
 ### Features

@@ -85,6 +85,19 @@ struct GoRexApp: App {
         let engine = TailnetEngine.shared
         let store = HostStore()
         _store = State(initialValue: store)
+        // The Live Activity's buttons answer through this store's hosts
+        // (docs/IOS-006-live-activities.md, Actions).
+        ActivityAnswerer.send = { host, session, block, action in
+            guard let store = await HostStore.current else { throw ActivityAnswerError.unreachable }
+            try await store.answer(host, session: session, block: block, action)
+        }
+        // A done or error record the Live Activity showed is seen on
+        // its host (gorex.push.seen): reported once for each the
+        // activity shows, on the app's return to the foreground.
+        TerminalLive.seen = { [weak store] host, session, block, records in
+            store?.host(host)?.pushSeen(session: session, block: block, records: records) ?? false
+        }
+        Host.activitySeen = { TerminalLive.shared.reportSeen(host: $0) }
         WidgetPublisher.shared.start(store)
         NetworkPath.shared.start()
         SpaceBook.dropOldData()
@@ -149,6 +162,11 @@ struct GoRexApp: App {
                     BackgroundGrace.shared.cancel()
                     away = nil
                     HotspotShare.shared.handleForeground()
+                    // What a Live Activity showed while the app was
+                    // away may have been seen; a host still connecting
+                    // hears it once its register's answer lands
+                    // (gorex.push.seen, Host.activitySeen).
+                    TerminalLive.shared.reportSeen()
                     Task { await store.foreground(suspended: suspended) { await TailnetEngine.shared.resume() } }
                 }
                 .onChange(of: store.hosts.map(\.config)) { _, configs in

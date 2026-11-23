@@ -649,6 +649,9 @@ func throwApp(t *testing.T, style string, reduce bool) (*App, *ui.Tester, *Float
 	if a.floatRoom.W <= 0 || a.floatRoom.H <= 0 {
 		t.Fatalf("no room: %+v", a.floatRoom)
 	}
+	// settle runs the test's clock, not the wall clock the session's
+	// resize settles by: the float's terminal takes its size after that.
+	waitTermSize(t, tt, p)
 	return a, tt, f
 }
 

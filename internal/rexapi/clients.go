@@ -9,12 +9,8 @@ import (
 
 	"github.com/coder/websocket"
 
-	"gorex/internal/config"
 	"gorex/internal/rex"
 )
-
-// configPath is where GoRex keeps its configuration file.
-func (g *Gateway) configPath() string { return config.Path() }
 
 // keymapSettings returns the configuration generation, the file's hash
 // and the server's instance ID.

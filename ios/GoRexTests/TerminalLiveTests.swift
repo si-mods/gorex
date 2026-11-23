@@ -16,16 +16,20 @@ nonisolated final class TerminalLiveTests: XCTestCase {
         var calls: [String] = []
         var started: [TerminalActivity] = []
         var updates: [(state: TerminalActivity.ContentState, stale: Date?)] = []
+        /// What the activity shows, as a pushed update would leave it.
+        var shown: (attributes: TerminalActivity, state: TerminalActivity.ContentState)?
 
         func start(_ attributes: TerminalActivity, _ state: TerminalActivity.ContentState) {
             calls.append("start \(attributes.block)")
             started.append(attributes)
             running = true
+            shown = (attributes, state)
         }
 
         func update(_ state: TerminalActivity.ContentState, stale: Date?, done: (() -> Void)?) {
             calls.append(done == nil ? "update" : "update in grace")
             updates.append((state, stale))
+            if var s = shown { s.state = state; shown = s }
             if let done { dones.append(done) }
         }
 
@@ -33,6 +37,7 @@ nonisolated final class TerminalLiveTests: XCTestCase {
             calls.append("end")
             running = false
             dismissed = false
+            shown = nil
         }
     }
 
@@ -495,6 +500,66 @@ nonisolated final class TerminalLiveTests: XCTestCase {
         XCTAssertEqual(l.sent?.line, "SWE-2 High · bypass", "no record: the screen's")
         XCTAssertEqual(d.updates.map(\.state.line),
                        ["SWE-2 High · bypass", "Allow Bash: make test?", "Correct the lint count", "SWE-2 High · bypass"])
+    }
+
+    /// A done or error record the activity shows is reported seen as the
+    /// app comes back to the foreground — once for each it shows, again
+    /// when it ends — a working or recordless state reporting none, and
+    /// one the host could not take waiting till it can (gorex.push.seen).
+    @MainActor func testActivitySeenReportsOnceEach() {
+        let d = FakeDriver(), w = Waits(), t = Tasks()
+        let l = live(d, w, t) { Date(timeIntervalSince1970: 1_800_000_000) }
+        var seen: [(host: UUID, session: String, block: String, records: [String])] = []
+        var reach = true
+        let was = TerminalLive.seen
+        TerminalLive.seen = { h, s, b, ids in
+            if reach { seen.append((h, s, b, ids)) }
+            return reach
+        }
+        defer { TerminalLive.seen = was }
+        var record: TerminalActivity.Record?
+        let s = source(state: { .init(title: "api", program: nil, record: record, line: "", connected: true) })
+        let o = UUID()
+        l.show(s, owner: o)
+
+        // A working record is none to report.
+        record = .init(id: "w", state: "working", updated: Date(timeIntervalSince1970: 10))
+        l.changed()
+        w.run()
+        l.active()
+        XCTAssertTrue(seen.isEmpty)
+
+        // Done: reported once, not again.
+        record = .init(id: "d1", state: "done", updated: Date(timeIntervalSince1970: 20))
+        l.changed()
+        w.run()
+        l.active()
+        XCTAssertEqual(seen.count, 1)
+        XCTAssertEqual(seen.last?.records, ["d1"])
+        XCTAssertEqual(seen.last?.session, "s1")
+        XCTAssertEqual(seen.last?.block, "b1")
+        l.active()
+        XCTAssertEqual(seen.count, 1, "the same record reports once")
+
+        // A changed record reports again; a host it does not reach, not yet.
+        record?.updated = Date(timeIntervalSince1970: 30)
+        l.changed()
+        w.run()
+        reach = false
+        l.active()
+        XCTAssertEqual(seen.count, 1, "offline: nothing sent, nothing marked")
+        reach = true
+        l.reportSeen(host: s.attributes.host)
+        XCTAssertEqual(seen.count, 2, "it reports when the host can take it")
+        XCTAssertEqual(seen.last?.records, ["d1"])
+
+        // And as the activity ends.
+        record = .init(id: "e1", state: "error", updated: Date(timeIntervalSince1970: 40))
+        l.changed()
+        w.run()
+        l.close(owner: o)
+        XCTAssertEqual(seen.map(\.records), [["d1"], ["d1"], ["e1"]])
+        XCTAssertNil(d.shown)
     }
 
     /// Attributes and state together stay under ActivityKit's 4 KB with the

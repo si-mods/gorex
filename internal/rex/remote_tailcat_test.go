@@ -459,3 +459,58 @@ func TestTailcatFailedDialKeepsClient(t *testing.T) {
 		t.Error("the client was replaced")
 	}
 }
+
+// The remote server restarts, as an upgrade does, while a connection of
+// the kept client stays open, as the window's does (#751): a new dial
+// connects within tailcatDial, through a new client. The kept client's
+// try runs out of time, which retires it although that connection uses
+// it; before, a client in use was never replaced, so every dial failed
+// for as long as the old connection stayed open.
+func TestTailcatServerRestartWithOpenConn(t *testing.T) {
+	reg := tailcatEnv(t)
+	sk, psk := key.NewNode(), tailcat.NewPresharedKey()
+	ts := echoServer(t, reg, sk, psk)
+	addr := string(ts.TailcatAddr())
+	oldTry := tailcatTry
+	tailcatTry = time.Second
+	t.Cleanup(func() { tailcatTry = oldTry })
+
+	ctx, cancel := context.WithTimeout(context.Background(), tailcatDial)
+	open, err := dialTailcat(ctx, addr)
+	cancel()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer open.Close()
+	if err := lineTrip(open, 5*time.Second); err != nil {
+		t.Fatal(err)
+	}
+	old := open.(*tailcatConn).p
+	ts.Close()
+	echoServer(t, reg, sk, psk)
+
+	tries := tailcatTries.Load()
+	start := time.Now()
+	ctx, cancel = context.WithTimeout(context.Background(), tailcatDial)
+	defer cancel()
+	c, err := dialTailcat(ctx, addr)
+	if err != nil {
+		t.Fatalf("a dial after the restart, with a connection open: %v after %v", err, time.Since(start).Round(time.Millisecond))
+	}
+	defer c.Close()
+	if err := lineTrip(c, 5*time.Second); err != nil {
+		t.Fatalf("the new connection: %v", err)
+	}
+	t.Logf("connected in %v", time.Since(start).Round(time.Millisecond))
+	// The count of tries is asserted, not the time, which a loaded
+	// machine stretches; tailcatDial bounds the time.
+	if n := tailcatTries.Load() - tries; n != 1 {
+		t.Errorf("the kept client had %d tries after the restart, want 1", n)
+	}
+	tailcatMu.Lock()
+	kept := tailcatClients[addr] == old
+	tailcatMu.Unlock()
+	if kept || c.(*tailcatConn).p == old {
+		t.Error("the kept client was not replaced")
+	}
+}

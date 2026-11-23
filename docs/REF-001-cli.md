@@ -54,7 +54,7 @@ gorex events
 gorex hosts [ls] [--json]
 gorex [-S HOST] pair [--json]
 gorex skill show|setup|status|remove [--agent NAME] [--project] [--dry-run] [--json]
-gorex remote status [--json] | tailscale on|off | address | relay HOST|default | reachable IP|off | enable | disable | control on|off | pair start|stop | pending | approve KEY|CODE | reject KEY|CODE | allow NAME KEY | revoke KEY
+gorex remote status [--json] | tailscale on|off | address | key | relay HOST|default | reachable IP|off | enable | disable | control on|off | pair start|stop | pending | approve KEY|CODE | reject KEY|CODE | allow NAME KEY | revoke KEY
 gorex server restart | upgrade
 gorex update
 gorex config path | config check [FILE] | config reload
@@ -96,8 +96,12 @@ wins over `-s`. An ambiguous target exits 3. `rename` gives a pane a label.
   alone. A server with built-in Tailscale off, or not signed in, sends
   none, and the command exits 1 saying so.
 - `remote status` shows the local server's remote access without its
-  address; `remote control on|off` lets paired clients run app actions
-  through the window. It applies to every paired client, and persists even while remote access is off.
+  address; `key=` is the host's public key. `remote key` prints this
+  machine's client key, for a host's allowlist or a relay operator's
+  list. `remote relay HOST` homes the address on a relay of one's own,
+  `remote relay gorex` on the team's (docs/NET-004-public-relay.md).
+  `remote control on|off` lets paired clients run app actions through the
+  window. It applies to every paired client, and persists even while remote access is off.
   Destructive actions stay refused.
 - `remote pending` prints the pairing requests as JSON: those by address
   first, each with its code, name and source, then those over tailcat,

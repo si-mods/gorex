@@ -111,6 +111,35 @@ nonisolated final class PushTokensTests: XCTestCase {
         XCTAssertEqual(r.binds.first?.target.relay.absoluteString, "https://relay.example")
     }
 
+    /// What the Live Activity showed is seen: gorex.push.seen goes with
+    /// the terminal's session and block and the records' ids, over the
+    /// connection; an empty report is none.
+    @MainActor func testPushSeenOverControl() async throws {
+        let rex = try FakeRex()
+        defer { rex.stop() }
+        rex.features = ["gorex.push"]
+        rex.respond = { m, _ in
+            switch m {
+            case "session.bootstrap": ["attach_all": ["sessions": []]]
+            case "gorex.push.register": ["host": "aG9zdA", "relay": "https://relay.example"]
+            default: [:]
+            }
+        }
+        let h = Host(HostConfig(name: "test", url: try await rex.url()))
+        h.connect()
+        defer { h.stop() }
+        await until("online") { h.status == .online }
+        XCTAssertTrue(h.pushSeen(session: "s1", block: "b1", records: ["d1", "e1"]))
+        await until("the report") { rex.count("gorex.push.seen") == 1 }
+        let args = try XCTUnwrap(rex.payload("gorex.push.seen"))
+        XCTAssertEqual(args["session_id"] as? String, "s1")
+        XCTAssertEqual(args["block_id"] as? String, "b1")
+        XCTAssertEqual(args["record_ids"] as? [String], ["d1", "e1"])
+        XCTAssertFalse(h.pushSeen(session: "s1", block: "b1", records: []), "an empty report is none")
+        try? await Task.sleep(for: .milliseconds(100))
+        XCTAssertEqual(rex.count("gorex.push.seen"), 1)
+    }
+
     /// A host that pushes alerts by push: while its register's target is
     /// there and the phone has Live Activities on, a blocked record does
     /// not call blocked, so the local notification the alert replaces
@@ -178,5 +207,7 @@ nonisolated final class PushTokensTests: XCTestCase {
         try? await Task.sleep(for: .milliseconds(100))
         XCTAssertEqual(rex.count("gorex.push.register"), 0)
         XCTAssertNil(p.targets[h.id])
+        XCTAssertFalse(h.pushSeen(session: "s1", block: "b1", records: ["d1"]))
+        XCTAssertEqual(rex.count("gorex.push.seen"), 0)
     }
 }

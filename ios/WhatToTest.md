@@ -11,6 +11,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 
 ## en-US
 - Coming back to Rex Go after the phone has slept a while, a paired computer now reconnects in a second or two instead of around ten.
+- A program that finished while Rex Go slept, one you already saw on the Lock Screen or Dynamic Island, no longer counts as new when you come back.
 - Leave Rex Go with a terminal open and a program waits for you: its alert now arrives pushed from the computer through the relay, lighting the screen, in place of the app's own notification.
 - Coming back from another app, or the phone's network or VPN changing, no longer starts a terminal's screen over for a drop it could ride out: it picks the stream up where it was.
 - Searching the tab list, Activity or Settings now says when nothing matches; empty spots name their state, and a failed ports page or web client download offers Try again.
@@ -125,9 +126,11 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - Locking the phone while a terminal runs: its drawing now stops for the lock screen's snapshot too. Pulling down Control Center only freezes it for a moment, then it resumes behind the panel.
 - The space panel now grows out of the space button at the top, and the space you pick slides back into it; with Reduce Motion on it only fades.
 - A computer with no project in the space you picked no longer shows a note under its name; the + beside it still makes one from a folder.
+- While a program waits for your answer, the Lock Screen card and the expanded Dynamic Island show Approve and Deny: tap once to answer without opening Rex Go.
 
 ## zh-Hans
 - 手机休眠一段时间后回到 Rex Go，已配对的电脑现在一两秒就能重新连上，不再要等十秒上下。
+- 程序在应用休眠期间完成时，若你已在锁屏或灵动岛上看到它，回来后不再计为未读。
 - 开着终端退出 Rex Go 后，程序等待你处理时会由电脑推送提醒并点亮屏幕，取代应用自己发出的「需要输入」通知。
 - 从其他 App 返回，或手机网络/VPN 变化后，终端现在会续上原来的连接，不再为一阵可容忍的断线重新加载画面。
 - 在标签页列表、「动态」或「设置」中搜索无结果时，现在会提示没有匹配项；空的位置会说明状态，端口页或网页客户端加载失败时可点「重试」。
@@ -242,3 +245,4 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - 终端运行中锁屏：绘制现在也会为锁屏快照停下。下拉控制中心只停一瞬，面板还开着时就恢复绘制。
 - 顶部的空间面板现在从空间按钮本身展开，选中的空间会滑回按钮里；开启「减弱动态效果」时只淡入淡出。
 - 所选空间里没有项目的电脑，名称下不再显示说明文字；用旁边的 + 仍可从文件夹新建项目。
+- 程序等你回答时，锁定屏幕卡片和展开的灵动岛会显示「拒绝」和「批准」：点一下即可答复，不用打开 Rex Go。
