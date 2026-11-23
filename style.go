@@ -178,7 +178,8 @@ func isDark(c ui.Color) bool {
 // or those of the palette of bg's lightness when the pane takes a terminal
 // background of the other appearance, as a light window over a dark
 // terminal does. Its title, its buttons and their hover faces then read on
-// the header, rather than turning black on a dark one.
+// the header, rather than turning black on a dark one, and the card's
+// edge is not a white ring around a dark face.
 func headerColors(k *colors, bg ui.Color) *colors {
 	if isDark(bg) == isDark(k.panel) {
 		return k
@@ -190,6 +191,7 @@ func headerColors(k *colors, bg ui.Color) *colors {
 	h := *k
 	h.text, h.textMuted, h.textFaint, h.iconMuted = ref.text, ref.textMuted, ref.textFaint, ref.iconMuted
 	h.hover, h.pressed = ref.hover, ref.pressed
+	h.cardBorder, h.cardBorderFocused = ref.cardBorder, ref.cardBorderFocused
 	return &h
 }
 
