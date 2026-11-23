@@ -10,6 +10,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 `web` job of `.github/workflows/ci.yml` fails it.
 
 ## en-US
+- The Device Name in the Tailscale settings can now be set before you turn Built-in Tailscale on, and a new install suggests a readable name like iphone-rex-kqzt instead of random letters.
 - Settings > Terminal gains a Ligatures switch: turn it off to keep !=, => and similar drawn as separate characters in fonts such as JetBrains Mono.
 - Long-press a computer's name in the list and drag it to a new place: the order is saved.
 - Coming back to Rex Go after the phone has slept a while, a paired computer now reconnects in a second or two instead of around ten.
@@ -134,6 +135,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - With Developer Mode on, the floating connection bar at the top no longer covers the first row of the computer list.
 
 ## zh-Hans
+- 「设置 › Tailscale」里的「设备名称」现在在开启「内置 Tailscale」之前就能填写；新安装会建议一个可读的名字，如 iphone-rex-kqzt，不再只是随机字母。
 - 「设置 › 终端」新增「连字」开关：关闭后，JetBrains Mono 等字体把 !=、=> 按独立字符画出，不再合成连字。
 - 长按列表中电脑的名称，把它拖到新的位置：顺序会保存下来。
 - 手机休眠一段时间后回到 Rex Go，已配对的电脑现在一两秒就能重新连上，不再要等十秒上下。

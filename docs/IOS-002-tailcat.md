@@ -119,7 +119,7 @@ The address is a secret (README). The dialog shows the code and says so. GoRex n
 Rex Go takes the code from the scanner of Add Host, from a picture of it that the user picks in the scanner, or from the camera app through the `rexgo` scheme that Rex Go already registers. Then Rex Go does these steps:
 
 1. It makes its client key if it has none (Keychain, this device only).
-2. It asks to pair with its device name (`rexgo-xxxx`, IOS-001-tailnet.md).
+2. It asks to pair with its device name (`iphone-rex-kqzt`, IOS-001-tailnet.md).
 3. It shows the fingerprint. The desktop shows the request with the same fingerprint. The user approves on the desktop, as for a desktop.
 4. It adds the host. The host connects as soon as the machine allows the key.
 

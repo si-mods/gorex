@@ -35,6 +35,48 @@ struct TailscaleView: View {
                 Text("Rex Go joins your tailnet itself, with no Tailscale app or VPN. Hosts on the tailnet go through it.")
             }
             .listRowBackground(Color.card)
+            Section {
+                LabeledContent("Device Name") {
+                    TextField(savedName, text: $name)
+                        .multilineTextAlignment(.trailing)
+                        .foregroundStyle(.secondary)
+                        .submitLabel(.done)
+                        .onSubmit {
+                            guard TailnetEngine.validName(name), name != savedName else { return }
+                            savedName = name
+                            Task { await engine.setHostname(name) }
+                        }
+                }
+                LabeledContent("Control Server") {
+                    TextField("Tailscale", text: $controlText)
+                        .multilineTextAlignment(.trailing)
+                        .foregroundStyle(.secondary)
+                        .keyboardType(.URL)
+                        .submitLabel(.done)
+                        .onSubmit {
+                            let c = controlText.trimmingCharacters(in: .whitespaces)
+                            guard TailnetEngine.validControlURL(c), c != control else { return }
+                            control = c
+                            // A device belongs to one control server: a new one starts anew.
+                            Task { await engine.signOut() }
+                            reconnectTailnetHosts()
+                        }
+                }
+            } header: {
+                Text("Device")
+            } footer: {
+                VStack(alignment: .leading, spacing: 4) {
+                    if let e = engine.renameFailure { Text(e).foregroundStyle(.red) }
+                    if !TailnetEngine.validName(name) {
+                        Text("A device name has letters, digits and hyphens, not at either end.").foregroundStyle(.red)
+                    }
+                    if !TailnetEngine.validControlURL(controlText.trimmingCharacters(in: .whitespaces)) {
+                        Text("A control server's URL starts with https://, or http:// for a local address.").foregroundStyle(.red)
+                    }
+                    Text("Leave the control server empty for Tailscale's own.")
+                }
+            }
+            .listRowBackground(Color.card)
             if on {
                 if !s.isRunning {
                     Section {
@@ -79,48 +121,6 @@ struct TailscaleView: View {
                     }
                     .listRowBackground(Color.card)
                 }
-                Section {
-                    LabeledContent("Device Name") {
-                        TextField(savedName, text: $name)
-                            .multilineTextAlignment(.trailing)
-                            .foregroundStyle(.secondary)
-                            .submitLabel(.done)
-                            .onSubmit {
-                                guard TailnetEngine.validName(name), name != savedName else { return }
-                                savedName = name
-                                Task { await engine.setHostname(name) }
-                            }
-                    }
-                    LabeledContent("Control Server") {
-                        TextField("Tailscale", text: $controlText)
-                            .multilineTextAlignment(.trailing)
-                            .foregroundStyle(.secondary)
-                            .keyboardType(.URL)
-                            .submitLabel(.done)
-                            .onSubmit {
-                                let c = controlText.trimmingCharacters(in: .whitespaces)
-                                guard TailnetEngine.validControlURL(c), c != control else { return }
-                                control = c
-                                // A device belongs to one control server: a new one starts anew.
-                                Task { await engine.signOut() }
-                                reconnectTailnetHosts()
-                            }
-                    }
-                } header: {
-                    Text("Device")
-                } footer: {
-                    VStack(alignment: .leading, spacing: 4) {
-                        if let e = engine.renameFailure { Text(e).foregroundStyle(.red) }
-                        if !TailnetEngine.validName(name) {
-                            Text("A device name has letters, digits and hyphens, not at either end.").foregroundStyle(.red)
-                        }
-                        if !TailnetEngine.validControlURL(controlText.trimmingCharacters(in: .whitespaces)) {
-                            Text("A control server's URL starts with https://, or http:// for a local address.").foregroundStyle(.red)
-                        }
-                        Text("Leave the control server empty for Tailscale's own.")
-                    }
-                }
-                .listRowBackground(Color.card)
                 if s.hasDevice {
                     Section {
                         Button("Sign Out", role: .destructive) { confirmSignOut = true }
@@ -138,6 +138,8 @@ struct TailscaleView: View {
         .autocorrectionDisabled()
         .navigationTitle("Tailscale")
         .navigationBarTitleDisplayMode(.inline)
+        // The name's default, suggested before the first enable.
+        .onAppear { TailnetSettings.makeName() }
         // Hosts on the tailnet switch ways as it turns on or off.
         .onChange(of: on) {
             Task { await engine.apply() }

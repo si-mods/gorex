@@ -544,12 +544,15 @@ nonisolated final class HostTests: XCTestCase {
         XCTAssertEqual(HostConfig.transport(switched: false, was: nil, at: moved, rule: .tailnet), .system)
     }
 
-    /// The device's default name is rexgo- and four lowercase letters,
-    /// made once and kept.
+    /// The device's default name is the sanitized model, -rex- and four
+    /// lowercase letters, made once and kept.
     @MainActor func testDeviceName() {
         for _ in 0..<50 {
-            XCTAssertNotNil(TailnetSettings.defaultName().wholeMatch(of: /rexgo-[a-z]{4}/))
+            XCTAssertNotNil(TailnetSettings.defaultName(device: "iPhone").wholeMatch(of: /iphone-rex-[a-z]{4}/))
         }
+        XCTAssertNotNil(TailnetSettings.defaultName(device: "Alice's iPhone").wholeMatch(of: /alices-iphone-rex-[a-z]{4}/))
+        XCTAssertNotNil(TailnetSettings.defaultName(device: "").wholeMatch(of: /rex-[a-z]{4}/))
+        XCTAssertNotNil(TailnetSettings.defaultName(device: "— —").wholeMatch(of: /rex-[a-z]{4}/))
         let d = UserDefaults.standard, saved = d.string(forKey: TailnetSettings.nameKey)
         defer { d.set(saved, forKey: TailnetSettings.nameKey) }
         d.removeObject(forKey: TailnetSettings.nameKey)
@@ -557,7 +560,7 @@ nonisolated final class HostTests: XCTestCase {
         XCTAssertNil(d.string(forKey: TailnetSettings.nameKey))
         TailnetSettings.makeName()
         let n = TailnetSettings.name
-        XCTAssertNotNil(n.wholeMatch(of: /rexgo-[a-z]{4}/))
+        XCTAssertNotNil(n.wholeMatch(of: /([a-z0-9-]+-)?rex-[a-z]{4}/))
         TailnetSettings.makeName()
         XCTAssertEqual(TailnetSettings.name, n)
     }
