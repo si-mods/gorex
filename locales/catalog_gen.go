@@ -5142,6 +5142,56 @@ func (msgs Messages) HostsSessions(n int) string {
 	return Catalog.Format(msgs.locale, "hostsSessions", map[string]any{"n": n})
 }
 
+// HostsPathDirect says "direct {endpoint} · {ms} ms"
+// in the language the app shows.
+//
+// Remote Hosts page: under a connected host, its link goes over a direct
+// path to the endpoint; ms is the round trip in milliseconds.
+func HostsPathDirect(endpoint string, ms int) string {
+	return In(i18n.Locale()).HostsPathDirect(endpoint, ms)
+}
+
+// HostsPathDirect says "direct {endpoint} · {ms} ms"
+// in the language of msgs.
+//
+// Remote Hosts page: under a connected host, its link goes over a direct
+// path to the endpoint; ms is the round trip in milliseconds.
+func (msgs Messages) HostsPathDirect(endpoint string, ms int) string {
+	return Catalog.Format(msgs.locale, "hostsPathDirect", map[string]any{"endpoint": endpoint, "ms": ms})
+}
+
+// HostsPathRelay says "via {relay} · {ms} ms"
+// in the language the app shows.
+//
+// Remote Hosts page: under a connected host, its link goes through the
+// relay named; ms is the round trip in milliseconds.
+func HostsPathRelay(relay string, ms int) string { return In(i18n.Locale()).HostsPathRelay(relay, ms) }
+
+// HostsPathRelay says "via {relay} · {ms} ms"
+// in the language of msgs.
+//
+// Remote Hosts page: under a connected host, its link goes through the
+// relay named; ms is the round trip in milliseconds.
+func (msgs Messages) HostsPathRelay(relay string, ms int) string {
+	return Catalog.Format(msgs.locale, "hostsPathRelay", map[string]any{"relay": relay, "ms": ms})
+}
+
+// HostsPathTailnet says "via Tailscale"
+// in the language the app shows.
+//
+// Remote Hosts page: under a connected host found through Tailscale, its
+// link goes over the tailnet, which needs no measure.
+func HostsPathTailnet() string { return In(i18n.Locale()).HostsPathTailnet() }
+
+// HostsPathTailnet says "via Tailscale"
+// in the language of msgs.
+//
+// Remote Hosts page: under a connected host found through Tailscale, its
+// link goes over the tailnet, which needs no measure.
+func (msgs Messages) HostsPathTailnet() string {
+	return Catalog.Format(msgs.locale, "hostsPathTailnet", nil)
+}
+
 // CmdNewTabOn says "New Tab on {host}"
 // in the language the app shows.
 //

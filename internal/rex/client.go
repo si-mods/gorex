@@ -898,6 +898,14 @@ func (c *Client) RemoteStatus() (s RemoteStatus, err error) {
 	return
 }
 
+// TailcatStatus asks the server how its tailcat link to addr runs: a
+// direct path or a relay, and the ping's round-trip (TailcatStatus). A
+// server of before the op answers "unknown op". The address is a secret.
+func (c *Client) TailcatStatus(addr string) (s TailcatStatus, err error) {
+	err = c.call(Request{Op: "remote.tailcatStatus", TailcatAddress: addr}, &s)
+	return
+}
+
 // EnableRemote turns remote access on. The server listens in the
 // background: see RemoteStatus.
 func (c *Client) EnableRemote() error { return c.call(Request{Op: "remote.enable"}, nil) }

@@ -114,6 +114,12 @@ type hostConn struct {
 	hello   rex.Hello
 	// agents are the known agent CLIs installed on this host (agents.list).
 	agents []rex.AgentInfo
+	// path is how the link to the host runs, as the server measured it
+	// last (rex.TailcatStatus), nil until the first answer; pathAt is
+	// when it was asked last, and pathAsking that an ask is under way.
+	path       *rex.TailcatStatus
+	pathAt     time.Time
+	pathAsking bool
 	// closed are the sessions closed here since the host connected, which
 	// adopt does not open again though a list still has them.
 	closed map[string]bool

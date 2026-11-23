@@ -691,6 +691,14 @@ func (s *Server) control(conn net.Conn, r *bufio.Reader, first []byte, peer stri
 					res.Error = err.Error()
 				}
 				reply(res)
+			} else if req.Op == "remote.tailcatStatus" {
+				// The ping may take seconds: the answer goes aside, as a
+				// prompt's does, so the connection's other requests, the
+				// keepalive's pings among them, go on meanwhile.
+				kept := kept // a later hello sets it, as this runs
+				go func() {
+					reply(s.request(req, peer, kept))
+				}()
 			} else if req.Op == "kill" || req.Op == "command" || req.Op == "command.take" || req.Op == "command.done" {
 				aside <- struct{}{}
 				kept := kept // a later hello sets it, as this runs

@@ -16,6 +16,7 @@ import (
 
 	"github.com/tailscale/tailcat"
 	"tailscale.com/derp/derpserver"
+	"tailscale.com/ipn/ipnstate"
 	"tailscale.com/net/stun/stuntest"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
@@ -512,5 +513,133 @@ func TestTailcatServerRestartWithOpenConn(t *testing.T) {
 	tailcatMu.Unlock()
 	if kept || c.(*tailcatConn).p == old {
 		t.Error("the kept client was not replaced")
+	}
+}
+
+// The tests below are of remote.tailcatStatus: the op pings the server
+// through the tailcat client of its address and says how the link runs.
+// discoPing is stubbed; the address, the pool and the relay's name are
+// real.
+
+// stubPing makes discoPing answer res, or err.
+func stubPing(t *testing.T, res *ipnstate.PingResult, err error) {
+	t.Helper()
+	old := discoPing
+	discoPing = func(context.Context, *tailcat.Client) (*ipnstate.PingResult, error) {
+		return res, err
+	}
+	t.Cleanup(func() { discoPing = old })
+}
+
+// statusAddr is the tailcat address of a server whose DERP region is
+// only the fleet's regionID, or whose region embeds the relay r.
+func statusAddr(regionID tailcfg.DERPRegionID, r *tailcfg.DERPRegion) tailcat.Addr {
+	ci := tailcat.ConnInfo{
+		ServerPublic:      tailcat.NodePublic{NodePublic: key.NewNode().Public()},
+		ServerDiscoPublic: tailcat.DiscoPublic{DiscoPublic: key.NewDisco().Public()},
+		RegionID:          regionID,
+	}
+	if r != nil {
+		ci.Region = []*tailcfg.DERPRegion{r}
+	}
+	return ci.Addr()
+}
+
+// A pong that came over a direct UDP path names its endpoint.
+func TestTailcatStatusDirect(t *testing.T) {
+	tailcatEnv(t)
+	addr := statusAddr(1, nil)
+	stubPing(t, &ipnstate.PingResult{
+		Endpoint:       "192.0.2.10:41641",
+		LatencySeconds: 0.032,
+	}, nil)
+	st, err := tailcatStatus(string(addr))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !st.Direct || st.Endpoint != "192.0.2.10:41641" {
+		t.Errorf("got %+v, want a direct path to 192.0.2.10:41641", st)
+	}
+	if st.Relay != "" || st.RegionID != 0 {
+		t.Errorf("a direct path names no relay, got %+v", st)
+	}
+	if st.LatencySeconds < 0.03 || st.LatencySeconds > 0.04 {
+		t.Errorf("latency %v, want 0.032", st.LatencySeconds)
+	}
+}
+
+// A pong through a relay names it: the embedded region's host for a
+// relay of one's own, the pong's region code for one of the fleet, a
+// bare "region N" when that is all the pong has.
+func TestTailcatStatusRelay(t *testing.T) {
+	tailcatEnv(t)
+	var res *ipnstate.PingResult
+	old := discoPing
+	discoPing = func(context.Context, *tailcat.Client) (*ipnstate.PingResult, error) {
+		return res, nil
+	}
+	t.Cleanup(func() { discoPing = old })
+
+	own := statusAddr(0, &tailcfg.DERPRegion{
+		RegionID: 9, RegionCode: "own",
+		Nodes: []*tailcfg.DERPNode{{
+			Name: "n1", RegionID: 9, HostName: "derp.example.com",
+		}},
+	})
+	res = &ipnstate.PingResult{
+		DERPRegionID: 9, DERPRegionCode: "sfo", LatencySeconds: 0.21,
+	}
+	st, err := tailcatStatus(string(own))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.Direct || st.Relay != "derp.example.com" {
+		t.Errorf("the address's embedded host wins over the pong's code, got %+v", st)
+	}
+
+	fleet := statusAddr(5, nil)
+	res = &ipnstate.PingResult{
+		DERPRegionID: 5, DERPRegionCode: "sfo", LatencySeconds: 0.15,
+	}
+	st, err = tailcatStatus(string(fleet))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.Direct || st.Relay != "sfo" || st.RegionID != 5 {
+		t.Errorf("the pong's region code names a fleet relay, got %+v", st)
+	}
+
+	bare := statusAddr(7, nil)
+	res = &ipnstate.PingResult{DERPRegionID: 7, LatencySeconds: 0.1}
+	st, err = tailcatStatus(string(bare))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.Relay != "region 7" {
+		t.Errorf("a pong without a code gets a numeric name, got %+v", st)
+	}
+}
+
+// A ping that fails reports an error that does not carry the secret
+// address, and the client made for it leaves the pool.
+func TestTailcatStatusError(t *testing.T) {
+	tailcatEnv(t)
+	if _, err := tailcatStatus("localhost:4164"); err == nil {
+		t.Error("a non-tailcat address pings nothing, yet got no error")
+	}
+	addr := statusAddr(1, nil)
+	stubPing(t, nil, errors.New("pong of "+string(addr)+" never came"))
+	st, err := tailcatStatus(string(addr))
+	if err == nil {
+		t.Fatal("a failed ping got a status")
+	}
+	if strings.Contains(err.Error(), string(addr)) {
+		t.Errorf("the error carries the secret address: %v", err)
+	}
+	if st != (TailcatStatus{}) {
+		t.Errorf("a failed ping got %v", st)
+	}
+	if n := poolSize(); n != 0 {
+		t.Errorf("the ping's client stayed in the pool: %d", n)
 	}
 }

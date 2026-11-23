@@ -179,6 +179,9 @@ type Request struct {
 	Code string `json:"code,omitempty"`
 	// TailcatAddress is the address of remote.tailcatDial: the server
 	// connects to it with its tailcat client, and relays the connection.
+	// remote.tailcatStatus also names it: the server pings the address
+	// with its client of it, and answers how the link runs
+	// (TailcatStatus).
 	TailcatAddress string `json:"tailcatAddress,omitempty"`
 	// Relay is the relay of remote.relaySet: a DERP server's host, "" for
 	// tailcat's own.
@@ -671,6 +674,21 @@ type RemoteAddrPending struct {
 // saw, to compare with the one the server shows.
 type PairResult struct {
 	Fingerprint string `json:"fingerprint"`
+}
+
+// TailcatStatus answers remote.tailcatStatus: how the link to a host's
+// address runs, as a disco ping through the server's tailcat client of
+// it measured it. Direct is that the pong came over a direct path, whose
+// UDP endpoint Endpoint names then; else the pong came through a relay,
+// which Relay names: the host of a relay of one's own, a DERP region's
+// code, or its number as "region N". LatencySeconds is the ping's
+// round-trip.
+type TailcatStatus struct {
+	Direct         bool    `json:"direct"`
+	Endpoint       string  `json:"endpoint,omitempty"`
+	Relay          string  `json:"relay,omitempty"`
+	RegionID       int     `json:"regionId,omitempty"`
+	LatencySeconds float64 `json:"latencySeconds"`
 }
 
 // Response answers the Request with the same ID.

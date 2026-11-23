@@ -410,6 +410,11 @@ func (a *App) hostsSettings(c *ui.Context, k *colors) {
 func (a *App) hostRow(c *ui.Context, k *colors, h *hostConn) {
 	page := &hostsUI
 	label, detail, up := hostStatus(h)
+	if up {
+		// How the link runs goes under the state, once measured; asking
+		// starts here, off the UI thread, while the row shows.
+		detail = a.hostPath(h)
+	}
 	sessions := a.sessionsOn(h)
 	groupRow(c, k, h.ID).Gap(8).Children(func() {
 		ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
@@ -472,6 +477,68 @@ func (a *App) hostRow(c *ui.Context, k *colors, h *hostConn) {
 			})
 		})
 	})
+}
+
+// hostPath says how the link to h runs, "" until the server measured
+// it; a host of the tailnet goes over it, which needs no measure. Call
+// it on the main thread.
+func (a *App) hostPath(h *hostConn) string {
+	if rex.IsTailnetTarget(h.Address) {
+		return locales.HostsPathTailnet()
+	}
+	a.refreshHostPath(h)
+	if h.path == nil {
+		return ""
+	}
+	return hostPathLine(h.path)
+}
+
+// hostPathLine is the row's line of a measured link: the direct
+// endpoint, or the relay the link goes through, and the round trip. A
+// pong that names neither says nothing.
+func hostPathLine(st *rex.TailcatStatus) string {
+	ms := int(st.LatencySeconds*1000 + 0.5)
+	switch {
+	case st.Direct:
+		return locales.HostsPathDirect(st.Endpoint, ms)
+	case st.Relay != "":
+		return locales.HostsPathRelay(st.Relay, ms)
+	}
+	return ""
+}
+
+// hostPathFresh is how long a host's measured link keeps; an older one,
+// or none, is asked again while the row shows.
+var hostPathFresh = 30 * time.Second
+
+// tailcatStatus asks the local server how the link to a host's address
+// runs; tests replace it.
+var tailcatStatus = func(srv *rex.Client, addr string) (rex.TailcatStatus, error) {
+	return srv.TailcatStatus(addr)
+}
+
+// refreshHostPath asks the server how the link to h runs, not while the
+// last measure is fresh nor while an ask is under way; the answer lands
+// on the main thread. Call it on the main thread.
+func (a *App) refreshHostPath(h *hostConn) {
+	srv := a.client
+	if srv == nil || h.pathAsking || time.Since(h.pathAt) < hostPathFresh {
+		return
+	}
+	h.pathAsking = true
+	addr := h.Address
+	update := a.settingsUpdate()
+	go func() {
+		st, err := tailcatStatus(srv, addr)
+		update(func() {
+			h.pathAsking = false
+			// Asked, answered or not: another comes once this is stale.
+			h.pathAt = time.Now()
+			if err == nil {
+				h.path = &st
+			}
+		})
+	}()
 }
 
 // hostAliasField edits the name h shows by here, as tabs are renamed:

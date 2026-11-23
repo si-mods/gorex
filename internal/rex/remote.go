@@ -30,6 +30,7 @@ import (
 
 	"github.com/tailscale/tailcat"
 	"tailscale.com/envknob"
+	"tailscale.com/ipn/ipnstate"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
 	"tailscale.com/util/dnsname"
@@ -1064,11 +1065,19 @@ var (
 )
 
 // tailcatDial bounds a dial; tailcatTry an attempt of a client that
-// connected before, which fails when its server restarted.
+// connected before, which fails when its server restarted. tailcatPing
+// bounds a status's ping.
 var (
 	tailcatDial = 15 * time.Second
 	tailcatTry  = 3 * time.Second
+	tailcatPing = 8 * time.Second
 )
+
+// discoPing pings the server of a tailcat client and reports how the
+// pong came back; tests replace it.
+var discoPing = func(ctx context.Context, tc *tailcat.Client) (*ipnstate.PingResult, error) {
+	return tc.DiscoPing(ctx)
+}
 
 // tailcatTries counts the tries of kept clients (a test reads it).
 var tailcatTries atomic.Int64
@@ -1237,6 +1246,66 @@ func (c *tailcatConn) Close() error {
 	err := c.Conn.Close()
 	c.once.Do(func() { c.p.release(c.addr) })
 	return err
+}
+
+// tailcatStatus answers remote.tailcatStatus (TailcatStatus): it pings
+// addr's server through the tailcat client of it, making one as a dial
+// would, which warms the pool for the connections that follow. The ping
+// goes on while no dial does: a client it drops is only ever its own.
+func tailcatStatus(addr string) (TailcatStatus, error) {
+	var st TailcatStatus
+	ci, err := tailcat.ParseAddr(tailcat.Addr(addr))
+	if err != nil {
+		return st, errors.New("rex: not a tailcat address")
+	}
+	k, err := remoteClientKey()
+	if err != nil {
+		return st, err
+	}
+	tailcatMu.Lock()
+	p := tailcatClients[addr]
+	if p == nil {
+		p = newPooledTailcat(addr, k)
+	}
+	if p.idle != nil {
+		p.idle.Stop()
+		p.idle = nil
+	}
+	p.conns++
+	tailcatMu.Unlock()
+	defer p.release(addr)
+
+	ctx, cancel := context.WithTimeout(context.Background(), tailcatPing)
+	defer cancel()
+	res, err := discoPing(ctx, p.tc)
+	if err != nil {
+		if p.drop(addr) {
+			p.tc.Close()
+		}
+		return st, errors.New(scrub(err.Error(), addr))
+	}
+	tailcatMu.Lock()
+	p.used = true
+	tailcatMu.Unlock()
+
+	st.Direct = res.Endpoint != ""
+	st.Endpoint = res.Endpoint
+	st.LatencySeconds = res.LatencySeconds
+	if !st.Direct {
+		// The address of a relay of one's own embeds the region, whose
+		// node names the relay's host; a region of tailcat's fleet names
+		// only its code, which the pong carries.
+		switch {
+		case len(ci.Region) > 0 && len(ci.Region[0].Nodes) > 0 && ci.Region[0].Nodes[0].HostName != "":
+			st.Relay = ci.Region[0].Nodes[0].HostName
+		case res.DERPRegionCode != "":
+			st.Relay = res.DERPRegionCode
+		case res.DERPRegionID != 0:
+			st.Relay = fmt.Sprintf("region %d", res.DERPRegionID)
+		}
+		st.RegionID = int(res.DERPRegionID)
+	}
+	return st, nil
 }
 
 // remoteCommand tells whether a remote client may ask for the layout

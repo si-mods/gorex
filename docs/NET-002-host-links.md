@@ -3,7 +3,7 @@ name: NET-002
 description: "One device identity for all paths, tailcat for sessions, and Tailscale only as an introduction. Use when you change pairing, device keys or how hosts connect."
 metadata:
   created: "2026-11-12"
-  updated: "2026-11-20"
+  updated: "2026-11-23"
 ---
 
 # NET-002: Host links: one identity, any path, one switch
@@ -178,7 +178,9 @@ Under Show Details:
   - When the user turns Reachable at off, the rules stay. To remove them needs administrator.
 - **Relay** is the default, or a host.
 
-Remote Hosts lists the machines that the user added. **Add Remote Host** takes what the user has. This is an IP address or a name of a machine that they can dial, or the long address that a machine shows. The sheet also offers the GoRex hosts that the tailnet finds, each with **Add Host**. Discovery adds no host by itself. A host added in this way is a host like any other, which the user can rename and remove. The details of a host say how it is reached now.
+Remote Hosts lists the machines that the user added. **Add Remote Host** takes what the user has. This is an IP address or a name of a machine that they can dial, or the long address that a machine shows. The sheet also offers the GoRex hosts that the tailnet finds, each with **Add Host**. Discovery adds no host by itself. A host added in this way is a host like any other, which the user can rename and remove. The details of a host say how it is reached now. A connected host shows its path under its state: a direct path names its UDP endpoint, a relayed path names the relay, and each names the round trip. A host of the tailnet says only that it goes over Tailscale, because its path is the node's own.
+
+As built, the local server measures the path. The op `remote.tailcatStatus` pings the address through the tailcat client of it (`tailcat.Client.DiscoPing`), which the pool of the relayed connections shares. The pong names the path. The ping also nudges direct path discovery, so the display settles on the route the sessions use. The client asks again when a measure is older than 30 seconds. A measure that fails shows nothing and is tried again at the next interval. The op is additive to the socket protocol: a server of before it answers "unknown op", and the row stays silent.
 
 The first connection goes in this order:
 
@@ -269,7 +271,7 @@ Each phase ships something that a user can use.
 ## Open questions
 
 - **Changing the relay changes the address.** With several addresses, a server can tell a connected client the new address before the old address goes.
-- **Which route a connection takes** (direct, or through which relay): nobody checked whether tailcat tells.
+- **Which route a connection takes** is settled: `DiscoPing` reports the pong's path (Surface, "As built"). A ping's answer is the path of the moment, not a promise. A route can change after it.
 - **The protocol of the embedded relay on a port forward**: DERP rides HTTPS, so a forward of one TCP port should do. The direct route needs UDP as well. Not checked.
 - **Other firewalls** than Windows Firewall (the firewall of macOS, a third-party firewall, the firewall of the network) may block the port silently. Only Windows Firewall is checked (as built, below **Reachable at**).
 - **The fixed port.** `RemotePort` (7464) on the own stack of the machine is the candidate. The system Tailscale mode on Linux listens on that port of the Tailscale address. So the two meet only if **Reachable at** is that address or every address.
