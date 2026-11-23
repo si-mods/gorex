@@ -129,6 +129,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - A computer with no project in the space you picked no longer shows a note under its name; the + beside it still makes one from a folder.
 - While a program waits for your answer, the Lock Screen card and the expanded Dynamic Island show Approve and Deny: tap once to answer without opening Rex Go.
 - New Project's Space row is a picker now: choose the space the project goes into, which starts as the one you were viewing.
+- With Developer Mode on, the floating connection bar at the top no longer covers the first row of the computer list.
 
 ## zh-Hans
 - 手机休眠一段时间后回到 Rex Go，已配对的电脑现在一两秒就能重新连上，不再要等十秒上下。
@@ -250,3 +251,4 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - 所选空间里没有项目的电脑，名称下不再显示说明文字；用旁边的 + 仍可从文件夹新建项目。
 - 程序等你回答时，锁定屏幕卡片和展开的灵动岛会显示「拒绝」和「批准」：点一下即可答复，不用打开 Rex Go。
 - 新建项目表单里的「空间」现在可以点选了：项目建在你选的空间里，默认是你正在查看的空间。
+- 打开「开发者模式」后，顶部的悬浮连接条不再盖住电脑列表的第一行。
