@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.53.0
+
+### Features
+
+* **desktop:** build on MyGo 0.10.1; a click on a window behind only brings it to the front ([#1017](https://github.com/si-mods/gorex/pull/1017))
+
 ## 0.52.0
 
 ### Features
