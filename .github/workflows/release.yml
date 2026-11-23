@@ -20,16 +20,41 @@ on:
 
 permissions:
   contents: write
+  # The guard job lists and cancels this workflow's runs.
+  actions: write
 
 concurrency:
   group: release
-  cancel-in-progress: false
+  # A newer dispatch supersedes one in flight or queued: the old run's apps
+  # and its draft would be of an older main. The guard job names the run it
+  # cancelled and why; the cancelled run's page cannot carry the reason.
+  cancel-in-progress: true
 
 jobs:
+  # Cancels the runs this dispatch supersedes and refuses a stale dispatch —
+  # one whose commit main left while it queued on the group: its apps would
+  # ship the older code. Runs first and cheap, before the builders.
+  guard:
+    if: github.ref == 'refs/heads/main'
+    runs-on: instabox-medium
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - name: gh and jq
+        run: |
+          command -v gh >/dev/null && command -v jq >/dev/null && exit 0
+          sudo=; [ "$(id -u)" = 0 ] || sudo="sudo -n"
+          $sudo apt-get update -q
+          $sudo apt-get install -y -q gh jq
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: .github/scripts/release-guard.sh
+
   # Creates the draft release, which the builds upload to, if there is none.
   # On the runner of the build that runs: a Windows-only release does not
   # wait for the Mac mini.
   draft:
+    needs: guard
     if: github.ref == 'refs/heads/main' && (inputs.target == 'all' || inputs.target == 'unix' || inputs.target == 'windows')
     runs-on: ${{ inputs.target == 'windows' && fromJSON('["self-hosted","yibo-pc"]') || fromJSON('["self-hosted","macmini"]') }}
     timeout-minutes: 10
@@ -148,6 +173,7 @@ jobs:
         run: .github/scripts/checksums.sh "v$(jq -r .version mygo.json)" -R "$GITHUB_REPOSITORY"
 
   web-r2:
+    needs: guard
     if: github.ref == 'refs/heads/main' && (inputs.target == 'all' || inputs.target == 'web')
     runs-on: instabox-medium
     timeout-minutes: 30
