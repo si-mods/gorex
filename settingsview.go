@@ -620,7 +620,7 @@ func (a *App) appearanceGlass(c *ui.Context, k *colors) {
 }
 
 func (a *App) terminalSettings(c *ui.Context, k *colors) {
-	family := prefs.Font
+	family := prefs.TermFont
 	if settingsUI.fontOptions == nil {
 		settingsUI.fontOptions = append([]string{""}, settingsUI.fonts...)
 	}
@@ -636,9 +636,9 @@ func (a *App) terminalSettings(c *ui.Context, k *colors) {
 		settingRow(c, k, locales.SettingsFont(), locales.SettingsFontHint(), func() {
 			if ui.Select(c, &family, fonts).Label(locales.SettingsFont()).Width(220).Changed() {
 				a.setPref(func(s *settings) {
-					s.Font = family
+					s.TermFont = family
 					if slices.Index(fonts, family) == 0 {
-						s.Font = ""
+						s.TermFont = ""
 					}
 				})
 			}
@@ -652,7 +652,7 @@ func (a *App) terminalSettings(c *ui.Context, k *colors) {
 			rowLine(c, k, locales.SettingsUseGhosttyHint(), func() {
 				if ui.Button(c, locales.SettingsUseGhostty()).Clicked() {
 					a.setCursor(func(s *settings) {
-						s.Font, s.Cursor, s.CursorBlink, s.CopyOnSelect, s.MinimumContrast = "", "", nil, nil, 0
+						s.TermFont, s.TermCursor, s.TermCursorBlink, s.TermCopyOnSelect, s.TermMinContrast = "", "", nil, nil, 0
 					})
 				}
 			})
@@ -666,19 +666,19 @@ func (a *App) cursorSettings(c *ui.Context, k *colors) {
 	style := int(ghostty.Cursor)
 	settingRow(c, k, locales.SettingsCursorStyle(), "", func() {
 		if ui.Segmented(c, &style, locales.SettingsCursorBlock(), locales.SettingsCursorBar(), locales.SettingsCursorUnderline()).Label(locales.SettingsCursorStyle()).Changed() {
-			a.setCursor(func(s *settings) { s.Cursor = cursorNames[style] })
+			a.setCursor(func(s *settings) { s.TermCursor = cursorNames[style] })
 		}
 	})
 	blink := !ghostty.NoBlink
 	settingRow(c, k, locales.SettingsCursorBlink(), "", func() {
 		if ui.Switch(c, &blink).Label(locales.SettingsCursorBlink()).Changed() {
-			a.setCursor(func(s *settings) { s.CursorBlink = &blink })
+			a.setCursor(func(s *settings) { s.TermCursorBlink = &blink })
 		}
 	})
 	copyOn := ghostty.CopyOnSelect == terminal.CopyOnSelectClipboard
 	settingRow(c, k, locales.SettingsCopyOnSelect(), locales.SettingsCopyOnSelectHint(), func() {
 		if ui.Switch(c, &copyOn).Label(locales.SettingsCopyOnSelect()).Changed() {
-			a.setPref(func(s *settings) { s.CopyOnSelect = &copyOn })
+			a.setPref(func(s *settings) { s.TermCopyOnSelect = &copyOn })
 		}
 	})
 }
@@ -706,8 +706,8 @@ func contrastName(v float32) string {
 func (a *App) contrastSettings(c *ui.Context, k *colors) {
 	follow := ghosttyRaw.withPrefs(settings{}).MinimumContrast
 	values := contrastChoices
-	if !slices.Contains(values, prefs.MinimumContrast) {
-		values = append(slices.Clone(values), prefs.MinimumContrast)
+	if !slices.Contains(values, prefs.TermMinContrast) {
+		values = append(slices.Clone(values), prefs.TermMinContrast)
 	}
 	names := make([]string, len(values))
 	for i, v := range values {
@@ -718,11 +718,11 @@ func (a *App) contrastSettings(c *ui.Context, k *colors) {
 		plain = strconv.FormatFloat(float64(follow), 'f', -1, 32)
 	}
 	names[0] = locales.SettingsFollowGhosttyValue(plain)
-	name := names[slices.Index(values, prefs.MinimumContrast)]
+	name := names[slices.Index(values, prefs.TermMinContrast)]
 	settingRow(c, k, locales.SettingsMinContrast(), locales.SettingsMinContrastHint(), func() {
 		if ui.Select(c, &name, names).Label(locales.SettingsMinContrast()).Width(220).Changed() {
 			v := values[slices.Index(names, name)]
-			a.setPref(func(s *settings) { s.MinimumContrast = v })
+			a.setPref(func(s *settings) { s.TermMinContrast = v })
 		}
 	})
 }
@@ -779,7 +779,7 @@ func (a *App) themeSettings(c *ui.Context, k *colors) {
 			card.Background(k.cardFocused)
 		}
 		if card.Clicked() {
-			a.setPref(func(s *settings) { s.Theme = set })
+			a.setPref(func(s *settings) { s.TermTheme = set })
 		}
 		card.Children(func() {
 			ui.Column(c).Height(76).Padding(10, 12).Gap(8).Radius(concentric(radiusXL, 2+6)).Background(th.Background).Border(1, k.cardBorder).Children(func() {
@@ -831,10 +831,10 @@ func (a *App) themeSettings(c *ui.Context, k *colors) {
 					case i >= len(shown):
 						ui.Box(c).Grow(1).Basis(0).MinWidth(0) // the row's empty places
 					case i == 0:
-						pick("follow", locales.SettingsFollowGhostty(), sub, termLight, prefs.Theme == "", "")
+						pick("follow", locales.SettingsFollowGhostty(), sub, termLight, prefs.TermTheme == "", "")
 					default:
 						n := shown[i]
-						pick(n, n, "", themeOf(n), prefs.Theme == n, n)
+						pick(n, n, "", themeOf(n), prefs.TermTheme == n, n)
 					}
 				}
 			})
