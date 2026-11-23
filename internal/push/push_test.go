@@ -284,7 +284,7 @@ type testSender struct {
 func newTestSender(t *testing.T) *testSender {
 	relay := newFakeRelay(t)
 	s := &testSender{relay: relay, now: time.Unix(1000, 0)}
-	s.Sender = NewSender(relay.srv.URL, t.TempDir(), func(string, ...any) {})
+	s.Sender = NewSender(relay.srv.URL, t.TempDir(), "alice-laptop", func(string, ...any) {})
 	s.Sender.now = func() time.Time { return s.now }
 	s.Sender.after = func(_ time.Duration, f func()) { s.tasks = append(s.tasks, f) }
 	return s
@@ -313,20 +313,20 @@ func deviceKey(t *testing.T) string {
 func TestSenderCoalesces(t *testing.T) {
 	ts := newTestSender(t)
 	dev := deviceKey(t)
-	if _, err := ts.Register("conn", dev, "s", "b", false); err != nil {
+	if _, err := ts.Register("conn", dev, "s", "b", false, "", ""); err != nil {
 		t.Fatal(err)
 	}
 	info := &rex.SessionInfo{Program: "zsh", Statuses: []rex.ProgramStatus{
 		{State: "working", Msg: "one", Updated: ts.now},
 	}}
-	ts.Changed("b", info, "w", "zsh", "", "s")
+	ts.Changed("b", "s", info, "w", "zsh", "", "s")
 	waitPush(t, "the first push", func() bool { return ts.relay.count() == 1 })
 
 	// Two changes inside the window post one update, the newest state.
 	info.Statuses[0].Msg = "two"
-	ts.Changed("b", info, "w", "zsh", "", "s")
+	ts.Changed("b", "s", info, "w", "zsh", "", "s")
 	info.Statuses[0].Msg = "three"
-	ts.Changed("b", info, "w", "zsh", "", "s")
+	ts.Changed("b", "s", info, "w", "zsh", "", "s")
 	if len(ts.tasks) != 1 {
 		t.Fatalf("no coalesced send waits: %d", len(ts.tasks))
 	}
@@ -346,16 +346,16 @@ func TestSenderCoalesces(t *testing.T) {
 // priority 10, inside the coalescing window too.
 func TestSenderAlerts(t *testing.T) {
 	ts := newTestSender(t)
-	ts.Register("conn", deviceKey(t), "s", "b", false)
+	ts.Register("conn", deviceKey(t), "s", "b", false, "", "")
 	info := &rex.SessionInfo{Statuses: []rex.ProgramStatus{
 		{ID: "r", State: "working", Msg: "one"},
 	}}
-	ts.Changed("b", info, "w", "", "", "")
+	ts.Changed("b", "s", info, "w", "", "", "")
 	waitPush(t, "the working push", func() bool { return ts.relay.count() == 1 })
 
 	info.Statuses[0].State = "blocked"
 	info.Statuses[0].Msg = "needs input"
-	ts.Changed("b", info, "w", "", "", "")
+	ts.Changed("b", "s", info, "w", "", "", "")
 	waitPush(t, "the alert", func() bool { return ts.relay.count() == 2 })
 	last := ts.relay.last(t)
 	if last["priority"] != float64(10) || last["content_state"].(map[string]any)["record"].(map[string]any)["state"] != "blocked" {
@@ -365,7 +365,7 @@ func TestSenderAlerts(t *testing.T) {
 	// The same (id, state) again is no new alert.
 	ts.advance(3 * time.Second)
 	info.Statuses[0].Msg = "still waiting"
-	ts.Changed("b", info, "w", "", "", "")
+	ts.Changed("b", "s", info, "w", "", "", "")
 	waitPush(t, "the coalesced push", func() bool { return ts.relay.count() == 3 })
 	if got := ts.relay.last(t)["priority"]; got != float64(5) {
 		t.Errorf("a repeated blocked is coalesced, priority %v", got)
@@ -379,13 +379,13 @@ func TestSenderAlerts(t *testing.T) {
 // flag off carry none.
 func TestSenderAlertPush(t *testing.T) {
 	ts := newTestSender(t)
-	if _, err := ts.Register("conn", deviceKey(t), "s", "b", true); err != nil {
+	if _, err := ts.Register("conn", deviceKey(t), "s", "b", true, "", ""); err != nil {
 		t.Fatal(err)
 	}
 	info := &rex.SessionInfo{Program: "zsh", Statuses: []rex.ProgramStatus{
 		{ID: "r", State: "working", Msg: "one"},
 	}}
-	ts.Changed("b", info, "w", "zsh", "", "")
+	ts.Changed("b", "s", info, "w", "zsh", "", "")
 	waitPush(t, "the working push", func() bool { return ts.relay.count() == 1 })
 	if ts.relay.last(t)["alert"] != nil {
 		t.Errorf("a working update alerted: %v", ts.relay.last(t))
@@ -394,7 +394,7 @@ func TestSenderAlertPush(t *testing.T) {
 	// The block's program names the title when the record has no app.
 	info.Statuses[0].State = "blocked"
 	info.Statuses[0].Msg = "Allow it?"
-	ts.Changed("b", info, "w", "zsh", "", "")
+	ts.Changed("b", "s", info, "w", "zsh", "", "")
 	waitPush(t, "the alert push", func() bool { return ts.relay.count() == 2 })
 	a, _ := ts.relay.last(t)["alert"].(map[string]any)
 	if a["title"] != "zsh needs input" || a["body"] != "Allow it?" {
@@ -403,7 +403,7 @@ func TestSenderAlertPush(t *testing.T) {
 
 	// The same urgent record again coalesces, without an alert.
 	info.Statuses[0].Msg = "still there?"
-	ts.Changed("b", info, "w", "zsh", "", "")
+	ts.Changed("b", "s", info, "w", "zsh", "", "")
 	ts.advance(3 * time.Second)
 	waitPush(t, "the coalesced push", func() bool { return ts.relay.count() == 3 })
 	if last := ts.relay.last(t); last["priority"] != float64(5) || last["alert"] != nil {
@@ -412,18 +412,18 @@ func TestSenderAlertPush(t *testing.T) {
 
 	// A done record that newly tops the rest is urgent but alerts not.
 	info.Statuses = []rex.ProgramStatus{{ID: "d", State: "done", App: "claude", LastMsg: "built", Updated: ts.now}}
-	ts.Changed("b", info, "w", "zsh", "", "")
+	ts.Changed("b", "s", info, "w", "zsh", "", "")
 	waitPush(t, "the done push", func() bool { return ts.relay.count() == 4 })
 	if last := ts.relay.last(t); last["priority"] != float64(10) || last["alert"] != nil {
 		t.Errorf("done push: %v", last)
 	}
 
 	// A register with the flag off pushes the urgent update without one.
-	if _, err := ts.Register("conn", deviceKey(t), "s", "b", false); err != nil {
+	if _, err := ts.Register("conn", deviceKey(t), "s", "b", false, "", ""); err != nil {
 		t.Fatal(err)
 	}
 	info.Statuses = []rex.ProgramStatus{{ID: "r2", State: "blocked", App: "claude", Msg: "Again?"}}
-	ts.Changed("b", info, "w", "zsh", "", "")
+	ts.Changed("b", "s", info, "w", "zsh", "", "")
 	waitPush(t, "the flag-off push", func() bool { return ts.relay.count() == 5 })
 	if last := ts.relay.last(t); last["priority"] != float64(10) || last["alert"] != nil {
 		t.Errorf("flag off push: %v", last)
@@ -435,9 +435,9 @@ func TestSenderAlertPush(t *testing.T) {
 func TestDetachedPush(t *testing.T) {
 	ts := newTestSender(t)
 	dev := deviceKey(t)
-	ts.Register("conn", dev, "s", "b", false)
+	ts.Register("conn", dev, "s", "b", false, "", "")
 	info := &rex.SessionInfo{Statuses: []rex.ProgramStatus{{State: "working", Msg: "one"}}}
-	ts.Changed("b", info, "w", "", "", "")
+	ts.Changed("b", "s", info, "w", "", "", "")
 	waitPush(t, "the first push", func() bool { return ts.relay.count() == 1 })
 
 	ts.Detached("conn")
@@ -453,7 +453,7 @@ func TestDetachedPush(t *testing.T) {
 
 	// A change after the end goes nowhere.
 	info.Statuses[0].Msg = "two"
-	ts.Changed("b", info, "w", "", "", "")
+	ts.Changed("b", "s", info, "w", "", "", "")
 	ts.advance(3 * time.Second)
 	if n := ts.relay.count(); n != 2 {
 		t.Errorf("a change after detach pushed, %d requests", n)
@@ -463,9 +463,9 @@ func TestDetachedPush(t *testing.T) {
 // TestUnregisterPush: an unregistered connection gets no more updates.
 func TestUnregisterPush(t *testing.T) {
 	ts := newTestSender(t)
-	ts.Register("conn", deviceKey(t), "s", "b", false)
+	ts.Register("conn", deviceKey(t), "s", "b", false, "", "")
 	ts.Unregister("conn")
-	ts.Changed("b", &rex.SessionInfo{Statuses: []rex.ProgramStatus{{State: "blocked"}}}, "w", "", "", "")
+	ts.Changed("b", "s", &rex.SessionInfo{Statuses: []rex.ProgramStatus{{State: "blocked"}}}, "w", "", "", "")
 	ts.advance(3 * time.Second)
 	if n := ts.relay.count(); n != 0 {
 		t.Errorf("an unregistered connection pushed, %d requests", n)
@@ -474,26 +474,157 @@ func TestUnregisterPush(t *testing.T) {
 
 // TestNoRelay: without a relay the sender registers and does nothing.
 func TestNoRelay(t *testing.T) {
-	s := NewSender("", t.TempDir(), nil)
+	s := NewSender("", t.TempDir(), "alice-laptop", nil)
 	if s.Relay() != "" {
 		t.Error("relay URL with no relay")
 	}
-	if _, err := s.Register("conn", "device", "s", "b", false); err != nil {
+	if _, err := s.Register("conn", "device", "s", "b", false, "", ""); err != nil {
 		t.Fatal(err)
 	}
-	s.Changed("b", &rex.SessionInfo{Statuses: []rex.ProgramStatus{{State: "blocked"}}}, "w", "", "", "")
+	s.Changed("b", "s", &rex.SessionInfo{Statuses: []rex.ProgramStatus{{State: "blocked"}}}, "w", "", "", "")
 	s.Detached("conn")
+}
+
+// TestStartPush: a registration with no target — the phone suspended or
+// on no terminal — whose register carried the phone's host id and Live
+// Activities on gets a start push when a block's record turns blocked:
+// the attributes, the alert Apple requires, input_push_token, priority
+// 10. The registration then targets the started block, so its changes
+// go out as updates of the activity, not as new starts.
+func TestStartPush(t *testing.T) {
+	ts := newTestSender(t)
+	dev := deviceKey(t)
+	if _, err := ts.Register("conn", dev, "", "", true, "phone-host-id", "my-mac"); err != nil {
+		t.Fatal(err)
+	}
+	info := &rex.SessionInfo{Program: "zsh", Statuses: []rex.ProgramStatus{
+		{ID: "r", State: "blocked", App: "claude", Msg: "Allow it?"},
+	}}
+	ts.Changed("b", "s", info, "w", "zsh", "", "")
+	waitPush(t, "the start push", func() bool { return ts.relay.count() == 1 })
+	start := ts.relay.last(t)
+	if start["event"] != "start" || start["attributes_type"] != AttributesTypeTerminalActivity ||
+		start["input_push_token"] != true || start["priority"] != float64(10) {
+		t.Fatalf("start push: %v", start)
+	}
+	attrs := start["attributes"].(map[string]any)
+	if attrs["host"] != "phone-host-id" || attrs["hostName"] != "my-mac" ||
+		attrs["session"] != "s" || attrs["block"] != "b" {
+		t.Errorf("attributes: %v", attrs)
+	}
+	a, _ := start["alert"].(map[string]any)
+	if a["title"] != "claude needs input" || a["body"] != "Allow it?" {
+		t.Errorf("alert: %v", start["alert"])
+	}
+
+	// The block's next change updates the started activity; nothing
+	// starts it twice.
+	info.Statuses[0].Msg = "still waiting"
+	ts.Changed("b", "s", info, "w", "zsh", "", "")
+	ts.advance(3 * time.Second)
+	waitPush(t, "the update", func() bool { return ts.relay.count() == 2 })
+	last := ts.relay.last(t)
+	if last["event"] != "update" || last["content_state"].(map[string]any)["line"] != "still waiting" {
+		t.Errorf("after the start: %v", last)
+	}
+	if last["alert"] != nil {
+		t.Errorf("the update alerted for the same record: %v", last)
+	}
+}
+
+// TestStartPushLimits: one start for each device, never a second for
+// one session and block while it stays blocked, and at most one for a
+// device each StartMinGap. A block that unblocked may start again.
+func TestStartPushLimits(t *testing.T) {
+	ts := newTestSender(t)
+	devA, devB := deviceKey(t), deviceKey(t)
+	ts.Register("connA", devA, "", "", true, "ha", "")
+	ts.Register("connB", devB, "", "", true, "hb", "")
+	blocked := func() *rex.SessionInfo {
+		return &rex.SessionInfo{Statuses: []rex.ProgramStatus{{ID: "r", State: "blocked", Msg: "Allow it?"}}}
+	}
+	ts.Changed("b1", "s", blocked(), "w", "", "", "")
+	waitPush(t, "the starts", func() bool { return ts.relay.count() == 2 })
+
+	// The same session and block again: no second start, only updates
+	// of the started activities.
+	ts.Changed("b1", "s", blocked(), "w", "", "", "")
+	ts.advance(3 * time.Second)
+	if n := ts.relay.count(); n != 2 {
+		t.Fatalf("a second start went out, %d requests", n)
+	}
+
+	// Inside the gap a re-register starts nothing for a new block.
+	ts.Register("connA", devA, "", "", true, "ha", "")
+	ts.Changed("b2", "s", blocked(), "w", "", "", "")
+	ts.advance(3 * time.Second)
+	if n := ts.relay.count(); n != 2 {
+		t.Fatalf("a start inside the gap went out, %d requests", n)
+	}
+
+	// Past the gap it does.
+	ts.advance(StartMinGap + time.Second)
+	ts.Changed("b2", "s", blocked(), "w", "", "", "")
+	waitPush(t, "the start past the gap", func() bool { return ts.relay.count() == 3 })
+	if last := ts.relay.last(t); last["event"] != "start" || last["attributes"].(map[string]any)["block"] != "b2" {
+		t.Fatalf("the start past the gap: %v", last)
+	}
+
+	// A block that unblocked may start again: b1's unblock re-arms the
+	// dedupe, so its next block starts for the re-registered device.
+	ts.Register("connB", devB, "", "", true, "hb", "")
+	info := blocked()
+	info.Statuses[0].State = "working"
+	ts.Changed("b1", "s", info, "w", "", "", "")
+	ts.advance(StartMinGap + time.Second)
+	info.Statuses[0].State = "blocked"
+	ts.Changed("b1", "s", info, "w", "", "", "")
+	waitPush(t, "the start after the unblock", func() bool { return ts.relay.count() == 4 })
+	last := ts.relay.last(t)
+	if last["event"] != "start" || last["device"] != devB ||
+		last["attributes"].(map[string]any)["block"] != "b1" {
+		t.Fatalf("the start after the unblock: %v", last)
+	}
+}
+
+// TestStartPushNeedsAVersion2Register: no start push goes to a register
+// that carried no host id (version 1), one with Live Activities off, or
+// one whose terminal on screen is elsewhere.
+func TestStartPushNeedsAVersion2Register(t *testing.T) {
+	ts := newTestSender(t)
+	info := &rex.SessionInfo{Statuses: []rex.ProgramStatus{{ID: "r", State: "blocked", Msg: "Allow it?"}}}
+	ts.Register("conn1", deviceKey(t), "", "", true, "", "")
+	ts.Register("conn2", deviceKey(t), "", "", false, "phone-host-id", "")
+	ts.Register("conn3", deviceKey(t), "s2", "b2", true, "phone-host-id", "")
+	ts.Changed("b", "s", info, "w", "", "", "")
+	ts.advance(3 * time.Second)
+	if n := ts.relay.count(); n != 0 {
+		t.Fatalf("a start went out, %d requests", n)
+	}
+}
+
+// TestStartPushHostNameFallback: a register without host_name starts
+// with the server's name in the attributes.
+func TestStartPushHostNameFallback(t *testing.T) {
+	ts := newTestSender(t)
+	ts.Register("conn", deviceKey(t), "", "", true, "phone-host-id", "")
+	ts.Changed("b", "s", &rex.SessionInfo{Statuses: []rex.ProgramStatus{{ID: "r", State: "blocked", Msg: "Allow it?"}}}, "w", "", "", "")
+	waitPush(t, "the start push", func() bool { return ts.relay.count() == 1 })
+	attrs := ts.relay.last(t)["attributes"].(map[string]any)
+	if attrs["hostName"] != "alice-laptop" {
+		t.Errorf("hostName: %v, want the server's name", attrs["hostName"])
+	}
 }
 
 // TestSenderSigns: the request's signature verifies against the host
 // key register answers with.
 func TestSenderSigns(t *testing.T) {
 	ts := newTestSender(t)
-	host, err := ts.Register("conn", deviceKey(t), "s", "b", false)
+	host, err := ts.Register("conn", deviceKey(t), "s", "b", false, "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	ts.Changed("b", &rex.SessionInfo{Statuses: []rex.ProgramStatus{{State: "blocked"}}}, "w", "", "", "")
+	ts.Changed("b", "s", &rex.SessionInfo{Statuses: []rex.ProgramStatus{{State: "blocked"}}}, "w", "", "", "")
 	waitPush(t, "the push", func() bool { return ts.relay.count() == 1 })
 
 	ts.relay.mu.Lock()

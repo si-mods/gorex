@@ -102,6 +102,10 @@ struct GoRexApp: App {
         NetworkPath.shared.start()
         SpaceBook.dropOldData()
         _spaces = State(initialValue: SpaceBook())
+        // Its driver's listeners — the push-to-start token's and the
+        // activities' — run from the start: a start push may wake the
+        // app with no terminal ever shown (docs/NET-003-push-relay.md).
+        _ = TerminalLive.shared
         Task { await engine.apply() }
     }
 

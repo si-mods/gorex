@@ -137,7 +137,7 @@ func (g *Gateway) pushChanged(b *mBlock, m *model, info *rex.SessionInfo) {
 			windowTitle = w.label
 		}
 	}
-	g.push.Changed(b.id, info, windowTitle, info.Program, b.label, sessionLabel)
+	g.push.Changed(b.id, b.session, info, windowTitle, info.Program, b.label, sessionLabel)
 }
 
 // emitBlockEvent sends a block's event to the sessions that receive them.

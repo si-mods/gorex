@@ -11,7 +11,11 @@ import (
 // device key, for the host to push Live Activity updates of a block
 // through the relay of docs/NET-003-push-relay.md (internal/push); the
 // result carries the host's push key and the relay's URL, which the
-// phone binds its activity's push tokens to.
+// phone binds its activity's push tokens to. At version 2 — the
+// welcome's feature_versions names it — the call may also carry the
+// phone's id and name for the host (host, host_name), which a start
+// push's attributes need for the host to start a TerminalActivity
+// remotely while the phone registered no target.
 // gorex.push.unregister drops the binding, as when the terminal closes
 // or pairing ends. The connection's end also sends one last update,
 // connected false, and drops it (dropControl).
@@ -24,13 +28,18 @@ import (
 // gorex.push.seen).
 const featurePush = "gorex.push"
 
+// featurePushVersion is the version of featurePush: 2 for the host and
+// host_name of gorex.push.register, which start pushes need
+// (feature_versions).
+const featurePushVersion = 2
+
 // methodGorexPushRegister binds the connection to a device key, with or
 // without the terminal the pushes follow.
 func methodGorexPushRegister(c *control, a args) (any, *apiError) {
 	if !c.g.hello.Can(rex.CapabilityPush) {
 		return nil, errNotSupported("the GoRex server does not push Live Activities; update GoRex")
 	}
-	if aerr := a.only("device", "session_id", "block_id", "live_activities"); aerr != nil {
+	if aerr := a.only("device", "session_id", "block_id", "live_activities", "host", "host_name"); aerr != nil {
 		return nil, aerr
 	}
 	device, aerr := a.reqStr("device")
@@ -58,6 +67,20 @@ func methodGorexPushRegister(c *control, a args) (any, *apiError) {
 	if aerr != nil {
 		return nil, aerr
 	}
+	phoneHost, _, aerr := a.str("host")
+	if aerr != nil {
+		return nil, aerr
+	}
+	if len(phoneHost) > 100 {
+		return nil, errBadRequest("host is longer than 100 characters")
+	}
+	hostName, _, aerr := a.str("host_name")
+	if aerr != nil {
+		return nil, aerr
+	}
+	if len(hostName) > 500 {
+		return nil, errBadRequest("host_name is longer than 500 characters")
+	}
 	if hasSession {
 		s, aerr := c.sessionArg(a)
 		if aerr != nil {
@@ -67,7 +90,7 @@ func methodGorexPushRegister(c *control, a args) (any, *apiError) {
 			return nil, errNotFound("no block %s in %s", bid, s.id)
 		}
 	}
-	host, err := c.g.push.Register(c, device, sid, bid, live)
+	host, err := c.g.push.Register(c, device, sid, bid, live, phoneHost, hostName)
 	if err != nil {
 		return nil, errInternal("%v", err)
 	}
@@ -157,6 +180,8 @@ var pushRegisterEntry = map[string]any{
 			"session_id":      map[string]any{"type": "string", "description": "The session of the terminal on screen, with block_id; both, or neither."},
 			"block_id":        map[string]any{"type": "string", "description": "The block of the terminal on screen, with session_id; both, or neither."},
 			"live_activities": map[string]any{"type": "boolean", "description": "Whether the phone has Live Activities on; a blocked record's urgent push then carries an alert."},
+			"host":            map[string]any{"type": "string", "description": "The phone's id for this host, at most 100 characters; a start push's attributes carry it. From version 2."},
+			"host_name":       map[string]any{"type": "string", "description": "The phone's name for this host, at most 500 characters; a start push's attributes carry it, or the server's name when left out. From version 2."},
 		},
 		"required":             []any{"device"},
 		"additionalProperties": false,
@@ -170,11 +195,12 @@ var pushRegisterEntry = map[string]any{
 		"required":             []any{"host", "relay"},
 		"additionalProperties": false,
 	},
-	"request_example":  "{\n  \"device\": \"BJrd…\",\n  \"session_id\": \"session:<uuid>\",\n  \"block_id\": \"block:<uuid>\",\n  \"live_activities\": true\n}",
+	"request_example":  "{\n  \"device\": \"BJrd…\",\n  \"session_id\": \"session:<uuid>\",\n  \"block_id\": \"block:<uuid>\",\n  \"live_activities\": true,\n  \"host\": \"<uuid>\",\n  \"host_name\": \"alice-laptop\"\n}",
 	"response_example": "{\n  \"host\": \"BEvm…\",\n  \"relay\": \"https://relay.gorex.uk\"\n}",
 	"validation_notes": []any{
 		"Call it on every connect and when the terminal on screen changes; the new call moves the binding to the new target. The connection's end sends one last update, connected false, and drops the binding; gorex.push.unregister drops it without one.",
 		"Each push goes to the relay signed with the host key and addressed to the device key; the host never sees a push token.",
+		"host and host_name go only with version 2 of gorex.push, as the welcome's feature_versions names it; a version 1 server fails them with bad_request.",
 		"A server that does not push, whose welcome doesn't list gorex.push, fails with not_supported.",
 	},
 }
@@ -237,8 +263,9 @@ var pushUnregisterEntry = map[string]any{
 var llmsPush = []byte(`
 ### gorex.push.register
 
-Feature: ` + "`gorex.push`" + `. Register the connection's device key for pushes of a terminal's Live Activity
-updates through the push relay (docs/NET-003-push-relay.md), and learn the host's push key and the relay's URL.
+Feature: ` + "`gorex.push`" + `, version 2 in the welcome's ` + "`feature_versions`" + `. Register the connection's device key
+for pushes of a terminal's Live Activity updates through the push relay (docs/NET-003-push-relay.md), and learn
+the host's push key and the relay's URL.
 
 Arguments:
 
@@ -247,6 +274,8 @@ Arguments:
   ` + "`session_not_found`" + `, an unknown block with ` + "`not_found`" + `.
 - ` + "`live_activities`" + ` (boolean, optional): Whether the phone has Live Activities on; a blocked record's urgent
   push then carries an alert.
+- ` + "`host`" + `, ` + "`host_name`" + ` (strings, from version 2): The phone's id and name for this host, which a start
+  push's attributes carry. Send them only to a server of version 2 or later.
 
 The result has ` + "`host`" + `, the host's public P-256 key (PKIX DER in base64) to bind activity tokens to at the
 relay, and ` + "`relay`" + `, the relay's URL.
@@ -266,7 +295,9 @@ Example arguments:
   "device": "BJrd…",
   "session_id": "session:<uuid>",
   "block_id": "block:<uuid>",
-  "live_activities": true
+  "live_activities": true,
+  "host": "<uuid>",
+  "host_name": "alice-laptop"
 }
 ` + "```" + `
 

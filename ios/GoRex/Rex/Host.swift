@@ -792,8 +792,10 @@ final class Host: Identifiable {
     /// Registers the device key and the terminal on screen with the host
     /// (gorex.push.register, docs/NET-003-push-relay.md): its answer — the
     /// host's push key and the relay's URL — goes to PushTokens for the
-    /// activity's tokens to bind to. Nothing on a demo host or a server
-    /// without gorex.push, which keeps phase 1.
+    /// activity's tokens to bind to. At feature version 2 it also sends
+    /// the host's id and name as the phone knows them, so that an
+    /// activity a start push begins shows and opens it right. Nothing on
+    /// a demo host or a server without gorex.push, which keeps phase 1.
     private func registerPush() {
         guard !isDemo, let c = control, c.features.contains(Self.pushFeature) else { return }
         let tokens = Self.pushTokens()
@@ -804,6 +806,10 @@ final class Host: Identifiable {
         if let t = pushTarget {
             args["session_id"] = t.session
             args["block_id"] = t.block
+        }
+        if (c.featureVersions[Self.pushFeature] ?? 0) >= 2 {
+            args["host"] = id.uuidString
+            args["host_name"] = TerminalActivity.cut(config.name)
         }
         Task {
             guard let r = try? await c.call("gorex.push.register", args).payload, c === control else { return }

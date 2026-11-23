@@ -8,7 +8,7 @@ metadata:
 
 # NET-003: Push relay: Live Activity pushes for every host
 
-Status: built. The host's sender (`internal/push`) is in #995, the relay is the private `si-mods/gorex-relay` repository, and this is the phone's half; a blocked record's urgent push carries the alert that replaces the phone's local notification, and `gorex.push.seen` reports the records the activity showed. The team decided these points on 2026-11-22.
+Status: built, push-to-start included. The host's sender (`internal/push`) is in #995, the relay is the private `si-mods/gorex-relay` repository, and this is the phone's half; a blocked record's urgent push carries the alert that replaces the phone's local notification, `gorex.push.seen` reports the records the activity showed, and a registration with no target gets a start push that begins the activity remotely. The team decided these points on 2026-11-22.
 
 This doc designs the relay that [IOS-006](IOS-006-live-activities.md) left open ("Later: a relay"). It replaces the direct last hop of that doc: no host ever holds an APNs key. Phase 2 of IOS-006 uses this relay as its only last hop.
 
@@ -19,6 +19,7 @@ An update of a Live Activity through APNs needs a `.p8` key of the team of the a
 ## Goal
 
 - The Live Activity of a terminal updates while Rex Go is suspended, for every host the phone paired with.
+- A host can start the activity while Rex Go is suspended and none runs, so a blocked record still reaches the phone.
 - The host never sees the push token of the activity.
 - A host can push only to a device that bound it.
 - The phone reaches the relay over the public network. The path needs no tailnet, so a token that changes while the app sleeps can be bound in the time iOS gives.
@@ -30,7 +31,7 @@ An update of a Live Activity through APNs needs a `.p8` key of the team of the a
 - **End-to-end encryption of the content.** The widget extension renders the push directly. No extension can decrypt it. The relay and Apple see the content state in plain text.
 - **A direct last hop.** No host holds an APNs key. The earlier direct design of [IOS-006](IOS-006-live-activities.md) is dropped.
 - **Alert pushes in place of the local blocked notification.** The alert field is in the API. The swap itself is of the host's sender and the app (IOS-006), not of the relay.
-- **Push-to-start.** The app starts the activity in the foreground, as today.
+- **Two activities per device.** The push-to-start begins the one terminal activity of the blocked record's target. A per-host activity (IOS-006, phase 2) is a proposal and out of scope.
 
 ## Design
 
@@ -44,10 +45,11 @@ The signatures are ECDSA P-256 over SHA-256. The signature goes in the header `X
 
 ### Register and bind
 
-1. On each control connection, the phone calls `gorex.push.register` with its device key, its target (session and block of the terminal on screen, or none) and whether Live Activities are on. The result carries the push key of the host and the URL of the relay.
+1. On each control connection, the phone calls `gorex.push.register` with its device key, its target (session and block of the terminal on screen, or none) and whether Live Activities are on. At feature version 2 it adds `host` and `host_name`: the id and the name the phone knows the host by, for the attributes of an activity a start push begins. The result carries the push key of the host and the URL of the relay.
 2. The phone calls it again when the target changes, and `gorex.push.unregister` when the terminal closes or pairing ends.
 3. The app requests the activity with `pushType: .token`. On `pushTokenUpdates`, the phone binds the token at the relay: device key, host key, token, environment. This works in the short wake iOS gives for a new token, because the relay is on the public network.
-4. The app gives the host no token. The host addresses the device key.
+4. The app also listens to `pushToStartTokenUpdates`. The push-to-start token is of the attributes type, not of an activity, so the phone binds it with `kind: "start"` and the attributes type — once for each host it pairs with, as every host's binding of the one token is its own record at the relay.
+5. The app gives the host no token. The host addresses the device key.
 
 ### Push
 
@@ -58,6 +60,17 @@ The signatures are ECDSA P-256 over SHA-256. The signature goes in the header `X
 5. When the control connection of a device closes, the host sends a last update: `connected: false`, `stale-date` of now. The activity shows the paused face, and the host goes on pushing new states to the token. The activity lives without the app, so it keeps updating while the app is suspended.
 
 The host never learns whether the phone still listens. A dead token is removed when APNs rejects it.
+
+### Push to start
+
+An update push needs a running activity; a phone suspended with none cannot be reached that way. For it, iOS 17.2 hands the app a push-to-start token of each attributes type, and `event: "start"` begins an activity of that type remotely. The attributes the push carries are those the app would build when it shows the terminal: `host` and `hostName` as the phone knows them (which is why version 2 of the register sends them), the session and the block of the blocked record.
+
+1. A registration with no target — the phone connected with no terminal on screen — is eligible for a start. One whose target is another terminal is not: its activity updates as today.
+2. When the most urgent record of a block turns blocked, the host sends a start push to each eligible registration instead of an update: `attributes-type`, `attributes`, `content-state`, `alert` (Apple requires one on a start), `input-push-token: 1` and priority 10.
+3. `input-push-token` wakes the app with the update token of the new activity (iOS 18). The existing `pushTokenUpdates` path binds it, and later changes reach the started activity as ordinary updates. The host also retargets the registration to the session and block it started, so the next change is an update, not another start.
+4. The phone adopts the activity the push started: `activityUpdates` hands it to the driver, whose token watcher binds its update token, and a screen that shows the same terminal takes the activity over instead of ending it.
+
+A start is rare and loud, so the sender limits it: never twice for one device, session and block while the record stays blocked — the dedupe key clears when the record is no longer blocked — and at most once for each device every five minutes. The maps are in memory; a restarted host may send a start it sent before. A registration without `host` — a phone that predates version 2 — gets no start, as its app binds no start token anyway; that is the phase-1 fallback.
 
 ### Content state
 
@@ -77,21 +90,22 @@ The report names records by `id`, not at block granularity as `gorex.see_block` 
 
 `https://relay.gorex.uk`, JSON over HTTPS:
 
-- `POST /v1/bind`: `{token, device, host, env}`; `X-Gorex-Sig` by the device key. `env` is `sandbox` or `production`. Replaces the binding of the token.
-- `POST /v1/unbind`: `{token}`; `X-Gorex-Sig` by the device key.
-- `POST /v1/push`: `{device, event, content_state, stale_date, dismissal_date, alert, priority}`; `X-Gorex-Sig` by the host key. `event` is `update` or `end`. `alert` is optional. The relay forwards to every token bound to the device.
+- `POST /v1/bind`: `{token, device, host, env, kind, attributes_type}`; `X-Gorex-Sig` by the device key. `env` is `sandbox` or `production`. `kind` is `update` (also when left out) or `start`; a start binding needs `attributes_type`. An update binding replaces the binding of the token; a start binding is keyed by device, host and attributes type, so each host's bind of the one push-to-start token is its own record.
+- `POST /v1/unbind`: `{token}`; `X-Gorex-Sig` by the device key. For a start binding: `{token, kind: "start", attributes_type, host}` — `host` narrows it to one pairing's record.
+- `POST /v1/push`: `{device, event, content_state, stale_date, dismissal_date, alert, priority, attributes_type, attributes, input_push_token}`; `X-Gorex-Sig` by the host key. `event` is `update`, `end` or `start`. `alert` is optional but required on a start, which also needs `attributes_type`, `attributes` and `content_state`. Updates and ends go to the device's update bindings, a start to its start bindings of the attributes type named, and only to tokens whose binding names the host that signed.
 - `GET /v1/health`: liveness only.
 - Answers are JSON: `{"sent": 1}` or `{"error": "..."}`. Bodies are limited to 4 KB. Each token accepts a limited rate.
 
-The relay sends to `api.push.apple.com` or `api.sandbox.push.apple.com` by the bound `env`: `apns-push-type: liveactivity`, `apns-topic: dev.gorex.ios.push-type.liveactivity`, the priority of the request, `authorization: bearer` of an ES256 JWT it renews every 50 minutes. `BadDeviceToken`, `ExpiredToken` and `Unregistered` drop the binding.
+The relay sends to `api.push.apple.com` or `api.sandbox.push.apple.com` by the bound `env`: `apns-push-type: liveactivity`, `apns-topic: dev.gorex.ios.push-type.liveactivity`, the priority of the request, `authorization: bearer` of an ES256 JWT it renews every 50 minutes. `BadDeviceToken`, `ExpiredToken` and `Unregistered` drop the binding. The `aps` object maps the request's fields: `event`, `content-state`, `alert`, `stale-date`, `dismissal-date`, and on a start `attributes-type`, `attributes` and `input-push-token` as `1`.
 
 ### Rex API
 
-`gorex.push.register`, `gorex.push.seen` and `gorex.push.unregister` are additive, feature-gated (`gorex.push`, version 1). `gorex.push.seen` takes `session_id`, `block_id` and `record_ids` — the ids of the done and error records the activity showed, as `program_status` reports them — and needs the seen capability too; it answers an empty object, and skips an id the block has no record of. An old server answers `not_supported`; the phone then skips the relay path and keeps phase 1, and sends no `gorex.push.seen`. A server with `gorex.push` from before it answers `method_not_found`, which the phone sends the report without awaiting and ignores. An old phone calls nothing; the host does nothing.
+`gorex.push.register`, `gorex.push.seen` and `gorex.push.unregister` are additive, feature-gated (`gorex.push`). Version 1 registers the device key, the target and `live_activities`. Version 2 adds `host` and `host_name` to the request, for the attributes of an activity a start push begins; the server advertises it in `feature_versions` and the phone sends the fields only at version 2. `gorex.push.seen` takes `session_id`, `block_id` and `record_ids` — the ids of the done and error records the activity showed, as `program_status` reports them — and needs the seen capability too; it answers an empty object, and skips an id the block has no record of. An old server answers `not_supported`; the phone then skips the relay path and keeps phase 1, and sends no `gorex.push.seen`. A version-1 server accepts the register of a new phone but gets no `host` fields — no start pushes. A server with `gorex.push` from before it answers `method_not_found`, which the phone sends the report without awaiting and ignores. An old phone calls nothing; the host does nothing.
 
 ### Security
 
 - The token goes from the phone to the relay only. Its value is not guessable. A host that learns a token of another party cannot use it: the binding pins the host key.
+- The push-to-start token is the app's, shared by every host the phone pairs with. A start binding names its host, so one host's start push reaches only the binding it signed for; an unbind carries the host for the same reason, or a removed host would drop another's record.
 - A stranger can bind a token to a device key and a host key of his own. To push he still needs the signature of the bound host. To learn a token he must run a host the phone pairs with. That is the trust of pairing itself.
 - The relay is an open endpoint, by design. It accepts bindings at a limited rate and drops tokens APNs rejects.
 - The content state crosses the relay in plain text. The relay keeps bindings (token, device key, host key, env, time) and no content.
@@ -112,8 +126,9 @@ The relay sends to `api.push.apple.com` or `api.sandbox.push.apple.com` by the b
 ## Tests
 
 - Unit tests: signature checks, binding rules, payload build, error mapping, rate limit, token drop on APNs errors.
+- Push to start: a start bind needs the attributes type, a start push needs its APNs fields, reaches the start bindings of that type alone and only where its host signed; a start unbind drops one pairing's record; update pushes ignore start bindings. The sender starts once per device, session and block while blocked, at most once per device each five minutes, and again after an unblock.
 - Relay against a fake APNs server: HTTP/2, error answers, unregistered tokens.
-- On a phone: pair, leave the app, watch the island update; kill the app, watch it still update; stop the host, watch it pause; token rotation with the app suspended.
+- On a phone: pair, leave the app, watch the island update; kill the app, watch it still update; stop the host, watch it pause; token rotation with the app suspended. Leave the app with no terminal on screen, block an agent, watch the activity start and its first update arrive.
 
 ## Open questions
 

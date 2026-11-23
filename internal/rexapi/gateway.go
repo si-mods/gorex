@@ -281,7 +281,7 @@ func New(opt Options) (*Gateway, error) {
 		downloads:      map[string]*download{},
 		byteDownloads:  map[string]*download{},
 		tunnels:        map[string]*tunnelBlock{},
-		push:           push.NewSender(pushRelayURL, rex.Dir(), logf),
+		push:           push.NewSender(pushRelayURL, rex.Dir(), name, logf),
 		canLock:        hello.Keepalive > 0 && hello.Conn != "",
 		done:           make(chan struct{}),
 		changed:        make(chan struct{}),
