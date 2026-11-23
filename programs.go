@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/egoist/mygo/ui"
+	"gorex/internal/rex"
 )
 
 //go:embed assets/icons/*.svg assets/brands/*.svg resources/icon.png
@@ -93,6 +94,8 @@ type program struct {
 	TileBorder bool
 	// Shell is a shell at its prompt.
 	Shell bool
+	// Icon is a custom icon reported by the program (OSC 7502).
+	Icon *rex.ProgramIcon
 }
 
 var (

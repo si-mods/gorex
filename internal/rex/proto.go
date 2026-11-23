@@ -155,9 +155,13 @@ const CapabilitySpaceHome = "space.home"
 // (CreateOptions.DirStrict) that is not a directory it can read.
 const FolderMissing = "folder_missing"
 
+// CapabilityProgramIcon is what a server that parses and relays custom
+// program icons (OSC 7502, docs/MOD-011-program-icons.md) has.
+const CapabilityProgramIcon = "program.icon"
+
 // capabilities are what a version 3 server does beyond version 2. A
 // client reads them from Hello and falls back when one is absent.
-var capabilities = []string{"layout.revision", "events.revision", CapabilityShutdownRestart, CapabilityShutdownIfIdle, CapabilitySnapshotGhostty, CapabilityInputEvents, CapabilityTerminalQuery, CapabilityFileTransfer, CapabilityFileTemp, CapabilityTeleport, CapabilityLayoutServer, CapabilityTabToSpace, CapabilityStatusSeen, CapabilityDirList, CapabilityAgents, CapabilitySpaceHome, CapabilityProjects, CapabilitySpacesDelete, CapabilityPrompts, CapabilityPush}
+var capabilities = []string{"layout.revision", "events.revision", CapabilityShutdownRestart, CapabilityShutdownIfIdle, CapabilitySnapshotGhostty, CapabilityInputEvents, CapabilityTerminalQuery, CapabilityFileTransfer, CapabilityFileTemp, CapabilityTeleport, CapabilityLayoutServer, CapabilityTabToSpace, CapabilityStatusSeen, CapabilityDirList, CapabilityAgents, CapabilitySpaceHome, CapabilityProjects, CapabilitySpacesDelete, CapabilityPrompts, CapabilityPush, CapabilityProgramIcon}
 
 // Request is a line of the control connection, from the client.
 type Request struct {
@@ -770,10 +774,11 @@ type Theme struct {
 
 // EventSession is one session in an Event.
 type EventSession struct {
-	ID         string          `json:"id"`
-	Status     *ProgramStatus  `json:"status,omitempty"`
-	Statuses   []ProgramStatus `json:"statuses,omitempty"`
-	StatusSeen time.Time       `json:"statusSeen,omitzero"`
+	ID          string          `json:"id"`
+	Status      *ProgramStatus  `json:"status,omitempty"`
+	Statuses    []ProgramStatus `json:"statuses,omitempty"`
+	StatusSeen  time.Time       `json:"statusSeen,omitzero"`
+	ProgramIcon *ProgramIcon    `json:"programIcon,omitempty"`
 }
 
 // LayoutState is the layout the server keeps, with its revision: a
@@ -871,9 +876,20 @@ type SessionInfo struct {
 	// the user was updated ("seeStatus"): MostUrgent(Statuses,
 	// StatusSeen) is what still needs the user. Zero from a server before
 	// CapabilityStatusSeen.
-	Statuses   []ProgramStatus `json:"statuses,omitempty"`
-	Status     *ProgramStatus  `json:"status,omitempty"`
-	StatusSeen time.Time       `json:"statusSeen,omitzero"`
+	Statuses    []ProgramStatus `json:"statuses,omitempty"`
+	Status      *ProgramStatus  `json:"status,omitempty"`
+	StatusSeen  time.Time       `json:"statusSeen,omitzero"`
+	ProgramIcon *ProgramIcon    `json:"programIcon,omitempty"`
+}
+
+// ProgramIcon is a custom icon reported by a program (OSC 7502).
+type ProgramIcon struct {
+	Format string `json:"format"`
+	Mode   string `json:"mode,omitempty"`
+	Data   string `json:"data"`
+	Bg     string `json:"bg,omitempty"`
+	Fg     string `json:"fg,omitempty"`
+	Hash   string `json:"hash,omitempty"`
 }
 
 // ProgramName is the program's name for showing: what it reported through

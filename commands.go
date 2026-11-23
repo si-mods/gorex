@@ -1283,6 +1283,7 @@ func (a *App) shortcuts(c *ui.Context) {
 type paletteItem struct {
 	title, detail, keys string
 	glyph               string
+	icon                *rex.ProgramIcon
 	run                 func()
 	// status is what the program of a pane reported.
 	status *rex.ProgramStatus
@@ -1346,8 +1347,9 @@ func (a *App) paletteItems() []paletteItem {
 			if s != nil && s.State != "idle" {
 				detail = cmp.Or(s.Message(), s.Title, detail)
 			}
+			prog := p.program()
 			items = append(items, paletteItem{
-				title: name, detail: detail, glyph: p.program().Glyph,
+				title: name, detail: detail, glyph: prog.Glyph, icon: prog.Icon,
 				keys: locales.PaletteTabKeys(ti + 1), status: s,
 				run: func() {
 					a.selectTab(ti)
@@ -1592,7 +1594,7 @@ func (a *App) palette(c *ui.Context, k *colors) {
 					it.run()
 				}
 				row.Children(func() {
-					glyphIcon(c, it.glyph, 15, k.textMuted)
+					programIconEl(c, it.icon, it.glyph, 15, k.textMuted)
 					if it.hasDot {
 						ui.Box(c).Size(8, 8).Radius(capsule(8)).Background(it.dot).Shrink(0)
 					}

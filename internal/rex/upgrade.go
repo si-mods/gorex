@@ -87,6 +87,8 @@ type sessionState struct {
 	Statuses []ProgramStatus `json:"statuses,omitempty"`
 	// StatusSeen is when the records were seen till (programStatus.seen).
 	StatusSeen time.Time `json:"statusSeen,omitzero"`
+	// ProgramIcon is the custom icon reported by the program (OSC 7502).
+	ProgramIcon *ProgramIcon `json:"programIcon,omitempty"`
 }
 
 // consoleHandles are the handles of a pseudo console besides its input,
@@ -226,7 +228,7 @@ func (s *session) state() sessionState {
 		Cols: s.cols, Rows: s.rows,
 		Output: s.output, Bells: s.bells.Load(), LastOutput: s.lastOutput, LastInput: s.lastInput,
 		Reaped: s.reaped, Exited: s.exited, Code: s.code,
-		Statuses: s.status.list(), StatusSeen: s.status.seen, Images: s.graphics.sequences(),
+		Statuses: s.status.list(), StatusSeen: s.status.seen, ProgramIcon: s.icon.get(), Images: s.graphics.sequences(),
 	}
 	st.Screen, st.Title = s.view()
 	st.Screen = bytes.TrimSuffix(st.Screen, s.graphics.replay())
@@ -323,6 +325,7 @@ func resumeSession(st sessionState, changed func()) (*session, error) {
 		s.status.records[r.ID] = &statusRecord{r, s.status.updates}
 	}
 	s.status.seen = st.StatusSeen
+	s.icon.restore(st.ProgramIcon)
 	// The images go to the history the attaches replay, not to the
 	// emulator, which the snapshot left as it was: a placement moves the
 	// cursor.

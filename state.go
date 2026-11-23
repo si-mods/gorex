@@ -2223,13 +2223,19 @@ func (p *Pane) program() program {
 	if p.note != nil {
 		return noteProgram
 	}
-	if p.info.Status != nil && p.info.Status.App != "" {
-		return programOf(p.info.ProgramName())
+	var prog program
+	switch {
+	case p.info.Status != nil && p.info.Status.App != "":
+		prog = programOf(p.info.ProgramName())
+	case p.info.Idle || p.info.Program == "":
+		prog = programOf(p.info.Shell)
+	default:
+		prog = programOf(p.info.ProgramName())
 	}
-	if p.info.Idle || p.info.Program == "" {
-		return programOf(p.info.Shell)
+	if p.info.ProgramIcon != nil {
+		return programWithIcon(prog, p.info.ProgramIcon)
 	}
-	return programOf(p.info.ProgramName())
+	return prog
 }
 
 // label returns how a pane names itself: its program, or the title the
@@ -3196,7 +3202,7 @@ func tileImage(prog program) []byte {
 	if prog.Name == "" || prog.Shell {
 		return nil
 	}
-	key := tileKey{prog.Glyph, prog.TileGlyph, prog.TileBg, prog.TileFg, prog.TileBorder}
+	key := tileKey{prog.Glyph, prog.TileGlyph, prog.TileBg, prog.TileFg, prog.TileBorder, programIconKey(prog.Icon)}
 	if b, ok := tileImages[key]; ok {
 		return b
 	}
@@ -3241,6 +3247,7 @@ type tileKey struct {
 	glyph, tileGlyph string
 	bg, fg           ui.Color
 	border           bool
+	iconHash         string
 }
 
 // tileImages are the PNGs of tileImage, 512 at most.
