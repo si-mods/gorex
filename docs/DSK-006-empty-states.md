@@ -42,7 +42,7 @@ One component draws the empty states. `empty.go` gives four sizes: `page`, `card
 | Size | Shape | Where |
 | --- | --- | --- |
 | `page` | A picture, a title in `fontTitle`, a note in `fontBody` `textFaint`, and up to two buttons. The group is centered and sits about 40% down the area. | the main area with no tab, the failed browser pane |
-| `card` | One row at a sidebar row's height (`projectRowH`): a tile of a tab tile's size in the tile column, the icon in `iconMuted`, the title in `fontBody` `textMuted`, and a ghost button at the end. | the project sidebar when a host has no projects |
+| `card` | One row at a sidebar row's height (`projectRowH`): a tile of a tab tile's size in the tile column, the icon in `iconMuted`, the title in `fontBody` `textMuted`, and a `+` icon button (the step's name as its label and tooltip) at the end. | the project sidebar when a host has no projects |
 | `row` | One line of `textFaint`, with an optional ghost button at the end. | the project picker with no entries |
 | `menu` | One faint line. No picture, no button. | the command palette, the theme picker, the New Project sheet's status lines |
 
@@ -80,7 +80,7 @@ The picture is a small wireframe of the place, drawn with `ui.Painter` rectangle
 | Palette, needs list | `menu` | Nothing needs you | none |
 | Find bar, no match | `row` | No matches | none |
 | Theme picker, no match | `menu` | No themes match "{query}". | none |
-| Project sidebar, no projects | `card` | No projects yet. | New Project… (ghost) |
+| Project sidebar, no projects | `card` | No projects yet. | `+` icon (New Project…) |
 | Project picker, no entries | `row` | No projects yet. | New Project… (ghost) |
 | New Project sheet, states | `menu` | Loading… and the other status lines | none |
 

@@ -47,8 +47,8 @@ func emptyPage(c *ui.Context, k *colors, draw func(p *ui.Painter, r ui.Rect, k *
 
 // emptyCard is the empty state of a section's rows: one row at the
 // sidebar's own rhythm — a tile of a program tile's size in the tile
-// column (reserve wide), an icon in iconMuted, the title, and a ghost
-// button at the end.
+// column (reserve wide), an icon in iconMuted, the title, and the +
+// button of the next step at the end.
 func emptyCard(c *ui.Context, k *colors, key, glyph, title string, ghost emptyAction, reserve float32) ui.Element {
 	row := ui.Row(c.Key(key)).Height(projectRowH).Shrink(0).Padding(0, 4, 0, sideLead).Gap(sideGap).AlignItems(ui.Center).
 		Label(title)
@@ -61,7 +61,7 @@ func emptyCard(c *ui.Context, k *colors, key, glyph, title string, ghost emptyAc
 			})
 		})
 		ui.Text(c, title).FontSize(fontBody).FontWeight(500).TextColor(k.textMuted).Label(title).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
-		if ghost.label != "" && emptyLink(c, k, ghost.label).Clicked() {
+		if ghost.label != "" && iconButton(c, k, "plus", ghost.label, 20, 13).Tooltip(ghost.label).Clicked() {
 			ghost.run()
 		}
 	})

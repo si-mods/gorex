@@ -49,9 +49,11 @@ func TestSidebarEmptyCard(t *testing.T) {
 	if r.H != projectRowH {
 		t.Errorf("empty card height %v, want %v (a project row's)", r.H, projectRowH)
 	}
-	if !tt.HasText(cmdNewProject.Title()) {
-		t.Errorf("no New Project action; texts %q", tt.Texts())
+	// The + button at the row's end opens the New Project sheet.
+	if err := tt.Click(cmdNewProject.Title()); err != nil {
+		t.Fatal(err)
 	}
+	waitFor(t, tt, "the New Project sheet", func() bool { return a.sheet.open })
 }
 
 // TestPaletteNoMatchesFor names the query when the palette matches
