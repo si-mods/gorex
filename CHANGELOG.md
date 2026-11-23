@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.54.0
+
+### Bug Fixes
+
+* **desktop:** drop the "No projects yet" card under an empty host, as iOS does ([#1018](https://github.com/si-mods/gorex/pull/1018))
+
 ## 0.53.0
 
 ### Features
