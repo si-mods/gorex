@@ -11,6 +11,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 
 ## en-US
 - Settings > Terminal gains a Ligatures switch: turn it off to keep !=, => and similar drawn as separate characters in fonts such as JetBrains Mono.
+- Long-press a computer's name in the list and drag it to a new place: the order is saved.
 - Coming back to Rex Go after the phone has slept a while, a paired computer now reconnects in a second or two instead of around ten.
 - A program that finished while Rex Go slept, one you already saw on the Lock Screen or Dynamic Island, no longer counts as new when you come back.
 - Leave Rex Go with no terminal open and a program waits for you: the Lock Screen and Dynamic Island can now start its activity on their own, so the alert still reaches you.
@@ -134,6 +135,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 
 ## zh-Hans
 - 「设置 › 终端」新增「连字」开关：关闭后，JetBrains Mono 等字体把 !=、=> 按独立字符画出，不再合成连字。
+- 长按列表中电脑的名称，把它拖到新的位置：顺序会保存下来。
 - 手机休眠一段时间后回到 Rex Go，已配对的电脑现在一两秒就能重新连上，不再要等十秒上下。
 - 程序在应用休眠期间完成时，若你已在锁屏或灵动岛上看到它，回来后不再计为未读。
 - 没开终端就退出 Rex Go，程序等待你处理时：锁屏和灵动岛现在也能自己亮起这条提醒，照常送达。

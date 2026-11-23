@@ -111,11 +111,14 @@ targets:
         NSMicrophoneUsageDescription: Rex Go hears what you say while the mic is on, and types it into the terminal. Speech is recognised on this device.
         # A gallery's image saved to Photos from the share sheet.
         NSPhotoLibraryAddUsageDescription: Rex Go saves the images you choose from a terminal's gallery to your photos.
-        # A window row's drag in the list (HostListView's Lifted), which
-        # only the app's own drop targets take.
+        # A window row's or a host's drag in the list (HostListView's
+        # Lifted), which only the app's own drop targets take.
         UTExportedTypeDeclarations:
           - UTTypeIdentifier: dev.gorex.window-row
             UTTypeDescription: Rex Go Window
+            UTTypeConformsTo: [public.data]
+          - UTTypeIdentifier: dev.gorex.host
+            UTTypeDescription: Rex Go Host
             UTTypeConformsTo: [public.data]
         # rexgo://tailcat?a=…&n=…, GoRex's Rex Go QR…, opened from the
         # camera app. The Tailscale login's callback (TailnetEngine) is the
