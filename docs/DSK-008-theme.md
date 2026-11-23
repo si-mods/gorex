@@ -10,7 +10,7 @@ metadata:
 
 Status: proposal.
 
-This doc decides the shape of theming for the desktop chrome: the sidebar, the panes' cards, the dialogs and the menus. It supersedes no doc. It extends the palette rules of `DESIGN.md` and the settings keys of [DSK-007](DSK-007-sidebar-style.md).
+This doc decides the shape of theming for the desktop chrome: the sidebar, the panes' cards, the dialogs and the menus. It supersedes no doc. It extends the palette rules of `DESIGN.md` and the settings keys of [DSK-007](DSK-007-sidebar-style.md). Outside input: the Vibe Design Tips series (vibedesign.tips) — its design-system pass note gives the layers, and tip 010 (liquid glass) gives the material and ink model.
 
 ## Problem
 
@@ -24,6 +24,8 @@ Forty literals also hide the structure. Most values are derivations: a hover is 
 - A face and the colors that read over it resolve **as one value**, so code cannot paint a face and keep text that does not fit it.
 - A **theme manifest** describes a theme as data, so the registry that ships icon packs can ship theme packs.
 - The `sidebar.*` settings keep working. Their color tokens become role names in the same resolution.
+
+The target is one stable design language, not a full design system. It has the layers a design-system pass names, each built on the one below: seeds (colors and metrics), then surface styles, then the components that opt into them. A component asks for a role, never a raw value. The pass keeps today's look: it makes values consistent, it does not restyle.
 
 ## Non-goals
 
@@ -60,7 +62,7 @@ ui.Text(c, name).TextColor(s.text)
 
 `s` is the pair: `face`, and the resolved text ladder (`text`, `textMuted`, `textFaint`, `iconMuted`) whose lightness fits the face. When the face's lightness differs from the palette's, the resolver supplies the text ladder of the other appearance, as `headerColors` does for a pane header. The caller cannot reach the face without the text.
 
-An opaque face and a material are different types: a face resolves to a color, a material to a tint over glass whose lightness the resolver approximates from the tint. Settings that override a role name an opaque face only.
+An opaque face and a material are different types. A face resolves to a color whose lightness is known. A material resolves to a tint over a backdrop, so its text resolves as **ink**: the same ladder, expressed as fixed alpha steps of black or white, the way a glass surface in the wild carries `black 86%` titles and `black 60%` secondary text, or `white 94%` / `white 64%` in the dark case. Where the backdrop is a palette color — the window face, a card — the resolver reads its lightness. Where the backdrop is a texture the code cannot read — glass over live terminal content — the material falls back to the theme's ink at its densest tint. When the sampled lightness sits near the flip point, the resolver keeps the previous ink within a small band, so a surface does not flicker between light and dark text. Settings that override a role name an opaque face only.
 
 ### Model
 
@@ -69,15 +71,19 @@ Seeds generate the palette through fixed rules, so a seed set yields the same fo
 | Role | Derivation |
 | --- | --- |
 | `textMuted`, `textFaint` | `text` at fixed alpha steps |
-| `hover`, `pressed` | `text` at fixed alpha steps |
+| `hover`, `pressed` (opaque) | `text` at fixed alpha steps |
+| `hover` (material) | tint brightened a fixed fraction, not a lifted shadow |
 | `cardBorder`, `tabSep` | `text` at fixed alpha steps |
 | `surfaceRaised` | `background` lifted by `surfaceLift` |
 | `panelSel`, `tabActive` | `accent` at fixed alpha steps, or explicit roles |
 | shadows | `black` at `shadowStrength` |
+| `radiusSm`, `radiusLg` | `radius` seed at fixed steps; a nested corner is `outer − padding`, floored at the smallest radius |
 
-Roles the rules cannot derive stay explicit in the palette, as now. The `colors` struct remains the resolution result. The framework changes where the values come from, not what the widgets read.
+Roles the rules cannot derive stay explicit in the palette, as now. The `colors` struct remains the resolution result. The framework changes where the values come from, not what the widgets read. Near-duplicate literals merge into the nearest role; a new role joins only when a surface has none that fits.
 
 A face keeps a pairing rule: resolution attaches the text ladder that fits the resolved lightness. The rule holds for built-in faces, theme faces and user overrides, because it runs at resolve time, not at seed time.
+
+Reduced transparency resolves a material role to the same face at full opacity: the user who asks the OS for less glass gets a solid surface, not a thinner one.
 
 ### Code
 
@@ -106,6 +112,7 @@ No settings change is required: built-in seeds reproduce today's palettes. `side
 
 - **Derivation**: `derive` on the built-in seeds yields the current `lightColors`/`darkColors` values, within rounding.
 - **Pairing**: a light `tabActive` override resolves dark-theme text for the row; a dark override keeps the palette's text.
+- **Ink**: a material over an unreadable backdrop resolves the theme ink at the dense tint; a face at the flip point keeps its ink inside the hysteresis band.
 - **Manifest**: a manifest with a bad seed or an unknown role is dropped with a warning, not a crash.
 
 ## Phases
@@ -118,4 +125,5 @@ No settings change is required: built-in seeds reproduce today's palettes. `side
 
 1. **Role names**: reuse the DSK-007 tokens (`tabActive`, `groupFace`...) or rename to VS Code-style tokens (`sideBar.*`)? A rename is a settings break; reuse keeps compatibility but keeps flat names.
 2. **Seed count**: eight seeds is the estimate; the derivation table decides the real count.
-3. **Web reuse**: `web/` styles from Go templates; a manifest could feed them later. Decided per WEB doc when reached.
+3. **Motion in the manifest**: easing curves and durations are tokens the same way colors are. The manifest could carry them later; the `animation` setting already switches motion off. Deferred to the manifest phase.
+4. **Web reuse**: `web/` styles from Go templates; a manifest could feed them later. Decided per WEB doc when reached.
