@@ -12,6 +12,8 @@ import (
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/plugins/terminal"
 	"github.com/egoist/mygo/ui"
+
+	"gorex/internal/rex"
 )
 
 // isolateSettings gives a test settings of its own, and a Ghostty
@@ -315,5 +317,55 @@ func TestWriteFileAtomic(t *testing.T) {
 	}
 	if b, _ := os.ReadFile(path); string(b) != "new" {
 		t.Errorf("a failed write left %q, want new", b)
+	}
+}
+
+// TestSidebarStylePrefs: the sidebar.* keys parse, the metrics clamp, an
+// unknown token or a bad color is dropped, and the file's other prefs
+// are untouched (docs/DSK-007).
+func TestSidebarStylePrefs(t *testing.T) {
+	isolateSettings(t, "")
+	path := filepath.Join(rex.Dir(), "settings.json")
+	if err := os.WriteFile(path, []byte(`{
+		"sidebar.rowHeight": 26,
+		"sidebar.indent": 10,
+		"sidebar.fontSize": 40,
+		"sidebar.groupPadding": 3,
+		"sidebar.groupBy": "flat",
+		"sidebar.icons": "text",
+		"sidebar.selection": "wobbly",
+		"sidebar.colorCustomizations": {
+			"groupFace": "#2a2a3d",
+			"pillLift": {"light": "#ffffff", "dark": "#3a3a52"},
+			"nope": "#000000",
+			"track": "not a color"
+		}
+	}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	loadSettings()
+	if prefs.SidebarRowHeight != 26 || prefs.SidebarIndent != 10 || prefs.SidebarGroupPad != 3 {
+		t.Fatalf("metrics %v %v %v", prefs.SidebarRowHeight, prefs.SidebarIndent, prefs.SidebarGroupPad)
+	}
+	if prefs.SidebarFontSize != 0 {
+		t.Errorf("out-of-range fontSize kept %v", prefs.SidebarFontSize)
+	}
+	if prefs.SidebarGroupBy != "flat" {
+		t.Errorf("groupBy %q", prefs.SidebarGroupBy)
+	}
+	if prefs.SidebarIcons != "text" {
+		t.Errorf("icons %q", prefs.SidebarIcons)
+	}
+	if prefs.SidebarSelection != "" {
+		t.Errorf("bad selection %q kept", prefs.SidebarSelection)
+	}
+	if len(prefs.SidebarColors) != 2 {
+		t.Fatalf("colors kept %v", prefs.SidebarColors)
+	}
+	if _, ok := prefs.SidebarColors["nope"]; ok {
+		t.Error("unknown token kept")
+	}
+	if _, ok := prefs.SidebarColors["track"]; ok {
+		t.Error("bad color kept")
 	}
 }

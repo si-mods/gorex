@@ -25,10 +25,10 @@ import (
 // Older.
 const olderAfter = 30 * 24 * time.Hour
 
-// projectRowH is the height of a project's row: a tab's (sideRowH), so that
-// a project and its tabs are rows of one rhythm, and their pills, and the
+// projectRowH() is the height of a project's row: a tab's, so that a
+// project and its tabs are rows of one rhythm, and their pills, and the
 // current project's face, share one radius.
-const projectRowH = sideRowH
+func projectRowH() float32 { return sidebarRowH() }
 
 // openKey names a row of the sidebar that opens and closes, in
 // settings.Open.
@@ -108,8 +108,7 @@ func (a *App) projectsList(c *ui.Context, k *colors) {
 		if !a.hostShown(h, space) {
 			continue
 		}
-		ui.Column(c.Key("host-body-"+hostKey(h))).Gap(rowGap).Padding(0, 0, 10, 0).Children(func() {
-			a.hostHeader(c, k, h)
+		items := func() {
 			recent, older := a.projectsOf(h, space)
 			np := a.st.noProjectOf(h)
 			npShown := np != nil && (np.tabCount() > 0 || np == a.ws)
@@ -136,6 +135,16 @@ func (a *App) projectsList(c *ui.Context, k *colors) {
 			if npShown {
 				a.projectGroup(c, k, np, reserve)
 			}
+		}
+		// sidebar.groupBy "flat" lists every host's items without the
+		// host's section header and body (docs/DSK-007-sidebar-style.md).
+		if prefs.SidebarGroupBy == "flat" {
+			items()
+			continue
+		}
+		ui.Column(c.Key("host-body-"+hostKey(h))).Gap(rowGap).Padding(0, 0, 10, 0).Children(func() {
+			a.hostHeader(c, k, h)
+			items()
 		})
 	}
 }
@@ -165,7 +174,7 @@ func (a *App) hostHeader(c *ui.Context, k *colors, h *hostConn) {
 	}
 	row.ContextMenu(func(m *ui.Menu) { a.hostMenu(m, h) })
 	row.Children(func() {
-		ui.Text(c, strings.ToUpper(name)).FontSize(fontCaption).FontWeight(700).TextColor(k.textFaint).SingleLine().Ellipsis("…").Shrink(1).MinWidth(0)
+		ui.Text(c, strings.ToUpper(name)).FontSize(sidebarFont(fontCaption)).FontWeight(700).TextColor(k.textFaint).SingleLine().Ellipsis("…").Shrink(1).MinWidth(0)
 		dot := ui.Box(c).Size(6, 6).Radius(capsule(6)).Shrink(0)
 		switch {
 		case !away:
@@ -180,7 +189,7 @@ func (a *App) hostHeader(c *ui.Context, k *colors, h *hostConn) {
 			dot.Role(ui.RoleImage).Label(label).Tooltip(label)
 		}
 		if away {
-			ui.Text(c, locales.ProjectsOfflineLabel()).FontSize(fontCaption).TextColor(k.textFaint).SingleLine().Shrink(0)
+			ui.Text(c, locales.ProjectsOfflineLabel()).FontSize(sidebarFont(fontCaption)).TextColor(k.textFaint).SingleLine().Shrink(0)
 		}
 		ui.Spacer(c)
 		if away {
@@ -244,8 +253,8 @@ func (a *App) projectRow(c *ui.Context, k *colors, w *Workspace, reserve float32
 	}
 	n := w.tabCount()
 	offline := w.offline()
-	row := ui.Row(c.Key("project-"+key)).Height(projectRowH).Shrink(0).Padding(0, 4, 0, sideLead).Gap(sideGap).AlignItems(ui.Center).
-		Radius(pillRadius(projectRowH, radiusM)).Cursor(ui.CursorPointer).Role(ui.RoleButton).Expanded(open).Label(name + spacedComma(workspaceDetail(w, a, n)))
+	row := ui.Row(c.Key("project-"+key)).Height(projectRowH()).Shrink(0).Padding(0, 4, 0, sidebarLead()).Gap(sideGap).AlignItems(ui.Center).
+		Radius(pillRadius(projectRowH(), radiusM)).Cursor(ui.CursorPointer).Role(ui.RoleButton).Expanded(open).Label(name + spacedComma(workspaceDetail(w, a, n)))
 	if anim := motion(c); anim != nil {
 		row.Transition(exitIn(ui.ElementTransition{Animation: anim, Position: true, Enter: tabMotion, Exit: tabMotion}, durExitMove))
 	}
@@ -255,7 +264,7 @@ func (a *App) projectRow(c *ui.Context, k *colors, w *Workspace, reserve float32
 	// face (DESIGN.md).
 	switch {
 	case shown && (!open || n == 0):
-		glassPill(row, k, projectRowH)
+		sidebarChosen(row, k, projectRowH(), false)
 	case row.Hovered() && !offline:
 		row.Background(hoverFace(k))
 	}
@@ -275,7 +284,7 @@ func (a *App) projectRow(c *ui.Context, k *colors, w *Workspace, reserve float32
 	row.Children(func() {
 		// The project's folder tile stands over its tabs' tiles, and its name
 		// over their titles.
-		leadRoom(c, reserve, projectRowH).Children(func() { projectFolderTile(c, k, w.Color) })
+		leadRoom(c, reserve, projectRowH()).Children(func() { projectFolderTile(c, k, w.Color) })
 		renaming := shown && a.wsRenaming && w.Dir != ""
 		if renaming {
 			a.workspaceRenameField(c, k, w.Name)
@@ -284,7 +293,7 @@ func (a *App) projectRow(c *ui.Context, k *colors, w *Workspace, reserve float32
 			if shown {
 				weight = 600
 			}
-			ui.Text(c, name).FontSize(fontBody).FontWeight(weight).TextColor(k.text.Alpha(0.85)).SingleLine().Ellipsis("…").Grow(1).MinWidth(0)
+			ui.Text(c, name).FontSize(sidebarFont(fontBody)).FontWeight(weight).TextColor(k.text.Alpha(0.85)).SingleLine().Ellipsis("…").Grow(1).MinWidth(0)
 			if s := a.st.status(w); needsUser(s) {
 				statusDot(c, k, s, 7).Label(statusTip(s))
 			}
@@ -293,7 +302,7 @@ func (a *App) projectRow(c *ui.Context, k *colors, w *Workspace, reserve float32
 		// the tabs of any project, as a click on the row of the one shown
 		// does. A project with no tab has none: there is nothing to open.
 		if n > 0 {
-			fold := disclosureChevron(c.Key("fold"), k, open, projectRowH).
+			fold := disclosureChevron(c.Key("fold"), k, open, projectRowH()).
 				Cursor(ui.CursorPointer).Role(ui.RoleDisclosure).Expanded(open).Label(locales.ProjectsTabsOf(name))
 			toggled = fold.Clicked()
 		}
@@ -363,7 +372,7 @@ func (a *App) projectRow(c *ui.Context, k *colors, w *Workspace, reserve float32
 func (a *App) projectGroup(c *ui.Context, k *colors, w *Workspace, reserve float32) {
 	// Every project has the room of the face, so that choosing another moves
 	// nothing: only the face's color comes and goes, fading.
-	g := ui.Column(c.Key("group-"+openKey(w.host, w.ID))).Gap(rowGap).Radius(pillRadius(sideRowH, radiusM)+groupPad).Padding(groupPad).Margin(-groupEdge, -groupPad, -groupEdge, -groupPad)
+	g := ui.Column(c.Key("group-"+openKey(w.host, w.ID))).Gap(rowGap).Radius(pillRadius(sidebarRowH(), radiusM)+sidebarGroupPad()).Padding(sidebarGroupPad()).Margin(-sidebarGroupEdge(), -sidebarGroupPad(), -sidebarGroupEdge(), -sidebarGroupPad())
 	if w == a.ws && rowOpen(openKey(w.host, w.ID), true) && w.tabCount() > 0 {
 		g.Background(k.groupFace)
 	} else {
@@ -376,14 +385,14 @@ func (a *App) projectGroup(c *ui.Context, k *colors, w *Workspace, reserve float
 	g.Children(func() { a.projectRow(c, k, w, reserve) })
 }
 
-// groupPad is the room between the current project's face and its rows;
-// groupEdge the face's reach above and below them in the layout, short of
-// groupPad by enough that groupGap stays between the face and the rows of
-// the projects next to it.
+// groupPad is the room between the current project's face and its rows,
+// the user's sidebar.groupPadding over it (sidebarGroupPad); groupEdge the
+// face's reach above and below them in the layout, short of the pad by
+// enough that groupGap stays between the face and the rows of the projects
+// next to it (sidebarGroupEdge).
 const (
-	groupPad  = 4
-	groupGap  = 2
-	groupEdge = (groupPad + rowGap - groupGap) / 2
+	groupPad = 4
+	groupGap = 2
 )
 
 // rowGap is the room between the sidebar's rows, so that two filled
@@ -419,6 +428,11 @@ func projectFolderTile(c *ui.Context, k *colors, color string) {
 		col = ui.Hex(hex)
 	}
 	ui.Row(c).Width(tileSlot).AlignItems(ui.Center).Justify(ui.Center).Shrink(0).Children(func() {
+		// sidebar.icons "text" draws the glyph alone, no tile face.
+		if sidebarIconsText() {
+			glyphIcon(c, "folder", 11, col).Shrink(0)
+			return
+		}
 		ui.Row(c).Size(tileW, tileH).Radius(radiusTile).Background(k.text.Alpha(folderTileAlpha)).AlignItems(ui.Center).Justify(ui.Center).Children(func() {
 			glyphIcon(c, "folder", 11, col).Shrink(0)
 		})
@@ -510,7 +524,7 @@ func (a *App) showWorkspaceTab(w *Workspace, i int) {
 // under it, as Older: its chevron, its label and a count. It reports
 // whether it was clicked.
 func (a *App) foldRow(c *ui.Context, k *colors, key, label, count string, open bool, reserve float32) bool {
-	row := ui.Row(c.Key("fold-"+key)).Height(foldRowH).Shrink(0).Padding(0, 10, 0, sideLead).Gap(sideGap).AlignItems(ui.Center).
+	row := ui.Row(c.Key("fold-"+key)).Height(foldRowH).Shrink(0).Padding(0, 10, 0, sidebarLead()).Gap(sideGap).AlignItems(ui.Center).
 		Radius(pillRadius(foldRowH, radiusM)).Cursor(ui.CursorPointer).Role(ui.RoleDisclosure).Expanded(open).Label(label)
 	hovered := row.Hovered()
 	if hovered {
@@ -518,9 +532,9 @@ func (a *App) foldRow(c *ui.Context, k *colors, key, label, count string, open b
 	}
 	row.Children(func() {
 		leadRoom(c, reserve, foldRowH)
-		ui.Text(c, label).FontSize(fontCallout).TextColor(k.textMuted).SingleLine().Grow(1).MinWidth(0)
+		ui.Text(c, label).FontSize(sidebarFont(fontCallout)).TextColor(k.textMuted).SingleLine().Grow(1).MinWidth(0)
 		disclosureChevron(c, k, open, foldRowH)
-		ui.Text(c, count).FontSize(fontFootnote).TextColor(k.textFaint).Shrink(0)
+		ui.Text(c, count).FontSize(sidebarFont(fontFootnote)).TextColor(k.textFaint).Shrink(0)
 	})
 	return row.Clicked()
 }
@@ -539,13 +553,13 @@ func (a *App) waitingRow(c *ui.Context, k *colors, h *hostConn, ad layout.Adopti
 	if detail != "" {
 		tipText = detail + " · " + note
 	}
-	row := ui.Row(c.Key("waiting-"+ad.ID)).Height(projectRowH).Shrink(0).Padding(0, 10, 0, sideLead).Gap(sideGap).AlignItems(ui.Center).
+	row := ui.Row(c.Key("waiting-"+ad.ID)).Height(projectRowH()).Shrink(0).Padding(0, 10, 0, sidebarLead()).Gap(sideGap).AlignItems(ui.Center).
 		Role(ui.RoleText).Label(name + ", " + note).Tooltip(tipText)
 	row.Children(func() {
 		// A project or No Project, the folder tile and name of a project's row.
-		leadRoom(c, reserve, projectRowH).Children(func() { projectFolderTile(c, k, "") })
-		ui.Text(c, name).FontSize(fontBody).TextColor(k.text.Alpha(0.85)).SingleLine().Ellipsis("…").Shrink(1).MinWidth(0)
-		ui.Text(c, note).FontSize(fontCaption).TextColor(k.textFaint).SingleLine().Ellipsis("…").Grow(1).MinWidth(0).Padding(0, 0, 0, 6)
+		leadRoom(c, reserve, projectRowH()).Children(func() { projectFolderTile(c, k, "") })
+		ui.Text(c, name).FontSize(sidebarFont(fontBody)).TextColor(k.text.Alpha(0.85)).SingleLine().Ellipsis("…").Shrink(1).MinWidth(0)
+		ui.Text(c, note).FontSize(sidebarFont(fontCaption)).TextColor(k.textFaint).SingleLine().Ellipsis("…").Grow(1).MinWidth(0).Padding(0, 0, 0, 6)
 	})
 	dimmed(row, 0.5)
 }
@@ -763,23 +777,23 @@ func (a *App) projectAgentMenu(c *ui.Context, m *ui.Menu, w *Workspace, agents [
 // opening a tab that runs it, and the chevron of the menu of every
 // installed one. With none pinned the cluster is the chevron alone.
 func (a *App) projectNewTabRow(c *ui.Context, k *colors, w *Workspace, agents []rex.AgentInfo, reserve float32) {
-	row := ui.Row(c.Key("new-tab-"+openKey(w.host, w.ID))).Height(sideRowH).Shrink(0).Padding(0, 4, 0, sideLead).Gap(sideGap).AlignItems(ui.Center)
+	row := ui.Row(c.Key("new-tab-"+openKey(w.host, w.ID))).Height(sidebarRowH()).Shrink(0).Padding(0, 4, 0, sidebarLead()).Gap(sideGap).AlignItems(ui.Center)
 	row.Children(func() {
 		// The shell's part fills the row, so the cluster's buttons keep
 		// their own hovers at its end.
 		label := locales.ProjectsNewTabIn(w.Name)
-		add := ui.Row(c.Key("add")).Grow(1).MinWidth(0).Height(sideRowH).Gap(sideGap).AlignItems(ui.Center).
-			Radius(pillRadius(sideRowH, radiusM)).Cursor(ui.CursorPointer).Role(ui.RoleButton).Label(label).Tooltip(label)
+		add := ui.Row(c.Key("add")).Grow(1).MinWidth(0).Height(sidebarRowH()).Gap(sideGap).AlignItems(ui.Center).
+			Radius(pillRadius(sidebarRowH(), radiusM)).Cursor(ui.CursorPointer).Role(ui.RoleButton).Label(label).Tooltip(label)
 		if add.Hovered() {
 			add.Background(hoverFace(k))
 		}
 		add.Children(func() {
-			leadRoom(c, reserve, sideRowH).Children(func() {
+			leadRoom(c, reserve, sidebarRowH()).Children(func() {
 				ui.Row(c).Width(tileSlot).AlignItems(ui.Center).Justify(ui.Center).Children(func() {
 					glyphIcon(c, "plus", 13, k.textMuted).Shrink(0)
 				})
 			})
-			ui.Text(c, locales.CmdNewTab()).FontSize(fontBody).TextColor(k.textMuted).SingleLine().Ellipsis("…").Shrink(1).MinWidth(0)
+			ui.Text(c, locales.CmdNewTab()).FontSize(sidebarFont(fontBody)).TextColor(k.textMuted).SingleLine().Ellipsis("…").Shrink(1).MinWidth(0)
 		})
 		if add.Clicked() {
 			a.later(c, func() { a.newTabIn(w) })
