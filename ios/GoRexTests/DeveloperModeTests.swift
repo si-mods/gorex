@@ -21,7 +21,7 @@ nonisolated final class DeveloperModeTests: XCTestCase {
     }
 
     @MainActor func testConnectionLogFileRoundTripAndClear() throws {
-        let dir = FileManager.default.temporaryDirectory.appending(path: "gorex-tests-\(UUID().uuidString)", isDirectory: true)
+        let dir = FileManager.default.temporaryDirectory.appending(path: "gorex-tests-\(UUID().uuidString)", directoryHint: .isDirectory)
         let url = dir.appending(path: "connection.log")
         defer { try? FileManager.default.removeItem(at: dir) }
 
