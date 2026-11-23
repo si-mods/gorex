@@ -8,7 +8,7 @@ metadata:
 
 # DSK-008: Desktop theme framework
 
-Status: proposal.
+Status: accepted. Not implemented.
 
 This doc decides the shape of theming for the desktop chrome. The chrome is the sidebar, the cards of the panes, the dialogs and the menus. This doc replaces no doc. It extends the palette rules of `DESIGN.md` and the settings keys of [DSK-007](DSK-007-sidebar-style.md). The layers come from the design-system pass note of the Vibe Design Tips series (vibedesign.tips). The material and ink model comes from tip 010 of that series (liquid glass).
 
@@ -42,7 +42,9 @@ The work keeps the current look. It makes the values consistent. It does not cha
 - Terminal colors stay in the Ghostty configuration and in the terminal theme setting. [DSK-009](DSK-009-terminal-settings.md) moves that setting from `theme` to `terminal.theme`. The terminal is a second lightness domain. The framework adapts the chrome to the terminal. It does not change the terminal colors.
 - The glass stays a user setting (`noGlass`). A theme does not change the glass setting.
 - iOS and the web client keep their palettes. The first scope is the desktop chrome.
-- No migration of `settings.json` occurs. Each key that the user has keeps its meaning.
+- No user edits `settings.json` by hand for an upgrade. GoRex migrates the renamed color tokens at load (see Migration).
+- Motion tokens (easing curves and durations) are not in the manifest. The `animation` setting can already stop all motion. Phase 3 can add motion tokens.
+- The web client is TypeScript that `web/build.mjs` builds. It can read a manifest later, because a manifest is JSON. A WEB doc decides this.
 
 ## Design
 
@@ -57,11 +59,11 @@ A theme is a manifest of seeds and optional role overrides:
     "light": { "background": "#f5f6f8", "text": "#1a1d21", "accent": "#0a6bff" },
     "dark":  { "background": "#16181d", "text": "#e8eaed", "accent": "#5b8def" }
   },
-  "roles": { "surfaceSelected": "#5b8def33" }
+  "roles": { "sideBar.tabActiveBackground": "#5b8def33" }
 }
 ```
 
-The user selects a theme with a new settings key, `appTheme`. Its value is the name of a manifest. The name of a Ghostty theme stays in the terminal settings, `theme` now and `terminal.theme` after [DSK-009](DSK-009-terminal-settings.md). Open question 1 records the key name.
+The user selects a theme with a new settings key, `appearance.theme`. Its value is the name of a manifest. The top-level `appearance` key keeps its meaning: light, dark or the system. The name of a Ghostty theme moves to `terminal.theme` ([DSK-009](DSK-009-terminal-settings.md)).
 
 Resolution has four layers. Each layer overwrites the layer before it:
 
@@ -73,7 +75,7 @@ Resolution has four layers. Each layer overwrites the layer before it:
 Code asks for a **surface**, not for a color. The resolver returns the face and a text ladder that shows on the face:
 
 ```go
-s := surface(k, roleSurfaceSelected)
+s := surface(k, roleTabActiveBackground)
 row.Background(s.face)
 ui.Text(c, name).TextColor(s.text)
 ```
@@ -112,9 +114,27 @@ Fixed rules make the palette from the seeds. One seed set always gives the same 
 | `shadow`, `shadowFocused` | black at `shadowStrength` |
 | `radiusS`, `radiusM`, `radiusL`, `radiusXL` | the `radius` seed at fixed steps |
 
+Seven seeds is an estimate. Phase 2 fixes the count when it writes the derivation rules.
+
 A nested corner keeps the current rule, `concentric(outer, inset)`. It is the outer radius minus the inset, and never less than 0.
 
 The rules cannot make all roles. Each such role stays explicit in the palette, as now. The `colors` struct stays as the result of the resolution. The framework changes the source of the values. It does not change what the widgets read. Two literals that are almost equal merge into the nearer role. A new role is added only when no role fits a surface.
+
+### Role names
+
+A role name in a manifest or in a `*.colorCustomizations` key has the style of VS Code: `<area>.<property>`, for example `sideBar.tabActiveBackground`. The Go fields of `colors` keep their short names. An allowlist in `internal/theme` maps each role name to a field.
+
+The seven tokens of [DSK-007](DSK-007-sidebar-style.md) get new names:
+
+| DSK-007 token | Role name |
+| --- | --- |
+| `groupFace` | `sideBar.activeGroupBackground` |
+| `pillLift` | `sideBar.activeGroupTabBackground` |
+| `liftShadow` | `sideBar.activeGroupTabShadow` |
+| `track` | `sideBar.trackBackground` |
+| `tabSep` | `sideBar.tabSeparator` |
+| `tabHover` | `sideBar.tabHoverBackground` |
+| `tabActive` | `sideBar.tabActiveBackground` |
 
 Each face has a pairing rule. The resolver attaches the text ladder that fits the lightness of the resolved face. The rule applies to built-in faces, theme faces and user overrides. It runs at resolve time, not at seed time.
 
@@ -122,7 +142,7 @@ Each face has a pairing rule. The resolver attaches the text ladder that fits th
 
 - `style.go`: The `colors` struct stays. A `seeds` struct and `derive(seeds) colors` make the two palettes. `surface(k, role)` returns the face and its ladder. `headerColors` becomes part of the resolver.
 - `internal/theme` (new): This package parses and validates a manifest. It checks the seed hex values. It checks the role names against an allowlist, as `checkSidebarColors` does.
-- `settings.go`: The new `appTheme` key names a manifest in the config directory or in a pack. Each `*.colorCustomizations` key maps onto roles.
+- `settings.go`: The new `appearance.theme` key names a manifest in the config directory or in a pack. Each `*.colorCustomizations` key maps onto roles. `migrateSettings` from DSK-009 also renames the DSK-007 tokens.
 - Registry: A pack of kind `theme` carries the manifest. It uses the install path of the icon packs.
 - Call sites move to the resolver one surface at a time. The chosen sidebar row moves first, because it shows the contrast bug.
 
@@ -141,32 +161,29 @@ A theme manifest is data: hex values and enum names. It contains no code, no pat
 
 ## Migration
 
-No settings change is necessary. The built-in seeds make the current palettes again. The Ghostty theme name stays in `theme`, or in `terminal.theme` after DSK-009. Each `sidebar.colorCustomizations` token maps onto a role name. The seven DSK-007 tokens keep their names as roles. An older build ignores the `appTheme` key, because `loadSettings` ignores unknown keys.
+An upgrade keeps the look that the user has. The user does not edit the file.
+
+- The built-in seeds make the current palettes again.
+- At the first load, `migrateSettings` renames each DSK-007 token in `sidebar.colorCustomizations` to its role name. It keeps the value, with its exact text. If both names are present, the role name wins. It writes the backup `settings.json.bak` first, as DSK-009 says.
+- GoRex also reads a DSK-007 token that a user writes by hand later, and migrates it at the next load.
+- An older build does not know the role names. It drops them at load with a warning, and the sidebar uses the built-in colors. The user can copy `settings.json.bak` back.
+- An older build ignores the `appearance.theme` key, because `loadSettings` ignores unknown keys.
 
 ## Tests
 
 - **Derivation**: `derive` on the built-in seeds gives the current `lightColors` and `darkColors` values, within rounding.
-- **Pairing**: A light `tabActive` override in a dark window resolves dark text for the chosen row. A dark override keeps the text of the palette.
+- **Pairing**: A light `sideBar.tabActiveBackground` override in a dark window resolves dark text for the chosen row. A dark override keeps the text of the palette.
 - **Ink**: A material over a backdrop that the code cannot read resolves the ink of the theme at the dense tint.
 - **Reduce Transparency**: With `ReduceTransparency` true, a material role resolves to an opaque face.
 - **Manifest**: The load step removes a manifest with a bad seed or an unknown role and logs a warning. It does not stop the app.
-- **Settings**: A `settings.json` with both `terminal.theme` and `appTheme` keeps the Ghostty theme and selects the manifest.
+- **Settings**: A `settings.json` with both `terminal.theme` and `appearance.theme` keeps the Ghostty theme and selects the manifest.
+- **Token migration**: A file with the seven DSK-007 tokens loads with the same colors. The file on disk then has only role names, with the exact values.
+- **Both names**: A file with `tabActive` and `sideBar.tabActiveBackground` keeps the value of the role name.
 
 No item in `docs/invariants.md` covers the palette.
 
 ## Phases
 
-1. **Pairing**: Add the `surface` resolver. Move the chosen sidebar row to it first, then the other chrome. This fixes the contrast for the current overrides.
+1. **Pairing**: Add the `surface` resolver. Move the chosen sidebar row to it first, then the other chrome. This fixes the contrast for the current overrides. Rename the DSK-007 tokens and migrate them.
 2. **Seeds**: `derive` replaces the literal palettes, and `colors` becomes a derived value.
-3. **Manifest**: Add `internal/theme`, the `appTheme` settings key and a `theme` pack kind on the registry.
-
-## Open questions
-
-1. **Settings key for the theme**: The user decides. The options are:
-   1. A new key `appTheme` (recommended). Nothing breaks. An older build ignores it.
-   2. A new dotted key `appearance.theme`, as the DSK-007 keys are. Nothing breaks. It starts an `appearance.*` group with one key.
-   3. Use `theme` for the manifest, after DSK-009 moves the Ghostty theme name to `terminal.theme`. An older build still reads `theme` as a Ghostty theme name. It then does not find the theme, and during the DSK-009 transition the two values collide in one key.
-2. **Role names**: Keep the DSK-007 tokens (`tabActive`, `groupFace`) or rename them to tokens in the style of VS Code (`sideBar.*`). A rename breaks settings. Keeping the tokens keeps compatibility but also keeps flat names. The user decides.
-3. **Seed count**: Seven seeds is an estimate. The derivation table gives the real count in phase 2.
-4. **Motion in the manifest**: Easing curves and durations are tokens, as colors are. The manifest can carry them later. The `animation` setting can already stop all motion. This is deferred to phase 3.
-5. **Web reuse**: The web client is TypeScript that `web/build.mjs` builds. A manifest is JSON, so the web client can read it later. A WEB doc decides this when the work starts.
+3. **Manifest**: Add `internal/theme`, the `appearance.theme` settings key and a `theme` pack kind on the registry.

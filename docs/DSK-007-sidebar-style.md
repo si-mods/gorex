@@ -67,7 +67,7 @@ The metric keys, each a number clamped to a range and reset to the default outsi
 
 `sidebar.icons` is `tiles` or `text`, "" for `tiles`. `text` draws no program tiles on tab rows and draws a project's folder glyph alone, without its tile face; the names' room shrinks to a tile's width so the rows still line up with the project rows' glyphs. `sidebar.selection` is `pill` or `fill`, "" for `pill`. `fill` paints a chosen row a plain face at `tabActive` with a `radiusM` corner — the look of a text-first list — instead of the glass pill of the other chosen controls.
 
-`sidebar.colorCustomizations` maps one of these palette tokens to a color: `groupFace`, `pillLift`, `liftShadow`, `track`, `tabSep`, `tabHover`, `tabActive`. A value is `#RRGGBB` or `#RRGGBBAA`, or an object `{ "light": <hex>, "dark": <hex> }` for different values per appearance. A single value applies to both appearances. An unknown token or a bad value is dropped at load with a warning.
+`sidebar.colorCustomizations` maps one of these palette tokens to a color: `groupFace`, `pillLift`, `liftShadow`, `track`, `tabSep`, `tabHover`, `tabActive`. A value is `#RRGGBB` or `#RRGGBBAA`, or an object `{ "light": <hex>, "dark": <hex> }` for different values per appearance. A single value applies to both appearances. An unknown token or a bad value is dropped at load with a warning. [DSK-008](DSK-008-theme.md) renames these tokens to role names such as `sideBar.tabActiveBackground`, and migrates the user's file at load.
 
 ### Model
 
