@@ -29,6 +29,10 @@ nonisolated struct TerminalActivity: ActivityAttributes, Hashable, Sendable {
 
     /// An OSC 7501 record, as a status inbox's row shows it.
     struct Record: Codable, Hashable, Sendable {
+        /// The record's id, as program_status reports it, "" for the
+        /// root record: gorex.push.seen reports the shown ones seen.
+        /// nil in a push of a host that predates it.
+        var id: String?
         /// blocked, error, done or working.
         var state: String
         var kind: String?
