@@ -8345,3 +8345,201 @@ func PromptSend() string { return In(i18n.Locale()).PromptSend() }
 func (msgs Messages) PromptSend() string {
 	return Catalog.Format(msgs.locale, "promptSend", nil)
 }
+
+// SettingsIconPacks says "Icon Packs"
+// in the language the app shows.
+//
+// Settings sidebar item: community program icon packs.
+func SettingsIconPacks() string { return In(i18n.Locale()).SettingsIconPacks() }
+
+// SettingsIconPacks says "Icon Packs"
+// in the language of msgs.
+//
+// Settings sidebar item: community program icon packs.
+func (msgs Messages) SettingsIconPacks() string {
+	return Catalog.Format(msgs.locale, "settingsIconPacks", nil)
+}
+
+// SettingsIconPackPriority says "Priority"
+// in the language the app shows.
+//
+// Settings row: precedence between icon packs and OSC 7502.
+func SettingsIconPackPriority() string { return In(i18n.Locale()).SettingsIconPackPriority() }
+
+// SettingsIconPackPriority says "Priority"
+// in the language of msgs.
+//
+// Settings row: precedence between icon packs and OSC 7502.
+func (msgs Messages) SettingsIconPackPriority() string {
+	return Catalog.Format(msgs.locale, "settingsIconPackPriority", nil)
+}
+
+// SettingsIconPackPriorityPack says "Icon Packs first"
+// in the language the app shows.
+//
+// Segmented option: community icon packs override OSC 7502.
+func SettingsIconPackPriorityPack() string { return In(i18n.Locale()).SettingsIconPackPriorityPack() }
+
+// SettingsIconPackPriorityPack says "Icon Packs first"
+// in the language of msgs.
+//
+// Segmented option: community icon packs override OSC 7502.
+func (msgs Messages) SettingsIconPackPriorityPack() string {
+	return Catalog.Format(msgs.locale, "settingsIconPackPriorityPack", nil)
+}
+
+// SettingsIconPackPriorityOSC says "Program (OSC 7502) first"
+// in the language the app shows.
+//
+// Segmented option: runtime OSC 7502 icons override icon packs.
+func SettingsIconPackPriorityOSC() string { return In(i18n.Locale()).SettingsIconPackPriorityOSC() }
+
+// SettingsIconPackPriorityOSC says "Program (OSC 7502) first"
+// in the language of msgs.
+//
+// Segmented option: runtime OSC 7502 icons override icon packs.
+func (msgs Messages) SettingsIconPackPriorityOSC() string {
+	return Catalog.Format(msgs.locale, "settingsIconPackPriorityOSC", nil)
+}
+
+// SettingsIconPacksInstalled says "Installed"
+// in the language the app shows.
+//
+// Settings group heading: locally installed icon packs.
+func SettingsIconPacksInstalled() string { return In(i18n.Locale()).SettingsIconPacksInstalled() }
+
+// SettingsIconPacksInstalled says "Installed"
+// in the language of msgs.
+//
+// Settings group heading: locally installed icon packs.
+func (msgs Messages) SettingsIconPacksInstalled() string {
+	return Catalog.Format(msgs.locale, "settingsIconPacksInstalled", nil)
+}
+
+// SettingsIconPacksEmpty says "No icon packs installed yet."
+// in the language the app shows.
+//
+// Shown in Installed group when no icon packs exist.
+func SettingsIconPacksEmpty() string { return In(i18n.Locale()).SettingsIconPacksEmpty() }
+
+// SettingsIconPacksEmpty says "No icon packs installed yet."
+// in the language of msgs.
+//
+// Shown in Installed group when no icon packs exist.
+func (msgs Messages) SettingsIconPacksEmpty() string {
+	return Catalog.Format(msgs.locale, "settingsIconPacksEmpty", nil)
+}
+
+// SettingsIconPacksRegistry says "Community Registry"
+// in the language the app shows.
+//
+// Settings group heading: browse and install packs from gorex-registry.
+func SettingsIconPacksRegistry() string { return In(i18n.Locale()).SettingsIconPacksRegistry() }
+
+// SettingsIconPacksRegistry says "Community Registry"
+// in the language of msgs.
+//
+// Settings group heading: browse and install packs from gorex-registry.
+func (msgs Messages) SettingsIconPacksRegistry() string {
+	return Catalog.Format(msgs.locale, "settingsIconPacksRegistry", nil)
+}
+
+// SettingsIconPacksSearch says "Search icon packs…"
+// in the language the app shows.
+//
+// Placeholder of the search input in Community Registry.
+func SettingsIconPacksSearch() string { return In(i18n.Locale()).SettingsIconPacksSearch() }
+
+// SettingsIconPacksSearch says "Search icon packs…"
+// in the language of msgs.
+//
+// Placeholder of the search input in Community Registry.
+func (msgs Messages) SettingsIconPacksSearch() string {
+	return Catalog.Format(msgs.locale, "settingsIconPacksSearch", nil)
+}
+
+// SettingsIconPacksRefresh says "Refresh"
+// in the language the app shows.
+//
+// Button to reload the community icon pack registry.
+func SettingsIconPacksRefresh() string { return In(i18n.Locale()).SettingsIconPacksRefresh() }
+
+// SettingsIconPacksRefresh says "Refresh"
+// in the language of msgs.
+//
+// Button to reload the community icon pack registry.
+func (msgs Messages) SettingsIconPacksRefresh() string {
+	return Catalog.Format(msgs.locale, "settingsIconPacksRefresh", nil)
+}
+
+// SettingsIconPacksInstall says "Install"
+// in the language the app shows.
+//
+// Button to install a community icon pack.
+func SettingsIconPacksInstall() string { return In(i18n.Locale()).SettingsIconPacksInstall() }
+
+// SettingsIconPacksInstall says "Install"
+// in the language of msgs.
+//
+// Button to install a community icon pack.
+func (msgs Messages) SettingsIconPacksInstall() string {
+	return Catalog.Format(msgs.locale, "settingsIconPacksInstall", nil)
+}
+
+// SettingsIconPacksInstalling says "Installing…"
+// in the language the app shows.
+//
+// Button label while installing a community icon pack.
+func SettingsIconPacksInstalling() string { return In(i18n.Locale()).SettingsIconPacksInstalling() }
+
+// SettingsIconPacksInstalling says "Installing…"
+// in the language of msgs.
+//
+// Button label while installing a community icon pack.
+func (msgs Messages) SettingsIconPacksInstalling() string {
+	return Catalog.Format(msgs.locale, "settingsIconPacksInstalling", nil)
+}
+
+// SettingsIconPacksInstalledBadge says "Installed"
+// in the language the app shows.
+//
+// Badge shown when a registry pack is already installed.
+func SettingsIconPacksInstalledBadge() string {
+	return In(i18n.Locale()).SettingsIconPacksInstalledBadge()
+}
+
+// SettingsIconPacksInstalledBadge says "Installed"
+// in the language of msgs.
+//
+// Badge shown when a registry pack is already installed.
+func (msgs Messages) SettingsIconPacksInstalledBadge() string {
+	return Catalog.Format(msgs.locale, "settingsIconPacksInstalledBadge", nil)
+}
+
+// SettingsIconPacksRemove says "Remove"
+// in the language the app shows.
+//
+// Button to uninstall an icon pack.
+func SettingsIconPacksRemove() string { return In(i18n.Locale()).SettingsIconPacksRemove() }
+
+// SettingsIconPacksRemove says "Remove"
+// in the language of msgs.
+//
+// Button to uninstall an icon pack.
+func (msgs Messages) SettingsIconPacksRemove() string {
+	return Catalog.Format(msgs.locale, "settingsIconPacksRemove", nil)
+}
+
+// SettingsIconPacksCount says "{count, plural, one {# icon} other {# icons}}"
+// in the language the app shows.
+//
+// Icon count label under an installed icon pack.
+func SettingsIconPacksCount(count int) string { return In(i18n.Locale()).SettingsIconPacksCount(count) }
+
+// SettingsIconPacksCount says "{count, plural, one {# icon} other {# icons}}"
+// in the language of msgs.
+//
+// Icon count label under an installed icon pack.
+func (msgs Messages) SettingsIconPacksCount(count int) string {
+	return Catalog.Format(msgs.locale, "settingsIconPacksCount", map[string]any{"count": count})
+}

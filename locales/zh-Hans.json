@@ -674,5 +674,19 @@
   "emptyNoTabNote": "标签页运行 shell、agent、浏览器和便签。",
   "promptCancel": "取消",
   "promptOther": "其他",
-  "promptSend": "发送"
+  "promptSend": "发送",
+  "settingsIconPacks": "图标包",
+  "settingsIconPackPriority": "优先级",
+  "settingsIconPackPriorityPack": "图标包优先",
+  "settingsIconPackPriorityOSC": "程序自报 (OSC 7502) 优先",
+  "settingsIconPacksInstalled": "已安装",
+  "settingsIconPacksEmpty": "暂未安装任何图标包。",
+  "settingsIconPacksRegistry": "社区图标库",
+  "settingsIconPacksSearch": "搜索图标包…",
+  "settingsIconPacksRefresh": "刷新",
+  "settingsIconPacksInstall": "安装",
+  "settingsIconPacksInstalling": "安装中…",
+  "settingsIconPacksInstalledBadge": "已安装",
+  "settingsIconPacksRemove": "移除",
+  "settingsIconPacksCount": "{count} 个图标"
 }

@@ -46,7 +46,7 @@ gorex split [-s SESSION] [--down] [--dir DIR] [--json] [-- COMMAND...]
 gorex close [-s SESSION] [--tab] [--json]
 gorex rename [-s SESSION] [--json] NAME
 gorex icon [--bg HEX] [--fg HEX] [--mode mono|color] [--format svg|png] FILE|clear
-gorex pack ls [--json] | install [--name ID] [--json] DIR|GIT_URL | rm ID
+gorex pack ls [--json] | search [QUERY] [--json] | install [--name ID] [--json] ID|DIR|GIT_URL | rm ID
 gorex send [-s SESSION] [--enter] [--json] TEXT...
 gorex paste [-s SESSION] [--json] TEXT...
 gorex capture [-s SESSION] [--history BYTES] [--raw] [--json]

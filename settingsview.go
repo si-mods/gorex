@@ -99,6 +99,7 @@ func (a *App) openSettings() {
 		return
 	}
 	settingsUI.section, settingsUI.themeQuery = "appearance", ""
+	resetIconPacksUI()
 	settingsUI.themes = map[string]*terminal.Theme{}
 	settingsUI.fonts, settingsUI.fontOptions, settingsUI.langTags = nil, nil, nil
 	for _, f := range ui.FontFamilies() {
@@ -157,6 +158,7 @@ var sections = []struct {
 	{"appearance", "contrast", ui.RGB(0, 122, 255), locales.Messages.SettingsAppearance},   // blue
 	{"terminal", "square-terminal", ui.RGB(58, 58, 60), locales.Messages.SettingsTerminal}, // graphite
 	{"theme", "sparkles", ui.RGB(175, 82, 222), locales.Messages.SettingsTheme},            // purple
+	{"icons", "layers", ui.RGB(255, 149, 0), locales.Messages.SettingsIconPacks},           // orange
 	{"keyboard", "keyboard", ui.RGB(142, 142, 147), locales.Messages.SettingsKeyboard},     // gray
 	{"hosts", "monitor", ui.RGB(52, 199, 89), locales.Messages.SettingsHosts},              // green
 	{"about", "info", ui.RGB(142, 142, 147), locales.Messages.SettingsAbout},               // gray
@@ -225,6 +227,8 @@ func (a *App) settingsView(c *ui.Context) {
 						a.terminalSettings(c, k)
 					case "theme":
 						a.themeSettings(c, k)
+					case "icons":
+						a.iconPacksSettings(c, k)
 					case "keyboard":
 						a.keyboardSettings(c, k)
 					case "hosts":
