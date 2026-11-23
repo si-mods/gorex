@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.55.1
+
+### Features
+
+* **web:** liquid glass for the surfaces over the terminals ([#1048](https://github.com/si-mods/gorex/pull/1048))
+
+### Bug Fixes
+
+* **desktop:** find the configuration and icon-pack directories on Windows — the GUI set no HOME, so icon packs could not install and init.lua never loaded ([#1051](https://github.com/si-mods/gorex/pull/1051))
+* **desktop:** show the done dot on a finished program's tile and bounce it only on attention ([#1046](https://github.com/si-mods/gorex/pull/1046), [#1047](https://github.com/si-mods/gorex/pull/1047))
+* **web:** show the light glass's edge over light terminals ([#1050](https://github.com/si-mods/gorex/pull/1050))
+
 ## 0.55.0
 
 ### Features
