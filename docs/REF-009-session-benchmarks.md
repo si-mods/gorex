@@ -8,7 +8,7 @@ metadata:
 
 # REF-009: Benchmarks for the session server's hot path
 
-Status: proposal.
+Status: phase 1 built (#1062). Phases 2 and 3 not built.
 
 The session server reads each PTY in a loop. Every chunk goes to a terminal emulator, to output trackers and to the attached clients (`session.emit` in `internal/rex/session.go`). This doc decides how that loop, and the attach that shares its lock, are measured. [REF-006](REF-006-session-server.md) describes the session and its data flow.
 
@@ -45,7 +45,7 @@ Each benchmark replays generated output in chunks of 4 KiB, as `flood` does. A c
 | `plain` | UTF-8 text with no ESC | The fast path of every scan. |
 | `styles` | The colored lines of `flood` | CSI-dense output, the common case. |
 | `osc` | Lines mixed with OSC 133, 7501 and 7502 | The trackers' body parsing. |
-| `graphics` | Kitty APC chunks | `graphics.filter` before the lock. |
+| `graphics` | Lines mixed with Kitty APC chunks | The scans over APC sequences. |
 
 A generated stream keeps each load's share stable. Real scrollback is not reproducible.
 
@@ -65,6 +65,19 @@ The merged scan changes behavior only if it answers differently. `TestScanFeedsM
 
 The benchmark PR records the numbers of its first run in the PR body, with the machine and the date. This doc records them here after the merge. Numbers compare only to numbers from the same machine.
 
+Apple M5, 2026-11-24, `-benchtime=500ms -count=6`, medians:
+
+| Benchmark | Result | Throughput | B/op | allocs/op |
+| --- | --- | --- | --- | --- |
+| `BenchmarkEmit/plain` | 11.8 µs | 346 MB/s | 48 | 3 |
+| `BenchmarkEmit/styles` | 19.6 µs | 208 MB/s | 498 | 3 |
+| `BenchmarkEmit/osc` | 27.3 µs | 150 MB/s | 5117 | 58 |
+| `BenchmarkEmit/graphics` | 28.2 µs | 145 MB/s | 947 | 3 |
+| `BenchmarkEmitClients` | 22.1 µs | 186 MB/s | 639 | 6 |
+| `BenchmarkAttachStall` | 14.5 ms stall | — | — | — |
+
+The attach stall matches `BenchmarkSnapshotLocked`. Every client of the session sees it on each escape-sequence attach.
+
 ## Alternatives
 
 - **pprof under a synthetic run**: more faithful and more work. The test helpers already produce the loads. Revisit when the benchmarks disagree with a profile.
@@ -80,6 +93,6 @@ The benchmark PR records the numbers of its first run in the PR body, with the m
 
 ## Phases
 
-1. The emit benchmarks and the attach-stall benchmark.
+1. The emit benchmarks and the attach-stall benchmark: #1062.
 2. The off-lock attach snapshot, measured by `BenchmarkAttachStall`.
 3. The merged scan, measured by `BenchmarkEmit` and `TestScanFeedsMatch`. It lands only if its win clears the cost of the change.
