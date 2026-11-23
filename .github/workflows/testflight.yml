@@ -2,8 +2,9 @@ name: TestFlight
 
 # Archives Rex Go and uploads it to TestFlight, as ios/scripts/upload does on
 # a Mac: the build number is App Store Connect's last one for the version,
-# plus one. Runs never overlap; a newer pending run replaces an older one,
-# which is fine, as it has the older one's commits too.
+# plus one. Runs never overlap; a newer run cancels an older one in flight
+# or pending, as it uploads the older one's commits too, and its guard job
+# names the run it cancelled and why.
 on:
   workflow_dispatch:
   push:
@@ -19,17 +20,38 @@ on:
 
 permissions:
   contents: read
-  actions: read # the last upload's commit, for What to Test
+  # The last upload's commit, for What to Test; the guard job cancels this
+  # workflow's older runs.
+  actions: write
 
 concurrency:
   group: testflight
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 defaults:
   run:
     shell: bash
 
 jobs:
+  # Names the older runs this one cancels, and why: the cancelled run's page
+  # cannot carry the reason. On instabox, beside the upload: it does not
+  # wait for the Mac mini, and a failure of its own holds no upload back.
+  guard:
+    if: github.ref == 'refs/heads/main'
+    runs-on: instabox-medium
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - name: gh and jq
+        run: |
+          command -v gh >/dev/null && command -v jq >/dev/null && exit 0
+          sudo=; [ "$(id -u)" = 0 ] || sudo="sudo -n"
+          $sudo apt-get update -q
+          $sudo apt-get install -y -q gh jq
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: .github/scripts/testflight-guard.sh
+
   upload:
     if: github.ref == 'refs/heads/main'
     # The Mac mini's own runner (~/actions-runner-gorex): GitHub's arm64
