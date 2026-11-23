@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.52.0
+
+### Features
+
+* **ios:** approve or deny a blocked record from the Live Activity ([#1003](https://github.com/si-mods/gorex/pull/1003))
+* **push:** mark the records the Live Activity showed as seen ([#1004](https://github.com/si-mods/gorex/pull/1004))
+* **push:** start the Live Activity remotely on a blocked record ([#1006](https://github.com/si-mods/gorex/pull/1006))
+
+### Bug Fixes
+
+* **ios:** warm a socket-reset tailcat client instead of trying it ([#1010](https://github.com/si-mods/gorex/pull/1010))
+* **rex:** close the journal a run stops with, so the next one compacts it ([#1013](https://github.com/si-mods/gorex/pull/1013))
+* **ios,web:** the program tile of a tab the agent launcher opened, and of any session that runs a command ([#1015](https://github.com/si-mods/gorex/pull/1015))
+* **ios:** let New Project's Space row pick the space ([#1014](https://github.com/si-mods/gorex/pull/1014))
+
 ## 0.51.0
 
 ### Features
