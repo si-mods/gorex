@@ -1246,6 +1246,36 @@
   "@settingsLarger": {
     "description": "Screen reader label of the text size stepper's plus button."
   },
+  "settingsGlassLight": "Glass tint, light",
+  "@settingsGlassLight": {
+    "description": "Settings › Appearance: how strong the tint of the glass panels over the terminals is in the light appearance."
+  },
+  "settingsGlassDark": "Glass tint, dark",
+  "@settingsGlassDark": {
+    "description": "Settings › Appearance: how strong the tint of the glass panels over the terminals is in the dark appearance."
+  },
+  "settingsGlassHint": "The tint of the panels over the terminals, such as Find and the menus. Less shows more of the terminal; at 0 only the blur and the edge stay.",
+  "@settingsGlassHint": {
+    "description": "Hint under the two Glass tint settings."
+  },
+  "settingsGlassValue": "{percent}%",
+  "@settingsGlassValue": {
+    "description": "The glass tint shown beside its stepper, as a percentage of the standard tint.",
+    "placeholders": {
+      "percent": {
+        "type": "int",
+        "example": "100"
+      }
+    }
+  },
+  "settingsGlassLess": "Less tint",
+  "@settingsGlassLess": {
+    "description": "Screen reader label of a glass tint stepper's minus button."
+  },
+  "settingsGlassMore": "More tint",
+  "@settingsGlassMore": {
+    "description": "Screen reader label of a glass tint stepper's plus button."
+  },
   "settingsReset": "Reset",
   "@settingsReset": {
     "description": "Button that resets the text size to the default."

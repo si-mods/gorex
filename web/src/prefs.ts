@@ -56,7 +56,14 @@ export interface Prefs {
   language: string;
   /** User-edited keyboard shortcut overrides by command id (keys.ts). */
   shortcuts?: Record<string, string>;
+  /** The glass's tint in the light and the dark scheme, 0 to 1.5 (docs/WEB-005-liquid-glass.md); unset is 1. */
+  glassLight?: number;
+  glassDark?: number;
 }
+
+/** The Glass tint settings' range and step. */
+export const maxGlassTint = 1.5;
+export const glassTintStep = 0.1;
 
 /**
  * The terminals' text size until set, in whole CSS pixels. The desktop's
@@ -122,6 +129,9 @@ function load(): Prefs {
       p.tailscaleOn = j.tailscaleOn === true;
       p.tailscaleSignedIn = j.tailscaleSignedIn === true;
       if (typeof j.language === "string") p.language = j.language;
+      for (const k of ["glassLight", "glassDark"] as const) {
+        if (typeof j[k] === "number" && j[k] >= 0 && j[k] <= maxGlassTint) p[k] = j[k];
+      }
       if (j.shortcuts && typeof j.shortcuts === "object" && !Array.isArray(j.shortcuts)) {
         const out: Record<string, string> = {};
         for (const [k, v] of Object.entries(j.shortcuts)) {

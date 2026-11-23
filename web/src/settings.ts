@@ -13,7 +13,7 @@ import {
   resetShortcut, setRecordingShortcuts, shortcutGroups, trySetShortcut,
 } from "./keys";
 import {
-  Animation, Appearance, CursorStyle, maxFontSize, minFontSize, prefs, Prefs, setPrefs, SidebarView, TabPlacement, textSize, clearAll,
+  Animation, Appearance, CursorStyle, glassTintStep, maxFontSize, maxGlassTint, minFontSize, prefs, Prefs, setPrefs, SidebarView, TabPlacement, textSize, clearAll,
 } from "./prefs";
 import { formatDate, formatList, Language, languages, onLanguageChange, PlainKey, setLanguage, t, tIn } from "./i18n";
 import { blockedCJK, ensure, ensureLatin, mapleFamily, noMaple } from "./maple";
@@ -40,7 +40,7 @@ export interface SettingsApp {
   /** A theme chosen, or the host's colours (none). */
   chooseTheme(t?: ThemeEntry): void;
   /** Applies a changed setting to the page and its panes. */
-  apply(what: "appearance" | "tabs" | "headers" | "animation" | "font" | "cursor" | "contrast", reset?: boolean): void;
+  apply(what: "appearance" | "tabs" | "headers" | "animation" | "font" | "cursor" | "contrast" | "glass", reset?: boolean): void;
   /** The dialog closed: the keyboard goes back to the terminal. */
   closed(): void;
   /** Built-in Tailscale, and its sign-in guide. */
@@ -532,6 +532,40 @@ export class Settings {
         },
       ),
     );
+
+    // The glass's tint over the terminals (docs/WEB-005-liquid-glass.md), one for each scheme, as the text size's stepper.
+    const glass = group(this.page);
+    for (const [k, label] of [["glassLight", t("settingsGlassLight")], ["glassDark", t("settingsGlassDark")]] as const) {
+      const shown = el("span", "settings-value", "");
+      const less = el("button", "pane-action settings-step");
+      const more = el("button", "pane-action settings-step");
+      const back = button(t("settingsReset"));
+      less.type = more.type = "button";
+      less.setAttribute("aria-label", t("settingsGlassLess"));
+      more.setAttribute("aria-label", t("settingsGlassMore"));
+      less.append(icon("minus"));
+      more.append(icon("plus"));
+      const now = () => prefs[k] ?? 1;
+      const show = () => {
+        shown.textContent = t("settingsGlassValue", { percent: Math.round(now() * 100) });
+        less.disabled = now() <= 0;
+        more.disabled = now() >= maxGlassTint;
+        back.disabled = prefs[k] === undefined;
+      };
+      const set = (v: number | undefined) => {
+        setPrefs({ [k]: v === undefined ? undefined : Math.min(maxGlassTint, Math.max(0, Math.round(v * 10) / 10)) });
+        show();
+        this.app.apply("glass");
+      };
+      less.onclick = () => set(now() - glassTintStep);
+      more.onclick = () => set(now() + glassTintStep);
+      back.onclick = () => set(undefined);
+      show();
+      const stepper = el("span", "settings-stepper");
+      stepper.append(less, more);
+      // One hint, under the second row: it says the same of both.
+      row(glass, label, k === "glassDark" ? t("settingsGlassHint") : "", shown, stepper, back);
+    }
 
     const text = group(this.page);
     const value = el("span", "settings-value", "");
