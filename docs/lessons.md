@@ -253,6 +253,11 @@ Each item has a **Trigger** (what the diff shows), a **Check** (what the author 
 - **Check:** the PR shows a `--dry-run` or a run on a test tag, and the job's runner matches the release target (a Windows-only release must not wait for the Mac mini).
 - **Source:** #694 merged without a release run; the first one (0.36.0) failed in `draft` (#699), and its new `checksums` job runs on the Mac mini for every target.
 
+### Release tag made at publish time
+- **Trigger:** the diff touches the `gh release create` of `.github/scripts/draft-release.sh`, or a release is published while PRs merge.
+- **Check:** the draft is created with `--target` the commit the run builds, and after publishing `git rev-parse v<version>^{commit}` equals the release run's `headSha`.
+- **Source:** the draft had no target, so GitHub tagged main's head at publish: v0.52.0's tag holds #1017 and v0.53.0's holds #1018, neither in its apps. Those tags stay; the script now passes `--target`.
+
 ### New CI gate
 - **Trigger:** the diff turns on `-race`, adds a shard, or adds a gate to `ci.yml`.
 - **Check:** the gate was run with `-count 10` on every platform it gates. One clean run does not show a test is free of races.
