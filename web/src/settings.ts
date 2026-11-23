@@ -18,6 +18,7 @@ import {
 import { formatDate, formatList, Language, languages, onLanguageChange, PlainKey, setLanguage, t, tIn } from "./i18n";
 import { blockedCJK, ensure, ensureLatin, mapleFamily, noMaple } from "./maple";
 import { formatBytes, ProgressView } from "./progress";
+import type { Tailcat } from "./tailcat";
 import { Status, Tailnet, validDeviceName } from "./tailnet";
 import { desktopTheme, minimumContrast, Theme } from "./terminal";
 import { loadThemes, ThemeEntry, themeColours, themePicker } from "./themes";
@@ -45,6 +46,8 @@ export interface SettingsApp {
   closed(): void;
   /** Built-in Tailscale, and its sign-in guide. */
   tailnet: Tailnet;
+  /** This browser's tailcat device, for the Pairing card. */
+  tailcat: Tailcat;
   guide(): void;
 }
 
@@ -464,10 +467,13 @@ export class Settings {
     buttons.append(actions);
     card.append(buttons);
 
-    const trust = group(this.page, t("trustTitle"), t("trustNote"), t("trustFoot"));
-    const r = el("div", "settings-row");
-    r.append(commandBox(allowCommand()));
-    trust.append(r);
+    // A tailcat host's trust is the device key, not this page's origin: no allow command applies.
+    if (host?.kind !== "tailcat") {
+      const trust = group(this.page, t("trustTitle"), t("trustNote"), t("trustFoot"));
+      const r = el("div", "settings-row");
+      r.append(commandBox(allowCommand()));
+      trust.append(r);
+    }
   }
 
   private appearancePage() {
@@ -909,6 +915,46 @@ export class Settings {
     const actions = el("div", "settings-row");
     actions.append(add);
     card.append(actions);
+    this.pairingCard();
+  }
+
+  /**
+   * This browser's tailcat device (docs/WEB-006-tailcat.md): its name, as a
+   * pairing request asks with it; its public key, to compare with what a
+   * host lists; and whether the key is kept across reloads. Shown only
+   * once a tailcat host exists.
+   */
+  private pairingCard() {
+    if (!this.app.hosts.hosts.some((h) => h.kind === "tailcat")) return;
+    const tc = this.app.tailcat;
+    const card = group(this.page, t("tcPairingCard"), t("tcPairingCardNote"));
+    const input = el("input", "theme-search settings-name");
+    input.value = tc.name;
+    input.spellcheck = false;
+    input.autocomplete = "off";
+    input.setAttribute("aria-label", t("tsDeviceName"));
+    const error = el("div", "host-error");
+    input.onchange = () => {
+      const v = input.value.trim();
+      if (!validDeviceName(v)) {
+        error.textContent = t("tsDeviceInvalid");
+        return;
+      }
+      error.textContent = "";
+      tc.rename(v);
+    };
+    row(card, t("tsDeviceName"), "", input).append(error);
+    if (tc.publicKey) {
+      row(card, t("tcDeviceKey"), t("tcDeviceKeyHint"));
+      const r = el("div", "settings-row");
+      r.append(commandBox(tc.publicKey));
+      card.append(r);
+    } else {
+      row(card, t("tcDeviceKey"), t("tcDeviceKeyHint"), el("code", "settings-value", t("tcKeyPending")));
+    }
+    const persistToggle = toggle(t("tcKeepKey"), tc.persist, (on) => void tc.setPersist(on));
+    persistToggle.dataset.key = "tc-persist";
+    row(card, t("tcKeepKey"), t("tcKeepKeyHint"), persistToggle);
   }
 
   /**

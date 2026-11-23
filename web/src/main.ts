@@ -27,6 +27,7 @@ import { fetchSharedHosts, SharedGroup } from "./share";
 import { createProjectOps } from "./projectops";
 import { initProjectView } from "./projectsidebar";
 import { hold, initSidebar, paneName, redraw, sidebar as drawSidebar, sidebarBlock, spaceName, windowTitle } from "./sidebar";
+import { Tailcat, TailcatHost } from "./tailcat";
 import { Tailnet, TailnetHost } from "./tailnet";
 import { webTransport } from "./webtransport";
 import { desktopTheme, Theme } from "./terminal";
@@ -79,6 +80,7 @@ let shared: SharedGroup | undefined;
 let settings: Settings | undefined;
 /** Built-in Tailscale, off until the user turns it on; its engine loads only then. */
 const tailnet = new Tailnet();
+const tailcat = new Tailcat();
 let guide: Guide | undefined;
 /** The first screen, while no host is chosen. */
 let welcome: Welcome | undefined;
@@ -342,7 +344,11 @@ async function main() {
     for (const what of ["tabs", "font"] as const) applyPrefs(what);
     onAppChange(() => settings?.appChanged());
     tailnet.onChange(tailnetChanged);
-    window.addEventListener("pagehide", () => tailnet.dispose());
+    tailcat.onChange(tailcatChanged);
+    window.addEventListener("pagehide", () => {
+      tailnet.dispose();
+      tailcat.dispose();
+    });
     if (prefs.tailscalePersist && prefs.tailscaleOn) void tailnet.turnOn();
     $("open-settings").onclick = () => withSettings((s) => s.toggle());
     mountCorner($("corner"), () => withSettings((s) => s.toggle()));
@@ -413,6 +419,7 @@ function withSettings(f: (s: Settings) => void) {
       apply: applyPrefs,
       closed: () => shown?.focusKeys(),
       tailnet,
+      tailcat,
       guide: openGuide,
     });
     f(settings);
@@ -451,6 +458,20 @@ function tailnetChanged() {
     welcome?.update();
     if (pending && isTailnetID(pending.host)) drawNotice();
   }
+}
+
+/**
+ * The tailcat device changed: the engine loaded or failed, another tab
+ * took the key, or a host's pairing moved. Waiting tailcat connections
+ * try again once the engine is ready.
+ */
+function tailcatChanged() {
+  if (tailcat.status() === "ready") for (const c of conns.values()) if (c.host.kind === "tailcat" && c.waiting) c.poke();
+  hostList.refresh();
+  settings?.update();
+  if (!current) drawNotice();
+  else if (current?.kind === "tailcat") drawNotice();
+  sidebar();
 }
 
 /** A button of the notice: its words, as a key or said when drawn. */
@@ -617,13 +638,21 @@ function drawNotice() {
   }
   if (c?.state === "unreachable" && c.problem) {
     if (c.host.kind === "tailnet") notice(c.problem, tailscaleSettings);
-    else notice(c.problem, { label: "hostEdit", run: () => hostList.open(c.host) });
+    else if (c.host.kind === "tailcat") {
+      const th = c.host as TailcatHost;
+      if (tailcat.inUseOtherTab) {
+        notice(c.problem, { label: "tsTakeOver", run: () => void tailcat.takeOver(), primary: true });
+      } else {
+        notice(c.problem, { label: "tcPair", run: () => void tailcat.pairNow(th) }, { label: "hostEdit", run: () => hostList.open(c.host) });
+      }
+    } else notice(c.problem, { label: "hostEdit", run: () => hostList.open(c.host) });
   } else notice();
 }
 
 /** A host's transport: the browser's to its address, WebTransport with pinned cert, or the tailnet node's. */
 function transportOf(h: Host) {
   if (h.kind === "tailnet") return tailnet.transport(h as TailnetHost);
+  if (h.kind === "tailcat") return tailcat.transport(h as TailcatHost);
   if (h.certHash) return webTransport(h.url, h.certHash, h.token);
   return directTransport(h.url, h.token);
 }
@@ -635,7 +664,7 @@ function transportOf(h: Host) {
  */
 function ensure(h: Host): HostConn {
   let c = conns.get(h.id);
-  if (c && (c.host.url !== h.url || c.host.certHash !== h.certHash || c.host.token !== h.token)) {
+  if (c && (c.host.url !== h.url || c.host.certHash !== h.certHash || c.host.token !== h.token || c.host.address !== h.address)) {
     drop(c);
     c = undefined;
   }
@@ -644,7 +673,7 @@ function ensure(h: Host): HostConn {
     if (current?.id === h.id) current = h;
     return c;
   }
-  c = new HostConn(h, transportOf(h), hostEvents, tailnet);
+  c = new HostConn(h, transportOf(h), hostEvents, tailnet, tailcat);
   conns.set(h.id, c);
   begin(c);
   return c;
@@ -652,8 +681,8 @@ function ensure(h: Host): HostConn {
 
 /** Starts a host's connection; a host this page can never reach (mixed content) stays with its problem. */
 function begin(c: HostConn) {
-  // A tailnet host: no URL the browser opens, so no mixed content.
-  const blocked = c.host.kind !== "tailnet" && mixedContent(c.host.url);
+  // A tailnet or tailcat host: no URL the browser opens, so no mixed content.
+  const blocked = c.host.kind !== "tailnet" && c.host.kind !== "tailcat" && mixedContent(c.host.url);
   if (blocked) c.block(blocked);
   else c.start();
 }
@@ -740,6 +769,7 @@ function disconnect(h: Host) {
 
 /** A host removed from the list: its connection ends as it is disconnected, and it is no longer kept as disconnected. */
 function removed(h: Host) {
+  if (h.kind === "tailcat") tailcat.removed(h as TailcatHost);
   setOff(h.id, false);
   if (pending?.host === h.id) pending = undefined;
   syncConns();

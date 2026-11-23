@@ -96,7 +96,7 @@ export interface SocketLike {
  * /api/control.
  */
 export interface Transport {
-  kind: "direct" | "tailnet";
+  kind: "direct" | "tailnet" | "tailcat";
   socket(path: string, protocol: string): SocketLike;
   fetch(path: string, init?: RequestInit): Promise<Response>;
   /** The URL of path the browser can open; only a direct host has one. */

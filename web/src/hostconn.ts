@@ -11,6 +11,7 @@ import { featureVersion, parseProject, ProjectInfo } from "./projectmodel";
 import { Control, Transport } from "./rex";
 import type { LinkState } from "./settings";
 import * as spaces from "./spaces";
+import type { Tailcat, TailcatHost } from "./tailcat";
 import type { Tailnet, TailnetHost } from "./tailnet";
 import { webTransportAvailable, webTransportProblem } from "./webtransport";
 import { layoutOf, leavesOf } from "./window";
@@ -173,6 +174,7 @@ export class HostConn {
     readonly transport: Transport,
     private readonly events: HostEvents,
     private readonly tailnet: Tailnet,
+    private readonly tailcat: Tailcat,
   ) {}
 
   /** Connects, and again after a drop or a failure, until stop(). */
@@ -377,7 +379,9 @@ export class HostConn {
         ? await webTransportProblem(h.url, e)
         : h.kind === "tailnet"
           ? await this.tailnet.diagnose(h as TailnetHost)
-          : await diagnose(h.url, h.token);
+          : h.kind === "tailcat"
+            ? await this.tailcat.diagnose(h as TailcatHost)
+            : await diagnose(h.url, h.token);
       if (gen !== this.generation) return;
       if (h.certHash && !webTransportAvailable()) {
         // No attempt can mend a browser without WebTransport: say so once.

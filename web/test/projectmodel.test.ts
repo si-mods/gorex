@@ -169,7 +169,7 @@ test("the offline copy keeps each host's projects, is replaced as the host is re
 /** A HostConn with a fake control connection, which records the calls. */
 function fake(welcome: any, answers: Record<string, any> = {}) {
   const calls: [string, any][] = [];
-  const c = new HostConn({ id: "h1", name: "office", url: "http://x", kind: "direct" } as any, {} as any, {} as any, {} as any);
+  const c = new HostConn({ id: "h1", name: "office", url: "http://x", kind: "direct" } as any, {} as any, {} as any, {} as any, {} as any);
   c.control = {
     features: new Set(welcome.features ?? []),
     welcome,

@@ -794,6 +794,14 @@
   "@hostUrlPath": {
     "description": "Host form error: the URL has a path, query or fragment."
   },
+  "hostTailcatName": "tailcat host",
+  "@hostTailcatName": {
+    "description": "The name a host added by its tailcat address gets when the link carried none."
+  },
+  "hostTailcatInvalid": "That is not a tailcat address. Paste the rexgo://tailcat link or the tc… address the host's QR dialog shows.",
+  "@hostTailcatInvalid": {
+    "description": "Host form error: the address starts as a tailcat address or link but does not read as one."
+  },
   "hostTailnetOnline": "Online",
   "@hostTailnetOnline": {
     "description": "A host found by Tailscale: it is online and lets this page in."
@@ -1445,6 +1453,116 @@
   "settingsNoHostsHint": "Add the address of a GoRex host's gateway.",
   "@settingsNoHostsHint": {
     "description": "Under settingsNoHosts."
+  },
+  "tcIsOff": "The tailcat engine is off.",
+  "@tcIsOff": {
+    "description": "The error a tailcat host's connection or request raises while the engine does not run."
+  },
+  "tcOtherTabTitle": "This device is in use in another tab",
+  "@tcOtherTabTitle": {
+    "description": "A tailcat host's problem, title: another tab or window holds this browser's device key."
+  },
+  "tcOtherTabText": "Only one tab can hold the device key at a time. Connect there, or take it over in Settings › Hosts › Pairing.",
+  "@tcOtherTabText": {
+    "description": "A tailcat host's problem, under tcOtherTabTitle: what to do."
+  },
+  "tcNotPairing": "{host} is not open for pairing. Start pairing on it, then try again.",
+  "@tcNotPairing": {
+    "description": "A tailcat host's problem: it refused the pairing request because it is not asking to pair (its pairing window is closed).",
+    "placeholders": {
+      "host": {
+        "type": "String",
+        "example": "alice-laptop"
+      }
+    }
+  },
+  "tcApproveTitle": "{host} waits for approval",
+  "@tcApproveTitle": {
+    "description": "A tailcat host's problem, title: the pairing request is sent and the host asks its user to approve this browser.",
+    "placeholders": {
+      "host": {
+        "type": "String",
+        "example": "alice-laptop"
+      }
+    }
+  },
+  "tcApproveText": "Compare {fingerprint} with what {host} shows for {name}, and approve it there.",
+  "@tcApproveText": {
+    "description": "A tailcat host's problem, under tcApproveTitle: the fingerprint to compare on the host before approving.",
+    "placeholders": {
+      "fingerprint": {
+        "type": "String",
+        "example": "a1b2 c3d4 e5f6 7890"
+      },
+      "host": {
+        "type": "String",
+        "example": "alice-laptop"
+      },
+      "name": {
+        "type": "String",
+        "example": "web-rex-kqzt"
+      }
+    }
+  },
+  "tcOwnRelayTitle": "A browser cannot reach this relay",
+  "@tcOwnRelayTitle": {
+    "description": "A tailcat host's problem, title: its address is homed on the machine's own relay, whose certificate a browser cannot pin."
+  },
+  "tcOwnRelayText": "This address is the machine as its own relay. Use the host's DERP-homed address instead, from its QR dialog.",
+  "@tcOwnRelayText": {
+    "description": "A tailcat host's problem, under tcOwnRelayTitle: which address to use instead."
+  },
+  "tcPairingTitle": "Asking {host} to pair",
+  "@tcPairingTitle": {
+    "description": "A tailcat host's problem, title: the pairing request is on its way or its answer is waited for.",
+    "placeholders": {
+      "host": {
+        "type": "String",
+        "example": "alice-laptop"
+      }
+    }
+  },
+  "tcPairingText": "This device asks to pair as {name}.",
+  "@tcPairingText": {
+    "description": "A tailcat host's problem, under tcPairingTitle: the device name the request is sent with.",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "web-rex-kqzt"
+      }
+    }
+  },
+  "tcPair": "Pair",
+  "@tcPair": {
+    "description": "Button of a tailcat host's problem: asks the host to pair again."
+  },
+  "tcPairingCard": "Pairing",
+  "@tcPairingCard": {
+    "description": "Settings › Hosts: the card of this browser's tailcat device, shown once a tailcat host exists."
+  },
+  "tcPairingCardNote": "This browser pairs with a host as a device of its own, as Rex Go does.",
+  "@tcPairingCardNote": {
+    "description": "Under tcPairingCard."
+  },
+  "tcDeviceKey": "Device key",
+  "@tcDeviceKey": {
+    "description": "Settings › Hosts › Pairing: this browser's tailcat public key."
+  },
+  "tcDeviceKeyHint": "The public key a host lists for this browser. Compare it there to be sure.",
+  "@tcDeviceKeyHint": {
+    "description": "Under tcDeviceKey."
+  },
+  "tcKeyPending": "Made when the first host pairs.",
+  "@tcKeyPending": {
+    "description": "Settings › Hosts › Pairing, in place of the key: the engine has not run yet, so no key exists."
+  },
+  "tcKeepKey": "Keep this device",
+  "@tcKeepKey": {
+    "description": "Settings › Hosts › Pairing: keeps the tailcat device key across reloads, or makes each tab a new device."
+  },
+  "tcKeepKeyHint": "Kept, the key survives reloads. Off, each tab is a new device and pairs again.",
+  "@tcKeepKeyHint": {
+    "description": "Under tcKeepKey."
   },
   "tsBuiltIn": "Built-in Tailscale",
   "@tsBuiltIn": {
@@ -2512,7 +2630,7 @@
   "@welcomeAddressTitle": {
     "description": "First screen, the second card's title: opens the form to add a host by its address; the form's heading then."
   },
-  "welcomeAddressLine": "For a GoRex computer on the same network as this device.",
+  "welcomeAddressLine": "For a GoRex computer on the same network as this device, or its tailcat address.",
   "@welcomeAddressLine": {
     "description": "First screen, the line under Connect by Address."
   },

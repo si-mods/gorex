@@ -27,8 +27,9 @@ type hostPairQR struct {
 	// needs the same network as the address.
 	tailnet bool
 	// rexGo is this machine's code for Rex Go, of its tailcat address: a
-	// secret, so the page keeps the image only, and shows no address and
-	// no Copy.
+	// secret, so it is never logged. The dialog shows the link as
+	// copyable text (docs/WEB-006-tailcat.md): the web client's Add host
+	// takes the same rexgo://tailcat string the code encodes.
 	rexGo bool
 	// direct is that its address is the second one, for devices that dial
 	// this machine directly (Reachable at).
@@ -137,12 +138,13 @@ func openHostPairQR(h *hostConn) {
 
 // openRexGoQR opens the pairing window and shows this machine's code for
 // Rex Go (docs/IOS-002-tailcat.md, Pairing a phone). The address is asked for
-// here and goes into the image only: never into the page, a log or the
-// clipboard. With direct it is the second address's, of Reachable at.
+// here and goes into the image and the copyable link only: never a log.
+// With direct it is the second address's, of Reachable at.
 func (a *App) openRexGoQR(direct bool) {
 	name, _, _ := a.hostIdentity()
 	// Set off the UI thread, read on it once the change is done.
 	var image ui.ImageSource
+	var link string
 	a.remoteDo(func(srv *rex.Client) error {
 		if err := srv.StartPairing(); err != nil {
 			return err
@@ -153,11 +155,12 @@ func (a *App) openRexGoQR(direct bool) {
 			addr = st.ReachableAddress
 		}
 		if err == nil && addr != "" {
-			image = qrImage(rexGoPairURL(addr, name))
+			link = rexGoPairURL(addr, name)
+			image = qrImage(link)
 		}
 		return err
 	}, func() {
-		remoteUI.pairQR = &hostPairQR{host: name, image: image, open: true, rexGo: true, direct: direct}
+		remoteUI.pairQR = &hostPairQR{host: name, address: link, image: image, open: true, rexGo: true, direct: direct}
 	})
 }
 
@@ -288,7 +291,11 @@ func hostPairQRSheet(c *ui.Context, k *colors, page *hostPairQR) {
 			}
 			ui.Text(c, hint).FontSize(fontCallout).TextColor(k.textMuted).LineHeight(1.35)
 			pairQRCode(c, page.image, title)
-			if !page.rexGo {
+			if page.rexGo {
+				// The web client takes the same link the code encodes,
+				// pasted into its Add host (docs/WEB-006-tailcat.md).
+				ui.Text(c, page.address).Font(monoFamily()).FontSize(fontSubhead).TextColor(k.text).Label(page.address)
+			} else {
 				// The pairing token stays in the code and the copy, off
 				// the screen.
 				shown, _, _ := strings.Cut(page.address, "#")
@@ -308,7 +315,7 @@ func hostPairQRSheet(c *ui.Context, k *colors, page *hostPairQR) {
 			}
 			// The web tab's code holds the token too: a copy of the other
 			// address's link would be a different code than the one shown.
-			if page.image != nil && !page.rexGo && !(web && page.tab == 1) {
+			if page.image != nil && page.address != "" && !(web && page.tab == 1) {
 				label := locales.HostsRexQRCopy()
 				if page.copied {
 					label = locales.HostsRexQRCopied()
