@@ -3,7 +3,7 @@ name: IOS-001
 description: "Rex Go joins a tailnet inside the app, with no Tailscale app and no system VPN. Use when you change the iOS tailnet engine or its settings."
 metadata:
   created: "2026-11-09"
-  updated: "2026-11-20"
+  updated: "2026-11-23"
 ---
 
 # IOS-001: Rex Go: built-in Tailscale
@@ -75,7 +75,7 @@ Two ready-made engines were weighed and rejected:
 
 The gateway keeps its listener, `identify`, its settings and its methods. It imports the rest. The move changes no behavior. The tests of the moved code move with it.
 
-The state of the node lives in the Application Support directory of the app. The directory is excluded from backups. It has `NSFileProtectionCompleteUntilFirstUnlock`. The name of the node defaults to `rexgo-` and four random letters, such as `rexgo-kqzt`. The user can change the name in Settings (the engine applies it as the `SetHostname` of the gateway does). The engine does not use the own name of the phone. Since iOS 16, `UIDevice.name` returns only the model ("iPhone") without an entitlement that Apple grants case by case. Two phones would show the same name, and a user could revoke one phone for the other.
+The state of the node lives in the Application Support directory of the app. The directory is excluded from backups. It has `NSFileProtectionCompleteUntilFirstUnlock`. The name of the node defaults to the model of the phone, `-rex-` and four random letters, such as `iphone-rex-kqzt`. The model is the base because `UIDevice.name` gives an app only the model: since iOS 16, the own name of the phone needs an entitlement that Apple grants case by case. The random letters keep two phones of the same model apart, so a user cannot revoke one for the other. The user can change the name in Settings (the engine applies it as the `SetHostname` of the gateway does), also before built-in Tailscale is on. The first registration then already carries it.
 
 ### Transport
 
@@ -117,7 +117,7 @@ Settings › Tailscale follows the VPN settings of rootshell. A status card is o
 
 - **Built-in Tailscale** on or off.
 - **Control server**: empty for the server of Tailscale, or a URL such as `https://headscale.example.com`. `ValidControlURL` of `internal/tailnode` checks it. This is the own rule of the gateway: `https`, or `http` only for a loopback, private or link-local address.
-- **Device name**: `rexgo-xxxx` by default, as above.
+- **Device name**: `<model>-rex-xxxx` by default, as above.
 - **Sign in**: opens the auth URL in `ASWebAuthenticationSession`. As an alternative, the user enters an auth key. The app uses the key once and never saves it.
 - **Status**: who is signed in, the name and address of this device, and whether Rex Go reaches the GoRex hosts directly or through DERP.
 - **Sign out**, which removes the state of the node.

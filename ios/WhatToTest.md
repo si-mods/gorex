@@ -10,6 +10,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 `web` job of `.github/workflows/ci.yml` fails it.
 
 ## en-US
+- The Device Name in the Tailscale settings can now be set before you turn Built-in Tailscale on, and a new install suggests a readable name like iphone-rex-kqzt instead of random letters.
 - Coming back to Rex Go after the phone has slept a while, a paired computer now reconnects in a second or two instead of around ten.
 - A program that finished while Rex Go slept, one you already saw on the Lock Screen or Dynamic Island, no longer counts as new when you come back.
 - Leave Rex Go with no terminal open and a program waits for you: the Lock Screen and Dynamic Island can now start its activity on their own, so the alert still reaches you.
@@ -131,6 +132,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - New Project's Space row is a picker now: choose the space the project goes into, which starts as the one you were viewing.
 
 ## zh-Hans
+- 「设置 › Tailscale」里的「设备名称」现在在开启「内置 Tailscale」之前就能填写；新安装会建议一个可读的名字，如 iphone-rex-kqzt，不再只是随机字母。
 - 手机休眠一段时间后回到 Rex Go，已配对的电脑现在一两秒就能重新连上，不再要等十秒上下。
 - 程序在应用休眠期间完成时，若你已在锁屏或灵动岛上看到它，回来后不再计为未读。
 - 没开终端就退出 Rex Go，程序等待你处理时：锁屏和灵动岛现在也能自己亮起这条提醒，照常送达。
