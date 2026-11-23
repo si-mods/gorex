@@ -795,7 +795,7 @@ func sessionEnv(id string, extra []string, local bool, runAs *sessionUser) []str
 	if !hasLang {
 		env = append(env, "LANG=en_US.UTF-8")
 	}
-	return append(env, extra...)
+	return fillRegistryEnv(append(env, extra...), runAs != nil)
 }
 
 // startRead starts reading the terminal, until its output ends or a pause.

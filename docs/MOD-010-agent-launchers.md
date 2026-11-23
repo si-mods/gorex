@@ -3,7 +3,7 @@ name: MOD-010
 description: "Each GoRex host detects installed agent CLIs and clients offer them as quick launchers on the New Tab row under each project. Use when changing agent CLI detection, gorex.agents.list, or project launcher rows."
 metadata:
   created: "2026-11-22"
-  updated: "2026-11-22"
+  updated: "2026-11-23"
 ---
 
 # MOD-010: Agent CLI launchers under each project
@@ -57,7 +57,7 @@ Each detected agent is an `AgentInfo` record:
 Detection runs on the host server:
 
 - **Unix (macOS and Linux)**: GoRex builds the search `PATH` by combining the session user's login interactive shell `PATH` (probed with a 2-second timeout and cached for 60 seconds), the server process `PATH`, and common user binary directories (`~/.local/bin`, `$BUN_INSTALL/bin`, `~/.bun/bin`, `~/.npm-global/bin`, `~/.volta/bin`, `~/.local/share/pnpm`, mise and asdf shims, `~/.cargo/bin`, `/opt/homebrew/bin`, `/usr/local/bin`). For each known agent `id`, GoRex checks for a regular executable file in that `PATH`. When the user's shell is a known POSIX or fish shell (`zsh`, `bash`, `sh`, `fish`, `ksh`, `dash`), `command` is `[shell, "-lic", "exec '<resolvedPath>'"]` so the agent inherits the user's login environment and replaces the shell process. For other shells, `command` is `[resolvedPath]`.
-- **Windows**: GoRex resolves each known agent `id` with `exec.LookPath`, then falls back to the Windows registry `PATH` and common user tool directories (`%APPDATA%\npm`, `~/.local/bin`, `$BUN_INSTALL\bin`, `~/.bun/bin`, `%LOCALAPPDATA%\Volta\bin`, `%LOCALAPPDATA%\pnpm`, mise shims), accepting only `.exe` and `.cmd` files. `command` is `[resolvedPath]` for an `.exe`, and `[comspec, "/c", resolvedPath]` for a `.cmd`, since CreateProcess cannot run a batch file (npm installs CLIs as `.cmd` shims on Windows).
+- **Windows**: GoRex resolves each known agent `id` with `exec.LookPath`, then falls back to the Windows registry `PATH` and common user tool directories (`%APPDATA%\npm`, `~/.local/bin`, `$BUN_INSTALL\bin`, `~/.bun/bin`, `%LOCALAPPDATA%\Volta\bin`, `%LOCALAPPDATA%\pnpm`, mise shims), accepting only `.exe` and `.cmd` files. When a PowerShell is on `PATH` (the session user's own shell when it is one, else `pwsh.exe`, else `powershell.exe`), `command` is `[shell, "-Command", "& '<resolvedPath>'; exit $LASTEXITCODE"]`, so the agent runs after the profile and inherits the environment it sets, as `-lic` gives on Unix. Without a PowerShell, `command` is `[resolvedPath]` for an `.exe`, and `[comspec, "/c", resolvedPath]` for a `.cmd`, since CreateProcess cannot run a batch file (npm installs CLIs as `.cmd` shims on Windows).
 
 ### Code
 
