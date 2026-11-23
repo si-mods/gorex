@@ -2,6 +2,10 @@
 
 ## 0.54.0
 
+### Features
+
+* **ios:** a ligatures switch in Terminal settings ([#1030](https://github.com/si-mods/gorex/pull/1030))
+
 ### Bug Fixes
 
 * **desktop:** drop the "No projects yet" card under an empty host, as iOS does ([#1018](https://github.com/si-mods/gorex/pull/1018))
