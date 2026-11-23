@@ -59,6 +59,29 @@ func sidebarGroupPad() float32 {
 	return groupPad
 }
 
+// sidebarIconsText tells whether sidebar.icons is "text": the rows' names
+// with no program tiles, the folder glyph alone for a project.
+func sidebarIconsText() bool { return prefs.SidebarIcons == "text" }
+
+// sidebarFillSel tells whether sidebar.selection is "fill": a quiet face
+// fill on the chosen row instead of the glass pill.
+func sidebarFillSel() bool { return prefs.SidebarSelection == "fill" }
+
+// sidebarChosen paints a sidebar row's chosen state: the glass pill as
+// the other surfaces' chosen control, or the fill of sidebar.selection
+// "fill", the row's face at tabActive with a radiusM corner.
+func sidebarChosen(e ui.Element, k *colors, h float32, lifted bool) {
+	if sidebarFillSel() {
+		e.Background(k.tabActive).Radius(radiusM)
+		return
+	}
+	if lifted {
+		liftedPill(e, k, h)
+		return
+	}
+	glassPill(e, k, h)
+}
+
 func sidebarGroupEdge() float32 {
 	return (sidebarGroupPad() + rowGap - groupGap) / 2
 }
@@ -484,11 +507,7 @@ func (a *App) sidebarTab(c *ui.Context, k *colors, i int, t *Tab, reserve float3
 	name, detail := t.label()
 	e.Label(name + " " + detail)
 	if active {
-		if lifted {
-			liftedPill(e, k, sidebarRowH())
-		} else {
-			glassPill(e, k, sidebarRowH())
-		}
+		sidebarChosen(e, k, sidebarRowH(), lifted)
 		// A tab chosen otherwise than in the list, as by its keys, scrolls
 		// into view, once: the list scrolls freely after.
 		if a.revealed != t {
@@ -502,16 +521,25 @@ func (a *App) sidebarTab(c *ui.Context, k *colors, i int, t *Tab, reserve float3
 	hovered := e.Hovered()
 	e.Children(func() {
 		// The tiles take the room of the widest tab's, so that the names
-		// line up.
-		ui.Box(c).Width(reserve).Shrink(0).Children(func() { a.tiles(c, k, t) })
+		// line up; sidebar.icons "text" leaves the room bare.
+		if !sidebarIconsText() {
+			ui.Box(c).Width(reserve).Shrink(0).Children(func() { a.tiles(c, k, t) })
+		} else {
+			ui.Box(c).Width(reserve).Shrink(0)
+		}
 		a.tabRest(c, k, t, active, hovered)
 	})
 }
 
 // tilesReserve is the room the tiles of a sidebar row take: that of the
 // tab with the most panes, each tile past the first peeking out by
-// tileStep, so that the names of every row line up.
+// tileStep, so that the names of every row line up. sidebar.icons "text"
+// draws no tiles, so the room shrinks to a tile's, under the projects'
+// folder glyphs.
 func tilesReserve(tabs []*Tab) float32 {
+	if sidebarIconsText() {
+		return tileSlot
+	}
 	most := 1
 	for _, t := range tabs {
 		most = max(most, min(len(t.panes()), 3))
@@ -557,7 +585,11 @@ func spaceTab(c *ui.Context, k *colors, key, name, detail string, s *rex.Program
 		e.Background(hoverFace(k))
 	}
 	e.Children(func() {
-		ui.Box(c).Width(reserve).Shrink(0).Children(tiles)
+		if !sidebarIconsText() {
+			ui.Box(c).Width(reserve).Shrink(0).Children(tiles)
+		} else {
+			ui.Box(c).Width(reserve).Shrink(0)
+		}
 		ui.Box(c).Grow(1).MinWidth(0).Height(18).Draw(func(p *ui.Painter, r ui.Rect) {
 			fadeText(p, r, tabLabel(name, detail, k.textMuted, k.textFaint))
 		})

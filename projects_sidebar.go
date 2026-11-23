@@ -264,7 +264,7 @@ func (a *App) projectRow(c *ui.Context, k *colors, w *Workspace, reserve float32
 	// face (DESIGN.md).
 	switch {
 	case shown && (!open || n == 0):
-		glassPill(row, k, projectRowH())
+		sidebarChosen(row, k, projectRowH(), false)
 	case row.Hovered() && !offline:
 		row.Background(hoverFace(k))
 	}
@@ -428,6 +428,11 @@ func projectFolderTile(c *ui.Context, k *colors, color string) {
 		col = ui.Hex(hex)
 	}
 	ui.Row(c).Width(tileSlot).AlignItems(ui.Center).Justify(ui.Center).Shrink(0).Children(func() {
+		// sidebar.icons "text" draws the glyph alone, no tile face.
+		if sidebarIconsText() {
+			glyphIcon(c, "folder", 11, col).Shrink(0)
+			return
+		}
 		ui.Row(c).Size(tileW, tileH).Radius(radiusTile).Background(k.text.Alpha(folderTileAlpha)).AlignItems(ui.Center).Justify(ui.Center).Children(func() {
 			glyphIcon(c, "folder", 11, col).Shrink(0)
 		})

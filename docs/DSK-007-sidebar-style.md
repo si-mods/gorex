@@ -44,6 +44,8 @@ The user writes `sidebar.*` keys in `settings.json`. They take effect on the nex
   "sidebar.fontSize": 12,
   "sidebar.groupPadding": 3,
   "sidebar.groupBy": "flat",
+  "sidebar.icons": "text",
+  "sidebar.selection": "fill",
   "sidebar.colorCustomizations": {
     "groupFace": "#2a2a3d",
     "pillLift": { "light": "#ffffff", "dark": "#3a3a52" },
@@ -63,11 +65,13 @@ The metric keys, each a number clamped to a range and reset to the default outsi
 
 `sidebar.groupBy` is `host` or `flat`, "" for `host`. `host` keeps a section per host as now. `flat` lists every shown host's projects and rows under the one list, without the host headers and bodies. Project rows, tab rows, fold rows and the `sidebarOpen` map all keep working.
 
+`sidebar.icons` is `tiles` or `text`, "" for `tiles`. `text` draws no program tiles on tab rows and draws a project's folder glyph alone, without its tile face; the names' room shrinks to a tile's width so the rows still line up with the project rows' glyphs. `sidebar.selection` is `pill` or `fill`, "" for `pill`. `fill` paints a chosen row a plain face at `tabActive` with a `radiusM` corner — the look of a text-first list — instead of the glass pill of the other chosen controls.
+
 `sidebar.colorCustomizations` maps one of these palette tokens to a color: `groupFace`, `pillLift`, `liftShadow`, `track`, `tabSep`, `tabHover`, `tabActive`. A value is `#RRGGBB` or `#RRGGBBAA`, or an object `{ "light": <hex>, "dark": <hex> }` for different values per appearance. A single value applies to both appearances. An unknown token or a bad value is dropped at load with a warning.
 
 ### Model
 
-`settings` in `settings.go` gains the flat fields with their dotted JSON names: `SidebarRowHeight`, `SidebarIndent`, `SidebarFontSize`, `SidebarGroupPad`, `SidebarGroupBy`, `SidebarColors`. `SidebarColors` keeps the raw messages so the file round-trips the user's exact text; `checkSidebarColors` validates tokens and values at load and drops the bad ones with a log line.
+`settings` in `settings.go` gains the flat fields with their dotted JSON names: `SidebarRowHeight`, `SidebarIndent`, `SidebarFontSize`, `SidebarGroupPad`, `SidebarGroupBy`, `SidebarIcons`, `SidebarSelection`, `SidebarColors`. `SidebarColors` keeps the raw messages so the file round-trips the user's exact text; `checkSidebarColors` validates tokens and values at load and drops the bad ones with a log line.
 
 Resolution is read-time and cheap: `sidebarRowH`, `sidebarLead`, `sidebarFont`, `sidebarGroupPad` and `sidebarGroupEdge` return the pref or the constant; `sidebarPalette(k, dark)` returns a copy of the palette with the valid overrides applied. The sidebar applies the palette once in `App.sidebar`, so every row, pill and face under it draws with it and the window's other surfaces keep the base palette. The resolved metrics are data at use, not source literals, so `TestDesignTokens` sees nothing new.
 
@@ -76,8 +80,8 @@ Compatibility: an older build ignores the dotted keys on read (unknown JSON fiel
 ### Code
 
 - `settings.go`: the `sidebar.*` fields, the range checks beside the `sidebarWidth` check, `clampMetric`.
-- `sidebar.go`: the metric and palette helpers, `checkSidebarColors`, `sidebarColorTokens`, `parseStyleColor`, `hexColor`; `App.sidebar` applies the palette.
-- `projects_sidebar.go`: `projectRowH` becomes a function of `sidebarRowH`; the group face reads `sidebarGroupPad`/`sidebarGroupEdge`; the font sizes read `sidebarFont`; `projectsList` reads `sidebar.groupBy`.
+- `sidebar.go`: the metric and palette helpers, `checkSidebarColors`, `sidebarColorTokens`, `parseStyleColor`, `hexColor`; `App.sidebar` applies the palette; `sidebarIconsText`/`sidebarFillSel`/`sidebarChosen` switch the tiles and the chosen row's paint; `tilesReserve` shrinks under `sidebar.icons` "text".
+- `projects_sidebar.go`: `projectRowH` becomes a function of `sidebarRowH`; the group face reads `sidebarGroupPad`/`sidebarGroupEdge`; the font sizes read `sidebarFont`; `projectsList` reads `sidebar.groupBy`; `projectFolderTile` draws the glyph alone under `sidebar.icons` "text".
 - Tests: a parse test per field class in `settings_test.go`; a view test in `sidebar_test.go` that a styled sidebar draws the override and an invalid value falls back.
 
 ## Alternatives

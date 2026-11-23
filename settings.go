@@ -42,6 +42,8 @@ type settings struct {
 	SidebarFontSize  float32                    `json:"sidebar.fontSize,omitempty"`
 	SidebarGroupPad  float32                    `json:"sidebar.groupPadding,omitempty"`
 	SidebarGroupBy   string                     `json:"sidebar.groupBy,omitempty"`
+	SidebarIcons     string                     `json:"sidebar.icons,omitempty"`
+	SidebarSelection string                     `json:"sidebar.selection,omitempty"`
 	SidebarColors    map[string]json.RawMessage `json:"sidebar.colorCustomizations,omitempty"`
 	// What this client keeps of the projects of its hosts
 	// (docs/MOD-002-projects.md, "The desktop window"): the space shown, by name,
@@ -144,6 +146,12 @@ func loadSettings() {
 	prefs.SidebarGroupPad = clampMetric(prefs.SidebarGroupPad, 0, 12)
 	if prefs.SidebarGroupBy != "host" && prefs.SidebarGroupBy != "flat" {
 		prefs.SidebarGroupBy = ""
+	}
+	if prefs.SidebarIcons != "tiles" && prefs.SidebarIcons != "text" {
+		prefs.SidebarIcons = ""
+	}
+	if prefs.SidebarSelection != "pill" && prefs.SidebarSelection != "fill" {
+		prefs.SidebarSelection = ""
 	}
 	checkSidebarColors()
 	// A language of the file may be spelled otherwise (zh-hans, zh-CN): keep

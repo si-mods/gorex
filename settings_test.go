@@ -332,6 +332,8 @@ func TestSidebarStylePrefs(t *testing.T) {
 		"sidebar.fontSize": 40,
 		"sidebar.groupPadding": 3,
 		"sidebar.groupBy": "flat",
+		"sidebar.icons": "text",
+		"sidebar.selection": "wobbly",
 		"sidebar.colorCustomizations": {
 			"groupFace": "#2a2a3d",
 			"pillLift": {"light": "#ffffff", "dark": "#3a3a52"},
@@ -350,6 +352,12 @@ func TestSidebarStylePrefs(t *testing.T) {
 	}
 	if prefs.SidebarGroupBy != "flat" {
 		t.Errorf("groupBy %q", prefs.SidebarGroupBy)
+	}
+	if prefs.SidebarIcons != "text" {
+		t.Errorf("icons %q", prefs.SidebarIcons)
+	}
+	if prefs.SidebarSelection != "" {
+		t.Errorf("bad selection %q kept", prefs.SidebarSelection)
 	}
 	if len(prefs.SidebarColors) != 2 {
 		t.Fatalf("colors kept %v", prefs.SidebarColors)
