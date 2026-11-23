@@ -5,7 +5,7 @@ import (
 )
 
 // empty.go is the empty states of DESIGN.md and docs/DSK-006-empty-states.md:
-// one component in four sizes — page, card, row and menu — that says what a
+// one component in three sizes — page, row and menu — that says what a
 // surface has none of, what the place is for, and the step that makes the
 // first, where there is one.
 
@@ -43,29 +43,6 @@ func emptyPage(c *ui.Context, k *colors, draw func(p *ui.Painter, r ui.Rect, k *
 		})
 		ui.Spacer(c).Grow(3)
 	})
-}
-
-// emptyCard is the empty state of a section's rows: one row at the
-// sidebar's own rhythm — a tile of a program tile's size in the tile
-// column (reserve wide), an icon in iconMuted, the title, and the +
-// button of the next step at the end.
-func emptyCard(c *ui.Context, k *colors, key, glyph, title string, ghost emptyAction, reserve float32) ui.Element {
-	row := ui.Row(c.Key(key)).Height(projectRowH).Shrink(0).Padding(0, 4, 0, sideLead).Gap(sideGap).AlignItems(ui.Center).
-		Label(title)
-	row.Children(func() {
-		leadRoom(c, reserve, projectRowH).Children(func() {
-			ui.Row(c).Width(tileSlot).AlignItems(ui.Center).Justify(ui.Center).Children(func() {
-				ui.Row(c).Size(tileW, tileH).Radius(radiusTile).Background(k.text.Alpha(folderTileAlpha)).AlignItems(ui.Center).Justify(ui.Center).Children(func() {
-					glyphIcon(c, glyph, 11, k.iconMuted).Shrink(0)
-				})
-			})
-		})
-		ui.Text(c, title).FontSize(fontBody).FontWeight(500).TextColor(k.textMuted).Label(title).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
-		if ghost.label != "" && iconButton(c, k, "plus", ghost.label, 20, 13).Tooltip(ghost.label).Clicked() {
-			ghost.run()
-		}
-	})
-	return row
 }
 
 // emptyRow is the empty state of a list: one muted line, with a ghost

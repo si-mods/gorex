@@ -113,14 +113,6 @@ func (a *App) projectsList(c *ui.Context, k *colors) {
 			recent, older := a.projectsOf(h, space)
 			np := a.st.noProjectOf(h)
 			npShown := np != nil && (np.tabCount() > 0 || np == a.ws)
-			if len(recent) == 0 && len(older) == 0 && len(a.st.waitingOn(h)) == 0 && (!npShown || np.tabCount() == 0) {
-				// The host has no project and no tab of one: the card, not
-				// a bare group (docs/DSK-006-empty-states.md).
-				emptyCard(c, k, "empty-"+hostKey(h), "folder", locales.EmptyNoProjects(), emptyAction{cmdNewProject.Title(), func() {
-					a.later(c, func() { a.openNewProjectOn(h) })
-				}}, reserve)
-				return
-			}
 			for _, w := range recent {
 				a.projectGroup(c, k, w, reserve)
 			}

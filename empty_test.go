@@ -32,25 +32,20 @@ func TestEmptyNoTab(t *testing.T) {
 	}
 }
 
-// TestSidebarEmptyCard shows the sidebar's empty card when a host has no
-// projects and no tabs: the row keeps a project row's height so the list
-// reads as one rhythm (docs/DSK-006-empty-states.md).
-func TestSidebarEmptyCard(t *testing.T) {
+// TestSidebarNoProjectsRow shows nothing under a host with no projects
+// and no tabs, as iOS does (docs/MOD-002-projects.md): no empty line;
+// the + of its header still opens the New Project sheet.
+func TestSidebarNoProjectsRow(t *testing.T) {
 	a, tt := newTestApp(t)
 	old := prefs
 	t.Cleanup(func() { prefs = old })
 	prefs = settings{TabPlacement: "left", Animation: "off"}
 	a.closeTab(a.tab())
 	tt.Frame()
-	r, ok := tt.Find(locales.EmptyNoProjects())
-	if !ok {
-		t.Fatalf("no empty card; texts %q", tt.Texts())
+	if tt.HasText(locales.EmptyNoProjects()) {
+		t.Errorf("an empty-projects line shows; texts %q", tt.Texts())
 	}
-	if r.H != projectRowH {
-		t.Errorf("empty card height %v, want %v (a project row's)", r.H, projectRowH)
-	}
-	// The + button at the row's end opens the New Project sheet.
-	if err := tt.Click(cmdNewProject.Title()); err != nil {
+	if err := tt.Click(locales.ProjectsNewOn(a.hostName(nil))); err != nil {
 		t.Fatal(err)
 	}
 	waitFor(t, tt, "the New Project sheet", func() bool { return a.sheet.open })

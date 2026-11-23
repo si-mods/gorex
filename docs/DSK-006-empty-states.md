@@ -1,9 +1,9 @@
 ---
 name: DSK-006
-description: "The desktop shows a shared empty-state component where a surface has nothing to show: four sizes, one drawn wireframe, and the places that use them. Use when you change an empty, loading, no-result or failed surface."
+description: "The desktop shows a shared empty-state component where a surface has nothing to show: three sizes, one drawn wireframe, and the places that use them. Use when you change an empty, loading, no-result or failed surface."
 metadata:
   created: "2026-11-22"
-  updated: "2026-11-22"
+  updated: "2026-11-23"
 ---
 
 # DSK-006: Empty states
@@ -18,14 +18,14 @@ Several surfaces show nothing or a bare line when they have nothing to show. Eac
 - The command palette says "No matches" with no query named (`palette` in `commands.go`).
 - The find bar counts "0 of 0" when a query matches nothing (`findBar` in `view.go`).
 - The theme picker shows an empty grid when the filter matches nothing (`themeSettings` in `settingsview.go`).
-- The project sidebar and the project picker show a header or nothing when a host has no projects (`projectsList`, `pickerList`).
+- The project picker shows nothing when a host has no projects (`pickerList`). The project sidebar shows just the host's header there, as iOS does; that is a decided look, not a missing state.
 - The browser pane shows one line when its page cannot be shown (`browserBody` in `view.go`).
 
 The words come and go with no shared shape. The states do not name the next step. A user cannot tell a blank area from a broken one.
 
 ## Goal
 
-One component draws the empty states. `empty.go` gives four sizes: `page`, `card`, `row` and `menu`. Every surface above uses one of them. Each state names itself in a title, says what the place is for in one line where room allows, and offers up to two actions where a next step exists.
+One component draws the empty states. `empty.go` gives three sizes: `page`, `row` and `menu`. Every surface above uses one of them. Each state names itself in a title, says what the place is for in one line where room allows, and offers up to two actions where a next step exists.
 
 ## Non-goals
 
@@ -42,7 +42,6 @@ One component draws the empty states. `empty.go` gives four sizes: `page`, `card
 | Size | Shape | Where |
 | --- | --- | --- |
 | `page` | A picture, a title in `fontTitle`, a note in `fontBody` `textFaint`, and up to two buttons. The group is centered and sits about 40% down the area. | the main area with no tab, the failed browser pane |
-| `card` | One row at a sidebar row's height (`projectRowH`): a tile of a tab tile's size in the tile column, the icon in `iconMuted`, the title in `fontBody` `textMuted`, and a `+` icon button (the step's name as its label and tooltip) at the end. | the project sidebar when a host has no projects |
 | `row` | One line of `textFaint`, with an optional ghost button at the end. | the project picker with no entries |
 | `menu` | One faint line. No picture, no button. | the command palette, the theme picker, the New Project sheet's status lines |
 
@@ -80,11 +79,10 @@ The picture is a small wireframe of the place, drawn with `ui.Painter` rectangle
 | Palette, needs list | `menu` | Nothing needs you | none |
 | Find bar, no match | `row` | No matches | none |
 | Theme picker, no match | `menu` | No themes match "{query}". | none |
-| Project sidebar, no projects | `card` | No projects yet. | `+` icon (New Project…) |
 | Project picker, no entries | `row` | No projects yet. | New Project… (ghost) |
 | New Project sheet, states | `menu` | Loading… and the other status lines | none |
 
-The picker keeps its New Project… menu row at the bottom. The sidebar's host section shows the card when it has no project groups, no waiting rows and no tabs with no project. When the window shows a session with no project and no tabs, the card takes the place of the bare group.
+The picker keeps its New Project… menu row at the bottom. The sidebar's host section shows nothing under the header when it has no project groups, no waiting rows and no tabs with no project, as iOS does; the + of the header still makes the first project.
 
 ### Words
 
