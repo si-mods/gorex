@@ -56,3 +56,8 @@ Rules an agent cannot read from the code. Keep each line one that prevents a rea
 ## Maintenance
 
 - Run `go run ./tools/verify -audit` monthly and before a release; `docs/maintenance.md` lists the checks no tool runs. Delete dead code with its tests and comments in one PR.
+
+## Releases
+
+- A `chore(release): X.Y.Z` PR bumps `mygo.json`'s `version` and adds the `CHANGELOG.md` section; pick the next minor or patch yourself, without asking (owner's call, 2026-11-23). `docs/irreversible.md`'s stop does not cover the number choice — it still covers publishing anything under a name someone else picked.
+- `gh workflow run release.yml -R si-mods/gorex -f target=all` builds the packages on the self-hosted runners and uploads them to the version's draft release. The `unix` job waits when the Mac mini is off; `windows` alone does not.
