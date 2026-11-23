@@ -60,7 +60,7 @@ struct HostListView: View {
     /// Whether the panel of the list's space picker is open.
     @State private var spacePanel = false
     /// The project New Project found the folder to be already, in another
-    /// space: to move it here, or to show it there.
+    /// space: to move it to the space the sheet chose, or to show it there.
     @State private var existing: Existing?
     /// The hosts taking their renames of spaces now.
     @State private var renaming: Set<UUID> = []
@@ -71,7 +71,10 @@ struct HostListView: View {
         let host: Host
         let project: String
         let name: String
+        /// The space the project is in.
         let space: String
+        /// The space the sheet chose, to move it to.
+        let into: String
     }
 
     init() {
@@ -141,7 +144,7 @@ struct HostListView: View {
         .onChange(of: carried, initial: true) { _, c in book.settle(carried: c) }
         .onChange(of: renameKey, initial: true) { _, _ in sendRenames() }
         .sheet(item: $newProject) { host in
-            ProjectSheet(host: host, space: SpaceName.shown(current)) { dir, name in createProject(on: host, dir: dir, name: name) }
+            ProjectSheet(host: host, spaces: spaces, space: current) { dir, name, space in createProject(on: host, dir: dir, name: name, space: space) }
                 .navigationTransition(.zoom(sourceID: ZoomSource.newProject(host.id), in: zoom))
         }
         // A sheet on a Mac loses the injected objects; the space book
@@ -162,7 +165,7 @@ struct HostListView: View {
             Text("The space stays here, empty, until a project moves into it.")
         }
         .alert(existing.map { String(localized: "\($0.name) Is a Project Already") } ?? "", isPresented: Binding { existing != nil } set: { if !$0 { existing = nil } }, presenting: existing) { e in
-            Button("Move to \(SpaceName.shown(current))") { moveHere(e) }
+            Button("Move to \(SpaceName.shown(e.into))") { moveHere(e) }
             Button("Show in \(SpaceName.shown(e.space))") {
                 book.chosen = e.space
                 expand(e.host, e.project)
@@ -546,15 +549,16 @@ struct HostListView: View {
 
     // MARK: New Project
 
-    /// Makes a project of a folder on a host, in the space shown, and goes
-    /// to its first tab; a folder that is a project already shows that
-    /// one, or offers to move it here from another space.
-    private func createProject(on host: Host, dir: String, name: String) {
-        let space = current
+    /// Makes a project of a folder on a host, in the space the sheet
+    /// chose, which the list shows then, and goes to its first tab; a
+    /// folder that is a project already shows that one, or offers to move
+    /// it into the space chosen.
+    private func createProject(on host: Host, dir: String, name: String, space: String) {
         Task {
             do {
                 switch try await host.createProject(name: name, dir: dir, space: space) {
                 case .made(let project, let tab):
+                    book.chosen = space
                     expand(host, project)
                     if let block = try await host.block(ofTab: tab, in: project) {
                         go(TerminalTarget(host: host.id, session: project, block: block, title: ""))
@@ -563,9 +567,10 @@ struct HostListView: View {
                     let s = host.sessions.first { $0.id == project }
                     let there = book.space(s?.project?.space ?? space, on: host.id.uuidString)
                     if there == space {
+                        book.chosen = space
                         expand(host, project)
                     } else {
-                        existing = Existing(host: host, project: project, name: s?.label ?? name, space: there)
+                        existing = Existing(host: host, project: project, name: s?.label ?? name, space: there, into: space)
                     }
                 }
             } catch {
@@ -574,12 +579,12 @@ struct HostListView: View {
         }
     }
 
-    /// Moves a project New Project found into the space shown.
+    /// Moves a project New Project found into the space the sheet chose.
     private func moveHere(_ e: Existing) {
-        let space = current
         Task {
             do {
-                try await e.host.updateProject(e.project, space: space)
+                try await e.host.updateProject(e.project, space: e.into)
+                book.chosen = e.into
                 expand(e.host, e.project)
             } catch {
                 failure = (String(localized: "Can't Move the Project"), error.localizedDescription)
