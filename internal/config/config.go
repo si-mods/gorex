@@ -510,18 +510,23 @@ func normalizeKey(s string) string {
 }
 
 // Path returns the configuration file: GOREX_CONFIG, else the usual XDG
-// path.
+// path, else the platform config directory. Windows GUI processes set
+// neither XDG_CONFIG_HOME nor HOME, so without the platform fallback Path
+// (and everything under Dir, like icon packs) silently has no location.
 func Path() string {
 	if p := strings.TrimSpace(getenv("GOREX_CONFIG")); p != "" {
 		return p
 	}
 	base := strings.TrimSpace(getenv("XDG_CONFIG_HOME"))
 	if base == "" {
-		home := strings.TrimSpace(getenv("HOME"))
-		if home == "" {
-			return ""
+		if home := strings.TrimSpace(getenv("HOME")); home != "" {
+			base = filepath.Join(home, ".config")
+		} else if dir, err := userConfigDir(); err == nil {
+			base = dir
 		}
-		base = filepath.Join(home, ".config")
+	}
+	if base == "" {
+		return ""
 	}
 	return filepath.Join(base, "gorex", "init.lua")
 }
@@ -590,8 +595,9 @@ func (c *Config) programIconFn(l *lua.LState) int {
 	return 0
 }
 
-// getenv is a variable for tests.
+// getenv and userConfigDir are variables for tests.
 var getenv = os.Getenv
+var userConfigDir = os.UserConfigDir
 
 func parseArgs(t *lua.LTable) ([]Arg, error) {
 	var out []Arg
