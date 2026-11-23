@@ -152,6 +152,11 @@ func (s *Server) stopForUpgrade(exe string) {
 	s.mu.Unlock()
 	s.layoutFile.Lock()
 	s.journal.stopped("upgrade", s.inventory())
+	// The run has stopped, and nothing it records comes after a stop: it
+	// closes the journal, which the server that takes its place compacts
+	// as it starts. On Windows a rename over a file another process has
+	// open fails, and this one lives until that server serves.
+	s.journal.close()
 	s.layoutFile.Unlock()
 	log.Printf("rex: upgrading to %s", exe)
 }
@@ -162,6 +167,7 @@ func (s *Server) goOn() {
 	s.mu.Lock()
 	s.stopping = false
 	s.mu.Unlock()
+	s.journal.reopen()
 	s.journal.started()
 }
 

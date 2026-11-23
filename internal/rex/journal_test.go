@@ -310,6 +310,37 @@ func TestCompactJournal(t *testing.T) {
 	}
 }
 
+// TestJournalUpgradeFailed checks that a run whose upgrade failed records
+// again: its stop record says the upgrade, and the layouts it keeps after
+// come after the start it records once it goes on.
+func TestJournalUpgradeFailed(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("GOREX_DIR", dir)
+	j := openJournal()
+	j.started()
+	j.layout(1, testLayout(&layout.Node{SID: "one", Dir: dir}))
+	// As stopForUpgrade and goOn do: the run stops for an upgrade, which
+	// fails, and the run goes on.
+	j.stopped("upgrade", nil)
+	j.close()
+	j.reopen()
+	j.started()
+	after := testLayout(&layout.Node{SID: "two", Dir: dir})
+	j.layout(2, after)
+	j.close()
+	entries := readJournal()
+	if len(entries) == 0 || journalStopped(entries) {
+		t.Fatalf("the journal still says the run stopped: %+v", entries)
+	}
+	last := entries[len(entries)-1]
+	if last.Event != eventLayout || last.Rev != 2 {
+		t.Fatalf("the layout kept after the failed upgrade is not the journal's last entry: %+v", entries)
+	}
+	if got := lastLayout(entries); string(got) != string(after) {
+		t.Errorf("the last layout is %s, not %s", got, after)
+	}
+}
+
 // TestJournalChangedLayoutsOnly checks that a layout sent again is not
 // journaled again: a run keeps each layout once.
 func TestJournalChangedLayoutsOnly(t *testing.T) {
