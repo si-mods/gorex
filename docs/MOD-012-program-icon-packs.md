@@ -1,0 +1,113 @@
+---
+name: MOD-012
+description: "Community program icon packs: a declarative plugin format to supply and override program and project icons, similar to Zed icon themes. Use when designing or implementing icon packs."
+metadata:
+  created: "2026-11-23"
+  updated: "2026-11-23"
+---
+
+# MOD-012: Community Program Icon Packs
+
+Status: proposal.
+
+This doc defines declarative community icon packs for GoRex programs and project directories. It builds on [`MOD-011`](MOD-011-program-icons.md) and [`REF-002`](REF-002-lua.md).
+
+## Problem
+
+[`MOD-011`](MOD-011-program-icons.md) lets programs emit their own icons at runtime via `OSC 7502` or `gorex icon`. Most existing CLI tools, remote workflows, and project directories do not emit `OSC 7502`, and adding every niche tool to `programs.go`, `ios/Shared/Program.swift`, and `web/src/programs.ts` does not scale.
+
+## Goal
+
+- Let community authors publish standalone program icon packs as declarative files (`pack.json` and SVG/PNG assets), without compiling GoRex or shipping a WASM runtime.
+- Match programs by process name, `OSC 7501` `app` name, optional subcommand, or project directory marker files (such as `Cargo.toml` or `.rex/icon.svg`).
+- Let users install, enable, and layer icon packs on top of built-in program tables and `init.lua` rules, including for remote SSH sessions.
+
+## Non-goals
+
+- A general-purpose WASM plugin runtime or arbitrary native code execution.
+- A hosted plugin marketplace or billing registry (initial distribution uses local directories or Git repositories).
+
+## Design
+
+### Behavior
+
+Users place or install an icon pack under `<configDir>/icon-packs/<pack-id>/` and select active packs in settings or `init.lua` (for example `rex.icon_packs = { "catppuccin-programs" }`).
+
+When rendering a pane header, tab tile, or command palette item, GoRex resolves the icon in order: explicit user/Lua override, runtime `OSC 7502` icon (`SessionInfo.ProgramIcon`), active community icon packs (in configured order), built-in `programOf` table, and finally the generic terminal glyph. A user setting can invert the pack vs. `OSC 7502` precedence when a user wants pack icons to override self-reporting tools.
+
+For remote hosts, the client resolves pack entries locally from `SessionInfo.ProgramName()` and `SessionInfo.Dir` (for directory markers when known), requiring zero extra bytes over the wire. Optionally, `rex.icon_pack` Lua helpers can also register or emit icons dynamically.
+
+### Model
+
+An icon pack directory contains `pack.json` and relative asset files under `icons/`:
+
+```json
+{
+  "schema": 1,
+  "id": "catppuccin-programs",
+  "name": "Catppuccin Programs",
+  "version": "0.1.0",
+  "author": "community",
+  "programs": {
+    "terraform": {
+      "icon": "icons/terraform.svg",
+      "mode": "mono",
+      "bg": "#7b42bc",
+      "fg": "#ffffff"
+    },
+    "docker compose": {
+      "icon": "icons/compose.svg",
+      "mode": "mono",
+      "bg": "#2496ed",
+      "fg": "#ffffff"
+    }
+  },
+  "markers": {
+    "Cargo.toml": {
+      "icon": "icons/rust-project.svg",
+      "mode": "mono",
+      "bg": "#2b2b2b",
+      "fg": "#f4a261"
+    }
+  }
+}
+```
+
+Each entry supports `icon` (relative path to `.svg` or `.png`), `mode` (`mono` or `color`), `bg`, `fg`, and optional `light` / `dark` color overrides. Loaded assets are validated with the same rules as `OSC 7502` (`maxIconBytes = 32768`, SVG sanitization, PNG bounds) and converted into `rex.ProgramIcon` values cached by content hash.
+
+### Code
+
+- `internal/iconpack/pack.go`: `Pack`, `Entry`, `LoadPack`, `Registry.Resolve(info rex.SessionInfo, dark bool) *rex.ProgramIcon`, path traversal checks, and SVG/PNG validation shared with `internal/rex/icon.go`.
+- `internal/config/`: `IconPacks []string` setting and `init.lua` bindings (`rex.icon_packs`, `rex.register_icon_pack`).
+- `program_icon.go`, `state.go`: consult the active `iconpack.Registry` inside `Pane.program()` while reusing `customIconSVG` and `customIconBitmap`.
+- `internal/cli/pack.go`: optional `gorex pack install|ls|rm` helper to manage `<configDir>/icon-packs/`.
+
+## Alternatives
+
+- **WASM plugin runtime (like full Zed extensions)**: Rejected because icon sets are static mappings plus vector/bitmap assets; WASM adds binary size, sandboxing complexity, and cross-platform build friction for no functional gain.
+- **Accepting all community logos into the main repo**: Rejected because it bloats the app binary, slows review, and ties icon updates to GoRex release cycles.
+
+## Security
+
+- Icon paths in `pack.json` must resolve strictly inside the pack directory (`filepath.Rel` check, rejecting `..` and symlinks escaping the pack root).
+- SVG and PNG files inside packs enforce the same 32 KiB size cap, `<script` / `on*=` rejection, and PNG dimension bounds (1–512 px) as [`MOD-011`](MOD-011-program-icons.md).
+
+## Migration
+
+Existing configurations without `icon-packs` behave identically to today. Older servers and clients are unaffected because pack resolution runs on the client using existing `SessionInfo` fields.
+
+## Tests
+
+- `internal/iconpack/pack_test.go`: manifest parsing, precedence order, `light`/`dark` overrides, path-traversal rejection, and shared SVG/PNG validation.
+- `program_icon_test.go`: `Pane.program()` integration with an active pack and `OSC 7502` precedence toggle.
+
+## Phases
+
+1. Design doc (`MOD-012`, this doc).
+2. `internal/iconpack` loader/resolver, `init.lua` wiring, and desktop rendering integration.
+3. CLI `gorex pack` management and iOS/Web pack sync or matching.
+
+## Open questions
+
+1. **Precedence toggle**: Should `OSC 7502` beat an active icon pack by default, or should user-installed packs beat `OSC 7502`? (Proposal: `OSC 7502` beats packs by default, with a setting or Lua option to invert.)
+2. **Remote directory markers**: Should the session server expose lightweight project marker hints in `SessionInfo`, or should packs match `ProgramName()` / `Args` only on remote hosts?
