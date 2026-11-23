@@ -3436,6 +3436,20 @@ func (msgs Messages) HostsRexQRCopyFailed() string {
 	return Catalog.Format(msgs.locale, "hostsRexQRCopyFailed", nil)
 }
 
+// HostsRexQRClose says "Close"
+// in the language the app shows.
+//
+// Close the QR sheet.
+func HostsRexQRClose() string { return In(i18n.Locale()).HostsRexQRClose() }
+
+// HostsRexQRClose says "Close"
+// in the language of msgs.
+//
+// Close the QR sheet.
+func (msgs Messages) HostsRexQRClose() string {
+	return Catalog.Format(msgs.locale, "hostsRexQRClose", nil)
+}
+
 // HostsPairCodeAddress says "This address"
 // in the language the app shows.
 func HostsPairCodeAddress() string { return In(i18n.Locale()).HostsPairCodeAddress() }
@@ -5128,6 +5142,100 @@ func (msgs Messages) HostsSessions(n int) string {
 	return Catalog.Format(msgs.locale, "hostsSessions", map[string]any{"n": n})
 }
 
+// HostsPathDirect says "direct {endpoint}"
+// in the language the app shows.
+//
+// Remote Hosts page: under a connected host, its link goes over a direct
+// path to the endpoint.
+func HostsPathDirect(endpoint string) string { return In(i18n.Locale()).HostsPathDirect(endpoint) }
+
+// HostsPathDirect says "direct {endpoint}"
+// in the language of msgs.
+//
+// Remote Hosts page: under a connected host, its link goes over a direct
+// path to the endpoint.
+func (msgs Messages) HostsPathDirect(endpoint string) string {
+	return Catalog.Format(msgs.locale, "hostsPathDirect", map[string]any{"endpoint": endpoint})
+}
+
+// HostsPathRelay says "via {relay}"
+// in the language the app shows.
+//
+// Remote Hosts page: under a connected host, its link goes through the
+// relay named.
+func HostsPathRelay(relay string) string { return In(i18n.Locale()).HostsPathRelay(relay) }
+
+// HostsPathRelay says "via {relay}"
+// in the language of msgs.
+//
+// Remote Hosts page: under a connected host, its link goes through the
+// relay named.
+func (msgs Messages) HostsPathRelay(relay string) string {
+	return Catalog.Format(msgs.locale, "hostsPathRelay", map[string]any{"relay": relay})
+}
+
+// HostsDiagTagTailcat says "tailcat"
+// in the language the app shows.
+//
+// Remote Hosts page: tag of a host linked over tailcat (the protocol's
+// name, not translated).
+func HostsDiagTagTailcat() string { return In(i18n.Locale()).HostsDiagTagTailcat() }
+
+// HostsDiagTagTailcat says "tailcat"
+// in the language of msgs.
+//
+// Remote Hosts page: tag of a host linked over tailcat (the protocol's
+// name, not translated).
+func (msgs Messages) HostsDiagTagTailcat() string {
+	return Catalog.Format(msgs.locale, "hostsDiagTagTailcat", nil)
+}
+
+// HostsDiagTagTailnet says "tailnet"
+// in the language the app shows.
+//
+// Remote Hosts page: tag of a host linked over the tailnet.
+func HostsDiagTagTailnet() string { return In(i18n.Locale()).HostsDiagTagTailnet() }
+
+// HostsDiagTagTailnet says "tailnet"
+// in the language of msgs.
+//
+// Remote Hosts page: tag of a host linked over the tailnet.
+func (msgs Messages) HostsDiagTagTailnet() string {
+	return Catalog.Format(msgs.locale, "hostsDiagTagTailnet", nil)
+}
+
+// HostsDiagConnect says "connect {ms} ms"
+// in the language the app shows.
+//
+// Remote Hosts page: how long the current connection to the host took to
+// establish; ms in milliseconds.
+func HostsDiagConnect(ms int) string { return In(i18n.Locale()).HostsDiagConnect(ms) }
+
+// HostsDiagConnect says "connect {ms} ms"
+// in the language of msgs.
+//
+// Remote Hosts page: how long the current connection to the host took to
+// establish; ms in milliseconds.
+func (msgs Messages) HostsDiagConnect(ms int) string {
+	return Catalog.Format(msgs.locale, "hostsDiagConnect", map[string]any{"ms": ms})
+}
+
+// HostsDiagPing says "ping {ms} ms"
+// in the language the app shows.
+//
+// Remote Hosts page: the control round trip to the host measured last; ms
+// in milliseconds.
+func HostsDiagPing(ms int) string { return In(i18n.Locale()).HostsDiagPing(ms) }
+
+// HostsDiagPing says "ping {ms} ms"
+// in the language of msgs.
+//
+// Remote Hosts page: the control round trip to the host measured last; ms
+// in milliseconds.
+func (msgs Messages) HostsDiagPing(ms int) string {
+	return Catalog.Format(msgs.locale, "hostsDiagPing", map[string]any{"ms": ms})
+}
+
 // CmdNewTabOn says "New Tab on {host}"
 // in the language the app shows.
 //
@@ -5876,202 +5984,6 @@ func FindNoMatches() string { return In(i18n.Locale()).FindNoMatches() }
 // Find bar: the query matched nothing in the scrollback.
 func (msgs Messages) FindNoMatches() string {
 	return Catalog.Format(msgs.locale, "findNoMatches", nil)
-}
-
-// HostsLayout says "Layout"
-// in the language the app shows.
-//
-// Remote host layout sheet.
-func HostsLayout() string { return In(i18n.Locale()).HostsLayout() }
-
-// HostsLayout says "Layout"
-// in the language of msgs.
-//
-// Remote host layout sheet.
-func (msgs Messages) HostsLayout() string {
-	return Catalog.Format(msgs.locale, "hostsLayout", nil)
-}
-
-// HostsLayoutTitle says "Remote layout"
-// in the language the app shows.
-//
-// Remote host layout sheet.
-func HostsLayoutTitle() string { return In(i18n.Locale()).HostsLayoutTitle() }
-
-// HostsLayoutTitle says "Remote layout"
-// in the language of msgs.
-//
-// Remote host layout sheet.
-func (msgs Messages) HostsLayoutTitle() string {
-	return Catalog.Format(msgs.locale, "hostsLayoutTitle", nil)
-}
-
-// HostsLayoutEmpty says "This host shares no layout."
-// in the language the app shows.
-//
-// Remote host layout sheet.
-func HostsLayoutEmpty() string { return In(i18n.Locale()).HostsLayoutEmpty() }
-
-// HostsLayoutEmpty says "This host shares no layout."
-// in the language of msgs.
-//
-// Remote host layout sheet.
-func (msgs Messages) HostsLayoutEmpty() string {
-	return Catalog.Format(msgs.locale, "hostsLayoutEmpty", nil)
-}
-
-// HostsLayoutLoading says "Reading the layout…"
-// in the language the app shows.
-//
-// Remote host layout sheet.
-func HostsLayoutLoading() string { return In(i18n.Locale()).HostsLayoutLoading() }
-
-// HostsLayoutLoading says "Reading the layout…"
-// in the language of msgs.
-//
-// Remote host layout sheet.
-func (msgs Messages) HostsLayoutLoading() string {
-	return Catalog.Format(msgs.locale, "hostsLayoutLoading", nil)
-}
-
-// HostsLayoutClose says "Close"
-// in the language the app shows.
-//
-// Close the remote layout sheet.
-func HostsLayoutClose() string { return In(i18n.Locale()).HostsLayoutClose() }
-
-// HostsLayoutClose says "Close"
-// in the language of msgs.
-//
-// Close the remote layout sheet.
-func (msgs Messages) HostsLayoutClose() string {
-	return Catalog.Format(msgs.locale, "hostsLayoutClose", nil)
-}
-
-// HostsLayoutFocus says "Focus"
-// in the language the app shows.
-//
-// Focus a pane in the host layout.
-func HostsLayoutFocus() string { return In(i18n.Locale()).HostsLayoutFocus() }
-
-// HostsLayoutFocus says "Focus"
-// in the language of msgs.
-//
-// Focus a pane in the host layout.
-func (msgs Messages) HostsLayoutFocus() string {
-	return Catalog.Format(msgs.locale, "hostsLayoutFocus", nil)
-}
-
-// HostsLayoutNewTab says "New Tab"
-// in the language the app shows.
-//
-// Host layout edit action.
-func HostsLayoutNewTab() string { return In(i18n.Locale()).HostsLayoutNewTab() }
-
-// HostsLayoutNewTab says "New Tab"
-// in the language of msgs.
-//
-// Host layout edit action.
-func (msgs Messages) HostsLayoutNewTab() string {
-	return Catalog.Format(msgs.locale, "hostsLayoutNewTab", nil)
-}
-
-// HostsLayoutCloseTab says "Close Tab"
-// in the language the app shows.
-//
-// Host layout edit action.
-func HostsLayoutCloseTab() string { return In(i18n.Locale()).HostsLayoutCloseTab() }
-
-// HostsLayoutCloseTab says "Close Tab"
-// in the language of msgs.
-//
-// Host layout edit action.
-func (msgs Messages) HostsLayoutCloseTab() string {
-	return Catalog.Format(msgs.locale, "hostsLayoutCloseTab", nil)
-}
-
-// HostsLayoutLeft says "Resize left"
-// in the language the app shows.
-//
-// Resize a shared pane.
-func HostsLayoutLeft() string { return In(i18n.Locale()).HostsLayoutLeft() }
-
-// HostsLayoutLeft says "Resize left"
-// in the language of msgs.
-//
-// Resize a shared pane.
-func (msgs Messages) HostsLayoutLeft() string {
-	return Catalog.Format(msgs.locale, "hostsLayoutLeft", nil)
-}
-
-// HostsLayoutRight says "Resize right"
-// in the language the app shows.
-//
-// Resize a shared pane.
-func HostsLayoutRight() string { return In(i18n.Locale()).HostsLayoutRight() }
-
-// HostsLayoutRight says "Resize right"
-// in the language of msgs.
-//
-// Resize a shared pane.
-func (msgs Messages) HostsLayoutRight() string {
-	return Catalog.Format(msgs.locale, "hostsLayoutRight", nil)
-}
-
-// HostsLayoutUp says "Resize up"
-// in the language the app shows.
-//
-// Resize a shared pane.
-func HostsLayoutUp() string { return In(i18n.Locale()).HostsLayoutUp() }
-
-// HostsLayoutUp says "Resize up"
-// in the language of msgs.
-//
-// Resize a shared pane.
-func (msgs Messages) HostsLayoutUp() string {
-	return Catalog.Format(msgs.locale, "hostsLayoutUp", nil)
-}
-
-// HostsLayoutDown says "Resize down"
-// in the language the app shows.
-//
-// Resize a shared pane.
-func HostsLayoutDown() string { return In(i18n.Locale()).HostsLayoutDown() }
-
-// HostsLayoutDown says "Resize down"
-// in the language of msgs.
-//
-// Resize a shared pane.
-func (msgs Messages) HostsLayoutDown() string {
-	return Catalog.Format(msgs.locale, "hostsLayoutDown", nil)
-}
-
-// HostsLayoutOpen says "Open"
-// in the language the app shows.
-//
-// Attach a shared pane in this window.
-func HostsLayoutOpen() string { return In(i18n.Locale()).HostsLayoutOpen() }
-
-// HostsLayoutOpen says "Open"
-// in the language of msgs.
-//
-// Attach a shared pane in this window.
-func (msgs Messages) HostsLayoutOpen() string {
-	return Catalog.Format(msgs.locale, "hostsLayoutOpen", nil)
-}
-
-// HostsLayoutNoSession says "That session is no longer available."
-// in the language the app shows.
-//
-// A shared pane could not be opened.
-func HostsLayoutNoSession() string { return In(i18n.Locale()).HostsLayoutNoSession() }
-
-// HostsLayoutNoSession says "That session is no longer available."
-// in the language of msgs.
-//
-// A shared pane could not be opened.
-func (msgs Messages) HostsLayoutNoSession() string {
-	return Catalog.Format(msgs.locale, "hostsLayoutNoSession", nil)
 }
 
 // RexImportDone says "Imported {sessions} sessions from Rex."

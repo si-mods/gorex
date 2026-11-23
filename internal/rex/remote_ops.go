@@ -39,6 +39,11 @@ func (s *Server) remoteDo(req Request) (any, error) {
 			return nil, fmt.Errorf("rex: turning built-in Tailscale on: %w", err)
 		}
 	}
+	// A ping may take seconds: it runs before the lock, on the tailcat
+	// pool's own, which the remote state never waits on.
+	if req.Op == "remote.tailcatStatus" {
+		return tailcatStatus(req.TailcatAddress)
+	}
 	r := &s.rem
 	r.mu.Lock()
 	defer r.mu.Unlock()

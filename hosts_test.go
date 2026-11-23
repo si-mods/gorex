@@ -1432,17 +1432,6 @@ func TestHostAlias(t *testing.T) {
 	}
 }
 
-func TestLayoutLines(t *testing.T) {
-	n := &savedNode{A: &savedNode{Name: "left", SID: "a", Dir: "/tmp"}, B: &savedNode{Name: "right", SID: "b"}}
-	lines := layoutLines(n, 1)
-	if len(lines) != 2 || lines[0].text != "  left — /tmp" || lines[0].sid != "a" || lines[1].text != "  right" || lines[1].sid != "b" {
-		t.Fatalf("lines %+v", lines)
-	}
-	if got := layoutTabName(savedTab{}, 2); got != "Tab 3" {
-		t.Fatalf("tab %q", got)
-	}
-}
-
 // TestTakeKillsOnce takes the layout's kills with no server to tell: the
 // app keeps them to end once its hosts are read (3), all of a host's in
 // one save of hosts.json (4); it tells the server of one of a host it does
@@ -1659,4 +1648,59 @@ func TestWatchHostTakesChanges(t *testing.T) {
 		t.Fatal(err)
 	}
 	taken("a new session")
+}
+
+// TestHostPathShows: a connected host's row says how its link runs once
+// the server has measured it — a direct path names its endpoint — and a
+// host of the tailnet says so without a ping.
+func TestHostPathShows(t *testing.T) {
+	a, tt := hostsPage(t)
+	var pings atomic.Int32
+	old := tailcatStatus
+	tailcatStatus = func(*rex.Client, string) (rex.TailcatStatus, error) {
+		pings.Add(1)
+		return rex.TailcatStatus{
+			Direct: true, Endpoint: "192.0.2.10:41641", LatencySeconds: 0.032,
+		}, nil
+	}
+	oldPing := hostPing
+	hostPing = func(*rex.Client, time.Duration) (time.Duration, error) {
+		return 32 * time.Millisecond, nil
+	}
+	t.Cleanup(func() { tailcatStatus, hostPing = old, oldPing })
+
+	f := newFakeHost(t, fakeApproved)
+	h := a.addHost(savedHost{ID: "h1", Name: "ws-01", Address: f.path})
+	waitFor(t, tt, "the host to connect", func() bool { return h.state == hostConnected })
+	a.client = h.current() // the op's client; the stub answers for it
+	h.connectMs = 214      // the fake's dial is faster than a millisecond
+	waitFor(t, tt, "the diagnostics line", func() bool {
+		return tt.HasText("direct 192.0.2.10:41641 · connect 214 ms · ping 32 ms") && tt.HasText("tailcat")
+	})
+	if pings.Load() == 0 {
+		t.Error("no ping ran")
+	}
+
+	// A host of the tailnet is tagged tailnet, and its link is not
+	// pinged through the server.
+	tn := newHostConn(savedHost{ID: "h2", Name: "tail-node", Address: "tailscale:user:abc123"})
+	tn.state = hostConnected
+	a.hosts = append(a.hosts, tn)
+	waitFor(t, tt, "the tailnet tag", func() bool { return tt.HasText("tailnet") })
+	before := pings.Load()
+	for range 3 {
+		tt.Frame()
+		time.Sleep(10 * time.Millisecond)
+	}
+	if pings.Load() != before {
+		t.Error("the tailnet host was pinged")
+	}
+
+	// A host not connected says nothing of a path.
+	down := newHostConn(savedHost{ID: "h3", Name: "away-box", Address: "/nowhere"})
+	a.hosts = append(a.hosts, down)
+	tt.Frame()
+	if tt.HasText("region ") {
+		t.Errorf("texts %q", tt.Texts())
+	}
 }

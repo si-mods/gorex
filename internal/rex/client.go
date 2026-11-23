@@ -378,6 +378,13 @@ func (c *Client) ping(every, timeout time.Duration) {
 	}
 }
 
+// Ping measures a request's round trip to the server, for display.
+func (c *Client) Ping(timeout time.Duration) (rtt time.Duration, err error) {
+	start := time.Now()
+	err = c.callWithin(Request{Op: "ping"}, nil, timeout)
+	return time.Since(start), err
+}
+
 // call sends a request and decodes the response's data into out.
 func (c *Client) call(req Request, out any) error {
 	return c.callWithin(req, out, callTimeout.get())
@@ -895,6 +902,14 @@ func (c *Client) StopToRestart() error {
 // is a secret.
 func (c *Client) RemoteStatus() (s RemoteStatus, err error) {
 	err = c.call(Request{Op: "remote.status"}, &s)
+	return
+}
+
+// TailcatStatus asks the server how its tailcat link to addr runs: a
+// direct path or a relay, and the ping's round-trip (TailcatStatus). A
+// server of before the op answers "unknown op". The address is a secret.
+func (c *Client) TailcatStatus(addr string) (s TailcatStatus, err error) {
+	err = c.call(Request{Op: "remote.tailcatStatus", TailcatAddress: addr}, &s)
 	return
 }
 

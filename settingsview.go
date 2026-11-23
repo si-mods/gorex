@@ -136,7 +136,6 @@ func (a *App) openSettings() {
 		stopRemotePoll()
 		stopServerInfoPoll()
 		closeAddHost()
-		closeHostLayout()
 		closeHostRename()
 		remoteUI.pairQR = nil
 		shortcutsUI = shortcutsState{}
