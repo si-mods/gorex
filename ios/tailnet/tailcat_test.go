@@ -352,13 +352,23 @@ func TestTailcatReset(t *testing.T) {
 	waitLoops(t, 6)
 	closeSockets(sys.MagicSock.Get())
 	waitLoops(t, 4)
+	tries := tailcatTries.Load()
+	warms := tailcatWarms.Load()
 	if err := ResetSockets(); err != nil {
 		t.Fatal(err)
 	}
 	waitLoops(t, 6)
+	if n := tailcatWarms.Load() - warms; n != 1 {
+		t.Errorf("the reset warmed %d clients, want 1", n)
+	}
 	roundTrip("after")
 	if _, err := get(hc, "http://mac.tailcat.invalid:7297/"); err != nil {
 		t.Errorf("GET after the reset: %v", err)
+	}
+	// A dial of a reset client gets the full bound, as a fresh client's:
+	// it is cold, not a suspect that a try bounds at tailcatTry.
+	if n := tailcatTries.Load() - tries; n != 0 {
+		t.Errorf("dials after the reset tried the kept client %d times; want none", n)
 	}
 	tcMu.Lock()
 	same := tcClients[addr] == c

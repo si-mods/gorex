@@ -10,6 +10,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 `web` job of `.github/workflows/ci.yml` fails it.
 
 ## en-US
+- Coming back to Rex Go after the phone has slept a while, a paired computer now reconnects in a second or two instead of around ten.
 - A program that finished while Rex Go slept, one you already saw on the Lock Screen or Dynamic Island, no longer counts as new when you come back.
 - Leave Rex Go with no terminal open and a program waits for you: the Lock Screen and Dynamic Island can now start its activity on their own, so the alert still reaches you.
 - Leave Rex Go with a terminal open and a program waits for you: its alert now arrives pushed from the computer through the relay, lighting the screen, in place of the app's own notification.
@@ -129,6 +130,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - While a program waits for your answer, the Lock Screen card and the expanded Dynamic Island show Approve and Deny: tap once to answer without opening Rex Go.
 
 ## zh-Hans
+- 手机休眠一段时间后回到 Rex Go，已配对的电脑现在一两秒就能重新连上，不再要等十秒上下。
 - 程序在应用休眠期间完成时，若你已在锁屏或灵动岛上看到它，回来后不再计为未读。
 - 没开终端就退出 Rex Go，程序等待你处理时：锁屏和灵动岛现在也能自己亮起这条提醒，照常送达。
 - 开着终端退出 Rex Go 后，程序等待你处理时会由电脑推送提醒并点亮屏幕，取代应用自己发出的「需要输入」通知。
