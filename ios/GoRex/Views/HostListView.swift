@@ -66,6 +66,21 @@ struct HostListView: View {
     @State private var renaming: Set<UUID> = []
     /// What failed last, and why, as the server says it.
     @State private var failure: (title: String, why: String)?
+    /// The host whose section is being dragged, and the order the drag
+    /// leaves the hosts in.
+    @State private var hostDrag: HostDrag?
+    /// Each host's lift, for its feel.
+    @State private var lifts = 0
+
+    /// A host's drag: the hosts' ids as they showed when its header
+    /// lifted, moved as the drag passes over the other sections, and the
+    /// item the system holds until the drag ends.
+    private struct HostDrag {
+        let host: UUID
+        var order: [UUID]
+        let token = UUID()
+        weak var item: Lifted?
+    }
 
     struct Existing {
         let host: Host
@@ -233,6 +248,15 @@ struct HostListView: View {
         return store.demo != nil ? 48 : 8
     }
 
+    /// The room the developer overlay's collapsed pill takes atop the
+    /// list, in overlayTop's cases: its offset and height plus a gap, so
+    /// it covers no row. The list still scrolls under it once it is past.
+    private var listTopPad: CGFloat {
+        guard developerMode else { return 12 }
+        if !path.isEmpty || width == .regular { return 52 }
+        return store.demo != nil ? 30 : 52
+    }
+
     /// Opens a terminal, in place of the one open; nil goes back to the list.
     private func go(_ t: TerminalTarget?) {
         path = t.map { [$0] } ?? []
@@ -298,9 +322,21 @@ struct HostListView: View {
                                     .padding(.top, 40)
                             } else {
                                 let hosts = store.hosts.filter { shows($0, hasSpaces: hasSpaces, current: current) }
-                                ForEach(hosts) { host in
-                                    section(host, current: current, spaces: spaces)
+                                ForEach(arranged(hosts)) { host in
+                                    sectionDrop(host, current: current, spaces: spaces)
                                 }
+                                // A host let go of under the last section
+                                // lands at the list's end.
+                                Color.clear
+                                    .frame(maxWidth: .infinity)
+                                    .frame(height: 44)
+                                    .contentShape(Rectangle())
+                                    .onDrop(of: [.text], delegate: RowDrop(
+                                        // Only a host's drag lands here: a
+                                        // row's goes to the page's target.
+                                        validate: { self.hostDrag != nil },
+                                        pass: { passHostToEnd() },
+                                        drop: { dropHost($0) }))
                             }
                         }
                     }
@@ -309,7 +345,7 @@ struct HostListView: View {
                     // as a fade alone would still move the rows kept.
                     .animation(still ? nil : .snappy, value: query)
                     .padding(.horizontal, 20)
-                    .padding(.top, 12)
+                    .padding(.top, listTopPad)
                     .padding(.bottom, 20)
                 }
                 // Under the keyboard too: the list keeps clear of it as it
@@ -344,6 +380,12 @@ struct HostListView: View {
         }
         // A row let go of off the cards goes back to its place.
         .onDrop(of: [Lifted.type], delegate: PageDrop())
+        // A host let go of off the sections keeps the hosts' old order.
+        .onReceive(NotificationCenter.default.publisher(for: Lifted.ended)) { n in
+            if let d = hostDrag, n.object as? UUID == d.token { hostDrag = nil }
+        }
+        .modifier(DragEnd { hostDrag = nil })
+        .sensoryFeedback(.selection, trigger: lifts)
         // Beside the terminal the bar stays, for the sidebar's toggle.
         .toolbar(width == .regular ? .automatic : .hidden, for: .navigationBar)
         .toolbar {
@@ -384,7 +426,7 @@ struct HostListView: View {
         .sheet(isPresented: $settings, onDismiss: {
             if let c = waiting { pairing = c }
             waiting = nil
-        }) { SettingsView().environment(store).navigationTransition(.zoom(sourceID: settingsSource, in: zoom)) }
+        }) { settingsSheet }
     }
 
     // MARK: Spaces
@@ -488,11 +530,31 @@ struct HostListView: View {
     }
 
     /// A host's section of the list, as the body's ForEach builds it.
+    /// Its header lifts a drag while the search is out and the host can
+    /// move; the demo host's does not.
     private func section(_ host: Host, current: String, spaces: [String]) -> HostSection {
         HostSection(host: host, space: current, spaces: spaces, collapsed: $collapsed, expanded: $expanded,
                     query: query, zoom: zoom, places: places,
                     open: { go($0) }, openRow: { openRow($0) }, newProject: { newProject = host },
-                    current: width == .regular ? path.last : nil)
+                    current: width == .regular ? path.last : nil,
+                    liftHost: query.isEmpty && !host.isDemo ? { self.liftHost(host) } : nil,
+                    hostDrop: HostDrop(active: { self.hostDrag != nil },
+                                       pass: { self.passHost(over: host) },
+                                       drop: { self.dropHost($0) }))
+    }
+
+    /// The settings sheet's content, of its own for the type-checker.
+    private var settingsSheet: some View {
+        SettingsView().environment(store).navigationTransition(.zoom(sourceID: settingsSource, in: zoom))
+    }
+
+    /// A host's section in the list: the dragged one dims, and each is
+    /// its own drop target, through HostDrop (the deepest target at a
+    /// point is the one the drop goes to, so a target wrapping the
+    /// section would never see it).
+    private func sectionDrop(_ host: Host, current: String, spaces: [String]) -> some View {
+        section(host, current: current, spaces: spaces)
+            .opacity(hostDrag?.host == host.id ? 0.4 : 1)
     }
 
     private func expand(_ host: Host, _ project: String) {
@@ -545,6 +607,54 @@ struct HostListView: View {
                 if all, book.renames[key]?.isEmpty == false { sendRenames() }
             }
         }
+    }
+
+    // MARK: Host Drag
+
+    /// Lifts a host's section, from the order the hosts show: the order
+    /// holds every host, the ones the space picked hides too.
+    private func liftHost(_ host: Host) -> NSItemProvider {
+        // The system asks again as the sections move: the same drag goes on.
+        if let d = hostDrag, d.host == host.id, let item = d.item { return item }
+        // The string makes the item a text drop for the system to
+        // deliver: a mark alone (Lifted.type's way) is only seen by the
+        // side that lifts, so a section's text targets take it.
+        let item = Lifted(object: host.id.uuidString as NSString)
+        var d = HostDrag(host: host.id, order: store.hosts.map(\.id))
+        item.token = d.token
+        item.mark(d.token, as: Lifted.hostType)
+        d.item = item
+        hostDrag = d
+        lifts += 1
+        return item
+    }
+
+    /// Makes way for the dragged host's section at another section.
+    private func passHost(over host: Host) {
+        guard let d = hostDrag,
+              let from = d.order.firstIndex(of: d.host), let to = d.order.firstIndex(of: host.id), from != to
+        else { return }
+        withAnimation(.snappy) { hostDrag?.order.move(fromOffsets: [from], toOffset: to > from ? to + 1 : to) }
+    }
+
+    /// Makes way for the dragged host's section at the list's end.
+    private func passHostToEnd() {
+        guard let d = hostDrag, let from = d.order.firstIndex(of: d.host), from != d.order.count - 1 else { return }
+        withAnimation(.snappy) { hostDrag?.order.move(fromOffsets: [from], toOffset: d.order.count) }
+    }
+
+    /// Moves the dropped host to where the drag left it.
+    private func dropHost(_ items: [NSItemProvider]) -> Bool {
+        guard let d = hostDrag else { return false }
+        hostDrag = nil
+        store.move(toOrder: d.order)
+        return true
+    }
+
+    /// The sections in the order a drag of one of them leaves.
+    private func arranged(_ hosts: [Host]) -> [Host] {
+        guard let d = hostDrag else { return hosts }
+        return hosts.sorted { (d.order.firstIndex(of: $0.id) ?? .max) < (d.order.firstIndex(of: $1.id) ?? .max) }
     }
 
     // MARK: New Project
@@ -726,14 +836,20 @@ struct MatchedPlace: ViewModifier {
 }
 
 /// A row as a drop target: the dragged row makes way at it, and lands on
-/// the drop.
+/// the drop. A target that takes a drop only in a state, like a host's
+/// while its drag is on, says so in validate.
 struct RowDrop: DropDelegate {
+    /// The type the target takes its items as: the tab rows' text.
+    var type: UTType = .text
+    /// Whether the target takes a drop now; yes by default.
+    var validate: () -> Bool = { true }
     let pass: () -> Void
     let drop: ([NSItemProvider]) -> Bool
 
+    func validateDrop(info: DropInfo) -> Bool { validate() }
     func dropEntered(info: DropInfo) { pass() }
     func dropUpdated(info: DropInfo) -> DropProposal? { DropProposal(operation: .move) }
-    func performDrop(info: DropInfo) -> Bool { drop(info.itemProviders(for: [.text])) }
+    func performDrop(info: DropInfo) -> Bool { drop(info.itemProviders(for: [type])) }
 }
 
 /// The page as a drop target, under the cards', for rows only: a row let
@@ -790,11 +906,15 @@ nonisolated final class Lifted: NSItemProvider, @unchecked Sendable {
     static let ended = Notification.Name("GoRex.Lifted.ended")
     /// A row's drag, which only the app's own targets take.
     static let type = UTType(exportedAs: "dev.gorex.window-row")
+    /// A host's drag, under which its item's token is marked: the drop
+    /// side sees only the string's text, and the sections' targets know
+    /// the drag is on from HostDrop.
+    static let hostType = UTType(exportedAs: "dev.gorex.host")
     var token: UUID?
 
-    /// Carries the drag's token, for this app only.
-    func mark(_ token: UUID) {
-        registerDataRepresentation(forTypeIdentifier: Self.type.identifier, visibility: .ownProcess) { done in
+    /// Carries the drag's token under the type given, for this app only.
+    func mark(_ token: UUID, as type: UTType = Lifted.type) {
+        registerDataRepresentation(forTypeIdentifier: type.identifier, visibility: .ownProcess) { done in
             done(Data(token.uuidString.utf8), nil)
             return nil
         }

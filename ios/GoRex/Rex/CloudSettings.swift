@@ -45,6 +45,7 @@ final class CloudSettings {
         ("theme", false, .terminalTheme),
         ("fontSize", true, .terminalFont),
         ("fontFamily", false, .terminalFont),
+        ("fontLigatures", true, .terminalFont),
         ("minimumContrast", true, .minimumContrast),
         (Polish.baseKey, false, nil),
         (Polish.modelKey, false, nil),

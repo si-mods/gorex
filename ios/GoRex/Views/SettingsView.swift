@@ -308,6 +308,7 @@ private enum Fonts {
 private struct TerminalSettings: View {
     @AppStorage("fontSize") private var fontSize = 12.0
     @AppStorage("fontFamily") private var family = ""
+    @AppStorage("fontLigatures") private var ligatures = true
     @AppStorage("minimumContrast") private var contrast = 0.0
     /// Polish's service; empty is the default.
     @AppStorage(Polish.baseKey) private var base = ""
@@ -350,6 +351,13 @@ private struct TerminalSettings: View {
                 } else {
                     download.swipeActions { if !maple.saved.isEmpty { Button("Delete", role: .destructive) { maple.delete() } } }
                 }
+            }
+            Section {
+                Toggle("Ligatures", isOn: $ligatures)
+                    .listRowBackground(Color.card)
+                    .onChange(of: ligatures) { NotificationCenter.default.post(name: .terminalFont, object: nil) }
+            } footer: {
+                Text("Draws pairs like != and => as one glyph, in fonts that have the shapes.")
             }
             Section {
                 ForEach(Dictation.Model.allCases, id: \.self, content: speech)

@@ -29,6 +29,15 @@ struct HostSection: View {
     /// The terminal the window shows beside the list; nil on a narrow
     /// window, where the list is the whole page and no project is current.
     var current: TerminalTarget?
+    /// Lifts the section into a drag that reorders the hosts
+    /// (docs/IOS-022-host-drag.md); nil where the host cannot move, so
+    /// its header has no drag source.
+    var liftHost: (() -> NSItemProvider)?
+    /// The list's part of a host's drag: while a host is dragged, the
+    /// section's text targets pass it over and take it, where a target
+    /// wrapping the section would never see it — the deepest target at
+    /// a point is the one the drop goes to.
+    var hostDrop: HostDrop?
     @Environment(HostStore.self) private var store
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(SpaceBook.self) private var book
@@ -67,8 +76,11 @@ struct HostSection: View {
             header(isCollapsed)
             if !isCollapsed { content }
         }
-        // A row dropped in the section, off the rows, stays where it is.
-        .onDrop(of: [.text], isTargeted: nil) { drop($0) }
+        // A row dropped in the section, off the rows, stays where it is;
+        // while a host is dragged, the host lands on the section instead.
+        .onDrop(of: [.text], delegate: RowDrop(
+            pass: { if hostDrop?.active() == true { hostDrop?.pass() } },
+            drop: { hostDrop?.active() == true ? hostDrop?.drop($0) ?? false : drop($0) }))
         // The dragged session's server order: a dropped row waits for it to
         // change; a drag ends when its tab goes.
         .onChange(of: drag.map { d in host.sessions.first { $0.id == d.session.id }?.view?.windows?.map(\.window_id) ?? [] }) { _, ids in
@@ -186,6 +198,8 @@ struct HostSection: View {
         }
         .foregroundStyle(.primary)
         .contentShape(.rect)
+        // A long press lifts the host, to move it in the list.
+        .modifier(HostLift(lift: liftHost))
         .onTapGesture {
             withAnimation(.snappy) { if isCollapsed { collapsed.remove(hostKey) } else { collapsed.insert(hostKey) } }
         }
@@ -890,7 +904,9 @@ struct HostSection: View {
             let lifted = drag.map { !$0.dropped && $0.session.id == w.session.id && $0.window == w.window.window_id } ?? false
             row.onDrag { lift(w, shown: shown) }
                 .contextMenu { menu(w.session, w.window, shown: shown) }
-                .onDrop(of: [.text], delegate: RowDrop(pass: { pass(over: w) }, drop: { drop($0) }))
+                .onDrop(of: [.text], delegate: RowDrop(
+                    pass: { hostDrop?.active() == true ? hostDrop?.pass() ?? () : pass(over: w) },
+                    drop: { hostDrop?.active() == true ? hostDrop?.drop($0) ?? false : drop($0) }))
                 .opacity(lifted ? 0.4 : 1)
                 .modifier(MatchedPlace(place: place, own: .tab(place), namespace: places))
         }
@@ -1024,6 +1040,29 @@ private struct StateDot: View {
             .background(Circle().fill(online ? Color.green : Color.clear))
             .frame(width: 8, height: 8)
             .accessibilityLabel(online ? "Online" : "Offline")
+    }
+}
+
+/// The list's hand for a host's drag into a section: whether one is on,
+/// and where it passes and lands. A host's drag leaves the rows' targets
+/// to it, so a drop anywhere in the section reorders the hosts.
+struct HostDrop {
+    let active: () -> Bool
+    let pass: () -> Void
+    let drop: ([NSItemProvider]) -> Bool
+}
+
+/// The header's drag source, when the host can move: with no lift the
+/// header starts no drag, so a long press answers as before.
+private struct HostLift: ViewModifier {
+    let lift: (() -> NSItemProvider)?
+
+    func body(content: Content) -> some View {
+        if let lift {
+            content.onDrag(lift)
+        } else {
+            content
+        }
     }
 }
 

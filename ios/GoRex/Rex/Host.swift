@@ -1887,6 +1887,21 @@ final class HostStore {
         save()
     }
 
+    /// Reorders the real hosts as the drag's order lists their ids, which
+    /// the list's drop ends with (docs/IOS-022-host-drag.md): the demo host
+    /// keeps its place, as in move(from:to:). An order whose real ids are
+    /// not the store's — a host added or removed mid-drag — changes
+    /// nothing.
+    func move(toOrder order: [UUID]) {
+        let real = hosts.filter { !$0.isDemo }
+        let ids = order.filter { $0 != demo?.id }
+        guard ids.count == real.count, Set(ids) == Set(real.map(\.id)) else { return }
+        let byID = Dictionary(uniqueKeysWithValues: real.map { ($0.id, $0) })
+        var next = ids.compactMap { byID[$0] }.makeIterator()
+        hosts = hosts.map { $0.isDemo ? $0 : (next.next() ?? $0) }
+        save()
+    }
+
     func host(_ id: UUID) -> Host? { hosts.first { $0.id == id } }
 
     func host(at url: URL) -> Host? { hosts.first { $0.config.url == url } }
