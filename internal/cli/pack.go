@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -11,7 +12,7 @@ import (
 
 func packCmd(args []string, out, errOut io.Writer) (int, bool) {
 	if len(args) == 0 {
-		fmt.Fprintln(errOut, "gorex pack: use ls, install, or rm")
+		fmt.Fprintln(errOut, "gorex pack: use ls, search, install, or rm")
 		return ExitUsage, true
 	}
 	packsDir := iconpack.Dir()
@@ -42,6 +43,30 @@ func packCmd(args []string, out, errOut io.Writer) (int, bool) {
 			fmt.Fprintf(out, "%s\t%s\t%s\t%d entries\n", s.ID, s.Name, s.Version, s.Entries)
 		}
 		return ExitOK, true
+	case "search":
+		fs := flagSet("pack search", errOut)
+		asJSON := fs.Bool("json", false, "print JSON")
+		if code, stop := parse(fs, args[1:]); stop {
+			return code, true
+		}
+		query := strings.Join(fs.Args(), " ")
+		idx, err := iconpack.FetchRegistry(context.Background(), "")
+		if err != nil {
+			fmt.Fprintf(errOut, "gorex pack search: %v\n", err)
+			return ExitFailed, true
+		}
+		matches := iconpack.SearchRegistry(idx, query)
+		if *asJSON {
+			if matches == nil {
+				matches = []iconpack.RegistryPack{}
+			}
+			WriteJSON(out, matches)
+			return ExitOK, true
+		}
+		for _, p := range matches {
+			fmt.Fprintf(out, "%s\t%s\t%s\t%s\n", p.ID, p.Name, p.Version, p.Description)
+		}
+		return ExitOK, true
 	case "install":
 		fs := flagSet("pack install", errOut)
 		name := fs.String("name", "", "override installed pack ID")
@@ -50,7 +75,7 @@ func packCmd(args []string, out, errOut io.Writer) (int, bool) {
 			return code, true
 		}
 		if fs.NArg() != 1 {
-			fmt.Fprintln(errOut, "gorex pack install: pass a local directory or git repository URL")
+			fmt.Fprintln(errOut, "gorex pack install: pass a pack ID, local directory, or git URL")
 			return ExitUsage, true
 		}
 		src := fs.Arg(0)
@@ -60,8 +85,18 @@ func packCmd(args []string, out, errOut io.Writer) (int, bool) {
 			pk, err = iconpack.InstallLocal(src, packsDir, *name)
 		} else if isGitURL(src) {
 			pk, err = iconpack.InstallGit(src, packsDir, *name)
+		} else if iconpack.ValidID(src) {
+			var idx *iconpack.RegistryIndex
+			idx, err = iconpack.FetchRegistry(context.Background(), "")
+			if err == nil {
+				var rp iconpack.RegistryPack
+				rp, err = iconpack.LookupRegistry(idx, src)
+				if err == nil {
+					pk, err = iconpack.InstallFromRegistry(context.Background(), rp, packsDir, *name)
+				}
+			}
 		} else {
-			fmt.Fprintf(errOut, "gorex pack install: %q is not an existing directory or git URL\n", src)
+			fmt.Fprintf(errOut, "gorex pack install: %q is not a valid pack ID, directory, or git URL\n", src)
 			return ExitUsage, true
 		}
 		if err != nil {

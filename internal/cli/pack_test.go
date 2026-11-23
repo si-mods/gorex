@@ -3,6 +3,8 @@ package cli
 import (
 	"bytes"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
@@ -57,5 +59,31 @@ func TestPackCmd(t *testing.T) {
 	code, _ = Main([]string{"pack", "rm", "my-pack"}, &out, &errOut, "")
 	if code != ExitOK {
 		t.Fatalf("rm code=%d err=%s", code, errOut.String())
+	}
+
+	idx := iconpack.RegistryIndex{
+		Schema: 1,
+		Packs: []iconpack.RegistryPack{
+			{ID: "starter-dev-tools", Name: "Starter Dev Tools", Version: "0.1.0", Description: "Cloud icons", Repo: "https://example.invalid/repo.git"},
+		},
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(idx)
+	}))
+	defer srv.Close()
+	t.Setenv("GOREX_PACK_REGISTRY", srv.URL)
+
+	out.Reset()
+	errOut.Reset()
+	code, _ = Main([]string{"pack", "search", "--json", "cloud"}, &out, &errOut, "")
+	if code != ExitOK {
+		t.Fatalf("search code=%d err=%s", code, errOut.String())
+	}
+	var found []iconpack.RegistryPack
+	if err := json.Unmarshal(out.Bytes(), &found); err != nil {
+		t.Fatalf("unmarshal search: %v", err)
+	}
+	if len(found) != 1 || found[0].ID != "starter-dev-tools" {
+		t.Fatalf("search got %+v", found)
 	}
 }

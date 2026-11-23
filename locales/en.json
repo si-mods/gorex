@@ -2845,5 +2845,57 @@
   "promptSend": "Send",
   "@promptSend": {
     "description": "Confirm button of a prompt sheet with no label of its own."
+  },
+  "settingsIconPacks": "Icon Packs",
+  "@settingsIconPacks": {
+    "description": "Settings sidebar item: community program icon packs."
+  },
+  "settingsIconPackPriority": "Priority",
+  "@settingsIconPackPriority": {
+    "description": "Settings row: precedence between icon packs and OSC 7502."
+  },
+  "settingsIconPackPriorityPack": "Icon Packs first",
+  "@settingsIconPackPriorityPack": {
+    "description": "Segmented option: community icon packs override OSC 7502."
+  },
+  "settingsIconPackPriorityOSC": "Program (OSC 7502) first",
+  "@settingsIconPackPriorityOSC": {
+    "description": "Segmented option: runtime OSC 7502 icons override icon packs."
+  },
+  "settingsIconPacksInstalled": "Installed",
+  "@settingsIconPacksInstalled": {
+    "description": "Settings group heading: locally installed icon packs."
+  },
+  "settingsIconPacksEmpty": "No icon packs installed yet.",
+  "@settingsIconPacksEmpty": {
+    "description": "Shown in Installed group when no icon packs exist."
+  },
+  "settingsIconPacksRegistry": "Community Registry",
+  "@settingsIconPacksRegistry": {
+    "description": "Settings group heading: browse and install packs from gorex-registry."
+  },
+  "settingsIconPacksSearch": "Search icon packs…",
+  "@settingsIconPacksSearch": {
+    "description": "Placeholder of the search input in Community Registry."
+  },
+  "settingsIconPacksRefresh": "Refresh",
+  "@settingsIconPacksRefresh": {
+    "description": "Button to reload the community icon pack registry."
+  },
+  "settingsIconPacksInstall": "Install",
+  "@settingsIconPacksInstall": {
+    "description": "Button to install a community icon pack."
+  },
+  "settingsIconPacksInstalling": "Installing…",
+  "@settingsIconPacksInstalling": {
+    "description": "Button label while installing a community icon pack."
+  },
+  "settingsIconPacksInstalledBadge": "Installed",
+  "@settingsIconPacksInstalledBadge": {
+    "description": "Badge shown when a registry pack is already installed."
+  },
+  "settingsIconPacksRemove": "Remove",
+  "@settingsIconPacksRemove": {
+    "description": "Button to uninstall an icon pack."
   }
 }
