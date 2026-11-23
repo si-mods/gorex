@@ -122,6 +122,9 @@ func (a *App) openSettings() {
 		Vibrancy:             glassVibrancy(),
 		Transparent:          glassTransparent(),
 		Content:              ui.View(a.settingsView),
+		// A click that brings the window to the front only does that; see
+		// DESIGN.md, Decisions.
+		ConsumeActivationClick: true,
 	}
 	if ownControls {
 		opts.HideWindowButtons = true
