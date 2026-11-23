@@ -3,12 +3,12 @@ name: DSK-009
 description: "The settings.json keys of the terminal move under a terminal.* prefix, and GoRex migrates the user's file at load. Use when you add, rename or read a terminal setting in settings.json, or change the settings migration."
 metadata:
   created: "2026-11-23"
-  updated: "2026-11-23"
+  updated: "2026-11-24"
 ---
 
 # DSK-009: Terminal settings under `terminal.*`
 
-Status: accepted. Not implemented.
+Status: built (#1061).
 
 This doc decides the names of the terminal keys in `settings.json`, and how GoRex migrates the keys that a user has now. It extends the dotted-key style of [DSK-007](DSK-007-sidebar-style.md). It frees the name `theme` from the terminal. `settings.json` is a saved format in `docs/irreversible.md`. The user selected the format, the migration and the scope.
 
