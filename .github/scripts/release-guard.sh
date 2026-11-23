@@ -53,11 +53,25 @@ runs() { # status -> tsv id, url, sha, created_at of runs older than this
 
 # by_group id: the release group cancelled run id for a newer one. GitHub
 # says so in an annotation on its jobs; a run cancelled by hand has none.
+# A run the group replaced while it waited has no jobs, and no annotation:
+# it was cancelled within seconds of a newer run's start.
 by_group() {
-	local job
-	for job in $(gh api "repos/$repo/actions/runs/$1/jobs" --jq '.jobs[].id'); do
-		gh api "repos/$repo/check-runs/$job/annotations" --jq '.[].message' |
-			grep -q 'higher priority waiting request' && return 0
+	local job jobs upd
+	jobs=$(gh api "repos/$repo/actions/runs/$1/jobs" --jq '.jobs[].id')
+	if [ -z "$jobs" ]; then
+		upd=$(gh api "repos/$repo/actions/runs/$1" --jq .updated_at)
+		gh api "$wf?per_page=50" | jq -e --arg id "$1" --arg upd "$upd" '
+		  [.workflow_runs[]
+		   | select(.id > ($id | tonumber))
+		   | ($upd | fromdate) - (.created_at | fromdate)
+		   | select(. >= 0 and . <= 10)]
+		  | length > 0' >/dev/null
+		return
+	fi
+	for job in $jobs; do
+		# Read whole, then match: grep -q on the pipe can stop gh early, and
+		# pipefail would take its SIGPIPE for "no".
+		[[ $(gh api "repos/$repo/check-runs/$job/annotations" --jq '.[].message') == *'higher priority waiting request'* ]] && return 0
 	done
 	return 1
 }
@@ -74,9 +88,12 @@ stopped() {
 }
 
 # drop_draft id sha: deletes the draft of run id's version, at commit sha,
-# when it is another version than this run's. Prints what it did.
+# when it is another version than this run's and that run made it: its
+# target is the run's commit (draft-release.sh sets it). A web or partial
+# run, or an older one, did not make the draft, so it stays. Prints what it
+# did.
 drop_draft() {
-	local v draft
+	local v draft at
 	v=$(gh api "repos/$repo/contents/mygo.json?ref=$2" --jq .content | base64 -d | jq -r .version) || v=
 	if [ -z "$v" ]; then
 		echo "its version is unknown; no draft deleted"
@@ -86,7 +103,8 @@ drop_draft() {
 		echo "its draft v$v is this run's, which uploads to it"
 		return
 	fi
-	draft=$(gh release view "v$v" --repo "$repo" --json isDraft --jq .isDraft 2>/dev/null) || {
+	read -r draft at < <(gh release view "v$v" --repo "$repo" --json isDraft,targetCommitish \
+		--jq '"\(.isDraft) \(.targetCommitish)"' 2>/dev/null) || {
 		echo "it left no v$v release"
 		return
 	}
@@ -94,13 +112,21 @@ drop_draft() {
 		echo "v$v is published; kept"
 		return
 	fi
+	if [ "$at" != "$2" ]; then
+		echo "the draft v$v targets ${at:0:8}, not this run's commit; kept"
+		return
+	fi
 	if ! stopped "$1"; then
 		echo "::warning::Release run $1 has not stopped; its draft v$v stays" >&2
 		echo "it has not stopped; its draft v$v stays: delete it by hand"
 		return
 	fi
-	act gh release delete "v$v" --repo "$repo" --yes
-	echo "deleted its draft v$v"
+	if act gh release delete "v$v" --repo "$repo" --yes; then
+		echo "deleted its draft v$v"
+	else
+		echo "::warning::Deleting the draft v$v failed" >&2
+		echo "deleting its draft v$v failed: delete it by hand"
+	fi
 }
 
 lines= seen=" "
@@ -116,27 +142,34 @@ if [ "$target" = all ]; then
 		while IFS=$'\t' read -r id run_url sha at; do
 			[ -n "$id" ] || continue
 			seen="$seen$id "
-			act gh api -X POST "repos/$repo/actions/runs/$id/cancel"
+			# A 409: the group's own cancel got there first.
+			act gh api -X POST "repos/$repo/actions/runs/$id/cancel" ||
+				echo "::warning::Cancelling release run $id failed; the release group may have cancelled it already"
 			echo "::warning::Cancelled release run $run_url (sha ${sha:0:8}, dispatched $at): superseded by a newer full dispatch $url"
 			note "$run_url" "$sha" "$at" "cancelled by this guard: superseded by $url, a newer full dispatch; $(drop_draft "$id" "$sha")"
 		done < <(runs "$st")
 	done
 
 	# Concurrency may have made the kill before this job's query: name those
-	# too. A run cancelled since this dispatch has its updated_at after this
-	# run's created_at; only the ones the group cancelled are this one's.
-	while IFS=$'\t' read -r id run_url sha at; do
+	# too, the ones cancelled since this dispatch (updated_at not before this
+	# run's created_at). Older cancelled runs are looked at too, for a draft
+	# a run left when the one that cancelled it was itself replaced while it
+	# waited, so ran no guard; they are named only when their draft goes.
+	while IFS=$'\t' read -r id run_url sha at upd; do
 		[ -n "$id" ] || continue
 		case $seen in *" $id "*) continue ;; esac
 		if by_group "$id"; then
-			note "$run_url" "$sha" "$at" "cancelled by the release group: superseded by $url, a newer full dispatch; $(drop_draft "$id" "$sha")"
-		else
+			res=$(drop_draft "$id" "$sha")
+			if [[ $upd > $mine || $upd == "$mine" || $res == deleted* ]]; then
+				note "$run_url" "$sha" "$at" "cancelled by the release group: superseded by a newer full dispatch; $res"
+			fi
+		elif [[ $upd > $mine || $upd == "$mine" ]]; then
 			note "$run_url" "$sha" "$at" "cancelled since this dispatch, not by the release group (by hand?); its draft is left alone"
 		fi
-	done < <(gh api "$wf?status=cancelled&per_page=30" | jq -r --arg me "$me" --arg mine "$mine" '
+	done < <(gh api "$wf?status=cancelled&per_page=10" | jq -r --arg me "$me" '
 	  .workflow_runs[]
-	  | select(.id < ($me | tonumber) and .updated_at > $mine)
-	  | [.id, .html_url, .head_sha, .created_at] | @tsv')
+	  | select(.id < ($me | tonumber))
+	  | [.id, .html_url, .head_sha, .created_at, .updated_at] | @tsv')
 
 	if [ -n "$lines" ]; then
 		{

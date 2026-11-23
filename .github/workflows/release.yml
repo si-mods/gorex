@@ -20,16 +20,18 @@ on:
 
 permissions:
   contents: write
-  # The guard job lists and cancels this workflow's runs.
-  actions: write
 
 concurrency:
-  group: release
+  # Per ref: a dispatch on another branch builds nothing (every job is
+  # main's), so it must not cancel main's run.
+  group: release-${{ github.ref }}
   # A newer full dispatch (target all) supersedes one in flight or queued:
   # the old run's apps and its draft would be of an older main. A partial
-  # one (unix, windows, web) waits instead: it must not cancel the other
-  # platforms of a full release. The guard job names the run it cancelled
-  # and why; the cancelled run's page cannot carry the reason.
+  # one (unix, windows, web) cancels no run in flight: it must not cut the
+  # other platforms out of a full release. While it waits, a newer dispatch
+  # still replaces it: GitHub keeps one pending run per group. The guard
+  # job names the run it cancelled and why; the cancelled run's page cannot
+  # carry the reason.
   cancel-in-progress: ${{ inputs.target == 'all' }}
 
 jobs:
@@ -41,6 +43,12 @@ jobs:
     if: github.ref == 'refs/heads/main'
     runs-on: instabox-medium
     timeout-minutes: 5
+    # Only the guard cancels runs and reads their annotations: the builders
+    # on the Mac mini and YIBO-PC do not get those rights.
+    permissions:
+      contents: write
+      actions: write
+      checks: read
     steps:
       - uses: actions/checkout@v7
       - name: gh and jq
