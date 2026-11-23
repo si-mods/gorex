@@ -610,32 +610,18 @@ func (a *App) tiles(c *ui.Context, k *colors, t *Tab) {
 }
 
 // drawDoneDot draws the blue unseen-done dot at the top-right corner of
-// a program tile, matching iOS's DoneDot (ios/GoRex/Views/ProgramTile.swift).
+// a program tile, as iOS's DoneDot (ios/GoRex/Views/ProgramTile.swift)
+// but without its rim.
 func drawDoneDot(p *ui.Painter, fr ui.Rect, k *colors) {
-	const (
-		dotSize = float32(5)
-		rimPad  = float32(0.75)
-		outer   = dotSize + 2*rimPad
-	)
-	rim := ui.RGBA(255, 255, 255, 0.95)
-	if isDark(k.panel) {
-		rim = ui.RGBA(0, 0, 0, 0.85)
-	}
-	outerR := ui.Rect{
-		X: fr.X + fr.W + 1 - outer,
+	const dotSize = float32(6.5)
+	r := ui.Rect{
+		X: fr.X + fr.W + 1 - dotSize,
 		Y: fr.Y - 1.5,
-		W: outer,
-		H: outer,
-	}
-	p.Fill(outerR, rim, outer/2)
-	innerR := ui.Rect{
-		X: outerR.X + rimPad,
-		Y: outerR.Y + rimPad,
 		W: dotSize,
 		H: dotSize,
 	}
-	p.Fill(innerR, k.done, dotSize/2)
-	p.FillGradient(innerR, ui.LinearGradient{
+	p.Fill(r, k.done, dotSize/2)
+	p.FillGradient(r, ui.LinearGradient{
 		From:  ui.RGBA(255, 255, 255, 0.3),
 		To:    ui.RGBA(255, 255, 255, 0),
 		Angle: 180,
