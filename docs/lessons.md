@@ -261,7 +261,7 @@ Each item has a **Trigger** (what the diff shows), a **Check** (what the author 
 ### Release run that cancels another
 - **Trigger:** the diff touches `concurrency` in `release.yml` or the cancels and deletes of `.github/scripts/release-guard.sh`.
 - **Check:** only a full dispatch (`target: all`) cancels a run; a partial one waits. A cancel is attributed to the release group only by GitHub's "higher priority waiting request" annotation. A draft is deleted only if it is a draft, of another version, and its run has stopped. The PR shows a `DRY_RUN=1` run.
-- **Source:** #1025 cancelled any run in flight on any dispatch, so a `web` or `windows` dispatch would cut the other platforms out of a full release; it left a superseded version's draft behind, named a run cancelled by hand as superseded, and failed a release whose commit main had left although #1023 had pinned its tag. #1029 fixes all four.
+- **Source:** #1025 cancelled any run in flight on any dispatch, so a `web` or `windows` dispatch would cut the other platforms out of a full release; it left a superseded version's draft behind, named a run cancelled by hand as superseded, and failed a release whose commit main had left although #1023 had pinned its tag. #1031 fixes all four.
 
 ### New CI gate
 - **Trigger:** the diff turns on `-race`, adds a shard, or adds a gate to `ci.yml`.
