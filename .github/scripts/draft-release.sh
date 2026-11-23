@@ -2,8 +2,8 @@
 # Creates the draft GitHub release of mygo.json's version, as mygo's
 # -upload does (cmd/mygo/publish.go publishGitHub): tag and title v<version>,
 # notes from the "## <version>" section of CHANGELOG.md, target the commit
-# the run builds (GITHUB_SHA, else HEAD). It does nothing when the release
-# exists. Run it before the jobs that upload, so that they find the release
+# the run builds (GITHUB_SHA, else HEAD). When the release exists, it only
+# moves a draft's target to that commit. Run it before the jobs that upload, so that they find the release
 # and none creates it at the same time as another.
 #
 # Without a target, GitHub makes the tag only when the draft is published,
@@ -59,7 +59,12 @@ if [ "$dry" = 1 ]; then
   printf '%s\n' "$tag" "target $target" "$notes"
   exit 0
 fi
-if gh release view "$tag" --repo "$repo" >/dev/null 2>&1; then
+if draft=$(gh release view "$tag" --repo "$repo" --json isDraft --jq .isDraft 2>/dev/null); then
+  # A draft left by an earlier run that failed targets that run's commit:
+  # this run's builds replace its apps, so its tag follows them.
+  if [ "$draft" = true ]; then
+    gh release edit "$tag" --repo "$repo" --target "$target" >/dev/null
+  fi
   echo "Release $tag of $repo exists"
   exit 0
 fi
