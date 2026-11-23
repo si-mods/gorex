@@ -735,10 +735,12 @@ nonisolated final class HostTests: XCTestCase {
             .flatMap { try? JSONDecoder().decode([HostConfig].self, from: $0) } ?? []
         XCTAssertEqual(configs.map(\.id), [c.id, a.id, b.id])
 
-        // A host gone or added mid-drag: the order applies to nothing.
+        // A host gone or added mid-drag, or an id twice: the order
+        // applies to nothing.
         store.move(toOrder: [c.id, a.id])
         store.move(toOrder: [c.id, a.id, UUID()])
         store.move(toOrder: [c.id, a.id, a.id])
+        store.move(toOrder: [c.id, a.id, a.id, b.id])
         XCTAssertEqual(store.hosts.map(\.id), [demo.id, c.id, a.id, b.id])
     }
 

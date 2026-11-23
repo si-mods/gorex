@@ -1895,7 +1895,7 @@ final class HostStore {
     func move(toOrder order: [UUID]) {
         let real = hosts.filter { !$0.isDemo }
         let ids = order.filter { $0 != demo?.id }
-        guard Set(ids) == Set(real.map(\.id)) else { return }
+        guard ids.count == real.count, Set(ids) == Set(real.map(\.id)) else { return }
         let byID = Dictionary(uniqueKeysWithValues: real.map { ($0.id, $0) })
         var next = ids.compactMap { byID[$0] }.makeIterator()
         hosts = hosts.map { $0.isDemo ? $0 : (next.next() ?? $0) }

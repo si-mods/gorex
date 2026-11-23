@@ -322,9 +322,12 @@ struct HostListView: View {
                                     .frame(maxWidth: .infinity)
                                     .frame(height: 44)
                                     .contentShape(Rectangle())
-                                    .onDrop(of: [Lifted.hostType], delegate: RowDrop(type: Lifted.hostType,
-                                                                                     pass: { passHostToEnd() },
-                                                                                     drop: { dropHost($0) }))
+                                    .onDrop(of: [.text], delegate: RowDrop(
+                                        // Only a host's drag lands here: a
+                                        // row's goes to the page's target.
+                                        validate: { self.hostDrag != nil },
+                                        pass: { passHostToEnd() },
+                                        drop: { dropHost($0) }))
                             }
                         }
                     }
@@ -525,7 +528,10 @@ struct HostListView: View {
                     query: query, zoom: zoom, places: places,
                     open: { go($0) }, openRow: { openRow($0) }, newProject: { newProject = host },
                     current: width == .regular ? path.last : nil,
-                    liftHost: query.isEmpty && !host.isDemo ? { self.liftHost(host) } : nil)
+                    liftHost: query.isEmpty && !host.isDemo ? { self.liftHost(host) } : nil,
+                    hostDrop: HostDrop(active: { self.hostDrag != nil },
+                                       pass: { self.passHost(over: host) },
+                                       drop: { self.dropHost($0) }))
     }
 
     /// The settings sheet's content, of its own for the type-checker.
@@ -533,14 +539,13 @@ struct HostListView: View {
         SettingsView().environment(store).navigationTransition(.zoom(sourceID: settingsSource, in: zoom))
     }
 
-    /// A host's section as a drag's drop target: the dragged one dims,
-    /// and the others make way as it passes over them.
+    /// A host's section in the list: the dragged one dims, and each is
+    /// its own drop target, through HostDrop (the deepest target at a
+    /// point is the one the drop goes to, so a target wrapping the
+    /// section would never see it).
     private func sectionDrop(_ host: Host, current: String, spaces: [String]) -> some View {
         section(host, current: current, spaces: spaces)
             .opacity(hostDrag?.host == host.id ? 0.4 : 1)
-            .onDrop(of: [Lifted.hostType], delegate: RowDrop(type: Lifted.hostType,
-                                                             pass: { passHost(over: host) },
-                                                             drop: { dropHost($0) }))
     }
 
     private func expand(_ host: Host, _ project: String) {
@@ -602,7 +607,10 @@ struct HostListView: View {
     private func liftHost(_ host: Host) -> NSItemProvider {
         // The system asks again as the sections move: the same drag goes on.
         if let d = hostDrag, d.host == host.id, let item = d.item { return item }
-        let item = Lifted()
+        // The string makes the item a text drop for the system to
+        // deliver: a mark alone (Lifted.type's way) is only seen by the
+        // side that lifts, so a section's text targets take it.
+        let item = Lifted(object: host.id.uuidString as NSString)
         var d = HostDrag(host: host.id, order: store.hosts.map(\.id))
         item.token = d.token
         item.mark(d.token, as: Lifted.hostType)
@@ -819,13 +827,17 @@ struct MatchedPlace: ViewModifier {
 }
 
 /// A row as a drop target: the dragged row makes way at it, and lands on
-/// the drop.
+/// the drop. A target that takes a drop only in a state, like a host's
+/// while its drag is on, says so in validate.
 struct RowDrop: DropDelegate {
-    /// The type the target takes: the tab rows' text, or a host's.
+    /// The type the target takes its items as: the tab rows' text.
     var type: UTType = .text
+    /// Whether the target takes a drop now; yes by default.
+    var validate: () -> Bool = { true }
     let pass: () -> Void
     let drop: ([NSItemProvider]) -> Bool
 
+    func validateDrop(info: DropInfo) -> Bool { validate() }
     func dropEntered(info: DropInfo) { pass() }
     func dropUpdated(info: DropInfo) -> DropProposal? { DropProposal(operation: .move) }
     func performDrop(info: DropInfo) -> Bool { drop(info.itemProviders(for: [type])) }
@@ -885,8 +897,9 @@ nonisolated final class Lifted: NSItemProvider, @unchecked Sendable {
     static let ended = Notification.Name("GoRex.Lifted.ended")
     /// A row's drag, which only the app's own targets take.
     static let type = UTType(exportedAs: "dev.gorex.window-row")
-    /// A host's drag, which only the sections' targets take: the item
-    /// carries no text, so the tab rows' targets leave it alone.
+    /// A host's drag, under which its item's token is marked: the drop
+    /// side sees only the string's text, and the sections' targets know
+    /// the drag is on from HostDrop.
     static let hostType = UTType(exportedAs: "dev.gorex.host")
     var token: UUID?
 

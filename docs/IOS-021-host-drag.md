@@ -41,10 +41,10 @@ The drag's order holds every host, the ones a space hides too. A hidden host kee
 ### Code
 
 - `HostListView` keeps `hostDrag`: the lifted host's id and the hosts' ids in the order the drag leaves them. `arranged` sorts the shown hosts by that order while a drag runs.
-- `liftHost` makes the item, a `Lifted` that carries the drag's token under `Lifted.hostType` (`dev.gorex.host`), an exported type in `project.yml`. The item does not carry `.text`, so the tab rows' drop targets do not take it.
+- `liftHost` makes the item, a `Lifted` over an `NSString`. A drop target sees only the types the item's object gives, and a type the source `register`s alone (`dev.gorex.host`, marked so the source knows its own) never reaches one — the string gives the item `public.text` on the drop side, where the section's targets can take it.
 - `HostSection` takes `liftHost: (() -> NSItemProvider)?` and puts `.onDrag` on the header. `HostListView` passes nil for the demo host and while the search is not empty.
-- Each section is a drop target for `hostType`. `dropEntered` calls `passHost`, which moves the dragged id to that section's place in the drag's order with `.snappy`. `RowDrop` gets a `type` field so the section targets reuse it.
-- A drop zone under the last section takes the drag too, for a host that goes to the end.
+- The deepest drop target at a point is the one a drop goes to; a target wrapping the section never sees it. So the section's own `.text` targets — the catch-all over the section and each tab row's — take a `HostDrop`, the list's hand for a host's drag. While a host is dragged (`active`), their `pass` moves the host in the drag's order and their `drop` lands it; otherwise they answer as the rows' targets do.
+- A drop zone under the last section takes the drag too, for a host that goes to the end. Its `RowDrop.validate` is `hostDrag != nil`, so a tab row's drag falls through to `PageDrop` instead.
 - `dropHost` calls `HostStore.move(toOrder:)`, which orders the real hosts as the drag's order lists them and saves. The demo host keeps its place. An order that no longer matches the hosts does nothing.
 - `Lifted.mark` gains a `type` parameter so `markHost` is not a second copy. `Lifted.ended`, `PageDrop` and `DragEnd` work as they do for the tab rows: a drop off the targets posts `ended` and `hostDrag` clears.
 
