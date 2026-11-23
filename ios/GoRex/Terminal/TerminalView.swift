@@ -34,6 +34,11 @@ final class TerminalView: UIView, TerminalOutput {
     static func family(_ stored: String) -> String {
         stored == Maple.family && !Maple.shared.installed ? "" : stored
     }
+    /// Whether the font's ligatures draw, chosen in Settings: pairs like !=
+    /// as one glyph, where the font has the shapes. On where it was never set.
+    static var fontLigatures: Bool {
+        UserDefaults.standard.object(forKey: "fontLigatures") == nil || UserDefaults.standard.bool(forKey: "fontLigatures")
+    }
     /// The least contrast of text with its background chosen in Settings,
     /// as Ghostty's minimum-contrast: 1, unset, corrects nothing. Ghostty
     /// turns text short of it black or white, not a shade of its hue as
@@ -318,6 +323,9 @@ final class TerminalView: UIView, TerminalOutput {
         func hex(_ c: VTerminal.RGB) -> String { String(format: "#%06x", c.packed) }
         var lines = ["font-size = \(Self.fontSize)"]
         if !Self.fontFamily.isEmpty { lines.append("font-family = \"\(Self.fontFamily)\"") }
+        if !Self.fontLigatures {
+            for f in ["liga", "clig", "dlig", "hlig", "calt"] { lines.append("font-feature = -\(f)") }
+        }
         for (key, name) in [("background", "background"), ("foreground", "foreground"), ("cursor", "cursor-color")] {
             if let c = (theme[key] as? String).flatMap(VTerminal.RGB.init(hex:)) { lines.append("\(name) = \(hex(c))") }
         }
@@ -356,7 +364,8 @@ final class TerminalView: UIView, TerminalOutput {
         if let configured { configure(configured) }
     }
 
-    /// Settings changed the font family or size: rebuilds the Ghostty config.
+    /// Settings changed the font family, size or ligatures: rebuilds the
+    /// Ghostty config.
     @objc private func fontChanged() {
         setTheme(theme)
     }

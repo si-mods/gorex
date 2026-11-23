@@ -29,12 +29,13 @@ nonisolated final class CloudSettingsTests: XCTestCase {
 
     @MainActor func testCloudWinsAtStart() {
         let (s, cloud, d) = make()
-        cloud.values = ["theme": "Nord", "fontSize": 15.0, "scheme": "light"]
+        cloud.values = ["theme": "Nord", "fontSize": 15.0, "scheme": "light", "fontLigatures": 1.0]
         d.set("Gruvbox Dark", forKey: "theme")
         d.set(12.0, forKey: "fontSize")
         s.start()
         XCTAssertEqual(d.string(forKey: "theme"), "Nord")
         XCTAssertEqual(d.double(forKey: "fontSize"), 15.0)
+        XCTAssertTrue(d.bool(forKey: "fontLigatures"))
         XCTAssertEqual(d.string(forKey: "scheme"), "light")
         XCTAssertEqual(cloud.values["theme"] as? String, "Nord")
         XCTAssertTrue(cloud.writes.isEmpty)
@@ -44,10 +45,12 @@ nonisolated final class CloudSettingsTests: XCTestCase {
         let (s, cloud, d) = make()
         d.set("Nord", forKey: "theme")
         d.set(14.0, forKey: "fontSize")
+        d.set(false, forKey: "fontLigatures")
         d.set("https://api.example.com", forKey: Polish.baseKey)
         s.start()
         XCTAssertEqual(cloud.values["theme"] as? String, "Nord")
         XCTAssertEqual(cloud.values["fontSize"] as? Double, 14.0)
+        XCTAssertEqual(cloud.values["fontLigatures"] as? Double, 0.0)
         XCTAssertEqual(cloud.values[Polish.baseKey] as? String, "https://api.example.com")
         XCTAssertNil(cloud.values["scheme"])
     }
