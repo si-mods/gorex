@@ -125,6 +125,9 @@ func InstallFromRegistry(ctx context.Context, rp RegistryPack, packsDir, overrid
 		return nil, err
 	}
 	defer os.RemoveAll(tmp)
+	if canon, err := filepath.EvalSymlinks(tmp); err == nil {
+		tmp = canon
+	}
 	cmdCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(cmdCtx, "git", "clone", "--depth", "1", "--", rp.Repo, tmp)

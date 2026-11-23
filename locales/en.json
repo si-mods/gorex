@@ -2897,5 +2897,9 @@
   "settingsIconPacksRemove": "Remove",
   "@settingsIconPacksRemove": {
     "description": "Button to uninstall an icon pack."
+  },
+  "settingsIconPacksCount": "{count, plural, one {# icon} other {# icons}}",
+  "@settingsIconPacksCount": {
+    "description": "Icon count label under an installed icon pack."
   }
 }

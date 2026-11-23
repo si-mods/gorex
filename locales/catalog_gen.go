@@ -8617,3 +8617,17 @@ func SettingsIconPacksRemove() string { return In(i18n.Locale()).SettingsIconPac
 func (msgs Messages) SettingsIconPacksRemove() string {
 	return Catalog.Format(msgs.locale, "settingsIconPacksRemove", nil)
 }
+
+// SettingsIconPacksCount says "{count, plural, one {# icon} other {# icons}}"
+// in the language the app shows.
+//
+// Icon count label under an installed icon pack.
+func SettingsIconPacksCount(count int) string { return In(i18n.Locale()).SettingsIconPacksCount(count) }
+
+// SettingsIconPacksCount says "{count, plural, one {# icon} other {# icons}}"
+// in the language of msgs.
+//
+// Icon count label under an installed icon pack.
+func (msgs Messages) SettingsIconPacksCount(count int) string {
+	return Catalog.Format(msgs.locale, "settingsIconPacksCount", map[string]any{"count": count})
+}

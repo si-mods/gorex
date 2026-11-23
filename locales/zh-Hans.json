@@ -733,5 +733,6 @@
   "settingsIconPacksInstall": "安装",
   "settingsIconPacksInstalling": "安装中…",
   "settingsIconPacksInstalledBadge": "已安装",
-  "settingsIconPacksRemove": "移除"
+  "settingsIconPacksRemove": "移除",
+  "settingsIconPacksCount": "{count} 个图标"
 }

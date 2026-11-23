@@ -3,7 +3,6 @@ package main
 import (
 	"cmp"
 	"context"
-	"fmt"
 	"slices"
 	"sync"
 
@@ -213,7 +212,7 @@ func (a *App) iconPacksSettings(c *ui.Context, k *colors) {
 				if s.Error != "" {
 					sub += " · " + s.Error
 				} else {
-					sub += fmt.Sprintf(" · %d icons", s.Entries)
+					sub += " · " + locales.SettingsIconPacksCount(s.Entries)
 				}
 				rowHint(c, k, sub)
 			})

@@ -92,3 +92,51 @@ func TestFetchSearchAndInstallFromRegistry(t *testing.T) {
 		t.Fatalf("installed pack = %+v", pk)
 	}
 }
+
+func TestRegistrySecurityGuards(t *testing.T) {
+	if _, err := InstallFromRegistry(context.Background(), RegistryPack{
+		ID:   "evil",
+		Repo: "-oProxyCommand=evil",
+	}, t.TempDir(), ""); err == nil {
+		t.Fatal("expected flag-like Repo to be rejected")
+	}
+
+	repoSrc := t.TempDir()
+	for _, args := range [][]string{
+		{"init", "-b", "main"},
+		{"config", "user.email", "test@example.com"},
+		{"config", "user.name", "Test"},
+	} {
+		c := exec.Command("git", args...)
+		c.Dir = repoSrc
+		if out, err := c.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v (%s)", args, err, string(out))
+		}
+	}
+	if err := os.WriteFile(filepath.Join(repoSrc, "README"), []byte("hi"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for _, args := range [][]string{{"add", "."}, {"commit", "-m", "init"}} {
+		c := exec.Command("git", args...)
+		c.Dir = repoSrc
+		if out, err := c.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v (%s)", args, err, string(out))
+		}
+	}
+	if _, err := InstallFromRegistry(context.Background(), RegistryPack{
+		ID:     "escape",
+		Repo:   repoSrc,
+		Subdir: "../escape",
+	}, t.TempDir(), ""); err == nil {
+		t.Fatal("expected escaping Subdir to be rejected")
+	}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		buf := make([]byte, maxRegistryBytes+10)
+		_, _ = w.Write(buf)
+	}))
+	defer srv.Close()
+	if _, err := FetchRegistry(context.Background(), srv.URL); err == nil {
+		t.Fatal("expected oversized registry index to be rejected")
+	}
+}
