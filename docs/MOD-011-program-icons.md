@@ -8,7 +8,7 @@ metadata:
 
 # MOD-011: OSC 7502 (Program Icon Protocol)
 
-Status: accepted.
+Status: phase 1 built (#1040). Phase 2 not built.
 
 This doc defines OSC 7502, the wire fields in `SessionInfo`, and desktop icon rendering. It extends [`MOD-001`](MOD-001-osc-7501.md) with a separate icon channel.
 
@@ -54,6 +54,7 @@ Only changes that produce a different `Hash`, `Bg`, `Fg` or `Mode` mark the sess
 - `internal/rex/events.go`: `EventSession.ProgramIcon` propagation and diff check.
 - `internal/rex/session.go`: feeds `s.icon.feed(data)` in `emit`, answers `7502;?` queries, drops on `133;A`, and populates `SessionInfo.ProgramIcon`.
 - `internal/rex/upgrade.go`: preserves `ProgramIcon` in `sessionState` across in-place upgrades.
+- `internal/cli/icon.go`, `internal/cli/commands.go`: `gorex icon [--bg HEX] [--fg HEX] [--mode mono|color] [--format svg|png] FILE|clear` writes the OSC 7502 sequence to stdout for programs or wrappers that do not emit it natively.
 - `program_icon.go`, `programs.go`, `state.go`, `tabs.go`, `view.go`: caches decoded SVG/PNG icons by `Hash` and draws them in pane headers and tab tiles.
 
 ## Alternatives

@@ -6,6 +6,8 @@ import (
 	"image"
 	"image/color"
 	"image/png"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/egoist/mygo/ui"
@@ -73,5 +75,62 @@ func TestCustomIconBitmapAndTileImage(t *testing.T) {
 	prog := programWithIcon(programOf("custom-tool"), ic)
 	if b := tileImage(prog); len(b) == 0 {
 		t.Fatalf("tileImage returned empty for custom PNG icon")
+	}
+}
+
+func TestProgramIconRender(t *testing.T) {
+	a, tt := newTestApp(t)
+	a.newTab(os.TempDir())
+	tt.Frame()
+	if len(a.tabs) < 2 {
+		t.Fatalf("expected at least 2 tabs, got %d", len(a.tabs))
+	}
+	starSVG := `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14l-5-4.87 6.91-1.01L12 2z"/></svg>`
+	a.tabs[0].Focus.Name = "custom-cli"
+	a.tabs[0].Focus.info.Program = "custom-cli"
+	a.tabs[0].Focus.info.Idle = false
+	a.tabs[0].Focus.info.ProgramIcon = &rex.ProgramIcon{
+		Format: "svg",
+		Mode:   "mono",
+		Data:   base64.StdEncoding.EncodeToString([]byte(starSVG)),
+		Bg:     "#6d5bd0",
+		Fg:     "#ffffff",
+		Hash:   "shot0001",
+	}
+	a.tabs[1].Focus.Name = "my-png-app"
+	a.tabs[1].Focus.info.Program = "my-png-app"
+	a.tabs[1].Focus.info.Idle = false
+	a.tabs[1].Focus.info.ProgramIcon = &rex.ProgramIcon{
+		Format: "png",
+		Mode:   "color",
+		Data:   testPNGData(t),
+		Bg:     "#1f6f43",
+		Hash:   "shot0002",
+	}
+	a.selectTab(0)
+
+	shotDir := os.Getenv("GOREX_SHOT_DIR")
+	for _, dark := range []bool{false, true} {
+		tt.SetDark(dark)
+		tt.Frame()
+		img := tt.Image()
+		if img == nil || img.Bounds().Empty() {
+			t.Fatalf("empty image for dark=%v", dark)
+		}
+		if shotDir != "" {
+			name := "light.png"
+			if dark {
+				name = "dark.png"
+			}
+			f, err := os.Create(filepath.Join(shotDir, name))
+			if err != nil {
+				t.Fatal(err)
+			}
+			err = png.Encode(f, img)
+			f.Close()
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
 	}
 }

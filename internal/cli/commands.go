@@ -83,6 +83,8 @@ func Main(args []string, out, errOut io.Writer, version string) (code int, handl
 		return closeCmd(args, out, errOut)
 	case "rename":
 		return renameCmd(args, out, errOut)
+	case "icon":
+		return iconCmd(args, out, errOut)
 	case "send", "type":
 		return sendCmd(args, out, errOut)
 	case "paste":
@@ -139,6 +141,7 @@ Usage:
   gorex split [-s SESSION] [--down] [--dir DIR] [--json] [-- COMMAND...]
   gorex close [-s SESSION] [--tab] [--json]
   gorex rename [-s SESSION] [--json] NAME
+  gorex icon [--bg HEX] [--fg HEX] [--mode mono|color] [--format svg|png] FILE|clear
   gorex new [--dir DIR] [--json] [-- COMMAND...]
   gorex send [-s SESSION] [-w TAB] [-b PANE] [--enter] [--json] TEXT...
   gorex paste [-s SESSION] [-w TAB] [-b PANE] [--json] TEXT...

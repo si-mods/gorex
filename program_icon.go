@@ -58,6 +58,9 @@ func customIconSVG(ic *rex.ProgramIcon) *ui.SVG {
 	if s, ok := customSVGCache[key]; ok {
 		return s
 	}
+	if len(customSVGCache) >= maxCustomIconCache {
+		clear(customSVGCache)
+	}
 	raw, err := base64.StdEncoding.DecodeString(ic.Data)
 	if err != nil {
 		customSVGCache[key] = nil
@@ -67,9 +70,6 @@ func customIconSVG(ic *rex.ProgramIcon) *ui.SVG {
 	if err != nil {
 		customSVGCache[key] = nil
 		return nil
-	}
-	if len(customSVGCache) >= maxCustomIconCache {
-		clear(customSVGCache)
 	}
 	customSVGCache[key] = s
 	return s
@@ -83,6 +83,9 @@ func customIconBitmap(ic *rex.ProgramIcon) ui.ImageSource {
 	if src, ok := customBitmapCache[key]; ok {
 		return src
 	}
+	if len(customBitmapCache) >= maxCustomIconCache {
+		clear(customBitmapCache)
+	}
 	raw, err := base64.StdEncoding.DecodeString(ic.Data)
 	if err != nil {
 		customBitmapCache[key] = nil
@@ -94,9 +97,6 @@ func customIconBitmap(ic *rex.ProgramIcon) ui.ImageSource {
 		return nil
 	}
 	src := ui.NewBitmap(img)
-	if len(customBitmapCache) >= maxCustomIconCache {
-		clear(customBitmapCache)
-	}
 	customBitmapCache[key] = src
 	return src
 }
