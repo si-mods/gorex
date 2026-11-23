@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -87,6 +88,22 @@ func TestPath(t *testing.T) {
 	t.Setenv("GOREX_CONFIG", "")
 	t.Setenv("XDG_CONFIG_HOME", "/tmp/cfg")
 	if got := Path(); got != filepath.FromSlash("/tmp/cfg/gorex/init.lua") {
+		t.Fatalf("path %q", got)
+	}
+}
+
+func TestPathPlatformFallback(t *testing.T) {
+	t.Setenv("GOREX_CONFIG", "")
+	t.Setenv("XDG_CONFIG_HOME", "")
+	t.Setenv("HOME", "")
+	old := userConfigDir
+	defer func() { userConfigDir = old }()
+	userConfigDir = func() (string, error) { return "/plat/cfg", nil }
+	if got := Path(); got != filepath.FromSlash("/plat/cfg/gorex/init.lua") {
+		t.Fatalf("path %q", got)
+	}
+	userConfigDir = func() (string, error) { return "", errors.New("none") }
+	if got := Path(); got != "" {
 		t.Fatalf("path %q", got)
 	}
 }
