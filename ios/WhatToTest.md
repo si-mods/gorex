@@ -10,6 +10,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 `web` job of `.github/workflows/ci.yml` fails it.
 
 ## en-US
+- Settings > Terminal gains a Ligatures switch: turn it off to keep !=, => and similar drawn as separate characters in fonts such as JetBrains Mono.
 - Long-press a computer's name in the list and drag it to a new place: the order is saved.
 - Coming back to Rex Go after the phone has slept a while, a paired computer now reconnects in a second or two instead of around ten.
 - A program that finished while Rex Go slept, one you already saw on the Lock Screen or Dynamic Island, no longer counts as new when you come back.
@@ -130,8 +131,10 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - A computer with no project in the space you picked no longer shows a note under its name; the + beside it still makes one from a folder.
 - While a program waits for your answer, the Lock Screen card and the expanded Dynamic Island show Approve and Deny: tap once to answer without opening Rex Go.
 - New Project's Space row is a picker now: choose the space the project goes into, which starts as the one you were viewing.
+- With Developer Mode on, the floating connection bar at the top no longer covers the first row of the computer list.
 
 ## zh-Hans
+- 「设置 › 终端」新增「连字」开关：关闭后，JetBrains Mono 等字体把 !=、=> 按独立字符画出，不再合成连字。
 - 长按列表中电脑的名称，把它拖到新的位置：顺序会保存下来。
 - 手机休眠一段时间后回到 Rex Go，已配对的电脑现在一两秒就能重新连上，不再要等十秒上下。
 - 程序在应用休眠期间完成时，若你已在锁屏或灵动岛上看到它，回来后不再计为未读。
@@ -252,3 +255,4 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - 所选空间里没有项目的电脑，名称下不再显示说明文字；用旁边的 + 仍可从文件夹新建项目。
 - 程序等你回答时，锁定屏幕卡片和展开的灵动岛会显示「拒绝」和「批准」：点一下即可答复，不用打开 Rex Go。
 - 新建项目表单里的「空间」现在可以点选了：项目建在你选的空间里，默认是你正在查看的空间。
+- 打开「开发者模式」后，顶部的悬浮连接条不再盖住电脑列表的第一行。

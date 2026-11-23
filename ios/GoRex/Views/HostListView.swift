@@ -248,6 +248,15 @@ struct HostListView: View {
         return store.demo != nil ? 48 : 8
     }
 
+    /// The room the developer overlay's collapsed pill takes atop the
+    /// list, in overlayTop's cases: its offset and height plus a gap, so
+    /// it covers no row. The list still scrolls under it once it is past.
+    private var listTopPad: CGFloat {
+        guard developerMode else { return 12 }
+        if !path.isEmpty || width == .regular { return 52 }
+        return store.demo != nil ? 30 : 52
+    }
+
     /// Opens a terminal, in place of the one open; nil goes back to the list.
     private func go(_ t: TerminalTarget?) {
         path = t.map { [$0] } ?? []
@@ -336,7 +345,7 @@ struct HostListView: View {
                     // as a fade alone would still move the rows kept.
                     .animation(still ? nil : .snappy, value: query)
                     .padding(.horizontal, 20)
-                    .padding(.top, 12)
+                    .padding(.top, listTopPad)
                     .padding(.bottom, 20)
                 }
                 // Under the keyboard too: the list keeps clear of it as it

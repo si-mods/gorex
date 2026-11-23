@@ -1,7 +1,7 @@
 import XCTest
 
 /// A host's header lifts and drags: let go over another host, the list
-/// takes the drag's order (docs/IOS-021-host-drag.md). It needs three
+/// takes the drag's order (docs/IOS-022-host-drag.md). It needs three
 /// hosts, which CI's fresh simulator has not — it skips there. On a
 /// seeded simulator it runs; seed `hosts` in the app's defaults with
 /// HostConfigs named alpha-laptop, bravo-desktop and charlie-server.

@@ -5,7 +5,7 @@ import (
 )
 
 // empty.go is the empty states of DESIGN.md and docs/DSK-006-empty-states.md:
-// one component in four sizes — page, card, row and menu — that says what a
+// one component in three sizes — page, row and menu — that says what a
 // surface has none of, what the place is for, and the step that makes the
 // first, where there is one.
 
@@ -43,22 +43,6 @@ func emptyPage(c *ui.Context, k *colors, draw func(p *ui.Painter, r ui.Rect, k *
 		})
 		ui.Spacer(c).Grow(3)
 	})
-}
-
-// emptyCard is the empty state of a section's rows: one row with a 40×40
-// tile and an icon in iconMuted, the title, and a ghost button at the end.
-func emptyCard(c *ui.Context, k *colors, key, glyph, title string, ghost emptyAction) ui.Element {
-	row := ui.Row(c.Key(key)).Height(56).Padding(0, 10).Gap(10).AlignItems(ui.Center)
-	row.Children(func() {
-		ui.Box(c).Size(40, 40).Radius(radiusM).Background(k.hover).Center().Shrink(0).Children(func() {
-			glyphIcon(c, glyph, 22, k.iconMuted)
-		})
-		ui.Text(c, title).FontSize(fontBody).FontWeight(500).TextColor(k.text).Label(title).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
-		if ghost.label != "" && emptyLink(c, k, ghost.label).Clicked() {
-			ghost.run()
-		}
-	})
-	return row
 }
 
 // emptyRow is the empty state of a list: one muted line, with a ghost

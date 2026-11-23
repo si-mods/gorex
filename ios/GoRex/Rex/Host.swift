@@ -1888,7 +1888,7 @@ final class HostStore {
     }
 
     /// Reorders the real hosts as the drag's order lists their ids, which
-    /// the list's drop ends with (docs/IOS-021-host-drag.md): the demo host
+    /// the list's drop ends with (docs/IOS-022-host-drag.md): the demo host
     /// keeps its place, as in move(from:to:). An order whose real ids are
     /// not the store's — a host added or removed mid-drag — changes
     /// nothing.

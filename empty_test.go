@@ -32,6 +32,25 @@ func TestEmptyNoTab(t *testing.T) {
 	}
 }
 
+// TestSidebarNoProjectsRow shows nothing under a host with no projects
+// and no tabs, as iOS does (docs/MOD-002-projects.md): no empty line;
+// the + of its header still opens the New Project sheet.
+func TestSidebarNoProjectsRow(t *testing.T) {
+	a, tt := newTestApp(t)
+	old := prefs
+	t.Cleanup(func() { prefs = old })
+	prefs = settings{TabPlacement: "left", Animation: "off"}
+	a.closeTab(a.tab())
+	tt.Frame()
+	if tt.HasText(locales.EmptyNoProjects()) {
+		t.Errorf("an empty-projects line shows; texts %q", tt.Texts())
+	}
+	if err := tt.Click(locales.ProjectsNewOn(a.hostName(nil))); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, tt, "the New Project sheet", func() bool { return a.sheet.open })
+}
+
 // TestPaletteNoMatchesFor names the query when the palette matches
 // nothing.
 func TestPaletteNoMatchesFor(t *testing.T) {

@@ -30,7 +30,7 @@ struct HostSection: View {
     /// window, where the list is the whole page and no project is current.
     var current: TerminalTarget?
     /// Lifts the section into a drag that reorders the hosts
-    /// (docs/IOS-021-host-drag.md); nil where the host cannot move, so
+    /// (docs/IOS-022-host-drag.md); nil where the host cannot move, so
     /// its header has no drag source.
     var liftHost: (() -> NSItemProvider)?
     /// The list's part of a host's drag: while a host is dragged, the

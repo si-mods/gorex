@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.54.0
+
+### Features
+
+* **ios:** a ligatures switch in Terminal settings ([#1030](https://github.com/si-mods/gorex/pull/1030))
+
+### Bug Fixes
+
+* **desktop:** drop the "No projects yet" card under an empty host, as iOS does ([#1018](https://github.com/si-mods/gorex/pull/1018))
+* **ios:** keep the developer mode pill off the list's first row ([#1024](https://github.com/si-mods/gorex/pull/1024))
+
+## 0.53.0
+
+### Features
+
+* **desktop:** build on MyGo 0.10.1; a click on a window behind only brings it to the front ([#1017](https://github.com/si-mods/gorex/pull/1017))
+
 ## 0.52.0
 
 ### Features

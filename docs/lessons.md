@@ -253,6 +253,16 @@ Each item has a **Trigger** (what the diff shows), a **Check** (what the author 
 - **Check:** the PR shows a `--dry-run` or a run on a test tag, and the job's runner matches the release target (a Windows-only release must not wait for the Mac mini).
 - **Source:** #694 merged without a release run; the first one (0.36.0) failed in `draft` (#699), and its new `checksums` job runs on the Mac mini for every target.
 
+### Release tag made at publish time
+- **Trigger:** the diff touches the `gh release create` of `.github/scripts/draft-release.sh`, or a release is published while PRs merge.
+- **Check:** the draft is created with `--target` the commit the run builds, and after publishing `git rev-parse v<version>^{commit}` equals the release run's `headSha`.
+- **Source:** the draft had no target, so GitHub tagged main's head at publish: v0.52.0's tag holds #1017 and v0.53.0's holds #1018, neither in its apps. Those tags stay; the script now passes `--target`.
+
+### Release run that cancels another
+- **Trigger:** the diff touches `concurrency` or `permissions` in `release.yml` or `testflight.yml`, or the cancels and deletes of `.github/scripts/release-guard.sh` or `testflight-guard.sh`.
+- **Check:** only a full release dispatch (`target: all`) cancels a run in flight; a partial one does not, though a newer dispatch can still replace it while it waits (one pending run per group). The group is per ref, so a branch dispatch cancels nothing of main's. Only the guard job holds `actions: write`. A cancel counts as the group's only by GitHub's "higher priority waiting request" annotation, or, for a run with no jobs, a cancel within 10 s of a newer run's start. A draft is deleted only if it is a draft, of another version, targets the cancelled run's commit, and that run has stopped. The PR shows a `DRY_RUN=1` run.
+- **Source:** #1025 cancelled any run in flight on any dispatch, so a `web` or `windows` dispatch would cut the other platforms out of a full release; it left a superseded version's draft behind, named a run cancelled by hand as superseded, and failed a release whose commit main had left although #1023 had pinned its tag. #1031 fixes all four.
+
 ### New CI gate
 - **Trigger:** the diff turns on `-race`, adds a shard, or adds a gate to `ci.yml`.
 - **Check:** the gate was run with `-count 10` on every platform it gates. One clean run does not show a test is free of races.
@@ -378,3 +388,8 @@ Each item has a **Trigger** (what the diff shows), a **Check** (what the author 
 - **Trigger:** a feature depends on what a terminal does with an escape sequence, and the tests that exercise it run on unix.
 - **Check:** ConPTY is not a byte pipe: its input turns text into input events and its output rewrites sequences, so a query's answer or a report may never cross it. Windows needs its own end-to-end test of the exchange, not a port of the unix assumption.
 - **Source:** OSC 7501 reports worked on unix and macOS while the inbox ConPTY dropped the server's answer on Windows; shipping the packaged ConPTY fixed it (#827).
+
+### A look on one platform
+- **Trigger:** a PR adds a state or surface that shows on the desktop but not on iOS, or the reverse.
+- **Check:** where the data is the same, the two platforms show the same thing; a divergence needs the design doc to name it as decided, or it drifts.
+- **Source:** the sidebar's empty-projects card (#991) existed only on the desktop; #1018 drops it so an empty host shows just its header, as iOS does.
