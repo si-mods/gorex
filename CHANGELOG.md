@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.60.0
+
+### Features
+
+* **theme:** metrics, five roles and a glass key for theme packs ([#1096](https://github.com/si-mods/gorex/pull/1096))
+* **theme:** moving sprite layer of theme ambience ([#1099](https://github.com/si-mods/gorex/pull/1099))
+* **theme:** shader runtime for theme packs: background and face shaders with load checks ([#1105](https://github.com/si-mods/gorex/pull/1105))
+* **theme:** face text that reads on any face, a text inset for the face check, and a theme description ([#1107](https://github.com/si-mods/gorex/pull/1107))
+
 ## 0.59.0
 
 ### Features
