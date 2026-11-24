@@ -3,7 +3,7 @@ name: REF-001
 description: "The `gorex` command line: the commands that drive sessions without a window, and the agent hooks. Use when you add or change a CLI command."
 metadata:
   created: "2026-10-28"
-  updated: "2026-11-22"
+  updated: "2026-11-24"
 ---
 
 # REF-001: gorex command line
@@ -67,6 +67,11 @@ gorex rex-import [--rex SOCKET] [--session LABEL|ID] [--shell] [--resize] [--jso
 gorex rex-mirror --session ID --block ID [--label LABEL] [--socket PATH] [--resize]
 gorex version [--json]
 ```
+
+`pack ls` lists the installed icon packs and themes. Each `--json` item has
+a `kind` (`icon-pack` or `theme`); its other fields are as before. The text
+form ends each line with the kind. `pack rm ID` removes the icon pack or the
+theme (with its assets) of that ID.
 
 Targets are a full session ID, a workspace, tab or pane label, a position
 in `ls` (1 is the first), or the end of an ID (at least four characters).

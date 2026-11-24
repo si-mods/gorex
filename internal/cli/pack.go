@@ -14,6 +14,9 @@ import (
 	"gorex/internal/theme"
 )
 
+// kindIconPack is the Kind `gorex pack ls` gives an icon pack.
+const kindIconPack = "icon-pack"
+
 func packCmd(args []string, out, errOut io.Writer) (int, bool) {
 	if len(args) == 0 {
 		fmt.Fprintln(errOut, "gorex pack: use ls, search, install, or rm")
@@ -32,6 +35,16 @@ func packCmd(args []string, out, errOut io.Writer) (int, bool) {
 			fmt.Fprintf(errOut, "gorex pack ls: %v\n", err)
 			return ExitFailed, true
 		}
+		for i := range list {
+			list[i].Kind = kindIconPack
+		}
+		themesDir := theme.Dir(config.Dir())
+		for _, t := range theme.List(themesDir) {
+			list = append(list, iconpack.Summary{
+				ID: t.ID, Kind: iconpack.KindTheme, Name: t.Name, Error: t.Error,
+				Dir: filepath.Join(themesDir, t.ID+".json"),
+			})
+		}
 		if *asJSON {
 			if list == nil {
 				list = []iconpack.Summary{}
@@ -41,10 +54,14 @@ func packCmd(args []string, out, errOut io.Writer) (int, bool) {
 		}
 		for _, s := range list {
 			if s.Error != "" {
-				fmt.Fprintf(out, "%s\tinvalid\t%s\n", s.ID, s.Error)
+				fmt.Fprintf(out, "%s	invalid	%s	%s\n", s.ID, s.Error, s.Kind)
 				continue
 			}
-			fmt.Fprintf(out, "%s\t%s\t%s\t%d entries\n", s.ID, s.Name, s.Version, s.Entries)
+			if s.Kind == iconpack.KindTheme {
+				fmt.Fprintf(out, "%s	%s			%s\n", s.ID, s.Name, s.Kind)
+				continue
+			}
+			fmt.Fprintf(out, "%s	%s	%s	%d entries	%s\n", s.ID, s.Name, s.Version, s.Entries, s.Kind)
 		}
 		return ExitOK, true
 	case "search":
@@ -140,8 +157,30 @@ func packCmd(args []string, out, errOut io.Writer) (int, bool) {
 			fmt.Fprintln(errOut, "gorex pack rm: pass the pack ID to remove")
 			return ExitUsage, true
 		}
-		if err := iconpack.Remove(packsDir, fs.Arg(0)); err != nil {
-			fmt.Fprintf(errOut, "gorex pack rm: %v\n", err)
+		id := fs.Arg(0)
+		// An ID names an icon pack, a theme, or (rarely) both; remove each.
+		themesDir := theme.Dir(config.Dir())
+		removed := false
+		if iconpack.ValidID(id) {
+			if _, err := os.Stat(filepath.Join(packsDir, id)); err == nil {
+				if err := iconpack.Remove(packsDir, id); err != nil {
+					fmt.Fprintf(errOut, "gorex pack rm: %v\n", err)
+					return ExitFailed, true
+				}
+				removed = true
+			}
+		}
+		if p, err := theme.Path(themesDir, id); err == nil {
+			if _, err := os.Stat(p); err == nil {
+				if err := theme.Remove(themesDir, id); err != nil {
+					fmt.Fprintf(errOut, "gorex pack rm: %v\n", err)
+					return ExitFailed, true
+				}
+				removed = true
+			}
+		}
+		if !removed {
+			fmt.Fprintf(errOut, "gorex pack rm: no icon pack or theme %q\n", id)
 			return ExitFailed, true
 		}
 		return ExitOK, true
