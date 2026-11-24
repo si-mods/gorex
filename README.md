@@ -22,7 +22,7 @@ sessions open beside your own. Rex's own apps, the iPhone one among them,
 connect to GoRex as they do to a Rex server, and a web client runs in a
 browser.
 
-![GoRex](docs/screenshot.png)
+![GoRex](https://raw.githubusercontent.com/si-mods/gorex/b141c2b46195a45b4174515790379d3aeb1cd836/docs/screenshot.png)
 
 [Documentation](#documentation) | [CLI reference](docs/REF-001-cli.md) | [Releases](https://github.com/si-mods/gorex/releases)
 
