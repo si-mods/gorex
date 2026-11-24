@@ -360,10 +360,7 @@ func themed(base seeds, m *theme.Manifest, i int) colors {
 	if m == nil {
 		return derive(base)
 	}
-	for id, c := range m.Seeds[i] {
-		*seedField(&base, id) = c
-	}
-	k := derive(base)
+	k := derive(themeSeeds(base, m, i))
 	for r, c := range m.Roles[i] {
 		*roleField(&k, r) = c
 	}
@@ -371,6 +368,15 @@ func themed(base seeds, m *theme.Manifest, i int) colors {
 		k.m = metricsOf(m.Metrics)
 	}
 	return k
+}
+
+// themeSeeds returns base with the theme's seeds of an appearance over
+// it: what a theme's shaders read as Seed<Name>.
+func themeSeeds(base seeds, m *theme.Manifest, i int) seeds {
+	for id, c := range m.Seeds[i] {
+		*seedField(&base, id) = c
+	}
+	return base
 }
 
 // themeTerm is the Ghostty theme of the terminals that the theme names for
@@ -395,6 +401,7 @@ func applyTheme(m *theme.Manifest) {
 	}
 	palettes.Store(p)
 	setLook(m)
+	setThemeShaders(m)
 	themeTerm = [2]string{}
 	themeSidebar = theme.Sidebar{}
 	if m != nil {
@@ -641,9 +648,17 @@ func backgroundOptions(k *colors, alpha float32, glows []glow) shader.Options {
 // or backgroundAlpha's wash over the window's glass, with the theme's
 // glows of the appearance. It is one shader, or on the CPU renderer, where
 // a shader over the window runs far too slowly, gradients of the same
-// colors.
-func paintBackground(p *ui.Painter, r ui.Rect, k *colors, alpha float32, dark bool) {
+// colors. A theme's background shader (docs/DSK-012-theme-shaders.md)
+// replaces the built-in one on a GPU, with the glows over it. moves tells
+// that the theme's shaders move in the window (themeShaderMoves).
+func paintBackground(p *ui.Painter, r ui.Rect, k *colors, alpha float32, dark, moves bool) {
 	glows := themeGlows(dark)
+	f := tickShaders(p, r, moves)
+	if sl := themeBackground(); sl != nil && themeShaderGPU(p) {
+		sl.draw(p, r, 0, dark, alpha, f)
+		paintGlows(p, r, glows, alpha)
+		return
+	}
 	if p.Accelerated() {
 		background.Draw(p, r, backgroundOptions(k, alpha, glows))
 		return

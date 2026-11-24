@@ -229,22 +229,22 @@ func TestAssetLimits(t *testing.T) {
 	os.WriteFile(filepath.Join(dir, "ok.png"), pngHeader(4, 4, 0), 0o644)
 	os.Mkdir(filepath.Join(dir, "sub.png"), 0o755)
 	for _, f := range []string{"big.png", "sub.png", "../ok.png", `..\ok.png`, "C:ok.png", "missing.png"} {
-		if _, err := readAsset(dir, f); err == nil {
+		if _, err := readAsset(dir, f, maxAssetBytes); err == nil {
 			t.Errorf("readAsset(%q) read it", f)
 		}
 	}
 	if os.Symlink(filepath.Join(dir, "ok.png"), filepath.Join(dir, "link.png")) == nil {
-		if _, err := readAsset(dir, "link.png"); err == nil {
+		if _, err := readAsset(dir, "link.png", maxAssetBytes); err == nil {
 			t.Error("readAsset followed a link")
 		}
 	}
-	if _, err := readAsset(dir, "ok.png"); err != nil {
+	if _, err := readAsset(dir, "ok.png", maxAssetBytes); err != nil {
 		t.Errorf("ok.png: %v", err)
 	}
 	// A pack's assets folder that is a link does not read either.
 	link := filepath.Join(t.TempDir(), "assets")
 	if os.Symlink(dir, link) == nil {
-		if _, err := readAsset(link, "ok.png"); err == nil {
+		if _, err := readAsset(link, "ok.png", maxAssetBytes); err == nil {
 			t.Error("readAsset read through a linked assets folder")
 		}
 	}
