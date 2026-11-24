@@ -99,7 +99,6 @@
   "windowMoveUp": "向上移动",
   "windowMoveDown": "向下移动",
   "windowMoveSpace": "移动到项目",
-  "cmdCloseOtherWindows": "关闭其他标签页",
   "paneMoveWindow": "移动到标签页",
   "cmdNewSpace": "新建项目…",
   "cmdRenameSpace": "重命名项目…",

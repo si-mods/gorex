@@ -132,7 +132,6 @@ func (a *App) view(c *ui.Context) {
 	a.palette(c, k)
 	a.promptPanel(c, k)
 	a.workspaceConfirm(c, k)
-	a.closeOthersConfirm(c, k)
 	a.closeAskFallback(c, k)
 	a.spaceDialog(c, k)
 	a.projectSheetView(c, k)

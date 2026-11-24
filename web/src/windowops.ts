@@ -90,7 +90,6 @@ export function createWindowOps(deps: WindowOpsDeps) {
       "separator",
       { label: t("cmdNewWindow"), run: () => deps.newWindow(conn, session) },
       { label: t("cmdCloseWindow"), run: () => deps.closeWindow(conn, session, window) },
-      { label: t("cmdCloseOtherWindows"), disabled: ids.length < 2, run: () => ids.filter((o) => o !== window).forEach((o) => deps.closeWindow(conn, session, o)) },
     );
     return items;
   }

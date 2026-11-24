@@ -485,9 +485,6 @@ func (a *App) tabMenu(m *ui.Menu, t *Tab) {
 	if m.Item(locales.CmdCloseTab()).Chosen() {
 		a.laterService(func() { a.askCloseTab(t) })
 	}
-	if m.Item(locales.TabCloseOthers()).Disabled(len(a.tabs) < 2).Chosen() {
-		a.laterService(func() { a.askCloseOthers(t) })
-	}
 }
 
 // tileMotion is how a tab's front tile moves for what its panes need, as

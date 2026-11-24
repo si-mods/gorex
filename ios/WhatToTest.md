@@ -136,6 +136,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - While a program waits for your answer, the Lock Screen card and the expanded Dynamic Island show Approve and Deny: tap once to answer without opening Rex Go.
 - New Project's Space row is a picker now: choose the space the project goes into, which starts as the one you were viewing.
 - With Developer Mode on, the floating connection bar at the top no longer covers the first row of the computer list.
+- A tab's long-press menu no longer has Close Other Tabs. Close Tab still closes one tab.
 
 ## zh-Hans
 - 与电脑配对失败时，配对页新增「复制诊断」按钮：一键把最近的连接日志复制到剪贴板，方便发给我们。
@@ -264,3 +265,4 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - 程序等你回答时，锁定屏幕卡片和展开的灵动岛会显示「拒绝」和「批准」：点一下即可答复，不用打开 Rex Go。
 - 新建项目表单里的「空间」现在可以点选了：项目建在你选的空间里，默认是你正在查看的空间。
 - 打开「开发者模式」后，顶部的悬浮连接条不再盖住电脑列表的第一行。
+- 长按标签页的菜单里不再有「关闭其他标签页」。「关闭标签页」仍可关闭单个标签页。

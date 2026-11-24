@@ -1358,68 +1358,6 @@ func (msgs Messages) TabMoveDown() string {
 	return Catalog.Format(msgs.locale, "tabMoveDown", nil)
 }
 
-// TabCloseOthers says "Close Other Tabs"
-// in the language the app shows.
-//
-// Tab context menu: close every tab but this one. Also the button of the
-// question it asks first.
-func TabCloseOthers() string { return In(i18n.Locale()).TabCloseOthers() }
-
-// TabCloseOthers says "Close Other Tabs"
-// in the language of msgs.
-//
-// Tab context menu: close every tab but this one. Also the button of the
-// question it asks first.
-func (msgs Messages) TabCloseOthers() string {
-	return Catalog.Format(msgs.locale, "tabCloseOthers", nil)
-}
-
-// CloseOthersTitle says "{n, plural, one {Close # other tab?} other {Close # other tabs?}}"
-// in the language the app shows.
-//
-// Title of the question before Close Other Tabs: how many tabs it closes.
-func CloseOthersTitle(n int) string { return In(i18n.Locale()).CloseOthersTitle(n) }
-
-// CloseOthersTitle says "{n, plural, one {Close # other tab?} other {Close # other tabs?}}"
-// in the language of msgs.
-//
-// Title of the question before Close Other Tabs: how many tabs it closes.
-func (msgs Messages) CloseOthersTitle(n int) string {
-	return Catalog.Format(msgs.locale, "closeOthersTitle", map[string]any{"n": n})
-}
-
-// CloseOthersBody says "{n, plural, one {Its terminal ends, and the program running in it. This can't be undone.} other {Their # terminals en…"
-// in the language the app shows.
-//
-// Body of the question before Close Other Tabs: how many terminals of the
-// other tabs end.
-func CloseOthersBody(n int) string { return In(i18n.Locale()).CloseOthersBody(n) }
-
-// CloseOthersBody says "{n, plural, one {Its terminal ends, and the program running in it. This can't be undone.} other {Their # terminals en…"
-// in the language of msgs.
-//
-// Body of the question before Close Other Tabs: how many terminals of the
-// other tabs end.
-func (msgs Messages) CloseOthersBody(n int) string {
-	return Catalog.Format(msgs.locale, "closeOthersBody", map[string]any{"n": n})
-}
-
-// CloseOthersBodyIdle says "{n, plural, =0 {This can't be undone.} one {Its terminal ends. This can't be undone.} other {Their # terminals end. T…"
-// in the language the app shows.
-//
-// Body of the question before Close Other Tabs when no program runs in the
-// other tabs: how many terminals end.
-func CloseOthersBodyIdle(n int) string { return In(i18n.Locale()).CloseOthersBodyIdle(n) }
-
-// CloseOthersBodyIdle says "{n, plural, =0 {This can't be undone.} one {Its terminal ends. This can't be undone.} other {Their # terminals end. T…"
-// in the language of msgs.
-//
-// Body of the question before Close Other Tabs when no program runs in the
-// other tabs: how many terminals end.
-func (msgs Messages) CloseOthersBodyIdle(n int) string {
-	return Catalog.Format(msgs.locale, "closeOthersBodyIdle", map[string]any{"n": n})
-}
-
 // CloseRunningTitle says "{name} is running"
 // in the language the app shows.
 //

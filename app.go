@@ -161,10 +161,8 @@ type App struct {
 	// host's place in the tabs.
 	teleportAsk teleportAsk
 	// closeAsk is the question before closing a tab or a pane that runs a
-	// program; closeOthers the tab whose Close Other Tabs asks first.
-	closeAsk        closeAsk
-	closeOthers     *Tab
-	closeOthersOpen bool
+	// program.
+	closeAsk closeAsk
 	// sideList is where the sidebar's list of tabs showed in the last
 	// frame, which a tab's row scrolled out of leaves its close button
 	// clipped.

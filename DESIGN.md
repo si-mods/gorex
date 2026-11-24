@@ -363,7 +363,7 @@ slide. The timings below are for what a spring does not move.
 - **Ask before closing?** Closing one item asks only when it ends a
   running program: a tab or a pane whose program runs asks with a
   popconfirm from its close button, and a shell at its prompt closes at
-  once. A bulk action, as Close Other Tabs or Close Space, always asks,
+  once. A bulk action, as Close Space, always asks,
   with a dialog that says how much ends.
 - **A toast or a banner?** A toast answers what the user did just now
   and goes by itself: an icon and one line, or a red dot and one line

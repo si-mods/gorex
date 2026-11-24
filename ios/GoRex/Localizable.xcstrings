@@ -4420,16 +4420,6 @@
         }
       }
     },
-    "Close Other Tabs": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "关闭其他标签页"
-          }
-        }
-      }
-    },
     "Close Project": {
       "localizations": {
         "zh-Hans": {
@@ -4790,12 +4780,12 @@
         }
       }
     },
-    "Rename Tab, Reset Name, Move Up, Move Down, Move to Project, New Tab, Close Tab and Close Other Tabs.": {
+    "Rename Tab, Reset Name, Move Up, Move Down, Move to Project, New Tab and Close Tab.": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "重命名标签页、重置名称、上移、下移、移到项目、新建标签页、关闭标签页和关闭其他标签页。"
+            "value": "重命名标签页、重置名称、上移、下移、移到项目、新建标签页和关闭标签页。"
           }
         }
       }

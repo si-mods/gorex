@@ -608,10 +608,6 @@
   "@windowMoveSpace": {
     "description": "Window row menu: a submenu of the other projects (sessions) to move the window to, where the host can."
   },
-  "cmdCloseOtherWindows": "Close Other Tabs",
-  "@cmdCloseOtherWindows": {
-    "description": "Window row menu: close every other window of the same project (session)."
-  },
   "paneMoveWindow": "Move to Tab",
   "@paneMoveWindow": {
     "description": "Pane header menu: a submenu of the other windows of the pane's project to move the pane into, beside their focused pane; its program goes on."
