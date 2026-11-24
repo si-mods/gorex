@@ -6,6 +6,7 @@ import (
 	"image/png"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 	"time"
 
@@ -14,7 +15,6 @@ import (
 
 	"gorex/internal/config"
 	"gorex/internal/theme"
-	"gorex/locales"
 )
 
 // backgroundBefore is the background shader as it was before the glows of
@@ -244,12 +244,13 @@ func TestThemeAmbience(t *testing.T) {
 	}
 }
 
-// TestAmbienceControls: the Window Theme group shows the Ambience control
-// under a theme in use that draws more than colors, not under one of
-// colors only, and no Mascot control before phase 3; a choice sets and
-// saves appearance.ambience. The checks keep appearance.mascot's "off" and
-// drop values neither key has.
-func TestAmbienceControls(t *testing.T) {
+// TestAmbienceSettingsFileOnly: the Extensions page adds no control for
+// ambience or the mascot. With a theme of DSK-010's keys in use it shows
+// the same texts as with a theme of colors only, and the In use mark
+// moves. appearance.ambience and appearance.mascot live in settings.json:
+// "off" there takes the glows away, and a value neither key has reads as
+// the default.
+func TestAmbienceSettingsFileOnly(t *testing.T) {
 	keepTheme(t)
 	a, _ := newTestApp(t)
 	t.Setenv("GOREX_CONFIG", filepath.Join(t.TempDir(), "init.lua"))
@@ -265,34 +266,42 @@ func TestAmbienceControls(t *testing.T) {
 
 	settingsUI.section = "icons"
 	tt := ui.NewTester(a.settingsView, 780, 1100)
-	useThemeNow(t, "slate")
-	tt.Frame()
-	if tt.HasText(locales.SettingsThemeAmbience()) {
-		t.Error("the Ambience control under a theme of colors only")
+	texts := func(id string) []string {
+		useThemeNow(t, id)
+		tt.Frame()
+		// The Use button of the theme not in use names it: the one text
+		// that moves with In use.
+		got := slices.DeleteFunc(slices.Clone(tt.Texts()), func(s string) bool { return s == "Use Sea" || s == "Use Slate" })
+		slices.Sort(got)
+		return got
 	}
-	useThemeNow(t, "sea")
-	tt.Frame()
-	if !tt.HasText(locales.SettingsThemeAmbience()) {
-		t.Fatalf("no Ambience control under sea; texts %q", tt.Texts())
+	slate, sea := texts("slate"), texts("sea")
+	if look.Load() == nil {
+		t.Fatal("sea has no look")
 	}
-	if tt.HasText("Mascot") {
-		t.Error("a Mascot control before the mascot draws")
+	if !slices.Equal(slate, sea) {
+		t.Errorf("the Extensions page shows other texts under a theme with ambience:\n%q\nwant\n%q", sea, slate)
 	}
-	if err := tt.Click(locales.SettingsAmbienceStill()); err != nil {
-		t.Fatal(err)
-	}
-	tt.Frame()
-	if prefs.Ambience != ambienceStill || string(settingsOnDisk(t)["appearance.ambience"]) != `"still"` {
-		t.Errorf("Still: appearance.ambience %q", prefs.Ambience)
-	}
-	for _, tc := range []struct{ in, want settings }{
-		{settings{Ambience: "off", Mascot: "off"}, settings{Ambience: "off", Mascot: "off"}},
-		{settings{Ambience: "sideways", Mascot: "on"}, settings{}},
+
+	for _, tc := range []struct {
+		file             string
+		ambience, mascot string
+		glows            bool
+	}{
+		{`{"appearance.theme":"sea","appearance.ambience":"off","appearance.mascot":"off"}`, "off", "off", false},
+		{`{"appearance.theme":"sea","appearance.ambience":"still"}`, "still", "", true},
+		{`{"appearance.theme":"sea","appearance.ambience":"sideways","appearance.mascot":"on"}`, "", "", true},
 	} {
-		s := tc.in
-		checkSettings(&s)
-		if s.Ambience != tc.want.Ambience || s.Mascot != tc.want.Mascot {
-			t.Errorf("checkSettings(%q, %q) = %q, %q", tc.in.Ambience, tc.in.Mascot, s.Ambience, s.Mascot)
+		next, ok := decodeSettings([]byte(tc.file))
+		if !ok {
+			t.Fatalf("decodeSettings(%s)", tc.file)
+		}
+		if next.Ambience != tc.ambience || next.Mascot != tc.mascot {
+			t.Errorf("%s: ambience %q, mascot %q", tc.file, next.Ambience, next.Mascot)
+		}
+		prefs.Ambience = next.Ambience
+		if got := themeGlows(false) != nil; got != tc.glows {
+			t.Errorf("%s: glows drawn %v, want %v", tc.file, got, tc.glows)
 		}
 	}
 }

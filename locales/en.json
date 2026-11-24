@@ -2957,25 +2957,5 @@
   "settingsExtensionKindTheme": "Theme",
   "@settingsExtensionKindTheme": {
     "description": "Extensions page: the kind of an extension, before its ID."
-  },
-  "settingsThemeAmbience": "Ambience",
-  "@settingsThemeAmbience": {
-    "description": "Extensions page: control under the window theme in use: how its glows and pictures show (docs/DSK-010-theme-ambience.md)."
-  },
-  "settingsThemeAmbienceHint": "The glows and pictures the theme draws behind the panes.",
-  "@settingsThemeAmbienceHint": {
-    "description": "Extensions page: hint under the Ambience control."
-  },
-  "settingsAmbienceMoving": "Moving",
-  "@settingsAmbienceMoving": {
-    "description": "Ambience control: the theme's ambience shows and moves."
-  },
-  "settingsAmbienceStill": "Still",
-  "@settingsAmbienceStill": {
-    "description": "Ambience control: the theme's ambience shows and does not move."
-  },
-  "settingsAmbienceOff": "Off",
-  "@settingsAmbienceOff": {
-    "description": "Ambience control: the theme's ambience does not show."
   }
 }

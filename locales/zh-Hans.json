@@ -703,10 +703,5 @@
   "settingsThemeUse": "使用",
   "settingsThemeInUse": "使用中",
   "settingsExtensionKindIcons": "图标包",
-  "settingsExtensionKindTheme": "主题",
-  "settingsThemeAmbience": "氛围",
-  "settingsThemeAmbienceHint": "主题在窗格后面绘制的光晕和图片。",
-  "settingsAmbienceMoving": "动态",
-  "settingsAmbienceStill": "静止",
-  "settingsAmbienceOff": "关闭"
+  "settingsExtensionKindTheme": "主题"
 }
