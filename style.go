@@ -235,13 +235,17 @@ type themePalettes struct{ light, dark colors }
 // changes the one stored, so a window that draws on its own goroutine
 // reads one whole palette while the theme changes; the caches keyed by a
 // palette (menuStyleOf, spaceColors) see a new address.
+// Until applyTheme stores one, it holds nil, which is builtinPalettes.
 var palettes atomic.Pointer[themePalettes]
 
-func init() { palettes.Store(&themePalettes{lightColors, darkColors}) }
+var builtinPalettes = themePalettes{lightColors, darkColors}
 
 // paletteOf returns the windows' palette of an appearance.
 func paletteOf(dark bool) *colors {
 	p := palettes.Load()
+	if p == nil {
+		p = &builtinPalettes
+	}
 	if dark {
 		return &p.dark
 	}
