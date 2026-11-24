@@ -95,7 +95,7 @@ Each item has a **Trigger** (what the diff shows), a **Check** (what the author 
 ### A UI test that expects a fresh install
 - **Trigger:** an XCUITest under `ios/GoRexUITests/` checks a value the app makes once and keeps (UserDefaults, the Keychain, the app's files), such as a default name.
 - **Check:** the test sets that state at launch, or accepts any value an earlier build could have left. The Mac mini's simulator keeps the app's data between runs; `xcodebuild test` installs over it. The PR shows a green `ios-test` run of the test, not only a local run on a new simulator.
-- **Source:** #1027's `testDeviceNameWhileOff` waited for a `-rex-` name, but the runner's simulator kept `rexgo-xpkz` from an earlier build, and `makeName` keeps a name it finds (#1039).
+- **Source:** #1027's `testDeviceNameWhileOff` waited for a `-rex-` name, but the runner's simulator kept `rexgo-xpkz` from an earlier build, and `makeName` keeps a name it finds (#1039). #1094 makes the test accept any valid name.
 
 ## Fixes
 
