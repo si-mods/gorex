@@ -40,7 +40,7 @@ The work keeps the current look. It makes the values consistent. It does not cha
 ## Non-goals
 
 - A manifest does not define terminal colors. Terminal colors stay in the Ghostty themes, the Ghostty configuration and the terminal theme setting. [DSK-009](DSK-009-terminal-settings.md) moves that setting from `theme` to `terminal.theme`. A manifest can only name a Ghostty theme for each appearance (see Terminal). The terminal is a second lightness domain. The framework adapts the chrome to the terminal.
-- The glass stays a user setting (`noGlass`). A theme does not change the glass setting.
+- The glass is a user setting (`noGlass`). [DSK-012](DSK-012-theme-shaders.md) replaces the rest of this item: a theme can turn the glass on or off over the setting.
 - iOS and the web client keep their palettes. The first scope is the desktop chrome.
 - No user edits `settings.json` by hand for an upgrade. GoRex migrates the renamed color tokens at load (see Migration).
 - Motion tokens (easing curves and durations) are not in the manifest. The `animation` setting can already stop all motion. Phase 3 can add motion tokens.
@@ -193,12 +193,12 @@ Each face has a pairing rule. The resolver attaches the text ladder that fits th
 - **One fixed pairing for each appearance, with no lightness check**: rejected. A dark terminal in a light window is a supported configuration. A fixed pairing fails on it.
 - **Terminal colors in the manifest**: rejected. Ghostty's themes already hold more than 800 tested palettes, and the user's theme picker uses the same names. A manifest names a theme instead of 22 more colors.
 - **The theme's terminal over `terminal.theme`**: rejected. The user chose `terminal.theme` for every theme.
-- **A theme that changes the glass setting**: rejected. The glass changes the cost of drawing, and the user decides it with `noGlass`.
+- **A theme that changes the glass setting**: rejected first, because the glass changes the cost of drawing. [DSK-012](DSK-012-theme-shaders.md) replaces this choice: the user decided that a theme can turn the glass on or off.
 - **Sample the pixels of the backdrop to select the ink**: rejected. It costs a read of the frame. Ink from sampled pixels also flickers near the flip point.
 
 ## Security
 
-A theme manifest is data: hex values and names. It contains no code, no paths and no commands. A terminal theme name contains no `/`, `\`, `,`, `"` or control character, and has at most 64 bytes, so it cannot name a file outside the Ghostty themes folder. GoRex keeps a name only when Ghostty's list of themes has it: a theme that Ghostty ships, or a file in the Ghostty themes folder. GoRex drops each other name with a warning. GoRex thus never opens a device name, such as `CON` on Windows. The load step removes unknown keys, unknown seeds, unknown roles and bad colors, as `checkSidebarColors` does, and logs a warning for each. A manifest is at most 64 KiB. A theme name has only letters, digits, `-`, `_` and `.`, so `appearance.theme` cannot name a file outside `<config>/themes`.
+A theme manifest is data: hex values and names. It contains no paths and no commands. [DSK-012](DSK-012-theme-shaders.md) replaces "no code": a pack can carry shader programs, with the limits of its Security section. A terminal theme name contains no `/`, `\`, `,`, `"` or control character, and has at most 64 bytes, so it cannot name a file outside the Ghostty themes folder. GoRex keeps a name only when Ghostty's list of themes has it: a theme that Ghostty ships, or a file in the Ghostty themes folder. GoRex drops each other name with a warning. GoRex thus never opens a device name, such as `CON` on Windows. The load step removes unknown keys, unknown seeds, unknown roles and bad colors, as `checkSidebarColors` does, and logs a warning for each. A manifest is at most 64 KiB. A theme name has only letters, digits, `-`, `_` and `.`, so `appearance.theme` cannot name a file outside `<config>/themes`.
 
 ## Migration
 

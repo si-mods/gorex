@@ -47,7 +47,7 @@ The probe theme is a JavaScript plugin. It injects CSS and React components into
 
 ## Non-goals
 
-- Scripts, CSS or any code in a pack. DSK-008 Security stays true: a manifest is data.
+- Scripts and CSS in a pack. [DSK-012](DSK-012-theme-shaders.md) replaces the rest of this item: a pack can carry shader programs, with the limits of its Security section.
 - Remote images, or any network access at runtime. At install, GoRex clones only the repo that the registry lists, at its pinned commit.
 - A third-party pack in the gorex repo or in `gorex-registry`. GoRex holds the framework. A third-party pack lives in its own repo, and the registry only lists it.
 - Blend modes. A glow paints with normal alpha over the gradient. Soft light is not in the shader.
@@ -115,10 +115,10 @@ The parser clamps a number to its range, drops an entry past a count cap, and lo
 | Item | Cap |
 | --- | --- |
 | Manifest | 64 KiB, as now |
-| `assets` | 16 names. A name has only letters, digits, `-` and `_`. A file name obeys `theme.ValidName` and has no path separator |
+| `assets` | 16 names (24 by [DSK-012](DSK-012-theme-shaders.md)). A name has only letters, digits, `-` and `_`. A file name obeys `theme.ValidName` and has no path separator |
 | Formats | PNG, GIF, APNG for images and sprite sheets. SVG for `brand.icon` only |
-| File size | 1 MiB for each file, 4 MiB for the pack |
-| Still image | 1024 px on each side. GoRex decodes it to at most 2 times its largest shown size, times the screen scale (`ui.DecodeBitmapScaled`) |
+| File size | 1 MiB for each file, 4 MiB for the pack. [DSK-012](DSK-012-theme-shaders.md) allows 2 MiB for an image that only shaders read, and 8 MiB for the pack |
+| Still image | 1024 px on each side (2048 px for an image that only shaders read, by [DSK-012](DSK-012-theme-shaders.md)). GoRex decodes it to at most 2 times its largest shown size, times the screen scale (`ui.DecodeBitmapScaled`) |
 | Animated image | 512 px on each side, 64 frames, 16 MiB decoded. A sprite sheet has at most 64 frames |
 | Decoded memory | 48 MiB for each theme |
 | `glows` | 4. Alpha at most 0.4 |
@@ -268,7 +268,7 @@ The user decided the four questions of the first draft on 2026-11-24, and item 5
 
 ## Security
 
-- A pack contains data only: colors, numbers, enum names, text and image files. It contains no code and no URL.
+- A pack contains colors, numbers, enum names, text, image files and, by [DSK-012](DSK-012-theme-shaders.md), shader programs with the limits of its Security section. It contains no URL.
 - An asset value is a file name in the pack's own folder. A value with a path separator, `..`, a drive letter or `://` is dropped. The loader refuses a link and a file that is not regular.
 - GoRex reads each file with a byte cap and checks its header before it decodes. Dimension and frame caps stop a decompression bomb. A decode runs on a goroutine and recovers a panic.
 - GoRex makes no network request for a theme at runtime. Install clones the repo that the registry lists, at the pinned commit `ref` (`iconpack.Checkout`). A later push to that repo cannot change what users install until a registry PR moves `ref`.
