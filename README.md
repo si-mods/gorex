@@ -223,8 +223,8 @@ and uses themes too, and installs icon packs. Leave it empty for the
 built-in colors. A theme pack can also carry images: glows in the window's
 gradient, a watermark and a brand row at the top of the sidebar
 ([DSK-010](docs/DSK-010-theme-ambience.md)). `appearance.ambience`
-(`"still"` or `"off"`) and `appearance.mascot` (`"off"`), or the Ambience
-and Mascot controls under the theme in use, turn them down.
+(`"still"` or `"off"`), or the Ambience control under the theme in use,
+turns them down.
 
 Remote turns the server's remote access on and off, and manages it:
 pairing a new device (Start pairing opens a five-minute window; each

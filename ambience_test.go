@@ -124,18 +124,34 @@ func installSea(t *testing.T) {
 	}
 }
 
-// useThemeNow selects the theme id and waits until its assets are in.
+// useThemeNow selects the theme id and waits until the decode of its
+// assets is done; a decode that does not end in 5 s fails the test.
 func useThemeNow(t *testing.T, id string) {
 	t.Helper()
 	prefs.Theme = id
 	if err := loadTheme(); err != nil {
 		t.Fatal(err)
 	}
-	for end := time.Now().Add(5 * time.Second); id != "" && time.Now().Before(end); time.Sleep(10 * time.Millisecond) {
-		if l := look.Load(); l == nil || l.art != nil {
-			return
+	done := make(chan struct{})
+	go func() { artLoads.Wait(); close(done) }()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatalf("the assets of theme %q did not load in 5 s", id)
+	}
+}
+
+// sameSidebar reports whether a and b have the same pixels in the
+// sidebar's column, the window's background and the sidebar's rows, left
+// of the panes, whose terminal draws on its own time.
+func sameSidebar(a, b *image.RGBA, w int) bool {
+	for y := a.Rect.Min.Y; y < a.Rect.Max.Y; y++ {
+		o := a.PixOffset(0, y)
+		if !bytes.Equal(a.Pix[o:o+4*w], b.Pix[o:o+4*w]) {
+			return false
 		}
 	}
+	return true
 }
 
 // TestThemeAmbience: a theme with DSK-010's keys draws its glows, its
@@ -150,22 +166,12 @@ func TestThemeAmbience(t *testing.T) {
 	old := prefs
 	t.Cleanup(func() { prefs = old; applyTheme(nil) })
 	prefs = settings{TabPlacement: "left", Animation: "off", NoGlass: true}
-	// shot is the window once it draws the same twice in a row: the
-	// shell's prompt comes in on its own time.
 	shot := func() *image.RGBA {
 		tt.Frame()
-		img := tt.Image()
-		for end := time.Now().Add(10 * time.Second); time.Now().Before(end); {
-			time.Sleep(100 * time.Millisecond)
-			tt.Frame()
-			next := tt.Image()
-			if bytes.Equal(next.Pix, img.Pix) {
-				return next
-			}
-			img = next
-		}
-		return img
+		tt.Frame()
+		return tt.Image()
 	}
+	side := int(sidebarWidthIn(1000)) // newTestApp's window is 1000 wide
 
 	useThemeNow(t, "")
 	builtin := shot()
@@ -192,6 +198,15 @@ func TestThemeAmbience(t *testing.T) {
 		t.Fatalf("the look of sea: %+v", l)
 	}
 	sea := shot()
+	// A reload of the same theme, as a change of settings.json makes, keeps
+	// the decoded assets while it decodes them again: nothing blinks.
+	if err := loadTheme(); err != nil {
+		t.Fatal(err)
+	}
+	if l := look.Load(); l == nil || l.art == nil {
+		t.Error("a reload of the theme dropped its assets until the decode ends")
+	}
+	useThemeNow(t, "sea")
 	if !tt.HasText("Sea Whale") {
 		t.Errorf("no brand row; texts %q", tt.Texts())
 	}
@@ -217,11 +232,11 @@ func TestThemeAmbience(t *testing.T) {
 	prefs.Ambience = ""
 
 	useThemeNow(t, "slate")
-	if again := shot(); !bytes.Equal(again.Pix, slate.Pix) {
+	if again := shot(); !sameSidebar(again, slate, side) {
 		t.Error("a theme of colors only after an ambience theme paints other pixels than before it")
 	}
 	useThemeNow(t, "")
-	if again := shot(); !bytes.Equal(again.Pix, builtin.Pix) {
+	if again := shot(); !sameSidebar(again, builtin, side) {
 		t.Error("the built-in palette after an ambience theme paints other pixels than before it")
 	}
 	if look.Load() != nil {
@@ -229,10 +244,11 @@ func TestThemeAmbience(t *testing.T) {
 	}
 }
 
-// TestAmbienceControls: the Window Theme group shows the Ambience and the
-// Mascot controls under a theme in use that draws more than colors, not
-// under one of colors only; a choice sets and saves appearance.ambience
-// and appearance.mascot.
+// TestAmbienceControls: the Window Theme group shows the Ambience control
+// under a theme in use that draws more than colors, not under one of
+// colors only, and no Mascot control before phase 3; a choice sets and
+// saves appearance.ambience. The checks keep appearance.mascot's "off" and
+// drop values neither key has.
 func TestAmbienceControls(t *testing.T) {
 	keepTheme(t)
 	a, _ := newTestApp(t)
@@ -256,8 +272,11 @@ func TestAmbienceControls(t *testing.T) {
 	}
 	useThemeNow(t, "sea")
 	tt.Frame()
-	if !tt.HasText(locales.SettingsThemeAmbience()) || !tt.HasText(locales.SettingsThemeMascot()) {
-		t.Fatalf("no Ambience or Mascot control under sea; texts %q", tt.Texts())
+	if !tt.HasText(locales.SettingsThemeAmbience()) {
+		t.Fatalf("no Ambience control under sea; texts %q", tt.Texts())
+	}
+	if tt.HasText("Mascot") {
+		t.Error("a Mascot control before the mascot draws")
 	}
 	if err := tt.Click(locales.SettingsAmbienceStill()); err != nil {
 		t.Fatal(err)
@@ -266,12 +285,14 @@ func TestAmbienceControls(t *testing.T) {
 	if prefs.Ambience != ambienceStill || string(settingsOnDisk(t)["appearance.ambience"]) != `"still"` {
 		t.Errorf("Still: appearance.ambience %q", prefs.Ambience)
 	}
-	prefs.Mascot = mascotOff
-	tt.Frame()
-	if err := tt.Click(locales.SettingsMascotOn()); err != nil {
-		t.Fatal(err)
-	}
-	if prefs.Mascot != "" {
-		t.Errorf("On: appearance.mascot %q", prefs.Mascot)
+	for _, tc := range []struct{ in, want settings }{
+		{settings{Ambience: "off", Mascot: "off"}, settings{Ambience: "off", Mascot: "off"}},
+		{settings{Ambience: "sideways", Mascot: "on"}, settings{}},
+	} {
+		s := tc.in
+		checkSettings(&s)
+		if s.Ambience != tc.want.Ambience || s.Mascot != tc.want.Mascot {
+			t.Errorf("checkSettings(%q, %q) = %q, %q", tc.in.Ambience, tc.in.Mascot, s.Ambience, s.Mascot)
+		}
 	}
 }

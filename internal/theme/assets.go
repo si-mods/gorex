@@ -10,7 +10,6 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
-	"strings"
 
 	"github.com/egoist/mygo/ui"
 )
@@ -187,10 +186,15 @@ func isSVG(b []byte) bool {
 }
 
 // readAsset reads the file of an asset in dir: a regular file, not a link,
-// of at most the byte cap.
+// of at most the byte cap, in a folder that is not a link either.
 func readAsset(dir, file string) ([]byte, error) {
 	if !validAssetFile(file) {
 		return nil, fmt.Errorf("bad file name %q", file)
+	}
+	if st, err := os.Lstat(dir); err != nil {
+		return nil, err
+	} else if !st.IsDir() {
+		return nil, fmt.Errorf("%s is not a folder", filepath.Base(dir))
 	}
 	p := filepath.Join(dir, file)
 	st, err := os.Lstat(p)
@@ -346,13 +350,13 @@ func parseSVG(b []byte) (s *ui.SVG, err error) {
 }
 
 // AssetFolder is the folder of the installed theme name's assets:
-// <dir>/<name>.
+// <dir>/<name>.assets.
 func AssetFolder(dir, name string) (string, error) {
 	p, err := Path(dir, name)
 	if err != nil {
 		return "", err
 	}
-	return strings.TrimSuffix(p, ".json"), nil
+	return assetFolder(p), nil
 }
 
 // copyAssets copies each asset that m names from the pack's assets folder

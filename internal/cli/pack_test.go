@@ -170,7 +170,7 @@ func TestPackInstallTheme(t *testing.T) {
 		t.Error("a theme pack installed as an icon pack")
 	}
 	assets := func(id string) []string {
-		des, _ := os.ReadDir(filepath.Join(cfgDir, "themes", id))
+		des, _ := os.ReadDir(filepath.Join(cfgDir, "themes", id+".assets"))
 		var names []string
 		for _, de := range des {
 			names = append(names, de.Name())

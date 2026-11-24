@@ -708,9 +708,5 @@
   "settingsThemeAmbienceHint": "主题在窗格后面绘制的光晕和图片。",
   "settingsAmbienceMoving": "动态",
   "settingsAmbienceStill": "静止",
-  "settingsAmbienceOff": "关闭",
-  "settingsThemeMascot": "吉祥物",
-  "settingsThemeMascotHint": "主题在侧边栏底部的角色。",
-  "settingsMascotOn": "开启",
-  "settingsMascotOff": "关闭"
+  "settingsAmbienceOff": "关闭"
 }

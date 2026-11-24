@@ -150,6 +150,9 @@ func Checkout(ctx context.Context, rp RegistryPack, install func(dir string) err
 	if rp.Ref != "" && !validRef(rp.Ref) {
 		return fmt.Errorf("invalid pack ref %q: want a full commit SHA", rp.Ref)
 	}
+	if rp.Ref == "" && !isRegistryRepo(rp.Repo) {
+		return fmt.Errorf("pack repository %q is not gorex-registry: it needs a ref", rp.Repo)
+	}
 	tmp, err := os.MkdirTemp("", "gorex-reg-pack-*")
 	if err != nil {
 		return err
@@ -245,4 +248,14 @@ func fetch(ctx context.Context, rp RegistryPack, dir string) error {
 		return fmt.Errorf("git checkout: at %s, want %s", head, rp.Ref)
 	}
 	return nil
+}
+
+// RegistryRepo is the repo of gorex-registry, whose own packs install from
+// its default branch, which the registry's review guards. A pack of any
+// other repo installs only at a ref.
+const RegistryRepo = "https://github.com/si-mods/gorex-registry.git"
+
+// isRegistryRepo reports whether repo is gorex-registry's.
+func isRegistryRepo(repo string) bool {
+	return repo == RegistryRepo || repo == strings.TrimSuffix(RegistryRepo, ".git")
 }

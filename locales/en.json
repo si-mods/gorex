@@ -2977,21 +2977,5 @@
   "settingsAmbienceOff": "Off",
   "@settingsAmbienceOff": {
     "description": "Ambience control: the theme's ambience does not show."
-  },
-  "settingsThemeMascot": "Mascot",
-  "@settingsThemeMascot": {
-    "description": "Extensions page: control under the window theme in use: whether its mascot shows in the sidebar."
-  },
-  "settingsThemeMascotHint": "The theme's character at the foot of the sidebar.",
-  "@settingsThemeMascotHint": {
-    "description": "Extensions page: hint under the Mascot control."
-  },
-  "settingsMascotOn": "On",
-  "@settingsMascotOn": {
-    "description": "Mascot control: the theme's mascot shows."
-  },
-  "settingsMascotOff": "Off",
-  "@settingsMascotOff": {
-    "description": "Mascot control: the theme's mascot does not show."
   }
 }

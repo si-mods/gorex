@@ -55,6 +55,7 @@ func TestFetchSearchAndInstallFromRegistry(t *testing.T) {
 				Author:      "si-mods",
 				Version:     "0.1.0",
 				Repo:        repoSrc,
+				Ref:         headOf(t, repoSrc),
 				Subdir:      "packs/starter-dev-tools",
 				Entries:     1,
 			},
@@ -127,6 +128,7 @@ func TestRegistrySecurityGuards(t *testing.T) {
 	if _, err := InstallFromRegistry(context.Background(), RegistryPack{
 		ID:     "escape",
 		Repo:   repoSrc,
+		Ref:    headOf(t, repoSrc),
 		Subdir: "../escape",
 	}, t.TempDir(), ""); err == nil {
 		t.Fatal("expected escaping Subdir to be rejected")
@@ -145,7 +147,8 @@ func TestRegistrySecurityGuards(t *testing.T) {
 // TestCheckoutRef: with a ref at the first of two commits, Checkout gives
 // the first commit's files, not the default branch's. A ref that is not a
 // full SHA, or that the repo does not have, fails, with no fall back to
-// the default branch (docs/DSK-010-theme-ambience.md, Tests).
+// the default branch; so does no ref, for a repo that is not gorex-registry
+// (docs/DSK-010-theme-ambience.md, Tests).
 func TestCheckoutRef(t *testing.T) {
 	repo := t.TempDir()
 	git := func(args ...string) string {
@@ -184,8 +187,8 @@ func TestCheckoutRef(t *testing.T) {
 	if got, err := read(first); err != nil || got != `{"name":"first"}` {
 		t.Fatalf("ref at the first commit: %q, %v", got, err)
 	}
-	if got, err := read(""); err != nil || got != `{"name":"second"}` {
-		t.Fatalf("no ref: %q, %v", got, err)
+	if got, err := read(""); err == nil {
+		t.Fatalf("no ref, outside gorex-registry: installed %q", got)
 	}
 	for _, ref := range []string{
 		first[:12],                    // short
@@ -198,4 +201,14 @@ func TestCheckoutRef(t *testing.T) {
 			t.Errorf("ref %q installed %q", ref, got)
 		}
 	}
+}
+
+// headOf is the commit the repo at dir is at.
+func headOf(t *testing.T, dir string) string {
+	t.Helper()
+	out, err := exec.Command("git", "-C", dir, "rev-parse", "HEAD").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return strings.TrimSpace(string(out))
 }

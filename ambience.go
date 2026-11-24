@@ -2,6 +2,8 @@ package main
 
 import (
 	"log"
+	"maps"
+	"sync"
 	"sync/atomic"
 
 	"github.com/egoist/mygo"
@@ -30,6 +32,9 @@ type themeLook struct {
 	images []theme.Still
 	brand  theme.Brand
 	art    *theme.Art
+	// id and assets are the theme and the files that art was decoded for.
+	id     string
+	assets map[string]theme.Asset
 }
 
 // look holds the selected theme's look, nil with no theme. applyTheme
@@ -137,6 +142,10 @@ func paintStills(p *ui.Painter, r ui.Rect) {
 // theme.BrandIconSize, with even room above and below it.
 const brandRowH = 28
 
+// brandGap is the room between the brand's icon and its wordmark: a step of
+// the 4 pt grid, as the rows' tiles keep from their names.
+const brandGap = 8
+
 // brandRow is the theme's brand at the top of the sidebar, above the space
 // picker: its icon, an SVG in the sidebar's text color, as a mask would
 // paint it, or a bitmap as it is, and its wordmark, which ellipsizes. The
@@ -147,7 +156,7 @@ func brandRow(c *ui.Context, k *colors, padR, padL float32) {
 		return
 	}
 	const icon = theme.BrandIconSize
-	ui.Row(c).Height(brandRowH).Shrink(0).Padding((brandRowH-icon)/2, padR, (brandRowH-icon)/2, padL+sidebarLead()).Gap(8).AlignItems(ui.Center).
+	ui.Row(c).Height(brandRowH).Shrink(0).Padding((brandRowH-icon)/2, padR, (brandRowH-icon)/2, padL+sidebarLead()).Gap(brandGap).AlignItems(ui.Center).
 		Role(ui.RoleImage).Label(l.brand.Wordmark).Children(func() {
 		if l.art != nil && l.brand.Icon != "" {
 			if bm := l.art.Bitmaps[l.brand.Icon]; bm != nil {
@@ -167,10 +176,29 @@ func brandRow(c *ui.Context, k *colors, padR, padL float32) {
 const artScale = 2
 
 // setLook makes the look of m the selected theme's, without assets.
+// The look keeps the assets of the one before while the theme is the same
+// and names the same files, so that a reload of settings.json does not make
+// the watermark and the brand's icon blink while loadArt decodes them again.
 func setLook(m *theme.Manifest) {
 	lookGen.Add(1)
-	look.Store(lookOf(m))
+	l := lookOf(m)
+	if old := lastArt.Load(); l != nil && old != nil && old.id == prefs.Theme && maps.Equal(old.assets, m.Assets) {
+		l.art = old.art
+	}
+	if l != nil {
+		l.id, l.assets = prefs.Theme, m.Assets
+	} else if prefs.Theme == "" {
+		lastArt.Store(nil) // loadTheme's applyTheme(nil) on the way to a theme keeps it
+	}
+	look.Store(l)
 }
+
+// lastArt is the last look whose assets were decoded, for setLook.
+var lastArt atomic.Pointer[themeLook]
+
+// artLoads counts the decodes loadArt runs, so that a test can wait for
+// them.
+var artLoads sync.WaitGroup
 
 // loadArt decodes the assets of the look of m, the theme name, from the
 // theme's folder, off the UI thread. When they are in, every window draws
@@ -184,7 +212,9 @@ func loadArt(name string, m *theme.Manifest) {
 	if err != nil {
 		return
 	}
+	artLoads.Add(1)
 	go func() {
+		defer artLoads.Done()
 		art, warn := theme.LoadAssets(dir, m, artScale)
 		for _, w := range warn {
 			log.Printf("gorex settings: appearance.theme %q: %s", name, w)
@@ -194,11 +224,10 @@ func loadArt(name string, m *theme.Manifest) {
 		if !look.CompareAndSwap(l, &withArt) || lookGen.Load() != gen {
 			return
 		}
-		mygo.RunOnMain(func() {
-			for _, w := range mygo.Windows() {
-				w.Update(func() {})
-			}
-		})
+		lastArt.Store(&withArt)
+		for _, w := range mygo.Windows() {
+			w.Update(func() {}) // posts the redraw, and does not wait for it
+		}
 	}()
 }
 

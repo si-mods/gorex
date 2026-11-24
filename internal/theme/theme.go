@@ -307,9 +307,10 @@ func Dir(configDir string) string {
 }
 
 // ValidName reports whether name may name a theme file: letters, digits,
-// '-', '_' and '.', not "." or "..", so that it never leaves Dir.
+// '-', '_' and '.', not "." or "..", so that it never leaves Dir, and not
+// ending in ".json", so that no theme's name is another one's file.
 func ValidName(name string) bool {
-	if name == "" || name == "." || name == ".." {
+	if name == "" || name == "." || name == ".." || len(name) >= 5 && strings.EqualFold(name[len(name)-5:], ".json") {
 		return false
 	}
 	for i := 0; i < len(name); i++ {
@@ -366,7 +367,7 @@ func Install(srcDir, dir, name string) ([]string, error) {
 	// The assets go to a new folder first, so that a pack that cannot copy
 	// them changes nothing; the manifest then, and the folder after it, so
 	// that List never sees the folder without its manifest.
-	folder, tmp := strings.TrimSuffix(dst, ".json"), ""
+	folder, tmp := assetFolder(dst), ""
 	if len(m.Assets) > 0 {
 		var w []string
 		if tmp, w, err = copyAssets(srcDir, dir, m); err != nil {
@@ -398,6 +399,7 @@ func Install(srcDir, dir, name string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
+	removeOrphanAssets(dir)
 	return warn, nil
 }
 
@@ -408,18 +410,11 @@ type Summary struct {
 	Error string // why it does not load, or ""
 }
 
-// List returns the themes installed in dir, by ID. It removes an asset
-// folder whose manifest is gone, as an older build's Remove leaves it.
+// List returns the themes installed in dir, by ID. It changes nothing.
 func List(dir string) []Summary {
 	des, _ := os.ReadDir(dir)
 	var out []Summary
 	for _, de := range des {
-		if de.IsDir() && ValidName(de.Name()) && !strings.HasPrefix(de.Name(), ".") {
-			if _, err := os.Lstat(filepath.Join(dir, de.Name()+".json")); errors.Is(err, fs.ErrNotExist) {
-				os.RemoveAll(filepath.Join(dir, de.Name()))
-			}
-			continue
-		}
 		id, ok := strings.CutSuffix(de.Name(), ".json")
 		if !ok || !de.Type().IsRegular() || !ValidName(id) {
 			continue
@@ -444,5 +439,34 @@ func Remove(dir, id string) error {
 	if err := os.Remove(p); err != nil {
 		return err
 	}
-	return os.RemoveAll(strings.TrimSuffix(p, ".json"))
+	if err := os.RemoveAll(assetFolder(p)); err != nil {
+		return err
+	}
+	removeOrphanAssets(dir)
+	return nil
+}
+
+// assetFolderSuffix ends the name of a theme's asset folder, <id>.assets,
+// which no manifest's name, <id>.json, can be.
+const assetFolderSuffix = ".assets"
+
+// assetFolder is the asset folder of the theme whose manifest is at path.
+func assetFolder(manifest string) string {
+	return strings.TrimSuffix(manifest, ".json") + assetFolderSuffix
+}
+
+// removeOrphanAssets removes each asset folder in dir whose manifest is
+// gone, as an older build's Remove leaves it. It touches only names that
+// end in assetFolderSuffix, and is for Install and Remove, never List.
+func removeOrphanAssets(dir string) {
+	des, _ := os.ReadDir(dir)
+	for _, de := range des {
+		id, ok := strings.CutSuffix(de.Name(), assetFolderSuffix)
+		if !ok || !de.IsDir() || !ValidName(id) || strings.HasPrefix(id, ".") {
+			continue
+		}
+		if _, err := os.Lstat(filepath.Join(dir, id+".json")); errors.Is(err, fs.ErrNotExist) {
+			os.RemoveAll(filepath.Join(dir, de.Name()))
+		}
+	}
 }

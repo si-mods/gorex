@@ -209,6 +209,13 @@ func TestAssetLimits(t *testing.T) {
 	if _, err := readAsset(dir, "ok.png"); err != nil {
 		t.Errorf("ok.png: %v", err)
 	}
+	// A pack's assets folder that is a link does not read either.
+	link := filepath.Join(t.TempDir(), "assets")
+	if os.Symlink(dir, link) == nil {
+		if _, err := readAsset(link, "ok.png"); err == nil {
+			t.Error("readAsset read through a linked assets folder")
+		}
+	}
 }
 
 // testPNG is a real w×h PNG of one color.
@@ -243,9 +250,10 @@ const seaManifest = `{"name":"Sea","assets":{"side":"side.png","logo":"logo.svg"
 "brand":{"icon":"logo","wordmark":"Sea"}}`
 
 // TestInstallThemeAssets: a pack installs its manifest and only the assets
-// it names, each checked, to <dir>/<id>; installing again replaces the
-// folder; Remove deletes both; a single-file theme installs as before, and
-// List removes a folder whose manifest is gone.
+// it names, each checked, to <dir>/<id>.assets; installing again replaces
+// the folder; Remove deletes both; a single-file theme installs as before.
+// Install and Remove remove an asset folder whose manifest is gone; List
+// removes nothing, not a folder of the user's own either.
 func TestInstallThemeAssets(t *testing.T) {
 	src := writePack(t, seaManifest, map[string][]byte{
 		"side.png":  testPNG(t, 64, 96),
@@ -262,7 +270,7 @@ func TestInstallThemeAssets(t *testing.T) {
 		t.Errorf("warnings %q", warn)
 	}
 	names := func() []string {
-		des, _ := os.ReadDir(filepath.Join(dir, "sea"))
+		des, _ := os.ReadDir(filepath.Join(dir, "sea.assets"))
 		var out []string
 		for _, de := range des {
 			out = append(out, de.Name())
@@ -289,7 +297,7 @@ func TestInstallThemeAssets(t *testing.T) {
 	if _, err := Install(src, dir, "sea"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := os.Stat(filepath.Join(dir, "sea")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(dir, "sea.assets")); !os.IsNotExist(err) {
 		t.Errorf("a pack without assets left its folder: %v", err)
 	}
 
@@ -302,14 +310,56 @@ func TestInstallThemeAssets(t *testing.T) {
 		t.Errorf("Remove left %d entries", len(des))
 	}
 
-	// An older build's Remove leaves the folder; List removes it.
+	// An older build's Remove leaves the asset folder. List keeps it, and
+	// a folder of the user's own; the next Install removes only the first.
 	Install(src, dir, "sea")
 	os.Remove(filepath.Join(dir, "sea.json"))
+	os.Mkdir(filepath.Join(dir, "my-work"), 0o755)
 	if got := List(dir); len(got) != 0 {
 		t.Errorf("List %+v", got)
 	}
-	if _, err := os.Stat(filepath.Join(dir, "sea")); !os.IsNotExist(err) {
-		t.Errorf("List left an orphan folder: %v", err)
+	for _, f := range []string{"sea.assets", "my-work"} {
+		if _, err := os.Stat(filepath.Join(dir, f)); err != nil {
+			t.Errorf("List removed %s: %v", f, err)
+		}
+	}
+	os.WriteFile(filepath.Join(src, PackFile), []byte(`{"name":"Other"}`), 0o644)
+	if _, err := Install(src, dir, "other"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "sea.assets")); !os.IsNotExist(err) {
+		t.Errorf("Install left an orphan asset folder: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "my-work")); err != nil {
+		t.Errorf("Install removed a folder of the user's own: %v", err)
+	}
+}
+
+// TestThemeNameJSON: a theme name that ends in ".json" is refused, so that
+// it can never be, or delete, another theme's manifest: with slate
+// installed, Install and Remove of "slate.json" leave slate.json in place.
+func TestThemeNameJSON(t *testing.T) {
+	src := writePack(t, seaManifest, map[string][]byte{"side.png": testPNG(t, 4, 4), "logo.svg": []byte(testSVG)})
+	dir := filepath.Join(t.TempDir(), "themes")
+	if _, err := Install(src, dir, "slate"); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"slate.json", "slate.JSON"} {
+		if ValidName(name) {
+			t.Errorf("ValidName(%q)", name)
+		}
+		if _, err := Install(src, dir, name); err == nil {
+			t.Errorf("Install %q", name)
+		}
+		if err := Remove(dir, name); err == nil {
+			t.Errorf("Remove %q", name)
+		}
+	}
+	if _, _, err := Load(filepath.Join(dir, "slate.json")); err != nil {
+		t.Errorf("slate.json after slate.json's Install and Remove: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "slate.assets", "side.png")); err != nil {
+		t.Errorf("slate's assets: %v", err)
 	}
 }
 

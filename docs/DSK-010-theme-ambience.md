@@ -207,7 +207,7 @@ The mascot is an element in the sidebar foot, not an overlay. It thus never cove
 
 - `internal/theme/theme.go`: parse the new keys with caps. Keep `name`, `seeds`, `roles` and `terminal` as they are.
 - `internal/theme/assets.go` (new): the loader and its limits.
-- `theme.Install`: copy `theme.json` to `<config>/themes/<id>.json`, as now, and copy each asset that the manifest names to `<config>/themes/<id>/`. It writes to a temporary folder and renames it. `theme.Remove` removes both. `theme.List` reads only `.json` files, as now, so the folder does not show as a theme.
+- `theme.Install`: copy `theme.json` to `<config>/themes/<id>.json`, as now, and copy each asset that the manifest names to `<config>/themes/<id>.assets/`. The suffix keeps the folder's name from being a manifest's: a theme name that ends in `.json` is refused. It writes to a temporary folder and renames it. `theme.Remove` removes both. `theme.List` reads only `.json` files, as now, so the folder does not show as a theme.
 - `style.go`: glow uniforms in `background` and `backgroundOptions`.
 - `ambience.go`: layers 2 and 3, drawn in the `Draw` of the root column, after `paintBackground`.
 - `sidebar.go`: the brand row, the mascot, the ticker and the ambience button.
@@ -303,11 +303,11 @@ The animated mascot path still needs a test with a real animated asset. Phase 3 
 ## Migration
 
 - A new key has a default. `appearance.ambience` and `appearance.mascot` are new settings with a default, so `docs/irreversible.md` does not apply. With no key, ambience moves and the mascot shows when the theme has them.
-- The manifest keeps its place, `<config>/themes/<id>.json`. The assets go to a new folder, `<config>/themes/<id>/`. A single-file theme loads as now.
+- The manifest keeps its place, `<config>/themes/<id>.json`. The assets go to a new folder, `<config>/themes/<id>.assets/`. A single-file theme loads as now.
 - An older build loads a new manifest. It drops `assets`, `ambience`, `mascot`, `brand` and `ticker` with an `unknown key` warning each, and uses the colors. `theme.List` of an older build skips the folder.
 - An older build installs a pack from the registry with `theme.json` only. The theme then has colors and no ambience. This is harmless.
 - An older build ignores `ref` and clones the default branch of the pack repo. It copies only `theme.json`, and its parser applies the DSK-008 checks. The colors can thus be newer than the reviewed commit. This is a known limit for older builds only.
-- An older build that removes a theme leaves the asset folder. A newer build removes a folder that has no manifest when it lists the themes.
+- An older build that removes a theme leaves the asset folder. A newer build removes an `<id>.assets` folder that has no manifest when it installs or removes a theme. Listing the themes removes nothing.
 - An older build that saves `settings.json` drops the two new keys, as DSK-008 says for `appearance.theme`. Ambience then moves again, and the user sets the key again.
 
 ## Tests
@@ -334,7 +334,7 @@ No item in `docs/invariants.md` covers the theme or ambience. The focus rule of 
 
 ## Phases
 
-1. **Assets and still layers** (built, #1083; M, about 800 lines with tests): asset parsing, caps and loader, pack folder install and remove, the pinned `ref` in `iconpack.Checkout`, the registry CI that clones and validates each listed pack repo, glows in the background shader, still images, brand row, the two settings and the Extensions controls. The registry CI is si-mods/gorex-registry#6. Until its phase, the parser drops `particles`, `sprites`, `mascot` and `ticker` with a warning, as an older build does. The Ambience and Mascot controls show under the theme in use when it has glows, images or a brand. The assets decode for a screen scale of 2.
+1. **Assets and still layers** (built, #1083; M, about 800 lines with tests): asset parsing, caps and loader, pack folder install and remove, the pinned `ref` in `iconpack.Checkout`, the registry CI that clones and validates each listed pack repo, glows in the background shader, still images, brand row, the two settings and the Extensions controls. The registry CI is si-mods/gorex-registry#6. Until its phase, the parser drops `particles`, `sprites`, `mascot` and `ticker` with a warning, as an older build does. The Ambience control shows under the theme in use when it has glows, images or a brand. The Mascot control comes with the mascot in phase 3; `appearance.mascot` is read from phase 1. `iconpack.Checkout` refuses a pack of a repo other than `gorex-registry` that has no `ref`. The assets decode for a screen scale of 2.
 2. **Moving layers** (M, about 500 lines): particles, sprites, free region, the still rule, the toggle button and command, and the budget measurement.
 3. **Mascot and ticker** (M, about 600 lines): still, animated and sprite sheet mascot, bob, click, double click, hide, bubbles and the ticker. A self-made animated whale validates GIF and sprite sheets.
 4. **Dafy Whale pack** (S): a new public repo `si-mods/gorex-theme-dafy-whale`, not in gorex and not in `gorex-registry`. Its root has `theme.json`, `assets/` (the MIT whale art, the two fish PNGs scaled down, a self-made icon, the self-made animated whale), `LICENSE` (MIT), `NOTICE` and `LICENSE-fish.txt`. A registry PR adds one `themes` entry: `id` `dafy-whale`, `repo` `https://github.com/si-mods/gorex-theme-dafy-whale.git`, no `subdir`, and `ref` at the reviewed commit. Screenshots.

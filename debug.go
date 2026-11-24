@@ -473,7 +473,10 @@ func (a *App) debug(dir, line string) {
 		win.Update(func() { prefs.HidePaneHeaders = arg == "hide" })
 	case "appearance": // system, light or dark
 		a.setAppearance(map[string]string{"light": "light", "dark": "dark"}[arg])
-	case "theme": // ID, or none for the built-in palette: the window theme, as Use on the Extensions page
+	case "theme": // ID, or "none" or nothing for the built-in palette: the window theme, as Use on the Extensions page
+		if arg == "none" {
+			arg = ""
+		}
 		win.Update(func() { a.useTheme(arg) })
 	case "ambience": // moving, still or off: appearance.ambience (docs/DSK-010-theme-ambience.md)
 		win.Update(func() {
