@@ -88,7 +88,7 @@ func sidebarGroupEdge() float32 {
 
 // sidebarColorTokens are the role names a sidebar.colorCustomizations key
 // may set, and the palette fields they set: the sidebar's own, not the
-// window's globals (docs/DSK-008-theme.md). settingsTokenRenames migrates
+// window's globals (docs/DSK-008-theme.md). tokenRenames in settings.go migrates
 // the names docs/DSK-007-sidebar-style.md first had.
 var sidebarColorTokens = map[string]func(*colors, ui.Color){
 	"sideBar.activeGroupBackground":    func(k *colors, c ui.Color) { k.groupFace = c },
