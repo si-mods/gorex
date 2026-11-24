@@ -385,13 +385,18 @@ var cursorStyles = map[string]terminal.CursorStyle{
 // GoRex's defaults where neither sets one. The configuration is Ghostty's
 // as it was read, so a reload does not lose them.
 // A theme of the user's replaces the configuration's colors too, as they
-// were meant for the other theme.
+// were meant for the other theme. With none, the window theme's terminal
+// themes do the same (themeTerm).
 func (c ghosttyConfig) withPrefs(p settings) ghosttyConfig {
 	if p.TermFont != "" {
 		c.Families = []string{p.TermFont}
 	}
-	if p.TermTheme != "" {
-		c.Theme = p.TermTheme
+	term := p.TermTheme
+	if term == "" {
+		term = themeTermPair()
+	}
+	if term != "" {
+		c.Theme = term
 		c.Background, c.Foreground, c.CursorColor, c.CursorText = nil, nil, nil, nil
 		c.SelectionBg, c.SelectionFg, c.Palette = nil, nil, nil
 	}

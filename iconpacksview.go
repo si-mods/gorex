@@ -370,13 +370,15 @@ func (a *App) themesGroup(c *ui.Context, k *colors, themes []theme.Summary) {
 }
 
 // useTheme makes id the theme of every window, "" for the built-in
-// palette: it saves appearance.theme and applies the theme at once.
-// applyTheme stores new palettes and drops the caches made from the old
-// ones, so it is safe while other windows draw; each window then draws
-// again.
+// palette: it saves appearance.theme and applies the theme at once, the
+// terminals' colors it names too. applyTheme stores new palettes and drops
+// the caches made from the old ones, so it is safe while other windows
+// draw; each window then draws again.
 func (a *App) useTheme(id string) {
-	a.setPref(func(s *settings) { s.Theme = id })
+	prefs.Theme = id
+	saveSettings()
 	err := loadTheme()
+	a.applyPrefs()
 	iconPacksUI.mu.Lock()
 	iconPacksUI.themeErr = ""
 	if err != nil {

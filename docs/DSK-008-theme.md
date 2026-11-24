@@ -1,6 +1,6 @@
 ---
 name: DSK-008
-description: "A theme framework for the desktop chrome: color seeds derive semantic roles, and every face resolves with its text colors as one value. Use when you change the palette, add a surface role, or ship theme packs."
+description: "A theme framework for the desktop chrome: color seeds derive semantic roles, and every face resolves with its text colors as one value. Use when you change the palette, add a surface role, ship theme packs, or pair a theme with terminal colors."
 metadata:
   created: "2026-11-23"
   updated: "2026-11-24"
@@ -8,7 +8,7 @@ metadata:
 
 # DSK-008: Desktop theme framework
 
-Status: built (#1065, #1067, #1074).
+Status: built (#1065, #1067, #1074). Phase 4, the terminal key, is in review.
 
 This doc decides the shape of theming for the desktop chrome. The chrome is the sidebar, the cards of the panes, the dialogs and the menus. This doc replaces no doc. It extends the palette rules of `DESIGN.md` and the settings keys of [DSK-007](DSK-007-sidebar-style.md). The layers come from the design-system pass note of the Vibe Design Tips series (vibedesign.tips). The material and ink model comes from tip 010 of that series (liquid glass).
 
@@ -39,7 +39,7 @@ The work keeps the current look. It makes the values consistent. It does not cha
 
 ## Non-goals
 
-- Terminal colors stay in the Ghostty configuration and in the terminal theme setting. [DSK-009](DSK-009-terminal-settings.md) moves that setting from `theme` to `terminal.theme`. The terminal is a second lightness domain. The framework adapts the chrome to the terminal. It does not change the terminal colors.
+- A manifest does not define terminal colors. Terminal colors stay in the Ghostty themes, the Ghostty configuration and the terminal theme setting. [DSK-009](DSK-009-terminal-settings.md) moves that setting from `theme` to `terminal.theme`. A manifest can only name a Ghostty theme for each appearance (see Terminal). The terminal is a second lightness domain. The framework adapts the chrome to the terminal.
 - The glass stays a user setting (`noGlass`). A theme does not change the glass setting.
 - iOS and the web client keep their palettes. The first scope is the desktop chrome.
 - No user edits `settings.json` by hand for an upgrade. GoRex migrates the renamed color tokens at load (see Migration).
@@ -59,11 +59,27 @@ A theme is a manifest of seeds and optional role overrides:
     "light": { "bgTop": "#eef0f4", "panel": "#f5f6f8", "text": "#1a1d21", "accent": "#0a6bff" },
     "dark":  { "bgTop": "#1c1f26", "panel": "#16181d", "text": "#e8eaed", "accent": "#5b8def" }
   },
-  "roles": { "sideBar.tabActiveBackground": "#5b8def33" }
+  "roles": { "sideBar.tabActiveBackground": "#5b8def33" },
+  "terminal": { "light": "Ayu Light", "dark": "Ayu" }
 }
 ```
 
 A seed key is a name of the seed table (see Model). A manifest can give some seeds. Each other seed comes from the built-in seeds of that appearance. A role value is a hex string, or an object `{"light", "dark"}` with a value for each appearance, as in `sidebar.colorCustomizations`.
+
+### Terminal
+
+Most of the window is the terminal card. A chrome theme alone thus changes little of what the user sees. The optional `terminal` key names a Ghostty theme for each appearance: `{"light": "<name>", "dark": "<name>"}`. A name is a theme that Ghostty ships, or a theme file in the user's Ghostty themes folder, as `terminal.theme` takes it. The key applies only when the user has not set `terminal.theme`. The user's own `terminal.theme` always wins.
+
+The terminal colors thus resolve in this order. Each item overwrites the item after it:
+
+1. The user's `terminal.theme` (DSK-009).
+2. The `terminal` key of the selected theme.
+3. The `theme` and the colors of the Ghostty configuration.
+4. GoRex's own terminal colors.
+
+When the `terminal` key applies, it replaces the Ghostty configuration's theme and colors (background, foreground, cursor, selection and palette), as `terminal.theme` does. Those colors were made for the other theme. GoRex gives the two names to Ghostty's own pair syntax, `light:<name>,dark:<name>`. The terminal thus changes with the window's appearance, and the theme does not force the window's appearance. An appearance with no name gets GoRex's own terminal colors.
+
+A theme applies at once, with no restart: using a theme on the Extensions page sets the terminal colors of every open pane too. The Follow Ghostty card of the terminal theme picker shows the two names while they apply.
 
 The user selects a theme with a new settings key, `appearance.theme`. Its value is the name of a manifest file, `<config>/themes/<name>.json`. `<config>` is the folder of `init.lua`. A theme pack installs its manifest in the same folder (see Code). An empty value selects the built-in palettes. The Window Theme group of the Settings page Extensions sets the key too. The top-level `appearance` key keeps its meaning: light, dark or the system. The name of a Ghostty theme moves to `terminal.theme` ([DSK-009](DSK-009-terminal-settings.md)).
 
@@ -168,13 +184,14 @@ Each face has a pairing rule. The resolver attaches the text ladder that fits th
 - **Keep the flat palette and rely on review**: rejected. Nothing prevents a `tabActive` override with unreadable text. The construction must prevent it.
 - **Raw token overrides only, as CSS variables**: rejected. The face and the text stay separate, and that causes the bug. The user must also write 47 values.
 - **One fixed pairing for each appearance, with no lightness check**: rejected. A dark terminal in a light window is a supported configuration. A fixed pairing fails on it.
-- **Theme the terminal too**: rejected as out of scope. The Ghostty configuration owns the terminal colors.
+- **Terminal colors in the manifest**: rejected. Ghostty's themes already hold more than 800 tested palettes, and the user's theme picker uses the same names. A manifest names a theme instead of 22 more colors.
+- **The theme's terminal over `terminal.theme`**: rejected. The user chose `terminal.theme` for every theme.
 - **A theme that changes the glass setting**: rejected. The glass changes the cost of drawing, and the user decides it with `noGlass`.
 - **Sample the pixels of the backdrop to select the ink**: rejected. It costs a read of the frame. Ink from sampled pixels also flickers near the flip point.
 
 ## Security
 
-A theme manifest is data: hex values and enum names. It contains no code, no paths and no commands. The load step removes unknown keys, unknown seeds, unknown roles and bad colors, as `checkSidebarColors` does, and logs a warning for each. A manifest is at most 64 KiB. A theme name has only letters, digits, `-`, `_` and `.`, so `appearance.theme` cannot name a file outside `<config>/themes`.
+A theme manifest is data: hex values and names. It contains no code, no paths and no commands. A terminal theme name contains no `/`, `\`, `,`, `"` or control character, and has at most 64 bytes, so it cannot name a file outside the Ghostty themes folder. GoRex keeps a name only when Ghostty's list of themes has it: a theme that Ghostty ships, or a file in the Ghostty themes folder. GoRex drops each other name with a warning. GoRex thus never opens a device name, such as `CON` on Windows. The load step removes unknown keys, unknown seeds, unknown roles and bad colors, as `checkSidebarColors` does, and logs a warning for each. A manifest is at most 64 KiB. A theme name has only letters, digits, `-`, `_` and `.`, so `appearance.theme` cannot name a file outside `<config>/themes`.
 
 ## Migration
 
@@ -184,6 +201,7 @@ An upgrade keeps the look that the user has. The user does not edit the file.
 - At the first load, `migrateSettings` renames each DSK-007 token in `sidebar.colorCustomizations` to its role name. It keeps the value, with its exact text. If both names are present, the role name wins. It writes the backup `settings.json.bak` first, as DSK-009 says.
 - GoRex also reads a DSK-007 token that a user writes by hand later, and migrates it at the next load.
 - An older build does not know the role names. It drops them at load with a warning, and the sidebar uses the built-in colors. The user can copy `settings.json.bak` back.
+- An older build drops the `terminal` key of a manifest with the warning `unknown key "terminal"`, and loads the rest of the theme. The terminal then keeps its colors. This is harmless.
 - An older build ignores the `appearance.theme` key, because `loadSettings` ignores unknown keys. When an older build saves `settings.json`, it writes only the keys it knows, so the key goes. The user sets it again.
 
 ## Tests
@@ -197,6 +215,7 @@ An upgrade keeps the look that the user has. The user does not edit the file.
 - **Layers**: The theme's seeds go through `derive`, the theme's roles go over the result, and the user's `sidebar.colorCustomizations` go over the theme's roles (`TestThemeLayers`). With no theme, each palette is the built-in one (`TestThemeNoneKeepsPalettes`).
 - **Settings**: A `settings.json` with both `terminal.theme` and `appearance.theme` keeps the Ghostty theme and selects the manifest. A missing manifest or a name with a path leaves the built-in palettes (`TestSettingsTerminalAndAppearanceTheme`).
 - **Theme pack**: `gorex pack install` installs a registry theme pack, and a local folder with a `theme.json`, to `<config>/themes` (`TestPackInstallTheme`, `TestInstall`).
+- **Terminal key**: The parser reads `terminal`, and drops a name with a path, a name of no Ghostty theme and a key that is not `light` or `dark`, with a warning for each (`TestParseTerminal`). A device name is not a theme (`TestThemeTerminalKnown`). With no `terminal.theme`, the theme's names apply to both appearances and replace the Ghostty configuration's colors. A `terminal.theme` of the user's wins (`TestThemeTerminal`). Using a theme on the Extensions page changes the terminals' colors at once (`TestUseThemeTerminal`).
 - **Token migration**: A file with the seven DSK-007 tokens loads with the same colors. The file on disk then has only role names, with the exact values.
 - **Both names**: A file with `tabActive` and `sideBar.tabActiveBackground` keeps the value of the role name.
 
@@ -207,3 +226,4 @@ No item in `docs/invariants.md` covers the palette.
 1. **Pairing** (built): Add the `surface` resolver. Move the chosen sidebar row to it first, then the other chrome. This fixes the contrast for the current overrides. Rename the DSK-007 tokens and migrate them. The resolver judges a translucent face as laid over `panel`. It serves the sidebar's chosen rows, hovered rows and the current project's group. Not moved: the pill under glass (the system draws it, so `sideBar.activeGroupTabBackground` is only its fallback face), the tab strip's track, and the separators and shadows, which carry no text. The pane cards, the dialogs and the menus are the next call sites.
 2. **Seeds** (built): `derive` replaces the literal palettes, and `colors` becomes a derived value. The ink rules make 17 roles of each palette. The other 30 roles are seeds. Each field is byte-exact, so the look does not change.
 3. **Manifest** (built): Add `internal/theme`, the `appearance.theme` settings key and a `theme` pack kind on the registry. The Settings page for packs becomes **Extensions** ([MOD-012](MOD-012-program-icon-packs.md)): it lists the registry's themes, installs them, and uses one at once. Reduce Transparency changes no face, because each face lies on the opaque gradient. The sample theme pack `slate` is in the registry.
+4. **Terminal** (in review): Add the optional `terminal` key. A theme then names a Ghostty theme for each appearance, below the user's `terminal.theme`. The sample theme packs `ayu` and `ayu-mirage` in the registry use it.

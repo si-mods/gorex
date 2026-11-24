@@ -301,10 +301,20 @@ func themed(base seeds, m *theme.Manifest, i int) colors {
 	return k
 }
 
+// themeTerm is the Ghostty theme of the terminals that the theme names for
+// each appearance, light then dark, or "" for none. withPrefs applies it
+// when the user has no terminal.theme (docs/DSK-008-theme.md, Terminal).
+var themeTerm [2]string
+
 // applyTheme makes the windows' palettes those of m, or the built-in ones
-// when m is nil, and drops what the caches made from the old ones.
+// when m is nil, and drops what the caches made from the old ones. The
+// terminals take m's colors when the caller applies the prefs again.
 func applyTheme(m *theme.Manifest) {
 	palettes.Store(&themePalettes{themed(lightSeeds, m, 0), themed(darkSeeds, m, 1)})
+	themeTerm = [2]string{}
+	if m != nil {
+		themeTerm = m.Terminal
+	}
 	menuStylesMu.Lock()
 	clear(menuStyles)
 	menuStylesMu.Unlock()

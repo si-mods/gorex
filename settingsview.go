@@ -822,6 +822,9 @@ func (a *App) themeSettings(c *ui.Context, k *colors) {
 	if ghosttyRaw.Theme != "" {
 		sub = ghosttyRaw.Theme
 	}
+	if themeTerm != [2]string{} {
+		sub = strings.Join(slices.DeleteFunc(slices.Clone(themeTerm[:]), func(s string) bool { return s == "" }), " · ")
+	}
 	names := themeNames(terminal.GhosttyThemes(), settingsUI.themeQuery)
 	if len(names) == 0 && settingsUI.themeQuery != "" {
 		emptyMenu(c, k, "themes-empty", locales.SettingsThemeNoMatch(settingsUI.themeQuery))
