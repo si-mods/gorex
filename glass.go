@@ -168,7 +168,7 @@ func pillRadius(k *colors, h, flat float32) float32 {
 // turn dark.
 func glassPill(e ui.Element, k *colors, h float32) {
 	if !glassOn() {
-		e.Background(k.tabActive).Shadow(0, 1, 2, 0, k.shadow).Shadow(0, 2, 8, 0, k.shadow)
+		paintFace(e, k, roleTabActiveBackground, k.tabActive).Shadow(0, 1, 2, 0, k.shadow).Shadow(0, 2, 8, 0, k.shadow)
 		return
 	}
 	// The system's own Liquid Glass, as Rex's selected tab is: no tint in a
@@ -192,10 +192,10 @@ const (
 // deeper shadow and a hairline, so that it stands over the group.
 func liftedPill(e ui.Element, k *colors, h float32) {
 	if !glassOn() {
-		e.Background(k.tabActive).Shadow(0, 1, 2, 0, k.shadow).Shadow(0, 1, 4, 0, k.liftShadow).Border(liftBorderW, k.text.Alpha(liftBorderAlpha))
+		paintFace(e, k, roleTabActiveBackground, k.tabActive).Shadow(0, 1, 2, 0, k.shadow).Shadow(0, 1, 4, 0, k.liftShadow).Border(liftBorderW, k.text.Alpha(liftBorderAlpha))
 		return
 	}
-	e.Radius(k.capsule(h)).Material(ui.SystemGlass{Tint: k.pillTint, Fallback: faceMaterial{k.pillLift}}).
+	e.Radius(k.capsule(h)).Material(ui.SystemGlass{Tint: k.pillTint, Fallback: faceMaterialOf(roleActiveGroupTabBackground, k.pillLift)}).
 		Shadow(0, 1.5, 3.5, 0, k.pillShadow).Shadow(0, 1, 4, 0, k.liftShadow).Border(liftBorderW, k.text.Alpha(liftBorderAlpha))
 }
 

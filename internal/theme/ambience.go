@@ -99,7 +99,7 @@ type Brand struct {
 
 // The caps of DSK-010.
 const (
-	maxAssetNames    = 16
+	maxAssetNames    = 24 // DSK-012; 16 in DSK-010
 	maxGlows         = 4
 	maxGlowAlpha     = 0.4
 	maxGlowAlphaByte = 102 // maxGlowAlpha of 255

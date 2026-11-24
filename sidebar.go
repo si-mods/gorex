@@ -80,7 +80,7 @@ func sidebarFillSel() bool { return cmp.Or(prefs.SidebarSelection, themeSidebar.
 // "fill", the row's face at tabActive with a radiusM corner.
 func sidebarChosen(e ui.Element, k *colors, h float32, lifted bool) {
 	if sidebarFillSel() {
-		e.Background(k.tabActive).Radius(k.radius(radiusM))
+		paintFace(e, k, roleTabActiveBackground, k.tabActive).Radius(k.radius(radiusM))
 		return
 	}
 	if lifted {
@@ -372,7 +372,7 @@ func (a *App) paneBar(c *ui.Context, k *colors, right, shown bool) {
 	row := ui.Row(c).Height(titleH).Shrink(0).Padding(0, end, 0, left).Gap(14).AlignItems(ui.Center).DragWindow()
 	k, face, ok := themedFace(k, roleTitleBarBackground)
 	if ok {
-		row.Background(face)
+		paintFace(row, k, roleTitleBarBackground, face)
 	}
 	row.Children(func() {
 		if !shown && !right {
@@ -428,14 +428,14 @@ func (a *App) sidebar(c *ui.Context, k *colors, right bool) {
 	col := ui.Column(c).Width(sidebarWidthIn(winW)).Shrink(0).MinHeight(0)
 	k, face, ok := themedFace(k, roleSideBarBackground)
 	if ok {
-		col.Background(face)
+		paintFace(col, k, roleSideBarBackground, face)
 	}
 	a.ambience.side, a.ambience.hasSide = col, true
 	col.Children(func() {
 		head := ui.Row(c).Height(titleH).Shrink(0).Gap(2).AlignItems(ui.Center).DragWindow()
 		hk, face, ok := themedFace(k, roleTitleBarBackground)
 		if ok {
-			head.Background(face)
+			paintFace(head, hk, roleTitleBarBackground, face)
 		}
 		if right {
 			head.Padding(0, max(bar.Right, 6), 0, 6)
@@ -575,7 +575,7 @@ func (a *App) sidebarTab(c *ui.Context, k *colors, i int, t *Tab, reserve float3
 			e.ScrollIntoView()
 		}
 	} else if e.Hovered() {
-		e.Background(hoverFace(k))
+		paintFace(e, k, roleTabHoverBackground, hoverFace(k))
 		ck = sidebarHoverColors(k)
 	}
 	a.tabEvents(c, e, k, i, t)
@@ -643,7 +643,7 @@ func spaceTab(c *ui.Context, k *colors, key, name, detail string, s *rex.Program
 		e.Transition(exitIn(ui.ElementTransition{Animation: anim, Position: true, Enter: tabMotion, Exit: tabMotion}, durExitMove))
 	}
 	if e.Hovered() {
-		e.Background(hoverFace(k))
+		paintFace(e, k, roleTabHoverBackground, hoverFace(k))
 		k = sidebarHoverColors(k)
 	}
 	e.Children(func() {

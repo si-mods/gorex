@@ -63,13 +63,13 @@ func TestParseDrops(t *testing.T) {
 		t.Errorf("warnings\n%q\nwant\n%q", warn, want)
 	}
 
-	// A manifest of a later doc, as docs/DSK-012-theme-shaders.md's with
-	// shaders, loads as its colors here: the keys and roles this build
-	// does not know drop, with a warning each, and the rest applies.
+	// A manifest of a later doc loads as its colors here: the keys and
+	// roles this build does not know drop, with a warning each, and so
+	// does a shader API this build does not know; the rest applies.
 	m, warn, err = Parse([]byte(`{
   "seeds": { "light": { "accent": "#2876c8" } },
   "roles": { "titleBar.background": "#2876c8", "pane.border": "#2876c880", "toolBar.background": "#ffffff" },
-  "shaders": { "api": 1, "background": { "source": "bg" } },
+  "shaders": { "api": 2, "background": { "source": "bg" } },
   "metrics": { "radius": 0.2 },
   "glass": false
 }`))
@@ -82,7 +82,7 @@ func TestParseDrops(t *testing.T) {
 	if m.Metrics == nil || m.Metrics.Radius != 0.2 || m.Glass == nil || *m.Glass {
 		t.Errorf("metrics %+v, glass %v", m.Metrics, m.Glass)
 	}
-	want = []string{`roles: unknown role "toolBar.background"`, `unknown key "shaders"`}
+	want = []string{`roles: unknown role "toolBar.background"`, `shaders.api: 2 is not an API this build knows (shaders dropped)`}
 	if !slices.Equal(warn, want) {
 		t.Errorf("warnings\n%q\nwant\n%q", warn, want)
 	}

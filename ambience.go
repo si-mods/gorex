@@ -61,7 +61,7 @@ var lookGen atomic.Int64
 
 // lookOf makes the look of m, without assets.
 func lookOf(m *theme.Manifest) *themeLook {
-	if m == nil || m.Ambience.Empty() && m.Brand == (theme.Brand{}) {
+	if m == nil || m.Ambience.Empty() && m.Brand == (theme.Brand{}) && m.Shaders == nil {
 		return nil
 	}
 	l := &themeLook{images: m.Ambience.Images, sprites: m.Ambience.Sprites,
@@ -249,6 +249,7 @@ func loadArt(name string, m *theme.Manifest) {
 			return
 		}
 		lastArt.Store(&withArt)
+		storeThemeShaders(name, m, art, gen)
 		for _, w := range mygo.Windows() {
 			w.Update(func() {}) // posts the redraw, and does not wait for it
 		}

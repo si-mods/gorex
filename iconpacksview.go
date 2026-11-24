@@ -364,6 +364,13 @@ func (a *App) themesGroup(c *ui.Context, k *colors, themes []theme.Summary) {
 					hint += " · " + s.Error
 				}
 				rowHint(c, k, hint)
+				if s.ID == prefs.Theme {
+					// The theme's shaders that failed a check at load, and
+					// why (docs/DSK-012-theme-shaders.md, Checks at load).
+					for _, w := range themeShaderWarnings() {
+						rowHint(c, k, w)
+					}
+				}
 			})
 		}
 	})

@@ -101,14 +101,14 @@ func (a *App) view(c *ui.Context) {
 	c.SetTheme(menuTheme(c.Theme(), k))
 	setupMenus(c)
 	rootBackground(c, k.bgBottom)
-	wash := backgroundAlpha(c)
+	wash, moves := backgroundAlpha(c), themeShaderMoves(c)
 	dark := c.Theme().Dark
 	// The cards and the sidebar this frame builds, which the moving layers
 	// paint around and under as it paints.
 	a.ambience.cards, a.ambience.hasSide, a.ambience.hasRoom = a.ambience.cards[:0], false, false
 	moving := a.movingLayers(c)
 	ui.Column(c).Fill().Draw(func(p *ui.Painter, r ui.Rect) {
-		paintBackground(p, r, k, wash, dark)
+		paintBackground(p, r, k, wash, dark, moves)
 		paintStills(p, r)
 		if moving != nil {
 			moving(p, r)
@@ -189,7 +189,7 @@ func (a *App) titleBar(c *ui.Context, k *colors) {
 	// its lightness (docs/DSK-012-theme-shaders.md, New roles).
 	k, face, ok := themedFace(k, roleTitleBarBackground)
 	if ok {
-		row.Background(face)
+		paintFace(row, k, roleTitleBarBackground, face)
 	}
 	row.Children(func() {
 		a.spacePicker(c, k, false)
@@ -1072,7 +1072,7 @@ func (a *App) paneHeader(c *ui.Context, k *colors, t *Tab, p *Pane, focused, hov
 	// of its lightness (docs/DSK-012-theme-shaders.md, New roles).
 	k, face, ok := themedFace(k, rolePaneHeaderBackground)
 	if ok {
-		h.Background(face)
+		paintFace(h, k, rolePaneHeaderBackground, face)
 	}
 	h.ContextMenu(func(m *ui.Menu) { a.paneMenu(m, p) })
 	if f := p.float; f != nil {

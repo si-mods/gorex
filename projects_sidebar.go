@@ -268,7 +268,7 @@ func (a *App) projectRow(c *ui.Context, k *colors, w *Workspace, reserve float32
 		sidebarChosen(row, k, projectRowH(), false)
 		ck = sidebarChosenColors(k)
 	case row.Hovered() && !offline:
-		row.Background(hoverFace(k))
+		paintFace(row, k, roleTabHoverBackground, hoverFace(k))
 		ck = sidebarHoverColors(k)
 	}
 	// A tab of the window's dropped on a project of its host moves there,
@@ -377,7 +377,7 @@ func (a *App) projectGroup(c *ui.Context, k *colors, w *Workspace, reserve float
 	// nothing: only the face's color comes and goes, fading.
 	g := ui.Column(c.Key("group-"+openKey(w.host, w.ID))).Gap(rowGap).Radius(pillRadius(k, sidebarRowH(), k.radius(radiusM))+sidebarGroupPad()).Padding(sidebarGroupPad()).Margin(-sidebarGroupEdge(), -sidebarGroupPad(), -sidebarGroupEdge(), -sidebarGroupPad())
 	if w == a.ws && rowOpen(openKey(w.host, w.ID), true) && w.tabCount() > 0 && sidebarGroupFaced() {
-		g.Background(k.groupFace)
+		paintFace(g, k, roleActiveGroupBackground, k.groupFace)
 		k = surface(k, roleActiveGroupBackground).on(k) // what the group holds reads on its face
 	} else {
 		g.Background(k.groupFace.Alpha(0))
@@ -534,7 +534,7 @@ func (a *App) foldRow(c *ui.Context, k *colors, key, label, count string, open b
 		Radius(pillRadius(k, foldRowH, k.radius(radiusM))).Cursor(ui.CursorPointer).Role(ui.RoleDisclosure).Expanded(open).Label(label)
 	hovered := row.Hovered()
 	if hovered {
-		row.Background(hoverFace(k))
+		paintFace(row, k, roleTabHoverBackground, hoverFace(k))
 		k = sidebarHoverColors(k)
 	}
 	row.Children(func() {
@@ -793,7 +793,7 @@ func (a *App) projectNewTabRow(c *ui.Context, k *colors, w *Workspace, agents []
 			Radius(pillRadius(k, sidebarRowH(), k.radius(radiusM))).Cursor(ui.CursorPointer).Role(ui.RoleButton).Label(label).Tooltip(label)
 		ck := k
 		if add.Hovered() {
-			add.Background(hoverFace(k))
+			paintFace(add, k, roleTabHoverBackground, hoverFace(k))
 			ck = sidebarHoverColors(k)
 		}
 		add.Children(func() {

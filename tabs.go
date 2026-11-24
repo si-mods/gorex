@@ -37,8 +37,9 @@ func (a *App) tabStrip(c *ui.Context, k *colors) {
 		total += widths[i]
 	}
 	track := ui.Row(c).Shrink(1).MinWidth(0).Height(tabH+4).Padding(2).Radius((tabH+4)/2).
-		Background(k.track).Border(0.5, k.trackBorder).AlignItems(ui.Center).ClipX().
+		Border(0.5, k.trackBorder).AlignItems(ui.Center).ClipX().
 		DragWindow().Role(ui.RoleTabList).Label(locales.TabListLabel())
+	paintFace(track, k, roleTrackBackground, k.track)
 	// With a style of animation the track's width follows its tabs as
 	// they open, close and slide, on their spring: a tab after one that
 	// closes slides in whole, and one opening unfolds into the room the
@@ -198,7 +199,7 @@ func (a *App) tabItem(c *ui.Context, k *colors, i int, t *Tab, width float32, sq
 	name, detail := t.label()
 	e.Label(name + " " + detail)
 	if !active && e.Hovered() {
-		e.Background(hoverFace(k))
+		paintFace(e, k, roleTabHoverBackground, hoverFace(k))
 	}
 	a.tabEvents(c, e, k, i, t)
 	// The tab stays hovered while its close button is pressed, which it
