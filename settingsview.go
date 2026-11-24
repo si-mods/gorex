@@ -197,7 +197,15 @@ func settingsTheme(base *ui.Theme, k *colors) *ui.Theme {
 
 func (a *App) settingsView(c *ui.Context) {
 	a.runPosted() // the hosts' changes, without a terminal window
+	// The settings window has no workspace of its own: as the commands it
+	// sends do (appOf), it shows the colors of the window focused last, so
+	// a space's tint paints it as it paints the window under it.
 	k := colorsOf(c)
+	if a.st != nil {
+		if o := a.st.appOf(settingsUI.win); o != nil {
+			k = o.colors(c)
+		}
+	}
 	c.SetTheme(settingsTheme(c.Theme(), k))
 	setupMenus(c)
 	rootBackground(c, k.bgBottom)
@@ -300,7 +308,7 @@ func (a *App) settingsTitleBar(c *ui.Context, k *colors) {
 const sidebarItemH = 32
 
 // sidebarItem is a section's chip, as a tab's: the chosen one has the
-// active tab's face, and its icon and label in the accent.
+// active tab's face, and keeps its icon's tile and its label's color.
 func (a *App) sidebarItem(c *ui.Context, k *colors, id, glyph string, tile ui.Color, label string) {
 	active := settingsUI.section == id
 	e := ui.Row(c.Key(id)).Height(sidebarItemH).Padding(0, 10).Gap(10).AlignItems(ui.Center).Radius(pillRadius(sidebarItemH, radiusM)).
@@ -314,17 +322,13 @@ func (a *App) sidebarItem(c *ui.Context, k *colors, id, glyph string, tile ui.Co
 	if e.Clicked() {
 		a.showSection(id)
 	}
-	text := k.text
-	if active {
-		text = k.accent
-	}
 	e.Children(func() {
 		// A white glyph on the section's color, whether it is chosen or
 		// not: the glass pill says which one is.
 		ui.Box(c).Size(22, 22).Radius(radiusS).Background(tile).Center().Shrink(0).Children(func() {
 			glyphIcon(c, glyph, 14, ui.RGB(255, 255, 255))
 		})
-		ui.Text(c, label).FontSize(fontBody).FontWeight(500).TextColor(text).SingleLine()
+		ui.Text(c, label).FontSize(fontBody).FontWeight(500).TextColor(k.text).SingleLine()
 	})
 }
 

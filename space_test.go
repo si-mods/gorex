@@ -73,6 +73,24 @@ func TestSpaceColorsCache(t *testing.T) {
 	}
 }
 
+// TestSettingsTakesWindowColor checks that the settings window, a window
+// of no workspace, paints the space's tint of the window focused last, as
+// the commands it sends act on that window (appOf).
+func TestSettingsTakesWindowColor(t *testing.T) {
+	a, _ := newTestApp(t)
+	old := prefs
+	t.Cleanup(func() { prefs = old })
+	prefs.Space, prefs.Spaces = "My Space", []clientSpace{{Name: "My Space", Color: "#a06040"}}
+	tt := ui.NewTester(a.settingsView, 780, 540)
+	tt.Frame()
+	want := spaceColors(&lightColors, "#a06040", false).bgTop
+	got := tt.Image().RGBAAt(2, 2)
+	if absDiff(uint32(got.R), uint32(want.R)) > 2 || absDiff(uint32(got.G), uint32(want.G)) > 2 ||
+		absDiff(uint32(got.B), uint32(want.B)) > 2 {
+		t.Errorf("the settings' top-left pixel is %v, want %v within 2, not the untinted %v", got, want, lightColors.bgTop)
+	}
+}
+
 // TestSpaceTint checks that a custom color is made a tint: saturated at
 // most 85%, light between 35% and 65%.
 func TestSpaceTint(t *testing.T) {
