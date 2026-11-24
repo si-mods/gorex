@@ -88,6 +88,32 @@ func TestParseDrops(t *testing.T) {
 	}
 }
 
+// TestParseDescription: the description key keeps a line of text: control
+// characters go and it is cut to 160 characters, each with a warning; a
+// value that is not a string drops. List carries it.
+func TestParseDescription(t *testing.T) {
+	m, warn, err := Parse([]byte(`{"name": "Blue", "description": "Blue bars\u0007 and \u202egrey panels"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.Description != "Blue bars and grey panels" || len(warn) != 1 || !strings.Contains(warn[0], "description") {
+		t.Errorf("description %q, warnings %q", m.Description, warn)
+	}
+	m, warn, _ = Parse([]byte(`{"description": "` + strings.Repeat("é", 200) + `"}`))
+	if n := len([]rune(m.Description)); n != maxDescription || len(warn) != 1 {
+		t.Errorf("a long description keeps %d characters, warnings %q", n, warn)
+	}
+	m, warn, _ = Parse([]byte(`{"description": 3}`))
+	if m.Description != "" || len(warn) != 1 || warn[0] != "description: not a string" {
+		t.Errorf("a number: %q %q", m.Description, warn)
+	}
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "blue.json"), []byte(`{"name": "Blue", "description": "Blue bars"}`), 0o644)
+	if l := List(dir); len(l) != 1 || l[0].Description != "Blue bars" {
+		t.Errorf("List %+v", l)
+	}
+}
+
 // TestParseSidebar: the sidebar key carries the sidebar.* settings of
 // docs/DSK-007 a theme suggests. A value that is not a number, a metric
 // out of range, a bad enum and an unknown key drop with a warning each.
