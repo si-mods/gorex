@@ -92,6 +92,11 @@ Each item has a **Trigger** (what the diff shows), a **Check** (what the author 
 - **Check:** the consumer drops or re-reads it on the failure it causes too; a resume that races the failure leaves a window in which every use fails at once.
 - **Source:** #884 re-read the tailcat proxy only in `TailnetEngine.resume()`, after the socket reset's wait; a suspension's dials then reached the dead listener and failed at once, so every tailcat host showed "can't reach the server" for a stretch after each unlock.
 
+### A UI test that expects a fresh install
+- **Trigger:** an XCUITest under `ios/GoRexUITests/` checks a value the app makes once and keeps (UserDefaults, the Keychain, the app's files), such as a default name.
+- **Check:** the test sets that state at launch, or accepts any value an earlier build could have left. The Mac mini's simulator keeps the app's data between runs; `xcodebuild test` installs over it. The PR shows a green `ios-test` run of the test, not only a local run on a new simulator.
+- **Source:** #1027's `testDeviceNameWhileOff` waited for a `-rex-` name, but the runner's simulator kept `rexgo-xpkz` from an earlier build, and `makeName` keeps a name it finds (#1039). #1094 makes the test accept any valid name.
+
 ## Fixes
 
 ### A bound applied to remote connections only
