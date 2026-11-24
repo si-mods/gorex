@@ -190,4 +190,8 @@ func TestShaderAssets(t *testing.T) {
 	if len(warn) != 2 || !strings.Contains(warn[0], "assets.also") || !strings.Contains(warn[1], "assets.big") {
 		t.Errorf("warnings %q", warn)
 	}
+	// A sprite keeps the caps of DSK-010 when a shader reads it too.
+	if (assetUse{shader: true, sprite: 48}).shaderOnly() {
+		t.Error("a sprite that a shader reads takes the shaders' caps")
+	}
 }
