@@ -3,7 +3,7 @@ name: NET-004
 description: "A DERP relay that si-mods operates for the team at derp.gorex.uk, for hosts that should not depend on the tailcat fleet. Use when you change the private relay, the remote.relay setting or the path a host's address names."
 metadata:
   created: "2026-11-22"
-  updated: "2026-11-23"
+  updated: "2026-11-24"
 ---
 
 # NET-004: A private relay for host links
@@ -55,6 +55,7 @@ In `si-mods/gorex-relay`, next to the push API but not behind the tunnel:
 - A `derpserver.Server` (`tailscale.com/derp/derpserver`, the module that `internal/rex/ownrelay.go` already links) listens on its own port, with a certificate for the name from a public authority. `relayRegion` sets no `CertName`, so clients verify the chain — the check the web client of NET-002 needs.
 - A STUN server on UDP 3478 on the same machine, as `derper` serves, so that netcheck completes and two machines that could dial each other can still find a direct path.
 - Admission is `SetVerifyClientURL`, the hook `ownrelay.go` uses: the verifier reads `derp-allowed.json`, which the operator edits without a restart. A `DERPAdmitClientRequest` that names a listed key is allowed.
+- `GET /derp/admit?key=<nodekey>` is a public probe (`Access-Control-Allow-Origin: *`) that answers `{"allow":true|false}` — the same answer the admission controller gives. DERP closes a refused key's connection without a reason, so the probe is how a refused client tells it was the relay, not the host, that said no. It reveals whether one queried key is on the list; the list holds public keys only, and the trade-off is deliberate.
 - The connection limits of `ownrelay.go` (`ownRelayPerSource`, `ownRelayTotal`, raised for a shared service) stay as a second layer, against a leaked or misused key.
 - The relay holds the list and nothing else. It drops a connection when the key at its end disconnects, and nothing survives a restart.
 
@@ -116,7 +117,7 @@ The same service is the self-host artifact, published as the Dockerfile of `si-m
 
 1. The relay service in `si-mods/gorex-relay`: DERP, STUN, the allowlist and the deployment note, including the self-host README.
 2. The `gorex` alias in the CLI and in Settings, `RemoteStatus.publicKey`, `gorex remote key`, with docs.
-3. Later, with its own document: the web client's tailcat path, if a team member's browser needs it.
+3. The web client's tailcat path ([WEB-006](WEB-006-tailcat.md)). Its page probes `/derp/admit` to tell the relay's refusal from the host's.
 
 ## Open questions
 

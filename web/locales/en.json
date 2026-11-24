@@ -1536,6 +1536,20 @@
   "@tcUnreachableText": {
     "description": "A tailcat host's problem, under problemUnreachableTitle: the device paired earlier, and the tunnel still does not answer."
   },
+  "tcRelayDeniedTitle": "The relay refused this device",
+  "@tcRelayDeniedTitle": {
+    "description": "A tailcat host's problem, title: the relay the host's address is homed on does not admit this browser's device key."
+  },
+  "tcRelayDeniedText": "{host}'s relay does not admit this browser's device key. Send the Device key shown in Settings › Hosts › Pairing to the relay's operator.",
+  "@tcRelayDeniedText": {
+    "description": "A tailcat host's problem, under tcRelayDeniedTitle: which key the relay's operator needs.",
+    "placeholders": {
+      "host": {
+        "type": "String",
+        "example": "alice-laptop"
+      }
+    }
+  },
   "tcPair": "Pair",
   "@tcPair": {
     "description": "Button of a tailcat host's problem: asks the host to pair again."

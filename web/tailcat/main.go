@@ -16,6 +16,8 @@ package main
 import (
 	"context"
 	"errors"
+	"net"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall/js"
@@ -133,20 +135,39 @@ func (n *node) api() map[string]any {
 // jsCheck is check(address): whether the engine can use the address, and
 // why not when it cannot. {ok: true} parses; a region that names the
 // machine's own relay gets {ownRelay: true}, because a browser cannot
-// pin its certificate; a parse failure gets {error}.
+// pin its certificate; a parse failure gets {error}. Every answer that
+// parses carries relay, the first node's DERP base URL, for the page's
+// admission probe (docs/NET-004-public-relay.md).
 func (n *node) jsCheck(args []js.Value) any {
 	ci, err := tailcat.ParseAddr(tailcat.Addr(args[0].String()))
 	if err != nil {
 		return map[string]any{"error": err.Error()}
 	}
+	var relay string
 	for _, r := range ci.Region {
 		for _, nd := range r.Nodes {
+			if relay == "" {
+				relay = derpBase(nd.HostName, nd.DERPPort)
+			}
 			if strings.HasPrefix(nd.CertName, "sha256-raw:") {
-				return map[string]any{"ownRelay": true}
+				return map[string]any{"ownRelay": true, "relay": relay}
 			}
 		}
 	}
-	return map[string]any{"ok": true}
+	return map[string]any{"ok": true, "relay": relay}
+}
+
+// derpBase is a DERP node's base URL, as its HTTP endpoints share it:
+// https on the node's host name, the default port unwritten, a literal
+// IPv6 host in brackets. "" for a node without a host name.
+func derpBase(hostName string, port int) string {
+	if hostName == "" {
+		return ""
+	}
+	if port == 0 || port == 443 {
+		return "https://" + hostName
+	}
+	return "https://" + net.JoinHostPort(hostName, strconv.Itoa(port))
 }
 
 // jsPair is pair(address, name): a promise of the fingerprint the server

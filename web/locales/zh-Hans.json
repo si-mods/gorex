@@ -269,6 +269,8 @@
   "tcPairingTitle": "正在请求与 {host} 配对",
   "tcPairingText": "此设备以 {name} 的名义请求配对。",
   "tcUnreachableText": "此设备已完成配对，但主机未通过 tailcat 链路应答。请检查主机是否开机，以及其远程访问是否仍开启。",
+  "tcRelayDeniedTitle": "中继拒绝了此设备",
+  "tcRelayDeniedText": "{host} 的中继不允许此浏览器的设备密钥。把 Settings › Hosts › Pairing 中显示的 Device key 发给中继运维者。",
   "tcPair": "配对",
   "tcPairingCard": "配对",
   "tcPairingCardNote": "此浏览器如同 Rex Go 一样，以独立设备身份与各主机配对。",
