@@ -14,13 +14,13 @@ This doc decides the shape of theming for the desktop chrome. The chrome is the 
 
 ## Problem
 
-The palette is the `colors` struct in `style.go`. It has 47 color fields, with literal values in `lightColors` and `darkColors`. The literals have no relation to each other. A face and the text on it are two fields, and no code links them.
+The palette is the `colors` struct in `style.go`. It has 48 color fields, with literal values in `lightColors` and `darkColors`. The literals have no relation to each other. A face and the text on it are two fields, and no code links them.
 
 Only the pane header adapts its text to its face. `headerColors` returns the palette of the other appearance when the face of the card has the other lightness. No other surface does this.
 
 [DSK-007](DSK-007-sidebar-style.md) lets the user set `sidebar.colorCustomizations`. With `sidebar.selection` set to `"fill"`, `sidebarChosen` paints the chosen row at `tabActive` and changes only the face. The row keeps the text of the palette. A light `tabActive` in a dark window thus puts light text on a light face. Each other face can lose contrast in the same way.
 
-The literals also hide the structure. Most translucent values are ink: black or white at an alpha. A hover is black at a low alpha in a light window. A shadow is black at a fraction. A user who writes a theme must write 47 values where 30 seeds are sufficient.
+The literals also hide the structure. Most translucent values are ink: black or white at an alpha. A hover is black at a low alpha in a light window. A shadow is black at a fraction. A user who writes a theme must write 48 values where 31 seeds are sufficient.
 
 ## Goal
 
@@ -121,7 +121,7 @@ The system setting for less transparency also applies. MyGo gives it as `ui.Pref
 
 Fixed rules make the palette from the seeds. One seed set always gives the same palette.
 
-The seeds are 30 colors for each appearance, not seven. The real palette has many values that no rule makes from another value. Examples are the gray steps of the text ladder, the four stops of the window gradient and the status colors. A rule for them changes the look. The work keeps the look, so these values stay seeds.
+The seeds are 31 colors for each appearance, not seven. The real palette has many values that no rule makes from another value. Examples are the gray steps of the text ladder, the four stops of the window gradient and the status colors. A rule for them changes the look. The work keeps the look, so these values stay seeds.
 
 The other roles are **ink**: black or white at an alpha step. The lightness of the `panel` seed selects the steps. If `isDark(panel)` is true, `derive` uses the dark steps. If not, it uses the light steps. Contrast ink is black on a light palette and white on a dark palette. A step of 0 gives a clear color, `ui.Transparent`. The steps are constants in `style.go` (`lightInk` and `darkInk`). A theme changes seeds, not steps.
 
@@ -142,9 +142,11 @@ Each seed has one value for each appearance:
 | Window gradient | `bgTop`, `bgMid`, `bgLow`, `bgBottom`, `bgTint` |
 | Text ladder | `text`, `textMuted`, `textFaint`, `iconMuted`, `emptyMark` |
 | Status | `busy`, `attention`, `done`, `exited`, `danger` |
-| Accent | `accent`, `accentHover`, `accentPressed` |
+| Accent | `accent`, `accentHover`, `accentPressed`, `accentText` |
 | Opaque faces | `panel`, `field`, `fieldBorder`, `surface`, `surfaceHover`, `surfacePressed` |
 | Tinted faces | `card`, `cardFocused`, `shadow`, `shadowFocused`, `backdrop`, `pillTint` |
+
+`accentText` is the color of text and glyphs on a face that is the accent, `accentHover` or `accentPressed`: a highlighted menu row, a primary button, a chosen segment, a switch that is on. The built-in value is white in the light palette and `#10151c` in the dark one, which is what GoRex drew before. It is a seed, not a rule, because no lightness rule picks the right one: the light accent of the ayu Light theme (`#f29718`) is 2.28:1 with white and needs dark text, and a theme author knows which side of the accent the text must be on. Text on any other face stays on the text ladder.
 
 The tinted faces are not black or white ink in each palette. The light `shadow`, `shadowFocused` and `backdrop` have a plum tint. The light `pillTint` is a dark gray. The dark `card` and `cardFocused` are near-black grays. A seed has the same role in each set, so each tinted face is a seed in both sets.
 
@@ -182,7 +184,7 @@ Each face has a pairing rule. The resolver attaches the text ladder that fits th
 ## Alternatives
 
 - **Keep the flat palette and rely on review**: rejected. Nothing prevents a `tabActive` override with unreadable text. The construction must prevent it.
-- **Raw token overrides only, as CSS variables**: rejected. The face and the text stay separate, and that causes the bug. The user must also write 47 values.
+- **Raw token overrides only, as CSS variables**: rejected. The face and the text stay separate, and that causes the bug. The user must also write 48 values.
 - **One fixed pairing for each appearance, with no lightness check**: rejected. A dark terminal in a light window is a supported configuration. A fixed pairing fails on it.
 - **Terminal colors in the manifest**: rejected. Ghostty's themes already hold more than 800 tested palettes, and the user's theme picker uses the same names. A manifest names a theme instead of 22 more colors.
 - **The theme's terminal over `terminal.theme`**: rejected. The user chose `terminal.theme` for every theme.
@@ -213,6 +215,7 @@ An upgrade keeps the look that the user has. The user does not edit the file.
 - **Extensions page**: The page lists both kinds, installs a theme pack, uses it at once and goes back to the built-in palette (`TestIconPacksSettingsView`, [MOD-012](MOD-012-program-icon-packs.md)).
 - **Manifest**: The load step removes a bad seed, an unknown seed, an unknown role and an unknown key, and logs a warning for each. It does not stop the app (`TestParseDrops`, `TestParseFails`).
 - **Layers**: The theme's seeds go through `derive`, the theme's roles go over the result, and the user's `sidebar.colorCustomizations` go over the theme's roles (`TestThemeLayers`). With no theme, each palette is the built-in one (`TestThemeNoneKeepsPalettes`).
+- **Accent text**: The built-in `accentText` is white in the light palette and `#10151c` in the dark one, so no draw changes (`TestDeriveKeepsPalettes`, `TestThemeNoneKeepsPalettes`). A theme's `accentText` is the text of a menu highlight and of the stock widgets' accent faces; a theme with none keeps the built-in value (`TestThemeAccentText`).
 - **Settings**: A `settings.json` with both `terminal.theme` and `appearance.theme` keeps the Ghostty theme and selects the manifest. A missing manifest or a name with a path leaves the built-in palettes (`TestSettingsTerminalAndAppearanceTheme`).
 - **Theme pack**: `gorex pack install` installs a registry theme pack, and a local folder with a `theme.json`, to `<config>/themes` (`TestPackInstallTheme`, `TestInstall`).
 - **Terminal key**: The parser reads `terminal`, and drops a name with a path, a name of no Ghostty theme and a key that is not `light` or `dark`, with a warning for each (`TestParseTerminal`). A device name is not a theme (`TestThemeTerminalKnown`). With no `terminal.theme`, the theme's names apply to both appearances and replace the Ghostty configuration's colors. A `terminal.theme` of the user's wins (`TestThemeTerminal`). Using a theme on the Extensions page changes the terminals' colors at once (`TestUseThemeTerminal`).
@@ -224,6 +227,6 @@ No item in `docs/invariants.md` covers the palette.
 ## Phases
 
 1. **Pairing** (built): Add the `surface` resolver. Move the chosen sidebar row to it first, then the other chrome. This fixes the contrast for the current overrides. Rename the DSK-007 tokens and migrate them. The resolver judges a translucent face as laid over `panel`. It serves the sidebar's chosen rows, hovered rows and the current project's group. Not moved: the pill under glass (the system draws it, so `sideBar.activeGroupTabBackground` is only its fallback face), the tab strip's track, and the separators and shadows, which carry no text. The pane cards, the dialogs and the menus are the next call sites.
-2. **Seeds** (built): `derive` replaces the literal palettes, and `colors` becomes a derived value. The ink rules make 17 roles of each palette. The other 30 roles are seeds. Each field is byte-exact, so the look does not change.
+2. **Seeds** (built): `derive` replaces the literal palettes, and `colors` becomes a derived value. The ink rules make 17 roles of each palette. The other 30 roles are seeds. (A later change added the seed `accentText`.) Each field is byte-exact, so the look does not change.
 3. **Manifest** (built): Add `internal/theme`, the `appearance.theme` settings key and a `theme` pack kind on the registry. The Settings page for packs becomes **Extensions** ([MOD-012](MOD-012-program-icon-packs.md)): it lists the registry's themes, installs them, and uses one at once. Reduce Transparency changes no face, because each face lies on the opaque gradient. The sample theme pack `slate` is in the registry.
 4. **Terminal** (in review): Add the optional `terminal` key. A theme then names a Ghostty theme for each appearance, below the user's `terminal.theme`. The sample theme packs `ayu` and `ayu-mirage` in the registry use it.

@@ -41,6 +41,7 @@ const (
 	Accent
 	AccentHover
 	AccentPressed
+	AccentText
 	Panel
 	Field
 	FieldBorder
@@ -60,7 +61,7 @@ var seedNames = [NumSeeds]string{
 	"bgTop", "bgMid", "bgLow", "bgBottom", "bgTint",
 	"text", "textMuted", "textFaint", "iconMuted", "emptyMark",
 	"busy", "attention", "done", "exited", "danger",
-	"accent", "accentHover", "accentPressed",
+	"accent", "accentHover", "accentPressed", "accentText",
 	"panel", "field", "fieldBorder", "surface", "surfaceHover", "surfacePressed",
 	"card", "cardFocused", "shadow", "shadowFocused", "backdrop", "pillTint",
 }

@@ -57,6 +57,8 @@ type colors struct {
 
 	// accent is the color of what is chosen or on; panelSel is its wash.
 	accent, accentHover, accentPressed ui.Color
+	// accentText is the color of text and glyphs on the accent faces.
+	accentText ui.Color
 	// surface is the face of controls, opaque as the popovers' panel.
 	surface, surfaceHover, surfacePressed ui.Color
 }
@@ -73,6 +75,7 @@ type seeds struct {
 	busy, attention, done, exited, danger ui.Color
 
 	accent, accentHover, accentPressed ui.Color
+	accentText                         ui.Color
 
 	// panel is the opaque face of popovers and dialogs; its lightness
 	// picks the ink steps.
@@ -151,7 +154,7 @@ func derive(s seeds) colors {
 		panelGlass: ink(s.panel, st.panelGlass),
 		field:      s.field, fieldBorder: s.fieldBorder,
 
-		accent: s.accent, accentHover: s.accentHover, accentPressed: s.accentPressed,
+		accent: s.accent, accentHover: s.accentHover, accentPressed: s.accentPressed, accentText: s.accentText,
 		surface: s.surface, surfaceHover: s.surfaceHover, surfacePressed: s.surfacePressed,
 	}
 }
@@ -175,7 +178,7 @@ var lightSeeds = seeds{
 	done:      ui.Hex("#7aa0c2"),
 	exited:    ui.Hex("#a1a1a6"),
 
-	accent: ui.Hex("#2e6fd0"), accentHover: ui.Hex("#2a64bd"), accentPressed: ui.Hex("#2459a8"),
+	accent: ui.Hex("#2e6fd0"), accentHover: ui.Hex("#2a64bd"), accentPressed: ui.Hex("#2459a8"), accentText: ui.Hex("#ffffff"),
 
 	panel: ui.Hex("#fcfcfd"), field: ui.Hex("#f4f4f5"), fieldBorder: ui.Hex("#d9d9de"),
 	surface: ui.Hex("#fcfcfd"), surfaceHover: ui.Hex("#efeff2"), surfacePressed: ui.Hex("#e3e3e8"),
@@ -207,7 +210,7 @@ var darkSeeds = seeds{
 	done:      ui.Hex("#7aa0c2"),
 	exited:    ui.Hex("#636366"),
 
-	accent: ui.Hex("#6cb2ff"), accentHover: ui.Hex("#82bfff"), accentPressed: ui.Hex("#5aa2f0"),
+	accent: ui.Hex("#6cb2ff"), accentHover: ui.Hex("#82bfff"), accentPressed: ui.Hex("#5aa2f0"), accentText: ui.Hex("#10151c"),
 
 	panel: ui.Hex("#26262a"), field: ui.Hex("#2d2d32"), fieldBorder: ui.Hex("#3f3f46"),
 	surface: ui.Hex("#262629"), surfaceHover: ui.Hex("#303035"), surfacePressed: ui.Hex("#3a3a40"),
@@ -265,7 +268,7 @@ func seedField(s *seeds, id theme.Seed) *ui.Color {
 		&s.bgTop, &s.bgMid, &s.bgLow, &s.bgBottom, &s.bgTint,
 		&s.text, &s.textMuted, &s.textFaint, &s.iconMuted, &s.emptyMark,
 		&s.busy, &s.attention, &s.done, &s.exited, &s.danger,
-		&s.accent, &s.accentHover, &s.accentPressed,
+		&s.accent, &s.accentHover, &s.accentPressed, &s.accentText,
 		&s.panel, &s.field, &s.fieldBorder, &s.surface, &s.surfaceHover, &s.surfacePressed,
 		&s.card, &s.cardFocused, &s.shadow, &s.shadowFocused, &s.backdrop, &s.pillTint,
 	}[id]
@@ -565,15 +568,6 @@ var darkTerm = &terminal.Theme{
 	},
 }
 
-// accentText is the color of text on the accent: dark on the light accent
-// of a dark window, white on the other.
-func accentText(dark bool) ui.Color {
-	if dark {
-		return ui.Hex("#10151c")
-	}
-	return ui.Hex("#ffffff")
-}
-
 // widgetTheme is the stock widgets' theme in GoRex's colors, so that the
 // segmented controls, switches, steppers and selects of a window look as
 // the rest of the app. Its Background is the face of a segmented control's
@@ -582,7 +576,7 @@ func widgetTheme(base *ui.Theme, k *colors) *ui.Theme {
 	t := *base
 	t.Background, t.Surface, t.SurfaceHover, t.SurfacePressed = k.surface, k.surface, k.surfaceHover, k.surfacePressed
 	t.Border, t.Text, t.TextMuted = k.panelBorder, k.text, k.textMuted
-	t.Accent, t.AccentHover, t.AccentPressed, t.AccentText = k.accent, k.accentHover, k.accentPressed, accentText(t.Dark)
+	t.Accent, t.AccentHover, t.AccentPressed, t.AccentText = k.accent, k.accentHover, k.accentPressed, k.accentText
 	t.Menu = menuStyleOf(k, t.Dark)
 	t.Selection, t.Focus = k.accent.Alpha(0.3), k.accent.Alpha(0.55)
 	t.Radius = 9

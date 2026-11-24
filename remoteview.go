@@ -764,7 +764,7 @@ func (a *App) remoteHeader(c *ui.Context, k *colors, st rex.RemoteStatus) {
 		groupRow(c, k, nil).Children(func() {
 			ui.Row(c).Gap(12).AlignItems(ui.Center).Children(func() {
 				ui.Box(c).Size(40, 40).Radius(radiusM).Background(k.accent).Center().Shrink(0).Children(func() {
-					glyphIcon(c, "globe", 22, ui.RGB(255, 255, 255))
+					glyphIcon(c, "globe", 22, k.accentText)
 				})
 				ui.Column(c).Grow(1).MinWidth(0).Gap(4).Children(func() {
 					ui.Text(c, locales.RemoteConnect()).FontSize(fontTitle).FontWeight(600).TextColor(k.text)
