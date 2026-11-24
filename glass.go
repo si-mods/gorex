@@ -207,6 +207,28 @@ func (f faceMaterial) PaintMaterial(p *ui.Painter, box ui.Rect, radii [4]float32
 	p.Fill(box, f.c, radii[0])
 }
 
+// systemGlassPills tells that the system draws the glass pills (macOS),
+// whose text keeps the ladder of what lies under them; elsewhere a pill
+// under the glass setting is its fallback face. A test sets it.
+var systemGlassPills = runtime.GOOS == "darwin"
+
+// pillColors returns k with the ladder that reads on a glass pill's
+// fallback face, pill laid over layers (the faces under it, the lowest
+// first, over k's panel), where the system draws no glass and a theme
+// sets the lowest layer; else k itself. Under a theme the ladder is
+// faceLadder's, so a light pill on a dark title bar gets dark text.
+func pillColors(k *colors, pill ui.Color, layers ...ui.Color) *colors {
+	if systemGlassPills || len(layers) == 0 || layers[0].A == 0 {
+		return k
+	}
+	face := k.panel
+	for _, l := range layers {
+		face = l.Over(face)
+	}
+	face = pill.Over(face)
+	return withLadder(k, faceLadder(k, face, ladderOf(k, isDark(face))))
+}
+
 // hoverFace is a hovered tab's face: Rex's under the glass setting, the
 // plain hover without it.
 func hoverFace(k *colors) ui.Color {

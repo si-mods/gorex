@@ -57,10 +57,27 @@ func Fragment(dst vec4, pos vec2) vec4 {
 		t.Errorf("the title bar's shader fails: %q", set.warn)
 	}
 	// The active tab's pill on that title bar is light: its text is dark
-	// again, not the bar's white.
+	// again, not the bar's white, without glass on tabActive, and with glass
+	// where the system draws none on its fallback face, pillFace over the
+	// track over the bar.
+	noGlass, sysGlass := prefs.NoGlass, systemGlassPills
+	t.Cleanup(func() { prefs.NoGlass, systemGlassPills = noGlass, sysGlass })
 	bar, _, _ := themedFace(paletteOf(false), roleTitleBarBackground)
-	if pk := surface(bar, roleTabActiveBackground).on(bar); contrast(pk.text, bar.tabActive.Over(bar.panel)) < faceTextContrast {
-		t.Errorf("the active tab's text %v does not read on its pill %v", pk.text, bar.tabActive)
+	prefs.NoGlass = true
+	if pk := activeTabColors(bar); contrast(pk.text, bar.tabActive.Over(bar.panel)) < faceTextContrast {
+		t.Errorf("no glass: the active tab's text %v does not read on its pill %v", pk.text, bar.tabActive)
+	}
+	prefs.NoGlass, systemGlassPills = false, false
+	if !glassOn() {
+		t.Fatal("the glass setting is off")
+	}
+	pill := bar.pillFace.Over(bar.track.Over(bar.titleBarFace.Over(bar.panel)))
+	pk := activeTabColors(bar)
+	if r := contrast(pk.text, pill); r < faceTextContrast {
+		t.Errorf("glass: the active tab's text %v has %.1f:1 on its fallback pill %v", pk.text, r, pill)
+	}
+	if r := contrast(pk.textMuted, pill); r < faceMutedContrast {
+		t.Errorf("glass: the active tab's textMuted has %.1f:1", r)
 	}
 }
 
