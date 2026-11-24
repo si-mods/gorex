@@ -3,7 +3,7 @@ name: DSK-005
 description: "The desktop joins a tailnet with built-in Tailscale, and Tailscale only introduces devices. Use when you change the desktop tailnet node or introductions."
 metadata:
   created: "2026-11-12"
-  updated: "2026-11-20"
+  updated: "2026-11-24"
 ---
 
 # DSK-005: Desktop: Tailscale introductions over built-in Tailscale
@@ -149,7 +149,7 @@ A Mac with the mode on moves from the system client to the built-in node with th
 1. **Interface**: the four needs of the broker behind it, the system client as the only side. No change in behavior. Built (#573).
 2. **Built-in node**: the listener of `tailnode`, the hook, the choice of side, `gorex remote status`. Built (#573).
 3. **Settings**: the status line, **Sign in**, the notes and their translations, names without `-gorex`. Built (#573, #716).
-4. **Docs**: README's Remote access, `docs/REF-005-rex-api.md`. Built (#573, #716).
+4. **Docs**: `docs/REF-012-remote-access.md`, `docs/REF-005-rex-api.md`. Built (#573, #716).
 
 Before these phases shipped, a one-line fix could hide the switch on Windows, so the hint that never comes true was gone at once.
 

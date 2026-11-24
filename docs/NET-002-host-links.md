@@ -3,7 +3,7 @@ name: NET-002
 description: "One device identity for all paths, tailcat for sessions, and Tailscale only as an introduction. Use when you change pairing, device keys or how hosts connect."
 metadata:
   created: "2026-11-12"
-  updated: "2026-11-23"
+  updated: "2026-11-24"
 ---
 
 # NET-002: Host links: one identity, any path, one switch
@@ -98,7 +98,7 @@ What it costs: while the window is open, whoever can dial the address can ask to
 
 **The Tailscale rule.** On the tailnet, at port 7464, a client sends its key and name. The server checks the connection with `WhoIs`. It checks the peer in its current snapshot again under the lock of the allowlist (as `admit` does today). Then it writes the entry and answers with its address. The rule means this:
 
-- **Any device of the user's Tailscale account gets a shell here.** It may enrol any key, its own or another key. An allowed key runs commands as this user from anywhere (README). The account and its control server are the root of trust. The control server is the one of Tailscale or the Headscale of the user. Untagged devices made with an auth key, as a CI runner, count.
+- **Any device of the user's Tailscale account gets a shell here.** It may enrol any key, its own or another key. An allowed key runs commands as this user from anywhere ([REF-012](REF-012-remote-access.md)). The account and its control server are the root of trust. The control server is the one of Tailscale or the Headscale of the user. Untagged devices made with an auth key, as a CI runner, count.
 - **One key for each node.** An entry keeps the node ID that it came from. A new introduction from that node replaces the key.
 - **The entry lives while the tailnet vouches for it.** The server admits it only while the broker holds a fresh snapshot that has the node as a same-user peer. The peer must be untagged, not expired and not shared in. In these cases, the server closes the connections of the entry and refuses its key until a snapshot has it again:
   - three failed reads in a row, as today

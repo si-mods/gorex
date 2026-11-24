@@ -3,7 +3,7 @@ name: REF-005
 description: "The Rex API that `GoRex rexapi` serves to the apps of Rex: paths in, setup, commands and the differences from a Rex server. Use when you change the Rex API gateway."
 metadata:
   created: "2026-10-31"
-  updated: "2026-11-20"
+  updated: "2026-11-24"
 ---
 
 # REF-005: Rex's apps
@@ -202,7 +202,7 @@ also turns built-in Tailscale on. Sign in with the button there.
 ## Tailcat
 
 Rex Go reaches the machine over tailcat, at the address of GoRex's
-remote access (README, Remote access): WireGuard end to end, directly or
+remote access ([REF-012](REF-012-remote-access.md)): WireGuard end to end, directly or
 through a DERP relay, with no Tailscale account and no VPN on the phone.
 The gateway keeps no tailcat of its own. The session server listens on
 port 7297 of its address beside 7464, and lets in only the clients that

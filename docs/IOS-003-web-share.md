@@ -3,7 +3,7 @@ name: IOS-003
 description: "Rex Go serves the web client to a laptop over Personal Hotspot and forwards its requests to the hosts. Use when you change hotspot sharing."
 metadata:
   created: "2026-11-13"
-  updated: "2026-11-20"
+  updated: "2026-11-24"
 ---
 
 # IOS-003: Rex Go: the web client over Personal Hotspot
@@ -161,4 +161,4 @@ The app updates it locally. A Live Activity alone gives the app no background ti
 1. **Foreground**: `ios/share`, the two changes of the page, `files.json` in `web/build.mjs`, on-demand download and cache of `WebClient/`, the share screen, admission, dimming, and listening again after a suspension. Phase 1 also checks the local network permission. Built (#556, #866).
 2. **Background**: the experimental setting, and audio session handling with dictation and interruptions.
 3. **Live Activity**: the widget extension, status and Stop.
-4. **Docs**: `docs/REF-005-rex-api.md` and the README.
+4. **Docs**: `docs/REF-005-rex-api.md` and `docs/REF-012-remote-access.md`.

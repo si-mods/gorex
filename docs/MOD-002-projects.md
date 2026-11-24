@@ -3,7 +3,7 @@ name: MOD-002
 description: "Projects are folders on each host, inside a space, and hosts own them. Use when you change spaces, projects or where layouts live."
 metadata:
   created: "2026-11-17"
-  updated: "2026-11-22"
+  updated: "2026-11-24"
 ---
 
 # MOD-002: Projects: folders on each host, inside a space
@@ -475,7 +475,7 @@ Each phase is its own PR. The team runs, reviews and merges each PR before the n
 2. **Desktop window from the layouts of the hosts**, sending adoptions as hosts connect. Then the sidebar and the title bar: hosts, Projects, tabs with no project, move by drag and menu, the space picker and the offline copy. The new UI goes in files of its own (`projects_sidebar.go` and the like), not in `state.go` (`docs/lessons.md`).
 3. **Rex Go**: the space picker, projects under each host, create and move, the offline copy and the manifest dropped. "Window" becomes "Tab".
 4. **Web client.**
-5. **Docs**: README, `docs/REF-005-rex-api.md`, `docs/REF-001-cli.md` (Share Layout), and `docs/IOS-004-centralized-spaces.md` marked replaced.
+5. **Docs**: the README, `docs/REF-010-desktop-app.md`, `docs/REF-005-rex-api.md`, `docs/REF-001-cli.md` (Share Layout), and `docs/IOS-004-centralized-spaces.md` marked replaced.
 
 ## Open questions
 

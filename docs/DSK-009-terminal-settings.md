@@ -95,7 +95,7 @@ If the migration cannot write the file, GoRex logs the error and uses the migrat
 - `settings.go`: The `settings` struct replaces the seven fields with fields that have the dotted JSON names. A function `migrateSettings(raw map[string]json.RawMessage) bool` does steps 4 and 5 on the raw JSON object. `loadSettings` calls it before it decodes the struct, and writes the backup and the file when it returns true.
 - `settings.go`: `ghosttyConfig.withPrefs` and the opacity code read the new fields.
 - `settingsview.go`: The Terminal page and the Theme page write the new fields.
-- `README.md`: The text that names `minimumContrast` names `terminal.minimumContrast`.
+- `docs/REF-011-ghostty-config.md`: The text that names `minimumContrast` names `terminal.minimumContrast`.
 
 [DSK-008](DSK-008-theme.md) uses the same migration function for the renamed color tokens of `sidebar.colorCustomizations`.
 
@@ -126,4 +126,4 @@ No item in `docs/invariants.md` covers settings keys.
 
 ## Phases
 
-1. **Rename and migrate**: New keys, `migrateSettings`, the backup, the Settings window and README.
+1. **Rename and migrate**: New keys, `migrateSettings`, the backup, the Settings window and `docs/REF-011-ghostty-config.md`.
