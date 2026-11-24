@@ -1,7 +1,7 @@
 <p align="center">
 <img src="resources/icon.png" alt="GoRex" width="100">
 </p>
-<h1 align="center">GoRex</h1>
+<h1 align="center">GoRex Terminal</h1>
 
 > Shells that keep running, on every machine you own.
 
