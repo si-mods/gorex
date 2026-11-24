@@ -3,14 +3,14 @@ name: IOS-002
 description: "Rex Go connects to a GoRex machine as a tailcat client, as a desktop does. Use when you change tailcat on iOS or the gateway on the tailcat address."
 metadata:
   created: "2026-11-10"
-  updated: "2026-11-22"
+  updated: "2026-11-24"
 ---
 
 # IOS-002: Rex Go over tailcat
 
 Status: built (#396, #398, #400, #507).
 
-This doc answers the rest of [#330](https://github.com/si-mods/gorex/issues/330), after [built-in Tailscale](IOS-001-tailnet.md). It makes Rex Go a tailcat client of the GoRex machine, as a GoRex desktop is. The README ("Remote access") and `docs/REF-005-rex-api.md` describe the result, with a `derper` of one's own.
+This doc answers the rest of [#330](https://github.com/si-mods/gorex/issues/330), after [built-in Tailscale](IOS-001-tailnet.md). It makes Rex Go a tailcat client of the GoRex machine, as a GoRex desktop is. [REF-012](REF-012-remote-access.md) and `docs/REF-005-rex-api.md` describe the result, with a `derper` of one's own.
 
 ## Problem
 
@@ -40,7 +40,7 @@ Then:
 
 That is exactly **tailcat**: the data plane of Tailscale without its control plane. The address carries the key of the server, a pre-shared key and the relay where the two meet.
 
-GoRex already runs tailcat. The session server listens on a tailcat address (README, Remote access). It has these parts:
+GoRex already runs tailcat. The session server listens on a tailcat address ([REF-012](REF-012-remote-access.md)). It has these parts:
 
 - a client key for each machine (`remote-client.json`).
 - an allowlist of keys. The server checks it on every connection and refuses before close.
@@ -94,7 +94,7 @@ The key stays out of this value. The principal of Rex allows no member for it. A
 
 Suppose no gateway is on the socket, as while the gateway starts. The connection then closes at once, and its client dials again. `server.status` leaves this listener out, because its address is a secret.
 
-A paired client may do on the gateway what Rex's API allows, layout included. The Tailscale user who signed in the gateway may do the same. This is more than a desktop may do on `RemotePort` (sessions only, no layout). A desktop already has the same trust in practice, because an allowed key runs any program as this user (README). So the line is a convention, not a boundary. The line is drawn where a desktop may command the layout over `RemotePort`.
+A paired client may do on the gateway what Rex's API allows, layout included. The Tailscale user who signed in the gateway may do the same. This is more than a desktop may do on `RemotePort` (sessions only, no layout). A desktop already has the same trust in practice, because an allowed key runs any program as this user ([REF-012](REF-012-remote-access.md)). So the line is a convention, not a boundary. The line is drawn where a desktop may command the layout over `RemotePort`.
 
 The gateway runs while remote access is on. It runs in the same way while the local network listener or built-in Tailscale is on.
 
@@ -114,7 +114,7 @@ Settings › Server › Devices › **Rex Go QR…** shows the tailcat address i
 rexgo://tailcat?a=<tailcat address>&n=<machine name>
 ```
 
-The address is a secret (README). The dialog shows the code and says so. GoRex never logs the code or copies it.
+The address is a secret ([REF-012](REF-012-remote-access.md)). The dialog shows the code and says so. GoRex never logs the code or copies it.
 
 Rex Go takes the code from the scanner of Add Host, from a picture of it that the user picks in the scanner, or from the camera app through the `rexgo` scheme that Rex Go already registers. Then Rex Go does these steps:
 
@@ -191,4 +191,4 @@ tailcat links `magicsock`, WireGuard and `netstack`, which the engine already ha
    - With built-in Tailscale off, the path monitor runs while a host is paired over tailcat. The socket reset of the foreground runs too.
    - The app keeps the address in UserDefaults with the host. The address lets in nothing that the machine did not approve. The secret that the phone holds, its client key, is in the Keychain.
    - End to end in the simulator on a Mac mini, through the relays of tailcat: pair, approve, sessions listed, background and foreground, revoke. Not yet tested: opening a terminal, a `derper` of one's own, a phone.
-4. **Docs** (done): `docs/REF-005-rex-api.md` and the README "Remote access" describe Rex Go over tailcat and a `derper` of one's own. The side of the server and the relay were written with phase 2. The steps of Rex Go followed phase 3.
+4. **Docs** (done): `docs/REF-005-rex-api.md` and [REF-012](REF-012-remote-access.md) describe Rex Go over tailcat and a `derper` of one's own. The side of the server and the relay were written with phase 2. The steps of Rex Go followed phase 3.
