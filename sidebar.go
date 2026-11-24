@@ -430,6 +430,7 @@ func (a *App) sidebar(c *ui.Context, k *colors, right bool) {
 	if ok {
 		col.Background(face)
 	}
+	a.ambience.side, a.ambience.hasSide = col, true
 	col.Children(func() {
 		head := ui.Row(c).Height(titleH).Shrink(0).Gap(2).AlignItems(ui.Center).DragWindow()
 		hk, face, ok := themedFace(k, roleTitleBarBackground)
@@ -484,6 +485,7 @@ func (a *App) sidebar(c *ui.Context, k *colors, right bool) {
 			if iconButton(c, k, "folder-plus", cmdNewProject.Title(), 30, 16).Tooltip(tip(cmdNewProject.Title(), &cmdNewProject)).Clicked() {
 				a.later(c, a.openNewProject)
 			}
+			a.ambienceButton(c, k)
 			ui.Spacer(c)
 			a.hostButton(c, k)
 		})

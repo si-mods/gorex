@@ -604,6 +604,11 @@ var (
 	cmdSystem   = command{ID: "appearance.system", Name: locales.Messages.CmdAppearanceSystem, Run: func(a *App) { a.setAppearance("") }}
 	cmdSettings = command{ID: "app.settings", Name: locales.Messages.CmdSettings, Accel: "CmdOrCtrl+,", Keys: "⌘,", Other: shortcut{ui.Ctrl, ui.KeyComma}}
 	cmdUpdates  = command{ID: "app.updates", Name: locales.Messages.CmdCheckForUpdates, Run: func(a *App) { updater.CheckForUpdates() }}
+	// cmdAmbience turns the theme's ambience off and on
+	// (docs/DSK-010-theme-ambience.md); the palette lists it while the
+	// theme has some.
+	cmdAmbience = command{ID: "appearance.ambience.toggle", Name: locales.Messages.CmdToggleAmbience,
+		Available: func(a *App) bool { return themeAmbient() }, Run: func(a *App) { a.toggleAmbience() }}
 	// cmdRestartServer restarts a server an update left behind on Windows,
 	// when the user chose Later (store.restartServer).
 	cmdRestartServer = command{ID: "server.restart", Name: locales.Messages.CmdRestartServer, Hidden: runtime.GOOS != "windows",
@@ -738,7 +743,7 @@ var paletteCommands = []*command{
 	&cmdNextTab, &cmdPrevTab, &cmdJumpNeedy, &cmdNeeds, &cmdRenameTab, &cmdSidebar,
 	&cmdFocusLeft, &cmdFocusRight, &cmdFocusUp, &cmdFocusDown,
 	&cmdGrowLeft, &cmdGrowRight, &cmdGrowUp, &cmdGrowDown,
-	&cmdBigger, &cmdSmaller, &cmdActualSize, &cmdLight, &cmdDark, &cmdSystem,
+	&cmdBigger, &cmdSmaller, &cmdActualSize, &cmdLight, &cmdDark, &cmdSystem, &cmdAmbience,
 	&cmdGhostty, &cmdClearScroll, &cmdFind, &cmdFindNext, &cmdFindPrev, &cmdRestart, &cmdSettings, &cmdUpdates, &cmdRestartServer, &cmdEndAll,
 	&cmdNewWindow, &cmdNewProject, &cmdNewSession, &cmdImportRex, &cmdChangeSession, &cmdNextSession, &cmdPrevSession,
 	&cmdRenameSession, &cmdRevealFolder, &cmdCloseSession,
@@ -1371,7 +1376,7 @@ func (a *App) paletteItems() []paletteItem {
 		})
 	}
 	for _, cmd := range paletteCommands {
-		if cmd.Hidden || cmd == &cmdUpdates && !mygo.Updater.Enabled() || cmd == &cmdSidebar && prefs.TabPlacement == "" ||
+		if cmd.Hidden || cmd == &cmdUpdates && !mygo.Updater.Enabled() || cmd == &cmdSidebar && prefs.TabPlacement == "" || cmd == &cmdAmbience && !themeAmbient() ||
 			a.st == nil && slices.Contains(sessionCommands, cmd) ||
 			!match(cmd.Title()) && !match(cmd.English()) {
 			continue

@@ -220,10 +220,12 @@ func readAsset(dir, file string) ([]byte, error) {
 }
 
 // assetUse is how a manifest uses an asset: as a still image of the
-// background, or as the brand's icon, the one use an SVG may have.
+// background, as a sprite, or as the brand's icon, the one use an SVG may
+// have.
 type assetUse struct {
 	still, icon bool
 	shown       float32 // the largest size it shows at, in DIPs; 0 for a fraction of the window
+	sprite      float32 // the largest height it swims at, in DIPs; 0 for none
 }
 
 // uses returns how m uses each of its assets.
@@ -237,6 +239,11 @@ func (m *Manifest) uses() map[string]assetUse {
 		} else {
 			u.shown = -1 // a fraction of the window: no bound
 		}
+		out[s.Asset] = u
+	}
+	for _, s := range m.Ambience.Sprites {
+		u := out[s.Asset]
+		u.sprite = max(u.sprite, s.Height)
 		out[s.Asset] = u
 	}
 	if m.Brand.Icon != "" {
@@ -292,7 +299,7 @@ func LoadAssets(dir string, m *Manifest, scale float32) (*Art, []string) {
 			continue
 		}
 		if h.Format == FormatSVG {
-			if u.still {
+			if u.still || u.sprite > 0 {
 				drop(errors.New("an SVG is only for brand.icon"))
 				continue
 			}
@@ -302,12 +309,22 @@ func LoadAssets(dir string, m *Manifest, scale float32) (*Art, []string) {
 			continue
 		}
 		side := 0 // native, at most maxStillSide
-		switch {
-		case u.still && u.shown < 0:
-		case u.still:
-			side = int(2 * max(u.shown, BrandIconSize) * scale)
-		default:
-			side = int(2 * BrandIconSize * scale)
+		if !u.still || u.shown >= 0 {
+			if u.still {
+				side = int(2 * max(u.shown, BrandIconSize) * scale)
+			}
+			if u.icon {
+				side = max(side, int(2*BrandIconSize*scale))
+			}
+			if u.sprite > 0 {
+				// The sprite's height is a frame's, a row of a sheet.
+				rows := 1
+				if a.Frames > 0 {
+					rows = (a.Frames + a.Columns - 1) / a.Columns
+				}
+				frame := float32(h.Height) / float32(rows)
+				side = max(side, int(2*u.sprite*scale*float32(max(h.Width, h.Height))/frame+0.5))
+			}
 		}
 		bm, err := decodeBitmap(b, side)
 		if err == nil {
