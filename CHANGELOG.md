@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.59.0
+
+### Features
+
+* **home:** one home directory `~/.gorex` for configuration and data, with self-migration ([#1090](https://github.com/si-mods/gorex/pull/1090))
+* **desktop:** sidebar tabIndent, groupBackground, and theme sidebar overrides ([#1088](https://github.com/si-mods/gorex/pull/1088))
+
+### Bug Fixes
+
+* **cli:** list and remove installed themes with `gorex pack ls` and `gorex pack rm` ([#1086](https://github.com/si-mods/gorex/pull/1086))
+
 ## 0.58.0
 
 ### Features
