@@ -3023,13 +3023,13 @@
   "@spaceRenameMenu": {
     "description": "Space picker menu: rename the space shown, on every host."
   },
-  "spaceDeleteMenu": "Delete Space…",
+  "spaceDeleteMenu": "Delete Space",
   "@spaceDeleteMenu": {
-    "description": "Space picker menu: delete the space shown; its projects move to Default."
+    "description": "Space picker menu: delete the space shown at once, with Undo in a toast; its projects move to Default."
   },
-  "spaceDeleteTitle": "Delete space {name}?",
-  "@spaceDeleteTitle": {
-    "description": "Title of the question asked before a space is deleted.",
+  "spaceDeleted": "Deleted {name}",
+  "@spaceDeleted": {
+    "description": "Toast after Delete Space: the space is deleted unless the user presses Undo.",
     "placeholders": {
       "name": {
         "type": "String",
@@ -3037,23 +3037,23 @@
       }
     }
   },
-  "spaceDeleteBody": "{n, plural, one {Its # project moves to Default.} other {Its # projects move to Default.}} No tab closes.",
-  "@spaceDeleteBody": {
-    "description": "Delete Space question: how many projects of the connected hosts move to Default.",
+  "spaceRestored": "Restored {name}",
+  "@spaceRestored": {
+    "description": "Toast after Undo of Delete Space: the space is back.",
     "placeholders": {
-      "n": {
-        "type": "int",
-        "example": "3"
+      "name": {
+        "type": "String",
+        "example": "Work"
       }
     }
   },
-  "spaceDeleteOffline": "Projects of hosts that are offline move when they connect.",
-  "@spaceDeleteOffline": {
-    "description": "Delete Space question: added when a host is offline."
+  "toastUndo": "Undo",
+  "@toastUndo": {
+    "description": "Button of a toast: take back what the toast says was done."
   },
-  "spaceDelete": "Delete",
-  "@spaceDelete": {
-    "description": "Delete Space question: the button that deletes the space."
+  "toastClose": "Dismiss",
+  "@toastClose": {
+    "description": "Tooltip and screen reader name of a toast's close button."
   },
   "spaceColorMenu": "Color",
   "@spaceColorMenu": {

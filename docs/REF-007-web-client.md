@@ -3,7 +3,7 @@ name: REF-007
 description: "The standalone web client in `web/`: hosts, trust of a page, Tailscale, hosting and the app shell. Use when you change the web client."
 metadata:
   created: "2026-11-12"
-  updated: "2026-11-23"
+  updated: "2026-11-24"
 ---
 
 # REF-007: Web client
@@ -1141,8 +1141,9 @@ folders.
   "" being Default), Default, and the spaces made on this page. New Space…
   adds a name to the picker, empty until a project moves in. Rename Space…
   sends `gorex.space.rename {from, to}` to each connected host; a host that
-  is away gets it when it connects. Delete Space…, for the space shown but
-  Default, asks first, then sends `gorex.space.delete {name}` to each
+  is away gets it when it connects. Delete Space, for the space shown but
+  Default, hides the space at once and shows "Deleted <name>" with Undo
+  (WEB-007); when the toast ends it sends `gorex.space.delete {name}` to each
   connected host (`gorex.space.rename {from: name, to: ""}` to a host that
   answers `method_not_found`); a host that is away gets it when it
   connects. Its projects move to Default; no tab closes. Color gives a space a dot. The shown

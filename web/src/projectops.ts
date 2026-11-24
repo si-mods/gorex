@@ -10,6 +10,8 @@ import { chooseFolder } from "./projectdialog";
 import { hostModel, HostModel, Offline, SpaceStore } from "./projectmodel";
 import { isFolderMissing } from "./projects";
 import { spaceName, windowTitle } from "./sidebar";
+import { deleteDeferred } from "./deferdelete";
+import { toasts } from "./toast";
 
 export interface ProjectOpsDeps {
   /** The hosts the page can connect to, in the sidebar's order. */
@@ -222,6 +224,8 @@ export function createProjectOps(deps: ProjectOpsDeps) {
     const name = await askText(t("spaceNewTitle"), t("spaceNameLabel"), "", t("spaceCreate"));
     deps.focusKeys();
     if (!name) return;
+    // A name that waits for its delete: send that first, or the new space would stay hidden.
+    if (store.hidden.has(name)) toasts().end("replaced");
     if (!spaces().includes(name)) store.add(name);
     else store.setCurrent(name);
     deps.redraw();
@@ -233,6 +237,8 @@ export function createProjectOps(deps: ProjectOpsDeps) {
     const to = await askText(t("spaceRenameTitle"), t("spaceNameLabel"), from, t("spaceRename"));
     deps.focusKeys();
     if (!to || to === from) return;
+    // A name that waits for its delete: send that first, or the rename would take the deleted space.
+    if (store.hidden.has(to)) toasts().end("replaced");
     const vs = views();
     const away = vs.filter((v) => !v.online && v.model.projects.some((p) => store.mapSpace(v.model.host, p.space) === from)).map((v) => v.model.host);
     store.rename(from, to, away);
@@ -246,16 +252,25 @@ export function createProjectOps(deps: ProjectOpsDeps) {
     );
   }
 
-  /** Delete Space…: asks first; then each connected host moves the space's projects to Default, and a host away does when it connects. No tab closes. */
-  async function deleteSpace(name: string) {
-    if (!name) return;
+  /**
+   * Delete Space: acts at once on the screen, and says so with Undo (toast.ts). The space is hidden and its projects show in Default
+   * (SpaceStore.hidden), and nothing is sent until the toast ends: by time, by close, by another toast, or by the page hiding.
+   */
+  function deleteSpace(name: string) {
+    deleteDeferred(name, {
+      toasts: toasts(),
+      hidden: store.hidden,
+      redraw: deps.redraw,
+      commit: (n) => void commitDelete(n),
+      say: { deleted: (n) => t("spaceDeleted", { name: n }), restored: (n) => t("spaceRestored", { name: n }), undo: t("toastUndo") },
+    });
+  }
+
+  /** Sends a delete the user did not take back: each connected host moves the space's projects to Default, and a host away does when it connects. No tab closes. */
+  async function commitDelete(name: string) {
+    if (!store.hidden.delete(name)) return;
     const vs = views();
-    const n = vs.filter((v) => v.online).reduce((k, v) => k + v.model.projects.filter((p) => store.mapSpace(v.model.host, p.space) === name).length, 0);
     const away = vs.filter((v) => !v.online).map((v) => v.model.host);
-    const body = t("spaceDeleteBody", { n }) + (away.length ? " " + t("spaceDeleteOffline") : "");
-    const ok = await confirmDanger(t("spaceDeleteTitle", { name }), body, t("spaceDelete"));
-    deps.focusKeys();
-    if (!ok) return;
     store.delete(name, away);
     const live = vs.filter((v) => v.online).map((v) => deps.conn(v.model.host)).filter(isLive);
     for (const c of live) {

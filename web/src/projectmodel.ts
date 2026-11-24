@@ -159,6 +159,8 @@ export class SpaceStore {
   order: string[] = [];
   made: string[] = [];
   pending: Pending[] = [];
+  /** Spaces deleted on screen whose delete is not sent yet (Undo may still bring them back): not kept, and their projects show in Default. */
+  readonly hidden = new Set<string>();
 
   constructor(private readonly storage: Pick<Storage, "getItem" | "setItem"> | undefined = safeStorage()) {
     try {
@@ -205,7 +207,7 @@ export class SpaceStore {
   mapSpace(host: string, space: string): string {
     let s = space;
     for (const p of this.pending) if (p.host === host && p.from === s) s = p.to;
-    return s;
+    return this.hidden.has(s) ? "" : s;
   }
 
   /** Renames a space on this client. `offline`: the hosts that keep it and are not connected; each gets the rename when it connects. */
@@ -256,6 +258,7 @@ export class SpaceStore {
   /** The picker's names: the spaces the projects carry, Default, and the ones made here; in the user's order. */
   names(carried: Iterable<string>): string[] {
     const all = new Set<string>(["", ...carried, ...this.made]);
+    for (const n of this.hidden) all.delete(n);
     const first = this.order.filter((n) => all.has(n));
     const rest = [...all].filter((n) => !first.includes(n)).sort((a, b) => (a === "" ? -1 : b === "" ? 1 : a.localeCompare(b)));
     return [...first, ...rest];
