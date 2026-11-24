@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.57.0
+
+### Features
+
+* **desktop:** theme manifests, theme packs and the Extensions page ([#1074](https://github.com/si-mods/gorex/pull/1074))
+* **web:** report relay-admission refusal for tailcat hosts ([#1075](https://github.com/si-mods/gorex/pull/1075))
+* **theme:** a theme names the Ghostty theme of its terminals ([#1077](https://github.com/si-mods/gorex/pull/1077))
+* **desktop:** reload settings.json on change, and a settings file editor ([#1071](https://github.com/si-mods/gorex/pull/1071))
+
+### Bug Fixes
+
+* **rex:** bound local attach writes with the write timeout, and drop a starved pane stream so it attaches again ([#1078](https://github.com/si-mods/gorex/pull/1078))
+
 ## 0.56.1
 
 ### Features
