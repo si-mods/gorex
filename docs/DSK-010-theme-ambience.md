@@ -186,7 +186,7 @@ Phase 2 measured on a Windows PC (#1099), with all sprite caps used (8 sprites 2
 | Idle CPU, moving at 20 frames a second, tiled panes | 7.2% to 9.5% of one core: over the budget |
 | Idle CPU, moving at 20 frames a second, canvas zoomed out | 6.6% to 6.7% of one core: over the budget |
 
-GoRex records the draws in about 0.01 ms. The cost is in MyGo's renderer, which draws each frame of the whole window. GoRex paints at 20 frames a second, as the rule above says. That is not sufficient: the idle CPU is still about 6 points over Still. M2 is the next step, before the budget can hold.
+GoRex records the draws in about 0.01 ms. The cost is in MyGo's renderer, which draws each frame of the whole window. GoRex paints at 20 frames a second, as the rule above says. That is not sufficient: the idle CPU is still about 6 points over Still. M2 is the next step, before the budget can hold. The user accepted phase 2 over the budget (User decisions, 7). M2 is separate work.
 
 ### Mascot
 
@@ -265,6 +265,7 @@ The user decided the four questions of the first draft on 2026-11-24, item 5 in 
 4. **Battery**: on battery, each animation freezes (see Motion and the budget).
 5. **No switches on the Extensions page** (2026-11-24, on #1083): the Extensions page adds no control for ambience or the mascot. `appearance.ambience` and `appearance.mascot` are set in `settings.json`.
 6. **No built-in particle look** (2026-11-24, on #1099): GoRex ships no bubble or other particle shader. Particles come from a theme's own shader ([DSK-012](DSK-012-theme-shaders.md)). GoRex is a base for themes, and draws no look that a theme did not bring.
+7. **Phase 2 over the budget** (2026-11-25, on #1099): phase 2 merges at 20 frames a second over the idle CPU budget. MyGo M2 is separate work that brings it within the budget.
 
 ## Alternatives
 
@@ -351,4 +352,4 @@ No item in `docs/invariants.md` covers the theme or ambience. The focus rule of 
 3. **Mascot and ticker** (M, about 600 lines): still, animated and sprite sheet mascot, bob, click, double click, hide, bubbles and the ticker. A self-made animated whale validates GIF and sprite sheets.
 4. **Dafy Whale pack** (S): a new public repo `si-mods/gorex-theme-dafy-whale`, not in gorex and not in `gorex-registry`. Its root has `theme.json`, `assets/` (the MIT whale art, the two fish PNGs scaled down, a self-made icon, the self-made animated whale), `LICENSE` (MIT), `NOTICE` and `LICENSE-fish.txt`. A registry PR adds one `themes` entry: `id` `dafy-whale`, `repo` `https://github.com/si-mods/gorex-theme-dafy-whale.git`, no `subdir`, and `ref` at the reviewed commit. Screenshots.
 
-MyGo M1 and M2 are not in a phase. M2 starts only if phase 2 fails its budget.
+MyGo M1 and M2 are not in a phase. Phase 2 failed its budget, so M2 is the next MyGo change (User decisions, 7).
