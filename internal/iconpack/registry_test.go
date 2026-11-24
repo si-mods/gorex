@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -54,6 +55,7 @@ func TestFetchSearchAndInstallFromRegistry(t *testing.T) {
 				Author:      "si-mods",
 				Version:     "0.1.0",
 				Repo:        repoSrc,
+				Ref:         headOf(t, repoSrc),
 				Subdir:      "packs/starter-dev-tools",
 				Entries:     1,
 			},
@@ -126,6 +128,7 @@ func TestRegistrySecurityGuards(t *testing.T) {
 	if _, err := InstallFromRegistry(context.Background(), RegistryPack{
 		ID:     "escape",
 		Repo:   repoSrc,
+		Ref:    headOf(t, repoSrc),
 		Subdir: "../escape",
 	}, t.TempDir(), ""); err == nil {
 		t.Fatal("expected escaping Subdir to be rejected")
@@ -139,4 +142,73 @@ func TestRegistrySecurityGuards(t *testing.T) {
 	if _, err := FetchRegistry(context.Background(), srv.URL); err == nil {
 		t.Fatal("expected oversized registry index to be rejected")
 	}
+}
+
+// TestCheckoutRef: with a ref at the first of two commits, Checkout gives
+// the first commit's files, not the default branch's. A ref that is not a
+// full SHA, or that the repo does not have, fails, with no fall back to
+// the default branch; so does no ref, for a repo that is not gorex-registry
+// (docs/DSK-010-theme-ambience.md, Tests).
+func TestCheckoutRef(t *testing.T) {
+	repo := t.TempDir()
+	git := func(args ...string) string {
+		t.Helper()
+		c := exec.Command("git", args...)
+		c.Dir = repo
+		out, err := c.CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %v: %v (%s)", args, err, out)
+		}
+		return strings.TrimSpace(string(out))
+	}
+	git("init", "-q", "-b", "main")
+	git("config", "user.email", "test@example.com")
+	git("config", "user.name", "Test")
+	commit := func(text string) string {
+		if err := os.WriteFile(filepath.Join(repo, "theme.json"), []byte(text), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		git("add", ".")
+		git("commit", "-q", "-m", text)
+		return git("rev-parse", "HEAD")
+	}
+	first := commit(`{"name":"first"}`)
+	commit(`{"name":"second"}`)
+
+	read := func(ref string) (string, error) {
+		var got string
+		err := Checkout(context.Background(), RegistryPack{Repo: repo, Ref: ref}, func(dir string) error {
+			b, err := os.ReadFile(filepath.Join(dir, "theme.json"))
+			got = string(b)
+			return err
+		})
+		return got, err
+	}
+	if got, err := read(first); err != nil || got != `{"name":"first"}` {
+		t.Fatalf("ref at the first commit: %q, %v", got, err)
+	}
+	if got, err := read(""); err == nil {
+		t.Fatalf("no ref, outside gorex-registry: installed %q", got)
+	}
+	for _, ref := range []string{
+		first[:12],                    // short
+		"main",                        // a branch
+		strings.ToUpper(first),        // not as git prints it
+		strings.Repeat("0", 40),       // not in the repo
+		"-" + strings.Repeat("a", 39), // an option
+	} {
+		if got, err := read(ref); err == nil {
+			t.Errorf("ref %q installed %q", ref, got)
+		}
+	}
+}
+
+// headOf is the commit the repo at dir is at.
+func headOf(t *testing.T, dir string) string {
+	t.Helper()
+	out, err := exec.Command("git", "-C", dir, "rev-parse", "HEAD").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return strings.TrimSpace(string(out))
 }

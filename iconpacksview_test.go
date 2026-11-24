@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -80,15 +81,20 @@ func TestIconPacksSettingsView(t *testing.T) {
 		}
 	}
 
+	head, err := exec.Command("git", "-C", repoSrc, "rev-parse", "HEAD").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	ref := strings.TrimSpace(string(head))
 	idx := iconpack.RegistryIndex{
 		Schema: 1,
 		Packs: []iconpack.RegistryPack{{
 			ID: "starter-dev-tools", Name: "Starter Dev Tools", Description: "Cloud & CLI tools",
-			Author: "si-mods", Version: "0.1.0", Repo: repoSrc, Subdir: "packs/starter-dev-tools", Entries: 1,
+			Author: "si-mods", Version: "0.1.0", Repo: repoSrc, Ref: ref, Subdir: "packs/starter-dev-tools", Entries: 1,
 		}},
 		Themes: []iconpack.RegistryPack{{
 			ID: "slate", Kind: iconpack.KindTheme, Name: "Slate", Description: "Cool slate grays",
-			Author: "si-mods", Version: "0.1.0", Repo: repoSrc, Subdir: "themes/slate",
+			Author: "si-mods", Version: "0.1.0", Repo: repoSrc, Ref: ref, Subdir: "themes/slate",
 		}},
 	}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

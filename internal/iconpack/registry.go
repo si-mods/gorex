@@ -30,7 +30,12 @@ type RegistryPack struct {
 	Version     string `json:"version,omitempty"`
 	Repo        string `json:"repo"`
 	Subdir      string `json:"subdir,omitempty"`
-	Entries     int    `json:"entries,omitempty"`
+	// Ref is the full commit SHA of Repo to install, for a pack in a repo
+	// of its own (docs/DSK-010-theme-ambience.md): a later push to the repo
+	// changes nothing until the registry moves Ref. "" clones the default
+	// branch, as for a pack in gorex-registry.
+	Ref     string `json:"ref,omitempty"`
+	Entries int    `json:"entries,omitempty"`
 }
 
 // KindTheme is the Kind of a theme pack: a directory with a theme.json.
@@ -135,10 +140,18 @@ func InstallFromRegistry(ctx context.Context, rp RegistryPack, packsDir, overrid
 
 // Checkout clones rp.Repo shallowly and calls install with the pack's
 // directory, rp.Subdir inside the clone, which it then deletes. A theme
-// pack installs through it as an icon pack does.
+// pack installs through it as an icon pack does. With rp.Ref it fetches
+// that commit alone and checks that the clone is at it; when the fetch
+// fails, the install fails, with no fall back to the default branch.
 func Checkout(ctx context.Context, rp RegistryPack, install func(dir string) error) error {
 	if rp.Repo == "" || strings.HasPrefix(rp.Repo, "-") {
 		return fmt.Errorf("invalid pack repository %q", rp.Repo)
+	}
+	if rp.Ref != "" && !validRef(rp.Ref) {
+		return fmt.Errorf("invalid pack ref %q: want a full commit SHA", rp.Ref)
+	}
+	if rp.Ref == "" && !isRegistryRepo(rp.Repo) {
+		return fmt.Errorf("pack repository %q is not gorex-registry: it needs a ref", rp.Repo)
 	}
 	tmp, err := os.MkdirTemp("", "gorex-reg-pack-*")
 	if err != nil {
@@ -150,9 +163,8 @@ func Checkout(ctx context.Context, rp RegistryPack, install func(dir string) err
 	}
 	cmdCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(cmdCtx, "git", "clone", "--depth", "1", "--", rp.Repo, tmp)
-	if out, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("git clone: %w: %s", err, strings.TrimSpace(string(out)))
+	if err := fetch(cmdCtx, rp, tmp); err != nil {
+		return err
 	}
 	_ = os.RemoveAll(filepath.Join(tmp, ".git"))
 	srcDir := tmp
@@ -184,4 +196,66 @@ func LookupRegistry(idx *RegistryIndex, id string) (RegistryPack, error) {
 		}
 	}
 	return RegistryPack{}, fmt.Errorf("pack %q not found in registry", id)
+}
+
+// validRef reports whether ref is a full commit SHA: 40 hex digits, so
+// that it cannot be a branch or a tag, which the repo's owner can move.
+func validRef(ref string) bool {
+	if len(ref) != 40 {
+		return false
+	}
+	for _, c := range []byte(ref) {
+		if !(c >= '0' && c <= '9' || c >= 'a' && c <= 'f') {
+			return false
+		}
+	}
+	return true
+}
+
+// fetch puts rp.Repo into dir: a shallow clone of the default branch, or
+// with rp.Ref a shallow fetch of that commit, checked out detached.
+func fetch(ctx context.Context, rp RegistryPack, dir string) error {
+	git := func(args ...string) (string, error) {
+		cmd := exec.CommandContext(ctx, "git", args...)
+		if rp.Ref != "" {
+			cmd.Dir = dir
+		}
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			return "", fmt.Errorf("git %s: %w: %s", args[0], err, strings.TrimSpace(string(out)))
+		}
+		return strings.TrimSpace(string(out)), nil
+	}
+	if rp.Ref == "" {
+		_, err := git("clone", "--depth", "1", "--", rp.Repo, dir)
+		return err
+	}
+	for _, args := range [][]string{
+		{"init", "-q"},
+		{"remote", "add", "origin", rp.Repo},
+		{"fetch", "-q", "--depth", "1", "origin", rp.Ref},
+		{"checkout", "-q", "--detach", "FETCH_HEAD"},
+	} {
+		if _, err := git(args...); err != nil {
+			return err
+		}
+	}
+	head, err := git("rev-parse", "HEAD")
+	if err != nil {
+		return err
+	}
+	if head != rp.Ref {
+		return fmt.Errorf("git checkout: at %s, want %s", head, rp.Ref)
+	}
+	return nil
+}
+
+// RegistryRepo is the repo of gorex-registry, whose own packs install from
+// its default branch, which the registry's review guards. A pack of any
+// other repo installs only at a ref.
+const RegistryRepo = "https://github.com/si-mods/gorex-registry.git"
+
+// isRegistryRepo reports whether repo is gorex-registry's.
+func isRegistryRepo(repo string) bool {
+	return repo == RegistryRepo || repo == strings.TrimSuffix(RegistryRepo, ".git")
 }

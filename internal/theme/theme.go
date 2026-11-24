@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"slices"
@@ -142,11 +143,16 @@ func ColorFor(raw json.RawMessage, dark bool) (ui.Color, bool) {
 // Manifest is a parsed theme: the colors it sets, light at index 0 and
 // dark at index 1. A seed or role it does not set keeps the built-in one.
 // Terminal names the Ghostty theme of each appearance, or "" for none.
+// Assets, Ambience and Brand are the keys of docs/DSK-010-theme-ambience.md
+// that this build reads.
 type Manifest struct {
 	Name     string
 	Seeds    [2]map[Seed]ui.Color
 	Roles    [2]map[Role]ui.Color
 	Terminal [2]string
+	Assets   map[string]Asset
+	Ambience Ambience
+	Brand    Brand
 }
 
 // TerminalThemeKnown reports whether Ghostty has a theme of the name. The
@@ -190,12 +196,13 @@ func Parse(b []byte) (*Manifest, []string, error) {
 		Roles map[string]json.RawMessage            `json:"roles"`
 		Term  map[string]json.RawMessage            `json:"terminal"`
 	}
+	known := []string{"name", "seeds", "roles", "terminal", "assets", "ambience", "brand"}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return nil, nil, err
 	}
 	var warn []string
 	for k := range top {
-		if k != "name" && k != "seeds" && k != "roles" && k != "terminal" {
+		if !slices.Contains(known, k) {
 			warn = append(warn, fmt.Sprintf("unknown key %q", k))
 		}
 	}
@@ -256,6 +263,17 @@ func Parse(b []byte) (*Manifest, []string, error) {
 			m.Terminal[i] = name
 		}
 	}
+	w := warner(warn)
+	if raw, ok := top["assets"]; ok {
+		m.Assets = parseAssets(raw, &w)
+	}
+	if raw, ok := top["ambience"]; ok {
+		m.Ambience = parseAmbience(raw, m.Assets, &w)
+	}
+	if raw, ok := top["brand"]; ok {
+		m.Brand = parseBrand(raw, m.Assets, &w)
+	}
+	warn = w
 	slices.Sort(warn)
 	return m, warn, nil
 }
@@ -290,9 +308,10 @@ func Dir(configDir string) string {
 }
 
 // ValidName reports whether name may name a theme file: letters, digits,
-// '-', '_' and '.', not "." or "..", so that it never leaves Dir.
+// '-', '_' and '.', not "." or "..", so that it never leaves Dir, and not
+// ending in ".json", so that no theme's name is another one's file.
 func ValidName(name string) bool {
-	if name == "" || name == "." || name == ".." {
+	if name == "" || name == "." || name == ".." || len(name) >= 5 && strings.EqualFold(name[len(name)-5:], ".json") {
 		return false
 	}
 	for i := 0; i < len(name); i++ {
@@ -319,9 +338,11 @@ func Path(dir, name string) (string, error) {
 const PackFile = "theme.json"
 
 // Install validates the manifest of the pack in srcDir and copies it to
-// dir as <name>.json, so that appearance.theme can name it. A manifest
-// that is not a manifest fails; one with dropped entries installs, with
-// the warnings.
+// dir as <name>.json, so that appearance.theme can name it, and each asset
+// it names to the folder <dir>/<name> (docs/DSK-010-theme-ambience.md),
+// which it writes as a new folder and renames. A manifest that is not a
+// manifest fails; one with dropped entries or assets installs, with the
+// warnings.
 func Install(srcDir, dir, name string) ([]string, error) {
 	dst, err := Path(dir, name)
 	if err != nil {
@@ -337,12 +358,24 @@ func Install(srcDir, dir, name string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	_, warn, err := Parse(b)
+	m, warn, err := Parse(b)
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", PackFile, err)
 	}
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, err
+	}
+	// The assets go to a new folder first, so that a pack that cannot copy
+	// them changes nothing; the manifest then, and the folder after it, so
+	// that List never sees the folder without its manifest.
+	folder, tmp := assetFolder(dst), ""
+	if len(m.Assets) > 0 {
+		var w []string
+		if tmp, w, err = copyAssets(srcDir, dir, m); err != nil {
+			return nil, err
+		}
+		defer os.RemoveAll(tmp)
+		warn = append(warn, w...)
 	}
 	f, err := os.CreateTemp(dir, ".install-*")
 	if err != nil {
@@ -359,6 +392,15 @@ func Install(srcDir, dir, name string) ([]string, error) {
 		os.Remove(f.Name())
 		return nil, err
 	}
+	if tmp == "" {
+		err = os.RemoveAll(folder)
+	} else {
+		err = replaceDir(tmp, folder)
+	}
+	if err != nil {
+		return nil, err
+	}
+	removeOrphanAssets(dir)
 	return warn, nil
 }
 
@@ -369,7 +411,7 @@ type Summary struct {
 	Error string // why it does not load, or ""
 }
 
-// List returns the themes installed in dir, by ID.
+// List returns the themes installed in dir, by ID. It changes nothing.
 func List(dir string) []Summary {
 	des, _ := os.ReadDir(dir)
 	var out []Summary
@@ -389,11 +431,43 @@ func List(dir string) []Summary {
 	return out
 }
 
-// Remove deletes the installed theme id from dir.
+// Remove deletes the installed theme id from dir, its assets too.
 func Remove(dir, id string) error {
 	p, err := Path(dir, id)
 	if err != nil {
 		return err
 	}
-	return os.Remove(p)
+	if err := os.Remove(p); err != nil {
+		return err
+	}
+	if err := os.RemoveAll(assetFolder(p)); err != nil {
+		return err
+	}
+	removeOrphanAssets(dir)
+	return nil
+}
+
+// assetFolderSuffix ends the name of a theme's asset folder, <id>.assets,
+// which no manifest's name, <id>.json, can be.
+const assetFolderSuffix = ".assets"
+
+// assetFolder is the asset folder of the theme whose manifest is at path.
+func assetFolder(manifest string) string {
+	return strings.TrimSuffix(manifest, ".json") + assetFolderSuffix
+}
+
+// removeOrphanAssets removes each asset folder in dir whose manifest is
+// gone, as an older build's Remove leaves it. It touches only names that
+// end in assetFolderSuffix, and is for Install and Remove, never List.
+func removeOrphanAssets(dir string) {
+	des, _ := os.ReadDir(dir)
+	for _, de := range des {
+		id, ok := strings.CutSuffix(de.Name(), assetFolderSuffix)
+		if !ok || !de.IsDir() || !ValidName(id) || strings.HasPrefix(id, ".") {
+			continue
+		}
+		if _, err := os.Lstat(filepath.Join(dir, id+".json")); errors.Is(err, fs.ErrNotExist) {
+			os.RemoveAll(filepath.Join(dir, de.Name()))
+		}
+	}
 }

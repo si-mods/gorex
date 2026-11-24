@@ -428,6 +428,7 @@ func (a *App) sidebar(c *ui.Context, k *colors, right bool) {
 			}
 		})
 		padR, padL := sideInsets(right)
+		brandRow(c, k, padR, padL)
 		if picker && !unified {
 			ui.Row(c).Shrink(0).Padding(0, padR, 4, padL).Children(func() { a.spacePicker(c, k, true) })
 		}

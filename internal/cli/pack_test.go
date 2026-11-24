@@ -104,9 +104,15 @@ func TestPackInstallTheme(t *testing.T) {
 	if err := os.MkdirAll(sub, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	manifest := `{"name":"Slate","seeds":{"dark":{"accent":"#5b8def"}},"roles":{"sideBar.tabActiveBackground":"#5b8def33"}}`
+	manifest := `{"name":"Slate","seeds":{"dark":{"accent":"#5b8def"}},"roles":{"sideBar.tabActiveBackground":"#5b8def33"},` +
+		`"assets":{"logo":"logo.svg"},"brand":{"icon":"logo","wordmark":"Slate"}}`
 	if err := os.WriteFile(filepath.Join(sub, "theme.json"), []byte(manifest), 0o644); err != nil {
 		t.Fatal(err)
+	}
+	// The pack's assets: the one the manifest names, and one it does not.
+	os.MkdirAll(filepath.Join(sub, "assets"), 0o755)
+	for _, f := range []string{"logo.svg", "extra.svg"} {
+		os.WriteFile(filepath.Join(sub, "assets", f), []byte(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 4 4"/>`), 0o644)
 	}
 	for _, args := range [][]string{
 		{"init", "-b", "main"},
@@ -121,10 +127,14 @@ func TestPackInstallTheme(t *testing.T) {
 			t.Fatalf("git %v: %v (%s)", args, err, out)
 		}
 	}
+	head, err := exec.Command("git", "-C", repo, "rev-parse", "HEAD").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
 	idx := iconpack.RegistryIndex{
 		Schema: 1,
 		Packs:  []iconpack.RegistryPack{{ID: "starter-dev-tools", Name: "Starter", Description: "slate-gray icons", Repo: "https://example.invalid/x.git"}},
-		Themes: []iconpack.RegistryPack{{ID: "slate", Kind: "theme", Name: "Slate", Description: "Cool slate grays", Repo: repo, Subdir: "themes/slate"}},
+		Themes: []iconpack.RegistryPack{{ID: "slate", Kind: "theme", Name: "Slate", Description: "Cool slate grays", Repo: repo, Subdir: "themes/slate", Ref: strings.TrimSpace(string(head))}},
 	}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode(idx)
@@ -159,6 +169,17 @@ func TestPackInstallTheme(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(cfgDir, "icon-packs", "slate")); err == nil {
 		t.Error("a theme pack installed as an icon pack")
 	}
+	assets := func(id string) []string {
+		des, _ := os.ReadDir(filepath.Join(cfgDir, "themes", id+".assets"))
+		var names []string
+		for _, de := range des {
+			names = append(names, de.Name())
+		}
+		return names
+	}
+	if got := assets("slate"); len(got) != 1 || got[0] != "logo.svg" {
+		t.Errorf("installed assets %q, want the one the manifest names", got)
+	}
 
 	out.Reset()
 	errOut.Reset()
@@ -167,5 +188,8 @@ func TestPackInstallTheme(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(cfgDir, "themes", "local.json")); err != nil {
 		t.Errorf("local theme: %v", err)
+	}
+	if got := assets("local"); len(got) != 1 || got[0] != "logo.svg" {
+		t.Errorf("local theme's assets %q", got)
 	}
 }
