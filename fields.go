@@ -74,3 +74,36 @@ func styledField(c *ui.Context, k *colors, make func(*ui.Context) ui.Element) ui
 	// takes the accent itself.
 	return in.TextColor(k.text).SelectionColor(k.accent.Alpha(0.3)).Background(k.field).Border(k.borderW(), k.fieldBorder)
 }
+
+// radioMark is the circle of a radio row: a ring when off, the accent
+// filled with a dot of its text color when on.
+func radioMark(c *ui.Context, k *colors, on bool) ui.Element {
+	m := ui.Box(c).Size(16, 16).Radius(k.capsule(16)).Shrink(0).Center()
+	if !on {
+		// Never thinner than 1.5 DIPs, so that a theme with a hairline or no
+		// border still shows the ring.
+		return m.Border(max(1.5, k.borderW()), k.textMuted)
+	}
+	m.Background(k.accent)
+	return m.Children(func() {
+		ui.Box(c).Size(6, 6).Radius(k.capsule(6)).Background(k.accentText)
+	})
+}
+
+// radioRow is one radio of a radio group: its mark, its title and, under
+// the title, its hint lines. A click or Space picks it into *selected,
+// which Changed reports.
+func radioRow[T comparable](c *ui.Context, k *colors, selected *T, value T, title string, hints ...string) ui.Element {
+	row := ui.RadioBase(c, selected, value).Label(title).Gap(8).AlignItems(ui.Start).Radius(k.radius(radiusM)).Cursor(ui.CursorPointer)
+	on := *selected == value
+	row.Children(func() {
+		radioMark(c, k, on)
+		ui.Column(c).Gap(2).Grow(1).MinWidth(0).Children(func() {
+			ui.Text(c, title).FontSize(fontBody).FontWeight(500).TextColor(k.text)
+			for _, hint := range hints {
+				rowHint(c, k, hint)
+			}
+		})
+	})
+	return row
+}

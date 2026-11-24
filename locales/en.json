@@ -2900,17 +2900,25 @@
   "@settingsIconPacks": {
     "description": "Settings section and page title of the extensions: icon packs and theme packs."
   },
-  "settingsIconPackPriority": "Priority",
+  "settingsIconPackPriority": "Icon priority",
   "@settingsIconPackPriority": {
     "description": "Settings row: precedence between icon packs and OSC 7502."
   },
-  "settingsIconPackPriorityPack": "Icon Packs first",
+  "settingsIconPackPriorityPack": "Icon packs first",
   "@settingsIconPackPriorityPack": {
-    "description": "Segmented option: community icon packs override OSC 7502."
+    "description": "Radio option: community icon packs override OSC 7502."
   },
-  "settingsIconPackPriorityOSC": "Program (OSC 7502) first",
+  "settingsIconPackPriorityOSC": "Program's own icon first",
   "@settingsIconPackPriorityOSC": {
-    "description": "Segmented option: runtime OSC 7502 icons override icon packs."
+    "description": "Radio option: runtime OSC 7502 icons override icon packs."
+  },
+  "settingsIconPackPriorityPackHint": "An installed icon pack's icon replaces the icon a program sends.",
+  "@settingsIconPackPriorityPackHint": {
+    "description": "Hint under the Icon packs first radio option."
+  },
+  "settingsIconPackPriorityOSCHint": "A program that sends its own icon (OSC 7502) keeps it.",
+  "@settingsIconPackPriorityOSCHint": {
+    "description": "Hint under the Program's own icon first radio option."
   },
   "settingsIconPacksInstalled": "Icon Packs",
   "@settingsIconPacksInstalled": {
@@ -2963,14 +2971,6 @@
   "settingsThemeBuiltInHint": "GoRex's own colors.",
   "@settingsThemeBuiltInHint": {
     "description": "Extensions page: hint under the Built-in theme row."
-  },
-  "settingsThemeUse": "Use",
-  "@settingsThemeUse": {
-    "description": "Extensions page: button that makes a theme the window theme."
-  },
-  "settingsThemeInUse": "In use",
-  "@settingsThemeInUse": {
-    "description": "Extensions page: label of the window theme in use."
   },
   "settingsExtensionKindIcons": "Icon pack",
   "@settingsExtensionKindIcons": {

@@ -190,18 +190,22 @@ func (a *App) iconPacksSettings(c *ui.Context, k *colors) {
 
 	a.themesGroup(c, k, themes)
 
-	prio := 0
+	prio := "pack"
 	if prefs.IconPackPriority == "osc" {
-		prio = 1
+		prio = "osc"
 	}
 	settingsGroup(c, k, locales.SettingsIconPacksInstalled(), "", actionErr, func() {
-		settingRow(c, k, locales.SettingsIconPackPriority(), "", func() {
-			if ui.Segmented(c, &prio, locales.SettingsIconPackPriorityPack(), locales.SettingsIconPackPriorityOSC()).Label(locales.SettingsIconPackPriority()).Changed() {
-				next := "pack"
-				if prio == 1 {
-					next = "osc"
-				}
-				a.setPref(func(s *settings) { s.IconPackPriority = next })
+		// Its two choices are radio rows under the label, not a control
+		// in the column at the right.
+		groupRow(c, k, "icon-priority").Gap(8).Children(func() {
+			ui.Text(c, locales.SettingsIconPackPriority()).FontSize(fontBody).FontWeight(500).TextColor(k.text)
+			changed := false
+			ui.RadioGroup(c, func() {
+				changed = radioRow(c, k, &prio, "pack", locales.SettingsIconPackPriorityPack(), locales.SettingsIconPackPriorityPackHint()).Changed()
+				changed = radioRow(c, k, &prio, "osc", locales.SettingsIconPackPriorityOSC(), locales.SettingsIconPackPriorityOSCHint()).Changed() || changed
+			}).Gap(8).Label(locales.SettingsIconPackPriority())
+			if changed {
+				a.setPref(func(s *settings) { s.IconPackPriority = prio })
 				reloadIconPacks(a.luaConfig)
 			}
 		})
@@ -328,55 +332,60 @@ func extensionKind(kind string) string {
 }
 
 // themesGroup is the Window Theme group: the built-in palette and each
-// installed theme, the one in use marked and the others with Use, and
-// Remove for an installed theme.
+// installed theme as radio rows, the one in use picked, and Remove for an
+// installed theme. A theme that failed to load has no radio.
 func (a *App) themesGroup(c *ui.Context, k *colors, themes []theme.Summary) {
 	iconPacksUI.mu.Lock()
 	themeErr := iconPacksUI.themeErr
 	iconPacksUI.mu.Unlock()
-	choice := func(id, title string) {
-		if prefs.Theme == id {
-			ui.Text(c, locales.SettingsThemeInUse()).FontSize(fontFootnote).FontWeight(600).TextColor(k.accent)
-			return
-		}
-		if ui.Button(c, locales.SettingsThemeUse()).Label(locales.SettingsThemeUse() + " " + title).Clicked() {
-			a.useTheme(id)
-		}
-	}
+	use := prefs.Theme
 	settingsGroup(c, k, locales.SettingsWindowTheme(), "", themeErr, func() {
-		groupRow(c, k, "theme-builtin").Children(func() {
-			rowLine(c, k, locales.SettingsThemeBuiltIn(), func() { choice("", locales.SettingsThemeBuiltIn()) })
-			rowHint(c, k, locales.SettingsThemeBuiltInHint())
-		})
-		for _, s := range themes {
-			groupRow(c, k, "theme-"+s.ID).Children(func() {
-				title := cmp.Or(s.Name, s.ID)
-				rowLine(c, k, title, func() {
-					if s.Error == "" {
-						choice(s.ID, title)
-					}
-					if ui.Button(c, locales.SettingsIconPacksRemove()).Label(locales.SettingsIconPacksRemove() + " " + title).Clicked() {
-						a.removeTheme(s.ID)
-					}
-				})
-				// The theme's own line about itself, under its name.
-				if s.Description != "" {
-					rowHint(c, k, s.Description)
-				}
-				hint := extensionKind(iconpack.KindTheme) + " · " + s.ID
-				if s.Error != "" {
-					hint += " · " + s.Error
-				}
-				rowHint(c, k, hint)
-				if s.ID == prefs.Theme {
-					// The theme's shaders that failed a check at load, and
-					// why (docs/DSK-012-theme-shaders.md, Checks at load).
-					for _, w := range themeShaderWarnings() {
-						rowHint(c, k, w)
-					}
+		// Not ui.RadioGroup: its arrows click what they reach, and Remove
+		// sits in the rows.
+		ui.Column(c).Role(ui.RoleRadioGroup).Label(locales.SettingsWindowTheme()).Children(func() {
+			groupRow(c, k, "theme-builtin").Children(func() {
+				if radioRow(c, k, &use, "", locales.SettingsThemeBuiltIn(), locales.SettingsThemeBuiltInHint()).Changed() {
+					a.useTheme(use)
 				}
 			})
-		}
+			for _, s := range themes {
+				groupRow(c, k, "theme-"+s.ID).Children(func() {
+					title := cmp.Or(s.Name, s.ID)
+					kind := extensionKind(iconpack.KindTheme) + " · " + s.ID
+					if s.Error != "" {
+						kind += " · " + s.Error
+					}
+					ui.Row(c).Gap(16).AlignItems(ui.Center).Children(func() {
+						if s.Error == "" {
+							// The theme's own line about itself, then its kind and ID.
+							hints := []string{kind}
+							if s.Description != "" {
+								hints = []string{s.Description, kind}
+							}
+							if radioRow(c, k, &use, s.ID, title, hints...).Grow(1).MinWidth(0).Changed() {
+								a.useTheme(use)
+							}
+						} else {
+							ui.Column(c).Gap(2).Grow(1).MinWidth(0).Children(func() {
+								rowLine(c, k, title, nil)
+								rowHint(c, k, s.Description)
+								rowHint(c, k, kind)
+							})
+						}
+						if ui.Button(c, locales.SettingsIconPacksRemove()).Label(locales.SettingsIconPacksRemove() + " " + title).Clicked() {
+							a.removeTheme(s.ID)
+						}
+					})
+					if s.ID == prefs.Theme {
+						// The theme's shaders that failed a check at load, and
+						// why (docs/DSK-012-theme-shaders.md, Checks at load).
+						for _, w := range themeShaderWarnings() {
+							rowHint(c, k, w)
+						}
+					}
+				})
+			}
+		})
 	})
 }
 

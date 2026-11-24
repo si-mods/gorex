@@ -374,6 +374,27 @@ slide. The timings below are for what a spring does not move.
   once it is in front, and on Windows its drawn Minimize and Close
   buttons act on the second click (Maximize, a system control, on the
   first).
+- **Which choice control?** By when it takes effect, how many can be
+  picked and how many options there are:
+  - On or off, saved at once: a switch (`ui.Switch`). The same in a form
+    that waits for its button: a checkbox. Never two radios for On and Off.
+  - A value: a select (`ui.Select`, or a button that shows the value and
+    opens a menu of them, the current one ticked, as the project sheet's
+    host). Actions: a menu, whose button keeps its own name.
+  - One of 2 to 5 short options: a segmented control. Options that each
+    need a line, or carry buttons of their own (the installed window
+    themes, with Remove): radio rows (`radioRow`, `fields.go`) under the
+    setting's label. 6 or more, or names that can grow (hosts, spaces): a
+    select. Hundreds: a list with a search field that says when nothing
+    matches, as the terminal themes.
+  - Any number, none included: checkboxes, one under another.
+  - A menu of colors or icons marks the current one (`colorChoices`).
+  - Radio rows that hold another button (Remove) take a container of
+    `ui.RoleRadioGroup`, not `ui.RadioGroup`: its arrows click what they
+    reach, and it makes the buttons one Tab stop with the radios. Each
+    radio and each button is then a Tab stop of its own.
+  - A menu of one choice marks it with `Radio`, not `Checked`, which is
+    a checkbox to a screen reader.
 - **Do** take the nearest token. **Don't** add a size, radius or shadow
   for one view: change the table, for every view.
 - **Do** tell states apart by color and weight. **Don't** tell them apart
@@ -402,7 +423,7 @@ what it does not cover.
   | [015 UI continuity](https://vibedesign.tips/015-ui-continuity/) | A panel, a sheet or a page grows from what opened it | Rex Go: `docs/IOS-011-continuous-transitions.md`. The desktop: [Motion](#motion), `popoverBase` and `dialogEnter` |
   | Popover origin ([note](https://x.com/Kubai087/status/2123076115464098210)) | A menu or a popover scales from its trigger's corner, not from its center | [Motion](#motion): `popoverBase` |
   | [016 Toast or notification](https://vibedesign.tips/016-toast-or-notification/), [017 Loading states](https://vibedesign.tips/017-loading-states/), Empty states ([note](https://x.com/Kubai087/status/2113849121299894727)) | The message, wait or empty list fits what happened | |
-  | [020 Choice controls](https://vibedesign.tips/020-choice-controls/) | A switch, a segmented control, a menu or a list by the number of choices and when they take effect | |
+  | [020 Choice controls](https://vibedesign.tips/020-choice-controls/) | A switch, a segmented control, a menu or a list by the number of choices and when they take effect | [Decisions](#decisions): which choice control |
 
   The checks of 009, 016, 017 and 020 find what is wrong and say what to
   use instead; a change that alters how a screen looks then follows the

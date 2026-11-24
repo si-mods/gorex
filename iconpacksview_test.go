@@ -152,14 +152,32 @@ func TestIconPacksSettingsView(t *testing.T) {
 		t.Error("installing a theme used it")
 	}
 
-	click(locales.SettingsThemeUse() + " Slate")
+	click("Slate")
 	if prefs.Theme != "slate" || paletteOf(true).accent != ui.Hex("#7fa7d9") || paletteOf(false).accent != ui.Hex("#3b6ea8") {
 		t.Fatalf("Use: appearance.theme %q, dark accent %v", prefs.Theme, paletteOf(true).accent)
 	}
 	if string(settingsOnDisk(t)["appearance.theme"]) != `"slate"` {
 		t.Error("Use did not save appearance.theme")
 	}
-	click(locales.SettingsThemeUse() + " " + locales.SettingsThemeBuiltIn())
+	// Remove is its own Tab stop, and the arrows on a theme's radio do not
+	// reach it: a theme is removed by a click on Remove alone.
+	click("Slate")
+	tt.Key(0, ui.KeyTab)
+	if !tt.Focused(locales.SettingsIconPacksRemove() + " Slate") {
+		t.Errorf("Tab from the Slate radio did not reach its Remove button")
+	}
+	click("Slate")
+	for _, key := range []ui.Key{ui.KeyDown, ui.KeyUp, ui.KeyDown, ui.KeyDown, ui.KeyUp} {
+		tt.Key(0, key)
+		tt.Frame()
+	}
+	iconPacksUI.mu.Lock()
+	left := len(iconPacksUI.themes)
+	iconPacksUI.mu.Unlock()
+	if left != 1 || prefs.Theme != "slate" || !tt.HasText("Slate") {
+		t.Errorf("arrow keys changed the themes: %d installed, in use %q", left, prefs.Theme)
+	}
+	click(locales.SettingsThemeBuiltIn())
 	if prefs.Theme != "" || *paletteOf(true) != darkColors {
 		t.Fatalf("Built-in: appearance.theme %q", prefs.Theme)
 	}

@@ -42,8 +42,8 @@ The Settings window's page for packs is named **Extensions** (zh-Hans: 扩展), 
 
 The page has four groups:
 
-1. **Window Theme**: the built-in palette and each installed theme. The theme in use shows "In use". Each other one has **Use**, which saves `appearance.theme` and applies the theme to every window at once. An installed theme also has **Remove**. Removing the theme in use goes back to the built-in palette.
-2. **Icon Packs**: the priority (icon packs or `OSC 7502` first), then each installed icon pack with its switch and **Remove**.
+1. **Window Theme**: the built-in palette and each installed theme, one radio per row with its title and hint. The radio picked is the theme in use. Picking another saves `appearance.theme` and applies the theme to every window at once. An installed theme also has **Remove** beside its radio. Removing the theme in use goes back to the built-in palette.
+2. **Icon Packs**: "Icon priority" as two radio rows under the label, each with a line of hint ("Icon packs first", "Program's own icon first", the latter for `OSC 7502`), then each installed icon pack with its switch and **Remove**.
 3. **Community Registry**: a search field and the registry's entries of every kind, icon packs first, then themes. Each entry's hint starts with its kind ("Icon pack" or "Theme"). **Install** installs an icon pack and turns it on. For a theme pack, **Install** runs the same steps as `gorex pack install` (`iconpack.Checkout`, then `theme.Install`) and does not use the theme. An index with no `themes` list, as the registry's before theme packs, lists its icon packs.
 
 For both local and remote hosts, the client resolves pack entries locally from `SessionInfo.ProgramName()` and `SessionInfo.Args`, requiring zero directory I/O and zero extra bytes over the wire.

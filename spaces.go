@@ -636,20 +636,13 @@ func (a *App) spaceDialog(c *ui.Context, k *colors) {
 func (a *App) spaceEditRow(c *ui.Context, k *colors, i int, name string) {
 	s := &a.spaces
 	ui.Row(c.Key("edit-" + name)).Gap(6).AlignItems(ui.Center).Children(func() {
-		mark := ui.Box(c).Size(22, 22).Center().Radius(k.capsule(22)).Cursor(ui.CursorPointer).Role(ui.RoleButton).Label(locales.SpaceColor()).Tooltip(locales.SpaceColor())
-		mark.Children(func() { spaceSwatchMark(c, k, spaceColor(name), 12) })
-		mark.ContextMenu(func(m *ui.Menu) { spaceColorMenu(m, name) })
-		if mark.Clicked() {
-			// A click goes on to the next preset, as a right click lists
-			// them all.
-			next := layout.Palette[0].ID
-			for j, p := range layout.Palette {
-				if p.ID == spaceColor(name) && j+1 < len(layout.Palette) {
-					next = layout.Palette[j+1].ID
-				}
-			}
-			setSpaceColorOf(name, next)
-		}
+		// A click opens the colors below the dot, as a right click does. The
+		// two menus are on two elements: one element cannot have both.
+		ui.Box(c.Key("color")).Size(22, 22).Shrink(0).ContextMenu(func(m *ui.Menu) { spaceColorMenu(m, name) }).Children(func() {
+			mark := ui.Box(c).Size(22, 22).Center().Radius(k.capsule(22)).Cursor(ui.CursorPointer).Role(ui.RoleButton).Label(locales.SpaceColor()).Tooltip(locales.SpaceColor())
+			mark.Children(func() { spaceSwatchMark(c, k, spaceColor(name), 12) })
+			mark.Menu(func(m *ui.Menu) { spaceColorMenu(m, name) })
+		})
 		if name == "" {
 			ui.Text(c, spaceLabel(name)).FontSize(fontBody).TextColor(k.text).Grow(1).Padding(0, 6)
 		} else {
@@ -691,14 +684,29 @@ func (a *App) spaceEditRow(c *ui.Context, k *colors, i int, name string) {
 	})
 }
 
-// spaceColorMenu lists the colors space name may take on this client.
-func spaceColorMenu(m *ui.Menu, name string) {
-	if m.Item(locales.SpaceColorDefault()).Chosen() {
-		setSpaceColorOf(name, "")
-	}
+// colorChoice is an item of a color menu: its label, the color it sets
+// ("" for Default) and whether it is the color the menu's owner has.
+type colorChoice struct {
+	label, id string
+	checked   bool
+}
+
+// colorChoices are the items of a color menu, Default and then the
+// presets, the one that is cur ticked.
+func colorChoices(cur string) []colorChoice {
+	out := []colorChoice{{locales.SpaceColorDefault(), "", cur == ""}}
 	for _, p := range layout.Palette {
-		if m.Item(strings.ToUpper(p.ID[:1]) + p.ID[1:]).Chosen() {
-			setSpaceColorOf(name, p.ID)
+		out = append(out, colorChoice{paletteLabel(p.ID), p.ID, cur == p.ID})
+	}
+	return out
+}
+
+// spaceColorMenu lists the colors space name may take on this client, the
+// one it has ticked.
+func spaceColorMenu(m *ui.Menu, name string) {
+	for _, ch := range colorChoices(spaceColor(name)) {
+		if m.Item(ch.label).Radio(ch.checked).Chosen() {
+			setSpaceColorOf(name, ch.id)
 		}
 	}
 }

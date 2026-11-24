@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cmp"
 	"slices"
 	"strings"
 	"unicode/utf8"
@@ -35,9 +36,12 @@ type projectSheet struct {
 	// sel is the folder row the arrow keys highlight, -1 for none; reveal
 	// scrolls it into view in the next frame. from is the folder browsed
 	// before, highlighted as Up lists its parent.
-	sel    int
-	reveal bool
-	from   string
+	sel int
+	// hostFocused is whether the host button has the focus: Down and Up
+	// then open its menu, not move the folder highlight.
+	hostFocused bool
+	reveal      bool
+	from        string
 	// focusList gives the list the focus in the next frame, as the arrow
 	// keys highlight a row, so that Enter opens it.
 	focusList bool
@@ -50,7 +54,7 @@ type projectSheet struct {
 func (a *App) openSheet(h *hostConn, dir string) {
 	// gen goes on from the sheet before, whose listings still on their
 	// way are not this one's.
-	a.sheet = projectSheet{open: true, host: h, want: dir, gen: a.sheet.gen + 1, sel: -1}
+	a.sheet = projectSheet{open: true, host: h, want: dir, gen: a.sheet.gen + 1, sel: -1, focusList: true}
 	a.closeMenus()
 	a.focusReq = nil
 	if h != nil && h.current() == nil {
@@ -413,7 +417,10 @@ func (a *App) sheetChoice(c *ui.Context, k *colors) {
 // parent folder. A text field with the focus takes Backspace first.
 func (a *App) sheetKeys(panel ui.Element) {
 	s := &a.sheet
-	down, up := panel.Shortcut(0, ui.KeyDown), panel.Shortcut(0, ui.KeyUp)
+	var down, up bool
+	if !s.hostFocused {
+		down, up = panel.Shortcut(0, ui.KeyDown), panel.Shortcut(0, ui.KeyUp)
+	}
 	altUp, back := panel.Shortcut(ui.Alt, ui.KeyUp), panel.Shortcut(0, ui.KeyBackspace)
 	switch {
 	case down:
@@ -425,42 +432,44 @@ func (a *App) sheetKeys(panel ui.Element) {
 	}
 }
 
-// sheetHosts are the hosts the sheet can browse: this machine and the
-// saved hosts, one chosen. One that is offline shows, dimmed, and cannot
-// be chosen.
+// sheetHosts is the select of the hosts the sheet can browse: this
+// machine and the saved hosts. Its button shows the one chosen and opens
+// a menu of them, that one marked. One that is not connected stays in the
+// list, disabled, with its status.
 func (a *App) sheetHosts(c *ui.Context, k *colors) {
-	ui.Row(c).Gap(6).Wrap().Role(ui.RoleRadioGroup).Label(locales.ProjectSheetHost()).Children(func() {
+	hostGlyph := func(h *hostConn) string {
+		g := ""
+		if h == nil {
+			_, _, g = a.hostIdentity()
+		} else {
+			g = h.remoteGlyph()
+		}
+		return cmp.Or(knownGlyph(g), "server")
+	}
+	cur := a.sheet.host
+	name := a.hostName(cur)
+	b := ui.Row(c.Key("sheet-host")).Height(28).Padding(0, 10).Gap(6).Radius(k.radius(radiusM)).AlignItems(ui.Center).MaxWidth(300).
+		Border(k.borderW(), k.panelBorder).Cursor(ui.CursorPointer).Role(ui.RoleButton).Label(locales.ProjectSheetHost()).Value(name).Tooltip(name)
+	if b.Hovered() {
+		b.Background(k.hover)
+	}
+	a.sheet.hostFocused = b.Focused()
+	b.Children(func() {
+		glyphIcon(c, hostGlyph(cur), 14, k.textMuted).Shrink(0)
+		ui.Text(c, name).FontSize(fontCallout).TextColor(k.text).SingleLine().Ellipsis("…").Grow(1).MinWidth(0)
+		glyphIcon(c, "chevron-down", 13, k.textMuted).Shrink(0)
+	})
+	b.Menu(func(m *ui.Menu) {
 		for _, h := range a.allHosts() {
-			name, on := a.hostName(h), pickable(h)
-			glyph := ""
-			if h == nil {
-				_, _, glyph = a.hostIdentity()
-			} else {
-				glyph = h.remoteGlyph()
+			label := a.hostName(h)
+			on := pickable(h)
+			if !on {
+				status, _, _ := hostStatus(h)
+				label += " · " + status
 			}
-			chosen := a.sheet.host == h
-			b := ui.Row(c.Key("sheet-host-"+hostKey(h))).Height(28).Padding(0, 10).Gap(6).Radius(k.capsule(28)).AlignItems(ui.Center).
-				Role(ui.RoleRadio).Checked(chosen).Label(name).Border(k.borderW(), k.panelBorder).Focusable()
-			switch {
-			case chosen:
-				b.Background(k.hover).Border(1, k.accent)
-			case on && b.Hovered():
-				b.Background(k.hover)
+			if m.Item(label).ID(hostKey(h)).Icon(menuIcon(hostGlyph(h))).Radio(a.sheet.host == h).Disabled(!on).Chosen() {
+				a.pickHost(h)
 			}
-			if on {
-				b.Cursor(ui.CursorPointer)
-				if b.Clicked() {
-					a.pickHost(h)
-				}
-			} else {
-				label, _, _ := hostStatus(h)
-				b.Disabled(true).Tooltip(label)
-				dimmed(b, 0.45)
-			}
-			b.Children(func() {
-				glyphIcon(c, glyph, 14, k.textMuted).Shrink(0)
-				ui.Text(c, name).FontSize(fontCallout).TextColor(k.text).SingleLine()
-			})
 		}
 	})
 }

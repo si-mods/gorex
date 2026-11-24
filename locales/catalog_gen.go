@@ -8554,13 +8554,13 @@ func (msgs Messages) SettingsIconPacks() string {
 	return Catalog.Format(msgs.locale, "settingsIconPacks", nil)
 }
 
-// SettingsIconPackPriority says "Priority"
+// SettingsIconPackPriority says "Icon priority"
 // in the language the app shows.
 //
 // Settings row: precedence between icon packs and OSC 7502.
 func SettingsIconPackPriority() string { return In(i18n.Locale()).SettingsIconPackPriority() }
 
-// SettingsIconPackPriority says "Priority"
+// SettingsIconPackPriority says "Icon priority"
 // in the language of msgs.
 //
 // Settings row: precedence between icon packs and OSC 7502.
@@ -8568,32 +8568,64 @@ func (msgs Messages) SettingsIconPackPriority() string {
 	return Catalog.Format(msgs.locale, "settingsIconPackPriority", nil)
 }
 
-// SettingsIconPackPriorityPack says "Icon Packs first"
+// SettingsIconPackPriorityPack says "Icon packs first"
 // in the language the app shows.
 //
-// Segmented option: community icon packs override OSC 7502.
+// Radio option: community icon packs override OSC 7502.
 func SettingsIconPackPriorityPack() string { return In(i18n.Locale()).SettingsIconPackPriorityPack() }
 
-// SettingsIconPackPriorityPack says "Icon Packs first"
+// SettingsIconPackPriorityPack says "Icon packs first"
 // in the language of msgs.
 //
-// Segmented option: community icon packs override OSC 7502.
+// Radio option: community icon packs override OSC 7502.
 func (msgs Messages) SettingsIconPackPriorityPack() string {
 	return Catalog.Format(msgs.locale, "settingsIconPackPriorityPack", nil)
 }
 
-// SettingsIconPackPriorityOSC says "Program (OSC 7502) first"
+// SettingsIconPackPriorityOSC says "Program's own icon first"
 // in the language the app shows.
 //
-// Segmented option: runtime OSC 7502 icons override icon packs.
+// Radio option: runtime OSC 7502 icons override icon packs.
 func SettingsIconPackPriorityOSC() string { return In(i18n.Locale()).SettingsIconPackPriorityOSC() }
 
-// SettingsIconPackPriorityOSC says "Program (OSC 7502) first"
+// SettingsIconPackPriorityOSC says "Program's own icon first"
 // in the language of msgs.
 //
-// Segmented option: runtime OSC 7502 icons override icon packs.
+// Radio option: runtime OSC 7502 icons override icon packs.
 func (msgs Messages) SettingsIconPackPriorityOSC() string {
 	return Catalog.Format(msgs.locale, "settingsIconPackPriorityOSC", nil)
+}
+
+// SettingsIconPackPriorityPackHint says "An installed icon pack's icon replaces the icon a program sends."
+// in the language the app shows.
+//
+// Hint under the Icon packs first radio option.
+func SettingsIconPackPriorityPackHint() string {
+	return In(i18n.Locale()).SettingsIconPackPriorityPackHint()
+}
+
+// SettingsIconPackPriorityPackHint says "An installed icon pack's icon replaces the icon a program sends."
+// in the language of msgs.
+//
+// Hint under the Icon packs first radio option.
+func (msgs Messages) SettingsIconPackPriorityPackHint() string {
+	return Catalog.Format(msgs.locale, "settingsIconPackPriorityPackHint", nil)
+}
+
+// SettingsIconPackPriorityOSCHint says "A program that sends its own icon (OSC 7502) keeps it."
+// in the language the app shows.
+//
+// Hint under the Program's own icon first radio option.
+func SettingsIconPackPriorityOSCHint() string {
+	return In(i18n.Locale()).SettingsIconPackPriorityOSCHint()
+}
+
+// SettingsIconPackPriorityOSCHint says "A program that sends its own icon (OSC 7502) keeps it."
+// in the language of msgs.
+//
+// Hint under the Program's own icon first radio option.
+func (msgs Messages) SettingsIconPackPriorityOSCHint() string {
+	return Catalog.Format(msgs.locale, "settingsIconPackPriorityOSCHint", nil)
 }
 
 // SettingsIconPacksInstalled says "Icon Packs"
@@ -8784,34 +8816,6 @@ func SettingsThemeBuiltInHint() string { return In(i18n.Locale()).SettingsThemeB
 // Extensions page: hint under the Built-in theme row.
 func (msgs Messages) SettingsThemeBuiltInHint() string {
 	return Catalog.Format(msgs.locale, "settingsThemeBuiltInHint", nil)
-}
-
-// SettingsThemeUse says "Use"
-// in the language the app shows.
-//
-// Extensions page: button that makes a theme the window theme.
-func SettingsThemeUse() string { return In(i18n.Locale()).SettingsThemeUse() }
-
-// SettingsThemeUse says "Use"
-// in the language of msgs.
-//
-// Extensions page: button that makes a theme the window theme.
-func (msgs Messages) SettingsThemeUse() string {
-	return Catalog.Format(msgs.locale, "settingsThemeUse", nil)
-}
-
-// SettingsThemeInUse says "In use"
-// in the language the app shows.
-//
-// Extensions page: label of the window theme in use.
-func SettingsThemeInUse() string { return In(i18n.Locale()).SettingsThemeInUse() }
-
-// SettingsThemeInUse says "In use"
-// in the language of msgs.
-//
-// Extensions page: label of the window theme in use.
-func (msgs Messages) SettingsThemeInUse() string {
-	return Catalog.Format(msgs.locale, "settingsThemeInUse", nil)
 }
 
 // SettingsExtensionKindIcons says "Icon pack"

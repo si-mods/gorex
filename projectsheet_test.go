@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -130,11 +131,22 @@ func TestNewProjectSheetHost(t *testing.T) {
 
 	a.openNewProject()
 	sheetShows(t, a, tt, a.homeOf(nil))
-	click(t, tt, "far-box")
+	// The select lists every host, this machine's ticked; the offline one
+	// is there, disabled, with its status.
+	click(t, tt, a.hostName(nil))
+	if m := tt.Menu(); len(m) != len(a.allHosts()) || !slices.ContainsFunc(m, func(s string) bool { return strings.HasPrefix(s, "far-box · ") }) {
+		t.Fatalf("host menu %q", m)
+	}
+	if err := tt.ChooseMenuItem("far-box · " + func() string { l, _, _ := hostStatus(off); return l }()); err == nil || !strings.Contains(err.Error(), "disabled") {
+		t.Fatalf("an offline host was chosen: %v", err)
+	}
 	if a.sheet.host != nil || pickable(off) {
 		t.Fatalf("an offline host was chosen: %v", a.sheet.host)
 	}
-	click(t, tt, "office-mac")
+	if err := tt.ChooseMenuItem("office-mac"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
 	if a.sheet.host != h {
 		t.Fatalf("the host chosen is %v", a.sheet.host)
 	}
