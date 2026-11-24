@@ -8,7 +8,7 @@ metadata:
 
 # DSK-012: Theme shaders and metrics
 
-Status: accepted. Not implemented.
+Status: phase 1 built (#1096). Phases 2 to 5 not built.
 
 This doc decides how a theme pack changes more than colors and still images. It adds three kinds of shader slots, a set of metric seeds, a glass key and five roles. It extends [DSK-008](DSK-008-theme.md) (the manifest and the face resolver) and [DSK-010](DSK-010-theme-ambience.md) (assets, layers, the still rule). The probes are two themes of `freestylefly/codex-themes`, a theme app for the Codex desktop app: "Blue Window" and "Potion Workshop". The goal is to rebuild both as GoRex theme packs. Replaces: [DSK-008](DSK-008-theme.md), the glass non-goal, the glass alternative and the Security rule "A theme manifest is data". Also replaces: [DSK-010](DSK-010-theme-ambience.md), the non-goal "any code in a pack", the first Security item and the asset caps that the Assets section changes.
 
