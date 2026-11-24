@@ -96,6 +96,18 @@ func (a *App) tabStrip(c *ui.Context, k *colors) {
 	})
 }
 
+// activeTabColors returns the palette of the active tab's content: its
+// text reads on its pill, not on the title bar, as a dark title bar's
+// light text would vanish on a light pill. Without glass the pill is
+// tabActive; with it, where the system draws no glass, its fallback face
+// pillFace over the track over the title bar (pillColors).
+func activeTabColors(k *colors) *colors {
+	if !glassOn() {
+		return surface(k, roleTabActiveBackground).on(k)
+	}
+	return pillColors(k, k.pillFace, k.titleBarFace, k.track)
+}
+
 // tabSepKey is the key of the separator before a tab in the title bar.
 type tabSepKey int
 
@@ -190,6 +202,9 @@ const titleFree = 56
 // shrinks to fit the title bar while squeeze.
 func (a *App) tabItem(c *ui.Context, k *colors, i int, t *Tab, width float32, squeeze bool) ui.Element {
 	active := i == a.active
+	if active {
+		k = activeTabColors(k)
+	}
 	shrink := float32(0)
 	if squeeze {
 		shrink = 1

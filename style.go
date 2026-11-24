@@ -293,6 +293,8 @@ type themePalettes struct {
 	light, dark colors
 	glass       *bool
 	name        string
+	// themed tells that a theme made them, not the built-in seeds alone.
+	themed bool
 }
 
 // palettes holds the windows' palettes. applyTheme stores a new value, never
@@ -394,6 +396,7 @@ var themeSidebar theme.Sidebar
 func applyTheme(m *theme.Manifest) {
 	p := &themePalettes{light: themed(lightSeeds, m, 0), dark: themed(darkSeeds, m, 1)}
 	if m != nil {
+		p.themed = true
 		p.glass, p.name = m.Glass, m.Name
 		if p.name == "" {
 			p.name = prefs.Theme
@@ -414,6 +417,9 @@ func applyTheme(m *theme.Manifest) {
 	faceCacheMu.Lock()
 	clear(faceCache)
 	faceCacheMu.Unlock()
+	inkMu.Lock()
+	clear(inkLadders)
+	inkMu.Unlock()
 	spaceColorsMu.Lock()
 	clear(spaceColorsCache)
 	spaceColorsMu.Unlock()
@@ -432,6 +438,94 @@ func ladderOf(k *colors, dark bool) *colors {
 		return k
 	}
 	return paletteOf(dark)
+}
+
+// faceLadder returns the palette whose text ladder reads on a face of k,
+// face its color laid over k's panel (docs/DSK-008-theme.md, Pairing).
+// With no theme it is the ladder of the face's lightness (ladderOf), as it
+// always was. Under a theme it is the first of these whose text reaches
+// 4.5:1 and textMuted 3:1 on the face: the theme's ladder of the face's
+// lightness, the theme's other one, the built-in ladder of the face's
+// lightness, the built-in other one, and ink, white or black, made for the
+// face (inkLadder). A light-only theme, whose dark seeds are its light
+// ones, thus gets white text on a dark face rather than its dark text.
+//
+// same is the caller's palette of the face's lightness, which it took
+// before the rule: ladderOf(k, dark), or paletteOf(dark) for themedFace.
+func faceLadder(k *colors, face ui.Color, same *colors) *colors {
+	if p := palettes.Load(); p == nil || !p.themed {
+		return same
+	}
+	dark := isDark(face)
+	return pickLadder(face, same, ladderOf(k, !dark), builtinLadder(dark), builtinLadder(!dark))
+}
+
+// builtinLadder returns the built-in palette of an appearance.
+func builtinLadder(dark bool) *colors {
+	if dark {
+		return &darkColors
+	}
+	return &lightColors
+}
+
+// ladderReads reports how well ref's ladder reads on face: its worse margin
+// of text over 4.5:1 and textMuted over 3:1, 1 or more where both pass.
+func ladderReads(ref *colors, face ui.Color) float64 {
+	return min(contrast(ref.text.Over(face), face)/faceTextContrast, contrast(ref.textMuted.Over(face), face)/faceMutedContrast)
+}
+
+// pickLadder returns the first of refs whose ladder reads on face, else the
+// ink ladder of face (inkLadder), or, should it not read either, the one
+// of them that reads best.
+func pickLadder(face ui.Color, refs ...*colors) *colors {
+	best, score := refs[0], -1.0
+	for _, ref := range refs {
+		s := ladderReads(ref, face)
+		if s >= 1 {
+			return ref
+		}
+		if s > score {
+			best, score = ref, s
+		}
+	}
+	ink := inkLadder(face)
+	if ladderReads(ink, face) > score {
+		return ink
+	}
+	return best
+}
+
+// inkLadders are the ink ladders inkLadder made, by face.
+var (
+	inkMu      sync.Mutex
+	inkLadders = map[ui.Color]*colors{}
+)
+
+// inkLadder returns a ladder made for face: text in the ink, white or
+// black, that contrasts more with it, and the muted steps that ink laid
+// over the face at the least alpha from 0.72 up that keeps textMuted 3:1.
+// The palette is the same pointer for the same face.
+func inkLadder(face ui.Color) *colors {
+	inkMu.Lock()
+	defer inkMu.Unlock()
+	if k, ok := inkLadders[face]; ok {
+		return k
+	}
+	ink, st := ui.RGBA(0, 0, 0, 1), lightInk
+	if contrast(ui.RGBA(255, 255, 255, 1), face) > contrast(ink, face) {
+		ink, st = ui.RGBA(255, 255, 255, 1), darkInk
+	}
+	a := float32(0.72)
+	for a < 1 && contrast(ink.Alpha(a).Over(face), face) < faceMutedContrast {
+		a += 0.04
+	}
+	muted := ink.Alpha(min(a, 1)).Over(face)
+	k := &colors{
+		text: ink, textMuted: muted, textFaint: ink.Alpha(0.55).Over(face), iconMuted: muted,
+		hover: ink.Alpha(st.hover), pressed: ink.Alpha(st.pressed),
+	}
+	inkLadders[face] = k
+	return k
 }
 
 // withLadder returns k with the text ladder of ref: k itself when ref is k,
@@ -493,7 +587,8 @@ func themedFace(k *colors, role faceRole) (*colors, ui.Color, bool) {
 	if face.A == 0 {
 		return k, face, false
 	}
-	ref := paletteOf(isDark(face.Over(k.panel)))
+	flat := face.Over(k.panel)
+	ref := faceLadder(k, flat, paletteOf(isDark(flat)))
 	if k.text == ref.text && k.textMuted == ref.textMuted && k.textFaint == ref.textFaint && k.iconMuted == ref.iconMuted &&
 		k.hover == ref.hover && k.pressed == ref.pressed {
 		return k, face, true
@@ -534,7 +629,8 @@ func buttonColors(t *ui.Theme, k *colors) {
 		return
 	}
 	text := k.accentText
-	ref := ladderOf(k, isDark(face.Over(k.panel))) // surface's ladder
+	flat := face.Over(k.panel)
+	ref := faceLadder(k, flat, ladderOf(k, isDark(flat))) // surface's ladder
 	if face != k.accent {
 		text = ref.text
 	}
@@ -558,7 +654,8 @@ type faceColors struct {
 // face has its own palette's lightness, so it gets the palette's ladder.
 func surface(k *colors, role faceRole) faceColors {
 	face := *roleField(k, role)
-	ref := ladderOf(k, isDark(face.Over(k.panel)))
+	flat := face.Over(k.panel)
+	ref := faceLadder(k, flat, ladderOf(k, isDark(flat)))
 	return faceColors{face, ref.text, ref.textMuted, ref.textFaint, ref.iconMuted, ref.hover, ref.pressed}
 }
 

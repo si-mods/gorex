@@ -631,11 +631,11 @@ func overOpaque(px []uint8, bg ui.Color) ui.Color {
 }
 
 // readable checks that text and muted keep their contrast on each pixel
-// of img with x below maxX, laid over bg.
-func readable(img *image.RGBA, maxX int, bg, text, muted ui.Color) error {
-	b := img.Bounds()
+// of img in area, laid over bg.
+func readable(img *image.RGBA, area image.Rectangle, bg, text, muted ui.Color) error {
+	b := img.Bounds().Intersect(area)
 	for y := b.Min.Y; y < b.Max.Y; y++ {
-		for x := b.Min.X; x < min(b.Max.X, maxX); x++ {
+		for x := b.Min.X; x < b.Max.X; x++ {
 			o := img.PixOffset(x, y)
 			c := overOpaque(img.Pix[o:o+4], bg)
 			if r := contrast(text, c); r < faceTextContrast {
@@ -649,21 +649,31 @@ func readable(img *image.RGBA, maxX int, bg, text, muted ui.Color) error {
 	return nil
 }
 
+// faceTextInset is the edge of a face where no text sits, which check 5
+// does not read: 4 DIPs at the left and right, 2 at the top and bottom.
+// A face shader may draw an accent bar, an inner border, a stitched edge
+// or a bottom line there in any color.
+var faceTextInset = ui.Point{X: 4, Y: 2}
+
 // faceContrast is check 5: the face drawn at 96×32 px with each of
-// faceFrames keeps the text of the ladder its flat color selects readable at each
-// pixel, in both appearances; a pixel not opaque counts as laid over the
-// panel, as surface counts a face.
+// faceFrames keeps the text of the ladder its flat color selects
+// (pickLadder, as faceLadder picks it) readable at each pixel inside
+// faceTextInset, in both appearances; a pixel not opaque counts as laid
+// over the panel, as surface counts a face.
 func faceContrast(sl *themeSlot, pal *[2]colors, role faceRole) error {
+	const w, h = 96, 32
+	area := image.Rect(int(faceTextInset.X), int(faceTextInset.Y), w-int(faceTextInset.X), h-int(faceTextInset.Y))
 	for i, name := range [2]string{"light", "dark"} {
 		k := &pal[i]
-		face := *roleField(k, role)
-		ref := &pal[0]
-		if isDark(face.Over(k.panel)) {
-			ref = &pal[1]
+		flat := roleField(k, role).Over(k.panel)
+		d := 0
+		if isDark(flat) {
+			d = 1
 		}
+		ref := pickLadder(flat, &pal[d], &pal[1-d], builtinLadder(d == 1), builtinLadder(d == 0))
 		for _, f := range faceFrames {
-			img := renderSlot(sl, 96, 32, 1, ui.Point{X: 96, Y: 32}, i == 1, f)
-			if err := readable(img, math.MaxInt, k.panel, ref.text, ref.textMuted); err != nil {
+			img := renderSlot(sl, w, h, 1, ui.Point{X: w, Y: h}, i == 1, f)
+			if err := readable(img, area, k.panel, ref.text, ref.textMuted); err != nil {
 				return fmt.Errorf("in the %s appearance at %g s, %v", name, f.time, err)
 			}
 		}
@@ -688,7 +698,7 @@ func bandContrast(sl *themeSlot, pal *[2]colors) error {
 		}
 		for _, t := range bandTimes {
 			img := renderSlot(sl, side, h*bandScale, bandScale, ui.Point{X: w, Y: h}, i == 1, shaderFrame{time: t, window: ui.Point{X: w, Y: h}})
-			if err := readable(img, side, k.bgBottom, k.text, k.textMuted); err != nil {
+			if err := readable(img, image.Rect(0, 0, side, h), k.bgBottom, k.text, k.textMuted); err != nil {
 				return fmt.Errorf("behind the sidebar in the %s appearance at %g s, %v", name, t, err)
 			}
 		}

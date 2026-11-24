@@ -177,6 +177,8 @@ The seven tokens of [DSK-007](DSK-007-sidebar-style.md) get new names:
 
 Each face has a pairing rule. The resolver attaches the text ladder that fits the lightness of the resolved face. The rule applies to built-in faces, theme faces and user overrides. It runs at resolve time, not at seed time.
 
+Under a theme the pairing also guarantees contrast ([DSK-012](DSK-012-theme-shaders.md), New roles): the resolver takes the first ladder whose `text` reaches 4.5:1 and `textMuted` 3:1 on the face, among the theme's ladder of the face's lightness, the theme's other ladder, the built-in ladder of the face's lightness and the built-in other one, else ink made for the face. With no theme, the rule above stays as it is.
+
 ### Code
 
 - `style.go`: The `colors` struct stays. A `seeds` struct and `derive(seeds) colors` make the two palettes: `lightColors` is `derive(lightSeeds)`, and `darkColors` is `derive(darkSeeds)`. `surface(k, role)` returns the face and its ladder. `headerColors` becomes part of the resolver.

@@ -78,7 +78,7 @@ Text on each face stays readable. A theme shader that fails a check shows nothin
 
 ### Manifest
 
-Three new optional keys, `shaders`, `metrics` and `glass`, and five new roles, four of them faces:
+Four new optional keys, `shaders`, `metrics`, `glass` and `description`, and five new roles, four of them faces:
 
 ```json
 {
@@ -99,6 +99,7 @@ Three new optional keys, `shaders`, `metrics` and `glass`, and five new roles, f
 }
 ```
 
+- `description` is a line about the theme: a string of at most 160 characters, cleaned of control and bidirectional characters (`cleanText`), each change with a warning. The Extensions page shows it under the theme's name. A value that is not a string drops with a warning.
 - `shaders.api` is the version of the shader API (see Shader API). This doc defines version 1. A build that does not know the version drops `shaders` with a warning.
 - A slot names its shader source as an asset of kind `.kage` (see Assets). `images` names up to 4 image assets, which the shader reads as `image0` to `image3`. `params` sets the other uniforms of the shader: a number, a list of numbers, or a color as a role value (a hex string or a `{"light", "dark"}` pair).
 - `shaders.background` and `shaders.ambient` take one slot each. `shaders.faces` maps a face role to a slot. A role that is not a face is dropped with a warning.
@@ -166,6 +167,7 @@ Phase 2 builds the checks with these details:
 - The checks of a theme store their result only while that theme is still selected, under one lock with the theme's change, and a window draws a checked set only for the selected theme.
 - Check 3: a uniform that no param sets is zero, with a warning; a param that the shader does not declare gives a warning. A uniform of the API table with another type, a `Seed<Name>` with no such seed, and a param that does not fit its uniform fail. A param may not set a uniform of the API table.
 - Check 4 draws the built-in background with no glows.
+- Check 5 reads a face only where text can sit: inside `faceTextInset`, 4 DIPs in from the left and right and 2 DIPs from the top and bottom. A face shader may thus draw an accent bar, an inner border, a stitched edge or a bottom line at the edge in any color. Inside, 4.5:1 and 3:1 hold at each pixel.
 - Check 5 runs in both appearances, with the dark flat color and its ladder. A slot fails when either appearance fails.
 - Check 6 composites a pixel with alpha under 1 over `bgBottom`, the window's root. It draws only the sidebar's columns (`sidebarWidthIn(1280)`, 160 px at 1/8), scaled by a transform: `ui.Render` at scale 1/8 runs the shader for each pixel of scale 1. When the theme's `sideBar.background` is opaque in an appearance, the text reads on that face, and the check skips the appearance.
 
@@ -216,7 +218,17 @@ The face roles are the five faces that `surface` resolves now (`sideBar.activeGr
 | `button.background` | Face | A primary button, a chosen segment and a switch that is on: the faces that use `accent` now |
 | `pane.border` | Color | The border of a pane card, now `cardBorder` |
 
-The resolver pairs the text of each face as DSK-008 says. `button.background` uses `accentText` while its flat color is `accent`. When a theme sets another flat color, the ladder follows the lightness of that color.
+The resolver pairs the text of each face as DSK-008 says. `button.background` uses `accentText` while its flat color is `accent`. When a theme sets another flat color, the ladder follows that color.
+
+Under a theme the pairing guarantees contrast (`faceLadder` in `style.go`). A light-only theme sets its dark seeds equal to its light ones, so both of its ladders are dark text, and a dark face (a title bar of `#2876c8`) would get dark text at about 2.5:1. The resolver therefore takes, for the face laid over `panel`, the first of these ladders whose `text` reaches 4.5:1 and `textMuted` 3:1 on it:
+
+1. The theme's ladder of the face's lightness.
+2. The theme's other ladder.
+3. The built-in ladder of the face's lightness (`lightColors` or `darkColors`).
+4. The built-in other ladder.
+5. Ink made for the face (`inkLadder`): `text` white or black, whichever contrasts more, and `textMuted` that ink laid over the face at the least alpha from 0.72 that keeps 3:1. Its text always reaches 4.5:1, so no face is left unreadable. On `#2876c8` the built-in dark ladder reaches only 4.2:1 (`#f2f2f7`), and the ink ladder, white, applies.
+
+If none passes, the one that reads best wins. A face inside a face pairs again: the active tab of the tab strip, on a themed title bar, takes the ladder of its pill, not the bar's: `tabActive` when the glass is off, and with the glass on where the system draws no glass (Windows, Linux), the fallback face `pillFace` over the track over the bar (`pillColors`). A chosen sidebar row under the glass does the same over `sideBar.background`. On macOS the system's glass pill keeps the ladder under it. With no theme the resolver keeps the rule of DSK-008, so the built-in look does not change (`TestThemeNoneKeepsPalettes`). The face shader check (check 5) uses the same choice.
 
 Phase 1 builds these roles with these details:
 
@@ -304,14 +316,15 @@ The rest of the DSK-008 and DSK-010 rules stay: no URL, no network at run time, 
 ## Migration
 
 - `shaders`, `metrics`, `glass` and the five roles are new optional keys with defaults. A manifest without them loads as now, with the same pixels (`TestThemeNoneKeepsPalettes`).
-- An older build drops `shaders`, `metrics` and `glass` with an `unknown key` warning each. The user's Glass setting then applies. It drops the five role names with an `unknown role` warning each. It loads the colors and the DSK-010 layers. Its asset loader drops each asset that it cannot take, with a warning, and keeps the rest (`internal/theme/assets.go`): a `.kage` file (not a PNG, GIF or SVG), an image over 1024 px, an asset past 4 MiB for the pack, and a name past 16. It does not fail the pack.
+- An older build drops `shaders`, `metrics`, `glass` and `description` with an `unknown key` warning each. The user's Glass setting then applies. It drops the five role names with an `unknown role` warning each. It loads the colors and the DSK-010 layers. Its asset loader drops each asset that it cannot take, with a warning, and keeps the rest (`internal/theme/assets.go`): a `.kage` file (not a PNG, GIF or SVG), an image over 1024 px, an asset past 4 MiB for the pack, and a name past 16. It does not fail the pack.
 - No settings key changes. `docs/irreversible.md` does not apply to the manifest keys. The shader API version 1 is a promise to pack authors (see Shader API).
 
 ## Tests
 
 - **Parse**: `shaders` and `metrics` parse. A value out of range clamps, an unknown slot or role drops, a slot with no flat color takes the built-in one, and each gives a warning (`TestParseShaders`, `TestParseMetrics`).
 - **Checks**: a shader that does not compile, has an effect entry point, reads its backdrop, has a loop whose runs are not constant or more than 256 loop runs, has a uniform of the wrong type, costs 9 times the background, or fails the face contrast, each drops with a warning, and the slot draws its flat color (`TestThemeShaderChecks`). A shader that branches on `Time > 4` or `Window.x > 200` to pass one sample is refused. A check of a theme the user left stores nothing, and a set of another theme draws nothing (`TestThemeShaderSwitch`). The param parser, the uniform check and the asset caps have their own tests (`TestParseShaders`, `TestShaderUniforms`, `TestShaderAssets`).
-- **Contrast**: a light gradient face in a dark window gets dark text. A face shader that crosses the flip point fails (`TestFaceShaderContrast`).
+- **Contrast**: a light gradient face in a dark window gets dark text. A face shader that crosses the flip point fails (`TestFaceShaderContrast`). A light-only theme with a `#2876c8` title bar gets white text, and its gradient face shader passes (`TestFaceLadderLightOnly`). An accent bar 3 px wide at the left edge passes; one where text sits fails (`TestFaceShaderInset`).
+- **Description**: `description` parses, is cleaned and cut to 160 characters (`TestParseDescription`), and shows under the theme's name (`TestThemeDescription`).
 - **Background**: with no theme shader, the window background is byte-exact as now (`TestBackgroundShader`, and `TestThemeBackgroundShader` with a theme that has only face shaders). With one, the pixel at a known point has its color (`TestThemeBackgroundShader`).
 - **CPU renderer**: on the CPU renderer, no theme shader draws, and each slot draws its flat color (`TestThemeShaderCPU`).
 - **Still**: a background or face shader that reads `Time` asks for no frame under each condition of the DSK-010 still rule, and its `Time` stands (`TestThemeShaderStill`).

@@ -102,7 +102,7 @@ func sidebarChosenColors(k *colors) *colors {
 	if sidebarFillSel() || !glassOn() {
 		return surface(k, roleTabActiveBackground).on(k)
 	}
-	return k
+	return pillColors(k, k.pillFace, k.sideBarFace)
 }
 
 // sidebarHoverColors returns the palette that the content of a hovered

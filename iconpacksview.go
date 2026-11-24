@@ -359,6 +359,10 @@ func (a *App) themesGroup(c *ui.Context, k *colors, themes []theme.Summary) {
 						a.removeTheme(s.ID)
 					}
 				})
+				// The theme's own line about itself, under its name.
+				if s.Description != "" {
+					rowHint(c, k, s.Description)
+				}
 				hint := extensionKind(iconpack.KindTheme) + " · " + s.ID
 				if s.Error != "" {
 					hint += " · " + s.Error
