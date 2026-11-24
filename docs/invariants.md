@@ -64,7 +64,8 @@ lags. A client that stops reading is dropped; its input does not grow
 without end, and a lost stream waits for its input instead of skipping
 it.
 
-- `TestLostStreamWaitsForItsInput` (`hosts_test.go`).
+- `TestLostStreamWaitsForItsInput`, `TestLocalStreamStarvedReattaches`
+  (`hosts_test.go`).
 - `TestQueueIsBounded`, `TestStalledClientIsDropped`,
   `TestStalledLocalClientIsDropped`, `TestBlackholedAttachesAreDropped`
   (`internal/rex/stale_test.go`).

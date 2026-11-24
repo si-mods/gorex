@@ -593,6 +593,79 @@ func TestLocalStreamReattaches(t *testing.T) {
 	}
 }
 
+// TestLocalStreamStarvedReattaches is a pane whose reads stopped while
+// its session printed, as one whose read goroutine wedged elsewhere: the
+// watch sees the session's output grow past the silent stream and closes
+// it, so the next Read attaches again — the freeze of #1076, which a
+// window's reopen then healed by hand.
+func TestLocalStreamStarvedReattaches(t *testing.T) {
+	oldEvery, oldLog := streamWatchEvery, streamStarveLogEvery
+	streamWatchEvery, streamStarveLogEvery = 50*time.Millisecond, time.Second
+	t.Cleanup(func() { streamWatchEvery, streamStarveLogEvery = oldEvery, oldLog })
+	sock, remote := startHostServer(t)
+	info, err := remote.Create(rex.CreateOptions{Cols: 80, Rows: 24})
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, err := rex.ConnectSocket(sock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { c.Close() })
+	if _, err := c.Hello(); err != nil {
+		t.Fatal(err)
+	}
+	s := newLocalStream(c, info.ID, 80, 24)
+	t.Cleanup(func() { s.Close() })
+	var hold atomic.Bool
+	go func() {
+		buf := make([]byte, 32<<10)
+		for {
+			for hold.Load() {
+				time.Sleep(5 * time.Millisecond)
+			}
+			if _, err := s.Read(buf); err != nil {
+				return
+			}
+		}
+	}()
+	attaches := func() int {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		return s.attaches
+	}
+	until := func(what string, cond func() bool) {
+		t.Helper()
+		for deadline := time.Now().Add(10 * time.Second); !cond(); time.Sleep(20 * time.Millisecond) {
+			if time.Now().After(deadline) {
+				t.Fatalf("timed out waiting for %s; attached %d", what, attaches())
+			}
+		}
+	}
+	until("the pane to attach", func() bool { return attaches() == 1 && !s.Detached() })
+	attached := func() int {
+		for _, in := range sessionInfos(t, remote) {
+			if in.ID == info.ID {
+				return in.Attached
+			}
+		}
+		return -1
+	}
+	// The pane stops reading, as a goroutine wedged in the pane's write
+	// would: what the session prints then stays in the socket, and no
+	// error ever comes.
+	hold.Store(true)
+	if _, err := s.Write([]byte("x")); err != nil {
+		t.Fatal(err)
+	}
+	until("the watch to drop the starved stream", func() bool { return attached() == 0 })
+	// Its Read ends the dead stream and attaches again, which the next
+	// bytes show as the screen of a snapshot does.
+	hold.Store(false)
+	until("the pane to attach again", func() bool { return attaches() == 2 && !s.Detached() })
+	until("the server to count one window again", func() bool { return attached() == 1 })
+}
+
 // TestLocalStreamTakesWhatIsTypedAsItAttaches is a pane of this machine
 // made a moment ago, before the view asked its size: what is typed then
 // reaches the program once its first stream attached, rather than going

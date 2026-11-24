@@ -3,7 +3,7 @@ name: REF-006
 description: "The session server: one PTY and one screen for each shell, data flow, recovery, attach and terminal queries. Use when you change `internal/rex` sessions."
 metadata:
   created: "2026-11-07"
-  updated: "2026-11-20"
+  updated: "2026-11-24"
 ---
 
 # REF-006: The session server's terminals
@@ -115,6 +115,12 @@ transports.
   times it is lost: a backoff of 250 ms doubling to 2 s, the terminal's
   size and focus claimed again, and the screen replaced by a snapshot. No
   client gives up on a loss that says nothing of the session.
+- **A starved stream is dropped, not waited on** (`paneStream.watch`):
+  the session's output growing while the stream brings nothing says the
+  path is dead though no error came — a write the server cannot finish,
+  or a reader the pane does not run. The stream is closed for its Read
+  to attach again; a report and a goroutine dump log where the pane
+  stood, throttled to once a while.
 - **What is typed while the stream is away waits for it**, in order, up to
   64 KiB and 10 s of loss (`maxQueuedInput`, `queuedInputTTL`). Past
   either bound it is dropped: keys must not reach a program the user
