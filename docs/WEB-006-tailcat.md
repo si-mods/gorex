@@ -3,7 +3,7 @@ name: WEB-006
 description: "The web client becomes a tailcat client of a GoRex host: a device key the browser keeps, DERP over WebSocket, and the usual pairing window. Use when you change the web tailcat engine, its keys or its pairing."
 metadata:
   created: "2026-11-23"
-  updated: "2026-11-23"
+  updated: "2026-11-24"
 ---
 
 # WEB-006: Web client over tailcat
@@ -51,6 +51,7 @@ NET-002's client table names the way in for the web client: tailcat compiled to 
 6. The key persists across reloads by default, in IndexedDB. A **This tab only** choice keeps it in memory, as the Tailscale sign-in's choice does. A tab-only key makes a new device on the host each time, so the choice says so.
 7. A second tab that opens the page sees that another tab holds the key and offers to take it over, as the Tailscale node's tab lock does.
 8. A host whose address names the machine's own relay — a region with an IP host and a pinned certificate — fails at connect with a message that a browser cannot reach it. The message names the host's DERP-homed address as the one to use.
+9. A pairing request can fail at the relay instead: a relay with a list drops a key it does not admit with a bare close, and DERP carries no refusal reason. `check` returns the relay's base URL, and the page asks `GET /derp/admit?key=<key>` — the probe of [NET-004](NET-004-public-relay.md) — whether the relay admits this device key. A no is the relay's refusal, not the host's: the problem says so and names the **Device key** the operator needs. Every other answer keeps the generic refusal.
 
 ### The engine
 
@@ -62,7 +63,7 @@ Its calls:
 | --- | --- |
 | `key()` | the device public key, `nodekey:` and hex, as a machine's allowlist shows it |
 | `privkey()` | the device private key's text, for the page to keep in IndexedDB |
-| `check(address)` | parses an address, and says when its region is a machine's own relay |
+| `check(address)` | parses an address, says when its region is a machine's own relay, and returns the relay's base URL for the admission probe |
 | `pair(address, name)` | one `remote.pair` to `RemotePort`, answering the fingerprint or the server's error |
 | `request(address, method, path, headers, body, timeoutMs)` | HTTP/1.1 to the gateway on the tailcat address, port 7297 |
 | `socket(address, path, protocol, emit)` | a WebSocket to the gateway, with `web/tailnet/wsclient` over the same connection |
@@ -83,7 +84,7 @@ The device key is a `key.NodePrivate` the engine makes on first use. The page pe
 
 - `web/src/tailcat.ts` mirrors `web/src/tailnet.ts`: it owns the engine's lifecycle, the key store (`web/src/catstore.ts`), the tab lock (the same Web Lock and `BroadcastChannel` mechanism) and `transport(host)`, a `Transport` on the engine's `request` and `socket`, made in `web/src/catengine.ts`.
 - A host entry gains `kind: "tailcat"` and `address`. Its `url` holds only the label "tailcat": the address is the pre-shared key of the host, a secret the page neither shows nor logs nor puts in a URL. The host list, Settings › Hosts, the dots and Connect/Disconnect treat it as every host.
-- The pairing surface shows the fingerprint, the name it asks with and the states: waiting for approval, refused, and the relay certificate error of Behavior step 8.
+- The pairing surface shows the fingerprint, the name it asks with and the states: waiting for approval, refused, the relay certificate error of Behavior step 8, and the relay's refusal of Behavior step 9.
 - The tab lock is required, not optional: two tabs with the same key are two tailcat clients of one key.
 - The `connect-src` of the page needs no change. `web/_headers` already allows `wss:` generally, which covers DERP to any relay host.
 

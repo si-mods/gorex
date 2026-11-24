@@ -4,6 +4,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { parseTailcatAddress } from "../src/hosts";
+import { relayDenies } from "../src/tailcat";
 
 const addr = "tcAB12cd34-ef56_gh78ij90";
 
@@ -38,4 +39,36 @@ test("a tailcat-looking string that is not one is not parsed", () => {
   assert.equal(parseTailcatAddress("rexgo://tailcat"), undefined);
   assert.equal(parseTailcatAddress("rexgo://tailcat?a=bad"), undefined);
   assert.equal(parseTailcatAddress("rexgo://other?a=" + addr), undefined);
+});
+
+// The relay's admit probe (docs/NET-004-public-relay.md): only an ok
+// answer whose body says allow:false means the relay refused the key.
+test("the probe asks the relay about the key", async () => {
+  let got = "";
+  const yes = await relayDenies(async (url) => {
+    got = String(url);
+    return new Response(JSON.stringify({ allow: false }));
+  }, "https://derp.example", "nodekey:a=b");
+  assert.equal(yes, true);
+  assert.equal(got, "https://derp.example/derp/admit?key=" + encodeURIComponent("nodekey:a=b"));
+});
+
+test("a key the relay admits is not refused", async () => {
+  const no = await relayDenies(async () => new Response(JSON.stringify({ allow: true })), "https://derp.example", "k");
+  assert.equal(no, false);
+});
+
+test("a relay without the probe is not a refusal", async () => {
+  const no = await relayDenies(async () => new Response("not found", { status: 404 }), "https://derp.example", "k");
+  assert.equal(no, false);
+});
+
+test("a relay that does not answer is not a refusal", async () => {
+  const no = await relayDenies(async () => Promise.reject(new Error("offline")), "https://derp.example", "k");
+  assert.equal(no, false);
+});
+
+test("an answer that is not JSON is not a refusal", async () => {
+  const no = await relayDenies(async () => new Response("<html>", { status: 200 }), "https://derp.example", "k");
+  assert.equal(no, false);
 });

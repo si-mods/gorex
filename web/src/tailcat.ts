@@ -24,7 +24,7 @@ export interface BodyReader {
 export interface EngineCat {
   key(): string;
   privkey(): string;
-  check(address: string): { ok?: boolean; ownRelay?: boolean; error?: string };
+  check(address: string): { ok?: boolean; ownRelay?: boolean; error?: string; relay?: string };
   pair(address: string, name: string): Promise<string>;
   request(
     address: string, method: string, path: string, headers: string, body: Uint8Array | null, timeoutMs: number,
@@ -67,6 +67,22 @@ function randomName(): string {
 }
 
 /**
+ * Whether base's relay refuses this device key, per its public admission
+ * probe (docs/NET-004-public-relay.md): DERP closes a refused key's
+ * connection without a reason, so the page asks the relay itself. A relay
+ * without the probe, a key it admits, and every failure count as not
+ * refused.
+ */
+export async function relayDenies(fetchImpl: typeof fetch, base: string, key: string): Promise<boolean> {
+  try {
+    const r = await fetchImpl(base + "/derp/admit?key=" + encodeURIComponent(key), { signal: AbortSignal.timeout(5000) });
+    return r.ok && (await r.json())?.allow === false;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * This page's tailcat device: one key, one engine, and each host's
  * pairing state. Everything that shows it listens with onChange.
  */
@@ -86,7 +102,7 @@ export class Tailcat {
   private listeners = new Set<() => void>();
   private pending = false;
   /** Each host's pairing: asked once, then the fingerprint the host shows while the user decides, the refusal, or a relay a browser cannot use. */
-  private readonly pairing = new Map<string, { asked?: boolean; ownRelay?: boolean; fingerprint?: string; error?: Msg; paired?: boolean }>();
+  private readonly pairing = new Map<string, { asked?: boolean; ownRelay?: boolean; relayDenied?: boolean; fingerprint?: string; error?: Msg; paired?: boolean }>();
   /** The engine's module, loaded once per page. */
   private engine?: Promise<void>;
   /** The code that runs only with the engine (catengine.ts). */
@@ -266,7 +282,8 @@ export class Tailcat {
     // An address homed on the machine's own relay cannot work here: a
     // browser cannot pin its certificate (docs/WEB-006-tailcat.md).
     this.addresses.add(h.address);
-    if (n.check(h.address).ownRelay) {
+    const chk = n.check(h.address);
+    if (chk.ownRelay) {
       this.pairing.set(h.id, { asked: true, ownRelay: true });
       this.changed();
       return;
@@ -280,11 +297,14 @@ export class Tailcat {
         // Approved in an earlier ask: the host is paired, and a connect
         // that still fails is unreachable, not refused.
         this.pairing.set(h.id, { asked: true, paired: true });
+      } else if (/not pairing/.test(m)) {
+        this.pairing.set(h.id, { error: () => t("tcNotPairing", { host: h.name }) });
+      } else if (chk.relay && (await relayDenies(fetch, chk.relay, this.publicKey))) {
+        // A refused key's connection closes without a reason, so the raw
+        // error cannot name the relay: its admit probe can.
+        this.pairing.set(h.id, { asked: true, relayDenied: true });
       } else {
-        const err: Msg = /not pairing/.test(m)
-          ? () => t("tcNotPairing", { host: h.name })
-          : () => m;
-        this.pairing.set(h.id, { error: err });
+        this.pairing.set(h.id, { error: () => m });
       }
     }
     this.changed();
@@ -324,6 +344,9 @@ export class Tailcat {
     }
     if (st.paired) {
       return problem(() => t("problemUnreachableTitle"), () => t("tcUnreachableText"));
+    }
+    if (st.relayDenied) {
+      return problem(() => t("tcRelayDeniedTitle"), () => t("tcRelayDeniedText", { host: h.name }));
     }
     if (st.error) {
       const err = st.error;
