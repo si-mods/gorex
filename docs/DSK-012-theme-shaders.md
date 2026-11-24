@@ -287,7 +287,7 @@ No item in `docs/invariants.md` covers the theme.
 ## Phases
 
 1. **Metrics, roles and glass** (M): `metrics`, the five roles with flat colors, `k.radius` and the shadow functions, the font list, the `glass` key. MyGo M1 for `rounded`. Blue Window gets its square corners, borders and font.
-2. **Shader runtime** (L): `.kage` assets, the API version 1, the `background` and `faces` slots, the checks at load, the new image caps, the CPU fallback. Measure the load checks on a Mac and a Windows PC.
+2. **Shader runtime** (L): MyGo M2 (loop bounds), `.kage` assets, the API version 1, the `background` and `faces` slots, the checks at load, the new image caps, the CPU fallback. Measure the load checks on a Mac and a Windows PC.
 3. **Ambient slot** (M): the `ambient` slot over the free region. It merges with DSK-010 phase 2: particles and sprites become built-in ambient shaders. Measure the frame cost as DSK-010 says.
 4. **Mascot and ticker**: DSK-010 phase 3, no change.
 5. **Two packs** (S each): two own repos, `si-mods/gorex-theme-<name>`, listed in the registry with a pinned `ref`. The working ids are `xp-blue` and `apothecary`. The user chooses the final names in this phase (User decisions, 3). Screenshots beside the probe previews.
