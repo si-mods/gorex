@@ -1,8 +1,8 @@
 import XCTest
 
 /// Settings › Tailscale's Device section shows while Built-in Tailscale
-/// is off, so a fresh install already carries the suggested
-/// <model>-rex-xxxx before the first registration.
+/// is off, with the device's name already in it before the first
+/// registration.
 final class TailscaleSettingsTests: XCTestCase {
     func testDeviceNameWhileOff() throws {
         let app = XCUIApplication()
@@ -33,10 +33,16 @@ final class TailscaleSettingsTests: XCTestCase {
         let row = app.staticTexts["Tailscale"].firstMatch
         XCTAssertTrue(row.waitForExistence(timeout: 10))
         row.tap()
-        // Built-in Tailscale is off on a fresh install; the Device
-        // section and the suggested name are already there.
+        // Built-in Tailscale is off; the Device section and the name are
+        // already there.
         XCTAssertTrue(app.staticTexts["Device Name"].waitForExistence(timeout: 10))
-        let name = app.textFields.matching(NSPredicate(format: "value CONTAINS '-rex-'")).firstMatch
+        // Any valid device name, not only a <model>-rex-xxxx one: the
+        // simulator keeps the app's defaults between runs, and makeName
+        // keeps a name an earlier build made (rexgo-xxxx before #1027).
+        // HostTests.testDeviceName covers the name a fresh install makes.
+        // The Control Server field's placeholder, "Tailscale", does not
+        // match.
+        let name = app.textFields.matching(NSPredicate(format: "value MATCHES '[a-z0-9]+(-[a-z0-9]+)*'")).firstMatch
         XCTAssertTrue(name.waitForExistence(timeout: 10))
         let shot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
         shot.name = "tailscale-device-name-off"
