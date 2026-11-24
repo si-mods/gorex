@@ -931,6 +931,16 @@
   "@settingsGlassHint": {
     "description": "Hint under the Glass setting."
   },
+  "settingsGlassByTheme": "Set by the theme {name}.",
+  "@settingsGlassByTheme": {
+    "description": "Hint under the Glass setting while the window theme in use turns the glass on or off; the switch is then disabled. name is the theme's name.",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "Slate"
+      }
+    }
+  },
   "settingsTermOpacity": "Terminal opacity",
   "@settingsTermOpacity": {
     "description": "Setting: how opaque the terminals' background is over the window's glass."

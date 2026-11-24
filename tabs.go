@@ -122,7 +122,7 @@ const (
 
 // hostBadge names a tab's host, above, where tabs of every host mix.
 func hostBadge(c *ui.Context, k *colors, h *hostConn) {
-	ui.Text(c, h.label()).FontSize(badgeSize).FontWeight(600).TextColor(k.textMuted).Padding(2, 6).Radius(radiusS).
+	ui.Text(c, h.label()).FontSize(badgeSize).FontWeight(600).TextColor(k.textMuted).Padding(2, 6).Radius(k.radius(radiusS)).
 		Background(k.hover).SingleLine().Ellipsis("…").MaxWidth(badgeMaxW + 12).Shrink(0)
 }
 
@@ -585,12 +585,12 @@ func (a *App) tiles(c *ui.Context, k *colors, t *Tab) {
 		for i := len(back) - 1; i >= 0; i-- {
 			x := r.X + 1 + float32(tileStep*(i+1))
 			inset := float32(i+1) * 0.8
-			drawTile(p, ui.Rect{X: x, Y: y + inset, W: tileW, H: tileH - 2*inset}, back[i].program(), false)
+			drawTile(p, k, ui.Rect{X: x, Y: y + inset, W: tileW, H: tileH - 2*inset}, back[i].program(), false)
 		}
 		if front != nil {
 			fr := ui.Rect{X: r.X + 1, Y: y, W: tileW, H: tileH}
 			if m == tileStill {
-				drawTile(p, fr, front.program(), true)
+				drawTile(p, k, fr, front.program(), true)
 				if done {
 					drawDoneDot(p, fr, k)
 				}
@@ -599,7 +599,7 @@ func (a *App) tiles(c *ui.Context, k *colors, t *Tab) {
 				dy, sx, sy := tileBounceAt(m, p.Now())
 				// iOS squashes about the tile's bottom edge, then lifts.
 				p.Transform(ui.Scaling(sx, sy).Then(ui.Translation(0, dy)), fr.X+fr.W/2, fr.Y+fr.H, func() {
-					drawTile(p, fr, front.program(), true)
+					drawTile(p, k, fr, front.program(), true)
 					if done {
 						drawDoneDot(p, fr, k)
 					}
@@ -631,8 +631,8 @@ func drawDoneDot(p *ui.Painter, fr ui.Rect, k *colors) {
 
 // drawTile draws a program's tile: a rounded card of its color, and its
 // glyph when it is in front.
-func drawTile(p *ui.Painter, r ui.Rect, prog program, glyph bool) {
-	const rad = radiusTile
+func drawTile(p *ui.Painter, k *colors, r ui.Rect, prog program, glyph bool) {
+	rad := k.radius(radiusTile)
 	p.Shadow(r, rad, 0, 0.5, 1.5, 0, ui.RGBA(0, 0, 0, 0.18))
 	p.Fill(r, prog.TileBg, rad)
 	if prog.TileBorder {

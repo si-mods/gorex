@@ -332,9 +332,9 @@ func (a *App) projectSheetView(c *ui.Context, k *colors) {
 		dialogEnter(c, backdrop, panel)
 		backdrop.Background(k.backdrop)
 		winW, winH := c.Size()
-		panel.Width(min(540, winW-24)).MaxHeight(winH - 24).Padding(20).Radius(radiusXXL)
-		frostPanel(panel, k, radiusXXL)
-		dialogShadow(panel).Role(ui.RoleDialog).Label(title)
+		panel.Width(min(540, winW-24)).MaxHeight(winH - 24).Padding(20).Radius(k.radius(radiusXXL))
+		frostPanel(panel, k, k.radius(radiusXXL))
+		dialogShadow(panel, k).Role(ui.RoleDialog).Label(title)
 		// What does not fit a short window scrolls; the buttons stay.
 		ui.Scroll(c.Key("sheet-body")).MinHeight(0).Shrink(1).Children(func() {
 			ui.Column(c).Gap(8).Children(func() {
@@ -439,8 +439,8 @@ func (a *App) sheetHosts(c *ui.Context, k *colors) {
 				glyph = h.remoteGlyph()
 			}
 			chosen := a.sheet.host == h
-			b := ui.Row(c.Key("sheet-host-"+hostKey(h))).Height(28).Padding(0, 10).Gap(6).Radius(capsule(28)).AlignItems(ui.Center).
-				Role(ui.RoleRadio).Checked(chosen).Label(name).Border(1, k.panelBorder).Focusable()
+			b := ui.Row(c.Key("sheet-host-"+hostKey(h))).Height(28).Padding(0, 10).Gap(6).Radius(k.capsule(28)).AlignItems(ui.Center).
+				Role(ui.RoleRadio).Checked(chosen).Label(name).Border(k.borderW(), k.panelBorder).Focusable()
 			switch {
 			case chosen:
 				b.Background(k.hover).Border(1, k.accent)
@@ -494,7 +494,7 @@ func (a *App) sheetBrowser(c *ui.Context, k *colors, listH float32) {
 		}
 	})
 	a.sheetPath(c, k)
-	box := ui.Column(c.Key("folders")).Height(listH).Radius(radiusM).Border(1, k.panelBorder).Clip().Focusable().Label(locales.ProjectSheetFolder())
+	box := ui.Column(c.Key("folders")).Height(listH).Radius(k.radius(radiusM)).Border(k.borderW(), k.panelBorder).Clip().Focusable().Label(locales.ProjectSheetFolder())
 	if s.focusList {
 		box.Focus()
 		s.focusList = false
@@ -536,7 +536,7 @@ func (a *App) sheetBrowser(c *ui.Context, k *colors, listH float32) {
 				}
 				for i, name := range r.Dirs {
 					sel := i == s.sel
-					row := ui.Row(c.Key("dir-"+name)).Height(28).Padding(0, 8).Gap(8).Radius(concentric(radiusM, 5)).AlignItems(ui.Center).
+					row := ui.Row(c.Key("dir-"+name)).Height(28).Padding(0, 8).Gap(8).Radius(concentric(k.radius(radiusM), 5)).AlignItems(ui.Center).
 						Cursor(ui.CursorPointer).Role(ui.RoleListItem).Label(name).Selected(sel)
 					switch {
 					case sel:
@@ -640,7 +640,7 @@ func (a *App) sheetCrumbs(c *ui.Context, k *colors) {
 			}
 			if i < 0 {
 				hidden := hiddenCrumbs(shown, len(steps))
-				more := ui.Row(c.Key("crumb-more")).Height(24).Width(26).Radius(radiusS).Center().Shrink(0).Cursor(ui.CursorPointer).
+				more := ui.Row(c.Key("crumb-more")).Height(24).Width(26).Radius(k.radius(radiusS)).Center().Shrink(0).Cursor(ui.CursorPointer).
 					Role(ui.RoleButton).Label(locales.ProjectSheetMoreFolders()).Tooltip(locales.ProjectSheetMoreFolders()).Focusable()
 				if more.Hovered() {
 					more.Background(k.hover)
@@ -656,7 +656,7 @@ func (a *App) sheetCrumbs(c *ui.Context, k *colors) {
 				continue
 			}
 			step, last := steps[i], i == len(steps)-1
-			e := ui.Row(c.Key("crumb-"+step.path)).Height(24).Padding(0, 6).Radius(radiusS).AlignItems(ui.Center).
+			e := ui.Row(c.Key("crumb-"+step.path)).Height(24).Padding(0, 6).Radius(k.radius(radiusS)).AlignItems(ui.Center).
 				Role(ui.RoleButton).Label(step.path)
 			if !last {
 				e.Shrink(0).Cursor(ui.CursorPointer).Focusable()

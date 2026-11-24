@@ -1449,7 +1449,7 @@ var (
 
 const paletteStagger = 8
 
-// paletteR and palettePad are the palette's radius and its list's
+// paletteR and palettePad are the palette's radius token and its list's
 // padding, which its rows' corners are concentric with; paletteDrop is
 // how far below the title bar it opens.
 const paletteR, palettePad = radiusXXL, 6
@@ -1502,9 +1502,9 @@ func (a *App) palette(c *ui.Context, k *colors) {
 		backdrop.Justify(ui.Start).Padding(paletteDrop, 0, 0, 0).Background(k.backdrop)
 		// Under the glass setting the panel is Liquid Glass over the
 		// dimmed window, as the other floating layers are.
-		panel.Width(560).MaxHeight(440).Radius(paletteR)
-		frostPanel(panel, k, paletteR)
-		dialogShadow(panel).Clip()
+		panel.Width(560).MaxHeight(440).Radius(k.radius(paletteR))
+		frostPanel(panel, k, k.radius(paletteR))
+		dialogShadow(panel, k).Clip()
 		if anim != nil {
 			dialogMotion(c, backdrop, panel, fresh)
 		}
@@ -1568,7 +1568,7 @@ func (a *App) palette(c *ui.Context, k *colors) {
 					})
 					continue
 				}
-				row := ui.Row(c.Key(i)).Height(34).Padding(0, 10).Gap(10).Radius(concentric(paletteR, 1+palettePad)).AlignItems(ui.Center).Cursor(ui.CursorPointer)
+				row := ui.Row(c.Key(i)).Height(34).Padding(0, 10).Gap(10).Radius(concentric(k.radius(paletteR), 1+palettePad)).AlignItems(ui.Center).Cursor(ui.CursorPointer)
 				if anim != nil {
 					pose := ui.Pose{}
 					if fresh {
@@ -1596,7 +1596,7 @@ func (a *App) palette(c *ui.Context, k *colors) {
 				row.Children(func() {
 					programIconEl(c, it.icon, it.glyph, 15, k.textMuted)
 					if it.hasDot {
-						ui.Box(c).Size(8, 8).Radius(capsule(8)).Background(it.dot).Shrink(0)
+						ui.Box(c).Size(8, 8).Radius(k.capsule(8)).Background(it.dot).Shrink(0)
 					}
 					// The title takes its width, the detail what is left.
 					ui.RichText(c, titleSpans(it.title, 13.5, 500, k.text)...).Label(it.title).SingleLine().Ellipsis("…").Shrink(0).MaxWidthPercent(70)
@@ -1620,7 +1620,7 @@ func (a *App) palette(c *ui.Context, k *colors) {
 						statusDot(c, k, s, 6)
 					}
 					if it.keys != "" {
-						ui.Text(c, it.keys).FontSize(fontSubhead).TextColor(k.textMuted).Padding(2, 8).Radius(radiusS).Background(k.panel).Border(1, k.panelBorder).Shrink(0)
+						ui.Text(c, it.keys).FontSize(fontSubhead).TextColor(k.textMuted).Padding(2, 8).Radius(k.radius(radiusS)).Background(k.panel).Border(k.borderW(), k.panelBorder).Shrink(0)
 					}
 				})
 			}

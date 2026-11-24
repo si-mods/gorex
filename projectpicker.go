@@ -60,7 +60,7 @@ func (a *App) projectPicker(c *ui.Context, k *colors) {
 	}
 	host := a.hostName(w.host)
 	label := host + " › " + name
-	chip := ui.Row(c.Key("project-picker")).Height(28).Gap(6).Padding(0, 8).Radius(pillRadius(28, radiusM)).AlignItems(ui.Center).Cursor(ui.CursorPointer).
+	chip := ui.Row(c.Key("project-picker")).Height(28).Gap(6).Padding(0, 8).Radius(pillRadius(k, 28, k.radius(radiusM))).AlignItems(ui.Center).Cursor(ui.CursorPointer).
 		Role(ui.RoleButton).Label(label).Tooltip(label).MaxWidth(320).Shrink(1).MinWidth(60)
 	if chip.Hovered() || a.pickerOpen {
 		chip.Background(hoverFace(k))

@@ -61,6 +61,44 @@ type colors struct {
 	accentText ui.Color
 	// surface is the face of controls, opaque as the popovers' panel.
 	surface, surfaceHover, surfacePressed ui.Color
+
+	// The faces and the line of docs/DSK-012-theme-shaders.md's roles: the
+	// title bar, the sidebar column, a pane's header, the accent faces of
+	// the buttons, and a pane card's border. The built-in palettes have
+	// none (ui.Transparent): where one is unset, the app draws as it did
+	// before.
+	titleBarFace, sideBarFace, headerFace, buttonFace, paneBorder ui.Color
+
+	// m are the theme's metrics: the corner scale, border width, chrome
+	// font and shadows the palette draws with.
+	m metrics
+}
+
+// metrics are the sizes of docs/DSK-012-theme-shaders.md, Metrics, as the
+// palette draws with them. builtinMetrics change nothing.
+type metrics struct {
+	// radius scales the radius tokens, the capsules and the panes' corners.
+	radius float32
+	// border is the width of a pane card's, a panel's and a field's border.
+	border float32
+	// font is the family of the chrome's text.
+	font string
+	// shadowScale scales a raised layer's shadow; shadowHard makes its
+	// blur 0.
+	shadowScale float32
+	shadowHard  bool
+}
+
+// builtinMetrics are the sizes with no theme, or a theme with no metrics.
+var builtinMetrics = metrics{radius: 1, border: 1, font: uiFont, shadowScale: 1}
+
+// metricsOf are the metrics of a theme's metrics key: the font the first
+// family of its list that is installed.
+func metricsOf(m *theme.Metrics) metrics {
+	return metrics{
+		radius: m.Radius, border: m.Border, font: chromeFont(m.Font),
+		shadowScale: m.Shadow.Scale, shadowHard: m.Shadow.Hard,
+	}
 }
 
 // seeds are what a palette is made of (docs/DSK-008-theme.md, Model): the
@@ -156,6 +194,8 @@ func derive(s seeds) colors {
 
 		accent: s.accent, accentHover: s.accentHover, accentPressed: s.accentPressed, accentText: s.accentText,
 		surface: s.surface, surfaceHover: s.surfaceHover, surfacePressed: s.surfacePressed,
+
+		m: builtinMetrics,
 	}
 }
 
@@ -232,7 +272,13 @@ var (
 // themePalettes are the palettes the windows draw with: the built-in ones,
 // or those of the theme appearance.theme names. The user's own
 // *.colorCustomizations go over them where they draw (sidebarPalette).
-type themePalettes struct{ light, dark colors }
+// glass is the theme's glass key, nil without one, and name the theme's
+// name, for the Settings page to say what decides the glass.
+type themePalettes struct {
+	light, dark colors
+	glass       *bool
+	name        string
+}
 
 // palettes holds the windows' palettes. applyTheme stores a new value, never
 // changes the one stored, so a window that draws on its own goroutine
@@ -241,7 +287,7 @@ type themePalettes struct{ light, dark colors }
 // Until applyTheme stores one, it holds nil, which is builtinPalettes.
 var palettes atomic.Pointer[themePalettes]
 
-var builtinPalettes = themePalettes{lightColors, darkColors}
+var builtinPalettes = themePalettes{light: lightColors, dark: darkColors}
 
 // paletteOf returns the windows' palette of an appearance.
 func paletteOf(dark bool) *colors {
@@ -284,6 +330,11 @@ func roleField(k *colors, r theme.Role) *ui.Color {
 		theme.TabSeparator:             &k.tabSep,
 		theme.TabHoverBackground:       &k.tabHover,
 		theme.TabActiveBackground:      &k.tabActive,
+		theme.TitleBarBackground:       &k.titleBarFace,
+		theme.SideBarBackground:        &k.sideBarFace,
+		theme.PaneHeaderBackground:     &k.headerFace,
+		theme.ButtonBackground:         &k.buttonFace,
+		theme.PaneBorder:               &k.paneBorder,
 	}[r]
 }
 
@@ -301,6 +352,9 @@ func themed(base seeds, m *theme.Manifest, i int) colors {
 	for r, c := range m.Roles[i] {
 		*roleField(&k, r) = c
 	}
+	if m.Metrics != nil {
+		k.m = metricsOf(m.Metrics)
+	}
 	return k
 }
 
@@ -317,7 +371,14 @@ var themeSidebar theme.Sidebar
 // when m is nil, and drops what the caches made from the old ones. The
 // terminals take m's colors when the caller applies the prefs again.
 func applyTheme(m *theme.Manifest) {
-	palettes.Store(&themePalettes{themed(lightSeeds, m, 0), themed(darkSeeds, m, 1)})
+	p := &themePalettes{light: themed(lightSeeds, m, 0), dark: themed(darkSeeds, m, 1)}
+	if m != nil {
+		p.glass, p.name = m.Glass, m.Name
+		if p.name == "" {
+			p.name = prefs.Theme
+		}
+	}
+	palettes.Store(p)
 	setLook(m)
 	themeTerm = [2]string{}
 	themeSidebar = theme.Sidebar{}
@@ -386,7 +447,47 @@ const (
 	roleTrackBackground          = theme.TrackBackground
 	roleTabHoverBackground       = theme.TabHoverBackground
 	roleTabActiveBackground      = theme.TabActiveBackground
+	roleTitleBarBackground       = theme.TitleBarBackground
+	roleSideBarBackground        = theme.SideBarBackground
+	rolePaneHeaderBackground     = theme.PaneHeaderBackground
+	roleButtonBackground         = theme.ButtonBackground
 )
+
+// themedFace returns k with the ladder of the face role sets, and the face,
+// when the theme sets one; k and ok false when it does not, so that the
+// caller draws as it did before. The ladder is that of the palette of the
+// face's lightness, not k's own: k may carry the other appearance's ladder
+// already, as a pane header's over a dark terminal in a light window does
+// (headerColors).
+func themedFace(k *colors, role faceRole) (*colors, ui.Color, bool) {
+	face := *roleField(k, role)
+	if face.A == 0 {
+		return k, face, false
+	}
+	ref := paletteOf(isDark(face.Over(k.panel)))
+	if k.text == ref.text && k.textMuted == ref.textMuted && k.textFaint == ref.textFaint && k.iconMuted == ref.iconMuted &&
+		k.hover == ref.hover && k.pressed == ref.pressed {
+		return k, face, true
+	}
+	return withLadder(k, ref), face, true
+}
+
+// buttonColors sets t's accent faces, the primary button's and a switch's
+// that is on, to the theme's button.background, with text of the face's
+// ladder, or its accentText while the face is the accent. A theme without
+// the role leaves t as it is.
+func buttonColors(t *ui.Theme, k *colors) {
+	face := k.buttonFace
+	if face.A == 0 {
+		return
+	}
+	text := k.accentText
+	ref := ladderOf(k, isDark(face.Over(k.panel))) // surface's ladder
+	if face != k.accent {
+		text = ref.text
+	}
+	t.Accent, t.AccentHover, t.AccentPressed, t.AccentText = face, ref.hover.Over(face), ref.pressed.Over(face), text
+}
 
 // faceColors is a face with the colors that show on it, as one value: the
 // text ladder and the hover faces of the palette whose lightness is the
@@ -585,7 +686,8 @@ func widgetTheme(base *ui.Theme, k *colors) *ui.Theme {
 	t.Accent, t.AccentHover, t.AccentPressed, t.AccentText = k.accent, k.accentHover, k.accentPressed, k.accentText
 	t.Menu = menuStyleOf(k, t.Dark)
 	t.Selection, t.Focus = k.accent.Alpha(0.3), k.accent.Alpha(0.55)
-	t.Radius = 9
-	t.Font = uiFont
+	buttonColors(&t, k)
+	t.Radius = k.radius(9)
+	t.Font = k.m.font
 	return &t
 }

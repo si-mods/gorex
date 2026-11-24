@@ -212,8 +212,9 @@ func qrImage(s string) ui.ImageSource {
 // pairQRCode draws a pairing code: a scanner expects the white behind it,
 // inside the panel's corner radius.
 func pairQRCode(c *ui.Context, img ui.ImageSource, label string) {
+	k := colorsOf(c)
 	ui.Row(c).Justify(ui.Center).Margin(2, 0, 2, 0).Children(func() {
-		ui.Column(c).Padding(10).Radius(radiusL).Background(ui.RGB(255, 255, 255)).Children(func() {
+		ui.Column(c).Padding(10).Radius(k.radius(radiusL)).Background(ui.RGB(255, 255, 255)).Children(func() {
 			ui.Image(c, img).Size(240, 240).Label(label)
 		})
 	})
@@ -233,8 +234,8 @@ func hostPairQRSheet(c *ui.Context, k *colors, page *hostPairQR) {
 		// The backdrop dims the window; the glass is the panel's, as in
 		// the other sheets over the app.
 		backdrop.Background(k.backdrop)
-		dialogShadow(glassPanel(panel.Width(380).Padding(20).Gap(12).Radius(radiusXXL), k).
-			Border(1, k.panelBorder)).
+		dialogShadow(glassPanel(panel.Width(380).Padding(20).Gap(12).Radius(k.radius(radiusXXL)), k).
+			Border(k.borderW(), k.panelBorder), k).
 			Role(ui.RoleDialog).Label(title)
 		ui.Text(c, title).FontSize(fontTitle).FontWeight(700).TextColor(k.text)
 		// A listener with a web link offers both codes: this address's,

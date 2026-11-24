@@ -40,7 +40,7 @@ func paintFrost(p *ui.Painter, r ui.Rect, blur, radius float32, tint, flat ui.Co
 // with Draw, after the element's own border: the border goes over it.
 func frostPanel(panel ui.Element, k *colors, radius float32) ui.Element {
 	if glassOn() {
-		return glassPanel(panel.Border(1, k.panelBorder), k)
+		return glassPanel(panel.Border(k.borderW(), k.panelBorder), k)
 	}
 	return panel.Draw(func(p *ui.Painter, r ui.Rect) {
 		paintFrost(p, r, 24, radius, k.panelGlass, k.panel)

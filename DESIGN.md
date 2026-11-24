@@ -205,7 +205,12 @@ system"), and no radius is picked on its own:
 
 - **A circle is a capsule.** A dot, a swatch, a round mark or a round
   button, as the title bar's minimize, maximize and close, takes
-  `capsule(h)`, half its height, not a radius picked to look round.
+  `k.capsule(h)`, half its height, not a radius picked to look round.
+- **A theme scales every corner.** UI code takes a token as
+  `k.radius(radiusM)`, a capsule as `k.capsule(h)` and the panes' radius
+  as `a.cardR(k)`: each is multiplied by the theme's `metrics.radius`
+  (docs/DSK-012-theme-shaders.md), 1 with no theme. `concentric` takes
+  the scaled radius. `TestDesignTokens` fails on a bare token.
 
 ## Type
 
@@ -249,7 +254,9 @@ a change to them changes every pane's columns.
 
 A raised layer takes one of four shadows (`tokens.go`), by how far it
 floats over the page. Each is a function that adds the shadow to an
-element, as `dialogShadow(e)`.
+element, as `dialogShadow(e, k)`. A theme's `metrics.shadow` scales the
+offset and the blur, and `hard` sets the blur to 0
+(docs/DSK-012-theme-shaders.md).
 
 | Token | Shadow | Use it for |
 |---|---|---|

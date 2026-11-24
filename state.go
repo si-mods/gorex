@@ -3221,7 +3221,7 @@ func drawTileImage(prog program) (out []byte) {
 		t.Background = ui.RGBA(0, 0, 0, 0)
 		c.SetTheme(&t)
 		ui.Box(c).Size(24, 24).Draw(func(p *ui.Painter, r ui.Rect) {
-			drawTile(p, ui.Rect{X: r.X + (r.W-tileW)/2, Y: r.Y + (r.H-tileH)/2, W: tileW, H: tileH}, prog, true)
+			drawTile(p, &lightColors, ui.Rect{X: r.X + (r.W-tileW)/2, Y: r.Y + (r.H-tileH)/2, W: tileW, H: tileH}, prog, true)
 		})
 	}, 24, 24, 3)
 	var buf bytes.Buffer
