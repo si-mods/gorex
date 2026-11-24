@@ -652,7 +652,7 @@ func TestMigrateTerminalAndTokens(t *testing.T) {
 
 // TestDecodeSettings: decodeSettings decodes and checks on a copy —
 // prefs is untouched — and a file that does not decode returns false
-// (docs/DSK-010).
+// (docs/DSK-011-live-settings.md).
 func TestDecodeSettings(t *testing.T) {
 	isolateSettings(t, "")
 	prefs = settings{TermTheme: "Nord", FontSize: 14}
@@ -694,7 +694,7 @@ func runHere(t *testing.T) (applied *int) {
 // TestSettingsFileChanged: a write of settings.json from outside applies
 // while the app runs; a write the app recorded — its own, or the same
 // bytes again — does not, and a file that does not decode keeps prefs
-// (docs/DSK-010).
+// (docs/DSK-011-live-settings.md).
 func TestSettingsFileChanged(t *testing.T) {
 	isolateSettings(t, "")
 	resetSettingsWatch(t)
@@ -727,7 +727,7 @@ func TestSettingsFileChanged(t *testing.T) {
 
 // TestReloadMigrates: a settings.json with an old key reloads with the new
 // key, its file is rewritten as a load's is, and the rewrite the migration
-// caused is skipped by hash (docs/DSK-010).
+// caused is skipped by hash (docs/DSK-011-live-settings.md).
 func TestReloadMigrates(t *testing.T) {
 	isolateSettings(t, "")
 	resetSettingsWatch(t)
@@ -755,7 +755,7 @@ func TestReloadMigrates(t *testing.T) {
 // TestSidebarColorHalfPair: a sidebar.colorCustomizations object with one
 // side absent, as a hand edit may write it, loads and resolves only the
 // side it has; the other appearance falls back to the default
-// (docs/DSK-010).
+// (docs/DSK-011-live-settings.md).
 func TestSidebarColorHalfPair(t *testing.T) {
 	for raw, ok := range map[string]bool{
 		`"#222222"`:                            true,
@@ -795,7 +795,7 @@ func clickButton(t *testing.T, tt *ui.Tester, label string) {
 // TestJSONSettingsPage: the settings.json page shows the file in a code
 // editor under a bar; a good text saves, writes the file and applies; a
 // text that is not JSON writes nothing and marks the bar; an outside
-// change resyncs a clean buffer and marks a dirty one (docs/DSK-010).
+// change resyncs a clean buffer and marks a dirty one (docs/DSK-011-live-settings.md).
 func TestJSONSettingsPage(t *testing.T) {
 	isolateSettings(t, "")
 	resetSettingsWatch(t)

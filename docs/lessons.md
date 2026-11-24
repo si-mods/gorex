@@ -35,6 +35,11 @@ Each item has a **Trigger** (what the diff shows), a **Check** (what the author 
 - **Check:** each is reviewed against the `main` before it, and they are not merged in one batch with the PRs they would judge.
 - **Source:** #678, #683, #687 and #694 merged within minutes of each other; #678 edited the rules that reviewed it.
 
+### Two PRs that take the next design doc number
+- **Trigger:** the diff adds a `docs/<PREFIX>-<NNN>-*.md` with a new number.
+- **Check:** right before the merge, `git fetch origin` and list `docs/` on `origin/main`: no other doc has the number. Two PRs opened at the same time both take the next free number, and each passes its own checks until the second one merges.
+- **Source:** #1079 (DSK-010 theme ambience) and #1071 (DSK-010 live settings) merged 50 minutes apart; `tools/verify` then failed on main, and this PR renumbered the later one to DSK-011.
+
 ## iOS
 
 ### Any change under `ios/**`
