@@ -8,7 +8,7 @@ metadata:
 
 # DSK-010: Theme assets and ambience
 
-Status: proposal.
+Status: proposal. The user decided its four questions (see User decisions).
 
 This doc decides how a theme pack carries images and motion, and how GoRex draws them. It extends the manifest of [DSK-008](DSK-008-theme.md) and the theme pack kind of the registry. It builds on the optional `terminal` key that DSK-008 phase 4 adds. It does not change that key. The probe is a real theme for another app: `dafy-whale-theme` ("蓝色大肥鱼", a web theme for DeepSeek Harness). The user wants all of its features in GoRex. Where the framework cannot do a feature, this doc extends the framework.
 
@@ -63,7 +63,7 @@ The user installs a theme pack on the Extensions page or with `gorex pack instal
 
 1. The palette of the theme, as now.
 2. Soft glows in the window gradient and a faint watermark image in a corner. They do not move.
-3. Bubbles that rise and sprites that swim across the window. They move only outside the pane cards. In a tiled layout they show in the sidebar, the title bar and the gaps. On the canvas and on an empty page they show in the free area.
+3. Bubbles that rise and sprites that swim across the window. They move only outside the pane cards. In a tiled layout they show behind the sidebar at a lower alpha, and in the title bar and the gaps. On the canvas and on an empty page they show in the free area.
 4. A brand row at the top of the sidebar: an icon and a wordmark.
 5. A mascot in the sidebar foot, above the Settings button. It bobs. A click shows a speech bubble with a random quote. A double click shows a popup image. A ✕ on hover hides it until the theme changes or GoRex restarts. The terminal keeps the keyboard focus after each click.
 6. A one-line quote ticker under the mascot. It changes every few seconds with a fade.
@@ -141,7 +141,14 @@ Each element draws in one layer. Nothing that the theme declares draws over a pa
 | 5 | Sidebar | Brand row, mascot, ticker, ambience button | The sidebar does not overlap a pane |
 | 6 | Overlay | The speech bubble and the popup, for 3 s | A popup can cover a pane for 3 s after a click. It takes no focus |
 
-A terminal under the glass setting has a translucent background (`termOpacity`, 0.8 until set). Motion under terminal text makes the text hard to read. Layer 3 thus paints only in the **free region**: the window minus the bounds of each pane card and each float. `Painter.Clip` clips to a rectangle only, so GoRex splits the free region into rectangles (horizontal bands) and draws each layer once for each band. The corners of a card are rounded, so a small wedge at each corner stays without motion. Nobody sees it.
+A terminal under the glass setting has a translucent background (`termOpacity`, 0.8 until set). Motion under terminal text makes the text hard to read. Layer 3 thus paints only in the **free region**: the window minus the bounds of each pane card and each float. The free region includes the sidebar. `Painter.Clip` clips to a rectangle only, so GoRex splits the free region into rectangles (horizontal bands) and draws each layer once for each band. The corners of a card are rounded, so a small wedge at each corner stays without motion. Nobody sees it.
+
+**Behind the sidebar.** The sidebar rows have text on the window gradient. In the sidebar band, layer 3 paints at a lower alpha, so that the rows stay readable:
+
+- The sidebar cap: GoRex multiplies the alpha of each sprite and particle in the sidebar band so that it is at most **0.12**. Outside the sidebar, the caps of the Caps table apply (0.3 for a sprite, 0.6 for a particle).
+- The contrast check: for each appearance, `applyTheme` takes the worst case. That is a pixel of the most contrasting asset color at the sidebar cap, over `bgTop` and over `bgBottom`. `text` must keep a contrast ratio of 4.5:1 and `textMuted` 3:1 over it. If a theme fails the check, GoRex lowers the sidebar cap for that theme until it passes, and logs a warning. The cap never goes up.
+- The brand row, the mascot, the ticker and each row face (chosen, hovered, current project) paint over layer 3, as now. No face changes.
+- Ambience Still or Off applies to the sidebar band too.
 
 ### Motion and the budget
 
@@ -151,7 +158,7 @@ Moving layers and the mascot run in one of two states. **Moving** paints at 30 f
 - The Animation setting is Off, or the OS asks for less motion (`motion(c)` is nil).
 - The window is not active (`Context.WindowActive`). The working dots stop on the same rule (`breathing`).
 - The window is hidden or covered (`Context.WindowHidden`). MyGo already holds the frames then.
-- The computer runs on its battery (`mygo.Power.IsOnBattery`).
+- The computer runs on its battery (`mygo.Power.IsOnBattery`). Each animation freezes at its last frame: the moving layers, the bob of the mascot, its GIF or sprite sheet, and the fade of the ticker. The ticker keeps its line and does not change it.
 - The renderer is the CPU renderer (`Painter.Accelerated` is false).
 
 With Ambience Off, layers 1 to 3 paint as with no theme ambience, and the ticker does not show. The mascot has its own setting.
@@ -171,7 +178,7 @@ Phase 2 measures these numbers on a Windows PC and on a Mac and writes them in i
 
 ### Mascot
 
-The mascot is an element in the sidebar foot, not an overlay. It thus never covers a pane and needs no pass-through. When the sidebar is hidden, or the tabs are at the top, the mascot and the ticker do not show (see Open questions).
+The mascot is an element in the sidebar foot, not an overlay. It thus never covers a pane and needs no pass-through. When the sidebar is hidden, or the tabs are at the top, the mascot and the ticker do not show. Nothing takes their place (User decisions, 1).
 
 - **Draw**: `ui.Image` for a still PNG. `ui.Video` with `ui.NewGIFDecoder` or `ui.NewAPNGDecoder` for an animated image. A sprite sheet draws its current frame with `Painter.ImageRegion`. The bob is a `Pose` of 4 DIP and 2° on a 3.6 s loop. Hover grows the mascot by 4%. In the still state, the mascot does not bob, a video pauses (`VideoPlayer.Pause`) and a sprite sheet shows frame 0.
 - **Click** (`Element.Clicked`): show `active` for 3 s, and a speech bubble with a random quote above the mascot, for 3 s.
@@ -234,11 +241,20 @@ MyGo has each primitive that the design needs (MyGo v0.10.1, `si-mods/mygo`): `D
 | — | Decode limits | — | GoRex checks headers | Optional (M1) |
 | — | Frame cost | — | Phase 2 budget | Only if the budget fails (M2) |
 
+### User decisions
+
+The user decided the four questions of the first draft on 2026-11-24:
+
+1. **Mascot without a sidebar**: when the sidebar is hidden or the tabs are at the top, the mascot and the ticker do not show.
+2. **Motion behind the sidebar**: moving layers show behind the sidebar, at the sidebar cap of 0.12 and with the contrast check (see Layers).
+3. **Fish sprites**: the pack uses `fish_idle.png` and `fish_happy.png` of `YunYueSama/codex-deepseek-pet`, with the full license text and the credit that it requires (see Licensing).
+4. **Battery**: on battery, each animation freezes (see Motion and the budget).
+
 ## Alternatives
 
 - **A script plugin, as the probe is**: rejected. DSK-008 Security makes a manifest data. A script can read files and the network.
 - **A general keyframe and CSS language**: rejected. It is large, and caps cannot bound it. A fixed set of layer kinds is small, testable and capped.
-- **A floating mascot over the panes, as in the probe**: rejected as the default. It covers terminal text at the bottom right, where a prompt often is. See Open questions.
+- **A floating mascot over the panes, as in the probe**: rejected. It covers terminal text at the bottom right, where a prompt often is. The user decided that the mascot does not show without a sidebar.
 - **Motion that shows through translucent terminals**: rejected. Motion behind text makes the text hard to read.
 - **Remote images by URL**: rejected. They leak the user's IP address to a third party, fail offline, and can change after review.
 - **An install-time fetch from another repo, as `install.mjs` does**: rejected. It ships files that nobody can license, and the registry review does not see them.
@@ -263,12 +279,20 @@ GoRex ships an asset only when its license allows redistribution. The registry k
 | Asset | Source | License now | Decision |
 | --- | --- | --- | --- |
 | `whale_front.png`, `whale_side.png`, `whale_icon.png` | `1190fasheqi/dafeiyu-pet` | MIT | Can ship, with the MIT text and the attribution. The character is fan art of a DeepSeek mascot. The pack does not use the DeepSeek name |
-| `fish_idle.png`, `fish_happy.png` | `YunYueSama/codex-deepseek-pet` | MIT until 2026-09-13. Now a custom attribution license, "大肥鱼项目署名许可 1.0". Its `ASSET_LICENSE.md` says the license does not cover the underlying character design | Do not ship in the first pack. See Open questions |
+| `fish_idle.png`, `fish_happy.png` | `YunYueSama/codex-deepseek-pet` | MIT until 2026-09-13. Now a custom attribution license, "大肥鱼项目署名许可 1.0". Its `ASSET_LICENSE.md` says the license does not cover the underlying character design | Ship, by the decision of the user, with the full license text and the required credit (see below) |
 | `meme_dafeiyu.png` | `YunYueSama/codex-deepseek-pet` | Not MIT. The source repo calls it a community reference picture whose author and license are not verified | Do not ship |
 | `girl_idle.gif`, `girl_waving.gif`, `girl_running.gif` | `xpy12367/codex-pet-DeepSeek-girl` | No license | Do not ship and do not fetch |
 | The whale logo SVG in the probe's CSS | DeepSeek's logo | Trademark | Do not ship. The pack draws its own whale icon |
 
-The first pack thus uses only the MIT whale art. The mascot uses `whale_front.png`. The popup uses `whale_front.png` or a self-made picture, not the meme. The brand icon is a self-made SVG. The fish sprites are self-made or come from a source with a clear license.
+The first pack thus uses the MIT whale art and the two fish PNGs. The mascot uses `whale_front.png`. The popup uses `whale_front.png` or a self-made picture, not the meme. The brand icon is a self-made SVG.
+
+The fish PNGs ship under "大肥鱼项目署名许可 1.0", as the user decided. The pack obeys its terms:
+
+- The pack keeps the copyright notice and the full license text, unchanged, as `themes/blue-whale/LICENSE-fish.txt`.
+- The `NOTICE` and the entry of the pack on the Extensions page give the credit: author `YunYueSama`, repo `https://github.com/YunYueSama/codex-deepseek-pet`. "Source: internet" or the author alone is not sufficient.
+- The pack scales the PNGs down from 768×832 px to at most 256 px on a side, to fit the caps and save memory. The `NOTICE` says that the files are modified, and how. It does not call the modified files the work of the author.
+- The pack does not say or suggest that the author or DeepSeek endorses it.
+- The license grants rights only to the contribution of the author. It does not cover the underlying character design, which comes from community references. The `NOTICE` says this. This residual risk is the accepted choice of the user. If a rights holder objects, the registry removes the files, and the pack falls back to its other sprites.
 
 The animated mascot path still needs a test with a real animated asset. Phase 3 makes a sprite sheet and a GIF from `whale_front.png` (a bob and a wave, 8 frames). The MIT license allows a modified work. The pack's `NOTICE` says that the frames are modified. GoRex does not redistribute the DeepSeek GIFs, the meme or the DeepSeek logo. A user can put their own files in a local pack (`gorex pack install <folder>`) at their own risk. GoRex does not help to fetch them.
 
@@ -289,7 +313,8 @@ The animated mascot path still needs a test with a real animated asset. Phase 3 
 - **Install**: a registry pack and a local folder install the manifest and only the named assets. Remove deletes both. A single-file theme installs as now (`TestInstallThemeAssets`, `TestPackInstallTheme`).
 - **Background**: with no glows, the shader matches the gradient within 3/255 (`TestBackgroundShader`). With a glow, the pixel at its center has its color.
 - **Free region**: bands for a tiled layout, a canvas and an empty page cover the window minus the panes, with no overlap (`TestFreeRegion`).
-- **Still rule**: in `ui.NewTester`, ambience asks for no frame when the window is not active, is hidden, under ReduceMotion, with Animation Off, with Ambience Still, and on the CPU renderer (`TestAmbienceStill`).
+- **Still rule**: in `ui.NewTester`, ambience, the mascot and the ticker ask for no frame and no timer when the window is not active, is hidden, on battery, under ReduceMotion, with Animation Off, with Ambience Still, and on the CPU renderer (`TestAmbienceStill`).
+- **Sidebar cap**: in the sidebar band, no sprite or particle paints above alpha 0.12. A theme whose worst case fails 4.5:1 for `text` or 3:1 for `textMuted` gets a lower cap and a warning (`TestSidebarAmbienceContrast`).
 - **Paths**: a sprite and a particle are at the expected place at a given time, and a left sprite is mirrored (`TestAmbiencePaths`).
 - **Mascot**: a click shows a quote from the list and the active pose. A double click shows the popup. ✕ hides the mascot. The terminal keeps the focus after each click (`TestMascot`).
 - **Ticker**: the line changes after its interval, and not while the window is not active (`TestTicker`).
@@ -297,7 +322,7 @@ The animated mascot path still needs a test with a real animated asset. Phase 3 
 - **Settings**: Ambience Off draws no layer 1 to 3 extras and no ticker. Mascot Off draws no mascot (`TestAmbienceSettings`).
 - **Screenshots**: the `GOREX_DEBUG` hook, light and dark, tiled and canvas, glass on and off, with made-up data.
 - **Budget**: phase 2 measures the frame cost and the idle CPU on a Windows PC and on a Mac, and writes the numbers in its PR.
-- **Registry**: the validator refuses a pack over a cap, with a missing asset, or with assets and no `NOTICE`.
+- **Registry**: the validator refuses a pack over a cap, with a missing asset, or with assets and no `NOTICE`. For `blue-whale`, it checks that `LICENSE-fish.txt` is present and that the `NOTICE` has the author and the repo URL.
 
 No item in `docs/invariants.md` covers the theme or ambience. The focus rule of the mascot gets a test (`TestMascot`).
 
@@ -306,13 +331,6 @@ No item in `docs/invariants.md` covers the theme or ambience. The focus rule of 
 1. **Assets and still layers** (M, about 800 lines with tests): asset parsing, caps and loader, pack folder install and remove, registry validator, glows in the background shader, still images, brand row, the two settings and the Extensions controls.
 2. **Moving layers** (M, about 500 lines): particles, sprites, free region, the still rule, the toggle button and command, and the budget measurement.
 3. **Mascot and ticker** (M, about 600 lines): still, animated and sprite sheet mascot, bob, click, double click, hide, bubbles and the ticker. A self-made animated whale validates GIF and sprite sheets.
-4. **Registry pack** (S): `themes/blue-whale` with the MIT whale art, self-made icon and fish, `NOTICE` and license texts. Screenshots.
+4. **Registry pack** (S): `themes/blue-whale` with the MIT whale art, the two fish PNGs (scaled down) under their license, a self-made icon, `NOTICE`, the MIT text and `LICENSE-fish.txt`. Screenshots.
 
 MyGo M1 and M2 are not in a phase. M2 starts only if phase 2 fails its budget.
-
-## Open questions
-
-1. **Mascot without a sidebar**: when the sidebar is hidden or the tabs are at the top, where does the mascot go? (1) It does not show. Recommended: it never covers a pane. (2) It floats at the bottom right over the panes and fades when the pointer comes near. It covers terminal text. (3) It shows small in the title bar. The user decides.
-2. **Motion behind the sidebar**: (1) Moving layers show behind the sidebar rows, at the opacity caps. Recommended: in a tiled layout the sidebar is most of the free region. (2) Moving layers skip the sidebar too, and show only in gaps, the title bar, the canvas and empty pages. The user decides.
-3. **Fish sprites**: (1) Self-made fish sprites. Recommended: a clear license. (2) `fish_idle.png` and `fish_happy.png` under the custom attribution license, with its full text and the author's attribution. The underlying character rights stay unclear. The user decides.
-4. **Battery**: (1) Still on battery. Recommended: motion is decoration. (2) Moving on battery at 15 frames a second. The user decides.
