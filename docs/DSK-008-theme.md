@@ -8,7 +8,7 @@ metadata:
 
 # DSK-008: Desktop theme framework
 
-Status: phase 1 built (#1065). Phases 2 and 3 not built.
+Status: phases 1 and 2 built (#1065, #1067). Phase 3 not built.
 
 This doc decides the shape of theming for the desktop chrome. The chrome is the sidebar, the cards of the panes, the dialogs and the menus. This doc replaces no doc. It extends the palette rules of `DESIGN.md` and the settings keys of [DSK-007](DSK-007-sidebar-style.md). The layers come from the design-system pass note of the Vibe Design Tips series (vibedesign.tips). The material and ink model comes from tip 010 of that series (liquid glass).
 
@@ -20,11 +20,11 @@ Only the pane header adapts its text to its face. `headerColors` returns the pal
 
 [DSK-007](DSK-007-sidebar-style.md) lets the user set `sidebar.colorCustomizations`. With `sidebar.selection` set to `"fill"`, `sidebarChosen` paints the chosen row at `tabActive` and changes only the face. The row keeps the text of the palette. A light `tabActive` in a dark window thus puts light text on a light face. Each other face can lose contrast in the same way.
 
-The literals also hide the structure. Most values are derivations. A hover is the text at a low alpha. A border is the text at a higher alpha. A shadow is black at a fraction. A user who writes a theme must write 47 values where seven are sufficient.
+The literals also hide the structure. Most translucent values are ink: black or white at an alpha. A hover is black at a low alpha in a light window. A shadow is black at a fraction. A user who writes a theme must write 47 values where 30 seeds are sufficient.
 
 ## Goal
 
-- A small set of **seeds** makes the palette: background, text, muted text, accent, surface lift, shadow strength and radius scale.
+- A set of **seeds** makes the palette. Fixed ink rules make the other roles from the seeds (see Model).
 - A face and the colors that show on it resolve **as one value**. Code cannot paint a face and keep text that does not fit the face.
 - A **theme manifest** describes a theme as data. The registry that ships icon packs can then ship theme packs.
 - The `sidebar.*` settings keep their meaning. Their color tokens become role names in the same resolution.
@@ -101,24 +101,38 @@ The system setting for less transparency also applies. MyGo gives it as `ui.Pref
 
 ### Model
 
-Fixed rules make the palette from the seeds. One seed set always gives the same palette:
+Fixed rules make the palette from the seeds. One seed set always gives the same palette.
+
+The seeds are 30 colors for each appearance, not seven. The real palette has many values that no rule makes from another value. Examples are the gray steps of the text ladder, the four stops of the window gradient and the status colors. A rule for them changes the look. The work keeps the look, so these values stay seeds.
+
+The other roles are **ink**: black or white at an alpha step. The lightness of the `panel` seed selects the steps. If `isDark(panel)` is true, `derive` uses the dark steps. If not, it uses the light steps. Contrast ink is black on a light palette and white on a dark palette. A step of 0 gives a clear color, `ui.Transparent`. The steps are constants in `style.go` (`lightInk` and `darkInk`). A theme changes seeds, not steps.
 
 | Role | Derivation |
 | --- | --- |
-| `textMuted`, `textFaint` | `text` at fixed alpha steps |
-| `hover`, `pressed` (opaque) | `text` at fixed alpha steps |
+| `hover`, `pressed`, `tabHover`, `tabSep`, `groupFace`, `panelBorder` | contrast ink at a fixed step |
+| `cardBorder`, `cardBorderFocused`, `track`, `trackBorder`, `tabActive`, `pillFace`, `pillShadow`, `pillLift` | white at a fixed step |
+| `liftShadow` | black at a fixed step |
+| `panelGlass` | the `panel` seed at a fixed step |
+| `panelSel` | the `accent` seed at a fixed step |
 | `hover` (material) | the tint, made brighter by a fixed fraction, with no shadow |
-| `cardBorder`, `tabSep` | `text` at fixed alpha steps |
-| `surface` | `background`, made lighter by `surfaceLift` |
-| `panelSel`, `tabActive` | `accent` at fixed alpha steps, or explicit roles |
-| `shadow`, `shadowFocused` | black at `shadowStrength` |
-| `radiusS`, `radiusM`, `radiusL`, `radiusXL` | the `radius` seed at fixed steps |
+| `radiusS`, `radiusM`, `radiusL`, `radiusXL` | the `radius` seed at fixed steps. Phase 2 does not make this rule. The radii stay constants in `tokens.go`. |
 
-Seven seeds is an estimate. Phase 2 fixes the count when it writes the derivation rules.
+Each seed has one value for each appearance:
+
+| Group | Seeds |
+| --- | --- |
+| Window gradient | `bgTop`, `bgMid`, `bgLow`, `bgBottom`, `bgTint` |
+| Text ladder | `text`, `textMuted`, `textFaint`, `iconMuted`, `emptyMark` |
+| Status | `busy`, `attention`, `done`, `exited`, `danger` |
+| Accent | `accent`, `accentHover`, `accentPressed` |
+| Opaque faces | `panel`, `field`, `fieldBorder`, `surface`, `surfaceHover`, `surfacePressed` |
+| Tinted faces | `card`, `cardFocused`, `shadow`, `shadowFocused`, `backdrop`, `pillTint` |
+
+The tinted faces are not black or white ink in each palette. The light `shadow`, `shadowFocused` and `backdrop` have a plum tint. The light `pillTint` is a dark gray. The dark `card` and `cardFocused` are near-black grays. A seed has the same role in each set, so each tinted face is a seed in both sets.
 
 A nested corner keeps the current rule, `concentric(outer, inset)`. It is the outer radius minus the inset, and never less than 0.
 
-The rules cannot make all roles. Each such role stays explicit in the palette, as now. The `colors` struct stays as the result of the resolution. The framework changes the source of the values. It does not change what the widgets read. Two literals that are almost equal merge into the nearer role. A new role is added only when no role fits a surface.
+The rules cannot make all roles. Each such role stays explicit in the palette, as now. The `colors` struct stays as the result of the resolution. The framework changes the source of the values. It does not change what the widgets read. Two literals that are almost equal merge into the nearer role only when no byte changes. The dark `surface` and `panel` differ by 1 in blue, so both stay seeds. A new role is added only when no role fits a surface.
 
 ### Role names
 
@@ -140,7 +154,7 @@ Each face has a pairing rule. The resolver attaches the text ladder that fits th
 
 ### Code
 
-- `style.go`: The `colors` struct stays. A `seeds` struct and `derive(seeds) colors` make the two palettes. `surface(k, role)` returns the face and its ladder. `headerColors` becomes part of the resolver.
+- `style.go`: The `colors` struct stays. A `seeds` struct and `derive(seeds) colors` make the two palettes: `lightColors` is `derive(lightSeeds)`, and `darkColors` is `derive(darkSeeds)`. `surface(k, role)` returns the face and its ladder. `headerColors` becomes part of the resolver.
 - `internal/theme` (new): This package parses and validates a manifest. It checks the seed hex values. It checks the role names against an allowlist, as `checkSidebarColors` does.
 - `settings.go`: The new `appearance.theme` key names a manifest in the config directory or in a pack. Each `*.colorCustomizations` key maps onto roles. `migrateSettings` from DSK-009 also renames the DSK-007 tokens.
 - Registry: A pack of kind `theme` carries the manifest. It uses the install path of the icon packs.
@@ -171,7 +185,7 @@ An upgrade keeps the look that the user has. The user does not edit the file.
 
 ## Tests
 
-- **Derivation**: `derive` on the built-in seeds gives the current `lightColors` and `darkColors` values, within rounding.
+- **Derivation**: `derive` on the built-in seeds gives each field of the literal `lightColors` and `darkColors`, byte for byte (`TestDeriveKeepsPalettes`).
 - **Pairing**: A light `sideBar.tabActiveBackground` override in a dark window resolves dark text for the chosen row. A dark override keeps the text of the palette.
 - **Ink**: A material over a backdrop that the code cannot read resolves the ink of the theme at the dense tint.
 - **Reduce Transparency**: With `ReduceTransparency` true, a material role resolves to an opaque face.
@@ -185,5 +199,5 @@ No item in `docs/invariants.md` covers the palette.
 ## Phases
 
 1. **Pairing** (built): Add the `surface` resolver. Move the chosen sidebar row to it first, then the other chrome. This fixes the contrast for the current overrides. Rename the DSK-007 tokens and migrate them. The resolver judges a translucent face as laid over `panel`. It serves the sidebar's chosen rows, hovered rows and the current project's group. Not moved: the pill under glass (the system draws it, so `sideBar.activeGroupTabBackground` is only its fallback face), the tab strip's track, and the separators and shadows, which carry no text. The pane cards, the dialogs and the menus are the next call sites.
-2. **Seeds**: `derive` replaces the literal palettes, and `colors` becomes a derived value.
+2. **Seeds** (built): `derive` replaces the literal palettes, and `colors` becomes a derived value. The ink rules make 17 roles of each palette. The other 30 roles are seeds. Each field is byte-exact, so the look does not change.
 3. **Manifest**: Add `internal/theme`, the `appearance.theme` settings key and a `theme` pack kind on the registry.

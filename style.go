@@ -58,39 +58,113 @@ type colors struct {
 	surface, surfaceHover, surfacePressed ui.Color
 }
 
-var lightColors = colors{
+// seeds are what a palette is made of (docs/DSK-008-theme.md, Model): the
+// colors no rule makes from the others, one set for each appearance. The
+// faces and lines of light over a face are ink: derive makes them.
+type seeds struct {
+	// The window's background, as in colors.
+	bgTop, bgMid, bgLow, bgBottom, bgTint ui.Color
+
+	text, textMuted, textFaint, iconMuted, emptyMark ui.Color
+
+	busy, attention, done, exited, danger ui.Color
+
+	accent, accentHover, accentPressed ui.Color
+
+	// panel is the opaque face of popovers and dialogs; its lightness
+	// picks the ink steps.
+	panel, field, fieldBorder             ui.Color
+	surface, surfaceHover, surfacePressed ui.Color
+
+	// Tinted, not black or white ink: the light palette's shadows, backdrop
+	// and pill tint, and the dark palette's cards.
+	card, cardFocused, shadow, shadowFocused, backdrop, pillTint ui.Color
+}
+
+// inkSteps are the alphas of the ink derive lays: contrast ink (black on
+// a light palette, white on a dark one), white, black, and the alphas of
+// panel and accent. A step of 0 is ui.Transparent.
+type inkSteps struct {
+	// Contrast ink.
+	hover, pressed, tabHover, tabSep, groupFace, panelBorder float32
+	// White ink.
+	cardBorder, cardBorderFocused, track, trackBorder, tabActive, pillFace, pillShadow, pillLift float32
+	// Black ink.
+	liftShadow float32
+	// panel and accent at an alpha.
+	panelGlass, panelSel float32
+}
+
+var lightInk = inkSteps{
+	hover: 0.055, pressed: 0.1, tabHover: 0.05, tabSep: 0.13, groupFace: 0.045, panelBorder: 0.08,
+	cardBorder: 0.72, cardBorderFocused: 1, track: 0.34, trackBorder: 0.45, tabActive: 0.97, pillFace: 0.45, pillShadow: 0.06, pillLift: 0.92,
+	liftShadow: 0.06,
+	panelGlass: 0.80, panelSel: 0.12,
+}
+
+var darkInk = inkSteps{
+	hover: 0.08, pressed: 0.14, tabHover: 0.10, tabSep: 0.14, groupFace: 0.05, panelBorder: 0.1,
+	cardBorder: 0.05, cardBorderFocused: 0.14, track: 0.06, trackBorder: 0.06, tabActive: 0.14, pillFace: 0.14, pillShadow: 0, pillLift: 0.24,
+	liftShadow: 0.18,
+	panelGlass: 0.78, panelSel: 0.18,
+}
+
+// ink returns c at alpha a, or ui.Transparent when a is 0.
+func ink(c ui.Color, a float32) ui.Color {
+	if a == 0 {
+		return ui.Transparent
+	}
+	return ui.RGBA(c.R, c.G, c.B, a)
+}
+
+// derive makes the palette of s: the seeds as they are, and the ink at
+// the steps of the lightness of s.panel.
+func derive(s seeds) colors {
+	st, contrast := lightInk, ui.RGBA(0, 0, 0, 1)
+	if isDark(s.panel) {
+		st, contrast = darkInk, ui.RGBA(255, 255, 255, 1)
+	}
+	white, black := ui.RGBA(255, 255, 255, 1), ui.RGBA(0, 0, 0, 1)
+	return colors{
+		bgTop: s.bgTop, bgMid: s.bgMid, bgLow: s.bgLow, bgBottom: s.bgBottom, bgTint: s.bgTint,
+
+		card: s.card, cardFocused: s.cardFocused,
+		cardBorder: ink(white, st.cardBorder), cardBorderFocused: ink(white, st.cardBorderFocused),
+		shadow: s.shadow, shadowFocused: s.shadowFocused,
+
+		text: s.text, textMuted: s.textMuted, textFaint: s.textFaint, iconMuted: s.iconMuted,
+		hover: ink(contrast, st.hover), pressed: ink(contrast, st.pressed),
+		emptyMark: s.emptyMark,
+
+		track: ink(white, st.track), trackBorder: ink(white, st.trackBorder),
+		tabActive: ink(white, st.tabActive), tabSep: ink(contrast, st.tabSep),
+		pillFace: ink(white, st.pillFace), pillShadow: ink(white, st.pillShadow),
+		tabHover: ink(contrast, st.tabHover), pillTint: s.pillTint,
+		groupFace: ink(contrast, st.groupFace), pillLift: ink(white, st.pillLift), liftShadow: ink(black, st.liftShadow),
+
+		busy: s.busy, attention: s.attention, done: s.done, exited: s.exited, danger: s.danger,
+
+		panel: s.panel, panelBorder: ink(contrast, st.panelBorder), panelSel: ink(s.accent, st.panelSel), backdrop: s.backdrop,
+		panelGlass: ink(s.panel, st.panelGlass),
+		field:      s.field, fieldBorder: s.fieldBorder,
+
+		accent: s.accent, accentHover: s.accentHover, accentPressed: s.accentPressed,
+		surface: s.surface, surfaceHover: s.surfaceHover, surfacePressed: s.surfacePressed,
+	}
+}
+
+var lightSeeds = seeds{
 	bgTop:    ui.Hex("#f6e7f6"),
 	bgMid:    ui.Hex("#efe1e6"),
 	bgLow:    ui.Hex("#eee0d3"),
 	bgBottom: ui.Hex("#ece1bd"),
 	bgTint:   ui.RGBA(242, 214, 222, 0.35),
 
-	card:              ui.RGBA(255, 255, 255, 0.66),
-	cardFocused:       ui.RGBA(255, 255, 255, 0.95),
-	cardBorder:        ui.RGBA(255, 255, 255, 0.72),
-	cardBorderFocused: ui.RGBA(255, 255, 255, 1),
-	shadow:            ui.RGBA(60, 40, 50, 0.07),
-	shadowFocused:     ui.RGBA(60, 40, 50, 0.12),
-
 	text:      ui.Hex("#1d1d1f"),
 	textMuted: ui.Hex("#636366"),
 	textFaint: ui.Hex("#8e8e93"),
 	iconMuted: ui.Hex("#8a8a8f"),
 	emptyMark: ui.Hex("#7a869d"),
-	hover:     ui.RGBA(0, 0, 0, 0.055),
-	pressed:   ui.RGBA(0, 0, 0, 0.1),
-
-	track:       ui.RGBA(255, 255, 255, 0.34),
-	trackBorder: ui.RGBA(255, 255, 255, 0.45),
-	tabActive:   ui.RGBA(255, 255, 255, 0.97),
-	pillFace:    ui.RGBA(255, 255, 255, 0.45),
-	pillShadow:  ui.RGBA(255, 255, 255, 0.06),
-	tabHover:    ui.RGBA(0, 0, 0, 0.05),
-	pillTint:    ui.RGBA(29, 29, 29, 0.25),
-	tabSep:      ui.RGBA(0, 0, 0, 0.13),
-	groupFace:   ui.RGBA(0, 0, 0, 0.045),
-	pillLift:    ui.RGBA(255, 255, 255, 0.92),
-	liftShadow:  ui.RGBA(0, 0, 0, 0.06),
 
 	busy:      ui.Hex("#34a853"),
 	danger:    ui.Hex("#ef4444"),
@@ -98,51 +172,31 @@ var lightColors = colors{
 	done:      ui.Hex("#7aa0c2"),
 	exited:    ui.Hex("#a1a1a6"),
 
-	panel:       ui.Hex("#fcfcfd"),
-	panelGlass:  ui.RGBA(252, 252, 253, 0.80),
-	panelBorder: ui.RGBA(0, 0, 0, 0.08),
-	panelSel:    ui.RGBA(46, 111, 208, 0.12),
-	backdrop:    ui.RGBA(40, 20, 40, 0.06),
-
 	accent: ui.Hex("#2e6fd0"), accentHover: ui.Hex("#2a64bd"), accentPressed: ui.Hex("#2459a8"),
+
+	panel: ui.Hex("#fcfcfd"), field: ui.Hex("#f4f4f5"), fieldBorder: ui.Hex("#d9d9de"),
 	surface: ui.Hex("#fcfcfd"), surfaceHover: ui.Hex("#efeff2"), surfacePressed: ui.Hex("#e3e3e8"),
 
-	field: ui.Hex("#f4f4f5"), fieldBorder: ui.Hex("#d9d9de"),
+	card:          ui.RGBA(255, 255, 255, 0.66),
+	cardFocused:   ui.RGBA(255, 255, 255, 0.95),
+	shadow:        ui.RGBA(60, 40, 50, 0.07),
+	shadowFocused: ui.RGBA(60, 40, 50, 0.12),
+	backdrop:      ui.RGBA(40, 20, 40, 0.06),
+	pillTint:      ui.RGBA(29, 29, 29, 0.25),
 }
 
-var darkColors = colors{
+var darkSeeds = seeds{
 	bgTop:    ui.Hex("#2c2131"),
 	bgMid:    ui.Hex("#231e27"),
 	bgLow:    ui.Hex("#221f22"),
 	bgBottom: ui.Hex("#2a2619"),
 	bgTint:   ui.RGBA(80, 40, 60, 0.25),
 
-	card:              ui.RGBA(20, 20, 24, 0.5),
-	cardFocused:       ui.RGBA(36, 36, 41, 0.94),
-	cardBorder:        ui.RGBA(255, 255, 255, 0.05),
-	cardBorderFocused: ui.RGBA(255, 255, 255, 0.14),
-	shadow:            ui.RGBA(0, 0, 0, 0.25),
-	shadowFocused:     ui.RGBA(0, 0, 0, 0.4),
-
 	text:      ui.Hex("#f2f2f7"),
 	textMuted: ui.Hex("#aeaeb2"),
 	textFaint: ui.Hex("#8e8e93"),
 	iconMuted: ui.Hex("#98989d"),
 	emptyMark: ui.Hex("#9aa4b8"),
-	hover:     ui.RGBA(255, 255, 255, 0.08),
-	pressed:   ui.RGBA(255, 255, 255, 0.14),
-
-	track:       ui.RGBA(255, 255, 255, 0.06),
-	trackBorder: ui.RGBA(255, 255, 255, 0.06),
-	tabActive:   ui.RGBA(255, 255, 255, 0.14),
-	pillFace:    ui.RGBA(255, 255, 255, 0.14),
-	pillShadow:  ui.Transparent,
-	tabHover:    ui.RGBA(255, 255, 255, 0.10),
-	pillTint:    ui.Transparent,
-	tabSep:      ui.RGBA(255, 255, 255, 0.14),
-	groupFace:   ui.RGBA(255, 255, 255, 0.05),
-	pillLift:    ui.RGBA(255, 255, 255, 0.24),
-	liftShadow:  ui.RGBA(0, 0, 0, 0.18),
 
 	busy:      ui.Hex("#4ade80"),
 	danger:    ui.Hex("#ef4444"),
@@ -150,17 +204,24 @@ var darkColors = colors{
 	done:      ui.Hex("#7aa0c2"),
 	exited:    ui.Hex("#636366"),
 
-	panel:       ui.Hex("#26262a"),
-	panelGlass:  ui.RGBA(38, 38, 42, 0.78),
-	panelBorder: ui.RGBA(255, 255, 255, 0.1),
-	panelSel:    ui.RGBA(108, 178, 255, 0.18),
-	backdrop:    ui.RGBA(0, 0, 0, 0.2),
-
 	accent: ui.Hex("#6cb2ff"), accentHover: ui.Hex("#82bfff"), accentPressed: ui.Hex("#5aa2f0"),
+
+	panel: ui.Hex("#26262a"), field: ui.Hex("#2d2d32"), fieldBorder: ui.Hex("#3f3f46"),
 	surface: ui.Hex("#262629"), surfaceHover: ui.Hex("#303035"), surfacePressed: ui.Hex("#3a3a40"),
 
-	field: ui.Hex("#2d2d32"), fieldBorder: ui.Hex("#3f3f46"),
+	card:          ui.RGBA(20, 20, 24, 0.5),
+	cardFocused:   ui.RGBA(36, 36, 41, 0.94),
+	shadow:        ui.RGBA(0, 0, 0, 0.25),
+	shadowFocused: ui.RGBA(0, 0, 0, 0.4),
+	backdrop:      ui.RGBA(0, 0, 0, 0.2),
+	pillTint:      ui.Transparent,
 }
+
+// The palettes, in light and dark windows.
+var (
+	lightColors = derive(lightSeeds)
+	darkColors  = derive(darkSeeds)
+)
 
 func colorsOf(c *ui.Context) *colors {
 	if c.Theme().Dark {
