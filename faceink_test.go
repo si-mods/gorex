@@ -56,6 +56,12 @@ func Fragment(dst vec4, pos vec2) vec4 {
 	if set.faces[roleTitleBarBackground] == nil {
 		t.Errorf("the title bar's shader fails: %q", set.warn)
 	}
+	// The active tab's pill on that title bar is light: its text is dark
+	// again, not the bar's white.
+	bar, _, _ := themedFace(paletteOf(false), roleTitleBarBackground)
+	if pk := surface(bar, roleTabActiveBackground).on(bar); contrast(pk.text, bar.tabActive.Over(bar.panel)) < faceTextContrast {
+		t.Errorf("the active tab's text %v does not read on its pill %v", pk.text, bar.tabActive)
+	}
 }
 
 // TestFaceShaderInset: the contrast check reads a face only where text
