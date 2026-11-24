@@ -248,7 +248,7 @@ func loadSettings() {
 // decodeSettings reads b as settings.json: the migration of its old keys,
 // the decode and the checks of a load, on a new value — a file that does
 // not decode changes nothing, and a reloaded file cannot write prefs half
-// way (docs/DSK-010-live-settings.md). The bytes it consumed are
+// way (docs/DSK-011-live-settings.md). The bytes it consumed are
 // recorded, so that a write of the migration, or the same content again,
 // does not reload (settingswatch.go).
 func decodeSettings(b []byte) (settings, bool) {

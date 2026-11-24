@@ -27,7 +27,7 @@ The sidebar's placement, width and collapsed state are user settings (`tabPlacem
 
 - No per-project or per-host styles. One style applies to the whole sidebar.
 - No fonts. The sidebar keeps the app's type ramp of `tokens.go`, except `sidebar.fontSize` below.
-- No Settings UI controls for the `sidebar.*` keys. [DSK-010](DSK-010-live-settings.md) adds a `settings.json` editor page instead.
+- No Settings UI controls for the `sidebar.*` keys. [DSK-011](DSK-011-live-settings.md) adds a `settings.json` editor page instead.
 - No iOS or web changes. Their sidebars keep their own settings.
 - No host folding. `foldedHosts` names a state no current view reads, so a "fold hosts" option would promise a behavior that does not exist.
 
