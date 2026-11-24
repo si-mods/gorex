@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.58.0
+
+### Features
+
+* **theme:** add the accentText seed for text on accent faces ([#1082](https://github.com/si-mods/gorex/pull/1082))
+* **theme:** theme packs carry images: glows, a watermark and a brand row ([#1083](https://github.com/si-mods/gorex/pull/1083))
+
 ## 0.57.0
 
 ### Features
