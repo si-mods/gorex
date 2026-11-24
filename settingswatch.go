@@ -13,7 +13,7 @@ import (
 	"gorex/internal/rex"
 )
 
-// The watch of settings.json (docs/DSK-010-live-settings.md): an edit
+// The watch of settings.json (docs/DSK-011-live-settings.md): an edit
 // made outside the app applies while it runs. A write of the app itself
 // does not reload — saveSettings records the bytes it writes, and the
 // watcher skips them by hash, so there is no loop and no double apply.

@@ -1,12 +1,12 @@
 ---
-name: DSK-010
+name: DSK-011
 description: "GoRex watches settings.json and applies a change while it runs, and the Settings window gains a settings.json page that edits the file in a code editor. Use when you change settings load, save or watch, or the settings.json editor."
 metadata:
   created: "2026-11-24"
   updated: "2026-11-24"
 ---
 
-# DSK-010: Live settings and the settings.json page
+# DSK-011: Live settings and the settings.json page
 
 Status: built (#1071).
 

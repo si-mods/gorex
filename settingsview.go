@@ -702,7 +702,7 @@ func syncSettingsJSONEditor() {
 // saveSettingsJSON writes the editor's text as settings.json: a text that
 // decodes writes the file and applies it, as an outside edit does; one
 // that does not writes nothing and marks the bar
-// (docs/DSK-010-live-settings.md).
+// (docs/DSK-011-live-settings.md).
 func (a *App) saveSettingsJSON() {
 	j := settingsUI.json
 	if j == nil || j.st == nil {
@@ -741,7 +741,7 @@ func (a *App) revertSettingsJSON() {
 
 // jsonSettings is the settings.json page: a bar over a code editor of the
 // file, which fills the page's room where the other pages' scroll column
-// is (docs/DSK-010-live-settings.md).
+// is (docs/DSK-011-live-settings.md).
 func (a *App) jsonSettings(c *ui.Context, k *colors) {
 	j := jsonEditor()
 	// A save of the app's own skipped the watcher: resync the buffer.
