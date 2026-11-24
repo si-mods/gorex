@@ -3,12 +3,12 @@ name: DSK-008
 description: "A theme framework for the desktop chrome: color seeds derive semantic roles, and every face resolves with its text colors as one value. Use when you change the palette, add a surface role, or ship theme packs."
 metadata:
   created: "2026-11-23"
-  updated: "2026-11-23"
+  updated: "2026-11-24"
 ---
 
 # DSK-008: Desktop theme framework
 
-Status: accepted. Not implemented.
+Status: phase 1 built (#1065). Phases 2 and 3 not built.
 
 This doc decides the shape of theming for the desktop chrome. The chrome is the sidebar, the cards of the panes, the dialogs and the menus. This doc replaces no doc. It extends the palette rules of `DESIGN.md` and the settings keys of [DSK-007](DSK-007-sidebar-style.md). The layers come from the design-system pass note of the Vibe Design Tips series (vibedesign.tips). The material and ink model comes from tip 010 of that series (liquid glass).
 
@@ -184,6 +184,6 @@ No item in `docs/invariants.md` covers the palette.
 
 ## Phases
 
-1. **Pairing**: Add the `surface` resolver. Move the chosen sidebar row to it first, then the other chrome. This fixes the contrast for the current overrides. Rename the DSK-007 tokens and migrate them.
+1. **Pairing** (built): Add the `surface` resolver. Move the chosen sidebar row to it first, then the other chrome. This fixes the contrast for the current overrides. Rename the DSK-007 tokens and migrate them. The resolver judges a translucent face as laid over `panel`. It serves the sidebar's chosen rows, hovered rows and the current project's group. Not moved: the pill under glass (the system draws it, so `sideBar.activeGroupTabBackground` is only its fallback face), the tab strip's track, and the separators and shadows, which carry no text. The pane cards, the dialogs and the menus are the next call sites.
 2. **Seeds**: `derive` replaces the literal palettes, and `colors` becomes a derived value.
 3. **Manifest**: Add `internal/theme`, the `appearance.theme` settings key and a `theme` pack kind on the registry.

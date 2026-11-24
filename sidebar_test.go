@@ -54,8 +54,8 @@ func TestSidebarPaletteOverrides(t *testing.T) {
 	old := prefs
 	t.Cleanup(func() { prefs = old })
 	prefs = settings{SidebarColors: map[string]json.RawMessage{
-		"groupFace": json.RawMessage(`"#112233"`),
-		"pillLift":  json.RawMessage(`{"light":"#ffffff","dark":"#3a3a52"}`),
+		"sideBar.activeGroupBackground":    json.RawMessage(`"#112233"`),
+		"sideBar.activeGroupTabBackground": json.RawMessage(`{"light":"#ffffff","dark":"#3a3a52"}`),
 	}}
 	l := sidebarPalette(&lightColors, false)
 	if l.groupFace != ui.Hex("#112233") || l.pillLift != ui.Hex("#ffffff") {

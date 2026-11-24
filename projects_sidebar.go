@@ -262,11 +262,14 @@ func (a *App) projectRow(c *ui.Context, k *colors, w *Workspace, reserve float32
 	// holds it, which shows as current by its weight and dot alone; the
 	// project's own row while its tabs are closed. Hover is the lighter
 	// face (DESIGN.md).
+	ck := k // the palette of the row's content, paired with its face
 	switch {
 	case shown && (!open || n == 0):
 		sidebarChosen(row, k, projectRowH(), false)
+		ck = sidebarChosenColors(k)
 	case row.Hovered() && !offline:
 		row.Background(hoverFace(k))
+		ck = sidebarHoverColors(k)
 	}
 	// A tab of the window's dropped on a project of its host moves there,
 	// with its panes and their processes.
@@ -284,25 +287,25 @@ func (a *App) projectRow(c *ui.Context, k *colors, w *Workspace, reserve float32
 	row.Children(func() {
 		// The project's folder tile stands over its tabs' tiles, and its name
 		// over their titles.
-		leadRoom(c, reserve, projectRowH()).Children(func() { projectFolderTile(c, k, w.Color) })
+		leadRoom(c, reserve, projectRowH()).Children(func() { projectFolderTile(c, ck, w.Color) })
 		renaming := shown && a.wsRenaming && w.Dir != ""
 		if renaming {
-			a.workspaceRenameField(c, k, w.Name)
+			a.workspaceRenameField(c, ck, w.Name)
 		} else {
 			weight := 500
 			if shown {
 				weight = 600
 			}
-			ui.Text(c, name).FontSize(sidebarFont(fontBody)).FontWeight(weight).TextColor(k.text.Alpha(0.85)).SingleLine().Ellipsis("…").Grow(1).MinWidth(0)
+			ui.Text(c, name).FontSize(sidebarFont(fontBody)).FontWeight(weight).TextColor(ck.text.Alpha(0.85)).SingleLine().Ellipsis("…").Grow(1).MinWidth(0)
 			if s := a.st.status(w); needsUser(s) {
-				statusDot(c, k, s, 7).Label(statusTip(s))
+				statusDot(c, ck, s, 7).Label(statusTip(s))
 			}
 		}
 		// The chevron, at the end of the row before the +, opens and closes
 		// the tabs of any project, as a click on the row of the one shown
 		// does. A project with no tab has none: there is nothing to open.
 		if n > 0 {
-			fold := disclosureChevron(c.Key("fold"), k, open, projectRowH()).
+			fold := disclosureChevron(c.Key("fold"), ck, open, projectRowH()).
 				Cursor(ui.CursorPointer).Role(ui.RoleDisclosure).Expanded(open).Label(locales.ProjectsTabsOf(name))
 			toggled = fold.Clicked()
 		}
@@ -311,7 +314,7 @@ func (a *App) projectRow(c *ui.Context, k *colors, w *Workspace, reserve float32
 		}
 		if !offline && (hovered || shown) {
 			label := locales.ProjectsNewTabIn(name)
-			if iconButton(c, k, "plus", label, 20, 13).Tooltip(tip(label, &cmdNewTab)).Clicked() {
+			if iconButton(c, ck, "plus", label, 20, 13).Tooltip(tip(label, &cmdNewTab)).Clicked() {
 				a.later(c, func() { a.newTabIn(w) })
 			}
 		}
@@ -375,6 +378,7 @@ func (a *App) projectGroup(c *ui.Context, k *colors, w *Workspace, reserve float
 	g := ui.Column(c.Key("group-"+openKey(w.host, w.ID))).Gap(rowGap).Radius(pillRadius(sidebarRowH(), radiusM)+sidebarGroupPad()).Padding(sidebarGroupPad()).Margin(-sidebarGroupEdge(), -sidebarGroupPad(), -sidebarGroupEdge(), -sidebarGroupPad())
 	if w == a.ws && rowOpen(openKey(w.host, w.ID), true) && w.tabCount() > 0 {
 		g.Background(k.groupFace)
+		k = surface(k, roleActiveGroupBackground).on(k) // what the group holds reads on its face
 	} else {
 		g.Background(k.groupFace.Alpha(0))
 	}
@@ -529,6 +533,7 @@ func (a *App) foldRow(c *ui.Context, k *colors, key, label, count string, open b
 	hovered := row.Hovered()
 	if hovered {
 		row.Background(hoverFace(k))
+		k = sidebarHoverColors(k)
 	}
 	row.Children(func() {
 		leadRoom(c, reserve, foldRowH)
@@ -784,16 +789,18 @@ func (a *App) projectNewTabRow(c *ui.Context, k *colors, w *Workspace, agents []
 		label := locales.ProjectsNewTabIn(w.Name)
 		add := ui.Row(c.Key("add")).Grow(1).MinWidth(0).Height(sidebarRowH()).Gap(sideGap).AlignItems(ui.Center).
 			Radius(pillRadius(sidebarRowH(), radiusM)).Cursor(ui.CursorPointer).Role(ui.RoleButton).Label(label).Tooltip(label)
+		ck := k
 		if add.Hovered() {
 			add.Background(hoverFace(k))
+			ck = sidebarHoverColors(k)
 		}
 		add.Children(func() {
 			leadRoom(c, reserve, sidebarRowH()).Children(func() {
 				ui.Row(c).Width(tileSlot).AlignItems(ui.Center).Justify(ui.Center).Children(func() {
-					glyphIcon(c, "plus", 13, k.textMuted).Shrink(0)
+					glyphIcon(c, "plus", 13, ck.textMuted).Shrink(0)
 				})
 			})
-			ui.Text(c, locales.CmdNewTab()).FontSize(sidebarFont(fontBody)).TextColor(k.textMuted).SingleLine().Ellipsis("…").Shrink(1).MinWidth(0)
+			ui.Text(c, locales.CmdNewTab()).FontSize(sidebarFont(fontBody)).TextColor(ck.textMuted).SingleLine().Ellipsis("…").Shrink(1).MinWidth(0)
 		})
 		if add.Clicked() {
 			a.later(c, func() { a.newTabIn(w) })

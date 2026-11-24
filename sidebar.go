@@ -86,16 +86,38 @@ func sidebarGroupEdge() float32 {
 	return (sidebarGroupPad() + rowGap - groupGap) / 2
 }
 
-// sidebarColorTokens are the palette fields a sidebar.colorCustomizations
-// key may set: the sidebar's own, not the window's globals.
+// sidebarColorTokens are the role names a sidebar.colorCustomizations key
+// may set, and the palette fields they set: the sidebar's own, not the
+// window's globals (docs/DSK-008-theme.md). tokenRenames in settings.go migrates
+// the names docs/DSK-007-sidebar-style.md first had.
 var sidebarColorTokens = map[string]func(*colors, ui.Color){
-	"groupFace":  func(k *colors, c ui.Color) { k.groupFace = c },
-	"pillLift":   func(k *colors, c ui.Color) { k.pillLift = c },
-	"liftShadow": func(k *colors, c ui.Color) { k.liftShadow = c },
-	"track":      func(k *colors, c ui.Color) { k.track = c },
-	"tabSep":     func(k *colors, c ui.Color) { k.tabSep = c },
-	"tabHover":   func(k *colors, c ui.Color) { k.tabHover = c },
-	"tabActive":  func(k *colors, c ui.Color) { k.tabActive = c },
+	"sideBar.activeGroupBackground":    func(k *colors, c ui.Color) { k.groupFace = c },
+	"sideBar.activeGroupTabBackground": func(k *colors, c ui.Color) { k.pillLift = c },
+	"sideBar.activeGroupTabShadow":     func(k *colors, c ui.Color) { k.liftShadow = c },
+	"sideBar.trackBackground":          func(k *colors, c ui.Color) { k.track = c },
+	"sideBar.tabSeparator":             func(k *colors, c ui.Color) { k.tabSep = c },
+	"sideBar.tabHoverBackground":       func(k *colors, c ui.Color) { k.tabHover = c },
+	"sideBar.tabActiveBackground":      func(k *colors, c ui.Color) { k.tabActive = c },
+}
+
+// sidebarChosenColors returns the palette that the content of a chosen
+// sidebar row draws with: the ladder of the row's face when the row is
+// painted at tabActive (sidebar.selection "fill", or the glass setting off).
+// Under glass the pill is the system's material, which no setting colors.
+func sidebarChosenColors(k *colors) *colors {
+	if sidebarFillSel() || !glassOn() {
+		return surface(k, roleTabActiveBackground).on(k)
+	}
+	return k
+}
+
+// sidebarHoverColors returns the palette that the content of a hovered
+// sidebar row draws with: the ladder of tabHover, the face under glass.
+func sidebarHoverColors(k *colors) *colors {
+	if glassOn() {
+		return surface(k, roleTabHoverBackground).on(k)
+	}
+	return k
 }
 
 // sidebarPalette is the palette with the user's sidebar colors applied. It
@@ -506,8 +528,10 @@ func (a *App) sidebarTab(c *ui.Context, k *colors, i int, t *Tab, reserve float3
 		Role(ui.RoleTab).Selected(active)
 	name, detail := t.label()
 	e.Label(name + " " + detail)
+	ck := k // the palette of the row's content, paired with its face
 	if active {
 		sidebarChosen(e, k, sidebarRowH(), lifted)
+		ck = sidebarChosenColors(k)
 		// A tab chosen otherwise than in the list, as by its keys, scrolls
 		// into view, once: the list scrolls freely after.
 		if a.revealed != t {
@@ -516,6 +540,7 @@ func (a *App) sidebarTab(c *ui.Context, k *colors, i int, t *Tab, reserve float3
 		}
 	} else if e.Hovered() {
 		e.Background(hoverFace(k))
+		ck = sidebarHoverColors(k)
 	}
 	a.tabEvents(c, e, k, i, t)
 	hovered := e.Hovered()
@@ -523,11 +548,11 @@ func (a *App) sidebarTab(c *ui.Context, k *colors, i int, t *Tab, reserve float3
 		// The tiles take the room of the widest tab's, so that the names
 		// line up; sidebar.icons "text" leaves the room bare.
 		if !sidebarIconsText() {
-			ui.Box(c).Width(reserve).Shrink(0).Children(func() { a.tiles(c, k, t) })
+			ui.Box(c).Width(reserve).Shrink(0).Children(func() { a.tiles(c, ck, t) })
 		} else {
 			ui.Box(c).Width(reserve).Shrink(0)
 		}
-		a.tabRest(c, k, t, active, hovered)
+		a.tabRest(c, ck, t, active, hovered)
 	})
 }
 
@@ -583,6 +608,7 @@ func spaceTab(c *ui.Context, k *colors, key, name, detail string, s *rex.Program
 	}
 	if e.Hovered() {
 		e.Background(hoverFace(k))
+		k = sidebarHoverColors(k)
 	}
 	e.Children(func() {
 		if !sidebarIconsText() {
