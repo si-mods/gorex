@@ -8,7 +8,7 @@ metadata:
 
 # REF-009: Benchmarks for the session server's hot path
 
-Status: phase 1 built (#1062). Phases 2 and 3 not built.
+Status: phases 1 and 2 built (#1062, #1066). Phase 3 measured and declined.
 
 The session server reads each PTY in a loop. Every chunk goes to a terminal emulator, to output trackers and to the attached clients (`session.emit` in `internal/rex/session.go`). This doc decides how that loop, and the attach that shares its lock, are measured. [REF-006](REF-006-session-server.md) describes the session and its data flow.
 
@@ -76,7 +76,7 @@ Apple M5, 2026-11-24, `-benchtime=500ms -count=6`, medians:
 | `BenchmarkEmitClients` | 22.1 µs | 186 MB/s | 639 | 6 |
 | `BenchmarkAttachStall` | 14.5 ms stall | — | — | — |
 
-The attach stall matches `BenchmarkSnapshotLocked`. Every client of the session sees it on each escape-sequence attach.
+The attach stall matches `BenchmarkSnapshotLocked`. Every client of the session sees it on each escape-sequence attach. After #1066 the stall is ~2.0 ms, what `GhosttySnapshot` costs under the lock.
 
 ## Alternatives
 
@@ -88,11 +88,12 @@ The attach stall matches `BenchmarkSnapshotLocked`. Every client of the session 
 
 - `BenchmarkEmit*` runs and gives stable numbers across `-count=6`.
 - `BenchmarkAttachStall` reports a pause near the `BenchmarkSnapshotLocked` time for the current attach.
-- `TestScanFeedsMatch` lands with the merged scan's PR. It compares both scanners on input cut at each byte.
-- No item of `docs/invariants.md` applies. This work adds tests only.
+- `TestScanFeedsMatch` compares both scanners on input cut at each byte. Phase 3 is declined, so it is not built.
+- `TestAttachRendersOffLock` lands with phase 2. It compares the off-lock attach's snapshot and `snapshotLocked`'s byte for byte.
+- No item of `docs/invariants.md` applies.
 
 ## Phases
 
 1. The emit benchmarks and the attach-stall benchmark: #1062.
-2. The off-lock attach snapshot, measured by `BenchmarkAttachStall`.
-3. The merged scan, measured by `BenchmarkEmit` and `TestScanFeedsMatch`. It lands only if its win clears the cost of the change.
+2. The off-lock attach snapshot, measured by `BenchmarkAttachStall`: #1066. The stall fell 14.5 ms to ~2.0 ms.
+3. The merged scan: declined. Removing all three feeds saves at most 19% of `emit` on ESC-dense loads and nothing on plain ones. A merged scan keeps the record building and saves only the shared walks, less than that ceiling, and it couples three different carry rules into one pass.

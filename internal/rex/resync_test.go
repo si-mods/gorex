@@ -3,6 +3,8 @@
 package rex
 
 import (
+	"bufio"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net"
@@ -191,9 +193,21 @@ func TestDeadClientDropped(t *testing.T) {
 	}
 }
 
-// styledSession returns a session of 300x50 whose scrollback is full of
-// rows that change color at every cell, the costliest to render as
-// escape sequences.
+// styledFill returns 32 MiB of rows that change color at every cell, the
+// costliest scrollback to render as escape sequences.
+func styledFill() []byte {
+	var b []byte
+	for i := 0; len(b) < 32<<20; i++ {
+		for j := range 290 {
+			b = fmt.Appendf(b, "\x1b[38;5;%dm%c", (i+j)%256, 'a'+j%26)
+		}
+		b = append(b, "\r\n"...)
+	}
+	return b
+}
+
+// styledSession returns a session of 300x50 whose scrollback styledFill
+// filled.
 func styledSession(t testing.TB) *session {
 	t.Helper()
 	s, _ := testServer(t)
@@ -205,19 +219,103 @@ func styledSession(t testing.TB) *session {
 	}
 	t.Cleanup(func() { c.Kill(info.ID) })
 	ss := sessionOf(t, s, info.ID)
-	var b []byte
-	for i := 0; len(b) < 32<<20; i++ {
-		for j := range 290 {
-			b = fmt.Appendf(b, "\x1b[38;5;%dm%c", (i+j)%256, 'a'+j%26)
-		}
-		b = append(b, "\r\n"...)
-	}
-	for len(b) > 0 {
+	for b := styledFill(); len(b) > 0; {
 		n := min(len(b), 64<<10)
 		ss.emit(b[:n], nil, n)
 		b = b[n:]
 	}
 	return ss
+}
+
+// TestAttachRendersOffLock checks that an attach's snapshot, rendered
+// off the session's lock from the binary snapshot, is byte for byte what
+// snapshotLocked renders under it, header and all.
+func TestAttachRendersOffLock(t *testing.T) {
+	s, _ := testServer(t)
+	c := pipe(s, "")
+	defer c.Close()
+	info, err := c.Create(CreateOptions{Command: silentCommand(), Cols: 300, Rows: 50})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Kill(info.ID)
+	ss := sessionOf(t, s, info.ID)
+	for b := styledFill(); len(b) > 0; {
+		n := min(len(b), 64<<10)
+		ss.emit(b[:n], nil, n)
+		b = b[n:]
+	}
+	ss.mu.Lock()
+	want := ss.snapshotLocked(Attach{Framed: true, History: resyncHistory})
+	ss.mu.Unlock()
+	conn, err := c.AttachConn(Attach{SID: info.ID, Framed: true, History: resyncHistory, Mute: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	conn.SetReadDeadline(time.Now().Add(10 * time.Second))
+	br := bufio.NewReaderSize(conn, 64<<10)
+	line, err := br.ReadBytes('\n')
+	if err != nil {
+		t.Fatal(err)
+	}
+	var head SnapshotHeader
+	if err := json.Unmarshal(line, &head); err != nil {
+		t.Fatal(err)
+	}
+	if !head.Truncated {
+		t.Fatalf("a snapshot of a full scrollback is not truncated")
+	}
+	got := make([]byte, head.Snapshot)
+	if _, err := io.ReadFull(br, got); err != nil {
+		t.Fatal(err)
+	}
+	if got := append(line, got...); string(got) != string(want) {
+		t.Fatalf("the attach rendered %d bytes off the lock, unlike the %d under it", len(got), len(want))
+	}
+}
+
+// TestAttachOffLockKeepsOutput checks that output a session prints while
+// an attach's snapshot renders off its lock reaches the client after the
+// snapshot, not lost nor out of order.
+func TestAttachOffLockKeepsOutput(t *testing.T) {
+	s, _ := testServer(t)
+	c := pipe(s, "")
+	defer c.Close()
+	info, err := c.Create(CreateOptions{Command: silentCommand(), Cols: 300, Rows: 50})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Kill(info.ID)
+	ss := sessionOf(t, s, info.ID)
+	for b := styledFill(); len(b) > 0; {
+		n := min(len(b), 64<<10)
+		ss.emit(b[:n], nil, n)
+		b = b[n:]
+	}
+	conn, err := c.AttachConn(Attach{SID: info.ID, Framed: true, History: resyncHistory, Mute: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	marker := []byte("\x1b[31mMARK-attach-output\x1b[0m\r\n")
+	ss.emit(marker, nil, len(marker))
+	conn.SetReadDeadline(time.Now().Add(10 * time.Second))
+	br := bufio.NewReaderSize(conn, 64<<10)
+	line, err := br.ReadBytes('\n')
+	if err != nil {
+		t.Fatal(err)
+	}
+	var head SnapshotHeader
+	if err := json.Unmarshal(line, &head); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := io.CopyN(io.Discard, br, int64(head.Snapshot)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := br.ReadBytes('K'); err != nil {
+		t.Fatalf("the output printed after the attach never came: %v", err)
+	}
 }
 
 // TestResyncRendersAsAttach checks that the screen a resync renders off

@@ -142,16 +142,8 @@ func BenchmarkEmitClients(b *testing.B) {
 // longest emit is the stall every client sees. ns/op is the attach
 // itself; the stall is the ns/stall metric.
 func BenchmarkAttachStall(b *testing.B) {
-	s, c, ss, sid := benchSession(b, 300, 50)
-	_ = s
-	var fill []byte
-	for i := 0; len(fill) < 32<<20; i++ {
-		for j := range 290 {
-			fill = fmt.Appendf(fill, "\x1b[38;5;%dm%c", (i+j)%256, 'a'+j%26)
-		}
-		fill = append(fill, "\r\n"...)
-	}
-	for len(fill) > 0 {
+	_, c, ss, sid := benchSession(b, 300, 50)
+	for fill := styledFill(); len(fill) > 0; {
 		n := min(len(fill), 64<<10)
 		ss.emit(fill[:n], nil, n)
 		fill = fill[n:]
