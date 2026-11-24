@@ -12,9 +12,11 @@ import (
 )
 
 // The keys of docs/DSK-010-theme-ambience.md that this build reads:
-// assets, the still layers of ambience (glows and images) and the brand
-// row. Particles, sprites, the mascot and the ticker come in later phases;
-// until then Parse drops them with a warning, as an older build does.
+// assets, the layers of ambience (glows, images and sprites) and the brand
+// row. The mascot and the ticker come in a later phase; until then Parse
+// drops them with a warning, as an older build does. GoRex has no
+// particle look of its own: particles come from a theme's shader
+// (docs/DSK-012-theme-shaders.md), and Parse drops ambience.particles.
 
 // Asset is a file of the pack's assets folder that a manifest names: an
 // image, or a sprite sheet when Frames is above 0.
@@ -56,10 +58,37 @@ type Still struct {
 	Opacity float32
 }
 
+// Direction is where a sprite swims.
+type Direction int
+
+// The directions.
+const (
+	Right Direction = iota
+	Left
+	Up
+)
+
+var directionNames = []string{"right", "left", "up"}
+
+// Sprite is an image that swims across the window in Seconds a trip, and
+// again: left or right at Y, a fraction of the window's height, or up at
+// X, a fraction of its width. Height is in DIPs. One that swims left is
+// mirrored, unless Mirror is false.
+type Sprite struct {
+	Asset   string
+	X, Y    float32
+	Height  float32
+	Seconds float32
+	Dir     Direction
+	Opacity float32
+	Mirror  bool
+}
+
 // Ambience is what a theme draws on the window's background.
 type Ambience struct {
-	Glows  []Glow
-	Images []Still
+	Glows   []Glow
+	Images  []Still
+	Sprites []Sprite
 }
 
 // Brand is the row at the top of the sidebar: an icon asset and a wordmark.
@@ -79,10 +108,16 @@ const (
 	maxSheetFrame    = 64
 	maxWordmark      = 24
 	maxStillDIP      = 1024 // the largest height in DIPs a still image takes
+
+	maxSprites       = 8
+	maxSpriteOpacity = 0.3
 )
 
 // Empty reports whether the theme draws nothing on the background.
-func (a Ambience) Empty() bool { return len(a.Glows) == 0 && len(a.Images) == 0 }
+func (a Ambience) Empty() bool { return len(a.Glows) == 0 && len(a.Images) == 0 && !a.Moving() }
+
+// Moving reports whether the theme has layers that move: sprites.
+func (a Ambience) Moving() bool { return len(a.Sprites) > 0 }
 
 // validAssetName reports whether s may name an asset: letters, digits, '-'
 // and '_'.
@@ -236,18 +271,14 @@ func parseAmbience(raw json.RawMessage, assets map[string]Asset, w *warner) Ambi
 	if !ok {
 		return amb
 	}
-	for _, later := range []string{"particles", "sprites"} {
-		if _, ok := m[later]; ok {
-			w.add("ambience.%s: not drawn by this build", later)
+	list := func(key string) []json.RawMessage {
+		var l []json.RawMessage
+		if raw, ok := m[key]; ok && json.Unmarshal(raw, &l) != nil {
+			w.add("ambience.%s: not a list", key)
 		}
+		return l
 	}
-	var glows, images []json.RawMessage
-	if raw, ok := m["glows"]; ok && json.Unmarshal(raw, &glows) != nil {
-		w.add("ambience.glows: not a list")
-	}
-	if raw, ok := m["images"]; ok && json.Unmarshal(raw, &images) != nil {
-		w.add("ambience.images: not a list")
-	}
+	glows, images := list("glows"), list("images")
 	for i, g := range glows {
 		where := fmt.Sprintf("ambience.glows[%d]", i)
 		if len(amb.Glows) == maxGlows {
@@ -319,7 +350,65 @@ func parseAmbience(raw json.RawMessage, assets map[string]Asset, w *warner) Ambi
 		}
 		amb.Images = append(amb.Images, s)
 	}
+	if _, ok := m["particles"]; ok {
+		w.add("ambience.particles: not drawn by this build")
+	}
+	amb.Sprites = parseSprites(list("sprites"), assets, w)
 	return amb
+}
+
+// parseSprites reads ambience.sprites: at most eight images, or sprite
+// sheets, that swim across the window. A sprite whose asset the manifest
+// does not name is dropped.
+func parseSprites(list []json.RawMessage, assets map[string]Asset, w *warner) []Sprite {
+	var out []Sprite
+	for i, raw := range list {
+		where := fmt.Sprintf("ambience.sprites[%d]", i)
+		if len(out) == maxSprites {
+			w.add("%s: more than %d sprites", where, maxSprites)
+			break
+		}
+		f, ok := w.fields(raw, where, "asset", "x", "y", "height", "seconds", "direction", "opacity", "mirror")
+		if !ok {
+			continue
+		}
+		s := Sprite{Mirror: true}
+		if json.Unmarshal(f["asset"], &s.Asset) != nil {
+			w.add("%s.asset: not a string", where)
+			continue
+		}
+		if _, ok := assets[s.Asset]; !ok {
+			w.add("%s.asset: no asset %q", where, s.Asset)
+			continue
+		}
+		if raw, ok := f["direction"]; ok {
+			var name string
+			d := -1
+			if json.Unmarshal(raw, &name) == nil {
+				d = slices.Index(directionNames, name)
+			}
+			if d < 0 {
+				w.add("%s.direction: unknown direction", where)
+				continue
+			}
+			s.Dir = Direction(d)
+		}
+		if raw, ok := f["mirror"]; ok && json.Unmarshal(raw, &s.Mirror) != nil {
+			w.add("%s.mirror: not true or false", where)
+			continue
+		}
+		var oks [5]bool
+		s.X, oks[0] = w.num(f, "x", where, 0, 1, 0.5)
+		s.Y, oks[1] = w.num(f, "y", where, 0, 1, 0.5)
+		s.Height, oks[2] = w.num(f, "height", where, 16, 200, 48)
+		s.Seconds, oks[3] = w.num(f, "seconds", where, 8, 600, 60)
+		s.Opacity, oks[4] = w.num(f, "opacity", where, 0, maxSpriteOpacity, 0.15)
+		if oks != [5]bool{true, true, true, true, true} {
+			continue
+		}
+		out = append(out, s)
+	}
+	return out
 }
 
 // parseBrand reads the brand key: an icon asset and a wordmark.
