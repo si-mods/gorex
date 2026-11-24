@@ -6,7 +6,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"gorex/internal/iconpack"
@@ -85,5 +87,85 @@ func TestPackCmd(t *testing.T) {
 	}
 	if len(found) != 1 || found[0].ID != "starter-dev-tools" {
 		t.Fatalf("search got %+v", found)
+	}
+}
+
+// TestPackInstallTheme: a theme pack, listed in the registry's themes and
+// cloned as an icon pack is, installs its theme.json as
+// <config>/themes/<id>.json, which appearance.theme names
+// (docs/DSK-008-theme.md); a local directory with a theme.json does too.
+// Icon pack search keeps its packs, and the theme shows with its kind.
+func TestPackInstallTheme(t *testing.T) {
+	cfgDir := t.TempDir()
+	t.Setenv("GOREX_CONFIG", filepath.Join(cfgDir, "init.lua"))
+
+	repo := t.TempDir()
+	sub := filepath.Join(repo, "themes", "slate")
+	if err := os.MkdirAll(sub, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	manifest := `{"name":"Slate","seeds":{"dark":{"accent":"#5b8def"}},"roles":{"sideBar.tabActiveBackground":"#5b8def33"}}`
+	if err := os.WriteFile(filepath.Join(sub, "theme.json"), []byte(manifest), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for _, args := range [][]string{
+		{"init", "-b", "main"},
+		{"config", "user.email", "test@example.com"},
+		{"config", "user.name", "Test"},
+		{"add", "."},
+		{"commit", "-m", "init"},
+	} {
+		c := exec.Command("git", args...)
+		c.Dir = repo
+		if out, err := c.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v (%s)", args, err, out)
+		}
+	}
+	idx := iconpack.RegistryIndex{
+		Schema: 1,
+		Packs:  []iconpack.RegistryPack{{ID: "starter-dev-tools", Name: "Starter", Description: "slate-gray icons", Repo: "https://example.invalid/x.git"}},
+		Themes: []iconpack.RegistryPack{{ID: "slate", Kind: "theme", Name: "Slate", Description: "Cool slate grays", Repo: repo, Subdir: "themes/slate"}},
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(idx)
+	}))
+	defer srv.Close()
+	t.Setenv("GOREX_PACK_REGISTRY", srv.URL)
+
+	var out, errOut bytes.Buffer
+	if code, _ := Main([]string{"pack", "search", "--json", "slate"}, &out, &errOut, ""); code != ExitOK {
+		t.Fatalf("search code=%d err=%s", code, errOut.String())
+	}
+	var found []iconpack.RegistryPack
+	if err := json.Unmarshal(out.Bytes(), &found); err != nil {
+		t.Fatal(err)
+	}
+	if len(found) != 2 || found[0].ID != "starter-dev-tools" || found[0].Kind != "" || found[1].ID != "slate" || found[1].Kind != iconpack.KindTheme {
+		t.Fatalf("search got %+v", found)
+	}
+
+	out.Reset()
+	errOut.Reset()
+	if code, _ := Main([]string{"pack", "install", "slate"}, &out, &errOut, ""); code != ExitOK {
+		t.Fatalf("install code=%d err=%s", code, errOut.String())
+	}
+	got, err := os.ReadFile(filepath.Join(cfgDir, "themes", "slate.json"))
+	if err != nil || string(got) != manifest {
+		t.Fatalf("installed %q, %v", got, err)
+	}
+	if !strings.Contains(out.String(), `"appearance.theme": "slate"`) {
+		t.Errorf("install said %q", out.String())
+	}
+	if _, err := os.Stat(filepath.Join(cfgDir, "icon-packs", "slate")); err == nil {
+		t.Error("a theme pack installed as an icon pack")
+	}
+
+	out.Reset()
+	errOut.Reset()
+	if code, _ := Main([]string{"pack", "install", "--name", "local", sub}, &out, &errOut, ""); code != ExitOK {
+		t.Fatalf("local install code=%d err=%s", code, errOut.String())
+	}
+	if _, err := os.Stat(filepath.Join(cfgDir, "themes", "local.json")); err != nil {
+		t.Errorf("local theme: %v", err)
 	}
 }

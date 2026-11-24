@@ -8346,16 +8346,18 @@ func (msgs Messages) PromptSend() string {
 	return Catalog.Format(msgs.locale, "promptSend", nil)
 }
 
-// SettingsIconPacks says "Icon Packs"
+// SettingsIconPacks says "Extensions"
 // in the language the app shows.
 //
-// Settings sidebar item: community program icon packs.
+// Settings section and page title of the extensions: icon packs and theme
+// packs.
 func SettingsIconPacks() string { return In(i18n.Locale()).SettingsIconPacks() }
 
-// SettingsIconPacks says "Icon Packs"
+// SettingsIconPacks says "Extensions"
 // in the language of msgs.
 //
-// Settings sidebar item: community program icon packs.
+// Settings section and page title of the extensions: icon packs and theme
+// packs.
 func (msgs Messages) SettingsIconPacks() string {
 	return Catalog.Format(msgs.locale, "settingsIconPacks", nil)
 }
@@ -8402,16 +8404,18 @@ func (msgs Messages) SettingsIconPackPriorityOSC() string {
 	return Catalog.Format(msgs.locale, "settingsIconPackPriorityOSC", nil)
 }
 
-// SettingsIconPacksInstalled says "Installed"
+// SettingsIconPacksInstalled says "Icon Packs"
 // in the language the app shows.
 //
-// Settings group heading: locally installed icon packs.
+// Extensions page: header of the group of installed icon packs and their
+// priority.
 func SettingsIconPacksInstalled() string { return In(i18n.Locale()).SettingsIconPacksInstalled() }
 
-// SettingsIconPacksInstalled says "Installed"
+// SettingsIconPacksInstalled says "Icon Packs"
 // in the language of msgs.
 //
-// Settings group heading: locally installed icon packs.
+// Extensions page: header of the group of installed icon packs and their
+// priority.
 func (msgs Messages) SettingsIconPacksInstalled() string {
 	return Catalog.Format(msgs.locale, "settingsIconPacksInstalled", nil)
 }
@@ -8444,13 +8448,13 @@ func (msgs Messages) SettingsIconPacksRegistry() string {
 	return Catalog.Format(msgs.locale, "settingsIconPacksRegistry", nil)
 }
 
-// SettingsIconPacksSearch says "Search icon packs…"
+// SettingsIconPacksSearch says "Search extensions…"
 // in the language the app shows.
 //
 // Placeholder of the search input in Community Registry.
 func SettingsIconPacksSearch() string { return In(i18n.Locale()).SettingsIconPacksSearch() }
 
-// SettingsIconPacksSearch says "Search icon packs…"
+// SettingsIconPacksSearch says "Search extensions…"
 // in the language of msgs.
 //
 // Placeholder of the search input in Community Registry.
@@ -8542,4 +8546,106 @@ func SettingsIconPacksCount(count int) string { return In(i18n.Locale()).Setting
 // Icon count label under an installed icon pack.
 func (msgs Messages) SettingsIconPacksCount(count int) string {
 	return Catalog.Format(msgs.locale, "settingsIconPacksCount", map[string]any{"count": count})
+}
+
+// SettingsWindowTheme says "Window Theme"
+// in the language the app shows.
+//
+// Extensions page: header of the group that picks the colors of GoRex's own
+// window (not the terminal's).
+func SettingsWindowTheme() string { return In(i18n.Locale()).SettingsWindowTheme() }
+
+// SettingsWindowTheme says "Window Theme"
+// in the language of msgs.
+//
+// Extensions page: header of the group that picks the colors of GoRex's own
+// window (not the terminal's).
+func (msgs Messages) SettingsWindowTheme() string {
+	return Catalog.Format(msgs.locale, "settingsWindowTheme", nil)
+}
+
+// SettingsThemeBuiltIn says "Built-in"
+// in the language the app shows.
+//
+// Extensions page: the row of GoRex's own palette in the Window Theme
+// group.
+func SettingsThemeBuiltIn() string { return In(i18n.Locale()).SettingsThemeBuiltIn() }
+
+// SettingsThemeBuiltIn says "Built-in"
+// in the language of msgs.
+//
+// Extensions page: the row of GoRex's own palette in the Window Theme
+// group.
+func (msgs Messages) SettingsThemeBuiltIn() string {
+	return Catalog.Format(msgs.locale, "settingsThemeBuiltIn", nil)
+}
+
+// SettingsThemeBuiltInHint says "GoRex's own colors."
+// in the language the app shows.
+//
+// Extensions page: hint under the Built-in theme row.
+func SettingsThemeBuiltInHint() string { return In(i18n.Locale()).SettingsThemeBuiltInHint() }
+
+// SettingsThemeBuiltInHint says "GoRex's own colors."
+// in the language of msgs.
+//
+// Extensions page: hint under the Built-in theme row.
+func (msgs Messages) SettingsThemeBuiltInHint() string {
+	return Catalog.Format(msgs.locale, "settingsThemeBuiltInHint", nil)
+}
+
+// SettingsThemeUse says "Use"
+// in the language the app shows.
+//
+// Extensions page: button that makes a theme the window theme.
+func SettingsThemeUse() string { return In(i18n.Locale()).SettingsThemeUse() }
+
+// SettingsThemeUse says "Use"
+// in the language of msgs.
+//
+// Extensions page: button that makes a theme the window theme.
+func (msgs Messages) SettingsThemeUse() string {
+	return Catalog.Format(msgs.locale, "settingsThemeUse", nil)
+}
+
+// SettingsThemeInUse says "In use"
+// in the language the app shows.
+//
+// Extensions page: label of the window theme in use.
+func SettingsThemeInUse() string { return In(i18n.Locale()).SettingsThemeInUse() }
+
+// SettingsThemeInUse says "In use"
+// in the language of msgs.
+//
+// Extensions page: label of the window theme in use.
+func (msgs Messages) SettingsThemeInUse() string {
+	return Catalog.Format(msgs.locale, "settingsThemeInUse", nil)
+}
+
+// SettingsExtensionKindIcons says "Icon pack"
+// in the language the app shows.
+//
+// Extensions page: the kind of an extension, before its ID.
+func SettingsExtensionKindIcons() string { return In(i18n.Locale()).SettingsExtensionKindIcons() }
+
+// SettingsExtensionKindIcons says "Icon pack"
+// in the language of msgs.
+//
+// Extensions page: the kind of an extension, before its ID.
+func (msgs Messages) SettingsExtensionKindIcons() string {
+	return Catalog.Format(msgs.locale, "settingsExtensionKindIcons", nil)
+}
+
+// SettingsExtensionKindTheme says "Theme"
+// in the language the app shows.
+//
+// Extensions page: the kind of an extension, before its ID.
+func SettingsExtensionKindTheme() string { return In(i18n.Locale()).SettingsExtensionKindTheme() }
+
+// SettingsExtensionKindTheme says "Theme"
+// in the language of msgs.
+//
+// Extensions page: the kind of an extension, before its ID.
+func (msgs Messages) SettingsExtensionKindTheme() string {
+	return Catalog.Format(msgs.locale, "settingsExtensionKindTheme", nil)
 }

@@ -2,7 +2,6 @@ package main
 
 import (
 	"cmp"
-	"encoding/json"
 	"log"
 
 	"github.com/egoist/mygo"
@@ -10,6 +9,7 @@ import (
 
 	"gorex/internal/layout"
 	"gorex/internal/rex"
+	"gorex/internal/theme"
 	"gorex/locales"
 )
 
@@ -86,20 +86,6 @@ func sidebarGroupEdge() float32 {
 	return (sidebarGroupPad() + rowGap - groupGap) / 2
 }
 
-// sidebarColorTokens are the role names a sidebar.colorCustomizations key
-// may set, and the palette fields they set: the sidebar's own, not the
-// window's globals (docs/DSK-008-theme.md). tokenRenames in settings.go migrates
-// the names docs/DSK-007-sidebar-style.md first had.
-var sidebarColorTokens = map[string]func(*colors, ui.Color){
-	"sideBar.activeGroupBackground":    func(k *colors, c ui.Color) { k.groupFace = c },
-	"sideBar.activeGroupTabBackground": func(k *colors, c ui.Color) { k.pillLift = c },
-	"sideBar.activeGroupTabShadow":     func(k *colors, c ui.Color) { k.liftShadow = c },
-	"sideBar.trackBackground":          func(k *colors, c ui.Color) { k.track = c },
-	"sideBar.tabSeparator":             func(k *colors, c ui.Color) { k.tabSep = c },
-	"sideBar.tabHoverBackground":       func(k *colors, c ui.Color) { k.tabHover = c },
-	"sideBar.tabActiveBackground":      func(k *colors, c ui.Color) { k.tabActive = c },
-}
-
 // sidebarChosenColors returns the palette that the content of a chosen
 // sidebar row draws with: the ladder of the row's face when the row is
 // painted at tabActive (sidebar.selection "fill", or the glass setting off).
@@ -120,68 +106,39 @@ func sidebarHoverColors(k *colors) *colors {
 	return k
 }
 
-// sidebarPalette is the palette with the user's sidebar colors applied. It
-// returns a copy: lightColors and darkColors are shared.
+// sidebarPalette is the palette with the user's sidebar colors applied:
+// the last layer of the resolution (docs/DSK-008-theme.md). It returns a
+// copy: the palettes are shared. The role names are internal/theme's
+// allowlist; tokenRenames in settings.go migrates the names
+// docs/DSK-007-sidebar-style.md first had.
 func sidebarPalette(k *colors, dark bool) *colors {
 	if len(prefs.SidebarColors) == 0 {
 		return k
 	}
 	out := *k
 	for token, raw := range prefs.SidebarColors {
-		set, ok := sidebarColorTokens[token]
+		role, ok := theme.RoleByName(token)
 		if !ok {
 			continue
 		}
-		if col, ok := parseStyleColor(raw, dark); ok {
-			set(&out, col)
+		if col, ok := theme.ColorFor(raw, dark); ok {
+			*roleField(&out, role) = col
 		}
 	}
 	return &out
-}
-
-// parseStyleColor resolves a sidebar.colorCustomizations value: a hex
-// string, or an object {"light","dark"} for different values per
-// appearance.
-func parseStyleColor(raw json.RawMessage, dark bool) (ui.Color, bool) {
-	var s string
-	if json.Unmarshal(raw, &s) == nil {
-		return hexColor(s)
-	}
-	var pair struct {
-		Light string `json:"light"`
-		Dark  string `json:"dark"`
-	}
-	if json.Unmarshal(raw, &pair) != nil {
-		return ui.Color{}, false
-	}
-	s = pair.Light
-	if dark {
-		s = pair.Dark
-	}
-	return hexColor(s)
-}
-
-// hexColor parses a hex color without ui.Hex's panic on bad input.
-func hexColor(s string) (col ui.Color, ok bool) {
-	defer func() {
-		if recover() != nil {
-			ok = false
-		}
-	}()
-	return ui.Hex(s), true
 }
 
 // checkSidebarColors drops invalid sidebar.colorCustomizations entries at
 // load and says why, once.
 func checkSidebarColors() {
 	for token, raw := range prefs.SidebarColors {
-		if _, ok := sidebarColorTokens[token]; !ok {
+		if _, ok := theme.RoleByName(token); !ok {
 			log.Printf("gorex settings: sidebar.colorCustomizations: unknown token %q", token)
 			delete(prefs.SidebarColors, token)
 			continue
 		}
-		_, light := parseStyleColor(raw, false)
-		_, dark := parseStyleColor(raw, true)
+		_, light := theme.ColorFor(raw, false)
+		_, dark := theme.ColorFor(raw, true)
 		if !light || !dark {
 			log.Printf("gorex settings: sidebar.colorCustomizations: bad color for %q", token)
 			delete(prefs.SidebarColors, token)

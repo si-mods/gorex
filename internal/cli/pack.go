@@ -1,13 +1,17 @@
 package cli
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 
+	"gorex/internal/config"
 	"gorex/internal/iconpack"
+	"gorex/internal/theme"
 )
 
 func packCmd(args []string, out, errOut io.Writer) (int, bool) {
@@ -56,6 +60,10 @@ func packCmd(args []string, out, errOut io.Writer) (int, bool) {
 			return ExitFailed, true
 		}
 		matches := iconpack.SearchRegistry(idx, query)
+		for _, p := range iconpack.SearchRegistry(&iconpack.RegistryIndex{Packs: idx.Themes}, query) {
+			p.Kind = iconpack.KindTheme
+			matches = append(matches, p)
+		}
 		if *asJSON {
 			if matches == nil {
 				matches = []iconpack.RegistryPack{}
@@ -82,6 +90,10 @@ func packCmd(args []string, out, errOut io.Writer) (int, bool) {
 		var pk *iconpack.Pack
 		var err error
 		if st, statErr := os.Stat(src); statErr == nil && st.IsDir() {
+			if _, e := os.Stat(filepath.Join(src, theme.PackFile)); e == nil {
+				id := cmp.Or(*name, filepath.Base(filepath.Clean(src)))
+				return installTheme(id, out, errOut, func(dir string) ([]string, error) { return theme.Install(src, dir, id) })
+			}
 			pk, err = iconpack.InstallLocal(src, packsDir, *name)
 		} else if isGitURL(src) {
 			pk, err = iconpack.InstallGit(src, packsDir, *name)
@@ -91,6 +103,16 @@ func packCmd(args []string, out, errOut io.Writer) (int, bool) {
 			if err == nil {
 				var rp iconpack.RegistryPack
 				rp, err = iconpack.LookupRegistry(idx, src)
+				if err == nil && rp.Kind == iconpack.KindTheme {
+					id := cmp.Or(*name, rp.ID)
+					return installTheme(id, out, errOut, func(dir string) (warn []string, err error) {
+						err = iconpack.Checkout(context.Background(), rp, func(src string) (err error) {
+							warn, err = theme.Install(src, dir, id)
+							return err
+						})
+						return warn, err
+					})
+				}
 				if err == nil {
 					pk, err = iconpack.InstallFromRegistry(context.Background(), rp, packsDir, *name)
 				}
@@ -127,6 +149,23 @@ func packCmd(args []string, out, errOut io.Writer) (int, bool) {
 		fmt.Fprintf(errOut, "gorex pack: unknown subcommand %q\n", args[0])
 		return ExitUsage, true
 	}
+}
+
+// installTheme installs a theme pack with install, into the themes folder
+// of the config directory, and says what appearance.theme names it with
+// (docs/DSK-008-theme.md).
+func installTheme(id string, out, errOut io.Writer, install func(dir string) ([]string, error)) (int, bool) {
+	dir := theme.Dir(config.Dir())
+	warn, err := install(dir)
+	if err != nil {
+		fmt.Fprintf(errOut, "gorex pack install: %v\n", err)
+		return ExitFailed, true
+	}
+	for _, w := range warn {
+		fmt.Fprintf(errOut, "gorex pack install: %s: %s (dropped)\n", id, w)
+	}
+	fmt.Fprintf(out, "installed theme %s (%s); set \"appearance.theme\": %q to use it\n", id, filepath.Join(dir, id+".json"), id)
+	return ExitOK, true
 }
 
 func isGitURL(s string) bool {

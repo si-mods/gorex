@@ -53,10 +53,10 @@ func TestMenuStyleHasWindowPalette(t *testing.T) {
 		base  *colors
 		text  ui.Color
 	}{
-		{"dark space", "teal", true, &darkColors, ui.Hex("#10151c")},
-		{"light space", "teal", false, &lightColors, ui.Hex("#ffffff")},
-		{"dark plain", "", true, &darkColors, ui.Hex("#10151c")},
-		{"light plain", "", false, &lightColors, ui.Hex("#ffffff")},
+		{"dark space", "teal", true, paletteOf(true), ui.Hex("#10151c")},
+		{"light space", "teal", false, paletteOf(false), ui.Hex("#ffffff")},
+		{"dark plain", "", true, paletteOf(true), ui.Hex("#10151c")},
+		{"light plain", "", false, paletteOf(false), ui.Hex("#ffffff")},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			k := spaceColors(c.base, c.color, c.dark)

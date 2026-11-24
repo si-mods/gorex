@@ -3,10 +3,13 @@ package main
 import (
 	_ "embed"
 	"sync"
+	"sync/atomic"
 
 	"github.com/egoist/mygo/plugins/terminal"
 	"github.com/egoist/mygo/ui"
 	"github.com/egoist/mygo/ui/shader"
+
+	"gorex/internal/theme"
 )
 
 // colors are the app's own, in light and dark windows.
@@ -217,17 +220,97 @@ var darkSeeds = seeds{
 	pillTint:      ui.Transparent,
 }
 
-// The palettes, in light and dark windows.
+// The built-in palettes, in light and dark windows.
 var (
 	lightColors = derive(lightSeeds)
 	darkColors  = derive(darkSeeds)
 )
 
-func colorsOf(c *ui.Context) *colors {
-	if c.Theme().Dark {
-		return &darkColors
+// themePalettes are the palettes the windows draw with: the built-in ones,
+// or those of the theme appearance.theme names. The user's own
+// *.colorCustomizations go over them where they draw (sidebarPalette).
+type themePalettes struct{ light, dark colors }
+
+// palettes holds the windows' palettes. applyTheme stores a new value, never
+// changes the one stored, so a window that draws on its own goroutine
+// reads one whole palette while the theme changes; the caches keyed by a
+// palette (menuStyleOf, spaceColors) see a new address.
+// Until applyTheme stores one, it holds nil, which is builtinPalettes.
+var palettes atomic.Pointer[themePalettes]
+
+var builtinPalettes = themePalettes{lightColors, darkColors}
+
+// paletteOf returns the windows' palette of an appearance.
+func paletteOf(dark bool) *colors {
+	p := palettes.Load()
+	if p == nil {
+		p = &builtinPalettes
 	}
-	return &lightColors
+	if dark {
+		return &p.dark
+	}
+	return &p.light
+}
+
+// colorsOf returns the palette of c's appearance. Reduce Transparency
+// changes none of it: every face of the palette lies on the window's own
+// opaque gradient, not on a system material (docs/DSK-008-theme.md).
+func colorsOf(c *ui.Context) *colors {
+	return paletteOf(c.Theme().Dark)
+}
+
+// seedField returns the field of s that the seed id names.
+func seedField(s *seeds, id theme.Seed) *ui.Color {
+	return [theme.NumSeeds]*ui.Color{
+		&s.bgTop, &s.bgMid, &s.bgLow, &s.bgBottom, &s.bgTint,
+		&s.text, &s.textMuted, &s.textFaint, &s.iconMuted, &s.emptyMark,
+		&s.busy, &s.attention, &s.done, &s.exited, &s.danger,
+		&s.accent, &s.accentHover, &s.accentPressed,
+		&s.panel, &s.field, &s.fieldBorder, &s.surface, &s.surfaceHover, &s.surfacePressed,
+		&s.card, &s.cardFocused, &s.shadow, &s.shadowFocused, &s.backdrop, &s.pillTint,
+	}[id]
+}
+
+// roleField returns the field of k that the role names.
+func roleField(k *colors, r theme.Role) *ui.Color {
+	return [theme.NumRoles]*ui.Color{
+		theme.ActiveGroupBackground:    &k.groupFace,
+		theme.ActiveGroupTabBackground: &k.pillLift,
+		theme.ActiveGroupTabShadow:     &k.liftShadow,
+		theme.TrackBackground:          &k.track,
+		theme.TabSeparator:             &k.tabSep,
+		theme.TabHoverBackground:       &k.tabHover,
+		theme.TabActiveBackground:      &k.tabActive,
+	}[r]
+}
+
+// themed resolves the first three layers of docs/DSK-008-theme.md for one
+// appearance: the built-in seeds, the theme's seeds over them, derive, and
+// the theme's roles over the result. i is 0 for light, 1 for dark.
+func themed(base seeds, m *theme.Manifest, i int) colors {
+	if m == nil {
+		return derive(base)
+	}
+	for id, c := range m.Seeds[i] {
+		*seedField(&base, id) = c
+	}
+	k := derive(base)
+	for r, c := range m.Roles[i] {
+		*roleField(&k, r) = c
+	}
+	return k
+}
+
+// applyTheme makes the windows' palettes those of m, or the built-in ones
+// when m is nil, and drops what the caches made from the old ones.
+func applyTheme(m *theme.Manifest) {
+	palettes.Store(&themePalettes{themed(lightSeeds, m, 0), themed(darkSeeds, m, 1)})
+	menuStylesMu.Lock()
+	clear(menuStyles)
+	menuStylesMu.Unlock()
+	spaceColorsMu.Lock()
+	clear(spaceColorsCache)
+	spaceColorsMu.Unlock()
 }
 
 // isDark reports whether c is darker than the midpoint, as a face is.
@@ -242,10 +325,7 @@ func ladderOf(k *colors, dark bool) *colors {
 	if dark == isDark(k.panel) {
 		return k
 	}
-	if dark {
-		return &darkColors
-	}
-	return &lightColors
+	return paletteOf(dark)
 }
 
 // withLadder returns k with the text ladder of ref: k itself when ref is k,
@@ -276,16 +356,16 @@ func headerColors(k *colors, bg ui.Color) *colors {
 	return h
 }
 
-// faceRole names a face of the palette that the user may override
-// (docs/DSK-008-theme.md): the faces of the sidebar's settings.
-type faceRole int
+// faceRole names a face of the palette that a theme or the user may
+// override: a role of internal/theme's allowlist that is a face.
+type faceRole = theme.Role
 
 const (
-	roleActiveGroupBackground    faceRole = iota // sideBar.activeGroupBackground, groupFace
-	roleActiveGroupTabBackground                 // sideBar.activeGroupTabBackground, pillLift
-	roleTrackBackground                          // sideBar.trackBackground, track
-	roleTabHoverBackground                       // sideBar.tabHoverBackground, tabHover
-	roleTabActiveBackground                      // sideBar.tabActiveBackground, tabActive
+	roleActiveGroupBackground    = theme.ActiveGroupBackground
+	roleActiveGroupTabBackground = theme.ActiveGroupTabBackground
+	roleTrackBackground          = theme.TrackBackground
+	roleTabHoverBackground       = theme.TabHoverBackground
+	roleTabActiveBackground      = theme.TabActiveBackground
 )
 
 // faceColors is a face with the colors that show on it, as one value: the
@@ -304,19 +384,7 @@ type faceColors struct {
 // in a dark one) has the lightness of what it makes of the panel. A built-in
 // face has its own palette's lightness, so it gets the palette's ladder.
 func surface(k *colors, role faceRole) faceColors {
-	var face ui.Color
-	switch role {
-	case roleActiveGroupBackground:
-		face = k.groupFace
-	case roleActiveGroupTabBackground:
-		face = k.pillLift
-	case roleTrackBackground:
-		face = k.track
-	case roleTabHoverBackground:
-		face = k.tabHover
-	case roleTabActiveBackground:
-		face = k.tabActive
-	}
+	face := *roleField(k, role)
 	ref := ladderOf(k, isDark(face.Over(k.panel)))
 	return faceColors{face, ref.text, ref.textMuted, ref.textFaint, ref.iconMuted, ref.hover, ref.pressed}
 }

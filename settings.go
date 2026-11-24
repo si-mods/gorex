@@ -14,15 +14,21 @@ import (
 	"github.com/egoist/mygo/i18n"
 	"github.com/egoist/mygo/plugins/terminal"
 
+	"gorex/internal/config"
 	"gorex/internal/rex"
+	"gorex/internal/theme"
 )
 
 // settings are the user's choices, kept in settings.json beside the
 // server's state.
 type settings struct {
 	// Appearance is "light", "dark", or "" to follow the system.
-	Appearance string  `json:"appearance,omitempty"`
-	FontSize   float32 `json:"fontSize,omitempty"`
+	Appearance string `json:"appearance,omitempty"`
+	// Theme names the chrome's theme (docs/DSK-008-theme.md): a manifest
+	// <config>/themes/<name>.json, which a theme pack installs too, or ""
+	// for the built-in palettes. Builds before it ignore the key.
+	Theme    string  `json:"appearance.theme,omitempty"`
+	FontSize float32 `json:"fontSize,omitempty"`
 	// Language is a tag of the app's languages, or "" to follow the
 	// system's.
 	Language string `json:"language,omitempty"`
@@ -266,6 +272,7 @@ func loadSettings() {
 		prefs.SidebarSelection = ""
 	}
 	checkSidebarColors()
+	_ = loadTheme()
 	// A language of the file may be spelled otherwise (zh-hans, zh-CN): keep
 	// the app's own spelling of the one it matches, or none.
 	if prefs.Language != "" {
@@ -277,6 +284,32 @@ func loadSettings() {
 	// The file is the one place that says the language: "" follows the
 	// system's, whatever the app kept before.
 	setLocale(prefs.Language)
+}
+
+// loadTheme applies the theme prefs.Theme names, or the built-in palettes,
+// and returns why a theme does not load. A theme that cannot load leaves
+// the built-in ones; a bad seed or role in it is dropped. Either way the app
+// goes on, and the log says why.
+func loadTheme() error {
+	applyTheme(nil)
+	if prefs.Theme == "" {
+		return nil
+	}
+	path, err := theme.Path(theme.Dir(config.Dir()), prefs.Theme)
+	if err != nil {
+		log.Printf("gorex settings: appearance.theme: %v", err)
+		return err
+	}
+	m, warn, err := theme.Load(path)
+	if err != nil {
+		log.Printf("gorex settings: appearance.theme: %v", err)
+		return err
+	}
+	for _, w := range warn {
+		log.Printf("gorex settings: appearance.theme %q: %s (dropped)", prefs.Theme, w)
+	}
+	applyTheme(m)
+	return nil
 }
 
 // clampMetric zeroes a metric outside lo–hi, so 0 keeps meaning "the

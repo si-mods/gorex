@@ -2842,9 +2842,9 @@
   "@promptSend": {
     "description": "Confirm button of a prompt sheet with no label of its own."
   },
-  "settingsIconPacks": "Icon Packs",
+  "settingsIconPacks": "Extensions",
   "@settingsIconPacks": {
-    "description": "Settings sidebar item: community program icon packs."
+    "description": "Settings section and page title of the extensions: icon packs and theme packs."
   },
   "settingsIconPackPriority": "Priority",
   "@settingsIconPackPriority": {
@@ -2858,9 +2858,9 @@
   "@settingsIconPackPriorityOSC": {
     "description": "Segmented option: runtime OSC 7502 icons override icon packs."
   },
-  "settingsIconPacksInstalled": "Installed",
+  "settingsIconPacksInstalled": "Icon Packs",
   "@settingsIconPacksInstalled": {
-    "description": "Settings group heading: locally installed icon packs."
+    "description": "Extensions page: header of the group of installed icon packs and their priority."
   },
   "settingsIconPacksEmpty": "No icon packs installed yet.",
   "@settingsIconPacksEmpty": {
@@ -2870,7 +2870,7 @@
   "@settingsIconPacksRegistry": {
     "description": "Settings group heading: browse and install packs from gorex-registry."
   },
-  "settingsIconPacksSearch": "Search icon packs…",
+  "settingsIconPacksSearch": "Search extensions…",
   "@settingsIconPacksSearch": {
     "description": "Placeholder of the search input in Community Registry."
   },
@@ -2897,5 +2897,33 @@
   "settingsIconPacksCount": "{count, plural, one {# icon} other {# icons}}",
   "@settingsIconPacksCount": {
     "description": "Icon count label under an installed icon pack."
+  },
+  "settingsWindowTheme": "Window Theme",
+  "@settingsWindowTheme": {
+    "description": "Extensions page: header of the group that picks the colors of GoRex's own window (not the terminal's)."
+  },
+  "settingsThemeBuiltIn": "Built-in",
+  "@settingsThemeBuiltIn": {
+    "description": "Extensions page: the row of GoRex's own palette in the Window Theme group."
+  },
+  "settingsThemeBuiltInHint": "GoRex's own colors.",
+  "@settingsThemeBuiltInHint": {
+    "description": "Extensions page: hint under the Built-in theme row."
+  },
+  "settingsThemeUse": "Use",
+  "@settingsThemeUse": {
+    "description": "Extensions page: button that makes a theme the window theme."
+  },
+  "settingsThemeInUse": "In use",
+  "@settingsThemeInUse": {
+    "description": "Extensions page: label of the window theme in use."
+  },
+  "settingsExtensionKindIcons": "Icon pack",
+  "@settingsExtensionKindIcons": {
+    "description": "Extensions page: the kind of an extension, before its ID."
+  },
+  "settingsExtensionKindTheme": "Theme",
+  "@settingsExtensionKindTheme": {
+    "description": "Extensions page: the kind of an extension, before its ID."
   }
 }

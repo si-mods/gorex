@@ -6,30 +6,37 @@ import (
 	"slices"
 	"sync"
 
-	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 
+	"gorex/internal/config"
 	"gorex/internal/iconpack"
+	"gorex/internal/theme"
 	"gorex/locales"
 )
 
+// iconPacksUI is the state of the Extensions page (the "icons" section):
+// icon packs (docs/MOD-012-program-icon-packs.md) and theme packs
+// (docs/DSK-008-theme.md).
 var iconPacksUI struct {
 	mu              sync.Mutex
 	installed       []iconpack.Summary
+	themes          []theme.Summary
 	installedLoaded bool
 	reg             *iconpack.RegistryIndex
 	regLoaded       bool
 	regLoading      bool
 	regErr          string
 	query           string
-	installing      map[string]bool
+	installing      map[string]bool // by registryKey
 	actionErr       string
+	themeErr        string
 }
 
 func resetIconPacksUI() {
 	iconPacksUI.mu.Lock()
 	defer iconPacksUI.mu.Unlock()
 	iconPacksUI.installed = nil
+	iconPacksUI.themes = nil
 	iconPacksUI.installedLoaded = false
 	iconPacksUI.reg = nil
 	iconPacksUI.regLoaded = false
@@ -38,12 +45,15 @@ func resetIconPacksUI() {
 	iconPacksUI.query = ""
 	iconPacksUI.installing = nil
 	iconPacksUI.actionErr = ""
+	iconPacksUI.themeErr = ""
 }
 
 func (a *App) refreshInstalledIconPacks() {
 	list, err := iconpack.ListPacks(iconpack.Dir())
+	themes := theme.List(theme.Dir(config.Dir()))
 	iconPacksUI.mu.Lock()
 	iconPacksUI.installed = list
+	iconPacksUI.themes = themes
 	iconPacksUI.installedLoaded = true
 	if err != nil {
 		iconPacksUI.actionErr = err.Error()
@@ -85,36 +95,59 @@ func (a *App) fetchIconPackRegistry() {
 	}()
 }
 
+// registryKey tells the entries of the registry apart: an icon pack and a
+// theme may have the same ID.
+func registryKey(rp iconpack.RegistryPack) string {
+	if rp.Kind == "" {
+		return rp.ID
+	}
+	return rp.Kind + "/" + rp.ID
+}
+
+// installIconPack installs a registry entry of either kind: an icon pack,
+// which it then turns on, or a theme pack, as gorex pack install does;
+// using the theme is the Window Theme group's choice.
 func (a *App) installIconPack(rp iconpack.RegistryPack) {
+	key := registryKey(rp)
 	iconPacksUI.mu.Lock()
 	if iconPacksUI.installing == nil {
 		iconPacksUI.installing = map[string]bool{}
 	}
-	if iconPacksUI.installing[rp.ID] {
+	if iconPacksUI.installing[key] {
 		iconPacksUI.mu.Unlock()
 		return
 	}
-	iconPacksUI.installing[rp.ID] = true
+	iconPacksUI.installing[key] = true
 	iconPacksUI.actionErr = ""
 	iconPacksUI.mu.Unlock()
 
 	win := settingsUI.win
-	packsDir := iconpack.Dir()
+	packsDir, themesDir := iconpack.Dir(), theme.Dir(config.Dir())
 	go func() {
-		_, err := iconpack.InstallFromRegistry(context.Background(), rp, packsDir, "")
+		var err error
+		if rp.Kind == iconpack.KindTheme {
+			err = iconpack.Checkout(context.Background(), rp, func(dir string) error {
+				_, err := theme.Install(dir, themesDir, rp.ID)
+				return err
+			})
+		} else {
+			_, err = iconpack.InstallFromRegistry(context.Background(), rp, packsDir, "")
+		}
 		apply := func() {
 			iconPacksUI.mu.Lock()
-			delete(iconPacksUI.installing, rp.ID)
+			delete(iconPacksUI.installing, key)
 			if err != nil {
 				iconPacksUI.actionErr = err.Error()
 			}
 			iconPacksUI.mu.Unlock()
 			if err == nil {
-				a.setPref(func(s *settings) {
-					if !slices.Contains(s.IconPacks, rp.ID) {
-						s.IconPacks = append(s.IconPacks, rp.ID)
-					}
-				})
+				if rp.Kind != iconpack.KindTheme {
+					a.setPref(func(s *settings) {
+						if !slices.Contains(s.IconPacks, rp.ID) {
+							s.IconPacks = append(s.IconPacks, rp.ID)
+						}
+					})
+				}
 				a.refreshInstalledIconPacks()
 			}
 		}
@@ -126,12 +159,15 @@ func (a *App) installIconPack(rp iconpack.RegistryPack) {
 	}()
 }
 
+// iconPacksSettings is the Extensions page: the window theme, the icon
+// packs and the community registry of both kinds.
 func (a *App) iconPacksSettings(c *ui.Context, k *colors) {
 	iconPacksUI.mu.Lock()
 	installedLoaded := iconPacksUI.installedLoaded
 	regLoaded := iconPacksUI.regLoaded
 	regLoading := iconPacksUI.regLoading
 	installed := slices.Clone(iconPacksUI.installed)
+	themes := slices.Clone(iconPacksUI.themes)
 	reg := iconPacksUI.reg
 	regErr := iconPacksUI.regErr
 	actionErr := iconPacksUI.actionErr
@@ -145,17 +181,20 @@ func (a *App) iconPacksSettings(c *ui.Context, k *colors) {
 		a.refreshInstalledIconPacks()
 		iconPacksUI.mu.Lock()
 		installed = slices.Clone(iconPacksUI.installed)
+		themes = slices.Clone(iconPacksUI.themes)
 		iconPacksUI.mu.Unlock()
 	}
 	if !regLoaded && !regLoading {
 		a.fetchIconPackRegistry()
 	}
 
+	a.themesGroup(c, k, themes)
+
 	prio := 0
 	if prefs.IconPackPriority == "osc" {
 		prio = 1
 	}
-	settingsGroup(c, k, "", "", "", func() {
+	settingsGroup(c, k, locales.SettingsIconPacksInstalled(), "", actionErr, func() {
 		settingRow(c, k, locales.SettingsIconPackPriority(), "", func() {
 			if ui.Segmented(c, &prio, locales.SettingsIconPackPriorityPack(), locales.SettingsIconPackPriorityOSC()).Label(locales.SettingsIconPackPriority()).Changed() {
 				next := "pack"
@@ -166,9 +205,6 @@ func (a *App) iconPacksSettings(c *ui.Context, k *colors) {
 				reloadIconPacks(a.luaConfig)
 			}
 		})
-	})
-
-	settingsGroup(c, k, locales.SettingsIconPacksInstalled(), "", actionErr, func() {
 		if len(installed) == 0 {
 			groupRow(c, k, "installed-empty").Children(func() {
 				rowHint(c, k, locales.SettingsIconPacksEmpty())
@@ -219,9 +255,12 @@ func (a *App) iconPacksSettings(c *ui.Context, k *colors) {
 		}
 	})
 
-	installedSet := make(map[string]bool, len(installed))
+	installedSet := map[string]bool{}
 	for _, s := range installed {
 		installedSet[s.ID] = true
+	}
+	for _, s := range themes {
+		installedSet[registryKey(iconpack.RegistryPack{ID: s.ID, Kind: iconpack.KindTheme})] = true
 	}
 
 	settingsGroup(c, k, locales.SettingsIconPacksRegistry(), "", regErr, func() {
@@ -233,23 +272,23 @@ func (a *App) iconPacksSettings(c *ui.Context, k *colors) {
 				}
 			})
 		})
-		matches := iconpack.SearchRegistry(reg, iconPacksUI.query)
-		for _, rp := range matches {
-			groupRow(c, k, "reg-"+rp.ID).Children(func() {
+		for _, rp := range registryEntries(reg, iconPacksUI.query) {
+			key := registryKey(rp)
+			groupRow(c, k, "reg-"+key).Children(func() {
 				title := cmp.Or(rp.Name, rp.ID)
 				rowLine(c, k, title, func() {
 					switch {
-					case installedSet[rp.ID]:
+					case installedSet[key]:
 						ui.Text(c, locales.SettingsIconPacksInstalledBadge()).FontSize(fontFootnote).FontWeight(600).TextColor(k.accent)
-					case installing[rp.ID]:
+					case installing[key]:
 						ui.Text(c, locales.SettingsIconPacksInstalling()).FontSize(fontFootnote).TextColor(k.textMuted)
 					default:
-						if ui.Button(c, locales.SettingsIconPacksInstall()).Clicked() {
+						if ui.Button(c, locales.SettingsIconPacksInstall()).Label(locales.SettingsIconPacksInstall() + " " + title).Clicked() {
 							a.installIconPack(rp)
 						}
 					}
 				})
-				meta := rp.ID
+				meta := extensionKind(rp.Kind) + " · " + rp.ID
 				if rp.Author != "" {
 					meta += " · " + rp.Author
 				}
@@ -265,4 +304,103 @@ func (a *App) iconPacksSettings(c *ui.Context, k *colors) {
 	})
 }
 
-var _ = (*mygo.Window)(nil)
+// registryEntries are the registry's entries that match query, of every
+// kind: the icon packs, then the themes, each with its Kind set. An index
+// with no themes, as the registry's before them, lists its icon packs.
+func registryEntries(reg *iconpack.RegistryIndex, query string) []iconpack.RegistryPack {
+	out := iconpack.SearchRegistry(reg, query)
+	if reg == nil {
+		return out
+	}
+	for _, rp := range iconpack.SearchRegistry(&iconpack.RegistryIndex{Packs: reg.Themes}, query) {
+		rp.Kind = iconpack.KindTheme
+		out = append(out, rp)
+	}
+	return out
+}
+
+// extensionKind names an extension's kind as the page shows it.
+func extensionKind(kind string) string {
+	if kind == iconpack.KindTheme {
+		return locales.SettingsExtensionKindTheme()
+	}
+	return locales.SettingsExtensionKindIcons()
+}
+
+// themesGroup is the Window Theme group: the built-in palette and each
+// installed theme, the one in use marked and the others with Use, and
+// Remove for an installed theme.
+func (a *App) themesGroup(c *ui.Context, k *colors, themes []theme.Summary) {
+	iconPacksUI.mu.Lock()
+	themeErr := iconPacksUI.themeErr
+	iconPacksUI.mu.Unlock()
+	choice := func(id, title string) {
+		if prefs.Theme == id {
+			ui.Text(c, locales.SettingsThemeInUse()).FontSize(fontFootnote).FontWeight(600).TextColor(k.accent)
+			return
+		}
+		if ui.Button(c, locales.SettingsThemeUse()).Label(locales.SettingsThemeUse() + " " + title).Clicked() {
+			a.useTheme(id)
+		}
+	}
+	settingsGroup(c, k, locales.SettingsWindowTheme(), "", themeErr, func() {
+		groupRow(c, k, "theme-builtin").Children(func() {
+			rowLine(c, k, locales.SettingsThemeBuiltIn(), func() { choice("", locales.SettingsThemeBuiltIn()) })
+			rowHint(c, k, locales.SettingsThemeBuiltInHint())
+		})
+		for _, s := range themes {
+			groupRow(c, k, "theme-"+s.ID).Children(func() {
+				title := cmp.Or(s.Name, s.ID)
+				rowLine(c, k, title, func() {
+					if s.Error == "" {
+						choice(s.ID, title)
+					}
+					if ui.Button(c, locales.SettingsIconPacksRemove()).Label(locales.SettingsIconPacksRemove() + " " + title).Clicked() {
+						a.removeTheme(s.ID)
+					}
+				})
+				hint := extensionKind(iconpack.KindTheme) + " · " + s.ID
+				if s.Error != "" {
+					hint += " · " + s.Error
+				}
+				rowHint(c, k, hint)
+			})
+		}
+	})
+}
+
+// useTheme makes id the theme of every window, "" for the built-in
+// palette: it saves appearance.theme and applies the theme at once.
+// applyTheme stores new palettes and drops the caches made from the old
+// ones, so it is safe while other windows draw; each window then draws
+// again.
+func (a *App) useTheme(id string) {
+	a.setPref(func(s *settings) { s.Theme = id })
+	err := loadTheme()
+	iconPacksUI.mu.Lock()
+	iconPacksUI.themeErr = ""
+	if err != nil {
+		iconPacksUI.themeErr = err.Error()
+	}
+	iconPacksUI.mu.Unlock()
+	for _, o := range a.peers() {
+		if o.win != nil {
+			o.win.Update(func() {})
+		}
+	}
+}
+
+// removeTheme deletes an installed theme, and goes back to the built-in
+// palette when it was the one in use.
+func (a *App) removeTheme(id string) {
+	if err := theme.Remove(theme.Dir(config.Dir()), id); err != nil {
+		iconPacksUI.mu.Lock()
+		iconPacksUI.themeErr = err.Error()
+		iconPacksUI.mu.Unlock()
+		return
+	}
+	if prefs.Theme == id {
+		a.useTheme("")
+	}
+	a.refreshInstalledIconPacks()
+}
