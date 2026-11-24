@@ -30,43 +30,49 @@ const (
 var placements = []string{"", "left", "right"}
 
 // sidebarRowH, sidebarLead, sidebarFont and sidebarGroupPad are the
-// sidebar's metrics: the user's sidebar.* settings over the constants
-// (docs/DSK-007-sidebar-style.md).
+// sidebar's metrics: the user's sidebar.* settings over the theme's over
+// the constants (docs/DSK-007-sidebar-style.md, docs/DSK-008-theme.md).
 func sidebarRowH() float32 {
-	if v := prefs.SidebarRowHeight; v != 0 {
-		return v
-	}
-	return sideRowH
+	return cmp.Or(prefs.SidebarRowHeight, themeSidebar.RowHeight, sideRowH)
 }
 
 func sidebarLead() float32 {
-	if v := prefs.SidebarIndent; v != 0 {
-		return v
-	}
-	return sideLead
+	return cmp.Or(prefs.SidebarIndent, themeSidebar.Indent, sideLead)
+}
+
+// sidebarTabLead is a tab-level row's start padding: sidebarLead plus the
+// sidebar.tabIndent of the user or the theme, so a project's tabs read
+// under it.
+func sidebarTabLead() float32 {
+	return sidebarLead() + cmp.Or(prefs.SidebarTabIndent, themeSidebar.TabIndent)
 }
 
 func sidebarFont(def float32) float32 {
-	if v := prefs.SidebarFontSize; v != 0 {
-		return v
-	}
-	return def
+	return cmp.Or(prefs.SidebarFontSize, themeSidebar.FontSize, def)
 }
 
 func sidebarGroupPad() float32 {
-	if v := prefs.SidebarGroupPad; v != 0 {
-		return v
-	}
-	return groupPad
+	return cmp.Or(prefs.SidebarGroupPad, themeSidebar.GroupPad, groupPad)
 }
+
+// sidebarGrouping is sidebar.groupBy, "host" when the user and the theme
+// leave it.
+func sidebarGrouping() string { return cmp.Or(prefs.SidebarGroupBy, themeSidebar.GroupBy, "host") }
 
 // sidebarIconsText tells whether sidebar.icons is "text": the rows' names
 // with no program tiles, the folder glyph alone for a project.
-func sidebarIconsText() bool { return prefs.SidebarIcons == "text" }
+func sidebarIconsText() bool { return cmp.Or(prefs.SidebarIcons, themeSidebar.Icons) == "text" }
+
+// sidebarGroupFaced tells whether the current project's group draws its
+// face: sidebar.groupBackground "none" leaves the group's rows on the
+// sidebar's face, as every other project's.
+func sidebarGroupFaced() bool {
+	return cmp.Or(prefs.SidebarGroupFace, themeSidebar.GroupFace, "face") != "none"
+}
 
 // sidebarFillSel tells whether sidebar.selection is "fill": a quiet face
 // fill on the chosen row instead of the glass pill.
-func sidebarFillSel() bool { return prefs.SidebarSelection == "fill" }
+func sidebarFillSel() bool { return cmp.Or(prefs.SidebarSelection, themeSidebar.Selection) == "fill" }
 
 // sidebarChosen paints a sidebar row's chosen state: the glass pill as
 // the other surfaces' chosen control, or the fill of sidebar.selection
@@ -523,7 +529,7 @@ func (a *App) sidebarTab(c *ui.Context, k *colors, i int, t *Tab, reserve float3
 	// Keyed by the tab's lasting ID, as spaceTab keys it: as the window
 	// goes to show another space, the rows of both stay, not close and
 	// open again.
-	e := ui.Row(c.Key("tab-"+t.UID)).Height(sidebarRowH()).Shrink(0).Padding(0, 6, 0, sidebarLead()).Gap(sideGap).AlignItems(ui.Center).Radius(pillRadius(sidebarRowH(), radiusM)).
+	e := ui.Row(c.Key("tab-"+t.UID)).Height(sidebarRowH()).Shrink(0).Padding(0, 6, 0, sidebarTabLead()).Gap(sideGap).AlignItems(ui.Center).Radius(pillRadius(sidebarRowH(), radiusM)).
 		Role(ui.RoleTab).Selected(active)
 	name, detail := t.label()
 	e.Label(name + " " + detail)
@@ -600,7 +606,7 @@ func (a *App) hostSectionIcon(c *ui.Context, k *colors, h *hostConn) {
 // ends the row as a shown tab's does. It reports whether it was
 // clicked.
 func spaceTab(c *ui.Context, k *colors, key, name, detail string, s *rex.ProgramStatus, reserve float32, tiles func()) bool {
-	e := ui.Row(c.Key("tab-"+key)).Height(sidebarRowH()).Shrink(0).Padding(0, 6, 0, sidebarLead()).Gap(sideGap).AlignItems(ui.Center).Radius(pillRadius(sidebarRowH(), radiusM)).
+	e := ui.Row(c.Key("tab-"+key)).Height(sidebarRowH()).Shrink(0).Padding(0, 6, 0, sidebarTabLead()).Gap(sideGap).AlignItems(ui.Center).Radius(pillRadius(sidebarRowH(), radiusM)).
 		Cursor(ui.CursorPointer).Role(ui.RoleButton).Label(name + " " + detail)
 	if anim := motion(c); anim != nil {
 		e.Transition(exitIn(ui.ElementTransition{Animation: anim, Position: true, Enter: tabMotion, Exit: tabMotion}, durExitMove))

@@ -138,7 +138,7 @@ func (a *App) projectsList(c *ui.Context, k *colors) {
 		}
 		// sidebar.groupBy "flat" lists every host's items without the
 		// host's section header and body (docs/DSK-007-sidebar-style.md).
-		if prefs.SidebarGroupBy == "flat" {
+		if sidebarGrouping() == "flat" {
 			items()
 			continue
 		}
@@ -376,7 +376,7 @@ func (a *App) projectGroup(c *ui.Context, k *colors, w *Workspace, reserve float
 	// Every project has the room of the face, so that choosing another moves
 	// nothing: only the face's color comes and goes, fading.
 	g := ui.Column(c.Key("group-"+openKey(w.host, w.ID))).Gap(rowGap).Radius(pillRadius(sidebarRowH(), radiusM)+sidebarGroupPad()).Padding(sidebarGroupPad()).Margin(-sidebarGroupEdge(), -sidebarGroupPad(), -sidebarGroupEdge(), -sidebarGroupPad())
-	if w == a.ws && rowOpen(openKey(w.host, w.ID), true) && w.tabCount() > 0 {
+	if w == a.ws && rowOpen(openKey(w.host, w.ID), true) && w.tabCount() > 0 && sidebarGroupFaced() {
 		g.Background(k.groupFace)
 		k = surface(k, roleActiveGroupBackground).on(k) // what the group holds reads on its face
 	} else {
@@ -407,7 +407,9 @@ const rowGap = 4
 // and their tabs', start at one leading edge: sideLead in, then the room
 // of the tabs' tiles (tilesReserve), where a project's folder tile shows,
 // then sideGap, then the name or title. So a project's folder tile is over
-// its tabs' tiles, and its name over their titles, open or closed.
+// its tabs' tiles, and its name over their titles, open or closed. The
+// user's sidebar.tabIndent shifts the tab-level rows (sidebarTabLead)
+// right of the edge, so a project's tabs read under it.
 const (
 	sideLead = 9
 	sideGap  = 6
@@ -782,7 +784,7 @@ func (a *App) projectAgentMenu(c *ui.Context, m *ui.Menu, w *Workspace, agents [
 // opening a tab that runs it, and the chevron of the menu of every
 // installed one. With none pinned the cluster is the chevron alone.
 func (a *App) projectNewTabRow(c *ui.Context, k *colors, w *Workspace, agents []rex.AgentInfo, reserve float32) {
-	row := ui.Row(c.Key("new-tab-"+openKey(w.host, w.ID))).Height(sidebarRowH()).Shrink(0).Padding(0, 4, 0, sidebarLead()).Gap(sideGap).AlignItems(ui.Center)
+	row := ui.Row(c.Key("new-tab-"+openKey(w.host, w.ID))).Height(sidebarRowH()).Shrink(0).Padding(0, 4, 0, sidebarTabLead()).Gap(sideGap).AlignItems(ui.Center)
 	row.Children(func() {
 		// The shell's part fills the row, so the cluster's buttons keep
 		// their own hovers at its end.

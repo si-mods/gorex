@@ -64,6 +64,46 @@ func TestParseDrops(t *testing.T) {
 	}
 }
 
+// TestParseSidebar: the sidebar key carries the sidebar.* settings of
+// docs/DSK-007 a theme suggests. A value that is not a number, a metric
+// out of range, a bad enum and an unknown key drop with a warning each.
+func TestParseSidebar(t *testing.T) {
+	m, warn, err := Parse([]byte(`{
+  "name": "slate",
+  "sidebar": {
+    "rowHeight": 28,
+    "indent": 12,
+    "tabIndent": 8,
+    "fontSize": "big",
+    "groupPadding": 99,
+    "groupBy": "flat",
+    "groupBackground": "none",
+    "icons": "wobbly",
+    "selection": "fill",
+    "width": 300
+  }
+}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := Sidebar{RowHeight: 28, Indent: 12, TabIndent: 8, GroupBy: "flat", GroupFace: "none", Selection: "fill"}
+	if m.Sidebar != want {
+		t.Errorf("sidebar %+v, want %+v", m.Sidebar, want)
+	}
+	wantWarn := []string{
+		`sidebar.fontSize: not a number`,
+		`sidebar.groupPadding: 99 outside 0–12`,
+		`sidebar.icons: bad value`,
+		`sidebar: unknown key "width"`,
+	}
+	if !slices.Equal(warn, wantWarn) {
+		t.Errorf("warnings\n%q\nwant\n%q", warn, wantWarn)
+	}
+	if _, warn, err := Parse([]byte(`{"sidebar": 7}`)); err != nil || !slices.Equal(warn, []string{`sidebar: not an object`}) {
+		t.Errorf("a non-object sidebar: %v %q", err, warn)
+	}
+}
+
 // TestParseTerminal: the terminal key names a Ghostty theme for each
 // appearance. A name with a path, a name Ghostty does not have, a value
 // that is not a string and an unknown appearance are dropped with a
