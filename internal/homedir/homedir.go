@@ -108,22 +108,26 @@ func DataDir(dev bool) string {
 }
 
 // ConfigPath resolves the configuration file: GOREX_CONFIG, then the
-// home's init.lua when it exists, then the legacy one, then the home's.
+// home's init.lua when it exists, then the legacy one, then init.lua in
+// the data directory DataDir resolves. The last follows the data, so
+// that a theme or icon pack installed before the move goes to the
+// legacy data directory and never makes the home, which would take the
+// resolution of every process away from the legacy data.
 func ConfigPath() string {
 	if p := strings.TrimSpace(os.Getenv("GOREX_CONFIG")); p != "" {
 		return p
 	}
-	root := Root(false)
-	if root != "" && isFile(filepath.Join(root, "init.lua")) {
+	if root := Root(false); root != "" && isFile(filepath.Join(root, "init.lua")) {
 		return filepath.Join(root, "init.lua")
 	}
 	if l := legacyConfigDir(); l != "" && isFile(filepath.Join(l, "init.lua")) {
 		return filepath.Join(l, "init.lua")
 	}
-	if root == "" {
+	d := DataDir(false)
+	if d == "" {
 		return ""
 	}
-	return filepath.Join(root, "init.lua")
+	return filepath.Join(d, "init.lua")
 }
 
 // Migrate moves the legacy directories to Root(dev), in the code path
