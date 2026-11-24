@@ -8,7 +8,7 @@ metadata:
 
 # DSK-008: Desktop theme framework
 
-Status: phases 1 and 2 built (#1065, #1067). Phase 3 not built.
+Status: built (#1065, #1067, #1074).
 
 This doc decides the shape of theming for the desktop chrome. The chrome is the sidebar, the cards of the panes, the dialogs and the menus. This doc replaces no doc. It extends the palette rules of `DESIGN.md` and the settings keys of [DSK-007](DSK-007-sidebar-style.md). The layers come from the design-system pass note of the Vibe Design Tips series (vibedesign.tips). The material and ink model comes from tip 010 of that series (liquid glass).
 
@@ -56,14 +56,16 @@ A theme is a manifest of seeds and optional role overrides:
 {
   "name": "slate",
   "seeds": {
-    "light": { "background": "#f5f6f8", "text": "#1a1d21", "accent": "#0a6bff" },
-    "dark":  { "background": "#16181d", "text": "#e8eaed", "accent": "#5b8def" }
+    "light": { "bgTop": "#eef0f4", "panel": "#f5f6f8", "text": "#1a1d21", "accent": "#0a6bff" },
+    "dark":  { "bgTop": "#1c1f26", "panel": "#16181d", "text": "#e8eaed", "accent": "#5b8def" }
   },
   "roles": { "sideBar.tabActiveBackground": "#5b8def33" }
 }
 ```
 
-The user selects a theme with a new settings key, `appearance.theme`. Its value is the name of a manifest. The top-level `appearance` key keeps its meaning: light, dark or the system. The name of a Ghostty theme moves to `terminal.theme` ([DSK-009](DSK-009-terminal-settings.md)).
+A seed key is a name of the seed table (see Model). A manifest can give some seeds. Each other seed comes from the built-in seeds of that appearance. A role value is a hex string, or an object `{"light", "dark"}` with a value for each appearance, as in `sidebar.colorCustomizations`.
+
+The user selects a theme with a new settings key, `appearance.theme`. Its value is the name of a manifest file, `<config>/themes/<name>.json`. `<config>` is the folder of `init.lua`. A theme pack installs its manifest in the same folder (see Code). An empty value selects the built-in palettes. The Window Theme group of the Settings page Extensions sets the key too. The top-level `appearance` key keeps its meaning: light, dark or the system. The name of a Ghostty theme moves to `terminal.theme` ([DSK-009](DSK-009-terminal-settings.md)).
 
 Resolution has four layers. Each layer overwrites the layer before it:
 
@@ -97,7 +99,7 @@ The resolver selects the ink as follows:
 
 A backdrop is a palette color or an unknown texture. The resolver does not sample pixels. Thus the ink changes only when the palette changes, and the ink does not flicker.
 
-The system setting for less transparency also applies. MyGo gives it as `ui.Preferences.ReduceTransparency`: Reduce Transparency on macOS, and no transparency effects on Windows. When it is true, a material role resolves to the same face at full opacity. GoRex reads no such setting now, so this is new behavior.
+The system setting for less transparency also applies. MyGo gives it as `ui.Preferences.ReduceTransparency`: Reduce Transparency on macOS, and no transparency effects on Windows. When it is true, a face over a system material or over a live backdrop resolves to the same face at full opacity. A face over GoRex's own painted gradient does not change: the gradient is opaque, so nothing outside the window shows through the face. All five sidebar faces lie on that gradient. The built-in palette thus has no face that the rule changes, and a theme's roles are the same faces. With no theme or with one, Reduce Transparency changes no pixel. `colorsOf` does not read the setting. A later face over a material applies the rule where it is drawn.
 
 ### Model
 
@@ -155,9 +157,10 @@ Each face has a pairing rule. The resolver attaches the text ladder that fits th
 ### Code
 
 - `style.go`: The `colors` struct stays. A `seeds` struct and `derive(seeds) colors` make the two palettes: `lightColors` is `derive(lightSeeds)`, and `darkColors` is `derive(darkSeeds)`. `surface(k, role)` returns the face and its ladder. `headerColors` becomes part of the resolver.
-- `internal/theme` (new): This package parses and validates a manifest. It checks the seed hex values. It checks the role names against an allowlist, as `checkSidebarColors` does.
-- `settings.go`: The new `appearance.theme` key names a manifest in the config directory or in a pack. Each `*.colorCustomizations` key maps onto roles. `migrateSettings` from DSK-009 also renames the DSK-007 tokens.
-- Registry: A pack of kind `theme` carries the manifest. It uses the install path of the icon packs.
+- `internal/theme` (new): This package parses and validates a manifest. It holds the one allowlist of seed names and role names. `style.go` maps each name to a field (`seedField`, `roleField`). `checkSidebarColors` and `sidebarPalette` use the same allowlist and the same color parser (`theme.ColorFor`).
+- `style.go`: `applyTheme` makes the palettes of both appearances from layers 1 to 3 and stores them as one new value (`palettes`, an atomic pointer). A window that draws on its own goroutine thus reads whole palettes while the theme changes, so a theme applies at once, with no restart. `applyTheme` also drops the caches keyed by a palette (`menuStyleOf`, `spaceColors`). `colorsOf` returns the palettes, and `ladderOf` takes the ladder of the other appearance from them. `lightColors` and `darkColors` stay the built-in palettes.
+- `settings.go`: The new `appearance.theme` key names a manifest in `<config>/themes`. `loadSettings` loads it (`loadTheme`). Each `*.colorCustomizations` key maps onto roles. `migrateSettings` from DSK-009 also renames the DSK-007 tokens.
+- Registry: A pack of kind `theme` is a folder with a `theme.json` manifest. The registry's `index.json` lists it in a `themes` array, beside `packs`, with `"kind": "theme"`. Builds before phase 3 read only `packs`, so they do not show a theme pack as an icon pack. `gorex pack install <id>` clones the pack with the code of the icon packs (`iconpack.Checkout`), validates `theme.json` and copies it to `<config>/themes/<id>.json`. `gorex pack install <folder>` does the same for a local folder with a `theme.json`.
 - Call sites move to the resolver one surface at a time. The chosen sidebar row moves first, because it shows the contrast bug.
 
 ## Alternatives
@@ -171,7 +174,7 @@ Each face has a pairing rule. The resolver attaches the text ladder that fits th
 
 ## Security
 
-A theme manifest is data: hex values and enum names. It contains no code, no paths and no commands. The load step removes unknown roles and bad colors, as `checkSidebarColors` does.
+A theme manifest is data: hex values and enum names. It contains no code, no paths and no commands. The load step removes unknown keys, unknown seeds, unknown roles and bad colors, as `checkSidebarColors` does, and logs a warning for each. A manifest is at most 64 KiB. A theme name has only letters, digits, `-`, `_` and `.`, so `appearance.theme` cannot name a file outside `<config>/themes`.
 
 ## Migration
 
@@ -181,16 +184,19 @@ An upgrade keeps the look that the user has. The user does not edit the file.
 - At the first load, `migrateSettings` renames each DSK-007 token in `sidebar.colorCustomizations` to its role name. It keeps the value, with its exact text. If both names are present, the role name wins. It writes the backup `settings.json.bak` first, as DSK-009 says.
 - GoRex also reads a DSK-007 token that a user writes by hand later, and migrates it at the next load.
 - An older build does not know the role names. It drops them at load with a warning, and the sidebar uses the built-in colors. The user can copy `settings.json.bak` back.
-- An older build ignores the `appearance.theme` key, because `loadSettings` ignores unknown keys.
+- An older build ignores the `appearance.theme` key, because `loadSettings` ignores unknown keys. When an older build saves `settings.json`, it writes only the keys it knows, so the key goes. The user sets it again.
 
 ## Tests
 
 - **Derivation**: `derive` on the built-in seeds gives each field of the literal `lightColors` and `darkColors`, byte for byte (`TestDeriveKeepsPalettes`).
 - **Pairing**: A light `sideBar.tabActiveBackground` override in a dark window resolves dark text for the chosen row. A dark override keeps the text of the palette.
 - **Ink**: A material over a backdrop that the code cannot read resolves the ink of the theme at the dense tint.
-- **Reduce Transparency**: With `ReduceTransparency` true, a material role resolves to an opaque face.
-- **Manifest**: The load step removes a manifest with a bad seed or an unknown role and logs a warning. It does not stop the app.
-- **Settings**: A `settings.json` with both `terminal.theme` and `appearance.theme` keeps the Ghostty theme and selects the manifest.
+- **Reduce Transparency**: With `ReduceTransparency` true or false, with no theme or with one, `colorsOf` returns the same palette, unchanged (`TestReduceTransparency`).
+- **Extensions page**: The page lists both kinds, installs a theme pack, uses it at once and goes back to the built-in palette (`TestIconPacksSettingsView`, [MOD-012](MOD-012-program-icon-packs.md)).
+- **Manifest**: The load step removes a bad seed, an unknown seed, an unknown role and an unknown key, and logs a warning for each. It does not stop the app (`TestParseDrops`, `TestParseFails`).
+- **Layers**: The theme's seeds go through `derive`, the theme's roles go over the result, and the user's `sidebar.colorCustomizations` go over the theme's roles (`TestThemeLayers`). With no theme, each palette is the built-in one (`TestThemeNoneKeepsPalettes`).
+- **Settings**: A `settings.json` with both `terminal.theme` and `appearance.theme` keeps the Ghostty theme and selects the manifest. A missing manifest or a name with a path leaves the built-in palettes (`TestSettingsTerminalAndAppearanceTheme`).
+- **Theme pack**: `gorex pack install` installs a registry theme pack, and a local folder with a `theme.json`, to `<config>/themes` (`TestPackInstallTheme`, `TestInstall`).
 - **Token migration**: A file with the seven DSK-007 tokens loads with the same colors. The file on disk then has only role names, with the exact values.
 - **Both names**: A file with `tabActive` and `sideBar.tabActiveBackground` keeps the value of the role name.
 
@@ -200,4 +206,4 @@ No item in `docs/invariants.md` covers the palette.
 
 1. **Pairing** (built): Add the `surface` resolver. Move the chosen sidebar row to it first, then the other chrome. This fixes the contrast for the current overrides. Rename the DSK-007 tokens and migrate them. The resolver judges a translucent face as laid over `panel`. It serves the sidebar's chosen rows, hovered rows and the current project's group. Not moved: the pill under glass (the system draws it, so `sideBar.activeGroupTabBackground` is only its fallback face), the tab strip's track, and the separators and shadows, which carry no text. The pane cards, the dialogs and the menus are the next call sites.
 2. **Seeds** (built): `derive` replaces the literal palettes, and `colors` becomes a derived value. The ink rules make 17 roles of each palette. The other 30 roles are seeds. Each field is byte-exact, so the look does not change.
-3. **Manifest**: Add `internal/theme`, the `appearance.theme` settings key and a `theme` pack kind on the registry.
+3. **Manifest** (built): Add `internal/theme`, the `appearance.theme` settings key and a `theme` pack kind on the registry. The Settings page for packs becomes **Extensions** ([MOD-012](MOD-012-program-icon-packs.md)): it lists the registry's themes, installs them, and uses one at once. Reduce Transparency changes no face, because each face lies on the opaque gradient. The sample theme pack `slate` is in the registry.

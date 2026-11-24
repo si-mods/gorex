@@ -19,9 +19,11 @@ const DefaultRegistryURL = "https://raw.githubusercontent.com/si-mods/gorex-regi
 
 const maxRegistryBytes = 2 << 20 // 2 MiB
 
-// RegistryPack describes one community icon pack listed in index.json.
+// RegistryPack describes one community pack listed in index.json: an icon
+// pack, or with Kind "theme" a theme pack (docs/DSK-008-theme.md).
 type RegistryPack struct {
 	ID          string `json:"id"`
+	Kind        string `json:"kind,omitempty"`
 	Name        string `json:"name"`
 	Description string `json:"description,omitempty"`
 	Author      string `json:"author,omitempty"`
@@ -31,11 +33,17 @@ type RegistryPack struct {
 	Entries     int    `json:"entries,omitempty"`
 }
 
-// RegistryIndex is the schema of gorex-registry index.json.
+// KindTheme is the Kind of a theme pack: a directory with a theme.json.
+const KindTheme = "theme"
+
+// RegistryIndex is the schema of gorex-registry index.json. Theme packs
+// are in Themes, a list builds before it ignore, so that they do not show
+// them as icon packs.
 type RegistryIndex struct {
 	Schema    int            `json:"schema"`
 	UpdatedAt string         `json:"updated_at,omitempty"`
 	Packs     []RegistryPack `json:"packs"`
+	Themes    []RegistryPack `json:"themes,omitempty"`
 }
 
 // RegistryURL returns GOREX_PACK_REGISTRY when set, else DefaultRegistryURL.
@@ -110,9 +118,6 @@ func SearchRegistry(idx *RegistryIndex, query string) []RegistryPack {
 // InstallFromRegistry clones rp.Repo (and optional rp.Subdir) and installs the
 // validated pack into packsDir.
 func InstallFromRegistry(ctx context.Context, rp RegistryPack, packsDir, overrideID string) (*Pack, error) {
-	if rp.Repo == "" || strings.HasPrefix(rp.Repo, "-") {
-		return nil, fmt.Errorf("invalid pack repository %q", rp.Repo)
-	}
 	id := overrideID
 	if id == "" {
 		id = rp.ID
@@ -120,9 +125,24 @@ func InstallFromRegistry(ctx context.Context, rp RegistryPack, packsDir, overrid
 	if !ValidID(id) {
 		return nil, fmt.Errorf("invalid pack id %q", id)
 	}
+	var pk *Pack
+	err := Checkout(ctx, rp, func(dir string) (err error) {
+		pk, err = InstallLocal(dir, packsDir, id)
+		return err
+	})
+	return pk, err
+}
+
+// Checkout clones rp.Repo shallowly and calls install with the pack's
+// directory, rp.Subdir inside the clone, which it then deletes. A theme
+// pack installs through it as an icon pack does.
+func Checkout(ctx context.Context, rp RegistryPack, install func(dir string) error) error {
+	if rp.Repo == "" || strings.HasPrefix(rp.Repo, "-") {
+		return fmt.Errorf("invalid pack repository %q", rp.Repo)
+	}
 	tmp, err := os.MkdirTemp("", "gorex-reg-pack-*")
 	if err != nil {
-		return nil, err
+		return err
 	}
 	defer os.RemoveAll(tmp)
 	if canon, err := filepath.EvalSymlinks(tmp); err == nil {
@@ -132,27 +152,34 @@ func InstallFromRegistry(ctx context.Context, rp RegistryPack, packsDir, overrid
 	defer cancel()
 	cmd := exec.CommandContext(cmdCtx, "git", "clone", "--depth", "1", "--", rp.Repo, tmp)
 	if out, err := cmd.CombinedOutput(); err != nil {
-		return nil, fmt.Errorf("git clone: %w: %s", err, strings.TrimSpace(string(out)))
+		return fmt.Errorf("git clone: %w: %s", err, strings.TrimSpace(string(out)))
 	}
 	_ = os.RemoveAll(filepath.Join(tmp, ".git"))
 	srcDir := tmp
 	if rp.Subdir != "" {
 		resolved, err := resolveInside(tmp, rp.Subdir)
 		if err != nil {
-			return nil, fmt.Errorf("subdir %q: %w", rp.Subdir, err)
+			return fmt.Errorf("subdir %q: %w", rp.Subdir, err)
 		}
 		srcDir = resolved
 	}
-	return InstallLocal(srcDir, packsDir, id)
+	return install(srcDir)
 }
 
-// LookupRegistry finds a pack by ID in idx.
+// LookupRegistry finds a pack by ID in idx: an icon pack, else a theme
+// pack, whose Kind is then KindTheme.
 func LookupRegistry(idx *RegistryIndex, id string) (RegistryPack, error) {
 	if idx == nil {
 		return RegistryPack{}, errors.New("empty registry")
 	}
 	for _, p := range idx.Packs {
 		if strings.EqualFold(p.ID, id) {
+			return p, nil
+		}
+	}
+	for _, p := range idx.Themes {
+		if strings.EqualFold(p.ID, id) {
+			p.Kind = KindTheme
 			return p, nil
 		}
 	}

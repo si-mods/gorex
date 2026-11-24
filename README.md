@@ -214,6 +214,14 @@ and About (version, Check for Updates…).
 The choices go to `settings.json`, as do the sidebar's width and whether
 it is hidden.
 
+`appearance.theme` in `settings.json` names a theme for GoRex's own
+colors (not the terminal's): a manifest of colors at
+`<config>/themes/<name>.json`, beside `init.lua`
+([DSK-008](docs/DSK-008-theme.md)). `gorex pack install <id>` installs a
+theme pack of the registry there. Settings > Extensions lists, installs
+and uses themes too, and installs icon packs. Leave it empty for the
+built-in colors.
+
 Remote turns the server's remote access on and off, and manages it:
 pairing a new device (Start pairing opens a five-minute window; each
 request shows its name and fingerprint, to Approve or Reject), the list
