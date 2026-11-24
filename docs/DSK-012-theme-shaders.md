@@ -1,6 +1,6 @@
 ---
 name: DSK-012
-description: "Theme packs get shader slots (window background, a moving layer and the faces of roles), metric seeds (corner scale, border width, UI font, shadow) and four new face roles, so that a pack can rebuild a rich web theme such as Blue Window or Potion Workshop. Use when you add shaders or metrics to theme manifests, change the theme shader API, or port a theme from another app."
+description: "Theme packs get shader slots (window background, a moving layer and the faces of roles), metric seeds (corner scale, border width, UI font, shadow), a glass key and five new roles, so that a pack can rebuild a rich web theme such as Blue Window or Potion Workshop. Use when you add shaders or metrics to theme manifests, change the theme shader API, or port a theme from another app."
 metadata:
   created: "2026-11-24"
   updated: "2026-11-24"
@@ -10,9 +10,7 @@ metadata:
 
 Status: accepted. Not implemented.
 
-This doc decides how a theme pack changes more than colors and still images. It adds three kinds of shader slots, a set of metric seeds and four face roles. It extends [DSK-008](DSK-008-theme.md) (the manifest and the face resolver) and [DSK-010](DSK-010-theme-ambience.md) (assets, layers, the still rule). The probes are two themes of `freestylefly/codex-themes`, a theme app for the Codex desktop app: "蓝窗信使 Blue Window" and "魔法药水铺 Potion Workshop". The goal is to rebuild both as GoRex theme packs.
-
-Replaces: [DSK-008](DSK-008-theme.md), the non-goal and the alternative about the glass setting. A theme can now turn the glass on or off (see Glass).
+This doc decides how a theme pack changes more than colors and still images. It adds three kinds of shader slots, a set of metric seeds, a glass key and five roles. It extends [DSK-008](DSK-008-theme.md) (the manifest and the face resolver) and [DSK-010](DSK-010-theme-ambience.md) (assets, layers, the still rule). The probes are two themes of `freestylefly/codex-themes`, a theme app for the Codex desktop app: "Blue Window" and "Potion Workshop". The goal is to rebuild both as GoRex theme packs. Replaces: [DSK-008](DSK-008-theme.md), the glass non-goal, the glass alternative and the Security rule "A theme manifest is data". Also replaces: [DSK-010](DSK-010-theme-ambience.md), the non-goal "any code in a pack", the first Security item and the asset caps that the Assets section changes.
 
 ## Problem
 
@@ -44,7 +42,7 @@ Each extra need is one of four kinds:
 
 A new manifest key for each pixel effect does not scale. DSK-010 shows this: glows, still images, particles and sprites are four formats with four parsers and four sets of caps. Each next theme asks for one more.
 
-MyGo already has a general answer for pixels. `ui/shader` compiles a fragment shader at run time from source (`shader.Compile`). The language is MyGo's fork of Ebitengine's Kage: Go syntax, GLSL built-ins. The same source runs on Metal, Direct3D 11, OpenGL, WebGL 2 and the CPU. A shader reads up to four images. The compiler accepts only `for` loops with constant bounds (`internal/shader/stmt.go`), so no shader loops without end. GoRex draws its window background (`background` in `style.go`), its dimmed controls (`dim.go`) and its frost (`frost.go`) with it now.
+MyGo already has a general answer for pixels. `ui/shader` compiles a fragment shader at run time from source (`shader.Compile`). The language is MyGo's fork of Ebitengine's Kage: Go syntax, GLSL built-ins. The same source runs on Metal, Direct3D 11, OpenGL, WebGL 2 and the CPU. A shader reads up to four images. MyGo's fork accepts loops whose bounds are run-time expressions (`internal/shader/stmt.go`, "dynamic loops"). A theme shader thus needs its own loop check (see Checks at load). GoRex draws its window background (`background` in `style.go`), its dimmed controls (`dim.go`) and its frost (`frost.go`) with it now.
 
 ## Goal
 
@@ -80,7 +78,7 @@ Text on each face stays readable. A theme shader that fails a check shows nothin
 
 ### Manifest
 
-Three new optional keys, `shaders`, `metrics` and `glass`, and five new role names:
+Three new optional keys, `shaders`, `metrics` and `glass`, and five new roles, four of them faces:
 
 ```json
 {
@@ -140,13 +138,14 @@ A shader that reads `Time` asks for frames at 30 a second while ambience moves, 
 
 GoRex checks each shader on a goroutine after the assets load. Each check that fails drops the shader with a warning. The theme then draws the flat colors for that slot.
 
-1. **Compile**: `shader.Compile`, with a recover. The source is at most 16 KiB. The entry point is `Fragment`. A shader that reads `backdropAt` or `backdropSample` fails: a theme shader does not read what is under it, so it cannot read terminal text.
-2. **Uniforms**: each uniform is in the API table or in `params`, with the right type.
-3. **Cost**: GoRex draws the shader into 64×64 px with `ui.Render`, which runs the CPU interpreter, three times, and keeps the shortest time. It does the same for the built-in `background` shader. A ratio above 8 fails. The ratio counts the work of a pixel and does not depend much on the machine. The CPU interpreter runs the same program as the GPU, so a shader eight times the built-in background costs about eight backgrounds on the GPU.
-4. **Contrast of a face**: GoRex draws the face shader at 96×32 px with `ui.Render` at `Time` 0, 1, 2 and 3 s. At each pixel, the text of the ladder that the flat color selects must keep 4.5:1, and `textMuted` 3:1. A pixel with alpha under 1 counts as laid over `panel`, as `surface` counts a face.
-5. **Contrast of the sidebar band**: GoRex draws the background shader at 1280×800 DIPs, at 1/8 scale. In the columns of the sidebar, `text` must keep 4.5:1 and `textMuted` 3:1 at each pixel.
+1. **Compile**: `shader.Compile`, with a recover. The source is at most 16 KiB. GoRex parses the source first: the entry point must be `Fragment`, not an effect entry point. A source that names `backdropAt` or `backdropSample` fails, as MyGo finds it (`readsBackdrop`). A theme shader thus cannot read what is under it, so it cannot read terminal text.
+2. **Loops**: each `for` loop has constant bounds, and all loops of the shader run at most 256 times in total for a pixel. MyGo does not expose its loop bounds now (MyGo change M2: the loops of a compiled shader, with their bounds when constant). Until M2, GoRex refuses each theme shader that has a `for` loop. The cost check runs only after this check, so it cannot meet a loop without end.
+3. **Uniforms**: each uniform is in the API table or in `params`, with the right type.
+4. **Cost**: GoRex draws the shader into 64×64 px with `ui.Render`, which runs the CPU interpreter, three times, and keeps the shortest time. It does the same for the built-in `background` shader. A ratio above 8 fails. The ratio counts the work of a pixel and does not depend much on the machine. The CPU interpreter runs the same program as the GPU, so a shader eight times the built-in background costs about eight backgrounds on the GPU.
+5. **Contrast of a face**: GoRex draws the face shader at 96×32 px with `ui.Render` at `Time` 0, 1, 2 and 3 s. At each pixel, the text of the ladder that the flat color selects must keep 4.5:1, and `textMuted` 3:1. A pixel with alpha under 1 counts as laid over `panel`, as `surface` counts a face.
+6. **Contrast of the sidebar band**: GoRex draws the background shader at 1280×800 DIPs, at 1/8 scale. In the columns of the sidebar, `text` must keep 4.5:1 and `textMuted` 3:1 at each pixel.
 
-Checks 3 to 5 run once for each theme load. They run on the CPU and take less than 200 ms on a Mac or a Windows PC with the caps of this doc (to be measured in phase 2).
+Checks 4 to 6 run once for each theme load. They run on the CPU and take less than 200 ms on a Mac or a Windows PC with the caps of this doc (to be measured in phase 2).
 
 ### Metrics
 
@@ -178,6 +177,8 @@ Both probes set `"glass": false`. Their backgrounds then draw opaque, not as a w
 
 ### New roles
 
+The face roles are the five faces that `surface` resolves now (`sideBar.activeGroupBackground`, `sideBar.activeGroupTabBackground`, `sideBar.trackBackground`, `sideBar.tabHoverBackground`, `sideBar.tabActiveBackground`) and the four new faces below. `shaders.faces` takes only these nine roles.
+
 | Role | Kind | Face of |
 | --- | --- | --- |
 | `titleBar.background` | Face | The title bar row (`titleH`) across the window |
@@ -204,7 +205,7 @@ A wallpaper that fills a 2560 px window at 1024 px looks soft. At 2048 px it is 
 
 ### Code
 
-- `internal/theme/theme.go`: parse `shaders` and `metrics`, with caps and warnings. Add the five roles to the allowlist. Add `Kage` to the asset formats.
+- `internal/theme/theme.go`: parse `shaders`, `metrics` and `glass`, with caps and warnings. Add the five roles to the allowlist. Add `Kage` to the asset formats.
 - `internal/theme/shaders.go` (new): the API table, the param parser and the uniform check.
 - `themeshader.go` (new, root): compile, the checks at load, and the draw of each slot. A face draw goes through one function, `paintFace(p, r, radius, k, role)`, which draws the shader on the GPU and the flat color elsewhere.
 - `style.go`: `paintBackground` draws the theme's background slot when one passed the checks. `surface` keeps its rule. The flat color still selects the ladder.
@@ -236,7 +237,7 @@ A wallpaper that fills a 2560 px window at 1024 px looks soft. At 2048 px it is 
 
 - In a full tiled layout the panes cover most of the window. A background hero then shows in the gaps, the title bar, behind the sidebar at its cap, on an empty page and on the canvas. Potion Workshop thus looks closest to its preview on an empty page.
 - A face that the system draws as glass does not take the face shader.
-- Copy texts of the probes that name Codex (`CODEX 2007 · BLUE WINDOW`, "Codex 好友") change to GoRex or to neutral text.
+- Copy texts of the probes that name Codex (`CODEX 2007 · BLUE WINDOW`, the "Codex friends" heading) change to GoRex or to neutral text.
 
 ## Alternatives
 
@@ -254,7 +255,7 @@ This doc changes one rule of DSK-008: "A theme manifest is data". After this doc
 
 - It runs on the GPU or in the interpreter of MyGo. Kage has no file, network, clock or system call. Its only output is the color of its pixels.
 - Its only inputs are the uniforms of the API table, its params and its own images. It cannot read the backdrop (check 1), so it cannot read terminal text or another app's pixels. It cannot read a file that the pack does not ship.
-- Its loops have constant bounds (Kage compiler). The cost check bounds the work of a pixel. A shader thus cannot hang the GPU by a loop. A slow driver can still be slow: the still rule and the Ambience setting stop each frame.
+- Its loops have constant bounds and at most 256 runs a pixel (check 2). The cost check bounds the rest of the work of a pixel. A shader thus cannot hang the GPU by a loop. A slow driver can still be slow: the still rule and the Ambience setting stop each frame.
 - The GPU driver compiles the code that MyGo generates. A driver bug can crash the app. The registry CI compiles and draws each listed shader on the renderers that its runners have (Direct3D 11 on Windows, Metal on the Mac runner, OpenGL on Linux). A local pack (`gorex pack install <folder>`) has no CI. That is the user's own risk, as with a local pack's images.
 - A shader cannot show text, open a link, run a command or write a setting.
 
@@ -263,13 +264,13 @@ The rest of the DSK-008 and DSK-010 rules stay: no URL, no network at run time, 
 ## Migration
 
 - `shaders`, `metrics`, `glass` and the five roles are new optional keys with defaults. A manifest without them loads as now, with the same pixels (`TestThemeNoneKeepsPalettes`).
-- An older build drops `shaders`, `metrics` and `glass` with an `unknown key` warning each. The user's Glass setting then applies. It drops the five role names with an `unknown role` warning each. It loads the colors and the DSK-010 layers. An older build that installs the pack copies the `.kage` assets only if its loader accepts them. If not, it drops them with a warning.
+- An older build drops `shaders`, `metrics` and `glass` with an `unknown key` warning each. The user's Glass setting then applies. It drops the five role names with an `unknown role` warning each. It loads the colors and the DSK-010 layers. Its asset loader drops each asset that it cannot take, with a warning, and keeps the rest (`internal/theme/assets.go`): a `.kage` file (not a PNG, GIF or SVG), an image over 1024 px, an asset past 4 MiB for the pack, and a name past 16. It does not fail the pack.
 - No settings key changes. `docs/irreversible.md` does not apply to the manifest keys. The shader API version 1 is a promise to pack authors (see Shader API).
 
 ## Tests
 
 - **Parse**: `shaders` and `metrics` parse. A value out of range clamps, an unknown slot or role drops, a slot with no flat color takes the built-in one, and each gives a warning (`TestParseShaders`, `TestParseMetrics`).
-- **Checks**: a shader that does not compile, reads its backdrop, has an unknown uniform, costs 9 times the background, or fails the face contrast, each drops with a warning, and the slot draws its flat color (`TestThemeShaderChecks`).
+- **Checks**: a shader that does not compile, has an effect entry point, reads its backdrop, has a loop (until M2) or more than 256 loop runs (after M2), has an unknown uniform, costs 9 times the background, or fails the face contrast, each drops with a warning, and the slot draws its flat color (`TestThemeShaderChecks`).
 - **Contrast**: a light gradient face in a dark window gets dark text. A face shader that crosses the flip point fails (`TestFaceShaderContrast`).
 - **Background**: with no theme shader, the window background is byte-exact as now (`TestBackgroundShader`). With one, the pixel at a known point has its color.
 - **CPU renderer**: on the CPU renderer, no theme shader draws, and each slot draws its flat color (`TestThemeShaderCPU`).
