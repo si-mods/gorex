@@ -171,6 +171,7 @@ func menuIcon(name string) *mygo.MenuIcon {
 // or above where there is no room below.
 func (a *App) hostPopover(c *ui.Context, k *colors, anchor ui.Element, name, glyph string) {
 	popoverBase(c, anchor, &a.hostOpen, func(panel ui.Element, _ bool) {
+		k := k.window() // the panel is the window's, not the sidebar's face
 		_, winH := c.Size()
 		// No higher than the room on the side it opens on, the larger:
 		// above the button at the sidebar's foot, it would otherwise cover

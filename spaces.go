@@ -379,6 +379,7 @@ func (a *App) spacePicker(c *ui.Context, k *colors, wide bool) {
 		glyphIcon(c, "chevron-down", 13, k.textFaint).Shrink(0)
 	})
 	popoverBase(c, chip, &a.spaces.open, func(panel ui.Element, entering bool) {
+		k := k.window() // the menu lies on the window's panel, not on the chip's face
 		m := menuStyleOf(k, c.Theme().Dark)
 		m.Panel(panel.Margin(6, 0, 0, 0).Width(260), 0)
 		// The menu's parts come in one after another, a step apart.

@@ -2,6 +2,7 @@ package main
 
 import (
 	"testing"
+	"time"
 
 	"github.com/egoist/mygo/ui"
 
@@ -134,5 +135,63 @@ func TestThemeGlass(t *testing.T) {
 	tt.Frame()
 	if prefs.NoGlass || !glassOn() {
 		t.Error("the switch did not turn the user's glass on")
+	}
+}
+
+// TestThemedFacePopover: a popover opened from a face of the other
+// lightness, as the space picker's menu from a dark titleBar.background in
+// a light window, lies on the window's panel and takes the window's
+// ladder, not the face's: its text keeps 4.5:1 on the panel.
+func TestThemedFacePopover(t *testing.T) {
+	keepTheme(t)
+	a, tt := newTestApp(t)
+	old := prefs
+	t.Cleanup(func() { prefs = old })
+	prefs.NoGlass = true // the panel's flat face, k.panel
+	applyManifest(t, `{"roles":{"titleBar.background":"#1c2a3d"}}`)
+	k := paletteOf(false)
+	if hk, _, _ := themedFace(k, roleTitleBarBackground); hk.text == k.text || hk.window() != k {
+		t.Fatal("the dark face did not take the dark ladder, or lost its window")
+	}
+	tt.Frame()
+	a.spaces.open = true
+	for range 10 {
+		tt.Advance(100 * time.Millisecond)
+		tt.Frame()
+	}
+	r, ok := tt.Find("No projects")
+	if !ok {
+		t.Fatalf("the space menu did not open: %q", tt.Texts())
+	}
+	img := tt.Image()
+	scale := float32(img.Bounds().Dx()) / 1000
+	best := 0.0
+	for y := r.Y; y < r.Y+r.H; y++ {
+		for x := r.X; x < r.X+r.W; x++ {
+			p := img.RGBAAt(int(x*scale), int(y*scale))
+			best = max(best, contrast(ui.RGB(p.R, p.G, p.B), k.panel))
+		}
+	}
+	if best < 4.5 {
+		t.Errorf("the menu's text has %.2f:1 on the window's panel, want 4.5:1", best)
+	}
+}
+
+// TestThemedFaceSamePointer: the face's palette is the same pointer from
+// frame to frame, so that menuStyleOf keeps one style for it; applyTheme
+// makes a new one.
+func TestThemedFaceSamePointer(t *testing.T) {
+	keepTheme(t)
+	applyManifest(t, `{"roles":{"titleBar.background":"#1c2a3d"}}`)
+	k := paletteOf(false)
+	h1, _, _ := themedFace(k, roleTitleBarBackground)
+	cp := *k // a copy, as sidebarPalette and a space's tint make each frame
+	h2, _, _ := themedFace(&cp, roleTitleBarBackground)
+	if h1 != h2 || menuStyleOf(h1.window(), false) != menuStyleOf(h2.window(), false) {
+		t.Error("two frames gave two palettes for one face")
+	}
+	applyManifest(t, `{"roles":{"titleBar.background":"#1c2a3d"}}`)
+	if h3, _, _ := themedFace(paletteOf(false), roleTitleBarBackground); h3 == h1 {
+		t.Error("applyTheme kept the face's old palette")
 	}
 }

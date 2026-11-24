@@ -72,6 +72,21 @@ type colors struct {
 	// m are the theme's metrics: the corner scale, border width, chrome
 	// font and shadows the palette draws with.
 	m metrics
+
+	// win is the window's palette when this one is a face's (themedFace):
+	// the same faces and panels with the ladder of the face. nil in the
+	// window's own palette.
+	win *colors
+}
+
+// window returns the palette of k's window: k itself, or the palette a
+// face's palette came from. A popover or a menu opened from a face draws
+// on the window's panel, so it takes the window's ladder, not the face's.
+func (k *colors) window() *colors {
+	if k.win != nil {
+		return k.win
+	}
+	return k
 }
 
 // metrics are the sizes of docs/DSK-012-theme-shaders.md, Metrics, as the
@@ -389,6 +404,9 @@ func applyTheme(m *theme.Manifest) {
 	menuStylesMu.Lock()
 	clear(menuStyles)
 	menuStylesMu.Unlock()
+	faceCacheMu.Lock()
+	clear(faceCache)
+	faceCacheMu.Unlock()
 	spaceColorsMu.Lock()
 	clear(spaceColorsCache)
 	spaceColorsMu.Unlock()
@@ -459,6 +477,10 @@ const (
 // face's lightness, not k's own: k may carry the other appearance's ladder
 // already, as a pane header's over a dark terminal in a light window does
 // (headerColors).
+//
+// The palette it makes is the same pointer for the same k and role, until
+// applyTheme, so that the caches keyed by a palette (menuStyleOf) do not
+// grow each frame. Its window() is k's window.
 func themedFace(k *colors, role faceRole) (*colors, ui.Color, bool) {
 	face := *roleField(k, role)
 	if face.A == 0 {
@@ -469,8 +491,31 @@ func themedFace(k *colors, role faceRole) (*colors, ui.Color, bool) {
 		k.hover == ref.hover && k.pressed == ref.pressed {
 		return k, face, true
 	}
-	return withLadder(k, ref), face, true
+	key := faceKey{*k, role}
+	faceCacheMu.Lock()
+	defer faceCacheMu.Unlock()
+	if h, ok := faceCache[key]; ok {
+		return h, face, true
+	}
+	h := *withLadder(k, ref)
+	h.win = k.window()
+	faceCache[key] = &h
+	return &h, face, true
 }
+
+// faceKey names a face's palette: the palette it is made from, by value,
+// as the sidebar's and a space's palettes are copies, and the role.
+type faceKey struct {
+	k    colors
+	role faceRole
+}
+
+// The faces' palettes themedFace made, which applyTheme clears. The
+// windows' views may run on their own goroutines, so the map has its lock.
+var (
+	faceCacheMu sync.Mutex
+	faceCache   = map[faceKey]*colors{}
+)
 
 // buttonColors sets t's accent faces, the primary button's and a switch's
 // that is on, to the theme's button.background, with text of the face's

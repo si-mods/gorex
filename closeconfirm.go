@@ -135,6 +135,7 @@ func (a *App) closeConfirm(c *ui.Context, k *colors, anchor ui.Element, t *Tab, 
 	}
 	a.closeAsk.shown = true
 	popoverBase(c, anchor, &a.closeAsk.open, func(panel ui.Element, _ bool) {
+		k := k.window() // the panel is the window's, not the tab row's face
 		popoverShadow(glassPanel(panel.Margin(8, 0, 0, 0).Width(280).Padding(14).Radius(k.radius(radiusXL)), k).Border(k.borderW(), k.panelBorder), k)
 		a.closeAskBody(c, k, panel)
 	})

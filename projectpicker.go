@@ -78,6 +78,7 @@ func (a *App) projectPicker(c *ui.Context, k *colors) {
 		glyphIcon(c, "chevron-down", 13, k.textFaint).Shrink(0)
 	})
 	popoverBase(c, chip, &a.pickerOpen, func(panel ui.Element, entering bool) {
+		k := k.window() // the menu lies on the window's panel, not on the chip's face
 		_, winH := c.Size()
 		menuStyleOf(k, c.Theme().Dark).Panel(panel.Margin(6, 0, 0, 0).Width(340).MaxHeight(winH-24-titleH), 0)
 		// The menu's parts come in one after another, a step apart.

@@ -201,6 +201,7 @@ Phase 1 builds these roles with these details:
 - The built-in palette has none of the five. An unset role draws nothing new.
 - `button.background` sets the accent of the stock widgets' theme (`Accent`, its hover and pressed shades, `AccentText`). It thus colors the primary button, a switch that is on, and the other faces MyGo draws in the accent, such as a chosen radio. It does not color a chosen segment: MyGo draws that in the theme's `Background`, `surface` in GoRex. The focus ring, the selection and the menu highlight keep `accent`.
 - `pane.border` is the border of a pane card with the focus and without it. The card's shadow shows the focus.
+- A popover or a menu that opens from a face, as the space picker's from the title bar, lies on the window's panel. It keeps the window's text ladder, not the face's.
 - `paneHeader.background` is the face of a terminal's and a note's header. A browser pane's header and a float's handle keep their faces.
 - The user's `sidebar.colorCustomizations` take only the `sideBar.*` roles. The other roles are the theme's.
 
