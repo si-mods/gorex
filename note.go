@@ -123,6 +123,37 @@ func (a *App) syncNoteItem() {
 	}
 }
 
+// hostItems are the menu bar's items of the actions that need a host
+// (command.Host), and hostItemsOff those of them disabled, as the host of
+// the window focused last is not connected.
+var (
+	hostItems    = map[*command]*mygo.MenuItem{}
+	hostItemsOff = map[*command]bool{}
+)
+
+// syncHostItems disables the menu bar's items of the actions whose host
+// is not connected, in the window with the focus.
+func (a *App) syncHostItems() {
+	for cmd, mi := range hostItems {
+		if off := cmd.hostAway(a) != nil; off != hostItemsOff[cmd] {
+			hostItemsOff[cmd] = off
+			mi.SetEnabled(!off)
+		}
+	}
+}
+
+// clearHostItems enables the menu bar's items of the actions that need a
+// host again, as the last window closes: with no window, New Tab opens
+// one.
+func clearHostItems() {
+	for cmd, mi := range hostItems {
+		if hostItemsOff[cmd] {
+			hostItemsOff[cmd] = false
+			mi.SetEnabled(true)
+		}
+	}
+}
+
 // previewTheme is the Markdown theme of the note at its size in the
 // colors k, kept until either changes.
 func (n *notePane) previewTheme(k *colors) *markdown.Theme {

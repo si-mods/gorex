@@ -13,6 +13,8 @@ import (
 
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/plugins/terminal"
+
+	"gorex/locales"
 )
 
 // debugHook lets a script drive the app while GOREX_DEBUG names a
@@ -411,6 +413,34 @@ func (a *App) debug(dir, line string) {
 		})
 	case "space": // NAME: the windows show that space, "" for Default
 		debugMain(func() { a.showSpaceNamed(arg) })
+	case "toast": // error [TEXT]: an error toast; delete-space NAME: Delete Space of that space, with Undo; close: the toast goes, its action committed
+		op, rest, _ := strings.Cut(arg, " ")
+		debugMain(func() {
+			switch op {
+			case "error":
+				if rest == "" {
+					rest = locales.ToastActionFailed(cmdSplitRight.Title(), "no such pane")
+				}
+				a.toastError(rest)
+			case "delete-space":
+				a.removeSpace(rest)
+			case "close":
+				a.endToast()
+			}
+		})
+	case "quit-confirm": // open or cancel: the question before Quit and End All Sessions, whatever the sessions
+		debugMain(func() { a.quitAsk = arg == "open" })
+	case "notifications": // off or on: as if macOS refused GoRex's notifications, or showed one; Settings, Appearance, shows the row while off
+		debugMain(func() {
+			if a.st == nil {
+				return
+			}
+			if arg == "off" {
+				a.st.notified(mygo.ErrNotificationsDenied)
+			} else {
+				a.st.notified(nil)
+			}
+		})
 	case "open-row": // HOSTKEY/ID open|closed: a sidebar row of a project, or HOSTKEY/older
 		debugMain(func() {
 			key, v, _ := strings.Cut(arg, " ")

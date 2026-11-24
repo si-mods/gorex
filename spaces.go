@@ -55,7 +55,7 @@ func (st *store) spaceNames() []string {
 	if st != nil {
 		for _, w := range st.workspaces {
 			if w.Dir != "" {
-				carried[w.Space] = true
+				carried[st.projectSpace(w)] = true
 			}
 		}
 		for _, n := range st.base.Spaces {
@@ -87,7 +87,8 @@ func (st *store) spaceNames() []string {
 		}
 	}
 	slices.SortFunc(rest, func(x, y string) int { return strings.Compare(strings.ToLower(x), strings.ToLower(y)) })
-	return append(names, rest...)
+	// A space whose delete waits shows nowhere.
+	return slices.DeleteFunc(append(names, rest...), func(n string) bool { return st != nil && st.deleting[n] != nil })
 }
 
 // clientSpaceOf is this client's entry of space name, nil for none.
@@ -135,6 +136,12 @@ func (st *store) moveSpace(name string, d int) {
 			next = append(next, clientSpace{Name: n})
 		}
 	}
+	// A space whose delete waits keeps its color, for its Undo.
+	for _, s := range prefs.Spaces {
+		if st.deleting[s.Name] != nil {
+			next = append(next, s)
+		}
+	}
 	prefs.Spaces = next
 	saveSettings()
 }
@@ -149,7 +156,7 @@ func (a *App) showSpaceNamed(name string) {
 	prefs.Space = name
 	saveSettings()
 	for _, o := range a.peers() {
-		if w := o.ws; w != nil && w.Dir != "" && w.Space != name {
+		if w := o.ws; w != nil && w.Dir != "" && a.st.projectSpace(w) != name {
 			if next := o.firstOfSpace(name); next != nil {
 				o.showWorkspace(next)
 			}
@@ -166,7 +173,7 @@ func (a *App) firstOfSpace(name string) *Workspace {
 	}
 	for _, h := range a.allHosts() {
 		for _, w := range sortedWorkspaces(a.st.hostWorkspaces(h)) {
-			if w.Dir != "" && w.Space == name && !w.offline() && w.app == nil {
+			if w.Dir != "" && a.st.projectSpace(w) == name && !w.offline() && w.app == nil {
 				return w
 			}
 		}
@@ -184,6 +191,7 @@ func (a *App) newSpace(name string) {
 	if name == "" {
 		return
 	}
+	a.commitPendingDelete(name)
 	if s := clientSpaceOf(name); s != nil {
 		s.Made = true
 	} else {
@@ -202,6 +210,7 @@ func (a *App) renameSpace(from, to string) {
 	if a.st == nil || to == "" || from == to || from == "" {
 		return
 	}
+	a.commitPendingDelete(to)
 	st := a.st
 	for _, h := range a.allHosts() {
 		if h != nil && !serverMade(h) {
@@ -226,6 +235,128 @@ func (a *App) renameSpace(from, to string) {
 		prefs.Space = to
 	}
 	saveSettings()
+}
+
+// spaceDeletion is a delete of a space that waits for its toast
+// (docs/DSK-013-messages.md, D20): the windows show the space's projects
+// in Default, and no host hears of it until it commits.
+type spaceDeletion struct {
+	// app is the window that deleted it, which sends the delete; shown
+	// tells that the windows showed the space.
+	app   *App
+	shown bool
+	// order is the place of the space's entry in this client's order
+	// (prefs.Spaces), -1 for none, which Undo gives it back.
+	order int
+}
+
+// projectSpace is the space project w shows in: its own, or Default
+// while the delete of its own waits.
+func (st *store) projectSpace(w *Workspace) string {
+	if st != nil && st.deleting[w.Space] != nil {
+		return ""
+	}
+	return w.Space
+}
+
+// removeSpace deletes space name at once in every window, and offers
+// Undo in an action toast. No host hears of it until the toast ends
+// without its Undo (commitSpaceDelete).
+func (a *App) removeSpace(name string) {
+	st := a.st
+	if st == nil || name == "" || st.deleting[name] != nil {
+		return
+	}
+	if st.deleting == nil {
+		st.deleting = map[string]*spaceDeletion{}
+	}
+	d := &spaceDeletion{app: a, shown: prefs.Space == name, order: slices.IndexFunc(prefs.Spaces, func(s clientSpace) bool { return s.Name == name })}
+	st.deleting[name] = d
+	if d.shown {
+		a.showSpaceNamed("")
+	}
+	st.redraw()
+	a.showToast(&toastMsg{
+		kind: toastAction, text: locales.SpaceDeleted(name), action: locales.ToastUndo(),
+		run:    func() { a.undoSpaceDelete(name) },
+		commit: func() { st.commitSpaceDelete(name) },
+	})
+}
+
+// undoSpaceDelete takes back the delete of space name that waits: the
+// space shows again, as it did, and a toast says so.
+func (a *App) undoSpaceDelete(name string) {
+	st := a.st
+	d := st.deleting[name]
+	if d == nil {
+		return
+	}
+	delete(st.deleting, name)
+	// Its place in the order, though another space moved meanwhile.
+	if i := slices.IndexFunc(prefs.Spaces, func(s clientSpace) bool { return s.Name == name }); i >= 0 && d.order >= 0 && i != d.order {
+		s := prefs.Spaces[i]
+		prefs.Spaces = slices.Delete(prefs.Spaces, i, i+1)
+		prefs.Spaces = slices.Insert(prefs.Spaces, min(d.order, len(prefs.Spaces)), s)
+		saveSettings()
+	}
+	if d.shown && prefs.Space == "" {
+		a.showSpaceNamed(name)
+	}
+	st.redraw()
+	a.showToast(&toastMsg{kind: toastStatus, text: locales.SpaceRestored(name), life: toastBrief})
+}
+
+// commitSpaceDelete sends the delete of space name that waits, once.
+func (st *store) commitSpaceDelete(name string) {
+	d := st.deleting[name]
+	if d == nil {
+		return
+	}
+	delete(st.deleting, name)
+	d.app.deleteSpace(name)
+	if st.quitting {
+		st.keepSpaceDelete(d.app, name)
+	}
+}
+
+// keepSpaceDelete queues the delete of space name, sent just now as the
+// app quits, for each connected host as well, as for one away: a send
+// the quit cut short goes again as the host connects next
+// (sendSpaceRenames), and one that arrived does nothing then, as the
+// space is gone.
+func (st *store) keepSpaceDelete(a *App, name string) {
+	for _, h := range a.hosts {
+		if !serverMade(h) || slices.Contains(prefs.SpaceRenames[h.ID], spaceRename{From: name}) {
+			continue
+		}
+		if prefs.SpaceRenames == nil {
+			prefs.SpaceRenames = map[string][]spaceRename{}
+		}
+		prefs.SpaceRenames[h.ID] = append(prefs.SpaceRenames[h.ID], spaceRename{From: name})
+	}
+	saveSettings()
+}
+
+// commitPendingDelete sends the delete of space name that waits, ending
+// its toast as a new toast would, before a space of that name is made:
+// the new space must not hide, nor go with the old one later.
+func (a *App) commitPendingDelete(name string) {
+	st := a.st
+	if st == nil {
+		return
+	}
+	if d := st.deleting[name]; d != nil {
+		d.app.endToast()
+		st.commitSpaceDelete(name)
+	}
+}
+
+// flushSpaceDeletes sends every delete of a space that waits, as the app
+// quits.
+func (st *store) flushSpaceDeletes() {
+	for name := range st.deleting {
+		st.commitSpaceDelete(name)
+	}
 }
 
 // deleteSpace deletes space name: each connected host moves its projects
@@ -280,23 +411,17 @@ func (st *store) spaceDeleteCommand(h *hostConn, name string) rex.LayoutCommand 
 }
 
 // spaceProjects counts the projects of space name of the hosts
-// connected, and tells whether a host is not connected, whose projects
-// are not counted.
-func (a *App) spaceProjects(name string) (n int, away bool) {
+// connected.
+func (a *App) spaceProjects(name string) (n int) {
 	if a.st == nil {
-		return 0, false
+		return 0
 	}
 	for _, w := range a.st.workspaces {
-		if w.Dir != "" && w.Space == name && !w.offline() {
+		if w.Dir != "" && a.st.projectSpace(w) == name && !w.offline() {
 			n++
 		}
 	}
-	for _, h := range a.hosts {
-		if !serverMade(h) {
-			away = true
-		}
-	}
-	return n, away
+	return n
 }
 
 // sendSpaceRenames sends host h the renames and deletes of spaces that
@@ -342,10 +467,9 @@ func (a *App) moveProjectToSpace(w *Workspace, name string) {
 // spaceUI is the state of the space picker and its dialogs, of a window.
 type spaceUI struct {
 	open bool
-	// dialog is "new", "edit" or "delete" while the dialog of New
-	// Space…, Edit Spaces… or Delete Space… shows; name is the new
-	// space's name, or the one to delete; names the edit's fields by the
-	// space's name.
+	// dialog is "new" or "edit" while the dialog of New Space… or Edit
+	// Spaces… shows; name is the new space's name; names the edit's
+	// fields by the space's name.
 	dialog string
 	name   string
 	names  map[string]string
@@ -458,7 +582,7 @@ func (a *App) spaceMenuRow(c *ui.Context, k *colors, m *ui.MenuStyle, n string, 
 				weight = 600
 			}
 			ui.Text(c, spaceLabel(n)).FontSize(fontBody).FontWeight(weight).TextColor(ink).SingleLine().Ellipsis("…")
-			projs, _ := a.spaceProjects(n)
+			projs := a.spaceProjects(n)
 			ui.Text(c, locales.SpaceProjects(projs)).FontSize(fontFootnote).TextColor(muted).SingleLine().Ellipsis("…")
 		})
 		if on {
@@ -559,11 +683,8 @@ func (a *App) spaceDialog(c *ui.Context, k *colors) {
 	}
 	open := true
 	title := locales.SpaceNewTitle()
-	switch s.dialog {
-	case "edit":
+	if s.dialog == "edit" {
 		title = locales.SpaceEditTitle()
-	case "delete":
-		title = locales.SpaceDeleteTitle(s.name)
 	}
 	ui.DialogBase(c.Key("space-dialog"), &open, func(backdrop, panel ui.Element) {
 		dialogEnter(c, backdrop, panel)
@@ -587,26 +708,6 @@ func (a *App) spaceDialog(c *ui.Context, k *colors) {
 				open = false
 				a.later(c, func() { a.newSpace(name) })
 			}
-			return
-		}
-		if s.dialog == "delete" {
-			n, away := a.spaceProjects(s.name)
-			ui.Column(c).Gap(6).Children(func() {
-				ui.Text(c, locales.SpaceDeleteBody(n)).FontSize(fontBody).TextColor(k.textMuted).LineHeight(1.35)
-				if away {
-					ui.Text(c, locales.SpaceDeleteOffline()).FontSize(fontBody).TextColor(k.textMuted).LineHeight(1.35)
-				}
-			})
-			ui.Row(c).Gap(8).Justify(ui.End).Margin(14, 0, 0, 0).Children(func() {
-				if cancelButton(c, locales.SessionCancel()).Clicked() {
-					open = false
-				}
-				if dangerButton(c, k, locales.SpaceDeleteConfirm()).Clicked() {
-					name := s.name
-					open = false
-					a.later(c, func() { a.deleteSpace(name) })
-				}
-			})
 			return
 		}
 		ui.Scroll(c.Key("space-list")).MinHeight(0).Shrink(1).Children(func() {
@@ -685,7 +786,7 @@ func (a *App) spaceEditRow(c *ui.Context, k *colors, i int, name string) {
 				// The other fields' renames go first; this one's is dropped.
 				delete(s.names, name)
 				a.applySpaceNames()
-				s.dialog, s.name = "delete", name
+				a.removeSpace(name)
 			})
 		}
 	})
@@ -715,11 +816,11 @@ func (a *App) applySpaceNames() {
 
 // spaceOf is the space of workspace w: its own for a project, the shown
 // one for the tabs with no project, which every space shows.
-func spaceOf(w *Workspace) string {
+func (st *store) spaceOf(w *Workspace) string {
 	if w == nil || w.Dir == "" {
 		return shownSpace()
 	}
-	return w.Space
+	return st.projectSpace(w)
 }
 
 // windowColor is the color the window takes: its project's, else its
@@ -728,5 +829,5 @@ func (a *App) windowColor() string {
 	if a.ws == nil {
 		return spaceColor(shownSpace())
 	}
-	return cmp.Or(a.ws.Color, spaceColor(spaceOf(a.ws)))
+	return cmp.Or(a.ws.Color, spaceColor(a.st.spaceOf(a.ws)))
 }

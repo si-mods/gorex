@@ -311,14 +311,15 @@ func killOn(h *hostConn, sid string) {
 	}
 }
 
-// offline tells, on the error banner, that a host is not connected, and
-// reports whether it is not.
+// offline tells, in an error toast, that a host is not connected, and
+// reports whether it is not. The menus and the palette show what needs
+// the host disabled meanwhile (command.Host); this stops a key or a
+// client that asks for it.
 func (a *App) offline(h *hostConn) bool {
 	if h == nil || h.current() != nil {
 		return false
 	}
-	name := h.label()
-	a.err, a.errMsg = "", func(m locales.Messages) string { return m.HostsNotConnectedTo(name) }
+	a.toastError(locales.HostsNotConnectedTo(a.hostName(h)))
 	return true
 }
 
@@ -367,10 +368,11 @@ func (a *App) newPaneIn(h *hostConn, o rex.CreateOptions, place func(*Pane) bool
 		update(func() {
 			if err != nil {
 				log.Printf("creating a session: %v", err)
-				a.err, a.errMsg = err.Error(), nil
 				if o.DirStrict && strings.Contains(err.Error(), rex.FolderMissing) {
 					a.folderMissing(dir)
+					return
 				}
+				a.toastError(locales.ToastSessionFailed(reasonOf(err)))
 				return
 			}
 			h.expecting(info.ID, false)
@@ -631,7 +633,7 @@ func (a *App) attach(p *Pane, cols, rows int) {
 	term, err := newTerm(opts)
 	if err != nil {
 		log.Printf("terminal: %v", err)
-		a.err, a.errMsg = err.Error(), nil
+		a.toastError(locales.ToastTerminalFailed(reasonOf(err)))
 		return
 	}
 	// Until a view shows it, the terminal has the session's size, so that
@@ -3126,7 +3128,7 @@ func notifyKey(p *Pane) string {
 // take its place.
 var showNotification = func(o mygo.NotificationOptions) (close func()) {
 	n := mygo.NewNotification(o)
-	go n.Show()
+	go func() { notificationShown(n.Show()) }()
 	return n.Close
 }
 

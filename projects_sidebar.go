@@ -63,7 +63,7 @@ func (a *App) hostShown(h *hostConn, space string) bool {
 		return true
 	}
 	for _, w := range a.st.hostWorkspaces(h) {
-		if w.Dir != "" && w.Space == space {
+		if w.Dir != "" && a.st.projectSpace(w) == space {
 			return true
 		}
 	}
@@ -77,7 +77,7 @@ func (a *App) projectsOf(h *hostConn, space string) (recent, older []*Workspace)
 		return nil, nil
 	}
 	for _, w := range sortedWorkspaces(a.st.hostWorkspaces(h)) {
-		if w.Dir == "" || w.Space != space {
+		if w.Dir == "" || a.st.projectSpace(w) != space {
 			continue
 		}
 		if !w.Used.IsZero() && time.Since(w.Used) > olderAfter && w != a.ws {
@@ -574,7 +574,7 @@ func (a *App) waitingRow(c *ui.Context, k *colors, h *hostConn, ad layout.Adopti
 // projectMenu is a project's menu (docs/MOD-002-projects.md): New Tab, Rename…,
 // Color, Move to Space, Reveal Folder (this machine's), Close Project….
 func (a *App) projectMenu(m *ui.Menu, w *Workspace) {
-	if m.Item(locales.CmdNewTab()).Chosen() {
+	if m.Item(locales.CmdNewTab()).Disabled(w.offline()).Chosen() {
 		a.laterService(func() { a.newTabIn(w) })
 	}
 	if w.Dir == "" {
@@ -601,7 +601,7 @@ func (a *App) projectMenu(m *ui.Menu, w *Workspace) {
 	})
 	m.Submenu(locales.ProjectMoveToSpace(), func(sm *ui.Menu) {
 		for _, n := range a.st.spaceNames() {
-			if n != w.Space && sm.Item(spaceLabel(n)).Chosen() {
+			if n != a.st.projectSpace(w) && sm.Item(spaceLabel(n)).Chosen() {
 				a.laterService(func() { a.moveProjectToSpace(w, n) })
 			}
 		}

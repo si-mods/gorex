@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"log"
 	"os"
 	"runtime"
@@ -47,6 +48,9 @@ var settingsUI struct {
 	apiLoaded bool
 	// json is the settings.json page's editor, made on its first draw.
 	json *jsonEditorState
+	// toast is the window's toast (toast.go), as the failure of a reset
+	// of the shortcuts shows.
+	toast toastSlot
 }
 
 // Run is set here: the window's view lists the commands, which list this one.
@@ -152,6 +156,7 @@ func (a *App) openSettings() {
 			rebuildMenu(a.st)
 		}
 		settingsUI.win = nil
+		settingsUI.toast = toastSlot{}
 	})
 }
 
@@ -264,6 +269,7 @@ func (a *App) settingsView(c *ui.Context) {
 			})
 		})
 	})
+	settingsUI.toast.build(c, k, 0)
 	if page := remoteUI.pairQR; page != nil {
 		// A code of this machine closes once its address no longer works.
 		if tailnet, lan := localRexPairs(); page.local && page.address != tailnet && page.address != lan ||
@@ -641,6 +647,45 @@ func (a *App) appearanceGlass(c *ui.Context, k *colors) {
 			}
 		})
 	}
+	a.notificationsOff(c, k)
+}
+
+// notificationShown takes what came of showing a notification, off the
+// main thread: main has the store record it (store.notified).
+var notificationShown = func(error) {}
+
+// notified records what came of showing a notification: macOS refused it,
+// as the user turned GoRex's notifications off, or showed it, which
+// clears the refusal. Settings says so (notificationsOff). Call it on the
+// main thread.
+func (st *store) notified(err error) {
+	switch {
+	case errors.Is(err, mygo.ErrNotificationsDenied):
+		st.notifyOff = true
+	case err == nil:
+		st.notifyOff = false
+	default:
+		return
+	}
+	st.redraw()
+}
+
+// notificationSettingsURL opens the Notifications page of macOS's System
+// Settings.
+const notificationSettingsURL = "x-apple.systempreferences:com.apple.Notifications-Settings.extension"
+
+// notificationsOff is the row that says macOS refuses GoRex's
+// notifications, with a button to the system's setting; nothing while it
+// does not. Only macOS refuses them (mygo.ErrNotificationsDenied).
+func (a *App) notificationsOff(c *ui.Context, k *colors) {
+	if a.st == nil || !a.st.notifyOff {
+		return
+	}
+	settingRow(c, k, locales.SettingsNotificationsOff(), locales.SettingsNotificationsOffHint(), func() {
+		if ui.Button(c, locales.SettingsNotificationsOpen()).Clicked() {
+			c.OpenURL(notificationSettingsURL)
+		}
+	})
 }
 
 // jsonEditorState is the settings.json page's editor (settingsUI.json):

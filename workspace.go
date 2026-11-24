@@ -219,6 +219,12 @@ type store struct {
 	upgradeFailed int
 
 	workspaces []*Workspace
+	// deleting are the deletes of spaces that wait for their toast, by
+	// name (removeSpace).
+	deleting map[string]*spaceDeletion
+	// notifyOff tells that macOS refused the last notification: the user
+	// turned GoRex's notifications off (notified).
+	notifyOff bool
 	// placed is, while reconcile takes a layout, the space of each tab ID
 	// the layout has once: a tab another client moved to another space
 	// keeps its ID there, though the window it leaves still has it
@@ -1297,6 +1303,8 @@ func (st *store) repoll() {
 // terminals detached. The hosts stay connected for the next window, as
 // the app stays without windows on macOS.
 func (st *store) closed(a *App) {
+	// What the window's toast waits to commit goes now.
+	a.endToast()
 	a.quitting = true
 	w := a.ws
 	a.detach()
@@ -1305,6 +1313,7 @@ func (st *store) closed(a *App) {
 	st.apps = slices.DeleteFunc(st.apps, func(o *App) bool { return o == a })
 	if len(st.apps) == 0 {
 		st.repoll()
+		clearHostItems()
 	}
 	if len(st.apps) == 0 && w != nil {
 		st.lastClosed = w

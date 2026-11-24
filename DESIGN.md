@@ -300,7 +300,7 @@ the parts of the one it is nearest to.
 | Popover | `glassPanel(k.panel)`, `radiusXL`, padding 14, `popoverShadow` | `host.go` |
 | Popconfirm | a popover from the button that asked, 280 wide: `fontTitle` title, one line of what ends, Cancel (`cancelButton`, in `dangerButton`'s height and `radiusM`), which has the focus so that keys typed on for the terminal cancel, and a `dangerButton` that names the action | `closeconfirm.go` |
 | Menu | `glassPanel(k.panel)`, `radiusL`, padding 6, rows `concentric(radiusL, 6)`: all of it `menuStyleOf`'s | `menus.go`, `docs/DSK-001-drawn-menus.md`; the space and project pickers (`spaces.go`, `projectpicker.go`) |
-| Toast and banner | `k.panel`, `radiusL`, `toastShadow` | `view.go`, `upload.go` |
+| Toast and banner | `k.panel`, `radiusL`, `toastShadow` | `toast.go`, `view.go`, `upload.go` |
 | Palette | frost or glass, `fontTitle` input, rows `concentric` | `commands.go` |
 | Settings page | the window background, groups of `raisedShadow` and `radiusXL` | `settingsview.go` |
 
@@ -365,8 +365,13 @@ slide. The timings below are for what a spring does not move.
   popconfirm from its close button, and a shell at its prompt closes at
   once. A bulk action, as Close Other Tabs or Close Space, always asks,
   with a dialog that says how much ends.
-- **A toast or a banner?** A toast tells of something done and goes. A
-  banner stays while its state lasts, as a pane that cannot attach.
+- **A toast or a banner?** A toast answers what the user did just now
+  and goes by itself: a status toast (an icon and one line, red-dotted
+  for an error) or an action toast (one line, a button such as Undo, a
+  close button and a ring of the time left). A banner stays while its
+  state lasts, as a lost connection, or while a failure must be fixed.
+  News the user did not cause is a system notification.
+  [DSK-013](docs/DSK-013-messages.md) gives the rules and the times.
 - **What does a click on a window behind do?** It brings the window to
   the front and does nothing else (`ConsumeActivationClick`), so it
   cannot switch a tab, focus another pane or press a button the user

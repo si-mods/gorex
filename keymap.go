@@ -214,15 +214,19 @@ func (a *App) dispatchKey(mods ui.Modifiers, key ui.Key) bool {
 	if cmd.Passthrough && cmd.Available != nil && !cmd.Available(a) {
 		return false
 	}
+	if h := cmd.hostAway(a); h != nil {
+		a.offline(h)
+		return true
+	}
 	if a.runCustom(cmd, args, func(err error) {
 		if err != nil {
-			a.err = err.Error()
+			a.commandFailed(cmd, err)
 		}
 	}) {
 		return true
 	}
 	if err := cmd.invoke(a, args); err != nil {
-		a.err = err.Error()
+		a.commandFailed(cmd, err)
 	}
 	return true
 }

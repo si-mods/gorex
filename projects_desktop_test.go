@@ -710,10 +710,12 @@ func TestProjectsOpenIndependently(t *testing.T) {
 	}
 }
 
-// TestDeleteSpace: Edit Spaces… offers Delete Space… for every space but
-// Default; it asks first, then moves the space's projects to Default on
-// each host, closing no tab, drops the name from the picker, and shows
-// Default. A host offline gets the delete as it connects.
+// TestDeleteSpace: Edit Spaces… offers Delete Space for every space but
+// Default. It asks nothing: the space goes from the picker at once, its
+// projects show in Default and the windows show Default, but no host
+// hears of it until its toast ends (docs/DSK-013-messages.md, D20). Then
+// each host moves the space's projects to Default, closing no tab. A host
+// offline gets the delete as it connects.
 func TestDeleteSpace(t *testing.T) {
 	a, tt, sock, remote := projectsApp(t)
 	work := "Work"
@@ -742,13 +744,19 @@ func TestDeleteSpace(t *testing.T) {
 		t.Fatalf("%d Delete Space… for spaces %q; texts %q", n, a.st.spaceNames(), tt.Texts())
 	}
 	click(t, tt, locales.SpaceDelete())
-	if !tt.HasText(locales.SpaceDeleteTitle(work)) || !tt.HasText(locales.SpaceDeleteBody(1)) || !tt.HasText(locales.SpaceDeleteOffline()) {
-		t.Fatalf("the question: %q", tt.Texts())
+	tt.Frame()
+	if !tt.HasText(locales.SpaceDeleted(work)) || !tt.HasText(locales.ToastUndo()) {
+		t.Fatalf("no toast: %q", tt.Texts())
 	}
-	if api.Space != work {
-		t.Fatal("the space went before the answer")
+	if shownSpace() != "" || slices.Contains(a.st.spaceNames(), work) || a.st.projectSpace(api) != "" {
+		t.Errorf("while the toast shows: shown %q, names %q, the project in %q", shownSpace(), a.st.spaceNames(), a.st.projectSpace(api))
 	}
-	click(t, tt, locales.SpaceDeleteConfirm())
+	if sw := spaceOfStore(savedWorkspaces(t, a.client), api.ID); sw == nil || sw.Space != work || api.Space != work || len(prefs.SpaceRenames["h1"]) != 0 {
+		t.Fatal("the delete went before the toast ended")
+	}
+	// The toast's time ends: the delete goes.
+	tt.Advance(toastActionLife + time.Second)
+	tt.Frame()
 	caughtUp(t, a, tt)
 	waitFor(t, tt, "the delete", func() bool {
 		sw := spaceOfStore(savedWorkspaces(t, a.client), api.ID)
