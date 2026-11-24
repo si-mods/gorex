@@ -2738,6 +2738,22 @@ func (msgs Messages) SettingsGlassHint() string {
 	return Catalog.Format(msgs.locale, "settingsGlassHint", nil)
 }
 
+// SettingsGlassByTheme says "Set by the theme {name}."
+// in the language the app shows.
+//
+// Hint under the Glass setting while the window theme in use turns the
+// glass on or off; the switch is then disabled. name is the theme's name.
+func SettingsGlassByTheme(name string) string { return In(i18n.Locale()).SettingsGlassByTheme(name) }
+
+// SettingsGlassByTheme says "Set by the theme {name}."
+// in the language of msgs.
+//
+// Hint under the Glass setting while the window theme in use turns the
+// glass on or off; the switch is then disabled. name is the theme's name.
+func (msgs Messages) SettingsGlassByTheme(name string) string {
+	return Catalog.Format(msgs.locale, "settingsGlassByTheme", map[string]any{"name": name})
+}
+
 // SettingsTermOpacity says "Terminal opacity"
 // in the language the app shows.
 //

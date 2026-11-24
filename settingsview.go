@@ -199,7 +199,7 @@ func settingsSidebarTop() float32 {
 // window's alone; the terminal window keeps its own.
 func settingsTheme(base *ui.Theme, k *colors) *ui.Theme {
 	t := widgetTheme(base, k)
-	t.Radius = 14
+	t.Radius = k.radius(14)
 	return t
 }
 
@@ -325,7 +325,7 @@ const sidebarItemH = 32
 // active tab's face, and keeps its icon's tile and its label's color.
 func (a *App) sidebarItem(c *ui.Context, k *colors, id, glyph string, tile ui.Color, label string) {
 	active := settingsUI.section == id
-	e := ui.Row(c.Key(id)).Height(sidebarItemH).Padding(0, 10).Gap(10).AlignItems(ui.Center).Radius(pillRadius(sidebarItemH, radiusM)).
+	e := ui.Row(c.Key(id)).Height(sidebarItemH).Padding(0, 10).Gap(10).AlignItems(ui.Center).Radius(pillRadius(k, sidebarItemH, k.radius(radiusM))).
 		Cursor(ui.CursorPointer).Role(ui.RoleTab).Selected(active).Label(label)
 	if active {
 		glassPill(e, k, sidebarItemH)
@@ -339,7 +339,7 @@ func (a *App) sidebarItem(c *ui.Context, k *colors, id, glyph string, tile ui.Co
 	e.Children(func() {
 		// A white glyph on the section's color, whether it is chosen or
 		// not: the glass pill says which one is.
-		ui.Box(c).Size(22, 22).Radius(radiusS).Background(tile).Center().Shrink(0).Children(func() {
+		ui.Box(c).Size(22, 22).Radius(k.radius(radiusS)).Background(tile).Center().Shrink(0).Children(func() {
 			glyphIcon(c, glyph, 14, ui.RGB(255, 255, 255))
 		})
 		ui.Text(c, label).FontSize(fontBody).FontWeight(500).TextColor(k.text).SingleLine()
@@ -375,7 +375,7 @@ func clientClosed(c *rex.Client) bool {
 func (a *App) serverCard(c *ui.Context, k *colors) {
 	label, dot, _ := a.serverState(k)
 	active := settingsUI.section == "server"
-	e := ui.Row(c.Key("server")).Gap(10).Padding(8, 10).Radius(radiusXL).AlignItems(ui.Center).Shrink(0).
+	e := ui.Row(c.Key("server")).Gap(10).Padding(8, 10).Radius(k.radius(radiusXL)).AlignItems(ui.Center).Shrink(0).
 		Cursor(ui.CursorPointer).Role(ui.RoleTab).Selected(active).Label(locales.SettingsServerCard()+", "+label).
 		Background(k.card).Border(1, k.cardBorder)
 	if active || e.Hovered() {
@@ -393,7 +393,7 @@ func (a *App) serverCard(c *ui.Context, k *colors) {
 		ui.Column(c).Grow(1).MinWidth(0).Gap(2).Children(func() {
 			ui.Text(c, locales.SettingsServerCard()).FontSize(fontBody).FontWeight(600).TextColor(k.text).SingleLine().Ellipsis("…")
 			ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
-				ui.Box(c).Size(7, 7).Radius(capsule(7)).Background(dot).Shrink(0)
+				ui.Box(c).Size(7, 7).Radius(k.capsule(7)).Background(dot).Shrink(0)
 				ui.Text(c, label).FontSize(fontFootnote).TextColor(k.textFaint).SingleLine().Ellipsis("…").MinWidth(0)
 			})
 		})
@@ -423,15 +423,15 @@ func (a *App) serverGroup(c *ui.Context, k *colors, name, glyph, sub, label stri
 	settingsGroup(c, k, "", "", "", func() {
 		groupRow(c, k, nil).Children(func() {
 			ui.Row(c).Gap(12).AlignItems(ui.Center).Children(func() {
-				ui.Box(c).Size(44, 44).Radius(radiusL).Background(k.hover).Center().Shrink(0).Children(func() {
+				ui.Box(c).Size(44, 44).Radius(k.radius(radiusL)).Background(k.hover).Center().Shrink(0).Children(func() {
 					glyphIcon(c, glyph, 26, k.text)
 				})
 				ui.Column(c).Grow(1).MinWidth(0).Gap(2).Children(func() {
 					ui.Text(c, name).FontSize(fontTitle).FontWeight(700).TextColor(k.text).SingleLine().Ellipsis("…")
 					ui.Text(c, sub).FontSize(fontSubhead).TextColor(k.textFaint).SingleLine().Ellipsis("…")
 				})
-				ui.Row(c).Gap(6).Padding(4, 10).Radius(radiusL).AlignItems(ui.Center).Shrink(0).Background(dot.Alpha(0.14)).Children(func() {
-					ui.Box(c).Size(7, 7).Radius(capsule(7)).Background(dot)
+				ui.Row(c).Gap(6).Padding(4, 10).Radius(k.radius(radiusL)).AlignItems(ui.Center).Shrink(0).Background(dot.Alpha(0.14)).Children(func() {
+					ui.Box(c).Size(7, 7).Radius(k.capsule(7)).Background(dot)
 					ui.Text(c, label).FontSize(fontSubhead).FontWeight(600).TextColor(k.text).SingleLine()
 				})
 			})
@@ -482,7 +482,7 @@ func settingsGroup(c *ui.Context, k *colors, label, note, foot string, body func
 		groupRows = 0
 		ui.Column(c).Gap(2).Children(func() {
 			// A group has the face of the main window's terminals.
-			group := raisedShadow(ui.Column(c).Radius(radiusXL).Clip().Border(1, k.cardBorder), k)
+			group := raisedShadow(ui.Column(c).Radius(k.radius(radiusXL)).Clip().Border(1, k.cardBorder), k)
 			terminalFace(c, k, group)
 			group.Children(body)
 			if foot != "" {
@@ -615,8 +615,14 @@ func (a *App) appearanceText(c *ui.Context, k *colors) {
 // terminals' opacity over it and the Dock badge.
 func (a *App) appearanceGlass(c *ui.Context, k *colors) {
 	glassy := glassOn()
-	settingRow(c, k, locales.SettingsGlass(), locales.SettingsGlassHint(), func() {
-		if ui.Switch(c, &glassy).Label(locales.SettingsGlass()).Changed() {
+	// While the theme's glass key decides, the switch shows its value and
+	// takes no change (docs/DSK-012-theme-shaders.md, Glass).
+	hint, byTheme := locales.SettingsGlassHint(), themeGlass() != nil
+	if byTheme {
+		hint = locales.SettingsGlassByTheme(palettes.Load().name)
+	}
+	settingRow(c, k, locales.SettingsGlass(), hint, func() {
+		if ui.Switch(c, &glassy).Label(locales.SettingsGlass()).Disabled(byTheme).Changed() && !byTheme {
 			a.setGlass(glassy)
 		}
 	})
@@ -898,7 +904,7 @@ func (a *App) fontPreview(c *ui.Context, k *colors) {
 	if len(ghostty.Families) > 0 {
 		family = ghostty.Families[0]
 	}
-	ui.Column(c).Padding(12, 14).Radius(radiusM).Gap(2).Background(th.Background).Border(1, k.cardBorder).Children(func() {
+	ui.Column(c).Padding(12, 14).Radius(k.radius(radiusM)).Gap(2).Background(th.Background).Border(1, k.cardBorder).Children(func() {
 		for _, line := range []string{"The quick brown fox jumps over the lazy dog", "0123456789 {}[]() => != <= ~/gorex $"} {
 			ui.Text(c, line).Font(family).FontSize(termFont.Size).TextColor(th.Foreground)
 		}
@@ -928,7 +934,7 @@ func (a *App) themeSettings(c *ui.Context, k *colors) {
 	// pick is a theme's card: a swatch of its colors, its name, and the
 	// ring of the chosen one.
 	pick := func(id, name, sub string, th *terminal.Theme, chosen bool, set string) {
-		card := ui.Column(c.Key(id)).Grow(1).Basis(0).MinWidth(0).Gap(6).Padding(6, 6, 8, 6).Radius(radiusXL).
+		card := ui.Column(c.Key(id)).Grow(1).Basis(0).MinWidth(0).Gap(6).Padding(6, 6, 8, 6).Radius(k.radius(radiusXL)).
 			Cursor(ui.CursorPointer).Role(ui.RoleButton).Selected(chosen).Label(name).
 			Background(k.card).Border(2, ui.Transparent)
 		if chosen {
@@ -940,7 +946,7 @@ func (a *App) themeSettings(c *ui.Context, k *colors) {
 			a.setPref(func(s *settings) { s.TermTheme = set })
 		}
 		card.Children(func() {
-			ui.Column(c).Height(76).Padding(10, 12).Gap(8).Radius(concentric(radiusXL, 2+6)).Background(th.Background).Border(1, k.cardBorder).Children(func() {
+			ui.Column(c).Height(76).Padding(10, 12).Gap(8).Radius(concentric(k.radius(radiusXL), 2+6)).Background(th.Background).Border(1, k.cardBorder).Children(func() {
 				ui.Row(c).AlignItems(ui.Center).Children(func() {
 					ui.Text(c, "Aa").Font(monoFamily()).FontSize(fontTitle).FontWeight(700).TextColor(th.Foreground).Grow(1)
 					if chosen {
@@ -949,7 +955,7 @@ func (a *App) themeSettings(c *ui.Context, k *colors) {
 				})
 				ui.Row(c).Gap(6).Children(func() {
 					for _, i := range []int{1, 2, 4, 5} {
-						ui.Box(c).Size(12, 12).Radius(capsule(12)).Background(th.Palette[i])
+						ui.Box(c).Size(12, 12).Radius(k.capsule(12)).Background(th.Palette[i])
 					}
 				})
 			})
@@ -1067,7 +1073,7 @@ func (a *App) keyboardSettings(c *ui.Context, k *colors) {
 			groupRow(c, k, i).MinHeight(40).Padding(8, 14).Children(func() {
 				ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 					ui.Text(c, r.Title).FontSize(fontBody).FontWeight(500).TextColor(k.text).Grow(1).MinWidth(0)
-					ui.Text(c, r.Keys).FontSize(fontSubhead).TextColor(k.textMuted).Padding(2, 10).Radius(radiusM).Background(k.hover).Shrink(0)
+					ui.Text(c, r.Keys).FontSize(fontSubhead).TextColor(k.textMuted).Padding(2, 10).Radius(k.radius(radiusM)).Background(k.hover).Shrink(0)
 					if r.Command != nil {
 						if !blockedFromClient(r.Command.ID) && ui.Button(c.Key("change"), locales.SettingsChange()).Clicked() {
 							a.startRecording(r.Command)

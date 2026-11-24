@@ -124,5 +124,56 @@ func TestDesignTokens(t *testing.T) {
 			}
 			return true
 		})
+		if path != "tokens.go" {
+			bareRadii(t, fset, f)
+		}
 	}
+}
+
+// radiusTokens are tokens.go's radius tokens, which UI code takes through
+// k.radius so that a theme's metrics.radius scales them
+// (docs/DSK-012-theme-shaders.md, Metrics).
+var radiusTokens = map[string]bool{
+	"radiusS": true, "radiusM": true, "radiusL": true, "radiusXL": true, "radiusXXL": true, "radiusTile": true,
+}
+
+// bareRadii fails on a radius token in f that is not the argument of a
+// .radius call, a constant that names one aside, and on a call of capsule
+// that is not k.capsule.
+func bareRadii(t *testing.T, fset *token.FileSet, f *ast.File) {
+	t.Helper()
+	var stack []ast.Node
+	ast.Inspect(f, func(n ast.Node) bool {
+		if n == nil {
+			stack = stack[:len(stack)-1]
+			return true
+		}
+		parent := ast.Node(nil)
+		if len(stack) > 0 {
+			parent = stack[len(stack)-1]
+		}
+		stack = append(stack, n)
+		switch v := n.(type) {
+		case *ast.ValueSpec:
+			if d, ok := parent.(*ast.GenDecl); ok && d.Tok == token.CONST {
+				stack = stack[:len(stack)-1] // f(nil) does not follow a false
+				return false                 // a constant that names a token, as paletteR
+			}
+		case *ast.Ident:
+			if !radiusTokens[v.Name] {
+				return true
+			}
+			if call, ok := parent.(*ast.CallExpr); ok {
+				if sel, ok := call.Fun.(*ast.SelectorExpr); ok && sel.Sel.Name == "radius" {
+					return true
+				}
+			}
+			t.Errorf("%s: bare %s, not k.radius(%s)", fset.Position(v.Pos()), v.Name, v.Name)
+		case *ast.CallExpr:
+			if id, ok := v.Fun.(*ast.Ident); ok && id.Name == "capsule" {
+				t.Errorf("%s: capsule(...), not k.capsule(...)", fset.Position(v.Pos()))
+			}
+		}
+		return true
+	})
 }

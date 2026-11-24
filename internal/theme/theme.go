@@ -87,6 +87,14 @@ const (
 	TabSeparator                         // sideBar.tabSeparator
 	TabHoverBackground                   // sideBar.tabHoverBackground
 	TabActiveBackground                  // sideBar.tabActiveBackground
+	// The roles of docs/DSK-012-theme-shaders.md: four faces and the pane's
+	// border. The built-in palette has none of them: unset, each draws as
+	// the app did before.
+	TitleBarBackground   // titleBar.background
+	SideBarBackground    // sideBar.background
+	PaneHeaderBackground // paneHeader.background
+	ButtonBackground     // button.background
+	PaneBorder           // pane.border
 	NumRoles
 )
 
@@ -98,6 +106,11 @@ var roleNames = [NumRoles]string{
 	"sideBar.tabSeparator",
 	"sideBar.tabHoverBackground",
 	"sideBar.tabActiveBackground",
+	"titleBar.background",
+	"sideBar.background",
+	"paneHeader.background",
+	"button.background",
+	"pane.border",
 }
 
 func (r Role) String() string { return roleNames[r] }
@@ -144,7 +157,8 @@ func ColorFor(raw json.RawMessage, dark bool) (ui.Color, bool) {
 // dark at index 1. A seed or role it does not set keeps the built-in one.
 // Terminal names the Ghostty theme of each appearance, or "" for none.
 // Assets, Ambience and Brand are the keys of docs/DSK-010-theme-ambience.md
-// that this build reads.
+// that this build reads. Metrics and Glass are the keys of
+// docs/DSK-012-theme-shaders.md: nil when the manifest has none.
 type Manifest struct {
 	Name     string
 	Seeds    [2]map[Seed]ui.Color
@@ -154,6 +168,8 @@ type Manifest struct {
 	Assets   map[string]Asset
 	Ambience Ambience
 	Brand    Brand
+	Metrics  *Metrics
+	Glass    *bool
 }
 
 // Sidebar holds the sidebar.* settings of docs/DSK-007-sidebar-style.md
@@ -213,7 +229,7 @@ func Parse(b []byte) (*Manifest, []string, error) {
 		Roles map[string]json.RawMessage            `json:"roles"`
 		Term  map[string]json.RawMessage            `json:"terminal"`
 	}
-	known := []string{"name", "seeds", "roles", "terminal", "sidebar", "assets", "ambience", "brand"}
+	known := []string{"name", "seeds", "roles", "terminal", "sidebar", "assets", "ambience", "brand", "metrics", "glass"}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return nil, nil, err
 	}
@@ -292,6 +308,12 @@ func Parse(b []byte) (*Manifest, []string, error) {
 	}
 	if raw, ok := top["brand"]; ok {
 		m.Brand = parseBrand(raw, m.Assets, &w)
+	}
+	if raw, ok := top["metrics"]; ok {
+		m.Metrics = parseMetrics(raw, &w)
+	}
+	if raw, ok := top["glass"]; ok {
+		m.Glass = parseGlass(raw, &w)
 	}
 	warn = w
 	slices.Sort(warn)

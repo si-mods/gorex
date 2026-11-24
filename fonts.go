@@ -167,3 +167,39 @@ func fontKey(name string) string {
 	}
 	return b.String()
 }
+
+// chromeFont is the family of the chrome's text for a theme's metrics.font
+// (docs/DSK-012-theme-shaders.md): the first of list that is installed,
+// with uiFont after it for the characters it lacks. "system" is uiFont,
+// "mono" the app's own monospaced family, and "rounded", which MyGo cannot
+// draw yet, falls to the next name. A list with no installed family, or
+// none, is uiFont.
+func chromeFont(list []string) string {
+	if len(list) == 0 {
+		return uiFont
+	}
+	var have map[string]string
+	for _, name := range list {
+		switch strings.ToLower(name) {
+		case "system":
+			return uiFont
+		case "rounded":
+			continue
+		case "mono":
+			name = "JetBrains Mono"
+		}
+		if have == nil {
+			have = map[string]string{}
+			for _, f := range ui.FontFamilies() {
+				have[strings.ToLower(f.Name)] = f.Name
+			}
+		}
+		if f, ok := have[strings.ToLower(name)]; ok {
+			if uiFont == "" {
+				return f
+			}
+			return f + ", " + uiFont
+		}
+	}
+	return uiFont
+}

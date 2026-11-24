@@ -187,6 +187,7 @@
   "settingsDockBadgeHint": "在应用图标上显示需要你处理的窗格数：被阻塞、在后台完成或失败，或响过铃。",
   "settingsGlass": "玻璃效果",
   "settingsGlassHint": "让桌面透过窗口显示，并让弹出框、对话框和浮动窗格以玻璃浮于其上。",
+  "settingsGlassByTheme": "由主题 {name} 设置。",
   "settingsTermOpacity": "终端不透明度",
   "settingsTermOpacityHint": "终端背景盖住窗口玻璃的程度。仅在开启玻璃效果时生效。",
   "settingsTermOpacityValue": "{opacity, number, percent}",

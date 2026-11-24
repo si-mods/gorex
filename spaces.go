@@ -357,7 +357,7 @@ type spaceUI struct {
 func (a *App) spacePicker(c *ui.Context, k *colors, wide bool) {
 	name := shownSpace()
 	label := locales.SpacePickerLabel(spaceLabel(name))
-	chip := ui.Row(c.Key("space-picker")).Height(28).Gap(8).Padding(0, 8, 0, 8).Radius(pillRadius(28, radiusM)).AlignItems(ui.Center).Cursor(ui.CursorPointer).
+	chip := ui.Row(c.Key("space-picker")).Height(28).Gap(8).Padding(0, 8, 0, 8).Radius(pillRadius(k, 28, k.radius(radiusM))).AlignItems(ui.Center).Cursor(ui.CursorPointer).
 		Role(ui.RoleButton).Label(label).Tooltip(label)
 	if wide {
 		chip.Grow(1).MinWidth(0)
@@ -379,6 +379,7 @@ func (a *App) spacePicker(c *ui.Context, k *colors, wide bool) {
 		glyphIcon(c, "chevron-down", 13, k.textFaint).Shrink(0)
 	})
 	popoverBase(c, chip, &a.spaces.open, func(panel ui.Element, entering bool) {
+		k := k.window() // the menu lies on the window's panel, not on the chip's face
 		m := menuStyleOf(k, c.Theme().Dark)
 		m.Panel(panel.Margin(6, 0, 0, 0).Width(260), 0)
 		// The menu's parts come in one after another, a step apart.
@@ -405,7 +406,7 @@ func (a *App) spaceMenuHead(c *ui.Context, k *colors) ui.Element {
 	head.Children(func() {
 		ui.Text(c, locales.SpacesTitle()).FontSize(fontFootnote).FontWeight(600).TextColor(k.textMuted).SingleLine()
 		ui.Box(c).Grow(1)
-		edit := ui.Row(c.Key("space-edit")).Radius(radiusS).Padding(2, 4, 2, 4).Cursor(ui.CursorPointer).
+		edit := ui.Row(c.Key("space-edit")).Radius(k.radius(radiusS)).Padding(2, 4, 2, 4).Cursor(ui.CursorPointer).
 			Role(ui.RoleButton).Label(locales.SpaceEdit())
 		if edit.Hovered() {
 			edit.Background(hoverFace(k))
@@ -568,7 +569,7 @@ func (a *App) spaceDialog(c *ui.Context, k *colors) {
 		dialogEnter(c, backdrop, panel)
 		backdrop.Background(k.backdrop)
 		_, winH := c.Size()
-		dialogShadow(glassPanel(panel.Width(400).MaxHeight(winH-24).Padding(20).Radius(radiusXXL), k).Border(1, k.panelBorder)).Role(ui.RoleDialog).Label(title)
+		dialogShadow(glassPanel(panel.Width(400).MaxHeight(winH-24).Padding(20).Radius(k.radius(radiusXXL)), k).Border(k.borderW(), k.panelBorder), k).Role(ui.RoleDialog).Label(title)
 		ui.Text(c, title).FontSize(fontTitle).FontWeight(700).TextColor(k.text).Margin(0, 0, 10, 0)
 		if s.dialog == "new" {
 			in := textField(c.Key("space-name"), k, &s.name, fieldRegular).Label(locales.SpaceNameLabel()).Placeholder(locales.SpaceNameHint()).AutoFocus()
@@ -635,7 +636,7 @@ func (a *App) spaceDialog(c *ui.Context, k *colors) {
 func (a *App) spaceEditRow(c *ui.Context, k *colors, i int, name string) {
 	s := &a.spaces
 	ui.Row(c.Key("edit-" + name)).Gap(6).AlignItems(ui.Center).Children(func() {
-		mark := ui.Box(c).Size(22, 22).Center().Radius(capsule(22)).Cursor(ui.CursorPointer).Role(ui.RoleButton).Label(locales.SpaceColor()).Tooltip(locales.SpaceColor())
+		mark := ui.Box(c).Size(22, 22).Center().Radius(k.capsule(22)).Cursor(ui.CursorPointer).Role(ui.RoleButton).Label(locales.SpaceColor()).Tooltip(locales.SpaceColor())
 		mark.Children(func() { spaceSwatchMark(c, k, spaceColor(name), 12) })
 		mark.ContextMenu(func(m *ui.Menu) { spaceColorMenu(m, name) })
 		if mark.Clicked() {

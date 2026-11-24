@@ -379,6 +379,7 @@ func (a *App) useTheme(id string) {
 	saveSettings()
 	err := loadTheme()
 	a.applyPrefs()
+	a.applyGlass() // a theme's glass key decides at once
 	iconPacksUI.mu.Lock()
 	iconPacksUI.themeErr = ""
 	if err != nil {

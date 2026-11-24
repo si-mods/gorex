@@ -119,6 +119,67 @@ func TestThemeLayers(t *testing.T) {
 	if s := surface(k, roleTabActiveBackground); s.text != ui.Hex("#1a1d21") {
 		t.Errorf("a light face took text %v, want the theme's light text", s.text)
 	}
+
+	// The faces of docs/DSK-012-theme-shaders.md: none in the built-in
+	// palettes, so that nothing draws where a theme sets none; each one a
+	// theme sets resolves with the ladder of its lightness, and a button
+	// face that is not the accent takes that ladder's text.
+	for _, r := range []faceRole{roleTitleBarBackground, roleSideBarBackground, rolePaneHeaderBackground, roleButtonBackground} {
+		if _, _, ok := themedFace(&darkTheme, r); ok {
+			t.Errorf("%s: a face with no theme role", r)
+		}
+	}
+	m, warn, err = theme.Parse([]byte(`{
+  "seeds": { "light": { "text": "#1a1d21" } },
+  "roles": {
+    "titleBar.background": "#e8e8ee", "sideBar.background": "#f0f0f4",
+    "paneHeader.background": { "light": "#202024", "dark": "#e8e8ee" },
+    "button.background": "#f2d28a", "pane.border": "#2876c880"
+  }
+}`))
+	if err != nil || len(warn) != 0 {
+		t.Fatal(err, warn)
+	}
+	applyTheme(m)
+	dk, lk := paletteOf(true), paletteOf(false)
+	for _, r := range []faceRole{roleTitleBarBackground, roleSideBarBackground} {
+		if fk, face, ok := themedFace(dk, r); !ok || face != *roleField(dk, r) || fk.text != ui.Hex("#1a1d21") {
+			t.Errorf("%s: a light face in the dark window: %v, text %v", r, ok, fk.text)
+		}
+	}
+	if fk, _, _ := themedFace(lk, rolePaneHeaderBackground); fk.text != darkColors.text {
+		t.Errorf("a dark header in the light window took text %v", fk.text)
+	}
+	if fk, _, _ := themedFace(dk, rolePaneHeaderBackground); fk.text != ui.Hex("#1a1d21") {
+		t.Errorf("a light header in the dark window took text %v", fk.text)
+	}
+	// Over a dark terminal in the dark window the header's palette has the
+	// dark ladder; a light header face takes the light one back.
+	if fk, _, _ := themedFace(headerColors(dk, ui.Hex("#101010")), rolePaneHeaderBackground); fk.text != ui.Hex("#1a1d21") {
+		t.Errorf("a light header over a dark terminal took text %v", fk.text)
+	}
+	// And in the light window over a dark terminal, the header's palette
+	// has the dark ladder; the light header face takes the light one.
+	m2, _, _ := theme.Parse([]byte(`{"roles":{"paneHeader.background":"#dbe7f6"}}`))
+	applyTheme(m2)
+	lk2 := paletteOf(false)
+	if fk, _, _ := themedFace(headerColors(lk2, ui.Hex("#101010")), rolePaneHeaderBackground); fk.text != lightColors.text {
+		t.Errorf("a light header in the light window over a dark terminal took text %v", fk.text)
+	}
+	applyTheme(m)
+	if dk.paneBorder != ui.Hex("#2876c880") {
+		t.Errorf("pane.border %v", dk.paneBorder)
+	}
+	if wt := widgetTheme(&ui.Theme{}, dk); wt.Accent != ui.Hex("#f2d28a") || wt.AccentText != ui.Hex("#1a1d21") {
+		t.Errorf("button face %v with text %v, want the light ladder's", wt.Accent, wt.AccentText)
+	}
+	if mt := menuTheme(&ui.Theme{Accent: ui.Hex("#000001")}, dk); mt.Accent != ui.Hex("#f2d28a") {
+		t.Errorf("the window's button face %v", mt.Accent)
+	}
+	applyTheme(nil)
+	if mt := menuTheme(&ui.Theme{Accent: ui.Hex("#000001")}, paletteOf(true)); mt.Accent != ui.Hex("#000001") {
+		t.Error("with no button.background the window's accent changed")
+	}
 }
 
 // TestSeedAndRoleFields: each name of internal/theme's allowlist sets its

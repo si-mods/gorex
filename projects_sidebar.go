@@ -170,12 +170,12 @@ func (a *App) hostHeader(c *ui.Context, k *colors, h *hostConn) {
 		a.askTeleport(dragged, h)
 	}
 	if dragged, over := ui.DragOver[*Tab](row); over && teleportsTo(dragged, h) {
-		row.Radius(pillRadius(hostHeaderH, radiusM)).Border(1.5, k.busy.Alpha(0.6))
+		row.Radius(pillRadius(k, hostHeaderH, k.radius(radiusM))).Border(1.5, k.busy.Alpha(0.6))
 	}
 	row.ContextMenu(func(m *ui.Menu) { a.hostMenu(m, h) })
 	row.Children(func() {
 		ui.Text(c, strings.ToUpper(name)).FontSize(sidebarFont(fontCaption)).FontWeight(700).TextColor(k.textFaint).SingleLine().Ellipsis("…").Shrink(1).MinWidth(0)
-		dot := ui.Box(c).Size(6, 6).Radius(capsule(6)).Shrink(0)
+		dot := ui.Box(c).Size(6, 6).Radius(k.capsule(6)).Shrink(0)
 		switch {
 		case !away:
 			dot.Background(k.textFaint)
@@ -254,7 +254,7 @@ func (a *App) projectRow(c *ui.Context, k *colors, w *Workspace, reserve float32
 	n := w.tabCount()
 	offline := w.offline()
 	row := ui.Row(c.Key("project-"+key)).Height(projectRowH()).Shrink(0).Padding(0, 4, 0, sidebarLead()).Gap(sideGap).AlignItems(ui.Center).
-		Radius(pillRadius(projectRowH(), radiusM)).Cursor(ui.CursorPointer).Role(ui.RoleButton).Expanded(open).Label(name + spacedComma(workspaceDetail(w, a, n)))
+		Radius(pillRadius(k, projectRowH(), k.radius(radiusM))).Cursor(ui.CursorPointer).Role(ui.RoleButton).Expanded(open).Label(name + spacedComma(workspaceDetail(w, a, n)))
 	if anim := motion(c); anim != nil {
 		row.Transition(exitIn(ui.ElementTransition{Animation: anim, Position: true, Enter: tabMotion, Exit: tabMotion}, durExitMove))
 	}
@@ -375,7 +375,7 @@ func (a *App) projectRow(c *ui.Context, k *colors, w *Workspace, reserve float32
 func (a *App) projectGroup(c *ui.Context, k *colors, w *Workspace, reserve float32) {
 	// Every project has the room of the face, so that choosing another moves
 	// nothing: only the face's color comes and goes, fading.
-	g := ui.Column(c.Key("group-"+openKey(w.host, w.ID))).Gap(rowGap).Radius(pillRadius(sidebarRowH(), radiusM)+sidebarGroupPad()).Padding(sidebarGroupPad()).Margin(-sidebarGroupEdge(), -sidebarGroupPad(), -sidebarGroupEdge(), -sidebarGroupPad())
+	g := ui.Column(c.Key("group-"+openKey(w.host, w.ID))).Gap(rowGap).Radius(pillRadius(k, sidebarRowH(), k.radius(radiusM))+sidebarGroupPad()).Padding(sidebarGroupPad()).Margin(-sidebarGroupEdge(), -sidebarGroupPad(), -sidebarGroupEdge(), -sidebarGroupPad())
 	if w == a.ws && rowOpen(openKey(w.host, w.ID), true) && w.tabCount() > 0 && sidebarGroupFaced() {
 		g.Background(k.groupFace)
 		k = surface(k, roleActiveGroupBackground).on(k) // what the group holds reads on its face
@@ -439,7 +439,7 @@ func projectFolderTile(c *ui.Context, k *colors, color string) {
 			glyphIcon(c, "folder", 11, col).Shrink(0)
 			return
 		}
-		ui.Row(c).Size(tileW, tileH).Radius(radiusTile).Background(k.text.Alpha(folderTileAlpha)).AlignItems(ui.Center).Justify(ui.Center).Children(func() {
+		ui.Row(c).Size(tileW, tileH).Radius(k.radius(radiusTile)).Background(k.text.Alpha(folderTileAlpha)).AlignItems(ui.Center).Justify(ui.Center).Children(func() {
 			glyphIcon(c, "folder", 11, col).Shrink(0)
 		})
 	})
@@ -495,7 +495,7 @@ func (a *App) workspaceTabs(c *ui.Context, k *colors, w *Workspace, reserve floa
 		if spaceTab(c, k, cmp.Or(t.ID, fmt.Sprint(i)), name, detail, s, reserve, func() {
 			ui.Box(c).Size(tileSlot, tileH+4).Shrink(0).Draw(func(p *ui.Painter, r ui.Rect) {
 				fr := ui.Rect{X: r.X + 1, Y: r.Y + 2, W: tileW, H: tileH}
-				drawTile(p, fr, prog, true)
+				drawTile(p, k, fr, prog, true)
 				if s != nil && s.State == "done" {
 					drawDoneDot(p, fr, k)
 				}
@@ -531,7 +531,7 @@ func (a *App) showWorkspaceTab(w *Workspace, i int) {
 // whether it was clicked.
 func (a *App) foldRow(c *ui.Context, k *colors, key, label, count string, open bool, reserve float32) bool {
 	row := ui.Row(c.Key("fold-"+key)).Height(foldRowH).Shrink(0).Padding(0, 10, 0, sidebarLead()).Gap(sideGap).AlignItems(ui.Center).
-		Radius(pillRadius(foldRowH, radiusM)).Cursor(ui.CursorPointer).Role(ui.RoleDisclosure).Expanded(open).Label(label)
+		Radius(pillRadius(k, foldRowH, k.radius(radiusM))).Cursor(ui.CursorPointer).Role(ui.RoleDisclosure).Expanded(open).Label(label)
 	hovered := row.Hovered()
 	if hovered {
 		row.Background(hoverFace(k))
@@ -790,7 +790,7 @@ func (a *App) projectNewTabRow(c *ui.Context, k *colors, w *Workspace, agents []
 		// their own hovers at its end.
 		label := locales.ProjectsNewTabIn(w.Name)
 		add := ui.Row(c.Key("add")).Grow(1).MinWidth(0).Height(sidebarRowH()).Gap(sideGap).AlignItems(ui.Center).
-			Radius(pillRadius(sidebarRowH(), radiusM)).Cursor(ui.CursorPointer).Role(ui.RoleButton).Label(label).Tooltip(label)
+			Radius(pillRadius(k, sidebarRowH(), k.radius(radiusM))).Cursor(ui.CursorPointer).Role(ui.RoleButton).Label(label).Tooltip(label)
 		ck := k
 		if add.Hovered() {
 			add.Background(hoverFace(k))
@@ -811,7 +811,7 @@ func (a *App) projectNewTabRow(c *ui.Context, k *colors, w *Workspace, agents []
 			pinned := a.pinnedAgents(w)
 			for _, ag := range pinned[:min(3, len(pinned))] {
 				agent := ag
-				b := ui.Box(c.Key("agent-"+agent.ID)).Size(20, 20).Radius(capsule(20)).Center().Shrink(0).
+				b := ui.Box(c.Key("agent-"+agent.ID)).Size(20, 20).Radius(k.capsule(20)).Center().Shrink(0).
 					Cursor(ui.CursorPointer).Role(ui.RoleButton).Label(agent.Name).Tooltip(agent.Name)
 				col := k.textMuted
 				if b.Hovered() {

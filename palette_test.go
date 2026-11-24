@@ -127,9 +127,15 @@ func TestDeriveKeepsPalettes(t *testing.T) {
 		{"lightColors", lightColors, wantLightColors},
 		{"darkColors", darkColors, wantDarkColors},
 	} {
+		if tc.got.m != builtinMetrics {
+			t.Errorf("%s: metrics %+v, want the built-in ones", tc.name, tc.got.m)
+		}
 		got, want := reflect.ValueOf(tc.got), reflect.ValueOf(tc.want)
 		for i := range got.NumField() {
 			g, w := got.Field(i), want.Field(i)
+			if g.Type() != reflect.TypeFor[ui.Color]() {
+				continue // the metrics, checked above
+			}
 			gc := ui.Color{R: uint8(g.Field(0).Uint()), G: uint8(g.Field(1).Uint()), B: uint8(g.Field(2).Uint()), A: uint8(g.Field(3).Uint())}
 			wc := ui.Color{R: uint8(w.Field(0).Uint()), G: uint8(w.Field(1).Uint()), B: uint8(w.Field(2).Uint()), A: uint8(w.Field(3).Uint())}
 			if gc != wc {

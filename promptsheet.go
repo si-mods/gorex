@@ -115,7 +115,7 @@ func (a *App) promptPanel(c *ui.Context, k *colors) {
 		backdrop.Background(k.backdrop)
 		// Opaque, of the window's theme: the system's glass takes the system's
 		// appearance, which an app theme of the other one makes unreadable.
-		dialogShadow(panel.Width(460).MaxHeight(560).Padding(20).Radius(radiusXXL).Background(k.panel).Border(1, k.panelBorder)).
+		dialogShadow(panel.Width(460).MaxHeight(560).Padding(20).Radius(k.radius(radiusXXL)).Background(k.panel).Border(k.borderW(), k.panelBorder), k).
 			Role(ui.RoleDialog).Label(spec.Title)
 		if p2 := p.Action; p2 != "" {
 			ui.Text(c, p2).FontSize(fontFootnote).TextColor(k.textFaint).Margin(0, 0, 4, 0)
@@ -164,7 +164,7 @@ func (a *App) promptPanel(c *ui.Context, k *colors) {
 				for i, it := range spec.Items {
 					item := it
 					row := ui.Row(c.Key("prompt-"+item.ID)).Height(38).Padding(0, 10).Gap(10).
-						Radius(concentric(radiusXXL, 1)).AlignItems(ui.Center).Cursor(ui.CursorPointer)
+						Radius(concentric(k.radius(radiusXXL), 1)).AlignItems(ui.Center).Cursor(ui.CursorPointer)
 					chosen := a.promptPicked[item.ID]
 					switch {
 					case chosen:

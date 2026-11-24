@@ -38,7 +38,7 @@ func (a *App) hostButton(c *ui.Context, k *colors) {
 	}
 	b := iconButtonWith(c, k, glyph, label, 30, 16, a.hostOpen, func() {
 		if bad != nil {
-			ui.Box(c).Absolute().Top(5).Right(5).Size(7, 7).Radius(capsule(7)).Background(hostDot(k, bad))
+			ui.Box(c).Absolute().Top(5).Right(5).Size(7, 7).Radius(k.capsule(7)).Background(hostDot(k, bad))
 		}
 	}).Tooltip(label)
 	if b.Clicked() {
@@ -171,6 +171,7 @@ func menuIcon(name string) *mygo.MenuIcon {
 // or above where there is no room below.
 func (a *App) hostPopover(c *ui.Context, k *colors, anchor ui.Element, name, glyph string) {
 	popoverBase(c, anchor, &a.hostOpen, func(panel ui.Element, _ bool) {
+		k := k.window() // the panel is the window's, not the sidebar's face
 		_, winH := c.Size()
 		// No higher than the room on the side it opens on, the larger:
 		// above the button at the sidebar's foot, it would otherwise cover
@@ -179,7 +180,7 @@ func (a *App) hostPopover(c *ui.Context, k *colors, anchor ui.Element, name, gly
 		if r := anchor.Bounds(); r.H > 0 {
 			room = min(room, max(r.Y, winH-r.Y-r.H)-16)
 		}
-		popoverShadow(glassPanel(panel.Margin(8, 0, 0, 0).MaxHeight(room).Width(300).Padding(14).Radius(radiusXL), k).Border(1, k.panelBorder), k)
+		popoverShadow(glassPanel(panel.Margin(8, 0, 0, 0).MaxHeight(room).Width(300).Padding(14).Radius(k.radius(radiusXL)), k).Border(k.borderW(), k.panelBorder), k)
 		// A short window scrolls the panel's body.
 		ui.Scroll(c).MinHeight(0).Children(func() {
 			ui.Column(c).Gap(12).Children(func() { a.hostPanel(c, k, name, glyph) })
@@ -190,13 +191,13 @@ func (a *App) hostPopover(c *ui.Context, k *colors, anchor ui.Element, name, gly
 func (a *App) hostPanel(c *ui.Context, k *colors, name, glyph string) {
 	h := a.hello.Host
 	ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
-		ui.Box(c).Size(38, 38).Radius(radiusM).Background(k.hover).Center().Children(func() {
+		ui.Box(c).Size(38, 38).Radius(k.radius(radiusM)).Background(k.hover).Center().Children(func() {
 			glyphIcon(c, glyph, 24, k.text)
 		})
 		ui.Column(c).Grow(1).MinWidth(0).Children(func() {
 			ui.Text(c, name).FontSize(fontTitle).FontWeight(700).TextColor(k.text).SingleLine().Ellipsis("…")
 			ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
-				ui.Box(c).Size(7, 7).Radius(capsule(7)).Background(k.busy)
+				ui.Box(c).Size(7, 7).Radius(k.capsule(7)).Background(k.busy)
 				ui.Text(c, locales.HostConnected(thisMachine())).FontSize(fontSubhead).TextColor(k.textMuted)
 			})
 		})
@@ -230,7 +231,7 @@ func (a *App) hostsInPanel(c *ui.Context, k *colors) {
 	for _, h := range away {
 		status, _, _ := hostStatus(h)
 		ui.Row(c.Key(hostKey(h))).Gap(8).AlignItems(ui.Center).Children(func() {
-			ui.Box(c).Size(7, 7).Radius(capsule(7)).Background(hostDot(k, h)).Shrink(0)
+			ui.Box(c).Size(7, 7).Radius(k.capsule(7)).Background(hostDot(k, h)).Shrink(0)
 			ui.Text(c, a.hostName(h)).FontSize(fontCallout).FontWeight(600).TextColor(k.text).MinWidth(0).SingleLine().Ellipsis("…")
 			ui.Text(c, status).FontSize(fontCallout).TextColor(k.textMuted).Shrink(0)
 		})

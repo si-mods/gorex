@@ -50,9 +50,9 @@ func menuStyleOf(k *colors, dark bool) *ui.MenuStyle {
 	}
 	m := &ui.MenuStyle{
 		Panel: func(panel ui.Element, level int) {
-			popoverShadow(glassPanel(panel.Radius(radiusL).Padding(6), k).Border(1, k.panelBorder), k)
+			popoverShadow(glassPanel(panel.Radius(k.radius(radiusL)).Padding(6), k).Border(k.borderW(), k.panelBorder), k)
 		},
-		RowHeight: 24, RowRadius: concentric(radiusL, 6), RowPadding: 10,
+		RowHeight: 24, RowRadius: concentric(k.radius(radiusL), 6), RowPadding: 10,
 		Highlight: k.accent, HighlightText: k.accentText,
 		Separator: k.panelBorder,
 		TextSize:  13,
@@ -71,7 +71,8 @@ func setupMenus(c *ui.Context) {
 // menuTheme is base with the drawn menus' look in k's colors.
 func menuTheme(base *ui.Theme, k *colors) *ui.Theme {
 	t := *base
-	t.Font = uiFont
+	t.Font = k.m.font
+	buttonColors(&t, k)
 	t.Menu = menuStyleOf(k, t.Dark)
 	return &t
 }

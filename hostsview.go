@@ -412,7 +412,7 @@ func (a *App) hostRow(c *ui.Context, k *colors, h *hostConn) {
 					ui.Text(c, h.label()).FontSize(fontBody).FontWeight(600).TextColor(k.text).SingleLine().Ellipsis("…")
 				}
 				ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
-					ui.Box(c).Size(7, 7).Radius(capsule(7)).Background(hostDot(k, h)).Shrink(0)
+					ui.Box(c).Size(7, 7).Radius(k.capsule(7)).Background(hostDot(k, h)).Shrink(0)
 					ui.Text(c, label).FontSize(fontFootnote).FontWeight(500).TextColor(k.textMuted)
 					if up && h.hello.Host.Model != "" {
 						ui.Text(c, h.hello.Host.Model).FontSize(fontFootnote).TextColor(k.textFaint).SingleLine().Ellipsis("…").MinWidth(0)
@@ -450,7 +450,7 @@ func (a *App) hostRow(c *ui.Context, k *colors, h *hostConn) {
 		if page.removing != h.ID {
 			return
 		}
-		ui.Column(c).Gap(8).Padding(8, 10).Radius(radiusM).Background(k.hover).Children(func() {
+		ui.Column(c).Gap(8).Padding(8, 10).Radius(k.radius(radiusM)).Background(k.hover).Children(func() {
 			ui.Text(c, locales.HostsRemoveAsk(h.label())).FontSize(fontSubhead).TextColor(k.text).LineHeight(1.4)
 			ui.Row(c).Gap(8).Children(func() {
 				if ui.Button(c.Key("remove-yes"), locales.HostsRemove()).Clicked() {
@@ -487,7 +487,7 @@ func (a *App) hostDiag(c *ui.Context, k *colors, h *hostConn) {
 		segs = append(segs, locales.HostsDiagPing(h.pingMs))
 	}
 	ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-		ui.Box(c).Radius(capsule(9)).Background(k.panelSel).Padding(2, 6).Children(func() {
+		ui.Box(c).Radius(k.capsule(9)).Background(k.panelSel).Padding(2, 6).Children(func() {
 			ui.Text(c, tag).FontSize(fontCaption).FontWeight(600).TextColor(k.accent)
 		})
 		if len(segs) > 0 {
@@ -684,37 +684,37 @@ func (a *App) addHostSheet(c *ui.Context, k *colors) {
 	ui.DialogBase(c, &page.adding, func(backdrop, panel ui.Element) {
 		dialogEnter(c, backdrop, panel)
 		backdrop.Background(k.backdrop)
-		dialogShadow(glassPanel(panel.Width(440).Padding(20).Gap(12).Radius(radiusXXL), k).Border(1, k.panelBorder)).Role(ui.RoleDialog).Label(locales.HostsAddTitle())
+		dialogShadow(glassPanel(panel.Width(440).Padding(20).Gap(12).Radius(k.radius(radiusXXL)), k).Border(k.borderW(), k.panelBorder), k).Role(ui.RoleDialog).Label(locales.HostsAddTitle())
 		ui.Text(c, locales.HostsAddTitle()).FontSize(fontTitle).FontWeight(700).TextColor(k.text)
 		switch page.stage {
 		case addConnecting:
 			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-				ui.Box(c).Size(7, 7).Radius(capsule(7)).Background(k.attention)
+				ui.Box(c).Size(7, 7).Radius(k.capsule(7)).Background(k.attention)
 				ui.Text(c, locales.HostsConnectingTo(strings.TrimSpace(page.name))).FontSize(fontBody).TextColor(k.textMuted)
 			})
 		case addCode, addApproving:
 			host := strings.TrimSpace(page.name)
 			ui.Text(c, locales.HostsCodeIntro(host)).FontSize(fontBody).TextColor(k.text).LineHeight(1.35)
-			ui.Column(c).Gap(4).Padding(12).Radius(radiusM).Background(k.hover).AlignItems(ui.Center).Children(func() {
+			ui.Column(c).Gap(4).Padding(12).Radius(k.radius(radiusM)).Background(k.hover).AlignItems(ui.Center).Children(func() {
 				ui.Text(c, locales.HostsCode()).FontSize(fontFootnote).FontWeight(600).TextColor(k.textMuted)
 				ui.Text(c, page.code).Font(monoFamily()).FontSize(fontCode).FontWeight(700).TextColor(k.text).Label(page.code)
 			})
 			if page.stage == addApproving {
 				ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-					ui.Box(c).Size(7, 7).Radius(capsule(7)).Background(k.attention)
+					ui.Box(c).Size(7, 7).Radius(k.capsule(7)).Background(k.attention)
 					ui.Text(c, locales.HostsWaiting()).FontSize(fontCallout).FontWeight(500).TextColor(k.textMuted)
 				})
 				ui.Text(c, locales.HostsCodeApprove(host)).FontSize(fontSubhead).TextColor(k.textMuted).LineHeight(1.3)
 			}
 		case addWaiting:
 			ui.Text(c, locales.HostsApprove(strings.TrimSpace(page.name))).FontSize(fontBody).TextColor(k.text).LineHeight(1.35)
-			ui.Column(c).Gap(4).Padding(12).Radius(radiusM).Background(k.hover).AlignItems(ui.Center).Children(func() {
+			ui.Column(c).Gap(4).Padding(12).Radius(k.radius(radiusM)).Background(k.hover).AlignItems(ui.Center).Children(func() {
 				ui.Text(c, locales.HostsFingerprint()).FontSize(fontFootnote).FontWeight(600).TextColor(k.textMuted)
 				ui.Text(c, page.fingerprint).Font(monoFamily()).FontSize(fontCodeSmall).FontWeight(700).TextColor(k.text).
 					Label(locales.RemoteFingerprint(page.fingerprint))
 			})
 			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-				ui.Box(c).Size(7, 7).Radius(capsule(7)).Background(k.attention)
+				ui.Box(c).Size(7, 7).Radius(k.capsule(7)).Background(k.attention)
 				ui.Text(c, locales.HostsWaiting()).FontSize(fontCallout).FontWeight(500).TextColor(k.textMuted)
 			})
 			ui.Text(c, locales.HostsApproveWhere()).FontSize(fontSubhead).TextColor(k.textMuted).LineHeight(1.3)

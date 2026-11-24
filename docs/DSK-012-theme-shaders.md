@@ -8,7 +8,7 @@ metadata:
 
 # DSK-012: Theme shaders and metrics
 
-Status: accepted. Not implemented.
+Status: phase 1 built (#1096). Phases 2 to 5 not built.
 
 This doc decides how a theme pack changes more than colors and still images. It adds three kinds of shader slots, a set of metric seeds, a glass key and five roles. It extends [DSK-008](DSK-008-theme.md) (the manifest and the face resolver) and [DSK-010](DSK-010-theme-ambience.md) (assets, layers, the still rule). The probes are two themes of `freestylefly/codex-themes`, a theme app for the Codex desktop app: "Blue Window" and "Potion Workshop". The goal is to rebuild both as GoRex theme packs. Replaces: [DSK-008](DSK-008-theme.md), the glass non-goal, the glass alternative and the Security rule "A theme manifest is data". Also replaces: [DSK-010](DSK-010-theme-ambience.md), the non-goal "any code in a pack", the first Security item and the asset caps that the Assets section changes.
 
@@ -161,6 +161,13 @@ Checks 4 to 6 run once for each theme load. They run on the CPU and take less th
 
 The type sizes of `DESIGN.md` stay. A theme changes the family, not the ramp. The row heights stay in the `sidebar` key of DSK-008.
 
+Phase 1 builds the metrics with these details:
+
+- `radius` also scales the corner of the stock widgets (`ui.Theme.Radius`: 9 in a window, 14 in the Settings window), so that a button is square when the panes are.
+- `border` also sets the width of the border of a popover, a menu, a dialog and the frost (each border in `k.panelBorder`).
+- `font`: the word `mono` is JetBrains Mono, which GoRex ships. A family that matches gets the system font after it (`uiFont`), for the characters that the family does not have.
+- A program tile that GoRex draws once into an image for the hosts (`drawTileImage`) keeps the built-in corner: the image is cached for all themes.
+
 `rounded` is the rounded design of the system font on macOS. MyGo has no API for it now (MyGo change M1). Off macOS, `rounded` falls to the next name of the list.
 
 ### Glass
@@ -188,6 +195,15 @@ The face roles are the five faces that `surface` resolves now (`sideBar.activeGr
 | `pane.border` | Color | The border of a pane card, now `cardBorder` |
 
 The resolver pairs the text of each face as DSK-008 says. `button.background` uses `accentText` while its flat color is `accent`. When a theme sets another flat color, the ladder follows the lightness of that color.
+
+Phase 1 builds these roles with these details:
+
+- The built-in palette has none of the five. An unset role draws nothing new.
+- `button.background` sets the accent of the stock widgets' theme (`Accent`, its hover and pressed shades, `AccentText`). It thus colors the primary button, a switch that is on, and the other faces MyGo draws in the accent, such as a chosen radio. It does not color a chosen segment: MyGo draws that in the theme's `Background`, `surface` in GoRex. The focus ring, the selection and the menu highlight keep `accent`.
+- `pane.border` is the border of a pane card with the focus and without it. The card's shadow shows the focus.
+- A popover or a menu that opens from a face, as the space picker's from the title bar, lies on the window's panel. It keeps the window's text ladder, not the face's.
+- `paneHeader.background` is the face of a terminal's and a note's header. A browser pane's header and a float's handle keep their faces.
+- The user's `sidebar.colorCustomizations` take only the `sideBar.*` roles. The other roles are the theme's.
 
 ### Assets
 
