@@ -60,6 +60,8 @@ func TestThemeShaderChecks(t *testing.T) {
 	}{
 		{"passes", greyGradient, "", ""},
 		{"bounded loop", "package main\n\nfunc Fragment(dst vec4, pos vec2) vec4 {\n\tv := 0.85\n\tfor i := 0; i < 4; i++ {\n\t\tv += 0.02\n\t}\n\treturn vec4(v, v, v, 1)\n}\n", "", ""},
+		{"branch on time", "package main\n\nvar Time float\n\nfunc Fragment(dst vec4, pos vec2) vec4 {\n\tif Time > 4 {\n\t\treturn vec4(0.5, 0.5, 0.5, 1)\n\t}\n\treturn vec4(0.9, 0.9, 0.9, 1)\n}\n", "", "text has"},
+		{"branch on window", "package main\n\nvar Window vec2\n\nfunc Fragment(dst vec4, pos vec2) vec4 {\n\tv := 0.0\n\tif Window.x > 200 {\n\t\tfor i := 0; i < 250; i++ {\n\t\t\tv += sin(pos.x*float(i)) * cos(pos.y+float(i)) * 0.0001\n\t\t}\n\t}\n\treturn vec4(0.9+v, 0.9, 0.9, 1)\n}\n", "", "times the built-in background"},
 		{"compile", "package main\n\nfunc Fragment(dst vec4, pos vec2) vec4 {\n\treturn nope\n}\n", "", "does not compile"},
 		{"effect", "package main\n\nfunc ColorEffect(pos vec2, c vec4) vec4 {\n\treturn c\n}\n", "", "entry point must be Fragment"},
 		{"backdrop", "package main\n\nfunc Fragment(dst vec4, pos vec2) vec4 {\n\treturn backdropAt(pos)\n}\n", "", "reads its backdrop"},
@@ -358,3 +360,48 @@ func Fragment(dst vec4, pos vec2) vec4 {
 	return vec4(mix(Top.rgb, Bottom.rgb, y), 1)
 }
 `
+
+// TestThemeShaderSwitch: the checks of a theme the user left store
+// nothing, a set of another theme than the selected one draws nothing,
+// and a reload of the same theme keeps its checked set.
+func TestThemeShaderSwitch(t *testing.T) {
+	old := prefs.Theme
+	t.Cleanup(func() { prefs.Theme = old; applyTheme(nil) })
+	m, art := shaderTheme(t, `{
+  "roles": { "titleBar.background": "#e4e4e4" },
+  "assets": { "bar": "bar.kage" },
+  "shaders": { "api": 1, "faces": { "titleBar.background": { "source": "bar" } } }
+}`, map[string]string{"bar": greyGradient})
+	drawn := func() bool {
+		_, ok := faceFill(roleTitleBarBackground, ui.Hex("#e4e4e4"))
+		return ok
+	}
+
+	prefs.Theme = "a"
+	applyTheme(m)
+	storeThemeShaders("a", m, art, lookGen.Load())
+	set := activeShaders()
+	if set == nil || !drawn() {
+		t.Fatal("theme a's checked face does not draw")
+	}
+	// A reload, as loadTheme makes it: applyTheme(nil), then the theme.
+	applyTheme(nil)
+	applyTheme(m)
+	if activeShaders() != set || !drawn() {
+		t.Error("a reload of the same theme dropped its checked set")
+	}
+
+	// The checks of a start a load, and the user picks b before they end.
+	gen := lookGen.Load()
+	prefs.Theme = "b"
+	applyTheme(m)
+	storeThemeShaders("a", m, art, gen)
+	if activeShaders() != nil || drawn() {
+		t.Error("the checks of a theme the user left stored their set")
+	}
+	// A set of a, however it got there, draws nothing under b.
+	shaderSet.Store(set)
+	if activeShaders() != nil || drawn() {
+		t.Error("theme a's set draws while b is selected")
+	}
+}

@@ -155,14 +155,18 @@ GoRex checks each shader on a goroutine after the assets load. Each check that f
 5. **Contrast of a face**: GoRex draws the face shader at 96×32 px with `ui.Render` at `Time` 0, 1, 2 and 3 s. At each pixel, the text of the ladder that the flat color selects must keep 4.5:1, and `textMuted` 3:1. A pixel with alpha under 1 counts as laid over `panel`, as `surface` counts a face.
 6. **Contrast of the sidebar band**: GoRex draws the background shader at 1280×800 DIPs, at 1/8 scale. In the columns of the sidebar, `text` must keep 4.5:1 and `textMuted` 3:1 at each pixel.
 
-Checks 4 to 6 run once for each theme load. They run on the CPU, on the goroutine that decodes the assets (`loadArt`), and the windows draw the flat colors until they are done. Phase 2 measured all six checks for a pack of one background shader and four face shaders (`BenchmarkThemeShaderChecks`): 80 to 190 ms on a Windows PC (Intel Core i9-12900), 20 runs each. The Mac is not measured.
+Checks 4 to 6 run once for each theme load. They run on the CPU, on the goroutine that decodes the assets (`loadArt`), and the windows draw the flat colors until they are done. Phase 2 measured all six checks for a pack of one background shader and four face shaders (`BenchmarkThemeShaderChecks`): 230 to 520 ms on a Windows PC (Intel Core i9-12900), 3 rounds of 10 runs, with the samples below. This is over the 200 ms target; the windows draw the flat colors meanwhile, so it delays the shaders, not the window. The Mac is not measured.
 
 Phase 2 builds the checks with these details:
 
-- A failed check shows its warning on the Extensions page, under the theme in use, and in the log. The text is not translated, as the other theme warnings in the log.
+- A failed check shows its warning on the Extensions page, under the theme in use, and in the log. The page names the slot in a localized line ("Theme shader not used: shaders.background", or "Theme shader note: …" for a slot that still draws), and the check's English detail follows it. The log is English.
+- A panic in any check of a slot drops that slot with a warning.
+- A shader can branch on `Time`, `Origin` and `Window`, so the checks draw several values of each. Check 4 draws each `Time` of 0, 1.7, 37, 600 and 3599 s with each `Window` of 64×64, 1280×800 and 3840×2160 (the uniform; the render stays 64×64 px), the `Origin` 0,0 and 900,500 in turn: once each, then the slowest the fastest of three. Check 5 draws `Time` 0, 1, 2, 3, 37, 600 and 3599 s, at origins 0,0, 900,500 and 200,40 and windows of 1280×800 and 3840×2160 in turn. Check 6 draws `Time` 0, 37 and 3599 s.
+- Sampling does not prove every input: a shader can still be slow or unreadable at a value no sample hits. Two bounds hold for every input: its loops run at most 256 times a pixel (check 2), and its source is at most 16 KiB.
+- The checks of a theme store their result only while that theme is still selected, under one lock with the theme's change, and a window draws a checked set only for the selected theme.
 - Check 3: a uniform that no param sets is zero, with a warning; a param that the shader does not declare gives a warning. A uniform of the API table with another type, a `Seed<Name>` with no such seed, and a param that does not fit its uniform fail. A param may not set a uniform of the API table.
 - Check 4 draws the built-in background with no glows.
-- Check 5 also runs in the dark appearance, with the dark flat color and its ladder. A slot fails when either appearance fails.
+- Check 5 runs in both appearances, with the dark flat color and its ladder. A slot fails when either appearance fails.
 - Check 6 composites a pixel with alpha under 1 over `bgBottom`, the window's root. It draws only the sidebar's columns (`sidebarWidthIn(1280)`, 160 px at 1/8), scaled by a transform: `ui.Render` at scale 1/8 runs the shader for each pixel of scale 1. When the theme's `sideBar.background` is opaque in an appearance, the text reads on that face, and the check skips the appearance.
 
 ### Metrics
@@ -306,7 +310,7 @@ The rest of the DSK-008 and DSK-010 rules stay: no URL, no network at run time, 
 ## Tests
 
 - **Parse**: `shaders` and `metrics` parse. A value out of range clamps, an unknown slot or role drops, a slot with no flat color takes the built-in one, and each gives a warning (`TestParseShaders`, `TestParseMetrics`).
-- **Checks**: a shader that does not compile, has an effect entry point, reads its backdrop, has a loop whose runs are not constant or more than 256 loop runs, has a uniform of the wrong type, costs 9 times the background, or fails the face contrast, each drops with a warning, and the slot draws its flat color (`TestThemeShaderChecks`). The param parser, the uniform check and the asset caps have their own tests (`TestParseShaders`, `TestShaderUniforms`, `TestShaderAssets`).
+- **Checks**: a shader that does not compile, has an effect entry point, reads its backdrop, has a loop whose runs are not constant or more than 256 loop runs, has a uniform of the wrong type, costs 9 times the background, or fails the face contrast, each drops with a warning, and the slot draws its flat color (`TestThemeShaderChecks`). A shader that branches on `Time > 4` or `Window.x > 200` to pass one sample is refused. A check of a theme the user left stores nothing, and a set of another theme draws nothing (`TestThemeShaderSwitch`). The param parser, the uniform check and the asset caps have their own tests (`TestParseShaders`, `TestShaderUniforms`, `TestShaderAssets`).
 - **Contrast**: a light gradient face in a dark window gets dark text. A face shader that crosses the flip point fails (`TestFaceShaderContrast`).
 - **Background**: with no theme shader, the window background is byte-exact as now (`TestBackgroundShader`, and `TestThemeBackgroundShader` with a theme that has only face shaders). With one, the pixel at a known point has its color (`TestThemeBackgroundShader`).
 - **CPU renderer**: on the CPU renderer, no theme shader draws, and each slot draws its flat color (`TestThemeShaderCPU`).

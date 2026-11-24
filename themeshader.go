@@ -18,6 +18,7 @@ import (
 	"github.com/egoist/mygo/ui/shader"
 
 	"gorex/internal/theme"
+	"gorex/locales"
 )
 
 // themeshader.go compiles, checks and draws the shaders of a theme pack
@@ -46,6 +47,7 @@ type themeShaders struct {
 	background *themeSlot
 	faces      map[theme.Role]*themeSlot
 	warn       []string
+	notes      []shaderNote
 	// anyTime tells that a slot reads Time, so that frames move it.
 	anyTime bool
 }
@@ -53,12 +55,38 @@ type themeShaders struct {
 // shaderSet holds the selected theme's checked slots, nil with none or
 // until the checks are done; lastShaders the last set checked, which a
 // reload of the same theme keeps rather than drawing flat while it checks
-// again.
-var shaderSet, lastShaders atomic.Pointer[themeShaders]
+// again. shaderThemeID is the theme whose slots may draw: a set of another
+// theme draws nothing (activeShaders).
+var (
+	shaderSet, lastShaders atomic.Pointer[themeShaders]
+	shaderThemeID          atomic.Pointer[string]
+)
+
+// shaderMu orders the stores of the sets: a theme's change (setThemeShaders)
+// and the end of a check (storeThemeShaders), so that a check of a theme
+// the user left never stores its set after the change.
+var shaderMu sync.Mutex
+
+// activeShaders returns the set that draws: shaderSet when it is the
+// selected theme's.
+func activeShaders() *themeShaders {
+	s := shaderSet.Load()
+	if s == nil {
+		return nil
+	}
+	if id := shaderThemeID.Load(); id == nil || *id != s.id {
+		return nil
+	}
+	return s
+}
 
 // setThemeShaders makes m's slots the windows', when they were checked for
 // the same theme and files, or none until the checks at load are done.
 func setThemeShaders(m *theme.Manifest) {
+	shaderMu.Lock()
+	defer shaderMu.Unlock()
+	id := prefs.Theme
+	shaderThemeID.Store(&id)
 	if m == nil || m.Shaders == nil {
 		shaderSet.Store(nil)
 		if prefs.Theme == "" || m != nil {
@@ -75,13 +103,30 @@ func setThemeShaders(m *theme.Manifest) {
 	shaderClock.reset()
 }
 
+// shaderNote is a warning of the checks as the Extensions page shows it:
+// the slot, the English detail, and whether the slot was dropped.
+type shaderNote struct {
+	slot, detail string
+	dropped      bool
+}
+
 // themeShaderWarnings returns the warnings of the selected theme's shader
-// checks, for the Extensions page.
+// checks, for the Extensions page: a localized line that names the slot,
+// and the check's detail after it.
 func themeShaderWarnings() []string {
-	if s := shaderSet.Load(); s != nil {
-		return s.warn
+	s := activeShaders()
+	if s == nil {
+		return nil
 	}
-	return nil
+	out := make([]string, 0, len(s.notes))
+	for _, n := range s.notes {
+		head := locales.SettingsThemeShaderNote(n.slot)
+		if n.dropped {
+			head = locales.SettingsThemeShaderDropped(n.slot)
+		}
+		out = append(out, head+" — "+n.detail)
+	}
+	return out
 }
 
 // storeThemeShaders checks the shaders of m, the theme name, with its
@@ -96,7 +141,9 @@ func storeThemeShaders(name string, m *theme.Manifest, art *theme.Art, gen int64
 	for _, w := range set.warn {
 		log.Printf("gorex settings: appearance.theme %q: %s", name, w)
 	}
-	if lookGen.Load() != gen {
+	shaderMu.Lock()
+	defer shaderMu.Unlock()
+	if id := shaderThemeID.Load(); lookGen.Load() != gen || id == nil || *id != name {
 		return
 	}
 	shaderSet.Store(set)
@@ -123,18 +170,14 @@ func checkShaders(m *theme.Manifest, art *theme.Art) *themeShaders {
 	pal := [2]colors{themed(lightSeeds, m, 0), themed(darkSeeds, m, 1)}
 	sd := [2]seeds{themeSeeds(lightSeeds, m, 0), themeSeeds(darkSeeds, m, 1)}
 	check := func(where string, slot *theme.ShaderSlot, bg bool, contrast func(*themeSlot) error) *themeSlot {
-		sl, warn, err := compileSlot(slot, art, sd, bg)
+		sl, warn, err := checkSlot(slot, art, sd, bg, contrast)
 		for _, w := range warn {
 			set.warn = append(set.warn, fmt.Sprintf("%s: %s", where, w))
-		}
-		if err == nil {
-			err = slotCost(sl)
-		}
-		if err == nil {
-			err = contrast(sl)
+			set.notes = append(set.notes, shaderNote{where, w, false})
 		}
 		if err != nil {
 			set.warn = append(set.warn, fmt.Sprintf("%s: %v (dropped: the flat colors draw)", where, err))
+			set.notes = append(set.notes, shaderNote{where, err.Error(), true})
 			return nil
 		}
 		set.anyTime = set.anyTime || sl.time
@@ -151,6 +194,24 @@ func checkShaders(m *theme.Manifest, art *theme.Art) *themeShaders {
 		}
 	}
 	return set
+}
+
+// checkSlot runs the checks of one slot: compile, loops and uniforms,
+// cost, and contrast. A panic in any of them fails the slot.
+func checkSlot(slot *theme.ShaderSlot, art *theme.Art, sd [2]seeds, bg bool, contrast func(*themeSlot) error) (sl *themeSlot, warn []string, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			sl, err = nil, fmt.Errorf("a check failed: %v", r)
+		}
+	}()
+	sl, warn, err = compileSlot(slot, art, sd, bg)
+	if err == nil {
+		err = slotCost(sl)
+	}
+	if err == nil {
+		err = contrast(sl)
+	}
+	return sl, warn, err
 }
 
 // gorexAlpha is the uniform of the background's wrapper: the alpha of the
@@ -277,6 +338,9 @@ func themeShaderLoops(s *shader.Shader) error {
 type shaderFrame struct {
 	time   float32
 	window ui.Point
+	// origin, set by the checks, is the Origin the slot reads in place of
+	// the drawn rectangle's corner.
+	origin *ui.Point
 }
 
 // frameNow holds the frame paintBackground set last, which the faces of
@@ -305,6 +369,9 @@ func (sl *themeSlot) draw(p *ui.Painter, r ui.Rect, radius float32, dark bool, a
 		}
 		if sl.origin {
 			o.Uniforms["Origin"] = [2]float32{r.X, r.Y}
+			if f.origin != nil {
+				o.Uniforms["Origin"] = [2]float32{f.origin.X, f.origin.Y}
+			}
 		}
 		if sl.window {
 			o.Uniforms["Window"] = [2]float32{f.window.X, f.window.Y}
@@ -319,7 +386,7 @@ func (sl *themeSlot) draw(p *ui.Painter, r ui.Rect, radius float32, dark bool, a
 // themeBackground returns the background slot of the selected theme, nil
 // with none or with Ambience Off, as its other layers.
 func themeBackground() *themeSlot {
-	if s := shaderSet.Load(); s != nil && ambienceShown() {
+	if s := activeShaders(); s != nil && ambienceShown() {
 		return s.background
 	}
 	return nil
@@ -330,7 +397,7 @@ func themeBackground() *themeSlot {
 // and asks for the next frame while a slot reads Time. Still, Time stands
 // and it asks for none.
 func tickShaders(p *ui.Painter, r ui.Rect, moves bool) shaderFrame {
-	set := shaderSet.Load()
+	set := activeShaders()
 	if set == nil {
 		return currentFrame()
 	}
@@ -350,7 +417,7 @@ func tickShaders(p *ui.Painter, r ui.Rect, moves bool) shaderFrame {
 // battery. The painter adds the CPU renderer (tickShaders). It asks
 // nothing of the system when no slot of the theme reads Time.
 func themeShaderMoves(c *ui.Context) bool {
-	s := shaderSet.Load()
+	s := activeShaders()
 	return s != nil && s.anyTime && prefs.Ambience == "" && motion(c) != nil && c.WindowActive() && !c.WindowHidden() && !shaderOnBattery()
 }
 
@@ -427,7 +494,7 @@ func faceMaterialOf(role faceRole, face ui.Color) ui.Material {
 
 // faceFill returns the face shader of role for the flat color face.
 func faceFill(role faceRole, face ui.Color) (faceShader, bool) {
-	set := shaderSet.Load()
+	set := activeShaders()
 	if set == nil || face.A == 0 {
 		return faceShader{}, false
 	}
@@ -454,18 +521,60 @@ func (f faceShader) PaintMaterial(p *ui.Painter, box ui.Rect, radii [4]float32) 
 }
 
 // renderSlot draws the slot alone in the CPU's interpreter, as the checks
-// read it: filling f.window, scaled by scale, of which the render shows the
-// top left w×h px. It scales with a transform, not the render's scale,
-// which would run the shader for each pixel at scale 1.
-func renderSlot(sl *themeSlot, w, h int, scale float32, dark bool, f shaderFrame) *image.RGBA {
+// read it: filling a rectangle of size, scaled by scale, of which the
+// render shows the top left w×h px, at frame f. It scales with a
+// transform, not the render's scale, which would run the shader for each
+// pixel at scale 1.
+func renderSlot(sl *themeSlot, w, h int, scale float32, size ui.Point, dark bool, f shaderFrame) *image.RGBA {
 	return ui.Render(func(c *ui.Context) {
 		ui.Box(c).Fill().Draw(func(p *ui.Painter, r ui.Rect) {
 			p.Transform(ui.Scaling(scale, scale), 0, 0, func() {
-				sl.draw(p, ui.Rect{W: f.window.X, H: f.window.Y}, 0, dark, 1, f)
+				sl.draw(p, ui.Rect{W: size.X, H: size.Y}, 0, dark, 1, f)
 			})
 		})
 	}, w, h, 1)
 }
+
+// The uniforms the checks draw a slot with: a shader may branch on Time,
+// Origin and Window, so each check draws several values of each, not one.
+// Sampling does not prove every input (docs/DSK-012, Checks at load).
+var (
+	sampleTimes   = []float32{0, 1.7, 37, 600, 3599}
+	sampleWindows = []ui.Point{{X: 64, Y: 64}, {X: 1280, Y: 800}, {X: 3840, Y: 2160}}
+	sampleOrigins = []ui.Point{{}, {X: 900, Y: 500}}
+)
+
+// costFrames are the frames the cost check draws: each time with each
+// window, the origins in turn.
+var costFrames = func() []shaderFrame {
+	var out []shaderFrame
+	for _, t := range sampleTimes {
+		for _, w := range sampleWindows {
+			o := sampleOrigins[len(out)%len(sampleOrigins)]
+			out = append(out, shaderFrame{time: t, window: w, origin: &o})
+		}
+	}
+	return out
+}()
+
+// faceFrames are the frames the face check draws: Time 0 to 3 s and large
+// ones, at origins and window sizes a face has, in turn.
+var faceFrames = func() []shaderFrame {
+	places := []struct{ origin, window ui.Point }{
+		{ui.Point{}, ui.Point{X: 1280, Y: 800}},
+		{ui.Point{X: 900, Y: 500}, ui.Point{X: 1280, Y: 800}},
+		{ui.Point{X: 200, Y: 40}, ui.Point{X: 3840, Y: 2160}},
+	}
+	var out []shaderFrame
+	for i, t := range []float32{0, 1, 2, 3, 37, 600, 3599} {
+		p := places[i%len(places)]
+		out = append(out, shaderFrame{time: t, window: p.window, origin: &p.origin})
+	}
+	return out
+}()
+
+// bandTimes are the times the sidebar band check draws.
+var bandTimes = []float32{0, 37, 3599}
 
 // fastest returns the shortest of three runs of fn.
 func fastest(fn func()) time.Duration {
@@ -493,13 +602,22 @@ var builtinCost = sync.OnceValue(func() time.Duration {
 	})
 })
 
-// slotCost is check 4: the slot drawn at 64×64 px in the interpreter, the
-// fastest of three, may cost at most maxShaderCost times the built-in
-// background.
+// slotCost is check 4: the slot drawn at 64×64 px in the interpreter may
+// cost at most maxShaderCost times the built-in background, with each of
+// costFrames: it draws each once, then the slowest the fastest of three.
 func slotCost(sl *themeSlot) error {
-	t := fastest(func() { renderSlot(sl, 64, 64, 1, false, shaderFrame{window: ui.Point{X: 64, Y: 64}}) })
+	size := ui.Point{X: 64, Y: 64}
+	slow, worst := costFrames[0], time.Duration(0)
+	for _, f := range costFrames {
+		t := time.Now()
+		renderSlot(sl, 64, 64, 1, size, false, f)
+		if d := time.Since(t); d > worst {
+			slow, worst = f, d
+		}
+	}
+	t := fastest(func() { renderSlot(sl, 64, 64, 1, size, false, slow) })
 	if r := float64(t) / float64(builtinCost()); r > maxShaderCost {
-		return fmt.Errorf("costs %.1f times the built-in background, more than %d", r, maxShaderCost)
+		return fmt.Errorf("costs %.1f times the built-in background at Time %g, Window %gx%g, more than %d", r, slow.time, slow.window.X, slow.window.Y, maxShaderCost)
 	}
 	return nil
 }
@@ -531,8 +649,8 @@ func readable(img *image.RGBA, maxX int, bg, text, muted ui.Color) error {
 	return nil
 }
 
-// faceContrast is check 5: the face drawn at 96×32 px at Time 0 to 3 s
-// keeps the text of the ladder its flat color selects readable at each
+// faceContrast is check 5: the face drawn at 96×32 px with each of
+// faceFrames keeps the text of the ladder its flat color selects readable at each
 // pixel, in both appearances; a pixel not opaque counts as laid over the
 // panel, as surface counts a face.
 func faceContrast(sl *themeSlot, pal *[2]colors, role faceRole) error {
@@ -543,10 +661,10 @@ func faceContrast(sl *themeSlot, pal *[2]colors, role faceRole) error {
 		if isDark(face.Over(k.panel)) {
 			ref = &pal[1]
 		}
-		for t := range 4 {
-			img := renderSlot(sl, 96, 32, 1, i == 1, shaderFrame{time: float32(t), window: ui.Point{X: 96, Y: 32}})
+		for _, f := range faceFrames {
+			img := renderSlot(sl, 96, 32, 1, ui.Point{X: 96, Y: 32}, i == 1, f)
 			if err := readable(img, math.MaxInt, k.panel, ref.text, ref.textMuted); err != nil {
-				return fmt.Errorf("in the %s appearance at %d s, %v", name, t, err)
+				return fmt.Errorf("in the %s appearance at %g s, %v", name, f.time, err)
 			}
 		}
 	}
@@ -557,8 +675,8 @@ func faceContrast(sl *themeSlot, pal *[2]colors, role faceRole) error {
 const bandScale = 0.125
 
 // bandContrast is check 6: the background drawn for a window of 1280×800
-// DIPs at 1/8 scale keeps the window's text readable in the sidebar's
-// columns, in both appearances, unless the theme's sideBar.background is
+// DIPs at 1/8 scale, at bandTimes, keeps the window's text readable in
+// the sidebar's columns, in both appearances, unless the theme's sideBar.background is
 // an opaque face there, which the text reads on instead.
 func bandContrast(sl *themeSlot, pal *[2]colors) error {
 	const w, h = 1280, 800
@@ -568,9 +686,11 @@ func bandContrast(sl *themeSlot, pal *[2]colors) error {
 		if k.sideBarFace.A == 255 {
 			continue
 		}
-		img := renderSlot(sl, side, h*bandScale, bandScale, i == 1, shaderFrame{window: ui.Point{X: w, Y: h}})
-		if err := readable(img, side, k.bgBottom, k.text, k.textMuted); err != nil {
-			return fmt.Errorf("behind the sidebar in the %s appearance, %v", name, err)
+		for _, t := range bandTimes {
+			img := renderSlot(sl, side, h*bandScale, bandScale, ui.Point{X: w, Y: h}, i == 1, shaderFrame{time: t, window: ui.Point{X: w, Y: h}})
+			if err := readable(img, side, k.bgBottom, k.text, k.textMuted); err != nil {
+				return fmt.Errorf("behind the sidebar in the %s appearance at %g s, %v", name, t, err)
+			}
 		}
 	}
 	return nil

@@ -707,5 +707,7 @@
   "settingsThemeUse": "使用",
   "settingsThemeInUse": "使用中",
   "settingsExtensionKindIcons": "图标包",
-  "settingsExtensionKindTheme": "主题"
+  "settingsExtensionKindTheme": "主题",
+  "settingsThemeShaderDropped": "未使用主题着色器：{slot}",
+  "settingsThemeShaderNote": "主题着色器提示：{slot}"
 }

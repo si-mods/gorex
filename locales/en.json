@@ -2979,5 +2979,19 @@
   "settingsExtensionKindTheme": "Theme",
   "@settingsExtensionKindTheme": {
     "description": "Extensions page: the kind of an extension, before its ID."
+  },
+  "settingsThemeShaderDropped": "Theme shader not used: {slot}",
+  "@settingsThemeShaderDropped": {
+    "description": "Extensions page: under the theme in use, a shader of the theme that failed a check at load and draws the theme's flat colors instead. slot is the manifest's slot, such as shaders.background. The check's English detail follows.",
+    "placeholders": {
+      "slot": {}
+    }
+  },
+  "settingsThemeShaderNote": "Theme shader note: {slot}",
+  "@settingsThemeShaderNote": {
+    "description": "Extensions page: under the theme in use, a warning about a shader of the theme that still draws, as a uniform no param sets. slot is the manifest's slot. The English detail follows.",
+    "placeholders": {
+      "slot": {}
+    }
   }
 }

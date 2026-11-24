@@ -8841,3 +8841,45 @@ func SettingsExtensionKindTheme() string { return In(i18n.Locale()).SettingsExte
 func (msgs Messages) SettingsExtensionKindTheme() string {
 	return Catalog.Format(msgs.locale, "settingsExtensionKindTheme", nil)
 }
+
+// SettingsThemeShaderDropped says "Theme shader not used: {slot}"
+// in the language the app shows.
+//
+// Extensions page: under the theme in use, a shader of the theme that
+// failed a check at load and draws the theme's flat colors instead. slot is
+// the manifest's slot, such as shaders.background. The check's English
+// detail follows.
+func SettingsThemeShaderDropped(slot string) string {
+	return In(i18n.Locale()).SettingsThemeShaderDropped(slot)
+}
+
+// SettingsThemeShaderDropped says "Theme shader not used: {slot}"
+// in the language of msgs.
+//
+// Extensions page: under the theme in use, a shader of the theme that
+// failed a check at load and draws the theme's flat colors instead. slot is
+// the manifest's slot, such as shaders.background. The check's English
+// detail follows.
+func (msgs Messages) SettingsThemeShaderDropped(slot string) string {
+	return Catalog.Format(msgs.locale, "settingsThemeShaderDropped", map[string]any{"slot": slot})
+}
+
+// SettingsThemeShaderNote says "Theme shader note: {slot}"
+// in the language the app shows.
+//
+// Extensions page: under the theme in use, a warning about a shader of the
+// theme that still draws, as a uniform no param sets. slot is the
+// manifest's slot. The English detail follows.
+func SettingsThemeShaderNote(slot string) string {
+	return In(i18n.Locale()).SettingsThemeShaderNote(slot)
+}
+
+// SettingsThemeShaderNote says "Theme shader note: {slot}"
+// in the language of msgs.
+//
+// Extensions page: under the theme in use, a warning about a shader of the
+// theme that still draws, as a uniform no param sets. slot is the
+// manifest's slot. The English detail follows.
+func (msgs Messages) SettingsThemeShaderNote(slot string) string {
+	return Catalog.Format(msgs.locale, "settingsThemeShaderNote", map[string]any{"slot": slot})
+}
