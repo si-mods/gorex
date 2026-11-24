@@ -170,7 +170,7 @@ type attached struct {
 	resynced, logged time.Time
 	resyncs, dropped int
 	// peer is the remote client's key, "" for a local window; remote tells
-	// a remote connection, whose writes have a deadline.
+	// a remote connection.
 	peer   string
 	since  time.Time
 	remote bool
@@ -284,9 +284,9 @@ func (a *attached) finish() {
 	a.mu.Unlock()
 }
 
-// writeChunk is the most the writer writes under one deadline: a remote
-// client is dropped once it takes nothing for writeTimeout, not when a
-// snapshot takes it longer than that on a slow network.
+// writeChunk is the most the writer writes under one deadline: a client
+// is dropped once it takes nothing for writeTimeout, not when a snapshot
+// takes it longer than that on a slow connection.
 const writeChunk = 32 << 10
 
 // writer writes the client what it gets until a write fails, then closes
@@ -503,9 +503,10 @@ func (c quietConn) Close() error                { return c.r.Close() }
 func (a *attached) write(p []byte) error {
 	for len(p) > 0 {
 		n := min(len(p), writeChunk)
-		if a.remote {
-			a.conn.SetWriteDeadline(time.Now().Add(writeTimeout.get()))
-		}
+		// A local window stalls as a remote peer does: its reader
+		// wedged, a write waits forever, the client attached and the
+		// pane a screen that goes on no more.
+		a.conn.SetWriteDeadline(time.Now().Add(writeTimeout.get()))
 		if _, err := a.conn.Write(p[:n]); err != nil {
 			return err
 		}

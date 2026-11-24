@@ -839,6 +839,10 @@
   "@settingsTheme": {
     "description": "Settings section: the terminal's color theme."
   },
+  "settingsJSON": "Settings File",
+  "@settingsJSON": {
+    "description": "Settings section: the settings.json file in a code editor. Its title and its sidebar item."
+  },
   "settingsKeyboard": "Keyboard",
   "@settingsKeyboard": {
     "description": "Settings section: the keyboard shortcuts."
@@ -846,6 +850,34 @@
   "settingsAbout": "About",
   "@settingsAbout": {
     "description": "Settings section: version and files."
+  },
+  "settingsJSONHint": "Edits apply on save.",
+  "@settingsJSONHint": {
+    "description": "Hint under the settings.json page's bar: the text writes and applies only when saved."
+  },
+  "settingsJSONSave": "Save",
+  "@settingsJSONSave": {
+    "description": "Settings.json page: the button that writes the editor's text to settings.json."
+  },
+  "settingsJSONRevert": "Revert",
+  "@settingsJSONRevert": {
+    "description": "Settings.json page: the button that reads the file into the editor again, losing its edits."
+  },
+  "settingsJSONUnsaved": "Unsaved",
+  "@settingsJSONUnsaved": {
+    "description": "Settings.json page status: the editor's text differs from the file."
+  },
+  "settingsJSONSaved": "Saved",
+  "@settingsJSONSaved": {
+    "description": "Settings.json page status, for a breath after a save: the file has the editor's text."
+  },
+  "settingsJSONInvalid": "Not valid JSON.",
+  "@settingsJSONInvalid": {
+    "description": "Settings.json page status: the editor's text did not decode, so nothing was written."
+  },
+  "settingsJSONChanged": "The file changed on disk.",
+  "@settingsJSONChanged": {
+    "description": "Settings.json page status: settings.json was written outside while the editor has unsaved text."
   },
   "settingsWindow": "Window",
   "@settingsWindow": {

@@ -1,16 +1,20 @@
 package main
 
 import (
+	"log"
+	"os"
 	"runtime"
 	"slices"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/i18n"
 	"github.com/egoist/mygo/plugins/terminal"
 	"github.com/egoist/mygo/ui"
+	"github.com/egoist/mygo/ui/editor"
 
 	"gorex/internal/rex"
 	"gorex/internal/rexapi"
@@ -41,6 +45,8 @@ var settingsUI struct {
 	apiInfo   rexapi.GatewayInfo
 	apiErr    string
 	apiLoaded bool
+	// json is the settings.json page's editor, made on its first draw.
+	json *jsonEditorState
 }
 
 // Run is set here: the window's view lists the commands, which list this one.
@@ -101,6 +107,7 @@ func (a *App) openSettings() {
 	settingsUI.section, settingsUI.themeQuery = "appearance", ""
 	resetIconPacksUI()
 	settingsUI.themes = map[string]*terminal.Theme{}
+	settingsUI.json = nil
 	settingsUI.fonts, settingsUI.fontOptions, settingsUI.langTags = nil, nil, nil
 	for _, f := range ui.FontFamilies() {
 		if f.Monospaced {
@@ -161,6 +168,7 @@ var sections = []struct {
 	{"icons", "layers", ui.RGB(255, 149, 0), locales.Messages.SettingsIconPacks},           // orange
 	{"keyboard", "keyboard", ui.RGB(142, 142, 147), locales.Messages.SettingsKeyboard},     // gray
 	{"hosts", "monitor", ui.RGB(52, 199, 89), locales.Messages.SettingsHosts},              // green
+	{"file", "file-code", ui.RGB(48, 176, 199), locales.Messages.SettingsJSON},             // teal
 	{"about", "info", ui.RGB(142, 142, 147), locales.Messages.SettingsAbout},               // gray
 }
 
@@ -226,6 +234,12 @@ func (a *App) settingsView(c *ui.Context) {
 		ui.Box(c).Width(1).Shrink(0).Background(k.tabSep.Alpha(0.6))
 		ui.Column(c).Grow(1).MinWidth(0).Children(func() {
 			a.settingsTitleBar(c, k)
+			// The settings.json page is a code editor, which scrolls
+			// itself: it takes the scroll column's place.
+			if settingsUI.section == "file" {
+				a.jsonSettings(c, k)
+				return
+			}
 			ui.Scroll(c).Grow(1).MinHeight(0).Padding(4, settingsPad, settingsPad, settingsPad).Children(func() {
 				ui.Column(c).Gap(settingsGroupGap).MaxWidth(settingsMaxW).Children(func() {
 					switch settingsUI.section {
@@ -621,6 +635,146 @@ func (a *App) appearanceGlass(c *ui.Context, k *colors) {
 			}
 		})
 	}
+}
+
+// jsonEditorState is the settings.json page's editor (settingsUI.json):
+// its state, the buffer version it last saved or loaded, and the marks
+// the bar shows.
+type jsonEditorState struct {
+	st       *editor.State
+	saved    uint64    // the buffer's version at its last load or save
+	conflict bool      // the file changed on disk while the buffer is dirty
+	invalid  bool      // the last Save did not decode
+	savedAt  time.Time // of the last save, for the brief "Saved"
+}
+
+// settingsFileText is the text of settings.json, "" when it cannot be read.
+func settingsFileText() string {
+	b, _ := os.ReadFile(settingsPath())
+	return string(b)
+}
+
+// settingsFileStale marks a write of settings.json the watcher skipped —
+// the app's own saves — for the settings.json page to resync on its next
+// draw, on the main thread.
+var settingsFileStale atomic.Bool
+
+// jsonEditor is the settings.json page's editor state, made on its first
+// draw: the file's text, JSON colors, and its saved version.
+func jsonEditor() *jsonEditorState {
+	if settingsUI.json == nil {
+		st := &editor.State{
+			Buffer: editor.NewBuffer(settingsFileText()),
+			Label:  locales.SettingsJSON(),
+		}
+		st.Buffer.SetLanguage(editor.LanguageFor("settings.json"))
+		settingsUI.json = &jsonEditorState{st: st, saved: st.Buffer.Version()}
+	}
+	return settingsUI.json
+}
+
+// syncSettingsJSONEditor refreshes the settings.json page's buffer with
+// the file, as an apply may have changed it: a clean buffer takes the
+// file's new text, a dirty one keeps its text and marks the conflict. It
+// runs on the main thread, as the state it reads is.
+func syncSettingsJSONEditor() {
+	settingsFileStale.Store(false)
+	j := settingsUI.json
+	if j == nil || j.st == nil {
+		return
+	}
+	text := settingsFileText()
+	buf := j.st.Buffer
+	if buf.String() == text {
+		// Same bytes already: a Set would only bump the version and look
+		// dirty.
+		j.saved, j.conflict = buf.Version(), false
+		return
+	}
+	if buf.Version() != j.saved {
+		j.conflict = true
+		return
+	}
+	buf.Set(text)
+	j.saved, j.conflict = buf.Version(), false
+}
+
+// saveSettingsJSON writes the editor's text as settings.json: a text that
+// decodes writes the file and applies it, as an outside edit does; one
+// that does not writes nothing and marks the bar
+// (docs/DSK-010-live-settings.md).
+func (a *App) saveSettingsJSON() {
+	j := settingsUI.json
+	if j == nil || j.st == nil {
+		return
+	}
+	text := j.st.Buffer.String()
+	next, ok := decodeSettings([]byte(text))
+	if !ok {
+		j.invalid = true
+		return
+	}
+	j.invalid = false
+	// Recorded before the write, so the watcher's event of it is skipped,
+	// as a write of saveSettings is.
+	recordSettingsWritten([]byte(text))
+	if err := writeFileAtomic(settingsPath(), []byte(text), 0o600); err != nil {
+		log.Printf("gorex settings: %v", err)
+		return
+	}
+	if a.st != nil {
+		a.st.applySettingsFile(next)
+	}
+	j.saved, j.conflict, j.savedAt = j.st.Buffer.Version(), false, time.Now()
+}
+
+// revertSettingsJSON reads the file into the editor's buffer and clears
+// its dirty and conflict marks.
+func (a *App) revertSettingsJSON() {
+	j := settingsUI.json
+	if j == nil || j.st == nil {
+		return
+	}
+	j.st.Buffer.Set(settingsFileText())
+	j.saved, j.conflict, j.invalid, j.savedAt = j.st.Buffer.Version(), false, false, time.Time{}
+}
+
+// jsonSettings is the settings.json page: a bar over a code editor of the
+// file, which fills the page's room where the other pages' scroll column
+// is (docs/DSK-010-live-settings.md).
+func (a *App) jsonSettings(c *ui.Context, k *colors) {
+	j := jsonEditor()
+	// A save of the app's own skipped the watcher: resync the buffer.
+	if settingsFileStale.Swap(false) {
+		syncSettingsJSONEditor()
+	}
+	ui.Column(c).Grow(1).MinHeight(0).Children(func() {
+		ui.Row(c).Shrink(0).Padding(10, settingsPad).Gap(10).AlignItems(ui.Center).Children(func() {
+			ui.Text(c, locales.SettingsJSONHint()).FontSize(fontFootnote).TextColor(k.textFaint).Grow(1).MinWidth(0).SingleLine()
+			status, statusColor := "", k.textFaint
+			switch {
+			case j.conflict:
+				status, statusColor = locales.SettingsJSONChanged(), k.attention
+			case j.invalid:
+				status, statusColor = locales.SettingsJSONInvalid(), k.danger
+			case j.st.Buffer.Version() != j.saved:
+				status = locales.SettingsJSONUnsaved()
+			case !j.savedAt.IsZero() && time.Since(j.savedAt) < 2*time.Second:
+				status = locales.SettingsJSONSaved()
+			}
+			if status != "" {
+				ui.Text(c, status).FontSize(fontSubhead).TextColor(statusColor).Shrink(0).SingleLine()
+			}
+			if ui.Button(c, locales.SettingsJSONRevert()).Clicked() {
+				a.revertSettingsJSON()
+			}
+			if ui.Button(c, locales.SettingsJSONSave()).Clicked() {
+				a.saveSettingsJSON()
+			}
+		})
+		ui.Box(c).Height(0.5).Shrink(0).Background(k.tabSep)
+		editor.View(c, j.st).Grow(1).MinHeight(0).Fill()
+	})
 }
 
 func (a *App) terminalSettings(c *ui.Context, k *colors) {

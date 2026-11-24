@@ -89,6 +89,11 @@ Each item has a **Trigger** (what the diff shows), a **Check** (what the author 
 
 ## Fixes
 
+### A bound applied to remote connections only
+- **Trigger:** a deadline, timeout or drop that guards a remote connection but not a local one.
+- **Check:** a local peer stalls the same way — its reader wedged while its control connection stays alive — so a local write can wait forever too. Guard the peer draining, not the transport's distance.
+- **Source:** the attach writer's write deadline guarded remote clients only; a local window whose reads stopped stayed attached and its pane froze until the app reopened (#1076, fix here).
+
 ### A filter on some paths to the same place
 - **Trigger:** the diff filters or validates a value that reaches one destination by more than one path.
 - **Check:** every path to the destination gets the filter, or one choke point sees them all; a test drives each path.

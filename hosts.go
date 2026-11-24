@@ -11,9 +11,11 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/egoist/mygo"
@@ -950,6 +952,15 @@ type paneStream struct {
 	attaches int  // the streams that printed
 	fails    int  // the streams lost since one printed
 	pending  []byte
+	// lastData is when the stream last brought bytes and inRead the
+	// Reads waiting on it now: a starved stream with a Read blocked in
+	// it starves on the server; one with none starves under the pane
+	// that stopped reading. seenOut is the session's output as the
+	// watch last counted it, and starved when its report last logged.
+	lastData time.Time
+	inRead   atomic.Int32
+	seenOut  uint64
+	starved  time.Time
 	// queued is what was typed while the stream is away, or before the
 	// first one attached, which it writes in order once it has one.
 	queued []byte
@@ -965,7 +976,9 @@ type paneStream struct {
 }
 
 func newHostStream(h *hostConn, sid string, cols, rows int) *paneStream {
-	return &paneStream{client: h.current, name: h.label(), sid: sid, cols: cols, rows: rows}
+	s := &paneStream{client: h.current, name: h.label(), sid: sid, cols: cols, rows: rows}
+	go s.watch()
+	return s
 }
 
 // newLocalStream is newHostStream for a session of this machine: it
@@ -973,7 +986,9 @@ func newHostStream(h *hostConn, sid string, cols, rows int) *paneStream {
 // is lost, as a host's does, so that a pane whose connection dropped
 // takes what is typed again instead of showing a screen that goes on.
 func newLocalStream(c *rex.Client, sid string, cols, rows int) *paneStream {
-	return &paneStream{client: func() *rex.Client { return c }, name: "local", sid: sid, cols: cols, rows: rows, made: time.Now(), asked: make(chan struct{})}
+	s := &paneStream{client: func() *rex.Client { return c }, name: "local", sid: sid, cols: cols, rows: rows, made: time.Now(), asked: make(chan struct{})}
+	go s.watch()
+	return s
 }
 
 // Detached tells that the stream was lost and is not back yet.
@@ -1076,11 +1091,14 @@ func (s *paneStream) stream() (*rex.Stream, error) {
 }
 
 func (s *paneStream) Read(p []byte) (int, error) {
+	s.inRead.Add(1)
+	defer s.inRead.Add(-1)
 	for {
 		s.mu.Lock()
 		if len(s.pending) > 0 {
 			n := copy(p, s.pending)
 			s.pending = s.pending[n:]
+			s.lastData = time.Now()
 			s.mu.Unlock()
 			return n, nil
 		}
@@ -1092,6 +1110,7 @@ func (s *paneStream) Read(p []byte) (int, error) {
 		n, err := st.Read(p)
 		if n > 0 {
 			s.mu.Lock()
+			s.lastData = time.Now()
 			first := s.fresh && s.cur == st
 			var away time.Duration
 			back := false
@@ -1319,4 +1338,69 @@ func (s *paneStream) Close() error {
 		st.Close()
 	}
 	return nil
+}
+
+var (
+	// streamWatchEvery is how often a live stream is checked for
+	// starvation: its session prints while it brings nothing. A stream
+	// silent for one check while the session printed in it starves.
+	streamWatchEvery = 30 * time.Second
+	// streamStarveLogEvery is the least time between the starvation
+	// report of a stream, and the goroutine dump with it.
+	streamStarveLogEvery = 10 * time.Minute
+)
+
+// watch drops a stream that starves: the session's output grows, its
+// reads bring nothing, and no error ever comes — a write the server
+// cannot finish, or a reader the pane does not run, is silent to it. It
+// closes the stream, whose next Read attaches again, the snapshot
+// replacing the screen; and it logs a goroutine dump once in a while, so
+// that a freeze like #1076 leaves where it wedged in the log.
+func (s *paneStream) watch() {
+	t := time.NewTicker(streamWatchEvery)
+	defer t.Stop()
+	for range t.C {
+		s.mu.Lock()
+		if s.closed {
+			s.mu.Unlock()
+			return
+		}
+		cur, detached, lastData, seen := s.cur, s.detached, s.lastData, s.seenOut
+		s.mu.Unlock()
+		if cur == nil || detached || lastData.IsZero() {
+			continue
+		}
+		c := s.client()
+		if c == nil {
+			continue
+		}
+		var out uint64
+		found := false
+		if infos, err := c.List(); err == nil {
+			for _, in := range infos {
+				if in.ID == s.sid {
+					out, found = in.Output, true
+					break
+				}
+			}
+		}
+		s.mu.Lock()
+		s.seenOut = out
+		silent := time.Since(lastData)
+		starved := found && out > seen && silent > streamWatchEvery
+		report := starved && time.Since(s.starved) > streamStarveLogEvery
+		if report {
+			s.starved = time.Now()
+		}
+		s.mu.Unlock()
+		if !starved {
+			continue
+		}
+		if report {
+			log.Printf("gorex: pane stream starved: host=%s sid=%s silent=%s out=%d reads=%d: it is closed to attach again", s.name, s.sid, silent.Round(time.Second), out, s.inRead.Load())
+			dump := make([]byte, 1<<20)
+			log.Printf("gorex: goroutines of the starved pane stream:\n%s", dump[:runtime.Stack(dump, true)])
+		}
+		cur.Close()
+	}
 }

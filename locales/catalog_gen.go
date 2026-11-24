@@ -2398,6 +2398,22 @@ func (msgs Messages) SettingsTheme() string {
 	return Catalog.Format(msgs.locale, "settingsTheme", nil)
 }
 
+// SettingsJSON says "Settings File"
+// in the language the app shows.
+//
+// Settings section: the settings.json file in a code editor. Its title and
+// its sidebar item.
+func SettingsJSON() string { return In(i18n.Locale()).SettingsJSON() }
+
+// SettingsJSON says "Settings File"
+// in the language of msgs.
+//
+// Settings section: the settings.json file in a code editor. Its title and
+// its sidebar item.
+func (msgs Messages) SettingsJSON() string {
+	return Catalog.Format(msgs.locale, "settingsJSON", nil)
+}
+
 // SettingsKeyboard says "Keyboard"
 // in the language the app shows.
 //
@@ -2424,6 +2440,116 @@ func SettingsAbout() string { return In(i18n.Locale()).SettingsAbout() }
 // Settings section: version and files.
 func (msgs Messages) SettingsAbout() string {
 	return Catalog.Format(msgs.locale, "settingsAbout", nil)
+}
+
+// SettingsJSONHint says "Edits apply on save."
+// in the language the app shows.
+//
+// Hint under the settings.json page's bar: the text writes and applies only
+// when saved.
+func SettingsJSONHint() string { return In(i18n.Locale()).SettingsJSONHint() }
+
+// SettingsJSONHint says "Edits apply on save."
+// in the language of msgs.
+//
+// Hint under the settings.json page's bar: the text writes and applies only
+// when saved.
+func (msgs Messages) SettingsJSONHint() string {
+	return Catalog.Format(msgs.locale, "settingsJSONHint", nil)
+}
+
+// SettingsJSONSave says "Save"
+// in the language the app shows.
+//
+// Settings.json page: the button that writes the editor's text to
+// settings.json.
+func SettingsJSONSave() string { return In(i18n.Locale()).SettingsJSONSave() }
+
+// SettingsJSONSave says "Save"
+// in the language of msgs.
+//
+// Settings.json page: the button that writes the editor's text to
+// settings.json.
+func (msgs Messages) SettingsJSONSave() string {
+	return Catalog.Format(msgs.locale, "settingsJSONSave", nil)
+}
+
+// SettingsJSONRevert says "Revert"
+// in the language the app shows.
+//
+// Settings.json page: the button that reads the file into the editor again,
+// losing its edits.
+func SettingsJSONRevert() string { return In(i18n.Locale()).SettingsJSONRevert() }
+
+// SettingsJSONRevert says "Revert"
+// in the language of msgs.
+//
+// Settings.json page: the button that reads the file into the editor again,
+// losing its edits.
+func (msgs Messages) SettingsJSONRevert() string {
+	return Catalog.Format(msgs.locale, "settingsJSONRevert", nil)
+}
+
+// SettingsJSONUnsaved says "Unsaved"
+// in the language the app shows.
+//
+// Settings.json page status: the editor's text differs from the file.
+func SettingsJSONUnsaved() string { return In(i18n.Locale()).SettingsJSONUnsaved() }
+
+// SettingsJSONUnsaved says "Unsaved"
+// in the language of msgs.
+//
+// Settings.json page status: the editor's text differs from the file.
+func (msgs Messages) SettingsJSONUnsaved() string {
+	return Catalog.Format(msgs.locale, "settingsJSONUnsaved", nil)
+}
+
+// SettingsJSONSaved says "Saved"
+// in the language the app shows.
+//
+// Settings.json page status, for a breath after a save: the file has the
+// editor's text.
+func SettingsJSONSaved() string { return In(i18n.Locale()).SettingsJSONSaved() }
+
+// SettingsJSONSaved says "Saved"
+// in the language of msgs.
+//
+// Settings.json page status, for a breath after a save: the file has the
+// editor's text.
+func (msgs Messages) SettingsJSONSaved() string {
+	return Catalog.Format(msgs.locale, "settingsJSONSaved", nil)
+}
+
+// SettingsJSONInvalid says "Not valid JSON."
+// in the language the app shows.
+//
+// Settings.json page status: the editor's text did not decode, so nothing
+// was written.
+func SettingsJSONInvalid() string { return In(i18n.Locale()).SettingsJSONInvalid() }
+
+// SettingsJSONInvalid says "Not valid JSON."
+// in the language of msgs.
+//
+// Settings.json page status: the editor's text did not decode, so nothing
+// was written.
+func (msgs Messages) SettingsJSONInvalid() string {
+	return Catalog.Format(msgs.locale, "settingsJSONInvalid", nil)
+}
+
+// SettingsJSONChanged says "The file changed on disk."
+// in the language the app shows.
+//
+// Settings.json page status: settings.json was written outside while the
+// editor has unsaved text.
+func SettingsJSONChanged() string { return In(i18n.Locale()).SettingsJSONChanged() }
+
+// SettingsJSONChanged says "The file changed on disk."
+// in the language of msgs.
+//
+// Settings.json page status: settings.json was written outside while the
+// editor has unsaved text.
+func (msgs Messages) SettingsJSONChanged() string {
+	return Catalog.Format(msgs.locale, "settingsJSONChanged", nil)
 }
 
 // SettingsWindow says "Window"

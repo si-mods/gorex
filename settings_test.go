@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"encoding/json"
 	"log"
 	"os"
@@ -646,5 +647,244 @@ func TestMigrateTerminalAndTokens(t *testing.T) {
 	}
 	if prefs.TermTheme != "Nord" || sidebarPalette(&darkColors, true).tabActive != ui.Hex("#e8e8ee") {
 		t.Error("migrated values not loaded")
+	}
+}
+
+// TestDecodeSettings: decodeSettings decodes and checks on a copy —
+// prefs is untouched — and a file that does not decode returns false
+// (docs/DSK-010).
+func TestDecodeSettings(t *testing.T) {
+	isolateSettings(t, "")
+	prefs = settings{TermTheme: "Nord", FontSize: 14}
+	if _, ok := decodeSettings([]byte(`{"terminal.theme": "Dracula"`)); ok {
+		t.Fatal("a torn file decoded")
+	}
+	next, ok := decodeSettings([]byte(`{"fontSize": 99, "sidebar.rowHeight": 26}`))
+	if !ok {
+		t.Fatal("a good file did not decode")
+	}
+	if next.FontSize != 0 || next.SidebarRowHeight != 26 {
+		t.Errorf("decoded %+v: the checks did not run", next)
+	}
+	if prefs.TermTheme != "Nord" || prefs.FontSize != 14 || prefs.SidebarRowHeight != 0 {
+		t.Errorf("decoding changed prefs: %+v", prefs)
+	}
+}
+
+// resetSettingsWatch zeroes the hashes the watch recorded, so an event of
+// this test is not skipped as bytes another wrote.
+func resetSettingsWatch(t *testing.T) {
+	t.Helper()
+	settingsMu.Lock()
+	settingsWritten, settingsBad = [sha256.Size]byte{}, [sha256.Size]byte{}
+	settingsMu.Unlock()
+}
+
+// runHere makes the watcher apply where it is called, as the main thread
+// would, and counts how often.
+func runHere(t *testing.T) (applied *int) {
+	t.Helper()
+	n := 0
+	old := postToMain
+	postToMain = func(fn func()) { n++; fn() }
+	t.Cleanup(func() { postToMain = old })
+	return &n
+}
+
+// TestSettingsFileChanged: a write of settings.json from outside applies
+// while the app runs; a write the app recorded — its own, or the same
+// bytes again — does not, and a file that does not decode keeps prefs
+// (docs/DSK-010).
+func TestSettingsFileChanged(t *testing.T) {
+	isolateSettings(t, "")
+	resetSettingsWatch(t)
+	applied := runHere(t)
+	st := &store{}
+	prefs = settings{TermTheme: "Nord"}
+	saveSettings() // writes the file and records its bytes
+	st.settingsFileChanged()
+	if *applied != 0 {
+		t.Fatal("the app's own write reloaded")
+	}
+	// An outside edit applies.
+	writeSettings(t, `{"terminal.theme": "Dracula", "sidebar.rowHeight": 40}`)
+	st.settingsFileChanged()
+	if *applied != 1 || prefs.TermTheme != "Dracula" || prefs.SidebarRowHeight != 40 {
+		t.Fatalf("an outside edit applied %d times, prefs %+v", *applied, prefs)
+	}
+	// The same bytes again are not applied again.
+	st.settingsFileChanged()
+	if *applied != 1 {
+		t.Error("the same bytes reloaded")
+	}
+	// A file that does not decode keeps prefs and applies nothing.
+	writeSettings(t, `{"terminal.theme": "Nord"`)
+	st.settingsFileChanged()
+	if *applied != 1 || prefs.TermTheme != "Dracula" {
+		t.Errorf("a torn file applied: prefs %+v", prefs)
+	}
+}
+
+// TestReloadMigrates: a settings.json with an old key reloads with the new
+// key, its file is rewritten as a load's is, and the rewrite the migration
+// caused is skipped by hash (docs/DSK-010).
+func TestReloadMigrates(t *testing.T) {
+	isolateSettings(t, "")
+	resetSettingsWatch(t)
+	applied := runHere(t)
+	writeSettings(t, `{"theme": "Nord"}`)
+	st := &store{}
+	st.settingsFileChanged()
+	if prefs.TermTheme != "Nord" {
+		t.Fatalf("the old key did not apply: %+v", prefs)
+	}
+	raw := settingsOnDisk(t)
+	if _, ok := raw["theme"]; ok || string(raw["terminal.theme"]) != `"Nord"` {
+		t.Errorf("the file was not migrated: %v", raw)
+	}
+	if _, err := os.Stat(settingsPath() + ".bak"); err != nil {
+		t.Error("no backup of the original")
+	}
+	// What the migration wrote is skipped, as a write of the app's.
+	st.settingsFileChanged()
+	if *applied != 1 {
+		t.Error("the migration's own write reloaded")
+	}
+}
+
+// TestSidebarColorHalfPair: a sidebar.colorCustomizations object with one
+// side absent, as a hand edit may write it, loads and resolves only the
+// side it has; the other appearance falls back to the default
+// (docs/DSK-010).
+func TestSidebarColorHalfPair(t *testing.T) {
+	for raw, ok := range map[string]bool{
+		`"#222222"`:                            true,
+		`{"light":"#ffffff","dark":"#222222"}`: true,
+		`{"dark":"#222222"}`:                   true,
+		`{"light":"#ffffff"}`:                  true,
+		`{"dark":"nope"}`:                      false,
+		`{"dark":5}`:                           false,
+		`"nope"`:                               false,
+	} {
+		if got := validStyleColor(json.RawMessage(raw)); got != ok {
+			t.Errorf("validStyleColor(%s) = %v, want %v", raw, got, ok)
+		}
+	}
+	isolateSettings(t, "")
+	writeSettings(t, `{"sidebar.colorCustomizations": {"sideBar.tabActiveBackground": {"dark": "#222222"}}}`)
+	loadSettings()
+	if _, ok := prefs.SidebarColors["sideBar.tabActiveBackground"]; !ok {
+		t.Error("a {dark}-only value was dropped at load")
+	}
+	if got := sidebarPalette(&darkColors, true).tabActive; got != ui.Hex("#222222") {
+		t.Errorf("tabActive %v, want the dark side's", got)
+	}
+}
+
+// clickButton presses the button named label through the accessibility
+// tree.
+func clickButton(t *testing.T, tt *ui.Tester, label string) {
+	t.Helper()
+	b, ok := tt.AccessByRole(ui.RoleButton, label)
+	if !ok {
+		t.Fatalf("no %q button", label)
+	}
+	tt.ClickAt(b.Bounds.X+b.Bounds.W/2, b.Bounds.Y+b.Bounds.H/2)
+}
+
+// TestJSONSettingsPage: the settings.json page shows the file in a code
+// editor under a bar; a good text saves, writes the file and applies; a
+// text that is not JSON writes nothing and marks the bar; an outside
+// change resyncs a clean buffer and marks a dirty one (docs/DSK-010).
+func TestJSONSettingsPage(t *testing.T) {
+	isolateSettings(t, "")
+	resetSettingsWatch(t)
+	applied := runHere(t)
+	registerFonts()
+	st := &store{}
+	a := &App{st: st}
+	oldSection, oldJSON := settingsUI.section, settingsUI.json
+	settingsUI.section, settingsUI.json = "file", nil
+	t.Cleanup(func() { settingsUI.section, settingsUI.json = oldSection, oldJSON })
+	prefs = settings{TermTheme: "Nord"}
+	saveSettings()
+	tt := ui.NewTester(a.settingsView, 780, 900)
+	tt.Frame()
+	for _, label := range []string{"Settings File", "Save", "Revert", "Edits apply on save."} {
+		if !tt.HasText(label) {
+			t.Errorf("no %q on the page: %q", label, tt.Texts())
+		}
+	}
+	ed, ok := tt.AccessByRole(ui.RoleTextField, "Settings File")
+	if !ok || !ed.Multiline {
+		t.Fatalf("no editor: %+v", ed)
+	}
+	j := settingsUI.json
+	const first = "{\n  \"terminal.theme\": \"Nord\"\n}"
+	if j.st.Buffer.String() != first {
+		t.Fatalf("the editor holds %q, want the file's text", j.st.Buffer.String())
+	}
+
+	// A text that is not JSON writes nothing and marks the bar.
+	j.st.Buffer.Set(`{"terminal.theme": `)
+	tt.Frame()
+	if !tt.HasText("Unsaved") {
+		t.Error("a dirty buffer shows no Unsaved")
+	}
+	clickButton(t, tt, "Save")
+	tt.Frame()
+	if !tt.HasText("Not valid JSON.") {
+		t.Errorf("a bad text did not mark the bar: %q", tt.Texts())
+	}
+	if b, _ := os.ReadFile(settingsPath()); string(b) != first {
+		t.Errorf("a bad text wrote the file: %s", b)
+	}
+	if prefs.TermTheme != "Nord" {
+		t.Errorf("a bad text applied: %+v", prefs)
+	}
+
+	// A good text writes the file and applies, as an outside edit does.
+	const good = "{\n  \"terminal.theme\": \"Dracula\"\n}\n"
+	j.st.Buffer.Set(good)
+	clickButton(t, tt, "Save")
+	tt.Frame()
+	if prefs.TermTheme != "Dracula" {
+		t.Error("the save did not apply")
+	}
+	if b, _ := os.ReadFile(settingsPath()); string(b) != good {
+		t.Errorf("the file has %q, want the editor's text", b)
+	}
+	if !tt.HasText("Saved") {
+		t.Error("no Saved after the save")
+	}
+
+	// An outside change takes over a clean buffer.
+	const outside = `{"terminal.theme": "Nord", "sidebar.rowHeight": 40}`
+	writeSettings(t, outside)
+	st.settingsFileChanged()
+	tt.Frame()
+	if *applied != 1 || prefs.SidebarRowHeight != 40 {
+		t.Fatalf("the outside write applied %d times, prefs %+v", *applied, prefs)
+	}
+	if j.st.Buffer.String() != outside || j.conflict {
+		t.Errorf("the clean buffer did not take the file's text")
+	}
+
+	// With a dirty buffer the outside change marks the bar and keeps the
+	// text, until Revert.
+	j.st.Buffer.Set(`{"sidebar.indent": 10}`)
+	writeSettings(t, `{"terminal.theme": "Dracula"}`)
+	st.settingsFileChanged()
+	tt.Frame()
+	if *applied != 2 || !j.conflict || !tt.HasText("The file changed on disk.") {
+		t.Errorf("a dirty buffer's conflict: %v, applied %d, %q", j.conflict, *applied, tt.Texts())
+	}
+	if j.st.Buffer.String() != `{"sidebar.indent": 10}` {
+		t.Error("the dirty buffer's text was lost")
+	}
+	clickButton(t, tt, "Revert")
+	tt.Frame()
+	if j.conflict || j.st.Buffer.String() != `{"terminal.theme": "Dracula"}` {
+		t.Errorf("the revert: conflict %v, text %q", j.conflict, j.st.Buffer.String())
 	}
 }

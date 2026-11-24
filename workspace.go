@@ -1140,6 +1140,9 @@ func (st *store) start() {
 		return
 	}
 	st.started = true
+	// Edits of settings.json made outside apply while the app runs
+	// (docs/DSK-010-live-settings.md).
+	st.watchSettings()
 	if !st.connect() {
 		return
 	}
