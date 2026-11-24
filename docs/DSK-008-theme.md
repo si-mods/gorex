@@ -8,7 +8,7 @@ metadata:
 
 # DSK-008: Desktop theme framework
 
-Status: phases 1 and 2 built (#1065, #PR). Phase 3 not built.
+Status: phases 1 and 2 built (#1065, #1067). Phase 3 not built.
 
 This doc decides the shape of theming for the desktop chrome. The chrome is the sidebar, the cards of the panes, the dialogs and the menus. This doc replaces no doc. It extends the palette rules of `DESIGN.md` and the settings keys of [DSK-007](DSK-007-sidebar-style.md). The layers come from the design-system pass note of the Vibe Design Tips series (vibedesign.tips). The material and ink model comes from tip 010 of that series (liquid glass).
 
