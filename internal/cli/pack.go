@@ -54,14 +54,14 @@ func packCmd(args []string, out, errOut io.Writer) (int, bool) {
 		}
 		for _, s := range list {
 			if s.Error != "" {
-				fmt.Fprintf(out, "%s	invalid	%s	%s\n", s.ID, s.Error, s.Kind)
+				fmt.Fprintf(out, "%s\tinvalid\t%s\t%s\n", s.ID, s.Error, s.Kind)
 				continue
 			}
 			if s.Kind == iconpack.KindTheme {
-				fmt.Fprintf(out, "%s	%s			%s\n", s.ID, s.Name, s.Kind)
+				fmt.Fprintf(out, "%s\t%s\t\t\t%s\n", s.ID, s.Name, s.Kind)
 				continue
 			}
-			fmt.Fprintf(out, "%s	%s	%s	%d entries	%s\n", s.ID, s.Name, s.Version, s.Entries, s.Kind)
+			fmt.Fprintf(out, "%s\t%s\t%s\t%d entries\t%s\n", s.ID, s.Name, s.Version, s.Entries, s.Kind)
 		}
 		return ExitOK, true
 	case "search":
