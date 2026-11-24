@@ -39,8 +39,7 @@ var (
 // menuStyleOf is the look of a drawn menu in k's colors, in a dark window
 // or a light one: the glass panel of the popovers, rounded as macOS 26's
 // menu, with rows of the same shape. The highlight is k.accent, with the
-// text widgetTheme gives AccentText: dark on the light accent of a dark
-// window, white on the other. It gives the same pointer for the same
+// text k.accentText. It gives the same pointer for the same
 // arguments.
 func menuStyleOf(k *colors, dark bool) *ui.MenuStyle {
 	menuStylesMu.Lock()
@@ -54,7 +53,7 @@ func menuStyleOf(k *colors, dark bool) *ui.MenuStyle {
 			popoverShadow(glassPanel(panel.Radius(radiusL).Padding(6), k).Border(1, k.panelBorder), k)
 		},
 		RowHeight: 24, RowRadius: concentric(radiusL, 6), RowPadding: 10,
-		Highlight: k.accent, HighlightText: accentText(dark),
+		Highlight: k.accent, HighlightText: k.accentText,
 		Separator: k.panelBorder,
 		TextSize:  13,
 	}

@@ -112,7 +112,12 @@ func drawEmptyScene(p *ui.Painter, r ui.Rect, k *colors, next, dark bool) {
 	d := float32(20)
 	plus := ui.Rect{X: card.X + card.W - d - 4, Y: card.Y + card.H - d - 4, W: d, H: d}
 	p.Fill(plus, k.emptyMark, capsule(d))
-	ink := accentText(dark)
+	// The plus is on emptyMark, not on the accent: its ink is not a theme's
+	// accentText.
+	ink := ui.Hex("#ffffff")
+	if dark {
+		ink = ui.Hex("#10151c")
+	}
 	cx, cy := plus.X+d/2, plus.Y+d/2
 	p.Line(cx-4, cy, cx+4, cy, 1.6, ink)
 	p.Line(cx, cy-4, cx, cy+4, 1.6, ink)

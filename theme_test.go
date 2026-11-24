@@ -23,7 +23,7 @@ func keepTheme(t *testing.T) {
 // built-in palettes, field for field, so nothing moves.
 func TestThemeNoneKeepsPalettes(t *testing.T) {
 	keepTheme(t)
-	m, _, err := theme.Parse([]byte(`{"seeds":{"dark":{"accent":"#ff0000"}}}`))
+	m, _, err := theme.Parse([]byte(`{"seeds":{"dark":{"accent":"#ff0000","accentText":"#000000"}}}`))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -34,6 +34,40 @@ func TestThemeNoneKeepsPalettes(t *testing.T) {
 	}
 	if themed(lightSeeds, &theme.Manifest{}, 0) != lightColors {
 		t.Error("an empty manifest changed the light palette")
+	}
+}
+
+// TestThemeAccentText: a theme's accentText is the text of the faces that
+// are the accent (a menu's highlight, the stock widgets' accent), and a
+// theme with none leaves the built-in ink.
+func TestThemeAccentText(t *testing.T) {
+	keepTheme(t)
+	if lightColors.accentText != ui.Hex("#ffffff") || darkColors.accentText != ui.Hex("#10151c") {
+		t.Fatal("the built-in accentText is not what GoRex drew before")
+	}
+	m, _, err := theme.Parse([]byte(`{"seeds":{"light":{"accent":"#f29718","accentText":"#5e3801"}}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	applyTheme(m)
+	k := paletteOf(false)
+	want := ui.Hex("#5e3801")
+	if k.accentText != want {
+		t.Fatalf("accentText %v, want %v", k.accentText, want)
+	}
+	if got := menuStyleOf(k, false).HighlightText; got != want {
+		t.Errorf("menu HighlightText %v, want %v", got, want)
+	}
+	if got := widgetTheme(&ui.Theme{}, k).AccentText; got != want {
+		t.Errorf("widget AccentText %v, want %v", got, want)
+	}
+	m, _, err = theme.Parse([]byte(`{"seeds":{"light":{"accent":"#f29718"}}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	applyTheme(m)
+	if got := paletteOf(false).accentText; got != lightColors.accentText {
+		t.Errorf("a theme with no accentText gave %v, want the built-in %v", got, lightColors.accentText)
 	}
 }
 
