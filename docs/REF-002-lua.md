@@ -3,14 +3,14 @@ name: REF-002
 description: "The Lua configuration in `init.lua`: keybindings, modes, actions, events and app overrides. Use when you change what the Lua config can do."
 metadata:
   created: "2026-10-29"
-  updated: "2026-11-23"
+  updated: "2026-11-24"
 ---
 
 # REF-002: Lua configuration
 
 Status: reference. It describes the code in main.
 
-GoRex reads `~/.config/gorex/init.lua`, or `GOREX_CONFIG`. The file is
+GoRex reads `~/.gorex/init.lua`, or `GOREX_CONFIG`. The file is
 read when the app starts and by `gorex config reload`; a syntax error
 leaves the previous keymap and actions in place. `gorex config check`
 prints the file's bindings, actions and modes, or the error.

@@ -10,3 +10,7 @@ var errNoJob = errors.New("rex: no job to start the server as")
 
 // spawnJob starts no job here.
 func spawnJob(string) error { return errNoJob }
+
+// fixMovedJob does nothing on a platform that keeps the server's job in
+// the data directory itself.
+func fixMovedJob(legacy, root string) {}

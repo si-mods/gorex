@@ -41,21 +41,17 @@ func main() {
 	if v := mygo.App.Version(); v != "" {
 		rexapi.RexVersion = v + "-gorex"
 	}
-	// The state of the sessions lives in the app's data directory, which
-	// the server it starts takes from GOREX_DIR: "GoRex", or "GoRex Dev"
-	// under mygo dev, which keeps the installed app's sessions apart. A plain
-	// go build is a dev build too, named for its executable ("gorex"), which
-	// is the installed app's directory on a case-insensitive disk, so it
-	// gets a " Dev" one as well. A dev build sets it before -server, whose
-	// rex.Dir() would otherwise be the installed app's, and on an error too.
+	// The state of the sessions lives in the home directory
+	// (docs/MOD-013-home-dir.md), which the server it starts takes from
+	// GOREX_DIR: "~/.gorex", or "~/.gorex-dev" under mygo dev and plain
+	// go builds, which keeps the installed app's sessions apart. A dev
+	// build sets it before -server, whose rex.Dir() would otherwise be
+	// the installed app's, and on an error too.
 	ownDir := os.Getenv("GOREX_DIR") != ""
 	dev := mygo.IsDev()
 	if !ownDir && dev {
-		dir, err := mygo.App.Path(mygo.PathUserData)
-		if err != nil {
-			dir = rex.Dir()
-		}
-		os.Setenv("GOREX_DIR", dataDir(dir, true))
+		rex.MigrateHome(true)
+		os.Setenv("GOREX_DIR", rex.DevDir())
 	}
 	if server, err := rex.ServerMain(os.Args[1:]); server {
 		if err != nil {
@@ -86,9 +82,8 @@ func main() {
 	// one as rex.Dir(), and in a session the server that runs it
 	// (GOREX_SERVER), unless GOREX_DIR names another.
 	if !ownDir && !dev {
-		if dir, err := mygo.App.Path(mygo.PathUserData); err == nil {
-			os.Setenv("GOREX_DIR", dir)
-		}
+		rex.MigrateHome(false)
+		os.Setenv("GOREX_DIR", rex.Dir())
 	}
 	// mygo dev names its app "GoRex Dev", which tells it from the installed
 	// app only by a suffix. This build says what it is for instead: the
@@ -148,15 +143,6 @@ func main() {
 	if err := mygo.App.Run(); err != nil {
 		log.Fatal(err)
 	}
-}
-
-// dataDir keeps a dev build out of dir when dir could be the installed
-// app's: it adds " Dev" to the name, unless the name has it already.
-func dataDir(dir string, dev bool) string {
-	if !dev || strings.HasSuffix(strings.ToLower(dir), " dev") {
-		return dir
-	}
-	return dir + " Dev"
 }
 
 // devBuild reports whether mygo dev runs this build, from its .mygo/dev

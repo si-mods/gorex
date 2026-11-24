@@ -12,6 +12,8 @@ import (
 	"time"
 
 	lua "github.com/yuin/gopher-lua"
+
+	"gorex/internal/homedir"
 )
 
 // Arg is one typed argument of a custom action.
@@ -509,26 +511,10 @@ func normalizeKey(s string) string {
 	return strings.Join(parts, ">")
 }
 
-// Path returns the configuration file: GOREX_CONFIG, else the usual XDG
-// path, else the platform config directory. Windows GUI processes set
-// neither XDG_CONFIG_HOME nor HOME, so without the platform fallback Path
-// (and everything under Dir, like icon packs) silently has no location.
+// Path returns the configuration file: GOREX_CONFIG, else the home
+// directory's resolution of docs/MOD-013-home-dir.md.
 func Path() string {
-	if p := strings.TrimSpace(getenv("GOREX_CONFIG")); p != "" {
-		return p
-	}
-	base := strings.TrimSpace(getenv("XDG_CONFIG_HOME"))
-	if base == "" {
-		if home := strings.TrimSpace(getenv("HOME")); home != "" {
-			base = filepath.Join(home, ".config")
-		} else if dir, err := userConfigDir(); err == nil {
-			base = dir
-		}
-	}
-	if base == "" {
-		return ""
-	}
-	return filepath.Join(base, "gorex", "init.lua")
+	return homedir.ConfigPath()
 }
 
 // Dir returns the configuration directory holding init.lua, or "" when none.
@@ -594,10 +580,6 @@ func (c *Config) programIconFn(l *lua.LState) int {
 	c.ProgramIcons = append(c.ProgramIcons, rule)
 	return 0
 }
-
-// getenv and userConfigDir are variables for tests.
-var getenv = os.Getenv
-var userConfigDir = os.UserConfigDir
 
 func parseArgs(t *lua.LTable) ([]Arg, error) {
 	var out []Arg

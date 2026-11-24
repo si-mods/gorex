@@ -9,6 +9,7 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -97,6 +98,24 @@ func spawnJob(appExe string) error {
 		return fmt.Errorf("rex: starting the server's job: %w: %s", err, strings.TrimSpace(string(out)))
 	}
 	return nil
+}
+
+// fixMovedJob follows a moved data directory (MOD-013): the plist the
+// move carried names the old path, so it is rewritten in place, and the
+// job of the old directory's label is booted out — its program is gone.
+// No server runs at this step, so the bootout ends nothing.
+func fixMovedJob(legacy, root string) {
+	if legacy == root || legacy == "" {
+		return
+	}
+	p := filepath.Join(root, "server.plist")
+	if b, err := os.ReadFile(p); err == nil && strings.Contains(string(b), legacy) {
+		os.WriteFile(p, []byte(strings.ReplaceAll(string(b), legacy, root)), 0o600)
+	}
+	uid := strconv.Itoa(os.Getuid())
+	if err := exec.Command("launchctl", "bootout", "gui/"+uid+"/"+jobLabel(legacy)).Run(); err == nil {
+		log.Printf("rex: the server's job of %s ended with the move", legacy)
+	}
 }
 
 // jobPlist is the definition of the job label that runs program, the

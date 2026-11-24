@@ -335,6 +335,7 @@ const idleTimeout = 10 * time.Minute
 // Serve runs the server until it is shut down: it returns an error at
 // once when another server already runs.
 func Serve() error {
+	MigrateHome(false)
 	dir := Dir()
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
@@ -988,6 +989,7 @@ func newID() string {
 // outlives the app: the executable run with -server, as a job of launchd's
 // on macOS (job_darwin.go), detached on Linux and Windows.
 func Spawn() error {
+	MigrateHome(false)
 	exe, err := os.Executable()
 	if err != nil {
 		return err

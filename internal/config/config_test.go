@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"gorex/internal/homedir"
 )
 
 func write(t *testing.T, body string) string {
@@ -86,23 +88,70 @@ func TestPath(t *testing.T) {
 		t.Fatalf("path %q", Path())
 	}
 	t.Setenv("GOREX_CONFIG", "")
-	t.Setenv("XDG_CONFIG_HOME", "/tmp/cfg")
-	if got := Path(); got != filepath.FromSlash("/tmp/cfg/gorex/init.lua") {
-		t.Fatalf("path %q", got)
+	home := t.TempDir()
+	defer stubHomeDirs(home, "")()
+	// A legacy file wins while the move has not run.
+	cfg := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", cfg)
+	t.Setenv("HOME", t.TempDir())
+	// Neither a home file nor a legacy one: the home's init.lua.
+	if got, want := Path(), filepath.Join(home, ".gorex", "init.lua"); got != want {
+		t.Fatalf("path %q, want %q", got, want)
 	}
+	write := func(p string) {
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte("-- x"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write(filepath.Join(cfg, "gorex", "init.lua"))
+	if got, want := Path(), filepath.Join(cfg, "gorex", "init.lua"); got != want {
+		t.Fatalf("path %q, want %q", got, want)
+	}
+	// The home's file wins over the legacy one.
+	write(filepath.Join(home, ".gorex", "init.lua"))
+	if got, want := Path(), filepath.Join(home, ".gorex", "init.lua"); got != want {
+		t.Fatalf("path %q, want %q", got, want)
+	}
+}
+
+// stubHomeDirs makes homedir resolve under home, with platform's
+// configuration directory plat. It returns the restore.
+func stubHomeDirs(home, plat string) func() {
+	oldHome, oldCfg := homedir.UserHomeDir, homedir.UserConfigDir
+	homedir.UserHomeDir = func() (string, error) { return home, nil }
+	homedir.UserConfigDir = func() (string, error) {
+		if plat == "" {
+			return "", errors.New("none")
+		}
+		return plat, nil
+	}
+	return func() { homedir.UserHomeDir, homedir.UserConfigDir = oldHome, oldCfg }
 }
 
 func TestPathPlatformFallback(t *testing.T) {
 	t.Setenv("GOREX_CONFIG", "")
 	t.Setenv("XDG_CONFIG_HOME", "")
 	t.Setenv("HOME", "")
-	old := userConfigDir
-	defer func() { userConfigDir = old }()
-	userConfigDir = func() (string, error) { return "/plat/cfg", nil }
-	if got := Path(); got != filepath.FromSlash("/plat/cfg/gorex/init.lua") {
-		t.Fatalf("path %q", got)
+	plat := t.TempDir()
+	defer stubHomeDirs("", plat)()
+	// No XDG and no HOME: the legacy file of the platform directory.
+	if err := os.MkdirAll(filepath.Join(plat, "gorex"), 0o755); err != nil {
+		t.Fatal(err)
 	}
-	userConfigDir = func() (string, error) { return "", errors.New("none") }
+	p := filepath.Join(plat, "gorex", "init.lua")
+	if err := os.WriteFile(p, []byte("-- x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if got := Path(); got != p {
+		t.Fatalf("path %q, want %q", got, p)
+	}
+	// No home either: nothing to fall back to.
+	if err := os.Remove(p); err != nil {
+		t.Fatal(err)
+	}
 	if got := Path(); got != "" {
 		t.Fatalf("path %q", got)
 	}
