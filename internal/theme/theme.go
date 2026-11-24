@@ -150,9 +150,26 @@ type Manifest struct {
 	Seeds    [2]map[Seed]ui.Color
 	Roles    [2]map[Role]ui.Color
 	Terminal [2]string
+	Sidebar  Sidebar
 	Assets   map[string]Asset
 	Ambience Ambience
 	Brand    Brand
+}
+
+// Sidebar holds the sidebar.* settings of docs/DSK-007-sidebar-style.md
+// that a theme suggests. A metric of 0 and an enum of "" is unset, as in
+// settings.json. The user's settings.json wins over each value, as its
+// sidebar.colorCustomizations win over the theme's roles.
+type Sidebar struct {
+	RowHeight float32 `json:"rowHeight"`
+	Indent    float32 `json:"indent"`
+	TabIndent float32 `json:"tabIndent"`
+	FontSize  float32 `json:"fontSize"`
+	GroupPad  float32 `json:"groupPadding"`
+	GroupBy   string  `json:"groupBy"`
+	GroupFace string  `json:"groupBackground"`
+	Icons     string  `json:"icons"`
+	Selection string  `json:"selection"`
 }
 
 // TerminalThemeKnown reports whether Ghostty has a theme of the name. The
@@ -196,7 +213,7 @@ func Parse(b []byte) (*Manifest, []string, error) {
 		Roles map[string]json.RawMessage            `json:"roles"`
 		Term  map[string]json.RawMessage            `json:"terminal"`
 	}
-	known := []string{"name", "seeds", "roles", "terminal", "assets", "ambience", "brand"}
+	known := []string{"name", "seeds", "roles", "terminal", "sidebar", "assets", "ambience", "brand"}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return nil, nil, err
 	}
@@ -264,6 +281,9 @@ func Parse(b []byte) (*Manifest, []string, error) {
 		}
 	}
 	w := warner(warn)
+	if raw, ok := top["sidebar"]; ok {
+		m.Sidebar = parseSidebar(raw, &w)
+	}
 	if raw, ok := top["assets"]; ok {
 		m.Assets = parseAssets(raw, &w)
 	}
@@ -470,4 +490,54 @@ func removeOrphanAssets(dir string) {
 			os.RemoveAll(filepath.Join(dir, de.Name()))
 		}
 	}
+}
+
+// parseSidebar reads the sidebar key: the sidebar.* keys of
+// docs/DSK-007-sidebar-style.md, with the ranges and values of
+// settings.json's load. An out-of-range number and a bad enum drop, as
+// settings.json's do.
+func parseSidebar(raw json.RawMessage, w *warner) Sidebar {
+	var s Sidebar
+	m, ok := w.fields(raw, "sidebar", "rowHeight", "indent", "tabIndent", "fontSize", "groupPadding", "groupBy", "groupBackground", "icons", "selection")
+	if !ok {
+		return s
+	}
+	metric := func(key string, lo, hi float32) float32 {
+		raw, ok := m[key]
+		if !ok {
+			return 0
+		}
+		var f float64
+		if json.Unmarshal(raw, &f) != nil {
+			w.add("sidebar.%s: not a number", key)
+			return 0
+		}
+		if v := float32(f); v != 0 && (v < lo || v > hi) {
+			w.add("sidebar.%s: %g outside %g–%g", key, f, lo, hi)
+			return 0
+		}
+		return float32(f)
+	}
+	s.RowHeight = metric("rowHeight", 24, 48)
+	s.Indent = metric("indent", 0, 24)
+	s.TabIndent = metric("tabIndent", 0, 24)
+	s.FontSize = metric("fontSize", 10, 16)
+	s.GroupPad = metric("groupPadding", 0, 12)
+	enum := func(key string, vals ...string) string {
+		raw, ok := m[key]
+		if !ok {
+			return ""
+		}
+		var v string
+		if json.Unmarshal(raw, &v) != nil || !slices.Contains(vals, v) {
+			w.add("sidebar.%s: bad value", key)
+			return ""
+		}
+		return v
+	}
+	s.GroupBy = enum("groupBy", "host", "flat")
+	s.GroupFace = enum("groupBackground", "face", "none")
+	s.Icons = enum("icons", "tiles", "text")
+	s.Selection = enum("selection", "pill", "fill")
+	return s
 }

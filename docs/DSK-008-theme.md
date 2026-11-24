@@ -60,11 +60,14 @@ A theme is a manifest of seeds and optional role overrides:
     "dark":  { "bgTop": "#1c1f26", "panel": "#16181d", "text": "#e8eaed", "accent": "#5b8def" }
   },
   "roles": { "sideBar.tabActiveBackground": "#5b8def33" },
-  "terminal": { "light": "Ayu Light", "dark": "Ayu" }
+  "terminal": { "light": "Ayu Light", "dark": "Ayu" },
+  "sidebar": { "indent": 10, "tabIndent": 8, "groupBackground": "none" }
 }
 ```
 
 A seed key is a name of the seed table (see Model). A manifest can give some seeds. Each other seed comes from the built-in seeds of that appearance. A role value is a hex string, or an object `{"light", "dark"}` with a value for each appearance, as in `sidebar.colorCustomizations`.
+
+The optional `sidebar` key carries the `sidebar.*` settings of [DSK-007](DSK-007-sidebar-style.md), without their prefix: `rowHeight`, `indent`, `tabIndent`, `fontSize`, `groupPadding`, `groupBy`, `groupBackground`, `icons`, `selection`. Each value takes the range or the words of the settings key. A value of the user's `settings.json` wins over it, as `sidebar.colorCustomizations` wins over the theme's roles.
 
 ### Terminal
 
@@ -89,6 +92,8 @@ Resolution has four layers. Each layer overwrites the layer before it:
 2. The seeds of the selected theme.
 3. The role overrides of the theme.
 4. The overrides in the user's settings: `sidebar.colorCustomizations`, and each later `*.colorCustomizations` key.
+
+Each `sidebar.*` key of [DSK-007](DSK-007-sidebar-style.md) resolves the same way: the constant of `sidebar.go` or `projects_sidebar.go`, then the theme's `sidebar` object, then the user's `settings.json` value.
 
 Code asks for a **surface**, not for a color. The resolver returns the face and a text ladder that shows on the face:
 

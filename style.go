@@ -309,6 +309,10 @@ func themed(base seeds, m *theme.Manifest, i int) colors {
 // when the user has no terminal.theme (docs/DSK-008-theme.md, Terminal).
 var themeTerm [2]string
 
+// themeSidebar is the sidebar.* of the manifest in use: the sidebar's
+// resolvers read it under the user's own sidebar.* keys (docs/DSK-008).
+var themeSidebar theme.Sidebar
+
 // applyTheme makes the windows' palettes those of m, or the built-in ones
 // when m is nil, and drops what the caches made from the old ones. The
 // terminals take m's colors when the caller applies the prefs again.
@@ -316,8 +320,10 @@ func applyTheme(m *theme.Manifest) {
 	palettes.Store(&themePalettes{themed(lightSeeds, m, 0), themed(darkSeeds, m, 1)})
 	setLook(m)
 	themeTerm = [2]string{}
+	themeSidebar = theme.Sidebar{}
 	if m != nil {
 		themeTerm = m.Terminal
+		themeSidebar = m.Sidebar
 	}
 	menuStylesMu.Lock()
 	clear(menuStyles)

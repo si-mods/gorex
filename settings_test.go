@@ -332,9 +332,11 @@ func TestSidebarStylePrefs(t *testing.T) {
 	if err := os.WriteFile(path, []byte(`{
 		"sidebar.rowHeight": 26,
 		"sidebar.indent": 10,
+		"sidebar.tabIndent": 8,
 		"sidebar.fontSize": 40,
 		"sidebar.groupPadding": 3,
 		"sidebar.groupBy": "flat",
+		"sidebar.groupBackground": "none",
 		"sidebar.icons": "text",
 		"sidebar.selection": "wobbly",
 		"sidebar.colorCustomizations": {
@@ -347,8 +349,11 @@ func TestSidebarStylePrefs(t *testing.T) {
 		t.Fatal(err)
 	}
 	loadSettings()
-	if prefs.SidebarRowHeight != 26 || prefs.SidebarIndent != 10 || prefs.SidebarGroupPad != 3 {
-		t.Fatalf("metrics %v %v %v", prefs.SidebarRowHeight, prefs.SidebarIndent, prefs.SidebarGroupPad)
+	if prefs.SidebarRowHeight != 26 || prefs.SidebarIndent != 10 || prefs.SidebarTabIndent != 8 || prefs.SidebarGroupPad != 3 {
+		t.Fatalf("metrics %v %v %v %v", prefs.SidebarRowHeight, prefs.SidebarIndent, prefs.SidebarTabIndent, prefs.SidebarGroupPad)
+	}
+	if prefs.SidebarGroupFace != "none" {
+		t.Errorf("groupBackground %q", prefs.SidebarGroupFace)
 	}
 	if prefs.SidebarFontSize != 0 {
 		t.Errorf("out-of-range fontSize kept %v", prefs.SidebarFontSize)

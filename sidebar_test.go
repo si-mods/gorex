@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	"github.com/egoist/mygo/ui"
+
+	"gorex/internal/theme"
 )
 
 // TestSidebarLeavesRoomForRightControls: with the sidebar on the left and
@@ -32,9 +34,9 @@ func TestSidebarLeavesRoomForRightControls(t *testing.T) {
 func TestSidebarMetricPrefs(t *testing.T) {
 	old := prefs
 	t.Cleanup(func() { prefs = old })
-	prefs = settings{SidebarRowHeight: 26, SidebarIndent: 10, SidebarGroupPad: 8}
-	if sidebarRowH() != 26 || sidebarLead() != 10 || sidebarGroupPad() != 8 {
-		t.Fatalf("metrics %v %v %v", sidebarRowH(), sidebarLead(), sidebarGroupPad())
+	prefs = settings{SidebarRowHeight: 26, SidebarIndent: 10, SidebarTabIndent: 6, SidebarGroupPad: 8}
+	if sidebarRowH() != 26 || sidebarLead() != 10 || sidebarTabLead() != 16 || sidebarGroupPad() != 8 {
+		t.Fatalf("metrics %v %v %v %v", sidebarRowH(), sidebarLead(), sidebarTabLead(), sidebarGroupPad())
 	}
 	if projectRowH() != 26 {
 		t.Fatalf("projectRowH %v", projectRowH())
@@ -45,6 +47,36 @@ func TestSidebarMetricPrefs(t *testing.T) {
 	prefs.SidebarFontSize = 12
 	if sidebarFont(fontBody) != 12 {
 		t.Errorf("fontSize 12 gave %v", sidebarFont(fontBody))
+	}
+}
+
+// TestSidebarThemePrefs: a theme's sidebar.* values sit under the user's
+// and over the constants (docs/DSK-007, docs/DSK-008).
+func TestSidebarThemePrefs(t *testing.T) {
+	old, oldT := prefs, themeSidebar
+	t.Cleanup(func() { prefs, themeSidebar = old, oldT })
+	prefs = settings{}
+	themeSidebar = theme.Sidebar{Indent: 14, TabIndent: 8, RowHeight: 30, GroupFace: "none", Icons: "text"}
+	if sidebarLead() != 14 || sidebarTabLead() != 22 || sidebarRowH() != 30 {
+		t.Fatalf("theme metrics %v %v %v", sidebarLead(), sidebarTabLead(), sidebarRowH())
+	}
+	if sidebarGroupFaced() {
+		t.Error("the theme's \"none\" left the group faced")
+	}
+	if !sidebarIconsText() {
+		t.Error("the theme's \"text\" kept the tiles")
+	}
+	prefs.SidebarIndent = 10
+	prefs.SidebarGroupFace = "face"
+	if sidebarLead() != 10 || sidebarTabLead() != 18 {
+		t.Fatalf("the user's indent lost to the theme: %v %v", sidebarLead(), sidebarTabLead())
+	}
+	if !sidebarGroupFaced() {
+		t.Error("the user's \"face\" lost to the theme's \"none\"")
+	}
+	prefs, themeSidebar = settings{}, theme.Sidebar{}
+	if sidebarLead() != sideLead || sidebarRowH() != sideRowH {
+		t.Fatalf("no layer left the constants: %v %v", sidebarLead(), sidebarRowH())
 	}
 }
 

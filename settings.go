@@ -52,9 +52,11 @@ type settings struct {
 	// sidebar's palette tokens to "#rrggbb[aa]" or a {"light","dark"} pair.
 	SidebarRowHeight float32                    `json:"sidebar.rowHeight,omitempty"`
 	SidebarIndent    float32                    `json:"sidebar.indent,omitempty"`
+	SidebarTabIndent float32                    `json:"sidebar.tabIndent,omitempty"`
 	SidebarFontSize  float32                    `json:"sidebar.fontSize,omitempty"`
 	SidebarGroupPad  float32                    `json:"sidebar.groupPadding,omitempty"`
 	SidebarGroupBy   string                     `json:"sidebar.groupBy,omitempty"`
+	SidebarGroupFace string                     `json:"sidebar.groupBackground,omitempty"`
 	SidebarIcons     string                     `json:"sidebar.icons,omitempty"`
 	SidebarSelection string                     `json:"sidebar.selection,omitempty"`
 	SidebarColors    map[string]json.RawMessage `json:"sidebar.colorCustomizations,omitempty"`
@@ -302,10 +304,14 @@ func checkSettings(s *settings) {
 	// range falls back to it, as the other metrics do.
 	s.SidebarRowHeight = clampMetric(s.SidebarRowHeight, 24, 48)
 	s.SidebarIndent = clampMetric(s.SidebarIndent, 0, 24)
+	s.SidebarTabIndent = clampMetric(s.SidebarTabIndent, 0, 24)
 	s.SidebarFontSize = clampMetric(s.SidebarFontSize, 10, 16)
 	s.SidebarGroupPad = clampMetric(s.SidebarGroupPad, 0, 12)
 	if s.SidebarGroupBy != "host" && s.SidebarGroupBy != "flat" {
 		s.SidebarGroupBy = ""
+	}
+	if s.SidebarGroupFace != "face" && s.SidebarGroupFace != "none" {
+		s.SidebarGroupFace = ""
 	}
 	if s.SidebarIcons != "tiles" && s.SidebarIcons != "text" {
 		s.SidebarIcons = ""
