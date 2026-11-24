@@ -7,6 +7,8 @@
 * **web:** connect to hosts over tailcat ([#1053](https://github.com/si-mods/gorex/pull/1053))
 * **desktop:** `sidebar.*` style keys in settings.json ([#1055](https://github.com/si-mods/gorex/pull/1055))
 * **desktop:** `terminal.*` keys in settings.json, migrated at load ([#1061](https://github.com/si-mods/gorex/pull/1061))
+* **desktop:** `sideBar.*` role names and the surface resolver ([#1065](https://github.com/si-mods/gorex/pull/1065))
+* **desktop:** derive the palettes from seeds and ink steps ([#1067](https://github.com/si-mods/gorex/pull/1067))
 
 ### Bug Fixes
 
@@ -15,6 +17,8 @@
 * **web:** stack the terminal's menu vertically, as the app's menus ([#1057](https://github.com/si-mods/gorex/pull/1057))
 * **web:** the first screen does not restore a tailnet place ([#1058](https://github.com/si-mods/gorex/pull/1058))
 * **desktop:** draw a pane card's edge in the palette of its terminal face ([#1059](https://github.com/si-mods/gorex/pull/1059))
+* **desktop:** paint the settings window with the focused window's colors ([#1068](https://github.com/si-mods/gorex/pull/1068))
+* **server:** render an attach's snapshot off the session lock — attaching no longer stalls the session's output ([#1066](https://github.com/si-mods/gorex/pull/1066))
 
 ## 0.55.1
 
