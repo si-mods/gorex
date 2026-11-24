@@ -66,7 +66,8 @@ it.
 
 - `TestLostStreamWaitsForItsInput` (`hosts_test.go`).
 - `TestQueueIsBounded`, `TestStalledClientIsDropped`,
-  `TestBlackholedAttachesAreDropped` (`internal/rex/stale_test.go`).
+  `TestStalledLocalClientIsDropped`, `TestBlackholedAttachesAreDropped`
+  (`internal/rex/stale_test.go`).
 
 ## 6. A pane ends only when its session ends
 
