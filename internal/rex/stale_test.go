@@ -4,6 +4,7 @@ package rex
 
 import (
 	"bufio"
+	"encoding/json"
 	"fmt"
 	"net"
 	"os"
@@ -381,6 +382,36 @@ func TestStalledClientIsDropped(t *testing.T) {
 	}
 }
 
+// TestStalledLocalClientIsDropped is a window of this machine that stops
+// reading its session's stream while the session prints, as one whose
+// reading goroutine wedged: the server must drop it though its control
+// connection is alive, or the pane holds a screen that goes on no more
+// until the window opens again.
+func TestStalledLocalClientIsDropped(t *testing.T) {
+	defer SetTimeoutsForTest(500*time.Millisecond, 2*time.Second)()
+	s, _, sid := streamServer(t, nil)
+	conn, srv := net.Pipe()
+	defer conn.Close()
+	go s.handle(srv, "")
+	line, _ := json.Marshal(Attach{Op: "attach", SID: sid, Cols: 80, Rows: 24})
+	go conn.Write(append(line, '\n'))
+	// It reads the answer, then nothing.
+	if err := readOK(conn); err != nil {
+		t.Fatal(err)
+	}
+	if !waitUntil(2*time.Second, func() bool { return attachedTo(s, sid) == 1 }) {
+		t.Fatal("not attached")
+	}
+	if !waitUntil(10*time.Second, func() bool { return attachedTo(s, sid) == 0 }) {
+		t.Fatalf("a local client that reads nothing stays attached, %d", attachedTo(s, sid))
+	}
+	// Its connection is closed: it reads the end.
+	conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+	if _, err := conn.Read(make([]byte, 64<<10)); err == nil {
+		t.Fatal("the server kept the connection of the client it dropped")
+	}
+}
+
 // TestQueueIsBounded checks that what waits for a client that is behind,
 // local or remote, is bounded in bytes, not in chunks: 2048 chunks of a
 // megabyte would be two gigabytes. Past the bound the queue is dropped
@@ -433,36 +464,33 @@ func TestNetstackKeepalive(t *testing.T) {
 	}
 }
 
-// TestWriterClosesOnFailedWrite is a remote client that takes nothing of
-// its snapshot, of a session that prints nothing after: once the write
-// times out the server closes the connection at once, not when the
-// session prints again, which an idle one may never do.
+// TestWriterClosesOnFailedWrite is a client, local or remote, that takes
+// nothing of its snapshot, of a session that prints nothing after: once
+// the write times out the server closes the connection at once, not when
+// the session prints again, which an idle one may never do.
 func TestWriterClosesOnFailedWrite(t *testing.T) {
 	defer SetTimeoutsForTest(200*time.Millisecond, 2*time.Second)()
-	client, server := net.Pipe()
-	defer client.Close()
-	a := &attached{conn: server, first: []byte("snapshot"), remote: true}
-	done := make(chan struct{})
-	go func() {
-		a.writer()
-		close(done)
-	}()
-	// The writer returns once its write failed, past the write's deadline.
-	select {
-	case <-done:
-	case <-time.After(5 * time.Second):
-		t.Fatal("the writer does not return after its write failed")
-	}
-	client.SetReadDeadline(time.Now().Add(2 * time.Second))
-	_, err := client.Read(make([]byte, 64))
-	if ne, ok := err.(net.Error); ok && ne.Timeout() {
-		t.Fatal("the connection stays open after its write failed")
-	}
-	a.finish() // as the attach does, its read failing
-	select {
-	case <-done:
-	case <-time.After(2 * time.Second):
-		t.Fatal("the writer does not return")
+	for _, remote := range []bool{false, true} {
+		client, server := net.Pipe()
+		a := &attached{conn: server, first: []byte("snapshot"), remote: remote}
+		done := make(chan struct{})
+		go func() {
+			a.writer()
+			close(done)
+		}()
+		// The writer returns once its write failed, past the write's deadline.
+		select {
+		case <-done:
+		case <-time.After(5 * time.Second):
+			t.Fatalf("remote %v: the writer does not return after its write failed", remote)
+		}
+		client.SetReadDeadline(time.Now().Add(2 * time.Second))
+		_, err := client.Read(make([]byte, 64))
+		if ne, ok := err.(net.Error); ok && ne.Timeout() {
+			t.Fatalf("remote %v: the connection stays open after its write failed", remote)
+		}
+		client.Close()
+		a.finish() // as the attach does, its read failing
 	}
 }
 

@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log"
 	"net"
@@ -590,6 +591,94 @@ func TestLocalStreamReattaches(t *testing.T) {
 	}
 	if attached != 1 {
 		t.Errorf("the server counts %d windows attached, want 1", attached)
+	}
+}
+
+// TestLocalStreamStarvedReattaches is a pane whose reads stopped while
+// its session printed, as one whose read goroutine wedged elsewhere: the
+// watch sees the session's output grow past the silent stream and closes
+// it, so the next Read attaches again — the freeze of #1076, which a
+// window's reopen then healed by hand.
+func TestLocalStreamStarvedReattaches(t *testing.T) {
+	oldEvery, oldLog := streamWatchEvery, streamStarveLogEvery
+	streamWatchEvery, streamStarveLogEvery = 50*time.Millisecond, time.Second
+	t.Cleanup(func() { streamWatchEvery, streamStarveLogEvery = oldEvery, oldLog })
+	sock, remote := startHostServer(t)
+	info, err := remote.Create(rex.CreateOptions{Cols: 80, Rows: 24})
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, err := rex.ConnectSocket(sock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { c.Close() })
+	if _, err := c.Hello(); err != nil {
+		t.Fatal(err)
+	}
+	s := newLocalStream(c, info.ID, 80, 24)
+	t.Cleanup(func() { s.Close() })
+	attaches := func() int {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		return s.attaches
+	}
+	until := func(what string, cond func() bool) {
+		t.Helper()
+		for deadline := time.Now().Add(10 * time.Second); !cond(); time.Sleep(20 * time.Millisecond) {
+			if time.Now().After(deadline) {
+				t.Fatalf("timed out waiting for %s; attached %d", what, attaches())
+			}
+		}
+	}
+	attached := func() int {
+		for _, in := range sessionInfos(t, remote) {
+			if in.ID == info.ID {
+				return in.Attached
+			}
+		}
+		return -1
+	}
+	readOnce := func() error {
+		errc := make(chan error, 1)
+		go func() {
+			_, err := s.Read(make([]byte, 32<<10))
+			errc <- err
+		}()
+		select {
+		case err := <-errc:
+			return err
+		case <-time.After(10 * time.Second):
+			return fmt.Errorf("a read of the pane stream did not end")
+		}
+	}
+	// The first Read attaches and reads the snapshot; no reader runs
+	// after it, as one wedged in the pane below would not.
+	if err := readOnce(); err != nil {
+		t.Fatal(err)
+	}
+	until("the pane to attach", func() bool { return attaches() == 1 && !s.Detached() })
+	// The silence outlives a check, so the output to come starves the
+	// stream.
+	until("the stream's silence to outlive a check", func() bool {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		return time.Since(s.lastData) > 2*streamWatchEvery
+	})
+	// What the session prints then stays in the socket unread, and no
+	// error ever comes.
+	if _, err := s.Write([]byte("x")); err != nil {
+		t.Fatal(err)
+	}
+	until("the watch to drop the starved stream", func() bool { return attached() == 0 })
+	// Its next Read ends the dead stream and attaches again, which the
+	// bytes it returns show as the screen of a snapshot does.
+	done := make(chan error, 1)
+	go func() { done <- readOnce() }()
+	until("the pane to attach again", func() bool { return attaches() == 2 && !s.Detached() })
+	until("the server to count one window again", func() bool { return attached() == 1 })
+	if err := <-done; err != nil {
+		t.Fatal(err)
 	}
 }
 
