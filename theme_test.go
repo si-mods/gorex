@@ -45,13 +45,13 @@ func TestThemeAccentText(t *testing.T) {
 	if lightColors.accentText != ui.Hex("#ffffff") || darkColors.accentText != ui.Hex("#10151c") {
 		t.Fatal("the built-in accentText is not what GoRex drew before")
 	}
-	m, _, err := theme.Parse([]byte(`{"seeds":{"light":{"accent":"#f29718","accentText":"#7e4b01"}}}`))
+	m, _, err := theme.Parse([]byte(`{"seeds":{"light":{"accent":"#f29718","accentText":"#5e3801"}}}`))
 	if err != nil {
 		t.Fatal(err)
 	}
 	applyTheme(m)
 	k := paletteOf(false)
-	want := ui.Hex("#7e4b01")
+	want := ui.Hex("#5e3801")
 	if k.accentText != want {
 		t.Fatalf("accentText %v, want %v", k.accentText, want)
 	}
