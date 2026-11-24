@@ -8,7 +8,7 @@ metadata:
 
 # MOD-013: One home directory for configuration and data
 
-Status: accepted. Not implemented.
+Status: built (this PR).
 
 This doc decides the directory that holds every file GoRex reads or writes on the desktop: the configuration (`init.lua`, themes, icon packs) and the data (`settings.json`, `layout.json`, the server's socket and log). It changes `config.Path` in `internal/config/config.go` and `Dir` in `internal/rex/proto.go`, and it adds a one-time move of the two legacy directories.
 

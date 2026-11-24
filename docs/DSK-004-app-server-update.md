@@ -3,7 +3,7 @@ name: DSK-004
 description: "An update moves the session server to the new build while the app windows stay open. Use when you change app updates or server upgrades."
 metadata:
   created: "2026-11-09"
-  updated: "2026-11-22"
+  updated: "2026-11-24"
 ---
 
 # DSK-004: Updating the server without restarting the app
@@ -57,7 +57,7 @@ Status of this step: built (#572).
 
 On macOS the new executable has no stable path until the app exits. The staged bundle sits in the work directory of the updater. It moves when the helper swaps it in. A server that calls `exec` on the staged file would report a path that soon goes away. So the server needs its own copy, as Rex has. `servercopy_darwin.go` keeps the copy:
 
-- The app copies its whole bundle to `~/Library/Application Support/GoRex/server/Versions/<build>/GoRex.app`, with a `Current` beside it. The launchd job runs `…/Versions/Current/GoRex.app/Contents/MacOS/GoRex` (see [REF-006-session-server.md](REF-006-session-server.md#how-the-server-starts-macos)).
+- The app copies its whole bundle to `~/.gorex/server/Versions/<build>/GoRex.app`, with a `Current` beside it. The launchd job runs `…/Versions/Current/GoRex.app/Contents/MacOS/GoRex` (see [REF-006-session-server.md](REF-006-session-server.md#how-the-server-starts-macos)).
   - The copy holds the whole bundle, not only `Contents/MacOS/GoRex`. A signed executable alone fails its code signature without the sealed resources of the bundle. Also, macOS privacy permissions follow the signed bundle. The copy keeps the bundle id, the Team ID and the seal, so the grants of the user stay.
   - The copy uses `cp -Rpc`. This makes a clone (APFS copy-on-write) where the volume has clones, so the copy takes no space and no time. Elsewhere it makes a plain copy. The copy keeps the times of the build, so the app can tell a newer build from an older build.
   - The app copies `Current` into a temporary name and renames it, so a half copy never runs.

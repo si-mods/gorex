@@ -17,6 +17,7 @@ import (
 	"slices"
 	"time"
 
+	"gorex/internal/homedir"
 	"gorex/internal/layout"
 )
 
@@ -1258,16 +1259,10 @@ func ServerMain(args []string) (bool, error) {
 	return true, Serve()
 }
 
-// Dir returns the directory of the server's socket, log and state.
+// Dir returns the directory of the server's socket, log and state:
+// the home directory's resolution of docs/MOD-013-home-dir.md.
 func Dir() string {
-	if d := os.Getenv("GOREX_DIR"); d != "" {
-		return d
-	}
-	base, err := os.UserConfigDir()
-	if err != nil {
-		base = os.TempDir()
-	}
-	return filepath.Join(base, "GoRex")
+	return homedir.DataDir(false)
 }
 
 // SocketPath returns the path of the server's socket: in Dir, unless that
