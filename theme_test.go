@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/egoist/mygo/plugins/terminal"
 	"github.com/egoist/mygo/ui"
 
 	"gorex/internal/theme"
@@ -181,5 +182,113 @@ func TestSettingsTerminalAndAppearanceTheme(t *testing.T) {
 	loadSettings()
 	if *paletteOf(true) != darkColors {
 		t.Error("a theme name with a path loaded")
+	}
+}
+
+// keepTerm puts the terminals' colors back after a test that applies them.
+func keepTerm(t *testing.T) {
+	t.Helper()
+	l, d, o, a := termLight, termDark, termOpaque, termAppearance
+	t.Cleanup(func() { termLight, termDark, termOpaque, termAppearance = l, d, o, a })
+}
+
+// writeThemeFile installs a manifest as <config>/themes/<name>.json, under
+// a config folder of the test's own.
+func writeThemeFile(t *testing.T, name, body string) {
+	t.Helper()
+	cfg := t.TempDir()
+	t.Setenv("GOREX_CONFIG", filepath.Join(cfg, "init.lua"))
+	if err := os.MkdirAll(filepath.Join(cfg, "themes"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(cfg, "themes", name+".json"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// ghosttyThemeOf is the Ghostty theme of a name, or fails the test.
+func ghosttyThemeOf(t *testing.T, name string) *terminal.Theme {
+	t.Helper()
+	th, err := terminal.GhosttyTheme(name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return th
+}
+
+const ayuManifest = `{"name":"ayu","seeds":{"dark":{"accent":"#e6b450"}},"terminal":{"light":"Ayu Light","dark":"Ayu"}}`
+
+// TestThemeTerminal: with no terminal.theme, the theme's terminal key
+// colors the terminals of each appearance and replaces the Ghostty
+// configuration's theme and colors, without forcing the window's
+// appearance. The user's terminal.theme wins over it
+// (docs/DSK-008-theme.md, Terminal).
+func TestThemeTerminal(t *testing.T) {
+	isolateSettings(t, "theme = Nord\nbackground = #102030\n")
+	keepTheme(t)
+	keepTerm(t)
+	writeThemeFile(t, "ayu", ayuManifest)
+	writeSettings(t, `{"appearance.theme": "ayu"}`)
+	loadSettings()
+	if themeTerm != [2]string{"Ayu Light", "Ayu"} {
+		t.Fatalf("themeTerm %q", themeTerm)
+	}
+	if termLight.Background != ghosttyThemeOf(t, "Ayu Light").Background || termDark.Background != ghosttyThemeOf(t, "Ayu").Background {
+		t.Errorf("terminals: light %v, dark %v, want the ayu themes", termLight.Background, termDark.Background)
+	}
+	if termDark.Palette != ghosttyThemeOf(t, "Ayu").Palette {
+		t.Error("the dark terminal's palette is not Ayu's")
+	}
+	if termAppearance != "" {
+		t.Errorf("the theme forced the window's appearance %q", termAppearance)
+	}
+
+	// The user's own terminal.theme wins over the theme's.
+	writeSettings(t, `{"appearance.theme": "ayu", "terminal.theme": "Dracula"}`)
+	prefs = settings{}
+	loadSettings()
+	if paletteOf(true).accent != ui.Hex("#e6b450") {
+		t.Error("the chrome theme did not apply")
+	}
+	if termDark.Background != ghosttyThemeOf(t, "Dracula").Background || termLight.Background != ghosttyThemeOf(t, "Dracula").Background {
+		t.Errorf("terminal.theme lost to the theme: light %v, dark %v", termLight.Background, termDark.Background)
+	}
+
+	// With no theme, Ghostty's configuration colors the terminals again.
+	writeSettings(t, `{}`)
+	prefs = settings{}
+	loadSettings()
+	if themeTerm != [2]string{} || ghostty.Theme != "Nord" || termDark.Background != ui.Hex("#102030") {
+		t.Errorf("no theme: themeTerm %q, Ghostty theme %q, background %v", themeTerm, ghostty.Theme, termDark.Background)
+	}
+}
+
+// TestUseThemeTerminal: using a theme on the Extensions page colors the
+// terminals at once, and the built-in theme gives them back.
+func TestUseThemeTerminal(t *testing.T) {
+	isolateSettings(t, "")
+	keepTheme(t)
+	keepTerm(t)
+	writeThemeFile(t, "ayu", ayuManifest)
+	loadSettings()
+	a := &App{}
+	a.useTheme("ayu")
+	if termDark.Background != ghosttyThemeOf(t, "Ayu").Background {
+		t.Errorf("useTheme left the dark terminal %v", termDark.Background)
+	}
+	a.useTheme("")
+	if termDark.Background != darkTerm.Background || termLight.Background != lightTerm.Background {
+		t.Error("the built-in theme kept the theme's terminal colors")
+	}
+}
+
+// TestThemeTerminalKnown: the app takes a terminal name of Ghostty's list,
+// in any case, and not a name that only a device or no file has.
+func TestThemeTerminalKnown(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	for name, want := range map[string]bool{"Ayu": true, "ayu mirage": true, "Ayu Light": true, "CON": false, "NUL": false, "No Such Theme": false} {
+		if got := theme.TerminalThemeKnown(name); got != want {
+			t.Errorf("TerminalThemeKnown(%q) = %v", name, got)
+		}
 	}
 }

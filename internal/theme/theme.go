@@ -140,10 +140,34 @@ func ColorFor(raw json.RawMessage, dark bool) (ui.Color, bool) {
 
 // Manifest is a parsed theme: the colors it sets, light at index 0 and
 // dark at index 1. A seed or role it does not set keeps the built-in one.
+// Terminal names the Ghostty theme of each appearance, or "" for none.
 type Manifest struct {
-	Name  string
-	Seeds [2]map[Seed]ui.Color
-	Roles [2]map[Role]ui.Color
+	Name     string
+	Seeds    [2]map[Seed]ui.Color
+	Roles    [2]map[Role]ui.Color
+	Terminal [2]string
+}
+
+// TerminalThemeKnown reports whether Ghostty has a theme of the name. The
+// app sets it; while it is nil, Parse checks only the form of a name.
+var TerminalThemeKnown func(name string) bool
+
+// maxTerminalName is the longest terminal theme name a manifest may give.
+const maxTerminalName = 64
+
+// validTerminalName reports whether name may name a Ghostty theme: no path,
+// no comma or quote of Ghostty's light:<name>,dark:<name> syntax, and no
+// control character.
+func validTerminalName(name string) bool {
+	if name == "" || len(name) > maxTerminalName || name == "." || name == ".." {
+		return false
+	}
+	for _, r := range name {
+		if r < 0x20 || r == 0x7f || strings.ContainsRune(`/\,"`, r) {
+			return false
+		}
+	}
+	return true
 }
 
 const maxManifestBytes = 64 << 10
@@ -163,13 +187,14 @@ func Parse(b []byte) (*Manifest, []string, error) {
 		Name  string                                `json:"name"`
 		Seeds map[string]map[string]json.RawMessage `json:"seeds"`
 		Roles map[string]json.RawMessage            `json:"roles"`
+		Term  map[string]json.RawMessage            `json:"terminal"`
 	}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return nil, nil, err
 	}
 	var warn []string
 	for k := range top {
-		if k != "name" && k != "seeds" && k != "roles" {
+		if k != "name" && k != "seeds" && k != "roles" && k != "terminal" {
 			warn = append(warn, fmt.Sprintf("unknown key %q", k))
 		}
 	}
@@ -213,6 +238,22 @@ func Parse(b []byte) (*Manifest, []string, error) {
 			continue
 		}
 		m.Roles[0][id], m.Roles[1][id] = light, dark
+	}
+	for app, v := range raw.Term {
+		i := slices.Index([]string{"light", "dark"}, app)
+		if i < 0 {
+			warn = append(warn, fmt.Sprintf("terminal: unknown appearance %q", app))
+			continue
+		}
+		var name string
+		switch {
+		case json.Unmarshal(v, &name) != nil || !validTerminalName(name):
+			warn = append(warn, fmt.Sprintf("terminal.%s: bad theme name", app))
+		case TerminalThemeKnown != nil && !TerminalThemeKnown(name):
+			warn = append(warn, fmt.Sprintf("terminal.%s: unknown Ghostty theme %q", app, name))
+		default:
+			m.Terminal[i] = name
+		}
 	}
 	slices.Sort(warn)
 	return m, warn, nil

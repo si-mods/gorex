@@ -64,6 +64,47 @@ func TestParseDrops(t *testing.T) {
 	}
 }
 
+// TestParseTerminal: the terminal key names a Ghostty theme for each
+// appearance. A name with a path, a name Ghostty does not have, a value
+// that is not a string and an unknown appearance are dropped with a
+// warning each; the rest of the manifest loads.
+func TestParseTerminal(t *testing.T) {
+	old := TerminalThemeKnown
+	t.Cleanup(func() { TerminalThemeKnown = old })
+	TerminalThemeKnown = func(name string) bool { return name == "Ayu" || name == "Ayu Light" }
+
+	m, warn, err := Parse([]byte(`{"name":"ayu","terminal":{"light":"Ayu Light","dark":"Ayu"},"seeds":{"dark":{"accent":"#e6b450"}}}`))
+	if err != nil || len(warn) != 0 {
+		t.Fatalf("Parse: %v, warnings %q", err, warn)
+	}
+	if m.Terminal != [2]string{"Ayu Light", "Ayu"} || m.Seeds[1][Accent] != ui.Hex("#e6b450") {
+		t.Errorf("terminal %q, seeds %v", m.Terminal, m.Seeds)
+	}
+	for _, tc := range []struct{ in, warn string }{
+		{`{"light":"../../etc/passwd"}`, `terminal.light: bad theme name`},
+		{`{"dark":"C:\\x"}`, `terminal.dark: bad theme name`},
+		{`{"dark":"Ayu,light:Nord"}`, `terminal.dark: bad theme name`},
+		{`{"dark":""}`, `terminal.dark: bad theme name`},
+		{`{"dark":7}`, `terminal.dark: bad theme name`},
+		{`{"dark":"No Such Theme"}`, `terminal.dark: unknown Ghostty theme "No Such Theme"`},
+		{`{"dim":"Ayu"}`, `terminal: unknown appearance "dim"`},
+	} {
+		m, warn, err := Parse([]byte(`{"terminal":` + tc.in + `}`))
+		if err != nil {
+			t.Errorf("%s: %v", tc.in, err)
+			continue
+		}
+		if m.Terminal != [2]string{} || !slices.Equal(warn, []string{tc.warn}) {
+			t.Errorf("%s: terminal %q, warnings %q, want %q", tc.in, m.Terminal, warn, tc.warn)
+		}
+	}
+	// With no check set, only the form of a name counts.
+	TerminalThemeKnown = nil
+	if m, warn, _ := Parse([]byte(`{"terminal":{"dark":"Some User Theme"}}`)); m.Terminal[1] != "Some User Theme" || len(warn) != 0 {
+		t.Errorf("unchecked name: %q, %q", m.Terminal, warn)
+	}
+}
+
 // TestParseFails: only input that is not a manifest object fails.
 func TestParseFails(t *testing.T) {
 	for _, in := range []string{``, `[]`, `{"seeds": []}`, `{"roles": {"sideBar.trackBackground": 1}`, strings.Repeat(" ", maxManifestBytes+1)} {
