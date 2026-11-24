@@ -192,4 +192,36 @@ func TestPackInstallTheme(t *testing.T) {
 	if got := assets("local"); len(got) != 1 || got[0] != "logo.svg" {
 		t.Errorf("local theme's assets %q", got)
 	}
+
+	// ls lists the themes with their kind; rm removes one.
+	out.Reset()
+	errOut.Reset()
+	if code, _ := Main([]string{"pack", "ls", "--json"}, &out, &errOut, ""); code != ExitOK {
+		t.Fatalf("ls code=%d err=%s", code, errOut.String())
+	}
+	var listed []iconpack.Summary
+	if err := json.Unmarshal(out.Bytes(), &listed); err != nil {
+		t.Fatal(err)
+	}
+	if len(listed) != 2 || listed[0].ID != "local" || listed[1].ID != "slate" ||
+		listed[0].Kind != iconpack.KindTheme || listed[1].Name != "Slate" {
+		t.Fatalf("ls got %+v", listed)
+	}
+	out.Reset()
+	if code, _ := Main([]string{"pack", "ls"}, &out, &errOut, ""); code != ExitOK || !strings.Contains(out.String(), "slate	Slate			theme") {
+		t.Errorf("ls text %q", out.String())
+	}
+	if code, _ := Main([]string{"pack", "rm", "local"}, &out, &errOut, ""); code != ExitOK {
+		t.Fatalf("rm code=%d err=%s", code, errOut.String())
+	}
+	if _, err := os.Stat(filepath.Join(cfgDir, "themes", "local.json")); err == nil {
+		t.Error("rm left the theme")
+	}
+	if got := assets("local"); len(got) != 0 {
+		t.Errorf("rm left assets %q", got)
+	}
+	errOut.Reset()
+	if code, _ := Main([]string{"pack", "rm", "local"}, &out, &errOut, ""); code != ExitFailed {
+		t.Errorf("rm of a missing pack code=%d", code)
+	}
 }

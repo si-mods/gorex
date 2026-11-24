@@ -78,6 +78,7 @@ type Pack struct {
 // Summary describes an installed pack directory for CLI listing.
 type Summary struct {
 	ID      string `json:"id"`
+	Kind    string `json:"kind,omitempty"` // "icon-pack" or "theme"; set by `gorex pack ls`
 	Name    string `json:"name,omitempty"`
 	Version string `json:"version,omitempty"`
 	Author  string `json:"author,omitempty"`

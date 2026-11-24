@@ -83,7 +83,7 @@ Each entry supports `icon` (relative path to `.svg` or `.png`), `mode` (`mono` o
 - `internal/iconpack/pack.go`: `Pack`, `Entry`, `LoadPack`, `Registry.Resolve`, path traversal checks, and shared `rex.BuildProgramIcon` validation.
 - `internal/config/config.go`: `Dir()`, `ProgramIconRule`, `gorex.icon_packs`, `gorex.icon_pack_priority`, and `gorex.program_icon`.
 - `program_icon.go`, `luaconfig.go`, `settings.go`, `state.go`: load active `iconpack.Registry` and consult it inside `Pane.program()`.
-- `internal/cli/pack.go`: `gorex pack ls|install|rm` to manage `<configDir>/icon-packs/`, and `gorex pack install` of a theme pack into `<configDir>/themes/`.
+- `internal/cli/pack.go`: `gorex pack ls|install|rm` to manage `<configDir>/icon-packs/` and, for theme packs, `<configDir>/themes/`; `ls` and `rm` cover both, and `ls` tells them apart by `kind`.
 - `iconpacksview.go`: the Extensions page (section `icons`).
 
 ## Alternatives
