@@ -61,3 +61,4 @@ Rules an agent cannot read from the code. Keep each line one that prevents a rea
 
 - A `chore(release): X.Y.Z` PR bumps `mygo.json`'s `version` and adds the `CHANGELOG.md` section; pick the next minor or patch yourself, without asking (owner's call, 2026-11-23). `docs/irreversible.md`'s stop does not cover the number choice — it still covers publishing anything under a name someone else picked.
 - `gh workflow run release.yml -R si-mods/gorex -f target=all` builds the packages on the self-hosted runners and uploads them to the version's draft release. The `unix` job waits when the Mac mini is off; `windows` alone does not.
+- Once the run's `checksums` job succeeds, publish the draft yourself: `gh release edit v<version> --draft=false -R si-mods/gorex`. A draft is the build's landing zone, not a gate for a hand click (owner's call, 2026-11-24).
