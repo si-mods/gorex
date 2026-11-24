@@ -8,7 +8,7 @@ metadata:
 
 # DSK-010: Theme assets and ambience
 
-Status: proposal. The user decided its four questions (see User decisions).
+Status: accepted. Not implemented. The user decided its four questions (see User decisions).
 
 This doc decides how a theme pack carries images and motion, and how GoRex draws them. It extends the manifest of [DSK-008](DSK-008-theme.md) and the theme pack kind of the registry. It builds on the optional `terminal` key that DSK-008 phase 4 adds. It does not change that key. The probe is a real theme for another app: `dafy-whale-theme` ("蓝色大肥鱼", a web theme for DeepSeek Harness). The user wants all of its features in GoRex. Where the framework cannot do a feature, this doc extends the framework.
 
@@ -48,7 +48,8 @@ The probe theme is a JavaScript plugin. It injects CSS and React components into
 ## Non-goals
 
 - Scripts, CSS or any code in a pack. DSK-008 Security stays true: a manifest is data.
-- Remote images, or any network access at runtime or at install, other than the registry clone that exists now.
+- Remote images, or any network access at runtime. At install, GoRex clones only the repo that the registry lists, at its pinned commit.
+- A third-party pack in the gorex repo or in `gorex-registry`. GoRex holds the framework. A third-party pack lives in its own repo, and the registry only lists it.
 - Blend modes. A glow paints with normal alpha over the gradient. Soft light is not in the shader.
 - Motion over the panes. Ambience paints below them.
 - Sound, video files and animated WebP.
@@ -77,7 +78,7 @@ The new keys are optional. A manifest without them is a DSK-008 manifest:
 
 ```json
 {
-  "name": "Blue Whale",
+  "name": "Dafy Whale",
   "seeds": { "light": { "accent": "#3b62f6" }, "dark": { "accent": "#6c8cff" } },
   "terminal": { "light": "Ayu Light", "dark": "Ayu" },
   "assets": {
@@ -213,7 +214,10 @@ The mascot is an element in the sidebar foot, not an overlay. It thus never cove
 - `iconpacksview.go`: the Ambience and Mascot controls in the Window Theme group.
 - `commands.go`: `appearance.ambience.toggle`.
 - `locales/*.json`: the new labels, then `go tool mygo generate`.
-- Registry: `themes/<id>/assets/`, a `NOTICE` and the license texts beside `theme.json`. The CI validator checks the caps, the formats, the asset names that the manifest uses, and that a pack with assets has a `NOTICE`.
+- Pack repo: a third-party theme pack is its own public git repo. Its root holds `theme.json`, the `assets/` folder, `LICENSE`, `NOTICE` and each other license text. The gorex repo and `gorex-registry` hold no file of it.
+- Registry entry: an entry of the `themes` list in `index.json` gives `repo` (the clone URL of the pack repo), no `subdir`, and a new key `ref`: the full 40-character commit SHA to install. The registry thus lists a reviewed state of the pack, and a later push to the pack repo changes nothing until a registry PR moves `ref`. A tag is not accepted, because the owner of the pack repo can move a tag. A first-party pack in `gorex-registry` (such as `slate`) can keep `subdir` and needs no `ref`.
+- Install (`iconpack.Checkout`): with a `ref`, GoRex makes a shallow fetch of that commit (`git fetch --depth 1 origin <ref>`, then `git checkout --detach FETCH_HEAD`), and checks that `HEAD` is `ref`. If the fetch fails, the install fails. GoRex does not fall back to the default branch. A `ref` that is not 40 hex characters is refused.
+- Validation: the registry CI validates. For each `themes` entry with a `repo` outside `gorex-registry`, CI clones the repo at `ref` and runs the pack validator on it: the caps, the formats, the asset names that the manifest uses, a `NOTICE` for a pack with assets, and each license file that the `NOTICE` names. A registry PR that adds an entry or moves its `ref` is thus checked on the files that users get. GoRex does not trust this check: at install and at each load, the parser and the loader apply the same caps (see Caps and Security). A local pack (`gorex pack install <folder>`) gets only the GoRex check.
 
 MyGo has each primitive that the design needs (MyGo v0.10.1, `si-mods/mygo`): `DecodeBitmapScaled`, `Painter.ImageRegion` with `FlipX` and `Tint`, `NewGIFDecoder`, `NewAPNGDecoder` and `VideoPlayer`, `shader.DrawInstances`, `Painter.Clip`, `Painter.AnimationFrameRate`, `AnimatePose`, `TooltipBase`, `Clicked`, `DoubleClicked`, `Hovered`, `Context.WindowActive`, `Context.WindowHidden`, `Preferences.ReduceMotion` and `Power.IsOnBattery`. No MyGo change is necessary. Two changes are optional:
 
@@ -267,14 +271,14 @@ The user decided the four questions of the first draft on 2026-11-24:
 - A pack contains data only: colors, numbers, enum names, text and image files. It contains no code and no URL.
 - An asset value is a file name in the pack's own folder. A value with a path separator, `..`, a drive letter or `://` is dropped. The loader refuses a link and a file that is not regular.
 - GoRex reads each file with a byte cap and checks its header before it decodes. Dimension and frame caps stop a decompression bomb. A decode runs on a goroutine and recovers a panic.
-- GoRex makes no network request for a theme at runtime. Install uses the registry clone that exists now (`iconpack.Checkout`).
+- GoRex makes no network request for a theme at runtime. Install clones the repo that the registry lists, at the pinned commit `ref` (`iconpack.Checkout`). A later push to that repo cannot change what users install until a registry PR moves `ref`.
 - Text is shown as text. GoRex removes control characters and bidirectional overrides. A theme cannot open a link, run a command or write a setting.
 - An interaction is one of the fixed set: quote, popup, hide. A theme cannot add a button or an action.
 - A theme cannot cover a pane or take the keyboard focus. Layers and the focus rule enforce this, not the review.
 
 ## Licensing
 
-GoRex ships an asset only when its license allows redistribution. The registry keeps the license text and a `NOTICE` beside the asset. The probe's NOTICE says that all of its PNG files are MIT. A check of the source repos on 2026-11-24 found these facts:
+The registry lists a pack only when the license of each asset allows redistribution. The pack repo keeps the license texts and a `NOTICE` beside the assets. GoRex and `gorex-registry` hold no third-party asset. The probe's NOTICE says that all of its PNG files are MIT. A check of the source repos on 2026-11-24 found these facts:
 
 | Asset | Source | License now | Decision |
 | --- | --- | --- | --- |
@@ -284,17 +288,17 @@ GoRex ships an asset only when its license allows redistribution. The registry k
 | `girl_idle.gif`, `girl_waving.gif`, `girl_running.gif` | `xpy12367/codex-pet-DeepSeek-girl` | No license | Do not ship and do not fetch |
 | The whale logo SVG in the probe's CSS | DeepSeek's logo | Trademark | Do not ship. The pack draws its own whale icon |
 
-The first pack thus uses the MIT whale art and the two fish PNGs. The mascot uses `whale_front.png`. The popup uses `whale_front.png` or a self-made picture, not the meme. The brand icon is a self-made SVG.
+The first pack is **Dafy Whale**, in its own public repo `si-mods/gorex-theme-dafy-whale`. It uses the MIT whale art and the two fish PNGs. The mascot uses `whale_front.png`. The popup uses `whale_front.png` or a self-made picture, not the meme. The brand icon is a self-made SVG.
 
 The fish PNGs ship under "大肥鱼项目署名许可 1.0", as the user decided. The pack obeys its terms:
 
-- The pack keeps the copyright notice and the full license text, unchanged, as `themes/blue-whale/LICENSE-fish.txt`.
+- The pack keeps the copyright notice and the full license text, unchanged, as `LICENSE-fish.txt` at the root of the pack repo.
 - The `NOTICE` and the entry of the pack on the Extensions page give the credit: author `YunYueSama`, repo `https://github.com/YunYueSama/codex-deepseek-pet`. "Source: internet" or the author alone is not sufficient.
 - The pack scales the PNGs down from 768×832 px to at most 256 px on a side, to fit the caps and save memory. The `NOTICE` says that the files are modified, and how. It does not call the modified files the work of the author.
 - The pack does not say or suggest that the author or DeepSeek endorses it.
-- The license grants rights only to the contribution of the author. It does not cover the underlying character design, which comes from community references. The `NOTICE` says this. This residual risk is the accepted choice of the user. If a rights holder objects, the registry removes the files, and the pack falls back to its other sprites.
+- The license grants rights only to the contribution of the author. It does not cover the underlying character design, which comes from community references. The `NOTICE` says this. This residual risk is the accepted choice of the user. If a rights holder objects, the pack repo removes the files in a new commit and the registry moves `ref` to it, or the registry removes the entry.
 
-The animated mascot path still needs a test with a real animated asset. Phase 3 makes a sprite sheet and a GIF from `whale_front.png` (a bob and a wave, 8 frames). The MIT license allows a modified work. The pack's `NOTICE` says that the frames are modified. GoRex does not redistribute the DeepSeek GIFs, the meme or the DeepSeek logo. A user can put their own files in a local pack (`gorex pack install <folder>`) at their own risk. GoRex does not help to fetch them.
+The animated mascot path still needs a test with a real animated asset. Phase 3 makes a sprite sheet and a GIF from `whale_front.png` (a bob and a wave, 8 frames). The MIT license allows a modified work. The pack's `NOTICE` says that the frames are modified. Neither the pack repo nor GoRex redistributes the DeepSeek GIFs, the meme or the DeepSeek logo. A user can put their own files in a local pack (`gorex pack install <folder>`) at their own risk. GoRex does not help to fetch them.
 
 ## Migration
 
@@ -302,6 +306,7 @@ The animated mascot path still needs a test with a real animated asset. Phase 3 
 - The manifest keeps its place, `<config>/themes/<id>.json`. The assets go to a new folder, `<config>/themes/<id>/`. A single-file theme loads as now.
 - An older build loads a new manifest. It drops `assets`, `ambience`, `mascot`, `brand` and `ticker` with an `unknown key` warning each, and uses the colors. `theme.List` of an older build skips the folder.
 - An older build installs a pack from the registry with `theme.json` only. The theme then has colors and no ambience. This is harmless.
+- An older build ignores `ref` and clones the default branch of the pack repo. It copies only `theme.json`, and its parser applies the DSK-008 checks. The colors can thus be newer than the reviewed commit. This is a known limit for older builds only.
 - An older build that removes a theme leaves the asset folder. A newer build removes a folder that has no manifest when it lists the themes.
 - An older build that saves `settings.json` drops the two new keys, as DSK-008 says for `appearance.theme`. Ambience then moves again, and the user sets the key again.
 
@@ -311,6 +316,7 @@ The animated mascot path still needs a test with a real animated asset. Phase 3 
 - **Text**: a quote with control characters or a bidirectional override loses them. A long quote keeps its first 80 characters (`TestParseText`).
 - **Assets**: a name with a path, a link, a file over the byte cap, a PNG over the pixel cap, a GIF over the frame cap and an unknown format each drop, without a full decode (`TestAssetLimits`). A test fixture is a crafted header, not a large file.
 - **Install**: a registry pack and a local folder install the manifest and only the named assets. Remove deletes both. A single-file theme installs as now (`TestInstallThemeAssets`, `TestPackInstallTheme`).
+- **Pinned ref**: with a local test repo of two commits, an entry with `ref` at the first commit installs the first commit. A `ref` that is not a full SHA, or that the repo does not have, fails the install with no fallback (`TestCheckoutRef`).
 - **Background**: with no glows, the shader matches the gradient within 3/255 (`TestBackgroundShader`). With a glow, the pixel at its center has its color.
 - **Free region**: bands for a tiled layout, a canvas and an empty page cover the window minus the panes, with no overlap (`TestFreeRegion`).
 - **Still rule**: in `ui.NewTester`, ambience, the mascot and the ticker ask for no frame and no timer when the window is not active, is hidden, on battery, under ReduceMotion, with Animation Off, with Ambience Still, and on the CPU renderer (`TestAmbienceStill`).
@@ -322,15 +328,15 @@ The animated mascot path still needs a test with a real animated asset. Phase 3 
 - **Settings**: Ambience Off draws no layer 1 to 3 extras and no ticker. Mascot Off draws no mascot (`TestAmbienceSettings`).
 - **Screenshots**: the `GOREX_DEBUG` hook, light and dark, tiled and canvas, glass on and off, with made-up data.
 - **Budget**: phase 2 measures the frame cost and the idle CPU on a Windows PC and on a Mac, and writes the numbers in its PR.
-- **Registry**: the validator refuses a pack over a cap, with a missing asset, or with assets and no `NOTICE`. For `blue-whale`, it checks that `LICENSE-fish.txt` is present and that the `NOTICE` has the author and the repo URL.
+- **Registry**: the CI clones each listed pack repo at its `ref` and refuses an entry with no `ref`, a pack over a cap, a missing asset, or assets and no `NOTICE`. For `dafy-whale`, it checks that `LICENSE-fish.txt` is present and that the `NOTICE` has the author and the repo URL.
 
 No item in `docs/invariants.md` covers the theme or ambience. The focus rule of the mascot gets a test (`TestMascot`).
 
 ## Phases
 
-1. **Assets and still layers** (M, about 800 lines with tests): asset parsing, caps and loader, pack folder install and remove, registry validator, glows in the background shader, still images, brand row, the two settings and the Extensions controls.
+1. **Assets and still layers** (M, about 800 lines with tests): asset parsing, caps and loader, pack folder install and remove, the pinned `ref` in `iconpack.Checkout`, the registry CI that clones and validates each listed pack repo, glows in the background shader, still images, brand row, the two settings and the Extensions controls.
 2. **Moving layers** (M, about 500 lines): particles, sprites, free region, the still rule, the toggle button and command, and the budget measurement.
 3. **Mascot and ticker** (M, about 600 lines): still, animated and sprite sheet mascot, bob, click, double click, hide, bubbles and the ticker. A self-made animated whale validates GIF and sprite sheets.
-4. **Registry pack** (S): `themes/blue-whale` with the MIT whale art, the two fish PNGs (scaled down) under their license, a self-made icon, `NOTICE`, the MIT text and `LICENSE-fish.txt`. Screenshots.
+4. **Dafy Whale pack** (S): a new public repo `si-mods/gorex-theme-dafy-whale`, not in gorex and not in `gorex-registry`. Its root has `theme.json`, `assets/` (the MIT whale art, the two fish PNGs scaled down, a self-made icon, the self-made animated whale), `LICENSE` (MIT), `NOTICE` and `LICENSE-fish.txt`. A registry PR adds one `themes` entry: `id` `dafy-whale`, `repo` `https://github.com/si-mods/gorex-theme-dafy-whale.git`, no `subdir`, and `ref` at the reviewed commit. Screenshots.
 
 MyGo M1 and M2 are not in a phase. M2 starts only if phase 2 fails its budget.
