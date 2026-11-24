@@ -413,16 +413,25 @@ struct EditSpaces: View {
         HStack(spacing: 12) {
             Menu {
                 ForEach(ProjectColor.all, id: \.id) { c in
-                    Button(HostSection.colorName(c.id)) { book.setColor(c.id, for: s) }
+                    Button {
+                        book.setColor(c.id, for: s)
+                    } label: {
+                        if book.colors[s] == c.id { Label(HostSection.colorName(c.id), systemImage: "checkmark") } else { Text(HostSection.colorName(c.id)) }
+                    }
                 }
                 Divider()
-                Button("No Color") { book.setColor(nil, for: s) }
+                Button {
+                    book.setColor(nil, for: s)
+                } label: {
+                    if book.colors[s] == nil { Label("No Color", systemImage: "checkmark") } else { Text("No Color") }
+                }
             } label: {
                 Circle()
                     .fill(Color(project: book.colors[s]) ?? Color.secondary.opacity(0.4))
                     .frame(width: 22, height: 22)
             }
             .accessibilityLabel("Color")
+            .accessibilityValue(book.colors[s].map { HostSection.colorName($0) } ?? String(localized: "No Color"))
             Text(verbatim: SpaceName.shown(s))
             Spacer()
             if !s.isEmpty {

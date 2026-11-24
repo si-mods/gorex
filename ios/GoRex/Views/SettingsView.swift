@@ -22,16 +22,11 @@ struct SettingsView: View {
         var id: String { title.key }
     }
 
-    private static let schemes: [(String, LocalizedStringResource)] = [("system", "System"), ("dark", "Dark"), ("light", "Light")]
-
     private var cards: [[Item]] {
         let version = Bundle.main.version
         let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? ""
         return [
-            [Item(title: "Interface", icon: tile("circle.lefthalf.filled", .indigo),
-                  value: String(localized: Self.schemes.first { $0.0 == scheme }?.1 ?? "Dark"),
-                  page: { AnyView(Choices(title: "Interface", options: Self.schemes.map { ($0.0, String(localized: $0.1)) }, selection: $scheme)) }),
-             Item(title: "Themes", icon: tile("paintpalette.fill", .pink), value: theme.isEmpty ? String(localized: "Host Colors") : theme,
+            [Item(title: "Themes", icon: tile("paintpalette.fill", .pink), value: theme.isEmpty ? String(localized: "Host Colors") : theme,
                   page: { AnyView(Themes(selection: $theme)) }),
              Item(title: "App Icon", icon: AnyView(appIcon.image(size: 30)), value: String(localized: appIcon.title),
                   page: { AnyView(AppIconView(current: $appIcon)) })],
@@ -53,6 +48,22 @@ struct SettingsView: View {
         let shown = cards.map { $0.filter { matches($0.title) } }.filter { !$0.isEmpty }
         NavigationStack {
             List {
+                if matches("Interface") {
+                    Section {
+                        // A segmented picker shows no label of its own: the row says what it sets.
+                        SettingsRow(icon: tile("circle.lefthalf.filled", .indigo), title: "Interface") {
+                            Picker("Interface", selection: $scheme) {
+                                Text("System").tag("system")
+                                Text("Light").tag("light")
+                                Text("Dark").tag("dark")
+                            }
+                            .pickerStyle(.segmented)
+                            .labelsHidden()
+                            .fixedSize()
+                        }
+                        .listRowBackground(Color.card)
+                    }
+                }
                 ForEach(Array(shown.enumerated()), id: \.offset) { _, items in
                     Section {
                         ForEach(items) { item in
@@ -81,7 +92,7 @@ struct SettingsView: View {
             }
             .scrollContentBackground(.hidden)
             .background(Color.page)
-            .overlay { if shown.isEmpty && !matches("Label") { ContentUnavailableView.search(text: query) } }
+            .overlay { if shown.isEmpty && !matches("Label") && !matches("Interface") { ContentUnavailableView.search(text: query) } }
             .searchable(text: $query, prompt: "Search Settings")
             .textInputAutocapitalization(.never)
             .autocorrectionDisabled()
@@ -142,37 +153,6 @@ private struct SettingsRow<Trailing: View>: View {
             Spacer(minLength: 12)
             trailing
         }
-    }
-}
-
-/// A list to pick one of options in.
-private struct Choices: View {
-    let title: LocalizedStringResource
-    let options: [(id: String, name: String)]
-    @Binding var selection: String
-    var footer: LocalizedStringResource?
-
-    var body: some View {
-        List {
-            Section {
-                ForEach(options, id: \.id) { o in
-                    Button { selection = o.id } label: {
-                        HStack {
-                            Text(o.name).foregroundStyle(.primary)
-                            Spacer()
-                            if o.id == selection { Image(systemName: "checkmark").fontWeight(.semibold) }
-                        }
-                    }
-                    .listRowBackground(Color.card)
-                }
-            } footer: {
-                if let footer { Text(footer) }
-            }
-        }
-        .scrollContentBackground(.hidden)
-        .background(Color.page)
-        .navigationTitle(Text(title))
-        .navigationBarTitleDisplayMode(.inline)
     }
 }
 
@@ -331,6 +311,15 @@ private struct TerminalSettings: View {
         if ![1, 2, 3, 4.5, 7].contains(current) { all.append((contrast, current.formatted())) }
         return all
     }
+    /// The option to show: a stored 1 is as good as off, so it shows Off.
+    private var contrastChoice: Binding<Double> {
+        Binding {
+            contrasts.contains { $0.0 == contrast } ? contrast : 0
+        } set: {
+            contrast = $0
+            NotificationCenter.default.post(name: .minimumContrast, object: nil)
+        }
+    }
     private let maple = Maple.shared
     private let dictation = Dictation.shared
     @State private var stopping = false
@@ -382,21 +371,13 @@ private struct TerminalSettings: View {
                 Text("The mic types what you say into the terminal, without pressing Return; the model you choose recognises it on this device. Fun-ASR-Nano and Qwen3-ASR are larger and slower: on a Mac they take 2 to 2.6 GB of memory, and phones with less may not run them. Swipe a model to delete it. With an API key, the text you dictate and words from the terminal screen go to the service you set here, which corrects misheard terms and punctuation. Without a key, nothing you dictate leaves the device. The key and these settings sync through iCloud to your other devices.")
             }
             Section {
-                ForEach(contrasts, id: \.0) { value, name in
-                    Button {
-                        contrast = value
-                        NotificationCenter.default.post(name: .minimumContrast, object: nil)
-                    } label: {
-                        HStack {
-                            Text(verbatim: name).foregroundStyle(.primary)
-                            Spacer()
-                            if value == contrast || (value == 0 && TerminalView.minimumContrast == 1) { Image(systemName: "checkmark").fontWeight(.semibold) }
-                        }
+                Picker("Minimum Contrast", selection: contrastChoice) {
+                    ForEach(contrasts, id: \.0) { value, name in
+                        Text(verbatim: name).tag(value)
                     }
-                    .listRowBackground(Color.card)
                 }
-            } header: {
-                Text("Minimum Contrast")
+                .pickerStyle(.menu)
+                .listRowBackground(Color.card)
             } footer: {
                 Text("Turns text too close to its background black or white, colors programs set too, so it reads; its color is lost, so errors and warnings may look alike. Box drawing keeps its colors. Off shows programs' colors as they are.")
             }
