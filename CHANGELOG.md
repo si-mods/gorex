@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.60.1
+
+### Bug Fixes
+
+* **home:** with no `init.lua`, the configuration folder follows the data folder, so installing a theme or an icon pack before the move to `~/.gorex` no longer makes `~/.gorex` and hides the legacy data ([#1110](https://github.com/si-mods/gorex/pull/1110))
+
 ## 0.60.0
 
 ### Features
