@@ -290,13 +290,13 @@ No item in `docs/invariants.md` covers the theme.
 2. **Shader runtime** (L): MyGo M2 (loop bounds), `.kage` assets, the API version 1, the `background` and `faces` slots, the checks at load, the new image caps, the CPU fallback. Measure the load checks on a Mac and a Windows PC.
 3. **Ambient slot** (M): the `ambient` slot over the free region. It merges with DSK-010 phase 2: particles and sprites become built-in ambient shaders. Measure the frame cost as DSK-010 says.
 4. **Mascot and ticker**: DSK-010 phase 3, no change.
-5. **Two packs** (S each): two own repos, `si-mods/gorex-theme-<name>`, listed in the registry with a pinned `ref`. The working ids are `xp-blue` and `apothecary`. The user chooses the final names in this phase (User decisions, 3). Screenshots beside the probe previews.
+5. **Two packs** (S each): `si-mods/gorex-theme-blue-window` and `si-mods/gorex-theme-potion-workshop`, own repos, listed in the registry with a pinned `ref`. They use the probe names and new art (User decisions, 1 and 3). Screenshots beside the probe previews.
 
 ## User decisions
 
-The user decided the four open questions of the proposal on 2026-11-24:
+The user decided the four open questions of the proposal on 2026-11-24, and corrected decisions 1 and 3 the same day:
 
-1. **License of the probe art**: ask the author of `freestylefly/codex-themes` for written permission to ship the images of the two presets. With the permission, the packs ship the images with the license text and the credit in a `NOTICE`. Until the permission comes, phase 5 uses placeholder art. Without it, phase 5 ships no probe image.
+1. **License of the probe art**: the packs ship new art in the style of the probes, made for GoRex. They ship no image of `freestylefly/codex-themes`. The packs carry the shaders, colors, metrics and the new art.
 2. **Glass**: a theme can turn the glass on or off, over the user's setting (see Glass). This replaces the DSK-008 rule.
-3. **Pack names**: the packs get new names, not "Blue Window" and "Potion Workshop". The pack description says that the pack follows a theme of `codex-themes`.
+3. **Pack names**: the packs keep the probe names, "Blue Window" and "Potion Workshop". The pack description and the `NOTICE` credit the probe themes of `codex-themes` and their repo URL. The packs do not say that the author endorses them.
 4. **Local packs with shaders**: a local pack (`gorex pack install <folder>`) can carry shaders from phase 2. The load checks apply to it. The registry CI does not.
