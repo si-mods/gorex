@@ -283,36 +283,31 @@ The control `This Mac › gorex ▾` opens this menu:
 
 ### New Project
 
-The `+` of the header of a host opens the folder sheet of v0.38.0 with the host chosen:
+The `+` of the header of a host opens the New Project sheet with the host chosen; New Project… in the palette and in the File menu opens it on this machine. The sheet's folder picker is one field, as T3 Code's add-project input is (`pingdotgg/t3code`): the text to the field's last separator is the directory listed; the leaf after it filters the folders shown.
 
 ```
-┌───────────────────── New Project on alice-tower ─────────────────────┐
-│  ⌂  ↑   / › home › alice › work                        [ path…    ]  │
-│ ┌──────────────────────────────────────────────────────────────────┐ │
-│ │ [F] Use this folder: work                                        │ │
-│ │ [F] trainer                                                    › │ │
-│ │ [F] datasets                                                   › │ │
-│ │ [F] notebooks                                                  › │ │
-│ └──────────────────────────────────────────────────────────────────┘ │
-│  Name   [ work                    ]                                  │
-│  Project folder: /home/alice/work                                    │
-│                                       [ Cancel ]   [ Create ]        │
-└──────────────────────────────────────────────────────────────────────┘
+┌──────────────── New Project on alice-tower ────────────────┐
+│ Host    (This Mac) (alice-tower) (old-laptop off)          │
+│ Folder                                          Choose…   │
+│         ┌───────────────────────────────────────────────┐  │
+│         │ /home/alice/▎                                 │  │
+│         │────────────────────────────────────────────── │  │
+│         │ ↑  ..                                         │  │
+│         │ [F] work                                      │  │
+│         │ [F] trainer                                   │  │
+│         │ [F] datasets                                  │  │
+│         └───────────────────────────────────────────────┘  │
+│ Name    [ work                    ]                        │
+│ Project folder: /home/alice/work                           │
+│                                 [ Cancel ]   [ Create ]    │
+└────────────────────────────────────────────────────────────┘
 ```
 
-- Create makes the project in the current space and opens its first tab in the folder.
-- New Project… in the palette and in the File menu shows a host picker first (this machine by default):
-
-```
-┌──────── New Project ────────┐
-│ On which host?              │
-│   [H] This Mac         ✓    │
-│   [H] alice-tower      ●    │
-│   [H] old-laptop  (offline) │
-│              [ Continue ]   │
-└─────────────────────────────┘
-```
-
+- `~` is the home directory; `C:\` a drive; a bare name filters the home directory's folders. A leaf that starts with `.` lists the hidden folders too. A leaf that names a folder exactly is that folder, as the status line shows it.
+- A click or Enter opens the highlighted folder — or, with no folder highlighted, the leaf's exact or first match. Tab completes the folders' common start, or opens the only one. `..` — the first row — lists the parent, as do Backspace and ⌥↑; Backspace in the field edits the path.
+- ↓ and ↑ highlight a row; a folder the listing cannot show, one gone or unreadable, says so where the rows are.
+- On this machine Choose… opens the system's folder panel; a host's folders are browsed in the field alone.
+- Create makes the project in the current space and opens its first tab in the folder. A leaf that matches no folder leaves nothing chosen.
 - A folder can be a project of this host already. Then Create shows that project and makes no second project. When that project is in another space, Create asks whether to move it to this space.
 
 ### New tabs and panes

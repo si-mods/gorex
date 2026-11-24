@@ -7532,30 +7532,16 @@ func (msgs Messages) ProjectSheetName() string {
 	return Catalog.Format(msgs.locale, "projectSheetName", nil)
 }
 
-// ProjectSheetHome says "Home"
+// ProjectSheetUp says "Parent folder"
 // in the language the app shows.
 //
-// Folder browser: button that goes to the home folder.
-func ProjectSheetHome() string { return In(i18n.Locale()).ProjectSheetHome() }
-
-// ProjectSheetHome says "Home"
-// in the language of msgs.
-//
-// Folder browser: button that goes to the home folder.
-func (msgs Messages) ProjectSheetHome() string {
-	return Catalog.Format(msgs.locale, "projectSheetHome", nil)
-}
-
-// ProjectSheetUp says "Up"
-// in the language the app shows.
-//
-// Folder browser: button that goes to the parent folder.
+// Folder browser: the row that lists the parent folder, shown as "..".
 func ProjectSheetUp() string { return In(i18n.Locale()).ProjectSheetUp() }
 
-// ProjectSheetUp says "Up"
+// ProjectSheetUp says "Parent folder"
 // in the language of msgs.
 //
-// Folder browser: button that goes to the parent folder.
+// Folder browser: the row that lists the parent folder, shown as "..".
 func (msgs Messages) ProjectSheetUp() string {
 	return Catalog.Format(msgs.locale, "projectSheetUp", nil)
 }
@@ -7576,16 +7562,18 @@ func (msgs Messages) ProjectSheetChoose() string {
 	return Catalog.Format(msgs.locale, "projectSheetChoose", nil)
 }
 
-// ProjectSheetPath says "Type a path and press Enter"
+// ProjectSheetPath says "Type a path…"
 // in the language the app shows.
 //
-// Folder browser: placeholder of the field that takes a path.
+// Folder browser: placeholder of the field that browses: the text to its
+// last separator is listed, the leaf filters.
 func ProjectSheetPath() string { return In(i18n.Locale()).ProjectSheetPath() }
 
-// ProjectSheetPath says "Type a path and press Enter"
+// ProjectSheetPath says "Type a path…"
 // in the language of msgs.
 //
-// Folder browser: placeholder of the field that takes a path.
+// Folder browser: placeholder of the field that browses: the text to its
+// last separator is listed, the leaf filters.
 func (msgs Messages) ProjectSheetPath() string {
 	return Catalog.Format(msgs.locale, "projectSheetPath", nil)
 }
@@ -7706,18 +7694,20 @@ func (msgs Messages) ProjectSheetMore(n int) string {
 	return Catalog.Format(msgs.locale, "projectSheetMore", map[string]any{"n": n})
 }
 
-// ProjectSheetDrives says "Drives"
+// ProjectSheetNoMatch says "No folders match."
 // in the language the app shows.
 //
-// Folder browser: the top of a Windows machine, the list of its drives.
-func ProjectSheetDrives() string { return In(i18n.Locale()).ProjectSheetDrives() }
+// Folder browser: the leaf of the path field matches no folder of the
+// directory listed.
+func ProjectSheetNoMatch() string { return In(i18n.Locale()).ProjectSheetNoMatch() }
 
-// ProjectSheetDrives says "Drives"
+// ProjectSheetNoMatch says "No folders match."
 // in the language of msgs.
 //
-// Folder browser: the top of a Windows machine, the list of its drives.
-func (msgs Messages) ProjectSheetDrives() string {
-	return Catalog.Format(msgs.locale, "projectSheetDrives", nil)
+// Folder browser: the leaf of the path field matches no folder of the
+// directory listed.
+func (msgs Messages) ProjectSheetNoMatch() string {
+	return Catalog.Format(msgs.locale, "projectSheetNoMatch", nil)
 }
 
 // ProjectSheetChosen says "Project folder: {path}"
@@ -7782,22 +7772,6 @@ func ProjectSheetNameHint() string { return In(i18n.Locale()).ProjectSheetNameHi
 // name.
 func (msgs Messages) ProjectSheetNameHint() string {
 	return Catalog.Format(msgs.locale, "projectSheetNameHint", nil)
-}
-
-// ProjectSheetMoreFolders says "Folders above"
-// in the language the app shows.
-//
-// Folder browser: the breadcrumb's button that lists the folders it leaves
-// out.
-func ProjectSheetMoreFolders() string { return In(i18n.Locale()).ProjectSheetMoreFolders() }
-
-// ProjectSheetMoreFolders says "Folders above"
-// in the language of msgs.
-//
-// Folder browser: the breadcrumb's button that lists the folders it leaves
-// out.
-func (msgs Messages) ProjectSheetMoreFolders() string {
-	return Catalog.Format(msgs.locale, "projectSheetMoreFolders", nil)
 }
 
 // ProjectChangeFolder says "Change Folder…"

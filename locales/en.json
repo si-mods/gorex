@@ -2553,21 +2553,17 @@
   "@projectSheetName": {
     "description": "New Project sheet: label over the project's name field."
   },
-  "projectSheetHome": "Home",
-  "@projectSheetHome": {
-    "description": "Folder browser: button that goes to the home folder."
-  },
-  "projectSheetUp": "Up",
+  "projectSheetUp": "Parent folder",
   "@projectSheetUp": {
-    "description": "Folder browser: button that goes to the parent folder."
+    "description": "Folder browser: the row that lists the parent folder, shown as \"..\"."
   },
   "projectSheetChoose": "Choose…",
   "@projectSheetChoose": {
     "description": "Folder browser: button that opens the system's folder picker, for this machine."
   },
-  "projectSheetPath": "Type a path and press Enter",
+  "projectSheetPath": "Type a path…",
   "@projectSheetPath": {
-    "description": "Folder browser: placeholder of the field that takes a path."
+    "description": "Folder browser: placeholder of the field that browses: the text to its last separator is listed, the leaf filters."
   },
   "projectSheetCreate": "Create",
   "@projectSheetCreate": {
@@ -2613,9 +2609,9 @@
       }
     }
   },
-  "projectSheetDrives": "Drives",
-  "@projectSheetDrives": {
-    "description": "Folder browser: the top of a Windows machine, the list of its drives."
+  "projectSheetNoMatch": "No folders match.",
+  "@projectSheetNoMatch": {
+    "description": "Folder browser: the leaf of the path field matches no folder of the directory listed."
   },
   "projectSheetChosen": "Project folder: {path}",
   "@projectSheetChosen": {
@@ -2638,10 +2634,6 @@
   "projectSheetNameHint": "Type a name",
   "@projectSheetNameHint": {
     "description": "New Project sheet: placeholder of the name field when the folder gives no name."
-  },
-  "projectSheetMoreFolders": "Folders above",
-  "@projectSheetMoreFolders": {
-    "description": "Folder browser: the breadcrumb's button that lists the folders it leaves out."
   },
   "projectChangeFolder": "Change Folder…",
   "@projectChangeFolder": {

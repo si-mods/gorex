@@ -57,9 +57,10 @@ func rightClick(t *testing.T, tt *ui.Tester, label string) {
 }
 
 // TestNewProjectSheetLocal makes a project with the sheet, from the
-// sidebar's +: it browses this machine's folders, a click going into one;
-// the name follows the folder until typed; Create shows the project, its
-// home kept by the server, with its first tab in the folder.
+// sidebar's +: the path field is the browser — a path typed lists its
+// folder, a click goes into one, ".." goes up; the name follows the
+// folder until typed; Create shows the project, its home kept by the
+// server, with its first tab in the folder.
 func TestNewProjectSheetLocal(t *testing.T) {
 	a, tt := newTestApp(t)
 	old := prefs
@@ -77,10 +78,12 @@ func TestNewProjectSheetLocal(t *testing.T) {
 		t.Errorf("the name of the home folder is %q", a.sheet.name)
 	}
 
-	// A path typed, then Enter.
-	a.sheet.path = ""
+	// A path typed, then Enter on the row it names.
 	click(t, tt, locales.ProjectSheetPath())
 	tt.Type(root)
+	waitFor(t, tt, "the folder "+filepath.Dir(root)+" listed", func() bool {
+		return !a.sheet.loading && a.sheet.asked && sameDir(a.sheet.res.Path, filepath.Dir(root))
+	})
 	tt.Key(0, ui.KeyEnter)
 	sheetShows(t, a, tt, root)
 	if !tt.HasText("alpha") || !tt.HasText("beta") || tt.HasText("notes.txt") {
@@ -91,7 +94,7 @@ func TestNewProjectSheetLocal(t *testing.T) {
 	if a.sheet.name != "alpha" || !tt.HasText("inner") {
 		t.Fatalf("in alpha: name %q, texts %q", a.sheet.name, tt.Texts())
 	}
-	// Up goes back; the name follows the folder.
+	// ".." goes back; the name follows the folder.
 	click(t, tt, locales.ProjectSheetUp())
 	sheetShows(t, a, tt, root)
 	click(t, tt, "beta")
@@ -119,8 +122,8 @@ func TestNewProjectSheetLocal(t *testing.T) {
 
 // TestNewProjectSheetHost browses a remote host's folders, on a test
 // server: an offline host shows and cannot be chosen. Create makes the
-// project on that host (docs/MOD-002-projects.md), in the space shown, and the
-// window shows it, its first tab in the folder there.
+// project on that host (docs/MOD-002-projects.md), in the space shown, and
+// the window shows it, its first tab in the folder there.
 func TestNewProjectSheetHost(t *testing.T) {
 	a, tt := newTestApp(t)
 	h, _, _, _ := remotePaneOf(t, a, tt, t.TempDir())
@@ -143,8 +146,8 @@ func TestNewProjectSheetHost(t *testing.T) {
 	sheetShows(t, a, tt, root)
 	click(t, tt, "alpha")
 	sheetShows(t, a, tt, filepath.Join(root, "alpha"))
-	// The breadcrumb goes back to root.
-	click(t, tt, a.sheet.res.Parent)
+	// ".." goes back to root.
+	click(t, tt, locales.ProjectSheetUp())
 	sheetShows(t, a, tt, root)
 	click(t, tt, "beta")
 	sheetShows(t, a, tt, filepath.Join(root, "beta"))
@@ -218,28 +221,39 @@ func TestProjectHeader(t *testing.T) {
 	}
 }
 
-// TestCrumbs checks the breadcrumb's steps and the paths below a folder,
-// of macOS and Linux paths and of Windows'.
-func TestCrumbs(t *testing.T) {
-	names := func(cs []crumb) (n, p []string) {
-		for _, c := range cs {
-			n, p = append(n, c.name), append(p, c.path)
+// TestPaths checks the sheet's path reading: split's directory and leaf,
+// the paths below a folder, of macOS and Linux paths and of Windows'.
+func TestPaths(t *testing.T) {
+	s := &projectSheet{}
+	for _, c := range []struct {
+		path, dir, leaf string
+	}{
+		{"", "", ""},
+		{"/home/me/code", "/home/me/", "code"},
+		{"/home/me/", "/home/me/", ""},
+		{"/", "/", ""},
+		{"~", "~", ""},
+		{"~/code", "~/", "code"},
+		{"code", "", "code"},
+	} {
+		if d, l := s.splitFor(c.path); d != c.dir || l != c.leaf {
+			t.Errorf("split %q = %q, %q, want %q, %q", c.path, d, l, c.dir, c.leaf)
 		}
-		return
 	}
-	n, p := names(crumbs("/home/me/code", false))
-	if !slices.Equal(n, []string{"/", "home", "me", "code"}) || !slices.Equal(p, []string{"/", "/home", "/home/me", "/home/me/code"}) {
-		t.Errorf("unix crumbs %q %q", n, p)
-	}
-	n, p = names(crumbs(`C:\Users\me`, true))
-	if !slices.Equal(n, []string{locales.ProjectSheetDrives(), "C:", "Users", "me"}) || !slices.Equal(p, []string{rex.DirTop, `C:\`, `C:\Users`, `C:\Users\me`}) {
-		t.Errorf("windows crumbs %q %q", n, p)
-	}
-	if n, p = names(crumbs(`C:\`, true)); len(n) != 2 || p[1] != `C:\` {
-		t.Errorf("a drive's crumbs %q %q", n, p)
-	}
-	if n, p = names(crumbs(`\\srv\share\x`, true)); !slices.Equal(p, []string{rex.DirTop, `\\srv\share\`, `\\srv\share\x`}) {
-		t.Errorf("a share's crumbs %q %q", n, p)
+	// Windows paths read as Windows' before a listing says so.
+	ws := &projectSheet{}
+	ws.res.Home = `C:\Users\me`
+	for _, c := range []struct {
+		path, dir, leaf string
+	}{
+		{`C:`, `C:\`, ""},
+		{`C:\`, `C:\`, ""},
+		{`C:\Users\me`, `C:\Users\`, "me"},
+		{`\\srv\share\x`, `\\srv\share\`, "x"},
+	} {
+		if d, l := ws.splitFor(c.path); d != c.dir || l != c.leaf {
+			t.Errorf("windows split %q = %q, %q, want %q, %q", c.path, d, l, c.dir, c.leaf)
+		}
 	}
 	for _, c := range []struct {
 		dir, name string
@@ -274,102 +288,110 @@ func TestCrumbs(t *testing.T) {
 	if folderName(`C:\`) != "" || folderName("/") != "" || folderName("D:") != "" {
 		t.Errorf("folderName of a root: %q %q", folderName(`C:\`), folderName("/"))
 	}
+	if got := commonStart("acme-api", "ACME-app"); got != "acme-ap" {
+		t.Errorf("commonStart = %q", got)
+	}
 }
 
-// TestFitCrumbs checks which steps of a breadcrumb show in the room
-// there is: all that fit; else the top, a menu of those left out and the
-// last three, two or one; at worst the menu and the last.
-func TestFitCrumbs(t *testing.T) {
-	w := func(n int, each float32) []float32 {
-		out := make([]float32, n)
-		for i := range out {
-			out[i] = each
+// splitFor reads path as split does on the sheet: dir, leaf.
+func (s *projectSheet) splitFor(path string) (dir, leaf string) {
+	s.path = path
+	return s.split()
+}
+
+// TestSheetEntries checks the folder rows a path field shows: ".." for
+// the parent first, then the folders the leaf keeps, the ones it starts
+// first; and that the leaf that names a folder chooses it.
+func TestSheetEntries(t *testing.T) {
+	s := &projectSheet{asked: true}
+	s.res = rex.DirListResult{Path: "/x", Parent: "/", Home: "/home/me", Dirs: []string{"alpha", "ab", "ba", "inner"}}
+	names := func() (out []string) {
+		for _, e := range s.entries() {
+			if e.up {
+				out = append(out, "..")
+			} else {
+				out = append(out, e.name)
+			}
 		}
-		return out
+		return
 	}
-	gap := float32(crumbGap)
-	for _, c := range []struct {
-		name   string
-		widths []float32
-		head   int
-		room   float32
-		want   []int
-	}{
-		{"all fit", w(4, 40), 0, 4*40 + 3*gap, []int{0, 1, 2, 3}},
-		{"top and the last three", w(7, 40), 0, 4*40 + 26 + 4*gap, []int{0, -1, 4, 5, 6}},
-		{"top and the last two", w(7, 40), 0, 3*40 + 26 + 3*gap, []int{0, -1, 5, 6}},
-		{"top and the last", w(7, 40), 0, 2*40 + 26 + 2*gap, []int{0, -1, 6}},
-		{"the menu and the last", w(7, 40), 0, 60, []int{-1, 6}},
-		{"a long last step stays", []float32{10, 40, 40, 400}, 0, 200, []int{-1, 3}},
-		// Windows: the drive is the top; the list of drives goes in the menu.
-		{"windows, all fit", w(3, 40), 1, 3*40 + 2*gap, []int{0, 1, 2}},
-		{"windows, the drives left out", w(5, 40), 1, 4*40 + 26 + 4*gap, []int{-1, 1, 2, 3, 4}},
-		{"windows, the drive and the last two", w(6, 40), 1, 3*40 + 26 + 3*gap, []int{1, -1, 4, 5}},
-	} {
-		got := fitCrumbs(c.widths, c.head, c.room, 26)
-		if !slices.Equal(got, c.want) {
-			t.Errorf("%s: %v, want %v", c.name, got, c.want)
-		}
+	if got := names(); !slices.Equal(got, []string{"..", "alpha", "ab", "ba", "inner"}) {
+		t.Fatalf("all rows %q", got)
 	}
-	if got := hiddenCrumbs([]int{1, -1, 4, 5}, 6); !slices.Equal(got, []int{0, 2, 3}) {
-		t.Errorf("hiddenCrumbs %v", got)
+	s.path = "/x/a"
+	if got := names(); !slices.Equal(got, []string{"..", "alpha", "ab", "ba"}) {
+		t.Errorf("the leaf keeps and orders %q", got)
+	}
+	s.path = "/x/zz"
+	if got := names(); !slices.Equal(got, []string{".."}) {
+		t.Errorf("nothing matches %q", got)
+	}
+	if s.chosen() != "" {
+		t.Errorf("a leaf that matches nothing chooses %q", s.chosen())
+	}
+	s.path = "/x/ALPHA"
+	if got := s.chosen(); got != "/x/alpha" {
+		t.Errorf("an exact leaf chooses %q, want /x/alpha", got)
+	}
+	s.path = "/x/"
+	if got := s.chosen(); got != "/x" {
+		t.Errorf("no leaf chooses %q, want /x", got)
+	}
+	// No parent, no ".." row.
+	s.res.Parent = ""
+	s.path = "/x/"
+	if got := names(); !slices.Equal(got, []string{"alpha", "ab", "ba", "inner"}) {
+		t.Errorf("a folder at the top %q", got)
 	}
 }
 
-// deepTree makes root/<names...>, one inside the other, and returns the
-// deepest.
-func deepTree(t *testing.T, root string, names ...string) string {
-	t.Helper()
-	d := filepath.Join(append([]string{root}, names...)...)
-	if err := os.MkdirAll(d, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	return d
-}
-
-// TestProjectSheetBreadcrumb browses a deep folder of a long name: the
-// breadcrumb keeps its name whole and its top, and leaves the steps
-// between to its menu, which browses one.
-func TestProjectSheetBreadcrumb(t *testing.T) {
+// TestProjectSheetFilter browses by typing into the path field: the leaf
+// filters the rows, a dot asks for the hidden folders, and Enter opens
+// the leaf's match.
+func TestProjectSheetFilter(t *testing.T) {
 	a, tt := newTestApp(t)
-	root := appTempDir(t, a)
-	long := "acme-api-service-gateway"
-	deep := deepTree(t, root, "code", "clients", "acme", "services", long)
-	a.openSheet(nil, deep)
-	sheetShows(t, a, tt, deep)
+	root := t.TempDir()
+	for _, d := range []string{"gorex", "golinux", "plain", ".gitx"} {
+		if err := os.Mkdir(filepath.Join(root, d), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	a.openSheet(nil, root)
+	sheetShows(t, a, tt, root)
+	if tt.HasText(".gitx") {
+		t.Fatal("a hidden folder shows with no dot typed")
+	}
+
+	// "go" keeps gorex and golinux; ".g" asks for the hidden folders.
+	a.sheet.path = filepath.Join(root, "go")
 	tt.Frame()
-	if !tt.HasText(long) {
-		t.Fatalf("the last step of the breadcrumb is gone: %q", tt.Texts())
+	waitFor(t, tt, "the leaf to filter", func() bool {
+		return tt.HasText("gorex") && tt.HasText("golinux") && !tt.HasText("plain")
+	})
+	a.sheet.path = filepath.Join(root, ".g")
+	tt.Frame()
+	waitFor(t, tt, "the hidden folders", func() bool {
+		return tt.HasText(".gitx") && !tt.HasText("gorex")
+	})
+	if a.sheet.hidden != true {
+		t.Error("a leaf of a dot does not ask for the hidden folders")
 	}
-	steps := crumbs(a.sheet.res.Path, a.sheet.windows())
-	top := steps[0].name
-	if a.sheet.windows() {
-		top = steps[1].name
+
+	// Enter in the field opens the leaf's exact match.
+	a.sheet.path = filepath.Join(root, "gorex")
+	tt.Frame()
+	tt.Key(0, ui.KeyEnter)
+	tt.Frame()
+	sheetShows(t, a, tt, filepath.Join(root, "gorex"))
+	if !sameDir(a.sheet.chosen(), filepath.Join(root, "gorex")) {
+		t.Errorf("gorex opened, chosen %q", a.sheet.chosen())
 	}
-	if !tt.HasText(top) {
-		t.Errorf("the breadcrumb lacks its top %q: %q", top, tt.Texts())
-	}
-	if _, ok := tt.Find(locales.ProjectSheetMoreFolders()); !ok {
-		t.Fatalf("no menu of the steps left out: %q", tt.Texts())
-	}
-	// The field shows the path's end, the folder's name, while it has no
-	// focus.
-	if a.sheet.pathFocused || !tt.HasText(a.sheet.res.Path) {
-		t.Errorf("the path over the field: %q", tt.Texts())
-	}
-	click(t, tt, locales.ProjectSheetMoreFolders())
-	if m := tt.Menu(); !slices.Contains(m, "clients") || slices.Contains(m, long) {
-		t.Fatalf("the menu of the steps left out: %q", m)
-	}
-	if err := tt.ChooseMenuItem("clients"); err != nil {
-		t.Fatal(err)
-	}
-	sheetShows(t, a, tt, filepath.Join(root, "code", "clients"))
 }
 
 // TestProjectSheetKeys browses with the keyboard: Down and Up highlight
-// a folder, Enter opens it, Backspace and Alt+Up go up and highlight the
-// folder left; Enter in the name field creates the project.
+// a row — ".." first — Enter opens it, Backspace and Alt+Up go up and
+// highlight the folder left, Tab completes; Enter in the name field
+// creates the project.
 func TestProjectSheetKeys(t *testing.T) {
 	a, tt := newTestApp(t)
 	root := folderTree(t, appTempDir(t, a))
@@ -381,6 +403,7 @@ func TestProjectSheetKeys(t *testing.T) {
 		tt.Key(mods, k)
 		tt.Frame()
 	}
+	// ".." is the first row, alpha and beta after it.
 	key(0, ui.KeyDown)
 	key(0, ui.KeyDown)
 	if a.sheet.sel != 1 {
@@ -388,8 +411,9 @@ func TestProjectSheetKeys(t *testing.T) {
 	}
 	key(0, ui.KeyUp)
 	if a.sheet.sel != 0 {
-		t.Fatalf("Up highlights %d", a.sheet.sel)
+		t.Fatalf("Up highlights %d, not \"..\"", a.sheet.sel)
 	}
+	key(0, ui.KeyDown)
 	key(0, ui.KeyEnter)
 	alpha := filepath.Join(root, "alpha")
 	sheetShows(t, a, tt, alpha)
@@ -398,20 +422,36 @@ func TestProjectSheetKeys(t *testing.T) {
 	}
 	key(0, ui.KeyBackspace)
 	sheetShows(t, a, tt, root)
-	if a.sheet.sel != 0 {
+	if a.sheet.sel != 1 {
+		t.Errorf("Backspace up highlights %d, not alpha", a.sheet.sel)
+	}
+	// Tab completes "a" to alpha, in the path field — Shift+Tab back
+	// from the list puts the focus on it.
+	a.sheet.path = filepath.Join(root) + string(filepath.Separator) + "a"
+	key(ui.Shift, ui.KeyTab)
+	if !tt.Focused(locales.ProjectSheetPath()) {
+		t.Fatal("Shift+Tab did not reach the path field")
+	}
+	key(0, ui.KeyTab)
+	sheetShows(t, a, tt, alpha)
+	// Down hands the list the focus; a field's own Backspace edits.
+	key(0, ui.KeyDown)
+	key(0, ui.KeyBackspace)
+	sheetShows(t, a, tt, root)
+	if a.sheet.sel != 1 {
 		t.Errorf("Backspace up highlights %d, not alpha", a.sheet.sel)
 	}
 	key(0, ui.KeyDown)
 	key(0, ui.KeyEnter)
 	beta := filepath.Join(root, "beta")
 	sheetShows(t, a, tt, beta)
-	// beta has no folders: what the list says, and the folder to use.
+	// beta has no folders: ".." alone says so, and the folder is usable.
 	if !tt.HasText(locales.ProjectSheetEmpty()) || !tt.HasText(locales.ProjectSheetChosen(a.sheet.res.Path)) {
 		t.Errorf("an empty folder: %q", tt.Texts())
 	}
 	key(ui.Alt, ui.KeyUp)
 	sheetShows(t, a, tt, root)
-	if a.sheet.sel != 1 {
+	if a.sheet.sel != 2 {
 		t.Errorf("Alt+Up highlights %d, not beta", a.sheet.sel)
 	}
 	if !a.sheet.open {
