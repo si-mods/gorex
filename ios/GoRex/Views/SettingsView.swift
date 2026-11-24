@@ -51,15 +51,15 @@ struct SettingsView: View {
                 if matches("Interface") {
                     Section {
                         // A segmented picker shows no label of its own: the row says what it sets.
-                        SettingsRow(icon: tile("circle.lefthalf.filled", .indigo), title: "Interface") {
-                            Picker("Interface", selection: $scheme) {
-                                Text("System").tag("system")
-                                Text("Light").tag("light")
-                                Text("Dark").tag("dark")
+                        // With large text it goes under the title rather than past the edge.
+                        ViewThatFits(in: .horizontal) {
+                            SettingsRow(icon: tile("circle.lefthalf.filled", .indigo), title: "Interface") {
+                                interfacePicker.fixedSize()
                             }
-                            .pickerStyle(.segmented)
-                            .labelsHidden()
-                            .fixedSize()
+                            VStack(alignment: .leading, spacing: 10) {
+                                SettingsRow(icon: tile("circle.lefthalf.filled", .indigo), title: "Interface") { EmptyView() }
+                                interfacePicker
+                            }
                         }
                         .listRowBackground(Color.card)
                     }
@@ -107,6 +107,23 @@ struct SettingsView: View {
         }
         // A sheet keeps its own scheme: change it here too.
         .preferredColorScheme(GoRexApp.colorScheme(scheme))
+    }
+
+    /// The Interface choice. A stored value it does not know shows as
+    /// System, as GoRexApp.colorScheme follows the system for it.
+    private var interfacePicker: some View {
+        let shown = Binding<String> {
+            ["system", "light", "dark"].contains(scheme) ? scheme : "system"
+        } set: {
+            scheme = $0
+        }
+        return Picker("Interface", selection: shown) {
+            Text("System").tag("system")
+            Text("Light").tag("light")
+            Text("Dark").tag("dark")
+        }
+        .pickerStyle(.segmented)
+        .labelsHidden()
     }
 
     private func matches(_ title: LocalizedStringResource) -> Bool {
