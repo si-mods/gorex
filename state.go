@@ -2822,18 +2822,6 @@ func (p *Pane) key() string {
 	return paneKey(&n)
 }
 
-// sessionTab makes a tab of one pane, attached to session in of host h,
-// nil for this machine, at the session's size.
-func (a *App) sessionTab(h *hostConn, in rex.SessionInfo) *Tab {
-	t := a.makeTab("")
-	p := &Pane{ID: a.id(), SID: in.ID, info: in, startDir: in.Dir, host: h}
-	a.attach(p, in.Cols, in.Rows)
-	t.Root = &Node{ID: a.id(), Pane: p}
-	p.Tab, p.Node = t, t.Root
-	t.setFocus(p)
-	return t
-}
-
 func sortedInfos(m map[string]rex.SessionInfo) []rex.SessionInfo {
 	out := make([]rex.SessionInfo, 0, len(m))
 	for _, in := range m {
