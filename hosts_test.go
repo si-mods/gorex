@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log"
 	"net"
@@ -617,18 +618,6 @@ func TestLocalStreamStarvedReattaches(t *testing.T) {
 	}
 	s := newLocalStream(c, info.ID, 80, 24)
 	t.Cleanup(func() { s.Close() })
-	var hold atomic.Bool
-	go func() {
-		buf := make([]byte, 32<<10)
-		for {
-			for hold.Load() {
-				time.Sleep(5 * time.Millisecond)
-			}
-			if _, err := s.Read(buf); err != nil {
-				return
-			}
-		}
-	}()
 	attaches := func() int {
 		s.mu.Lock()
 		defer s.mu.Unlock()
@@ -642,7 +631,6 @@ func TestLocalStreamStarvedReattaches(t *testing.T) {
 			}
 		}
 	}
-	until("the pane to attach", func() bool { return attaches() == 1 && !s.Detached() })
 	attached := func() int {
 		for _, in := range sessionInfos(t, remote) {
 			if in.ID == info.ID {
@@ -651,19 +639,47 @@ func TestLocalStreamStarvedReattaches(t *testing.T) {
 		}
 		return -1
 	}
-	// The pane stops reading, as a goroutine wedged in the pane's write
-	// would: what the session prints then stays in the socket, and no
+	readOnce := func() error {
+		errc := make(chan error, 1)
+		go func() {
+			_, err := s.Read(make([]byte, 32<<10))
+			errc <- err
+		}()
+		select {
+		case err := <-errc:
+			return err
+		case <-time.After(10 * time.Second):
+			return fmt.Errorf("a read of the pane stream did not end")
+		}
+	}
+	// The first Read attaches and reads the snapshot; no reader runs
+	// after it, as one wedged in the pane below would not.
+	if err := readOnce(); err != nil {
+		t.Fatal(err)
+	}
+	until("the pane to attach", func() bool { return attaches() == 1 && !s.Detached() })
+	// The silence outlives a check, so the output to come starves the
+	// stream.
+	until("the stream's silence to outlive a check", func() bool {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		return time.Since(s.lastData) > 2*streamWatchEvery
+	})
+	// What the session prints then stays in the socket unread, and no
 	// error ever comes.
-	hold.Store(true)
 	if _, err := s.Write([]byte("x")); err != nil {
 		t.Fatal(err)
 	}
 	until("the watch to drop the starved stream", func() bool { return attached() == 0 })
-	// Its Read ends the dead stream and attaches again, which the next
-	// bytes show as the screen of a snapshot does.
-	hold.Store(false)
+	// Its next Read ends the dead stream and attaches again, which the
+	// bytes it returns show as the screen of a snapshot does.
+	done := make(chan error, 1)
+	go func() { done <- readOnce() }()
 	until("the pane to attach again", func() bool { return attaches() == 2 && !s.Detached() })
 	until("the server to count one window again", func() bool { return attached() == 1 })
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
 }
 
 // TestLocalStreamTakesWhatIsTypedAsItAttaches is a pane of this machine
