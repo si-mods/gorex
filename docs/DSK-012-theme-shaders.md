@@ -228,7 +228,7 @@ Under a theme the pairing guarantees contrast (`faceLadder` in `style.go`). A li
 4. The built-in other ladder.
 5. Ink made for the face (`inkLadder`): `text` white or black, whichever contrasts more, and `textMuted` that ink laid over the face at the least alpha from 0.72 that keeps 3:1. Its text always reaches 4.5:1, so no face is left unreadable. On `#2876c8` the built-in dark ladder reaches only 4.2:1 (`#f2f2f7`), and the ink ladder, white, applies.
 
-If none passes, the one that reads best wins. With no theme the resolver keeps the rule of DSK-008, so the built-in look does not change (`TestThemeNoneKeepsPalettes`). The face shader check (check 5) uses the same choice.
+If none passes, the one that reads best wins. A face inside a face pairs again: the active tab of the tab strip, on a themed title bar, takes the ladder of its pill (`tabActive`) when the glass is off, not the bar's. With no theme the resolver keeps the rule of DSK-008, so the built-in look does not change (`TestThemeNoneKeepsPalettes`). The face shader check (check 5) uses the same choice.
 
 Phase 1 builds these roles with these details:
 
