@@ -83,6 +83,71 @@ func TestDevDirResolve(t *testing.T) {
 	}
 }
 
+// TestConfigPathResolve: init.lua follows the data directory when no
+// init.lua exists, so resolving it never makes the home before the move.
+func TestConfigPathResolve(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		setup func(t *testing.T, home, plat string) string // returns the want
+	}{
+		{"fresh machine", func(t *testing.T, home, plat string) string {
+			return filepath.Join(home, ".gorex", "init.lua")
+		}},
+		{"legacy data only", func(t *testing.T, home, plat string) string {
+			write(t, filepath.Join(plat, "GoRex", "settings.json"), "{}")
+			return filepath.Join(plat, "GoRex", "init.lua")
+		}},
+		{"home exists", func(t *testing.T, home, plat string) string {
+			write(t, filepath.Join(plat, "GoRex", "settings.json"), "{}")
+			write(t, filepath.Join(home, ".gorex", "settings.json"), "{}")
+			return filepath.Join(home, ".gorex", "init.lua")
+		}},
+		{"legacy init.lua", func(t *testing.T, home, plat string) string {
+			write(t, filepath.Join(plat, "GoRex", "settings.json"), "{}")
+			write(t, filepath.Join(home, ".config", "gorex", "init.lua"), "-- x")
+			return filepath.Join(home, ".config", "gorex", "init.lua")
+		}},
+		{"home init.lua", func(t *testing.T, home, plat string) string {
+			write(t, filepath.Join(home, ".config", "gorex", "init.lua"), "-- x")
+			write(t, filepath.Join(home, ".gorex", "init.lua"), "-- x")
+			return filepath.Join(home, ".gorex", "init.lua")
+		}},
+		{"GOREX_DIR", func(t *testing.T, home, plat string) string {
+			write(t, filepath.Join(plat, "GoRex", "settings.json"), "{}")
+			d := filepath.Join(t.TempDir(), "data")
+			t.Setenv("GOREX_DIR", d)
+			return filepath.Join(d, "init.lua")
+		}},
+		{"GOREX_CONFIG wins", func(t *testing.T, home, plat string) string {
+			write(t, filepath.Join(home, ".gorex", "init.lua"), "-- x")
+			p := filepath.Join(t.TempDir(), "own.lua")
+			t.Setenv("GOREX_CONFIG", p)
+			return p
+		}},
+		{"GOREX_DIR and GOREX_CONFIG", func(t *testing.T, home, plat string) string {
+			d := t.TempDir()
+			t.Setenv("GOREX_DIR", d)
+			t.Setenv("GOREX_CONFIG", filepath.Join(d, "config", "init.lua"))
+			return filepath.Join(d, "config", "init.lua")
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			home, plat := stubDirs(t)
+			homeMade := false
+			want := tc.setup(t, home, plat)
+			if _, err := os.Lstat(filepath.Join(home, ".gorex")); err == nil {
+				homeMade = true
+			}
+			if got := ConfigPath(); got != want {
+				t.Fatalf("ConfigPath() = %q, want %q", got, want)
+			}
+			if _, err := os.Lstat(filepath.Join(home, ".gorex")); err == nil && !homeMade {
+				t.Fatal("resolving made ~/.gorex")
+			}
+		})
+	}
+}
+
 func TestMigrate(t *testing.T) {
 	home, plat := stubDirs(t)
 	root := filepath.Join(home, ".gorex")
@@ -122,6 +187,30 @@ func TestMigrate(t *testing.T) {
 	// A second run does nothing.
 	if moved, err := Migrate(false, nil); moved || err != nil {
 		t.Fatalf("second run: moved %v err %v", moved, err)
+	}
+}
+
+// TestMigrateKeepsDataThemes: a theme installed into the legacy data
+// directory before the move (ConfigPath follows the data there) moves
+// with it, and the legacy init.lua joins it.
+func TestMigrateKeepsDataThemes(t *testing.T) {
+	home, plat := stubDirs(t)
+	data := filepath.Join(plat, "GoRex")
+	write(t, filepath.Join(data, "settings.json"), "{}")
+	write(t, filepath.Join(data, "themes", "sea.json"), "{}")
+	write(t, filepath.Join(home, ".config", "gorex", "init.lua"), "-- conf")
+	if moved, err := Migrate(false, nil); err != nil || !moved {
+		t.Fatalf("moved %v err %v", moved, err)
+	}
+	root := filepath.Join(home, ".gorex")
+	if got := read(t, filepath.Join(root, "themes", "sea.json")); got != "{}" {
+		t.Fatalf("theme %q", got)
+	}
+	if got := read(t, filepath.Join(root, "init.lua")); got != "-- conf" {
+		t.Fatalf("init.lua %q", got)
+	}
+	if got := ConfigPath(); got != filepath.Join(root, "init.lua") {
+		t.Fatalf("ConfigPath() = %q", got)
 	}
 }
 

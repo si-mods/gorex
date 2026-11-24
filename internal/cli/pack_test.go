@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"gorex/internal/homedir"
 	"gorex/internal/iconpack"
 )
 
@@ -223,5 +224,51 @@ func TestPackInstallTheme(t *testing.T) {
 	errOut.Reset()
 	if code, _ := Main([]string{"pack", "rm", "local"}, &out, &errOut, ""); code != ExitFailed {
 		t.Errorf("rm of a missing pack code=%d", code)
+	}
+}
+
+// TestPackInstallBeforeMove: on a machine whose data is still in the
+// legacy data directory, with no init.lua anywhere, a pack installs into
+// the legacy data directory and does not make ~/.gorex, which would take
+// every process away from the legacy data (docs/MOD-013-home-dir.md).
+func TestPackInstallBeforeMove(t *testing.T) {
+	home, plat := t.TempDir(), t.TempDir()
+	oldHome, oldCfg := homedir.UserHomeDir, homedir.UserConfigDir
+	homedir.UserHomeDir = func() (string, error) { return home, nil }
+	homedir.UserConfigDir = func() (string, error) { return plat, nil }
+	t.Cleanup(func() { homedir.UserHomeDir, homedir.UserConfigDir = oldHome, oldCfg })
+	for _, v := range []string{"GOREX_DIR", "GOREX_CONFIG", "XDG_CONFIG_HOME"} {
+		t.Setenv(v, "")
+	}
+	t.Setenv("HOME", home)
+	legacy := filepath.Join(plat, "GoRex")
+	if err := os.MkdirAll(legacy, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(legacy, "settings.json"), []byte("{}"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	srcDir := filepath.Join(t.TempDir(), "my-pack")
+	if err := os.MkdirAll(filepath.Join(srcDir, "icons"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	svg := `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M0 0h24v24H0z"/></svg>`
+	if err := os.WriteFile(filepath.Join(srcDir, "icons", "app.svg"), []byte(svg), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(srcDir, "pack.json"), []byte(`{"schema": 1, "id": "my-pack", "name": "My Pack", "version": "0.1.0",
+  "programs": { "mycli": { "icon": "icons/app.svg" } }}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var out, errOut bytes.Buffer
+	if code, _ := Main([]string{"pack", "install", srcDir}, &out, &errOut, ""); code != ExitOK {
+		t.Fatalf("install code=%d err=%s", code, errOut.String())
+	}
+	if _, err := os.Lstat(filepath.Join(home, ".gorex")); err == nil {
+		t.Fatal("pack install made ~/.gorex before the move")
+	}
+	if _, err := os.Stat(filepath.Join(legacy, "icon-packs", "my-pack", "pack.json")); err != nil {
+		t.Fatalf("pack not in the legacy data directory: %v", err)
 	}
 }

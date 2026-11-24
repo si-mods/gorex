@@ -134,6 +134,11 @@ Each item has a **Trigger** (what the diff shows), a **Check** (what the author 
 - **Check:** the end's close code is not normalClosure — on Apple, `cancel(with: .goingAway)` — since URLSessionWebSocketTask sends a close frame on every task end (a bare `cancel()` included; measured on the iOS simulator, where macOS's URLSession sends none). The server keeps the client, its streams and its tickets for the reconnect grace unless the close is normal; it is what a reconnect needs kept.
 - **Source:** iOS `Host.resume()` sent a normal closure on every reconnect, so each return to the foreground raced every terminal's RESUME against `cleanupClient`; the loser got `data connection refused (0x01)` and started over with a ticket and a snapshot. The first fix tried `task.cancel()` for a bare drop, which the iOS simulator proved still closes — the test caught it.
 
+### A resolution whose fallback makes the thing another resolution tests
+- **Trigger:** the diff changes a path resolver whose order includes "when it exists" (`homedir.DataDir`, `homedir.ConfigPath`, `rex.Dir`), or a fallback of one resolver that names a directory another resolver tests for.
+- **Check:** list every writer of the fallback path (an install, a `MkdirAll`): none of them may create the directory an existence check elsewhere reads. A test plants each layout (fresh, legacy only, moved) and asserts that resolving and installing make no new top-level directory.
+- **Source:** #1090 fell back to `~/.gorex/init.lua` before the move; installing a theme made `~/.gorex/themes`, and every process then resolved `~/.gorex` and lost the legacy settings, layout and socket (fix here).
+
 ### Value reset after a round trip
 - **Trigger:** the diff clears or resets a field (revision, counter, pending flag) after a call that reads or writes remote state.
 - **Check:** the reset compares with the value read before the call and applies only if it did not change. What arrived during the call is kept.
