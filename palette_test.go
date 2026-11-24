@@ -55,7 +55,7 @@ var wantLightColors = colors{
 	panelSel:    ui.RGBA(46, 111, 208, 0.12),
 	backdrop:    ui.RGBA(40, 20, 40, 0.06),
 
-	accent: ui.Hex("#2e6fd0"), accentHover: ui.Hex("#2a64bd"), accentPressed: ui.Hex("#2459a8"),
+	accent: ui.Hex("#2e6fd0"), accentHover: ui.Hex("#2a64bd"), accentPressed: ui.Hex("#2459a8"), accentText: ui.Hex("#ffffff"),
 	surface: ui.Hex("#fcfcfd"), surfaceHover: ui.Hex("#efeff2"), surfacePressed: ui.Hex("#e3e3e8"),
 
 	field: ui.Hex("#f4f4f5"), fieldBorder: ui.Hex("#d9d9de"),
@@ -107,7 +107,7 @@ var wantDarkColors = colors{
 	panelSel:    ui.RGBA(108, 178, 255, 0.18),
 	backdrop:    ui.RGBA(0, 0, 0, 0.2),
 
-	accent: ui.Hex("#6cb2ff"), accentHover: ui.Hex("#82bfff"), accentPressed: ui.Hex("#5aa2f0"),
+	accent: ui.Hex("#6cb2ff"), accentHover: ui.Hex("#82bfff"), accentPressed: ui.Hex("#5aa2f0"), accentText: ui.Hex("#10151c"),
 	surface: ui.Hex("#262629"), surfaceHover: ui.Hex("#303035"), surfacePressed: ui.Hex("#3a3a40"),
 
 	field: ui.Hex("#2d2d32"), fieldBorder: ui.Hex("#3f3f46"),
