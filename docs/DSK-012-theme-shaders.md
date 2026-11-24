@@ -8,9 +8,11 @@ metadata:
 
 # DSK-012: Theme shaders and metrics
 
-Status: proposal.
+Status: accepted. Not implemented.
 
 This doc decides how a theme pack changes more than colors and still images. It adds three kinds of shader slots, a set of metric seeds and four face roles. It extends [DSK-008](DSK-008-theme.md) (the manifest and the face resolver) and [DSK-010](DSK-010-theme-ambience.md) (assets, layers, the still rule). The probes are two themes of `freestylefly/codex-themes`, a theme app for the Codex desktop app: "蓝窗信使 Blue Window" and "魔法药水铺 Potion Workshop". The goal is to rebuild both as GoRex theme packs.
+
+Replaces: [DSK-008](DSK-008-theme.md), the non-goal and the alternative about the glass setting. A theme can now turn the glass on or off (see Glass).
 
 ## Problem
 
@@ -48,6 +50,7 @@ MyGo already has a general answer for pixels. `ui/shader` compiles a fragment sh
 
 - A theme pack can give a shader for the window background, a shader for a moving layer, and a shader for each of up to 8 faces.
 - A theme pack can set the corner scale, the border width, the UI font and the shadow size.
+- A theme pack can turn the glass on or off, over the user's Glass setting.
 - Text on a face that a shader paints keeps 4.5:1 contrast. GoRex checks this at load, not the reviewer.
 - A shader that costs too much, does not compile or fails the contrast check does not draw. The flat colors of the theme draw instead, with a warning.
 - The CPU renderer never runs a theme shader.
@@ -59,7 +62,6 @@ MyGo already has a general answer for pixels. `ui/shader` compiles a fragment sh
 - Structure. A theme does not add a toolbar, a rail or a panel. Blue Window's toolbar, friend list and right rail are not rebuilt. Potion Workshop's rotated notes are not rebuilt. A pane is a terminal, and a rotated terminal does not read.
 - A shader over the terminal text, as Ghostty's `custom-shader` does. That is a choice of the user, not of a theme. A later TERM or DSK doc can add a `terminal.shader` setting.
 - Font files in a pack. A font parser is a large attack surface, and most font licenses forbid redistribution in a theme. A theme names installed families only.
-- A theme that changes the glass setting. DSK-008 keeps this rule (see Open questions, 2).
 - The mascot and the ticker. DSK-010 phase 3 builds them without change.
 - iOS and the web client. They can read the same keys later.
 
@@ -78,7 +80,7 @@ Text on each face stays readable. A theme shader that fails a check shows nothin
 
 ### Manifest
 
-Two new optional keys, `shaders` and `metrics`, and four new role names:
+Three new optional keys, `shaders`, `metrics` and `glass`, and five new role names:
 
 ```json
 {
@@ -94,7 +96,8 @@ Two new optional keys, `shaders` and `metrics`, and four new role names:
       "sideBar.tabActiveBackground": { "source": "row" }
     }
   },
-  "metrics": { "radius": 0.2, "border": 1, "font": ["Tahoma", "Segoe UI", "system"], "shadow": { "scale": 0.5 } }
+  "metrics": { "radius": 0.2, "border": 1, "font": ["Tahoma", "Segoe UI", "system"], "shadow": { "scale": 0.5 } },
+  "glass": false
 }
 ```
 
@@ -161,6 +164,18 @@ The type sizes of `DESIGN.md` stay. A theme changes the family, not the ramp. Th
 
 `rounded` is the rounded design of the system font on macOS. MyGo has no API for it now (MyGo change M1). Off macOS, `rounded` falls to the next name of the list.
 
+### Glass
+
+The optional top-level key `glass` is `true` or `false`. With the key, the theme decides the glass, and the user's `noGlass` does not apply. With no key, the user's `noGlass` decides, as now.
+
+- `glassOn` in `glass.go` returns the theme's value when the selected theme has one. Each caller of `glassOn` and `windowGlass` thus follows the theme with no other change.
+- GoRex does not write the theme's value to `settings.json`. The user's `noGlass` stays in the file. When the user selects another theme or no theme, the user's own setting applies again.
+- The Glass switch of the Settings page shows the value in use. While a theme decides it, the switch is off limits and shows "Set by the theme <name>". The user changes it by a change of theme.
+- A theme change applies the glass at once with `applyGlass`, as the switch does now. On Windows, a window that opened with no material shows the glass only after it opens again (`DESIGN.md`, Glass). The window shows the flat background until then.
+- The system's Reduce Transparency keeps the effect that it has now.
+
+Both probes set `"glass": false`. Their backgrounds then draw opaque, not as a wash at `backgroundAlpha`.
+
 ### New roles
 
 | Role | Kind | Face of |
@@ -211,6 +226,7 @@ A wallpaper that fills a 2560 px window at 1024 px looks soft. At 2048 px it is 
 | Border | `border: 1`, `pane.border` blue | `border: 1`, brown at 26% |
 | Font | `["Tahoma", "Segoe UI", "system"]` | `["rounded", "system"]` |
 | Shadow | `scale: 0.5` | `scale: 1`, `hard: true` |
+| Glass | `"glass": false` | `"glass": false` |
 | Brand text | `brand.wordmark` | `brand.wordmark` |
 | Status and quote | DSK-010 ticker | DSK-010 ticker |
 | Toolbar, right rail, friend list | Not rebuilt (structure) | — |
@@ -219,7 +235,6 @@ A wallpaper that fills a 2560 px window at 1024 px looks soft. At 2048 px it is 
 ### Limits
 
 - In a full tiled layout the panes cover most of the window. A background hero then shows in the gaps, the title bar, behind the sidebar at its cap, on an empty page and on the canvas. Potion Workshop thus looks closest to its preview on an empty page.
-- With the glass setting on, the background draws at `backgroundAlpha`. A paper or XP theme looks thin there (Open questions, 2).
 - A face that the system draws as glass does not take the face shader.
 - Copy texts of the probes that name Codex (`CODEX 2007 · BLUE WINDOW`, "Codex 好友") change to GoRex or to neutral text.
 
@@ -247,8 +262,8 @@ The rest of the DSK-008 and DSK-010 rules stay: no URL, no network at run time, 
 
 ## Migration
 
-- `shaders`, `metrics` and the five roles are new optional keys with defaults. A manifest without them loads as now, with the same pixels (`TestThemeNoneKeepsPalettes`).
-- An older build drops `shaders` and `metrics` with an `unknown key` warning each, and drops the five role names with an `unknown role` warning each. It loads the colors and the DSK-010 layers. An older build that installs the pack copies the `.kage` assets only if its loader accepts them. If not, it drops them with a warning.
+- `shaders`, `metrics`, `glass` and the five roles are new optional keys with defaults. A manifest without them loads as now, with the same pixels (`TestThemeNoneKeepsPalettes`).
+- An older build drops `shaders`, `metrics` and `glass` with an `unknown key` warning each. The user's Glass setting then applies. It drops the five role names with an `unknown role` warning each. It loads the colors and the DSK-010 layers. An older build that installs the pack copies the `.kage` assets only if its loader accepts them. If not, it drops them with a warning.
 - No settings key changes. `docs/irreversible.md` does not apply to the manifest keys. The shader API version 1 is a promise to pack authors (see Shader API).
 
 ## Tests
@@ -261,6 +276,7 @@ The rest of the DSK-008 and DSK-010 rules stay: no URL, no network at run time, 
 - **Still**: a background or face shader that reads `Time` asks for no frame under each condition of the DSK-010 still rule (`TestAmbienceStill`, extended).
 - **Metrics**: `radius: 0` gives square panes, rows and menus. `concentric` never goes below 0. `border` changes the pane card border. `shadow.hard` gives a blur of 0. A font list with no installed family uses the system font (`TestThemeMetrics`).
 - **Tokens**: `TestDesignTokens` fails on a bare radius token in UI code.
+- **Glass**: a theme with `"glass": false` turns the glass off over `noGlass: false`, and `"glass": true` turns it on over `noGlass: true`. `settings.json` keeps the user's value. With no theme, the user's value applies again. The Settings switch is off limits while a theme decides (`TestThemeGlass`).
 - **Roles**: each new face role resolves with its ladder (`TestThemeLayers`, extended).
 - **Old build**: a manifest of this doc parses under the DSK-010 parser with warnings and the same colors (`TestParseDrops`, extended).
 - **Probes**: screenshots of both packs through the `GOREX_DEBUG` hook, light and dark, tiled, canvas and empty page, glass on and off, beside the probe's `preview.png`.
@@ -269,15 +285,17 @@ No item in `docs/invariants.md` covers the theme.
 
 ## Phases
 
-1. **Metrics and roles** (M): `metrics`, the five roles with flat colors, `k.radius` and the shadow functions, the font list. MyGo M1 for `rounded`. Blue Window gets its square corners, borders and font.
+1. **Metrics, roles and glass** (M): `metrics`, the five roles with flat colors, `k.radius` and the shadow functions, the font list, the `glass` key. MyGo M1 for `rounded`. Blue Window gets its square corners, borders and font.
 2. **Shader runtime** (L): `.kage` assets, the API version 1, the `background` and `faces` slots, the checks at load, the new image caps, the CPU fallback. Measure the load checks on a Mac and a Windows PC.
 3. **Ambient slot** (M): the `ambient` slot over the free region. It merges with DSK-010 phase 2: particles and sprites become built-in ambient shaders. Measure the frame cost as DSK-010 says.
 4. **Mascot and ticker**: DSK-010 phase 3, no change.
-5. **Two packs** (S each): `si-mods/gorex-theme-blue-window` and `si-mods/gorex-theme-potion-workshop`, own repos, listed in the registry with a pinned `ref`. Screenshots beside the probe previews.
+5. **Two packs** (S each): two own repos, `si-mods/gorex-theme-<name>`, listed in the registry with a pinned `ref`. The working ids are `xp-blue` and `apothecary`. The user chooses the final names in this phase (User decisions, 3). Screenshots beside the probe previews.
 
-## Open questions
+## User decisions
 
-1. **License of the probe art** (user decides). The repo `freestylefly/codex-themes` has an MIT `LICENSE` for its software. No file names a license for the images in `assets/presets`. The app sells Blue Window (`"priceCents": 990`, `"catalogOnly": true`). Options: (a) ask the author for written permission to ship the images, and ship them with the license text and credit, (b) draw new art in the same style and ship only the shaders, colors and metrics. Recommendation: (b) for both packs, and (a) only if the author agrees in writing. Until the user decides, phase 5 uses placeholder art.
-2. **Glass and an opaque theme** (user decides). Both probes are opaque. Under the glass setting the background is a wash at `backgroundAlpha`. Options: (a) keep DSK-008: the user's setting wins, and the Extensions page shows "This theme looks best with Glass off", with a button that turns Glass off on the user's click, (b) let a theme force opaque. Recommendation: (a).
-3. **Pack names** (user decides). The probe names are the names of another product. Options: keep "Blue Window" and "Potion Workshop" with credit to the probe, or give new names. Recommendation: new names, with "after codex-themes" in the pack description.
-4. **Local packs with shaders** (user decides). Options: (a) a local pack can carry shaders from phase 2, (b) only registry packs, until the registry CI of phase 2 runs. Recommendation: (a), with the load checks. The checks do not depend on the CI.
+The user decided the four open questions of the proposal on 2026-11-24:
+
+1. **License of the probe art**: ask the author of `freestylefly/codex-themes` for written permission to ship the images of the two presets. With the permission, the packs ship the images with the license text and the credit in a `NOTICE`. Until the permission comes, phase 5 uses placeholder art. Without it, phase 5 ships no probe image.
+2. **Glass**: a theme can turn the glass on or off, over the user's setting (see Glass). This replaces the DSK-008 rule.
+3. **Pack names**: the packs get new names, not "Blue Window" and "Potion Workshop". The pack description says that the pack follows a theme of `codex-themes`.
+4. **Local packs with shaders**: a local pack (`gorex pack install <folder>`) can carry shaders from phase 2. The load checks apply to it. The registry CI does not.

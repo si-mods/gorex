@@ -40,7 +40,7 @@ The work keeps the current look. It makes the values consistent. It does not cha
 ## Non-goals
 
 - A manifest does not define terminal colors. Terminal colors stay in the Ghostty themes, the Ghostty configuration and the terminal theme setting. [DSK-009](DSK-009-terminal-settings.md) moves that setting from `theme` to `terminal.theme`. A manifest can only name a Ghostty theme for each appearance (see Terminal). The terminal is a second lightness domain. The framework adapts the chrome to the terminal.
-- The glass stays a user setting (`noGlass`). A theme does not change the glass setting.
+- The glass is a user setting (`noGlass`). [DSK-012](DSK-012-theme-shaders.md) replaces the rest of this item: a theme can turn the glass on or off over the setting.
 - iOS and the web client keep their palettes. The first scope is the desktop chrome.
 - No user edits `settings.json` by hand for an upgrade. GoRex migrates the renamed color tokens at load (see Migration).
 - Motion tokens (easing curves and durations) are not in the manifest. The `animation` setting can already stop all motion. Phase 3 can add motion tokens.
@@ -193,7 +193,7 @@ Each face has a pairing rule. The resolver attaches the text ladder that fits th
 - **One fixed pairing for each appearance, with no lightness check**: rejected. A dark terminal in a light window is a supported configuration. A fixed pairing fails on it.
 - **Terminal colors in the manifest**: rejected. Ghostty's themes already hold more than 800 tested palettes, and the user's theme picker uses the same names. A manifest names a theme instead of 22 more colors.
 - **The theme's terminal over `terminal.theme`**: rejected. The user chose `terminal.theme` for every theme.
-- **A theme that changes the glass setting**: rejected. The glass changes the cost of drawing, and the user decides it with `noGlass`.
+- **A theme that changes the glass setting**: rejected first, because the glass changes the cost of drawing. [DSK-012](DSK-012-theme-shaders.md) replaces this choice: the user decided that a theme can turn the glass on or off.
 - **Sample the pixels of the backdrop to select the ink**: rejected. It costs a read of the frame. Ink from sampled pixels also flickers near the flip point.
 
 ## Security
