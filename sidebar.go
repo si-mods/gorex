@@ -2,6 +2,7 @@ package main
 
 import (
 	"cmp"
+	"encoding/json"
 	"log"
 
 	"github.com/egoist/mygo"
@@ -128,22 +129,62 @@ func sidebarPalette(k *colors, dark bool) *colors {
 	return &out
 }
 
-// checkSidebarColors drops invalid sidebar.colorCustomizations entries at
-// load and says why, once.
-func checkSidebarColors() {
-	for token, raw := range prefs.SidebarColors {
+// hexColor parses a hex color without ui.Hex's panic on bad input.
+func hexColor(s string) (col ui.Color, ok bool) {
+	defer func() {
+		if recover() != nil {
+			ok = false
+		}
+	}()
+	return ui.Hex(s), true
+}
+
+// checkSidebarColors drops invalid sidebar.colorCustomizations entries of
+// s at load and says why, once.
+func checkSidebarColors(s *settings) {
+	for token, raw := range s.SidebarColors {
 		if _, ok := theme.RoleByName(token); !ok {
 			log.Printf("gorex settings: sidebar.colorCustomizations: unknown token %q", token)
-			delete(prefs.SidebarColors, token)
+			delete(s.SidebarColors, token)
 			continue
 		}
-		_, light := theme.ColorFor(raw, false)
-		_, dark := theme.ColorFor(raw, true)
-		if !light || !dark {
+		if !validStyleColor(raw) {
 			log.Printf("gorex settings: sidebar.colorCustomizations: bad color for %q", token)
-			delete(prefs.SidebarColors, token)
+			delete(s.SidebarColors, token)
 		}
 	}
+}
+
+// validStyleColor reports whether raw is a value
+// sidebar.colorCustomizations may hold: a hex color string, or an object
+// whose "light" and "dark", where present, are hex color strings. A side
+// that is absent overrides nothing of its appearance.
+func validStyleColor(raw json.RawMessage) bool {
+	var s string
+	if json.Unmarshal(raw, &s) == nil {
+		_, ok := hexColor(s)
+		return ok
+	}
+	var pair struct {
+		Light json.RawMessage `json:"light"`
+		Dark  json.RawMessage `json:"dark"`
+	}
+	if json.Unmarshal(raw, &pair) != nil {
+		return false
+	}
+	for _, side := range []json.RawMessage{pair.Light, pair.Dark} {
+		if len(side) == 0 {
+			continue
+		}
+		var v string
+		if json.Unmarshal(side, &v) != nil {
+			return false
+		}
+		if _, ok := hexColor(v); !ok {
+			return false
+		}
+	}
+	return true
 }
 
 func sidebarWidth() float32 {

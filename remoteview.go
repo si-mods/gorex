@@ -100,6 +100,10 @@ func (a *App) showSection(id string) {
 		a.startRemotePoll()
 		startServerInfoPoll()
 	}
+	if id == "file" {
+		// The file may have changed while the page was away.
+		syncSettingsJSONEditor()
+	}
 }
 
 func stopRemotePoll() {

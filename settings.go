@@ -232,58 +232,82 @@ func migrateSettingsFile(b []byte) []byte {
 
 func loadSettings() {
 	if b, err := os.ReadFile(settingsPath()); err == nil {
-		json.Unmarshal(migrateSettingsFile(b), &prefs)
+		if next, ok := decodeSettings(b); ok {
+			prefs = next
+		}
 	}
-	// A size out of range counts as none: Ghostty's font-size, or the default.
-	if prefs.FontSize < 6 || prefs.FontSize > 40 {
-		prefs.FontSize = 0
-	}
-	if !slices.Contains(placements, prefs.TabPlacement) {
-		prefs.TabPlacement = ""
-	}
-	if !slices.Contains(animations, prefs.Animation) {
-		prefs.Animation = ""
-	}
-	if prefs.TermOpacity < minTermOpacity || prefs.TermOpacity > maxTermOpacity {
-		prefs.TermOpacity = 0
-	}
-	// A ratio is clamped to 1–21 as Ghostty's is; 0 (or NaN) follows Ghostty.
-	if c := prefs.TermMinContrast; c != c {
-		prefs.TermMinContrast = 0
-	} else if c != 0 {
-		prefs.TermMinContrast = min(max(c, 1), 21)
-	}
-	if prefs.SidebarWidth < sidebarMinW || prefs.SidebarWidth > sidebarMaxW {
-		prefs.SidebarWidth = 0
-	}
-	// The sidebar style metrics keep 0 for the default; a value outside its
-	// range falls back to it, as the other metrics do.
-	prefs.SidebarRowHeight = clampMetric(prefs.SidebarRowHeight, 24, 48)
-	prefs.SidebarIndent = clampMetric(prefs.SidebarIndent, 0, 24)
-	prefs.SidebarFontSize = clampMetric(prefs.SidebarFontSize, 10, 16)
-	prefs.SidebarGroupPad = clampMetric(prefs.SidebarGroupPad, 0, 12)
-	if prefs.SidebarGroupBy != "host" && prefs.SidebarGroupBy != "flat" {
-		prefs.SidebarGroupBy = ""
-	}
-	if prefs.SidebarIcons != "tiles" && prefs.SidebarIcons != "text" {
-		prefs.SidebarIcons = ""
-	}
-	if prefs.SidebarSelection != "pill" && prefs.SidebarSelection != "fill" {
-		prefs.SidebarSelection = ""
-	}
-	checkSidebarColors()
 	_ = loadTheme()
-	// A language of the file may be spelled otherwise (zh-hans, zh-CN): keep
-	// the app's own spelling of the one it matches, or none.
-	if prefs.Language != "" {
-		prefs.Language = i18n.Match([]string{prefs.Language}, mygo.App.Languages())
-	}
 	loadGhostty()
 	applyGhostty()
 	applyAppearance()
 	// The file is the one place that says the language: "" follows the
 	// system's, whatever the app kept before.
 	setLocale(prefs.Language)
+}
+
+// decodeSettings reads b as settings.json: the migration of its old keys,
+// the decode and the checks of a load, on a new value — a file that does
+// not decode changes nothing, and a reloaded file cannot write prefs half
+// way (docs/DSK-010-live-settings.md). The bytes it consumed are
+// recorded, so that a write of the migration, or the same content again,
+// does not reload (settingswatch.go).
+func decodeSettings(b []byte) (settings, bool) {
+	migrated := migrateSettingsFile(b)
+	recordSettingsWritten(migrated)
+	var next settings
+	if json.Unmarshal(migrated, &next) != nil {
+		return settings{}, false
+	}
+	checkSettings(&next)
+	return next, true
+}
+
+// checkSettings brings a decoded settings to the ranges the app keeps:
+// an out-of-range value falls back to none, as a load's checks do.
+func checkSettings(s *settings) {
+	// A size out of range counts as none: Ghostty's font-size, or the default.
+	if s.FontSize < 6 || s.FontSize > 40 {
+		s.FontSize = 0
+	}
+	if !slices.Contains(placements, s.TabPlacement) {
+		s.TabPlacement = ""
+	}
+	if !slices.Contains(animations, s.Animation) {
+		s.Animation = ""
+	}
+	if s.TermOpacity < minTermOpacity || s.TermOpacity > maxTermOpacity {
+		s.TermOpacity = 0
+	}
+	// A ratio is clamped to 1–21 as Ghostty's is; 0 (or NaN) follows Ghostty.
+	if c := s.TermMinContrast; c != c {
+		s.TermMinContrast = 0
+	} else if c != 0 {
+		s.TermMinContrast = min(max(c, 1), 21)
+	}
+	if s.SidebarWidth < sidebarMinW || s.SidebarWidth > sidebarMaxW {
+		s.SidebarWidth = 0
+	}
+	// The sidebar style metrics keep 0 for the default; a value outside its
+	// range falls back to it, as the other metrics do.
+	s.SidebarRowHeight = clampMetric(s.SidebarRowHeight, 24, 48)
+	s.SidebarIndent = clampMetric(s.SidebarIndent, 0, 24)
+	s.SidebarFontSize = clampMetric(s.SidebarFontSize, 10, 16)
+	s.SidebarGroupPad = clampMetric(s.SidebarGroupPad, 0, 12)
+	if s.SidebarGroupBy != "host" && s.SidebarGroupBy != "flat" {
+		s.SidebarGroupBy = ""
+	}
+	if s.SidebarIcons != "tiles" && s.SidebarIcons != "text" {
+		s.SidebarIcons = ""
+	}
+	if s.SidebarSelection != "pill" && s.SidebarSelection != "fill" {
+		s.SidebarSelection = ""
+	}
+	checkSidebarColors(s)
+	// A language of the file may be spelled otherwise (zh-hans, zh-CN): keep
+	// the app's own spelling of the one it matches, or none.
+	if s.Language != "" {
+		s.Language = i18n.Match([]string{s.Language}, mygo.App.Languages())
+	}
 }
 
 // loadTheme applies the theme prefs.Theme names, or the built-in palettes,
@@ -324,9 +348,16 @@ func clampMetric(v, lo, hi float32) float32 {
 func saveSettings() {
 	b, _ := json.MarshalIndent(prefs, "", "  ")
 	os.MkdirAll(rex.Dir(), 0o700)
+	// The watcher's skip is recorded before the write: an event for
+	// settings.json itself can only come once the rename lands the bytes.
+	recordSettingsWritten(b)
 	if err := writeFileAtomic(settingsPath(), b, 0o600); err != nil {
 		log.Printf("gorex settings: %v", err)
+		return
 	}
+	// The watcher skips this write by hash: mark the file stale so the
+	// settings.json page resyncs its buffer on its next draw.
+	settingsFileStale.Store(true)
 }
 
 // writeFileAtomic writes data to path through a file beside it, renamed
