@@ -5,9 +5,7 @@
 
 > Shells that keep running, on every machine you own.
 
-[![CI](https://img.shields.io/github/actions/workflow/status/si-mods/gorex/ci.yml?branch=main&label=test&logo=github&style=flat-square)](https://github.com/si-mods/gorex/actions/workflows/ci.yml?query=branch%3Amain)
-[![release](https://img.shields.io/github/v/release/si-mods/gorex?label=release&logo=github&style=flat-square)](https://github.com/si-mods/gorex/releases/latest)
-[![downloads](https://img.shields.io/github/downloads/si-mods/gorex/total?label=downloads&logo=github&style=flat-square)](https://github.com/si-mods/gorex/releases)
+[![CI](https://github.com/si-mods/gorex/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/si-mods/gorex/actions/workflows/ci.yml?query=branch%3Amain)
 
 ## Introduction
 
@@ -79,41 +77,11 @@ a build whose modification time is not newer than the server's. On Windows
 and macOS, use **Check for Updates** in the app. See
 [the CLI reference](docs/REF-001-cli.md#commands).
 
-## Shortcuts
-
-| macOS | Windows, Linux | |
-|---|---|---|
-| ⌘T | Ctrl+Shift+T | New tab |
-| ⌘D / ⇧⌘D | Ctrl+Shift+D / Ctrl+Shift+E | Split right / down |
-| ⌘W / ⇧⌘W | Ctrl+Shift+W | Close pane / tab |
-| ⇧⌘↩ | Ctrl+Shift+Enter | Zoom the pane |
-| ⌥⌘ arrows | Alt+arrows | Focus the pane in that direction |
-| ⌃⌘ arrows | Alt+Shift+arrows | Move the nearest divider |
-| ⌃⌘= | | Equalize panes |
-| ⌘1…⌘9, ⇧⌘[ ⇧⌘], ⌃Tab | Ctrl+Shift+1…9, Ctrl+PageUp/PageDown, Ctrl+Tab | Switch tabs |
-| ⇧⌘R | Ctrl+Shift+R | Rename tab |
-| ⌘N | Ctrl+Shift+N | New window, of a project no window shows |
-| ⇧⌘N | | New project… |
-| ⇧⌘O | Ctrl+Shift+O | Change project |
-| ⌃⌘] ⌃⌘[ | Ctrl+Shift+PageDown/PageUp | Next / previous project |
-| ⌘J | Ctrl+Shift+J | Jump to the pane that needs you |
-| ⇧⌘J | | List what needs you, by state, across windows and hosts |
-| ⌃⌘S | Ctrl+Shift+S | Hide or show the tabs' sidebar |
-| ⇧⌘P, ⌘P | Ctrl+Shift+P | Command palette |
-| ⌘K | Ctrl+Shift+K | Clear |
-| ⌘+ ⌘− ⌘0 | Ctrl+= Ctrl+- Ctrl+0 | Text size |
-| ⌥⌘Q | | Quit and end all sessions |
-
-Elsewhere than on macOS, Control and a letter are the terminal's (Ctrl+C,
-Ctrl+D, Ctrl+W…), so GoRex's shortcuts take Shift too, as copying and
-pasting do (Ctrl+Shift+C, Ctrl+Shift+V), and none take Control and Alt,
-which type characters (AltGr) on many keyboards.
-
 ## Documentation
 
 | Doc | Topic |
 |---|---|
-| [REF-010](docs/REF-010-desktop-app.md) | The desktop app: panes, sessions, projects, Settings |
+| [REF-010](docs/REF-010-desktop-app.md) | The desktop app: panes, sessions, projects, shortcuts, Settings |
 | [REF-011](docs/REF-011-ghostty-config.md) | The Ghostty configuration |
 | [REF-012](docs/REF-012-remote-access.md) | Remote access: Tailscale, tailcat, remote hosts, teleport |
 | [REF-013](docs/REF-013-rex-import.md) | Importing a Rex session |

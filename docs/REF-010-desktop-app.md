@@ -91,6 +91,33 @@ Light and dark appearances (View ▸ Appearance), text size (⌘+ ⌘− ⌘0), 
 
 English and Simplified Chinese (简体中文): Settings ▸ Appearance ▸ Language follows the system's language or chooses one. The command palette finds a command by its English title in either.
 
+## Shortcuts
+
+| macOS | Windows, Linux | |
+|---|---|---|
+| ⌘T | Ctrl+Shift+T | New tab |
+| ⌘D / ⇧⌘D | Ctrl+Shift+D / Ctrl+Shift+E | Split right / down |
+| ⌘W / ⇧⌘W | Ctrl+Shift+W | Close pane / tab |
+| ⇧⌘↩ | Ctrl+Shift+Enter | Zoom the pane |
+| ⌥⌘ arrows | Alt+arrows | Focus the pane in that direction |
+| ⌃⌘ arrows | Alt+Shift+arrows | Move the nearest divider |
+| ⌃⌘= | | Equalize panes |
+| ⌘1…⌘9, ⇧⌘[ ⇧⌘], ⌃Tab | Ctrl+Shift+1…9, Ctrl+PageUp/PageDown, Ctrl+Tab | Switch tabs |
+| ⇧⌘R | Ctrl+Shift+R | Rename tab |
+| ⌘N | Ctrl+Shift+N | New window, of a project no window shows |
+| ⇧⌘N | | New project… |
+| ⇧⌘O | Ctrl+Shift+O | Change project |
+| ⌃⌘] ⌃⌘[ | Ctrl+Shift+PageDown/PageUp | Next / previous project |
+| ⌘J | Ctrl+Shift+J | Jump to the pane that needs you |
+| ⇧⌘J | | List what needs you, by state, across windows and hosts |
+| ⌃⌘S | Ctrl+Shift+S | Hide or show the tabs' sidebar |
+| ⇧⌘P, ⌘P | Ctrl+Shift+P | Command palette |
+| ⌘K | Ctrl+Shift+K | Clear |
+| ⌘+ ⌘− ⌘0 | Ctrl+= Ctrl+- Ctrl+0 | Text size |
+| ⌥⌘Q | | Quit and end all sessions |
+
+Elsewhere than on macOS, Control and a letter are the terminal's (Ctrl+C, Ctrl+D, Ctrl+W…). GoRex's shortcuts take Shift too, as copying and pasting do (Ctrl+Shift+C, Ctrl+Shift+V). None take Control and Alt, which type characters (AltGr) on many keyboards.
+
 ## Settings
 
 Settings… (⌘, on macOS, Ctrl+, elsewhere. Also the Shell menu and command palette) opens a window of its own with a sidebar of sections. Appearance: light, dark or system, tab placement, pane headers, animation style, text size, language. Terminal: font, cursor style and blink, copy on selection, minimum contrast. Theme: any of Ghostty's themes, or follow the config. Keyboard: GoRex's shortcuts, read only. Remote: see [remote access](REF-012-remote-access.md) and [remote hosts](REF-012-remote-access.md#remote-hosts). Network: see [remote hosts](REF-012-remote-access.md#remote-hosts) and [Tailscale discovery](REF-012-remote-access.md#tailscale-discovery-desktop). About: version, Check for Updates…. The choices go to `settings.json`, as do the sidebar's width and whether it is hidden.
