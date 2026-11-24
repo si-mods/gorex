@@ -21,6 +21,7 @@ import (
 	"gorex/internal/cli"
 	"gorex/internal/rex"
 	"gorex/internal/rexapi"
+	"gorex/internal/theme"
 	"gorex/locales"
 )
 
@@ -33,6 +34,8 @@ func main() {
 	rex.RexPairURL = rexapi.PairURL
 	rex.TailnetNode = rexapi.DesktopNode
 	rex.EnableBuiltinTailscale = rexapi.EnableBuiltinTailscale
+	// A theme's terminal names only the themes of Ghostty's list.
+	theme.TerminalThemeKnown = knownTerminalTheme
 	// server.version reports the app's version, marked as GoRex's; a
 	// build outside a bundle has none and keeps the placeholder.
 	if v := mygo.App.Version(); v != "" {

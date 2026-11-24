@@ -287,8 +287,8 @@ func TestUseThemeTerminal(t *testing.T) {
 func TestThemeTerminalKnown(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	for name, want := range map[string]bool{"Ayu": true, "ayu mirage": true, "Ayu Light": true, "CON": false, "NUL": false, "No Such Theme": false} {
-		if got := theme.TerminalThemeKnown(name); got != want {
-			t.Errorf("TerminalThemeKnown(%q) = %v", name, got)
+		if got := knownTerminalTheme(name); got != want {
+			t.Errorf("knownTerminalTheme(%q) = %v", name, got)
 		}
 	}
 }

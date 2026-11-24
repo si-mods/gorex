@@ -12,7 +12,6 @@ import (
 	"github.com/egoist/mygo/ui"
 
 	"gorex/internal/rex"
-	"gorex/internal/theme"
 )
 
 // ghosttyConfig is what GoRex takes from the user's Ghostty configuration.
@@ -53,14 +52,14 @@ type ghosttyConfig struct {
 	Unknown []string
 }
 
-// A theme's terminal names must be in Ghostty's list: a theme the Ghostty
-// GoRex binds ships, or a file of the user's themes folder. GhosttyTheme
-// would open any name in that folder, and on Windows a device name there,
-// as CON, is the device: reading it can wait forever.
-func init() {
-	theme.TerminalThemeKnown = func(name string) bool {
-		return slices.ContainsFunc(terminal.GhosttyThemes(), func(n string) bool { return strings.EqualFold(n, name) })
-	}
+// knownTerminalTheme reports whether Ghostty's list has a theme of the
+// name, in any case: a theme the Ghostty GoRex binds ships, or a file of
+// the user's themes folder. main makes it theme.TerminalThemeKnown, so a
+// theme's terminal names must be in the list. GhosttyTheme would open any
+// name in that folder, and on Windows a device name there, as CON, is the
+// device: reading it can wait forever.
+func knownTerminalTheme(name string) bool {
+	return slices.ContainsFunc(terminal.GhosttyThemes(), func(n string) bool { return strings.EqualFold(n, name) })
 }
 
 // themeTermPair is themeTerm in Ghostty's syntax, light:<name>,dark:<name>,
