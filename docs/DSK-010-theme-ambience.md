@@ -8,7 +8,7 @@ metadata:
 
 # DSK-010: Theme assets and ambience
 
-Status: accepted. Not implemented. The user decided its four questions (see User decisions).
+Status: accepted. Phase 1 built (#PRNUM). The user decided its four questions (see User decisions).
 
 This doc decides how a theme pack carries images and motion, and how GoRex draws them. It extends the manifest of [DSK-008](DSK-008-theme.md) and the theme pack kind of the registry. It builds on the optional `terminal` key that DSK-008 phase 4 adds. It does not change that key. The probe is a real theme for another app: `dafy-whale-theme` ("蓝色大肥鱼", a web theme for DeepSeek Harness). The user wants all of its features in GoRex. Where the framework cannot do a feature, this doc extends the framework.
 
@@ -334,7 +334,7 @@ No item in `docs/invariants.md` covers the theme or ambience. The focus rule of 
 
 ## Phases
 
-1. **Assets and still layers** (M, about 800 lines with tests): asset parsing, caps and loader, pack folder install and remove, the pinned `ref` in `iconpack.Checkout`, the registry CI that clones and validates each listed pack repo, glows in the background shader, still images, brand row, the two settings and the Extensions controls.
+1. **Assets and still layers** (built, #PRNUM; M, about 800 lines with tests): asset parsing, caps and loader, pack folder install and remove, the pinned `ref` in `iconpack.Checkout`, the registry CI that clones and validates each listed pack repo, glows in the background shader, still images, brand row, the two settings and the Extensions controls. The registry CI is si-mods/gorex-registry#6. Until its phase, the parser drops `particles`, `sprites`, `mascot` and `ticker` with a warning, as an older build does. The Ambience and Mascot controls show under the theme in use when it has glows, images or a brand. The assets decode for a screen scale of 2.
 2. **Moving layers** (M, about 500 lines): particles, sprites, free region, the still rule, the toggle button and command, and the budget measurement.
 3. **Mascot and ticker** (M, about 600 lines): still, animated and sprite sheet mascot, bob, click, double click, hide, bubbles and the ticker. A self-made animated whale validates GIF and sprite sheets.
 4. **Dafy Whale pack** (S): a new public repo `si-mods/gorex-theme-dafy-whale`, not in gorex and not in `gorex-registry`. Its root has `theme.json`, `assets/` (the MIT whale art, the two fish PNGs scaled down, a self-made icon, the self-made animated whale), `LICENSE` (MIT), `NOTICE` and `LICENSE-fish.txt`. A registry PR adds one `themes` entry: `id` `dafy-whale`, `repo` `https://github.com/si-mods/gorex-theme-dafy-whale.git`, no `subdir`, and `ref` at the reviewed commit. Screenshots.

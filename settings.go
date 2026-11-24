@@ -27,7 +27,12 @@ type settings struct {
 	// Theme names the chrome's theme (docs/DSK-008-theme.md): a manifest
 	// <config>/themes/<name>.json, which a theme pack installs too, or ""
 	// for the built-in palettes. Builds before it ignore the key.
-	Theme    string  `json:"appearance.theme,omitempty"`
+	Theme string `json:"appearance.theme,omitempty"`
+	// Ambience is how the theme's ambience shows
+	// (docs/DSK-010-theme-ambience.md): "" moving, "still" or "off". Mascot
+	// is "" to show the theme's mascot, or "off".
+	Ambience string  `json:"appearance.ambience,omitempty"`
+	Mascot   string  `json:"appearance.mascot,omitempty"`
 	FontSize float32 `json:"fontSize,omitempty"`
 	// Language is a tag of the app's languages, or "" to follow the
 	// system's.
@@ -241,6 +246,12 @@ func loadSettings() {
 	if !slices.Contains(placements, prefs.TabPlacement) {
 		prefs.TabPlacement = ""
 	}
+	if prefs.Ambience != ambienceStill && prefs.Ambience != ambienceOff {
+		prefs.Ambience = ""
+	}
+	if prefs.Mascot != mascotOff {
+		prefs.Mascot = ""
+	}
 	if !slices.Contains(animations, prefs.Animation) {
 		prefs.Animation = ""
 	}
@@ -309,6 +320,7 @@ func loadTheme() error {
 		log.Printf("gorex settings: appearance.theme %q: %s (dropped)", prefs.Theme, w)
 	}
 	applyTheme(m)
+	loadArt(prefs.Theme, m)
 	return nil
 }
 

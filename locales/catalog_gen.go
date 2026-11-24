@@ -8649,3 +8649,133 @@ func SettingsExtensionKindTheme() string { return In(i18n.Locale()).SettingsExte
 func (msgs Messages) SettingsExtensionKindTheme() string {
 	return Catalog.Format(msgs.locale, "settingsExtensionKindTheme", nil)
 }
+
+// SettingsThemeAmbience says "Ambience"
+// in the language the app shows.
+//
+// Extensions page: control under the window theme in use: how its glows and
+// pictures show (docs/DSK-010-theme-ambience.md).
+func SettingsThemeAmbience() string { return In(i18n.Locale()).SettingsThemeAmbience() }
+
+// SettingsThemeAmbience says "Ambience"
+// in the language of msgs.
+//
+// Extensions page: control under the window theme in use: how its glows and
+// pictures show (docs/DSK-010-theme-ambience.md).
+func (msgs Messages) SettingsThemeAmbience() string {
+	return Catalog.Format(msgs.locale, "settingsThemeAmbience", nil)
+}
+
+// SettingsThemeAmbienceHint says "The glows and pictures the theme draws behind the panes."
+// in the language the app shows.
+//
+// Extensions page: hint under the Ambience control.
+func SettingsThemeAmbienceHint() string { return In(i18n.Locale()).SettingsThemeAmbienceHint() }
+
+// SettingsThemeAmbienceHint says "The glows and pictures the theme draws behind the panes."
+// in the language of msgs.
+//
+// Extensions page: hint under the Ambience control.
+func (msgs Messages) SettingsThemeAmbienceHint() string {
+	return Catalog.Format(msgs.locale, "settingsThemeAmbienceHint", nil)
+}
+
+// SettingsAmbienceMoving says "Moving"
+// in the language the app shows.
+//
+// Ambience control: the theme's ambience shows and moves.
+func SettingsAmbienceMoving() string { return In(i18n.Locale()).SettingsAmbienceMoving() }
+
+// SettingsAmbienceMoving says "Moving"
+// in the language of msgs.
+//
+// Ambience control: the theme's ambience shows and moves.
+func (msgs Messages) SettingsAmbienceMoving() string {
+	return Catalog.Format(msgs.locale, "settingsAmbienceMoving", nil)
+}
+
+// SettingsAmbienceStill says "Still"
+// in the language the app shows.
+//
+// Ambience control: the theme's ambience shows and does not move.
+func SettingsAmbienceStill() string { return In(i18n.Locale()).SettingsAmbienceStill() }
+
+// SettingsAmbienceStill says "Still"
+// in the language of msgs.
+//
+// Ambience control: the theme's ambience shows and does not move.
+func (msgs Messages) SettingsAmbienceStill() string {
+	return Catalog.Format(msgs.locale, "settingsAmbienceStill", nil)
+}
+
+// SettingsAmbienceOff says "Off"
+// in the language the app shows.
+//
+// Ambience control: the theme's ambience does not show.
+func SettingsAmbienceOff() string { return In(i18n.Locale()).SettingsAmbienceOff() }
+
+// SettingsAmbienceOff says "Off"
+// in the language of msgs.
+//
+// Ambience control: the theme's ambience does not show.
+func (msgs Messages) SettingsAmbienceOff() string {
+	return Catalog.Format(msgs.locale, "settingsAmbienceOff", nil)
+}
+
+// SettingsThemeMascot says "Mascot"
+// in the language the app shows.
+//
+// Extensions page: control under the window theme in use: whether its
+// mascot shows in the sidebar.
+func SettingsThemeMascot() string { return In(i18n.Locale()).SettingsThemeMascot() }
+
+// SettingsThemeMascot says "Mascot"
+// in the language of msgs.
+//
+// Extensions page: control under the window theme in use: whether its
+// mascot shows in the sidebar.
+func (msgs Messages) SettingsThemeMascot() string {
+	return Catalog.Format(msgs.locale, "settingsThemeMascot", nil)
+}
+
+// SettingsThemeMascotHint says "The theme's character at the foot of the sidebar."
+// in the language the app shows.
+//
+// Extensions page: hint under the Mascot control.
+func SettingsThemeMascotHint() string { return In(i18n.Locale()).SettingsThemeMascotHint() }
+
+// SettingsThemeMascotHint says "The theme's character at the foot of the sidebar."
+// in the language of msgs.
+//
+// Extensions page: hint under the Mascot control.
+func (msgs Messages) SettingsThemeMascotHint() string {
+	return Catalog.Format(msgs.locale, "settingsThemeMascotHint", nil)
+}
+
+// SettingsMascotOn says "On"
+// in the language the app shows.
+//
+// Mascot control: the theme's mascot shows.
+func SettingsMascotOn() string { return In(i18n.Locale()).SettingsMascotOn() }
+
+// SettingsMascotOn says "On"
+// in the language of msgs.
+//
+// Mascot control: the theme's mascot shows.
+func (msgs Messages) SettingsMascotOn() string {
+	return Catalog.Format(msgs.locale, "settingsMascotOn", nil)
+}
+
+// SettingsMascotOff says "Off"
+// in the language the app shows.
+//
+// Mascot control: the theme's mascot does not show.
+func SettingsMascotOff() string { return In(i18n.Locale()).SettingsMascotOff() }
+
+// SettingsMascotOff says "Off"
+// in the language of msgs.
+//
+// Mascot control: the theme's mascot does not show.
+func (msgs Messages) SettingsMascotOff() string {
+	return Catalog.Format(msgs.locale, "settingsMascotOff", nil)
+}

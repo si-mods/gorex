@@ -311,6 +311,7 @@ var themeTerm [2]string
 // terminals take m's colors when the caller applies the prefs again.
 func applyTheme(m *theme.Manifest) {
 	palettes.Store(&themePalettes{themed(lightSeeds, m, 0), themed(darkSeeds, m, 1)})
+	setLook(m)
 	themeTerm = [2]string{}
 	if m != nil {
 		themeTerm = m.Terminal
@@ -419,11 +420,15 @@ func (s faceColors) on(k *colors) *colors {
 // each channel by up to half a step of 8 bits, which hides the bands a
 // smooth gradient makes. The colors arrive not premultiplied, and the
 // shader returns the color premultiplied, as opaque as Alpha: 1 but over
-// the window's glass.
+// the window's glass. A theme's glows (docs/DSK-010-theme-ambience.md) lie
+// over the tint: each an ellipse, Glow its center and radii in fractions
+// of the size, whose color GlowColor fades from its center to its edge. A
+// glow of no alpha changes no pixel.
 var background = shader.MustCompile(`package main
 
 var Top, Mid, Low, Bottom, Tint vec4
 var Alpha float
+var Glow, GlowColor [4]vec4
 
 func hash(v uint) uint {
 	s := v*747796405 + 2891336453
@@ -439,6 +444,10 @@ func Fragment(dst vec4, pos vec2) vec4 {
 	c = mix(c, Bottom.rgb, clamp((y-0.7)/0.3, 0, 1))
 	a := Tint.a * clamp((pos.x/size.x-0.35)/0.65, 0, 1)
 	c = c*(1-a) + Tint.rgb*a
+	for i := 0; i < 4; i++ {
+		g := GlowColor[i].a * clamp(1-length((pos/size-Glow[i].xy)/Glow[i].zw), 0, 1)
+		c = c*(1-g) + GlowColor[i].rgb*g
+	}
 	n := hash(uint(dst.x) + hash(uint(dst.y)))
 	c += (float(n)/4294967295.0 - 0.5) / 255.0
 	return vec4(clamp(c, 0, 1)*Alpha, Alpha)
@@ -451,26 +460,40 @@ var (
 	bgValues                                   = background.NewValues()
 	bgTopU, bgMidU, bgLowU, bgBottomU, bgTintU = background.Uniform("Top"), background.Uniform("Mid"),
 		background.Uniform("Low"), background.Uniform("Bottom"), background.Uniform("Tint")
-	bgAlphaU = background.Uniform("Alpha")
+	bgAlphaU             = background.Uniform("Alpha")
+	bgGlowU, bgGlowColor = background.Uniform("Glow"), background.Uniform("GlowColor")
 )
 
 // backgroundOptions returns what the background shader draws with: k's
-// colors, as opaque as alpha, in the values made once.
-func backgroundOptions(k *colors, alpha float32) shader.Options {
+// colors, as opaque as alpha, and the glows of the appearance, in the
+// values made once.
+func backgroundOptions(k *colors, alpha float32, glows []glow) shader.Options {
 	bgValues.Color(bgTopU, k.bgTop).Color(bgMidU, k.bgMid).Color(bgLowU, k.bgLow).
 		Color(bgBottomU, k.bgBottom).Color(bgTintU, k.bgTint).Float(bgAlphaU, alpha)
+	var geo, col [16]float32
+	for i, g := range glows[:min(len(glows), 4)] {
+		copy(geo[4*i:], []float32{g.x, g.y, g.rx, g.ry})
+		copy(col[4*i:], []float32{float32(g.color.R) / 255, float32(g.color.G) / 255, float32(g.color.B) / 255, float32(g.color.A) / 255})
+	}
+	for i := len(glows); i < 4; i++ {
+		geo[4*i+2], geo[4*i+3] = 1, 1 // no division by zero
+	}
+	bgValues.Floats(bgGlowU, geo[:]...).Floats(bgGlowColor, col[:]...)
 	return shader.Options{Values: bgValues}
 }
 
 // paintBackground paints the window's background, as opaque as alpha: 1,
-// or backgroundAlpha's wash over the window's glass. It is one shader, or
-// on the CPU renderer, where a shader over the window runs far too slowly,
-// gradients of the same colors.
-func paintBackground(p *ui.Painter, r ui.Rect, k *colors, alpha float32) {
+// or backgroundAlpha's wash over the window's glass, with the theme's
+// glows of the appearance. It is one shader, or on the CPU renderer, where
+// a shader over the window runs far too slowly, gradients of the same
+// colors.
+func paintBackground(p *ui.Painter, r ui.Rect, k *colors, alpha float32, dark bool) {
+	glows := themeGlows(dark)
 	if p.Accelerated() {
-		background.Draw(p, r, backgroundOptions(k, alpha))
+		background.Draw(p, r, backgroundOptions(k, alpha, glows))
 		return
 	}
+	defer paintGlows(p, r, glows, alpha)
 	top, mid, low, bottom, tint := k.bgTop, k.bgMid, k.bgLow, k.bgBottom, k.bgTint
 	h1, h2 := r.H*0.38, r.H*0.32
 	over := float32(1) // the bands overlap by a DIP, which an opaque one hides

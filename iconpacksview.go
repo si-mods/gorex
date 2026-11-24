@@ -365,6 +365,34 @@ func (a *App) themesGroup(c *ui.Context, k *colors, themes []theme.Summary) {
 				}
 				rowHint(c, k, hint)
 			})
+			if prefs.Theme == s.ID && look.Load() != nil {
+				a.ambienceControls(c, k)
+			}
+		}
+	})
+}
+
+// ambienceValues and mascotValues are the values of the Ambience and the
+// Mascot controls, in order.
+var (
+	ambienceValues = []string{"", ambienceStill, ambienceOff}
+	mascotValues   = []string{"", mascotOff}
+)
+
+// ambienceControls are the Ambience and the Mascot controls under the
+// theme in use, when it draws more than colors
+// (docs/DSK-010-theme-ambience.md).
+func (a *App) ambienceControls(c *ui.Context, k *colors) {
+	amb := max(slices.Index(ambienceValues, prefs.Ambience), 0)
+	settingRow(c, k, locales.SettingsThemeAmbience(), locales.SettingsThemeAmbienceHint(), func() {
+		if ui.Segmented(c, &amb, locales.SettingsAmbienceMoving(), locales.SettingsAmbienceStill(), locales.SettingsAmbienceOff()).Label(locales.SettingsThemeAmbience()).Changed() {
+			a.setWindowPref(func(s *settings) { s.Ambience = ambienceValues[amb] })
+		}
+	})
+	mascot := max(slices.Index(mascotValues, prefs.Mascot), 0)
+	settingRow(c, k, locales.SettingsThemeMascot(), locales.SettingsThemeMascotHint(), func() {
+		if ui.Segmented(c, &mascot, locales.SettingsMascotOn(), locales.SettingsMascotOff()).Label(locales.SettingsThemeMascot()).Changed() {
+			a.setWindowPref(func(s *settings) { s.Mascot = mascotValues[mascot] })
 		}
 	})
 }
