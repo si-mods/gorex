@@ -1498,7 +1498,7 @@ private struct TerminalRepresentable: UIViewRepresentable {
     /// bar: a tap gives it the keyboard, as one does in the terminal.
     func makeUIView(context: Context) -> TerminalHost {
         let host = TerminalHost(TerminalView(session: session))
-        for (sub, container) in [(context.coordinator.mic.view!, host.terminal.bar.mic),
+        for (sub, container) in [(context.coordinator.mic.view!, host.micTarget),
                                  (context.coordinator.voice.view!, host.terminal.bar.voice)] {
             sub.frame = container.bounds
             sub.autoresizingMask = [.flexibleWidth, .flexibleHeight]
@@ -1523,7 +1523,7 @@ private struct TerminalRepresentable: UIViewRepresentable {
         // the keys at once.
         let arrived = current && !v.current
         v.current = current
-        if !current, v.terminal.isFirstResponder { _ = v.terminal.resignFirstResponder() }
+        if !current, v.terminal.keyboardUp { _ = v.terminal.resignFirstResponder() }
         if arrived, GCKeyboard.coalesced != nil { _ = v.terminal.becomeFirstResponder() }
         v.onPaneDrag = onPaneDrag
         v.canSwipe = canSwipe

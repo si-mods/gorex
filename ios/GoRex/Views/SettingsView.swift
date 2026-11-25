@@ -310,6 +310,7 @@ private struct TerminalSettings: View {
     /// Polish's service; empty is the default.
     @AppStorage(Polish.baseKey) private var base = ""
     @AppStorage(Polish.modelKey) private var model = ""
+    @AppStorage(ComposerBar.modeKey) private var composerMode = false
     /// Polish's key, as the Keychain keeps it; empty, polish is off.
     @State private var key = ""
     /// The key as last read or saved, and whether the field was typed in
@@ -386,6 +387,12 @@ private struct TerminalSettings: View {
                 Text("Dictation")
             } footer: {
                 Text("The mic types what you say into the terminal, without pressing Return; the model you choose recognises it on this device. Fun-ASR-Nano and Qwen3-ASR are larger and slower: on a Mac they take 2 to 2.6 GB of memory, and phones with less may not run them. Swipe a model to delete it. With an API key, the text you dictate and words from the terminal screen go to the service you set here, which corrects misheard terms and punctuation. Without a key, nothing you dictate leaves the device. The key and these settings sync through iCloud to your other devices.")
+            }
+            Section {
+                Toggle("Composer Mode", isOn: $composerMode)
+                    .listRowBackground(Color.card)
+            } footer: {
+                Text("Pins the compose bar above the key bar and moves the mic into it, so typing and dictation land in the message field for you to read before Send. It takes effect on a terminal opened after the change.")
             }
             Section {
                 Picker("Minimum Contrast", selection: contrastChoice) {

@@ -79,6 +79,25 @@ final class ComposerUITests: XCTestCase {
         XCTAssertTrue(message.waitForExistence(timeout: 10))
     }
 
+    /// Composer Mode (Settings > Terminal, here the defaults argument)
+    /// pins the bar: it is up on its own, holds the mic, and its toggles
+    /// cannot close it.
+    func testComposerModePinsBar() throws {
+        app.terminate()
+        app.launchArguments = ["-composerMode", "YES"]
+        app.launch()
+        try terminal()
+        XCTAssertTrue(message.waitForExistence(timeout: 10))
+        // The key bar's mic moved into the bar, beside the field (the
+        // mic's view exposes more than one element; take its own row's).
+        let dictates = app.buttons.matching(identifier: "Dictate").allElementsBoundByIndex
+        XCTAssertTrue(dictates.contains { abs($0.frame.midY - message.frame.midY) < 40 })
+        // Its toggles focus it again rather than closing it.
+        app.buttons["Compose"].tap()
+        XCTAssertTrue(message.exists)
+        shot("composer-mode")
+    }
+
     /// A flick up on the key bar opens the composer, as the Compose key does.
     func testSwipeUpOpensComposer() throws {
         // From the bar's middle, nowhere near the stick's drag.

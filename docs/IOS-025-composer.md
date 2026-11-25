@@ -22,6 +22,7 @@ An agent such as Claude Code or Codex takes a message and the images it talks ab
 - The bar takes a message of many lines, and attaches photos, camera shots and files.
 - Send uploads the attachments, lets the server type their paths, then pastes the text and presses Return: one submission, paths first.
 - A host that takes no uploads (`canUpload` off) still composes text, without attachments.
+- A Composer Mode setting pins the bar and moves the mic into it, so typing and dictation land in the message field before Send.
 
 ## Non-goals
 
@@ -35,13 +36,21 @@ An agent such as Claude Code or Codex takes a message and the images it talks ab
 
 - The compose bar opens four ways: a swipe up on the key bar, the Compose key beside ⌘ in the bar's left capsule (the `square.and.pencil` symbol), the ⌘ menu's Compose, and ⇧⌘I on a hardware keyboard, which is how an iPad reaches it.
 - It is a glass capsule over the key bar, as Rex's is: a grabber on top, an input row of an attach button, a message field, and a Send arrow. The terminal and the keyboard stay in view; the field takes focus.
-- The field grows with its lines up to a cap, then scrolls. Its placeholder names the block the message goes to — "Message Claude Code" — as Rex's does, so a pane is never guessed.
+- The field grows with its lines up to a cap, then scrolls. Its placeholder names the block the message goes to — "Message to Claude Code" — as Rex's does, so a pane is never guessed.
 - The attach button, a plus, opens a menu of Photo, Camera and File, hidden where the host takes no uploads. Photo opens the photo picker of Add Photo, Camera the camera where one is available, File the document picker.
 - Each attachment is a thumbnail in a strip over the input row: the image itself, or a document mark. A tap on its mark removes it.
 - Send stays off while the text is empty and no attachment is staged. While the files go up, Send spins, the attach menu holds still, and the bar does not close.
 - The attachments go up as one batch. When every file has arrived, the server types their paths into the terminal, as it does for Add Photo. Then the app pastes the text and sends Return, through the same input path a paste and the Enter key take.
 - A failure keeps the bar open and says why, so the user can try again. A send that goes through closes the bar.
 - The bar closes on a drag down of its grabber, or a second Compose of a key, the menu or ⇧⌘I; a swipe up on the key bar only opens. Closing removes the staging folder and gives the keyboard back to the terminal, if it had it.
+
+### Composer Mode
+
+- Settings > Terminal's Composer Mode (`composerMode` in user defaults) pins the bar: it is up from the terminal's start, its grabber and the toggle ways cannot close it, and a send empties its field and strip for the next message instead of closing it.
+- The mode moves the mic: the key bar's right capsule is the stick and the keyboard alone, and the bar's input row holds the screen's own mic between the field and Send (`micHolder`, populated as the key bar's `mic` is).
+- Typing lands in the field: the terminal's `becomeFirstResponder` gives the field the keyboard, and its `resignFirstResponder` lets whichever holds it go, so the keyboard key and a pane switch still work.
+- A finished dictation lands in the field, spaced from what is there, through the terminal's `dictationInsert` — which the pinned bar sets — instead of being typed into the terminal. What is said still shows in the key bar's voice capsule while the mic is on.
+- The mode is read as a view is made: a change takes effect on a terminal opened after it.
 
 ### Model
 
@@ -52,11 +61,12 @@ An agent such as Claude Code or Codex takes a message and the images it talks ab
 ### Code
 
 - `ios/GoRex/Terminal/Composer.swift`: `ComposerBar` and `TerminalView.compose`, which toggles it, and `openComposer`, the swipe-up's open. The camera's and the document picker's delegate objects live here too.
-- `ios/GoRex/Terminal/TerminalView.swift`: the `KeyBar` gets the Compose key beside ⌘ and Compose in the ⌘ menu, and a swipe-up gesture; `TerminalHost` holds the bar over the key bar.
+- `ios/GoRex/Terminal/TerminalView.swift`: the `KeyBar` gets the Compose key beside ⌘ and Compose in the ⌘ menu, and a swipe-up gesture; `TerminalHost` holds the bar over the key bar and, in Composer Mode, opens it pinned and hands the screen's mic its `micHolder` (`micTarget`). `dictationInsert` routes a finished dictation to the field, and the keyboard overrides give it the terminal's focus.
 - `ios/GoRex/Terminal/TerminalView+Upload.swift`: `stage` and `photo` lose `private`, so the composer stages attachments the same way; `PhotoPicker` loses `private` for the same reason.
 - `ios/GoRex/Rex/Upload.swift` and `ios/GoRex/Rex/Host.swift`: `upload` takes an optional `batch` of id, index and count, passed to `upload_begin`. A send with one file passes no batch.
 - `ios/GoRex/Terminal/TerminalView+Commands.swift`: a Compose command on ⇧⌘I.
 - `ios/GoRex/Views/FeaturesView.swift`: the key bar's description names the composer.
+- `ios/GoRex/Views/SettingsView.swift`: Terminal's Composer Mode toggle.
 - `ios/project.yml` and `ios/GoRex/InfoPlist.xcstrings`: the camera's purpose text also names photos for a terminal.
 
 The send, in order: stage is done at attach time, so `sendNow` only uploads each attachment's file with its batch fields, in order, then calls `insert` with the text and `send("enter")`. The stream of the batch's last file closes after the paths are typed (Rex API revision 11), so awaiting it orders paths before text.

@@ -5274,6 +5274,40 @@
         }
       }
     },
+    "Composer Mode": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Composer Mode"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Composer 模式"
+          }
+        }
+      }
+    },
+    "Pins the compose bar above the key bar and moves the mic into it, so typing and dictation land in the message field for you to read before Send. It takes effect on a terminal opened after the change.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pins the compose bar above the key bar and moves the mic into it, so typing and dictation land in the message field for you to read before Send. It takes effect on a terminal opened after the change."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "把 compose 栏固定在键栏上方，并把麦克风移入其中：输入与听写都先进入消息字段，供你在 Send 前查看。该改动对之后打开的终端生效。"
+          }
+        }
+      }
+    },
     "Compose": {
       "localizations": {
         "zh-Hans": {
@@ -5354,7 +5388,7 @@
         }
       }
     },
-    "Message %@": {
+    "Message to %@": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {

@@ -96,7 +96,7 @@ final class TerminalView: UIView, TerminalOutput {
     var onPage = true {
         didSet {
             guard onPage != oldValue else { return }
-            if !onPage, isFirstResponder { resignFirstResponder() }
+            if !onPage, keyboardUp { resignFirstResponder() }
             if UIApplication.shared.applicationState != .background { show() }
         }
     }
@@ -195,6 +195,9 @@ final class TerminalView: UIView, TerminalOutput {
     /// The dictation being finished (recognising its last phrase or polishing),
     /// so stopDictating can cancel it too.
     private var finishing: (task: Task<Void, Never>, listening: Listening, said: (Dictation.Said?) -> Void)?
+    /// Where a finished dictation lands instead of the terminal: Composer
+    /// Mode's pinned bar fills its field with it (Composer.swift).
+    var dictationInsert: ((String) -> Void)?
 
     init(session: TerminalSession) {
         self.session = session
@@ -609,6 +612,30 @@ final class TerminalView: UIView, TerminalOutput {
 
     override var canBecomeFirstResponder: Bool { true }
 
+    /// Composer Mode's bar is pinned (Settings > Terminal): the keyboard
+    /// types into its message field, so the terminal's own focus goes
+    /// there, and its hide resigns whichever holds it.
+    static var composerMode: Bool { UserDefaults.standard.bool(forKey: ComposerBar.modeKey) }
+
+    /// The pinned bar's field, while the mode has it up.
+    private var composerField: UITextView? { (superview as? TerminalHost)?.composerField }
+
+    /// Whether the keyboard is up, the terminal's or the field's: the key
+    /// bar's keyboard key and the pane-switch resign read it.
+    var keyboardUp: Bool { isFirstResponder || composerField?.isFirstResponder == true }
+
+    @discardableResult
+    override func becomeFirstResponder() -> Bool {
+        if Self.composerMode, let f = composerField { return f.becomeFirstResponder() }
+        return super.becomeFirstResponder()
+    }
+
+    @discardableResult
+    override func resignFirstResponder() -> Bool {
+        if let f = composerField, f.isFirstResponder { return f.resignFirstResponder() }
+        return super.resignFirstResponder()
+    }
+
     /// Whether the terminal shows the bar: it is for the soft keyboard,
     /// which a hardware one keeps away, and for a phone's: an iPad's keys
     /// are in its bar of shortcuts.
@@ -773,7 +800,9 @@ final class TerminalView: UIView, TerminalOutput {
                     text = await polish.run(text, vocabulary: Polish.words(in: screen, program: session.host.blocks[session.block]?.program))
                 }
                 try Task.checkCancellation()
-                if !text.isEmpty { insert(text) }
+                if !text.isEmpty {
+                    if let put = dictationInsert { put(text) } else { insert(text) }
+                }
             } catch is CancellationError {
             } catch {
                 alert(String(localized: "Can't Recognise Speech"), error.localizedDescription)
@@ -1128,21 +1157,31 @@ final class TerminalHost: UIView, UIGestureRecognizerDelegate {
         terminal.onScrollState = { [weak self] up, unread in
             self?.updateScrollDown(visible: up, unread: unread)
         }
+        // Composer Mode keeps the bar up from the start.
+        if TerminalView.composerMode { openComposer() }
     }
 
     /// The compose bar while it is up (Composer.swift).
     private var composer: ComposerBar?
 
+    /// Where the screen's mic lands: the pinned bar in Composer Mode,
+    /// the key bar's own spot without it.
+    var micTarget: UIView { composer?.micHolder ?? terminal.bar.mic }
+    /// The pinned bar's field, for the terminal's keyboard redirect.
+    var composerField: UITextView? { composer?.field }
+
     /// A key, the menu or ⇧⌘I toggles the compose bar; a swipe up on the
-    /// key bar only opens it.
+    /// key bar only opens it. The pinned bar does not close: it focuses.
     func toggleComposer() {
-        if let composer { composer.requestClose() } else { openComposer() }
+        if let composer {
+            if composer.pinned { composer.focus() } else { composer.requestClose() }
+        } else { openComposer() }
     }
 
     /// The compose bar over the key bar; where it is up, it focuses again.
     func openComposer() {
         if let composer { composer.focus(); return }
-        let c = ComposerBar(terminal: terminal, typing: terminal.isFirstResponder)
+        let c = ComposerBar(terminal: terminal, typing: terminal.isFirstResponder, pinned: TerminalView.composerMode)
         c.translatesAutoresizingMaskIntoConstraints = false
         addSubview(c)
         let bottom = terminal.bar.superview === self ? terminal.bar.topAnchor : keyboardLayoutGuide.topAnchor
@@ -1425,10 +1464,10 @@ final class KeyBar: UIView {
         stick.addGestureRecognizer(drag)
         keyboard.addAction(UIAction { [weak target] _ in
             guard let target else { return }
-            _ = target.isFirstResponder ? target.resignFirstResponder() : target.becomeFirstResponder()
+            _ = target.keyboardUp ? target.resignFirstResponder() : target.becomeFirstResponder()
         }, for: .touchUpInside)
         keyboard.configurationUpdateHandler = { [weak target] b in
-            let hidden = target?.isFirstResponder != true
+            let hidden = target?.keyboardUp != true
             b.configuration = Self.config(hidden ? "keyboard" : "keyboard.chevron.compact.down", text: false, size: 17, held: false)
             b.accessibilityLabel = hidden ? String(localized: "Show Keyboard") : String(localized: "Hide Keyboard")
         }
@@ -1443,7 +1482,10 @@ final class KeyBar: UIView {
         let middle = Self.capsule(scroll)
         // The middle capsule takes the room the others leave.
         middle.setContentHuggingPriority(.defaultLow, for: .horizontal)
-        let right = UIStackView(arrangedSubviews: [stick, mic, keyboard])
+        // The mic sits out in Composer Mode, which moves it into the
+        // pinned compose bar (Composer.swift).
+        let rightKeys: [UIView] = TerminalView.composerMode ? [stick, keyboard] : [stick, mic, keyboard]
+        let right = UIStackView(arrangedSubviews: rightKeys)
         right.distribution = .fillEqually
         let leftKeys = UIStackView(arrangedSubviews: [more, compose])
         leftKeys.distribution = .fillEqually
@@ -1451,7 +1493,7 @@ final class KeyBar: UIView {
         // As in the bar this one copies: ⌘ and Compose 52 each, and 50
         // for each key of the last.
         left.widthAnchor.constraint(equalToConstant: 104).isActive = true
-        last.widthAnchor.constraint(equalToConstant: 150).isActive = true
+        last.widthAnchor.constraint(equalToConstant: CGFloat(rightKeys.count) * 50).isActive = true
         let keysRow = UIStackView(arrangedSubviews: [middle, last])
         keysRow.spacing = 8
         let voiceCapsule = Self.capsule(voice)
