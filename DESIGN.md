@@ -378,8 +378,8 @@ slide. The timings below are for what a spring does not move.
   once it is in front, and on Windows its drawn Minimize and Close
   buttons act on the second click (Maximize, a system control, on the
   first).
-- **Do** mark the current one in a menu of colors or icons
-  (`colorChoices`), with `Radio`, not `Checked`: `Checked` is a
+- **Do** show each color's dot in a menu of colors (`colorDot`), and
+  mark the current one (`colorChoices`), with `Radio`, not `Checked`: `Checked` is a
   checkbox to a screen reader. **Don't** let a click on a swatch step to
   the next color unseen: it opens the menu.
 - **Do** take the nearest token. **Don't** add a size, radius or shadow
