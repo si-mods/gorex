@@ -402,6 +402,7 @@ func TestCycleFloatVisitsVisible(t *testing.T) {
 // before it did not come, and promotes the topmost float of a tab whose
 // tiled pane is missing.
 func TestRestoreFocusesSavedFloat(t *testing.T) {
+	browserPack(t)
 	a, _ := newTestApp(t)
 	root := a.tab().Focus
 	for _, p := range a.tab().allPanes() {
@@ -444,11 +445,11 @@ func TestRestoreFocusesSavedFloat(t *testing.T) {
 		t.Errorf("the focus went to %v, want the float saved third", x.Focus)
 	}
 	y := b.tabs[1]
-	if y.Root == nil || y.Root.Pane == nil || browserOf(y.Root.Pane) == nil ||
-		browserOf(y.Root.Pane).url != "https://d.example/" {
+	if y.Root == nil || y.Root.Pane == nil || extPaneOf(y.Root.Pane) == nil ||
+		extPaneOf(y.Root.Pane).keep.URL != "https://d.example/" {
 		t.Errorf("the tree did not take the topmost float: %+v", y.Root)
 	}
-	if len(y.Floats) != 1 || browserOf(y.Floats[0].Pane).url != "https://c.example/" {
+	if len(y.Floats) != 1 || extPaneOf(y.Floats[0].Pane).keep.URL != "https://c.example/" {
 		t.Errorf("floats after the promotion: %+v", y.Floats)
 	}
 }

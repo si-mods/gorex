@@ -356,13 +356,10 @@ func (a *App) canvasMenu(m *ui.Menu, t *Tab) {
 	if t.host() != nil {
 		return
 	}
-	if m.Item(locales.CanvasNewBrowser()).Chosen() {
-		a.canvasNew(t, "browser", x, y)
-	}
 	// Each enabled pack's pane kind is an item of its own, named by the
 	// pack, whose names are not localized.
 	for _, pk := range allPaneKinds() {
-		if pk.kind == "browser" || pk.program.Name == "" {
+		if pk.program.Name == "" {
 			continue
 		}
 		if m.Item("New " + pk.program.Name).Chosen() {

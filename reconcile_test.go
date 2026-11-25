@@ -449,8 +449,9 @@ func TestFollowTabToSpace(t *testing.T) {
 // the pane's own navigation, and keeps the pane of a layout whose writer
 // drops browser IDs.
 func TestFollowBrowser(t *testing.T) {
+	browserPack(t)
 	a, _ := newTestApp(t)
-	a.splitBrowser(false)
+	a.splitLocal(false, func() *Pane { return a.newExtPane("browser") })
 	web := a.tab().Focus
 	other := followApp(t, a)
 	browser := func(s savedStore) *savedNode { return s.Sessions[0].Tabs[0].Root.B }
@@ -459,17 +460,17 @@ func TestFollowBrowser(t *testing.T) {
 	browser(s).URL = "https://theirs.test/"
 	setOther(t, other, s)
 	takeOther(t, a, other)
-	if p := a.tab().panes()[1]; p != web || browserOf(web).url != "https://theirs.test/" {
-		t.Errorf("pane %v at %q", p, browserOf(web).url)
+	if p := a.tab().panes()[1]; p != web || extPaneOf(web).keep.URL != "https://theirs.test/" {
+		t.Errorf("pane %v at %q", p, extPaneOf(web).keep.URL)
 	}
 	// The page went on by itself, unsaved; another change leaves it.
-	browserOf(web).url = "https://mine.test/"
+	extPaneOf(web).keep.URL = "https://mine.test/"
 	s = savedWorkspaces(t, other)
 	s.Sessions[0].Tabs[0].Name = "renamed"
 	setOther(t, other, s)
 	takeOther(t, a, other)
-	if browserOf(web).url != "https://mine.test/" {
-		t.Errorf("own navigation lost: %q", browserOf(web).url)
+	if extPaneOf(web).keep.URL != "https://mine.test/" {
+		t.Errorf("own navigation lost: %q", extPaneOf(web).keep.URL)
 	}
 	// A writer that drops the ID: the pane is named by its place, once,
 	// and stays at the next such write.

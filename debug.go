@@ -385,10 +385,10 @@ func (a *App) debug(dir, line string) {
 				a.newTabOn(on, a.dirOn(on))
 			}
 		})
-	case "url": // loads the URL in the focused browser pane
+	case "url": // loads the URL in the focused pane's web slot
 		win.Update(func() {
-			if t := a.tab(); t != nil && t.Focus != nil && t.Focus.ext != nil {
-				a.navigateBrowser(t.Focus, arg)
+			if t := a.tab(); t != nil && t.Focus != nil {
+				a.navigateExtSlot(t.Focus, arg)
 			}
 		})
 	case "host": // opens or closes the host chip's panel
@@ -523,7 +523,7 @@ func (a *App) debug(dir, line string) {
 			}
 		})
 		if v == nil {
-			log.Printf("webshot: no browser pane")
+			log.Printf("webshot: no web pane")
 			return
 		}
 		png, err := v.CapturePage()
@@ -537,11 +537,13 @@ func (a *App) debug(dir, line string) {
 			name = arg
 		}
 		os.WriteFile(filepath.Join(dir, name), png, 0o644)
-	case "weval": // arg "name.js": run the file's code in the focused extension pane's page, the result in name.json
+	case "weval": // arg "name.js": run the file's code in the focused extension pane's pack page, the result in name.json
 		var v *mygo.WebView
 		debugMain(func() {
-			if t := a.tab(); t != nil && t.Focus != nil && t.Focus.ext != nil {
-				v = t.Focus.ext.webView()
+			if t := a.tab(); t != nil && t.Focus != nil {
+				if e, ok := t.Focus.ext.(*extPane); ok {
+					v = e.web
+				}
 			}
 		})
 		if v == nil {

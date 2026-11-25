@@ -72,18 +72,9 @@ type paneKindDef struct {
 
 // paneKinds are the app's built-in pane kinds; allPaneKinds adds the
 // packs' to them.
-var paneKinds = []paneKindDef{
-	{
-		kind: "browser",
-		// A node of a kind that is not this one's is another pane kind's,
-		// whatever its fields: a pack's kind may carry a url too.
-		match:   func(s *savedNode) bool { return s.Kind == "browser" || (s.Kind == "" && s.URL != "") },
-		spawn:   func(a *App) *Pane { return a.newBrowserPane(browserStart) },
-		load:    (*App).loadBrowserPane,
-		key:     func(s *savedNode) string { return cmpKey("web:", s.ID) },
-		program: browserProgram,
-	},
-}
+// paneKinds are the app's built-in pane kinds, none today: every pane
+// kind is a pack's.
+var paneKinds []paneKindDef
 
 // cmpKey is pre+id, "" when id is empty.
 func cmpKey(pre, id string) string {
@@ -96,6 +87,13 @@ func cmpKey(pre, id string) string {
 // paneKindOf is the def of a node's kind, nil for a kind the build does
 // not have. allPaneKinds adds the enabled packs' kinds to the built-ins.
 func paneKindOf(s *savedNode) *paneKindDef {
+	// A layout an old build wrote has a browser node of no kind: it is
+	// the browser pack's kind.
+	if s.Kind == "" && s.URL != "" {
+		ns := *s
+		ns.Kind = "browser"
+		s = &ns
+	}
 	defs := allPaneKinds()
 	for i := range defs {
 		if defs[i].match(s) {

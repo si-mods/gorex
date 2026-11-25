@@ -438,3 +438,8 @@ Each item has a **Trigger** (what the diff shows), a **Check** (what the author 
 - **Trigger:** a PR adds a state or surface that shows on the desktop but not on iOS, or the reverse.
 - **Check:** where the data is the same, the two platforms show the same thing; a divergence needs the design doc to name it as decided, or it drifts.
 - **Source:** the sidebar's empty-projects card (#991) existed only on the desktop; #1018 drops it so an empty host shows just its header, as iOS does.
+
+### Same-name asset upload race
+- **Trigger:** two release jobs upload a same-named asset (`SHA256SUMS`) and one loses with HTTP 422.
+- **Check:** uploads that dedupe by name still race when both jobs write at once; the mygo `-upload` flag needs `--clobber`, or one job must own the shared file.
+- **Source:** the v0.63.0 release's `unix` job failed on `SHA256SUMS` already existing after `windows` won the race; a `--failed` rerun recovered it because the upload skips assets by name.
