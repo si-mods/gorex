@@ -25,9 +25,9 @@ private struct SSHHostKeyAlert: ViewModifier {
             Button("Don't Trust", role: .cancel) { engine.answerSSHHostKey(q, trust: false) }
         } message: { q in
             if q.changed {
-                Text("\(q.user)@\(q.host):\(q.port) answered with a different key than the one trusted before.\n\nTrusted: \(q.previous)\nNew: \(q.fingerprint)")
+                Text("\(q.user)@\(q.host):\(String(q.port)) answered with a different key than the one trusted before.\n\nTrusted: \(q.previous)\nNew: \(q.fingerprint)")
             } else {
-                Text("The key of \(q.user)@\(q.host):\(q.port) is\n\n\(q.fingerprint)")
+                Text("The key of \(q.user)@\(q.host):\(String(q.port)) is\n\n\(q.fingerprint)")
             }
         }
     }
