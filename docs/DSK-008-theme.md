@@ -3,7 +3,7 @@ name: DSK-008
 description: "A theme framework for the desktop chrome: color seeds derive semantic roles, and every face resolves with its text colors as one value. Use when you change the palette, add a surface role, ship theme packs, or pair a theme with terminal colors."
 metadata:
   created: "2026-11-23"
-  updated: "2026-11-24"
+  updated: "2026-11-25"
 ---
 
 # DSK-008: Desktop theme framework
@@ -41,6 +41,7 @@ The work keeps the current look. It makes the values consistent. It does not cha
 
 - A manifest does not define terminal colors. Terminal colors stay in the Ghostty themes, the Ghostty configuration and the terminal theme setting. [DSK-009](DSK-009-terminal-settings.md) moves that setting from `theme` to `terminal.theme`. A manifest can only name a Ghostty theme for each appearance (see Terminal). The terminal is a second lightness domain. The framework adapts the chrome to the terminal.
 - The glass is a user setting (`noGlass`). [DSK-012](DSK-012-theme-shaders.md) replaces the rest of this item: a theme can turn the glass on or off over the setting.
+- GoRex ships no look of its own for a theme. The theme framework gives capabilities: seeds, roles, assets, and a theme's own shaders ([DSK-012](DSK-012-theme-shaders.md)). A built-in shape, shading, motion or behavior that a theme only tunes with a few numbers is hard-coding, and GoRex does not build it. A web theme gets such a look from CSS and JavaScript that it changes freely; a fixed set of knobs is not that. The user set this rule on 2026-11-25 ([DSK-010](DSK-010-theme-ambience.md), User decisions 6 and 8).
 - iOS and the web client keep their palettes. The first scope is the desktop chrome.
 - No user edits `settings.json` by hand for an upgrade. GoRex migrates the renamed color tokens at load (see Migration).
 - Motion tokens (easing curves and durations) are not in the manifest. The `animation` setting can already stop all motion. Phase 3 can add motion tokens.
