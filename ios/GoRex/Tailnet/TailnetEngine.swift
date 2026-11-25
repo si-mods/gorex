@@ -424,8 +424,9 @@ final class TailnetEngine {
     /// used a password; the engine tells it once per password login
     /// (docs/IOS-023-ssh-hosts.md).
     func offerSSHInstallKey(_ c: HostConfig) {
+        let id = HostConfig.tailcatID(c.id)
         Task.detached { [weak self] in
-            guard TailnetSSHTakePasswordOffer(HostConfig.tailcatID(c.id)) else { return }
+            guard TailnetSSHTakePasswordOffer(id) else { return }
             await MainActor.run {
                 self?.sshInstallError = nil
                 self?.sshInstallOffer = c
@@ -436,10 +437,11 @@ final class TailnetEngine {
     /// Installs the phone's key on the offered host; the card stays up
     /// on a failure, carrying its error.
     func installSSHKey(_ c: HostConfig) async {
+        let id = HostConfig.tailcatID(c.id)
         do {
             try await Task.detached {
                 var error: NSError?
-                guard TailnetSSHInstallKey(HostConfig.tailcatID(c.id), &error) else {
+                guard TailnetSSHInstallKey(id, &error) else {
                     throw error ?? RexError(code: "ssh", message: "install")
                 }
             }.value
