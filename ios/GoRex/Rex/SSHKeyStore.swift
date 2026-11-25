@@ -122,9 +122,9 @@ final class SSHKeyStore {
 
     private let defaults: UserDefaults
     private let keychain: SSHKeychain
-    private let parseKey: (String, String) throws -> ParsedKey
-    private let generatePEM: () -> String
-    private let pushEngine: (String) -> Void
+    private let parseKey: @MainActor (String, String) throws -> ParsedKey
+    private let generatePEM: @MainActor () -> String
+    private let pushEngine: @MainActor (String) -> Void
     private var hasInitialized = false
 
     struct ParsedKey: Decodable {
@@ -137,9 +137,9 @@ final class SSHKeyStore {
     init(
         defaults: UserDefaults = .standard,
         keychain: SSHKeychain = KeychainSSHKeys(),
-        parseKey: @escaping (String, String) throws -> ParsedKey = SSHKeyStore.engineParseKey,
-        generatePEM: @escaping () -> String = { TailnetNewSSHKey() },
-        pushEngine: @escaping (String) -> Void = { json in
+        parseKey: @escaping @MainActor (String, String) throws -> ParsedKey = SSHKeyStore.engineParseKey,
+        generatePEM: @escaping @MainActor () -> String = { TailnetNewSSHKey() },
+        pushEngine: @escaping @MainActor (String) -> Void = { json in
             var error: NSError?
             _ = TailnetSetSSHKeys(json, &error)
         }
