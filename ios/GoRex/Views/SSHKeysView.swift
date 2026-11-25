@@ -20,7 +20,52 @@ struct SSHKeysView: View {
         }
     }
 
+    private var deleteAlertPresented: Binding<Bool> {
+        Binding(get: { keyToDelete != nil }, set: { if !$0 { keyToDelete = nil } })
+    }
+
+    private var errorAlertPresented: Binding<Bool> {
+        Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })
+    }
+
     var body: some View {
+        keysList
+            .scrollContentBackground(.hidden)
+            .background(Color.page)
+            .navigationTitle("SSH Keys")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .primaryAction) { addMenu }
+            }
+            .sheet(item: $sheet) { s in
+                switch s {
+                case .generate:
+                    SSHKeyGenerateSheet()
+                case .importKey:
+                    SSHKeyImportSheet()
+                }
+            }
+            .alert("Delete SSH Key?", isPresented: deleteAlertPresented, presenting: keyToDelete) { key in
+                Button("Cancel", role: .cancel) { keyToDelete = nil }
+                Button("Delete", role: .destructive) {
+                    do {
+                        try store.delete(id: key.id)
+                    } catch {
+                        errorMessage = error.localizedDescription
+                    }
+                    keyToDelete = nil
+                }
+            } message: { key in
+                Text("Remove \"\(key.name)\" from this device's Keychain? This cannot be undone.")
+            }
+            .alert("Error", isPresented: errorAlertPresented) {
+                Button("OK", role: .cancel) { errorMessage = nil }
+            } message: {
+                if let errorMessage { Text(errorMessage) }
+            }
+    }
+
+    private var keysList: some View {
         List {
             if store.keys.isEmpty {
                 Section {
@@ -30,7 +75,7 @@ struct SSHKeysView: View {
                     Text("Generate an Ed25519 key or import an existing private key to connect to SSH hosts without a password.")
                 }
             } else {
-                Section("Keys") {
+                Section {
                     ForEach(store.keys) { key in
                         NavigationLink {
                             SSHKeyDetailView(keyID: key.id)
@@ -44,66 +89,31 @@ struct SSHKeysView: View {
                             keyToDelete = store.keys[first]
                         }
                     }
+                } header: {
+                    Text("Keys")
                 } footer: {
                     Text("Private keys stay in this device's Keychain and are never synced to iCloud. Default keys are offered in order when an SSH host is set to Automatic.")
                 }
             }
         }
-        .scrollContentBackground(.hidden)
-        .background(Color.page)
-        .navigationTitle("SSH Keys")
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                Menu {
-                    Button {
-                        sheet = .generate
-                    } label: {
-                        Label("Generate New Key", systemImage: "wand.and.stars")
-                    }
-                    Button {
-                        sheet = .importKey
-                    } label: {
-                        Label("Import Key", systemImage: "square.and.arrow.down")
-                    }
-                } label: {
-                    Image(systemName: "plus")
-                }
-                .accessibilityIdentifier("addSSHKey")
+    }
+
+    private var addMenu: some View {
+        Menu {
+            Button {
+                sheet = .generate
+            } label: {
+                Label("Generate New Key", systemImage: "wand.and.stars")
             }
-        }
-        .sheet(item: $sheet) { s in
-            switch s {
-            case .generate:
-                SSHKeyGenerateSheet()
-            case .importKey:
-                SSHKeyImportSheet()
+            Button {
+                sheet = .importKey
+            } label: {
+                Label("Import Key", systemImage: "square.and.arrow.down")
             }
+        } label: {
+            Image(systemName: "plus")
         }
-        .alert("Delete SSH Key?", isPresented: Binding(
-            get: { keyToDelete != nil },
-            set: { if !$0 { keyToDelete = nil } }
-        ), presenting: keyToDelete) { key in
-            Button("Cancel", role: .cancel) { keyToDelete = nil }
-            Button("Delete", role: .destructive) {
-                do {
-                    try store.delete(id: key.id)
-                } catch {
-                    errorMessage = error.localizedDescription
-                }
-                keyToDelete = nil
-            }
-        } message: { key in
-            Text("Remove \"\(key.name)\" from this device's Keychain? This cannot be undone.")
-        }
-        .alert("Error", isPresented: Binding(
-            get: { errorMessage != nil },
-            set: { if !$0 { errorMessage = nil } }
-        )) {
-            Button("OK", role: .cancel) { errorMessage = nil }
-        } message: {
-            if let errorMessage { Text(errorMessage) }
-        }
+        .accessibilityIdentifier("addSSHKey")
     }
 }
 
