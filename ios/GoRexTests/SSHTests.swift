@@ -246,7 +246,7 @@ nonisolated final class SSHAddressTests: XCTestCase {
         let kc = MemorySSHKeychain()
         kc.legacy = "LEGACY-PEM"
         var pushedJSONs: [String] = []
-        let fakeParse: (String, String) throws -> SSHKeyStore.ParsedKey = { pem, _ in
+        let fakeParse: @MainActor (String, String) throws -> SSHKeyStore.ParsedKey = { pem, _ in
             SSHKeyStore.ParsedKey(
                 pem: pem,
                 publicKey: "ssh-ed25519 AAAA-\(pem)",
