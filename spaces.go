@@ -5,7 +5,9 @@ import (
 	"log"
 	"slices"
 	"strings"
+	"sync"
 
+	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 
 	"gorex/internal/layout"
@@ -636,20 +638,13 @@ func (a *App) spaceDialog(c *ui.Context, k *colors) {
 func (a *App) spaceEditRow(c *ui.Context, k *colors, i int, name string) {
 	s := &a.spaces
 	ui.Row(c.Key("edit-" + name)).Gap(6).AlignItems(ui.Center).Children(func() {
-		mark := ui.Box(c).Size(22, 22).Center().Radius(k.capsule(22)).Cursor(ui.CursorPointer).Role(ui.RoleButton).Label(locales.SpaceColor()).Tooltip(locales.SpaceColor())
-		mark.Children(func() { spaceSwatchMark(c, k, spaceColor(name), 12) })
-		mark.ContextMenu(func(m *ui.Menu) { spaceColorMenu(m, name) })
-		if mark.Clicked() {
-			// A click goes on to the next preset, as a right click lists
-			// them all.
-			next := layout.Palette[0].ID
-			for j, p := range layout.Palette {
-				if p.ID == spaceColor(name) && j+1 < len(layout.Palette) {
-					next = layout.Palette[j+1].ID
-				}
-			}
-			setSpaceColorOf(name, next)
-		}
+		// A click opens the colors below the dot, as a right click does. The
+		// two menus are on two elements: one element cannot have both.
+		ui.Box(c.Key("color")).Size(22, 22).Shrink(0).ContextMenu(func(m *ui.Menu) { spaceColorMenu(m, name) }).Children(func() {
+			mark := ui.Box(c).Size(22, 22).Center().Radius(k.capsule(22)).Cursor(ui.CursorPointer).Role(ui.RoleButton).Label(locales.SpaceColor()).Tooltip(locales.SpaceColor())
+			mark.Children(func() { spaceSwatchMark(c, k, spaceColor(name), 12) })
+			mark.Menu(func(m *ui.Menu) { spaceColorMenu(m, name) })
+		})
 		if name == "" {
 			ui.Text(c, spaceLabel(name)).FontSize(fontBody).TextColor(k.text).Grow(1).Padding(0, 6)
 		} else {
@@ -691,14 +686,76 @@ func (a *App) spaceEditRow(c *ui.Context, k *colors, i int, name string) {
 	})
 }
 
-// spaceColorMenu lists the colors space name may take on this client.
-func spaceColorMenu(m *ui.Menu, name string) {
-	if m.Item(locales.SpaceColorDefault()).Chosen() {
-		setSpaceColorOf(name, "")
-	}
+// colorChoice is an item of a color menu: its label, the color it sets
+// ("" for Default) and whether it is the color the menu's owner has.
+type colorChoice struct {
+	label, id string
+	checked   bool
+}
+
+// colorChoices are the items of a color menu, Default and then the
+// presets, the one that is cur ticked.
+func colorChoices(cur string) []colorChoice {
+	out := []colorChoice{{locales.SpaceColorDefault(), "", cur == ""}}
 	for _, p := range layout.Palette {
-		if m.Item(strings.ToUpper(p.ID[:1]) + p.ID[1:]).Chosen() {
-			setSpaceColorOf(name, p.ID)
+		out = append(out, colorChoice{paletteLabel(p.ID), p.ID, cur == p.ID})
+	}
+	return out
+}
+
+// colorDots are the menu icons of the colors, by id and tick, each made
+// once.
+var (
+	colorDotsMu sync.Mutex
+	colorDots   = map[string]*mygo.MenuIcon{}
+)
+
+// colorDot is the icon of color id in a color menu: a dot of it, or, for
+// Default (""), a ring in the color of the item's text, as spaceSwatchMark
+// draws them. The current color's has a tick inside, in white or black,
+// whichever stands out more on it: the menu marks it there, not with a
+// mark of its own beside the dot.
+func colorDot(id string, ticked bool) *mygo.MenuIcon {
+	key := id
+	if ticked {
+		key += "/ticked"
+	}
+	colorDotsMu.Lock()
+	defer colorDotsMu.Unlock()
+	if m, ok := colorDots[key]; ok {
+		return m
+	}
+	const tick = `<path d="M5.2 8.3 7.1 10.1 10.8 6.1" fill="none" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" stroke="`
+	shape, template := `<circle cx="8" cy="8" r="5.25" fill="none" stroke="#000" stroke-width="1.5"/>`, true
+	if ticked {
+		shape += tick + `#000"/>`
+	}
+	if hex, ok := spaceColorHex(id); ok {
+		shape, template = `<circle cx="8" cy="8" r="6" fill="`+hex+`"/>`, false
+		if ticked {
+			ink := "#fff"
+			if c := ui.Hex(hex); contrast(c, ui.RGB(0, 0, 0)) > contrast(c, ui.RGB(255, 255, 255)) {
+				ink = "#000"
+			}
+			shape += tick + ink + `"/>`
+		}
+	}
+	m, err := mygo.NewMenuIconSVG(ui.MustParseSVG([]byte(`<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">`+shape+`</svg>`)), template)
+	if err != nil {
+		// The item shows no dot: the menu still works.
+		log.Printf("gorex: color dot %q: %v", key, err)
+		return nil
+	}
+	colorDots[key] = m
+	return m
+}
+
+// spaceColorMenu lists the colors space name may take on this client, each
+// with its dot, the one it has ticked.
+func spaceColorMenu(m *ui.Menu, name string) {
+	for _, ch := range colorChoices(spaceColor(name)) {
+		if m.Item(ch.label).Icon(colorDot(ch.id, ch.checked)).Chosen() {
+			setSpaceColorOf(name, ch.id)
 		}
 	}
 }

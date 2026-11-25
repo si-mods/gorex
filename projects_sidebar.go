@@ -590,12 +590,9 @@ func (a *App) projectMenu(m *ui.Menu, w *Workspace) {
 		})
 	}
 	m.Submenu(locales.SpaceColor(), func(sm *ui.Menu) {
-		if sm.Item(locales.SpaceColorDefault()).Chosen() {
-			a.laterService(func() { a.setProjectColor(w, "") })
-		}
-		for _, p := range layout.Palette {
-			if sm.Item(paletteLabel(p.ID)).Chosen() {
-				a.laterService(func() { a.setProjectColor(w, p.ID) })
+		for _, ch := range colorChoices(w.Color) {
+			if sm.Item(ch.label).Icon(colorDot(ch.id, ch.checked)).Chosen() {
+				a.laterService(func() { a.setProjectColor(w, ch.id) })
 			}
 		}
 	})

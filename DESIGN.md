@@ -378,6 +378,11 @@ slide. The timings below are for what a spring does not move.
   once it is in front, and on Windows its drawn Minimize and Close
   buttons act on the second click (Maximize, a system control, on the
   first).
+- **Do** show each color's dot in a menu of colors, and tick the current
+  one inside its dot (`colorDot`, `colorChoices`), as iOS marks it.
+  **Don't** add the menu's own mark beside the dot: two marks side by
+  side read as two dots. **Don't** let a click on a swatch step to the
+  next color unseen: it opens the menu.
 - **Do** take the nearest token. **Don't** add a size, radius or shadow
   for one view: change the table, for every view.
 - **Do** tell states apart by color and weight. **Don't** tell them apart
