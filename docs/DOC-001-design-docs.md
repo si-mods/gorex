@@ -3,7 +3,7 @@ name: DOC-001
 description: "Rules and a template for design docs: when to write one, ids and categories, front matter, sections and conflicts. Use when you write, rename or review a design doc."
 metadata:
   created: "2026-11-20"
-  updated: "2026-11-20"
+  updated: "2026-11-25"
 ---
 
 # DOC-001: Writing a design doc
@@ -59,6 +59,7 @@ Each design doc has an id: a category code, a `-`, and a number. An example is `
 | `WEB` | Web client | The web client in `web/` and its gateway paths |
 | `NET` | Connection and identity | Pairing, device keys, tailnet, relays and login |
 | `MOD` | Model and protocol | The layout model, projects, the Rex API and OSC sequences |
+| `EXT` | Extensions and packs | The extension runtime, pane kinds from packs, the bridge and the registry |
 | `REF` | Reference | Docs that describe how a part of GoRex works now. They have no design to build. Examples are the CLI, the Lua config and the session server. |
 
 - Put a doc in the category of the part that owns most of it. A doc for all clients goes in the category of the shared model or connection.
