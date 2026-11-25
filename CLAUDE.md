@@ -22,6 +22,7 @@ Rules an agent cannot read from the code. Keep each line one that prevents a rea
 ## Architecture decisions
 
 - Hosts connect without an account or membership server; `internal/coord` was removed for its complexity. A stateless relay is fine. Prefer a change that removes a stack to one that adds an abstraction.
+- Themes: GoRex ships capabilities, never a look. A built-in shape, shading, motion or behavior that a theme only tunes with a few numbers is hard-coding; the look comes from the theme pack (assets, its own shader). If a feature cannot be that open, do not build it ([DSK-008](docs/DSK-008-theme.md) Non-goals).
 - MyGo is the fork `si-mods/mygo` (`replace` in `go.mod`). A MyGo fix merges on `si-mods/mygo` first, then a GoRex PR runs `go mod edit -replace ...@<merge commit>` and `go mod tidy`.
 
 ## Worktrees
