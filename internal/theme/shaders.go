@@ -34,7 +34,7 @@ const (
 
 // The caps of the shaders key.
 const (
-	maxFaceShaders  = 8
+	maxFaceShaders  = 12
 	maxShaderImages = 4
 	maxParams       = 16
 	maxParamList    = 16
@@ -94,6 +94,7 @@ type Binding struct {
 var FaceRoles = []Role{
 	ActiveGroupBackground, ActiveGroupTabBackground, TrackBackground, TabHoverBackground, TabActiveBackground,
 	TitleBarBackground, SideBarBackground, PaneHeaderBackground, ButtonBackground,
+	DropdownBackground, WindowControlBackground, WindowControlCloseBackground,
 }
 
 // builtinFace reports whether the built-in palette has a flat color for
@@ -143,11 +144,6 @@ func parseShaders(raw json.RawMessage, assets map[string]Asset, roles [2]map[Rol
 			switch {
 			case !ok || !slices.Contains(FaceRoles, r):
 				w.add("%s: not a face role (dropped)", where)
-				continue
-			case r == ButtonBackground:
-				// MyGo's widgets paint this face in the theme's accent; no
-				// shader reaches it.
-				w.add("%s: the widgets paint this face, which takes no shader (dropped)", where)
 				continue
 			case len(s.Faces) == maxFaceShaders:
 				w.add("%s: more than %d face shaders (dropped)", where, maxFaceShaders)
@@ -442,6 +438,7 @@ var apiUniforms = map[string]UniformType{
 // param, as before.
 var apiUniformsV2 = map[string]UniformType{
 	"Pointer": {Base: "vec4"},
+	"State":   {Base: "vec4"},
 }
 
 // SeedUniform returns the seed the uniform name Seed<Name> stands for:

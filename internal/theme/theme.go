@@ -90,11 +90,14 @@ const (
 	// The roles of docs/DSK-012-theme-shaders.md: four faces and the pane's
 	// border. The built-in palette has none of them: unset, each draws as
 	// the app did before.
-	TitleBarBackground   // titleBar.background
-	SideBarBackground    // sideBar.background
-	PaneHeaderBackground // paneHeader.background
-	ButtonBackground     // button.background
-	PaneBorder           // pane.border
+	TitleBarBackground           // titleBar.background
+	SideBarBackground            // sideBar.background
+	PaneHeaderBackground         // paneHeader.background
+	ButtonBackground             // button.background
+	DropdownBackground           // dropdown.background
+	WindowControlBackground      // windowControl.background
+	WindowControlCloseBackground // windowControl.closeBackground
+	PaneBorder                   // pane.border
 	NumRoles
 )
 
@@ -110,6 +113,9 @@ var roleNames = [NumRoles]string{
 	"sideBar.background",
 	"paneHeader.background",
 	"button.background",
+	"dropdown.background",
+	"windowControl.background",
+	"windowControl.closeBackground",
 	"pane.border",
 }
 

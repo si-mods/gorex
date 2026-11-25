@@ -67,7 +67,7 @@ type colors struct {
 	// the buttons, and a pane card's border. The built-in palettes have
 	// none (ui.Transparent): where one is unset, the app draws as it did
 	// before.
-	titleBarFace, sideBarFace, headerFace, buttonFace, paneBorder ui.Color
+	titleBarFace, sideBarFace, headerFace, buttonFace, dropdownFace, windowControlFace, windowControlCloseFace, paneBorder ui.Color
 
 	// m are the theme's metrics: the corner scale, border width, chrome
 	// font and shadows the palette draws with.
@@ -340,18 +340,21 @@ func seedField(s *seeds, id theme.Seed) *ui.Color {
 // roleField returns the field of k that the role names.
 func roleField(k *colors, r theme.Role) *ui.Color {
 	return [theme.NumRoles]*ui.Color{
-		theme.ActiveGroupBackground:    &k.groupFace,
-		theme.ActiveGroupTabBackground: &k.pillLift,
-		theme.ActiveGroupTabShadow:     &k.liftShadow,
-		theme.TrackBackground:          &k.track,
-		theme.TabSeparator:             &k.tabSep,
-		theme.TabHoverBackground:       &k.tabHover,
-		theme.TabActiveBackground:      &k.tabActive,
-		theme.TitleBarBackground:       &k.titleBarFace,
-		theme.SideBarBackground:        &k.sideBarFace,
-		theme.PaneHeaderBackground:     &k.headerFace,
-		theme.ButtonBackground:         &k.buttonFace,
-		theme.PaneBorder:               &k.paneBorder,
+		theme.ActiveGroupBackground:        &k.groupFace,
+		theme.ActiveGroupTabBackground:     &k.pillLift,
+		theme.ActiveGroupTabShadow:         &k.liftShadow,
+		theme.TrackBackground:              &k.track,
+		theme.TabSeparator:                 &k.tabSep,
+		theme.TabHoverBackground:           &k.tabHover,
+		theme.TabActiveBackground:          &k.tabActive,
+		theme.TitleBarBackground:           &k.titleBarFace,
+		theme.SideBarBackground:            &k.sideBarFace,
+		theme.PaneHeaderBackground:         &k.headerFace,
+		theme.ButtonBackground:             &k.buttonFace,
+		theme.DropdownBackground:           &k.dropdownFace,
+		theme.WindowControlBackground:      &k.windowControlFace,
+		theme.WindowControlCloseBackground: &k.windowControlCloseFace,
+		theme.PaneBorder:                   &k.paneBorder,
 	}[r]
 }
 
@@ -561,15 +564,18 @@ func headerColors(k *colors, bg ui.Color) *colors {
 type faceRole = theme.Role
 
 const (
-	roleActiveGroupBackground    = theme.ActiveGroupBackground
-	roleActiveGroupTabBackground = theme.ActiveGroupTabBackground
-	roleTrackBackground          = theme.TrackBackground
-	roleTabHoverBackground       = theme.TabHoverBackground
-	roleTabActiveBackground      = theme.TabActiveBackground
-	roleTitleBarBackground       = theme.TitleBarBackground
-	roleSideBarBackground        = theme.SideBarBackground
-	rolePaneHeaderBackground     = theme.PaneHeaderBackground
-	roleButtonBackground         = theme.ButtonBackground
+	roleActiveGroupBackground        = theme.ActiveGroupBackground
+	roleActiveGroupTabBackground     = theme.ActiveGroupTabBackground
+	roleTrackBackground              = theme.TrackBackground
+	roleTabHoverBackground           = theme.TabHoverBackground
+	roleTabActiveBackground          = theme.TabActiveBackground
+	roleTitleBarBackground           = theme.TitleBarBackground
+	roleSideBarBackground            = theme.SideBarBackground
+	rolePaneHeaderBackground         = theme.PaneHeaderBackground
+	roleButtonBackground             = theme.ButtonBackground
+	roleDropdownBackground           = theme.DropdownBackground
+	roleWindowControlBackground      = theme.WindowControlBackground
+	roleWindowControlCloseBackground = theme.WindowControlCloseBackground
 )
 
 // themedFace returns k with the ladder of the face role sets, and the face,
@@ -635,6 +641,57 @@ func buttonColors(t *ui.Theme, k *colors) {
 		text = ref.text
 	}
 	t.Accent, t.AccentHover, t.AccentPressed, t.AccentText = face, ref.hover.Over(face), ref.pressed.Over(face), text
+}
+
+func buttonStyleOf(k *colors) *ui.ButtonStyle {
+	face := k.buttonFace
+	if face.A == 0 {
+		return nil
+	}
+	if _, ok := faceFill(roleButtonBackground, face); !ok {
+		return nil
+	}
+	flat := face.Over(k.panel)
+	ref := faceLadder(k, flat, ladderOf(k, isDark(flat)))
+	return &ui.ButtonStyle{
+		Style: func(b ui.Element, primary bool) {
+			if m, ok := statefulFaceMaterial(roleButtonBackground, face, b, primary); ok {
+				b.Padding(4, 12).Radius(k.radius(3)).Border(0, ui.Color{}).TextColor(ref.text).Material(m)
+			}
+		},
+	}
+}
+
+func selectStyleOf(k *colors) *ui.SelectStyle {
+	face := k.dropdownFace
+	if face.A == 0 {
+		return nil
+	}
+	if _, ok := faceFill(roleDropdownBackground, face); !ok {
+		return nil
+	}
+	flat := face.Over(k.panel)
+	ref := faceLadder(k, flat, ladderOf(k, isDark(flat)))
+	return &ui.SelectStyle{
+		Trigger: func(b ui.Element) {
+			b.Background(k.field).Border(k.m.border, k.fieldBorder).Radius(k.radius(0)).Padding(4, 4, 4, 8).TextColor(k.text)
+		},
+		Chevron: func(c *ui.Context) {
+			box := ui.Box(c).Size(18, 18).Shrink(0).Center().Radius(k.radius(2))
+			if m, ok := statefulFaceMaterial(roleDropdownBackground, face, box, false); ok {
+				box.Material(m)
+			} else {
+				box.Background(face)
+			}
+			box.Children(func() {
+				ui.Box(c).Size(10, 10).Draw(func(p *ui.Painter, r ui.Rect) {
+					var path ui.Path
+					path.MoveTo(r.X+r.W*0.15, r.Y+r.H*0.32).LineTo(r.X+r.W*0.5, r.Y+r.H*0.68).LineTo(r.X+r.W*0.85, r.Y+r.H*0.32)
+					p.StrokePath(&path, 1.8, ref.text)
+				})
+			})
+		},
+	}
 }
 
 // faceColors is a face with the colors that show on it, as one value: the
@@ -822,7 +879,12 @@ func widgetTheme(base *ui.Theme, k *colors) *ui.Theme {
 	t.Accent, t.AccentHover, t.AccentPressed, t.AccentText = k.accent, k.accentHover, k.accentPressed, k.accentText
 	t.Menu = menuStyleOf(k, t.Dark)
 	t.Selection, t.Focus = k.accent.Alpha(0.3), k.accent.Alpha(0.55)
-	buttonColors(&t, k)
+	if bs := buttonStyleOf(k); bs != nil {
+		t.Button = bs
+	} else {
+		buttonColors(&t, k)
+	}
+	t.Select = selectStyleOf(k)
 	t.Radius = k.radius(9)
 	t.Font = k.m.font
 	return &t

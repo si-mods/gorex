@@ -268,6 +268,45 @@ func windowControls(c *ui.Context, k *colors, win *mygo.Window) {
 		return
 	}
 	maximized := win.IsMaximized()
+	_, hasCtrl := faceFill(roleWindowControlBackground, k.windowControlFace)
+	_, hasClose := faceFill(roleWindowControlCloseBackground, k.windowControlCloseFace)
+	if hasCtrl || hasClose {
+		ctrlBtn := func(role faceRole, face ui.Color, glyph, label string, iconSize float32, maximize bool) ui.Element {
+			b := ui.Box(c).Size(21, 21).Center().Radius(k.radius(3)).Cursor(ui.CursorPointer).Role(ui.RoleButton).Label(label).Tooltip(label)
+			if maximize {
+				b.MaximizeButton()
+			}
+			if m, ok := statefulFaceMaterial(role, face, b, false); ok {
+				b.Material(m)
+			} else {
+				b.Background(face)
+			}
+			b.Children(func() {
+				glyphIcon(c, glyph, iconSize, ui.Hex("#ffffff"))
+			})
+			return b
+		}
+		ui.Row(c).Gap(4).AlignItems(ui.Center).Shrink(0).Margin(0, 4, 0, 6).Children(func() {
+			if ctrlBtn(roleWindowControlBackground, k.windowControlFace, "minus", locales.WindowMinimize(), 12, false).Clicked() {
+				win.Minimize()
+			}
+			glyph, label := "square", locales.WindowMaximize()
+			if maximized {
+				glyph, label = "copy", locales.WindowRestore()
+			}
+			if ctrlBtn(roleWindowControlBackground, k.windowControlFace, glyph, label, 11, true).Clicked() {
+				if maximized {
+					win.Unmaximize()
+				} else {
+					win.Maximize()
+				}
+			}
+			if ctrlBtn(roleWindowControlCloseBackground, k.windowControlCloseFace, "x", locales.WindowClose(), 13, false).Clicked() {
+				win.Close()
+			}
+		})
+		return
+	}
 	ui.Row(c).Gap(2).AlignItems(ui.Center).Shrink(0).Children(func() {
 		ui.Box(c).Size(1, 16).Margin(0, 6).Background(k.tabSep)
 		if iconButton(c, k, "minus", locales.WindowMinimize(), 30, 16).Tooltip(locales.WindowMinimize()).Clicked() {

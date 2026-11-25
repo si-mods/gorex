@@ -71,7 +71,7 @@ type themeLayer struct {
 	// The uniforms of the API that change from draw to draw, which the
 	// shader reads; alpha is GorexAlpha, of the background's wrapper or of
 	// a layer's opacity.
-	time, origin, window, alpha, pointer bool
+	time, origin, window, alpha, pointer, state bool
 	// pointerAt, set by the checks, puts Pointer at a place of the drawn
 	// rectangle in place of the frame's (pointerCenter, pointerCorner).
 	pointerAt int
@@ -487,6 +487,7 @@ func compileLayer(slot *theme.ShaderLayer, e *slotEnv, bg bool) (*themeLayer, []
 	if e.api == theme.ShaderAPI2 {
 		// In version 1 a uniform named Pointer is an ordinary param.
 		_, sl.pointer = info.Uniforms["Pointer"]
+		_, sl.state = info.Uniforms["State"]
 	}
 	for i, name := range slot.Images {
 		if sl.images[i] = art.Bitmaps[name]; sl.images[i] == nil {
@@ -570,6 +571,7 @@ type shaderFrame struct {
 	// the pointer is over it, w 1 while its primary button is down; watch
 	// tells that the window follows its moves (tickShaders).
 	pointer [4]float32
+	state   [4]float32
 	watch   bool
 	// moving tells that Time passes in the window's frames (tickShaders).
 	moving bool
@@ -606,8 +608,8 @@ func (sl *themeLayer) draw(p *ui.Painter, r ui.Rect, radius float32, dark bool, 
 		i = 1
 	}
 	o := shader.Options{Values: sl.values[i], Images: sl.images, Radius: radius}
-	if sl.time || sl.origin || sl.window || sl.alpha || sl.pointer {
-		o.Uniforms = make(map[string]any, 5)
+	if sl.time || sl.origin || sl.window || sl.alpha || sl.pointer || sl.state {
+		o.Uniforms = make(map[string]any, 6)
 		if sl.time {
 			o.Uniforms["Time"] = f.time
 		}
@@ -635,6 +637,9 @@ func (sl *themeLayer) draw(p *ui.Painter, r ui.Rect, radius float32, dark bool, 
 		}
 		if sl.alpha {
 			o.Uniforms[gorexAlpha] = alpha
+		}
+		if sl.state {
+			o.Uniforms["State"] = f.state
 		}
 	}
 	sl.s.Draw(p, r, o)
@@ -798,14 +803,30 @@ func faceFill(role faceRole, face ui.Color) (faceShader, bool) {
 	if sl == nil || face != *roleField(paletteOf(false), role) && face != *roleField(paletteOf(true), role) {
 		return faceShader{}, false
 	}
-	return faceShader{sl, face}, true
+	return faceShader{sl: sl, face: face}, true
 }
 
 // faceShader is a face that a theme's shader paints, on a GPU; its flat
 // color on the CPU renderer.
 type faceShader struct {
-	sl   *themeSlot
-	face ui.Color
+	sl      *themeSlot
+	face    ui.Color
+	el      ui.Element
+	primary bool
+	hasEl   bool
+}
+
+// statefulFaceMaterial returns a face shader material bound to el's live
+// hovered/pressed/focused/disabled state and primary flag.
+func statefulFaceMaterial(role faceRole, face ui.Color, el ui.Element, primary bool) (ui.Material, bool) {
+	f, ok := faceFill(role, face)
+	if !ok {
+		return nil, false
+	}
+	f.el = el
+	f.primary = primary
+	f.hasEl = true
+	return f, true
 }
 
 func (f faceShader) PaintMaterial(p *ui.Painter, box ui.Rect, radii [4]float32) {
@@ -815,11 +836,27 @@ func (f faceShader) PaintMaterial(p *ui.Painter, box ui.Rect, radii [4]float32) 
 	if !themeShaderGPU(p) {
 		return
 	}
-	f.sl.draw(p, box, radii[0], p.Theme().Dark, 1, currentFrame())
+	frame := currentFrame()
+	if f.hasEl {
+		var hov, prs, foc, dis float32
+		if f.el.Hovered() {
+			hov = 1
+		}
+		if f.el.Pressed() {
+			prs = 1
+		}
+		if f.primary || f.el.Focused() {
+			foc = 1
+		}
+		if f.el.IsDisabled() {
+			dis = 1
+		}
+		frame.state = [4]float32{hov, prs, foc, dis}
+	}
+	f.sl.draw(p, box, radii[0], p.Theme().Dark, 1, frame)
 	// The background's Draw asks for its own part; a face, a material
 	// MyGo paints as a part of its own, asks again, so that the frames
 	// that only paint move it too.
-	frame := currentFrame()
 	if f.sl.readsTime() && frame.moving {
 		p.AnimationFrameRate(themeShaderFPS)
 	}

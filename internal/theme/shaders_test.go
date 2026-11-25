@@ -69,7 +69,7 @@ func TestParseShaders(t *testing.T) {
 		faces = append(faces, r.String())
 	}
 	slices.Sort(faces)
-	if want := []string{"sideBar.tabActiveBackground", "titleBar.background"}; !slices.Equal(faces, want) {
+	if want := []string{"button.background", "sideBar.tabActiveBackground", "titleBar.background"}; !slices.Equal(faces, want) {
 		t.Errorf("faces %q, want %q", faces, want)
 	}
 	want := []string{
@@ -78,7 +78,6 @@ func TestParseShaders(t *testing.T) {
 		`shaders.background.params.Odd: not a number, a list of up to 16 numbers or a color`,
 		`shaders.background.params.Time: GoRex sets this uniform (dropped)`,
 		`shaders.background.params: bad uniform name "bad name"`,
-		`shaders.faces.button.background: the widgets paint this face, which takes no shader (dropped)`,
 		`shaders.faces.editor.background: not a face role (dropped)`,
 		`shaders.faces.paneHeader.background: needs roles.paneHeader.background as its flat color (dropped)`,
 		`shaders.faces.sideBar.background: needs roles.sideBar.background as its flat color (dropped)`,
