@@ -277,21 +277,20 @@ func (a *App) promptRows(c *ui.Context, k *colors, spec *rex.PromptSpec) {
 // question takes: a circle for one (a dot in it when chosen), a rounded
 // square for several (a check in it when checked).
 func choiceMark(c *ui.Context, k *colors, multiple, chosen bool) {
-	const size = 16
-	r := float32(size / 2)
+	r := k.capsule(choiceSize)
 	if multiple {
-		r = 4
+		r = k.radius(choiceRadius)
 	}
-	m := ui.Row(c).Width(size).Height(size).Shrink(0).Radius(r).AlignItems(ui.Center).Justify(ui.Center)
+	m := ui.Row(c).Width(choiceSize).Height(choiceSize).Shrink(0).Radius(r).AlignItems(ui.Center).Justify(ui.Center)
 	if !chosen {
-		m.Border(1.5, k.iconMuted)
+		m.Border(choiceBorder, k.iconMuted)
 		return
 	}
-	m.Background(k.accent).Border(1.5, k.accent).Children(func() {
+	m.Background(k.accent).Border(choiceBorder, k.accent).Children(func() {
 		if multiple {
-			glyphIcon(c, "check", 12, k.accentText)
+			glyphIcon(c, "check", choiceCheck, k.accentText)
 			return
 		}
-		ui.Row(c).Width(6).Height(6).Radius(3).Background(k.accentText)
+		ui.Row(c).Width(choiceDot).Height(choiceDot).Radius(k.capsule(choiceDot)).Background(k.accentText)
 	})
 }
