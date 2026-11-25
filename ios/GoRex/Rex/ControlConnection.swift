@@ -379,9 +379,17 @@ extension URLRequest {
     /// as a bearer, for every request to a host that has one, HTTP or a
     /// WebSocket's upgrade; as is for none.
     nonisolated func authorized(_ token: String?) -> URLRequest {
-        guard let token, !token.isEmpty else { return self }
         var r = self
-        r.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        if let token, !token.isEmpty {
+            r.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        // A tcp:// endpoint's gateway answers 421 to a Host it does not
+        // know (internal/rexapi's DNS-rebinding check), and the proxy's
+        // <id>.ssh.invalid is a name it never learned. localhost is
+        // always its own; a unix endpoint skips the check either way.
+        if r.url?.host?.hasSuffix(".ssh.invalid") == true {
+            r.setValue("localhost", forHTTPHeaderField: "Host")
+        }
         return r
     }
 }
