@@ -10,6 +10,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 `web` job of `.github/workflows/ci.yml` fails it.
 
 ## en-US
+- A computer you reach over SSH can now be a host: in Add Host, enter ssh://user@host, trust its key when asked, and copy this phone's SSH key into the host's authorized_keys.
 - When pairing with a computer fails, the sheet's new Copy diagnostics button puts the recent connection log on the pasteboard, ready to send.
 - The Diagnostics log now survives restarts: lines from before you closed Rex Go are still there when you come back.
 - When pairing with a computer fails, its Diagnostics now logs the computer's name and the reason, to copy into a report.
@@ -139,6 +140,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - A tab's long-press menu no longer has Close Other Tabs. Close Tab still closes one tab.
 
 ## zh-Hans
+- 现在能把通过 SSH 登录的电脑添加为主机：在「添加主机」输入 ssh://user@host，首次连接时确认信任它的密钥，再把本机的 SSH 公钥复制到该主机的 authorized_keys。
 - 与电脑配对失败时，配对页新增「复制诊断」按钮：一键把最近的连接日志复制到剪贴板，方便发给我们。
 - 「诊断」日志在退出并重开 Rex Go 后仍然保留：回来还能看到之前的记录。
 - 与电脑配对失败时，它的「诊断」日志现在会记录电脑的名称和失败原因，可附在问题报告里。

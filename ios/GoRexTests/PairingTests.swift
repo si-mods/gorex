@@ -24,13 +24,14 @@ nonisolated final class PairingTests: XCTestCase {
     }
 
     /// An address with a scheme other than http(s) says why it is refused;
-    /// a bare host[:port] is none.
+    /// a bare host[:port] is none, and a good ssh:// address is none
+    /// either (SSHAddressTests covers its grammar).
     @MainActor func testRefusals() throws {
-        XCTAssertTrue(try XCTUnwrap(HostConfig.refusal(of: "ssh://host")).contains("SSH"))
-        XCTAssertTrue(try XCTUnwrap(HostConfig.refusal(of: " SSH://user@host:22 ")).contains("SSH"))
+        XCTAssertNotNil(HostConfig.refusal(of: "ssh://host"))
         let other = try XCTUnwrap(HostConfig.refusal(of: "ftp://host"))
         XCTAssertFalse(other.contains("SSH"))
-        for ok in ["", "myhost:7297", "192.168.1.2", "http://host", "HTTPS://host:7297", "://host"] {
+        for ok in ["", "myhost:7297", "192.168.1.2", "http://host", "HTTPS://host:7297", "://host",
+                   "ssh://user@host", " SSH://user@host:22 "] {
             XCTAssertNil(HostConfig.refusal(of: ok), ok)
         }
     }

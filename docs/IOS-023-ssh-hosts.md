@@ -8,7 +8,7 @@ metadata:
 
 # IOS-023: Rex Go reaches a host over SSH
 
-Status: proposal.
+Status: phase 1 built (#1124). Phases 2 and 3 not built.
 
 ## Problem
 
@@ -136,6 +136,6 @@ A host whose address has no socket path learns it on its first connect:
 
 ## Phases
 
-1. Engine transport and discovery, device key, host-key trust, Add Host grammar, `Transport.ssh`. The user installs the key by hand at first.
+1. Engine transport and discovery, device key, host-key trust, Add Host grammar, `Transport.ssh`. The user installs the key by hand at first. (#1124)
 2. Password auth, the install-key flow, the host detail's fingerprints.
 3. Later docs as needed: Tailscale SSH, `ssh://` on the desktop.

@@ -61,10 +61,27 @@ struct RemoteHostsView: View {
                 .foregroundStyle(.primary)
                 .listRowBackground(Color.card)
             } footer: {
-                // The key GoRex's Devices list shows for this phone, once paired.
-                let key = TailnetEngine.shared.tailcatKey
-                if !key.isEmpty {
-                    Text("This phone's key for GoRex's remote access: \(key)").textSelection(.enabled)
+                VStack(alignment: .leading, spacing: 4) {
+                    // The key GoRex's Devices list shows for this phone, once paired.
+                    let key = TailnetEngine.shared.tailcatKey
+                    if !key.isEmpty {
+                        Text("This phone's key for GoRex's remote access: \(key)").textSelection(.enabled)
+                    }
+                    // The public key an ssh:// host's authorized_keys
+                    // asks for: Copy puts its whole line on the pasteboard.
+                    let ssh = TailnetEngine.shared.sshKey
+                    if !ssh.isEmpty {
+                        HStack(alignment: .top, spacing: 8) {
+                            Text("This phone's SSH key, for a host's authorized_keys: \(ssh)").textSelection(.enabled)
+                            Spacer(minLength: 8)
+                            Button {
+                                UIPasteboard.general.string = ssh
+                            } label: {
+                                Image(systemName: "doc.on.doc")
+                            }
+                            .accessibilityLabel("Copy SSH Key")
+                        }
+                    }
                 }
             }
         }
@@ -137,8 +154,9 @@ private struct HostRow: View {
                 .font(.title3).frame(width: 30)
             VStack(alignment: .leading, spacing: 2) {
                 Text(host.config.name).foregroundStyle(.primary).lineLimit(1)
-                // A tailcat host's address is a secret, and its URL the proxy's.
-                Text(host.config.tailcat == nil ? host.config.url.absoluteString : String(localized: "GoRex remote access"))
+                // A tailcat host's address is a secret, and its URL the
+                // proxy's; an ssh:// host shows the address it was added by.
+                Text(subtitle)
                     .font(.footnote).foregroundStyle(.gray)
                     .lineLimit(1)
             }
@@ -150,6 +168,11 @@ private struct HostRow: View {
                 .buttonStyle(.borderless)
                 .accessibilityLabel("Edit Host")
         }
+    }
+
+    private var subtitle: String {
+        if let s = host.config.ssh { return "ssh://\(s.user)@\(s.host)" }
+        return host.config.tailcat == nil ? host.config.url.absoluteString : String(localized: "GoRex remote access")
     }
 
     private var status: LocalizedStringKey {
@@ -212,23 +235,32 @@ private struct HostForm: View {
         _command = State(initialValue: config?.command ?? "")
     }
 
-    /// The host as entered, if its address reads as a pairing code does;
-    /// a bare host gets http://. A tailcat host keeps its address.
+    /// The host as entered, if its address reads as an ssh:// address or
+    /// a pairing code does; a bare host gets http://. A tailcat or an
+    /// ssh:// host keeps its own.
     private var entered: HostConfig? {
         var c: HostConfig
-        if let config, config.tailcat != nil {
+        if let config, config.tailcat != nil || config.ssh != nil {
             c = config
         } else {
             let s = address.trimmingCharacters(in: .whitespaces)
-            guard let p = HostConfig(pairing: s.contains("://") ? s : "http://" + s) else { return nil }
-            c = p
+            if let ssh = HostConfig(ssh: s) {
+                c = ssh
+            } else {
+                guard let p = HostConfig(pairing: s.contains("://") ? s : "http://" + s) else { return nil }
+                c = p
+            }
             if let config {
                 c.id = config.id
                 // The address shown has no token: the host keeps its own
                 // till a code with one is pasted.
                 if c.lanToken == nil, c.url == config.url { c.lanToken = config.lanToken }
             }
-            c.transport = HostConfig.transport(switched: tailnet, was: config, at: c.url, rule: TailnetEngine.shared.transport(of: c.url))
+            // An ssh:// host's reach comes from its ssh member; the saved
+            // transport stays nil (docs/IOS-023-ssh-hosts.md, Migration).
+            if c.ssh == nil {
+                c.transport = HostConfig.transport(switched: tailnet, was: config, at: c.url, rule: TailnetEngine.shared.transport(of: c.url))
+            }
         }
         let n = name.trimmingCharacters(in: .whitespaces)
         if !n.isEmpty { c.name = n } else if let m = c.tailcat?.machine, !m.isEmpty { c.name = m }
@@ -257,6 +289,16 @@ private struct HostForm: View {
                         LabeledContent("GoRex remote access", value: t.machine)
                     } footer: {
                         Text("Paired by GoRex's Rex Go code. Deleting the host here doesn't revoke this phone: remove it from Devices in GoRex's Settings › Server.")
+                    }
+                    .listRowBackground(Color.card)
+                } else if let s = config?.ssh {
+                    Section {
+                        LabeledContent("SSH", value: "\(s.user)@\(s.host):\(s.port)")
+                        if let socket = s.socket {
+                            LabeledContent("Socket", value: socket)
+                        }
+                    } footer: {
+                        Text("Added by its ssh:// address; change it by deleting the host and adding it again.")
                     }
                     .listRowBackground(Color.card)
                 } else {
@@ -300,7 +342,7 @@ private struct HostForm: View {
                             .foregroundStyle(.primary)
                         }
                         .accessibilityLabel("Device")
-                        TextField(c.map { $0.tailcat?.machine ?? HostConfig.name($0.url.host() ?? "") } ?? String(localized: "Name"), text: $name)
+                        TextField(c.map { $0.tailcat?.machine ?? $0.ssh.map { "\($0.user)@\($0.host)" } ?? HostConfig.name($0.url.host() ?? "") } ?? String(localized: "Name"), text: $name)
                             .autocorrectionDisabled()
                     }
                 }
@@ -316,7 +358,7 @@ private struct HostForm: View {
                     Text("Executable and arguments for new terminals on this host. Use quotes to group arguments. Leave empty to use the host's default login shell.")
                 }
                 .listRowBackground(Color.card)
-                if (tailnetOn || c?.transport == .tailnet) && config?.tailcat == nil {
+                if (tailnetOn || c?.transport == .tailnet) && config?.tailcat == nil && c?.ssh == nil {
                     Section {
                         Toggle("Built-in Tailscale", isOn: Binding { c?.transport == .tailnet } set: { tailnet = $0 })
                     } footer: {

@@ -77,11 +77,14 @@ func (p *proxy) alive() bool {
 	return true
 }
 
-// dial is the proxy's: a tailcat host by its name, else a device on the
-// running tailnet.
+// dial is the proxy's: a tailcat or an ssh host by its name, else a
+// device on the running tailnet.
 func dial(ctx context.Context, addr string) (net.Conn, error) {
 	if id, port, ok := tailcatTarget(addr); ok {
 		return dialTailcat(ctx, id, port)
+	}
+	if id, ok := sshTarget(addr); ok {
+		return dialSSH(ctx, id)
 	}
 	mu.Lock()
 	n, pc := node, peers
