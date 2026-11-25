@@ -8156,78 +8156,76 @@ func (msgs Messages) SpaceEditTitle() string {
 	return Catalog.Format(msgs.locale, "spaceEditTitle", nil)
 }
 
-// SpaceDelete says "Delete Space"
+// SpaceDelete says "Delete Space…"
 // in the language the app shows.
 //
-// Edit Spaces: delete the space at once, with Undo in a toast. Its projects
-// move to Default.
+// Edit Spaces: delete the space; its projects move to Default.
 func SpaceDelete() string { return In(i18n.Locale()).SpaceDelete() }
 
-// SpaceDelete says "Delete Space"
+// SpaceDelete says "Delete Space…"
 // in the language of msgs.
 //
-// Edit Spaces: delete the space at once, with Undo in a toast. Its projects
-// move to Default.
+// Edit Spaces: delete the space; its projects move to Default.
 func (msgs Messages) SpaceDelete() string {
 	return Catalog.Format(msgs.locale, "spaceDelete", nil)
 }
 
-// SpaceDeleted says "Deleted {name}"
+// SpaceDeleteTitle says "Delete space {name}?"
 // in the language the app shows.
 //
-// Toast after Delete Space, with Undo: the space is gone, and its projects
-// show in Default.
-func SpaceDeleted(name string) string { return In(i18n.Locale()).SpaceDeleted(name) }
+// Title of the dialog that asks before a space is deleted.
+func SpaceDeleteTitle(name string) string { return In(i18n.Locale()).SpaceDeleteTitle(name) }
 
-// SpaceDeleted says "Deleted {name}"
+// SpaceDeleteTitle says "Delete space {name}?"
 // in the language of msgs.
 //
-// Toast after Delete Space, with Undo: the space is gone, and its projects
-// show in Default.
-func (msgs Messages) SpaceDeleted(name string) string {
-	return Catalog.Format(msgs.locale, "spaceDeleted", map[string]any{"name": name})
+// Title of the dialog that asks before a space is deleted.
+func (msgs Messages) SpaceDeleteTitle(name string) string {
+	return Catalog.Format(msgs.locale, "spaceDeleteTitle", map[string]any{"name": name})
 }
 
-// SpaceRestored says "Restored {name}"
+// SpaceDeleteBody says "{n, plural, one {Its # project moves to Default.} other {Its # projects move to Default.}} No tab closes."
 // in the language the app shows.
 //
-// Toast after Undo of Delete Space: the space is back.
-func SpaceRestored(name string) string { return In(i18n.Locale()).SpaceRestored(name) }
+// Delete Space dialog: how many projects of the connected hosts move to
+// Default.
+func SpaceDeleteBody(n int) string { return In(i18n.Locale()).SpaceDeleteBody(n) }
 
-// SpaceRestored says "Restored {name}"
+// SpaceDeleteBody says "{n, plural, one {Its # project moves to Default.} other {Its # projects move to Default.}} No tab closes."
 // in the language of msgs.
 //
-// Toast after Undo of Delete Space: the space is back.
-func (msgs Messages) SpaceRestored(name string) string {
-	return Catalog.Format(msgs.locale, "spaceRestored", map[string]any{"name": name})
+// Delete Space dialog: how many projects of the connected hosts move to
+// Default.
+func (msgs Messages) SpaceDeleteBody(n int) string {
+	return Catalog.Format(msgs.locale, "spaceDeleteBody", map[string]any{"n": n})
 }
 
-// ToastUndo says "Undo"
+// SpaceDeleteOffline says "Projects of hosts that are offline move when they connect."
 // in the language the app shows.
 //
-// Button of a toast that takes back what the user just did.
-func ToastUndo() string { return In(i18n.Locale()).ToastUndo() }
+// Delete Space dialog: shown when a host is offline.
+func SpaceDeleteOffline() string { return In(i18n.Locale()).SpaceDeleteOffline() }
 
-// ToastUndo says "Undo"
+// SpaceDeleteOffline says "Projects of hosts that are offline move when they connect."
 // in the language of msgs.
 //
-// Button of a toast that takes back what the user just did.
-func (msgs Messages) ToastUndo() string {
-	return Catalog.Format(msgs.locale, "toastUndo", nil)
+// Delete Space dialog: shown when a host is offline.
+func (msgs Messages) SpaceDeleteOffline() string {
+	return Catalog.Format(msgs.locale, "spaceDeleteOffline", nil)
 }
 
-// ToastClose says "Close"
+// SpaceDeleteConfirm says "Delete"
 // in the language the app shows.
 //
-// Label of the button that closes a toast.
-func ToastClose() string { return In(i18n.Locale()).ToastClose() }
+// Delete Space dialog: the button that deletes the space.
+func SpaceDeleteConfirm() string { return In(i18n.Locale()).SpaceDeleteConfirm() }
 
-// ToastClose says "Close"
+// SpaceDeleteConfirm says "Delete"
 // in the language of msgs.
 //
-// Label of the button that closes a toast.
-func (msgs Messages) ToastClose() string {
-	return Catalog.Format(msgs.locale, "toastClose", nil)
+// Delete Space dialog: the button that deletes the space.
+func (msgs Messages) SpaceDeleteConfirm() string {
+	return Catalog.Format(msgs.locale, "spaceDeleteConfirm", nil)
 }
 
 // ToastActionFailed says "Couldn't run {action}: {reason}."

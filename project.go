@@ -154,8 +154,8 @@ func (a *App) createProject(h *hostConn, dir, name string) {
 				return
 			}
 			a.showWorkspace(w)
-			if a.st.projectSpace(w) != space {
-				id, from := w.ID, spaceLabel(a.st.projectSpace(w))
+			if w.Space != space {
+				id, from := w.ID, spaceLabel(w.Space)
 				a.setNote(func(m locales.Messages) string { return m.ProjectInOtherSpace(w.Name, from) }, bannerNote{
 					space: id, info: true,
 					action: locales.Messages.ProjectMoveHere,

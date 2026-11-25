@@ -63,7 +63,7 @@ func (a *App) hostShown(h *hostConn, space string) bool {
 		return true
 	}
 	for _, w := range a.st.hostWorkspaces(h) {
-		if w.Dir != "" && a.st.projectSpace(w) == space {
+		if w.Dir != "" && w.Space == space {
 			return true
 		}
 	}
@@ -77,7 +77,7 @@ func (a *App) projectsOf(h *hostConn, space string) (recent, older []*Workspace)
 		return nil, nil
 	}
 	for _, w := range sortedWorkspaces(a.st.hostWorkspaces(h)) {
-		if w.Dir == "" || a.st.projectSpace(w) != space {
+		if w.Dir == "" || w.Space != space {
 			continue
 		}
 		if !w.Used.IsZero() && time.Since(w.Used) > olderAfter && w != a.ws {
@@ -601,7 +601,7 @@ func (a *App) projectMenu(m *ui.Menu, w *Workspace) {
 	})
 	m.Submenu(locales.ProjectMoveToSpace(), func(sm *ui.Menu) {
 		for _, n := range a.st.spaceNames() {
-			if n != a.st.projectSpace(w) && sm.Item(spaceLabel(n)).Chosen() {
+			if n != w.Space && sm.Item(spaceLabel(n)).Chosen() {
 				a.laterService(func() { a.moveProjectToSpace(w, n) })
 			}
 		}

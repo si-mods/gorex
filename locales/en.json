@@ -2762,37 +2762,34 @@
   "@spaceEditTitle": {
     "description": "Title of the Edit Spaces dialog."
   },
-  "spaceDelete": "Delete Space",
+  "spaceDelete": "Delete Space…",
   "@spaceDelete": {
-    "description": "Edit Spaces: delete the space at once, with Undo in a toast. Its projects move to Default."
+    "description": "Edit Spaces: delete the space; its projects move to Default."
   },
-  "spaceDeleted": "Deleted {name}",
-  "@spaceDeleted": {
-    "description": "Toast after Delete Space, with Undo: the space is gone, and its projects show in Default.",
+  "spaceDeleteTitle": "Delete space {name}?",
+  "@spaceDeleteTitle": {
+    "description": "Title of the dialog that asks before a space is deleted.",
     "placeholders": {
-      "name": {
-        "type": "String",
-        "example": "Work"
+      "name": {}
+    }
+  },
+  "spaceDeleteBody": "{n, plural, one {Its # project moves to Default.} other {Its # projects move to Default.}} No tab closes.",
+  "@spaceDeleteBody": {
+    "description": "Delete Space dialog: how many projects of the connected hosts move to Default.",
+    "placeholders": {
+      "n": {
+        "type": "int",
+        "example": "3"
       }
     }
   },
-  "spaceRestored": "Restored {name}",
-  "@spaceRestored": {
-    "description": "Toast after Undo of Delete Space: the space is back.",
-    "placeholders": {
-      "name": {
-        "type": "String",
-        "example": "Work"
-      }
-    }
+  "spaceDeleteOffline": "Projects of hosts that are offline move when they connect.",
+  "@spaceDeleteOffline": {
+    "description": "Delete Space dialog: shown when a host is offline."
   },
-  "toastUndo": "Undo",
-  "@toastUndo": {
-    "description": "Button of a toast that takes back what the user just did."
-  },
-  "toastClose": "Close",
-  "@toastClose": {
-    "description": "Label of the button that closes a toast."
+  "spaceDeleteConfirm": "Delete",
+  "@spaceDeleteConfirm": {
+    "description": "Delete Space dialog: the button that deletes the space."
   },
   "toastActionFailed": "Couldn't run {action}: {reason}.",
   "@toastActionFailed": {

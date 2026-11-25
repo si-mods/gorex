@@ -219,9 +219,6 @@ type store struct {
 	upgradeFailed int
 
 	workspaces []*Workspace
-	// deleting are the deletes of spaces that wait for their toast, by
-	// name (removeSpace).
-	deleting map[string]*spaceDeletion
 	// notifyOff tells that macOS refused the last notification: the user
 	// turned GoRex's notifications off (notified).
 	notifyOff bool
@@ -1303,8 +1300,6 @@ func (st *store) repoll() {
 // terminals detached. The hosts stay connected for the next window, as
 // the app stays without windows on macOS.
 func (st *store) closed(a *App) {
-	// What the window's toast waits to commit goes now.
-	a.endToast()
 	a.quitting = true
 	w := a.ws
 	a.detach()

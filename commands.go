@@ -1257,16 +1257,7 @@ func (a *App) restartFocused() {
 	})
 }
 
-// quitAndEnd ends this machine's sessions and quits. What a toast waits
-// to commit goes first, while the client still runs.
 func (a *App) quitAndEnd() {
-	if a.st != nil {
-		a.st.quitting = true
-		a.st.flushToasts()
-		a.st.saveNow()
-	} else {
-		a.endToast()
-	}
 	a.quitting = true
 	for _, t := range a.tabs {
 		for _, p := range t.allPanes() {

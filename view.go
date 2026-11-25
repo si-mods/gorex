@@ -136,7 +136,7 @@ func (a *App) view(c *ui.Context) {
 	a.projectSheetView(c, k)
 	a.teleportConfirm(c, k)
 	a.quitConfirm(c, k)
-	// Over the dialogs: an Undo answers what one of them just did.
+	// Over the dialogs: a toast answers what the user did just now.
 	a.toasts(c, k)
 	// mygo paints a text input's caret in the theme of the frame as it
 	// paints, and a field cannot give it one of its own: the widgets above

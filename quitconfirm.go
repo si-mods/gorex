@@ -95,13 +95,3 @@ var endAndQuit = func(c *rex.Client) {
 	c.Shutdown()
 	mygo.App.Quit()
 }
-
-// flushToasts ends the toast of every window, as the app quits: what an
-// action toast waits to commit, as the delete of a space, goes now, while
-// the client still runs.
-func (st *store) flushToasts() {
-	for _, a := range st.apps {
-		a.endToast()
-	}
-	st.flushSpaceDeletes()
-}

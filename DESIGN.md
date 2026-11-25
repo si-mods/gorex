@@ -366,11 +366,10 @@ slide. The timings below are for what a spring does not move.
   once. A bulk action, as Close Other Tabs or Close Space, always asks,
   with a dialog that says how much ends.
 - **A toast or a banner?** A toast answers what the user did just now
-  and goes by itself: a status toast (an icon and one line, red-dotted
-  for an error) or an action toast (one line, a button such as Undo, a
-  close button and a ring of the time left). A banner stays while its
-  state lasts, as a lost connection, or while a failure must be fixed.
-  News the user did not cause is a system notification.
+  and goes by itself: an icon and one line, or a red dot and one line
+  for an error. A banner stays while its state lasts, as a lost
+  connection, or while a failure must be fixed. News the user did not
+  cause is a system notification.
   [DSK-013](docs/DSK-013-messages.md) gives the rules and the times.
 - **What does a click on a window behind do?** It brings the window to
   the front and does nothing else (`ConsumeActivationClick`), so it

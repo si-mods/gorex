@@ -413,19 +413,14 @@ func (a *App) debug(dir, line string) {
 		})
 	case "space": // NAME: the windows show that space, "" for Default
 		debugMain(func() { a.showSpaceNamed(arg) })
-	case "toast": // error [TEXT]: an error toast; delete-space NAME: Delete Space of that space, with Undo; close: the toast goes, its action committed
+	case "toast": // error [TEXT]: an error toast
 		op, rest, _ := strings.Cut(arg, " ")
 		debugMain(func() {
-			switch op {
-			case "error":
+			if op == "error" {
 				if rest == "" {
 					rest = locales.ToastActionFailed(cmdSplitRight.Title(), "no such pane")
 				}
 				a.toastError(rest)
-			case "delete-space":
-				a.removeSpace(rest)
-			case "close":
-				a.endToast()
 			}
 		})
 	case "quit-confirm": // open or cancel: the question before Quit and End All Sessions, whatever the sessions

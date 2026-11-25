@@ -22,8 +22,7 @@ func toastPrefs(t *testing.T) {
 	prefs.Animation = "off"
 }
 
-// TestToastLife: a status toast shows 5 s, longer for a long text; an
-// action toast at least 6 s; a toast of its own time keeps it.
+// TestToastLife: a toast shows 5 s, longer for a long text.
 func TestToastLife(t *testing.T) {
 	long := strings.Repeat("x", 150)
 	for _, c := range []struct {
@@ -32,8 +31,6 @@ func TestToastLife(t *testing.T) {
 	}{
 		{toastMsg{kind: toastStatus, text: "Saved"}, toastLife},
 		{toastMsg{kind: toastError, text: long}, 10 * time.Second},
-		{toastMsg{kind: toastAction, text: "Deleted Work"}, toastActionLife},
-		{toastMsg{kind: toastStatus, text: "Restored Work", life: toastBrief}, toastBrief},
 	} {
 		if got := c.m.lifeOf(); got != c.want {
 			t.Errorf("%d of %d runes: %v, want %v", c.m.kind, len(c.m.text), got, c.want)
@@ -66,27 +63,22 @@ func TestToastGoesByItself(t *testing.T) {
 	}
 }
 
-// TestToastReplaces: a window has one toast; a new one takes the place of
-// an action toast, whose action commits first, once.
+// TestToastReplaces: a window has one toast. A new one takes the place
+// of the one there.
 func TestToastReplaces(t *testing.T) {
 	toastPrefs(t)
 	a, tt := newTestApp(t)
-	commits := 0
-	a.showToast(&toastMsg{kind: toastAction, text: "Deleted Work", action: locales.ToastUndo(), commit: func() { commits++ }})
+	a.showToast(&toastMsg{kind: toastStatus, text: "Saved"})
 	tt.Frame()
 	a.toastError("Not connected to alice-laptop.")
-	if commits != 1 {
-		t.Fatalf("the replaced toast committed %d times", commits)
-	}
 	tt.Frame()
-	if tt.HasText("Deleted Work") || !tt.HasText("Not connected to alice-laptop.") {
+	if tt.HasText("Saved") || !tt.HasText("Not connected to alice-laptop.") {
 		t.Errorf("the toasts: %q", tt.Texts())
 	}
 	tt.Advance(time.Minute)
 	tt.Frame()
-	a.endToast()
-	if commits != 1 {
-		t.Errorf("committed %d times", commits)
+	if a.toastText() != "" {
+		t.Errorf("the toast stayed: %q", tt.Texts())
 	}
 }
 
@@ -134,37 +126,6 @@ func TestToastAboveBanner(t *testing.T) {
 	}
 	if toast.Y+toast.H >= banner.Y {
 		t.Errorf("the toast (%v) over the banner (%v)", toast, banner)
-	}
-}
-
-// TestToastUndo: an action toast's button runs its action and takes the
-// place of its commit; its close button commits.
-func TestToastUndo(t *testing.T) {
-	toastPrefs(t)
-	a, tt := newTestApp(t)
-	var undone, commits int
-	show := func() {
-		a.showToast(&toastMsg{kind: toastAction, text: "Deleted Work", action: locales.ToastUndo(),
-			run: func() { undone++ }, commit: func() { commits++ }})
-		tt.Frame()
-	}
-	show()
-	if err := tt.Click(locales.ToastUndo()); err != nil {
-		t.Fatalf("%v: %q", err, tt.Texts())
-	}
-	tt.Frame()
-	tt.Advance(time.Minute)
-	tt.Frame()
-	if undone != 1 || commits != 0 || tt.HasText("Deleted Work") {
-		t.Errorf("Undo: %d undone, %d commits, texts %q", undone, commits, tt.Texts())
-	}
-	show()
-	if err := tt.Click(locales.ToastClose()); err != nil {
-		t.Fatalf("%v: %q", err, tt.Texts())
-	}
-	tt.Frame()
-	if undone != 1 || commits != 1 || tt.HasText("Deleted Work") {
-		t.Errorf("Close: %d undone, %d commits, texts %q", undone, commits, tt.Texts())
 	}
 }
 
@@ -274,5 +235,20 @@ func TestNotificationsOffRow(t *testing.T) {
 	st.Frame()
 	if st.HasText(locales.SettingsNotificationsOff()) {
 		t.Error("the row stayed once a notification showed")
+	}
+}
+
+// TestHostItemsClearedOnLastClose: the menu bar's items an offline host
+// disabled are enabled again once no window is left.
+func TestHostItemsClearedOnLastClose(t *testing.T) {
+	a, _ := newTestApp(t)
+	oldItems, oldOff := hostItems, hostItemsOff
+	t.Cleanup(func() { hostItems, hostItemsOff = oldItems, oldOff })
+	mi := &mygo.MenuItem{Disabled: true}
+	hostItems = map[*command]*mygo.MenuItem{&cmdNewTab: mi}
+	hostItemsOff = map[*command]bool{&cmdNewTab: true}
+	a.st.closed(a)
+	if mi.Disabled || hostItemsOff[&cmdNewTab] {
+		t.Errorf("New Tab stays disabled with no window: %v %v", mi.Disabled, hostItemsOff[&cmdNewTab])
 	}
 }
