@@ -18,6 +18,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"golang.org/x/crypto/ssh"
 )
@@ -32,6 +33,7 @@ type fakeSSHD struct {
 	config  *ssh.ServerConfig
 	mu      sync.Mutex
 	keys    map[string]bool   // authorized keys, by their marshal
+	pw      string            // the password PasswordCallback takes; "" refuses all
 	execs   map[string]string // exec command -> output; absent exits 127
 	socket  string            // the unix socket streamlocal reaches
 	execRan []string          // the commands asked
@@ -61,6 +63,14 @@ func newFakeSSHD(t *testing.T, authorized ...ssh.PublicKey) *fakeSSHD {
 				return nil, nil
 			}
 			return nil, errors.New("the key is not authorized")
+		},
+		PasswordCallback: func(_ ssh.ConnMetadata, pass []byte) (*ssh.Permissions, error) {
+			s.mu.Lock()
+			defer s.mu.Unlock()
+			if s.pw != "" && string(pass) == s.pw {
+				return nil, nil
+			}
+			return nil, errors.New("the password is wrong")
 		},
 	}
 	s.config.AddHostKey(hostKey)
@@ -205,6 +215,16 @@ func (s *fakeSSHD) session(newCh ssh.NewChannel) {
 		s.mu.Lock()
 		s.execRan = append(s.execRan, m.Command)
 		out, ok := s.execs[m.Command]
+		if !ok {
+			// A trailing * in the list's key matches by prefix, for a
+			// command the test can't spell whole (an install's).
+			for k, v := range s.execs {
+				if strings.HasSuffix(k, "*") && strings.HasPrefix(m.Command, strings.TrimSuffix(k, "*")) {
+					out, ok = v, true
+					break
+				}
+			}
+		}
 		s.mu.Unlock()
 		req.Reply(true, nil)
 		status := uint32(127)
@@ -283,9 +303,10 @@ func echo(ln net.Listener) {
 // testSSHDelegate answers each host-key question with trust, keeping
 // what it was asked.
 type testSSHDelegate struct {
-	mu    sync.Mutex
-	trust bool
-	asks  []sshAsk
+	mu     sync.Mutex
+	trust  bool
+	secret *string
+	asks   []sshAsk
 }
 
 type sshAsk struct {
@@ -293,12 +314,25 @@ type sshAsk struct {
 	port                              int
 }
 
-func (d *testSSHDelegate) OnSSHHostKey(qid int64, user, host string, port int, fingerprint, previous string) {
+func (d *testSSHDelegate) OnSSHHostKey(qid int64, user, host string, port int, fingerprint, previous, keyType string) {
 	d.mu.Lock()
 	d.asks = append(d.asks, sshAsk{fingerprint, previous, user, host, port})
 	trust := d.trust
 	d.mu.Unlock()
 	SSHAnswer(qid, trust)
+}
+
+// OnSSHAuth answers each secret question with the delegate's secret;
+// a nil secret refuses the card as the app's cancel does.
+func (d *testSSHDelegate) OnSSHAuth(qid int64, user, host string, port int, prompt string, retry, secret bool) {
+	d.mu.Lock()
+	s := d.secret
+	d.mu.Unlock()
+	if s == nil {
+		SSHAuthAnswer(qid, "")
+		return
+	}
+	SSHAuthAnswer(qid, *s)
 }
 
 func (d *testSSHDelegate) asked() []sshAsk {
@@ -556,6 +590,152 @@ func TestSSHHostKey(t *testing.T) {
 	asks = d.asked()
 	if last := asks[len(asks)-1]; last.fingerprint != srv.hostFP || last.previous != testFP {
 		t.Errorf("the changed-key question asked %+v; want %s replacing %s", last, srv.hostFP, testFP)
+	}
+}
+
+// heldDelegate keeps its questions for the test to answer, as a card
+// left up does.
+type heldDelegate struct {
+	mu   sync.Mutex
+	qids []int64
+}
+
+func (d *heldDelegate) OnSSHHostKey(qid int64, user, host string, port int, fingerprint, previous, keyType string) {
+	d.mu.Lock()
+	d.qids = append(d.qids, qid)
+	d.mu.Unlock()
+}
+
+func (d *heldDelegate) OnSSHAuth(qid int64, user, host string, port int, prompt string, retry, secret bool) {
+	d.mu.Lock()
+	d.qids = append(d.qids, qid)
+	d.mu.Unlock()
+}
+
+func (d *heldDelegate) asked() []int64 {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return append([]int64(nil), d.qids...)
+}
+
+// Two waits on one host-key question share the card, a cancelled wait
+// leaves it for a retry to reattach to, and one answer releases every
+// waiter (docs/IOS-023's pending question).
+func TestSSHPending(t *testing.T) {
+	Stop()
+	signer := sshEnv(t)
+	srv := newFakeSSHD(t, signer.PublicKey())
+	h := sshHost{ID: "alice-laptop", User: "alice", Host: "127.0.0.1", Port: srv.port(), Socket: socketRec(srv)}
+	setSSHHosts(t, h)
+	d := &heldDelegate{}
+	SetSSHDelegate(d)
+	key := signer.PublicKey()
+
+	ctx1, cancel1 := context.WithCancel(context.Background())
+	err1 := make(chan error, 1)
+	go func() { err1 <- sshHostKey(ctx1, "alice-laptop", h, key) }()
+	deadline := time.Now().Add(5 * time.Second)
+	for len(d.asked()) < 1 && time.Now().Before(deadline) {
+		time.Sleep(5 * time.Millisecond)
+	}
+	if n := len(d.asked()); n != 1 {
+		t.Fatalf("the first check asked %d times, want 1", n)
+	}
+	// A second check of the same fingerprint shares the question; a
+	// cancelled one leaves it standing.
+	err2 := make(chan error, 1)
+	go func() { err2 <- sshHostKey(context.Background(), "alice-laptop", h, key) }()
+	ctx2, cancel2 := context.WithCancel(context.Background())
+	err3 := make(chan error, 1)
+	go func() { err3 <- sshHostKey(ctx2, "alice-laptop", h, key) }()
+	cancel2()
+	if err := <-err3; err == nil {
+		t.Fatal("a cancelled wait on the question returned nil")
+	}
+	if n := len(d.asked()); n != 1 {
+		t.Fatalf("the shared and cancelled checks asked %d times in all, want 1", n)
+	}
+	// Cancelling the first waiter leaves the question: a retry of it
+	// reattaches and still asks nothing.
+	cancel1()
+	if err := <-err1; err == nil {
+		t.Fatal("the first waiter's cancel returned nil")
+	}
+	err4 := make(chan error, 1)
+	go func() { err4 <- sshHostKey(context.Background(), "alice-laptop", h, key) }()
+	time.Sleep(20 * time.Millisecond)
+	if n := len(d.asked()); n != 1 {
+		t.Fatalf("the reattached check asked %d times in all, want 1", n)
+	}
+	// One answer releases every waiter and trusts the fingerprint.
+	SSHAnswer(d.asked()[0], true)
+	for i, c := range []chan error{err2, err4} {
+		if err := <-c; err != nil {
+			t.Fatalf("waiter %d of the answered question: %v", i, err)
+		}
+	}
+	sshMu.Lock()
+	trusted := sshTrusted["alice-laptop"]
+	sshMu.Unlock()
+	if trusted != ssh.FingerprintSHA256(key) {
+		t.Errorf("the answer trusted %q, want %q", trusted, ssh.FingerprintSHA256(key))
+	}
+}
+
+// A host that refuses the device key asks the password, the run caches
+// the answered one, and a password login marks the host for the
+// install-key offer (docs/IOS-023).
+func TestSSHPassword(t *testing.T) {
+	Stop()
+	sshEnv(t)
+	srv := newFakeSSHD(t) // the device key is not authorized
+	srv.pw = "swordfish"
+	d := &testSSHDelegate{trust: true}
+	pw := "swordfish"
+	d.secret = &pw
+	SetSSHDelegate(d)
+	setSSHHosts(t, sshHost{ID: "alice-laptop", User: "alice", Host: "127.0.0.1", Port: srv.port(),
+		Socket: socketRec(srv)})
+	c, err := dialSSH(context.Background(), "alice-laptop")
+	if err != nil {
+		t.Fatalf("a password login: %v", err)
+	}
+	roundTrip(t, c, "hi")
+	c.Close()
+	if !SSHTakePasswordOffer("alice-laptop") {
+		t.Error("a password login made no install-key offer")
+	}
+	if SSHTakePasswordOffer("alice-laptop") {
+		t.Error("the taken offer offered again")
+	}
+	// A reconnect takes the run's cached password: the delegate
+	// refusing any new card still connects.
+	d.secret = nil
+	sshMu.Lock()
+	p := sshClients["alice-laptop"]
+	sshMu.Unlock()
+	dropSSHClient("alice-laptop", p)
+	c, err = dialSSH(context.Background(), "alice-laptop")
+	if err != nil {
+		t.Fatalf("the cached password's reconnect: %v", err)
+	}
+	c.Close()
+	// Install key execs the authorized_keys append on the client.
+	srv.mu.Lock()
+	srv.execs["umask 077; mkdir -p ~/.ssh*"] = ""
+	srv.mu.Unlock()
+	if err := SSHInstallKey("alice-laptop"); err != nil {
+		t.Fatalf("install key: %v", err)
+	}
+	ran := srv.execsAsked()
+	found := false
+	for _, cmd := range ran {
+		if strings.Contains(cmd, "authorized_keys") && strings.Contains(cmd, "rexgo") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("install key ran %v, want an authorized_keys append", ran)
 	}
 }
 
