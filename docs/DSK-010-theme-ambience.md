@@ -1,6 +1,6 @@
 ---
 name: DSK-010
-description: "A theme pack can carry images and declare ambience: background glows, a watermark, swimming sprites, a mascot with quotes and a popup, a brand row and a quote ticker, as data with caps. Use when you add image assets or motion to theme packs, change where ambience draws, or change the ambience and mascot settings."
+description: "History: a theme pack's assets folder, pinned ref and appearance.ambience stay; the glows, watermark, swimming sprites and brand row it built are removed, and its mascot and ticker were never built. Use when you change the asset install of theme packs or the ambience setting, or need why GoRex draws no built-in theme look."
 metadata:
   created: "2026-11-24"
   updated: "2026-11-25"
@@ -8,7 +8,9 @@ metadata:
 
 # DSK-010: Theme assets and ambience
 
-Status: accepted. Phase 1 built (#1083). Phase 2 built (#1099). Phase 3 dropped (User decisions, 8). The user decided its four questions (see User decisions).
+Status: superseded. The asset install of phase 1 (#1083) stays: `assets`, the `<id>.assets` folder and the pinned `ref`, which theme shaders read ([DSK-012](DSK-012-theme-shaders.md)). So does `appearance.ambience`, which now turns theme shaders off and still. The glows, still images, sprites and brand row of phases 1 and 2 (#1083, #1099) are removed by #<n> under the rule in [DSK-008](DSK-008-theme.md) Non-goals (User decisions, 9). Phase 3 dropped (User decisions, 8).
+
+The rest of this doc is history. It describes the design as it was built. The code no longer has `ambience`, `brand`, sprite sheets, SVG assets or `appearance.mascot`.
 
 This doc decides how a theme pack carries images and motion, and how GoRex draws them. It extends the manifest of [DSK-008](DSK-008-theme.md) and the theme pack kind of the registry. It builds on the optional `terminal` key that DSK-008 phase 4 adds. It does not change that key. The probe is a real theme for another app: `dafy-whale-theme` ("蓝色大肥鱼", a web theme for DeepSeek Harness). The user wants all of its features in GoRex. Where the framework cannot do a feature, this doc extends the framework.
 
@@ -266,6 +268,7 @@ The user decided the four questions of the first draft on 2026-11-24, item 5 in 
 6. **No built-in particle look** (2026-11-24, on #1099): GoRex ships no bubble or other particle shader. Particles come from a theme's own shader ([DSK-012](DSK-012-theme-shaders.md)). GoRex is a base for themes, and draws no look that a theme did not bring.
 7. **Phase 2 over the budget** (2026-11-25, on #1099): phase 2 merges at 20 frames a second over the idle CPU budget. The goal of this doc is a base of capabilities for themes; tuning the frame cost is not in it. No MyGo change follows.
 8. **No mascot or ticker** (2026-11-25): phase 3 is dropped. A mascot with a fixed bob, fixed bubbles and fixed timings, and a ticker with a fixed fade, are a look and a behavior that GoRex would hard-code, with a few numbers for the theme to set. A web theme does this with CSS and JavaScript, which it can change freely. A fixed set of knobs is not that, so GoRex does not build it. The parser keeps dropping `mascot` and `ticker` with a warning.
+9. **No built-in looks** (2026-11-25): the user removed the glows, the watermark, the brand row and the sprites. Each was a look that GoRex drew, with a few numbers for the theme to set: an ellipse of fixed shading, an image at a fixed anchor, a row of fixed layout, and a straight-line swim. That is hard-coding, as item 8 says of the mascot. The rule is now in [DSK-008](DSK-008-theme.md) Non-goals. A pack draws such a look with its own shader ([DSK-012](DSK-012-theme-shaders.md)). The asset install, the pinned `ref` and `appearance.ambience` stay, because theme shaders use them.
 
 ## Alternatives
 
@@ -314,6 +317,15 @@ The fish PNGs ship under "大肥鱼项目署名许可 1.0", as the user decided.
 The animated mascot path still needs a test with a real animated asset. Phase 3 makes a sprite sheet and a GIF from `whale_front.png` (a bob and a wave, 8 frames). The MIT license allows a modified work. The pack's `NOTICE` says that the frames are modified. Neither the pack repo nor GoRex redistributes the DeepSeek GIFs, the meme or the DeepSeek logo. A user can put their own files in a local pack (`gorex pack install <folder>`) at their own risk. GoRex does not help to fetch them.
 
 ## Migration
+
+The removal (User decisions, 9):
+
+- The parser drops `ambience` and `brand` with an `unknown key` warning each, as an older build does, and as it drops `mascot` and `ticker`. A pack with them loads its colors, its assets and its shaders. An asset value that is a sprite sheet object drops with a warning. An SVG asset fails its header check and drops with a warning: no shader reads an SVG.
+- `appearance.mascot` is no longer a setting. A `settings.json` with the key loads as before. The load ignores the key, and the next save of the settings drops it. No build ever drew a mascot, so the key changed nothing.
+- `appearance.ambience` keeps its values. Off now turns the theme's background shader off, and Off and Still stop the theme's shaders from moving, as they did before the removal. The sidebar button and **Toggle Theme Ambience** show while the theme has a background shader or a shader that moves.
+- A build before the removal that loads a pack with these keys draws them, as it did.
+
+As built:
 
 - A new key has a default. `appearance.ambience` and `appearance.mascot` are new settings with a default, so `docs/irreversible.md` does not apply. With no key, ambience moves and the mascot shows when the theme has them.
 - The manifest keeps its place, `<config>/themes/<id>.json`. The assets go to a new folder, `<config>/themes/<id>.assets/`. A single-file theme loads as now.

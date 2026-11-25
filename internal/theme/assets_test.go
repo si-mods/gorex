@@ -16,135 +16,71 @@ import (
 	"github.com/egoist/mygo/ui"
 )
 
-// TestParseAmbience: the DSK-010 keys of phases 1 and 2 parse; a value
-// past a cap clamps, an entry past a count cap drops, a bad color drops and
-// an unknown asset name drops, each with a warning
-// (docs/DSK-010-theme-ambience.md, Tests). Particles, which come from a
-// theme's shader (DSK-012), drop; the mascot and the ticker are still
-// unknown keys.
-func TestParseAmbience(t *testing.T) {
+// TestParseDropsLooks: GoRex draws no look of its own from a pack
+// (docs/DSK-008-theme.md, Non-goals). A manifest with the ambience and
+// brand keys of DSK-010, and its mascot and ticker, loads its colors and
+// its assets, and drops each of those keys with an unknown key warning, as
+// an older build drops a key it does not know. A sprite sheet object is no
+// file name, and a bad name or file drops.
+func TestParseDropsLooks(t *testing.T) {
 	m, warn, err := Parse([]byte(`{
   "name": "Sea",
+  "seeds": { "light": { "accent": "#3b62f6" }, "dark": { "accent": "#6c8cff" } },
   "assets": {
     "side": "side.png",
-    "logo": "logo.svg",
     "wave": { "file": "wave.png", "frames": 8, "columns": 4, "fps": 10 },
     "bad/name": "x.png",
     "up": "../up.png"
   },
   "ambience": {
-    "glows": [
-      { "x": 0.88, "y": -0.08, "rx": 0.55, "ry": 0.5, "color": { "light": "#3b62f64d", "dark": "#6c8cff33" } },
-      { "x": 0.5, "y": 0.5, "rx": 9, "ry": 0.3, "color": "#ffffffff" },
-      { "x": 0.1, "color": "blue" },
-      { "color": "#11223344" }, { "color": "#11223344" }, { "color": "#11223344" }
-    ],
-    "images": [
-      { "asset": "side", "anchor": "bottomRight", "height": 0.74, "opacity": 0.5 },
-      { "asset": "nope" },
-      { "asset": "wave" },
-      { "asset": "side", "anchor": "middle" },
-      { "asset": "side", "anchor": "topLeft", "height": 40 },
-      { "asset": "side" }
-    ],
-    "particles": [{ "count": 14 }],
-    "sprites": [
-      { "asset": "side", "y": 0.14, "height": 56, "seconds": 64, "direction": "right", "opacity": 0.16 },
-      { "asset": "wave", "y": 2, "height": 400, "seconds": 1, "direction": "left", "opacity": 0.9, "mirror": false },
-      { "asset": "nope" },
-      { "asset": "side", "direction": "down" },
-      { "asset": "side", "direction": "up", "x": 0.25 },
-      { "asset": "side" }, { "asset": "side" }, { "asset": "side" }, { "asset": "side" }, { "asset": "side" },
-      { "asset": "side" }
-    ]
+    "glows": [{ "x": 0.88, "y": -0.08, "rx": 0.55, "ry": 0.5, "color": "#3b62f64d" }],
+    "images": [{ "asset": "side", "anchor": "bottomRight", "height": 0.74, "opacity": 0.1 }],
+    "sprites": [{ "asset": "side", "y": 0.14, "height": 56, "seconds": 64 }]
   },
-  "brand": { "icon": "logo", "wordmark": "Sea‮ Whale\u0007 with a long long long name" },
-  "mascot": {}
+  "brand": { "icon": "side", "wordmark": "Sea Whale" },
+  "mascot": { "idle": "side" },
+  "ticker": { "lines": ["hi"] }
 }`))
 	if err != nil {
 		t.Fatal(err)
 	}
-	wantAssets := map[string]Asset{
-		"side": {File: "side.png"},
-		"logo": {File: "logo.svg"},
-		"wave": {File: "wave.png", Frames: 8, Columns: 4, FPS: 10},
+	if m.Name != "Sea" || m.Seeds[0][Accent] != ui.Hex("#3b62f6") || m.Seeds[1][Accent] != ui.Hex("#6c8cff") {
+		t.Errorf("colors %+v", m.Seeds)
 	}
-	if !reflect.DeepEqual(m.Assets, wantAssets) {
+	if want := map[string]Asset{"side": {File: "side.png"}}; !reflect.DeepEqual(m.Assets, want) {
 		t.Errorf("assets %+v", m.Assets)
 	}
-	wantGlows := []Glow{
-		{X: 0.88, Y: -0.08, RX: 0.55, RY: 0.5, Color: [2]ui.Color{ui.Hex("#3b62f64d"), ui.Hex("#6c8cff33")}},
-		{X: 0.5, Y: 0.5, RX: 1.5, RY: 0.3, Color: [2]ui.Color{ui.Hex("#ffffff66"), ui.Hex("#ffffff66")}},
-		{X: 0.5, Y: 0.5, RX: 0.5, RY: 0.5, Color: [2]ui.Color{ui.Hex("#11223344"), ui.Hex("#11223344")}},
-		{X: 0.5, Y: 0.5, RX: 0.5, RY: 0.5, Color: [2]ui.Color{ui.Hex("#11223344"), ui.Hex("#11223344")}},
-	}
-	if !reflect.DeepEqual(m.Ambience.Glows, wantGlows) {
-		t.Errorf("glows\n%+v\nwant\n%+v", m.Ambience.Glows, wantGlows)
-	}
-	if want := []Still{{Asset: "side", Anchor: BottomRight, Height: 0.74, Opacity: 0.25}, {Asset: "side", Anchor: TopLeft, Height: 40, Opacity: 0.1}}; !reflect.DeepEqual(m.Ambience.Images, want) {
-		t.Errorf("images %+v", m.Ambience.Images)
-	}
-	side := Sprite{Asset: "side", X: 0.5, Y: 0.5, Height: 48, Seconds: 60, Opacity: 0.15, Mirror: true}
-	up := side
-	up.Dir, up.X = Up, 0.25
-	wantSprites := []Sprite{
-		{Asset: "side", X: 0.5, Y: 0.14, Height: 56, Seconds: 64, Opacity: 0.16, Mirror: true},
-		{Asset: "wave", X: 0.5, Y: 1, Height: 200, Seconds: 8, Dir: Left, Opacity: 0.3},
-		up, side, side, side, side, side,
-	}
-	if !reflect.DeepEqual(m.Ambience.Sprites, wantSprites) {
-		t.Errorf("sprites\n%+v\nwant\n%+v", m.Ambience.Sprites, wantSprites)
-	}
-	if !m.Ambience.Moving() {
-		t.Error("sprites do not move")
-	}
-	if m.Brand != (Brand{Icon: "logo", Wordmark: "Sea Whale with a long lo"}) {
-		t.Errorf("brand %+v", m.Brand)
-	}
 	want := []string{
-		`ambience.glows[1].color: alpha clamped to 0.4`,
-		`ambience.glows[1].rx: 9 clamped to 0.05–1.5`,
-		`ambience.glows[2].color: bad color`,
-		`ambience.glows[5]: more than 4 glows`,
-		`ambience.images[0].opacity: 0.5 clamped to 0–0.25`,
-		`ambience.images[1].asset: no image asset "nope"`,
-		`ambience.images[2].asset: no image asset "wave"`,
-		`ambience.images[3].anchor: unknown anchor`,
-		`ambience.images[5]: more than 2 images`,
-		`ambience.particles: not drawn by this build`,
-		`ambience.sprites[10]: more than 8 sprites`,
-		`ambience.sprites[1].height: 400 clamped to 16–200`,
-		`ambience.sprites[1].opacity: 0.9 clamped to 0–0.3`,
-		`ambience.sprites[1].seconds: 1 clamped to 8–600`,
-		`ambience.sprites[1].y: 2 clamped to 0–1`,
-		`ambience.sprites[2].asset: no asset "nope"`,
-		`ambience.sprites[3].direction: unknown direction`,
 		`assets.up: bad file name "../up.png"`,
+		`assets.wave: not a file name`,
 		`assets: bad name "bad/name"`,
-		`brand.wordmark: control characters removed or cut to 24 characters`,
+		`unknown key "ambience"`,
+		`unknown key "brand"`,
 		`unknown key "mascot"`,
+		`unknown key "ticker"`,
 	}
 	if !slices.Equal(warn, want) {
 		t.Errorf("warnings\n%q\nwant\n%q", warn, want)
 	}
 
-	// A manifest of DSK-008 keys only has none of DSK-010's.
+	// A manifest of DSK-008 keys only has no assets.
 	m, warn, err = Parse([]byte(`{"name":"slate","seeds":{"light":{"accent":"#0a6bff"}}}`))
-	if err != nil || len(warn) != 0 || m.Assets != nil || !m.Ambience.Empty() || m.Brand != (Brand{}) {
+	if err != nil || len(warn) != 0 || m.Assets != nil {
 		t.Errorf("a DSK-008 manifest: %+v, %q, %v", m, warn, err)
 	}
 }
 
-// TestParseText: a wordmark loses control characters and bidirectional
-// controls, and keeps its first 24 characters, counted as characters.
+// TestParseText: a description loses control characters and
+// bidirectional controls, and keeps its first characters, counted as
+// characters.
 func TestParseText(t *testing.T) {
 	for in, want := range map[string]string{
-		"蓝色大肥鱼":                 "蓝色大肥鱼",
-		"a‮b⁦c‏d؜e":             "abcde",
-		"tab\there\nnew":        "tabherenew",
-		strings.Repeat("鱼", 30): strings.Repeat("鱼", 24),
+		"蓝色大肥鱼":                               "蓝色大肥鱼",
+		"a‮b⁦c‏d؜e":                           "abcde",
+		"tab\there\nnew":                      "tabherenew",
+		strings.Repeat("鱼", maxDescription+6): strings.Repeat("鱼", maxDescription),
 	} {
-		got, _ := cleanText(in, maxWordmark)
+		got, _ := cleanText(in, maxDescription)
 		if got != want {
 			t.Errorf("cleanText(%q) = %q, want %q", in, got, want)
 		}
@@ -210,10 +146,10 @@ func TestAssetLimits(t *testing.T) {
 		{"gif too many frames", gifFrames(16, 16, 65), false, FormatGIF},
 		{"gif animated too large", gifFrames(600, 100, 2), false, FormatGIF},
 		{"gif cut", gifFrames(16, 16, 2)[:20], false, FormatGIF},
-		{"svg", []byte(`<?xml version="1.0"?><svg xmlns="http://www.w3.org/2000/svg"/>`), true, FormatSVG},
+		{"svg", []byte(`<?xml version="1.0"?><svg xmlns="http://www.w3.org/2000/svg"/>`), false, 0},
 		{"jpeg", []byte("\xff\xd8\xff\xe0\x00\x10JFIF"), false, 0},
 		{"webp", []byte("RIFF\x00\x00\x00\x00WEBPVP8 "), false, 0},
-		{"html", []byte("<html><svg/></html>"), true, FormatSVG}, // ParseSVG refuses it at load
+		{"html", []byte("<html><svg/></html>"), false, 0},
 	} {
 		h, err := CheckHeader(c.b)
 		if (err == nil) != c.ok || err == nil && h.Format != c.want {
@@ -263,8 +199,6 @@ func testPNG(t *testing.T, w, h int) []byte {
 	return b.Bytes()
 }
 
-const testSVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><circle cx="10" cy="10" r="8" fill="currentColor"/></svg>`
-
 // writePack writes a theme pack: theme.json and the files of its assets
 // folder.
 func writePack(t *testing.T, manifest string, files map[string][]byte) string {
@@ -277,9 +211,7 @@ func writePack(t *testing.T, manifest string, files map[string][]byte) string {
 	return src
 }
 
-const seaManifest = `{"name":"Sea","assets":{"side":"side.png","logo":"logo.svg","bomb":"bomb.png"},
-"ambience":{"images":[{"asset":"side","height":0.7,"opacity":0.1},{"asset":"bomb","height":40}]},
-"brand":{"icon":"logo","wordmark":"Sea"}}`
+const seaManifest = `{"name":"Sea","assets":{"side":"side.png","bomb":"bomb.png"}}`
 
 // TestInstallThemeAssets: a pack installs its manifest and only the assets
 // it names, each checked, to <dir>/<id>.assets; installing again replaces
@@ -289,7 +221,6 @@ const seaManifest = `{"name":"Sea","assets":{"side":"side.png","logo":"logo.svg"
 func TestInstallThemeAssets(t *testing.T) {
 	src := writePack(t, seaManifest, map[string][]byte{
 		"side.png":  testPNG(t, 64, 96),
-		"logo.svg":  []byte(testSVG),
 		"bomb.png":  pngHeader(1<<16, 1<<16, 0),
 		"extra.png": testPNG(t, 4, 4),
 	})
@@ -309,7 +240,7 @@ func TestInstallThemeAssets(t *testing.T) {
 		}
 		return out
 	}
-	if got := names(); !slices.Equal(got, []string{"logo.svg", "side.png"}) {
+	if got := names(); !slices.Equal(got, []string{"side.png"}) {
 		t.Errorf("installed assets %q", got)
 	}
 	if des, _ := os.ReadDir(dir); len(des) != 2 {
@@ -371,7 +302,7 @@ func TestInstallThemeAssets(t *testing.T) {
 // it can never be, or delete, another theme's manifest: with slate
 // installed, Install and Remove of "slate.json" leave slate.json in place.
 func TestThemeNameJSON(t *testing.T) {
-	src := writePack(t, seaManifest, map[string][]byte{"side.png": testPNG(t, 4, 4), "logo.svg": []byte(testSVG)})
+	src := writePack(t, seaManifest, map[string][]byte{"side.png": testPNG(t, 4, 4)})
 	dir := filepath.Join(t.TempDir(), "themes")
 	if _, err := Install(src, dir, "slate"); err != nil {
 		t.Fatal(err)
@@ -395,63 +326,36 @@ func TestThemeNameJSON(t *testing.T) {
 	}
 }
 
-// TestLoadAssets: the loader decodes the assets in use, a still image of a
-// DIP height to at most twice that size times the scale, an SVG as the
-// brand icon; it drops a file that fails its header and an SVG that is not
-// the icon, and the rest loads.
+// TestLoadAssets: the loader decodes the assets that the theme's shaders
+// use, each image at its own size; it drops a file that fails its header,
+// an SVG, which no shader reads, and a file that is gone, and the rest
+// loads. An asset that no shader uses does not load.
 func TestLoadAssets(t *testing.T) {
-	src := writePack(t, `{"assets":{"side":"side.png","logo":"logo.svg","small":"small.png","bomb":"bomb.png","svgimg":"logo.svg","gone":"gone.png"},
-"ambience":{"images":[{"asset":"side","height":0.7},{"asset":"small","height":20}]},
-"brand":{"icon":"logo"}}`, map[string][]byte{
+	src := writePack(t, `{"assets":{"bg":"bg.kage","side":"side.png","small":"small.png","bomb":"bomb.png","svgimg":"logo.svg","gone":"gone.png","unused":"side.png"},
+"shaders":{"api":1,"background":{"source":"bg","images":["side","small","bomb"]},
+"faces":{"sideBar.trackBackground":{"source":"bg","images":["svgimg","gone"]}}}}`, map[string][]byte{
+		"bg.kage":   []byte("package main\n"),
 		"side.png":  testPNG(t, 64, 96),
 		"small.png": testPNG(t, 300, 300),
-		"logo.svg":  []byte(testSVG),
+		"logo.svg":  []byte(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"/>`),
 		"bomb.png":  pngHeader(1<<16, 1<<16, 0),
 	})
 	m, _, err := Load(filepath.Join(src, PackFile))
 	if err != nil {
 		t.Fatal(err)
 	}
-	art, warn := LoadAssets(filepath.Join(src, AssetsDir), m, 2)
-	if len(warn) != 0 {
-		t.Errorf("warnings %q", warn)
-	}
+	art, warn := LoadAssets(filepath.Join(src, AssetsDir), m)
 	if w, h := art.Bitmaps["side"].Size(); w != 64 || h != 96 {
 		t.Errorf("side %d×%d", w, h)
 	}
-	if w, _ := art.Bitmaps["small"].Size(); w != 2*20*2 {
-		t.Errorf("small decoded %d px wide, want %d", w, 2*20*2)
+	if w, _ := art.Bitmaps["small"].Size(); w != 300 {
+		t.Errorf("small decoded %d px wide, want 300", w)
 	}
-	if art.Icon == nil || art.Bytes != (64*96+80*80)*4 {
-		t.Errorf("icon %v, bytes %d", art.Icon, art.Bytes)
+	if len(art.Bitmaps) != 2 || art.Bytes != (64*96+300*300)*4 || art.Sources["bg"] != "package main\n" {
+		t.Errorf("bitmaps %v, bytes %d, sources %q", art.Bitmaps, art.Bytes, art.Sources)
 	}
-
-	m.Ambience.Images = append(m.Ambience.Images, Still{Asset: "bomb", Height: 0.5}, Still{Asset: "svgimg", Height: 0.5}, Still{Asset: "gone", Height: 0.5})
-	art, warn = LoadAssets(filepath.Join(src, AssetsDir), m, 2)
-	if len(warn) != 3 || len(art.Bitmaps) != 2 || art.Icon == nil {
-		t.Errorf("bitmaps %d, icon %v, warnings %q", len(art.Bitmaps), art.Icon, warn)
-	}
-
-	// A sprite decodes for its height, a frame's of a sheet: a sheet of
-	// two rows of 100 px frames shown 25 DIPs high, at scale 2, to 100 px
-	// a frame, 200 px for the sheet. An SVG is no sprite.
-	src = writePack(t, `{"assets":{"fish":"fish.png","sheet":{"file":"sheet.png","frames":8,"columns":4},"logo":"logo.svg"},
-"ambience":{"sprites":[{"asset":"fish","height":20},{"asset":"sheet","height":25},{"asset":"logo"}]}}`, map[string][]byte{
-		"fish.png":  testPNG(t, 300, 150),
-		"sheet.png": testPNG(t, 400, 200),
-		"logo.svg":  []byte(testSVG),
-	})
-	if m, _, err = Load(filepath.Join(src, PackFile)); err != nil {
-		t.Fatal(err)
-	}
-	art, warn = LoadAssets(filepath.Join(src, AssetsDir), m, 2)
-	if w, h := art.Bitmaps["fish"].Size(); w != 160 || h != 80 {
-		t.Errorf("fish %d×%d, want 160×80", w, h)
-	}
-	if w, h := art.Bitmaps["sheet"].Size(); w != 400 || h != 200 {
-		t.Errorf("sheet %d×%d, want 400×200", w, h)
-	}
-	if art.Icon != nil || len(warn) != 1 || !strings.Contains(warn[0], "only for brand.icon") {
-		t.Errorf("an SVG sprite: icon %v, warnings %q", art.Icon, warn)
+	if len(warn) != 3 || !strings.Contains(warn[0], "assets.bomb") || !strings.Contains(warn[1], "assets.gone") ||
+		!strings.Contains(warn[2], "assets.svgimg") || !strings.Contains(warn[2], "not a PNG or GIF") {
+		t.Errorf("warnings %q", warn)
 	}
 }

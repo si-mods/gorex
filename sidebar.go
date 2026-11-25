@@ -430,7 +430,6 @@ func (a *App) sidebar(c *ui.Context, k *colors, right bool) {
 	if ok {
 		paintFace(col, k, roleSideBarBackground, face)
 	}
-	a.ambience.side, a.ambience.hasSide = col, true
 	col.Children(func() {
 		head := ui.Row(c).Height(titleH).Shrink(0).Gap(2).AlignItems(ui.Center).DragWindow()
 		hk, face, ok := themedFace(k, roleTitleBarBackground)
@@ -464,7 +463,6 @@ func (a *App) sidebar(c *ui.Context, k *colors, right bool) {
 			}
 		})
 		padR, padL := sideInsets(right)
-		brandRow(c, k, padR, padL)
 		if picker && !unified {
 			ui.Row(c).Shrink(0).Padding(0, padR, 4, padL).Children(func() { a.spacePicker(c, k, true) })
 		}

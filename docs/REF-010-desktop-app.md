@@ -3,7 +3,7 @@ name: REF-010
 description: "What the user of the desktop app sees and does: panes of every kind, persistent sessions, spaces and projects, program activity, Settings and the notes for Windows. Use when you change a feature of the app."
 metadata:
   created: "2026-11-24"
-  updated: "2026-11-24"
+  updated: "2026-11-25"
 ---
 
 # REF-010: The desktop app
@@ -122,7 +122,7 @@ Elsewhere than on macOS, Control and a letter are the terminal's (Ctrl+C, Ctrl+D
 
 Settings… (⌘, on macOS, Ctrl+, elsewhere. Also the Shell menu and command palette) opens a window of its own with a sidebar of sections. Appearance: light, dark or system, tab placement, pane headers, animation style, text size, language. Terminal: font, cursor style and blink, copy on selection, minimum contrast. Theme: any of Ghostty's themes, or follow the config. Keyboard: GoRex's shortcuts, read only. Remote: see [remote access](REF-012-remote-access.md) and [remote hosts](REF-012-remote-access.md#remote-hosts). Network: see [remote hosts](REF-012-remote-access.md#remote-hosts) and [Tailscale discovery](REF-012-remote-access.md#tailscale-discovery-desktop). About: version, Check for Updates…. The choices go to `settings.json`, as do the sidebar's width and whether it is hidden.
 
-`appearance.theme` in `settings.json` names a theme for GoRex's own colors (not the terminal's). The theme is a manifest of colors at `<config>/themes/<name>.json`, beside `init.lua` ([DSK-008](DSK-008-theme.md)). `gorex pack install <id>` installs a theme pack of the registry there. Settings > Extensions lists, installs and uses themes too, and installs icon packs. Leave it empty for the built-in colors. A theme pack can also carry images: glows in the window's gradient, a watermark and a brand row at the top of the sidebar ([DSK-010](DSK-010-theme-ambience.md)). `appearance.ambience` (`"still"` or `"off"`) in `settings.json` turns them down; the Extensions page has no switch for it.
+`appearance.theme` in `settings.json` names a theme for GoRex's own colors (not the terminal's). The theme is a manifest of colors at `<config>/themes/<name>.json`, beside `init.lua` ([DSK-008](DSK-008-theme.md)). `gorex pack install <id>` installs a theme pack of the registry there. Settings > Extensions lists, installs and uses themes too, and installs icon packs. Leave it empty for the built-in colors. A theme pack can also carry assets, which its own shaders read ([DSK-012](DSK-012-theme-shaders.md)); GoRex draws no look of its own from a pack ([DSK-008](DSK-008-theme.md), Non-goals). `appearance.ambience` (`"still"` or `"off"`) in `settings.json` stops the theme's shaders from moving, or turns its background shader off; the sidebar's sparkles button and **Toggle Theme Ambience** turn it off and on while the theme has such a shader. The Extensions page has no switch for it.
 
 Remote turns the server's remote access on and off, and manages it. It pairs a new device: Start pairing opens a five-minute window, and each request shows its name and fingerprint, to Approve or Reject. It lists the allowed clients, to revoke one or to add one by name and public key. It shows this machine's own key and its fingerprint. While the server listens, it shows the address, hidden until you show it, with Copy and Regenerate (which asks first). The page asks the server every two seconds while it shows. Its Remote Hosts group is the other side: the machines this one connects to (see [remote hosts](REF-012-remote-access.md#remote-hosts)).
 

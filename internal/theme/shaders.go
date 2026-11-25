@@ -163,7 +163,7 @@ func parseSlot(raw json.RawMessage, where string, assets map[string]Asset, w *wa
 			names = names[:maxShaderImages]
 		}
 		for _, n := range names {
-			if a, ok := assets[n]; !ok || a.Frames > 0 || IsKage(a.File) {
+			if a, ok := assets[n]; !ok || IsKage(a.File) {
 				w.add("%s.images: no image asset %q (dropped)", where, n)
 				return nil
 			}

@@ -103,16 +103,8 @@ func (a *App) view(c *ui.Context) {
 	rootBackground(c, k.bgBottom)
 	wash, moves := backgroundAlpha(c), themeShaderMoves(c)
 	dark := c.Theme().Dark
-	// The cards and the sidebar this frame builds, which the moving layers
-	// paint around and under as it paints.
-	a.ambience.cards, a.ambience.hasSide, a.ambience.hasRoom = a.ambience.cards[:0], false, false
-	moving := a.movingLayers(c)
 	ui.Column(c).Fill().Draw(func(p *ui.Painter, r ui.Rect) {
 		paintBackground(p, r, k, wash, dark, moves)
-		paintStills(p, r)
-		if moving != nil {
-			moving(p, r)
-		}
 	}).Children(func() {
 		if prefs.TabPlacement != "" {
 			a.sidebarLayout(c, k, prefs.TabPlacement == "right")
@@ -370,7 +362,6 @@ func (a *App) tabContent(c *ui.Context, k *colors, t *Tab) {
 	a.contentFocus, a.pageHover = false, nil
 	a.syncNoteItem()
 	room := ui.Box(c.Key(roomKey(t.ID))).Grow(1).MinWidth(0).MinHeight(0)
-	a.ambience.room, a.ambience.hasRoom = room, true
 	if anim := motion(c); anim != nil && a.tabSlideDir != 0 {
 		room.Transition(exitIn(ui.ElementTransition{
 			Animation: anim,
@@ -554,7 +545,7 @@ func (a *App) paneCell(c *ui.Context, k *colors, t *Tab, p *Pane, s share, bound
 			fadeColors = false
 			defer func() { fadeColors = true }()
 		}
-		a.card(a.paneCard(c, k, t, p, held).Grow(1))
+		a.paneCard(c, k, t, p, held).Grow(1)
 	})
 }
 
@@ -603,7 +594,6 @@ func (a *App) floatCell(c *ui.Context, k *colors, t *Tab, f *Float, bounds ui.Re
 		return
 	}
 	cell := ui.Column(c.Key(cellKey(p.ID))).Absolute()
-	a.card(cell)
 	anim := motion(c)
 	if anim == &snappy {
 		anim = &springBack

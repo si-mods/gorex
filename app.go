@@ -163,10 +163,6 @@ type App struct {
 	// frame, which a tab's row scrolled out of leaves its close button
 	// clipped.
 	sideList ui.Rect
-	// The theme's moving layers (ambience.go): the pane cards and the
-	// sidebar of the frame, which they paint around and under, and their
-	// clock.
-	ambience ambienceFrame
 	// paletteFresh tells that the palette was just opened: the frame that
 	// shows it first poses it where it comes in from.
 	paletteFresh bool
