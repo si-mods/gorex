@@ -303,6 +303,11 @@ Each item has a **Trigger** (what the diff shows), a **Check** (what the author 
 - **Check:** the gate was run with `-count 10` on every platform it gates. One clean run does not show a test is free of races.
 - **Source:** #563.
 
+### Process kill on a host that serves
+- **Trigger:** the diff adds a `taskkill`, `Stop-Process`, `pkill` or `Process.Kill` to a script, a skill, a doc or a tool an agent may run on a host where a GoRex server also serves, or a test helper that stops an earlier instance.
+- **Check:** the kill names only the pids the same run started and recorded at launch; it never enumerates by image name (`tasklist /FI "IMAGENAME eq"`, `Get-Process -Name`, `pgrep -f`) or by port owner. A stale instance on such a host is reported, not killed. Windows image-name filters ignore case, so `gorex.exe` also matches the installed `GoRex.exe`.
+- **Source:** an agent recycled its UI-test build with `for p in $(tasklist ... IMAGENAME eq gorex.exe ...); do taskkill /PID $p /F; done`; the enumeration held the production GUI and server, which died with no stop event, took every session's shells with them, and left remote access down for an hour (2026-11-25).
+
 ## Design before code
 
 ### Gesture or interaction feature
