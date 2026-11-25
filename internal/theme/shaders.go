@@ -281,7 +281,7 @@ func parseLayer(raw json.RawMessage, where string, api int, assets map[string]As
 				w.add("%s.params: bad uniform name %q", where, name)
 				continue
 			}
-			if _, ok := apiType(name); ok {
+			if _, ok := apiType(name, api); ok {
 				w.add("%s.params.%s: GoRex sets this uniform (dropped)", where, name)
 				continue
 			}
@@ -437,6 +437,13 @@ var apiUniforms = map[string]UniformType{
 	"Window": {Base: "vec2"},
 }
 
+// apiUniformsV2 are the uniforms GoRex sets in version 2 besides those of
+// version 1 (docs/DSK-012, Pointer). In version 1 each is an ordinary
+// param, as before.
+var apiUniformsV2 = map[string]UniformType{
+	"Pointer": {Base: "vec4"},
+}
+
 // SeedUniform returns the seed the uniform name Seed<Name> stands for:
 // "SeedAccent" for accent, "SeedBgTop" for bgTop.
 func SeedUniform(name string) (Seed, bool) {
@@ -447,9 +454,13 @@ func SeedUniform(name string) (Seed, bool) {
 	return SeedByName(strings.ToLower(rest[:1]) + rest[1:])
 }
 
-// apiType returns the type of a uniform GoRex sets, and whether it sets it.
-func apiType(name string) (UniformType, bool) {
+// apiType returns the type of a uniform GoRex sets in the API version
+// api, and whether it sets it.
+func apiType(name string, api int) (UniformType, bool) {
 	if t, ok := apiUniforms[name]; ok {
+		return t, true
+	}
+	if t, ok := apiUniformsV2[name]; ok && api == ShaderAPI2 {
 		return t, true
 	}
 	if strings.HasPrefix(name, "Seed") {
@@ -827,7 +838,7 @@ func CheckUniforms(src *ShaderSource, slot *ShaderLayer, api int, reserved ...st
 		}
 		_, declared := src.Params[name]
 		bad, badDecl := src.badParams[name]
-		if want, ok := apiType(name); ok {
+		if want, ok := apiType(name, api); ok {
 			if api == ShaderAPI2 && (declared || badDecl) {
 				return warn, fmt.Errorf("uniform %s: GoRex sets this uniform, which takes no %s", name, paramMarker)
 			}
