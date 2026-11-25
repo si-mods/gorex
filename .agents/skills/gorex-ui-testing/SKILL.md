@@ -138,11 +138,23 @@ xcrun simctl install <UDID> /tmp/gorex-dd/Build/Products/Debug-iphonesimulator/G
 
 A screen with no window at all: `xcrun simctl io <UDID> screenshot /tmp/s.png`. It works while a test drives the app too, so keep the test running and shoot between its steps.
 
-Feed the app a host without typing. Terminate it, then write the `hosts` default, a JSON array of `HostConfig` (`id`, `name`, `url`, `transport`…), as hex data (`python3 -c 'print(json.dumps([…]).encode().hex())'`):
+Feed the app a host without typing. Terminate it, then write the `hosts` default, a JSON array of `HostConfig` (`id`, `name`, `url`, `desktop`, `ssh`…), as a `<data>` blob in the app's own defaults. Do **not** use `xcrun simctl spawn <UDID> defaults write dev.gorex.ios hosts`: inside the sim that writes the shared `data/Library/Preferences/dev.gorex.ios.plist`, which a sandboxed app never reads — the hosts simply do not appear. Write the container plist instead, then restart `cfprefsd` so it drops its cached copy, or the app keeps the previous value:
 
 ```sh
-xcrun simctl spawn <UDID> defaults write dev.gorex.ios hosts -data <hex>
+xcrun simctl terminate <UDID> dev.gorex.ios
+C=$(xcrun simctl get_app_container <UDID> dev.gorex.ios data)
+python3 - <<EOF
+import plistlib
+p = "$C/Library/Preferences/dev.gorex.ios.plist"
+d = plistlib.load(open(p, "rb"))
+d["hosts"] = b'[{"id":"…","name":"dev-box","url":"http://…ssh.invalid","desktop":false,"ssh":{"user":"alice","host":"host","port":22}}]'
+plistlib.dump(d, open(p, "wb"))
+EOF
+xcrun simctl spawn <UDID> launchctl stop com.apple.cfprefsd.xpc.daemon
+xcrun simctl launch <UDID> dev.gorex.ios
 ```
+
+A seeded `ssh.hostKey` must be the OpenSSH fingerprint form: `SHA256:` plus 43 base64 characters with **no `=` padding** (`ssh-keygen -l`/`ssh.FingerprintSHA256` output). A padded or otherwise malformed one fails `SetSSHHosts` outright — the `dev.gorex.ios:tailnet` log shows `ssh hosts not set` and every ssh host stays undialable.
 
 Point `url` at a Rex server you started yourself, on the same Mac if you like: `gorex rexapi lan on`, then `curl -i http://127.0.0.1:<port>/api/control` answers 426 on the right API (a 404 is another server). The simulator shares the Mac's network, so the Mac's own LAN address works as it is.
 
