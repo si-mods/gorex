@@ -591,7 +591,7 @@ func (a *App) projectMenu(m *ui.Menu, w *Workspace) {
 	}
 	m.Submenu(locales.SpaceColor(), func(sm *ui.Menu) {
 		for _, ch := range colorChoices(w.Color) {
-			if sm.Item(ch.label).Radio(ch.checked).Chosen() {
+			if sm.Item(ch.label).Icon(colorDot(ch.id)).Radio(ch.checked).Chosen() {
 				a.laterService(func() { a.setProjectColor(w, ch.id) })
 			}
 		}

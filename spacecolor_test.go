@@ -77,3 +77,13 @@ func TestColorChoicesTick(t *testing.T) {
 		t.Errorf("project color %q ticks %q", w.Color, got)
 	}
 }
+
+// TestColorDot: every item of a color menu gets a dot, made once.
+func TestColorDot(t *testing.T) {
+	for _, ch := range colorChoices("") {
+		d := colorDot(ch.id)
+		if d == nil || colorDot(ch.id) != d {
+			t.Errorf("%s: dot %p, made again %p", ch.label, d, colorDot(ch.id))
+		}
+	}
+}

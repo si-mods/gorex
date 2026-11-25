@@ -5,7 +5,9 @@ import (
 	"log"
 	"slices"
 	"strings"
+	"sync"
 
+	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 
 	"gorex/internal/layout"
@@ -701,11 +703,38 @@ func colorChoices(cur string) []colorChoice {
 	return out
 }
 
-// spaceColorMenu lists the colors space name may take on this client, the
-// one it has ticked.
+// colorDots are the menu icons of the colors, by id, each made once.
+var (
+	colorDotsMu sync.Mutex
+	colorDots   = map[string]*mygo.MenuIcon{}
+)
+
+// colorDot is the icon of color id in a color menu: a small dot of it, or,
+// for Default (""), a ring in the color of the item's text, as
+// spaceSwatchMark draws them.
+func colorDot(id string) *mygo.MenuIcon {
+	colorDotsMu.Lock()
+	defer colorDotsMu.Unlock()
+	if m, ok := colorDots[id]; ok {
+		return m
+	}
+	shape, template := `<circle cx="8" cy="8" r="4.25" fill="none" stroke="#000" stroke-width="1.5"/>`, true
+	if hex, ok := spaceColorHex(id); ok {
+		shape, template = `<circle cx="8" cy="8" r="5" fill="`+hex+`"/>`, false
+	}
+	m, err := mygo.NewMenuIconSVG(ui.MustParseSVG([]byte(`<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">`+shape+`</svg>`)), template)
+	if err != nil {
+		panic(err)
+	}
+	colorDots[id] = m
+	return m
+}
+
+// spaceColorMenu lists the colors space name may take on this client, each
+// with its dot, the one it has ticked.
 func spaceColorMenu(m *ui.Menu, name string) {
 	for _, ch := range colorChoices(spaceColor(name)) {
-		if m.Item(ch.label).Radio(ch.checked).Chosen() {
+		if m.Item(ch.label).Icon(colorDot(ch.id)).Radio(ch.checked).Chosen() {
 			setSpaceColorOf(name, ch.id)
 		}
 	}
