@@ -703,32 +703,50 @@ func colorChoices(cur string) []colorChoice {
 	return out
 }
 
-// colorDots are the menu icons of the colors, by id, each made once.
+// colorDots are the menu icons of the colors, by id and tick, each made
+// once.
 var (
 	colorDotsMu sync.Mutex
 	colorDots   = map[string]*mygo.MenuIcon{}
 )
 
-// colorDot is the icon of color id in a color menu: a small dot of it, or,
-// for Default (""), a ring in the color of the item's text, as
-// spaceSwatchMark draws them.
-func colorDot(id string) *mygo.MenuIcon {
+// colorDot is the icon of color id in a color menu: a dot of it, or, for
+// Default (""), a ring in the color of the item's text, as spaceSwatchMark
+// draws them. The current color's has a tick inside, in white or black,
+// whichever stands out more on it: the menu marks it there, not with a
+// mark of its own beside the dot.
+func colorDot(id string, ticked bool) *mygo.MenuIcon {
+	key := id
+	if ticked {
+		key += "/ticked"
+	}
 	colorDotsMu.Lock()
 	defer colorDotsMu.Unlock()
-	if m, ok := colorDots[id]; ok {
+	if m, ok := colorDots[key]; ok {
 		return m
 	}
-	shape, template := `<circle cx="8" cy="8" r="4.25" fill="none" stroke="#000" stroke-width="1.5"/>`, true
+	const tick = `<path d="M5.2 8.3 7.1 10.1 10.8 6.1" fill="none" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" stroke="`
+	shape, template := `<circle cx="8" cy="8" r="5.25" fill="none" stroke="#000" stroke-width="1.5"/>`, true
+	if ticked {
+		shape += tick + `#000"/>`
+	}
 	if hex, ok := spaceColorHex(id); ok {
-		shape, template = `<circle cx="8" cy="8" r="5" fill="`+hex+`"/>`, false
+		shape, template = `<circle cx="8" cy="8" r="6" fill="`+hex+`"/>`, false
+		if ticked {
+			ink := "#fff"
+			if c := ui.Hex(hex); contrast(c, ui.RGB(0, 0, 0)) > contrast(c, ui.RGB(255, 255, 255)) {
+				ink = "#000"
+			}
+			shape += tick + ink + `"/>`
+		}
 	}
 	m, err := mygo.NewMenuIconSVG(ui.MustParseSVG([]byte(`<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">`+shape+`</svg>`)), template)
 	if err != nil {
 		// The item shows no dot: the menu still works.
-		log.Printf("gorex: color dot %q: %v", id, err)
+		log.Printf("gorex: color dot %q: %v", key, err)
 		return nil
 	}
-	colorDots[id] = m
+	colorDots[key] = m
 	return m
 }
 
@@ -736,7 +754,7 @@ func colorDot(id string) *mygo.MenuIcon {
 // with its dot, the one it has ticked.
 func spaceColorMenu(m *ui.Menu, name string) {
 	for _, ch := range colorChoices(spaceColor(name)) {
-		if m.Item(ch.label).Icon(colorDot(ch.id)).Radio(ch.checked).Chosen() {
+		if m.Item(ch.label).Icon(colorDot(ch.id, ch.checked)).Chosen() {
 			setSpaceColorOf(name, ch.id)
 		}
 	}

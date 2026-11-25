@@ -78,12 +78,18 @@ func TestColorChoicesTick(t *testing.T) {
 	}
 }
 
-// TestColorDot: every item of a color menu gets a dot, made once.
+// TestColorDot: every item of a color menu gets a dot, made once, and the
+// current one's, ticked, is another.
 func TestColorDot(t *testing.T) {
 	for _, ch := range colorChoices("") {
-		d := colorDot(ch.id)
-		if d == nil || colorDot(ch.id) != d {
-			t.Errorf("%s: dot %p, made again %p", ch.label, d, colorDot(ch.id))
+		for _, on := range []bool{false, true} {
+			d := colorDot(ch.id, on)
+			if d == nil || colorDot(ch.id, on) != d {
+				t.Errorf("%s ticked %v: dot %p, made again %p", ch.label, on, d, colorDot(ch.id, on))
+			}
+		}
+		if colorDot(ch.id, true) == colorDot(ch.id, false) {
+			t.Errorf("%s: the ticked dot is the plain one", ch.label)
 		}
 	}
 }
