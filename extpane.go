@@ -554,9 +554,15 @@ func (e *extPane) apply(a *App, p *Pane, s *savedNode) {
 	if fp == e.synced {
 		return
 	}
+	url := e.keep.URL
 	e.keep = *s
 	e.keep.A, e.keep.B, e.keep.Cols, e.keep.Rows = nil, nil, 0, 0
 	e.synced = fp
+	// A kind with a web slot follows the page another client navigated
+	// the pane to, as a browser pane did.
+	if e.slot != nil && e.keep.URL != url && e.keep.URL != "" {
+		e.slot.Page().LoadURL(e.keep.URL)
+	}
 	e.emitState()
 }
 
@@ -620,6 +626,25 @@ func (e *extPane) paneFiles() []string {
 // filePattern is a "{field}" inside a files pattern.
 var filePattern = regexp.MustCompile(`\{[a-zA-Z]+\}`)
 
+// navigateExtSlot loads the URL of text in the focused pane's web slot,
+// under the same policy the bridge's WebNavigate answers: a debug hook
+// steers a browser-kind pane with it.
+func (a *App) navigateExtSlot(p *Pane, text string) {
+	e, ok := p.ext.(*extPane)
+	if !ok || e.slot == nil {
+		return
+	}
+	u := browserURL(text)
+	if u == "" {
+		a.err, a.errMsg = "", locales.Messages.BrowserOnlyWeb
+		return
+	}
+	a.err, a.errMsg = "", nil
+	if err := e.slot.Page().LoadURL(u); err != nil {
+		a.err, a.errMsg = err.Error(), nil
+	}
+}
+
 // zoomPaneExt gives the focused pane's extension kind its own zoom, as
 // a note's text size was; the pane answers false when its kind has no
 // zoom of its own, and the caller then sizes the terminal text.
@@ -632,7 +657,11 @@ func (a *App) zoomPaneExt(delta float32) bool {
 }
 
 func (e *extPane) restart(a *App, p *Pane) {
-	if e.web != nil {
+	// A kind with a web slot reloads the slot's page, as a browser pane's
+	// Restart did; one without reloads the pack's page.
+	if e.slot != nil {
+		e.slot.Page().Reload()
+	} else if e.web != nil {
 		e.web.Page().Reload()
 	}
 }
@@ -690,4 +719,11 @@ func newFileID() string {
 
 func (e *extPane) layoutSaved(p *Pane) { e.synced = extStateFingerprint(&e.keep, e.def.Fields) }
 
-func (e *extPane) webView() *mygo.WebView { return e.web }
+func (e *extPane) webView() *mygo.WebView {
+	// The view a pane's user looks at: the web slot's, for a kind with
+	// one, else the pack's page.
+	if e.slot != nil {
+		return e.slot
+	}
+	return e.web
+}

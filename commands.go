@@ -374,20 +374,6 @@ var (
 		Host:    focusedHost,
 		RunArgs: func(a *App, args map[string]any) error { a.splitAt(true, argString(args, "dir")); return nil },
 	}
-	cmdNewBrowser = command{
-		ID: "tab.new_browser", Name: locales.Messages.CmdNewBrowserTab,
-		Run: func(a *App) { a.newBrowserTab() },
-	}
-	cmdSplitBrowser = command{
-		ID: "pane.split.browser", Name: locales.Messages.CmdSplitBrowser,
-		Run:  func(a *App) { a.splitBrowser(false) },
-		Args: []actionArg{{Name: "direction", Type: "string", Optional: true, Values: []string{"right", "down"}}},
-		RunArgs: func(a *App, args map[string]any) error {
-			a.splitBrowser(argString(args, "direction") == "down")
-			return nil
-		},
-		Available: splitsLocal,
-	}
 	cmdClosePane    = command{ID: "pane.close", Name: locales.Messages.CmdClosePane, Accel: "CmdOrCtrl+W", Keys: "⌘W", Other: ctrlShift(ui.KeyW), Run: func(a *App) { a.closeFocused() }}
 	cmdPaneToNewTab = command{ID: "pane.to_new_tab", Name: locales.Messages.CmdPaneToNewTab, Run: func(a *App) { a.paneToNewTab() }}
 	cmdCloseTab     = command{ID: "tab.close", Name: locales.Messages.CmdCloseTab, Accel: "CmdOrCtrl+Shift+W", Keys: "⇧⌘W", Run: func(a *App) { a.closeActiveTab() }}
@@ -760,7 +746,7 @@ func (cmd *command) English() string { return cmd.Name(locales.In("en")) }
 
 // paletteCommands are those the command palette lists, before the tabs.
 var paletteCommands = []*command{
-	&cmdNewTab, &cmdNewBrowser, &cmdSplitRight, &cmdSplitDown, &cmdSplitBrowser, &cmdZoom, &cmdEqualize, &cmdResetCanvas, &cmdPaneToNewTab, &cmdClosePane, &cmdCloseTab,
+	&cmdNewTab, &cmdSplitRight, &cmdSplitDown, &cmdZoom, &cmdEqualize, &cmdResetCanvas, &cmdPaneToNewTab, &cmdClosePane, &cmdCloseTab,
 	&cmdFloatPane, &cmdNewFloat, &cmdToggleFloat, &cmdHideFloats, &cmdFloatState, &cmdRaiseFloat, &cmdLowerFloat, &cmdCycleFloat,
 	&cmdFloatMove, &cmdFloatResize, &cmdMoveFloatLeft, &cmdMoveFloatRight, &cmdMoveFloatUp, &cmdMoveFloatDown,
 	&cmdNextTab, &cmdPrevTab, &cmdJumpNeedy, &cmdNeeds, &cmdRenameTab, &cmdSidebar,
@@ -958,7 +944,6 @@ func (st *store) menu() *mygo.Menu {
 		{Label: locales.MenuShell(), Submenu: func() []*mygo.MenuItem {
 			items := []*mygo.MenuItem{
 				item(&cmdNewTab),
-				item(&cmdNewBrowser),
 			}
 			// The packs' pane commands, after the built-ins' (docs/EXT-001).
 			for _, c := range extPacks.tabCmds {
@@ -969,7 +954,6 @@ func (st *store) menu() *mygo.Menu {
 				mygo.Separator(),
 				item(&cmdSplitRight),
 				item(&cmdSplitDown),
-				item(&cmdSplitBrowser),
 			)
 			for _, c := range extPacks.splitCmds {
 				items = append(items, item(c))

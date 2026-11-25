@@ -63,9 +63,7 @@ type Manifest struct {
 
 // PaneDef is one pane kind the pack serves: kind is the Kind of a layout
 // node; Fields, of StateFields, are the node's fields the pack reads and
-// writes as its pane's state; Shareable lets the kind pass the layout
-// filter to other clients, as a browser's url does (the filter applies
-// it once packs can install); ChromeHeight is the page's height above a
+// writes as its pane's state; ChromeHeight is the page's height above a
 // web slot, 0 for the pane header's height; OpaqueTiled is whether the
 // pane draws opaque over the glass window, true unless the manifest
 // says false; Files names the storage files a pane of the kind owns,
@@ -75,7 +73,6 @@ type PaneDef struct {
 	Kind         string   `json:"kind"`
 	Title        string   `json:"title"`
 	Icon         string   `json:"icon,omitempty"`
-	Shareable    bool     `json:"shareable,omitempty"`
 	Fields       []string `json:"fields,omitempty"`
 	ChromeHeight float32  `json:"chrome_height,omitempty"`
 	OpaqueTiled  *bool    `json:"opaque_tiled,omitempty"`

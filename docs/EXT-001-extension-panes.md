@@ -86,7 +86,7 @@ The Notes pack's pane shows a text editor in a web view. It reads and writes `no
 - `panes[].fields` names the `layout.Node` fields the pack's state covers: `note`, `noteSize`, `notePreview`, `url`, `id`. A field the layout keeps is the page's state; `id` is the pane's own, made at spawn, and no SetState of the page's.
 - `panes[].files` names the storage files a pane owns, patterns over its fields such as `{note}.txt`. Closing the pane for good removes them, as a note's file went.
 - `panes[].opaque_tiled` is whether the pane draws opaque over the glass window. The default is true; the Notes pack says false, as the note pane did.
-- `panes[].shareable` lets the kind pass the layout filter to other clients, as a browser's `url` does; absent, a kind's node arrives as Unavailable.
+- A `browser` kind's node passes the layout filter to other clients, as a browser's `url` did; another kind's node arrives as Unavailable. The session server applies the rule by kind name — it sees no packs — so a `shareable` manifest key waits on the server learning of kinds.
 - `panes[].chrome_height` is the pack page's height over a `web` slot, 0 for the pane header's height.
 - `storage.dir` names the pack's data directory inside GoRex's data directory. The default is `exts/<id>/data`. The Notes pack declares `notes`, so it reads the notes that exist today.
 - `slots` (absent here) names extra surfaces. The only slot is `web`: an untrusted web view under the pack's page, for pages from the internet.
@@ -99,7 +99,7 @@ The Notes pack's pane shows a text editor in a web view. It reads and writes `no
 - an untrusted web view when the pack declares the `web` slot, drawn under the page in the pane's body,
 - the pane's serialized `state`, which the page reads and writes through the bridge.
 
-The host draws the pack's page and the web slot in the pane's body, as `browserBody` places the browser's web view today. The pane's header stays native: it shows the pane's title, icon and buttons, as every pane's does. The pack asks for its own header surface through a later manifest key if the need shows up; the Browser pack puts its address field in its page, below the native header.
+The host draws the pack's page and the web slot in the pane's body, as `browserBody` placed the browser's web view. The pane's header stays native: it shows the pane's title, icon and buttons, as every pane's does. The Browser pack puts its address field in its page, `chrome_height` tall, below the native header.
 
 **The bridge.** The app binds one service, `Extension`, for its trusted pages. A call names the method, and the bridge resolves the caller: `mygo`'s `CallerPage` gives the page, the page's web view gives the pane, and the pane gives the pack. A call the pack has no permission for fails. The bridge's first surface:
 
@@ -129,10 +129,10 @@ A pane of a kind no enabled pack serves becomes a placeholder pane. The node and
 
 **Sharing.** The server's `filterLayoutNode` treats a leaf with no session by its kind:
 
-- A shareable kind passes, with its state fields. `browser` is shareable, as a `url` pane passes today.
+- A `browser` node passes, with its state fields, as a `url` pane did; other kinds arrive as Unavailable.
 - Any other kind becomes `Unavailable`, as a `note` becomes today.
 
-The manifest's `panes[].shareable` flag records the intent, and the server applies it.
+The server passes a `browser` node by kind name, as it did the built-in's; a `shareable` manifest key arrives with the server learning of kinds.
 
 ### Code
 
