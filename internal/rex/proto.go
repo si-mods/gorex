@@ -134,6 +134,10 @@ const CapabilityStatusSeen = "status.seen"
 // machine says it does: the "dir.list" op (DirList).
 const CapabilityDirList = "dir.list"
 
+// CapabilityDirMkdir is what a server that makes directories on its
+// machine says it does: the "dir.mkdir" op (DirMkdir).
+const CapabilityDirMkdir = "dir.mkdir"
+
 // CapabilityAgents is what a server that detects installed agent CLIs
 // says it does: the "agents.list" op (AgentsResult).
 const CapabilityAgents = "agents.list"
@@ -162,7 +166,7 @@ const CapabilityProgramIcon = "program.icon"
 
 // capabilities are what a version 3 server does beyond version 2. A
 // client reads them from Hello and falls back when one is absent.
-var capabilities = []string{"layout.revision", "events.revision", CapabilityShutdownRestart, CapabilityShutdownIfIdle, CapabilitySnapshotGhostty, CapabilityInputEvents, CapabilityTerminalQuery, CapabilityFileTransfer, CapabilityFileTemp, CapabilityTeleport, CapabilityLayoutServer, CapabilityTabToSpace, CapabilityStatusSeen, CapabilityDirList, CapabilityAgents, CapabilitySpaceHome, CapabilityProjects, CapabilitySpacesDelete, CapabilityPrompts, CapabilityPush, CapabilityProgramIcon}
+var capabilities = []string{"layout.revision", "events.revision", CapabilityShutdownRestart, CapabilityShutdownIfIdle, CapabilitySnapshotGhostty, CapabilityInputEvents, CapabilityTerminalQuery, CapabilityFileTransfer, CapabilityFileTemp, CapabilityTeleport, CapabilityLayoutServer, CapabilityTabToSpace, CapabilityStatusSeen, CapabilityDirList, CapabilityDirMkdir, CapabilityAgents, CapabilitySpaceHome, CapabilityProjects, CapabilitySpacesDelete, CapabilityPrompts, CapabilityPush, CapabilityProgramIcon}
 
 // Request is a line of the control connection, from the client.
 type Request struct {
@@ -288,6 +292,8 @@ type Request struct {
 	Teleport *TeleportManifest `json:"teleport,omitempty"`
 	// DirList is what "dir.list" lists (CapabilityDirList).
 	DirList *DirList `json:"dirList,omitempty"`
+	// DirMkdir is what "dir.mkdir" makes (CapabilityDirMkdir).
+	DirMkdir *DirMkdir `json:"dirMkdir,omitempty"`
 }
 
 // CommandTimeout is how long the server waits for the app to make a
@@ -1152,6 +1158,17 @@ type DirListResult struct {
 	// More tells that Path holds more than DirListMax: Dirs are the first.
 	More bool   `json:"more"`
 	Code string `json:"code,omitempty"`
+}
+
+// DirMkdir asks the server to make a directory on its machine
+// ("dir.mkdir", CapabilityDirMkdir), for the folder picker that creates
+// the folder it is to use; the folders under it are made as needed. The
+// server answers with an error only.
+type DirMkdir struct {
+	// Path is the directory to make, as DirList.Path reads it: absolute;
+	// "~" and "~/x" of the home directory; a relative path of the home
+	// directory. DirTop is no answer.
+	Path string `json:"path,omitempty"`
 }
 
 // AgentInfo describes a known agent CLI installed on the server's machine

@@ -7552,58 +7552,16 @@ func (msgs Messages) ProjectSheetHost() string {
 	return Catalog.Format(msgs.locale, "projectSheetHost", nil)
 }
 
-// ProjectSheetFolder says "Folder"
+// ProjectSheetUp says "Parent folder"
 // in the language the app shows.
 //
-// New Project sheet: label over the folder browser.
-func ProjectSheetFolder() string { return In(i18n.Locale()).ProjectSheetFolder() }
-
-// ProjectSheetFolder says "Folder"
-// in the language of msgs.
-//
-// New Project sheet: label over the folder browser.
-func (msgs Messages) ProjectSheetFolder() string {
-	return Catalog.Format(msgs.locale, "projectSheetFolder", nil)
-}
-
-// ProjectSheetName says "Name"
-// in the language the app shows.
-//
-// New Project sheet: label over the project's name field.
-func ProjectSheetName() string { return In(i18n.Locale()).ProjectSheetName() }
-
-// ProjectSheetName says "Name"
-// in the language of msgs.
-//
-// New Project sheet: label over the project's name field.
-func (msgs Messages) ProjectSheetName() string {
-	return Catalog.Format(msgs.locale, "projectSheetName", nil)
-}
-
-// ProjectSheetHome says "Home"
-// in the language the app shows.
-//
-// Folder browser: button that goes to the home folder.
-func ProjectSheetHome() string { return In(i18n.Locale()).ProjectSheetHome() }
-
-// ProjectSheetHome says "Home"
-// in the language of msgs.
-//
-// Folder browser: button that goes to the home folder.
-func (msgs Messages) ProjectSheetHome() string {
-	return Catalog.Format(msgs.locale, "projectSheetHome", nil)
-}
-
-// ProjectSheetUp says "Up"
-// in the language the app shows.
-//
-// Folder browser: button that goes to the parent folder.
+// Folder browser: the row that lists the parent folder, shown as "..".
 func ProjectSheetUp() string { return In(i18n.Locale()).ProjectSheetUp() }
 
-// ProjectSheetUp says "Up"
+// ProjectSheetUp says "Parent folder"
 // in the language of msgs.
 //
-// Folder browser: button that goes to the parent folder.
+// Folder browser: the row that lists the parent folder, shown as "..".
 func (msgs Messages) ProjectSheetUp() string {
 	return Catalog.Format(msgs.locale, "projectSheetUp", nil)
 }
@@ -7624,46 +7582,112 @@ func (msgs Messages) ProjectSheetChoose() string {
 	return Catalog.Format(msgs.locale, "projectSheetChoose", nil)
 }
 
-// ProjectSheetPath says "Type a path and press Enter"
+// ProjectSheetPath says "Type a path…"
 // in the language the app shows.
 //
-// Folder browser: placeholder of the field that takes a path.
+// Folder browser: placeholder of the field that browses: the text to its
+// last separator is listed, the leaf filters.
 func ProjectSheetPath() string { return In(i18n.Locale()).ProjectSheetPath() }
 
-// ProjectSheetPath says "Type a path and press Enter"
+// ProjectSheetPath says "Type a path…"
 // in the language of msgs.
 //
-// Folder browser: placeholder of the field that takes a path.
+// Folder browser: placeholder of the field that browses: the text to its
+// last separator is listed, the leaf filters.
 func (msgs Messages) ProjectSheetPath() string {
 	return Catalog.Format(msgs.locale, "projectSheetPath", nil)
 }
 
-// ProjectSheetCreate says "Create"
+// ProjectSheetPathHint says "Enter path (e.g. ~/projects/my-app)"
 // in the language the app shows.
 //
-// New Project sheet: button that makes the project.
-func ProjectSheetCreate() string { return In(i18n.Locale()).ProjectSheetCreate() }
+// Folder browser: placeholder of the path field, as T3 Code's add-project
+// palette.
+func ProjectSheetPathHint() string { return In(i18n.Locale()).ProjectSheetPathHint() }
 
-// ProjectSheetCreate says "Create"
+// ProjectSheetPathHint says "Enter path (e.g. ~/projects/my-app)"
 // in the language of msgs.
 //
-// New Project sheet: button that makes the project.
-func (msgs Messages) ProjectSheetCreate() string {
-	return Catalog.Format(msgs.locale, "projectSheetCreate", nil)
+// Folder browser: placeholder of the path field, as T3 Code's add-project
+// palette.
+func (msgs Messages) ProjectSheetPathHint() string {
+	return Catalog.Format(msgs.locale, "projectSheetPathHint", nil)
 }
 
-// ProjectSheetCancel says "Cancel"
+// ProjectSheetDirectories says "Directories"
 // in the language the app shows.
 //
-// New Project sheet: button that closes it.
-func ProjectSheetCancel() string { return In(i18n.Locale()).ProjectSheetCancel() }
+// Folder browser: label of the folder rows under the path field.
+func ProjectSheetDirectories() string { return In(i18n.Locale()).ProjectSheetDirectories() }
 
-// ProjectSheetCancel says "Cancel"
+// ProjectSheetDirectories says "Directories"
 // in the language of msgs.
 //
-// New Project sheet: button that closes it.
-func (msgs Messages) ProjectSheetCancel() string {
-	return Catalog.Format(msgs.locale, "projectSheetCancel", nil)
+// Folder browser: label of the folder rows under the path field.
+func (msgs Messages) ProjectSheetDirectories() string {
+	return Catalog.Format(msgs.locale, "projectSheetDirectories", nil)
+}
+
+// ProjectSheetAdd says "Add"
+// in the language the app shows.
+//
+// Folder browser: button in the path field that adds the folder it names.
+func ProjectSheetAdd() string { return In(i18n.Locale()).ProjectSheetAdd() }
+
+// ProjectSheetAdd says "Add"
+// in the language of msgs.
+//
+// Folder browser: button in the path field that adds the folder it names.
+func (msgs Messages) ProjectSheetAdd() string {
+	return Catalog.Format(msgs.locale, "projectSheetAdd", nil)
+}
+
+// ProjectSheetCreateAdd says "Create & Add"
+// in the language the app shows.
+//
+// Folder browser: button in the path field when the leaf names a folder to
+// create first.
+func ProjectSheetCreateAdd() string { return In(i18n.Locale()).ProjectSheetCreateAdd() }
+
+// ProjectSheetCreateAdd says "Create & Add"
+// in the language of msgs.
+//
+// Folder browser: button in the path field when the leaf names a folder to
+// create first.
+func (msgs Messages) ProjectSheetCreateAdd() string {
+	return Catalog.Format(msgs.locale, "projectSheetCreateAdd", nil)
+}
+
+// ProjectSheetWorking says "Working"
+// in the language the app shows.
+//
+// Folder browser: button in the path field while the folder is being
+// created.
+func ProjectSheetWorking() string { return In(i18n.Locale()).ProjectSheetWorking() }
+
+// ProjectSheetWorking says "Working"
+// in the language of msgs.
+//
+// Folder browser: button in the path field while the folder is being
+// created.
+func (msgs Messages) ProjectSheetWorking() string {
+	return Catalog.Format(msgs.locale, "projectSheetWorking", nil)
+}
+
+// ProjectSheetCreateHint says "Press Enter to create this folder and add it as a project."
+// in the language the app shows.
+//
+// Folder browser: shown when the leaf of the path field names no folder and
+// Enter would create it.
+func ProjectSheetCreateHint() string { return In(i18n.Locale()).ProjectSheetCreateHint() }
+
+// ProjectSheetCreateHint says "Press Enter to create this folder and add it as a project."
+// in the language of msgs.
+//
+// Folder browser: shown when the leaf of the path field names no folder and
+// Enter would create it.
+func (msgs Messages) ProjectSheetCreateHint() string {
+	return Catalog.Format(msgs.locale, "projectSheetCreateHint", nil)
 }
 
 // ProjectSheetLoading says "Loading…"
@@ -7724,22 +7748,6 @@ func (msgs Messages) ProjectSheetDenied() string {
 	return Catalog.Format(msgs.locale, "projectSheetDenied", nil)
 }
 
-// ProjectSheetEmpty says "No subfolders. You can use this folder."
-// in the language the app shows.
-//
-// Folder browser: the folder has no folders in it, and can be used as it
-// is.
-func ProjectSheetEmpty() string { return In(i18n.Locale()).ProjectSheetEmpty() }
-
-// ProjectSheetEmpty says "No subfolders. You can use this folder."
-// in the language of msgs.
-//
-// Folder browser: the folder has no folders in it, and can be used as it
-// is.
-func (msgs Messages) ProjectSheetEmpty() string {
-	return Catalog.Format(msgs.locale, "projectSheetEmpty", nil)
-}
-
 // ProjectSheetMore says "Only the first {n} folders are shown."
 // in the language the app shows.
 //
@@ -7752,100 +7760,6 @@ func ProjectSheetMore(n int) string { return In(i18n.Locale()).ProjectSheetMore(
 // Folder browser: the folder holds more folders than are listed.
 func (msgs Messages) ProjectSheetMore(n int) string {
 	return Catalog.Format(msgs.locale, "projectSheetMore", map[string]any{"n": n})
-}
-
-// ProjectSheetDrives says "Drives"
-// in the language the app shows.
-//
-// Folder browser: the top of a Windows machine, the list of its drives.
-func ProjectSheetDrives() string { return In(i18n.Locale()).ProjectSheetDrives() }
-
-// ProjectSheetDrives says "Drives"
-// in the language of msgs.
-//
-// Folder browser: the top of a Windows machine, the list of its drives.
-func (msgs Messages) ProjectSheetDrives() string {
-	return Catalog.Format(msgs.locale, "projectSheetDrives", nil)
-}
-
-// ProjectSheetChosen says "Project folder: {path}"
-// in the language the app shows.
-//
-// New Project sheet: over the buttons, the folder that Create or Use This
-// Folder takes: the folder listed.
-func ProjectSheetChosen(path string) string { return In(i18n.Locale()).ProjectSheetChosen(path) }
-
-// ProjectSheetChosen says "Project folder: {path}"
-// in the language of msgs.
-//
-// New Project sheet: over the buttons, the folder that Create or Use This
-// Folder takes: the folder listed.
-func (msgs Messages) ProjectSheetChosen(path string) string {
-	return Catalog.Format(msgs.locale, "projectSheetChosen", map[string]any{"path": path})
-}
-
-// ProjectSheetNoChoice says "Open a folder to choose it."
-// in the language the app shows.
-//
-// New Project sheet: over the buttons, when no folder can be taken, as in
-// the list of drives or in a folder that cannot be read.
-func ProjectSheetNoChoice() string { return In(i18n.Locale()).ProjectSheetNoChoice() }
-
-// ProjectSheetNoChoice says "Open a folder to choose it."
-// in the language of msgs.
-//
-// New Project sheet: over the buttons, when no folder can be taken, as in
-// the list of drives or in a folder that cannot be read.
-func (msgs Messages) ProjectSheetNoChoice() string {
-	return Catalog.Format(msgs.locale, "projectSheetNoChoice", nil)
-}
-
-// ProjectSheetNameNeeded says "This folder has no name. Type a name for the project."
-// in the language the app shows.
-//
-// New Project sheet: over the buttons, at the top of a drive or of the
-// disk, whose folder gives no name.
-func ProjectSheetNameNeeded() string { return In(i18n.Locale()).ProjectSheetNameNeeded() }
-
-// ProjectSheetNameNeeded says "This folder has no name. Type a name for the project."
-// in the language of msgs.
-//
-// New Project sheet: over the buttons, at the top of a drive or of the
-// disk, whose folder gives no name.
-func (msgs Messages) ProjectSheetNameNeeded() string {
-	return Catalog.Format(msgs.locale, "projectSheetNameNeeded", nil)
-}
-
-// ProjectSheetNameHint says "Type a name"
-// in the language the app shows.
-//
-// New Project sheet: placeholder of the name field when the folder gives no
-// name.
-func ProjectSheetNameHint() string { return In(i18n.Locale()).ProjectSheetNameHint() }
-
-// ProjectSheetNameHint says "Type a name"
-// in the language of msgs.
-//
-// New Project sheet: placeholder of the name field when the folder gives no
-// name.
-func (msgs Messages) ProjectSheetNameHint() string {
-	return Catalog.Format(msgs.locale, "projectSheetNameHint", nil)
-}
-
-// ProjectSheetMoreFolders says "Folders above"
-// in the language the app shows.
-//
-// Folder browser: the breadcrumb's button that lists the folders it leaves
-// out.
-func ProjectSheetMoreFolders() string { return In(i18n.Locale()).ProjectSheetMoreFolders() }
-
-// ProjectSheetMoreFolders says "Folders above"
-// in the language of msgs.
-//
-// Folder browser: the breadcrumb's button that lists the folders it leaves
-// out.
-func (msgs Messages) ProjectSheetMoreFolders() string {
-	return Catalog.Format(msgs.locale, "projectSheetMoreFolders", nil)
 }
 
 // ProjectChangeFolder says "Change Folder…"

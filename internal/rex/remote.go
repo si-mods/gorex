@@ -388,7 +388,7 @@ func remoteAllowed(op string) bool {
 	switch op {
 	case "hello", "ping", "list", "create", "kill", "resize", "focus", "input", "paste", "capture", "clients",
 		"key", "mouse", "focusReport", "modes", "format", "inputMode", "clear", "reset", "command", "seeStatus", "resync",
-		"dir.list", "agents.list", "getLayout", "getLayoutState", "subscribe":
+		"dir.list", "dir.mkdir", "agents.list", "getLayout", "getLayoutState", "subscribe":
 		return true
 	}
 	return false

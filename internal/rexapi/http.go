@@ -88,6 +88,7 @@ var llmsDocs = [][]byte{
 	llmsProjects,
 	llmsMergeWindows,
 	llmsDirList,
+	llmsDirMkdir,
 	llmsAgents,
 	llmsPush,
 }

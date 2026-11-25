@@ -1,8 +1,11 @@
 package main
 
 import (
+	"regexp"
+	"runtime"
 	"slices"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/egoist/mygo"
@@ -12,45 +15,69 @@ import (
 	"gorex/locales"
 )
 
-// projectSheet is the New Project sheet: a host, a folder on it chosen by
-// browsing its directories (dir.list), and a name (docs/MOD-002-projects.md, "New
-// Project"). A project's folder does not change: another folder is
-// another project.
+// projectSheet is the New Project sheet: a host, and T3 Code's add-project
+// browser copied — a path field that is the browser
+// (apps/web/src/components/CommandPalette.tsx in pingdotgg/t3code). The
+// text to its last separator is the directory listed under "Directories";
+// the leaf after it filters the rows, names the folder a row opens, and
+// creates a folder no row names. ".." goes up, Tab completes or enters a
+// row, Enter adds the folder — ⌘/Ctrl+Enter even over a highlighted row —
+// and the system's folder panel is the Choose… button. A project's folder
+// does not change: another folder is another project.
 type projectSheet struct {
 	open bool
 	// host is the host browsed, nil for this machine.
 	host *hostConn
-	// want is the directory to list next, "" for the home directory;
+	// want is the directory to list next — the path field's directory
+	// part — and hidden whether the listing is to show hidden folders.
 	// asked tells that its listing was asked for, and loading that it is
 	// on its way. gen tells the answer of the listing asked last.
 	want           string
+	hidden         bool
 	asked, loading bool
 	gen            int
 	// res is the directory listed, failed why it could not be.
 	res    rex.DirListResult
 	failed string
-	// path is the field that takes a path; name the project's name, which
-	// follows the folder's (auto) until the user changes it.
-	path, name, auto string
-	// sel is the folder row the arrow keys highlight, -1 for none; reveal
+	// path is the field that browses; prevPath its text last frame, which
+	// a pasted path is told from.
+	path, prevPath string
+	// sel is the row the arrow keys highlight, -1 for none; reveal
 	// scrolls it into view in the next frame. from is the folder browsed
-	// before, highlighted as Up lists its parent.
-	sel    int
-	reveal bool
-	from   string
-	// focusList gives the list the focus in the next frame, as the arrow
-	// keys highlight a row, so that Enter opens it.
-	focusList bool
-	// pathFocused tells that the path field had the focus last frame.
-	pathFocused bool
+	// before, highlighted as Up lists its parent. seenLeaf is the leaf
+	// of the last frame: a new leaf drops the highlight.
+	sel      int
+	reveal   bool
+	from     string
+	seenLeaf string
+	// pathFocused tells that the path field had the focus last frame;
+	// caretEnd asks for the caret at the field's end, as a write of the
+	// field leaves it where it was; focusPath asks for the focus back on
+	// the field, as a row clicked takes it.
+	pathFocused, caretEnd, focusPath bool
+	// making is a dir.mkdir on its way for the leaf; makeErr its error.
+	making  bool
+	makeErr string
+	// fresh tells that the sheet opens in this frame, for its rows to
+	// come in one after another as the palette's do.
+	fresh bool
 }
 
-// openSheet opens the sheet on host h, nil for this machine, in dir, ""
+// sheetEntry is a row of the folder list: ".." for the parent folder, or
+// a folder by name.
+type sheetEntry struct {
+	name string
+	up   bool
+}
+
+// openSheet opens the sheet on host h, nil for this machine, in dir, "~"
 // for the home directory.
 func (a *App) openSheet(h *hostConn, dir string) {
 	// gen goes on from the sheet before, whose listings still on their
 	// way are not this one's.
-	a.sheet = projectSheet{open: true, host: h, want: dir, gen: a.sheet.gen + 1, sel: -1}
+	a.sheet = projectSheet{open: true, host: h, gen: a.sheet.gen + 1, sel: -1, fresh: true}
+	a.sheet.browse(dir)
+	a.sheet.want = a.sheet.dir()
 	a.closeMenus()
 	a.focusReq = nil
 	if h != nil && h.current() == nil {
@@ -58,18 +85,208 @@ func (a *App) openSheet(h *hostConn, dir string) {
 	}
 }
 
-// browse lists dir next, "" for the home directory.
-func (s *projectSheet) browse(dir string) {
-	s.from = s.res.Path
-	s.want, s.asked, s.failed = dir, false, ""
-	s.sel = -1
-	s.gen++
+// split reads the path field as the directory to list and the filter of
+// its folders: dir is the text to the last separator, leaf what is left.
+// "~" is the home directory and "C:" its root. A backslash is a
+// separator on a Windows host, or in a path that looks like Windows' —
+// a share or a drive — before the host's first listing says so.
+func (s *projectSheet) split() (dir, leaf string) {
+	p := s.path
+	seps := "/"
+	if win := s.windows() || looksWindows(p); win {
+		seps = `/\`
+	}
+	if i := strings.LastIndexAny(p, seps); i >= 0 {
+		return p[:i+1], p[i+1:]
+	}
+	switch {
+	case p == "~":
+		return "~", ""
+	case len(p) == 2 && p[1] == ':' && seps == `/\`:
+		return p + `\`, ""
+	}
+	return "", p
 }
 
-// step moves the highlighted folder row by d, from the first or last row
-// when none is.
+// dir is the directory the path field names, leaf the filter after it.
+func (s *projectSheet) dir() string  { d, _ := s.split(); return d }
+func (s *projectSheet) leaf() string { _, l := s.split(); return l }
+
+// looksWindows tells a Windows path apart on a host not yet listed: a
+// share's \\ or a drive's letter.
+func looksWindows(p string) bool {
+	if strings.HasPrefix(p, `\\`) {
+		return true
+	}
+	return len(p) >= 2 && p[1] == ':' && (len(p) == 2 || p[2] == '\\' || p[2] == '/')
+}
+
+// pathSet writes the field's text from the sheet's navigation: dir ends
+// in a separator, which lists it.
+func (s *projectSheet) pathSet(dir string) {
+	if dir != "" && !strings.HasSuffix(dir, "/") && !strings.HasSuffix(dir, `\`) {
+		dir += s.sep()
+	}
+	s.path = dir
+	s.caretEnd = true
+}
+
+// sep is the separator the path field writes: the host's.
+func (s *projectSheet) sep() string {
+	if s.windows() {
+		return `\`
+	}
+	return "/"
+}
+
+// sync has the listing follow the path field: a pasted path replaces the
+// text as resolvePastedPath says; a new directory part, or a leaf that
+// now names hidden folders, asks for a new listing; a new leaf drops the
+// highlight.
+func (s *projectSheet) sync() {
+	if p := resolvePastedPath(s.prevPath, s.path); p != s.path {
+		s.path, s.caretEnd = p, true
+	}
+	s.prevPath = s.path
+	d, l := s.split()
+	hidden := strings.HasPrefix(l, ".")
+	if d != s.want || hidden != s.hidden {
+		s.want, s.hidden, s.asked, s.failed = d, hidden, false, ""
+		s.sel = -1
+		s.gen++
+	}
+	if l != s.seenLeaf {
+		s.seenLeaf = l
+		s.sel = -1
+	}
+}
+
+// browse points the path field at dir, "" for the home directory.
+func (s *projectSheet) browse(dir string) {
+	s.from = ""
+	if dir == "" {
+		s.path, s.caretEnd = "~/", true
+		return
+	}
+	s.pathSet(dir)
+}
+
+// entries are the rows of the folder list: ".." for the parent when
+// there is one, then the folders the leaf keeps, ordered as T3 Code's
+// browse scores them (leafScore).
+func (s *projectSheet) entries() []sheetEntry {
+	r := s.res
+	if !s.asked || s.failed != "" || r.Code != "" || s.loading && len(r.Dirs) == 0 {
+		return nil
+	}
+	var out []sheetEntry
+	if r.Parent != "" {
+		out = append(out, sheetEntry{up: true})
+	}
+	leaf := s.leaf()
+	type scored struct {
+		e     sheetEntry
+		score int
+	}
+	var rest []scored
+	for _, d := range r.Dirs {
+		score := 0
+		if leaf != "" {
+			if score = leafScore(d, leaf); score < 0 {
+				continue
+			}
+		}
+		rest = append(rest, scored{sheetEntry{name: d}, score})
+	}
+	slices.SortStableFunc(rest, func(x, y scored) int { return x.score - y.score })
+	for _, m := range rest {
+		out = append(out, m.e)
+	}
+	return out
+}
+
+// leafScore ranks a folder for the leaf, as T3 Code's scoreQueryMatch
+// ranks a folder of the directory listed (searchRanking.ts in
+// pingdotgg/t3code): an exact name, then a prefix, one at a boundary,
+// one inside, and a fuzzy one, each tier of 1000 apart, better inside
+// its tier the sooner it matches and the less longer the name is. -1
+// says it does not match.
+func leafScore(name, leaf string) int {
+	v := []rune(strings.ToLower(name))
+	q := []rune(strings.ToLower(leaf))
+	if len(v) == 0 || len(q) == 0 {
+		return -1
+	}
+	penalty := min(64, max(0, len(v)-len(q)))
+	if string(v) == string(q) {
+		return 0
+	}
+	if strings.HasPrefix(string(v), string(q)) {
+		return 1000 + penalty
+	}
+	// A boundary marker (" ", "-", "_", ".") right before the leaf.
+	best := -1
+	for _, m := range []rune{' ', '-', '_', '.'} {
+		if i := runesIndex(v, append([]rune{m}, q...)); i >= 0 {
+			if at := i + 1; best < 0 || at < best {
+				best = at
+			}
+		}
+	}
+	if best >= 0 {
+		return 2000 + best*2 + penalty
+	}
+	if i := runesIndex(v, q); i >= 0 {
+		return 3000 + i*2 + penalty
+	}
+	if fs := fuzzyScore(v, q); fs >= 0 {
+		return 4000 + fs
+	}
+	return -1
+}
+
+// runesIndex is strings.Index for runes: q's place in v, -1 for none.
+func runesIndex(v, q []rune) int {
+	for i := 0; i+len(q) <= len(v); i++ {
+		if slices.Equal(v[i:i+len(q)], q) {
+			return i
+		}
+	}
+	return -1
+}
+
+// fuzzyScore is T3 Code's scoreSubsequenceMatch: the leaf's letters in
+// order in the name, scored on where it starts, the gaps it skips, the
+// span it ends and the name's extra length.
+func fuzzyScore(v, q []rune) int {
+	if len(q) == 0 {
+		return 0
+	}
+	qi, first, prev, gap := 0, -1, -1, 0
+	for vi := 0; vi < len(v); vi++ {
+		if v[vi] != q[qi] {
+			continue
+		}
+		if first == -1 {
+			first = vi
+		}
+		if prev != -1 {
+			gap += vi - prev - 1
+		}
+		prev = vi
+		qi++
+		if qi == len(q) {
+			span := vi - first + 1 - len(q)
+			return first*2 + gap*3 + span + min(64, len(v)-len(q))
+		}
+	}
+	return -1
+}
+
+// step moves the highlighted row by d, from the first or last row when
+// none is.
 func (s *projectSheet) step(d int) {
-	n := len(s.rows())
+	n := len(s.entries())
 	if n == 0 {
 		return
 	}
@@ -81,31 +298,77 @@ func (s *projectSheet) step(d int) {
 	default:
 		s.sel = min(max(s.sel+d, 0), n-1)
 	}
-	s.reveal, s.focusList = true, true
+	s.reveal = true
 }
 
-// rows are the folders the list shows, none while it shows a message.
-func (s *projectSheet) rows() []string {
-	if s.loading || !s.asked || s.failed != "" || s.res.Code != "" {
-		return nil
+// activate opens a row: ".." lists the parent, a folder goes into it.
+func (s *projectSheet) activate(e sheetEntry) {
+	s.focusPath = true
+	if e.up {
+		s.up()
+		return
 	}
-	return s.res.Dirs
+	s.from = ""
+	s.pathSet(s.dir() + e.name)
 }
 
-// openRow browses the highlighted folder, and tells whether there was one.
-func (s *projectSheet) openRow() bool {
-	rows := s.rows()
-	if s.sel < 0 || s.sel >= len(rows) {
+// openSel opens the highlighted row, and tells whether there was one.
+func (s *projectSheet) openSel() bool {
+	es := s.entries()
+	if s.sel < 0 || s.sel >= len(es) {
 		return false
 	}
-	s.browse(childPath(s.res.Path, rows[s.sel], s.windows()))
+	s.activate(es[s.sel])
 	return true
 }
 
-// up browses the parent folder, if there is one.
+// tab is the shell's Tab on the path field, as T3 Code's add-project
+// does it: the highlighted row opens — ".." goes up, a folder goes in —
+// and with none highlighted the folders that start with the leaf open
+// their only one, or extend the leaf to the start they share; none do
+// nothing.
+func (s *projectSheet) tab() {
+	if s.openSel() {
+		return
+	}
+	var matches []string
+	for _, e := range s.entries() {
+		if !e.up && strings.HasPrefix(strings.ToLower(e.name), strings.ToLower(s.leaf())) {
+			matches = append(matches, e.name)
+		}
+	}
+	switch len(matches) {
+	case 0:
+	case 1:
+		s.activate(sheetEntry{name: matches[0]})
+	default:
+		p := matches[0]
+		for _, m := range matches[1:] {
+			p = commonStart(p, m)
+		}
+		if utf8.RuneCountInString(p) > utf8.RuneCountInString(s.leaf()) {
+			s.path = s.dir() + p
+			s.caretEnd = true
+		}
+	}
+}
+
+// commonStart is the runes a and b start with, in a's case.
+func commonStart(a, b string) string {
+	ra, rb := []rune(strings.ToLower(a)), []rune(strings.ToLower(b))
+	n := min(len(ra), len(rb))
+	i := 0
+	for i < n && ra[i] == rb[i] {
+		i++
+	}
+	return string([]rune(a)[:i])
+}
+
+// up lists the parent folder, if there is one.
 func (s *projectSheet) up() {
 	if p := s.res.Parent; p != "" && !s.loading {
-		s.browse(p)
+		s.from = s.res.Path
+		s.pathSet(p)
 	}
 }
 
@@ -131,6 +394,7 @@ func (a *App) pickHost(h *hostConn) {
 		return
 	}
 	s.host, s.res = h, rex.DirListResult{}
+	s.asked = false
 	s.browse("")
 	if h != nil && h.current() == nil {
 		a.connectHostNow(h)
@@ -149,9 +413,9 @@ func (a *App) listSheet() {
 		return
 	}
 	s.asked, s.loading = true, true
-	gen, host, want, update := s.gen, s.host, s.want, a.updater()
+	gen, host, want, hidden, update := s.gen, s.host, s.want, s.hidden, a.updater()
 	go func() {
-		r, err := c.DirList(want, false)
+		r, err := c.DirList(want, hidden)
 		update(func() {
 			if !a.sheet.open || a.sheet.gen != gen || a.sheet.host != host {
 				return
@@ -169,20 +433,18 @@ func (s *projectSheet) listed(r rex.DirListResult, err error) {
 		return
 	}
 	s.res = r
-	if r.Path != "" {
-		s.path = r.Path
-	}
 	if r.Code != "" {
 		return
 	}
 	// Up highlights the folder it came from.
-	if i := slices.IndexFunc(r.Dirs, func(d string) bool { return childPath(r.Path, d, s.windows()) == s.from }); i >= 0 {
-		s.sel, s.reveal = i, true
-	}
-	if base := folderName(r.Path); s.name == s.auto {
-		s.name, s.auto = base, base
-	} else {
-		s.auto = base
+	if s.from != "" {
+		for i, e := range s.entries() {
+			if !e.up && childPath(r.Path, e.name, s.windows()) == s.from {
+				s.sel, s.reveal = i, true
+				break
+			}
+		}
+		s.from = ""
 	}
 }
 
@@ -191,69 +453,79 @@ func (s *projectSheet) windows() bool {
 	return winPath(s.res.Home) || winPath(s.res.Path)
 }
 
-// chosen is the folder the sheet would use, "" for none: the directory
-// listed, which is not Windows' list of drives.
-func (s *projectSheet) chosen() string {
+// resolved is the folder the sheet's Enter and Add button take, and
+// whether it must be made first: the directory listed for an empty leaf,
+// the folder a leaf names exactly, or the folder under it the leaf asks
+// to create (dir.mkdir, then project.create — the folder it made is not
+// made twice).
+func (s *projectSheet) resolved() (dir string, create bool) {
 	r := s.res
-	if s.loading || s.failed != "" || r.Code != "" || r.Path == "" || r.Path == rex.DirTop && s.windows() {
-		return ""
-	}
-	return r.Path
-}
-
-// ready tells whether Create, or Use This Folder, can go: a folder is
-// chosen and the project has a name, typed or the folder's. A drive's root
-// has no name of its own.
-func (s *projectSheet) ready() bool {
-	dir := s.chosen()
-	return dir != "" && (strings.TrimSpace(s.name) != "" || folderName(dir) != "")
-}
-
-// crumb is a step of the breadcrumb: its name and its path.
-type crumb struct{ name, path string }
-
-// crumbs are the steps of path from the top of its machine, for the
-// breadcrumb: on Windows the list of drives, then the drive.
-func crumbs(path string, windows bool) []crumb {
-	if !windows {
-		out := []crumb{{"/", "/"}}
-		at := ""
-		for _, part := range strings.Split(path, "/") {
-			if part == "" {
-				continue
+	if leaf := s.leaf(); leaf != "" {
+		for _, d := range r.Dirs {
+			if d == leaf || s.windows() && strings.EqualFold(d, leaf) {
+				return childPath(r.Path, d, s.windows()), false
 			}
-			at += "/" + part
-			out = append(out, crumb{part, at})
 		}
-		return out
+		return childPath(r.Path, leaf, s.windows()), true
 	}
-	out := []crumb{{locales.ProjectSheetDrives(), rex.DirTop}}
-	if path == rex.DirTop || path == "" {
-		return out
+	return r.Path, false
+}
+
+// canSubmit tells whether Enter and the Add button can go: a directory
+// is listed and no creation is under way. Windows' list of drives is not
+// a folder.
+func (s *projectSheet) canSubmit() bool {
+	r := s.res
+	return s.asked && !s.loading && !s.making && s.failed == "" && r.Code == "" &&
+		r.Path != "" && !(r.Path == rex.DirTop && s.windows())
+}
+
+// willCreate tells whether submitting makes the folder first — the leaf
+// names no folder of the directory listed — which the button says with
+// "Create & Add".
+func (s *projectSheet) willCreate() bool {
+	if !s.canSubmit() {
+		return false
 	}
-	vol := path
-	switch {
-	case strings.HasPrefix(path, `\\`):
-		// A share: \\server\share is its root.
-		parts := strings.SplitN(strings.TrimPrefix(path, `\\`), `\`, 3)
-		vol = `\\` + strings.Join(parts[:min(len(parts), 2)], `\`)
-	case len(path) >= 2 && path[1] == ':':
-		vol = path[:2]
+	_, create := s.resolved()
+	return create
+}
+
+// sheetSubmit takes the field's path: the folder resolved(), making it
+// first when the leaf asks for one.
+func (a *App) sheetSubmit() {
+	s := &a.sheet
+	if !s.open || !s.canSubmit() {
+		return
 	}
-	root := vol + `\`
-	out = append(out, crumb{vol, root})
-	at := root
-	for _, part := range strings.Split(strings.TrimPrefix(path[len(vol):], `\`), `\`) {
-		if part == "" {
-			continue
-		}
-		if !strings.HasSuffix(at, `\`) {
-			at += `\`
-		}
-		at += part
-		out = append(out, crumb{part, at})
+	dir, create := s.resolved()
+	if !create {
+		s.open = false
+		a.createProject(s.host, dir, "")
+		return
 	}
-	return out
+	c := a.sheetClient()
+	if c == nil {
+		return
+	}
+	s.making, s.makeErr = true, ""
+	gen, host, update := s.gen, s.host, a.updater()
+	go func() {
+		err := c.DirMkdir(dir)
+		update(func() {
+			s := &a.sheet
+			if !s.open || s.gen != gen || s.host != host {
+				return
+			}
+			s.making = false
+			if err != nil {
+				s.makeErr = strings.TrimPrefix(err.Error(), "rex: ")
+				return
+			}
+			s.open = false
+			a.createProject(host, dir, "")
+		})
+	}()
 }
 
 // childPath is the directory name in dir.
@@ -298,23 +570,70 @@ func (a *App) chooseFolder() {
 		update(func() {
 			if s := &a.sheet; s.open && s.host == nil && s.gen == gen {
 				s.browse(paths[0])
+				s.focusPath = true
 			}
 		})
 	}()
 }
 
-// finishSheet makes the project and closes the sheet.
-func (a *App) finishSheet() {
-	s := a.sheet
-	dir := s.chosen()
-	if !s.open || !s.ready() {
-		return
-	}
-	a.sheet.open = false
-	a.createProject(s.host, dir, s.name)
+// quotedPathAtEnd ends pasted text that holds a path ready for a shell:
+// '/a b', /a\'s\ b, or "C:\a b" — as T3 Code's resolvePastedPath reads
+// it.
+var quotedPathAtEnd = regexp.MustCompile(`(?:'((?:[^']|'\\'')+)'|"([^"]+)")\s*$`)
+
+var shellEscape = regexp.MustCompile(`\\([\s'"\\()[\]{}<>|&;$` + "`" + `!*?#~^=])`)
+
+// isPastedFolderPath tells whether pasted text names a folder: an
+// absolute path, or "~/" of home; a "~\" the browser does not take.
+func isPastedFolderPath(v string) bool {
+	return strings.HasPrefix(v, "/") || strings.HasPrefix(v, "~/") ||
+		strings.HasPrefix(v, `\\`) ||
+		len(v) >= 2 && v[1] == ':' && (len(v) == 2 || v[2] == '/' || v[2] == '\\')
 }
 
-// projectSheetView draws the sheet while it is open.
+// resolvePastedPath is what the field holds after a change, as T3 Code's
+// resolvePastedPath says (packages/shared/src/path.ts in pingdotgg/
+// t3code): a full path pasted replaces the text, even after what is
+// there, since appending it would create a folder under it.
+func resolvePastedPath(prev, next string) string {
+	typing := strings.HasPrefix(next, prev) && len(next) == len(prev)+1 || strings.HasPrefix(prev, next)
+	if typing {
+		return next
+	}
+	m := quotedPathAtEnd.FindStringSubmatchIndex(next)
+	// Text before the quote that wasn't in the field is not a paste to
+	// put after it.
+	if m != nil && strings.HasPrefix(prev, strings.TrimRight(next[:m[0]], " ")) {
+		quoted := ""
+		if m[2] >= 0 {
+			quoted = strings.ReplaceAll(next[m[2]:m[3]], `'\''`, "'")
+		} else if m[4] >= 0 {
+			quoted = next[m[4]:m[5]]
+		}
+		if isPastedFolderPath(quoted) {
+			return quoted
+		}
+	}
+	// Without a trailing separator, /a then /a/b is a longer path, not
+	// one pasted after a folder.
+	path := next
+	if (strings.HasSuffix(prev, "/") || strings.HasSuffix(prev, `\`)) && strings.HasPrefix(next, prev) {
+		path = next[len(prev):]
+	}
+	if !isPastedFolderPath(path) {
+		return next
+	}
+	// "\" separates folders in Windows paths, so it only escapes in "/"
+	// and "~/" paths.
+	if looksWindows(path) {
+		return path
+	}
+	return shellEscape.ReplaceAllString(path, "$1")
+}
+
+// projectSheetView draws the sheet while it is open: the command
+// palette's shell — the window dimmed, a glass panel dropped from the
+// top — over T3 Code's add-project browser.
 func (a *App) projectSheetView(c *ui.Context, k *colors) {
 	s := &a.sheet
 	if !s.open {
@@ -323,51 +642,82 @@ func (a *App) projectSheetView(c *ui.Context, k *colors) {
 	if s.host != nil && !slices.Contains(a.hosts, s.host) {
 		// Its host removed meanwhile.
 		s.host, s.res = nil, rex.DirListResult{}
-		s.browse("")
+		s.path, s.want, s.asked = "", "", false
 	}
+	s.sync()
 	a.listSheet()
 	title := locales.ProjectSheetTitleOn(a.hostName(s.host))
 	was := s.open
+	anim := motion(c)
+	fresh := s.fresh
+	s.fresh = false
+	if fresh && anim != nil {
+		// The frame after this one starts them moving.
+		c.AnimationFrame()
+	}
 	ui.DialogBase(c.Key("project-sheet"), &s.open, func(backdrop, panel ui.Element) {
-		dialogEnter(c, backdrop, panel)
-		backdrop.Background(k.backdrop)
+		backdrop.Justify(ui.Start).Padding(paletteDrop, 0, 0, 0).Background(k.backdrop)
 		winW, winH := c.Size()
-		panel.Width(min(540, winW-24)).MaxHeight(winH - 24).Padding(20).Radius(k.radius(radiusXXL))
-		frostPanel(panel, k, k.radius(radiusXXL))
-		dialogShadow(panel, k).Role(ui.RoleDialog).Label(title)
-		// What does not fit a short window scrolls; the buttons stay.
-		ui.Scroll(c.Key("sheet-body")).MinHeight(0).Shrink(1).Children(func() {
-			ui.Column(c).Gap(8).Children(func() {
-				ui.Text(c, title).FontSize(fontTitle).FontWeight(700).TextColor(k.text).Margin(0, 0, 6, 0)
-				sheetLabel(c, k, locales.ProjectSheetHost())
-				a.sheetHosts(c, k)
-				sheetLabel(c, k, locales.ProjectSheetFolder())
-				// The folders take what room the window leaves, so that the
-				// buttons stay in sight in a short window.
-				room := winH - 570
-				a.sheetBrowser(c, k, min(max(room, 84), 220))
-				sheetLabel(c, k, locales.ProjectSheetName())
-				placeholder := s.auto
-				if placeholder == "" {
-					placeholder = locales.ProjectSheetNameHint()
+		panel.Width(min(560, winW-24)).MaxHeight(min(440, winH-24)).Radius(k.radius(paletteR))
+		frostPanel(panel, k, k.radius(paletteR))
+		dialogShadow(panel, k).Clip().Role(ui.RoleDialog).Label(title)
+		if anim != nil {
+			dialogMotion(c, backdrop, panel, fresh)
+		}
+		// The field the browser is: the folder's glyph, the text, and
+		// the Add button at its end.
+		ui.Row(c).Padding(12, 16).Gap(10).AlignItems(ui.Center).BorderWidth(0, 0, 1, 0).BorderColor(k.panelBorder).Children(func() {
+			glyphIcon(c, "folder-plus", 17, k.textMuted)
+			// The cell the field and its path overlay share.
+			ui.Row(c).Grow(1).MinWidth(0).AlignItems(ui.Center).Children(func() {
+				in := styledField(c, k, func(c *ui.Context) ui.Element {
+					return ui.TextInputBase(c.Key("project-path"), &s.path)
+				}).Grow(1).MinWidth(0).FontSize(fontTitle).Padding(0, 4).Background(ui.Transparent).Border(0, ui.Transparent).
+					Label(locales.ProjectSheetPath()).Placeholder(locales.ProjectSheetPathHint()).AutoFocus()
+				focused := in.Focused()
+				if focused && (!s.pathFocused || s.caretEnd) {
+					// The caret goes to the end, which the field then shows.
+					n := utf8.RuneCountInString(s.path)
+					in.SetTextSelection(n, n)
 				}
-				in := textField(c.Key("project-name"), k, &s.name, fieldRegular).Label(locales.ProjectSheetName()).Placeholder(placeholder)
-				if in.Submitted() {
-					a.later(c, a.finishSheet)
+				s.pathFocused, s.caretEnd = focused, false
+				if s.focusPath && !focused {
+					in.Focus()
 				}
+				s.focusPath = false
+				in.OnTextKey(func(k ui.TextKey) bool {
+					switch {
+					case k.Key == ui.KeyEnter:
+						if k.Mods&(ui.Cmd|ui.Ctrl) != 0 || !s.openSel() {
+							// ⌘/Ctrl+Enter submits over a highlighted row.
+							a.later(c, a.sheetSubmit)
+						}
+						return true
+					case k.Key == ui.KeyTab && k.Mods == 0:
+						s.tab()
+						return true
+					case k.Key == ui.KeyDown && k.Mods == 0:
+						s.step(1)
+						return true
+					case k.Key == ui.KeyUp && k.Mods == 0:
+						s.step(-1)
+						return true
+					}
+					return false
+				})
+				if focused || s.path == "" {
+					return
+				}
+				in.TextColor(ui.Transparent)
+				// Over the field, where its text is: its padding and border.
+				ui.Row(c).Absolute().Left(4).Right(4).Top(0).Bottom(0).AlignItems(ui.Center).PassThrough().Children(func() {
+					ui.Text(c, s.path).FontSize(fontTitle).TextColor(k.text).SingleLine().TruncateStart().MinWidth(0)
+				})
 			})
+			a.sheetAddButton(c, k)
 		})
-		a.sheetChoice(c, k)
-		ui.Row(c).Shrink(0).Gap(8).Justify(ui.End).Margin(10, 0, 0, 0).Children(func() {
-			if ui.Button(c, locales.ProjectSheetCancel()).Clicked() {
-				s.open = false
-			}
-			label := locales.ProjectSheetCreate()
-			if ui.PrimaryButton(c, label).Disabled(!s.ready()).Clicked() {
-				a.later(c, a.finishSheet)
-			}
-		})
-		a.sheetKeys(panel)
+		a.sheetList(c, k, anim, fresh)
+		a.sheetFoot(c, k)
 	})
 	if was && !s.open {
 		if t := a.tab(); t != nil && a.focusReq == nil {
@@ -376,53 +726,31 @@ func (a *App) projectSheetView(c *ui.Context, k *colors) {
 	}
 }
 
-// sheetLabel is the label over a part of the sheet.
-func sheetLabel(c *ui.Context, k *colors, text string) {
-	ui.Text(c, text).FontSize(fontSubhead).FontWeight(600).TextColor(k.textMuted).Margin(4, 0, 0, 0)
-}
-
-// sheetChoice says, over the buttons, the folder Create or Use This Folder
-// takes, or why it takes none.
-func (a *App) sheetChoice(c *ui.Context, k *colors) {
+// sheetFoot is the sheet's bottom bar, drawn only when it holds
+// something: the hosts to pick among when there is more than one — this
+// machine's name else — and the system's folder panel on the right, as
+// the palette's "Open in Finder" action.
+func (a *App) sheetFoot(c *ui.Context, k *colors) {
 	s := &a.sheet
-	dir := s.chosen()
-	glyph, text := "folder", ""
-	switch {
-	case dir != "" && !s.ready():
-		glyph, text = "circle-alert", locales.ProjectSheetNameNeeded()
-	case dir != "":
-		text = locales.ProjectSheetChosen(dir)
-	case s.loading || !s.asked:
-	default:
-		glyph, text = "info", locales.ProjectSheetNoChoice()
+	choose := s.host == nil && a.win != nil
+	if len(a.allHosts()) <= 1 && !choose {
+		return
 	}
-	ui.Row(c.Key("sheet-choice")).Shrink(0).Height(20).Gap(6).AlignItems(ui.Center).Margin(12, 0, 0, 0).Children(func() {
-		if text == "" {
-			return
+	ui.Row(c).Padding(6, 10).Gap(6).AlignItems(ui.Center).BorderWidth(1, 0, 0, 0).BorderColor(k.panelBorder).Children(func() {
+		if len(a.allHosts()) > 1 {
+			a.sheetHosts(c, k)
+		} else {
+			name, _, glyph := a.hostIdentity()
+			glyphIcon(c, glyph, 13, k.textMuted)
+			ui.Text(c, name).FontSize(fontFootnote).TextColor(k.textMuted).SingleLine()
 		}
-		glyphIcon(c, glyph, 14, k.textMuted).Shrink(0)
-		t := ui.Text(c, text).FontSize(fontCallout).TextColor(k.textMuted).SingleLine().TruncateMiddle().MinWidth(0)
-		if dir != "" {
-			t.Tooltip(dir)
+		ui.Spacer(c)
+		if choose {
+			if ui.Button(c, locales.ProjectSheetChoose()).Clicked() {
+				a.chooseFolder()
+			}
 		}
 	})
-}
-
-// sheetKeys takes the sheet's keys: Up and Down highlight a folder, Enter
-// opens it (in the list, sheetBrowser), Backspace and Alt+Up go to the
-// parent folder. A text field with the focus takes Backspace first.
-func (a *App) sheetKeys(panel ui.Element) {
-	s := &a.sheet
-	down, up := panel.Shortcut(0, ui.KeyDown), panel.Shortcut(0, ui.KeyUp)
-	altUp, back := panel.Shortcut(ui.Alt, ui.KeyUp), panel.Shortcut(0, ui.KeyBackspace)
-	switch {
-	case down:
-		s.step(1)
-	case up:
-		s.step(-1)
-	case altUp || back:
-		s.up()
-	}
 }
 
 // sheetHosts are the hosts the sheet can browse: this machine and the
@@ -465,279 +793,148 @@ func (a *App) sheetHosts(c *ui.Context, k *colors) {
 	})
 }
 
-// sheetBrowser is the folder browser: Home, Up, the breadcrumb and, for
-// this machine, Choose…; the field that takes a path; and the folders in
-// the directory, a click going into one, in a list listH high.
-func (a *App) sheetBrowser(c *ui.Context, k *colors, listH float32) {
+// sheetList is the folder list under the sheet's field, drawn as the
+// palette's rows: ".." for the parent first, then the folders the leaf
+// keeps under "Directories". A click opens a folder, Enter takes the
+// field's path, and a leaf that names no folder creates it.
+func (a *App) sheetList(c *ui.Context, k *colors, anim *ui.Animation, fresh bool) {
 	s := &a.sheet
 	r, win := s.res, s.windows()
-	ui.Row(c).Gap(2).AlignItems(ui.Center).Children(func() {
-		home := iconButton(c, k, "house", locales.ProjectSheetHome(), 26, 15).Tooltip(locales.ProjectSheetHome()).Focusable().Shrink(0)
-		if home.Clicked() {
-			s.browse(r.Home)
-		}
-		up := iconButton(c, k, "arrow-up", locales.ProjectSheetUp(), 26, 15).Tooltip(locales.ProjectSheetUp()).Shrink(0)
-		if r.Parent == "" {
-			up.Disabled(true)
-			dimmed(up, 0.4)
-		} else {
-			up.Focusable()
-			if up.Clicked() {
-				s.browse(r.Parent)
-			}
-		}
-		a.sheetCrumbs(c, k)
-		if s.host == nil && a.win != nil {
-			if ui.Button(c, locales.ProjectSheetChoose()).Shrink(0).Clicked() {
-				a.chooseFolder()
-			}
-		}
-	})
-	a.sheetPath(c, k)
-	box := ui.Column(c.Key("folders")).Height(listH).Radius(k.radius(radiusM)).Border(k.borderW(), k.panelBorder).Clip().Focusable().Label(locales.ProjectSheetFolder())
-	if s.focusList {
-		box.Focus()
-		s.focusList = false
+	say := ""
+	switch {
+	case s.host != nil && s.host.current() == nil:
+		say = locales.ProjectSheetConnecting(a.hostName(s.host))
+	case s.failed != "":
+		say = s.failed
+	case s.loading && len(r.Dirs) == 0 || !s.asked:
+		say = locales.ProjectSheetLoading()
+	case r.Code == rex.DirNotFound:
+		say = locales.ProjectSheetNotFound()
+	case r.Code == rex.DirDenied:
+		say = locales.ProjectSheetDenied()
 	}
-	if box.Shortcut(0, ui.KeyEnter) {
-		s.openRow()
+	var es []sheetEntry
+	if say == "" {
+		es = s.entries()
 	}
-	box.Children(func() {
-		say := func(text string) {
-			emptyMenu(c, k, "sheet-"+text, text)
+	// Rows are 34 high, the section's header 28, the muted lines under
+	// them 22, and the line that says there is none 34.
+	listH := 34
+	if say == "" {
+		listH = 28 + 34*len(es)
+		if s.willCreate() {
+			listH += 22
 		}
-		switch {
-		case s.host != nil && s.host.current() == nil:
-			say(locales.ProjectSheetConnecting(a.hostName(s.host)))
-			return
-		case s.failed != "":
-			say(s.failed)
-			return
-		case s.loading && len(r.Dirs) == 0 || !s.asked:
-			say(locales.ProjectSheetLoading())
-			return
-		case r.Code == rex.DirNotFound:
-			say(locales.ProjectSheetNotFound())
-			return
-		case r.Code == rex.DirDenied:
-			say(locales.ProjectSheetDenied())
-			return
-		case len(r.Dirs) == 0:
-			say(locales.ProjectSheetEmpty())
+		if s.makeErr != "" {
+			listH += 22
+		}
+		if r.More {
+			listH += 22
+		}
+	}
+	_, winH := c.Size()
+	ui.Scroll(c.Key("folder-list")).Height(min(float32(listH+12), min(384, max(120, winH-160)))).Padding(palettePad).
+		Label(locales.ProjectSheetDirectories()).Children(func() {
+		if say != "" {
+			emptyMenu(c, k, "sheet-empty", say)
 			return
 		}
-		reveal := s.reveal
-		s.reveal = false
-		ui.Scroll(c.Key("folder-list")).Grow(1).MinHeight(0).Padding(4).Children(func() {
-			ui.Column(c).Gap(2).Role(ui.RoleList).Label(locales.ProjectSheetFolder()).Children(func() {
-				glyph := "folder"
-				if win && r.Path == rex.DirTop {
-					glyph = "hard-drive"
-				}
-				for i, name := range r.Dirs {
-					sel := i == s.sel
-					row := ui.Row(c.Key("dir-"+name)).Height(28).Padding(0, 8).Gap(8).Radius(concentric(k.radius(radiusM), 5)).AlignItems(ui.Center).
-						Cursor(ui.CursorPointer).Role(ui.RoleListItem).Label(name).Selected(sel)
-					switch {
-					case sel:
-						row.Background(k.panelSel)
-						if reveal {
-							row.ScrollIntoView()
-						}
-					case row.Hovered():
-						row.Background(k.hover)
-					}
-					if row.Clicked() {
-						s.browse(childPath(r.Path, name, win))
-					}
-					row.Children(func() {
-						glyphIcon(c, glyph, 15, k.textMuted).Shrink(0)
-						ui.Text(c, name).FontSize(fontBody).TextColor(k.text).SingleLine().TruncateMiddle().MinWidth(0)
-					})
-				}
-				if r.More {
-					ui.Text(c, locales.ProjectSheetMore(rex.DirListMax)).FontSize(fontFootnote).TextColor(k.textMuted).Padding(6, 8)
-				}
+		ui.Column(c).Role(ui.RoleList).Label(locales.ProjectSheetDirectories()).Children(func() {
+			ui.Row(c).Height(28).Padding(8, 10, 0, 10).AlignItems(ui.Center).Children(func() {
+				ui.Text(c, locales.ProjectSheetDirectories()).FontSize(fontFootnote).FontWeight(600).TextColor(k.textMuted)
 			})
-		})
-	})
-}
-
-// sheetPath is the field that takes a path. Enter browses the path typed,
-// or, with the path of the folder listed, opens the folder highlighted.
-// Without the focus it shows the end of a path too long for it, the
-// folder's name, where a text field shows the start.
-func (a *App) sheetPath(c *ui.Context, k *colors) {
-	s := &a.sheet
-	ui.Box(c.Key("project-path-box")).Children(func() {
-		in := textField(c.Key("project-path"), k, &s.path, fieldRegular).Placeholder(locales.ProjectSheetPath()).Label(locales.ProjectSheetPath())
-		focused := in.Focused()
-		if focused && !s.pathFocused {
-			// The caret goes to the end, which the field then shows.
-			n := utf8.RuneCountInString(s.path)
-			in.SetTextSelection(n, n)
-		}
-		s.pathFocused = focused
-		if in.Submitted() {
-			switch p := strings.TrimSpace(s.path); {
-			case p == s.res.Path && s.openRow():
-			case p != "":
-				s.browse(p)
+			reveal := s.reveal
+			s.reveal = false
+			glyph := "folder"
+			if win && r.Path == rex.DirTop {
+				glyph = "hard-drive"
 			}
-		}
-		if focused || s.path == "" {
-			return
-		}
-		in.TextColor(ui.Transparent)
-		// Over the field, where its text is: its padding and border.
-		ui.Row(c).Absolute().Left(9).Right(9).Top(0).Bottom(0).AlignItems(ui.Center).PassThrough().Children(func() {
-			ui.Text(c, s.path).FontSize(fontBody).TextColor(k.text).SingleLine().TruncateStart().MinWidth(0)
-		})
-	})
-}
-
-// crumbGap is the room between steps of the breadcrumb: a chevron and the
-// gaps around it.
-const crumbGap = 11 + 2
-
-// sheetCrumbs is the breadcrumb of the folder listed. Where its steps do
-// not all fit, it shows the top, the last steps that fit and, between,
-// a menu of those left out (fitCrumbs).
-func (a *App) sheetCrumbs(c *ui.Context, k *colors) {
-	s := &a.sheet
-	r, win := s.res, s.windows()
-	row := ui.Row(c.Key("crumbs")).Grow(1).MinWidth(0).Gap(2).AlignItems(ui.Center).ClipX().Role(ui.RoleNavigation).Label(locales.ProjectSheetFolder())
-	room := row.Bounds().W
-	row.Children(func() {
-		if r.Path == "" {
-			return
-		}
-		glyphIcon(c, "folder-open", 15, k.textMuted).Shrink(0).Margin(0, 4, 0, 6)
-		steps := crumbs(r.Path, win)
-		widths := make([]float32, len(steps))
-		for i, step := range steps {
-			weight := 400
-			if i == len(steps)-1 {
-				weight = 600
-			}
-			w, _ := c.MeasureText(0, ui.Span{Text: step.name, Size: 12.5, Weight: weight})
-			widths[i] = w + 10
-		}
-		if room <= 0 {
-			// The first frame, laid out by none before it: the panel's
-			// width less its padding, Home, Up and Choose….
-			winW, _ := c.Size()
-			room = min(540, winW-24) - 40 - 60 - 90
-		}
-		head := 0
-		if win && len(steps) > 1 {
-			head = 1 // the drive, not the list of drives
-		}
-		shown := fitCrumbs(widths, head, room-25-4, 26)
-		for j, i := range shown {
-			if j > 0 && !(i == 1 && !win && shown[j-1] == 0) {
-				glyphIcon(c, "chevron-right", 11, k.textMuted).Shrink(0)
-			}
-			if i < 0 {
-				hidden := hiddenCrumbs(shown, len(steps))
-				more := ui.Row(c.Key("crumb-more")).Height(24).Width(26).Radius(k.radius(radiusS)).Center().Shrink(0).Cursor(ui.CursorPointer).
-					Role(ui.RoleButton).Label(locales.ProjectSheetMoreFolders()).Tooltip(locales.ProjectSheetMoreFolders()).Focusable()
-				if more.Hovered() {
-					more.Background(k.hover)
+			for i, e := range es {
+				sel := i == s.sel
+				key, icon, name, label := "dir-"+e.name, glyph, e.name, e.name
+				if e.up {
+					key, icon, name, label = "dir-up", "corner-left-up", "..", locales.ProjectSheetUp()
 				}
-				more.Menu(func(m *ui.Menu) {
-					for _, h := range hidden {
-						if m.Item(steps[h].name).Chosen() {
-							s.browse(steps[h].path)
-						}
+				row := ui.Row(c.Key(key)).Height(34).Padding(0, 10).Gap(10).Radius(concentric(k.radius(paletteR), 1+palettePad)).AlignItems(ui.Center).
+					Cursor(ui.CursorPointer).Role(ui.RoleListItem).Label(label).AccessSelected(sel)
+				if anim != nil {
+					pose := ui.Pose{}
+					if fresh {
+						pose = paletteRowFrom
 					}
+					// The rows past the first paletteStagger come in
+					// with the last of those, not before them.
+					delay := time.Duration(min(i, paletteStagger-1)) * 15 * time.Millisecond
+					row.AnimatePose(pose, ui.Animation{Spring: anim.Spring, Delay: delay})
+				}
+				switch {
+				case sel:
+					row.Background(k.panelSel)
+					if reveal {
+						row.ScrollIntoView()
+					}
+				case row.Hovered():
+					row.Background(k.hover)
+				}
+				if row.Clicked() {
+					s.activate(e)
+				}
+				row.Children(func() {
+					glyphIcon(c, icon, 15, k.textMuted).Shrink(0)
+					ui.RichText(c, titleSpans(name, 13.5, 500, k.text)...).Label(label).SingleLine().Ellipsis("…").MinWidth(0)
 				})
-				more.Children(func() { glyphIcon(c, "ellipsis", 14, k.textMuted) })
-				continue
 			}
-			step, last := steps[i], i == len(steps)-1
-			e := ui.Row(c.Key("crumb-"+step.path)).Height(24).Padding(0, 6).Radius(k.radius(radiusS)).AlignItems(ui.Center).
-				Role(ui.RoleButton).Label(step.path)
-			if !last {
-				e.Shrink(0).Cursor(ui.CursorPointer).Focusable()
-				if e.Hovered() {
-					e.Background(k.hover)
-				}
-				if e.Clicked() {
-					s.browse(step.path)
-				}
-			} else {
-				// Only a name too long for the row shortens, in its middle.
-				e.Shrink(1).MinWidth(0)
+			// A leaf that names no folder creates it on Enter.
+			if s.willCreate() {
+				ui.Text(c, locales.ProjectSheetCreateHint()).FontSize(fontFootnote).TextColor(k.textMuted).Padding(6, 10, 2, 10)
 			}
-			e.Children(func() {
-				t := ui.Text(c, step.name).FontSize(fontCallout).SingleLine().MinWidth(0)
-				if last {
-					t.FontWeight(600).TextColor(k.text).TruncateMiddle()
-				} else {
-					t.TextColor(k.textMuted)
-				}
-			})
-		}
+			if s.makeErr != "" {
+				ui.Text(c, s.makeErr).FontSize(fontFootnote).TextColor(k.textMuted).Padding(0, 10, 2, 10)
+			}
+			if r.More {
+				ui.Text(c, locales.ProjectSheetMore(rex.DirListMax)).FontSize(fontFootnote).TextColor(k.textMuted).Padding(6, 10)
+			}
+		})
 	})
 }
 
-// fitCrumbs picks the steps of a breadcrumb that fit room DIPs, of the
-// widths given, each but the first after a chevron: all of them if they
-// fit, else the step head (the top) and the last three steps, or two, or
-// one, as fit, with -1, a menu more wide, for those left out. At worst
-// the menu and the last step, which shortens as it must.
-func fitCrumbs(widths []float32, head int, room, more float32) []int {
-	n := len(widths)
-	width := func(shown []int) float32 {
-		w := float32(0)
-		for j, i := range shown {
-			if j > 0 {
-				w += crumbGap
-			}
-			if i < 0 {
-				w += more
-			} else {
-				w += widths[i]
-			}
-		}
-		return w
+// sheetAddButton is the submit the path field holds at its end, as T3
+// Code's CommandPaletteSubmitButton: "Add" for the folder the path
+// names, "Create & Add" for one it creates, and the key that submits —
+// Enter, or ⌘/Ctrl+Enter while a row is highlighted.
+func (a *App) sheetAddButton(c *ui.Context, k *colors) {
+	s := &a.sheet
+	label := locales.ProjectSheetAdd()
+	if s.making {
+		label = locales.ProjectSheetWorking()
+	} else if s.willCreate() {
+		label = locales.ProjectSheetCreateAdd()
 	}
-	all := make([]int, n)
-	for i := range all {
-		all[i] = i
+	mod := "⌘"
+	if runtime.GOOS != "darwin" {
+		mod = "Ctrl+"
 	}
-	if width(all) <= room {
-		return all
+	kbd := "↩"
+	if s.sel >= 0 {
+		kbd = mod + "↩"
 	}
-	for tail := 3; tail >= 1; tail-- {
-		from := n - tail
-		if from <= head || from == head+1 && head == 0 {
-			continue // nothing left out, or the top itself
-		}
-		var shown []int
-		if from > head+1 {
-			shown = []int{head, -1} // the menu where the steps left out are
-		} else {
-			shown = []int{-1, head} // only those above the top
-		}
-		for i := from; i < n; i++ {
-			shown = append(shown, i)
-		}
-		if width(shown) <= room {
-			return shown
-		}
+	b := ui.Row(c.Key("add")).Shrink(0).Margin(0, 6, 0, 0).Height(22).Padding(0, 8).Gap(4).AlignItems(ui.Center).
+		Radius(concentric(k.radius(radiusM), 3)).Border(k.borderW(), k.panelBorder).Label(label)
+	switch {
+	case s.canSubmit() && b.Hovered():
+		b.Background(k.hover)
+		b.Cursor(ui.CursorPointer)
+	case s.canSubmit():
+		b.Cursor(ui.CursorPointer)
+	default:
+		b.Disabled(true)
+		dimmed(b, 0.45)
 	}
-	return []int{-1, n - 1}
-}
-
-// hiddenCrumbs are the steps of n that shown leaves out, top first.
-func hiddenCrumbs(shown []int, n int) []int {
-	var out []int
-	for i := range n {
-		if !slices.Contains(shown, i) {
-			out = append(out, i)
-		}
+	if s.canSubmit() && b.Clicked() {
+		a.later(c, a.sheetSubmit)
 	}
-	return out
+	b.Children(func() {
+		ui.Text(c, label).FontSize(fontCallout).FontWeight(500).TextColor(k.text).SingleLine()
+		ui.Text(c, kbd).FontSize(fontFootnote).TextColor(k.textMuted).SingleLine()
+	})
 }

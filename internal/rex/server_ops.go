@@ -60,6 +60,8 @@ func serverOp(op string) serverOpFunc {
 		return (*Server).doSetTheme
 	case "dir.list":
 		return (*Server).doDirList
+	case "dir.mkdir":
+		return (*Server).doDirMkdir
 	case "agents.list":
 		return (*Server).doAgentsList
 	case "input":

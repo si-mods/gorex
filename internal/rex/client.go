@@ -590,6 +590,12 @@ func (c *Client) DirList(path string, hidden bool) (r DirListResult, err error) 
 	return
 }
 
+// DirMkdir makes the directory path on the server's machine (DirMkdir);
+// a server without CapabilityDirMkdir answers an error.
+func (c *Client) DirMkdir(path string) error {
+	return c.call(Request{Op: "dir.mkdir", DirMkdir: &DirMkdir{Path: path}}, nil)
+}
+
 // AgentsList lists the known agent CLIs installed on the server's machine
 // (AgentsResult); a server without CapabilityAgents answers an error.
 func (c *Client) AgentsList() (r AgentsResult, err error) {

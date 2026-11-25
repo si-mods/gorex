@@ -666,6 +666,26 @@ through that host's own gateway.
   stopping, or too many listings run), else `internal` with the server's
   text (a listing over 10 seconds, or another failure).
 
+`gorex.dir.mkdir` makes a directory, with its parents: the folder the New
+Project sheet's "Create & Add" names. The welcome lists the feature
+`gorex.dir_mkdir` (`CapabilityDirMkdir`); a server without it answers
+`not_supported`.
+
+```
+→ {"method": "gorex.dir.mkdir", "payload": {"path": "~/src/new"}}
+← {}
+```
+
+- `path` reads as `gorex.dir.list`'s does: absolute, `~` or `~/…` of the
+  home directory, or relative to it; a drive's top is refused, and a
+  device or pipe path too.
+- The folder and its parents are made as the sessions' user with mode
+  `0755`; a folder already there is a success.
+- It is allowed to the callers that may list directories. A stopping
+  gateway refuses it with `conflict`.
+- Errors: `bad_request`, `not_supported`, `conflict`, else `internal`
+  with the server's text (permission denied among them).
+
 ## Troubleshooting
 
 | Symptom | Check |
