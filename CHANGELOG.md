@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.62.0
+
+### Features
+
+* **prompts:** a question that takes one answer shows radio rows, one that takes several shows check boxes, and a disabled Send says why ([#1132](https://github.com/si-mods/gorex/pull/1132))
+* **desktop:** status and error toasts, a quit confirm, and offline actions disabled ([#1104](https://github.com/si-mods/gorex/pull/1104))
+* **ios:** reach a host over SSH (IOS-023 phase 1) ([#1124](https://github.com/si-mods/gorex/pull/1124))
+* **packs:** show and apply extension updates ([#1125](https://github.com/si-mods/gorex/pull/1125))
+* **theme:** Pointer uniform for shader API version 2 ([#1126](https://github.com/si-mods/gorex/pull/1126))
+
+### Changes
+
+* remove Close Other Tabs from desktop, web and iOS ([#1100](https://github.com/si-mods/gorex/pull/1100))
+
 ## 0.61.0
 
 ### Features
