@@ -96,6 +96,9 @@ func (a *App) view(c *ui.Context) {
 		a.winR = a.win.CornerRadius()
 	}
 	breathing = a.focusedWin
+	if a.focusedWin {
+		a.syncHostItems()
+	}
 	a.claimFocus()
 	a.syncSizes()
 	c.SetTheme(menuTheme(c.Theme(), k))
@@ -120,6 +123,8 @@ func (a *App) view(c *ui.Context) {
 	ui.Overlay(c, func() {})
 	if a.err != "" || a.errMsg != nil {
 		a.errorBanner(c, k)
+	} else {
+		a.bannerTop = 0
 	}
 	a.shortcuts(c)
 	a.palette(c, k)
@@ -130,6 +135,9 @@ func (a *App) view(c *ui.Context) {
 	a.spaceDialog(c, k)
 	a.projectSheetView(c, k)
 	a.teleportConfirm(c, k)
+	a.quitConfirm(c, k)
+	// Over the dialogs: a toast answers what the user did just now.
+	a.toasts(c, k)
 	// mygo paints a text input's caret in the theme of the frame as it
 	// paints, and a field cannot give it one of its own: the widgets above
 	// have taken their colors already, so the theme changes now, after
@@ -1716,6 +1724,10 @@ func (a *App) errText() string {
 // goes as it is dismissed.
 var bannerMotion = &ui.Motion{Y: 12, Opacity: 0}
 
+// bannerBottom is how far the banner, and a toast while no banner shows,
+// sit above the window's bottom edge.
+const bannerBottom = 18
+
 // errorBanner shows what went wrong with the server, or a note: a wait,
 // whose dot is not an error's, or one with a button that acts on it.
 func (a *App) errorBanner(c *ui.Context, k *colors) {
@@ -1723,12 +1735,18 @@ func (a *App) errorBanner(c *ui.Context, k *colors) {
 	ui.Overlay(c, func() {
 		// Under the other overlays: a sheet's or a dialog's scrim covers it,
 		// as it covers the window.
-		banner := ui.Row(c.Key("error-banner")).Absolute().Bottom(18).Left(0).Right(0).Justify(ui.Center).PassThrough().ZIndex(-1)
+		banner := ui.Row(c.Key("error-banner")).Absolute().Bottom(bannerBottom).Left(0).Right(0).Justify(ui.Center).PassThrough().ZIndex(-1)
 		if anim := motion(c); anim != nil {
 			banner.Transition(exitIn(ui.ElementTransition{Animation: anim, Position: true, Enter: bannerMotion, Exit: bannerMotion}, durExitMove))
 		}
 		banner.Children(func() {
-			toastShadow(ui.Row(c).Gap(10).Padding(8, 10, 8, 14).Radius(k.radius(radiusL)).Background(k.panel).Border(k.borderW(), k.panelBorder), k).AlignItems(ui.Center).Children(func() {
+			panel := toastShadow(ui.Row(c).Gap(10).Padding(8, 10, 8, 14).Radius(k.radius(radiusL)).Background(k.panel).Border(k.borderW(), k.panelBorder), k).AlignItems(ui.Center)
+			// A toast sits above the panel: a frame more once it moved.
+			if top := panel.Bounds().Y; top != a.bannerTop {
+				a.bannerTop = top
+				c.Invalidate()
+			}
+			panel.Children(func() {
 				dot := k.danger
 				if n != nil && (n.wait || n.info) {
 					dot = k.busy

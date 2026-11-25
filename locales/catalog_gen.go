@@ -5291,13 +5291,15 @@ func (msgs Messages) HostsRemoveAsk(host string) string {
 // HostsNotConnectedTo says "Not connected to {host}."
 // in the language the app shows.
 //
-// Error banner: a tab or pane cannot open on a host that is not connected.
+// Error toast, and the detail of a disabled palette row: a tab or pane
+// cannot open on a host that is not connected.
 func HostsNotConnectedTo(host string) string { return In(i18n.Locale()).HostsNotConnectedTo(host) }
 
 // HostsNotConnectedTo says "Not connected to {host}."
 // in the language of msgs.
 //
-// Error banner: a tab or pane cannot open on a host that is not connected.
+// Error toast, and the detail of a disabled palette row: a tab or pane
+// cannot open on a host that is not connected.
 func (msgs Messages) HostsNotConnectedTo(host string) string {
 	return Catalog.Format(msgs.locale, "hostsNotConnectedTo", map[string]any{"host": host})
 }
@@ -8224,6 +8226,176 @@ func SpaceDeleteConfirm() string { return In(i18n.Locale()).SpaceDeleteConfirm()
 // Delete Space dialog: the button that deletes the space.
 func (msgs Messages) SpaceDeleteConfirm() string {
 	return Catalog.Format(msgs.locale, "spaceDeleteConfirm", nil)
+}
+
+// ToastActionFailed says "Couldn't run {action}: {reason}."
+// in the language the app shows.
+//
+// Error toast: an action the user asked for failed. action is its title,
+// reason the error.
+func ToastActionFailed(action string, reason string) string {
+	return In(i18n.Locale()).ToastActionFailed(action, reason)
+}
+
+// ToastActionFailed says "Couldn't run {action}: {reason}."
+// in the language of msgs.
+//
+// Error toast: an action the user asked for failed. action is its title,
+// reason the error.
+func (msgs Messages) ToastActionFailed(action string, reason string) string {
+	return Catalog.Format(msgs.locale, "toastActionFailed", map[string]any{"action": action, "reason": reason})
+}
+
+// ToastShortcutResetFailed says "Couldn't reset the shortcut: {reason}."
+// in the language the app shows.
+//
+// Error toast: Reset of a keyboard shortcut failed. reason is the error.
+func ToastShortcutResetFailed(reason string) string {
+	return In(i18n.Locale()).ToastShortcutResetFailed(reason)
+}
+
+// ToastShortcutResetFailed says "Couldn't reset the shortcut: {reason}."
+// in the language of msgs.
+//
+// Error toast: Reset of a keyboard shortcut failed. reason is the error.
+func (msgs Messages) ToastShortcutResetFailed(reason string) string {
+	return Catalog.Format(msgs.locale, "toastShortcutResetFailed", map[string]any{"reason": reason})
+}
+
+// ToastShortcutsResetFailed says "Couldn't reset the shortcuts: {reason}."
+// in the language the app shows.
+//
+// Error toast: Reset All of the keyboard shortcuts failed. reason is the
+// error.
+func ToastShortcutsResetFailed(reason string) string {
+	return In(i18n.Locale()).ToastShortcutsResetFailed(reason)
+}
+
+// ToastShortcutsResetFailed says "Couldn't reset the shortcuts: {reason}."
+// in the language of msgs.
+//
+// Error toast: Reset All of the keyboard shortcuts failed. reason is the
+// error.
+func (msgs Messages) ToastShortcutsResetFailed(reason string) string {
+	return Catalog.Format(msgs.locale, "toastShortcutsResetFailed", map[string]any{"reason": reason})
+}
+
+// ToastSessionFailed says "Couldn't start a session: {reason}."
+// in the language the app shows.
+//
+// Error toast: the host did not make the session of a new tab or pane.
+// reason is the error.
+func ToastSessionFailed(reason string) string { return In(i18n.Locale()).ToastSessionFailed(reason) }
+
+// ToastSessionFailed says "Couldn't start a session: {reason}."
+// in the language of msgs.
+//
+// Error toast: the host did not make the session of a new tab or pane.
+// reason is the error.
+func (msgs Messages) ToastSessionFailed(reason string) string {
+	return Catalog.Format(msgs.locale, "toastSessionFailed", map[string]any{"reason": reason})
+}
+
+// ToastTerminalFailed says "Couldn't open the terminal: {reason}."
+// in the language the app shows.
+//
+// Error toast: the terminal of a pane did not start. reason is the error.
+func ToastTerminalFailed(reason string) string { return In(i18n.Locale()).ToastTerminalFailed(reason) }
+
+// ToastTerminalFailed says "Couldn't open the terminal: {reason}."
+// in the language of msgs.
+//
+// Error toast: the terminal of a pane did not start. reason is the error.
+func (msgs Messages) ToastTerminalFailed(reason string) string {
+	return Catalog.Format(msgs.locale, "toastTerminalFailed", map[string]any{"reason": reason})
+}
+
+// QuitEndTitle says "{n, plural, one {Quit and end # session?} other {Quit and end # sessions?}}"
+// in the language the app shows.
+//
+// Title of the question before Quit and End All Sessions: how many sessions
+// of this machine end.
+func QuitEndTitle(n int) string { return In(i18n.Locale()).QuitEndTitle(n) }
+
+// QuitEndTitle says "{n, plural, one {Quit and end # session?} other {Quit and end # sessions?}}"
+// in the language of msgs.
+//
+// Title of the question before Quit and End All Sessions: how many sessions
+// of this machine end.
+func (msgs Messages) QuitEndTitle(n int) string {
+	return Catalog.Format(msgs.locale, "quitEndTitle", map[string]any{"n": n})
+}
+
+// QuitEndBody says "{n, plural, one {The program running in it ends. This can't be undone.} other {The programs running in them end. This…"
+// in the language the app shows.
+//
+// Body of the question before Quit and End All Sessions.
+func QuitEndBody(n int) string { return In(i18n.Locale()).QuitEndBody(n) }
+
+// QuitEndBody says "{n, plural, one {The program running in it ends. This can't be undone.} other {The programs running in them end. This…"
+// in the language of msgs.
+//
+// Body of the question before Quit and End All Sessions.
+func (msgs Messages) QuitEndBody(n int) string {
+	return Catalog.Format(msgs.locale, "quitEndBody", map[string]any{"n": n})
+}
+
+// QuitEndConfirm says "Quit and End All"
+// in the language the app shows.
+//
+// Quit and End All Sessions question: the button that quits and ends the
+// sessions.
+func QuitEndConfirm() string { return In(i18n.Locale()).QuitEndConfirm() }
+
+// QuitEndConfirm says "Quit and End All"
+// in the language of msgs.
+//
+// Quit and End All Sessions question: the button that quits and ends the
+// sessions.
+func (msgs Messages) QuitEndConfirm() string {
+	return Catalog.Format(msgs.locale, "quitEndConfirm", nil)
+}
+
+// SettingsNotificationsOff says "Notifications are off for GoRex."
+// in the language the app shows.
+//
+// Settings row, macOS: the system does not let GoRex show notifications.
+func SettingsNotificationsOff() string { return In(i18n.Locale()).SettingsNotificationsOff() }
+
+// SettingsNotificationsOff says "Notifications are off for GoRex."
+// in the language of msgs.
+//
+// Settings row, macOS: the system does not let GoRex show notifications.
+func (msgs Messages) SettingsNotificationsOff() string {
+	return Catalog.Format(msgs.locale, "settingsNotificationsOff", nil)
+}
+
+// SettingsNotificationsOffHint says "Turn them on in System Settings."
+// in the language the app shows.
+//
+// Hint under the row that says notifications are off.
+func SettingsNotificationsOffHint() string { return In(i18n.Locale()).SettingsNotificationsOffHint() }
+
+// SettingsNotificationsOffHint says "Turn them on in System Settings."
+// in the language of msgs.
+//
+// Hint under the row that says notifications are off.
+func (msgs Messages) SettingsNotificationsOffHint() string {
+	return Catalog.Format(msgs.locale, "settingsNotificationsOffHint", nil)
+}
+
+// SettingsNotificationsOpen says "Open System Settings"
+// in the language the app shows.
+//
+// Button that opens the notification settings of macOS.
+func SettingsNotificationsOpen() string { return In(i18n.Locale()).SettingsNotificationsOpen() }
+
+// SettingsNotificationsOpen says "Open System Settings"
+// in the language of msgs.
+//
+// Button that opens the notification settings of macOS.
+func (msgs Messages) SettingsNotificationsOpen() string {
+	return Catalog.Format(msgs.locale, "settingsNotificationsOpen", nil)
 }
 
 // SpaceMoveDown says "Move Down"

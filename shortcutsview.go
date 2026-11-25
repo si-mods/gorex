@@ -5,6 +5,8 @@ import (
 
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
+
+	"gorex/locales"
 )
 
 type shortcutsState struct {
@@ -174,7 +176,7 @@ func sameShortcut(a, b string) bool {
 
 func (a *App) resetShortcut(cmd *command) {
 	if err := removeShortcut(cmd.ID); err != nil {
-		a.err = err.Error()
+		settingsToastError(locales.ToastShortcutResetFailed(reasonOf(err)))
 		return
 	}
 	reloadConfig(a)
@@ -182,7 +184,7 @@ func (a *App) resetShortcut(cmd *command) {
 
 func (a *App) resetAllShortcuts() {
 	if err := os.Remove(rexShortcutsPath()); err != nil && !os.IsNotExist(err) {
-		a.err = err.Error()
+		settingsToastError(locales.ToastShortcutsResetFailed(reasonOf(err)))
 		return
 	}
 	reloadConfig(a)

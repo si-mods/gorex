@@ -45,6 +45,12 @@ type App struct {
 	// errNote is how the banner shows the message it was set with
 	// (setNote): as a wait, or with a button.
 	errNote *bannerNote
+	// toast is the window's toast (toast.go); bannerTop is where the
+	// banner's panel starts, 0 while none shows: the toast sits above it.
+	toast     toastSlot
+	bannerTop float32
+	// quitAsk tells that Quit and End All Sessions asks (quitConfirm).
+	quitAsk bool
 	// sheet is the New Project sheet, and the one that changes a
 	// project's folder.
 	sheet projectSheet

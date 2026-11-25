@@ -349,7 +349,7 @@ func (a *App) endCanvasPan() {
 // note there, its box's top left where it was clicked.
 func (a *App) canvasMenu(m *ui.Menu, t *Tab) {
 	x, y := a.canvasAt[0], a.canvasAt[1]
-	if m.Item(locales.CanvasNewTerminal()).Chosen() {
+	if h := t.host(); m.Item(locales.CanvasNewTerminal()).Disabled(h != nil && h.current() == nil).Chosen() {
 		a.canvasNew(t, "terminal", x, y)
 	}
 	// A tab's panes are on one host, which a browser's or a note's is not.

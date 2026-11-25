@@ -219,6 +219,9 @@ type store struct {
 	upgradeFailed int
 
 	workspaces []*Workspace
+	// notifyOff tells that macOS refused the last notification: the user
+	// turned GoRex's notifications off (notified).
+	notifyOff bool
 	// placed is, while reconcile takes a layout, the space of each tab ID
 	// the layout has once: a tab another client moved to another space
 	// keeps its ID there, though the window it leaves still has it
@@ -1305,6 +1308,7 @@ func (st *store) closed(a *App) {
 	st.apps = slices.DeleteFunc(st.apps, func(o *App) bool { return o == a })
 	if len(st.apps) == 0 {
 		st.repoll()
+		clearHostItems()
 	}
 	if len(st.apps) == 0 && w != nil {
 		st.lastClosed = w
