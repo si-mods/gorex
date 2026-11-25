@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.63.0
+
+### Features
+
+* **ext:** extension packs: a pane kind served by a webview pack in `<config>/exts/<id>/`, a scoped bridge for its page (state, jailed storage, whitelisted actions, the web slot), installable as `kind:"extension"` packs from the registry and managed on the Extensions page ([#1137](https://github.com/si-mods/gorex/pull/1137))
+* **ext:** the note pane moved into the `gorex-notes` extension pack — install it from the Extensions page or with `gorex pack install gorex-notes`; existing `notes/*.txt` keep working ([#1138](https://github.com/si-mods/gorex/pull/1138))
+
+### Bug Fixes
+
+* **desktop:** the colour dot opens the colour menu again, the current colour ticked in its dot ([#1127](https://github.com/si-mods/gorex/pull/1127))
+* **ios:** Interface is a segmented picker, Minimum Contrast a menu, and Edit Spaces marks the colour ([#1103](https://github.com/si-mods/gorex/pull/1103))
+
 ## 0.62.0
 
 ### Features
