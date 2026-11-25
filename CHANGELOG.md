@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.64.0
+
+### Features
+
+* **theme:** support `button.background`, `dropdown.background`, `windowControl.background` and `windowControl.closeBackground` face shaders with per-element `State` uniform ([#1147](https://github.com/si-mods/gorex/pull/1147))
+* **ext:** move the browser pane into the `gorex-browser` pack ([#1143](https://github.com/si-mods/gorex/pull/1143))
+* **ios:** SSH connect-once, password auth, install key and structured add ([#1144](https://github.com/si-mods/gorex/pull/1144)), and reach an SSH host's TCP Rex API ([#1136](https://github.com/si-mods/gorex/pull/1136))
+
+### Bug Fixes
+
+* **terminal:** never highlight half of a wide CJK character in selection ([#1140](https://github.com/si-mods/gorex/pull/1140))
+* **settings:** pick editor syntax palette by surface luminance ([#1145](https://github.com/si-mods/gorex/pull/1145))
+
 ## 0.63.0
 
 ### Features
