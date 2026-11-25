@@ -389,10 +389,10 @@ func (a *App) canvasNew(t *Tab, kind string, x, y float32) {
 			return true
 		})
 	case h != nil:
-	case kind == "browser":
-		a.dropOnCanvas(t, a.newBrowserPane(browserStart), x, y)
-	case kind == "note":
-		a.dropOnCanvas(t, a.newNotePane(""), x, y)
+	default:
+		if p := a.newExtPane(kind); p != nil {
+			a.dropOnCanvas(t, p, x, y)
+		}
 	}
 }
 

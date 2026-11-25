@@ -872,7 +872,7 @@ func (a *App) paneCard(c *ui.Context, k *colors, t *Tab, p *Pane, held bool) ui.
 	// none; a float takes its face from its cell's glass. A browser pane
 	// keeps its face.
 	switch {
-	case !glassOn() || p.browser != nil && p.float == nil:
+	case !glassOn() || p.ext != nil && p.ext.opaqueTiled() && p.float == nil:
 		card.Background(bg)
 	case p.float == nil:
 		card.Material(ui.SystemGlass{Tint: glassTint(c, k, focused), Fallback: faceMaterial{bg}})
@@ -892,7 +892,7 @@ func (a *App) paneCard(c *ui.Context, k *colors, t *Tab, p *Pane, held bool) ui.
 		top := float32(0)
 		// A browser pane keeps its header: the address field is the only
 		// way to its pages. A note pane keeps its too, which names it.
-		if paneHeaders() || p.browser != nil || p.note != nil {
+		if paneHeaders() || p.ext != nil && p.ext.keepsHeader() {
 			a.paneHeader(c, hk, t, p, focused, hovered)
 		} else if p.float != nil {
 			a.floatHandle(c, hk, t, p, p.float)
@@ -906,12 +906,8 @@ func (a *App) paneCard(c *ui.Context, k *colors, t *Tab, p *Pane, held bool) ui.
 			body.Clip()
 		}
 		body.Children(func() {
-			if p.browser != nil {
-				a.browserBody(c, k, t, p)
-				return
-			}
-			if p.note != nil {
-				a.noteBody(c, k, t, p)
+			if p.ext != nil {
+				p.ext.body(a, c, k, t, p)
 				return
 			}
 			if a.findPane == p {
@@ -1060,8 +1056,7 @@ func (a *App) paneHeader(c *ui.Context, k *colors, t *Tab, p *Pane, focused, hov
 		a.paneRename(c, k)
 		return
 	}
-	if p.browser != nil {
-		a.browserHeader(c, k, t, p, focused, hovered)
+	if p.ext != nil && p.ext.header(a, c, k, t, p, focused, hovered) {
 		return
 	}
 	name, detail := p.label()
@@ -1103,7 +1098,7 @@ func (a *App) paneHeader(c *ui.Context, k *colors, t *Tab, p *Pane, focused, hov
 			if detail != "" {
 				ui.RichText(c, titleSpans(detail, 12.5, 500, k.text.Alpha(0.86))...).Label(detail).SingleLine().Ellipsis("…").Shrink(1).MinWidth(0)
 			}
-			if p.note == nil {
+			if p.ext == nil || p.ext.badge() {
 				a.activityBadge(c, k, p)
 			}
 		})
@@ -1114,7 +1109,7 @@ func (a *App) paneHeader(c *ui.Context, k *colors, t *Tab, p *Pane, focused, hov
 // noteBody shows a note pane's text, which fills the pane and is edited
 // in place. Its keys are the text's: none goes to a terminal.
 func (a *App) noteBody(c *ui.Context, k *colors, t *Tab, p *Pane) {
-	n := p.note
+	n := p.ext.(*notePane)
 	if n.preview {
 		a.notePreviewBody(c, k, t, p)
 		return
@@ -1138,14 +1133,14 @@ func (a *App) noteBody(c *ui.Context, k *colors, t *Tab, p *Pane) {
 	}
 	// The text is written as it changes, to its own file, not to the
 	// layout: the title shows at once, and nothing waits on a save.
-	n.save()
+	n.persist()
 }
 
 // notePreviewBody shows a note's text as Markdown, filling the pane and
 // scrolling. Focus in it gives the pane the focus, so that the app's
 // shortcuts act on it.
 func (a *App) notePreviewBody(c *ui.Context, k *colors, t *Tab, p *Pane) {
-	n := p.note
+	n := p.ext.(*notePane)
 	n.md.Theme = n.previewTheme(k)
 	sc := ui.Scroll(c.Key(notePreviewKey(p.ID))).Grow(1).MinHeight(0).Focusable().FocusRing(false)
 	if a.focusReq == p && a.tab() == t {
@@ -1281,7 +1276,7 @@ func (a *App) paneMenu(m *ui.Menu, p *Pane) {
 			}
 		})
 	}
-	if p.SID != "" && p.browser == nil && p.note == nil {
+	if p.SID != "" && p.ext == nil {
 		m.Separator()
 		m.Submenu(locales.CmdTeleport(), func(sm *ui.Menu) { a.teleportMenu(sm, p) })
 	}
@@ -1308,15 +1303,8 @@ func (a *App) paneActions(c *ui.Context, k *colors, t *Tab, p *Pane, show bool) 
 		row.AnimatePose(ui.Pose{}, *anim)
 	}
 	row.Children(func() {
-		if n := p.note; n != nil {
-			icon, label := "eye", locales.NotePreview()
-			if n.preview {
-				icon, label = "pencil", locales.NoteEdit()
-			}
-			if naturalIconButton(c, k, icon, label, 26, 16).Tooltip(tip(label, &cmdNotePreview)).Clicked() {
-				t.setFocus(p)
-				a.toggleNotePreview(p)
-			}
+		if p.ext != nil {
+			p.ext.headerActions(a, c, k, t, p)
 		}
 		// As Rex has them: split right, split down, float, zoom and close.
 		// A float's float button, lit, docks it.
@@ -1360,7 +1348,7 @@ func (a *App) paneActions(c *ui.Context, k *colors, t *Tab, p *Pane, show bool) 
 // browserHeader draws a browser pane's header: the page's history, its
 // address field, and the buttons of every pane.
 func (a *App) browserHeader(c *ui.Context, k *colors, t *Tab, p *Pane, focused, hovered bool) {
-	b := p.browser
+	b := p.ext.(*browserPane)
 	h := ui.Row(c).Height(headerH).Padding(0, 8, 0, 8).Gap(4).AlignItems(ui.Center).MinWidth(0)
 	h.ContextMenu(func(m *ui.Menu) { a.paneMenu(m, p) })
 	if f := p.float; f != nil {
@@ -1440,7 +1428,7 @@ func (a *App) browserHeader(c *ui.Context, k *colors, t *Tab, p *Pane, focused, 
 // browserBody shows a browser pane's page, or a word about why it shows
 // none.
 func (a *App) browserBody(c *ui.Context, k *colors, t *Tab, p *Pane) {
-	b := p.browser
+	b := p.ext.(*browserPane)
 	if b.web == nil {
 		var reload emptyAction
 		if b.addr != "" {

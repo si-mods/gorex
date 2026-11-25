@@ -467,6 +467,20 @@
   "@windowMinimize": {
     "description": "Window button that minimizes the window (Windows)."
   },
+  "paneExtMissing": "Pane of missing extension \"{kind}\"",
+  "@paneExtMissing": {
+    "description": "Title of a pane whose extension is not installed, the kind's name in {kind}.",
+    "placeholders": {
+      "kind": {
+        "type": "String",
+        "example": "notes"
+      }
+    }
+  },
+  "paneExtMissingHint": "Install the extension that provides this pane, or close it.",
+  "@paneExtMissingHint": {
+    "description": "Note under the title of a pane whose extension is not installed."
+  },
   "windowMaximize": "Maximize",
   "@windowMaximize": {
     "description": "Window button that maximizes the window (Windows)."

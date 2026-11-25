@@ -53,7 +53,7 @@ func TestNoteTab(t *testing.T) {
 		t.Fatalf("%d tabs, active one is the first", len(a.tabs))
 	}
 	p := a.tab().Focus
-	if p == nil || p.note == nil || p.SID != "" || p.term != nil {
+	if p == nil || noteOf(p) == nil || p.SID != "" || p.term != nil {
 		t.Fatalf("focus is not a note pane: %+v", p)
 	}
 	if name, _ := p.label(); name != locales.NoteName() {
@@ -70,8 +70,8 @@ func TestNoteTab(t *testing.T) {
 	tt.Key(0, ui.KeyEnter)
 	tt.Type("and eggs")
 	tt.Frame()
-	if p.note.text != "Buy milk\nand eggs" {
-		t.Fatalf("text %q", p.note.text)
+	if noteOf(p).text != "Buy milk\nand eggs" {
+		t.Fatalf("text %q", noteOf(p).text)
 	}
 	if name, _ := p.label(); name != "Buy milk" {
 		t.Errorf("name %q", name)
@@ -91,10 +91,10 @@ func TestSplitNote(t *testing.T) {
 		t.Fatalf("%d panes", len(ps))
 	}
 	p := tab.Focus
-	if p == nil || p.note == nil || p == ps[0] {
+	if p == nil || noteOf(p) == nil || p == ps[0] {
 		t.Fatalf("the new pane is not a note beside the shell: %+v", p)
 	}
-	if ps[0].note != nil || ps[0].term == nil {
+	if noteOf(ps[0]) != nil || ps[0].term == nil {
 		t.Error("the shell pane is gone")
 	}
 }
@@ -116,7 +116,7 @@ func restoredNotes(b *App) []*Pane {
 	var out []*Pane
 	for _, tab := range b.tabs {
 		for _, p := range tab.panes() {
-			if p.note != nil {
+			if noteOf(p) != nil {
 				out = append(out, p)
 			}
 		}
@@ -127,10 +127,10 @@ func restoredNotes(b *App) []*Pane {
 // typeNote sets the text of the note pane p, as the text area does, and
 // shows a frame, which writes the file.
 func typeNote(tt *ui.Tester, p *Pane, text string) {
-	p.note.text = text
+	noteOf(p).text = text
 	tt.Frame()
 	// The file is written after a delay; the tests that read it do not wait.
-	p.note.flush()
+	noteOf(p).flush()
 }
 
 func TestNoteLayout(t *testing.T) {
@@ -147,7 +147,7 @@ func TestNoteLayout(t *testing.T) {
 	if n == nil {
 		t.Fatalf("the layout keeps no note: %+v", l.Tabs[len(l.Tabs)-1].Root)
 	}
-	if n.SID != "" || n.Name != "Todo" || n.Note != p.note.id || !validNoteID(n.Note) {
+	if n.SID != "" || n.Name != "Todo" || n.Note != noteOf(p).id || !validNoteID(n.Note) {
 		t.Errorf("saved node %+v", n)
 	}
 	raw, _ := json.Marshal(l)
@@ -166,8 +166,8 @@ func TestNoteLayout(t *testing.T) {
 	if got == nil {
 		t.Fatal("the note pane is not restored")
 	}
-	if got.note.text != "Buy milk\nand eggs" || got.note.id != p.note.id || got.Name != "Todo" || got.SID != "" || got.term != nil {
-		t.Errorf("restored %+v %q", got, got.note.text)
+	if noteOf(got).text != "Buy milk\nand eggs" || noteOf(got).id != noteOf(p).id || got.Name != "Todo" || got.SID != "" || got.term != nil {
+		t.Errorf("restored %+v %q", got, noteOf(got).text)
 	}
 }
 
@@ -190,11 +190,11 @@ func TestLargeNoteStaysOutOfLayout(t *testing.T) {
 	if len(raw) > 64<<10 {
 		t.Errorf("the layout is %d bytes with a large note", len(raw))
 	}
-	b, err := os.ReadFile(p.note.path())
+	b, err := os.ReadFile(noteOf(p).path())
 	if err != nil || string(b) != text+"more" {
 		t.Errorf("the note's file holds %d bytes, err %v", len(b), err)
 	}
-	if fi, err := os.Stat(p.note.path()); err != nil || (runtime.GOOS != "windows" && fi.Mode().Perm() != 0o600) {
+	if fi, err := os.Stat(noteOf(p).path()); err != nil || (runtime.GOOS != "windows" && fi.Mode().Perm() != 0o600) {
 		t.Errorf("file %v %v", fi, err)
 	}
 	if ents, _ := os.ReadDir(noteDir()); len(ents) != 1 {
@@ -208,7 +208,7 @@ func TestNoteFileLife(t *testing.T) {
 	tt.Frame()
 	p := a.tab().Focus
 	typeNote(tt, p, "keep me")
-	path := p.note.path()
+	path := noteOf(p).path()
 	if _, err := os.Stat(path); err != nil {
 		t.Fatal(err)
 	}
@@ -216,7 +216,7 @@ func TestNoteFileLife(t *testing.T) {
 	if !a.movePaneToNewTab(p, "") {
 		t.Fatal("not moved")
 	}
-	if p.Tab == nil || len(p.Tab.panes()) != 1 || p.note == nil || p.note.text != "keep me" {
+	if p.Tab == nil || len(p.Tab.panes()) != 1 || noteOf(p) == nil || noteOf(p).text != "keep me" {
 		t.Fatalf("moved pane %+v", p)
 	}
 	if _, err := os.Stat(path); err != nil {
@@ -232,7 +232,7 @@ func TestNoteFileLife(t *testing.T) {
 	tt.Frame()
 	q := a.tab().Focus
 	typeNote(tt, q, "another")
-	path = q.note.path()
+	path = noteOf(q).path()
 	a.closeTab(a.tab())
 	if _, err := os.Stat(path); !os.IsNotExist(err) {
 		t.Errorf("closing the tab kept the file: %v", err)
@@ -260,10 +260,10 @@ func TestNoteIDSafe(t *testing.T) {
 	os.MkdirAll(noteDir(), 0o700)
 	os.WriteFile(secret, []byte("x"), 0o600)
 	p := a.newNotePane("../secret")
-	if p.note.text != "" || !validNoteID(p.note.id) {
-		t.Errorf("note %+v", p.note)
+	if noteOf(p).text != "" || !validNoteID(noteOf(p).id) {
+		t.Errorf("note %+v", noteOf(p))
 	}
-	(&notePane{id: "../secret"}).destroy()
+	(&notePane{id: "../secret"}).destroy(true)
 	if _, err := os.Stat(secret); err != nil {
 		t.Error("an unsafe id deleted a file")
 	}
@@ -282,7 +282,7 @@ func TestEmptyNoteLayout(t *testing.T) {
 	notes := 0
 	for _, tab := range b.tabs {
 		for _, p := range tab.panes() {
-			if p.note != nil {
+			if noteOf(p) != nil {
 				notes++
 			}
 		}
@@ -297,27 +297,27 @@ func TestNoteZoom(t *testing.T) {
 	if n.textSize() != noteDefaultSize {
 		t.Fatalf("default size %v", n.textSize())
 	}
-	n.zoom(noteSizeStep)
+	n.resize(noteSizeStep)
 	if n.textSize() != noteDefaultSize+1 {
 		t.Errorf("bigger %v", n.textSize())
 	}
-	n.zoom(-noteSizeStep)
+	n.resize(-noteSizeStep)
 	if n.size != 0 {
 		t.Errorf("back at the default the size is %v, want 0", n.size)
 	}
 	for i := 0; i < 100; i++ {
-		n.zoom(noteSizeStep)
+		n.resize(noteSizeStep)
 	}
 	if n.textSize() != noteMaxSize {
 		t.Errorf("max %v", n.textSize())
 	}
 	for i := 0; i < 100; i++ {
-		n.zoom(-noteSizeStep)
+		n.resize(-noteSizeStep)
 	}
 	if n.textSize() != noteMinSize {
 		t.Errorf("min %v", n.textSize())
 	}
-	n.zoom(0)
+	n.resize(0)
 	if n.size != 0 || n.textSize() != noteDefaultSize {
 		t.Errorf("reset %v", n.size)
 	}
@@ -335,8 +335,8 @@ func TestNoteZoomCommands(t *testing.T) {
 	note := a.tab().Focus
 	a.tab().setFocus(a.tab().panes()[0])
 	a.invokeCommand(&cmdBigger, nil)
-	if note.note.size != 0 || termFont.Size != termSize+1 {
-		t.Errorf("terminal focused: note %v term %v", note.note.size, termFont.Size)
+	if noteOf(note).size != 0 || termFont.Size != termSize+1 {
+		t.Errorf("terminal focused: note %v term %v", noteOf(note).size, termFont.Size)
 	}
 	a.invokeCommand(&cmdActualSize, nil)
 	// A note has it: its size changes, the terminals' does not.
@@ -345,15 +345,15 @@ func TestNoteZoomCommands(t *testing.T) {
 	a.invokeCommand(&cmdBigger, nil)
 	a.invokeCommand(&cmdBigger, nil)
 	a.invokeCommand(&cmdSmaller, nil)
-	if note.note.size != noteDefaultSize+1 || termFont.Size != termSize {
-		t.Errorf("note focused: note %v term %v", note.note.size, termFont.Size)
+	if noteOf(note).size != noteDefaultSize+1 || termFont.Size != termSize {
+		t.Errorf("note focused: note %v term %v", noteOf(note).size, termFont.Size)
 	}
 	if !a.saveDue {
 		t.Error("a new size does not ask for a layout save")
 	}
 	a.invokeCommand(&cmdActualSize, nil)
-	if note.note.size != 0 {
-		t.Errorf("reset %v", note.note.size)
+	if noteOf(note).size != 0 {
+		t.Errorf("reset %v", noteOf(note).size)
 	}
 }
 
@@ -381,11 +381,11 @@ func TestNotePreviewAvailable(t *testing.T) {
 	if a.focusReq != p {
 		t.Error("the toggle does not give the note the keyboard")
 	}
-	if !p.note.preview {
+	if !noteOf(p).preview {
 		t.Error("not previewing")
 	}
 	a.invokeCommand(&cmdNotePreview, nil)
-	if p.note.preview {
+	if noteOf(p).preview {
 		t.Error("still previewing")
 	}
 }
@@ -396,7 +396,7 @@ func TestNoteSizeAndPreviewPersist(t *testing.T) {
 	tt.Frame()
 	p := a.tab().Focus
 	typeNote(tt, p, "# Title\n\nbody")
-	p.note.size, p.note.preview = 18, true
+	noteOf(p).size, noteOf(p).preview = 18, true
 	a.saveNow()
 	l := savedWorkspaces(t, a.client).Sessions[0].Layout
 	n := findNote(l.Tabs[len(l.Tabs)-1].Root)
@@ -408,14 +408,14 @@ func TestNoteSizeAndPreviewPersist(t *testing.T) {
 		t.Fatal("nothing restored")
 	}
 	ns := restoredNotes(b)
-	if len(ns) == 0 || ns[0].note.size != 18 || !ns[0].note.preview {
+	if len(ns) == 0 || noteOf(ns[0]).size != 18 || !noteOf(ns[0]).preview {
 		t.Fatalf("restored %+v", ns)
 	}
 	// Moving to another window keeps both.
 	w := a.st.openWindow(a.st.newTestSpace())
 	a.movePaneToWindow(p, w)
 	ms := restoredNotes(w)
-	if len(ms) != 1 || ms[0].note.size != 18 || !ms[0].note.preview {
+	if len(ms) != 1 || noteOf(ms[0]).size != 18 || !noteOf(ms[0]).preview {
 		t.Fatalf("moved %+v", ms)
 	}
 }
