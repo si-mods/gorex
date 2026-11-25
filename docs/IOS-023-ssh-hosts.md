@@ -35,6 +35,19 @@ The upstream Mac app speaks SSH itself, through SwiftNIO SSH (`RexSSH`):
 - The app keeps its own host-key trust. A first connect shows the fingerprint for approval. A changed key warns.
 - `SSHWebSocketConnector` carries the Rex WebSocket over an SSH channel, and `SSHTunnel` keeps the SSH connection for the app and the CLI.
 
+## How rootshell does it
+
+rootshell (kitknox/rootshell, MIT) is a mature iOS terminal with native SSH. It is also the project whose `iosbridge` the engine's iOS-specific parts already follow (`ios/tailnet/lifecycle.go`). Its shape for this feature:
+
+- The SSH client is Citadel (SwiftNIO SSH), in process. The Go side crosses gomobile's `Iosbridge*` protocols (`TSSHCallGate`), the same bridge this doc's engine calls use.
+- `SOCKS5ProxyServer` routes local SOCKS requests to `direct-tcpip` channels. This is the same shape as the engine's proxy, from the other direction.
+- `CitadelStreamLocalPipe` and `streamlocal-forward@openssh.com` forward a Unix socket to the app (a GPG agent, a remote askpass). The OpenSSH extension family is proven on iOS there.
+- The host-key check is a request of two states (`HostKeyValidationRequest`): a new host, or a changed key that shows the trusted and the new fingerprint.
+- Keyboard-interactive prompts are classified (`KeyboardInteractiveSecretKind`): a one-time-code prompt gets the OTP AutoFill, and the username is a hidden anchor for the OS password manager.
+- `SSHCopyID` installs keys as `ssh-copy-id` does: it makes `~/.ssh` with its permissions, appends to `authorized_keys`, and verifies.
+- Passwords can save to the Keychain (`SSHPasswordManager`). Keys live in the Keychain, or in the Secure Enclave as unexportable P-256.
+- Its OpenSSH scope is wider: `known_hosts`, SSHFP DNS records, host certificates, `ProxyJump` and `~/.ssh/config`, agent forwarding, MPTCP and post-quantum key exchange.
+
 ## Goal
 
 - The Add Host form accepts `ssh://user@host[:port][/socket]`. The host connects and lists its sessions as any other host.
@@ -45,7 +58,9 @@ The upstream Mac app speaks SSH itself, through SwiftNIO SSH (`RexSSH`):
 ## Non-goals
 
 - `rex server install ssh://`, upstream's bootstrap of a host that has no Rex. The app reports that case.
-- `~/.ssh/config`, `ProxyJump`, agents and agent forwarding. The phone has no agent.
+- `~/.ssh/config`, `ProxyJump`, `known_hosts`, SSHFP records, host certificates, agents and agent forwarding. The phone has no agent, and rootshell's wider scope stays out.
+- Saving the password in the Keychain, as rootshell's `SSHPasswordManager` offers. A later phase can add a per-host option.
+- A device key in the Secure Enclave, as rootshell's P-256 keys. It cannot leave the device, but every signature would cross the delegate to Swift. The Keychain Ed25519 key covers the same ground at no cost.
 - `ssh://` on the desktop: `gorex rex-import --rex ssh://...`, and `ssh://` as a remote-host address. A desktop doc can add them, through the system `ssh` as upstream's CLI does.
 - Tailscale SSH. The built-in Tailscale's dialer can reach a peer's port 22, and a host that runs `tailscaled --ssh` needs no keys. A later phase can add it.
 
@@ -54,7 +69,7 @@ The upstream Mac app speaks SSH itself, through SwiftNIO SSH (`RexSSH`):
 ### What the user does
 
 1. Add Host takes `ssh://alice@alice-laptop` or `ssh://alice@alice-laptop:2222/run/rex/server.sock`. Add saves the host.
-2. On first connect a card shows the host's key fingerprint. Trust connects. A different key on a later connect refuses and says so.
+2. On first connect a card shows the host's key fingerprint. Trust connects. A different key on a later connect refuses, and shows the trusted and the new fingerprint (rootshell's two states).
 3. If the device key is not authorized, a card asks the host's password. After a password login, the card offers to install the device's key on the host.
 4. The host's detail shows the trusted fingerprint and the device's public key, with copy. Forget host key trusts anew on next connect.
 
@@ -90,15 +105,15 @@ A host whose address has no socket path learns it on its first connect:
 ### Trust
 
 - The device key is an Ed25519 key the engine makes (`NewSSHKey`, `SSHPublicKey`, `SetSSHKey`, as the tailcat key's calls). The app keeps the private key in the Keychain, where the tailcat client key lives. The key stays on the device, as the tailcat key does.
-- The host key is trusted on first use. The card shows its SHA256 fingerprint. The store keeps it by host. A changed key refuses, and only Forget clears it.
-- Authentication tries the device key, then `password`, then `keyboard-interactive`. Each of the last two asks in a card. The password lives in memory for the run and is never written.
-- Install key runs an exec on the host after a password login: it appends the public key to `~/.ssh/authorized_keys` under a `rexgo` comment.
-- The engine asks the app through a delegate, as `ShareDelegate` works for hotspot share: a question (host key, password) carries an id, and the app's `SSHAnswer` replies. A run that cannot ask fails the dial, as upstream's does.
+- The host key is trusted on first use. The card shows its SHA256 fingerprint and its type, as rootshell's request does. The store keeps it by host. A changed key refuses, shows both fingerprints, and only Forget clears it.
+- Authentication tries the device key, then `password`, then `keyboard-interactive`. Each of the last two asks in a card. The card classifies the prompt, as rootshell does: a one-time-code prompt gets the OTP AutoFill, and the host's user is the anchor for the OS password manager. The password lives in memory for the run and is never written.
+- Install key runs an exec on the host after a password login, as `ssh-copy-id` does: it makes `~/.ssh` with its permissions, appends the public key to `authorized_keys` under a `rexgo` comment, and verifies.
+- The engine asks the app through a delegate, as `ShareDelegate` works for hotspot share and rootshell's `Iosbridge*` callbacks do: a question (host key, password) carries an id, and the app's `SSHAnswer` replies. A run that cannot ask fails the dial, as upstream's does.
 
 ## Alternatives
 
 - **Spawn `ssh -L`, as upstream's CLI.** iOS has no `ssh` binary and an app spawns no processes. Not possible.
-- **SwiftNIO SSH, as upstream's app.** It works on iOS, and the upstream code is a proven shape. It adds a large Swift dependency and puts the transport in Swift, while the engine already owns the proxy every host uses. `x/crypto/ssh` covers the same protocols in the place the dial happens.
+- **SwiftNIO SSH (Citadel), as upstream's app and rootshell.** Both mature apps chose it, and it is proven on iOS. It adds a large Swift dependency and puts the transport in Swift, while the engine already owns the proxy every host uses. A Swift-side channel cannot return a `net.Conn` to the Go proxy, so the app would need a second transport stack. `x/crypto/ssh` covers the same protocols in the place the dial happens.
 - **`direct-tcpip` to the gateway's TCP port.** It needs a TCP listener the server does not open by default, and a token or anonymous access on it. The Unix socket needs nothing.
 - **An exec channel running `nc -U` or `socat`.** It works on servers without streamlocal, but needs the tool installed. Streamlocal needs only OpenSSH.
 
