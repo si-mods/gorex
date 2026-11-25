@@ -135,7 +135,7 @@ Version 1 is a promise to pack authors. A later version adds uniforms. It does n
 - **background** replaces the built-in `background` shader. Under the glass setting GoRex draws it at `backgroundAlpha`, as the built-in one: it wraps the theme's `Fragment` in its own, which multiplies the color by the uniform `GorexAlpha`. A theme shader may not declare `GorexAlpha` or a function `themeFragment`. Glows and still images of DSK-010 draw over it, as now. With Ambience Off, the built-in background draws, as with the other layers of the theme.
 - **ambient** draws once for each band of the free region. In the sidebar band it draws with the sidebar cap of DSK-010 (alpha at most 0.12). DSK-010 phase 2 draws its `particles` and `sprites` with two built-in ambient shaders. A pack with its own `ambient` slot draws that slot after them.
 - **faces** draw where GoRex paints the face. Where the system draws a glass pill (`glassPill`, macOS 26 with the glass setting on), the system pill stays and the shader does not draw.
-- `button.background` takes no shader. MyGo's stock widgets paint that face in the accent of their theme (`ui.Theme.Accent`), and GoRex has no hook to draw into it. The parser drops the slot with a warning.
+- `button.background`, `dropdown.background`, `windowControl.background` and `windowControl.closeBackground` also take face shaders (up to 12 face shaders per pack). In shader API version 2, an element-bound face shader may declare `var State vec4`, which GoRex sets per element: `x` hovered, `y` pressed, `z` primary or focused, `w` disabled (each 1 or 0).
 
 Phase 2 draws the faces with these details:
 
@@ -217,7 +217,10 @@ The face roles are the five faces that `surface` resolves now (`sideBar.activeGr
 | `titleBar.background` | Face | The title bar row (`titleH`) across the window |
 | `sideBar.background` | Face | The sidebar column, under its rows |
 | `paneHeader.background` | Face | The header of a pane card (`headerColors`) |
-| `button.background` | Face | A primary button, a chosen segment and a switch that is on: the faces that use `accent` now |
+| `button.background` | Face | A standalone button (with `State` in API v2); flat fallback sets `Accent` for primary buttons and switches |
+| `dropdown.background` | Face | The drop-down button of a `Select` control |
+| `windowControl.background` | Face | The minimize and maximize/restore buttons in the title bar |
+| `windowControl.closeBackground` | Face | The close button in the title bar |
 | `pane.border` | Color | The border of a pane card, now `cardBorder` |
 
 The resolver pairs the text of each face as DSK-008 says. `button.background` uses `accentText` while its flat color is `accent`. When a theme sets another flat color, the ladder follows that color.
