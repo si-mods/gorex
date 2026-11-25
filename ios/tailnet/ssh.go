@@ -41,8 +41,8 @@ import (
 const sshDomain = ".ssh.invalid"
 
 var (
-	sshMu     sync.Mutex
-	sshSigner ssh.Signer
+	sshMu   sync.Mutex
+	sshKeys []sshKeyEntry
 	// sshHosts is each ssh host's record, by its id.
 	sshHosts = map[string]sshHost{}
 	// sshClients is the ssh client of each host: one per host, as
@@ -108,20 +108,123 @@ func NewSSHKey() string {
 	return string(pem.EncodeToMemory(b))
 }
 
-// SetSSHKey sets the private key the ssh hosts know this phone by, an
-// OpenSSH PEM as NewSSHKey makes. A new key drops the clients of the
-// old one; they reconnect on the next dial.
+// sshKeyEntry is one parsed local SSH key kept in memory.
+type sshKeyEntry struct {
+	id        string
+	signer    ssh.Signer
+	isDefault bool
+}
+
+// sshKeyInput is one entry in SetSSHKeys' JSON input.
+type sshKeyInput struct {
+	ID        string `json:"id"`
+	PEM       string `json:"pem"`
+	IsDefault bool   `json:"isDefault"`
+}
+
+// parsedSSHKey is the JSON ParseSSHKey returns to the app.
+type parsedSSHKey struct {
+	PEM         string `json:"pem"`
+	PublicKey   string `json:"publicKey"`
+	Fingerprint string `json:"fingerprint"`
+	Type        string `json:"type"`
+}
+
+// ParseSSHKey parses an OpenSSH or PEM private key, decrypting it with
+// passphrase when given, and returns JSON with the unencrypted OpenSSH
+// PEM, authorized_keys public line, SHA256 fingerprint, and algorithm.
+func ParseSSHKey(pemKey, passphrase string) (string, error) {
+	var (
+		raw any
+		err error
+	)
+	if passphrase != "" {
+		raw, err = ssh.ParseRawPrivateKeyWithPassphrase([]byte(pemKey), []byte(passphrase))
+	} else {
+		raw, err = ssh.ParseRawPrivateKey([]byte(pemKey))
+	}
+	if err != nil {
+		return "", err
+	}
+	signer, err := ssh.NewSignerFromKey(raw)
+	if err != nil {
+		return "", err
+	}
+	normalized := pemKey
+	if block, err := ssh.MarshalPrivateKey(raw, ""); err == nil {
+		normalized = string(pem.EncodeToMemory(block))
+	}
+	pub := signer.PublicKey()
+	out := parsedSSHKey{
+		PEM:         normalized,
+		PublicKey:   strings.TrimSpace(string(ssh.MarshalAuthorizedKey(pub))),
+		Fingerprint: ssh.FingerprintSHA256(pub),
+		Type:        pub.Type(),
+	}
+	b, err := json.Marshal(out)
+	if err != nil {
+		return "", err
+	}
+	return string(b), nil
+}
+
+// SetSSHKeys sets the local SSH keys the app manages (docs/IOS-026),
+// as a JSON list of {"id", "pem", "isDefault"}. Any change drops the
+// pooled SSH clients so they reconnect with the new key set.
+func SetSSHKeys(keysJSON string) error {
+	var inputs []sshKeyInput
+	if err := json.Unmarshal([]byte(keysJSON), &inputs); err != nil {
+		return err
+	}
+	next := make([]sshKeyEntry, 0, len(inputs))
+	for _, k := range inputs {
+		s, err := ssh.ParsePrivateKey([]byte(k.PEM))
+		if err != nil {
+			return err
+		}
+		next = append(next, sshKeyEntry{
+			id:        strings.ToLower(k.ID),
+			signer:    s,
+			isDefault: k.IsDefault,
+		})
+	}
+	setSSHKeyEntries(next)
+	return nil
+}
+
+// SetSSHKey sets the single device private key (legacy wrapper for
+// SetSSHKeys). A new key drops the clients of the old one.
 func SetSSHKey(pemKey string) error {
 	s, err := ssh.ParsePrivateKey([]byte(pemKey))
 	if err != nil {
 		return err
 	}
-	sshMu.Lock()
-	if sshSigner != nil && bytes.Equal(sshSigner.PublicKey().Marshal(), s.PublicKey().Marshal()) {
-		sshMu.Unlock()
-		return nil
+	setSSHKeyEntries([]sshKeyEntry{{id: "", signer: s, isDefault: true}})
+	return nil
+}
+
+func sshKeyEntriesEqual(a, b []sshKeyEntry) bool {
+	if len(a) != len(b) {
+		return false
 	}
-	sshSigner = s
+	for i := range a {
+		if a[i].id != b[i].id || a[i].isDefault != b[i].isDefault {
+			return false
+		}
+		if !bytes.Equal(a[i].signer.PublicKey().Marshal(), b[i].signer.PublicKey().Marshal()) {
+			return false
+		}
+	}
+	return true
+}
+
+func setSSHKeyEntries(next []sshKeyEntry) {
+	sshMu.Lock()
+	if sshKeyEntriesEqual(sshKeys, next) {
+		sshMu.Unlock()
+		return
+	}
+	sshKeys = next
 	old := sshClients
 	sshClients = map[string]*pooledSSH{}
 	for _, sc := range sshScopes {
@@ -136,19 +239,48 @@ func SetSSHKey(pemKey string) error {
 			go p.c.Close() // a stuck close would block the caller
 		}
 	}
-	return nil
 }
 
-// SSHPublicKey is the device key's public half, as authorized_keys
-// takes it; "" before SetSSHKey.
+// SSHPublicKey is the primary default key's public half, as
+// authorized_keys takes it; "" when no keys are loaded.
 func SSHPublicKey() string {
 	sshMu.Lock()
-	s := sshSigner
-	sshMu.Unlock()
-	if s == nil {
+	defer sshMu.Unlock()
+	return sshPublicKeyForLocked("")
+}
+
+// sshSignersForLocked returns the signers to offer for a host whose
+// record names keyID ("" for automatic). sshMu must be held.
+func sshSignersForLocked(keyID string) []ssh.Signer {
+	if id := strings.ToLower(keyID); id != "" {
+		for _, k := range sshKeys {
+			if k.id == id {
+				return []ssh.Signer{k.signer}
+			}
+		}
+	}
+	var out []ssh.Signer
+	for _, k := range sshKeys {
+		if k.isDefault {
+			out = append(out, k.signer)
+		}
+	}
+	if len(out) == 0 {
+		for _, k := range sshKeys {
+			out = append(out, k.signer)
+		}
+	}
+	return out
+}
+
+// sshPublicKeyForLocked returns the authorized_keys public line for
+// keyID, or the first default key (else first key). sshMu must be held.
+func sshPublicKeyForLocked(keyID string) string {
+	signers := sshSignersForLocked(keyID)
+	if len(signers) == 0 {
 		return ""
 	}
-	return strings.TrimSpace(string(ssh.MarshalAuthorizedKey(s.PublicKey())))
+	return strings.TrimSpace(string(ssh.MarshalAuthorizedKey(signers[0].PublicKey())))
 }
 
 // SSHDelegate answers the questions a dial can't, as ShareDelegate does
@@ -267,6 +399,7 @@ type sshHost struct {
 	Socket  string `json:"socket"`
 	TCP     string `json:"tcp"`
 	HostKey string `json:"hostKey"`
+	KeyID   string `json:"keyId"`
 }
 
 // SetSSHHosts sets the hosts the proxy reaches over SSH, as a JSON list
@@ -474,15 +607,15 @@ func sshClientFor(ctx context.Context, id string, h sshHost) (*pooledSSH, error)
 	sshMu.Lock()
 	p := sshClients[id]
 	if p == nil {
-		if sshSigner == nil {
+		signers := sshSignersForLocked(h.KeyID)
+		if len(signers) == 0 && sshDelegate == nil {
 			sshMu.Unlock()
 			return nil, errors.New("no ssh key")
 		}
-		signer := sshSigner
 		p = &pooledSSH{done: make(chan struct{})}
 		sshClients[id] = p
 		go func() {
-			c, err := connectSSH(ctx, id, h, signer)
+			c, err := connectSSH(ctx, id, h, signers)
 			sshMu.Lock()
 			p.c, p.err = c, err
 			// A client the pool dropped while it connected is
@@ -526,7 +659,7 @@ func dropSSHClient(id string, p *pooledSSH) {
 // connectSSH makes the client: TCP to sshd, then the handshake, which
 // the host-key check may hold for the question. A cancel of ctx closes
 // the connection, as the handshake takes none.
-func connectSSH(ctx context.Context, id string, h sshHost, signer ssh.Signer) (*ssh.Client, error) {
+func connectSSH(ctx context.Context, id string, h sshHost, signers []ssh.Signer) (*ssh.Client, error) {
 	addr := net.JoinHostPort(h.Host, strconv.Itoa(h.Port))
 	c, err := (&net.Dialer{Timeout: 15 * time.Second}).DialContext(ctx, "tcp", addr)
 	if err != nil {
@@ -537,7 +670,7 @@ func connectSSH(ctx context.Context, id string, h sshHost, signer ssh.Signer) (*
 	var usedSecret atomic.Bool
 	config := &ssh.ClientConfig{
 		User: h.User,
-		Auth: sshAuthMethods(ctx, id, h, signer, &usedSecret),
+		Auth: sshAuthMethods(ctx, id, h, signers, &usedSecret),
 		// No handshake Timeout: the host-key and secret questions need
 		// longer than a dial takes to answer, and the dial's own ctx
 		// bounds the connect by closing c.
@@ -615,8 +748,11 @@ func sshWait(ctx context.Context, q *sshPendingQ) error {
 // docs/IOS-023 orders them. usedSecret marks a client that logged in
 // by a secret, for the install-key offer. A run that cannot ask keeps
 // the key alone, as a delegate's absence can't answer.
-func sshAuthMethods(ctx context.Context, id string, h sshHost, signer ssh.Signer, usedSecret *atomic.Bool) []ssh.AuthMethod {
-	auth := []ssh.AuthMethod{ssh.PublicKeys(signer)}
+func sshAuthMethods(ctx context.Context, id string, h sshHost, signers []ssh.Signer, usedSecret *atomic.Bool) []ssh.AuthMethod {
+	var auth []ssh.AuthMethod
+	if len(signers) > 0 {
+		auth = append(auth, ssh.PublicKeys(signers...))
+	}
 	sshMu.Lock()
 	delegated := sshDelegate != nil
 	cached := sshPasswords[id]
@@ -729,11 +865,12 @@ func SSHInstallKey(id string) error {
 	id = strings.ToLower(id)
 	sshMu.Lock()
 	p := sshClients[id]
+	h := sshHosts[id]
+	pub := sshPublicKeyForLocked(h.KeyID)
 	sshMu.Unlock()
 	if p == nil || p.c == nil {
 		return errors.New("ssh host not connected: " + id)
 	}
-	pub := SSHPublicKey()
 	if pub == "" {
 		return errors.New("no ssh key")
 	}

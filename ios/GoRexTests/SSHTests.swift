@@ -210,4 +210,84 @@ nonisolated final class SSHAddressTests: XCTestCase {
         XCTAssertEqual(tokens.tokens[c.id], "learned-token")
         XCTAssertEqual(store.host(c.id)?.config.auth, "learned-token")
     }
+
+    /// HostConfig.SSH.keyID round-trips in JSON, while legacy records without
+    /// keyID decode as nil (Automatic, docs/IOS-026-ssh-keys.md).
+    @MainActor func testSSHHostKeyIDRoundTrip() throws {
+        let keyID = UUID()
+        var c = try XCTUnwrap(HostConfig(ssh: "ssh://alice@alice-laptop"))
+        c.ssh?.keyID = keyID
+        let data = try JSONEncoder().encode(c)
+        let decoded = try JSONDecoder().decode(HostConfig.self, from: data)
+        XCTAssertEqual(decoded.ssh?.keyID, keyID)
+
+        let legacy = Data(#"{"user":"alice","host":"alice-laptop","port":22}"#.utf8)
+        let decodedSSH = try JSONDecoder().decode(HostConfig.SSH.self, from: legacy)
+        XCTAssertNil(decodedSSH.keyID)
+    }
+
+    /// SSHKeyStore manages local keys: legacy IOS-023 migration, generate,
+    /// import, rename, default toggle, delete, and engine JSON sync.
+    @MainActor func testSSHKeyStoreLifecycleAndMigration() throws {
+        final class MemorySSHKeychain: SSHKeychain {
+            var stored: [UUID: String] = [:]
+            var legacy: String?
+            func privateKey(for id: UUID) -> String? { stored[id] }
+            func setPrivateKey(_ pem: String?, for id: UUID) throws {
+                if let pem { stored[id] = pem } else { stored.removeValue(forKey: id) }
+            }
+            func legacyPrivateKey() -> String? { legacy }
+        }
+
+        let suiteName = "dev.gorex.tests.sshkeys.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let kc = MemorySSHKeychain()
+        kc.legacy = "LEGACY-PEM"
+        var pushedJSONs: [String] = []
+        let fakeParse: (String, String) throws -> SSHKeyStore.ParsedKey = { pem, _ in
+            SSHKeyStore.ParsedKey(
+                pem: pem,
+                publicKey: "ssh-ed25519 AAAA-\(pem)",
+                fingerprint: "SHA256:\(pem)",
+                type: "ssh-ed25519"
+            )
+        }
+
+        // Legacy key migrates automatically on first load.
+        let store = SSHKeyStore(
+            defaults: defaults,
+            keychain: kc,
+            parseKey: fakeParse,
+            generatePEM: { "GEN-PEM" },
+            pushEngine: { pushedJSONs.append($0) }
+        )
+        XCTAssertEqual(store.keys.count, 1)
+        XCTAssertEqual(store.keys[0].name, "This Device")
+        XCTAssertEqual(store.keys[0].isDefault, true)
+        XCTAssertEqual(kc.privateKey(for: store.keys[0].id), "LEGACY-PEM")
+        XCTAssertTrue(pushedJSONs.last?.contains("LEGACY-PEM") == true)
+
+        // Generate a second key, rename it, toggle default, then import and delete.
+        let generated = try store.generateKey(name: "Work", isDefault: false)
+        XCTAssertEqual(store.keys.count, 2)
+        XCTAssertEqual(generated.name, "Work")
+        XCTAssertFalse(generated.isDefault)
+
+        store.rename(id: generated.id, to: "Work Laptop")
+        XCTAssertEqual(store.key(id: generated.id)?.name, "Work Laptop")
+
+        store.setDefault(true, for: generated.id)
+        XCTAssertEqual(store.key(id: generated.id)?.isDefault, true)
+
+        let imported = try store.importKey(name: "Imported", pem: "IMP-PEM", isDefault: true)
+        XCTAssertEqual(store.keys.count, 3)
+        XCTAssertEqual(kc.privateKey(for: imported.id), "IMP-PEM")
+
+        try store.delete(id: generated.id)
+        XCTAssertEqual(store.keys.count, 2)
+        XCTAssertNil(kc.privateKey(for: generated.id))
+        XCTAssertFalse(pushedJSONs.last?.contains("GEN-PEM") == true)
+    }
 }

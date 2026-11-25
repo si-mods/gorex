@@ -72,9 +72,8 @@ final class TailnetEngine {
     /// This phone's tailcat key, as a GoRex machine's Devices list shows
     /// it; empty before the first pairing.
     private(set) var tailcatKey = ""
-    /// This phone's SSH key, as the public key line an ssh:// host's
-    /// authorized_keys asks for; empty before the first ssh:// host.
-    private(set) var sshKey = ""
+    /// This phone's primary SSH public key line; empty when no keys exist.
+    var sshKey: String { SSHKeyStore.shared.primaryPublicKey }
     /// The host key the engine asks about while it dials an ssh:// host,
     /// shown as the app's card and answered by answerSSHHostKey
     /// (docs/IOS-023-ssh-hosts.md, Trust); nil for none.
@@ -152,7 +151,7 @@ final class TailnetEngine {
         Host.proxyFailed = { Task { await TailnetEngine.shared.reproxy() } }
         TailnetSetSSHDelegate(sshDelegate)
         _ = try? useTailcatKey(create: false)
-        _ = try? useSSHKey(create: false)
+        SSHKeyStore.shared.syncToEngine()
     }
 
     /// Starts the engine as Settings › Tailscale has it, signing in with
@@ -296,7 +295,7 @@ final class TailnetEngine {
     /// has neither a tailcat nor an SSH key, as before it paired or an
     /// ssh:// host was added, or while its Keychain is locked.
     private func tailcatProxyNow() -> LoopbackProxy? {
-        guard (try? useTailcatKey(create: false)) == true || (try? useSSHKey(create: false)) == true else { return nil }
+        guard (try? useTailcatKey(create: false)) == true || hasSSH || !SSHKeyStore.shared.keys.isEmpty else { return nil }
         if tailcatProxy == nil { tailcatProxy = try? Self.readProxy(run: 0) }
         return tailcatProxy
     }
@@ -343,10 +342,11 @@ final class TailnetEngine {
             h.ssh.map { [
                 "id": HostConfig.tailcatID(h.id), "user": $0.user, "host": $0.host, "port": $0.port,
                 "socket": $0.socket ?? "", "tcp": $0.tcp ?? "", "hostKey": $0.hostKey ?? "",
+                "keyId": $0.keyID?.uuidString.lowercased() ?? "",
             ] }
         }
         hasSSH = !list.isEmpty
-        if hasSSH { _ = try? useSSHKey(create: true) }
+        if hasSSH { _ = try? SSHKeyStore.shared.ensureDefaultKey() }
         let json = (try? JSONSerialization.data(withJSONObject: list)).map { String(decoding: $0, as: UTF8.self) } ?? "[]"
         var error: NSError?
         if !TailnetSetSSHHosts(json, &error) {
@@ -452,39 +452,22 @@ final class TailnetEngine {
         }
     }
 
+    /// Installs the host's SSH key (or primary default key) on the host,
+    /// returning an error message if installation fails.
+    func installSSHKeyDirectly(_ c: HostConfig) async throws {
+        let id = HostConfig.tailcatID(c.id)
+        try await Task.detached {
+            var error: NSError?
+            guard TailnetSSHInstallKey(id, &error) else {
+                throw error ?? RexError(code: "ssh", message: "install")
+            }
+        }.value
+    }
+
     /// Dismisses the install offer, leaving the host on passwords.
     func skipSSHInstallKey() {
         sshInstallOffer = nil
         sshInstallError = nil
-    }
-
-    /// Passes the phone's SSH key from the Keychain to the engine, once;
-    /// Go never writes it. With none there, create makes one, kept on
-    /// this device only: the ssh:// hosts know the phone by it. Tells
-    /// whether the engine has a key.
-    private func useSSHKey(create: Bool) throws -> Bool {
-        if !TailnetSSHPublicKey().isEmpty { return true }
-        let query: [CFString: Any] = [
-            kSecClass: kSecClassGenericPassword, kSecAttrService: "dev.gorex.ios.ssh", kSecAttrAccount: "client",
-        ]
-        var item: CFTypeRef?
-        var status = SecItemCopyMatching(query.merging([kSecReturnData: true]) { $1 } as CFDictionary, &item)
-        var key = (item as? Data).map { String(decoding: $0, as: UTF8.self) }
-        if status == errSecItemNotFound {
-            guard create else { return false }
-            let k = TailnetNewSSHKey()
-            status = SecItemAdd(query.merging([
-                kSecValueData: Data(k.utf8), kSecAttrAccessible: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly,
-            ]) { $1 } as CFDictionary, nil)
-            key = k
-        }
-        guard status == errSecSuccess, let key else {
-            throw RexError(code: "keychain", message: SecCopyErrorMessageString(status, nil) as String? ?? "\(status)")
-        }
-        var error: NSError?
-        guard TailnetSetSSHKey(key, &error) else { throw error ?? RexError(code: "ssh", message: "key") }
-        sshKey = TailnetSSHPublicKey()
-        return true
     }
 
     /// Passes the phone's tailcat key from the Keychain to the engine,

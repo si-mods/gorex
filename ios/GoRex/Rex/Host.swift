@@ -82,6 +82,9 @@ struct HostConfig: Codable, Identifiable, Hashable {
         /// of the socket; never with one (docs/IOS-024-ssh-tcp.md).
         var tcp: String?
         var hostKey: String?
+        /// Specific local SSH key from SSHKeyStore; nil means Automatic
+        /// (try default keys in order, docs/IOS-026-ssh-keys.md).
+        var keyID: UUID?
 
         /// Whether a socket path is absolute, as an ssh:// socket must be.
         static func validSocket(_ path: String) -> Bool { path.hasPrefix("/") }

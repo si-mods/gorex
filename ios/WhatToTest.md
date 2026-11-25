@@ -10,6 +10,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 `web` job of `.github/workflows/ci.yml` fails it.
 
 ## en-US
+- Settings > SSH Keys lets you manage local SSH keys: generate Ed25519 keys, import existing keys (paste or file), copy public keys or fingerprints, and choose a key per SSH host.
 - Settings > Terminal's new Composer Mode pins a message bar over the key bar with the mic inside: typing and dictation fill the message, and Send submits it with attached files as one prompt.
 - SSH hosts are easier to add and log in to: Add Host gains user/host/port fields, password logins are asked in a card, and the trust card gains a Connect Once choice.
 - A computer you reach over SSH can now use a Rex API on a TCP port — the way on Windows. In Add Host, enter ssh://user@host and discovery finds it.
@@ -145,6 +146,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - Settings: choose System, Light or Dark right in the Interface row, and Minimum Contrast from a menu. A space's Color menu shows each color's dot and marks the current one.
 
 ## zh-Hans
+- 「设置 › SSH 密钥」支持管理本机 SSH 密钥：可生成 Ed25519 密钥、粘贴或选文件导入已有私钥、复制公钥与指纹，并在添加或编辑 SSH 主机时按主机指定密钥。
 - 「设置 › 终端」新增 Composer 模式：消息栏常驻键栏上方，麦克风移入其中，输入与听写进入消息字段，可附照片和文件，发送时作为一条提示。
 - SSH 主机更易添加和登录：「添加主机」现在分栏填写用户名、主机和端口（不再只输 ssh:// 地址），密码登录会弹出卡片询问，信任密钥的卡片新增「仅此一次」选项。
 - 通过 SSH 连接的电脑，现在可以使用 TCP 端口上的 Rex API（而非 Unix socket），Windows 主机正是这种方式：在「添加主机」输入 ssh://user@host 即可自动发现，也可用 ssh://user@host/tcp://host:port 明确指定。
