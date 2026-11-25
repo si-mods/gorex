@@ -34,7 +34,7 @@ struct FeaturesView: View {
         ]),
         ("Keyboard & Input", [
             ("A key bar that stays", "Three glass capsules: ⌘, a row of keys, and an arrow stick, the mic and the key that hides or shows the keyboard. The bar stays at the bottom while the keyboard is hidden."),
-            ("Three pages of keys", "Swipe the middle capsule from Esc, Control, Option and Tab to Shift, / - and Backspace, then to ~ and |."),
+            ("Three pages of keys", "Swipe the middle capsule from Esc, Control, Option and Enter to Shift, / - and Backspace, then to ~, | and Tab."),
             ("Modifiers for the next key", "Tap Control, Option or Shift, then a key, for a chord. They let go after that key."),
             ("An arrow stick", "Drag the stick for arrows, which repeat while you hold it. The modifiers hold with it."),
             ("Hold Backspace to repeat", "Backspace on the key bar repeats while held, as the keyboard's does."),
@@ -60,6 +60,7 @@ struct FeaturesView: View {
             ("Paths ready for the shell", "Pasted paths are quoted for the shell and end with a space. A name the shell cannot take is not pasted, and an alert says why."),
             ("A half-height photo picker", "The photo picker opens at half the screen, with the terminal above it. Pull it up for the full screen."),
             ("Upload progress", "⌘ on the key bar spins while files go up, and an alert tells of an upload that failed."),
+            ("Composer Mode", "Settings › Terminal's Composer Mode pins a message bar over the key bar and moves the mic into it: typing and dictation fill the message, photos and files attach, and Send puts it all into the terminal as one prompt."),
         ]),
         ("Notifications", [
             ("When a program needs input", "When an agent such as Claude Code waits for you, a notification says so, while the app is open or soon after you leave it."),

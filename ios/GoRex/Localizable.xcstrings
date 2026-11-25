@@ -2696,16 +2696,6 @@
         }
       }
     },
-    "Swipe the middle capsule from Esc, Control, Option and Tab to Shift, / - and Backspace, then to ~ and |.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "左右滑动中间的胶囊，在 Esc、Control、Option、Tab，Shift、/ - 和退格，以及 ~ 和 | 三页之间切换。"
-          }
-        }
-      }
-    },
     "System, Dark or Light": {
       "localizations": {
         "zh-Hans": {
@@ -5000,16 +4990,6 @@
         }
       }
     },
-    "⌘T opens a tab, ⌘W closes it, ⌘O adds a file, ⇧⌘O a photo, ⌘K clears the screen and scrollback, and ⌘+, ⌘- and ⌘0 size the text. Hold ⌘ to see them.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "⌘T 新建标签页，⌘W 关闭，⌘O 添加文件，⇧⌘O 添加照片，⌘K 清除屏幕和回滚，⌘+、⌘- 和 ⌘0 调整字号。按住 ⌘ 可查看全部。"
-          }
-        }
-      }
-    },
     "A space is the name on its projects. Renaming one renames it on every host; deleting one moves its projects to Default. A host that is offline takes the change when it connects.": {
       "localizations": {
         "zh-Hans": {
@@ -5260,6 +5240,184 @@
           "stringUnit": {
             "state": "translated",
             "value": "网页客户端下载失败。"
+          }
+        }
+      }
+    },
+    "Swipe the middle capsule from Esc, Control, Option and Enter to Shift, / - and Backspace, then to ~, | and Tab.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "左右滑动中间的胶囊，在 Esc、Control、Option、Enter，Shift、/ - 和退格，以及 ~、| 和 Tab 三页之间切换。"
+          }
+        }
+      }
+    },
+    "Composer": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "撰写器"
+          }
+        }
+      }
+    },
+    "Composer Mode": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Composer Mode"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Composer 模式"
+          }
+        }
+      }
+    },
+    "Pins the compose bar above the key bar and moves the mic into it, so typing and dictation land in the message field for you to read before Send. It takes effect on a terminal opened after the change.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pins the compose bar above the key bar and moves the mic into it, so typing and dictation land in the message field for you to read before Send. It takes effect on a terminal opened after the change."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "把 compose 栏固定在键栏上方，并把麦克风移入其中：输入与听写都先进入消息字段，供你在 Send 前查看。该改动对之后打开的终端生效。"
+          }
+        }
+      }
+    },
+    "Compose": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "撰写"
+          }
+        }
+      }
+    },
+    "Message": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "消息"
+          }
+        }
+      }
+    },
+    "Photo": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "照片"
+          }
+        }
+      }
+    },
+    "Camera": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "相机"
+          }
+        }
+      }
+    },
+    "File": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "文件"
+          }
+        }
+      }
+    },
+    "Send": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "发送"
+          }
+        }
+      }
+    },
+    "Remove Attachment": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "移除附件"
+          }
+        }
+      }
+    },
+    "Message to %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "给 %@ 发消息"
+          }
+        }
+      }
+    },
+    "Add Attachment": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "添加附件"
+          }
+        }
+      }
+    },
+    "⌘T opens a tab, ⌘W closes it, ⌘O adds a file, ⇧⌘O a photo, ⌘K clears the screen and scrollback, and ⌘+, ⌘- and ⌘0 size the text. Hold ⌘ to see them.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "⌘T opens a tab, ⌘W closes it, ⌘O adds a file, ⇧⌘O a photo, ⌘K clears the screen and scrollback, and ⌘+, ⌘- and ⌘0 size the text. Hold ⌘ to see them."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "⌘T 新建标签页，⌘W 关闭，⌘O 添加文件，⇧⌘O 添加照片，⌘K 清除屏幕和回滚，⌘+、⌘- 和 ⌘0 调整字号。按住 ⌘ 可查看全部。"
+          }
+        }
+      }
+    },
+    "Settings › Terminal's Composer Mode pins a message bar over the key bar and moves the mic into it: typing and dictation fill the message, photos and files attach, and Send puts it all into the terminal as one prompt.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Settings › Terminal's Composer Mode pins a message bar over the key bar and moves the mic into it: typing and dictation fill the message, photos and files attach, and Send puts it all into the terminal as one prompt."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "「设置 › 终端」的 Composer 模式把消息栏固定在键栏上方，并把麦克风移入其中：输入与听写进入消息字段，可附照片和文件，发送时全部作为一条提示进入终端。"
           }
         }
       }

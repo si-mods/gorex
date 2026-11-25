@@ -8,13 +8,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Rex Go scans the pairing QR code that GoRex or Rex shows."
+            "value": "Rex Go scans the pairing QR code that GoRex or Rex shows, and takes the photos you send to a terminal."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "Rex Go 用相机扫描 GoRex 或 Rex 显示的配对二维码。"
+            "value": "Rex Go 用相机扫描 GoRex 或 Rex 显示的配对二维码，并拍摄你发送到终端的照片。"
           }
         }
       }

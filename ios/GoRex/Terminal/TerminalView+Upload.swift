@@ -43,8 +43,9 @@ extension TerminalView: UIDocumentPickerDelegate {
     }
 
     /// The copies move in with the photos', to go when they are sent. The
-    /// file work is off the main actor: the caller runs this detached.
-    nonisolated private static func stage(_ urls: [URL], into dir: URL) throws -> [URL] {
+    /// file work is off the main actor: the caller runs this detached. The
+    /// composer stages its attachments the same way (Composer.swift).
+    nonisolated static func stage(_ urls: [URL], into dir: URL) throws -> [URL] {
         try urls.enumerated().map { i, u in
             let to = dir.appending(path: String(i))
             try FileManager.default.createDirectory(at: to, withIntermediateDirectories: true)
@@ -72,8 +73,8 @@ extension TerminalView: UIDocumentPickerDelegate {
     }
 
     /// Copies a photo's original file into dir, named as the library
-    /// names it.
-    private static func photo(_ p: NSItemProvider, into dir: URL) async throws -> URL {
+    /// names it. The composer stages its photo attachments the same way.
+    static func photo(_ p: NSItemProvider, into dir: URL) async throws -> URL {
         let type = p.registeredTypeIdentifiers.first { UTType($0)?.conforms(to: .image) == true } ?? UTType.image.identifier
         let name = p.suggestedName
         try await Task.detached { try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true) }.value
@@ -120,8 +121,9 @@ extension TerminalView: UIDocumentPickerDelegate {
 
 /// The photo picker, half the screen with the terminal above undimmed, in a
 /// navigation bar of its own: at half height the picker hides its bar, and
-/// with it its Cancel and Add. Close, or a swipe down, picks nothing.
-private final class PhotoPicker: UINavigationController, PHPickerViewControllerDelegate, UIAdaptivePresentationControllerDelegate {
+/// with it its Cancel and Add. Close, or a swipe down, picks nothing. The
+/// composer shows it over its own sheet for photo attachments.
+final class PhotoPicker: UINavigationController, PHPickerViewControllerDelegate, UIAdaptivePresentationControllerDelegate {
     private let closed: ([NSItemProvider]) -> Void
     private var picked: [NSItemProvider] = []
     /// Whether Close or Add went: the sheet takes a moment to go.
