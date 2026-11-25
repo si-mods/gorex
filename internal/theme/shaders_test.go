@@ -46,7 +46,7 @@ func TestParseShaders(t *testing.T) {
 	if s == nil || s.Background == nil {
 		t.Fatalf("shaders %+v", s)
 	}
-	bg := s.Background
+	bg := &s.Background.Layers[0]
 	if bg.Source != "bg" || len(bg.Images) != 4 {
 		t.Errorf("background %+v", bg)
 	}
@@ -124,7 +124,7 @@ func Fragment(dst vec4, pos vec2) vec4 {
 	if !slices.Equal(src.Entries, []string{"Fragment"}) || src.Backdrop {
 		t.Errorf("source %+v", src)
 	}
-	slot := &ShaderSlot{Params: map[string]Param{
+	slot := &ShaderLayer{Params: map[string]Param{
 		"Top":     {Color: &[2]ui.Color{}},
 		"Pair":    {Nums: []float32{1, 2}},
 		"Weights": {Nums: []float32{1, 2, 3}},
@@ -215,7 +215,7 @@ func TestShaderDeclarations(t *testing.T) {
 	if s := d["Scale"]; s.Kind != ParamNumber || s.Min != 1 || s.Max != 4 {
 		t.Errorf("Scale %+v", s)
 	}
-	if warn, err := CheckUniforms(src, &ShaderSlot{}, 2); err != nil || len(warn) != 0 {
+	if warn, err := CheckUniforms(src, &ShaderLayer{}, 2); err != nil || len(warn) != 0 {
 		t.Errorf("a good version 2 shader: %q, %v", warn, err)
 	}
 	long, _ := ParseShaderSource("package main\n\n// " + strings.Repeat("a", 100) + "\n//gorex:param number 0 0 1\nvar A float\n")
@@ -248,12 +248,12 @@ func TestShaderDeclarations(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%s: %v", tc.name, err)
 		}
-		if _, err := CheckUniforms(src, &ShaderSlot{}, 2); err == nil || !strings.Contains(err.Error(), tc.want) {
+		if _, err := CheckUniforms(src, &ShaderLayer{}, 2); err == nil || !strings.Contains(err.Error(), tc.want) {
 			t.Errorf("%s: %v, want %q", tc.name, err, tc.want)
 		}
 		// Version 1 reads no declaration: a bad one does not fail it.
 		if tc.name != "number type" && tc.name != "point type" && tc.name != "color type" && tc.name != "api uniform" {
-			if _, err := CheckUniforms(src, &ShaderSlot{}, 1); err != nil {
+			if _, err := CheckUniforms(src, &ShaderLayer{}, 1); err != nil {
 				t.Errorf("%s under version 1: %v", tc.name, err)
 			}
 		}
@@ -300,7 +300,7 @@ func TestParseShadersV2(t *testing.T) {
 		}
 		return [2]ui.Color{ui.Hex("#030303"), ui.Hex("#040404")}[dark]
 	}
-	got, rwarn := ResolveParams(src, m.Shaders.Background, color)
+	got, rwarn := ResolveParams(src, &m.Shaders.Background.Layers[0], color)
 	wantResolve := []string{
 		`params.Extra: the shader declares no such param (dropped)`,
 		`params.Grain: 7 is above the max 1, so it is 1`,
@@ -334,13 +334,91 @@ func TestParseShadersV2(t *testing.T) {
 		}
 	}
 	// A default bound to a seed resolves in each appearance.
-	slot := &ShaderSlot{}
+	slot := &ShaderLayer{}
 	got, _ = ResolveParams(src, slot, color)
 	if p := got["Ink"]; p.Color == nil || p.Color[0] != ui.Hex("#030303") || p.Color[1] != ui.Hex("#040404") {
 		t.Errorf("a seed default %+v", p)
 	}
 	if p := got["Top"]; p.Color == nil || p.Color[0] != ui.Hex("#73b9ed") || p.Color[1] != ui.Hex("#2a5d8f") {
 		t.Errorf("a light/dark default %+v", p)
+	}
+}
+
+// TestParseShaderLayers: in version 2 a slot is a layer or a list of 1 to
+// 4 layers with an opacity that clamps to 0 to 1; a list past 4 keeps 4,
+// an empty list or a bad layer drops the slot, a theme keeps at most 16
+// layers, each with a warning. Version 1 takes no list.
+func TestParseShaderLayers(t *testing.T) {
+	m, warn, err := Parse([]byte(`{
+  "assets": { "a": "a.kage", "b": "b.kage", "png": "x.png" },
+  "shaders": {
+    "api": 2,
+    "background": [ { "source": "a" }, { "source": "b", "opacity": 0.4 }, { "source": "b", "opacity": 1.5 } ],
+    "faces": {
+      "sideBar.activeGroupBackground": [],
+      "sideBar.activeGroupTabBackground": [ { "source": "a" }, { "source": "png" } ],
+      "sideBar.tabActiveBackground": [ { "source": "a" }, { "source": "a" }, { "source": "a" }, { "source": "a" }, { "source": "a" } ],
+      "sideBar.trackBackground": { "source": "b", "opacity": -1 }
+    }
+  }
+}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := m.Shaders
+	if s == nil || s.Background == nil || len(s.Background.Layers) != 3 {
+		t.Fatalf("background %+v", s)
+	}
+	for i, want := range []float32{1, 0.4, 1} {
+		if l := s.Background.Layers[i]; l.Opacity != want {
+			t.Errorf("layer %d opacity %g, want %g", i+1, l.Opacity, want)
+		}
+	}
+	if f := s.Faces[TabActiveBackground]; f == nil || len(f.Layers) != 4 {
+		t.Errorf("a list of 5 layers: %+v", f)
+	}
+	if f := s.Faces[TrackBackground]; f == nil || len(f.Layers) != 1 || f.Layers[0].Opacity != 0 {
+		t.Errorf("a single layer of version 2: %+v", f)
+	}
+	if s.Faces[ActiveGroupBackground] != nil || s.Faces[ActiveGroupTabBackground] != nil {
+		t.Error("an empty list or a list with a bad layer keeps its slot")
+	}
+	for _, want := range []string{
+		`shaders.background layer 3.opacity: 1.5 clamped to 0–1`,
+		`shaders.faces.sideBar.activeGroupBackground: no layers (dropped)`,
+		`shaders.faces.sideBar.activeGroupTabBackground layer 2.source: no .kage asset "png" (dropped)`,
+		`shaders.faces.sideBar.activeGroupTabBackground: a layer did not parse (dropped)`,
+		`shaders.faces.sideBar.tabActiveBackground: more than 4 layers, the rest dropped`,
+		`shaders.faces.sideBar.trackBackground.opacity: -1 clamped to 0–1`,
+	} {
+		if !slices.Contains(warn, want) {
+			t.Errorf("no warning %q in\n%q", want, warn)
+		}
+	}
+
+	// A theme keeps 16 layers over all its slots.
+	four := `[ { "source": "a" }, { "source": "a" }, { "source": "a" }, { "source": "a" } ]`
+	m, warn, _ = Parse([]byte(`{ "assets": { "a": "a.kage" }, "shaders": { "api": 2, "background": ` + four + `, "faces": {
+  "sideBar.activeGroupBackground": ` + four + `, "sideBar.activeGroupTabBackground": ` + four + `,
+  "sideBar.tabActiveBackground": [ { "source": "a" }, { "source": "a" }, { "source": "a" } ], "sideBar.tabHoverBackground": ` + four + ` } } }`))
+	n := len(m.Shaders.Background.Layers)
+	for _, f := range m.Shaders.Faces {
+		n += len(f.Layers)
+	}
+	if f := m.Shaders.Faces[TabHoverBackground]; n != 16 || f == nil || len(f.Layers) != 1 {
+		t.Errorf("%d layers in the theme, the last face %+v; want 16 and 1", n, f)
+	}
+	if !slices.Contains(warn, `shaders.faces.sideBar.tabHoverBackground: more than 16 layers in the theme, the rest dropped`) {
+		t.Errorf("no cap warning in %q", warn)
+	}
+
+	// Version 1 takes one layer object, not a list, and no opacity.
+	m, warn, _ = Parse([]byte(`{ "assets": { "a": "a.kage" }, "shaders": { "api": 1, "background": [ { "source": "a" } ], "faces": { "sideBar.trackBackground": { "source": "a", "opacity": 0.5 } } } }`))
+	if m.Shaders == nil || m.Shaders.Background != nil || m.Shaders.Faces[TrackBackground].Layers[0].Opacity != 1 {
+		t.Errorf("version 1: %+v", m.Shaders)
+	}
+	if !slices.Contains(warn, "shaders.background: not an object") || !slices.Contains(warn, `shaders.faces.sideBar.trackBackground: unknown key "opacity"`) {
+		t.Errorf("version 1 warnings %q", warn)
 	}
 }
 

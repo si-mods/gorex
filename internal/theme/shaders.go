@@ -38,6 +38,9 @@ const (
 	maxShaderImages = 4
 	maxParams       = 16
 	maxParamList    = 16
+	// Version 2: the layers of a slot, and of a theme over all its slots.
+	maxSlotLayers  = 4
+	maxThemeLayers = 16
 )
 
 // Shaders are the slots of a theme that its shaders fill: the window's
@@ -50,12 +53,21 @@ type Shaders struct {
 	Faces      map[Role]*ShaderSlot
 }
 
-// ShaderSlot is one slot: the .kage asset of its source, up to four image
-// assets it reads as image0 to image3, and the values of its params.
+// ShaderSlot is one slot: its layers, drawn from the first to the last.
+// Version 1 has one layer; version 2 up to maxSlotLayers (docs/DSK-012,
+// Layers).
 type ShaderSlot struct {
-	Source string
-	Images []string
-	Params map[string]Param
+	Layers []ShaderLayer
+}
+
+// ShaderLayer is one shader of a slot: the .kage asset of its source, up
+// to four image assets it reads as image0 to image3, the values of its
+// params, and its opacity from 0 to 1 (1 in version 1).
+type ShaderLayer struct {
+	Source  string
+	Images  []string
+	Params  map[string]Param
+	Opacity float32
 }
 
 // Param is the value of a uniform the theme sets: numbers, or a color of
@@ -113,8 +125,9 @@ func parseShaders(raw json.RawMessage, assets map[string]Asset, roles [2]map[Rol
 		return nil
 	}
 	s := &Shaders{API: int(api), Faces: map[Role]*ShaderSlot{}}
+	layers := 0 // over all slots, for maxThemeLayers
 	if raw, ok := m["background"]; ok {
-		s.Background = parseSlot(raw, "shaders.background", s.API, assets, w)
+		s.Background = parseSlot(raw, "shaders.background", s.API, assets, &layers, w)
 	}
 	if _, ok := m["ambient"]; ok {
 		w.add("shaders.ambient: not drawn by this build")
@@ -149,7 +162,7 @@ func parseShaders(raw json.RawMessage, assets map[string]Asset, roles [2]map[Rol
 				}
 				w.add("%s: no roles.%s, the built-in flat color applies", where, name)
 			}
-			if slot := parseSlot(faces[name], where, s.API, assets, w); slot != nil {
+			if slot := parseSlot(faces[name], where, s.API, assets, &layers, w); slot != nil {
 				s.Faces[r] = slot
 			}
 		}
@@ -161,13 +174,70 @@ func parseShaders(raw json.RawMessage, assets map[string]Asset, roles [2]map[Rol
 }
 
 // parseSlot reads one slot of the API version api, or returns nil with a
-// warning.
-func parseSlot(raw json.RawMessage, where string, api int, assets map[string]Asset, w *warner) *ShaderSlot {
-	f, ok := w.fields(raw, where, "source", "images", "params")
+// warning. In version 2 a slot is a layer or a list of 1 to maxSlotLayers
+// layers; a layer that does not parse drops the slot, so that it never
+// draws half its look. layers counts the layers of the theme so far: a
+// layer past maxThemeLayers drops with a warning.
+func parseSlot(raw json.RawMessage, where string, api int, assets map[string]Asset, layers *int, w *warner) *ShaderSlot {
+	var list []json.RawMessage
+	if api != ShaderAPI2 || json.Unmarshal(raw, &list) != nil {
+		l := parseLayer(raw, where, api, assets, w)
+		if l == nil {
+			return nil
+		}
+		return capLayers(&ShaderSlot{Layers: []ShaderLayer{*l}}, where, layers, w)
+	}
+	switch {
+	case len(list) == 0:
+		w.add("%s: no layers (dropped)", where)
+		return nil
+	case len(list) > maxSlotLayers:
+		w.add("%s: more than %d layers, the rest dropped", where, maxSlotLayers)
+		list = list[:maxSlotLayers]
+	}
+	slot := &ShaderSlot{}
+	for i, raw := range list {
+		l := parseLayer(raw, fmt.Sprintf("%s layer %d", where, i+1), api, assets, w)
+		if l == nil {
+			w.add("%s: a layer did not parse (dropped)", where)
+			return nil
+		}
+		slot.Layers = append(slot.Layers, *l)
+	}
+	return capLayers(slot, where, layers, w)
+}
+
+// capLayers keeps the layers of slot that fit under maxThemeLayers, with
+// a warning for the rest; nil when none fits.
+func capLayers(slot *ShaderSlot, where string, layers *int, w *warner) *ShaderSlot {
+	if room := maxThemeLayers - *layers; len(slot.Layers) > room {
+		w.add("%s: more than %d layers in the theme, the rest dropped", where, maxThemeLayers)
+		slot.Layers = slot.Layers[:max(room, 0)]
+	}
+	*layers += len(slot.Layers)
+	if len(slot.Layers) == 0 {
+		return nil
+	}
+	return slot
+}
+
+// parseLayer reads one layer of the API version api, or returns nil with
+// a warning. Version 2 adds opacity, from 0 to 1, which clamps.
+func parseLayer(raw json.RawMessage, where string, api int, assets map[string]Asset, w *warner) *ShaderLayer {
+	keys := []string{"source", "images", "params"}
+	if api == ShaderAPI2 {
+		keys = append(keys, "opacity")
+	}
+	f, ok := w.fields(raw, where, keys...)
 	if !ok {
 		return nil
 	}
-	var slot ShaderSlot
+	slot := ShaderLayer{Opacity: 1}
+	if api == ShaderAPI2 {
+		if o, ok := w.num(f, "opacity", where, 0, 1, 1); ok {
+			slot.Opacity = o
+		}
+	}
 	if json.Unmarshal(f["source"], &slot.Source) != nil {
 		w.add("%s.source: not a string (dropped)", where)
 		return nil
@@ -616,7 +686,7 @@ func fitsDecl(k ParamKind, t UniformType) error {
 // of its range clamps, each with a warning. color resolves a binding in
 // an appearance (0 light, 1 dark), so that each color param holds a color
 // of each appearance.
-func ResolveParams(src *ShaderSource, slot *ShaderSlot, color func(b Binding, dark int) ui.Color) (map[string]Param, []string) {
+func ResolveParams(src *ShaderSource, slot *ShaderLayer, color func(b Binding, dark int) ui.Color) (map[string]Param, []string) {
 	var warn []string
 	out := map[string]Param{}
 	names := slices.Sorted(maps.Keys(src.Params))
@@ -744,7 +814,7 @@ func (p Param) fits(t UniformType) bool {
 // type, at most maxParams of them, and no API uniform has one
 // (docs/DSK-012, Declared params); ResolveParams warns of the manifest's
 // values.
-func CheckUniforms(src *ShaderSource, slot *ShaderSlot, api int, reserved ...string) (warn []string, err error) {
+func CheckUniforms(src *ShaderSource, slot *ShaderLayer, api int, reserved ...string) (warn []string, err error) {
 	if api == ShaderAPI2 && len(src.Params)+len(src.badParams) > maxParams {
 		return nil, fmt.Errorf("declares more than %d params", maxParams)
 	}
