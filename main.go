@@ -104,7 +104,13 @@ func main() {
 	mygo.Use(native.Plugin)
 	registerFonts()
 	loadSettings()
+	// The packs load before the menus and the layouts, which ask for
+	// their pane kinds; the bridge they call is bound here too
+	// (docs/EXT-001-extension-panes.md).
+	mygo.BindAs("Extension", extensionBridge{})
+	loadExtPacks()
 	st := &store{}
+	st.refreshMenus = func() { mygo.App.SetMenu(st.menu()) }
 	mygo.App.SetMenu(st.menu())
 	mygo.App.OnLocaleChanged(st.localeChanged)
 	// The menu is made again once the app knows its language, which the

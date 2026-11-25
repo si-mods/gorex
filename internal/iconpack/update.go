@@ -4,12 +4,12 @@ import (
 	"cmp"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 
+	"gorex/internal/ext"
 	"gorex/internal/theme"
 )
 
@@ -25,7 +25,7 @@ const RecordFile = ".gorex-install.json"
 // record has an unknown version.
 type Record struct {
 	ID      string `json:"id"`
-	Kind    string `json:"kind,omitempty"` // "icon-pack" or "theme"
+	Kind    string `json:"kind,omitempty"` // "icon-pack", "theme" or "extension"
 	Version string `json:"version,omitempty"`
 	Ref     string `json:"ref,omitempty"`
 }
@@ -34,18 +34,22 @@ type Record struct {
 const recordKindIconPack = "icon-pack"
 
 // RecordDir is the folder that holds the record of the installed pack id
-// of kind (KindTheme, or "" for an icon pack).
-func RecordDir(kind, packsDir, themesDir, id string) (string, error) {
+// of kind (KindTheme, KindExtension, or "" for an icon pack).
+func RecordDir(kind, packsDir, themesDir, extsDir, id string) (string, error) {
 	if kind == KindTheme {
 		return theme.AssetFolder(themesDir, id)
 	}
-	if packsDir == "" {
-		return "", errors.New("icon-packs directory is not configured")
+	dir := packsDir
+	if kind == KindExtension {
+		dir = extsDir
+	}
+	if dir == "" {
+		return "", fmt.Errorf("the %q packs directory is not configured", cmp.Or(kind, recordKindIconPack))
 	}
 	if !ValidID(id) {
 		return "", fmt.Errorf("invalid pack id %q", id)
 	}
-	return filepath.Join(packsDir, id), nil
+	return filepath.Join(dir, id), nil
 }
 
 // ReadRecord reads the record in dir, or returns nil when there is none or
@@ -89,45 +93,57 @@ func HasUpdate(rec *Record, rp RegistryPack) bool {
 	return rec.Version != rp.Version
 }
 
-// LookupKind finds the registry entry id of kind (KindTheme, or "" for an
-// icon pack) in idx, with its Kind set.
+// LookupKind finds the registry entry id of kind (KindTheme,
+// KindExtension, or "" for an icon pack) in idx, with its Kind set.
 func LookupKind(idx *RegistryIndex, kind, id string) (RegistryPack, bool) {
 	if idx == nil {
 		return RegistryPack{}, false
 	}
 	list := idx.Packs
-	if kind == KindTheme {
+	switch kind {
+	case KindTheme:
 		list = idx.Themes
+	case KindExtension:
+		list = idx.Extensions
 	}
 	for _, p := range list {
 		if strings.EqualFold(p.ID, id) {
-			if kind == KindTheme {
-				p.Kind = KindTheme
-			}
+			p.Kind = kind
 			return p, true
 		}
 	}
 	return RegistryPack{}, false
 }
 
-// Install installs the registry entry rp of either kind as id (rp.ID when
-// ""), an icon pack into packsDir and a theme into themesDir, and records
-// what it installed. It returns a theme's warnings. A theme in use stays
-// in use: its file keeps its name.
-func Install(ctx context.Context, rp RegistryPack, packsDir, themesDir, id string) (warn []string, err error) {
+// Install installs the registry entry rp as id (rp.ID when ""): an icon
+// pack into packsDir, a theme into themesDir, an extension pack into
+// extsDir, and records what it installed. It returns a theme's warnings.
+// A theme in use stays in use: its file keeps its name. An extension
+// pack's id is its manifest's; an id passed for one is ignored.
+func Install(ctx context.Context, rp RegistryPack, packsDir, themesDir, extsDir, id string) (warn []string, err error) {
 	id = cmp.Or(id, rp.ID)
-	if rp.Kind == KindTheme {
+	switch rp.Kind {
+	case KindTheme:
 		err = Checkout(ctx, rp, func(dir string) (err error) {
 			warn, err = theme.Install(dir, themesDir, id)
 			return err
 		})
-	} else {
+	case KindExtension:
+		var pk *ext.Pack
+		err = Checkout(ctx, rp, func(dir string) (err error) {
+			pk, err = ext.Install(dir, extsDir)
+			return err
+		})
+		if pk != nil {
+			id = pk.Manifest.ID // the folder names itself by the manifest
+		}
+	default:
 		_, err = InstallFromRegistry(ctx, rp, packsDir, id)
 	}
 	if err != nil {
 		return warn, err
 	}
-	dir, err := RecordDir(rp.Kind, packsDir, themesDir, id)
+	dir, err := RecordDir(rp.Kind, packsDir, themesDir, extsDir, id)
 	if err == nil {
 		err = writeRecord(dir, rp)
 	}

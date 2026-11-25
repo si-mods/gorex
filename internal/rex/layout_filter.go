@@ -142,10 +142,12 @@ func (s *Server) filterLayoutNode(n *layout.Node) *layout.Node {
 	// A browser pane is the host's pane as its terminals are: a client
 	// that arranges the host's tabs keeps it (docs/MOD-002-projects.md). A note's
 	// text is this machine's: its place stays, as an unavailable pane's,
-	// so that the tab is not arranged without it.
+	// so that the tab is not arranged without it. So is a pack's pane
+	// kind (docs/EXT-001): another kind's url field does not make it a
+	// browser's.
 	if n.SID == "" && n.A == nil && n.B == nil {
 		switch {
-		case n.URL != "":
+		case n.Kind == "browser" || (n.Kind == "" && n.URL != ""):
 			return n
 		case n.Kind != "":
 			return &layout.Node{Name: "Unavailable", Unavailable: true}

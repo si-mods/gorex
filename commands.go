@@ -59,6 +59,9 @@ type command struct {
 	Hidden bool
 	// Custom marks an action defined in the Lua configuration.
 	Custom bool
+	// extPlacement is the menu an extension pack's command goes in, "tab"
+	// or "split", "" for a command that takes no menu slot.
+	extPlacement string
 }
 
 // clientBlockedActions are actions a client may not run, even when it may
@@ -978,27 +981,40 @@ func (st *store) menu() *mygo.Menu {
 	sidebarMenuItem.Disabled = prefs.TabPlacement == ""
 	return mygo.NewMenu([]*mygo.MenuItem{
 		{Role: mygo.RoleAppMenu},
-		{Label: locales.MenuShell(), Submenu: []*mygo.MenuItem{
-			item(&cmdNewTab),
-			item(&cmdNewBrowser),
-			item(&cmdNewNote),
-			item(&cmdNewWindow),
-			mygo.Separator(),
-			item(&cmdSplitRight),
-			item(&cmdSplitDown),
-			item(&cmdSplitBrowser),
-			item(&cmdSplitNote),
-			item(&cmdNotePreview),
-			mygo.Separator(),
-			item(&cmdClosePane),
-			item(&cmdCloseTab),
-			mygo.Separator(),
-			item(&cmdRestart),
-			mygo.Separator(),
-			item(&cmdSettings),
-			item(&cmdUpdates),
-			item(&cmdEndAll),
-		}},
+		{Label: locales.MenuShell(), Submenu: func() []*mygo.MenuItem {
+			items := []*mygo.MenuItem{
+				item(&cmdNewTab),
+				item(&cmdNewBrowser),
+				item(&cmdNewNote),
+			}
+			// The packs' pane commands, after the built-ins' (docs/EXT-001).
+			for _, c := range extPacks.tabCmds {
+				items = append(items, item(c))
+			}
+			items = append(items,
+				item(&cmdNewWindow),
+				mygo.Separator(),
+				item(&cmdSplitRight),
+				item(&cmdSplitDown),
+				item(&cmdSplitBrowser),
+				item(&cmdSplitNote),
+			)
+			for _, c := range extPacks.splitCmds {
+				items = append(items, item(c))
+			}
+			return append(items,
+				item(&cmdNotePreview),
+				mygo.Separator(),
+				item(&cmdClosePane),
+				item(&cmdCloseTab),
+				mygo.Separator(),
+				item(&cmdRestart),
+				mygo.Separator(),
+				item(&cmdSettings),
+				item(&cmdUpdates),
+				item(&cmdEndAll),
+			)
+		}()},
 		{Label: locales.MenuEdit(), Submenu: []*mygo.MenuItem{
 			{Role: mygo.RoleUndo},
 			{Role: mygo.RoleRedo},

@@ -86,7 +86,7 @@ func TestInstallRecords(t *testing.T) {
 	packsDir, themesDir := filepath.Join(cfg, "icon-packs"), theme.Dir(cfg)
 
 	icon := RegistryPack{ID: "tools", Version: "0.1.0", Repo: repo, Ref: ref, Subdir: "packs/tools"}
-	if _, err := Install(context.Background(), icon, packsDir, themesDir, ""); err != nil {
+	if _, err := Install(context.Background(), icon, packsDir, themesDir, "", ""); err != nil {
 		t.Fatal(err)
 	}
 	if r := ReadRecord(filepath.Join(packsDir, "tools")); r == nil || *r != (Record{ID: "tools", Kind: "icon-pack", Version: "0.1.0", Ref: ref}) {
@@ -97,7 +97,7 @@ func TestInstallRecords(t *testing.T) {
 	}
 
 	th := RegistryPack{ID: "whale", Kind: KindTheme, Version: "0.2.0", Repo: repo, Ref: ref, Subdir: "themes/whale"}
-	if _, err := Install(context.Background(), th, packsDir, themesDir, ""); err != nil {
+	if _, err := Install(context.Background(), th, packsDir, themesDir, "", ""); err != nil {
 		t.Fatal(err)
 	}
 	folder, _ := theme.AssetFolder(themesDir, "whale")
@@ -123,7 +123,7 @@ func TestInstallRecords(t *testing.T) {
 		t.Error("a local theme install kept the registry's record")
 	}
 
-	if _, err := Install(context.Background(), th, packsDir, themesDir, ""); err != nil {
+	if _, err := Install(context.Background(), th, packsDir, themesDir, "", ""); err != nil {
 		t.Fatal(err)
 	}
 	if err := theme.Remove(themesDir, "whale"); err != nil {

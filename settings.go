@@ -107,6 +107,10 @@ type settings struct {
 	// order; IconPackPriority is "pack" (default) or "osc".
 	IconPacks        []string `json:"iconPacks,omitempty"`
 	IconPackPriority string   `json:"iconPackPriority,omitempty"`
+
+	// DisabledExts are the installed extension packs the app does not
+	// serve: their pane kinds read as missing (docs/EXT-001).
+	DisabledExts []string `json:"extensions.disabled,omitempty"`
 }
 
 // defaultMinContrast is the minimum contrast when neither the user nor

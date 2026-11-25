@@ -296,7 +296,7 @@ func TestExtensionsUpdate(t *testing.T) {
 	old := idx.Load()
 	themeEntry := old.Themes[0]
 	themeEntry.Kind = iconpack.KindTheme
-	if _, err := iconpack.Install(context.Background(), themeEntry, packsDir, themesDir, ""); err != nil {
+	if _, err := iconpack.Install(context.Background(), themeEntry, packsDir, themesDir, "", ""); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := iconpack.InstallFromRegistry(context.Background(), old.Packs[0], packsDir, ""); err != nil {

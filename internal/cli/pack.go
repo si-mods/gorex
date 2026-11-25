@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"gorex/internal/config"
+	"gorex/internal/ext"
 	"gorex/internal/iconpack"
 	"gorex/internal/theme"
 )
@@ -23,6 +24,7 @@ func packCmd(args []string, out, errOut io.Writer) (int, bool) {
 		return ExitUsage, true
 	}
 	packsDir := iconpack.Dir()
+	extsDir := ext.Dir(config.Dir())
 	switch args[0] {
 	case "ls", "list":
 		fs := flagSet("pack ls", errOut)
@@ -52,6 +54,12 @@ func packCmd(args []string, out, errOut io.Writer) (int, bool) {
 			}
 			list = append(list, s)
 		}
+		for _, it := range ext.List(extsDir) {
+			list = append(list, iconpack.Summary{
+				ID: it.ID, Kind: iconpack.KindExtension, Name: it.Name,
+				Version: it.Version, Dir: it.Dir, Error: it.Error,
+			})
+		}
 		if *asJSON {
 			if list == nil {
 				list = []iconpack.Summary{}
@@ -64,7 +72,7 @@ func packCmd(args []string, out, errOut io.Writer) (int, bool) {
 				fmt.Fprintf(out, "%s\tinvalid\t%s\t%s\n", s.ID, s.Error, s.Kind)
 				continue
 			}
-			if s.Kind == iconpack.KindTheme {
+			if s.Kind == iconpack.KindTheme || s.Kind == iconpack.KindExtension {
 				fmt.Fprintf(out, "%s\t%s\t%s\t\t%s\n", s.ID, s.Name, s.Version, s.Kind)
 				continue
 			}
@@ -86,6 +94,10 @@ func packCmd(args []string, out, errOut io.Writer) (int, bool) {
 		matches := iconpack.SearchRegistry(idx, query)
 		for _, p := range iconpack.SearchRegistry(&iconpack.RegistryIndex{Packs: idx.Themes}, query) {
 			p.Kind = iconpack.KindTheme
+			matches = append(matches, p)
+		}
+		for _, p := range iconpack.SearchRegistry(&iconpack.RegistryIndex{Packs: idx.Extensions}, query) {
+			p.Kind = iconpack.KindExtension
 			matches = append(matches, p)
 		}
 		if *asJSON {
@@ -118,6 +130,19 @@ func packCmd(args []string, out, errOut io.Writer) (int, bool) {
 				id := cmp.Or(*name, filepath.Base(filepath.Clean(src)))
 				return installTheme(id, out, errOut, func(dir string) ([]string, error) { return theme.Install(src, dir, id) })
 			}
+			if _, e := os.Stat(filepath.Join(src, ext.File)); e == nil {
+				p, ierr := ext.Install(src, extsDir)
+				if ierr != nil {
+					fmt.Fprintf(errOut, "gorex pack install: %v\n", ierr)
+					return ExitFailed, true
+				}
+				if *asJSON {
+					WriteJSON(out, p.Manifest)
+					return ExitOK, true
+				}
+				fmt.Fprintf(out, "installed extension %s (%s)\n", p.ID(), p.Dir)
+				return ExitOK, true
+			}
 			pk, err = iconpack.InstallLocal(src, packsDir, *name)
 		} else if isGitURL(src) {
 			pk, err = iconpack.InstallGit(src, packsDir, *name)
@@ -130,11 +155,14 @@ func packCmd(args []string, out, errOut io.Writer) (int, bool) {
 				if err == nil && rp.Kind == iconpack.KindTheme {
 					id := cmp.Or(*name, rp.ID)
 					return installTheme(id, out, errOut, func(dir string) ([]string, error) {
-						return iconpack.Install(context.Background(), rp, packsDir, dir, id)
+						return iconpack.Install(context.Background(), rp, packsDir, dir, extsDir, id)
 					})
 				}
+				if err == nil && rp.Kind == iconpack.KindExtension {
+					return installExtension(rp, extsDir, packsDir, *asJSON, out, errOut)
+				}
 				if err == nil {
-					if _, err = iconpack.Install(context.Background(), rp, packsDir, "", *name); err == nil {
+					if _, err = iconpack.Install(context.Background(), rp, packsDir, "", extsDir, *name); err == nil {
 						pk, err = iconpack.LoadPack(filepath.Join(packsDir, cmp.Or(*name, rp.ID)))
 					}
 				}
@@ -163,7 +191,7 @@ func packCmd(args []string, out, errOut io.Writer) (int, bool) {
 			fmt.Fprintln(errOut, "gorex pack update: pass one pack ID, or none for all")
 			return ExitUsage, true
 		}
-		return packUpdate(fs.Arg(0), *check, packsDir, out, errOut), true
+		return packUpdate(fs.Arg(0), *check, packsDir, extsDir, out, errOut), true
 	case "rm", "remove":
 		fs := flagSet("pack rm", errOut)
 		if code, stop := parse(fs, args[1:]); stop {
@@ -195,8 +223,15 @@ func packCmd(args []string, out, errOut io.Writer) (int, bool) {
 				removed = true
 			}
 		}
+		if _, err := os.Stat(filepath.Join(extsDir, id)); err == nil {
+			if err := ext.Remove(extsDir, id); err != nil {
+				fmt.Fprintf(errOut, "gorex pack rm: %v\n", err)
+				return ExitFailed, true
+			}
+			removed = true
+		}
 		if !removed {
-			fmt.Fprintf(errOut, "gorex pack rm: no icon pack or theme %q\n", id)
+			fmt.Fprintf(errOut, "gorex pack rm: no icon pack, theme or extension %q\n", id)
 			return ExitFailed, true
 		}
 		return ExitOK, true
@@ -204,6 +239,27 @@ func packCmd(args []string, out, errOut io.Writer) (int, bool) {
 		fmt.Fprintf(errOut, "gorex pack: unknown subcommand %q\n", args[0])
 		return ExitUsage, true
 	}
+}
+
+// installExtension installs the registry extension pack rp into extsDir
+// through iconpack.Install, which checks out the pinned ref and records
+// the version.
+func installExtension(rp iconpack.RegistryPack, extsDir, packsDir string, asJSON bool, out, errOut io.Writer) (int, bool) {
+	if _, err := iconpack.Install(context.Background(), rp, packsDir, "", extsDir, ""); err != nil {
+		fmt.Fprintf(errOut, "gorex pack install: %v\n", err)
+		return ExitFailed, true
+	}
+	dir := filepath.Join(extsDir, rp.ID)
+	if asJSON {
+		if m, err := ext.LoadManifest(dir); err == nil {
+			WriteJSON(out, m)
+		} else {
+			WriteJSON(out, rp)
+		}
+		return ExitOK, true
+	}
+	fmt.Fprintf(out, "installed extension %s (%s)\n", rp.ID, dir)
+	return ExitOK, true
 }
 
 // installTheme installs a theme pack with install, into the themes folder
@@ -231,8 +287,9 @@ type installedPack struct {
 	rec      *iconpack.Record
 }
 
-// installedPacks lists the installed icon packs, then the themes.
-func installedPacks(packsDir, themesDir string) []installedPack {
+// installedPacks lists the installed icon packs, themes and extension
+// packs.
+func installedPacks(packsDir, themesDir, extsDir string) []installedPack {
 	var out []installedPack
 	list, _ := iconpack.ListPacks(packsDir)
 	for _, s := range list {
@@ -245,6 +302,9 @@ func installedPacks(packsDir, themesDir string) []installedPack {
 		}
 		out = append(out, p)
 	}
+	for _, it := range ext.List(extsDir) {
+		out = append(out, installedPack{id: it.ID, kind: iconpack.KindExtension, own: it.Version, rec: iconpack.ReadRecord(it.Dir)})
+	}
 	return out
 }
 
@@ -253,16 +313,16 @@ func installedPacks(packsDir, themesDir string) []installedPack {
 // id when id is not "" (docs/MOD-012-program-icon-packs.md, Updates). A
 // pack with no record has an unknown version and gets the update. With
 // check it lists the updates and installs none.
-func packUpdate(id string, check bool, packsDir string, out, errOut io.Writer) int {
+func packUpdate(id string, check bool, packsDir, extsDir string, out, errOut io.Writer) int {
 	themesDir := theme.Dir(config.Dir())
 	var todo []installedPack
-	for _, p := range installedPacks(packsDir, themesDir) {
+	for _, p := range installedPacks(packsDir, themesDir, extsDir) {
 		if id == "" || p.id == id {
 			todo = append(todo, p)
 		}
 	}
 	if id != "" && len(todo) == 0 {
-		fmt.Fprintf(errOut, "gorex pack update: no icon pack or theme %q\n", id)
+		fmt.Fprintf(errOut, "gorex pack update: no icon pack, theme or extension %q\n", id)
 		return ExitFailed
 	}
 	idx, err := iconpack.FetchRegistry(context.Background(), "")
@@ -295,7 +355,7 @@ func packUpdate(id string, check bool, packsDir string, out, errOut io.Writer) i
 			fmt.Fprintf(out, "%s\t%s -> %s\n", p.id, from, to)
 			continue
 		}
-		warn, err := iconpack.Install(context.Background(), rp, packsDir, themesDir, p.id)
+		warn, err := iconpack.Install(context.Background(), rp, packsDir, themesDir, extsDir, p.id)
 		for _, w := range warn {
 			fmt.Fprintf(errOut, "gorex pack update: %s: %s (dropped)\n", p.id, w)
 		}

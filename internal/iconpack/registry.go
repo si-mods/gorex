@@ -20,7 +20,8 @@ const DefaultRegistryURL = "https://raw.githubusercontent.com/si-mods/gorex-regi
 const maxRegistryBytes = 2 << 20 // 2 MiB
 
 // RegistryPack describes one community pack listed in index.json: an icon
-// pack, or with Kind "theme" a theme pack (docs/DSK-008-theme.md).
+// pack, a theme pack (docs/DSK-008-theme.md) or, with Kind "extension",
+// an extension pack (docs/EXT-001-extension-panes.md).
 type RegistryPack struct {
 	ID          string `json:"id"`
 	Kind        string `json:"kind,omitempty"`
@@ -41,14 +42,19 @@ type RegistryPack struct {
 // KindTheme is the Kind of a theme pack: a directory with a theme.json.
 const KindTheme = "theme"
 
+// KindExtension is the Kind of an extension pack: a directory with an
+// ext.json (docs/EXT-001-extension-panes.md).
+const KindExtension = "extension"
+
 // RegistryIndex is the schema of gorex-registry index.json. Theme packs
-// are in Themes, a list builds before it ignore, so that they do not show
-// them as icon packs.
+// are in Themes and extension packs in Extensions, lists builds before
+// them ignore, so that they do not show them as icon packs.
 type RegistryIndex struct {
-	Schema    int            `json:"schema"`
-	UpdatedAt string         `json:"updated_at,omitempty"`
-	Packs     []RegistryPack `json:"packs"`
-	Themes    []RegistryPack `json:"themes,omitempty"`
+	Schema     int            `json:"schema"`
+	UpdatedAt  string         `json:"updated_at,omitempty"`
+	Packs      []RegistryPack `json:"packs"`
+	Themes     []RegistryPack `json:"themes,omitempty"`
+	Extensions []RegistryPack `json:"extensions,omitempty"`
 }
 
 // RegistryURL returns GOREX_PACK_REGISTRY when set, else DefaultRegistryURL.
@@ -179,7 +185,7 @@ func Checkout(ctx context.Context, rp RegistryPack, install func(dir string) err
 }
 
 // LookupRegistry finds a pack by ID in idx: an icon pack, else a theme
-// pack, whose Kind is then KindTheme.
+// or an extension pack, whose Kind is then KindTheme or KindExtension.
 func LookupRegistry(idx *RegistryIndex, id string) (RegistryPack, error) {
 	if idx == nil {
 		return RegistryPack{}, errors.New("empty registry")
@@ -192,6 +198,12 @@ func LookupRegistry(idx *RegistryIndex, id string) (RegistryPack, error) {
 	for _, p := range idx.Themes {
 		if strings.EqualFold(p.ID, id) {
 			p.Kind = KindTheme
+			return p, nil
+		}
+	}
+	for _, p := range idx.Extensions {
+		if strings.EqualFold(p.ID, id) {
+			p.Kind = KindExtension
 			return p, nil
 		}
 	}
