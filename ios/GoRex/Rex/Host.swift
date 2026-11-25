@@ -43,11 +43,11 @@ struct HostConfig: Codable, Identifiable, Hashable {
 
     /// The token the host's requests carry: the LAN token of a host the
     /// system's network reaches by its address, and of an ssh:// host
-    /// whose endpoint is tcp:// — a forwarded channel admits no peer, so
-    /// the gateway asks for it as a LAN one does
-    /// (docs/IOS-024-ssh-tcp.md); none for a tailcat or an ssh:// host on
-    /// a Unix socket — SSH is the admission (docs/IOS-023-ssh-hosts.md).
-    var auth: String? { tailcat == nil && demo != true && (ssh == nil || ssh?.tcp != nil) ? lanToken : nil }
+    /// whose endpoint — named tcp:// or one discovery found — the LAN
+    /// gateway asks for as a pairing token (docs/IOS-024-ssh-tcp.md);
+    /// none for a tailcat, and an ssh:// host on a Unix socket simply
+    /// never has one — SSH is the admission (docs/IOS-023-ssh-hosts.md).
+    var auth: String? { tailcat == nil && demo != true ? lanToken : nil }
 
     enum Transport: String, Codable {
         /// The phone's own network, or the Tailscale app's VPN.
@@ -814,10 +814,10 @@ final class Host: Identifiable {
                     ConnectionLog.note("\(name): dial through the proxy failed")
                     Self.proxyFailed()
                 }
-                // An ssh-tcp host's listener may want the LAN pairing
-                // token, which the engine learns over SSH; kept, the
-                // next try sends it (docs/IOS-024-ssh-tcp.md).
-                if config.ssh?.tcp != nil, config.lanToken == nil {
+                // An ssh host's listener may be a tcp one wanting the
+                // LAN pairing token, which the engine learns over SSH;
+                // kept, the next try sends it (docs/IOS-024-ssh-tcp.md).
+                if config.ssh != nil, config.lanToken == nil {
                     Self.sshHostToken(id)
                 }
                 c.close(error)
