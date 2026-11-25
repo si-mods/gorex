@@ -64,11 +64,42 @@ final class TailnetEngine {
     /// Whether a host is paired over tailcat: the path monitor then runs
     /// with the device off too.
     @ObservationIgnored private var hasTailcat = false
+    /// Whether a host is reached over ssh://: the path monitor then runs
+    /// with the device off too, as for tailcat.
+    @ObservationIgnored private var hasSSH = false
     /// Whether the device is starting, when it waits for the path monitor.
     @ObservationIgnored private var starting = false
     /// This phone's tailcat key, as a GoRex machine's Devices list shows
     /// it; empty before the first pairing.
     private(set) var tailcatKey = ""
+    /// This phone's SSH key, as the public key line an ssh:// host's
+    /// authorized_keys asks for; empty before the first ssh:// host.
+    private(set) var sshKey = ""
+    /// The host key the engine asks about while it dials an ssh:// host,
+    /// shown as the app's card and answered by answerSSHHostKey
+    /// (docs/IOS-023-ssh-hosts.md, Trust); nil for none.
+    private(set) var sshHostKeyQuestion: SSHHostKeyQuestion?
+    /// The questions that came while another one showed, in order.
+    @ObservationIgnored private var sshHostKeyQueue: [SSHHostKeyQuestion] = []
+    /// The engine's SSH delegate, so Go keeps it; set once, in init.
+    @ObservationIgnored private let sshDelegate = SSHDelegate()
+
+    /// The host key the engine asks about while it dials an ssh:// host:
+    /// its fingerprint — and the one trusted before when the key
+    /// changed — which SSHAnswer replies to.
+    struct SSHHostKeyQuestion: Equatable, Identifiable {
+        let qid: Int64
+        let user: String
+        let host: String
+        let port: Int
+        let fingerprint: String
+        /// The fingerprint trusted before, for a key that changed;
+        /// empty at the first connect.
+        let previous: String
+        var id: Int64 { qid }
+        /// Whether the host's key differs from the one trusted before.
+        var changed: Bool { !previous.isEmpty }
+    }
     @ObservationIgnored private let paths = PathMonitor()
     @ObservationIgnored private let log = Logger(subsystem: "dev.gorex.ios", category: "tailnet")
 
@@ -83,8 +114,11 @@ final class TailnetEngine {
         }
         Host.tailcatProxy = { TailnetEngine.shared.tailcatProxyNow() }
         Host.tailcatHosts = { TailnetEngine.shared.setTailcatHosts($0) }
+        Host.sshHosts = { TailnetEngine.shared.setSSHHosts($0) }
         Host.proxyFailed = { Task { await TailnetEngine.shared.reproxy() } }
+        TailnetSetSSHDelegate(sshDelegate)
         _ = try? useTailcatKey(create: false)
+        _ = try? useSSHKey(create: false)
     }
 
     /// Starts the engine as Settings › Tailscale has it, signing in with
@@ -224,10 +258,11 @@ final class TailnetEngine {
         error.localizedDescription == TailnetAddressPairingWarning()
     }
 
-    /// The proxy for the tailcat hosts; nil while the phone has no key,
-    /// as before it paired, or its Keychain is locked.
+    /// The proxy for the tailcat and ssh:// hosts; nil while the phone
+    /// has neither a tailcat nor an SSH key, as before it paired or an
+    /// ssh:// host was added, or while its Keychain is locked.
     private func tailcatProxyNow() -> LoopbackProxy? {
-        guard (try? useTailcatKey(create: false)) == true else { return nil }
+        guard (try? useTailcatKey(create: false)) == true || (try? useSSHKey(create: false)) == true else { return nil }
         if tailcatProxy == nil { tailcatProxy = try? Self.readProxy(run: 0) }
         return tailcatProxy
     }
@@ -258,10 +293,96 @@ final class TailnetEngine {
         hasTailcat = !list.isEmpty
         if hasTailcat {
             Task { await paths.start() }
-        } else if proxy == nil && !starting {
+        } else if proxy == nil && !starting && !hasSSH {
             // Neither a device that runs nor one starting needs it.
             paths.stop()
         }
+    }
+
+    /// Tells the engine the hosts added by an ssh:// address, by id:
+    /// login, port, the remote socket if the address named one, and the
+    /// host key fingerprint trusted, which SetSSHHosts keeps by id. The
+    /// device key is made first, so a dial has it
+    /// (docs/IOS-023-ssh-hosts.md).
+    private func setSSHHosts(_ hosts: [HostConfig]) {
+        let list: [[String: Any]] = hosts.compactMap { h in
+            h.ssh.map { [
+                "id": HostConfig.tailcatID(h.id), "user": $0.user, "host": $0.host, "port": $0.port,
+                "socket": $0.socket ?? "", "hostKey": $0.hostKey ?? "",
+            ] }
+        }
+        hasSSH = !list.isEmpty
+        if hasSSH { _ = try? useSSHKey(create: true) }
+        let json = (try? JSONSerialization.data(withJSONObject: list)).map { String(decoding: $0, as: UTF8.self) } ?? "[]"
+        var error: NSError?
+        if !TailnetSetSSHHosts(json, &error) {
+            // Not the error: it could quote an address.
+            log.error("ssh hosts not set")
+        }
+        if hasSSH {
+            Task { await paths.start() }
+        } else if proxy == nil && !starting && !hasTailcat {
+            // Neither a device that runs nor one starting needs it.
+            paths.stop()
+        }
+    }
+
+    /// The SSH delegate's question, off the dial's goroutine: the card
+    /// shows it, and answerSSHHostKey replies. One shows at a time; the
+    /// rest wait their turn, as the share's prompts do.
+    func askSSHHostKey(_ q: SSHHostKeyQuestion) {
+        if sshHostKeyQuestion == nil {
+            sshHostKeyQuestion = q
+        } else if sshHostKeyQuestion?.qid != q.qid && !sshHostKeyQueue.contains(where: { $0.qid == q.qid }) {
+            sshHostKeyQueue.append(q)
+        }
+    }
+
+    /// The user's answer to the host-key question showing: trust answers
+    /// the dial and keeps the fingerprint in the host's config, so a
+    /// later connect asks no more; distrust refuses the dial. An answer
+    /// for a question already answered — as a dismiss after a button
+    /// answered — is a no-op.
+    func answerSSHHostKey(_ q: SSHHostKeyQuestion, trust: Bool) {
+        guard sshHostKeyQuestion?.qid == q.qid else { return }
+        sshHostKeyQuestion = sshHostKeyQueue.isEmpty ? nil : sshHostKeyQueue.removeFirst()
+        Task.detached { TailnetSSHAnswer(q.qid, trust) }
+        guard trust,
+              var c = HostStore.current?.hosts.first(where: {
+                  $0.config.ssh?.user == q.user && $0.config.ssh?.host == q.host && $0.config.ssh?.port == q.port
+              })?.config
+        else { return }
+        c.ssh?.hostKey = q.fingerprint
+        HostStore.current?.update(c)
+    }
+
+    /// Passes the phone's SSH key from the Keychain to the engine, once;
+    /// Go never writes it. With none there, create makes one, kept on
+    /// this device only: the ssh:// hosts know the phone by it. Tells
+    /// whether the engine has a key.
+    private func useSSHKey(create: Bool) throws -> Bool {
+        if !TailnetSSHPublicKey().isEmpty { return true }
+        let query: [CFString: Any] = [
+            kSecClass: kSecClassGenericPassword, kSecAttrService: "dev.gorex.ios.ssh", kSecAttrAccount: "client",
+        ]
+        var item: CFTypeRef?
+        var status = SecItemCopyMatching(query.merging([kSecReturnData: true]) { $1 } as CFDictionary, &item)
+        var key = (item as? Data).map { String(decoding: $0, as: UTF8.self) }
+        if status == errSecItemNotFound {
+            guard create else { return false }
+            let k = TailnetNewSSHKey()
+            status = SecItemAdd(query.merging([
+                kSecValueData: Data(k.utf8), kSecAttrAccessible: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly,
+            ]) { $1 } as CFDictionary, nil)
+            key = k
+        }
+        guard status == errSecSuccess, let key else {
+            throw RexError(code: "keychain", message: SecCopyErrorMessageString(status, nil) as String? ?? "\(status)")
+        }
+        var error: NSError?
+        guard TailnetSetSSHKey(key, &error) else { throw error ?? RexError(code: "ssh", message: "key") }
+        sshKey = TailnetSSHPublicKey()
+        return true
     }
 
     /// Passes the phone's tailcat key from the Keychain to the engine,
@@ -315,7 +436,7 @@ final class TailnetEngine {
             renameFailure = nil
             try await start(hostname: TailnetSettings.name, controlURL: TailnetSettings.controlURL, authKey: authKey)
         } catch {
-            if !hasTailcat { paths.stop() }
+            if !hasTailcat && !hasSSH { paths.stop() }
             failure = error.localizedDescription
             log.error("start: \(error.localizedDescription, privacy: .public)")
         }
@@ -366,7 +487,7 @@ final class TailnetEngine {
     private func stopNow() async {
         run += 1
         proxy = nil
-        if !hasTailcat { paths.stop() }
+        if !hasTailcat && !hasSSH { paths.stop() }
         status = Status(state: "Stopped")
         cancelLogin()
         await Task.detached { TailnetStop() }.value
@@ -551,6 +672,20 @@ final class TailnetEngine {
         private func ready() {
             waiting?.resume()
             waiting = nil
+        }
+    }
+
+    /// The engine's SSH questions, on a dial goroutine's thread, as
+    /// rootshell's iosbridge asks its app: the app shows the host key in
+    /// a card and answers it with SSHAnswer.
+    nonisolated private final class SSHDelegate: NSObject, TailnetSSHDelegateProtocol, @unchecked Sendable {
+        func onSSHHostKey(_ qid: Int64, user: String?, host: String?, port: Int, fingerprint: String?, previous: String?) {
+            guard let user, let host, let fingerprint else { return }
+            Task { @MainActor in
+                TailnetEngine.shared.askSSHHostKey(SSHHostKeyQuestion(
+                    qid: qid, user: user, host: host, port: port,
+                    fingerprint: fingerprint, previous: previous ?? ""))
+            }
         }
     }
 
