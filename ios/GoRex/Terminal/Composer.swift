@@ -46,6 +46,21 @@ final class ComposerBar: UIView, UITextViewDelegate {
     /// The attachments' thumbnails, over the input row while there are any.
     private let strip = UIScrollView()
     private let thumbs = UIStackView()
+    /// Called when the bar's laid-out height changes (multi-line growth or
+    /// attachments), so the host can slide the terminal and bottom edge.
+    var onHeightChange: ((CGFloat) -> Void)?
+    private var lastHeight: CGFloat = 0
+    /// Minimum height of the single-line message field and vertical padding
+    /// inside the capsule; together they fix the bar's resting height.
+    private static let fieldMin: CGFloat = 46
+    private static let vPad: CGFloat = 6
+    /// Gap between the compose bar and the bar below it.
+    static let gap: CGFloat = 6
+    /// Resting height of the single-line bar with no attachments.
+    static let baseHeight: CGFloat = fieldMin + vPad * 2
+    /// Bottom inset reserved in the terminal grid so the resting bar never
+    /// covers the program's own input row.
+    static let baseInset: CGFloat = baseHeight + gap
     /// How tall the field grows before it scrolls instead.
     private static let fieldMax: CGFloat = 112
 
@@ -53,6 +68,7 @@ final class ComposerBar: UIView, UITextViewDelegate {
         self.terminal = terminal
         dir = FileManager.default.temporaryDirectory.appending(path: "Composer").appending(path: UUID().uuidString)
         super.init(frame: .zero)
+        accessibilityIdentifier = "composer"
 
         let glass = UIVisualEffectView(effect: UIGlassEffect(style: .regular))
         glass.cornerConfiguration = .uniformCorners(radius: 26)
@@ -65,15 +81,6 @@ final class ComposerBar: UIView, UITextViewDelegate {
             glass.topAnchor.constraint(equalTo: topAnchor),
             glass.bottomAnchor.constraint(equalTo: bottomAnchor),
         ])
-
-        // The grabber, as the sheets' own.
-        let handle = UIView()
-        handle.backgroundColor = .tertiaryLabel
-        handle.layer.cornerRadius = 2.5
-        let handleArea = UIView()
-        handleArea.translatesAutoresizingMaskIntoConstraints = false
-        handle.translatesAutoresizingMaskIntoConstraints = false
-        handleArea.addSubview(handle)
 
         var cfg = UIButton.Configuration.plain()
         cfg.image = UIImage(systemName: "plus")
@@ -133,7 +140,7 @@ final class ComposerBar: UIView, UITextViewDelegate {
         let input = UIStackView(arrangedSubviews: [attach, field, micHolder, send])
         input.alignment = .center
         input.spacing = 6
-        let body = UIStackView(arrangedSubviews: [handleArea, strip, input])
+        let body = UIStackView(arrangedSubviews: [strip, input])
         body.axis = .vertical
         body.spacing = 8
         body.translatesAutoresizingMaskIntoConstraints = false
@@ -145,15 +152,10 @@ final class ComposerBar: UIView, UITextViewDelegate {
         strip.translatesAutoresizingMaskIntoConstraints = false
         micHolder.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
-            handle.centerXAnchor.constraint(equalTo: handleArea.centerXAnchor),
-            handle.centerYAnchor.constraint(equalTo: handleArea.centerYAnchor),
-            handle.widthAnchor.constraint(equalToConstant: 36),
-            handle.heightAnchor.constraint(equalToConstant: 5),
-            handleArea.heightAnchor.constraint(equalToConstant: 14),
             body.leadingAnchor.constraint(equalTo: glass.contentView.leadingAnchor, constant: 10),
             body.trailingAnchor.constraint(equalTo: glass.contentView.trailingAnchor, constant: -10),
-            body.topAnchor.constraint(equalTo: glass.contentView.topAnchor, constant: 4),
-            body.bottomAnchor.constraint(equalTo: glass.contentView.bottomAnchor, constant: -8),
+            body.topAnchor.constraint(equalTo: glass.contentView.topAnchor, constant: Self.vPad),
+            body.bottomAnchor.constraint(equalTo: glass.contentView.bottomAnchor, constant: -Self.vPad),
             thumbs.leadingAnchor.constraint(equalTo: strip.contentLayoutGuide.leadingAnchor),
             thumbs.trailingAnchor.constraint(equalTo: strip.contentLayoutGuide.trailingAnchor),
             thumbs.topAnchor.constraint(equalTo: strip.contentLayoutGuide.topAnchor),
@@ -169,7 +171,7 @@ final class ComposerBar: UIView, UITextViewDelegate {
             hint.leadingAnchor.constraint(equalTo: field.leadingAnchor, constant: 4),
             hint.topAnchor.constraint(equalTo: field.topAnchor, constant: 11),
             hint.trailingAnchor.constraint(lessThanOrEqualTo: field.trailingAnchor),
-            field.heightAnchor.constraint(greaterThanOrEqualToConstant: 46),
+            field.heightAnchor.constraint(greaterThanOrEqualToConstant: Self.fieldMin),
             field.heightAnchor.constraint(lessThanOrEqualToConstant: Self.fieldMax),
         ])
 
@@ -178,6 +180,14 @@ final class ComposerBar: UIView, UITextViewDelegate {
     }
 
     required init?(coder: NSCoder) { fatalError() }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        if bounds.height != lastHeight {
+            lastHeight = bounds.height
+            onHeightChange?(bounds.height)
+        }
+    }
 
     /// Where an open lands: the field's keyboard.
     func focus() { field.becomeFirstResponder() }
