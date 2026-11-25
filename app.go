@@ -113,8 +113,6 @@ type App struct {
 	promptText   string
 	promptPicked map[string]bool
 	promptOther  string
-	// promptSel is the row the keyboard is on, in a pick.
-	promptSel int
 	// contentFocus tells that a pane's content took the keyboard as the
 	// active tab's panes were built, and pageHover the browser pane whose
 	// page the pointer was over. A press on a page gives the page the

@@ -37,6 +37,17 @@ const (
 	radiusTile = 4.5
 )
 
+// The mark of a pick's row (choiceMark): a circle for one answer, a
+// rounded square for several. choiceRadius is the square's corner; the
+// circle and the dot are k.capsule of their size.
+const (
+	choiceSize   = 16
+	choiceRadius = 4
+	choiceBorder = 1.5
+	choiceDot    = 6
+	choiceCheck  = 12
+)
+
 // radius is the radius token r in k's corners: r scaled by the theme's
 // metrics.radius, 1 with no theme.
 func (k *colors) radius(r float32) float32 { return r * k.m.radius }

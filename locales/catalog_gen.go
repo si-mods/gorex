@@ -8546,6 +8546,22 @@ func (msgs Messages) PromptOther() string {
 	return Catalog.Format(msgs.locale, "promptOther", nil)
 }
 
+// PromptPick says "Pick an answer"
+// in the language the app shows.
+//
+// Beside a prompt sheet's disabled confirm button while no answer is
+// picked: why it is off.
+func PromptPick() string { return In(i18n.Locale()).PromptPick() }
+
+// PromptPick says "Pick an answer"
+// in the language of msgs.
+//
+// Beside a prompt sheet's disabled confirm button while no answer is
+// picked: why it is off.
+func (msgs Messages) PromptPick() string {
+	return Catalog.Format(msgs.locale, "promptPick", nil)
+}
+
 // PromptSend says "Send"
 // in the language the app shows.
 //

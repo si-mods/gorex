@@ -1,4 +1,5 @@
 import Foundation
+import UIKit
 import XCTest
 
 /// What a `client_prompt_requested` event becomes, and the result a
@@ -63,5 +64,52 @@ nonisolated final class PromptTests: XCTestCase {
         XCTAssertEqual(result(.text("alpha")) as? [String: String], ["text": "alpha"])
         XCTAssertEqual(result(.ids(["b", "a"])) as? [String: [String]], ["ids": ["b", "a"]])
         XCTAssertEqual(result(.cancelled) as? [String: Bool], ["cancelled": true])
+    }
+
+    /// A pick of three items, for the choice marks.
+    private func pick(multiple: Bool, allowOther: Bool = false) -> Prompt.Spec {
+        Prompt.Spec(
+            kind: .pick, title: "Which?", placeholder: nil, value: nil, confirm: nil,
+            multiple: multiple, allowOther: allowOther,
+            items: ["a", "b", "c"].map {
+                Prompt.Item(id: $0, title: $0, subtitle: nil, icon: nil, detail: nil, selected: false)
+            }
+        )
+    }
+
+    /// A question that takes one answer shows radio buttons, one that
+    /// takes several shows check boxes, and each has its own round or
+    /// square mark, picked or not.
+    func testChoiceKindFollowsMultiple() {
+        XCTAssertEqual(pick(multiple: false).choiceKind, .radio)
+        XCTAssertEqual(pick(multiple: true).choiceKind, .checkbox)
+        XCTAssertEqual(ChoiceKind.radio.symbol(picked: false), "circle")
+        XCTAssertEqual(ChoiceKind.radio.symbol(picked: true), "circle.inset.filled")
+        XCTAssertEqual(ChoiceKind.checkbox.symbol(picked: false), "square")
+        XCTAssertEqual(ChoiceKind.checkbox.symbol(picked: true), "checkmark.square.fill")
+        for kind in [ChoiceKind.radio, .checkbox] {
+            for picked in [false, true] {
+                XCTAssertNotNil(UIImage(systemName: kind.symbol(picked: picked)), "\(kind) \(picked)")
+            }
+        }
+    }
+
+    /// Send is off while a pick has nothing chosen and no Other text, which
+    /// the sheet says ("Pick an answer"); an input is never off.
+    func testSendNeedsAnAnswerForAPick() {
+        for multiple in [false, true] {
+            let spec = pick(multiple: multiple)
+            XCTAssertFalse(spec.canAnswer(picked: [], other: ""), "multiple \(multiple)")
+            XCTAssertTrue(spec.canAnswer(picked: ["b"], other: ""), "multiple \(multiple)")
+            // Other is read only when the action allows it.
+            XCTAssertFalse(spec.canAnswer(picked: [], other: "x"), "multiple \(multiple)")
+            XCTAssertTrue(pick(multiple: multiple, allowOther: true).canAnswer(picked: [], other: "x"))
+            XCTAssertFalse(pick(multiple: multiple, allowOther: true).canAnswer(picked: [], other: ""))
+        }
+        let input = Prompt.Spec(
+            kind: .input, title: "Name", placeholder: nil, value: nil, confirm: nil,
+            multiple: false, allowOther: false, items: []
+        )
+        XCTAssertTrue(input.canAnswer(picked: [], other: ""))
     }
 }

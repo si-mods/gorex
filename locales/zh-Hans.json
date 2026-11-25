@@ -687,6 +687,7 @@
   "emptyNoTabNote": "标签页运行 shell、agent、浏览器和便签。",
   "promptCancel": "取消",
   "promptOther": "其他",
+  "promptPick": "请选择答案",
   "promptSend": "发送",
   "settingsIconPacks": "扩展",
   "settingsIconPackPriority": "优先级",
