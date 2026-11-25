@@ -275,6 +275,33 @@ private struct HostForm: View {
         return s
     }
 
+    private var sshPortInvalid: Bool {
+        let t = sshPort.trimmingCharacters(in: .whitespaces)
+        guard let p = t.isEmpty ? 22 : Int(t) else { return true }
+        return !(1...65535).contains(p)
+    }
+
+    /// True only on a real value that fails: an empty endpoint discovers.
+    private var sshEndpointInvalid: Bool {
+        let ep = sshEndpoint.trimmingCharacters(in: .whitespaces)
+        guard !ep.isEmpty else { return false }
+        if ep.hasPrefix("/") { return !HostConfig.SSH.validSocket(ep) }
+        let tcp = ep.hasPrefix("tcp://") ? String(ep.dropFirst(6)) : ep
+        return !HostConfig.SSH.validTCP(tcp)
+    }
+
+    /// A field's own error line under it, as rootshell's profile editor
+    /// captions validation beneath each field.
+    private func sshValidation(_ message: String?) -> some View {
+        Group {
+            if let message {
+                Text(message)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+            }
+        }
+    }
+
     /// The host as entered, if its address reads as an ssh:// address or
     /// a pairing code does; a bare host gets http://. A tailcat or an
     /// ssh:// host keeps its own.
@@ -364,11 +391,10 @@ private struct HostForm: View {
                     }
                 } else if config == nil {
                     Section {
-                        Picker("Add as", selection: $mode) {
+                        Picker("Type", selection: $mode) {
                             Text("Address").tag(Mode.address)
                             Text("SSH").tag(Mode.ssh)
                         }
-                        .pickerStyle(.segmented)
                         if mode == .address {
                             TextField("http://192.168.1.2:7297", text: $address)
                                 .keyboardType(.URL)
@@ -376,23 +402,42 @@ private struct HostForm: View {
                                 .autocorrectionDisabled()
                                 .accessibilityIdentifier("address")
                         } else {
-                            TextField("User, like alice", text: $sshUser)
-                                .textContentType(.username)
-                                .textInputAutocapitalization(.never)
-                                .autocorrectionDisabled()
-                                .accessibilityIdentifier("sshUser")
-                            TextField("Host, like alice-laptop or 192.168.1.2", text: $sshHost)
+                            // As rootshell's profile editor: the fields
+                            // in their own rows, each validation under
+                            // its field, and the way in named.
+                            TextField("Hostname", text: $sshHost)
                                 .keyboardType(.URL)
                                 .textInputAutocapitalization(.never)
                                 .autocorrectionDisabled()
                                 .accessibilityIdentifier("sshHost")
-                            TextField("Port, 22 when empty", text: $sshPort)
-                                .keyboardType(.numberPad)
-                                .accessibilityIdentifier("sshPort")
-                            TextField("Endpoint, /socket or tcp://host:port (optional)", text: $sshEndpoint)
+                            sshValidation(sshHost.trimmingCharacters(in: .whitespaces).isEmpty
+                                          ? "Hostname is required." : nil)
+                            HStack {
+                                Text("Port")
+                                Spacer()
+                                TextField("22", text: $sshPort)
+                                    .keyboardType(.numberPad)
+                                    .multilineTextAlignment(.trailing)
+                                    .frame(width: 80)
+                                    .accessibilityIdentifier("sshPort")
+                            }
+                            sshValidation(sshPortInvalid
+                                          ? "Port must be between 1 and 65535, or blank for 22." : nil)
+                            TextField("Username", text: $sshUser)
+                                .textContentType(.username)
+                                .textInputAutocapitalization(.never)
+                                .autocorrectionDisabled()
+                                .accessibilityIdentifier("sshUser")
+                            sshValidation(sshUser.trimmingCharacters(in: .whitespaces).isEmpty
+                                          ? "Username is required." : nil)
+                            TextField("Endpoint (optional)", text: $sshEndpoint)
                                 .textInputAutocapitalization(.never)
                                 .autocorrectionDisabled()
                                 .accessibilityIdentifier("sshEndpoint")
+                            sshValidation(sshEndpointInvalid
+                                          ? "Endpoint is a socket path like /run/rex/server.sock, or tcp://host:port." : nil)
+                            LabeledContent("Authentication", value: "Phone key, then password")
+                            LabeledContent("SSH key", value: "This phone")
                         }
                     } header: {
                         VStack(spacing: 20) {
