@@ -618,7 +618,7 @@ final class TerminalView: UIView, TerminalOutput {
     static var composerMode: Bool { UserDefaults.standard.bool(forKey: ComposerBar.modeKey) }
 
     /// The pinned bar's field, while the mode has it up.
-    private var composerField: UITextView? { (superview as? TerminalHost)?.composerField }
+    private var composerField: UITextField? { (superview as? TerminalHost)?.composerField }
 
     /// Whether the keyboard is up, the terminal's or the field's: the key
     /// bar's keyboard key and the pane-switch resign read it.
@@ -1161,27 +1161,18 @@ final class TerminalHost: UIView, UIGestureRecognizerDelegate {
         if TerminalView.composerMode { openComposer() }
     }
 
-    /// The compose bar while it is up (Composer.swift).
+    /// The compose bar while Composer Mode has it up (Composer.swift).
     private var composer: ComposerBar?
 
     /// Where the screen's mic lands: the pinned bar in Composer Mode,
     /// the key bar's own spot without it.
     var micTarget: UIView { composer?.micHolder ?? terminal.bar.mic }
     /// The pinned bar's field, for the terminal's keyboard redirect.
-    var composerField: UITextView? { composer?.field }
+    var composerField: UITextField? { composer?.field }
 
-    /// A key, the menu or ⇧⌘I toggles the compose bar; a swipe up on the
-    /// key bar only opens it. The pinned bar does not close: it focuses.
-    func toggleComposer() {
-        if let composer {
-            if composer.pinned { composer.focus() } else { composer.requestClose() }
-        } else { openComposer() }
-    }
-
-    /// The compose bar over the key bar; where it is up, it focuses again.
-    func openComposer() {
-        if let composer { composer.focus(); return }
-        let c = ComposerBar(terminal: terminal, typing: terminal.isFirstResponder, pinned: TerminalView.composerMode)
+    /// The compose bar, pinned over the key bar by Composer Mode.
+    private func openComposer() {
+        let c = ComposerBar(terminal: terminal)
         c.translatesAutoresizingMaskIntoConstraints = false
         addSubview(c)
         let bottom = terminal.bar.superview === self ? terminal.bar.topAnchor : keyboardLayoutGuide.topAnchor
@@ -1190,17 +1181,9 @@ final class TerminalHost: UIView, UIGestureRecognizerDelegate {
             c.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -10),
             c.bottomAnchor.constraint(equalTo: bottom, constant: -6),
         ])
-        c.closed = { [weak self] c in self?.composerClosed(c) }
         composer = c
         c.alpha = 0
         UIView.animate(withDuration: 0.2) { c.alpha = 1 }
-        c.focus()
-    }
-
-    private func composerClosed(_ c: ComposerBar) {
-        guard composer === c else { return }
-        composer = nil
-        UIView.animate(withDuration: 0.15, animations: { c.alpha = 0 }) { _ in c.removeFromSuperview() }
     }
 
     private func updateScrollDown(visible: Bool, unread: Bool) {
@@ -1295,8 +1278,7 @@ final class TerminalHost: UIView, UIGestureRecognizerDelegate {
 /// file goes up; the middle one pages from Esc, the modifiers and Tab to
 /// the punctuation a shell wants and Backspace; the last holds a stick that
 /// sends arrows the way it is dragged, the screen's mic, and the key that
-/// hides or shows the keyboard. A swipe up on the bar opens the composer,
-/// as the Compose key of the keys' last page and ⌘'s menu do (Composer.swift).
+/// hides or shows the keyboard.
 /// On an iPad the keys go in the keyboard's
 /// bar of shortcuts, which shows with a hardware keyboard too: ⌘, Esc, the
 /// modifiers and Tab before its middle, the punctuation and four arrows
@@ -1327,10 +1309,6 @@ final class KeyBar: UIView {
     /// What the stick turns into while held.
     private let pad = StickPad()
     private let tick = UIImpactFeedbackGenerator(style: .light)
-    /// A flick up on the bar opens the composer — anywhere but on the
-    /// stick, whose own up is the up arrow, held.
-    private let swipe = UISwipeGestureRecognizer()
-    private var stickButton: UIButton?
 
     init(target: TerminalView) {
         self.target = target
@@ -1374,10 +1352,8 @@ final class KeyBar: UIView {
         shift.addAction(UIAction { [weak target] _ in target?.shift.toggle() }, for: .touchUpInside)
 
         // Add Photo and Add File are for a server that takes uploads, as
-        // the menu opens. Compose is for any server: its sheet falls back
-        // to text alone where uploads are off.
+        // the menu opens.
         more.menu = UIMenu(children: [
-            UIAction(title: String(localized: "Compose"), image: UIImage(systemName: "square.and.pencil")) { [weak target] _ in target?.compose() },
             UIAction(title: String(localized: "Paste"), image: UIImage(systemName: "doc.on.clipboard")) { [weak target] _ in target?.paste(nil) },
             UIDeferredMenuElement.uncached { [weak target] done in
                 let off: UIMenuElement.Attributes = target?.session.host.canUpload == true ? [] : .disabled
@@ -1396,22 +1372,14 @@ final class KeyBar: UIView {
         let escape = key("escape", String(localized: "Esc"), "escape")
         let tab = key("arrow.right.to.line", String(localized: "Tab"), "tab")
         let enter = key("return", String(localized: "Enter"), "enter")
-        // Compose sits by ⌘ in the left capsule, as Rex's bar has it.
-        let compose = Self.button("square.and.pencil", String(localized: "Compose"))
-        compose.addAction(UIAction { [weak target] _ in target?.compose() }, for: .touchUpInside)
         let tilde = text("~"), pipe = text("|"), slash = text("/"), dash = text("-")
         let first = [escape, ctrl, alt, shift, tab]
         let second = [tilde, pipe, slash, dash]
         // Every key taps the hand as it goes down, as the keyboard's do.
         // Backspace, the arrows and the stick tap on their own as they repeat.
-        for b in [more, keyboard] + first + second + [enter, compose] {
+        for b in [more, keyboard] + first + second + [enter] {
             b.addAction(UIAction { [tick] _ in tick.impactOccurred() }, for: .touchDown)
         }
-
-        // A flick up on the bar opens the composer.
-        swipe.direction = .up
-        swipe.addTarget(self, action: #selector(swipeComposer))
-        addGestureRecognizer(swipe)
 
         if UIDevice.current.userInterfaceIdiom == .pad {
             let arrows = [
@@ -1457,7 +1425,6 @@ final class KeyBar: UIView {
         ] + pages.arrangedSubviews.map { $0.widthAnchor.constraint(equalTo: scroll.frameLayoutGuide.widthAnchor) })
 
         let stick = Self.button("stick", String(localized: "Arrow Keys"))
-        stickButton = stick
         let drag = UILongPressGestureRecognizer(target: self, action: #selector(steer))
         drag.minimumPressDuration = 0
         drag.allowableMovement = .greatestFiniteMagnitude
@@ -1487,12 +1454,12 @@ final class KeyBar: UIView {
         let rightKeys: [UIView] = TerminalView.composerMode ? [stick, keyboard] : [stick, mic, keyboard]
         let right = UIStackView(arrangedSubviews: rightKeys)
         right.distribution = .fillEqually
-        let leftKeys = UIStackView(arrangedSubviews: [more, compose])
+        let leftKeys = UIStackView(arrangedSubviews: [more])
         leftKeys.distribution = .fillEqually
         let left = Self.capsule(leftKeys), last = Self.capsule(right)
-        // As in the bar this one copies: ⌘ and Compose 52 each, and 50
-        // for each key of the last.
-        left.widthAnchor.constraint(equalToConstant: 104).isActive = true
+        // As in the bar this one copies: ⌘ 52, and 50 for each key of
+        // the last.
+        left.widthAnchor.constraint(equalToConstant: 52).isActive = true
         last.widthAnchor.constraint(equalToConstant: CGFloat(rightKeys.count) * 50).isActive = true
         let keysRow = UIStackView(arrangedSubviews: [middle, last])
         keysRow.spacing = 8
@@ -1564,19 +1531,6 @@ final class KeyBar: UIView {
                 if !self.voiceActive { voiceCapsule.isHidden = true }
             }
         }
-    }
-
-    /// The swipe-up opens the composer, with the keys' tap of the hand;
-    /// on the stick, whose up is the up arrow, it does not begin.
-    @objc private func swipeComposer() {
-        tick.impactOccurred()
-        target?.openComposer()
-    }
-
-    /// The swipe-up anywhere on the bar but the stick's own bounds.
-    override func gestureRecognizerShouldBegin(_ g: UIGestureRecognizer) -> Bool {
-        guard g === swipe, let stick = stickButton else { return true }
-        return !stick.frame.contains(g.location(in: self))
     }
 
     /// The screen's mic, as it goes down: a light tap of the hand, as the

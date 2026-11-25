@@ -14,7 +14,6 @@ extension TerminalView {
             UIKeyCommand(title: String(localized: "Close Tab"), action: #selector(closeTabKey), input: "w", modifierFlags: .command),
             UIKeyCommand(title: String(localized: "Split Pane"), action: #selector(newSplitKey), input: "d", modifierFlags: .command),
             // The key bar's uploads, which a hardware keyboard keeps away.
-            UIKeyCommand(title: String(localized: "Compose"), action: #selector(composeKey), input: "i", modifierFlags: [.command, .shift]),
             UIKeyCommand(title: String(localized: "Add File"), action: #selector(addFileKey), input: "o", modifierFlags: .command),
             UIKeyCommand(title: String(localized: "Add Photo"), action: #selector(addPhotoKey), input: "o", modifierFlags: [.command, .shift]),
             UIKeyCommand(title: String(localized: "Clear Screen and Scrollback"), action: #selector(clear), input: "k", modifierFlags: .command),
@@ -28,7 +27,6 @@ extension TerminalView {
     @objc private func newTabKey() { newTab?() }
     @objc private func closeTabKey() { closeTab?() }
     @objc private func newSplitKey() { newSplit?() }
-    @objc private func composeKey() { compose() }
     @objc private func addFileKey() { if session.host.canUpload { addFile() } }
     @objc private func addPhotoKey() { if session.host.canUpload { addPhoto() } }
 

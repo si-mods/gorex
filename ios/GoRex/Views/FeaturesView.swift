@@ -44,7 +44,7 @@ struct FeaturesView: View {
             ("Dictate with the mic", "Tap the mic on the key bar, or at the top right of the terminal on iPad or with a hardware keyboard, and speak; tap it again, and what you said is typed at the cursor, not sent. Speech is recognised on this device by SenseVoice, in Chinese, English, Cantonese, Japanese or Korean, with punctuation. Its model, about 240 MB, downloads on the first tap; choose a larger one, or delete it, in Settings › Terminal."),
             ("Move the cursor with the spacebar", "Hold the spacebar and slide to move the cursor, one arrow for each cell."),
             ("Hardware keyboards", "Option is Alt, chords with Control, Shift or Option reach the program, and held keys repeat."),
-            ("⌘ shortcuts", "⌘T opens a tab, ⌘W closes it, ⌘O adds a file, ⇧⌘O a photo, ⇧⌘I the composer, ⌘K clears the screen and scrollback, and ⌘+, ⌘- and ⌘0 size the text. Hold ⌘ to see them."),
+            ("⌘ shortcuts", "⌘T opens a tab, ⌘W closes it, ⌘O adds a file, ⇧⌘O a photo, ⌘K clears the screen and scrollback, and ⌘+, ⌘- and ⌘0 size the text. Hold ⌘ to see them."),
         ]),
         ("Selection & Links", [
             ("Long-press to select", "A long press selects the word under the finger, with the loupe. Drag to select more; past the top or bottom the terminal scrolls on."),
@@ -60,7 +60,7 @@ struct FeaturesView: View {
             ("Paths ready for the shell", "Pasted paths are quoted for the shell and end with a space. A name the shell cannot take is not pasted, and an alert says why."),
             ("A half-height photo picker", "The photo picker opens at half the screen, with the terminal above it. Pull it up for the full screen."),
             ("Upload progress", "⌘ on the key bar spins while files go up, and an alert tells of an upload that failed."),
-            ("Composer", "Swipe up on the key bar, tap the Compose key by ⌘, or press ⇧⌘I for a message bar over it: write lines, attach photos, camera shots and files, and Send puts their paths and the text into the terminal as one prompt."),
+            ("Composer Mode", "Settings › Terminal's Composer Mode pins a message bar over the key bar and moves the mic into it: typing and dictation fill the message, photos and files attach, and Send puts it all into the terminal as one prompt."),
         ]),
         ("Notifications", [
             ("When a program needs input", "When an agent such as Claude Code waits for you, a notification says so, while the app is open or soon after you leave it."),

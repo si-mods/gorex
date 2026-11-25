@@ -10,8 +10,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 `web` job of `.github/workflows/ci.yml` fails it.
 
 ## en-US
-- Compose a message for a terminal: swipe up on the key bar, tap its new Compose key, or press ⇧⌘I. Attach photos, camera shots and files, and Send puts their paths and your text in as one prompt.
-- Settings > Terminal's new Composer Mode pins the compose bar and moves the mic into it: typing and dictation land in the message field, ready to read before Send.
+- Settings > Terminal's new Composer Mode pins a message bar over the key bar with the mic inside: typing and dictation fill the message, and Send submits it with attached files as one prompt.
 - SSH hosts are easier to add and log in to: Add Host gains user/host/port fields, password logins are asked in a card, and the trust card gains a Connect Once choice.
 - A computer you reach over SSH can now use a Rex API on a TCP port — the way on Windows. In Add Host, enter ssh://user@host and discovery finds it.
 - A question from an agent now marks its choices: round radio buttons when you pick one answer, square check boxes when you pick several. Send stays off and says "Pick an answer" until you do.
@@ -146,8 +145,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - Settings: choose System, Light or Dark right in the Interface row, and Minimum Contrast from a menu. A space's Color menu shows each color's dot and marks the current one.
 
 ## zh-Hans
-- 在终端里撰写消息：在键栏上滑、点新增的「撰写」键，或按 ⇧⌘I。可附加照片、拍照和文件，发送时先上传并打出路径，再发文字，作为一条提示。
-- 「设置 › 终端」新增 Composer 模式：撰写栏常驻键栏上方，麦克风移入其中，输入与听写都先进入消息字段，供你检查后再发送。
+- 「设置 › 终端」新增 Composer 模式：消息栏常驻键栏上方，麦克风移入其中，输入与听写进入消息字段，可附照片和文件，发送时作为一条提示。
 - SSH 主机更易添加和登录：「添加主机」现在分栏填写用户名、主机和端口（不再只输 ssh:// 地址），密码登录会弹出卡片询问，信任密钥的卡片新增「仅此一次」选项。
 - 通过 SSH 连接的电脑，现在可以使用 TCP 端口上的 Rex API（而非 Unix socket），Windows 主机正是这种方式：在「添加主机」输入 ssh://user@host 即可自动发现，也可用 ssh://user@host/tcp://host:port 明确指定。
 - 智能体的提问现在用标记区分选法：只能选一个时是圆形单选按钮，可以选多个时是方形勾选框；选好之前「发送」不可点，并提示「请选择答案」。

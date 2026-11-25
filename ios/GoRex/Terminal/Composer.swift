@@ -1,15 +1,18 @@
 import UIKit
 import UniformTypeIdentifiers
 
-/// The compose bar (docs/IOS-025-composer.md): a glass capsule over the
-/// key bar — a message field that names its block, an attach menu, and
-/// a send — over the terminal, which stays in view with the keyboard. The
-/// attachments stage in a folder of the temporary directory that goes as
-/// the bar closes, sent or not. Send uploads them as one batch, whose
-/// paths the server types together once every file is up, then pastes the
-/// text and sends Return: the paths land first and the lot is one
-/// submission. A send with no text submits the paths alone.
-final class ComposerBar: UIView, UITextViewDelegate {
+/// The compose bar (docs/IOS-025-composer.md), up while Settings >
+/// Terminal's Composer Mode is on: a glass capsule pinned over the key
+/// bar — a single-line message field that names its block, an attach
+/// menu, the screen's mic, and a send — over the terminal, which stays
+/// in view with the keyboard. Typing and dictation land in the field to
+/// read before Send. The attachments stage in a folder of the temporary
+/// directory, emptied as a send goes. Send uploads them as one batch,
+/// whose paths the server types together once every file is up, then
+/// pastes the text and sends Return: the paths land first and the lot is
+/// one submission. A send with no text submits the paths alone, and
+/// empties the bar for the next message.
+final class ComposerBar: UIView, UITextFieldDelegate {
     /// A staged attachment: its file in the folder, and its thumbnail for
     /// the strip, nil for a file that is no image.
     private struct Attachment {
@@ -17,48 +20,33 @@ final class ComposerBar: UIView, UITextViewDelegate {
         let thumb: UIImage?
     }
 
-    private weak var terminal: TerminalView?
-    /// Whether the terminal's keyboard was up; it comes back as the bar
-    /// closes, if it was.
-    private let typing: Bool
-    /// Composer Mode's bar: pinned, it does not close, holds the mic, and
-    /// a send empties it rather than closing it.
-    let pinned: Bool
-    /// The folder the attachments stage in, removed as the bar closes.
-    private let dir: URL
-    /// The next attachment's staging folder's number.
-    private var staged = 0
-    private var attachments: [Attachment] = []
-    /// A send is up: Send spins and the attach menu holds still, and the
-    /// bar does not close mid-upload.
-    private var sending = false
-    /// The pickers' delegates, held while their picker is up.
-    private var filePick: FilePick?
-    private var shot: CameraShot?
-    /// Called once, as the bar closes, so the host lets it go.
-    var closed: (ComposerBar) -> Void = { _ in }
-
-    let field = UITextView()
-    /// The placeholder, which names the block the message goes to.
-    private let hint = UILabel()
-    private let attach = UIButton()
-    private let send = UIButton()
-    /// Where Composer Mode puts the screen's mic, next to Send.
-    let micHolder = UIView()
-    /// The attachments' thumbnails, over the input row while there are any.
-    private let strip = UIScrollView()
-    private let thumbs = UIStackView()
-    /// How far the field grows before it scrolls instead.
-    private static let fieldMax: CGFloat = 112
-
     /// The setting (Settings > Terminal) that pins the bar above the key
     /// bar and moves the mic into it.
     static let modeKey = "composerMode"
 
-    init(terminal: TerminalView, typing: Bool, pinned: Bool) {
+    private weak var terminal: TerminalView?
+    /// The folder the attachments stage in, emptied as a send goes.
+    private let dir: URL
+    /// The next attachment's staging folder's number.
+    private var staged = 0
+    private var attachments: [Attachment] = []
+    /// A send is up: Send spins and the attach menu holds still.
+    private var sending = false
+    /// The pickers' delegates, held while their picker is up.
+    private var filePick: FilePick?
+    private var shot: CameraShot?
+
+    let field = UITextField()
+    private let attach = UIButton()
+    private let send = UIButton()
+    /// Where the screen's mic lands, next to Send.
+    let micHolder = UIView()
+    /// The attachments' thumbnails, over the input row while there are any.
+    private let strip = UIScrollView()
+    private let thumbs = UIStackView()
+
+    init(terminal: TerminalView) {
         self.terminal = terminal
-        self.typing = typing
-        self.pinned = pinned
         dir = FileManager.default.temporaryDirectory.appending(path: "Composer").appending(path: UUID().uuidString)
         super.init(frame: .zero)
 
@@ -74,7 +62,7 @@ final class ComposerBar: UIView, UITextViewDelegate {
             glass.bottomAnchor.constraint(equalTo: bottomAnchor),
         ])
 
-        // The grabber, as the sheets' own: a drag down on it closes.
+        // The grabber, as the sheets' own.
         let handle = UIView()
         handle.backgroundColor = .tertiaryLabel
         handle.layer.cornerRadius = 2.5
@@ -82,10 +70,6 @@ final class ComposerBar: UIView, UITextViewDelegate {
         handleArea.translatesAutoresizingMaskIntoConstraints = false
         handle.translatesAutoresizingMaskIntoConstraints = false
         handleArea.addSubview(handle)
-        let drop = UISwipeGestureRecognizer(target: self, action: #selector(requestClose))
-        drop.direction = .down
-        drop.isEnabled = !pinned
-        handleArea.addGestureRecognizer(drop)
 
         var cfg = UIButton.Configuration.plain()
         cfg.image = UIImage(systemName: "plus")
@@ -104,23 +88,17 @@ final class ComposerBar: UIView, UITextViewDelegate {
         attach.showsMenuAsPrimaryAction = true
         attach.isHidden = !terminal.session.host.canUpload
 
+        // One line, whose placeholder names the block the message goes
+        // to; its Return is Send.
         field.font = .systemFont(ofSize: 17)
-        field.backgroundColor = .clear
-        field.textContainerInset = UIEdgeInsets(top: 11, left: 4, bottom: 11, right: 4)
-        field.textContainer.lineFragmentPadding = 0
-        field.isScrollEnabled = false
         field.delegate = self
+        field.returnKeyType = .send
         field.accessibilityLabel = String(localized: "Message")
         field.accessibilityIdentifier = "composer.message"
-
+        field.addAction(UIAction { [weak self] _ in self?.update() }, for: .editingChanged)
         let block = terminal.session.host.blocks[terminal.session.block]
         let name = block?.title.flatMap { $0.isEmpty ? nil : $0 } ?? block?.program.flatMap { $0.isEmpty ? nil : $0 }
-        hint.text = name.map { String(format: String(localized: "Message to %@"), $0) } ?? String(localized: "Message")
-        hint.font = field.font
-        hint.textColor = .placeholderText
-        hint.isUserInteractionEnabled = false
-        hint.translatesAutoresizingMaskIntoConstraints = false
-        field.addSubview(hint)
+        field.placeholder = name.map { String(format: String(localized: "Message to %@"), $0) } ?? String(localized: "Message")
 
         var s = UIButton.Configuration.filled()
         s.image = UIImage(systemName: "arrow.up")
@@ -142,8 +120,6 @@ final class ComposerBar: UIView, UITextViewDelegate {
         strip.showsHorizontalScrollIndicator = false
         strip.isHidden = true
 
-        // The mic lands here in Composer Mode, sent on by the screen.
-        micHolder.isHidden = !pinned
         let input = UIStackView(arrangedSubviews: [attach, field, micHolder, send])
         input.alignment = .center
         input.spacing = 6
@@ -157,6 +133,7 @@ final class ComposerBar: UIView, UITextViewDelegate {
         field.translatesAutoresizingMaskIntoConstraints = false
         send.translatesAutoresizingMaskIntoConstraints = false
         strip.translatesAutoresizingMaskIntoConstraints = false
+        micHolder.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
             handle.centerXAnchor.constraint(equalTo: handleArea.centerXAnchor),
             handle.centerYAnchor.constraint(equalTo: handleArea.centerYAnchor),
@@ -175,57 +152,36 @@ final class ComposerBar: UIView, UITextViewDelegate {
             strip.heightAnchor.constraint(equalToConstant: 52),
             attach.widthAnchor.constraint(equalToConstant: 32),
             attach.heightAnchor.constraint(equalToConstant: 34),
-            micHolder.widthAnchor.constraint(equalToConstant: pinned ? 34 : 0),
+            micHolder.widthAnchor.constraint(equalToConstant: 34),
             micHolder.heightAnchor.constraint(equalToConstant: 34),
             send.widthAnchor.constraint(equalToConstant: 30),
             send.heightAnchor.constraint(equalToConstant: 30),
-            hint.leadingAnchor.constraint(equalTo: field.leadingAnchor, constant: 4),
-            hint.topAnchor.constraint(equalTo: field.topAnchor, constant: 11),
-            hint.trailingAnchor.constraint(lessThanOrEqualTo: field.trailingAnchor),
-            field.heightAnchor.constraint(greaterThanOrEqualToConstant: 46),
-            field.heightAnchor.constraint(lessThanOrEqualToConstant: Self.fieldMax),
+            field.heightAnchor.constraint(equalToConstant: 44),
         ])
 
-        // Pinned, the bar's mic dictates into the field, not the terminal.
-        if pinned {
-            terminal.dictationInsert = { [weak self] text in self?.hear(text) }
-        }
+        // The bar's mic dictates into the field, not the terminal.
+        terminal.dictationInsert = { [weak self] text in self?.hear(text) }
     }
 
     required init?(coder: NSCoder) { fatalError() }
 
-    /// Where a second open lands: the field's keyboard, again.
+    /// Where an open lands: the field's keyboard.
     func focus() { field.becomeFirstResponder() }
 
-    /// The bar goes, sent or not — never mid-upload: the staging folder
-    /// would go with it — nor while it is pinned by Composer Mode. The
-    /// keyboard comes back to the terminal if it was up.
-    @objc func requestClose() {
-        guard !sending, !pinned else { return }
-        field.resignFirstResponder()
-        terminal?.dictationInsert = nil
-        let dir = dir
-        Task.detached { try? FileManager.default.removeItem(at: dir) }
-        closed(self)
-        if typing { terminal?.becomeFirstResponder() }
+    /// The field's Return is Send.
+    func textFieldShouldReturn(_ t: UITextField) -> Bool {
+        sendNow()
+        return false
     }
 
     /// What the mic recognised, into the field where it can be read and
     /// edited before Send, spaced from what is already there.
     private func hear(_ text: String) {
-        if !field.text.isEmpty, !field.text.hasSuffix(" "), !field.text.hasSuffix("\n"), !text.hasPrefix(" ") {
-            field.text += " "
-        }
-        field.text += text
-        textViewDidChange(field)
-    }
-
-    func textViewDidChange(_ t: UITextView) {
-        hint.isHidden = !t.text.isEmpty
-        let tall = t.contentSize.height > Self.fieldMax
-        if t.isScrollEnabled != tall {
-            t.isScrollEnabled = tall
-            t.setNeedsLayout()
+        let soFar = field.text ?? ""
+        if !soFar.isEmpty, !soFar.hasSuffix(" "), !text.hasPrefix(" ") {
+            field.text = soFar + " " + text
+        } else {
+            field.text = soFar + text
         }
         update()
     }
@@ -330,15 +286,16 @@ final class ComposerBar: UIView, UITextViewDelegate {
 
     /// Send is live while the message or an attachment is there to send.
     private func update() {
-        let on = !sending && (!field.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !attachments.isEmpty)
+        let text = field.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let on = !sending && (!text.isEmpty || !attachments.isEmpty)
         send.isEnabled = on
         send.alpha = on ? 1 : 0.4
     }
 
     /// Uploads the attachments as one batch — the server types their
     /// paths together once every file is up — then pastes the text and
-    /// sends Return. A failure alerts and keeps the bar open; a send that
-    /// went closes it.
+    /// sends Return. A failure alerts and keeps the message; a send that
+    /// went empties the bar for the next one.
     private func sendNow() {
         guard let terminal, !sending else { return }
         sending = true
@@ -366,16 +323,17 @@ final class ComposerBar: UIView, UITextViewDelegate {
                 failed(error)
                 return
             }
-            if !field.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                terminal.insert(field.text)
+            let text = field.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            if !text.isEmpty {
+                terminal.insert(field.text ?? "")
             }
             terminal.send("enter")
-            if pinned { reset() } else { requestClose() }
+            reset()
         }
     }
 
-    /// A sent pinned bar empties for the next message: its field, its
-    /// strip and its staging folder, which is made again as it fills.
+    /// A sent bar empties for the next message: its field, its strip and
+    /// its staging folder, which is made again as it fills.
     private func reset() {
         field.text = ""
         for c in thumbs.arrangedSubviews { c.removeFromSuperview() }
@@ -383,7 +341,7 @@ final class ComposerBar: UIView, UITextViewDelegate {
         strip.isHidden = true
         let dir = dir
         Task.detached { try? FileManager.default.removeItem(at: dir) }
-        textViewDidChange(field)
+        update()
     }
 
     /// An attachment's thumbnail, or a document mark, with the mark that
@@ -454,19 +412,5 @@ private final class FilePick: NSObject, UIDocumentPickerDelegate {
 
     func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
         picked(urls)
-    }
-}
-
-extension TerminalView {
-    /// Opens the compose bar: from the key bar's Compose key, a swipe up
-    /// on the bar, the ⌘ menu, or ⇧⌘I. A second ask takes it away, but a
-    /// swipe up never does.
-    func compose() {
-        (superview as? TerminalHost)?.toggleComposer()
-    }
-
-    /// The swipe-up's own open: it focuses the bar again where it is up.
-    func openComposer() {
-        (superview as? TerminalHost)?.openComposer()
     }
 }

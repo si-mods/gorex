@@ -1,10 +1,10 @@
 import XCTest
 
-/// The compose bar (docs/IOS-025-composer.md): the key bar's ⌘ menu, its
-/// Compose key by ⌘, and a flick up on the bar each open the capsule over
-/// it, with the message field that names the block. Demo Mode's host
-/// takes no uploads, so the attach menu stays away; the test covers the
-/// message side.
+/// The compose bar (docs/IOS-025-composer.md): it is up only while
+/// Settings > Terminal's Composer Mode is on — here the defaults
+/// argument — pinned over the key bar, the mic moved beside its field.
+/// Demo Mode's host takes no uploads, so the attach menu stays away; the
+/// test covers the message side.
 final class ComposerUITests: XCTestCase {
     private var app: XCUIApplication!
 
@@ -43,45 +43,20 @@ final class ComposerUITests: XCTestCase {
         let row = app.buttons["Shell"]
         XCTAssertTrue(row.waitForExistence(timeout: 15))
         row.tap()
-        XCTAssertTrue(more.waitForExistence(timeout: 15))
-    }
-
-    /// The key bar's ⌘ button: the bar's "More", under the navigation
-    /// bar's own, is the lowest one on screen.
-    private var more: XCUIElement {
-        app.buttons.matching(identifier: "More").allElementsBoundByIndex
-            .sorted { $0.frame.midY > $1.frame.midY }.first ?? app.buttons["More"].firstMatch
+        XCTAssertTrue(app.buttons.matching(identifier: "More").firstMatch.waitForExistence(timeout: 15))
     }
 
     /// The compose bar's message field, which names the demo's block.
-    private var message: XCUIElement { app.textViews["composer.message"] }
+    private var message: XCUIElement { app.textFields["composer.message"] }
 
-    /// ⌘'s menu holds Compose first, before Paste; a second one closes.
-    func testMenuTogglesComposer() throws {
-        more.tap()
-        // The menu's item, not the key bar's own Compose key.
-        let compose = app.collectionViews.buttons["Compose"]
-        XCTAssertTrue(compose.waitForExistence(timeout: 5))
-        compose.tap()
-        XCTAssertTrue(message.waitForExistence(timeout: 10))
-        shot("composer")
-        XCTAssertTrue(app.buttons["Send"].exists)
-        more.tap()
-        XCTAssertTrue(app.collectionViews.buttons["Compose"].waitForExistence(timeout: 5))
-        app.collectionViews.buttons["Compose"].tap()
+    /// Without the mode the bar stays away and the mic is the key bar's.
+    func testNoComposerByDefault() throws {
         XCTAssertTrue(message.waitForNonExistence(timeout: 5))
-    }
-
-    /// The Compose key, next to ⌘ in the left capsule.
-    func testComposeKey() throws {
-        shot("keybar-compose")
-        app.buttons["Compose"].tap()
-        XCTAssertTrue(message.waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons.matching(identifier: "Dictate").firstMatch.waitForExistence(timeout: 5))
     }
 
     /// Composer Mode (Settings > Terminal, here the defaults argument)
-    /// pins the bar: it is up on its own, holds the mic, and its toggles
-    /// cannot close it.
+    /// pins the bar: it is up on its own, with the mic beside the field.
     func testComposerModePinsBar() throws {
         app.terminate()
         app.launchArguments = ["-composerMode", "YES"]
@@ -92,21 +67,7 @@ final class ComposerUITests: XCTestCase {
         // mic's view exposes more than one element; take its own row's).
         let dictates = app.buttons.matching(identifier: "Dictate").allElementsBoundByIndex
         XCTAssertTrue(dictates.contains { abs($0.frame.midY - message.frame.midY) < 40 })
-        // Its toggles focus it again rather than closing it.
-        app.buttons["Compose"].tap()
-        XCTAssertTrue(message.exists)
         shot("composer-mode")
-    }
-
-    /// A flick up on the key bar opens the composer, as the Compose key does.
-    func testSwipeUpOpensComposer() throws {
-        // From the bar's middle, nowhere near the stick's drag.
-        let bar = more.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
-            .withOffset(CGVector(dx: 150, dy: 0))
-        let up = bar.withOffset(CGVector(dx: 0, dy: -120))
-        bar.press(forDuration: 0.05, thenDragTo: up, withVelocity: .fast, thenHoldForDuration: 0)
-        XCTAssertTrue(message.waitForExistence(timeout: 10))
-        shot("composer-swipe")
     }
 
     private func shot(_ name: String) {

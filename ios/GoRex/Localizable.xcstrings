@@ -5254,16 +5254,6 @@
         }
       }
     },
-    "⌘T opens a tab, ⌘W closes it, ⌘O adds a file, ⇧⌘O a photo, ⇧⌘I the composer, ⌘K clears the screen and scrollback, and ⌘+, ⌘- and ⌘0 size the text. Hold ⌘ to see them.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "⌘T 新建标签页，⌘W 关闭，⌘O 添加文件，⇧⌘O 添加照片，⇧⌘I 打开撰写，⌘K 清除屏幕和回滚，⌘+、⌘- 和 ⌘0 调整字号。按住 ⌘ 可查看全部。"
-          }
-        }
-      }
-    },
     "Composer": {
       "localizations": {
         "zh-Hans": {
@@ -5378,16 +5368,6 @@
         }
       }
     },
-    "Swipe up on the key bar, tap the Compose key by ⌘, or press ⇧⌘I for a message bar over it: write lines, attach photos, camera shots and files, and Send puts their paths and the text into the terminal as one prompt.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "在键栏上滑、点 ⌘ 旁的撰写键或按 ⇧⌘I，打开键栏上方的消息条：可写多行并附加照片、拍照和文件，发送会把路径和文字一起放进终端，作为一条提示。"
-          }
-        }
-      }
-    },
     "Message to %@": {
       "localizations": {
         "zh-Hans": {
@@ -5404,6 +5384,40 @@
           "stringUnit": {
             "state": "translated",
             "value": "添加附件"
+          }
+        }
+      }
+    },
+    "⌘T opens a tab, ⌘W closes it, ⌘O adds a file, ⇧⌘O a photo, ⌘K clears the screen and scrollback, and ⌘+, ⌘- and ⌘0 size the text. Hold ⌘ to see them.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "⌘T opens a tab, ⌘W closes it, ⌘O adds a file, ⇧⌘O a photo, ⌘K clears the screen and scrollback, and ⌘+, ⌘- and ⌘0 size the text. Hold ⌘ to see them."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "⌘T 新建标签页，⌘W 关闭，⌘O 添加文件，⇧⌘O 添加照片，⌘K 清除屏幕和回滚，⌘+、⌘- 和 ⌘0 调整字号。按住 ⌘ 可查看全部。"
+          }
+        }
+      }
+    },
+    "Settings › Terminal's Composer Mode pins a message bar over the key bar and moves the mic into it: typing and dictation fill the message, photos and files attach, and Send puts it all into the terminal as one prompt.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Settings › Terminal's Composer Mode pins a message bar over the key bar and moves the mic into it: typing and dictation fill the message, photos and files attach, and Send puts it all into the terminal as one prompt."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "「设置 › 终端」的 Composer 模式把消息栏固定在键栏上方，并把麦克风移入其中：输入与听写进入消息字段，可附照片和文件，发送时全部作为一条提示进入终端。"
           }
         }
       }
