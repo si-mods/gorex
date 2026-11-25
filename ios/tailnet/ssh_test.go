@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -139,7 +140,7 @@ func (s *fakeSSHD) streamLocal(newCh ssh.NewChannel) {
 	s.mu.Lock()
 	socket := s.socket
 	s.mu.Unlock()
-	u, err := net.Dial("unix", socket)
+	u, err := net.Dial(socketNet, socket)
 	if err != nil {
 		newCh.Reject(ssh.ConnectionFailed, "no socket")
 		return
@@ -184,25 +185,41 @@ func (s *fakeSSHD) session(newCh ssh.NewChannel) {
 	}
 }
 
-// echoSocket is a unix socket that answers with what it gets, standing
-// in for the host's Rex socket. Its root is /tmp: a socket path is
-// ~104 bytes at most, and a test's temp dir doesn't fit that.
+// socketNet is the fake Rex socket's transport: unix where Windows
+// isn't, tcp on Windows, which has no unix sockets. The sshd side dials
+// either by name; the client side passes it on as the socket's path.
+var socketNet = "unix"
+
+func init() {
+	if runtime.GOOS == "windows" {
+		socketNet = "tcp"
+	}
+}
+
+// echoSocket is a socket that answers with what it gets, standing in
+// for the host's Rex socket. Its root is /tmp: a socket path is
+// ~104 bytes at most, and a test's temp dir doesn't fit that. On
+// Windows it's a loopback TCP listener instead, its address the path.
 func echoSocket(t *testing.T, names ...string) string {
 	t.Helper()
-	root, err := os.MkdirTemp("/tmp", "ssht")
-	if err != nil {
-		t.Fatal(err)
+	path := "127.0.0.1:0"
+	if socketNet == "unix" {
+		root, err := os.MkdirTemp("/tmp", "ssht")
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { os.RemoveAll(root) })
+		path = filepath.Join(append([]string{root}, names...)...)
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
 	}
-	t.Cleanup(func() { os.RemoveAll(root) })
-	path := filepath.Join(append([]string{root}, names...)...)
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	ln, err := net.Listen("unix", path)
+	ln, err := net.Listen(socketNet, path)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { ln.Close() })
+	path = ln.Addr().String()
 	go func() {
 		for {
 			c, err := ln.Accept()
@@ -493,13 +510,16 @@ func TestSSHDiscovery(t *testing.T) {
 		roundTrip(t, c, "hi")
 		c.Close()
 	}
-	// A unix:// endpoint, escaped as the server writes it.
-	srv.mu.Lock()
-	srv.execs[rexStatus] = `{"listeners":[{"endpoint":"` + (&url.URL{Scheme: "unix", Path: srv.socket}).String() +
-		`","transport":"unix","admission":"peer_credentials","primary":true}]}`
-	srv.mu.Unlock()
-	setSSHHosts(t, host())
-	dial()
+	// A unix:// endpoint, escaped as the server writes it; only a unix
+	// socket has a unix:// endpoint, so on Windows the bare path covers it.
+	if socketNet == "unix" {
+		srv.mu.Lock()
+		srv.execs[rexStatus] = `{"listeners":[{"endpoint":"` + (&url.URL{Scheme: "unix", Path: srv.socket}).String() +
+			`","transport":"unix","admission":"peer_credentials","primary":true}]}`
+		srv.mu.Unlock()
+		setSSHHosts(t, host())
+		dial()
+	}
 	// A bare path, with a tcp listener alongside.
 	srv.mu.Lock()
 	srv.execs = map[string]string{rexStatus: `{"listeners":[{"endpoint":"127.0.0.1:7297","transport":"tcp"},` +
