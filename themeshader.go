@@ -8,6 +8,7 @@ import (
 	"maps"
 	"math"
 	"reflect"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -26,16 +27,39 @@ import (
 // window's background and the faces of roles. A slot whose shader fails a
 // check, or any slot on the CPU renderer, draws the theme's flat colors.
 
-// themeSlot is a slot whose shader passed the checks at load.
+// themeSlot is a slot whose layers passed the checks at load, drawn from
+// the first to the last (docs/DSK-012, Layers).
 type themeSlot struct {
+	layers []*themeLayer
+	// flat tells a face of version 2, whose layers draw over its flat
+	// color; under is that color in each appearance, which the checks lay
+	// under the layers.
+	flat  bool
+	under [2]ui.Color
+}
+
+// readsTime reports whether a layer of the slot reads Time.
+func (sl *themeSlot) readsTime() bool {
+	return slices.ContainsFunc(sl.layers, func(l *themeLayer) bool { return l.time })
+}
+
+// themeLayer is a layer of a slot: a shader that passed checks 1 to 3.
+type themeLayer struct {
 	s      *shader.Shader
 	images [4]*ui.Bitmap
 	// values hold what does not change while the theme stands: Dark, the
 	// seeds and the params, light then dark.
 	values [2]*shader.Values
 	// The uniforms of the API that change from draw to draw, which the
-	// shader reads; alpha is the background's GorexAlpha.
+	// shader reads; alpha is GorexAlpha, of the background's wrapper or of
+	// a layer's opacity.
 	time, origin, window, alpha bool
+	// opacity multiplies the layer's color: 1 in version 1.
+	opacity float32
+	// src and params are what the checks vary in version 2: the parsed
+	// source, with its declarations, and the value of each param.
+	src    *theme.ShaderSource
+	params map[string]theme.Param
 }
 
 // themeShaders are the selected theme's slots that passed the checks, and
@@ -168,27 +192,38 @@ const (
 func checkShaders(m *theme.Manifest, art *theme.Art) *themeShaders {
 	set := &themeShaders{spec: m.Shaders, assets: m.Assets, faces: map[theme.Role]*themeSlot{}}
 	pal := [2]colors{themed(lightSeeds, m, 0), themed(darkSeeds, m, 1)}
-	sd := [2]seeds{themeSeeds(lightSeeds, m, 0), themeSeeds(darkSeeds, m, 1)}
-	check := func(where string, slot *theme.ShaderSlot, bg bool, contrast func(*themeSlot) error) *themeSlot {
-		sl, warn, err := checkSlot(slot, art, sd, bg, contrast)
+	env := &slotEnv{
+		api: m.Shaders.API,
+		sd:  [2]seeds{themeSeeds(lightSeeds, m, 0), themeSeeds(darkSeeds, m, 1)},
+		pal: &pal,
+		art: art,
+	}
+	check := func(where string, slot *theme.ShaderSlot, bg bool, under *[2]ui.Color, contrast func(*themeSlot, *checkSamples) error) *themeSlot {
+		sl, warn, err := checkSlot(slot, env, bg, under, contrast)
 		for _, w := range warn {
-			set.warn = append(set.warn, fmt.Sprintf("%s: %s", where, w))
-			set.notes = append(set.notes, shaderNote{where, w, false})
+			at, w := layerNote(where, w)
+			set.warn = append(set.warn, fmt.Sprintf("%s: %s", at, w))
+			set.notes = append(set.notes, shaderNote{at, w, false})
 		}
 		if err != nil {
-			set.warn = append(set.warn, fmt.Sprintf("%s: %v (dropped: the flat colors draw)", where, err))
-			set.notes = append(set.notes, shaderNote{where, err.Error(), true})
+			at, e := layerNote(where, err.Error())
+			set.warn = append(set.warn, fmt.Sprintf("%s: %s (dropped: the flat colors draw)", at, e))
+			set.notes = append(set.notes, shaderNote{at, e, true})
 			return nil
 		}
-		set.anyTime = set.anyTime || sl.time
+		set.anyTime = set.anyTime || sl.readsTime()
 		return sl
 	}
 	if bg := m.Shaders.Background; bg != nil {
-		set.background = check("shaders.background", bg, true, func(sl *themeSlot) error { return bandContrast(sl, &pal) })
+		set.background = check("shaders.background", bg, true, nil, func(sl *themeSlot, s *checkSamples) error { return bandContrast(sl, &pal, s.band) })
 	}
 	for _, role := range theme.FaceRoles {
 		if f := m.Shaders.Faces[role]; f != nil {
-			if sl := check("shaders.faces."+role.String(), f, false, func(sl *themeSlot) error { return faceContrast(sl, &pal, role) }); sl != nil {
+			var under *[2]ui.Color
+			if env.api == theme.ShaderAPI2 {
+				under = &[2]ui.Color{*roleField(&pal[0], role), *roleField(&pal[1], role)}
+			}
+			if sl := check("shaders.faces."+role.String(), f, false, under, func(sl *themeSlot, s *checkSamples) error { return faceContrast(sl, &pal, role, s.face) }); sl != nil {
 				set.faces[role] = sl
 			}
 		}
@@ -196,26 +231,154 @@ func checkShaders(m *theme.Manifest, art *theme.Art) *themeShaders {
 	return set
 }
 
-// checkSlot runs the checks of one slot: compile, loops and uniforms,
-// cost, and contrast. A panic in any of them fails the slot.
-func checkSlot(slot *theme.ShaderSlot, art *theme.Art, sd [2]seeds, bg bool, contrast func(*themeSlot) error) (sl *themeSlot, warn []string, err error) {
+// layerNote splits a warning of checkSlot that names a layer ("layer 2:
+// ...") into the layer's place, "shaders.background layer 2", and the
+// rest, so that check warnings name a layer as parse warnings do
+// (theme.LayerWhere).
+func layerNote(where, w string) (string, string) {
+	var i int
+	if n, _ := fmt.Sscanf(w, "layer %d:", &i); n == 1 {
+		if _, rest, ok := strings.Cut(w, ": "); ok {
+			return theme.LayerWhere(where, i-1), rest
+		}
+	}
+	return where, w
+}
+
+// slotEnv is what the checks of a theme's slots read: the version of its
+// shader API, its seeds and palettes of each appearance (themeSeeds,
+// themed), and its decoded assets.
+type slotEnv struct {
+	api int
+	sd  [2]seeds
+	pal *[2]colors
+	art *theme.Art
+}
+
+// color resolves a binding of version 2 in the appearance i: the theme's
+// seed, or its flat color of a role. The user's sidebar.colorCustomizations
+// do not feed it (docs/DSK-012, Declared params).
+func (e *slotEnv) color(b theme.Binding, i int) ui.Color {
+	if b.IsRole {
+		return *roleField(&e.pal[i], b.Role)
+	}
+	return *seedField(&e.sd[i], b.Seed)
+}
+
+// checkSlot runs the checks of one slot: compile, loops and uniforms on
+// each layer, which drop the whole slot when one fails; then cost and
+// contrast on each variant of its params (rangeVariants), one layer at a
+// time with the others at the manifest's values. The first variant draws
+// allSamples, the others fewSamples. under, for a face of version 2, is
+// its flat color, which its layers draw over. A panic in any check fails
+// the slot. With more than one layer, a warning names the layer.
+func checkSlot(slot *theme.ShaderSlot, e *slotEnv, bg bool, under *[2]ui.Color, contrast func(*themeSlot, *checkSamples) error) (sl *themeSlot, warn []string, err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			sl, err = nil, fmt.Errorf("a check failed: %v", r)
 		}
 	}()
-	sl, warn, err = compileSlot(slot, art, sd, bg)
-	if err == nil {
-		err = slotCost(sl)
+	sl = &themeSlot{}
+	if under != nil {
+		sl.flat, sl.under = true, *under
 	}
-	if err == nil {
-		err = contrast(sl)
+	label := func(i int, s string) string {
+		if len(slot.Layers) > 1 {
+			return fmt.Sprintf("layer %d: %s", i+1, s)
+		}
+		return s
 	}
-	return sl, warn, err
+	for i := range slot.Layers {
+		l, lw, err := compileLayer(&slot.Layers[i], e, bg)
+		for _, w := range lw {
+			warn = append(warn, label(i, w))
+		}
+		if err != nil {
+			return nil, warn, errors.New(label(i, err.Error()))
+		}
+		sl.layers = append(sl.layers, l)
+	}
+	// Variant 1: the manifest's values, with all samples.
+	costs := make([]float64, len(sl.layers))
+	var total float64
+	var slow shaderFrame
+	for i, l := range sl.layers {
+		costs[i], slow = layerCost(l, allSamples.cost, false, maxShaderCost)
+		total += costs[i]
+	}
+	if err := costLimit(total, len(sl.layers), slow); err != nil {
+		return nil, warn, err
+	}
+	if err := contrast(sl, &allSamples); err != nil {
+		return nil, warn, err
+	}
+	for i, l := range sl.layers {
+		others := total - costs[i]
+		for _, v := range rangeVariants(l, e) {
+			c, slow := layerCost(v.l, fewSamples.cost, fewSamples.costOnce, maxShaderCost-others)
+			err := costLimit(others+c, len(sl.layers), slow)
+			if err == nil {
+				vs := *sl
+				vs.layers = slices.Clone(sl.layers)
+				vs.layers[i] = v.l
+				err = contrast(&vs, &fewSamples)
+			}
+			if err != nil {
+				return nil, warn, fmt.Errorf("%s: %w", label(i, v.label), err)
+			}
+		}
+	}
+	return sl, warn, nil
 }
 
-// gorexAlpha is the uniform of the background's wrapper: the alpha of the
-// wash it draws at under the glass setting (backgroundAlpha).
+// rangeVariant is a set of param values the checks draw a layer with, and
+// the label that names it in a warning.
+type rangeVariant struct {
+	label string
+	l     *themeLayer
+}
+
+// rangeVariants are the variants of a layer of version 2 past the first,
+// the manifest's values (docs/DSK-012, Checks of the param range): each
+// number at its min, then its max; each toggle at its other value; each
+// point at 0,0, then 1,1; the other params as the manifest sets them. A
+// variant equal to the first is not drawn again. Colors are not varied.
+func rangeVariants(l *themeLayer, e *slotEnv) []rangeVariant {
+	if e.api != theme.ShaderAPI2 {
+		return nil
+	}
+	var out []rangeVariant
+	add := func(name, label string, nums ...float32) {
+		if slices.Equal(l.params[name].Nums, nums) {
+			return
+		}
+		params := maps.Clone(l.params)
+		params[name] = theme.Param{Nums: nums}
+		v := *l
+		v.params, v.values = params, slotValues(l.s, l.src, params, &e.sd)
+		out = append(out, rangeVariant{label, &v})
+	}
+	for _, name := range slices.Sorted(maps.Keys(l.src.Params)) {
+		switch d := l.src.Params[name]; d.Kind {
+		case theme.ParamNumber:
+			add(name, fmt.Sprintf("%s at %g (min)", name, d.Min), d.Min)
+			add(name, fmt.Sprintf("%s at %g (max)", name, d.Max), d.Max)
+		case theme.ParamToggle:
+			if on := l.params[name].Nums[0] != 0; on {
+				add(name, name+" off", 0)
+			} else {
+				add(name, name+" on", 1)
+			}
+		case theme.ParamPoint:
+			add(name, name+" at 0,0", 0, 0)
+			add(name, name+" at 1,1", 1, 1)
+		}
+	}
+	return out
+}
+
+// gorexAlpha is the uniform of the wrapper: the alpha of the background's
+// wash under the glass setting (backgroundAlpha), times a layer's opacity.
 const gorexAlpha = "GorexAlpha"
 
 // backgroundWrapper calls the theme's Fragment, renamed, and fades its
@@ -229,11 +392,15 @@ func Fragment(dst vec4, pos vec2) vec4 {
 }
 `
 
-// compileSlot runs checks 1 to 3 on slot: it parses and compiles its
+// compileLayer runs checks 1 to 3 on a layer: it parses and compiles its
 // source, refuses its loops and checks its uniforms; it then sets what the
-// slot draws with. bg wraps the source with backgroundWrapper.
-func compileSlot(slot *theme.ShaderSlot, art *theme.Art, sd [2]seeds, bg bool) (*themeSlot, []string, error) {
+// layer draws with. A background, or a layer whose opacity is under 1,
+// wraps the source with backgroundWrapper. In version 2 the params are the
+// shader's declared defaults with the manifest's values over them
+// (theme.ResolveParams), whose warnings it returns.
+func compileLayer(slot *theme.ShaderLayer, e *slotEnv, bg bool) (*themeLayer, []string, error) {
 	var src string
+	art := e.art
 	if art != nil {
 		src = art.Sources[slot.Source]
 	}
@@ -250,7 +417,8 @@ func compileSlot(slot *theme.ShaderSlot, art *theme.Art, sd [2]seeds, bg bool) (
 	if info.Backdrop {
 		return nil, nil, errors.New("reads its backdrop (backdropAt, backdropSample)")
 	}
-	if bg {
+	wrap := bg || slot.Opacity != 1
+	if wrap {
 		src = info.RenameFragment(src, "themeFragment") + backgroundWrapper
 	}
 	s, err := compileTheme(src)
@@ -260,11 +428,17 @@ func compileSlot(slot *theme.ShaderSlot, art *theme.Art, sd [2]seeds, bg bool) (
 	if err := themeShaderLoops(s); err != nil {
 		return nil, nil, err
 	}
-	warn, err := theme.CheckUniforms(info, slot, gorexAlpha)
+	warn, err := theme.CheckUniforms(info, slot, e.api, gorexAlpha)
 	if err != nil {
 		return nil, warn, err
 	}
-	sl := &themeSlot{s: s, alpha: bg}
+	params := slot.Params
+	if e.api == theme.ShaderAPI2 {
+		var pw []string
+		params, pw = theme.ResolveParams(info, slot, e.color)
+		warn = append(warn, pw...)
+	}
+	sl := &themeLayer{s: s, alpha: wrap, opacity: slot.Opacity, src: info, params: params}
 	_, sl.time = info.Uniforms["Time"]
 	_, sl.origin = info.Uniforms["Origin"]
 	_, sl.window = info.Uniforms["Window"]
@@ -273,7 +447,15 @@ func compileSlot(slot *theme.ShaderSlot, art *theme.Art, sd [2]seeds, bg bool) (
 			warn = append(warn, fmt.Sprintf("image%d: the asset %q did not load, so it reads as transparent", i, name))
 		}
 	}
-	for i := range sl.values {
+	sl.values = slotValues(s, info, params, &e.sd)
+	return sl, warn, nil
+}
+
+// slotValues returns the values a slot draws with that do not change
+// while the theme stands, light then dark: Dark, the seeds and params.
+func slotValues(s *shader.Shader, info *theme.ShaderSource, params map[string]theme.Param, sd *[2]seeds) [2]*shader.Values {
+	var out [2]*shader.Values
+	for i := range out {
 		v := s.NewValues()
 		if _, ok := info.Uniforms["Dark"]; ok {
 			v.Float(s.Uniform("Dark"), float32(i))
@@ -283,7 +465,7 @@ func compileSlot(slot *theme.ShaderSlot, art *theme.Art, sd [2]seeds, bg bool) (
 				v.Color(s.Uniform(name), *seedField(&sd[i], id))
 				continue
 			}
-			p, ok := slot.Params[name]
+			p, ok := params[name]
 			switch {
 			case !ok:
 			case p.Color != nil:
@@ -298,9 +480,9 @@ func compileSlot(slot *theme.ShaderSlot, art *theme.Art, sd [2]seeds, bg bool) (
 				v.Floats(s.Uniform(name), p.Nums...)
 			}
 		}
-		sl.values[i] = v
+		out[i] = v
 	}
-	return sl, warn, nil
+	return out
 }
 
 // compileTheme compiles a theme's shader, and turns a panic of the
@@ -354,9 +536,18 @@ func currentFrame() shaderFrame {
 	return shaderFrame{window: ui.Point{X: 1280, Y: 800}}
 }
 
-// draw fills r with the slot's shader, rounded by radius, in the
-// appearance, faded to alpha (the background's wash), at frame f.
+// draw fills r with the slot's layers in order, rounded by radius, in the
+// appearance, faded to alpha (the background's wash), at frame f; each
+// layer fades by its opacity too.
 func (sl *themeSlot) draw(p *ui.Painter, r ui.Rect, radius float32, dark bool, alpha float32, f shaderFrame) {
+	for _, l := range sl.layers {
+		l.draw(p, r, radius, dark, alpha*l.opacity, f)
+	}
+}
+
+// draw fills r with the layer's shader, rounded by radius, in the
+// appearance, faded to alpha, at frame f.
+func (sl *themeLayer) draw(p *ui.Painter, r ui.Rect, radius float32, dark bool, alpha float32, f shaderFrame) {
 	i := 0
 	if dark {
 		i = 1
@@ -513,8 +704,10 @@ type faceShader struct {
 }
 
 func (f faceShader) PaintMaterial(p *ui.Painter, box ui.Rect, radii [4]float32) {
-	if !themeShaderGPU(p) {
+	if !themeShaderGPU(p) || f.sl.flat {
 		p.FillRadii(box, radii, f.face)
+	}
+	if !themeShaderGPU(p) {
 		return
 	}
 	f.sl.draw(p, box, radii[0], p.Theme().Dark, 1, currentFrame())
@@ -529,6 +722,13 @@ func renderSlot(sl *themeSlot, w, h int, scale float32, size ui.Point, dark bool
 	return ui.Render(func(c *ui.Context) {
 		ui.Box(c).Fill().Draw(func(p *ui.Painter, r ui.Rect) {
 			p.Transform(ui.Scaling(scale, scale), 0, 0, func() {
+				if sl.flat {
+					c := sl.under[0]
+					if dark {
+						c = sl.under[1]
+					}
+					p.FillRadii(ui.Rect{W: size.X, H: size.Y}, [4]float32{}, c)
+				}
 				sl.draw(p, ui.Rect{W: size.X, H: size.Y}, 0, dark, 1, f)
 			})
 		})
@@ -557,17 +757,20 @@ var costFrames = func() []shaderFrame {
 	return out
 }()
 
+// facePlaces are the origins and window sizes a face has, which the face
+// check draws in turn.
+var facePlaces = []struct{ origin, window ui.Point }{
+	{ui.Point{}, ui.Point{X: 1280, Y: 800}},
+	{ui.Point{X: 900, Y: 500}, ui.Point{X: 1280, Y: 800}},
+	{ui.Point{X: 200, Y: 40}, ui.Point{X: 3840, Y: 2160}},
+}
+
 // faceFrames are the frames the face check draws: Time 0 to 3 s and large
-// ones, at origins and window sizes a face has, in turn.
+// ones, at facePlaces in turn.
 var faceFrames = func() []shaderFrame {
-	places := []struct{ origin, window ui.Point }{
-		{ui.Point{}, ui.Point{X: 1280, Y: 800}},
-		{ui.Point{X: 900, Y: 500}, ui.Point{X: 1280, Y: 800}},
-		{ui.Point{X: 200, Y: 40}, ui.Point{X: 3840, Y: 2160}},
-	}
 	var out []shaderFrame
 	for i, t := range []float32{0, 1, 2, 3, 37, 600, 3599} {
-		p := places[i%len(places)]
+		p := facePlaces[i%len(facePlaces)]
 		out = append(out, shaderFrame{time: t, window: p.window, origin: &p.origin})
 	}
 	return out
@@ -575,6 +778,32 @@ var faceFrames = func() []shaderFrame {
 
 // bandTimes are the times the sidebar band check draws.
 var bandTimes = []float32{0, 37, 3599}
+
+// checkSamples are the frames checks 4 to 6 draw a variant of a slot with.
+type checkSamples struct {
+	cost, face []shaderFrame
+	band       []float32
+	// costOnce times the cost frame once, with no fastest of three.
+	costOnce bool
+}
+
+// allSamples are the frames of version 1, which the first variant of a
+// slot, the manifest's values, draws. fewSamples are those of the other
+// variants of version 2, as the checks of every variant with every sample
+// take seconds (docs/DSK-012, Checks of the param range): the cost at Time
+// 0, Window 1280×800 and Origin 0,0, timed once; the face at Time 0 and
+// Window 1280×800 at each of facePlaces' origins; the band at Time 0.
+var (
+	allSamples = checkSamples{cost: costFrames, face: faceFrames, band: bandTimes}
+	fewSamples = func() checkSamples {
+		win := ui.Point{X: 1280, Y: 800}
+		s := checkSamples{cost: []shaderFrame{{window: win, origin: &ui.Point{}}}, band: []float32{0}, costOnce: true}
+		for _, p := range facePlaces {
+			s.face = append(s.face, shaderFrame{window: win, origin: &p.origin})
+		}
+		return s
+	}()
+)
 
 // fastest returns the shortest of three runs of fn.
 func fastest(fn func()) time.Duration {
@@ -637,24 +866,45 @@ var builtinCost = sync.OnceValue(func() time.Duration {
 	})
 })
 
-// slotCost is check 4: the slot drawn at 64×64 px in the interpreter may
-// cost at most maxShaderCost times the built-in background, with each of
-// costFrames: it draws each once, then the slowest the fastest of three.
-func slotCost(sl *themeSlot) error {
+// layerCost is check 4 for a layer: its time drawn at 64×64 px in the
+// interpreter, as a ratio to the built-in background, with each of frames
+// (costFrames, or fewer), and the frame that took longest. It draws each
+// once, then the slowest the fastest of three, unless once, which keeps
+// the time of the one draw when its ratio is under limit, so that only a
+// layer over it is timed again. A test sets it to fixed ratios.
+var layerCost = timeLayer
+
+// timeLayer is layerCost as it runs: it times the layer in the interpreter.
+func timeLayer(l *themeLayer, frames []shaderFrame, once bool, limit float64) (float64, shaderFrame) {
+	sl := &themeSlot{layers: []*themeLayer{l}}
 	size := ui.Point{X: 64, Y: 64}
-	slow, worst := costFrames[0], time.Duration(0)
-	for _, f := range costFrames {
+	slow, worst := frames[0], time.Duration(0)
+	for _, f := range frames {
 		t := time.Now()
 		renderSlot(sl, 64, 64, 1, size, false, f)
 		if d := time.Since(t); d > worst {
 			slow, worst = f, d
 		}
 	}
-	t := fastest(func() { renderSlot(sl, 64, 64, 1, size, false, slow) })
-	if r := float64(t) / float64(builtinCost()); r > maxShaderCost {
-		return fmt.Errorf("costs %.1f times the built-in background at Time %g, Window %gx%g, more than %d", r, slow.time, slow.window.X, slow.window.Y, maxShaderCost)
+	ratio := func(t time.Duration) float64 { return float64(t) / float64(builtinCost()) }
+	r := ratio(max(worst, 1))
+	if !once || r > limit {
+		r = ratio(fastest(func() { renderSlot(sl, 64, 64, 1, size, false, slow) }))
 	}
-	return nil
+	return r, slow
+}
+
+// costLimit fails a slot whose layers cost more than maxShaderCost times
+// the built-in background in all: cost, the sum of their ratios. A slot of
+// one layer names its slowest frame, slow.
+func costLimit(cost float64, layers int, slow shaderFrame) error {
+	switch {
+	case cost <= maxShaderCost:
+		return nil
+	case layers == 1:
+		return fmt.Errorf("costs %.1f times the built-in background at Time %g, Window %gx%g, more than %d", cost, slow.time, slow.window.X, slow.window.Y, maxShaderCost)
+	}
+	return fmt.Errorf("its %d layers cost %.1f times the built-in background in all, more than %d", layers, cost, maxShaderCost)
 }
 
 // overOpaque returns the premultiplied pixel px laid over the opaque
@@ -691,11 +941,11 @@ func readable(img *image.RGBA, area image.Rectangle, bg, text, muted ui.Color) e
 var faceTextInset = ui.Point{X: 4, Y: 2}
 
 // faceContrast is check 5: the face drawn at 96×32 px with each of
-// faceFrames keeps the text of the ladder its flat color selects
+// frames (faceFrames, or fewer) keeps the text of the ladder its flat color selects
 // (pickLadder, as faceLadder picks it) readable at each pixel inside
 // faceTextInset, in both appearances; a pixel not opaque counts as laid
 // over the panel, as surface counts a face.
-func faceContrast(sl *themeSlot, pal *[2]colors, role faceRole) error {
+func faceContrast(sl *themeSlot, pal *[2]colors, role faceRole, frames []shaderFrame) error {
 	const w, h = 96, 32
 	area := image.Rect(int(faceTextInset.X), int(faceTextInset.Y), w-int(faceTextInset.X), h-int(faceTextInset.Y))
 	for i, name := range [2]string{"light", "dark"} {
@@ -706,7 +956,7 @@ func faceContrast(sl *themeSlot, pal *[2]colors, role faceRole) error {
 			d = 1
 		}
 		ref := pickLadder(flat, &pal[d], &pal[1-d], builtinLadder(d == 1), builtinLadder(d == 0))
-		for _, f := range faceFrames {
+		for _, f := range frames {
 			img := renderSlot(sl, w, h, 1, ui.Point{X: w, Y: h}, i == 1, f)
 			if err := readable(img, area, k.panel, ref.text, ref.textMuted); err != nil {
 				return fmt.Errorf("in the %s appearance at %g s, %v", name, f.time, err)
@@ -720,10 +970,10 @@ func faceContrast(sl *themeSlot, pal *[2]colors, role faceRole) error {
 const bandScale = 0.125
 
 // bandContrast is check 6: the background drawn for a window of 1280×800
-// DIPs at 1/8 scale, at bandTimes, keeps the window's text readable in
+// DIPs at 1/8 scale, at times (bandTimes, or fewer), keeps the window's text readable in
 // the sidebar's columns, in both appearances, unless the theme's sideBar.background is
 // an opaque face there, which the text reads on instead.
-func bandContrast(sl *themeSlot, pal *[2]colors) error {
+func bandContrast(sl *themeSlot, pal *[2]colors, times []float32) error {
 	const w, h = 1280, 800
 	side := int(sidebarWidthIn(w) * bandScale)
 	for i, name := range [2]string{"light", "dark"} {
@@ -731,7 +981,7 @@ func bandContrast(sl *themeSlot, pal *[2]colors) error {
 		if k.sideBarFace.A == 255 {
 			continue
 		}
-		for _, t := range bandTimes {
+		for _, t := range times {
 			img := renderSlot(sl, side, h*bandScale, bandScale, ui.Point{X: w, Y: h}, i == 1, shaderFrame{time: t, window: ui.Point{X: w, Y: h}})
 			if err := readable(img, image.Rect(0, 0, side, h), k.bgBottom, k.text, k.textMuted); err != nil {
 				return fmt.Errorf("behind the sidebar in the %s appearance at %g s, %v", name, t, err)
