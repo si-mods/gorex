@@ -156,9 +156,10 @@ func ColorFor(raw json.RawMessage, dark bool) (ui.Color, bool) {
 // Manifest is a parsed theme: the colors it sets, light at index 0 and
 // dark at index 1. A seed or role it does not set keeps the built-in one.
 // Terminal names the Ghostty theme of each appearance, or "" for none.
-// Assets, Ambience and Brand are the keys of docs/DSK-010-theme-ambience.md
-// that this build reads. Metrics, Glass and Shaders are the keys of
-// docs/DSK-012-theme-shaders.md: nil when the manifest has none.
+// Assets names the files of the pack that its shaders read
+// (docs/DSK-010-theme-ambience.md, phase 1). Metrics, Glass and Shaders
+// are the keys of docs/DSK-012-theme-shaders.md: nil when the manifest has
+// none.
 type Manifest struct {
 	Name string
 	// Description is a line about the theme that the Extensions page shows
@@ -169,8 +170,6 @@ type Manifest struct {
 	Terminal    [2]string
 	Sidebar     Sidebar
 	Assets      map[string]Asset
-	Ambience    Ambience
-	Brand       Brand
 	Metrics     *Metrics
 	Glass       *bool
 	Shaders     *Shaders
@@ -236,7 +235,7 @@ func Parse(b []byte) (*Manifest, []string, error) {
 		Roles map[string]json.RawMessage            `json:"roles"`
 		Term  map[string]json.RawMessage            `json:"terminal"`
 	}
-	known := []string{"name", "seeds", "roles", "terminal", "sidebar", "assets", "ambience", "brand", "metrics", "glass", "shaders", "description"}
+	known := []string{"name", "seeds", "roles", "terminal", "sidebar", "assets", "metrics", "glass", "shaders", "description"}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return nil, nil, err
 	}
@@ -309,12 +308,6 @@ func Parse(b []byte) (*Manifest, []string, error) {
 	}
 	if raw, ok := top["assets"]; ok {
 		m.Assets = parseAssets(raw, &w)
-	}
-	if raw, ok := top["ambience"]; ok {
-		m.Ambience = parseAmbience(raw, m.Assets, &w)
-	}
-	if raw, ok := top["brand"]; ok {
-		m.Brand = parseBrand(raw, m.Assets, &w)
 	}
 	if raw, ok := top["metrics"]; ok {
 		m.Metrics = parseMetrics(raw, &w)

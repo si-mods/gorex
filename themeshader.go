@@ -816,8 +816,43 @@ func fastest(fn func()) time.Duration {
 	return max(best, 1)
 }
 
+// costReference is the built-in background as it was when check 4 was
+// set: with the loop of four glows of docs/DSK-010-theme-ambience.md,
+// which the background has no more. It fixes the cost a theme shader
+// compares with, so that removing the glows did not make the check
+// stricter. Only builtinCost draws it.
+var costReference = shader.MustCompile(`package main
+
+var Top, Mid, Low, Bottom, Tint vec4
+var Alpha float
+var Glow, GlowColor [4]vec4
+
+func hash(v uint) uint {
+	s := v*747796405 + 2891336453
+	w := ((s >> ((s >> 28) + 4)) ^ s) * 277803737
+	return (w >> 22) ^ w
+}
+
+func Fragment(dst vec4, pos vec2) vec4 {
+	size := rectSize()
+	y := pos.y / size.y
+	c := mix(Top.rgb, Mid.rgb, clamp(y/0.38, 0, 1))
+	c = mix(c, Low.rgb, clamp((y-0.38)/0.32, 0, 1))
+	c = mix(c, Bottom.rgb, clamp((y-0.7)/0.3, 0, 1))
+	a := Tint.a * clamp((pos.x/size.x-0.35)/0.65, 0, 1)
+	c = c*(1-a) + Tint.rgb*a
+	for i := 0; i < 4; i++ {
+		g := GlowColor[i].a * clamp(1-length((pos/size-Glow[i].xy)/Glow[i].zw), 0, 1)
+		c = c*(1-g) + GlowColor[i].rgb*g
+	}
+	n := hash(uint(dst.x) + hash(uint(dst.y)))
+	c += (float(n)/4294967295.0 - 0.5) / 255.0
+	return vec4(clamp(c, 0, 1)*Alpha, Alpha)
+}
+`)
+
 // builtinCost is the time of the built-in background at 64×64 px, which
-// a theme shader's cost compares with, measured once.
+// a theme shader's cost compares with, measured once (costReference).
 var builtinCost = sync.OnceValue(func() time.Duration {
 	k := &lightColors
 	o := shader.Options{Uniforms: map[string]any{
@@ -826,7 +861,7 @@ var builtinCost = sync.OnceValue(func() time.Duration {
 	}}
 	return fastest(func() {
 		ui.Render(func(c *ui.Context) {
-			ui.Box(c).Fill().Draw(func(p *ui.Painter, r ui.Rect) { background.Draw(p, r, o) })
+			ui.Box(c).Fill().Draw(func(p *ui.Painter, r ui.Rect) { costReference.Draw(p, r, o) })
 		}, 64, 64, 1)
 	})
 })

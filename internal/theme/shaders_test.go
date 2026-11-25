@@ -439,8 +439,8 @@ func pngOf(t *testing.T, w, h int) []byte {
 }
 
 // TestShaderAssets: a .kage asset loads as a shader's source up to 16 KiB;
-// an image only shaders read may be 2048 px, one a still reads keeps the
-// 1024 px of DSK-010.
+// an image shaders read may be 2048 px; a file that nothing reads does not
+// load, and keeps the 1024 px of DSK-010 at install.
 func TestShaderAssets(t *testing.T) {
 	dir := t.TempDir()
 	files := map[string][]byte{
@@ -456,24 +456,22 @@ func TestShaderAssets(t *testing.T) {
 	}
 	m, _, err := Parse([]byte(`{
   "assets": { "bg": "bg.kage", "big": "big.kage", "wide": "wide.png", "also": "also.png" },
-  "ambience": { "images": [{ "asset": "also", "height": 0.5 }] },
-  "shaders": { "api": 1, "background": { "source": "bg", "images": ["wide", "also"] }, "faces": { "sideBar.trackBackground": { "source": "big" } } }
+  "shaders": { "api": 1, "background": { "source": "bg", "images": ["wide"] }, "faces": { "sideBar.trackBackground": { "source": "big" } } }
 }`))
 	if err != nil {
 		t.Fatal(err)
 	}
-	art, warn := LoadAssets(dir, m, 2)
+	art, warn := LoadAssets(dir, m)
 	if art.Sources["bg"] != "package main\n" || art.Sources["big"] != "" {
 		t.Errorf("sources %q", art.Sources)
 	}
 	if art.Bitmaps["wide"] == nil || art.Bitmaps["also"] != nil {
 		t.Errorf("bitmaps %v", art.Bitmaps)
 	}
-	if len(warn) != 2 || !strings.Contains(warn[0], "assets.also") || !strings.Contains(warn[1], "assets.big") {
+	if len(warn) != 1 || !strings.Contains(warn[0], "assets.big") {
 		t.Errorf("warnings %q", warn)
 	}
-	// A sprite keeps the caps of DSK-010 when a shader reads it too.
-	if (assetUse{shader: true, sprite: 48}).shaderOnly() {
-		t.Error("a sprite that a shader reads takes the shaders' caps")
+	if b, side := assetCaps(assetUse{}, "also.png"); b != maxAssetBytes || side != maxStillSide {
+		t.Errorf("a file nothing reads: caps %d bytes, %d px", b, side)
 	}
 }

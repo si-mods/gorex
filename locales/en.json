@@ -242,15 +242,15 @@
   },
   "cmdToggleAmbience": "Toggle Theme Ambience",
   "@cmdToggleAmbience": {
-    "description": "Command: turn the moving and still pictures that the theme draws on the window's background off, or on again."
+    "description": "Command: turn off the shaders that the theme draws on the window's background and its motion, or turn them on again."
   },
   "sidebarAmbienceOff": "Turn Off Theme Ambience",
   "@sidebarAmbienceOff": {
-    "description": "Label and tooltip of the sidebar's button that turns off the pictures the theme draws on the window's background (glows, a watermark, swimming sprites)."
+    "description": "Label and tooltip of the sidebar's button that turns off the theme's background shader and its motion."
   },
   "sidebarAmbienceOn": "Turn On Theme Ambience",
   "@sidebarAmbienceOn": {
-    "description": "Label and tooltip of the sidebar's button that turns the theme's background pictures on again."
+    "description": "Label and tooltip of the sidebar's button that turns the theme's background shader and its motion on again."
   },
   "cmdAppearanceSystem": "Appearance: System",
   "@cmdAppearanceSystem": {

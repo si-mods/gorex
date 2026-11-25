@@ -106,14 +106,14 @@ func TestPackInstallTheme(t *testing.T) {
 		t.Fatal(err)
 	}
 	manifest := `{"name":"Slate","seeds":{"dark":{"accent":"#5b8def"}},"roles":{"sideBar.tabActiveBackground":"#5b8def33"},` +
-		`"assets":{"logo":"logo.svg"},"brand":{"icon":"logo","wordmark":"Slate"}}`
+		`"assets":{"bg":"bg.kage"},"shaders":{"api":1,"background":{"source":"bg"}}}`
 	if err := os.WriteFile(filepath.Join(sub, "theme.json"), []byte(manifest), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	// The pack's assets: the one the manifest names, and one it does not.
 	os.MkdirAll(filepath.Join(sub, "assets"), 0o755)
-	for _, f := range []string{"logo.svg", "extra.svg"} {
-		os.WriteFile(filepath.Join(sub, "assets", f), []byte(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 4 4"/>`), 0o644)
+	for _, f := range []string{"bg.kage", "extra.kage"} {
+		os.WriteFile(filepath.Join(sub, "assets", f), []byte("package main\n"), 0o644)
 	}
 	for _, args := range [][]string{
 		{"init", "-b", "main"},
@@ -178,7 +178,7 @@ func TestPackInstallTheme(t *testing.T) {
 		}
 		return names
 	}
-	if got := assets("slate"); len(got) != 1 || got[0] != "logo.svg" {
+	if got := assets("slate"); len(got) != 1 || got[0] != "bg.kage" {
 		t.Errorf("installed assets %q, want the one the manifest names", got)
 	}
 
@@ -190,7 +190,7 @@ func TestPackInstallTheme(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(cfgDir, "themes", "local.json")); err != nil {
 		t.Errorf("local theme: %v", err)
 	}
-	if got := assets("local"); len(got) != 1 || got[0] != "logo.svg" {
+	if got := assets("local"); len(got) != 1 || got[0] != "bg.kage" {
 		t.Errorf("local theme's assets %q", got)
 	}
 

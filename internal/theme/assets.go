@@ -21,9 +21,9 @@ const AssetsDir = "assets"
 // The caps of an asset file (docs/DSK-010-theme-ambience.md, Caps, and
 // docs/DSK-012-theme-shaders.md, Assets).
 const (
-	maxAssetBytes   = 1 << 20  // one file
+	maxAssetBytes   = 1 << 20  // one file that no shader reads
 	maxPackBytes    = 8 << 20  // all files of a theme
-	maxStillSide    = 1024     // a still image or a sprite sheet, in pixels
+	maxStillSide    = 1024     // an image that no shader reads, in pixels
 	maxKageBytes    = 16 << 10 // a shader's source
 	maxShaderBytes  = 2 << 20  // an image that only shaders read
 	maxShaderSide   = 2048     // the same, in pixels
@@ -41,12 +41,11 @@ const (
 	FormatPNG Format = iota + 1
 	FormatAPNG
 	FormatGIF
-	FormatSVG
 	FormatKage // a shader's source, by its .kage name
 )
 
 func (f Format) String() string {
-	return [...]string{"unknown", "PNG", "APNG", "GIF", "SVG", "Kage"}[f]
+	return [...]string{"unknown", "PNG", "APNG", "GIF", "Kage"}[f]
 }
 
 // Header is what CheckHeader reads of an asset without decoding it.
@@ -84,10 +83,8 @@ func checkHeader(b []byte, maxSide int) (Header, error) {
 		if h, err = gifHeader(b); err != nil {
 			return h, err
 		}
-	case isSVG(b):
-		return Header{Format: FormatSVG, Frames: 1}, nil
 	default:
-		return h, errors.New("not a PNG, GIF or SVG file")
+		return h, errors.New("not a PNG or GIF file")
 	}
 	if h.Width <= 0 || h.Height <= 0 {
 		return h, errors.New("empty image")
@@ -186,15 +183,6 @@ func gifHeader(b []byte) (Header, error) {
 	return h, nil // a GIF cut short after whole images, as decoders take it
 }
 
-// isSVG reports whether b starts as an SVG document: an <svg element,
-// after at most an XML declaration, comments and white space.
-func isSVG(b []byte) bool {
-	head := b[:min(len(b), 1024)]
-	head = bytes.TrimPrefix(head, []byte("\xef\xbb\xbf"))
-	i := bytes.Index(head, []byte("<svg"))
-	return i >= 0 && bytes.IndexByte(bytes.TrimSpace(head), '<') == 0
-}
-
 // readAsset reads the file of an asset in dir: a regular file, not a link,
 // of at most limit bytes, in a folder that is not a link either.
 func readAsset(dir, file string, limit int) ([]byte, error) {
@@ -231,12 +219,12 @@ func readAsset(dir, file string, limit int) ([]byte, error) {
 
 // assetCaps returns the byte cap of an asset's file and the side cap of
 // its pixels, by how the manifest uses it: a shader's source, an image
-// that only theme shaders read, or an image the DSK-010 layers read.
+// that theme shaders read, or a file that nothing reads.
 func assetCaps(u assetUse, file string) (bytes, side int) {
 	switch {
 	case IsKage(file):
 		return maxKageBytes, 0
-	case u.shaderOnly():
+	case u.shader:
 		return maxShaderBytes, maxShaderSide
 	}
 	return maxAssetBytes, maxStillSide
@@ -251,45 +239,16 @@ func checkKage(b []byte) error {
 	return nil
 }
 
-// assetUse is how a manifest uses an asset: as a still image of the
-// background, as a sprite, or as the brand's icon, the one use an SVG may
-// have.
+// assetUse is how a manifest uses an asset (docs/DSK-012-theme-shaders.md):
+// shader tells that a theme shader reads the image, kage that the asset is
+// a shader's source.
 type assetUse struct {
-	still, icon bool
-	shown       float32 // the largest size it shows at, in DIPs; 0 for a fraction of the window
-	sprite      float32 // the largest height it swims at, in DIPs; 0 for none
-	// shader tells that a theme shader reads the image, kage that the
-	// asset is a shader's source (docs/DSK-012-theme-shaders.md).
 	shader, kage bool
 }
-
-// shaderOnly reports whether only theme shaders read the image, which then
-// takes the larger caps of DSK-012.
-func (u assetUse) shaderOnly() bool { return u.shader && !u.still && !u.icon && u.sprite == 0 }
 
 // uses returns how m uses each of its assets.
 func (m *Manifest) uses() map[string]assetUse {
 	out := map[string]assetUse{}
-	for _, s := range m.Ambience.Images {
-		u := out[s.Asset]
-		u.still = true
-		if s.Height > 1 && u.shown >= 0 {
-			u.shown = max(u.shown, s.Height)
-		} else {
-			u.shown = -1 // a fraction of the window: no bound
-		}
-		out[s.Asset] = u
-	}
-	for _, s := range m.Ambience.Sprites {
-		u := out[s.Asset]
-		u.sprite = max(u.sprite, s.Height)
-		out[s.Asset] = u
-	}
-	if m.Brand.Icon != "" {
-		u := out[m.Brand.Icon]
-		u.icon = true
-		out[m.Brand.Icon] = u
-	}
 	for _, slot := range m.Shaders.layers() {
 		u := out[slot.Source]
 		u.kage = true
@@ -325,25 +284,21 @@ func (s *Shaders) layers() []*ShaderLayer {
 	return out
 }
 
-// BrandIconSize is the brand row's icon, in DIPs.
-const BrandIconSize = 20
-
-// Art is a theme's decoded assets: bitmaps, an SVG for the brand, and the
-// sources of its shaders.
+// Art is a theme's decoded assets: the bitmaps and the sources of its
+// shaders.
 type Art struct {
 	Bitmaps map[string]*ui.Bitmap
-	Icon    *ui.SVG           // the brand's icon when it is an SVG
 	Sources map[string]string // the .kage assets, by name
 	Bytes   int               // the bitmaps' decoded size
 }
 
-// LoadAssets decodes the assets that m uses from dir, the theme's assets
-// folder, for a screen of the given scale. It reads each file with the
-// byte cap, checks its header before it decodes it, and decodes a still
-// image to at most twice its largest shown size. A decode that panics is
-// recovered. It drops each asset that fails, with a warning; the rest of
-// the theme draws. Call it off the UI thread.
-func LoadAssets(dir string, m *Manifest, scale float32) (*Art, []string) {
+// LoadAssets decodes the assets that m's shaders use from dir, the
+// theme's assets folder: the sources, and each image at its own size. It
+// reads each file with the byte cap and checks its header before it
+// decodes it. A decode that panics is recovered. It drops each asset that
+// fails, with a warning; the rest of the theme draws. Call it off the UI
+// thread.
+func LoadAssets(dir string, m *Manifest) (*Art, []string) {
 	art := &Art{Bitmaps: map[string]*ui.Bitmap{}, Sources: map[string]string{}}
 	var warn []string
 	total := 0
@@ -377,43 +332,11 @@ func LoadAssets(dir string, m *Manifest, scale float32) (*Art, []string) {
 			}
 			continue
 		}
-		h, err := checkHeader(b, maxSide)
-		if err != nil {
+		if _, err := checkHeader(b, maxSide); err != nil {
 			drop(err)
 			continue
 		}
-		if u.shaderOnly() {
-			u.still, u.shown = true, -1 // decodes at its own size, as a still of no bound
-		}
-		if h.Format == FormatSVG {
-			if u.still || u.sprite > 0 {
-				drop(errors.New("an SVG is only for brand.icon"))
-				continue
-			}
-			if art.Icon, err = parseSVG(b); err != nil {
-				drop(err)
-			}
-			continue
-		}
-		side := 0 // native, at most maxStillSide
-		if !u.still || u.shown >= 0 {
-			if u.still {
-				side = int(2 * max(u.shown, BrandIconSize) * scale)
-			}
-			if u.icon {
-				side = max(side, int(2*BrandIconSize*scale))
-			}
-			if u.sprite > 0 {
-				// The sprite's height is a frame's, a row of a sheet.
-				rows := 1
-				if a.Frames > 0 {
-					rows = (a.Frames + a.Columns - 1) / a.Columns
-				}
-				frame := float32(h.Height) / float32(rows)
-				side = max(side, int(2*u.sprite*scale*float32(max(h.Width, h.Height))/frame+0.5))
-			}
-		}
-		bm, err := decodeBitmap(b, side)
+		bm, err := decodeBitmap(b)
 		if err == nil {
 			w, h := bm.Size()
 			if art.Bytes+w*h*4 > maxThemeDecoded {
@@ -431,26 +354,15 @@ func LoadAssets(dir string, m *Manifest, scale float32) (*Art, []string) {
 	return art, warn
 }
 
-// decodeBitmap decodes b to at most side pixels a side, 0 for its own
-// size, and turns a panic of the decoder into an error.
-func decodeBitmap(b []byte, side int) (bm *ui.Bitmap, err error) {
+// decodeBitmap decodes b at its own size, and turns a panic of the
+// decoder into an error.
+func decodeBitmap(b []byte) (bm *ui.Bitmap, err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			bm, err = nil, fmt.Errorf("decode: %v", r)
 		}
 	}()
-	return ui.DecodeBitmapScaled(b, side)
-}
-
-// parseSVG parses an SVG icon, and turns a panic of the parser into an
-// error.
-func parseSVG(b []byte) (s *ui.SVG, err error) {
-	defer func() {
-		if r := recover(); r != nil {
-			s, err = nil, fmt.Errorf("svg: %v", r)
-		}
-	}()
-	return ui.ParseSVG(b)
+	return ui.DecodeBitmapScaled(b, 0)
 }
 
 // AssetFolder is the folder of the installed theme name's assets:

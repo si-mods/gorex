@@ -28,11 +28,11 @@ type settings struct {
 	// <config>/themes/<name>.json, which a theme pack installs too, or ""
 	// for the built-in palettes. Builds before it ignore the key.
 	Theme string `json:"appearance.theme,omitempty"`
-	// Ambience is how the theme's ambience shows
-	// (docs/DSK-010-theme-ambience.md): "" moving, "still" or "off". Mascot
-	// is "" to show the theme's mascot, or "off".
+	// Ambience is how the theme's shaders show
+	// (docs/DSK-012-theme-shaders.md): "" moving, "still" or "off". A file
+	// may still have appearance.mascot of docs/DSK-010-theme-ambience.md:
+	// the load ignores it, and the next save drops it.
 	Ambience string  `json:"appearance.ambience,omitempty"`
-	Mascot   string  `json:"appearance.mascot,omitempty"`
 	FontSize float32 `json:"fontSize,omitempty"`
 	// Language is a tag of the app's languages, or "" to follow the
 	// system's.
@@ -281,9 +281,6 @@ func checkSettings(s *settings) {
 	}
 	if s.Ambience != ambienceStill && s.Ambience != ambienceOff {
 		s.Ambience = ""
-	}
-	if s.Mascot != mascotOff {
-		s.Mascot = ""
 	}
 	if !slices.Contains(animations, s.Animation) {
 		s.Animation = ""
