@@ -2545,14 +2545,6 @@
   "@projectSheetHost": {
     "description": "New Project sheet: label over the hosts the folder can be on."
   },
-  "projectSheetFolder": "Folder",
-  "@projectSheetFolder": {
-    "description": "New Project sheet: label over the folder browser."
-  },
-  "projectSheetName": "Name",
-  "@projectSheetName": {
-    "description": "New Project sheet: label over the project's name field."
-  },
   "projectSheetUp": "Parent folder",
   "@projectSheetUp": {
     "description": "Folder browser: the row that lists the parent folder, shown as \"..\"."
@@ -2565,13 +2557,29 @@
   "@projectSheetPath": {
     "description": "Folder browser: placeholder of the field that browses: the text to its last separator is listed, the leaf filters."
   },
-  "projectSheetCreate": "Create",
-  "@projectSheetCreate": {
-    "description": "New Project sheet: button that makes the project."
+  "projectSheetPathHint": "Enter path (e.g. ~/projects/my-app)",
+  "@projectSheetPathHint": {
+    "description": "Folder browser: placeholder of the path field, as T3 Code's add-project palette."
   },
-  "projectSheetCancel": "Cancel",
-  "@projectSheetCancel": {
-    "description": "New Project sheet: button that closes it."
+  "projectSheetDirectories": "Directories",
+  "@projectSheetDirectories": {
+    "description": "Folder browser: label of the folder rows under the path field."
+  },
+  "projectSheetAdd": "Add",
+  "@projectSheetAdd": {
+    "description": "Folder browser: button in the path field that adds the folder it names."
+  },
+  "projectSheetCreateAdd": "Create & Add",
+  "@projectSheetCreateAdd": {
+    "description": "Folder browser: button in the path field when the leaf names a folder to create first."
+  },
+  "projectSheetWorking": "Working",
+  "@projectSheetWorking": {
+    "description": "Folder browser: button in the path field while the folder is being created."
+  },
+  "projectSheetCreateHint": "Press Enter to create this folder and add it as a project.",
+  "@projectSheetCreateHint": {
+    "description": "Folder browser: shown when the leaf of the path field names no folder and Enter would create it."
   },
   "projectSheetLoading": "Loading…",
   "@projectSheetLoading": {
@@ -2595,10 +2603,6 @@
   "@projectSheetDenied": {
     "description": "Folder browser: the host may not read the folder."
   },
-  "projectSheetEmpty": "No subfolders. You can use this folder.",
-  "@projectSheetEmpty": {
-    "description": "Folder browser: the folder has no folders in it, and can be used as it is."
-  },
   "projectSheetMore": "Only the first {n} folders are shown.",
   "@projectSheetMore": {
     "description": "Folder browser: the folder holds more folders than are listed.",
@@ -2608,32 +2612,6 @@
         "example": "2000"
       }
     }
-  },
-  "projectSheetNoMatch": "No folders match.",
-  "@projectSheetNoMatch": {
-    "description": "Folder browser: the leaf of the path field matches no folder of the directory listed."
-  },
-  "projectSheetChosen": "Project folder: {path}",
-  "@projectSheetChosen": {
-    "description": "New Project sheet: over the buttons, the folder that Create or Use This Folder takes: the folder listed.",
-    "placeholders": {
-      "path": {
-        "type": "String",
-        "example": "/home/me/code/acme-api"
-      }
-    }
-  },
-  "projectSheetNoChoice": "Open a folder to choose it.",
-  "@projectSheetNoChoice": {
-    "description": "New Project sheet: over the buttons, when no folder can be taken, as in the list of drives or in a folder that cannot be read."
-  },
-  "projectSheetNameNeeded": "This folder has no name. Type a name for the project.",
-  "@projectSheetNameNeeded": {
-    "description": "New Project sheet: over the buttons, at the top of a drive or of the disk, whose folder gives no name."
-  },
-  "projectSheetNameHint": "Type a name",
-  "@projectSheetNameHint": {
-    "description": "New Project sheet: placeholder of the name field when the folder gives no name."
   },
   "projectChangeFolder": "Change Folder…",
   "@projectChangeFolder": {

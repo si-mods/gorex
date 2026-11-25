@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"testing"
 	"time"
@@ -56,11 +57,10 @@ func rightClick(t *testing.T, tt *ui.Tester, label string) {
 	tt.Frame()
 }
 
-// TestNewProjectSheetLocal makes a project with the sheet, from the
-// sidebar's +: the path field is the browser — a path typed lists its
-// folder, a click goes into one, ".." goes up; the name follows the
-// folder until typed; Create shows the project, its home kept by the
-// server, with its first tab in the folder.
+// TestNewProjectSheetLocal makes a project with the sheet, as T3 Code's
+// add-project does: the path field lists the folder its directory part
+// names, a row's click goes into it, ".." goes up, and the Add the field
+// holds — or Enter — makes the project, named for the folder.
 func TestNewProjectSheetLocal(t *testing.T) {
 	a, tt := newTestApp(t)
 	old := prefs
@@ -74,37 +74,35 @@ func TestNewProjectSheetLocal(t *testing.T) {
 		t.Fatalf("the sidebar's + opened %+v", a.sheet)
 	}
 	sheetShows(t, a, tt, a.homeOf(nil))
-	if a.sheet.name == "" || a.sheet.name != folderName(a.sheet.res.Path) {
-		t.Errorf("the name of the home folder is %q", a.sheet.name)
+	if a.sheet.path != "~/" {
+		t.Errorf("the field starts at home, is %q", a.sheet.path)
 	}
 
-	// A path typed, then Enter on the row it names.
-	click(t, tt, locales.ProjectSheetPath())
-	tt.Type(root)
-	waitFor(t, tt, "the folder "+filepath.Dir(root)+" listed", func() bool {
-		return !a.sheet.loading && a.sheet.asked && sameDir(a.sheet.res.Path, filepath.Dir(root))
-	})
-	tt.Key(0, ui.KeyEnter)
+	// A path typed — into a field cleared first — lists its folder; a
+	// folder clicked goes into it.
+	a.sheet.path = ""
+	tt.Frame()
+	tt.Type(root + string(filepath.Separator))
 	sheetShows(t, a, tt, root)
 	if !tt.HasText("alpha") || !tt.HasText("beta") || tt.HasText("notes.txt") {
 		t.Fatalf("the folders of the tree: %q", tt.Texts())
 	}
 	click(t, tt, "alpha")
 	sheetShows(t, a, tt, filepath.Join(root, "alpha"))
-	if a.sheet.name != "alpha" || !tt.HasText("inner") {
-		t.Fatalf("in alpha: name %q, texts %q", a.sheet.name, tt.Texts())
+	if !tt.HasText("inner") {
+		t.Fatalf("in alpha: %q", tt.Texts())
 	}
-	// ".." goes back; the name follows the folder.
+	// ".." goes back, and highlights the folder left.
 	click(t, tt, locales.ProjectSheetUp())
 	sheetShows(t, a, tt, root)
+	if a.sheet.sel != 1 {
+		t.Errorf("back at the parent, row %d is highlighted, not alpha", a.sheet.sel)
+	}
 	click(t, tt, "beta")
 	sheetShows(t, a, tt, filepath.Join(root, "beta"))
 	folder := a.sheet.res.Path
-	if a.sheet.name != "beta" {
-		t.Errorf("the name follows the folder: %q", a.sheet.name)
-	}
 
-	click(t, tt, locales.ProjectSheetCreate())
+	click(t, tt, locales.ProjectSheetAdd())
 	waitFor(t, tt, "the new project", func() bool { return a.ws != before && a.ws != nil && len(a.tabs) == 1 && a.tabs[0].Focus != nil })
 	if a.sheet.open || a.ws.Name != "beta" || a.ws.host != nil || a.ws.Dir != folder {
 		t.Fatalf("the project %q %v %q; sheet open %v", a.ws.Name, a.ws.host, a.ws.Dir, a.sheet.open)
@@ -121,7 +119,7 @@ func TestNewProjectSheetLocal(t *testing.T) {
 }
 
 // TestNewProjectSheetHost browses a remote host's folders, on a test
-// server: an offline host shows and cannot be chosen. Create makes the
+// server: an offline host shows and cannot be chosen. Add makes the
 // project on that host (docs/MOD-002-projects.md), in the space shown, and
 // the window shows it, its first tab in the folder there.
 func TestNewProjectSheetHost(t *testing.T) {
@@ -150,12 +148,10 @@ func TestNewProjectSheetHost(t *testing.T) {
 	click(t, tt, locales.ProjectSheetUp())
 	sheetShows(t, a, tt, root)
 	click(t, tt, "beta")
-	sheetShows(t, a, tt, filepath.Join(root, "beta"))
-	// An empty name is the folder's, as the placeholder says.
-	a.sheet.name = ""
-
-	click(t, tt, locales.ProjectSheetCreate())
 	folder := filepath.Join(root, "beta")
+	sheetShows(t, a, tt, folder)
+
+	click(t, tt, locales.ProjectSheetAdd())
 	waitFor(t, tt, "the project on the host", func() bool {
 		return a.ws != nil && a.ws.host == h && sameDir(a.ws.Dir, folder) && len(a.tabs) == 1 && a.tabs[0].Focus != nil
 	})
@@ -182,7 +178,8 @@ func TestProjectSheetStaleListing(t *testing.T) {
 	if !a.sheet.loading || a.sheet.host != h {
 		t.Fatalf("no listing of the host on its way: %+v", a.sheet)
 	}
-	click(t, tt, locales.ProjectSheetCancel())
+	a.sheet.open = false
+	tt.Frame()
 
 	a.openSheet(nil, root)
 	sheetShows(t, a, tt, root)
@@ -195,8 +192,9 @@ func TestProjectSheetStaleListing(t *testing.T) {
 		time.Sleep(25 * time.Millisecond)
 		tt.Frame()
 	}
-	if s := a.sheet; s.host != nil || !sameDir(s.res.Path, alpha) || !sameDir(s.chosen(), alpha) {
-		t.Fatalf("the sheet of this machine shows %q of %v, would use %q", s.res.Path, s.host, s.chosen())
+	dir, _ := a.sheet.resolved()
+	if s := a.sheet; s.host != nil || !sameDir(s.res.Path, alpha) || !sameDir(dir, alpha) {
+		t.Fatalf("the sheet of this machine shows %q of %v, would use %q", s.res.Path, s.host, dir)
 	}
 }
 
@@ -233,6 +231,7 @@ func TestPaths(t *testing.T) {
 		{"/home/me/", "/home/me/", ""},
 		{"/", "/", ""},
 		{"~", "~", ""},
+		{"~/", "~/", ""},
 		{"~/code", "~/", "code"},
 		{"code", "", "code"},
 	} {
@@ -300,8 +299,10 @@ func (s *projectSheet) splitFor(path string) (dir, leaf string) {
 }
 
 // TestSheetEntries checks the folder rows a path field shows: ".." for
-// the parent first, then the folders the leaf keeps, the ones it starts
-// first; and that the leaf that names a folder chooses it.
+// the parent first, then the folders the leaf keeps, scored as T3 Code's
+// browse scores them — an exact name first, a prefix next, then one
+// inside the name; and that the leaf that names a folder takes it while
+// one that names none asks to create it.
 func TestSheetEntries(t *testing.T) {
 	s := &projectSheet{asked: true}
 	s.res = rex.DirListResult{Path: "/x", Parent: "/", Home: "/home/me", Dirs: []string{"alpha", "ab", "ba", "inner"}}
@@ -319,35 +320,108 @@ func TestSheetEntries(t *testing.T) {
 		t.Fatalf("all rows %q", got)
 	}
 	s.path = "/x/a"
-	if got := names(); !slices.Equal(got, []string{"..", "alpha", "ab", "ba"}) {
+	// "ab" and "alpha" start with it — the shorter first — "ba" holds
+	// it inside, "inner" does not.
+	if got := names(); !slices.Equal(got, []string{"..", "ab", "alpha", "ba"}) {
 		t.Errorf("the leaf keeps and orders %q", got)
+	}
+	s.path = "/x/alpha"
+	if dir, create := s.resolved(); dir != "/x/alpha" || create {
+		t.Errorf("an exact leaf takes %q create %v, want /x/alpha", dir, create)
 	}
 	s.path = "/x/zz"
 	if got := names(); !slices.Equal(got, []string{".."}) {
 		t.Errorf("nothing matches %q", got)
 	}
-	if s.chosen() != "" {
-		t.Errorf("a leaf that matches nothing chooses %q", s.chosen())
-	}
-	s.path = "/x/ALPHA"
-	if got := s.chosen(); got != "/x/alpha" {
-		t.Errorf("an exact leaf chooses %q, want /x/alpha", got)
+	if dir, create := s.resolved(); dir != "/x/zz" || !create {
+		t.Errorf("a new leaf creates %q create %v, want /x/zz", dir, create)
 	}
 	s.path = "/x/"
-	if got := s.chosen(); got != "/x" {
-		t.Errorf("no leaf chooses %q, want /x", got)
+	if dir, create := s.resolved(); dir != "/x" || create {
+		t.Errorf("no leaf takes %q create %v, want /x", dir, create)
 	}
 	// No parent, no ".." row.
 	s.res.Parent = ""
-	s.path = "/x/"
 	if got := names(); !slices.Equal(got, []string{"alpha", "ab", "ba", "inner"}) {
 		t.Errorf("a folder at the top %q", got)
 	}
 }
 
+// TestLeafScore checks the ranking T3 Code's scoreQueryMatch gives a
+// leaf: exact, prefix, boundary, inside, fuzzy, in tiers a thousand
+// apart; a name that holds none of it is out.
+func TestLeafScore(t *testing.T) {
+	for _, c := range []struct {
+		name, leaf string
+	}{
+		{"alpha", "alpha"},
+		{"alphabet", "alpha"},
+		{"my alpha", "alpha"},
+		{"xalpha", "alpha"},
+		{"axbxc", "abc"},
+	} {
+		if leafScore(c.name, c.leaf) < 0 {
+			t.Errorf("leafScore(%q, %q) does not match", c.name, c.leaf)
+		}
+	}
+	if leafScore("zzz", "abc") >= 0 || leafScore("", "a") >= 0 {
+		t.Error("a name without the leaf matches")
+	}
+	// The tiers, in order.
+	tiers := []int{
+		leafScore("alpha", "alpha"),
+		leafScore("alpha-zz", "alpha"),
+		leafScore("my alpha", "alpha"),
+		leafScore("xalpha", "alpha"),
+		leafScore("alnpha", "alpa"),
+	}
+	if !slices.IsSorted(tiers) || tiers[0] != 0 || tiers[1]/1000 != 1 || tiers[2]/1000 != 2 || tiers[3]/1000 != 3 || tiers[4]/1000 != 4 {
+		t.Errorf("the tiers: %v", tiers)
+	}
+	// Inside a tier, the sooner and the shorter the better.
+	if leafScore("a-alpha", "alpha") >= leafScore("zz-alpha", "alpha") {
+		t.Error("a boundary match does not rank by place")
+	}
+	if leafScore("ab", "a") >= leafScore("abcdef", "a") {
+		t.Error("a prefix match does not rank by length")
+	}
+}
+
+// TestResolvePastedPath checks what the field does with pasted text, as
+// T3 Code's resolvePastedPath says: a path pasted replaces the text,
+// quoted and escaped forms unwrapping; typed text, and pasted text that
+// names no path, stays.
+func TestResolvePastedPath(t *testing.T) {
+	for _, c := range []struct {
+		prev, next, want string
+	}{
+		// Typing and deleting keep the text.
+		{"~/cod", "~/code", "~/code"},
+		{"~/code", "~/cod", "~/cod"},
+		// A path pasted after a folder replaces; one under ~ stays,
+		// being a folder path itself.
+		{"/x/", "/x//a/b", "/a/b"},
+		{"~/x", "~/x/a/b", "~/x/a/b"},
+		{"", "/a/b c", "/a/b c"},
+		{"/a/", "/a/b/c", "/a/b/c"},
+		// Quoted and escaped paths unwrap.
+		{"", `'/a b'`, "/a b"},
+		{"", `"/a b"`, "/a b"},
+		{"", `/a\ b/c\ d`, "/a b/c d"},
+		{"", `C:\Users\me`, `C:\Users\me`},
+		// Pasted text that names no path stays.
+		{"~/x", "~/x hello", "~/x hello"},
+		{"", "hello", "hello"},
+	} {
+		if got := resolvePastedPath(c.prev, c.next); got != c.want {
+			t.Errorf("resolvePastedPath(%q, %q) = %q, want %q", c.prev, c.next, got, c.want)
+		}
+	}
+}
+
 // TestProjectSheetFilter browses by typing into the path field: the leaf
-// filters the rows, a dot asks for the hidden folders, and Enter opens
-// the leaf's match.
+// filters the rows, a dot asks for the hidden folders, and Enter takes
+// the folder the leaf names.
 func TestProjectSheetFilter(t *testing.T) {
 	a, tt := newTestApp(t)
 	root := t.TempDir()
@@ -377,21 +451,52 @@ func TestProjectSheetFilter(t *testing.T) {
 		t.Error("a leaf of a dot does not ask for the hidden folders")
 	}
 
-	// Enter in the field opens the leaf's exact match.
+	// Enter takes the folder the leaf names: gorex's project.
 	a.sheet.path = filepath.Join(root, "gorex")
 	tt.Frame()
+	before := a.ws
 	tt.Key(0, ui.KeyEnter)
-	tt.Frame()
-	sheetShows(t, a, tt, filepath.Join(root, "gorex"))
-	if !sameDir(a.sheet.chosen(), filepath.Join(root, "gorex")) {
-		t.Errorf("gorex opened, chosen %q", a.sheet.chosen())
+	waitFor(t, tt, "the gorex project", func() bool {
+		return a.ws != before && a.ws != nil && a.ws.Name == "gorex"
+	})
+	if a.sheet.open || !sameDir(a.ws.Dir, filepath.Join(root, "gorex")) {
+		t.Fatalf("Enter made %q of %q; sheet open %v", a.ws.Name, a.ws.Dir, a.sheet.open)
 	}
 }
 
-// TestProjectSheetKeys browses with the keyboard: Down and Up highlight
-// a row — ".." first — Enter opens it, Backspace and Alt+Up go up and
-// highlight the folder left, Tab completes; Enter in the name field
-// creates the project.
+// TestProjectSheetCreateFolder adds a folder that is not there: a leaf
+// that names no folder says "Create & Add" and the hint under it, and
+// Enter makes the folder — dir.mkdir — and its project.
+func TestProjectSheetCreateFolder(t *testing.T) {
+	a, tt := newTestApp(t)
+	root := folderTree(t, appTempDir(t, a))
+	a.openSheet(nil, root)
+	sheetShows(t, a, tt, root)
+
+	a.sheet.path = filepath.Join(root, "gamma")
+	tt.Frame()
+	if !a.sheet.willCreate() || !tt.HasText(locales.ProjectSheetCreateAdd()) || !tt.HasText(locales.ProjectSheetCreateHint()) {
+		t.Fatalf("a new leaf: willCreate %v, texts %q", a.sheet.willCreate(), tt.Texts())
+	}
+	dir := filepath.Join(root, "gamma")
+	before := a.ws
+	tt.Key(0, ui.KeyEnter)
+	waitFor(t, tt, "the folder made", func() bool {
+		return a.ws != before && a.ws != nil && a.ws.Name == "gamma"
+	})
+	if a.sheet.open || !sameDir(a.ws.Dir, dir) {
+		t.Fatalf("Create & Add made %q of %q; sheet open %v", a.ws.Name, a.ws.Dir, a.sheet.open)
+	}
+	if st, err := os.Stat(dir); err != nil || !st.IsDir() {
+		t.Errorf("dir.mkdir made no folder %q: %v", dir, err)
+	}
+}
+
+// TestProjectSheetKeys browses with the keyboard as T3 Code's palette
+// does: Down and Up highlight a row — ".." first — Enter opens it, Enter
+// with none highlighted takes the field's path, ⌘/Ctrl+Enter takes it
+// over a highlighted row, and Tab enters a row's folder or extends the
+// leaf to the start its folders share.
 func TestProjectSheetKeys(t *testing.T) {
 	a, tt := newTestApp(t)
 	root := folderTree(t, appTempDir(t, a))
@@ -402,6 +507,9 @@ func TestProjectSheetKeys(t *testing.T) {
 		t.Helper()
 		tt.Key(mods, k)
 		tt.Frame()
+	}
+	if !tt.Focused(locales.ProjectSheetPath()) {
+		t.Fatal("the path field did not take the focus on open")
 	}
 	// ".." is the first row, alpha and beta after it.
 	key(0, ui.KeyDown)
@@ -420,112 +528,108 @@ func TestProjectSheetKeys(t *testing.T) {
 	if a.sheet.sel != -1 {
 		t.Errorf("a folder opened highlights %d", a.sheet.sel)
 	}
-	key(0, ui.KeyBackspace)
-	sheetShows(t, a, tt, root)
-	if a.sheet.sel != 1 {
-		t.Errorf("Backspace up highlights %d, not alpha", a.sheet.sel)
-	}
-	// Tab completes "a" to alpha, in the path field — Shift+Tab back
-	// from the list puts the focus on it.
-	a.sheet.path = filepath.Join(root) + string(filepath.Separator) + "a"
-	key(ui.Shift, ui.KeyTab)
-	if !tt.Focused(locales.ProjectSheetPath()) {
-		t.Fatal("Shift+Tab did not reach the path field")
-	}
-	key(0, ui.KeyTab)
-	sheetShows(t, a, tt, alpha)
-	// Down hands the list the focus; a field's own Backspace edits.
-	key(0, ui.KeyDown)
-	key(0, ui.KeyBackspace)
-	sheetShows(t, a, tt, root)
-	if a.sheet.sel != 1 {
-		t.Errorf("Backspace up highlights %d, not alpha", a.sheet.sel)
-	}
+	// Enter on the ".." row goes up, and highlights the folder left.
 	key(0, ui.KeyDown)
 	key(0, ui.KeyEnter)
-	beta := filepath.Join(root, "beta")
-	sheetShows(t, a, tt, beta)
-	// beta has no folders: ".." alone says so, and the folder is usable.
-	if !tt.HasText(locales.ProjectSheetEmpty()) || !tt.HasText(locales.ProjectSheetChosen(a.sheet.res.Path)) {
-		t.Errorf("an empty folder: %q", tt.Texts())
-	}
-	key(ui.Alt, ui.KeyUp)
 	sheetShows(t, a, tt, root)
-	if a.sheet.sel != 2 {
-		t.Errorf("Alt+Up highlights %d, not beta", a.sheet.sel)
+	if a.sheet.sel != 1 {
+		t.Errorf("back up, row %d is highlighted, not alpha", a.sheet.sel)
 	}
+
+	// ⌘/Ctrl+Enter takes the field's path even over a highlighted row.
+	mod := ui.Cmd
+	if runtime.GOOS != "darwin" {
+		mod = ui.Ctrl
+	}
+	before := a.ws
+	key(mod, ui.KeyEnter)
+	waitFor(t, tt, "the root project over a row", func() bool {
+		return a.ws != before && a.ws != nil && sameDir(a.ws.Dir, root)
+	})
+	if a.sheet.open {
+		t.Fatal("⌘/Ctrl+Enter left the sheet open")
+	}
+
+	// Tab enters the only folder the leaf starts, and extends it to
+	// the start its folders share.
+	a.openSheet(nil, root)
+	sheetShows(t, a, tt, root)
+	a.sheet.path = filepath.Join(root, "a")
+	tt.Frame()
+	key(0, ui.KeyTab)
+	sheetShows(t, a, tt, alpha)
+	// alpha has inner alone: its leaf grows to it.
+	a.sheet.path = filepath.Join(alpha, "i")
+	tt.Frame()
+	key(0, ui.KeyTab)
+	inner := filepath.Join(alpha, "inner")
+	sheetShows(t, a, tt, inner)
 	if !a.sheet.open {
 		t.Fatal("the keys closed the sheet")
 	}
-
-	// Enter in the name field makes the project.
-	key(0, ui.KeyEnter)
-	sheetShows(t, a, tt, beta)
-	before := a.ws
-	tt.Frame()
-	// The field under its label, which shows the same text.
-	label, _ := tt.Find(locales.ProjectSheetName())
-	tt.ClickAt(label.X+20, label.Y+label.H+8+14)
-	tt.Frame()
-	if !tt.Focused(locales.ProjectSheetName()) {
-		t.Fatalf("the name field takes no focus; texts %q", tt.Texts())
-	}
-	a.sheet.name = ""
-	tt.Frame()
-	tt.Type("keyed")
-	key(0, ui.KeyEnter)
-	waitFor(t, tt, "the project made by Enter", func() bool { return a.ws != before && a.ws != nil && a.ws.Name == "keyed" })
-	if a.sheet.open || !sameDir(a.ws.Dir, beta) {
-		t.Errorf("Enter made %q in %q; sheet open %v", a.ws.Name, a.ws.Dir, a.sheet.open)
-	}
 }
 
-// TestProjectSheetCreateState checks when Create can go: a folder named
-// shows as the project's folder; the top of a disk, which has no name,
-// needs one typed; the list of drives, and a folder that cannot be read,
-// none.
-func TestProjectSheetCreateState(t *testing.T) {
+// TestProjectSheetTabPrefix checks Tab with several folders the leaf
+// starts: the leaf grows to their shared start, and a second Tab goes no
+// further.
+func TestProjectSheetTabPrefix(t *testing.T) {
+	a, tt := newTestApp(t)
+	root := t.TempDir()
+	for _, d := range []string{"alphax", "alphay", "beta"} {
+		if err := os.Mkdir(filepath.Join(root, d), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	a.openSheet(nil, root)
+	sheetShows(t, a, tt, root)
+
+	a.sheet.path = filepath.Join(root, "a")
+	tt.Frame()
+	tt.Key(0, ui.KeyTab)
+	tt.Frame()
+	if want := filepath.Join(root, "alpha"); a.sheet.path != want {
+		t.Fatalf("Tab grew the leaf to %q, want %q", a.sheet.path, want)
+	}
+	if sameDir(a.sheet.res.Path, filepath.Join(root, "alphax")) {
+		t.Fatal("Tab entered a folder two rows share")
+	}
+	tt.Key(0, ui.KeyTab)
+	tt.Frame()
+	if a.sheet.path != filepath.Join(root, "alpha") {
+		t.Errorf("a second Tab went to %q", a.sheet.path)
+	}
+	// The leaf spelled out enters its folder.
+	a.sheet.path = filepath.Join(root, "alphax")
+	tt.Frame()
+	tt.Key(0, ui.KeyTab)
+	sheetShows(t, a, tt, filepath.Join(root, "alphax"))
+}
+
+// TestProjectSheetSubmitState checks when Add can go: a folder listed,
+// or a leaf that creates one, yes; the list of drives, and a folder that
+// cannot be read, no.
+func TestProjectSheetSubmitState(t *testing.T) {
 	a, tt := newTestApp(t)
 	root := folderTree(t, appTempDir(t, a))
 	a.openSheet(nil, root)
 	sheetShows(t, a, tt, root)
 	tt.Frame()
-	if !a.sheet.ready() || !tt.HasText(locales.ProjectSheetChosen(a.sheet.res.Path)) {
-		t.Fatalf("a folder: ready %v, texts %q", a.sheet.ready(), tt.Texts())
-	}
-
-	top := "/"
-	if localWindows {
-		top = filepath.VolumeName(root) + `\`
-	}
-	a.sheet.browse(top)
-	sheetShows(t, a, tt, top)
-	tt.Frame()
-	if a.sheet.name != "" || a.sheet.ready() || !tt.HasText(locales.ProjectSheetNameNeeded()) {
-		t.Fatalf("the top of the disk: name %q, ready %v, texts %q", a.sheet.name, a.sheet.ready(), tt.Texts())
-	}
-	click(t, tt, locales.ProjectSheetCreate())
-	if !a.sheet.open {
-		t.Fatal("Create made a project of no name")
-	}
-	a.sheet.name = "disk"
-	tt.Frame()
-	if !a.sheet.ready() || !tt.HasText(locales.ProjectSheetChosen(a.sheet.res.Path)) {
-		t.Errorf("the top of the disk, named: ready %v, texts %q", a.sheet.ready(), tt.Texts())
+	if !a.sheet.canSubmit() || a.sheet.willCreate() {
+		t.Fatalf("a folder: canSubmit %v willCreate %v", a.sheet.canSubmit(), a.sheet.willCreate())
 	}
 
 	if localWindows {
 		a.sheet.browse(rex.DirTop)
 		waitFor(t, tt, "the drives", func() bool { return !a.sheet.loading && a.sheet.asked && a.sheet.res.Path == rex.DirTop })
 		tt.Frame()
-		if a.sheet.ready() || !tt.HasText(locales.ProjectSheetNoChoice()) {
-			t.Errorf("the drives: ready %v, texts %q", a.sheet.ready(), tt.Texts())
+		if a.sheet.canSubmit() {
+			t.Error("the list of drives is not a folder to add")
 		}
 	}
 	a.sheet.browse(filepath.Join(root, "none"))
 	waitFor(t, tt, "a folder gone", func() bool { return !a.sheet.loading && a.sheet.asked && a.sheet.res.Code != "" })
 	tt.Frame()
-	if a.sheet.ready() || !tt.HasText(locales.ProjectSheetNoChoice()) {
-		t.Errorf("a folder gone: ready %v, texts %q", a.sheet.ready(), tt.Texts())
+	if a.sheet.canSubmit() {
+		t.Error("a folder gone can be added")
 	}
 }

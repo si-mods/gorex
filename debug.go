@@ -416,7 +416,7 @@ func (a *App) debug(dir, line string) {
 			key, v, _ := strings.Cut(arg, " ")
 			setRowOpen(key, v != "closed")
 		})
-	case "sheet": // open [HOSTID] DIR: the New Project sheet on a host ("local" for this machine) in DIR; browse DIR; create; close
+	case "sheet": // open [HOSTID] DIR: the New Project sheet on a host ("local" for this machine) in DIR; browse DIR; leaf TEXT; create; close
 		win.Update(func() {
 			v, rest, _ := strings.Cut(arg, " ")
 			switch v {
@@ -429,8 +429,10 @@ func (a *App) debug(dir, line string) {
 				}
 			case "browse":
 				a.sheet.browse(rest)
+			case "leaf": // TEXT: the path field's leaf
+				a.sheet.path = a.sheet.dir() + rest
 			case "create":
-				a.finishSheet()
+				a.sheetSubmit()
 			case "close":
 				a.sheet.open = false
 			case "down", "up": // the arrow keys in the folder list

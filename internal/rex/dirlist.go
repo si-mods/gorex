@@ -103,6 +103,41 @@ func (s *Server) doDirList(req Request, _ string, _ *keptConn) (any, error) {
 	}
 }
 
+// doDirMkdir makes the directory a "dir.mkdir" asks for (DirMkdir), as
+// the user the sessions run as.
+func (s *Server) doDirMkdir(req Request, _ string, _ *keptConn) (any, error) {
+	var o DirMkdir
+	if req.DirMkdir != nil {
+		o = *req.DirMkdir
+	}
+	home, err := s.homeDir()
+	if err != nil {
+		return nil, err
+	}
+	return nil, s.mkdirAsSession(home, o.Path)
+}
+
+// mkdirDir makes path and the folders under it that are missing, as the
+// user making it. Path is read as listDir reads it: "~" and a relative
+// path are of home; the top of the machine is no answer.
+func mkdirDir(home, path string) error {
+	if isTop(path) {
+		return fmt.Errorf("rex: %q is the top of the machine", path)
+	}
+	if _, ok := volumePath(path); !ok {
+		return fmt.Errorf("rex: %q is not a folder path", path)
+	}
+	if h, err := filepath.EvalSymlinks(home); err == nil {
+		home = h
+	}
+	if rest, ok := strings.CutPrefix(path, "~"); ok && (rest == "" || rest[0] == '/' || rest[0] == filepath.Separator) {
+		path = filepath.Join(home, rest)
+	} else if !filepath.IsAbs(path) {
+		path = filepath.Join(home, path)
+	}
+	return os.MkdirAll(filepath.Clean(path), 0o755)
+}
+
 // listDir lists the directories in path, of home when it is not absolute.
 // It stops reading once dirListTimeout has passed, when doDirList has
 // answered without it.

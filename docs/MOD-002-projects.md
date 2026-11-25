@@ -72,7 +72,7 @@ The author of #771 made these decisions in the review of #773:
 
 The design keeps these parts from v0.38.0:
 
-- the folder browser and `dir.list`
+- the folder browser, `dir.list` and `dir.mkdir`
 - the rule that a new tab of a project starts in its folder
 - the folder check
 - the folder sheets of Rex Go and the web client
@@ -156,6 +156,20 @@ type DirListResult struct {
 - On Windows, `Path` "" is the home directory. A root lists the drives.
 - The app calls the operation on a remote host through the client of that host, as it sends other commands (`hostConn`).
 - The Rex API serves the operation as `gorex.dir.list` (a GoRex method). The welcome lists `gorex.dir_list`. Rex Go and the web client use it. The same callers can use it as `session.create`. A caller that can start a shell can already read the directory tree.
+
+A sibling operation makes a directory — New Project's "Create & Add" is the caller, which makes the folder its field names and then creates the project in it:
+
+```go
+// "dir.mkdir": make Path, with its parents, on this machine.
+type DirMkdir struct {
+	Op   string `json:"op"`             // "dir.mkdir"
+	Path string `json:"path"`           // absolute, or ~ of the home directory
+}
+```
+
+- `Path` reads as `dir.list`'s does: absolute, `~` or `~/…` of the home directory, or relative to it; symlinks on it are resolved first. The drives' top is refused, as is a device or pipe path (`rex.VolumePath`, the same rule as `dir.list`).
+- The folder and any parents are made with the session user's rights, mode `0755`; a folder already there is a success, as `MkdirAll` says.
+- The welcome lists `gorex.dir_mkdir` (`CapabilityDirMkdir`). A client that talks to a server without it falls back to its own Add flow, which refuses a folder that is not there. It is allowed to the same callers as `dir.list`.
 
 ### Desktop sidebar
 
@@ -283,32 +297,29 @@ The control `This Mac › gorex ▾` opens this menu:
 
 ### New Project
 
-The `+` of the header of a host opens the New Project sheet with the host chosen; New Project… in the palette and in the File menu opens it on this machine. The sheet's folder picker is one field, as T3 Code's add-project input is (`pingdotgg/t3code`): the text to the field's last separator is the directory listed; the leaf after it filters the folders shown.
+The `+` of the header of a host opens the New Project sheet with the host chosen; New Project… in the palette and in the File menu opens it on this machine. The sheet copies T3 Code's add-project input (`apps/web/src/components/CommandPalette.tsx` in `pingdotgg/t3code`): the path field is the browser. The text to its last separator is the directory the "Directories" group lists; the leaf after it filters the folders shown, names the folder a row opens, and creates a folder no row names.
 
 ```
 ┌──────────────── New Project on alice-tower ────────────────┐
 │ Host    (This Mac) (alice-tower) (old-laptop off)          │
-│ Folder                                          Choose…   │
-│         ┌───────────────────────────────────────────────┐  │
-│         │ /home/alice/▎                                 │  │
-│         │────────────────────────────────────────────── │  │
-│         │ ↑  ..                                         │  │
-│         │ [F] work                                      │  │
-│         │ [F] trainer                                   │  │
-│         │ [F] datasets                                  │  │
-│         └───────────────────────────────────────────────┘  │
-│ Name    [ work                    ]                        │
-│ Project folder: /home/alice/work                           │
-│                                 [ Cancel ]   [ Create ]    │
+│         ┌─────────────────────────────────────────────┐    │
+│         │ [F+] /home/alice/cod▎           [Add    ↩] │    │
+│         ├─────────────────────────────────────────────┤    │
+│         │ Directories                                   │  │
+│         │ ↖  ..                                         │  │
+│         │ [F] code                                      │  │
+│         │ [F] codepen                                   │  │
+│         └─────────────────────────────────────────────┘    │
+│                                                   Choose…  │
 └────────────────────────────────────────────────────────────┘
 ```
 
-- `~` is the home directory; `C:\` a drive; a bare name filters the home directory's folders. A leaf that starts with `.` lists the hidden folders too. A leaf that names a folder exactly is that folder, as the status line shows it.
-- A click or Enter opens the highlighted folder — or, with no folder highlighted, the leaf's exact or first match. Tab completes the folders' common start, or opens the only one. `..` — the first row — lists the parent, as do Backspace and ⌥↑; Backspace in the field edits the path.
-- ↓ and ↑ highlight a row; a folder the listing cannot show, one gone or unreadable, says so where the rows are.
-- On this machine Choose… opens the system's folder panel; a host's folders are browsed in the field alone.
-- Create makes the project in the current space and opens its first tab in the folder. A leaf that matches no folder leaves nothing chosen.
-- A folder can be a project of this host already. Then Create shows that project and makes no second project. When that project is in another space, Create asks whether to move it to this space.
+- `~/` is the home directory, where the field starts; `C:\` a drive's root; a bare name filters the home directory's folders. A pasted path replaces the text, quoted and escaped forms unwrapping (`resolvePastedPath`). A leaf that starts with `.` lists the hidden folders too.
+- The rows rank as T3 Code's `scoreQueryMatch` does: an exact name, then a prefix, one at a boundary, one inside the name, then a fuzzy one. ↓ and ↑ highlight a row.
+- A click or Enter opens the highlighted row — `..` lists the parent, a folder goes into it. With no row highlighted, Enter takes the field's path: the directory listed, or the folder the leaf names exactly. ⌘/Ctrl+Enter takes the path even over a highlighted row. Tab opens a highlighted row, enters the only folder the leaf starts, or extends the leaf to the start its folders share.
+- Add — the button the field holds — makes the project named for the folder and opens its first tab in it. A leaf that names no folder says "Create & Add" and "Press Enter to create this folder and add it as a project."; submitting makes the folder with `dir.mkdir` first, and a server without `gorex.dir_mkdir` answers with its error. On Windows' list of drives there is no folder to take.
+- Esc closes the sheet; it has no Create or Cancel buttons. On this machine Choose… opens the system's folder panel; a host's folders are browsed in the field alone.
+- A folder can be a project of this host already. Then Add shows that project and makes no second project. When that project is in another space, it asks whether to move it here.
 
 ### New tabs and panes
 

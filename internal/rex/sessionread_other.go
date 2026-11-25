@@ -20,4 +20,8 @@ func listDirAsUserHelper(spawner, string, string, bool) (DirListResult, error) {
 	return DirListResult{}, errReadAsUser
 }
 
+func mkdirAsUserHelper(spawner, string, string) error {
+	return errReadAsUser
+}
+
 func sendOpened(string) error { return errReadAsUser }

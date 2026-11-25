@@ -158,3 +158,22 @@ func listDirAsUserHelper(sp spawner, home, path string, hidden bool) (DirListRes
 	}
 	return a.Result, nil
 }
+
+// mkdirAsUserHelper makes the directory path as sp.user, in the helper.
+func mkdirAsUserHelper(sp spawner, home, path string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), dirListTimeout.get()+5*time.Second)
+	defer cancel()
+	cmd := sessionReadCmd(ctx, sp, "mkdir", sessionRead{Path: path, Home: home})
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+	closeOnExecAll()
+	err := cmd.Run()
+	var a listAnswer
+	if jerr := json.Unmarshal(stdout.Bytes(), &a); jerr != nil {
+		return helperError(err, &stderr)
+	}
+	if a.Error != "" {
+		return errors.New(a.Error)
+	}
+	return nil
+}

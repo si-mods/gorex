@@ -176,6 +176,43 @@ func TestDirListRemote(t *testing.T) {
 	}
 }
 
+// TestDirMkdir makes directories through a client: nested ones with
+// their parents, "~" and relative of home; making one already there is
+// no error, the top of the machine is refused.
+func TestDirMkdir(t *testing.T) {
+	_, c, home := dirListFixture(t)
+	h, err := c.Hello()
+	if err != nil || !h.Can(CapabilityDirMkdir) {
+		t.Fatalf("hello %v %v: no %s", h.Capabilities, err, CapabilityDirMkdir)
+	}
+	for _, path := range []string{
+		filepath.Join(home, "work", "new", "deep"),
+		filepath.Join("~", "tilde", "way"),
+		"relative",
+		filepath.Join(home, "work", "new", "deep"), // already there
+	} {
+		if err := c.DirMkdir(path); err != nil {
+			t.Errorf("dir.mkdir %q: %v", path, err)
+		}
+	}
+	for _, dir := range []string{
+		filepath.Join(home, "work", "new", "deep"),
+		filepath.Join(home, "tilde", "way"),
+		filepath.Join(home, "relative"),
+	} {
+		if st, err := os.Stat(dir); err != nil || !st.IsDir() {
+			t.Errorf("no folder at %q: %v", dir, err)
+		}
+	}
+	if runtime.GOOS == "windows" {
+		if err := c.DirMkdir(DirTop); err == nil {
+			t.Error("the drives' top was made")
+		}
+	} else if err := c.DirMkdir("/"); err != nil {
+		t.Errorf("/, which is there: %v", err)
+	}
+}
+
 // TestDirListTop lists the top of the machine: "/" on macOS and Linux,
 // the drives on Windows, above whose roots it is.
 func TestDirListTop(t *testing.T) {
