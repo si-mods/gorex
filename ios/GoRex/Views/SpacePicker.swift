@@ -408,6 +408,16 @@ struct EditSpaces: View {
         .onAppear { list = spaces }
     }
 
+    /// A menu item's icon: the color's dot, checked when it is the
+    /// space's color. A palette-colored UIImage keeps its color inside
+    /// menus, where a tinted SF Symbol comes out monochrome.
+    private func menuDot(_ color: UIColor, on: Bool, outline: Bool = false) -> Image {
+        let name = on ? (outline ? "checkmark.circle" : "checkmark.circle.fill")
+            : (outline ? "circle" : "circle.fill")
+        return Image(uiImage: UIImage(systemName: name,
+                                      withConfiguration: UIImage.SymbolConfiguration(paletteColors: [color]))!)
+    }
+
     /// A space's row: its color to pick, its name, and Rename.
     private func row(_ s: String) -> some View {
         HStack(spacing: 12) {
@@ -416,14 +426,22 @@ struct EditSpaces: View {
                     Button {
                         book.setColor(c.id, for: s)
                     } label: {
-                        if book.colors[s] == c.id { Label(HostSection.colorName(c.id), systemImage: "checkmark") } else { Text(HostSection.colorName(c.id)) }
+                        Label {
+                            Text(HostSection.colorName(c.id))
+                        } icon: {
+                            menuDot(UIColor(Color(project: c.id) ?? .secondary), on: book.colors[s] == c.id)
+                        }
                     }
                 }
                 Divider()
                 Button {
                     book.setColor(nil, for: s)
                 } label: {
-                    if book.colors[s] == nil { Label("No Color", systemImage: "checkmark") } else { Text("No Color") }
+                    Label {
+                        Text("No Color")
+                    } icon: {
+                        menuDot(.secondaryLabel, on: book.colors[s] == nil, outline: true)
+                    }
                 }
             } label: {
                 Circle()
