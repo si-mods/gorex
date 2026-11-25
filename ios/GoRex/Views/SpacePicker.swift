@@ -408,21 +408,48 @@ struct EditSpaces: View {
         .onAppear { list = spaces }
     }
 
+    /// A menu item's icon: the color's dot, checked when it is the
+    /// space's color. A palette-colored UIImage keeps its color inside
+    /// menus, where a tinted SF Symbol comes out monochrome.
+    private func menuDot(_ color: UIColor, on: Bool, outline: Bool = false) -> Image {
+        let name = on ? (outline ? "checkmark.circle" : "checkmark.circle.fill")
+            : (outline ? "circle" : "circle.fill")
+        return Image(uiImage: UIImage(systemName: name,
+                                      withConfiguration: UIImage.SymbolConfiguration(paletteColors: [color]))!)
+    }
+
     /// A space's row: its color to pick, its name, and Rename.
     private func row(_ s: String) -> some View {
         HStack(spacing: 12) {
             Menu {
                 ForEach(ProjectColor.all, id: \.id) { c in
-                    Button(HostSection.colorName(c.id)) { book.setColor(c.id, for: s) }
+                    Button {
+                        book.setColor(c.id, for: s)
+                    } label: {
+                        Label {
+                            Text(HostSection.colorName(c.id))
+                        } icon: {
+                            menuDot(UIColor(Color(project: c.id) ?? .secondary), on: book.colors[s] == c.id)
+                        }
+                    }
                 }
                 Divider()
-                Button("No Color") { book.setColor(nil, for: s) }
+                Button {
+                    book.setColor(nil, for: s)
+                } label: {
+                    Label {
+                        Text("No Color")
+                    } icon: {
+                        menuDot(.secondaryLabel, on: book.colors[s] == nil, outline: true)
+                    }
+                }
             } label: {
                 Circle()
                     .fill(Color(project: book.colors[s]) ?? Color.secondary.opacity(0.4))
                     .frame(width: 22, height: 22)
             }
             .accessibilityLabel("Color")
+            .accessibilityValue(book.colors[s].map { HostSection.colorName($0) } ?? String(localized: "No Color"))
             Text(verbatim: SpaceName.shown(s))
             Spacer()
             if !s.isEmpty {

@@ -139,6 +139,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - New Project's Space row is a picker now: choose the space the project goes into, which starts as the one you were viewing.
 - With Developer Mode on, the floating connection bar at the top no longer covers the first row of the computer list.
 - A tab's long-press menu no longer has Close Other Tabs. Close Tab still closes one tab.
+- Settings: choose System, Light or Dark right in the Interface row, and Minimum Contrast from a menu. A space's Color menu shows each color's dot and marks the current one.
 
 ## zh-Hans
 - 智能体的提问现在用标记区分选法：只能选一个时是圆形单选按钮，可以选多个时是方形勾选框；选好之前「发送」不可点，并提示「请选择答案」。
@@ -270,3 +271,4 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - 新建项目表单里的「空间」现在可以点选了：项目建在你选的空间里，默认是你正在查看的空间。
 - 打开「开发者模式」后，顶部的悬浮连接条不再盖住电脑列表的第一行。
 - 长按标签页的菜单里不再有「关闭其他标签页」。「关闭标签页」仍可关闭单个标签页。
+- 「设置」的「界面」一行可直接选「系统」「浅色」「深色」，「最小对比度」改从菜单选择；「编辑空间」的颜色菜单用色点展示每个颜色并标出当前色。
