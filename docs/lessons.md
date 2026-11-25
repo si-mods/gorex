@@ -320,6 +320,11 @@ Each item has a **Trigger** (what the diff shows), a **Check** (what the author 
 - **Check:** the look comes from the theme pack (its assets and its own shader, DSK-012), not from GoRex. A fixed kind with knobs is hard-coding (`CLAUDE.md`, Architecture decisions; DSK-008 Non-goals). If the feature cannot be that open, it is not built.
 - **Source:** #1083 and #1099 built glows, a watermark, swimming sprites and a brand row as fixed layer kinds with knobs (DSK-010); the user ruled that a look with knobs is hard-coding (#1117), and #1120 removed them.
 
+### A bulk close with no undo
+- **Trigger:** the diff adds a menu item or command that ends several tabs, panes or sessions at once.
+- **Check:** the owner asked for it by name, and every client gets the same item. An ended session has no undo, so a confirm before it is the only guard.
+- **Source:** #971 added Close Other Tabs on the desktop, the web and iOS. The owner had it removed from all three after a review of how GoRex confirms destructive actions (#1095).
+
 ## Security
 
 ### Fork PR touching `.github/`

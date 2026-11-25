@@ -13,7 +13,7 @@ struct FeaturesView: View {
             ("Projects under each host", "Each host lists its projects of the space, the latest used first; those not used for 30 days are under Older, and the tabs with no project come last, in every space."),
             ("A project from a folder", "The + by a host browses its folders and makes a project of one. New Tab in a project opens on its host, in its folder."),
             ("Long-press a project for its menu", "New Tab, Rename, Color, Move to Space and Close Project, which asks first."),
-            ("Long-press a tab for its menu", "Rename Tab, Reset Name, Move Up, Move Down, Move to Project, New Tab, Close Tab and Close Other Tabs."),
+            ("Long-press a tab for its menu", "Rename Tab, Reset Name, Move Up, Move Down, Move to Project, New Tab and Close Tab."),
             ("Hosts that are away", "A host that is offline shows its projects and their tabs greyed, as Rex Go last saw them."),
             ("Activity under the eye", "The eye lists the tabs of every host by what their programs need: waiting for input first, then failed, done and working, with how long ago."),
             ("Search tabs", "The search at the bottom filters the tabs by title, in the list and under the eye."),

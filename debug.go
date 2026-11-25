@@ -209,13 +209,7 @@ func (st *store) debug(dir, line string) {
 			}
 		})
 	case "cancel": // keeps it, and what a question before closing tabs or a pane asks about
-		debugMain(func() { a.wsConfirm, a.closeAsk.open, a.closeOthersOpen = false, false, false })
-	case "close-others": // the active tab's Close Other Tabs, which asks first
-		debugMain(func() {
-			if t := a.tab(); t != nil {
-				a.askCloseOthers(t)
-			}
-		})
+		debugMain(func() { a.wsConfirm, a.closeAsk.open = false, false })
 	default:
 		a.debug(dir, line)
 	}
