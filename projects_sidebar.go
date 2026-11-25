@@ -574,7 +574,7 @@ func (a *App) waitingRow(c *ui.Context, k *colors, h *hostConn, ad layout.Adopti
 // projectMenu is a project's menu (docs/MOD-002-projects.md): New Tab, Rename…,
 // Color, Move to Space, Reveal Folder (this machine's), Close Project….
 func (a *App) projectMenu(m *ui.Menu, w *Workspace) {
-	if m.Item(locales.CmdNewTab()).Chosen() {
+	if m.Item(locales.CmdNewTab()).Disabled(w.offline()).Chosen() {
 		a.laterService(func() { a.newTabIn(w) })
 	}
 	if w.Dir == "" {

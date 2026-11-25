@@ -5,6 +5,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/egoist/mygo/ui"
 
@@ -159,7 +160,7 @@ func TestThemeBackgroundShader(t *testing.T) {
 	fakeGPU(t)
 	draw := func() []uint8 {
 		return ui.NewTester(func(c *ui.Context) {
-			ui.Box(c).Fill().Draw(func(p *ui.Painter, r ui.Rect) { paintBackground(p, r, &lightColors, 1, false, false) })
+			ui.Box(c).Fill().Draw(func(p *ui.Painter, r ui.Rect) { paintBackground(p, r, &lightColors, 1, false, false, nil) })
 		}, 60, 40).Image().Pix
 	}
 	before := draw()
@@ -180,7 +181,7 @@ func TestThemeBackgroundShader(t *testing.T) {
 		t.Fatalf("the background slot fails: %q", set.warn)
 	}
 	img := ui.NewTester(func(c *ui.Context) {
-		ui.Box(c).Fill().Draw(func(p *ui.Painter, r ui.Rect) { paintBackground(p, r, &lightColors, 1, false, false) })
+		ui.Box(c).Fill().Draw(func(p *ui.Painter, r ui.Rect) { paintBackground(p, r, &lightColors, 1, false, false, nil) })
 	}, 60, 40).Image()
 	if o := img.PixOffset(30, 20); [3]uint8(img.Pix[o:o+3]) != [3]uint8{230, 204, 179} {
 		t.Errorf("the theme's background paints %v, want 230 204 179", img.Pix[o:o+4])
@@ -191,7 +192,7 @@ func TestThemeBackgroundShader(t *testing.T) {
 // background is the built-in one, and each face its flat color.
 func TestThemeShaderCPU(t *testing.T) {
 	view := func(c *ui.Context) {
-		ui.Column(c).Fill().Draw(func(p *ui.Painter, r ui.Rect) { paintBackground(p, r, &lightColors, 1, false, false) }).Children(func() {
+		ui.Column(c).Fill().Draw(func(p *ui.Painter, r ui.Rect) { paintBackground(p, r, &lightColors, 1, false, false, nil) }).Children(func() {
 			paintFace(ui.Box(c).Height(20).Width(40), paletteOf(false), roleTitleBarBackground, ui.Hex("#e4e4e4"))
 		})
 	}
@@ -267,7 +268,7 @@ func Fragment(dst vec4, pos vec2) vec4 {
 			themeShaderGPU = func(*ui.Painter) bool { return true }
 			tt := ui.NewTester(func(c *ui.Context) {
 				moves := themeShaderMoves(c)
-				ui.Box(c).Fill().Draw(func(p *ui.Painter, r ui.Rect) { paintBackground(p, r, &lightColors, 1, false, moves) })
+				ui.Box(c).Fill().Draw(func(p *ui.Painter, r ui.Rect) { paintBackground(p, r, &lightColors, 1, false, moves, nil) })
 			}, 40, 30)
 			tc.set(tt)
 			tt.Frame()
@@ -436,6 +437,174 @@ func TestThemeShaderLayers(t *testing.T) {
 			t.Errorf("a second layer unreadable at its max: drawn %v, warnings %q", set.faces[roleTitleBarBackground] != nil, set.warn)
 		}
 	})
+}
+
+// TestThemeShaderPointer: a version 2 shader reads Pointer in the window
+// while the theme's shaders move, and its place stands with z and w at 0
+// while they are still; the checks fail a shader unreadable with the
+// pointer pressed at the center, naming the variant; each window keeps
+// its own; in version 1 Pointer is an ordinary param.
+func TestThemeShaderPointer(t *testing.T) {
+	fakeGPU(t)
+	battery := shaderOnBattery
+	shaderOnBattery = func() bool { return false }
+	ambience, animation := prefs.Ambience, prefs.Animation
+	t.Cleanup(func() { prefs.Ambience, prefs.Animation, shaderOnBattery = ambience, animation, battery })
+	prefs.Animation = ""
+	m, art := shaderTheme(t, `{
+  "assets": { "bg": "bg.kage" },
+  "shaders": { "api": 2, "background": { "source": "bg", "params": { "Pointer": [1, 2, 3, 4] } } }
+}`, map[string]string{"bg": "package main\n\nvar Dark float\nvar Pointer vec4\n\nfunc Fragment(dst vec4, pos vec2) vec4 {\n\tv := mix(0.85, 0.12, Dark) + 0.01*Pointer.z\n\treturn vec4(v, v, v, 1)\n}\n"})
+	if set := useShaders(t, m, art); set.background == nil || !set.anyPointer || set.anyTime {
+		t.Fatalf("the slot fails: %q", set.warn)
+	}
+	view := func(c *ui.Context) {
+		moves := themeShaderMoves(c)
+		root := ui.Box(c).Fill()
+		sw := windowShader(root)
+		root.Draw(func(p *ui.Painter, r ui.Rect) { paintBackground(p, r, &lightColors, 1, false, moves, sw) })
+	}
+	t.Run("moving", func(t *testing.T) {
+		prefs.Ambience = ""
+		tt := ui.NewTester(view, 100, 80)
+		tt.Move(30, 20)
+		if f := currentFrame(); f.pointer != [4]float32{30, 20, 1, 0} || !f.watch {
+			t.Errorf("after a move: Pointer %v, watched %v", f.pointer, f.watch)
+		}
+		tt.Press(40, 25)
+		if f := currentFrame(); f.pointer != [4]float32{40, 25, 1, 1} {
+			t.Errorf("pressed: Pointer %v", f.pointer)
+		}
+		tt.Release(40, 25)
+		if tt.FramePending() {
+			t.Error("a shader that reads Pointer and not Time asks for frames while the pointer stands")
+		}
+	})
+	t.Run("still", func(t *testing.T) {
+		prefs.Ambience = ""
+		tt := ui.NewTester(view, 100, 80)
+		tt.Move(30, 20)
+		tt.Press(30, 20)
+		prefs.Ambience = ambienceStill
+		tt.Release(30, 20)
+		tt.Move(60, 50)
+		if f := currentFrame(); f.pointer != [4]float32{30, 20, 0, 0} || f.watch {
+			t.Errorf("still: Pointer %v, watched %v; want it to stand at 30,20 with z and w 0", f.pointer, f.watch)
+		}
+		if tt.FramePending() {
+			t.Error("still, the pointer asks for frames")
+		}
+	})
+	t.Run("two windows", func(t *testing.T) {
+		prefs.Ambience = ""
+		a, b := ui.NewTester(view, 100, 80), ui.NewTester(view, 100, 80)
+		b.SetWindowActive(false)
+		a.Move(30, 20)
+		b.Move(70, 60)
+		if f := currentFrame(); f.pointer != [4]float32{} || f.watch {
+			t.Errorf("a still window that never watched draws Pointer %v, watched %v; want its own zero, not the other window's", f.pointer, f.watch)
+		}
+		a.SetWindowActive(false)
+		b.SetWindowActive(true)
+		b.Move(75, 65)
+		if f := currentFrame(); f.pointer != [4]float32{75, 65, 1, 0} {
+			t.Errorf("the moving window draws Pointer %v, want 75,65,1,0", f.pointer)
+		}
+		a.Frame()
+		if f := currentFrame(); f.pointer != [4]float32{30, 20, 0, 0} {
+			t.Errorf("the window gone still draws Pointer %v, want its own 30,20 with z and w 0", f.pointer)
+		}
+	})
+	t.Run("pressed in the sidebar", func(t *testing.T) {
+		m, art := shaderTheme(t, `{
+  "assets": { "bg": "bg.kage" },
+  "shaders": { "api": 2, "background": { "source": "bg" } }
+}`, map[string]string{"bg": "package main\n\nvar Dark float\nvar Pointer vec4\n\nfunc Fragment(dst vec4, pos vec2) vec4 {\n\tv := mix(0.9, 0.1, Dark)\n\tif Pointer.w > 0.5 && Pointer.x < 400 && Pointer.y > 100 {\n\t\tv = 0.5\n\t}\n\treturn vec4(v, v, v, 1)\n}\n"})
+		set := useShaders(t, m, art)
+		if set.background != nil || len(set.warn) != 1 || !strings.Contains(set.warn[0], "Pointer pressed in the sidebar: behind the sidebar") {
+			t.Errorf("a background unreadable while pressed in the sidebar: drawn %v, warnings %q", set.background != nil, set.warn)
+		}
+	})
+	t.Run("pressed at the center", func(t *testing.T) {
+		m, art := shaderTheme(t, `{
+  "roles": { "titleBar.background": "#e4e4e4" },
+  "assets": { "bar": "bar.kage" },
+  "shaders": { "api": 2, "faces": { "titleBar.background": { "source": "bar" } } }
+}`, map[string]string{"bar": "package main\n\nvar Pointer vec4\n\nfunc Fragment(dst vec4, pos vec2) vec4 {\n\tv := 0.9 - 0.5*Pointer.w\n\treturn vec4(v, v, v, 1)\n}\n"})
+		set := useShaders(t, m, art)
+		if set.faces[roleTitleBarBackground] != nil || len(set.warn) != 1 || !strings.Contains(set.warn[0], "Pointer pressed at the center: ") {
+			t.Errorf("a face unreadable while pressed: drawn %v, warnings %q", set.faces[roleTitleBarBackground] != nil, set.warn)
+		}
+	})
+	t.Run("version 1", func(t *testing.T) {
+		// In version 1, Pointer is an ordinary param: the manifest sets it,
+		// or it is zero with a warning.
+		src := map[string]string{"bar": "package main\n\nvar Pointer vec4\n\nfunc Fragment(dst vec4, pos vec2) vec4 {\n\treturn vec4(0.9-Pointer.x, 0.9, 0.9, 1)\n}\n"}
+		face := func(params string) *themeShaders {
+			m, art := shaderTheme(t, `{
+  "roles": { "titleBar.background": "#e4e4e4" },
+  "assets": { "bar": "bar.kage" },
+  "shaders": { "api": 1, "faces": { "titleBar.background": { "source": "bar"`+params+` } } }
+}`, src)
+			return useShaders(t, m, art)
+		}
+		set := face(`, "params": { "Pointer": [0.02, 0, 0, 0] }`)
+		sl := set.faces[roleTitleBarBackground]
+		if sl == nil || len(set.warn) != 0 || sl.readsPointer() {
+			t.Fatalf("a version 1 param named Pointer: drawn %v, warnings %q", sl != nil, set.warn)
+		}
+		img := renderSlot(sl, 4, 4, 1, ui.Point{X: 4, Y: 4}, false, shaderFrame{pointer: [4]float32{0.5, 0.5, 1, 1}})
+		if r := img.Pix[img.PixOffset(2, 2)]; r < 224 || r > 226 {
+			t.Errorf("the manifest's Pointer paints red %d, want 225 (0.9 - 0.02); the frame's pointer must not reach it", r)
+		}
+		set = face("")
+		if set.faces[roleTitleBarBackground] == nil || len(set.warn) != 1 || !strings.Contains(set.warn[0], "uniform Pointer: no param sets it, so it is zero") {
+			t.Errorf("an unset version 1 Pointer: drawn %v, warnings %q", set.faces[roleTitleBarBackground] != nil, set.warn)
+		}
+	})
+}
+
+// TestThemeShaderFaceTime: a face shader that reads Time moves in the
+// frames that only paint again, as the background does: its material asks
+// for them, and MyGo paints it again as a part.
+func TestThemeShaderFaceTime(t *testing.T) {
+	fakeGPU(t)
+	battery := shaderOnBattery
+	shaderOnBattery = func() bool { return false }
+	ambience, animation := prefs.Ambience, prefs.Animation
+	t.Cleanup(func() { prefs.Ambience, prefs.Animation, shaderOnBattery = ambience, animation, battery })
+	prefs.Ambience, prefs.Animation = "", ""
+	m, art := shaderTheme(t, `{
+  "roles": { "titleBar.background": "#e4e4e4" },
+  "assets": { "bar": "bar.kage" },
+  "shaders": { "api": 1, "faces": { "titleBar.background": { "source": "bar" } } }
+}`, map[string]string{"bar": "package main\n\nvar Time float\n\nfunc Fragment(dst vec4, pos vec2) vec4 {\n\tv := 0.9 + 0.03*sin(Time*5)\n\treturn vec4(v, v, v, 1)\n}\n"})
+	if set := useShaders(t, m, art); set.faces[roleTitleBarBackground] == nil || !set.anyTime {
+		t.Fatalf("the face fails: %q", set.warn)
+	}
+	builds := 0
+	tt := ui.NewTester(func(c *ui.Context) {
+		builds++
+		moves := themeShaderMoves(c)
+		root := ui.Column(c).Fill()
+		sw := windowShader(root)
+		root.Draw(func(p *ui.Painter, r ui.Rect) { paintBackground(p, r, &lightColors, 1, false, moves, sw) }).Children(func() {
+			paintFace(ui.Box(c).Size(60, 20), paletteOf(false), roleTitleBarBackground, ui.Hex("#e4e4e4"))
+		})
+	}, 80, 40)
+	px := func() uint8 { img := tt.Image(); return img.Pix[img.PixOffset(30, 10)] }
+	b, before := builds, px()
+	moved := false
+	for range 6 {
+		tt.Advance(100 * time.Millisecond)
+		moved = moved || px() != before
+	}
+	if builds != b {
+		t.Errorf("the frames built the view %d times, want them only painting", builds-b)
+	}
+	if !moved {
+		t.Errorf("the face stays at %d over 0.6 s of frames that only paint", before)
+	}
 }
 
 // BenchmarkThemeShaderChecks measures the checks at load of a pack of one

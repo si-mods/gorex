@@ -728,9 +728,10 @@ func backgroundOptions(k *colors, alpha float32) shader.Options {
 // gradients of the same colors. A theme's background shader
 // (docs/DSK-012-theme-shaders.md) replaces the built-in one on a GPU.
 // moves tells that the theme's shaders move in the window
-// (themeShaderMoves).
-func paintBackground(p *ui.Painter, r ui.Rect, k *colors, alpha float32, dark, moves bool) {
-	f := tickShaders(p, r, moves)
+// (themeShaderMoves); sw is the window's shaderWindow (windowShader), nil
+// for none kept.
+func paintBackground(p *ui.Painter, r ui.Rect, k *colors, alpha float32, dark, moves bool, sw *shaderWindow) {
+	f := tickShaders(p, r, moves, sw)
 	if sl := themeBackground(); sl != nil && themeShaderGPU(p) {
 		sl.draw(p, r, 0, dark, alpha, f)
 		return

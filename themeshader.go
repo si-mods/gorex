@@ -43,6 +43,24 @@ func (sl *themeSlot) readsTime() bool {
 	return slices.ContainsFunc(sl.layers, func(l *themeLayer) bool { return l.time })
 }
 
+// readsPointer reports whether a layer of the slot reads Pointer.
+func (sl *themeSlot) readsPointer() bool {
+	return slices.ContainsFunc(sl.layers, func(l *themeLayer) bool { return l.pointer })
+}
+
+// The places of the pointer that the checks draw a layer reading Pointer
+// at (docs/DSK-012, Checks of the param range, item 5), besides the frame's
+// own, which the checks leave off the window: pressed at the center of the
+// drawn rectangle, and over its top left corner.
+const (
+	pointerOwn = iota
+	pointerCenter
+	pointerCorner
+	// pointerSidebar presses the pointer at the center of the sidebar's
+	// column of the window, where check 6 reads the background.
+	pointerSidebar
+)
+
 // themeLayer is a layer of a slot: a shader that passed checks 1 to 3.
 type themeLayer struct {
 	s      *shader.Shader
@@ -53,7 +71,10 @@ type themeLayer struct {
 	// The uniforms of the API that change from draw to draw, which the
 	// shader reads; alpha is GorexAlpha, of the background's wrapper or of
 	// a layer's opacity.
-	time, origin, window, alpha bool
+	time, origin, window, alpha, pointer bool
+	// pointerAt, set by the checks, puts Pointer at a place of the drawn
+	// rectangle in place of the frame's (pointerCenter, pointerCorner).
+	pointerAt int
 	// opacity multiplies the layer's color: 1 in version 1.
 	opacity float32
 	// src and params are what the checks vary in version 2: the parsed
@@ -72,8 +93,10 @@ type themeShaders struct {
 	faces      map[theme.Role]*themeSlot
 	warn       []string
 	notes      []shaderNote
-	// anyTime tells that a slot reads Time, so that frames move it.
-	anyTime bool
+	// anyTime tells that a slot reads Time, so that frames move it;
+	// anyPointer that a slot reads Pointer, so that the pointer's moves
+	// paint the window.
+	anyTime, anyPointer bool
 }
 
 // shaderSet holds the selected theme's checked slots, nil with none or
@@ -212,6 +235,7 @@ func checkShaders(m *theme.Manifest, art *theme.Art) *themeShaders {
 			return nil
 		}
 		set.anyTime = set.anyTime || sl.readsTime()
+		set.anyPointer = set.anyPointer || sl.readsPointer()
 		return sl
 	}
 	if bg := m.Shaders.Background; bg != nil {
@@ -314,7 +338,7 @@ func checkSlot(slot *theme.ShaderSlot, e *slotEnv, bg bool, under *[2]ui.Color, 
 	}
 	for i, l := range sl.layers {
 		others := total - costs[i]
-		for _, v := range rangeVariants(l, e) {
+		for _, v := range rangeVariants(l, e, bg) {
 			c, slow := layerCost(v.l, fewSamples.cost, fewSamples.costOnce, maxShaderCost-others)
 			err := costLimit(others+c, len(sl.layers), slow)
 			if err == nil {
@@ -343,7 +367,11 @@ type rangeVariant struct {
 // number at its min, then its max; each toggle at its other value; each
 // point at 0,0, then 1,1; the other params as the manifest sets them. A
 // variant equal to the first is not drawn again. Colors are not varied.
-func rangeVariants(l *themeLayer, e *slotEnv) []rangeVariant {
+// A layer that reads Pointer adds item 5: the first variant draws the
+// pointer off the window (z = 0); then pressed at the center of the drawn
+// rectangle, and over its top left corner; for the background, pressed at
+// the center of the sidebar's column too, where check 6 reads.
+func rangeVariants(l *themeLayer, e *slotEnv, bg bool) []rangeVariant {
 	if e.api != theme.ShaderAPI2 {
 		return nil
 	}
@@ -372,6 +400,20 @@ func rangeVariants(l *themeLayer, e *slotEnv) []rangeVariant {
 		case theme.ParamPoint:
 			add(name, name+" at 0,0", 0, 0)
 			add(name, name+" at 1,1", 1, 1)
+		}
+	}
+	if l.pointer {
+		// Item 5: variant 1 draws the pointer off the window (z = 0).
+		for _, at := range []struct {
+			at    int
+			label string
+		}{{pointerCenter, "Pointer pressed at the center"}, {pointerCorner, "Pointer at the top left corner"}, {pointerSidebar, "Pointer pressed in the sidebar"}} {
+			if at.at == pointerSidebar && !bg {
+				continue
+			}
+			v := *l
+			v.pointerAt = at.at
+			out = append(out, rangeVariant{at.label, &v})
 		}
 	}
 	return out
@@ -442,6 +484,10 @@ func compileLayer(slot *theme.ShaderLayer, e *slotEnv, bg bool) (*themeLayer, []
 	_, sl.time = info.Uniforms["Time"]
 	_, sl.origin = info.Uniforms["Origin"]
 	_, sl.window = info.Uniforms["Window"]
+	if e.api == theme.ShaderAPI2 {
+		// In version 1 a uniform named Pointer is an ordinary param.
+		_, sl.pointer = info.Uniforms["Pointer"]
+	}
 	for i, name := range slot.Images {
 		if sl.images[i] = art.Bitmaps[name]; sl.images[i] == nil {
 			warn = append(warn, fmt.Sprintf("image%d: the asset %q did not load, so it reads as transparent", i, name))
@@ -520,6 +566,13 @@ func themeShaderLoops(s *shader.Shader) error {
 type shaderFrame struct {
 	time   float32
 	window ui.Point
+	// pointer is the Pointer uniform: x and y in the window, z 1 while
+	// the pointer is over it, w 1 while its primary button is down; watch
+	// tells that the window follows its moves (tickShaders).
+	pointer [4]float32
+	watch   bool
+	// moving tells that Time passes in the window's frames (tickShaders).
+	moving bool
 	// origin, set by the checks, is the Origin the slot reads in place of
 	// the drawn rectangle's corner.
 	origin *ui.Point
@@ -553,16 +606,29 @@ func (sl *themeLayer) draw(p *ui.Painter, r ui.Rect, radius float32, dark bool, 
 		i = 1
 	}
 	o := shader.Options{Values: sl.values[i], Images: sl.images, Radius: radius}
-	if sl.time || sl.origin || sl.window || sl.alpha {
-		o.Uniforms = make(map[string]any, 4)
+	if sl.time || sl.origin || sl.window || sl.alpha || sl.pointer {
+		o.Uniforms = make(map[string]any, 5)
 		if sl.time {
 			o.Uniforms["Time"] = f.time
 		}
+		origin := ui.Point{X: r.X, Y: r.Y}
+		if f.origin != nil {
+			origin = *f.origin
+		}
 		if sl.origin {
-			o.Uniforms["Origin"] = [2]float32{r.X, r.Y}
-			if f.origin != nil {
-				o.Uniforms["Origin"] = [2]float32{f.origin.X, f.origin.Y}
+			o.Uniforms["Origin"] = [2]float32{origin.X, origin.Y}
+		}
+		if sl.pointer {
+			ptr := f.pointer
+			switch sl.pointerAt {
+			case pointerCenter:
+				ptr = [4]float32{origin.X + r.W/2, origin.Y + r.H/2, 1, 1}
+			case pointerCorner:
+				ptr = [4]float32{origin.X, origin.Y, 1, 0}
+			case pointerSidebar:
+				ptr = [4]float32{sidebarWidthIn(f.window.X) / 2, f.window.Y / 2, 1, 1}
 			}
+			o.Uniforms["Pointer"] = ptr
 		}
 		if sl.window {
 			o.Uniforms["Window"] = [2]float32{f.window.X, f.window.Y}
@@ -585,15 +651,30 @@ func themeBackground() *themeSlot {
 
 // tickShaders advances the theme shaders' clock for a frame of a window r
 // big, in which they move when moves (themeShaderMoves) and p draws them,
-// and asks for the next frame while a slot reads Time. Still, Time stands
-// and it asks for none.
-func tickShaders(p *ui.Painter, r ui.Rect, moves bool) shaderFrame {
+// and asks for the next frame while a slot reads Time. While a slot reads
+// Pointer it reads the pointer, and has its moves paint the window at most
+// themeShaderFPS a second (Painter.WatchPointer). Still, Time and the
+// pointer's place stand, z and w of Pointer are 0, and it asks for no
+// frame (docs/DSK-012, Pointer).
+func tickShaders(p *ui.Painter, r ui.Rect, moves bool, sw *shaderWindow) shaderFrame {
 	set := activeShaders()
 	if set == nil {
 		return currentFrame()
 	}
+	if sw == nil {
+		sw = &shaderWindow{}
+	}
 	moving := moves && set.anyTime && themeShaderGPU(p)
-	f := &shaderFrame{time: shaderClock.at(p.Now(), moving), window: ui.Point{X: r.W, Y: r.H}}
+	watch := moves && set.anyPointer && themeShaderGPU(p)
+	ptr := sw.pointer
+	ptr[2], ptr[3] = 0, 0
+	if watch {
+		x, y, over, primary := p.Pointer()
+		ptr = [4]float32{x, y, boolFloat(over), boolFloat(primary)}
+		p.WatchPointer(themeShaderFPS)
+	}
+	sw.pointer = ptr
+	f := &shaderFrame{time: shaderClock.at(p.Now(), moving), window: ui.Point{X: r.W, Y: r.H}, pointer: ptr, watch: watch, moving: moving}
 	frameNow.Store(f)
 	if moving {
 		p.AnimationFrameRate(themeShaderFPS)
@@ -601,15 +682,39 @@ func tickShaders(p *ui.Painter, r ui.Rect, moves bool) shaderFrame {
 	return *f
 }
 
+// shaderWindow is what the theme's shaders keep of one window from frame
+// to frame: the Pointer it drew last, whose place a still window keeps.
+// Each window has its own (windowShader), so that the pointer of one
+// never shows in another.
+type shaderWindow struct {
+	pointer [4]float32
+}
+
+type shaderWindowKey struct{}
+
+// windowShader returns the shaderWindow of the window whose root element
+// is e.
+func windowShader(e ui.Element) *shaderWindow {
+	return ui.Local(e, shaderWindowKey{}, func() shaderWindow { return shaderWindow{} })
+}
+
+// boolFloat is 1 for true, 0 for false, as a uniform holds a flag.
+func boolFloat(b bool) float32 {
+	if b {
+		return 1
+	}
+	return 0
+}
+
 // themeShaderMoves reports whether the theme's shaders move in the window
 // being built, by the still rule of docs/DSK-010-theme-ambience.md (Motion
 // and the budget): not with Ambience Still or Off, with Animation Off or
 // less motion, in a window that is not active or is hidden, nor on
 // battery. The painter adds the CPU renderer (tickShaders). It asks
-// nothing of the system when no slot of the theme reads Time.
+// nothing of the system when no slot of the theme reads Time or Pointer.
 func themeShaderMoves(c *ui.Context) bool {
 	s := activeShaders()
-	return s != nil && s.anyTime && prefs.Ambience == "" && motion(c) != nil && c.WindowActive() && !c.WindowHidden() && !shaderOnBattery()
+	return s != nil && (s.anyTime || s.anyPointer) && prefs.Ambience == "" && motion(c) != nil && c.WindowActive() && !c.WindowHidden() && !shaderOnBattery()
 }
 
 // shaderOnBattery reports whether the computer runs on its battery, asked
@@ -711,6 +816,16 @@ func (f faceShader) PaintMaterial(p *ui.Painter, box ui.Rect, radii [4]float32) 
 		return
 	}
 	f.sl.draw(p, box, radii[0], p.Theme().Dark, 1, currentFrame())
+	// The background's Draw asks for its own part; a face, a material
+	// MyGo paints as a part of its own, asks again, so that the frames
+	// that only paint move it too.
+	frame := currentFrame()
+	if f.sl.readsTime() && frame.moving {
+		p.AnimationFrameRate(themeShaderFPS)
+	}
+	if f.sl.readsPointer() && frame.watch {
+		p.WatchPointer(themeShaderFPS)
+	}
 }
 
 // renderSlot draws the slot alone in the CPU's interpreter, as the checks

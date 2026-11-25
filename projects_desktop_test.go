@@ -711,9 +711,10 @@ func TestProjectsOpenIndependently(t *testing.T) {
 }
 
 // TestDeleteSpace: Edit Spaces… offers Delete Space… for every space but
-// Default; it asks first, then moves the space's projects to Default on
-// each host, closing no tab, drops the name from the picker, and shows
-// Default. A host offline gets the delete as it connects.
+// Default. It asks first in a modal, and Cancel sends nothing. Its confirm
+// button moves the space's projects to Default on each host, closing no
+// tab, drops the name from the picker, and shows Default. A host offline
+// gets the delete as it connects.
 func TestDeleteSpace(t *testing.T) {
 	a, tt, sock, remote := projectsApp(t)
 	work := "Work"
@@ -745,9 +746,29 @@ func TestDeleteSpace(t *testing.T) {
 	if !tt.HasText(locales.SpaceDeleteTitle(work)) || !tt.HasText(locales.SpaceDeleteBody(1)) || !tt.HasText(locales.SpaceDeleteOffline()) {
 		t.Fatalf("the question: %q", tt.Texts())
 	}
-	if api.Space != work {
-		t.Fatal("the space went before the answer")
+	// nothingSent checks that no delete went, to a host or to the queue of
+	// the host away.
+	nothingSent := func(when string) {
+		t.Helper()
+		caughtUp(t, a, tt)
+		if sw := spaceOfStore(savedWorkspaces(t, a.client), api.ID); sw == nil || sw.Space != work || api.Space != work || len(prefs.SpaceRenames["h1"]) != 0 || !slices.Contains(a.st.spaceNames(), work) {
+			t.Fatalf("%s: the delete went", when)
+		}
 	}
+	nothingSent("before the answer")
+	click(t, tt, locales.SessionCancel())
+	if tt.HasText(locales.SpaceDeleteTitle(work)) {
+		t.Fatalf("the question stayed after Cancel: %q", tt.Texts())
+	}
+	nothingSent("after Cancel")
+	click(t, tt, locales.SpacePickerLabel(work))
+	settle(tt)
+	click(t, tt, locales.SpaceEdit())
+	click(t, tt, locales.SpaceDelete())
+	if !tt.HasText(locales.SpaceDeleteTitle(work)) {
+		t.Fatalf("no question the second time: %q", tt.Texts())
+	}
+	nothingSent("before the confirm")
 	click(t, tt, locales.SpaceDeleteConfirm())
 	caughtUp(t, a, tt)
 	waitFor(t, tt, "the delete", func() bool {

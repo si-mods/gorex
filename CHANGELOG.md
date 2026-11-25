@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.61.0
+
+### Features
+
+* **projects:** the New Project sheet drops from the top as the ⌘P palette's glass panel — the path field is the folder browser, copied from T3 Code's add-project ([#1106](https://github.com/si-mods/gorex/pull/1106))
+* **theme:** shader API version 2 with declared params and range checks ([#1118](https://github.com/si-mods/gorex/pull/1118))
+* **theme:** layers for shader API version 2 ([#1119](https://github.com/si-mods/gorex/pull/1119))
+
 ## 0.60.1
 
 ### Bug Fixes

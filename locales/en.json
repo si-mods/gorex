@@ -1695,7 +1695,7 @@
   },
   "hostsNotConnectedTo": "Not connected to {host}.",
   "@hostsNotConnectedTo": {
-    "description": "Error banner: a tab or pane cannot open on a host that is not connected.",
+    "description": "Error toast, and the detail of a disabled palette row: a tab or pane cannot open on a host that is not connected.",
     "placeholders": {
       "host": {
         "type": "String",
@@ -2790,6 +2790,96 @@
   "spaceDeleteConfirm": "Delete",
   "@spaceDeleteConfirm": {
     "description": "Delete Space dialog: the button that deletes the space."
+  },
+  "toastActionFailed": "Couldn't run {action}: {reason}.",
+  "@toastActionFailed": {
+    "description": "Error toast: an action the user asked for failed. action is its title, reason the error.",
+    "placeholders": {
+      "action": {
+        "type": "String",
+        "example": "Split Right"
+      },
+      "reason": {
+        "type": "String",
+        "example": "no such pane"
+      }
+    }
+  },
+  "toastShortcutResetFailed": "Couldn't reset the shortcut: {reason}.",
+  "@toastShortcutResetFailed": {
+    "description": "Error toast: Reset of a keyboard shortcut failed. reason is the error.",
+    "placeholders": {
+      "reason": {
+        "type": "String",
+        "example": "permission denied"
+      }
+    }
+  },
+  "toastShortcutsResetFailed": "Couldn't reset the shortcuts: {reason}.",
+  "@toastShortcutsResetFailed": {
+    "description": "Error toast: Reset All of the keyboard shortcuts failed. reason is the error.",
+    "placeholders": {
+      "reason": {
+        "type": "String",
+        "example": "permission denied"
+      }
+    }
+  },
+  "toastSessionFailed": "Couldn't start a session: {reason}.",
+  "@toastSessionFailed": {
+    "description": "Error toast: the host did not make the session of a new tab or pane. reason is the error.",
+    "placeholders": {
+      "reason": {
+        "type": "String",
+        "example": "connection to the server lost"
+      }
+    }
+  },
+  "toastTerminalFailed": "Couldn't open the terminal: {reason}.",
+  "@toastTerminalFailed": {
+    "description": "Error toast: the terminal of a pane did not start. reason is the error.",
+    "placeholders": {
+      "reason": {
+        "type": "String",
+        "example": "out of memory"
+      }
+    }
+  },
+  "quitEndTitle": "{n, plural, one {Quit and end # session?} other {Quit and end # sessions?}}",
+  "@quitEndTitle": {
+    "description": "Title of the question before Quit and End All Sessions: how many sessions of this machine end.",
+    "placeholders": {
+      "n": {
+        "type": "int",
+        "example": "3"
+      }
+    }
+  },
+  "quitEndBody": "{n, plural, one {The program running in it ends. This can't be undone.} other {The programs running in them end. This can't be undone.}}",
+  "@quitEndBody": {
+    "description": "Body of the question before Quit and End All Sessions.",
+    "placeholders": {
+      "n": {
+        "type": "int",
+        "example": "3"
+      }
+    }
+  },
+  "quitEndConfirm": "Quit and End All",
+  "@quitEndConfirm": {
+    "description": "Quit and End All Sessions question: the button that quits and ends the sessions."
+  },
+  "settingsNotificationsOff": "Notifications are off for GoRex.",
+  "@settingsNotificationsOff": {
+    "description": "Settings row, macOS: the system does not let GoRex show notifications."
+  },
+  "settingsNotificationsOffHint": "Turn them on in System Settings.",
+  "@settingsNotificationsOffHint": {
+    "description": "Hint under the row that says notifications are off."
+  },
+  "settingsNotificationsOpen": "Open System Settings",
+  "@settingsNotificationsOpen": {
+    "description": "Button that opens the notification settings of macOS."
   },
   "spaceMoveDown": "Move Down",
   "@spaceMoveDown": {

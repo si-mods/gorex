@@ -479,7 +479,7 @@ func (a *App) tabMenu(m *ui.Menu, t *Tab) {
 	if runtime.GOOS != "darwin" {
 		mods, key = cmdNewTab.Other.Mods, cmdNewTab.Other.Key
 	}
-	if m.Item(locales.CmdNewTab()).Shortcut(mods, key).Chosen() {
+	if m.Item(locales.CmdNewTab()).Shortcut(mods, key).Disabled(cmdNewTab.hostAway(a) != nil).Chosen() {
 		a.newProjectTab()
 	}
 	if m.Item(locales.CmdCloseTab()).Chosen() {
