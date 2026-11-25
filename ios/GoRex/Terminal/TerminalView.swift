@@ -618,7 +618,7 @@ final class TerminalView: UIView, TerminalOutput {
     static var composerMode: Bool { UserDefaults.standard.bool(forKey: ComposerBar.modeKey) }
 
     /// The pinned bar's field, while the mode has it up.
-    private var composerField: UITextField? { (superview as? TerminalHost)?.composerField }
+    private var composerField: UITextView? { (superview as? TerminalHost)?.composerField }
 
     /// Whether the keyboard is up, the terminal's or the field's: the key
     /// bar's keyboard key and the pane-switch resign read it.
@@ -1168,7 +1168,7 @@ final class TerminalHost: UIView, UIGestureRecognizerDelegate {
     /// the key bar's own spot without it.
     var micTarget: UIView { composer?.micHolder ?? terminal.bar.mic }
     /// The pinned bar's field, for the terminal's keyboard redirect.
-    var composerField: UITextField? { composer?.field }
+    var composerField: UITextView? { composer?.field }
 
     /// The compose bar, pinned over the key bar by Composer Mode.
     private func openComposer() {

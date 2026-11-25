@@ -3,16 +3,16 @@ import UniformTypeIdentifiers
 
 /// The compose bar (docs/IOS-025-composer.md), up while Settings >
 /// Terminal's Composer Mode is on: a glass capsule pinned over the key
-/// bar — a single-line message field that names its block, an attach
-/// menu, the screen's mic, and a send — over the terminal, which stays
-/// in view with the keyboard. Typing and dictation land in the field to
-/// read before Send. The attachments stage in a folder of the temporary
-/// directory, emptied as a send goes. Send uploads them as one batch,
-/// whose paths the server types together once every file is up, then
-/// pastes the text and sends Return: the paths land first and the lot is
-/// one submission. A send with no text submits the paths alone, and
-/// empties the bar for the next message.
-final class ComposerBar: UIView, UITextFieldDelegate {
+/// bar — a message field that names its block and grows with its lines,
+/// an attach menu, the screen's mic, and a send — over the terminal,
+/// which stays in view with the keyboard. Typing and dictation land in
+/// the field to read before Send. The attachments stage in a folder of
+/// the temporary directory, emptied as a send goes. Send uploads them as
+/// one batch, whose paths the server types together once every file is
+/// up, then pastes the text and sends Return: the paths land first and
+/// the lot is one submission. A send with no text submits the paths
+/// alone, and empties the bar for the next message.
+final class ComposerBar: UIView, UITextViewDelegate {
     /// A staged attachment: its file in the folder, and its thumbnail for
     /// the strip, nil for a file that is no image.
     private struct Attachment {
@@ -36,7 +36,9 @@ final class ComposerBar: UIView, UITextFieldDelegate {
     private var filePick: FilePick?
     private var shot: CameraShot?
 
-    let field = UITextField()
+    let field = UITextView()
+    /// The placeholder, which names the block the message goes to.
+    private let hint = UILabel()
     private let attach = UIButton()
     private let send = UIButton()
     /// Where the screen's mic lands, next to Send.
@@ -44,6 +46,8 @@ final class ComposerBar: UIView, UITextFieldDelegate {
     /// The attachments' thumbnails, over the input row while there are any.
     private let strip = UIScrollView()
     private let thumbs = UIStackView()
+    /// How tall the field grows before it scrolls instead.
+    private static let fieldMax: CGFloat = 112
 
     init(terminal: TerminalView) {
         self.terminal = terminal
@@ -88,17 +92,23 @@ final class ComposerBar: UIView, UITextFieldDelegate {
         attach.showsMenuAsPrimaryAction = true
         attach.isHidden = !terminal.session.host.canUpload
 
-        // One line, whose placeholder names the block the message goes
-        // to; its Return is Send.
         field.font = .systemFont(ofSize: 17)
+        field.backgroundColor = .clear
+        field.textContainerInset = UIEdgeInsets(top: 11, left: 4, bottom: 11, right: 4)
+        field.textContainer.lineFragmentPadding = 0
+        field.isScrollEnabled = false
         field.delegate = self
-        field.returnKeyType = .send
         field.accessibilityLabel = String(localized: "Message")
         field.accessibilityIdentifier = "composer.message"
-        field.addAction(UIAction { [weak self] _ in self?.update() }, for: .editingChanged)
+
         let block = terminal.session.host.blocks[terminal.session.block]
         let name = block?.title.flatMap { $0.isEmpty ? nil : $0 } ?? block?.program.flatMap { $0.isEmpty ? nil : $0 }
-        field.placeholder = name.map { String(format: String(localized: "Message to %@"), $0) } ?? String(localized: "Message")
+        hint.text = name.map { String(format: String(localized: "Message to %@"), $0) } ?? String(localized: "Message")
+        hint.font = field.font
+        hint.textColor = .placeholderText
+        hint.isUserInteractionEnabled = false
+        hint.translatesAutoresizingMaskIntoConstraints = false
+        field.addSubview(hint)
 
         var s = UIButton.Configuration.filled()
         s.image = UIImage(systemName: "arrow.up")
@@ -156,7 +166,11 @@ final class ComposerBar: UIView, UITextFieldDelegate {
             micHolder.heightAnchor.constraint(equalToConstant: 34),
             send.widthAnchor.constraint(equalToConstant: 30),
             send.heightAnchor.constraint(equalToConstant: 30),
-            field.heightAnchor.constraint(equalToConstant: 44),
+            hint.leadingAnchor.constraint(equalTo: field.leadingAnchor, constant: 4),
+            hint.topAnchor.constraint(equalTo: field.topAnchor, constant: 11),
+            hint.trailingAnchor.constraint(lessThanOrEqualTo: field.trailingAnchor),
+            field.heightAnchor.constraint(greaterThanOrEqualToConstant: 46),
+            field.heightAnchor.constraint(lessThanOrEqualToConstant: Self.fieldMax),
         ])
 
         // The bar's mic dictates into the field, not the terminal.
@@ -168,20 +182,22 @@ final class ComposerBar: UIView, UITextFieldDelegate {
     /// Where an open lands: the field's keyboard.
     func focus() { field.becomeFirstResponder() }
 
-    /// The field's Return is Send.
-    func textFieldShouldReturn(_ t: UITextField) -> Bool {
-        sendNow()
-        return false
-    }
-
     /// What the mic recognised, into the field where it can be read and
     /// edited before Send, spaced from what is already there.
     private func hear(_ text: String) {
-        let soFar = field.text ?? ""
-        if !soFar.isEmpty, !soFar.hasSuffix(" "), !text.hasPrefix(" ") {
-            field.text = soFar + " " + text
-        } else {
-            field.text = soFar + text
+        if !field.text.isEmpty, !field.text.hasSuffix(" "), !field.text.hasSuffix("\n"), !text.hasPrefix(" ") {
+            field.text += " "
+        }
+        field.text += text
+        textViewDidChange(field)
+    }
+
+    func textViewDidChange(_ t: UITextView) {
+        hint.isHidden = !t.text.isEmpty
+        let tall = t.contentSize.height > Self.fieldMax
+        if t.isScrollEnabled != tall {
+            t.isScrollEnabled = tall
+            t.setNeedsLayout()
         }
         update()
     }
@@ -286,8 +302,7 @@ final class ComposerBar: UIView, UITextFieldDelegate {
 
     /// Send is live while the message or an attachment is there to send.
     private func update() {
-        let text = field.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        let on = !sending && (!text.isEmpty || !attachments.isEmpty)
+        let on = !sending && (!field.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !attachments.isEmpty)
         send.isEnabled = on
         send.alpha = on ? 1 : 0.4
     }
@@ -323,9 +338,8 @@ final class ComposerBar: UIView, UITextFieldDelegate {
                 failed(error)
                 return
             }
-            let text = field.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            if !text.isEmpty {
-                terminal.insert(field.text ?? "")
+            if !field.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                terminal.insert(field.text)
             }
             terminal.send("enter")
             reset()
@@ -341,7 +355,7 @@ final class ComposerBar: UIView, UITextFieldDelegate {
         strip.isHidden = true
         let dir = dir
         Task.detached { try? FileManager.default.removeItem(at: dir) }
-        update()
+        textViewDidChange(field)
     }
 
     /// An attachment's thumbnail, or a document mark, with the mark that

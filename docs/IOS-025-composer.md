@@ -19,7 +19,7 @@ An agent such as Claude Code or Codex takes a message and the images it talks ab
 ## Goal
 
 - Settings > Terminal's Composer Mode pins a compose bar over the key bar.
-- The bar takes a one-line message, and attaches photos, camera shots and files.
+- The bar takes a message, and attaches photos, camera shots and files.
 - The mic moves into the bar: typing and dictation land in the message field to read before Send.
 - Send uploads the attachments, lets the server type their paths, then pastes the text and presses Return: one submission, paths first.
 - A host that takes no uploads (`canUpload` off) still composes text, without attachments.
@@ -35,8 +35,8 @@ An agent such as Claude Code or Codex takes a message and the images it talks ab
 ### Behavior
 
 - The bar is up while Composer Mode (`composerMode` in user defaults) is on, pinned over the key bar; there is no ad-hoc way to open or close it — the setting is the only switch. It is read as a view is made, so a change takes effect on a terminal opened after it.
-- It is a glass capsule, as Rex's is: a grabber on top, an input row of an attach button, a single-line message field, the mic, and a Send arrow. The terminal and the keyboard stay in view; the field takes the keyboard's focus.
-- The field is one line; its Return is Send. Its placeholder names the block the message goes to — "Message to Claude Code" — as Rex's does, so a pane is never guessed.
+- It is a glass capsule, as Rex's is: a grabber on top, an input row of an attach button, a message field, the mic, and a Send arrow. The terminal and the keyboard stay in view; the field takes the keyboard's focus.
+- The field grows with its lines up to a cap, then scrolls. Its placeholder names the block the message goes to — "Message to Claude Code" — as Rex's does, so a pane is never guessed.
 - The mode moves the mic: the key bar's right capsule is the stick and the keyboard alone, and the bar's input row holds the screen's own mic between the field and Send. A finished dictation lands in the field, spaced from what is there, instead of being typed into the terminal; what is said still shows in the key bar's voice capsule while the mic is on.
 - The attach button, a plus, opens a menu of Photo, Camera and File, hidden where the host takes no uploads. Photo opens the photo picker of Add Photo, Camera the camera where one is available, File the document picker.
 - Each attachment is a thumbnail in a strip over the input row: the image itself, or a document mark. A tap on its mark removes it.

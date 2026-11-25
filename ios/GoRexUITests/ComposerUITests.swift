@@ -47,7 +47,7 @@ final class ComposerUITests: XCTestCase {
     }
 
     /// The compose bar's message field, which names the demo's block.
-    private var message: XCUIElement { app.textFields["composer.message"] }
+    private var message: XCUIElement { app.textViews["composer.message"] }
 
     /// Without the mode the bar stays away and the mic is the key bar's.
     func testNoComposerByDefault() throws {
