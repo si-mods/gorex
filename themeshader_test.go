@@ -1,6 +1,8 @@
 package main
 
 import (
+	"fmt"
+	"slices"
 	"strings"
 	"testing"
 
@@ -280,10 +282,101 @@ func Fragment(dst vec4, pos vec2) vec4 {
 	}
 }
 
+// TestThemeShaderRange: a version 2 shader that reads well at its defaults
+// and badly at a number's max or a toggle's other value drops, and the
+// warning names the param and the value; the same shader with a range
+// that stays readable draws, and version 1 draws no variant.
+func TestThemeShaderRange(t *testing.T) {
+	src := func(glowMax, dim string) string {
+		return "package main\n\n// How much the face darkens.\n//gorex:param number 0 0 " + glowMax + "\nvar Glow float\n\n//gorex:param toggle " + dim + "\nvar Dim float\n\n//gorex:param point 0.5 0.5\nvar Light vec2\n\nfunc Fragment(dst vec4, pos vec2) vec4 {\n\ty := pos.y / rectSize().y\n\tv := mix(0.93, 0.86, y) - Glow*0.4 - Dim*0.04 + Light.x*0.01\n\treturn vec4(v, v, v, 1)\n}\n"
+	}
+	cases := []struct {
+		name, api, src, params, want string
+	}{
+		{"readable range", "2", src("0.1", "off"), "", ""},
+		{"number max", "2", src("1", "off"), "", "Glow at 1 (max): "},
+		{"manifest at max", "2", src("1", "off"), `"Glow": 1`, ": in the light appearance at 0 s"},
+		{"toggle", "2", strings.Replace(src("0.1", "off"), "Dim*0.04", "Dim*0.4", 1), "", "Dim on: "},
+		{"point", "2", strings.Replace(src("0.1", "off"), "+ Light.x*0.01", "- max(Light.x-0.6, 0)", 1), "", "Light at 1,1: "},
+		{"cost", "2", "package main\n\n//gorex:param number 0 0 1\nvar Heavy float\n\nfunc Fragment(dst vec4, pos vec2) vec4 {\n\tv := 0.0\n\tif Heavy > 0.5 {\n\t\tfor i := 0; i < 250; i++ {\n\t\t\tv += sin(pos.x*float(i)) * cos(pos.y+float(i)) * 0.0001\n\t\t}\n\t}\n\treturn vec4(0.9+v, 0.9, 0.9, 1)\n}\n", "", "Heavy at 1 (max): costs"},
+		{"version 1", "1", src("1", "off"), `"Glow": 0, "Dim": 0, "Light": [0.5, 0.5]`, ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			m, art := shaderTheme(t, `{
+  "roles": { "titleBar.background": "#e4e4e4" },
+  "assets": { "bar": "bar.kage" },
+  "shaders": { "api": `+tc.api+`, "faces": { "titleBar.background": { "source": "bar", "params": {`+tc.params+`} } } }
+}`, map[string]string{"bar": tc.src})
+			set := useShaders(t, m, art)
+			_, drew := faceFill(roleTitleBarBackground, ui.Hex("#e4e4e4"))
+			if tc.want == "" {
+				if !drew || len(set.warn) > 0 {
+					t.Fatalf("drawn %v, warnings %q", drew, set.warn)
+				}
+				return
+			}
+			if drew || len(set.warn) != 1 || !strings.Contains(set.warn[0], tc.want) || !strings.Contains(set.warn[0], "dropped") {
+				t.Fatalf("drawn %v, warnings %q, want one with %q", drew, set.warn, tc.want)
+			}
+		})
+	}
+	// A background whose variant hides the sidebar's text fails check 6.
+	m, art := shaderTheme(t, `{
+  "assets": { "bg": "bg.kage" },
+  "shaders": { "api": 2, "background": { "source": "bg" } }
+}`, map[string]string{"bg": "package main\n\nvar Dark float\n\n//gorex:param number 0 0 1\nvar Dim float\n\nfunc Fragment(dst vec4, pos vec2) vec4 {\n\tc := mix(vec4(0.9, 0.8, 0.7, 1), vec4(0.12, 0.1, 0.1, 1), Dark)\n\treturn mix(c, vec4(0.5, 0.5, 0.5, 1), Dim)\n}\n"})
+	if set := useShaders(t, m, art); set.background != nil || len(set.warn) != 1 || !strings.Contains(set.warn[0], "Dim at 1 (max): behind the sidebar") {
+		t.Errorf("a background unreadable at a number's max: drawn %v, warnings %q", set.background != nil, set.warn)
+	}
+}
+
+// TestThemeShaderBindings: a version 2 color param bound to seed: or
+// role: takes the theme's seed or flat color of the role in each
+// appearance, not premultiplied; a manifest value of another kind keeps
+// the default and warns.
+func TestThemeShaderBindings(t *testing.T) {
+	m, art := shaderTheme(t, `{
+  "seeds": { "light": { "accent": "#336699" }, "dark": { "accent": "#996633" } },
+  "roles": { "titleBar.background": { "light": "#e4e4e4", "dark": "#202020" } },
+  "assets": { "bg": "bg.kage" },
+  "shaders": { "api": 2, "background": { "source": "bg", "params": { "Mix": true, "Ink": "role:titleBar.background" } } }
+}`, map[string]string{"bg": "package main\n\n//gorex:param color seed:accent\nvar Ink vec4\n\n//gorex:param color seed:accent\nvar Ink2 vec4\n\n//gorex:param color role:titleBar.background\nvar Ink3 vec4\n\n//gorex:param number 0 0 1\nvar Mix float\n\nfunc Fragment(dst vec4, pos vec2) vec4 {\n\tif pos.x < 2 {\n\t\treturn Ink\n\t}\n\tif pos.x < 4 {\n\t\treturn Ink2\n\t}\n\treturn Ink3\n}\n"})
+	pal := [2]colors{themed(lightSeeds, m, 0), themed(darkSeeds, m, 1)}
+	e := &slotEnv{api: 2, sd: [2]seeds{themeSeeds(lightSeeds, m, 0), themeSeeds(darkSeeds, m, 1)}, pal: &pal, art: art}
+	sl, warn, err := compileSlot(m.Shaders.Background, e, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"params.Mix: not a number, the default 0 applies"}; !slices.Equal(warn, want) {
+		t.Errorf("warnings %q, want %q", warn, want)
+	}
+	for i, want := range [2][3]string{{"#e4e4e4", "#336699", "#e4e4e4"}, {"#202020", "#996633", "#202020"}} {
+		img := renderSlot(sl, 6, 1, 1, ui.Point{X: 6, Y: 1}, i == 1, shaderFrame{})
+		for j, x := range []int{0, 3, 5} {
+			o := img.PixOffset(x, 0)
+			if c := ui.Hex(want[j]); [3]uint8(img.Pix[o:o+3]) != [3]uint8{c.R, c.G, c.B} {
+				t.Errorf("appearance %d, pixel %d: %v, want %s", i, x, img.Pix[o:o+4], want[j])
+			}
+		}
+	}
+}
+
 // BenchmarkThemeShaderChecks measures the checks at load of a pack of one
 // background shader and four face shaders, as docs/DSK-012 asks phase 2
-// to measure: go test . -run '^$' -bench ThemeShaderChecks.
+// to measure, and the same pack in version 2 with 8 number params in each
+// shader, as phase 6 asks: go test . -run '^$' -bench ThemeShaderChecks.
 func BenchmarkThemeShaderChecks(b *testing.B) {
+	b.Run("v1", func(b *testing.B) { benchShaderChecks(b, "1", packBackground, packBar, packRow) })
+	b.Run("v2", func(b *testing.B) {
+		benchShaderChecks(b, "2",
+			packV2(packBackground, "c += (grain", "c += vec3(0.001) * SUM\n\tc += (grain"),
+			packV2(packBar, "c += vec3(0.02", "c += vec3(0.001) * SUM\n\tc += vec3(0.02"),
+			packV2(packRow, "y), 1)", "y)+vec3(0.001)*SUM, 1)"))
+	})
+}
+
+func benchShaderChecks(b *testing.B, api, bg, bar, row string) {
 	m, _, err := theme.Parse([]byte(`{
   "roles": {
     "titleBar.background": "#174394", "paneHeader.background": "#174394",
@@ -291,7 +384,7 @@ func BenchmarkThemeShaderChecks(b *testing.B) {
   },
   "assets": { "bg": "bg.kage", "bar": "bar.kage", "row": "row.kage" },
   "shaders": {
-    "api": 1,
+    "api": ` + api + `,
     "background": { "source": "bg", "params": { "Opacity": 0.2 } },
     "faces": {
       "titleBar.background": { "source": "bar", "params": { "Top": "#1a469c", "Bottom": "#0f3480" } },
@@ -304,7 +397,7 @@ func BenchmarkThemeShaderChecks(b *testing.B) {
 	if err != nil {
 		b.Fatal(err)
 	}
-	art := &theme.Art{Bitmaps: map[string]*ui.Bitmap{}, Sources: map[string]string{"bg": packBackground, "bar": packBar, "row": packRow}}
+	art := &theme.Art{Bitmaps: map[string]*ui.Bitmap{}, Sources: map[string]string{"bg": bg, "bar": bar, "row": row}}
 	builtinCost()
 	b.ResetTimer()
 	for b.Loop() {
@@ -312,6 +405,28 @@ func BenchmarkThemeShaderChecks(b *testing.B) {
 			b.Fatalf("slots fail: %q", set.warn)
 		}
 	}
+}
+
+// packParams declares 8 number params N1 to N8 for the version 2 case of
+// BenchmarkThemeShaderChecks, each at a default inside its range so that
+// each draws two variants, and sum is an expression of all of them.
+func packParams() (decl, sum string) {
+	var terms []string
+	for i := 1; i <= 8; i++ {
+		decl += fmt.Sprintf("//gorex:param number 0.5 0 1\nvar N%d float\n\n", i)
+		terms = append(terms, fmt.Sprintf("N%d", i))
+	}
+	return decl, "(" + strings.Join(terms, " + ") + ")"
+}
+
+// packV2 turns a pack shader of version 1 into one of version 2: its
+// params Top, Bottom and Opacity declared, and 8 numbers that shift its
+// color a little, where new, with SUM for their sum, replaces old.
+func packV2(src, old, new string) string {
+	decl, sum := packParams()
+	src = strings.Replace(src, "var Top, Bottom vec4\n", "//gorex:param color #ffffff\nvar Top vec4\n\n//gorex:param color #d6e4fa\nvar Bottom vec4\n\n"+decl, 1)
+	src = strings.Replace(src, "var Opacity float\n", "\n//gorex:param number 0.2 0 0.3\nvar Opacity float\n\n"+decl, 1)
+	return strings.Replace(src, old, strings.Replace(new, "SUM", sum, 1), 1)
 }
 
 const packBackground = `package main

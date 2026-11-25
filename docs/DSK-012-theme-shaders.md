@@ -3,12 +3,14 @@ name: DSK-012
 description: "Theme packs get shader slots (window background, a moving layer and the faces of roles), metric seeds (corner scale, border width, UI font, shadow), a glass key and five new roles, so that a pack can rebuild a rich web theme such as Blue Window or Potion Workshop. Use when you add shaders or metrics to theme manifests, change the theme shader API, or port a theme from another app."
 metadata:
   created: "2026-11-24"
-  updated: "2026-11-24"
+  updated: "2026-11-25"
 ---
 
 # DSK-012: Theme shaders and metrics
 
-Status: phases 1 and 2 built (#1096, #1105). Phases 3 to 5 not built.
+Status: phases 1 and 2 built (#1096, #1105). Phase 6 (shader API version 2): declared params and the checks of the param range built; layers and `Pointer` designed. Phases 3 and 5 not built; phase 4 dropped (DSK-010 User decisions 8).
+
+GoRex ships capabilities, never a look ([DSK-008](DSK-008-theme.md) Non-goals): every look of this doc comes from a pack's own shaders and assets.
 
 This doc decides how a theme pack changes more than colors and still images. It adds three kinds of shader slots, a set of metric seeds, a glass key and five roles. It extends [DSK-008](DSK-008-theme.md) (the manifest and the face resolver) and [DSK-010](DSK-010-theme-ambience.md) (assets, layers, the still rule). The probes are two themes of `freestylefly/codex-themes`, a theme app for the Codex desktop app: "Blue Window" and "Potion Workshop". The goal is to rebuild both as GoRex theme packs. Replaces: [DSK-008](DSK-008-theme.md), the glass non-goal, the glass alternative and the Security rule "A theme manifest is data". Also replaces: [DSK-010](DSK-010-theme-ambience.md), the non-goal "any code in a pack", the first Security item and the asset caps that the Assets section changes.
 
@@ -291,6 +293,109 @@ A wallpaper that fills a 2560 px window at 1024 px looks soft. At 2048 px it is 
 - A face that the system draws as glass does not take the face shader.
 - Copy texts of the probes that name Codex (`CODEX 2007 · BLUE WINDOW`, the "Codex friends" heading) change to GoRex or to neutral text.
 
+## Shader API version 2: declared params, layers and the pointer
+
+Status: designed 2026-11-25 (phase 6). Declared params and the checks of the param range built; layers and `Pointer` not built. The model follows Figma's shaders (shaders.figma.com, Figma's plugin API `Shader` type and its review guidelines): a shader declares its own params with a kind, a default and a range; a slot stacks shaders in order; a shader may read the pointer, and asks for frames only for the inputs it reads. GoRex takes these ideas and not Figma's effect shaders, which read the pixels drawn under them (see Alternatives), or its library of built-in looks, which DSK-008's rule forbids: GoRex ships capabilities, never a look ([DSK-008](DSK-008-theme.md) Non-goals).
+
+### Why
+
+- Version 1 keeps a shader's params in the manifest. A shader alone does not say what its uniforms mean, what values make sense, or which value is the finished look; an unset uniform is zero. A shader cannot move from one pack to another without its manifest lines.
+- The checks of version 1 draw only the values the manifest sets. A later Settings control, or a param bound to a seed that the user's appearance changes, can pick a value no check drew.
+- A slot holds one shader, so a pack that wants paper grain over a gradient writes one shader that does both.
+- A theme shader cannot answer the pointer, as a web theme's CSS `:hover` and JavaScript can.
+
+### Manifest
+
+`shaders.api` takes 1 or 2. A build of this phase reads both; version 1 behaves as before. In version 2:
+
+- A slot is a layer object as in version 1, or a list of 1 to 4 layer objects. A layer has `source`, `images`, `params` as in version 1, and `opacity`: a number from 0 to 1, default 1, which clamps with a warning.
+- A theme has at most 16 layers over all its slots. A layer past the cap drops with a warning.
+- `params` overrides the declared defaults of the layer's shader (see Declared params). A param with no declaration, or with a value of another kind, drops with a warning, and the default applies. A number out of the declared range clamps with a warning. A point outside 0 to 1 clamps with a warning too.
+
+```json
+"shaders": {
+  "api": 2,
+  "background": [
+    { "source": "paper" },
+    { "source": "grain", "opacity": 0.4, "params": { "Scale": 3 } }
+  ],
+  "faces": {
+    "titleBar.background": { "source": "bar", "params": { "Top": "seed:accent" } }
+  }
+}
+```
+
+An older build (version 1 only) drops the whole `shaders` key with a warning ("not an API this build knows"), and draws the flat colors. A pack that wants a look in both builds can stay at version 1.
+
+### Declared params
+
+In version 2, each exported uniform of a shader that is not in the API table has a declaration: a line `//gorex:param` in the comment right above its `var`. The other lines of that comment describe the param (at most 80 characters are kept), for a later Settings control.
+
+```go
+// Grain strength.
+//gorex:param number 0.3 0 1
+var Grain float
+
+//gorex:param color #73b9ed/#2a5d8f
+var Top vec4
+
+//gorex:param toggle on
+var Stitch float
+
+// Where the light sits, in the drawn rectangle.
+//gorex:param point 0.5 0.2
+var Light vec2
+```
+
+| Kind | Uniform type | Arguments | Value in the manifest |
+| --- | --- | --- | --- |
+| `number` | `float` | default, min, max; min < max, min ≤ default ≤ max | a number |
+| `toggle` | `float` | `on` or `off`; the uniform is 1 or 0 | `true` or `false` |
+| `point` | `vec2` | x, y, each from 0 to 1: a fraction of the drawn rectangle | `[x, y]` |
+| `color` | `vec3` or `vec4` | one color value | one color value |
+
+A color value is one of: a hex color (`#rrggbb` or `#rrggbbaa`) for both appearances; two hex colors `light/dark`; `seed:<name>`, the theme's resolved seed; `role:<name>`, the theme's flat color of a role. In the manifest, a `{"light", "dark"}` pair as in version 1 is a color value too. One declaration above `var A, B float` declares both uniforms. GoRex resolves a color in each appearance, not premultiplied, as the `Seed<Name>` uniforms. A binding follows the theme's seeds and roles; the user's `sidebar.colorCustomizations` does not feed it.
+
+A shader of version 2 fails check 3 when an exported uniform outside the API table has no declaration, when a declaration does not parse, when its kind does not fit the uniform's type, or when it declares more than 16 params. A declaration on an API uniform fails too.
+
+### Layers
+
+- Layers draw from the first to the last, each over the one before (source over, premultiplied), each multiplied by its `opacity`. Under the glass setting, the background's wrapper multiplies each layer by `GorexAlpha`.
+- A face draws its layers where version 1 draws its one shader, over the face's flat color.
+- Check 1 to 3 run on each layer. Check 4 adds the cost of the layers of a slot: the sum stays at most 8 times the built-in background. Checks 5 and 6 read the layers composited, as the window draws them. A layer that fails check 1 to 3 drops the whole slot, so a slot never draws half its look.
+
+### Pointer
+
+Version 2 adds one uniform to the API table:
+
+| Uniform | Type | Value |
+| --- | --- | --- |
+| `Pointer` | `vec4` | x and y: the pointer in the window, in DIPs, as `Origin`. z: 1 while the pointer is over the window, else 0; x and y then keep the last position. w: 1 while the primary button is down |
+
+- GoRex tracks the pointer only while a slot reads `Pointer`. A pointer move then asks for a frame, at most `themeShaderFPS` a second.
+- The still rule applies as for `Time` (`themeShaderMoves`): while ambience is still, z is 0, the value stands, and a pointer move asks for no frame.
+- `Pointer` is part of version 2 only. A version 1 shader that declares it fails check 3, as now.
+
+### Checks of the param range
+
+A user, a later Settings control or a seed binding can pick any value in the declared range. The checks thus draw more than one set of values. The variants of a layer are:
+
+1. The values the manifest sets, with the defaults for the rest.
+2. For each `number`: its min, then its max, the others as in 1.
+3. For each `toggle`: the other value.
+4. For each `point`: 0,0, then 1,1.
+5. For a shader that reads `Pointer`: z = 0; then z = 1 and w = 1 at the center of the drawn rectangle; then z = 1 at its top left corner.
+
+Colors are not varied: checks 5 and 6 already run in both appearances, with each binding resolved. Checks 4 to 6 run on each variant. Variant 1 draws all the time, origin and window samples of version 1; the other variants draw fewer (see below). Variants of the layers of one slot vary one layer at a time, the others as in 1. A slot fails when any variant fails, and the warning names the param and the value: `Glow at 1 (max): in the light appearance at 0 s, text has 3.1:1 at 4,2, below 4.5:1`.
+
+The checks stay on `loadArt`'s goroutine, and the windows draw the flat colors until they are done, as in version 1. A variant equal to variant 1 is not drawn again. `BenchmarkThemeShaderChecks` measures a pack of version 2: a background and four faces, each with 8 number params whose defaults lie inside their ranges, so 17 variants a slot. The background has one layer; the layers come in a later PR. On the Windows PC (Intel Core i9-12900), with all samples for each variant, the checks take 10.3 s (1 run). That is over 2 s, so the variants after the first draw fewer samples (`fewSamples`); variant 1 keeps all samples (`allSamples`). Check 4 draws one sample, `Time` 0, `Window` 1280×800 and `Origin` 0,0, and times it once. A time over the ratio limit is timed again as the fastest of three before the variant fails, so that the load of the machine does not drop a slot. The ratio limit stays 8. Check 5 draws `Time` 0 and `Window` 1280×800 at the three origins. Check 6 draws `Time` 0. With this cut the checks take 3.1 to 3.3 s (3 rounds of 10 runs). The same pack in version 1 takes 0.35 to 0.64 s on the same runs. The time is still over 2 s. Phase 6 cuts no more samples. The windows draw the flat colors meanwhile, so it delays the shaders, not the window.
+
+### Code
+
+- `internal/theme/shaders.go`: `ShaderAPI1` and `ShaderAPI2`, and `Shaders.API` holds the version of a manifest; `ShaderSlot` holds `Layers []ShaderLayer` (layers PR); `ParseShaderSource` parses comments and returns the declarations (`ShaderSource.Params`, a `ParamDecl` each); `CheckUniforms` takes the API version; a `Param` holds a toggle (`On`) and a binding (`Bind`, `seed:` or `role:`) besides numbers and colors; `ResolveParams` lays the manifest's values over the defaults and resolves the bindings.
+- `themeshader.go`: a `themeSlot` holds its layers (layers PR); `slotEnv` holds what the checks read, and resolves a binding from the theme's seeds and flat role colors; `checkSlot` runs the variants (`rangeVariants`), the first with `allSamples`, the others with `fewSamples`; `draw` and `faceShader.PaintMaterial` draw the layers in order; the pointer state sits beside `shaderClock`.
+- The two packs move to version 2: their shaders declare their params, and each uses at least one layer list or `Pointer` where its look wants it.
+
 ## Alternatives
 
 - **GLSL, as Ghostty and Shadertoy use**: rejected. It needs a translator to MSL and HLSL (glslang and SPIRV-Cross, C++). MyGo already compiles Kage for each renderer and the CPU. A Shadertoy port to Kage is a short manual step.
@@ -299,6 +404,9 @@ A wallpaper that fills a 2560 px window at 1024 px looks soft. At 2048 px it is 
 - **A shader that reads its backdrop**: rejected. Over a pane the backdrop holds terminal text. A theme has no need to read it.
 - **Font files in a pack**: rejected (Non-goals).
 - **Measure the cost on the GPU each frame**: rejected for phase 2. MyGo gives no GPU timer. The interpreter ratio is deterministic and testable. Phase 3 measures the real frame time once and writes it in its PR.
+- **Figma's effect shaders, which read the pixels drawn under them**: rejected for version 2. They need the window drawn to a texture first, and over a pane those pixels hold terminal text, as for a shader that reads its backdrop. A later doc can measure an effect slot that reads only the theme's own layers.
+- **A library of built-in shaders, as Figma ships (bloom, dither, mesh gradient)**: rejected. Each is a look, which DSK-008's rule keeps out of GoRex. Pack authors can share shaders in their own repos; a shader of version 2 carries its declarations, so it moves between packs as one file.
+- **Declarations in the manifest instead of the shader**: rejected for version 2. The shader is the one file that knows what its uniforms mean, as Figma's `propertyDefinitions` belong to the shader.
 - **A per-theme budget that the user sets**: rejected. The Ambience setting (Moving, Still, Off) is already the control.
 
 ## Security
@@ -317,7 +425,7 @@ The rest of the DSK-008 and DSK-010 rules stay: no URL, no network at run time, 
 
 - `shaders`, `metrics`, `glass` and the five roles are new optional keys with defaults. A manifest without them loads as now, with the same pixels (`TestThemeNoneKeepsPalettes`).
 - An older build drops `shaders`, `metrics`, `glass` and `description` with an `unknown key` warning each. The user's Glass setting then applies. It drops the five role names with an `unknown role` warning each. It loads the colors and the DSK-010 layers. Its asset loader drops each asset that it cannot take, with a warning, and keeps the rest (`internal/theme/assets.go`): a `.kage` file (not a PNG, GIF or SVG), an image over 1024 px, an asset past 4 MiB for the pack, and a name past 16. It does not fail the pack.
-- No settings key changes. `docs/irreversible.md` does not apply to the manifest keys. The shader API version 1 is a promise to pack authors (see Shader API).
+- No settings key changes. `docs/irreversible.md` does not apply to the manifest keys. The shader API version 1 is a promise to pack authors (see Shader API). Version 2 adds a number; a build of phase 6 reads 1 and 2, and keeps reading 1 for at least a year.
 
 ## Tests
 
@@ -335,15 +443,18 @@ The rest of the DSK-008 and DSK-010 rules stay: no URL, no network at run time, 
 - **Old build**: a manifest of this doc parses under the DSK-010 parser with warnings and the same colors (`TestParseDrops`, extended).
 - **Probes**: screenshots of both packs through the `GOREX_DEBUG` hook, light and dark, tiled, canvas and empty page, glass on and off, beside the probe's `preview.png`.
 
+- **Version 2**: declarations parse, and each bad one fails check 3 (`TestShaderDeclarations`); a manifest value overrides, clamps or drops to the default with a warning, and `seed:` and `role:` bindings resolve in each appearance (`TestParseShadersV2`, `TestThemeShaderBindings`); a shader readable at its defaults and unreadable at a number's max fails, with the param and value in the warning (`TestThemeShaderRange`); layers draw in order with their opacity, their costs add, and a bad layer drops the slot (`TestThemeShaderLayers`); a shader that reads `Pointer` asks for a frame on a pointer move, none when still, and fails when unreadable with the pointer pressed at the center (`TestThemeShaderPointer`); a version 2 pack under a version 1 build drops `shaders` with a warning (`TestParseShaders`, extended).
+
 No item in `docs/invariants.md` covers the theme.
 
 ## Phases
 
 1. **Metrics, roles and glass** (M): `metrics`, the five roles with flat colors, `k.radius` and the shadow functions, the font list, the `glass` key. MyGo M1 for `rounded`. Blue Window gets its square corners, borders and font.
 2. **Shader runtime** (L): MyGo M2 (loop bounds), `.kage` assets, the API version 1, the `background` and `faces` slots, the checks at load, the new image caps, the CPU fallback. Measure the load checks on a Mac and a Windows PC. Built; the Windows measurement is in Checks at load.
-3. **Ambient slot** (M): the `ambient` slot over the free region. It merges with DSK-010 phase 2: particles and sprites become built-in ambient shaders. Measure the frame cost as DSK-010 says.
-4. **Mascot and ticker**: DSK-010 phase 3, no change.
+3. **Ambient slot** (M): the `ambient` slot over the free region, drawn only by a pack's own shader: GoRex ships no built-in ambient shader (DSK-008 Non-goals). Measure the frame cost as DSK-010 says.
+4. **Mascot and ticker**: dropped with DSK-010 phase 3 (DSK-010 User decisions 8).
 5. **Two packs** (S each): `si-mods/gorex-theme-blue-window` and `si-mods/gorex-theme-potion-workshop`, own repos, listed in the registry with a pinned `ref`. They use the probe names and new art (User decisions, 1 and 3). Screenshots beside the probe previews.
+6. **Shader API version 2** (L): declared params, the checks of the param range, layers, and `Pointer` (see Shader API version 2). Three PRs in order: params and range checks; layers; pointer. Then the two packs move to version 2.
 
 ## User decisions
 
