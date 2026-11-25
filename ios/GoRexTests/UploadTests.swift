@@ -85,6 +85,33 @@ nonisolated final class UploadTests: XCTestCase {
         XCTAssertEqual(parts(), before)
     }
 
+    /// A composed batch: upload_begin carries the batch's id and each
+    /// file's index and count, so the server types the paths together, in
+    /// order; a file alone sends none (docs/IOS-025-composer.md).
+    @MainActor func testUploadBatchFields() async throws {
+        let rex = try FakeRex()
+        defer { rex.stop() }
+        let host = try await online(rex, revision: RexProtocol.uploadRevision)
+        defer { host.stop() }
+        // The stream is not the point: a ticket, and the data side ends it.
+        rex.respond = { method, _ in
+            method == "com.superlogical.terminal.upload_begin" ? ["ticket": "uH4mJKwzMarlTNT-UiyMog"] : [:]
+        }
+        let file = FileManager.default.temporaryDirectory.appending(path: "a-\(UUID().uuidString).txt")
+        try Data("a".utf8).write(to: file)
+        defer { try? FileManager.default.removeItem(at: file) }
+        for i in 0..<2 {
+            _ = try? await host.upload(file, block: "b", session: "s", batch: ("composer-x", i, 2))
+        }
+        _ = try? await host.upload(file, block: "b", session: "s")
+        let args = rex.payloads(of: "com.superlogical.terminal.upload_begin")
+            .compactMap { $0["args"] as? [String: Any] }
+        XCTAssertEqual(args.count, 3)
+        XCTAssertEqual(args.map { $0["batch"] as? String }, ["composer-x", "composer-x", nil])
+        XCTAssertEqual(args.map { $0["index"] as? Int }, [0, 1, nil])
+        XCTAssertEqual(args.map { $0["count"] as? Int }, [2, 2, nil])
+    }
+
     func testPhotoNameKeepsLibraryNameAndAddsUpperCaseExtension() {
         let heic = URL(fileURLWithPath: "/tmp/x/a.heic")
         XCTAssertEqual(Upload.photoName(suggested: "IMG_1234", file: heic), "IMG_1234.HEIC")

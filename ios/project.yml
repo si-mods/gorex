@@ -106,7 +106,7 @@ targets:
         NSAppTransportSecurity:
           NSAllowsArbitraryLoads: true
         NSLocalNetworkUsageDescription: Rex Go connects to your computers on the local network.
-        NSCameraUsageDescription: Rex Go scans the pairing QR code that GoRex or Rex shows.
+        NSCameraUsageDescription: Rex Go scans the pairing QR code that GoRex or Rex shows, and takes the photos you send to a terminal.
         # The mic dictates into the terminal (Dictation).
         NSMicrophoneUsageDescription: Rex Go hears what you say while the mic is on, and types it into the terminal. Speech is recognised on this device.
         # A gallery's image saved to Photos from the share sheet.

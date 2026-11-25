@@ -34,7 +34,7 @@ struct FeaturesView: View {
         ]),
         ("Keyboard & Input", [
             ("A key bar that stays", "Three glass capsules: ⌘, a row of keys, and an arrow stick, the mic and the key that hides or shows the keyboard. The bar stays at the bottom while the keyboard is hidden."),
-            ("Three pages of keys", "Swipe the middle capsule from Esc, Control, Option and Tab to Shift, / - and Backspace, then to ~ and |."),
+            ("Three pages of keys", "Swipe the middle capsule from Esc, Control, Option and Enter to Shift, / - and Backspace, then to ~, |, Tab and Compose."),
             ("Modifiers for the next key", "Tap Control, Option or Shift, then a key, for a chord. They let go after that key."),
             ("An arrow stick", "Drag the stick for arrows, which repeat while you hold it. The modifiers hold with it."),
             ("Hold Backspace to repeat", "Backspace on the key bar repeats while held, as the keyboard's does."),
@@ -44,7 +44,7 @@ struct FeaturesView: View {
             ("Dictate with the mic", "Tap the mic on the key bar, or at the top right of the terminal on iPad or with a hardware keyboard, and speak; tap it again, and what you said is typed at the cursor, not sent. Speech is recognised on this device by SenseVoice, in Chinese, English, Cantonese, Japanese or Korean, with punctuation. Its model, about 240 MB, downloads on the first tap; choose a larger one, or delete it, in Settings › Terminal."),
             ("Move the cursor with the spacebar", "Hold the spacebar and slide to move the cursor, one arrow for each cell."),
             ("Hardware keyboards", "Option is Alt, chords with Control, Shift or Option reach the program, and held keys repeat."),
-            ("⌘ shortcuts", "⌘T opens a tab, ⌘W closes it, ⌘O adds a file, ⇧⌘O a photo, ⌘K clears the screen and scrollback, and ⌘+, ⌘- and ⌘0 size the text. Hold ⌘ to see them."),
+            ("⌘ shortcuts", "⌘T opens a tab, ⌘W closes it, ⌘O adds a file, ⇧⌘O a photo, ⇧⌘I the composer, ⌘K clears the screen and scrollback, and ⌘+, ⌘- and ⌘0 size the text. Hold ⌘ to see them."),
         ]),
         ("Selection & Links", [
             ("Long-press to select", "A long press selects the word under the finger, with the loupe. Drag to select more; past the top or bottom the terminal scrolls on."),
@@ -60,6 +60,7 @@ struct FeaturesView: View {
             ("Paths ready for the shell", "Pasted paths are quoted for the shell and end with a space. A name the shell cannot take is not pasted, and an alert says why."),
             ("A half-height photo picker", "The photo picker opens at half the screen, with the terminal above it. Pull it up for the full screen."),
             ("Upload progress", "⌘ on the key bar spins while files go up, and an alert tells of an upload that failed."),
+            ("Composer", "Swipe up on the key bar, tap its Compose key, or press ⇧⌘I to write a message of many lines with photos, camera shots and files attached. Send puts their paths and the text into the terminal as one prompt."),
         ]),
         ("Notifications", [
             ("When a program needs input", "When an agent such as Claude Code waits for you, a notification says so, while the app is open or soon after you leave it."),

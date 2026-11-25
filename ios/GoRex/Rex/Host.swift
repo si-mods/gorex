@@ -1324,13 +1324,17 @@ final class Host: Identifiable {
 
     /// Sends a file into the temporary folder of the host's machine, for
     /// block; the server types its path into the terminal once uploaded.
-    func upload(_ file: URL, block: String, session: String? = nil) async throws {
+    /// As one of a batch, the file's path waits for the batch's files, and
+    /// they are typed together, in index order.
+    func upload(_ file: URL, block: String, session: String? = nil,
+                batch: (id: String, index: Int, count: Int)? = nil) async throws {
         let c = try live()
         guard c.apiRevision >= RexProtocol.uploadRevision, let sid = session ?? sessionID(forBlock: block) else {
             throw RexError(code: "not_supported", message: String(localized: "Server does not accept uploads"))
         }
         try await Upload.send(file, name: file.lastPathComponent, session: sid, block: block,
-                              control: c, to: config.url, auth: config.auth, urlSession: { try self.session() })
+                              control: c, to: config.url, auth: config.auth, batch: batch,
+                              urlSession: { try self.session() })
     }
 
     /// Whether the server supports rev 13+ file downloads.

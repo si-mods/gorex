@@ -5,13 +5,22 @@ import Foundation
 enum Upload {
     static func send(_ file: URL, name: String, session: String, block: String,
                      control: ControlConnection, to base: URL, auth: String?,
+                     batch: (id: String, index: Int, count: Int)? = nil,
                      urlSession: () throws -> URLSession = { .shared }) async throws {
         let size = try await Task.detached { (try file.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0 }.value
         let ref = "upload:\(UUID().uuidString.lowercased())"
+        var args: [String: Any] = ["ref": ref, "name": name, "size": size]
+        // A batch's paths are typed together once its files are all up, in
+        // index order (docs/IOS-025-composer.md).
+        if let batch {
+            args["batch"] = batch.id
+            args["index"] = batch.index
+            args["count"] = batch.count
+        }
         let reply = try await control.call(RexProtocol.methodTerminalUploadBegin, [
             "session_id": session,
             "block_id": block,
-            "args": ["ref": ref, "name": name, "size": size],
+            "args": args,
         ])
         guard let ticket = reply.payload["ticket"] as? String else {
             throw RexError(code: "protocol", message: "missing upload ticket")

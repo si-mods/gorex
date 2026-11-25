@@ -1222,7 +1222,9 @@ final class TerminalHost: UIView, UIGestureRecognizerDelegate {
 /// file goes up; the middle one pages from Esc, the modifiers and Tab to
 /// the punctuation a shell wants and Backspace; the last holds a stick that
 /// sends arrows the way it is dragged, the screen's mic, and the key that
-/// hides or shows the keyboard. On an iPad the keys go in the keyboard's
+/// hides or shows the keyboard. A swipe up on the bar opens the composer,
+/// as the Compose key of the keys' last page and ⌘'s menu do (Composer.swift).
+/// On an iPad the keys go in the keyboard's
 /// bar of shortcuts, which shows with a hardware keyboard too: ⌘, Esc, the
 /// modifiers and Tab before its middle, the punctuation and four arrows
 /// after it. Its keyboard has keys of its own to hide it and for Backspace.
@@ -1252,6 +1254,10 @@ final class KeyBar: UIView {
     /// What the stick turns into while held.
     private let pad = StickPad()
     private let tick = UIImpactFeedbackGenerator(style: .light)
+    /// A flick up on the bar opens the composer — anywhere but on the
+    /// stick, whose own up is the up arrow, held.
+    private let swipe = UISwipeGestureRecognizer()
+    private var stickButton: UIButton?
 
     init(target: TerminalView) {
         self.target = target
@@ -1295,8 +1301,10 @@ final class KeyBar: UIView {
         shift.addAction(UIAction { [weak target] _ in target?.shift.toggle() }, for: .touchUpInside)
 
         // Add Photo and Add File are for a server that takes uploads, as
-        // the menu opens.
+        // the menu opens. Compose is for any server: its sheet falls back
+        // to text alone where uploads are off.
         more.menu = UIMenu(children: [
+            UIAction(title: String(localized: "Compose"), image: UIImage(systemName: "square.and.pencil")) { [weak target] _ in target?.compose() },
             UIAction(title: String(localized: "Paste"), image: UIImage(systemName: "doc.on.clipboard")) { [weak target] _ in target?.paste(nil) },
             UIDeferredMenuElement.uncached { [weak target] done in
                 let off: UIMenuElement.Attributes = target?.session.host.canUpload == true ? [] : .disabled
@@ -1315,14 +1323,21 @@ final class KeyBar: UIView {
         let escape = key("escape", String(localized: "Esc"), "escape")
         let tab = key("arrow.right.to.line", String(localized: "Tab"), "tab")
         let enter = key("return", String(localized: "Enter"), "enter")
+        let compose = Self.button("square.and.pencil", String(localized: "Compose"), size: Self.small)
+        compose.addAction(UIAction { [weak target] _ in target?.compose() }, for: .touchUpInside)
         let tilde = text("~"), pipe = text("|"), slash = text("/"), dash = text("-")
         let first = [escape, ctrl, alt, shift, tab]
         let second = [tilde, pipe, slash, dash]
         // Every key taps the hand as it goes down, as the keyboard's do.
         // Backspace, the arrows and the stick tap on their own as they repeat.
-        for b in [more, keyboard] + first + second + [enter] {
+        for b in [more, keyboard] + first + second + [enter, compose] {
             b.addAction(UIAction { [tick] _ in tick.impactOccurred() }, for: .touchDown)
         }
+
+        // A flick up on the bar opens the composer.
+        swipe.direction = .up
+        swipe.addTarget(self, action: #selector(openComposer))
+        addGestureRecognizer(swipe)
 
         if UIDevice.current.userInterfaceIdiom == .pad {
             let arrows = [
@@ -1345,9 +1360,9 @@ final class KeyBar: UIView {
         }
         let delete = repeating("delete.left", String(localized: "Delete"), "backspace")
 
-        // Three pages of four slots, the last one short, inset from the
-        // capsule's ends, each page as wide as the capsule.
-        let pages = UIStackView(arrangedSubviews: [[escape, ctrl, alt, enter], [shift, slash, dash, delete], [tilde, pipe, tab]].map { keys in
+        // Three pages of four slots, inset from the capsule's ends, each
+        // page as wide as the capsule.
+        let pages = UIStackView(arrangedSubviews: [[escape, ctrl, alt, enter], [shift, slash, dash, delete], [tilde, pipe, tab, compose]].map { keys in
             let page = UIStackView(arrangedSubviews: keys + (keys.count..<4).map { _ in UIView() })
             page.distribution = .fillEqually
             page.isLayoutMarginsRelativeArrangement = true
@@ -1368,6 +1383,7 @@ final class KeyBar: UIView {
         ] + pages.arrangedSubviews.map { $0.widthAnchor.constraint(equalTo: scroll.frameLayoutGuide.widthAnchor) })
 
         let stick = Self.button("stick", String(localized: "Arrow Keys"))
+        stickButton = stick
         let drag = UILongPressGestureRecognizer(target: self, action: #selector(steer))
         drag.minimumPressDuration = 0
         drag.allowableMovement = .greatestFiniteMagnitude
@@ -1469,6 +1485,19 @@ final class KeyBar: UIView {
                 if !self.voiceActive { voiceCapsule.isHidden = true }
             }
         }
+    }
+
+    /// The swipe-up opens the composer, with the keys' tap of the hand;
+    /// on the stick, whose up is the up arrow, it does not begin.
+    @objc private func openComposer() {
+        tick.impactOccurred()
+        target?.compose()
+    }
+
+    /// The swipe-up anywhere on the bar but the stick's own bounds.
+    override func gestureRecognizerShouldBegin(_ g: UIGestureRecognizer) -> Bool {
+        guard g === swipe, let stick = stickButton else { return true }
+        return !stick.frame.contains(g.location(in: self))
     }
 
     /// The screen's mic, as it goes down: a light tap of the hand, as the
