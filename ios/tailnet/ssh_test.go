@@ -13,6 +13,8 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -22,8 +24,8 @@ import (
 
 // fakeSSHD is an in-process sshd: the device key gets in by publickey
 // auth, a direct-streamlocal channel is proxied to a real Unix socket,
-// and an exec answers socket discovery, as rex server status and the
-// fallback probe do.
+// a direct-tcpip one to the TCP address it names, and an exec answers
+// socket discovery, as rex server status and the fallback probe do.
 type fakeSSHD struct {
 	ln      net.Listener
 	hostFP  string // the host key's SHA256 fingerprint
@@ -117,6 +119,8 @@ func (s *fakeSSHD) handle(c net.Conn) {
 		switch newCh.ChannelType() {
 		case "direct-streamlocal@openssh.com":
 			go s.streamLocal(newCh)
+		case "direct-tcpip":
+			go s.directTCP(newCh)
 		case "session":
 			go s.session(newCh)
 		default:
@@ -143,6 +147,34 @@ func (s *fakeSSHD) streamLocal(newCh ssh.NewChannel) {
 	u, err := net.Dial(socketNet, socket)
 	if err != nil {
 		newCh.Reject(ssh.ConnectionFailed, "no socket")
+		return
+	}
+	ch, reqs, err := newCh.Accept()
+	if err != nil {
+		u.Close()
+		return
+	}
+	go ssh.DiscardRequests(reqs)
+	go func() { defer ch.Close(); io.Copy(ch, u) }()
+	go func() { defer u.Close(); io.Copy(u, ch) }()
+}
+
+// directTCP takes a direct-tcpip open, dialing the address it names as
+// sshd does for ssh -W: the backend any TCP listener is.
+func (s *fakeSSHD) directTCP(newCh ssh.NewChannel) {
+	var m struct {
+		TargetAddr     string
+		TargetPort     uint32
+		OriginatorAddr string
+		OriginatorPort uint32
+	}
+	if err := ssh.Unmarshal(newCh.ExtraData(), &m); err != nil {
+		newCh.Reject(ssh.ConnectionFailed, "bad open")
+		return
+	}
+	u, err := net.Dial("tcp", net.JoinHostPort(m.TargetAddr, strconv.Itoa(int(m.TargetPort))))
+	if err != nil {
+		newCh.Reject(ssh.ConnectionFailed, "connect failed")
 		return
 	}
 	ch, reqs, err := newCh.Accept()
@@ -220,16 +252,32 @@ func echoSocket(t *testing.T, names ...string) string {
 	}
 	t.Cleanup(func() { ln.Close() })
 	path = ln.Addr().String()
-	go func() {
-		for {
-			c, err := ln.Accept()
-			if err != nil {
-				return
-			}
-			go func() { defer c.Close(); io.Copy(c, c) }()
-		}
-	}()
+	go echo(ln)
 	return path
+}
+
+// echoTCP is an echo listener on loopback TCP, the backend a
+// direct-tcpip channel reaches, as echoSocket is streamlocal's.
+func echoTCP(t *testing.T) string {
+	t.Helper()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { ln.Close() })
+	go echo(ln)
+	return ln.Addr().String()
+}
+
+// echo answers each conn on ln with what it gets.
+func echo(ln net.Listener) {
+	for {
+		c, err := ln.Accept()
+		if err != nil {
+			return
+		}
+		go func() { defer c.Close(); io.Copy(c, c) }()
+	}
 }
 
 // testSSHDelegate answers each host-key question with trust, keeping
@@ -376,6 +424,13 @@ func TestSetSSHHosts(t *testing.T) {
 		{"id": "alice-laptop", "user": "alice", "host": "x", "port": 22, "socket": "rex/server.sock"},
 		{"id": "alice-laptop", "user": "alice", "host": "x", "port": 22, "hostKey": "SHA256:!!"},
 		{"id": "alice-laptop", "user": "alice", "host": "x", "port": 22, "hostKey": "MD5:aa"},
+		{"id": "alice-laptop", "user": "alice", "host": "x", "port": 22, "socket": "/run/rex/server.sock", "tcp": "127.0.0.1:7297"},
+		{"id": "alice-laptop", "user": "alice", "host": "x", "port": 22, "tcp": "not an address"},
+		{"id": "alice-laptop", "user": "alice", "host": "x", "port": 22, "tcp": "127.0.0.1"},
+		{"id": "alice-laptop", "user": "alice", "host": "x", "port": 22, "tcp": ":7297"},
+		{"id": "alice-laptop", "user": "alice", "host": "x", "port": 22, "tcp": "127.0.0.1:0"},
+		{"id": "alice-laptop", "user": "alice", "host": "x", "port": 22, "tcp": "127.0.0.1:65536"},
+		{"id": "alice-laptop", "user": "alice", "host": "x", "port": 22, "tcp": "127.0.0.1:http"},
 	}
 	for _, h := range bad {
 		b, _ := json.Marshal([]map[string]any{h})
@@ -390,6 +445,9 @@ func TestSetSSHHosts(t *testing.T) {
 		good(),
 		{"id": "alice-laptop", "user": "alice", "host": "x", "port": 65535,
 			"socket": "/run/rex/server.sock", "hostKey": testFP},
+		{"id": "alice-laptop", "user": "alice", "host": "x", "port": 22, "tcp": "127.0.0.1:7297"},
+		{"id": "alice-laptop", "user": "alice", "host": "x", "port": 22, "tcp": "localhost:7297"},
+		{"id": "alice-laptop", "user": "alice", "host": "x", "port": 22, "tcp": "[::1]:7297"},
 	} {
 		b, _ := json.Marshal([]map[string]any{h})
 		if err := SetSSHHosts(string(b)); err != nil {
@@ -537,27 +595,34 @@ func TestSSHDiscovery(t *testing.T) {
 	srv.mu.Unlock()
 	setSSHHosts(t, host())
 	dial()
-	// Status names no unix listener: the fallback probe's first line is
-	// the socket.
+	// Status names no unix listener the proxy can use — a named pipe,
+	// which no SSH channel reaches: the fallback probe's first line is
+	// the socket. The kept client holds the endpoint discovery found,
+	// so a new one must look again.
 	srv.mu.Lock()
 	srv.execs = map[string]string{
-		rexStatus: `{"listeners":[{"endpoint":"127.0.0.1:7297","transport":"tcp","primary":true}]}`,
+		rexStatus: `{"listeners":[{"endpoint":"rex-pipe","transport":"named_pipe","primary":true}]}`,
 		rexProbe:  srv.socket + "\n/other/path\n",
 	}
-	srv.mu.Unlock()
-	setSSHHosts(t, host())
-	dial()
-	// Neither finds one: the dial says so. The kept client holds the
-	// socket discovery found, so a new one must look again.
-	srv.mu.Lock()
-	srv.execs = map[string]string{rexProbe: "\n"}
 	srv.mu.Unlock()
 	sshMu.Lock()
 	p := sshClients["alice-laptop"]
 	sshMu.Unlock()
 	dropSSHClient("alice-laptop", p)
-	if _, err := dialSSH(context.Background(), "alice-laptop"); err == nil || !strings.Contains(err.Error(), "no rex socket") {
-		t.Errorf("a host with no socket: %v", err)
+	dial()
+	// Neither finds one: the dial tries the LAN probe, which fails where
+	// nothing listens.
+	defer func(prev string) { lanProbe = prev }(lanProbe)
+	lanProbe = "127.0.0.1:1"
+	srv.mu.Lock()
+	srv.execs = map[string]string{rexProbe: "\n"}
+	srv.mu.Unlock()
+	sshMu.Lock()
+	p = sshClients["alice-laptop"]
+	sshMu.Unlock()
+	dropSSHClient("alice-laptop", p)
+	if _, err := dialSSH(context.Background(), "alice-laptop"); err == nil {
+		t.Error("a host with no listener and no socket connected")
 	}
 }
 
@@ -638,4 +703,122 @@ func TestSSHDrops(t *testing.T) {
 		t.Fatalf("a dial of the new key: %v", err)
 	}
 	c.Close()
+}
+
+// A tcp endpoint is a direct-tcpip channel to host:port, and the dial
+// learns the gateway's pairing token by exec for SSHHostToken; a
+// changed record forgets it and learns the new one's.
+func TestSSHTCPEndpoint(t *testing.T) {
+	Stop()
+	signer := sshEnv(t)
+	srv := newFakeSSHD(t, signer.PublicKey())
+	srv.mu.Lock()
+	srv.execs[lanTokens] = "tok-one\n"
+	srv.mu.Unlock()
+	host := func() sshHost {
+		return sshHost{ID: "alice-laptop", User: "alice", Host: "127.0.0.1", Port: srv.port(),
+			TCP: echoTCP(t), HostKey: srv.hostFP}
+	}
+	setSSHHosts(t, host())
+	c, err := dialSSH(context.Background(), "alice-laptop")
+	if err != nil {
+		t.Fatalf("dialSSH: %v", err)
+	}
+	roundTrip(t, c, "direct-tcpip")
+	c.Close()
+	if got := SSHHostToken("alice-laptop"); got != "tok-one" {
+		t.Errorf("SSHHostToken = %q, want tok-one", got)
+	}
+	if got := srv.execsAsked(); !slices.Equal(got, []string{lanTokens}) {
+		t.Errorf("an explicit tcp endpoint ran %v, want the token exec only", got)
+	}
+	// A dead client reconnects with no new fetch: the token holds for
+	// the record, as the trust does.
+	sshMu.Lock()
+	p := sshClients["alice-laptop"]
+	sshMu.Unlock()
+	dropSSHClient("alice-laptop", p)
+	if c, err = dialSSH(context.Background(), "alice-laptop"); err != nil {
+		t.Fatalf("a reconnected dial: %v", err)
+	}
+	roundTrip(t, c, "hi")
+	c.Close()
+	if got := srv.execsAsked(); len(got) != 1 {
+		t.Errorf("a reconnect refetched the token: %v", got)
+	}
+	// A changed record forgets the token; its dial learns the new one.
+	srv.mu.Lock()
+	srv.execs[lanTokens] = "\ntok-two\n"
+	srv.mu.Unlock()
+	changed := host()
+	setSSHHosts(t, changed)
+	if got := SSHHostToken("alice-laptop"); got != "" {
+		t.Errorf("a changed record kept the token %q", got)
+	}
+	if c, err = dialSSH(context.Background(), "alice-laptop"); err != nil {
+		t.Fatalf("the new record's dial: %v", err)
+	}
+	roundTrip(t, c, "hi")
+	c.Close()
+	if got := SSHHostToken("Alice-Laptop"); got != "tok-two" {
+		t.Errorf("SSHHostToken after the change = %q, want tok-two", got)
+	}
+}
+
+// Discovery feeds a status tcp listener's endpoint to direct-tcpip — a
+// loopback among several — and an answer without a usable listener
+// falls through the usual socket paths to the LAN probe.
+func TestSSHTCPDiscovery(t *testing.T) {
+	Stop()
+	signer := sshEnv(t)
+	srv := newFakeSSHD(t, signer.PublicKey())
+	host := func() sshHost {
+		return sshHost{ID: "alice-laptop", User: "alice", Host: "127.0.0.1", Port: srv.port(), HostKey: srv.hostFP}
+	}
+	dial := func() {
+		t.Helper()
+		c, err := dialSSH(context.Background(), "alice-laptop")
+		if err != nil {
+			t.Fatal(err)
+		}
+		roundTrip(t, c, "hi")
+		c.Close()
+	}
+	drop := func() {
+		t.Helper()
+		sshMu.Lock()
+		p := sshClients["alice-laptop"]
+		sshMu.Unlock()
+		dropSSHClient("alice-laptop", p)
+	}
+	// Two tcp listeners: the loopback one is picked over a LAN one.
+	srv.mu.Lock()
+	srv.execs = map[string]string{rexStatus: `{"listeners":[{"endpoint":"192.0.2.1:7297","transport":"tcp"},` +
+		`{"endpoint":"` + echoTCP(t) + `","transport":"tcp"}]}`}
+	srv.mu.Unlock()
+	setSSHHosts(t, host())
+	dial()
+	// A wildcard endpoint, scheme and all, reads as loopback: the
+	// forward can only aim at the host itself.
+	_, port, _ := net.SplitHostPort(echoTCP(t))
+	srv.mu.Lock()
+	srv.execs = map[string]string{rexStatus: `{"listeners":[{"endpoint":"tcp://0.0.0.0:` + port + `","transport":"tcp"}]}`}
+	srv.mu.Unlock()
+	drop()
+	dial()
+	// And with no listener and no socket, the LAN probe: GoRex's rexapi
+	// port on loopback.
+	defer func(prev string) { lanProbe = prev }(lanProbe)
+	lanProbe = echoTCP(t)
+	srv.mu.Lock()
+	srv.execs = map[string]string{
+		rexStatus: `{"listeners":[{"endpoint":"rex-pipe","transport":"named_pipe","primary":true}]}`,
+		rexProbe:  "\n",
+	}
+	srv.mu.Unlock()
+	drop()
+	dial()
+	if got := SSHHostToken("alice-laptop"); got != "" {
+		t.Errorf("a host with no token exec answered %q", got)
+	}
 }

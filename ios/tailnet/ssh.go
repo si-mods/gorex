@@ -2,11 +2,14 @@ package tailnet
 
 // Rex Go reaches a host over SSH (docs/IOS-023-ssh-hosts.md): the proxy
 // dials <id>.ssh.invalid as a direct-streamlocal channel to the host's
-// Rex socket, pooled under one ssh.Client per host as upstream's shared
-// connection is. The device key stays on the phone: the app keeps it in
-// its Keychain and passes it in, as the tailcat key's. Phase 1 is key
-// auth only; a host-key the store does not name asks the app through
-// SSHDelegate, as rootshell's HostKeyValidationRequest does.
+// Rex socket — or, when the host's endpoint is TCP, a direct-tcpip
+// channel to its listener, for Windows hosts and rexapi LAN gateways
+// streamlocal cannot reach (docs/IOS-024-ssh-tcp.md) — pooled under one
+// ssh.Client per host as upstream's shared connection is. The device
+// key stays on the phone: the app keeps it in its Keychain and passes
+// it in, as the tailcat key's. Phase 1 is key auth only; a host-key the
+// store does not name asks the app through SSHDelegate, as rootshell's
+// HostKeyValidationRequest does.
 
 import (
 	"bytes"
@@ -20,6 +23,7 @@ import (
 	"errors"
 	"io"
 	"net"
+	"net/netip"
 	"net/url"
 	"strconv"
 	"strings"
@@ -52,6 +56,11 @@ var (
 	// its id: the answer to a host-key question holds until the host's
 	// record changes.
 	sshTrusted = map[string]string{}
+	// sshTokens is each host's rexapi LAN pairing token, by its id, as
+	// a tcp endpoint's exec learned it ("" cached for a host that
+	// answered none): it holds until the host's record changes, as
+	// sshTrusted does.
+	sshTokens = map[string]string{}
 	// sshDelegate answers the host-key questions; sshQuestions is each
 	// question waiting for SSHAnswer, by its qid.
 	sshDelegate  SSHDelegate
@@ -160,9 +169,20 @@ func SSHAnswer(qid int64, trust bool) {
 	}
 }
 
+// SSHHostToken is the rexapi LAN pairing token of the host id's tcp
+// endpoint, learned over the SSH connection (docs/IOS-024): the app
+// sends it to the gateway as a LAN host's, from the Keychain. "" before
+// a tcp dial fetched it, and for a host that has none.
+func SSHHostToken(id string) string {
+	sshMu.Lock()
+	defer sshMu.Unlock()
+	return sshTokens[strings.ToLower(id)]
+}
+
 // sshHost is an SSH host's record, as the app's Add Host form writes it
 // (docs/IOS-023): id is the proxy's <id>.ssh.invalid name, socket the
-// remote Rex socket ("" for discovery), hostKey the trusted
+// remote Rex socket, tcp a host:port to forward to instead
+// (docs/IOS-024; both "" for discovery), hostKey the trusted
 // SHA256 fingerprint ("" for trust on first use).
 type sshHost struct {
 	ID      string `json:"id"`
@@ -170,12 +190,13 @@ type sshHost struct {
 	Host    string `json:"host"`
 	Port    int    `json:"port"`
 	Socket  string `json:"socket"`
+	TCP     string `json:"tcp"`
 	HostKey string `json:"hostKey"`
 }
 
 // SetSSHHosts sets the hosts the proxy reaches over SSH, as a JSON list
-// of {"id", "user", "host", "port", "socket", "hostKey"}. The clients
-// of hosts no longer listed, or whose record changed, close.
+// of {"id", "user", "host", "port", "socket", "tcp", "hostKey"}. The
+// clients of hosts no longer listed, or whose record changed, close.
 func SetSSHHosts(hostsJSON string) error {
 	var hosts []sshHost
 	if err := json.Unmarshal([]byte(hostsJSON), &hosts); err != nil {
@@ -192,8 +213,16 @@ func SetSSHHosts(hostsJSON string) error {
 		if h.Port < 1 || h.Port > 65535 {
 			return errors.New("invalid ssh port")
 		}
+		if h.Socket != "" && h.TCP != "" {
+			return errors.New("an ssh host takes a socket or a tcp endpoint, not both")
+		}
 		if h.Socket != "" && !strings.HasPrefix(h.Socket, "/") {
 			return errors.New("ssh socket is not an absolute path")
+		}
+		if h.TCP != "" {
+			if _, _, err := tcpAddr(h.TCP); err != nil {
+				return errors.New("invalid ssh tcp endpoint")
+			}
 		}
 		if h.HostKey != "" && !validFingerprint(h.HostKey) {
 			return errors.New("invalid ssh host key fingerprint")
@@ -225,6 +254,11 @@ func SetSSHHosts(hostsJSON string) error {
 			delete(sshTrusted, id)
 		}
 	}
+	for id := range sshTokens {
+		if gone(id) {
+			delete(sshTokens, id)
+		}
+	}
 	sshHosts = m
 	sshMu.Unlock()
 	for _, p := range dead {
@@ -244,6 +278,20 @@ func validFingerprint(s string) bool {
 	}
 	sum, err := base64.RawStdEncoding.DecodeString(b64)
 	return err == nil && len(sum) == sha256.Size
+}
+
+// tcpAddr reads a direct-tcpip target: host and port of host:port, the
+// port a number that fits the channel's uint32.
+func tcpAddr(s string) (string, uint32, error) {
+	host, ps, err := net.SplitHostPort(s)
+	if err != nil {
+		return "", 0, err
+	}
+	port, err := strconv.ParseUint(ps, 10, 16)
+	if host == "" || err != nil || port == 0 {
+		return "", 0, errors.New("not host:port: " + s)
+	}
+	return host, uint32(port), nil
 }
 
 // sshTarget is the host id of a proxy target under sshDomain, as
@@ -266,16 +314,24 @@ func sshTarget(addr string) (id string, ok bool) {
 var sshDial = 90 * time.Second
 
 // pooledSSH is a host's client, or the connect making it: done closes
-// when c or err is set. socket is the socket discovery found, kept for
-// the client's life as a host's socket doesn't move.
+// when c or err is set. endpoint is what discovery found, kept for the
+// client's life as a host's endpoint doesn't move.
 type pooledSSH struct {
-	done   chan struct{}
-	c      *ssh.Client
-	err    error
-	socket string
+	done     chan struct{}
+	c        *ssh.Client
+	err      error
+	endpoint sshEndpoint
 }
 
-// dialSSH connects to the Rex socket of the ssh host id, within
+// sshEndpoint is where the host's Rex API listens: a unix socket for a
+// direct-streamlocal channel, or a host:port for direct-tcpip. One of
+// the two is set.
+type sshEndpoint struct {
+	socket string
+	tcp    string
+}
+
+// dialSSH connects to the Rex endpoint of the ssh host id, within
 // sshDial. A cancel of ctx ends the dial; ctx's deadline does not, as
 // dialTailcat's: the proxy's SOCKS server gives each dial five seconds,
 // shorter than a first connect's host-key question.
@@ -301,8 +357,8 @@ func dialSSH(ctx context.Context, id string) (net.Conn, error) {
 	return dialSSHHost(dctx, id, h)
 }
 
-// dialSSHHost opens a streamlocal channel to h's socket with the pooled
-// client. A channel that won't open drops the client and retries once
+// dialSSHHost opens a channel to h's endpoint with the pooled client.
+// A channel that won't open drops the client and retries once
 // with a new one, as a dead client drops its channels and a reconnect
 // is all a suspension or a network change costs.
 func dialSSHHost(ctx context.Context, id string, h sshHost) (net.Conn, error) {
@@ -314,7 +370,7 @@ func dialSSHHost(ctx context.Context, id string, h sshHost) (net.Conn, error) {
 			return nil, err
 		}
 		var ch ssh.Channel
-		if ch, err = openSocket(ctx, p, h); err == nil {
+		if ch, err = openEndpoint(ctx, id, p, h); err == nil {
 			return &sshChanConn{Channel: ch, laddr: &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1)},
 				raddr: &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: h.Port}}, nil
 		}
@@ -446,72 +502,88 @@ func sshHostKey(ctx context.Context, id string, h sshHost, key ssh.PublicKey) er
 	}
 }
 
-// openSocket opens the data channel to the host's Rex socket: the one
-// the record names, else the one discovery found for this client.
-func openSocket(ctx context.Context, p *pooledSSH, h sshHost) (ssh.Channel, error) {
-	socket := h.Socket
-	if socket == "" {
-		s, err := p.rexSocket(ctx, h)
+// openEndpoint opens the data channel to the host's Rex endpoint: the
+// one the record names, else the one discovery found for this client —
+// direct-tcpip to a host:port, direct-streamlocal to a socket. A tcp
+// endpoint also learns the gateway's pairing token, once per record.
+func openEndpoint(ctx context.Context, id string, p *pooledSSH, h sshHost) (ssh.Channel, error) {
+	e := sshEndpoint{socket: h.Socket, tcp: h.TCP}
+	if e == (sshEndpoint{}) {
+		found, err := p.rexEndpoint(ctx)
 		if err != nil {
 			return nil, err
 		}
-		socket = s
+		e = found
 	}
-	return openStreamLocal(ctx, p.c, socket)
+	if e.tcp != "" {
+		lanToken(ctx, id, p.c)
+		return openTCPIP(ctx, p.c, e.tcp)
+	}
+	return openStreamLocal(ctx, p.c, e.socket)
 }
 
-// rexSocket is the socket discovery found for this client, run once and
-// kept in p.
-func (p *pooledSSH) rexSocket(ctx context.Context, h sshHost) (string, error) {
+// rexEndpoint is the endpoint discovery found for this client, run once
+// and kept in p.
+func (p *pooledSSH) rexEndpoint(ctx context.Context) (sshEndpoint, error) {
 	sshMu.Lock()
-	s := p.socket
+	e := p.endpoint
 	sshMu.Unlock()
-	if s != "" {
-		return s, nil
+	if e != (sshEndpoint{}) {
+		return e, nil
 	}
-	s, err := discoverSocket(ctx, p.c, h)
+	e, err := discoverEndpoint(ctx, p.c)
 	if err != nil {
-		return "", err
+		return sshEndpoint{}, err
 	}
 	sshMu.Lock()
-	if p.socket == "" {
-		p.socket = s
+	if p.endpoint == (sshEndpoint{}) {
+		p.endpoint = e
 	}
-	s = p.socket
+	e = p.endpoint
 	sshMu.Unlock()
-	return s, nil
+	return e, nil
 }
 
-// rexStatus asks the host's Rex server where it listens; rexProbe finds
-// the socket among the usual paths when status names none, the same
-// list the design's fallback walks.
+// rexStatus asks the host's Rex server where it listens, GoRex's CLI
+// name first, then upstream's; rexProbe finds the socket among the
+// usual paths when status names none, the same list the design's
+// fallback walks; lanTokens is the pairing token of the host's rexapi
+// LAN gateway (docs/IOS-024).
 const (
-	rexStatus = `sh -c 'rex server status --json'`
+	rexStatus = `sh -c 'gorex server status --json || rex server status --json'`
 	rexProbe  = `sh -c 'for p in "$XDG_RUNTIME_DIR/rex/server.sock" "$HOME/.local/share/rex/server.sock" /run/rex/server.sock /var/run/rex/server.sock "$HOME/Library/Application Support/rex/server.sock"; do [ -S "$p" ] && { echo "$p"; break; }; done'`
+	lanTokens = `sh -c 'gorex rexapi lan token show || rex rexapi lan token show'`
 )
 
-// discoverSocket is the host's Rex socket: the primary unix listener of
-// rex server status, else the first of the usual paths that exists, as
-// upstream's discovery does (docs/IOS-023).
-func discoverSocket(ctx context.Context, c *ssh.Client, h sshHost) (string, error) {
+// lanProbe is the endpoint discovery falls to when the host reports
+// neither a unix nor a tcp listener and no usual socket path exists —
+// GoRex's rexapi LAN port on loopback (internal/rexapi's LANPort),
+// where a named-pipe host's gateway is. A var, for the test's listener.
+var lanProbe = "127.0.0.1:7297"
+
+// discoverEndpoint is the host's Rex endpoint: the primary unix
+// listener of server status, else a tcp listener's host:port, else the
+// first of the usual socket paths that exists, else the LAN probe, as
+// upstream's discovery does (docs/IOS-023, docs/IOS-024).
+func discoverEndpoint(ctx context.Context, c *ssh.Client) (sshEndpoint, error) {
 	if out, err := sshExec(ctx, c, rexStatus); err == nil {
-		if s := primarySocket(out); s != "" {
-			return s, nil
+		if e := statusEndpoint(out); e != (sshEndpoint{}) {
+			return e, nil
 		}
 	}
 	out, err := sshExec(ctx, c, rexProbe)
 	if err != nil {
-		return "", err
+		return sshEndpoint{}, err
 	}
 	line, _, _ := strings.Cut(out, "\n")
 	if line = strings.TrimSpace(line); line != "" {
-		return line, nil
+		return sshEndpoint{socket: line}, nil
 	}
-	return "", errors.New("no rex socket on " + h.Host)
+	return sshEndpoint{tcp: lanProbe}, nil
 }
 
-// sshStatusResult is the listeners of rex server status --json
-// (internal/rexapi's statusResult), as far as the socket needs them.
+// sshStatusResult is the listeners of server status --json
+// (internal/rexapi's statusResult), as far as the endpoint needs them.
 type sshStatusResult struct {
 	Listeners []struct {
 		Endpoint  string `json:"endpoint"`
@@ -520,19 +592,59 @@ type sshStatusResult struct {
 	} `json:"listeners"`
 }
 
-// primarySocket is the endpoint path of the primary unix listener of a
-// server status answer, "" when it reports none.
-func primarySocket(out string) string {
+// statusEndpoint is the listener of a server status answer the proxy
+// forwards to: the primary unix one's socket first, as today, else a
+// tcp one's host:port — a loopback among several, which the forwarded
+// channel reaches as the host's own (docs/IOS-024).
+func statusEndpoint(out string) sshEndpoint {
 	var st sshStatusResult
 	if json.Unmarshal([]byte(out), &st) != nil {
-		return ""
+		return sshEndpoint{}
 	}
 	for _, l := range st.Listeners {
 		if l.Primary && strings.HasPrefix(l.Transport, "unix") {
-			return endpointPath(l.Endpoint)
+			return sshEndpoint{socket: endpointPath(l.Endpoint)}
 		}
 	}
-	return ""
+	var first string
+	for _, l := range st.Listeners {
+		if l.Transport != "tcp" {
+			continue
+		}
+		t := tcpTarget(l.Endpoint)
+		if t == "" {
+			continue
+		}
+		if first == "" {
+			first = t
+		}
+		if host, _, err := net.SplitHostPort(t); err == nil {
+			if a, err := netip.ParseAddr(host); err == nil && a.IsLoopback() {
+				return sshEndpoint{tcp: t}
+			}
+		}
+	}
+	return sshEndpoint{tcp: first}
+}
+
+// tcpTarget is the direct-tcpip target a tcp listener's endpoint gives:
+// host:port, as written or after a scheme, a wildcard host read as
+// loopback; "" when the endpoint is not one.
+func tcpTarget(endpoint string) string {
+	if u, err := url.Parse(endpoint); err == nil && u.Host != "" {
+		endpoint = u.Host
+	}
+	host, port, err := net.SplitHostPort(endpoint)
+	if err != nil || port == "" {
+		return ""
+	}
+	if host == "" {
+		return "127.0.0.1:" + port
+	}
+	if a, err := netip.ParseAddr(host); err == nil && a.IsUnspecified() {
+		return "127.0.0.1:" + port
+	}
+	return endpoint
 }
 
 // endpointPath is the socket path of a unix listener's endpoint:
@@ -579,6 +691,33 @@ func sshExec(ctx context.Context, c *ssh.Client, command string) (string, error)
 	return string(b), nil
 }
 
+// lanToken learns the host's rexapi LAN pairing token over the client,
+// once per record, kept under id for SSHHostToken. A host that cannot
+// answer — no gorex or rex CLI — caches "", and a channel error retries
+// on a later dial.
+func lanToken(ctx context.Context, id string, c *ssh.Client) {
+	sshMu.Lock()
+	_, done := sshTokens[id]
+	sshMu.Unlock()
+	if done {
+		return
+	}
+	out, err := sshExec(ctx, c, lanTokens)
+	if err != nil {
+		return
+	}
+	var token string
+	for _, line := range strings.Split(out, "\n") {
+		if line = strings.TrimSpace(line); line != "" {
+			token = line
+			break
+		}
+	}
+	sshMu.Lock()
+	sshTokens[id] = token
+	sshMu.Unlock()
+}
+
 // streamLocalMsg is the payload of a direct-streamlocal channel open:
 // the socket path and two reserved fields, in the order OpenSSH's
 // PROTOCOL and x/crypto's streamLocalChannelOpenDirectMsg marshal them.
@@ -589,16 +728,45 @@ type streamLocalMsg struct {
 	Reserved1  uint32
 }
 
+// directTCPIPMsg is the payload of a direct-tcpip channel open (RFC
+// 4254 §7.2): the target to forward to, then the originator the server
+// is told, loopback for a channel the proxy asked for.
+type directTCPIPMsg struct {
+	TargetAddr     string
+	TargetPort     uint32
+	OriginatorAddr string
+	OriginatorPort uint32
+}
+
 // openStreamLocal opens the channel to the remote Unix socket, as
 // ssh -L does for upstream's CLI.
 func openStreamLocal(ctx context.Context, c *ssh.Client, socket string) (ssh.Channel, error) {
+	return openChannel(ctx, c, "direct-streamlocal@openssh.com", ssh.Marshal(&streamLocalMsg{SocketPath: socket}))
+}
+
+// openTCPIP opens the channel to the remote host:port: plain port
+// forwarding, which every sshd answers, Win32-OpenSSH's included
+// (docs/IOS-024).
+func openTCPIP(ctx context.Context, c *ssh.Client, addr string) (ssh.Channel, error) {
+	host, port, err := tcpAddr(addr)
+	if err != nil {
+		return nil, err
+	}
+	return openChannel(ctx, c, "direct-tcpip", ssh.Marshal(&directTCPIPMsg{
+		TargetAddr: host, TargetPort: port, OriginatorAddr: "127.0.0.1"}))
+}
+
+// openChannel opens a channel of typ carrying payload, bounded by ctx.
+// An open that finishes after the dial gave up is closed: nothing else
+// holds it.
+func openChannel(ctx context.Context, c *ssh.Client, typ string, payload []byte) (ssh.Channel, error) {
 	type result struct {
 		ch  ssh.Channel
 		err error
 	}
 	done := make(chan result, 1)
 	go func() {
-		ch, in, err := c.OpenChannel("direct-streamlocal@openssh.com", ssh.Marshal(&streamLocalMsg{SocketPath: socket}))
+		ch, in, err := c.OpenChannel(typ, payload)
 		if err == nil {
 			go ssh.DiscardRequests(in)
 			go io.Copy(io.Discard, ch.Stderr())
@@ -609,8 +777,6 @@ func openStreamLocal(ctx context.Context, c *ssh.Client, socket string) (ssh.Cha
 	case r := <-done:
 		return r.ch, r.err
 	case <-ctx.Done():
-		// An open that finishes after the dial gave up is closed:
-		// nothing else holds it.
 		go func() {
 			if r := <-done; r.ch != nil {
 				r.ch.Close()
@@ -620,7 +786,7 @@ func openStreamLocal(ctx context.Context, c *ssh.Client, socket string) (ssh.Cha
 	}
 }
 
-// sshChanConn is a streamlocal channel as the net.Conn the SOCKS server
+// sshChanConn is a data channel as the net.Conn the SOCKS server
 // takes: deadlines do nothing, as a channel has none. Its ends are
 // loopback TCP addresses: the SOCKS server reads LocalAddr back as
 // host:port for its reply, as it does a dialed conn's.
