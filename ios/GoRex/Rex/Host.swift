@@ -758,6 +758,7 @@ final class Host: Identifiable {
             scheduleRetry(reason: error.localizedDescription)
             return
         }
+        let tokenless = config.lanToken == nil
         let c = ControlConnection(base: config.url, auth: config.auth, session: session)
         control = c
         describes.cancelAll()
@@ -780,10 +781,17 @@ final class Host: Identifiable {
             let offline = Status.offline(error?.localizedDescription ?? "")
             if self.status != offline { self.status = offline }
             // Refused, it waits for a change: the engine running again, as
-            // after a sign-in, or the app back in the foreground.
+            // after a sign-in, or the app back in the foreground. An ssh
+            // host whose LAN token the refusal just learned is that
+            // change, and dials again with it; a kept token that still
+            // refuses waits for the user (docs/IOS-024-ssh-tcp.md).
             if let error, (error as? RexError)?.code == "refused" {
                 self.isRetrying = false
-                self.settle(.failure(error))
+                if tokenless, self.config.lanToken != nil {
+                    self.scheduleRetry(reason: error.localizedDescription)
+                } else {
+                    self.settle(.failure(error))
+                }
             } else {
                 if self.reconnectSince == nil { self.reconnectSince = .now }
                 self.scheduleRetry(reason: error?.localizedDescription)
