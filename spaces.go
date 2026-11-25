@@ -724,7 +724,9 @@ func colorDot(id string) *mygo.MenuIcon {
 	}
 	m, err := mygo.NewMenuIconSVG(ui.MustParseSVG([]byte(`<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">`+shape+`</svg>`)), template)
 	if err != nil {
-		panic(err)
+		// The item shows no dot: the menu still works.
+		log.Printf("gorex: color dot %q: %v", id, err)
+		return nil
 	}
 	colorDots[id] = m
 	return m
