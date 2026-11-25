@@ -286,7 +286,7 @@ func windowControls(c *ui.Context, k *colors, win *mygo.Window) {
 			})
 			return b
 		}
-		ui.Row(c).Gap(3).AlignItems(ui.Center).Shrink(0).Margin(0, 4, 0, 6).Children(func() {
+		ui.Row(c).Gap(4).AlignItems(ui.Center).Shrink(0).Margin(0, 4, 0, 6).Children(func() {
 			if ctrlBtn(roleWindowControlBackground, k.windowControlFace, "minus", locales.WindowMinimize(), 12, false).Clicked() {
 				win.Minimize()
 			}

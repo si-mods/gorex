@@ -656,7 +656,7 @@ func buttonStyleOf(k *colors) *ui.ButtonStyle {
 	return &ui.ButtonStyle{
 		Style: func(b ui.Element, primary bool) {
 			if m, ok := statefulFaceMaterial(roleButtonBackground, face, b, primary); ok {
-				b.Padding(5, 14).Radius(k.radius(3)).Border(0, ui.Color{}).TextColor(ref.text).Material(m)
+				b.Padding(4, 12).Radius(k.radius(3)).Border(0, ui.Color{}).TextColor(ref.text).Material(m)
 			}
 		},
 	}
@@ -674,7 +674,7 @@ func selectStyleOf(k *colors) *ui.SelectStyle {
 	ref := faceLadder(k, flat, ladderOf(k, isDark(flat)))
 	return &ui.SelectStyle{
 		Trigger: func(b ui.Element) {
-			b.Background(k.field).Border(k.m.border, k.fieldBorder).Radius(0).Padding(3, 3, 3, 7).TextColor(k.text)
+			b.Background(k.field).Border(k.m.border, k.fieldBorder).Radius(k.radius(0)).Padding(4, 4, 4, 8).TextColor(k.text)
 		},
 		Chevron: func(c *ui.Context) {
 			box := ui.Box(c).Size(18, 18).Shrink(0).Center().Radius(k.radius(2))
