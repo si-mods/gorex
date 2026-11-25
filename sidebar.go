@@ -666,12 +666,9 @@ func spaceTab(c *ui.Context, k *colors, key, name, detail string, s *rex.Program
 func savedTabLabel(t savedTab) (string, program) {
 	n := focusedLeaf(t)
 	prog := shellTile
-	switch {
-	case n.URL != "":
-		prog = browserProgram
-	case n.Kind == "note":
-		prog = noteProgram
-	case n.Prog != "":
+	if pr, ok := extProgram(n); ok {
+		prog = pr
+	} else if n.Prog != "" {
 		prog = programOf(n.Prog)
 	}
 	return cmp.Or(t.Name, n.Name, prog.Name, folderName(n.Dir), "Shell"), prog
@@ -687,7 +684,7 @@ func savedTabFace(t savedTab, infos map[string]rex.SessionInfo) (name, detail st
 	name, prog = savedTabLabel(t)
 	n := focusedLeaf(t)
 	in, ok := infos[n.SID]
-	if n.SID == "" || n.URL != "" || n.Kind == "note" || !ok || in.Exited {
+	if _, isExt := extProgram(n); n.SID == "" || isExt || !ok || in.Exited {
 		return name, "", prog
 	}
 	p := &Pane{SID: n.SID, Name: n.Name, info: in, startDir: n.Dir}

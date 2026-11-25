@@ -1578,6 +1578,36 @@ func (msgs Messages) WindowMinimize() string {
 	return Catalog.Format(msgs.locale, "windowMinimize", nil)
 }
 
+// PaneExtMissing says "Pane of missing extension \"{kind}\""
+// in the language the app shows.
+//
+// Title of a pane whose extension is not installed, the kind's name in
+// {kind}.
+func PaneExtMissing(kind string) string { return In(i18n.Locale()).PaneExtMissing(kind) }
+
+// PaneExtMissing says "Pane of missing extension \"{kind}\""
+// in the language of msgs.
+//
+// Title of a pane whose extension is not installed, the kind's name in
+// {kind}.
+func (msgs Messages) PaneExtMissing(kind string) string {
+	return Catalog.Format(msgs.locale, "paneExtMissing", map[string]any{"kind": kind})
+}
+
+// PaneExtMissingHint says "Install the extension that provides this pane, or close it."
+// in the language the app shows.
+//
+// Note under the title of a pane whose extension is not installed.
+func PaneExtMissingHint() string { return In(i18n.Locale()).PaneExtMissingHint() }
+
+// PaneExtMissingHint says "Install the extension that provides this pane, or close it."
+// in the language of msgs.
+//
+// Note under the title of a pane whose extension is not installed.
+func (msgs Messages) PaneExtMissingHint() string {
+	return Catalog.Format(msgs.locale, "paneExtMissingHint", nil)
+}
+
 // WindowMaximize says "Maximize"
 // in the language the app shows.
 //

@@ -86,7 +86,7 @@ func (a *App) teleportMenu(m *ui.Menu, p *Pane) {
 // pane: disabled, with the reason, when it cannot go.
 func (a *App) teleportItems(match func(string) bool) []paletteItem {
 	t := a.tab()
-	if t == nil || t.Focus == nil || t.Focus.SID == "" || t.Focus.browser != nil || t.Focus.note != nil {
+	if t == nil || t.Focus == nil || t.Focus.SID == "" || t.Focus.ext != nil {
 		return nil
 	}
 	p := t.Focus

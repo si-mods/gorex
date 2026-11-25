@@ -387,7 +387,7 @@ func (a *App) debug(dir, line string) {
 		})
 	case "url": // loads the URL in the focused browser pane
 		win.Update(func() {
-			if t := a.tab(); t != nil && t.Focus != nil && t.Focus.browser != nil {
+			if t := a.tab(); t != nil && t.Focus != nil && t.Focus.ext != nil {
 				a.navigateBrowser(t.Focus, arg)
 			}
 		})
@@ -518,8 +518,8 @@ func (a *App) debug(dir, line string) {
 		time.Sleep(300 * time.Millisecond)
 		var v *mygo.WebView
 		debugMain(func() {
-			if t := a.tab(); t != nil && t.Focus != nil && t.Focus.browser != nil {
-				v = t.Focus.browser.web
+			if t := a.tab(); t != nil && t.Focus != nil && t.Focus.ext != nil {
+				v = t.Focus.ext.webView()
 			}
 		})
 		if v == nil {

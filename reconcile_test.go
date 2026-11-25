@@ -459,17 +459,17 @@ func TestFollowBrowser(t *testing.T) {
 	browser(s).URL = "https://theirs.test/"
 	setOther(t, other, s)
 	takeOther(t, a, other)
-	if p := a.tab().panes()[1]; p != web || web.browser.url != "https://theirs.test/" {
-		t.Errorf("pane %v at %q", p, web.browser.url)
+	if p := a.tab().panes()[1]; p != web || browserOf(web).url != "https://theirs.test/" {
+		t.Errorf("pane %v at %q", p, browserOf(web).url)
 	}
 	// The page went on by itself, unsaved; another change leaves it.
-	web.browser.url = "https://mine.test/"
+	browserOf(web).url = "https://mine.test/"
 	s = savedWorkspaces(t, other)
 	s.Sessions[0].Tabs[0].Name = "renamed"
 	setOther(t, other, s)
 	takeOther(t, a, other)
-	if web.browser.url != "https://mine.test/" {
-		t.Errorf("own navigation lost: %q", web.browser.url)
+	if browserOf(web).url != "https://mine.test/" {
+		t.Errorf("own navigation lost: %q", browserOf(web).url)
 	}
 	// A writer that drops the ID: the pane is named by its place, once,
 	// and stays at the next such write.

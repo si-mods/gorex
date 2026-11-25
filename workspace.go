@@ -363,12 +363,12 @@ func (st *store) queue() {
 		st.out.add(rex.LayoutCommand{Op: "layout.apply", Batch: batch}, nil)
 	}
 	st.base = now
-	// What the browser panes show the server has now.
+	// What the extension panes show the server has now.
 	for _, a := range st.apps {
 		for _, t := range a.tabs {
 			for _, p := range t.allPanes() {
-				if b := p.browser; b != nil {
-					b.synced = b.url
+				if p.ext != nil {
+					p.ext.layoutSaved(p)
 				}
 			}
 		}

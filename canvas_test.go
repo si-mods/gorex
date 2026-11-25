@@ -412,7 +412,7 @@ func TestCanvasMenuPlacesBox(t *testing.T) {
 	}
 	settle(tt)
 	p := tab.Focus
-	if p == old || p == nil || p.note == nil || p.float == nil || !slices.Contains(tab.Floats, p.float) {
+	if p == old || p == nil || noteOf(p) == nil || p.float == nil || !slices.Contains(tab.Floats, p.float) {
 		t.Fatalf("the focus is on %+v, not a new note's box", p)
 	}
 	f := p.float
@@ -520,7 +520,7 @@ func TestCanvasMenuAtPointer(t *testing.T) {
 		}
 		settle(tt)
 		f := tab.Focus.float
-		if tab.Focus.note == nil || f == nil {
+		if noteOf(tab.Focus) == nil || f == nil {
 			t.Fatalf("at %+v: no new note's box", view)
 		}
 		// Where the box's top left shows, in the window.
@@ -554,12 +554,12 @@ func TestCanvasBrowserAddress(t *testing.T) {
 			}
 			settle(tt)
 			p := tab.Focus
-			if p == nil || p.browser == nil {
+			if p == nil || browserOf(p) == nil {
 				t.Fatalf("focus is not a browser pane: %+v", p)
 			}
 			// Leave the field, as a user who looked at the page does, and
 			// click back into it.
-			p.browser.auto = false
+			browserOf(p).auto = false
 			a.focusReq = nil
 			settle(tt)
 			r, ok := tt.Find(locales.BrowserAddress())
@@ -575,8 +575,8 @@ func TestCanvasBrowserAddress(t *testing.T) {
 			tt.Type("http://localhost:5173/doc/drafts")
 			tt.Key(0, ui.KeyEnter)
 			settle(tt)
-			if got := p.browser.url; got != "http://localhost:5173/doc/drafts" {
-				t.Fatalf("url %q, addr %q after Enter", got, p.browser.addr)
+			if got := browserOf(p).url; got != "http://localhost:5173/doc/drafts" {
+				t.Fatalf("url %q, addr %q after Enter", got, browserOf(p).addr)
 			}
 		})
 	}

@@ -444,11 +444,11 @@ func TestRestoreFocusesSavedFloat(t *testing.T) {
 		t.Errorf("the focus went to %v, want the float saved third", x.Focus)
 	}
 	y := b.tabs[1]
-	if y.Root == nil || y.Root.Pane == nil || y.Root.Pane.browser == nil ||
-		y.Root.Pane.browser.url != "https://d.example/" {
+	if y.Root == nil || y.Root.Pane == nil || browserOf(y.Root.Pane) == nil ||
+		browserOf(y.Root.Pane).url != "https://d.example/" {
 		t.Errorf("the tree did not take the topmost float: %+v", y.Root)
 	}
-	if len(y.Floats) != 1 || y.Floats[0].Pane.browser.url != "https://c.example/" {
+	if len(y.Floats) != 1 || browserOf(y.Floats[0].Pane).url != "https://c.example/" {
 		t.Errorf("floats after the promotion: %+v", y.Floats)
 	}
 }

@@ -109,6 +109,8 @@
   "paneUnzoom": "还原",
   "paneDivider": "分隔线",
   "paneNeedsAttention": "需要注意",
+  "paneExtMissing": "缺少扩展「{kind}」的窗格",
+  "paneExtMissingHint": "安装提供此窗格的扩展，或将其关闭。",
   "windowMinimize": "最小化",
   "windowMaximize": "最大化",
   "windowRestore": "还原",

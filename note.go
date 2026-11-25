@@ -13,6 +13,7 @@ import (
 	"github.com/egoist/mygo/ui/markdown"
 
 	"gorex/internal/rex"
+	"gorex/locales"
 )
 
 // notePane is a pane of free text, a sticky note. Its text lives in a file
@@ -61,7 +62,7 @@ func clampNoteSize(s float32) float32 {
 
 // zoom changes the size by delta points; 0 goes back to the default.
 // It reports whether the size changed.
-func (n *notePane) zoom(delta float32) bool {
+func (n *notePane) resize(delta float32) bool {
 	old := n.size
 	if delta == 0 {
 		n.size = 0
@@ -77,7 +78,9 @@ func (n *notePane) zoom(delta float32) bool {
 // focusedNote is the note pane that has the focus, nil if another has.
 func (a *App) focusedNote() *notePane {
 	if t := a.tab(); t != nil && t.Focus != nil {
-		return t.Focus.note
+		if n, ok := t.Focus.ext.(*notePane); ok {
+			return n
+		}
 	}
 	return nil
 }
@@ -85,23 +88,21 @@ func (a *App) focusedNote() *notePane {
 // zoomNote changes the text size of the focused note, if one has the
 // focus, and reports whether it did take the command.
 func (a *App) zoomNote(delta float32) bool {
-	n := a.focusedNote()
-	if n == nil {
+	t := a.tab()
+	if t == nil || t.Focus == nil || t.Focus.ext == nil {
 		return false
 	}
-	if n.zoom(delta) {
-		a.changed()
-	}
-	return true
+	return t.Focus.ext.zoom(a, t.Focus, delta)
 }
 
 // toggleNotePreview switches the note of pane p between editing and its
 // Markdown preview, and gives the pane the keyboard.
 func (a *App) toggleNotePreview(p *Pane) {
-	if p == nil || p.note == nil {
+	n, ok := p.ext.(*notePane)
+	if p == nil || !ok {
 		return
 	}
-	p.note.preview = !p.note.preview
+	n.preview = !n.preview
 	a.focusReq = p
 	a.changed()
 }
@@ -262,14 +263,14 @@ func (a *App) newNotePane(id string) *Pane {
 		}
 	}
 	n.last = n.text
-	return &Pane{ID: a.id(), note: n}
+	return &Pane{ID: a.id(), ext: n}
 }
 
-// save hands the text to the note's saver when it changed. The file is
+// persist hands the text to the note's saver when it changed. The file is
 // written whole and atomically, off the UI thread, after the text has been
 // still for noteSaveDelay; a closed pane, a moved one and the app's quit
 // write it at once.
-func (n *notePane) save() {
+func (n *notePane) persist() {
 	if n == nil || n.text == n.last || !validNoteID(n.id) {
 		return
 	}
@@ -283,15 +284,95 @@ func (n *notePane) flush() {
 	if n == nil {
 		return
 	}
-	n.save()
+	n.persist()
 	notesDisk.flush(n.id)
 }
 
-// destroy deletes the note's file, for a pane that is closed for good; a
-// pane that moves keeps it.
-func (n *notePane) destroy() {
-	if n != nil && validNoteID(n.id) {
+// destroy deletes the note's file, for a pane that is closed for good
+// (kill); a pane that moves keeps it.
+func (n *notePane) destroy(kill bool) {
+	if n != nil && kill && validNoteID(n.id) {
 		notesDisk.drop(n.id)
 		os.Remove(n.path())
 	}
 }
+
+// loadNotePane makes a note pane of s, a note node of a layout.
+func (a *App) loadNotePane(s *savedNode, taken func(*savedNode) bool) *Pane {
+	p := a.newNotePane(s.Note)
+	p.Name = s.Name
+	n := p.ext.(*notePane)
+	n.size, n.preview = clampNoteSize(s.NoteSize), s.NotePreview
+	return p
+}
+
+// The paneExt of a note pane.
+
+func (n *notePane) kind() string     { return noteKind }
+func (n *notePane) program() program { return noteProgram }
+
+// label is the pane's name, else the note's first line, else "Note".
+func (n *notePane) label(p *Pane) (name, detail string) {
+	name = p.Name
+	if name == "" {
+		name = noteTitle(n.text)
+	}
+	if name == "" {
+		name = locales.NoteName()
+	}
+	return name, ""
+}
+
+func (n *notePane) keepsHeader() bool { return true }
+func (n *notePane) opaqueTiled() bool { return false }
+func (n *notePane) badge() bool       { return false }
+
+func (n *notePane) body(a *App, c *ui.Context, k *colors, t *Tab, p *Pane) {
+	a.noteBody(c, k, t, p)
+}
+
+func (n *notePane) header(*App, *ui.Context, *colors, *Tab, *Pane, bool, bool) bool {
+	return false
+}
+
+// headerActions draws the note's preview toggle in the header's action
+// row.
+func (n *notePane) headerActions(a *App, c *ui.Context, k *colors, t *Tab, p *Pane) {
+	icon, label := "eye", locales.NotePreview()
+	if n.preview {
+		icon, label = "pencil", locales.NoteEdit()
+	}
+	if naturalIconButton(c, k, icon, label, 26, 16).Tooltip(tip(label, &cmdNotePreview)).Clicked() {
+		t.setFocus(p)
+		a.toggleNotePreview(p)
+	}
+}
+
+func (n *notePane) save(p *Pane, node *savedNode) {
+	node.Kind, node.Note = noteKind, n.id
+	node.NoteSize, node.NotePreview = n.size, n.preview
+}
+
+func (n *notePane) apply(a *App, p *Pane, s *savedNode) {
+	n.size, n.preview = clampNoteSize(s.NoteSize), s.NotePreview
+}
+
+func (n *notePane) clone(a *App, p *Pane) *Pane {
+	np := a.newNotePane(n.id)
+	np.Name = p.Name
+	nn := np.ext.(*notePane)
+	nn.size, nn.preview = n.size, n.preview
+	return np
+}
+
+func (n *notePane) restart(a *App, p *Pane) {}
+
+func (n *notePane) zoom(a *App, p *Pane, delta float32) bool {
+	if n.resize(delta) {
+		a.changed()
+	}
+	return true
+}
+
+func (n *notePane) layoutSaved(p *Pane)    {}
+func (n *notePane) webView() *mygo.WebView { return nil }

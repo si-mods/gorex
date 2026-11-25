@@ -1197,13 +1197,8 @@ func (a *App) restartFocused() {
 		return
 	}
 	old := t.Focus
-	if b := old.browser; b != nil {
-		if b.web != nil {
-			b.web.Page().Reload()
-		}
-		return
-	}
-	if old.note != nil {
+	if old.ext != nil {
+		old.ext.restart(a, old)
 		return
 	}
 	if old.host == nil {
