@@ -1,6 +1,6 @@
 ---
 name: DSK-012
-description: "Theme packs get shader slots (window background, a moving layer and the faces of roles), metric seeds (corner scale, border width, UI font, shadow), a glass key and five new roles, so that a pack can rebuild a rich web theme such as Blue Window or Potion Workshop. Use when you add shaders or metrics to theme manifests, change the theme shader API, or port a theme from another app."
+description: "Theme packs get shader slots (the window background and the faces of roles), metric seeds (corner scale, border width, UI font, shadow), a glass key and five new roles, so that a pack can rebuild a rich web theme such as Blue Window or Potion Workshop. Use when you add shaders or metrics to theme manifests, change the theme shader API, or port a theme from another app."
 metadata:
   created: "2026-11-24"
   updated: "2026-11-25"
@@ -8,15 +8,15 @@ metadata:
 
 # DSK-012: Theme shaders and metrics
 
-Status: phases 1 and 2 built (#1096, #1105). Phase 6 (shader API version 2): declared params and the checks of the param range built; layers and `Pointer` built. Phases 3 and 5 not built; phase 4 dropped (DSK-010 User decisions 8).
+Status: built (#1096, #1105, #1107, #1118, #1119, #1126). The two packs of phase 5 are in their own repos and use version 2 (v0.2.0 of each). Phase 3 dropped (User decisions, 5). Phase 4 dropped (DSK-010 User decisions 8).
 
 GoRex ships capabilities, never a look ([DSK-008](DSK-008-theme.md) Non-goals): every look of this doc comes from a pack's own shaders and assets.
 
-This doc decides how a theme pack changes more than colors and still images. It adds three kinds of shader slots, a set of metric seeds, a glass key and five roles. It extends [DSK-008](DSK-008-theme.md) (the manifest and the face resolver) and [DSK-010](DSK-010-theme-ambience.md) (assets, layers, the still rule). The probes are two themes of `freestylefly/codex-themes`, a theme app for the Codex desktop app: "Blue Window" and "Potion Workshop". The goal is to rebuild both as GoRex theme packs. Replaces: [DSK-008](DSK-008-theme.md), the glass non-goal, the glass alternative and the Security rule "A theme manifest is data". Also replaces: [DSK-010](DSK-010-theme-ambience.md), the non-goal "any code in a pack", the first Security item and the asset caps that the Assets section changes.
+This doc decides how a theme pack changes more than colors and still images. It adds two kinds of shader slots, a set of metric seeds, a glass key and five roles. It extends [DSK-008](DSK-008-theme.md) (the manifest and the face resolver) and [DSK-010](DSK-010-theme-ambience.md) (assets, layers, the still rule). The probes are two themes of `freestylefly/codex-themes`, a theme app for the Codex desktop app: "Blue Window" and "Potion Workshop". The goal is to rebuild both as GoRex theme packs. Replaces: [DSK-008](DSK-008-theme.md), the glass non-goal, the glass alternative and the Security rule "A theme manifest is data". Also replaces: [DSK-010](DSK-010-theme-ambience.md), the non-goal "any code in a pack", the first Security item and the asset caps that the Assets section changes.
 
 ## Problem
 
-A GoRex theme can set 31 color seeds, 7 sidebar roles, the `sidebar.*` metrics, a Ghostty theme name, glows, two still images and a brand row (`internal/theme/theme.go`, `Parse`). DSK-010 phases 2 and 3 add particles, sprites, a mascot and a ticker.
+When this doc started, a GoRex theme could set 31 color seeds, 7 sidebar roles, the `sidebar.*` metrics and a Ghostty theme name. It could also set glows, two still images and a brand row (`internal/theme/theme.go`, `Parse`). DSK-010 planned particles, sprites, a mascot and a ticker. #1120 removed the glows, still images, sprites and brand row. DSK-010 dropped the rest (DSK-010 User decisions 8 and 9). A theme now draws pixels only with its own shaders. The table below shows GoRex as it was before this doc.
 
 The probe themes need more. Their engine injects 175 KB of CSS and 63 KB of JavaScript into the host page (`assets/inject/dream-skin.css`, `renderer-inject.js`). A theme there is a palette of 11 colors, a layout, a hero image, a wallpaper, six effect strengths and five metric choices (`assets/presets/*/theme.json`). This table compares each need with GoRex now:
 
@@ -27,13 +27,13 @@ The probe themes need more. Their engine injects 175 KB of CSS and 63 KB of Java
 | Grain or a paper texture | No | `noise: 0.38` | No layer |
 | Wallpaper that fills the window | 1586×992 px at 0.2 | No | `ambience.images` anchors to a corner. Still images stop at 1024 px |
 | Hero illustration, opaque | Mascot, `contain` | 1586×992 px, `cover`, the core of the theme | Images stop at opacity 0.25 |
-| Motes that float | No | `particles: 0.12`, `float: 0.12` | DSK-010 phase 2, not built |
+| Motes that float | No | `particles: 0.12`, `float: 0.12` | Planned in DSK-010 phase 2, never built |
 | Corner radius | `none` | `sm` | Constants in `tokens.go` |
 | Border width | 1 px blue lines | Thin | Fixed |
 | UI font | Tahoma, then system | `rounded` | Fixed |
 | Shadow size | `sm` | `md`, an offset with no blur on notes | Fixed in `raisedShadow`, `toastShadow`, `popoverShadow` |
 | Faces of the title bar, the sidebar, the pane header, the buttons | Yes | Yes | No role for them |
-| Mascot and status lines | Mascot, `statusText`, `quote` | `statusText`, `quote` | DSK-010 phase 3, not built |
+| Mascot and status lines | Mascot, `statusText`, `quote` | `statusText`, `quote` | Planned in DSK-010 phase 3, dropped |
 
 Each extra need is one of four kinds:
 
@@ -42,13 +42,13 @@ Each extra need is one of four kinds:
 3. **Structure**: new parts of the window, such as a toolbar or a right rail.
 4. **Behavior**: what a click does. The mascot is behavior.
 
-A new manifest key for each pixel effect does not scale. DSK-010 shows this: glows, still images, particles and sprites are four formats with four parsers and four sets of caps. Each next theme asks for one more.
+A new manifest key for each pixel effect does not scale. DSK-010 showed this: glows, still images, particles and sprites were four formats with four parsers and four sets of caps. Each next theme asks for one more.
 
 MyGo already has a general answer for pixels. `ui/shader` compiles a fragment shader at run time from source (`shader.Compile`). The language is MyGo's fork of Ebitengine's Kage: Go syntax, GLSL built-ins. The same source runs on Metal, Direct3D 11, OpenGL, WebGL 2 and the CPU. A shader reads up to four images. MyGo's fork accepts loops whose bounds are run-time expressions (`internal/shader/stmt.go`, "dynamic loops"). A theme shader thus needs its own loop check (see Checks at load). GoRex draws its window background (`background` in `style.go`), its dimmed controls (`dim.go`) and its frost (`frost.go`) with it now.
 
 ## Goal
 
-- A theme pack can give a shader for the window background, a shader for a moving layer, and a shader for each of up to 8 faces.
+- A theme pack can give a shader for the window background and a shader for each of up to 8 faces. Each shader can move.
 - A theme pack can set the corner scale, the border width, the UI font and the shadow size.
 - A theme pack can turn the glass on or off, over the user's Glass setting.
 - Text on a face that a shader paints keeps 4.5:1 contrast. GoRex checks this at load, not the reviewer.
@@ -62,7 +62,8 @@ MyGo already has a general answer for pixels. `ui/shader` compiles a fragment sh
 - Structure. A theme does not add a toolbar, a rail or a panel. Blue Window's toolbar, friend list and right rail are not rebuilt. Potion Workshop's rotated notes are not rebuilt. A pane is a terminal, and a rotated terminal does not read.
 - A shader over the terminal text, as Ghostty's `custom-shader` does. That is a choice of the user, not of a theme. A later TERM or DSK doc can add a `terminal.shader` setting.
 - Font files in a pack. A font parser is a large attack surface, and most font licenses forbid redistribution in a theme. A theme names installed families only.
-- The mascot and the ticker. DSK-010 phase 3 builds them without change.
+- The mascot and the ticker. DSK-010 dropped them (DSK-010 User decisions 8).
+- A separate moving layer that GoRex clips to the area outside the panes (the `ambient` slot). See User decisions, 5.
 - iOS and the web client. They can read the same keys later.
 
 ## Design
@@ -74,7 +75,7 @@ The user installs and selects a pack as DSK-008 says. With a pack that uses this
 1. The corners, borders, shadows and UI font of the theme, everywhere in the chrome.
 2. A window background that the theme draws: for example a wallpaper that fills the window, a paper grain, or a hero picture in the free area.
 3. Faces that the theme draws: for example the title bar, the sidebar, the chosen row, the pane header and the buttons as XP gradients, or as paper with a stitched edge.
-4. Motes or bubbles that move outside the panes. They stop by the still rule of DSK-010.
+4. Motion that the background shader draws, such as motes or a light that follows the pointer. It stops by the still rule of DSK-010. It shows faintly through a pane card, and more under the glass setting (see Limits and User decisions, 5).
 
 Text on each face stays readable. A theme shader that fails a check shows nothing new: GoRex draws the flat colors of the theme, and the Extensions page shows the warning under the theme.
 
@@ -104,9 +105,9 @@ Four new optional keys, `shaders`, `metrics`, `glass` and `description`, and fiv
 - `description` is a line about the theme: a string of at most 160 characters, cleaned of control and bidirectional characters (`cleanText`), each change with a warning. The Extensions page shows it under the theme's name. A value that is not a string drops with a warning.
 - `shaders.api` is the version of the shader API (see Shader API). This doc defines version 1. A build that does not know the version drops `shaders` with a warning.
 - A slot names its shader source as an asset of kind `.kage` (see Assets). `images` names up to 4 image assets, which the shader reads as `image0` to `image3`. `params` sets the other uniforms of the shader: a number, a list of numbers, or a color as a role value (a hex string or a `{"light", "dark"}` pair).
-- `shaders.background` and `shaders.ambient` take one slot each. `shaders.faces` maps a face role to a slot. A role that is not a face is dropped with a warning.
+- `shaders.background` takes one slot. `shaders.faces` maps a face role to a slot. A role that is not a face is dropped with a warning.
 - A face that has a shader must also have a flat color: the role value of the theme, or of the built-in palette. The flat color selects the text ladder (DSK-008 pairing), and draws on the CPU renderer and after a failed check. The built-in palette has a flat color for the five sidebar faces only: a slot of `titleBar.background`, `sideBar.background` or `paneHeader.background` with no role in the manifest is dropped with a warning.
-- Phase 2 drops `shaders.ambient` with a warning ("not drawn by this build"), until phase 3.
+- Every build drops `shaders.ambient` with a warning ("not drawn by this build"). Phase 3, which was to draw it, is dropped (User decisions, 5).
 
 ### Shader API
 
@@ -120,7 +121,7 @@ A theme shader is a Kage file with a `Fragment` entry point, as `ui/shader` docu
 | `Window` | `vec2` | The size of the window, in DIPs |
 | `Seed<Name>` | `vec4` | The resolved seed, not premultiplied, for example `SeedAccent`, `SeedBgTop` |
 
-`rectSize()`, `pixelScale()` and the image functions come from MyGo. `Origin` and `Window` let a shader draw one picture across the bands of the free region and across faces. Each other exported uniform is a param. A param that the manifest does not set is zero, with a warning. A shader returns its color premultiplied, as every MyGo shader does.
+`rectSize()`, `pixelScale()` and the image functions come from MyGo. `Origin` and `Window` let a shader draw one picture across the background and the faces. Each other exported uniform is a param. A param that the manifest does not set is zero, with a warning. A shader returns its color premultiplied, as every MyGo shader does.
 
 Version 1 is a promise to pack authors. A later version adds uniforms. It does not rename or remove one. A change that must break a shader takes a new `api` number, and the build reads both numbers for one year.
 
@@ -128,12 +129,10 @@ Version 1 is a promise to pack authors. A later version adds uniforms. It does n
 
 | Slot | Layer (DSK-010) | Area | Moves |
 | --- | --- | --- | --- |
-| `background` | 1 | The whole window | Only if the shader reads `Time` |
-| `ambient` | 3 | The free region: the window minus the pane cards and floats, in bands | Yes |
-| `faces.<role>` | The face's own | The rectangle of the face, with its radius | Only if the shader reads `Time` |
+| `background` | 1 | The whole window | Only if the shader reads `Time`, or `Pointer` in version 2 |
+| `faces.<role>` | The face's own | The rectangle of the face, with its radius | Only if the shader reads `Time`, or `Pointer` in version 2 |
 
-- **background** replaces the built-in `background` shader. Under the glass setting GoRex draws it at `backgroundAlpha`, as the built-in one: it wraps the theme's `Fragment` in its own, which multiplies the color by the uniform `GorexAlpha`. A theme shader may not declare `GorexAlpha` or a function `themeFragment`. Glows and still images of DSK-010 draw over it, as now. With Ambience Off, the built-in background draws, as with the other layers of the theme.
-- **ambient** draws once for each band of the free region. In the sidebar band it draws with the sidebar cap of DSK-010 (alpha at most 0.12). DSK-010 phase 2 draws its `particles` and `sprites` with two built-in ambient shaders. A pack with its own `ambient` slot draws that slot after them.
+- **background** replaces the built-in `background` shader. Under the glass setting GoRex draws it at `backgroundAlpha`, as the built-in one: it wraps the theme's `Fragment` in its own, which multiplies the color by the uniform `GorexAlpha`. A theme shader may not declare `GorexAlpha` or a function `themeFragment`. With Ambience Off, the built-in background draws, as with the other layers of the theme.
 - **faces** draw where GoRex paints the face. Where the system draws a glass pill (`glassPill`, macOS 26 with the glass setting on), the system pill stays and the shader does not draw.
 - `button.background` takes no shader. MyGo's stock widgets paint that face in the accent of their theme (`ui.Theme.Accent`), and GoRex has no hook to draw into it. The parser drops the slot with a warning.
 
@@ -145,7 +144,7 @@ Phase 2 draws the faces with these details:
 - `Time` passes only while a window moves the shaders: at most 0.1 s from one moving frame to the next, so that it goes on where it stopped. It starts at 0 when the theme applies. `Origin` is the corner of the drawn rectangle in the painter's DIPs; `Window` is the size of the window whose background painted last.
 - The still rule asks the same conditions as DSK-010 (`themeShaderMoves`): Ambience Moving, Animation on, no Reduce Motion, the window active and not hidden, not on battery, and a GPU.
 
-A shader that reads `Time` asks for frames at 30 a second while ambience moves, as DSK-010 phase 2 does. While ambience is still, `Time` stops and GoRex asks for no frame.
+A shader that reads `Time` asks for frames at 30 a second while ambience moves. While ambience is still, `Time` stops and GoRex asks for no frame.
 
 ### Checks at load
 
@@ -168,7 +167,7 @@ Phase 2 builds the checks with these details:
 - Sampling does not prove every input: a shader can still be slow or unreadable at a value no sample hits. Two bounds hold for every input: its loops run at most 256 times a pixel (check 2), and its source is at most 16 KiB.
 - The checks of a theme store their result only while that theme is still selected, under one lock with the theme's change, and a window draws a checked set only for the selected theme.
 - Check 3: a uniform that no param sets is zero, with a warning; a param that the shader does not declare gives a warning. A uniform of the API table with another type, a `Seed<Name>` with no such seed, and a param that does not fit its uniform fail. A param may not set a uniform of the API table.
-- Check 4 draws the built-in background with no glows.
+- Check 4 draws the built-in background.
 - Check 5 reads a face only where text can sit: inside `faceTextInset`, 4 DIPs in from the left and right and 2 DIPs from the top and bottom. A face shader may thus draw an accent bar, an inner border, a stitched edge or a bottom line at the edge in any color. Inside, 4.5:1 and 3:1 hold at each pixel.
 - Check 5 runs in both appearances, with the dark flat color and its ladder. A slot fails when either appearance fails.
 - Check 6 composites a pixel with alpha under 1 over `bgBottom`, the window's root. It draws only the sidebar's columns (`sidebarWidthIn(1280)`, 160 px at 1/8), scaled by a transform: `ui.Render` at scale 1/8 runs the shader for each pixel of scale 1. When the theme's `sideBar.background` is opaque in an appearance, the text reads on that face, and the check skips the appearance.
@@ -253,7 +252,7 @@ DSK-010 caps stay, with these changes:
 | Pack | 4 MiB | 8 MiB |
 | Decoded memory | 48 MiB | 48 MiB, no change |
 
-An image that a still layer or the brand also reads keeps the DSK-010 caps, and decodes at the size the still layer needs; the shaders read that bitmap. An asset named `*.kage` must be UTF-8 text with no NUL byte.
+An asset named `*.kage` must be UTF-8 text with no NUL byte.
 
 A wallpaper that fills a 2560 px window at 1024 px looks soft. At 2048 px it is sharp enough at the opacity a wallpaper uses. The decoded cap holds the memory: three images of 2048×2048 px fill it.
 
@@ -265,7 +264,6 @@ A wallpaper that fills a 2560 px window at 1024 px looks soft. At 2048 px it is 
 - `style.go`: `paintBackground` draws the theme's background slot when one passed the checks. `surface` keeps its rule. The flat color still selects the ladder.
 - `tokens.go`: the radius tokens and the shadow functions read the metrics of the palettes value (`palettes`). Call sites use `k.radius(radiusM)` and pass `k` to the shadow functions. `TestDesignTokens` checks that no call site uses a bare token. The metrics change with the theme, as the colors do, so a window reads one whole value.
 - `menus.go` and each `uiFont` user: the family comes from the palettes value.
-- DSK-010 phase 2: `ambience.go` draws particles and sprites as built-in ambient shaders with the same uniforms. Its manifest keys do not change.
 
 ## Port of the two probes
 
@@ -275,15 +273,15 @@ A wallpaper that fills a 2560 px window at 1024 px looks soft. At 2048 px it is 
 | Gradients | `faces`: title bar, sidebar, chosen row, pane header, buttons | Not needed |
 | Paper look | Not needed | `background`: grain and fibers. `faces`: chosen row and pane header as paper with a stitched edge and a torn edge in alpha |
 | Wallpaper | `background` with `image0`, cover fit at 0.2 | Not needed |
-| Hero | The mascot of DSK-010 phase 3 in the sidebar foot | `background` draws the picture in the free area, with focus 0.27, 0.56 as the probe. In a full tiled layout the panes cover most of it (see Limits) |
-| Motes | Not needed | `ambient` with soft gold motes |
+| Hero | `background` draws a robot in the free area | `background` draws the picture in the free area, with focus 0.27, 0.56 as the probe. In a full tiled layout the panes cover most of it (see Limits) |
+| Motes | Not needed | A `background` layer with soft gold motes |
 | Corners | `radius: 0.2` | `radius: 0.5` |
 | Border | `border: 1`, `pane.border` blue | `border: 1`, brown at 26% |
 | Font | `["Tahoma", "Segoe UI", "system"]` | `["rounded", "system"]` |
 | Shadow | `scale: 0.5` | `scale: 1`, `hard: true` |
 | Glass | `"glass": false` | `"glass": false` |
-| Brand text | `brand.wordmark` | `brand.wordmark` |
-| Status and quote | DSK-010 ticker | DSK-010 ticker |
+| Brand text | Not rebuilt (#1120 removed the brand row) | Not rebuilt (#1120 removed the brand row) |
+| Status and quote | Not rebuilt (the ticker is dropped) | Not rebuilt (the ticker is dropped) |
 | Toolbar, right rail, friend list | Not rebuilt (structure) | — |
 | Rotated notes | — | Not rebuilt (structure) |
 
@@ -291,6 +289,8 @@ A wallpaper that fills a 2560 px window at 1024 px looks soft. At 2048 px it is 
 
 - In a full tiled layout the panes cover most of the window. A background hero then shows in the gaps, the title bar, behind the sidebar at its cap, on an empty page and on the canvas. Potion Workshop thus looks closest to its preview on an empty page.
 - A face that the system draws as glass does not take the face shader.
+- A pack that does not set `glass` takes the user's Glass setting. Under the glass setting a terminal's background is translucent (`termOpacity`, 0.8 by default). A moving background then shows through each terminal at about 20%. No check at load measures this. The user stops it with Ambience Still or Off.
+- Nobody measured the GPU frame time of a moving background in a real window.
 - Copy texts of the probes that name Codex (`CODEX 2007 · BLUE WINDOW`, the "Codex friends" heading) change to GoRex or to neutral text.
 
 ## Shader API version 2: declared params, layers and the pointer
@@ -409,7 +409,7 @@ The checks stay on `loadArt`'s goroutine, and the windows draw the flat colors u
 - **Shaders over the panes**: rejected, as DSK-010 rejects motion over the panes. Text under them does not read.
 - **A shader that reads its backdrop**: rejected. Over a pane the backdrop holds terminal text. A theme has no need to read it.
 - **Font files in a pack**: rejected (Non-goals).
-- **Measure the cost on the GPU each frame**: rejected for phase 2. MyGo gives no GPU timer. The interpreter ratio is deterministic and testable. Phase 3 measures the real frame time once and writes it in its PR.
+- **Measure the cost on the GPU each frame**: rejected for phase 2. MyGo gives no GPU timer. The interpreter ratio is deterministic and testable. Nobody measured the real frame time on a GPU, because phase 3 is dropped.
 - **Figma's effect shaders, which read the pixels drawn under them**: rejected for version 2. They need the window drawn to a texture first, and over a pane those pixels hold terminal text, as for a shader that reads its backdrop. A later doc can measure an effect slot that reads only the theme's own layers.
 - **A library of built-in shaders, as Figma ships (bloom, dither, mesh gradient)**: rejected. Each is a look, which DSK-008's rule keeps out of GoRex. Pack authors can share shaders in their own repos; a shader of version 2 carries its declarations, so it moves between packs as one file.
 - **Declarations in the manifest instead of the shader**: rejected for version 2. The shader is the one file that knows what its uniforms mean, as Figma's `propertyDefinitions` belong to the shader.
@@ -457,16 +457,23 @@ No item in `docs/invariants.md` covers the theme.
 
 1. **Metrics, roles and glass** (M): `metrics`, the five roles with flat colors, `k.radius` and the shadow functions, the font list, the `glass` key. MyGo M1 for `rounded`. Blue Window gets its square corners, borders and font.
 2. **Shader runtime** (L): MyGo M2 (loop bounds), `.kage` assets, the API version 1, the `background` and `faces` slots, the checks at load, the new image caps, the CPU fallback. Measure the load checks on a Mac and a Windows PC. Built; the Windows measurement is in Checks at load.
-3. **Ambient slot** (M): the `ambient` slot over the free region, drawn only by a pack's own shader: GoRex ships no built-in ambient shader (DSK-008 Non-goals). Measure the frame cost as DSK-010 says.
+3. **Ambient slot**: dropped (User decisions, 5).
 4. **Mascot and ticker**: dropped with DSK-010 phase 3 (DSK-010 User decisions 8).
 5. **Two packs** (S each): `si-mods/gorex-theme-blue-window` and `si-mods/gorex-theme-potion-workshop`, own repos, listed in the registry with a pinned `ref`. They use the probe names and new art (User decisions, 1 and 3). Screenshots beside the probe previews.
 6. **Shader API version 2** (L): declared params, the checks of the param range, layers, and `Pointer` (see Shader API version 2). Three PRs in order: params and range checks; layers; pointer. Then the two packs move to version 2.
 
 ## User decisions
 
-The user decided the four open questions of the proposal on 2026-11-24, and corrected decisions 1 and 3 the same day:
+The user decided the four open questions of the proposal on 2026-11-24, and corrected decisions 1 and 3 the same day. The user made decision 5 on 2026-11-25.
 
 1. **License of the probe art**: the packs ship new art in the style of the probes, made for GoRex. They ship no image of `freestylefly/codex-themes`. The packs carry the shaders, colors, metrics and the new art.
 2. **Glass**: a theme can turn the glass on or off, over the user's setting (see Glass). This replaces the DSK-008 rule.
 3. **Pack names**: the packs keep the probe names, "Blue Window" and "Potion Workshop". The pack description and the `NOTICE` credit the probe themes of `codex-themes` and their repo URL. The packs do not say that the author endorses them.
 4. **Local packs with shaders**: a local pack (`gorex pack install <folder>`) can carry shaders from phase 2. The load checks apply to it. The registry CI does not.
+5. **Ambient slot (phase 3)**: dropped. Phase 3 was to add an `ambient` slot that GoRex clips to the area outside the pane cards, so that motion never draws under terminal text. The `background` slot already moves when its shader reads `Time` or `Pointer`, and both packs draw their motion there. The facts behind the decision:
+   - Both packs set `"glass": false`. The glass setting thus never makes their terminals translucent. The background still shows faintly through a pane card.
+   - A headless test drew each pack with the shader interpreter at 640×400 px. It drew light and dark, with the glass as the pack sets it and forced on. It compared frames at `Time` 0, 1.5, 3 and 4.5 s. Under the terminal text, a pixel changed by at most 14 of 255. The change covered 0.3% to 7% of the terminal area.
+   - The test ran on the CPU, not on a GPU window. Nobody measured a real window.
+   - A user who wants no motion sets Ambience Still or Off.
+
+   A pack that draws motion in its background keeps it faint where the panes are. If a later pack shows motion that makes text hard to read, a new doc can add the `ambient` slot as phase 3 designed it. GoRex draws that slot over the background and under the pane cards, only outside the cards and floats.
