@@ -879,7 +879,7 @@ func (a *App) sheetAddButton(c *ui.Context, k *colors) {
 	if s.sel >= 0 {
 		kbd = mod + "↩"
 	}
-	b := ui.Row(c.Key("add")).Shrink(0).Margin(0, 6, 0, 0).Height(22).Padding(0, 7).Gap(4).AlignItems(ui.Center).
+	b := ui.Row(c.Key("add")).Shrink(0).Margin(0, 6, 0, 0).Height(22).Padding(0, 8).Gap(4).AlignItems(ui.Center).
 		Radius(concentric(k.radius(radiusM), 3)).Border(k.borderW(), k.panelBorder).Label(label)
 	switch {
 	case s.canSubmit() && b.Hovered():
