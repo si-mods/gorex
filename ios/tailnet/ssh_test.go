@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
+	"encoding/pem"
 	"errors"
 	"io"
 	"net"
@@ -511,6 +512,145 @@ func TestSSHKey(t *testing.T) {
 	if SSHPublicKey() != want {
 		t.Errorf("SSHPublicKey() = %s, want %s", SSHPublicKey(), want)
 	}
+}
+
+// ParseSSHKey parses unencrypted and passphrase-protected keys, returning
+// normalized unencrypted OpenSSH PEM, public key, fingerprint, and type.
+func TestSSHParseKey(t *testing.T) {
+	rawPEM := NewSSHKey()
+	out, err := ParseSSHKey(rawPEM, "")
+	if err != nil {
+		t.Fatalf("ParseSSHKey unencrypted: %v", err)
+	}
+	var parsed parsedSSHKey
+	if err := json.Unmarshal([]byte(out), &parsed); err != nil {
+		t.Fatalf("unmarshal parsedSSHKey: %v", err)
+	}
+	if parsed.Type != "ssh-ed25519" {
+		t.Errorf("Type = %q, want ssh-ed25519", parsed.Type)
+	}
+	if !strings.HasPrefix(parsed.PublicKey, "ssh-ed25519 ") {
+		t.Errorf("PublicKey = %q, want ssh-ed25519 prefix", parsed.PublicKey)
+	}
+	if !validFingerprint(parsed.Fingerprint) {
+		t.Errorf("invalid Fingerprint = %q", parsed.Fingerprint)
+	}
+
+	// Passphrase-encrypted key: missing or wrong passphrase fails; right passphrase decrypts to unencrypted PEM.
+	_, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	encBlock, err := ssh.MarshalPrivateKeyWithPassphrase(priv, "", []byte("top-secret"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	encPEM := string(pem.EncodeToMemory(encBlock))
+	if _, err := ParseSSHKey(encPEM, ""); err == nil || !strings.Contains(strings.ToLower(err.Error()), "passphrase") {
+		t.Errorf("encrypted key without passphrase: %v", err)
+	}
+	if _, err := ParseSSHKey(encPEM, "wrong"); err == nil {
+		t.Error("encrypted key with wrong passphrase succeeded")
+	}
+	decOut, err := ParseSSHKey(encPEM, "top-secret")
+	if err != nil {
+		t.Fatalf("encrypted key with valid passphrase: %v", err)
+	}
+	var dec parsedSSHKey
+	if err := json.Unmarshal([]byte(decOut), &dec); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ssh.ParsePrivateKey([]byte(dec.PEM)); err != nil {
+		t.Errorf("normalized PEM should parse without passphrase: %v", err)
+	}
+	if _, err := ParseSSHKey("not a key", ""); err == nil {
+		t.Error("ParseSSHKey accepted garbage")
+	}
+}
+
+// SetSSHKeys supports multiple keys, default ordering, per-host keyId
+// selection, and SSHInstallKey targeting the host's selected key.
+func TestSSHMultiKey(t *testing.T) {
+	Stop()
+	k1 := NewSSHKey()
+	k2 := NewSSHKey()
+	s1, err := ssh.ParsePrivateKey([]byte(k1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	s2, err := ssh.ParsePrivateKey([]byte(k2))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		SetSSHDelegate(nil)
+		SetSSHHosts("[]")
+		_ = SetSSHKeys("[]")
+	})
+
+	// k1 is default, k2 is non-default.
+	keysJSON, _ := json.Marshal([]sshKeyInput{
+		{ID: "key-1", PEM: k1, IsDefault: true},
+		{ID: "key-2", PEM: k2, IsDefault: false},
+	})
+	if err := SetSSHKeys(string(keysJSON)); err != nil {
+		t.Fatalf("SetSSHKeys: %v", err)
+	}
+	wantPub1 := strings.TrimSpace(string(ssh.MarshalAuthorizedKey(s1.PublicKey())))
+	wantPub2 := strings.TrimSpace(string(ssh.MarshalAuthorizedKey(s2.PublicKey())))
+	if got := SSHPublicKey(); got != wantPub1 {
+		t.Errorf("SSHPublicKey() = %q, want %q", got, wantPub1)
+	}
+
+	// Server only authorizes k2. Automatic mode (only default k1) fails without delegate.
+	srv := newFakeSSHD(t, s2.PublicKey())
+	setSSHHosts(t, sshHost{ID: "alice-laptop", User: "alice", Host: "127.0.0.1", Port: srv.port(),
+		Socket: socketRec(srv), HostKey: srv.hostFP})
+	if _, err := dialSSH(context.Background(), "alice-laptop"); err == nil {
+		t.Fatal("automatic mode should not offer non-default key-2")
+	}
+
+	// Binding the host to key-2 succeeds.
+	setSSHHosts(t, sshHost{ID: "alice-laptop", User: "alice", Host: "127.0.0.1", Port: srv.port(),
+		Socket: socketRec(srv), HostKey: srv.hostFP, KeyID: "key-2"})
+	c, err := dialSSH(context.Background(), "alice-laptop")
+	if err != nil {
+		t.Fatalf("dial with key-2: %v", err)
+	}
+	roundTrip(t, c, "hi")
+	c.Close()
+
+	// SSHInstallKey installs key-2 (the host's selected key), not key-1.
+	srv.mu.Lock()
+	srv.execs["umask 077; mkdir -p ~/.ssh*"] = ""
+	srv.mu.Unlock()
+	if err := SSHInstallKey("alice-laptop"); err != nil {
+		t.Fatalf("SSHInstallKey: %v", err)
+	}
+	found := false
+	for _, cmd := range srv.execsAsked() {
+		if strings.Contains(cmd, wantPub2) {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("SSHInstallKey did not install key-2 (%s)", wantPub2)
+	}
+
+	// Zero keys with password delegate still connects by password.
+	if err := SetSSHKeys("[]"); err != nil {
+		t.Fatal(err)
+	}
+	srv.pw = "hunter2"
+	pw := "hunter2"
+	d := &testSSHDelegate{trust: true, secret: &pw}
+	SetSSHDelegate(d)
+	c, err = dialSSH(context.Background(), "alice-laptop")
+	if err != nil {
+		t.Fatalf("zero keys with password delegate: %v", err)
+	}
+	roundTrip(t, c, "hi")
+	c.Close()
 }
 
 // A host key the store doesn't name asks the delegate; trust keeps it

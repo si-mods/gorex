@@ -61,27 +61,10 @@ struct RemoteHostsView: View {
                 .foregroundStyle(.primary)
                 .listRowBackground(Color.card)
             } footer: {
-                VStack(alignment: .leading, spacing: 4) {
-                    // The key GoRex's Devices list shows for this phone, once paired.
-                    let key = TailnetEngine.shared.tailcatKey
-                    if !key.isEmpty {
-                        Text("This phone's key for GoRex's remote access: \(key)").textSelection(.enabled)
-                    }
-                    // The public key an ssh:// host's authorized_keys
-                    // asks for: Copy puts its whole line on the pasteboard.
-                    let ssh = TailnetEngine.shared.sshKey
-                    if !ssh.isEmpty {
-                        HStack(alignment: .top, spacing: 8) {
-                            Text("This phone's SSH key, for a host's authorized_keys: \(ssh)").textSelection(.enabled)
-                            Spacer(minLength: 8)
-                            Button {
-                                UIPasteboard.general.string = ssh
-                            } label: {
-                                Image(systemName: "doc.on.doc")
-                            }
-                            .accessibilityLabel("Copy SSH Key")
-                        }
-                    }
+                // The key GoRex's Devices list shows for this phone, once paired.
+                let key = TailnetEngine.shared.tailcatKey
+                if !key.isEmpty {
+                    Text("This phone's key for GoRex's remote access: \(key)").textSelection(.enabled)
                 }
             }
         }
@@ -232,6 +215,9 @@ private struct HostForm: View {
     @State private var sshHost = ""
     @State private var sshPort = ""
     @State private var sshEndpoint = ""
+    @State private var sshKeyID: UUID?
+    @State private var installingKey = false
+    @State private var installKeyResult: String?
     /// Whether the host goes through the built-in Tailscale, as switched;
     /// nil keeps the host's way, or, for a new one or a new address, takes
     /// it by the address.
@@ -248,6 +234,7 @@ private struct HostForm: View {
         _symbol = State(initialValue: config?.symbol ?? "laptopcomputer")
         _name = State(initialValue: config?.name ?? "")
         _command = State(initialValue: config?.command ?? "")
+        _sshKeyID = State(initialValue: config?.ssh?.keyID)
     }
 
     /// The SSH record the fields name, nil while they don't read as one:
@@ -261,6 +248,7 @@ private struct HostForm: View {
         let portText = sshPort.trimmingCharacters(in: .whitespaces)
         guard let port = portText.isEmpty ? 22 : Int(portText), (1...65535).contains(port) else { return nil }
         var s = HostConfig.SSH(user: user, host: host, port: port)
+        s.keyID = sshKeyID
         let ep = sshEndpoint.trimmingCharacters(in: .whitespaces)
         if !ep.isEmpty {
             if ep.hasPrefix("/") {
@@ -309,6 +297,7 @@ private struct HostForm: View {
         var c: HostConfig
         if let config, config.tailcat != nil || config.ssh != nil {
             c = config
+            if c.ssh != nil { c.ssh?.keyID = sshKeyID }
         } else if mode == .ssh {
             guard let s = sshEntered else { return nil }
             let id = UUID()
@@ -371,6 +360,12 @@ private struct HostForm: View {
                         if let tcp = s.tcp {
                             LabeledContent("TCP", value: tcp)
                         }
+                        Picker("SSH key", selection: $sshKeyID) {
+                            Text("Automatic").tag(UUID?.none)
+                            ForEach(SSHKeyStore.shared.keys) { key in
+                                Text(key.name).tag(UUID?.some(key.id))
+                            }
+                        }
                         if let hostKey = s.hostKey {
                             LabeledContent("Host key", value: hostKey)
                                 .textSelection(.enabled)
@@ -379,13 +374,38 @@ private struct HostForm: View {
                         Text("Forget the host key to be asked again on the next connect; change the address by deleting the host and adding it again.")
                     }
                     .listRowBackground(Color.card)
-                    if s.hostKey != nil, var c = config {
+                    if let config {
                         Section {
-                            Button("Forget Host Key", role: .destructive) {
-                                c.ssh?.hostKey = nil
-                                store.update(c)
-                                dismiss()
+                            Button {
+                                installingKey = true
+                                installKeyResult = nil
+                                Task {
+                                    do {
+                                        try await TailnetEngine.shared.installSSHKeyDirectly(config)
+                                        installKeyResult = String(localized: "SSH key installed on host.")
+                                    } catch {
+                                        installKeyResult = error.localizedDescription
+                                    }
+                                    installingKey = false
+                                }
+                            } label: {
+                                HStack {
+                                    Text("Install SSH Key")
+                                    Spacer()
+                                    if installingKey { ProgressView() }
+                                }
                             }
+                            .disabled(installingKey || SSHKeyStore.shared.keys.isEmpty)
+                            if s.hostKey != nil {
+                                Button("Forget Host Key", role: .destructive) {
+                                    var updated = config
+                                    updated.ssh?.hostKey = nil
+                                    store.update(updated)
+                                    dismiss()
+                                }
+                            }
+                        } footer: {
+                            if let installKeyResult { Text(installKeyResult) }
                         }
                         .listRowBackground(Color.card)
                     }
@@ -436,8 +456,13 @@ private struct HostForm: View {
                                 .accessibilityIdentifier("sshEndpoint")
                             sshValidation(sshEndpointInvalid
                                           ? "Endpoint is a socket path like /run/rex/server.sock, or tcp://host:port." : nil)
-                            LabeledContent("Authentication", value: "Phone key, then password")
-                            LabeledContent("SSH key", value: "This phone")
+                            LabeledContent("Authentication", value: "SSH key, then password")
+                            Picker("SSH key", selection: $sshKeyID) {
+                                Text("Automatic").tag(UUID?.none)
+                                ForEach(SSHKeyStore.shared.keys) { key in
+                                    Text(key.name).tag(UUID?.some(key.id))
+                                }
+                            }
                         }
                     } header: {
                         VStack(spacing: 20) {

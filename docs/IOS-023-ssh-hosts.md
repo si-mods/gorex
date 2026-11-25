@@ -106,7 +106,7 @@ A host whose address has no socket path learns it on its first connect:
 
 ### Trust
 
-- The device key is an Ed25519 key the engine makes (`NewSSHKey`, `SSHPublicKey`, `SetSSHKey`, as the tailcat key's calls). The app keeps the private key in the Keychain, where the tailcat client key lives. The key stays on the device, as the tailcat key does.
+- The device key is an Ed25519 key the engine makes (`NewSSHKey`, `SSHPublicKey`, `SetSSHKey`, as the tailcat key's calls). The app keeps the private key in the Keychain, where the tailcat client key lives. The key stays on the device, as the tailcat key does. [`IOS-026`](IOS-026-ssh-keys.md) extends this to a multi-key store and Settings UI (`SetSSHKeys`, `ParseSSHKey`).
 - The host key is trusted on first use. The card shows its SHA256 fingerprint and its type, as rootshell's request does, and offers Trust & Save, Connect Once and Cancel. Save writes it to the host's record; Once marks it trusted for the run only (`sshTrusted`), written nowhere. A changed key refuses, warns of a man-in-the-middle, shows both fingerprints, and only Forget clears it.
 - A question outlives its dial. Two dials of one host at the same fingerprint share one card and one answer; a retry after a timed-out dial reuses the pending card instead of asking again, as rootshell's serialized queue does. A second fingerprint while a card is up queues behind it.
 - Authentication tries the device key, then `password`, then `keyboard-interactive`. Each of the last two asks in a card. The card classifies the prompt, as rootshell does: a one-time-code prompt gets the OTP AutoFill, and the host's user is the anchor for the OS password manager. The password lives in memory for the run and is never written.
