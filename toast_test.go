@@ -220,6 +220,8 @@ func TestNewFloatNeedsTab(t *testing.T) {
 // notification shown later takes the row away.
 func TestNotificationsOffRow(t *testing.T) {
 	a, _ := newTestApp(t)
+	// Other tests leave the window on another section.
+	settingsUI.section = "appearance"
 	st := ui.NewTester(a.settingsView, 780, 900)
 	st.Frame()
 	if st.HasText(locales.SettingsNotificationsOff()) {
