@@ -89,7 +89,6 @@ func TestNoNewRootPanic(t *testing.T) {
 	allowed := map[string]bool{
 		"commands.go": true,
 		"host.go":     true,
-		"note.go":     true,
 		"programs.go": true,
 	}
 	entries, err := os.ReadDir(".")

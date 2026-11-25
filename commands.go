@@ -374,26 +374,6 @@ var (
 		Host:    focusedHost,
 		RunArgs: func(a *App, args map[string]any) error { a.splitAt(true, argString(args, "dir")); return nil },
 	}
-	cmdNewNote = command{
-		ID: "tab.new_note", Name: locales.Messages.CmdNewNoteTab,
-		Run: func(a *App) { a.newNoteTab() },
-	}
-	cmdSplitNote = command{
-		ID: "pane.split.note", Name: locales.Messages.CmdSplitNote,
-		Run:  func(a *App) { a.splitNote(false) },
-		Args: []actionArg{{Name: "direction", Type: "string", Optional: true, Values: []string{"right", "down"}}},
-		RunArgs: func(a *App, args map[string]any) error {
-			a.splitNote(argString(args, "direction") == "down")
-			return nil
-		},
-		Available: splitsLocal,
-	}
-	cmdNotePreview = command{
-		ID: "note.toggle_preview", Name: locales.Messages.CmdToggleNotePreview, Accel: "CmdOrCtrl+E", Keys: "⌘E", Other: ctrlShift(ui.KeyM),
-		Run:         func(a *App) { a.toggleNotePreview(a.tab().Focus) },
-		Passthrough: true,
-		Available:   func(a *App) bool { return a.focusedNote() != nil },
-	}
 	cmdNewBrowser = command{
 		ID: "tab.new_browser", Name: locales.Messages.CmdNewBrowserTab,
 		Run: func(a *App) { a.newBrowserTab() },
@@ -637,17 +617,17 @@ var (
 	cmdFindPrev    = command{ID: "find.previous", Name: locales.Messages.FindPrevious, Accel: "CmdOrCtrl+Shift+G", Keys: "⇧⌘G", Run: func(a *App) { a.findPrevious() }, Available: func(a *App) bool { return a.findable() }}
 	cmdRestart     = command{ID: "pane.restart", Name: locales.Messages.CmdRestartShell, Run: func(a *App) { a.restartFocused() }, Host: focusedHost}
 	cmdBigger      = command{ID: "font.bigger", Name: locales.Messages.CmdBiggerText, Accel: "CmdOrCtrl+=", Keys: "⌘+", Other: shortcut{ui.Ctrl, ui.KeyEqual}, Run: func(a *App) {
-		if !a.zoomNote(noteSizeStep) {
+		if !a.zoomPaneExt(noteSizeStep) {
 			a.setFontSize(termFont.Size + 1)
 		}
 	}}
 	cmdSmaller = command{ID: "font.smaller", Name: locales.Messages.CmdSmallerText, Accel: "CmdOrCtrl+-", Keys: "⌘−", Other: shortcut{ui.Ctrl, ui.KeyMinus}, Run: func(a *App) {
-		if !a.zoomNote(-noteSizeStep) {
+		if !a.zoomPaneExt(-noteSizeStep) {
 			a.setFontSize(termFont.Size - 1)
 		}
 	}}
 	cmdActualSize = command{ID: "font.reset", Name: locales.Messages.CmdActualSize, Accel: "CmdOrCtrl+0", Keys: "⌘0", Other: shortcut{ui.Ctrl, ui.Key0}, Run: func(a *App) {
-		if !a.zoomNote(0) {
+		if !a.zoomPaneExt(0) {
 			a.setFontSize(0)
 		}
 	}}
@@ -780,7 +760,7 @@ func (cmd *command) English() string { return cmd.Name(locales.In("en")) }
 
 // paletteCommands are those the command palette lists, before the tabs.
 var paletteCommands = []*command{
-	&cmdNewTab, &cmdNewBrowser, &cmdNewNote, &cmdSplitRight, &cmdSplitDown, &cmdSplitBrowser, &cmdSplitNote, &cmdNotePreview, &cmdZoom, &cmdEqualize, &cmdResetCanvas, &cmdPaneToNewTab, &cmdClosePane, &cmdCloseTab,
+	&cmdNewTab, &cmdNewBrowser, &cmdSplitRight, &cmdSplitDown, &cmdSplitBrowser, &cmdZoom, &cmdEqualize, &cmdResetCanvas, &cmdPaneToNewTab, &cmdClosePane, &cmdCloseTab,
 	&cmdFloatPane, &cmdNewFloat, &cmdToggleFloat, &cmdHideFloats, &cmdFloatState, &cmdRaiseFloat, &cmdLowerFloat, &cmdCycleFloat,
 	&cmdFloatMove, &cmdFloatResize, &cmdMoveFloatLeft, &cmdMoveFloatRight, &cmdMoveFloatUp, &cmdMoveFloatDown,
 	&cmdNextTab, &cmdPrevTab, &cmdJumpNeedy, &cmdNeeds, &cmdRenameTab, &cmdSidebar,
@@ -919,12 +899,6 @@ func (st *store) menu() *mygo.Menu {
 		mi := &mygo.MenuItem{Label: cmd.Title(), Accelerator: accel, Click: func(_ *mygo.MenuItem, w *mygo.Window) {
 			st.run(cmd, w)
 		}}
-		if cmd == &cmdNotePreview {
-			// Disabled, as it is without a note, its key goes on to the
-			// focused terminal or page.
-			mi.Disabled = !noteMenuOn
-			noteMenuItem = mi
-		}
 		if cmd.Host != nil {
 			mi.Disabled = hostItemsOff[cmd]
 			hostItems[cmd] = mi
@@ -985,7 +959,6 @@ func (st *store) menu() *mygo.Menu {
 			items := []*mygo.MenuItem{
 				item(&cmdNewTab),
 				item(&cmdNewBrowser),
-				item(&cmdNewNote),
 			}
 			// The packs' pane commands, after the built-ins' (docs/EXT-001).
 			for _, c := range extPacks.tabCmds {
@@ -997,13 +970,11 @@ func (st *store) menu() *mygo.Menu {
 				item(&cmdSplitRight),
 				item(&cmdSplitDown),
 				item(&cmdSplitBrowser),
-				item(&cmdSplitNote),
 			)
 			for _, c := range extPacks.splitCmds {
 				items = append(items, item(c))
 			}
 			return append(items,
-				item(&cmdNotePreview),
 				mygo.Separator(),
 				item(&cmdClosePane),
 				item(&cmdCloseTab),
@@ -1711,4 +1682,35 @@ func (a *App) palette(c *ui.Context, k *colors) {
 func splitsLocal(a *App) bool {
 	t := a.tab()
 	return t != nil && t.Focus != nil && t.Focus.host == nil
+}
+
+// hostItems are the menu bar's items of the actions that need a host
+// (command.Host), and hostItemsOff those of them disabled, as the host of
+// the window focused last is not connected.
+var (
+	hostItems    = map[*command]*mygo.MenuItem{}
+	hostItemsOff = map[*command]bool{}
+)
+
+// syncHostItems disables the menu bar's items of the actions whose host
+// is not connected, in the window with the focus.
+func (a *App) syncHostItems() {
+	for cmd, mi := range hostItems {
+		if off := cmd.hostAway(a) != nil; off != hostItemsOff[cmd] {
+			hostItemsOff[cmd] = off
+			mi.SetEnabled(!off)
+		}
+	}
+}
+
+// clearHostItems enables the menu bar's items of the actions that need a
+// host again, as the last window closes: with no window, New Tab opens
+// one.
+func clearHostItems() {
+	for cmd, mi := range hostItems {
+		if hostItemsOff[cmd] {
+			hostItemsOff[cmd] = false
+			mi.SetEnabled(true)
+		}
+	}
 }

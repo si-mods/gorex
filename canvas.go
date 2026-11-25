@@ -359,13 +359,20 @@ func (a *App) canvasMenu(m *ui.Menu, t *Tab) {
 	if m.Item(locales.CanvasNewBrowser()).Chosen() {
 		a.canvasNew(t, "browser", x, y)
 	}
-	if m.Item(locales.CanvasNewNote()).Chosen() {
-		a.canvasNew(t, "note", x, y)
+	// Each enabled pack's pane kind is an item of its own, named by the
+	// pack, whose names are not localized.
+	for _, pk := range allPaneKinds() {
+		if pk.kind == "browser" || pk.program.Name == "" {
+			continue
+		}
+		if m.Item("New " + pk.program.Name).Chosen() {
+			a.canvasNew(t, pk.kind, x, y)
+		}
 	}
 }
 
-// canvasNew puts a new pane of kind, "terminal", "browser" or "note", on
-// t's canvas at x, y of the room: a terminal on the tab's host, in the
+// canvasNew puts a new pane of kind, "terminal", "browser" or a pack's,
+// on t's canvas at x, y of the room: a terminal on the tab's host, in the
 // current directory, as a new float's.
 func (a *App) canvasNew(t *Tab, kind string, x, y float32) {
 	switch h := t.host(); {

@@ -12,7 +12,6 @@ import (
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/plugins/terminal"
 	"github.com/egoist/mygo/ui"
-	"github.com/egoist/mygo/ui/markdown"
 
 	"gorex/internal/layout"
 	"gorex/internal/rex"
@@ -369,7 +368,6 @@ func drawIconButton(c *ui.Context, k *colors, name, label string, size, iconSize
 // to their new places as the layout changes, and open and close there.
 func (a *App) tabContent(c *ui.Context, k *colors, t *Tab) {
 	a.contentFocus, a.pageHover = false, nil
-	a.syncNoteItem()
 	room := ui.Box(c.Key(roomKey(t.ID))).Grow(1).MinWidth(0).MinHeight(0)
 	if anim := motion(c); anim != nil && a.tabSlideDir != 0 {
 		room.Transition(exitIn(ui.ElementTransition{
@@ -456,14 +454,12 @@ var whole = share{0, 0, 1, 1}
 // moves from its old box to its new one rather than popping out of one and
 // into the other.
 type (
-	roomKey        int
-	cellKey        int
-	dividerKey     int
-	addressKey     int
-	noteKey        int
-	notePreviewKey int
-	floatGripKey   int
-	minimizedKey   int
+	roomKey      int
+	cellKey      int
+	dividerKey   int
+	addressKey   int
+	floatGripKey int
+	minimizedKey int
 )
 
 // shares gives each pane of the tree of n, and each split, its share of s.
@@ -1103,65 +1099,6 @@ func (a *App) paneHeader(c *ui.Context, k *colors, t *Tab, p *Pane, focused, hov
 			}
 		})
 		a.paneActions(c, k, t, p, focused || hovered)
-	})
-}
-
-// noteBody shows a note pane's text, which fills the pane and is edited
-// in place. Its keys are the text's: none goes to a terminal.
-func (a *App) noteBody(c *ui.Context, k *colors, t *Tab, p *Pane) {
-	n := p.ext.(*notePane)
-	if n.preview {
-		a.notePreviewBody(c, k, t, p)
-		return
-	}
-	// The text is the whole pane: no field of its own inside it, so no
-	// border, background or corners, only the pane's card around it.
-	in := ui.TextAreaBase(c.Key(noteKey(p.ID)), &n.text).
-		TextColor(k.text).SelectionColor(k.accent.Alpha(0.3)).
-		FontSize(n.textSize()).Padding(10, 12).Grow(1).MinHeight(0).
-		Placeholder(locales.NotePlaceholder()).Label(locales.NotePlaceholder())
-	if a.focusReq == p && a.tab() == t {
-		in.Focus()
-		a.focusReq = nil
-	}
-	if in.Focused() {
-		a.contentFocus = true
-		if t.Focus != p {
-			t.setFocus(p)
-			a.changed()
-		}
-	}
-	// The text is written as it changes, to its own file, not to the
-	// layout: the title shows at once, and nothing waits on a save.
-	n.persist()
-}
-
-// notePreviewBody shows a note's text as Markdown, filling the pane and
-// scrolling. Focus in it gives the pane the focus, so that the app's
-// shortcuts act on it.
-func (a *App) notePreviewBody(c *ui.Context, k *colors, t *Tab, p *Pane) {
-	n := p.ext.(*notePane)
-	n.md.Theme = n.previewTheme(k)
-	sc := ui.Scroll(c.Key(notePreviewKey(p.ID))).Grow(1).MinHeight(0).Focusable().FocusRing(false)
-	if a.focusReq == p && a.tab() == t {
-		sc.Focus()
-		a.focusReq = nil
-	}
-	if sc.FocusWithin() {
-		a.contentFocus = true
-		if t.Focus != p {
-			t.setFocus(p)
-			a.changed()
-		}
-	}
-	sc.Children(func() {
-		ui.Column(c).Padding(10, 12).Children(func() {
-			if strings.TrimSpace(n.text) == "" {
-				ui.Text(c, locales.NotePlaceholder()).FontSize(n.textSize()).TextColor(k.textFaint)
-				return
-			}
-			markdown.View(c, n.text, &n.md)
-		})
 	})
 }
 

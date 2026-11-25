@@ -399,20 +399,23 @@ func canvasApp(t *testing.T, x, y, scale float32) (*App, *ui.Tester, *Tab) {
 // chosen at the canvas's point clicked, of the focused box's size,
 // past the room's edge too.
 func TestCanvasMenuPlacesBox(t *testing.T) {
+	dir := t.TempDir()
+	writeExtPack(t, dir, "demo", demoExtManifest)
+	loadTestPacks(t, dir)
 	a, tt, tab := canvasApp(t, 400, 50, 2)
 	cv, room, old := tab.canvas, a.floatRoom, tab.Focus
 	x, y := room.X+room.W-60, room.Y+room.H-60
 	tt.RightClickAt(x, y)
 	tt.Frame()
-	if m := tt.Menu(); !slices.Equal(m, []string{"New Terminal", "New Browser", "New Note"}) {
+	if m := tt.Menu(); !slices.Equal(m, []string{"New Terminal", "New Browser", "New Demo Note"}) {
 		t.Fatalf("the plane's menu is %q", m)
 	}
-	if err := tt.ChooseMenuItem("New Note"); err != nil {
+	if err := tt.ChooseMenuItem("New Demo Note"); err != nil {
 		t.Fatal(err)
 	}
 	settle(tt)
 	p := tab.Focus
-	if p == old || p == nil || noteOf(p) == nil || p.float == nil || !slices.Contains(tab.Floats, p.float) {
+	if p == old || p == nil || p.ext == nil || p.float == nil || !slices.Contains(tab.Floats, p.float) {
 		t.Fatalf("the focus is on %+v, not a new note's box", p)
 	}
 	f := p.float
@@ -504,6 +507,9 @@ func TestCanvasNoShadow(t *testing.T) {
 // chosen; the new box's top left shows at that point of the room, at any
 // pan and scale.
 func TestCanvasMenuAtPointer(t *testing.T) {
+	dir := t.TempDir()
+	writeExtPack(t, dir, "demo", demoExtManifest)
+	loadTestPacks(t, dir)
 	for _, view := range []struct{ x, y, scale float32 }{{0, 0, 1}, {-300, 120, 0.5}} {
 		a, tt, tab := canvasApp(t, view.x, view.y, view.scale)
 		cv, room := tab.canvas, a.floatRoom
@@ -515,12 +521,12 @@ func TestCanvasMenuAtPointer(t *testing.T) {
 		tt.Frame()
 		tt.RightClickAt(x, y)
 		tt.Frame()
-		if err := tt.ChooseMenuItem("New Note"); err != nil {
+		if err := tt.ChooseMenuItem("New Demo Note"); err != nil {
 			t.Fatalf("at %+v: %v; menu %q", view, err, tt.Menu())
 		}
 		settle(tt)
 		f := tab.Focus.float
-		if noteOf(tab.Focus) == nil || f == nil {
+		if tab.Focus.ext == nil || f == nil {
 			t.Fatalf("at %+v: no new note's box", view)
 		}
 		// Where the box's top left shows, in the window.

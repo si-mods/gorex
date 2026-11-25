@@ -63,14 +63,19 @@ The Notes pack's pane shows a text editor in a web view. It reads and writes `no
   "engine": "webview",
   "api": 1,
   "panes": [
-    { "kind": "note", "title": "Note", "icon": "sticky-note" }
+    {
+      "kind": "note", "title": "Note", "icon": "sticky-note",
+      "fields": ["note", "noteSize", "notePreview"],
+      "files": ["{note}.txt"],
+      "opaque_tiled": false
+    }
   ],
   "storage": { "dir": "notes" },
   "permissions": ["state", "storage"],
   "commands": [
-    { "id": "new_tab", "title": "New Note Tab", "kind": "note", "placement": "tab" },
-    { "id": "split", "title": "Split Note", "kind": "note", "placement": "split" },
-    { "id": "toggle_preview", "title": "Toggle Note Preview", "action": "note.toggle_preview" }
+    { "id": "new", "title": "New Note Tab", "kind": "note", "placement": "tab" },
+    { "id": "split", "title": "Split with Note", "kind": "note", "placement": "split" },
+    { "id": "preview", "title": "Toggle Note Preview", "event": "toggle-preview" }
   ]
 }
 ```
@@ -78,10 +83,15 @@ The Notes pack's pane shows a text editor in a web view. It reads and writes `no
 - `id` names the pack. It is the folder name under `<config>/exts/` and the id in the registry.
 - `api` is the bridge version. A pack that needs a newer bridge than the app's loads as disabled.
 - `panes[].kind` is the pane-kind name this pack serves. The name is the `Kind` field of `layout.Node` (see Serialization).
+- `panes[].fields` names the `layout.Node` fields the pack's state covers: `note`, `noteSize`, `notePreview`, `url`, `id`. A field the layout keeps is the page's state; `id` is the pane's own, made at spawn, and no SetState of the page's.
+- `panes[].files` names the storage files a pane owns, patterns over its fields such as `{note}.txt`. Closing the pane for good removes them, as a note's file went.
+- `panes[].opaque_tiled` is whether the pane draws opaque over the glass window. The default is true; the Notes pack says false, as the note pane did.
+- `panes[].shareable` lets the kind pass the layout filter to other clients, as a browser's `url` does; absent, a kind's node arrives as Unavailable.
+- `panes[].chrome_height` is the pack page's height over a `web` slot, 0 for the pane header's height.
 - `storage.dir` names the pack's data directory inside GoRex's data directory. The default is `exts/<id>/data`. The Notes pack declares `notes`, so it reads the notes that exist today.
 - `slots` (absent here) names extra surfaces. The only slot is `web`: an untrusted web view under the pack's page, for pages from the internet.
 - `permissions` lists the bridge areas the pack may call: `state`, `storage`, `invoke`, `web`, `env`.
-- `commands` declares the pack's commands. `placement` puts a pane-spawning command in the New Tab or Split menu. `action` delegates to a command id the bridge exposes.
+- `commands` declares the pack's commands. `placement` puts a pane-spawning command in the New Tab or Split menu. `action` delegates to a command id the bridge's Invoke allows. `event` names a string the page of the pack's focused pane gets as `ext.command`, for the commands a page answers itself, as a preview toggle's. `action` and `event` are exclusive.
 
 **The pane host.** A pane of a registered kind gets an `extPane` on `Pane`, which replaces `browser` and `note`. The host holds:
 
@@ -97,14 +107,16 @@ The host draws the pack's page and the web slot in the pane's body, as `browserB
 | --- | --- | --- |
 | `State()` | `state` | The pane's `state` object. |
 | `SetState(state)` | `state` | Replaces the pane's `state` and saves the layout. Other clients see the new state as they see a browser's URL today. |
-| `FileRead(name)` | `storage` | The file `name` in the pack's storage directory. |
-| `FileWrite(name, data)` | `storage` | Writes the file. Names are confined to the directory. |
+| `ReadFile(name)` | `storage` | The file `name` in the pack's storage directory. |
+| `WriteFile(name, data)` | `storage` | Writes the file. Names are confined to the directory. |
+| `DeleteFile(name)` | `storage` | Removes the file. |
+| `ListFiles()` | `storage` | The storage directory's file names. |
 | `Invoke(action, args)` | `invoke` | Runs a built-in action the manifest lists, as `gorex.invoke` does in Lua. |
 | `WebNavigate(url)` | `web` | Loads `url` in the pane's web slot. The same `browserURL` rule as today decides what may load. |
-| `WebGo(delta)` | `web` | Back, forward or reload in the web slot. |
+| `WebURL()`, `WebBack()`, `WebForward()`, `WebReload()` | `web` | Where the slot is, and its navigation. |
 | `Env()` | `env` | The locale, the appearance and the theme's surface colors, for the page to match the chrome. |
 
-Events reach the page through `mygo`'s page events: `state` changes, web-slot navigation, theme changes and layout loads.
+Events reach the page through `mygo`'s page events: `ext.state` carries the pane's fields when a layout another client wrote changes them, `ext.web` reports the slot's page, and `ext.command` carries a command's `event` string.
 
 **Serialization.** A pane's `Kind` field is the pane-kind name a pack registers. The two first packs keep the layout shape the app writes today, so old builds read their panes as they do now:
 
@@ -130,7 +142,7 @@ The manifest's `panes[].shareable` flag records the intent, and the server appli
 - `state.go`: `Pane.ext` replaces `browser` and `note`. `load` resolves `Kind` and `URL` through the registry. `paneKey` keys an ext pane by `ext:<kind>:<node id>`.
 - `view.go`: the pane body and the header ask the kind's host. The `!= nil` tests become `p.kind()` queries.
 - `commands.go`: pack commands join the palette and the menus on registration, as Lua actions do.
-- `note.go`, `notesave.go`, `browser.go`: removed as their packs land. The notes' file writer moves into the pack's page and the bridge's `FileWrite`.
+- `note.go`, `notesave.go`, `browser.go`: removed as their packs land. The notes' file writer moves into the pack's page and the bridge's `WriteFile`.
 - `internal/rex/layout_filter.go`: the shareable rule above.
 - The registry (`si-mods/gorex-registry`): an `extensions` array in `index.json`; the `gorex-notes` and `gorex-browser` repositories.
 
@@ -147,7 +159,7 @@ Check afterwards: a build before this change opens a layout the new build wrote 
 ## Security
 
 - A pack's page is a trusted page, so it can call bound Go services. The `Extension` bridge is the only service the app exposes to it. The bridge resolves the caller's pane and pack and refuses a call outside the manifest's `permissions`. A page of another origin or another window has no pane and gets no bridge.
-- `FileRead` and `FileWrite` stay inside the pack's storage directory. `storage.dir` is a name the manifest declares and the app confines under GoRex's data directory; `..` and absolute paths fail.
+- `ReadFile` and `WriteFile` stay inside the pack's storage directory. `storage.dir` is a name the manifest declares and the app confines under GoRex's data directory; `..` and absolute paths fail.
 - The `web` slot is an untrusted web view: it calls no Go method, asks no permission and downloads nothing, as the browser pane's page does today.
 - `SetState` caps the state at a fixed size and stores only JSON values.
 - A registry pack is code that runs in the app. The registry accepts packs by hand in this phase. Signing and review are a later doc (Open questions).
@@ -163,7 +175,7 @@ Check afterwards: a build before this change opens a layout the new build wrote 
 - Layout round trip: a layout with `kind:"note"`, `kind:"browser"` and `url` nodes reads into the same panes a build before this change made, and writes the same fields back.
 - Missing pack: a layout with `kind:"note"` and no Notes pack gives placeholder panes, and keeps the node and its fields on save.
 - Disabled pack: same as missing, plus an enable action on the placeholder.
-- Bridge scope: a call from a page with no pane fails; a call outside the manifest's permissions fails; `FileWrite` cannot leave the storage directory.
+- Bridge scope: a call from a page with no pane fails; a call outside the manifest's permissions fails; `WriteFile` cannot leave the storage directory.
 - Web slot: `WebNavigate` applies the `browserURL` rule; the slot's page cannot call the bridge.
 - Notes parity: the pack's pane edits, previews and saves `notes/<id>.txt` as the note pane did (behavior test through the debug hooks).
 - Browser parity: the pack's pane navigates, shows its address field and syncs `url` to a second client as the browser pane did.

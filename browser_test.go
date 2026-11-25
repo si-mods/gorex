@@ -16,13 +16,6 @@ func browserOf(p *Pane) *browserPane {
 	return b
 }
 
-// noteOf is the pane's note extension, nil for a pane that is not a
-// note's.
-func noteOf(p *Pane) *notePane {
-	n, _ := p.ext.(*notePane)
-	return n
-}
-
 func TestBrowserURL(t *testing.T) {
 	for _, c := range []struct{ in, want string }{
 		{"", ""},

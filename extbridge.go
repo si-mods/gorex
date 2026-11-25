@@ -29,6 +29,9 @@ var (
 	// extWebEvent is "ext.web", which reports the web slot's page: where
 	// it went.
 	extWebEvent = mygo.NewEvent[map[string]any]("ext.web")
+	// extCommandEvent is "ext.command": the event a pack command of
+	// manifest "event" sends to the focused pane's page.
+	extCommandEvent = mygo.NewEvent[string]("ext.command")
 )
 
 // emitState sends the pane's state to its page.

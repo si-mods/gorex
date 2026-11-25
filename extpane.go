@@ -1,11 +1,15 @@
 package main
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log"
 	"net/url"
+	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"sync"
@@ -107,6 +111,23 @@ func packCommands(pk *ext.Pack) []*command {
 			c.Available = splitsLocal
 		case cd.Kind != "":
 			c.Run = func(a *App) { a.newExtTab(cd.Kind) }
+		case cd.Event != "":
+			// The page of the pack's focused pane answers the command.
+			c.Run = func(a *App) {
+				if t := a.tab(); t != nil && t.Focus != nil {
+					if e, ok := t.Focus.ext.(*extPane); ok && e.pack == pk && e.web != nil {
+						extCommandEvent.EmitPage(e.web.Page(), cd.Event)
+					}
+				}
+			}
+			c.Available = func(a *App) bool {
+				t := a.tab()
+				if t == nil || t.Focus == nil {
+					return false
+				}
+				e, ok := t.Focus.ext.(*extPane)
+				return ok && e.pack == pk
+			}
 		case cd.Action != "":
 			c.Run = func(a *App) { a.invokeAction(cd.Action, nil) }
 			c.RunArgs = func(a *App, args map[string]any) error { return a.invokeAction(cd.Action, args) }
@@ -141,7 +162,13 @@ func packKindDefs() []paneKindDef {
 					return a.loadExtPaneFor(pk, pd, s, taken)
 				},
 				key: func(s *savedNode) string {
-					if slices.Contains(pd.Fields, "id") {
+					// Two panes of a kind dedupe by the field that names
+					// their content: the note's file id, else the pane's
+					// own id.
+					switch {
+					case slices.Contains(pd.Fields, "note"):
+						return cmpKey("ext:"+pd.Kind+":", s.Note)
+					case slices.Contains(pd.Fields, "id"):
 						return cmpKey("ext:"+pd.Kind+":", s.ID)
 					}
 					return ""
@@ -278,6 +305,9 @@ func (a *App) newExtPaneFor(pk *ext.Pack, pd *ext.PaneDef, startURL string) *Pan
 	e.keep = savedNode{Kind: pd.Kind}
 	if slices.Contains(pd.Fields, "id") {
 		e.keep.ID = layout.NewTabID()
+	}
+	if slices.Contains(pd.Fields, "note") {
+		e.keep.Note = newFileID()
 	}
 	p := &Pane{ID: a.id(), ext: e}
 	if a.win == nil {
@@ -429,8 +459,10 @@ func (e *extPane) label(p *Pane) (name, detail string) {
 }
 
 func (e *extPane) keepsHeader() bool { return true }
-func (e *extPane) opaqueTiled() bool { return true }
-func (e *extPane) badge() bool       { return false }
+func (e *extPane) opaqueTiled() bool {
+	return e.def.OpaqueTiled == nil || *e.def.OpaqueTiled
+}
+func (e *extPane) badge() bool { return false }
 func (e *extPane) headerActions(*App, *ui.Context, *colors, *Tab, *Pane) {
 }
 func (e *extPane) header(*App, *ui.Context, *colors, *Tab, *Pane, bool, bool) bool {
@@ -554,6 +586,49 @@ func (e *extPane) destroy(kill bool) {
 		e.slot.Destroy()
 		e.slot = nil
 	}
+	if kill {
+		// The pane is closed for good: its own storage files go with it,
+		// as a note's file did.
+		for _, name := range e.paneFiles() {
+			if p, err := e.jail(name); err == nil {
+				os.Remove(p)
+			}
+		}
+	}
+}
+
+// paneFiles resolves the kind's files patterns to the pane's storage
+// names: "{note}.txt" of a note field "abc123" is "abc123.txt".
+func (e *extPane) paneFiles() []string {
+	if len(e.def.Files) == 0 {
+		return nil
+	}
+	fields := extNodeFields(&e.keep, e.def.Fields)
+	out := make([]string, 0, len(e.def.Files))
+	for _, pat := range e.def.Files {
+		name := filePattern.ReplaceAllStringFunc(pat, func(m string) string {
+			v, _ := fields[m[1:len(m)-1]].(string)
+			return v
+		})
+		if name != "" {
+			out = append(out, name)
+		}
+	}
+	return out
+}
+
+// filePattern is a "{field}" inside a files pattern.
+var filePattern = regexp.MustCompile(`\{[a-zA-Z]+\}`)
+
+// zoomPaneExt gives the focused pane's extension kind its own zoom, as
+// a note's text size was; the pane answers false when its kind has no
+// zoom of its own, and the caller then sizes the terminal text.
+func (a *App) zoomPaneExt(delta float32) bool {
+	t := a.tab()
+	if t == nil || t.Focus == nil || t.Focus.ext == nil {
+		return false
+	}
+	return t.Focus.ext.zoom(a, t.Focus, delta)
 }
 
 func (e *extPane) restart(a *App, p *Pane) {
@@ -562,7 +637,56 @@ func (e *extPane) restart(a *App, p *Pane) {
 	}
 }
 
-func (e *extPane) zoom(a *App, p *Pane, delta float32) bool { return false }
+func (e *extPane) zoom(a *App, p *Pane, delta float32) bool {
+	if !slices.Contains(e.def.Fields, "noteSize") {
+		return false
+	}
+	// The text size of a kind that declares noteSize, as a note pane's
+	// was: noteTextDefault at first, a step at a time between
+	// minTextSize and maxTextSize, 0 for the default.
+	size := e.keep.NoteSize
+	ns := float32(0)
+	if delta != 0 {
+		cur := size
+		if cur <= 0 {
+			cur = noteTextDefault
+		}
+		ns = clampNoteSize(cur + delta)
+		if ns == noteTextDefault {
+			ns = 0
+		}
+	}
+	if ns == size {
+		return true
+	}
+	e.keep.NoteSize = ns
+	a.changed()
+	e.emitState()
+	return true
+}
+
+// noteTextDefault is the text size a pane's noteSize of 0 gives, as the
+// note pane's default was; noteSizeStep is how much a ⌘+ or ⌘− moves it.
+const (
+	noteTextDefault = 13
+	noteSizeStep    = 1
+)
+
+// clampNoteSize keeps a noteSize in range; 0, the default, stays.
+func clampNoteSize(s float32) float32 {
+	if s <= 0 || s != s {
+		return 0
+	}
+	return min(max(s, minTextSize), maxTextSize)
+}
+
+// newFileID is the file id a pane's note field names, as a note pane's
+// id was: hex, so that it is safe in a file name.
+func newFileID() string {
+	var b [16]byte
+	rand.Read(b[:])
+	return hex.EncodeToString(b[:])
+}
 
 func (e *extPane) layoutSaved(p *Pane) { e.synced = extStateFingerprint(&e.keep, e.def.Fields) }
 

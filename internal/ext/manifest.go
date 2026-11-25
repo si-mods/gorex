@@ -66,7 +66,11 @@ type Manifest struct {
 // writes as its pane's state; Shareable lets the kind pass the layout
 // filter to other clients, as a browser's url does (the filter applies
 // it once packs can install); ChromeHeight is the page's height above a
-// web slot, 0 for the pane header's height.
+// web slot, 0 for the pane header's height; OpaqueTiled is whether the
+// pane draws opaque over the glass window, true unless the manifest
+// says false; Files names the storage files a pane of the kind owns,
+// patterns such as "{note}.txt" over its state fields, removed when the
+// pane is closed for good.
 type PaneDef struct {
 	Kind         string   `json:"kind"`
 	Title        string   `json:"title"`
@@ -74,6 +78,8 @@ type PaneDef struct {
 	Shareable    bool     `json:"shareable,omitempty"`
 	Fields       []string `json:"fields,omitempty"`
 	ChromeHeight float32  `json:"chrome_height,omitempty"`
+	OpaqueTiled  *bool    `json:"opaque_tiled,omitempty"`
+	Files        []string `json:"files,omitempty"`
 }
 
 // StorageDef names the pack's data directory inside GoRex's data
@@ -92,6 +98,10 @@ type CommandDef struct {
 	Kind      string `json:"kind,omitempty"`
 	Placement string `json:"placement,omitempty"`
 	Action    string `json:"action,omitempty"`
+	// Event names a string sent to the focused pane's page as
+	// "ext.command" when the command runs, for the commands a page
+	// answers itself, as a preview toggle's.
+	Event string `json:"event,omitempty"`
 }
 
 var (
@@ -146,6 +156,11 @@ func (m *Manifest) Validate() error {
 				return fmt.Errorf("pack %q kind %q: unknown state field %q", m.ID, p.Kind, f)
 			}
 		}
+		for _, f := range p.Files {
+			if err := checkPaneFile(f, p.Fields); err != nil {
+				return fmt.Errorf("pack %q kind %q: %v", m.ID, p.Kind, err)
+			}
+		}
 		m.Panes[i] = p
 	}
 	for _, s := range m.Slots {
@@ -189,6 +204,37 @@ func (m *Manifest) Validate() error {
 		if c.Action != "" && !in(m.Permissions, PermInvoke) {
 			return fmt.Errorf("pack %q command %q: action needs permission %q", m.ID, c.ID, PermInvoke)
 		}
+		if c.Event != "" && c.Action != "" {
+			return fmt.Errorf("pack %q command %q: action and event are exclusive", m.ID, c.ID)
+		}
+	}
+	return nil
+}
+
+// checkPaneFile vets a files pattern of the kind: "{field}" names a
+// state field of it, and the rest is a clean relative path.
+func checkPaneFile(pattern string, fields []string) error {
+	rest := pattern
+	for {
+		i := strings.IndexByte(rest, '{')
+		if i < 0 {
+			break
+		}
+		j := strings.IndexByte(rest[i:], '}')
+		if j < 0 {
+			return fmt.Errorf("file pattern %q has an open brace", pattern)
+		}
+		if !in(fields, rest[i+1:i+j]) {
+			return fmt.Errorf("file pattern %q names no state field of the kind", pattern)
+		}
+		rest = rest[i+j+1:]
+	}
+	if strings.Count(pattern, "{") != strings.Count(pattern, "}") {
+		return fmt.Errorf("file pattern %q has a stray brace", pattern)
+	}
+	literal := strings.NewReplacer("{", "", "}", "").Replace(pattern)
+	if filepath.IsAbs(literal) || strings.HasPrefix(filepath.Clean(literal), "..") {
+		return fmt.Errorf("file pattern %q leaves the storage directory", pattern)
 	}
 	return nil
 }
