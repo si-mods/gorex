@@ -8,7 +8,7 @@ metadata:
 
 # DSK-010: Theme assets and ambience
 
-Status: accepted. Phase 1 built (#1083). Phase 2 built (#1099). The user decided its four questions (see User decisions).
+Status: accepted. Phase 1 built (#1083). Phase 2 built (#1099). Phase 3 dropped (User decisions, 8). The user decided its four questions (see User decisions).
 
 This doc decides how a theme pack carries images and motion, and how GoRex draws them. It extends the manifest of [DSK-008](DSK-008-theme.md) and the theme pack kind of the registry. It builds on the optional `terminal` key that DSK-008 phase 4 adds. It does not change that key. The probe is a real theme for another app: `dafy-whale-theme` ("蓝色大肥鱼", a web theme for DeepSeek Harness). The user wants all of its features in GoRex. Where the framework cannot do a feature, this doc extends the framework.
 
@@ -265,6 +265,7 @@ The user decided the four questions of the first draft on 2026-11-24, item 5 in 
 5. **No switches on the Extensions page** (2026-11-24, on #1083): the Extensions page adds no control for ambience or the mascot. `appearance.ambience` and `appearance.mascot` are set in `settings.json`.
 6. **No built-in particle look** (2026-11-24, on #1099): GoRex ships no bubble or other particle shader. Particles come from a theme's own shader ([DSK-012](DSK-012-theme-shaders.md)). GoRex is a base for themes, and draws no look that a theme did not bring.
 7. **Phase 2 over the budget** (2026-11-25, on #1099): phase 2 merges at 20 frames a second over the idle CPU budget. The goal of this doc is a base of capabilities for themes; tuning the frame cost is not in it. No MyGo change follows.
+8. **No mascot or ticker** (2026-11-25): phase 3 is dropped. A mascot with a fixed bob, fixed bubbles and fixed timings, and a ticker with a fixed fade, are a look and a behavior that GoRex would hard-code, with a few numbers for the theme to set. A web theme does this with CSS and JavaScript, which it can change freely. A fixed set of knobs is not that, so GoRex does not build it. The parser keeps dropping `mascot` and `ticker` with a warning.
 
 ## Alternatives
 
@@ -348,7 +349,7 @@ No item in `docs/invariants.md` covers the theme or ambience. The focus rule of 
 
 1. **Assets and still layers** (built, #1083; M, about 800 lines with tests): asset parsing, caps and loader, pack folder install and remove, the pinned `ref` in `iconpack.Checkout`, the registry CI that clones and validates each listed pack repo, glows in the background shader, still images, brand row, the two settings in `settings.json`. The registry CI is si-mods/gorex-registry#6. Until their phases, the parser drops `sprites`, `mascot` and `ticker` with a warning, as an older build does. It drops `particles` in each phase (User decisions, 6). The two settings are read from `settings.json` from phase 1, with no control on the Extensions page (User decisions, 5). `iconpack.Checkout` refuses a pack of a repo other than `gorex-registry` that has no `ref`. The assets decode for a screen scale of 2.
 2. **Moving layers** (built, #1099; M, about 500 lines and 400 lines of tests): sprites, free region, the still rule, the toggle button and command, and the budget measurement. Particles left this phase (User decisions, 6): the parser drops `ambience.particles` with a warning, and a theme's shader of DSK-012 draws them. The sprites move on their own clock, which stops while they are still: they go on from where they stopped. A sprite can be a sprite sheet; its frames take whole pixels. The layers move only when a sprite's image loaded. The toggle turns `appearance.ambience` to `off`, and back to the value before it (Moving or Still). GoRex keeps that value in memory only, so after a restart the toggle turns ambience on as Moving. The palette lists **Toggle Theme Ambience** only while the theme has ambience. Until phase 3, the parser drops `mascot` and `ticker` with a warning.
-3. **Mascot and ticker** (M, about 600 lines): still, animated and sprite sheet mascot, bob, click, double click, hide, bubbles and the ticker. A self-made animated whale validates GIF and sprite sheets.
+3. **Mascot and ticker** (dropped, User decisions 8; was M, about 600 lines): still, animated and sprite sheet mascot, bob, click, double click, hide, bubbles and the ticker. A self-made animated whale validates GIF and sprite sheets.
 4. **Dafy Whale pack** (S): a new public repo `si-mods/gorex-theme-dafy-whale`, not in gorex and not in `gorex-registry`. Its root has `theme.json`, `assets/` (the MIT whale art, the two fish PNGs scaled down, a self-made icon, the self-made animated whale), `LICENSE` (MIT), `NOTICE` and `LICENSE-fish.txt`. A registry PR adds one `themes` entry: `id` `dafy-whale`, `repo` `https://github.com/si-mods/gorex-theme-dafy-whale.git`, no `subdir`, and `ref` at the reviewed commit. Screenshots.
 
 MyGo M1 is not in a phase.
