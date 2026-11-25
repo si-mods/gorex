@@ -237,45 +237,27 @@ private struct HostForm: View {
         _sshKeyID = State(initialValue: config?.ssh?.keyID)
     }
 
-    /// The SSH record the fields name, nil while they don't read as one:
-    /// the login and machine filled, the port a number or empty for 22,
-    /// the endpoint empty, a socket's absolute path, or a tcp://
-    /// endpoint's host:port.
+    /// The SSH record the fields name, nil while they don't read as one,
+    /// by the ssh:// address's own grammar (HostConfig.ssh).
     private var sshEntered: HostConfig.SSH? {
-        let user = sshUser.trimmingCharacters(in: .whitespaces)
-        let host = sshHost.trimmingCharacters(in: .whitespaces)
-        guard !user.isEmpty, !host.isEmpty, !host.contains("@") else { return nil }
-        let portText = sshPort.trimmingCharacters(in: .whitespaces)
-        guard let port = portText.isEmpty ? 22 : Int(portText), (1...65535).contains(port) else { return nil }
-        var s = HostConfig.SSH(user: user, host: host, port: port)
-        s.keyID = sshKeyID
-        let ep = sshEndpoint.trimmingCharacters(in: .whitespaces)
-        if !ep.isEmpty {
-            if ep.hasPrefix("/") {
-                guard HostConfig.SSH.validSocket(ep) else { return nil }
-                s.socket = ep
-            } else {
-                let tcp = ep.hasPrefix("tcp://") ? String(ep.dropFirst(6)) : ep
-                guard HostConfig.SSH.validTCP(tcp) else { return nil }
-                s.tcp = tcp
-            }
-        }
+        var s = HostConfig.ssh(user: sshUser, host: sshHost, port: sshPort, endpoint: sshEndpoint)
+        s?.keyID = sshKeyID
         return s
     }
 
-    private var sshPortInvalid: Bool {
-        let t = sshPort.trimmingCharacters(in: .whitespaces)
-        guard let p = t.isEmpty ? 22 : Int(t) else { return true }
-        return !(1...65535).contains(p)
+    /// Each field's fault, checked alone beside valid others; an empty
+    /// host has its own line, and an empty endpoint discovers.
+    private var sshHostInvalid: Bool {
+        !sshHost.trimmingCharacters(in: .whitespaces).isEmpty
+            && HostConfig.ssh(user: "u", host: sshHost, port: "", endpoint: "") == nil
     }
 
-    /// True only on a real value that fails: an empty endpoint discovers.
+    private var sshPortInvalid: Bool {
+        HostConfig.ssh(user: "u", host: "h", port: sshPort, endpoint: "") == nil
+    }
+
     private var sshEndpointInvalid: Bool {
-        let ep = sshEndpoint.trimmingCharacters(in: .whitespaces)
-        guard !ep.isEmpty else { return false }
-        if ep.hasPrefix("/") { return !HostConfig.SSH.validSocket(ep) }
-        let tcp = ep.hasPrefix("tcp://") ? String(ep.dropFirst(6)) : ep
-        return !HostConfig.SSH.validTCP(tcp)
+        HostConfig.ssh(user: "u", host: "h", port: "", endpoint: sshEndpoint) == nil
     }
 
     /// A field's own error line under it, as rootshell's profile editor
@@ -431,7 +413,8 @@ private struct HostForm: View {
                                 .autocorrectionDisabled()
                                 .accessibilityIdentifier("sshHost")
                             sshValidation(sshHost.trimmingCharacters(in: .whitespaces).isEmpty
-                                          ? "Hostname is required." : nil)
+                                          ? "Hostname is required."
+                                          : sshHostInvalid ? "Hostname is a name or an IP address, with no port, user or path." : nil)
                             HStack {
                                 Text("Port")
                                 Spacer()

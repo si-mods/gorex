@@ -42,20 +42,28 @@ An `ssh://` host whose endpoint is TCP reaches it over a `direct-tcpip` channel 
 
 1. On the host: `gorex rexapi lan listen 127.0.0.1:7297`, `gorex rexapi lan allow 127.0.0.1/32`. (A LAN-bound listener works too — the forward can aim at its address — but loopback is the recommended shape.)
 2. Add Host takes the address, optionally with `#k=` from `gorex rexapi lan`'s pairing URL.
-3. First connect, host-key card and trust as IOS-023. With no token named, the engine execs `gorex rexapi lan token show` (or `rex` for an upstream gateway) for the token — see Changes below; a host that cannot answer asks the user to paste the token, as the refusal hint already does.
+3. First connect, host-key card and trust as IOS-023. With no token named, the engine reads the token over SSH without making one — see The transport below; a host that cannot answer asks the user to paste the token, as the refusal hint already does.
 
 ### The transport
 
 - `dialSSH` picks the channel by the record's endpoint kind: `direct-streamlocal` for a Unix path, `direct-tcpip` for `tcp://`, with `127.0.0.1:0` as the originator address. Both land in the same `net.Conn`, so nothing past the channel changes.
 - The TCP gateway's DNS-rebinding check (`internal/rexapi/host.go`) answers 421 to a Host it does not know, and the proxy's `<id>.ssh.invalid` is no name of its. Requests over an ssh channel therefore send `Host: localhost`, which the check always admits; a Unix endpoint skips the check, so the rewrite is safe there too.
-- The discovery and token execs run on the host's login shell — `gorex … || rex …`, which cmd and the unix shells both read, with no `sh -c` (a Windows sshd has no sh). They work only when `gorex` or `rex` is on the remote PATH; a host where it is not needs the `#k=` token pasted.
-- Discovery runs the same `server status --json` exec. The answer's `listeners[]` already carries `transport`: a `unix`/`named_pipe` entry feeds streamlocal; a `tcp` entry whose address is loopback feeds direct-tcpip. A named-pipe-only answer then falls back: `gorex rexapi lan status` names the gateway's address — bound to the LAN one, which a loopback probe would miss — else the loopback TCP probe; a Unix answer keeps today's behavior.
-- For a tcp endpoint whose token the address did not name, a second exec reads it: `gorex rexapi lan token show` (upstream `rex` next), a command the CLIs already have — the user's own session may read `lan.json`, so nothing new is exposed. A host that answers neither is asked for the token as the refusal hint says.
-- An `--allow-anonymous` or legacy-open endpoint gets no `Authorization` header; the store keeps no token.
+- The discovery and token execs run on the host's login shell, one exec for each CLI name: `gorex …` first, then `rex …` when it fails. No `a || b` and no `sh -c`: Windows PowerShell 5.1 (a common sshd `DefaultShell`) and nushell cannot read `||`, and a Windows sshd has no sh. An exec counts only when it exits 0: a non-zero exit status, a signal or a missing status is no answer, whatever it printed. The execs work only when `gorex` or `rex` is on the remote PATH; a host where it is not needs the `#k=` token pasted.
+- Discovery runs the same `server status --json` exec, and takes the first of:
+  1. a `unix` listener of the answer, the primary one first;
+  2. the first usual socket path that exists (IOS-023), so a Unix host keeps its socket even when status also lists a tcp listener;
+  3. a `tcp` listener, a loopback one first, at the address it is bound to (`addresses`), which shows the port that a listen on port 0 got, else at its `endpoint`;
+  4. the gateway `gorex rexapi lan status` names — bound to the LAN address, which a loopback probe would miss — or the `listen:` address of a gateway that is on but has not reported one (`lan: on, waiting …`); a gateway that is off or in error names none;
+  5. for a server whose answer lists a `named_pipe` listener, the loopback TCP probe (`127.0.0.1:7297`).
+
+  A host where none of these answers fails the dial with "no rex socket on <host>", as IOS-023's does, and runs no token exec.
+- For a tcp endpoint whose token the address did not name, the engine reads it without making one. `token show` alone would make and save a token in `lan.json` on a host that has none, so the engine first runs `rexapi lan status`, and runs `token show` (with the same CLI name) only when the status says `pairing token: set`. Both lines came in the same GoRex release (#684, v0.36.0), so every GoRex host that has `token show` answers the status this way, and an older host needs no new command. What upstream `rex` prints there is not checked; a host whose status lacks the line gets no token read, and needs the `#k=` token pasted. The user's own session may read `lan.json`, so nothing new is exposed. Only an exec that exits 0 is kept, "" included for a host whose gateway has no token; a failed one keeps nothing, and a dial 30 seconds later tries again. A host that answers neither is asked for the token as the refusal hint says.
+- The engine reads the token for every tcp endpoint, as status cannot tell which listener needs it: the LAN gateway's listener reports `admission: anonymous` (no peer credentials) though it asks for the token. A listener that lets callers in without a token, such as `--allow-anonymous` or an address on the legacy list, does not read the `Authorization` header, so the header the app sends costs nothing there. A host whose gateway has no token gives none, and the store keeps none.
+- A gateway that refuses a connect — with the token the app kept, after `gorex rexapi lan token rotate` or with a token of another gateway, or with none, as the engine kept "" from a read before the gateway had a token — makes the app tell the engine to forget its token (`SSHForgetHostToken`) and dial once more, which reads the token again. A connect that still refuses waits for the user.
 
 ### Changes, compact
 
-- `HostConfig.SSH` gains `tcp` (`host`, `port`) beside `socket`; `auth` returns the lanToken for ssh-tcp hosts too.
+- `HostConfig.SSH` gains `tcp` (`host`, `port`) beside `socket`; `auth` returns the lanToken for an ssh host that names no socket (a tcp:// endpoint or a discovered one), and the store reads it from the Keychain for the same hosts (`sendsToken`).
 - `ios/tailnet/ssh.go`: `sshHost.endpoint` becomes `unix | tcp`; `dialSSH` opens the matching channel; the status-exec parser learns `transport`, `endpoint` and the rexapi-lan token exec.
 - `URLRequest.authorized` sends `Host: localhost` for `<id>.ssh.invalid` URLs, beside the bearer.
 - Tests: fake sshd gains a `direct-tcpip` backend (trivial — it is a TCP listener), covering grammar, discovery fallback npipe→tcp, token fetch and the bearer header.

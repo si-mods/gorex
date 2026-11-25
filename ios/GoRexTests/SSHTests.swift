@@ -74,9 +74,14 @@ nonisolated final class SSHAddressTests: XCTestCase {
             XCTAssertNil(HostConfig(ssh: bad), bad)
         }
         for bad in ["", "h", "h:", ":7297", "h:0", "h:65536", "h:abc", "h:p:7297", "fd7a::1:7297",
-                    "[fd7a::1", "[fd7a::1]", "[fd7a::1]:x", "u@h:7297"] {
+                    "[fd7a::1", "[fd7a::1]", "[fd7a::1]:x", "u@h:7297",
+                    // As Go's net.SplitHostPort and strconv read them
+                    // (#1154): a signed port, a bracket in the host.
+                    "h:+7297", "h: 7297", "h[x]:7297", "h]:7297", "[a[b]:7297", "[fd7a::1]:+1"] {
             XCTAssertFalse(HostConfig.SSH.validTCP(bad), bad)
         }
+        XCTAssertNil(HostConfig(ssh: "ssh://alice@alice-laptop:+22"))
+        XCTAssertNil(HostConfig(ssh: "ssh://alice@alice-laptop/tcp://h:+7297"))
     }
 
     /// Each malformed ssh:// address names its fault in the field's
@@ -173,16 +178,21 @@ nonisolated final class SSHAddressTests: XCTestCase {
         defer { d.set(saved, forKey: "hosts") }
         let tcp = try XCTUnwrap(HostConfig(ssh: "ssh://alice@alice-laptop/tcp://127.0.0.1:7297"))
         let unix = try XCTUnwrap(HostConfig(ssh: "ssh://bob@bob-laptop/run/rex/server.sock"))
-        d.set(try JSONEncoder().encode([tcp, unix]), forKey: "hosts")
+        // A discovered endpoint may be tcp: the token learned for it
+        // comes back too (#1154).
+        let found = try XCTUnwrap(HostConfig(ssh: "ssh://carol@carol-pc"))
+        d.set(try JSONEncoder().encode([tcp, unix, found]), forKey: "hosts")
         let tokens = MemoryLANTokens()
         tokens.set("kept-token", for: tcp.id)
         tokens.set("stray-token", for: unix.id)
+        tokens.set("learned-token", for: found.id)
         let store = HostStore(tokens: tokens)
         defer { store.hosts.forEach { $0.stop() } }
         XCTAssertEqual(store.host(tcp.id)?.config.lanToken, "kept-token")
         XCTAssertEqual(store.host(tcp.id)?.config.auth, "kept-token")
         XCTAssertNil(store.host(unix.id)?.config.lanToken)
         XCTAssertNil(store.host(unix.id)?.config.auth)
+        XCTAssertEqual(store.host(found.id)?.config.auth, "learned-token")
     }
 
     /// A failed connect of an ssh-tcp host with no token pulls the one
@@ -289,5 +299,73 @@ nonisolated final class SSHAddressTests: XCTestCase {
         XCTAssertEqual(store.keys.count, 2)
         XCTAssertNil(kc.privateKey(for: generated.id))
         XCTAssertFalse(pushedJSONs.last?.contains("GEN-PEM") == true)
+    }
+}
+
+/// The review findings of #1154 and #1155 on the app's side that the
+/// test target reaches: the Add Host fields' grammar, a refused token
+/// and the one-time-code prompts. (TailnetEngine, which holds the cards'
+/// dismisses and the install, links the engine and is not in it.)
+nonisolated final class SSHReviewTests: XCTestCase {
+    /// The Add Host fields take what the ssh:// address takes, and
+    /// nothing it refuses (#1155).
+    @MainActor func testSSHFields() throws {
+        XCTAssertEqual(HostConfig.ssh(user: " alice ", host: "alice-laptop", port: "", endpoint: ""),
+                       HostConfig.SSH(user: "alice", host: "alice-laptop", port: 22))
+        XCTAssertEqual(HostConfig.ssh(user: "alice", host: "alice-laptop", port: "2222", endpoint: "/run/rex/server.sock"),
+                       HostConfig.SSH(user: "alice", host: "alice-laptop", port: 2222, socket: "/run/rex/server.sock"))
+        XCTAssertEqual(HostConfig.ssh(user: "alice", host: "alice-laptop", port: "", endpoint: "tcp://127.0.0.1:7297")?.tcp,
+                       "127.0.0.1:7297")
+        XCTAssertEqual(HostConfig.ssh(user: "alice", host: "alice-laptop", port: "", endpoint: "127.0.0.1:7297")?.tcp,
+                       "127.0.0.1:7297")
+        XCTAssertEqual(HostConfig.ssh(user: "alice", host: "fd7a::1", port: "", endpoint: "")?.host, "fd7a::1")
+        XCTAssertEqual(HostConfig.ssh(user: "alice", host: "[fd7a::1]", port: "", endpoint: "")?.host, "fd7a::1")
+        // A Windows domain login, and a socket path with a space or a
+        // percent sign, as an address spells them percent-encoded.
+        XCTAssertEqual(HostConfig.ssh(user: "alice@example.com", host: "windows-pc", port: "", endpoint: "")?.user,
+                       "alice@example.com")
+        let mac = "/Users/alice/Library/Application Support/rex/server.sock"
+        XCTAssertEqual(HostConfig.ssh(user: "alice", host: "alice-laptop", port: "", endpoint: mac)?.socket, mac)
+        XCTAssertEqual(HostConfig.ssh(user: "alice", host: "alice-laptop", port: "", endpoint: "/tmp/a%41")?.socket, "/tmp/a%41")
+        XCTAssertEqual(HostConfig.ssh(user: "alice", host: "alice-laptop", port: "", endpoint: "tcp://[fd7a::2]:7297")?.tcp,
+                       "[fd7a::2]:7297")
+        let bad: [(String, String, String, String)] = [
+            ("", "alice-laptop", "", ""), ("alice", "", "", ""),
+            ("alice", "alice-laptop:2222", "", ""), ("alice", "alice laptop", "", ""),
+            ("alice", "alice-laptop/x", "", ""), ("alice", "bob@alice-laptop", "", ""),
+            ("alice", "alice-laptop?x", "", ""), ("alice", "alice-laptop#x", "", ""),
+            ("alice", "alice-laptop", "+22", ""), ("alice", "alice-laptop", "0", ""),
+            ("alice", "alice-laptop", "65536", ""), ("alice", "alice-laptop", "x", ""),
+            ("alice", "alice-laptop", "", "run/rex"), ("alice", "alice-laptop", "", "tcp://h"),
+            ("alice", "alice-laptop", "", "tcp://h:7297/sock"),
+        ]
+        for (u, h, p, e) in bad {
+            XCTAssertNil(HostConfig.ssh(user: u, host: h, port: p, endpoint: e), "\(u) \(h) \(p) \(e)")
+        }
+    }
+
+    /// A refused connect retries with a token it did not send; an ssh
+    /// host's token is read again once — a kept one refused, as after a
+    /// rotate, or none kept from a read before the gateway had one — and
+    /// then it waits for the user (#1154).
+    @MainActor func testRefusalStep() {
+        XCTAssertEqual(Host.refusalStep(sent: nil, now: "t1", ssh: true, relearned: false), .retry)
+        XCTAssertEqual(Host.refusalStep(sent: nil, now: nil, ssh: true, relearned: false), .relearn)
+        XCTAssertEqual(Host.refusalStep(sent: nil, now: nil, ssh: true, relearned: true), .settle)
+        XCTAssertEqual(Host.refusalStep(sent: nil, now: nil, ssh: false, relearned: false), .settle)
+        XCTAssertEqual(Host.refusalStep(sent: "t1", now: "t1", ssh: true, relearned: false), .relearn)
+        XCTAssertEqual(Host.refusalStep(sent: "t1", now: "t2", ssh: true, relearned: true), .retry)
+        XCTAssertEqual(Host.refusalStep(sent: "t1", now: "t1", ssh: true, relearned: true), .settle)
+        // A LAN host's token comes from its pairing code alone.
+        XCTAssertEqual(Host.refusalStep(sent: "t1", now: "t1", ssh: false, relearned: false), .settle)
+    }
+
+    /// A one-time-code prompt gets the code field whatever its case
+    /// (#1155).
+    @MainActor func testOTPPromptAnyCase() {
+        for p in ["OTP:", "Token:", "2FA Code", "Verification code:", "one-time password"] {
+            XCTAssertTrue(HostConfig.SSH.asksOneTimeCode(p), p)
+        }
+        XCTAssertFalse(HostConfig.SSH.asksOneTimeCode("Password:"))
     }
 }

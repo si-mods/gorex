@@ -47,7 +47,12 @@ struct HostConfig: Codable, Identifiable, Hashable {
     /// gateway asks for as a pairing token (docs/IOS-024-ssh-tcp.md);
     /// none for a tailcat, and an ssh:// host on a Unix socket simply
     /// never has one — SSH is the admission (docs/IOS-023-ssh-hosts.md).
-    var auth: String? { tailcat == nil && demo != true ? lanToken : nil }
+    var auth: String? { sendsToken ? lanToken : nil }
+
+    /// Whether the host's requests carry its LAN token (auth), and so
+    /// whether the store reads one from the Keychain: not a tailcat or
+    /// the demo host, and not an ssh:// host that names a socket.
+    var sendsToken: Bool { tailcat == nil && demo != true && ssh?.socket == nil }
 
     enum Transport: String, Codable {
         /// The phone's own network, or the Tailscale app's VPN.
@@ -86,28 +91,43 @@ struct HostConfig: Codable, Identifiable, Hashable {
         /// (try default keys in order, docs/IOS-026-ssh-keys.md).
         var keyID: UUID?
 
+        /// Whether a keyboard-interactive prompt asks for a one-time code,
+        /// in any case ("OTP:", "Token:", "2FA Code"), for the secret
+        /// card's OTP AutoFill, as rootshell's secret kinds classify it.
+        static func asksOneTimeCode(_ prompt: String) -> Bool {
+            prompt.range(of: "code|otp|verification|2fa|token|one-time", options: [.regularExpression, .caseInsensitive]) != nil
+        }
+
         /// Whether a socket path is absolute, as an ssh:// socket must be.
         static func validSocket(_ path: String) -> Bool { path.hasPrefix("/") }
 
         /// Whether a tcp:// endpoint is host:port, as a direct-tcpip
-        /// channel names it: a bracketed IPv6 or a host, one colon, and a
-        /// port of 1 to 65535.
+        /// channel names it and the engine's tcpAddr (Go's
+        /// net.SplitHostPort) reads it: a bracketed IPv6 or a host, one
+        /// colon, and a port of 1 to 65535; no bracket inside the host.
         static func validTCP(_ endpoint: String) -> Bool {
-            var host = endpoint[...], port: Substring?
+            let host: Substring, port: Substring
             if endpoint.hasPrefix("[") {
                 guard let close = endpoint.firstIndex(of: "]") else { return false }
-                host = endpoint[...close]
+                host = endpoint[endpoint.index(after: endpoint.startIndex)..<close]
                 let after = endpoint[endpoint.index(after: close)...]
                 guard after.hasPrefix(":") else { return false }
                 port = after.dropFirst()
-            } else if endpoint.filter({ $0 == ":" }).count == 1, let colon = endpoint.firstIndex(of: ":") {
+            } else {
+                guard endpoint.filter({ $0 == ":" }).count == 1, let colon = endpoint.firstIndex(of: ":") else { return false }
                 host = endpoint[..<colon]
                 port = endpoint[endpoint.index(after: colon)...]
             }
-            let h = host.trimmingCharacters(in: ["[", "]"])
-            guard !h.isEmpty, !h.contains("@"),
-                  let p = port, let n = Int(p), (1...65535).contains(n) else { return false }
-            return true
+            return !host.isEmpty && !host.contains("@") && !host.contains("[") && !host.contains("]")
+                && validPort(port) != nil
+        }
+
+        /// A port as Go's strconv reads one: ASCII digits only — no sign,
+        /// no space — from 1 to 65535; nil for anything else.
+        static func validPort<S: StringProtocol>(_ s: S) -> Int? {
+            guard !s.isEmpty, s.allSatisfy({ $0.isASCII && $0.isNumber }),
+                  let n = Int(s), (1...65535).contains(n) else { return nil }
+            return n
         }
     }
 }
@@ -304,7 +324,7 @@ extension HostConfig {
         guard !host.isEmpty, !host.contains("@") else { return (nil, nil, Self.sshNeedsHost) }
         var port = 22
         if let p = portText {
-            guard let n = Int(p), (1...65535).contains(n) else { return (nil, nil, Self.sshBadPort) }
+            guard let n = SSH.validPort(p) else { return (nil, nil, Self.sshBadPort) }
             port = n
         }
         var socket: String?, tcp: String?
@@ -324,6 +344,33 @@ extension HostConfig {
             }
         }
         return (SSH(user: user, host: host, port: port, socket: socket, tcp: tcp), token, nil)
+    }
+
+    /// The SSH record the Add Host form's fields name, read by the
+    /// grammar of an ssh:// address (sshParts), so that the fields take
+    /// no value the address refuses; nil while they don't read as one.
+    /// The user and the endpoint go in percent-encoded, as an address
+    /// spells them: a Windows login such as alice@example.com and a
+    /// socket path with a space are the address's too. An empty port is
+    /// 22. The endpoint is empty, a socket's absolute path, or a tcp://
+    /// endpoint's host:port, its tcp:// optional. A host with a colon is
+    /// an IPv6 address, with or without brackets.
+    static func ssh(user: String, host: String, port: String, endpoint: String) -> SSH? {
+        let user = user.trimmingCharacters(in: .whitespaces)
+        var host = host.trimmingCharacters(in: .whitespaces)
+        if host.hasPrefix("["), host.hasSuffix("]") { host = String(host.dropFirst().dropLast()) }
+        let port = port.trimmingCharacters(in: .whitespaces)
+        let ep = endpoint.trimmingCharacters(in: .whitespaces)
+        let path = ep.isEmpty || ep.hasPrefix("/") ? ep : "/tcp://" + (ep.hasPrefix("tcp://") ? String(ep.dropFirst(6)) : ep)
+        guard user.rangeOfCharacter(from: .controlCharacters) == nil, !host.contains("#"),
+              !host.contains(":") || IPv6Address(host) != nil,
+              let u = user.addingPercentEncoding(withAllowedCharacters: .urlUserAllowed),
+              let p = path.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed)
+        else { return nil }
+        let authority = host.contains(":") ? "[\(host)]" : host
+        let address = "ssh://\(u)@\(authority):\(port.isEmpty ? "22" : port)\(p)"
+        guard let s = sshParts(of: address).ssh, s.user == user, s.host == host else { return nil }
+        return s
     }
 
     /// The refusals of sshParts, once for the two callers.
@@ -664,6 +711,11 @@ final class Host: Identifiable {
     /// connect sends it; a no-op while the engine knows none
     /// (docs/IOS-024-ssh-tcp.md). The app sets it.
     static var sshHostToken: (UUID) -> Void = { _ in }
+    /// Makes the engine forget the LAN pairing token it learned for an
+    /// ssh host, so that its next dial reads the gateway's token again,
+    /// as after gorex rexapi lan token rotate (docs/IOS-024-ssh-tcp.md).
+    /// The app sets it.
+    static var sshForgetHostToken: (UUID) -> Void = { _ in }
     /// Tells the engine a dial through its proxy failed, so that it reads
     /// the proxy again at once rather than at the next resume: iOS may
     /// have taken the listener in a suspension no resume has seen. The
@@ -683,6 +735,9 @@ final class Host: Identifiable {
     /// it (pushTarget); nil while no terminal shows.
     @ObservationIgnored private(set) var pushTarget: (session: String, block: String)?
     @ObservationIgnored private var proxySession: (proxy: LoopbackProxy, session: URLSession)?
+    /// Whether the LAN token of a refused ssh host is being read again,
+    /// once, until the host is online or settles.
+    @ObservationIgnored private var tokenRelearned = false
 
     init(_ config: HostConfig) {
         self.config = config
@@ -761,7 +816,7 @@ final class Host: Identifiable {
             scheduleRetry(reason: error.localizedDescription)
             return
         }
-        let tokenless = config.lanToken == nil
+        let sent = config.lanToken
         let c = ControlConnection(base: config.url, auth: config.auth, session: session)
         control = c
         describes.cancelAll()
@@ -786,13 +841,22 @@ final class Host: Identifiable {
             // Refused, it waits for a change: the engine running again, as
             // after a sign-in, or the app back in the foreground. An ssh
             // host whose LAN token the refusal just learned is that
-            // change, and dials again with it; a kept token that still
-            // refuses waits for the user (docs/IOS-024-ssh-tcp.md).
+            // change, and dials again with it; otherwise the engine reads
+            // the token again once, as after a rotate, and then it waits
+            // for the user (docs/IOS-024-ssh-tcp.md).
             if let error, (error as? RexError)?.code == "refused" {
                 self.isRetrying = false
-                if tokenless, self.config.lanToken != nil {
+                switch Self.refusalStep(sent: sent, now: self.config.lanToken,
+                                        ssh: self.config.ssh != nil && self.config.sendsToken,
+                                        relearned: self.tokenRelearned) {
+                case .retry:
                     self.scheduleRetry(reason: error.localizedDescription)
-                } else {
+                case .relearn:
+                    self.tokenRelearned = true
+                    Self.sshForgetHostToken(self.id)
+                    self.scheduleRetry(reason: error.localizedDescription)
+                case .settle:
+                    self.tokenRelearned = false
                     self.settle(.failure(error))
                 }
             } else {
@@ -811,6 +875,7 @@ final class Host: Identifiable {
                 connectDurationMs = max(0, Int(elapsed / .milliseconds(1)))
                 reconnectSince = nil
                 isRetrying = false
+                tokenRelearned = false
                 status = .online
                 attempts = 0
                 settle(.success(c))
@@ -828,12 +893,27 @@ final class Host: Identifiable {
                 // An ssh host's listener may be a tcp one wanting the
                 // LAN pairing token, which the engine learns over SSH;
                 // kept, the next try sends it (docs/IOS-024-ssh-tcp.md).
-                if config.ssh != nil, config.lanToken == nil {
+                // A refused connect's second try reads it again.
+                if config.ssh != nil, config.lanToken == nil || tokenRelearned {
                     Self.sshHostToken(id)
                 }
                 c.close(error)
             }
         }
+    }
+
+    /// What a refused connect does next: dial again when the host has a
+    /// token the connect did not send (one the engine just learned); for
+    /// an ssh host, once, make the engine read the gateway's token again
+    /// and dial once more (relearn) — the token kept was refused, as
+    /// after a rotate, or the engine kept none from a read before the
+    /// gateway had one; else wait for the user.
+    enum RefusalStep: Equatable { case retry, relearn, settle }
+
+    static func refusalStep(sent: String?, now: String?, ssh: Bool, relearned: Bool) -> RefusalStep {
+        if let now, now != sent { return .retry }
+        if ssh, !relearned { return .relearn }
+        return .settle
     }
 
     /// Disconnects for good, as when the host is removed.
@@ -1961,8 +2041,9 @@ final class HostStore {
         var saved = (UserDefaults.standard.data(forKey: "hosts")
             .flatMap { try? JSONDecoder().decode([HostConfig].self, from: $0) } ?? []).filter { $0.demo != true }
         // The token of a host that sends one: the system's way, and an
-        // ssh:// host whose endpoint is tcp:// (docs/IOS-024-ssh-tcp.md).
-        for i in saved.indices where saved[i].tailcat == nil && (saved[i].ssh == nil || saved[i].ssh?.tcp != nil) {
+        // ssh:// host whose endpoint is tcp:// or discovered — the hosts
+        // add and learnToken keep one for (docs/IOS-024-ssh-tcp.md).
+        for i in saved.indices where saved[i].sendsToken {
             saved[i].lanToken = tokens.token(for: saved[i].id)
         }
         hosts = saved.map(Host.init)

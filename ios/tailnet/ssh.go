@@ -57,21 +57,25 @@ var (
 	// record changes.
 	sshTrusted = map[string]string{}
 	// sshTokens is each host's rexapi LAN pairing token, by its id, as
-	// a tcp endpoint's exec learned it ("" cached for a host that
-	// answered none): it holds until the host's record changes, as
-	// sshTrusted does.
-	sshTokens = map[string]string{}
+	// a tcp endpoint's exec learned it ("" cached for a host whose CLI
+	// answered that it has none): it holds until the host's record
+	// changes, as sshTrusted does, or SSHForgetHostToken. sshTokenFailed
+	// is when a host's token exec last failed, so that a host with no CLI
+	// does not run it on every dial; it never caches "".
+	sshTokens      = map[string]string{}
+	sshTokenFailed = map[string]time.Time{}
 	// sshPasswords is each host's answered password, by its id, kept in
-	// memory for the run and never written (docs/IOS-023);
-	// sshPasswordAuth marks the hosts whose client logged in by
-	// password or keyboard-interactive, for the install-key offer.
+	// memory for the run and never written (docs/IOS-023), from the
+	// password method or a keyboard-interactive password prompt;
+	// sshPasswordAuth marks the hosts whose client logged in by a secret
+	// the user typed, for the install-key offer.
 	sshPasswords    = map[string]string{}
 	sshPasswordAuth = map[string]bool{}
 	// sshDelegate answers the questions a dial can't; sshPending is
 	// each host's question waiting for an answer, by its id. A second
 	// check of the same question shares the one's answer, and a retry
 	// of a dial that timed out reuses it instead of asking again, as
-	// rootshell's serialized queue does.
+	// rootshell's serialised queue does.
 	sshDelegate SSHDelegate
 	sshPending  = map[string]*sshPendingQ{}
 	sshQID      atomic.Int64
@@ -308,22 +312,24 @@ func SetSSHDelegate(d SSHDelegate) {
 // sshPendingQ is a host's question waiting for an answer (sshPending):
 // kind names it ("hostkey" or "auth") and match tells it from the
 // other's of the same kind, the fingerprint or the prompt. done closes
-// on the answer, which trust or secret carries to every waiter.
+// on the answer, which trust, or secret and refused, carries to every
+// waiter.
 type sshPendingQ struct {
-	qid    int64
-	id     string
-	kind   string
-	match  string
-	done   chan struct{}
-	trust  bool
-	secret string
+	qid     int64
+	id      string
+	kind    string
+	match   string
+	done    chan struct{}
+	trust   bool
+	secret  string
+	refused bool
 }
 
 // sshPendingFor attaches to or makes the host's pending question, as
 // the pending map wants. sshMu must be held. A made one (mine) the
 // caller posts to the delegate; an existing one of the same question
 // shares its answer; a different one (other) the caller waits out and
-// retries, as rootshell's serialized queue asks one card at a time.
+// retries, as rootshell's serialised queue asks one card at a time.
 func sshPendingFor(id, kind, match string) (q *sshPendingQ, mine bool, other *sshPendingQ) {
 	q = sshPending[id]
 	if q == nil {
@@ -366,13 +372,15 @@ func SSHAnswer(qid int64, trust bool) {
 	})
 }
 
-// SSHAuthAnswer gives the answer to a pending secret question; "" is
-// the cancel a refused card sends.
-func SSHAuthAnswer(qid int64, secret string) {
+// SSHAuthAnswer gives the answer to a pending secret question: ok
+// false is the cancel a refused card sends, and with ok an empty secret
+// is an answer, as Return at a notice or an empty password is.
+func SSHAuthAnswer(qid int64, secret string, ok bool) {
 	sshMu.Lock()
 	defer sshMu.Unlock()
 	sshResolve(qid, func(q *sshPendingQ) {
 		q.secret = secret
+		q.refused = !ok
 	})
 }
 
@@ -384,6 +392,18 @@ func SSHHostToken(id string) string {
 	sshMu.Lock()
 	defer sshMu.Unlock()
 	return sshTokens[strings.ToLower(id)]
+}
+
+// SSHForgetHostToken forgets the pairing token learned for the host id,
+// so that its next tcp dial reads it again: the app calls it when the
+// gateway refuses the token it kept, as after gorex rexapi lan token
+// rotate (docs/IOS-024).
+func SSHForgetHostToken(id string) {
+	id = strings.ToLower(id)
+	sshMu.Lock()
+	defer sshMu.Unlock()
+	delete(sshTokens, id)
+	delete(sshTokenFailed, id)
 }
 
 // sshHost is an SSH host's record, as the app's Add Host form writes it
@@ -467,17 +487,32 @@ func SetSSHHosts(hostsJSON string) error {
 			delete(sshTokens, id)
 		}
 	}
+	for id := range sshTokenFailed {
+		if gone(id) {
+			delete(sshTokenFailed, id)
+		}
+	}
 	for id := range sshPasswords {
 		if gone(id) {
 			delete(sshPasswords, id)
+		}
+	}
+	for id := range sshPasswordAuth {
+		if gone(id) {
 			delete(sshPasswordAuth, id)
 		}
 	}
-	// A pending question of a gone record stays until its card answers;
-	// its waiters leave on the cancelled scope, and the answer of a
-	// dead record is ignored as sshTrusted[old record] is.
+	// A pending question of a changed record stays until its card
+	// answers while the record names the same login (user, host, port):
+	// its waiters leave on the cancelled scope, and a dial of the new
+	// record that asks the same question shares the card still up, as
+	// after Trust & Save, which changes the record while a password card
+	// shows. A question of a removed host, or of a login that moved,
+	// goes: its card's answer is for another machine, and is ignored.
 	for id := range sshPending {
-		if gone(id) {
+		n, ok := m[id]
+		o := sshHosts[id]
+		if !ok || n.User != o.User || n.Host != o.Host || n.Port != o.Port {
 			delete(sshPending, id)
 		}
 	}
@@ -667,25 +702,43 @@ func connectSSH(ctx context.Context, id string, h sshHost, signers []ssh.Signer)
 	}
 	stop := context.AfterFunc(ctx, func() { c.Close() })
 	defer stop()
-	var usedSecret atomic.Bool
+	var st sshAuthState
 	config := &ssh.ClientConfig{
 		User: h.User,
-		Auth: sshAuthMethods(ctx, id, h, signers, &usedSecret),
+		Auth: sshAuthMethods(ctx, id, h, signers, &st),
 		// No handshake Timeout: the host-key and secret questions need
 		// longer than a dial takes to answer, and the dial's own ctx
 		// bounds the connect by closing c.
 		HostKeyCallback: func(_ string, _ net.Addr, key ssh.PublicKey) error { return sshHostKey(ctx, id, h, key) },
 	}
 	conn, chans, reqs, err := ssh.NewClientConn(c, addr, config)
+	st.mu.Lock()
+	defer st.mu.Unlock()
 	if err != nil {
 		c.Close()
+		// A password the host refused is no password to send again:
+		// a cached one that went stale (changed on the host), or one
+		// typed in this connect and cached before the host answered.
+		// The next dial asks again.
+		if sshAuthRefused(err) {
+			sshMu.Lock()
+			for _, p := range []string{st.cached, st.typedPassword} {
+				if p != "" && sshPasswords[id] == p {
+					delete(sshPasswords, id)
+				}
+			}
+			sshMu.Unlock()
+		}
 		return nil, err
 	}
-	if usedSecret.Load() {
-		sshMu.Lock()
-		sshPasswordAuth[id] = true
-		sshMu.Unlock()
+	sshMu.Lock()
+	if st.kiPassword != "" {
+		sshPasswords[id] = st.kiPassword
 	}
+	if st.typed {
+		sshPasswordAuth[id] = true
+	}
+	sshMu.Unlock()
 	return ssh.NewClient(conn, chans, reqs), nil
 }
 
@@ -709,6 +762,13 @@ func sshHostKey(ctx context.Context, id string, h sshHost, key ssh.PublicKey) er
 			sshMu.Unlock()
 			return errors.New("untrusted ssh host key: " + fingerprint)
 		}
+		// The fingerprint trusted before: the record's, else the one
+		// Connect Once trusted for the run, so that a changed key warns
+		// either way.
+		previous := h.HostKey
+		if previous == "" {
+			previous = sshTrusted[id]
+		}
 		q, mine, other := sshPendingFor(id, "hostkey", fingerprint)
 		sshMu.Unlock()
 		if other != nil {
@@ -718,7 +778,7 @@ func sshHostKey(ctx context.Context, id string, h sshHost, key ssh.PublicKey) er
 			continue
 		}
 		if mine {
-			d.OnSSHHostKey(q.qid, h.User, h.Host, h.Port, fingerprint, h.HostKey, key.Type())
+			d.OnSSHHostKey(q.qid, h.User, h.Host, h.Port, fingerprint, previous, key.Type())
 		}
 		select {
 		case <-q.done:
@@ -743,12 +803,34 @@ func sshWait(ctx context.Context, q *sshPendingQ) error {
 	}
 }
 
+// sshAuthRefused tells a handshake the host refused at authentication:
+// every method failed, or the host hung up after too many tries.
+func sshAuthRefused(err error) bool {
+	s := err.Error()
+	return strings.Contains(s, "unable to authenticate") || strings.Contains(s, "too many authentication failures")
+}
+
+// sshAuthState is what a connect's auth did, for connectSSH to keep
+// once the handshake ends: typed marks a secret the user typed, for the
+// install-key offer (a reconnect on the run's cached password offers
+// nothing again); cached is the cached password a method sent, and
+// typedPassword the last one the password method asked, each dropped
+// from the cache when the host refuses the login; kiPassword is a keyboard-interactive
+// password typed, cached only once the host takes it, as PAM's sshd
+// refuses a wrong one without asking again.
+type sshAuthState struct {
+	mu            sync.Mutex
+	typed         bool
+	cached        string
+	typedPassword string
+	kiPassword    string
+}
+
 // sshAuthMethods is the connect's auth: the device key, then the
 // delegate's password and keyboard-interactive questions, as
-// docs/IOS-023 orders them. usedSecret marks a client that logged in
-// by a secret, for the install-key offer. A run that cannot ask keeps
-// the key alone, as a delegate's absence can't answer.
-func sshAuthMethods(ctx context.Context, id string, h sshHost, signers []ssh.Signer, usedSecret *atomic.Bool) []ssh.AuthMethod {
+// docs/IOS-023 orders them, recording in st what they sent. A run that
+// cannot ask keeps the keys alone, as a delegate's absence can't answer.
+func sshAuthMethods(ctx context.Context, id string, h sshHost, signers []ssh.Signer, st *sshAuthState) []ssh.AuthMethod {
 	var auth []ssh.AuthMethod
 	if len(signers) > 0 {
 		auth = append(auth, ssh.PublicKeys(signers...))
@@ -764,21 +846,31 @@ func sshAuthMethods(ctx context.Context, id string, h sshHost, signers []ssh.Sig
 	auth = append(auth, ssh.RetryableAuthMethod(ssh.PasswordCallback(func() (string, error) {
 		attempts++
 		if attempts == 1 && cached != "" {
-			usedSecret.Store(true)
+			st.mu.Lock()
+			st.cached = cached
+			st.mu.Unlock()
 			return cached, nil
 		}
 		s, err := sshAskAuth(ctx, id, h, "Password", attempts > 1 || cached != "", true)
 		if err != nil {
 			return "", err
 		}
-		usedSecret.Store(true)
+		st.mu.Lock()
+		st.typed = true
+		st.typedPassword = s
+		st.mu.Unlock()
 		sshMu.Lock()
 		sshPasswords[id] = s
 		sshMu.Unlock()
 		return s, nil
 	}), 4))
+	// answered is the prompts an earlier round answered: the server
+	// asking one again is a retry after a refused answer. A second
+	// question of one round is not.
+	answered := map[string]bool{}
 	auth = append(auth, ssh.KeyboardInteractive(func(name, instruction string, questions []string, echos []bool) ([]string, error) {
 		answers := make([]string, len(questions))
+		prompts := make([]string, len(questions))
 		for i, q := range questions {
 			prompt := strings.TrimSpace(q)
 			if prompt == "" {
@@ -790,18 +882,44 @@ func sshAuthMethods(ctx context.Context, id string, h sshHost, signers []ssh.Sig
 			if prompt == "" {
 				prompt = "Response"
 			}
+			prompts[i] = prompt
 			secret := true
 			if i < len(echos) {
 				secret = !echos[i]
 			}
-			s, err := sshAskAuth(ctx, id, h, prompt, i > 0, secret)
+			retry := answered[prompt]
+			// A password prompt takes the run's cached password first,
+			// as the password method does: PAM's sshd (macOS's default)
+			// asks it here, not there.
+			password := secret && strings.Contains(strings.ToLower(prompt), "password")
+			if password && !retry {
+				sshMu.Lock()
+				p := sshPasswords[id]
+				sshMu.Unlock()
+				if p != "" {
+					st.mu.Lock()
+					st.cached = p
+					st.mu.Unlock()
+					answers[i] = p
+					continue
+				}
+			}
+			s, err := sshAskAuth(ctx, id, h, prompt, retry, secret)
 			if err != nil {
 				return nil, err
 			}
 			answers[i] = s
+			st.mu.Lock()
 			if secret {
-				usedSecret.Store(true)
+				st.typed = true
 			}
+			if password {
+				st.kiPassword = s
+			}
+			st.mu.Unlock()
+		}
+		for _, p := range prompts {
+			answered[p] = true
 		}
 		return answers, nil
 	}))
@@ -811,7 +929,8 @@ func sshAuthMethods(ctx context.Context, id string, h sshHost, signers []ssh.Sig
 // sshAskAuth asks the delegate for a secret, sharing one card's answer
 // as the host-key check's does: a retry after a timed-out dial
 // reattaches to the card still up, and a second question queues behind
-// it. "" answers the refused card — the dial fails as a cancel does.
+// it. A refused card fails the dial as a cancel does; an empty answer
+// is an answer.
 func sshAskAuth(ctx context.Context, id string, h sshHost, prompt string, retry, secret bool) (string, error) {
 	for {
 		sshMu.Lock()
@@ -833,7 +952,7 @@ func sshAskAuth(ctx context.Context, id string, h sshHost, prompt string, retry,
 		}
 		select {
 		case <-q.done:
-			if q.secret == "" {
+			if q.refused {
 				return "", errors.New("ssh question refused: " + prompt)
 			}
 			return q.secret, nil
@@ -843,10 +962,12 @@ func sshAskAuth(ctx context.Context, id string, h sshHost, prompt string, retry,
 	}
 }
 
-// SSHTakePasswordOffer tells, once per password login, that a client
-// of the host id logged in by a secret (password or keyboard-
-// interactive): the app's offer to install the device key shows then
-// and not again until the host's next secret login.
+// SSHTakePasswordOffer tells, once per secret login, that a client of
+// the host id logged in by a secret the user typed (password or
+// keyboard-interactive): the app's offer to install the device key
+// shows then, and not again until the user types one again — a
+// reconnect on the run's cached password, after Not Now, offers
+// nothing.
 func SSHTakePasswordOffer(id string) bool {
 	sshMu.Lock()
 	defer sshMu.Unlock()
@@ -860,7 +981,9 @@ func SSHTakePasswordOffer(id string) bool {
 // SSHInstallKey installs the device key on the host id over its client,
 // as ssh-copy-id does: it makes ~/.ssh with its permissions and appends
 // the public key to authorized_keys under a rexgo comment, missing none
-// the host has.
+// the host has, then checks that authorized_keys holds it. A command
+// that fails — a host whose shell is cmd, a read-only ~/.ssh — or a key
+// the check does not find is an error (docs/IOS-023).
 func SSHInstallKey(id string) error {
 	id = strings.ToLower(id)
 	sshMu.Lock()
@@ -879,8 +1002,19 @@ func SSHInstallKey(id string) error {
 	cmd := "umask 077; mkdir -p ~/.ssh && touch ~/.ssh/authorized_keys && " +
 		"grep -qF '" + pub + "' ~/.ssh/authorized_keys 2>/dev/null || " +
 		"printf '%s\\n' '" + pub + " rexgo' >> ~/.ssh/authorized_keys"
-	_, err := sshExec(ctx, p.c, cmd)
-	return err
+	if _, err := sshExec(ctx, p.c, cmd); err != nil {
+		return errors.New("installing the key failed: " + err.Error())
+	}
+	if _, err := sshExec(ctx, p.c, installCheck(pub)); err != nil {
+		return errors.New("the key is not in ~/.ssh/authorized_keys after the install: " + err.Error())
+	}
+	return nil
+}
+
+// installCheck is the exec that tells whether authorized_keys holds the
+// public key pub: exit status 0 when it does.
+func installCheck(pub string) string {
+	return "grep -qF '" + pub + "' ~/.ssh/authorized_keys"
 }
 
 // openEndpoint opens the data channel to the host's Rex endpoint: the
@@ -890,7 +1024,7 @@ func SSHInstallKey(id string) error {
 func openEndpoint(ctx context.Context, id string, p *pooledSSH, h sshHost) (ssh.Channel, error) {
 	e := sshEndpoint{socket: h.Socket, tcp: h.TCP}
 	if e == (sshEndpoint{}) {
-		found, err := p.rexEndpoint(ctx)
+		found, err := p.rexEndpoint(ctx, h.Host)
 		if err != nil {
 			return nil, err
 		}
@@ -904,15 +1038,15 @@ func openEndpoint(ctx context.Context, id string, p *pooledSSH, h sshHost) (ssh.
 }
 
 // rexEndpoint is the endpoint discovery found for this client, run once
-// and kept in p.
-func (p *pooledSSH) rexEndpoint(ctx context.Context) (sshEndpoint, error) {
+// and kept in p; host names the machine in discovery's error.
+func (p *pooledSSH) rexEndpoint(ctx context.Context, host string) (sshEndpoint, error) {
 	sshMu.Lock()
 	e := p.endpoint
 	sshMu.Unlock()
 	if e != (sshEndpoint{}) {
 		return e, nil
 	}
-	e, err := discoverEndpoint(ctx, p.c)
+	e, err := discoverEndpoint(ctx, p.c, host)
 	if err != nil {
 		return sshEndpoint{}, err
 	}
@@ -925,36 +1059,64 @@ func (p *pooledSSH) rexEndpoint(ctx context.Context) (sshEndpoint, error) {
 	return e, nil
 }
 
-// rexStatus asks the host's Rex server where it listens, GoRex's CLI
-// name first, then upstream's; rexProbe finds the socket among the
-// usual paths when status names none, the same list the design's
-// fallback walks; lanTokens is the pairing token of the host's rexapi
-// LAN gateway (docs/IOS-024).
+// rexCLIs are the names discovery and the token read run the host's
+// CLI by, GoRex's first, then upstream's. Each name runs in an exec of
+// its own: a login shell need not read `a || b` (Windows PowerShell 5.1
+// and nushell do not), and a Windows sshd has no sh to wrap it in.
+var rexCLIs = []string{"gorex", "rex"}
+
+// rexStatus asks the host's Rex server where it listens; lanStatus is
+// the rexapi LAN gateway's state, which names whether it has a pairing
+// token; lanTokens prints that token (docs/IOS-024). Each runs after a
+// name of rexCLIs. rexProbe finds the socket among the usual paths
+// when status names none, the same list the design's fallback walks;
+// it exits non-zero when none exists.
 const (
-	// rexStatus and lanTokens wrap in no sh: cmd and the unix login
-	// shells all read `a || b`, and a Windows sshd has no sh.
-	rexStatus = `gorex server status --json || rex server status --json`
+	rexStatus = `server status --json`
+	lanStatus = `rexapi lan status`
+	lanTokens = `rexapi lan token show`
 	rexProbe  = `sh -c 'for p in "$XDG_RUNTIME_DIR/rex/server.sock" "$HOME/.local/share/rex/server.sock" /run/rex/server.sock /var/run/rex/server.sock "$HOME/Library/Application Support/rex/server.sock"; do [ -S "$p" ] && { echo "$p"; break; }; done'`
-	lanStatus = `gorex rexapi lan status || rex rexapi lan status`
-	lanTokens = `gorex rexapi lan token show || rex rexapi lan token show`
 )
 
-// lanProbe is the endpoint discovery falls to when the host reports
-// neither a unix nor a tcp listener, no usual socket path exists and
-// the LAN CLI names no gateway — GoRex's rexapi LAN port on loopback
+// rexExec runs the CLI command args under each name of rexCLIs in turn,
+// and returns the output of the first that exits 0 and the name that
+// ran it; the last error when none does.
+func rexExec(ctx context.Context, c *ssh.Client, args string) (out, cli string, err error) {
+	for _, name := range rexCLIs {
+		if out, err = sshExec(ctx, c, name+" "+args); err == nil {
+			return out, name, nil
+		}
+		if ctx.Err() != nil {
+			return "", "", ctx.Err()
+		}
+	}
+	return "", "", err
+}
+
+// lanProbe is the endpoint discovery falls to for a host whose server
+// listens on a named pipe only, when no usual socket path exists and the
+// LAN CLI names no gateway — GoRex's rexapi LAN port on loopback
 // (internal/rexapi's LANPort), where a named-pipe host's gateway is. A
 // var, for the test's listener.
 var lanProbe = "127.0.0.1:7297"
 
-// discoverEndpoint is the host's Rex endpoint: the primary unix
-// listener of server status, else a tcp listener's host:port, else the
-// first of the usual socket paths that exists, else the LAN probe, as
-// upstream's discovery does (docs/IOS-023, docs/IOS-024).
-func discoverEndpoint(ctx context.Context, c *ssh.Client) (sshEndpoint, error) {
-	if out, err := sshExec(ctx, c, rexStatus); err == nil {
-		if e := statusEndpoint(out); e != (sshEndpoint{}) {
-			return e, nil
+// discoverEndpoint is the host's Rex endpoint, as upstream's discovery
+// finds it (docs/IOS-023, docs/IOS-024): a unix listener of server
+// status, the primary first; else the first of the usual socket paths
+// that exists, so a Unix host keeps its socket; else a tcp listener of
+// status; else the gateway the LAN CLI names; else, for a server that
+// listens on a named pipe, the LAN probe. A host where none of these
+// answers has no Rex endpoint the phone can reach, and the error says
+// so.
+func discoverEndpoint(ctx context.Context, c *ssh.Client, host string) (sshEndpoint, error) {
+	var st sshStatusResult
+	if out, _, err := rexExec(ctx, c, rexStatus); err == nil {
+		if json.Unmarshal([]byte(out), &st) != nil {
+			st = sshStatusResult{}
 		}
+	}
+	if e := st.unixEndpoint(); e != (sshEndpoint{}) {
+		return e, nil
 	}
 	if out, err := sshExec(ctx, c, rexProbe); err == nil {
 		line, _, _ := strings.Cut(out, "\n")
@@ -962,23 +1124,31 @@ func discoverEndpoint(ctx context.Context, c *ssh.Client) (sshEndpoint, error) {
 			return sshEndpoint{socket: line}, nil
 		}
 	}
+	if e := st.tcpEndpoint(); e != (sshEndpoint{}) {
+		return e, nil
+	}
 	if addr := lanListen(ctx, c); addr != "" {
 		return sshEndpoint{tcp: addr}, nil
 	}
-	return sshEndpoint{tcp: lanProbe}, nil
+	if st.namedPipe() {
+		return sshEndpoint{tcp: lanProbe}, nil
+	}
+	return sshEndpoint{}, errors.New("no rex socket on " + host + ": is a Rex server running there, with gorex or rex on the login shell's PATH?")
 }
 
 // lanListen is the rexapi LAN gateway's address as the host's CLI
 // reports it: "lan: listening on http://addr", else the configured
-// "listen: addr". It answers where status has no tcp listener — a
-// gateway bound to the LAN address, which the loopback probe cannot
-// reach — and "" where no gateway is on.
+// "listen: addr" of a gateway that is on but has not said where it
+// listens; an off gateway, or one in error, gives "". It answers where status has no tcp listener — a gateway
+// bound to the LAN address, which the loopback probe cannot reach —
+// and "" where no gateway is on.
 func lanListen(ctx context.Context, c *ssh.Client) string {
-	out, err := sshExec(ctx, c, lanStatus)
+	out, _, err := rexExec(ctx, c, lanStatus)
 	if err != nil {
 		return ""
 	}
 	var configured string
+	waiting := false
 	for _, line := range strings.Split(out, "\n") {
 		line = strings.TrimSpace(line)
 		if a, ok := strings.CutPrefix(line, "lan: listening on "); ok {
@@ -986,9 +1156,18 @@ func lanListen(ctx context.Context, c *ssh.Client) string {
 				return t
 			}
 		}
+		// "on, waiting for the GoRex server": on, with no word yet of
+		// where it listens, as from a server that writes no status.
+		// "off" and "error" are no gateway.
+		if strings.HasPrefix(line, "lan: on") {
+			waiting = true
+		}
 		if a, ok := strings.CutPrefix(line, "listen: "); ok {
 			configured = a
 		}
+	}
+	if !waiting {
+		return ""
 	}
 	return tcpTarget(strings.TrimSpace(configured))
 }
@@ -997,32 +1176,54 @@ func lanListen(ctx context.Context, c *ssh.Client) string {
 // (internal/rexapi's statusResult), as far as the endpoint needs them.
 type sshStatusResult struct {
 	Listeners []struct {
-		Endpoint  string `json:"endpoint"`
-		Transport string `json:"transport"`
-		Primary   bool   `json:"primary"`
+		Endpoint  string   `json:"endpoint"`
+		Addresses []string `json:"addresses"`
+		Transport string   `json:"transport"`
+		Primary   bool     `json:"primary"`
 	} `json:"listeners"`
 }
 
-// statusEndpoint is the listener of a server status answer the proxy
-// forwards to: the primary unix one's socket first, as today, else a
-// tcp one's host:port — a loopback among several, which the forwarded
-// channel reaches as the host's own (docs/IOS-024).
-func statusEndpoint(out string) sshEndpoint {
-	var st sshStatusResult
-	if json.Unmarshal([]byte(out), &st) != nil {
-		return sshEndpoint{}
-	}
+// unixEndpoint is the socket of the status's primary unix listener,
+// else of its first other unix one; none when it lists none.
+func (st sshStatusResult) unixEndpoint() sshEndpoint {
+	var other string
 	for _, l := range st.Listeners {
-		if l.Primary && strings.HasPrefix(l.Transport, "unix") {
-			return sshEndpoint{socket: endpointPath(l.Endpoint)}
+		if !strings.HasPrefix(l.Transport, "unix") {
+			continue
+		}
+		p := endpointPath(l.Endpoint)
+		if p == "" {
+			continue
+		}
+		if l.Primary {
+			return sshEndpoint{socket: p}
+		}
+		if other == "" {
+			other = p
 		}
 	}
+	return sshEndpoint{socket: other}
+}
+
+// tcpEndpoint is the host:port of a tcp listener of the status — a
+// loopback one among several, which the forwarded channel reaches as
+// the host's own — read from the address it is bound to, which shows
+// the port a listen on port 0 got, else from its endpoint (docs/IOS-024).
+func (st sshStatusResult) tcpEndpoint() sshEndpoint {
 	var first string
 	for _, l := range st.Listeners {
 		if l.Transport != "tcp" {
 			continue
 		}
-		t := tcpTarget(l.Endpoint)
+		var t string
+		for _, a := range l.Addresses {
+			if t = tcpTarget(a); t != "" {
+				break
+			}
+		}
+		if t == "" {
+			t = tcpTarget(l.Endpoint)
+		}
 		if t == "" {
 			continue
 		}
@@ -1038,15 +1239,30 @@ func statusEndpoint(out string) sshEndpoint {
 	return sshEndpoint{tcp: first}
 }
 
+// namedPipe tells whether the status lists a named-pipe listener: a
+// server that runs, on a pipe no SSH channel reaches.
+func (st sshStatusResult) namedPipe() bool {
+	for _, l := range st.Listeners {
+		if l.Transport == "named_pipe" {
+			return true
+		}
+	}
+	return false
+}
+
 // tcpTarget is the direct-tcpip target a tcp listener's endpoint gives:
 // host:port, as written or after a scheme, a wildcard host read as
-// loopback; "" when the endpoint is not one.
+// loopback; "" when the endpoint is not one, or names port 0, which
+// only the bound address resolves.
 func tcpTarget(endpoint string) string {
 	if u, err := url.Parse(endpoint); err == nil && u.Host != "" {
 		endpoint = u.Host
 	}
 	host, port, err := net.SplitHostPort(endpoint)
 	if err != nil || port == "" {
+		return ""
+	}
+	if n, err := strconv.ParseUint(port, 10, 16); err != nil || n == 0 {
 		return ""
 	}
 	if host == "" {
@@ -1075,58 +1291,80 @@ func endpointPath(endpoint string) string {
 }
 
 // sshExec runs command in a session channel and returns its output, as
-// discovery's execs do.
+// discovery's execs do. A command that exits non-zero, dies of a signal
+// or ends with no exit status is an error, as ssh.Session's Wait reads
+// it: an output then is not the command's answer.
 func sshExec(ctx context.Context, c *ssh.Client, command string) (string, error) {
-	ch, in, err := c.OpenChannel("session", nil)
+	sess, err := c.NewSession()
 	if err != nil {
 		return "", err
 	}
-	go ssh.DiscardRequests(in)
-	ok, err := ch.SendRequest("exec", true, ssh.Marshal(&struct{ Command string }{command}))
-	if err != nil {
-		ch.Close()
-		return "", err
-	}
-	if !ok {
-		ch.Close()
-		return "", errors.New("exec refused")
-	}
-	go io.Copy(io.Discard, ch.Stderr())
-	stop := context.AfterFunc(ctx, func() { ch.Close() })
+	defer sess.Close()
+	stop := context.AfterFunc(ctx, func() { sess.Close() })
 	defer stop()
-	defer ch.Close()
-	b, err := io.ReadAll(ch)
-	if err != nil {
+	var out bytes.Buffer
+	sess.Stdout = &out
+	if err := sess.Run(command); err != nil {
+		if ctx.Err() != nil {
+			return "", ctx.Err()
+		}
 		return "", err
 	}
-	return string(b), nil
+	return out.String(), nil
 }
 
+// sshTokenRetry is how long a host whose token exec failed waits before
+// a dial runs it again: a host with no CLI then costs an exec now and
+// then, not on every dial. A var, for the tests.
+var sshTokenRetry = 30 * time.Second
+
 // lanToken learns the host's rexapi LAN pairing token over the client,
-// once per record, kept under id for SSHHostToken. A host that cannot
-// answer — no gorex or rex CLI — caches "", and a channel error retries
-// on a later dial.
+// once per record, kept under id for SSHHostToken. Only an exec that
+// succeeds caches, "" included for a host whose gateway has no token; a
+// failed one leaves the cache empty, and a dial after sshTokenRetry
+// tries again.
 func lanToken(ctx context.Context, id string, c *ssh.Client) {
 	sshMu.Lock()
 	_, done := sshTokens[id]
+	failed, waits := sshTokenFailed[id]
 	sshMu.Unlock()
-	if done {
+	if done || waits && time.Since(failed) < sshTokenRetry {
 		return
 	}
-	out, err := sshExec(ctx, c, lanTokens)
+	token, err := readLANToken(ctx, c)
+	sshMu.Lock()
+	defer sshMu.Unlock()
 	if err != nil {
+		sshTokenFailed[id] = time.Now()
 		return
 	}
-	var token string
+	delete(sshTokenFailed, id)
+	sshTokens[id] = token
+}
+
+// readLANToken reads the gateway's pairing token and creates none: the
+// CLI's lan status tells whether a token is set, and only then does
+// token show print it, as token show alone would make and save one on a
+// host that has none. Every GoRex with token show prints that line
+// (#684), so an older host needs no new command. "" with no error is a
+// host that answered that it has no token.
+func readLANToken(ctx context.Context, c *ssh.Client) (string, error) {
+	out, cli, err := rexExec(ctx, c, lanStatus)
+	if err != nil {
+		return "", err
+	}
+	if !strings.Contains(out, "pairing token: set") {
+		return "", nil
+	}
+	if out, err = sshExec(ctx, c, cli+" "+lanTokens); err != nil {
+		return "", err
+	}
 	for _, line := range strings.Split(out, "\n") {
 		if line = strings.TrimSpace(line); line != "" {
-			token = line
-			break
+			return line, nil
 		}
 	}
-	sshMu.Lock()
-	sshTokens[id] = token
-	sshMu.Unlock()
+	return "", errors.New("token show printed no token")
 }
 
 // streamLocalMsg is the payload of a direct-streamlocal channel open:
