@@ -277,6 +277,16 @@ func sshEnv(t *testing.T) ssh.Signer {
 	return signer
 }
 
+// socketRec is the socket a record names, valid as SetSSHHosts wants:
+// the socket's path on unix, "/" + its address on Windows, where the
+// fake's streamlocal dials the same socket no matter the path asked.
+func socketRec(s *fakeSSHD) string {
+	if socketNet == "tcp" {
+		return "/" + s.socket
+	}
+	return s.socket
+}
+
 func setSSHHosts(t *testing.T, hosts ...sshHost) {
 	t.Helper()
 	b, _ := json.Marshal(hosts)
@@ -304,7 +314,7 @@ func TestSSHProxy(t *testing.T) {
 	signer := sshEnv(t)
 	srv := newFakeSSHD(t, signer.PublicKey())
 	setSSHHosts(t, sshHost{ID: "alice-laptop", User: "alice", Host: "127.0.0.1", Port: srv.port(),
-		Socket: srv.socket, HostKey: srv.hostFP})
+		Socket: socketRec(srv), HostKey: srv.hostFP})
 	c, err := dialSSH(context.Background(), "alice-laptop")
 	if err != nil {
 		t.Fatalf("dialSSH: %v", err)
@@ -420,7 +430,7 @@ func TestSSHHostKey(t *testing.T) {
 	srv := newFakeSSHD(t, signer.PublicKey())
 	host := func(hostKey string) sshHost {
 		return sshHost{ID: "alice-laptop", User: "alice", Host: "127.0.0.1", Port: srv.port(),
-			Socket: srv.socket, HostKey: hostKey}
+			Socket: socketRec(srv), HostKey: hostKey}
 	}
 	// With no delegate the dial fails, carrying the fingerprint.
 	setSSHHosts(t, host(""))
@@ -558,7 +568,7 @@ func TestSSHReconnect(t *testing.T) {
 	signer := sshEnv(t)
 	srv := newFakeSSHD(t, signer.PublicKey())
 	setSSHHosts(t, sshHost{ID: "alice-laptop", User: "alice", Host: "127.0.0.1", Port: srv.port(),
-		Socket: srv.socket, HostKey: srv.hostFP})
+		Socket: socketRec(srv), HostKey: srv.hostFP})
 	c, err := dialSSH(context.Background(), "alice-laptop")
 	if err != nil {
 		t.Fatal(err)
@@ -589,7 +599,7 @@ func TestSSHDrops(t *testing.T) {
 	signer := sshEnv(t)
 	srv := newFakeSSHD(t, signer.PublicKey())
 	setSSHHosts(t, sshHost{ID: "alice-laptop", User: "alice", Host: "127.0.0.1", Port: srv.port(),
-		Socket: srv.socket, HostKey: srv.hostFP})
+		Socket: socketRec(srv), HostKey: srv.hostFP})
 	c, err := dialSSH(context.Background(), "alice-laptop")
 	if err != nil {
 		t.Fatal(err)
@@ -623,7 +633,7 @@ func TestSSHDrops(t *testing.T) {
 		t.Fatal(err)
 	}
 	setSSHHosts(t, sshHost{ID: "alice-laptop", User: "alice", Host: "127.0.0.1", Port: srv.port(),
-		Socket: srv.socket, HostKey: srv.hostFP})
+		Socket: socketRec(srv), HostKey: srv.hostFP})
 	if c, err = dialSSH(context.Background(), "alice-laptop"); err != nil {
 		t.Fatalf("a dial of the new key: %v", err)
 	}
