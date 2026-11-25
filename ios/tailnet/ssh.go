@@ -94,7 +94,7 @@ func sshScopeLocked(id string) context.Context {
 	return s.ctx
 }
 
-// NewSSHKey makes the device key, an ed25519 private key in OpenSSH PEM,
+// NewSSHKey makes the device key (probe), an ed25519 private key in OpenSSH PEM,
 // for the app to keep in its Keychain and pass to SetSSHKey.
 func NewSSHKey() string {
 	_, priv, err := ed25519.GenerateKey(rand.Reader)
