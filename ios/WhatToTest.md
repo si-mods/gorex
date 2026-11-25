@@ -10,7 +10,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 `web` job of `.github/workflows/ci.yml` fails it.
 
 ## en-US
-- A computer you reach over SSH can now use a Rex API on a TCP port instead of a Unix socket — the way on Windows. In Add Host, enter ssh://user@host and discovery finds it; ssh://user@host/tcp://host:port names one explicitly.
+- A computer you reach over SSH can now use a Rex API on a TCP port — the way on Windows. In Add Host, enter ssh://user@host and discovery finds it.
 - A question from an agent now marks its choices: round radio buttons when you pick one answer, square check boxes when you pick several. Send stays off and says "Pick an answer" until you do.
 - A computer you reach over SSH can now be a host: in Add Host, enter ssh://user@host, trust its key when asked, and copy this phone's SSH key into the host's authorized_keys.
 - When pairing with a computer fails, the sheet's new Copy diagnostics button puts the recent connection log on the pasteboard, ready to send.
