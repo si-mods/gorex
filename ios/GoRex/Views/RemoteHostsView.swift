@@ -297,6 +297,9 @@ private struct HostForm: View {
                         if let socket = s.socket {
                             LabeledContent("Socket", value: socket)
                         }
+                        if let tcp = s.tcp {
+                            LabeledContent("TCP", value: tcp)
+                        }
                     } footer: {
                         Text("Added by its ssh:// address; change it by deleting the host and adding it again.")
                     }

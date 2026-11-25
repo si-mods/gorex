@@ -42,9 +42,12 @@ struct HostConfig: Codable, Identifiable, Hashable {
     }
 
     /// The token the host's requests carry: the LAN token of a host the
-    /// system's network reaches by its address; none for a tailcat or an
-    /// ssh:// host — SSH is the admission (docs/IOS-023-ssh-hosts.md).
-    var auth: String? { tailcat == nil && ssh == nil && demo != true ? lanToken : nil }
+    /// system's network reaches by its address, and of an ssh:// host
+    /// whose endpoint is tcp:// — a forwarded channel admits no peer, so
+    /// the gateway asks for it as a LAN one does
+    /// (docs/IOS-024-ssh-tcp.md); none for a tailcat or an ssh:// host on
+    /// a Unix socket — SSH is the admission (docs/IOS-023-ssh-hosts.md).
+    var auth: String? { tailcat == nil && demo != true && (ssh == nil || ssh?.tcp != nil) ? lanToken : nil }
 
     enum Transport: String, Codable {
         /// The phone's own network, or the Tailscale app's VPN.
@@ -75,10 +78,34 @@ struct HostConfig: Codable, Identifiable, Hashable {
         var host: String
         var port: Int
         var socket: String?
+        /// A tcp:// endpoint, host:port, the channel forwards to instead
+        /// of the socket; never with one (docs/IOS-024-ssh-tcp.md).
+        var tcp: String?
         var hostKey: String?
 
         /// Whether a socket path is absolute, as an ssh:// socket must be.
         static func validSocket(_ path: String) -> Bool { path.hasPrefix("/") }
+
+        /// Whether a tcp:// endpoint is host:port, as a direct-tcpip
+        /// channel names it: a bracketed IPv6 or a host, one colon, and a
+        /// port of 1 to 65535.
+        static func validTCP(_ endpoint: String) -> Bool {
+            var host = endpoint[...], port: Substring?
+            if endpoint.hasPrefix("[") {
+                guard let close = endpoint.firstIndex(of: "]") else { return false }
+                host = endpoint[...close]
+                let after = endpoint[endpoint.index(after: close)...]
+                guard after.hasPrefix(":") else { return false }
+                port = after.dropFirst()
+            } else if endpoint.filter({ $0 == ":" }).count == 1, let colon = endpoint.firstIndex(of: ":") {
+                host = endpoint[..<colon]
+                port = endpoint[endpoint.index(after: colon)...]
+            }
+            let h = host.trimmingCharacters(in: ["[", "]"])
+            guard !h.isEmpty, !h.contains("@"),
+                  let p = port, let n = Int(p), (1...65535).contains(n) else { return false }
+            return true
+        }
     }
 }
 
@@ -204,50 +231,65 @@ extension HostConfig {
         self.init(id: id, name: n.isEmpty ? "GoRex" : n, url: Self.tailcatURL(id), tailcat: Tailcat(address: a, machine: n))
     }
 
-    /// The host of an ssh:// address, ssh://user@host[:port][/socket]
-    /// (docs/IOS-023-ssh-hosts.md, The address); nil for anything else.
-    /// Its URL names it to the engine's proxy, <id>.ssh.invalid, as a
-    /// tailcat host's does; its name is the login as typed.
+    /// The host of an ssh:// address,
+    /// ssh://user@host[:port][/socket|/tcp://host:port][#k=token]
+    /// (docs/IOS-023-ssh-hosts.md, The address; docs/IOS-024-ssh-tcp.md);
+    /// nil for anything else. Its URL names it to the engine's proxy,
+    /// <id>.ssh.invalid, as a tailcat host's does; its name is the login
+    /// as typed.
     init?(ssh address: String) {
-        let (s, _) = Self.sshParts(of: address)
+        let (s, t, _) = Self.sshParts(of: address)
         guard let s else { return nil }
         let id = UUID()
-        self.init(id: id, name: "\(s.user)@\(s.host)", url: Self.sshURL(id), ssh: s)
+        self.init(id: id, name: "\(s.user)@\(s.host)", url: Self.sshURL(id), ssh: s, lanToken: t)
     }
 
-    /// The SSH of an ssh:// address, or why it is refused: a space, a
-    /// query or a fragment, no user, a password, no host, a bad port or a
-    /// relative socket; (nil, nil) for an address that is not ssh://.
-    static func sshParts(of address: String) -> (SSH?, String?) {
+    /// The SSH of an ssh:// address, its #k= token, or why it is refused:
+    /// a space, a query or a fragment that is not a token's, no user, a
+    /// password, no host, a bad port, a relative socket, a bad tcp://
+    /// endpoint or a socket beside one; (nil, nil, nil) for an address
+    /// that is not ssh://.
+    static func sshParts(of address: String) -> (ssh: SSH?, token: String?, refusal: String?) {
         let s = address.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let r = s.range(of: "://"), s[..<r.lowerBound].lowercased() == "ssh" else { return (nil, nil) }
-        let body = s[r.upperBound...]
+        guard let r = s.range(of: "://"), s[..<r.lowerBound].lowercased() == "ssh" else { return (nil, nil, nil) }
+        var body = s[r.upperBound...]
+        // The #k= is the endpoint's pairing token, as a LAN code's: it
+        // goes to the Keychain and never to the wire or the list saved.
+        var token: String?
+        if let hash = body.firstIndex(of: "#") {
+            let f = body[body.index(after: hash)...]
+            body = body[..<hash]
+            guard f.hasPrefix("k="), Self.validToken(String(f.dropFirst(2))) else {
+                return (nil, nil, Self.sshBadKey)
+            }
+            token = String(f.dropFirst(2))
+        }
         guard body.rangeOfCharacter(from: .whitespacesAndNewlines) == nil,
               body.rangeOfCharacter(from: .controlCharacters) == nil,
-              !body.contains("?"), !body.contains("#") else {
-            return (nil, String(localized: "An ssh:// address has no spaces, query or fragment."))
+              !body.contains("?") else {
+            return (nil, nil, String(localized: "An ssh:// address has no spaces or query."))
         }
         let slash = body.firstIndex(of: "/")
         let authority = body[..<(slash ?? body.endIndex)]
         let path = slash.map { String(body[$0...]) } ?? ""
         guard let at = authority.firstIndex(of: "@") else {
-            return (nil, Self.sshNeedsUser)
+            return (nil, nil, Self.sshNeedsUser)
         }
         let userinfo = authority[..<at]
         let hostport = authority[authority.index(after: at)...]
-        guard !userinfo.isEmpty else { return (nil, Self.sshNeedsUser) }
+        guard !userinfo.isEmpty else { return (nil, nil, Self.sshNeedsUser) }
         guard !userinfo.contains(":") else {
-            return (nil, String(localized: "ssh:// addresses don't take a password."))
+            return (nil, nil, String(localized: "ssh:// addresses don't take a password."))
         }
         let user = String(userinfo).removingPercentEncoding ?? String(userinfo)
-        guard !user.isEmpty else { return (nil, Self.sshNeedsUser) }
+        guard !user.isEmpty else { return (nil, nil, Self.sshNeedsUser) }
         var hostPart = hostport, portText: Substring?
         if hostport.hasPrefix("[") {
-            guard let close = hostport.firstIndex(of: "]") else { return (nil, Self.sshNeedsHost) }
+            guard let close = hostport.firstIndex(of: "]") else { return (nil, nil, Self.sshNeedsHost) }
             hostPart = hostport[...close]
             let after = hostport[hostport.index(after: close)...]
             if !after.isEmpty {
-                guard after.hasPrefix(":") else { return (nil, Self.sshBadPort) }
+                guard after.hasPrefix(":") else { return (nil, nil, Self.sshBadPort) }
                 portText = after.dropFirst()
             }
         } else if hostport.filter({ $0 == ":" }).count == 1, let colon = hostport.firstIndex(of: ":") {
@@ -256,19 +298,29 @@ extension HostConfig {
         }
         var host = String(hostPart)
         if host.hasPrefix("[") { host = String(host.dropFirst().dropLast()) }
-        guard !host.isEmpty, !host.contains("@") else { return (nil, Self.sshNeedsHost) }
+        guard !host.isEmpty, !host.contains("@") else { return (nil, nil, Self.sshNeedsHost) }
         var port = 22
         if let p = portText {
-            guard let n = Int(p), (1...65535).contains(n) else { return (nil, Self.sshBadPort) }
+            guard let n = Int(p), (1...65535).contains(n) else { return (nil, nil, Self.sshBadPort) }
             port = n
         }
-        var socket: String?
+        var socket: String?, tcp: String?
         if !path.isEmpty && path != "/" {
             let decoded = path.removingPercentEncoding ?? path
-            guard SSH.validSocket(decoded) else { return (nil, Self.sshBadSocket) }
-            socket = decoded
+            if decoded.hasPrefix("/tcp://") {
+                // A tcp:// endpoint names host:port; a path after it
+                // would be a socket too, which it never takes
+                // (docs/IOS-024-ssh-tcp.md).
+                let ep = decoded.dropFirst("/tcp://".count)
+                guard !ep.contains("/") else { return (nil, nil, Self.sshTCPAndSocket) }
+                guard SSH.validTCP(String(ep)) else { return (nil, nil, Self.sshBadTCP) }
+                tcp = String(ep)
+            } else {
+                guard SSH.validSocket(decoded) else { return (nil, nil, Self.sshBadSocket) }
+                socket = decoded
+            }
         }
-        return (SSH(user: user, host: host, port: port, socket: socket), nil)
+        return (SSH(user: user, host: host, port: port, socket: socket, tcp: tcp), token, nil)
     }
 
     /// The refusals of sshParts, once for the two callers.
@@ -284,6 +336,15 @@ extension HostConfig {
     private static var sshBadSocket: String {
         String(localized: "An ssh:// socket is an absolute path, like /run/rex/server.sock.")
     }
+    private static var sshBadTCP: String {
+        String(localized: "A tcp:// endpoint of an ssh:// address is host:port, like tcp://127.0.0.1:7297.")
+    }
+    private static var sshTCPAndSocket: String {
+        String(localized: "An ssh:// address takes a socket or a tcp:// endpoint, not both.")
+    }
+    private static var sshBadKey: String {
+        String(localized: "An ssh:// address takes its pairing token as #k=<token>.")
+    }
 
     /// Why a typed address is refused, when it names a scheme other than
     /// http(s); nil for a bare host[:port], which reads as http, and for
@@ -294,7 +355,7 @@ extension HostConfig {
         let scheme = address[..<r.lowerBound].trimmingCharacters(in: .whitespaces).lowercased()
         if ["", "http", "https"].contains(scheme) { return nil }
         if scheme == "ssh" {
-            return sshParts(of: address).1
+            return sshParts(of: address).refusal
         }
         return String(localized: "Unsupported address. Enter an http:// or https:// address, like http://192.168.1.2:7297.")
     }
@@ -595,6 +656,11 @@ final class Host: Identifiable {
     /// Tells the engine the hosts, as their list changes, for it to reach
     /// those with an ssh:// address. The app sets it.
     static var sshHosts: ([HostConfig]) -> Void = { _ in }
+    /// Pulls the LAN pairing token the engine learned over SSH for an
+    /// ssh-tcp host into the Keychain and the host's config, so its next
+    /// connect sends it; a no-op while the engine knows none
+    /// (docs/IOS-024-ssh-tcp.md). The app sets it.
+    static var sshHostToken: (UUID) -> Void = { _ in }
     /// Tells the engine a dial through its proxy failed, so that it reads
     /// the proxy again at once rather than at the next resume: iOS may
     /// have taken the listener in a suspension no resume has seen. The
@@ -747,6 +813,12 @@ final class Host: Identifiable {
                 if config.reach(tailnetOn: TailnetSettings.isOn) != .system {
                     ConnectionLog.note("\(name): dial through the proxy failed")
                     Self.proxyFailed()
+                }
+                // An ssh-tcp host's listener may want the LAN pairing
+                // token, which the engine learns over SSH; kept, the
+                // next try sends it (docs/IOS-024-ssh-tcp.md).
+                if config.ssh?.tcp != nil, config.lanToken == nil {
+                    Self.sshHostToken(id)
                 }
                 c.close(error)
             }
@@ -1873,7 +1945,9 @@ final class HostStore {
         // that did is dropped, as it answers nothing.
         var saved = (UserDefaults.standard.data(forKey: "hosts")
             .flatMap { try? JSONDecoder().decode([HostConfig].self, from: $0) } ?? []).filter { $0.demo != true }
-        for i in saved.indices where saved[i].tailcat == nil && saved[i].ssh == nil {
+        // The token of a host that sends one: the system's way, and an
+        // ssh:// host whose endpoint is tcp:// (docs/IOS-024-ssh-tcp.md).
+        for i in saved.indices where saved[i].tailcat == nil && (saved[i].ssh == nil || saved[i].ssh?.tcp != nil) {
             saved[i].lanToken = tokens.token(for: saved[i].id)
         }
         hosts = saved.map(Host.init)
@@ -1916,6 +1990,15 @@ final class HostStore {
         hosts.removeAll { $0.id == id }
         tokens.set(nil, for: id)
         save()
+    }
+
+    /// Keeps the LAN pairing token the engine learned over SSH for an
+    /// ssh-tcp host: in the Keychain as a #k= one's, and on the host's
+    /// config, so its next connect sends it (docs/IOS-024-ssh-tcp.md).
+    func learnToken(_ token: String, for id: UUID) {
+        guard let h = host(id) else { return }
+        tokens.set(token, for: id)
+        h.config.lanToken = token
     }
 
     /// Changes a host; one with a new address or transport connects
