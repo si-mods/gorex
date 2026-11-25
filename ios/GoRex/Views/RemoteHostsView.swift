@@ -168,6 +168,11 @@ private struct HostRow: View {
                 .buttonStyle(.borderless)
                 .accessibilityLabel("Edit Host")
         }
+        // A password login offers to install the phone's key, once each
+        // (docs/IOS-023-ssh-hosts.md).
+        .onChange(of: host.status) { _, s in
+            if s == .online, host.config.ssh != nil { TailnetEngine.shared.offerSSHInstallKey(host.config) }
+        }
     }
 
     private var subtitle: String {
@@ -219,12 +224,22 @@ private struct HostForm: View {
     @State private var symbol: String
     @State private var name: String
     @State private var command: String
+    /// A new host as an address, or as SSH fields: the login, machine,
+    /// port and endpoint each in their own field, not spelled inside a
+    /// URL (docs/IOS-023-ssh-hosts.md).
+    @State private var mode = Mode.address
+    @State private var sshUser = ""
+    @State private var sshHost = ""
+    @State private var sshPort = ""
+    @State private var sshEndpoint = ""
     /// Whether the host goes through the built-in Tailscale, as switched;
     /// nil keeps the host's way, or, for a new one or a new address, takes
     /// it by the address.
     @State private var tailnet: Bool?
     @State private var deleting = false
     @AppStorage(TailnetSettings.onKey) private var tailnetOn = false
+
+    private enum Mode { case address, ssh }
 
     init(config: HostConfig?, pairByAddress: ((String, HostConfig) -> Void)? = nil) {
         self.config = config
@@ -235,6 +250,31 @@ private struct HostForm: View {
         _command = State(initialValue: config?.command ?? "")
     }
 
+    /// The SSH record the fields name, nil while they don't read as one:
+    /// the login and machine filled, the port a number or empty for 22,
+    /// the endpoint empty, a socket's absolute path, or a tcp://
+    /// endpoint's host:port.
+    private var sshEntered: HostConfig.SSH? {
+        let user = sshUser.trimmingCharacters(in: .whitespaces)
+        let host = sshHost.trimmingCharacters(in: .whitespaces)
+        guard !user.isEmpty, !host.isEmpty, !host.contains("@") else { return nil }
+        let portText = sshPort.trimmingCharacters(in: .whitespaces)
+        guard let port = portText.isEmpty ? 22 : Int(portText), (1...65535).contains(port) else { return nil }
+        var s = HostConfig.SSH(user: user, host: host, port: port)
+        let ep = sshEndpoint.trimmingCharacters(in: .whitespaces)
+        if !ep.isEmpty {
+            if ep.hasPrefix("/") {
+                guard HostConfig.SSH.validSocket(ep) else { return nil }
+                s.socket = ep
+            } else {
+                let tcp = ep.hasPrefix("tcp://") ? String(ep.dropFirst(6)) : ep
+                guard HostConfig.SSH.validTCP(tcp) else { return nil }
+                s.tcp = tcp
+            }
+        }
+        return s
+    }
+
     /// The host as entered, if its address reads as an ssh:// address or
     /// a pairing code does; a bare host gets http://. A tailcat or an
     /// ssh:// host keeps its own.
@@ -242,6 +282,10 @@ private struct HostForm: View {
         var c: HostConfig
         if let config, config.tailcat != nil || config.ssh != nil {
             c = config
+        } else if mode == .ssh {
+            guard let s = sshEntered else { return nil }
+            let id = UUID()
+            c = HostConfig(id: id, name: "\(s.user)@\(s.host)", url: HostConfig.sshURL(id), ssh: s, lanToken: nil)
         } else {
             let s = address.trimmingCharacters(in: .whitespaces)
             if let ssh = HostConfig(ssh: s) {
@@ -275,7 +319,7 @@ private struct HostForm: View {
     /// address, or IP:PORT.
     private var pairAddress: String? {
         let s = address.trimmingCharacters(in: .whitespaces)
-        guard config == nil, !s.contains("://"), let h = entered?.url.host()?.trimmingCharacters(in: ["[", "]"]),
+        guard config == nil, mode == .address, !s.contains("://"), let h = entered?.url.host()?.trimmingCharacters(in: ["[", "]"]),
               IPv4Address(h) != nil || IPv6Address(h) != nil else { return nil }
         return s
     }
@@ -300,8 +344,66 @@ private struct HostForm: View {
                         if let tcp = s.tcp {
                             LabeledContent("TCP", value: tcp)
                         }
+                        if let hostKey = s.hostKey {
+                            LabeledContent("Host key", value: hostKey)
+                                .textSelection(.enabled)
+                        }
                     } footer: {
-                        Text("Added by its ssh:// address; change it by deleting the host and adding it again.")
+                        Text("Forget the host key to be asked again on the next connect; change the address by deleting the host and adding it again.")
+                    }
+                    .listRowBackground(Color.card)
+                    if s.hostKey != nil, var c = config {
+                        Section {
+                            Button("Forget Host Key", role: .destructive) {
+                                c.ssh?.hostKey = nil
+                                store.update(c)
+                                dismiss()
+                            }
+                        }
+                        .listRowBackground(Color.card)
+                    }
+                } else if config == nil {
+                    Section {
+                        Picker("Add as", selection: $mode) {
+                            Text("Address").tag(Mode.address)
+                            Text("SSH").tag(Mode.ssh)
+                        }
+                        .pickerStyle(.segmented)
+                        if mode == .address {
+                            TextField("http://192.168.1.2:7297", text: $address)
+                                .keyboardType(.URL)
+                                .textInputAutocapitalization(.never)
+                                .autocorrectionDisabled()
+                                .accessibilityIdentifier("address")
+                        } else {
+                            TextField("User, like alice", text: $sshUser)
+                                .textContentType(.username)
+                                .textInputAutocapitalization(.never)
+                                .autocorrectionDisabled()
+                                .accessibilityIdentifier("sshUser")
+                            TextField("Host, like alice-laptop or 192.168.1.2", text: $sshHost)
+                                .keyboardType(.URL)
+                                .textInputAutocapitalization(.never)
+                                .autocorrectionDisabled()
+                                .accessibilityIdentifier("sshHost")
+                            TextField("Port, 22 when empty", text: $sshPort)
+                                .keyboardType(.numberPad)
+                                .accessibilityIdentifier("sshPort")
+                            TextField("Endpoint, /socket or tcp://host:port (optional)", text: $sshEndpoint)
+                                .textInputAutocapitalization(.never)
+                                .autocorrectionDisabled()
+                                .accessibilityIdentifier("sshEndpoint")
+                        }
+                    } header: {
+                        VStack(spacing: 20) {
+                            Text("Enter the details of your Rex server.")
+                                .font(.body).textCase(nil)
+                                .frame(maxWidth: .infinity).multilineTextAlignment(.center)
+                            Text(mode == .ssh ? "SSH login" : "Server address")
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                    } footer: {
+                        if mode == .address, let why = HostConfig.refusal(of: address) { Text(why) }
                     }
                     .listRowBackground(Color.card)
                 } else {
@@ -313,7 +415,7 @@ private struct HostForm: View {
                             .accessibilityIdentifier("address")
                     } header: {
                         VStack(spacing: 20) {
-                            Text(config == nil ? "Enter the details of your Rex server." : "Update the details for this remote host.")
+                            Text("Update the details for this remote host.")
                                 .font(.body).textCase(nil)
                                 .frame(maxWidth: .infinity).multilineTextAlignment(.center)
                             Text("Server address").frame(maxWidth: .infinity, alignment: .leading)

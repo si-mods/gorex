@@ -61,11 +61,20 @@ var (
 	// answered none): it holds until the host's record changes, as
 	// sshTrusted does.
 	sshTokens = map[string]string{}
-	// sshDelegate answers the host-key questions; sshQuestions is each
-	// question waiting for SSHAnswer, by its qid.
-	sshDelegate  SSHDelegate
-	sshQuestions = map[int64]chan bool{}
-	sshQID       atomic.Int64
+	// sshPasswords is each host's answered password, by its id, kept in
+	// memory for the run and never written (docs/IOS-023);
+	// sshPasswordAuth marks the hosts whose client logged in by
+	// password or keyboard-interactive, for the install-key offer.
+	sshPasswords    = map[string]string{}
+	sshPasswordAuth = map[string]bool{}
+	// sshDelegate answers the questions a dial can't; sshPending is
+	// each host's question waiting for an answer, by its id. A second
+	// check of the same question shares the one's answer, and a retry
+	// of a dial that timed out reuses it instead of asking again, as
+	// rootshell's serialized queue does.
+	sshDelegate SSHDelegate
+	sshPending  = map[string]*sshPendingQ{}
+	sshQID      atomic.Int64
 )
 
 // sshScope is the context the dials to a host run in, as tcScope is.
@@ -119,6 +128,8 @@ func SetSSHKey(pemKey string) error {
 		sc.cancel() // dials of the old key
 	}
 	sshScopes = map[string]sshScope{}
+	sshPasswords = map[string]string{}
+	sshPasswordAuth = map[string]bool{}
 	sshMu.Unlock()
 	for _, p := range old {
 		if p.c != nil {
@@ -142,31 +153,95 @@ func SSHPublicKey() string {
 
 // SSHDelegate answers the questions a dial can't, as ShareDelegate does
 // for hotspot share. gomobile binds this interface to a Swift protocol.
-// The host, port and fingerprint of OnSSHHostKey are for the card it
-// shows; previous is the fingerprint the host was trusted by, "" on a
-// first sighting. The answer comes back through SSHAnswer.
+// The host, port, fingerprint and keyType of OnSSHHostKey are for the
+// card it shows; previous is the fingerprint the host was trusted by,
+// "" on a first sighting. OnSSHAuth asks for a secret: prompt is what
+// the server asked (a password, a keyboard-interactive question), retry
+// marks a second ask after a refused answer, and secret tells the card
+// to hide the typing. The answers come back through SSHAnswer and
+// SSHAuthAnswer.
 type SSHDelegate interface {
-	OnSSHHostKey(qid int64, user, host string, port int, fingerprint, previous string)
+	OnSSHHostKey(qid int64, user, host string, port int, fingerprint, previous, keyType string)
+	OnSSHAuth(qid int64, user, host string, port int, prompt string, retry, secret bool)
 }
 
-// SetSSHDelegate sets the delegate the host-key check asks, or nil to
-// refuse any key the store does not name.
+// SetSSHDelegate sets the delegate the questions ask, or nil to refuse
+// any key the store does not name and fail a dial that needs a secret.
 func SetSSHDelegate(d SSHDelegate) {
 	sshMu.Lock()
 	sshDelegate = d
 	sshMu.Unlock()
 }
 
+// sshPendingQ is a host's question waiting for an answer (sshPending):
+// kind names it ("hostkey" or "auth") and match tells it from the
+// other's of the same kind, the fingerprint or the prompt. done closes
+// on the answer, which trust or secret carries to every waiter.
+type sshPendingQ struct {
+	qid    int64
+	id     string
+	kind   string
+	match  string
+	done   chan struct{}
+	trust  bool
+	secret string
+}
+
+// sshPendingFor attaches to or makes the host's pending question, as
+// the pending map wants. sshMu must be held. A made one (mine) the
+// caller posts to the delegate; an existing one of the same question
+// shares its answer; a different one (other) the caller waits out and
+// retries, as rootshell's serialized queue asks one card at a time.
+func sshPendingFor(id, kind, match string) (q *sshPendingQ, mine bool, other *sshPendingQ) {
+	q = sshPending[id]
+	if q == nil {
+		q = &sshPendingQ{qid: sshQID.Add(1), id: id, kind: kind, match: match, done: make(chan struct{})}
+		sshPending[id] = q
+		return q, true, nil
+	}
+	if q.kind == kind && q.match == match {
+		return q, false, nil
+	}
+	return nil, false, q
+}
+
+// sshResolve answers the pending question of the qid and closes its
+// done. sshMu must be held.
+func sshResolve(qid int64, set func(q *sshPendingQ)) {
+	for id, q := range sshPending {
+		if q.qid != qid {
+			continue
+		}
+		delete(sshPending, id)
+		set(q)
+		close(q.done)
+		return
+	}
+}
+
 // SSHAnswer gives the answer to a pending host-key question; a qid no
-// question waits on is ignored.
+// question waits on is ignored. A trusted fingerprint holds for the
+// run, as a saved one does — the card's Trust & Save writes it to the
+// host's record, Connect Once answers without writing.
 func SSHAnswer(qid int64, trust bool) {
 	sshMu.Lock()
-	ch := sshQuestions[qid]
-	delete(sshQuestions, qid)
-	sshMu.Unlock()
-	if ch != nil {
-		ch <- trust
-	}
+	defer sshMu.Unlock()
+	sshResolve(qid, func(q *sshPendingQ) {
+		q.trust = trust
+		if trust {
+			sshTrusted[q.id] = q.match
+		}
+	})
+}
+
+// SSHAuthAnswer gives the answer to a pending secret question; "" is
+// the cancel a refused card sends.
+func SSHAuthAnswer(qid int64, secret string) {
+	sshMu.Lock()
+	defer sshMu.Unlock()
+	sshResolve(qid, func(q *sshPendingQ) {
+		q.secret = secret
+	})
 }
 
 // SSHHostToken is the rexapi LAN pairing token of the host id's tcp
@@ -257,6 +332,20 @@ func SetSSHHosts(hostsJSON string) error {
 	for id := range sshTokens {
 		if gone(id) {
 			delete(sshTokens, id)
+		}
+	}
+	for id := range sshPasswords {
+		if gone(id) {
+			delete(sshPasswords, id)
+			delete(sshPasswordAuth, id)
+		}
+	}
+	// A pending question of a gone record stays until its card answers;
+	// its waiters leave on the cancelled scope, and the answer of a
+	// dead record is ignored as sshTrusted[old record] is.
+	for id := range sshPending {
+		if gone(id) {
+			delete(sshPending, id)
 		}
 	}
 	sshHosts = m
@@ -445,10 +534,13 @@ func connectSSH(ctx context.Context, id string, h sshHost, signer ssh.Signer) (*
 	}
 	stop := context.AfterFunc(ctx, func() { c.Close() })
 	defer stop()
+	var usedSecret atomic.Bool
 	config := &ssh.ClientConfig{
-		User:            h.User,
-		Auth:            []ssh.AuthMethod{ssh.PublicKeys(signer)},
-		Timeout:         15 * time.Second,
+		User: h.User,
+		Auth: sshAuthMethods(ctx, id, h, signer, &usedSecret),
+		// No handshake Timeout: the host-key and secret questions need
+		// longer than a dial takes to answer, and the dial's own ctx
+		// bounds the connect by closing c.
 		HostKeyCallback: func(_ string, _ net.Addr, key ssh.PublicKey) error { return sshHostKey(ctx, id, h, key) },
 	}
 	conn, chans, reqs, err := ssh.NewClientConn(c, addr, config)
@@ -456,50 +548,202 @@ func connectSSH(ctx context.Context, id string, h sshHost, signer ssh.Signer) (*
 		c.Close()
 		return nil, err
 	}
+	if usedSecret.Load() {
+		sshMu.Lock()
+		sshPasswordAuth[id] = true
+		sshMu.Unlock()
+	}
 	return ssh.NewClient(conn, chans, reqs), nil
 }
 
 // sshHostKey is the client's host-key check: the fingerprint the host's
 // record names or one trusted for this run connects; another asks the
-// delegate, and a trusted answer holds for the run. With no delegate
-// the error carries the fingerprint for the app log.
+// delegate, and a trusted answer holds for the run. The question
+// outlives its dial: a second check of the same fingerprint shares it,
+// and a retry after a timed-out dial reattaches instead of asking
+// again. With no delegate the error carries the fingerprint for the
+// app log.
 func sshHostKey(ctx context.Context, id string, h sshHost, key ssh.PublicKey) error {
 	fingerprint := ssh.FingerprintSHA256(key)
-	sshMu.Lock()
-	if fingerprint == h.HostKey || sshTrusted[id] != "" && sshTrusted[id] == fingerprint {
-		sshMu.Unlock()
-		return nil
-	}
-	d := sshDelegate
-	sshMu.Unlock()
-	if d == nil {
-		return errors.New("untrusted ssh host key: " + fingerprint)
-	}
-	answer := make(chan bool, 1)
-	qid := sshQID.Add(1)
-	sshMu.Lock()
-	sshQuestions[qid] = answer
-	sshMu.Unlock()
-	defer func() {
+	for {
 		sshMu.Lock()
-		delete(sshQuestions, qid)
-		sshMu.Unlock()
-	}()
-	d.OnSSHHostKey(qid, h.User, h.Host, h.Port, fingerprint, h.HostKey)
-	select {
-	case trust := <-answer:
-		if !trust {
-			return errors.New("ssh host key refused: " + fingerprint)
+		if fingerprint == h.HostKey || sshTrusted[id] != "" && sshTrusted[id] == fingerprint {
+			sshMu.Unlock()
+			return nil
 		}
-		sshMu.Lock()
-		sshTrusted[id] = fingerprint
+		d := sshDelegate
+		if d == nil {
+			sshMu.Unlock()
+			return errors.New("untrusted ssh host key: " + fingerprint)
+		}
+		q, mine, other := sshPendingFor(id, "hostkey", fingerprint)
 		sshMu.Unlock()
+		if other != nil {
+			if err := sshWait(ctx, other); err != nil {
+				return err
+			}
+			continue
+		}
+		if mine {
+			d.OnSSHHostKey(q.qid, h.User, h.Host, h.Port, fingerprint, h.HostKey, key.Type())
+		}
+		select {
+		case <-q.done:
+			if !q.trust {
+				return errors.New("ssh host key refused: " + fingerprint)
+			}
+			return nil
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+}
+
+// sshWait waits out a different pending question of the same host, as
+// the queue asks one card at a time.
+func sshWait(ctx context.Context, q *sshPendingQ) error {
+	select {
+	case <-q.done:
 		return nil
 	case <-ctx.Done():
 		return ctx.Err()
-	case <-time.After(sshDial):
-		return errors.New("ssh host key question unanswered: " + fingerprint)
 	}
+}
+
+// sshAuthMethods is the connect's auth: the device key, then the
+// delegate's password and keyboard-interactive questions, as
+// docs/IOS-023 orders them. usedSecret marks a client that logged in
+// by a secret, for the install-key offer. A run that cannot ask keeps
+// the key alone, as a delegate's absence can't answer.
+func sshAuthMethods(ctx context.Context, id string, h sshHost, signer ssh.Signer, usedSecret *atomic.Bool) []ssh.AuthMethod {
+	auth := []ssh.AuthMethod{ssh.PublicKeys(signer)}
+	sshMu.Lock()
+	delegated := sshDelegate != nil
+	cached := sshPasswords[id]
+	sshMu.Unlock()
+	if !delegated {
+		return auth
+	}
+	attempts := 0
+	auth = append(auth, ssh.RetryableAuthMethod(ssh.PasswordCallback(func() (string, error) {
+		attempts++
+		if attempts == 1 && cached != "" {
+			usedSecret.Store(true)
+			return cached, nil
+		}
+		s, err := sshAskAuth(ctx, id, h, "Password", attempts > 1 || cached != "", true)
+		if err != nil {
+			return "", err
+		}
+		usedSecret.Store(true)
+		sshMu.Lock()
+		sshPasswords[id] = s
+		sshMu.Unlock()
+		return s, nil
+	}), 4))
+	auth = append(auth, ssh.KeyboardInteractive(func(name, instruction string, questions []string, echos []bool) ([]string, error) {
+		answers := make([]string, len(questions))
+		for i, q := range questions {
+			prompt := strings.TrimSpace(q)
+			if prompt == "" {
+				prompt = strings.TrimSpace(instruction)
+			}
+			if prompt == "" {
+				prompt = strings.TrimSpace(name)
+			}
+			if prompt == "" {
+				prompt = "Response"
+			}
+			secret := true
+			if i < len(echos) {
+				secret = !echos[i]
+			}
+			s, err := sshAskAuth(ctx, id, h, prompt, i > 0, secret)
+			if err != nil {
+				return nil, err
+			}
+			answers[i] = s
+			if secret {
+				usedSecret.Store(true)
+			}
+		}
+		return answers, nil
+	}))
+	return auth
+}
+
+// sshAskAuth asks the delegate for a secret, sharing one card's answer
+// as the host-key check's does: a retry after a timed-out dial
+// reattaches to the card still up, and a second question queues behind
+// it. "" answers the refused card — the dial fails as a cancel does.
+func sshAskAuth(ctx context.Context, id string, h sshHost, prompt string, retry, secret bool) (string, error) {
+	for {
+		sshMu.Lock()
+		d := sshDelegate
+		if d == nil {
+			sshMu.Unlock()
+			return "", errors.New("ssh cannot ask questions")
+		}
+		q, mine, other := sshPendingFor(id, "auth", prompt)
+		sshMu.Unlock()
+		if other != nil {
+			if err := sshWait(ctx, other); err != nil {
+				return "", err
+			}
+			continue
+		}
+		if mine {
+			d.OnSSHAuth(q.qid, h.User, h.Host, h.Port, prompt, retry, secret)
+		}
+		select {
+		case <-q.done:
+			if q.secret == "" {
+				return "", errors.New("ssh question refused: " + prompt)
+			}
+			return q.secret, nil
+		case <-ctx.Done():
+			return "", ctx.Err()
+		}
+	}
+}
+
+// SSHTakePasswordOffer tells, once per password login, that a client
+// of the host id logged in by a secret (password or keyboard-
+// interactive): the app's offer to install the device key shows then
+// and not again until the host's next secret login.
+func SSHTakePasswordOffer(id string) bool {
+	sshMu.Lock()
+	defer sshMu.Unlock()
+	if !sshPasswordAuth[strings.ToLower(id)] {
+		return false
+	}
+	delete(sshPasswordAuth, strings.ToLower(id))
+	return true
+}
+
+// SSHInstallKey installs the device key on the host id over its client,
+// as ssh-copy-id does: it makes ~/.ssh with its permissions and appends
+// the public key to authorized_keys under a rexgo comment, missing none
+// the host has.
+func SSHInstallKey(id string) error {
+	id = strings.ToLower(id)
+	sshMu.Lock()
+	p := sshClients[id]
+	sshMu.Unlock()
+	if p == nil || p.c == nil {
+		return errors.New("ssh host not connected: " + id)
+	}
+	pub := SSHPublicKey()
+	if pub == "" {
+		return errors.New("no ssh key")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	cmd := "umask 077; mkdir -p ~/.ssh && touch ~/.ssh/authorized_keys && " +
+		"grep -qF '" + pub + "' ~/.ssh/authorized_keys 2>/dev/null || " +
+		"printf '%s\\n' '" + pub + " rexgo' >> ~/.ssh/authorized_keys"
+	_, err := sshExec(ctx, p.c, cmd)
+	return err
 }
 
 // openEndpoint opens the data channel to the host's Rex endpoint: the

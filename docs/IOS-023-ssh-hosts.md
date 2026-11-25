@@ -8,7 +8,7 @@ metadata:
 
 # IOS-023: Rex Go reaches a host over SSH
 
-Status: phase 1 built (#1124). Phases 2 and 3 not built.
+Status: phases 1 (#1124) and 2 built. Phase 3 not built.
 
 ## Problem
 
@@ -69,8 +69,8 @@ rootshell (kitknox/rootshell, MIT) is a mature iOS terminal with native SSH. It 
 
 ### What the user does
 
-1. Add Host takes `ssh://alice@alice-laptop` or `ssh://alice@alice-laptop:2222/run/rex/server.sock`. Add saves the host.
-2. On first connect a card shows the host's key fingerprint. Trust connects. A different key on a later connect refuses, and shows the trusted and the new fingerprint (rootshell's two states).
+1. Add Host takes `ssh://alice@alice-laptop` or `ssh://alice@alice-laptop:2222/run/rex/server.sock`, or its fields directly: user, host, port, and an optional endpoint. Add saves the host.
+2. On first connect a card shows the host's key fingerprint and type, as rootshell's request does. Trust & Save keeps it; Connect Once trusts it for the run, written nowhere; Cancel refuses. A different key on a later connect refuses, warns of a man-in-the-middle, and shows the trusted and the new fingerprint.
 3. If the device key is not authorized, a card asks the host's password. After a password login, the card offers to install the device's key on the host.
 4. The host's detail shows the trusted fingerprint and the device's public key, with copy. Forget host key trusts anew on next connect.
 
@@ -83,6 +83,7 @@ An SSH address is `ssh://user@host[:port][/socket]`, as upstream's Mac app spell
 - `socket` is the remote socket path. Without it, discovery finds the socket.
 - A password, a query, a fragment, spaces and control characters are refused, as upstream refuses them.
 - `HostConfig.refusal` names each fault in the field's footer, as it names `ssh` today.
+- The form's SSH fields (user, host, port, and an optional endpoint) make the same record the address makes. Typing in fields beats spelling a URL: the user names the login once, not inside an address.
 
 `HostConfig` gains an `ssh` member (`HostConfig.SSH`: user, host, port, socket). The host's `url` is `http://<id>.ssh.invalid`, made as `tailcatURL` makes the tailcat one. `reach(_:)` returns a new `Transport.ssh` when `ssh` is present. Every request of the host then goes through the engine's loopback proxy, as a tailcat host's do.
 
@@ -106,7 +107,8 @@ A host whose address has no socket path learns it on its first connect:
 ### Trust
 
 - The device key is an Ed25519 key the engine makes (`NewSSHKey`, `SSHPublicKey`, `SetSSHKey`, as the tailcat key's calls). The app keeps the private key in the Keychain, where the tailcat client key lives. The key stays on the device, as the tailcat key does.
-- The host key is trusted on first use. The card shows its SHA256 fingerprint and its type, as rootshell's request does. The store keeps it by host. A changed key refuses, shows both fingerprints, and only Forget clears it.
+- The host key is trusted on first use. The card shows its SHA256 fingerprint and its type, as rootshell's request does, and offers Trust & Save, Connect Once and Cancel. Save writes it to the host's record; Once marks it trusted for the run only (`sshTrusted`), written nowhere. A changed key refuses, warns of a man-in-the-middle, shows both fingerprints, and only Forget clears it.
+- A question outlives its dial. Two dials of one host at the same fingerprint share one card and one answer; a retry after a timed-out dial reuses the pending card instead of asking again, as rootshell's serialized queue does. A second fingerprint while a card is up queues behind it.
 - Authentication tries the device key, then `password`, then `keyboard-interactive`. Each of the last two asks in a card. The card classifies the prompt, as rootshell does: a one-time-code prompt gets the OTP AutoFill, and the host's user is the anchor for the OS password manager. The password lives in memory for the run and is never written.
 - Install key runs an exec on the host after a password login, as `ssh-copy-id` does: it makes `~/.ssh` with its permissions, appends the public key to `authorized_keys` under a `rexgo` comment, and verifies.
 - The engine asks the app through a delegate, as `ShareDelegate` works for hotspot share and rootshell's `Iosbridge*` callbacks do: a question (host key, password) carries an id, and the app's `SSHAnswer` replies. A run that cannot ask fails the dial, as upstream's does.
@@ -138,5 +140,5 @@ A host whose address has no socket path learns it on its first connect:
 ## Phases
 
 1. Engine transport and discovery, device key, host-key trust, Add Host grammar, `Transport.ssh`. The user installs the key by hand at first. (#1124)
-2. Password auth, the install-key flow, the host detail's fingerprints.
+2. Password and keyboard-interactive auth, the install-key flow, the host detail's fingerprints and Forget, Connect Once, shared answers and pending questions, and the SSH fields of Add Host.
 3. Later docs as needed: Tailscale SSH, `ssh://` on the desktop.

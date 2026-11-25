@@ -79,14 +79,25 @@ final class TailnetEngine {
     /// shown as the app's card and answered by answerSSHHostKey
     /// (docs/IOS-023-ssh-hosts.md, Trust); nil for none.
     private(set) var sshHostKeyQuestion: SSHHostKeyQuestion?
+    /// The secret the engine asks for while it logs in to an ssh://
+    /// host — a password or a keyboard-interactive answer — shown and
+    /// answered as the host-key card is.
+    private(set) var sshAuthQuestion: SSHAuthQuestion?
+    /// A host that logged in by a password offers to install the phone's
+    /// key on it (docs/IOS-023-ssh-hosts.md); nil for none.
+    private(set) var sshInstallOffer: HostConfig?
+    /// The install's failure, shown in the offer's card.
+    private(set) var sshInstallError: String?
     /// The questions that came while another one showed, in order.
     @ObservationIgnored private var sshHostKeyQueue: [SSHHostKeyQuestion] = []
+    /// The auth questions that came while another one showed, in order.
+    @ObservationIgnored private var sshAuthQueue: [SSHAuthQuestion] = []
     /// The engine's SSH delegate, so Go keeps it; set once, in init.
     @ObservationIgnored private let sshDelegate = SSHDelegate()
 
     /// The host key the engine asks about while it dials an ssh:// host:
-    /// its fingerprint — and the one trusted before when the key
-    /// changed — which SSHAnswer replies to.
+    /// its fingerprint and type — and the one trusted before when the
+    /// key changed — which SSHAnswer replies to.
     struct SSHHostKeyQuestion: Equatable, Identifiable {
         let qid: Int64
         let user: String
@@ -96,9 +107,31 @@ final class TailnetEngine {
         /// The fingerprint trusted before, for a key that changed;
         /// empty at the first connect.
         let previous: String
+        /// The key's algorithm, as authorized_keys names it.
+        let keyType: String
         var id: Int64 { qid }
         /// Whether the host's key differs from the one trusted before.
         var changed: Bool { !previous.isEmpty }
+    }
+
+    /// The secret the engine asks for while it logs in to an ssh://
+    /// host: prompt is what the server asked, retry marks a second ask
+    /// after a refused one, secret tells the card to hide the typing.
+    /// SSHAuthAnswer replies.
+    struct SSHAuthQuestion: Equatable, Identifiable {
+        let qid: Int64
+        let user: String
+        let host: String
+        let port: Int
+        let prompt: String
+        let retry: Bool
+        let secret: Bool
+        var id: Int64 { qid }
+        /// Whether the prompt asks for a one-time code, for the card's
+        /// OTP AutoFill, as rootshell's secret kinds classify it.
+        var otp: Bool {
+            prompt.range(of: "code|otp|verification|2fa|token|one-time", options: .regularExpression) != nil
+        }
     }
     @ObservationIgnored private let paths = PathMonitor()
     @ObservationIgnored private let log = Logger(subsystem: "dev.gorex.ios", category: "tailnet")
@@ -349,22 +382,78 @@ final class TailnetEngine {
         }
     }
 
-    /// The user's answer to the host-key question showing: trust answers
+    /// The user's answer to the host-key question showing: save answers
     /// the dial and keeps the fingerprint in the host's config, so a
-    /// later connect asks no more; distrust refuses the dial. An answer
-    /// for a question already answered — as a dismiss after a button
+    /// later connect asks no more; once answers it for this run only,
+    /// written nowhere; nil is the refuse a cancel sends. An answer for
+    /// a question already answered — as a dismiss after a button
     /// answered — is a no-op.
-    func answerSSHHostKey(_ q: SSHHostKeyQuestion, trust: Bool) {
+    func answerSSHHostKey(_ q: SSHHostKeyQuestion, save: Bool?) {
         guard sshHostKeyQuestion?.qid == q.qid else { return }
         sshHostKeyQuestion = sshHostKeyQueue.isEmpty ? nil : sshHostKeyQueue.removeFirst()
-        Task.detached { TailnetSSHAnswer(q.qid, trust) }
-        guard trust,
+        Task.detached { TailnetSSHAnswer(q.qid, save != nil) }
+        guard save == true,
               var c = HostStore.current?.hosts.first(where: {
                   $0.config.ssh?.user == q.user && $0.config.ssh?.host == q.host && $0.config.ssh?.port == q.port
               })?.config
         else { return }
         c.ssh?.hostKey = q.fingerprint
         HostStore.current?.update(c)
+    }
+
+    /// The engine's auth question, off the dial's goroutine: the card
+    /// shows it, and answerSSHAuth replies. One shows at a time; the
+    /// rest wait their turn.
+    func askSSHAuth(_ q: SSHAuthQuestion) {
+        if sshAuthQuestion == nil {
+            sshAuthQuestion = q
+        } else if sshAuthQuestion?.qid != q.qid && !sshAuthQueue.contains(where: { $0.qid == q.qid }) {
+            sshAuthQueue.append(q)
+        }
+    }
+
+    /// The user's answer to the auth question showing: the secret
+    /// typed, or nil for the cancel that fails the dial.
+    func answerSSHAuth(_ q: SSHAuthQuestion, secret: String?) {
+        guard sshAuthQuestion?.qid == q.qid else { return }
+        sshAuthQuestion = sshAuthQueue.isEmpty ? nil : sshAuthQueue.removeFirst()
+        Task.detached { TailnetSSHAuthAnswer(q.qid, secret ?? "") }
+    }
+
+    /// Offers to install the phone's key when the host id's last login
+    /// used a password; the engine tells it once per password login
+    /// (docs/IOS-023-ssh-hosts.md).
+    func offerSSHInstallKey(_ c: HostConfig) {
+        Task.detached { [weak self] in
+            guard TailnetSSHTakePasswordOffer(HostConfig.tailcatID(c.id)) else { return }
+            await MainActor.run {
+                self?.sshInstallError = nil
+                self?.sshInstallOffer = c
+            }
+        }
+    }
+
+    /// Installs the phone's key on the offered host; the card stays up
+    /// on a failure, carrying its error.
+    func installSSHKey(_ c: HostConfig) async {
+        do {
+            try await Task.detached {
+                var error: NSError?
+                guard TailnetSSHInstallKey(HostConfig.tailcatID(c.id), &error) else {
+                    throw error ?? RexError(code: "ssh", message: "install")
+                }
+            }.value
+            sshInstallOffer = nil
+            sshInstallError = nil
+        } catch {
+            sshInstallError = error.localizedDescription
+        }
+    }
+
+    /// Dismisses the install offer, leaving the host on passwords.
+    func skipSSHInstallKey() {
+        sshInstallOffer = nil
+        sshInstallError = nil
     }
 
     /// Passes the phone's SSH key from the Keychain to the engine, once;
@@ -687,15 +776,25 @@ final class TailnetEngine {
     }
 
     /// The engine's SSH questions, on a dial goroutine's thread, as
-    /// rootshell's iosbridge asks its app: the app shows the host key in
-    /// a card and answers it with SSHAnswer.
+    /// rootshell's iosbridge asks its app: the app shows the host key or
+    /// the secret's prompt in a card and answers it with SSHAnswer or
+    /// SSHAuthAnswer.
     nonisolated private final class SSHDelegate: NSObject, TailnetSSHDelegateProtocol, @unchecked Sendable {
-        func onSSHHostKey(_ qid: Int64, user: String?, host: String?, port: Int, fingerprint: String?, previous: String?) {
+        func onSSHHostKey(_ qid: Int64, user: String?, host: String?, port: Int, fingerprint: String?, previous: String?, keyType: String?) {
             guard let user, let host, let fingerprint else { return }
             Task { @MainActor in
                 TailnetEngine.shared.askSSHHostKey(SSHHostKeyQuestion(
                     qid: qid, user: user, host: host, port: port,
-                    fingerprint: fingerprint, previous: previous ?? ""))
+                    fingerprint: fingerprint, previous: previous ?? "", keyType: keyType ?? ""))
+            }
+        }
+
+        func onSSHAuth(_ qid: Int64, user: String?, host: String?, port: Int, prompt: String?, retry: Bool, secret: Bool) {
+            guard let user, let host else { return }
+            Task { @MainActor in
+                TailnetEngine.shared.askSSHAuth(SSHAuthQuestion(
+                    qid: qid, user: user, host: host, port: port,
+                    prompt: prompt ?? "", retry: retry, secret: secret))
             }
         }
     }
