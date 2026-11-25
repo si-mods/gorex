@@ -5,6 +5,7 @@ import (
 	"runtime"
 	"slices"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/egoist/mygo"
@@ -57,6 +58,9 @@ type projectSheet struct {
 	// making is a dir.mkdir on its way for the leaf; makeErr its error.
 	making  bool
 	makeErr string
+	// fresh tells that the sheet opens in this frame, for its rows to
+	// come in one after another as the palette's do.
+	fresh bool
 }
 
 // sheetEntry is a row of the folder list: ".." for the parent folder, or
@@ -71,7 +75,7 @@ type sheetEntry struct {
 func (a *App) openSheet(h *hostConn, dir string) {
 	// gen goes on from the sheet before, whose listings still on their
 	// way are not this one's.
-	a.sheet = projectSheet{open: true, host: h, gen: a.sheet.gen + 1, sel: -1}
+	a.sheet = projectSheet{open: true, host: h, gen: a.sheet.gen + 1, sel: -1, fresh: true}
 	a.sheet.browse(dir)
 	a.sheet.want = a.sheet.dir()
 	a.closeMenus()
@@ -627,7 +631,9 @@ func resolvePastedPath(prev, next string) string {
 	return shellEscape.ReplaceAllString(path, "$1")
 }
 
-// projectSheetView draws the sheet while it is open.
+// projectSheetView draws the sheet while it is open: the command
+// palette's shell — the window dimmed, a glass panel dropped from the
+// top — over T3 Code's add-project browser.
 func (a *App) projectSheetView(c *ui.Context, k *colors) {
 	s := &a.sheet
 	if !s.open {
@@ -642,32 +648,76 @@ func (a *App) projectSheetView(c *ui.Context, k *colors) {
 	a.listSheet()
 	title := locales.ProjectSheetTitleOn(a.hostName(s.host))
 	was := s.open
+	anim := motion(c)
+	fresh := s.fresh
+	s.fresh = false
+	if fresh && anim != nil {
+		// The frame after this one starts them moving.
+		c.AnimationFrame()
+	}
 	ui.DialogBase(c.Key("project-sheet"), &s.open, func(backdrop, panel ui.Element) {
-		dialogEnter(c, backdrop, panel)
-		backdrop.Background(k.backdrop)
+		backdrop.Justify(ui.Start).Padding(paletteDrop, 0, 0, 0).Background(k.backdrop)
 		winW, winH := c.Size()
-		panel.Width(min(540, winW-24)).MaxHeight(winH - 24).Padding(20).Radius(k.radius(radiusXXL))
-		frostPanel(panel, k, k.radius(radiusXXL))
-		dialogShadow(panel, k).Role(ui.RoleDialog).Label(title)
-		// What does not fit a short window scrolls.
-		ui.Scroll(c.Key("sheet-body")).MinHeight(0).Shrink(1).Children(func() {
-			ui.Column(c).Gap(8).Children(func() {
-				ui.Text(c, title).FontSize(fontTitle).FontWeight(700).TextColor(k.text).Margin(0, 0, 6, 0)
-				sheetLabel(c, k, locales.ProjectSheetHost())
-				a.sheetHosts(c, k)
-				// The folders take what room the window leaves.
-				room := winH - 420
-				a.sheetBrowser(c, k, min(max(room, 84), 220))
-			})
-		})
-		// As the palette's "Open in Finder": the system's folder panel.
-		if s.host == nil && a.win != nil {
-			ui.Row(c).Shrink(0).Justify(ui.End).Margin(10, 0, 0, 0).Children(func() {
-				if ui.Button(c, locales.ProjectSheetChoose()).Clicked() {
-					a.chooseFolder()
-				}
-			})
+		panel.Width(min(560, winW-24)).MaxHeight(min(440, winH-24)).Radius(k.radius(paletteR))
+		frostPanel(panel, k, k.radius(paletteR))
+		dialogShadow(panel, k).Clip().Role(ui.RoleDialog).Label(title)
+		if anim != nil {
+			dialogMotion(c, backdrop, panel, fresh)
 		}
+		// The field the browser is: the folder's glyph, the text, and
+		// the Add button at its end.
+		ui.Row(c).Padding(12, 16).Gap(10).AlignItems(ui.Center).BorderWidth(0, 0, 1, 0).BorderColor(k.panelBorder).Children(func() {
+			glyphIcon(c, "folder-plus", 17, k.textMuted)
+			// The cell the field and its path overlay share.
+			ui.Row(c).Grow(1).MinWidth(0).AlignItems(ui.Center).Children(func() {
+				in := styledField(c, k, func(c *ui.Context) ui.Element {
+					return ui.TextInputBase(c.Key("project-path"), &s.path)
+				}).Grow(1).MinWidth(0).FontSize(fontTitle).Padding(0, 4).Background(ui.Transparent).Border(0, ui.Transparent).
+					Label(locales.ProjectSheetPath()).Placeholder(locales.ProjectSheetPathHint()).AutoFocus()
+				focused := in.Focused()
+				if focused && (!s.pathFocused || s.caretEnd) {
+					// The caret goes to the end, which the field then shows.
+					n := utf8.RuneCountInString(s.path)
+					in.SetTextSelection(n, n)
+				}
+				s.pathFocused, s.caretEnd = focused, false
+				if s.focusPath && !focused {
+					in.Focus()
+				}
+				s.focusPath = false
+				in.OnTextKey(func(k ui.TextKey) bool {
+					switch {
+					case k.Key == ui.KeyEnter:
+						if k.Mods&(ui.Cmd|ui.Ctrl) != 0 || !s.openSel() {
+							// ⌘/Ctrl+Enter submits over a highlighted row.
+							a.later(c, a.sheetSubmit)
+						}
+						return true
+					case k.Key == ui.KeyTab && k.Mods == 0:
+						s.tab()
+						return true
+					case k.Key == ui.KeyDown && k.Mods == 0:
+						s.step(1)
+						return true
+					case k.Key == ui.KeyUp && k.Mods == 0:
+						s.step(-1)
+						return true
+					}
+					return false
+				})
+				if focused || s.path == "" {
+					return
+				}
+				in.TextColor(ui.Transparent)
+				// Over the field, where its text is: its padding and border.
+				ui.Row(c).Absolute().Left(4).Right(4).Top(0).Bottom(0).AlignItems(ui.Center).PassThrough().Children(func() {
+					ui.Text(c, s.path).FontSize(fontTitle).TextColor(k.text).SingleLine().TruncateStart().MinWidth(0)
+				})
+			})
+			a.sheetAddButton(c, k)
+		})
+		a.sheetList(c, k, anim, fresh)
+		a.sheetFoot(c, k)
 	})
 	if was && !s.open {
 		if t := a.tab(); t != nil && a.focusReq == nil {
@@ -676,9 +726,31 @@ func (a *App) projectSheetView(c *ui.Context, k *colors) {
 	}
 }
 
-// sheetLabel is the label over a part of the sheet.
-func sheetLabel(c *ui.Context, k *colors, text string) {
-	ui.Text(c, text).FontSize(fontSubhead).FontWeight(600).TextColor(k.textMuted).Margin(4, 0, 0, 0)
+// sheetFoot is the sheet's bottom bar, drawn only when it holds
+// something: the hosts to pick among when there is more than one — this
+// machine's name else — and the system's folder panel on the right, as
+// the palette's "Open in Finder" action.
+func (a *App) sheetFoot(c *ui.Context, k *colors) {
+	s := &a.sheet
+	choose := s.host == nil && a.win != nil
+	if len(a.allHosts()) <= 1 && !choose {
+		return
+	}
+	ui.Row(c).Padding(6, 10).Gap(6).AlignItems(ui.Center).BorderWidth(1, 0, 0, 0).BorderColor(k.panelBorder).Children(func() {
+		if len(a.allHosts()) > 1 {
+			a.sheetHosts(c, k)
+		} else {
+			name, _, glyph := a.hostIdentity()
+			glyphIcon(c, glyph, 13, k.textMuted)
+			ui.Text(c, name).FontSize(fontFootnote).TextColor(k.textMuted).SingleLine()
+		}
+		ui.Spacer(c)
+		if choose {
+			if ui.Button(c, locales.ProjectSheetChoose()).Clicked() {
+				a.chooseFolder()
+			}
+		}
+	})
 }
 
 // sheetHosts are the hosts the sheet can browse: this machine and the
@@ -721,140 +793,107 @@ func (a *App) sheetHosts(c *ui.Context, k *colors) {
 	})
 }
 
-// sheetBrowser is the folder browser, T3 Code's add-project view: the
-// path field — a folder's glyph, the text, and the Add button inside it —
-// over the directory it lists under "Directories": ".." for the parent
-// first, then the folders the leaf keeps. A click opens a folder, Enter
-// takes the field's path, and a leaf that names no folder creates it.
-func (a *App) sheetBrowser(c *ui.Context, k *colors, listH float32) {
+// sheetList is the folder list under the sheet's field, drawn as the
+// palette's rows: ".." for the parent first, then the folders the leaf
+// keeps under "Directories". A click opens a folder, Enter takes the
+// field's path, and a leaf that names no folder creates it.
+func (a *App) sheetList(c *ui.Context, k *colors, anim *ui.Animation, fresh bool) {
 	s := &a.sheet
 	r, win := s.res, s.windows()
-	var in ui.Element
-	box := ui.Column(c.Key("browser")).Radius(k.radius(radiusM)).Border(k.borderW(), k.panelBorder).Background(k.field).Clip().Shrink(0)
-	box.Children(func() {
-		ui.Row(c).Height(34).AlignItems(ui.Center).Children(func() {
-			glyphIcon(c, "folder-plus", 16, k.iconMuted).Shrink(0).Margin(0, 0, 0, 10)
-			// The cell the field and its path overlay share.
-			ui.Row(c).Grow(1).MinWidth(0).AlignItems(ui.Center).Children(func() {
-				in = styledField(c, k, func(c *ui.Context) ui.Element {
-					return ui.TextInputBase(c.Key("project-path"), &s.path)
-				}).Grow(1).MinWidth(0).FontSize(fontBody).Padding(0, 4).Background(ui.Transparent).Border(0, ui.Transparent).
-					Label(locales.ProjectSheetPath()).Placeholder(locales.ProjectSheetPathHint()).AutoFocus()
-				focused := in.Focused()
-				if focused && (!s.pathFocused || s.caretEnd) {
-					// The caret goes to the end, which the field then shows.
-					n := utf8.RuneCountInString(s.path)
-					in.SetTextSelection(n, n)
-				}
-				s.pathFocused, s.caretEnd = focused, false
-				if s.focusPath && !focused {
-					in.Focus()
-				}
-				s.focusPath = false
-				in.OnTextKey(func(k ui.TextKey) bool {
-					switch {
-					case k.Key == ui.KeyEnter:
-						if k.Mods&(ui.Cmd|ui.Ctrl) != 0 || !s.openSel() {
-							// ⌘/Ctrl+Enter submits over a highlighted row.
-							a.later(c, a.sheetSubmit)
-						}
-						return true
-					case k.Key == ui.KeyTab && k.Mods == 0:
-						s.tab()
-						return true
-					case k.Key == ui.KeyDown && k.Mods == 0:
-						s.step(1)
-						return true
-					case k.Key == ui.KeyUp && k.Mods == 0:
-						s.step(-1)
-						return true
-					}
-					return false
-				})
-				if focused || s.path == "" {
-					return
-				}
-				in.TextColor(ui.Transparent)
-				// Over the field, where its text is: its padding and border.
-				ui.Row(c).Absolute().Left(4).Right(4).Top(0).Bottom(0).AlignItems(ui.Center).PassThrough().Children(func() {
-					ui.Text(c, s.path).FontSize(fontBody).TextColor(k.text).SingleLine().TruncateStart().MinWidth(0)
-				})
-			})
-			a.sheetAddButton(c, k)
-		})
-		if in.Focused() {
-			box.BorderColor(k.accent)
+	say := ""
+	switch {
+	case s.host != nil && s.host.current() == nil:
+		say = locales.ProjectSheetConnecting(a.hostName(s.host))
+	case s.failed != "":
+		say = s.failed
+	case s.loading && len(r.Dirs) == 0 || !s.asked:
+		say = locales.ProjectSheetLoading()
+	case r.Code == rex.DirNotFound:
+		say = locales.ProjectSheetNotFound()
+	case r.Code == rex.DirDenied:
+		say = locales.ProjectSheetDenied()
+	}
+	var es []sheetEntry
+	if say == "" {
+		es = s.entries()
+	}
+	// Rows are 34 high, the section's header 28, the muted lines under
+	// them 22, and the line that says there is none 34.
+	listH := 34
+	if say == "" {
+		listH = 28 + 34*len(es)
+		if s.willCreate() {
+			listH += 22
 		}
-		ui.Divider(c).Background(k.panelBorder)
-		listBox := ui.Box(c.Key("folders")).Height(listH).Label(locales.ProjectSheetDirectories())
-		listBox.Children(func() {
-			say := func(text string) {
-				emptyMenu(c, k, "sheet-"+text, text)
-			}
-			switch {
-			case s.host != nil && s.host.current() == nil:
-				say(locales.ProjectSheetConnecting(a.hostName(s.host)))
-				return
-			case s.failed != "":
-				say(s.failed)
-				return
-			case s.loading && len(r.Dirs) == 0 || !s.asked:
-				say(locales.ProjectSheetLoading())
-				return
-			case r.Code == rex.DirNotFound:
-				say(locales.ProjectSheetNotFound())
-				return
-			case r.Code == rex.DirDenied:
-				say(locales.ProjectSheetDenied())
-				return
-			}
-			es := s.entries()
+		if s.makeErr != "" {
+			listH += 22
+		}
+		if r.More {
+			listH += 22
+		}
+	}
+	_, winH := c.Size()
+	ui.Scroll(c.Key("folder-list")).Height(min(float32(listH+12), min(384, max(120, winH-160)))).Padding(palettePad).
+		Label(locales.ProjectSheetDirectories()).Children(func() {
+		if say != "" {
+			emptyMenu(c, k, "sheet-empty", say)
+			return
+		}
+		ui.Column(c).Role(ui.RoleList).Label(locales.ProjectSheetDirectories()).Children(func() {
+			ui.Row(c).Height(28).Padding(8, 10, 0, 10).AlignItems(ui.Center).Children(func() {
+				ui.Text(c, locales.ProjectSheetDirectories()).FontSize(fontFootnote).FontWeight(600).TextColor(k.textMuted)
+			})
 			reveal := s.reveal
 			s.reveal = false
-			ui.Scroll(c.Key("folder-list")).Grow(1).MinHeight(0).Padding(4).Children(func() {
-				ui.Column(c).Gap(2).Role(ui.RoleList).Label(locales.ProjectSheetDirectories()).Children(func() {
-					ui.Text(c, locales.ProjectSheetDirectories()).FontSize(fontFootnote).TextColor(k.textMuted).Padding(2, 8, 0, 8)
-					glyph := "folder"
-					if win && r.Path == rex.DirTop {
-						glyph = "hard-drive"
+			glyph := "folder"
+			if win && r.Path == rex.DirTop {
+				glyph = "hard-drive"
+			}
+			for i, e := range es {
+				sel := i == s.sel
+				key, icon, name, label := "dir-"+e.name, glyph, e.name, e.name
+				if e.up {
+					key, icon, name, label = "dir-up", "corner-left-up", "..", locales.ProjectSheetUp()
+				}
+				row := ui.Row(c.Key(key)).Height(34).Padding(0, 10).Gap(10).Radius(concentric(k.radius(paletteR), 1+palettePad)).AlignItems(ui.Center).
+					Cursor(ui.CursorPointer).Role(ui.RoleListItem).Label(label).AccessSelected(sel)
+				if anim != nil {
+					pose := ui.Pose{}
+					if fresh {
+						pose = paletteRowFrom
 					}
-					for i, e := range es {
-						sel := i == s.sel
-						key, icon, name, label := "dir-"+e.name, glyph, e.name, e.name
-						if e.up {
-							key, icon, name, label = "dir-up", "corner-left-up", "..", locales.ProjectSheetUp()
-						}
-						row := ui.Row(c.Key(key)).Height(28).Padding(0, 8).Gap(8).Radius(concentric(k.radius(radiusM), 5)).AlignItems(ui.Center).
-							Cursor(ui.CursorPointer).Role(ui.RoleListItem).Label(label).AccessSelected(sel)
-						switch {
-						case sel:
-							row.Background(k.panelSel)
-							if reveal {
-								row.ScrollIntoView()
-							}
-						case row.Hovered():
-							row.Background(k.hover)
-						}
-						if row.Clicked() {
-							s.activate(e)
-						}
-						row.Children(func() {
-							glyphIcon(c, icon, 15, k.textMuted).Shrink(0)
-							ui.Text(c, name).FontSize(fontBody).TextColor(k.text).SingleLine().TruncateMiddle().MinWidth(0)
-						})
+					// The rows past the first paletteStagger come in
+					// with the last of those, not before them.
+					delay := time.Duration(min(i, paletteStagger-1)) * 15 * time.Millisecond
+					row.AnimatePose(pose, ui.Animation{Spring: anim.Spring, Delay: delay})
+				}
+				switch {
+				case sel:
+					row.Background(k.panelSel)
+					if reveal {
+						row.ScrollIntoView()
 					}
-					// A leaf that names no folder creates it on Enter.
-					if s.willCreate() {
-						ui.Text(c, locales.ProjectSheetCreateHint()).FontSize(fontFootnote).TextColor(k.textMuted).Padding(6, 8, 2, 8)
-					}
-					if s.makeErr != "" {
-						ui.Text(c, s.makeErr).FontSize(fontFootnote).TextColor(k.textMuted).Padding(0, 8, 2, 8)
-					}
-					if r.More {
-						ui.Text(c, locales.ProjectSheetMore(rex.DirListMax)).FontSize(fontFootnote).TextColor(k.textMuted).Padding(6, 8)
-					}
+				case row.Hovered():
+					row.Background(k.hover)
+				}
+				if row.Clicked() {
+					s.activate(e)
+				}
+				row.Children(func() {
+					glyphIcon(c, icon, 15, k.textMuted).Shrink(0)
+					ui.RichText(c, titleSpans(name, 13.5, 500, k.text)...).Label(label).SingleLine().Ellipsis("…").MinWidth(0)
 				})
-			})
+			}
+			// A leaf that names no folder creates it on Enter.
+			if s.willCreate() {
+				ui.Text(c, locales.ProjectSheetCreateHint()).FontSize(fontFootnote).TextColor(k.textMuted).Padding(6, 10, 2, 10)
+			}
+			if s.makeErr != "" {
+				ui.Text(c, s.makeErr).FontSize(fontFootnote).TextColor(k.textMuted).Padding(0, 10, 2, 10)
+			}
+			if r.More {
+				ui.Text(c, locales.ProjectSheetMore(rex.DirListMax)).FontSize(fontFootnote).TextColor(k.textMuted).Padding(6, 10)
+			}
 		})
 	})
 }

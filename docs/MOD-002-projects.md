@@ -297,21 +297,19 @@ The control `This Mac › gorex ▾` opens this menu:
 
 ### New Project
 
-The `+` of the header of a host opens the New Project sheet with the host chosen; New Project… in the palette and in the File menu opens it on this machine. The sheet copies T3 Code's add-project input (`apps/web/src/components/CommandPalette.tsx` in `pingdotgg/t3code`): the path field is the browser. The text to its last separator is the directory the "Directories" group lists; the leaf after it filters the folders shown, names the folder a row opens, and creates a folder no row names.
+The `+` of the header of a host opens the New Project sheet with the host chosen; New Project… in the palette and in the File menu opens it on this machine. The sheet wears the ⌘P command palette's shell: a glass panel that floats at the top of the window, its field in title size, and it copies T3 Code's add-project input (`apps/web/src/components/CommandPalette.tsx` in `pingdotgg/t3code`): the path field is the browser. The text to its last separator is the directory the "Directories" group lists; the leaf after it filters the folders shown, names the folder a row opens, and creates a folder no row names.
 
 ```
-┌──────────────── New Project on alice-tower ────────────────┐
-│ Host    (This Mac) (alice-tower) (old-laptop off)          │
-│         ┌─────────────────────────────────────────────┐    │
-│         │ [F+] /home/alice/cod▎           [Add    ↩] │    │
-│         ├─────────────────────────────────────────────┤    │
-│         │ Directories                                   │  │
-│         │ ↖  ..                                         │  │
-│         │ [F] code                                      │  │
-│         │ [F] codepen                                   │  │
-│         └─────────────────────────────────────────────┘    │
-│                                                   Choose…  │
-└────────────────────────────────────────────────────────────┘
+        ┌─────────────────────────────────────────────┐
+        │ [F+] /home/alice/cod▎           [Add    ↩] │
+        ├─────────────────────────────────────────────┤
+        │ Directories                                   │
+        │ ↖  ..                                         │
+        │ [F] code                                      │
+        │ [F] codepen                                   │
+        ├─────────────────────────────────────────────┤
+        │ (This Mac) (alice-tower) (old-laptop) Choose… │
+        └─────────────────────────────────────────────┘
 ```
 
 - `~/` is the home directory, where the field starts; `C:\` a drive's root; a bare name filters the home directory's folders. A pasted path replaces the text, quoted and escaped forms unwrapping (`resolvePastedPath`). A leaf that starts with `.` lists the hidden folders too.

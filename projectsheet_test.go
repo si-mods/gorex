@@ -1,6 +1,8 @@
 package main
 
 import (
+	"fmt"
+	"image/png"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -632,4 +634,41 @@ func TestProjectSheetSubmitState(t *testing.T) {
 	if a.sheet.canSubmit() {
 		t.Error("a folder gone can be added")
 	}
+}
+
+// TestProjectSheetShots renders the New Project sheet — the command
+// palette's shape — light and dark, listing and with a leaf that names
+// no folder, into GOREX_SHOTS, to look at.
+func TestProjectSheetShots(t *testing.T) {
+	dir := os.Getenv("GOREX_SHOTS")
+	if dir == "" {
+		t.Skip("GOREX_SHOTS names no directory")
+	}
+	a, tt := newTestApp(t)
+	old := prefs
+	t.Cleanup(func() { prefs = old })
+	prefs = settings{}
+	root := folderTree(t, appTempDir(t, a))
+	a.openSheet(nil, root)
+	sheetShows(t, a, tt, root)
+	for _, dark := range []bool{false, true} {
+		tt.SetDark(dark)
+		for _, leaf := range []string{"", "newfolder"} {
+			a.sheet.path = root + string(filepath.Separator) + leaf
+			for range 4 {
+				tt.Frame()
+				tt.Advance(time.Second)
+			}
+			name := fmt.Sprintf("sheet-%s-%s.png",
+				map[string]string{"": "list", "newfolder": "create"}[leaf],
+				map[bool]string{false: "light", true: "dark"}[dark])
+			f, err := os.Create(filepath.Join(dir, name))
+			if err != nil {
+				t.Fatal(err)
+			}
+			png.Encode(f, tt.Image())
+			f.Close()
+		}
+	}
+	quit(a.st)
 }

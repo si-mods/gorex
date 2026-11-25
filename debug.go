@@ -480,6 +480,8 @@ func (a *App) debug(dir, line string) {
 			arg = ""
 		}
 		win.Update(func() { a.useTheme(arg) })
+	case "anim": // snappy, natural or off: the window's animation style, for still screenshots
+		debugMain(func() { prefs.Animation = arg })
 	case "ambience": // moving, still or off: appearance.ambience (docs/DSK-010-theme-ambience.md)
 		win.Update(func() {
 			a.setWindowPref(func(s *settings) { s.Ambience = map[string]string{"still": ambienceStill, "off": ambienceOff}[arg] })
