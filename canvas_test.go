@@ -9,7 +9,6 @@ import (
 	"github.com/egoist/mygo/ui"
 
 	"gorex/internal/layout"
-	"gorex/locales"
 )
 
 // canvasPrefs turns the canvas setting on for the test, and back after it.
@@ -407,7 +406,7 @@ func TestCanvasMenuPlacesBox(t *testing.T) {
 	x, y := room.X+room.W-60, room.Y+room.H-60
 	tt.RightClickAt(x, y)
 	tt.Frame()
-	if m := tt.Menu(); !slices.Equal(m, []string{"New Terminal", "New Browser", "New Demo Note"}) {
+	if m := tt.Menu(); !slices.Equal(m, []string{"New Terminal", "New Demo Note"}) {
 		t.Fatalf("the plane's menu is %q", m)
 	}
 	if err := tt.ChooseMenuItem("New Demo Note"); err != nil {
@@ -538,58 +537,6 @@ func TestCanvasMenuAtPointer(t *testing.T) {
 	}
 }
 
-// A URL typed into a browser pane's address field loads at Enter, tiled
-// and on a canvas, at any scale.
-func TestCanvasBrowserAddress(t *testing.T) {
-	for _, v := range []struct {
-		name   string
-		canvas bool
-		scale  float32
-	}{{"tiled", false, 1}, {"canvas", true, 1}, {"canvas-half", true, 0.5}} {
-		t.Run(v.name, func(t *testing.T) {
-			canvasPrefs(t, v.canvas)
-			a, tt := newTestApp(t)
-			tt.Frame()
-			settle(tt)
-			tab := a.tab()
-			if v.canvas {
-				tab.canvas.Scale = v.scale
-				a.canvasNew(tab, "browser", 20, 20)
-			} else {
-				a.invokeCommand(&cmdSplitBrowser, nil)
-			}
-			settle(tt)
-			p := tab.Focus
-			if p == nil || browserOf(p) == nil {
-				t.Fatalf("focus is not a browser pane: %+v", p)
-			}
-			// Leave the field, as a user who looked at the page does, and
-			// click back into it.
-			browserOf(p).auto = false
-			a.focusReq = nil
-			settle(tt)
-			r, ok := tt.Find(locales.BrowserAddress())
-			if !ok {
-				t.Fatalf("no address field: %q", tt.Texts())
-			}
-			tt.ClickAt(r.X+r.W/2, r.Y+r.H/2)
-			tt.Frame()
-			if !tt.Focused(locales.BrowserAddress()) {
-				t.Fatal("the address field has no focus after a click")
-			}
-			tt.Key(ui.Ctrl, ui.KeyA)
-			tt.Type("http://localhost:5173/doc/drafts")
-			tt.Key(0, ui.KeyEnter)
-			settle(tt)
-			if got := browserOf(p).url; got != "http://localhost:5173/doc/drafts" {
-				t.Fatalf("url %q, addr %q after Enter", got, browserOf(p).addr)
-			}
-		})
-	}
-}
-
-// Moving one box of a canvas tab to another window leaves the tab and its
-// other boxes where they are.
 func TestCanvasMoveBoxToWindow(t *testing.T) {
 	a, _, tab := canvasApp(t, 0, 0, 1)
 	b := a.st.openWindow(a.st.newTestSpace())

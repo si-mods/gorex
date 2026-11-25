@@ -182,8 +182,8 @@ func TestOfflineHostActionsDisabled(t *testing.T) {
 		}
 	}
 	for _, it := range items {
-		if it.title == cmdNewBrowser.Title() && it.disabled {
-			t.Error("New Browser Tab, of this machine, is disabled")
+		if it.title == cmdNewWindow.Title() && it.disabled {
+			t.Error("New Window, of this machine, is disabled")
 		}
 	}
 	a.invokeCommand(&cmdSplitRight, nil)
