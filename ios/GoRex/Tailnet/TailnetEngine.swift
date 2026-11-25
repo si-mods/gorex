@@ -115,6 +115,7 @@ final class TailnetEngine {
         Host.tailcatProxy = { TailnetEngine.shared.tailcatProxyNow() }
         Host.tailcatHosts = { TailnetEngine.shared.setTailcatHosts($0) }
         Host.sshHosts = { TailnetEngine.shared.setSSHHosts($0) }
+        Host.sshHostToken = { TailnetEngine.shared.learnSSHHostToken($0) }
         Host.proxyFailed = { Task { await TailnetEngine.shared.reproxy() } }
         TailnetSetSSHDelegate(sshDelegate)
         _ = try? useTailcatKey(create: false)
@@ -300,15 +301,15 @@ final class TailnetEngine {
     }
 
     /// Tells the engine the hosts added by an ssh:// address, by id:
-    /// login, port, the remote socket if the address named one, and the
-    /// host key fingerprint trusted, which SetSSHHosts keeps by id. The
-    /// device key is made first, so a dial has it
-    /// (docs/IOS-023-ssh-hosts.md).
+    /// login, port, the remote socket or tcp:// endpoint if the address
+    /// named one, and the host key fingerprint trusted, which
+    /// SetSSHHosts keeps by id. The device key is made first, so a dial
+    /// has it (docs/IOS-023-ssh-hosts.md, docs/IOS-024-ssh-tcp.md).
     private func setSSHHosts(_ hosts: [HostConfig]) {
         let list: [[String: Any]] = hosts.compactMap { h in
             h.ssh.map { [
                 "id": HostConfig.tailcatID(h.id), "user": $0.user, "host": $0.host, "port": $0.port,
-                "socket": $0.socket ?? "", "hostKey": $0.hostKey ?? "",
+                "socket": $0.socket ?? "", "tcp": $0.tcp ?? "", "hostKey": $0.hostKey ?? "",
             ] }
         }
         hasSSH = !list.isEmpty
@@ -325,6 +326,16 @@ final class TailnetEngine {
             // Neither a device that runs nor one starting needs it.
             paths.stop()
         }
+    }
+
+    /// The LAN pairing token the engine learned over SSH for the host's
+    /// tcp:// endpoint goes to the host's config and the Keychain, as a
+    /// #k= one's, so its next connect sends it
+    /// (docs/IOS-024-ssh-tcp.md); none while the engine knows none.
+    private func learnSSHHostToken(_ id: UUID) {
+        let token = TailnetSSHHostToken(HostConfig.tailcatID(id))
+        guard !token.isEmpty else { return }
+        HostStore.current?.learnToken(token, for: id)
     }
 
     /// The SSH delegate's question, off the dial's goroutine: the card

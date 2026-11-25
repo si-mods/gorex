@@ -8,7 +8,7 @@ metadata:
 
 # IOS-024: Rex Go reaches a host over SSH through TCP
 
-Status: proposal.
+Status: built (phases 1 and 2).
 
 ## Problem
 
@@ -42,20 +42,22 @@ An `ssh://` host whose endpoint is TCP reaches it over a `direct-tcpip` channel 
 
 1. On the host: `gorex rexapi lan listen 127.0.0.1:7297`, `gorex rexapi lan allow 127.0.0.1/32`. (A LAN-bound listener works too — the forward can aim at its address — but loopback is the recommended shape.)
 2. Add Host takes the address, optionally with `#k=` from `gorex rexapi lan`'s pairing URL.
-3. First connect, host-key card and trust as IOS-023. With no token named, the engine execs `gorex rexapi lan status --json` (or `rex` for an upstream gateway) for the listener and token — see Changes below; a host that cannot answer asks the user to paste the token, as the refusal hint already does.
+3. First connect, host-key card and trust as IOS-023. With no token named, the engine execs `gorex rexapi lan token show` (or `rex` for an upstream gateway) for the token — see Changes below; a host that cannot answer asks the user to paste the token, as the refusal hint already does.
 
 ### The transport
 
 - `dialSSH` picks the channel by the record's endpoint kind: `direct-streamlocal` for a Unix path, `direct-tcpip` for `tcp://`, with `127.0.0.1:0` as the originator address. Both land in the same `net.Conn`, so nothing past the channel changes.
-- Discovery runs the same `server status --json` exec. The answer's `listeners[]` already carries `transport`: a `unix`/`named_pipe` entry feeds streamlocal; a `tcp` entry whose address is loopback feeds direct-tcpip. A named-pipe-only answer then falls back to the TCP probe; a Unix answer keeps today's behavior.
-- When `gorex server status` reports a TCP listener but no token, a second exec reads it: `gorex rexapi lan status --json` grows a `token` field (or `lan token` prints it). Windows' bare `type`/`certutil` fallbacks read `lan.json` if the CLI is old — or the app just asks the user.
+- The TCP gateway's DNS-rebinding check (`internal/rexapi/host.go`) answers 421 to a Host it does not know, and the proxy's `<id>.ssh.invalid` is no name of its. Requests over an ssh channel therefore send `Host: localhost`, which the check always admits; a Unix endpoint skips the check, so the rewrite is safe there too.
+- The discovery and token execs run on the host's login shell — `gorex … || rex …`, which cmd and the unix shells both read, with no `sh -c` (a Windows sshd has no sh). They work only when `gorex` or `rex` is on the remote PATH; a host where it is not needs the `#k=` token pasted.
+- Discovery runs the same `server status --json` exec. The answer's `listeners[]` already carries `transport`: a `unix`/`named_pipe` entry feeds streamlocal; a `tcp` entry whose address is loopback feeds direct-tcpip. A named-pipe-only answer then falls back: `gorex rexapi lan status` names the gateway's address — bound to the LAN one, which a loopback probe would miss — else the loopback TCP probe; a Unix answer keeps today's behavior.
+- For a tcp endpoint whose token the address did not name, a second exec reads it: `gorex rexapi lan token show` (upstream `rex` next), a command the CLIs already have — the user's own session may read `lan.json`, so nothing new is exposed. A host that answers neither is asked for the token as the refusal hint says.
 - An `--allow-anonymous` or legacy-open endpoint gets no `Authorization` header; the store keeps no token.
 
 ### Changes, compact
 
 - `HostConfig.SSH` gains `tcp` (`host`, `port`) beside `socket`; `auth` returns the lanToken for ssh-tcp hosts too.
 - `ios/tailnet/ssh.go`: `sshHost.endpoint` becomes `unix | tcp`; `dialSSH` opens the matching channel; the status-exec parser learns `transport`, `endpoint` and the rexapi-lan token exec.
-- `internal/rexapi`: `lan status` reports its token to a caller on the local socket/SSH'd user (server-side JSON only; never to a remote API caller).
+- `URLRequest.authorized` sends `Host: localhost` for `<id>.ssh.invalid` URLs, beside the bearer.
 - Tests: fake sshd gains a `direct-tcpip` backend (trivial — it is a TCP listener), covering grammar, discovery fallback npipe→tcp, token fetch and the bearer header.
 
 ## Security
