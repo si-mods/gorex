@@ -469,7 +469,8 @@ func copyDir(src, dst string) error {
 		if d.IsDir() {
 			return os.MkdirAll(target, 0o755)
 		}
-		if d.Type()&os.ModeSymlink != 0 {
+		// A copied record would claim a registry version for a local install.
+		if d.Type()&os.ModeSymlink != 0 || rel == RecordFile {
 			return nil
 		}
 		data, err := os.ReadFile(p)

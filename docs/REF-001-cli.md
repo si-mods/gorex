@@ -3,7 +3,7 @@ name: REF-001
 description: "The `gorex` command line: the commands that drive sessions without a window, and the agent hooks. Use when you add or change a CLI command."
 metadata:
   created: "2026-10-28"
-  updated: "2026-11-24"
+  updated: "2026-11-25"
 ---
 
 # REF-001: gorex command line
@@ -46,7 +46,7 @@ gorex split [-s SESSION] [--down] [--dir DIR] [--json] [-- COMMAND...]
 gorex close [-s SESSION] [--tab] [--json]
 gorex rename [-s SESSION] [--json] NAME
 gorex icon [--bg HEX] [--fg HEX] [--mode mono|color] [--format svg|png] FILE|clear
-gorex pack ls [--json] | search [QUERY] [--json] | install [--name ID] [--json] ID|DIR|GIT_URL | rm ID
+gorex pack ls [--json] | search [QUERY] [--json] | install [--name ID] [--json] ID|DIR|GIT_URL | update [--check] [ID] | rm ID
 gorex send [-s SESSION] [--enter] [--json] TEXT...
 gorex paste [-s SESSION] [--json] TEXT...
 gorex capture [-s SESSION] [--history BYTES] [--raw] [--json]
@@ -72,6 +72,16 @@ gorex version [--json]
 a `kind` (`icon-pack` or `theme`); its other fields are as before. The text
 form ends each line with the kind. `pack rm ID` removes the icon pack or the
 theme (with its assets) of that ID.
+
+`pack update [ID]` fetches the registry and installs again each installed
+icon pack and theme whose registry entry differs from what its install
+record says: the `ref` when the registry pins one, else the `version`. A
+pack with no record, from an older build or a local install, has an unknown
+version and gets the update. With an `ID` it updates only that pack and says
+when it is up to date. `--check` lists the updates and installs none. The
+update keeps the pack's name, so a theme in use stays in use. `pack ls`
+shows the recorded version of a theme; it does not fetch the registry. See
+[`MOD-012`](MOD-012-program-icon-packs.md), Updates.
 
 Targets are a full session ID, a workspace, tab or pane label, a position
 in `ls` (1 is the first), or the end of an ID (at least four characters).
