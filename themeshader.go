@@ -56,6 +56,9 @@ const (
 	pointerOwn = iota
 	pointerCenter
 	pointerCorner
+	// pointerSidebar presses the pointer at the center of the sidebar's
+	// column of the window, where check 6 reads the background.
+	pointerSidebar
 )
 
 // themeLayer is a layer of a slot: a shader that passed checks 1 to 3.
@@ -335,7 +338,7 @@ func checkSlot(slot *theme.ShaderSlot, e *slotEnv, bg bool, under *[2]ui.Color, 
 	}
 	for i, l := range sl.layers {
 		others := total - costs[i]
-		for _, v := range rangeVariants(l, e) {
+		for _, v := range rangeVariants(l, e, bg) {
 			c, slow := layerCost(v.l, fewSamples.cost, fewSamples.costOnce, maxShaderCost-others)
 			err := costLimit(others+c, len(sl.layers), slow)
 			if err == nil {
@@ -366,8 +369,9 @@ type rangeVariant struct {
 // variant equal to the first is not drawn again. Colors are not varied.
 // A layer that reads Pointer adds item 5: the first variant draws the
 // pointer off the window (z = 0); then pressed at the center of the drawn
-// rectangle, and over its top left corner.
-func rangeVariants(l *themeLayer, e *slotEnv) []rangeVariant {
+// rectangle, and over its top left corner; for the background, pressed at
+// the center of the sidebar's column too, where check 6 reads.
+func rangeVariants(l *themeLayer, e *slotEnv, bg bool) []rangeVariant {
 	if e.api != theme.ShaderAPI2 {
 		return nil
 	}
@@ -403,7 +407,10 @@ func rangeVariants(l *themeLayer, e *slotEnv) []rangeVariant {
 		for _, at := range []struct {
 			at    int
 			label string
-		}{{pointerCenter, "Pointer pressed at the center"}, {pointerCorner, "Pointer at the top left corner"}} {
+		}{{pointerCenter, "Pointer pressed at the center"}, {pointerCorner, "Pointer at the top left corner"}, {pointerSidebar, "Pointer pressed in the sidebar"}} {
+			if at.at == pointerSidebar && !bg {
+				continue
+			}
 			v := *l
 			v.pointerAt = at.at
 			out = append(out, rangeVariant{at.label, &v})
@@ -616,6 +623,8 @@ func (sl *themeLayer) draw(p *ui.Painter, r ui.Rect, radius float32, dark bool, 
 				ptr = [4]float32{origin.X + r.W/2, origin.Y + r.H/2, 1, 1}
 			case pointerCorner:
 				ptr = [4]float32{origin.X, origin.Y, 1, 0}
+			case pointerSidebar:
+				ptr = [4]float32{sidebarWidthIn(f.window.X) / 2, f.window.Y / 2, 1, 1}
 			}
 			o.Uniforms["Pointer"] = ptr
 		}
@@ -645,26 +654,46 @@ func themeBackground() *themeSlot {
 // themeShaderFPS a second (Painter.WatchPointer). Still, Time and the
 // pointer's place stand, z and w of Pointer are 0, and it asks for no
 // frame (docs/DSK-012, Pointer).
-func tickShaders(p *ui.Painter, r ui.Rect, moves bool) shaderFrame {
+func tickShaders(p *ui.Painter, r ui.Rect, moves bool, sw *shaderWindow) shaderFrame {
 	set := activeShaders()
 	if set == nil {
 		return currentFrame()
 	}
+	if sw == nil {
+		sw = &shaderWindow{}
+	}
 	moving := moves && set.anyTime && themeShaderGPU(p)
 	watch := moves && set.anyPointer && themeShaderGPU(p)
-	ptr := currentFrame().pointer
+	ptr := sw.pointer
 	ptr[2], ptr[3] = 0, 0
 	if watch {
 		x, y, over, primary := p.Pointer()
 		ptr = [4]float32{x, y, boolFloat(over), boolFloat(primary)}
 		p.WatchPointer(themeShaderFPS)
 	}
+	sw.pointer = ptr
 	f := &shaderFrame{time: shaderClock.at(p.Now(), moving), window: ui.Point{X: r.W, Y: r.H}, pointer: ptr, watch: watch}
 	frameNow.Store(f)
 	if moving {
 		p.AnimationFrameRate(themeShaderFPS)
 	}
 	return *f
+}
+
+// shaderWindow is what the theme's shaders keep of one window from frame
+// to frame: the Pointer it drew last, whose place a still window keeps.
+// Each window has its own (windowShader), so that the pointer of one
+// never shows in another.
+type shaderWindow struct {
+	pointer [4]float32
+}
+
+type shaderWindowKey struct{}
+
+// windowShader returns the shaderWindow of the window whose root element
+// is e.
+func windowShader(e ui.Element) *shaderWindow {
+	return ui.Local(e, shaderWindowKey{}, func() shaderWindow { return shaderWindow{} })
 }
 
 // boolFloat is 1 for true, 0 for false, as a uniform holds a flag.
