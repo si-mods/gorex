@@ -217,6 +217,10 @@ type store struct {
 	// app failed (upgradeServer): adopt does not try it again, and offers
 	// the restart.
 	upgradeFailed int
+	// refreshMenus rebuilds the menu bar after the packs' commands changed
+	// (reloadExtPacks); a field so its call site escapes the init-order
+	// graph — the menu build reaches newWindow.
+	refreshMenus func()
 
 	workspaces []*Workspace
 	// notifyOff tells that macOS refused the last notification: the user

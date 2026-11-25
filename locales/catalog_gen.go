@@ -8980,6 +8980,70 @@ func (msgs Messages) SettingsExtensionKindTheme() string {
 	return Catalog.Format(msgs.locale, "settingsExtensionKindTheme", nil)
 }
 
+// SettingsExtensionKindExtension says "Extension"
+// in the language the app shows.
+//
+// Extensions page: the kind of an extension pack, before its ID.
+func SettingsExtensionKindExtension() string {
+	return In(i18n.Locale()).SettingsExtensionKindExtension()
+}
+
+// SettingsExtensionKindExtension says "Extension"
+// in the language of msgs.
+//
+// Extensions page: the kind of an extension pack, before its ID.
+func (msgs Messages) SettingsExtensionKindExtension() string {
+	return Catalog.Format(msgs.locale, "settingsExtensionKindExtension", nil)
+}
+
+// SettingsExtPacksInstalled says "Extension Packs"
+// in the language the app shows.
+//
+// Extensions page: the group of installed extension packs, which serve pane
+// kinds (docs/EXT-001).
+func SettingsExtPacksInstalled() string { return In(i18n.Locale()).SettingsExtPacksInstalled() }
+
+// SettingsExtPacksInstalled says "Extension Packs"
+// in the language of msgs.
+//
+// Extensions page: the group of installed extension packs, which serve pane
+// kinds (docs/EXT-001).
+func (msgs Messages) SettingsExtPacksInstalled() string {
+	return Catalog.Format(msgs.locale, "settingsExtPacksInstalled", nil)
+}
+
+// SettingsExtPacksEmpty says "No extension packs installed yet."
+// in the language the app shows.
+//
+// Extensions page: under the Extension Packs group when it has none.
+func SettingsExtPacksEmpty() string { return In(i18n.Locale()).SettingsExtPacksEmpty() }
+
+// SettingsExtPacksEmpty says "No extension packs installed yet."
+// in the language of msgs.
+//
+// Extensions page: under the Extension Packs group when it has none.
+func (msgs Messages) SettingsExtPacksEmpty() string {
+	return Catalog.Format(msgs.locale, "settingsExtPacksEmpty", nil)
+}
+
+// SettingsExtPacksKindHint says "Panes: {kinds}"
+// in the language the app shows.
+//
+// Extensions page: under an extension pack's name, the pane kinds it
+// serves, joined by commas.
+func SettingsExtPacksKindHint(kinds string) string {
+	return In(i18n.Locale()).SettingsExtPacksKindHint(kinds)
+}
+
+// SettingsExtPacksKindHint says "Panes: {kinds}"
+// in the language of msgs.
+//
+// Extensions page: under an extension pack's name, the pane kinds it
+// serves, joined by commas.
+func (msgs Messages) SettingsExtPacksKindHint(kinds string) string {
+	return Catalog.Format(msgs.locale, "settingsExtPacksKindHint", map[string]any{"kinds": kinds})
+}
+
 // SettingsThemeShaderDropped says "Theme shader not used: {slot}"
 // in the language the app shows.
 //

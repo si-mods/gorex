@@ -70,11 +70,14 @@ type paneKindDef struct {
 	program program
 }
 
-// paneKinds are the app's pane kinds, the built-ins and the packs'.
+// paneKinds are the app's built-in pane kinds; allPaneKinds adds the
+// packs' to them.
 var paneKinds = []paneKindDef{
 	{
-		kind:    "browser",
-		match:   func(s *savedNode) bool { return s.Kind == "browser" || s.URL != "" },
+		kind: "browser",
+		// A node of a kind that is not this one's is another pane kind's,
+		// whatever its fields: a pack's kind may carry a url too.
+		match:   func(s *savedNode) bool { return s.Kind == "browser" || (s.Kind == "" && s.URL != "") },
 		spawn:   func(a *App) *Pane { return a.newBrowserPane(browserStart) },
 		load:    (*App).loadBrowserPane,
 		key:     func(s *savedNode) string { return cmpKey("web:", s.ID) },
@@ -99,11 +102,12 @@ func cmpKey(pre, id string) string {
 }
 
 // paneKindOf is the def of a node's kind, nil for a kind the build does
-// not have.
+// not have. allPaneKinds adds the enabled packs' kinds to the built-ins.
 func paneKindOf(s *savedNode) *paneKindDef {
-	for i := range paneKinds {
-		if paneKinds[i].match(s) {
-			return &paneKinds[i]
+	defs := allPaneKinds()
+	for i := range defs {
+		if defs[i].match(s) {
+			return &defs[i]
 		}
 	}
 	return nil
@@ -125,7 +129,7 @@ func (a *App) extPaneLoad(s *savedNode, taken func(*savedNode) bool) *Pane {
 // newExtPane makes a pane of the pane kind named, nil for a kind the
 // build does not have.
 func (a *App) newExtPane(kind string) *Pane {
-	for _, d := range paneKinds {
+	for _, d := range allPaneKinds() {
 		if d.kind == kind {
 			return d.spawn(a)
 		}

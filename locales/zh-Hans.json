@@ -716,6 +716,10 @@
   "settingsThemeInUse": "使用中",
   "settingsExtensionKindIcons": "图标包",
   "settingsExtensionKindTheme": "主题",
+  "settingsExtensionKindExtension": "扩展",
+  "settingsExtPacksInstalled": "扩展包",
+  "settingsExtPacksEmpty": "还没有已安装的扩展包。",
+  "settingsExtPacksKindHint": "窗格:{kinds}",
   "settingsThemeShaderDropped": "未使用主题着色器：{slot}",
   "settingsThemeShaderNote": "主题着色器提示：{slot}"
 }

@@ -4,11 +4,13 @@ import (
 	"cmp"
 	"context"
 	"slices"
+	"strings"
 	"sync"
 
 	"github.com/egoist/mygo/ui"
 
 	"gorex/internal/config"
+	"gorex/internal/ext"
 	"gorex/internal/iconpack"
 	"gorex/internal/theme"
 	"gorex/locales"
@@ -21,6 +23,7 @@ var iconPacksUI struct {
 	mu              sync.Mutex
 	installed       []iconpack.Summary
 	themes          []theme.Summary
+	exts            []ext.Installed
 	installedLoaded bool
 	reg             *iconpack.RegistryIndex
 	regLoaded       bool
@@ -40,6 +43,7 @@ func resetIconPacksUI() {
 	defer iconPacksUI.mu.Unlock()
 	iconPacksUI.installed = nil
 	iconPacksUI.themes = nil
+	iconPacksUI.exts = nil
 	iconPacksUI.installedLoaded = false
 	iconPacksUI.reg = nil
 	iconPacksUI.regLoaded = false
@@ -56,6 +60,7 @@ func (a *App) refreshInstalledIconPacks() {
 	packsDir, themesDir := iconpack.Dir(), theme.Dir(config.Dir())
 	list, err := iconpack.ListPacks(packsDir)
 	themes := theme.List(themesDir)
+	exts := ext.List(ext.Dir(config.Dir()))
 	records := map[string]*iconpack.Record{}
 	for _, s := range list {
 		if rec := iconpack.ReadRecord(s.Dir); rec != nil {
@@ -69,9 +74,15 @@ func (a *App) refreshInstalledIconPacks() {
 			}
 		}
 	}
+	for _, s := range exts {
+		if rec := iconpack.ReadRecord(s.Dir); rec != nil {
+			records[registryKey(iconpack.RegistryPack{ID: s.ID, Kind: iconpack.KindExtension})] = rec
+		}
+	}
 	iconPacksUI.mu.Lock()
 	iconPacksUI.installed = list
 	iconPacksUI.themes = themes
+	iconPacksUI.exts = exts
 	iconPacksUI.records = records
 	iconPacksUI.installedLoaded = true
 	if err != nil {
@@ -145,8 +156,9 @@ func (a *App) installIconPack(rp iconpack.RegistryPack, update bool) {
 
 	win := settingsUI.win
 	packsDir, themesDir := iconpack.Dir(), theme.Dir(config.Dir())
+	extsDir := ext.Dir(config.Dir())
 	go func() {
-		_, err := iconpack.Install(context.Background(), rp, packsDir, themesDir, "")
+		_, err := iconpack.Install(context.Background(), rp, packsDir, themesDir, extsDir, "")
 		// The install ends only after its effects, so that a reader who
 		// sees it end (a test, with no window) sees them too.
 		apply := func() {
@@ -154,12 +166,15 @@ func (a *App) installIconPack(rp iconpack.RegistryPack, update bool) {
 				if rp.Kind == iconpack.KindTheme && update && prefs.Theme == rp.ID {
 					a.useTheme(rp.ID)
 				}
-				if rp.Kind != iconpack.KindTheme && !update {
+				if rp.Kind == "" && !update {
 					a.setPref(func(s *settings) {
 						if !slices.Contains(s.IconPacks, rp.ID) {
 							s.IconPacks = append(s.IconPacks, rp.ID)
 						}
 					})
+				}
+				if rp.Kind == iconpack.KindExtension {
+					a.reloadExtPacks()
 				}
 				a.refreshInstalledIconPacks()
 			}
@@ -187,6 +202,7 @@ func (a *App) iconPacksSettings(c *ui.Context, k *colors) {
 	regLoading := iconPacksUI.regLoading
 	installed := slices.Clone(iconPacksUI.installed)
 	themes := slices.Clone(iconPacksUI.themes)
+	exts := slices.Clone(iconPacksUI.exts)
 	reg := iconPacksUI.reg
 	regErr := iconPacksUI.regErr
 	actionErr := iconPacksUI.actionErr
@@ -202,6 +218,7 @@ func (a *App) iconPacksSettings(c *ui.Context, k *colors) {
 		iconPacksUI.mu.Lock()
 		installed = slices.Clone(iconPacksUI.installed)
 		themes = slices.Clone(iconPacksUI.themes)
+		exts = slices.Clone(iconPacksUI.exts)
 		records = iconPacksUI.records
 		iconPacksUI.mu.Unlock()
 	}
@@ -276,6 +293,8 @@ func (a *App) iconPacksSettings(c *ui.Context, k *colors) {
 		}
 	})
 
+	a.extensionsGroup(c, k, exts)
+
 	installedSet := map[string]bool{}
 	packVersion := map[string]string{} // pack.json's version, by icon pack ID
 	for _, s := range installed {
@@ -284,6 +303,9 @@ func (a *App) iconPacksSettings(c *ui.Context, k *colors) {
 	}
 	for _, s := range themes {
 		installedSet[registryKey(iconpack.RegistryPack{ID: s.ID, Kind: iconpack.KindTheme})] = true
+	}
+	for _, s := range exts {
+		installedSet[registryKey(iconpack.RegistryPack{ID: s.ID, Kind: iconpack.KindExtension})] = true
 	}
 
 	settingsGroup(c, k, locales.SettingsIconPacksRegistry(), "", regErr, func() {
@@ -355,6 +377,10 @@ func registryEntries(reg *iconpack.RegistryIndex, query string) []iconpack.Regis
 		rp.Kind = iconpack.KindTheme
 		out = append(out, rp)
 	}
+	for _, rp := range iconpack.SearchRegistry(&iconpack.RegistryIndex{Packs: reg.Extensions}, query) {
+		rp.Kind = iconpack.KindExtension
+		out = append(out, rp)
+	}
 	return out
 }
 
@@ -378,7 +404,75 @@ func extensionKind(kind string) string {
 	if kind == iconpack.KindTheme {
 		return locales.SettingsExtensionKindTheme()
 	}
+	if kind == iconpack.KindExtension {
+		return locales.SettingsExtensionKindExtension()
+	}
 	return locales.SettingsExtensionKindIcons()
+}
+
+// extensionsGroup is the Extension Packs group: each installed pack with
+// its switch and Remove, whose pane kinds the pack's manifest names.
+func (a *App) extensionsGroup(c *ui.Context, k *colors, exts []ext.Installed) {
+	settingsGroup(c, k, locales.SettingsExtPacksInstalled(), "", "", func() {
+		if len(exts) == 0 {
+			groupRow(c, k, "exts-empty").Children(func() {
+				rowHint(c, k, locales.SettingsExtPacksEmpty())
+			})
+			return
+		}
+		for _, s := range exts {
+			groupRow(c, k, "ext-"+s.ID).Children(func() {
+				title := cmp.Or(s.Name, s.ID)
+				rowLine(c, k, title, func() {
+					enabled := !slices.Contains(prefs.DisabledExts, s.ID)
+					if ui.Switch(c, &enabled).Label(title).Changed() {
+						a.setPref(func(st *settings) {
+							if enabled {
+								st.DisabledExts = slices.DeleteFunc(st.DisabledExts, func(x string) bool { return x == s.ID })
+							} else if !slices.Contains(st.DisabledExts, s.ID) {
+								st.DisabledExts = append(st.DisabledExts, s.ID)
+							}
+						})
+						a.reloadExtPacks()
+					}
+					if ui.Button(c, locales.SettingsIconPacksRemove()).Label(locales.SettingsIconPacksRemove() + " " + title).Clicked() {
+						if err := ext.Remove(ext.Dir(config.Dir()), s.ID); err != nil {
+							iconPacksUI.mu.Lock()
+							iconPacksUI.actionErr = err.Error()
+							iconPacksUI.mu.Unlock()
+						} else {
+							a.setPref(func(st *settings) {
+								st.DisabledExts = slices.DeleteFunc(st.DisabledExts, func(x string) bool { return x == s.ID })
+							})
+							a.reloadExtPacks()
+							a.refreshInstalledIconPacks()
+						}
+					}
+				})
+				sub := extensionKind(iconpack.KindExtension) + " · " + s.ID
+				if s.Version != "" {
+					sub += " · " + s.Version
+				}
+				if s.Error != "" {
+					sub += " · " + s.Error
+				}
+				rowHint(c, k, sub)
+				// The pane kinds the pack serves, which its panes name in
+				// a layout.
+				var kinds []string
+				for _, pk := range extPacks.packs {
+					if pk.ID() == s.ID {
+						for _, pd := range pk.Manifest.Panes {
+							kinds = append(kinds, pd.Kind)
+						}
+					}
+				}
+				if len(kinds) > 0 {
+					rowHint(c, k, locales.SettingsExtPacksKindHint(strings.Join(kinds, ", ")))
+				}
+			})
+		}
+	})
 }
 
 // themesGroup is the Window Theme group: the built-in palette and each

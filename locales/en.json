@@ -3043,6 +3043,25 @@
   "@settingsExtensionKindTheme": {
     "description": "Extensions page: the kind of an extension, before its ID."
   },
+  "settingsExtensionKindExtension": "Extension",
+  "@settingsExtensionKindExtension": {
+    "description": "Extensions page: the kind of an extension pack, before its ID."
+  },
+  "settingsExtPacksInstalled": "Extension Packs",
+  "@settingsExtPacksInstalled": {
+    "description": "Extensions page: the group of installed extension packs, which serve pane kinds (docs/EXT-001)."
+  },
+  "settingsExtPacksEmpty": "No extension packs installed yet.",
+  "@settingsExtPacksEmpty": {
+    "description": "Extensions page: under the Extension Packs group when it has none."
+  },
+  "settingsExtPacksKindHint": "Panes: {kinds}",
+  "@settingsExtPacksKindHint": {
+    "description": "Extensions page: under an extension pack's name, the pane kinds it serves, joined by commas.",
+    "placeholders": {
+      "kinds": {}
+    }
+  },
   "settingsThemeShaderDropped": "Theme shader not used: {slot}",
   "@settingsThemeShaderDropped": {
     "description": "Extensions page: under the theme in use, a shader of the theme that failed a check at load and draws the theme's flat colors instead. slot is the manifest's slot, such as shaders.background. The check's English detail follows.",
