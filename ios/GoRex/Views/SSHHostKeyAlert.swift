@@ -29,10 +29,10 @@ private extension View {
         let q = engine.sshHostKeyQuestion
         return alert(
             q?.changed == true ? "SSH host key changed" : "Trust this SSH host?",
+            // The dismiss refuses the question this card showed (q), not
+            // the one a button's answer made current.
             isPresented: Binding { q != nil } set: { show in
-                if !show, let q = engine.sshHostKeyQuestion, q.qid != answered.wrappedValue {
-                    engine.answerSSHHostKey(q, save: nil)
-                }
+                if !show { engine.dismissSSHHostKey(shown: q, answered: answered.wrappedValue) }
             },
             presenting: q
         ) { q in
@@ -42,6 +42,7 @@ private extension View {
             }
             if q.changed {
                 Button("Replace & Connect", role: .destructive) { answer(true) }
+                if !engine.savedSSHHostKey(q) { Button("Connect Once") { answer(false) } }
             } else {
                 Button("Trust & Save") { answer(true) }
                 Button("Connect Once") { answer(false) }
@@ -63,9 +64,7 @@ private extension View {
         return alert(
             q.map { "\($0.user)@\($0.host):\(String($0.port))" } ?? "",
             isPresented: Binding { q != nil } set: { show in
-                if !show, let q = engine.sshAuthQuestion, q.qid != answered.wrappedValue {
-                    engine.answerSSHAuth(q, secret: nil)
-                }
+                if !show { engine.dismissSSHAuth(shown: q, answered: answered.wrappedValue) }
             },
             presenting: q
         ) { q in
@@ -97,17 +96,19 @@ private extension View {
     }
 
     /// The install-key card: a password login offers the phone's key,
-    /// which the next connect then needs no password for.
+    /// which the next connect then needs no password for. Install Key's
+    /// dismiss leaves the offer while the install runs, so that a
+    /// failure shows in the card again.
     func sshInstallCard(_ engine: TailnetEngine) -> some View {
         let c = engine.sshInstallOffer
         return alert(
             "Install this phone's key?",
-            isPresented: Binding { c != nil } set: { show in
-                if !show { engine.skipSSHInstallKey() }
+            isPresented: Binding { c != nil && !engine.sshInstalling } set: { show in
+                if !show { engine.dismissSSHInstall() }
             },
             presenting: c
         ) { c in
-            Button("Install Key") { Task { await engine.installSSHKey(c) } }
+            Button("Install Key") { engine.installSSHKey(c) }
             Button("Not Now", role: .cancel) { engine.skipSSHInstallKey() }
         } message: { c in
             Text("You logged in to \(c.name) with a password. Installing this phone's SSH key on it connects without one.\(engine.sshInstallError.map { "\n\n\($0)" } ?? "")")

@@ -99,6 +99,11 @@ Each item has a **Trigger** (what the diff shows), a **Check** (what the author 
 
 ## Fixes
 
+### A remote command read by its output alone
+- **Trigger:** the diff runs a command on another machine or in another process (an SSH exec such as `sshExec`, `exec.Command`) and uses its output, or takes the command as done.
+- **Check:** the exit status is read: a non-zero status, a signal or a missing status is a failure, not an empty answer, and nothing is cached from it. A test runs the command failing.
+- **Source:** #1136 and #1144: `sshExec` ignored the exit status, so a failed token exec cached "" and kept the host refused, and Install Key reported success on a host where nothing was installed (#1154, #1155).
+
 ### A bound applied to remote connections only
 - **Trigger:** a deadline, timeout or drop that guards a remote connection but not a local one.
 - **Check:** a local peer stalls the same way — its reader wedged while its control connection stays alive — so a local write can wait forever too. Guard the peer draining, not the transport's distance.

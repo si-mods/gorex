@@ -87,6 +87,9 @@ final class TailnetEngine {
     private(set) var sshInstallOffer: HostConfig?
     /// The install's failure, shown in the offer's card.
     private(set) var sshInstallError: String?
+    /// Whether Install Key's install runs: its card stays down, and its
+    /// dismiss is no skip.
+    private(set) var sshInstalling = false
     /// The questions that came while another one showed, in order.
     @ObservationIgnored private var sshHostKeyQueue: [SSHHostKeyQuestion] = []
     /// The auth questions that came while another one showed, in order.
@@ -128,9 +131,7 @@ final class TailnetEngine {
         var id: Int64 { qid }
         /// Whether the prompt asks for a one-time code, for the card's
         /// OTP AutoFill, as rootshell's secret kinds classify it.
-        var otp: Bool {
-            prompt.range(of: "code|otp|verification|2fa|token|one-time", options: .regularExpression) != nil
-        }
+        var otp: Bool { HostConfig.SSH.asksOneTimeCode(prompt) }
     }
     @ObservationIgnored private let paths = PathMonitor()
     @ObservationIgnored private let log = Logger(subsystem: "dev.gorex.ios", category: "tailnet")
@@ -148,6 +149,7 @@ final class TailnetEngine {
         Host.tailcatHosts = { TailnetEngine.shared.setTailcatHosts($0) }
         Host.sshHosts = { TailnetEngine.shared.setSSHHosts($0) }
         Host.sshHostToken = { TailnetEngine.shared.learnSSHHostToken($0) }
+        Host.sshForgetHostToken = { TailnetSSHForgetHostToken(HostConfig.tailcatID($0)) }
         Host.proxyFailed = { Task { await TailnetEngine.shared.reproxy() } }
         TailnetSetSSHDelegate(sshDelegate)
         _ = try? useTailcatKey(create: false)
@@ -382,6 +384,14 @@ final class TailnetEngine {
         }
     }
 
+    /// The host-key card's dismiss: the refuse of the question that card
+    /// showed (shown), unless a button answered it (answered). The
+    /// question showing next is not its to refuse.
+    func dismissSSHHostKey(shown q: SSHHostKeyQuestion?, answered: Int64?) {
+        guard let q, q.qid != answered else { return }
+        answerSSHHostKey(q, save: nil)
+    }
+
     /// The user's answer to the host-key question showing: save answers
     /// the dial and keeps the fingerprint in the host's config, so a
     /// later connect asks no more; once answers it for this run only,
@@ -392,13 +402,23 @@ final class TailnetEngine {
         guard sshHostKeyQuestion?.qid == q.qid else { return }
         sshHostKeyQuestion = sshHostKeyQueue.isEmpty ? nil : sshHostKeyQueue.removeFirst()
         Task.detached { TailnetSSHAnswer(q.qid, save != nil) }
-        guard save == true,
-              var c = HostStore.current?.hosts.first(where: {
-                  $0.config.ssh?.user == q.user && $0.config.ssh?.host == q.host && $0.config.ssh?.port == q.port
-              })?.config
-        else { return }
+        guard save == true, var c = sshHostConfig(of: q) else { return }
         c.ssh?.hostKey = q.fingerprint
         HostStore.current?.update(c)
+    }
+
+    /// The config of the host a host-key question names, by its login.
+    private func sshHostConfig(of q: SSHHostKeyQuestion) -> HostConfig? {
+        HostStore.current?.hosts.first(where: {
+            $0.config.ssh?.user == q.user && $0.config.ssh?.host == q.host && $0.config.ssh?.port == q.port
+        })?.config
+    }
+
+    /// Whether the host a changed-key question names has its fingerprint
+    /// saved: one trusted by Connect Once has none, and its card offers
+    /// Connect Once again beside Replace & Connect.
+    func savedSSHHostKey(_ q: SSHHostKeyQuestion) -> Bool {
+        sshHostConfig(of: q)?.ssh?.hostKey != nil
     }
 
     /// The engine's auth question, off the dial's goroutine: the card
@@ -413,11 +433,19 @@ final class TailnetEngine {
     }
 
     /// The user's answer to the auth question showing: the secret
-    /// typed, or nil for the cancel that fails the dial.
+    /// typed, an empty one included, or nil for the cancel that fails
+    /// the dial.
     func answerSSHAuth(_ q: SSHAuthQuestion, secret: String?) {
         guard sshAuthQuestion?.qid == q.qid else { return }
         sshAuthQuestion = sshAuthQueue.isEmpty ? nil : sshAuthQueue.removeFirst()
-        Task.detached { TailnetSSHAuthAnswer(q.qid, secret ?? "") }
+        Task.detached { TailnetSSHAuthAnswer(q.qid, secret ?? "", secret != nil) }
+    }
+
+    /// The secret card's dismiss, as dismissSSHHostKey's: the cancel of
+    /// the question that card showed, unless a button answered it.
+    func dismissSSHAuth(shown q: SSHAuthQuestion?, answered: Int64?) {
+        guard let q, q.qid != answered else { return }
+        answerSSHAuth(q, secret: nil)
     }
 
     /// Offers to install the phone's key when the host id's last login
@@ -427,28 +455,43 @@ final class TailnetEngine {
         let id = HostConfig.tailcatID(c.id)
         Task.detached { [weak self] in
             guard TailnetSSHTakePasswordOffer(id) else { return }
-            await MainActor.run {
-                self?.sshInstallError = nil
-                self?.sshInstallOffer = c
-            }
+            await MainActor.run { self?.showSSHInstallOffer(c) }
         }
     }
 
-    /// Installs the phone's key on the offered host; the card stays up
-    /// on a failure, carrying its error.
-    func installSSHKey(_ c: HostConfig) async {
+    /// Shows the install-key card for the host c.
+    func showSSHInstallOffer(_ c: HostConfig) {
+        sshInstallError = nil
+        sshInstallOffer = c
+    }
+
+    /// Installs the phone's key on the offered host. The card is down
+    /// while it runs (sshInstalling), and comes back carrying the error
+    /// on a failure; the task is the install's, for a caller to await.
+    @discardableResult
+    func installSSHKey(_ c: HostConfig) -> Task<Void, Never> {
         let id = HostConfig.tailcatID(c.id)
-        do {
-            try await Task.detached {
-                var error: NSError?
-                guard TailnetSSHInstallKey(id, &error) else {
-                    throw error ?? RexError(code: "ssh", message: "install")
-                }
-            }.value
-            sshInstallOffer = nil
-            sshInstallError = nil
-        } catch {
-            sshInstallError = error.localizedDescription
+        sshInstalling = true
+        sshInstallError = nil
+        return Task {
+            defer { sshInstalling = false }
+            do {
+                try await Task.detached {
+                    var error: NSError?
+                    guard TailnetSSHInstallKey(id, &error) else {
+                        throw error ?? RexError(code: "ssh", message: "install")
+                    }
+                }.value
+                sshInstallOffer = nil
+                sshInstallError = nil
+            } catch {
+                // The offer again, with the error: a dismiss that ran
+                // before sshInstalling was set may have skipped it, so
+                // the card comes back whatever order SwiftUI ran the
+                // button and the dismiss in.
+                sshInstallOffer = c
+                sshInstallError = error.localizedDescription
+            }
         }
     }
 
@@ -468,6 +511,13 @@ final class TailnetEngine {
     func skipSSHInstallKey() {
         sshInstallOffer = nil
         sshInstallError = nil
+    }
+
+    /// The install card's dismiss: a skip, unless Install Key dismissed
+    /// it, whose install runs on and brings the card back on a failure.
+    func dismissSSHInstall() {
+        guard !sshInstalling else { return }
+        skipSSHInstallKey()
     }
 
     /// Passes the phone's tailcat key from the Keychain to the engine,
