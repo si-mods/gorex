@@ -56,7 +56,8 @@ final class ComposerUITests: XCTestCase {
     }
 
     /// Composer Mode (Settings > Terminal, here the defaults argument)
-    /// pins the bar: it is up on its own, with the mic beside the field.
+    /// pins the bar: it is up on its own, compact without a top grabber,
+    /// with the mic beside the field.
     func testComposerModePinsBar() throws {
         app.terminate()
         app.launchArguments = ["-composerMode", "YES"]
@@ -67,7 +68,20 @@ final class ComposerUITests: XCTestCase {
         // mic's view exposes more than one element; take its own row's).
         let dictates = app.buttons.matching(identifier: "Dictate").allElementsBoundByIndex
         XCTAssertTrue(dictates.contains { abs($0.frame.midY - message.frame.midY) < 40 })
-        shot("composer-mode")
+        // Compact capsule without the unused top grabber: resting height is
+        // 58pt (46pt field + 12pt padding), not ~80pt with a grabber header.
+        let bar = app.otherElements["composer"]
+        if bar.exists {
+            XCTAssertLessThanOrEqual(bar.frame.height, 64)
+        }
+        shot("composer-mode-rest")
+
+        // Raising the keyboard and typing multiple lines grows the bar cleanly.
+        message.tap()
+        if app.keyboards.element.waitForExistence(timeout: 5) {
+            message.typeText("line 1\nline 2\nline 3")
+            shot("composer-mode-keyboard")
+        }
     }
 
     private func shot(_ name: String) {
