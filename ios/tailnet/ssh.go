@@ -550,9 +550,11 @@ func (p *pooledSSH) rexEndpoint(ctx context.Context) (sshEndpoint, error) {
 // fallback walks; lanTokens is the pairing token of the host's rexapi
 // LAN gateway (docs/IOS-024).
 const (
-	rexStatus = `sh -c 'gorex server status --json || rex server status --json'`
+	// rexStatus and lanTokens wrap in no sh: cmd and the unix login
+	// shells all read `a || b`, and a Windows sshd has no sh.
+	rexStatus = `gorex server status --json || rex server status --json`
 	rexProbe  = `sh -c 'for p in "$XDG_RUNTIME_DIR/rex/server.sock" "$HOME/.local/share/rex/server.sock" /run/rex/server.sock /var/run/rex/server.sock "$HOME/Library/Application Support/rex/server.sock"; do [ -S "$p" ] && { echo "$p"; break; }; done'`
-	lanTokens = `sh -c 'gorex rexapi lan token show || rex rexapi lan token show'`
+	lanTokens = `gorex rexapi lan token show || rex rexapi lan token show`
 )
 
 // lanProbe is the endpoint discovery falls to when the host reports
