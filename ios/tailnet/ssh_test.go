@@ -806,8 +806,26 @@ func TestSSHTCPDiscovery(t *testing.T) {
 	srv.mu.Unlock()
 	drop()
 	dial()
-	// And with no listener and no socket, the LAN probe: GoRex's rexapi
-	// port on loopback.
+	// No listener the status names and no socket: the LAN CLI reports a
+	// gateway on the LAN address, which the loopback probe would miss.
+	srv.mu.Lock()
+	srv.execs = map[string]string{
+		rexStatus: `{"listeners":[{"endpoint":"rex-pipe","transport":"named_pipe","primary":true}]}`,
+		rexProbe:  "\n",
+		lanStatus: "lan: listening on http://" + echoTCP(t) + "\n  token: set\n",
+	}
+	srv.mu.Unlock()
+	drop()
+	dial()
+	// The gateway away but configured: the listen line is the target.
+	_, port, _ = net.SplitHostPort(echoTCP(t))
+	srv.mu.Lock()
+	srv.execs[lanStatus] = "lan: off\n  listen: 0.0.0.0:" + port + "\n"
+	srv.mu.Unlock()
+	drop()
+	dial()
+	// And with no listener, socket or gateway, the LAN probe: GoRex's
+	// rexapi port on loopback.
 	defer func(prev string) { lanProbe = prev }(lanProbe)
 	lanProbe = echoTCP(t)
 	srv.mu.Lock()

@@ -10,7 +10,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 `web` job of `.github/workflows/ci.yml` fails it.
 
 ## en-US
-- A computer you reach over SSH can now use a Rex API on a TCP port instead of a Unix socket — the way on Windows: in Add Host, enter ssh://user@host/tcp://host:port.
+- A computer you reach over SSH can now use a Rex API on a TCP port instead of a Unix socket — the way on Windows. In Add Host, enter ssh://user@host and discovery finds it; ssh://user@host/tcp://host:port names one explicitly.
 - A question from an agent now marks its choices: round radio buttons when you pick one answer, square check boxes when you pick several. Send stays off and says "Pick an answer" until you do.
 - A computer you reach over SSH can now be a host: in Add Host, enter ssh://user@host, trust its key when asked, and copy this phone's SSH key into the host's authorized_keys.
 - When pairing with a computer fails, the sheet's new Copy diagnostics button puts the recent connection log on the pasteboard, ready to send.
@@ -142,7 +142,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - A tab's long-press menu no longer has Close Other Tabs. Close Tab still closes one tab.
 
 ## zh-Hans
-- 通过 SSH 连接的电脑，现在可以使用 TCP 端口上的 Rex API（而非 Unix socket），Windows 主机正是这种方式：在「添加主机」输入 ssh://user@host/tcp://host:port。
+- 通过 SSH 连接的电脑，现在可以使用 TCP 端口上的 Rex API（而非 Unix socket），Windows 主机正是这种方式：在「添加主机」输入 ssh://user@host 即可自动发现，也可用 ssh://user@host/tcp://host:port 明确指定。
 - 智能体的提问现在用标记区分选法：只能选一个时是圆形单选按钮，可以选多个时是方形勾选框；选好之前「发送」不可点，并提示「请选择答案」。
 - 现在能把通过 SSH 登录的电脑添加为主机：在「添加主机」输入 ssh://user@host，首次连接时确认信任它的密钥，再把本机的 SSH 公钥复制到该主机的 authorized_keys。
 - 与电脑配对失败时，配对页新增「复制诊断」按钮：一键把最近的连接日志复制到剪贴板，方便发给我们。

@@ -554,13 +554,15 @@ const (
 	// shells all read `a || b`, and a Windows sshd has no sh.
 	rexStatus = `gorex server status --json || rex server status --json`
 	rexProbe  = `sh -c 'for p in "$XDG_RUNTIME_DIR/rex/server.sock" "$HOME/.local/share/rex/server.sock" /run/rex/server.sock /var/run/rex/server.sock "$HOME/Library/Application Support/rex/server.sock"; do [ -S "$p" ] && { echo "$p"; break; }; done'`
+	lanStatus = `gorex rexapi lan status || rex rexapi lan status`
 	lanTokens = `gorex rexapi lan token show || rex rexapi lan token show`
 )
 
 // lanProbe is the endpoint discovery falls to when the host reports
-// neither a unix nor a tcp listener and no usual socket path exists —
-// GoRex's rexapi LAN port on loopback (internal/rexapi's LANPort),
-// where a named-pipe host's gateway is. A var, for the test's listener.
+// neither a unix nor a tcp listener, no usual socket path exists and
+// the LAN CLI names no gateway — GoRex's rexapi LAN port on loopback
+// (internal/rexapi's LANPort), where a named-pipe host's gateway is. A
+// var, for the test's listener.
 var lanProbe = "127.0.0.1:7297"
 
 // discoverEndpoint is the host's Rex endpoint: the primary unix
@@ -573,15 +575,41 @@ func discoverEndpoint(ctx context.Context, c *ssh.Client) (sshEndpoint, error) {
 			return e, nil
 		}
 	}
-	out, err := sshExec(ctx, c, rexProbe)
-	if err != nil {
-		return sshEndpoint{}, err
+	if out, err := sshExec(ctx, c, rexProbe); err == nil {
+		line, _, _ := strings.Cut(out, "\n")
+		if line = strings.TrimSpace(line); line != "" {
+			return sshEndpoint{socket: line}, nil
+		}
 	}
-	line, _, _ := strings.Cut(out, "\n")
-	if line = strings.TrimSpace(line); line != "" {
-		return sshEndpoint{socket: line}, nil
+	if addr := lanListen(ctx, c); addr != "" {
+		return sshEndpoint{tcp: addr}, nil
 	}
 	return sshEndpoint{tcp: lanProbe}, nil
+}
+
+// lanListen is the rexapi LAN gateway's address as the host's CLI
+// reports it: "lan: listening on http://addr", else the configured
+// "listen: addr". It answers where status has no tcp listener — a
+// gateway bound to the LAN address, which the loopback probe cannot
+// reach — and "" where no gateway is on.
+func lanListen(ctx context.Context, c *ssh.Client) string {
+	out, err := sshExec(ctx, c, lanStatus)
+	if err != nil {
+		return ""
+	}
+	var configured string
+	for _, line := range strings.Split(out, "\n") {
+		line = strings.TrimSpace(line)
+		if a, ok := strings.CutPrefix(line, "lan: listening on "); ok {
+			if t := tcpTarget(strings.TrimSpace(a)); t != "" {
+				return t
+			}
+		}
+		if a, ok := strings.CutPrefix(line, "listen: "); ok {
+			configured = a
+		}
+	}
+	return tcpTarget(strings.TrimSpace(configured))
 }
 
 // sshStatusResult is the listeners of server status --json
