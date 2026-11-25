@@ -8,7 +8,7 @@ metadata:
 
 # DSK-010: Theme assets and ambience
 
-Status: superseded. The asset install of phase 1 (#1083) stays: `assets`, the `<id>.assets` folder and the pinned `ref`, which theme shaders read ([DSK-012](DSK-012-theme-shaders.md)). So does `appearance.ambience`, which now turns theme shaders off and still. The glows, still images, sprites and brand row of phases 1 and 2 (#1083, #1099) are removed by #<n> under the rule in [DSK-008](DSK-008-theme.md) Non-goals (User decisions, 9). Phase 3 dropped (User decisions, 8).
+Status: superseded. The asset install of phase 1 (#1083) stays: `assets`, the `<id>.assets` folder and the pinned `ref`, which theme shaders read ([DSK-012](DSK-012-theme-shaders.md)). So does `appearance.ambience`, which now turns theme shaders off and still. The glows, still images, sprites and brand row of phases 1 and 2 (#1083, #1099) are removed by #1120 under the rule in [DSK-008](DSK-008-theme.md) Non-goals (User decisions, 9). Phase 3 dropped (User decisions, 8).
 
 The rest of this doc is history. It describes the design as it was built. The code no longer has `ambience`, `brand`, sprite sheets, SVG assets or `appearance.mascot`.
 

@@ -318,7 +318,7 @@ Each item has a **Trigger** (what the diff shows), a **Check** (what the author 
 ### A theme feature with knobs
 - **Trigger:** the diff adds a manifest key under `internal/theme` that GoRex draws with its own code: a layer kind, a shape, a motion or a placement that the theme only tunes with numbers, colors or enums.
 - **Check:** the look comes from the theme pack (its assets and its own shader, DSK-012), not from GoRex. A fixed kind with knobs is hard-coding (`CLAUDE.md`, Architecture decisions; DSK-008 Non-goals). If the feature cannot be that open, it is not built.
-- **Source:** #1083 and #1099 built glows, a watermark, swimming sprites and a brand row as fixed layer kinds with knobs (DSK-010); the user ruled that a look with knobs is hard-coding (#1117), and #<n> removed them.
+- **Source:** #1083 and #1099 built glows, a watermark, swimming sprites and a brand row as fixed layer kinds with knobs (DSK-010); the user ruled that a look with knobs is hard-coding (#1117), and #1120 removed them.
 
 ## Security
 
