@@ -1130,6 +1130,40 @@ final class TerminalHost: UIView, UIGestureRecognizerDelegate {
         }
     }
 
+    /// The compose bar while it is up (Composer.swift).
+    private var composer: ComposerBar?
+
+    /// A key, the menu or ⇧⌘I toggles the compose bar; a swipe up on the
+    /// key bar only opens it.
+    func toggleComposer() {
+        if let composer { composer.requestClose() } else { openComposer() }
+    }
+
+    /// The compose bar over the key bar; where it is up, it focuses again.
+    func openComposer() {
+        if let composer { composer.focus(); return }
+        let c = ComposerBar(terminal: terminal, typing: terminal.isFirstResponder)
+        c.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(c)
+        let bottom = terminal.bar.superview === self ? terminal.bar.topAnchor : keyboardLayoutGuide.topAnchor
+        NSLayoutConstraint.activate([
+            c.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 10),
+            c.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -10),
+            c.bottomAnchor.constraint(equalTo: bottom, constant: -6),
+        ])
+        c.closed = { [weak self] c in self?.composerClosed(c) }
+        composer = c
+        c.alpha = 0
+        UIView.animate(withDuration: 0.2) { c.alpha = 1 }
+        c.focus()
+    }
+
+    private func composerClosed(_ c: ComposerBar) {
+        guard composer === c else { return }
+        composer = nil
+        UIView.animate(withDuration: 0.15, animations: { c.alpha = 0 }) { _ in c.removeFromSuperview() }
+    }
+
     private func updateScrollDown(visible: Bool, unread: Bool) {
         unreadDot.isHidden = !unread
         guard visible == scrollDown.isHidden else { return }
@@ -1323,7 +1357,8 @@ final class KeyBar: UIView {
         let escape = key("escape", String(localized: "Esc"), "escape")
         let tab = key("arrow.right.to.line", String(localized: "Tab"), "tab")
         let enter = key("return", String(localized: "Enter"), "enter")
-        let compose = Self.button("square.and.pencil", String(localized: "Compose"), size: Self.small)
+        // Compose sits by ⌘ in the left capsule, as Rex's bar has it.
+        let compose = Self.button("square.and.pencil", String(localized: "Compose"))
         compose.addAction(UIAction { [weak target] _ in target?.compose() }, for: .touchUpInside)
         let tilde = text("~"), pipe = text("|"), slash = text("/"), dash = text("-")
         let first = [escape, ctrl, alt, shift, tab]
@@ -1336,7 +1371,7 @@ final class KeyBar: UIView {
 
         // A flick up on the bar opens the composer.
         swipe.direction = .up
-        swipe.addTarget(self, action: #selector(openComposer))
+        swipe.addTarget(self, action: #selector(swipeComposer))
         addGestureRecognizer(swipe)
 
         if UIDevice.current.userInterfaceIdiom == .pad {
@@ -1360,9 +1395,9 @@ final class KeyBar: UIView {
         }
         let delete = repeating("delete.left", String(localized: "Delete"), "backspace")
 
-        // Three pages of four slots, inset from the capsule's ends, each
-        // page as wide as the capsule.
-        let pages = UIStackView(arrangedSubviews: [[escape, ctrl, alt, enter], [shift, slash, dash, delete], [tilde, pipe, tab, compose]].map { keys in
+        // Three pages of four slots, the last one short, inset from the
+        // capsule's ends, each page as wide as the capsule.
+        let pages = UIStackView(arrangedSubviews: [[escape, ctrl, alt, enter], [shift, slash, dash, delete], [tilde, pipe, tab]].map { keys in
             let page = UIStackView(arrangedSubviews: keys + (keys.count..<4).map { _ in UIView() })
             page.distribution = .fillEqually
             page.isLayoutMarginsRelativeArrangement = true
@@ -1410,10 +1445,12 @@ final class KeyBar: UIView {
         middle.setContentHuggingPriority(.defaultLow, for: .horizontal)
         let right = UIStackView(arrangedSubviews: [stick, mic, keyboard])
         right.distribution = .fillEqually
-        let left = Self.capsule(more), last = Self.capsule(right)
-        // As in the bar this one copies: ⌘ 56pt wide, and 50 for each key
-        // of the last.
-        left.widthAnchor.constraint(equalToConstant: 56).isActive = true
+        let leftKeys = UIStackView(arrangedSubviews: [more, compose])
+        leftKeys.distribution = .fillEqually
+        let left = Self.capsule(leftKeys), last = Self.capsule(right)
+        // As in the bar this one copies: ⌘ and Compose 52 each, and 50
+        // for each key of the last.
+        left.widthAnchor.constraint(equalToConstant: 104).isActive = true
         last.widthAnchor.constraint(equalToConstant: 150).isActive = true
         let keysRow = UIStackView(arrangedSubviews: [middle, last])
         keysRow.spacing = 8
@@ -1489,9 +1526,9 @@ final class KeyBar: UIView {
 
     /// The swipe-up opens the composer, with the keys' tap of the hand;
     /// on the stick, whose up is the up arrow, it does not begin.
-    @objc private func openComposer() {
+    @objc private func swipeComposer() {
         tick.impactOccurred()
-        target?.compose()
+        target?.openComposer()
     }
 
     /// The swipe-up anywhere on the bar but the stick's own bounds.

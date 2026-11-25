@@ -1,9 +1,10 @@
 import XCTest
 
-/// The composer (docs/IOS-025-composer.md): the key bar's ⌘ menu opens it
-/// with its message field and Send, and a flick up on the bar opens it
-/// too. Demo Mode's host takes no uploads, so the attach buttons stay
-/// away; the test covers the message side.
+/// The compose bar (docs/IOS-025-composer.md): the key bar's ⌘ menu, its
+/// Compose key by ⌘, and a flick up on the bar each open the capsule over
+/// it, with the message field that names the block. Demo Mode's host
+/// takes no uploads, so the attach menu stays away; the test covers the
+/// message side.
 final class ComposerUITests: XCTestCase {
     private var app: XCUIApplication!
 
@@ -52,34 +53,30 @@ final class ComposerUITests: XCTestCase {
             .sorted { $0.frame.midY > $1.frame.midY }.first ?? app.buttons["More"].firstMatch
     }
 
-    /// ⌘'s menu holds Compose first, before Paste.
-    func testMenuOpensComposer() throws {
+    /// The compose bar's message field, which names the demo's block.
+    private var message: XCUIElement { app.textViews["composer.message"] }
+
+    /// ⌘'s menu holds Compose first, before Paste; a second one closes.
+    func testMenuTogglesComposer() throws {
         more.tap()
         // The menu's item, not the key bar's own Compose key.
         let compose = app.collectionViews.buttons["Compose"]
         XCTAssertTrue(compose.waitForExistence(timeout: 5))
         compose.tap()
-        XCTAssertTrue(app.navigationBars["Compose"].waitForExistence(timeout: 10))
+        XCTAssertTrue(message.waitForExistence(timeout: 10))
         shot("composer")
         XCTAssertTrue(app.buttons["Send"].exists)
-        XCTAssertTrue(app.buttons["Cancel"].exists)
-        app.buttons["Cancel"].tap()
-        XCTAssertTrue(app.navigationBars["Compose"].waitForNonExistence(timeout: 5))
+        more.tap()
+        XCTAssertTrue(app.collectionViews.buttons["Compose"].waitForExistence(timeout: 5))
+        app.collectionViews.buttons["Compose"].tap()
+        XCTAssertTrue(message.waitForNonExistence(timeout: 5))
     }
 
-    /// The Compose key, on the keys' last page with ~, | and Tab.
+    /// The Compose key, next to ⌘ in the left capsule.
     func testComposeKey() throws {
-        // Page left twice, to the page the Compose key is on.
-        let bar = more.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
-            .withOffset(CGVector(dx: 150, dy: 0))
-        for _ in 0..<2 {
-            bar.press(forDuration: 0.05, thenDragTo: bar.withOffset(CGVector(dx: -200, dy: 0)),
-                      withVelocity: .fast, thenHoldForDuration: 0)
-        }
-        sleep(1)
         shot("keybar-compose")
         app.buttons["Compose"].tap()
-        XCTAssertTrue(app.navigationBars["Compose"].waitForExistence(timeout: 10))
+        XCTAssertTrue(message.waitForExistence(timeout: 10))
     }
 
     /// A flick up on the key bar opens the composer, as the Compose key does.
@@ -89,7 +86,7 @@ final class ComposerUITests: XCTestCase {
             .withOffset(CGVector(dx: 150, dy: 0))
         let up = bar.withOffset(CGVector(dx: 0, dy: -120))
         bar.press(forDuration: 0.05, thenDragTo: up, withVelocity: .fast, thenHoldForDuration: 0)
-        XCTAssertTrue(app.navigationBars["Compose"].waitForExistence(timeout: 10))
+        XCTAssertTrue(message.waitForExistence(timeout: 10))
         shot("composer-swipe")
     }
 
