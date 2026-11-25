@@ -227,6 +227,7 @@ func installTheme(id string, out, errOut io.Writer, install func(dir string) ([]
 // record, or nil when it has none.
 type installedPack struct {
 	id, kind string // kind is iconpack.KindTheme, or "" for an icon pack
+	own      string // the version the pack declares: pack.json's; a theme has none
 	rec      *iconpack.Record
 }
 
@@ -235,7 +236,7 @@ func installedPacks(packsDir, themesDir string) []installedPack {
 	var out []installedPack
 	list, _ := iconpack.ListPacks(packsDir)
 	for _, s := range list {
-		out = append(out, installedPack{id: s.ID, rec: iconpack.ReadRecord(filepath.Join(packsDir, s.ID))})
+		out = append(out, installedPack{id: s.ID, own: s.Version, rec: iconpack.ReadRecord(filepath.Join(packsDir, s.ID))})
 	}
 	for _, t := range theme.List(themesDir) {
 		p := installedPack{id: t.ID, kind: iconpack.KindTheme}
@@ -284,12 +285,12 @@ func packUpdate(id string, check bool, packsDir string, out, errOut io.Writer) i
 		}
 		if !iconpack.HasUpdate(p.rec, rp) {
 			if id != "" {
-				fmt.Fprintf(out, "%s: up to date (%s)\n", p.id, recordVersion(p.rec))
+				fmt.Fprintf(out, "%s: up to date (%s)\n", p.id, installedVersion(p))
 			}
 			continue
 		}
 		updates++
-		from, to := recordVersion(p.rec), cmp.Or(rp.Version, shortRef(rp.Ref))
+		from, to := installedVersion(p), cmp.Or(rp.Version, shortRef(rp.Ref))
 		if check {
 			fmt.Fprintf(out, "%s\t%s -> %s\n", p.id, from, to)
 			continue
@@ -311,13 +312,14 @@ func packUpdate(id string, check bool, packsDir string, out, errOut io.Writer) i
 	return code
 }
 
-// recordVersion names what rec says is installed: its version, else its
-// ref, else "version unknown".
-func recordVersion(rec *iconpack.Record) string {
-	if rec == nil {
-		return "version unknown"
+// installedVersion names what is installed: the record's version, else
+// its ref; with no record, the version the pack declares; else "version
+// unknown".
+func installedVersion(p installedPack) string {
+	if p.rec == nil {
+		return cmp.Or(p.own, "version unknown")
 	}
-	return cmp.Or(rec.Version, shortRef(rec.Ref), "version unknown")
+	return cmp.Or(p.rec.Version, shortRef(p.rec.Ref), "version unknown")
 }
 
 // shortRef is the first 7 digits of a commit SHA.

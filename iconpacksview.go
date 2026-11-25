@@ -277,8 +277,10 @@ func (a *App) iconPacksSettings(c *ui.Context, k *colors) {
 	})
 
 	installedSet := map[string]bool{}
+	packVersion := map[string]string{} // pack.json's version, by icon pack ID
 	for _, s := range installed {
 		installedSet[s.ID] = true
+		packVersion[s.ID] = s.Version
 	}
 	for _, s := range themes {
 		installedSet[registryKey(iconpack.RegistryPack{ID: s.ID, Kind: iconpack.KindTheme})] = true
@@ -330,7 +332,11 @@ func (a *App) iconPacksSettings(c *ui.Context, k *colors) {
 				}
 				rowHint(c, k, meta)
 				if update {
-					rowHint(c, k, installedVersion(records[key]))
+					own := ""
+					if rp.Kind != iconpack.KindTheme {
+						own = packVersion[rp.ID]
+					}
+					rowHint(c, k, installedVersion(records[key], own))
 				}
 			})
 		}
@@ -352,15 +358,19 @@ func registryEntries(reg *iconpack.RegistryIndex, query string) []iconpack.Regis
 	return out
 }
 
-// installedVersion says what the install record rec says is installed:
-// its version, else the start of its ref, else that it is unknown.
-func installedVersion(rec *iconpack.Record) string {
+// installedVersion says what is installed: the install record rec's
+// version, else the start of its ref; with no record, own, the version
+// the pack itself declares (an icon pack's pack.json; a theme has none);
+// else that it is unknown.
+func installedVersion(rec *iconpack.Record, own string) string {
+	v := own
 	if rec != nil {
-		if v := cmp.Or(rec.Version, rec.Ref[:min(len(rec.Ref), 7)]); v != "" {
-			return locales.SettingsIconPacksInstalledVersion(v)
-		}
+		v = cmp.Or(rec.Version, rec.Ref[:min(len(rec.Ref), 7)])
 	}
-	return locales.SettingsIconPacksVersionUnknown()
+	if v == "" {
+		return locales.SettingsIconPacksVersionUnknown()
+	}
+	return locales.SettingsIconPacksInstalledVersion(v)
 }
 
 // extensionKind names an extension's kind as the page shows it.

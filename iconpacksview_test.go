@@ -328,9 +328,9 @@ func TestExtensionsUpdate(t *testing.T) {
 	updateIcons := locales.SettingsIconPacksUpdate() + " Starter Dev Tools"
 
 	// The registry has the installed theme's ref: Installed. The icon pack
-	// has no record: Update, its version unknown.
+	// has no record: Update, with the version of its own pack.json.
 	wait("the registry loads", func() bool { return tt.HasText(updateIcons) })
-	if tt.HasText(updateTheme) || !tt.HasText(locales.SettingsIconPacksVersionUnknown()) {
+	if tt.HasText(updateTheme) || !tt.HasText(locales.SettingsIconPacksInstalledVersion("0.1.0")) || tt.HasText(locales.SettingsIconPacksVersionUnknown()) {
 		t.Fatalf("before the registry moves; texts=%q", tt.Texts())
 	}
 
@@ -379,5 +379,26 @@ func TestExtensionsUpdate(t *testing.T) {
 	}
 	if rec := iconpack.ReadRecord(filepath.Join(packsDir, "starter-dev-tools")); rec == nil || rec.Ref != ref2 {
 		t.Errorf("icon pack record %+v", rec)
+	}
+}
+
+// TestInstalledVersion: the hint under an update names the record's
+// version, else its ref; with no record, the pack's own version (an icon
+// pack's pack.json), else "version unknown" (a theme, which declares none).
+func TestInstalledVersion(t *testing.T) {
+	ref := "b938738000000000000000000000000000000000"
+	for _, c := range []struct {
+		rec  *iconpack.Record
+		own  string
+		want string
+	}{
+		{&iconpack.Record{ID: "p", Version: "0.2.0", Ref: ref}, "0.1.0", locales.SettingsIconPacksInstalledVersion("0.2.0")},
+		{&iconpack.Record{ID: "p", Ref: ref}, "0.1.0", locales.SettingsIconPacksInstalledVersion("b938738")},
+		{nil, "0.1.0", locales.SettingsIconPacksInstalledVersion("0.1.0")},
+		{nil, "", locales.SettingsIconPacksVersionUnknown()},
+	} {
+		if got := installedVersion(c.rec, c.own); got != c.want {
+			t.Errorf("installedVersion(%+v, %q) = %q, want %q", c.rec, c.own, got, c.want)
+		}
 	}
 }

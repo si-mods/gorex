@@ -76,8 +76,9 @@ theme (with its assets) of that ID.
 `pack update [ID]` fetches the registry and installs again each installed
 icon pack and theme whose registry entry differs from what its install
 record says: the `ref` when the registry pins one, else the `version`. A
-pack with no record, from an older build or a local install, has an unknown
-version and gets the update. With an `ID` it updates only that pack and says
+pack with no record, from an older build or a local install, gets the update;
+its installed version is then the one its `pack.json` declares, or "version
+unknown" for a theme. With an `ID` it updates only that pack and says
 when it is up to date. `--check` lists the updates and installs none. The
 update keeps the pack's name, so a theme in use stays in use. `pack ls`
 shows the recorded version of a theme; it does not fetch the registry. See

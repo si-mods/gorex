@@ -355,7 +355,12 @@ func TestPackUpdate(t *testing.T) {
 	if got := run(ExitOK, "update", "whale"); !strings.Contains(got, "whale: up to date (0.1.0)") {
 		t.Errorf("update of a current pack said %q", got)
 	}
-	if got := run(ExitOK, "update"); got != "updated tools: version unknown -> 0.1.0\n" {
+	// With no record, pack.json's version names what is installed; the
+	// update still runs, since nothing says which commit it came from.
+	if got := run(ExitOK, "update", "--check"); got != "tools\t0.1.0 -> 0.1.0\n" {
+		t.Errorf("--check of an unrecorded pack said %q", got)
+	}
+	if got := run(ExitOK, "update"); got != "updated tools: 0.1.0 -> 0.1.0\n" {
 		t.Errorf("update of an unrecorded pack said %q", got)
 	}
 	if got := run(ExitOK, "update"); got != "every installed pack is up to date\n" {
