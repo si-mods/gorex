@@ -201,12 +201,14 @@ func checkShaders(m *theme.Manifest, art *theme.Art) *themeShaders {
 	check := func(where string, slot *theme.ShaderSlot, bg bool, under *[2]ui.Color, contrast func(*themeSlot, *checkSamples) error) *themeSlot {
 		sl, warn, err := checkSlot(slot, env, bg, under, contrast)
 		for _, w := range warn {
-			set.warn = append(set.warn, fmt.Sprintf("%s: %s", where, w))
-			set.notes = append(set.notes, shaderNote{where, w, false})
+			at, w := layerNote(where, w)
+			set.warn = append(set.warn, fmt.Sprintf("%s: %s", at, w))
+			set.notes = append(set.notes, shaderNote{at, w, false})
 		}
 		if err != nil {
-			set.warn = append(set.warn, fmt.Sprintf("%s: %v (dropped: the flat colors draw)", where, err))
-			set.notes = append(set.notes, shaderNote{where, err.Error(), true})
+			at, e := layerNote(where, err.Error())
+			set.warn = append(set.warn, fmt.Sprintf("%s: %s (dropped: the flat colors draw)", at, e))
+			set.notes = append(set.notes, shaderNote{at, e, true})
 			return nil
 		}
 		set.anyTime = set.anyTime || sl.readsTime()
@@ -227,6 +229,20 @@ func checkShaders(m *theme.Manifest, art *theme.Art) *themeShaders {
 		}
 	}
 	return set
+}
+
+// layerNote splits a warning of checkSlot that names a layer ("layer 2:
+// ...") into the layer's place, "shaders.background layer 2", and the
+// rest, so that check warnings name a layer as parse warnings do
+// (theme.LayerWhere).
+func layerNote(where, w string) (string, string) {
+	var i int
+	if n, _ := fmt.Sscanf(w, "layer %d:", &i); n == 1 {
+		if _, rest, ok := strings.Cut(w, ": "); ok {
+			return theme.LayerWhere(where, i-1), rest
+		}
+	}
+	return where, w
 }
 
 // slotEnv is what the checks of a theme's slots read: the version of its
@@ -820,8 +836,11 @@ var builtinCost = sync.OnceValue(func() time.Duration {
 // (costFrames, or fewer), and the frame that took longest. It draws each
 // once, then the slowest the fastest of three, unless once, which keeps
 // the time of the one draw when its ratio is under limit, so that only a
-// layer over it is timed again.
-func layerCost(l *themeLayer, frames []shaderFrame, once bool, limit float64) (float64, shaderFrame) {
+// layer over it is timed again. A test sets it to fixed ratios.
+var layerCost = timeLayer
+
+// timeLayer is layerCost as it runs: it times the layer in the interpreter.
+func timeLayer(l *themeLayer, frames []shaderFrame, once bool, limit float64) (float64, shaderFrame) {
 	sl := &themeSlot{layers: []*themeLayer{l}}
 	size := ui.Point{X: 64, Y: 64}
 	slow, worst := frames[0], time.Duration(0)

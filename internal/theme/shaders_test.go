@@ -345,9 +345,10 @@ func TestParseShadersV2(t *testing.T) {
 }
 
 // TestParseShaderLayers: in version 2 a slot is a layer or a list of 1 to
-// 4 layers with an opacity that clamps to 0 to 1; a list past 4 keeps 4,
-// an empty list or a bad layer drops the slot, a theme keeps at most 16
-// layers, each with a warning. Version 1 takes no list.
+// 4 layers with an opacity that clamps to 0 to 1; a list past 4, an empty
+// list, a bad layer and a slot past the theme's 16 layers drop the whole
+// slot, each with a warning. A warning names the layer of a list of more
+// than one. Version 1 takes no list.
 func TestParseShaderLayers(t *testing.T) {
 	m, warn, err := Parse([]byte(`{
   "assets": { "a": "a.kage", "b": "b.kage", "png": "x.png" },
@@ -358,7 +359,8 @@ func TestParseShaderLayers(t *testing.T) {
       "sideBar.activeGroupBackground": [],
       "sideBar.activeGroupTabBackground": [ { "source": "a" }, { "source": "png" } ],
       "sideBar.tabActiveBackground": [ { "source": "a" }, { "source": "a" }, { "source": "a" }, { "source": "a" }, { "source": "a" } ],
-      "sideBar.trackBackground": { "source": "b", "opacity": -1 }
+      "sideBar.trackBackground": { "source": "b", "opacity": -1 },
+      "sideBar.tabHoverBackground": [ { "source": "b", "opacity": 2 } ]
     }
   }
 }`))
@@ -374,8 +376,11 @@ func TestParseShaderLayers(t *testing.T) {
 			t.Errorf("layer %d opacity %g, want %g", i+1, l.Opacity, want)
 		}
 	}
-	if f := s.Faces[TabActiveBackground]; f == nil || len(f.Layers) != 4 {
-		t.Errorf("a list of 5 layers: %+v", f)
+	if f := s.Faces[TabActiveBackground]; f != nil {
+		t.Errorf("a list of 5 layers keeps %d", len(f.Layers))
+	}
+	if f := s.Faces[TabHoverBackground]; f == nil || len(f.Layers) != 1 || f.Layers[0].Opacity != 1 {
+		t.Errorf("a list of one layer: %+v", f)
 	}
 	if f := s.Faces[TrackBackground]; f == nil || len(f.Layers) != 1 || f.Layers[0].Opacity != 0 {
 		t.Errorf("a single layer of version 2: %+v", f)
@@ -384,31 +389,33 @@ func TestParseShaderLayers(t *testing.T) {
 		t.Error("an empty list or a list with a bad layer keeps its slot")
 	}
 	for _, want := range []string{
-		`shaders.background layer 3.opacity: 1.5 clamped to 0–1`,
+		`shaders.background layer 3: opacity: 1.5 clamped to 0–1`,
 		`shaders.faces.sideBar.activeGroupBackground: no layers (dropped)`,
-		`shaders.faces.sideBar.activeGroupTabBackground layer 2.source: no .kage asset "png" (dropped)`,
+		`shaders.faces.sideBar.activeGroupTabBackground layer 2: source: no .kage asset "png" (dropped)`,
 		`shaders.faces.sideBar.activeGroupTabBackground: a layer did not parse (dropped)`,
-		`shaders.faces.sideBar.tabActiveBackground: more than 4 layers, the rest dropped`,
+		`shaders.faces.sideBar.tabActiveBackground: more than 4 layers (dropped)`,
 		`shaders.faces.sideBar.trackBackground.opacity: -1 clamped to 0–1`,
+		`shaders.faces.sideBar.tabHoverBackground.opacity: 2 clamped to 0–1`,
 	} {
 		if !slices.Contains(warn, want) {
 			t.Errorf("no warning %q in\n%q", want, warn)
 		}
 	}
 
-	// A theme keeps 16 layers over all its slots.
+	// A theme keeps 16 layers over all its slots: a slot past them drops
+	// whole, and a later slot that fits keeps its layers.
 	four := `[ { "source": "a" }, { "source": "a" }, { "source": "a" }, { "source": "a" } ]`
 	m, warn, _ = Parse([]byte(`{ "assets": { "a": "a.kage" }, "shaders": { "api": 2, "background": ` + four + `, "faces": {
   "sideBar.activeGroupBackground": ` + four + `, "sideBar.activeGroupTabBackground": ` + four + `,
-  "sideBar.tabActiveBackground": [ { "source": "a" }, { "source": "a" }, { "source": "a" } ], "sideBar.tabHoverBackground": ` + four + ` } } }`))
+  "sideBar.tabActiveBackground": [ { "source": "a" }, { "source": "a" }, { "source": "a" } ], "sideBar.tabHoverBackground": ` + four + `, "sideBar.trackBackground": { "source": "a" } } } }`))
 	n := len(m.Shaders.Background.Layers)
 	for _, f := range m.Shaders.Faces {
 		n += len(f.Layers)
 	}
-	if f := m.Shaders.Faces[TabHoverBackground]; n != 16 || f == nil || len(f.Layers) != 1 {
-		t.Errorf("%d layers in the theme, the last face %+v; want 16 and 1", n, f)
+	if f := m.Shaders.Faces[TabHoverBackground]; n != 16 || f != nil || m.Shaders.Faces[TrackBackground] == nil {
+		t.Errorf("%d layers in the theme, the face past the cap %+v; want 16, none, and the track's one", n, f)
 	}
-	if !slices.Contains(warn, `shaders.faces.sideBar.tabHoverBackground: more than 16 layers in the theme, the rest dropped`) {
+	if !slices.Contains(warn, `shaders.faces.sideBar.tabHoverBackground: more than 16 layers in the theme (dropped)`) {
 		t.Errorf("no cap warning in %q", warn)
 	}
 

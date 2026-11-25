@@ -175,51 +175,53 @@ func parseShaders(raw json.RawMessage, assets map[string]Asset, roles [2]map[Rol
 
 // parseSlot reads one slot of the API version api, or returns nil with a
 // warning. In version 2 a slot is a layer or a list of 1 to maxSlotLayers
-// layers; a layer that does not parse drops the slot, so that it never
-// draws half its look. layers counts the layers of the theme so far: a
-// layer past maxThemeLayers drops with a warning.
+// layers. A layer that does not parse, a list past maxSlotLayers, and a
+// slot whose layers would pass maxThemeLayers, counted in layers over the
+// theme so far, drop the whole slot, so that it never draws half its
+// look. A warning of a layer of a list of more than one names the layer:
+// "shaders.background layer 2: ...".
 func parseSlot(raw json.RawMessage, where string, api int, assets map[string]Asset, layers *int, w *warner) *ShaderSlot {
 	var list []json.RawMessage
 	if api != ShaderAPI2 || json.Unmarshal(raw, &list) != nil {
-		l := parseLayer(raw, where, api, assets, w)
-		if l == nil {
+		list = []json.RawMessage{raw}
+	} else {
+		switch {
+		case len(list) == 0:
+			w.add("%s: no layers (dropped)", where)
+			return nil
+		case len(list) > maxSlotLayers:
+			w.add("%s: more than %d layers (dropped)", where, maxSlotLayers)
 			return nil
 		}
-		return capLayers(&ShaderSlot{Layers: []ShaderLayer{*l}}, where, layers, w)
-	}
-	switch {
-	case len(list) == 0:
-		w.add("%s: no layers (dropped)", where)
-		return nil
-	case len(list) > maxSlotLayers:
-		w.add("%s: more than %d layers, the rest dropped", where, maxSlotLayers)
-		list = list[:maxSlotLayers]
 	}
 	slot := &ShaderSlot{}
 	for i, raw := range list {
-		l := parseLayer(raw, fmt.Sprintf("%s layer %d", where, i+1), api, assets, w)
+		var lw warner
+		l := parseLayer(raw, where, api, assets, &lw)
+		for _, m := range lw {
+			if len(list) > 1 {
+				m = LayerWhere(where, i) + ": " + strings.TrimLeft(strings.TrimPrefix(m, where), ".: ")
+			}
+			w.add("%s", m)
+		}
 		if l == nil {
-			w.add("%s: a layer did not parse (dropped)", where)
+			if len(list) > 1 {
+				w.add("%s: a layer did not parse (dropped)", where)
+			}
 			return nil
 		}
 		slot.Layers = append(slot.Layers, *l)
 	}
-	return capLayers(slot, where, layers, w)
-}
-
-// capLayers keeps the layers of slot that fit under maxThemeLayers, with
-// a warning for the rest; nil when none fits.
-func capLayers(slot *ShaderSlot, where string, layers *int, w *warner) *ShaderSlot {
-	if room := maxThemeLayers - *layers; len(slot.Layers) > room {
-		w.add("%s: more than %d layers in the theme, the rest dropped", where, maxThemeLayers)
-		slot.Layers = slot.Layers[:max(room, 0)]
-	}
-	*layers += len(slot.Layers)
-	if len(slot.Layers) == 0 {
+	if *layers+len(slot.Layers) > maxThemeLayers {
+		w.add("%s: more than %d layers in the theme (dropped)", where, maxThemeLayers)
 		return nil
 	}
+	*layers += len(slot.Layers)
 	return slot
 }
+
+// LayerWhere names the layer i of a slot where in a warning: "shaders.background layer 2".
+func LayerWhere(where string, i int) string { return fmt.Sprintf("%s layer %d", where, i+1) }
 
 // parseLayer reads one layer of the API version api, or returns nil with
 // a warning. Version 2 adds opacity, from 0 to 1, which clamps.

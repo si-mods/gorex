@@ -309,7 +309,8 @@ Status: designed 2026-11-25 (phase 6). Declared params, the checks of the param 
 `shaders.api` takes 1 or 2. A build of this phase reads both; version 1 behaves as before. In version 2:
 
 - A slot is a layer object as in version 1, or a list of 1 to 4 layer objects. A layer has `source`, `images`, `params` as in version 1, and `opacity`: a number from 0 to 1, default 1, which clamps with a warning.
-- A theme has at most 16 layers over all its slots. A layer past the cap drops with a warning.
+- A list of more than 4 layers drops the whole slot with a warning.
+- A theme has at most 16 layers over all its slots, counted from the background, then the faces in the order of their names. A slot whose layers would pass the cap drops whole with a warning; a later slot that fits keeps its layers. A slot never draws half its look.
 - `params` overrides the declared defaults of the layer's shader (see Declared params). A param with no declaration, or with a value of another kind, drops with a warning, and the default applies. A number out of the declared range clamps with a warning. A point outside 0 to 1 clamps with a warning too.
 
 ```json
@@ -360,9 +361,9 @@ A shader of version 2 fails check 3 when an exported uniform outside the API tab
 
 ### Layers
 
-- Layers draw from the first to the last, each over the one before (source over, premultiplied), each multiplied by its `opacity`. Under the glass setting, the background's wrapper multiplies each layer by `GorexAlpha`.
+- Layers draw from the first to the last, each over the one before (source over, premultiplied), each multiplied by its `opacity`. Under the glass setting, the background's wrapper multiplies each layer by `GorexAlpha`. Two opaque layers at alpha a thus cover 1 − (1 − a)², more than one layer does.
 - A face draws its layers where version 1 draws its one shader, over the face's flat color.
-- A list holds layers in the order they draw. In a warning, a layer of a list is "layer 1" to "layer 4" (`shaders.background layer 2.opacity`, `layer 2: Grain at 1 (max): …`). A slot of one layer names no layer.
+- A list holds layers in the order they draw. A warning of a layer of a list of more than one names the layer in one form, at parse and at the checks: `shaders.background layer 2: opacity: 1.5 clamped to 0–1`, `shaders.background layer 2: Grain at 1 (max): …`. A slot of one layer, also a list of one, names no layer.
 - A layer of a list that does not parse drops the whole slot, as a layer that fails check 1 to 3 does.
 - Check 1 to 3 run on each layer. Check 4 adds the cost of the layers of a slot: the sum stays at most 8 times the built-in background. Checks 5 and 6 read the layers composited, as the window draws them. A layer that fails check 1 to 3 drops the whole slot, so a slot never draws half its look.
 
@@ -445,7 +446,7 @@ The rest of the DSK-008 and DSK-010 rules stay: no URL, no network at run time, 
 - **Old build**: a manifest of this doc parses under the DSK-010 parser with warnings and the same colors (`TestParseDrops`, extended).
 - **Probes**: screenshots of both packs through the `GOREX_DEBUG` hook, light and dark, tiled, canvas and empty page, glass on and off, beside the probe's `preview.png`.
 
-- **Version 2**: declarations parse, and each bad one fails check 3 (`TestShaderDeclarations`); a manifest value overrides, clamps or drops to the default with a warning, and `seed:` and `role:` bindings resolve in each appearance (`TestParseShadersV2`, `TestThemeShaderBindings`); a shader readable at its defaults and unreadable at a number's max fails, with the param and value in the warning (`TestThemeShaderRange`); a slot takes a list of layers, with caps and a clamped opacity (`TestParseShaderLayers`); layers draw in order with their opacity, their costs add, a bad layer drops the slot, and a variant names its layer (`TestThemeShaderLayers`); a shader that reads `Pointer` asks for a frame on a pointer move, none when still, and fails when unreadable with the pointer pressed at the center (`TestThemeShaderPointer`); a version 2 pack under a version 1 build drops `shaders` with a warning (`TestParseShaders`, extended).
+- **Version 2**: declarations parse, and each bad one fails check 3 (`TestShaderDeclarations`); a manifest value overrides, clamps or drops to the default with a warning, and `seed:` and `role:` bindings resolve in each appearance (`TestParseShadersV2`, `TestThemeShaderBindings`); a shader readable at its defaults and unreadable at a number's max fails, with the param and value in the warning (`TestThemeShaderRange`); a slot takes a list of layers, with a clamped opacity, and a list past 4 or a slot past the 16 layers of the theme drops whole (`TestParseShaderLayers`); layers draw in order with their opacity, their costs add, a bad layer drops the slot, and a variant names its layer (`TestThemeShaderLayers`); a shader that reads `Pointer` asks for a frame on a pointer move, none when still, and fails when unreadable with the pointer pressed at the center (`TestThemeShaderPointer`); a version 2 pack under a version 1 build drops `shaders` with a warning (`TestParseShaders`, extended).
 
 No item in `docs/invariants.md` covers the theme.
 

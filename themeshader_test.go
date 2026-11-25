@@ -368,16 +368,6 @@ func TestThemeShaderBindings(t *testing.T) {
 // costs add; a layer that fails checks 1 to 3 drops the whole slot; a
 // variant of one layer names the layer in the warning.
 func TestThemeShaderLayers(t *testing.T) {
-	// Order and opacity: an opaque paper, then white at 0.5 over it.
-	m, art := shaderTheme(t, `{
-  "assets": { "paper": "paper.kage", "white": "white.kage" },
-  "shaders": { "api": 2, "background": [ { "source": "paper" }, { "source": "white", "opacity": 0.5 } ] }
-}`, map[string]string{"paper": solidBackground, "white": "package main\n\nvar Dark float\n\nfunc Fragment(dst vec4, pos vec2) vec4 {\n\treturn mix(vec4(1), vec4(0, 0, 0, 1), Dark)\n}\n"})
-	set := useShaders(t, m, art)
-	if set.background == nil || len(set.background.layers) != 2 {
-		t.Fatalf("the layers fail: %q", set.warn)
-	}
-	img := renderSlot(set.background, 4, 4, 1, ui.Point{X: 4, Y: 4}, false, shaderFrame{})
 	near := func(got []uint8, want [3]float64) bool {
 		for i, w := range want {
 			if d := float64(got[i]) - w; d < -1.5 || d > 1.5 {
@@ -386,31 +376,7 @@ func TestThemeShaderLayers(t *testing.T) {
 		}
 		return true
 	}
-	if px := img.Pix[img.PixOffset(2, 2):]; !near(px, [3]float64{242.5, 229.5, 217}) {
-		t.Errorf("paper then white at 0.5 paints %v, want 242 229 217", px[:4])
-	}
-
-	// A face draws its layers over its flat color: black at 0.1 over #e4e4e4.
-	m, art = shaderTheme(t, `{
-  "roles": { "titleBar.background": "#e4e4e4" },
-  "assets": { "ink": "ink.kage" },
-  "shaders": { "api": 2, "faces": { "titleBar.background": [ { "source": "ink", "opacity": 0.1 } ] } }
-}`, map[string]string{"ink": "package main\n\nfunc Fragment(dst vec4, pos vec2) vec4 {\n\treturn vec4(0, 0, 0, 1)\n}\n"})
-	set = useShaders(t, m, art)
-	face := set.faces[roleTitleBarBackground]
-	if face == nil {
-		t.Fatalf("the face fails: %q", set.warn)
-	}
-	img = renderSlot(face, 4, 4, 1, ui.Point{X: 4, Y: 4}, false, shaderFrame{})
-	if px := img.Pix[img.PixOffset(2, 2):]; !near(px, [3]float64{205.2, 205.2, 205.2}) {
-		t.Errorf("a face layer at 0.1 over #e4e4e4 paints %v, want 205", px[:4])
-	}
-
-	// Costs add: k layers that each cost under 8 backgrounds, together
-	// over 8, fail. The cost of one is measured here, as it varies with the
-	// machine's load.
-	heavy := "package main\n\nfunc Fragment(dst vec4, pos vec2) vec4 {\n\tv := 0.0\n\tfor i := 0; i < 60; i++ {\n\t\tv += sin(pos.x*float(i)) * cos(pos.y+float(i)) * 0.0001\n\t}\n\treturn vec4(0.9+v, 0.9, 0.9, 1)\n}\n"
-	faceOf := func(layers string, srcs map[string]string) *themeShaders {
+	faceOf := func(t *testing.T, layers string, srcs map[string]string) *themeShaders {
 		m, art := shaderTheme(t, `{
   "roles": { "titleBar.background": "#e4e4e4" },
   "assets": { "a": "a.kage", "b": "b.kage" },
@@ -418,33 +384,58 @@ func TestThemeShaderLayers(t *testing.T) {
 }`, srcs)
 		return useShaders(t, m, art)
 	}
-	e := &slotEnv{api: 2, art: &theme.Art{Bitmaps: map[string]*ui.Bitmap{}, Sources: map[string]string{"a": heavy}}}
-	l, _, err := compileLayer(&theme.ShaderLayer{Source: "a", Opacity: 1}, e, false)
-	if err != nil {
-		t.Fatal(err)
-	}
-	r, _ := layerCost(l, allSamples.cost, false, maxShaderCost)
-	k := int(maxShaderCost/r) + 1
-	if r >= maxShaderCost || k > 4 {
-		t.Skipf("one layer costs %.1f backgrounds: no count of up to 4 layers crosses 8 from below", r)
-	}
-	set = faceOf("["+strings.Repeat(`{ "source": "a" }, `, k-1)+`{ "source": "a" }]`, map[string]string{"a": heavy})
-	if want := fmt.Sprintf("its %d layers cost", k); set.faces[roleTitleBarBackground] != nil || len(set.warn) != 1 || !strings.Contains(set.warn[0], want) {
-		t.Errorf("%d layers of %.1f each: drawn %v, warnings %q, want %q", k, r, set.faces[roleTitleBarBackground] != nil, set.warn, want)
-	}
-
-	// A layer that does not compile drops the slot.
-	set = faceOf(`[ { "source": "a" }, { "source": "b" } ]`, map[string]string{"a": greyGradient, "b": "package main\n\nfunc Fragment(dst vec4, pos vec2) vec4 {\n\treturn nope\n}\n"})
-	if set.faces[roleTitleBarBackground] != nil || len(set.warn) != 1 || !strings.Contains(set.warn[0], "layer 2: does not compile") {
-		t.Errorf("a bad second layer: drawn %v, warnings %q", set.faces[roleTitleBarBackground] != nil, set.warn)
-	}
-
-	// A variant of the second layer names the layer and the param.
-	glow := "package main\n\n//gorex:param number 0 0 1\nvar Glow float\n\nfunc Fragment(dst vec4, pos vec2) vec4 {\n\treturn vec4(0, 0, 0, Glow) * 0.6\n}\n"
-	set = faceOf(`[ { "source": "a" }, { "source": "b" } ]`, map[string]string{"a": greyGradient, "b": glow})
-	if set.faces[roleTitleBarBackground] != nil || len(set.warn) != 1 || !strings.Contains(set.warn[0], "layer 2: Glow at 1 (max): ") {
-		t.Errorf("a second layer unreadable at its max: drawn %v, warnings %q", set.faces[roleTitleBarBackground] != nil, set.warn)
-	}
+	t.Run("order and opacity", func(t *testing.T) {
+		// An opaque paper, then white at 0.5 over it.
+		m, art := shaderTheme(t, `{
+  "assets": { "paper": "paper.kage", "white": "white.kage" },
+  "shaders": { "api": 2, "background": [ { "source": "paper" }, { "source": "white", "opacity": 0.5 } ] }
+}`, map[string]string{"paper": solidBackground, "white": "package main\n\nvar Dark float\n\nfunc Fragment(dst vec4, pos vec2) vec4 {\n\treturn mix(vec4(1), vec4(0, 0, 0, 1), Dark)\n}\n"})
+		set := useShaders(t, m, art)
+		if set.background == nil || len(set.background.layers) != 2 {
+			t.Fatalf("the layers fail: %q", set.warn)
+		}
+		img := renderSlot(set.background, 4, 4, 1, ui.Point{X: 4, Y: 4}, false, shaderFrame{})
+		if px := img.Pix[img.PixOffset(2, 2):]; !near(px, [3]float64{242.5, 229.5, 217}) {
+			t.Errorf("paper then white at 0.5 paints %v, want 242 229 217", px[:4])
+		}
+	})
+	t.Run("face over its flat color", func(t *testing.T) {
+		// Black at 0.1 over #e4e4e4.
+		set := faceOf(t, `[ { "source": "a", "opacity": 0.1 } ]`, map[string]string{"a": "package main\n\nfunc Fragment(dst vec4, pos vec2) vec4 {\n\treturn vec4(0, 0, 0, 1)\n}\n"})
+		face := set.faces[roleTitleBarBackground]
+		if face == nil {
+			t.Fatalf("the face fails: %q", set.warn)
+		}
+		img := renderSlot(face, 4, 4, 1, ui.Point{X: 4, Y: 4}, false, shaderFrame{})
+		if px := img.Pix[img.PixOffset(2, 2):]; !near(px, [3]float64{205.2, 205.2, 205.2}) {
+			t.Errorf("a face layer at 0.1 over #e4e4e4 paints %v, want 205", px[:4])
+		}
+	})
+	t.Run("costs add", func(t *testing.T) {
+		// Each layer costs 3 backgrounds: two pass, three (9) fail.
+		layerCost = func(*themeLayer, []shaderFrame, bool, float64) (float64, shaderFrame) { return 3, shaderFrame{} }
+		t.Cleanup(func() { layerCost = timeLayer })
+		if set := faceOf(t, `[ { "source": "a" }, { "source": "a" } ]`, map[string]string{"a": greyGradient}); set.faces[roleTitleBarBackground] == nil {
+			t.Errorf("two layers of 3: %q", set.warn)
+		}
+		set := faceOf(t, `[ { "source": "a" }, { "source": "a" }, { "source": "a" } ]`, map[string]string{"a": greyGradient})
+		if set.faces[roleTitleBarBackground] != nil || len(set.warn) != 1 || !strings.Contains(set.warn[0], "its 3 layers cost 9.0 times") {
+			t.Errorf("three layers of 3: drawn %v, warnings %q", set.faces[roleTitleBarBackground] != nil, set.warn)
+		}
+	})
+	t.Run("bad layer", func(t *testing.T) {
+		set := faceOf(t, `[ { "source": "a" }, { "source": "b" } ]`, map[string]string{"a": greyGradient, "b": "package main\n\nfunc Fragment(dst vec4, pos vec2) vec4 {\n\treturn nope\n}\n"})
+		if set.faces[roleTitleBarBackground] != nil || len(set.warn) != 1 || !strings.Contains(set.warn[0], "shaders.faces.titleBar.background layer 2: does not compile") {
+			t.Errorf("a bad second layer: drawn %v, warnings %q", set.faces[roleTitleBarBackground] != nil, set.warn)
+		}
+	})
+	t.Run("variant names the layer", func(t *testing.T) {
+		glow := "package main\n\n//gorex:param number 0 0 1\nvar Glow float\n\nfunc Fragment(dst vec4, pos vec2) vec4 {\n\treturn vec4(0, 0, 0, Glow) * 0.6\n}\n"
+		set := faceOf(t, `[ { "source": "a" }, { "source": "b" } ]`, map[string]string{"a": greyGradient, "b": glow})
+		if set.faces[roleTitleBarBackground] != nil || len(set.warn) != 1 || !strings.Contains(set.warn[0], "shaders.faces.titleBar.background layer 2: Glow at 1 (max): ") {
+			t.Errorf("a second layer unreadable at its max: drawn %v, warnings %q", set.faces[roleTitleBarBackground] != nil, set.warn)
+		}
+	})
 }
 
 // BenchmarkThemeShaderChecks measures the checks at load of a pack of one
