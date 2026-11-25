@@ -69,7 +69,7 @@ func TestParseDrops(t *testing.T) {
 	m, warn, err = Parse([]byte(`{
   "seeds": { "light": { "accent": "#2876c8" } },
   "roles": { "titleBar.background": "#2876c8", "pane.border": "#2876c880", "toolBar.background": "#ffffff" },
-  "shaders": { "api": 2, "background": { "source": "bg" } },
+  "shaders": { "api": 3, "background": { "source": "bg" } },
   "metrics": { "radius": 0.2 },
   "glass": false
 }`))
@@ -82,7 +82,7 @@ func TestParseDrops(t *testing.T) {
 	if m.Metrics == nil || m.Metrics.Radius != 0.2 || m.Glass == nil || *m.Glass {
 		t.Errorf("metrics %+v, glass %v", m.Metrics, m.Glass)
 	}
-	want = []string{`roles: unknown role "toolBar.background"`, `shaders.api: 2 is not an API this build knows (shaders dropped)`}
+	want = []string{`roles: unknown role "toolBar.background"`, `shaders.api: 3 is not an API this build knows (shaders dropped)`}
 	if !slices.Equal(warn, want) {
 		t.Errorf("warnings\n%q\nwant\n%q", warn, want)
 	}

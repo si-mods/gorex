@@ -8,7 +8,7 @@ metadata:
 
 # DSK-012: Theme shaders and metrics
 
-Status: phases 1 and 2 built (#1096, #1105). Phase 6 (shader API version 2) designed. Phases 3 and 5 not built; phase 4 dropped (DSK-010 User decisions 8).
+Status: phases 1 and 2 built (#1096, #1105). Phase 6 (shader API version 2): declared params and the checks of the param range built; layers and `Pointer` designed. Phases 3 and 5 not built; phase 4 dropped (DSK-010 User decisions 8).
 
 GoRex ships capabilities, never a look ([DSK-008](DSK-008-theme.md) Non-goals): every look of this doc comes from a pack's own shaders and assets.
 
@@ -295,7 +295,7 @@ A wallpaper that fills a 2560 px window at 1024 px looks soft. At 2048 px it is 
 
 ## Shader API version 2: declared params, layers and the pointer
 
-Status: designed 2026-11-25 (phase 6). The model follows Figma's shaders (shaders.figma.com, Figma's plugin API `Shader` type and its review guidelines): a shader declares its own params with a kind, a default and a range; a slot stacks shaders in order; a shader may read the pointer, and asks for frames only for the inputs it reads. GoRex takes these ideas and not Figma's effect shaders, which read the pixels drawn under them (see Alternatives), or its library of built-in looks, which DSK-008's rule forbids: GoRex ships capabilities, never a look ([DSK-008](DSK-008-theme.md) Non-goals).
+Status: designed 2026-11-25 (phase 6). Declared params and the checks of the param range built; layers and `Pointer` not built. The model follows Figma's shaders (shaders.figma.com, Figma's plugin API `Shader` type and its review guidelines): a shader declares its own params with a kind, a default and a range; a slot stacks shaders in order; a shader may read the pointer, and asks for frames only for the inputs it reads. GoRex takes these ideas and not Figma's effect shaders, which read the pixels drawn under them (see Alternatives), or its library of built-in looks, which DSK-008's rule forbids: GoRex ships capabilities, never a look ([DSK-008](DSK-008-theme.md) Non-goals).
 
 ### Why
 
@@ -310,7 +310,7 @@ Status: designed 2026-11-25 (phase 6). The model follows Figma's shaders (shader
 
 - A slot is a layer object as in version 1, or a list of 1 to 4 layer objects. A layer has `source`, `images`, `params` as in version 1, and `opacity`: a number from 0 to 1, default 1, which clamps with a warning.
 - A theme has at most 16 layers over all its slots. A layer past the cap drops with a warning.
-- `params` overrides the declared defaults of the layer's shader (see Declared params). A param with no declaration, or with a value of another kind, drops with a warning, and the default applies. A number out of the declared range clamps with a warning.
+- `params` overrides the declared defaults of the layer's shader (see Declared params). A param with no declaration, or with a value of another kind, drops with a warning, and the default applies. A number out of the declared range clamps with a warning. A point outside 0 to 1 clamps with a warning too.
 
 ```json
 "shaders": {
@@ -354,7 +354,7 @@ var Light vec2
 | `point` | `vec2` | x, y, each from 0 to 1: a fraction of the drawn rectangle | `[x, y]` |
 | `color` | `vec3` or `vec4` | one color value | one color value |
 
-A color value is one of: a hex color (`#rrggbb` or `#rrggbbaa`) for both appearances; two hex colors `light/dark`; `seed:<name>`, the theme's resolved seed; `role:<name>`, the theme's flat color of a role. GoRex resolves a color in each appearance, not premultiplied, as the `Seed<Name>` uniforms. A binding follows the theme's seeds and roles; the user's `sidebar.colorCustomizations` does not feed it.
+A color value is one of: a hex color (`#rrggbb` or `#rrggbbaa`) for both appearances; two hex colors `light/dark`; `seed:<name>`, the theme's resolved seed; `role:<name>`, the theme's flat color of a role. In the manifest, a `{"light", "dark"}` pair as in version 1 is a color value too. One declaration above `var A, B float` declares both uniforms. GoRex resolves a color in each appearance, not premultiplied, as the `Seed<Name>` uniforms. A binding follows the theme's seeds and roles; the user's `sidebar.colorCustomizations` does not feed it.
 
 A shader of version 2 fails check 3 when an exported uniform outside the API table has no declaration, when a declaration does not parse, when its kind does not fit the uniform's type, or when it declares more than 16 params. A declaration on an API uniform fails too.
 
@@ -386,14 +386,14 @@ A user, a later Settings control or a seed binding can pick any value in the dec
 4. For each `point`: 0,0, then 1,1.
 5. For a shader that reads `Pointer`: z = 0; then z = 1 and w = 1 at the center of the drawn rectangle; then z = 1 at its top left corner.
 
-Colors are not varied: checks 5 and 6 already run in both appearances, with each binding resolved. Checks 4 to 6 run on each variant, over the time, origin and window samples of version 1. Variants of the layers of one slot vary one layer at a time, the others as in 1. A slot fails when any variant fails, and the warning names the param and the value: `Glow at 1 (max): text 3.1:1, under 4.5:1`.
+Colors are not varied: checks 5 and 6 already run in both appearances, with each binding resolved. Checks 4 to 6 run on each variant. Variant 1 draws all the time, origin and window samples of version 1; the other variants draw fewer (see below). Variants of the layers of one slot vary one layer at a time, the others as in 1. A slot fails when any variant fails, and the warning names the param and the value: `Glow at 1 (max): in the light appearance at 0 s, text has 3.1:1 at 4,2, below 4.5:1`.
 
-The checks stay on `loadArt`'s goroutine, and the windows draw the flat colors until they are done, as in version 1. Phase 6 measures `BenchmarkThemeShaderChecks` for a pack of a background of two layers and four faces with 8 params each, on the Windows PC. When it passes 2 s, phase 6 cuts the time samples of the extra variants (variant 1 keeps them all) and records the measurement here.
+The checks stay on `loadArt`'s goroutine, and the windows draw the flat colors until they are done, as in version 1. A variant equal to variant 1 is not drawn again. `BenchmarkThemeShaderChecks` measures a pack of version 2: a background and four faces, each with 8 number params whose defaults lie inside their ranges, so 17 variants a slot. The background has one layer; the layers come in a later PR. On the Windows PC (Intel Core i9-12900), with all samples for each variant, the checks take 10.3 s (1 run). That is over 2 s, so the variants after the first draw fewer samples (`fewSamples`); variant 1 keeps all samples (`allSamples`). Check 4 draws one sample, `Time` 0, `Window` 1280×800 and `Origin` 0,0, and times it once. A time over the ratio limit is timed again as the fastest of three before the variant fails, so that the load of the machine does not drop a slot. The ratio limit stays 8. Check 5 draws `Time` 0 and `Window` 1280×800 at the three origins. Check 6 draws `Time` 0. With this cut the checks take 3.1 to 3.3 s (3 rounds of 10 runs). The same pack in version 1 takes 0.35 to 0.64 s on the same runs. The time is still over 2 s. Phase 6 cuts no more samples. The windows draw the flat colors meanwhile, so it delays the shaders, not the window.
 
 ### Code
 
-- `internal/theme/shaders.go`: `ShaderAPI` becomes the set {1, 2}; `ShaderSlot` holds `Layers []ShaderLayer`; `ParseShaderSource` parses comments and returns the declarations; `CheckUniforms` takes the API version; a `Param` holds a binding (`seed:`, `role:`) besides numbers and colors.
-- `themeshader.go`: a `themeSlot` holds its layers; `checkSlot` runs the variants; `draw` and `faceShader.PaintMaterial` draw the layers in order; the pointer state sits beside `shaderClock`.
+- `internal/theme/shaders.go`: `ShaderAPI1` and `ShaderAPI2`, and `Shaders.API` holds the version of a manifest; `ShaderSlot` holds `Layers []ShaderLayer` (layers PR); `ParseShaderSource` parses comments and returns the declarations (`ShaderSource.Params`, a `ParamDecl` each); `CheckUniforms` takes the API version; a `Param` holds a toggle (`On`) and a binding (`Bind`, `seed:` or `role:`) besides numbers and colors; `ResolveParams` lays the manifest's values over the defaults and resolves the bindings.
+- `themeshader.go`: a `themeSlot` holds its layers (layers PR); `slotEnv` holds what the checks read, and resolves a binding from the theme's seeds and flat role colors; `checkSlot` runs the variants (`rangeVariants`), the first with `allSamples`, the others with `fewSamples`; `draw` and `faceShader.PaintMaterial` draw the layers in order; the pointer state sits beside `shaderClock`.
 - The two packs move to version 2: their shaders declare their params, and each uses at least one layer list or `Pointer` where its look wants it.
 
 ## Alternatives
@@ -443,7 +443,7 @@ The rest of the DSK-008 and DSK-010 rules stay: no URL, no network at run time, 
 - **Old build**: a manifest of this doc parses under the DSK-010 parser with warnings and the same colors (`TestParseDrops`, extended).
 - **Probes**: screenshots of both packs through the `GOREX_DEBUG` hook, light and dark, tiled, canvas and empty page, glass on and off, beside the probe's `preview.png`.
 
-- **Version 2**: declarations parse, and each bad one fails check 3 (`TestShaderDeclarations`); a manifest value overrides, clamps or drops to the default with a warning, and `seed:` and `role:` bindings resolve in each appearance (`TestParseShadersV2`); a shader readable at its defaults and unreadable at a number's max fails, with the param and value in the warning (`TestThemeShaderRange`); layers draw in order with their opacity, their costs add, and a bad layer drops the slot (`TestThemeShaderLayers`); a shader that reads `Pointer` asks for a frame on a pointer move, none when still, and fails when unreadable with the pointer pressed at the center (`TestThemeShaderPointer`); a version 2 pack under a version 1 build drops `shaders` with a warning (`TestParseShaders`, extended).
+- **Version 2**: declarations parse, and each bad one fails check 3 (`TestShaderDeclarations`); a manifest value overrides, clamps or drops to the default with a warning, and `seed:` and `role:` bindings resolve in each appearance (`TestParseShadersV2`, `TestThemeShaderBindings`); a shader readable at its defaults and unreadable at a number's max fails, with the param and value in the warning (`TestThemeShaderRange`); layers draw in order with their opacity, their costs add, and a bad layer drops the slot (`TestThemeShaderLayers`); a shader that reads `Pointer` asks for a frame on a pointer move, none when still, and fails when unreadable with the pointer pressed at the center (`TestThemeShaderPointer`); a version 2 pack under a version 1 build drops `shaders` with a warning (`TestParseShaders`, extended).
 
 No item in `docs/invariants.md` covers the theme.
 

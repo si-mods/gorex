@@ -1,12 +1,15 @@
 package theme
 
 import (
+	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
 	"maps"
+	"math"
 	"regexp"
 	"slices"
 	"strconv"
@@ -20,8 +23,14 @@ import (
 // build reads, the slots a theme fills, the param parser and the uniform
 // check. The app compiles, checks and draws them (themeshader.go).
 
-// ShaderAPI is the version of the shader API this build reads.
-const ShaderAPI = 1
+// The versions of the shader API this build reads (docs/DSK-012, Shader
+// API version 2): version 1 sets params from the manifest alone; version 2
+// reads the params a shader declares, and the manifest overrides their
+// defaults.
+const (
+	ShaderAPI1 = 1
+	ShaderAPI2 = 2
+)
 
 // The caps of the shaders key.
 const (
@@ -35,6 +44,8 @@ const (
 // background and the faces of roles. A nil slot draws as the theme's
 // colors do.
 type Shaders struct {
+	// API is the version of the shader API: ShaderAPI1 or ShaderAPI2.
+	API        int
 	Background *ShaderSlot
 	Faces      map[Role]*ShaderSlot
 }
@@ -48,10 +59,22 @@ type ShaderSlot struct {
 }
 
 // Param is the value of a uniform the theme sets: numbers, or a color of
-// each appearance, light then dark.
+// each appearance, light then dark. Version 2 adds a toggle's value and a
+// color bound to the theme's seed or role, which the app resolves in each
+// appearance (ResolveParams).
 type Param struct {
 	Nums  []float32
 	Color *[2]ui.Color
+	On    *bool
+	Bind  *Binding
+}
+
+// Binding is a color of version 2 that follows the theme: seed:<name>, its
+// resolved seed, or role:<name>, its flat color of a role.
+type Binding struct {
+	IsRole bool
+	Seed   Seed
+	Role   Role
 }
 
 // FaceRoles are the roles a face shader may fill: the five faces that
@@ -85,13 +108,13 @@ func parseShaders(raw json.RawMessage, assets map[string]Asset, roles [2]map[Rol
 		return nil
 	}
 	var api float64
-	if json.Unmarshal(m["api"], &api) != nil || api != ShaderAPI {
+	if json.Unmarshal(m["api"], &api) != nil || api != ShaderAPI1 && api != ShaderAPI2 {
 		w.add("shaders.api: %s is not an API this build knows (shaders dropped)", strings.TrimSpace(string(m["api"])))
 		return nil
 	}
-	s := &Shaders{Faces: map[Role]*ShaderSlot{}}
+	s := &Shaders{API: int(api), Faces: map[Role]*ShaderSlot{}}
 	if raw, ok := m["background"]; ok {
-		s.Background = parseSlot(raw, "shaders.background", assets, w)
+		s.Background = parseSlot(raw, "shaders.background", s.API, assets, w)
 	}
 	if _, ok := m["ambient"]; ok {
 		w.add("shaders.ambient: not drawn by this build")
@@ -126,7 +149,7 @@ func parseShaders(raw json.RawMessage, assets map[string]Asset, roles [2]map[Rol
 				}
 				w.add("%s: no roles.%s, the built-in flat color applies", where, name)
 			}
-			if slot := parseSlot(faces[name], where, assets, w); slot != nil {
+			if slot := parseSlot(faces[name], where, s.API, assets, w); slot != nil {
 				s.Faces[r] = slot
 			}
 		}
@@ -137,8 +160,9 @@ func parseShaders(raw json.RawMessage, assets map[string]Asset, roles [2]map[Rol
 	return s
 }
 
-// parseSlot reads one slot, or returns nil with a warning.
-func parseSlot(raw json.RawMessage, where string, assets map[string]Asset, w *warner) *ShaderSlot {
+// parseSlot reads one slot of the API version api, or returns nil with a
+// warning.
+func parseSlot(raw json.RawMessage, where string, api int, assets map[string]Asset, w *warner) *ShaderSlot {
 	f, ok := w.fields(raw, where, "source", "images", "params")
 	if !ok {
 		return nil
@@ -189,6 +213,17 @@ func parseSlot(raw json.RawMessage, where string, assets map[string]Asset, w *wa
 				w.add("%s.params.%s: GoRex sets this uniform (dropped)", where, name)
 				continue
 			}
+			if api == ShaderAPI2 {
+				// The kind of a value is checked against the shader's
+				// declaration where the shader is read (ResolveParams).
+				p, ok := parseParamV2(ps[name])
+				if !ok {
+					w.add("%s.params.%s: not a number, true or false, [x, y] or a color value", where, name)
+					continue
+				}
+				slot.Params[name] = p
+				continue
+			}
 			p, ok := parseParam(ps[name])
 			if !ok {
 				w.add("%s.params.%s: not a number, a list of up to %d numbers or a color", where, name, maxParamList)
@@ -224,6 +259,74 @@ func parseParam(raw json.RawMessage) (Param, bool) {
 		return Param{}, false
 	}
 	return Param{Color: &[2]ui.Color{light, dark}}, true
+}
+
+// parseParamV2 reads a param of version 2: a number, true or false, a
+// point [x, y], or a color value (parseColorValue, or a {"light", "dark"}
+// pair as a role value).
+func parseParamV2(raw json.RawMessage) (Param, bool) {
+	if string(bytes.TrimSpace(raw)) == "null" {
+		return Param{}, false // json.Unmarshal leaves a bool false on null
+	}
+	var on bool
+	if json.Unmarshal(raw, &on) == nil {
+		return Param{On: &on}, true
+	}
+	var f float64
+	if json.Unmarshal(raw, &f) == nil {
+		return Param{Nums: []float32{float32(f)}}, true
+	}
+	var xy []float64
+	if json.Unmarshal(raw, &xy) == nil {
+		if len(xy) != 2 {
+			return Param{}, false
+		}
+		return Param{Nums: []float32{float32(xy[0]), float32(xy[1])}}, true
+	}
+	var s string
+	if json.Unmarshal(raw, &s) == nil {
+		return parseColorValue(s)
+	}
+	return parseParam(raw)
+}
+
+// parseColorValue reads a color value of version 2: a hex color for both
+// appearances, two hex colors light/dark, seed:<name> or role:<name>.
+func parseColorValue(s string) (Param, bool) {
+	if name, ok := strings.CutPrefix(s, "seed:"); ok {
+		id, ok := SeedByName(name)
+		return Param{Bind: &Binding{Seed: id}}, ok
+	}
+	if name, ok := strings.CutPrefix(s, "role:"); ok {
+		r, ok := RoleByName(name)
+		return Param{Bind: &Binding{IsRole: true, Role: r}}, ok
+	}
+	light, dark, pair := strings.Cut(s, "/")
+	if !pair {
+		dark = light
+	}
+	l, lok := Hex(light)
+	d, dok := Hex(dark)
+	if !lok || !dok {
+		return Param{}, false
+	}
+	return Param{Color: &[2]ui.Color{l, d}}, true
+}
+
+// kind returns the kind of declaration a manifest value of version 2
+// fits, 0 for none.
+func (p Param) kind() ParamKind {
+	switch {
+	case p.On != nil:
+		return ParamToggle
+	case p.Color != nil || p.Bind != nil:
+		return ParamColor
+	case len(p.Nums) == 1:
+		return ParamNumber
+	case len(p.Nums) == 2:
+		return ParamPoint
+	}
+	return 0
 }
 
 // exportedIdent reports whether s is an exported Go identifier of at most
@@ -290,6 +393,10 @@ type ShaderSource struct {
 	Entries  []string
 	Uniforms map[string]UniformType
 	Backdrop bool
+	// Params are the //gorex:param declarations of its uniforms, which
+	// version 2 reads; badParams the declarations that do not parse.
+	Params    map[string]ParamDecl
+	badParams map[string]error
 	// fragment is the offset of the name of the function Fragment.
 	fragment int
 }
@@ -303,13 +410,17 @@ var readsBackdrop = regexp.MustCompile(`\bbackdrop(At|Sample)\b`)
 var entryPoints = []string{"Fragment", "ColorEffect", "DistortionEffect", "LayerEffect"}
 
 // ParseShaderSource reads src, a Kage file, as Go: its entry points, the
-// exported variables at the package level, which are its uniforms.
+// exported variables at the package level, which are its uniforms, and
+// the //gorex:param declarations in the comments above them.
 func ParseShaderSource(src string) (*ShaderSource, error) {
-	f, err := parser.ParseFile(token.NewFileSet(), "", src, parser.SkipObjectResolution)
+	f, err := parser.ParseFile(token.NewFileSet(), "", src, parser.SkipObjectResolution|parser.ParseComments)
 	if err != nil {
 		return nil, err
 	}
-	s := &ShaderSource{Uniforms: map[string]UniformType{}, Backdrop: readsBackdrop.MatchString(src), fragment: -1}
+	s := &ShaderSource{
+		Uniforms: map[string]UniformType{}, Backdrop: readsBackdrop.MatchString(src), fragment: -1,
+		Params: map[string]ParamDecl{}, badParams: map[string]error{},
+	}
 	for _, d := range f.Decls {
 		switch d := d.(type) {
 		case *ast.FuncDecl:
@@ -326,6 +437,10 @@ func ParseShaderSource(src string) (*ShaderSource, error) {
 			for _, spec := range d.Specs {
 				vs := spec.(*ast.ValueSpec)
 				t, ok := uniformType(vs.Type)
+				doc := vs.Doc
+				if doc == nil && !d.Lparen.IsValid() {
+					doc = d.Doc
+				}
 				for _, n := range vs.Names {
 					if !n.IsExported() {
 						continue
@@ -334,11 +449,222 @@ func ParseShaderSource(src string) (*ShaderSource, error) {
 						return nil, fmt.Errorf("uniform %s: a type GoRex does not set", n.Name)
 					}
 					s.Uniforms[n.Name] = t
+					if decl, found, err := parseDecl(doc); err != nil {
+						s.badParams[n.Name] = err
+					} else if found {
+						s.Params[n.Name] = decl
+					}
 				}
 			}
 		}
 	}
 	return s, nil
+}
+
+// ParamKind is the kind of a declared param (docs/DSK-012, Declared
+// params).
+type ParamKind int
+
+// The kinds of a declared param.
+const (
+	ParamNumber ParamKind = iota + 1
+	ParamToggle
+	ParamPoint
+	ParamColor
+)
+
+var paramKinds = []string{ParamNumber: "number", ParamToggle: "toggle", ParamPoint: "point", ParamColor: "color"}
+
+func (k ParamKind) String() string {
+	if k <= 0 || int(k) >= len(paramKinds) {
+		return "value"
+	}
+	return paramKinds[k]
+}
+
+// ParamDecl is a //gorex:param declaration: the kind of the param, its
+// default, a number's range, and the other lines of its comment, which
+// describe it for a later Settings control.
+type ParamDecl struct {
+	Kind     ParamKind
+	Default  Param
+	Min, Max float32
+	About    string
+	// def is the default as the declaration writes it.
+	def string
+}
+
+// The marker of a declaration, and the most characters of a description.
+const (
+	paramMarker = "//gorex:param"
+	maxAbout    = 80
+)
+
+// parseDecl reads the declaration in doc, the comment above a uniform:
+// found is false when it has none, err tells a declaration that does not
+// parse.
+func parseDecl(doc *ast.CommentGroup) (d ParamDecl, found bool, err error) {
+	if doc == nil {
+		return d, false, nil
+	}
+	var about []string
+	for _, c := range doc.List {
+		args, ok := strings.CutPrefix(c.Text, paramMarker)
+		if !ok || args != "" && args[0] != ' ' && args[0] != '\t' {
+			about = append(about, strings.TrimSpace(strings.TrimPrefix(c.Text, "//")))
+			continue
+		}
+		if found {
+			return d, true, errors.New(paramMarker + ": more than one in the comment")
+		}
+		found = true
+		if d, err = parseDeclArgs(strings.Fields(args)); err != nil {
+			return d, true, err
+		}
+	}
+	if !found {
+		return d, false, nil
+	}
+	d.About = strings.Join(strings.Fields(strings.Join(about, " ")), " ")
+	if r := []rune(d.About); len(r) > maxAbout {
+		d.About = string(r[:maxAbout])
+	}
+	return d, true, nil
+}
+
+// parseDeclArgs reads the words after //gorex:param: a kind and its
+// arguments, by the table of docs/DSK-012, Declared params.
+func parseDeclArgs(f []string) (ParamDecl, error) {
+	bad := func(format string, a ...any) (ParamDecl, error) {
+		return ParamDecl{}, fmt.Errorf(paramMarker+": "+format, a...)
+	}
+	if len(f) == 0 {
+		return bad("no kind")
+	}
+	nums := func(args []string) ([]float32, bool) {
+		out := make([]float32, len(args))
+		for i, a := range args {
+			v, err := strconv.ParseFloat(a, 32)
+			if err != nil || math.IsNaN(v) || math.IsInf(v, 0) {
+				return nil, false
+			}
+			out[i] = float32(v)
+		}
+		return out, true
+	}
+	d := ParamDecl{def: strings.Join(f[1:], " ")}
+	if f[0] == "number" && len(f) > 1 {
+		d.def = f[1]
+	}
+	switch f[0] {
+	case "number":
+		v, ok := nums(f[1:])
+		if !ok || len(v) != 3 {
+			return bad("number takes a default, a min and a max")
+		}
+		if !(v[1] < v[2] && v[1] <= v[0] && v[0] <= v[2]) {
+			return bad("number %s: needs min < max and min <= default <= max", d.def)
+		}
+		d.Kind, d.Default, d.Min, d.Max = ParamNumber, Param{Nums: v[:1]}, v[1], v[2]
+	case "toggle":
+		if len(f) != 2 || f[1] != "on" && f[1] != "off" {
+			return bad("toggle takes on or off")
+		}
+		d.Kind, d.Default = ParamToggle, Param{Nums: []float32{0}}
+		if f[1] == "on" {
+			d.Default.Nums[0] = 1
+		}
+	case "point":
+		v, ok := nums(f[1:])
+		if !ok || len(v) != 2 || v[0] < 0 || v[0] > 1 || v[1] < 0 || v[1] > 1 {
+			return bad("point takes x and y, each from 0 to 1")
+		}
+		d.Kind, d.Default, d.Min, d.Max = ParamPoint, Param{Nums: v}, 0, 1
+	case "color":
+		if len(f) != 2 {
+			return bad("color takes one color value")
+		}
+		p, ok := parseColorValue(f[1])
+		if !ok {
+			return bad("color %q: not a hex color, light/dark, seed:<name> or role:<name>", f[1])
+		}
+		d.Kind, d.Default = ParamColor, p
+	default:
+		return bad("%q is not a kind (number, toggle, point, color)", f[0])
+	}
+	return d, nil
+}
+
+// fitsDecl checks that a declaration of kind k fits a uniform of type t.
+func fitsDecl(k ParamKind, t UniformType) error {
+	switch {
+	case t.Len != 0:
+	case (k == ParamNumber || k == ParamToggle) && t.Base == "float":
+		return nil
+	case k == ParamPoint && t.Base == "vec2":
+		return nil
+	case k == ParamColor && (t.Base == "vec3" || t.Base == "vec4"):
+		return nil
+	}
+	want := map[ParamKind]string{ParamNumber: "a float", ParamToggle: "a float", ParamPoint: "a vec2", ParamColor: "a vec3 or a vec4"}[k]
+	return fmt.Errorf("a %s param needs %s, not a %s", k, want, t)
+}
+
+// ResolveParams returns the value of each declared param of src for slot,
+// a slot of version 2: the manifest's value over the default. A value of
+// another kind, or for no declaration, drops, and a number or a point out
+// of its range clamps, each with a warning. color resolves a binding in
+// an appearance (0 light, 1 dark), so that each color param holds a color
+// of each appearance.
+func ResolveParams(src *ShaderSource, slot *ShaderSlot, color func(b Binding, dark int) ui.Color) (map[string]Param, []string) {
+	var warn []string
+	out := map[string]Param{}
+	names := slices.Sorted(maps.Keys(src.Params))
+	for name := range slot.Params {
+		if _, ok := src.Params[name]; !ok {
+			names = append(names, name)
+		}
+	}
+	slices.Sort(names)
+	for _, name := range names {
+		d, ok := src.Params[name]
+		if !ok {
+			warn = append(warn, fmt.Sprintf("params.%s: the shader declares no such param (dropped)", name))
+			continue
+		}
+		v := d.Default
+		if p, set := slot.Params[name]; set {
+			switch {
+			case p.kind() != d.Kind:
+				warn = append(warn, fmt.Sprintf("params.%s: not a %s, the default %s applies", name, d.Kind, d.def))
+			case d.Kind == ParamToggle:
+				v = Param{Nums: []float32{0}}
+				if *p.On {
+					v.Nums[0] = 1
+				}
+			case d.Kind == ParamNumber:
+				x := p.Nums[0]
+				v = Param{Nums: []float32{min(max(x, d.Min), d.Max)}}
+				if x < d.Min {
+					warn = append(warn, fmt.Sprintf("params.%s: %g is below the min %g, so it is %g", name, x, d.Min, d.Min))
+				} else if x > d.Max {
+					warn = append(warn, fmt.Sprintf("params.%s: %g is above the max %g, so it is %g", name, x, d.Max, d.Max))
+				}
+			case d.Kind == ParamPoint:
+				v = Param{Nums: []float32{min(max(p.Nums[0], 0), 1), min(max(p.Nums[1], 0), 1)}}
+				if !slices.Equal(v.Nums, p.Nums) {
+					warn = append(warn, fmt.Sprintf("params.%s: %g,%g is outside 0 to 1, so it is %g,%g", name, p.Nums[0], p.Nums[1], v.Nums[0], v.Nums[1]))
+				}
+			default:
+				v = p
+			}
+		}
+		if v.Bind != nil {
+			v = Param{Color: &[2]ui.Color{color(*v.Bind, 0), color(*v.Bind, 1)}}
+		}
+		out[name] = v
+	}
+	return out, warn
 }
 
 // uniformType reads a uniform's type: an identifier, or an array of one
@@ -409,23 +735,47 @@ func (p Param) fits(t UniformType) bool {
 }
 
 // CheckUniforms checks the uniforms of src against the API table and the
-// slot's params: each uniform GoRex sets has its type, each param fits its
-// uniform. reserved names uniforms that GoRex adds to the source, which
-// the shader may not declare. A uniform neither sets is zero, and a param
-// with no uniform does nothing; each gives a warning. It fails on a
-// uniform of the wrong type.
-func CheckUniforms(src *ShaderSource, slot *ShaderSlot, reserved ...string) (warn []string, err error) {
+// slot's params, by the API version api: each uniform GoRex sets has its
+// type, each param fits its uniform. reserved names uniforms that GoRex
+// adds to the source, which the shader may not declare. In version 1 a
+// uniform neither sets is zero, and a param with no uniform does nothing;
+// each gives a warning. It fails on a uniform of the wrong type. In
+// version 2 each other uniform has a declaration that parses and fits its
+// type, at most maxParams of them, and no API uniform has one
+// (docs/DSK-012, Declared params); ResolveParams warns of the manifest's
+// values.
+func CheckUniforms(src *ShaderSource, slot *ShaderSlot, api int, reserved ...string) (warn []string, err error) {
+	if api == ShaderAPI2 && len(src.Params)+len(src.badParams) > maxParams {
+		return nil, fmt.Errorf("declares more than %d params", maxParams)
+	}
 	for _, name := range slices.Sorted(maps.Keys(src.Uniforms)) {
 		t := src.Uniforms[name]
 		if slices.Contains(reserved, name) {
 			return warn, fmt.Errorf("uniform %s: a name GoRex keeps", name)
 		}
+		_, declared := src.Params[name]
+		bad, badDecl := src.badParams[name]
 		if want, ok := apiType(name); ok {
+			if api == ShaderAPI2 && (declared || badDecl) {
+				return warn, fmt.Errorf("uniform %s: GoRex sets this uniform, which takes no %s", name, paramMarker)
+			}
 			if _, seed := SeedUniform(name); strings.HasPrefix(name, "Seed") && !seed {
 				return warn, fmt.Errorf("uniform %s: no such seed", name)
 			}
 			if t != want {
 				return warn, fmt.Errorf("uniform %s: a %s, not a %s", name, t, want)
+			}
+			continue
+		}
+		if api == ShaderAPI2 {
+			switch {
+			case badDecl:
+				return warn, fmt.Errorf("uniform %s: %v", name, bad)
+			case !declared:
+				return warn, fmt.Errorf("uniform %s: no %s declares it", name, paramMarker)
+			}
+			if err := fitsDecl(src.Params[name].Kind, t); err != nil {
+				return warn, fmt.Errorf("uniform %s: %v", name, err)
 			}
 			continue
 		}
@@ -439,7 +789,7 @@ func CheckUniforms(src *ShaderSource, slot *ShaderSlot, reserved ...string) (war
 		}
 	}
 	for _, name := range slices.Sorted(maps.Keys(slot.Params)) {
-		if _, ok := src.Uniforms[name]; !ok {
+		if _, ok := src.Uniforms[name]; !ok && api != ShaderAPI2 {
 			warn = append(warn, fmt.Sprintf("params.%s: the shader has no such uniform", name))
 		}
 	}
