@@ -150,11 +150,11 @@ func toastView(c *ui.Context, k *colors, t ui.Toast, m *toastMsg) {
 		// Read out at once: what the user asked for did not happen.
 		root.Role(ui.RoleAlert)
 	}
-	toastShadow(root.Row().Gap(10).Padding(8, 10, 8, 14).Radius(radiusL).Background(k.panel).Border(1, k.panelBorder), k).AlignItems(ui.Center)
+	toastShadow(root.Row().Gap(10).Padding(8, 10, 8, 14).Radius(k.radius(radiusL)).Background(k.panel).Border(k.borderW(), k.panelBorder), k).AlignItems(ui.Center)
 	root.Children(func() {
 		switch m.kind {
 		case toastError:
-			ui.Box(c).Size(8, 8).Radius(capsule(8)).Background(k.danger).Shrink(0)
+			ui.Box(c).Size(8, 8).Radius(k.capsule(8)).Background(k.danger).Shrink(0)
 		case toastStatus:
 			glyphIcon(c, "check", 14, k.textMuted).Shrink(0)
 		}

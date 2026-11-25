@@ -67,7 +67,7 @@ func (a *App) quitConfirm(c *ui.Context, k *colors) {
 	ui.DialogBase(c.Key("quit-confirm"), &a.quitAsk, func(backdrop, panel ui.Element) {
 		dialogEnter(c, backdrop, panel)
 		backdrop.Background(k.backdrop)
-		dialogShadow(glassPanel(panel.Width(380).Padding(20).Radius(radiusXXL), k).Border(1, k.panelBorder)).Role(ui.RoleDialog).Label(title)
+		dialogShadow(glassPanel(panel.Width(380).Padding(20).Radius(k.radius(radiusXXL)), k).Border(k.borderW(), k.panelBorder), k).Role(ui.RoleDialog).Label(title)
 		ui.Column(c).Gap(10).Children(func() {
 			ui.Text(c, title).FontSize(fontTitle).FontWeight(700).TextColor(k.text)
 			ui.Text(c, locales.QuitEndBody(n)).FontSize(fontBody).TextColor(k.textMuted).LineHeight(1.35)

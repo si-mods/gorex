@@ -1746,7 +1746,8 @@ func (a *App) errorBanner(c *ui.Context, k *colors) {
 				a.bannerTop = top
 				c.Invalidate()
 			}
-			panel.Children(func() {				dot := k.danger
+			panel.Children(func() {
+				dot := k.danger
 				if n != nil && (n.wait || n.info) {
 					dot = k.busy
 				}
