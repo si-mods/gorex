@@ -290,7 +290,7 @@ func (m *Manifest) uses() map[string]assetUse {
 		u.icon = true
 		out[m.Brand.Icon] = u
 	}
-	for _, slot := range m.Shaders.slots() {
+	for _, slot := range m.Shaders.layers() {
 		u := out[slot.Source]
 		u.kage = true
 		out[slot.Source] = u
@@ -303,18 +303,23 @@ func (m *Manifest) uses() map[string]assetUse {
 	return out
 }
 
-// slots returns the slots of s, none for a nil s.
-func (s *Shaders) slots() []*ShaderSlot {
+// layers returns the layers of the slots of s, none for a nil s.
+func (s *Shaders) layers() []*ShaderLayer {
 	if s == nil {
 		return nil
 	}
-	out := []*ShaderSlot{}
+	var out []*ShaderLayer
+	add := func(slot *ShaderSlot) {
+		for i := range slot.Layers {
+			out = append(out, &slot.Layers[i])
+		}
+	}
 	if s.Background != nil {
-		out = append(out, s.Background)
+		add(s.Background)
 	}
 	for _, r := range FaceRoles {
 		if f := s.Faces[r]; f != nil {
-			out = append(out, f)
+			add(f)
 		}
 	}
 	return out
