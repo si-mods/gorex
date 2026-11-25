@@ -3,12 +3,12 @@ name: MOD-009
 description: "An action on the desktop asks a question, and every GoRex client that can show it does; the phone answers the gateway's actions through the Rex API broker. Use when you change gorex.ui, the server's prompt broker, or the prompt sheet on a client."
 metadata:
   created: "2026-11-21"
-  updated: "2026-11-21"
+  updated: "2026-11-25"
 ---
 
 # MOD-009: Questions across GoRex's clients
 
-Status: built (#959).
+Status: built (#959). The radio and check box rows and the reason for a disabled Send follow #1098.
 
 This doc adds a prompt channel to GoRex's own protocol, and the desktop app's prompt sheet. It is the GoRex-protocol counterpart of [MOD-005](MOD-005-client-prompts.md), which serves Rex's clients, the phone among them ([IOS-017](IOS-017-prompt-sheet.md)). It follows [DOC-001](DOC-001-design-docs.md).
 
@@ -45,6 +45,8 @@ The user pays for it: an action such as "New worktree" runs on the desktop and c
 - Every GoRex client that can show the question does so. That is each window of the desktop app, and any later client that lists the capability.
 - The person answers in one window. The other windows close the question, and the action continues with the answer.
 - The window that asked shows its own question too, so one window is enough.
+- A pick shows how many answers it takes, by the mark of its rows. A question that takes one answer (`multiple` is false) shows radio rows: one radio group, a round mark, role radio, "1 of 3" for assistive technology. The arrow keys choose the previous or next row. A question that takes several shows check box rows: a square mark with a check, role check box; the arrow keys move the focus and Space checks the row.
+- While no row is chosen and the Other field is empty, Send is disabled and the sheet says why, in text beside it: "Pick an answer". An input has no such state.
 - A person closes a question. The other devices close it, and the action receives a cancel.
 - No device answers within the timeout. Every device closes it, and the action receives a timeout error.
 - A device cannot show the question. It answers `not_supported`, and the other devices keep it.
@@ -72,7 +74,7 @@ The user pays for it: an action such as "New worktree" runs on the desktop and c
 - `commands.go`, `layoutcmd.go`, `keymap.go`: the app runs a custom action off the main thread, so that the window draws while its question waits, and answers the command that started it without waiting for the answer.
 - `commands.go`: the app sets the `gorex.ui` host to `askUI`, which opens the question on the app's server connection, and runs the action with `actionClock`.
 - `actionclock.go`: the action's time, which pauses while a question is open.
-- `promptsheet.go`: the question's panel over the window, an input or a pick, with Cancel and the confirm; the keyboard moves over a pick's items, and Return answers the row it is on.
+- `promptsheet.go`: the question's panel over the window, an input or a pick, with Cancel and the confirm. A pick's rows are `ui.RadioBase` in a `ui.RadioGroup`, or `ui.CheckboxBase` in a vertical focus group, drawn with `choiceMark`. Return answers while the confirm is enabled.
 - `internal/rex/client.go`: `DeclareCapabilities`, `PromptOpen` and `PromptReply`; `workspace.go` declares the capability before each hello, the upgrade's connection included, and shows the events.
 - A server without the capability answers `prompt.open` with "unknown op", and the action fails with a message that names the server.
 - A client that cannot show a prompt answers `unsupported` once, and the server removes it from the question.
@@ -102,6 +104,7 @@ The user pays for it: an action such as "New worktree" runs on the desktop and c
 - `TestPromptFirstAnswerWins`, with two clients: both receive the question, the first answer wins and reaches the asker, and the second client receives `ended` with `answered`; a late answer is refused.
 - `TestPromptTimeout`, `TestPromptCancel`, `TestPromptUnsupported`, `TestPromptUnsupportedByAll`, `TestPromptPickChecks`, `TestPromptBusyClient` and `TestPromptSpecChecks` cover the rest of the model.
 - `TestActionClockPauses`: a question's time does not count toward the action's, and the time it had left continues after the answer.
+- `TestPromptPickOneShowsRadios`, `TestPromptPickSeveralShowsCheckboxes` and `TestPromptSendSaysWhyItIsOff` check the roles, "1 of 3", the arrow keys, Space and the reason beside a disabled Send.
 - A run of the real app on the Mac mini, with a config action that asks, showed an input and a pick, and the action's Lua received the typed text, the chosen ID and `nil` for a cancel.
 - This change touches no item in [invariants.md](invariants.md).
 

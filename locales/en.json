@@ -2918,6 +2918,10 @@
   "@promptOther": {
     "description": "Placeholder of a prompt sheet's free-text answer."
   },
+  "promptPick": "Pick an answer",
+  "@promptPick": {
+    "description": "Beside a prompt sheet's disabled confirm button while no answer is picked: why it is off."
+  },
   "promptSend": "Send",
   "@promptSend": {
     "description": "Confirm button of a prompt sheet with no label of its own."

@@ -46,6 +46,16 @@
         }
       }
     },
+    "%lld of %lld": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "第 %lld 项，共 %lld 项"
+          }
+        }
+      }
+    },
     "%lld projects": {
       "localizations": {
         "en": {
@@ -280,6 +290,16 @@
         }
       }
     },
+    "Checked": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已勾选"
+          }
+        }
+      }
+    },
     "Choose": {
       "localizations": {
         "zh-Hans": {
@@ -420,6 +440,16 @@
         }
       }
     },
+    "Not checked": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "未勾选"
+          }
+        }
+      }
+    },
     "Only the first 2000 folders are shown.": {
       "localizations": {
         "zh-Hans": {
@@ -446,6 +476,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "打开这个文件？"
+          }
+        }
+      }
+    },
+    "Pick an answer": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请选择答案"
           }
         }
       }

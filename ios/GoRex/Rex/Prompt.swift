@@ -96,3 +96,35 @@ nonisolated extension Prompt.Item {
         )
     }
 }
+
+/// How a pick marks its items, by how many answers it takes: a radio button
+/// for exactly one, a check box for any number (docs/IOS-017-prompt-sheet.md).
+nonisolated enum ChoiceKind: Equatable {
+    case radio
+    case checkbox
+
+    init(multiple: Bool) { self = multiple ? .checkbox : .radio }
+
+    /// The SF Symbol of the mark: a circle, or a square with a check.
+    func symbol(picked: Bool) -> String {
+        switch self {
+        case .radio: return picked ? "circle.inset.filled" : "circle"
+        case .checkbox: return picked ? "checkmark.square.fill" : "square"
+        }
+    }
+}
+
+extension Prompt.Spec {
+    /// The mark of this question's items.
+    nonisolated var choiceKind: ChoiceKind { ChoiceKind(multiple: multiple) }
+
+    /// Whether Send can answer: an input always can, a pick once an item
+    /// is chosen or an Other text (already trimmed) is typed. While it
+    /// cannot, the sheet says "Pick an answer".
+    nonisolated func canAnswer(picked: Set<String>, other: String) -> Bool {
+        switch kind {
+        case .input: return true
+        case .pick: return !picked.isEmpty || (allowOther && !other.isEmpty)
+        }
+    }
+}
