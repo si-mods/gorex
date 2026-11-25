@@ -8,7 +8,7 @@ metadata:
 
 # DSK-012: Theme shaders and metrics
 
-Status: phases 1 and 2 built (#1096, #1105). Phase 6 (shader API version 2): declared params and the checks of the param range built; layers built; `Pointer` designed. Phases 3 and 5 not built; phase 4 dropped (DSK-010 User decisions 8).
+Status: phases 1 and 2 built (#1096, #1105). Phase 6 (shader API version 2): declared params and the checks of the param range built; layers and `Pointer` built. Phases 3 and 5 not built; phase 4 dropped (DSK-010 User decisions 8).
 
 GoRex ships capabilities, never a look ([DSK-008](DSK-008-theme.md) Non-goals): every look of this doc comes from a pack's own shaders and assets.
 
@@ -247,7 +247,7 @@ DSK-010 caps stay, with these changes:
 
 | Item | DSK-010 | This doc |
 | --- | --- | --- |
-| Formats | PNG, GIF, APNG, SVG | Adds `.kage` text files, 16 KiB each |
+| Formats | PNG, GIF, APNG | Adds `.kage` text files, 16 KiB each |
 | Names | 16 | 24 |
 | A still image that only shaders read | 1024 px on a side, 1 MiB | 2048 px on a side, 2 MiB |
 | Pack | 4 MiB | 8 MiB |
@@ -295,7 +295,7 @@ A wallpaper that fills a 2560 px window at 1024 px looks soft. At 2048 px it is 
 
 ## Shader API version 2: declared params, layers and the pointer
 
-Status: designed 2026-11-25 (phase 6). Declared params, the checks of the param range and layers built; `Pointer` not built. The model follows Figma's shaders (shaders.figma.com, Figma's plugin API `Shader` type and its review guidelines): a shader declares its own params with a kind, a default and a range; a slot stacks shaders in order; a shader may read the pointer, and asks for frames only for the inputs it reads. GoRex takes these ideas and not Figma's effect shaders, which read the pixels drawn under them (see Alternatives), or its library of built-in looks, which DSK-008's rule forbids: GoRex ships capabilities, never a look ([DSK-008](DSK-008-theme.md) Non-goals).
+Status: designed 2026-11-25 (phase 6). Declared params, the checks of the param range, layers and `Pointer` built. The model follows Figma's shaders (shaders.figma.com, Figma's plugin API `Shader` type and its review guidelines): a shader declares its own params with a kind, a default and a range; a slot stacks shaders in order; a shader may read the pointer, and asks for frames only for the inputs it reads. GoRex takes these ideas and not Figma's effect shaders, which read the pixels drawn under them (see Alternatives), or its library of built-in looks, which DSK-008's rule forbids: GoRex ships capabilities, never a look ([DSK-008](DSK-008-theme.md) Non-goals).
 
 ### Why
 
@@ -376,8 +376,11 @@ Version 2 adds one uniform to the API table:
 | `Pointer` | `vec4` | x and y: the pointer in the window, in DIPs, as `Origin`. z: 1 while the pointer is over the window, else 0; x and y then keep the last position. w: 1 while the primary button is down |
 
 - GoRex tracks the pointer only while a slot reads `Pointer`. A pointer move then asks for a frame, at most `themeShaderFPS` a second.
+- GoRex reads the pointer from MyGo's window (`Painter.Pointer`, si-mods/mygo#46) as it paints the background, and asks for the moves with `Painter.WatchPointer`. Such a frame paints again without building the view. The watch makes no element look at the pointer: hovers, presses and clicks stay as they are, and moves over a terminal count. A face that reads `Time` or `Pointer` asks for the frames again as it paints (`faceShader.PaintMaterial`). MyGo paints such a face again as a part of its own, not the whole window (si-mods/mygo#47).
+- On macOS, moves over a web view pane go to the web view: `Pointer` keeps its last place there.
+- A finger on a touch screen does not move `Pointer`.
 - The still rule applies as for `Time` (`themeShaderMoves`): while ambience is still, z is 0, the value stands, and a pointer move asks for no frame.
-- `Pointer` is part of version 2 only. A version 1 shader that declares it fails check 3, as now.
+- `Pointer` is part of version 2 only. In version 1, Pointer is an ordinary param, as before.
 
 ### Checks of the param range
 
@@ -387,7 +390,7 @@ A user, a later Settings control or a seed binding can pick any value in the dec
 2. For each `number`: its min, then its max, the others as in 1.
 3. For each `toggle`: the other value.
 4. For each `point`: 0,0, then 1,1.
-5. For a shader that reads `Pointer`: z = 0; then z = 1 and w = 1 at the center of the drawn rectangle; then z = 1 at its top left corner.
+5. For a shader that reads `Pointer`: z = 0; then z = 1 and w = 1 at the center of the drawn rectangle; then z = 1 at its top left corner. For the background slot also z = 1 and w = 1 at the center of the sidebar's column, where check 6 reads.
 
 Colors are not varied: checks 5 and 6 already run in both appearances, with each binding resolved. Checks 4 to 6 run on each variant. Variant 1 draws all the time, origin and window samples of version 1; the other variants draw fewer (see below). Variants of the layers of one slot vary one layer at a time, the others as in 1. A slot fails when any variant fails, and the warning names the param and the value: `Glow at 1 (max): in the light appearance at 0 s, text has 3.1:1 at 4,2, below 4.5:1`.
 
@@ -395,8 +398,8 @@ The checks stay on `loadArt`'s goroutine, and the windows draw the flat colors u
 
 ### Code
 
-- `internal/theme/shaders.go`: `ShaderAPI1` and `ShaderAPI2`, and `Shaders.API` holds the version of a manifest; `ShaderSlot` holds `Layers []ShaderLayer`, and a `ShaderLayer` its source, images, params and `Opacity`; `parseSlot` reads a layer or a list, and caps the layers of a slot and of the theme; `ParseShaderSource` parses comments and returns the declarations (`ShaderSource.Params`, a `ParamDecl` each); `CheckUniforms` takes the API version; a `Param` holds a toggle (`On`) and a binding (`Bind`, `seed:` or `role:`) besides numbers and colors; `ResolveParams` lays the manifest's values over the defaults and resolves the bindings.
-- `themeshader.go`: a `themeSlot` holds its layers (`themeLayer`, each compiled by `compileLayer`), and a face of version 2 draws them over its flat color; a layer whose opacity is under 1 draws through the background's wrapper, whose `GorexAlpha` then carries the opacity; `layerCost` times a layer and `costLimit` checks the sum; `slotEnv` holds what the checks read, and resolves a binding from the theme's seeds and flat role colors; `checkSlot` runs the variants (`rangeVariants`), the first with `allSamples`, the others with `fewSamples`; `draw` and `faceShader.PaintMaterial` draw the layers in order; the pointer state sits beside `shaderClock`.
+- `internal/theme/shaders.go`: `ShaderAPI1` and `ShaderAPI2`, and `Shaders.API` holds the version of a manifest; `ShaderSlot` holds `Layers []ShaderLayer`, and a `ShaderLayer` its source, images, params and `Opacity`; `parseSlot` reads a layer or a list, and caps the layers of a slot and of the theme; `ParseShaderSource` parses comments and returns the declarations (`ShaderSource.Params`, a `ParamDecl` each); `apiType` and `CheckUniforms` take the API version, and `apiUniformsV2` holds `Pointer`, which in version 1 stays an ordinary param; a `Param` holds a toggle (`On`) and a binding (`Bind`, `seed:` or `role:`) besides numbers and colors; `ResolveParams` lays the manifest's values over the defaults and resolves the bindings.
+- `themeshader.go`: a `themeSlot` holds its layers (`themeLayer`, each compiled by `compileLayer`), and a face of version 2 draws them over its flat color; a layer whose opacity is under 1 draws through the background's wrapper, whose `GorexAlpha` then carries the opacity; `layerCost` times a layer and `costLimit` checks the sum; `slotEnv` holds what the checks read, and resolves a binding from the theme's seeds and flat role colors; `checkSlot` runs the variants (`rangeVariants`), the first with `allSamples`, the others with `fewSamples`; `draw` and `faceShader.PaintMaterial` draw the layers in order; `tickShaders` reads the pointer into the frame (`shaderFrame.pointer`) beside `shaderClock`, and keeps its place with z and w at 0 while still, in a `shaderWindow` of each window (`windowShader`), so that one window's pointer never shows in another; `rangeVariants` adds item 5 for a layer that reads `Pointer` (`themeLayer.pointerAt`).
 - The two packs move to version 2: their shaders declare their params, and each uses at least one layer list or `Pointer` where its look wants it.
 
 ## Alternatives
@@ -438,7 +441,7 @@ The rest of the DSK-008 and DSK-010 rules stay: no URL, no network at run time, 
 - **Description**: `description` parses, is cleaned and cut to 160 characters (`TestParseDescription`), and shows under the theme's name (`TestThemeDescription`).
 - **Background**: with no theme shader, the window background is byte-exact as now (`TestBackgroundShader`, and `TestThemeBackgroundShader` with a theme that has only face shaders). With one, the pixel at a known point has its color (`TestThemeBackgroundShader`).
 - **CPU renderer**: on the CPU renderer, no theme shader draws, and each slot draws its flat color (`TestThemeShaderCPU`).
-- **Still**: a background or face shader that reads `Time` asks for no frame under each condition of the DSK-010 still rule, and its `Time` stands (`TestThemeShaderStill`).
+- **Still**: a background or face shader that reads `Time` asks for no frame under each condition of the DSK-010 still rule, and its `Time` stands (`TestThemeShaderStill`). A face shader that reads `Time` moves in the frames that only paint, without a build (`TestThemeShaderFaceTime`).
 - **Metrics**: `radius: 0` gives square panes, rows and menus. `concentric` never goes below 0. `border` changes the pane card border. `shadow.hard` gives a blur of 0. A font list with no installed family uses the system font (`TestThemeMetrics`).
 - **Tokens**: `TestDesignTokens` fails on a bare radius token in UI code.
 - **Glass**: a theme with `"glass": false` turns the glass off over `noGlass: false`, and `"glass": true` turns it on over `noGlass: true`. `settings.json` keeps the user's value. With no theme, the user's value applies again. The Settings switch is off limits while a theme decides (`TestThemeGlass`).
@@ -446,7 +449,7 @@ The rest of the DSK-008 and DSK-010 rules stay: no URL, no network at run time, 
 - **Old build**: a manifest of this doc parses under the DSK-010 parser with warnings and the same colors (`TestParseDrops`, extended).
 - **Probes**: screenshots of both packs through the `GOREX_DEBUG` hook, light and dark, tiled, canvas and empty page, glass on and off, beside the probe's `preview.png`.
 
-- **Version 2**: declarations parse, and each bad one fails check 3 (`TestShaderDeclarations`); a manifest value overrides, clamps or drops to the default with a warning, and `seed:` and `role:` bindings resolve in each appearance (`TestParseShadersV2`, `TestThemeShaderBindings`); a shader readable at its defaults and unreadable at a number's max fails, with the param and value in the warning (`TestThemeShaderRange`); a slot takes a list of layers, with a clamped opacity, and a list past 4 or a slot past the 16 layers of the theme drops whole (`TestParseShaderLayers`); layers draw in order with their opacity, their costs add, a bad layer drops the slot, and a variant names its layer (`TestThemeShaderLayers`); a shader that reads `Pointer` asks for a frame on a pointer move, none when still, and fails when unreadable with the pointer pressed at the center (`TestThemeShaderPointer`); a version 2 pack under a version 1 build drops `shaders` with a warning (`TestParseShaders`, extended).
+- **Version 2**: declarations parse, and each bad one fails check 3 (`TestShaderDeclarations`); a manifest value overrides, clamps or drops to the default with a warning, and `seed:` and `role:` bindings resolve in each appearance (`TestParseShadersV2`, `TestThemeShaderBindings`); a shader readable at its defaults and unreadable at a number's max fails, with the param and value in the warning (`TestThemeShaderRange`); a slot takes a list of layers, with a clamped opacity, and a list past 4 or a slot past the 16 layers of the theme drops whole (`TestParseShaderLayers`); layers draw in order with their opacity, their costs add, a bad layer drops the slot, and a variant names its layer (`TestThemeShaderLayers`); a shader that reads `Pointer` follows a move and a press, stands with z and w at 0 when still and asks for no frame, fails when unreadable with the pointer pressed at the center or, for the background, in the sidebar, keeps a place of its own in each window, and in version 1 is an ordinary param (`TestThemeShaderPointer`; the frames a move asks for are MyGo's `TestWatchPointer`); a version 2 pack under a version 1 build drops `shaders` with a warning (`TestParseShaders`, extended).
 
 No item in `docs/invariants.md` covers the theme.
 

@@ -15,7 +15,7 @@ func TestBackgroundShader(t *testing.T) {
 			ui.Box(c).Fill().Draw(func(p *ui.Painter, r ui.Rect) { background.Draw(p, r, backgroundOptions(k, 1)) })
 		}, w, h).Image()
 		plain := ui.NewTester(func(c *ui.Context) {
-			ui.Box(c).Fill().Draw(func(p *ui.Painter, r ui.Rect) { paintBackground(p, r, k, 1, false, false) })
+			ui.Box(c).Fill().Draw(func(p *ui.Painter, r ui.Rect) { paintBackground(p, r, k, 1, false, false, nil) })
 		}, w, h).Image()
 		worst := 0
 		for y := 0; y < h; y++ {

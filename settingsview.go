@@ -223,7 +223,9 @@ func (a *App) settingsView(c *ui.Context) {
 	setupMenus(c)
 	rootBackground(c, k.bgBottom)
 	wash, dark, moves := backgroundAlpha(c), c.Theme().Dark, themeShaderMoves(c)
-	ui.Row(c).Fill().AlignItems(ui.Stretch).Draw(func(p *ui.Painter, r ui.Rect) { paintBackground(p, r, k, wash, dark, moves) }).Children(func() {
+	root := ui.Row(c).Fill().AlignItems(ui.Stretch)
+	sw := windowShader(root)
+	root.Draw(func(p *ui.Painter, r ui.Rect) { paintBackground(p, r, k, wash, dark, moves, sw) }).Children(func() {
 		// The sidebar paints no face: the window's glass shows through it,
 		// and the traffic lights sit at its top on macOS.
 		ui.Column(c).Width(settingsSidebarW).Shrink(0).Children(func() {

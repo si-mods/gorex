@@ -106,8 +106,10 @@ func (a *App) view(c *ui.Context) {
 	rootBackground(c, k.bgBottom)
 	wash, moves := backgroundAlpha(c), themeShaderMoves(c)
 	dark := c.Theme().Dark
-	ui.Column(c).Fill().Draw(func(p *ui.Painter, r ui.Rect) {
-		paintBackground(p, r, k, wash, dark, moves)
+	root := ui.Column(c).Fill()
+	sw := windowShader(root)
+	root.Draw(func(p *ui.Painter, r ui.Rect) {
+		paintBackground(p, r, k, wash, dark, moves, sw)
 	}).Children(func() {
 		if prefs.TabPlacement != "" {
 			a.sidebarLayout(c, k, prefs.TabPlacement == "right")
