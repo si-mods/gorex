@@ -3,7 +3,7 @@ name: DSK-010
 description: "A theme pack can carry images and declare ambience: background glows, a watermark, swimming sprites, a mascot with quotes and a popup, a brand row and a quote ticker, as data with caps. Use when you add image assets or motion to theme packs, change where ambience draws, or change the ambience and mascot settings."
 metadata:
   created: "2026-11-24"
-  updated: "2026-11-24"
+  updated: "2026-11-25"
 ---
 
 # DSK-010: Theme assets and ambience
@@ -163,7 +163,7 @@ Moving layers and the mascot run in one of two states. **Moving** paints at 20 f
 
 With Ambience Off, layers 1 to 3 paint as with no theme ambience, and the ticker does not show. The mascot has its own setting.
 
-A paint-only frame repaints the whole window on the GPU (`repaint` in MyGo's `ui/runtime.go`). The working dots already do this at 30 frames a second. The budget for ambience is:
+A paint-only frame redraws only the damaged rectangles on the GPU (`scene.Differ` and `Present1` dirty rectangles in MyGo's D3D11 renderer; buffer age on Metal and GL). Each frame still costs a present to the compositor. The working dots already do this at 30 frames a second. The budget for ambience is:
 
 | Measure | Budget |
 | --- | --- |
@@ -174,7 +174,7 @@ A paint-only frame repaints the whole window on the GPU (`repaint` in MyGo's `ui
 | Idle CPU, window not active | No difference from a theme with no ambience: no frame, no timer |
 | Ticker | One `Context.After` timer. None while the window is not active or hidden |
 
-Phase 2 measures these numbers on a Windows PC and on a Mac and writes them in its PR. If the idle CPU is over the budget, phase 2 lowers the rate to 20 frames a second. If that is not sufficient, the MyGo change M2 (see Code) comes first.
+Phase 2 measures these numbers on a Windows PC and on a Mac and writes them in its PR. If the idle CPU is over the budget, phase 2 lowers the rate to 20 frames a second.
 
 Phase 2 measured on a Windows PC (#1099), with all sprite caps used (8 sprites 200 DIPs high, one a sprite sheet), a window of 1920×1032 px, two panes and no output, over 30 s for each run. The Mac is not measured yet.
 
@@ -186,7 +186,7 @@ Phase 2 measured on a Windows PC (#1099), with all sprite caps used (8 sprites 2
 | Idle CPU, moving at 20 frames a second, tiled panes | 7.2% to 9.5% of one core: over the budget |
 | Idle CPU, moving at 20 frames a second, canvas zoomed out | 6.6% to 6.7% of one core: over the budget |
 
-GoRex records the draws in about 0.01 ms. The cost is in MyGo's renderer, which draws each frame of the whole window. GoRex paints at 20 frames a second, as the rule above says. That is not sufficient: the idle CPU is still about 6 points over Still. M2 is the next step, before the budget can hold. The user accepted phase 2 over the budget (User decisions, 7). M2 is separate work.
+GoRex records the draws in about 0.01 ms, and MyGo redraws only the sprites' old and new rectangles. The cost is the present of each frame: `IDXGISwapChain1::Present1` takes about 1 to 2 ms of CPU, mostly in the kernel, plus about as much in driver threads. It grows with the frame rate, not with the damaged area, so partial repaint does not lower it. GoRex paints at 20 frames a second. The user accepted phase 2 over the budget, and tuning the cost is out of the scope of this doc (User decisions, 7).
 
 ### Mascot
 
@@ -229,10 +229,9 @@ The mascot is an element in the sidebar foot, not an overlay. It thus never cove
 - Install (`iconpack.Checkout`): with a `ref`, GoRex makes a shallow fetch of that commit (`git fetch --depth 1 origin <ref>`, then `git checkout --detach FETCH_HEAD`), and checks that `HEAD` is `ref`. If the fetch fails, the install fails. GoRex does not fall back to the default branch. A `ref` that is not 40 hex characters is refused.
 - Validation: the registry CI validates. For each `themes` entry with a `repo` outside `gorex-registry`, CI clones the repo at `ref` and runs the pack validator on it: the caps, the formats, the asset names that the manifest uses, a `NOTICE` for a pack with assets, and each license file that the `NOTICE` names. A registry PR that adds an entry or moves its `ref` is thus checked on the files that users get. GoRex does not trust this check: at install and at each load, the parser and the loader apply the same caps (see Caps and Security). A local pack (`gorex pack install <folder>`) gets only the GoRex check.
 
-MyGo has each primitive that the design needs (MyGo v0.10.1, `si-mods/mygo`): `DecodeBitmapScaled`, `Painter.ImageRegion` with `FlipX` and `Tint`, `NewGIFDecoder`, `NewAPNGDecoder` and `VideoPlayer`, `shader.DrawInstances`, `Painter.Clip`, `Painter.AnimationFrameRate`, `AnimatePose`, `TooltipBase`, `Clicked`, `DoubleClicked`, `Hovered`, `Context.WindowActive`, `Context.WindowHidden`, `Preferences.ReduceMotion` and `Power.IsOnBattery`. No MyGo change is necessary. Two changes are optional:
+MyGo has each primitive that the design needs (MyGo v0.10.1, `si-mods/mygo`): `DecodeBitmapScaled`, `Painter.ImageRegion` with `FlipX` and `Tint`, `NewGIFDecoder`, `NewAPNGDecoder` and `VideoPlayer`, `shader.DrawInstances`, `Painter.Clip`, `Painter.AnimationFrameRate`, `AnimatePose`, `TooltipBase`, `Clicked`, `DoubleClicked`, `Hovered`, `Context.WindowActive`, `Context.WindowHidden`, `Preferences.ReduceMotion` and `Power.IsOnBattery`. No MyGo change is necessary. One change is optional:
 
 - **M1, decode limits** (optional): `DecodeBitmap`, `NewGIFDecoder` and `NewAPNGDecoder` have no pixel or frame cap. A GIF decodes all frames into memory. GoRex checks the headers before it calls them, so M1 is not necessary. M1 would add `ui.DecodeLimits` (max pixels, max frames) so that each MyGo app gets the check.
-- **M2, partial repaint on the GPU** (only if the phase 2 budget fails): a paint-only frame repaints the whole window. M2 would repaint only the damaged rectangles, as the CPU renderer does now.
 
 ### Capability matrix
 
@@ -253,7 +252,7 @@ MyGo has each primitive that the design needs (MyGo v0.10.1, `si-mods/mygo`): `D
 | F13 | Selection and scrollbar | Partial: UI selection follows `accent`. Terminal selection is in the Ghostty theme | None. A scrollbar role can come later in DSK-008 | n |
 | F14 | Asset server and install fetch | Not needed: assets are files in the pack | Install copies the assets. No runtime fetch. No install-time fetch outside the registry | n |
 | — | Decode limits | — | GoRex checks headers | Optional (M1) |
-| — | Frame cost | — | Phase 2 budget | Only if the budget fails (M2) |
+| — | Frame cost | — | Phase 2 budget | n |
 
 ### User decisions
 
@@ -265,7 +264,7 @@ The user decided the four questions of the first draft on 2026-11-24, item 5 in 
 4. **Battery**: on battery, each animation freezes (see Motion and the budget).
 5. **No switches on the Extensions page** (2026-11-24, on #1083): the Extensions page adds no control for ambience or the mascot. `appearance.ambience` and `appearance.mascot` are set in `settings.json`.
 6. **No built-in particle look** (2026-11-24, on #1099): GoRex ships no bubble or other particle shader. Particles come from a theme's own shader ([DSK-012](DSK-012-theme-shaders.md)). GoRex is a base for themes, and draws no look that a theme did not bring.
-7. **Phase 2 over the budget** (2026-11-25, on #1099): phase 2 merges at 20 frames a second over the idle CPU budget. MyGo M2 is separate work that brings it within the budget.
+7. **Phase 2 over the budget** (2026-11-25, on #1099): phase 2 merges at 20 frames a second over the idle CPU budget. The goal of this doc is a base of capabilities for themes; tuning the frame cost is not in it. No MyGo change follows.
 
 ## Alternatives
 
@@ -352,4 +351,4 @@ No item in `docs/invariants.md` covers the theme or ambience. The focus rule of 
 3. **Mascot and ticker** (M, about 600 lines): still, animated and sprite sheet mascot, bob, click, double click, hide, bubbles and the ticker. A self-made animated whale validates GIF and sprite sheets.
 4. **Dafy Whale pack** (S): a new public repo `si-mods/gorex-theme-dafy-whale`, not in gorex and not in `gorex-registry`. Its root has `theme.json`, `assets/` (the MIT whale art, the two fish PNGs scaled down, a self-made icon, the self-made animated whale), `LICENSE` (MIT), `NOTICE` and `LICENSE-fish.txt`. A registry PR adds one `themes` entry: `id` `dafy-whale`, `repo` `https://github.com/si-mods/gorex-theme-dafy-whale.git`, no `subdir`, and `ref` at the reviewed commit. Screenshots.
 
-MyGo M1 and M2 are not in a phase. Phase 2 failed its budget, so M2 is the next MyGo change (User decisions, 7).
+MyGo M1 is not in a phase.
