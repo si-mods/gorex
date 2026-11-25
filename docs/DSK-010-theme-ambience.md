@@ -143,7 +143,7 @@ Each element draws in one layer. Nothing that the theme declares draws over a pa
 | 5 | Sidebar | Brand row, mascot, ticker, ambience button | The sidebar does not overlap a pane |
 | 6 | Overlay | The speech bubble and the popup, for 3 s | A popup can cover a pane for 3 s after a click. It takes no focus |
 
-A terminal under the glass setting has a translucent background (`termOpacity`, 0.8 until set). Motion under terminal text makes the text hard to read. Layer 3 thus paints only in the **free region**: the window minus the bounds of each pane card and each float. The free region includes the sidebar. `Painter.Clip` clips to a rectangle only, so GoRex splits the free region into rectangles (horizontal bands) and draws each layer once for each band. The corners of a card are rounded, so a small wedge at each corner stays without motion. Nobody sees it.
+A terminal under the glass setting has a translucent background (`termOpacity`, 0.8 until set). Motion under terminal text makes the text hard to read. Layer 3 thus paints only in the **free region**: the window minus the bounds of each pane card and each float. The free region includes the sidebar. `Painter.Clip` clips to a rectangle only, so GoRex splits the free region into rectangles (horizontal bands) and draws each layer once for each band. The corners of a card are rounded, so a small wedge at each corner stays without motion. Nobody sees it. #1120 removed this layer, and DSK-012 dropped the ambient slot that was to replace it (DSK-012 User decisions, 5).
 
 **Behind the sidebar.** The sidebar rows have text on the window gradient. In the sidebar band, layer 3 paints at a lower alpha, so that the rows stay readable:
 
@@ -242,7 +242,7 @@ MyGo has each primitive that the design needs (MyGo v0.10.1, `si-mods/mygo`): `D
 | F1 | Palette | Yes: seeds (`accent`, `bg*`, `panel`, `field`, `fieldBorder`, `text`, `textMuted`, `danger`, `done`, `attention`) | None. The sidebar fill has no seed. The window gradient shows through the sidebar, so `bgTint` stands in | n |
 | F2 | Sea-surface glow | No: the gradient has 4 fixed stops | `ambience.glows` as uniforms of the `background` shader. Normal alpha, no soft light | n |
 | F3 | Watermark | No: a theme has no image | `assets` and `ambience.images` (layer 2) | n |
-| F4 | Bubbles | No | Moved to [DSK-012](DSK-012-theme-shaders.md): the theme's own shader in the ambient slot draws them. GoRex has no built-in particle (User decisions, 6). DSK-010 drops `ambience.particles` with a warning | n |
+| F4 | Bubbles | No | Moved to [DSK-012](DSK-012-theme-shaders.md): the theme's own background shader draws them. DSK-012 dropped its ambient slot (DSK-012 User decisions, 5). GoRex has no built-in particle (User decisions, 6). DSK-010 drops `ambience.particles` with a warning | n |
 | F5 | Fish school | No | `ambience.sprites`, `ImageRegion` with `FlipX`, clipped to the free region. No drop shadow | n |
 | F6 | Mascot, idle animation | No | `mascot`: PNG, GIF, APNG or sprite sheet in the sidebar foot. Bob as a `Pose` loop | n |
 | F7 | Click: wave and quote | No | `mascot.active` and `mascot.quotes`, bubble on `TooltipBase` | n |
