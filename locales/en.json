@@ -2970,6 +2970,25 @@
   "@settingsIconPacksInstalledBadge": {
     "description": "Badge shown when a registry pack is already installed."
   },
+  "settingsIconPacksUpdate": "Update",
+  "@settingsIconPacksUpdate": {
+    "description": "Extensions page: button, in place of the Installed badge, that installs the registry's newer version of an installed extension."
+  },
+  "settingsIconPacksUpdating": "Updating…",
+  "@settingsIconPacksUpdating": {
+    "description": "Extensions page: label while an installed extension installs its newer version."
+  },
+  "settingsIconPacksInstalledVersion": "Installed: {version}",
+  "@settingsIconPacksInstalledVersion": {
+    "description": "Extensions page: hint under a registry entry that has an update; the version (or commit) installed now.",
+    "placeholders": {
+      "version": {}
+    }
+  },
+  "settingsIconPacksVersionUnknown": "Installed: version unknown",
+  "@settingsIconPacksVersionUnknown": {
+    "description": "Extensions page: hint under a registry entry that has an update, when the installed copy has no record of its version (an older build installed it)."
+  },
   "settingsIconPacksRemove": "Remove",
   "@settingsIconPacksRemove": {
     "description": "Button to uninstall an icon pack."

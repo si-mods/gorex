@@ -8734,6 +8734,76 @@ func (msgs Messages) SettingsIconPacksInstalledBadge() string {
 	return Catalog.Format(msgs.locale, "settingsIconPacksInstalledBadge", nil)
 }
 
+// SettingsIconPacksUpdate says "Update"
+// in the language the app shows.
+//
+// Extensions page: button, in place of the Installed badge, that installs
+// the registry's newer version of an installed extension.
+func SettingsIconPacksUpdate() string { return In(i18n.Locale()).SettingsIconPacksUpdate() }
+
+// SettingsIconPacksUpdate says "Update"
+// in the language of msgs.
+//
+// Extensions page: button, in place of the Installed badge, that installs
+// the registry's newer version of an installed extension.
+func (msgs Messages) SettingsIconPacksUpdate() string {
+	return Catalog.Format(msgs.locale, "settingsIconPacksUpdate", nil)
+}
+
+// SettingsIconPacksUpdating says "Updating…"
+// in the language the app shows.
+//
+// Extensions page: label while an installed extension installs its newer
+// version.
+func SettingsIconPacksUpdating() string { return In(i18n.Locale()).SettingsIconPacksUpdating() }
+
+// SettingsIconPacksUpdating says "Updating…"
+// in the language of msgs.
+//
+// Extensions page: label while an installed extension installs its newer
+// version.
+func (msgs Messages) SettingsIconPacksUpdating() string {
+	return Catalog.Format(msgs.locale, "settingsIconPacksUpdating", nil)
+}
+
+// SettingsIconPacksInstalledVersion says "Installed: {version}"
+// in the language the app shows.
+//
+// Extensions page: hint under a registry entry that has an update; the
+// version (or commit) installed now.
+func SettingsIconPacksInstalledVersion(version string) string {
+	return In(i18n.Locale()).SettingsIconPacksInstalledVersion(version)
+}
+
+// SettingsIconPacksInstalledVersion says "Installed: {version}"
+// in the language of msgs.
+//
+// Extensions page: hint under a registry entry that has an update; the
+// version (or commit) installed now.
+func (msgs Messages) SettingsIconPacksInstalledVersion(version string) string {
+	return Catalog.Format(msgs.locale, "settingsIconPacksInstalledVersion", map[string]any{"version": version})
+}
+
+// SettingsIconPacksVersionUnknown says "Installed: version unknown"
+// in the language the app shows.
+//
+// Extensions page: hint under a registry entry that has an update, when the
+// installed copy has no record of its version (an older build installed
+// it).
+func SettingsIconPacksVersionUnknown() string {
+	return In(i18n.Locale()).SettingsIconPacksVersionUnknown()
+}
+
+// SettingsIconPacksVersionUnknown says "Installed: version unknown"
+// in the language of msgs.
+//
+// Extensions page: hint under a registry entry that has an update, when the
+// installed copy has no record of its version (an older build installed
+// it).
+func (msgs Messages) SettingsIconPacksVersionUnknown() string {
+	return Catalog.Format(msgs.locale, "settingsIconPacksVersionUnknown", nil)
+}
+
 // SettingsIconPacksRemove says "Remove"
 // in the language the app shows.
 //
