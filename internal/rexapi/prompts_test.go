@@ -33,29 +33,60 @@ func promptClients(t *testing.T, f *fixture) (*testConn, *testConn, string) {
 	return c, other, sid
 }
 
-// readServerEvent reads until a server event of a type arrives.
-func readServerEvent(t *testing.T, c *testConn, typ string) map[string]any {
-	t.Helper()
+// take returns the first message that match accepts: one that an earlier
+// wait set aside, or else the next one from the connection that matches.
+// It sets aside the messages it skips, because a later wait may need
+// them. The responses to two requests on one connection arrive in either
+// order: an action can end, and its response go out, before the response
+// to the client.reply that answered its prompt.
+func take(c *testConn, match func(map[string]any) bool) map[string]any {
+	c.t.Helper()
+	for i, m := range c.pending {
+		if match(m) {
+			c.pending = append(c.pending[:i:i], c.pending[i+1:]...)
+			return m
+		}
+	}
 	for {
 		m := c.read()
-		if m["type"] != "event" {
-			continue
+		if match(m) {
+			return m
 		}
-		body, _ := m["payload"].(map[string]any)
-		if body["type"] == typ {
-			return body["payload"].(map[string]any)
-		}
+		c.pending = append(c.pending, m)
 	}
 }
 
-// readResponse reads until the response with an ID arrives.
+// readServerEvent waits for a server event of a type and returns its
+// payload.
+func readServerEvent(t *testing.T, c *testConn, typ string) map[string]any {
+	t.Helper()
+	m := take(c, func(m map[string]any) bool {
+		body, _ := m["payload"].(map[string]any)
+		return m["type"] == "event" && body["type"] == typ
+	})
+	return m["payload"].(map[string]any)["payload"].(map[string]any)
+}
+
+// readResponse waits for the response with an ID.
 func readResponse(t *testing.T, c *testConn, id string) map[string]any {
 	t.Helper()
-	for {
-		m := c.read()
-		if m["type"] == "response" && m["id"] == id {
-			return m
-		}
+	return take(c, func(m map[string]any) bool {
+		return m["type"] == "response" && m["id"] == id
+	})
+}
+
+// TestReadResponseKeepsOthers: the action's response can arrive before
+// the response to the client.reply that answered its prompt (#1133), and
+// both waits still find theirs.
+func TestReadResponseKeepsOthers(t *testing.T) {
+	c := &testConn{t: t, msgs: make(chan map[string]any, 2)}
+	c.msgs <- map[string]any{"type": "response", "id": "run"}
+	c.msgs <- map[string]any{"type": "response", "id": "reply"}
+	if m := readResponse(t, c, "reply"); m["id"] != "reply" {
+		t.Fatalf("reply = %v", m)
+	}
+	if m := readResponse(t, c, "run"); m["id"] != "run" {
+		t.Fatalf("run = %v", m)
 	}
 }
 

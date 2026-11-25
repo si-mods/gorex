@@ -228,6 +228,11 @@ Each item has a **Trigger** (what the diff shows), a **Check** (what the author 
 - **Check:** CI does not retry failed tests. A flaky test is fixed by finding the race and waiting on state, or deleted with the reason written down. Never sleeps or retries. Run `-count 30` before merge, not after main goes red.
 - **Source:** #630 found its race with `-count 30`; also #658.
 
+### A test helper that drops what it skips
+- **Trigger:** a test helper reads a connection's messages until one matches, and drops the others (`readResponse`, `readServerEvent` in `internal/rexapi/prompts_test.go`); or a flaky-test fix names a cause it did not reproduce.
+- **Check:** the helper sets aside the messages it skips for the next wait (`c.pending`). The responses to two requests on one connection arrive in either order. A fix for a timeout reproduces the failing line first, with a deliberate delay if `-count` does not show it.
+- **Source:** #1130 explained `TestPromptErrorIsShortened`'s timeout (#1114) by a gateway registration race. The same test and three others also had a second race: `readResponse(c, "reply")` dropped the action's response when it came first, and `readResponse(c, "run")` timed out (#1133).
+
 ### CI retry
 - **Trigger:** the diff adds a retry or rerun of a failed test or shard to a workflow or script.
 - **Check:** reject it. No CI job retries a failed test. Fix the test.
