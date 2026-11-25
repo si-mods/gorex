@@ -63,7 +63,7 @@ rootshell (kitknox/rootshell, MIT) is a mature iOS terminal with native SSH. It 
 - A device key in the Secure Enclave, as rootshell's P-256 keys. It cannot leave the device, but every signature would cross the delegate to Swift. The Keychain Ed25519 key covers the same ground at no cost.
 - `ssh://` on the desktop: `gorex rex-import --rex ssh://...`, and `ssh://` as a remote-host address. A desktop doc can add them, through the system `ssh` as upstream's CLI does.
 - Tailscale SSH. The built-in Tailscale's dialer can reach a peer's port 22, and a host that runs `tailscaled --ssh` needs no keys. A later phase can add it.
-- A Rex server on Windows. It listens on a named pipe, which `direct-streamlocal` cannot open. GoRex's own `server.sock` there is a real AF_UNIX socket, but Win32-OpenSSH's `direct-streamlocal` connect still refuses it (measured on `OpenSSH_for_Windows_10.0p2`: channel accepted, every path form answered "open failed"). A doc that wants Windows can spec a TCP listener forwarded by `direct-tcpip` instead, as rootshell's `SOCKS5ProxyServer` rides it — GoRex already has one in the rexapi LAN gateway.
+- A Rex server on Windows. It listens on a named pipe, which `direct-streamlocal` cannot open. GoRex's own `server.sock` there is a real AF_UNIX socket, but Win32-OpenSSH's `direct-streamlocal` connect still refuses it (measured on `OpenSSH_for_Windows_10.0p2`: channel accepted, every path form answered "open failed"). [IOS-024](IOS-024-ssh-tcp.md) reaches a Windows host through `direct-tcpip` to a TCP listener instead.
 
 ## Design
 
