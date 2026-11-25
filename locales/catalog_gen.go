@@ -896,6 +896,54 @@ func (msgs Messages) CmdAppearanceDark() string {
 	return Catalog.Format(msgs.locale, "cmdAppearanceDark", nil)
 }
 
+// CmdToggleAmbience says "Toggle Theme Ambience"
+// in the language the app shows.
+//
+// Command: turn off the shaders that the theme draws on the window's
+// background and its motion, or turn them on again.
+func CmdToggleAmbience() string { return In(i18n.Locale()).CmdToggleAmbience() }
+
+// CmdToggleAmbience says "Toggle Theme Ambience"
+// in the language of msgs.
+//
+// Command: turn off the shaders that the theme draws on the window's
+// background and its motion, or turn them on again.
+func (msgs Messages) CmdToggleAmbience() string {
+	return Catalog.Format(msgs.locale, "cmdToggleAmbience", nil)
+}
+
+// SidebarAmbienceOff says "Turn Off Theme Ambience"
+// in the language the app shows.
+//
+// Label and tooltip of the sidebar's button that turns off the theme's
+// background shader and its motion.
+func SidebarAmbienceOff() string { return In(i18n.Locale()).SidebarAmbienceOff() }
+
+// SidebarAmbienceOff says "Turn Off Theme Ambience"
+// in the language of msgs.
+//
+// Label and tooltip of the sidebar's button that turns off the theme's
+// background shader and its motion.
+func (msgs Messages) SidebarAmbienceOff() string {
+	return Catalog.Format(msgs.locale, "sidebarAmbienceOff", nil)
+}
+
+// SidebarAmbienceOn says "Turn On Theme Ambience"
+// in the language the app shows.
+//
+// Label and tooltip of the sidebar's button that turns the theme's
+// background shader and its motion on again.
+func SidebarAmbienceOn() string { return In(i18n.Locale()).SidebarAmbienceOn() }
+
+// SidebarAmbienceOn says "Turn On Theme Ambience"
+// in the language of msgs.
+//
+// Label and tooltip of the sidebar's button that turns the theme's
+// background shader and its motion on again.
+func (msgs Messages) SidebarAmbienceOn() string {
+	return Catalog.Format(msgs.locale, "sidebarAmbienceOn", nil)
+}
+
 // CmdAppearanceSystem says "Appearance: System"
 // in the language the app shows.
 //
@@ -1310,68 +1358,6 @@ func (msgs Messages) TabMoveDown() string {
 	return Catalog.Format(msgs.locale, "tabMoveDown", nil)
 }
 
-// TabCloseOthers says "Close Other Tabs"
-// in the language the app shows.
-//
-// Tab context menu: close every tab but this one. Also the button of the
-// question it asks first.
-func TabCloseOthers() string { return In(i18n.Locale()).TabCloseOthers() }
-
-// TabCloseOthers says "Close Other Tabs"
-// in the language of msgs.
-//
-// Tab context menu: close every tab but this one. Also the button of the
-// question it asks first.
-func (msgs Messages) TabCloseOthers() string {
-	return Catalog.Format(msgs.locale, "tabCloseOthers", nil)
-}
-
-// CloseOthersTitle says "{n, plural, one {Close # other tab?} other {Close # other tabs?}}"
-// in the language the app shows.
-//
-// Title of the question before Close Other Tabs: how many tabs it closes.
-func CloseOthersTitle(n int) string { return In(i18n.Locale()).CloseOthersTitle(n) }
-
-// CloseOthersTitle says "{n, plural, one {Close # other tab?} other {Close # other tabs?}}"
-// in the language of msgs.
-//
-// Title of the question before Close Other Tabs: how many tabs it closes.
-func (msgs Messages) CloseOthersTitle(n int) string {
-	return Catalog.Format(msgs.locale, "closeOthersTitle", map[string]any{"n": n})
-}
-
-// CloseOthersBody says "{n, plural, one {Its terminal ends, and the program running in it. This can't be undone.} other {Their # terminals en…"
-// in the language the app shows.
-//
-// Body of the question before Close Other Tabs: how many terminals of the
-// other tabs end.
-func CloseOthersBody(n int) string { return In(i18n.Locale()).CloseOthersBody(n) }
-
-// CloseOthersBody says "{n, plural, one {Its terminal ends, and the program running in it. This can't be undone.} other {Their # terminals en…"
-// in the language of msgs.
-//
-// Body of the question before Close Other Tabs: how many terminals of the
-// other tabs end.
-func (msgs Messages) CloseOthersBody(n int) string {
-	return Catalog.Format(msgs.locale, "closeOthersBody", map[string]any{"n": n})
-}
-
-// CloseOthersBodyIdle says "{n, plural, =0 {This can't be undone.} one {Its terminal ends. This can't be undone.} other {Their # terminals end. T…"
-// in the language the app shows.
-//
-// Body of the question before Close Other Tabs when no program runs in the
-// other tabs: how many terminals end.
-func CloseOthersBodyIdle(n int) string { return In(i18n.Locale()).CloseOthersBodyIdle(n) }
-
-// CloseOthersBodyIdle says "{n, plural, =0 {This can't be undone.} one {Its terminal ends. This can't be undone.} other {Their # terminals end. T…"
-// in the language of msgs.
-//
-// Body of the question before Close Other Tabs when no program runs in the
-// other tabs: how many terminals end.
-func (msgs Messages) CloseOthersBodyIdle(n int) string {
-	return Catalog.Format(msgs.locale, "closeOthersBodyIdle", map[string]any{"n": n})
-}
-
 // CloseRunningTitle says "{name} is running"
 // in the language the app shows.
 //
@@ -1590,6 +1576,36 @@ func WindowMinimize() string { return In(i18n.Locale()).WindowMinimize() }
 // Window button that minimizes the window (Windows).
 func (msgs Messages) WindowMinimize() string {
 	return Catalog.Format(msgs.locale, "windowMinimize", nil)
+}
+
+// PaneExtMissing says "Pane of missing extension \"{kind}\""
+// in the language the app shows.
+//
+// Title of a pane whose extension is not installed, the kind's name in
+// {kind}.
+func PaneExtMissing(kind string) string { return In(i18n.Locale()).PaneExtMissing(kind) }
+
+// PaneExtMissing says "Pane of missing extension \"{kind}\""
+// in the language of msgs.
+//
+// Title of a pane whose extension is not installed, the kind's name in
+// {kind}.
+func (msgs Messages) PaneExtMissing(kind string) string {
+	return Catalog.Format(msgs.locale, "paneExtMissing", map[string]any{"kind": kind})
+}
+
+// PaneExtMissingHint says "Install the extension that provides this pane, or close it."
+// in the language the app shows.
+//
+// Note under the title of a pane whose extension is not installed.
+func PaneExtMissingHint() string { return In(i18n.Locale()).PaneExtMissingHint() }
+
+// PaneExtMissingHint says "Install the extension that provides this pane, or close it."
+// in the language of msgs.
+//
+// Note under the title of a pane whose extension is not installed.
+func (msgs Messages) PaneExtMissingHint() string {
+	return Catalog.Format(msgs.locale, "paneExtMissingHint", nil)
 }
 
 // WindowMaximize says "Maximize"
@@ -2736,6 +2752,22 @@ func SettingsGlassHint() string { return In(i18n.Locale()).SettingsGlassHint() }
 // Hint under the Glass setting.
 func (msgs Messages) SettingsGlassHint() string {
 	return Catalog.Format(msgs.locale, "settingsGlassHint", nil)
+}
+
+// SettingsGlassByTheme says "Set by the theme {name}."
+// in the language the app shows.
+//
+// Hint under the Glass setting while the window theme in use turns the
+// glass on or off; the switch is then disabled. name is the theme's name.
+func SettingsGlassByTheme(name string) string { return In(i18n.Locale()).SettingsGlassByTheme(name) }
+
+// SettingsGlassByTheme says "Set by the theme {name}."
+// in the language of msgs.
+//
+// Hint under the Glass setting while the window theme in use turns the
+// glass on or off; the switch is then disabled. name is the theme's name.
+func (msgs Messages) SettingsGlassByTheme(name string) string {
+	return Catalog.Format(msgs.locale, "settingsGlassByTheme", map[string]any{"name": name})
 }
 
 // SettingsTermOpacity says "Terminal opacity"
@@ -5227,13 +5259,15 @@ func (msgs Messages) HostsRemoveAsk(host string) string {
 // HostsNotConnectedTo says "Not connected to {host}."
 // in the language the app shows.
 //
-// Error banner: a tab or pane cannot open on a host that is not connected.
+// Error toast, and the detail of a disabled palette row: a tab or pane
+// cannot open on a host that is not connected.
 func HostsNotConnectedTo(host string) string { return In(i18n.Locale()).HostsNotConnectedTo(host) }
 
 // HostsNotConnectedTo says "Not connected to {host}."
 // in the language of msgs.
 //
-// Error banner: a tab or pane cannot open on a host that is not connected.
+// Error toast, and the detail of a disabled palette row: a tab or pane
+// cannot open on a host that is not connected.
 func (msgs Messages) HostsNotConnectedTo(host string) string {
 	return Catalog.Format(msgs.locale, "hostsNotConnectedTo", map[string]any{"host": host})
 }
@@ -7488,58 +7522,16 @@ func (msgs Messages) ProjectSheetHost() string {
 	return Catalog.Format(msgs.locale, "projectSheetHost", nil)
 }
 
-// ProjectSheetFolder says "Folder"
+// ProjectSheetUp says "Parent folder"
 // in the language the app shows.
 //
-// New Project sheet: label over the folder browser.
-func ProjectSheetFolder() string { return In(i18n.Locale()).ProjectSheetFolder() }
-
-// ProjectSheetFolder says "Folder"
-// in the language of msgs.
-//
-// New Project sheet: label over the folder browser.
-func (msgs Messages) ProjectSheetFolder() string {
-	return Catalog.Format(msgs.locale, "projectSheetFolder", nil)
-}
-
-// ProjectSheetName says "Name"
-// in the language the app shows.
-//
-// New Project sheet: label over the project's name field.
-func ProjectSheetName() string { return In(i18n.Locale()).ProjectSheetName() }
-
-// ProjectSheetName says "Name"
-// in the language of msgs.
-//
-// New Project sheet: label over the project's name field.
-func (msgs Messages) ProjectSheetName() string {
-	return Catalog.Format(msgs.locale, "projectSheetName", nil)
-}
-
-// ProjectSheetHome says "Home"
-// in the language the app shows.
-//
-// Folder browser: button that goes to the home folder.
-func ProjectSheetHome() string { return In(i18n.Locale()).ProjectSheetHome() }
-
-// ProjectSheetHome says "Home"
-// in the language of msgs.
-//
-// Folder browser: button that goes to the home folder.
-func (msgs Messages) ProjectSheetHome() string {
-	return Catalog.Format(msgs.locale, "projectSheetHome", nil)
-}
-
-// ProjectSheetUp says "Up"
-// in the language the app shows.
-//
-// Folder browser: button that goes to the parent folder.
+// Folder browser: the row that lists the parent folder, shown as "..".
 func ProjectSheetUp() string { return In(i18n.Locale()).ProjectSheetUp() }
 
-// ProjectSheetUp says "Up"
+// ProjectSheetUp says "Parent folder"
 // in the language of msgs.
 //
-// Folder browser: button that goes to the parent folder.
+// Folder browser: the row that lists the parent folder, shown as "..".
 func (msgs Messages) ProjectSheetUp() string {
 	return Catalog.Format(msgs.locale, "projectSheetUp", nil)
 }
@@ -7560,46 +7552,112 @@ func (msgs Messages) ProjectSheetChoose() string {
 	return Catalog.Format(msgs.locale, "projectSheetChoose", nil)
 }
 
-// ProjectSheetPath says "Type a path and press Enter"
+// ProjectSheetPath says "Type a path…"
 // in the language the app shows.
 //
-// Folder browser: placeholder of the field that takes a path.
+// Folder browser: placeholder of the field that browses: the text to its
+// last separator is listed, the leaf filters.
 func ProjectSheetPath() string { return In(i18n.Locale()).ProjectSheetPath() }
 
-// ProjectSheetPath says "Type a path and press Enter"
+// ProjectSheetPath says "Type a path…"
 // in the language of msgs.
 //
-// Folder browser: placeholder of the field that takes a path.
+// Folder browser: placeholder of the field that browses: the text to its
+// last separator is listed, the leaf filters.
 func (msgs Messages) ProjectSheetPath() string {
 	return Catalog.Format(msgs.locale, "projectSheetPath", nil)
 }
 
-// ProjectSheetCreate says "Create"
+// ProjectSheetPathHint says "Enter path (e.g. ~/projects/my-app)"
 // in the language the app shows.
 //
-// New Project sheet: button that makes the project.
-func ProjectSheetCreate() string { return In(i18n.Locale()).ProjectSheetCreate() }
+// Folder browser: placeholder of the path field, as T3 Code's add-project
+// palette.
+func ProjectSheetPathHint() string { return In(i18n.Locale()).ProjectSheetPathHint() }
 
-// ProjectSheetCreate says "Create"
+// ProjectSheetPathHint says "Enter path (e.g. ~/projects/my-app)"
 // in the language of msgs.
 //
-// New Project sheet: button that makes the project.
-func (msgs Messages) ProjectSheetCreate() string {
-	return Catalog.Format(msgs.locale, "projectSheetCreate", nil)
+// Folder browser: placeholder of the path field, as T3 Code's add-project
+// palette.
+func (msgs Messages) ProjectSheetPathHint() string {
+	return Catalog.Format(msgs.locale, "projectSheetPathHint", nil)
 }
 
-// ProjectSheetCancel says "Cancel"
+// ProjectSheetDirectories says "Directories"
 // in the language the app shows.
 //
-// New Project sheet: button that closes it.
-func ProjectSheetCancel() string { return In(i18n.Locale()).ProjectSheetCancel() }
+// Folder browser: label of the folder rows under the path field.
+func ProjectSheetDirectories() string { return In(i18n.Locale()).ProjectSheetDirectories() }
 
-// ProjectSheetCancel says "Cancel"
+// ProjectSheetDirectories says "Directories"
 // in the language of msgs.
 //
-// New Project sheet: button that closes it.
-func (msgs Messages) ProjectSheetCancel() string {
-	return Catalog.Format(msgs.locale, "projectSheetCancel", nil)
+// Folder browser: label of the folder rows under the path field.
+func (msgs Messages) ProjectSheetDirectories() string {
+	return Catalog.Format(msgs.locale, "projectSheetDirectories", nil)
+}
+
+// ProjectSheetAdd says "Add"
+// in the language the app shows.
+//
+// Folder browser: button in the path field that adds the folder it names.
+func ProjectSheetAdd() string { return In(i18n.Locale()).ProjectSheetAdd() }
+
+// ProjectSheetAdd says "Add"
+// in the language of msgs.
+//
+// Folder browser: button in the path field that adds the folder it names.
+func (msgs Messages) ProjectSheetAdd() string {
+	return Catalog.Format(msgs.locale, "projectSheetAdd", nil)
+}
+
+// ProjectSheetCreateAdd says "Create & Add"
+// in the language the app shows.
+//
+// Folder browser: button in the path field when the leaf names a folder to
+// create first.
+func ProjectSheetCreateAdd() string { return In(i18n.Locale()).ProjectSheetCreateAdd() }
+
+// ProjectSheetCreateAdd says "Create & Add"
+// in the language of msgs.
+//
+// Folder browser: button in the path field when the leaf names a folder to
+// create first.
+func (msgs Messages) ProjectSheetCreateAdd() string {
+	return Catalog.Format(msgs.locale, "projectSheetCreateAdd", nil)
+}
+
+// ProjectSheetWorking says "Working"
+// in the language the app shows.
+//
+// Folder browser: button in the path field while the folder is being
+// created.
+func ProjectSheetWorking() string { return In(i18n.Locale()).ProjectSheetWorking() }
+
+// ProjectSheetWorking says "Working"
+// in the language of msgs.
+//
+// Folder browser: button in the path field while the folder is being
+// created.
+func (msgs Messages) ProjectSheetWorking() string {
+	return Catalog.Format(msgs.locale, "projectSheetWorking", nil)
+}
+
+// ProjectSheetCreateHint says "Press Enter to create this folder and add it as a project."
+// in the language the app shows.
+//
+// Folder browser: shown when the leaf of the path field names no folder and
+// Enter would create it.
+func ProjectSheetCreateHint() string { return In(i18n.Locale()).ProjectSheetCreateHint() }
+
+// ProjectSheetCreateHint says "Press Enter to create this folder and add it as a project."
+// in the language of msgs.
+//
+// Folder browser: shown when the leaf of the path field names no folder and
+// Enter would create it.
+func (msgs Messages) ProjectSheetCreateHint() string {
+	return Catalog.Format(msgs.locale, "projectSheetCreateHint", nil)
 }
 
 // ProjectSheetLoading says "Loading…"
@@ -7660,22 +7718,6 @@ func (msgs Messages) ProjectSheetDenied() string {
 	return Catalog.Format(msgs.locale, "projectSheetDenied", nil)
 }
 
-// ProjectSheetEmpty says "No subfolders. You can use this folder."
-// in the language the app shows.
-//
-// Folder browser: the folder has no folders in it, and can be used as it
-// is.
-func ProjectSheetEmpty() string { return In(i18n.Locale()).ProjectSheetEmpty() }
-
-// ProjectSheetEmpty says "No subfolders. You can use this folder."
-// in the language of msgs.
-//
-// Folder browser: the folder has no folders in it, and can be used as it
-// is.
-func (msgs Messages) ProjectSheetEmpty() string {
-	return Catalog.Format(msgs.locale, "projectSheetEmpty", nil)
-}
-
 // ProjectSheetMore says "Only the first {n} folders are shown."
 // in the language the app shows.
 //
@@ -7688,100 +7730,6 @@ func ProjectSheetMore(n int) string { return In(i18n.Locale()).ProjectSheetMore(
 // Folder browser: the folder holds more folders than are listed.
 func (msgs Messages) ProjectSheetMore(n int) string {
 	return Catalog.Format(msgs.locale, "projectSheetMore", map[string]any{"n": n})
-}
-
-// ProjectSheetDrives says "Drives"
-// in the language the app shows.
-//
-// Folder browser: the top of a Windows machine, the list of its drives.
-func ProjectSheetDrives() string { return In(i18n.Locale()).ProjectSheetDrives() }
-
-// ProjectSheetDrives says "Drives"
-// in the language of msgs.
-//
-// Folder browser: the top of a Windows machine, the list of its drives.
-func (msgs Messages) ProjectSheetDrives() string {
-	return Catalog.Format(msgs.locale, "projectSheetDrives", nil)
-}
-
-// ProjectSheetChosen says "Project folder: {path}"
-// in the language the app shows.
-//
-// New Project sheet: over the buttons, the folder that Create or Use This
-// Folder takes: the folder listed.
-func ProjectSheetChosen(path string) string { return In(i18n.Locale()).ProjectSheetChosen(path) }
-
-// ProjectSheetChosen says "Project folder: {path}"
-// in the language of msgs.
-//
-// New Project sheet: over the buttons, the folder that Create or Use This
-// Folder takes: the folder listed.
-func (msgs Messages) ProjectSheetChosen(path string) string {
-	return Catalog.Format(msgs.locale, "projectSheetChosen", map[string]any{"path": path})
-}
-
-// ProjectSheetNoChoice says "Open a folder to choose it."
-// in the language the app shows.
-//
-// New Project sheet: over the buttons, when no folder can be taken, as in
-// the list of drives or in a folder that cannot be read.
-func ProjectSheetNoChoice() string { return In(i18n.Locale()).ProjectSheetNoChoice() }
-
-// ProjectSheetNoChoice says "Open a folder to choose it."
-// in the language of msgs.
-//
-// New Project sheet: over the buttons, when no folder can be taken, as in
-// the list of drives or in a folder that cannot be read.
-func (msgs Messages) ProjectSheetNoChoice() string {
-	return Catalog.Format(msgs.locale, "projectSheetNoChoice", nil)
-}
-
-// ProjectSheetNameNeeded says "This folder has no name. Type a name for the project."
-// in the language the app shows.
-//
-// New Project sheet: over the buttons, at the top of a drive or of the
-// disk, whose folder gives no name.
-func ProjectSheetNameNeeded() string { return In(i18n.Locale()).ProjectSheetNameNeeded() }
-
-// ProjectSheetNameNeeded says "This folder has no name. Type a name for the project."
-// in the language of msgs.
-//
-// New Project sheet: over the buttons, at the top of a drive or of the
-// disk, whose folder gives no name.
-func (msgs Messages) ProjectSheetNameNeeded() string {
-	return Catalog.Format(msgs.locale, "projectSheetNameNeeded", nil)
-}
-
-// ProjectSheetNameHint says "Type a name"
-// in the language the app shows.
-//
-// New Project sheet: placeholder of the name field when the folder gives no
-// name.
-func ProjectSheetNameHint() string { return In(i18n.Locale()).ProjectSheetNameHint() }
-
-// ProjectSheetNameHint says "Type a name"
-// in the language of msgs.
-//
-// New Project sheet: placeholder of the name field when the folder gives no
-// name.
-func (msgs Messages) ProjectSheetNameHint() string {
-	return Catalog.Format(msgs.locale, "projectSheetNameHint", nil)
-}
-
-// ProjectSheetMoreFolders says "Folders above"
-// in the language the app shows.
-//
-// Folder browser: the breadcrumb's button that lists the folders it leaves
-// out.
-func ProjectSheetMoreFolders() string { return In(i18n.Locale()).ProjectSheetMoreFolders() }
-
-// ProjectSheetMoreFolders says "Folders above"
-// in the language of msgs.
-//
-// Folder browser: the breadcrumb's button that lists the folders it leaves
-// out.
-func (msgs Messages) ProjectSheetMoreFolders() string {
-	return Catalog.Format(msgs.locale, "projectSheetMoreFolders", nil)
 }
 
 // ProjectChangeFolder says "Change Folder…"
@@ -8248,6 +8196,176 @@ func (msgs Messages) SpaceDeleteConfirm() string {
 	return Catalog.Format(msgs.locale, "spaceDeleteConfirm", nil)
 }
 
+// ToastActionFailed says "Couldn't run {action}: {reason}."
+// in the language the app shows.
+//
+// Error toast: an action the user asked for failed. action is its title,
+// reason the error.
+func ToastActionFailed(action string, reason string) string {
+	return In(i18n.Locale()).ToastActionFailed(action, reason)
+}
+
+// ToastActionFailed says "Couldn't run {action}: {reason}."
+// in the language of msgs.
+//
+// Error toast: an action the user asked for failed. action is its title,
+// reason the error.
+func (msgs Messages) ToastActionFailed(action string, reason string) string {
+	return Catalog.Format(msgs.locale, "toastActionFailed", map[string]any{"action": action, "reason": reason})
+}
+
+// ToastShortcutResetFailed says "Couldn't reset the shortcut: {reason}."
+// in the language the app shows.
+//
+// Error toast: Reset of a keyboard shortcut failed. reason is the error.
+func ToastShortcutResetFailed(reason string) string {
+	return In(i18n.Locale()).ToastShortcutResetFailed(reason)
+}
+
+// ToastShortcutResetFailed says "Couldn't reset the shortcut: {reason}."
+// in the language of msgs.
+//
+// Error toast: Reset of a keyboard shortcut failed. reason is the error.
+func (msgs Messages) ToastShortcutResetFailed(reason string) string {
+	return Catalog.Format(msgs.locale, "toastShortcutResetFailed", map[string]any{"reason": reason})
+}
+
+// ToastShortcutsResetFailed says "Couldn't reset the shortcuts: {reason}."
+// in the language the app shows.
+//
+// Error toast: Reset All of the keyboard shortcuts failed. reason is the
+// error.
+func ToastShortcutsResetFailed(reason string) string {
+	return In(i18n.Locale()).ToastShortcutsResetFailed(reason)
+}
+
+// ToastShortcutsResetFailed says "Couldn't reset the shortcuts: {reason}."
+// in the language of msgs.
+//
+// Error toast: Reset All of the keyboard shortcuts failed. reason is the
+// error.
+func (msgs Messages) ToastShortcutsResetFailed(reason string) string {
+	return Catalog.Format(msgs.locale, "toastShortcutsResetFailed", map[string]any{"reason": reason})
+}
+
+// ToastSessionFailed says "Couldn't start a session: {reason}."
+// in the language the app shows.
+//
+// Error toast: the host did not make the session of a new tab or pane.
+// reason is the error.
+func ToastSessionFailed(reason string) string { return In(i18n.Locale()).ToastSessionFailed(reason) }
+
+// ToastSessionFailed says "Couldn't start a session: {reason}."
+// in the language of msgs.
+//
+// Error toast: the host did not make the session of a new tab or pane.
+// reason is the error.
+func (msgs Messages) ToastSessionFailed(reason string) string {
+	return Catalog.Format(msgs.locale, "toastSessionFailed", map[string]any{"reason": reason})
+}
+
+// ToastTerminalFailed says "Couldn't open the terminal: {reason}."
+// in the language the app shows.
+//
+// Error toast: the terminal of a pane did not start. reason is the error.
+func ToastTerminalFailed(reason string) string { return In(i18n.Locale()).ToastTerminalFailed(reason) }
+
+// ToastTerminalFailed says "Couldn't open the terminal: {reason}."
+// in the language of msgs.
+//
+// Error toast: the terminal of a pane did not start. reason is the error.
+func (msgs Messages) ToastTerminalFailed(reason string) string {
+	return Catalog.Format(msgs.locale, "toastTerminalFailed", map[string]any{"reason": reason})
+}
+
+// QuitEndTitle says "{n, plural, one {Quit and end # session?} other {Quit and end # sessions?}}"
+// in the language the app shows.
+//
+// Title of the question before Quit and End All Sessions: how many sessions
+// of this machine end.
+func QuitEndTitle(n int) string { return In(i18n.Locale()).QuitEndTitle(n) }
+
+// QuitEndTitle says "{n, plural, one {Quit and end # session?} other {Quit and end # sessions?}}"
+// in the language of msgs.
+//
+// Title of the question before Quit and End All Sessions: how many sessions
+// of this machine end.
+func (msgs Messages) QuitEndTitle(n int) string {
+	return Catalog.Format(msgs.locale, "quitEndTitle", map[string]any{"n": n})
+}
+
+// QuitEndBody says "{n, plural, one {The program running in it ends. This can't be undone.} other {The programs running in them end. This…"
+// in the language the app shows.
+//
+// Body of the question before Quit and End All Sessions.
+func QuitEndBody(n int) string { return In(i18n.Locale()).QuitEndBody(n) }
+
+// QuitEndBody says "{n, plural, one {The program running in it ends. This can't be undone.} other {The programs running in them end. This…"
+// in the language of msgs.
+//
+// Body of the question before Quit and End All Sessions.
+func (msgs Messages) QuitEndBody(n int) string {
+	return Catalog.Format(msgs.locale, "quitEndBody", map[string]any{"n": n})
+}
+
+// QuitEndConfirm says "Quit and End All"
+// in the language the app shows.
+//
+// Quit and End All Sessions question: the button that quits and ends the
+// sessions.
+func QuitEndConfirm() string { return In(i18n.Locale()).QuitEndConfirm() }
+
+// QuitEndConfirm says "Quit and End All"
+// in the language of msgs.
+//
+// Quit and End All Sessions question: the button that quits and ends the
+// sessions.
+func (msgs Messages) QuitEndConfirm() string {
+	return Catalog.Format(msgs.locale, "quitEndConfirm", nil)
+}
+
+// SettingsNotificationsOff says "Notifications are off for GoRex."
+// in the language the app shows.
+//
+// Settings row, macOS: the system does not let GoRex show notifications.
+func SettingsNotificationsOff() string { return In(i18n.Locale()).SettingsNotificationsOff() }
+
+// SettingsNotificationsOff says "Notifications are off for GoRex."
+// in the language of msgs.
+//
+// Settings row, macOS: the system does not let GoRex show notifications.
+func (msgs Messages) SettingsNotificationsOff() string {
+	return Catalog.Format(msgs.locale, "settingsNotificationsOff", nil)
+}
+
+// SettingsNotificationsOffHint says "Turn them on in System Settings."
+// in the language the app shows.
+//
+// Hint under the row that says notifications are off.
+func SettingsNotificationsOffHint() string { return In(i18n.Locale()).SettingsNotificationsOffHint() }
+
+// SettingsNotificationsOffHint says "Turn them on in System Settings."
+// in the language of msgs.
+//
+// Hint under the row that says notifications are off.
+func (msgs Messages) SettingsNotificationsOffHint() string {
+	return Catalog.Format(msgs.locale, "settingsNotificationsOffHint", nil)
+}
+
+// SettingsNotificationsOpen says "Open System Settings"
+// in the language the app shows.
+//
+// Button that opens the notification settings of macOS.
+func SettingsNotificationsOpen() string { return In(i18n.Locale()).SettingsNotificationsOpen() }
+
+// SettingsNotificationsOpen says "Open System Settings"
+// in the language of msgs.
+//
+// Button that opens the notification settings of macOS.
+func (msgs Messages) SettingsNotificationsOpen() string {
+	return Catalog.Format(msgs.locale, "settingsNotificationsOpen", nil)
+}
+
 // SpaceMoveDown says "Move Down"
 // in the language the app shows.
 //
@@ -8458,6 +8576,22 @@ func (msgs Messages) PromptOther() string {
 	return Catalog.Format(msgs.locale, "promptOther", nil)
 }
 
+// PromptPick says "Pick an answer"
+// in the language the app shows.
+//
+// Beside a prompt sheet's disabled confirm button while no answer is
+// picked: why it is off.
+func PromptPick() string { return In(i18n.Locale()).PromptPick() }
+
+// PromptPick says "Pick an answer"
+// in the language of msgs.
+//
+// Beside a prompt sheet's disabled confirm button while no answer is
+// picked: why it is off.
+func (msgs Messages) PromptPick() string {
+	return Catalog.Format(msgs.locale, "promptPick", nil)
+}
+
 // PromptSend says "Send"
 // in the language the app shows.
 //
@@ -8646,6 +8780,76 @@ func (msgs Messages) SettingsIconPacksInstalledBadge() string {
 	return Catalog.Format(msgs.locale, "settingsIconPacksInstalledBadge", nil)
 }
 
+// SettingsIconPacksUpdate says "Update"
+// in the language the app shows.
+//
+// Extensions page: button, in place of the Installed badge, that installs
+// the registry's newer version of an installed extension.
+func SettingsIconPacksUpdate() string { return In(i18n.Locale()).SettingsIconPacksUpdate() }
+
+// SettingsIconPacksUpdate says "Update"
+// in the language of msgs.
+//
+// Extensions page: button, in place of the Installed badge, that installs
+// the registry's newer version of an installed extension.
+func (msgs Messages) SettingsIconPacksUpdate() string {
+	return Catalog.Format(msgs.locale, "settingsIconPacksUpdate", nil)
+}
+
+// SettingsIconPacksUpdating says "Updating…"
+// in the language the app shows.
+//
+// Extensions page: label while an installed extension installs its newer
+// version.
+func SettingsIconPacksUpdating() string { return In(i18n.Locale()).SettingsIconPacksUpdating() }
+
+// SettingsIconPacksUpdating says "Updating…"
+// in the language of msgs.
+//
+// Extensions page: label while an installed extension installs its newer
+// version.
+func (msgs Messages) SettingsIconPacksUpdating() string {
+	return Catalog.Format(msgs.locale, "settingsIconPacksUpdating", nil)
+}
+
+// SettingsIconPacksInstalledVersion says "Installed: {version}"
+// in the language the app shows.
+//
+// Extensions page: hint under a registry entry that has an update; the
+// version (or commit) installed now.
+func SettingsIconPacksInstalledVersion(version string) string {
+	return In(i18n.Locale()).SettingsIconPacksInstalledVersion(version)
+}
+
+// SettingsIconPacksInstalledVersion says "Installed: {version}"
+// in the language of msgs.
+//
+// Extensions page: hint under a registry entry that has an update; the
+// version (or commit) installed now.
+func (msgs Messages) SettingsIconPacksInstalledVersion(version string) string {
+	return Catalog.Format(msgs.locale, "settingsIconPacksInstalledVersion", map[string]any{"version": version})
+}
+
+// SettingsIconPacksVersionUnknown says "Installed: version unknown"
+// in the language the app shows.
+//
+// Extensions page: hint under a registry entry that has an update, when the
+// installed copy has no record of its version (an older build installed
+// it).
+func SettingsIconPacksVersionUnknown() string {
+	return In(i18n.Locale()).SettingsIconPacksVersionUnknown()
+}
+
+// SettingsIconPacksVersionUnknown says "Installed: version unknown"
+// in the language of msgs.
+//
+// Extensions page: hint under a registry entry that has an update, when the
+// installed copy has no record of its version (an older build installed
+// it).
+func (msgs Messages) SettingsIconPacksVersionUnknown() string {
+	return Catalog.Format(msgs.locale, "settingsIconPacksVersionUnknown", nil)
+}
+
 // SettingsIconPacksRemove says "Remove"
 // in the language the app shows.
 //
@@ -8774,4 +8978,46 @@ func SettingsExtensionKindTheme() string { return In(i18n.Locale()).SettingsExte
 // Extensions page: the kind of an extension, before its ID.
 func (msgs Messages) SettingsExtensionKindTheme() string {
 	return Catalog.Format(msgs.locale, "settingsExtensionKindTheme", nil)
+}
+
+// SettingsThemeShaderDropped says "Theme shader not used: {slot}"
+// in the language the app shows.
+//
+// Extensions page: under the theme in use, a shader of the theme that
+// failed a check at load and draws the theme's flat colors instead. slot is
+// the manifest's slot, such as shaders.background. The check's English
+// detail follows.
+func SettingsThemeShaderDropped(slot string) string {
+	return In(i18n.Locale()).SettingsThemeShaderDropped(slot)
+}
+
+// SettingsThemeShaderDropped says "Theme shader not used: {slot}"
+// in the language of msgs.
+//
+// Extensions page: under the theme in use, a shader of the theme that
+// failed a check at load and draws the theme's flat colors instead. slot is
+// the manifest's slot, such as shaders.background. The check's English
+// detail follows.
+func (msgs Messages) SettingsThemeShaderDropped(slot string) string {
+	return Catalog.Format(msgs.locale, "settingsThemeShaderDropped", map[string]any{"slot": slot})
+}
+
+// SettingsThemeShaderNote says "Theme shader note: {slot}"
+// in the language the app shows.
+//
+// Extensions page: under the theme in use, a warning about a shader of the
+// theme that still draws, as a uniform no param sets. slot is the
+// manifest's slot. The English detail follows.
+func SettingsThemeShaderNote(slot string) string {
+	return In(i18n.Locale()).SettingsThemeShaderNote(slot)
+}
+
+// SettingsThemeShaderNote says "Theme shader note: {slot}"
+// in the language of msgs.
+//
+// Extensions page: under the theme in use, a warning about a shader of the
+// theme that still draws, as a uniform no param sets. slot is the
+// manifest's slot. The English detail follows.
+func (msgs Messages) SettingsThemeShaderNote(slot string) string {
+	return Catalog.Format(msgs.locale, "settingsThemeShaderNote", map[string]any{"slot": slot})
 }

@@ -3,7 +3,7 @@ name: MOD-013
 description: "GoRex keeps one home directory, ~/.gorex, for its configuration and its data, on every desktop platform, and moves there on its own. Use when you change config.Path, rex.Dir, iconpack.Dir, theme.Dir, the server launch job, or anything that reads or writes a file of the app."
 metadata:
   created: "2026-11-24"
-  updated: "2026-11-24"
+  updated: "2026-11-25"
 ---
 
 # MOD-013: One home directory for configuration and data
@@ -73,7 +73,7 @@ The configuration file resolves in parallel:
 1. `GOREX_CONFIG`, when it is set.
 2. `~/.gorex/init.lua`, when the file exists.
 3. The legacy `init.lua` (`<XDG_CONFIG_HOME>/gorex/init.lua`, or the platform path), when the file exists.
-4. `~/.gorex/init.lua`, for a fresh installation.
+4. `init.lua` in the home the order above resolves: `GOREX_DIR`, `~/.gorex` when it exists, the legacy data directory when it exists, else `~/.gorex`. The configuration folder follows the data folder, so a theme or icon pack installed before the move goes to the legacy data directory (where the Windows app before MOD-013 kept its themes) and never makes `~/.gorex`, which would take every process away from the legacy data by rule 2 (#1090, fixed in the PR that added this step).
 
 `iconpack.Dir` and `theme.Dir` already derive from `config.Dir` and follow it. The socket path, the journal and the asset folders already derive from `rex.Dir` and follow it.
 

@@ -63,11 +63,11 @@ func useNoteSaver(t *testing.T) (*fakeNoteClock, *int) {
 func TestNoteSaveDebounced(t *testing.T) {
 	a, _ := newTestApp(t)
 	clock, writes := useNoteSaver(t)
-	n := a.newNotePane(newNoteID()).note
+	n := a.newNotePane(newNoteID()).ext.(*notePane)
 	for _, text := range []string{"h", "he", "hel", "hell", "hello"} {
 		n.text = text
-		n.save() // the view calls it every frame
-		n.save()
+		n.persist() // the view calls it every frame
+		n.persist()
 	}
 	if *writes != 0 {
 		t.Fatalf("%d writes while typing, want none", *writes)
@@ -88,20 +88,20 @@ func TestNoteFlushOnClose(t *testing.T) {
 	a, _ := newTestApp(t)
 	useNoteSaver(t)
 	p := a.newNotePane(newNoteID())
-	p.note.text = "draft"
-	p.note.save()
-	p.note.text = "draft two"
-	p.note.save()
+	noteOf(p).text = "draft"
+	noteOf(p).persist()
+	noteOf(p).text = "draft two"
+	noteOf(p).persist()
 	// A note that moves is made again from its file: it has the latest text.
-	moved := a.newNotePane(p.note.id)
-	if moved.note.text != "draft two" {
-		t.Errorf("moved note %q, want the latest text", moved.note.text)
+	moved := a.newNotePane(noteOf(p).id)
+	if noteOf(moved).text != "draft two" {
+		t.Errorf("moved note %q, want the latest text", noteOf(moved).text)
 	}
 	// The app's quit writes what waits.
-	moved.note.text = "last"
-	moved.note.save()
+	noteOf(moved).text = "last"
+	noteOf(moved).persist()
 	notesDisk.flushAll()
-	if b, _ := os.ReadFile(moved.note.path()); string(b) != "last" {
+	if b, _ := os.ReadFile(noteOf(moved).path()); string(b) != "last" {
 		t.Errorf("file %q after quit, want last", b)
 	}
 }
@@ -109,10 +109,10 @@ func TestNoteFlushOnClose(t *testing.T) {
 func TestNoteDestroyDropsPendingWrite(t *testing.T) {
 	a, _ := newTestApp(t)
 	clock, writes := useNoteSaver(t)
-	n := a.newNotePane(newNoteID()).note
+	n := a.newNotePane(newNoteID()).ext.(*notePane)
 	n.text = "gone"
-	n.save()
-	n.destroy()
+	n.persist()
+	n.destroy(true)
 	clock.fire()
 	if *writes != 0 {
 		t.Errorf("%d writes after the note was deleted", *writes)

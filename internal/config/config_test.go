@@ -148,8 +148,9 @@ func TestPathPlatformFallback(t *testing.T) {
 	if got := Path(); got != p {
 		t.Fatalf("path %q, want %q", got, p)
 	}
-	// No home either: nothing to fall back to.
-	if err := os.Remove(p); err != nil {
+	// No home and no legacy data directory (on Windows the same folder
+	// as the legacy configuration one): nothing to fall back to.
+	if err := os.RemoveAll(filepath.Dir(p)); err != nil {
 		t.Fatal(err)
 	}
 	if got := Path(); got != "" {

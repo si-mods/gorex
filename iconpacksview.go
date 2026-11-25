@@ -28,8 +28,11 @@ var iconPacksUI struct {
 	regErr          string
 	query           string
 	installing      map[string]bool // by registryKey
-	actionErr       string
-	themeErr        string
+	// records holds the install record of each installed pack, by
+	// registryKey; a pack with no record has none here.
+	records   map[string]*iconpack.Record
+	actionErr string
+	themeErr  string
 }
 
 func resetIconPacksUI() {
@@ -44,16 +47,32 @@ func resetIconPacksUI() {
 	iconPacksUI.regErr = ""
 	iconPacksUI.query = ""
 	iconPacksUI.installing = nil
+	iconPacksUI.records = nil
 	iconPacksUI.actionErr = ""
 	iconPacksUI.themeErr = ""
 }
 
 func (a *App) refreshInstalledIconPacks() {
-	list, err := iconpack.ListPacks(iconpack.Dir())
-	themes := theme.List(theme.Dir(config.Dir()))
+	packsDir, themesDir := iconpack.Dir(), theme.Dir(config.Dir())
+	list, err := iconpack.ListPacks(packsDir)
+	themes := theme.List(themesDir)
+	records := map[string]*iconpack.Record{}
+	for _, s := range list {
+		if rec := iconpack.ReadRecord(s.Dir); rec != nil {
+			records[registryKey(iconpack.RegistryPack{ID: s.ID})] = rec
+		}
+	}
+	for _, s := range themes {
+		if dir, err := theme.AssetFolder(themesDir, s.ID); err == nil {
+			if rec := iconpack.ReadRecord(dir); rec != nil {
+				records[registryKey(iconpack.RegistryPack{ID: s.ID, Kind: iconpack.KindTheme})] = rec
+			}
+		}
+	}
 	iconPacksUI.mu.Lock()
 	iconPacksUI.installed = list
 	iconPacksUI.themes = themes
+	iconPacksUI.records = records
 	iconPacksUI.installedLoaded = true
 	if err != nil {
 		iconPacksUI.actionErr = err.Error()
@@ -106,8 +125,11 @@ func registryKey(rp iconpack.RegistryPack) string {
 
 // installIconPack installs a registry entry of either kind: an icon pack,
 // which it then turns on, or a theme pack, as gorex pack install does;
-// using the theme is the Window Theme group's choice.
-func (a *App) installIconPack(rp iconpack.RegistryPack) {
+// using the theme is the Window Theme group's choice. With update it
+// installs an installed pack again (docs/MOD-012-program-icon-packs.md,
+// Updates): an icon pack keeps its switch, and a theme in use stays in use
+// and applies again.
+func (a *App) installIconPack(rp iconpack.RegistryPack, update bool) {
 	key := registryKey(rp)
 	iconPacksUI.mu.Lock()
 	if iconPacksUI.installing == nil {
@@ -124,24 +146,15 @@ func (a *App) installIconPack(rp iconpack.RegistryPack) {
 	win := settingsUI.win
 	packsDir, themesDir := iconpack.Dir(), theme.Dir(config.Dir())
 	go func() {
-		var err error
-		if rp.Kind == iconpack.KindTheme {
-			err = iconpack.Checkout(context.Background(), rp, func(dir string) error {
-				_, err := theme.Install(dir, themesDir, rp.ID)
-				return err
-			})
-		} else {
-			_, err = iconpack.InstallFromRegistry(context.Background(), rp, packsDir, "")
-		}
+		_, err := iconpack.Install(context.Background(), rp, packsDir, themesDir, "")
+		// The install ends only after its effects, so that a reader who
+		// sees it end (a test, with no window) sees them too.
 		apply := func() {
-			iconPacksUI.mu.Lock()
-			delete(iconPacksUI.installing, key)
-			if err != nil {
-				iconPacksUI.actionErr = err.Error()
-			}
-			iconPacksUI.mu.Unlock()
 			if err == nil {
-				if rp.Kind != iconpack.KindTheme {
+				if rp.Kind == iconpack.KindTheme && update && prefs.Theme == rp.ID {
+					a.useTheme(rp.ID)
+				}
+				if rp.Kind != iconpack.KindTheme && !update {
 					a.setPref(func(s *settings) {
 						if !slices.Contains(s.IconPacks, rp.ID) {
 							s.IconPacks = append(s.IconPacks, rp.ID)
@@ -150,6 +163,12 @@ func (a *App) installIconPack(rp iconpack.RegistryPack) {
 				}
 				a.refreshInstalledIconPacks()
 			}
+			iconPacksUI.mu.Lock()
+			delete(iconPacksUI.installing, key)
+			if err != nil {
+				iconPacksUI.actionErr = err.Error()
+			}
+			iconPacksUI.mu.Unlock()
 		}
 		if win != nil {
 			win.Update(apply)
@@ -171,6 +190,7 @@ func (a *App) iconPacksSettings(c *ui.Context, k *colors) {
 	reg := iconPacksUI.reg
 	regErr := iconPacksUI.regErr
 	actionErr := iconPacksUI.actionErr
+	records := iconPacksUI.records
 	installing := make(map[string]bool, len(iconPacksUI.installing))
 	for id, v := range iconPacksUI.installing {
 		installing[id] = v
@@ -182,6 +202,7 @@ func (a *App) iconPacksSettings(c *ui.Context, k *colors) {
 		iconPacksUI.mu.Lock()
 		installed = slices.Clone(iconPacksUI.installed)
 		themes = slices.Clone(iconPacksUI.themes)
+		records = iconPacksUI.records
 		iconPacksUI.mu.Unlock()
 	}
 	if !regLoaded && !regLoading {
@@ -256,8 +277,10 @@ func (a *App) iconPacksSettings(c *ui.Context, k *colors) {
 	})
 
 	installedSet := map[string]bool{}
+	packVersion := map[string]string{} // pack.json's version, by icon pack ID
 	for _, s := range installed {
 		installedSet[s.ID] = true
+		packVersion[s.ID] = s.Version
 	}
 	for _, s := range themes {
 		installedSet[registryKey(iconpack.RegistryPack{ID: s.ID, Kind: iconpack.KindTheme})] = true
@@ -274,17 +297,26 @@ func (a *App) iconPacksSettings(c *ui.Context, k *colors) {
 		})
 		for _, rp := range registryEntries(reg, iconPacksUI.query) {
 			key := registryKey(rp)
+			// An installed entry whose registry ref or version differs from
+			// its install record, or that has no record, has an update.
+			update := installedSet[key] && iconpack.HasUpdate(records[key], rp)
 			groupRow(c, k, "reg-"+key).Children(func() {
 				title := cmp.Or(rp.Name, rp.ID)
 				rowLine(c, k, title, func() {
 					switch {
-					case installedSet[key]:
-						ui.Text(c, locales.SettingsIconPacksInstalledBadge()).FontSize(fontFootnote).FontWeight(600).TextColor(k.accent)
+					case installing[key] && installedSet[key]:
+						ui.Text(c, locales.SettingsIconPacksUpdating()).FontSize(fontFootnote).TextColor(k.textMuted)
 					case installing[key]:
 						ui.Text(c, locales.SettingsIconPacksInstalling()).FontSize(fontFootnote).TextColor(k.textMuted)
+					case update:
+						if ui.Button(c, locales.SettingsIconPacksUpdate()).Label(locales.SettingsIconPacksUpdate() + " " + title).Clicked() {
+							a.installIconPack(rp, true)
+						}
+					case installedSet[key]:
+						ui.Text(c, locales.SettingsIconPacksInstalledBadge()).FontSize(fontFootnote).FontWeight(600).TextColor(k.accent)
 					default:
 						if ui.Button(c, locales.SettingsIconPacksInstall()).Label(locales.SettingsIconPacksInstall() + " " + title).Clicked() {
-							a.installIconPack(rp)
+							a.installIconPack(rp, false)
 						}
 					}
 				})
@@ -299,6 +331,13 @@ func (a *App) iconPacksSettings(c *ui.Context, k *colors) {
 					meta += " — " + rp.Description
 				}
 				rowHint(c, k, meta)
+				if update {
+					own := ""
+					if rp.Kind != iconpack.KindTheme {
+						own = packVersion[rp.ID]
+					}
+					rowHint(c, k, installedVersion(records[key], own))
+				}
 			})
 		}
 	})
@@ -317,6 +356,21 @@ func registryEntries(reg *iconpack.RegistryIndex, query string) []iconpack.Regis
 		out = append(out, rp)
 	}
 	return out
+}
+
+// installedVersion says what is installed: the install record rec's
+// version, else the start of its ref; with no record, own, the version
+// the pack itself declares (an icon pack's pack.json; a theme has none);
+// else that it is unknown.
+func installedVersion(rec *iconpack.Record, own string) string {
+	v := own
+	if rec != nil {
+		v = cmp.Or(rec.Version, rec.Ref[:min(len(rec.Ref), 7)])
+	}
+	if v == "" {
+		return locales.SettingsIconPacksVersionUnknown()
+	}
+	return locales.SettingsIconPacksInstalledVersion(v)
 }
 
 // extensionKind names an extension's kind as the page shows it.
@@ -359,11 +413,22 @@ func (a *App) themesGroup(c *ui.Context, k *colors, themes []theme.Summary) {
 						a.removeTheme(s.ID)
 					}
 				})
+				// The theme's own line about itself, under its name.
+				if s.Description != "" {
+					rowHint(c, k, s.Description)
+				}
 				hint := extensionKind(iconpack.KindTheme) + " · " + s.ID
 				if s.Error != "" {
 					hint += " · " + s.Error
 				}
 				rowHint(c, k, hint)
+				if s.ID == prefs.Theme {
+					// The theme's shaders that failed a check at load, and
+					// why (docs/DSK-012-theme-shaders.md, Checks at load).
+					for _, w := range themeShaderWarnings() {
+						rowHint(c, k, w)
+					}
+				}
 			})
 		}
 	})
@@ -379,6 +444,7 @@ func (a *App) useTheme(id string) {
 	saveSettings()
 	err := loadTheme()
 	a.applyPrefs()
+	a.applyGlass() // a theme's glass key decides at once
 	iconPacksUI.mu.Lock()
 	iconPacksUI.themeErr = ""
 	if err != nil {

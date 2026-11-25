@@ -87,6 +87,14 @@ const (
 	TabSeparator                         // sideBar.tabSeparator
 	TabHoverBackground                   // sideBar.tabHoverBackground
 	TabActiveBackground                  // sideBar.tabActiveBackground
+	// The roles of docs/DSK-012-theme-shaders.md: four faces and the pane's
+	// border. The built-in palette has none of them: unset, each draws as
+	// the app did before.
+	TitleBarBackground   // titleBar.background
+	SideBarBackground    // sideBar.background
+	PaneHeaderBackground // paneHeader.background
+	ButtonBackground     // button.background
+	PaneBorder           // pane.border
 	NumRoles
 )
 
@@ -98,6 +106,11 @@ var roleNames = [NumRoles]string{
 	"sideBar.tabSeparator",
 	"sideBar.tabHoverBackground",
 	"sideBar.tabActiveBackground",
+	"titleBar.background",
+	"sideBar.background",
+	"paneHeader.background",
+	"button.background",
+	"pane.border",
 }
 
 func (r Role) String() string { return roleNames[r] }
@@ -143,17 +156,23 @@ func ColorFor(raw json.RawMessage, dark bool) (ui.Color, bool) {
 // Manifest is a parsed theme: the colors it sets, light at index 0 and
 // dark at index 1. A seed or role it does not set keeps the built-in one.
 // Terminal names the Ghostty theme of each appearance, or "" for none.
-// Assets, Ambience and Brand are the keys of docs/DSK-010-theme-ambience.md
-// that this build reads.
+// Assets names the files of the pack that its shaders read
+// (docs/DSK-010-theme-ambience.md, phase 1). Metrics, Glass and Shaders
+// are the keys of docs/DSK-012-theme-shaders.md: nil when the manifest has
+// none.
 type Manifest struct {
-	Name     string
-	Seeds    [2]map[Seed]ui.Color
-	Roles    [2]map[Role]ui.Color
-	Terminal [2]string
-	Sidebar  Sidebar
-	Assets   map[string]Asset
-	Ambience Ambience
-	Brand    Brand
+	Name string
+	// Description is a line about the theme that the Extensions page shows
+	// under its name, "" for none (docs/DSK-012-theme-shaders.md).
+	Description string
+	Seeds       [2]map[Seed]ui.Color
+	Roles       [2]map[Role]ui.Color
+	Terminal    [2]string
+	Sidebar     Sidebar
+	Assets      map[string]Asset
+	Metrics     *Metrics
+	Glass       *bool
+	Shaders     *Shaders
 }
 
 // Sidebar holds the sidebar.* settings of docs/DSK-007-sidebar-style.md
@@ -196,6 +215,9 @@ func validTerminalName(name string) bool {
 
 const maxManifestBytes = 64 << 10
 
+// maxDescription is the most characters the description key keeps.
+const maxDescription = 160
+
 // Parse reads a manifest. It drops each bad color, unknown seed, unknown
 // role and unknown key, with a warning for each; it fails only on input
 // that is not a JSON object of the manifest's shape.
@@ -213,7 +235,7 @@ func Parse(b []byte) (*Manifest, []string, error) {
 		Roles map[string]json.RawMessage            `json:"roles"`
 		Term  map[string]json.RawMessage            `json:"terminal"`
 	}
-	known := []string{"name", "seeds", "roles", "terminal", "sidebar", "assets", "ambience", "brand"}
+	known := []string{"name", "seeds", "roles", "terminal", "sidebar", "assets", "metrics", "glass", "shaders", "description"}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return nil, nil, err
 	}
@@ -287,11 +309,25 @@ func Parse(b []byte) (*Manifest, []string, error) {
 	if raw, ok := top["assets"]; ok {
 		m.Assets = parseAssets(raw, &w)
 	}
-	if raw, ok := top["ambience"]; ok {
-		m.Ambience = parseAmbience(raw, m.Assets, &w)
+	if raw, ok := top["metrics"]; ok {
+		m.Metrics = parseMetrics(raw, &w)
 	}
-	if raw, ok := top["brand"]; ok {
-		m.Brand = parseBrand(raw, m.Assets, &w)
+	if raw, ok := top["glass"]; ok {
+		m.Glass = parseGlass(raw, &w)
+	}
+	if raw, ok := top["description"]; ok {
+		var s string
+		if json.Unmarshal(raw, &s) != nil {
+			w.add("description: not a string")
+		} else {
+			var changed bool
+			if m.Description, changed = cleanText(s, maxDescription); changed {
+				w.add("description: control characters removed or cut to %d characters", maxDescription)
+			}
+		}
+	}
+	if raw, ok := top["shaders"]; ok {
+		m.Shaders = parseShaders(raw, m.Assets, m.Roles, &w)
 	}
 	warn = w
 	slices.Sort(warn)
@@ -426,9 +462,11 @@ func Install(srcDir, dir, name string) ([]string, error) {
 
 // Summary is an installed theme as a list shows it.
 type Summary struct {
-	ID    string // the file's name, which appearance.theme takes
-	Name  string // the manifest's name, or "" when it has none
-	Error string // why it does not load, or ""
+	ID   string // the file's name, which appearance.theme takes
+	Name string // the manifest's name, or "" when it has none
+	// Description is the manifest's description, or "".
+	Description string
+	Error       string // why it does not load, or ""
 }
 
 // List returns the themes installed in dir, by ID. It changes nothing.
@@ -444,7 +482,7 @@ func List(dir string) []Summary {
 		if m, _, err := Load(filepath.Join(dir, de.Name())); err != nil {
 			s.Error = err.Error()
 		} else {
-			s.Name = m.Name
+			s.Name, s.Description = m.Name, m.Description
 		}
 		out = append(out, s)
 	}

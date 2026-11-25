@@ -3,7 +3,7 @@ name: DSK-008
 description: "A theme framework for the desktop chrome: color seeds derive semantic roles, and every face resolves with its text colors as one value. Use when you change the palette, add a surface role, ship theme packs, or pair a theme with terminal colors."
 metadata:
   created: "2026-11-23"
-  updated: "2026-11-24"
+  updated: "2026-11-25"
 ---
 
 # DSK-008: Desktop theme framework
@@ -41,6 +41,7 @@ The work keeps the current look. It makes the values consistent. It does not cha
 
 - A manifest does not define terminal colors. Terminal colors stay in the Ghostty themes, the Ghostty configuration and the terminal theme setting. [DSK-009](DSK-009-terminal-settings.md) moves that setting from `theme` to `terminal.theme`. A manifest can only name a Ghostty theme for each appearance (see Terminal). The terminal is a second lightness domain. The framework adapts the chrome to the terminal.
 - The glass is a user setting (`noGlass`). [DSK-012](DSK-012-theme-shaders.md) replaces the rest of this item: a theme can turn the glass on or off over the setting.
+- GoRex ships no look of its own for a theme. The theme framework gives capabilities: seeds, roles, assets, and a theme's own shaders ([DSK-012](DSK-012-theme-shaders.md)). A built-in shape, shading, motion or behavior that a theme only tunes with a few numbers is hard-coding, and GoRex does not build it. A web theme gets such a look from CSS and JavaScript that it changes freely; a fixed set of knobs is not that. The user set this rule on 2026-11-25 ([DSK-010](DSK-010-theme-ambience.md), User decisions 6, 8 and 9).
 - iOS and the web client keep their palettes. The first scope is the desktop chrome.
 - No user edits `settings.json` by hand for an upgrade. GoRex migrates the renamed color tokens at load (see Migration).
 - Motion tokens (easing curves and durations) are not in the manifest. The `animation` setting can already stop all motion. Phase 3 can add motion tokens.
@@ -177,13 +178,15 @@ The seven tokens of [DSK-007](DSK-007-sidebar-style.md) get new names:
 
 Each face has a pairing rule. The resolver attaches the text ladder that fits the lightness of the resolved face. The rule applies to built-in faces, theme faces and user overrides. It runs at resolve time, not at seed time.
 
+Under a theme the pairing also guarantees contrast ([DSK-012](DSK-012-theme-shaders.md), New roles): the resolver takes the first ladder whose `text` reaches 4.5:1 and `textMuted` 3:1 on the face, among the theme's ladder of the face's lightness, the theme's other ladder, the built-in ladder of the face's lightness and the built-in other one, else ink made for the face. With no theme, the rule above stays as it is.
+
 ### Code
 
 - `style.go`: The `colors` struct stays. A `seeds` struct and `derive(seeds) colors` make the two palettes: `lightColors` is `derive(lightSeeds)`, and `darkColors` is `derive(darkSeeds)`. `surface(k, role)` returns the face and its ladder. `headerColors` becomes part of the resolver.
 - `internal/theme` (new): This package parses and validates a manifest. It holds the one allowlist of seed names and role names. `style.go` maps each name to a field (`seedField`, `roleField`). `checkSidebarColors` and `sidebarPalette` use the same allowlist and the same color parser (`theme.ColorFor`).
 - `style.go`: `applyTheme` makes the palettes of both appearances from layers 1 to 3 and stores them as one new value (`palettes`, an atomic pointer). A window that draws on its own goroutine thus reads whole palettes while the theme changes, so a theme applies at once, with no restart. `applyTheme` also drops the caches keyed by a palette (`menuStyleOf`, `spaceColors`). `colorsOf` returns the palettes, and `ladderOf` takes the ladder of the other appearance from them. `lightColors` and `darkColors` stay the built-in palettes.
 - `settings.go`: The new `appearance.theme` key names a manifest in `<config>/themes`. `loadSettings` loads it (`loadTheme`). Each `*.colorCustomizations` key maps onto roles. `migrateSettings` from DSK-009 also renames the DSK-007 tokens.
-- Registry: A pack of kind `theme` is a folder with a `theme.json` manifest. The registry's `index.json` lists it in a `themes` array, beside `packs`, with `"kind": "theme"`. Builds before phase 3 read only `packs`, so they do not show a theme pack as an icon pack. `gorex pack install <id>` clones the pack with the code of the icon packs (`iconpack.Checkout`), validates `theme.json` and copies it to `<config>/themes/<id>.json`. `gorex pack install <folder>` does the same for a local folder with a `theme.json`.
+- Registry: A pack of kind `theme` is a folder with a `theme.json` manifest. The registry's `index.json` lists it in a `themes` array, beside `packs`, with `"kind": "theme"`. Builds before phase 3 read only `packs`, so they do not show a theme pack as an icon pack. `gorex pack install <id>` clones the pack with the code of the icon packs (`iconpack.Checkout`), validates `theme.json` and copies it to `<config>/themes/<id>.json`. `gorex pack install <folder>` does the same for a local folder with a `theme.json`. An install from the registry also writes an install record in `<config>/themes/<id>.assets/`, so that the Extensions page and `gorex pack update` can find a newer `ref` ([MOD-012](MOD-012-program-icon-packs.md), Updates).
 - Call sites move to the resolver one surface at a time. The chosen sidebar row moves first, because it shows the contrast bug.
 
 ## Alternatives

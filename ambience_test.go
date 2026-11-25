@@ -6,7 +6,7 @@ import (
 	"image/png"
 	"os"
 	"path/filepath"
-	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -17,70 +17,26 @@ import (
 	"gorex/internal/theme"
 )
 
-// backgroundBefore is the background shader as it was before the glows of
-// docs/DSK-010-theme-ambience.md. TestBackgroundNoGlows holds the shader,
-// with no glows, to its pixels.
-var backgroundBefore = shader.MustCompile(`package main
-
-var Top, Mid, Low, Bottom, Tint vec4
-var Alpha float
-
-func hash(v uint) uint {
-	s := v*747796405 + 2891336453
-	w := ((s >> ((s >> 28) + 4)) ^ s) * 277803737
-	return (w >> 22) ^ w
-}
-
-func Fragment(dst vec4, pos vec2) vec4 {
-	size := rectSize()
-	y := pos.y / size.y
-	c := mix(Top.rgb, Mid.rgb, clamp(y/0.38, 0, 1))
-	c = mix(c, Low.rgb, clamp((y-0.38)/0.32, 0, 1))
-	c = mix(c, Bottom.rgb, clamp((y-0.7)/0.3, 0, 1))
-	a := Tint.a * clamp((pos.x/size.x-0.35)/0.65, 0, 1)
-	c = c*(1-a) + Tint.rgb*a
-	n := hash(uint(dst.x) + hash(uint(dst.y)))
-	c += (float(n)/4294967295.0 - 0.5) / 255.0
-	return vec4(clamp(c, 0, 1)*Alpha, Alpha)
-}
-`)
-
-// TestBackgroundNoGlows: with no glows, the background shader paints the
-// pixels it painted before DSK-010, byte for byte: a theme without
-// ambience, and the built-in palette, change no pixel. With a glow, the
-// pixel at its center takes its color.
-func TestBackgroundNoGlows(t *testing.T) {
+// TestBackgroundAsBefore: the background shader, which has no glows any
+// more, paints the pixels the one with the glows of
+// docs/DSK-010-theme-ambience.md painted with none, byte for byte
+// (costReference keeps that one): a theme without a background shader,
+// and the built-in palette, change no pixel.
+func TestBackgroundAsBefore(t *testing.T) {
 	const w, h = 100, 80
-	before := backgroundBefore.NewValues()
-	u := backgroundBefore.Uniform
 	for _, k := range []*colors{&lightColors, &darkColors} {
-		before.Color(u("Top"), k.bgTop).Color(u("Mid"), k.bgMid).Color(u("Low"), k.bgLow).
-			Color(u("Bottom"), k.bgBottom).Color(u("Tint"), k.bgTint).Float(u("Alpha"), 1)
+		before := shader.Options{Uniforms: map[string]any{
+			"Top": k.bgTop, "Mid": k.bgMid, "Low": k.bgLow, "Bottom": k.bgBottom, "Tint": k.bgTint, "Alpha": 1,
+			"Glow": [16]float32{2: 1, 3: 1, 6: 1, 7: 1, 10: 1, 11: 1, 14: 1, 15: 1},
+		}}
 		old := ui.NewTester(func(c *ui.Context) {
-			ui.Box(c).Fill().Draw(func(p *ui.Painter, r ui.Rect) { backgroundBefore.Draw(p, r, shader.Options{Values: before}) })
+			ui.Box(c).Fill().Draw(func(p *ui.Painter, r ui.Rect) { costReference.Draw(p, r, before) })
 		}, w, h).Image()
 		now := ui.NewTester(func(c *ui.Context) {
-			ui.Box(c).Fill().Draw(func(p *ui.Painter, r ui.Rect) { background.Draw(p, r, backgroundOptions(k, 1, nil)) })
+			ui.Box(c).Fill().Draw(func(p *ui.Painter, r ui.Rect) { background.Draw(p, r, backgroundOptions(k, 1)) })
 		}, w, h).Image()
 		if !bytes.Equal(old.Pix, now.Pix) {
-			t.Fatal("the shader with no glows paints other pixels than before")
-		}
-		red := ui.RGBA(255, 0, 0, 0.4)
-		lit := ui.NewTester(func(c *ui.Context) {
-			ui.Box(c).Fill().Draw(func(p *ui.Painter, r ui.Rect) {
-				background.Draw(p, r, backgroundOptions(k, 1, []glow{{0.5, 0.5, 0.3, 0.3, red}}))
-			})
-		}, w, h).Image()
-		o := lit.PixOffset(w/2, h/2)
-		want := red.Over(ui.Color{R: now.Pix[o], G: now.Pix[o+1], B: now.Pix[o+2], A: 255})
-		for i, c := range []uint8{want.R, want.G, want.B} {
-			if d := int(lit.Pix[o+i]) - int(c); d > 3 || d < -3 {
-				t.Errorf("glow center %v, want %v", lit.Pix[o:o+4], want)
-				break
-			}
-		}
-		if e := lit.PixOffset(2, 2); !bytes.Equal(lit.Pix[e:e+4], now.Pix[e:e+4]) {
-			t.Error("a glow changed a pixel past its edge")
+			t.Fatal("the background paints other pixels than before the glows went")
 		}
 	}
 }
@@ -96,30 +52,6 @@ func writeTestPNG(t *testing.T, path string, w, h int, c [4]uint8) {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(path, b.Bytes(), 0o644); err != nil {
-		t.Fatal(err)
-	}
-}
-
-// installSea installs a theme pack with the keys of DSK-010 as "sea": a
-// glow, a watermark and a brand row with an SVG icon.
-func installSea(t *testing.T) {
-	t.Helper()
-	src := t.TempDir()
-	os.Mkdir(filepath.Join(src, theme.AssetsDir), 0o755)
-	writeTestPNG(t, filepath.Join(src, theme.AssetsDir, "side.png"), 40, 60, [4]uint8{20, 60, 200, 255})
-	os.WriteFile(filepath.Join(src, theme.AssetsDir, "logo.svg"),
-		[]byte(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><circle cx="10" cy="10" r="8" fill="currentColor"/></svg>`), 0o644)
-	os.WriteFile(filepath.Join(src, theme.PackFile), []byte(`{
-  "name": "Sea",
-  "seeds": { "light": { "accent": "#3b62f6" } },
-  "assets": { "side": "side.png", "logo": "logo.svg" },
-  "ambience": {
-    "glows": [{ "x": 0.9, "y": 0.1, "rx": 0.5, "ry": 0.5, "color": { "light": "#3b62f666", "dark": "#6c8cff66" } }],
-    "images": [{ "asset": "side", "anchor": "bottomRight", "height": 0.7, "opacity": 0.25 }]
-  },
-  "brand": { "icon": "logo", "wordmark": "Sea Whale" }
-}`), 0o644)
-	if _, err := theme.Install(src, theme.Dir(config.Dir()), "sea"); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -141,25 +73,12 @@ func useThemeNow(t *testing.T, id string) {
 	}
 }
 
-// sameSidebar reports whether a and b have the same pixels in the
-// sidebar's column, the window's background and the sidebar's rows, left
-// of the panes, whose terminal draws on its own time.
-func sameSidebar(a, b *image.RGBA, w int) bool {
-	for y := a.Rect.Min.Y; y < a.Rect.Max.Y; y++ {
-		o := a.PixOffset(0, y)
-		if !bytes.Equal(a.Pix[o:o+4*w], b.Pix[o:o+4*w]) {
-			return false
-		}
-	}
-	return true
-}
-
-// TestThemeAmbience: a theme with DSK-010's keys draws its glows, its
-// watermark and its brand row; Ambience Off takes the glows and the
-// watermark away and keeps the brand. A theme of colors only, and the
-// built-in palette, draw what they drew before: the same pixels after an
-// ambience theme as before it.
-func TestThemeAmbience(t *testing.T) {
+// TestThemeLooksDropped: GoRex draws no look of its own from a pack
+// (docs/DSK-008-theme.md, Non-goals). A pack with the glows, watermark,
+// sprites and brand row of DSK-010 installs and loads its colors, and the
+// window paints the same pixels as with the same colors and none of those
+// keys: no brand row, no glow, no watermark. It shows no ambience button.
+func TestThemeLooksDropped(t *testing.T) {
 	keepTheme(t)
 	t.Setenv("GOREX_CONFIG", filepath.Join(t.TempDir(), "init.lua"))
 	_, tt := newTestApp(t)
@@ -171,137 +90,136 @@ func TestThemeAmbience(t *testing.T) {
 		tt.Frame()
 		return tt.Image()
 	}
-	side := int(sidebarWidthIn(1000)) // newTestApp's window is 1000 wide
-
-	useThemeNow(t, "")
-	builtin := shot()
-	if tt.HasText("Sea Whale") {
-		t.Fatal("a brand row with no theme")
-	}
-
-	// A theme of DSK-008's keys only has no look.
-	src := t.TempDir()
-	os.WriteFile(filepath.Join(src, theme.PackFile), []byte(`{"name":"Slate","seeds":{"light":{"bgTop":"#eef0f4","accent":"#0a6bff"}}}`), 0o644)
-	if _, err := theme.Install(src, theme.Dir(config.Dir()), "slate"); err != nil {
-		t.Fatal(err)
-	}
-	useThemeNow(t, "slate")
-	if look.Load() != nil {
-		t.Error("a theme of colors only has a look")
-	}
-	slate := shot()
-
-	installSea(t)
-	useThemeNow(t, "sea")
-	l := look.Load()
-	if l == nil || l.art == nil || l.art.Icon == nil || l.art.Bitmaps["side"] == nil {
-		t.Fatalf("the look of sea: %+v", l)
-	}
-	sea := shot()
-	// A reload of the same theme, as a change of settings.json makes, keeps
-	// the decoded assets while it decodes them again: nothing blinks.
-	if err := loadTheme(); err != nil {
-		t.Fatal(err)
-	}
-	if l := look.Load(); l == nil || l.art == nil {
-		t.Error("a reload of the theme dropped its assets until the decode ends")
-	}
-	useThemeNow(t, "sea")
-	if !tt.HasText("Sea Whale") {
-		t.Errorf("no brand row; texts %q", tt.Texts())
-	}
-	brand, _ := tt.Find("Sea Whale")
-	if brand.H <= 0 || brand.H > brandRowH {
-		t.Errorf("brand row text %+v", brand)
-	}
-
-	prefs.Ambience = ambienceOff
-	off := shot()
-	if !tt.HasText("Sea Whale") {
-		t.Error("Ambience Off hid the brand row")
-	}
-	w, h := sea.Rect.Dx(), sea.Rect.Dy()
-	// The window's top right corner, in the glow; the bottom right one,
-	// under the watermark.
-	for _, pt := range [][2]int{{w - 3, 3}, {w - 3, h - 3}} {
-		o := sea.PixOffset(pt[0], pt[1])
-		if bytes.Equal(sea.Pix[o:o+4], off.Pix[o:o+4]) {
-			t.Errorf("pixel %v: ambience on and off paint the same %v", pt, sea.Pix[o:o+4])
+	const colorsOnly = `"name": "Sea", "seeds": { "light": { "accent": "#3b62f6", "bgTop": "#dce8ff" } }`
+	install := func(id, body string) {
+		src := t.TempDir()
+		os.Mkdir(filepath.Join(src, theme.AssetsDir), 0o755)
+		writeTestPNG(t, filepath.Join(src, theme.AssetsDir, "side.png"), 40, 60, [4]uint8{20, 60, 200, 255})
+		os.WriteFile(filepath.Join(src, theme.AssetsDir, "logo.svg"), []byte(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"/>`), 0o644)
+		os.WriteFile(filepath.Join(src, theme.PackFile), []byte("{"+body+"}"), 0o644)
+		if _, err := theme.Install(src, theme.Dir(config.Dir()), id); err != nil {
+			t.Fatal(err)
 		}
 	}
-	prefs.Ambience = ""
+	install("plain", colorsOnly)
+	install("sea", colorsOnly+`,
+  "assets": { "side": "side.png", "logo": "logo.svg", "fish": { "file": "side.png", "frames": 4, "columns": 2 } },
+  "ambience": {
+    "glows": [{ "x": 0.9, "y": 0.1, "rx": 0.5, "ry": 0.5, "color": "#ff000066" }],
+    "images": [{ "asset": "side", "anchor": "bottomRight", "height": 0.7, "opacity": 0.25 }],
+    "sprites": [{ "asset": "side", "y": 0.5, "height": 100, "seconds": 8, "opacity": 0.3 }]
+  },
+  "brand": { "icon": "logo", "wordmark": "Sea Whale" }`)
 
-	useThemeNow(t, "slate")
-	if again := shot(); !sameSidebar(again, slate, side) {
-		t.Error("a theme of colors only after an ambience theme paints other pixels than before it")
+	useThemeNow(t, "plain")
+	plain := shot()
+	useThemeNow(t, "sea")
+	sea := shot()
+	if k := paletteOf(false); k.accent != ui.Hex("#3b62f6") {
+		t.Errorf("the pack's accent %v did not load", k.accent)
 	}
-	useThemeNow(t, "")
-	if again := shot(); !sameSidebar(again, builtin, side) {
-		t.Error("the built-in palette after an ambience theme paints other pixels than before it")
+	if tt.HasText("Sea Whale") {
+		t.Error("a brand row")
 	}
-	if look.Load() != nil {
-		t.Error("the built-in palette kept a look")
+	if _, ok := tt.Find("Turn Off Theme Ambience"); ok || themeAmbient() {
+		t.Error("an ambience button for a pack with no shader")
+	}
+	if !sameSidebar(sea, plain, sea.Rect.Dx()/4) {
+		t.Error("the pack paints other pixels than its colors alone")
 	}
 }
 
-// TestAmbienceSettingsFileOnly: the Extensions page adds no control for
-// ambience or the mascot. With a theme of DSK-010's keys in use it shows
-// the same texts as with a theme of colors only, and the In use mark
-// moves. appearance.ambience and appearance.mascot live in settings.json:
-// "off" there takes the glows away, and a value neither key has reads as
-// the default.
-func TestAmbienceSettingsFileOnly(t *testing.T) {
-	keepTheme(t)
-	a, _ := newTestApp(t)
-	t.Setenv("GOREX_CONFIG", filepath.Join(t.TempDir(), "init.lua"))
+// sameSidebar reports whether a and b have the same pixels in the w
+// pixels at the window's left: the sidebar's column, the window's
+// background and the sidebar's rows, left of the panes, whose terminal
+// draws on its own time.
+func sameSidebar(a, b *image.RGBA, w int) bool {
+	for y := a.Rect.Min.Y; y < a.Rect.Max.Y; y++ {
+		o := a.PixOffset(0, y)
+		if !bytes.Equal(a.Pix[o:o+4*w], b.Pix[o:o+4*w]) {
+			return false
+		}
+	}
+	return true
+}
+
+// TestAmbienceSettingsFile: appearance.ambience reads "still" and "off",
+// and any other value as the default. A settings.json that still has
+// appearance.mascot, which no build reads, loads as it is, and the next
+// save drops the key.
+func TestAmbienceSettingsFile(t *testing.T) {
+	t.Setenv("GOREX_DIR", t.TempDir())
 	old := prefs
-	t.Cleanup(func() { prefs = old; resetIconPacksUI() })
-	prefs = settings{}
-	resetIconPacksUI()
-	t.Setenv("GOREX_PACK_REGISTRY", "http://127.0.0.1:1/index.json")
-	installSea(t)
-	src := t.TempDir()
-	os.WriteFile(filepath.Join(src, theme.PackFile), []byte(`{"name":"Slate","seeds":{"light":{"accent":"#0a6bff"}}}`), 0o644)
-	theme.Install(src, theme.Dir(config.Dir()), "slate")
-
-	settingsUI.section = "icons"
-	tt := ui.NewTester(a.settingsView, 780, 1100)
-	texts := func(id string) []string {
-		useThemeNow(t, id)
-		tt.Frame()
-		// The Use button of the theme not in use names it: the one text
-		// that moves with In use.
-		got := slices.DeleteFunc(slices.Clone(tt.Texts()), func(s string) bool { return s == "Use Sea" || s == "Use Slate" })
-		slices.Sort(got)
-		return got
-	}
-	slate, sea := texts("slate"), texts("sea")
-	if look.Load() == nil {
-		t.Fatal("sea has no look")
-	}
-	if !slices.Equal(slate, sea) {
-		t.Errorf("the Extensions page shows other texts under a theme with ambience:\n%q\nwant\n%q", sea, slate)
-	}
-
-	for _, tc := range []struct {
-		file             string
-		ambience, mascot string
-		glows            bool
-	}{
-		{`{"appearance.theme":"sea","appearance.ambience":"off","appearance.mascot":"off"}`, "off", "off", false},
-		{`{"appearance.theme":"sea","appearance.ambience":"still"}`, "still", "", true},
-		{`{"appearance.theme":"sea","appearance.ambience":"sideways","appearance.mascot":"on"}`, "", "", true},
+	t.Cleanup(func() { prefs = old })
+	for _, tc := range []struct{ file, ambience string }{
+		{`{"appearance.theme":"sea","appearance.ambience":"off","appearance.mascot":"off"}`, "off"},
+		{`{"appearance.theme":"sea","appearance.ambience":"still"}`, "still"},
+		{`{"appearance.theme":"sea","appearance.ambience":"sideways","appearance.mascot":"on"}`, ""},
 	} {
 		next, ok := decodeSettings([]byte(tc.file))
 		if !ok {
 			t.Fatalf("decodeSettings(%s)", tc.file)
 		}
-		if next.Ambience != tc.ambience || next.Mascot != tc.mascot {
-			t.Errorf("%s: ambience %q, mascot %q", tc.file, next.Ambience, next.Mascot)
+		if next.Ambience != tc.ambience || next.Theme != "sea" {
+			t.Errorf("%s: ambience %q, theme %q", tc.file, next.Ambience, next.Theme)
 		}
-		prefs.Ambience = next.Ambience
-		if got := themeGlows(false) != nil; got != tc.glows {
-			t.Errorf("%s: glows drawn %v, want %v", tc.file, got, tc.glows)
+		prefs = next
+		saveSettings()
+		b, err := os.ReadFile(settingsPath())
+		if err != nil {
+			t.Fatal(err)
 		}
+		if strings.Contains(string(b), "appearance.mascot") || !strings.Contains(string(b), `"appearance.theme": "sea"`) {
+			t.Errorf("%s saved as %s", tc.file, b)
+		}
+	}
+}
+
+// TestAmbienceButton: the sidebar's button, and Toggle Theme Ambience,
+// show only while the theme has a shader that Ambience turns off or stops
+// (docs/DSK-012-theme-shaders.md): none with a theme of colors only. The
+// button turns ambience off, which takes the theme's background shader
+// away, and on again as it was.
+func TestAmbienceButton(t *testing.T) {
+	keepTheme(t)
+	t.Setenv("GOREX_CONFIG", filepath.Join(t.TempDir(), "init.lua"))
+	app, tt := newTestApp(t)
+	old := prefs
+	t.Cleanup(func() { prefs = old })
+	prefs = settings{TabPlacement: "left", Animation: "off", NoGlass: true, Ambience: ambienceStill}
+	m, _, err := theme.Parse([]byte(`{"name":"Slate","seeds":{"light":{"accent":"#0a6bff"}}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	applyTheme(m)
+	tt.Frame()
+	if _, ok := tt.Find("Turn Off Theme Ambience"); ok || cmdAmbience.Available(app) {
+		t.Error("an ambience button or command with a theme of colors only")
+	}
+
+	m, art := shaderTheme(t, `{
+  "assets": { "bg": "bg.kage" },
+  "shaders": { "api": 1, "background": { "source": "bg" } }
+}`, map[string]string{"bg": solidBackground})
+	if set := useShaders(t, m, art); set.background == nil {
+		t.Fatalf("the background slot fails: %q", set.warn)
+	}
+	tt.Frame()
+	if !cmdAmbience.Available(app) {
+		t.Error("no Toggle Theme Ambience with a background shader")
+	}
+	if err := tt.Click("Turn Off Theme Ambience"); err != nil {
+		t.Fatalf("%v; texts %q", err, tt.Texts())
+	}
+	tt.Frame()
+	if prefs.Ambience != ambienceOff || themeBackground() != nil {
+		t.Errorf("after the button, ambience %q, background %v", prefs.Ambience, themeBackground())
+	}
+	if err := tt.Click("Turn On Theme Ambience"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if prefs.Ambience != ambienceStill || themeBackground() == nil {
+		t.Errorf("on again, ambience %q, want it still as it was", prefs.Ambience)
 	}
 }

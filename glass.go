@@ -20,8 +20,24 @@ const (
 // among them, as a faint wash, and little enough for the desktop to show.
 const glassWash = 0.3
 
-// glassOn tells that the glass setting is on, as it is until turned off.
-func glassOn() bool { return !prefs.NoGlass }
+// glassOn tells that the glass is on: the selected theme's glass key where
+// it has one (docs/DSK-012-theme-shaders.md, Glass), else the user's
+// setting, on until turned off.
+func glassOn() bool {
+	if g := themeGlass(); g != nil {
+		return *g
+	}
+	return !prefs.NoGlass
+}
+
+// themeGlass is the selected theme's glass key, or nil when no theme, or a
+// theme without the key, is selected.
+func themeGlass() *bool {
+	if p := palettes.Load(); p != nil {
+		return p.glass
+	}
+	return nil
+}
 
 // termOpacity is the terminals' background opacity the setting asks for,
 // in its range, or the default while unset.
@@ -136,10 +152,10 @@ func panelMaterial(k *colors) ui.SystemGlass {
 
 // pillRadius is the corner radius of a tab's row h DIPs high, the same
 // hovered as active: a capsule's under the glass setting, as the active
-// tab's pill is, and flat otherwise without it.
-func pillRadius(h, flat float32) float32 {
+// tab's pill is, and flat, a radius of k already, otherwise without it.
+func pillRadius(k *colors, h, flat float32) float32 {
 	if glassOn() {
-		return h / 2
+		return k.capsule(h)
 	}
 	return flat
 }
@@ -152,7 +168,7 @@ func pillRadius(h, flat float32) float32 {
 // turn dark.
 func glassPill(e ui.Element, k *colors, h float32) {
 	if !glassOn() {
-		e.Background(k.tabActive).Shadow(0, 1, 2, 0, k.shadow).Shadow(0, 2, 8, 0, k.shadow)
+		paintFace(e, k, roleTabActiveBackground, k.tabActive).Shadow(0, 1, 2, 0, k.shadow).Shadow(0, 2, 8, 0, k.shadow)
 		return
 	}
 	// The system's own Liquid Glass, as Rex's selected tab is: no tint in a
@@ -160,7 +176,7 @@ func glassPill(e ui.Element, k *colors, h float32) {
 	// dark window, a faint light under it in a light one. Where the system
 	// draws no glass (before macOS 26, on Windows and Linux, in tests) it
 	// is the flat face of light over the window.
-	e.Radius(h/2).Material(ui.SystemGlass{Tint: k.pillTint, Fallback: faceMaterial{k.pillFace}}).
+	e.Radius(k.capsule(h)).Material(ui.SystemGlass{Tint: k.pillTint, Fallback: faceMaterial{k.pillFace}}).
 		Shadow(0, 1.5, 3.5, 0, k.pillShadow)
 }
 
@@ -176,10 +192,10 @@ const (
 // deeper shadow and a hairline, so that it stands over the group.
 func liftedPill(e ui.Element, k *colors, h float32) {
 	if !glassOn() {
-		e.Background(k.tabActive).Shadow(0, 1, 2, 0, k.shadow).Shadow(0, 1, 4, 0, k.liftShadow).Border(liftBorderW, k.text.Alpha(liftBorderAlpha))
+		paintFace(e, k, roleTabActiveBackground, k.tabActive).Shadow(0, 1, 2, 0, k.shadow).Shadow(0, 1, 4, 0, k.liftShadow).Border(liftBorderW, k.text.Alpha(liftBorderAlpha))
 		return
 	}
-	e.Radius(h/2).Material(ui.SystemGlass{Tint: k.pillTint, Fallback: faceMaterial{k.pillLift}}).
+	e.Radius(k.capsule(h)).Material(ui.SystemGlass{Tint: k.pillTint, Fallback: faceMaterialOf(roleActiveGroupTabBackground, k.pillLift)}).
 		Shadow(0, 1.5, 3.5, 0, k.pillShadow).Shadow(0, 1, 4, 0, k.liftShadow).Border(liftBorderW, k.text.Alpha(liftBorderAlpha))
 }
 
@@ -189,6 +205,28 @@ type faceMaterial struct{ c ui.Color }
 
 func (f faceMaterial) PaintMaterial(p *ui.Painter, box ui.Rect, radii [4]float32) {
 	p.Fill(box, f.c, radii[0])
+}
+
+// systemGlassPills tells that the system draws the glass pills (macOS),
+// whose text keeps the ladder of what lies under them; elsewhere a pill
+// under the glass setting is its fallback face. A test sets it.
+var systemGlassPills = runtime.GOOS == "darwin"
+
+// pillColors returns k with the ladder that reads on a glass pill's
+// fallback face, pill laid over layers (the faces under it, the lowest
+// first, over k's panel), where the system draws no glass and a theme
+// sets the lowest layer; else k itself. Under a theme the ladder is
+// faceLadder's, so a light pill on a dark title bar gets dark text.
+func pillColors(k *colors, pill ui.Color, layers ...ui.Color) *colors {
+	if systemGlassPills || len(layers) == 0 || layers[0].A == 0 {
+		return k
+	}
+	face := k.panel
+	for _, l := range layers {
+		face = l.Over(face)
+	}
+	face = pill.Over(face)
+	return withLadder(k, faceLadder(k, face, ladderOf(k, isDark(face))))
 }
 
 // hoverFace is a hovered tab's face: Rex's under the glass setting, the

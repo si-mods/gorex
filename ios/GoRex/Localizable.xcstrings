@@ -46,6 +46,16 @@
         }
       }
     },
+    "%lld of %lld": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "第 %lld 项，共 %lld 项"
+          }
+        }
+      }
+    },
     "%lld projects": {
       "localizations": {
         "en": {
@@ -280,6 +290,16 @@
         }
       }
     },
+    "Checked": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已勾选"
+          }
+        }
+      }
+    },
     "Choose": {
       "localizations": {
         "zh-Hans": {
@@ -420,6 +440,16 @@
         }
       }
     },
+    "Not checked": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "未勾选"
+          }
+        }
+      }
+    },
     "Only the first 2000 folders are shown.": {
       "localizations": {
         "zh-Hans": {
@@ -446,6 +476,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "打开这个文件？"
+          }
+        }
+      }
+    },
+    "Pick an answer": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请选择答案"
           }
         }
       }
@@ -4420,16 +4460,6 @@
         }
       }
     },
-    "Close Other Tabs": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "关闭其他标签页"
-          }
-        }
-      }
-    },
     "Close Project": {
       "localizations": {
         "zh-Hans": {
@@ -4790,12 +4820,12 @@
         }
       }
     },
-    "Rename Tab, Reset Name, Move Up, Move Down, Move to Project, New Tab, Close Tab and Close Other Tabs.": {
+    "Rename Tab, Reset Name, Move Up, Move Down, Move to Project, New Tab and Close Tab.": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "重命名标签页、重置名称、上移、下移、移到项目、新建标签页、关闭标签页和关闭其他标签页。"
+            "value": "重命名标签页、重置名称、上移、下移、移到项目、新建标签页和关闭标签页。"
           }
         }
       }

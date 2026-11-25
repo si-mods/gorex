@@ -13,6 +13,8 @@ import (
 
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/plugins/terminal"
+
+	"gorex/locales"
 )
 
 // debugHook lets a script drive the app while GOREX_DEBUG names a
@@ -207,13 +209,7 @@ func (st *store) debug(dir, line string) {
 			}
 		})
 	case "cancel": // keeps it, and what a question before closing tabs or a pane asks about
-		debugMain(func() { a.wsConfirm, a.closeAsk.open, a.closeOthersOpen = false, false, false })
-	case "close-others": // the active tab's Close Other Tabs, which asks first
-		debugMain(func() {
-			if t := a.tab(); t != nil {
-				a.askCloseOthers(t)
-			}
-		})
+		debugMain(func() { a.wsConfirm, a.closeAsk.open = false, false })
 	default:
 		a.debug(dir, line)
 	}
@@ -391,7 +387,7 @@ func (a *App) debug(dir, line string) {
 		})
 	case "url": // loads the URL in the focused browser pane
 		win.Update(func() {
-			if t := a.tab(); t != nil && t.Focus != nil && t.Focus.browser != nil {
+			if t := a.tab(); t != nil && t.Focus != nil && t.Focus.ext != nil {
 				a.navigateBrowser(t.Focus, arg)
 			}
 		})
@@ -411,12 +407,35 @@ func (a *App) debug(dir, line string) {
 		})
 	case "space": // NAME: the windows show that space, "" for Default
 		debugMain(func() { a.showSpaceNamed(arg) })
+	case "toast": // error [TEXT]: an error toast
+		op, rest, _ := strings.Cut(arg, " ")
+		debugMain(func() {
+			if op == "error" {
+				if rest == "" {
+					rest = locales.ToastActionFailed(cmdSplitRight.Title(), "no such pane")
+				}
+				a.toastError(rest)
+			}
+		})
+	case "quit-confirm": // open or cancel: the question before Quit and End All Sessions, whatever the sessions
+		debugMain(func() { a.quitAsk = arg == "open" })
+	case "notifications": // off or on: as if macOS refused GoRex's notifications, or showed one; Settings, Appearance, shows the row while off
+		debugMain(func() {
+			if a.st == nil {
+				return
+			}
+			if arg == "off" {
+				a.st.notified(mygo.ErrNotificationsDenied)
+			} else {
+				a.st.notified(nil)
+			}
+		})
 	case "open-row": // HOSTKEY/ID open|closed: a sidebar row of a project, or HOSTKEY/older
 		debugMain(func() {
 			key, v, _ := strings.Cut(arg, " ")
 			setRowOpen(key, v != "closed")
 		})
-	case "sheet": // open [HOSTID] DIR: the New Project sheet on a host ("local" for this machine) in DIR; browse DIR; create; close
+	case "sheet": // open [HOSTID] DIR: the New Project sheet on a host ("local" for this machine) in DIR; browse DIR; leaf TEXT; create; close
 		win.Update(func() {
 			v, rest, _ := strings.Cut(arg, " ")
 			switch v {
@@ -429,8 +448,10 @@ func (a *App) debug(dir, line string) {
 				}
 			case "browse":
 				a.sheet.browse(rest)
+			case "leaf": // TEXT: the path field's leaf
+				a.sheet.path = a.sheet.dir() + rest
 			case "create":
-				a.finishSheet()
+				a.sheetSubmit()
 			case "close":
 				a.sheet.open = false
 			case "down", "up": // the arrow keys in the folder list
@@ -478,6 +499,8 @@ func (a *App) debug(dir, line string) {
 			arg = ""
 		}
 		win.Update(func() { a.useTheme(arg) })
+	case "anim": // snappy, natural or off: the window's animation style, for still screenshots
+		debugMain(func() { prefs.Animation = arg })
 	case "ambience": // moving, still or off: appearance.ambience (docs/DSK-010-theme-ambience.md)
 		win.Update(func() {
 			a.setWindowPref(func(s *settings) { s.Ambience = map[string]string{"still": ambienceStill, "off": ambienceOff}[arg] })
@@ -495,8 +518,8 @@ func (a *App) debug(dir, line string) {
 		time.Sleep(300 * time.Millisecond)
 		var v *mygo.WebView
 		debugMain(func() {
-			if t := a.tab(); t != nil && t.Focus != nil && t.Focus.browser != nil {
-				v = t.Focus.browser.web
+			if t := a.tab(); t != nil && t.Focus != nil && t.Focus.ext != nil {
+				v = t.Focus.ext.webView()
 			}
 		})
 		if v == nil {

@@ -28,11 +28,13 @@ import (
 // mode bits here.
 const sessionReadFlag = "-session-read"
 
-// openAsUser and listDirAsUser read as the session user, in the helper at
-// the server's executable: tests replace them.
+// openAsUser and listDirAsUser read, and mkdirAsUser makes a directory,
+// as the session user, in the helper at the server's executable: tests
+// replace them.
 var (
 	openAsUser    = openAsUserHelper
 	listDirAsUser = listDirAsUserHelper
+	mkdirAsUser   = mkdirAsUserHelper
 )
 
 // openAsSession opens path to send, as openToSend does, as the user the
@@ -51,6 +53,14 @@ func (s *Server) listAsSession(home, path string, hidden bool) (DirListResult, e
 		return listDirFunc(home, path, hidden)
 	}
 	return listDirAsUser(s.spawner(), home, path, hidden)
+}
+
+// mkdirAsSession makes path, as the user the sessions run as.
+func (s *Server) mkdirAsSession(home, path string) error {
+	if s.sessUser == nil {
+		return mkdirDir(home, path)
+	}
+	return mkdirAsUser(s.spawner(), home, path)
 }
 
 // sessionRead is what the helper reads, as JSON on its input.
@@ -77,8 +87,8 @@ func sessionReadMain(args []string) error {
 		return err
 	}
 	var r sessionRead
-	if len(args) != 1 || (args[0] != "open" && args[0] != "list") {
-		return errors.New("gorex: " + sessionReadFlag + ": open or list, with what to read on the input")
+	if len(args) != 1 || (args[0] != "open" && args[0] != "list" && args[0] != "mkdir") {
+		return errors.New("gorex: " + sessionReadFlag + ": open, list or mkdir, with what to read on the input")
 	}
 	if err := json.NewDecoder(os.Stdin).Decode(&r); err != nil {
 		return fmt.Errorf("gorex: %s: %w", sessionReadFlag, err)
@@ -88,7 +98,12 @@ func sessionReadMain(args []string) error {
 	}
 	var a listAnswer
 	var err error
-	if a.Result, err = listDir(r.Home, r.Path, r.Hidden); err != nil {
+	if args[0] == "mkdir" {
+		err = mkdirDir(r.Home, r.Path)
+	} else {
+		a.Result, err = listDir(r.Home, r.Path, r.Hidden)
+	}
+	if err != nil {
 		a.Error = err.Error()
 	}
 	return json.NewEncoder(os.Stdout).Encode(a)

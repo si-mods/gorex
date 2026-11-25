@@ -22,7 +22,7 @@ func TestCardRadius(t *testing.T) {
 		}
 	}
 	// A view without a window, as the tests', has the fallback.
-	if got := (&App{}).cardR(); got != 8 {
+	if got := (&App{}).cardR(&lightColors); got != 8 {
 		t.Errorf("no window: cardR() = %v, want 8", got)
 	}
 }

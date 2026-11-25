@@ -9,6 +9,20 @@ import (
 	"gorex/locales"
 )
 
+// browserOf is the pane's browser extension, nil for a pane that is not a
+// browser's.
+func browserOf(p *Pane) *browserPane {
+	b, _ := p.ext.(*browserPane)
+	return b
+}
+
+// noteOf is the pane's note extension, nil for a pane that is not a
+// note's.
+func noteOf(p *Pane) *notePane {
+	n, _ := p.ext.(*notePane)
+	return n
+}
+
 func TestBrowserURL(t *testing.T) {
 	for _, c := range []struct{ in, want string }{
 		{"", ""},
@@ -67,7 +81,7 @@ func TestBrowserTab(t *testing.T) {
 		t.Fatal("the browser tab is not the active one")
 	}
 	p := tab.Focus
-	if p == nil || p.browser == nil || p.SID != "" {
+	if p == nil || browserOf(p) == nil || p.SID != "" {
 		t.Fatalf("focus is not a browser pane: %+v", p)
 	}
 	if name, _ := p.label(); name != locales.BrowserName() {
@@ -87,25 +101,25 @@ func TestBrowserTab(t *testing.T) {
 	tt.Type("example.com")
 	tt.Key(0, ui.KeyEnter)
 	tt.Frame()
-	if p.browser.addr != "https://example.com" {
-		t.Errorf("address %q after typing", p.browser.addr)
+	if browserOf(p).addr != "https://example.com" {
+		t.Errorf("address %q after typing", browserOf(p).addr)
 	}
 	// A URL a browser pane does not open keeps the field, and says why.
 	a.navigateBrowser(p, "file:///tmp/page.html")
-	if p.browser.addr != "https://example.com" {
-		t.Errorf("address %q after a file URL", p.browser.addr)
+	if browserOf(p).addr != "https://example.com" {
+		t.Errorf("address %q after a file URL", browserOf(p).addr)
 	}
 	a.err, a.errMsg = "", nil
 
 	// The address field's URL is a page's, and the pane keeps it.
 	p.title = "Example Domain"
-	p.browser.url, p.browser.addr = "https://example.com/", "https://example.com/"
+	browserOf(p).url, browserOf(p).addr = "https://example.com/", "https://example.com/"
 	if name, detail := p.label(); name != "Example Domain" || detail != "example.com" {
 		t.Errorf("label %q %q", name, detail)
 	}
 	a.navigateBrowser(p, "example.com/next")
-	if p.browser.addr != "https://example.com/next" {
-		t.Errorf("address %q", p.browser.addr)
+	if browserOf(p).addr != "https://example.com/next" {
+		t.Errorf("address %q", browserOf(p).addr)
 	}
 }
 
@@ -119,13 +133,13 @@ func TestSplitBrowser(t *testing.T) {
 		t.Fatalf("%d panes", len(ps))
 	}
 	p := tab.Focus
-	if p == nil || p.browser == nil {
+	if p == nil || browserOf(p) == nil {
 		t.Fatalf("the new pane is not a browser: %+v", p)
 	}
 	if p == ps[0] {
 		t.Error("the browser is not beside the shell")
 	}
-	if ps[0].browser != nil || ps[0].term == nil {
+	if browserOf(ps[0]) != nil || ps[0].term == nil {
 		t.Error("the shell pane is gone")
 	}
 	if _, ok := tt.Find(locales.BrowserAddress()); !ok {
@@ -153,7 +167,7 @@ func TestBrowserLayout(t *testing.T) {
 	tt.Frame()
 	p := a.tab().Focus
 	p.Name = "Docs"
-	p.browser.url, p.browser.addr = "https://example.com/docs", "https://example.com/docs"
+	browserOf(p).url, browserOf(p).addr = "https://example.com/docs", "https://example.com/docs"
 	a.saveNow()
 
 	l := savedWorkspaces(t, a.client).Sessions[0].Layout
@@ -173,7 +187,7 @@ func TestBrowserLayout(t *testing.T) {
 	var got *Pane
 	for _, tab := range b.tabs {
 		for _, p := range tab.panes() {
-			if p.browser != nil {
+			if browserOf(p) != nil {
 				got = p
 			}
 		}
@@ -181,8 +195,8 @@ func TestBrowserLayout(t *testing.T) {
 	if got == nil {
 		t.Fatal("the browser pane is not restored")
 	}
-	if got.browser.url != "https://example.com/docs" || got.Name != "Docs" {
-		t.Errorf("restored %q %q", got.browser.url, got.Name)
+	if browserOf(got).url != "https://example.com/docs" || got.Name != "Docs" {
+		t.Errorf("restored %q %q", browserOf(got).url, got.Name)
 	}
 	if got.SID != "" || got.term != nil {
 		t.Errorf("a browser pane restored with a session %q", got.SID)

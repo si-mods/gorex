@@ -19,17 +19,15 @@ struct PromptSheet: View {
         self.prompt = prompt
         self.answer = answer
         _text = State(initialValue: prompt.spec.value ?? "")
-        _picked = State(initialValue: Set(prompt.spec.items.filter(\.selected).map(\.id)))
+        // A question that takes one answer starts with at most one chosen.
+        let selected = prompt.spec.items.filter(\.selected).map(\.id)
+        _picked = State(initialValue: Set(prompt.spec.multiple ? selected : Array(selected.prefix(1))))
     }
 
     private var spec: Prompt.Spec { prompt.spec }
     private var trimmedOther: String { other.trimmingCharacters(in: .whitespacesAndNewlines) }
-    private var confirms: Bool {
-        switch spec.kind {
-        case .input: return true
-        case .pick: return !picked.isEmpty || (spec.allowOther && !trimmedOther.isEmpty)
-        }
-    }
+    private var choiceKind: ChoiceKind { spec.choiceKind }
+    private var confirms: Bool { spec.canAnswer(picked: picked, other: trimmedOther) }
 
     var body: some View {
         NavigationStack {
@@ -52,8 +50,8 @@ struct PromptSheet: View {
                     }
                 case .pick:
                     Section {
-                        ForEach(spec.items) { item in
-                            itemRow(item)
+                        ForEach(Array(spec.items.enumerated()), id: \.element.id) { index, item in
+                            itemRow(item, position: index + 1)
                         }
                         if spec.allowOther {
                             TextField("Other", text: $other)
@@ -62,6 +60,10 @@ struct PromptSheet: View {
                         }
                     } header: {
                         Text(spec.title)
+                    } footer: {
+                        if !confirms {
+                            Text("Pick an answer")
+                        }
                     }
                 }
             }
@@ -77,15 +79,19 @@ struct PromptSheet: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button(spec.confirm ?? "Send", action: submit)
                         .disabled(!confirms)
+                        .accessibilityHint(confirms ? "" : String(localized: "Pick an answer"))
                 }
             }
         }
     }
 
-    /// One choice: a check when picked, and a tap that picks it alone or
-    /// adds it, as multiple says.
-    private func itemRow(_ item: Prompt.Item) -> some View {
-        Button {
+    /// One choice: a round mark when the question takes one answer, a
+    /// square one when it takes several; a tap picks the item alone, or
+    /// checks or unchecks it, as multiple says. VoiceOver hears a selected
+    /// radio button and its place ("1 of 3"), or a checked or unchecked box.
+    private func itemRow(_ item: Prompt.Item, position: Int) -> some View {
+        let isPicked = picked.contains(item.id)
+        return Button {
             if spec.multiple {
                 if picked.contains(item.id) { picked.remove(item.id) } else { picked.insert(item.id) }
             } else {
@@ -93,6 +99,9 @@ struct PromptSheet: View {
             }
         } label: {
             HStack(alignment: .firstTextBaseline, spacing: 10) {
+                Image(systemName: choiceKind.symbol(picked: isPicked))
+                    .foregroundStyle(isPicked ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
+                    .accessibilityHidden(true)
                 if let icon = item.icon, UIImage(systemName: icon) != nil {
                     Image(systemName: icon)
                         .foregroundStyle(.secondary)
@@ -113,14 +122,21 @@ struct PromptSheet: View {
                     }
                 }
                 Spacer(minLength: 8)
-                if picked.contains(item.id) {
-                    Image(systemName: "checkmark")
-                        .foregroundStyle(.tint)
-                }
             }
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .accessibilityAddTraits(isPicked ? .isSelected : [])
+        .accessibilityValue(accessibilityValue(picked: isPicked, position: position))
+    }
+
+    private func accessibilityValue(picked isPicked: Bool, position: Int) -> String {
+        switch choiceKind {
+        case .radio:
+            return String(localized: "\(position) of \(spec.items.count)")
+        case .checkbox:
+            return isPicked ? String(localized: "Checked") : String(localized: "Not checked")
+        }
     }
 
     private func submit() {

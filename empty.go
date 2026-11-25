@@ -69,7 +69,7 @@ func emptyMenu(c *ui.Context, k *colors, key, text string) ui.Element {
 // emptyLink is an empty state's ghost button: accent text as the
 // disclosure rows of remoteview.go draw it.
 func emptyLink(c *ui.Context, k *colors, label string) ui.Element {
-	e := ui.Row(c).Padding(4, 8).Radius(radiusS).Cursor(ui.CursorPointer).Role(ui.RoleButton).Label(label)
+	e := ui.Row(c).Padding(4, 8).Radius(k.radius(radiusS)).Cursor(ui.CursorPointer).Role(ui.RoleButton).Label(label)
 	if e.Hovered() {
 		e.Background(k.hover)
 	}
@@ -91,27 +91,27 @@ const (
 // It is canvas operations, not an SVG, so it takes the window's colors.
 func drawEmptyScene(p *ui.Painter, r ui.Rect, k *colors, next, dark bool) {
 	// The window's card: a surface shape with a soft shadow.
-	p.Shadow(r, radiusM, 0, 4, 16, 0, k.shadow)
-	p.Fill(r, k.surface, radiusM)
-	p.Stroke(r, k.cardBorder, radiusM, 1)
+	p.Shadow(r, k.radius(radiusM), 0, 4, 16, 0, k.shadow)
+	p.Fill(r, k.surface, k.radius(radiusM))
+	p.Stroke(r, k.cardBorder, k.radius(radiusM), 1)
 	// The tab strip: one chosen tab, one empty slot.
-	p.Fill(ui.Rect{X: r.X + 12, Y: r.Y + 11, W: 46, H: 9}, k.emptyMark.Alpha(0.52), capsule(9))
-	p.Fill(ui.Rect{X: r.X + 64, Y: r.Y + 11, W: 34, H: 9}, k.emptyMark.Alpha(0.14), capsule(9))
+	p.Fill(ui.Rect{X: r.X + 12, Y: r.Y + 11, W: 46, H: 9}, k.emptyMark.Alpha(0.52), k.capsule(9))
+	p.Fill(ui.Rect{X: r.X + 64, Y: r.Y + 11, W: 34, H: 9}, k.emptyMark.Alpha(0.14), k.capsule(9))
 	// The card inside: a pane's, with a prompt line and body bars.
 	card := ui.Rect{X: r.X + 12, Y: r.Y + 34, W: r.W - 24, H: r.H - 46}
-	p.Fill(card, k.surface, radiusM-2)
-	p.Stroke(card, k.cardBorder, radiusM-2, 1)
-	p.Fill(ui.Rect{X: card.X + 12, Y: card.Y + 14, W: 52, H: 6}, k.emptyMark.Alpha(0.52), capsule(6))
-	p.Fill(ui.Rect{X: card.X + 12, Y: card.Y + 28, W: card.W - 52, H: 5}, k.emptyMark.Alpha(0.28), capsule(5))
-	p.Fill(ui.Rect{X: card.X + 12, Y: card.Y + 40, W: card.W - 90, H: 5}, k.emptyMark.Alpha(0.28), capsule(5))
-	p.Fill(ui.Rect{X: card.X + 12, Y: card.Y + 58, W: card.W - 72, H: 5}, k.emptyMark.Alpha(0.14), capsule(5))
+	p.Fill(card, k.surface, concentric(k.radius(radiusM), 2))
+	p.Stroke(card, k.cardBorder, concentric(k.radius(radiusM), 2), 1)
+	p.Fill(ui.Rect{X: card.X + 12, Y: card.Y + 14, W: 52, H: 6}, k.emptyMark.Alpha(0.52), k.capsule(6))
+	p.Fill(ui.Rect{X: card.X + 12, Y: card.Y + 28, W: card.W - 52, H: 5}, k.emptyMark.Alpha(0.28), k.capsule(5))
+	p.Fill(ui.Rect{X: card.X + 12, Y: card.Y + 40, W: card.W - 90, H: 5}, k.emptyMark.Alpha(0.28), k.capsule(5))
+	p.Fill(ui.Rect{X: card.X + 12, Y: card.Y + 58, W: card.W - 72, H: 5}, k.emptyMark.Alpha(0.14), k.capsule(5))
 	if !next {
 		return
 	}
 	// The one accent: a round + on the card's corner.
 	d := float32(20)
 	plus := ui.Rect{X: card.X + card.W - d - 4, Y: card.Y + card.H - d - 4, W: d, H: d}
-	p.Fill(plus, k.emptyMark, capsule(d))
+	p.Fill(plus, k.emptyMark, k.capsule(d))
 	// The plus is on emptyMark, not on the accent: its ink is not a theme's
 	// accentText.
 	ink := ui.Hex("#ffffff")

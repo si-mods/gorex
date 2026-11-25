@@ -3,7 +3,7 @@ name: REF-007
 description: "The standalone web client in `web/`: hosts, trust of a page, Tailscale, hosting and the app shell. Use when you change the web client."
 metadata:
   created: "2026-11-12"
-  updated: "2026-11-23"
+  updated: "2026-11-25"
 ---
 
 # REF-007: Web client
@@ -1013,7 +1013,7 @@ change made elsewhere.
 | Rename Window: a field in the row; an empty name gives the window its terminal's title again | The row's menu, a second click on the row within half a second (the desktop's double click), Alt+Shift+R for the shown window | `session.set_window_label` |
 | Reset Name | The row's menu, when the window has a name | `session.set_window_label` with `""` |
 | Move a window up or down in its session | The row's menu (Move Up, Move Down); drag the row onto another row of its session: the upper half puts it before, the lower half after, a 2px line shows where | `session.move_window` with `before_window_id`, none for the end |
-| New Window, Close Window, Close Other Windows | The row's menu | `session.new_window`, `session.close_window` |
+| New Window, Close Window | The row's menu | `session.new_window`, `session.close_window` |
 | Swap two panes of the window | Drag a pane by its header onto the middle of another (0.2 of its width and height each way of its centre, as `paneDropZone`), which shows the zone | `session.swap_blocks`; the dragged pane has the focus |
 | Move a pane into another window of its session, beside that window's focused pane | The header's menu (Move to Window), or drop the header on that window's row, which shows a ring | `session.move_block`, `horizontal`, `after` |
 | Rename Pane: a field in the pane's header; Enter or leaving it keeps the name, Escape goes back, an empty name gives the pane its terminal's title again | The header's menu (Rename Pane…) | `session.set_block_label` |

@@ -134,6 +134,11 @@ Each item has a **Trigger** (what the diff shows), a **Check** (what the author 
 - **Check:** the end's close code is not normalClosure — on Apple, `cancel(with: .goingAway)` — since URLSessionWebSocketTask sends a close frame on every task end (a bare `cancel()` included; measured on the iOS simulator, where macOS's URLSession sends none). The server keeps the client, its streams and its tickets for the reconnect grace unless the close is normal; it is what a reconnect needs kept.
 - **Source:** iOS `Host.resume()` sent a normal closure on every reconnect, so each return to the foreground raced every terminal's RESUME against `cleanupClient`; the loser got `data connection refused (0x01)` and started over with a ticket and a snapshot. The first fix tried `task.cancel()` for a bare drop, which the iOS simulator proved still closes — the test caught it.
 
+### A resolution whose fallback makes the thing another resolution tests
+- **Trigger:** the diff changes a path resolver whose order includes "when it exists" (`homedir.DataDir`, `homedir.ConfigPath`, `rex.Dir`), or a fallback of one resolver that names a directory another resolver tests for.
+- **Check:** list every writer of the fallback path (an install, a `MkdirAll`): none of them may create the directory an existence check elsewhere reads. A test plants each layout (fresh, legacy only, moved) and asserts that resolving and installing make no new top-level directory.
+- **Source:** #1090 fell back to `~/.gorex/init.lua` before the move; installing a theme made `~/.gorex/themes`, and every process then resolved `~/.gorex` and lost the legacy settings, layout and socket (fix here).
+
 ### Value reset after a round trip
 - **Trigger:** the diff clears or resets a field (revision, counter, pending flag) after a call that reads or writes remote state.
 - **Check:** the reset compares with the value read before the call and applies only if it did not change. What arrived during the call is kept.
@@ -223,6 +228,11 @@ Each item has a **Trigger** (what the diff shows), a **Check** (what the author 
 - **Check:** CI does not retry failed tests. A flaky test is fixed by finding the race and waiting on state, or deleted with the reason written down. Never sleeps or retries. Run `-count 30` before merge, not after main goes red.
 - **Source:** #630 found its race with `-count 30`; also #658.
 
+### A test helper that drops what it skips
+- **Trigger:** a test helper reads a connection's messages until one matches, and drops the others (`readResponse`, `readServerEvent` in `internal/rexapi/prompts_test.go`); or a flaky-test fix names a cause it did not reproduce.
+- **Check:** the helper sets aside the messages it skips for the next wait (`c.pending`). The responses to two requests on one connection arrive in either order. A fix for a timeout reproduces the failing line first, with a deliberate delay if `-count` does not show it.
+- **Source:** #1130 explained `TestPromptErrorIsShortened`'s timeout (#1114) by a gateway registration race. The same test and three others also had a second race: `readResponse(c, "reply")` dropped the action's response when it came first, and `readResponse(c, "run")` timed out (#1133).
+
 ### CI retry
 - **Trigger:** the diff adds a retry or rerun of a failed test or shard to a workflow or script.
 - **Check:** reject it. No CI job retries a failed test. Fix the test.
@@ -309,6 +319,16 @@ Each item has a **Trigger** (what the diff shows), a **Check** (what the author 
 - **Trigger:** the PR completes a feature that has a design doc under `docs/`.
 - **Check:** the design doc's status line is updated in the same PR.
 - **Source:** standing rule.
+
+### A theme feature with knobs
+- **Trigger:** the diff adds a manifest key under `internal/theme` that GoRex draws with its own code: a layer kind, a shape, a motion or a placement that the theme only tunes with numbers, colors or enums.
+- **Check:** the look comes from the theme pack (its assets and its own shader, DSK-012), not from GoRex. A fixed kind with knobs is hard-coding (`CLAUDE.md`, Architecture decisions; DSK-008 Non-goals). If the feature cannot be that open, it is not built.
+- **Source:** #1083 and #1099 built glows, a watermark, swimming sprites and a brand row as fixed layer kinds with knobs (DSK-010); the user ruled that a look with knobs is hard-coding (#1117), and #1120 removed them.
+
+### A bulk close with no undo
+- **Trigger:** the diff adds a menu item or command that ends several tabs, panes or sessions at once.
+- **Check:** the owner asked for it by name, and every client gets the same item. An ended session has no undo, so a confirm before it is the only guard.
+- **Source:** #971 added Close Other Tabs on the desktop, the web and iOS. The owner had it removed from all three after a review of how GoRex confirms destructive actions (#1095).
 
 ## Security
 

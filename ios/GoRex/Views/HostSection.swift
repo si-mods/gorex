@@ -712,8 +712,7 @@ struct HostSection: View {
     // MARK: Tabs
 
     /// A tab's menu, as the desktop's tab menu. It moves a tab past the
-    /// rows shown, and closes only those: the server's order also has tabs
-    /// the list leaves out.
+    /// rows shown: the server's order also has tabs the list leaves out.
     @ViewBuilder private func menu(_ s: Host.Session, _ w: SessionView.Window, shown: [String]) -> some View {
         let id = w.window_id
         let i = shown.firstIndex(of: id) ?? 0
@@ -758,12 +757,6 @@ struct HostSection: View {
         Button("Close Tab", systemImage: "xmark", role: .destructive) {
             change("Can't Close the Tab") { try await host.closeWindow(id, in: s.id) }
         }
-        Button("Close Other Tabs", systemImage: "xmark.square", role: .destructive) {
-            change("Can't Close the Tab") {
-                for o in shown where o != id { try await host.closeWindow(o, in: s.id) }
-            }
-        }
-        .disabled(shown.count < 2)
     }
 
     /// Moves a tab of a session to the place of another row shown.

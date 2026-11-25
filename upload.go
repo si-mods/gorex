@@ -479,7 +479,7 @@ func (a *App) fileDrop(c *ui.Context, k *colors, p *Pane, card, tv ui.Element) {
 			if h.hello.Can(rex.CapabilityFileTemp) {
 				label = locales.PaneDropUploadTemp(h.label())
 			}
-			drawPaneDrop(card, k, dropCenter, a.cardR())
+			drawPaneDrop(card, k, dropCenter, a.cardR(k))
 		}
 	case h != nil && h.current() != nil && tv.FileDragOver():
 		label = locales.PaneDropUpdate(h.label())
@@ -527,7 +527,7 @@ func (a *App) transfers(c *ui.Context, k *colors, p *Pane) {
 	if p.float == nil {
 		edge += 1
 	}
-	r := concentric(a.cardR(), edge)
+	r := concentric(a.cardR(k), edge)
 	list := ui.Column(c.Key("transfers")).Absolute().Right(inset).Bottom(inset).Width(260).Padding(pad).Gap(2).
 		Radius(r)
 	toastShadow(list, k)
@@ -569,7 +569,7 @@ func (a *App) transfers(c *ui.Context, k *colors, p *Pane) {
 				if !failed && !x.ok {
 					// The track is a pressed face of the panel's: k.track is
 					// the window background's, white on a light panel.
-					ui.Box(c).Height(3).Radius(capsule(3)).Background(k.pressed).Draw(func(pt *ui.Painter, b ui.Rect) {
+					ui.Box(c).Height(3).Radius(k.capsule(3)).Background(k.pressed).Draw(func(pt *ui.Painter, b ui.Rect) {
 						// A download's size is not known before it begins.
 						if x.size > 0 {
 							b.W *= float32(x.done) / float32(x.size)

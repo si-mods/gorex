@@ -1,14 +1,16 @@
 ---
 name: DSK-010
-description: "A theme pack can carry images and declare ambience: background glows, a watermark, particles, swimming sprites, a mascot with quotes and a popup, a brand row and a quote ticker, as data with caps. Use when you add image assets or motion to theme packs, change where ambience draws, or change the ambience and mascot settings."
+description: "History: a theme pack's assets folder, pinned ref and appearance.ambience stay; the glows, watermark, swimming sprites and brand row it built are removed, and its mascot and ticker were never built. Use when you change the asset install of theme packs or the ambience setting, or need why GoRex draws no built-in theme look."
 metadata:
   created: "2026-11-24"
-  updated: "2026-11-24"
+  updated: "2026-11-25"
 ---
 
 # DSK-010: Theme assets and ambience
 
-Status: accepted. Phase 1 built (#1083). The user decided its four questions (see User decisions).
+Status: superseded. The asset install of phase 1 (#1083) stays: `assets`, the `<id>.assets` folder and the pinned `ref`, which theme shaders read ([DSK-012](DSK-012-theme-shaders.md)). So does `appearance.ambience`, which now turns theme shaders off and still. The glows, still images, sprites and brand row of phases 1 and 2 (#1083, #1099) are removed by #1120 under the rule in [DSK-008](DSK-008-theme.md) Non-goals (User decisions, 9). Phase 3 dropped (User decisions, 8).
+
+The rest of this doc is history. It describes the design as it was built. The code no longer has `ambience`, `brand`, sprite sheets, SVG assets or `appearance.mascot`.
 
 This doc decides how a theme pack carries images and motion, and how GoRex draws them. It extends the manifest of [DSK-008](DSK-008-theme.md) and the theme pack kind of the registry. It builds on the optional `terminal` key that DSK-008 phase 4 adds. It does not change that key. The probe is a real theme for another app: `dafy-whale-theme` ("蓝色大肥鱼", a web theme for DeepSeek Harness). The user wants all of its features in GoRex. Where the framework cannot do a feature, this doc extends the framework.
 
@@ -38,7 +40,7 @@ The probe theme is a JavaScript plugin. It injects CSS and React components into
 ## Goal
 
 - A theme pack can carry images in a closed set of formats, under size caps. GoRex decodes them with limits and never fetches anything at runtime.
-- A manifest can declare ambience layers as data: glows, still images, particles and sprites. It contains no code.
+- A manifest can declare ambience layers as data: glows, still images and sprites. It contains no code. GoRex ships no particle look of its own: particles come from a theme's own shader ([DSK-012](DSK-012-theme-shaders.md)).
 - A manifest can declare a mascot, a brand row and a quote ticker, with a fixed set of interactions.
 - Nothing that a theme declares covers terminal text or takes the keyboard focus.
 - Motion stops when the window is not active, is hidden, or when the user or the OS asks for less motion. The user can turn ambience and the mascot off.
@@ -64,7 +66,7 @@ The user installs a theme pack on the Extensions page or with `gorex pack instal
 
 1. The palette of the theme, as now.
 2. Soft glows in the window gradient and a faint watermark image in a corner. They do not move.
-3. Bubbles that rise and sprites that swim across the window. They move only outside the pane cards. In a tiled layout they show behind the sidebar at a lower alpha, and in the title bar and the gaps. On the canvas and on an empty page they show in the free area.
+3. Sprites that swim across the window. They move only outside the pane cards. In a tiled layout they show behind the sidebar at a lower alpha, and in the title bar and the gaps. On the canvas and on an empty page they show in the free area.
 4. A brand row at the top of the sidebar: an icon and a wordmark.
 5. A mascot in the sidebar foot, above the Settings button. It bobs. A click shows a speech bubble with a random quote. A double click shows a popup image. A ✕ on hover hides it until the theme changes or GoRex restarts. The terminal keeps the keyboard focus after each click.
 6. A one-line quote ticker under the mascot. It changes every few seconds with a fade.
@@ -91,7 +93,6 @@ The new keys are optional. A manifest without them is a DSK-008 manifest:
   "ambience": {
     "glows": [{ "x": 0.88, "y": -0.08, "rx": 0.55, "ry": 0.5, "color": { "light": "#3b62f64d", "dark": "#6c8cff33" } }],
     "images": [{ "asset": "side", "anchor": "bottomRight", "height": 0.74, "opacity": 0.1 }],
-    "particles": [{ "shape": "bubble", "count": 14, "size": [5, 17], "seconds": [12, 28], "color": "#78beff" }],
     "sprites": [{ "asset": "fish", "y": 0.14, "height": 56, "seconds": 64, "direction": "right", "opacity": 0.16 }]
   },
   "mascot": { "idle": "whale", "active": "wave", "height": 96, "caption": "大肥鱼", "quotes": ["咕噜咕噜～"], "popup": "whale" },
@@ -105,6 +106,7 @@ The new keys are optional. A manifest without them is a DSK-008 manifest:
 - A position or a size that is a fraction (0 to 1) is a fraction of the window. A size above 1 is in DIPs.
 - An `anchor` is one of `topLeft`, `topRight`, `bottomLeft`, `bottomRight` and `center`.
 - A `direction` is `left`, `right` or `up`. A sprite that swims left shows mirrored (`ImageOptions.FlipX`), unless it sets `"mirror": false`.
+- A sprite that swims left or right keeps its `y`: 0 is the top of the window, 1 the bottom. A sprite that swims up keeps its `x` in the same way. Its `height` is in DIPs. Its asset is an image or a sprite sheet. A sheet plays at its `fps` as the sprite swims.
 - A `mascot.idle` or `mascot.active` asset can be a still PNG, an animated GIF or APNG, or a sprite sheet. `active` shows for 3 s after a click. `popup` names an image for the double click. With no `popup`, a double click shows a quote.
 - Text values are plain strings. GoRex shows them as they are, in one line, and ellipsizes them.
 
@@ -123,7 +125,6 @@ The parser clamps a number to its range, drops an entry past a count cap, and lo
 | Decoded memory | 48 MiB for each theme |
 | `glows` | 4. Alpha at most 0.4 |
 | `images` | 2. Opacity at most 0.25 |
-| `particles` | 2 layers, 40 particles in total. Size 2 to 32 DIP. 4 to 120 s for each trip. Alpha at most 0.6 |
 | `sprites` | 8. Height 16 to 200 DIP. 8 to 600 s for each trip. Opacity at most 0.3 |
 | Mascot | Height 48 to 128 DIP. 32 quotes |
 | Ticker | 32 lines. 6 to 120 s for each line |
@@ -137,7 +138,7 @@ Each element draws in one layer. Nothing that the theme declares draws over a pa
 | --- | --- | --- | --- |
 | 1 | Window background | The gradient and the glows, in the one `background` shader | Shows through, as the gradient does now |
 | 2 | Still images | The watermark | Shows through. It does not move |
-| 3 | Moving layers | Particles and sprites | Clipped out. They never show under a pane |
+| 3 | Moving layers | Sprites | Clipped out. They never show under a pane |
 | 4 | Panes | Cards, terminals, browsers, notes | Not changed |
 | 5 | Sidebar | Brand row, mascot, ticker, ambience button | The sidebar does not overlap a pane |
 | 6 | Overlay | The speech bubble and the popup, for 3 s | A popup can cover a pane for 3 s after a click. It takes no focus |
@@ -146,36 +147,48 @@ A terminal under the glass setting has a translucent background (`termOpacity`, 
 
 **Behind the sidebar.** The sidebar rows have text on the window gradient. In the sidebar band, layer 3 paints at a lower alpha, so that the rows stay readable:
 
-- The sidebar cap: GoRex multiplies the alpha of each sprite and particle in the sidebar band so that it is at most **0.12**. Outside the sidebar, the caps of the Caps table apply (0.3 for a sprite, 0.6 for a particle).
-- The contrast check: for each appearance, `applyTheme` takes the worst case. That is a pixel of the most contrasting asset color at the sidebar cap, over `bgTop` and over `bgBottom`. `text` must keep a contrast ratio of 4.5:1 and `textMuted` 3:1 over it. If a theme fails the check, GoRex lowers the sidebar cap for that theme until it passes, and logs a warning. The cap never goes up.
+- The sidebar cap: GoRex multiplies the alpha of each sprite in the sidebar band so that it is at most **0.12**. Outside the sidebar, the caps of the Caps table apply (0.3 for a sprite).
+- The contrast check: for each appearance, `applyTheme` takes the worst case. That is a pixel of the most contrasting asset color at the sidebar cap, over `bgTop` and over `bgBottom`. A sprite can have any pixel, so the asset colors are black and white. `text` must keep a contrast ratio of 4.5:1 and `textMuted` 3:1 over it. If a theme fails the check, GoRex lowers the sidebar cap for that theme until it passes, and logs a warning. The cap never goes up.
 - The brand row, the mascot, the ticker and each row face (chosen, hovered, current project) paint over layer 3, as now. No face changes.
 - Ambience Still or Off applies to the sidebar band too.
 
 ### Motion and the budget
 
-Moving layers and the mascot run in one of two states. **Moving** paints at 30 frames a second (`Painter.AnimationFrameRate(30)`). **Still** paints each layer at its last position and asks for no frame. Ambience is still when any of these is true:
+Moving layers and the mascot run in one of two states. **Moving** paints at 20 frames a second (`Painter.AnimationFrameRate(20)`): phase 2 measured 30 over the budget. **Still** paints each layer at its last position and asks for no frame. Ambience is still when any of these is true:
 
 - The user sets Ambience to Still.
 - The Animation setting is Off, or the OS asks for less motion (`motion(c)` is nil).
 - The window is not active (`Context.WindowActive`). The working dots stop on the same rule (`breathing`).
 - The window is hidden or covered (`Context.WindowHidden`). MyGo already holds the frames then.
-- The computer runs on its battery (`mygo.Power.IsOnBattery`). Each animation freezes at its last frame: the moving layers, the bob of the mascot, its GIF or sprite sheet, and the fade of the ticker. The ticker keeps its line and does not change it.
+- The computer runs on its battery (`mygo.Power.IsOnBattery`). MyGo sends no event for it, so GoRex asks at most every 10 s, as it paints, in the frames that only paint too. Each animation freezes at its last frame: the moving layers, the bob of the mascot, its GIF or sprite sheet, and the fade of the ticker. The ticker keeps its line and does not change it.
 - The renderer is the CPU renderer (`Painter.Accelerated` is false).
 
 With Ambience Off, layers 1 to 3 paint as with no theme ambience, and the ticker does not show. The mascot has its own setting.
 
-A paint-only frame repaints the whole window on the GPU (`repaint` in MyGo's `ui/runtime.go`). The working dots already do this at 30 frames a second. The budget for ambience is:
+A paint-only frame redraws only the damaged rectangles on the GPU (`scene.Differ` and `Present1` dirty rectangles in MyGo's D3D11 renderer; buffer age on Metal and GL). Each frame still costs a present to the compositor. The working dots already do this at 30 frames a second. The budget for ambience is:
 
 | Measure | Budget |
 | --- | --- |
 | Frame rate | 30 frames a second at most. A GIF or a sprite sheet plays at its own rate, at most 30 |
 | CPU time to paint the ambience | 0.5 ms for each frame, with all caps used |
-| Draw calls | One instanced shader call for all particles (`shader.DrawInstances`). One `ImageRegion` call for each sprite and each band |
+| Draw calls | One `ImageRegion` call for each sprite and each band it crosses |
 | Idle CPU of the app, window active, no output, ambience moving | 3% of one core more than with ambience Still |
 | Idle CPU, window not active | No difference from a theme with no ambience: no frame, no timer |
 | Ticker | One `Context.After` timer. None while the window is not active or hidden |
 
-Phase 2 measures these numbers on a Windows PC and on a Mac and writes them in its PR. If the idle CPU is over the budget, phase 2 lowers the rate to 20 frames a second. If that is not sufficient, the MyGo change M2 (see Code) comes first.
+Phase 2 measures these numbers on a Windows PC and on a Mac and writes them in its PR. If the idle CPU is over the budget, phase 2 lowers the rate to 20 frames a second.
+
+Phase 2 measured on a Windows PC (#1099), with all sprite caps used (8 sprites 200 DIPs high, one a sprite sheet), a window of 1920×1032 px, two panes and no output, over 30 s for each run. The Mac is not measured yet.
+
+| Measure | Result |
+| --- | --- |
+| CPU time to record the ambience | About 0.01 ms for each frame |
+| Idle CPU, ambience Still | 0.7% to 1.4% of one core |
+| Idle CPU, moving at 30 frames a second | 11.0% to 11.4% of one core: over the budget |
+| Idle CPU, moving at 20 frames a second, tiled panes | 7.2% to 9.5% of one core: over the budget |
+| Idle CPU, moving at 20 frames a second, canvas zoomed out | 6.6% to 6.7% of one core: over the budget |
+
+GoRex records the draws in about 0.01 ms, and MyGo redraws only the sprites' old and new rectangles. The cost is the present of each frame: `IDXGISwapChain1::Present1` takes about 1 to 2 ms of CPU, mostly in the kernel, plus about as much in driver threads. It grows with the frame rate, not with the damaged area, so partial repaint does not lower it. GoRex paints at 20 frames a second. The user accepted phase 2 over the budget, and tuning the cost is out of the scope of this doc (User decisions, 7).
 
 ### Mascot
 
@@ -200,7 +213,7 @@ The mascot is an element in the sidebar foot, not an overlay. It thus never cove
 - `internal/theme`: `Manifest` gets `Assets`, `Ambience`, `Mascot`, `Brand` and `Ticker`. Each is a plain struct of validated values. The parser applies the caps.
 - `internal/theme`: `Assets` is the loader. It opens each file with `os.Lstat` (a regular file, no link), reads at most the cap, and checks the header before it decodes: `image.DecodeConfig` for a PNG, the logical screen and a count of the image blocks for a GIF, the `acTL` chunk for an APNG. It decodes on a goroutine, recovers a panic, and drops a bad asset with a warning. The rest of the theme loads.
 - `style.go`: the `background` shader gets 4 glow uniforms (center, radii, color). With no glows, the shader paints the same pixels as now (`TestBackgroundShader`).
-- `ambience.go` (new): the layer state, the free region, the particle and sprite paths, and the still rule. A path is a pure function of the layer, the window size and the time, so a test can check a position at a time.
+- `ambience.go` (new): the layer state, the free region, the sprite paths, and the still rule. A path is a pure function of the layer, the window size and the time, so a test can check a position at a time.
 - `settings.go`: two keys, `appearance.ambience` (`""` for Moving, `"still"`, `"off"`) and `appearance.mascot` (`""` for On, `"off"`). They live in `settings.json` only: no page of the Settings window has a control for them.
 
 ### Code
@@ -218,10 +231,9 @@ The mascot is an element in the sidebar foot, not an overlay. It thus never cove
 - Install (`iconpack.Checkout`): with a `ref`, GoRex makes a shallow fetch of that commit (`git fetch --depth 1 origin <ref>`, then `git checkout --detach FETCH_HEAD`), and checks that `HEAD` is `ref`. If the fetch fails, the install fails. GoRex does not fall back to the default branch. A `ref` that is not 40 hex characters is refused.
 - Validation: the registry CI validates. For each `themes` entry with a `repo` outside `gorex-registry`, CI clones the repo at `ref` and runs the pack validator on it: the caps, the formats, the asset names that the manifest uses, a `NOTICE` for a pack with assets, and each license file that the `NOTICE` names. A registry PR that adds an entry or moves its `ref` is thus checked on the files that users get. GoRex does not trust this check: at install and at each load, the parser and the loader apply the same caps (see Caps and Security). A local pack (`gorex pack install <folder>`) gets only the GoRex check.
 
-MyGo has each primitive that the design needs (MyGo v0.10.1, `si-mods/mygo`): `DecodeBitmapScaled`, `Painter.ImageRegion` with `FlipX` and `Tint`, `NewGIFDecoder`, `NewAPNGDecoder` and `VideoPlayer`, `shader.DrawInstances`, `Painter.Clip`, `Painter.AnimationFrameRate`, `AnimatePose`, `TooltipBase`, `Clicked`, `DoubleClicked`, `Hovered`, `Context.WindowActive`, `Context.WindowHidden`, `Preferences.ReduceMotion` and `Power.IsOnBattery`. No MyGo change is necessary. Two changes are optional:
+MyGo has each primitive that the design needs (MyGo v0.10.1, `si-mods/mygo`): `DecodeBitmapScaled`, `Painter.ImageRegion` with `FlipX` and `Tint`, `NewGIFDecoder`, `NewAPNGDecoder` and `VideoPlayer`, `shader.DrawInstances`, `Painter.Clip`, `Painter.AnimationFrameRate`, `AnimatePose`, `TooltipBase`, `Clicked`, `DoubleClicked`, `Hovered`, `Context.WindowActive`, `Context.WindowHidden`, `Preferences.ReduceMotion` and `Power.IsOnBattery`. No MyGo change is necessary. One change is optional:
 
 - **M1, decode limits** (optional): `DecodeBitmap`, `NewGIFDecoder` and `NewAPNGDecoder` have no pixel or frame cap. A GIF decodes all frames into memory. GoRex checks the headers before it calls them, so M1 is not necessary. M1 would add `ui.DecodeLimits` (max pixels, max frames) so that each MyGo app gets the check.
-- **M2, partial repaint on the GPU** (only if the phase 2 budget fails): a paint-only frame repaints the whole window. M2 would repaint only the damaged rectangles, as the CPU renderer does now.
 
 ### Capability matrix
 
@@ -230,7 +242,7 @@ MyGo has each primitive that the design needs (MyGo v0.10.1, `si-mods/mygo`): `D
 | F1 | Palette | Yes: seeds (`accent`, `bg*`, `panel`, `field`, `fieldBorder`, `text`, `textMuted`, `danger`, `done`, `attention`) | None. The sidebar fill has no seed. The window gradient shows through the sidebar, so `bgTint` stands in | n |
 | F2 | Sea-surface glow | No: the gradient has 4 fixed stops | `ambience.glows` as uniforms of the `background` shader. Normal alpha, no soft light | n |
 | F3 | Watermark | No: a theme has no image | `assets` and `ambience.images` (layer 2) | n |
-| F4 | Bubbles | No | `ambience.particles` with `shape: bubble`, one instanced draw, clipped to the free region | n |
+| F4 | Bubbles | No | Moved to [DSK-012](DSK-012-theme-shaders.md): the theme's own shader in the ambient slot draws them. GoRex has no built-in particle (User decisions, 6). DSK-010 drops `ambience.particles` with a warning | n |
 | F5 | Fish school | No | `ambience.sprites`, `ImageRegion` with `FlipX`, clipped to the free region. No drop shadow | n |
 | F6 | Mascot, idle animation | No | `mascot`: PNG, GIF, APNG or sprite sheet in the sidebar foot. Bob as a `Pose` loop | n |
 | F7 | Click: wave and quote | No | `mascot.active` and `mascot.quotes`, bubble on `TooltipBase` | n |
@@ -242,17 +254,21 @@ MyGo has each primitive that the design needs (MyGo v0.10.1, `si-mods/mygo`): `D
 | F13 | Selection and scrollbar | Partial: UI selection follows `accent`. Terminal selection is in the Ghostty theme | None. A scrollbar role can come later in DSK-008 | n |
 | F14 | Asset server and install fetch | Not needed: assets are files in the pack | Install copies the assets. No runtime fetch. No install-time fetch outside the registry | n |
 | — | Decode limits | — | GoRex checks headers | Optional (M1) |
-| — | Frame cost | — | Phase 2 budget | Only if the budget fails (M2) |
+| — | Frame cost | — | Phase 2 budget | n |
 
 ### User decisions
 
-The user decided the four questions of the first draft on 2026-11-24, and item 5 in the review of #1083:
+The user decided the four questions of the first draft on 2026-11-24, item 5 in the review of #1083, and item 6 in the review of #1099:
 
 1. **Mascot without a sidebar**: when the sidebar is hidden or the tabs are at the top, the mascot and the ticker do not show.
 2. **Motion behind the sidebar**: moving layers show behind the sidebar, at the sidebar cap of 0.12 and with the contrast check (see Layers).
 3. **Fish sprites**: the pack uses `fish_idle.png` and `fish_happy.png` of `YunYueSama/codex-deepseek-pet`, with the full license text and the credit that it requires (see Licensing).
 4. **Battery**: on battery, each animation freezes (see Motion and the budget).
 5. **No switches on the Extensions page** (2026-11-24, on #1083): the Extensions page adds no control for ambience or the mascot. `appearance.ambience` and `appearance.mascot` are set in `settings.json`.
+6. **No built-in particle look** (2026-11-24, on #1099): GoRex ships no bubble or other particle shader. Particles come from a theme's own shader ([DSK-012](DSK-012-theme-shaders.md)). GoRex is a base for themes, and draws no look that a theme did not bring.
+7. **Phase 2 over the budget** (2026-11-25, on #1099): phase 2 merges at 20 frames a second over the idle CPU budget. The goal of this doc is a base of capabilities for themes; tuning the frame cost is not in it. No MyGo change follows.
+8. **No mascot or ticker** (2026-11-25): phase 3 is dropped. A mascot with a fixed bob, fixed bubbles and fixed timings, and a ticker with a fixed fade, are a look and a behavior that GoRex would hard-code, with a few numbers for the theme to set. A web theme does this with CSS and JavaScript, which it can change freely. A fixed set of knobs is not that, so GoRex does not build it. The parser keeps dropping `mascot` and `ticker` with a warning.
+9. **No built-in looks** (2026-11-25): the user removed the glows, the watermark, the brand row and the sprites. Each was a look that GoRex drew, with a few numbers for the theme to set: an ellipse of fixed shading, an image at a fixed anchor, a row of fixed layout, and a straight-line swim. That is hard-coding, as item 8 says of the mascot. The rule is now in [DSK-008](DSK-008-theme.md) Non-goals. A pack draws such a look with its own shader ([DSK-012](DSK-012-theme-shaders.md)). The asset install, the pinned `ref` and `appearance.ambience` stay, because theme shaders use them.
 
 ## Alternatives
 
@@ -302,6 +318,15 @@ The animated mascot path still needs a test with a real animated asset. Phase 3 
 
 ## Migration
 
+The removal (User decisions, 9):
+
+- The parser drops `ambience` and `brand` with an `unknown key` warning each, as an older build does, and as it drops `mascot` and `ticker`. A pack with them loads its colors, its assets and its shaders. An asset value that is a sprite sheet object drops with a warning. An SVG asset fails its header check and drops with a warning: no shader reads an SVG.
+- `appearance.mascot` is no longer a setting. A `settings.json` with the key loads as before. The load ignores the key, and the next save of the settings drops it. No build ever drew a mascot, so the key changed nothing.
+- `appearance.ambience` keeps its values. Off now turns the theme's background shader off, and Off and Still stop the theme's shaders from moving, as they did before the removal. The sidebar button and **Toggle Theme Ambience** show while the theme has a background shader or a shader that moves.
+- A build before the removal that loads a pack with these keys draws them, as it did.
+
+As built:
+
 - A new key has a default. `appearance.ambience` and `appearance.mascot` are new settings with a default, so `docs/irreversible.md` does not apply. With no key, ambience moves and the mascot shows when the theme has them.
 - The manifest keeps its place, `<config>/themes/<id>.json`. The assets go to a new folder, `<config>/themes/<id>.assets/`. A single-file theme loads as now.
 - An older build loads a new manifest. It drops `assets`, `ambience`, `mascot`, `brand` and `ticker` with an `unknown key` warning each, and uses the colors. `theme.List` of an older build skips the folder.
@@ -312,7 +337,7 @@ The animated mascot path still needs a test with a real animated asset. Phase 3 
 
 ## Tests
 
-- **Parse**: each new key parses. A value past a cap clamps, an extra entry drops, a bad color drops, an unknown asset name drops, and each gives a warning (`TestParseAmbience`). A manifest with only DSK-008 keys gives the same `Manifest` as now.
+- **Parse**: each new key parses. `ambience.particles` drops with a warning. A value past a cap clamps, an extra entry drops, a bad color drops, an unknown asset name drops, and each gives a warning (`TestParseAmbience`). A manifest with only DSK-008 keys gives the same `Manifest` as now.
 - **Text**: a quote with control characters or a bidirectional override loses them. A long quote keeps its first 80 characters (`TestParseText`).
 - **Assets**: a name with a path, a link, a file over the byte cap, a PNG over the pixel cap, a GIF over the frame cap and an unknown format each drop, without a full decode (`TestAssetLimits`). A test fixture is a crafted header, not a large file.
 - **Install**: a registry pack and a local folder install the manifest and only the named assets. Remove deletes both. A single-file theme installs as now (`TestInstallThemeAssets`, `TestPackInstallTheme`).
@@ -320,8 +345,8 @@ The animated mascot path still needs a test with a real animated asset. Phase 3 
 - **Background**: with no glows, the shader matches the gradient within 3/255 (`TestBackgroundShader`). With a glow, the pixel at its center has its color.
 - **Free region**: bands for a tiled layout, a canvas and an empty page cover the window minus the panes, with no overlap (`TestFreeRegion`).
 - **Still rule**: in `ui.NewTester`, ambience, the mascot and the ticker ask for no frame and no timer when the window is not active, is hidden, on battery, under ReduceMotion, with Animation Off, with Ambience Still, and on the CPU renderer (`TestAmbienceStill`).
-- **Sidebar cap**: in the sidebar band, no sprite or particle paints above alpha 0.12. A theme whose worst case fails 4.5:1 for `text` or 3:1 for `textMuted` gets a lower cap and a warning (`TestSidebarAmbienceContrast`).
-- **Paths**: a sprite and a particle are at the expected place at a given time, and a left sprite is mirrored (`TestAmbiencePaths`).
+- **Sidebar cap**: in the sidebar band, no sprite paints above alpha 0.12. A theme whose worst case fails 4.5:1 for `text` or 3:1 for `textMuted` gets a lower cap and a warning (`TestSidebarAmbienceContrast`).
+- **Paths**: a sprite is at the expected place at a given time, a left sprite is mirrored, and a sheet's frame is on whole pixels (`TestAmbiencePaths`).
 - **Mascot**: a click shows a quote from the list and the active pose. A double click shows the popup. ✕ hides the mascot. The terminal keeps the focus after each click (`TestMascot`).
 - **Ticker**: the line changes after its interval, and not while the window is not active (`TestTicker`).
 - **Brand**: the sidebar shows the icon and the wordmark. A long wordmark ellipsizes.
@@ -334,9 +359,9 @@ No item in `docs/invariants.md` covers the theme or ambience. The focus rule of 
 
 ## Phases
 
-1. **Assets and still layers** (built, #1083; M, about 800 lines with tests): asset parsing, caps and loader, pack folder install and remove, the pinned `ref` in `iconpack.Checkout`, the registry CI that clones and validates each listed pack repo, glows in the background shader, still images, brand row, the two settings in `settings.json`. The registry CI is si-mods/gorex-registry#6. Until its phase, the parser drops `particles`, `sprites`, `mascot` and `ticker` with a warning, as an older build does. The two settings are read from `settings.json` from phase 1, with no control on the Extensions page (User decisions, 5). `iconpack.Checkout` refuses a pack of a repo other than `gorex-registry` that has no `ref`. The assets decode for a screen scale of 2.
-2. **Moving layers** (M, about 500 lines): particles, sprites, free region, the still rule, the toggle button and command, and the budget measurement.
-3. **Mascot and ticker** (M, about 600 lines): still, animated and sprite sheet mascot, bob, click, double click, hide, bubbles and the ticker. A self-made animated whale validates GIF and sprite sheets.
+1. **Assets and still layers** (built, #1083; M, about 800 lines with tests): asset parsing, caps and loader, pack folder install and remove, the pinned `ref` in `iconpack.Checkout`, the registry CI that clones and validates each listed pack repo, glows in the background shader, still images, brand row, the two settings in `settings.json`. The registry CI is si-mods/gorex-registry#6. Until their phases, the parser drops `sprites`, `mascot` and `ticker` with a warning, as an older build does. It drops `particles` in each phase (User decisions, 6). The two settings are read from `settings.json` from phase 1, with no control on the Extensions page (User decisions, 5). `iconpack.Checkout` refuses a pack of a repo other than `gorex-registry` that has no `ref`. The assets decode for a screen scale of 2.
+2. **Moving layers** (built, #1099; M, about 500 lines and 400 lines of tests): sprites, free region, the still rule, the toggle button and command, and the budget measurement. Particles left this phase (User decisions, 6): the parser drops `ambience.particles` with a warning, and a theme's shader of DSK-012 draws them. The sprites move on their own clock, which stops while they are still: they go on from where they stopped. A sprite can be a sprite sheet; its frames take whole pixels. The layers move only when a sprite's image loaded. The toggle turns `appearance.ambience` to `off`, and back to the value before it (Moving or Still). GoRex keeps that value in memory only, so after a restart the toggle turns ambience on as Moving. The palette lists **Toggle Theme Ambience** only while the theme has ambience. Until phase 3, the parser drops `mascot` and `ticker` with a warning.
+3. **Mascot and ticker** (dropped, User decisions 8; was M, about 600 lines): still, animated and sprite sheet mascot, bob, click, double click, hide, bubbles and the ticker. A self-made animated whale validates GIF and sprite sheets.
 4. **Dafy Whale pack** (S): a new public repo `si-mods/gorex-theme-dafy-whale`, not in gorex and not in `gorex-registry`. Its root has `theme.json`, `assets/` (the MIT whale art, the two fish PNGs scaled down, a self-made icon, the self-made animated whale), `LICENSE` (MIT), `NOTICE` and `LICENSE-fish.txt`. A registry PR adds one `themes` entry: `id` `dafy-whale`, `repo` `https://github.com/si-mods/gorex-theme-dafy-whale.git`, no `subdir`, and `ref` at the reviewed commit. Screenshots.
 
-MyGo M1 and M2 are not in a phase. M2 starts only if phase 2 fails its budget.
+MyGo M1 is not in a phase.

@@ -83,10 +83,9 @@ type Pane struct {
 	// stream is the Conn of a pane of this machine, nil for a pane of a
 	// host, whose is remote; it attaches again when its connection drops.
 	stream *paneStream
-	// browser is the state of a browser pane, nil for a terminal.
-	browser *browserPane
-	// note is the state of a note pane, nil for any other.
-	note *notePane
+	// ext is the pane's extension payload, nil for a terminal: a
+	// browser, a note or a pane of an extension pack (docs/EXT-001).
+	ext paneExt
 	// host is the remote host the session lives on, nil for this machine;
 	// remote is then the terminal's Conn.
 	host   *hostConn
@@ -311,14 +310,15 @@ func killOn(h *hostConn, sid string) {
 	}
 }
 
-// offline tells, on the error banner, that a host is not connected, and
-// reports whether it is not.
+// offline tells, in an error toast, that a host is not connected, and
+// reports whether it is not. The menus and the palette show what needs
+// the host disabled meanwhile (command.Host); this stops a key or a
+// client that asks for it.
 func (a *App) offline(h *hostConn) bool {
 	if h == nil || h.current() != nil {
 		return false
 	}
-	name := h.label()
-	a.err, a.errMsg = "", func(m locales.Messages) string { return m.HostsNotConnectedTo(name) }
+	a.toastError(locales.HostsNotConnectedTo(a.hostName(h)))
 	return true
 }
 
@@ -367,10 +367,11 @@ func (a *App) newPaneIn(h *hostConn, o rex.CreateOptions, place func(*Pane) bool
 		update(func() {
 			if err != nil {
 				log.Printf("creating a session: %v", err)
-				a.err, a.errMsg = err.Error(), nil
 				if o.DirStrict && strings.Contains(err.Error(), rex.FolderMissing) {
 					a.folderMissing(dir)
+					return
 				}
+				a.toastError(locales.ToastSessionFailed(reasonOf(err)))
 				return
 			}
 			h.expecting(info.ID, false)
@@ -390,110 +391,6 @@ func (a *App) newPaneIn(h *hostConn, o rex.CreateOptions, place func(*Pane) bool
 			}
 		})
 	}()
-}
-
-// newBrowserPane makes a pane that shows url in a web view of the
-// window's, with the address field given the keyboard.
-func (a *App) newBrowserPane(url string) *Pane {
-	if url = browserURL(url); url == "" {
-		url = browserStart
-	}
-	addr := url
-	if url == browserStart {
-		addr = "" // the field says its placeholder, and the URL is typed
-	}
-	p := &Pane{ID: a.id(), browser: &browserPane{url: url, addr: addr, id: layout.NewTabID(), auto: true}}
-	if a.win == nil {
-		// A view without a window, as in tests: the pane keeps its URL,
-		// and shows no page.
-		return p
-	}
-	v, err := a.win.NewWebView(mygo.WebViewOptions{
-		URL:             url,
-		BackgroundColor: "light-dark(#ffffff, #1e1e24)",
-		// A page is someone else's, whatever its URL: it calls no Go
-		// method, asks no permission, opens no window of its own and
-		// downloads nothing. The handler below decides where it may go.
-		Page: mygo.PageOptions{Untrusted: true, SwipeNavigation: true, PinchZoom: true},
-	})
-	if err != nil {
-		log.Printf("browser pane: %v", err)
-		a.err, a.errMsg = err.Error(), nil
-		return p
-	}
-	p.browser.web = v
-	update := func(fn func()) {
-		if a.win != nil {
-			a.win.Update(fn)
-		}
-	}
-	page := v.Page()
-	// An untrusted page may not go to another origin unless this decides:
-	// a browser pane follows the web, and nothing else.
-	page.OnWillNavigate(func(e *mygo.NavigateEvent) {
-		if browserURL(e.URL) == "" {
-			e.PreventDefault()
-		}
-	})
-	page.OnDidNavigate(func(u string) {
-		u = browserCleanURL(u)
-		update(func() {
-			if p.closed || p.browser == nil {
-				return
-			}
-			p.browser.url = u
-			// The page's title is the new document's, until it says one.
-			p.title = ""
-			// A new pane's first page, about:blank, leaves the field
-			// saying its placeholder, for the URL to type; and a page that
-			// goes on by itself leaves the URL being typed.
-			if !p.browser.editing && (p.browser.addr != "" || u != browserStart) {
-				p.browser.addr = u
-			}
-			a.changed()
-		})
-	})
-	page.OnPageTitleUpdated(func(e *mygo.TitleEvent) {
-		update(func() {
-			if p.closed || p.browser == nil {
-				return
-			}
-			p.title = strings.TrimSpace(e.Title)
-		})
-	})
-	// A page that asks for a window shows it in this pane: GoRex has no
-	// other window to give a site, and a script's pop-up is not wanted.
-	// The URL is the pane's to load, not the page's to choose.
-	page.SetWindowOpenHandler(func(req mygo.WindowOpenRequest) *mygo.WindowOptions {
-		if u := browserURL(req.URL); req.UserInitiated && u != "" {
-			page.LoadURL(u)
-		}
-		return nil
-	})
-	return p
-}
-
-// navigateBrowser loads the URL in a browser pane's address field.
-func (a *App) navigateBrowser(p *Pane, text string) {
-	b := p.browser
-	if b == nil {
-		return
-	}
-	u := browserURL(text)
-	if u == "" {
-		a.err, a.errMsg = "", locales.Messages.BrowserOnlyWeb
-		return
-	}
-	a.err, a.errMsg = "", nil
-	// The page keeps what was typed, credentials and all; the field and
-	// the layout keep it without them.
-	b.addr, b.url = browserCleanURL(u), browserCleanURL(u)
-	if b.web == nil {
-		return
-	}
-	if err := b.web.Page().LoadURL(u); err != nil {
-		a.err, a.errMsg = err.Error(), nil
-	}
 }
 
 // attach makes the pane's terminal, attached to its session.
@@ -631,7 +528,7 @@ func (a *App) attach(p *Pane, cols, rows int) {
 	term, err := newTerm(opts)
 	if err != nil {
 		log.Printf("terminal: %v", err)
-		a.err, a.errMsg = err.Error(), nil
+		a.toastError(locales.ToastTerminalFailed(reasonOf(err)))
 		return
 	}
 	// Until a view shows it, the terminal has the session's size, so that
@@ -1068,10 +965,10 @@ func (a *App) newTabAfterIn(h *hostConn, dir string, strict bool, after *Tab, co
 
 // newBrowserTab opens a tab of a browser pane after the active tab, and
 // shows it.
-func (a *App) newBrowserTab() *Tab { return a.newPaneTab(a.newBrowserPane(browserStart)) }
+func (a *App) newBrowserTab() *Tab { return a.newExtTab("browser") }
 
 // newNoteTab opens a tab of a note pane after the active tab, and shows it.
-func (a *App) newNoteTab() *Tab { return a.newPaneTab(a.newNotePane("")) }
+func (a *App) newNoteTab() *Tab { return a.newExtTab(noteKind) }
 
 // newPaneTab opens a tab of the one pane p, which has no session, after
 // the active tab, and shows it, with the keyboard on p.
@@ -1219,13 +1116,13 @@ func (a *App) splitPaneRun(old *Pane, vertical bool, dir string, command []strin
 // splitBrowser splits the focused pane with a browser pane, right of it or
 // below it.
 func (a *App) splitBrowser(vertical bool) {
-	a.splitLocal(vertical, func() *Pane { return a.newBrowserPane(browserStart) })
+	a.splitLocal(vertical, func() *Pane { return a.newExtPane("browser") })
 }
 
 // splitNote splits the focused pane with a note pane, right of it or
 // below it.
 func (a *App) splitNote(vertical bool) {
-	a.splitLocal(vertical, func() *Pane { return a.newNotePane("") })
+	a.splitLocal(vertical, func() *Pane { return a.newExtPane(noteKind) })
 }
 
 // splitLocal splits the focused pane with the pane make returns, right of
@@ -1442,9 +1339,10 @@ func (a *App) disposePane(p *Pane, kill bool) {
 		a.paneRenaming, a.paneNameFocus = nil, false
 	}
 	p.end()
-	p.browser.destroy()
+	if p.ext != nil {
+		p.ext.destroy(kill)
+	}
 	if kill {
-		p.note.destroy()
 		killOn(p.host, p.SID)
 	}
 	t := p.Tab
@@ -2217,11 +2115,8 @@ func (a *App) promoteFloat(t *Tab) bool {
 // status protocol when it did, else a shell at its prompt, else the
 // executable.
 func (p *Pane) program() program {
-	if p.browser != nil {
-		return browserProgram
-	}
-	if p.note != nil {
-		return noteProgram
+	if p.ext != nil {
+		return p.ext.program()
 	}
 	var name string
 	switch {
@@ -2242,25 +2137,8 @@ func (p *Pane) program() program {
 // label returns how a pane names itself: its program, or the title the
 // program set, and the directory it works in.
 func (p *Pane) label() (name, detail string) {
-	if p.browser != nil {
-		name = p.Name
-		if name == "" {
-			name = strings.TrimSpace(p.title)
-		}
-		if name == "" {
-			name = locales.BrowserName()
-		}
-		return name, browserHost(p.browser.url)
-	}
-	if p.note != nil {
-		name = p.Name
-		if name == "" {
-			name = noteTitle(p.note.text)
-		}
-		if name == "" {
-			name = locales.NoteName()
-		}
-		return name, ""
+	if p.ext != nil {
+		return p.ext.label(p)
 	}
 	in := p.info
 	if p.Name != "" {
@@ -2414,11 +2292,10 @@ func (a *App) savedTab(t *Tab) savedTab {
 			return nil
 		}
 		if p := n.Pane; p != nil {
-			if b := p.browser; b != nil {
-				return &savedNode{Name: p.Name, URL: b.url, ID: b.id}
-			}
-			if p.note != nil {
-				return &savedNode{Name: p.Name, Kind: noteKind, Note: p.note.id, NoteSize: p.note.size, NotePreview: p.note.preview}
+			if p.ext != nil {
+				s := &savedNode{Name: p.Name}
+				p.ext.save(p, s)
+				return s
 			}
 			s := &savedNode{SID: p.SID, Name: p.Name, Dir: p.info.Dir}
 			if p.host != nil {
@@ -2562,22 +2439,14 @@ func (a *App) reconcile(l savedLayout) bool {
 	var load func(s *savedNode, t *Tab, parent *Node) *Node
 	load = func(s *savedNode, t *Tab, parent *Node) *Node {
 		if s.A == nil || s.B == nil {
-			if p := index[paneKey(s)]; p != nil && !kept[p] {
+			if p := index[savedNodeKey(s)]; p != nil && !kept[p] {
 				kept[p] = true
 				if s.Host == "" && s.SID != "" {
 					used[s.SID] = true
 				}
 				p.Name, p.Tab = s.Name, t
-				if p.note != nil {
-					p.note.size, p.note.preview = clampNoteSize(s.NoteSize), s.NotePreview
-				}
-				// Another client's page; the window's own navigation since
-				// it last wrote the layout stays.
-				if b := p.browser; b != nil && s.URL != b.synced {
-					b.url, b.addr, b.synced = s.URL, s.URL, s.URL
-					if b.web != nil {
-						b.web.Page().LoadURL(s.URL)
-					}
+				if p.ext != nil {
+					p.ext.apply(a, p, s)
 				}
 				n := p.Node
 				if n == nil {
@@ -2594,47 +2463,41 @@ func (a *App) reconcile(l savedLayout) bool {
 				list()
 				in, isLive = live[s.SID]
 			}
-			switch {
-			case s.Kind == noteKind:
-				p = a.newNotePane(s.Note)
-				p.Name = s.Name
-				p.note.size, p.note.preview = clampNoteSize(s.NoteSize), s.NotePreview
-			case s.URL != "":
-				p = a.newBrowserPane(s.URL)
-				p.Name = s.Name
-				p.browser.auto, p.browser.synced = false, s.URL
-				if s.ID != "" && index[paneKey(s)] == nil {
-					p.browser.id = s.ID
+			if p = a.extPaneLoad(s, func(s *savedNode) bool { return index[savedNodeKey(s)] != nil }); p != nil {
+				// An extension pane: a browser, a note, a pack's, or the
+				// placeholder of a kind the build does not have.
+			} else {
+				switch {
+				case s.Host != "":
+					h := a.hostByID(s.Host)
+					if h == nil || s.SID == "" {
+						return nil
+					}
+					// What the host's last list says of it, as this machine's
+					// panes start from theirs, lest the next poll read it as news.
+					in, ok := h.listed(s.SID)
+					if !ok {
+						in = rex.SessionInfo{ID: s.SID, Dir: s.Dir}
+					}
+					p = &Pane{ID: a.id(), SID: s.SID, Name: s.Name, host: h, info: in, startDir: s.Dir}
+					a.attach(p, s.Cols, s.Rows)
+				case isLive && !used[s.SID]:
+					used[s.SID] = true
+					p = &Pane{ID: a.id(), SID: s.SID, Name: s.Name, info: in, startDir: s.Dir}
+					a.attach(p, in.Cols, in.Rows)
+					// A session the server started again after a crash or a
+					// reboot is the shell the pane's program ran in: back at
+					// its prompt, the pane offers the program again.
+					if in.Idle {
+						p.resume = resumeHintFor(in.Shell, s)
+					}
+				default:
+					// A session the server does not run, as one that just
+					// ended, whose pane the server takes out: the pane is it
+					// till then.
+					p = &Pane{ID: a.id(), SID: s.SID, Name: s.Name, info: rex.SessionInfo{ID: s.SID, Dir: s.Dir}, startDir: s.Dir}
+					a.attach(p, s.Cols, s.Rows)
 				}
-			case s.Host != "":
-				h := a.hostByID(s.Host)
-				if h == nil || s.SID == "" {
-					return nil
-				}
-				// What the host's last list says of it, as this machine's
-				// panes start from theirs, lest the next poll read it as news.
-				in, ok := h.listed(s.SID)
-				if !ok {
-					in = rex.SessionInfo{ID: s.SID, Dir: s.Dir}
-				}
-				p = &Pane{ID: a.id(), SID: s.SID, Name: s.Name, host: h, info: in, startDir: s.Dir}
-				a.attach(p, s.Cols, s.Rows)
-			case isLive && !used[s.SID]:
-				used[s.SID] = true
-				p = &Pane{ID: a.id(), SID: s.SID, Name: s.Name, info: in, startDir: s.Dir}
-				a.attach(p, in.Cols, in.Rows)
-				// A session the server started again after a crash or a
-				// reboot is the shell the pane's program ran in: back at
-				// its prompt, the pane offers the program again.
-				if in.Idle {
-					p.resume = resumeHintFor(in.Shell, s)
-				}
-			default:
-				// A session the server does not run, as one that just
-				// ended, whose pane the server takes out: the pane is it
-				// till then.
-				p = &Pane{ID: a.id(), SID: s.SID, Name: s.Name, info: rex.SessionInfo{ID: s.SID, Dir: s.Dir}, startDir: s.Dir}
-				a.attach(p, s.Cols, s.Rows)
 			}
 			p.Tab, p.Node = t, n
 			n.Pane = p
@@ -2787,39 +2650,6 @@ func (a *App) reconcile(l savedLayout) bool {
 		a.focusReq = now.Focus
 	}
 	return true
-}
-
-// paneKey names a pane of a layout for as long as the pane lasts: by its
-// session and the session's host, its note, or its browser's ID; "" for
-// none.
-func paneKey(s *savedNode) string {
-	switch {
-	case s.Kind == noteKind && s.Note != "":
-		return "note:" + s.Note
-	case s.URL != "":
-		if s.ID == "" {
-			return ""
-		}
-		return "web:" + s.ID
-	case s.SID != "":
-		return s.Host + "/" + s.SID
-	}
-	return ""
-}
-
-// key is the pane's paneKey.
-func (p *Pane) key() string {
-	n := savedNode{SID: p.SID}
-	if p.host != nil {
-		n.Host = p.host.ID
-	}
-	if p.browser != nil {
-		n.URL, n.ID = p.browser.url, p.browser.id
-	}
-	if p.note != nil {
-		n.Kind, n.Note = noteKind, p.note.id
-	}
-	return paneKey(&n)
 }
 
 func sortedInfos(m map[string]rex.SessionInfo) []rex.SessionInfo {
@@ -3126,7 +2956,7 @@ func notifyKey(p *Pane) string {
 // take its place.
 var showNotification = func(o mygo.NotificationOptions) (close func()) {
 	n := mygo.NewNotification(o)
-	go n.Show()
+	go func() { notificationShown(n.Show()) }()
 	return n.Close
 }
 
@@ -3221,7 +3051,7 @@ func drawTileImage(prog program) (out []byte) {
 		t.Background = ui.RGBA(0, 0, 0, 0)
 		c.SetTheme(&t)
 		ui.Box(c).Size(24, 24).Draw(func(p *ui.Painter, r ui.Rect) {
-			drawTile(p, ui.Rect{X: r.X + (r.W-tileW)/2, Y: r.Y + (r.H-tileH)/2, W: tileW, H: tileH}, prog, true)
+			drawTile(p, &lightColors, ui.Rect{X: r.X + (r.W-tileW)/2, Y: r.Y + (r.H-tileH)/2, W: tileW, H: tileH}, prog, true)
 		})
 	}, 24, 24, 3)
 	var buf bytes.Buffer
@@ -3477,16 +3307,6 @@ func (a *App) movePaneToWindow(p *Pane, target *App) {
 	if cols <= 0 || rows <= 0 {
 		cols, rows = 80, 24
 	}
-	noteID, isNote := "", p.note != nil
-	var noteSize float32
-	var notePreview bool
-	if isNote {
-		noteID, noteSize, notePreview = p.note.id, p.note.size, p.note.preview
-	}
-	pageURL, isBrowser := "", p.browser != nil
-	if isBrowser {
-		pageURL = p.browser.url
-	}
 	src := p.Tab
 	a.disposePane(p, false)
 	a.detachPane(p)
@@ -3497,14 +3317,8 @@ func (a *App) movePaneToWindow(p *Pane, target *App) {
 		a.removeTab(src)
 	}
 	var np *Pane
-	if isNote {
-		np = target.newNotePane(noteID)
-		np.Name = p.Name
-		np.note.size, np.note.preview = noteSize, notePreview
-	} else if isBrowser {
-		np = target.newBrowserPane(pageURL)
-		np.Name = p.Name
-		np.browser.auto = false
+	if p.ext != nil {
+		np = p.ext.clone(target, p)
 	} else {
 		np = &Pane{ID: target.id(), SID: p.SID, Name: p.Name, info: p.info, title: p.title, startDir: p.startDir, host: h}
 		target.attach(np, cols, rows)

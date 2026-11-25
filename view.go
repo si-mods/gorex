@@ -33,7 +33,7 @@ const (
 // the title bar; windowR where that is 0 (full screen), on Windows and
 // Linux, and in the tests, whose views have no window. Windows keeps its
 // rounded panes in every window state.
-func (a *App) cardR() float32 { return cardRadius(a.winR, runtime.GOOS) }
+func (a *App) cardR(k *colors) float32 { return k.radius(cardRadius(a.winR, runtime.GOOS)) }
 
 // cardRadius is the panes' radius in a window that the system rounds to r
 // DIPs, on the operating system goos: r is only taken on macOS, and only
@@ -96,16 +96,20 @@ func (a *App) view(c *ui.Context) {
 		a.winR = a.win.CornerRadius()
 	}
 	breathing = a.focusedWin
+	if a.focusedWin {
+		a.syncHostItems()
+	}
 	a.claimFocus()
 	a.syncSizes()
 	c.SetTheme(menuTheme(c.Theme(), k))
 	setupMenus(c)
 	rootBackground(c, k.bgBottom)
-	wash := backgroundAlpha(c)
+	wash, moves := backgroundAlpha(c), themeShaderMoves(c)
 	dark := c.Theme().Dark
-	ui.Column(c).Fill().Draw(func(p *ui.Painter, r ui.Rect) {
-		paintBackground(p, r, k, wash, dark)
-		paintStills(p, r)
+	root := ui.Column(c).Fill()
+	sw := windowShader(root)
+	root.Draw(func(p *ui.Painter, r ui.Rect) {
+		paintBackground(p, r, k, wash, dark, moves, sw)
 	}).Children(func() {
 		if prefs.TabPlacement != "" {
 			a.sidebarLayout(c, k, prefs.TabPlacement == "right")
@@ -121,16 +125,20 @@ func (a *App) view(c *ui.Context) {
 	ui.Overlay(c, func() {})
 	if a.err != "" || a.errMsg != nil {
 		a.errorBanner(c, k)
+	} else {
+		a.bannerTop = 0
 	}
 	a.shortcuts(c)
 	a.palette(c, k)
 	a.promptPanel(c, k)
 	a.workspaceConfirm(c, k)
-	a.closeOthersConfirm(c, k)
 	a.closeAskFallback(c, k)
 	a.spaceDialog(c, k)
 	a.projectSheetView(c, k)
 	a.teleportConfirm(c, k)
+	a.quitConfirm(c, k)
+	// Over the dialogs: a toast answers what the user did just now.
+	a.toasts(c, k)
 	// mygo paints a text input's caret in the theme of the frame as it
 	// paints, and a field cannot give it one of its own: the widgets above
 	// have taken their colors already, so the theme changes now, after
@@ -177,7 +185,14 @@ func (a *App) titleBar(c *ui.Context, k *colors) {
 	} else {
 		left += 14
 	}
-	ui.Row(c).Height(titleH).Padding(0, max(bar.Right, 10), 0, left).Gap(14).AlignItems(ui.Center).DragWindow().Children(func() {
+	row := ui.Row(c).Height(titleH).Padding(0, max(bar.Right, 10), 0, left).Gap(14).AlignItems(ui.Center).DragWindow()
+	// A theme's titleBar.background is the row's face, with the text of
+	// its lightness (docs/DSK-012-theme-shaders.md, New roles).
+	k, face, ok := themedFace(k, roleTitleBarBackground)
+	if ok {
+		paintFace(row, k, roleTitleBarBackground, face)
+	}
+	row.Children(func() {
 		a.spacePicker(c, k, false)
 		a.projectPicker(c, k)
 		a.tabStrip(c, k)
@@ -271,7 +286,7 @@ func windowControls(c *ui.Context, k *colors, win *mygo.Window) {
 				win.Maximize()
 			}
 		}
-		b := ui.Box(c).Size(30, 30).Center().Radius(capsule(30)).Cursor(ui.CursorPointer).Role(ui.RoleButton).Label(locales.WindowClose()).Tooltip(locales.WindowClose())
+		b := ui.Box(c).Size(30, 30).Center().Radius(k.capsule(30)).Cursor(ui.CursorPointer).Role(ui.RoleButton).Label(locales.WindowClose()).Tooltip(locales.WindowClose())
 		col := k.iconMuted
 		if b.Pressed() {
 			b.Background(closeRed.Alpha(0.8))
@@ -652,7 +667,7 @@ func (a *App) floatCell(c *ui.Context, k *colors, t *Tab, f *Float, bounds ui.Re
 		s = whole
 	}
 	cell.LeftPercent(s.x * 100).TopPercent(s.y * 100).WidthPercent(s.w * 100).HeightPercent(s.h * 100).
-		Radius(a.cardR())
+		Radius(a.cardR(k))
 	// Under the glass setting a float is a pane of the system's Liquid
 	// Glass, as the tiled panes are; where the system draws none, the
 	// tiled panes blurred through its face on a GPU, and opaque elsewhere,
@@ -832,7 +847,7 @@ func (a *App) divider(c *ui.Context, k *colors, n *Node, s share, bounds ui.Rect
 // holds its size while held.
 func (a *App) paneCard(c *ui.Context, k *colors, t *Tab, p *Pane, held bool) ui.Element {
 	focused := t.Focus == p
-	card := ui.Column(c.Key(p.ID)).Radius(a.cardR()).Clip().MinWidth(0).MinHeight(0)
+	card := ui.Column(c.Key(p.ID)).Radius(a.cardR(k)).Clip().MinWidth(0).MinHeight(0)
 	// With the configuration's colors, the card takes the theme's
 	// background, under its header too, and its edge the palette of that
 	// background's lightness.
@@ -844,6 +859,11 @@ func (a *App) paneCard(c *ui.Context, k *colors, t *Tab, p *Pane, held bool) ui.
 	if focused {
 		border, shadow = hk.cardBorderFocused, k.shadowFocused
 	}
+	// A theme's pane.border is the edge, focused or not: the shadow tells
+	// the focus (docs/DSK-012-theme-shaders.md, New roles).
+	if k.paneBorder.A > 0 {
+		border = k.paneBorder
+	}
 	// The card and its float's cell take one face: the cell's, of another
 	// color, would show at the card's rounded corners.
 	bg := cardFace(c, k, focused, p.float != nil)
@@ -852,7 +872,7 @@ func (a *App) paneCard(c *ui.Context, k *colors, t *Tab, p *Pane, held bool) ui.
 	// none; a float takes its face from its cell's glass. A browser pane
 	// keeps its face.
 	switch {
-	case !glassOn() || p.browser != nil && p.float == nil:
+	case !glassOn() || p.ext != nil && p.ext.opaqueTiled() && p.float == nil:
 		card.Background(bg)
 	case p.float == nil:
 		card.Material(ui.SystemGlass{Tint: glassTint(c, k, focused), Fallback: faceMaterial{bg}})
@@ -860,7 +880,7 @@ func (a *App) paneCard(c *ui.Context, k *colors, t *Tab, p *Pane, held bool) ui.
 	// A float has no edge drawn: the shadows of its cell lift it over the
 	// tiled panes.
 	if p.float == nil {
-		card.Border(1, border).
+		card.Border(k.borderW(), border).
 			Shadow(0, 1, 2, 0, shadow).
 			Shadow(0, 6, 22, -2, shadow)
 	}
@@ -872,7 +892,7 @@ func (a *App) paneCard(c *ui.Context, k *colors, t *Tab, p *Pane, held bool) ui.
 		top := float32(0)
 		// A browser pane keeps its header: the address field is the only
 		// way to its pages. A note pane keeps its too, which names it.
-		if paneHeaders() || p.browser != nil || p.note != nil {
+		if paneHeaders() || p.ext != nil && p.ext.keepsHeader() {
 			a.paneHeader(c, hk, t, p, focused, hovered)
 		} else if p.float != nil {
 			a.floatHandle(c, hk, t, p, p.float)
@@ -886,12 +906,8 @@ func (a *App) paneCard(c *ui.Context, k *colors, t *Tab, p *Pane, held bool) ui.
 			body.Clip()
 		}
 		body.Children(func() {
-			if p.browser != nil {
-				a.browserBody(c, k, t, p)
-				return
-			}
-			if p.note != nil {
-				a.noteBody(c, k, t, p)
+			if p.ext != nil {
+				p.ext.body(a, c, k, t, p)
 				return
 			}
 			if a.findPane == p {
@@ -943,7 +959,7 @@ func (a *App) paneCard(c *ui.Context, k *colors, t *Tab, p *Pane, held bool) ui.
 	})
 	if dragged, over := ui.DragOver[*Pane](card); over {
 		if z, ok := paneDropZoneAt(card, dragged, p); ok {
-			drawPaneDrop(card, k, z, a.cardR())
+			drawPaneDrop(card, k, z, a.cardR(k))
 			a.paneDrop = shownDrop{p, z}
 		}
 	}
@@ -984,7 +1000,7 @@ var findOpen = &ui.Motion{Collapse: true, Opacity: 0}
 // the buttons that step through the matches and close it.
 func (a *App) findBar(c *ui.Context, k *colors, p *Pane) ui.Element {
 	row := ui.Row(c.Key("find")).Height(30).Shrink(0).Padding(0, 8).Gap(6).AlignItems(ui.Center).
-		Background(k.hover).Radius(radiusS)
+		Background(k.hover).Radius(k.radius(radiusS))
 	// Not in a pane that moves, as fadeColors tells.
 	if anim := motion(c); anim != nil && fadeColors {
 		row.Transition(ui.ElementTransition{Animation: anim, Colors: true, Enter: findOpen})
@@ -1040,13 +1056,18 @@ func (a *App) paneHeader(c *ui.Context, k *colors, t *Tab, p *Pane, focused, hov
 		a.paneRename(c, k)
 		return
 	}
-	if p.browser != nil {
-		a.browserHeader(c, k, t, p, focused, hovered)
+	if p.ext != nil && p.ext.header(a, c, k, t, p, focused, hovered) {
 		return
 	}
 	name, detail := p.label()
 	prog := p.program()
 	h := ui.Row(c).Height(headerH).Padding(0, 8, 0, 12).Gap(8).AlignItems(ui.Center).MinWidth(0)
+	// A theme's paneHeader.background is the header's face, with the text
+	// of its lightness (docs/DSK-012-theme-shaders.md, New roles).
+	k, face, ok := themedFace(k, rolePaneHeaderBackground)
+	if ok {
+		paintFace(h, k, rolePaneHeaderBackground, face)
+	}
 	h.ContextMenu(func(m *ui.Menu) { a.paneMenu(m, p) })
 	if f := p.float; f != nil {
 		a.dragFloat(c, f, h)
@@ -1077,7 +1098,7 @@ func (a *App) paneHeader(c *ui.Context, k *colors, t *Tab, p *Pane, focused, hov
 			if detail != "" {
 				ui.RichText(c, titleSpans(detail, 12.5, 500, k.text.Alpha(0.86))...).Label(detail).SingleLine().Ellipsis("…").Shrink(1).MinWidth(0)
 			}
-			if p.note == nil {
+			if p.ext == nil || p.ext.badge() {
 				a.activityBadge(c, k, p)
 			}
 		})
@@ -1088,7 +1109,7 @@ func (a *App) paneHeader(c *ui.Context, k *colors, t *Tab, p *Pane, focused, hov
 // noteBody shows a note pane's text, which fills the pane and is edited
 // in place. Its keys are the text's: none goes to a terminal.
 func (a *App) noteBody(c *ui.Context, k *colors, t *Tab, p *Pane) {
-	n := p.note
+	n := p.ext.(*notePane)
 	if n.preview {
 		a.notePreviewBody(c, k, t, p)
 		return
@@ -1112,14 +1133,14 @@ func (a *App) noteBody(c *ui.Context, k *colors, t *Tab, p *Pane) {
 	}
 	// The text is written as it changes, to its own file, not to the
 	// layout: the title shows at once, and nothing waits on a save.
-	n.save()
+	n.persist()
 }
 
 // notePreviewBody shows a note's text as Markdown, filling the pane and
 // scrolling. Focus in it gives the pane the focus, so that the app's
 // shortcuts act on it.
 func (a *App) notePreviewBody(c *ui.Context, k *colors, t *Tab, p *Pane) {
-	n := p.note
+	n := p.ext.(*notePane)
 	n.md.Theme = n.previewTheme(k)
 	sc := ui.Scroll(c.Key(notePreviewKey(p.ID))).Grow(1).MinHeight(0).Focusable().FocusRing(false)
 	if a.focusReq == p && a.tab() == t {
@@ -1157,8 +1178,8 @@ func (a *App) minimizedRail(c *ui.Context, k *colors, floats []*Float) {
 			}
 			name, _ := f.Pane.label()
 			label := locales.FloatRestore(name)
-			chip := ui.Row(c.Key(minimizedKey(f.Pane.ID))).Gap(6).Padding(4, 8).Radius(radiusM).
-				AlignItems(ui.Center).Background(k.panel).Border(1, k.panelBorder).
+			chip := ui.Row(c.Key(minimizedKey(f.Pane.ID))).Gap(6).Padding(4, 8).Radius(k.radius(radiusM)).
+				AlignItems(ui.Center).Background(k.panel).Border(k.borderW(), k.panelBorder).
 				Cursor(ui.CursorPointer).Role(ui.RoleButton).Label(label)
 			chip.Tooltip(label)
 			if chip.Clicked() {
@@ -1255,7 +1276,7 @@ func (a *App) paneMenu(m *ui.Menu, p *Pane) {
 			}
 		})
 	}
-	if p.SID != "" && p.browser == nil && p.note == nil {
+	if p.SID != "" && p.ext == nil {
 		m.Separator()
 		m.Submenu(locales.CmdTeleport(), func(sm *ui.Menu) { a.teleportMenu(sm, p) })
 	}
@@ -1282,15 +1303,8 @@ func (a *App) paneActions(c *ui.Context, k *colors, t *Tab, p *Pane, show bool) 
 		row.AnimatePose(ui.Pose{}, *anim)
 	}
 	row.Children(func() {
-		if n := p.note; n != nil {
-			icon, label := "eye", locales.NotePreview()
-			if n.preview {
-				icon, label = "pencil", locales.NoteEdit()
-			}
-			if naturalIconButton(c, k, icon, label, 26, 16).Tooltip(tip(label, &cmdNotePreview)).Clicked() {
-				t.setFocus(p)
-				a.toggleNotePreview(p)
-			}
+		if p.ext != nil {
+			p.ext.headerActions(a, c, k, t, p)
 		}
 		// As Rex has them: split right, split down, float, zoom and close.
 		// A float's float button, lit, docks it.
@@ -1334,7 +1348,7 @@ func (a *App) paneActions(c *ui.Context, k *colors, t *Tab, p *Pane, show bool) 
 // browserHeader draws a browser pane's header: the page's history, its
 // address field, and the buttons of every pane.
 func (a *App) browserHeader(c *ui.Context, k *colors, t *Tab, p *Pane, focused, hovered bool) {
-	b := p.browser
+	b := p.ext.(*browserPane)
 	h := ui.Row(c).Height(headerH).Padding(0, 8, 0, 8).Gap(4).AlignItems(ui.Center).MinWidth(0)
 	h.ContextMenu(func(m *ui.Menu) { a.paneMenu(m, p) })
 	if f := p.float; f != nil {
@@ -1414,7 +1428,7 @@ func (a *App) browserHeader(c *ui.Context, k *colors, t *Tab, p *Pane, focused, 
 // browserBody shows a browser pane's page, or a word about why it shows
 // none.
 func (a *App) browserBody(c *ui.Context, k *colors, t *Tab, p *Pane) {
-	b := p.browser
+	b := p.ext.(*browserPane)
 	if b.web == nil {
 		var reload emptyAction
 		if b.addr != "" {
@@ -1509,8 +1523,8 @@ func (a *App) reconnecting(c *ui.Context, k *colors, p *Pane) {
 		return
 	}
 	ui.Row(c).Absolute().Top(10).Left(0).Right(0).Justify(ui.Center).PassThrough().Children(func() {
-		toastShadow(ui.Row(c).Gap(10).Padding(8, 14, 8, 12).Radius(radiusL).Background(k.panel).Border(1, k.panelBorder), k).AlignItems(ui.Center).MaxWidth(460).Label(title).Children(func() {
-			ui.Box(c).Size(8, 8).Radius(capsule(8)).Background(k.attention).Shrink(0)
+		toastShadow(ui.Row(c).Gap(10).Padding(8, 14, 8, 12).Radius(k.radius(radiusL)).Background(k.panel).Border(k.borderW(), k.panelBorder), k).AlignItems(ui.Center).MaxWidth(460).Label(title).Children(func() {
+			ui.Box(c).Size(8, 8).Radius(k.capsule(8)).Background(k.attention).Shrink(0)
 			ui.Column(c).Gap(2).MinWidth(0).Children(func() {
 				ui.Text(c, title).FontSize(fontCallout).FontWeight(600).TextColor(k.text)
 				if detail != "" {
@@ -1547,7 +1561,7 @@ var attentionPop = []ui.Keyframe{
 // tab's and its header's, at the same point of the pop, whenever it is
 // built, and none once it is over.
 func attentionDot(c *ui.Context, k *colors, panes ...*Pane) ui.Element {
-	dot := ui.Box(c).Size(7, 7).Radius(capsule(7)).Background(k.attention)
+	dot := ui.Box(c).Size(7, 7).Radius(k.capsule(7)).Background(k.attention)
 	now := c.Now()
 	var at time.Time
 	for _, p := range panes {
@@ -1605,7 +1619,7 @@ func statusDot(c *ui.Context, k *colors, s *rex.ProgramStatus, size float32) ui.
 	if s.State == "error" {
 		col = k.danger
 	}
-	return ui.Box(c).Size(7, 7).Radius(capsule(7)).Background(col).Shrink(0).Tooltip(statusTip(s))
+	return ui.Box(c).Size(7, 7).Radius(k.capsule(7)).Background(col).Shrink(0).Tooltip(statusTip(s))
 }
 
 // statusTip says what a record tells: the program, its state, why it
@@ -1699,6 +1713,10 @@ func (a *App) errText() string {
 // goes as it is dismissed.
 var bannerMotion = &ui.Motion{Y: 12, Opacity: 0}
 
+// bannerBottom is how far the banner, and a toast while no banner shows,
+// sit above the window's bottom edge.
+const bannerBottom = 18
+
 // errorBanner shows what went wrong with the server, or a note: a wait,
 // whose dot is not an error's, or one with a button that acts on it.
 func (a *App) errorBanner(c *ui.Context, k *colors) {
@@ -1706,17 +1724,23 @@ func (a *App) errorBanner(c *ui.Context, k *colors) {
 	ui.Overlay(c, func() {
 		// Under the other overlays: a sheet's or a dialog's scrim covers it,
 		// as it covers the window.
-		banner := ui.Row(c.Key("error-banner")).Absolute().Bottom(18).Left(0).Right(0).Justify(ui.Center).PassThrough().ZIndex(-1)
+		banner := ui.Row(c.Key("error-banner")).Absolute().Bottom(bannerBottom).Left(0).Right(0).Justify(ui.Center).PassThrough().ZIndex(-1)
 		if anim := motion(c); anim != nil {
 			banner.Transition(exitIn(ui.ElementTransition{Animation: anim, Position: true, Enter: bannerMotion, Exit: bannerMotion}, durExitMove))
 		}
 		banner.Children(func() {
-			toastShadow(ui.Row(c).Gap(10).Padding(8, 10, 8, 14).Radius(radiusL).Background(k.panel).Border(1, k.panelBorder), k).AlignItems(ui.Center).Children(func() {
+			panel := toastShadow(ui.Row(c).Gap(10).Padding(8, 10, 8, 14).Radius(k.radius(radiusL)).Background(k.panel).Border(k.borderW(), k.panelBorder), k).AlignItems(ui.Center)
+			// A toast sits above the panel: a frame more once it moved.
+			if top := panel.Bounds().Y; top != a.bannerTop {
+				a.bannerTop = top
+				c.Invalidate()
+			}
+			panel.Children(func() {
 				dot := k.danger
 				if n != nil && (n.wait || n.info) {
 					dot = k.busy
 				}
-				ui.Box(c).Size(8, 8).Radius(capsule(8)).Background(dot)
+				ui.Box(c).Size(8, 8).Radius(k.capsule(8)).Background(dot)
 				ui.Text(c, a.errText()).FontSize(fontCallout).TextColor(k.text).MaxWidth(520)
 				button := func(key string, label func(locales.Messages) string, run func()) {
 					if label != nil && ui.Button(c.Key(key), say(label)).Clicked() {

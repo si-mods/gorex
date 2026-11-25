@@ -10,6 +10,8 @@ bullet that reads like a commit subject is one testers cannot read, and the
 `web` job of `.github/workflows/ci.yml` fails it.
 
 ## en-US
+- A question from an agent now marks its choices: round radio buttons when you pick one answer, square check boxes when you pick several. Send stays off and says "Pick an answer" until you do.
+- A computer you reach over SSH can now be a host: in Add Host, enter ssh://user@host, trust its key when asked, and copy this phone's SSH key into the host's authorized_keys.
 - When pairing with a computer fails, the sheet's new Copy diagnostics button puts the recent connection log on the pasteboard, ready to send.
 - The Diagnostics log now survives restarts: lines from before you closed Rex Go are still there when you come back.
 - When pairing with a computer fails, its Diagnostics now logs the computer's name and the reason, to copy into a report.
@@ -136,9 +138,12 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - While a program waits for your answer, the Lock Screen card and the expanded Dynamic Island show Approve and Deny: tap once to answer without opening Rex Go.
 - New Project's Space row is a picker now: choose the space the project goes into, which starts as the one you were viewing.
 - With Developer Mode on, the floating connection bar at the top no longer covers the first row of the computer list.
+- A tab's long-press menu no longer has Close Other Tabs. Close Tab still closes one tab.
 - Settings: choose System, Light or Dark right in the Interface row, and Minimum Contrast from a menu. A space's Color menu shows each color's dot and marks the current one.
 
 ## zh-Hans
+- 智能体的提问现在用标记区分选法：只能选一个时是圆形单选按钮，可以选多个时是方形勾选框；选好之前「发送」不可点，并提示「请选择答案」。
+- 现在能把通过 SSH 登录的电脑添加为主机：在「添加主机」输入 ssh://user@host，首次连接时确认信任它的密钥，再把本机的 SSH 公钥复制到该主机的 authorized_keys。
 - 与电脑配对失败时，配对页新增「复制诊断」按钮：一键把最近的连接日志复制到剪贴板，方便发给我们。
 - 「诊断」日志在退出并重开 Rex Go 后仍然保留：回来还能看到之前的记录。
 - 与电脑配对失败时，它的「诊断」日志现在会记录电脑的名称和失败原因，可附在问题报告里。
@@ -265,4 +270,5 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - 程序等你回答时，锁定屏幕卡片和展开的灵动岛会显示「拒绝」和「批准」：点一下即可答复，不用打开 Rex Go。
 - 新建项目表单里的「空间」现在可以点选了：项目建在你选的空间里，默认是你正在查看的空间。
 - 打开「开发者模式」后，顶部的悬浮连接条不再盖住电脑列表的第一行。
+- 长按标签页的菜单里不再有「关闭其他标签页」。「关闭标签页」仍可关闭单个标签页。
 - 「设置」的「界面」一行可直接选「系统」「浅色」「深色」，「最小对比度」改从菜单选择；「编辑空间」的颜色菜单用色点展示每个颜色并标出当前色。

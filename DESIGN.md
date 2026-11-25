@@ -205,7 +205,12 @@ system"), and no radius is picked on its own:
 
 - **A circle is a capsule.** A dot, a swatch, a round mark or a round
   button, as the title bar's minimize, maximize and close, takes
-  `capsule(h)`, half its height, not a radius picked to look round.
+  `k.capsule(h)`, half its height, not a radius picked to look round.
+- **A theme scales every corner.** UI code takes a token as
+  `k.radius(radiusM)`, a capsule as `k.capsule(h)` and the panes' radius
+  as `a.cardR(k)`: each is multiplied by the theme's `metrics.radius`
+  (docs/DSK-012-theme-shaders.md), 1 with no theme. `concentric` takes
+  the scaled radius. `TestDesignTokens` fails on a bare token.
 
 ## Type
 
@@ -249,7 +254,9 @@ a change to them changes every pane's columns.
 
 A raised layer takes one of four shadows (`tokens.go`), by how far it
 floats over the page. Each is a function that adds the shadow to an
-element, as `dialogShadow(e)`.
+element, as `dialogShadow(e, k)`. A theme's `metrics.shadow` scales the
+offset and the blur, and `hard` sets the blur to 0
+(docs/DSK-012-theme-shaders.md).
 
 | Token | Shadow | Use it for |
 |---|---|---|
@@ -293,7 +300,7 @@ the parts of the one it is nearest to.
 | Popover | `glassPanel(k.panel)`, `radiusXL`, padding 14, `popoverShadow` | `host.go` |
 | Popconfirm | a popover from the button that asked, 280 wide: `fontTitle` title, one line of what ends, Cancel (`cancelButton`, in `dangerButton`'s height and `radiusM`), which has the focus so that keys typed on for the terminal cancel, and a `dangerButton` that names the action | `closeconfirm.go` |
 | Menu | `glassPanel(k.panel)`, `radiusL`, padding 6, rows `concentric(radiusL, 6)`: all of it `menuStyleOf`'s | `menus.go`, `docs/DSK-001-drawn-menus.md`; the space and project pickers (`spaces.go`, `projectpicker.go`) |
-| Toast and banner | `k.panel`, `radiusL`, `toastShadow` | `view.go`, `upload.go` |
+| Toast and banner | `k.panel`, `radiusL`, `toastShadow` | `toast.go`, `view.go`, `upload.go` |
 | Palette | frost or glass, `fontTitle` input, rows `concentric` | `commands.go` |
 | Settings page | the window background, groups of `raisedShadow` and `radiusXL` | `settingsview.go` |
 
@@ -356,10 +363,14 @@ slide. The timings below are for what a spring does not move.
 - **Ask before closing?** Closing one item asks only when it ends a
   running program: a tab or a pane whose program runs asks with a
   popconfirm from its close button, and a shell at its prompt closes at
-  once. A bulk action, as Close Other Tabs or Close Space, always asks,
+  once. A bulk action, as Close Space, always asks,
   with a dialog that says how much ends.
-- **A toast or a banner?** A toast tells of something done and goes. A
-  banner stays while its state lasts, as a pane that cannot attach.
+- **A toast or a banner?** A toast answers what the user did just now
+  and goes by itself: an icon and one line, or a red dot and one line
+  for an error. A banner stays while its state lasts, as a lost
+  connection, or while a failure must be fixed. News the user did not
+  cause is a system notification.
+  [DSK-013](docs/DSK-013-messages.md) gives the rules and the times.
 - **What does a click on a window behind do?** It brings the window to
   the front and does nothing else (`ConsumeActivationClick`), so it
   cannot switch a tab, focus another pane or press a button the user
@@ -367,6 +378,11 @@ slide. The timings below are for what a spring does not move.
   once it is in front, and on Windows its drawn Minimize and Close
   buttons act on the second click (Maximize, a system control, on the
   first).
+- **Do** show each color's dot in a menu of colors, and tick the current
+  one inside its dot (`colorDot`, `colorChoices`), as iOS marks it.
+  **Don't** add the menu's own mark beside the dot: two marks side by
+  side read as two dots. **Don't** let a click on a swatch step to the
+  next color unseen: it opens the menu.
 - **Do** take the nearest token. **Don't** add a size, radius or shadow
   for one view: change the table, for every view.
 - **Do** tell states apart by color and weight. **Don't** tell them apart

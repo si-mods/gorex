@@ -61,6 +61,59 @@ type colors struct {
 	accentText ui.Color
 	// surface is the face of controls, opaque as the popovers' panel.
 	surface, surfaceHover, surfacePressed ui.Color
+
+	// The faces and the line of docs/DSK-012-theme-shaders.md's roles: the
+	// title bar, the sidebar column, a pane's header, the accent faces of
+	// the buttons, and a pane card's border. The built-in palettes have
+	// none (ui.Transparent): where one is unset, the app draws as it did
+	// before.
+	titleBarFace, sideBarFace, headerFace, buttonFace, paneBorder ui.Color
+
+	// m are the theme's metrics: the corner scale, border width, chrome
+	// font and shadows the palette draws with.
+	m metrics
+
+	// win is the window's palette when this one is a face's (themedFace):
+	// the same faces and panels with the ladder of the face. nil in the
+	// window's own palette.
+	win *colors
+}
+
+// window returns the palette of k's window: k itself, or the palette a
+// face's palette came from. A popover or a menu opened from a face draws
+// on the window's panel, so it takes the window's ladder, not the face's.
+func (k *colors) window() *colors {
+	if k.win != nil {
+		return k.win
+	}
+	return k
+}
+
+// metrics are the sizes of docs/DSK-012-theme-shaders.md, Metrics, as the
+// palette draws with them. builtinMetrics change nothing.
+type metrics struct {
+	// radius scales the radius tokens, the capsules and the panes' corners.
+	radius float32
+	// border is the width of a pane card's, a panel's and a field's border.
+	border float32
+	// font is the family of the chrome's text.
+	font string
+	// shadowScale scales a raised layer's shadow; shadowHard makes its
+	// blur 0.
+	shadowScale float32
+	shadowHard  bool
+}
+
+// builtinMetrics are the sizes with no theme, or a theme with no metrics.
+var builtinMetrics = metrics{radius: 1, border: 1, font: uiFont, shadowScale: 1}
+
+// metricsOf are the metrics of a theme's metrics key: the font the first
+// family of its list that is installed.
+func metricsOf(m *theme.Metrics) metrics {
+	return metrics{
+		radius: m.Radius, border: m.Border, font: chromeFont(m.Font),
+		shadowScale: m.Shadow.Scale, shadowHard: m.Shadow.Hard,
+	}
 }
 
 // seeds are what a palette is made of (docs/DSK-008-theme.md, Model): the
@@ -156,6 +209,8 @@ func derive(s seeds) colors {
 
 		accent: s.accent, accentHover: s.accentHover, accentPressed: s.accentPressed, accentText: s.accentText,
 		surface: s.surface, surfaceHover: s.surfaceHover, surfacePressed: s.surfacePressed,
+
+		m: builtinMetrics,
 	}
 }
 
@@ -232,7 +287,15 @@ var (
 // themePalettes are the palettes the windows draw with: the built-in ones,
 // or those of the theme appearance.theme names. The user's own
 // *.colorCustomizations go over them where they draw (sidebarPalette).
-type themePalettes struct{ light, dark colors }
+// glass is the theme's glass key, nil without one, and name the theme's
+// name, for the Settings page to say what decides the glass.
+type themePalettes struct {
+	light, dark colors
+	glass       *bool
+	name        string
+	// themed tells that a theme made them, not the built-in seeds alone.
+	themed bool
+}
 
 // palettes holds the windows' palettes. applyTheme stores a new value, never
 // changes the one stored, so a window that draws on its own goroutine
@@ -241,7 +304,7 @@ type themePalettes struct{ light, dark colors }
 // Until applyTheme stores one, it holds nil, which is builtinPalettes.
 var palettes atomic.Pointer[themePalettes]
 
-var builtinPalettes = themePalettes{lightColors, darkColors}
+var builtinPalettes = themePalettes{light: lightColors, dark: darkColors}
 
 // paletteOf returns the windows' palette of an appearance.
 func paletteOf(dark bool) *colors {
@@ -284,6 +347,11 @@ func roleField(k *colors, r theme.Role) *ui.Color {
 		theme.TabSeparator:             &k.tabSep,
 		theme.TabHoverBackground:       &k.tabHover,
 		theme.TabActiveBackground:      &k.tabActive,
+		theme.TitleBarBackground:       &k.titleBarFace,
+		theme.SideBarBackground:        &k.sideBarFace,
+		theme.PaneHeaderBackground:     &k.headerFace,
+		theme.ButtonBackground:         &k.buttonFace,
+		theme.PaneBorder:               &k.paneBorder,
 	}[r]
 }
 
@@ -294,14 +362,23 @@ func themed(base seeds, m *theme.Manifest, i int) colors {
 	if m == nil {
 		return derive(base)
 	}
-	for id, c := range m.Seeds[i] {
-		*seedField(&base, id) = c
-	}
-	k := derive(base)
+	k := derive(themeSeeds(base, m, i))
 	for r, c := range m.Roles[i] {
 		*roleField(&k, r) = c
 	}
+	if m.Metrics != nil {
+		k.m = metricsOf(m.Metrics)
+	}
 	return k
+}
+
+// themeSeeds returns base with the theme's seeds of an appearance over
+// it: what a theme's shaders read as Seed<Name>.
+func themeSeeds(base seeds, m *theme.Manifest, i int) seeds {
+	for id, c := range m.Seeds[i] {
+		*seedField(&base, id) = c
+	}
+	return base
 }
 
 // themeTerm is the Ghostty theme of the terminals that the theme names for
@@ -317,8 +394,17 @@ var themeSidebar theme.Sidebar
 // when m is nil, and drops what the caches made from the old ones. The
 // terminals take m's colors when the caller applies the prefs again.
 func applyTheme(m *theme.Manifest) {
-	palettes.Store(&themePalettes{themed(lightSeeds, m, 0), themed(darkSeeds, m, 1)})
-	setLook(m)
+	p := &themePalettes{light: themed(lightSeeds, m, 0), dark: themed(darkSeeds, m, 1)}
+	if m != nil {
+		p.themed = true
+		p.glass, p.name = m.Glass, m.Name
+		if p.name == "" {
+			p.name = prefs.Theme
+		}
+	}
+	palettes.Store(p)
+	lookGen.Add(1)
+	setThemeShaders(m)
 	themeTerm = [2]string{}
 	themeSidebar = theme.Sidebar{}
 	if m != nil {
@@ -328,6 +414,12 @@ func applyTheme(m *theme.Manifest) {
 	menuStylesMu.Lock()
 	clear(menuStyles)
 	menuStylesMu.Unlock()
+	faceCacheMu.Lock()
+	clear(faceCache)
+	faceCacheMu.Unlock()
+	inkMu.Lock()
+	clear(inkLadders)
+	inkMu.Unlock()
 	spaceColorsMu.Lock()
 	clear(spaceColorsCache)
 	spaceColorsMu.Unlock()
@@ -346,6 +438,94 @@ func ladderOf(k *colors, dark bool) *colors {
 		return k
 	}
 	return paletteOf(dark)
+}
+
+// faceLadder returns the palette whose text ladder reads on a face of k,
+// face its color laid over k's panel (docs/DSK-008-theme.md, Pairing).
+// With no theme it is the ladder of the face's lightness (ladderOf), as it
+// always was. Under a theme it is the first of these whose text reaches
+// 4.5:1 and textMuted 3:1 on the face: the theme's ladder of the face's
+// lightness, the theme's other one, the built-in ladder of the face's
+// lightness, the built-in other one, and ink, white or black, made for the
+// face (inkLadder). A light-only theme, whose dark seeds are its light
+// ones, thus gets white text on a dark face rather than its dark text.
+//
+// same is the caller's palette of the face's lightness, which it took
+// before the rule: ladderOf(k, dark), or paletteOf(dark) for themedFace.
+func faceLadder(k *colors, face ui.Color, same *colors) *colors {
+	if p := palettes.Load(); p == nil || !p.themed {
+		return same
+	}
+	dark := isDark(face)
+	return pickLadder(face, same, ladderOf(k, !dark), builtinLadder(dark), builtinLadder(!dark))
+}
+
+// builtinLadder returns the built-in palette of an appearance.
+func builtinLadder(dark bool) *colors {
+	if dark {
+		return &darkColors
+	}
+	return &lightColors
+}
+
+// ladderReads reports how well ref's ladder reads on face: its worse margin
+// of text over 4.5:1 and textMuted over 3:1, 1 or more where both pass.
+func ladderReads(ref *colors, face ui.Color) float64 {
+	return min(contrast(ref.text.Over(face), face)/faceTextContrast, contrast(ref.textMuted.Over(face), face)/faceMutedContrast)
+}
+
+// pickLadder returns the first of refs whose ladder reads on face, else the
+// ink ladder of face (inkLadder), or, should it not read either, the one
+// of them that reads best.
+func pickLadder(face ui.Color, refs ...*colors) *colors {
+	best, score := refs[0], -1.0
+	for _, ref := range refs {
+		s := ladderReads(ref, face)
+		if s >= 1 {
+			return ref
+		}
+		if s > score {
+			best, score = ref, s
+		}
+	}
+	ink := inkLadder(face)
+	if ladderReads(ink, face) > score {
+		return ink
+	}
+	return best
+}
+
+// inkLadders are the ink ladders inkLadder made, by face.
+var (
+	inkMu      sync.Mutex
+	inkLadders = map[ui.Color]*colors{}
+)
+
+// inkLadder returns a ladder made for face: text in the ink, white or
+// black, that contrasts more with it, and the muted steps that ink laid
+// over the face at the least alpha from 0.72 up that keeps textMuted 3:1.
+// The palette is the same pointer for the same face.
+func inkLadder(face ui.Color) *colors {
+	inkMu.Lock()
+	defer inkMu.Unlock()
+	if k, ok := inkLadders[face]; ok {
+		return k
+	}
+	ink, st := ui.RGBA(0, 0, 0, 1), lightInk
+	if contrast(ui.RGBA(255, 255, 255, 1), face) > contrast(ink, face) {
+		ink, st = ui.RGBA(255, 255, 255, 1), darkInk
+	}
+	a := float32(0.72)
+	for a < 1 && contrast(ink.Alpha(a).Over(face), face) < faceMutedContrast {
+		a += 0.04
+	}
+	muted := ink.Alpha(min(a, 1)).Over(face)
+	k := &colors{
+		text: ink, textMuted: muted, textFaint: ink.Alpha(0.55).Over(face), iconMuted: muted,
+		hover: ink.Alpha(st.hover), pressed: ink.Alpha(st.pressed),
+	}
+	inkLadders[face] = k
+	return k
 }
 
 // withLadder returns k with the text ladder of ref: k itself when ref is k,
@@ -386,7 +566,76 @@ const (
 	roleTrackBackground          = theme.TrackBackground
 	roleTabHoverBackground       = theme.TabHoverBackground
 	roleTabActiveBackground      = theme.TabActiveBackground
+	roleTitleBarBackground       = theme.TitleBarBackground
+	roleSideBarBackground        = theme.SideBarBackground
+	rolePaneHeaderBackground     = theme.PaneHeaderBackground
+	roleButtonBackground         = theme.ButtonBackground
 )
+
+// themedFace returns k with the ladder of the face role sets, and the face,
+// when the theme sets one; k and ok false when it does not, so that the
+// caller draws as it did before. The ladder is that of the palette of the
+// face's lightness, not k's own: k may carry the other appearance's ladder
+// already, as a pane header's over a dark terminal in a light window does
+// (headerColors).
+//
+// The palette it makes is the same pointer for the same k and role, until
+// applyTheme, so that the caches keyed by a palette (menuStyleOf) do not
+// grow each frame. Its window() is k's window.
+func themedFace(k *colors, role faceRole) (*colors, ui.Color, bool) {
+	face := *roleField(k, role)
+	if face.A == 0 {
+		return k, face, false
+	}
+	flat := face.Over(k.panel)
+	ref := faceLadder(k, flat, paletteOf(isDark(flat)))
+	if k.text == ref.text && k.textMuted == ref.textMuted && k.textFaint == ref.textFaint && k.iconMuted == ref.iconMuted &&
+		k.hover == ref.hover && k.pressed == ref.pressed {
+		return k, face, true
+	}
+	key := faceKey{*k, role}
+	faceCacheMu.Lock()
+	defer faceCacheMu.Unlock()
+	if h, ok := faceCache[key]; ok {
+		return h, face, true
+	}
+	h := *withLadder(k, ref)
+	h.win = k.window()
+	faceCache[key] = &h
+	return &h, face, true
+}
+
+// faceKey names a face's palette: the palette it is made from, by value,
+// as the sidebar's and a space's palettes are copies, and the role.
+type faceKey struct {
+	k    colors
+	role faceRole
+}
+
+// The faces' palettes themedFace made, which applyTheme clears. The
+// windows' views may run on their own goroutines, so the map has its lock.
+var (
+	faceCacheMu sync.Mutex
+	faceCache   = map[faceKey]*colors{}
+)
+
+// buttonColors sets t's accent faces, the primary button's and a switch's
+// that is on, to the theme's button.background, with text of the face's
+// ladder, or its accentText while the face is the accent. A theme without
+// the role leaves t as it is.
+func buttonColors(t *ui.Theme, k *colors) {
+	face := k.buttonFace
+	if face.A == 0 {
+		return
+	}
+	text := k.accentText
+	flat := face.Over(k.panel)
+	ref := faceLadder(k, flat, ladderOf(k, isDark(flat))) // surface's ladder
+	if face != k.accent {
+		text = ref.text
+	}
+	t.Accent, t.AccentHover, t.AccentPressed, t.AccentText = face, ref.hover.Over(face), ref.pressed.Over(face), text
+}
 
 // faceColors is a face with the colors that show on it, as one value: the
 // text ladder and the hover faces of the palette whose lightness is the
@@ -405,7 +654,8 @@ type faceColors struct {
 // face has its own palette's lightness, so it gets the palette's ladder.
 func surface(k *colors, role faceRole) faceColors {
 	face := *roleField(k, role)
-	ref := ladderOf(k, isDark(face.Over(k.panel)))
+	flat := face.Over(k.panel)
+	ref := faceLadder(k, flat, ladderOf(k, isDark(flat)))
 	return faceColors{face, ref.text, ref.textMuted, ref.textFaint, ref.iconMuted, ref.hover, ref.pressed}
 }
 
@@ -429,15 +679,11 @@ func (s faceColors) on(k *colors) *colors {
 // each channel by up to half a step of 8 bits, which hides the bands a
 // smooth gradient makes. The colors arrive not premultiplied, and the
 // shader returns the color premultiplied, as opaque as Alpha: 1 but over
-// the window's glass. A theme's glows (docs/DSK-010-theme-ambience.md) lie
-// over the tint: each an ellipse, Glow its center and radii in fractions
-// of the size, whose color GlowColor fades from its center to its edge. A
-// glow of no alpha changes no pixel.
+// the window's glass.
 var background = shader.MustCompile(`package main
 
 var Top, Mid, Low, Bottom, Tint vec4
 var Alpha float
-var Glow, GlowColor [4]vec4
 
 func hash(v uint) uint {
 	s := v*747796405 + 2891336453
@@ -453,10 +699,6 @@ func Fragment(dst vec4, pos vec2) vec4 {
 	c = mix(c, Bottom.rgb, clamp((y-0.7)/0.3, 0, 1))
 	a := Tint.a * clamp((pos.x/size.x-0.35)/0.65, 0, 1)
 	c = c*(1-a) + Tint.rgb*a
-	for i := 0; i < 4; i++ {
-		g := GlowColor[i].a * clamp(1-length((pos/size-Glow[i].xy)/Glow[i].zw), 0, 1)
-		c = c*(1-g) + GlowColor[i].rgb*g
-	}
 	n := hash(uint(dst.x) + hash(uint(dst.y)))
 	c += (float(n)/4294967295.0 - 0.5) / 255.0
 	return vec4(clamp(c, 0, 1)*Alpha, Alpha)
@@ -469,40 +711,35 @@ var (
 	bgValues                                   = background.NewValues()
 	bgTopU, bgMidU, bgLowU, bgBottomU, bgTintU = background.Uniform("Top"), background.Uniform("Mid"),
 		background.Uniform("Low"), background.Uniform("Bottom"), background.Uniform("Tint")
-	bgAlphaU             = background.Uniform("Alpha")
-	bgGlowU, bgGlowColor = background.Uniform("Glow"), background.Uniform("GlowColor")
+	bgAlphaU = background.Uniform("Alpha")
 )
 
 // backgroundOptions returns what the background shader draws with: k's
-// colors, as opaque as alpha, and the glows of the appearance, in the
-// values made once.
-func backgroundOptions(k *colors, alpha float32, glows []glow) shader.Options {
+// colors, as opaque as alpha, in the values made once.
+func backgroundOptions(k *colors, alpha float32) shader.Options {
 	bgValues.Color(bgTopU, k.bgTop).Color(bgMidU, k.bgMid).Color(bgLowU, k.bgLow).
 		Color(bgBottomU, k.bgBottom).Color(bgTintU, k.bgTint).Float(bgAlphaU, alpha)
-	var geo, col [16]float32
-	for i, g := range glows[:min(len(glows), 4)] {
-		copy(geo[4*i:], []float32{g.x, g.y, g.rx, g.ry})
-		copy(col[4*i:], []float32{float32(g.color.R) / 255, float32(g.color.G) / 255, float32(g.color.B) / 255, float32(g.color.A) / 255})
-	}
-	for i := len(glows); i < 4; i++ {
-		geo[4*i+2], geo[4*i+3] = 1, 1 // no division by zero
-	}
-	bgValues.Floats(bgGlowU, geo[:]...).Floats(bgGlowColor, col[:]...)
 	return shader.Options{Values: bgValues}
 }
 
 // paintBackground paints the window's background, as opaque as alpha: 1,
-// or backgroundAlpha's wash over the window's glass, with the theme's
-// glows of the appearance. It is one shader, or on the CPU renderer, where
-// a shader over the window runs far too slowly, gradients of the same
-// colors.
-func paintBackground(p *ui.Painter, r ui.Rect, k *colors, alpha float32, dark bool) {
-	glows := themeGlows(dark)
-	if p.Accelerated() {
-		background.Draw(p, r, backgroundOptions(k, alpha, glows))
+// or backgroundAlpha's wash over the window's glass. It is one shader, or
+// on the CPU renderer, where a shader over the window runs far too slowly,
+// gradients of the same colors. A theme's background shader
+// (docs/DSK-012-theme-shaders.md) replaces the built-in one on a GPU.
+// moves tells that the theme's shaders move in the window
+// (themeShaderMoves); sw is the window's shaderWindow (windowShader), nil
+// for none kept.
+func paintBackground(p *ui.Painter, r ui.Rect, k *colors, alpha float32, dark, moves bool, sw *shaderWindow) {
+	f := tickShaders(p, r, moves, sw)
+	if sl := themeBackground(); sl != nil && themeShaderGPU(p) {
+		sl.draw(p, r, 0, dark, alpha, f)
 		return
 	}
-	defer paintGlows(p, r, glows, alpha)
+	if p.Accelerated() {
+		background.Draw(p, r, backgroundOptions(k, alpha))
+		return
+	}
 	top, mid, low, bottom, tint := k.bgTop, k.bgMid, k.bgLow, k.bgBottom, k.bgTint
 	h1, h2 := r.H*0.38, r.H*0.32
 	over := float32(1) // the bands overlap by a DIP, which an opaque one hides
@@ -585,7 +822,8 @@ func widgetTheme(base *ui.Theme, k *colors) *ui.Theme {
 	t.Accent, t.AccentHover, t.AccentPressed, t.AccentText = k.accent, k.accentHover, k.accentPressed, k.accentText
 	t.Menu = menuStyleOf(k, t.Dark)
 	t.Selection, t.Focus = k.accent.Alpha(0.3), k.accent.Alpha(0.55)
-	t.Radius = 9
-	t.Font = uiFont
+	buttonColors(&t, k)
+	t.Radius = k.radius(9)
+	t.Font = k.m.font
 	return &t
 }

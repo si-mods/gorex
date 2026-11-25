@@ -19,7 +19,7 @@ const kindIconPack = "icon-pack"
 
 func packCmd(args []string, out, errOut io.Writer) (int, bool) {
 	if len(args) == 0 {
-		fmt.Fprintln(errOut, "gorex pack: use ls, search, install, or rm")
+		fmt.Fprintln(errOut, "gorex pack: use ls, search, install, update, or rm")
 		return ExitUsage, true
 	}
 	packsDir := iconpack.Dir()
@@ -40,10 +40,17 @@ func packCmd(args []string, out, errOut io.Writer) (int, bool) {
 		}
 		themesDir := theme.Dir(config.Dir())
 		for _, t := range theme.List(themesDir) {
-			list = append(list, iconpack.Summary{
+			s := iconpack.Summary{
 				ID: t.ID, Kind: iconpack.KindTheme, Name: t.Name, Error: t.Error,
 				Dir: filepath.Join(themesDir, t.ID+".json"),
-			})
+			}
+			// A theme's manifest has no version; its install record may.
+			if dir, err := theme.AssetFolder(themesDir, t.ID); err == nil {
+				if rec := iconpack.ReadRecord(dir); rec != nil {
+					s.Version = rec.Version
+				}
+			}
+			list = append(list, s)
 		}
 		if *asJSON {
 			if list == nil {
@@ -58,7 +65,7 @@ func packCmd(args []string, out, errOut io.Writer) (int, bool) {
 				continue
 			}
 			if s.Kind == iconpack.KindTheme {
-				fmt.Fprintf(out, "%s\t%s\t\t\t%s\n", s.ID, s.Name, s.Kind)
+				fmt.Fprintf(out, "%s\t%s\t%s\t\t%s\n", s.ID, s.Name, s.Version, s.Kind)
 				continue
 			}
 			fmt.Fprintf(out, "%s\t%s\t%s\t%d entries\t%s\n", s.ID, s.Name, s.Version, s.Entries, s.Kind)
@@ -122,16 +129,14 @@ func packCmd(args []string, out, errOut io.Writer) (int, bool) {
 				rp, err = iconpack.LookupRegistry(idx, src)
 				if err == nil && rp.Kind == iconpack.KindTheme {
 					id := cmp.Or(*name, rp.ID)
-					return installTheme(id, out, errOut, func(dir string) (warn []string, err error) {
-						err = iconpack.Checkout(context.Background(), rp, func(src string) (err error) {
-							warn, err = theme.Install(src, dir, id)
-							return err
-						})
-						return warn, err
+					return installTheme(id, out, errOut, func(dir string) ([]string, error) {
+						return iconpack.Install(context.Background(), rp, packsDir, dir, id)
 					})
 				}
 				if err == nil {
-					pk, err = iconpack.InstallFromRegistry(context.Background(), rp, packsDir, *name)
+					if _, err = iconpack.Install(context.Background(), rp, packsDir, "", *name); err == nil {
+						pk, err = iconpack.LoadPack(filepath.Join(packsDir, cmp.Or(*name, rp.ID)))
+					}
 				}
 			}
 		} else {
@@ -148,6 +153,17 @@ func packCmd(args []string, out, errOut io.Writer) (int, bool) {
 		}
 		fmt.Fprintf(out, "installed %s (%s)\n", pk.ID, pk.Dir)
 		return ExitOK, true
+	case "update":
+		fs := flagSet("pack update", errOut)
+		check := fs.Bool("check", false, "list the updates and install none")
+		if code, stop := parse(fs, args[1:]); stop {
+			return code, true
+		}
+		if fs.NArg() > 1 {
+			fmt.Fprintln(errOut, "gorex pack update: pass one pack ID, or none for all")
+			return ExitUsage, true
+		}
+		return packUpdate(fs.Arg(0), *check, packsDir, out, errOut), true
 	case "rm", "remove":
 		fs := flagSet("pack rm", errOut)
 		if code, stop := parse(fs, args[1:]); stop {
@@ -205,6 +221,110 @@ func installTheme(id string, out, errOut io.Writer, install func(dir string) ([]
 	}
 	fmt.Fprintf(out, "installed theme %s (%s); set \"appearance.theme\": %q to use it\n", id, filepath.Join(dir, id+".json"), id)
 	return ExitOK, true
+}
+
+// installedPack is an installed icon pack or theme, with its install
+// record, or nil when it has none.
+type installedPack struct {
+	id, kind string // kind is iconpack.KindTheme, or "" for an icon pack
+	own      string // the version the pack declares: pack.json's; a theme has none
+	rec      *iconpack.Record
+}
+
+// installedPacks lists the installed icon packs, then the themes.
+func installedPacks(packsDir, themesDir string) []installedPack {
+	var out []installedPack
+	list, _ := iconpack.ListPacks(packsDir)
+	for _, s := range list {
+		out = append(out, installedPack{id: s.ID, own: s.Version, rec: iconpack.ReadRecord(filepath.Join(packsDir, s.ID))})
+	}
+	for _, t := range theme.List(themesDir) {
+		p := installedPack{id: t.ID, kind: iconpack.KindTheme}
+		if dir, err := theme.AssetFolder(themesDir, t.ID); err == nil {
+			p.rec = iconpack.ReadRecord(dir)
+		}
+		out = append(out, p)
+	}
+	return out
+}
+
+// packUpdate is gorex pack update: it installs again each installed pack
+// whose registry entry differs from its install record, or only the pack
+// id when id is not "" (docs/MOD-012-program-icon-packs.md, Updates). A
+// pack with no record has an unknown version and gets the update. With
+// check it lists the updates and installs none.
+func packUpdate(id string, check bool, packsDir string, out, errOut io.Writer) int {
+	themesDir := theme.Dir(config.Dir())
+	var todo []installedPack
+	for _, p := range installedPacks(packsDir, themesDir) {
+		if id == "" || p.id == id {
+			todo = append(todo, p)
+		}
+	}
+	if id != "" && len(todo) == 0 {
+		fmt.Fprintf(errOut, "gorex pack update: no icon pack or theme %q\n", id)
+		return ExitFailed
+	}
+	idx, err := iconpack.FetchRegistry(context.Background(), "")
+	if err != nil {
+		fmt.Fprintf(errOut, "gorex pack update: %v\n", err)
+		return ExitFailed
+	}
+	code, updates := ExitOK, 0
+	for _, p := range todo {
+		regID := p.id
+		if p.rec != nil {
+			regID = p.rec.ID
+		}
+		rp, ok := iconpack.LookupKind(idx, p.kind, regID)
+		if !ok {
+			if id != "" {
+				fmt.Fprintf(out, "%s: not in the registry\n", p.id)
+			}
+			continue
+		}
+		if !iconpack.HasUpdate(p.rec, rp) {
+			if id != "" {
+				fmt.Fprintf(out, "%s: up to date (%s)\n", p.id, installedVersion(p))
+			}
+			continue
+		}
+		updates++
+		from, to := installedVersion(p), cmp.Or(rp.Version, shortRef(rp.Ref))
+		if check {
+			fmt.Fprintf(out, "%s\t%s -> %s\n", p.id, from, to)
+			continue
+		}
+		warn, err := iconpack.Install(context.Background(), rp, packsDir, themesDir, p.id)
+		for _, w := range warn {
+			fmt.Fprintf(errOut, "gorex pack update: %s: %s (dropped)\n", p.id, w)
+		}
+		if err != nil {
+			fmt.Fprintf(errOut, "gorex pack update: %s: %v\n", p.id, err)
+			code = ExitFailed
+			continue
+		}
+		fmt.Fprintf(out, "updated %s: %s -> %s\n", p.id, from, to)
+	}
+	if id == "" && updates == 0 {
+		fmt.Fprintln(out, "every installed pack is up to date")
+	}
+	return code
+}
+
+// installedVersion names what is installed: the record's version, else
+// its ref; with no record, the version the pack declares; else "version
+// unknown".
+func installedVersion(p installedPack) string {
+	if p.rec == nil {
+		return cmp.Or(p.own, "version unknown")
+	}
+	return cmp.Or(p.rec.Version, shortRef(p.rec.Ref), "version unknown")
+}
+
+// shortRef is the first 7 digits of a commit SHA.
+func shortRef(ref string) string {
+	return ref[:min(len(ref), 7)]
 }
 
 func isGitURL(s string) bool {

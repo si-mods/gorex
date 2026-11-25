@@ -3,12 +3,12 @@ name: IOS-017
 description: "Rex Go shows a question from one of the host's actions and answers it, as Rex API revision 17 defines. Use when you change the prompt sheet, the prompt events, or the reply the app sends."
 metadata:
   created: "2026-11-21"
-  updated: "2026-11-21"
+  updated: "2026-11-25"
 ---
 
 # IOS-017: A host's question on the phone
 
-Status: built (#957).
+Status: built (#957). The choice marks and the reason for a disabled Send follow #1098.
 
 This doc adds the prompt sheet to Rex Go. The gateway already sends a question to every app that can show it, at Rex API revision 17 ([MOD-005](MOD-005-client-prompts.md)). The app ignored those events, so the phone could not answer. The sheet is the last part of the phone's client features: the ports sheet ([IOS-014](IOS-014-pane-ports.md)), the focus back ([IOS-015](IOS-015-focus-back.md)) and this sheet.
 
@@ -39,7 +39,11 @@ A config action on the host calls `rex.ui.input` or `rex.ui.pick`. The gateway s
 - An action runs on the host and asks a question. The phone shows a sheet in about a second, over the host list or a terminal.
 - The sheet names the action once, above the question.
 - An input shows a text field with the placeholder and the value the action set. The confirm button carries the confirm label, or Send. The keyboard's return answers.
-- A pick lists each item. A tap on one answers it alone, or adds it when `multiple` is true; a check marks it. Confirm answers the checked items in their order. With `allow_other`, an Other field answers its text instead, when it is not empty.
+- A pick lists each item. The mark tells the person how many answers the question takes (rule: a radio button for exactly one answer, a check box for any number):
+  - `multiple` is false: each item is a radio button in one radio group. The mark is a circle, VoiceOver says "radio button, 1 of 3", and a tap chooses the item and clears the others.
+  - `multiple` is true: each item is a check box. The mark is a square with a check, VoiceOver says "check box", and a tap checks or unchecks the item.
+- Confirm answers the checked items in their order. With `allow_other`, an Other field answers its text instead, when it is not empty.
+- While no item is chosen and the Other field is empty, Send is disabled and says why: the section's footer reads "Pick an answer", and Send has the same text as its accessibility hint. An input has no such state: an empty text is an answer.
 - Cancel, or the same question answered on another device, closes the sheet.
 - The sheet for a host that disconnects closes.
 
@@ -54,7 +58,7 @@ A config action on the host calls `rex.ui.input` or `rex.ui.pick`. The gateway s
 
 ### Code
 
-- `ios/GoRex/Rex/Prompt.swift`: `Prompt`, its `Spec`, `Item` and `Answer`, and `Prompt.from`, which reads the event payload.
+- `ios/GoRex/Rex/Prompt.swift`: `Prompt`, its `Spec`, `Item` and `Answer`, and `Prompt.from`, which reads the event payload. It also holds `ChoiceKind`, the circle or the square of an item, and `Spec.canAnswer`, which says whether Send can answer.
 - `ios/GoRex/Rex/Host.swift`: `prompt`, the two events in `apply`, `answer`, which sends `client.reply`, and the clear on close.
 - `ios/GoRex/Views/PromptSheet.swift`: the sheet and `promptSheet`, the modifier that shows the first question over any screen.
 - `ios/GoRex/GoRexApp.swift`: the modifier on the app's list.
@@ -81,6 +85,7 @@ A config action on the host calls `rex.ui.input` or `rex.ui.pick`. The gateway s
 ## Tests
 
 - `PromptTests` reads an input and a pick event, checks the fields, the default of five minutes, an unknown kind and a missing call ID, and the three result shapes.
+- `PromptTests` also checks `Spec.choiceKind` (radio for one answer, check box for several), the marks' symbols, and `Spec.canAnswer` (false while nothing is chosen and the Other text is empty, true once an item or an Other text is). The views' VoiceOver output is checked by hand on the simulator.
 - The simulator shows a sheet for a config action that calls `rex.ui.input`: the answer reaches the action, and a second app's sheet closes.
 - `go run ./tools/verify` and the app's build for the simulator.
 

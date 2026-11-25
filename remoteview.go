@@ -638,7 +638,7 @@ func rowError(c *ui.Context, k *colors, msg string) {
 // remoteTile is the small grey tile of a row of the Remote page, with
 // its glyph.
 func remoteTile(c *ui.Context, k *colors, glyph string) {
-	ui.Box(c).Size(30, 30).Radius(radiusM).Background(k.hover).Center().Shrink(0).Children(func() {
+	ui.Box(c).Size(30, 30).Radius(k.radius(radiusM)).Background(k.hover).Center().Shrink(0).Children(func() {
 		glyphIcon(c, glyph, 16, k.iconMuted)
 	})
 }
@@ -647,7 +647,7 @@ func remoteTile(c *ui.Context, k *colors, glyph string) {
 func statusLine(c *ui.Context, k *colors, dot ui.Color, label string) ui.Element {
 	var text ui.Element
 	ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
-		ui.Box(c).Size(7, 7).Radius(capsule(7)).Background(dot).Shrink(0)
+		ui.Box(c).Size(7, 7).Radius(k.capsule(7)).Background(dot).Shrink(0)
 		text = ui.Text(c, label).FontSize(fontFootnote).FontWeight(500).TextColor(k.textMuted).MinWidth(0)
 	})
 	return text
@@ -763,7 +763,7 @@ func (a *App) remoteHeader(c *ui.Context, k *colors, st rex.RemoteStatus) {
 		on := st.Enabled && !page.unreachable
 		groupRow(c, k, nil).Children(func() {
 			ui.Row(c).Gap(12).AlignItems(ui.Center).Children(func() {
-				ui.Box(c).Size(40, 40).Radius(radiusM).Background(k.accent).Center().Shrink(0).Children(func() {
+				ui.Box(c).Size(40, 40).Radius(k.radius(radiusM)).Background(k.accent).Center().Shrink(0).Children(func() {
 					glyphIcon(c, "globe", 22, k.accentText)
 				})
 				ui.Column(c).Grow(1).MinWidth(0).Gap(4).Children(func() {

@@ -62,6 +62,56 @@ func TestParseDrops(t *testing.T) {
 	if !slices.Equal(warn, want) {
 		t.Errorf("warnings\n%q\nwant\n%q", warn, want)
 	}
+
+	// A manifest of a later doc loads as its colors here: the keys and
+	// roles this build does not know drop, with a warning each, and so
+	// does a shader API this build does not know; the rest applies.
+	m, warn, err = Parse([]byte(`{
+  "seeds": { "light": { "accent": "#2876c8" } },
+  "roles": { "titleBar.background": "#2876c8", "pane.border": "#2876c880", "toolBar.background": "#ffffff" },
+  "shaders": { "api": 3, "background": { "source": "bg" } },
+  "metrics": { "radius": 0.2 },
+  "glass": false
+}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.Seeds[0][Accent] != ui.Hex("#2876c8") || m.Roles[0][TitleBarBackground] != ui.Hex("#2876c8") || m.Roles[1][PaneBorder] != ui.Hex("#2876c880") {
+		t.Errorf("colors of a later manifest: %v %v", m.Seeds, m.Roles)
+	}
+	if m.Metrics == nil || m.Metrics.Radius != 0.2 || m.Glass == nil || *m.Glass {
+		t.Errorf("metrics %+v, glass %v", m.Metrics, m.Glass)
+	}
+	want = []string{`roles: unknown role "toolBar.background"`, `shaders.api: 3 is not an API this build knows (shaders dropped)`}
+	if !slices.Equal(warn, want) {
+		t.Errorf("warnings\n%q\nwant\n%q", warn, want)
+	}
+}
+
+// TestParseDescription: the description key keeps a line of text: control
+// characters go and it is cut to 160 characters, each with a warning; a
+// value that is not a string drops. List carries it.
+func TestParseDescription(t *testing.T) {
+	m, warn, err := Parse([]byte(`{"name": "Blue", "description": "Blue bars\u0007 and \u202egrey panels"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.Description != "Blue bars and grey panels" || len(warn) != 1 || !strings.Contains(warn[0], "description") {
+		t.Errorf("description %q, warnings %q", m.Description, warn)
+	}
+	m, warn, _ = Parse([]byte(`{"description": "` + strings.Repeat("é", 200) + `"}`))
+	if n := len([]rune(m.Description)); n != maxDescription || len(warn) != 1 {
+		t.Errorf("a long description keeps %d characters, warnings %q", n, warn)
+	}
+	m, warn, _ = Parse([]byte(`{"description": 3}`))
+	if m.Description != "" || len(warn) != 1 || warn[0] != "description: not a string" {
+		t.Errorf("a number: %q %q", m.Description, warn)
+	}
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "blue.json"), []byte(`{"name": "Blue", "description": "Blue bars"}`), 0o644)
+	if l := List(dir); len(l) != 1 || l[0].Description != "Blue bars" {
+		t.Errorf("List %+v", l)
+	}
 }
 
 // TestParseSidebar: the sidebar key carries the sidebar.* settings of
@@ -162,7 +212,7 @@ func TestNames(t *testing.T) {
 		}
 	}
 	for r := range NumRoles {
-		if got, ok := RoleByName(r.String()); !ok || got != r || !strings.HasPrefix(r.String(), "sideBar.") {
+		if got, ok := RoleByName(r.String()); !ok || got != r || !slices.ContainsFunc([]string{"sideBar.", "titleBar.", "paneHeader.", "button.", "pane."}, func(p string) bool { return strings.HasPrefix(r.String(), p) }) {
 			t.Errorf("role %d %q", r, r.String())
 		}
 	}

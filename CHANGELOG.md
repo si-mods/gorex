@@ -1,5 +1,42 @@
 # Changelog
 
+## 0.62.0
+
+### Features
+
+* **prompts:** a question that takes one answer shows radio rows, one that takes several shows check boxes, and a disabled Send says why ([#1132](https://github.com/si-mods/gorex/pull/1132))
+* **desktop:** status and error toasts, a quit confirm, and offline actions disabled ([#1104](https://github.com/si-mods/gorex/pull/1104))
+* **ios:** reach a host over SSH (IOS-023 phase 1) ([#1124](https://github.com/si-mods/gorex/pull/1124))
+* **packs:** show and apply extension updates ([#1125](https://github.com/si-mods/gorex/pull/1125))
+* **theme:** Pointer uniform for shader API version 2 ([#1126](https://github.com/si-mods/gorex/pull/1126))
+
+### Changes
+
+* remove Close Other Tabs from desktop, web and iOS ([#1100](https://github.com/si-mods/gorex/pull/1100))
+
+## 0.61.0
+
+### Features
+
+* **projects:** the New Project sheet drops from the top as the ⌘P palette's glass panel — the path field is the folder browser, copied from T3 Code's add-project ([#1106](https://github.com/si-mods/gorex/pull/1106))
+* **theme:** shader API version 2 with declared params and range checks ([#1118](https://github.com/si-mods/gorex/pull/1118))
+* **theme:** layers for shader API version 2 ([#1119](https://github.com/si-mods/gorex/pull/1119))
+
+## 0.60.1
+
+### Bug Fixes
+
+* **home:** with no `init.lua`, the configuration folder follows the data folder, so installing a theme or an icon pack before the move to `~/.gorex` no longer makes `~/.gorex` and hides the legacy data ([#1110](https://github.com/si-mods/gorex/pull/1110))
+
+## 0.60.0
+
+### Features
+
+* **theme:** metrics, five roles and a glass key for theme packs ([#1096](https://github.com/si-mods/gorex/pull/1096))
+* **theme:** moving sprite layer of theme ambience ([#1099](https://github.com/si-mods/gorex/pull/1099))
+* **theme:** shader runtime for theme packs: background and face shaders with load checks ([#1105](https://github.com/si-mods/gorex/pull/1105))
+* **theme:** face text that reads on any face, a text inset for the face check, and a theme description ([#1107](https://github.com/si-mods/gorex/pull/1107))
+
 ## 0.59.0
 
 ### Features

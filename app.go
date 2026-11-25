@@ -45,6 +45,12 @@ type App struct {
 	// errNote is how the banner shows the message it was set with
 	// (setNote): as a wait, or with a button.
 	errNote *bannerNote
+	// toast is the window's toast (toast.go); bannerTop is where the
+	// banner's panel starts, 0 while none shows: the toast sits above it.
+	toast     toastSlot
+	bannerTop float32
+	// quitAsk tells that Quit and End All Sessions asks (quitConfirm).
+	quitAsk bool
 	// sheet is the New Project sheet, and the one that changes a
 	// project's folder.
 	sheet projectSheet
@@ -107,8 +113,6 @@ type App struct {
 	promptText   string
 	promptPicked map[string]bool
 	promptOther  string
-	// promptSel is the row the keyboard is on, in a pick.
-	promptSel int
 	// contentFocus tells that a pane's content took the keyboard as the
 	// active tab's panes were built, and pageHover the browser pane whose
 	// page the pointer was over. A press on a page gives the page the
@@ -155,10 +159,8 @@ type App struct {
 	// host's place in the tabs.
 	teleportAsk teleportAsk
 	// closeAsk is the question before closing a tab or a pane that runs a
-	// program; closeOthers the tab whose Close Other Tabs asks first.
-	closeAsk        closeAsk
-	closeOthers     *Tab
-	closeOthersOpen bool
+	// program.
+	closeAsk closeAsk
 	// sideList is where the sidebar's list of tabs showed in the last
 	// frame, which a tab's row scrolled out of leaves its close button
 	// clipped.

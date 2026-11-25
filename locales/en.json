@@ -240,6 +240,18 @@
   "@cmdAppearanceDark": {
     "description": "Command: use the dark appearance."
   },
+  "cmdToggleAmbience": "Toggle Theme Ambience",
+  "@cmdToggleAmbience": {
+    "description": "Command: turn off the shaders that the theme draws on the window's background and its motion, or turn them on again."
+  },
+  "sidebarAmbienceOff": "Turn Off Theme Ambience",
+  "@sidebarAmbienceOff": {
+    "description": "Label and tooltip of the sidebar's button that turns off the theme's background shader and its motion."
+  },
+  "sidebarAmbienceOn": "Turn On Theme Ambience",
+  "@sidebarAmbienceOn": {
+    "description": "Label and tooltip of the sidebar's button that turns the theme's background shader and its motion on again."
+  },
   "cmdAppearanceSystem": "Appearance: System",
   "@cmdAppearanceSystem": {
     "description": "Command: follow the system's appearance."
@@ -377,40 +389,6 @@
   "@tabMoveDown": {
     "description": "Tab context menu: move the tab down (tabs in a sidebar)."
   },
-  "tabCloseOthers": "Close Other Tabs",
-  "@tabCloseOthers": {
-    "description": "Tab context menu: close every tab but this one. Also the button of the question it asks first."
-  },
-  "closeOthersTitle": "{n, plural, one {Close # other tab?} other {Close # other tabs?}}",
-  "@closeOthersTitle": {
-    "description": "Title of the question before Close Other Tabs: how many tabs it closes.",
-    "placeholders": {
-      "n": {
-        "type": "int",
-        "example": "3"
-      }
-    }
-  },
-  "closeOthersBody": "{n, plural, one {Its terminal ends, and the program running in it. This can't be undone.} other {Their # terminals end, and the programs running in them. This can't be undone.}}",
-  "@closeOthersBody": {
-    "description": "Body of the question before Close Other Tabs: how many terminals of the other tabs end.",
-    "placeholders": {
-      "n": {
-        "type": "int",
-        "example": "5"
-      }
-    }
-  },
-  "closeOthersBodyIdle": "{n, plural, =0 {This can't be undone.} one {Its terminal ends. This can't be undone.} other {Their # terminals end. This can't be undone.}}",
-  "@closeOthersBodyIdle": {
-    "description": "Body of the question before Close Other Tabs when no program runs in the other tabs: how many terminals end.",
-    "placeholders": {
-      "n": {
-        "type": "int",
-        "example": "5"
-      }
-    }
-  },
   "closeRunningTitle": "{name} is running",
   "@closeRunningTitle": {
     "description": "Title of the question before closing a tab or a pane that runs a program: the program's name.",
@@ -488,6 +466,20 @@
   "windowMinimize": "Minimize",
   "@windowMinimize": {
     "description": "Window button that minimizes the window (Windows)."
+  },
+  "paneExtMissing": "Pane of missing extension \"{kind}\"",
+  "@paneExtMissing": {
+    "description": "Title of a pane whose extension is not installed, the kind's name in {kind}.",
+    "placeholders": {
+      "kind": {
+        "type": "String",
+        "example": "notes"
+      }
+    }
+  },
+  "paneExtMissingHint": "Install the extension that provides this pane, or close it.",
+  "@paneExtMissingHint": {
+    "description": "Note under the title of a pane whose extension is not installed."
   },
   "windowMaximize": "Maximize",
   "@windowMaximize": {
@@ -930,6 +922,16 @@
   "settingsGlassHint": "Let the desktop show through the windows, and float popovers, dialogs and floating panes as glass.",
   "@settingsGlassHint": {
     "description": "Hint under the Glass setting."
+  },
+  "settingsGlassByTheme": "Set by the theme {name}.",
+  "@settingsGlassByTheme": {
+    "description": "Hint under the Glass setting while the window theme in use turns the glass on or off; the switch is then disabled. name is the theme's name.",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "Slate"
+      }
+    }
   },
   "settingsTermOpacity": "Terminal opacity",
   "@settingsTermOpacity": {
@@ -1673,7 +1675,7 @@
   },
   "hostsNotConnectedTo": "Not connected to {host}.",
   "@hostsNotConnectedTo": {
-    "description": "Error banner: a tab or pane cannot open on a host that is not connected.",
+    "description": "Error toast, and the detail of a disabled palette row: a tab or pane cannot open on a host that is not connected.",
     "placeholders": {
       "host": {
         "type": "String",
@@ -2535,37 +2537,41 @@
   "@projectSheetHost": {
     "description": "New Project sheet: label over the hosts the folder can be on."
   },
-  "projectSheetFolder": "Folder",
-  "@projectSheetFolder": {
-    "description": "New Project sheet: label over the folder browser."
-  },
-  "projectSheetName": "Name",
-  "@projectSheetName": {
-    "description": "New Project sheet: label over the project's name field."
-  },
-  "projectSheetHome": "Home",
-  "@projectSheetHome": {
-    "description": "Folder browser: button that goes to the home folder."
-  },
-  "projectSheetUp": "Up",
+  "projectSheetUp": "Parent folder",
   "@projectSheetUp": {
-    "description": "Folder browser: button that goes to the parent folder."
+    "description": "Folder browser: the row that lists the parent folder, shown as \"..\"."
   },
   "projectSheetChoose": "Choose…",
   "@projectSheetChoose": {
     "description": "Folder browser: button that opens the system's folder picker, for this machine."
   },
-  "projectSheetPath": "Type a path and press Enter",
+  "projectSheetPath": "Type a path…",
   "@projectSheetPath": {
-    "description": "Folder browser: placeholder of the field that takes a path."
+    "description": "Folder browser: placeholder of the field that browses: the text to its last separator is listed, the leaf filters."
   },
-  "projectSheetCreate": "Create",
-  "@projectSheetCreate": {
-    "description": "New Project sheet: button that makes the project."
+  "projectSheetPathHint": "Enter path (e.g. ~/projects/my-app)",
+  "@projectSheetPathHint": {
+    "description": "Folder browser: placeholder of the path field, as T3 Code's add-project palette."
   },
-  "projectSheetCancel": "Cancel",
-  "@projectSheetCancel": {
-    "description": "New Project sheet: button that closes it."
+  "projectSheetDirectories": "Directories",
+  "@projectSheetDirectories": {
+    "description": "Folder browser: label of the folder rows under the path field."
+  },
+  "projectSheetAdd": "Add",
+  "@projectSheetAdd": {
+    "description": "Folder browser: button in the path field that adds the folder it names."
+  },
+  "projectSheetCreateAdd": "Create & Add",
+  "@projectSheetCreateAdd": {
+    "description": "Folder browser: button in the path field when the leaf names a folder to create first."
+  },
+  "projectSheetWorking": "Working",
+  "@projectSheetWorking": {
+    "description": "Folder browser: button in the path field while the folder is being created."
+  },
+  "projectSheetCreateHint": "Press Enter to create this folder and add it as a project.",
+  "@projectSheetCreateHint": {
+    "description": "Folder browser: shown when the leaf of the path field names no folder and Enter would create it."
   },
   "projectSheetLoading": "Loading…",
   "@projectSheetLoading": {
@@ -2589,10 +2595,6 @@
   "@projectSheetDenied": {
     "description": "Folder browser: the host may not read the folder."
   },
-  "projectSheetEmpty": "No subfolders. You can use this folder.",
-  "@projectSheetEmpty": {
-    "description": "Folder browser: the folder has no folders in it, and can be used as it is."
-  },
   "projectSheetMore": "Only the first {n} folders are shown.",
   "@projectSheetMore": {
     "description": "Folder browser: the folder holds more folders than are listed.",
@@ -2602,36 +2604,6 @@
         "example": "2000"
       }
     }
-  },
-  "projectSheetDrives": "Drives",
-  "@projectSheetDrives": {
-    "description": "Folder browser: the top of a Windows machine, the list of its drives."
-  },
-  "projectSheetChosen": "Project folder: {path}",
-  "@projectSheetChosen": {
-    "description": "New Project sheet: over the buttons, the folder that Create or Use This Folder takes: the folder listed.",
-    "placeholders": {
-      "path": {
-        "type": "String",
-        "example": "/home/me/code/acme-api"
-      }
-    }
-  },
-  "projectSheetNoChoice": "Open a folder to choose it.",
-  "@projectSheetNoChoice": {
-    "description": "New Project sheet: over the buttons, when no folder can be taken, as in the list of drives or in a folder that cannot be read."
-  },
-  "projectSheetNameNeeded": "This folder has no name. Type a name for the project.",
-  "@projectSheetNameNeeded": {
-    "description": "New Project sheet: over the buttons, at the top of a drive or of the disk, whose folder gives no name."
-  },
-  "projectSheetNameHint": "Type a name",
-  "@projectSheetNameHint": {
-    "description": "New Project sheet: placeholder of the name field when the folder gives no name."
-  },
-  "projectSheetMoreFolders": "Folders above",
-  "@projectSheetMoreFolders": {
-    "description": "Folder browser: the breadcrumb's button that lists the folders it leaves out."
   },
   "projectChangeFolder": "Change Folder…",
   "@projectChangeFolder": {
@@ -2799,6 +2771,96 @@
   "@spaceDeleteConfirm": {
     "description": "Delete Space dialog: the button that deletes the space."
   },
+  "toastActionFailed": "Couldn't run {action}: {reason}.",
+  "@toastActionFailed": {
+    "description": "Error toast: an action the user asked for failed. action is its title, reason the error.",
+    "placeholders": {
+      "action": {
+        "type": "String",
+        "example": "Split Right"
+      },
+      "reason": {
+        "type": "String",
+        "example": "no such pane"
+      }
+    }
+  },
+  "toastShortcutResetFailed": "Couldn't reset the shortcut: {reason}.",
+  "@toastShortcutResetFailed": {
+    "description": "Error toast: Reset of a keyboard shortcut failed. reason is the error.",
+    "placeholders": {
+      "reason": {
+        "type": "String",
+        "example": "permission denied"
+      }
+    }
+  },
+  "toastShortcutsResetFailed": "Couldn't reset the shortcuts: {reason}.",
+  "@toastShortcutsResetFailed": {
+    "description": "Error toast: Reset All of the keyboard shortcuts failed. reason is the error.",
+    "placeholders": {
+      "reason": {
+        "type": "String",
+        "example": "permission denied"
+      }
+    }
+  },
+  "toastSessionFailed": "Couldn't start a session: {reason}.",
+  "@toastSessionFailed": {
+    "description": "Error toast: the host did not make the session of a new tab or pane. reason is the error.",
+    "placeholders": {
+      "reason": {
+        "type": "String",
+        "example": "connection to the server lost"
+      }
+    }
+  },
+  "toastTerminalFailed": "Couldn't open the terminal: {reason}.",
+  "@toastTerminalFailed": {
+    "description": "Error toast: the terminal of a pane did not start. reason is the error.",
+    "placeholders": {
+      "reason": {
+        "type": "String",
+        "example": "out of memory"
+      }
+    }
+  },
+  "quitEndTitle": "{n, plural, one {Quit and end # session?} other {Quit and end # sessions?}}",
+  "@quitEndTitle": {
+    "description": "Title of the question before Quit and End All Sessions: how many sessions of this machine end.",
+    "placeholders": {
+      "n": {
+        "type": "int",
+        "example": "3"
+      }
+    }
+  },
+  "quitEndBody": "{n, plural, one {The program running in it ends. This can't be undone.} other {The programs running in them end. This can't be undone.}}",
+  "@quitEndBody": {
+    "description": "Body of the question before Quit and End All Sessions.",
+    "placeholders": {
+      "n": {
+        "type": "int",
+        "example": "3"
+      }
+    }
+  },
+  "quitEndConfirm": "Quit and End All",
+  "@quitEndConfirm": {
+    "description": "Quit and End All Sessions question: the button that quits and ends the sessions."
+  },
+  "settingsNotificationsOff": "Notifications are off for GoRex.",
+  "@settingsNotificationsOff": {
+    "description": "Settings row, macOS: the system does not let GoRex show notifications."
+  },
+  "settingsNotificationsOffHint": "Turn them on in System Settings.",
+  "@settingsNotificationsOffHint": {
+    "description": "Hint under the row that says notifications are off."
+  },
+  "settingsNotificationsOpen": "Open System Settings",
+  "@settingsNotificationsOpen": {
+    "description": "Button that opens the notification settings of macOS."
+  },
   "spaceMoveDown": "Move Down",
   "@spaceMoveDown": {
     "description": "Edit Spaces: move the space down."
@@ -2870,6 +2932,10 @@
   "@promptOther": {
     "description": "Placeholder of a prompt sheet's free-text answer."
   },
+  "promptPick": "Pick an answer",
+  "@promptPick": {
+    "description": "Beside a prompt sheet's disabled confirm button while no answer is picked: why it is off."
+  },
   "promptSend": "Send",
   "@promptSend": {
     "description": "Confirm button of a prompt sheet with no label of its own."
@@ -2922,6 +2988,25 @@
   "@settingsIconPacksInstalledBadge": {
     "description": "Badge shown when a registry pack is already installed."
   },
+  "settingsIconPacksUpdate": "Update",
+  "@settingsIconPacksUpdate": {
+    "description": "Extensions page: button, in place of the Installed badge, that installs the registry's newer version of an installed extension."
+  },
+  "settingsIconPacksUpdating": "Updating…",
+  "@settingsIconPacksUpdating": {
+    "description": "Extensions page: label while an installed extension installs its newer version."
+  },
+  "settingsIconPacksInstalledVersion": "Installed: {version}",
+  "@settingsIconPacksInstalledVersion": {
+    "description": "Extensions page: hint under a registry entry that has an update; the version (or commit) installed now.",
+    "placeholders": {
+      "version": {}
+    }
+  },
+  "settingsIconPacksVersionUnknown": "Installed: version unknown",
+  "@settingsIconPacksVersionUnknown": {
+    "description": "Extensions page: hint under a registry entry that has an update, when the installed copy has no record of its version (an older build installed it)."
+  },
   "settingsIconPacksRemove": "Remove",
   "@settingsIconPacksRemove": {
     "description": "Button to uninstall an icon pack."
@@ -2957,5 +3042,19 @@
   "settingsExtensionKindTheme": "Theme",
   "@settingsExtensionKindTheme": {
     "description": "Extensions page: the kind of an extension, before its ID."
+  },
+  "settingsThemeShaderDropped": "Theme shader not used: {slot}",
+  "@settingsThemeShaderDropped": {
+    "description": "Extensions page: under the theme in use, a shader of the theme that failed a check at load and draws the theme's flat colors instead. slot is the manifest's slot, such as shaders.background. The check's English detail follows.",
+    "placeholders": {
+      "slot": {}
+    }
+  },
+  "settingsThemeShaderNote": "Theme shader note: {slot}",
+  "@settingsThemeShaderNote": {
+    "description": "Extensions page: under the theme in use, a warning about a shader of the theme that still draws, as a uniform no param sets. slot is the manifest's slot. The English detail follows.",
+    "placeholders": {
+      "slot": {}
+    }
   }
 }

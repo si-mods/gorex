@@ -37,8 +37,9 @@ func (a *App) tabStrip(c *ui.Context, k *colors) {
 		total += widths[i]
 	}
 	track := ui.Row(c).Shrink(1).MinWidth(0).Height(tabH+4).Padding(2).Radius((tabH+4)/2).
-		Background(k.track).Border(0.5, k.trackBorder).AlignItems(ui.Center).ClipX().
+		Border(0.5, k.trackBorder).AlignItems(ui.Center).ClipX().
 		DragWindow().Role(ui.RoleTabList).Label(locales.TabListLabel())
+	paintFace(track, k, roleTrackBackground, k.track)
 	// With a style of animation the track's width follows its tabs as
 	// they open, close and slide, on their spring: a tab after one that
 	// closes slides in whole, and one opening unfolds into the room the
@@ -95,6 +96,18 @@ func (a *App) tabStrip(c *ui.Context, k *colors) {
 	})
 }
 
+// activeTabColors returns the palette of the active tab's content: its
+// text reads on its pill, not on the title bar, as a dark title bar's
+// light text would vanish on a light pill. Without glass the pill is
+// tabActive; with it, where the system draws no glass, its fallback face
+// pillFace over the track over the title bar (pillColors).
+func activeTabColors(k *colors) *colors {
+	if !glassOn() {
+		return surface(k, roleTabActiveBackground).on(k)
+	}
+	return pillColors(k, k.pillFace, k.titleBarFace, k.track)
+}
+
 // tabSepKey is the key of the separator before a tab in the title bar.
 type tabSepKey int
 
@@ -122,7 +135,7 @@ const (
 
 // hostBadge names a tab's host, above, where tabs of every host mix.
 func hostBadge(c *ui.Context, k *colors, h *hostConn) {
-	ui.Text(c, h.label()).FontSize(badgeSize).FontWeight(600).TextColor(k.textMuted).Padding(2, 6).Radius(radiusS).
+	ui.Text(c, h.label()).FontSize(badgeSize).FontWeight(600).TextColor(k.textMuted).Padding(2, 6).Radius(k.radius(radiusS)).
 		Background(k.hover).SingleLine().Ellipsis("…").MaxWidth(badgeMaxW + 12).Shrink(0)
 }
 
@@ -189,6 +202,9 @@ const titleFree = 56
 // shrinks to fit the title bar while squeeze.
 func (a *App) tabItem(c *ui.Context, k *colors, i int, t *Tab, width float32, squeeze bool) ui.Element {
 	active := i == a.active
+	if active {
+		k = activeTabColors(k)
+	}
 	shrink := float32(0)
 	if squeeze {
 		shrink = 1
@@ -198,7 +214,7 @@ func (a *App) tabItem(c *ui.Context, k *colors, i int, t *Tab, width float32, sq
 	name, detail := t.label()
 	e.Label(name + " " + detail)
 	if !active && e.Hovered() {
-		e.Background(hoverFace(k))
+		paintFace(e, k, roleTabHoverBackground, hoverFace(k))
 	}
 	a.tabEvents(c, e, k, i, t)
 	// The tab stays hovered while its close button is pressed, which it
@@ -463,14 +479,11 @@ func (a *App) tabMenu(m *ui.Menu, t *Tab) {
 	if runtime.GOOS != "darwin" {
 		mods, key = cmdNewTab.Other.Mods, cmdNewTab.Other.Key
 	}
-	if m.Item(locales.CmdNewTab()).Shortcut(mods, key).Chosen() {
+	if m.Item(locales.CmdNewTab()).Shortcut(mods, key).Disabled(cmdNewTab.hostAway(a) != nil).Chosen() {
 		a.newProjectTab()
 	}
 	if m.Item(locales.CmdCloseTab()).Chosen() {
 		a.laterService(func() { a.askCloseTab(t) })
-	}
-	if m.Item(locales.TabCloseOthers()).Disabled(len(a.tabs) < 2).Chosen() {
-		a.laterService(func() { a.askCloseOthers(t) })
 	}
 }
 
@@ -585,12 +598,12 @@ func (a *App) tiles(c *ui.Context, k *colors, t *Tab) {
 		for i := len(back) - 1; i >= 0; i-- {
 			x := r.X + 1 + float32(tileStep*(i+1))
 			inset := float32(i+1) * 0.8
-			drawTile(p, ui.Rect{X: x, Y: y + inset, W: tileW, H: tileH - 2*inset}, back[i].program(), false)
+			drawTile(p, k, ui.Rect{X: x, Y: y + inset, W: tileW, H: tileH - 2*inset}, back[i].program(), false)
 		}
 		if front != nil {
 			fr := ui.Rect{X: r.X + 1, Y: y, W: tileW, H: tileH}
 			if m == tileStill {
-				drawTile(p, fr, front.program(), true)
+				drawTile(p, k, fr, front.program(), true)
 				if done {
 					drawDoneDot(p, fr, k)
 				}
@@ -599,7 +612,7 @@ func (a *App) tiles(c *ui.Context, k *colors, t *Tab) {
 				dy, sx, sy := tileBounceAt(m, p.Now())
 				// iOS squashes about the tile's bottom edge, then lifts.
 				p.Transform(ui.Scaling(sx, sy).Then(ui.Translation(0, dy)), fr.X+fr.W/2, fr.Y+fr.H, func() {
-					drawTile(p, fr, front.program(), true)
+					drawTile(p, k, fr, front.program(), true)
 					if done {
 						drawDoneDot(p, fr, k)
 					}
@@ -631,8 +644,8 @@ func drawDoneDot(p *ui.Painter, fr ui.Rect, k *colors) {
 
 // drawTile draws a program's tile: a rounded card of its color, and its
 // glyph when it is in front.
-func drawTile(p *ui.Painter, r ui.Rect, prog program, glyph bool) {
-	const rad = radiusTile
+func drawTile(p *ui.Painter, k *colors, r ui.Rect, prog program, glyph bool) {
+	rad := k.radius(radiusTile)
 	p.Shadow(r, rad, 0, 0.5, 1.5, 0, ui.RGBA(0, 0, 0, 0.18))
 	p.Fill(r, prog.TileBg, rad)
 	if prog.TileBorder {

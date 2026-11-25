@@ -86,7 +86,7 @@ func (a *App) teleportMenu(m *ui.Menu, p *Pane) {
 // pane: disabled, with the reason, when it cannot go.
 func (a *App) teleportItems(match func(string) bool) []paletteItem {
 	t := a.tab()
-	if t == nil || t.Focus == nil || t.Focus.SID == "" || t.Focus.browser != nil || t.Focus.note != nil {
+	if t == nil || t.Focus == nil || t.Focus.SID == "" || t.Focus.ext != nil {
 		return nil
 	}
 	p := t.Focus
@@ -284,7 +284,7 @@ func (a *App) teleportConfirm(c *ui.Context, k *colors) {
 	ui.DialogBase(c, &ask.open, func(backdrop, panel ui.Element) {
 		dialogEnter(c, backdrop, panel)
 		backdrop.Background(k.backdrop)
-		dialogShadow(glassPanel(panel.Width(380).Padding(20).Radius(radiusXXL), k).Border(1, k.panelBorder)).Role(ui.RoleDialog).Label(title)
+		dialogShadow(glassPanel(panel.Width(380).Padding(20).Radius(k.radius(radiusXXL)), k).Border(k.borderW(), k.panelBorder), k).Role(ui.RoleDialog).Label(title)
 		ui.Column(c).Gap(10).Children(func() {
 			ui.Text(c, title).FontSize(fontTitle).FontWeight(700).TextColor(k.text)
 			body := reason

@@ -117,7 +117,7 @@ func (a *App) runResume(p *Pane, cmd string) {
 func (a *App) resumeBar(c *ui.Context, k *colors, p *Pane) ui.Element {
 	h := p.resume
 	row := ui.Row(c.Key("resume")).Height(30).Shrink(0).Padding(0, 8).Gap(8).AlignItems(ui.Center).
-		Background(k.hover).Radius(radiusS)
+		Background(k.hover).Radius(k.radius(radiusS))
 	row.Children(func() {
 		ui.Text(c.Key("what"), locales.ResumeLastRun()).FontSize(fontSubhead).TextColor(k.textMuted).
 			Shrink(0).SingleLine()

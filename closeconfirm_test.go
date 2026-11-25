@@ -163,55 +163,6 @@ func TestClosePaneAsksWhileRunning(t *testing.T) {
 	}
 }
 
-// TestCloseOtherTabsAsks checks that Close Other Tabs asks first, how
-// many tabs, and closes them only after the answer.
-func TestCloseOtherTabsAsks(t *testing.T) {
-	a, tt := newTestApp(t)
-	keep := a.tab()
-	a.newTab(os.TempDir())
-	a.newPaneTab(a.newNotePane(""))
-	tt.Frame()
-	a.askCloseOthers(keep)
-	tt.Frame()
-	if !tt.HasText("Close 2 other tabs?") || len(a.tabs) != 3 {
-		t.Fatalf("no question; %d tabs; texts %q", len(a.tabs), tt.Texts())
-	}
-	// The note is no terminal, and no program runs in the other tabs.
-	if !tt.HasText("Its terminal ends. This can't be undone.") {
-		t.Fatalf("the body counts other than the terminals; texts %q", tt.Texts())
-	}
-	tt.Key(0, ui.KeyEnter)
-	tt.Frame()
-	tt.Frame()
-	if len(a.tabs) != 3 || a.closeOthersOpen {
-		t.Fatalf("Enter did not cancel: %d tabs, open %v", len(a.tabs), a.closeOthersOpen)
-	}
-	runs(a.tabs[1].Focus)
-	a.askCloseOthers(keep)
-	tt.Frame()
-	if !tt.HasText("Its terminal ends, and the program running in it. This can't be undone.") {
-		t.Fatalf("the body does not say the program ends; texts %q", tt.Texts())
-	}
-	if err := tt.Click("Cancel"); err != nil {
-		t.Fatal(err)
-	}
-	tt.Frame()
-	tt.Frame()
-	if len(a.tabs) != 3 || a.closeOthersOpen {
-		t.Fatalf("Cancel closed tabs: %d left", len(a.tabs))
-	}
-	a.askCloseOthers(keep)
-	tt.Frame()
-	if err := tt.Click("Close Other Tabs"); err != nil {
-		t.Fatalf("%v; texts %q", err, tt.Texts())
-	}
-	tt.Frame()
-	tt.Frame()
-	if len(a.tabs) != 1 || a.tabs[0] != keep {
-		t.Fatalf("%d tabs left, want the one kept", len(a.tabs))
-	}
-}
-
 // TestCloseAskOutOfView checks the questions whose close button does not
 // show: a tab's row scrolled out of the sidebar asks with the dialog, and
 // a pane of a space the window no longer shows is not closed.

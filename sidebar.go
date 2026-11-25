@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"encoding/json"
 	"log"
+	"strings"
 
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
@@ -79,7 +80,7 @@ func sidebarFillSel() bool { return cmp.Or(prefs.SidebarSelection, themeSidebar.
 // "fill", the row's face at tabActive with a radiusM corner.
 func sidebarChosen(e ui.Element, k *colors, h float32, lifted bool) {
 	if sidebarFillSel() {
-		e.Background(k.tabActive).Radius(radiusM)
+		paintFace(e, k, roleTabActiveBackground, k.tabActive).Radius(k.radius(radiusM))
 		return
 	}
 	if lifted {
@@ -101,7 +102,7 @@ func sidebarChosenColors(k *colors) *colors {
 	if sidebarFillSel() || !glassOn() {
 		return surface(k, roleTabActiveBackground).on(k)
 	}
-	return k
+	return pillColors(k, k.pillFace, k.sideBarFace)
 }
 
 // sidebarHoverColors returns the palette that the content of a hovered
@@ -124,7 +125,7 @@ func sidebarPalette(k *colors, dark bool) *colors {
 	}
 	out := *k
 	for token, raw := range prefs.SidebarColors {
-		role, ok := theme.RoleByName(token)
+		role, ok := sidebarRole(token)
 		if !ok {
 			continue
 		}
@@ -133,6 +134,16 @@ func sidebarPalette(k *colors, dark bool) *colors {
 		}
 	}
 	return &out
+}
+
+// sidebarRole returns the role a sidebar.colorCustomizations key names: a
+// sideBar.* role of internal/theme's allowlist. The other roles are a
+// theme's alone.
+func sidebarRole(token string) (theme.Role, bool) {
+	if !strings.HasPrefix(token, "sideBar.") {
+		return 0, false
+	}
+	return theme.RoleByName(token)
 }
 
 // hexColor parses a hex color without ui.Hex's panic on bad input.
@@ -149,7 +160,7 @@ func hexColor(s string) (col ui.Color, ok bool) {
 // s at load and says why, once.
 func checkSidebarColors(s *settings) {
 	for token, raw := range s.SidebarColors {
-		if _, ok := theme.RoleByName(token); !ok {
+		if _, ok := sidebarRole(token); !ok {
 			log.Printf("gorex settings: sidebar.colorCustomizations: unknown token %q", token)
 			delete(s.SidebarColors, token)
 			continue
@@ -358,7 +369,12 @@ func (a *App) paneBar(c *ui.Context, k *colors, right, shown bool) {
 	if right && shown {
 		end = 0
 	}
-	ui.Row(c).Height(titleH).Shrink(0).Padding(0, end, 0, left).Gap(14).AlignItems(ui.Center).DragWindow().Children(func() {
+	row := ui.Row(c).Height(titleH).Shrink(0).Padding(0, end, 0, left).Gap(14).AlignItems(ui.Center).DragWindow()
+	k, face, ok := themedFace(k, roleTitleBarBackground)
+	if ok {
+		paintFace(row, k, roleTitleBarBackground, face)
+	}
+	row.Children(func() {
 		if !shown && !right {
 			a.sidebarButton(c, k, false)
 		}
@@ -406,8 +422,20 @@ func (a *App) sidebar(c *ui.Context, k *colors, right bool) {
 	picker := a.st != nil
 	unified := !right && ownControls
 	winW, _ := c.Size()
-	ui.Column(c).Width(sidebarWidthIn(winW)).Shrink(0).MinHeight(0).Children(func() {
+	// A theme's sideBar.background is the column's face under its rows,
+	// and titleBar.background the face of its head, each with the text
+	// of its lightness (docs/DSK-012-theme-shaders.md, New roles).
+	col := ui.Column(c).Width(sidebarWidthIn(winW)).Shrink(0).MinHeight(0)
+	k, face, ok := themedFace(k, roleSideBarBackground)
+	if ok {
+		paintFace(col, k, roleSideBarBackground, face)
+	}
+	col.Children(func() {
 		head := ui.Row(c).Height(titleH).Shrink(0).Gap(2).AlignItems(ui.Center).DragWindow()
+		hk, face, ok := themedFace(k, roleTitleBarBackground)
+		if ok {
+			paintFace(head, hk, roleTitleBarBackground, face)
+		}
 		if right {
 			head.Padding(0, max(bar.Right, 6), 0, 6)
 		} else {
@@ -420,6 +448,7 @@ func (a *App) sidebar(c *ui.Context, k *colors, right bool) {
 			head.Padding(0, 6, 0, left)
 		}
 		head.Children(func() {
+			k := hk
 			a.sidebarButton(c, k, right)
 			if unified {
 				if picker {
@@ -434,7 +463,6 @@ func (a *App) sidebar(c *ui.Context, k *colors, right bool) {
 			}
 		})
 		padR, padL := sideInsets(right)
-		brandRow(c, k, padR, padL)
 		if picker && !unified {
 			ui.Row(c).Shrink(0).Padding(0, padR, 4, padL).Children(func() { a.spacePicker(c, k, true) })
 		}
@@ -455,6 +483,7 @@ func (a *App) sidebar(c *ui.Context, k *colors, right bool) {
 			if iconButton(c, k, "folder-plus", cmdNewProject.Title(), 30, 16).Tooltip(tip(cmdNewProject.Title(), &cmdNewProject)).Clicked() {
 				a.later(c, a.openNewProject)
 			}
+			a.ambienceButton(c, k)
 			ui.Spacer(c)
 			a.hostButton(c, k)
 		})
@@ -529,7 +558,7 @@ func (a *App) sidebarTab(c *ui.Context, k *colors, i int, t *Tab, reserve float3
 	// Keyed by the tab's lasting ID, as spaceTab keys it: as the window
 	// goes to show another space, the rows of both stay, not close and
 	// open again.
-	e := ui.Row(c.Key("tab-"+t.UID)).Height(sidebarRowH()).Shrink(0).Padding(0, 6, 0, sidebarTabLead()).Gap(sideGap).AlignItems(ui.Center).Radius(pillRadius(sidebarRowH(), radiusM)).
+	e := ui.Row(c.Key("tab-"+t.UID)).Height(sidebarRowH()).Shrink(0).Padding(0, 6, 0, sidebarTabLead()).Gap(sideGap).AlignItems(ui.Center).Radius(pillRadius(k, sidebarRowH(), k.radius(radiusM))).
 		Role(ui.RoleTab).Selected(active)
 	name, detail := t.label()
 	e.Label(name + " " + detail)
@@ -544,7 +573,7 @@ func (a *App) sidebarTab(c *ui.Context, k *colors, i int, t *Tab, reserve float3
 			e.ScrollIntoView()
 		}
 	} else if e.Hovered() {
-		e.Background(hoverFace(k))
+		paintFace(e, k, roleTabHoverBackground, hoverFace(k))
 		ck = sidebarHoverColors(k)
 	}
 	a.tabEvents(c, e, k, i, t)
@@ -591,7 +620,7 @@ func (a *App) hostSectionIcon(c *ui.Context, k *colors, h *hostConn) {
 	box := ui.Box(c).Size(15, 15).Shrink(0).Children(func() {
 		glyphIcon(c, glyph, 15, k.textMuted)
 		if h != nil && h.state != hostConnected && h.state != hostConnecting {
-			ui.Box(c).Absolute().Right(-2).Bottom(-2).Size(7, 7).Radius(capsule(7)).Background(hostDot(k, h))
+			ui.Box(c).Absolute().Right(-2).Bottom(-2).Size(7, 7).Radius(k.capsule(7)).Background(hostDot(k, h))
 		}
 	})
 	if h != nil {
@@ -606,13 +635,13 @@ func (a *App) hostSectionIcon(c *ui.Context, k *colors, h *hostConn) {
 // ends the row as a shown tab's does. It reports whether it was
 // clicked.
 func spaceTab(c *ui.Context, k *colors, key, name, detail string, s *rex.ProgramStatus, reserve float32, tiles func()) bool {
-	e := ui.Row(c.Key("tab-"+key)).Height(sidebarRowH()).Shrink(0).Padding(0, 6, 0, sidebarTabLead()).Gap(sideGap).AlignItems(ui.Center).Radius(pillRadius(sidebarRowH(), radiusM)).
+	e := ui.Row(c.Key("tab-"+key)).Height(sidebarRowH()).Shrink(0).Padding(0, 6, 0, sidebarTabLead()).Gap(sideGap).AlignItems(ui.Center).Radius(pillRadius(k, sidebarRowH(), k.radius(radiusM))).
 		Cursor(ui.CursorPointer).Role(ui.RoleButton).Label(name + " " + detail)
 	if anim := motion(c); anim != nil {
 		e.Transition(exitIn(ui.ElementTransition{Animation: anim, Position: true, Enter: tabMotion, Exit: tabMotion}, durExitMove))
 	}
 	if e.Hovered() {
-		e.Background(hoverFace(k))
+		paintFace(e, k, roleTabHoverBackground, hoverFace(k))
 		k = sidebarHoverColors(k)
 	}
 	e.Children(func() {
@@ -637,12 +666,9 @@ func spaceTab(c *ui.Context, k *colors, key, name, detail string, s *rex.Program
 func savedTabLabel(t savedTab) (string, program) {
 	n := focusedLeaf(t)
 	prog := shellTile
-	switch {
-	case n.URL != "":
-		prog = browserProgram
-	case n.Kind == "note":
-		prog = noteProgram
-	case n.Prog != "":
+	if pr, ok := extProgram(n); ok {
+		prog = pr
+	} else if n.Prog != "" {
 		prog = programOf(n.Prog)
 	}
 	return cmp.Or(t.Name, n.Name, prog.Name, folderName(n.Dir), "Shell"), prog
@@ -658,7 +684,7 @@ func savedTabFace(t savedTab, infos map[string]rex.SessionInfo) (name, detail st
 	name, prog = savedTabLabel(t)
 	n := focusedLeaf(t)
 	in, ok := infos[n.SID]
-	if n.SID == "" || n.URL != "" || n.Kind == "note" || !ok || in.Exited {
+	if _, isExt := extProgram(n); n.SID == "" || isExt || !ok || in.Exited {
 		return name, "", prog
 	}
 	p := &Pane{SID: n.SID, Name: n.Name, info: in, startDir: n.Dir}

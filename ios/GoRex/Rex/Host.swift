@@ -23,6 +23,11 @@ struct HostConfig: Codable, Identifiable, Hashable {
     /// The GoRex machine's tailcat address, for a host paired by its Rex
     /// Go code; optional as transport is.
     var tailcat: Tailcat?
+    /// An ssh:// host as its address names it, with the host key trusted
+    /// on first connect; optional as transport is, and never a transport
+    /// value, so a list read by a build without it stays whole
+    /// (docs/IOS-023-ssh-hosts.md, Migration).
+    var ssh: SSH?
     /// Whether the host is Demo Mode's: a Mac that answers on the phone,
     /// which the hosts saved never hold. Optional, as a list saved before
     /// Demo Mode must still decode.
@@ -33,12 +38,13 @@ struct HostConfig: Codable, Identifiable, Hashable {
     var lanToken: String? = nil
 
     enum CodingKeys: String, CodingKey {
-        case id, name, url, desktop, icon, command, transport, tailcat, demo
+        case id, name, url, desktop, icon, command, transport, tailcat, ssh, demo
     }
 
     /// The token the host's requests carry: the LAN token of a host the
-    /// system's network reaches by its address; none for a tailcat host.
-    var auth: String? { tailcat == nil && demo != true ? lanToken : nil }
+    /// system's network reaches by its address; none for a tailcat or an
+    /// ssh:// host — SSH is the admission (docs/IOS-023-ssh-hosts.md).
+    var auth: String? { tailcat == nil && ssh == nil && demo != true ? lanToken : nil }
 
     enum Transport: String, Codable {
         /// The phone's own network, or the Tailscale app's VPN.
@@ -48,6 +54,10 @@ struct HostConfig: Codable, Identifiable, Hashable {
         /// The engine's tailcat client, through the same proxy
         /// (docs/IOS-002-tailcat.md).
         case tailcat
+        /// The engine's SSH client, through the same proxy
+        /// (docs/IOS-023-ssh-hosts.md). reach(_:) derives it from a
+        /// host's ssh member; it is never written to the list saved.
+        case ssh
     }
 
     /// A GoRex machine as its Rex Go code names it: its tailcat address, a
@@ -55,6 +65,20 @@ struct HostConfig: Codable, Identifiable, Hashable {
     struct Tailcat: Codable, Hashable {
         var address: String
         var machine: String
+    }
+
+    /// An ssh:// host as its address names it: the login, the port, the
+    /// remote socket if the address gave one, and the host key
+    /// fingerprint trusted on first connect (docs/IOS-023-ssh-hosts.md).
+    struct SSH: Codable, Hashable {
+        var user: String
+        var host: String
+        var port: Int
+        var socket: String?
+        var hostKey: String?
+
+        /// Whether a socket path is absolute, as an ssh:// socket must be.
+        static func validSocket(_ path: String) -> Bool { path.hasPrefix("/") }
     }
 }
 
@@ -105,11 +129,13 @@ extension HostConfig {
         return rule()
     }
 
-    /// How the app reaches the host: over tailcat when it has a tailcat
-    /// address, whether or not the built-in Tailscale is on; through the
-    /// built-in Tailscale when the host is on it and it is on; else the
-    /// system's way, as through the Tailscale app.
+    /// How the app reaches the host: over SSH when it has an ssh://
+    /// address and over tailcat when it has a tailcat address, whether or
+    /// not the built-in Tailscale is on; through the built-in Tailscale
+    /// when the host is on it and it is on; else the system's way, as
+    /// through the Tailscale app.
     func reach(tailnetOn: Bool) -> Transport {
+        if ssh != nil { return .ssh }
         if tailcat != nil { return .tailcat }
         return transport == .tailnet && tailnetOn ? .tailnet : .system
     }
@@ -178,15 +204,97 @@ extension HostConfig {
         self.init(id: id, name: n.isEmpty ? "GoRex" : n, url: Self.tailcatURL(id), tailcat: Tailcat(address: a, machine: n))
     }
 
+    /// The host of an ssh:// address, ssh://user@host[:port][/socket]
+    /// (docs/IOS-023-ssh-hosts.md, The address); nil for anything else.
+    /// Its URL names it to the engine's proxy, <id>.ssh.invalid, as a
+    /// tailcat host's does; its name is the login as typed.
+    init?(ssh address: String) {
+        let (s, _) = Self.sshParts(of: address)
+        guard let s else { return nil }
+        let id = UUID()
+        self.init(id: id, name: "\(s.user)@\(s.host)", url: Self.sshURL(id), ssh: s)
+    }
+
+    /// The SSH of an ssh:// address, or why it is refused: a space, a
+    /// query or a fragment, no user, a password, no host, a bad port or a
+    /// relative socket; (nil, nil) for an address that is not ssh://.
+    static func sshParts(of address: String) -> (SSH?, String?) {
+        let s = address.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let r = s.range(of: "://"), s[..<r.lowerBound].lowercased() == "ssh" else { return (nil, nil) }
+        let body = s[r.upperBound...]
+        guard body.rangeOfCharacter(from: .whitespacesAndNewlines) == nil,
+              body.rangeOfCharacter(from: .controlCharacters) == nil,
+              !body.contains("?"), !body.contains("#") else {
+            return (nil, String(localized: "An ssh:// address has no spaces, query or fragment."))
+        }
+        let slash = body.firstIndex(of: "/")
+        let authority = body[..<(slash ?? body.endIndex)]
+        let path = slash.map { String(body[$0...]) } ?? ""
+        guard let at = authority.firstIndex(of: "@") else {
+            return (nil, Self.sshNeedsUser)
+        }
+        let userinfo = authority[..<at]
+        let hostport = authority[authority.index(after: at)...]
+        guard !userinfo.isEmpty else { return (nil, Self.sshNeedsUser) }
+        guard !userinfo.contains(":") else {
+            return (nil, String(localized: "ssh:// addresses don't take a password."))
+        }
+        let user = String(userinfo).removingPercentEncoding ?? String(userinfo)
+        guard !user.isEmpty else { return (nil, Self.sshNeedsUser) }
+        var hostPart = hostport, portText: Substring?
+        if hostport.hasPrefix("[") {
+            guard let close = hostport.firstIndex(of: "]") else { return (nil, Self.sshNeedsHost) }
+            hostPart = hostport[...close]
+            let after = hostport[hostport.index(after: close)...]
+            if !after.isEmpty {
+                guard after.hasPrefix(":") else { return (nil, Self.sshBadPort) }
+                portText = after.dropFirst()
+            }
+        } else if hostport.filter({ $0 == ":" }).count == 1, let colon = hostport.firstIndex(of: ":") {
+            hostPart = hostport[..<colon]
+            portText = hostport[hostport.index(after: colon)...]
+        }
+        var host = String(hostPart)
+        if host.hasPrefix("[") { host = String(host.dropFirst().dropLast()) }
+        guard !host.isEmpty, !host.contains("@") else { return (nil, Self.sshNeedsHost) }
+        var port = 22
+        if let p = portText {
+            guard let n = Int(p), (1...65535).contains(n) else { return (nil, Self.sshBadPort) }
+            port = n
+        }
+        var socket: String?
+        if !path.isEmpty && path != "/" {
+            let decoded = path.removingPercentEncoding ?? path
+            guard SSH.validSocket(decoded) else { return (nil, Self.sshBadSocket) }
+            socket = decoded
+        }
+        return (SSH(user: user, host: host, port: port, socket: socket), nil)
+    }
+
+    /// The refusals of sshParts, once for the two callers.
+    private static var sshNeedsUser: String {
+        String(localized: "An ssh:// address needs the user to log in as, like ssh://alice@alice-laptop.")
+    }
+    private static var sshNeedsHost: String {
+        String(localized: "An ssh:// address needs a host, like ssh://alice@alice-laptop.")
+    }
+    private static var sshBadPort: String {
+        String(localized: "The port of an ssh:// address is a number from 1 to 65535.")
+    }
+    private static var sshBadSocket: String {
+        String(localized: "An ssh:// socket is an absolute path, like /run/rex/server.sock.")
+    }
+
     /// Why a typed address is refused, when it names a scheme other than
     /// http(s); nil for a bare host[:port], which reads as http, and for
-    /// any other fault.
+    /// any other fault. An ssh:// address names its own fault, or none
+    /// (docs/IOS-023-ssh-hosts.md).
     static func refusal(of address: String) -> String? {
         guard let r = address.range(of: "://") else { return nil }
         let scheme = address[..<r.lowerBound].trimmingCharacters(in: .whitespaces).lowercased()
         if ["", "http", "https"].contains(scheme) { return nil }
         if scheme == "ssh" {
-            return String(localized: "SSH hosts aren't supported in Rex Go. Enter the address of a Rex server, like http://192.168.1.2:7297.")
+            return sshParts(of: address).1
         }
         return String(localized: "Unsupported address. Enter an http:// or https:// address, like http://192.168.1.2:7297.")
     }
@@ -195,6 +303,12 @@ extension HostConfig {
     /// <id>.tailcat.invalid, a name that resolves nowhere else.
     static func tailcatURL(_ id: UUID) -> URL {
         URL(string: "http://\(tailcatID(id)).tailcat.invalid:7297")!
+    }
+
+    /// Where the engine's proxy reaches an ssh:// host: at
+    /// <id>.ssh.invalid, a name that resolves nowhere else.
+    static func sshURL(_ id: UUID) -> URL {
+        URL(string: "http://\(tailcatID(id)).ssh.invalid")!
     }
 
     /// The host's name to the engine (SetTailcatHosts), a DNS label.
@@ -471,12 +585,16 @@ final class Host: Identifiable {
     /// The built-in Tailscale's proxy of the moment; nil while it isn't
     /// running. The app sets it.
     static var tailnetProxy: () -> LoopbackProxy? = { nil }
-    /// The proxy the tailcat hosts go through, the same one whether or not
-    /// the built-in Tailscale runs; nil when there is none. The app sets it.
+    /// The proxy the tailcat and ssh:// hosts go through, the same one
+    /// whether or not the built-in Tailscale runs; nil when there is
+    /// none. The app sets it.
     static var tailcatProxy: () -> LoopbackProxy? = { nil }
     /// Tells the engine the hosts, as their list changes, for it to reach
     /// those with a tailcat address. The app sets it.
     static var tailcatHosts: ([HostConfig]) -> Void = { _ in }
+    /// Tells the engine the hosts, as their list changes, for it to reach
+    /// those with an ssh:// address. The app sets it.
+    static var sshHosts: ([HostConfig]) -> Void = { _ in }
     /// Tells the engine a dial through its proxy failed, so that it reads
     /// the proxy again at once rather than at the next resume: iOS may
     /// have taken the listener in a suspension no resume has seen. The
@@ -520,6 +638,13 @@ final class Host: Identifiable {
         case .tailcat:
             guard let t = Self.tailcatProxy() else {
                 throw RexError(code: "offline", message: String(localized: "Rex Go's connection to GoRex is not ready"))
+            }
+            p = t
+        case .ssh:
+            // The same SOCKS proxy the tailcat hosts use: the engine maps
+            // <id>.ssh.invalid to the host's SSH client.
+            guard let t = Self.tailcatProxy() else {
+                throw RexError(code: "offline", message: String(localized: "Rex Go's SSH connection is not ready"))
             }
             p = t
         }
@@ -1748,11 +1873,12 @@ final class HostStore {
         // that did is dropped, as it answers nothing.
         var saved = (UserDefaults.standard.data(forKey: "hosts")
             .flatMap { try? JSONDecoder().decode([HostConfig].self, from: $0) } ?? []).filter { $0.demo != true }
-        for i in saved.indices where saved[i].tailcat == nil {
+        for i in saved.indices where saved[i].tailcat == nil && saved[i].ssh == nil {
             saved[i].lanToken = tokens.token(for: saved[i].id)
         }
         hosts = saved.map(Host.init)
         Host.tailcatHosts(saved)
+        Host.sshHosts(saved)
         hosts.forEach { $0.connect() }
         Self.current = self
     }
@@ -1818,7 +1944,7 @@ final class HostStore {
         guard suspended else { return }
         let proxied = hosts.filter(forced)
         let kept = await resume()
-        proxied.filter { kept || $0.config.tailcat != nil }.forEach {
+        proxied.filter { kept || $0.config.tailcat != nil || $0.config.ssh != nil }.forEach {
             $0.resume()
             ConnectionLog.note("\($0.config.name): resumed after a suspension")
         }
@@ -1912,6 +2038,7 @@ final class HostStore {
     private func save() {
         let saved = hosts.filter { !$0.isDemo }.map(\.config)
         Host.tailcatHosts(saved)
+        Host.sshHosts(saved)
         UserDefaults.standard.set(try? JSONEncoder().encode(saved), forKey: "hosts")
     }
 }

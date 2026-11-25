@@ -72,5 +72,5 @@ func styledField(c *ui.Context, k *colors, make func(*ui.Context) ui.Element) ui
 	// Selected text is the theme's Selection as the frame paints, not as
 	// the field was made, and there is no scoped theme then: the field
 	// takes the accent itself.
-	return in.TextColor(k.text).SelectionColor(k.accent.Alpha(0.3)).Background(k.field).Border(1, k.fieldBorder)
+	return in.TextColor(k.text).SelectionColor(k.accent.Alpha(0.3)).Background(k.field).Border(k.borderW(), k.fieldBorder)
 }

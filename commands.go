@@ -48,6 +48,10 @@ type command struct {
 	RunArgs func(a *App, args map[string]any) error
 	// Available, when set, tells whether the action can run now.
 	Available func(a *App) bool
+	// Host, when set, is the host the action makes a session on, nil for
+	// this machine: while that host is not connected, the menus and the
+	// palette show the action disabled (hostAway).
+	Host func(a *App) *hostConn
 	// Passthrough marks an action whose key is not taken while it is
 	// unavailable, and which then fails without a word.
 	Passthrough bool
@@ -162,6 +166,48 @@ func (cmd *command) invoke(a *App, args map[string]any) error {
 	}
 	if cmd.Run != nil {
 		cmd.Run(a)
+	}
+	return nil
+}
+
+// hostAway is the host the action needs that is not connected, nil when
+// it can run.
+func (cmd *command) hostAway(a *App) *hostConn {
+	if cmd.Host == nil {
+		return nil
+	}
+	if h := cmd.Host(a); h != nil && h.current() == nil {
+		return h
+	}
+	return nil
+}
+
+// focusedHost is the host of the active tab's focused terminal, which a
+// split or a restart makes a session on; nil for this machine and for a
+// page or a note.
+func focusedHost(a *App) *hostConn {
+	if t := a.tab(); t != nil && t.Focus != nil && t.Focus.terminal() {
+		return t.Focus.host
+	}
+	return nil
+}
+
+// tabHostOnline tells whether the active tab's host is connected, and
+// there is a tab.
+func tabHostOnline(a *App) bool {
+	t := a.tab()
+	if t == nil {
+		return false
+	}
+	h := t.host()
+	return h == nil || h.current() != nil
+}
+
+// tabHost is the host of the active tab, which a new float makes a
+// session on.
+func tabHost(a *App) *hostConn {
+	if t := a.tab(); t != nil {
+		return t.host()
 	}
 	return nil
 }
@@ -299,6 +345,7 @@ var (
 		ID: "tab.new", Name: locales.Messages.CmdNewTab, Accel: "CmdOrCtrl+T", Keys: "⌘T", Other: ctrlShift(ui.KeyT),
 		Args: []actionArg{{Name: "dir", Type: "string", Optional: true}},
 		Run:  func(a *App) { a.newProjectTab() },
+		Host: func(a *App) *hostConn { return a.currentHost() },
 		RunArgs: func(a *App, args map[string]any) error {
 			// A directory the caller gives wins over the project's folder.
 			dir, _ := args["dir"].(string)
@@ -314,12 +361,14 @@ var (
 		ID: "pane.split.right", Name: locales.Messages.CmdSplitRight, Accel: "CmdOrCtrl+D", Keys: "⌘D", Other: ctrlShift(ui.KeyD),
 		Args:    []actionArg{{Name: "dir", Type: "string", Optional: true}},
 		Run:     func(a *App) { a.split(false) },
+		Host:    focusedHost,
 		RunArgs: func(a *App, args map[string]any) error { a.splitAt(false, argString(args, "dir")); return nil },
 	}
 	cmdSplitDown = command{
 		ID: "pane.split.down", Name: locales.Messages.CmdSplitDown, Accel: "CmdOrCtrl+Shift+D", Keys: "⇧⌘D", Other: ctrlShift(ui.KeyE),
 		Args:    []actionArg{{Name: "dir", Type: "string", Optional: true}},
 		Run:     func(a *App) { a.split(true) },
+		Host:    focusedHost,
 		RunArgs: func(a *App, args map[string]any) error { a.splitAt(true, argString(args, "dir")); return nil },
 	}
 	cmdNewNote = command{
@@ -403,7 +452,8 @@ var (
 			})
 			return nil
 		},
-		Available: func(a *App) bool { return tabHostOnline(a) },
+		Available: tabHostOnline,
+		Host:      tabHost,
 	}
 	cmdToggleFloat = command{
 		ID: "float.toggle", Name: locales.Messages.CmdToggleFloat,
@@ -582,7 +632,7 @@ var (
 	cmdFind        = command{ID: "find.open", Name: locales.Messages.CmdFind, Accel: "CmdOrCtrl+F", Keys: "⌘F", Other: ctrlShift(ui.KeyF), Run: func(a *App) { a.openFind() }, Available: func(a *App) bool { return a.findable() }}
 	cmdFindNext    = command{ID: "find.next", Name: locales.Messages.FindNext, Accel: "CmdOrCtrl+G", Keys: "⌘G", Other: ctrlShift(ui.KeyG), Run: func(a *App) { a.findNext() }, Available: func(a *App) bool { return a.findable() }}
 	cmdFindPrev    = command{ID: "find.previous", Name: locales.Messages.FindPrevious, Accel: "CmdOrCtrl+Shift+G", Keys: "⇧⌘G", Run: func(a *App) { a.findPrevious() }, Available: func(a *App) bool { return a.findable() }}
-	cmdRestart     = command{ID: "pane.restart", Name: locales.Messages.CmdRestartShell, Run: func(a *App) { a.restartFocused() }}
+	cmdRestart     = command{ID: "pane.restart", Name: locales.Messages.CmdRestartShell, Run: func(a *App) { a.restartFocused() }, Host: focusedHost}
 	cmdBigger      = command{ID: "font.bigger", Name: locales.Messages.CmdBiggerText, Accel: "CmdOrCtrl+=", Keys: "⌘+", Other: shortcut{ui.Ctrl, ui.KeyEqual}, Run: func(a *App) {
 		if !a.zoomNote(noteSizeStep) {
 			a.setFontSize(termFont.Size + 1)
@@ -604,11 +654,16 @@ var (
 	cmdSystem   = command{ID: "appearance.system", Name: locales.Messages.CmdAppearanceSystem, Run: func(a *App) { a.setAppearance("") }}
 	cmdSettings = command{ID: "app.settings", Name: locales.Messages.CmdSettings, Accel: "CmdOrCtrl+,", Keys: "⌘,", Other: shortcut{ui.Ctrl, ui.KeyComma}}
 	cmdUpdates  = command{ID: "app.updates", Name: locales.Messages.CmdCheckForUpdates, Run: func(a *App) { updater.CheckForUpdates() }}
+	// cmdAmbience turns the theme's ambience off and on
+	// (docs/DSK-010-theme-ambience.md); the palette lists it while the
+	// theme has some.
+	cmdAmbience = command{ID: "appearance.ambience.toggle", Name: locales.Messages.CmdToggleAmbience,
+		Available: func(a *App) bool { return themeAmbient() }, Run: func(a *App) { a.toggleAmbience() }}
 	// cmdRestartServer restarts a server an update left behind on Windows,
 	// when the user chose Later (store.restartServer).
 	cmdRestartServer = command{ID: "server.restart", Name: locales.Messages.CmdRestartServer, Hidden: runtime.GOOS != "windows",
 		Available: func(a *App) bool { return a.st != nil && a.st.serverBehind() }}
-	cmdEndAll = command{ID: "app.quit", Name: locales.Messages.CmdQuitAndEndAll, Accel: "CmdOrCtrl+Alt+Q", Keys: "⌥⌘Q", Run: func(a *App) { a.quitAndEnd() }}
+	cmdEndAll = command{ID: "app.quit", Name: locales.Messages.CmdQuitAndEndAll, Accel: "CmdOrCtrl+Alt+Q", Keys: "⌥⌘Q", Run: func(a *App) { a.askQuitAndEnd() }}
 
 	cmdNewWindow     = command{ID: "window.new", Name: locales.Messages.CmdNewWindow, Accel: "CmdOrCtrl+N", Keys: "⌘N", Other: ctrlShift(ui.KeyN)}
 	cmdNewProject    = command{ID: "project.new", Name: locales.Messages.CmdNewProject, Accel: "CmdOrCtrl+Shift+N", Keys: "⇧⌘N", Run: func(a *App) { a.openNewProject() }}
@@ -684,16 +739,6 @@ func (a *App) nudgeFloat(dx, dy float32) {
 	}
 }
 
-// tabHostOnline tells whether the active tab's host is connected.
-func tabHostOnline(a *App) bool {
-	t := a.tab()
-	if t == nil {
-		return false
-	}
-	h := t.host()
-	return h == nil || h.current() != nil
-}
-
 func argFloat(args map[string]any, name string) float32 {
 	switch n := args[name].(type) {
 	case float64:
@@ -738,7 +783,7 @@ var paletteCommands = []*command{
 	&cmdNextTab, &cmdPrevTab, &cmdJumpNeedy, &cmdNeeds, &cmdRenameTab, &cmdSidebar,
 	&cmdFocusLeft, &cmdFocusRight, &cmdFocusUp, &cmdFocusDown,
 	&cmdGrowLeft, &cmdGrowRight, &cmdGrowUp, &cmdGrowDown,
-	&cmdBigger, &cmdSmaller, &cmdActualSize, &cmdLight, &cmdDark, &cmdSystem,
+	&cmdBigger, &cmdSmaller, &cmdActualSize, &cmdLight, &cmdDark, &cmdSystem, &cmdAmbience,
 	&cmdGhostty, &cmdClearScroll, &cmdFind, &cmdFindNext, &cmdFindPrev, &cmdRestart, &cmdSettings, &cmdUpdates, &cmdRestartServer, &cmdEndAll,
 	&cmdNewWindow, &cmdNewProject, &cmdNewSession, &cmdImportRex, &cmdChangeSession, &cmdNextSession, &cmdPrevSession,
 	&cmdRenameSession, &cmdRevealFolder, &cmdCloseSession,
@@ -876,6 +921,10 @@ func (st *store) menu() *mygo.Menu {
 			// focused terminal or page.
 			mi.Disabled = !noteMenuOn
 			noteMenuItem = mi
+		}
+		if cmd.Host != nil {
+			mi.Disabled = hostItemsOff[cmd]
+			hostItems[cmd] = mi
 		}
 		return mi
 	}
@@ -1050,15 +1099,21 @@ func (a *App) invokeCommand(cmd *command, args map[string]any) {
 	if cmd.Passthrough && cmd.Available != nil && !cmd.Available(a) {
 		return
 	}
+	// An action whose host is offline says so, rather than that it is not
+	// available.
+	if h := cmd.hostAway(a); h != nil {
+		a.offline(h)
+		return
+	}
 	if a.runCustom(cmd, args, func(err error) {
 		if err != nil {
-			a.err = err.Error()
+			a.commandFailed(cmd, err)
 		}
 	}) {
 		return
 	}
 	if err := cmd.invoke(a, args); err != nil {
-		a.err = err.Error()
+		a.commandFailed(cmd, err)
 	}
 }
 
@@ -1142,13 +1197,8 @@ func (a *App) restartFocused() {
 		return
 	}
 	old := t.Focus
-	if b := old.browser; b != nil {
-		if b.web != nil {
-			b.web.Page().Reload()
-		}
-		return
-	}
-	if old.note != nil {
+	if old.ext != nil {
+		old.ext.restart(a, old)
 		return
 	}
 	if old.host == nil {
@@ -1210,10 +1260,7 @@ func (a *App) quitAndEnd() {
 		}
 	}
 	c := a.client
-	go func() {
-		c.Shutdown()
-		mygo.App.Quit()
-	}()
+	go endAndQuit(c)
 }
 
 func (a *App) openPalette() {
@@ -1371,12 +1418,18 @@ func (a *App) paletteItems() []paletteItem {
 		})
 	}
 	for _, cmd := range paletteCommands {
-		if cmd.Hidden || cmd == &cmdUpdates && !mygo.Updater.Enabled() || cmd == &cmdSidebar && prefs.TabPlacement == "" ||
+		if cmd.Hidden || cmd == &cmdUpdates && !mygo.Updater.Enabled() || cmd == &cmdSidebar && prefs.TabPlacement == "" || cmd == &cmdAmbience && !themeAmbient() ||
 			a.st == nil && slices.Contains(sessionCommands, cmd) ||
 			!match(cmd.Title()) && !match(cmd.English()) {
 			continue
 		}
-		items = append(items, paletteItem{title: cmd.Title(), keys: cmd.Keys, glyph: "command", run: func() { a.invokeCommand(cmd, nil) }})
+		it := paletteItem{title: cmd.Title(), keys: cmd.Keys, glyph: "command", run: func() { a.invokeCommand(cmd, nil) }}
+		if h := cmd.hostAway(a); h != nil {
+			it.disabled, it.detail = true, locales.HostsNotConnectedTo(a.hostName(h))
+		} else if cmd.Host != nil && cmd.Available != nil && !cmd.Available(a) {
+			it.disabled = true
+		}
+		items = append(items, it)
 		if cmd == &cmdNewTab {
 			items = append(items, a.newTabOnItems(match)...)
 		}
@@ -1407,7 +1460,11 @@ func (a *App) newTabOnItems(match func(string) bool) []paletteItem {
 		if !match(title) && !match(locales.In("en").CmdNewTabOn(name)) {
 			continue
 		}
-		items = append(items, paletteItem{title: title, glyph: "plus", run: func() { a.newTabOn(h, a.dirOn(h)) }})
+		it := paletteItem{title: title, glyph: "plus", run: func() { a.newTabOn(h, a.dirOn(h)) }}
+		if h != nil && h.current() == nil {
+			it.disabled, it.detail = true, locales.HostsNotConnectedTo(name)
+		}
+		items = append(items, it)
 	}
 	return items
 }
@@ -1449,7 +1506,7 @@ var (
 
 const paletteStagger = 8
 
-// paletteR and palettePad are the palette's radius and its list's
+// paletteR and palettePad are the palette's radius token and its list's
 // padding, which its rows' corners are concentric with; paletteDrop is
 // how far below the title bar it opens.
 const paletteR, palettePad = radiusXXL, 6
@@ -1502,9 +1559,9 @@ func (a *App) palette(c *ui.Context, k *colors) {
 		backdrop.Justify(ui.Start).Padding(paletteDrop, 0, 0, 0).Background(k.backdrop)
 		// Under the glass setting the panel is Liquid Glass over the
 		// dimmed window, as the other floating layers are.
-		panel.Width(560).MaxHeight(440).Radius(paletteR)
-		frostPanel(panel, k, paletteR)
-		dialogShadow(panel).Clip()
+		panel.Width(560).MaxHeight(440).Radius(k.radius(paletteR))
+		frostPanel(panel, k, k.radius(paletteR))
+		dialogShadow(panel, k).Clip()
 		if anim != nil {
 			dialogMotion(c, backdrop, panel, fresh)
 		}
@@ -1568,7 +1625,7 @@ func (a *App) palette(c *ui.Context, k *colors) {
 					})
 					continue
 				}
-				row := ui.Row(c.Key(i)).Height(34).Padding(0, 10).Gap(10).Radius(concentric(paletteR, 1+palettePad)).AlignItems(ui.Center).Cursor(ui.CursorPointer)
+				row := ui.Row(c.Key(i)).Height(34).Padding(0, 10).Gap(10).Radius(concentric(k.radius(paletteR), 1+palettePad)).AlignItems(ui.Center).Cursor(ui.CursorPointer)
 				if anim != nil {
 					pose := ui.Pose{}
 					if fresh {
@@ -1596,7 +1653,7 @@ func (a *App) palette(c *ui.Context, k *colors) {
 				row.Children(func() {
 					programIconEl(c, it.icon, it.glyph, 15, k.textMuted)
 					if it.hasDot {
-						ui.Box(c).Size(8, 8).Radius(capsule(8)).Background(it.dot).Shrink(0)
+						ui.Box(c).Size(8, 8).Radius(k.capsule(8)).Background(it.dot).Shrink(0)
 					}
 					// The title takes its width, the detail what is left.
 					ui.RichText(c, titleSpans(it.title, 13.5, 500, k.text)...).Label(it.title).SingleLine().Ellipsis("…").Shrink(0).MaxWidthPercent(70)
@@ -1620,7 +1677,7 @@ func (a *App) palette(c *ui.Context, k *colors) {
 						statusDot(c, k, s, 6)
 					}
 					if it.keys != "" {
-						ui.Text(c, it.keys).FontSize(fontSubhead).TextColor(k.textMuted).Padding(2, 8).Radius(radiusS).Background(k.panel).Border(1, k.panelBorder).Shrink(0)
+						ui.Text(c, it.keys).FontSize(fontSubhead).TextColor(k.textMuted).Padding(2, 8).Radius(k.radius(radiusS)).Background(k.panel).Border(k.borderW(), k.panelBorder).Shrink(0)
 					}
 				})
 			}

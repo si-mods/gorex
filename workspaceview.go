@@ -127,7 +127,7 @@ func (a *App) workspaceConfirm(c *ui.Context, k *colors) {
 	ui.DialogBase(c, &a.wsConfirm, func(backdrop, panel ui.Element) {
 		dialogEnter(c, backdrop, panel)
 		backdrop.Background(k.backdrop)
-		dialogShadow(glassPanel(panel.Width(380).Padding(20).Radius(radiusXXL), k).Border(1, k.panelBorder)).Role(ui.RoleDialog).Label(locales.SessionCloseTitle(name))
+		dialogShadow(glassPanel(panel.Width(380).Padding(20).Radius(k.radius(radiusXXL)), k).Border(k.borderW(), k.panelBorder), k).Role(ui.RoleDialog).Label(locales.SessionCloseTitle(name))
 		ui.Column(c).Gap(10).Children(func() {
 			ui.Text(c, locales.SessionCloseTitle(name)).FontSize(fontTitle).FontWeight(700).TextColor(k.text)
 			ui.Text(c, locales.SessionCloseBody(n)).FontSize(fontBody).TextColor(k.textMuted).LineHeight(1.35)
@@ -153,13 +153,14 @@ func (a *App) workspaceConfirm(c *ui.Context, k *colors) {
 // dangerButton: the stock button in dangerButton's height and radius, so
 // that the two match.
 func cancelButton(c *ui.Context, label string) ui.Element {
-	return ui.Button(c, label).Height(32).Radius(radiusM)
+	k := colorsOf(c)
+	return ui.Button(c, label).Height(32).Radius(k.radius(radiusM))
 }
 
 // dangerButton is a button that destroys: white on red, darker under the
 // pointer and pressed.
 func dangerButton(c *ui.Context, k *colors, label string) ui.Element {
-	b := ui.Row(c).Height(32).Padding(0, 14).Radius(radiusM).AlignItems(ui.Center).Cursor(ui.CursorPointer).
+	b := ui.Row(c).Height(32).Padding(0, 14).Radius(k.radius(radiusM)).AlignItems(ui.Center).Cursor(ui.CursorPointer).
 		Role(ui.RoleButton).Label(label)
 	bg := k.danger
 	switch {
