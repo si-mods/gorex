@@ -571,6 +571,8 @@ type shaderFrame struct {
 	// tells that the window follows its moves (tickShaders).
 	pointer [4]float32
 	watch   bool
+	// moving tells that Time passes in the window's frames (tickShaders).
+	moving bool
 	// origin, set by the checks, is the Origin the slot reads in place of
 	// the drawn rectangle's corner.
 	origin *ui.Point
@@ -672,7 +674,7 @@ func tickShaders(p *ui.Painter, r ui.Rect, moves bool, sw *shaderWindow) shaderF
 		p.WatchPointer(themeShaderFPS)
 	}
 	sw.pointer = ptr
-	f := &shaderFrame{time: shaderClock.at(p.Now(), moving), window: ui.Point{X: r.W, Y: r.H}, pointer: ptr, watch: watch}
+	f := &shaderFrame{time: shaderClock.at(p.Now(), moving), window: ui.Point{X: r.W, Y: r.H}, pointer: ptr, watch: watch, moving: moving}
 	frameNow.Store(f)
 	if moving {
 		p.AnimationFrameRate(themeShaderFPS)
@@ -814,9 +816,14 @@ func (f faceShader) PaintMaterial(p *ui.Painter, box ui.Rect, radii [4]float32) 
 		return
 	}
 	f.sl.draw(p, box, radii[0], p.Theme().Dark, 1, currentFrame())
-	if f.sl.readsPointer() && currentFrame().watch {
-		// The background's Draw watches for its own part; a face painted
-		// outside it asks again, so that the pointer's moves paint it too.
+	// The background's Draw asks for its own part; a face, a material
+	// MyGo paints as a part of its own, asks again, so that the frames
+	// that only paint move it too.
+	frame := currentFrame()
+	if f.sl.readsTime() && frame.moving {
+		p.AnimationFrameRate(themeShaderFPS)
+	}
+	if f.sl.readsPointer() && frame.watch {
 		p.WatchPointer(themeShaderFPS)
 	}
 }

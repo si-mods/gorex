@@ -5,6 +5,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/egoist/mygo/ui"
 
@@ -561,6 +562,49 @@ func TestThemeShaderPointer(t *testing.T) {
 			t.Errorf("an unset version 1 Pointer: drawn %v, warnings %q", set.faces[roleTitleBarBackground] != nil, set.warn)
 		}
 	})
+}
+
+// TestThemeShaderFaceTime: a face shader that reads Time moves in the
+// frames that only paint again, as the background does: its material asks
+// for them, and MyGo paints it again as a part.
+func TestThemeShaderFaceTime(t *testing.T) {
+	fakeGPU(t)
+	battery := shaderOnBattery
+	shaderOnBattery = func() bool { return false }
+	ambience, animation := prefs.Ambience, prefs.Animation
+	t.Cleanup(func() { prefs.Ambience, prefs.Animation, shaderOnBattery = ambience, animation, battery })
+	prefs.Ambience, prefs.Animation = "", ""
+	m, art := shaderTheme(t, `{
+  "roles": { "titleBar.background": "#e4e4e4" },
+  "assets": { "bar": "bar.kage" },
+  "shaders": { "api": 1, "faces": { "titleBar.background": { "source": "bar" } } }
+}`, map[string]string{"bar": "package main\n\nvar Time float\n\nfunc Fragment(dst vec4, pos vec2) vec4 {\n\tv := 0.9 + 0.03*sin(Time*5)\n\treturn vec4(v, v, v, 1)\n}\n"})
+	if set := useShaders(t, m, art); set.faces[roleTitleBarBackground] == nil || !set.anyTime {
+		t.Fatalf("the face fails: %q", set.warn)
+	}
+	builds := 0
+	tt := ui.NewTester(func(c *ui.Context) {
+		builds++
+		moves := themeShaderMoves(c)
+		root := ui.Column(c).Fill()
+		sw := windowShader(root)
+		root.Draw(func(p *ui.Painter, r ui.Rect) { paintBackground(p, r, &lightColors, 1, false, moves, sw) }).Children(func() {
+			paintFace(ui.Box(c).Size(60, 20), paletteOf(false), roleTitleBarBackground, ui.Hex("#e4e4e4"))
+		})
+	}, 80, 40)
+	px := func() uint8 { img := tt.Image(); return img.Pix[img.PixOffset(30, 10)] }
+	b, before := builds, px()
+	moved := false
+	for range 6 {
+		tt.Advance(100 * time.Millisecond)
+		moved = moved || px() != before
+	}
+	if builds != b {
+		t.Errorf("the frames built the view %d times, want them only painting", builds-b)
+	}
+	if !moved {
+		t.Errorf("the face stays at %d over 0.6 s of frames that only paint", before)
+	}
 }
 
 // BenchmarkThemeShaderChecks measures the checks at load of a pack of one

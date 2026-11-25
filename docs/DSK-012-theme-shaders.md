@@ -376,7 +376,7 @@ Version 2 adds one uniform to the API table:
 | `Pointer` | `vec4` | x and y: the pointer in the window, in DIPs, as `Origin`. z: 1 while the pointer is over the window, else 0; x and y then keep the last position. w: 1 while the primary button is down |
 
 - GoRex tracks the pointer only while a slot reads `Pointer`. A pointer move then asks for a frame, at most `themeShaderFPS` a second.
-- GoRex reads the pointer from MyGo's window (`Painter.Pointer`, si-mods/mygo#46) as it paints the background, and asks for the moves with `Painter.WatchPointer`. Such a frame paints again without building the view. The watch makes no element look at the pointer: hovers, presses and clicks stay as they are, and moves over a terminal count. A face that reads `Pointer` asks for the moves again as it paints, so that they paint it too.
+- GoRex reads the pointer from MyGo's window (`Painter.Pointer`, si-mods/mygo#46) as it paints the background, and asks for the moves with `Painter.WatchPointer`. Such a frame paints again without building the view. The watch makes no element look at the pointer: hovers, presses and clicks stay as they are, and moves over a terminal count. A face that reads `Time` or `Pointer` asks for the frames again as it paints (`faceShader.PaintMaterial`). MyGo paints such a face again as a part of its own, not the whole window (si-mods/mygo#47).
 - On macOS, moves over a web view pane go to the web view: `Pointer` keeps its last place there.
 - A finger on a touch screen does not move `Pointer`.
 - The still rule applies as for `Time` (`themeShaderMoves`): while ambience is still, z is 0, the value stands, and a pointer move asks for no frame.
@@ -441,7 +441,7 @@ The rest of the DSK-008 and DSK-010 rules stay: no URL, no network at run time, 
 - **Description**: `description` parses, is cleaned and cut to 160 characters (`TestParseDescription`), and shows under the theme's name (`TestThemeDescription`).
 - **Background**: with no theme shader, the window background is byte-exact as now (`TestBackgroundShader`, and `TestThemeBackgroundShader` with a theme that has only face shaders). With one, the pixel at a known point has its color (`TestThemeBackgroundShader`).
 - **CPU renderer**: on the CPU renderer, no theme shader draws, and each slot draws its flat color (`TestThemeShaderCPU`).
-- **Still**: a background or face shader that reads `Time` asks for no frame under each condition of the DSK-010 still rule, and its `Time` stands (`TestThemeShaderStill`).
+- **Still**: a background or face shader that reads `Time` asks for no frame under each condition of the DSK-010 still rule, and its `Time` stands (`TestThemeShaderStill`). A face shader that reads `Time` moves in the frames that only paint, without a build (`TestThemeShaderFaceTime`).
 - **Metrics**: `radius: 0` gives square panes, rows and menus. `concentric` never goes below 0. `border` changes the pane card border. `shadow.hard` gives a blur of 0. A font list with no installed family uses the system font (`TestThemeMetrics`).
 - **Tokens**: `TestDesignTokens` fails on a bare radius token in UI code.
 - **Glass**: a theme with `"glass": false` turns the glass off over `noGlass: false`, and `"glass": true` turns it on over `noGlass: true`. `settings.json` keeps the user's value. With no theme, the user's value applies again. The Settings switch is off limits while a theme decides (`TestThemeGlass`).
