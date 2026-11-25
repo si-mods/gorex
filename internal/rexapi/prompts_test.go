@@ -23,6 +23,13 @@ func promptClients(t *testing.T, f *fixture) (*testConn, *testConn, string) {
 	callChecked(t, c, "session.attach", map[string]any{"session_id": sid})
 	other := f.dialControl()
 	other.hello(apiRevision)
+	// The welcome goes out before the gateway lists the connection, and a
+	// question goes only to the connections it lists: wait for both.
+	waitFor(t, "both connections in the gateway", func() bool {
+		f.g.mu.Lock()
+		defer f.g.mu.Unlock()
+		return len(f.g.conns) == 2
+	})
 	return c, other, sid
 }
 

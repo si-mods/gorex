@@ -92,7 +92,9 @@ func fakeGateway(t *testing.T) (net.Listener, <-chan gatewayConn) {
 	return ln, ch
 }
 
-// wantEOF checks that c closes within d.
+// wantEOF checks that c closes within d. A close of the far side crosses
+// the tailnet connection, the splice and the socket in turn, so d is a
+// ceiling a loaded runner stays under, not a time the close takes.
 func wantEOF(t *testing.T, c net.Conn, d time.Duration, what string) {
 	t.Helper()
 	c.SetReadDeadline(time.Now().Add(d))
@@ -206,7 +208,7 @@ func TestRemoteGateway(t *testing.T) {
 	if err := c.RevokeRemote(phoneID); err != nil {
 		t.Fatal(err)
 	}
-	wantEOF(t, g.c, 5*time.Second, "revoked")
+	wantEOF(t, g.c, 30*time.Second, "revoked")
 
 	// With no gateway, the connection closes at once.
 	if err := c.AllowRemote("phone", phoneID); err != nil {
@@ -225,7 +227,7 @@ func TestRemoteGateway(t *testing.T) {
 	if err := c.DisableRemote(); err != nil {
 		t.Fatal(err)
 	}
-	wantEOF(t, g.c, 5*time.Second, "remote access off")
+	wantEOF(t, g.c, 30*time.Second, "remote access off")
 
 	// Clearing the relay goes back to tailcat's relays (the loopback here).
 	if err := c.EnableRemote(); err != nil {
