@@ -29,7 +29,7 @@ func writeExtPack(t *testing.T, dir, id, manifest string) {
 const demoExtManifest = `{
 	"id": "demo", "name": "Demo", "engine": "webview", "api": 1,
 	"panes": [{"kind": "demo.note", "title": "Demo Note",
-		"fields": ["note", "noteSize", "id"]}],
+		"fields": ["note", "noteSize", "notePreview", "id"], "files": ["{note}.txt"]}],
 	"permissions": ["state", "storage", "invoke", "env"],
 	"commands": [
 		{"id": "new", "title": "New Demo", "kind": "demo.note", "placement": "tab"},
@@ -192,5 +192,75 @@ func TestExtSetFields(t *testing.T) {
 	}
 	if err := extSetFields(s, fields, map[string]any{"id": "x"}); err == nil {
 		t.Fatal("the pane's own id must not be settable")
+	}
+}
+
+// A kind that declares a note field and a files pattern is the note
+// pane's replacement: its file id is made at spawn, its key dedupes on
+// it, its zoom is the noteSize field, and closing it deletes its file.
+func TestExtPaneNotesParity(t *testing.T) {
+	dir := t.TempDir()
+	writeExtPack(t, dir, "demo", demoExtManifest)
+	loadTestPacks(t, dir)
+	t.Setenv("GOREX_DIR", t.TempDir())
+
+	a := &App{}
+	p := a.newExtPane("demo.note")
+	e := p.ext.(*extPane)
+	if e.keep.Note == "" {
+		t.Fatal("a note field is not filled at spawn")
+	}
+
+	// Two panes of the same note dedupe, as the note pane's did.
+	if k := savedNodeKey(&savedNode{Kind: "demo.note", Note: "abc"}); k != "ext:demo.note:abc" {
+		t.Fatalf("key: %q", k)
+	}
+	if savedNodeKey(&savedNode{Kind: "demo.note"}) != "" {
+		t.Fatal("a pane with no note must not share the empty key")
+	}
+
+	// ⌘+ sizes the noteSize field, ⌘0 puts back the default, as the note
+	// pane's text size did.
+	if !e.zoom(a, p, noteSizeStep) || e.keep.NoteSize != noteTextDefault+noteSizeStep {
+		t.Fatalf("zoom: %+v", e.keep)
+	}
+	if !e.zoom(a, p, 0) || e.keep.NoteSize != 0 {
+		t.Fatalf("reset zoom: %+v", e.keep)
+	}
+
+	// Closing the pane deletes its file, as a note's <id>.txt went.
+	root, err := e.storageRoot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	f := filepath.Join(root, e.keep.Note+".txt")
+	if err := os.WriteFile(f, []byte("hi"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	e.destroy(true)
+	if _, err := os.Stat(f); !os.IsNotExist(err) {
+		t.Fatalf("the note file is still there: %v", err)
+	}
+}
+
+// A kind may ask for the tiled background to show through, as the note
+// pane's page did.
+func TestExtPaneOpaqueTiled(t *testing.T) {
+	dir := t.TempDir()
+	writeExtPack(t, dir, "demo", `{
+		"id": "demo", "name": "Demo", "engine": "webview", "api": 1,
+		"panes": [
+			{"kind": "demo.solid", "title": "Solid"},
+			{"kind": "demo.clear", "title": "Clear", "opaque_tiled": false}
+		]
+	}`)
+	loadTestPacks(t, dir)
+
+	a := &App{}
+	if !a.newExtPane("demo.solid").ext.opaqueTiled() {
+		t.Fatal("opaque_tiled must default to true")
+	}
+	if a.newExtPane("demo.clear").ext.opaqueTiled() {
+		t.Fatal("opaque_tiled: false is not honored")
 	}
 }

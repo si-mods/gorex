@@ -83,14 +83,6 @@ var paneKinds = []paneKindDef{
 		key:     func(s *savedNode) string { return cmpKey("web:", s.ID) },
 		program: browserProgram,
 	},
-	{
-		kind:    noteKind,
-		match:   func(s *savedNode) bool { return s.Kind == noteKind },
-		spawn:   func(a *App) *Pane { return a.newNotePane("") },
-		load:    (*App).loadNotePane,
-		key:     func(s *savedNode) string { return cmpKey("note:", s.Note) },
-		program: noteProgram,
-	},
 }
 
 // cmpKey is pre+id, "" when id is empty.

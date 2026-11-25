@@ -144,7 +144,6 @@ func main() {
 	})
 	mygo.App.OnBeforeQuit(func(*mygo.QuitEvent) {
 		st.quitting = true
-		notesDisk.flushAll()
 		st.saveNow()
 	})
 	if err := mygo.App.Run(); err != nil {

@@ -967,9 +967,6 @@ func (a *App) newTabAfterIn(h *hostConn, dir string, strict bool, after *Tab, co
 // shows it.
 func (a *App) newBrowserTab() *Tab { return a.newExtTab("browser") }
 
-// newNoteTab opens a tab of a note pane after the active tab, and shows it.
-func (a *App) newNoteTab() *Tab { return a.newExtTab(noteKind) }
-
 // newPaneTab opens a tab of the one pane p, which has no session, after
 // the active tab, and shows it, with the keyboard on p.
 func (a *App) newPaneTab(p *Pane) *Tab {
@@ -1117,12 +1114,6 @@ func (a *App) splitPaneRun(old *Pane, vertical bool, dir string, command []strin
 // below it.
 func (a *App) splitBrowser(vertical bool) {
 	a.splitLocal(vertical, func() *Pane { return a.newExtPane("browser") })
-}
-
-// splitNote splits the focused pane with a note pane, right of it or
-// below it.
-func (a *App) splitNote(vertical bool) {
-	a.splitLocal(vertical, func() *Pane { return a.newExtPane(noteKind) })
 }
 
 // splitLocal splits the focused pane with the pane make returns, right of

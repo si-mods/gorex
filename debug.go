@@ -537,6 +537,28 @@ func (a *App) debug(dir, line string) {
 			name = arg
 		}
 		os.WriteFile(filepath.Join(dir, name), png, 0o644)
+	case "weval": // arg "name.js": run the file's code in the focused extension pane's page, the result in name.json
+		var v *mygo.WebView
+		debugMain(func() {
+			if t := a.tab(); t != nil && t.Focus != nil && t.Focus.ext != nil {
+				v = t.Focus.ext.webView()
+			}
+		})
+		if v == nil {
+			log.Printf("weval: no extension pane")
+			return
+		}
+		code, err := os.ReadFile(filepath.Join(dir, arg))
+		if err != nil {
+			log.Printf("weval: %v", err)
+			return
+		}
+		out, err := v.Page().Eval(string(code))
+		if err != nil {
+			log.Printf("weval: %v", err)
+		}
+		data, _ := json.Marshal(map[string]any{"result": out, "error": fmt.Sprint(err)})
+		os.WriteFile(filepath.Join(dir, strings.TrimSuffix(arg, ".js")+".json"), data, 0o644)
 	case "shot":
 		time.Sleep(100 * time.Millisecond)
 		if png, err := win.CapturePage(); err == nil {
