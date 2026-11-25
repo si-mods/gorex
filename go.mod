@@ -13,6 +13,7 @@ require (
 	github.com/tailscale/tailcat v0.7.0
 	github.com/tailscale/wireguard-go v0.0.0-20261106233718-9e0ab45c16ca
 	github.com/yuin/gopher-lua v1.1.2
+	golang.org/x/crypto v0.58.0
 	golang.org/x/image v0.46.0
 	golang.org/x/net v0.60.0
 	golang.org/x/sys v0.49.0
@@ -67,7 +68,6 @@ require (
 	go.digitalxero.dev/rpm v0.3.4 // indirect
 	go4.org/mem v0.0.0-20240501181205-ae6ca9944745 // indirect
 	go4.org/netipx v0.0.0-20260823151212-3075585bcbeb // indirect
-	golang.org/x/crypto v0.58.0 // indirect
 	golang.org/x/exp v0.0.0-20260908205506-85c1c2202aba // indirect
 	golang.org/x/mobile v0.0.0-20260908204917-8b95e45f8d3e // indirect
 	golang.org/x/mod v0.41.0 // indirect
