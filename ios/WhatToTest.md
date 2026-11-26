@@ -10,7 +10,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 `web` job of `.github/workflows/ci.yml` fails it.
 
 ## en-US
-- Composer Mode: the +, mic, and Send buttons now stay bottom-aligned as a message grows to multiple lines.
+- Composer Mode: the +, mic, and Send buttons now stay bottom-aligned on multi-line messages, and the active Compose button matches the key bar's capsule height.
 - The bottom bar replaces the eye with a Needs You inbox button showing an actionable count badge, and separates items waiting on you from background working tasks.
 - Composer Mode adds a top grabber handle (swipe down to close) and brings back the Compose toggle button on the key bar, so you can quickly switch to direct terminal input anytime.
 - Fixed SSH host-key, password, and install-key alerts not appearing when adding an SSH host inside Settings > Remote Hosts.
@@ -161,7 +161,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - Settings: choose System, Light or Dark right in the Interface row, and Minimum Contrast from a menu. A space's Color menu shows each color's dot and marks the current one.
 
 ## zh-Hans
-- Composer 模式：输入多行文字时，左侧「+」与右侧麦克风、发送图标现在保持底部对齐。
+- Composer 模式：多行输入时「+」、麦克风和发送图标保持底部对齐，且开启时左下角 Compose 高亮按钮与同行胶囊等高。
 - 底部栏将眼睛图标换为带未处理数量角标的「待我处理」收件箱按钮，并在列表内区分「待我处理」与下方「进行中」的后台任务。
 - Composer 模式顶部新增拉手（向下滑动即可一键关闭），并在底部键栏加回 Composer 切换按钮，方便随时切回直连终端编辑已有输入。
 - 修复在「设置 › 远程主机」中添加 SSH 主机时，主机密钥信任、密码登录与安装密钥弹窗被设置页遮挡而无法弹出导致一直超时的问题。

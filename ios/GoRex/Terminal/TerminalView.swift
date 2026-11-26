@@ -1588,7 +1588,7 @@ final class KeyBar: UIView {
         right.distribution = .fillEqually
         let leftKeys = UIStackView(arrangedSubviews: [more, compose])
         leftKeys.distribution = .fillEqually
-        let left = Self.capsule(leftKeys), last = Self.capsule(right)
+        let left = Self.capsule(leftKeys, verticalInset: 0), last = Self.capsule(right)
         // Left capsule holds ⌘ + Compose (88pt) when Composer Mode is off,
         // and Compose alone (52pt) while Composer Mode is on; right capsule
         // holds 50pt per visible key.
@@ -1750,7 +1750,7 @@ final class KeyBar: UIView {
     }.withRenderingMode(.alwaysTemplate)
 
     /// A capsule of glass around a view.
-    private static func capsule(_ content: UIView) -> UIView {
+    private static func capsule(_ content: UIView, verticalInset: CGFloat = 4) -> UIView {
         let glass = UIVisualEffectView(effect: UIGlassEffect(style: .regular))
         glass.cornerConfiguration = .capsule()
         glass.clipsToBounds = true
@@ -1759,8 +1759,8 @@ final class KeyBar: UIView {
         NSLayoutConstraint.activate([
             content.leadingAnchor.constraint(equalTo: glass.contentView.leadingAnchor),
             content.trailingAnchor.constraint(equalTo: glass.contentView.trailingAnchor),
-            content.topAnchor.constraint(equalTo: glass.contentView.topAnchor, constant: 4),
-            content.bottomAnchor.constraint(equalTo: glass.contentView.bottomAnchor, constant: -4),
+            content.topAnchor.constraint(equalTo: glass.contentView.topAnchor, constant: verticalInset),
+            content.bottomAnchor.constraint(equalTo: glass.contentView.bottomAnchor, constant: -verticalInset),
         ])
         return glass
     }
