@@ -154,4 +154,78 @@ nonisolated final class TerminalFeedTests: XCTestCase {
         s.close()
         h.stop()
     }
+
+    /// Streaming cursor-up redraws on a wider server PTY (e.g. desktop 120x40
+    /// while iPhone is 40x20) are emulated on the shadow VTerminal at the
+    /// server's size and reflowed cleanly, without duplicating or clipping lines.
+    @MainActor func testMismatchedSizeReflowsStreamingRedrawsWithoutDuplication() async throws {
+        let got = Delivered()
+        let done = expectation(description: "drop")
+        let feed = TerminalFeed(reflowInterval: 0.01) { events in
+            got.events += events
+            if got.dropped { done.fulfill() }
+        }
+        feed.start(nonce: streamNonce)
+        let viewSize = TerminalFeed.Size(cols: 40, rows: 20, cellWidth: 8, cellHeight: 16)
+        let serverResize = Data("\u{1b}_rex1;\(streamNonce);{\"type\":\"resize\",\"cols\":120,\"rows\":40,\"owner\":null}\u{1b}\\".utf8)
+        // Simulate an agent TUI streaming a 90-column line on a 120-col PTY:
+        // each tick moves cursor up 1 row (120-col geometry), clears to end of
+        // display, and redraws the growing line. On a 40-col view without
+        // shadow reflow, each redraw would erase the wrapped tail and leave a
+        // duplicate copy of the first 40 columns behind.
+        var streaming = Data("\u{1b}[2J\u{1b}[H".utf8)
+        let finalLine = "STREAM_START_" + String(repeating: "x", count: 65) + "_STREAM_TAIL"
+        for i in 1...5 {
+            let line = i < 5 ? "STREAM_START_" + String(repeating: "x", count: 55 + i * 2) : finalLine
+            if i > 1 {
+                streaming += Data("\r\u{1b}[1A\u{1b}[0J".utf8)
+            }
+            streaming += Data("\(line)\r\n".utf8)
+        }
+        feed.feed(stream.prefix(snapshotLength) + serverResize + streaming, size: viewSize)
+        feed.drop(1000)
+        await fulfillment(of: [done], timeout: 10)
+
+        XCTAssertTrue(got.output.isEmpty, "raw mismatched output should not bypass shadow reflow")
+        let reflows = got.events.compactMap { e -> (replay: Data, screen: Data)? in
+            if case .reflow(let r, let s) = e { return (r, s) }
+            return nil
+        }
+        let last = try XCTUnwrap(reflows.last, "expected a reflow event")
+        let syncEnd = Data("\u{1b}[?2026l".utf8)
+        XCTAssertTrue(last.screen.starts(with: Data("\u{1b}c\u{1b}[3J\u{1b}[?2026h".utf8)))
+        XCTAssertEqual(last.screen.suffix(syncEnd.count), syncEnd)
+
+        let verifyTerm = try XCTUnwrap(VTerminal(snapshot: stream.prefix(snapshotLength)))
+        verifyTerm.resize(cols: viewSize.cols, rows: viewSize.rows, cellWidth: viewSize.cellWidth, cellHeight: viewSize.cellHeight)
+        verifyTerm.write(last.screen)
+        let rendered = verifyTerm.text
+        let unwrapped = rendered.replacingOccurrences(of: "\n", with: "")
+        let occurrences = unwrapped.components(separatedBy: "STREAM_START_").count - 1
+        XCTAssertEqual(occurrences, 1, "expected 1 copy of streamed line, got \(occurrences) in:\n\(rendered)")
+        XCTAssertTrue(unwrapped.contains(finalLine), "wrapped tail was lost in:\n\(rendered)")
+    }
+
+    /// When the server grid resizes back to match the phone view, TerminalFeed
+    /// flushes a final clean sync frame and resumes direct output passthrough.
+    @MainActor func testMatchingResizeResumesDirectPassthrough() async {
+        let got = Delivered()
+        let done = expectation(description: "drop")
+        let feed = TerminalFeed(reflowInterval: 0.01) { events in
+            got.events += events
+            if got.dropped { done.fulfill() }
+        }
+        feed.start(nonce: streamNonce)
+        let viewSize = TerminalFeed.Size(cols: 40, rows: 20, cellWidth: 8, cellHeight: 16)
+        let wideResize = Data("\u{1b}_rex1;\(streamNonce);{\"type\":\"resize\",\"cols\":120,\"rows\":40,\"owner\":null}\u{1b}\\".utf8)
+        let matchResize = Data("\u{1b}_rex1;\(streamNonce);{\"type\":\"resize\",\"cols\":40,\"rows\":20,\"owner\":\"phone\"}\u{1b}\\".utf8)
+        let direct = Data("direct-after-match\r\n".utf8)
+        feed.feed(stream.prefix(snapshotLength) + wideResize + Data("wide-output\r\n".utf8) + matchResize + direct, size: viewSize)
+        feed.drop(1000)
+        await fulfillment(of: [done], timeout: 10)
+
+        let hasReflow = got.events.contains { if case .reflow = $0 { true } else { false } }
+        XCTAssertTrue(hasReflow, "expected a final reflow sync when server matched view size")
+        XCTAssertEqual(got.output, direct, "output after server matches view size should pass through directly")
+    }
 }

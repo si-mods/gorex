@@ -14,13 +14,21 @@ nonisolated final class VTerminal {
     private let term: GhosttyTerminal
 
     /// Decodes a complete snapshot, or returns nil for a bad one.
-    init?(snapshot: Data) {
+    /// When retainContinuation is true, the terminal keeps unfinished VT/UTF-8
+    /// parser bytes so snapshot() can re-encode it even mid-sequence.
+    init?(snapshot: Data, retainContinuation: Bool = false) {
         var decoder: GhosttySnapshotDecoder?
         var t: GhosttyTerminal?
         let ok = snapshot.withUnsafeBytes { p -> Bool in
             guard ghostty_snapshot_decoder_new_buf(nil, &decoder, p.bindMemory(to: UInt8.self).baseAddress, p.count) == GHOSTTY_SUCCESS
             else { return false }
             defer { ghostty_snapshot_decoder_free(decoder) }
+            if retainContinuation {
+                var maxBytes: Int = 64 * 1024
+                var retain = true
+                _ = ghostty_snapshot_decoder_set(decoder, GHOSTTY_SNAPSHOT_DECODER_OPT_MAX_CONTINUATION_BYTES, &maxBytes)
+                _ = ghostty_snapshot_decoder_set(decoder, GHOSTTY_SNAPSHOT_DECODER_OPT_RETAIN_CONTINUATION, &retain)
+            }
             return ghostty_snapshot_decoder_decode(decoder, &t) == GHOSTTY_SUCCESS
         }
         guard ok, let t else { return nil }
@@ -31,6 +39,24 @@ nonisolated final class VTerminal {
 
     func write(_ d: Data) {
         d.withUnsafeBytes { ghostty_terminal_vt_write(term, $0.bindMemory(to: UInt8.self).baseAddress, $0.count) }
+    }
+
+    /// Encodes the terminal's complete state into a GHOSTSNP snapshot.
+    func snapshot() -> Data? {
+        var p: UnsafeMutablePointer<UInt8>?
+        var n = 0
+        guard ghostty_snapshot_encode_alloc(term, nil, &p, &n) == GHOSTTY_SUCCESS, let p else { return nil }
+        defer { ghostty_free(nil, p, n) }
+        return Data(bytes: p, count: n)
+    }
+
+    /// Reflows a non-mutating copy of this terminal to cols×rows and returns
+    /// its VT replay sequences, so a wide server grid renders cleanly on a
+    /// narrow phone viewport without cursor-up redraw corruption.
+    func reflowedReplay(cols: Int, rows: Int, cellWidth: Int, cellHeight: Int) -> Data? {
+        guard let snap = snapshot(), let copy = VTerminal(snapshot: snap) else { return nil }
+        copy.resize(cols: cols, rows: rows, cellWidth: cellWidth, cellHeight: cellHeight)
+        return copy.replay()
     }
 
     var size: (cols: Int, rows: Int) {
