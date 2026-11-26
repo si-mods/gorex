@@ -126,6 +126,7 @@ func (st *store) settingsFileChanged() {
 // the Settings window too.
 func (st *store) applySettingsFile(next settings) {
 	prefs = next
+	omarchyRefresh()
 	_ = loadTheme()
 	loadGhostty()
 	if len(st.apps) > 0 {

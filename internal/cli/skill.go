@@ -93,6 +93,7 @@ gorex wait [-s SESSION] [-w TAB] [-b PANE] (--exit | --idle | --status STATE | -
 gorex run [--dir DIR] [--json] -- COMMAND...
 gorex action run [-s SESSION] ACTION [KEY=VALUE...] [--json]
 gorex float [new|toggle|hide-all|raise|lower|cycle|move|resize|dock] [-s SESSION]
+gorex omarchy status [--json] | bind [--keys KEYS] | unbind [--json]
 ` + "```" + `
 
 - ` + "`new`" + ` creates a session and prints its ID. It runs the command after
