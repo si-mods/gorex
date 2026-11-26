@@ -53,7 +53,9 @@ final class ComposerUITests: XCTestCase {
     func testNoComposerByDefault() throws {
         XCTAssertTrue(message.waitForNonExistence(timeout: 5))
         XCTAssertTrue(app.buttons.matching(identifier: "Dictate").firstMatch.waitForExistence(timeout: 5))
-        XCTAssertTrue(app.buttons.matching(identifier: "More").firstMatch.waitForExistence(timeout: 5))
+        let esc = app.buttons.matching(identifier: "Esc").firstMatch
+        let mores = app.buttons.matching(identifier: "More").allElementsBoundByIndex
+        XCTAssertTrue(mores.contains { abs($0.frame.midY - esc.frame.midY) < 40 })
     }
 
     /// Composer Mode (Settings > Terminal, here the defaults argument)
@@ -67,7 +69,9 @@ final class ComposerUITests: XCTestCase {
         try terminal()
         XCTAssertTrue(message.waitForExistence(timeout: 10))
         XCTAssertTrue(app.buttons.matching(identifier: "Add Attachment").firstMatch.waitForExistence(timeout: 5))
-        XCTAssertTrue(app.buttons.matching(identifier: "More").firstMatch.waitForNonExistence(timeout: 5))
+        let esc = app.buttons.matching(identifier: "Esc").firstMatch
+        let mores = app.buttons.matching(identifier: "More").allElementsBoundByIndex
+        XCTAssertFalse(mores.contains { abs($0.frame.midY - esc.frame.midY) < 40 })
         // The key bar's mic moved into the bar, beside the field (the
         // mic's view exposes more than one element; take its own row's).
         let dictates = app.buttons.matching(identifier: "Dictate").allElementsBoundByIndex
