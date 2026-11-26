@@ -95,6 +95,18 @@ So on a slow link a flood arrives in about half to a third of the time, and a bu
 
 CPU cost is a few hundred microseconds per 64 KiB message and invisible next to the link.
 
+## Measured
+
+A probe against a running 0.65.0 server read the same stream twice at once — one connection offering the extension, one not, on separate control connections since a record streams a source once — while a throwaway workspace flooded it. Wire bytes counted per frame, payloads inflated client-side:
+
+| Load | Wire bytes (deflate / raw) | Ratio |
+| --- | --- | --- |
+| `jot` text flood, ~1.5 MB logical | 527,680 / 1,492,904 | 2.83x |
+| base64 of `/dev/urandom`, ~590 KB | 509,368 / 589,914 | 1.16x |
+| `yes` repeated line, ~300 KB | 1,170 / 260,236 | ~222x |
+
+Inflated bytes match the raw stream except the per-connection `rex1` nonces. Only messages above a size threshold carry RSV1 — 65 of 1,119 in the flood — but they hold nearly all the bytes. The largest compressed payload seen was 19,394 B against 65,536 B raw, so `compressedChunk` keeps every message far below the ~50 KB drop territory. These figures sit inside the estimate table above; loopback measures wire bytes, not latency.
+
 ## Options for the irreversible choice
 
 `docs/irreversible.md` applies: the choice fixes what shipped builds do on the wire. Pick one.
@@ -124,7 +136,7 @@ Nothing is written to disk. A server upgraded in place keeps open streams as the
 ## Tests
 
 - `internal/rexapi`: accept a data connection with a deflating client and assert the same stream bytes arrive; assert `CompressionNoContextTakeover` is what the server negotiates; assert messages split at `compressedChunk`; RESUME mid-stream replays identical bytes with and without compression.
-- iOS device check before ship: a data stream that carries several compressed messages well past 50 KiB — a big `GHOSTSNP` scrollback replay — must not drop. This is the gate for option 1 versus option 2.
+- iOS device check before ship: a data stream that carries several compressed messages well past 50 KiB — a big `GHOSTSNP` scrollback replay — must not drop. This is the gate for option 1 versus option 2. Done in the simulator for 0.65.0: a ~550 KB burst arrived complete and in order, zero drops, `permessage-deflate` logged in the connection log.
 - Manual: on `ssh macmini`, build and run on a device over a slow link (Network Link Conditioner). Compare bytes for `cat` of a large file and a Kitty image. Check `docs/invariants.md` items on the data stream, if any, and read `docs/lessons.md` before the PR.
 
 ## Phases
