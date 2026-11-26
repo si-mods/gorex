@@ -127,6 +127,7 @@ final class ComposerBar: UIView, UITextViewDelegate {
         send.accessibilityLabel = String(localized: "Send")
         send.isEnabled = false
         send.alpha = 0.4
+        send.addAction(UIAction { _ in Haptics.tapped() }, for: .touchDown)
         send.addAction(UIAction { [weak self] _ in self?.sendNow() }, for: .touchUpInside)
 
         thumbs.axis = .horizontal

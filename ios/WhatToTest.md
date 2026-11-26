@@ -10,6 +10,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 `web` job of `.github/workflows/ci.yml` fails it.
 
 ## en-US
+- Composer Mode's Send button now taps your hand as you press it, matching the key bar's keys.
 - SSH screens — SSH Keys in Settings, Add/Edit SSH Host fields, and host-key, password, and install-key alerts — are now translated into Chinese.
 - SSH hosts: a failed Install Key now shows why in its card; a Mac's password is asked once per session; and Add Host refuses a port typed into Hostname.
 - Composer Mode no longer covers a terminal program's own input box, and its bar drops the unused top grabber for a cleaner look.
@@ -149,6 +150,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - Settings: choose System, Light or Dark right in the Interface row, and Minimum Contrast from a menu. A space's Color menu shows each color's dot and marks the current one.
 
 ## zh-Hans
+- Composer 模式的发送按钮现在按下时也有轻触震动反馈，与键栏按键一致。
 - 补全 SSH 相关界面的中文翻译：包括「设置 › SSH 密钥」、添加/编辑 SSH 主机表单，以及主机密钥信任、密码登录与安装密钥弹窗。
 - SSH 主机：安装密钥失败时卡片会说明原因；Mac 的密码每次会话只问一次；添加主机时在主机名里写端口会被拒绝。
 - Composer 模式的消息栏不再遮挡终端程序自身的输入框，并去掉了顶部多余的抓手横条。
