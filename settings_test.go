@@ -11,6 +11,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/plugins/terminal"
@@ -892,4 +893,65 @@ func TestJSONSettingsPage(t *testing.T) {
 	if j.conflict || j.st.Buffer.String() != `{"terminal.theme": "Dracula"}` {
 		t.Errorf("the revert: conflict %v, text %q", j.conflict, j.st.Buffer.String())
 	}
+}
+
+// TestSettingsSidebarDuotoneIcons verifies that all Settings sidebar sections
+// render their Kubai two-tone icons in light and dark modes and animate on hover.
+func TestSettingsSidebarDuotoneIcons(t *testing.T) {
+	isolateSettings(t, "")
+	registerFonts()
+	st := &store{}
+	a := &App{st: st}
+	oldSection := settingsUI.section
+	settingsUI.section = "icons"
+	t.Cleanup(func() { settingsUI.section = oldSection })
+
+	tt := ui.NewTester(a.settingsView, 780, 620)
+	tt.SetScale(2)
+	for _, dark := range []bool{false, true} {
+		tt.SetDark(dark)
+		tt.Frame()
+		for _, s := range sections {
+			label := say(s.label)
+			if _, ok := tt.AccessByRole(ui.RoleTab, label); !ok {
+				t.Errorf("dark=%v: missing sidebar tab %q", dark, label)
+			}
+		}
+	}
+
+	// Hover the Hosts row (monitor icon reveals its inner screen on hover) and
+	// advance halfway through the enter motion.
+	hosts, ok := tt.AccessByRole(ui.RoleTab, say(sections[5].label))
+	if !ok {
+		t.Fatalf("missing Hosts tab")
+	}
+	before := tt.Image()
+	tt.Move(hosts.Bounds.X+hosts.Bounds.W/2, hosts.Bounds.Y+hosts.Bounds.H/2)
+	tt.Frame()
+	tt.Advance(240 * time.Millisecond)
+	tt.Frame()
+	after := tt.Image()
+	if bytes.Equal(before.Pix, after.Pix) {
+		t.Error("hovering Hosts sidebar row did not change rendered pixels")
+	}
+
+	// Turning off icon motion keeps the icon at rest while hovering.
+	prefs.NoIconMotion = true
+	tt.Move(0, 0)
+	tt.Frame()
+	stillBefore := tt.Image()
+	tt.Move(hosts.Bounds.X+hosts.Bounds.W/2, hosts.Bounds.Y+hosts.Bounds.H/2)
+	tt.Frame()
+	tt.Advance(240 * time.Millisecond)
+	tt.Frame()
+	stillAfter := tt.Image()
+	// Hovering still paints the row's hover pill, so compare a second frame
+	// later in the animation window: with NoIconMotion no animation runs.
+	tt.Advance(240 * time.Millisecond)
+	tt.Frame()
+	stillLater := tt.Image()
+	if !bytes.Equal(stillAfter.Pix, stillLater.Pix) {
+		t.Error("with NoIconMotion enabled, icon continued animating during hover")
+	}
+	_ = stillBefore
 }

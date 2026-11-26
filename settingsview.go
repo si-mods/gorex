@@ -17,6 +17,7 @@ import (
 	"github.com/egoist/mygo/ui"
 	"github.com/egoist/mygo/ui/editor"
 
+	"gorex/internal/duotone"
 	"gorex/internal/rex"
 	"gorex/internal/rexapi"
 	"gorex/locales"
@@ -160,21 +161,21 @@ func (a *App) openSettings() {
 	})
 }
 
-// sections are the sidebar's items, each with the color of its tile, as
-// System Settings has: macOS's system colors, a hue per kind of setting.
+// sections are the sidebar's items, each with a Kubai two-tone icon and a
+// semantic primary hue for light and dark surfaces (DSK-014).
 var sections = []struct {
-	id, glyph string
-	tile      ui.Color
-	label     func(locales.Messages) string
+	id, icon    string
+	light, dark ui.Color
+	label       func(locales.Messages) string
 }{
-	{"appearance", "contrast", ui.RGB(0, 122, 255), locales.Messages.SettingsAppearance},   // blue
-	{"terminal", "square-terminal", ui.RGB(58, 58, 60), locales.Messages.SettingsTerminal}, // graphite
-	{"theme", "sparkles", ui.RGB(175, 82, 222), locales.Messages.SettingsTheme},            // purple
-	{"icons", "layers", ui.RGB(255, 149, 0), locales.Messages.SettingsIconPacks},           // orange
-	{"keyboard", "keyboard", ui.RGB(142, 142, 147), locales.Messages.SettingsKeyboard},     // gray
-	{"hosts", "monitor", ui.RGB(52, 199, 89), locales.Messages.SettingsHosts},              // green
-	{"file", "file-code", ui.RGB(48, 176, 199), locales.Messages.SettingsJSON},             // teal
-	{"about", "info", ui.RGB(142, 142, 147), locales.Messages.SettingsAbout},               // gray
+	{"appearance", "sun", ui.Hex("#007AFF"), ui.Hex("#3B9EFF"), locales.Messages.SettingsAppearance},  // blue
+	{"terminal", "terminal", ui.Hex("#3A3A3C"), ui.Hex("#AEAEB2"), locales.Messages.SettingsTerminal}, // graphite
+	{"theme", "sparkles", ui.Hex("#AF52DE"), ui.Hex("#BF6AF0"), locales.Messages.SettingsTheme},       // purple
+	{"icons", "layers", ui.Hex("#FF9500"), ui.Hex("#FFA426"), locales.Messages.SettingsIconPacks},     // orange
+	{"keyboard", "keyboard", ui.Hex("#636366"), ui.Hex("#98989D"), locales.Messages.SettingsKeyboard}, // gray
+	{"hosts", "monitor", ui.Hex("#28A745"), ui.Hex("#3DD664"), locales.Messages.SettingsHosts},        // green
+	{"file", "file-code", ui.Hex("#1FA0B8"), ui.Hex("#40C4DC"), locales.Messages.SettingsJSON},        // teal
+	{"about", "info", ui.Hex("#636366"), ui.Hex("#98989D"), locales.Messages.SettingsAbout},           // gray
 }
 
 // The settings window's layout: the sidebar's width, the height of the
@@ -234,7 +235,11 @@ func (a *App) settingsView(c *ui.Context) {
 				a.serverCard(c, k)
 				ui.Box(c).Height(8).Shrink(0)
 				for _, s := range sections {
-					a.sidebarItem(c, k, s.id, s.glyph, s.tile, say(s.label))
+					primary := s.light
+					if dark {
+						primary = s.dark
+					}
+					a.sidebarItem(c, k, s.id, s.icon, primary, dark, say(s.label))
 				}
 			})
 		})
@@ -330,14 +335,15 @@ func (a *App) settingsTitleBar(c *ui.Context, k *colors) {
 const sidebarItemH = 32
 
 // sidebarItem is a section's chip, as a tab's: the chosen one has the
-// active tab's face, and keeps its icon's tile and its label's color.
-func (a *App) sidebarItem(c *ui.Context, k *colors, id, glyph string, tile ui.Color, label string) {
+// active tab's face, and keeps its two-tone icon and its label's color.
+func (a *App) sidebarItem(c *ui.Context, k *colors, id, iconName string, primary ui.Color, dark bool, label string) {
 	active := settingsUI.section == id
 	e := ui.Row(c.Key(id)).Height(sidebarItemH).Padding(0, 10).Gap(10).AlignItems(ui.Center).Radius(pillRadius(k, sidebarItemH, k.radius(radiusM))).
 		Cursor(ui.CursorPointer).Role(ui.RoleTab).Selected(active).Label(label)
+	hovered := e.Hovered()
 	if active {
 		glassPill(e, k, sidebarItemH)
-	} else if e.Hovered() {
+	} else if hovered {
 		e.Background(hoverFace(k))
 	}
 	e.Transition(hoverFade)
@@ -345,10 +351,14 @@ func (a *App) sidebarItem(c *ui.Context, k *colors, id, glyph string, tile ui.Co
 		a.showSection(id)
 	}
 	e.Children(func() {
-		// A white glyph on the section's color, whether it is chosen or
-		// not: the glass pill says which one is.
-		ui.Box(c).Size(22, 22).Radius(k.radius(radiusS)).Background(tile).Center().Shrink(0).Children(func() {
-			glyphIcon(c, glyph, 14, ui.RGB(255, 255, 255))
+		// Bare Kubai two-tone icon driven by the row's hover state (DSK-014).
+		duotone.Must(iconName).View(c, duotone.Options{
+			Size:     20,
+			Primary:  primary,
+			Dark:     dark,
+			Hovered:  hovered,
+			Still:    true,
+			NoMotion: prefs.NoIconMotion || prefs.Animation == "off",
 		})
 		ui.Text(c, label).FontSize(fontBody).FontWeight(500).TextColor(k.text).SingleLine()
 	})
@@ -584,6 +594,12 @@ func (a *App) appearanceWindow(c *ui.Context, k *colors) {
 	settingRow(c, k, locales.SettingsAnimation(), locales.SettingsAnimationHint(), func() {
 		if ui.Segmented(c, &anim, locales.AnimationSnappy(), locales.AnimationNatural(), locales.AnimationOff()).Label(locales.SettingsAnimation()).Changed() {
 			a.setWindowPref(func(s *settings) { s.Animation = animations[anim] })
+		}
+	})
+	iconMotion := !prefs.NoIconMotion
+	settingRow(c, k, locales.SettingsIconMotion(), locales.SettingsIconMotionHint(), func() {
+		if ui.Switch(c, &iconMotion).Label(locales.SettingsIconMotion()).Changed() {
+			a.setWindowPref(func(s *settings) { s.NoIconMotion = !iconMotion })
 		}
 	})
 }
