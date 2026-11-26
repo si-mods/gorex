@@ -212,7 +212,7 @@ func TestNames(t *testing.T) {
 		}
 	}
 	for r := range NumRoles {
-		if got, ok := RoleByName(r.String()); !ok || got != r || !slices.ContainsFunc([]string{"sideBar.", "titleBar.", "paneHeader.", "button.", "dropdown.", "segmented.", "windowControl.", "pane."}, func(p string) bool { return strings.HasPrefix(r.String(), p) }) {
+		if got, ok := RoleByName(r.String()); !ok || got != r || !slices.ContainsFunc([]string{"sideBar.", "titleBar.", "paneHeader.", "button.", "dropdown.", "segmented.", "windowControl.", "checkbox.", "radio.", "pane.", "window.", "menu.", "scrollbar."}, func(p string) bool { return strings.HasPrefix(r.String(), p) }) {
 			t.Errorf("role %d %q", r, r.String())
 		}
 	}

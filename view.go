@@ -106,6 +106,9 @@ func (a *App) view(c *ui.Context) {
 	wash, moves := backgroundAlpha(c), themeShaderMoves(c)
 	dark := c.Theme().Dark
 	root := ui.Column(c).Fill()
+	if k.windowBorder.A > 0 {
+		root.Border(3, k.windowBorder)
+	}
 	sw := windowShader(root)
 	root.Draw(func(p *ui.Painter, r ui.Rect) {
 		paintBackground(p, r, k, wash, dark, moves, sw)

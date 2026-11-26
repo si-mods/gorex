@@ -98,7 +98,16 @@ const (
 	SegmentedBackground          // segmented.background
 	WindowControlBackground      // windowControl.background
 	WindowControlCloseBackground // windowControl.closeBackground
+	CheckboxBackground           // checkbox.background
+	RadioBackground              // radio.background
 	PaneBorder                   // pane.border
+	WindowBorder                 // window.border
+	MenuBackground               // menu.background
+	MenuBorder                   // menu.border
+	ScrollbarTrack               // scrollbar.track
+	ScrollbarThumb               // scrollbar.thumb
+	ScrollbarHover               // scrollbar.hover
+	ScrollbarActive              // scrollbar.active
 	NumRoles
 )
 
@@ -118,7 +127,16 @@ var roleNames = [NumRoles]string{
 	"segmented.background",
 	"windowControl.background",
 	"windowControl.closeBackground",
+	"checkbox.background",
+	"radio.background",
 	"pane.border",
+	"window.border",
+	"menu.background",
+	"menu.border",
+	"scrollbar.track",
+	"scrollbar.thumb",
+	"scrollbar.hover",
+	"scrollbar.active",
 }
 
 func (r Role) String() string { return roleNames[r] }

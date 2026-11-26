@@ -34,7 +34,7 @@ const (
 
 // The caps of the shaders key.
 const (
-	maxFaceShaders  = 12
+	maxFaceShaders  = 16
 	maxShaderImages = 4
 	maxParams       = 16
 	maxParamList    = 16
@@ -95,6 +95,7 @@ var FaceRoles = []Role{
 	ActiveGroupBackground, ActiveGroupTabBackground, TrackBackground, TabHoverBackground, TabActiveBackground,
 	TitleBarBackground, SideBarBackground, PaneHeaderBackground, ButtonBackground,
 	DropdownBackground, SegmentedBackground, WindowControlBackground, WindowControlCloseBackground,
+	CheckboxBackground, RadioBackground,
 }
 
 // builtinFace reports whether the built-in palette has a flat color for

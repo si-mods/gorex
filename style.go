@@ -67,7 +67,7 @@ type colors struct {
 	// the buttons, and a pane card's border. The built-in palettes have
 	// none (ui.Transparent): where one is unset, the app draws as it did
 	// before.
-	titleBarFace, sideBarFace, headerFace, buttonFace, dropdownFace, segmentedFace, windowControlFace, windowControlCloseFace, paneBorder ui.Color
+	titleBarFace, sideBarFace, headerFace, buttonFace, dropdownFace, segmentedFace, windowControlFace, windowControlCloseFace, checkboxFace, radioFace, paneBorder, windowBorder, menuBackground, menuBorder, scrollbarTrack, scrollbarThumb, scrollbarHover, scrollbarActive ui.Color
 
 	// m are the theme's metrics: the corner scale, border width, chrome
 	// font and shadows the palette draws with.
@@ -355,7 +355,16 @@ func roleField(k *colors, r theme.Role) *ui.Color {
 		theme.SegmentedBackground:          &k.segmentedFace,
 		theme.WindowControlBackground:      &k.windowControlFace,
 		theme.WindowControlCloseBackground: &k.windowControlCloseFace,
+		theme.CheckboxBackground:           &k.checkboxFace,
+		theme.RadioBackground:              &k.radioFace,
 		theme.PaneBorder:                   &k.paneBorder,
+		theme.WindowBorder:                 &k.windowBorder,
+		theme.MenuBackground:               &k.menuBackground,
+		theme.MenuBorder:                   &k.menuBorder,
+		theme.ScrollbarTrack:               &k.scrollbarTrack,
+		theme.ScrollbarThumb:               &k.scrollbarThumb,
+		theme.ScrollbarHover:               &k.scrollbarHover,
+		theme.ScrollbarActive:              &k.scrollbarActive,
 	}[r]
 }
 
@@ -578,6 +587,8 @@ const (
 	roleSegmentedBackground          = theme.SegmentedBackground
 	roleWindowControlBackground      = theme.WindowControlBackground
 	roleWindowControlCloseBackground = theme.WindowControlCloseBackground
+	roleCheckboxBackground           = theme.CheckboxBackground
+	roleRadioBackground              = theme.RadioBackground
 )
 
 // themedFace returns k with the ladder of the face role sets, and the face,
@@ -716,6 +727,78 @@ func segmentedStyleOf(k *colors) *ui.SegmentedStyle {
 			}
 		},
 	}
+}
+
+func checkboxStyleOf(k *colors) *ui.CheckboxStyle {
+	face := k.checkboxFace
+	if face.A == 0 {
+		return nil
+	}
+	if _, ok := faceFill(roleCheckboxBackground, face); !ok {
+		return nil
+	}
+	mark := ui.Hex("#21a121")
+	return &ui.CheckboxStyle{
+		Box: func(box, row ui.Element, state ui.CheckState) {
+			if m, ok := statefulFaceMaterial(roleCheckboxBackground, face, row, state != ui.CheckOff); ok {
+				box.Radius(k.radius(2)).Border(0, ui.Color{}).Material(m)
+			}
+		},
+		Mark: func(p *ui.Painter, r ui.Rect, state ui.CheckState) {
+			switch state {
+			case ui.CheckOn:
+				var path ui.Path
+				path.MoveTo(r.X+r.W*0.20, r.Y+r.H*0.52).LineTo(r.X+r.W*0.42, r.Y+r.H*0.74).LineTo(r.X+r.W*0.80, r.Y+r.H*0.28)
+				p.StrokePath(&path, 2.0, mark)
+			case ui.CheckMixed:
+				p.Fill(ui.Rect{X: r.X + r.W*0.25, Y: r.Y + r.H*0.25, W: r.W * 0.5, H: r.H * 0.5}, mark, 0)
+			}
+		},
+	}
+}
+
+func radioStyleOf(k *colors) *ui.RadioStyle {
+	face := k.radioFace
+	if face.A == 0 {
+		return nil
+	}
+	if _, ok := faceFill(roleRadioBackground, face); !ok {
+		return nil
+	}
+	mark := ui.Hex("#21a121")
+	return &ui.RadioStyle{
+		Dot: func(dot, row ui.Element, selected bool) {
+			if m, ok := statefulFaceMaterial(roleRadioBackground, face, row, selected); ok {
+				dot.Border(0, ui.Color{}).Material(m)
+			}
+		},
+		Mark: func(p *ui.Painter, r ui.Rect, selected bool) {
+			if selected {
+				d := float32(6)
+				p.Fill(ui.Rect{X: r.X + (r.W-d)/2, Y: r.Y + (r.H-d)/2, W: d, H: d}, mark, d/2)
+			}
+		},
+	}
+}
+
+func scrollbarStyleOf(k *colors) ui.ScrollbarStyle {
+	if k.scrollbarThumb.A == 0 && k.scrollbarTrack.A == 0 {
+		return ui.ScrollbarStyle{}
+	}
+	s := ui.ScrollbarStyle{
+		TrackWidth: 15,
+		ThumbWidth: 11,
+		Square:     k.m.radius == 0,
+		Flush:      k.m.radius == 0,
+		Track:      k.scrollbarTrack,
+		Thumb:      k.scrollbarThumb,
+		Hover:      k.scrollbarHover,
+		Active:     k.scrollbarActive,
+	}
+	if k.m.radius > 0 && k.m.radius < 1 {
+		s.Radius = k.radius(3)
+	}
+	return s
 }
 
 // faceColors is a face with the colors that show on it, as one value: the
@@ -910,6 +993,11 @@ func widgetTheme(base *ui.Theme, k *colors) *ui.Theme {
 	}
 	t.Select = selectStyleOf(k)
 	t.Segmented = segmentedStyleOf(k)
+	t.Checkbox = checkboxStyleOf(k)
+	t.Radio = radioStyleOf(k)
+	if sb := scrollbarStyleOf(k); sb != (ui.ScrollbarStyle{}) {
+		t.ScrollbarStyle = sb
+	}
 	t.Radius = k.radius(9)
 	t.Font = k.m.font
 	return &t

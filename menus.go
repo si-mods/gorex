@@ -49,15 +49,28 @@ func menuStyleOf(k *colors, dark bool) *ui.MenuStyle {
 	if m, ok := menuStyles[key]; ok {
 		return m
 	}
+	border := w.panelBorder
+	if w.menuBorder.A > 0 {
+		border = w.menuBorder
+	}
+	pad, rowH, rowPad, textSize := float32(6), float32(24), float32(10), float32(13)
+	if w.m.radius == 0 {
+		pad, rowH, rowPad, textSize = 3, 20, 6, 12
+	}
 	m := &ui.MenuStyle{
 		Panel: func(panel ui.Element, level int) {
-			popoverShadow(glassPanel(panel.Radius(w.radius(radiusL)).Padding(6), w).Border(w.borderW(), w.panelBorder), w)
+			p := panel.Radius(w.radius(radiusL)).Padding(pad).Border(w.borderW(), border)
+			if w.menuBackground.A > 0 {
+				popoverShadow(p.Background(w.menuBackground), w)
+			} else {
+				popoverShadow(glassPanel(p, w), w)
+			}
 		},
-		RowHeight: 24, RowRadius: concentric(w.radius(radiusL), 6), RowPadding: 10,
+		RowHeight: rowH, RowRadius: concentric(w.radius(radiusL), pad), RowPadding: rowPad,
 		Highlight: w.accent, HighlightText: w.accentText,
 		Text: w.text, TextMuted: w.textMuted,
-		Separator: w.panelBorder,
-		TextSize:  13,
+		Separator: border,
+		TextSize:  textSize,
 	}
 	menuStyles[key] = m
 	return m
@@ -81,6 +94,8 @@ func menuTheme(base *ui.Theme, k *colors) *ui.Theme {
 	}
 	t.Select = selectStyleOf(k)
 	t.Segmented = segmentedStyleOf(k)
+	t.Checkbox = checkboxStyleOf(k)
+	t.Radio = radioStyleOf(k)
 	t.Menu = menuStyleOf(k, t.Dark)
 	return &t
 }
