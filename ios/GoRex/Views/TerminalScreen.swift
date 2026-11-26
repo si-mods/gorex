@@ -400,7 +400,15 @@ struct TerminalScreen: View {
                 await terminal?.typeDictation()
                 busy = false
             }
-        })
+        }, send: TerminalView.composerMode ? {
+            guard !busy else { return }
+            busy = true
+            Task {
+                await terminal?.typeDictation()
+                busy = false
+                terminal?.composerSend?()
+            }
+        } : nil)
     }
 
     /// Keeps the bar's ports button current: the pane's ports, every five
@@ -1224,7 +1232,7 @@ private struct Level: View {
     @Environment(\.accessibilityReduceMotion) private var still
 
     var body: some View {
-        let levels = Dictation.shared.levels
+        let levels = Array(Dictation.shared.levels.suffix(5))
         Group {
             if still {
                 Image(systemName: "waveform")
@@ -1328,9 +1336,44 @@ private struct ProgressLine: View {
     }
 }
 
-/// What is said while the mic is on inside the key bar's horizontal voice
-/// capsule: waveform/sparkles, single-line trailing-scrolled text, cancel, and
-/// the red recording dot to finish and type into the terminal.
+/// Wide live scrolling audio waveform for Composer Mode's inline voice view:
+/// thin vertical capsule bars spanning the full width between Stop and Send.
+private struct WideWave: View {
+    @Environment(\.accessibilityReduceMotion) private var still
+
+    var body: some View {
+        let levels = Dictation.shared.levels
+        Group {
+            if still {
+                Image(systemName: "waveform")
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity)
+            } else {
+                GeometryReader { geo in
+                    let step: CGFloat = 5.5
+                    let count = max(12, min(levels.count, Int((geo.size.width + 3) / step)))
+                    let slice = Array(levels.suffix(count))
+                    HStack(spacing: 3) {
+                        ForEach(slice.indices, id: \.self) { i in
+                            Capsule()
+                                .fill(Color.secondary.opacity(0.8))
+                                .frame(width: 2.5, height: 3 + 21 * CGFloat(slice[i]))
+                        }
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+                    .animation(.easeOut(duration: 0.1), value: slice)
+                }
+            }
+        }
+        .frame(height: 24)
+        .accessibilityHidden(true)
+    }
+}
+
+/// What is said while the mic is on: in the key bar, a compact single-row
+/// capsule; in Composer Mode (`send != nil`), a two-row Grok-style card with
+/// the full-width live transcript on top and Stop, wide waveform, and one-tap
+/// Send below.
 ///
 /// In the key bar it is given again only as what is said, or busy, changes
 /// (DictationShown): an input it shows besides those goes in there too.
@@ -1339,73 +1382,161 @@ private struct VoiceCapsule: View {
     @Binding var busy: Bool
     let cancel: () -> Void
     let finish: () -> Void
+    var send: (() -> Void)? = nil
 
     var body: some View {
         let settled = (said?.polishing == true ? "" : said?.settled) ?? ""
         let full = said?.text ?? ""
         var open = AttributedString(full.dropFirst(min(settled.count, full.count)))
         open.foregroundColor = .secondary
-        let text = Text(AttributedString(settled) + open).font(.callout)
-        return HStack(spacing: 8) {
-            if said?.polishing == true {
-                Image(systemName: "sparkles").foregroundStyle(.secondary).symbolEffect(.pulse).frame(height: 18).accessibilityLabel("Polishing")
+        if let send {
+            let transcript: Text = if said?.polishing == true {
+                Text("Polishing…").foregroundStyle(.secondary)
+            } else if full.isEmpty {
+                Text("Listening…").foregroundStyle(.secondary)
             } else {
-                Level()
+                Text(AttributedString(settled) + open)
             }
-            ScrollViewReader { proxy in
-                ScrollView(.horizontal) {
-                    HStack(spacing: 0) {
-                        text.lineLimit(1)
-                        Color.clear.frame(width: 1, height: 1).id("end")
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 6) {
+                    if said?.polishing == true {
+                        Image(systemName: "sparkles")
+                            .foregroundStyle(.secondary)
+                            .symbolEffect(.pulse)
+                            .accessibilityLabel("Polishing")
+                    }
+                    ScrollViewReader { proxy in
+                        ScrollView(.horizontal) {
+                            HStack(spacing: 0) {
+                                transcript.font(.system(size: 17)).lineLimit(1)
+                                Color.clear.frame(width: 1, height: 1).id("end")
+                            }
+                        }
+                        .scrollIndicators(.hidden)
+                        .defaultScrollAnchor(.trailing)
+                        .onChange(of: full) { _, _ in
+                            proxy.scrollTo("end", anchor: .trailing)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .mask {
+                        LinearGradient(stops: [
+                            .init(color: .clear, location: 0),
+                            .init(color: .black, location: 0.05),
+                            .init(color: .black, location: 1),
+                        ], startPoint: .leading, endPoint: .trailing)
                     }
                 }
-                .scrollIndicators(.hidden)
-                .defaultScrollAnchor(.trailing)
-                .onChange(of: full) { _, _ in
-                    proxy.scrollTo("end", anchor: .trailing)
+                .padding(.horizontal, 6)
+                .padding(.top, 4)
+
+                HStack(spacing: 12) {
+                    Button {
+                        Haptics.tapped()
+                        finish()
+                    } label: {
+                        RoundedRectangle(cornerRadius: 3)
+                            .fill(Color.primary)
+                            .frame(width: 12, height: 12)
+                            .frame(width: 36, height: 36)
+                            .background(Color(uiColor: .secondarySystemFill), in: Circle())
+                            .contentShape(.circle)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(busy)
+                    .accessibilityLabel("Stop Dictation")
+
+                    WideWave()
+
+                    Button {
+                        Haptics.tapped()
+                        send()
+                    } label: {
+                        Group {
+                            if busy {
+                                ProgressView()
+                                    .tint(.white)
+                                    .accessibilityLabel("Recognising")
+                            } else {
+                                Image(systemName: "arrow.up")
+                                    .font(.system(size: 15, weight: .semibold))
+                                    .foregroundStyle(.white)
+                                    .accessibilityLabel("Send")
+                            }
+                        }
+                        .frame(width: 36, height: 36)
+                        .background(Color.accentColor, in: Circle())
+                        .contentShape(.circle)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(busy)
                 }
+                .padding(.bottom, 2)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .mask {
-                LinearGradient(stops: [
-                    .init(color: .clear, location: 0),
-                    .init(color: .black, location: 0.06),
-                    .init(color: .black, location: 1),
-                ], startPoint: .leading, endPoint: .trailing)
-            }
-            Button {
-                Haptics.tapped()
-                cancel()
-            } label: {
-                Image(systemName: "xmark")
-                    .font(.footnote.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                    .frame(width: 28, height: 28)
+            .padding(.horizontal, 2)
+        } else {
+            let text = Text(AttributedString(settled) + open).font(.callout)
+            HStack(spacing: 8) {
+                if said?.polishing == true {
+                    Image(systemName: "sparkles").foregroundStyle(.secondary).symbolEffect(.pulse).frame(height: 18).accessibilityLabel("Polishing")
+                } else {
+                    Level()
+                }
+                ScrollViewReader { proxy in
+                    ScrollView(.horizontal) {
+                        HStack(spacing: 0) {
+                            text.lineLimit(1)
+                            Color.clear.frame(width: 1, height: 1).id("end")
+                        }
+                    }
+                    .scrollIndicators(.hidden)
+                    .defaultScrollAnchor(.trailing)
+                    .onChange(of: full) { _, _ in
+                        proxy.scrollTo("end", anchor: .trailing)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .mask {
+                    LinearGradient(stops: [
+                        .init(color: .clear, location: 0),
+                        .init(color: .black, location: 0.06),
+                        .init(color: .black, location: 1),
+                    ], startPoint: .leading, endPoint: .trailing)
+                }
+                Button {
+                    Haptics.tapped()
+                    cancel()
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 28, height: 28)
+                        .contentShape(.circle)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Cancel")
+                Button {
+                    Haptics.tapped()
+                    finish()
+                } label: {
+                    Group {
+                        if busy {
+                            ProgressView().accessibilityLabel("Recognising")
+                        } else {
+                            Image(systemName: "circle.fill")
+                                .foregroundStyle(.red)
+                                .accessibilityLabel("Finish Dictation")
+                        }
+                    }
+                    .frame(width: 34, height: 34)
                     .contentShape(.circle)
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Cancel")
-            Button {
-                Haptics.tapped()
-                finish()
-            } label: {
-                Group {
-                    if busy {
-                        ProgressView().accessibilityLabel("Recognising")
-                    } else {
-                        Image(systemName: "circle.fill")
-                            .foregroundStyle(.red)
-                            .accessibilityLabel("Finish Dictation")
-                    }
                 }
-                .frame(width: 34, height: 34)
-                .contentShape(.circle)
+                .buttonStyle(.plain)
+                .disabled(busy)
             }
-            .buttonStyle(.plain)
-            .disabled(busy)
+            .padding(.leading, 12)
+            .padding(.trailing, 6)
         }
-        .padding(.leading, 12)
-        .padding(.trailing, 6)
     }
 }
 
