@@ -99,6 +99,8 @@ func Main(args []string, out, errOut io.Writer, version string) (code int, handl
 		return hostsCmd(args, out, errOut)
 	case "agents":
 		return agentsCmd(args, out, errOut)
+	case "delegate":
+		return delegateCmd(args, out, errOut)
 	case "pair":
 		return pairCmd(args, out, errOut)
 	case "skill":
@@ -156,6 +158,7 @@ Usage:
   gorex events
   gorex hosts [ls] [--probe] [--timeout D] [--json]
   gorex [-S HOST] agents [--json]
+  gorex [-S HOST] delegate [--agent ID] [--dir DIR] [--mode full|read-only] [--session SID] [--resume ID] [--result SID] [--async] [--keep] [--timeout D] [--cancel-on-timeout] [--json] -- PROMPT...
   gorex [-S HOST] pair [--json]
   gorex skill show|setup|status|remove [--agent NAME] [--project] [--dry-run] [--json]
   gorex remote status [--json] | tailscale on|off | address | key | relay HOST|default | reachable IP|off | enable | disable | control on|off | pair start|stop | pending | approve KEY|CODE | reject KEY|CODE | allow NAME KEY | revoke KEY

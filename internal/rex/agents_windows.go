@@ -64,6 +64,12 @@ func windowsAgentShell(shell string) string {
 // CreateProcess cannot run it. Other extensions (an extensionless npm
 // shim, .ps1) do not launch.
 func windowsAgentCommand(path, shell string) ([]string, bool) {
+	return windowsAgentCommandWithArgs(path, shell, nil)
+}
+
+// windowsAgentCommandWithArgs wraps path with PowerShell or COMSPEC and
+// appends extra arguments safely quoted (docs/MOD-016-peer-delegation.md).
+func windowsAgentCommandWithArgs(path, shell string, extra []string) ([]string, bool) {
 	ext := strings.ToLower(filepath.Ext(path))
 	switch ext {
 	case ".exe", ".com", ".cmd", ".bat":
@@ -71,16 +77,55 @@ func windowsAgentCommand(path, shell string) ([]string, bool) {
 		return nil, false
 	}
 	if sh := windowsAgentShell(shell); sh != "" {
-		return []string{sh, "-Command", "& " + powerShellQuoted(path) + "; exit $LASTEXITCODE"}, true
+		var b strings.Builder
+		b.WriteString("& ")
+		b.WriteString(powerShellQuoted(path))
+		for _, a := range extra {
+			b.WriteByte(' ')
+			b.WriteString(powerShellQuoted(a))
+		}
+		b.WriteString("; exit $LASTEXITCODE")
+		return []string{sh, "-Command", b.String()}, true
 	}
 	if ext == ".exe" || ext == ".com" {
-		return []string{path}, true
+		if len(extra) == 0 {
+			return []string{path}, true
+		}
+		return append([]string{path}, extra...), true
 	}
 	comspec := os.Getenv("COMSPEC")
 	if comspec == "" {
 		comspec = "cmd.exe"
 	}
-	return []string{comspec, "/c", path}, true
+	if len(extra) == 0 {
+		return []string{comspec, "/c", path}, true
+	}
+	return append([]string{comspec, "/c", path}, extra...), true
+}
+
+// findAgentBinary resolves the executable path of agentID on Windows.
+func findAgentBinary(agentID, home, _ string) (string, bool) {
+	if path, err := exec.LookPath(agentID); err == nil {
+		if _, ok := windowsAgentCommand(path, ""); ok {
+			return path, true
+		}
+	}
+	extraDirs := windowsAgentDirs(home)
+	if path, ok := findWindowsTool(extraDirs, agentID); ok {
+		if _, ok := windowsAgentCommand(path, ""); ok {
+			return path, true
+		}
+	}
+	return "", false
+}
+
+// agentCommandWithArgs is the Windows counterpart of agents_unix.go's helper.
+func agentCommandWithArgs(shell, _, resolvedPath string, extra []string) []string {
+	cmd, ok := windowsAgentCommandWithArgs(resolvedPath, shell, extra)
+	if !ok {
+		return append([]string{resolvedPath}, extra...)
+	}
+	return cmd
 }
 
 func windowsAgentDirs(home string) []string {
