@@ -73,7 +73,7 @@ gorex -S build-linux delegate --resume <AGENT_SESSION> --dir ~/repos/app --json 
 
 - `--agent` accepts `auto` (default) or a known agent ID (`claude`, `codex`, `agy`, `omp`, `devin`). With `auto`, the server picks the first installed agent that supports delegation in display order (`knownAgents`).
 - `--dir` sets the working directory on the target host. When omitted, the target host uses its home directory.
-- `--mode` accepts `full` (default) or `read-only`. `read-only` is a best-effort hint that passes the agent's read-only flag when supported and refuses agents without one.
+- `--mode` accepts `full` (default), `read-only`, or `yolo` (opt-in only, never default). `read-only` passes the agent's read-only flag (`--permission-mode plan` for `claude`, `--sandbox read-only` for `codex`). `yolo` passes the agent's auto-approve flag (`--permission-mode bypassPermissions` for `claude`, `--full-auto` for `codex`). Agents without the requested flag are refused.
 - `--session` sends a follow-up prompt to a live delegated session without restarting the process (warm multi-turn, preserving prompt cache).
 - `--resume` starts a new session on the target host and continues a previous agent conversation by its `agentSession` ID (cold multi-turn after process exit).
 - `--timeout` bounds synchronous waits (default `10m`, `0` waits until exit).

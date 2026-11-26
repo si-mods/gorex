@@ -73,12 +73,16 @@ func (d *delegatedRun) beginTurn() chan struct{} {
 
 func (d *delegatedRun) finishTurn(status, result, errText string) {
 	d.mu.Lock()
-	if d.status == "running" {
+	// Allow a blocked turn to transition to completed/failed once approved
+	// by the parent agent or user.
+	if d.status == "running" || (d.status == "blocked" && (status == "completed" || status == "failed")) {
 		d.status = status
 		if result != "" {
 			d.result = result
 		}
-		if errText != "" {
+		if status == "completed" {
+			d.errText = ""
+		} else if errText != "" {
 			d.errText = errText
 		}
 		if d.turnDone != nil {
@@ -136,8 +140,8 @@ func (s *Server) doDelegate(req Request, peer string, _ *keptConn) (any, error) 
 	if mode == "" {
 		mode = "full"
 	}
-	if mode != "full" && mode != "read-only" {
-		return nil, fmt.Errorf("rex: invalid delegate mode %q (want full or read-only)", mode)
+	if mode != "full" && mode != "read-only" && mode != "yolo" {
+		return nil, fmt.Errorf("rex: invalid delegate mode %q (want full, read-only, or yolo)", mode)
 	}
 
 	home, _ := s.homeDir()
@@ -301,6 +305,9 @@ func resolveDelegateAgent(requested, mode, home, shell string) (id, binPath stri
 		if mode == "read-only" && !agentSupportsReadOnly(requested) {
 			return "", "", fmt.Errorf("rex: agent %q has no read-only flag; refusing --mode read-only", requested)
 		}
+		if mode == "yolo" && !agentSupportsYolo(requested) {
+			return "", "", fmt.Errorf("rex: agent %q has no auto-approve flag; refusing --mode yolo", requested)
+		}
 		p, ok := findAgentBinary(requested, home, shell)
 		if !ok {
 			return "", "", fmt.Errorf("rex: agent %q is not installed on this host", requested)
@@ -312,6 +319,9 @@ func resolveDelegateAgent(requested, mode, home, shell string) (id, binPath stri
 		if mode == "read-only" && !agentSupportsReadOnly(cand) {
 			continue
 		}
+		if mode == "yolo" && !agentSupportsYolo(cand) {
+			continue
+		}
 		if p, ok := findAgentBinary(cand, home, shell); ok {
 			return cand, p, nil
 		}
@@ -319,10 +329,21 @@ func resolveDelegateAgent(requested, mode, home, shell string) (id, binPath stri
 	if mode == "read-only" {
 		return "", "", errors.New("rex: no installed agent on this host supports --mode read-only")
 	}
+	if mode == "yolo" {
+		return "", "", errors.New("rex: no installed agent on this host supports --mode yolo")
+	}
 	return "", "", errors.New("rex: no known coding agent CLI is installed on this host")
 }
 
 func agentSupportsReadOnly(agentID string) bool {
+	switch agentID {
+	case "claude", "codex":
+		return true
+	}
+	return false
+}
+
+func agentSupportsYolo(agentID string) bool {
 	switch agentID {
 	case "claude", "codex":
 		return true
@@ -336,6 +357,9 @@ func buildDelegateLaunch(agentID, mode, resume, agentSession string) (args []str
 	if mode == "read-only" && !agentSupportsReadOnly(agentID) {
 		return nil, nil, fmt.Errorf("rex: agent %q has no read-only flag; refusing --mode read-only", agentID)
 	}
+	if mode == "yolo" && !agentSupportsYolo(agentID) {
+		return nil, nil, fmt.Errorf("rex: agent %q has no auto-approve flag; refusing --mode yolo", agentID)
+	}
 	switch agentID {
 	case "claude":
 		if resume != "" {
@@ -343,8 +367,11 @@ func buildDelegateLaunch(agentID, mode, resume, agentSession string) (args []str
 		} else if agentSession != "" {
 			args = append(args, "--session-id", agentSession)
 		}
-		if mode == "read-only" {
+		switch mode {
+		case "read-only":
 			args = append(args, "--permission-mode", "plan")
+		case "yolo":
+			args = append(args, "--permission-mode", "bypassPermissions")
 		}
 		// Strip nested-session markers (as in yetone/magpie's cleanClaudeEnv)
 		// without overriding entrypoint.
@@ -357,8 +384,11 @@ func buildDelegateLaunch(agentID, mode, resume, agentSession string) (args []str
 		if resume != "" {
 			args = append(args, "resume", resume)
 		}
-		if mode == "read-only" {
+		switch mode {
+		case "read-only":
 			args = append(args, "--sandbox", "read-only")
+		case "yolo":
+			args = append(args, "--full-auto")
 		}
 	case "devin":
 		env = []string{"DEVIN_SESSION_STORE=files"}

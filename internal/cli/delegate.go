@@ -17,7 +17,7 @@ func delegateCmd(args []string, out, errOut io.Writer) (int, bool) {
 	fs := flagSet("delegate", errOut)
 	agent := fs.String("agent", "auto", "agent CLI ID (auto, claude, omp, codex, agy, devin)")
 	dir := fs.String("dir", "", "working directory on the target host")
-	mode := fs.String("mode", "full", "execution mode hint (full or read-only)")
+	mode := fs.String("mode", "full", "execution mode hint (full, read-only, or yolo)")
 	sessionID := fs.String("session", "", "existing delegated session ID for a warm follow-up turn")
 	resume := fs.String("resume", "", "agent conversation ID for a cold follow-up")
 	resultSID := fs.String("result", "", "fetch the latest result of a delegated session ID")
@@ -34,8 +34,8 @@ func delegateCmd(args []string, out, errOut io.Writer) (int, bool) {
 		fmt.Fprintln(errOut, "gorex delegate: --timeout must not be negative")
 		return ExitUsage, true
 	}
-	if *mode != "full" && *mode != "read-only" {
-		fmt.Fprintf(errOut, "gorex delegate: invalid --mode %q (want full or read-only)\n", *mode)
+	if *mode != "full" && *mode != "read-only" && *mode != "yolo" {
+		fmt.Fprintf(errOut, "gorex delegate: invalid --mode %q (want full, read-only, or yolo)\n", *mode)
 		return ExitUsage, true
 	}
 

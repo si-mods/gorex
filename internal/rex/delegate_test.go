@@ -41,10 +41,34 @@ func TestBuildDelegateLaunch(t *testing.T) {
 		t.Fatalf("devin: env=%v err=%v", env, err)
 	}
 
+	args, _, err = buildDelegateLaunch("claude", "yolo", "", "11111111-2222-4333-8444-555555555555")
+	if err != nil || !slices.Equal(args, []string{"--session-id", "11111111-2222-4333-8444-555555555555", "--permission-mode", "bypassPermissions"}) {
+		t.Fatalf("claude yolo: args=%v err=%v", args, err)
+	}
+
+	args, _, err = buildDelegateLaunch("codex", "yolo", "", "")
+	if err != nil || !slices.Equal(args, []string{"--full-auto"}) {
+		t.Fatalf("codex yolo: args=%v err=%v", args, err)
+	}
+
 	for _, id := range []string{"omp", "agy", "devin"} {
 		if _, _, err := buildDelegateLaunch(id, "read-only", "", ""); err == nil {
 			t.Errorf("%s read-only should be refused", id)
 		}
+		if _, _, err := buildDelegateLaunch(id, "yolo", "", ""); err == nil {
+			t.Errorf("%s yolo should be refused", id)
+		}
+	}
+
+	// Verify a blocked turn can transition to completed once approved.
+	run := &delegatedRun{status: "running", turnDone: make(chan struct{})}
+	run.finishTurn("blocked", "", "approve Bash: git log")
+	if run.status != "blocked" || run.errText != "approve Bash: git log" {
+		t.Fatalf("blocked state = %q %q", run.status, run.errText)
+	}
+	run.finishTurn("completed", "all good", "")
+	if run.status != "completed" || run.result != "all good" || run.errText != "" {
+		t.Fatalf("recovered state = %q %q %q", run.status, run.result, run.errText)
 	}
 }
 
