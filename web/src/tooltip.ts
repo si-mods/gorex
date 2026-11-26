@@ -223,10 +223,33 @@ function detachDescribedBy(): void {
   else el.removeAttribute("aria-describedby");
 }
 
-function mountFor(tip: HTMLElement, trigger: HTMLElement): void {
-  // Mount inside an open modal <dialog> so the tooltip renders in the top layer above it.
-  const host = trigger.closest("dialog[open]") ?? document.body;
-  if (tip.parentElement !== host) host.append(tip);
+function mountFor(tip: HTMLElement): void {
+  // Keep the tooltip on document.body; popover="manual" lifts it into the top
+  // layer above modal <dialog>s without inheriting backdrop-filter containing
+  // blocks or overflow: hidden clipping.
+  if (tip.parentElement !== document.body) document.body.append(tip);
+}
+
+function showTopLayer(tip: HTMLElement): void {
+  const el = tip as HTMLElement & { showPopover?: () => void };
+  if (typeof el.showPopover === "function") {
+    try {
+      if (!tip.matches(":popover-open")) el.showPopover();
+    } catch {
+      // Ignore if disconnected or unsupported.
+    }
+  }
+}
+
+function hideTopLayer(tip: HTMLElement): void {
+  const el = tip as HTMLElement & { hidePopover?: () => void };
+  if (typeof el.hidePopover === "function") {
+    try {
+      if (tip.matches(":popover-open")) el.hidePopover();
+    } catch {
+      // Ignore if already closed.
+    }
+  }
 }
 
 function positionTip(tip: HTMLElement, trigger: HTMLElement): void {
@@ -256,17 +279,19 @@ function showDom(trigger: HTMLElement, instant: boolean): void {
   if (!text) return;
   clearTimeout(hideTimer);
   hideTimer = undefined;
-  mountFor(tipEl, trigger);
+  mountFor(tipEl);
   tipEl.textContent = text;
   if (instant) {
     tipEl.dataset.instant = "true";
     tipEl.hidden = false;
+    showTopLayer(tipEl);
     positionTip(tipEl, trigger);
     tipEl.dataset.state = "open";
   } else {
     delete tipEl.dataset.instant;
     const wasHidden = tipEl.hidden;
     tipEl.hidden = false;
+    showTopLayer(tipEl);
     if (wasHidden) {
       delete tipEl.dataset.state;
       positionTip(tipEl, trigger);
@@ -289,8 +314,16 @@ function hideDom(): void {
   clearTimeout(hideTimer);
   hideTimer = setTimeout(() => {
     hideTimer = undefined;
-    if (tipEl && tipEl.dataset.state !== "open") tipEl.hidden = true;
+    if (tipEl && tipEl.dataset.state !== "open") {
+      hideTopLayer(tipEl);
+      tipEl.hidden = true;
+    }
   }, TOOLTIP_FADE_OUT_MS);
+}
+
+/** Hides any active tooltip immediately (e.g. when a transient menu closes). */
+export function hideTooltip(): void {
+  state?.reset();
 }
 
 /**
@@ -305,6 +338,7 @@ export function initTooltips(): void {
   tipEl.id = TOOLTIP_ID;
   tipEl.className = "tooltip";
   tipEl.setAttribute("role", "tooltip");
+  tipEl.setAttribute("popover", "manual");
   tipEl.hidden = true;
   document.body.append(tipEl);
 
@@ -348,7 +382,7 @@ export function initTooltips(): void {
     if (trigger) s.focusOut(trigger);
   });
 
-  document.addEventListener("keydown", (e) => {
+  window.addEventListener("keydown", (e) => {
     if (e.key === "Escape") s.escape();
   }, { capture: true });
 

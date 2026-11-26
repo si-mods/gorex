@@ -1226,7 +1226,7 @@
 
   /* Shared tooltip (tooltip.ts): fixed, pointer-events: none, fades 140ms in / 60ms out. */
   .tooltip {
-    position: fixed; z-index: 100; pointer-events: none; max-width: 280px; padding: 5px 9px; border-radius: 8px;
+    position: fixed; inset: auto; margin: 0; overflow: visible; z-index: 100; pointer-events: none; max-width: 280px; padding: 5px 9px; border-radius: 8px;
     background: var(--panel); border: 1px solid var(--panel-edge); color: var(--text);
     -webkit-backdrop-filter: blur(24px); backdrop-filter: blur(24px); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
     font: 12px/1.35 var(--ui); white-space: pre-line; overflow-wrap: anywhere;

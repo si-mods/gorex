@@ -8,7 +8,7 @@
 import { HoverClock, inSafeTriangle, Point, PointerTracker } from "./hoverintent";
 import { icon } from "./hosts";
 import { t } from "./i18n";
-import { setTooltip } from "./tooltip";
+import { hideTooltip, setTooltip } from "./tooltip";
 
 const SUBMENU_OPEN_DELAY_MS = 150;
 const SUBMENU_SWAP_DELAY_MS = 60;
@@ -28,6 +28,7 @@ export function closeMenu() {
   shown = undefined;
   m.done.abort();
   m.el.remove();
+  hideTooltip();
   m.closed?.();
 }
 
@@ -221,7 +222,9 @@ function panel(items: MenuItem[], signal: AbortSignal, onClose?: () => void): HT
         if (sub) {
           closeClock.schedule(SUBMENU_CLOSE_GRACE_MS, () => closeSub());
           if (prev && inSafeTriangle(prev, pt, sub.getBoundingClientRect())) {
-            openClock.cancel();
+            // If the pointer dwells on this sibling past the safe-triangle grace,
+            // open this sibling's submenu once the previous one closes.
+            scheduleHoverOpen(SUBMENU_CLOSE_GRACE_MS);
             return;
           }
           scheduleHoverOpen(SUBMENU_SWAP_DELAY_MS);
