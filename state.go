@@ -3002,7 +3002,7 @@ func tileImage(prog program) []byte {
 	if prog.Name == "" || prog.Shell {
 		return nil
 	}
-	key := tileKey{prog.Glyph, prog.TileGlyph, prog.TileBg, prog.TileFg, prog.TileBorder, programIconKey(prog.Icon)}
+	key := tileKey{prog.Glyph, prog.TileGlyph, prog.TileBg, prog.TileFg, prog.TileBgGradient, prog.TileBorder, programIconKey(prog.Icon)}
 	if b, ok := tileImages[key]; ok {
 		return b
 	}
@@ -3046,6 +3046,7 @@ func drawTileImage(prog program) (out []byte) {
 type tileKey struct {
 	glyph, tileGlyph string
 	bg, fg           ui.Color
+	bgGrad           *ui.LinearGradient
 	border           bool
 	iconHash         string
 }

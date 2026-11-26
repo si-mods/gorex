@@ -647,7 +647,11 @@ func drawDoneDot(p *ui.Painter, fr ui.Rect, k *colors) {
 func drawTile(p *ui.Painter, k *colors, r ui.Rect, prog program, glyph bool) {
 	rad := k.radius(radiusTile)
 	p.Shadow(r, rad, 0, 0.5, 1.5, 0, ui.RGBA(0, 0, 0, 0.18))
-	p.Fill(r, prog.TileBg, rad)
+	if prog.TileBgGradient != nil {
+		p.FillGradient(r, *prog.TileBgGradient, rad)
+	} else {
+		p.Fill(r, prog.TileBg, rad)
+	}
 	if prog.TileBorder {
 		p.Stroke(r, ui.RGBA(0, 0, 0, 0.12), rad, 0.5)
 	}

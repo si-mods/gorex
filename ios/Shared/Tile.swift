@@ -19,7 +19,13 @@ struct ProgramTile: View {
     var body: some View {
         let k = scale
         let card = RoundedRectangle(cornerRadius: 4.5 * k)
-        card.fill(Color(rgb: program.tileBg))
+        Group {
+            if let grad = program.tileBgGradient {
+                card.fill(grad.gradient)
+            } else {
+                card.fill(Color(rgb: program.tileBg))
+            }
+        }
             .overlay {
                 if program.tileBorder { card.strokeBorder(.black.opacity(0.12), lineWidth: 0.5 * k) }
             }

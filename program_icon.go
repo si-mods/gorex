@@ -71,6 +71,7 @@ func programWithIcon(base program, ic *rex.ProgramIcon) program {
 	base.Shell = false
 	if ic.Bg != "" {
 		base.TileBg = ui.Hex(ic.Bg)
+		base.TileBgGradient = nil
 		base.TileBorder = isLightColor(base.TileBg)
 	}
 	if ic.Fg != "" {

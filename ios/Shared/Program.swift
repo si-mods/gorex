@@ -12,6 +12,24 @@ extension Color {
     static let done = Color(red: 0x7A / 255, green: 0xA0 / 255, blue: 0xC2 / 255)
 }
 
+/// Linear gradient fill for a program's tile, matching CSS/MyGo angle
+/// degrees (clockwise from up).
+struct TileGradient {
+    var angleDegrees: Double
+    var stops: [(rgb: UInt32, location: CGFloat)]
+
+    var gradient: LinearGradient {
+        let rad = angleDegrees * .pi / 180
+        let dx = sin(rad), dy = -cos(rad)
+        let half = (abs(dx) + abs(dy)) / 2
+        return LinearGradient(
+            stops: stops.map { .init(color: Color(rgb: $0.rgb), location: $0.location) },
+            startPoint: UnitPoint(x: 0.5 - half * dx, y: 0.5 - half * dy),
+            endPoint: UnitPoint(x: 0.5 + half * dx, y: 0.5 + half * dy)
+        )
+    }
+}
+
 /// How a program shows: its name and the tile of its windows, as GoRex's
 /// programs.go has them.
 struct Program {
@@ -21,6 +39,7 @@ struct Program {
     var glyph: String
     var tileBg: UInt32
     var tileFg: UInt32
+    var tileBgGradient: TileGradient?
     var tileGlyph = ""
     /// tileBorder outlines light tiles.
     var tileBorder = false
@@ -69,7 +88,10 @@ struct Program {
             "make": .init(name: "Make", glyph: "cpu", tileBg: 0x6b7280, tileFg: 0xffffff),
             "swift": .init(name: "Swift", glyph: "brand:swift", tileBg: 0xf05138, tileFg: 0xffffff),
             "kotlin": .init(name: "Kotlin", glyph: "brand:kotlin", tileBg: 0x7f52ff, tileFg: 0xffffff),
-            "omp": .init(name: "omp", glyph: "brand:omp", tileBg: 0x0f0a14, tileFg: 0xb66cff),
+            "omp": .init(
+                name: "omp", glyph: "brand:omp", tileBg: 0xff35c4, tileFg: 0xffffff,
+                tileBgGradient: .init(angleDegrees: 126, stops: [(0xff35c4, 0.10), (0xa747ff, 0.66), (0x7098f9, 1.00)])
+            ),
             // Windows shells: at their prompt they show as shells, with their own tile.
             "pwsh": .init(name: "PowerShell", glyph: "brand:powershell", tileBg: 0x5391fe, tileFg: 0xffffff, shell: true),
             "powershell": .init(name: "PowerShell", glyph: "brand:powershell", tileBg: 0x5391fe, tileFg: 0xffffff, shell: true),

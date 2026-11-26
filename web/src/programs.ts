@@ -15,6 +15,8 @@ export interface Program {
   glyph: string;
   tileBg: number;
   tileFg: number;
+  /** CSS gradient filling the tile in place of tileBg, when set. */
+  tileBgGradient?: string;
   /** The glyph on the tile, glyph when empty. */
   tileGlyph: string;
   /** Outlines light tiles. */
@@ -23,9 +25,9 @@ export interface Program {
   shell: boolean;
 }
 
-type Opts = { tileGlyph?: string; tileBorder?: boolean; shell?: boolean };
+type Opts = { tileGlyph?: string; tileBorder?: boolean; shell?: boolean; tileBgGradient?: string };
 const p = (name: string, glyph: string, tileBg: number, tileFg: number, o: Opts = {}): Program => ({
-  name, glyph, tileBg, tileFg, tileGlyph: o.tileGlyph ?? "", tileBorder: o.tileBorder ?? false, shell: o.shell ?? false,
+  name, glyph, tileBg, tileFg, tileBgGradient: o.tileBgGradient, tileGlyph: o.tileGlyph ?? "", tileBorder: o.tileBorder ?? false, shell: o.shell ?? false,
 });
 
 const shellTile = p("", "square-terminal", 0x1d2420, 0x5fd38d, { tileGlyph: "terminal", shell: true });
@@ -79,7 +81,9 @@ const programs = new Map<string, Program>(Object.entries({
   make: p("Make", "cpu", 0x6b7280, 0xffffff),
   swift: p("Swift", "brand:swift", 0xf05138, 0xffffff),
   kotlin: p("Kotlin", "brand:kotlin", 0x7f52ff, 0xffffff),
-  omp: p("omp", "brand:omp", 0x0f0a14, 0xb66cff),
+  omp: p("omp", "brand:omp", 0xff35c4, 0xffffff, {
+    tileBgGradient: "linear-gradient(126deg, #ff35c4 10%, #a747ff 66%, #7098f9 100%)",
+  }),
   // Windows shells: at their prompt they show as shells, with their own tile.
   pwsh: p("PowerShell", "brand:powershell", 0x5391fe, 0xffffff, { shell: true }),
   powershell: p("PowerShell", "brand:powershell", 0x5391fe, 0xffffff, { shell: true }),
@@ -144,7 +148,7 @@ export function glyphUrl(g: string): string {
 export function tile(program: Program, glyph = true): HTMLElement {
   const t = document.createElement("span");
   t.className = "tile" + (program.tileBorder ? " bordered" : "");
-  t.style.setProperty("--tile-bg", hex(program.tileBg));
+  t.style.setProperty("--tile-bg", program.tileBgGradient ?? hex(program.tileBg));
   if (glyph) {
     const g = program.tileGlyph || program.glyph;
     const i = document.createElement("i");

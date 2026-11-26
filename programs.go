@@ -86,9 +86,11 @@ type program struct {
 	Name string
 	// Glyph is the icon of the pane's header, in the color of the text.
 	Glyph string
-	// TileBg and TileFg color the tile of the program in tabs; TileGlyph
-	// is the glyph on it, Glyph when empty.
+	// TileBg and TileFg color the tile of the program in tabs; TileBgGradient,
+	// when set, fills the tile in place of TileBg; TileGlyph is the glyph on
+	// it, Glyph when empty.
 	TileBg, TileFg ui.Color
+	TileBgGradient *ui.LinearGradient
 	TileGlyph      string
 	// TileBorder outlines light tiles.
 	TileBorder bool
@@ -100,6 +102,15 @@ type program struct {
 
 var (
 	shellTile = program{Glyph: "square-terminal", TileGlyph: "terminal", TileBg: ui.Hex("#1d2420"), TileFg: ui.Hex("#5fd38d"), Shell: true}
+
+	ompTileGradient = ui.LinearGradient{
+		Angle: 126,
+		Stops: []ui.GradientStop{
+			{Color: ui.Hex("#ff35c4"), At: 0.10},
+			{Color: ui.Hex("#a747ff"), At: 0.66},
+			{Color: ui.Hex("#7098f9"), At: 1.00},
+		},
+	}
 
 	programs = func() map[string]program {
 		m := map[string]program{
@@ -141,8 +152,9 @@ var (
 			"make":      {Name: "Make", Glyph: "cpu", TileBg: ui.Hex("#6b7280"), TileFg: ui.Hex("#ffffff")},
 			"swift":     {Name: "Swift", Glyph: "brand:swift", TileBg: ui.Hex("#f05138"), TileFg: ui.Hex("#ffffff")},
 			"kotlin":    {Name: "Kotlin", Glyph: "brand:kotlin", TileBg: ui.Hex("#7f52ff"), TileFg: ui.Hex("#ffffff")},
-			// omp's glyph is that of its site's favicon (omp.sh/favicon.svg), as one path.
-			"omp": {Name: "omp", Glyph: "brand:omp", TileBg: ui.Hex("#0f0a14"), TileFg: ui.Hex("#b66cff")},
+			// omp's glyph is that of its site's favicon (omp.sh/favicon.svg), as one path;
+			// its tile gradient matches Rex's block-glyph-omp tile.
+			"omp": {Name: "omp", Glyph: "brand:omp", TileBg: ui.Hex("#ff35c4"), TileFg: ui.Hex("#ffffff"), TileBgGradient: &ompTileGradient},
 			// Windows shells: at their prompt they show as shells (Shell), with their own tile.
 			"pwsh":       {Name: "PowerShell", Glyph: "brand:powershell", TileBg: ui.Hex("#5391fe"), TileFg: ui.Hex("#ffffff"), Shell: true},
 			"powershell": {Name: "PowerShell", Glyph: "brand:powershell", TileBg: ui.Hex("#5391fe"), TileFg: ui.Hex("#ffffff"), Shell: true},
