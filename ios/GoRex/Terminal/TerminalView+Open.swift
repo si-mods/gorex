@@ -57,7 +57,7 @@ extension TerminalView {
     /// tapped need not show the path, so the alert names the file and its
     /// host in full. Cancel gives the keyboard back, if it was up.
     private func ask(_ path: String, open: @escaping () -> Void) {
-        let typing = isFirstResponder
+        let typing = keyboardUp
         let message = String(localized: "The link you tapped names a file on \(session.host.config.name) that its text may not show:")
         let a = UIAlertController(title: String(localized: "Open This File?"), message: message + "\n\n" + path, preferredStyle: .alert)
         a.addAction(UIAlertAction(title: String(localized: "Cancel"), style: .cancel) { [weak self] _ in if typing { self?.becomeFirstResponder() } })

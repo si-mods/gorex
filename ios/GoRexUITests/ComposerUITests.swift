@@ -84,10 +84,13 @@ final class ComposerUITests: XCTestCase {
         }
         shot("composer-mode-rest")
 
-        // Raising the keyboard and typing multiple lines grows the bar cleanly.
+        // Raising the keyboard and typing multiple lines grows the bar cleanly,
+        // and Backspace edits the compose field rather than the terminal.
         message.tap()
         if app.keyboards.element.waitForExistence(timeout: 5) {
-            message.typeText("line 1\nline 2\nline 3")
+            message.typeText("abc" + XCUIKeyboardKey.delete.rawValue)
+            XCTAssertEqual(message.value as? String, "ab")
+            message.typeText("\nline 2\nline 3")
             shot("composer-mode-keyboard")
         }
     }

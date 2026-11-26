@@ -13,7 +13,7 @@ extension TerminalView: UIDocumentPickerDelegate {
         // Once: the picker may be up, or going.
         guard shown?.presentedViewController == nil else { return }
         // The keyboard goes, or it covers the sheet's lower half.
-        let typing = isFirstResponder
+        let typing = keyboardUp
         resignFirstResponder()
         present(PhotoPicker { [weak self] providers in
             guard let self else { return }
@@ -99,7 +99,7 @@ extension TerminalView: UIDocumentPickerDelegate {
     /// Tells of a problem; the keyboard comes back once it is read, if it
     /// was up.
     func alert(_ title: String, _ message: String) {
-        let typing = isFirstResponder
+        let typing = keyboardUp
         let a = UIAlertController(title: title, message: message, preferredStyle: .alert)
         a.addAction(UIAlertAction(title: String(localized: "OK"), style: .default) { [weak self] _ in if typing { self?.becomeFirstResponder() } })
         present(a)
