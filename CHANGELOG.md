@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.66.2
+
+### Bug Fixes
+
+* **sidebar:** bridge `titleBar.background` across `sidebarEdge` so no vertical gap cuts through the title bar beside the sidebar ([#1187](https://github.com/si-mods/gorex/pull/1187))
+
 ## 0.66.1
 
 ### Features
