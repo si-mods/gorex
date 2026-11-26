@@ -72,7 +72,12 @@ func setupMenus(c *ui.Context) {
 func menuTheme(base *ui.Theme, k *colors) *ui.Theme {
 	t := *base
 	t.Font = k.m.font
-	buttonColors(&t, k)
+	if bs := buttonStyleOf(k); bs != nil {
+		t.Button = bs
+	} else {
+		buttonColors(&t, k)
+	}
+	t.Select = selectStyleOf(k)
 	t.Menu = menuStyleOf(k, t.Dark)
 	return &t
 }
