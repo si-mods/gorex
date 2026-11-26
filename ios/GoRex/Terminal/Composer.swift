@@ -39,6 +39,15 @@ final class ComposerBar: UIView, UITextViewDelegate {
     let field = UITextView()
     /// The placeholder, which names the block the message goes to.
     private let hint = UILabel()
+    /// Right-edge fade mask for long placeholders so they fade out cleanly
+    /// before the mic/send icons instead of clipping abruptly or overlapping.
+    private let hintMask: CAGradientLayer = {
+        let g = CAGradientLayer()
+        g.colors = [UIColor.black.cgColor, UIColor.black.cgColor, UIColor.clear.cgColor]
+        g.startPoint = CGPoint(x: 0, y: 0.5)
+        g.endPoint = CGPoint(x: 1, y: 0.5)
+        return g
+    }()
     private let attach = UIButton()
     private let send = UIButton()
     /// Where the screen's mic lands, next to Send.
@@ -118,6 +127,9 @@ final class ComposerBar: UIView, UITextViewDelegate {
         hint.text = name.map { String(format: String(localized: "Message to %@"), $0) } ?? String(localized: "Message")
         hint.font = field.font
         hint.textColor = .placeholderText
+        hint.numberOfLines = 1
+        hint.lineBreakMode = .byClipping
+        hint.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         hint.isUserInteractionEnabled = false
         hint.translatesAutoresizingMaskIntoConstraints = false
         field.addSubview(hint)
@@ -188,9 +200,9 @@ final class ComposerBar: UIView, UITextViewDelegate {
             micHolder.heightAnchor.constraint(equalToConstant: 34),
             send.widthAnchor.constraint(equalToConstant: 30),
             send.heightAnchor.constraint(equalToConstant: 30),
-            hint.leadingAnchor.constraint(equalTo: field.leadingAnchor, constant: 4),
-            hint.topAnchor.constraint(equalTo: field.topAnchor, constant: 11),
-            hint.trailingAnchor.constraint(lessThanOrEqualTo: field.trailingAnchor),
+            hint.leadingAnchor.constraint(equalTo: field.frameLayoutGuide.leadingAnchor, constant: 4),
+            hint.topAnchor.constraint(equalTo: field.frameLayoutGuide.topAnchor, constant: 11),
+            hint.trailingAnchor.constraint(equalTo: field.frameLayoutGuide.trailingAnchor, constant: -4),
             field.heightAnchor.constraint(greaterThanOrEqualToConstant: Self.fieldMin),
             field.heightAnchor.constraint(lessThanOrEqualToConstant: Self.fieldMax),
         ])
@@ -203,6 +215,18 @@ final class ComposerBar: UIView, UITextViewDelegate {
 
     override func layoutSubviews() {
         super.layoutSubviews()
+        field.layoutIfNeeded()
+        if hint.bounds.width > 0, hint.intrinsicContentSize.width > hint.bounds.width {
+            let fade = min(24, hint.bounds.width * 0.25) / hint.bounds.width
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            hintMask.frame = hint.bounds
+            hintMask.locations = [0, NSNumber(value: Double(1 - fade)), 1]
+            CATransaction.commit()
+            hint.layer.mask = hintMask
+        } else {
+            hint.layer.mask = nil
+        }
         if bounds.height != lastHeight {
             lastHeight = bounds.height
             onHeightChange?(bounds.height)
@@ -401,9 +425,19 @@ final class ComposerBar: UIView, UITextViewDelegate {
                 failed(error)
                 return
             }
-            if !field.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                terminal.insert(field.text)
+            let text = field.text ?? ""
+            let hasText = !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            if hasText {
+                terminal.insert(text)
             }
+            // Separate Enter from the preceding bracketed paste / attachment paths
+            // so TUI agents (Devin CLI, Codex, Claude Code) don't swallow Return
+            // inside their paste-burst window, and clear any held key-bar modifiers
+            // so Enter is always an unmodified submit.
+            if hasText || !attachments.isEmpty {
+                try? await Task.sleep(for: .milliseconds(150))
+            }
+            terminal.release()
             terminal.send("enter")
             reset()
         }
