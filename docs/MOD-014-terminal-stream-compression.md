@@ -1,6 +1,6 @@
 ---
 name: MOD-014
-description: "Terminal data streams can compress program output and graphics to save bytes and time on slow links. Use when you change the data stream wire format, the stream resume, or a client's terminal feed."
+description: "Terminal data streams compress program output and graphics with WebSocket permessage-deflate to save bytes and time on slow links. Use when you change the data connection's WebSocket options, the stream resume, or a client's terminal feed."
 metadata:
   created: "2026-11-26"
   updated: "2026-11-26"
@@ -8,7 +8,7 @@ metadata:
 
 # MOD-014: Compressed terminal output
 
-Status: accepted. Not implemented. The user picked option 1 on 2026-11-26.
+Status: accepted. Not implemented. The user picked option 1 (WebSocket permessage-deflate) on 2026-11-26.
 
 ## Problem
 
@@ -18,125 +18,108 @@ The wire path is `internal/rexapi/data.go`. `(*stream).feedOutput` appends progr
 
 ## Background: how Rex does it
 
-The Rex 0.1.1 server binary shows the design:
+A live capture against the Rex 0.1.1 server (snapshot 2146) shows the wire mechanism is plain WebSocket permessage-deflate, not a stream-level format:
 
-- `blocks/terminal/internal/mux` queues output chunks per client. A timer runs `compressPass`, which rewrites queued output into compressed chunks before the writer sends them (`finishCompressedRewriteLocked`). `WithScrollbackCompression` compresses the scrollback replay too.
-- `blocks/terminal/internal/parzlib` is a parallel zlib encoder. It splits input into segments, compresses them with preset dictionaries, and writes an Adler-32 checksum for each segment.
-- `kittyapc.(*Transmission).Compressible` marks a Kitty graphics transmission that compression helps.
-- The compression lives in the stream content, not in the transport. That is why Tailscale and `ssh://` both benefit.
-- `zstd` appears in the binary only inside Tailscale's own control client. It is not the wire codec.
+- A data WebSocket that offers `Sec-WebSocket-Extensions: permessage-deflate` gets it, with `server_no_context_takeover` and `client_no_context_takeover` in the answer. The subprotocol stays `rex.data.terminal.v1`; HELLO, WELCOME and the stream contents are unchanged.
+- Output then arrives as binary WebSocket messages with the RSV1 bit set. Roughly 1.4 MB of `jot` output moved in about 700 KB of compressed payloads — modest because each message deflates alone, without history.
+- Small frames and handshake messages go out uncompressed. Stream byte counts are logical bytes: the client counts what `receive` delivers, so RESUME needs no compression state.
+- The binary's `parzlib` segmented encoder (`blocks/terminal/internal/parzlib`, preset dictionaries, per-segment Adler-32, `WithScrollbackCompression`, `compressed_pages`) compresses scrollback pages for memory and suspend/restore inside the mux. It does not appear in the stream: a backlogged, uncompressed capture shows no in-band compressed segments.
+- `zstd` appears only inside Tailscale's own control client. It is not the wire codec.
+
+Our own code names the one hazard: `internal/rexapi/control.go` disables compression because "Rex's iPhone app offers it, but drops the connection on a large compressed message as this library writes it (seen with block_creator.list, ~50 KB)". Apple's WebSocket client negotiates permessage-deflate on its own; the failure was on the server→client write path of a large compressed message.
 
 ## Goal
 
-- A terminal data stream between a new client and a new server compresses program output and Kitty graphics.
-- An old client talks to a new server, and a new client talks to an old server, without change. The choice is per connection.
-- `RESUME`, `collapse`, and `mark` keep their current meaning: stream positions count the bytes on the wire.
-- The iOS client inflates frames in order and counts wire bytes for `RESUME`, not inflated bytes.
+- A data WebSocket between ends that both speak permessage-deflate compresses terminal output and Kitty graphics.
+- No negotiation of ours: the WebSocket extension does it. A client or server without it sees a raw stream, with no flag, subprotocol or retry.
+- `RESUME`, `collapse`, `mark` and the reconnect-token path keep their meaning untouched: they count logical stream bytes.
+- The known large-compressed-message drop is measured again under the shipped settings, and the design avoids it.
 
 ## Non-goals
 
-- The control connection stays JSON. Its messages are small.
-- `bytes` streams for uploads, downloads and tunnels stay as they are. `gorex.upload.deflate-raw` already covers upload bodies.
+- The control connection stays uncompressed. Its messages are mostly small, and the ~50 KB drop was seen exactly there. Enabling it on data does not imply enabling it on control.
+- `bytes` streams for uploads, downloads and tunnels stay as they are.
 - Client-to-server input stays small and uncompressed.
-- The web client, the desktop app, `internal/cli` and `internal/rexpeer` keep `rex.data.terminal.v1` in this phase.
+- No server-internal scrollback compression. Rex's `parzlib` role is out of scope.
 - No user-facing setting in this phase.
 
 ## Design
 
 ### Behavior
 
-The user sees nothing new. On a slow link, output needs less data and shows up sooner. A stream that floods the connection now reaches `collapse` later, because `collapseBytes` counts compressed bytes.
+The user sees nothing new. On a slow link, output needs less data and shows up sooner.
 
 ### Negotiation
 
-1. The server lists `gorex.terminal.deflate-raw` in the control `welcome` `features`, next to `gorex.upload.deflate-raw`.
-2. A client that sees the feature asks for the subprotocol `gorex.data.terminal.v1` in `data.connect` or in `session.bootstrap` `data_tickets`. A client that does not see it asks for `rex.data.terminal.v1` as before.
-3. `methodDataConnect` stores the subprotocol on the ticket as it does today. `dataHello` accepts `gorex.data.terminal.v1` when the ticket names it, and marks the stream compressed.
-4. The WebSocket handshake echoes the subprotocol. `dataResume` keeps the existing check that a resumed connection offers the same subprotocol.
-5. A client that tries the new subprotocol on an old server gets WELCOME, then a close with `data provider unavailable`, because the old `dataHello` accepts only `rex.data.terminal.v1`. The client retries with `rex.data.terminal.v1`. The feature flag makes this rare.
+1. `internal/rexapi/data.go` accepts `permessage-deflate` on `/api/data` with `CompressionNoContextTakeover`, matching what the Rex server negotiates. `CompressionThreshold` keeps the handshake messages and small frames raw.
+2. The iOS client changes nothing on the wire: `URLSessionWebSocketTask` offers the extension itself and inflates transparently. It records whether the upgrade answer carried the extension, for diagnostics.
+3. Go clients (`internal/rexapi/cli.go` `dataHello`, `internal/rexpeer`, the desktop) opt in with the same no-context-takeover mode in their `websocket.DialOptions`.
+4. Old mixes need no table: a server that ignores the extension answers a raw stream, and a client that does not offer it gets one.
 
-### Wire format
+### The large-message drop
 
-A compressed run is one counted binary frame in the stream:
+The reported failure was a ~50 KB compressed message written by `coder/websocket` read by Apple's client. Two changes should cover it, both verified on a device before this ships:
 
-```
-ESC _ "rexz" ; <nonce> ; <rawlen> ; <clen> ESC \ <clen payload bytes>
-```
+- `CompressionNoContextTakeover` emits each message as a fresh deflate stream, the form the Rex server writes. Whether Apple's client accepts that form past ~50 KB is untested — the device test decides.
+- `(*stream).write` already chunks `s.buf` into `maxChunk` (64 KiB) messages. Compressed writes cap at a lower `compressedChunk` (32 KiB wire bytes), so no single compressed message approaches the size that dropped. Splitting is free: each message is an independent deflate stream under no-context-takeover.
 
-- `<nonce>` is the channel nonce from WELCOME, as in `rex1` messages. A frame with another nonce is program output and is consumed and ignored, like a `rex1` message with a wrong nonce.
-- The header is ASCII digits and `;`. It ends at `ESC \`, so the parser does not scan the payload for a terminator.
-- The payload is `<clen>` bytes of raw DEFLATE (RFC 1951). It inflates to exactly `<rawlen>` bytes of the stream. Each frame is a complete, independent deflate stream. No frame depends on earlier data.
-- The parser takes the frame and the payload out of the stream, inflates it, and feeds the result as ordinary stream bytes. A compressed Kitty graphics transmission needs no special case.
-
-Rex uses zlib streams with preset dictionaries and segmented Adler-32 checksums. GoRex uses plain raw DEFLATE first, which matches `deflate-raw` on uploads. A shared dictionary is a later option in "Open questions".
+If a device still drops on these settings, the fallback is option 2 below (content frames), not a per-client transport exception that the upgrade response cannot express.
 
 ### Server
 
-`internal/rexapi/data.go` gains a small compressing buffer on a compressed stream:
+`internal/rexapi/data.go` and `clients.go` (whichever accepts `/api/data`) set `CompressionMode: websocket.CompressionNoContextTakeover` on the data `Accept`, and `CompressionThreshold` at a few hundred bytes. `(*stream).write` splits at `compressedChunk` when the negotiated compression is on (`ws.CompressionMode()` reports it on the conn), else at `maxChunk`. Everything else — `s.buf`, `appendBytes`, `dropUnsent`, `collapse`, `feedResumed`, `applyResync` — is unchanged, because the WebSocket layer compresses under the byte stream.
 
-- `feedOutput` feeds `s.vt` the raw bytes as today, then hands the bytes to the buffer instead of `appendBytes`.
-- The buffer emits a `rexz` frame into `s.buf` when the pending raw run reaches `zMin` (4 KiB), or before any raw append must follow it. Pending bytes below `zMin` go out raw at a flush.
-- Raw appends stay raw: `rex1` messages from `appendApc`, `resyncReset`, and WELCOME. `flushPending` and `applyResync` flush the compressor first, so raw messages keep their order after the output.
-- The Ghostty snapshot and the resync snapshot go through the buffer like other program bytes. `mark` still points to the end of the newest snapshot, now a frame boundary.
-- `appendBytes`, `write`, `dropUnsent`, `collapse` and the resume path do not change. They count `s.buf` bytes, which now hold a mix of raw bytes and frames.
-
-Limits: pending raw data caps at `zMaxPending` (256 KiB), a frame payload caps at `maxFrame` (256 KiB compressed, 4 MiB inflated). Compression uses `compress/flate` at default speed. `klauspost/compress` is a possible faster codec later, not a new dependency now.
+No type or field on the ticket, HELLO, WELCOME or subprotocol changes.
 
 ### iOS client
 
-`TerminalStream.feed` in `ios/GoRex/Rex/DataStream.swift` learns the `rexz` marker:
+`TerminalStream.feed` and `DataHandshake` are untouched: delivered bytes are already inflated. `TerminalStream` reads `Sec-WebSocket-Extensions` from the upgrade `HTTPURLResponse`, stores it, and logs it in the ConnectionLog WELCOME line; a `read` drop on a compressed connection notes that a large compressed message may have dropped the socket, mirroring the control.go comment. That diagnostic piece ships on its own first, since it is useful whether or not the server compresses.
 
-1. Find the marker, emit `.output` for the bytes before it, parse the header up to `ESC \`.
-2. If the nonce differs, drop the header and the next `clen` bytes.
-3. Wait for `clen` payload bytes across messages. `clen` above `maxFrame` ends the stream.
-4. Inflate, check `rawlen`, and feed the result through `feed` again, so `.snapshot`, `.output` and `.message` items come out in order.
-5. The `received` count for `DataHandshake.resume` still counts WebSocket bytes, before inflation.
+### Other clients
 
-`TerminalSession` and `DataStream` pick the subprotocol from the `welcome` features and pass it through `data.connect` and `session.bootstrap`. `RexProtocol.gen.swift` gets the new constant from `internal/rexproto/protocol.json` through `render.go`.
-
-Decompression uses the `Compression` framework (`COMPRESSION_ZLIB` reads raw DEFLATE), with `zlib` `inflate` as the fallback if the framework disagrees.
+`internal/cli`, the desktop app and `rexpeer` opt in per `websocket.DialOptions`. The web client gets compression wherever its browser `WebSocket` enables it, which is automatic and needs no code.
 
 ## Options for the irreversible choice
 
-`docs/irreversible.md` applies: this adds a wire-protocol element that shipped builds must agree on. Pick one.
+`docs/irreversible.md` applies: the choice fixes what shipped builds do on the wire. Pick one.
 
-1. **Recommended: `gorex.data.terminal.v1` subprotocol plus the counted `rexz` frame.** A GoRex-named subprotocol cannot collide with a future `rex.data.terminal.v2` that means something else. The counted frame keeps the full compression ratio and handles the snapshot path for free.
-2. **`rex.data.terminal.v2` subprotocol plus the `rexz` frame.** The name follows the `v1` lineage, but the `rex.*` namespace belongs to Rex. If Rex ships a different `v2`, a GoRex server would honor it with GoRex meaning.
-3. **`rexz` frame avoided: base64 deflate inside a `rex1` JSON message (`{"type":"z","d":"…"}`).** No new framing on the client. It costs about 33% more wire bytes per frame, hits the 1 MiB `rex1` cap sooner, and gives `.message` items that the consumer must turn back into output, including for the snapshot.
-4. **Whole-stream deflate under the existing subprotocol.** Simplest writer, but `RESUME` replays stream bytes from a count, and a mid-deflate-stream position cannot resume without checkpoints. It would change the resume semantics every client relies on.
+1. **Recommended and picked: WebSocket permessage-deflate, no context takeover.** What Rex does. No GoRex protocol element at all — negotiation, framing and fallback are the standard WebSocket extension, and stream byte counts stay logical, so RESUME is free. The cost is the known Apple-side large-message drop, handled above by message capping and a device test, and the limit that compression exists only where the transport is a WebSocket.
+2. **Counted `rexz` content frames under a `gorex.data.terminal.v1` subprotocol** (the earlier draft). Independent of the transport and of WebSocket bugs, but it is a new private protocol: subprotocol, feature flag, frame parser, inflate and order logic on iOS, and a resume-mid-frame rule.
+3. **Hybrid: permessage-deflate where it negotiates, `rexz` only where it cannot.** Two formats to keep. Do this only if the device test shows WebSocket compression unreachable on iOS.
 
 ## Migration
 
 | Mix | Result |
 | --- | --- |
-| New app, new server | Feature seen, `gorex.data.terminal.v1`, compressed stream. |
-| New app, old server | No feature in `welcome`, app requests `rex.data.terminal.v1`, raw stream. A guessed new subprotocol gets WELCOME then close, and the app retries `v1`. |
-| Old app, new server | App requests `v1`, server sends raw. The server never sends `rexz` on `v1`. |
-| Rex (superlogical) client, GoRex server | It offers its own subprotocols. `gorex.data.terminal.v1` is GoRex's name. |
-| Web, desktop, CLI, `rexpeer` | They request `v1` and see no change. |
+| New app, new server | Extension negotiated, compressed messages. |
+| New app, old server | Server ignores the extension, raw stream. |
+| Old app, new server | App may or may not offer the extension; either way the stream parses as before. |
+| Rex (superlogical) client, GoRex server | Rex's client offers permessage-deflate and gets compressed messages — the form it already reads. |
+| Web, desktop, CLI, `rexpeer` | Each opts in when convenient; nothing breaks before. |
 
-Nothing is written to disk. A server upgraded in place keeps existing streams on `v1`, and new connections negotiate on their own.
+Nothing is written to disk. A server upgraded in place keeps open streams as they are, and new data connections negotiate per connection.
 
 ## Security
 
-- `clen` and `rawlen` are attacker-controlled fields for a malicious server or a MITM on a plain link. The client caps `clen` at `maxFrame` and `rawlen` at 4 MiB, and drops the stream on a mismatch after inflation.
-- The channel nonce keeps a program's output from impersonating `rexz`, as `rex1` nonces do today.
-- Compression can worsen a chosen-plaintext leak on encrypted transports, as any compression can. The streams carry terminal output the client already sees. No new secret crosses them.
+- Compression under TLS or WireGuard can widen a chosen-plaintext leak, as any compression can. The stream carries terminal output the client already sees; no new secret crosses it.
+- A malicious server can send inflated bombs at the WebSocket layer; `URLSessionWebSocketTask.maximumMessageSize` (1 MiB) already caps delivered messages, and Go clients keep `SetReadLimit`.
+- `no_context_takeover` avoids compressor state that could bleed data between streams that share a socket pool.
 
 ## Tests
 
-- `internal/rexapi`: contract test that a `gorex.data.terminal.v1` ticket gets frames and a `v1` ticket does not. Round-trip: feed output, inflate the frames, get the bytes back. Order test: `rex1` message between two runs lands correctly. Resume test: RESUME mid-frame replays the same bytes. Snapshot test on a compressed stream.
-- `ios/GoRexTests`: `TerminalStream.feed` with frames split across deliveries, nonce mismatch, `clen` over the cap, and a compressed `GHOSTSNP`. `RexParityTests` and `FakeRex` get a `rexz` helper. `WhatToTest.md` bullet in each locale.
+- `internal/rexapi`: accept a data connection with a deflating client and assert the same stream bytes arrive; assert `CompressionNoContextTakeover` is what the server negotiates; assert messages split at `compressedChunk`; RESUME mid-stream replays identical bytes with and without compression.
+- iOS device check before ship: a data stream that carries several compressed messages well past 50 KiB — a big `GHOSTSNP` scrollback replay — must not drop. This is the gate for option 1 versus option 2.
 - Manual: on `ssh macmini`, build and run on a device over a slow link (Network Link Conditioner). Compare bytes for `cat` of a large file and a Kitty image. Check `docs/invariants.md` items on the data stream, if any, and read `docs/lessons.md` before the PR.
 
 ## Phases
 
-1. Server: negotiation, `rexz` writer, contract tests.
-2. iOS: `TerminalStream` frames, subprotocol choice, tests.
-   The two ship in one PR if review stays easy.
+1. iOS diagnostic logging for the negotiated extension and the compressed-drop hint (independent, ships first).
+2. Server: accept permessage-deflate on `/api/data`, chunk compressed writes, contract tests.
+3. Optional: opt-in on the Go clients (`internal/cli`, desktop, `rexpeer`).
+4. Optional: control connection compression, once the data path proves the drop is gone.
 
 ## Open questions
 
-1. The irreversible choice is made: option 1, `gorex.data.terminal.v1` plus the `rexz` frame.
-2. A shared preset dictionary for small frames, as Rex's `parzlib` uses. It improves the ratio on small runs and needs the dictionary on both ends. Do it as a later revision, or skip it.
-3. Whether `gorex.data.terminal.v1` should also appear on the web client's `web/src/pane.ts` and on `internal/cli` in a later phase.
+1. The irreversible choice is made: option 1, WebSocket permessage-deflate with no context takeover.
+2. Exact `compressedChunk` value: 32 KiB is a guess below the reported 50 KB; the device test may push it lower.
+3. Whether to enable the same on `bytes` streams (uploads/downloads) later; `gorex.upload.deflate-raw` already covers upload bodies.
