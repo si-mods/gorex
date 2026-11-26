@@ -79,12 +79,28 @@ No type or field on the ticket, HELLO, WELCOME or subprotocol changes.
 
 `internal/cli`, the desktop app and `rexpeer` opt in per `websocket.DialOptions`. The web client gets compression wherever its browser `WebSocket` enables it, which is automatic and needs no code.
 
+## Expected gain
+
+Every compressed message deflates alone (no context takeover), so there is no cross-message history to borrow. The win is real but bounded:
+
+| Load | Expected ratio | Basis |
+| --- | --- | --- |
+| Text floods: logs, `cat` of a large file | ~2–4x | Measured on the Rex server: ~1.4 MB of `jot` output took ~700 KB on the wire (2x); ANSI text at message granularity runs a bit better on varied content |
+| Ghostty snapshot and scrollback replay | ~2–5x | Structured cells plus repeated text |
+| Kitty graphics (base64) | ~1.3x | Mostly earns back the base64 tax |
+| Already-compressed bytes (a binary `cat`) | ~1x | Deflate degenerates but does not hurt |
+| Interactive typing | none | Below `CompressionThreshold`, messages go raw with identical latency |
+
+So on a slow link a flood arrives in about half to a third of the time, and a burst reaches the `collapse` backlog about twice as late. A rolling-window codec would beat this (~7–12x on text), which is what a future context-takeover or dictionary design could revisit — at the price of the state this design avoids.
+
+CPU cost is a few hundred microseconds per 64 KiB message and invisible next to the link.
+
 ## Options for the irreversible choice
 
 `docs/irreversible.md` applies: the choice fixes what shipped builds do on the wire. Pick one.
 
 1. **Recommended and picked: WebSocket permessage-deflate, no context takeover.** What Rex does. No GoRex protocol element at all — negotiation, framing and fallback are the standard WebSocket extension, and stream byte counts stay logical, so RESUME is free. The cost is the known Apple-side large-message drop, handled above by message capping and a device test, and the limit that compression exists only where the transport is a WebSocket.
-2. **Counted `rexz` content frames under a `gorex.data.terminal.v1` subprotocol** (the earlier draft). Independent of the transport and of WebSocket bugs, but it is a new private protocol: subprotocol, feature flag, frame parser, inflate and order logic on iOS, and a resume-mid-frame rule.
+2. **Counted `rexz` content frames under a `gorex.data.terminal.v1` subprotocol**, kept as [MOD-015](MOD-015-terminal-rexz-frames.md). Independent of the transport and of WebSocket bugs, but it is a new private protocol: subprotocol, feature flag, frame parser, inflate and order logic on iOS, and a resume-mid-frame rule.
 3. **Hybrid: permessage-deflate where it negotiates, `rexz` only where it cannot.** Two formats to keep. Do this only if the device test shows WebSocket compression unreachable on iOS.
 
 ## Migration
