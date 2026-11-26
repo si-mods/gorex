@@ -10,6 +10,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 `web` job of `.github/workflows/ci.yml` fails it.
 
 ## en-US
+- Fixed SSH host-key, password, and install-key alerts not appearing when adding an SSH host inside Settings > Remote Hosts.
 - Toggling Composer Mode in Settings > Terminal now applies immediately to already-open terminals without needing to switch tabs.
 - Fixed the Send arrow inside Composer Mode's voice view being invisible (white on white) in dark mode.
 - Press and hold anywhere on the Composer bar to dictate push-to-talk: hold to speak and release to convert straight into text in the message field.
@@ -157,6 +158,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - Settings: choose System, Light or Dark right in the Interface row, and Minimum Contrast from a menu. A space's Color menu shows each color's dot and marks the current one.
 
 ## zh-Hans
+- 修复在「设置 › 远程主机」中添加 SSH 主机时，主机密钥信任、密码登录与安装密钥弹窗被设置页遮挡而无法弹出导致一直超时的问题。
 - 在「设置 › 终端」开关 Composer 模式现在会立即在当前已打开的终端生效，无需切出或重开标签页。
 - 修复 Composer 语音视图右侧发送按钮在深色模式下箭头与底色同为白色导致只看到一个白点的问题。
 - Composer 模式支持长按消息栏按住说话：长按直接开始语音录入，松开自动转为文字写入输入框。

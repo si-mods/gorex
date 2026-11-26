@@ -1,4 +1,5 @@
 import Foundation
+import UIKit
 import XCTest
 
 /// The ssh:// grammar (docs/IOS-023-ssh-hosts.md, The address): what it
@@ -367,5 +368,63 @@ nonisolated final class SSHReviewTests: XCTestCase {
             XCTAssertTrue(HostConfig.SSH.asksOneTimeCode(p), p)
         }
         XCTAssertFalse(HostConfig.SSH.asksOneTimeCode("Password:"))
+    }
+
+    /// TopAlertPresenter resolves the topmost presented sheet instead of
+    /// the root view controller, so SSH trust/password alerts still
+    /// present when Settings › Remote Hosts is open, and defers while a
+    /// sheet or alert is already on top or mid-transition.
+    @MainActor func testTopAlertPresenterOverSheet() {
+        final class FakeVC: UIViewController {
+            var fakePresented: UIViewController?
+            var fakePresenting = false
+            var fakeDismissing = false
+            override var presentedViewController: UIViewController? { fakePresented }
+            override var isBeingPresented: Bool { fakePresenting }
+            override var isBeingDismissed: Bool { fakeDismissing }
+        }
+
+        let root = FakeVC()
+        // No sheet: root itself is the presenter target.
+        XCTAssertTrue(TopAlertPresenter.topViewController(from: root) === root)
+
+        // With a sheet presented (like Settings), the sheet is the target,
+        // not the underlying root view controller.
+        let settingsSheet = FakeVC()
+        root.fakePresented = settingsSheet
+        XCTAssertTrue(TopAlertPresenter.topViewController(from: root) === settingsSheet)
+
+        // While a child sheet (like Add Host) is mid-dismissal, defer.
+        let addHostSheet = FakeVC()
+        addHostSheet.fakeDismissing = true
+        settingsSheet.fakePresented = addHostSheet
+        XCTAssertNil(TopAlertPresenter.topViewController(from: root))
+
+        // While a sheet is mid-presentation, defer.
+        addHostSheet.fakeDismissing = false
+        addHostSheet.fakePresenting = true
+        XCTAssertNil(TopAlertPresenter.topViewController(from: root))
+
+        // When another UIAlertController is already on top, defer.
+        let existingAlert = UIAlertController(title: "Other", message: nil, preferredStyle: .alert)
+        settingsSheet.fakePresented = existingAlert
+        XCTAssertNil(TopAlertPresenter.topViewController(from: root))
+
+        // Once dismissed, settingsSheet is ready to present again.
+        settingsSheet.fakePresented = nil
+        XCTAssertTrue(TopAlertPresenter.topViewController(from: root) === settingsSheet)
+
+        // ObservableAlertController reports unexpected disappearances unless handled.
+        let unhandled = ObservableAlertController(title: "Trust", message: nil, preferredStyle: .alert)
+        var fired = 0
+        unhandled.onUnexpectedDismiss = { fired += 1 }
+        unhandled.viewDidDisappear(false)
+        XCTAssertEqual(fired, 1)
+
+        let handled = ObservableAlertController(title: "Trust", message: nil, preferredStyle: .alert)
+        handled.onUnexpectedDismiss = { fired += 1 }
+        handled.markHandled()
+        handled.viewDidDisappear(false)
+        XCTAssertEqual(fired, 1)
     }
 }
