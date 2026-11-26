@@ -1178,8 +1178,21 @@ final class TerminalHost: UIView, UIGestureRecognizerDelegate {
     /// Where the screen's mic lands: the pinned bar in Composer Mode,
     /// the key bar's own spot without it.
     var micTarget: UIView { composer?.micHolder ?? terminal.bar.mic }
+    /// Where the screen's voice capsule lands while dictating: inline in the
+    /// compose bar when Composer Mode is on, else in the key bar.
+    var voiceTarget: UIView { composer?.voiceHolder ?? terminal.bar.voice }
     /// The pinned bar's field, for the terminal's keyboard redirect.
     var composerField: UITextView? { composer?.field }
+
+    /// Transitions either the inline compose bar or the key bar to the voice
+    /// dictation state.
+    func setVoice(active: Bool) {
+        if let composer {
+            composer.setVoice(active: active)
+        } else {
+            terminal.bar.setVoice(active: active)
+        }
+    }
 
     /// The compose bar, pinned over the key bar by Composer Mode.
     private func openComposer() {

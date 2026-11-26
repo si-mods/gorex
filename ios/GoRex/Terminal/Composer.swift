@@ -43,6 +43,11 @@ final class ComposerBar: UIView, UITextViewDelegate {
     private let send = UIButton()
     /// Where the screen's mic lands, next to Send.
     let micHolder = UIView()
+    /// Where the screen's voice controls land while dictating, replacing the
+    /// input row inline inside the compose capsule instead of the key bar.
+    let voiceHolder = UIView()
+    private let inputRow = UIStackView()
+    private var voiceActive = false
     /// The attachments' thumbnails, over the input row while there are any.
     private let strip = UIScrollView()
     private let thumbs = UIStackView()
@@ -138,14 +143,24 @@ final class ComposerBar: UIView, UITextViewDelegate {
         strip.showsHorizontalScrollIndicator = false
         strip.isHidden = true
 
-        let input = UIStackView(arrangedSubviews: [attach, field, micHolder, send])
-        input.alignment = .center
-        input.spacing = 6
-        let body = UIStackView(arrangedSubviews: [strip, input])
+        for v in [attach, field, micHolder, send] { inputRow.addArrangedSubview(v) }
+        inputRow.alignment = .center
+        inputRow.spacing = 6
+        let body = UIStackView(arrangedSubviews: [strip, inputRow])
         body.axis = .vertical
         body.spacing = 8
         body.translatesAutoresizingMaskIntoConstraints = false
         glass.contentView.addSubview(body)
+
+        voiceHolder.alpha = 0
+        voiceHolder.isHidden = true
+        voiceHolder.translatesAutoresizingMaskIntoConstraints = false
+        glass.contentView.addSubview(voiceHolder)
+
+        let micDown = PressWatcher(target: self, action: #selector(pressMic))
+        micDown.minimumPressDuration = 0
+        micDown.cancelsTouchesInView = false
+        micHolder.addGestureRecognizer(micDown)
 
         attach.translatesAutoresizingMaskIntoConstraints = false
         field.translatesAutoresizingMaskIntoConstraints = false
@@ -157,6 +172,10 @@ final class ComposerBar: UIView, UITextViewDelegate {
             body.trailingAnchor.constraint(equalTo: glass.contentView.trailingAnchor, constant: -10),
             body.topAnchor.constraint(equalTo: glass.contentView.topAnchor, constant: Self.vPad),
             body.bottomAnchor.constraint(equalTo: glass.contentView.bottomAnchor, constant: -Self.vPad),
+            voiceHolder.leadingAnchor.constraint(equalTo: glass.contentView.leadingAnchor),
+            voiceHolder.trailingAnchor.constraint(equalTo: glass.contentView.trailingAnchor),
+            voiceHolder.topAnchor.constraint(equalTo: inputRow.topAnchor),
+            voiceHolder.bottomAnchor.constraint(equalTo: inputRow.bottomAnchor),
             thumbs.leadingAnchor.constraint(equalTo: strip.contentLayoutGuide.leadingAnchor),
             thumbs.trailingAnchor.constraint(equalTo: strip.contentLayoutGuide.trailingAnchor),
             thumbs.topAnchor.constraint(equalTo: strip.contentLayoutGuide.topAnchor),
@@ -192,6 +211,39 @@ final class ComposerBar: UIView, UITextViewDelegate {
 
     /// Where an open lands: the field's keyboard.
     func focus() { field.becomeFirstResponder() }
+
+    /// Cross-fades the input row into the inline voice capsule while dictating,
+    /// leaving the key bar below untouched.
+    func setVoice(active: Bool) {
+        guard active != voiceActive else { return }
+        voiceActive = active
+        if active {
+            voiceHolder.isHidden = false
+            voiceHolder.transform = CGAffineTransform(scaleX: 0.94, y: 0.94)
+            inputRow.isUserInteractionEnabled = false
+            UIView.animate(withDuration: 0.28, delay: 0, usingSpringWithDamping: 0.86, initialSpringVelocity: 0) {
+                self.inputRow.alpha = 0
+                self.inputRow.transform = CGAffineTransform(scaleX: 0.96, y: 0.96)
+                self.voiceHolder.alpha = 1
+                self.voiceHolder.transform = .identity
+            }
+        } else {
+            inputRow.isUserInteractionEnabled = true
+            UIView.animate(withDuration: 0.24, delay: 0, usingSpringWithDamping: 0.9, initialSpringVelocity: 0) {
+                self.inputRow.alpha = 1
+                self.inputRow.transform = .identity
+                self.voiceHolder.alpha = 0
+                self.voiceHolder.transform = CGAffineTransform(scaleX: 0.94, y: 0.94)
+            } completion: { _ in
+                if !self.voiceActive { self.voiceHolder.isHidden = true }
+            }
+        }
+    }
+
+    @objc private func pressMic(_ g: UILongPressGestureRecognizer) {
+        guard g.state == .began else { return }
+        Haptics.tapped()
+    }
 
     /// What the mic recognised, into the field where it can be read and
     /// edited before Send, spaced from what is already there.
