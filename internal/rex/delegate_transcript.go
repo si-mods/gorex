@@ -27,7 +27,7 @@ type transcriptEvent struct {
 // transcript file so delegated turns return clean assistant text without
 // scraping ANSI from the PTY.
 type agentTranscript interface {
-	FindFile(dir, tty, home, agentSession string, startedAt time.Time) string
+	FindFile(dir, tty, home, configDir, agentSession string, startedAt time.Time) string
 	ParseRow(line []byte) transcriptEvent
 }
 
@@ -53,11 +53,14 @@ func transcriptAdapterFor(agentID string) agentTranscript {
 // yetone/magpie's internal/claudetui/transcript.go).
 type claudeTranscript struct{}
 
-func (claudeTranscript) FindFile(dir, _, home, agentSession string, _ time.Time) string {
+func (claudeTranscript) FindFile(dir, _, home, configDir, agentSession string, _ time.Time) string {
 	if agentSession == "" {
 		return ""
 	}
-	base := os.Getenv("CLAUDE_CONFIG_DIR")
+	base := configDir
+	if base == "" {
+		base = os.Getenv("CLAUDE_CONFIG_DIR")
+	}
 	if base == "" {
 		if home == "" {
 			home, _ = os.UserHomeDir()
@@ -165,7 +168,7 @@ func isClaudePromptMessage(raw json.RawMessage) bool {
 // existing ompDirs and ompSlug helpers (internal/rex/omp.go).
 type ompTranscript struct{}
 
-func (ompTranscript) FindFile(dir, tty, home, agentSession string, startedAt time.Time) string {
+func (ompTranscript) FindFile(dir, tty, home, _, agentSession string, startedAt time.Time) string {
 	env := func(k string) string { return os.Getenv(k) }
 	if tty != "" {
 		if _, _, file := ompSession(env, dir, nil, tty, home); file != "" {
@@ -247,7 +250,7 @@ func (ompTranscript) ParseRow(b []byte) transcriptEvent {
 // <CODEX_HOME or home/.codex>/sessions/.
 type codexTranscript struct{}
 
-func (codexTranscript) FindFile(_, _, home, agentSession string, startedAt time.Time) string {
+func (codexTranscript) FindFile(_, _, home, _, agentSession string, startedAt time.Time) string {
 	base := os.Getenv("CODEX_HOME")
 	if base == "" {
 		if home == "" {
@@ -306,7 +309,7 @@ func (codexTranscript) ParseRow(b []byte) transcriptEvent {
 // <agyDir>/brain/<id>/.system_generated/logs/transcript_full.jsonl.
 type agyTranscript struct{}
 
-func (agyTranscript) FindFile(_, _, home, agentSession string, startedAt time.Time) string {
+func (agyTranscript) FindFile(_, _, home, _, agentSession string, startedAt time.Time) string {
 	if home == "" {
 		home, _ = os.UserHomeDir()
 	}
@@ -350,7 +353,7 @@ func (agyTranscript) ParseRow(b []byte) transcriptEvent {
 // with DEVIN_SESSION_STORE=files at <data>/devin/cli/sessions/<id>/log.jsonl.
 type devinTranscript struct{}
 
-func (devinTranscript) FindFile(_, _, home, agentSession string, startedAt time.Time) string {
+func (devinTranscript) FindFile(_, _, home, _, agentSession string, startedAt time.Time) string {
 	base := os.Getenv("DEVIN_SESSIONS_DIR")
 	if base == "" {
 		if runtime.GOOS == "windows" {

@@ -606,14 +606,28 @@ func (c *Client) AgentsList() (r AgentsResult, err error) {
 // Delegate starts a delegated coding-agent tab on the server
 // (CapabilityDelegate, docs/MOD-016-peer-delegation.md).
 func (c *Client) Delegate(opt DelegateOptions) (r DelegateResult, err error) {
-	err = c.call(Request{Op: "delegate", Delegate: &opt}, &r)
+	timeout := delegateCallTimeout(opt.Async, opt.TimeoutMs)
+	err = c.callWithin(Request{Op: "delegate", Delegate: &opt}, &r, timeout)
 	return
 }
 
 // DelegateSend sends a warm follow-up prompt to a live delegated session.
 func (c *Client) DelegateSend(opt DelegateSendOptions) (r DelegateResult, err error) {
-	err = c.call(Request{Op: "delegate.send", DelegateSend: &opt}, &r)
+	timeout := delegateCallTimeout(opt.Async, opt.TimeoutMs)
+	err = c.callWithin(Request{Op: "delegate.send", DelegateSend: &opt}, &r, timeout)
 	return
+}
+
+func delegateCallTimeout(async bool, timeoutMs int) time.Duration {
+	if async {
+		return max(callTimeout.get(), 45*time.Second)
+	}
+	base := delegateDefaultTimout
+	if timeoutMs > 0 {
+		base = time.Duration(timeoutMs) * time.Millisecond
+	}
+	// Allow extra headroom for TUI startup, paste delivery, and remote round-trip.
+	return base + 30*time.Second
 }
 
 // DelegateResult fetches the latest status and extracted output of a

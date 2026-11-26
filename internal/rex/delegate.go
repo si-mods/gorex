@@ -22,8 +22,9 @@ import (
 // Tunable timings for the interactive TUI driver; tests shorten these so
 // fake TUI tests finish in milliseconds.
 var (
-	delegateReadyWait     = 15 * time.Second
-	delegatePasteDelay    = 150 * time.Millisecond
+	delegateReadyWait     = 20 * time.Second
+	delegatePasteDelay    = 200 * time.Millisecond
+	delegateEnterWait     = 2 * time.Second
 	delegatePollInterval  = 100 * time.Millisecond
 	delegateDefaultTimout = 10 * time.Minute
 )
@@ -43,13 +44,15 @@ type delegatedRun struct {
 	filePath     string
 	fileOffset   int64
 
-	turnSeq  int
-	status   string // "running", "completed", "blocked", "failed", "timeout"
-	result   string
-	errText  string
-	turnDone chan struct{}
-	stopCh   chan struct{}
-	stopOnce sync.Once
+	turnSeq     int
+	promptCount int
+	promptAckCh chan struct{}
+	status      string // "running", "completed", "blocked", "failed", "timeout"
+	result      string
+	errText     string
+	turnDone    chan struct{}
+	stopCh      chan struct{}
+	stopOnce    sync.Once
 }
 
 func (d *delegatedRun) stop() {
@@ -183,9 +186,10 @@ func (s *Server) doDelegate(req Request, peer string, _ *keptConn) (any, error) 
 	turnDone := run.beginTurn()
 	go s.tailDelegate(run, ss)
 
-	// Wait briefly for the TUI to draw before pasting the prompt.
-	waitTUIReady(ss, delegateReadyWait)
-	if err := deliverTurnPrompt(ss, opt.Prompt); err != nil {
+	// Wait for the interactive TUI to finish drawing its input prompt before
+	// pasting so Windows PowerShell / ConPTY init bytes do not trigger early paste.
+	waitTUIReady(ss, agentID, delegateReadyWait)
+	if err := deliverTurnPrompt(run, ss, opt.Prompt); err != nil {
 		run.finishTurn("failed", "", err.Error())
 		return run.snapshot(ss), nil
 	}
@@ -227,7 +231,7 @@ func (s *Server) doDelegateSend(req Request, _ string, _ *keptConn) (any, error)
 		return nil, fmt.Errorf("rex: session %q is not a delegated session", opt.SID)
 	}
 	turnDone := run.beginTurn()
-	if err := deliverTurnPrompt(ss, opt.Prompt); err != nil {
+	if err := deliverTurnPrompt(run, ss, opt.Prompt); err != nil {
 		run.finishTurn("failed", "", err.Error())
 		return run.snapshot(ss), nil
 	}
@@ -468,23 +472,74 @@ func (s *Server) killSession(sid string) error {
 	return err
 }
 
-func waitTUIReady(ss *session, maxWait time.Duration) {
+func waitTUIReady(ss *session, agentID string, maxWait time.Duration) {
 	deadline := time.Now().Add(maxWait)
 	for time.Now().Before(deadline) {
 		in := ss.info()
-		if in.Exited || in.Output > 0 {
+		if in.Exited {
 			return
 		}
-		time.Sleep(50 * time.Millisecond)
+		if agentID == "claude" {
+			if in.Status != nil && in.Status.State == "idle" {
+				return
+			}
+			if in.Output > 0 {
+				txt := sessionPlainText(ss)
+				if strings.Contains(txt, "❯") || strings.Contains(txt, "> ") {
+					return
+				}
+			}
+		} else if in.Output > 0 {
+			return
+		}
+		time.Sleep(80 * time.Millisecond)
 	}
 }
 
-func deliverTurnPrompt(ss *session, prompt string) error {
+func deliverTurnPrompt(d *delegatedRun, ss *session, prompt string) error {
+	d.mu.Lock()
+	before := d.promptCount
+	if d.promptAckCh == nil {
+		d.promptAckCh = make(chan struct{}, 1)
+	}
+	ackCh := d.promptAckCh
+	d.mu.Unlock()
+	// Drain any stale ack signal.
+	select {
+	case <-ackCh:
+	default:
+	}
+
 	if err := ss.paste(prompt); err != nil {
 		return err
 	}
 	time.Sleep(delegatePasteDelay)
-	ss.write([]byte("\r"))
+
+	// Retry Return up to 4 times until the transcript confirms the prompt
+	// arrived (matching yetone/magpie's claudetui/tui.go:1399) or the turn
+	// already completed.
+	for try := 0; try < 4; try++ {
+		ss.write([]byte("\r"))
+		if d.adapter == nil {
+			return nil
+		}
+		timer := time.NewTimer(delegateEnterWait)
+		select {
+		case <-ackCh:
+			timer.Stop()
+			return nil
+		case <-ss.done:
+			timer.Stop()
+			return nil
+		case <-timer.C:
+			d.mu.Lock()
+			accepted := d.promptCount > before || d.status != "running"
+			d.mu.Unlock()
+			if accepted {
+				return nil
+			}
+		}
+	}
 	return nil
 }
 
@@ -527,11 +582,21 @@ func (s *Server) pollTranscriptOnce(d *delegatedRun, ss *session, partial *strin
 	d.mu.Unlock()
 
 	if filePath == "" {
-		tty := ""
-		if ss != nil && ss.p != nil {
-			tty = ss.p.tty()
+		tty, cfgDir := "", ""
+		if ss != nil {
+			if ss.p != nil {
+				tty = ss.p.tty()
+			}
+			in := ss.info()
+			cfgDir = in.AgentConfigDir
+			if agentSid == "" && in.AgentSession != "" {
+				agentSid = in.AgentSession
+				d.mu.Lock()
+				d.agentSession = agentSid
+				d.mu.Unlock()
+			}
 		}
-		filePath = d.adapter.FindFile(dir, tty, home, agentSid, startedAt)
+		filePath = d.adapter.FindFile(dir, tty, home, cfgDir, agentSid, startedAt)
 		if filePath == "" {
 			return
 		}
@@ -557,6 +622,18 @@ func (s *Server) pollTranscriptOnce(d *delegatedRun, ss *session, partial *strin
 		if len(line) > 0 && line[len(line)-1] == '\n' {
 			offset += int64(len(line))
 			ev := d.adapter.ParseRow(line)
+			if ev.PromptAccepted {
+				d.mu.Lock()
+				d.promptCount++
+				ch := d.promptAckCh
+				d.mu.Unlock()
+				if ch != nil {
+					select {
+					case ch <- struct{}{}:
+					default:
+					}
+				}
+			}
 			if ev.SessionID != "" {
 				d.mu.Lock()
 				if d.agentSession == "" {
