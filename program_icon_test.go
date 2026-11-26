@@ -179,3 +179,44 @@ func TestProgramIconRender(t *testing.T) {
 		}
 	}
 }
+
+func TestOmpGradientTile(t *testing.T) {
+	omp := programOf("omp")
+	if omp.TileBgGradient == nil {
+		t.Fatal("omp has no TileBgGradient")
+	}
+	if omp.TileFg != ui.Hex("#ffffff") {
+		t.Fatalf("omp TileFg = %v, want #ffffff", omp.TileFg)
+	}
+	raw := tileImage(omp)
+	if len(raw) == 0 {
+		t.Fatal("tileImage(omp) returned empty")
+	}
+	img, err := png.Decode(bytes.NewReader(raw))
+	if err != nil {
+		t.Fatalf("decode omp tile PNG: %v", err)
+	}
+	// Sample inside the tile (tile is 21x16 centered in 24x24, scaled 3x = 72x72).
+	// Top-left corner of tile should be pink; bottom-right should be blue-violet.
+	tlR, tlG, tlB, tlA := img.At(14, 18).RGBA()
+	brR, brG, brB, brA := img.At(58, 52).RGBA()
+	if tlA == 0 || brA == 0 {
+		t.Fatalf("expected opaque tile corners, got alpha tl=%d br=%d", tlA>>8, brA>>8)
+	}
+	if tlR>>8 <= tlG>>8+40 || tlR>>8 < 180 {
+		t.Errorf("top-left pixel = (%d,%d,%d), want pink", tlR>>8, tlG>>8, tlB>>8)
+	}
+	if brB>>8 <= brR>>8 || brB>>8 < 170 {
+		t.Errorf("bottom-right pixel = (%d,%d,%d), want blue-violet", brR>>8, brG>>8, brB>>8)
+	}
+	if shotDir := os.Getenv("GOREX_SHOT_DIR"); shotDir != "" {
+		if err := os.WriteFile(filepath.Join(shotDir, "omp-tile.png"), raw, 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// A custom OSC 7502 background overrides the built-in gradient.
+	overridden := programWithIcon(omp, &rex.ProgramIcon{Bg: "#112233"})
+	if overridden.TileBgGradient != nil {
+		t.Fatal("custom Bg should clear TileBgGradient")
+	}
+}
