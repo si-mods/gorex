@@ -8,7 +8,7 @@ metadata:
 
 # DSK-015: Omarchy desktop integration
 
-Status: proposal.
+Status: phase 1 built (#1188): the automatic following, `status`, and `bind`/`unbind`. Phase 2 (a Settings switch) not built.
 
 This doc decides how GoRex follows an Omarchy desktop. It builds on the
 theme framework of [DSK-008](DSK-008-theme.md). GoRex ships the reader,
@@ -204,7 +204,7 @@ Nothing changes for a user without Omarchy. An explicit
 
 ## Phases
 
-1. Following, `status`, and the optional binding. Ships with this doc.
+1. Following, `status`, and the optional binding. Built (#1188).
 2. A switch for `appearance.omarchy` in the Settings window.
 
 ## Open questions
