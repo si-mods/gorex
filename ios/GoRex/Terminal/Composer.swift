@@ -79,17 +79,20 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
     /// attachments), so the host can slide the terminal and bottom edge.
     var onHeightChange: ((CGFloat) -> Void)?
     private var lastHeight: CGFloat = 0
-    /// Minimum height of the single-line message field, top grabber, and
-    /// vertical padding inside the capsule; together they fix the resting height.
-    private static let fieldMin: CGFloat = 46
+    /// Minimum height of the single-line message field, bottom action row, top
+    /// grabber, and vertical padding inside the capsule; together they fix the
+    /// resting height (matching official Rex's two-row composer card).
+    private static let fieldMin: CGFloat = 36
+    private static let actionsHeight: CGFloat = 36
+    private static let rowSpacing: CGFloat = 8
     private static let topPad: CGFloat = 4
-    private static let bottomPad: CGFloat = 6
+    private static let bottomPad: CGFloat = 10
     private static let handleHeight: CGFloat = 14
-    private static let handleSpacing: CGFloat = 2
+    private static let handleSpacing: CGFloat = 4
     /// Gap between the compose bar and the bar below it.
     static let gap: CGFloat = 6
-    /// Resting height of the single-line bar with no attachments.
-    static let baseHeight: CGFloat = topPad + handleHeight + handleSpacing + fieldMin + bottomPad
+    /// Resting height of the two-row bar with no attachments.
+    static let baseHeight: CGFloat = topPad + handleHeight + handleSpacing + fieldMin + rowSpacing + actionsHeight + bottomPad
     /// Bottom inset reserved in the terminal grid so the resting bar never
     /// covers the program's own input row.
     static let baseInset: CGFloat = baseHeight + gap
@@ -114,10 +117,12 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
             glass.bottomAnchor.constraint(equalTo: bottomAnchor),
         ])
 
-        var cfg = UIButton.Configuration.plain()
+        var cfg = UIButton.Configuration.filled()
         cfg.image = UIImage(systemName: "plus")
-        cfg.preferredSymbolConfigurationForImage = UIImage.SymbolConfiguration(pointSize: 18, weight: .medium)
+        cfg.preferredSymbolConfigurationForImage = UIImage.SymbolConfiguration(pointSize: 17, weight: .medium)
+        cfg.baseBackgroundColor = .tertiarySystemFill
         cfg.baseForegroundColor = .label
+        cfg.background.cornerRadius = 18
         attach.configuration = cfg
         attach.accessibilityLabel = String(localized: "Add Attachment")
         var items: [UIMenuElement] = [
@@ -136,7 +141,7 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
 
         field.font = .systemFont(ofSize: 17)
         field.backgroundColor = .clear
-        field.textContainerInset = UIEdgeInsets(top: 13, left: 4, bottom: 12, right: 4)
+        field.textContainerInset = UIEdgeInsets(top: 6, left: 4, bottom: 6, right: 4)
         field.textContainer.lineFragmentPadding = 0
         field.isScrollEnabled = false
         field.delegate = self
@@ -157,14 +162,14 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
 
         var s = UIButton.Configuration.filled()
         s.image = UIImage(systemName: "arrow.up")
-        s.preferredSymbolConfigurationForImage = UIImage.SymbolConfiguration(pointSize: 14, weight: .semibold)
-        s.baseBackgroundColor = .systemGray5
+        s.preferredSymbolConfigurationForImage = UIImage.SymbolConfiguration(pointSize: 15, weight: .semibold)
+        s.baseBackgroundColor = .tertiarySystemFill
         s.baseForegroundColor = .label
-        s.background.cornerRadius = 15
+        s.background.cornerRadius = 18
         send.configuration = s
         send.accessibilityLabel = String(localized: "Send")
         send.isEnabled = false
-        send.alpha = 0.4
+        send.alpha = 0.45
         send.addAction(UIAction { _ in Haptics.tapped() }, for: .touchDown)
         send.addAction(UIAction { [weak self] _ in self?.sendNow() }, for: .touchUpInside)
 
@@ -176,26 +181,22 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
         strip.showsHorizontalScrollIndicator = false
         strip.isHidden = true
 
-        // Wrap each action icon in a single-line-height slot so icons stay
-        // vertically centered on one line and bottom-aligned as text grows.
-        func iconSlot(_ child: UIView, width: CGFloat) -> UIView {
-            let s = UIView()
-            s.translatesAutoresizingMaskIntoConstraints = false
-            child.translatesAutoresizingMaskIntoConstraints = false
-            s.addSubview(child)
-            NSLayoutConstraint.activate([
-                s.widthAnchor.constraint(equalToConstant: width),
-                s.heightAnchor.constraint(equalToConstant: Self.fieldMin),
-                child.centerXAnchor.constraint(equalTo: s.centerXAnchor),
-                child.centerYAnchor.constraint(equalTo: s.centerYAnchor),
-            ])
-            return s
-        }
-        for v in [iconSlot(attach, width: 32), field, iconSlot(micHolder, width: 34), iconSlot(send, width: 30)] {
-            inputRow.addArrangedSubview(v)
-        }
-        inputRow.alignment = .bottom
-        inputRow.spacing = 6
+        // Two-row layout matching official Rex: full-width message field on
+        // top, circular `+` on bottom-left and mic + circular Send on
+        // bottom-right.
+        let spacer = UIView()
+        spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        let actionsRow = UIStackView(arrangedSubviews: [attach, spacer, micHolder, send])
+        actionsRow.axis = .horizontal
+        actionsRow.alignment = .center
+        actionsRow.spacing = 8
+        actionsRow.translatesAutoresizingMaskIntoConstraints = false
+
+        inputRow.axis = .vertical
+        inputRow.alignment = .fill
+        inputRow.spacing = Self.rowSpacing
+        inputRow.addArrangedSubview(field)
+        inputRow.addArrangedSubview(actionsRow)
         inputRow.translatesAutoresizingMaskIntoConstraints = false
 
         voiceHolder.alpha = 0
@@ -245,8 +246,8 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
             handle.widthAnchor.constraint(equalToConstant: 36),
             handle.heightAnchor.constraint(equalToConstant: 5),
             handleArea.heightAnchor.constraint(equalToConstant: Self.handleHeight),
-            body.leadingAnchor.constraint(equalTo: glass.contentView.leadingAnchor, constant: 10),
-            body.trailingAnchor.constraint(equalTo: glass.contentView.trailingAnchor, constant: -10),
+            body.leadingAnchor.constraint(equalTo: glass.contentView.leadingAnchor, constant: 12),
+            body.trailingAnchor.constraint(equalTo: glass.contentView.trailingAnchor, constant: -12),
             body.topAnchor.constraint(equalTo: glass.contentView.topAnchor, constant: Self.topPad),
             body.bottomAnchor.constraint(equalTo: glass.contentView.bottomAnchor, constant: -Self.bottomPad),
             inputRow.leadingAnchor.constraint(equalTo: rowBox.leadingAnchor),
@@ -264,12 +265,13 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
             thumbs.bottomAnchor.constraint(equalTo: strip.contentLayoutGuide.bottomAnchor),
             thumbs.heightAnchor.constraint(equalTo: strip.frameLayoutGuide.heightAnchor),
             strip.heightAnchor.constraint(equalToConstant: 52),
-            attach.widthAnchor.constraint(equalToConstant: 32),
-            attach.heightAnchor.constraint(equalToConstant: 34),
-            micHolder.widthAnchor.constraint(equalToConstant: 34),
-            micHolder.heightAnchor.constraint(equalToConstant: 34),
-            send.widthAnchor.constraint(equalToConstant: 30),
-            send.heightAnchor.constraint(equalToConstant: 30),
+            actionsRow.heightAnchor.constraint(equalToConstant: Self.actionsHeight),
+            attach.widthAnchor.constraint(equalToConstant: 36),
+            attach.heightAnchor.constraint(equalToConstant: 36),
+            micHolder.widthAnchor.constraint(equalToConstant: 36),
+            micHolder.heightAnchor.constraint(equalToConstant: 36),
+            send.widthAnchor.constraint(equalToConstant: 36),
+            send.heightAnchor.constraint(equalToConstant: 36),
             hint.leadingAnchor.constraint(equalTo: field.frameLayoutGuide.leadingAnchor, constant: 4),
             hint.centerYAnchor.constraint(equalTo: field.frameLayoutGuide.centerYAnchor),
             hint.trailingAnchor.constraint(equalTo: field.frameLayoutGuide.trailingAnchor, constant: -4),

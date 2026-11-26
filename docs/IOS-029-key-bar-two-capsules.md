@@ -26,11 +26,11 @@ Paginating the middle capsule into fixed four-key pages squeezed each key down t
 
 ### Behavior
 
-- Left capsule (80 pt when Composer Mode is off, 44 pt when on):
-  - `⌘` (`keybar.more`) opens Paste, Add Photo, and Add File, and spins during uploads. Hidden in Composer Mode (where `+` carries those actions).
-  - `Compose` (`keybar.compose`, `square.and.pencil`) toggles Composer Mode on or off in one tap, highlighted in white glass while Composer Mode is on.
+- Left capsule (80 pt in both normal and Composer Mode, staying steady without jumping):
+  - `⌘` (`keybar.more`) opens Paste, Add Photo, and Add File, and spins during uploads.
+  - `Compose` (`keybar.compose`, `square.and.pencil`) toggles Composer Mode on or off in one tap.
 - Middle capsule (flexible width, 12 pt outer row margins):
-  - A continuous horizontal `UIScrollView` (`isPagingEnabled = false`) holding fixed 36 pt buttons in official Rex's order: `Esc`, `Control`, `Option`, `Shift`, `Tab`, `~`, `|`, `/`, `-`, `Enter`, `Delete`.
+  - A continuous horizontal `UIScrollView` (`isPagingEnabled = false`) holding fixed 36 pt buttons with `Esc`, `Control`, `Tab`, and `Enter` in the initial visible area, followed by `Option`, `Shift`, `~`, `|`, `/`, `-`, and `Delete`.
   - A `CAGradientLayer` mask softly fades the trailing edge when more keys extend offscreen to the right and fades the leading edge once scrolled right, signaling scrollability without page dots.
 - Right capsule (120 pt when Composer Mode is off, 84 pt when on):
   - Holds the arrow stick, the mic (hidden in Composer Mode because it moves into `ComposerBar`), and the keyboard show/hide toggle.

@@ -61,15 +61,23 @@ final class ComposerUITests: XCTestCase {
         XCTAssertTrue(compose.waitForExistence(timeout: 5))
         shot("keybar-rex-rest")
 
-        // Tapping Compose opens the bar in one tap and hides ⌘ on the key bar.
+        // Tapping Compose opens the two-row bar in one tap while keeping the
+        // left [⌘, Compose] capsule stable below it.
         compose.tap()
         XCTAssertTrue(message.waitForExistence(timeout: 5))
-        XCTAssertFalse(app.buttons["keybar.more"].exists)
+        XCTAssertTrue(app.buttons["keybar.more"].exists)
         let grabber = app.otherElements["composer.grabber"]
         XCTAssertTrue(grabber.waitForExistence(timeout: 5))
+        let addBtn = app.buttons.matching(identifier: "Add Attachment").firstMatch
+        let sendBtn = app.buttons.matching(identifier: "Send").firstMatch
+        XCTAssertTrue(addBtn.waitForExistence(timeout: 5))
+        XCTAssertTrue(sendBtn.waitForExistence(timeout: 5))
+        XCTAssertGreaterThan(addBtn.frame.midY, message.frame.midY)
+        XCTAssertLessThan(abs(addBtn.frame.midY - sendBtn.frame.midY), 4)
+        shot("composer-rex-open")
 
         // Dragging down on the top grabber dismisses Composer Mode and restores
-        // ⌘ and Dictate on the key bar.
+        // Dictate on the key bar.
         let start = grabber.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
         let end = start.withOffset(CGVector(dx: 0, dy: 90))
         start.press(forDuration: 0.05, thenDragTo: end)
@@ -84,9 +92,9 @@ final class ComposerUITests: XCTestCase {
         XCTAssertTrue(message.waitForNonExistence(timeout: 5))
     }
 
-    /// Composer Mode pins the bar with a top grabber handle, the mic beside
-    /// the field, + always present for Paste, ⌘ hidden on the key bar while
-    /// the Compose button stays highlighted in the left capsule.
+    /// Composer Mode pins the two-row bar with a top grabber handle, full-width
+    /// field above circular `+`, mic, and Send, while keeping the left capsule
+    /// stable below.
     func testComposerModePinsBar() throws {
         app.terminate()
         app.launchArguments = ["-composerMode", "YES"]
@@ -94,19 +102,17 @@ final class ComposerUITests: XCTestCase {
         try terminal()
         XCTAssertTrue(message.waitForExistence(timeout: 10))
         XCTAssertTrue(app.buttons.matching(identifier: "Add Attachment").firstMatch.waitForExistence(timeout: 5))
-        XCTAssertFalse(app.buttons["keybar.more"].exists)
+        XCTAssertTrue(app.buttons["keybar.more"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.buttons["keybar.compose"].waitForExistence(timeout: 5))
-        // The key bar's mic moved into the bar, beside the field (the
-        // mic's view exposes more than one element; take its own row's).
+        // The key bar's mic moved into the bar's bottom action row.
+        let addBtn = app.buttons.matching(identifier: "Add Attachment").firstMatch
         let dictates = app.buttons.matching(identifier: "Dictate").allElementsBoundByIndex
-        XCTAssertTrue(dictates.contains { abs($0.frame.midY - message.frame.midY) < 40 })
-        // Compact capsule with top grabber: resting height is 72pt
-        // (14pt grabber + 2pt gap + 46pt field + 10pt padding).
+        XCTAssertTrue(dictates.contains { abs($0.frame.midY - addBtn.frame.midY) < 20 })
         let grabber = app.otherElements["composer.grabber"]
         XCTAssertTrue(grabber.waitForExistence(timeout: 5))
         let bar = app.otherElements["composer"]
         if bar.exists {
-            XCTAssertLessThanOrEqual(bar.frame.height, 78)
+            XCTAssertLessThanOrEqual(bar.frame.height, 120)
         }
         shot("composer-mode-rest")
 
