@@ -107,23 +107,26 @@ A delegated session attaches to the target host's layout through `LayoutCommand`
 
 #### Separating visible PTY output from clean results
 
-Running `--output-format json` directly in a PTY conflicts with live viewing: the screen stays blank until exit and then dumps raw JSON, while PTY line wrapping and shell rc banners break JSON parsing. To satisfy both humans and callers:
+Running `claude -p --output-format json` in a PTY breaks live viewing, prevents human intervention, and sets Anthropic's `sdk-cli` entrypoint (which costs roughly twice the plan quota compared to interactive `cli` mode, `anthropics/claude-code#97074`, and increases third-party detection risk). Following `yetone/magpie`'s `internal/claudetui/` (`tui.go`, `transcript.go`, `waiting.go`), GoRex drives the real interactive Claude Code TUI and reads clean results from its transcript file:
 
-- The target server launches the agent inside a normal PTY tab using the [`MOD-010`](MOD-010-agent-launchers.md) quick-launcher wrapper (`agentCommand` on Unix, `windowsAgentCommand` on Windows) so login `PATH`, environment variables, and proxies load automatically.
-- For agents that support structured output files or streaming JSON, the server captures clean result data off-band while printing readable progress to the PTY:
+- The target server launches the real interactive agent inside a normal PTY tab using the [`MOD-010`](MOD-010-agent-launchers.md) quick-launcher wrapper (`agentCommand` on Unix, `windowsAgentCommand` on Windows) so login `PATH`, environment variables, and proxies load automatically.
+- For `claude`, the server passes `--session-id <uuid>` (or `--resume <uuid>` for cold resume), waits for the interactive prompt to appear (surfacing macOS Keychain or undrawn-process diagnostics if startup stalls, as in `claudetui/waiting.go`), sends the prompt via bracketed paste (`\x1b[200~...\x1b[201~`) plus Return (`\r`), and tails `<configDir>/projects/<slug>/<uuid>.jsonl` (the same transcript path [`DSK-003`](DSK-003-teleport.md) already reads):
+  - A `type: "user"` (or `queue-operation: enqueue`) row confirms the pasted prompt reached Claude Code.
+  - `type: "assistant"` rows provide the clean, untruncated reply with zero ANSI or terminal line-wrapping noise.
+  - A `type: "system"` row with `subtype: "turn_duration"` (or a `<synthetic>` API error row) marks the exact end of the turn.
+  - Because the real interactive TUI is live in the tab, a user on desktop, iOS, or web can watch native progress and click in to type or approve directly at any time.
 
 | Agent ID | Launch strategy (over `MOD-010` wrapper) | Multi-turn follow-up | `read-only` hint flag | Clean result source | Takeover path |
 | --- | --- | --- | --- | --- | --- |
-| `claude` | `claude -p --input-format stream-json --output-format stream-json --include-partial-messages --verbose` (matching `yetone/magpie`'s `claude_subscription.go`, keeping session persistence on disk); server writes NDJSON `{"type":"user","message":{"role":"user","content":...}}` turns to stdin, renders readable progress to the PTY, and captures each `{"type":"result"}` event + `session_id` | Warm: write next NDJSON user turn to live stdin (`--session`); Cold: restart with `--resume <session_id>` | `--permission-mode plan` | Server-saved `result` event (fallback: `capture`) | `claude --resume <session_id>` in a new tab |
-| `codex` | `codex exec --json <prompt>` piped through the server tee that renders readable text to the PTY and saves the final agent message + thread ID | Cold: `codex exec resume <thread_id> --json <prompt>` | `--sandbox read-only` | Server-saved final message (fallback: `capture`) | `codex resume` in a new tab |
+| `claude` | Real interactive TUI (`claude --session-id <uuid>`), prompt sent by bracketed paste + `\r` once ready; server tails `<configDir>/projects/<slug>/<uuid>.jsonl` for `user`, `assistant`, and `turn_duration` rows (matching `yetone/magpie`'s `internal/claudetui/`) | Warm: bracketed-paste next prompt + `\r` into live PTY (`--session`); Cold: interactive `claude --resume <uuid>` | `--permission-mode plan` | Transcript JSONL `assistant` rows (fallback: `capture`) | Direct typing in the live TUI tab (or `claude --resume <uuid>` after exit) |
+| `codex` | `codex exec --json <prompt>` piped through a server tee that renders readable text to the PTY and saves the final agent message + thread ID | Cold: `codex exec resume <thread_id> --json <prompt>` | `--sandbox read-only` | Server-saved final message (fallback: `capture`) | `codex resume` in a new tab |
 | `agy`, `omp`, `devin` | Run directly in PTY via `MOD-010` wrapper when CLI flags are supported | `--resume <id>` when supported by the CLI | Refused when no read-only flag exists | `capture` plain text | Direct typing in the live PTY tab |
 
 Rules for argument safety and process hygiene:
 
-- On Unix, `agentCommand` passes arguments via POSIX positional parameters (`sh -lic 'exec /path/to/agent "$@"' -- <args...>`) so prompts never undergo shell interpolation.
+- On Unix, `agentCommand` passes arguments via POSIX positional parameters (`sh -lic 'exec /path/to/agent "$@"' -- <args...>`) so arguments never undergo shell interpolation.
 - On Windows, `windowsAgentCommand` passes arguments through PowerShell quoting (or reads the prompt from a temp file when exceeding Windows command-line limits) so profile variables and proxies still load.
-- When launching `claude`, the server strips nested-session environment variables (`CLAUDECODE`, `CLAUDE_CODE_ENTRYPOINT`, `CLAUDE_CODE_SSE_PORT`, as in `yetone/magpie`'s `cleanClaudeEnv`) so delegating from inside another Claude Code session succeeds.
-- The server reads structured stdout through an explicit pipe (`os.Pipe`) rather than `cmd.StdoutPipe` so final `result` frames are not truncated when the process exits.
+- When launching `claude`, the server strips nested-session environment variables (`CLAUDECODE`, `CLAUDE_CODE_ENTRYPOINT`, `CLAUDE_CODE_SSE_PORT`) and never overrides its entrypoint, keeping it identical to a user-launched interactive TUI.
 - If `--mode read-only` is requested for an agent with no known read-only flag, the server refuses the request rather than running writable.
 
 ### Code
@@ -131,7 +134,7 @@ Rules for argument safety and process hygiene:
 - **Session server (`internal/rex`)**:
   - `internal/rex/proto.go`: add `CapabilityDelegate = "delegate"`, `DelegateOptions`, `DelegateResult`, and optional `DelegatedFrom` / `DelegatedAgent` on `SessionInfo`.
   - `internal/rex/agents.go`, `internal/rex/agents_unix.go`, `internal/rex/agents_windows.go`: extend `agentCommand` and `windowsAgentCommand` to accept extra argv slices safely, and add `buildDelegateCommand(agent, mode, prompt, home, shell)`.
-  - `internal/rex/delegate.go`: handle `"delegate"`, `"delegate.send"`, and `"delegate.result"` ops on the server, attach the session via `tab.create` under the matching project, run the persistent NDJSON turn loop and PTY-rendering tee for `claude` (`stream-json`) and `codex` (`exec --json`), detect `blocked` stalls, and persist `DelegatedFrom` in the journal.
+  - `internal/rex/delegate.go`: handle `"delegate"`, `"delegate.send"`, and `"delegate.result"` ops on the server, attach the session via `tab.create` under the matching project, drive interactive `claude` TUI turns via bracketed paste + transcript JSONL tailing (`<configDir>/projects/<slug>/<uuid>.jsonl`), run the PTY tee for `codex exec --json`, detect `blocked` stalls, and persist `DelegatedFrom` in the journal.
   - `internal/rex/remote.go`: add `"delegate"`, `"delegate.send"`, and `"delegate.result"` to `remoteAllowed`. Keep `remote.json` unchanged.
   - `internal/rex/client.go`: add `Client.Agents()` (if not already present), `Client.Delegate(DelegateOptions)`, `Client.DelegateSend(sessionID, prompt)`, and `Client.DelegateResult(sessionID)`.
 - **CLI (`internal/cli`)**:
@@ -143,7 +146,7 @@ Rules for argument safety and process hygiene:
 - **HTTP + OAuth + MCP peer server (t3code style)**: rejected because GoRex already has end-to-end encrypted WireGuard links (`tailcat`) and device-key allowlists (`NET-002`). Adding an HTTP/OAuth/MCP stack duplicates trust, origin checks, and NAT traversal.
 - **Server-enforced `read-only` access ceiling in `remote.json`**: rejected because GoRex pairs one user's own devices and third-party agent CLI flags (`--permission-mode plan`) are not OS-level sandboxes. Treating `--mode read-only` as a best-effort hint avoids false security promises and keeps `remote.json` unchanged.
 - **Raw `Create()` without `tab.create`**: rejected because an unattached session is invisible in desktop, iOS, and web sidebars, breaking the live observation goal.
-- **Raw `--output-format json` printed directly to PTY**: rejected because the screen stays blank until exit and dumps unreadable JSON, while PTY line wrapping and shell banners corrupt parsing.
+- **`claude -p --output-format stream-json` (`sdk-cli` headless mode)**: rejected as the default for Claude Code because `-p` triggers Anthropic's `sdk-cli` entrypoint (costing ~2x quota vs interactive `cli`, `anthropics/claude-code#97074`, with higher third-party detection risk) and prevents direct human takeover in the live tab. Driving the real interactive TUI and tailing its transcript JSONL gives both native UX and clean structured output.
 - **Standalone `gorex mcp` bridge**: rejected to keep the architecture minimal; CLI plus `gorexGuide` already covers all agents running inside GoRex.
 
 ## Security
@@ -163,7 +166,7 @@ Rules for argument safety and process hygiene:
 
 - **Peer probing**: unit test in `internal/cli/commands_test.go` with mock saved hosts and Tailscale-discovered hosts verifying `gorex hosts --probe --json` merges and deduplicates both sources, returns `online`, `agents`, and `projects`, and does not block on unreachable hosts.
 - **Quick-launcher argv safety**: unit tests in `internal/rex/agents_test.go` covering `claude` and `codex` on Unix and Windows with shell metacharacters in prompts, verifying positional `"$@"` / PowerShell quoting and refusal of `--mode read-only` on agents without a read-only flag.
-- **Layout attachment, multi-turn, and resilience**: unit tests in `internal/rex/delegate_test.go` verifying `delegate` attaches the session via `tab.create` under the matching project, renders readable text to the PTY, handles warm NDJSON follow-up turns (`delegate.send`) and cold `--resume`, surfaces `blocked` status promptly, returns `session` on timeout or disconnect without spawning duplicates, kills on `SIGINT` or `--cancel-on-timeout`, and closes the tab on clean sync exit unless `--keep` is set.
+- **Layout attachment, multi-turn, and resilience**: unit tests in `internal/rex/delegate_test.go` verifying `delegate` attaches the session via `tab.create` under the matching project, drives interactive `claude` via bracketed paste and tails transcript JSONL (`user`, `assistant`, `turn_duration`), handles warm follow-up turns (`delegate.send`) and cold `--resume`, surfaces `blocked` status promptly, returns `session` on timeout or disconnect without spawning duplicates, kills on `SIGINT` or `--cancel-on-timeout`, and closes the tab on clean sync exit unless `--keep` is set.
 - **Invariants touched** (`docs/invariants.md`):
   - Invariant 1 (a window comes back on its sessions): verify `DelegatedFrom` survives in-place server upgrade (`internal/rex/upgrade_test.go`).
   - Invariant 6 (a pane ends only when its session ends): verify synchronous `delegate` cleans up its tab and session on exit code 0, keeps them on failure or `--keep`, and `--async` keeps them until closed.
