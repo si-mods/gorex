@@ -8,7 +8,7 @@ metadata:
 
 # IOS-028: Rex Go iOS: in-app HTML viewer
 
-Status: accepted. Not implemented.
+Status: built (#1202).
 
 ## Problem
 
