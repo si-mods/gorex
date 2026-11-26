@@ -1,9 +1,11 @@
 package main
 
 import (
+	"math"
 	"path/filepath"
 	"slices"
 	"testing"
+	"time"
 
 	"gorex/internal/rex"
 	"gorex/locales"
@@ -97,5 +99,79 @@ func TestProjectAgentLaunchers(t *testing.T) {
 	tt.Frame()
 	if _, ok := tt.Find("Claude Code"); !ok {
 		t.Fatalf("Claude Code launcher should reappear after reset")
+	}
+}
+
+// TestProjectNewTabRowHover checks that the New Tab button in the project
+// sidebar aligns its hover pill's leading edge with the tab rows above it
+// (keeping concentric corners with the project group) and paints the hover
+// face from that edge, even when sidebar.tabIndent is set.
+func TestProjectNewTabRowHover(t *testing.T) {
+	a, tt := newTestApp(t)
+	old := prefs
+	t.Cleanup(func() { prefs = old })
+	prefs = settings{TabPlacement: "left"}
+
+	dir := appTempDir(t, a)
+	setProjectHome(t, a, tt, "", dir)
+	a.st.agents = []rex.AgentInfo{
+		{ID: "claude", Name: "Claude Code", Command: []string{"/bin/sh", "-c", "sleep 5"}},
+		{ID: "codex", Name: "Codex", Command: []string{"/bin/sh", "-c", "sleep 5"}},
+	}
+	tt.Frame()
+
+	name, detail := a.tabs[0].label()
+	tabRect, ok := tt.Find(name + " " + detail)
+	if !ok {
+		t.Fatalf("active tab row not found; texts %q", tt.Texts())
+	}
+	textRect, ok := tt.Find(locales.CmdNewTab())
+	if !ok {
+		t.Fatalf("New Tab label not found; texts %q", tt.Texts())
+	}
+
+	// Hovering inside the leading edge aligned with the tab row above
+	// (tabRect.X + 4, which sits inside sidebarTabLead) must hit the New Tab
+	// button and paint its hover face.
+	probeX := tabRect.X + 4
+	probeY := textRect.Y + textRect.H/2
+	beforePx := tt.Image().RGBAAt(int(probeX), int(probeY))
+	tt.Move(probeX, probeY)
+	tt.Frame()
+	tt.Advance(200 * time.Millisecond)
+	tt.Frame()
+	afterPx := tt.Image().RGBAAt(int(probeX), int(probeY))
+	if afterPx == beforePx {
+		t.Fatalf("pixel at (%.0f,%.0f) did not change on hover: stayed %v", probeX, probeY, beforePx)
+	}
+
+	// With sidebar.tabIndent set, the hover pill's leading edge stays aligned
+	// with the tab row while the label shifts right by the indent.
+	prefs.SidebarTabIndent = 12
+	tt.Move(0, 0)
+	tt.Frame()
+	tt.Advance(200 * time.Millisecond)
+	tt.Frame()
+	tabIndented, ok := tt.Find(name + " " + detail)
+	if !ok {
+		t.Fatalf("active tab row not found after indent")
+	}
+	textIndented, ok := tt.Find(locales.CmdNewTab())
+	if !ok {
+		t.Fatalf("New Tab label not found after indent")
+	}
+	if math.Abs(float64((textIndented.X-textRect.X)-12)) > 0.5 {
+		t.Fatalf("New Tab label shifted by %.1f, want 12", textIndented.X-textRect.X)
+	}
+	probeX = tabIndented.X + 4
+	probeY = textIndented.Y + textIndented.H/2
+	beforeIndented := tt.Image().RGBAAt(int(probeX), int(probeY))
+	tt.Move(probeX, probeY)
+	tt.Frame()
+	tt.Advance(200 * time.Millisecond)
+	tt.Frame()
+	afterIndented := tt.Image().RGBAAt(int(probeX), int(probeY))
+	if afterIndented == beforeIndented {
+		t.Fatalf("indented pixel at (%.0f,%.0f) did not change on hover: stayed %v", probeX, probeY, beforeIndented)
 	}
 }
