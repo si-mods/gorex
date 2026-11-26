@@ -10,6 +10,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 `web` job of `.github/workflows/ci.yml` fails it.
 
 ## en-US
+- Aligned the iPhone key bar with Rex: restored ⌘ + Compose on the left (one tap reopens Composer), a smooth edge-faded scrolling strip in the middle, and stick, mic, and keyboard on the right.
 - Simplified the iPhone key bar into two capsules: merged Compose into +, moved Tab to page 1, hid the keyboard button at rest, and collapsed the bar while typing in Composer Mode.
 - Tabs now show dedicated brand tiles for 142 more CLI tools and coding agents (including Cursor, OpenCode, Pi, Gemini, Copilot, Ollama, uv, Fish, Nushell, Tailscale, k9s, jj, and Yazi).
 - Tapping an HTML file path in a terminal now opens it in an in-app browser with interactive scripts, relative CSS/JS/images loaded from the host, Back, Reload, and Share.
@@ -165,6 +166,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - Settings: choose System, Light or Dark right in the Interface row, and Minimum Contrast from a menu. A space's Color menu shows each color's dot and marks the current one.
 
 ## zh-Hans
+- 对齐官方 Rex 手机端按键栏：恢复左侧 ⌘ + 撰写按钮（轻点一键开关 Composer），中间改为带边缘渐隐的连续横向滚动键条（Esc/Ctrl/Opt/Shift/Tab 等），右侧保留摇杆、麦克风与键盘切换。
 - 底部按键栏精简为两枚胶囊：合并撰写与附件为单一「+」菜单、首页放 Tab、无键盘时隐藏键盘按钮，且在 Composer 输入时自动收起按键栏。
 - 标签栏新增 142 个常用 CLI 工具与 AI 编程助手的专属品牌图标（如 Cursor、OpenCode、Pi、Gemini、Copilot、Ollama、uv、Fish、Nushell、Tailscale、k9s、jj、Yazi 等）。
 - 点按终端里出现的 HTML 文件路径现在会用内置浏览器打开，支持交互脚本、按需加载同目录的相对 CSS/JS/图片资源，以及返回、刷新和分享。
