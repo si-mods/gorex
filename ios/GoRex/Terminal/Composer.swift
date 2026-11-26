@@ -12,7 +12,7 @@ import UniformTypeIdentifiers
 /// up, then pastes the text and sends Return: the paths land first and
 /// the lot is one submission. A send with no text submits the paths
 /// alone, and empties the bar for the next message.
-final class ComposerBar: UIView, UITextViewDelegate {
+final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate {
     /// A staged attachment: its file in the folder, and its thumbnail for
     /// the strip, nil for a file that is no image.
     private struct Attachment {
@@ -58,6 +58,13 @@ final class ComposerBar: UIView, UITextViewDelegate {
     private let inputRow = UIStackView()
     private var voiceMinHeight: NSLayoutConstraint?
     private var voiceActive = false
+    /// Press-and-hold anywhere on the compose bar to dictate (push-to-talk):
+    /// holding starts voice recording, releasing converts speech to text.
+    private lazy var holdVoice = UILongPressGestureRecognizer(target: self, action: #selector(heldForVoice))
+    private var holdingVoice = false
+    var onHoldVoiceStart: ((_ stillHolding: @escaping () -> Bool) -> Void)?
+    var onHoldVoiceFinish: (() -> Void)?
+    var onHoldVoiceCancel: (() -> Void)?
     /// The attachments' thumbnails, over the input row while there are any.
     private let strip = UIScrollView()
     private let thumbs = UIStackView()
@@ -229,6 +236,11 @@ final class ComposerBar: UIView, UITextViewDelegate {
         // The bar's mic dictates into the field, not the terminal.
         terminal.dictationInsert = { [weak self] text in self?.hear(text) }
         terminal.composerSend = { [weak self] in self?.sendNow() }
+
+        holdVoice.minimumPressDuration = 0.25
+        holdVoice.allowableMovement = .greatestFiniteMagnitude
+        holdVoice.delegate = self
+        addGestureRecognizer(holdVoice)
     }
 
     required init?(coder: NSCoder) { fatalError() }
@@ -291,6 +303,44 @@ final class ComposerBar: UIView, UITextViewDelegate {
     @objc private func pressMic(_ g: UILongPressGestureRecognizer) {
         guard g.state == .began else { return }
         Haptics.tapped()
+    }
+
+    override func gestureRecognizerShouldBegin(_ g: UIGestureRecognizer) -> Bool {
+        guard g === holdVoice else { return super.gestureRecognizerShouldBegin(g) }
+        guard !voiceActive, !sending else { return false }
+        let p = g.location(in: self)
+        if !attach.isHidden, attach.frame.contains(convert(p, to: attach.superview)) { return false }
+        if send.frame.contains(convert(p, to: send.superview)) { return false }
+        if !strip.isHidden, strip.frame.contains(convert(p, to: strip.superview)) { return false }
+        // Keep UITextView's own long-press loupe/selection when editing
+        // non-empty text, while still allowing press-and-hold on the mic.
+        if field.isFirstResponder, !(field.text ?? "").isEmpty,
+           !micHolder.frame.contains(convert(p, to: micHolder.superview)) {
+            return false
+        }
+        return true
+    }
+
+    @objc private func heldForVoice(_ g: UILongPressGestureRecognizer) {
+        switch g.state {
+        case .began:
+            holdingVoice = true
+            Haptics.refreshed()
+            onHoldVoiceStart? { [weak self] in self?.holdingVoice == true }
+        case .ended:
+            let was = holdingVoice
+            holdingVoice = false
+            if was {
+                Haptics.tapped()
+                onHoldVoiceFinish?()
+            }
+        case .cancelled, .failed:
+            let was = holdingVoice
+            holdingVoice = false
+            if was { onHoldVoiceCancel?() }
+        default:
+            break
+        }
     }
 
     /// Pastes clipboard text into the compose field at the current selection

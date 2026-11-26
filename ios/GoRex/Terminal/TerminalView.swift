@@ -1183,6 +1183,16 @@ final class TerminalHost: UIView, UIGestureRecognizerDelegate {
     /// Notifies the SwiftUI screen of the compose bar's live height + gap so
     /// overlays above it (such as PaneBar and Reconnecting) sit cleanly above.
     var onComposerHeight: ((CGFloat) -> Void)?
+    /// Push-to-talk callbacks forwarded to ComposerBar's long-press gesture.
+    var onHoldVoiceStart: ((_ stillHolding: @escaping () -> Bool) -> Void)? {
+        didSet { composer?.onHoldVoiceStart = onHoldVoiceStart }
+    }
+    var onHoldVoiceFinish: (() -> Void)? {
+        didSet { composer?.onHoldVoiceFinish = onHoldVoiceFinish }
+    }
+    var onHoldVoiceCancel: (() -> Void)? {
+        didSet { composer?.onHoldVoiceCancel = onHoldVoiceCancel }
+    }
     /// Current height + gap occupied by the compose bar, or 0 when absent.
     var currentComposerInset: CGFloat {
         guard let c = composer else { return 0 }

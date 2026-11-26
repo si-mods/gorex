@@ -110,6 +110,9 @@ struct TerminalScreen: View {
                                       paneInset: paneCount > 1 ? PaneBar.height + 20 : 0,
                                       onPage: !pane.kept, current: current,
                                       onComposerHeight: { h in if current, composerInset != h { composerInset = h } },
+                                      onHoldVoiceStart: { still in if current { startHoldDictation(stillHolding: still) } },
+                                      onHoldVoiceFinish: { if current { finishDictation() } },
+                                      onHoldVoiceCancel: { if current { terminal?.stopDictating() } },
                                       onPaneDrag: { dragPane($0, $1, $2) },
                                       canSwipe: { switching == 0 && incoming == paneDrag?.pane && (terminal?.paneSwipeAllowed ?? false) })
                     .offset(x: pane.x * pageSize.width, y: pane.y * pageSize.height)
@@ -394,12 +397,7 @@ struct TerminalScreen: View {
 
     private var voiceCapsule: VoiceCapsule {
         VoiceCapsule(said: said, busy: $busy, cancel: { terminal?.stopDictating() }, finish: {
-            guard !busy else { return }
-            busy = true
-            Task {
-                await terminal?.typeDictation()
-                busy = false
-            }
+            finishDictation()
         }, send: TerminalView.composerMode ? {
             guard !busy else { return }
             busy = true
@@ -409,6 +407,44 @@ struct TerminalScreen: View {
                 terminal?.composerSend?()
             }
         } : nil)
+    }
+
+    /// Starts voice dictation for ComposerBar's press-and-hold gesture,
+    /// reusing the same model-availability checks as tapping the mic.
+    private func startHoldDictation(stillHolding: @escaping () -> Bool) {
+        let dictation = Dictation.shared
+        guard !busy, said == nil else { return }
+        if dictation.progress != nil {
+            stopping = true
+            return
+        }
+        let begin = {
+            guard stillHolding(), !busy, said == nil, dictation.progress == nil else { return }
+            if !dictation.installed.contains(dictation.model) {
+                asking = true
+            } else {
+                _ = terminal?.dictate { said = $0 }
+            }
+        }
+        if dictation.scanned {
+            begin()
+        } else {
+            Task {
+                _ = await dictation.installedModels()
+                begin()
+            }
+        }
+    }
+
+    /// Finishes active dictation and routes the recognised text to the
+    /// terminal or composer field.
+    private func finishDictation() {
+        guard !busy else { return }
+        busy = true
+        Task {
+            await terminal?.typeDictation()
+            busy = false
+        }
     }
 
     /// Keeps the bar's ports button current: the pane's ports, every five
@@ -1599,6 +1635,10 @@ private struct TerminalRepresentable: UIViewRepresentable {
     let current: Bool
     /// Reports the compose bar's live height + gap so PaneBar sits above it.
     let onComposerHeight: (CGFloat) -> Void
+    /// Press-and-hold on the compose bar starts dictation and converts to text on release.
+    let onHoldVoiceStart: (_ stillHolding: @escaping () -> Bool) -> Void
+    let onHoldVoiceFinish: () -> Void
+    let onHoldVoiceCancel: () -> Void
     /// Follows a two-finger drag between panes: its state, and how far and
     /// how fast the fingers went.
     let onPaneDrag: (UIGestureRecognizer.State, CGPoint, CGPoint) -> Void
@@ -1666,6 +1706,9 @@ private struct TerminalRepresentable: UIViewRepresentable {
         if !current, v.terminal.keyboardUp { _ = v.terminal.resignFirstResponder() }
         if arrived, GCKeyboard.coalesced != nil { _ = v.terminal.becomeFirstResponder() }
         v.onComposerHeight = onComposerHeight
+        v.onHoldVoiceStart = onHoldVoiceStart
+        v.onHoldVoiceFinish = onHoldVoiceFinish
+        v.onHoldVoiceCancel = onHoldVoiceCancel
         if arrived {
             let inset = v.currentComposerInset
             Task { @MainActor in onComposerHeight(inset) }
