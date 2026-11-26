@@ -6,11 +6,9 @@ import (
 	"sync/atomic"
 
 	"github.com/egoist/mygo"
-	"github.com/egoist/mygo/ui"
 
 	"gorex/internal/config"
 	"gorex/internal/theme"
-	"gorex/locales"
 )
 
 // ambience.go holds appearance.ambience, the user's control over what a
@@ -68,10 +66,10 @@ const (
 	ambienceOff   = "off"
 )
 
-// themeAmbient reports whether the selected theme has ambience: what the
-// sidebar's button and Toggle Theme Ambience turn off and on. That is a
-// background shader, which Ambience Off takes away, or a shader that
-// moves, which Ambience Off and Still stop.
+// themeAmbient reports whether the selected theme has ambience: what
+// Toggle Theme Ambience turns off and on. That is a background shader,
+// which Ambience Off takes away, or a shader that moves, which Ambience
+// Off and Still stop.
 func themeAmbient() bool {
 	s := activeShaders()
 	return s != nil && (s.background != nil || s.anyTime)
@@ -91,19 +89,4 @@ func (a *App) toggleAmbience() {
 		}
 		ambienceBack, s.Ambience = s.Ambience, ambienceOff
 	})
-}
-
-// ambienceButton is the sidebar foot's button that turns the theme's
-// ambience off and on, shown only while the theme has some.
-func (a *App) ambienceButton(c *ui.Context, k *colors) {
-	if !themeAmbient() {
-		return
-	}
-	label := locales.SidebarAmbienceOff()
-	if prefs.Ambience == ambienceOff {
-		label = locales.SidebarAmbienceOn()
-	}
-	if iconButton(c, k, "sparkles", label, 30, 16).Tooltip(label).Clicked() {
-		a.toggleAmbience()
-	}
 }

@@ -183,14 +183,6 @@
 	"@cmdToggleAmbience": {
 		"description": "Command: turn off the shaders that the theme draws on the window's background and its motion, or turn them on again."
 	},
-	"sidebarAmbienceOff": "Turn Off Theme Ambience",
-	"@sidebarAmbienceOff": {
-		"description": "Label and tooltip of the sidebar's button that turns off the theme's background shader and its motion."
-	},
-	"sidebarAmbienceOn": "Turn On Theme Ambience",
-	"@sidebarAmbienceOn": {
-		"description": "Label and tooltip of the sidebar's button that turns the theme's background shader and its motion on again."
-	},
 	"cmdAppearanceSystem": "Appearance: System",
 	"@cmdAppearanceSystem": {
 		"description": "Command: follow the system's appearance."

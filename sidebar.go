@@ -483,7 +483,6 @@ func (a *App) sidebar(c *ui.Context, k *colors, right bool) {
 			if iconButton(c, k, "folder-plus", cmdNewProject.Title(), 30, 16).Tooltip(tip(cmdNewProject.Title(), &cmdNewProject)).Clicked() {
 				a.later(c, a.openNewProject)
 			}
-			a.ambienceButton(c, k)
 			ui.Spacer(c)
 			a.hostButton(c, k)
 		})
