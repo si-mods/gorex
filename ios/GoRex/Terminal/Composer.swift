@@ -401,9 +401,19 @@ final class ComposerBar: UIView, UITextViewDelegate {
                 failed(error)
                 return
             }
-            if !field.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                terminal.insert(field.text)
+            let text = field.text ?? ""
+            let hasText = !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            if hasText {
+                terminal.insert(text)
             }
+            // Separate Enter from the preceding bracketed paste / attachment paths
+            // so TUI agents (Devin CLI, Codex, Claude Code) don't swallow Return
+            // inside their paste-burst window, and clear any held key-bar modifiers
+            // so Enter is always an unmodified submit.
+            if hasText || !attachments.isEmpty {
+                try? await Task.sleep(for: .milliseconds(150))
+            }
+            terminal.release()
             terminal.send("enter")
             reset()
         }

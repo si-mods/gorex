@@ -10,6 +10,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 `web` job of `.github/workflows/ci.yml` fails it.
 
 ## en-US
+- Composer Mode's Send button now reliably submits messages in Devin CLI and other TUI agents instead of leaving the text in the input box.
 - In Composer Mode, tapping the mic switches the compose bar itself into voice dictation (keeping the key bar below intact), and Send now taps your hand like the other keys.
 - SSH screens — SSH Keys in Settings, Add/Edit SSH Host fields, and host-key, password, and install-key alerts — are now translated into Chinese.
 - SSH hosts: a failed Install Key now shows why in its card; a Mac's password is asked once per session; and Add Host refuses a port typed into Hostname.
@@ -150,6 +151,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - Settings: choose System, Light or Dark right in the Interface row, and Minimum Contrast from a menu. A space's Color menu shows each color's dot and marks the current one.
 
 ## zh-Hans
+- 修复 Composer 模式的发送按钮在 Devin CLI 等 TUI 工具中只上屏未提交的问题，现在会正常发出消息。
 - Composer 模式下按下麦克风会在消息栏内直接切换为语音听写状态（不再替换下方键栏），发送按钮也加上了与其他按键一致的轻触震动反馈。
 - 补全 SSH 相关界面的中文翻译：包括「设置 › SSH 密钥」、添加/编辑 SSH 主机表单，以及主机密钥信任、密码登录与安装密钥弹窗。
 - SSH 主机：安装密钥失败时卡片会说明原因；Mac 的密码每次会话只问一次；添加主机时在主机名里写端口会被拒绝。

@@ -60,7 +60,7 @@ An agent such as Claude Code or Codex takes a message and the images it talks ab
 - `ios/GoRex/Views/SettingsView.swift`: Terminal's Composer Mode toggle.
 - `ios/project.yml` and `ios/GoRex/InfoPlist.xcstrings`: the camera's purpose text also names photos for a terminal.
 
-The send, in order: stage is done at attach time, so `sendNow` only uploads each attachment's file with its batch fields, in order, then calls `insert` with the text and `send("enter")`. The stream of the batch's last file closes after the paths are typed (Rex API revision 11), so awaiting it orders paths before text.
+The send, in order: stage is done at attach time, so `sendNow` uploads each attachment's file with its batch fields, in order, then calls `insert` with the text, waits briefly (150 ms) so TUI agents such as Devin CLI, Codex, and Claude Code finish their bracketed-paste / paste-burst window, clears any held key-bar modifiers, and calls `send("enter")`. The stream of the batch's last file closes after the paths are typed (Rex API revision 11), so awaiting it orders paths before text.
 
 ## Alternatives
 
