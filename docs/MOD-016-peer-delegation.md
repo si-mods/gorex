@@ -8,7 +8,7 @@ metadata:
 
 # MOD-016: Peer delegation for coding agents
 
-Status: proposal.
+Status: accepted. Not implemented.
 
 This doc defines peer delegation so a coding agent on one GoRex host can discover peer hosts, launch a coding agent on a target host, and collect the result. It extends [`NET-002`](NET-002-host-links.md) and [`MOD-010`](MOD-010-agent-launchers.md).
 
@@ -109,20 +109,21 @@ The session server keeps this metadata in memory and in the session journal alon
 
 #### Agent headless adapters
 
-`MOD-010` detects installed agents and builds interactive launch commands. Peer delegation extends each `knownAgent` with a headless invocation builder for `full` and `read-only` modes:
+[`MOD-010`](MOD-010-agent-launchers.md) already detects installed agents and builds quick-launcher commands (`agentCommand` in `internal/rex/agents_unix.go`, `windowsAgentCommand` in `internal/rex/agents_windows.go`) that load the user's login environment and proxies. Peer delegation reuses this quick-launcher path and appends headless arguments for `full` and `read-only` modes:
 
-| Agent ID | Headless `full` command | Headless `read-only` command | Structured output |
+| Agent ID | Headless `full` args | Headless `read-only` args | Structured output |
 | --- | --- | --- | --- |
-| `claude` | `claude -p <prompt> --output-format json` | `claude -p <prompt> --output-format json --permission-mode plan` | JSON stdout (`result` field) |
-| `codex` | `codex exec --json <prompt>` | `codex exec --json --sandbox read-only <prompt>` | JSONL stdout (final agent message) |
+| `claude` | `-p <prompt> --output-format json` | `-p <prompt> --output-format json --permission-mode plan` | JSON stdout (`result` field) |
+| `codex` | `exec --json <prompt>` | `exec --json --sandbox read-only <prompt>` | JSONL stdout (final agent message) |
 | `agy` | Fallback PTY or CLI flags once stable | Refused if no read-only flag | Screen capture |
 | `omp` | Fallback PTY or CLI flags once stable | Refused if no read-only flag | Screen capture |
 | `devin` | Fallback PTY or CLI flags once stable | Refused if no read-only flag | Screen capture |
 
-Rules for read-only enforcement:
+Rules for quick-launcher reuse and read-only enforcement:
 
+- On Unix, the quick-launcher wrapper passes headless arguments as positional parameters (`sh -lic 'exec /path/to/agent "$@"' -- <args...>`) so prompts are never interpolated into a shell string.
+- On Windows, `windowsAgentCommand` runs the resolved `.exe` or `.cmd` with PowerShell quoting (or a temp prompt file when exceeding command-line limits) so profile variables and proxies still load.
 - If a caller requests `read-only` mode (or the server enforces `read-only` access) and the selected agent has no verified read-only flag, the server refuses the delegation instead of falling back to a writable mode.
-- Prompt strings travel as argv elements (or via a temp file when exceeding Windows command-line limits), never interpolated into a shell string.
 
 #### Access levels
 
@@ -149,7 +150,8 @@ Rules for read-only enforcement:
 ## Alternatives
 
 - **HTTP + OAuth + MCP peer server (t3code style)**: rejected because GoRex already has end-to-end encrypted WireGuard links (`tailcat`) and device-key allowlists (`NET-002`). Adding an HTTP/OAuth peer layer would duplicate trust, origin checks, and NAT traversal.
-- **Client-side shell command construction over `gorex run`**: rejected as the sole design because the caller would need to know target OS quoting rules, login shell `PATH`, and per-agent flags, and the target server could not enforce a `read-only` ceiling.
+- **Client-side shell command construction over `gorex run`**: rejected because the target host already has `MOD-010` quick-launcher detection and OS-specific launch wrappers (`agentCommand` / `windowsAgentCommand`), and only the target server can enforce a `read-only` ceiling.
+- **Separate `remote-policy.json` file**: rejected because splitting a peer's identity and access level across two files adds sync complexity, while an optional `access` field on `RemoteClient` in `remote.json` stays backward-compatible.
 - **Background headless process outside GoRex sessions**: rejected because running delegated agents inside normal PTY sessions lets users watch progress live, inspect scrollback, and take over from desktop or iOS with zero extra UI plumbing.
 
 ## Security
@@ -182,20 +184,3 @@ Rules for read-only enforcement:
 2. **Phase 2 (Core Delegation)**: add `CapabilityDelegate`, `internal/rex/delegate.go`, headless agent adapters in `internal/rex/agents.go`, and `gorex -S HOST delegate`.
 3. **Phase 3 (Access Ceilings)**: add `RemoteClient.Access` (`full` / `read-only`) in `remote.json`, enforce `remoteAllowedFor` in `internal/rex/remote.go`, and add `gorex remote access`.
 4. **Phase 4 (Optional MCP Bridge)**: add `gorex mcp` stdio server wrapping Phases 1–3 for non-shell MCP clients.
-
-## Open questions
-
-1. **Saved format change (`remote.json`, per `docs/irreversible.md`)**: How should per-peer access levels be stored?
-   - **Option 1 (Recommended)**: Add optional `access` (`""` / `"full"` / `"read-only"`) to `RemoteClient` in `remote.json`. Empty defaults to `"full"`, so old files and old builds stay compatible with zero migration.
-   - **Option 2**: Store peer policies in a separate `remote-policy.json` file. Avoids touching `remote.json` but splits one peer's identity and permission across two files.
-   - **Owner**: User decides before Phase 3 starts.
-
-2. **Delegation execution path (wire protocol, per `docs/irreversible.md`)**: Should `delegate` be a server-side op (`CapabilityDelegate`) or a pure client-side wrapper over `agents.list` + `create`?
-   - **Option 1 (Recommended)**: Additive server-side op (`CapabilityDelegate`) inside `ProtocolVersion = 3`. Allows the target server to enforce `read-only` ceilings, handle Windows/Unix argv quoting safely, and extract structured agent output cleanly.
-   - **Option 2**: Pure client-side wrapper over `create`. Ships faster with no server change, but cannot enforce `read-only` ceilings on the target host and leaks OS-specific quoting logic into the caller.
-   - **Owner**: User decides before Phase 2 starts.
-
-3. **Result capture for structured agents**: When an agent outputs JSON (`claude -p --output-format json`, `codex exec --json`), should GoRex still run it inside a PTY (so desktop/iOS users can watch it live) or capture stdout via a pipe?
-   - **Option 1 (Recommended)**: Run inside a normal PTY session and pass `--output-format json` (or tee to a temp result file on the target host) so the session remains observable in GoRex UI while `delegate` reads clean structured output.
-   - **Option 2**: Run headless with pipes only. Simpler JSON parsing, but invisible in GoRex UI and impossible for a user to watch or intervene.
-   - **Owner**: User decides before Phase 2 starts.
