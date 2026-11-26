@@ -56,6 +56,7 @@ final class ComposerBar: UIView, UITextViewDelegate {
     /// input row inline inside the compose capsule instead of the key bar.
     let voiceHolder = UIView()
     private let inputRow = UIStackView()
+    private var voiceMinHeight: NSLayoutConstraint?
     private var voiceActive = false
     /// The attachments' thumbnails, over the input row while there are any.
     private let strip = UIScrollView()
@@ -102,16 +103,19 @@ final class ComposerBar: UIView, UITextViewDelegate {
         cfg.baseForegroundColor = .label
         attach.configuration = cfg
         attach.accessibilityLabel = String(localized: "Add Attachment")
-        var items = [
-            UIAction(title: String(localized: "Photo"), image: UIImage(systemName: "photo")) { [weak self] _ in self?.addPhotos() },
+        var items: [UIMenuElement] = [
+            UIAction(title: String(localized: "Paste"), image: UIImage(systemName: "doc.on.clipboard")) { [weak self] _ in self?.pasteClipboard() },
         ]
-        if UIImagePickerController.isSourceTypeAvailable(.camera) {
-            items.append(UIAction(title: String(localized: "Camera"), image: UIImage(systemName: "camera")) { [weak self] _ in self?.takePhoto() })
+        if terminal.session.host.canUpload {
+            items.append(UIAction(title: String(localized: "Photo"), image: UIImage(systemName: "photo")) { [weak self] _ in self?.addPhotos() })
+            if UIImagePickerController.isSourceTypeAvailable(.camera) {
+                items.append(UIAction(title: String(localized: "Camera"), image: UIImage(systemName: "camera")) { [weak self] _ in self?.takePhoto() })
+            }
+            items.append(UIAction(title: String(localized: "File"), image: UIImage(systemName: "doc")) { [weak self] _ in self?.addFiles() })
         }
-        items.append(UIAction(title: String(localized: "File"), image: UIImage(systemName: "doc")) { [weak self] _ in self?.addFiles() })
         attach.menu = UIMenu(children: items)
         attach.showsMenuAsPrimaryAction = true
-        attach.isHidden = !terminal.session.host.canUpload
+        attach.addAction(UIAction { _ in Haptics.tapped() }, for: .touchDown)
 
         field.font = .systemFont(ofSize: 17)
         field.backgroundColor = .clear
@@ -158,16 +162,22 @@ final class ComposerBar: UIView, UITextViewDelegate {
         for v in [attach, field, micHolder, send] { inputRow.addArrangedSubview(v) }
         inputRow.alignment = .center
         inputRow.spacing = 6
-        let body = UIStackView(arrangedSubviews: [strip, inputRow])
-        body.axis = .vertical
-        body.spacing = 8
-        body.translatesAutoresizingMaskIntoConstraints = false
-        glass.contentView.addSubview(body)
+        inputRow.translatesAutoresizingMaskIntoConstraints = false
 
         voiceHolder.alpha = 0
         voiceHolder.isHidden = true
         voiceHolder.translatesAutoresizingMaskIntoConstraints = false
-        glass.contentView.addSubview(voiceHolder)
+
+        let rowBox = UIView()
+        rowBox.translatesAutoresizingMaskIntoConstraints = false
+        rowBox.addSubview(inputRow)
+        rowBox.addSubview(voiceHolder)
+
+        let body = UIStackView(arrangedSubviews: [strip, rowBox])
+        body.axis = .vertical
+        body.spacing = 8
+        body.translatesAutoresizingMaskIntoConstraints = false
+        glass.contentView.addSubview(body)
 
         let micDown = PressWatcher(target: self, action: #selector(pressMic))
         micDown.minimumPressDuration = 0
@@ -179,15 +189,24 @@ final class ComposerBar: UIView, UITextViewDelegate {
         send.translatesAutoresizingMaskIntoConstraints = false
         strip.translatesAutoresizingMaskIntoConstraints = false
         micHolder.translatesAutoresizingMaskIntoConstraints = false
+        let inputBottomFit = inputRow.bottomAnchor.constraint(equalTo: rowBox.bottomAnchor)
+        inputBottomFit.priority = .defaultHigh
+        let voiceHeight = rowBox.heightAnchor.constraint(greaterThanOrEqualToConstant: 86)
+        voiceMinHeight = voiceHeight
         NSLayoutConstraint.activate([
             body.leadingAnchor.constraint(equalTo: glass.contentView.leadingAnchor, constant: 10),
             body.trailingAnchor.constraint(equalTo: glass.contentView.trailingAnchor, constant: -10),
             body.topAnchor.constraint(equalTo: glass.contentView.topAnchor, constant: Self.vPad),
             body.bottomAnchor.constraint(equalTo: glass.contentView.bottomAnchor, constant: -Self.vPad),
-            voiceHolder.leadingAnchor.constraint(equalTo: glass.contentView.leadingAnchor),
-            voiceHolder.trailingAnchor.constraint(equalTo: glass.contentView.trailingAnchor),
-            voiceHolder.topAnchor.constraint(equalTo: inputRow.topAnchor),
-            voiceHolder.bottomAnchor.constraint(equalTo: inputRow.bottomAnchor),
+            inputRow.leadingAnchor.constraint(equalTo: rowBox.leadingAnchor),
+            inputRow.trailingAnchor.constraint(equalTo: rowBox.trailingAnchor),
+            inputRow.topAnchor.constraint(equalTo: rowBox.topAnchor),
+            inputRow.bottomAnchor.constraint(lessThanOrEqualTo: rowBox.bottomAnchor),
+            inputBottomFit,
+            voiceHolder.leadingAnchor.constraint(equalTo: rowBox.leadingAnchor),
+            voiceHolder.trailingAnchor.constraint(equalTo: rowBox.trailingAnchor),
+            voiceHolder.topAnchor.constraint(equalTo: rowBox.topAnchor),
+            voiceHolder.bottomAnchor.constraint(equalTo: rowBox.bottomAnchor),
             thumbs.leadingAnchor.constraint(equalTo: strip.contentLayoutGuide.leadingAnchor),
             thumbs.trailingAnchor.constraint(equalTo: strip.contentLayoutGuide.trailingAnchor),
             thumbs.topAnchor.constraint(equalTo: strip.contentLayoutGuide.topAnchor),
@@ -209,6 +228,7 @@ final class ComposerBar: UIView, UITextViewDelegate {
 
         // The bar's mic dictates into the field, not the terminal.
         terminal.dictationInsert = { [weak self] text in self?.hear(text) }
+        terminal.composerSend = { [weak self] in self?.sendNow() }
     }
 
     required init?(coder: NSCoder) { fatalError() }
@@ -236,20 +256,23 @@ final class ComposerBar: UIView, UITextViewDelegate {
     /// Where an open lands: the field's keyboard.
     func focus() { field.becomeFirstResponder() }
 
-    /// Cross-fades the input row into the inline voice capsule while dictating,
-    /// leaving the key bar below untouched.
+    /// Cross-fades the input row into the inline two-row voice view while
+    /// dictating, expanding the capsule smoothly and leaving the key bar below
+    /// untouched.
     func setVoice(active: Bool) {
         guard active != voiceActive else { return }
         voiceActive = active
+        voiceMinHeight?.isActive = active
         if active {
             voiceHolder.isHidden = false
-            voiceHolder.transform = CGAffineTransform(scaleX: 0.94, y: 0.94)
+            voiceHolder.transform = CGAffineTransform(scaleX: 0.96, y: 0.96)
             inputRow.isUserInteractionEnabled = false
             UIView.animate(withDuration: 0.28, delay: 0, usingSpringWithDamping: 0.86, initialSpringVelocity: 0) {
                 self.inputRow.alpha = 0
                 self.inputRow.transform = CGAffineTransform(scaleX: 0.96, y: 0.96)
                 self.voiceHolder.alpha = 1
                 self.voiceHolder.transform = .identity
+                self.superview?.layoutIfNeeded()
             }
         } else {
             inputRow.isUserInteractionEnabled = true
@@ -257,7 +280,8 @@ final class ComposerBar: UIView, UITextViewDelegate {
                 self.inputRow.alpha = 1
                 self.inputRow.transform = .identity
                 self.voiceHolder.alpha = 0
-                self.voiceHolder.transform = CGAffineTransform(scaleX: 0.94, y: 0.94)
+                self.voiceHolder.transform = CGAffineTransform(scaleX: 0.96, y: 0.96)
+                self.superview?.layoutIfNeeded()
             } completion: { _ in
                 if !self.voiceActive { self.voiceHolder.isHidden = true }
             }
@@ -267,6 +291,18 @@ final class ComposerBar: UIView, UITextViewDelegate {
     @objc private func pressMic(_ g: UILongPressGestureRecognizer) {
         guard g.state == .began else { return }
         Haptics.tapped()
+    }
+
+    /// Pastes clipboard text into the compose field at the current selection
+    /// (or at the end when unfocused).
+    private func pasteClipboard() {
+        guard let text = UIPasteboard.general.string, !text.isEmpty else { return }
+        if let range = field.selectedTextRange {
+            field.replace(range, withText: text)
+        } else {
+            field.text = (field.text ?? "") + text
+        }
+        textViewDidChange(field)
     }
 
     /// What the mic recognised, into the field where it can be read and
@@ -398,8 +434,10 @@ final class ComposerBar: UIView, UITextViewDelegate {
     /// paths together once every file is up — then pastes the text and
     /// sends Return. A failure alerts and keeps the message; a send that
     /// went empties the bar for the next one.
-    private func sendNow() {
+    func sendNow() {
         guard let terminal, !sending else { return }
+        let hasContent = !(field.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !attachments.isEmpty
+        guard hasContent else { return }
         sending = true
         update()
         attach.isEnabled = false

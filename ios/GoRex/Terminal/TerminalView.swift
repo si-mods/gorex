@@ -206,6 +206,9 @@ final class TerminalView: UIView, TerminalOutput {
     /// Where a finished dictation lands instead of the terminal: Composer
     /// Mode's pinned bar fills its field with it (Composer.swift).
     var dictationInsert: ((String) -> Void)?
+    /// Submits the pinned compose bar immediately after dictation finishes
+    /// when the user taps Send from the inline voice view.
+    var composerSend: (() -> Void)?
 
     init(session: TerminalSession) {
         self.session = session
@@ -1522,7 +1525,9 @@ final class KeyBar: UIView {
         self.keysRow = keysRow
         self.voiceCapsule = voiceCapsule
 
-        let row = UIStackView(arrangedSubviews: [left, rightArea])
+        // In Composer Mode, Paste and uploads live in the compose bar's + menu,
+        // so the redundant ⌘ capsule is omitted to give the keys more room.
+        let row = UIStackView(arrangedSubviews: TerminalView.composerMode ? [rightArea] : [left, rightArea])
         row.spacing = 8
         row.translatesAutoresizingMaskIntoConstraints = false
         addSubview(row)

@@ -116,8 +116,9 @@ import os
     private var scanning: Task<Void, Never>?
     private var scans = 0
     /// The microphone's last levels while the mic is on, 0 to 1, the
-    /// newest last.
-    var levels = [Float](repeating: 0, count: 5)
+    /// newest last. Kept long enough for Composer Mode's full-width wave;
+    /// the key bar's compact meter reads the trailing five.
+    var levels = [Float](repeating: 0, count: 48)
     /// How much of a download is done; nil when none runs.
     private(set) var progress: Double?
     /// The model downloading, or the last downloaded.
