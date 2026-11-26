@@ -50,6 +50,10 @@ type session struct {
 	// owner is the key of the remote client that created the session, ""
 	// for one created locally; set before the session is listed.
 	owner string
+	// delegatedFrom and delegatedAgent record peer-delegation origin
+	// metadata (docs/MOD-016-peer-delegation.md).
+	delegatedFrom  string
+	delegatedAgent string
 	// changed tells the server's subscribers that what the list shows of
 	// the session changed; sampler looks, as the session prints, whether
 	// its title or foreground program did, from seen.
@@ -1790,6 +1794,7 @@ func (s *session) info() SessionInfo {
 	}
 	in := SessionInfo{
 		ID: s.id, Shell: s.shell, Command: s.command, Created: s.created, Owner: s.owner,
+		DelegatedFrom: s.delegatedFrom, DelegatedAgent: s.delegatedAgent,
 		Title: title, LastOutput: s.lastOutput, LastInput: s.lastInput,
 		Output: s.output, Bells: int(s.bells.Load()), Exited: s.exited, ExitCode: s.code,
 		Attached: len(s.clients), Cols: s.cols, Rows: s.rows,

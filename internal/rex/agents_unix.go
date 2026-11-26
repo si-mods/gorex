@@ -139,11 +139,34 @@ func findExecutableInDirs(dirs []string, name string) (string, bool) {
 // user's login/interactive environment (PATH, API keys, proxies) and
 // replaces the shell process with the agent binary — the resolved path,
 // not the id, in case a fallback directory found it off the login PATH.
-func agentCommand(shell, _, resolvedPath string) []string {
+func agentCommand(shell, id, resolvedPath string) []string {
+	return agentCommandWithArgs(shell, id, resolvedPath, nil)
+}
+
+// agentCommandWithArgs wraps resolvedPath with the user's login shell and
+// passes extra arguments as positional parameters so prompts and flags are
+// never interpolated into a shell command string (docs/MOD-016-peer-delegation.md).
+func agentCommandWithArgs(shell, _, resolvedPath string, extra []string) []string {
 	if shell != "" && supportsLoginExec(shell) {
-		return []string{shell, "-lic", "exec " + shellQuote(resolvedPath)}
+		if len(extra) == 0 {
+			return []string{shell, "-lic", "exec " + shellQuote(resolvedPath)}
+		}
+		if filepath.Base(shell) == "fish" {
+			return append([]string{shell, "-lic", "exec " + shellQuote(resolvedPath) + " $argv", "--"}, extra...)
+		}
+		return append([]string{shell, "-lic", "exec " + shellQuote(resolvedPath) + ` "$@"`, "--"}, extra...)
 	}
-	return []string{resolvedPath}
+	if len(extra) == 0 {
+		return []string{resolvedPath}
+	}
+	return append([]string{resolvedPath}, extra...)
+}
+
+// findAgentBinary resolves the executable path of agentID on this host.
+func findAgentBinary(agentID, home, shell string) (string, bool) {
+	sh := resolveUserShell(shell)
+	dirs := agentSearchDirs(home, sh)
+	return findExecutableInDirs(dirs, agentID)
 }
 
 // shellQuote single-quotes a path for a POSIX shell command line.

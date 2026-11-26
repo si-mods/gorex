@@ -30,6 +30,7 @@ type Server struct {
 	uses       uses
 	mu         sync.Mutex
 	sessions   map[string]*session
+	delegates  map[string]*delegatedRun
 	order      []string
 	layout     json.RawMessage
 	layoutRev  uint64

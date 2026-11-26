@@ -603,6 +603,26 @@ func (c *Client) AgentsList() (r AgentsResult, err error) {
 	return
 }
 
+// Delegate starts a delegated coding-agent tab on the server
+// (CapabilityDelegate, docs/MOD-016-peer-delegation.md).
+func (c *Client) Delegate(opt DelegateOptions) (r DelegateResult, err error) {
+	err = c.call(Request{Op: "delegate", Delegate: &opt}, &r)
+	return
+}
+
+// DelegateSend sends a warm follow-up prompt to a live delegated session.
+func (c *Client) DelegateSend(opt DelegateSendOptions) (r DelegateResult, err error) {
+	err = c.call(Request{Op: "delegate.send", DelegateSend: &opt}, &r)
+	return
+}
+
+// DelegateResult fetches the latest status and extracted output of a
+// delegated session.
+func (c *Client) DelegateResult(sid string) (r DelegateResult, err error) {
+	err = c.call(Request{Op: "delegate.result", SID: sid}, &r)
+	return
+}
+
 func (c *Client) RenewSize(sid, owner string) error {
 	return c.call(Request{Op: "renewSize", SID: sid, Owner: owner}, nil)
 }

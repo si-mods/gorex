@@ -64,6 +64,12 @@ func serverOp(op string) serverOpFunc {
 		return (*Server).doDirMkdir
 	case "agents.list":
 		return (*Server).doAgentsList
+	case "delegate":
+		return (*Server).doDelegate
+	case "delegate.send":
+		return (*Server).doDelegateSend
+	case "delegate.result":
+		return (*Server).doDelegateResult
 	case "input":
 		return withSession(doInput)
 	case "key":
@@ -182,6 +188,9 @@ func (s *Server) doCreate(req Request, peer string, _ *keptConn) (any, error) {
 }
 
 func (s *Server) doKill(req Request, _ string, _ *keptConn) (any, error) {
+	if d := s.getDelegate(req.SID); d != nil {
+		d.stop()
+	}
 	s.ops.RLock()
 	ss, err := s.session(req.SID)
 	if err == nil {
@@ -192,6 +201,9 @@ func (s *Server) doKill(req Request, _ string, _ *keptConn) (any, error) {
 		// Its pane goes before the answer, so that no crash after
 		// it starts the session again.
 		s.ended(ss.id)
+		s.mu.Lock()
+		delete(s.delegates, ss.id)
+		s.mu.Unlock()
 	}
 	return nil, nil // or already gone
 }

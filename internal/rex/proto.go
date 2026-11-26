@@ -164,9 +164,14 @@ const FolderMissing = "folder_missing"
 // program icons (OSC 7502, docs/MOD-011-program-icons.md) has.
 const CapabilityProgramIcon = "program.icon"
 
+// CapabilityDelegate is what a server that launches and tracks delegated
+// coding agent tabs (docs/MOD-016-peer-delegation.md) says it does: the
+// "delegate", "delegate.send", and "delegate.result" ops.
+const CapabilityDelegate = "delegate"
+
 // capabilities are what a version 3 server does beyond version 2. A
 // client reads them from Hello and falls back when one is absent.
-var capabilities = []string{"layout.revision", "events.revision", CapabilityShutdownRestart, CapabilityShutdownIfIdle, CapabilitySnapshotGhostty, CapabilityInputEvents, CapabilityTerminalQuery, CapabilityFileTransfer, CapabilityFileTemp, CapabilityTeleport, CapabilityLayoutServer, CapabilityTabToSpace, CapabilityStatusSeen, CapabilityDirList, CapabilityDirMkdir, CapabilityAgents, CapabilitySpaceHome, CapabilityProjects, CapabilitySpacesDelete, CapabilityPrompts, CapabilityPush, CapabilityProgramIcon}
+var capabilities = []string{"layout.revision", "events.revision", CapabilityShutdownRestart, CapabilityShutdownIfIdle, CapabilitySnapshotGhostty, CapabilityInputEvents, CapabilityTerminalQuery, CapabilityFileTransfer, CapabilityFileTemp, CapabilityTeleport, CapabilityLayoutServer, CapabilityTabToSpace, CapabilityStatusSeen, CapabilityDirList, CapabilityDirMkdir, CapabilityAgents, CapabilitySpaceHome, CapabilityProjects, CapabilitySpacesDelete, CapabilityPrompts, CapabilityPush, CapabilityProgramIcon, CapabilityDelegate}
 
 // Request is a line of the control connection, from the client.
 type Request struct {
@@ -294,6 +299,47 @@ type Request struct {
 	DirList *DirList `json:"dirList,omitempty"`
 	// DirMkdir is what "dir.mkdir" makes (CapabilityDirMkdir).
 	DirMkdir *DirMkdir `json:"dirMkdir,omitempty"`
+	// Delegate is what "delegate" runs (CapabilityDelegate).
+	Delegate *DelegateOptions `json:"delegate,omitempty"`
+	// DelegateSend is what "delegate.send" sends to a live delegated session.
+	DelegateSend *DelegateSendOptions `json:"delegateSend,omitempty"`
+}
+
+// DelegateOptions are the parameters of the "delegate" op
+// (docs/MOD-016-peer-delegation.md).
+type DelegateOptions struct {
+	Agent           string `json:"agent,omitempty"`
+	Dir             string `json:"dir,omitempty"`
+	Prompt          string `json:"prompt"`
+	Mode            string `json:"mode,omitempty"`
+	Resume          string `json:"resume,omitempty"`
+	From            string `json:"from,omitempty"`
+	Keep            bool   `json:"keep,omitempty"`
+	Async           bool   `json:"async,omitempty"`
+	TimeoutMs       int    `json:"timeoutMs,omitempty"`
+	CancelOnTimeout bool   `json:"cancelOnTimeout,omitempty"`
+}
+
+// DelegateSendOptions are the parameters of "delegate.send".
+type DelegateSendOptions struct {
+	SID       string `json:"sid"`
+	Prompt    string `json:"prompt"`
+	Async     bool   `json:"async,omitempty"`
+	TimeoutMs int    `json:"timeoutMs,omitempty"`
+}
+
+// DelegateResult is the answer to "delegate", "delegate.send", and
+// "delegate.result".
+type DelegateResult struct {
+	Session      string `json:"session"`
+	Agent        string `json:"agent"`
+	Mode         string `json:"mode,omitempty"`
+	Status       string `json:"status"`
+	ExitCode     int    `json:"exitCode,omitempty"`
+	AgentSession string `json:"agentSession,omitempty"`
+	Result       string `json:"result,omitempty"`
+	RawCapture   string `json:"rawCapture,omitempty"`
+	Error        string `json:"error,omitempty"`
 }
 
 // CommandTimeout is how long the server waits for the app to make a
@@ -895,6 +941,11 @@ type SessionInfo struct {
 	// when known.
 	Owner     string `json:"owner,omitempty"`
 	OwnerName string `json:"ownerName,omitempty"`
+	// DelegatedFrom names the originating host/session for a delegated
+	// coding-agent tab, and DelegatedAgent is its agent CLI ID
+	// (docs/MOD-016-peer-delegation.md).
+	DelegatedFrom  string `json:"delegatedFrom,omitempty"`
+	DelegatedAgent string `json:"delegatedAgent,omitempty"`
 	// Statuses are what the programs said they do (OSC 7501), by id, and
 	// Status the one that most needs the user (MostUrgent); nil when they
 	// said nothing. StatusSeen is when the latest done or error record a client showed
