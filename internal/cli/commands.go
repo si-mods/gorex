@@ -97,6 +97,8 @@ func Main(args []string, out, errOut io.Writer, version string) (code int, handl
 		return eventsCmd(args, out, errOut)
 	case "hosts":
 		return hostsCmd(args, out, errOut)
+	case "agents":
+		return agentsCmd(args, out, errOut)
 	case "pair":
 		return pairCmd(args, out, errOut)
 	case "skill":
@@ -152,7 +154,8 @@ Usage:
   gorex paste [-s SESSION] [-w TAB] [-b PANE] [--json] TEXT...
   gorex capture [-s SESSION] [--history BYTES] [--raw] [--json]
   gorex events
-  gorex hosts [ls] [--json]
+  gorex hosts [ls] [--probe] [--timeout D] [--json]
+  gorex [-S HOST] agents [--json]
   gorex [-S HOST] pair [--json]
   gorex skill show|setup|status|remove [--agent NAME] [--project] [--dry-run] [--json]
   gorex remote status [--json] | tailscale on|off | address | key | relay HOST|default | reachable IP|off | enable | disable | control on|off | pair start|stop | pending | approve KEY|CODE | reject KEY|CODE | allow NAME KEY | revoke KEY
@@ -753,17 +756,33 @@ func hostsCmd(args []string, out, errOut io.Writer) (int, bool) {
 	}
 	fs := flagSet("hosts", errOut)
 	asJSON := fs.Bool("json", false, "print JSON")
+	probe := fs.Bool("probe", false, "dial peers to report reachability, OS, agents, and projects")
+	timeout := fs.Duration("timeout", 5*time.Second, "per-host probe timeout")
 	if code, stop := parse(fs, args); stop {
 		return code, true
 	}
 	if len(fs.Args()) > 0 {
-		fmt.Fprintln(errOut, "gorex hosts: use `gorex hosts [ls]`")
+		fmt.Fprintln(errOut, "gorex hosts: use `gorex hosts [ls] [--probe] [--timeout D] [--json]`")
+		return ExitUsage, true
+	}
+	if *probe && *timeout <= 0 {
+		fmt.Fprintln(errOut, "gorex hosts: --timeout must be positive")
 		return ExitUsage, true
 	}
 	f, err := hosts.Load(rex.Dir())
 	if err != nil {
 		fmt.Fprintln(errOut, err)
 		return ExitFailed, true
+	}
+	if *probe {
+		cands := collectProbeCandidates(f, probeTailnetHosts())
+		probed := probeHosts(cands, *timeout)
+		if *asJSON {
+			WriteJSON(out, probed)
+			return ExitOK, true
+		}
+		writeProbedHostsTable(out, probed)
+		return ExitOK, true
 	}
 	if *asJSON {
 		type shown struct {
