@@ -7,6 +7,7 @@ import { icon } from "./hosts";
 import { describe } from "./pane";
 import { t } from "./i18n";
 import { browserCrumbs, collapseCrumbs, defaultHost, FolderBrowser, folderName, hostState, HostState } from "./projects";
+import { setTooltip } from "./tooltip";
 
 export interface Chosen {
   conn: HostConn;
@@ -68,13 +69,15 @@ export function chooseFolder(o: SheetOptions): Promise<Chosen | undefined> {
     const home = el("button", "icon");
     home.type = "button";
     home.append(icon("house"));
-    home.title = t("projectHome");
-    home.setAttribute("aria-label", home.title);
+    const homeTip = t("projectHome");
+    setTooltip(home, homeTip, "project-dialog");
+    home.setAttribute("aria-label", homeTip);
     const up = el("button", "icon");
     up.type = "button";
     up.append(icon("arrow-up"));
-    up.title = t("projectUp");
-    up.setAttribute("aria-label", up.title);
+    const upTip = t("projectUp");
+    setTooltip(up, upTip, "project-dialog");
+    up.setAttribute("aria-label", upTip);
     const path = el("input", "sheet-field");
     path.type = "text";
     path.spellcheck = false;
@@ -148,12 +151,12 @@ export function chooseFolder(o: SheetOptions): Promise<Chosen | undefined> {
       if (last) {
         const cur = el("span", "sheet-crumb current", c.name);
         cur.setAttribute("aria-current", "location");
-        cur.title = c.name;
+        setTooltip(cur, c.name, "project-dialog");
         return cur;
       }
       const btn = el("button", "sheet-crumb", c.name);
       btn.type = "button";
-      btn.title = c.path;
+      setTooltip(btn, c.path, "project-dialog");
       btn.onclick = () => void browser.go(c.path);
       return btn;
     }
@@ -172,7 +175,7 @@ export function chooseFolder(o: SheetOptions): Promise<Chosen | undefined> {
         if (gone.length) {
           const more = el("button", "sheet-crumb", "…");
           more.type = "button";
-          more.title = gone.map((c) => c.name).join(" / ");
+          setTooltip(more, gone.map((c) => c.name).join(" / "), "project-dialog");
           more.onclick = () => void b.go(gone[gone.length - 1].path);
           add(more);
         }

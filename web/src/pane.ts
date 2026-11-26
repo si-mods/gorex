@@ -12,6 +12,7 @@ import { localize, Msg, PlainKey, t } from "./i18n";
 import { Control, DataStream, describe, RexError, TerminalStream } from "./rex";
 import { RexProtocol } from "./rex-protocol.gen";
 import { desktopTheme, Font, Terminal, Theme, themeOf } from "./terminal";
+import { setTooltip } from "./tooltip";
 import { extractPastedImages, uploadFiles as sendUploads } from "./upload";
 
 /** What a pane needs of the page: the connection, the module, the chosen theme and the status line. */
@@ -151,8 +152,9 @@ export class TerminalView {
       b.append(el("span", "pane-icon"));
       b.type = "button";
       localize(b, (b) => {
-        b.title = t(label);
-        b.setAttribute("aria-label", b.title);
+        const tip = t(label);
+        setTooltip(b, tip, "pane-actions");
+        b.setAttribute("aria-label", tip);
       });
       b.dataset.action = name;
       // The pane keeps the keyboard: a press on a button does not take it.

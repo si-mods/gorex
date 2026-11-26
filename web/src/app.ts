@@ -4,6 +4,7 @@
 // window, and downloads streamed through the worker (files.ts).
 import { icon } from "./hosts";
 import { localize, t } from "./i18n";
+import { setTooltip } from "./tooltip";
 
 /** Whether this build registers sw.js: build.mjs's yes, the dev server's no (dev.mjs). */
 declare const __GOREX_SW__: boolean;
@@ -118,14 +119,15 @@ function offerUpdate(reg: ServiceWorkerRegistration) {
   reload.append(icon("rotate-ccw"), label);
   localize(reload, () => {
     label.textContent = t("updateReload");
-    reload.title = t("updateReloadTip");
+    setTooltip(reload, t("updateReloadTip"), "update-bar");
   });
   const later = document.createElement("button");
   later.type = "button";
   later.className = "icon";
   localize(later, (b) => {
-    b.title = t("updateLater");
-    b.setAttribute("aria-label", b.title);
+    const tip = t("updateLater");
+    setTooltip(b, tip, "update-bar");
+    b.setAttribute("aria-label", tip);
   });
   later.append(icon("x"));
   later.onclick = () => (box.hidden = true);

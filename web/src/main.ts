@@ -33,6 +33,7 @@ import { webTransport } from "./webtransport";
 import { desktopTheme, Theme } from "./terminal";
 import { isLight, startTheme, ThemeEntry, themeColours } from "./themes";
 import { applyGlass } from "./glass";
+import { initTooltips, setTooltip } from "./tooltip";
 import type { Welcome } from "./welcome";
 import { borderLeaf, WindowHost, WindowView } from "./window";
 import { createWindowOps, windowIDs, windowOf } from "./windowops";
@@ -1387,8 +1388,9 @@ document.fonts.addEventListener("loadingdone", () => {
   const label = document.createElement("span");
   open.replaceChildren(icon("settings-2"), label);
   localize(open, () => {
-    label.textContent = t("sidebarSettings");
-    open.title = label.textContent;
+    const tip = t("sidebarSettings");
+    label.textContent = tip;
+    setTooltip(open, tip, "sidebar");
   });
   const add = document.createElement("button");
   add.type = "button";
@@ -1396,8 +1398,9 @@ document.fonts.addEventListener("loadingdone", () => {
   add.id = "new-space";
   add.append(icon("folder-plus"));
   localize(add, () => {
-    add.title = t("cmdNewSpace");
-    add.setAttribute("aria-label", add.title);
+    const tip = t("cmdNewSpace");
+    setTooltip(add, tip, "sidebar");
+    add.setAttribute("aria-label", tip);
   });
   add.onclick = () => void projectOps.newProject(currentConn());
   $("foot").append(add);
@@ -1409,5 +1412,6 @@ const startAt = startPlace(loadHosts().map((h) => h.id));
 document.body.classList.toggle("onboarding", !loadHosts().length && !startAt);
 // The tabs' place from the first frame too.
 document.body.dataset.tabs = prefs.tabPlacement || "above";
+initTooltips();
 startApp();
 main();

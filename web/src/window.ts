@@ -8,6 +8,7 @@ import { localize, t } from "./i18n";
 import { draggable, DropZone, onMenu, ownDrag, paneDropZone } from "./manage";
 import { PaneHost, TerminalView } from "./pane";
 import { motionEase, motionMs } from "./prefs";
+import { setTooltip } from "./tooltip";
 import { extractDroppedFiles } from "./upload";
 
 export type { FloatingLayer, LayoutNode };
@@ -631,7 +632,7 @@ export class WindowView {
       btn.type = "button";
       btn.className = "float-dock-btn";
       btn.textContent = this.app.titleOf(block);
-      btn.title = t("paneFloatRestore");
+      setTooltip(btn, t("paneFloatRestore"), "pane-actions");
       btn.onclick = () => this.app.setLayerState?.(this, layer.layerId, "normal");
       this.floatDock.append(btn);
     }

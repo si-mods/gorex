@@ -7,6 +7,7 @@
 // on the desktop), not translated.
 
 import { t } from "./i18n";
+import { setTooltip } from "./tooltip";
 
 export interface Program {
   name: string;
@@ -180,7 +181,7 @@ export function tiles(front: string | undefined, back: (string | undefined)[], d
   if (done) {
     const d = document.createElement("i");
     d.className = "done-dot";
-    d.title = t("programDone");
+    setTooltip(d, t("programDone"), "sidebar");
     f.append(d);
   }
   box.append(f);

@@ -5,8 +5,15 @@
 // pane's header (tabEvents, panedrop.go). main.ts says what each item
 // does; these only show and take them, so that they can move with the
 // sidebar.
+import { HoverClock, inSafeTriangle, Point, PointerTracker } from "./hoverintent";
 import { icon } from "./hosts";
 import { t } from "./i18n";
+import { hideTooltip, setTooltip } from "./tooltip";
+
+const SUBMENU_OPEN_DELAY_MS = 150;
+const SUBMENU_SWAP_DELAY_MS = 60;
+const SUBMENU_CLOSE_GRACE_MS = 300;
+const SUBMENU_EXIT_MS = 120;
 
 /** An item of a menu: its words and what it runs, or a submenu; or a line between groups. */
 export type MenuItem = { label: string; /** A second line under the label. */ detail?: string; /** A tooltip. */ title?: string; run?: () => void; disabled?: boolean; submenu?: MenuItem[]; /** A check before the label: the item is the one chosen. */ checked?: boolean; /** A dot of this color before the label. */ color?: string; /** A mark before the label, where a color dot would go: a program's tile. */ tile?: HTMLElement } | "separator";
@@ -21,6 +28,7 @@ export function closeMenu() {
   shown = undefined;
   m.done.abort();
   m.el.remove();
+  hideTooltip();
   m.closed?.();
 }
 
@@ -59,15 +67,59 @@ export function openMenu(x: number, y: number, items: MenuItem[], closed?: () =>
 const openers = new WeakMap<HTMLElement, HTMLElement>();
 
 /** A panel of items, and the submenu each opens beside it. */
-function panel(items: MenuItem[], signal: AbortSignal): HTMLElement {
+function panel(items: MenuItem[], signal: AbortSignal, onClose?: () => void): HTMLElement {
   const el = document.createElement("div");
   el.className = "context-menu";
   el.setAttribute("role", "menu");
+  const tracker = new PointerTracker();
+  const openClock = new HoverClock({ signal });
+  const closeClock = new HoverClock({ signal });
   let sub: HTMLElement | undefined;
-  const closeSub = () => {
-    sub?.remove();
+  let subOpener: HTMLButtonElement | undefined;
+  let subAbort: AbortController | undefined;
+  let lastPoint: Point | undefined;
+
+  const closeSub = (immediate = false) => {
+    closeClock.cancel();
+    if (!sub) return;
+    subOpener?.setAttribute("aria-expanded", "false");
+    subAbort?.abort();
+    const closing = sub;
     sub = undefined;
+    subOpener = undefined;
+    subAbort = undefined;
+    if (immediate || signal.aborted) {
+      closing.remove();
+      return;
+    }
+    closing.classList.add("closing");
+    const timer = setTimeout(() => closing.remove(), SUBMENU_EXIT_MS);
+    signal.addEventListener("abort", () => {
+      clearTimeout(timer);
+      closing.remove();
+    }, { once: true });
   };
+
+  el.addEventListener("pointermove", (e) => {
+    if (e.pointerType === "touch") return;
+    const pt: Point = { x: e.clientX, y: e.clientY };
+    const prev = lastPoint;
+    tracker.record(pt.x, pt.y, performance.now());
+    lastPoint = pt;
+    if (sub && prev && (!(e.target instanceof Node) || (!sub.contains(e.target) && !subOpener?.contains(e.target)))) {
+      if (inSafeTriangle(prev, pt, sub.getBoundingClientRect())) {
+        openClock.cancel();
+        closeClock.schedule(SUBMENU_CLOSE_GRACE_MS, () => closeSub());
+      }
+    }
+  }, { signal });
+
+  el.addEventListener("pointerleave", (e) => {
+    if (e.pointerType === "touch") return;
+    openClock.cancel();
+    if (sub) closeClock.schedule(SUBMENU_CLOSE_GRACE_MS, () => closeSub());
+  }, { signal });
+
   for (const it of items) {
     if (it === "separator") {
       // Not first, not last, not twice.
@@ -80,7 +132,7 @@ function panel(items: MenuItem[], signal: AbortSignal): HTMLElement {
     b.setAttribute("role", "menuitem");
     const label = document.createElement("span");
     label.textContent = it.label;
-    if (it.title) b.title = it.title;
+    if (it.title) setTooltip(b, it.title, "menu");
     if (it.checked !== undefined || it.color || it.tile) {
       const mark = document.createElement("span");
       mark.className = "context-mark";
@@ -105,23 +157,90 @@ function panel(items: MenuItem[], signal: AbortSignal): HTMLElement {
     } else b.append(label);
     b.disabled = !!it.disabled || (!!it.submenu && !it.submenu.length);
     // The menu keeps the page's focus where it was: a press does not take it.
-    b.onpointerdown = (e) => e.preventDefault();
+    let lastDownType = "";
+    b.onpointerdown = (e) => {
+      lastDownType = e.pointerType;
+      e.preventDefault();
+    };
     if (it.submenu) {
       b.setAttribute("aria-haspopup", "menu");
+      b.setAttribute("aria-expanded", "false");
       b.append(icon("chevron-right"));
       const open = (focus: boolean) => {
         if (b.disabled) return;
-        closeSub();
-        sub = panel(it.submenu!, signal);
-        sub.classList.add("sub");
-        openers.set(sub, b);
-        el.append(sub);
+        openClock.cancel();
+        closeClock.cancel();
+        if (subOpener === b && sub) {
+          if (focus) (sub.querySelector("button:not(:disabled)") as HTMLElement | null)?.focus({ preventScroll: true });
+          return;
+        }
+        closeSub(true);
+        const childAbort = new AbortController();
+        signal.addEventListener("abort", () => childAbort.abort(), { once: true });
+        subAbort = childAbort;
+        const child = panel(it.submenu!, childAbort.signal, () => closeSub(true));
+        child.classList.add("sub");
+        sub = child;
+        subOpener = b;
+        b.setAttribute("aria-expanded", "true");
+        openers.set(child, b);
+        child.addEventListener("pointerenter", (e) => {
+          if (e.pointerType === "touch") return;
+          closeClock.cancel();
+          openClock.cancel();
+        }, { signal: childAbort.signal });
+        child.addEventListener("pointerleave", (e) => {
+          if (e.pointerType === "touch") return;
+          if (e.relatedTarget instanceof Node && el.contains(e.relatedTarget)) return;
+          closeClock.schedule(SUBMENU_CLOSE_GRACE_MS, () => closeSub());
+        }, { signal: childAbort.signal });
+        el.append(child);
         const r = b.getBoundingClientRect();
-        place(sub, r.right + 2, r.top - 5, r.left - 2);
-        if (focus) (sub.querySelector("button:not(:disabled)") as HTMLElement | null)?.focus({ preventScroll: true });
+        place(child, r.right + 2, r.top - 5, r.left - 2);
+        if (focus) (child.querySelector("button:not(:disabled)") as HTMLElement | null)?.focus({ preventScroll: true });
       };
-      b.onpointerenter = () => open(false);
-      b.onclick = () => open(true);
+      const scheduleHoverOpen = (delayMs: number) => {
+        openClock.schedule(delayMs, () => {
+          if (tracker.isFast(performance.now())) {
+            scheduleHoverOpen(SUBMENU_SWAP_DELAY_MS);
+            return;
+          }
+          open(false);
+        });
+      };
+      b.onpointerenter = (e) => {
+        if (e.pointerType === "touch") return;
+        const pt: Point = { x: e.clientX, y: e.clientY };
+        const prev = lastPoint;
+        tracker.record(pt.x, pt.y, performance.now());
+        lastPoint = pt;
+        if (subOpener === b && sub) {
+          closeClock.cancel();
+          openClock.cancel();
+          return;
+        }
+        if (sub) {
+          closeClock.schedule(SUBMENU_CLOSE_GRACE_MS, () => closeSub());
+          if (prev && inSafeTriangle(prev, pt, sub.getBoundingClientRect())) {
+            // If the pointer dwells on this sibling past the safe-triangle grace,
+            // open this sibling's submenu once the previous one closes.
+            scheduleHoverOpen(SUBMENU_CLOSE_GRACE_MS);
+            return;
+          }
+          scheduleHoverOpen(SUBMENU_SWAP_DELAY_MS);
+        } else {
+          scheduleHoverOpen(SUBMENU_OPEN_DELAY_MS);
+        }
+      };
+      b.onclick = () => {
+        const touch = lastDownType === "touch";
+        lastDownType = "";
+        if (touch && subOpener === b && sub) {
+          closeSub();
+          return;
+        }
+        open(!touch);
+      };
       b.onkeydown = (e) => {
         if (e.key === "ArrowRight") {
           e.preventDefault();
@@ -129,7 +248,11 @@ function panel(items: MenuItem[], signal: AbortSignal): HTMLElement {
         }
       };
     } else {
-      b.onpointerenter = closeSub;
+      b.onpointerenter = (e) => {
+        if (e.pointerType === "touch") return;
+        openClock.cancel();
+        if (sub) closeClock.schedule(SUBMENU_CLOSE_GRACE_MS, () => closeSub());
+      };
       b.onclick = () => {
         closeMenu();
         it.run?.();
@@ -151,7 +274,8 @@ function panel(items: MenuItem[], signal: AbortSignal): HTMLElement {
       // Back to the item that opened it.
       e.preventDefault();
       e.stopPropagation();
-      el.remove();
+      if (onClose) onClose();
+      else el.remove();
       openers.get(el)?.focus({ preventScroll: true });
     }
   }, { signal });
@@ -171,8 +295,10 @@ function place(el: HTMLElement, x: number, y: number, alt: number) {
   el.style.top = "0px";
   const r = el.getBoundingClientRect();
   const w = window.innerWidth, h = window.innerHeight;
-  const left = x + r.width > w - 8 ? Math.max(8, alt - r.width) : x;
+  const flipped = x + r.width > w - 8;
+  const left = flipped ? Math.max(8, alt - r.width) : x;
   const top = Math.max(8, Math.min(y, h - 8 - r.height));
+  if (el.classList.contains("sub")) el.dataset.side = flipped ? "left" : "right";
   // A submenu is placed in its parent's box.
   const base = el.offsetParent?.getBoundingClientRect() ?? new DOMRect();
   el.style.left = `${left - (el.classList.contains("sub") ? base.left : 0)}px`;

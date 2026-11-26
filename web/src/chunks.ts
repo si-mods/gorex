@@ -9,6 +9,7 @@ import { localize, msg, Msg, t } from "./i18n";
 import { icon } from "./hosts";
 import { loader } from "./loader";
 import { ProgressView } from "./progress";
+import { setTooltip } from "./tooltip";
 
 /** How long a chunk loads before its panel shows: a load from the cache shows none. */
 const showAfter = 150;
@@ -79,8 +80,9 @@ class Panel {
     close.className = "icon chunk-close";
     close.hidden = true;
     localize(close, (b) => {
-      b.title = t("commonClose");
-      b.setAttribute("aria-label", b.title);
+      const tip = t("commonClose");
+      setTooltip(b, tip, "update-bar");
+      b.setAttribute("aria-label", tip);
     });
     close.append(icon("x"));
     close.onclick = () => this.remove();

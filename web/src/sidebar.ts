@@ -15,6 +15,7 @@ import { draggable, MenuItem, onMenu, openMenu, ownDrag, renameField } from "./m
 import { prefs } from "./prefs";
 import { projectBar, projectTree } from "./projectsidebar";
 import { mostUrgent, rank, Status, tiles, tilesWidth } from "./programs";
+import { setTooltip } from "./tooltip";
 import { layoutOf, leavesOf, WindowView } from "./window";
 
 /** What the sidebar's rows do, which the page does. */
@@ -143,13 +144,13 @@ export function fillWindow(c: HostConn, b: HTMLElement, w: any, room: number) {
   if (urgent?.state === "blocked") {
     const dot = document.createElement("i");
     dot.className = "attention-dot";
-    dot.title = t("sidebarNeedsInput");
+    setTooltip(dot, t("sidebarNeedsInput"), "sidebar");
     b.append(dot);
   } else if (urgent?.progress !== undefined) {
     const ring = document.createElement("i");
     ring.className = "progress-ring";
     ring.style.setProperty("--p", String(urgent.progress));
-    ring.title = t("percent", { value: urgent.progress });
+    setTooltip(ring, t("percent", { value: urgent.progress }), "sidebar");
     b.append(ring);
   }
   const n = blocks.length;
@@ -273,7 +274,7 @@ function spaceSection(nav: HTMLElement, c: HostConn, s: Session) {
     const name = document.createElement("span");
     name.textContent = spaceName(s);
     h.append(name, add);
-    h.title = spaceName(s);
+    setTooltip(h, spaceName(s), "sidebar");
   }
   onMenu(h, (x, y) => openMenu(x, y, app.spaceMenu(c, s.id), () => app.shown()?.focusKeys()));
   nav.append(h);
@@ -286,7 +287,7 @@ function newWindowButton(c: HostConn, session: string): HTMLButtonElement {
   add.className = "icon";
   add.type = "button";
   add.append(icon("plus"));
-  add.title = t("cmdNewWindow");
+  setTooltip(add, t("cmdNewWindow"), "sidebar");
   // A host that is not live makes nothing: no creation waits for it to come back.
   add.disabled = !c.live;
   add.onclick = () => app.newWindow(c, session);
@@ -309,7 +310,7 @@ function tabBar(nav: HTMLElement, c: HostConn | undefined) {
     const chip = document.createElement("button");
     chip.type = "button";
     chip.className = "space-chip";
-    chip.title = t("spaceMenuLabel");
+    setTooltip(chip, t("spaceMenuLabel"), "sidebar");
     chip.setAttribute("aria-haspopup", "menu");
     const name = document.createElement("span");
     name.textContent = spaceName(s);
@@ -357,9 +358,10 @@ export function hostHead(nav: HTMLElement, h: Host, c: HostConn | undefined): HT
   if (dot) {
     const d = document.createElement("i");
     d.className = `state-dot ${dot}`;
-    d.title = t(dot === "unreachable" ? "linkUnreachable" : "linkConnecting");
+    const stateTip = t(dot === "unreachable" ? "linkUnreachable" : "linkConnecting");
+    setTooltip(d, stateTip, "sidebar");
     head.append(d);
-    head.setAttribute("aria-label", t("sidebarHostState", { host: h.name, state: d.title }));
+    head.setAttribute("aria-label", t("sidebarHostState", { host: h.name, state: stateTip }));
   }
   nav.append(head);
   return head;
@@ -373,12 +375,12 @@ export function problemLine(nav: HTMLElement, c: HostConn) {
   line.dataset.host = c.host.id;
   const text = document.createElement("span");
   text.textContent = c.problem.title;
-  line.title = c.problem.text;
+  setTooltip(line, c.problem.text, "sidebar");
   const button = (glyph: string, label: string, run: () => void) => {
     const b = document.createElement("button");
     b.type = "button";
     b.className = "icon";
-    b.title = label;
+    setTooltip(b, label, "sidebar");
     b.setAttribute("aria-label", label);
     b.append(icon(glyph));
     b.onclick = run;
@@ -410,7 +412,7 @@ function hostSections(nav: HTMLElement) {
       continue;
     }
     (head as HTMLButtonElement).type = "button";
-    head.title = t("sidebarConnectHost", { host: h.name });
+    setTooltip(head, t("sidebarConnectHost", { host: h.name }), "sidebar");
     head.onclick = () => app.connect(h);
   }
 }
@@ -467,7 +469,7 @@ export function windowRow(c: HostConn, session: string, w: any, room: number): H
   x.className = "icon close";
   x.type = "button";
   x.append(icon("x"));
-  x.title = t("cmdCloseWindow");
+  setTooltip(x, t("cmdCloseWindow"), "sidebar");
   x.onclick = () => app.closeWindow(c, session, id);
   row.append(b, x);
   onMenu(row, (x, y) => openMenu(x, y, app.windowMenu(c, session, id), () => app.shown()?.focusKeys()));

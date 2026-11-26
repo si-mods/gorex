@@ -4,6 +4,7 @@ import { FindMatch, findMatches, stepMatch, viewportHighlights } from "./findhel
 import { icon } from "./hosts";
 import { localize, t } from "./i18n";
 import type { Terminal } from "./terminal";
+import { setTooltip } from "./tooltip";
 
 const el = <K extends keyof HTMLElementTagNameMap>(tag: K, cls: string) => {
   const e = document.createElement(tag);
@@ -41,22 +42,25 @@ export class FindBar {
     this.prevBtn.type = "button";
     this.prevBtn.append(icon("chevron-up"));
     localize(this.prevBtn, (b) => {
-      b.title = t("findPrevious");
-      b.setAttribute("aria-label", t("findPrevious"));
+      const tip = t("findPrevious");
+      setTooltip(b, tip, "find-bar");
+      b.setAttribute("aria-label", tip);
     });
 
     this.nextBtn.type = "button";
     this.nextBtn.append(icon("chevron-down"));
     localize(this.nextBtn, (b) => {
-      b.title = t("findNext");
-      b.setAttribute("aria-label", t("findNext"));
+      const tip = t("findNext");
+      setTooltip(b, tip, "find-bar");
+      b.setAttribute("aria-label", tip);
     });
 
     this.closeBtn.type = "button";
     this.closeBtn.append(icon("x"));
     localize(this.closeBtn, (b) => {
-      b.title = t("findClose");
-      b.setAttribute("aria-label", t("findClose"));
+      const tip = t("findClose");
+      setTooltip(b, tip, "find-bar");
+      b.setAttribute("aria-label", tip);
     });
 
     this.el.append(this.input, this.count, this.prevBtn, this.nextBtn, this.closeBtn);
