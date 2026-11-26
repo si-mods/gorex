@@ -5,6 +5,7 @@
 import { icon } from "./hosts";
 import { Language, language, languages, localize, setLanguage, t, tIn } from "./i18n";
 import { prefs } from "./prefs";
+import { setTooltip } from "./tooltip";
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls: string): HTMLElementTagNameMap[K] {
   const e = document.createElement(tag);
@@ -86,8 +87,9 @@ export function mountCorner(mount: HTMLElement, openSettings: () => void) {
   });
   localize(button, () => {
     name.textContent = tIn(language(), "languageName");
-    button.setAttribute("aria-label", t("cornerLanguage"));
-    button.title = t("cornerLanguage");
+    const tip = t("cornerLanguage");
+    button.setAttribute("aria-label", tip);
+    setTooltip(button, tip, "corner");
     if (!menu.hidden) draw();
   });
 
@@ -95,8 +97,9 @@ export function mountCorner(mount: HTMLElement, openSettings: () => void) {
   settings.type = "button";
   settings.append(icon("settings-2"));
   localize(settings, () => {
-    settings.setAttribute("aria-label", t("sidebarSettings"));
-    settings.title = t("sidebarSettings");
+    const tip = t("sidebarSettings");
+    settings.setAttribute("aria-label", tip);
+    setTooltip(settings, tip, "corner");
   });
   settings.onclick = openSettings;
 

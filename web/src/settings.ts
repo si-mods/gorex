@@ -22,6 +22,7 @@ import type { Tailcat } from "./tailcat";
 import { Status, Tailnet, validDeviceName } from "./tailnet";
 import { desktopTheme, minimumContrast, Theme } from "./terminal";
 import { loadThemes, ThemeEntry, themeColours, themePicker } from "./themes";
+import { setTooltip } from "./tooltip";
 
 /** What build.mjs writes in: the client's commit and build date, and the Ghostty commit of the wasm. */
 declare const __GOREX_COMMIT__: string;
@@ -294,7 +295,7 @@ export class Settings {
   private closeButton: HTMLButtonElement;
 
   private labelClose() {
-    this.closeButton.title = t("commonClose");
+    setTooltip(this.closeButton, t("commonClose"), "settings");
     this.closeButton.setAttribute("aria-label", t("settingsClose"));
   }
 
@@ -883,7 +884,7 @@ export class Settings {
       const off = this.app.link(h).state === "none";
       pick.append(glyph, text, hosts.dot(h));
       pick.setAttribute("aria-current", String(chosen));
-      pick.title = off ? t("settingsHostConnect", { name: h.name }) : t("hostShowName", { name: h.name });
+      setTooltip(pick, off ? t("settingsHostConnect", { name: h.name }) : t("hostShowName", { name: h.name }), "settings");
       pick.onclick = () => {
         // A connected host shows its last window; one the user disconnected connects.
         if (off || !chosen) hosts.choose(h);
@@ -892,7 +893,7 @@ export class Settings {
       const edit = el("button", "pane-action");
       edit.type = "button";
       edit.dataset.key = h.id + ":edit";
-      edit.title = t("commonEdit");
+      setTooltip(edit, t("commonEdit"), "settings");
       edit.setAttribute("aria-label", t("hostEditName", { name: h.name }));
       edit.append(icon("pencil"));
       edit.onclick = () => this.show("hosts", h);

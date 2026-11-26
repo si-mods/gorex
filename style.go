@@ -4,6 +4,7 @@ import (
 	_ "embed"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/egoist/mygo/plugins/terminal"
 	"github.com/egoist/mygo/ui"
@@ -1000,5 +1001,7 @@ func widgetTheme(base *ui.Theme, k *colors) *ui.Theme {
 	}
 	t.Radius = k.radius(9)
 	t.Font = k.m.font
+	t.TooltipDelay = 500 * time.Millisecond
+	t.TooltipWarm = 400 * time.Millisecond
 	return &t
 }

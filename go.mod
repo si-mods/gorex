@@ -87,4 +87,4 @@ tool (
 	golang.org/x/mobile/cmd/gomobile
 )
 
-replace github.com/egoist/mygo => github.com/si-mods/mygo v0.10.2-0.20261126065924-c8dfed2e5dee
+replace github.com/egoist/mygo => github.com/si-mods/mygo v0.10.2-0.20261126092158-b93231050448

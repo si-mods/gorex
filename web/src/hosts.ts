@@ -8,6 +8,7 @@ import { localize, PlainKey, t } from "./i18n";
 import type { LinkState } from "./settings";
 import { joinHostURL, SharedGroup, withToken } from "./share";
 import type { Tailnet, TailnetHost } from "./tailnet";
+import { setTooltip } from "./tooltip";
 
 /** A host as the user added it, as built-in Tailscale found it (kind "tailnet"), or shared by Rex Go (kind "share"). */
 export interface Host {
@@ -449,7 +450,7 @@ export class HostList {
     const chevron = el("span", "host-chevron");
     chevron.append(icon("chevron-down"));
     this.button.replaceChildren(icon(h?.icon ?? "laptop"), el("span", "host-name", h?.name ?? t("hostChoose")), chevron);
-    this.button.title = h ? h.url : t("hostChoose");
+    setTooltip(this.button, h ? h.url : t("hostChoose"), "hosts");
   }
 
   open(form?: Host | "new") {
@@ -497,7 +498,7 @@ export class HostList {
       const edit = el("button", "pane-action");
       edit.type = "button";
       edit.dataset.key = h.id + ":edit";
-      edit.title = t("commonEdit");
+      setTooltip(edit, t("commonEdit"), "hosts");
       edit.setAttribute("aria-label", t("hostEditName", { name: h.name }));
       edit.append(icon("pencil"));
       edit.onclick = () => this.formIn(h);
@@ -542,9 +543,10 @@ export class HostList {
     const box = el("span", "theme-check");
     const d = el("i", `state-dot ${state}`);
     const words = t(linkWords[state]);
-    d.title = state === "unreachable" && problem ? t("hostStateProblem", { state: words, problem: problem.title }) : words;
+    const tip = state === "unreachable" && problem ? t("hostStateProblem", { state: words, problem: problem.title }) : words;
+    setTooltip(d, tip, "hosts");
     d.setAttribute("role", "img");
-    d.setAttribute("aria-label", d.title);
+    d.setAttribute("aria-label", tip);
     box.append(d);
     return box;
   }
@@ -555,7 +557,7 @@ export class HostList {
     const b = el("button", "pane-action");
     b.type = "button";
     b.dataset.key = h.id + ":plug";
-    b.title = t(on ? "hostDisconnect" : "hostConnect");
+    setTooltip(b, t(on ? "hostDisconnect" : "hostConnect"), "hosts");
     b.setAttribute("aria-label", on ? t("hostDisconnectName", { name: h.name }) : t("settingsHostConnect", { name: h.name }));
     b.append(icon(on ? "unplug" : "plug"));
     b.onclick = () => (on ? this.app.disconnect(h) : this.app.connect(h));
@@ -587,7 +589,7 @@ export class HostList {
       text.append(el("span", "theme-name", h.name), url);
       pick.append(icon(h.icon), text, this.dot(h));
       this.pickHost(pick, h);
-      pick.title = h.url;
+      setTooltip(pick, h.url, "hosts");
       const row = el("div", "host-row");
       row.append(pick, this.plug(h));
       out.push(row);
@@ -637,9 +639,13 @@ export class HostList {
       text.append(el("span", "theme-name", h.name), line);
       pick.append(icon(h.icon), text, kept ? this.dot(h) : el("span", "theme-check"));
       this.pickHost(pick, h);
-      pick.title = h.problem
-        ? t("hostProblemTip", { title: h.problem.title, text: h.problem.text }) + (h.problem.command ? " " + h.problem.command : "")
-        : h.url;
+      setTooltip(
+        pick,
+        h.problem
+          ? t("hostProblemTip", { title: h.problem.title, text: h.problem.text }) + (h.problem.command ? " " + h.problem.command : "")
+          : h.url,
+        "hosts",
+      );
       const row = el("div", "host-row");
       row.append(pick, this.plug(h));
       out.push(row);
@@ -692,8 +698,9 @@ export class HostList {
       const b = el("button", "icon-choice");
       b.type = "button";
       localize(b, (b) => {
-        b.title = t(label);
-        b.setAttribute("aria-label", b.title);
+        const tip = t(label);
+        setTooltip(b, tip, "hosts");
+        b.setAttribute("aria-label", tip);
       });
       b.setAttribute("role", "radio");
       b.append(icon(v));

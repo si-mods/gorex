@@ -213,7 +213,7 @@
   }
   .space-chip span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .space-chip .pane-icon { flex: none; width: 14px; height: 14px; color: var(--muted); }
-  .space-chip:hover { background: var(--hover); }
+  @media (hover: hover) { .space-chip:hover { background: var(--hover); } }
   /* A project's folder beside its name in the bar (sidebar.ts). */
   .space-chip .project-line { margin-left: 8px; font-size: 11px; font-weight: 400; opacity: 0.7; }
   /* A host's heading in the sidebar's host view; another host's is a button that connects to it. */
@@ -224,7 +224,7 @@
   .host-head span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .host-head .pane-icon { flex: none; width: 14px; height: 14px; color: var(--muted); }
   button.host-head { color: var(--muted); cursor: pointer; }
-  button.host-head:hover { background: var(--hover); color: var(--text); }
+  @media (hover: hover) { button.host-head:hover { background: var(--hover); color: var(--text); } }
   .host-head .state-dot { margin-right: 2px; }
   /* A host's problem under its heading, muted, with Retry and Edit (sidebar.ts, problemLine). */
   .host-problem { display: flex; align-items: center; gap: 2px; padding: 0 4px 2px 34px; color: var(--muted); font-size: 12px; }
@@ -237,7 +237,7 @@
     display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; border: 0; border-radius: 999px;
     background: none; color: var(--muted); font: inherit; cursor: pointer;
   }
-  .theme-button:hover { background: var(--hover); color: var(--text); }
+  @media (hover: hover) { .theme-button:hover { background: var(--hover); color: var(--text); } }
   /* The host list is a glass panel over the page, as the desktop's popovers: blur 24, radius 16. */
   .theme-panel {
     position: fixed; left: 8px; bottom: 44px; z-index: 10; width: 320px; max-width: calc(100vw - 16px);
@@ -262,7 +262,8 @@
     display: flex; align-items: center; gap: 10px; width: 100%; padding: 5px 8px; border: 0; border-radius: 8px;
     background: none; color: var(--text); font: inherit; text-align: left; cursor: pointer;
   }
-  .theme-row:hover, .theme-row:focus-visible { background: var(--hover); outline: none; }
+  .theme-row:focus-visible { background: var(--hover); outline: none; }
+  @media (hover: hover) { .theme-row:hover { background: var(--hover); } }
   .theme-swatch {
     display: flex; align-items: center; justify-content: center; gap: 3px; width: 56px; height: 22px; flex: none;
     border-radius: 5px; box-shadow: inset 0 0 0 0.5px var(--panel-edge);
@@ -285,16 +286,17 @@
     color: var(--muted); display: flex; align-items: center; justify-content: center; cursor: pointer;
   }
   button.icon .pane-icon { width: 14px; height: 14px; }
-  button.icon:hover { background: var(--hover); color: var(--text); }
+  @media (hover: hover) { button.icon:hover { background: var(--hover); color: var(--text); } }
   /* New Window of a host that is not live: nothing waits to be made when it comes back. Inactive, as DESIGN.md's dimmed(e, 0.4). */
   button.icon:disabled { filter: grayscale(1); opacity: 0.4; cursor: default; background: none; }
   /* A window's row: a capsule, as the desktop's sidebar rows, its close button on hover. */
   .window { display: flex; align-items: center; border-radius: 999px; }
-  .window:hover { background: var(--hover); }
+  @media (hover: hover) { .window:hover { background: var(--hover); } }
   .window.open { background: var(--pill); }
   .window .close { visibility: hidden; margin-right: 4px; }
   .window .close .pane-icon { width: 12px; height: 12px; }
-  .window:hover .close, .window.open .close { visibility: visible; }
+  .window.open .close { visibility: visible; }
+  @media (hover: hover) { .window:hover .close { visibility: visible; } }
   /* A long press opens the row's menu (manage.ts): no callout or selection of its own. */
   .window, #sessions h2 { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
   /* Dragged, as the desktop's dimmed(e, 0.4): grey and faded. */
@@ -317,7 +319,7 @@
   /* Projects (projectsidebar.ts): a host's projects of the space, a row each with its folder and `+`, its tabs
      under it; the space picker is a chip at the top. A host that is away shows its copy, dimmed (DESIGN.md). */
   .project { display: flex; align-items: center; min-height: 32px; margin: 1px 0; border-radius: 999px; }
-  .project:hover { background: var(--hover); }
+  @media (hover: hover) { .project:hover { background: var(--hover); } }
   .project.open { background: var(--pill); }
   .project.current .name { font-weight: 600; }
   .project[data-drop="into"] { box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--busy) 60%, transparent); }
@@ -329,9 +331,14 @@
   .project-main .count { flex: none; padding-left: 4px; color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
   .project.group .project-main { color: var(--muted); }
   .project > button.icon { margin-right: 4px; display: none; }
-  .project:hover > button.icon, .project.open > button.icon, .project.current > button.icon, .project:focus-within > button.icon { display: flex; }
-  /* A touch screen has no hover: the row's + stays. */
-  @media (hover: none) { .project > button.icon { display: flex; } }
+  .project.open > button.icon, .project.current > button.icon, .project:focus-within > button.icon { display: flex; }
+  @media (hover: hover) { .project:hover > button.icon { display: flex; } }
+  /* A touch screen has no hover: row actions stay visible. */
+  @media (hover: none) {
+    .project > button.icon { display: flex; }
+    .window .close { visibility: visible; }
+    .pane .pane-actions { opacity: 1; }
+  }
   .project-main .color-dot.none { background: none; box-shadow: none; }
   .project-main .color-dot { margin-right: 14px; }
   /* A project's mark: a neutral tile of a tab's size and corners (21x16, radius 4.5) in the room of the tab tiles,
@@ -368,7 +375,7 @@
     display: flex; align-items: center; gap: 8px; width: 100%; min-height: 32px; padding: 5px 12px; border: 0; border-radius: 999px;
     background: none; color: var(--muted); font: inherit; text-align: left; cursor: pointer;
   }
-  .new-tab:hover:not(:disabled) { background: var(--hover); color: var(--text); }
+  @media (hover: hover) { .new-tab:hover:not(:disabled) { background: var(--hover); color: var(--text); } }
   .new-tab:disabled { filter: grayscale(1); opacity: 0.4; cursor: default; }
   .new-tab .pane-icon { width: 14px; height: 14px; margin-right: 9px; }
   /* On a host with agent CLIs the New Tab row keeps a cluster at its end
@@ -481,13 +488,14 @@
   .pane.focused .pane-title { opacity: 1; }
   /* As the desktop's paneActions: shown on the focused or hovered pane. */
   .pane-actions { display: flex; gap: 1px; opacity: 0; transition: opacity 0.16s; }
-  .pane.focused .pane-actions, .pane:hover .pane-actions { opacity: 1; }
+  .pane.focused .pane-actions { opacity: 1; }
+  @media (hover: hover) { .pane:hover .pane-actions { opacity: 1; } }
   /* As view.go's iconButton(…, 26, 16): a 26px button, radius 26/2.6, a 16px lucide icon in the muted colour. */
   .pane-action {
     display: grid; place-items: center; width: 26px; height: 26px; padding: 0; border: 0; border-radius: 10px;
     background: none; color: var(--muted); cursor: pointer;
   }
-  .pane-action:hover { background: var(--hover); color: var(--text); }
+  @media (hover: hover) { .pane-action:hover { background: var(--hover); color: var(--text); } }
   .pane-icon {
     width: 16px; height: 16px; background: currentColor;
     -webkit-mask: var(--icon) center / contain no-repeat; mask: var(--icon) center / contain no-repeat;
@@ -521,7 +529,7 @@
     border: 0; border-radius: 6px; padding: 2px 7px; background: var(--hover); color: var(--text);
     font: inherit; cursor: pointer;
   }
-  .pane-upload-cancel:hover { filter: brightness(1.1); }
+  @media (hover: hover) { .pane-upload-cancel:hover { filter: brightness(1.1); } }
   .pane-upload-bar { height: 4px; border-radius: 99px; background: var(--panel-edge); overflow: hidden; }
   .pane-upload-fill { height: 100%; width: 0; background: var(--busy); transition: width 0.1s linear; }
   /* A right click's menu (manage.ts), as the corner's: a small glass panel, its rows concentric. */
@@ -530,7 +538,23 @@
     border-radius: 12px; background: var(--panel); border: 1px solid var(--panel-edge); color: var(--text);
     -webkit-backdrop-filter: blur(24px); backdrop-filter: blur(24px); box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
   }
-  .context-menu.sub { position: absolute; }
+  .context-menu.sub {
+    position: absolute;
+    animation: submenu-in-right 200ms ease-out both;
+    transition: opacity 120ms ease-in;
+  }
+  .context-menu.sub[data-side="left"] { animation-name: submenu-in-left; }
+  .context-menu.sub.closing { opacity: 0; pointer-events: none; }
+  /* Invisible bridge covering the 2px gap between parent menu and submenu along full height. */
+  .context-menu.sub::after { content: ""; position: absolute; top: 0; bottom: 0; width: 6px; pointer-events: auto; }
+  .context-menu.sub[data-side="right"]::after { left: -6px; }
+  .context-menu.sub[data-side="left"]::after { right: -6px; }
+  @keyframes submenu-in-right { from { opacity: 0; transform: translateX(-4px); } to { opacity: 1; transform: translateX(0); } }
+  @keyframes submenu-in-left { from { opacity: 0; transform: translateX(4px); } to { opacity: 1; transform: translateX(0); } }
+  @keyframes submenu-fade { from { opacity: 0; } to { opacity: 1; } }
+  @media (prefers-reduced-motion: reduce) {
+    .context-menu.sub, .context-menu.sub[data-side="left"] { animation-name: submenu-fade; }
+  }
   .context-item {
     display: flex; align-items: center; gap: 12px; padding: 5px 10px; border: 0; border-radius: 8px;
     background: none; color: var(--text); font: inherit; text-align: left; white-space: nowrap; cursor: pointer;
@@ -539,7 +563,8 @@
   .context-text span { flex: none; }
   .context-detail { overflow: hidden; text-overflow: ellipsis; margin-top: 1px; color: var(--muted); font-size: 11px; }
   .context-item span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-  .context-item:hover:not(:disabled), .context-item:focus-visible, .context-item[aria-haspopup]:focus { background: var(--hover); outline: none; }
+  .context-item:focus-visible, .context-item[aria-haspopup]:focus, .context-item[aria-expanded="true"] { background: var(--hover); outline: none; }
+  @media (hover: hover) { .context-item:hover:not(:disabled) { background: var(--hover); } }
   .context-item:disabled { color: var(--muted); cursor: default; }
   .context-item .pane-icon { width: 12px; height: 12px; color: var(--muted); }
   /* A brand tile as an item's mark (a menu item's `tile`), the pane title's size; overflow
@@ -568,9 +593,9 @@
   .sheet-crumbs { display: flex; align-items: center; gap: 2px; min-width: 0; overflow: hidden; font-size: 12px; color: var(--muted); }
   .sheet-crumbs .pane-icon { flex: none; width: 12px; height: 12px; }
   .sheet-crumb { flex: none; max-width: 100%; padding: 2px 6px; border: 0; border-radius: 6px; background: none; color: inherit; font: inherit; cursor: pointer; }
-  .sheet-crumb:hover { background: var(--hover); color: var(--text); }
+  @media (hover: hover) { .sheet-crumb:hover { background: var(--hover); color: var(--text); } }
   .sheet-crumb.current { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); cursor: default; }
-  .sheet-crumb.current:hover { background: none; }
+  @media (hover: hover) { .sheet-crumb.current:hover { background: none; } }
   .sheet-field {
     min-width: 0; height: 30px; padding: 0 10px; border: 1px solid var(--panel-edge); border-radius: 8px;
     background: var(--hover); color: var(--text); font: inherit; font-size: 16px; outline: none;
@@ -585,11 +610,11 @@
     display: flex; align-items: center; gap: 8px; width: 100%; padding: 5px 8px; border: 0; border-radius: 6px;
     background: none; color: var(--text); font: inherit; text-align: left; cursor: pointer;
   }
-  .sheet-dir:hover { background: var(--hover); }
+  @media (hover: hover) { .sheet-dir:hover { background: var(--hover); } }
   .sheet-dir span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .sheet-note { margin: 0; min-height: 1.35em; color: var(--muted); font-size: 12px; }
   .host-add.destroy { background: var(--danger); border-color: transparent; color: #fff; font-weight: 600; }
-  .host-add.destroy:hover { background: color-mix(in srgb, var(--danger) 88%, #000); }
+  @media (hover: hover) { .host-add.destroy:hover { background: color-mix(in srgb, var(--danger) 88%, #000); } }
   /* The pane's text field, which holds its keys (pane.ts): put on the cursor by the pane, so that an input
      method opens its window there; invisible, out of the layout, taking no click. 16px keeps iOS from zooming in. */
   .pane-input {
@@ -632,7 +657,7 @@
     background: none; color: var(--text); font: inherit; white-space: nowrap; cursor: pointer;
   }
   .select-menu-item[hidden] { display: none; }
-  .select-menu-item:hover:not(:disabled) { background: var(--hover); }
+  @media (hover: hover) { .select-menu-item:hover:not(:disabled) { background: var(--hover); } }
   .select-menu-item:disabled { color: var(--muted); cursor: default; }
   .select-menu-item .pane-icon { width: 14px; height: 14px; }
   /* A divider: the gap between two panes, a grip on hover, as view.go's divider. */
@@ -642,14 +667,16 @@
   .divider::after { content: ""; position: absolute; left: 50%; top: 50%; border-radius: 1.5px; background: var(--muted); opacity: 0; }
   .divider.column::after { width: 3px; height: 36px; transform: translate(-50%, -50%); }
   .divider.row::after { width: 36px; height: 3px; transform: translate(-50%, -50%); }
-  .divider:hover::after, .divider.held::after { opacity: 0.6; }
+  .divider.held::after { opacity: 0.6; }
+  @media (hover: hover) { .divider:hover::after { opacity: 0.6; } }
   /* The host list (hosts.ts): the chosen host atop the sidebar, and a glass panel as the theme picker's. */
   #hosts { padding: 0 0 4px; }
   .host-button {
     display: flex; align-items: center; gap: 8px; width: 100%; padding: 7px 12px; border: 0; border-radius: 999px;
     background: none; color: var(--text); font: inherit; font-weight: 600; text-align: left; cursor: pointer;
   }
-  .host-button:hover, .host-button[aria-expanded="true"] { background: var(--hover); }
+  .host-button[aria-expanded="true"] { background: var(--hover); }
+  @media (hover: hover) { .host-button:hover { background: var(--hover); } }
   .host-button[hidden], .host-brand[hidden] { display: none; }
   /* With no host, the app's name in the button's place: not a control. */
   .host-brand { display: flex; align-items: center; gap: 8px; padding: 7px 12px; font-weight: 600; }
@@ -673,7 +700,7 @@
     display: grid; place-items: center; width: 36px; height: 28px; padding: 0; border: 0; border-radius: 999px;
     background: none; color: var(--muted); cursor: pointer;
   }
-  .icon-choice:hover { color: var(--text); }
+  @media (hover: hover) { .icon-choice:hover { color: var(--text); } }
   .icon-choice[aria-checked="true"] { background: var(--pill); color: var(--text); }
   .host-error { color: #ff6b6b; font-size: 12px; }
   .host-error:empty { display: none; }
@@ -683,7 +710,7 @@
     padding: 6px 14px; border: 1px solid var(--panel-edge); border-radius: 999px; background: var(--hover);
     color: var(--text); font: inherit; cursor: pointer;
   }
-  .host-add:hover { background: var(--pill); }
+  @media (hover: hover) { .host-add:hover { background: var(--pill); } }
   .host-add.primary { background: var(--text); color: var(--page); border-color: transparent; }
   .host-add.danger { margin-right: auto; color: #ff6b6b; }
   .command { display: flex; align-items: center; gap: 6px; padding: 6px 6px 6px 12px; border-radius: 10px; background: var(--hover); }
@@ -709,7 +736,7 @@
     border-radius: 999px; background: none; color: var(--muted); font: inherit; cursor: pointer;
   }
   .corner-button.corner-icon { width: 32px; padding: 0; }
-  .corner-button:hover { background: var(--hover); color: var(--text); }
+  @media (hover: hover) { .corner-button:hover { background: var(--hover); color: var(--text); } }
   .corner-button:focus-visible, .corner-item:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   .corner-button .pane-icon { width: 16px; height: 16px; flex: none; }
   .corner-menu {
@@ -722,7 +749,7 @@
     display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 6px 10px; border: 0; border-radius: 8px;
     background: none; color: var(--text); font: inherit; text-align: left; white-space: nowrap; cursor: pointer;
   }
-  .corner-item:hover { background: var(--hover); }
+  @media (hover: hover) { .corner-item:hover { background: var(--hover); } }
   .corner-item .pane-icon { width: 14px; height: 14px; }
   .notice-card {
     display: flex; flex-direction: column; gap: 12px; width: min(520px, 100%); padding: 20px; border-radius: 16px;
@@ -737,7 +764,7 @@
     color: var(--muted); font-size: 12px; cursor: pointer; list-style: none;
   }
   .notice-more summary::-webkit-details-marker, .welcome-needs summary::-webkit-details-marker { display: none; }
-  .notice-more summary:hover, .welcome-needs summary:hover { color: var(--text); }
+  @media (hover: hover) { .notice-more summary:hover, .welcome-needs summary:hover { color: var(--text); } }
   .notice-more summary:focus-visible, .welcome-needs summary:focus-visible, .welcome-choice:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   .notice-more summary .pane-icon, .welcome-needs summary .pane-icon { width: 13px; height: 13px; }
   .notice-more p { margin: 6px 0 0; font-size: 12px; }
@@ -762,9 +789,9 @@
     display: flex; align-items: center; gap: 14px; width: 100%; padding: 14px 14px 14px 16px; border-radius: 14px;
     background: var(--card); border: 1px solid var(--card-edge); color: var(--text); font: inherit; text-align: left; cursor: pointer;
   }
-  .welcome-choice:hover { background: var(--hover); }
+  @media (hover: hover) { .welcome-choice:hover { background: var(--hover); } }
   .welcome-choice.primary { background: color-mix(in srgb, var(--accent) 12%, var(--card)); border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
-  .welcome-choice.primary:hover { background: color-mix(in srgb, var(--accent) 18%, var(--card)); }
+  @media (hover: hover) { .welcome-choice.primary:hover { background: color-mix(in srgb, var(--accent) 18%, var(--card)); } }
   .welcome-choice-icon {
     display: grid; place-items: center; flex: none; width: 40px; height: 40px; border-radius: 11px;
     background: var(--hover); color: var(--text);
@@ -779,7 +806,7 @@
     font-size: 11px; font-weight: 600; line-height: 1.5;
   }
   .welcome-choice-go { display: flex; flex: none; color: var(--muted); }
-  .welcome-choice:hover .welcome-choice-go { color: var(--text); }
+  @media (hover: hover) { .welcome-choice:hover .welcome-choice-go { color: var(--text); } }
   .welcome-needs { align-self: stretch; margin-top: 18px; color: var(--muted); font-size: 12px; }
   .welcome-needs ul { margin: 8px auto 0; padding: 12px 14px 12px 30px; border-radius: 12px; background: var(--card); border: 1px solid var(--card-edge); text-align: left; line-height: 1.45; }
   .welcome-needs li + li { margin-top: 4px; }
@@ -834,8 +861,8 @@
     display: flex; align-items: center; gap: 10px; flex: none; margin-bottom: 8px; padding: 8px 10px; border-radius: 14px;
     background: var(--card); border: 1px solid var(--card-edge); color: var(--text); font: inherit; text-align: left; cursor: pointer;
   }
-  .settings-host:hover, .settings-host[aria-selected="true"] { background: var(--pill); }
-  .settings-host[aria-selected="true"] { border-color: color-mix(in srgb, var(--accent) 55%, transparent); }
+  .settings-host[aria-selected="true"] { background: var(--pill); border-color: color-mix(in srgb, var(--accent) 55%, transparent); }
+  @media (hover: hover) { .settings-host:hover { background: var(--pill); } }
   .settings-host-icon { display: grid; place-items: center; flex: none; width: 34px; height: 34px; border-radius: 9px; background: var(--hover); }
   .settings-host-icon .pane-icon { width: 19px; height: 19px; }
   .settings-host-icon.small { width: 30px; height: 30px; border-radius: 8px; }
@@ -852,7 +879,7 @@
     display: flex; align-items: center; gap: 9px; flex: none; height: 32px; padding: 0 10px; border: 0; border-radius: 999px;
     background: none; color: var(--text); font: inherit; font-weight: 500; text-align: left; cursor: pointer; white-space: nowrap;
   }
-  .settings-item:hover { background: var(--hover); }
+  @media (hover: hover) { .settings-item:hover { background: var(--hover); } }
   .settings-item[aria-selected="true"] { background: var(--pill); color: var(--accent); }
   /* Tailscale's mark (hosts.ts tailscaleMark), and a tile of it as the media kit's squircle: #1f1e1e, white dots. */
   .pane-icon.ts-mark { background: none; -webkit-mask: none; mask: none; }
@@ -931,7 +958,7 @@
     display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0; padding: 4px 8px; border: 0; border-radius: 10px;
     background: none; color: var(--text); font: inherit; text-align: left; cursor: pointer;
   }
-  .settings-host-pick:hover { background: var(--hover); }
+  @media (hover: hover) { .settings-host-pick:hover { background: var(--hover); } }
   .settings-row > .host-buttons { justify-content: flex-start; flex-wrap: wrap; }
   .settings-row > .host-add { align-self: flex-start; display: inline-flex; align-items: center; gap: 6px; }
   .settings-row > .host-add .pane-icon { width: 14px; height: 14px; }
@@ -1126,7 +1153,7 @@
     width: 24px; height: 24px; border: 0; border-radius: 5px;
     background: transparent; color: var(--text); cursor: pointer;
   }
-  .find-btn:hover:not(:disabled) { background: var(--panel-edge); }
+  @media (hover: hover) { .find-btn:hover:not(:disabled) { background: var(--panel-edge); } }
   .find-btn:disabled { opacity: 0.4; cursor: default; }
   .find-btn svg { width: 14px; height: 14px; }
 
@@ -1157,7 +1184,8 @@
     background: transparent; color: var(--text); font: 13px/1.35 var(--ui);
     text-align: left; cursor: pointer;
   }
-  .palette-row.selected, .palette-row:hover { background: var(--panel-edge); }
+  .palette-row.selected { background: var(--panel-edge); }
+  @media (hover: hover) { .palette-row:hover { background: var(--panel-edge); } }
   .palette-row-main { display: flex; align-items: baseline; gap: 8px; min-width: 0; flex: 1; }
   .palette-row-title { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .palette-row-detail { color: var(--muted); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -1170,7 +1198,7 @@
     padding: 3px 9px; border-radius: 6px; border: 1px solid var(--panel-edge);
     background: var(--hover); color: var(--text); font: 12px/1.4 var(--mono, monospace); cursor: pointer;
   }
-  .settings-key-btn:hover { border-color: var(--muted); }
+  @media (hover: hover) { .settings-key-btn:hover { border-color: var(--muted); } }
   .settings-key-btn.recording { border-color: var(--accent, #58a6ff); color: var(--accent, #58a6ff); }
   .settings-key-reset { padding: 3px 8px; font-size: 11px; }
   .settings-key-error {
@@ -1194,7 +1222,27 @@
     font: 11px/1.3 var(--ui); cursor: pointer;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
   }
-  .float-dock-btn:hover { filter: brightness(1.1); }
+  @media (hover: hover) { .float-dock-btn:hover { filter: brightness(1.1); } }
+
+  /* Shared tooltip (tooltip.ts): fixed, pointer-events: none, fades 140ms in / 60ms out. */
+  .tooltip {
+    position: fixed; z-index: 100; pointer-events: none; max-width: 280px; padding: 5px 9px; border-radius: 8px;
+    background: var(--panel); border: 1px solid var(--panel-edge); color: var(--text);
+    -webkit-backdrop-filter: blur(24px); backdrop-filter: blur(24px); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+    font: 12px/1.35 var(--ui); white-space: pre-line; overflow-wrap: anywhere;
+    opacity: 0; transform: translateY(2px);
+    transition: opacity 60ms ease-in, transform 60ms ease-in;
+  }
+  .tooltip[hidden] { display: none; }
+  .tooltip[data-side="bottom"] { transform: translateY(-2px); }
+  .tooltip[data-state="open"] {
+    opacity: 1; transform: translateY(0);
+    transition: opacity 140ms ease-out, transform 140ms ease-out;
+  }
+  .tooltip[data-instant="true"] { transition: none; }
+  @media (prefers-reduced-motion: reduce) {
+    .tooltip, .tooltip[data-side="bottom"] { transform: none; }
+  }
 
   /* The liquid glass (docs/WEB-005-liquid-glass.md) of the surfaces that float over the terminals, while the Glass
      setting is on (glass.ts sets data-glass="on" on <html>; off, the rules above stand, as before the glass). Each
@@ -1202,7 +1250,7 @@
      --glass-lens), its edge (box-shadow) and its ink (color); its border keeps its width, clear. Inside, --text,
      --muted, --hover and --panel-edge take the glass's ink, row highlight and hairline, so the rows and controls
      follow it. */
-  :root[data-glass="on"] :is(.update, .chunk-load, .pane-upload, .find-bar, .select-menu, .context-menu, .float-dock-btn) {
+  :root[data-glass="on"] :is(.update, .chunk-load, .pane-upload, .find-bar, .select-menu, .context-menu, .float-dock-btn, .tooltip) {
     --text: var(--glass-ink);
     --muted: var(--glass-ink-2);
     --hover: var(--glass-row);
@@ -1221,11 +1269,11 @@
   }
   :root[data-glass="on"] :is(.chunk-load, .float-dock-btn) { position: relative; }
   /* A hovered dock button: its tint about 14% denser, in place of the brightness filter. */
-  :root[data-glass="on"] .float-dock-btn:hover { filter: none; --glass-hover: 1.14; }
+  @media (hover: hover) { :root[data-glass="on"] .float-dock-btn:hover { filter: none; --glass-hover: 1.14; } }
   /* The inner light: a highlight from the top left, white to clear by 55%, and soft glows at the rim, brighter at
      the top and the left, a little shade at the bottom. Under the content, over the tint; a third as strong on dark
      glass, and thinner with the tint scale under 1. */
-  :root[data-glass="on"] :is(.update, .chunk-load, .pane-upload, .find-bar, .select-menu, .context-menu, .float-dock-btn)::before {
+  :root[data-glass="on"] :is(.update, .chunk-load, .pane-upload, .find-bar, .select-menu, .context-menu, .float-dock-btn, .tooltip)::before {
     content: ""; position: absolute; inset: -1px; z-index: -1; border-radius: inherit; pointer-events: none;
     opacity: calc(var(--glass-light) * min(1, var(--glass-scale)));
     background: radial-gradient(130% 170% at 0% 0%, rgb(255 255 255 / 0.3), transparent 55%);
@@ -1238,24 +1286,27 @@
   :root[data-glass="on"] :is(.update, .chunk-load, .pane-upload, .find-bar, .select-menu, .context-menu) .pane-icon { color: var(--glass-icon); opacity: var(--glass-icon-alpha); }
   :root[data-glass="on"] :is(.context-item .pane-icon, .context-item:disabled .pane-icon) { opacity: var(--glass-icon-alpha-2); }
   /* A highlighted row: white over light glass, with a white stroke; never a grey wash. */
-  :root[data-glass="on"] .find-btn:hover:not(:disabled) { background: var(--hover); }
-  :root[data-glass="on"] :is(.context-item:hover:not(:disabled), .context-item:focus-visible, .select-menu-item:hover:not(:disabled), .find-btn:hover:not(:disabled)) {
-    box-shadow: inset 0 0 0 0.5px var(--glass-row-stroke);
+  :root[data-glass="on"] .context-item:focus-visible { box-shadow: inset 0 0 0 0.5px var(--glass-row-stroke); }
+  @media (hover: hover) {
+    :root[data-glass="on"] .find-btn:hover:not(:disabled) { background: var(--hover); }
+    :root[data-glass="on"] :is(.context-item:hover:not(:disabled), .select-menu-item:hover:not(:disabled), .find-btn:hover:not(:disabled)) {
+      box-shadow: inset 0 0 0 0.5px var(--glass-row-stroke);
+    }
   }
   /* A progress bar's track is a hairline's tone, not the row highlight's white. */
   :root[data-glass="on"] .chunk-load .load-bar { background: var(--glass-hairline); }
-  :root[data-glass="on"] .context-item[aria-haspopup]:focus { background: var(--glass-row-on); box-shadow: inset 0 0 0 0.5px var(--glass-row-stroke); }
+  :root[data-glass="on"] :is(.context-item[aria-haspopup]:focus, .context-item[aria-expanded="true"]) { background: var(--glass-row-on); box-shadow: inset 0 0 0 0.5px var(--glass-row-stroke); }
   /* Less transparency, or the system's colours: a solid surface in the same tint, no backdrop, no inner light. */
   @media (prefers-reduced-transparency: reduce), (forced-colors: active) {
-    :root[data-glass="on"] :is(.update, .chunk-load, .pane-upload, .find-bar, .select-menu, .context-menu, .float-dock-btn) {
+    :root[data-glass="on"] :is(.update, .chunk-load, .pane-upload, .find-bar, .select-menu, .context-menu, .float-dock-btn, .tooltip) {
       background: var(--glass-tint); -webkit-backdrop-filter: none; backdrop-filter: none;
     }
-    :root[data-glass="on"] :is(.update, .chunk-load, .pane-upload, .find-bar, .select-menu, .context-menu, .float-dock-btn)::before { display: none; }
+    :root[data-glass="on"] :is(.update, .chunk-load, .pane-upload, .find-bar, .select-menu, .context-menu, .float-dock-btn, .tooltip)::before { display: none; }
     :root[data-glass="on"] :is(.update-text, .load-title, .load-count, .load-error, .pane-upload-name, .pane-upload-count, .find-count,
     .context-item > span:not(.context-mark), .context-text, .select-menu-item > span) { mix-blend-mode: normal; }
   }
   @media (forced-colors: active) {
-    :root[data-glass="on"] :is(.update, .chunk-load, .pane-upload, .find-bar, .select-menu, .context-menu, .float-dock-btn) { border-color: CanvasText; }
+    :root[data-glass="on"] :is(.update, .chunk-load, .pane-upload, .find-bar, .select-menu, .context-menu, .float-dock-btn, .tooltip) { border-color: CanvasText; }
   }
 </style>
 </head>

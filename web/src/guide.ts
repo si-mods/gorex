@@ -8,6 +8,7 @@ import { allowCommand, commandBox, Host, icon } from "./hosts";
 import { formatList, onLanguageChange, PlainKey, t } from "./i18n";
 import { ProgressView } from "./progress";
 import { Tailnet, TailnetHost } from "./tailnet";
+import { setTooltip } from "./tooltip";
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: string): HTMLElementTagNameMap[K] {
   const e = document.createElement(tag);
@@ -77,8 +78,9 @@ export class Guide {
     head.append(title, close);
     const label = () => {
       title.textContent = t("hostTsAdd");
-      close.title = t("commonClose");
-      close.setAttribute("aria-label", close.title);
+      const tip = t("commonClose");
+      setTooltip(close, tip, "guide");
+      close.setAttribute("aria-label", tip);
       this.steps.setAttribute("aria-label", t("guideSteps"));
     };
     label();

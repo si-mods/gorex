@@ -8,6 +8,7 @@
 // larger than the window. Escape or a click outside closes it.
 import { icon } from "./hosts";
 import { formatSize, localize, Msg, msg, onLanguageChange, PlainKey, t } from "./i18n";
+import { setTooltip } from "./tooltip";
 
 /** What a shown image needs of its opener. */
 export interface ViewerHost {
@@ -71,8 +72,9 @@ export class Viewer {
       const b = el("button", "pane-action viewer-button");
       b.type = "button";
       localize(b, (b) => {
-        b.title = t(label);
-        b.setAttribute("aria-label", b.title);
+        const tip = t(label);
+        setTooltip(b, tip, "viewer");
+        b.setAttribute("aria-label", tip);
       });
       b.append(icon(glyph));
       b.onclick = run;

@@ -14,6 +14,7 @@ import { MenuItem, onMenu, openMenu, ownDrag, renameField } from "./manage";
 import { dirName, groupLook, GroupLook, groupProjects, HostModel, projectColor, ProjectRow, TabRow } from "./projectmodel";
 import type { HostView, ProjectOps } from "./projectops";
 import { hostHead, problemLine, setTileColumn, spaceName, redraw, renaming, sidebarApp, tilesRoom, windowRow } from "./sidebar";
+import { setTooltip } from "./tooltip";
 
 /** The colors a space can take, as a dot in the picker. */
 export const spaceColors = ["#e5484d", "#f76b15", "#e5a000", "#30a46c", "#3e63dd", "#8e4ec6"];
@@ -117,7 +118,7 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: 
 function iconButton(glyph: string, label: string, run: () => void, disabled = false): HTMLButtonElement {
   const b = el("button", "icon");
   b.type = "button";
-  b.title = label;
+  setTooltip(b, label, "project-sidebar");
   b.setAttribute("aria-label", label);
   b.append(icon(glyph));
   b.disabled = disabled;
@@ -172,7 +173,7 @@ function picker(): HTMLButtonElement {
   const now = ops.space();
   const b = el("button", "space-chip space-picker");
   b.type = "button";
-  b.title = t("spacePickerLabel");
+  setTooltip(b, t("spacePickerLabel"), "project-sidebar");
   b.setAttribute("aria-label", t("spacePickerLabel"));
   b.setAttribute("aria-haspopup", "menu");
   const color = ops.store.colors[now];
@@ -222,7 +223,7 @@ export function projectTree(nav: HTMLElement): boolean {
     } else if (!c) {
       const head = hostHead(nav, h, undefined) as HTMLButtonElement;
       head.type = "button";
-      head.title = t("sidebarConnectHost", { host: h.name });
+      setTooltip(head, t("sidebarConnectHost", { host: h.name }), "project-sidebar");
       head.onclick = () => app.connect(h);
     } else {
       hostHead(nav, h, c);
@@ -259,7 +260,7 @@ function legacySection(nav: HTMLElement, h: Host, c: HostConn) {
     const b = el("button", "project-main");
     b.type = "button";
     b.setAttribute("aria-expanded", String(open));
-    b.title = spaceName(s);
+    setTooltip(b, spaceName(s), "project-sidebar");
     b.append(el("i", "color-dot none"), el("span", "name", spaceName(s)));
     b.onclick = () => toggle(key, open);
     row.append(b, iconButton("plus", t("cmdNewWindow"), () => app.newWindow(c, s.id), !c.live));
@@ -325,7 +326,7 @@ function groupHead(o: Head): HTMLElement {
   if (o.look.face) row.classList.add("current");
   const b = el("button", "project-main");
   b.type = "button";
-  if (o.title) b.title = o.title;
+  if (o.title) setTooltip(b, o.title, "project-sidebar");
   const slot = el("span", "folder-slot");
   slot.style.width = `${o.room}px`;
   const tile = el("i", "folder-tile");
@@ -541,7 +542,7 @@ function agentMenu(c: HostConn, session: string): MenuItem[] {
 function agentButton(c: HostConn, session: string, a: Agent): HTMLButtonElement {
   const b = el("button", "icon");
   b.type = "button";
-  b.title = a.name;
+  setTooltip(b, a.name, "project-sidebar");
   b.setAttribute("aria-label", `${t("cmdNewWindow")} (${a.name})`);
   const g = el("i", "pane-icon");
   g.style.setProperty("--icon", `url(${glyphUrl(programOf(a.id).glyph)})`);
@@ -632,7 +633,7 @@ export function projectBar(nav: HTMLElement, c: HostConn | undefined): boolean {
   const p = model.projects.find((x) => x.id === id);
   const chip = el("button", "space-chip project-chip");
   chip.type = "button";
-  chip.title = p ? `${t("spaceMenuLabel")}: ${p.dir}` : t("spaceMenuLabel");
+  setTooltip(chip, p ? `${t("spaceMenuLabel")}: ${p.dir}` : t("spaceMenuLabel"), "project-sidebar");
   chip.setAttribute("aria-haspopup", "menu");
   chip.append(el("span", "host", c.host.name), icon("chevron-right"), el("span", undefined, p ? p.name || dirName(p.dir) : t("projectNoProjectName")), icon("chevron-down"));
   chip.onclick = () => {
