@@ -115,12 +115,18 @@ final class ComposerUITests: XCTestCase {
         shot("composer-mode-rest")
 
         // Raising the keyboard and typing multiple lines grows the bar cleanly,
-        // and Backspace edits the compose field rather than the terminal.
+        // keeps +, mic, and Send aligned to the bottom row, and Backspace
+        // edits the compose field rather than the terminal.
         message.tap()
         if app.keyboards.element.waitForExistence(timeout: 5) {
             message.typeText("abc" + XCUIKeyboardKey.delete.rawValue)
             XCTAssertEqual(message.value as? String, "ab")
             message.typeText("\nline 2\nline 3")
+            let addBtn = app.buttons.matching(identifier: "Add Attachment").firstMatch
+            let sendBtn = app.buttons.matching(identifier: "Send").firstMatch
+            XCTAssertGreaterThan(addBtn.frame.midY, message.frame.midY)
+            XCTAssertGreaterThan(sendBtn.frame.midY, message.frame.midY)
+            XCTAssertLessThan(abs(addBtn.frame.midY - sendBtn.frame.midY), 4)
             shot("composer-mode-keyboard")
         }
     }
