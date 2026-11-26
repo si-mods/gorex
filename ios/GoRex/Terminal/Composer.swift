@@ -50,6 +50,22 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
     }()
     private let attach = UIButton()
     private let send = UIButton()
+    /// Collapsible center pill in the bottom action row on iPhone (IOS-030):
+    /// rests as a quiet muted marker and springs open into Esc, Enter, arrow
+    /// stick, `⌘` More Keys, and a collapse button on tap.
+    private let quickPill = UIView()
+    private let quickToggle = UIButton()
+    private let quickKeys = UIStackView()
+    private var quickPillWidth: NSLayoutConstraint?
+    private var quickPillHeight: NSLayoutConstraint?
+    private var quickKeysExpanded = false
+    private let stickBtn = UIButton()
+    private let keysMenuBtn = UIButton()
+    private let pad = StickPad()
+    private var repeating: Task<Void, Never>?
+    private var steered = false
+    private var arrow: String? { didSet { pad.arrow = arrow } }
+    private let tick = UIImpactFeedbackGenerator(style: .light)
     /// Where the screen's mic lands, next to Send.
     let micHolder = UIView()
     /// Where the screen's voice controls land while dictating, replacing the
@@ -181,12 +197,164 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
         strip.showsHorizontalScrollIndicator = false
         strip.isHidden = true
 
-        // Two-row layout matching official Rex: full-width message field on
-        // top, circular `+` on bottom-left and mic + circular Send on
-        // bottom-right.
+        // Two-row layout (IOS-030): full-width message field on top, action
+        // row below with `+` on the left, a quiet collapsible quick-keys pill
+        // centered in the middle, and mic + circular Send on the right.
+        func quickButton(image: UIImage?, label: String, id: String? = nil, width: CGFloat = 34, tint: UIColor = .label) -> UIButton {
+            var c = UIButton.Configuration.filled()
+            c.image = image
+            c.baseBackgroundColor = .clear
+            c.baseForegroundColor = tint
+            c.cornerStyle = .capsule
+            c.contentInsets = .zero
+            let b = UIButton(configuration: c)
+            b.accessibilityLabel = label
+            b.accessibilityIdentifier = id
+            b.configurationUpdateHandler = { btn in
+                UIView.performWithoutAnimation {
+                    var cfg = btn.configuration ?? c
+                    cfg.baseBackgroundColor = btn.isHighlighted ? UIColor.white.withAlphaComponent(0.16) : .clear
+                    btn.configuration = cfg
+                }
+            }
+            b.translatesAutoresizingMaskIntoConstraints = false
+            NSLayoutConstraint.activate([
+                b.widthAnchor.constraint(equalToConstant: width),
+                b.heightAnchor.constraint(equalToConstant: 32),
+            ])
+            return b
+        }
+        let symCfg = UIImage.SymbolConfiguration(pointSize: 14, weight: .regular)
+        let escBtn = quickButton(image: UIImage(systemName: "escape", withConfiguration: symCfg), label: String(localized: "Esc"))
+        escBtn.addAction(UIAction { [weak self] _ in
+            self?.tick.impactOccurred()
+            self?.terminal?.send("escape")
+        }, for: .touchUpInside)
+
+        let enterBtn = quickButton(image: UIImage(systemName: "return", withConfiguration: symCfg), label: String(localized: "Enter"))
+        enterBtn.addAction(UIAction { [weak self] _ in
+            self?.tick.impactOccurred()
+            self?.terminal?.send("enter")
+        }, for: .touchUpInside)
+
+        var stickCfg = UIButton.Configuration.filled()
+        stickCfg.image = KeyBar.stick
+        stickCfg.baseBackgroundColor = .clear
+        stickCfg.baseForegroundColor = .label
+        stickCfg.cornerStyle = .capsule
+        stickCfg.contentInsets = .zero
+        stickBtn.configuration = stickCfg
+        stickBtn.accessibilityLabel = String(localized: "Arrow Keys")
+        stickBtn.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            stickBtn.widthAnchor.constraint(equalToConstant: 34),
+            stickBtn.heightAnchor.constraint(equalToConstant: 32),
+        ])
+        let drag = UILongPressGestureRecognizer(target: self, action: #selector(steer))
+        drag.minimumPressDuration = 0
+        drag.allowableMovement = .greatestFiniteMagnitude
+        stickBtn.addGestureRecognizer(drag)
+
+        var menuCfg = UIButton.Configuration.filled()
+        menuCfg.image = UIImage(systemName: "ellipsis", withConfiguration: symCfg)
+        menuCfg.baseBackgroundColor = .clear
+        menuCfg.baseForegroundColor = .label
+        menuCfg.cornerStyle = .capsule
+        menuCfg.contentInsets = .zero
+        keysMenuBtn.configuration = menuCfg
+        keysMenuBtn.accessibilityLabel = String(localized: "More Keys")
+        keysMenuBtn.accessibilityIdentifier = "composer.keys"
+        keysMenuBtn.showsMenuAsPrimaryAction = true
+        keysMenuBtn.addAction(UIAction { [weak self] _ in self?.tick.impactOccurred() }, for: .touchDown)
+        keysMenuBtn.menu = UIMenu(children: [
+            UIAction(title: String(localized: "Ctrl+C"), image: UIImage(systemName: "xmark.circle")) { [weak self] _ in
+                self?.terminal?.sendCtrlC()
+            },
+            UIAction(title: String(localized: "Tab"), image: UIImage(systemName: "arrow.right.to.line")) { [weak self] _ in
+                self?.terminal?.send("tab")
+            },
+            UIAction(title: String(localized: "Shift+Tab"), image: UIImage(systemName: "arrow.left.to.line")) { [weak self] _ in
+                self?.terminal?.sendShiftTab()
+            },
+            UIAction(title: String(localized: "Delete"), image: UIImage(systemName: "delete.left")) { [weak self] _ in
+                self?.terminal?.send("backspace")
+            },
+            UIDeferredMenuElement.uncached { [weak self] done in
+                var tail: [UIMenuElement] = []
+                if self?.terminal?.keyboardUp == true {
+                    tail.append(UIAction(title: String(localized: "Hide Keyboard"), image: UIImage(systemName: "keyboard.chevron.compact.down")) { [weak self] _ in
+                        _ = self?.terminal?.resignFirstResponder()
+                    })
+                }
+                tail.append(UIAction(title: String(localized: "Show Key Bar"), image: UIImage(systemName: "keyboard")) { [weak self] _ in
+                    self?.requestClose()
+                })
+                done([UIMenu(options: .displayInline, children: tail)])
+            },
+        ])
+        keysMenuBtn.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            keysMenuBtn.widthAnchor.constraint(equalToConstant: 34),
+            keysMenuBtn.heightAnchor.constraint(equalToConstant: 32),
+        ])
+
+        let closeCfg = UIImage.SymbolConfiguration(pointSize: 11, weight: .semibold)
+        let collapseBtn = quickButton(image: UIImage(systemName: "xmark", withConfiguration: closeCfg),
+                                      label: String(localized: "Hide"),
+                                      id: "composer.keys.collapse",
+                                      width: 26,
+                                      tint: .secondaryLabel)
+        collapseBtn.addAction(UIAction { [weak self] _ in
+            self?.tick.impactOccurred()
+            self?.setQuickKeysExpanded(false, animated: true)
+        }, for: .touchUpInside)
+
+        quickKeys.axis = .horizontal
+        quickKeys.alignment = .center
+        quickKeys.spacing = 2
+        quickKeys.alpha = 0
+        quickKeys.isHidden = true
+        quickKeys.transform = CGAffineTransform(translationX: -10, y: 0).scaledBy(x: 0.92, y: 0.92)
+        quickKeys.translatesAutoresizingMaskIntoConstraints = false
+        for v in [escBtn, enterBtn, stickBtn, keysMenuBtn, collapseBtn] { quickKeys.addArrangedSubview(v) }
+
+        var toggleCfg = UIButton.Configuration.plain()
+        toggleCfg.image = UIImage(systemName: "command", withConfiguration: UIImage.SymbolConfiguration(pointSize: 12, weight: .medium))
+        toggleCfg.baseForegroundColor = UIColor.label.withAlphaComponent(0.45)
+        toggleCfg.contentInsets = .zero
+        quickToggle.configuration = toggleCfg
+        quickToggle.accessibilityLabel = String(localized: "More Keys")
+        quickToggle.accessibilityIdentifier = "composer.keys.toggle"
+        quickToggle.translatesAutoresizingMaskIntoConstraints = false
+        quickToggle.addAction(UIAction { [weak self] _ in
+            self?.tick.impactOccurred()
+            self?.setQuickKeysExpanded(true, animated: true)
+        }, for: .touchUpInside)
+
+        quickPill.backgroundColor = UIColor.white.withAlphaComponent(0.06)
+        quickPill.layer.cornerRadius = 14
+        quickPill.clipsToBounds = true
+        quickPill.isHidden = UIDevice.current.userInterfaceIdiom == .pad
+        quickPill.translatesAutoresizingMaskIntoConstraints = false
+        quickPill.addSubview(quickToggle)
+        quickPill.addSubview(quickKeys)
+        let pw = quickPill.widthAnchor.constraint(equalToConstant: 40)
+        let ph = quickPill.heightAnchor.constraint(equalToConstant: 28)
+        quickPillWidth = pw
+        quickPillHeight = ph
+        NSLayoutConstraint.activate([
+            pw, ph,
+            quickToggle.leadingAnchor.constraint(equalTo: quickPill.leadingAnchor),
+            quickToggle.widthAnchor.constraint(equalToConstant: 40),
+            quickToggle.topAnchor.constraint(equalTo: quickPill.topAnchor),
+            quickToggle.bottomAnchor.constraint(equalTo: quickPill.bottomAnchor),
+            quickKeys.leadingAnchor.constraint(equalTo: quickPill.leadingAnchor, constant: 6),
+            quickKeys.centerYAnchor.constraint(equalTo: quickPill.centerYAnchor),
+        ])
+
         let spacer = UIView()
         spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
-        let actionsRow = UIStackView(arrangedSubviews: [attach, spacer, micHolder, send])
+        let actionsRow = UIStackView(arrangedSubviews: [attach, quickPill, spacer, micHolder, send])
         actionsRow.axis = .horizontal
         actionsRow.alignment = .center
         actionsRow.spacing = 8
@@ -290,6 +458,7 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
 
         dismissPan.delegate = self
         addGestureRecognizer(dismissPan)
+        addSubview(pad)
     }
 
     required init?(coder: NSCoder) { fatalError() }
@@ -369,7 +538,17 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
             let dy = g.translation(in: self).y
             let vy = g.velocity(in: self).y
             if dy > 28 || vy > 300 {
-                requestClose()
+                // Two-stage downward swipe (IOS-030): dismiss the software
+                // keyboard first if up, then a second swipe exits Composer Mode.
+                if field.isFirstResponder {
+                    Haptics.tapped()
+                    field.resignFirstResponder()
+                    UIView.animate(withDuration: 0.2, delay: 0, usingSpringWithDamping: 0.85, initialSpringVelocity: 0) {
+                        self.transform = .identity
+                    }
+                } else {
+                    requestClose()
+                }
             } else {
                 UIView.animate(withDuration: 0.2, delay: 0, usingSpringWithDamping: 0.85, initialSpringVelocity: 0) {
                     self.transform = .identity
@@ -382,12 +561,98 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
         }
     }
 
+    /// Points the embedded arrow stick: past a dead zone, the arrow of the
+    /// drag's main axis goes at once and repeats while held.
+    @objc private func steer(_ g: UILongPressGestureRecognizer) {
+        var next: String?
+        if g.state == .began, let v = g.view {
+            tick.prepare()
+            pad.center = v.convert(CGPoint(x: v.bounds.midX, y: v.bounds.midY), to: self)
+            pad.transform = CGAffineTransform(scaleX: 0.5, y: 0.5)
+            pad.isHidden = false
+            UIView.animate(withDuration: 0.18, delay: 0, usingSpringWithDamping: 0.75, initialSpringVelocity: 0) { self.pad.transform = .identity }
+        }
+        if g.state == .ended || g.state == .cancelled || g.state == .failed {
+            pad.isHidden = true
+            if steered { terminal?.release() }
+            steered = false
+        }
+        if g.state == .began || g.state == .changed, let v = g.view {
+            let p = g.location(in: v)
+            let dx = p.x - v.bounds.midX, dy = p.y - v.bounds.midY
+            if max(abs(dx), abs(dy)) > 12 {
+                next = abs(dx) > abs(dy) ? (dx > 0 ? "arrow_right" : "arrow_left") : (dy > 0 ? "arrow_down" : "arrow_up")
+            }
+        }
+        guard next != arrow else { return }
+        arrow = next
+        repeating?.cancel()
+        guard let next else { return }
+        steered = true
+        repeating = Task { [weak terminal, tick] in
+            var delay = 0.4
+            repeat {
+                terminal?.send(next, holding: true)
+                tick.impactOccurred(intensity: delay == 0.4 ? 1 : 0.5)
+                try? await Task.sleep(for: .seconds(delay))
+                delay = 0.08
+            } while !Task.isCancelled
+        }
+    }
+
+    /// Smoothly expands or collapses the center quick-keys pill with spring
+    /// physics (or a plain fade under Reduce Motion).
+    private func setQuickKeysExpanded(_ expanded: Bool, animated: Bool) {
+        guard expanded != quickKeysExpanded else { return }
+        quickKeysExpanded = expanded
+        quickPillWidth?.constant = expanded ? 180 : 40
+        quickPillHeight?.constant = expanded ? 34 : 28
+        if expanded {
+            quickKeys.isHidden = false
+            quickToggle.isUserInteractionEnabled = false
+        } else {
+            quickToggle.isHidden = false
+            quickKeys.isUserInteractionEnabled = false
+        }
+        let apply = {
+            self.quickPill.layer.cornerRadius = expanded ? 17 : 14
+            self.quickPill.backgroundColor = UIColor.white.withAlphaComponent(expanded ? 0.09 : 0.06)
+            self.quickToggle.alpha = expanded ? 0 : 1
+            self.quickToggle.transform = expanded ? CGAffineTransform(scaleX: 0.75, y: 0.75) : .identity
+            self.quickKeys.alpha = expanded ? 1 : 0
+            self.quickKeys.transform = expanded ? .identity : CGAffineTransform(translationX: -10, y: 0).scaledBy(x: 0.92, y: 0.92)
+            self.layoutIfNeeded()
+        }
+        let done: (Bool) -> Void = { _ in
+            if self.quickKeysExpanded {
+                self.quickToggle.isHidden = true
+                self.quickKeys.isUserInteractionEnabled = true
+            } else {
+                self.quickKeys.isHidden = true
+                self.quickToggle.isUserInteractionEnabled = true
+            }
+        }
+        guard animated else {
+            apply()
+            done(true)
+            return
+        }
+        if UIAccessibility.isReduceMotionEnabled {
+            UIView.animate(withDuration: 0.18, animations: apply, completion: done)
+        } else {
+            UIView.animate(withDuration: 0.34, delay: 0, usingSpringWithDamping: 0.82, initialSpringVelocity: 0.2, animations: apply, completion: done)
+        }
+    }
+
     override func gestureRecognizerShouldBegin(_ g: UIGestureRecognizer) -> Bool {
         if g === dismissPan {
             guard !voiceActive, !sending else { return false }
             let v = dismissPan.velocity(in: self)
             guard v.y > 0, v.y > abs(v.x) else { return false }
             let p = g.location(in: self)
+            if quickKeysExpanded, !quickPill.isHidden, stickBtn.frame.contains(convert(p, to: stickBtn.superview)) {
+                return false
+            }
             if field.isScrollEnabled, field.frame.contains(convert(p, to: field.superview)) {
                 return false
             }
@@ -398,6 +663,7 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
         let p = g.location(in: self)
         if handleArea.frame.contains(convert(p, to: handleArea.superview)) { return false }
         if !attach.isHidden, attach.frame.contains(convert(p, to: attach.superview)) { return false }
+        if !quickPill.isHidden, quickPill.frame.contains(convert(p, to: quickPill.superview)) { return false }
         if send.frame.contains(convert(p, to: send.superview)) { return false }
         if !strip.isHidden, strip.frame.contains(convert(p, to: strip.superview)) { return false }
         // Keep UITextView's own long-press loupe/selection when editing

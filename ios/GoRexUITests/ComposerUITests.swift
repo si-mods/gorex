@@ -61,23 +61,38 @@ final class ComposerUITests: XCTestCase {
         XCTAssertTrue(compose.waitForExistence(timeout: 5))
         shot("keybar-rex-rest")
 
-        // Tapping Compose opens the two-row bar in one tap while keeping the
-        // left [⌘, Compose] capsule stable below it.
+        // Tapping Compose opens the unified Composer-centric card (IOS-030)
+        // with the quiet quick-keys marker centered in the bottom action row.
         compose.tap()
         XCTAssertTrue(message.waitForExistence(timeout: 5))
-        XCTAssertTrue(app.buttons["keybar.more"].exists)
         let grabber = app.otherElements["composer.grabber"]
         XCTAssertTrue(grabber.waitForExistence(timeout: 5))
         let addBtn = app.buttons.matching(identifier: "Add Attachment").firstMatch
         let sendBtn = app.buttons.matching(identifier: "Send").firstMatch
+        let toggleBtn = app.buttons["composer.keys.toggle"]
         XCTAssertTrue(addBtn.waitForExistence(timeout: 5))
         XCTAssertTrue(sendBtn.waitForExistence(timeout: 5))
+        XCTAssertTrue(toggleBtn.waitForExistence(timeout: 5))
         XCTAssertGreaterThan(addBtn.frame.midY, message.frame.midY)
         XCTAssertLessThan(abs(addBtn.frame.midY - sendBtn.frame.midY), 4)
-        shot("composer-rex-open")
+        shot("composer-centric-collapsed")
+
+        // Tapping the quiet marker expands Esc, Enter, Arrow Keys, More Keys,
+        // and the collapse button smoothly in place.
+        toggleBtn.tap()
+        let moreKeys = app.buttons["composer.keys"]
+        let collapseBtn = app.buttons["composer.keys.collapse"]
+        XCTAssertTrue(moreKeys.waitForExistence(timeout: 5))
+        XCTAssertTrue(collapseBtn.waitForExistence(timeout: 5))
+        XCTAssertLessThan(abs(moreKeys.frame.midY - sendBtn.frame.midY), 4)
+        shot("composer-centric-expanded")
+
+        // Tapping collapse springs back to the quiet marker.
+        collapseBtn.tap()
+        XCTAssertTrue(toggleBtn.waitForExistence(timeout: 5))
 
         // Dragging down on the top grabber dismisses Composer Mode and restores
-        // Dictate on the key bar.
+        // the traditional key bar below.
         let start = grabber.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
         let end = start.withOffset(CGVector(dx: 0, dy: 90))
         start.press(forDuration: 0.05, thenDragTo: end)
@@ -85,10 +100,16 @@ final class ComposerUITests: XCTestCase {
         XCTAssertTrue(app.buttons["keybar.more"].waitForExistence(timeout: 5))
         shot("composer-mode-closed")
 
-        // Tapping Compose reopens it and tapping Compose again closes it.
+        // Tapping Compose reopens it, expanding quick keys -> More Keys ->
+        // Show Key Bar closes Composer back to KeyBar.
         compose.tap()
         XCTAssertTrue(message.waitForExistence(timeout: 5))
-        compose.tap()
+        toggleBtn.tap()
+        XCTAssertTrue(moreKeys.waitForExistence(timeout: 5))
+        moreKeys.tap()
+        let showBar = app.buttons["Show Key Bar"]
+        XCTAssertTrue(showBar.waitForExistence(timeout: 5))
+        showBar.tap()
         XCTAssertTrue(message.waitForNonExistence(timeout: 5))
     }
 
