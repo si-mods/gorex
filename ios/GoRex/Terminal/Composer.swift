@@ -62,10 +62,10 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
     /// holding starts voice recording, releasing converts speech to text.
     private lazy var holdVoice = UILongPressGestureRecognizer(target: self, action: #selector(heldForVoice))
     private var holdingVoice = false
-    /// Top grabber area; swiping down closes Composer Mode.
+    /// Top grabber area; dragging or flicking down closes Composer Mode.
     private let handleArea = UIView()
-    private lazy var swipeDown = UISwipeGestureRecognizer(target: self, action: #selector(requestClose))
-    /// Called when the user swipes down on the grabber to close Composer Mode.
+    private lazy var dismissPan = UIPanGestureRecognizer(target: self, action: #selector(draggedDown))
+    /// Called when the user drags or flicks down on the grabber to close Composer Mode.
     var onClose: (() -> Void)?
     /// Whether an upload or inline dictation is running and closing must wait.
     var isBusy: Bool { sending || voiceActive }
@@ -269,9 +269,8 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
         holdVoice.delegate = self
         addGestureRecognizer(holdVoice)
 
-        swipeDown.direction = .down
-        swipeDown.delegate = self
-        addGestureRecognizer(swipeDown)
+        dismissPan.delegate = self
+        addGestureRecognizer(dismissPan)
     }
 
     required init?(coder: NSCoder) { fatalError() }
@@ -342,9 +341,33 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
         onClose?()
     }
 
+    @objc private func draggedDown(_ g: UIPanGestureRecognizer) {
+        switch g.state {
+        case .changed:
+            let dy = max(0, g.translation(in: self).y)
+            transform = CGAffineTransform(translationX: 0, y: dy * 0.5)
+        case .ended:
+            let dy = g.translation(in: self).y
+            let vy = g.velocity(in: self).y
+            if dy > 28 || vy > 300 {
+                requestClose()
+            } else {
+                UIView.animate(withDuration: 0.2, delay: 0, usingSpringWithDamping: 0.85, initialSpringVelocity: 0) {
+                    self.transform = .identity
+                }
+            }
+        case .cancelled, .failed:
+            UIView.animate(withDuration: 0.2) { self.transform = .identity }
+        default:
+            break
+        }
+    }
+
     override func gestureRecognizerShouldBegin(_ g: UIGestureRecognizer) -> Bool {
-        if g === swipeDown {
+        if g === dismissPan {
             guard !voiceActive, !sending else { return false }
+            let v = dismissPan.velocity(in: self)
+            guard v.y > 0, v.y > abs(v.x) else { return false }
             let p = g.location(in: self)
             if field.isScrollEnabled, field.frame.contains(convert(p, to: field.superview)) {
                 return false

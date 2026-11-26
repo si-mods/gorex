@@ -50,7 +50,8 @@ final class ComposerUITests: XCTestCase {
     private var message: XCUIElement { app.textViews["composer.message"] }
 
     /// Without the mode the bar stays away and the mic, ⌘, and Compose toggle
-    /// are on the key bar; tapping Compose opens the bar immediately.
+    /// are on the key bar; tapping Compose opens the bar immediately, and
+    /// swiping down on the top grabber dismisses it again.
     func testNoComposerByDefault() throws {
         XCTAssertTrue(message.waitForNonExistence(timeout: 5))
         XCTAssertTrue(app.buttons.matching(identifier: "Dictate").firstMatch.waitForExistence(timeout: 5))
@@ -59,13 +60,25 @@ final class ComposerUITests: XCTestCase {
         XCTAssertTrue(mores.contains { abs($0.frame.midY - esc.frame.midY) < 40 })
         let compose = app.buttons["keybar.compose"]
         XCTAssertTrue(compose.waitForExistence(timeout: 5))
+
+        // Tapping Compose opens the bar and hides ⌘ on the key bar.
         compose.tap()
         XCTAssertTrue(message.waitForExistence(timeout: 5))
+        let grabber = app.otherElements["composer.grabber"]
+        XCTAssertTrue(grabber.waitForExistence(timeout: 5))
+
+        // Swiping down on the top grabber dismisses Composer Mode and restores
+        // ⌘ and Dictate on the key bar.
+        grabber.swipeDown()
+        XCTAssertTrue(message.waitForNonExistence(timeout: 5))
+        let restoredMores = app.buttons.matching(identifier: "More").allElementsBoundByIndex
+        XCTAssertTrue(restoredMores.contains { abs($0.frame.midY - esc.frame.midY) < 40 })
+        shot("composer-mode-closed")
     }
 
     /// Composer Mode pins the bar with a top grabber handle, the mic beside
     /// the field, + always present for Paste, ⌘ hidden on the key bar while
-    /// the Compose toggle stays visible; swiping down on the grabber closes it.
+    /// the Compose toggle stays visible.
     func testComposerModePinsBar() throws {
         app.terminate()
         app.launchArguments = ["-composerMode", "YES"]
@@ -101,16 +114,6 @@ final class ComposerUITests: XCTestCase {
             message.typeText("\nline 2\nline 3")
             shot("composer-mode-keyboard")
         }
-
-        // Swiping down on the top grabber dismisses Composer Mode and restores
-        // ⌘ and Dictate on the key bar; tapping Compose reopens it.
-        grabber.swipeDown()
-        XCTAssertTrue(message.waitForNonExistence(timeout: 5))
-        let restoredMores = app.buttons.matching(identifier: "More").allElementsBoundByIndex
-        XCTAssertTrue(restoredMores.contains { abs($0.frame.midY - esc.frame.midY) < 40 })
-        shot("composer-mode-closed")
-        compose.tap()
-        XCTAssertTrue(message.waitForExistence(timeout: 5))
     }
 
     private func shot(_ name: String) {
