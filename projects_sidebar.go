@@ -781,25 +781,35 @@ func (a *App) projectAgentMenu(c *ui.Context, m *ui.Menu, w *Workspace, agents [
 // opening a tab that runs it, and the chevron of the menu of every
 // installed one. With none pinned the cluster is the chevron alone.
 func (a *App) projectNewTabRow(c *ui.Context, k *colors, w *Workspace, agents []rex.AgentInfo, reserve float32) {
-	row := ui.Row(c.Key("new-tab-"+openKey(w.host, w.ID))).Height(sidebarRowH()).Shrink(0).Padding(0, 4, 0, sidebarTabLead()).Gap(sideGap).AlignItems(ui.Center)
+	row := ui.Row(c.Key("new-tab-"+openKey(w.host, w.ID))).Height(sidebarRowH()).Shrink(0).Padding(0, 4, 0, 0).Gap(sideGap).AlignItems(ui.Center)
 	row.Children(func() {
-		// The shell's part fills the row, so the cluster's buttons keep
-		// their own hovers at its end.
+		// The shell's part starts at the row's leading edge so its hover
+		// capsule lines up with the tabs above and stays concentric with
+		// the project group, while the cluster's buttons keep their own
+		// hovers at its end.
 		label := locales.ProjectsNewTabIn(w.Name)
-		add := ui.Row(c.Key("add")).Grow(1).MinWidth(0).Height(sidebarRowH()).Gap(sideGap).AlignItems(ui.Center).
+		add := ui.Row(c.Key("add")).Grow(1).MinWidth(0).Height(sidebarRowH()).Padding(0, 6, 0, sidebarTabLead()).Gap(sideGap).AlignItems(ui.Center).
 			Radius(pillRadius(k, sidebarRowH(), k.radius(radiusM))).Cursor(ui.CursorPointer).Role(ui.RoleButton).Label(label).Tooltip(label)
+		hovered := add.Hovered()
 		ck := k
-		if add.Hovered() {
+		if hovered {
 			paintFace(add, k, roleTabHoverBackground, hoverFace(k))
 			ck = sidebarHoverColors(k)
+		}
+		if fadeColors {
+			add.Transition(hoverFade)
+		}
+		col := ck.textMuted
+		if hovered {
+			col = ck.text
 		}
 		add.Children(func() {
 			leadRoom(c, reserve, sidebarRowH()).Children(func() {
 				ui.Row(c).Width(tileSlot).AlignItems(ui.Center).Justify(ui.Center).Children(func() {
-					glyphIcon(c, "plus", 13, ck.textMuted).Shrink(0)
+					glyphIcon(c, "plus", 13, col).Shrink(0)
 				})
 			})
-			ui.Text(c, locales.CmdNewTab()).FontSize(sidebarFont(fontBody)).TextColor(ck.textMuted).SingleLine().Ellipsis("…").Shrink(1).MinWidth(0)
+			ui.Text(c, locales.CmdNewTab()).FontSize(sidebarFont(fontBody)).TextColor(col).SingleLine().Ellipsis("…").Shrink(1).MinWidth(0)
 		})
 		if add.Clicked() {
 			a.later(c, func() { a.newTabIn(w) })
@@ -811,9 +821,15 @@ func (a *App) projectNewTabRow(c *ui.Context, k *colors, w *Workspace, agents []
 				b := ui.Box(c.Key("agent-"+agent.ID)).Size(20, 20).Radius(k.capsule(20)).Center().Shrink(0).
 					Cursor(ui.CursorPointer).Role(ui.RoleButton).Label(agent.Name).Tooltip(agent.Name)
 				col := k.textMuted
-				if b.Hovered() {
+				if b.Pressed() {
+					b.Background(k.pressed)
+					col = k.text
+				} else if b.Hovered() {
 					b.Background(k.hover)
 					col = k.text
+				}
+				if fadeColors {
+					b.Transition(hoverFade)
 				}
 				b.Children(func() {
 					ui.Icon(c, icon(programOf(agent.ID).Glyph)).Size(13, 13).TextColor(col)
