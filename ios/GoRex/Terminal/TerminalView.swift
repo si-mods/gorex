@@ -585,13 +585,13 @@ final class TerminalView: UIView, TerminalOutput {
         if let s = surface, ghostty_surface_mouse_captured(s) {
             click(at: p)
         } else {
-            let typing = isFirstResponder
+            let typing = keyboardUp
             if openLink(at: p) {
                 typingBeforeLink = typing
                 return
             }
         }
-        if !isFirstResponder { becomeFirstResponder() }
+        if !keyboardUp { becomeFirstResponder() }
     }
 
     /// A left click at a point, as a mouse makes it, plain unless keys are
@@ -621,7 +621,11 @@ final class TerminalView: UIView, TerminalOutput {
 
     // MARK: Keyboard
 
-    override var canBecomeFirstResponder: Bool { true }
+    /// In Composer Mode the pinned message field owns keyboard focus, so the
+    /// terminal itself must never become first responder (otherwise UIKit's
+    /// responder restoration or edit menu can silently steal focus and route
+    /// Backspace/typing to the terminal instead of the composer).
+    override var canBecomeFirstResponder: Bool { composerField == nil }
 
     /// Composer Mode's bar is pinned (Settings > Terminal): the keyboard
     /// types into its message field, so the terminal's own focus goes
@@ -637,7 +641,7 @@ final class TerminalView: UIView, TerminalOutput {
 
     @discardableResult
     override func becomeFirstResponder() -> Bool {
-        if Self.composerMode, let f = composerField { return f.becomeFirstResponder() }
+        if let f = composerField { return f.becomeFirstResponder() }
         return super.becomeFirstResponder()
     }
 
