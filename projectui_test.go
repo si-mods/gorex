@@ -125,16 +125,18 @@ func TestProjectNewTabRowHover(t *testing.T) {
 	if !ok {
 		t.Fatalf("active tab row not found; texts %q", tt.Texts())
 	}
-	textRect, ok := tt.Find(locales.CmdNewTab())
+	// Use a pinned agent button in the same row for the row's Y coordinate;
+	// on Linux the sidebar header also carries a "+" button labeled CmdNewTab.
+	claudeRect, ok := tt.Find("Claude Code")
 	if !ok {
-		t.Fatalf("New Tab label not found; texts %q", tt.Texts())
+		t.Fatalf("Claude Code launcher not found; texts %q", tt.Texts())
 	}
 
 	// Hovering inside the leading edge aligned with the tab row above
 	// (tabRect.X + 4, which sits inside sidebarTabLead) must hit the New Tab
 	// button and paint its hover face.
 	probeX := tabRect.X + 4
-	probeY := textRect.Y + textRect.H/2
+	probeY := claudeRect.Y + claudeRect.H/2
 	beforePx := tt.Image().RGBAAt(int(probeX), int(probeY))
 	tt.Move(probeX, probeY)
 	tt.Frame()
@@ -146,7 +148,7 @@ func TestProjectNewTabRowHover(t *testing.T) {
 	}
 
 	// With sidebar.tabIndent set, the hover pill's leading edge stays aligned
-	// with the tab row while the label shifts right by the indent.
+	// with the tab row.
 	prefs.SidebarTabIndent = 12
 	tt.Move(0, 0)
 	tt.Frame()
@@ -156,15 +158,15 @@ func TestProjectNewTabRowHover(t *testing.T) {
 	if !ok {
 		t.Fatalf("active tab row not found after indent")
 	}
-	textIndented, ok := tt.Find(locales.CmdNewTab())
+	claudeIndented, ok := tt.Find("Claude Code")
 	if !ok {
-		t.Fatalf("New Tab label not found after indent")
+		t.Fatalf("Claude Code launcher not found after indent")
 	}
-	if math.Abs(float64((textIndented.X-textRect.X)-12)) > 0.5 {
-		t.Fatalf("New Tab label shifted by %.1f, want 12", textIndented.X-textRect.X)
+	if math.Abs(float64(tabIndented.X-tabRect.X)) > 0.5 {
+		t.Fatalf("tab row leading edge shifted from %.1f to %.1f", tabRect.X, tabIndented.X)
 	}
 	probeX = tabIndented.X + 4
-	probeY = textIndented.Y + textIndented.H/2
+	probeY = claudeIndented.Y + claudeIndented.H/2
 	beforeIndented := tt.Image().RGBAAt(int(probeX), int(probeY))
 	tt.Move(probeX, probeY)
 	tt.Frame()
