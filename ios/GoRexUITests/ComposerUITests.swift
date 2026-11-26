@@ -49,19 +49,45 @@ final class ComposerUITests: XCTestCase {
     /// The compose bar's message field, which names the demo's block.
     private var message: XCUIElement { app.textViews["composer.message"] }
 
-    /// Without the mode the bar stays away and the mic and ⌘ are the key bar's.
+    /// Without the mode the bar stays away and the mic, ⌘, and Compose toggle
+    /// are on the key bar; tapping Compose opens the bar immediately, and
+    /// swiping down on the top grabber dismisses it again.
     func testNoComposerByDefault() throws {
         XCTAssertTrue(message.waitForNonExistence(timeout: 5))
         XCTAssertTrue(app.buttons.matching(identifier: "Dictate").firstMatch.waitForExistence(timeout: 5))
         let esc = app.buttons.matching(identifier: "Esc").firstMatch
         let mores = app.buttons.matching(identifier: "More").allElementsBoundByIndex
         XCTAssertTrue(mores.contains { abs($0.frame.midY - esc.frame.midY) < 40 })
+        let compose = app.buttons["keybar.compose"]
+        XCTAssertTrue(compose.waitForExistence(timeout: 5))
+
+        // Tapping Compose opens the bar and hides ⌘ on the key bar.
+        compose.tap()
+        XCTAssertTrue(message.waitForExistence(timeout: 5))
+        let grabber = app.otherElements["composer.grabber"]
+        XCTAssertTrue(grabber.waitForExistence(timeout: 5))
+
+        // Dragging down on the top grabber dismisses Composer Mode and restores
+        // ⌘ and Dictate on the key bar.
+        let start = grabber.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        let end = start.withOffset(CGVector(dx: 0, dy: 90))
+        start.press(forDuration: 0.05, thenDragTo: end)
+        XCTAssertTrue(message.waitForNonExistence(timeout: 5))
+        let restoredMores = app.buttons.matching(identifier: "More").allElementsBoundByIndex
+        XCTAssertTrue(restoredMores.contains { abs($0.frame.midY - esc.frame.midY) < 40 })
+        shot("composer-mode-closed")
+
+        // Tapping Compose again reopens it, and tapping Compose while open
+        // toggles it back off.
+        compose.tap()
+        XCTAssertTrue(message.waitForExistence(timeout: 5))
+        compose.tap()
+        XCTAssertTrue(message.waitForNonExistence(timeout: 5))
     }
 
-    /// Composer Mode (Settings > Terminal, here the defaults argument)
-    /// pins the bar: it is up on its own, compact without a top grabber,
-    /// with the mic beside the field, + always present for Paste, and the
-    /// key bar's redundant ⌘ capsule hidden.
+    /// Composer Mode pins the bar with a top grabber handle, the mic beside
+    /// the field, + always present for Paste, ⌘ hidden on the key bar while
+    /// the Compose toggle stays visible.
     func testComposerModePinsBar() throws {
         app.terminate()
         app.launchArguments = ["-composerMode", "YES"]
@@ -72,15 +98,19 @@ final class ComposerUITests: XCTestCase {
         let esc = app.buttons.matching(identifier: "Esc").firstMatch
         let mores = app.buttons.matching(identifier: "More").allElementsBoundByIndex
         XCTAssertFalse(mores.contains { abs($0.frame.midY - esc.frame.midY) < 40 })
+        let compose = app.buttons["keybar.compose"]
+        XCTAssertTrue(compose.waitForExistence(timeout: 5))
         // The key bar's mic moved into the bar, beside the field (the
         // mic's view exposes more than one element; take its own row's).
         let dictates = app.buttons.matching(identifier: "Dictate").allElementsBoundByIndex
         XCTAssertTrue(dictates.contains { abs($0.frame.midY - message.frame.midY) < 40 })
-        // Compact capsule without the unused top grabber: resting height is
-        // 58pt (46pt field + 12pt padding), not ~80pt with a grabber header.
+        // Compact capsule with top grabber: resting height is 72pt
+        // (14pt grabber + 2pt gap + 46pt field + 10pt padding).
+        let grabber = app.otherElements["composer.grabber"]
+        XCTAssertTrue(grabber.waitForExistence(timeout: 5))
         let bar = app.otherElements["composer"]
         if bar.exists {
-            XCTAssertLessThanOrEqual(bar.frame.height, 64)
+            XCTAssertLessThanOrEqual(bar.frame.height, 78)
         }
         shot("composer-mode-rest")
 
