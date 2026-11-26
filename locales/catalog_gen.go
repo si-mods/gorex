@@ -696,38 +696,6 @@ func (msgs Messages) CmdToggleAmbience() string {
 	return Catalog.Format(msgs.locale, "cmdToggleAmbience", nil)
 }
 
-// SidebarAmbienceOff says "Turn Off Theme Ambience"
-// in the language the app shows.
-//
-// Label and tooltip of the sidebar's button that turns off the theme's
-// background shader and its motion.
-func SidebarAmbienceOff() string { return In(i18n.Locale()).SidebarAmbienceOff() }
-
-// SidebarAmbienceOff says "Turn Off Theme Ambience"
-// in the language of msgs.
-//
-// Label and tooltip of the sidebar's button that turns off the theme's
-// background shader and its motion.
-func (msgs Messages) SidebarAmbienceOff() string {
-	return Catalog.Format(msgs.locale, "sidebarAmbienceOff", nil)
-}
-
-// SidebarAmbienceOn says "Turn On Theme Ambience"
-// in the language the app shows.
-//
-// Label and tooltip of the sidebar's button that turns the theme's
-// background shader and its motion on again.
-func SidebarAmbienceOn() string { return In(i18n.Locale()).SidebarAmbienceOn() }
-
-// SidebarAmbienceOn says "Turn On Theme Ambience"
-// in the language of msgs.
-//
-// Label and tooltip of the sidebar's button that turns the theme's
-// background shader and its motion on again.
-func (msgs Messages) SidebarAmbienceOn() string {
-	return Catalog.Format(msgs.locale, "sidebarAmbienceOn", nil)
-}
-
 // CmdAppearanceSystem says "Appearance: System"
 // in the language the app shows.
 //

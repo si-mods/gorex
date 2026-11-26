@@ -175,12 +175,10 @@ func TestAmbienceSettingsFile(t *testing.T) {
 	}
 }
 
-// TestAmbienceButton: the sidebar's button, and Toggle Theme Ambience,
-// show only while the theme has a shader that Ambience turns off or stops
-// (docs/DSK-012-theme-shaders.md): none with a theme of colors only. The
-// button turns ambience off, which takes the theme's background shader
-// away, and on again as it was.
-func TestAmbienceButton(t *testing.T) {
+// TestAmbienceCommand: Toggle Theme Ambience shows only while the theme
+// has a shader that Ambience turns off or stops (docs/DSK-012-theme-shaders.md),
+// and the sidebar shows no ambience toggle button.
+func TestAmbienceCommand(t *testing.T) {
 	keepTheme(t)
 	t.Setenv("GOREX_CONFIG", filepath.Join(t.TempDir(), "init.lua"))
 	app, tt := newTestApp(t)
@@ -208,16 +206,15 @@ func TestAmbienceButton(t *testing.T) {
 	if !cmdAmbience.Available(app) {
 		t.Error("no Toggle Theme Ambience with a background shader")
 	}
-	if err := tt.Click("Turn Off Theme Ambience"); err != nil {
-		t.Fatalf("%v; texts %q", err, tt.Texts())
+	if _, ok := tt.Find("Turn Off Theme Ambience"); ok {
+		t.Fatal("sidebar still shows ambience toggle button")
 	}
+	app.toggleAmbience()
 	tt.Frame()
 	if prefs.Ambience != ambienceOff || themeBackground() != nil {
-		t.Errorf("after the button, ambience %q, background %v", prefs.Ambience, themeBackground())
+		t.Errorf("after toggle, ambience %q, background %v", prefs.Ambience, themeBackground())
 	}
-	if err := tt.Click("Turn On Theme Ambience"); err != nil {
-		t.Fatal(err)
-	}
+	app.toggleAmbience()
 	tt.Frame()
 	if prefs.Ambience != ambienceStill || themeBackground() == nil {
 		t.Errorf("on again, ambience %q, want it still as it was", prefs.Ambience)
