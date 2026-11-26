@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.67.0
+
+### Features
+
+* **ui,web:** standardize hover timing (500ms tooltip delay, 400ms warm skip-delay, 140ms/60ms fade), add hover-intent and safe-triangle submenu guards on Desktop and Web, replace 48 native Web `title` attributes with a shared accessible Tooltip component, and scope Web `:hover` styles to `@media (hover: hover)` ([#1194](https://github.com/si-mods/gorex/pull/1194))
+* **ios:** add Needs You inbox badge and hierarchy (IOS-027) ([#1191](https://github.com/si-mods/gorex/pull/1191))
+* **ios:** add composer top grabber swipe-down and key bar toggle button (IOS-025) ([#1190](https://github.com/si-mods/gorex/pull/1190))
+
+### Bug Fixes
+
+* **ios:** bottom-align composer multi-line icons, match Compose capsule height, and avoid terminal resize on toggle (IOS-025) ([#1193](https://github.com/si-mods/gorex/pull/1193))
+
 ## 0.66.2
 
 ### Bug Fixes
