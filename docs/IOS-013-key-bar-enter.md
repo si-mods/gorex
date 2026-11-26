@@ -3,12 +3,12 @@ name: IOS-013
 description: "The iPhone key bar gets an Enter key as the last key of its first page, and Tab moves to the last page. Use when you change the keys or the pages of the iOS key bar."
 metadata:
   created: "2026-11-21"
-  updated: "2026-11-21"
+  updated: "2026-11-26"
 ---
 
 # IOS-013: Enter key on the key bar
 
-Status: built (#934).
+Status: replaced by [IOS-029](IOS-029-key-bar-two-capsules.md).
 
 ## Problem
 

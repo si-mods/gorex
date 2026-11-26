@@ -10,6 +10,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 `web` job of `.github/workflows/ci.yml` fails it.
 
 ## en-US
+- Simplified the iPhone key bar into two capsules: merged Compose into +, moved Tab to page 1, hid the keyboard button at rest, and collapsed the bar while typing in Composer Mode.
 - Tapping an HTML file path in a terminal now opens it in an in-app browser with interactive scripts, relative CSS/JS/images loaded from the host, Back, Reload, and Share.
 - The omp tab icon now uses a white pi mark on a pink-to-purple-to-blue gradient tile.
 - Composer Mode: toggling Composer no longer resizes the terminal, multi-line icons stay bottom-aligned, and the active Compose button matches the key bar height.
@@ -163,6 +164,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - Settings: choose System, Light or Dark right in the Interface row, and Minimum Contrast from a menu. A space's Color menu shows each color's dot and marks the current one.
 
 ## zh-Hans
+- 底部按键栏精简为两枚胶囊：合并撰写与附件为单一「+」菜单、首页放 Tab、无键盘时隐藏键盘按钮，且在 Composer 输入时自动收起按键栏。
 - 点按终端里出现的 HTML 文件路径现在会用内置浏览器打开，支持交互脚本、按需加载同目录的相对 CSS/JS/图片资源，以及返回、刷新和分享。
 - 更新了 omp 标签图标为粉紫蓝渐变底配白色 π 标志。
 - Composer 模式：开关不再触发终端 resize 重绘；多行输入时「+」、麦克风与发送保持底部对齐；左下角高亮 Compose 按钮与同行胶囊等高。
