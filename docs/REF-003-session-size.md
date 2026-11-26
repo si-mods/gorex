@@ -3,7 +3,7 @@ name: REF-003
 description: "How one session gets one terminal size when several clients attach: authority, focus claims and the idle policy. Use when you change sizes or attach."
 metadata:
   created: "2026-10-29"
-  updated: "2026-11-22"
+  updated: "2026-11-26"
 ---
 
 # REF-003: Session size with several clients
@@ -186,11 +186,11 @@ windows: it is above them.
 So with the phone and a desktop window on the same pane, whoever types
 last holds the size: it goes to the phone each time it opens the
 terminal, comes back from the background or types, and to the desktop
-each time the desktop types. Both terminals show one grid, the size of
-the last of these: the program in the session draws for one size. The
-phone does not follow the desktop's size, so while the desktop's size
-holds, the phone lays out a program's output that was drawn for a
-different grid.
+each time the desktop types. Both terminals see one session whose
+program draws for one grid at a time; when the desktop holds a wider
+grid, the phone emulates that grid locally and reflows it to the phone's
+width rather than feeding mismatched bytes into its narrower view (see
+[What the phone shows](#what-the-phone-shows)).
 
 ## What a window shows
 
@@ -226,6 +226,46 @@ the screen is its own). Programs that keep scrollback at the old width
 across a resize, rather than drawing it again, keep the difference for
 good. A size the session already shows, as an explicit size taken at
 once (`unlockSize`), waits for nothing.
+
+## What the phone shows
+
+Unlike a desktop window, a phone cannot usefully clip a 140-column grid
+to 54 columns or scale the font down to fit it. At the same time,
+feeding raw bytes drawn for a wider server grid straight into a narrower
+Ghostty surface breaks streaming agent TUIs: a line that was one row on
+desktop wraps to two or three rows on the phone, so every cursor-up and
+erase-to-end-of-display redraw (`CSI n A` + `CSI 0 J`) lands on a
+wrapped continuation row, erases the tail, and leaves duplicated copies
+of the first 54 columns behind in scrollback.
+
+To keep streaming output clean without stealing the desktop's width:
+
+- **Shadow emulation + reflow on mismatch.** `TerminalFeed` keeps a
+  shadow `VTerminal` (`libghostty-vt`) on its background queue at the
+  server's reported grid size (updated from `resize` APC messages). When
+  the server's grid differs from the phone view's size, incoming output
+  is applied to the shadow terminal at the server's exact geometry,
+  encoded non-destructively (`VTerminal.reflowedReplay`), resized to the
+  phone's viewport, and coalesced (~80 ms) into flicker-free replays
+  wrapped in DEC mode 2026 (`\x1b[?2026h` ... `\x1b[?2026l`).
+- **Zero-overhead passthrough on match.** When the server grid matches
+  the phone view (after the phone opens, resumes, or types and takes the
+  size lock), `TerminalFeed` flushes one final sync frame if it was
+  mismatched and then passes raw output bytes straight through to
+  GhosttyKit.
+
+The phone still claims the session's size when the user interacts with
+it rather than relying on shadow reflow permanently:
+
+- **Adaptive TUI layout:** horizontal rules, tables, status bars, and
+  split interfaces only adapt cleanly when the program receives
+  `SIGWINCH` for the phone's actual width.
+- **Full-screen coordinates:** interactive TUIs (`vim`, `htop`, mouse
+  clicks) require screen coordinates to match the PTY grid.
+- **Latency, power, and scrollback stability:** direct passthrough has
+  minimal CPU/latency and preserves the user's scrolled-up viewport as
+  new output arrives, whereas shadow reflow replays the screen on each
+  coalesced tick.
 
 ## A divider drag
 
