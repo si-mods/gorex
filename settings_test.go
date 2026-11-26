@@ -903,7 +903,7 @@ func TestSettingsSidebarDuotoneIcons(t *testing.T) {
 	st := &store{}
 	a := &App{st: st}
 	oldSection := settingsUI.section
-	settingsUI.section = "icons"
+	settingsUI.section = "appearance"
 	t.Cleanup(func() { settingsUI.section = oldSection })
 
 	tt := ui.NewTester(a.settingsView, 780, 620)
