@@ -189,4 +189,43 @@ nonisolated final class FileLinkTests: XCTestCase {
         XCTAssertEqual(FileLink.reason(code: "is_folder", message: "x"), String(localized: "A folder is not downloaded"))
         XCTAssertEqual(FileLink.reason(code: "internal", message: "disk on fire"), "disk on fire")
     }
+
+    /// A long path hard-wrapped across consecutive rows by a TUI (with
+    /// leading indent spaces) is reconstructed whether tapped on the first
+    /// or continuation row, while short separate paths on consecutive rows
+    /// are not joined.
+    func testWrappedPath() {
+        let rows = [
+            "  Generated report:",
+            "  ~/.gemini/antigravity-cli/brain/00000000-0000-40",
+            "  00-8000-000000000000/scratch/html-viewer-demo/in",
+            "  dex.html",
+        ]
+        let full = "~/.gemini/antigravity-cli/brain/00000000-0000-4000-8000-000000000000/scratch/html-viewer-demo/index.html"
+        XCTAssertEqual(FileLink.wrappedPath(rows: rows, row: 1, fragment: "~/.gemini/antigravity-cli/brain/00000000-0000-40", columns: 54), full)
+        XCTAssertEqual(FileLink.wrappedPath(rows: rows, row: 2, fragment: "00-8000-000000000000/scratch/html-viewer-demo/in", columns: 54), full)
+
+        // Chinese prose + full-width colon before a wrapped path.
+        let proseRows = [
+            "  已生成对比页：~/.gemini/antigravity-cli/brain/demo",
+            "  -id/scratch/compare.html",
+        ]
+        XCTAssertEqual(FileLink.wrappedPath(rows: proseRows, row: 1, fragment: "-id/scratch/compare.html", columns: 54),
+                       "~/.gemini/antigravity-cli/brain/demo-id/scratch/compare.html")
+
+        // Short separate paths on consecutive rows must NOT join.
+        let listRows = [
+            "  src/foo.go",
+            "  src/bar.go",
+        ]
+        XCTAssertNil(FileLink.wrappedPath(rows: listRows, row: 0, fragment: "src/foo.go", columns: 54))
+        XCTAssertNil(FileLink.wrappedPath(rows: listRows, row: 1, fragment: "src/bar.go", columns: 54))
+
+        // Two full-width separate paths where the next row starts a new root must NOT join.
+        let twoRoots = [
+            "  /tmp/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.go",
+            "  ~/bbbb.html",
+        ]
+        XCTAssertNil(FileLink.wrappedPath(rows: twoRoots, row: 0, fragment: "/tmp/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.go", columns: 54))
+    }
 }
