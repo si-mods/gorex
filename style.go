@@ -67,7 +67,7 @@ type colors struct {
 	// the buttons, and a pane card's border. The built-in palettes have
 	// none (ui.Transparent): where one is unset, the app draws as it did
 	// before.
-	titleBarFace, sideBarFace, headerFace, buttonFace, dropdownFace, windowControlFace, windowControlCloseFace, paneBorder ui.Color
+	titleBarFace, sideBarFace, headerFace, buttonFace, dropdownFace, segmentedFace, windowControlFace, windowControlCloseFace, paneBorder ui.Color
 
 	// m are the theme's metrics: the corner scale, border width, chrome
 	// font and shadows the palette draws with.
@@ -352,6 +352,7 @@ func roleField(k *colors, r theme.Role) *ui.Color {
 		theme.PaneHeaderBackground:         &k.headerFace,
 		theme.ButtonBackground:             &k.buttonFace,
 		theme.DropdownBackground:           &k.dropdownFace,
+		theme.SegmentedBackground:          &k.segmentedFace,
 		theme.WindowControlBackground:      &k.windowControlFace,
 		theme.WindowControlCloseBackground: &k.windowControlCloseFace,
 		theme.PaneBorder:                   &k.paneBorder,
@@ -574,6 +575,7 @@ const (
 	rolePaneHeaderBackground         = theme.PaneHeaderBackground
 	roleButtonBackground             = theme.ButtonBackground
 	roleDropdownBackground           = theme.DropdownBackground
+	roleSegmentedBackground          = theme.SegmentedBackground
 	roleWindowControlBackground      = theme.WindowControlBackground
 	roleWindowControlCloseBackground = theme.WindowControlCloseBackground
 )
@@ -690,6 +692,28 @@ func selectStyleOf(k *colors) *ui.SelectStyle {
 					p.StrokePath(&path, 1.8, ref.text)
 				})
 			})
+		},
+	}
+}
+
+func segmentedStyleOf(k *colors) *ui.SegmentedStyle {
+	face := k.segmentedFace
+	if face.A == 0 {
+		return nil
+	}
+	if _, ok := faceFill(roleSegmentedBackground, face); !ok {
+		return nil
+	}
+	flat := face.Over(k.panel)
+	ref := faceLadder(k, flat, ladderOf(k, isDark(flat)))
+	return &ui.SegmentedStyle{
+		Track: func(track ui.Element) {
+			track.Background(ui.Color{}).Border(0, ui.Color{}).Padding(0).Gap(4)
+		},
+		Segment: func(seg ui.Element, selected bool) {
+			if m, ok := statefulFaceMaterial(roleSegmentedBackground, face, seg, selected); ok {
+				seg.Padding(4, 12).Radius(k.radius(3)).Border(0, ui.Color{}).TextColor(ref.text).Material(m)
+			}
 		},
 	}
 }
@@ -885,6 +909,7 @@ func widgetTheme(base *ui.Theme, k *colors) *ui.Theme {
 		buttonColors(&t, k)
 	}
 	t.Select = selectStyleOf(k)
+	t.Segmented = segmentedStyleOf(k)
 	t.Radius = k.radius(9)
 	t.Font = k.m.font
 	return &t

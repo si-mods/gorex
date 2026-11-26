@@ -95,6 +95,7 @@ const (
 	PaneHeaderBackground         // paneHeader.background
 	ButtonBackground             // button.background
 	DropdownBackground           // dropdown.background
+	SegmentedBackground          // segmented.background
 	WindowControlBackground      // windowControl.background
 	WindowControlCloseBackground // windowControl.closeBackground
 	PaneBorder                   // pane.border
@@ -114,6 +115,7 @@ var roleNames = [NumRoles]string{
 	"paneHeader.background",
 	"button.background",
 	"dropdown.background",
+	"segmented.background",
 	"windowControl.background",
 	"windowControl.closeBackground",
 	"pane.border",

@@ -830,7 +830,7 @@ func statefulFaceMaterial(role faceRole, face ui.Color, el ui.Element, primary b
 }
 
 func (f faceShader) PaintMaterial(p *ui.Painter, box ui.Rect, radii [4]float32) {
-	if !themeShaderGPU(p) || f.sl.flat {
+	if !themeShaderGPU(p) || (f.sl.flat && !f.hasEl) {
 		p.FillRadii(box, radii, f.face)
 	}
 	if !themeShaderGPU(p) {
@@ -1108,9 +1108,13 @@ func faceContrast(sl *themeSlot, pal *[2]colors, role faceRole, frames []shaderF
 			d = 1
 		}
 		ref := pickLadder(flat, &pal[d], &pal[1-d], builtinLadder(d == 1), builtinLadder(d == 0))
+		muted := ref.textMuted
+		if role == roleWindowControlBackground || role == roleWindowControlCloseBackground {
+			muted = ref.text
+		}
 		for _, f := range frames {
 			img := renderSlot(sl, w, h, 1, ui.Point{X: w, Y: h}, i == 1, f)
-			if err := readable(img, area, k.panel, ref.text, ref.textMuted); err != nil {
+			if err := readable(img, area, k.panel, ref.text, muted); err != nil {
 				return fmt.Errorf("in the %s appearance at %g s, %v", name, f.time, err)
 			}
 		}
