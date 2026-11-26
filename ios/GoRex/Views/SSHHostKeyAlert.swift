@@ -76,7 +76,7 @@ private extension View {
                 SecureField("Password", text: secret)
                     .textContentType(.password)
             } else {
-                TextField(q.prompt.isEmpty ? "Response" : q.prompt, text: secret)
+                TextField(q.prompt.isEmpty ? String(localized: "Response") : q.prompt, text: secret)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
             }
@@ -91,7 +91,7 @@ private extension View {
                 secret.wrappedValue = ""
             }
         } message: { q in
-            Text(q.retry ? "Incorrect, try again." : q.prompt)
+            Text(q.retry ? String(localized: "Incorrect, try again.") : q.prompt)
         }
     }
 

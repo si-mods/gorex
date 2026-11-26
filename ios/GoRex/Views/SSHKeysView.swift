@@ -268,7 +268,7 @@ struct SSHKeyDetailView: View {
         }
     }
 
-    private func copyBlock(id: String, title: String, value: String, copyValue: String) -> some View {
+    private func copyBlock(id: String, title: LocalizedStringKey, value: String, copyValue: String) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Text(title)

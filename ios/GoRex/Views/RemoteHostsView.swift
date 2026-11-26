@@ -262,7 +262,7 @@ private struct HostForm: View {
 
     /// A field's own error line under it, as rootshell's profile editor
     /// captions validation beneath each field.
-    private func sshValidation(_ message: String?) -> some View {
+    private func sshValidation(_ message: LocalizedStringKey?) -> some View {
         Group {
             if let message {
                 Text(message)
@@ -439,7 +439,7 @@ private struct HostForm: View {
                                 .accessibilityIdentifier("sshEndpoint")
                             sshValidation(sshEndpointInvalid
                                           ? "Endpoint is a socket path like /run/rex/server.sock, or tcp://host:port." : nil)
-                            LabeledContent("Authentication", value: "SSH key, then password")
+                            LabeledContent("Authentication", value: String(localized: "SSH key, then password"))
                             Picker("SSH key", selection: $sshKeyID) {
                                 Text("Automatic").tag(UUID?.none)
                                 ForEach(SSHKeyStore.shared.keys) { key in
