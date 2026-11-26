@@ -162,7 +162,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - Settings: choose System, Light or Dark right in the Interface row, and Minimum Contrast from a menu. A space's Color menu shows each color's dot and marks the current one.
 
 ## zh-Hans
-- omp 标签图标更新为粉紫蓝渐变底配白色 π 标志。
+- 更新了 omp 标签图标为粉紫蓝渐变底配白色 π 标志。
 - Composer 模式：开关不再触发终端 resize 重绘；多行输入时「+」、麦克风与发送保持底部对齐；左下角高亮 Compose 按钮与同行胶囊等高。
 - 底部栏将眼睛图标换为带未处理数量角标的「待我处理」收件箱按钮，并在列表内区分「待我处理」与下方「进行中」的后台任务。
 - Composer 模式顶部新增拉手（向下滑动即可一键关闭），并在底部键栏加回 Composer 切换按钮，方便随时切回直连终端编辑已有输入。
