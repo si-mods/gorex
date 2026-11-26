@@ -43,8 +43,16 @@ func (g *Gateway) handleData(w http.ResponseWriter, r *http.Request) {
 	ws, err := websocket.Accept(w, r, &websocket.AcceptOptions{
 		Subprotocols:       offered,
 		InsecureSkipVerify: true,
-		CompressionMode:    websocket.CompressionDisabled,
+		// permessage-deflate without context takeover, as Rex's server
+		// negotiates (MOD-014). The control connection keeps it disabled:
+		// Apple's client drops on a large compressed message, and data
+		// writes stay under compressedChunk to keep that from happening.
+		CompressionMode: websocket.CompressionNoContextTakeover,
 	})
+	// Whether Accept negotiated the extension on: offered is enough,
+	// because the mode asks for it. A wrong guess only means smaller
+	// messages, so take the offer's word.
+	compressed := offersDeflate(r)
 	if err != nil {
 		return
 	}
@@ -63,12 +71,25 @@ func (g *Gateway) handleData(w http.ResponseWriter, r *http.Request) {
 	}
 	switch msg[0] {
 	case 0x01:
-		g.dataHello(ws, msg[1:])
+		g.dataHello(ws, msg[1:], compressed)
 	case 0x02:
-		g.dataResume(ws, msg[1:])
+		g.dataResume(ws, msg[1:], compressed)
 	default:
 		rejectData(ws, rejectMalformed)
 	}
+}
+
+// offersDeflate reports whether the request offers the permessage-deflate
+// WebSocket extension.
+func offersDeflate(r *http.Request) bool {
+	for _, v := range r.Header.Values("Sec-WebSocket-Extensions") {
+		for _, ext := range strings.Split(v, ",") {
+			if strings.EqualFold(strings.TrimSpace(strings.SplitN(ext, ";", 2)[0]), "permessage-deflate") {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // rejectData answers a handshake with a REJECT, then closes the
@@ -93,7 +114,7 @@ func rejectData(ws *websocket.Conn, reason byte) {
 }
 
 // dataHello opens the stream a ticket names.
-func (g *Gateway) dataHello(ws *websocket.Conn, rest []byte) {
+func (g *Gateway) dataHello(ws *websocket.Conn, rest []byte, compressed bool) {
 	if len(rest) < 16 {
 		rejectData(ws, rejectMalformed)
 		return
@@ -128,7 +149,7 @@ func (g *Gateway) dataHello(ws *websocket.Conn, rest []byte) {
 		// not taken before this capability.
 		g.welcomeThenClose(ws, 1008, "data provider unavailable")
 	default:
-		g.startStream(ws, t)
+		g.startStream(ws, t, compressed)
 	}
 }
 
@@ -167,7 +188,7 @@ func welcomeBytes(token []byte, nonce uint64) []byte {
 }
 
 // startStream attaches to the block's GoRex session and opens its stream.
-func (g *Gateway) startStream(ws *websocket.Conn, t *ticket) {
+func (g *Gateway) startStream(ws *websocket.Conn, t *ticket, compressed bool) {
 	key := t.record + "\x00" + t.block + "\x00" + t.dataRef
 	g.mu.Lock()
 	old := g.streams[key]
@@ -252,14 +273,14 @@ func (g *Gateway) startStream(ws *websocket.Conn, t *ticket) {
 	}
 	// The writer sends the snapshot while the stream reads the session's
 	// output on, so that a slow connection does not hold up the attach.
-	s.startWriter(ws, 0)
+	s.startWriter(ws, 0, compressed)
 	go s.run()
 	go s.watch(ws)
 	s.startPing(ws, s.wsDone())
 }
 
 // dataResume continues a stream whose connection dropped.
-func (g *Gateway) dataResume(ws *websocket.Conn, rest []byte) {
+func (g *Gateway) dataResume(ws *websocket.Conn, rest []byte, compressed bool) {
 	if len(rest) < 24 {
 		rejectData(ws, rejectMalformed)
 		return
@@ -275,7 +296,7 @@ func (g *Gateway) dataResume(ws *websocket.Conn, rest []byte) {
 		rejectData(ws, rejectProtocol)
 		return
 	}
-	call := &resumeCall{ws: ws, count: count, reply: make(chan error, 1)}
+	call := &resumeCall{ws: ws, count: count, compressed: compressed, reply: make(chan error, 1)}
 	select {
 	case s.resumes <- call:
 	case <-s.done:
@@ -399,7 +420,10 @@ type resyncResult struct {
 type resumeCall struct {
 	ws    *websocket.Conn
 	count uint64
-	reply chan error
+	// compressed is whether the new connection negotiates permessage-deflate,
+	// which caps its messages at compressedChunk.
+	compressed bool
+	reply      chan error
 }
 
 // gone tells the run goroutine that a connection ended.
@@ -668,15 +692,17 @@ func (s *stream) cond() *sync.Cond {
 }
 
 // startWriter starts sending the stream to ws from byte from, and stops
-// the writer of the connection before.
-func (s *stream) startWriter(ws *websocket.Conn, from int64) {
+// the writer of the connection before. compressed is whether the
+// connection negotiates permessage-deflate, which caps its messages at
+// compressedChunk.
+func (s *stream) startWriter(ws *websocket.Conn, from int64, compressed bool) {
 	s.out.Lock()
 	s.writer++
 	s.sent = from
 	n := s.writer
 	s.cond().Broadcast()
 	s.out.Unlock()
-	go s.write(ws, n)
+	go s.write(ws, n, compressed)
 }
 
 // stopWriter stops the writer of the moment.
@@ -690,8 +716,14 @@ func (s *stream) stopWriter() {
 // write is writer n: it sends the stream's bytes to ws as they come, in
 // the 64 KiB messages a data connection carries, until a newer writer or
 // the stream's end stops it, or ws fails, which the run goroutine hears
-// as the connection's end.
-func (s *stream) write(ws *websocket.Conn, n int) {
+// as the connection's end. A compressed connection's messages stay under
+// compressedChunk instead, so Apple's WebSocket does not drop on a large
+// compressed message.
+func (s *stream) write(ws *websocket.Conn, n int, compressed bool) {
+	chunk := maxChunk
+	if compressed {
+		chunk = compressedChunk
+	}
 	for {
 		s.out.Lock()
 		for s.writer == n && s.sent >= s.total {
@@ -713,7 +745,7 @@ func (s *stream) write(ws *websocket.Conn, n int) {
 			return
 		}
 		i := int(s.sent - start)
-		p := append([]byte(nil), s.buf[i:i+int(min(s.total-s.sent, maxChunk))]...)
+		p := append([]byte(nil), s.buf[i:i+int(min(s.total-s.sent, int64(chunk)))]...)
 		s.sent += int64(len(p))
 		s.out.Unlock()
 		if !writeData(ws, p) {
@@ -872,7 +904,7 @@ func (s *stream) resumeStream(call *resumeCall) {
 		return
 	}
 	call.reply <- nil
-	s.startWriter(call.ws, int64(call.count))
+	s.startWriter(call.ws, int64(call.count), call.compressed)
 	s.resyncIfIdle()
 }
 

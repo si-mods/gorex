@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"runtime"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -514,5 +515,111 @@ func BenchmarkStreamAppend(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		s.appendBytes(chunk)
 		s.sent = s.total
+	}
+}
+
+// dialDeflate opens a WebSocket to a path on the gateway, asking for
+// permessage-deflate without context takeover, and returns the upgrade
+// response's Sec-WebSocket-Extensions so a test can check what was
+// negotiated.
+func dialDeflate(t *testing.T, f *fixture, path string, subprotocols ...string) (*websocket.Conn, string) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	ws, resp, err := websocket.Dial(ctx, f.srv.URL+path, &websocket.DialOptions{
+		Subprotocols:    subprotocols,
+		CompressionMode: websocket.CompressionNoContextTakeover,
+	})
+	ext := ""
+	if resp != nil {
+		ext = resp.Header.Get("Sec-WebSocket-Extensions")
+		if resp.Body != nil {
+			resp.Body.Close()
+		}
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { ws.CloseNow() })
+	return ws, ext
+}
+
+// TestDataDeflate checks a stream over a connection that negotiates
+// permessage-deflate: the extension is negotiated only when the client
+// asks, the bytes come through as on a plain connection, and messages
+// stay under compressedChunk.
+func TestDataDeflate(t *testing.T) {
+	f := startFixture(t)
+	session, block, sid := floodSession(t, f, strconv.Itoa(4*compressedChunk))
+	c := f.dialControl()
+	c.hello(apiRevision)
+	callChecked(t, c, "session.attach", map[string]any{"session_id": session})
+	ticket := dataTicket(t, c, session, block)
+
+	ws, ext := dialDeflate(t, f, "/api/data", terminalProtocol)
+	if !strings.Contains(ext, "permessage-deflate") {
+		t.Fatalf("upgrade negotiated no permessage-deflate: %q", ext)
+	}
+	ws.SetReadLimit(maxMessage)
+	token, nonce := dataHello(t, ws, ticket)
+
+	got := readUntil(t, ws, "flood-ready")
+	if err := f.desk.Input(sid, typedText("")); err != nil {
+		t.Fatal(err)
+	}
+	for !bytes.Contains(got, []byte("flood-done")) {
+		p := readData(t, ws)
+		if len(p) > compressedChunk {
+			t.Fatalf("compressed stream message of %d bytes", len(p))
+		}
+		got = append(got, p...)
+	}
+	// The stream's own bytes are what a plain connection sends: snapshot,
+	// resize, the flood and its end.
+	resize := "\x1b_rex1;" + strconv.FormatUint(nonce, 10) + ";"
+	for _, want := range []string{"GHOSTSNP", resize, `"type":"resize"`, "flood-ready", "flood-done"} {
+		if !bytes.Contains(got, []byte(want)) {
+			t.Errorf("no %q in %d bytes", want, len(got))
+		}
+	}
+	if len(got) < 4*compressedChunk {
+		t.Errorf("the flood left %d bytes of at least %d", len(got), 4*compressedChunk)
+	}
+
+	// The count stays the stream's own across a resume onto another
+	// compressed connection.
+	count := len(got)
+	ws.CloseNow()
+	ws, _ = dialDeflate(t, f, "/api/data", terminalProtocol)
+	ws.SetReadLimit(maxMessage)
+	msg := append([]byte{0x02}, token...)
+	msg = binary.LittleEndian.AppendUint64(msg, uint64(count))
+	wsWrite(t, ws, websocket.MessageBinary, msg)
+	typ, w, err := wsRead(t, ws)
+	if err != nil || typ != websocket.MessageBinary || len(w) != 32 || w[0] != 0x81 {
+		t.Fatalf("resume welcome: %v %v", w, err)
+	}
+	if err := f.desk.Input(sid, typedText("after-deflate")); err != nil {
+		t.Fatal(err)
+	}
+	readUntil(t, ws, "after-deflate")
+
+	// A connection that does not ask gets no compression.
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	plain, resp, err := websocket.Dial(ctx, f.srv.URL+"/api/data", &websocket.DialOptions{Subprotocols: []string{terminalProtocol}})
+	ext = ""
+	if resp != nil {
+		ext = resp.Header.Get("Sec-WebSocket-Extensions")
+		if resp.Body != nil {
+			resp.Body.Close()
+		}
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer plain.CloseNow()
+	if ext != "" {
+		t.Errorf("unrequested compression negotiated: %q", ext)
 	}
 }

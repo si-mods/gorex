@@ -34,6 +34,11 @@ const (
 	maxHello = 512
 	// maxChunk is the largest binary message of a data connection.
 	maxChunk = rexproto.MaxChunk
+	// compressedChunk is the largest message a data connection writes when
+	// it negotiated permessage-deflate. Apple's WebSocket drops on a large
+	// compressed message (seen at ~50 KiB on the control connection), so
+	// compressed writes stay under it (MOD-014).
+	compressedChunk = 32 << 10
 	// eventBacklog is how many bytes of events a control connection may
 	// fall behind before the server closes it.
 	eventBacklog = 8 << 20

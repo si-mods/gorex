@@ -67,7 +67,7 @@ If a device still drops on these settings, the fallback is option 2 below (conte
 
 ### Server
 
-`internal/rexapi/data.go` and `clients.go` (whichever accepts `/api/data`) set `CompressionMode: websocket.CompressionNoContextTakeover` on the data `Accept`, and `CompressionThreshold` at a few hundred bytes. `(*stream).write` splits at `compressedChunk` when the negotiated compression is on (`ws.CompressionMode()` reports it on the conn), else at `maxChunk`. Everything else — `s.buf`, `appendBytes`, `dropUnsent`, `collapse`, `feedResumed`, `applyResync` — is unchanged, because the WebSocket layer compresses under the byte stream.
+`internal/rexapi/data.go` sets `CompressionMode: websocket.CompressionNoContextTakeover` on the data `Accept`, and leaves `CompressionThreshold` at its few-hundred-byte default. `(*stream).write` splits at `compressedChunk` when the connection negotiated compression — derived from the request's `Sec-WebSocket-Extensions` offer, since the library reports no negotiated state — else at `maxChunk`. Everything else — `s.buf`, `appendBytes`, `dropUnsent`, `collapse`, `feedResumed`, `applyResync` — is unchanged, because the WebSocket layer compresses under the byte stream.
 
 No type or field on the ticket, HELLO, WELCOME or subprotocol changes.
 

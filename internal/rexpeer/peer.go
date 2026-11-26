@@ -435,6 +435,9 @@ func (c *Client) Data(ctx context.Context, session, block string) (*Stream, erro
 	ws, resp, err := websocket.Dial(ctx, "ws://localhost/api/data", &websocket.DialOptions{
 		Subprotocols: []string{DataTerminal},
 		HTTPClient:   hc,
+		// permessage-deflate without context takeover, as the data
+		// endpoint negotiates (MOD-014).
+		CompressionMode: websocket.CompressionNoContextTakeover,
 	})
 	if resp != nil && resp.Body != nil {
 		resp.Body.Close()
