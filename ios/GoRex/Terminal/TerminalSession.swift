@@ -82,6 +82,7 @@ final class TerminalSession {
     @ObservationIgnored private var hostTheme: [String: Any]?
     @ObservationIgnored nonisolated(unsafe) private var themeObserver: NSObjectProtocol?
     @ObservationIgnored private var data: DataConnection
+    @ObservationIgnored private var feed: TerminalFeed?
     @ObservationIgnored private var size: (cols: Int, rows: Int, cw: Int, ch: Int)?
     @ObservationIgnored private var sizing: Task<Void, Never>?
     @ObservationIgnored private var closed = false
@@ -293,6 +294,8 @@ final class TerminalSession {
         closed = true
         generation += 1
         setReconnecting(false)
+        feed?.stop()
+        feed = nil
         guard demo == nil else { return }
         data.close()
         let (session, block) = (session, block)
@@ -305,9 +308,14 @@ final class TerminalSession {
     /// and the session is not closed: a start opens a new one, with a
     /// snapshot of its own.
     private func wire(_ d: DataConnection) -> TerminalFeed {
+        self.feed?.stop()
         let feed = TerminalFeed { [weak self, weak d] events in
             guard let self, d === self.data, !self.closed else { return }
             self.receive(events)
+        }
+        self.feed = feed
+        if let s = size {
+            feed.resize(.init(cols: s.cols, rows: s.rows, cellWidth: s.cw, cellHeight: s.ch))
         }
         d.onBytes = { [weak self, weak d] bytes in
             guard let self, d === self.data else { return }
@@ -382,6 +390,9 @@ final class TerminalSession {
             case .output(let o):
                 write(o)
                 gallery?.feed(o, screen: output)
+            case .reflow(let replay, let screen):
+                write(screen)
+                gallery?.feed(replay, screen: output)
             case .message(let m):
                 switch m["type"] as? String {
                 case "theme":
@@ -391,7 +402,8 @@ final class TerminalSession {
                 case "child_exited":
                     end(.exited(m["exit_code"] as? Int ?? 0))
                 default:
-                    // A resize follows this view's size, which it set.
+                    // Resize messages are tracked in TerminalFeed to reflow
+                    // output whenever the server grid differs from this view.
                     break
                 }
             case .drop(let code, generation: let g):
@@ -430,6 +442,7 @@ final class TerminalSession {
     func fit(cols: Int, rows: Int, cellWidth: Int, cellHeight: Int) {
         guard cols > 0, rows > 0, size.map({ ($0.cols, $0.rows) != (cols, rows) }) ?? true else { return }
         size = (cols, rows, cellWidth, cellHeight)
+        feed?.resize(.init(cols: cols, rows: rows, cellWidth: cellWidth, cellHeight: cellHeight))
         // Not owned, the block keeps its size: the size goes as it is owned.
         guard demo == nil, owns else { return }
         sizing?.cancel()
