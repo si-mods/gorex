@@ -185,6 +185,7 @@ targets:
       - GoRex/Terminal/Maple.swift
       - GoRex/Terminal/WebLink.swift
       - GoRex/Terminal/FileLink.swift
+      - GoRex/Terminal/HTMLViewer.swift
       - GoRex/Gallery/GalleryScanner.swift
       - GoRex/Gallery/GalleryStore.swift
       - GoRex/Gallery/PaneGallery.swift

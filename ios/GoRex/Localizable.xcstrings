@@ -180,6 +180,16 @@
         }
       }
     },
+    "Back": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "返回"
+          }
+        }
+      }
+    },
     "Allow camera access in Settings, or set up the host manually.": {
       "localizations": {
         "zh-Hans": {
@@ -1326,6 +1336,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "正在重新连接…"
+          }
+        }
+      }
+    },
+    "Reload": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "重新加载"
           }
         }
       }
