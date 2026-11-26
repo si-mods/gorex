@@ -5358,6 +5358,16 @@
         }
       }
     },
+    "Hide Composer" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "隐藏 Composer"
+          }
+        }
+      }
+    },
     "Remove Attachment": {
       "localizations": {
         "zh-Hans": {

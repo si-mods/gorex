@@ -62,6 +62,13 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
     /// holding starts voice recording, releasing converts speech to text.
     private lazy var holdVoice = UILongPressGestureRecognizer(target: self, action: #selector(heldForVoice))
     private var holdingVoice = false
+    /// Top grabber area; swiping down closes Composer Mode.
+    private let handleArea = UIView()
+    private lazy var swipeDown = UISwipeGestureRecognizer(target: self, action: #selector(requestClose))
+    /// Called when the user swipes down on the grabber to close Composer Mode.
+    var onClose: (() -> Void)?
+    /// Whether an upload or inline dictation is running and closing must wait.
+    var isBusy: Bool { sending || voiceActive }
     var onHoldVoiceStart: ((_ stillHolding: @escaping () -> Bool) -> Void)?
     var onHoldVoiceFinish: (() -> Void)?
     var onHoldVoiceCancel: (() -> Void)?
@@ -72,14 +79,17 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
     /// attachments), so the host can slide the terminal and bottom edge.
     var onHeightChange: ((CGFloat) -> Void)?
     private var lastHeight: CGFloat = 0
-    /// Minimum height of the single-line message field and vertical padding
-    /// inside the capsule; together they fix the bar's resting height.
+    /// Minimum height of the single-line message field, top grabber, and
+    /// vertical padding inside the capsule; together they fix the resting height.
     private static let fieldMin: CGFloat = 46
-    private static let vPad: CGFloat = 6
+    private static let topPad: CGFloat = 4
+    private static let bottomPad: CGFloat = 6
+    private static let handleHeight: CGFloat = 14
+    private static let handleSpacing: CGFloat = 2
     /// Gap between the compose bar and the bar below it.
     static let gap: CGFloat = 6
     /// Resting height of the single-line bar with no attachments.
-    static let baseHeight: CGFloat = fieldMin + vPad * 2
+    static let baseHeight: CGFloat = topPad + handleHeight + handleSpacing + fieldMin + bottomPad
     /// Bottom inset reserved in the terminal grid so the resting bar never
     /// covers the program's own input row.
     static let baseInset: CGFloat = baseHeight + gap
@@ -180,9 +190,21 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
         rowBox.addSubview(inputRow)
         rowBox.addSubview(voiceHolder)
 
-        let body = UIStackView(arrangedSubviews: [strip, rowBox])
+        // Top grabber pill: swiping down closes Composer Mode.
+        let handle = UIView()
+        handle.backgroundColor = .tertiaryLabel
+        handle.layer.cornerRadius = 2.5
+        handle.translatesAutoresizingMaskIntoConstraints = false
+        handleArea.translatesAutoresizingMaskIntoConstraints = false
+        handleArea.isAccessibilityElement = true
+        handleArea.accessibilityIdentifier = "composer.grabber"
+        handleArea.accessibilityLabel = String(localized: "Hide Composer")
+        handleArea.addSubview(handle)
+
+        let body = UIStackView(arrangedSubviews: [handleArea, strip, rowBox])
         body.axis = .vertical
         body.spacing = 8
+        body.setCustomSpacing(Self.handleSpacing, after: handleArea)
         body.translatesAutoresizingMaskIntoConstraints = false
         glass.contentView.addSubview(body)
 
@@ -201,10 +223,15 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
         let voiceHeight = rowBox.heightAnchor.constraint(greaterThanOrEqualToConstant: 86)
         voiceMinHeight = voiceHeight
         NSLayoutConstraint.activate([
+            handle.centerXAnchor.constraint(equalTo: handleArea.centerXAnchor),
+            handle.centerYAnchor.constraint(equalTo: handleArea.centerYAnchor),
+            handle.widthAnchor.constraint(equalToConstant: 36),
+            handle.heightAnchor.constraint(equalToConstant: 5),
+            handleArea.heightAnchor.constraint(equalToConstant: Self.handleHeight),
             body.leadingAnchor.constraint(equalTo: glass.contentView.leadingAnchor, constant: 10),
             body.trailingAnchor.constraint(equalTo: glass.contentView.trailingAnchor, constant: -10),
-            body.topAnchor.constraint(equalTo: glass.contentView.topAnchor, constant: Self.vPad),
-            body.bottomAnchor.constraint(equalTo: glass.contentView.bottomAnchor, constant: -Self.vPad),
+            body.topAnchor.constraint(equalTo: glass.contentView.topAnchor, constant: Self.topPad),
+            body.bottomAnchor.constraint(equalTo: glass.contentView.bottomAnchor, constant: -Self.bottomPad),
             inputRow.leadingAnchor.constraint(equalTo: rowBox.leadingAnchor),
             inputRow.trailingAnchor.constraint(equalTo: rowBox.trailingAnchor),
             inputRow.topAnchor.constraint(equalTo: rowBox.topAnchor),
@@ -241,6 +268,10 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
         holdVoice.allowableMovement = .greatestFiniteMagnitude
         holdVoice.delegate = self
         addGestureRecognizer(holdVoice)
+
+        swipeDown.direction = .down
+        swipeDown.delegate = self
+        addGestureRecognizer(swipeDown)
     }
 
     required init?(coder: NSCoder) { fatalError() }
@@ -305,10 +336,25 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
         Haptics.tapped()
     }
 
+    @objc private func requestClose() {
+        guard !sending, !voiceActive else { return }
+        Haptics.tapped()
+        onClose?()
+    }
+
     override func gestureRecognizerShouldBegin(_ g: UIGestureRecognizer) -> Bool {
+        if g === swipeDown {
+            guard !voiceActive, !sending else { return false }
+            let p = g.location(in: self)
+            if field.isScrollEnabled, field.frame.contains(convert(p, to: field.superview)) {
+                return false
+            }
+            return true
+        }
         guard g === holdVoice else { return super.gestureRecognizerShouldBegin(g) }
         guard !voiceActive, !sending else { return false }
         let p = g.location(in: self)
+        if handleArea.frame.contains(convert(p, to: handleArea.superview)) { return false }
         if !attach.isHidden, attach.frame.contains(convert(p, to: attach.superview)) { return false }
         if send.frame.contains(convert(p, to: send.superview)) { return false }
         if !strip.isHidden, strip.frame.contains(convert(p, to: strip.superview)) { return false }

@@ -49,19 +49,23 @@ final class ComposerUITests: XCTestCase {
     /// The compose bar's message field, which names the demo's block.
     private var message: XCUIElement { app.textViews["composer.message"] }
 
-    /// Without the mode the bar stays away and the mic and ⌘ are the key bar's.
+    /// Without the mode the bar stays away and the mic, ⌘, and Compose toggle
+    /// are on the key bar; tapping Compose opens the bar immediately.
     func testNoComposerByDefault() throws {
         XCTAssertTrue(message.waitForNonExistence(timeout: 5))
         XCTAssertTrue(app.buttons.matching(identifier: "Dictate").firstMatch.waitForExistence(timeout: 5))
         let esc = app.buttons.matching(identifier: "Esc").firstMatch
         let mores = app.buttons.matching(identifier: "More").allElementsBoundByIndex
         XCTAssertTrue(mores.contains { abs($0.frame.midY - esc.frame.midY) < 40 })
+        let compose = app.buttons["keybar.compose"]
+        XCTAssertTrue(compose.waitForExistence(timeout: 5))
+        compose.tap()
+        XCTAssertTrue(message.waitForExistence(timeout: 5))
     }
 
-    /// Composer Mode (Settings > Terminal, here the defaults argument)
-    /// pins the bar: it is up on its own, compact without a top grabber,
-    /// with the mic beside the field, + always present for Paste, and the
-    /// key bar's redundant ⌘ capsule hidden.
+    /// Composer Mode pins the bar with a top grabber handle, the mic beside
+    /// the field, + always present for Paste, ⌘ hidden on the key bar while
+    /// the Compose toggle stays visible; swiping down on the grabber closes it.
     func testComposerModePinsBar() throws {
         app.terminate()
         app.launchArguments = ["-composerMode", "YES"]
@@ -72,15 +76,19 @@ final class ComposerUITests: XCTestCase {
         let esc = app.buttons.matching(identifier: "Esc").firstMatch
         let mores = app.buttons.matching(identifier: "More").allElementsBoundByIndex
         XCTAssertFalse(mores.contains { abs($0.frame.midY - esc.frame.midY) < 40 })
+        let compose = app.buttons["keybar.compose"]
+        XCTAssertTrue(compose.waitForExistence(timeout: 5))
         // The key bar's mic moved into the bar, beside the field (the
         // mic's view exposes more than one element; take its own row's).
         let dictates = app.buttons.matching(identifier: "Dictate").allElementsBoundByIndex
         XCTAssertTrue(dictates.contains { abs($0.frame.midY - message.frame.midY) < 40 })
-        // Compact capsule without the unused top grabber: resting height is
-        // 58pt (46pt field + 12pt padding), not ~80pt with a grabber header.
+        // Compact capsule with top grabber: resting height is 72pt
+        // (14pt grabber + 2pt gap + 46pt field + 10pt padding).
+        let grabber = app.otherElements["composer.grabber"]
+        XCTAssertTrue(grabber.waitForExistence(timeout: 5))
         let bar = app.otherElements["composer"]
         if bar.exists {
-            XCTAssertLessThanOrEqual(bar.frame.height, 64)
+            XCTAssertLessThanOrEqual(bar.frame.height, 78)
         }
         shot("composer-mode-rest")
 
@@ -93,6 +101,16 @@ final class ComposerUITests: XCTestCase {
             message.typeText("\nline 2\nline 3")
             shot("composer-mode-keyboard")
         }
+
+        // Swiping down on the top grabber dismisses Composer Mode and restores
+        // ⌘ and Dictate on the key bar; tapping Compose reopens it.
+        grabber.swipeDown()
+        XCTAssertTrue(message.waitForNonExistence(timeout: 5))
+        let restoredMores = app.buttons.matching(identifier: "More").allElementsBoundByIndex
+        XCTAssertTrue(restoredMores.contains { abs($0.frame.midY - esc.frame.midY) < 40 })
+        shot("composer-mode-closed")
+        compose.tap()
+        XCTAssertTrue(message.waitForExistence(timeout: 5))
     }
 
     private func shot(_ name: String) {

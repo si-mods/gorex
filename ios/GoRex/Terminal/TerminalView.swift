@@ -632,6 +632,19 @@ final class TerminalView: UIView, TerminalOutput {
     /// there, and its hide resigns whichever holds it.
     static var composerMode: Bool { UserDefaults.standard.bool(forKey: ComposerBar.modeKey) }
 
+    /// Enables or disables Composer Mode via the shared UserDefaults setting
+    /// so Settings and all open terminals stay in sync. Refuses to close while
+    /// an upload or inline dictation is running.
+    func setComposerEnabled(_ on: Bool) {
+        if !on, let host = superview as? TerminalHost, host.composerBusy { return }
+        UserDefaults.standard.set(on, forKey: ComposerBar.modeKey)
+    }
+
+    /// Toggles Composer Mode from the key bar's Compose button.
+    func toggleComposer() {
+        setComposerEnabled(!Self.composerMode)
+    }
+
     /// The pinned bar's field, while the mode has it up.
     private var composerField: UITextView? { (superview as? TerminalHost)?.composerField }
 
@@ -1214,6 +1227,8 @@ final class TerminalHost: UIView, UIGestureRecognizerDelegate {
     var voiceTarget: UIView { composer?.voiceHolder ?? terminal.bar.voice }
     /// The pinned bar's field, for the terminal's keyboard redirect.
     var composerField: UITextView? { composer?.field }
+    /// Whether the compose bar is mid-upload or mid-dictation.
+    var composerBusy: Bool { composer?.isBusy == true }
 
     /// Transitions either the inline compose bar or the key bar to the voice
     /// dictation state.
@@ -1225,14 +1240,15 @@ final class TerminalHost: UIView, UIGestureRecognizerDelegate {
         }
     }
 
-    /// Applies Settings > Terminal's Composer Mode live to an already-open
-    /// terminal, adding or removing the compose bar and updating the key bar,
-    /// bottom inset, scroll-down button, and bottom edge fade.
+    /// Applies Composer Mode live to an already-open terminal, adding or
+    /// removing the compose bar and updating the key bar, bottom inset,
+    /// scroll-down button, bottom edge fade, and keyboard focus.
     func setComposerMode(_ on: Bool) {
         terminal.bar.setComposerMode(on)
         guard on != (composer != nil) else { return }
         if on {
-            if terminal.isFirstResponder { _ = terminal.resignFirstResponder() }
+            let wasTyping = terminal.isFirstResponder
+            if wasTyping { _ = terminal.resignFirstResponder() }
             openComposer()
             composer?.onHoldVoiceStart = onHoldVoiceStart
             composer?.onHoldVoiceFinish = onHoldVoiceFinish
@@ -1242,10 +1258,12 @@ final class TerminalHost: UIView, UIGestureRecognizerDelegate {
             b.isActive = true
             scrollDownBottom = b
             placeBottomEdge()
+            if wasTyping { composer?.focus() }
             let inset = currentComposerInset
             Task { @MainActor [weak self] in self?.onComposerHeight?(inset) }
         } else {
-            if let f = composer?.field, f.isFirstResponder { _ = f.resignFirstResponder() }
+            let wasTyping = composer?.field.isFirstResponder == true
+            if wasTyping { _ = composer?.field.resignFirstResponder() }
             terminal.dictationInsert = nil
             terminal.composerSend = nil
             terminal.composerInset = 0
@@ -1257,6 +1275,7 @@ final class TerminalHost: UIView, UIGestureRecognizerDelegate {
             b.isActive = true
             scrollDownBottom = b
             placeBottomEdge()
+            if wasTyping { _ = terminal.becomeFirstResponder() }
             Task { @MainActor [weak self] in self?.onComposerHeight?(0) }
         }
     }
@@ -1273,6 +1292,7 @@ final class TerminalHost: UIView, UIGestureRecognizerDelegate {
             c.bottomAnchor.constraint(equalTo: bottom, constant: -ComposerBar.gap),
         ])
         composer = c
+        c.onClose = { [weak self] in self?.terminal.setComposerEnabled(false) }
         terminal.composerInset = ComposerBar.baseInset
         c.onHeightChange = { [weak self] h in
             guard let self else { return }
@@ -1393,13 +1413,16 @@ final class KeyBar: UIView {
     let voice = UIView()
     private var keysRow: UIView?
     private var voiceCapsule: UIView?
-    private var leftCapsule: UIView?
+    private var leftWidth: NSLayoutConstraint?
     private var lastWidth: NSLayoutConstraint?
+    private var composerOn = false
     private var voiceActive = false
     /// Hides the keyboard, or shows it while it is hidden.
     let keyboard = UIButton()
     private weak var target: TerminalView?
     private let more = KeyBar.button("command", String(localized: "More"))
+    /// Toggles Composer Mode on or off right from the key bar.
+    private let compose = KeyBar.button("square.and.pencil", String(localized: "Compose"))
     /// The files going up; ⌘ spins while there are any.
     var uploading = 0 { didSet { more.setNeedsUpdateConfiguration() } }
     /// Repeats the arrow the stick points to, with the modifiers held
@@ -1472,6 +1495,12 @@ final class KeyBar: UIView {
             b.configuration?.showsActivityIndicator = (self?.uploading ?? 0) > 0
         }
 
+        compose.accessibilityIdentifier = "keybar.compose"
+        compose.addAction(UIAction { [weak target] _ in target?.toggleComposer() }, for: .touchUpInside)
+        compose.configurationUpdateHandler = { [weak self] b in
+            b.configuration = Self.config("square.and.pencil", text: false, size: 17, held: self?.composerOn == true)
+        }
+
         let escape = key("escape", String(localized: "Esc"), "escape")
         let tab = key("arrow.right.to.line", String(localized: "Tab"), "tab")
         let enter = key("return", String(localized: "Enter"), "enter")
@@ -1480,7 +1509,7 @@ final class KeyBar: UIView {
         let second = [tilde, pipe, slash, dash]
         // Every key taps the hand as it goes down, as the keyboard's do.
         // Backspace, the arrows and the stick tap on their own as they repeat.
-        for b in [more, keyboard] + first + second + [enter] {
+        for b in [more, compose, keyboard] + first + second + [enter] {
             b.addAction(UIAction { [tick] _ in tick.impactOccurred() }, for: .touchDown)
         }
 
@@ -1499,8 +1528,9 @@ final class KeyBar: UIView {
                     return item
                 }, representativeItem: nil)
             }
-            target.inputAssistantItem.leadingBarButtonGroups = [group([more] + first)]
+            target.inputAssistantItem.leadingBarButtonGroups = [group([more, compose] + first)]
             target.inputAssistantItem.trailingBarButtonGroups = [group(second + arrows)]
+            setComposerMode(TerminalView.composerMode)
             return
         }
         let delete = repeating("delete.left", String(localized: "Delete"), "backspace")
@@ -1556,15 +1586,17 @@ final class KeyBar: UIView {
         // setComposerMode(_:) so switching the setting updates live terminals.
         let right = UIStackView(arrangedSubviews: [stick, mic, keyboard])
         right.distribution = .fillEqually
-        let leftKeys = UIStackView(arrangedSubviews: [more])
+        let leftKeys = UIStackView(arrangedSubviews: [more, compose])
         leftKeys.distribution = .fillEqually
         let left = Self.capsule(leftKeys), last = Self.capsule(right)
-        // As in the bar this one copies: ⌘ 52, and 50 for each key of
-        // the last.
-        left.widthAnchor.constraint(equalToConstant: 52).isActive = true
+        // Left capsule holds ⌘ + Compose (88pt) when Composer Mode is off,
+        // and Compose alone (52pt) while Composer Mode is on; right capsule
+        // holds 50pt per visible key.
+        let leftW = left.widthAnchor.constraint(equalToConstant: 88)
+        leftW.isActive = true
         let lastW = last.widthAnchor.constraint(equalToConstant: 150)
         lastW.isActive = true
-        self.leftCapsule = left
+        self.leftWidth = leftW
         self.lastWidth = lastW
         let keysRow = UIStackView(arrangedSubviews: [middle, last])
         keysRow.spacing = 8
@@ -1611,10 +1643,14 @@ final class KeyBar: UIView {
 
     override var intrinsicContentSize: CGSize { CGSize(width: UIView.noIntrinsicMetric, height: Self.height) }
 
-    /// Hides the redundant ⌘ capsule and mic slot when Composer Mode is on,
-    /// restoring both when it is turned off.
+    /// Hides the redundant ⌘ key and mic slot when Composer Mode is on while
+    /// keeping the Compose toggle button highlighted in the left capsule, and
+    /// restores both when Composer Mode is turned off.
     func setComposerMode(_ on: Bool) {
-        leftCapsule?.isHidden = on
+        composerOn = on
+        more.isHidden = on
+        leftWidth?.constant = on ? 52 : 88
+        compose.setNeedsUpdateConfiguration()
         mic.isHidden = on
         lastWidth?.constant = on ? 100 : 150
     }
