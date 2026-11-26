@@ -42,19 +42,21 @@ var (
 // text k.accentText. It gives the same pointer for the same
 // arguments.
 func menuStyleOf(k *colors, dark bool) *ui.MenuStyle {
+	w := k.window()
 	menuStylesMu.Lock()
 	defer menuStylesMu.Unlock()
-	key := menuStyleKey{k, dark}
+	key := menuStyleKey{w, dark}
 	if m, ok := menuStyles[key]; ok {
 		return m
 	}
 	m := &ui.MenuStyle{
 		Panel: func(panel ui.Element, level int) {
-			popoverShadow(glassPanel(panel.Radius(k.radius(radiusL)).Padding(6), k).Border(k.borderW(), k.panelBorder), k)
+			popoverShadow(glassPanel(panel.Radius(w.radius(radiusL)).Padding(6), w).Border(w.borderW(), w.panelBorder), w)
 		},
-		RowHeight: 24, RowRadius: concentric(k.radius(radiusL), 6), RowPadding: 10,
-		Highlight: k.accent, HighlightText: k.accentText,
-		Separator: k.panelBorder,
+		RowHeight: 24, RowRadius: concentric(w.radius(radiusL), 6), RowPadding: 10,
+		Highlight: w.accent, HighlightText: w.accentText,
+		Text: w.text, TextMuted: w.textMuted,
+		Separator: w.panelBorder,
 		TextSize:  13,
 	}
 	menuStyles[key] = m
@@ -78,6 +80,7 @@ func menuTheme(base *ui.Theme, k *colors) *ui.Theme {
 		buttonColors(&t, k)
 	}
 	t.Select = selectStyleOf(k)
+	t.Segmented = segmentedStyleOf(k)
 	t.Menu = menuStyleOf(k, t.Dark)
 	return &t
 }

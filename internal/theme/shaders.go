@@ -94,7 +94,7 @@ type Binding struct {
 var FaceRoles = []Role{
 	ActiveGroupBackground, ActiveGroupTabBackground, TrackBackground, TabHoverBackground, TabActiveBackground,
 	TitleBarBackground, SideBarBackground, PaneHeaderBackground, ButtonBackground,
-	DropdownBackground, WindowControlBackground, WindowControlCloseBackground,
+	DropdownBackground, SegmentedBackground, WindowControlBackground, WindowControlCloseBackground,
 }
 
 // builtinFace reports whether the built-in palette has a flat color for
