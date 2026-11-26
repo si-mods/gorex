@@ -167,7 +167,7 @@ func (s *Server) doDelegate(req Request, peer string, _ *keptConn) (any, error) 
 	}
 	cmd := agentCommandWithArgs(shell, agentID, resolvedPath, extraArgs)
 
-	tabName := delegateTabName(agentID, opt.From)
+	tabName := delegateTabName(agentID, opt.From, opt.Name, opt.Prompt)
 	ss, err := s.createDelegatedTab(dir, tabName, cmd, extraEnv, peer, opt.From, agentID)
 	if err != nil {
 		return nil, err
@@ -396,11 +396,35 @@ func buildDelegateLaunch(agentID, mode, resume, agentSession string) (args []str
 	return args, env, nil
 }
 
-func delegateTabName(agentID, from string) string {
+func delegateTabName(agentID, from, explicitName, prompt string) string {
+	if s := strings.TrimSpace(explicitName); s != "" {
+		return s
+	}
+	if s := summarizeDelegatePrompt(prompt, 28); s != "" {
+		return s
+	}
 	if from != "" {
 		return fmt.Sprintf("%s (%s)", agentID, from)
 	}
 	return agentID
+}
+
+// summarizeDelegatePrompt turns the first non-empty line of a prompt into
+// a concise sidebar tab label (at most maxRunes runes).
+func summarizeDelegatePrompt(prompt string, maxRunes int) string {
+	line := strings.TrimSpace(prompt)
+	if idx := strings.IndexAny(line, "\r\n"); idx >= 0 {
+		line = strings.TrimSpace(line[:idx])
+	}
+	line = strings.Join(strings.Fields(line), " ")
+	if line == "" {
+		return ""
+	}
+	rs := []rune(line)
+	if len(rs) <= maxRunes {
+		return line
+	}
+	return strings.TrimSpace(string(rs[:maxRunes])) + "…"
 }
 
 // createDelegatedTab starts the agent session and attaches it to the
