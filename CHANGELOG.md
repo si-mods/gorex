@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.65.2
+
+### Changes
+
+* **sidebar:** remove the theme ambience toggle button from the sidebar foot (theme ambience remains on by default and in the command palette) ([#1180](https://github.com/si-mods/gorex/pull/1180))
+
 ## 0.65.1
 
 ### Bug Fixes
