@@ -5421,6 +5421,906 @@
           }
         }
       }
+    },
+    "SSH Keys": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "SSH 密钥"
+          }
+        }
+      }
+    },
+    "No SSH keys": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "暂无 SSH 密钥"
+          }
+        }
+      }
+    },
+    "Generate an Ed25519 key or import an existing private key to connect to SSH hosts without a password.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "生成 Ed25519 密钥或导入已有私钥，无需密码即可连接 SSH 主机。"
+          }
+        }
+      }
+    },
+    "Keys": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "密钥"
+          }
+        }
+      }
+    },
+    "Private keys stay in this device's Keychain and are never synced to iCloud. Default keys are offered in order when an SSH host is set to Automatic.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "私钥仅保存在本机钥匙串中，不会同步到 iCloud。当 SSH 主机设为「自动」时，将按顺序尝试默认密钥。"
+          }
+        }
+      }
+    },
+    "Generate New Key": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "生成新密钥"
+          }
+        }
+      }
+    },
+    "Import Key": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "导入密钥"
+          }
+        }
+      }
+    },
+    "Delete SSH Key?": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "删除 SSH 密钥？"
+          }
+        }
+      }
+    },
+    "Remove \"%@\" from this device's Keychain? This cannot be undone.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "从本机钥匙串中移除「%@」？此操作无法撤销。"
+          }
+        }
+      }
+    },
+    "Error": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "错误"
+          }
+        }
+      }
+    },
+    "Key Information": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "密钥信息"
+          }
+        }
+      }
+    },
+    "Type": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "类型"
+          }
+        }
+      }
+    },
+    "Created": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "创建时间"
+          }
+        }
+      }
+    },
+    "Use by Default": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "设为默认"
+          }
+        }
+      }
+    },
+    "Fingerprint": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "指纹"
+          }
+        }
+      }
+    },
+    "Public Key": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "公钥"
+          }
+        }
+      }
+    },
+    "OpenSSH Format": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "OpenSSH 格式"
+          }
+        }
+      }
+    },
+    "Add this line to ~/.ssh/authorized_keys on any SSH host.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "将此行添加到任意 SSH 主机的 ~/.ssh/authorized_keys 中。"
+          }
+        }
+      }
+    },
+    "Delete Key": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "删除密钥"
+          }
+        }
+      }
+    },
+    "Rename SSH Key": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "重命名 SSH 密钥"
+          }
+        }
+      }
+    },
+    "Key Name": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "密钥名称"
+          }
+        }
+      }
+    },
+    "Key removed": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "密钥已移除"
+          }
+        }
+      }
+    },
+    "Generate Key": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "生成密钥"
+          }
+        }
+      }
+    },
+    "Generate": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "生成"
+          }
+        }
+      }
+    },
+    "This Device": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "本设备"
+          }
+        }
+      }
+    },
+    "A label for this key, such as Work Server or Personal.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "为该密钥起一个名称，例如「工作服务器」或「个人」。"
+          }
+        }
+      }
+    },
+    "Algorithm": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "算法"
+          }
+        }
+      }
+    },
+    "Ed25519 keys are fast, compact, and supported by all modern OpenSSH servers.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ed25519 密钥速度快、体积小，所有现代 OpenSSH 服务器均支持。"
+          }
+        }
+      }
+    },
+    "Source": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "来源"
+          }
+        }
+      }
+    },
+    "Imported Key": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "导入的密钥"
+          }
+        }
+      }
+    },
+    "Private Key": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "私钥"
+          }
+        }
+      }
+    },
+    "Paste an OpenSSH or PEM private key (Ed25519, RSA, or ECDSA).": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "粘贴 OpenSSH 或 PEM 格式的私钥（支持 Ed25519、RSA 或 ECDSA）。"
+          }
+        }
+      }
+    },
+    "Select Key File": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "选择密钥文件"
+          }
+        }
+      }
+    },
+    "Private Key File": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "私钥文件"
+          }
+        }
+      }
+    },
+    "Choose a private key file such as id_ed25519 or a .pem file.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "选择一个私钥文件，例如 id_ed25519 或 .pem 文件。"
+          }
+        }
+      }
+    },
+    "Passphrase (required)": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "密码短语（必填）"
+          }
+        }
+      }
+    },
+    "Passphrase (optional)": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "密码短语（可选）"
+          }
+        }
+      }
+    },
+    "If the key is encrypted, the passphrase decrypts it once during import and is never saved.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "若私钥已加密，密码短语仅在导入时用于解密一次，不会被保存。"
+          }
+        }
+      }
+    },
+    "Import": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "导入"
+          }
+        }
+      }
+    },
+    "Could not generate SSH key.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法生成 SSH 密钥。"
+          }
+        }
+      }
+    },
+    "Paste or select a private key.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请粘贴或选择一个私钥。"
+          }
+        }
+      }
+    },
+    "SSH host key changed": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "SSH 主机密钥已变更"
+          }
+        }
+      }
+    },
+    "Trust this SSH host?": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "信任此 SSH 主机？"
+          }
+        }
+      }
+    },
+    "Replace & Connect": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "替换并连接"
+          }
+        }
+      }
+    },
+    "Connect Once": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "仅此一次"
+          }
+        }
+      }
+    },
+    "Trust & Save": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "信任并保存"
+          }
+        }
+      }
+    },
+    "%@@%@:%@ answered with a different key than the one trusted before. This could be a man-in-the-middle attack, or the host was reinstalled.\n\nTrusted: %@\nNew (%@): %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@@%2$@:%3$@ 返回的密钥与此前信任的不一致。这可能是中间人攻击，或该主机已重装。\n\n已信任：%4$@\n新密钥（%5$@）：%6$@"
+          }
+        }
+      }
+    },
+    "The %@ key of %@@%@:%@ is\n\n%@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%2$@@%3$@:%4$@ 的 %1$@ 密钥指纹为\n\n%5$@"
+          }
+        }
+      }
+    },
+    "Code": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "验证码"
+          }
+        }
+      }
+    },
+    "Password": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "密码"
+          }
+        }
+      }
+    },
+    "Response": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "回复"
+          }
+        }
+      }
+    },
+    "Continue": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "继续"
+          }
+        }
+      }
+    },
+    "Incorrect, try again.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "不正确，请重试。"
+          }
+        }
+      }
+    },
+    "Install this phone's key?": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "安装本机密钥？"
+          }
+        }
+      }
+    },
+    "Install Key": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "安装密钥"
+          }
+        }
+      }
+    },
+    "Not Now": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "暂不"
+          }
+        }
+      }
+    },
+    "You logged in to %@ with a password. Installing this phone's SSH key on it connects without one.%@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "你已使用密码登录 %1$@。将本机的 SSH 公钥安装到该主机后，下次连接将无需输入密码。%2$@"
+          }
+        }
+      }
+    },
+    "Address": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "地址"
+          }
+        }
+      }
+    },
+    "SSH": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "SSH"
+          }
+        }
+      }
+    },
+    "Hostname": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "主机名"
+          }
+        }
+      }
+    },
+    "Hostname is required.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请输入主机名。"
+          }
+        }
+      }
+    },
+    "Hostname is a name or an IP address, with no port, user or path.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "主机名应为域名或 IP 地址，不含端口、用户名或路径。"
+          }
+        }
+      }
+    },
+    "Port": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "端口"
+          }
+        }
+      }
+    },
+    "Port must be between 1 and 65535, or blank for 22.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "端口须在 1 到 65535 之间，留空则默认为 22。"
+          }
+        }
+      }
+    },
+    "Username": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "用户名"
+          }
+        }
+      }
+    },
+    "Username is required.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请输入用户名。"
+          }
+        }
+      }
+    },
+    "Endpoint (optional)": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "端点（可选）"
+          }
+        }
+      }
+    },
+    "Endpoint is a socket path like /run/rex/server.sock, or tcp://host:port.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "端点应为 socket 路径（如 /run/rex/server.sock）或 tcp://主机:端口。"
+          }
+        }
+      }
+    },
+    "Authentication": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "认证方式"
+          }
+        }
+      }
+    },
+    "SSH key, then password": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "优先 SSH 密钥，其次密码"
+          }
+        }
+      }
+    },
+    "SSH key": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "SSH 密钥"
+          }
+        }
+      }
+    },
+    "Automatic": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自动"
+          }
+        }
+      }
+    },
+    "SSH login": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "SSH 登录"
+          }
+        }
+      }
+    },
+    "Socket": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Socket"
+          }
+        }
+      }
+    },
+    "TCP": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "TCP"
+          }
+        }
+      }
+    },
+    "Host key": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "主机密钥"
+          }
+        }
+      }
+    },
+    "Forget the host key to be asked again on the next connect; change the address by deleting the host and adding it again.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "忘记主机密钥后，下次连接会重新询问确认；如需更改地址，请删除主机后重新添加。"
+          }
+        }
+      }
+    },
+    "Install SSH Key": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "安装 SSH 密钥"
+          }
+        }
+      }
+    },
+    "SSH key installed on host.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已将 SSH 密钥安装到主机。"
+          }
+        }
+      }
+    },
+    "Forget Host Key": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "忘记主机密钥"
+          }
+        }
+      }
+    },
+    "An ssh:// address has no spaces or query.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ssh:// 地址不能包含空格或查询参数。"
+          }
+        }
+      }
+    },
+    "ssh:// addresses don't take a password.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ssh:// 地址不支持填写密码。"
+          }
+        }
+      }
+    },
+    "An ssh:// address needs the user to log in as, like ssh://alice@alice-laptop.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ssh:// 地址需要包含登录用户名，例如 ssh://alice@alice-laptop。"
+          }
+        }
+      }
+    },
+    "An ssh:// address needs a host, like ssh://alice@alice-laptop.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ssh:// 地址需要包含主机名，例如 ssh://alice@alice-laptop。"
+          }
+        }
+      }
+    },
+    "The port of an ssh:// address is a number from 1 to 65535.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ssh:// 地址的端口须为 1 到 65535 之间的数字。"
+          }
+        }
+      }
+    },
+    "An ssh:// socket is an absolute path, like /run/rex/server.sock.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ssh:// 的 socket 须为绝对路径，例如 /run/rex/server.sock。"
+          }
+        }
+      }
+    },
+    "A tcp:// endpoint of an ssh:// address is host:port, like tcp://127.0.0.1:7297.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ssh:// 地址的 tcp:// 端点格式为 主机:端口，例如 tcp://127.0.0.1:7297。"
+          }
+        }
+      }
+    },
+    "An ssh:// address takes a socket or a tcp:// endpoint, not both.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ssh:// 地址只能指定 socket 或 tcp:// 端点之一，不能同时填写。"
+          }
+        }
+      }
+    },
+    "An ssh:// address takes its pairing token as #k=<token>.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ssh:// 地址的配对令牌格式为 #k=<token>。"
+          }
+        }
+      }
+    },
+    "Rex Go's SSH connection is not ready": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rex Go 的 SSH 连接尚未就绪"
+          }
+        }
+      }
     }
   }
 }
