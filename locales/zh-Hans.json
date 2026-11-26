@@ -176,6 +176,8 @@
 	"settingsTermOpacityValue": "{opacity, number, percent}",
 	"settingsAnimation": "动画风格",
 	"settingsAnimationHint": "窗格移动、拆分、缩放、打开和关闭时的动画，以及边栏显示和隐藏时的动画。系统开启“减弱动态效果”时不播放动画。",
+	"settingsIconMotion": "图标微动效",
+	"settingsIconMotionHint": "悬停在双色图标上时播放微动效。动画风格设为“关闭”或系统开启“减弱动态效果”时同样关闭。",
 	"animationSnappy": "灵敏",
 	"animationNatural": "自然",
 	"animationOff": "关闭",

@@ -188,7 +188,7 @@ func TestChineseSettings(t *testing.T) {
 	isolateSettings(t, "")
 	a := &App{}
 	settingsUI.section, settingsUI.themes = "appearance", map[string]*terminal.Theme{}
-	tt := ui.NewTester(a.settingsView, 780, 540)
+	tt := ui.NewTester(a.settingsView, 780, 680)
 	inChinese(t, tt)
 	for _, want := range []string{"设置", "外观", "终端", "主题", "键盘", "远程", "关于", "语言", "标签页位置", "文字大小", "跟随系统"} {
 		if !tt.HasText(want) {
@@ -217,7 +217,7 @@ func TestLanguageSetting(t *testing.T) {
 	setLocale = func(tag string) { chosen = append(chosen, tag) }
 	a := &App{}
 	settingsUI.section, settingsUI.themes = "appearance", map[string]*terminal.Theme{}
-	tt := ui.NewTester(a.settingsView, 780, 540)
+	tt := ui.NewTester(a.settingsView, 780, 680)
 	tt.Frame()
 	if !tt.HasText("System") {
 		t.Fatalf("no System choice; texts %q", tt.Texts())

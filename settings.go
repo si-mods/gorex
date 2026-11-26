@@ -80,6 +80,8 @@ type settings struct {
 	// Animation is how the panes and the sidebar move: "" springs snappily,
 	// "natural" more softly, and "off" not at all.
 	Animation string `json:"animation,omitempty"`
+	// NoIconMotion turns off hover micro-animations on two-tone icons.
+	NoIconMotion bool `json:"noIconMotion,omitempty"`
 	// NoGlass turns off the glass, on until then: the windows' material
 	// behind their pages, and the glass of what floats over them.
 	// TermOpacity is how opaque the terminals' background is over the

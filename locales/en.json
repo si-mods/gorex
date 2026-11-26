@@ -890,6 +890,14 @@
 	"@settingsAnimationHint": {
 		"description": "Hint under the Animation style setting. Its options are the next three messages."
 	},
+	"settingsIconMotion": "Icon motion",
+	"@settingsIconMotion": {
+		"description": "Setting: whether two-tone icons play hover micro-animations."
+	},
+	"settingsIconMotionHint": "Play hover micro-animations on two-tone icons. Also off when Animation style is Off or Reduce Motion is on.",
+	"@settingsIconMotionHint": {
+		"description": "Hint under the Icon motion setting."
+	},
 	"animationSnappy": "Snappy",
 	"@animationSnappy": {
 		"description": "Animation style option: quick springs with a little bounce."

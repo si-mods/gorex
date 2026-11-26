@@ -2596,6 +2596,34 @@ func (msgs Messages) SettingsAnimationHint() string {
 	return Catalog.Format(msgs.locale, "settingsAnimationHint", nil)
 }
 
+// SettingsIconMotion says "Icon motion"
+// in the language the app shows.
+//
+// Setting: whether two-tone icons play hover micro-animations.
+func SettingsIconMotion() string { return In(i18n.Locale()).SettingsIconMotion() }
+
+// SettingsIconMotion says "Icon motion"
+// in the language of msgs.
+//
+// Setting: whether two-tone icons play hover micro-animations.
+func (msgs Messages) SettingsIconMotion() string {
+	return Catalog.Format(msgs.locale, "settingsIconMotion", nil)
+}
+
+// SettingsIconMotionHint says "Play hover micro-animations on two-tone icons. Also off when Animation style is Off or Reduce Motion is on."
+// in the language the app shows.
+//
+// Hint under the Icon motion setting.
+func SettingsIconMotionHint() string { return In(i18n.Locale()).SettingsIconMotionHint() }
+
+// SettingsIconMotionHint says "Play hover micro-animations on two-tone icons. Also off when Animation style is Off or Reduce Motion is on."
+// in the language of msgs.
+//
+// Hint under the Icon motion setting.
+func (msgs Messages) SettingsIconMotionHint() string {
+	return Catalog.Format(msgs.locale, "settingsIconMotionHint", nil)
+}
+
 // AnimationSnappy says "Snappy"
 // in the language the app shows.
 //
