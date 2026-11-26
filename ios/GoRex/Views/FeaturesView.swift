@@ -15,8 +15,8 @@ struct FeaturesView: View {
             ("Long-press a project for its menu", "New Tab, Rename, Color, Move to Space and Close Project, which asks first."),
             ("Long-press a tab for its menu", "Rename Tab, Reset Name, Move Up, Move Down, Move to Project, New Tab and Close Tab."),
             ("Hosts that are away", "A host that is offline shows its projects and their tabs greyed, as Rex Go last saw them."),
-            ("Activity under the eye", "The eye lists the tabs of every host by what their programs need: waiting for input first, then failed, done and working, with how long ago."),
-            ("Search tabs", "The search at the bottom filters the tabs by title, in the list and under the eye."),
+            ("Needs You inbox", "The tray button at the bottom shows how many tabs wait for you and opens Needs You: waiting for input, failed and done first, with working tasks below."),
+            ("Search tabs", "The search at the bottom filters the tabs by title, in the list and in Needs You."),
             ("Liquid Glass", "The list, the buttons, the sheets and the key bar use the system's Liquid Glass."),
         ]),
         ("Terminal", [

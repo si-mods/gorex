@@ -67,6 +67,35 @@ nonisolated final class InboxTests: XCTestCase {
         XCTAssertEqual(g[0].items.map(\.block), ["b2", "b1"])
     }
 
+    /// Sections separate actionable states (blocked, error, done) from
+    /// background working items, and summary counts only actionable ones.
+    @MainActor func testSectionsAndSummary() {
+        func item(_ b: String, _ r: Host.ProgramStatus) -> InboxItem {
+            InboxItem(host: UUID(), session: "s", block: b, window: .init(window_id: "w"), status: r)
+        }
+        let w1 = item("w1", record("x", "working", at: 1))
+        let w2 = item("w2", record("x", "working", at: 5))
+        let d1 = item("d1", record("x", "done", at: 2))
+        let b1 = item("b1", record("x", "blocked", at: 3))
+        let e1 = item("e1", record("x", "error", at: 4))
+        XCTAssertTrue(b1.needsAttention && e1.needsAttention && d1.needsAttention)
+        XCTAssertFalse(w1.needsAttention)
+
+        let sec = Inbox.sections([w1, d1, b1, w2, e1])
+        XCTAssertEqual(sec.attention.map(\.state), ["blocked", "error", "done"])
+        XCTAssertEqual(sec.working.map(\.block), ["w2", "w1"])
+
+        XCTAssertEqual(Inbox.summary([w1, w2]), .init(attentionCount: 0, hasError: false, workingCount: 2))
+        XCTAssertEqual(Inbox.summary([w1, b1, d1]), .init(attentionCount: 2, hasError: false, workingCount: 1))
+        XCTAssertEqual(Inbox.summary([w1, b1, e1]), .init(attentionCount: 2, hasError: true, workingCount: 1))
+
+        XCTAssertNil(Inbox.badgeText(-1))
+        XCTAssertNil(Inbox.badgeText(0))
+        XCTAssertEqual(Inbox.badgeText(1), "1")
+        XCTAssertEqual(Inbox.badgeText(99), "99")
+        XCTAssertEqual(Inbox.badgeText(100), "99+")
+    }
+
     /// The lines and the search, as the desktop's palette tells a record.
     @MainActor func testItemText() {
         var r = record("x", "blocked")

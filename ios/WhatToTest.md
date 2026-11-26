@@ -10,6 +10,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 `web` job of `.github/workflows/ci.yml` fails it.
 
 ## en-US
+- The bottom bar replaces the eye with a Needs You inbox button showing an actionable count badge, and separates items waiting on you from background working tasks.
 - Composer Mode adds a top grabber handle (swipe down to close) and brings back the Compose toggle button on the key bar, so you can quickly switch to direct terminal input anytime.
 - Fixed SSH host-key, password, and install-key alerts not appearing when adding an SSH host inside Settings > Remote Hosts.
 - Toggling Composer Mode in Settings > Terminal now applies immediately to already-open terminals without needing to switch tabs.
@@ -159,6 +160,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - Settings: choose System, Light or Dark right in the Interface row, and Minimum Contrast from a menu. A space's Color menu shows each color's dot and marks the current one.
 
 ## zh-Hans
+- 底部栏将眼睛图标换为带未处理数量角标的「待我处理」收件箱按钮，并在列表内区分「待我处理」与下方「进行中」的后台任务。
 - Composer 模式顶部新增拉手（向下滑动即可一键关闭），并在底部键栏加回 Composer 切换按钮，方便随时切回直连终端编辑已有输入。
 - 修复在「设置 › 远程主机」中添加 SSH 主机时，主机密钥信任、密码登录与安装密钥弹窗被设置页遮挡而无法弹出导致一直超时的问题。
 - 在「设置 › 终端」开关 Composer 模式现在会立即在当前已打开的终端生效，无需切出或重开标签页。
