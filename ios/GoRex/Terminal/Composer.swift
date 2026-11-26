@@ -176,8 +176,25 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
         strip.showsHorizontalScrollIndicator = false
         strip.isHidden = true
 
-        for v in [attach, field, micHolder, send] { inputRow.addArrangedSubview(v) }
-        inputRow.alignment = .center
+        // Wrap each action icon in a single-line-height slot so icons stay
+        // vertically centered on one line and bottom-aligned as text grows.
+        func iconSlot(_ child: UIView, width: CGFloat) -> UIView {
+            let s = UIView()
+            s.translatesAutoresizingMaskIntoConstraints = false
+            child.translatesAutoresizingMaskIntoConstraints = false
+            s.addSubview(child)
+            NSLayoutConstraint.activate([
+                s.widthAnchor.constraint(equalToConstant: width),
+                s.heightAnchor.constraint(equalToConstant: Self.fieldMin),
+                child.centerXAnchor.constraint(equalTo: s.centerXAnchor),
+                child.centerYAnchor.constraint(equalTo: s.centerYAnchor),
+            ])
+            return s
+        }
+        for v in [iconSlot(attach, width: 32), field, iconSlot(micHolder, width: 34), iconSlot(send, width: 30)] {
+            inputRow.addArrangedSubview(v)
+        }
+        inputRow.alignment = .bottom
         inputRow.spacing = 6
         inputRow.translatesAutoresizingMaskIntoConstraints = false
 
