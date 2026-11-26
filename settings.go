@@ -28,6 +28,10 @@ type settings struct {
 	// <config>/themes/<name>.json, which a theme pack installs too, or ""
 	// for the built-in palettes. Builds before it ignore the key.
 	Theme string `json:"appearance.theme,omitempty"`
+	// Omarchy follows the desktop's palette while it is present
+	// (docs/DSK-015-omarchy.md): the value is absent unless the user sets
+	// it, and absent means true. False keeps the built-in palettes.
+	Omarchy *bool `json:"appearance.omarchy,omitempty"`
 	// Ambience is how the theme's shaders show
 	// (docs/DSK-012-theme-shaders.md): "" moving, "still" or "off". A file
 	// may still have appearance.mascot of docs/DSK-010-theme-ambience.md:
@@ -249,6 +253,7 @@ func loadSettings() {
 			prefs = next
 		}
 	}
+	omarchyRefresh()
 	_ = loadTheme()
 	loadGhostty()
 	applyGhostty()
@@ -330,15 +335,19 @@ func checkSettings(s *settings) {
 	}
 }
 
-// loadTheme applies the theme prefs.Theme names, or the built-in palettes,
-// and returns why a theme does not load. A theme that cannot load leaves
-// the built-in ones; a bad seed or role in it is dropped. Either way the app
-// goes on, and the log says why.
+// loadTheme applies the theme prefs.Theme names, or the desktop's palette
+// when GoRex follows it, or the built-in palettes, and returns why a theme
+// does not load. A theme that cannot load leaves the built-in ones; a bad
+// seed or role in it is dropped. Either way the app goes on, and the log
+// says why.
 func loadTheme() error {
-	applyTheme(nil)
 	if prefs.Theme == "" {
+		// An explicit appearance.theme wins over the desktop's palette
+		// (docs/DSK-015-omarchy.md, Behavior).
+		applyTheme(omarchyManifest())
 		return nil
 	}
+	applyTheme(nil)
 	path, err := theme.Path(theme.Dir(config.Dir()), prefs.Theme)
 	if err != nil {
 		log.Printf("gorex settings: appearance.theme: %v", err)

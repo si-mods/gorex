@@ -3,7 +3,7 @@ name: REF-001
 description: "The `gorex` command line: the commands that drive sessions without a window, and the agent hooks. Use when you add or change a CLI command."
 metadata:
   created: "2026-10-28"
-  updated: "2026-11-25"
+  updated: "2026-11-26"
 ---
 
 # REF-001: gorex command line
@@ -60,6 +60,7 @@ gorex remote status [--json] | tailscale on|off | address | key | relay HOST|def
 gorex server restart | upgrade
 gorex update
 gorex config path | config check [FILE] | config reload
+gorex omarchy status [--json] | bind [--keys KEYS] | unbind [--json]
 gorex action run [-s SESSION] [--json] ACTION [KEY=VALUE...]
 gorex float [new|toggle|hide-all|raise|lower|cycle|move|resize|dock] [-s SESSION] [--json] [KEY=VALUE...]
 gorex teleport [--json] PANE HOST
@@ -83,6 +84,22 @@ when it is up to date. `--check` lists the updates and installs none. The
 update keeps the pack's name, so a theme in use stays in use. `pack ls`
 shows the recorded version of a theme; it does not fetch the registry. See
 [`MOD-012`](MOD-012-program-icon-packs.md), Updates.
+
+`omarchy` reports an Omarchy desktop ([`DSK-015`](DSK-015-omarchy.md)) and
+keeps the optional key binding. GoRex follows the desktop's palette by
+itself: on a machine with Omarchy, while `appearance.theme` is unset and
+`appearance.omarchy` is not false, it takes the theme's colors when it
+starts, and repaints the window when the desktop changes theme. It writes
+nothing into the desktop's configuration. `omarchy status` shows the
+detection and its root, the theme name and mode, whether the window
+follows the desktop, and the keys of the binding; `--json` prints one
+object, and the command exits 0 with or without Omarchy. `omarchy bind`
+adds a `SUPER + SHIFT + R` binding to Hyprland's `bindings.lua`
+(`--keys KEYS`), and `omarchy unbind` removes it. The binding sits between
+`-- gorex omarchy: begin` and `-- gorex omarchy: end`, so a write replaces
+it and every other line of the file stays. `bind` and `unbind` exit 1 on
+a machine without Omarchy, and refuse a symlinked file. Each changes this
+machine's files, so `-S` is refused.
 
 Targets are a full session ID, a workspace, tab or pane label, a position
 in `ls` (1 is the first), or the end of an ID (at least four characters).

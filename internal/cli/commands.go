@@ -109,6 +109,8 @@ func Main(args []string, out, errOut io.Writer, version string) (code int, handl
 		return serverCmd(args, out, errOut)
 	case "config":
 		return configCmd(args, out, errOut)
+	case "omarchy":
+		return omarchyCmd(args, out, errOut)
 	case "wait":
 		return waitCmd(args, out, errOut)
 	case "run":
@@ -157,6 +159,7 @@ Usage:
   gorex server restart | upgrade
   gorex update (Linux)
   gorex config path | config check [FILE] | config reload
+  gorex omarchy status [--json] | bind [--keys KEYS] | unbind [--json]
   gorex wait [-s SESSION] [--json] (--exit | --idle | --status STATE | --contains TEXT) [--timeout D]
   gorex run [--json] [--dir DIR] -- COMMAND...
   gorex action run [-s SESSION] [--json] ACTION [KEY=VALUE...]
