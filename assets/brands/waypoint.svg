@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="100px" height="100px" viewBox="0 0 100 100" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>hashi-waypoint</title>
+    <g id="hashi-waypoint" stroke="none" fill="none" fill-rule="evenodd" stroke-width="1">
+        <g id="Waypoint-LogoMark_onLight" transform="translate(0.2222, -4)" fill="#ffffff">
+            <g id="Logos" transform="translate(0, 23.5667)">
+                <polygon id="Path" points="99.5555556 0.155555556 87.1111111 21.7777778 74.6666667 0.155555556"></polygon>
+                <polygon id="Path" points="33.1333333 14.4666667 24.8888889 14.4666667 45.5777778 50.4 37.3333333 64.7111111 0 0 41.5333333 0 62.2222222 35.9333333 66.4222222 28.7777778 49.7777778 0.155555556 66.4222222 0.155555556 74.6666667 14.4666667 82.9111111 28.7777778 62.2222222 64.8666667"></polygon>
+            </g>
+        </g>
+    </g>
+</svg>

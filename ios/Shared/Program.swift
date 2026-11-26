@@ -107,6 +107,7 @@ struct Program {
         p["claude-code"] = p["claude"]
         p["antigravity"] = p["agy"]
         p["antigravity-cli"] = p["agy"]
+        registerRexBrands(&p)
         return p
     }()
 

@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="392px" height="392px" viewBox="0 0 392 392" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>mistral</title>
+    <defs>
+        <linearGradient x1="50%" y1="0%" x2="50%" y2="100%" id="linearGradient-1">
+            <stop stop-color="#ffffff" stop-opacity="0.6" offset="0%"></stop>
+            <stop stop-color="#ffffff" stop-opacity="0.6" offset="19.8531669%"></stop>
+            <stop stop-color="#ffffff" stop-opacity="0.7" offset="20.2720424%"></stop>
+            <stop stop-color="#ffffff" stop-opacity="0.7" offset="39.8535156%"></stop>
+            <stop stop-color="#ffffff" stop-opacity="0.8" offset="39.9930246%"></stop>
+            <stop stop-color="#ffffff" stop-opacity="0.8" offset="60.1901042%"></stop>
+            <stop stop-color="#ffffff" stop-opacity="0.9" offset="60.2218192%"></stop>
+            <stop stop-color="#ffffff" stop-opacity="0.9" offset="79.8531669%"></stop>
+            <stop stop-color="#ffffff" offset="80.3826032%"></stop>
+            <stop stop-color="#ffffff" offset="100%"></stop>
+        </linearGradient>
+    </defs>
+    <g id="mistral" stroke="none" fill="none" fill-rule="evenodd" stroke-width="1">
+        <g id="Group" transform="translate(0, 56)" fill="url(#linearGradient-1)">
+            <path d="M224,280 L224,224 L279.996932,224 L279.996932,168 L224,168 L224,224 L168,224 L168,168 L111.996932,168 L111.996932,224 L168,224 L168,280 L0,280 L0,224 L55.9969323,224 L55.9969323,168 L55.9969323,112 L55.9969323,56 L55.9969323,0 L111.996932,0 L111.996932,56 L167.996932,56 L167.996932,112 L223.996932,112 L223.996932,56 L279.996932,56 L279.996932,0 L335.996932,0 L335.996932,56 L335.996932,112 L335.996932,168 L335.996932,224 L392,224 L392,280 L224,280 Z" id="Combined-Shape"></path>
+        </g>
+    </g>
+</svg>

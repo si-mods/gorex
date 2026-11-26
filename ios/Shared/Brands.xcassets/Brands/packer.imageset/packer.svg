@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="100px" height="100px" viewBox="0 0 100 100" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>hashi-packer</title>
+    <g id="hashi-packer" stroke="none" fill="none" fill-rule="evenodd" stroke-width="1">
+        <g id="Packer-LogoMark_onLight" transform="translate(19.325, -12)" fill="#ffffff">
+            <g id="Logos" transform="translate(0, 12.4861)">
+                <polygon id="Path" points="0 12.0555556 32.0333333 30.6555556 32.0333333 99.0277778 0 80.4277778"></polygon>
+                <path d="M47.8777778,19.9777778 L13.0888889,0 L13.0888889,13.95 L36.6833333,27.7277778 L36.6833333,69.5777778 L47.8777778,75.95 C54.7666667,79.9111111 60.45,77.6722222 60.45,70.6111111 L60.45,39.7833333 C60.2777778,32.8944444 54.5944444,23.9388889 47.8777778,19.9777778 L47.8777778,19.9777778 Z" id="Path"></path>
+            </g>
+        </g>
+    </g>
+</svg>

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="400px" height="400px" viewBox="0 0 400 400" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>task</title>
+    <g id="task" stroke="none" fill="none" fill-rule="evenodd" stroke-width="1">
+        <g id="Group" transform="translate(37.1337, 6)" fill="#ffffff">
+            <polygon id="Path" opacity="0.7" points="162.96 197.552625 162.96 388 0 289.225708 0 98.7742919"></polygon>
+            <polygon id="Path" opacity="0.85" points="162.96 197.552625 162.96 388 325.92 289.225708 325.92 98.7742919"></polygon>
+            <polygon id="Path" points="162.96 197.552625 0 98.7742919 162.96 0 325.92 98.7742919"></polygon>
+        </g>
+    </g>
+</svg>

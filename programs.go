@@ -170,6 +170,7 @@ var (
 		m["claude-code"] = m["claude"]
 		m["antigravity"] = m["agy"]
 		m["antigravity-cli"] = m["agy"]
+		registerRexBrands(m)
 		return m
 	}()
 

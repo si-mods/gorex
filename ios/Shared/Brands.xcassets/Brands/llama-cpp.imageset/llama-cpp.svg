@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="392px" height="392px" viewBox="0 0 392 392" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>llama</title>
+    <g id="llama" stroke="none" fill="none" fill-rule="evenodd" stroke-width="1">
+        <g id="Group" transform="translate(34, 34)" fill="#111111">
+            <path d="M324,211.68 L272.29446,301.32 L272.23398,301.28166 C263.11608,315.39726 247.42422,324 230.50656,324 L64.8,324 L129.6,211.68 L324,211.68 Z" id="Path"></path>
+            <path d="M129.6,211.68 L0,211.68 L107.78508,24.853716 C116.65728,9.475002 133.06194,0 150.8166,0 L251.72316,0 L129.6,211.68 Z" id="Path"></path>
+        </g>
+    </g>
+</svg>
