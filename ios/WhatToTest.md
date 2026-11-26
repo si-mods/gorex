@@ -10,7 +10,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 `web` job of `.github/workflows/ci.yml` fails it.
 
 ## en-US
-- Composer Mode's inline voice view now uses a two-row layout: full-width live transcript on top, with Stop (edit in composer), a wide live waveform, and one-tap Send below.
+- Composer Mode: Grok-style two-row inline voice view (live transcript, wide waveform, Stop & one-tap Send), Paste moved into the + menu, and the redundant ⌘ key removed from the key bar.
 - Composer Mode: Send now reliably submits in Devin CLI and other TUIs, long placeholders fade cleanly before the mic/send icons, and the pane bar sits above the compose bar.
 - In Composer Mode, tapping the mic switches the compose bar itself into voice dictation (keeping the key bar below intact), and Send now taps your hand like the other keys.
 - SSH screens — SSH Keys in Settings, Add/Edit SSH Host fields, and host-key, password, and install-key alerts — are now translated into Chinese.
@@ -152,7 +152,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - Settings: choose System, Light or Dark right in the Interface row, and Minimum Contrast from a menu. A space's Color menu shows each color's dot and marks the current one.
 
 ## zh-Hans
-- Composer 模式的语音听写升级为双行布局：上方全宽显示实时识别文字，下方为停止按钮（写入输入框继续编辑）、全宽实时波形条和一键发送按钮。
+- Composer 模式：语音听写升级为双行布局（实时文字 + 全宽波形 + 停止与一键发送）；粘贴移入「+」菜单，并隐藏下方键栏多余的 ⌘ 按钮。
 - Composer 模式：修复 Devin CLI 等 TUI 中发送只上屏不提交的问题；长占位提示改为右边缘渐隐不再与图标重叠；多窗格切换栏移至消息栏上方。
 - Composer 模式下按下麦克风会在消息栏内直接切换为语音听写状态（不再替换下方键栏），发送按钮也加上了与其他按键一致的轻触震动反馈。
 - 补全 SSH 相关界面的中文翻译：包括「设置 › SSH 密钥」、添加/编辑 SSH 主机表单，以及主机密钥信任、密码登录与安装密钥弹窗。

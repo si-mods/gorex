@@ -43,27 +43,31 @@ final class ComposerUITests: XCTestCase {
         let row = app.buttons["Shell"]
         XCTAssertTrue(row.waitForExistence(timeout: 15))
         row.tap()
-        XCTAssertTrue(app.buttons.matching(identifier: "More").firstMatch.waitForExistence(timeout: 15))
+        XCTAssertTrue(app.buttons.matching(identifier: "Esc").firstMatch.waitForExistence(timeout: 15))
     }
 
     /// The compose bar's message field, which names the demo's block.
     private var message: XCUIElement { app.textViews["composer.message"] }
 
-    /// Without the mode the bar stays away and the mic is the key bar's.
+    /// Without the mode the bar stays away and the mic and ⌘ are the key bar's.
     func testNoComposerByDefault() throws {
         XCTAssertTrue(message.waitForNonExistence(timeout: 5))
         XCTAssertTrue(app.buttons.matching(identifier: "Dictate").firstMatch.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons.matching(identifier: "More").firstMatch.waitForExistence(timeout: 5))
     }
 
     /// Composer Mode (Settings > Terminal, here the defaults argument)
     /// pins the bar: it is up on its own, compact without a top grabber,
-    /// with the mic beside the field.
+    /// with the mic beside the field, + always present for Paste, and the
+    /// key bar's redundant ⌘ capsule hidden.
     func testComposerModePinsBar() throws {
         app.terminate()
         app.launchArguments = ["-composerMode", "YES"]
         app.launch()
         try terminal()
         XCTAssertTrue(message.waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons.matching(identifier: "Add Attachment").firstMatch.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons.matching(identifier: "More").firstMatch.waitForNonExistence(timeout: 5))
         // The key bar's mic moved into the bar, beside the field (the
         // mic's view exposes more than one element; take its own row's).
         let dictates = app.buttons.matching(identifier: "Dictate").allElementsBoundByIndex

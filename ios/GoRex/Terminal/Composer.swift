@@ -103,16 +103,19 @@ final class ComposerBar: UIView, UITextViewDelegate {
         cfg.baseForegroundColor = .label
         attach.configuration = cfg
         attach.accessibilityLabel = String(localized: "Add Attachment")
-        var items = [
-            UIAction(title: String(localized: "Photo"), image: UIImage(systemName: "photo")) { [weak self] _ in self?.addPhotos() },
+        var items: [UIMenuElement] = [
+            UIAction(title: String(localized: "Paste"), image: UIImage(systemName: "doc.on.clipboard")) { [weak self] _ in self?.pasteClipboard() },
         ]
-        if UIImagePickerController.isSourceTypeAvailable(.camera) {
-            items.append(UIAction(title: String(localized: "Camera"), image: UIImage(systemName: "camera")) { [weak self] _ in self?.takePhoto() })
+        if terminal.session.host.canUpload {
+            items.append(UIAction(title: String(localized: "Photo"), image: UIImage(systemName: "photo")) { [weak self] _ in self?.addPhotos() })
+            if UIImagePickerController.isSourceTypeAvailable(.camera) {
+                items.append(UIAction(title: String(localized: "Camera"), image: UIImage(systemName: "camera")) { [weak self] _ in self?.takePhoto() })
+            }
+            items.append(UIAction(title: String(localized: "File"), image: UIImage(systemName: "doc")) { [weak self] _ in self?.addFiles() })
         }
-        items.append(UIAction(title: String(localized: "File"), image: UIImage(systemName: "doc")) { [weak self] _ in self?.addFiles() })
         attach.menu = UIMenu(children: items)
         attach.showsMenuAsPrimaryAction = true
-        attach.isHidden = !terminal.session.host.canUpload
+        attach.addAction(UIAction { _ in Haptics.tapped() }, for: .touchDown)
 
         field.font = .systemFont(ofSize: 17)
         field.backgroundColor = .clear
@@ -288,6 +291,18 @@ final class ComposerBar: UIView, UITextViewDelegate {
     @objc private func pressMic(_ g: UILongPressGestureRecognizer) {
         guard g.state == .began else { return }
         Haptics.tapped()
+    }
+
+    /// Pastes clipboard text into the compose field at the current selection
+    /// (or at the end when unfocused).
+    private func pasteClipboard() {
+        guard let text = UIPasteboard.general.string, !text.isEmpty else { return }
+        if let range = field.selectedTextRange {
+            field.replace(range, withText: text)
+        } else {
+            field.text = (field.text ?? "") + text
+        }
+        textViewDidChange(field)
     }
 
     /// What the mic recognised, into the field where it can be read and

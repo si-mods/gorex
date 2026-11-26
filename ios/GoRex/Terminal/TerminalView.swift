@@ -1525,7 +1525,9 @@ final class KeyBar: UIView {
         self.keysRow = keysRow
         self.voiceCapsule = voiceCapsule
 
-        let row = UIStackView(arrangedSubviews: [left, rightArea])
+        // In Composer Mode, Paste and uploads live in the compose bar's + menu,
+        // so the redundant ⌘ capsule is omitted to give the keys more room.
+        let row = UIStackView(arrangedSubviews: TerminalView.composerMode ? [rightArea] : [left, rightArea])
         row.spacing = 8
         row.translatesAutoresizingMaskIntoConstraints = false
         addSubview(row)
