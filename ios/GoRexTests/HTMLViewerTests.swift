@@ -251,33 +251,40 @@ nonisolated final class HTMLSchemeHandlerTests: XCTestCase {
     }
 
     @MainActor
-    func testStopCancelsWithoutLateCallbacks() async throws {
-        let cached = try makeTempFile("<h1>Hello</h1>")
-        let resolver = HTMLResourcePath(entryPath: "/tmp/demo/index.html")
+    private final class StopState {
         var entered: CheckedContinuation<Void, Never>?
         var cancelled: CheckedContinuation<Void, Never>?
         var pending: CheckedContinuation<DownloadResult, Error>?
+
+        func cancel() {
+            pending?.resume(throwing: CancellationError())
+            pending = nil
+            cancelled?.resume()
+            cancelled = nil
+        }
+    }
+
+    @MainActor
+    func testStopCancelsWithoutLateCallbacks() async throws {
+        let cached = try makeTempFile("<h1>Hello</h1>")
+        let resolver = HTMLResourcePath(entryPath: "/tmp/demo/index.html")
+        let state = StopState()
         let handler = HTMLSchemeHandler(resolver: resolver, cachedEntryURL: cached, loader: { _, _ in
-            entered?.resume()
-            entered = nil
+            state.entered?.resume()
+            state.entered = nil
             return try await withTaskCancellationHandler {
-                try await withCheckedThrowingContinuation { pending = $0 }
+                try await withCheckedThrowingContinuation { state.pending = $0 }
             } onCancel: {
-                Task { @MainActor in
-                    pending?.resume(throwing: CancellationError())
-                    pending = nil
-                    cancelled?.resume()
-                    cancelled = nil
-                }
+                Task { @MainActor in state.cancel() }
             }
         })
         let wv = WKWebView()
         let task = FakeSchemeTask(URL(string: "gorex-file://local/slow.js")!)
         let waitEnter = Task { @MainActor in
-            await withCheckedContinuation { entered = $0 }
+            await withCheckedContinuation { state.entered = $0 }
         }
         let waitCancel = Task { @MainActor in
-            await withCheckedContinuation { cancelled = $0 }
+            await withCheckedContinuation { state.cancelled = $0 }
         }
         handler.webView(wv, start: task)
         await waitEnter.value
