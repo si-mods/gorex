@@ -65,17 +65,26 @@ gorex -S build-linux delegate --dir ~/repos/app --agent auto --json -- "Run the 
 
 # Asynchronous: starts the task and returns its handle immediately
 gorex -S win-desk delegate --async --dir C:\repos\app --agent claude --json -- "Verify the Windows build"
+
+# Multi-turn follow-up: send another turn to a live delegated session (warm) or resume after exit (cold)
+gorex -S build-linux delegate --session <SESSION> --json -- "Fix the failing test and re-run it"
+gorex -S build-linux delegate --resume <AGENT_SESSION> --dir ~/repos/app --json -- "Verify the fix on a clean build"
 ```
 
 - `--agent` accepts `auto` (default) or a known agent ID (`claude`, `codex`, `agy`, `omp`, `devin`). With `auto`, the server picks the first installed agent that supports delegation in display order (`knownAgents`).
 - `--dir` sets the working directory on the target host. When omitted, the target host uses its home directory.
 - `--mode` accepts `full` (default) or `read-only`. `read-only` is a best-effort hint that passes the agent's read-only flag when supported and refuses agents without one.
+- `--session` sends a follow-up prompt to a live delegated session without restarting the process (warm multi-turn, preserving prompt cache).
+- `--resume` starts a new session on the target host and continues a previous agent conversation by its `agentSession` ID (cold multi-turn after process exit).
 - `--timeout` bounds synchronous waits (default `10m`, `0` waits until exit).
-- `--keep` keeps the created tab open after a synchronous run finishes. Without `--keep`, synchronous `delegate` closes the tab on clean exit (exit code 0) and leaves it open on failure so the user can inspect the screen.
+- `--cancel-on-timeout` sends `kill` to stop the remote session when `--timeout` expires. Without it, a timeout or network drop leaves the remote session running and prints `{host, session, status: "running", error: "..."}` so the caller can reconnect with `gorex -S HOST wait -s SESSION --exit` and `gorex -S HOST delegate --result SESSION --json` (or cancel with `gorex -S HOST close -s SESSION`) instead of spawning a duplicate task.
+- Pressing `Ctrl-C` (`SIGINT`) during a synchronous `delegate` sends `kill` to stop the remote session so it does not keep burning tokens.
+- `--keep` keeps the created tab open after a synchronous run finishes (required when the caller plans to send warm follow-up turns with `--session`). Without `--keep`, synchronous `delegate` closes the tab on clean exit (exit code 0) and leaves it open on failure so the user can inspect the screen.
 - On the target host, `delegate` opens the session through the layout engine (`tab.create`) under the project whose folder matches `--dir` (or under ungrouped tabs when no project matches). Desktop, iOS, and web clients show the live tab immediately with a `DelegatedFrom` label.
-- Human-readable progress streams in the PTY so users can watch live. Machine-readable result text is written to a server-managed result file (or extracted from the agent's structured stream/conversation) so terminal line wrapping, ANSI escape sequences, and shell banners never corrupt the caller's JSON output.
-- In synchronous mode, `delegate` waits for exit and prints one JSON object: `host`, `session`, `agent`, `mode`, `exitCode`, `agentSession` (when reported, so a user can resume interactively with `--resume`), `result`, and `rawCapture` (fallback plain text when no structured result exists).
-- In asynchronous mode (`--async`), `delegate` returns `{host, session, agent, mode, status: "running"}` immediately. The caller tracks completion with `gorex -S HOST wait -s SESSION --exit` and reads output with `gorex -S HOST capture -s SESSION --history 65536` (or `gorex -S HOST delegate --result SESSION --json` to fetch the extracted structured result).
+- Human-readable progress streams in the PTY so users can watch live. Machine-readable result text is captured off-band by the server so terminal line wrapping, ANSI escape sequences, and shell banners never corrupt the caller's JSON output.
+- If the remote session enters GoRex's `blocked` status (for example, an unexpected login or interactive confirmation prompt), synchronous `delegate` surfaces `{host, session, status: "blocked", rawCapture: "..."}` promptly instead of hanging until `--timeout`.
+- In synchronous mode, `delegate` waits for the turn or process to complete and prints one JSON object: `host`, `session`, `agent`, `mode`, `status`, `exitCode`, `agentSession` (when reported, for `--resume` or human takeover), `result`, and `rawCapture` (fallback plain text when no structured result exists).
+- In asynchronous mode (`--async`), `delegate` returns `{host, session, agent, mode, status: "running"}` immediately. The caller tracks completion with `gorex -S HOST wait -s SESSION --exit` and reads output with `gorex -S HOST capture -s SESSION --history 65536` or `gorex -S HOST delegate --result SESSION --json`.
 
 #### 3. Agent skill guidance and standard workflow
 
@@ -103,16 +112,18 @@ Running `--output-format json` directly in a PTY conflicts with live viewing: th
 - The target server launches the agent inside a normal PTY tab using the [`MOD-010`](MOD-010-agent-launchers.md) quick-launcher wrapper (`agentCommand` on Unix, `windowsAgentCommand` on Windows) so login `PATH`, environment variables, and proxies load automatically.
 - For agents that support structured output files or streaming JSON, the server captures clean result data off-band while printing readable progress to the PTY:
 
-| Agent ID | Launch strategy (over `MOD-010` wrapper) | `read-only` hint flag | Clean result source | Takeover path |
-| --- | --- | --- | --- | --- |
-| `claude` | `claude -p <prompt> --output-format stream-json --verbose` piped through a tiny GoRex server tee that renders readable text to the PTY and saves the final `result` JSON event + `session_id` | `--permission-mode plan` | Server-saved `result` event (fallback: `capture`) | `claude --resume <session_id>` in a new tab |
-| `codex` | `codex exec --json <prompt>` piped through the same server tee that renders readable text to the PTY and saves the final agent message | `--sandbox read-only` | Server-saved final message (fallback: `capture`) | `codex resume` in a new tab |
-| `agy`, `omp`, `devin` | Run directly in PTY via `MOD-010` wrapper when CLI flags are supported | Refused when no read-only flag exists | `capture` plain text | Direct typing in the live PTY tab |
+| Agent ID | Launch strategy (over `MOD-010` wrapper) | Multi-turn follow-up | `read-only` hint flag | Clean result source | Takeover path |
+| --- | --- | --- | --- | --- | --- |
+| `claude` | `claude -p --input-format stream-json --output-format stream-json --include-partial-messages --verbose` (matching `yetone/magpie`'s `claude_subscription.go`, keeping session persistence on disk); server writes NDJSON `{"type":"user","message":{"role":"user","content":...}}` turns to stdin, renders readable progress to the PTY, and captures each `{"type":"result"}` event + `session_id` | Warm: write next NDJSON user turn to live stdin (`--session`); Cold: restart with `--resume <session_id>` | `--permission-mode plan` | Server-saved `result` event (fallback: `capture`) | `claude --resume <session_id>` in a new tab |
+| `codex` | `codex exec --json <prompt>` piped through the server tee that renders readable text to the PTY and saves the final agent message + thread ID | Cold: `codex exec resume <thread_id> --json <prompt>` | `--sandbox read-only` | Server-saved final message (fallback: `capture`) | `codex resume` in a new tab |
+| `agy`, `omp`, `devin` | Run directly in PTY via `MOD-010` wrapper when CLI flags are supported | `--resume <id>` when supported by the CLI | Refused when no read-only flag exists | `capture` plain text | Direct typing in the live PTY tab |
 
-Rules for argument safety:
+Rules for argument safety and process hygiene:
 
 - On Unix, `agentCommand` passes arguments via POSIX positional parameters (`sh -lic 'exec /path/to/agent "$@"' -- <args...>`) so prompts never undergo shell interpolation.
 - On Windows, `windowsAgentCommand` passes arguments through PowerShell quoting (or reads the prompt from a temp file when exceeding Windows command-line limits) so profile variables and proxies still load.
+- When launching `claude`, the server strips nested-session environment variables (`CLAUDECODE`, `CLAUDE_CODE_ENTRYPOINT`, `CLAUDE_CODE_SSE_PORT`, as in `yetone/magpie`'s `cleanClaudeEnv`) so delegating from inside another Claude Code session succeeds.
+- The server reads structured stdout through an explicit pipe (`os.Pipe`) rather than `cmd.StdoutPipe` so final `result` frames are not truncated when the process exits.
 - If `--mode read-only` is requested for an agent with no known read-only flag, the server refuses the request rather than running writable.
 
 ### Code
@@ -120,9 +131,9 @@ Rules for argument safety:
 - **Session server (`internal/rex`)**:
   - `internal/rex/proto.go`: add `CapabilityDelegate = "delegate"`, `DelegateOptions`, `DelegateResult`, and optional `DelegatedFrom` / `DelegatedAgent` on `SessionInfo`.
   - `internal/rex/agents.go`, `internal/rex/agents_unix.go`, `internal/rex/agents_windows.go`: extend `agentCommand` and `windowsAgentCommand` to accept extra argv slices safely, and add `buildDelegateCommand(agent, mode, prompt, home, shell)`.
-  - `internal/rex/delegate.go`: handle `"delegate"` and `"delegate.result"` ops on the server, attach the session via `tab.create` under the matching project, run the PTY-rendering tee for `stream-json` / `codex exec --json` to extract clean results, and persist `DelegatedFrom` in the journal.
-  - `internal/rex/remote.go`: add `"delegate"` and `"delegate.result"` to `remoteAllowed`. Keep `remote.json` unchanged.
-  - `internal/rex/client.go`: add `Client.Agents()` (if not already present), `Client.Delegate(DelegateOptions)`, and `Client.DelegateResult(sessionID)`.
+  - `internal/rex/delegate.go`: handle `"delegate"`, `"delegate.send"`, and `"delegate.result"` ops on the server, attach the session via `tab.create` under the matching project, run the persistent NDJSON turn loop and PTY-rendering tee for `claude` (`stream-json`) and `codex` (`exec --json`), detect `blocked` stalls, and persist `DelegatedFrom` in the journal.
+  - `internal/rex/remote.go`: add `"delegate"`, `"delegate.send"`, and `"delegate.result"` to `remoteAllowed`. Keep `remote.json` unchanged.
+  - `internal/rex/client.go`: add `Client.Agents()` (if not already present), `Client.Delegate(DelegateOptions)`, `Client.DelegateSend(sessionID, prompt)`, and `Client.DelegateResult(sessionID)`.
 - **CLI (`internal/cli`)**:
   - `internal/cli/commands.go`: extend `hostsCmd` with `--probe` and `--timeout` (merging `hosts.json` and `RemoteStatus().Tailnet.Hosts`), add `agentsCmd`, and add `delegateCmd`.
   - `internal/cli/skill.go`: update `gorexGuide` with peer discovery, branch-sync workflow, and delegation examples.
@@ -152,7 +163,7 @@ Rules for argument safety:
 
 - **Peer probing**: unit test in `internal/cli/commands_test.go` with mock saved hosts and Tailscale-discovered hosts verifying `gorex hosts --probe --json` merges and deduplicates both sources, returns `online`, `agents`, and `projects`, and does not block on unreachable hosts.
 - **Quick-launcher argv safety**: unit tests in `internal/rex/agents_test.go` covering `claude` and `codex` on Unix and Windows with shell metacharacters in prompts, verifying positional `"$@"` / PowerShell quoting and refusal of `--mode read-only` on agents without a read-only flag.
-- **Layout attachment and result extraction**: unit tests in `internal/rex/delegate_test.go` verifying `delegate` attaches the session via `tab.create` under the matching project, renders readable text to the PTY, extracts clean `result` + `agentSession` from `stream-json` / `codex exec --json`, and closes the tab on clean sync exit unless `--keep` is set.
+- **Layout attachment, multi-turn, and resilience**: unit tests in `internal/rex/delegate_test.go` verifying `delegate` attaches the session via `tab.create` under the matching project, renders readable text to the PTY, handles warm NDJSON follow-up turns (`delegate.send`) and cold `--resume`, surfaces `blocked` status promptly, returns `session` on timeout or disconnect without spawning duplicates, kills on `SIGINT` or `--cancel-on-timeout`, and closes the tab on clean sync exit unless `--keep` is set.
 - **Invariants touched** (`docs/invariants.md`):
   - Invariant 1 (a window comes back on its sessions): verify `DelegatedFrom` survives in-place server upgrade (`internal/rex/upgrade_test.go`).
   - Invariant 6 (a pane ends only when its session ends): verify synchronous `delegate` cleans up its tab and session on exit code 0, keeps them on failure or `--keep`, and `--async` keeps them until closed.
