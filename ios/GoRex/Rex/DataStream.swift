@@ -162,6 +162,10 @@ final class DataConnection {
     /// The stream bytes passed to onBytes, across connections.
     private var received: UInt64 = 0
     private var task: URLSessionWebSocketTask?
+    /// Whether the upgrade answer negotiated permessage-deflate, from the
+    /// response's Sec-WebSocket-Extensions. URLSession offers and applies it
+    /// on its own; the flag feeds diagnostics only.
+    private var deflate = false
     private let base: URL
     /// The host's LAN token (HostConfig.auth).
     private let auth: String?
@@ -228,7 +232,8 @@ final class DataConnection {
             case .reject(let r):
                 throw Failure.rejected(r)
             case .welcome(let tok, _, let n):
-                ConnectionLog.note("\(name): WELCOME, \(began.duration(to: .now).ms)")
+                deflate = (t.response as? HTTPURLResponse)?.value(forHTTPHeaderField: "Sec-WebSocket-Extensions")?.contains("permessage-deflate") ?? false
+                ConnectionLog.note("\(name): WELCOME, \(began.duration(to: .now).ms)\(deflate ? ", permessage-deflate" : "")")
                 token = tok
                 nonce = n
             }
@@ -258,7 +263,11 @@ final class DataConnection {
             if t === task {
                 task = nil
                 let reason = t.closeReason.map { String(decoding: $0, as: UTF8.self) } ?? ""
-                ConnectionLog.note("\(name): dropped, close code \(t.closeCode.rawValue)\(reason.isEmpty ? "" : " \(reason)"): \(error.diagnosis)")
+                // Apple's WebSocket is known to drop on a large compressed
+                // message (control.go's comment); the log flags drops where
+                // that could be the cause.
+                let hint = deflate ? ", possibly a large compressed message" : ""
+                ConnectionLog.note("\(name): dropped, close code \(t.closeCode.rawValue)\(reason.isEmpty ? "" : " \(reason)")\(hint): \(error.diagnosis)")
                 onDrop(t.closeCode.rawValue)
             }
         }
