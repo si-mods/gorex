@@ -205,4 +205,116 @@ nonisolated enum FileLink {
     /// Second-level names a country's registry keeps, as co.uk: a public
     /// suffix itself, not a host.
     private static let registryNames: Set<String> = ["ac", "co", "com", "edu", "go", "gob", "gov", "mil", "ne", "net", "nic", "or", "org"]
+
+    /// Reconstructs a long file path that a TUI (such as Claude Code or
+    /// Antigravity CLI) hard-wrapped across consecutive rows on a narrow
+    /// screen, given the visible `rows`, the tapped `row`, the `fragment`
+    /// Ghostty matched on that row, and the terminal width in `columns`.
+    /// Returns `nil` if the fragment does not span multiple wrapped rows.
+    static func wrappedPath(rows: [String], row: Int, fragment: String, columns: Int) -> String? {
+        guard columns > 0, rows.indices.contains(row), !fragment.isEmpty else { return nil }
+        let isDelimiter: (Character) -> Bool = { $0.isWhitespace || proseDelimiters.contains($0) }
+        let line = rows[row]
+        guard let range = line.range(of: fragment) else { return nil }
+
+        // Expand within `line` to the enclosing non-delimiter token.
+        var tokStart = range.lowerBound
+        while tokStart > line.startIndex {
+            let prev = line.index(before: tokStart)
+            if isDelimiter(line[prev]) { break }
+            tokStart = prev
+        }
+        var tokEnd = range.upperBound
+        while tokEnd < line.endIndex, !isDelimiter(line[tokEnd]) {
+            tokEnd = line.index(after: tokEnd)
+        }
+
+        let leadingOnlySpaces: (String, String.Index) -> Bool = { s, idx in
+            s[..<idx].allSatisfy { $0 == " " }
+        }
+        let trailingEmpty: (String, String.Index) -> Bool = { s, idx in
+            s[idx...].allSatisfy { $0 == " " }
+        }
+        let nearFullWidth: (String) -> Bool = { s in
+            let stripped = s.drop(while: { _ in false }).reversed().drop(while: { $0 == " " })
+            guard let last = stripped.first, !isDelimiter(last) else { return false }
+            let w = displayWidth(String(stripped.reversed()))
+            return w >= max(columns - 8, 1)
+        }
+        let startsNewRoot: (Substring) -> Bool = { s in
+            s.hasPrefix("~/") || s.hasPrefix("./") || s.hasPrefix("../") || s.hasPrefix("/")
+        }
+
+        var joined = String(line[tokStart..<tokEnd])
+        var startRow = row
+        var endRow = row
+        let maxSteps = 6
+
+        // Walk upward while the current token starts at the beginning of its
+        // row (after leading TUI indent spaces) and the row above looks wrapped.
+        var atRowStart = leadingOnlySpaces(line, tokStart)
+        var r = row - 1
+        while atRowStart, r >= max(0, row - maxSteps) {
+            let prevLine = rows[r]
+            guard nearFullWidth(prevLine) else { break }
+            let trimmedRight = String(prevLine.reversed().drop(while: { $0 == " " }).reversed())
+            guard !trimmedRight.isEmpty else { break }
+            var pStart = trimmedRight.endIndex
+            while pStart > trimmedRight.startIndex {
+                let before = trimmedRight.index(before: pStart)
+                if isDelimiter(trimmedRight[before]) { break }
+                pStart = before
+            }
+            let prevTok = trimmedRight[pStart..<trimmedRight.endIndex]
+            guard !prevTok.isEmpty else { break }
+            // Two separate paths stacked on consecutive lines do not join.
+            if startsNewRoot(Substring(joined)), !prevTok.hasSuffix("/") { break }
+            let looksLikePath = prevTok.contains("/") || prevTok.hasPrefix("~") || prevTok.hasPrefix(".") || joined.contains("/")
+            guard looksLikePath else { break }
+            joined = String(prevTok) + joined
+            startRow = r
+            atRowStart = trimmedRight[..<pStart].allSatisfy { $0 == " " }
+            r -= 1
+        }
+
+        // Walk downward while the current token reaches the end of a near-full
+        // row and the next row continues the path after optional indent spaces.
+        var atRowEnd = trailingEmpty(line, tokEnd) && nearFullWidth(line)
+        r = row + 1
+        while atRowEnd, r <= min(rows.count - 1, row + maxSteps) {
+            let nextLine = rows[r]
+            let afterSpaces = nextLine.drop(while: { $0 == " " })
+            guard let firstChar = afterSpaces.first, !isDelimiter(firstChar) else { break }
+            let nextTok = afterSpaces.prefix(while: { !isDelimiter($0) })
+            guard !nextTok.isEmpty else { break }
+            if startsNewRoot(nextTok), !joined.hasSuffix("/") { break }
+            joined += nextTok
+            endRow = r
+            let rest = afterSpaces.dropFirst(nextTok.count)
+            atRowEnd = rest.allSatisfy { $0 == " " } && nearFullWidth(nextLine)
+            r += 1
+        }
+
+        guard startRow != endRow else { return nil }
+        guard case .file(let full, let hidden) = target(joined, matched: true), !hidden, full != fragment else {
+            return nil
+        }
+        return full
+    }
+
+    /// Terminal display columns of a string (2 for East Asian wide scalars).
+    private static func displayWidth(_ text: String) -> Int {
+        text.unicodeScalars.reduce(0) { n, s in
+            let v = s.value
+            let wide = (0x1100...0x115F).contains(v)
+                || (0x2E80...0xA4CF).contains(v)
+                || (0xAC00...0xD7A3).contains(v)
+                || (0xF900...0xFAFF).contains(v)
+                || (0xFE10...0xFE6F).contains(v)
+                || (0xFF00...0xFF60).contains(v)
+                || (0xFFE0...0xFFE6).contains(v)
+                || (0x20000...0x3FFFD).contains(v)
+            return n + (wide ? 2 : 1)
+        }
+    }
 }

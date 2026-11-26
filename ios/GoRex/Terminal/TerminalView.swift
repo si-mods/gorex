@@ -159,6 +159,9 @@ final class TerminalView: UIView, TerminalOutput {
     /// Whether the keyboard was up as the last tap that opened a link
     /// began: a file's preview gives it back as it closes.
     var typingBeforeLink = false
+    /// The 0-based active screen row of the last tap, used to reconstruct a
+    /// long file path hard-wrapped across rows by a TUI.
+    var lastTapRow: Int?
 
     /// The grid's size, shown while pinching.
     lazy var sizeLabel: UILabel = {
@@ -571,21 +574,22 @@ final class TerminalView: UIView, TerminalOutput {
         return !showsSelection && !pinching && !ghostty_surface_mouse_captured(s)
     }
 
-    /// A tap that clears no selection clicks for a program that has the
-    /// mouse, else opens the link under it, and shows the keyboard. A tap on
-    /// a link leaves the keyboard as it is: the link may open a preview
-    /// that takes it away, and gives it back as it closes.
+    /// A tap that clears no selection opens the link under it (even when a
+    /// TUI captures the mouse, matching Cmd/Ctrl+click on desktop/web), else
+    /// forwards the click to a mouse-capturing program and shows the keyboard.
+    /// A tap on a link leaves the keyboard as it is: the link may open a
+    /// preview that takes it away, and gives it back as it closes.
     @objc private func tap(_ g: UITapGestureRecognizer) {
         let p = g.location(in: self)
         if deselect(at: p) { return }
+        let typing = keyboardUp
+        lastTapRow = cell.height > 0 ? Int(((p.y - inset) / cell.height).rounded(.down)) : nil
+        if openLink(at: p) {
+            typingBeforeLink = typing
+            return
+        }
         if let s = surface, ghostty_surface_mouse_captured(s) {
             click(at: p)
-        } else {
-            let typing = keyboardUp
-            if openLink(at: p) {
-                typingBeforeLink = typing
-                return
-            }
         }
         if !keyboardUp { becomeFirstResponder() }
     }

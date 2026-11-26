@@ -1,3 +1,4 @@
+import GhosttyKit
 import QuickLook
 import UIKit
 
@@ -17,11 +18,21 @@ extension TerminalView {
             return
         }
         // A second tap on the same path while it downloads does nothing.
+        let tapRow = hidden ? nil : lastTapRow
         let key = [sid, block, path].joined(separator: "\n")
         guard OpenedFiles.opening.insert(key).inserted else { return }
-        let download = Task {
-            let r = try await host.download(path, block: block, session: sid, maxBytes: OpenedFiles.maxBytes)
-            return try await OpenedFiles.save(r, path: path)
+        let download = Task { () -> (URL, String) in
+            let resolved = await self.resolveWrappedPath(fragment: path, tapRow: tapRow)
+            let chosen = resolved ?? path
+            do {
+                let r = try await host.download(chosen, block: block, session: sid, maxBytes: OpenedFiles.maxBytes)
+                let saved = try await OpenedFiles.save(r, path: chosen)
+                return (saved, chosen)
+            } catch let error as RexError where resolved != nil && error.code == "no_file" {
+                let r = try await host.download(path, block: block, session: sid, maxBytes: OpenedFiles.maxBytes)
+                let saved = try await OpenedFiles.save(r, path: path)
+                return (saved, path)
+            }
         }
         let veil = OpenedFiles.Veil {
             download.cancel()
@@ -41,16 +52,28 @@ extension TerminalView {
             veil.removeFromSuperview()
             if !download.isCancelled { OpenedFiles.opening.remove(key) }
             switch result {
-            case .success(let url) where download.isCancelled:
+            case .success(let (url, _)) where download.isCancelled:
                 try? FileManager.default.removeItem(at: url.deletingLastPathComponent())
-            case .success(let url):
-                preview(url, path: path)
+            case .success(let (url, openedPath)):
+                preview(url, path: openedPath)
             case .failure(let error):
                 guard !download.isCancelled, !(error is CancellationError) else { return }
                 let reason = (error as? RexError).map { FileLink.reason(code: $0.code, message: $0.message) } ?? error.localizedDescription
                 alert(String(localized: "Can't Open File"), reason + "\n" + path)
             }
         }
+    }
+
+    /// Reads the visible rows to check whether `fragment` is one piece of a
+    /// long file path hard-wrapped across consecutive rows by a TUI.
+    private func resolveWrappedPath(fragment: String, tapRow: Int?) async -> String? {
+        guard let tapRow, let s = surface else { return nil }
+        let columns = Int(ghostty_surface_size(s).columns)
+        guard columns > 0 else { return nil }
+        let rows: [String] = await withCheckedContinuation { cont in
+            readRows { lines, _ in cont.resume(returning: lines) }
+        }
+        return FileLink.wrappedPath(rows: rows, row: tapRow, fragment: fragment, columns: columns)
     }
 
     /// Asks before a program's link (OSC 8) downloads a file: the text
