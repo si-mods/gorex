@@ -1387,8 +1387,11 @@ private struct VoiceCapsule: View {
     var body: some View {
         let settled = (said?.polishing == true ? "" : said?.settled) ?? ""
         let full = said?.text ?? ""
-        var open = AttributedString(full.dropFirst(min(settled.count, full.count)))
-        open.foregroundColor = .secondary
+        let open: AttributedString = {
+            var a = AttributedString(full.dropFirst(min(settled.count, full.count)))
+            a.foregroundColor = .secondary
+            return a
+        }()
         if let send {
             let transcript: Text = if said?.polishing == true {
                 Text("Polishing…").foregroundStyle(.secondary)
