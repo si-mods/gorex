@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.65.3
+
+### Features
+
+* **theme:** add `checkbox.background`, `radio.background`, `window.border`, `menu.background`, `menu.border`, and `scrollbar.{track,thumb,hover,active}` theme hooks ([#1183](https://github.com/si-mods/gorex/pull/1183))
+
 ## 0.65.2
 
 ### Changes
