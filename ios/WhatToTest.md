@@ -10,6 +10,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 `web` job of `.github/workflows/ci.yml` fails it.
 
 ## en-US
+- Press and hold anywhere on the Composer bar to dictate push-to-talk: hold to speak and release to convert straight into text in the message field.
 - Composer Mode: the placeholder now centers vertically with the + button, and opening Photo, Camera, or File from + dismisses the keyboard first so it does not cover the picker.
 - Fixed a Composer Mode focus bug where Backspace and typing could occasionally go to the terminal instead of the compose field after dismissing sheets, alerts, or text selection.
 - Composer Mode: Grok-style two-row inline voice view (live transcript, wide waveform, Stop & one-tap Send), Paste moved into the + menu, and the redundant ⌘ key removed from the key bar.
@@ -154,6 +155,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - Settings: choose System, Light or Dark right in the Interface row, and Minimum Contrast from a menu. A space's Color menu shows each color's dot and marks the current one.
 
 ## zh-Hans
+- Composer 模式支持长按消息栏按住说话：长按直接开始语音录入，松开自动转为文字写入输入框。
 - Composer 模式：占位文字现在与左侧「+」按钮垂直居中对齐，且键盘弹出时从「+」选择照片/相机/文件会先收起键盘。
 - 修复 Composer 模式下偶尔因焦点回落到终端，导致退格键或输入误操作终端而非 Composer 输入框的问题。
 - Composer 模式：语音听写升级为双行布局（实时文字 + 全宽波形 + 停止与一键发送）；粘贴移入「+」菜单，并隐藏下方键栏多余的 ⌘ 按钮。
