@@ -254,17 +254,36 @@ nonisolated final class HTMLSchemeHandlerTests: XCTestCase {
     func testStopCancelsWithoutLateCallbacks() async throws {
         let cached = try makeTempFile("<h1>Hello</h1>")
         let resolver = HTMLResourcePath(entryPath: "/tmp/demo/index.html")
+        var entered: CheckedContinuation<Void, Never>?
+        var cancelled: CheckedContinuation<Void, Never>?
+        var pending: CheckedContinuation<DownloadResult, Error>?
         let handler = HTMLSchemeHandler(resolver: resolver, cachedEntryURL: cached, loader: { _, _ in
-            try await Task.sleep(for: .seconds(5))
-            throw CancellationError()
+            entered?.resume()
+            entered = nil
+            return try await withTaskCancellationHandler {
+                try await withCheckedThrowingContinuation { pending = $0 }
+            } onCancel: {
+                Task { @MainActor in
+                    pending?.resume(throwing: CancellationError())
+                    pending = nil
+                    cancelled?.resume()
+                    cancelled = nil
+                }
+            }
         })
         let wv = WKWebView()
         let task = FakeSchemeTask(URL(string: "gorex-file://local/slow.js")!)
+        let waitEnter = Task { @MainActor in
+            await withCheckedContinuation { entered = $0 }
+        }
+        let waitCancel = Task { @MainActor in
+            await withCheckedContinuation { cancelled = $0 }
+        }
         handler.webView(wv, start: task)
-        try await Task.sleep(for: .milliseconds(30))
+        await waitEnter.value
         task.markStopped()
         handler.webView(wv, stop: task)
-        try await Task.sleep(for: .milliseconds(30))
+        await waitCancel.value
         XCTAssertFalse(task.callbackAfterStop)
     }
 
@@ -274,11 +293,17 @@ nonisolated final class HTMLSchemeHandlerTests: XCTestCase {
         let resolver = HTMLResourcePath(entryPath: "/tmp/demo/index.html")
         var current = 0
         var peak = 0
+        var gates: [CheckedContinuation<Void, Never>] = []
+        var reachedLimit: CheckedContinuation<Void, Never>?
         let handler = HTMLSchemeHandler(resolver: resolver, cachedEntryURL: cached, maxConcurrent: 2, loader: { path, _ in
             current += 1
             peak = max(peak, current)
-            defer { current -= 1 }
-            try await Task.sleep(for: .milliseconds(30))
+            if current == 2, let r = reachedLimit {
+                reachedLimit = nil
+                r.resume()
+            }
+            await withCheckedContinuation { gates.append($0) }
+            current -= 1
             let dir = FileManager.default.temporaryDirectory.appending(path: "HTMLConc-\(UUID().uuidString)")
             try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
             let file = dir.appending(path: "asset.js")
@@ -287,9 +312,22 @@ nonisolated final class HTMLSchemeHandlerTests: XCTestCase {
         })
         let wv = WKWebView()
         let tasks = (0..<5).map { FakeSchemeTask(URL(string: "gorex-file://local/a\($0).js")!) }
+        let waitLimit = Task { @MainActor in
+            await withCheckedContinuation { reachedLimit = $0 }
+        }
         for t in tasks { handler.webView(wv, start: t) }
-        for t in tasks { await t.wait() }
-
+        await waitLimit.value
+        XCTAssertEqual(peak, 2)
+        // Drain each wave deterministically until all 5 complete.
+        for t in tasks {
+            while !t.finished && t.error == nil {
+                if !gates.isEmpty {
+                    let g = gates.removeFirst()
+                    g.resume()
+                }
+                await Task.yield()
+            }
+        }
         XCTAssertLessThanOrEqual(peak, 2)
         for t in tasks {
             XCTAssertEqual((t.response as? HTTPURLResponse)?.statusCode, 200)

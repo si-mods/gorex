@@ -305,8 +305,10 @@ final class HTMLViewerController: UIViewController, WKNavigationDelegate, WKUIDe
         updateHandler = { [weak self] data in
             guard let self else { return }
             let dst = self.fileURL
-            Task.detached { try? data.write(to: dst, options: .atomic) }
-            self.schemeHandler.setCachedEntryURL(dst)
+            Task { @MainActor [weak self] in
+                let wrote = await Task.detached { (try? data.write(to: dst, options: .atomic)) != nil }.value
+                if wrote { self?.schemeHandler.setCachedEntryURL(dst) }
+            }
         }
     }
 
@@ -440,8 +442,6 @@ final class HTMLViewerController: UIViewController, WKNavigationDelegate, WKUIDe
             if navigationAction.navigationType == .linkActivated {
                 UIApplication.shared.open(url)
                 decisionHandler(.cancel)
-            } else if navigationAction.targetFrame?.isMainFrame == false {
-                decisionHandler(.allow)
             } else {
                 decisionHandler(.allow)
             }
