@@ -8,7 +8,7 @@ metadata:
 
 # MOD-016: Peer delegation for coding agents
 
-Status: phase 1 built (#1207). Phase 2 not built.
+Status: built (#1207, #1208).
 
 This doc defines peer delegation so a coding agent on one GoRex host can discover peer hosts, launch a coding agent on a target host, and collect a clean result. It extends [`NET-002`](NET-002-host-links.md), [`MOD-002`](MOD-002-projects.md), and [`MOD-010`](MOD-010-agent-launchers.md).
 
@@ -178,4 +178,4 @@ Rules for argument safety and process hygiene:
 ## Phases
 
 1. **Phase 1 (Discovery & Skill)** (#1207): add `gorex hosts --probe --json` (merging `hosts.json` and Tailnet hosts), `gorex -S HOST agents --json`, and update `gorexGuide` in `internal/cli/skill.go` with the standard cross-host workflow.
-2. **Phase 2 (Core Delegation)**: add `CapabilityDelegate`, `internal/rex/delegate.go`, `MOD-010` quick-launcher argv extensions in `internal/rex/agents*.go`, `tab.create` layout attachment, off-band result extraction, and `gorex -S HOST delegate`.
+2. **Phase 2 (Core Delegation)** (#1208): add `CapabilityDelegate`, `internal/rex/delegate.go`, `MOD-010` quick-launcher argv extensions in `internal/rex/agents*.go`, `tab.create` layout attachment, off-band result extraction, and `gorex -S HOST delegate`.
