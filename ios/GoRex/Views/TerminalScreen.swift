@@ -1494,12 +1494,12 @@ private struct VoiceCapsule: View {
                         Group {
                             if busy {
                                 ProgressView()
-                                    .tint(.white)
+                                    .tint(Color(uiColor: .systemBackground))
                                     .accessibilityLabel("Recognising")
                             } else {
                                 Image(systemName: "arrow.up")
                                     .font(.system(size: 15, weight: .semibold))
-                                    .foregroundStyle(.white)
+                                    .foregroundStyle(Color(uiColor: .systemBackground))
                                     .accessibilityLabel("Send")
                             }
                         }
