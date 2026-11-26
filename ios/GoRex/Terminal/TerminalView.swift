@@ -1495,7 +1495,8 @@ final class KeyBar: UIView, UIScrollViewDelegate {
         compose.accessibilityIdentifier = "keybar.compose"
         compose.addAction(UIAction { [weak target] _ in target?.toggleComposer() }, for: .touchUpInside)
         compose.configurationUpdateHandler = { [weak self] b in
-            b.configuration = Self.config("square.and.pencil", text: false, size: 17, held: self?.composerOn == true)
+            let held = UIDevice.current.userInterfaceIdiom == .pad && self?.composerOn == true
+            b.configuration = Self.config("square.and.pencil", text: false, size: 17, held: held)
         }
 
         let escape = key("escape", String(localized: "Esc"), "escape")
@@ -1532,9 +1533,10 @@ final class KeyBar: UIView, UIScrollViewDelegate {
         }
         let delete = repeating("delete.left", String(localized: "Delete"), "backspace")
 
-        // Continuous horizontal strip of fixed-width keys matching official Rex:
-        // Esc, Ctrl, Opt, Shift, Tab, ~, |, /, -, Enter, Delete.
-        let stripKeys: [UIView] = [escape, ctrl, alt, shift, tab, tilde, pipe, slash, dash, enter, delete]
+        // Continuous horizontal strip of fixed-width keys: Esc, Ctrl, Tab,
+        // Enter sit in the initial visible area, followed by Opt, Shift,
+        // punctuation, and Delete.
+        let stripKeys: [UIView] = [escape, ctrl, tab, enter, alt, shift, tilde, pipe, slash, dash, delete]
         let strip = UIStackView(arrangedSubviews: stripKeys)
         strip.axis = .horizontal
         strip.spacing = 0
@@ -1663,13 +1665,11 @@ final class KeyBar: UIView, UIScrollViewDelegate {
         updateScrollFade()
     }
 
-    /// Hides the redundant `⌘` key and mic slot while Composer Mode is on,
-    /// keeping the Compose button highlighted in the left capsule, and restores
-    /// both when Composer Mode is turned off.
+    /// Moves the mic into `ComposerBar` while Composer Mode is on and keeps
+    /// the left `[ ⌘  ✎ ]` capsule stable without shifting width, matching
+    /// official Rex.
     func setComposerMode(_ on: Bool) {
         composerOn = on
-        more.isHidden = on
-        leftWidth?.constant = on ? 44 : 80
         compose.setNeedsUpdateConfiguration()
         mic.isHidden = on
         lastWidth?.constant = on ? 84 : 120
