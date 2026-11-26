@@ -1173,7 +1173,14 @@ final class TerminalHost: UIView, UIGestureRecognizerDelegate {
 
     /// The compose bar while Composer Mode has it up (Composer.swift).
     private var composer: ComposerBar?
-    private var composerBottom: NSLayoutConstraint?
+    /// Notifies the SwiftUI screen of the compose bar's live height + gap so
+    /// overlays above it (such as PaneBar and Reconnecting) sit cleanly above.
+    var onComposerHeight: ((CGFloat) -> Void)?
+    /// Current height + gap occupied by the compose bar, or 0 when absent.
+    var currentComposerInset: CGFloat {
+        guard let c = composer else { return 0 }
+        return (c.bounds.height > 0 ? c.bounds.height : ComposerBar.baseHeight) + ComposerBar.gap
+    }
 
     /// Where the screen's mic lands: the pinned bar in Composer Mode,
     /// the key bar's own spot without it.
@@ -1200,12 +1207,10 @@ final class TerminalHost: UIView, UIGestureRecognizerDelegate {
         c.translatesAutoresizingMaskIntoConstraints = false
         addSubview(c)
         let bottom = terminal.bar.superview === self ? terminal.bar.topAnchor : keyboardLayoutGuide.topAnchor
-        let bottomConstraint = c.bottomAnchor.constraint(equalTo: bottom, constant: -(aboveBar > 0 ? aboveBar : ComposerBar.gap))
-        composerBottom = bottomConstraint
         NSLayoutConstraint.activate([
             c.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 10),
             c.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -10),
-            bottomConstraint,
+            c.bottomAnchor.constraint(equalTo: bottom, constant: -ComposerBar.gap),
         ])
         composer = c
         terminal.composerInset = ComposerBar.baseInset
@@ -1213,6 +1218,8 @@ final class TerminalHost: UIView, UIGestureRecognizerDelegate {
             guard let self else { return }
             terminal.composerExtra = max(0, h - ComposerBar.baseHeight)
             placeBottomEdge()
+            let inset = h + ComposerBar.gap
+            Task { @MainActor [weak self] in self?.onComposerHeight?(inset) }
         }
         c.alpha = 0
         UIView.animate(withDuration: 0.2) { c.alpha = 1 }
@@ -1299,12 +1306,10 @@ final class TerminalHost: UIView, UIGestureRecognizerDelegate {
     func placeBottomEdge() {
         let bar = terminal.bar
         let keyBar = bar.superview === self && !bar.isHidden ? KeyBar.height : 0
-        let compOffset = aboveBar > 0 ? aboveBar : ComposerBar.gap
-        let compHeight = composer.map { $0.bounds.height > 0 ? $0.bounds.height : ComposerBar.baseHeight } ?? 0
-        let height = keyBar + (composer != nil ? compOffset + compHeight : aboveBar)
+        let comp = currentComposerInset
+        let height = keyBar + comp + aboveBar
         bottomEdge.isHidden = height == 0
         bottomEdgeTop?.constant = -height
-        composerBottom?.constant = -compOffset
     }
 }
 

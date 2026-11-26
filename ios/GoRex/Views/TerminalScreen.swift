@@ -46,6 +46,9 @@ struct TerminalScreen: View {
     @State private var stopping = false
     /// Whether the terminal has the key bar, which holds the mic.
     @State private var hasBar = TerminalView.hasBar
+    /// Live height + gap of the compose bar when Composer Mode is on, so
+    /// PaneBar and Reconnecting sit cleanly above it.
+    @State private var composerInset: CGFloat = TerminalView.composerMode ? ComposerBar.baseInset : 0
     /// The ports the pane listens on, for the bar's button.
     @State private var ports: Ports?
     /// Whether the ports sheet shows.
@@ -106,6 +109,7 @@ struct TerminalScreen: View {
                 TerminalRepresentable(session: pane.session, newTab: newTab, closeTab: closeTab, newSplit: newSplit, mic: mic, voice: voiceCapsule, dictating: said != nil && current, snaps: switching > 0 || paneDrag != nil,
                                       paneInset: paneCount > 1 ? PaneBar.height + 20 : 0,
                                       onPage: !pane.kept, current: current,
+                                      onComposerHeight: { h in if current, composerInset != h { composerInset = h } },
                                       onPaneDrag: { dragPane($0, $1, $2) },
                                       canSwipe: { switching == 0 && incoming == paneDrag?.pane && (terminal?.paneSwipeAllowed ?? false) })
                     .offset(x: pane.x * pageSize.width, y: pane.y * pageSize.height)
@@ -158,7 +162,7 @@ struct TerminalScreen: View {
                         .transition(.opacity.combined(with: .move(edge: .bottom)))
                     }
                 }
-                .padding(.bottom, hasBar ? KeyBar.height + 10 : 10)
+                .padding(.bottom, (hasBar ? KeyBar.height : 0) + composerInset + 10)
             }
             // The layout, floating under the toolbar's right side for a
             // moment after a switch, as Rex Go shows it.
@@ -1459,6 +1463,8 @@ private struct TerminalRepresentable: UIViewRepresentable {
     let onPage: Bool
     /// Whether it is the pane shown, the one that takes touches.
     let current: Bool
+    /// Reports the compose bar's live height + gap so PaneBar sits above it.
+    let onComposerHeight: (CGFloat) -> Void
     /// Follows a two-finger drag between panes: its state, and how far and
     /// how fast the fingers went.
     let onPaneDrag: (UIGestureRecognizer.State, CGPoint, CGPoint) -> Void
@@ -1525,6 +1531,11 @@ private struct TerminalRepresentable: UIViewRepresentable {
         v.current = current
         if !current, v.terminal.keyboardUp { _ = v.terminal.resignFirstResponder() }
         if arrived, GCKeyboard.coalesced != nil { _ = v.terminal.becomeFirstResponder() }
+        v.onComposerHeight = onComposerHeight
+        if arrived {
+            let inset = v.currentComposerInset
+            Task { @MainActor in onComposerHeight(inset) }
+        }
         v.onPaneDrag = onPaneDrag
         v.canSwipe = canSwipe
         v.setBottomEdgeColor(UIColor(cgColor: (session.background ?? .black).cgColor))
