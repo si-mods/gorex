@@ -17,6 +17,7 @@ func delegateCmd(args []string, out, errOut io.Writer) (int, bool) {
 	fs := flagSet("delegate", errOut)
 	agent := fs.String("agent", "auto", "agent CLI ID (auto, claude, omp, codex, agy, devin)")
 	dir := fs.String("dir", "", "working directory on the target host")
+	name := fs.String("name", "", "tab label on the target host (defaults to a short prompt summary)")
 	mode := fs.String("mode", "full", "execution mode hint (full, read-only, or yolo)")
 	sessionID := fs.String("session", "", "existing delegated session ID for a warm follow-up turn")
 	resume := fs.String("resume", "", "agent conversation ID for a cold follow-up")
@@ -76,91 +77,151 @@ func delegateCmd(args []string, out, errOut io.Writer) (int, bool) {
 		return emitDelegateResult(out, errOut, hostLabel, res, *asJSON), true
 	}
 
-	timeoutMs := 0
-	if *timeout > 0 {
-		timeoutMs = int((*timeout) / time.Millisecond)
-	}
-
-	// Handle Ctrl-C during synchronous waits by cancelling the remote session
-	// once known.
+	// Handle Ctrl-C during synchronous waits by cancelling the remote session.
 	ctx, stop := signal.NotifyContext(onInterrupt(context.Background()), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	// Warm follow-up turn on an already-running delegated session.
+	// Always start the remote turn asynchronously so we receive the session
+	// handle immediately and never block a single RPC past the server's
+	// keepalive timeout. For synchronous mode we then subscribe to OSC 7501
+	// session events + periodic DelegateResult checks.
+	var started rex.DelegateResult
+	closeOnComplete := false
 	if *sessionID != "" {
-		resCh := make(chan delegateCallRes, 1)
-		go func() {
-			r, err := c.DelegateSend(rex.DelegateSendOptions{
-				SID:       *sessionID,
-				Prompt:    prompt,
-				Async:     *async,
-				TimeoutMs: timeoutMs,
-			})
-			resCh <- delegateCallRes{res: r, err: err}
-		}()
-		select {
-		case <-ctx.Done():
-			_ = c.Kill(*sessionID)
-			return ExitInterrupted, true
-		case got := <-resCh:
-			if got.err != nil {
-				if *asJSON {
-					WriteJSON(out, map[string]any{
-						"host":    hostLabel,
-						"session": *sessionID,
-						"status":  "running",
-						"error":   got.err.Error(),
-					})
-				} else {
-					fmt.Fprintln(errOut, got.err)
-				}
-				return ExitServer, true
-			}
-			return emitDelegateResult(out, errOut, hostLabel, got.res, *asJSON), true
-		}
-	}
-
-	from := delegateOrigin()
-	resCh := make(chan delegateCallRes, 1)
-	go func() {
-		r, err := c.Delegate(rex.DelegateOptions{
-			Agent:           *agent,
-			Dir:             *dir,
-			Prompt:          prompt,
-			Mode:            *mode,
-			Resume:          *resume,
-			From:            from,
-			Keep:            *keep,
-			Async:           *async,
-			TimeoutMs:       timeoutMs,
-			CancelOnTimeout: *cancelOnTimeout,
+		started, err = c.DelegateSend(rex.DelegateSendOptions{
+			SID:    *sessionID,
+			Prompt: prompt,
+			Async:  true,
 		})
-		resCh <- delegateCallRes{res: r, err: err}
-	}()
-
-	select {
-	case <-ctx.Done():
-		c.Close()
-		return ExitInterrupted, true
-	case got := <-resCh:
-		if got.err != nil {
-			if *asJSON {
-				WriteJSON(out, map[string]any{
-					"host":  hostLabel,
-					"error": got.err.Error(),
-				})
-			} else {
-				fmt.Fprintln(errOut, got.err)
-			}
-			return ExitFailed, true
-		}
-		return emitDelegateResult(out, errOut, hostLabel, got.res, *asJSON), true
+	} else {
+		closeOnComplete = !*keep
+		started, err = c.Delegate(rex.DelegateOptions{
+			Agent:  *agent,
+			Dir:    *dir,
+			Name:   *name,
+			Prompt: prompt,
+			Mode:   *mode,
+			Resume: *resume,
+			From:   delegateOrigin(),
+			Keep:   true, // CLI closes cleanly after observing completion when !*keep
+			Async:  true,
+		})
 	}
+	if err != nil {
+		if *asJSON {
+			WriteJSON(out, map[string]any{
+				"host":    hostLabel,
+				"session": *sessionID,
+				"error":   err.Error(),
+			})
+		} else {
+			fmt.Fprintln(errOut, err)
+		}
+		return ExitFailed, true
+	}
+
+	if *async || started.Status != "running" {
+		if closeOnComplete && started.Status == "completed" {
+			_ = c.Kill(started.Session)
+		}
+		return emitDelegateResult(out, errOut, hostLabel, started, *asJSON), true
+	}
+
+	res, exitCode := waitDelegateSubscribed(ctx, c, hostLabel, started, *timeout, *cancelOnTimeout, closeOnComplete)
+	if exitCode == ExitInterrupted {
+		return ExitInterrupted, true
+	}
+	return emitDelegateResult(out, errOut, hostLabel, res, *asJSON), true
 }
 
-type delegateCallRes struct {
-	res rex.DelegateResult
-	err error
+// waitDelegateSubscribed subscribes to the server's OSC 7501 / session
+// event stream and checks DelegateResult on each update (plus a 2s safety
+// tick that keeps the control connection alive and handles agents without
+// OSC 7501).
+func waitDelegateSubscribed(
+	ctx context.Context,
+	c *rex.Client,
+	hostLabel string,
+	started rex.DelegateResult,
+	timeout time.Duration,
+	cancelOnTimeout bool,
+	closeOnComplete bool,
+) (rex.DelegateResult, int) {
+	sid := started.Session
+	_ = c.Subscribe()
+	events := c.Events()
+
+	var timerCh <-chan time.Time
+	if timeout > 0 {
+		t := time.NewTimer(timeout)
+		defer t.Stop()
+		timerCh = t.C
+	}
+	tick := time.NewTicker(2 * time.Second)
+	defer tick.Stop()
+
+	check := func() (rex.DelegateResult, bool, error) {
+		r, err := c.DelegateResult(sid)
+		if err != nil {
+			return rex.DelegateResult{}, false, err
+		}
+		if r.Status != "running" {
+			if closeOnComplete && r.Status == "completed" {
+				_ = c.Kill(sid)
+			}
+			return r, true, nil
+		}
+		return r, false, nil
+	}
+
+	// Check once immediately in case the turn already finished before Subscribe.
+	if r, done, err := check(); err == nil && done {
+		return r, ExitOK
+	}
+
+	for {
+		select {
+		case <-ctx.Done():
+			_ = c.Kill(sid)
+			return rex.DelegateResult{}, ExitInterrupted
+		case <-timerCh:
+			if cancelOnTimeout {
+				_ = c.Kill(sid)
+				r := started
+				r.Status = "timeout"
+				r.Error = "timed out waiting for delegated turn (session cancelled)"
+				return r, ExitFailed
+			}
+			r := started
+			r.Status = "running"
+			r.Error = "timed out waiting for delegated turn (session still running)"
+			return r, ExitOK
+		case _, ok := <-events:
+			if !ok {
+				// Connection dropped: return the session handle so the caller
+				// can reconnect with wait / delegate --result instead of
+				// spawning a duplicate task.
+				r := started
+				r.Status = "running"
+				r.Error = fmt.Sprintf("connection to %s lost while waiting (session still running)", hostLabel)
+				return r, ExitServer
+			}
+			if r, done, err := check(); err == nil && done {
+				return r, ExitOK
+			}
+		case <-tick.C:
+			r, done, err := check()
+			if err != nil {
+				out := started
+				out.Status = "running"
+				out.Error = err.Error()
+				return out, ExitServer
+			}
+			if done {
+				return r, ExitOK
+			}
+		}
+	}
 }
 
 type delegateOutput struct {

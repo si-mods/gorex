@@ -310,6 +310,7 @@ type Request struct {
 type DelegateOptions struct {
 	Agent           string `json:"agent,omitempty"`
 	Dir             string `json:"dir,omitempty"`
+	Name            string `json:"name,omitempty"`
 	Prompt          string `json:"prompt"`
 	Mode            string `json:"mode,omitempty"`
 	Resume          string `json:"resume,omitempty"`

@@ -70,6 +70,17 @@ func TestBuildDelegateLaunch(t *testing.T) {
 	if run.status != "completed" || run.result != "all good" || run.errText != "" {
 		t.Fatalf("recovered state = %q %q %q", run.status, run.result, run.errText)
 	}
+
+	// Verify tab name resolution: explicit --name wins, else concise prompt summary.
+	if got := delegateTabName("claude", "alice/s1", "Tech Debt Audit", "long prompt"); got != "Tech Debt Audit" {
+		t.Fatalf("explicit tab name = %q", got)
+	}
+	if got := delegateTabName("claude", "alice/s1", "", "Check git status and summarize"); got != "Check git status and summari…" {
+		t.Fatalf("prompt tab name = %q", got)
+	}
+	if got := delegateTabName("claude", "alice/s1", "", "Fix build"); got != "Fix build" {
+		t.Fatalf("short prompt tab name = %q", got)
+	}
 }
 
 func TestAgentCommandWithArgsQuoting(t *testing.T) {
