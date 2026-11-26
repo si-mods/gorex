@@ -257,7 +257,7 @@ nonisolated enum FileLink {
         while atRowStart, r >= max(0, row - maxSteps) {
             let prevLine = rows[r]
             guard nearFullWidth(prevLine) else { break }
-            let trimmedRight = prevLine.reversed().drop(while: { $0 == " " }).reversed()
+            let trimmedRight = String(prevLine.reversed().drop(while: { $0 == " " }).reversed())
             guard !trimmedRight.isEmpty else { break }
             var pStart = trimmedRight.endIndex
             while pStart > trimmedRight.startIndex {
