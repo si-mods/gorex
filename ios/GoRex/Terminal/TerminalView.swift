@@ -130,17 +130,12 @@ final class TerminalView: UIView, TerminalOutput {
 
     /// The keyboard's height over the terminal.
     private var keys: CGFloat = 0
-    /// Whether the phone's key bar is temporarily collapsed under Composer Mode
-    /// while the software keyboard is up, without changing `band` (so no PTY
-    /// resize runs).
-    var keyBarCollapsed = false
     /// How far the keyboard and compose bar reach over the grid, past the band
     /// under it: how far the terminal slides up to keep its cursor clear,
     /// without resizing the grid.
     var covered: CGFloat {
         let kb = band > 0 ? max(0, keys - (superview?.safeAreaInsets.bottom ?? 0)) : keys
-        let collapsed = keyBarCollapsed ? KeyBar.height : 0
-        return max(0, kb + composerCover - collapsed)
+        return kb + composerCover
     }
 
     /// How tall the phone's bar and the pane bar over it are.
@@ -430,10 +425,8 @@ final class TerminalView: UIView, TerminalOutput {
         let curve = n.userInfo?[UIResponder.keyboardAnimationCurveUserInfoKey] as? UInt ?? 7
         // Measured on the host, which does not slide.
         keys = max(0, superview.bounds.maxY - window.screen.coordinateSpace.convert(end, to: superview).minY)
-        let options = UIView.AnimationOptions(rawValue: curve << 16)
-        superview.setKeyboardVisible(keys > 0, duration: duration, options: options)
         bar.keyboard.setNeedsUpdateConfiguration()
-        slide(duration: duration, options: options)
+        slide(duration: duration, options: UIView.AnimationOptions(rawValue: curve << 16))
     }
 
     /// Slides the terminal up over the keyboard, no farther than it is tall,
@@ -1199,14 +1192,6 @@ final class TerminalHost: UIView, UIGestureRecognizerDelegate {
 
     /// The compose bar while Composer Mode has it up (Composer.swift).
     private var composer: ComposerBar?
-    /// Bottom constraint anchoring `composer` above either the key bar or
-    /// `keyboardLayoutGuide` when the key bar collapses while typing.
-    private var composerBottom: NSLayoutConstraint?
-    /// Whether the software keyboard is currently onscreen.
-    private var keyboardVisible = false
-    /// Whether the phone's key bar is currently collapsed behind Composer Mode
-    /// while the software keyboard is up.
-    private var keyBarCollapsed = false
     /// Top anchor of the key bar (or keyboard guide on iPad) for re-anchoring
     /// scrollDown when Composer Mode is toggled live.
     private var barAnchor: NSLayoutYAxisAnchor!
@@ -1228,58 +1213,6 @@ final class TerminalHost: UIView, UIGestureRecognizerDelegate {
     var currentComposerInset: CGFloat {
         guard let c = composer else { return 0 }
         return (c.bounds.height > 0 ? c.bounds.height : ComposerBar.baseHeight) + ComposerBar.gap
-    }
-    /// Composer inset reported to `TerminalScreen` (which adds `KeyBar.height`
-    /// when `hasBar` is true). Subtracting `KeyBar.height` while the key bar is
-    /// collapsed keeps `PaneBar` and `Reconnecting` anchored right above `composer`.
-    private var reportedComposerInset: CGFloat {
-        let inset = currentComposerInset
-        guard inset > 0 else { return 0 }
-        return keyBarCollapsed ? inset - KeyBar.height : inset
-    }
-
-    /// Updates the key bar and Composer Mode stacking when the software
-    /// keyboard appears or hides.
-    func setKeyboardVisible(_ visible: Bool, duration: Double = 0.25, options: UIView.AnimationOptions = .curveEaseOut) {
-        let changed = visible != keyboardVisible
-        keyboardVisible = visible
-        terminal.bar.setKeyboardVisible(visible)
-        updateKeyBarCollapse(animated: changed, duration: duration, options: options)
-        if changed {
-            UIView.animate(withDuration: duration, delay: 0, options: [options, .beginFromCurrentState]) {
-                self.layoutIfNeeded()
-            }
-        }
-    }
-
-    /// Collapses the iPhone key bar when Composer Mode is active and the
-    /// software keyboard is up, anchoring `composer` directly above the
-    /// keyboard without resizing the terminal grid.
-    private func updateKeyBarCollapse(animated: Bool, duration: Double = 0.2, options: UIView.AnimationOptions = .curveEaseOut) {
-        let shouldCollapse = composer != nil && keyboardVisible && UIDevice.current.userInterfaceIdiom != .pad
-        guard shouldCollapse != keyBarCollapsed else { return }
-        keyBarCollapsed = shouldCollapse
-        terminal.keyBarCollapsed = shouldCollapse
-        if let c = composer {
-            composerBottom?.isActive = false
-            let anchor = shouldCollapse || terminal.bar.superview !== self ? keyboardLayoutGuide.topAnchor : terminal.bar.topAnchor
-            let b = c.bottomAnchor.constraint(equalTo: anchor, constant: -ComposerBar.gap)
-            b.isActive = true
-            composerBottom = b
-        }
-        placeBottomEdge()
-        let reported = reportedComposerInset
-        Task { @MainActor [weak self] in self?.onComposerHeight?(reported) }
-        terminal.bar.isUserInteractionEnabled = !shouldCollapse
-        let apply = {
-            self.terminal.bar.alpha = shouldCollapse ? 0 : 1
-            self.layoutIfNeeded()
-        }
-        if animated {
-            UIView.animate(withDuration: duration, delay: 0, options: [options, .beginFromCurrentState], animations: apply)
-        } else {
-            apply()
-        }
     }
 
     /// Where the screen's mic lands: the pinned bar in Composer Mode,
@@ -1322,8 +1255,7 @@ final class TerminalHost: UIView, UIGestureRecognizerDelegate {
             scrollDownBottom = b
             placeBottomEdge()
             if wasTyping { composer?.focus() }
-            updateKeyBarCollapse(animated: false)
-            let inset = reportedComposerInset
+            let inset = currentComposerInset
             Task { @MainActor [weak self] in self?.onComposerHeight?(inset) }
         } else {
             let wasTyping = composer?.field.isFirstResponder == true
@@ -1331,10 +1263,8 @@ final class TerminalHost: UIView, UIGestureRecognizerDelegate {
             terminal.dictationInsert = nil
             terminal.composerSend = nil
             terminal.composerCover = 0
-            composerBottom = nil
             composer?.removeFromSuperview()
             composer = nil
-            updateKeyBarCollapse(animated: false)
             scrollDownBottom?.isActive = false
             let b = scrollDown.bottomAnchor.constraint(equalTo: barAnchor, constant: -12)
             b.isActive = true
@@ -1350,14 +1280,11 @@ final class TerminalHost: UIView, UIGestureRecognizerDelegate {
         let c = ComposerBar(terminal: terminal)
         c.translatesAutoresizingMaskIntoConstraints = false
         addSubview(c)
-        let shouldCollapse = keyboardVisible && UIDevice.current.userInterfaceIdiom != .pad
-        let bottom = shouldCollapse || terminal.bar.superview !== self ? keyboardLayoutGuide.topAnchor : terminal.bar.topAnchor
-        let b = c.bottomAnchor.constraint(equalTo: bottom, constant: -ComposerBar.gap)
-        composerBottom = b
+        let bottom = terminal.bar.superview === self ? terminal.bar.topAnchor : keyboardLayoutGuide.topAnchor
         NSLayoutConstraint.activate([
             c.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 10),
             c.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -10),
-            b,
+            c.bottomAnchor.constraint(equalTo: bottom, constant: -ComposerBar.gap),
         ])
         composer = c
         c.onClose = { [weak self] in self?.terminal.setComposerEnabled(false) }
@@ -1367,8 +1294,7 @@ final class TerminalHost: UIView, UIGestureRecognizerDelegate {
             let inset = h + ComposerBar.gap
             terminal.composerCover = inset
             placeBottomEdge()
-            let reported = reportedComposerInset
-            Task { @MainActor [weak self] in self?.onComposerHeight?(reported) }
+            Task { @MainActor [weak self] in self?.onComposerHeight?(inset) }
         }
         c.alpha = 0
         UIView.animate(withDuration: 0.2) { c.alpha = 1 }
@@ -1454,7 +1380,7 @@ final class TerminalHost: UIView, UIGestureRecognizerDelegate {
     /// bars above it; with neither it goes.
     func placeBottomEdge() {
         let bar = terminal.bar
-        let keyBar = bar.superview === self && !bar.isHidden && !keyBarCollapsed ? KeyBar.height : 0
+        let keyBar = bar.superview === self && !bar.isHidden ? KeyBar.height : 0
         let comp = currentComposerInset
         let height = keyBar + comp + aboveBar
         bottomEdge.isHidden = height == 0
@@ -1462,14 +1388,12 @@ final class TerminalHost: UIView, UIGestureRecognizerDelegate {
     }
 }
 
-/// The bar over the soft keyboard, which stays at the bottom while the
-/// keyboard is hidden: two capsules of Liquid Glass on iPhone, dark as the
-/// keyboard is (docs/IOS-029-key-bar-two-capsules.md). The main capsule
-/// starts with a `+` menu (Compose, Paste, Add Photo and Add File) and pages
-/// across two sets of four keys (`Esc, Ctrl, Tab, Enter` and
-/// `Shift, Opt, ~, Delete`); the right capsule holds the arrow stick, the
-/// screen's mic, and (while the software keyboard is up) the hide-keyboard
-/// button.
+/// The bar over the soft keyboard, aligned with official Rex on iPhone
+/// (docs/IOS-029-key-bar-two-capsules.md): three capsules of Liquid Glass.
+/// Left holds `⌘` (Paste, Add Photo, Add File) and Compose (`square.and.pencil`);
+/// middle is a continuous horizontal scroll strip with soft edge fades
+/// (`Esc, Ctrl, Opt, Shift, Tab, ~, |, /, -, Enter, Delete`); right holds the
+/// arrow stick, the screen's mic, and the keyboard toggle.
 /// On an iPad the keys go in the keyboard's bar of shortcuts, which shows
 /// with a hardware keyboard too.
 final class KeyBar: UIView, UIScrollViewDelegate {
@@ -1481,20 +1405,20 @@ final class KeyBar: UIView, UIScrollViewDelegate {
     let voice = UIView()
     private var keysRow: UIView?
     private var voiceCapsule: UIView?
-    private var moreLead: UIView?
-    private var moreDivider: UIView?
-    private var pageDots: [UIView] = []
+    private var leftWidth: NSLayoutConstraint?
     private var lastWidth: NSLayoutConstraint?
+    private var scrollView: UIScrollView?
+    private var scrollFadeContainer: UIView?
+    private let scrollFadeMask = CAGradientLayer()
     private var composerOn = false
-    private var keyboardVisible = false
     private var voiceActive = false
-    /// Hides the software keyboard while it is up.
+    /// Hides the keyboard, or shows it while it is hidden.
     let keyboard = UIButton()
     private weak var target: TerminalView?
-    private let more = KeyBar.button("plus", String(localized: "More"))
-    /// Toggles Composer Mode on iPad's input assistant bar.
+    private let more = KeyBar.button("command", String(localized: "More"))
+    /// Toggles Composer Mode on or off right from the key bar.
     private let compose = KeyBar.button("square.and.pencil", String(localized: "Compose"))
-    /// The files going up; `+` spins while there are any.
+    /// The files going up; `⌘` spins while there are any.
     var uploading = 0 { didSet { more.setNeedsUpdateConfiguration() } }
     /// Repeats the arrow the stick points to, with the modifiers held
     /// until the stick is let go.
@@ -1549,11 +1473,8 @@ final class KeyBar: UIView, UIScrollViewDelegate {
         shift.addAction(UIAction { [weak target] _ in target?.shift.toggle() }, for: .touchUpInside)
 
         // Add Photo and Add File are for a server that takes uploads, as
-        // the menu opens. On iPhone, Compose lives in this single `+` menu
-        // instead of taking a separate capsule.
-        more.accessibilityIdentifier = "keybar.more"
-        more.menu = UIMenu(children: [
-            UIAction(title: String(localized: "Compose"), image: UIImage(systemName: "square.and.pencil")) { [weak target] _ in target?.toggleComposer() },
+        // the menu opens.
+        let attachMenu = UIMenu(children: [
             UIAction(title: String(localized: "Paste"), image: UIImage(systemName: "doc.on.clipboard")) { [weak target] _ in target?.paste(nil) },
             UIDeferredMenuElement.uncached { [weak target] done in
                 let off: UIMenuElement.Attributes = target?.session.host.canUpload == true ? [] : .disabled
@@ -1563,9 +1484,11 @@ final class KeyBar: UIView, UIScrollViewDelegate {
                 ])
             },
         ])
+        more.accessibilityIdentifier = "keybar.more"
+        more.menu = attachMenu
         more.showsMenuAsPrimaryAction = true
         more.configurationUpdateHandler = { [weak self] b in
-            b.configuration = Self.config("plus", text: false, size: 17, held: false)
+            b.configuration = Self.config("command", text: false, size: 17, held: false)
             b.configuration?.showsActivityIndicator = (self?.uploading ?? 0) > 0
         }
 
@@ -1609,29 +1532,31 @@ final class KeyBar: UIView, UIScrollViewDelegate {
         }
         let delete = repeating("delete.left", String(localized: "Delete"), "backspace")
 
-        // Two pages of four slots: page 1 holds the four high-frequency keys,
-        // page 2 holds the remaining modifiers, tilde, and Delete.
-        let pageRows: [[UIView]] = [[escape, ctrl, tab, enter], [shift, alt, tilde, delete]]
-        let pages = UIStackView(arrangedSubviews: pageRows.map { keys in
-            let page = UIStackView(arrangedSubviews: keys)
-            page.distribution = .fillEqually
-            page.isLayoutMarginsRelativeArrangement = true
-            page.directionalLayoutMargins = NSDirectionalEdgeInsets(top: 0, leading: 4, bottom: 0, trailing: 6)
-            return page
-        })
+        // Continuous horizontal strip of fixed-width keys matching official Rex:
+        // Esc, Ctrl, Opt, Shift, Tab, ~, |, /, -, Enter, Delete.
+        let stripKeys: [UIView] = [escape, ctrl, alt, shift, tab, tilde, pipe, slash, dash, enter, delete]
+        let strip = UIStackView(arrangedSubviews: stripKeys)
+        strip.axis = .horizontal
+        strip.spacing = 0
+        strip.isLayoutMarginsRelativeArrangement = true
+        strip.directionalLayoutMargins = NSDirectionalEdgeInsets(top: 0, leading: 8, bottom: 0, trailing: 14)
+        for k in stripKeys {
+            k.widthAnchor.constraint(equalToConstant: 36).isActive = true
+        }
         let scroll = UIScrollView()
-        scroll.isPagingEnabled = true
         scroll.showsHorizontalScrollIndicator = false
+        scroll.alwaysBounceHorizontal = true
         scroll.delegate = self
-        scroll.addSubview(pages)
-        pages.translatesAutoresizingMaskIntoConstraints = false
+        scroll.addSubview(strip)
+        strip.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
-            pages.leadingAnchor.constraint(equalTo: scroll.contentLayoutGuide.leadingAnchor),
-            pages.trailingAnchor.constraint(equalTo: scroll.contentLayoutGuide.trailingAnchor),
-            pages.topAnchor.constraint(equalTo: scroll.contentLayoutGuide.topAnchor),
-            pages.bottomAnchor.constraint(equalTo: scroll.contentLayoutGuide.bottomAnchor),
-            pages.heightAnchor.constraint(equalTo: scroll.frameLayoutGuide.heightAnchor),
-        ] + pages.arrangedSubviews.map { $0.widthAnchor.constraint(equalTo: scroll.frameLayoutGuide.widthAnchor) })
+            strip.leadingAnchor.constraint(equalTo: scroll.contentLayoutGuide.leadingAnchor),
+            strip.trailingAnchor.constraint(equalTo: scroll.contentLayoutGuide.trailingAnchor),
+            strip.topAnchor.constraint(equalTo: scroll.contentLayoutGuide.topAnchor),
+            strip.bottomAnchor.constraint(equalTo: scroll.contentLayoutGuide.bottomAnchor),
+            strip.heightAnchor.constraint(equalTo: scroll.frameLayoutGuide.heightAnchor),
+        ])
+        self.scrollView = scroll
 
         let stick = Self.button("stick", String(localized: "Arrow Keys"))
         let drag = UILongPressGestureRecognizer(target: self, action: #selector(steer))
@@ -1655,110 +1580,74 @@ final class KeyBar: UIView, UIScrollViewDelegate {
         micDown.cancelsTouchesInView = false
         mic.addGestureRecognizer(micDown)
 
-        // Main capsule: leading `+` menu + thin divider + 2-page key scroller,
-        // with subtle page dots along the bottom edge.
-        let dividerLine = UIView()
-        dividerLine.backgroundColor = UIColor.white.withAlphaComponent(0.16)
-        dividerLine.translatesAutoresizingMaskIntoConstraints = false
-        let divider = UIView()
-        divider.addSubview(dividerLine)
+        // Wrap the scroll view in a container with a horizontal edge-fade mask
+        // so overflowing keys fade softly at the capsule's edges like Rex.
+        let fadeHost = UIView()
+        scroll.translatesAutoresizingMaskIntoConstraints = false
+        fadeHost.addSubview(scroll)
         NSLayoutConstraint.activate([
-            divider.widthAnchor.constraint(equalToConstant: 5),
-            dividerLine.widthAnchor.constraint(equalToConstant: 1),
-            dividerLine.heightAnchor.constraint(equalToConstant: 20),
-            dividerLine.centerXAnchor.constraint(equalTo: divider.centerXAnchor),
-            dividerLine.centerYAnchor.constraint(equalTo: divider.centerYAnchor),
+            scroll.leadingAnchor.constraint(equalTo: fadeHost.leadingAnchor),
+            scroll.trailingAnchor.constraint(equalTo: fadeHost.trailingAnchor),
+            scroll.topAnchor.constraint(equalTo: fadeHost.topAnchor),
+            scroll.bottomAnchor.constraint(equalTo: fadeHost.bottomAnchor),
         ])
-        let moreSlot = UIView()
-        more.translatesAutoresizingMaskIntoConstraints = false
-        moreSlot.addSubview(more)
-        NSLayoutConstraint.activate([
-            moreSlot.widthAnchor.constraint(equalToConstant: 38),
-            more.leadingAnchor.constraint(equalTo: moreSlot.leadingAnchor, constant: 4),
-            more.trailingAnchor.constraint(equalTo: moreSlot.trailingAnchor),
-            more.topAnchor.constraint(equalTo: moreSlot.topAnchor),
-            more.bottomAnchor.constraint(equalTo: moreSlot.bottomAnchor),
-        ])
-        self.moreLead = moreSlot
-        self.moreDivider = divider
+        scrollFadeMask.startPoint = CGPoint(x: 0, y: 0.5)
+        scrollFadeMask.endPoint = CGPoint(x: 1, y: 0.5)
+        fadeHost.layer.mask = scrollFadeMask
+        self.scrollFadeContainer = fadeHost
 
-        let mainContent = UIStackView(arrangedSubviews: [moreSlot, divider, scroll])
-        mainContent.alignment = .fill
-        mainContent.translatesAutoresizingMaskIntoConstraints = false
-        scroll.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        let middle = Self.capsule(fadeHost)
+        middle.setContentHuggingPriority(.defaultLow, for: .horizontal)
 
-        let dots = UIStackView()
-        dots.axis = .horizontal
-        dots.spacing = 4
-        dots.isUserInteractionEnabled = false
-        dots.translatesAutoresizingMaskIntoConstraints = false
-        for i in 0..<pageRows.count {
-            let dot = UIView()
-            dot.layer.cornerRadius = 1.75
-            dot.backgroundColor = UIColor.white.withAlphaComponent(i == 0 ? 0.78 : 0.24)
-            dot.translatesAutoresizingMaskIntoConstraints = false
-            NSLayoutConstraint.activate([
-                dot.widthAnchor.constraint(equalToConstant: 3.5),
-                dot.heightAnchor.constraint(equalToConstant: 3.5),
-            ])
-            dots.addArrangedSubview(dot)
-            pageDots.append(dot)
-        }
-        let mainBox = UIView()
-        mainBox.addSubview(mainContent)
-        mainBox.addSubview(dots)
-        NSLayoutConstraint.activate([
-            mainContent.leadingAnchor.constraint(equalTo: mainBox.leadingAnchor),
-            mainContent.trailingAnchor.constraint(equalTo: mainBox.trailingAnchor),
-            mainContent.topAnchor.constraint(equalTo: mainBox.topAnchor, constant: 4),
-            mainContent.bottomAnchor.constraint(equalTo: mainBox.bottomAnchor, constant: -4),
-            dots.centerXAnchor.constraint(equalTo: scroll.centerXAnchor),
-            dots.bottomAnchor.constraint(equalTo: mainBox.bottomAnchor, constant: -2.5),
-        ])
-        let main = Self.capsule(mainBox, verticalInset: 0)
-        main.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        let leftKeys = UIStackView(arrangedSubviews: [more, compose])
+        leftKeys.distribution = .fillEqually
+        let left = Self.capsule(leftKeys, verticalInset: 0)
+        let leftW = left.widthAnchor.constraint(equalToConstant: 80)
+        leftW.isActive = true
+        self.leftWidth = leftW
 
-        // Right capsule: stick, mic (hidden in Composer Mode), and hide-keyboard
-        // (shown only while the software keyboard is up).
         let right = UIStackView(arrangedSubviews: [stick, mic, keyboard])
         right.distribution = .fillEqually
         let last = Self.capsule(right)
-        let lastW = last.widthAnchor.constraint(equalToConstant: 92)
+        let lastW = last.widthAnchor.constraint(equalToConstant: 120)
         lastW.isActive = true
         self.lastWidth = lastW
 
-        let keysRow = UIStackView(arrangedSubviews: [main, last])
+        let keysRow = UIStackView(arrangedSubviews: [middle, last])
         keysRow.spacing = 8
         let voiceCapsule = Self.capsule(voice)
         voiceCapsule.alpha = 0
         voiceCapsule.isHidden = true
-        let container = UIView()
-        container.translatesAutoresizingMaskIntoConstraints = false
+        let rightArea = UIView()
+        rightArea.setContentHuggingPriority(.defaultLow, for: .horizontal)
         for sub in [keysRow, voiceCapsule] {
             sub.translatesAutoresizingMaskIntoConstraints = false
-            container.addSubview(sub)
+            rightArea.addSubview(sub)
             NSLayoutConstraint.activate([
-                sub.leadingAnchor.constraint(equalTo: container.leadingAnchor),
-                sub.trailingAnchor.constraint(equalTo: container.trailingAnchor),
-                sub.topAnchor.constraint(equalTo: container.topAnchor),
-                sub.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+                sub.leadingAnchor.constraint(equalTo: rightArea.leadingAnchor),
+                sub.trailingAnchor.constraint(equalTo: rightArea.trailingAnchor),
+                sub.topAnchor.constraint(equalTo: rightArea.topAnchor),
+                sub.bottomAnchor.constraint(equalTo: rightArea.bottomAnchor),
             ])
         }
         self.keysRow = keysRow
         self.voiceCapsule = voiceCapsule
 
+        let row = UIStackView(arrangedSubviews: [left, rightArea])
         setComposerMode(TerminalView.composerMode)
-        addSubview(container)
+        row.spacing = 8
+        row.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(row)
         addSubview(pad)
-        // The width of a phone's bar at most, in the middle of a wider one.
-        let fill = container.widthAnchor.constraint(equalTo: widthAnchor, constant: -32)
+        // Edge-to-edge 12pt side margins like official Rex, capped on wider screens.
+        let fill = row.widthAnchor.constraint(equalTo: widthAnchor, constant: -24)
         fill.priority = .defaultHigh
         NSLayoutConstraint.activate([
             fill,
-            container.widthAnchor.constraint(lessThanOrEqualToConstant: 440),
-            container.centerXAnchor.constraint(equalTo: centerXAnchor),
-            container.topAnchor.constraint(equalTo: topAnchor, constant: 4),
-            container.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -4),
+            row.widthAnchor.constraint(lessThanOrEqualToConstant: 440),
+            row.centerXAnchor.constraint(equalTo: centerXAnchor),
+            row.topAnchor.constraint(equalTo: topAnchor, constant: 4),
+            row.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -4),
         ])
     }
 
@@ -1769,38 +1658,45 @@ final class KeyBar: UIView, UIScrollViewDelegate {
 
     override var intrinsicContentSize: CGSize { CGSize(width: UIView.noIntrinsicMetric, height: Self.height) }
 
-    /// Hides the leading `+` menu and mic slot while Composer Mode is on
-    /// (both live inside `ComposerBar`), and restores them when off.
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        updateScrollFade()
+    }
+
+    /// Hides the redundant `⌘` key and mic slot while Composer Mode is on,
+    /// keeping the Compose button highlighted in the left capsule, and restores
+    /// both when Composer Mode is turned off.
     func setComposerMode(_ on: Bool) {
         composerOn = on
-        moreLead?.isHidden = on
-        moreDivider?.isHidden = on
+        more.isHidden = on
+        leftWidth?.constant = on ? 44 : 80
         compose.setNeedsUpdateConfiguration()
-        updateRightCapsule()
-    }
-
-    /// Shows the hide-keyboard button in the right capsule only while the
-    /// software keyboard is up.
-    func setKeyboardVisible(_ visible: Bool) {
-        guard visible != keyboardVisible else { return }
-        keyboardVisible = visible
-        updateRightCapsule()
-    }
-
-    private func updateRightCapsule() {
-        mic.isHidden = composerOn
-        keyboard.isHidden = composerOn || !keyboardVisible
-        let count = 1 + (mic.isHidden ? 0 : 1) + (keyboard.isHidden ? 0 : 1)
-        lastWidth?.constant = count == 1 ? 48 : (count == 2 ? 92 : 132)
+        mic.isHidden = on
+        lastWidth?.constant = on ? 84 : 120
+        setNeedsLayout()
     }
 
     func scrollViewDidScroll(_ scrollView: UIScrollView) {
-        let width = scrollView.bounds.width
-        guard width > 0, !pageDots.isEmpty else { return }
-        let page = max(0, min(pageDots.count - 1, Int(round(scrollView.contentOffset.x / width))))
-        for (i, dot) in pageDots.enumerated() {
-            dot.backgroundColor = UIColor.white.withAlphaComponent(i == page ? 0.78 : 0.24)
-        }
+        updateScrollFade()
+    }
+
+    private func updateScrollFade() {
+        guard let host = scrollFadeContainer, let sv = scrollView else { return }
+        let w = host.bounds.width
+        guard w > 0 else { return }
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        scrollFadeMask.frame = host.bounds
+        let maxX = max(0, sv.contentSize.width - sv.bounds.width)
+        let fadeLeft = sv.contentOffset.x > 1
+        let fadeRight = sv.contentOffset.x < maxX - 1
+        let lFrac = min(0.18, 16 / w)
+        let rFrac = min(0.22, 22 / w)
+        let clear = UIColor.clear.cgColor
+        let solid = UIColor.black.cgColor
+        scrollFadeMask.colors = [fadeLeft ? clear : solid, solid, solid, fadeRight ? clear : solid]
+        scrollFadeMask.locations = [0, NSNumber(value: Double(lFrac)), NSNumber(value: Double(1 - rFrac)), 1]
+        CATransaction.commit()
     }
 
     /// Transitions the middle and right capsules into a single horizontal

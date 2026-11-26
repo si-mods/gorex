@@ -49,41 +49,44 @@ final class ComposerUITests: XCTestCase {
     /// The compose bar's message field, which names the demo's block.
     private var message: XCUIElement { app.textViews["composer.message"] }
 
-    /// Without the mode the bar stays away and the two-capsule key bar shows
-    /// `+` (More), Esc/Ctrl/Tab/Enter, the stick, and Dictate (with Show
-    /// Keyboard hidden at rest). Opening Compose from `+` shows the bar, and
-    /// swiping down on the top grabber dismisses it again.
+    /// Without the mode the bar stays away and the key bar shows ⌘, Compose,
+    /// the continuous-scroll terminal keys, stick, Dictate, and Keyboard.
+    /// Tapping Compose opens the bar in one tap, and swiping down on the top
+    /// grabber dismisses it and restores ⌘ and Dictate.
     func testNoComposerByDefault() throws {
         XCTAssertTrue(message.waitForNonExistence(timeout: 5))
         XCTAssertTrue(app.buttons.matching(identifier: "Dictate").firstMatch.waitForExistence(timeout: 5))
-        XCTAssertTrue(app.buttons.matching(identifier: "Tab").firstMatch.waitForExistence(timeout: 5))
-        XCTAssertFalse(app.buttons["Show Keyboard"].exists)
-        let more = app.buttons["keybar.more"]
-        XCTAssertTrue(more.waitForExistence(timeout: 5))
-        shot("keybar-two-capsules-rest")
+        XCTAssertTrue(app.buttons["keybar.more"].waitForExistence(timeout: 5))
+        let compose = app.buttons["keybar.compose"]
+        XCTAssertTrue(compose.waitForExistence(timeout: 5))
+        shot("keybar-rex-rest")
 
-        // Opening the `+` menu and tapping Compose opens the bar and hides `+`.
-        more.tap()
-        let composeItem = app.buttons["Compose"]
-        XCTAssertTrue(composeItem.waitForExistence(timeout: 5))
-        composeItem.tap()
+        // Tapping Compose opens the bar in one tap and hides ⌘ on the key bar.
+        compose.tap()
         XCTAssertTrue(message.waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["keybar.more"].exists)
         let grabber = app.otherElements["composer.grabber"]
         XCTAssertTrue(grabber.waitForExistence(timeout: 5))
 
         // Dragging down on the top grabber dismisses Composer Mode and restores
-        // `+` and Dictate on the key bar.
+        // ⌘ and Dictate on the key bar.
         let start = grabber.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
         let end = start.withOffset(CGVector(dx: 0, dy: 90))
         start.press(forDuration: 0.05, thenDragTo: end)
         XCTAssertTrue(message.waitForNonExistence(timeout: 5))
-        XCTAssertTrue(more.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["keybar.more"].waitForExistence(timeout: 5))
         shot("composer-mode-closed")
+
+        // Tapping Compose reopens it and tapping Compose again closes it.
+        compose.tap()
+        XCTAssertTrue(message.waitForExistence(timeout: 5))
+        compose.tap()
+        XCTAssertTrue(message.waitForNonExistence(timeout: 5))
     }
 
     /// Composer Mode pins the bar with a top grabber handle, the mic beside
-    /// the field, + always present for Paste, `+` hidden on the key bar, and
-    /// collapses the key bar while the software keyboard is up.
+    /// the field, + always present for Paste, ⌘ hidden on the key bar while
+    /// the Compose button stays highlighted in the left capsule.
     func testComposerModePinsBar() throws {
         app.terminate()
         app.launchArguments = ["-composerMode", "YES"]
@@ -92,6 +95,7 @@ final class ComposerUITests: XCTestCase {
         XCTAssertTrue(message.waitForExistence(timeout: 10))
         XCTAssertTrue(app.buttons.matching(identifier: "Add Attachment").firstMatch.waitForExistence(timeout: 5))
         XCTAssertFalse(app.buttons["keybar.more"].exists)
+        XCTAssertTrue(app.buttons["keybar.compose"].waitForExistence(timeout: 5))
         // The key bar's mic moved into the bar, beside the field (the
         // mic's view exposes more than one element; take its own row's).
         let dictates = app.buttons.matching(identifier: "Dictate").allElementsBoundByIndex
