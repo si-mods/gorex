@@ -73,12 +73,10 @@ final class TerminalView: UIView, TerminalOutput {
     /// How far the pane bar reaches over the terminal: the cursor and the
     /// lines under it stay above it, as they do above the key bar.
     var paneInset: CGFloat = 0 { didSet { if paneInset != oldValue { setNeedsLayout(); slide(duration: 0) } } }
-    /// Resting height reserved for the pinned compose bar (Composer Mode) so
-    /// the terminal grid ends above it and never hides the program's input.
-    var composerInset: CGFloat = 0 { didSet { if composerInset != oldValue { setNeedsLayout(); slide(duration: 0) } } }
-    /// Extra height the compose bar grew beyond its resting height (multi-line
-    /// text or staged attachments): slides the terminal without resizing the grid.
-    var composerExtra: CGFloat = 0 { didSet { if composerExtra != oldValue { slide(duration: 0.15) } } }
+    /// Height + gap of the compose bar (resting height plus any multi-line
+    /// or attachment growth): slides the terminal up like the keyboard without
+    /// ever resizing the grid or sending SIGWINCH when Composer is toggled.
+    var composerCover: CGFloat = 0 { didSet { if composerCover != oldValue { slide(duration: 0.2) } } }
     var slideWaits = false
     var slideAgain = false
     var drawn = false
@@ -132,20 +130,18 @@ final class TerminalView: UIView, TerminalOutput {
 
     /// The keyboard's height over the terminal.
     private var keys: CGFloat = 0
-    /// How far the keyboard (and any temporary compose-bar growth) reaches
-    /// over the grid, past the band under it: how far the terminal slides up
-    /// to keep its cursor clear. The bars ride the keyboard, and the grid
-    /// ends above them.
+    /// How far the keyboard and compose bar reach over the grid, past the band
+    /// under it: how far the terminal slides up to keep its cursor clear,
+    /// without resizing the grid.
     var covered: CGFloat {
         let kb = band > 0 ? max(0, keys - (superview?.safeAreaInsets.bottom ?? 0)) : keys
-        return kb + composerExtra
+        return kb + composerCover
     }
 
-    /// How tall the phone's bar, the pane bar, and the resting compose bar are.
+    /// How tall the phone's bar and the pane bar over it are.
     private var barCover: CGFloat {
-        let extra = paneInset + composerInset
-        guard let host = superview, bar.superview === host, !bar.isHidden else { return extra }
-        return bar.intrinsicContentSize.height + extra
+        guard let host = superview, bar.superview === host, !bar.isHidden else { return paneInset }
+        return bar.intrinsicContentSize.height + paneInset
     }
 
     /// The band at the bottom the grid stays out of: the home indicator and
@@ -1266,8 +1262,7 @@ final class TerminalHost: UIView, UIGestureRecognizerDelegate {
             if wasTyping { _ = composer?.field.resignFirstResponder() }
             terminal.dictationInsert = nil
             terminal.composerSend = nil
-            terminal.composerInset = 0
-            terminal.composerExtra = 0
+            terminal.composerCover = 0
             composer?.removeFromSuperview()
             composer = nil
             scrollDownBottom?.isActive = false
@@ -1293,12 +1288,12 @@ final class TerminalHost: UIView, UIGestureRecognizerDelegate {
         ])
         composer = c
         c.onClose = { [weak self] in self?.terminal.setComposerEnabled(false) }
-        terminal.composerInset = ComposerBar.baseInset
+        terminal.composerCover = ComposerBar.baseInset
         c.onHeightChange = { [weak self] h in
             guard let self else { return }
-            terminal.composerExtra = max(0, h - ComposerBar.baseHeight)
-            placeBottomEdge()
             let inset = h + ComposerBar.gap
+            terminal.composerCover = inset
+            placeBottomEdge()
             Task { @MainActor [weak self] in self?.onComposerHeight?(inset) }
         }
         c.alpha = 0
