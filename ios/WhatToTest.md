@@ -10,6 +10,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 `web` job of `.github/workflows/ci.yml` fails it.
 
 ## en-US
+- Fixed lag and frame drops when tapping keys in the iPhone key bar, and kept the keyboard steady without bouncing when opening or closing Composer Mode.
 - Fixed duplicated and clipped streaming output in agent TUIs (such as agy) on iPhone when viewing a session currently sized by a wider desktop window.
 - Composer Mode uses a two-row layout like Rex (full-width field above circular + and Send), the key bar's left capsule stays steady, and Enter sits in the initial visible keys.
 - Aligned the iPhone key bar with Rex: restored ⌘ + Compose on the left (one tap reopens Composer), a smooth edge-faded scrolling strip in the middle, and stick, mic, and keyboard on the right.
@@ -168,6 +169,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - Settings: choose System, Light or Dark right in the Interface row, and Minimum Contrast from a menu. A space's Color menu shows each color's dot and marks the current one.
 
 ## zh-Hans
+- 修复点击 iPhone 底部按键栏快捷键时的延迟与掉帧，并修复键盘已打开时开关 Composer 导致键盘先收起再重复弹出的问题。
 - 修复手机查看由桌面端控制宽度的 agy 等智能体终端时，流式输出出现重复行和行尾截断的问题。
 - Composer 模式升级为官方 Rex 同款两行布局（上方全宽输入框，下方圆形 + 与右侧麦克风/发送），底部键栏左侧 ⌘ 与撰写稳定不跳动，且回车键直接排在首页可见区。
 - 对齐官方 Rex 手机端按键栏：恢复左侧 ⌘ + 撰写按钮（轻点一键开关 Composer），中间改为带边缘渐隐的连续横向滚动键条（Esc/Ctrl/Opt/Shift/Tab 等），右侧保留摇杆、麦克风与键盘切换。

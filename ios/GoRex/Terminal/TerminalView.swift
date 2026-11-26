@@ -1244,7 +1244,6 @@ final class TerminalHost: UIView, UIGestureRecognizerDelegate {
         guard on != (composer != nil) else { return }
         if on {
             let wasTyping = terminal.isFirstResponder
-            if wasTyping { _ = terminal.resignFirstResponder() }
             openComposer()
             composer?.onHoldVoiceStart = onHoldVoiceStart
             composer?.onHoldVoiceFinish = onHoldVoiceFinish
@@ -1254,23 +1253,29 @@ final class TerminalHost: UIView, UIGestureRecognizerDelegate {
             b.isActive = true
             scrollDownBottom = b
             placeBottomEdge()
+            // Transfer first responder directly without calling
+            // resignFirstResponder() first, so the keyboard stays steady
+            // instead of dismissing and bouncing back up.
             if wasTyping { composer?.focus() }
             let inset = currentComposerInset
             Task { @MainActor [weak self] in self?.onComposerHeight?(inset) }
         } else {
-            let wasTyping = composer?.field.isFirstResponder == true
-            if wasTyping { _ = composer?.field.resignFirstResponder() }
+            let oldComposer = composer
+            let wasTyping = oldComposer?.field.isFirstResponder == true
             terminal.dictationInsert = nil
             terminal.composerSend = nil
             terminal.composerCover = 0
-            composer?.removeFromSuperview()
+            // Clear `composer` before transferring focus so
+            // `terminal.canBecomeFirstResponder` is true and UIKit hands off
+            // the keyboard atomically without dismissing it.
             composer = nil
+            if wasTyping { _ = terminal.becomeFirstResponder() }
+            oldComposer?.removeFromSuperview()
             scrollDownBottom?.isActive = false
             let b = scrollDown.bottomAnchor.constraint(equalTo: barAnchor, constant: -12)
             b.isActive = true
             scrollDownBottom = b
             placeBottomEdge()
-            if wasTyping { _ = terminal.becomeFirstResponder() }
             Task { @MainActor [weak self] in self?.onComposerHeight?(0) }
         }
     }
@@ -1410,6 +1415,7 @@ final class KeyBar: UIView, UIScrollViewDelegate {
     private var scrollView: UIScrollView?
     private var scrollFadeContainer: UIView?
     private let scrollFadeMask = CAGradientLayer()
+    private var lastFadeState: (width: CGFloat, height: CGFloat, left: Bool, right: Bool)?
     private var composerOn = false
     private var voiceActive = false
     /// Hides the keyboard, or shows it while it is hidden.
@@ -1545,9 +1551,11 @@ final class KeyBar: UIView, UIScrollViewDelegate {
         for k in stripKeys {
             k.widthAnchor.constraint(equalToConstant: 36).isActive = true
         }
-        let scroll = UIScrollView()
+        let scroll = KeyStripScrollView()
         scroll.showsHorizontalScrollIndicator = false
         scroll.alwaysBounceHorizontal = true
+        scroll.delaysContentTouches = false
+        scroll.canCancelContentTouches = true
         scroll.delegate = self
         scroll.addSubview(strip)
         strip.translatesAutoresizingMaskIntoConstraints = false
@@ -1682,14 +1690,18 @@ final class KeyBar: UIView, UIScrollViewDelegate {
 
     private func updateScrollFade() {
         guard let host = scrollFadeContainer, let sv = scrollView else { return }
-        let w = host.bounds.width
-        guard w > 0 else { return }
-        CATransaction.begin()
-        CATransaction.setDisableActions(true)
-        scrollFadeMask.frame = host.bounds
+        let w = host.bounds.width, h = host.bounds.height
+        guard w > 0, h > 0 else { return }
         let maxX = max(0, sv.contentSize.width - sv.bounds.width)
         let fadeLeft = sv.contentOffset.x > 1
         let fadeRight = sv.contentOffset.x < maxX - 1
+        if let prev = lastFadeState, prev.width == w, prev.height == h, prev.left == fadeLeft, prev.right == fadeRight {
+            return
+        }
+        lastFadeState = (w, h, fadeLeft, fadeRight)
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        scrollFadeMask.frame = host.bounds
         let lFrac = min(0.18, 16 / w)
         let rFrac = min(0.22, 22 / w)
         let clear = UIColor.clear.cgColor
@@ -1815,16 +1827,25 @@ final class KeyBar: UIView, UIScrollViewDelegate {
     private static let small: CGFloat = 14
 
     private static func button(_ face: String, _ label: String? = nil, size: CGFloat = 17) -> UIButton {
-        let b = UIButton(configuration: config(face, text: label == nil, size: size, held: false))
+        let b = UIButton(configuration: config(face, text: label == nil, size: size, held: false, highlighted: false))
         b.accessibilityLabel = label
         b.changesSelectionAsPrimaryAction = false
-                // A held modifier is prominent glass, in the accent: white here.
-        b.configurationUpdateHandler = { b in b.configuration = config(face, text: label == nil, size: size, held: b.isSelected) }
+        // Update background/foreground in place without nested Liquid Glass
+        // (prominentGlass inside a UIGlassEffect capsule + mask drops frames).
+        b.configurationUpdateHandler = { b in
+            UIView.performWithoutAnimation {
+                var c = b.configuration ?? config(face, text: label == nil, size: size, held: false, highlighted: false)
+                let held = b.isSelected
+                c.baseBackgroundColor = held ? .white : (b.isHighlighted ? UIColor.white.withAlphaComponent(0.16) : .clear)
+                c.baseForegroundColor = held ? .black : .label
+                b.configuration = c
+            }
+        }
         return b
     }
 
-    private static func config(_ face: String, text: Bool, size: CGFloat, held: Bool) -> UIButton.Configuration {
-        var c = held ? UIButton.Configuration.prominentGlass() : .plain()
+    private static func config(_ face: String, text: Bool, size: CGFloat, held: Bool, highlighted: Bool = false) -> UIButton.Configuration {
+        var c = UIButton.Configuration.filled()
         if text {
             c.title = face
             c.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer {
@@ -1836,11 +1857,19 @@ final class KeyBar: UIView, UIScrollViewDelegate {
             c.image = face == "stick" ? stick : UIImage(systemName: face)
             c.preferredSymbolConfigurationForImage = UIImage.SymbolConfiguration(pointSize: size, weight: .regular)
         }
+        c.baseBackgroundColor = held ? .white : (highlighted ? UIColor.white.withAlphaComponent(0.16) : .clear)
         c.baseForegroundColor = held ? .black : .label
         c.cornerStyle = .capsule
         c.contentInsets = NSDirectionalEdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0)
         return c
     }
+}
+
+/// Horizontal key-strip scroll view that delivers taps to buttons immediately
+/// (`delaysContentTouches = false`) while still cancelling touches into a drag
+/// when the user swipes across a button.
+private final class KeyStripScrollView: UIScrollView {
+    override func touchesShouldCancel(in view: UIView) -> Bool { true }
 }
 
 /// A touch, watched as it goes down: it never keeps the touch from the
