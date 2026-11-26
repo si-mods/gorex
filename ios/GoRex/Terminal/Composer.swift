@@ -119,7 +119,7 @@ final class ComposerBar: UIView, UITextViewDelegate {
 
         field.font = .systemFont(ofSize: 17)
         field.backgroundColor = .clear
-        field.textContainerInset = UIEdgeInsets(top: 11, left: 4, bottom: 11, right: 4)
+        field.textContainerInset = UIEdgeInsets(top: 13, left: 4, bottom: 12, right: 4)
         field.textContainer.lineFragmentPadding = 0
         field.isScrollEnabled = false
         field.delegate = self
@@ -220,7 +220,7 @@ final class ComposerBar: UIView, UITextViewDelegate {
             send.widthAnchor.constraint(equalToConstant: 30),
             send.heightAnchor.constraint(equalToConstant: 30),
             hint.leadingAnchor.constraint(equalTo: field.frameLayoutGuide.leadingAnchor, constant: 4),
-            hint.topAnchor.constraint(equalTo: field.frameLayoutGuide.topAnchor, constant: 11),
+            hint.centerYAnchor.constraint(equalTo: field.frameLayoutGuide.centerYAnchor),
             hint.trailingAnchor.constraint(equalTo: field.frameLayoutGuide.trailingAnchor, constant: -4),
             field.heightAnchor.constraint(greaterThanOrEqualToConstant: Self.fieldMin),
             field.heightAnchor.constraint(lessThanOrEqualToConstant: Self.fieldMax),
@@ -328,6 +328,7 @@ final class ComposerBar: UIView, UITextViewDelegate {
     /// The photo picker over the terminal; each pick is staged as its
     /// original file and joins the strip, as Add Photo's are.
     private func addPhotos() {
+        field.resignFirstResponder()
         terminal?.present(PhotoPicker { [weak self] providers in
             guard let self, !providers.isEmpty else { return }
             Task {
@@ -347,6 +348,7 @@ final class ComposerBar: UIView, UITextViewDelegate {
     /// The camera over the terminal, where the device has one; the shot
     /// is written as a JPEG and joins the strip.
     private func takePhoto() {
+        field.resignFirstResponder()
         let p = UIImagePickerController()
         p.sourceType = .camera
         let shot = CameraShot { [weak self] image in
@@ -379,6 +381,7 @@ final class ComposerBar: UIView, UITextViewDelegate {
     /// The document picker over the terminal; its copies move into the
     /// folder and join the strip, as Add File's do.
     private func addFiles() {
+        field.resignFirstResponder()
         let p = UIDocumentPickerViewController(forOpeningContentTypes: [.item], asCopy: true)
         p.allowsMultipleSelection = true
         let pick = FilePick { [weak self] urls in

@@ -10,6 +10,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 `web` job of `.github/workflows/ci.yml` fails it.
 
 ## en-US
+- Composer Mode: the placeholder now centers vertically with the + button, and opening Photo, Camera, or File from + dismisses the keyboard first so it does not cover the picker.
 - Fixed a Composer Mode focus bug where Backspace and typing could occasionally go to the terminal instead of the compose field after dismissing sheets, alerts, or text selection.
 - Composer Mode: Grok-style two-row inline voice view (live transcript, wide waveform, Stop & one-tap Send), Paste moved into the + menu, and the redundant ⌘ key removed from the key bar.
 - Composer Mode: Send now reliably submits in Devin CLI and other TUIs, long placeholders fade cleanly before the mic/send icons, and the pane bar sits above the compose bar.
@@ -153,6 +154,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - Settings: choose System, Light or Dark right in the Interface row, and Minimum Contrast from a menu. A space's Color menu shows each color's dot and marks the current one.
 
 ## zh-Hans
+- Composer 模式：占位文字现在与左侧「+」按钮垂直居中对齐，且键盘弹出时从「+」选择照片/相机/文件会先收起键盘。
 - 修复 Composer 模式下偶尔因焦点回落到终端，导致退格键或输入误操作终端而非 Composer 输入框的问题。
 - Composer 模式：语音听写升级为双行布局（实时文字 + 全宽波形 + 停止与一键发送）；粘贴移入「+」菜单，并隐藏下方键栏多余的 ⌘ 按钮。
 - Composer 模式：修复 Devin CLI 等 TUI 中发送只上屏不提交的问题；长占位提示改为右边缘渐隐不再与图标重叠；多窗格切换栏移至消息栏上方。
