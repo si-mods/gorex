@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.65.0
+
+### Features
+
+* **rexapi:** terminal streams negotiate WebSocket permessage-deflate with clients that offer it (MOD-014), so output floods need less data and show up sooner on slow links ([#1170](https://github.com/si-mods/gorex/pull/1170))
+* **ios:** the connection log names `permessage-deflate` on a stream that negotiated it and hints a drop may be a large compressed message ([#1168](https://github.com/si-mods/gorex/pull/1168))
+* **ios:** Grok-style inline voice composer, Paste in the + menu, and the ⌘ key hidden (IOS-025) ([#1166](https://github.com/si-mods/gorex/pull/1166))
+* **ios:** inline voice controls and send haptics in composer mode (IOS-025) ([#1163](https://github.com/si-mods/gorex/pull/1163))
+* **ios:** manage local SSH keys in Settings (IOS-026) ([#1157](https://github.com/si-mods/gorex/pull/1157))
+
+### Bug Fixes
+
+* **ios:** composer: center the placeholder with the + icon, dismiss the keyboard before pickers ([#1171](https://github.com/si-mods/gorex/pull/1171)), stop the terminal stealing first responder ([#1169](https://github.com/si-mods/gorex/pull/1169)), fix submit timing in TUIs and keep the pane bar above it ([#1164](https://github.com/si-mods/gorex/pull/1164)), and stay clear of terminal input ([#1158](https://github.com/si-mods/gorex/pull/1158))
+* **ios:** localize SSH screens, alerts, and validation strings ([#1162](https://github.com/si-mods/gorex/pull/1162)); ssh review findings from #1136 and #1144 ([#1159](https://github.com/si-mods/gorex/pull/1159))
+* **theme:** wire button and select styles into menuTheme ([#1167](https://github.com/si-mods/gorex/pull/1167))
+
 ## 0.64.0
 
 ### Features
