@@ -1499,7 +1499,7 @@ private struct TerminalRepresentable: UIViewRepresentable {
     func makeUIView(context: Context) -> TerminalHost {
         let host = TerminalHost(TerminalView(session: session))
         for (sub, container) in [(context.coordinator.mic.view!, host.micTarget),
-                                 (context.coordinator.voice.view!, host.terminal.bar.voice)] {
+                                 (context.coordinator.voice.view!, host.voiceTarget)] {
             sub.frame = container.bounds
             sub.autoresizingMask = [.flexibleWidth, .flexibleHeight]
             container.addSubview(sub)
@@ -1532,7 +1532,7 @@ private struct TerminalRepresentable: UIViewRepresentable {
             context.coordinator.mic.rootView = mic
             context.coordinator.voice.rootView = voice
         }
-        v.terminal.bar.setVoice(active: dictating)
+        v.setVoice(active: dictating)
     }
 
     static func dismantleUIView(_ v: TerminalHost, coordinator: Coordinator) { v.terminal.close() }
