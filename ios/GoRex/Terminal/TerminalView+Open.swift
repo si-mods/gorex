@@ -44,7 +44,7 @@ extension TerminalView {
             case .success(let url) where download.isCancelled:
                 try? FileManager.default.removeItem(at: url.deletingLastPathComponent())
             case .success(let url):
-                preview(url)
+                preview(url, path: path)
             case .failure(let error):
                 guard !download.isCancelled, !(error is CancellationError) else { return }
                 let reason = (error as? RexError).map { FileLink.reason(code: $0.code, message: $0.message) } ?? error.localizedDescription
@@ -65,9 +65,11 @@ extension TerminalView {
         present(a)
     }
 
-    /// Shows a downloaded file over the terminal; the keyboard goes while
-    /// it is up and comes back as it closes, if it was up.
-    private func preview(_ url: URL) {
+    /// Shows a downloaded file over the terminal; HTML files open in the
+    /// in-app web view (docs/IOS-028-html-viewer.md), and other files in Quick
+    /// Look. The keyboard goes while it is up and comes back as it closes, if
+    /// it was up.
+    private func preview(_ url: URL, path: String) {
         // With no view controller to show it, the file would stay.
         guard shown != nil else {
             try? FileManager.default.removeItem(at: url.deletingLastPathComponent())
@@ -75,7 +77,18 @@ extension TerminalView {
         }
         let typing = typingBeforeLink
         resignFirstResponder()
-        present(OpenedFiles.Preview(url) { [weak self] in if typing { self?.becomeFirstResponder() } })
+        let restore: () -> Void = { [weak self] in if typing { self?.becomeFirstResponder() } }
+        if HTMLResourcePath.isHTML(url.lastPathComponent) {
+            let host = session.host, block = session.block, sid = session.session
+            let viewer = HTMLViewerController(fileURL: url, hostPath: path, loader: { resourcePath, maxBytes in
+                try await host.download(resourcePath, block: block, session: sid, maxBytes: maxBytes)
+            }, closed: restore)
+            let nav = UINavigationController(rootViewController: viewer)
+            nav.modalPresentationStyle = .fullScreen
+            present(nav)
+        } else {
+            present(OpenedFiles.Preview(url, closed: restore))
+        }
     }
 }
 
