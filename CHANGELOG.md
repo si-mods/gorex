@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.65.1
+
+### Bug Fixes
+
+* **theme:** keep window text colors on drawn context menus opened from dark faces, add `segmented.background` face shader support, and skip square `FillRadii` corners under element-bound rounded shaders ([#1175](https://github.com/si-mods/gorex/pull/1175))
+
 ## 0.65.0
 
 ### Features
