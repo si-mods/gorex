@@ -46,6 +46,9 @@ struct TerminalScreen: View {
     @State private var stopping = false
     /// Whether the terminal has the key bar, which holds the mic.
     @State private var hasBar = TerminalView.hasBar
+    /// Live Settings > Terminal Composer Mode switch so already-open terminals
+    /// show or hide the compose bar immediately when toggled.
+    @AppStorage(ComposerBar.modeKey) private var composerMode = false
     /// Live height + gap of the compose bar when Composer Mode is on, so
     /// PaneBar and Reconnecting sit cleanly above it.
     @State private var composerInset: CGFloat = TerminalView.composerMode ? ComposerBar.baseInset : 0
@@ -106,7 +109,7 @@ struct TerminalScreen: View {
             ForEach(pages) { pane in
                 let current = pane.session === session
                 // Under the fingers too, layout snaps.
-                TerminalRepresentable(session: pane.session, newTab: newTab, closeTab: closeTab, newSplit: newSplit, mic: mic, voice: voiceCapsule, dictating: said != nil && current, snaps: switching > 0 || paneDrag != nil,
+                TerminalRepresentable(session: pane.session, newTab: newTab, closeTab: closeTab, newSplit: newSplit, mic: mic, voice: voiceCapsule, dictating: said != nil && current, composerMode: composerMode, snaps: switching > 0 || paneDrag != nil,
                                       paneInset: paneCount > 1 ? PaneBar.height + 20 : 0,
                                       onPage: !pane.kept, current: current,
                                       onComposerHeight: { h in if current, composerInset != h { composerInset = h } },
@@ -398,7 +401,7 @@ struct TerminalScreen: View {
     private var voiceCapsule: VoiceCapsule {
         VoiceCapsule(said: said, busy: $busy, cancel: { terminal?.stopDictating() }, finish: {
             finishDictation()
-        }, send: TerminalView.composerMode ? {
+        }, send: composerMode ? {
             guard !busy else { return }
             busy = true
             Task {
@@ -1615,6 +1618,7 @@ private struct TitledGalleryCover: ViewModifier {
 private struct DictationShown: Equatable {
     let said: Dictation.Said?
     let busy: Bool
+    let composerMode: Bool
 }
 
 private struct TerminalRepresentable: UIViewRepresentable {
@@ -1625,6 +1629,7 @@ private struct TerminalRepresentable: UIViewRepresentable {
     let mic: Mic
     let voice: VoiceCapsule
     let dictating: Bool
+    let composerMode: Bool
     let snaps: Bool
     /// How far the pane bar reaches over the terminal, for the cursor to
     /// stay above it; 0 when the bar is away.
@@ -1671,7 +1676,7 @@ private struct TerminalRepresentable: UIViewRepresentable {
         let v = UIHostingController(rootView: voice)
         v.safeAreaRegions = []
         v.view.backgroundColor = .clear
-        return Coordinator(mic: m, voice: v, shown: DictationShown(said: voice.said, busy: voice.busy))
+        return Coordinator(mic: m, voice: v, shown: DictationShown(said: voice.said, busy: voice.busy, composerMode: composerMode))
     }
 
     /// The view lands without the keyboard, and on a phone with its key
@@ -1690,6 +1695,13 @@ private struct TerminalRepresentable: UIViewRepresentable {
 
     func updateUIView(_ v: TerminalHost, context: Context) {
         v.snaps = snaps
+        v.setComposerMode(composerMode)
+        for (sub, container) in [(context.coordinator.mic.view!, v.micTarget),
+                                 (context.coordinator.voice.view!, v.voiceTarget)] where sub.superview !== container {
+            sub.frame = container.bounds
+            sub.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+            container.addSubview(sub)
+        }
         v.terminal.newTab = newTab
         v.terminal.closeTab = closeTab
         v.terminal.newSplit = newSplit
@@ -1716,7 +1728,7 @@ private struct TerminalRepresentable: UIViewRepresentable {
         v.onPaneDrag = onPaneDrag
         v.canSwipe = canSwipe
         v.setBottomEdgeColor(UIColor(cgColor: (session.background ?? .black).cgColor))
-        if context.coordinator.shown.update(DictationShown(said: voice.said, busy: voice.busy)) {
+        if context.coordinator.shown.update(DictationShown(said: voice.said, busy: voice.busy, composerMode: composerMode)) {
             context.coordinator.mic.rootView = mic
             context.coordinator.voice.rootView = voice
         }

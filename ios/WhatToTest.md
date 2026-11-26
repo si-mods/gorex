@@ -10,6 +10,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 `web` job of `.github/workflows/ci.yml` fails it.
 
 ## en-US
+- Toggling Composer Mode in Settings > Terminal now applies immediately to already-open terminals without needing to switch tabs.
 - Fixed the Send arrow inside Composer Mode's voice view being invisible (white on white) in dark mode.
 - Press and hold anywhere on the Composer bar to dictate push-to-talk: hold to speak and release to convert straight into text in the message field.
 - Composer Mode: the placeholder now centers vertically with the + button, and opening Photo, Camera, or File from + dismisses the keyboard first so it does not cover the picker.
@@ -156,6 +157,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - Settings: choose System, Light or Dark right in the Interface row, and Minimum Contrast from a menu. A space's Color menu shows each color's dot and marks the current one.
 
 ## zh-Hans
+- 在「设置 › 终端」开关 Composer 模式现在会立即在当前已打开的终端生效，无需切出或重开标签页。
 - 修复 Composer 语音视图右侧发送按钮在深色模式下箭头与底色同为白色导致只看到一个白点的问题。
 - Composer 模式支持长按消息栏按住说话：长按直接开始语音录入，松开自动转为文字写入输入框。
 - Composer 模式：占位文字现在与左侧「+」按钮垂直居中对齐，且键盘弹出时从「+」选择照片/相机/文件会先收起键盘。

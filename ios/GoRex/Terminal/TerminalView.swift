@@ -1154,9 +1154,12 @@ final class TerminalHost: UIView, UIGestureRecognizerDelegate {
 
         // Composer Mode keeps the bar up from the start, before scrollDown so
         // scrollDown anchors above it instead of hiding behind it.
+        barAnchor = anchor
         if TerminalView.composerMode { openComposer() }
 
         addSubview(scrollDown)
+        let sdBottom = scrollDown.bottomAnchor.constraint(equalTo: composer?.topAnchor ?? anchor, constant: -12)
+        scrollDownBottom = sdBottom
         NSLayoutConstraint.activate([
             btn.leadingAnchor.constraint(equalTo: scrollDown.contentView.leadingAnchor),
             btn.trailingAnchor.constraint(equalTo: scrollDown.contentView.trailingAnchor),
@@ -1169,7 +1172,7 @@ final class TerminalHost: UIView, UIGestureRecognizerDelegate {
             scrollDown.widthAnchor.constraint(equalToConstant: 40),
             scrollDown.heightAnchor.constraint(equalToConstant: 40),
             scrollDown.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -16),
-            scrollDown.bottomAnchor.constraint(equalTo: composer?.topAnchor ?? anchor, constant: -12),
+            sdBottom,
         ])
 
         placeBottomEdge()
@@ -1180,6 +1183,10 @@ final class TerminalHost: UIView, UIGestureRecognizerDelegate {
 
     /// The compose bar while Composer Mode has it up (Composer.swift).
     private var composer: ComposerBar?
+    /// Top anchor of the key bar (or keyboard guide on iPad) for re-anchoring
+    /// scrollDown when Composer Mode is toggled live.
+    private var barAnchor: NSLayoutYAxisAnchor!
+    private var scrollDownBottom: NSLayoutConstraint?
     /// Notifies the SwiftUI screen of the compose bar's live height + gap so
     /// overlays above it (such as PaneBar and Reconnecting) sit cleanly above.
     var onComposerHeight: ((CGFloat) -> Void)?
@@ -1215,6 +1222,42 @@ final class TerminalHost: UIView, UIGestureRecognizerDelegate {
             composer.setVoice(active: active)
         } else {
             terminal.bar.setVoice(active: active)
+        }
+    }
+
+    /// Applies Settings > Terminal's Composer Mode live to an already-open
+    /// terminal, adding or removing the compose bar and updating the key bar,
+    /// bottom inset, scroll-down button, and bottom edge fade.
+    func setComposerMode(_ on: Bool) {
+        terminal.bar.setComposerMode(on)
+        guard on != (composer != nil) else { return }
+        if on {
+            if terminal.isFirstResponder { _ = terminal.resignFirstResponder() }
+            openComposer()
+            composer?.onHoldVoiceStart = onHoldVoiceStart
+            composer?.onHoldVoiceFinish = onHoldVoiceFinish
+            composer?.onHoldVoiceCancel = onHoldVoiceCancel
+            scrollDownBottom?.isActive = false
+            let b = scrollDown.bottomAnchor.constraint(equalTo: composer!.topAnchor, constant: -12)
+            b.isActive = true
+            scrollDownBottom = b
+            placeBottomEdge()
+            let inset = currentComposerInset
+            Task { @MainActor [weak self] in self?.onComposerHeight?(inset) }
+        } else {
+            if let f = composer?.field, f.isFirstResponder { _ = f.resignFirstResponder() }
+            terminal.dictationInsert = nil
+            terminal.composerSend = nil
+            terminal.composerInset = 0
+            terminal.composerExtra = 0
+            composer?.removeFromSuperview()
+            composer = nil
+            scrollDownBottom?.isActive = false
+            let b = scrollDown.bottomAnchor.constraint(equalTo: barAnchor, constant: -12)
+            b.isActive = true
+            scrollDownBottom = b
+            placeBottomEdge()
+            Task { @MainActor [weak self] in self?.onComposerHeight?(0) }
         }
     }
 
@@ -1350,6 +1393,8 @@ final class KeyBar: UIView {
     let voice = UIView()
     private var keysRow: UIView?
     private var voiceCapsule: UIView?
+    private var leftCapsule: UIView?
+    private var lastWidth: NSLayoutConstraint?
     private var voiceActive = false
     /// Hides the keyboard, or shows it while it is hidden.
     let keyboard = UIButton()
@@ -1507,10 +1552,9 @@ final class KeyBar: UIView {
         let middle = Self.capsule(scroll)
         // The middle capsule takes the room the others leave.
         middle.setContentHuggingPriority(.defaultLow, for: .horizontal)
-        // The mic sits out in Composer Mode, which moves it into the
-        // pinned compose bar (Composer.swift).
-        let rightKeys: [UIView] = TerminalView.composerMode ? [stick, keyboard] : [stick, mic, keyboard]
-        let right = UIStackView(arrangedSubviews: rightKeys)
+        // Keep all keys in the stack views and toggle visibility in
+        // setComposerMode(_:) so switching the setting updates live terminals.
+        let right = UIStackView(arrangedSubviews: [stick, mic, keyboard])
         right.distribution = .fillEqually
         let leftKeys = UIStackView(arrangedSubviews: [more])
         leftKeys.distribution = .fillEqually
@@ -1518,7 +1562,10 @@ final class KeyBar: UIView {
         // As in the bar this one copies: ⌘ 52, and 50 for each key of
         // the last.
         left.widthAnchor.constraint(equalToConstant: 52).isActive = true
-        last.widthAnchor.constraint(equalToConstant: CGFloat(rightKeys.count) * 50).isActive = true
+        let lastW = last.widthAnchor.constraint(equalToConstant: 150)
+        lastW.isActive = true
+        self.leftCapsule = left
+        self.lastWidth = lastW
         let keysRow = UIStackView(arrangedSubviews: [middle, last])
         keysRow.spacing = 8
         let voiceCapsule = Self.capsule(voice)
@@ -1539,9 +1586,8 @@ final class KeyBar: UIView {
         self.keysRow = keysRow
         self.voiceCapsule = voiceCapsule
 
-        // In Composer Mode, Paste and uploads live in the compose bar's + menu,
-        // so the redundant ⌘ capsule is omitted to give the keys more room.
-        let row = UIStackView(arrangedSubviews: TerminalView.composerMode ? [rightArea] : [left, rightArea])
+        let row = UIStackView(arrangedSubviews: [left, rightArea])
+        setComposerMode(TerminalView.composerMode)
         row.spacing = 8
         row.translatesAutoresizingMaskIntoConstraints = false
         addSubview(row)
@@ -1564,6 +1610,14 @@ final class KeyBar: UIView {
     static let height: CGFloat = 52
 
     override var intrinsicContentSize: CGSize { CGSize(width: UIView.noIntrinsicMetric, height: Self.height) }
+
+    /// Hides the redundant ⌘ capsule and mic slot when Composer Mode is on,
+    /// restoring both when it is turned off.
+    func setComposerMode(_ on: Bool) {
+        leftCapsule?.isHidden = on
+        mic.isHidden = on
+        lastWidth?.constant = on ? 100 : 150
+    }
 
     /// Transitions the middle and right capsules into a single horizontal
     /// voice capsule while dictating, or back to the key capsules when done.
