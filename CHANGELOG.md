@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.66.0
+
+### Features
+
+* **settings:** adopt Kubai two-tone icons with hover micro-animations in the Settings sidebar and add an Icon motion toggle under Appearance (DSK-014) ([#1182](https://github.com/si-mods/gorex/pull/1182))
+
 ## 0.65.2
 
 ### Changes
