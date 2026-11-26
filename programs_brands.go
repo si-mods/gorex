@@ -36,7 +36,7 @@ func registerRexBrands(m map[string]program) {
 	m["buildkite"] = program{Name: "Buildkite", Glyph: "brand:buildkite", TileBg: ui.Hex("#00d078"), TileFg: ui.Hex("#ffffff")}
 	m["butler"] = program{Name: "Git Butler", Glyph: "brand:butler", TileBg: ui.Hex("#bae8e8"), TileFg: ui.Hex("#000000"), TileBorder: true}
 	m["caddy"] = program{Name: "Caddy", Glyph: "brand:caddy", TileBg: ui.Hex("#0a374a"), TileFg: ui.Hex("#00f857")}
-	m["caffeinate"] = program{Name: "Shell - caffeinate", Glyph: "brand:caffeinate", TileBg: ui.Hex("#2b2d31"), TileFg: ui.Hex("#7ee787")}
+	m["caffeinate"] = program{Name: "caffeinate", Glyph: "brand:caffeinate", TileBg: ui.Hex("#2b2d31"), TileFg: ui.Hex("#7ee787")}
 	m["charm"] = program{Name: "Charm", Glyph: "brand:charm", TileBg: ui.Hex("#ab5afa"), TileFg: ui.Hex("#ffffff")}
 	m["clang"] = program{Name: "Clang", Glyph: "brand:clang", TileBg: ui.Hex("#cbf0ff"), TileFg: ui.Hex("#002c38"), TileBorder: true}
 	m["cloudflare"] = program{Name: "Cloudflare", Glyph: "brand:cloudflare", TileBg: ui.Hex("#f6821e"), TileFg: ui.Hex("#ffffff")}
@@ -59,7 +59,7 @@ func registerRexBrands(m map[string]program) {
 	m["e2b"] = program{Name: "E2B", Glyph: "brand:e2b", TileBg: ui.Hex("#000000"), TileFg: ui.Hex("#ff0000")}
 	m["elixir"] = program{Name: "Elixir", Glyph: "brand:elixir", TileBg: ui.Hex("#9243bf"), TileFg: ui.Hex("#ffffff")}
 	m["expo"] = program{Name: "Expo", Glyph: "brand:expo", TileBg: ui.Hex("#ffffff"), TileFg: ui.Hex("#000000"), TileBorder: true}
-	m["fish"] = program{Name: "Shell - fish", Glyph: "brand:fish", TileBg: ui.Hex("#2b2d31"), TileFg: ui.Hex("#7ee787"), Shell: true}
+	m["fish"] = program{Name: "fish", Glyph: "brand:fish", TileBg: ui.Hex("#2b2d31"), TileFg: ui.Hex("#7ee787"), Shell: true}
 	m["flutter"] = program{Name: "Flutter", Glyph: "brand:flutter", TileBg: ui.Hex("#5fc8f9"), TileFg: ui.Hex("#ffffff")}
 	m["fm"] = program{Name: "Foundation Models", Glyph: "brand:fm", TileBg: ui.Hex("#9bef53"), TileFg: ui.Hex("#f1fff3"), TileBgGradient: &grad_fm}
 	m["fx"] = program{Name: "fx", Glyph: "brand:fx", TileBg: ui.Hex("#111111"), TileFg: ui.Hex("#ffffff")}
@@ -88,7 +88,7 @@ func registerRexBrands(m map[string]program) {
 	m["kube"] = program{Name: "Kubernetes", Glyph: "brand:kube", TileBg: ui.Hex("#326ce5"), TileFg: ui.Hex("#ffffff")}
 	m["ladybird"] = program{Name: "Ladybird", Glyph: "brand:ladybird", TileBg: ui.Hex("#000000"), TileFg: ui.Hex("#ae94ed")}
 	m["llama-cpp"] = program{Name: "Llama", Glyph: "brand:llama-cpp", TileBg: ui.Hex("#ffffff"), TileFg: ui.Hex("#000000"), TileBorder: true}
-	m["log"] = program{Name: "Shell - log", Glyph: "brand:log", TileBg: ui.Hex("#2b2d31"), TileFg: ui.Hex("#7ee787")}
+	m["log"] = program{Name: "log", Glyph: "brand:log", TileBg: ui.Hex("#2b2d31"), TileFg: ui.Hex("#7ee787")}
 	m["maki"] = program{Name: "Maki", Glyph: "brand:maki", TileBg: ui.Hex("#dce5ff"), TileFg: ui.Hex("#2f1f33"), TileBgGradient: &grad_maki}
 	m["mastra"] = program{Name: "Mastra", Glyph: "brand:mastra", TileBg: ui.Hex("#171717"), TileFg: ui.Hex("#ffffff")}
 	m["meta"] = program{Name: "Meta", Glyph: "brand:meta", TileBg: ui.Hex("#ffffff"), TileFg: ui.Hex("#0072ff"), TileBorder: true}
@@ -106,7 +106,7 @@ func registerRexBrands(m map[string]program) {
 	m["nix"] = program{Name: "Nix", Glyph: "brand:nix", TileBg: ui.Hex("#000000"), TileFg: ui.Hex("#ffffff")}
 	m["nomad"] = program{Name: "Nomad", Glyph: "brand:nomad", TileBg: ui.Hex("#00ca8e"), TileFg: ui.Hex("#ffffff")}
 	m["notion"] = program{Name: "Notion", Glyph: "brand:notion", TileBg: ui.Hex("#ffffff"), TileFg: ui.Hex("#000000"), TileBorder: true}
-	m["nushell"] = program{Name: "Shell - nushell", Glyph: "brand:nushell", TileBg: ui.Hex("#2b2d31"), TileFg: ui.Hex("#7ee787"), Shell: true}
+	m["nushell"] = program{Name: "nushell", Glyph: "brand:nushell", TileBg: ui.Hex("#2b2d31"), TileFg: ui.Hex("#7ee787"), Shell: true}
 	m["ollama"] = program{Name: "Ollama", Glyph: "brand:ollama", TileBg: ui.Hex("#f9f9f9"), TileFg: ui.Hex("#111111"), TileBorder: true}
 	m["omnigent"] = program{Name: "Omnigent", Glyph: "brand:omnigent", TileBg: ui.Hex("#ff149f"), TileFg: ui.Hex("#ffffff")}
 	m["openclaw"] = program{Name: "OpenClaw", Glyph: "brand:openclaw", TileBg: ui.Hex("#ca0f21"), TileFg: ui.Hex("#ffffff"), TileBgGradient: &grad_openclaw}
@@ -133,11 +133,11 @@ func registerRexBrands(m map[string]program) {
 	m["rex"] = program{Name: "Rex", Glyph: "brand:rex", TileBg: ui.Hex("#be6dff"), TileFg: ui.Hex("#ffffff")}
 	m["sail"] = program{Name: "Sail", Glyph: "brand:sail", TileBg: ui.Hex("#0e41b6"), TileFg: ui.Hex("#ffffff")}
 	m["sanity"] = program{Name: "Sanity", Glyph: "brand:sanity", TileBg: ui.Hex("#ffffff"), TileFg: ui.Hex("#000000"), TileBorder: true}
-	m["shell-container"] = program{Name: "Shell - container", Glyph: "brand:shell-container", TileBg: ui.Hex("#2b2d31"), TileFg: ui.Hex("#7ee787")}
-	m["shell-curl"] = program{Name: "Shell - curl", Glyph: "brand:shell-curl", TileBg: ui.Hex("#2b2d31"), TileFg: ui.Hex("#7ee787")}
-	m["shell-manual"] = program{Name: "Shell - manual", Glyph: "brand:shell-manual", TileBg: ui.Hex("#2b2d31"), TileFg: ui.Hex("#7ee787")}
+	m["shell-container"] = program{Name: "container", Glyph: "brand:shell-container", TileBg: ui.Hex("#2b2d31"), TileFg: ui.Hex("#7ee787")}
+	m["shell-curl"] = program{Name: "curl", Glyph: "brand:shell-curl", TileBg: ui.Hex("#2b2d31"), TileFg: ui.Hex("#7ee787")}
+	m["shell-manual"] = program{Name: "manual", Glyph: "brand:shell-manual", TileBg: ui.Hex("#2b2d31"), TileFg: ui.Hex("#7ee787")}
 	m["shopify"] = program{Name: "Shopify", Glyph: "brand:shopify", TileBg: ui.Hex("#89c129"), TileFg: ui.Hex("#ffffff")}
-	m["sleep"] = program{Name: "Shell - sleep", Glyph: "brand:sleep", TileBg: ui.Hex("#2b2d31"), TileFg: ui.Hex("#7ee787")}
+	m["sleep"] = program{Name: "sleep", Glyph: "brand:sleep", TileBg: ui.Hex("#2b2d31"), TileFg: ui.Hex("#7ee787")}
 	m["snowflake"] = program{Name: "Snowflake", Glyph: "brand:snowflake", TileBg: ui.Hex("#259edc"), TileFg: ui.Hex("#ffffff")}
 	m["sofka"] = program{Name: "Sofka", Glyph: "brand:sofka", TileBg: ui.Hex("#11111b"), TileFg: ui.Hex("#b4befe")}
 	m["sqlite"] = program{Name: "SQLite", Glyph: "brand:sqlite", TileBg: ui.Hex("#0082d2"), TileFg: ui.Hex("#ffffff")}

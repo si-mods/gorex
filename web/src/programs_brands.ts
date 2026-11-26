@@ -22,7 +22,7 @@ export function registerRexBrands(m: Map<string, Program>): void {
   m.set("buildkite", p("Buildkite", "brand:buildkite", 0x00d078, 0xffffff));
   m.set("butler", p("Git Butler", "brand:butler", 0xbae8e8, 0x000000, { tileBorder: true }));
   m.set("caddy", p("Caddy", "brand:caddy", 0x0a374a, 0x00f857));
-  m.set("caffeinate", p("Shell - caffeinate", "brand:caffeinate", 0x2b2d31, 0x7ee787));
+  m.set("caffeinate", p("caffeinate", "brand:caffeinate", 0x2b2d31, 0x7ee787));
   m.set("charm", p("Charm", "brand:charm", 0xab5afa, 0xffffff));
   m.set("clang", p("Clang", "brand:clang", 0xcbf0ff, 0x002c38, { tileBorder: true }));
   m.set("cloudflare", p("Cloudflare", "brand:cloudflare", 0xf6821e, 0xffffff));
@@ -45,7 +45,7 @@ export function registerRexBrands(m: Map<string, Program>): void {
   m.set("e2b", p("E2B", "brand:e2b", 0x000000, 0xff0000));
   m.set("elixir", p("Elixir", "brand:elixir", 0x9243bf, 0xffffff));
   m.set("expo", p("Expo", "brand:expo", 0xffffff, 0x000000, { tileBorder: true }));
-  m.set("fish", p("Shell - fish", "brand:fish", 0x2b2d31, 0x7ee787, { shell: true }));
+  m.set("fish", p("fish", "brand:fish", 0x2b2d31, 0x7ee787, { shell: true }));
   m.set("flutter", p("Flutter", "brand:flutter", 0x5fc8f9, 0xffffff));
   m.set("fm", p("Foundation Models", "brand:fm", 0x9bef53, 0xf1fff3, { tileBgGradient: "linear-gradient(90deg, #99ee56 0%, #0393db 95.3%)" }));
   m.set("fx", p("fx", "brand:fx", 0x111111, 0xffffff));
@@ -74,7 +74,7 @@ export function registerRexBrands(m: Map<string, Program>): void {
   m.set("kube", p("Kubernetes", "brand:kube", 0x326ce5, 0xffffff));
   m.set("ladybird", p("Ladybird", "brand:ladybird", 0x000000, 0xae94ed));
   m.set("llama-cpp", p("Llama", "brand:llama-cpp", 0xffffff, 0x000000, { tileBorder: true }));
-  m.set("log", p("Shell - log", "brand:log", 0x2b2d31, 0x7ee787));
+  m.set("log", p("log", "brand:log", 0x2b2d31, 0x7ee787));
   m.set("maki", p("Maki", "brand:maki", 0xdce5ff, 0x2f1f33, { tileBgGradient: "linear-gradient(90deg, #dce5ff 0%, #eedcf7 50%, #fcd5dd 100%)" }));
   m.set("mastra", p("Mastra", "brand:mastra", 0x171717, 0xffffff));
   m.set("meta", p("Meta", "brand:meta", 0xffffff, 0x0072ff, { tileBorder: true }));
@@ -92,7 +92,7 @@ export function registerRexBrands(m: Map<string, Program>): void {
   m.set("nix", p("Nix", "brand:nix", 0x000000, 0xffffff));
   m.set("nomad", p("Nomad", "brand:nomad", 0x00ca8e, 0xffffff));
   m.set("notion", p("Notion", "brand:notion", 0xffffff, 0x000000, { tileBorder: true }));
-  m.set("nushell", p("Shell - nushell", "brand:nushell", 0x2b2d31, 0x7ee787, { shell: true }));
+  m.set("nushell", p("nushell", "brand:nushell", 0x2b2d31, 0x7ee787, { shell: true }));
   m.set("ollama", p("Ollama", "brand:ollama", 0xf9f9f9, 0x111111, { tileBorder: true }));
   m.set("omnigent", p("Omnigent", "brand:omnigent", 0xff149f, 0xffffff));
   m.set("openclaw", p("OpenClaw", "brand:openclaw", 0xca0f21, 0xffffff, { tileBgGradient: "linear-gradient(312deg, #ca0f21 0%, #f5664b 100%)" }));
@@ -119,11 +119,11 @@ export function registerRexBrands(m: Map<string, Program>): void {
   m.set("rex", p("Rex", "brand:rex", 0xbe6dff, 0xffffff));
   m.set("sail", p("Sail", "brand:sail", 0x0e41b6, 0xffffff));
   m.set("sanity", p("Sanity", "brand:sanity", 0xffffff, 0x000000, { tileBorder: true }));
-  m.set("shell-container", p("Shell - container", "brand:shell-container", 0x2b2d31, 0x7ee787));
-  m.set("shell-curl", p("Shell - curl", "brand:shell-curl", 0x2b2d31, 0x7ee787));
-  m.set("shell-manual", p("Shell - manual", "brand:shell-manual", 0x2b2d31, 0x7ee787));
+  m.set("shell-container", p("container", "brand:shell-container", 0x2b2d31, 0x7ee787));
+  m.set("shell-curl", p("curl", "brand:shell-curl", 0x2b2d31, 0x7ee787));
+  m.set("shell-manual", p("manual", "brand:shell-manual", 0x2b2d31, 0x7ee787));
   m.set("shopify", p("Shopify", "brand:shopify", 0x89c129, 0xffffff));
-  m.set("sleep", p("Shell - sleep", "brand:sleep", 0x2b2d31, 0x7ee787));
+  m.set("sleep", p("sleep", "brand:sleep", 0x2b2d31, 0x7ee787));
   m.set("snowflake", p("Snowflake", "brand:snowflake", 0x259edc, 0xffffff));
   m.set("sofka", p("Sofka", "brand:sofka", 0x11111b, 0xb4befe));
   m.set("sqlite", p("SQLite", "brand:sqlite", 0x0082d2, 0xffffff));
