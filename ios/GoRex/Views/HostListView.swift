@@ -403,7 +403,7 @@ struct HostListView: View {
             }
             .matchedTransitionSource(id: ZoomSource.settings, in: zoom)
             ToolbarItem(placement: .bottomBar) {
-                Button(inbox ? "Show All Tabs" : "Show Activity", systemImage: inbox ? "eye.slash" : "eye") {
+                InboxToolbarButton(inbox: inbox) {
                     // A tab in both lists moves to its place in the other;
                     // the rest fades, and all of it under Reduce Motion.
                     withAnimation(still ? .easeInOut(duration: 0.15) : .snappy) { inbox.toggle() }

@@ -43,6 +43,9 @@ struct InboxItem: Identifiable {
         return d == heading(title: title) ? "" : d
     }
 
+    /// Whether the item waits for the user, failed, or finished unseen.
+    var needsAttention: Bool { Inbox.actionableStates.contains(status.state) }
+
     /// Whether a search matches it, by what its row shows.
     func matches(_ query: String, title: String) -> Bool {
         query.isEmpty || [heading(title: title), detail(title: title), title].contains { $0.localizedCaseInsensitiveContains(query) }
@@ -50,8 +53,57 @@ struct InboxItem: Identifiable {
 }
 
 enum Inbox {
+    /// States that need the user's attention, in order of urgency.
+    static let actionableStates = ["blocked", "error", "done"]
     /// The states the inbox groups, the most urgent first.
-    static let states = ["blocked", "error", "done", "working"]
+    static let states = actionableStates + ["working"]
+
+    /// Counts driving the inbox toolbar badge and header summary.
+    struct Summary: Equatable {
+        let attentionCount: Int
+        let hasError: Bool
+        let workingCount: Int
+    }
+
+    /// Computes attention and working counts from inbox items.
+    static func summary(_ items: [InboxItem]) -> Summary {
+        var attention = 0
+        var hasError = false
+        var working = 0
+        for item in items {
+            switch item.status.state {
+            case "error":
+                attention += 1
+                hasError = true
+            case "blocked", "done":
+                attention += 1
+            case "working":
+                working += 1
+            default:
+                break
+            }
+        }
+        return Summary(attentionCount: attention, hasError: hasError, workingCount: working)
+    }
+
+    /// Formats a count for the toolbar badge; nil for zero, capped at 99+.
+    static func badgeText(_ count: Int) -> String? {
+        guard count > 0 else { return nil }
+        return count > 99 ? "99+" : "\(count)"
+    }
+
+    /// Splits items into actionable groups (blocked, error, done) and
+    /// background working items, newest first within each group.
+    static func sections(_ items: [InboxItem]) -> (attention: [(state: String, items: [InboxItem])], working: [InboxItem]) {
+        let attention = actionableStates.compactMap { state -> (state: String, items: [InboxItem])? in
+            let some = items.filter { $0.status.state == state }
+                .sorted { ($0.status.updated ?? .distantPast) > ($1.status.updated ?? .distantPast) }
+            return some.isEmpty ? nil : (state, some)
+        }
+        let working = items.filter { $0.status.state == "working" }
+            .sorted { ($0.status.updated ?? .distantPast) > ($1.status.updated ?? .distantPast) }
+        return (attention, working)
+    }
 
     /// Items by state, the most urgent first, the newest first within one;
     /// groups with none are left out.
