@@ -7,6 +7,7 @@
 // on the desktop), not translated.
 
 import { t } from "./i18n";
+import { registerRexBrands } from "./programs_brands";
 import { setTooltip } from "./tooltip";
 
 export interface Program {
@@ -99,6 +100,7 @@ const programs = new Map<string, Program>(Object.entries({
   antigravity: agy,
   "antigravity-cli": agy,
 }));
+registerRexBrands(programs);
 
 const shells = new Set(["zsh", "bash", "fish", "sh", "dash", "nu", "pwsh", "elvish", "xonsh", "tcsh", "csh", "ksh", "cmd", "powershell"]);
 

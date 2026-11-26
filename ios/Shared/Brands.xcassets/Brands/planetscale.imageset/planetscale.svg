@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="400px" height="400px" viewBox="0 0 400 400" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>planetscale</title>
+    <g id="planetscale" stroke="none" fill="none" fill-rule="nonzero">
+        <g id="Graphic" transform="translate(12, 12)" fill="#000000">
+            <path d="M-0.000142716481,188 C-0.000142716481,84.1676 84.1676,0 188,0 C264.3374,0 330.0528,45.496 359.503,110.8636 L110.873,359.4936 C100.257109,354.710735 90.1085033,348.951992 80.558,342.2916 L234.8496,188 L188,188 L55.0652,320.9348 C19.7555099,285.713717 -0.0614997959,237.87279 -0.000142716481,188 M375.9906,188.0658 L188.0564,376 C291.8324,375.9624 375.9624,291.8418 375.9906,188.0658" id="Shape"></path>
+        </g>
+    </g>
+</svg>

@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="392px" height="392px" viewBox="0 0 392 392" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>proto</title>
+    <defs>
+        <linearGradient x1="0%" y1="99.3239242%" x2="100%" y2="0.676075766%" id="linearGradient-1">
+            <stop stop-color="#ffffff" offset="0%"></stop>
+            <stop stop-color="#ffffff" stop-opacity="0.603436734" offset="100%"></stop>
+        </linearGradient>
+        <linearGradient x1="50%" y1="0%" x2="50%" y2="100%" id="linearGradient-2">
+            <stop stop-color="#ffffff" offset="0%"></stop>
+            <stop stop-color="#ffffff" stop-opacity="0.751072304" offset="100%"></stop>
+        </linearGradient>
+    </defs>
+    <g id="proto" stroke="none" fill="none" fill-rule="evenodd" stroke-width="1">
+        <g id="Group" transform="translate(30, 31)">
+            <path d="M147.258437,34.9161204 C168.55921,34.9161204 188.803678,39.4387013 207.083988,47.5760106 C206.084647,51.4797285 205.450566,55.5292759 205.21765,59.685977 C172.75946,62.3895452 147.258437,89.5911544 147.258437,122.748847 C147.258437,157.699059 175.591181,186.031804 210.541394,186.031804 C244.284573,186.031804 271.859471,159.622253 273.723866,126.345373 C276.870976,126.083122 279.954816,125.590291 282.956219,124.883775 C290.400314,142.491756 294.516873,161.85242 294.516873,182.174557 C294.516873,263.503146 228.587025,329.432993 147.258437,329.432993 C65.9298477,329.432993 7.67386155e-13,263.503146 7.67386155e-13,182.174557 C7.67386155e-13,100.845968 65.9298477,34.9161204 147.258437,34.9161204 Z" id="Combined-Shape" fill="url(#linearGradient-1)"></path>
+            <circle id="e" fill="url(#linearGradient-2)" cx="268.400097" cy="63.282957" r="63.282957"></circle>
+        </g>
+    </g>
+</svg>

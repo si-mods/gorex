@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="192px" height="192px" viewBox="0 0 192 192" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>dart-192</title>
+    <g id="dart-192" stroke="none" fill="none" fill-rule="evenodd" stroke-width="1">
+        <g id="Layer_1" fill="#ffffff">
+            <path d="M46,46 L46,127 C46,135.02 47.01,136.99 51,141 L25,115 C21.92,111.83 20,107.37 20,103 C20,100.98 21.14,97.82 22,96 L46,46 Z" id="Combined-Shape"></path>
+            <path d="M103,20 C107,20 111.73,22.72 114,25 L140,51 C135.51,46.49 131.51,46 126,46 L46,46 L94,22 C96.19,20.69 99.56,20 103,20 Z" id="Combined-Shape" opacity="0.3"></path>
+            <path d="M55,145 L145,145 L145,172 L82,172 L55,145 Z" id="Combined-Shape" opacity="0.3"></path>
+            <path d="M46,46 L145,145 L55,145 L51,141 C47.01,136.99 46,135.02 46,127 L46,46 Z" id="Combined-Shape" opacity="0.8"></path>
+            <path d="M126,46 L46,46 L145,145 L172,145 L172,83 L140,51 C135.51,46.49 131.51,46 126,46 Z" id="Path"></path>
+        </g>
+    </g>
+</svg>

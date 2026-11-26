@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="480px" height="392px" viewBox="0 0 480 392" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>fish</title>
+    <g id="fish" stroke="none" fill="none" fill-rule="nonzero" stroke-width="8">
+        <polygon id="-path" stroke="#7ee688" fill="#7ee688" opacity="0.7" points="446.86016 101.959006 347.039588 190.926046 347.039588 208.377874 446.86016 297.344914 446.86016 256.693563 382.794961 199.65196 446.86016 142.611473"></polygon>
+        <polygon id="-path" stroke="#7ee688" fill="#7ee688" points="132.680733 101.959006 32.8601603 190.926046 32.8601603 208.377874 132.680733 297.344914 132.680733 256.693563 68.6155337 199.65196 132.680733 142.611473"></polygon>
+        <polygon id="-path" stroke="#7ee688" fill="#7ee688" transform="translate(239.8602, 199.652) scale(-1, 1) translate(-239.8602, -199.652)" points="289.770447 101.959006 189.949874 190.926046 189.949874 208.377874 289.770447 297.344914 289.770447 256.693563 225.705248 199.65196 289.770447 142.611473"></polygon>
+    </g>
+</svg>

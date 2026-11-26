@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="392px" height="392px" viewBox="0 0 392 392" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>nushell</title>
+    <g id="nushell" stroke="none" fill="none" fill-rule="evenodd" stroke-width="1">
+        <g id="Graphic" transform="translate(-110, -110)" fill="#ffffff">
+            <g id="Group" transform="translate(191.1704, 161.4433)">
+                <path d="M168.691748,156.171591 L228.652,168.724 L228.702934,168.753056 C161.698044,210.586797 90.4211491,250.417482 22.0690709,290 C22.0690709,290 8.06540342,265.502445 0.974938875,253.767726 L0.957212714,253.767726 C82.2230613,206.616848 119.658647,185.27329 168.691748,156.171591 Z" id="Combined-Shape" opacity="0.7"></path>
+                <path d="M187.273152,145.086828 L228.652152,168.723828 L168.682152,156.167482 L187.273152,145.086828 Z" id="Combined-Shape" opacity="0.5"></path>
+                <polygon id="Path" points="0 38.1112469 22.2286064 0 228.702934 120.183374 228.702934 168.753056"></polygon>
+            </g>
+        </g>
+    </g>
+</svg>

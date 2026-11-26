@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="400px" height="400px" viewBox="0 0 400 400" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>sail</title>
+    <g id="sail" stroke="none" fill="none" fill-rule="evenodd" stroke-width="1">
+        <g id="lakesail-logomark" transform="translate(-51, -51)" fill="#ffffff">
+            <g id="Group" transform="translate(72.0694, 72.0694)">
+                <polygon id="Path" points="200.072351 0 71.581686 250.534646 200.072351 250.534646"></polygon>
+                <polygon id="Path" points="322.045801 322.201421 71.581686 357.860991 0 286.566951 336.371626 287.235866"></polygon>
+                <path d="M239.742901,71.766171 L239.742901,250.534646 L357.860991,250.534646 C244.518176,176.687936 239.742901,71.766171 239.742901,71.766171 Z" id="Path"></path>
+            </g>
+        </g>
+    </g>
+</svg>

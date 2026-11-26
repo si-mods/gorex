@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="660px" height="480px" viewBox="0 0 660 480" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>buildkite</title>
+    <g id="buildkite" stroke="none" fill="none" fill-rule="evenodd" stroke-width="1">
+        <g id="Group" transform="translate(68, 65.3333)" fill="#ffffff">
+            <path d="M0,0 L174.23,86.5847619 L174.23,261.101714 L0,174.541905 L0,0 Z M349.857333,0 L522.702476,86.5847619 L349.857333,174.541905" id="Shape" fill-rule="nonzero"></path>
+            <path d="M349.855462,0 L174.228129,86.5847619 L174.228129,261.101714 L349.855462,174.541905 L349.855462,0 Z M522.700605,86.5847619 L349.855462,174.541905 L349.855462,349.08381 L522.700605,261.101714" id="Shape" fill-rule="nonzero" opacity="0.6"></path>
+        </g>
+    </g>
+</svg>

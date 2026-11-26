@@ -220,3 +220,83 @@ func TestOmpGradientTile(t *testing.T) {
 		t.Fatal("custom Bg should clear TileBgGradient")
 	}
 }
+
+func TestAllBrandTilesParseAndRender(t *testing.T) {
+	// Every registered program's glyph must parse cleanly.
+	for name, prog := range programs {
+		g := prog.TileGlyph
+		if g == "" {
+			g = prog.Glyph
+		}
+		if icon(g) == nil {
+			t.Fatalf("program %q glyph %q returned nil SVG", name, g)
+		}
+	}
+	// Spot-check key newly added brand tiles and command aliases.
+	samples := []string{
+		"cursor", "opencode", "pi", "gemini", "copilot", "ollama", "amp", "openclaw",
+		"uv", "fish", "nu", "tailscale", "k9s", "jj", "yazi", "zig",
+		"vite", "vercel", "cloudflare", "terraform", "xcode", "typst", "duckdb", "nix",
+	}
+	for _, s := range samples {
+		p := programOf(s)
+		if p.Glyph == "square-terminal" {
+			t.Errorf("programOf(%q) fell back to generic terminal", s)
+		}
+		if s == "fish" || s == "nu" {
+			if !p.Shell {
+				t.Errorf("programOf(%q) should keep Shell=true", s)
+			}
+			continue
+		}
+		if raw := tileImage(p); len(raw) == 0 {
+			t.Errorf("tileImage(%q) returned empty", s)
+		}
+	}
+	if shotDir := os.Getenv("GOREX_SHOT_DIR"); shotDir != "" {
+		// Render a 6x4 contact sheet of the 24 sample tiles on a dark canvas.
+		cols, rows := 6, 4
+		cell := 72
+		sheet := image.NewRGBA(image.Rect(0, 0, cols*cell, rows*cell))
+		for y := 0; y < rows*cell; y++ {
+			for x := 0; x < cols*cell; x++ {
+				sheet.Set(x, y, color.RGBA{R: 28, G: 30, B: 34, A: 255})
+			}
+		}
+		for idx, s := range samples {
+			p := programOf(s)
+			p.Shell = false
+			raw := tileImage(p)
+			tileImg, err := png.Decode(bytes.NewReader(raw))
+			if err != nil {
+				t.Fatalf("decode %q: %v", s, err)
+			}
+			ox, oy := (idx%cols)*cell, (idx/cols)*cell
+			b := tileImg.Bounds()
+			for y := b.Min.Y; y < b.Max.Y; y++ {
+				for x := b.Min.X; x < b.Max.X; x++ {
+					sr, sg, sb, sa := tileImg.At(x, y).RGBA()
+					if sa == 0 {
+						continue
+					}
+					a := float64(sa) / 65535.0
+					dr, dg, db, _ := sheet.At(ox+x-b.Min.X, oy+y-b.Min.Y).RGBA()
+					sheet.Set(ox+x-b.Min.X, oy+y-b.Min.Y, color.RGBA{
+						R: uint8((float64(sr)*a + float64(dr)*(1-a)) / 257),
+						G: uint8((float64(sg)*a + float64(dg)*(1-a)) / 257),
+						B: uint8((float64(sb)*a + float64(db)*(1-a)) / 257),
+						A: 255,
+					})
+				}
+			}
+		}
+		f, err := os.Create(filepath.Join(shotDir, "brand-tiles-sheet.png"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer f.Close()
+		if err := png.Encode(f, sheet); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
