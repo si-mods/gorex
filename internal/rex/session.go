@@ -873,17 +873,29 @@ func (s *session) read() {
 // with the graphics it rewrote, and sends it to the clients.
 func (s *session) emit(data []byte, graphics []graphicsSeq, n int) {
 	s.mu.Lock()
-	s.graphics.record(graphics)
-	s.answerLocked()
-	s.vt.Feed(data)
-	s.modes.feed(data)
-	s.batch(data)
 	beforeStatus := s.status.updates
 	queries := s.status.feed(data)
 	statusChanged := s.status.updates != beforeStatus
 	beforeIcon := s.icon.updates
 	iconQueries := s.icon.feed(data)
 	iconChanged := s.icon.updates != beforeIcon
+	if queries > 0 || iconQueries > 0 {
+		s.mu.Unlock()
+		// Answer before feeding the emulator or clients so the reply reaches
+		// the program ahead of any trailing DA1 (CSI c) sentinel.
+		for range queries {
+			s.write(statusReply)
+		}
+		for range iconQueries {
+			s.write(iconReply)
+		}
+		s.mu.Lock()
+	}
+	s.graphics.record(graphics)
+	s.answerLocked()
+	s.vt.Feed(data)
+	s.modes.feed(data)
+	s.batch(data)
 	s.output += uint64(n)
 	s.lastOutput = time.Now()
 	s.sampler.ask()
@@ -893,13 +905,6 @@ func (s *session) emit(data []byte, graphics []graphicsSeq, n int) {
 	s.mu.Unlock()
 	if statusChanged || iconChanged {
 		s.notify()
-	}
-	// The server answers, as the windows' terminals do not.
-	for range queries {
-		s.write(statusReply)
-	}
-	for range iconQueries {
-		s.write(iconReply)
 	}
 }
 

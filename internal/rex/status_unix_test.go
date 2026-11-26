@@ -39,6 +39,61 @@ func TestStatusSession(t *testing.T) {
 	t.Fatal("the session did not exit")
 }
 
+// TestStatusQueryBeforeDA1 checks that the server's OSC 7501 and OSC 7502
+// query replies reach the program before the trailing DA1 (CSI c) sentinel,
+// whether the server's headless emulator or an attached window answers DA1.
+func TestStatusQueryBeforeDA1(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		query string
+		reply string
+	}{
+		{"osc7501", `\033]7501;?\033\\`, `^[]7501;?^[\`},
+		{"osc7502", `\033]7502;?\033\\`, `^[]7502;?^[\`},
+	} {
+		for _, withWindow := range []bool{false, true} {
+			sub := tc.name + "/no-window"
+			if withWindow {
+				sub = tc.name + "/window"
+			}
+			t.Run(sub, func(t *testing.T) {
+				s, c, sid := streamServerCommand(t, nil, answerScript(tc.query+`\033[c`), "/tmp")
+				if withWindow {
+					cl := helloStream(t, s)
+					conn, err := cl.AttachConn(Attach{SID: sid, Cols: 80, Rows: 24})
+					if err != nil {
+						t.Fatal(err)
+					}
+					t.Cleanup(func() { conn.Close() })
+					go answer(conn, 80, 24)
+				}
+				if err := c.Input(sid, []byte("go\n")); err != nil {
+					t.Fatal(err)
+				}
+				ready(t, c, sid)
+				var out string
+				for deadline := time.Now().Add(8 * time.Second); ; time.Sleep(20 * time.Millisecond) {
+					out = string(must(c.Capture(sid, 0)).Screen)
+					if strings.Contains(out, "END") {
+						break
+					}
+					if time.Now().After(deadline) {
+						t.Fatalf("no END in %q", out)
+					}
+				}
+				qi := strings.Index(out, tc.reply)
+				di := daAnswer.FindStringIndex(out)
+				if qi < 0 || di == nil {
+					t.Fatalf("missing reply (osc=%d, da=%v) in %q", qi, di, out)
+				}
+				if qi > di[0] {
+					t.Fatalf("DA1 reply arrived before %s reply (osc=%d, da=%d) in %q", tc.name, qi, di[0], out)
+				}
+			})
+		}
+	}
+}
+
 // TestStatusSeenOp checks that "seeStatus" raises the session's seen,
 // which the list and an event carry, and that seeing it again is no news.
 func TestStatusSeenOp(t *testing.T) {
