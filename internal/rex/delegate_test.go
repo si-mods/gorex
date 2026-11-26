@@ -117,6 +117,32 @@ func TestTranscriptParsers(t *testing.T) {
 	}
 }
 
+func TestDelegateCallTimeoutAndConfigDir(t *testing.T) {
+	if got := delegateCallTimeout(false, 90_000); got != 120*time.Second {
+		t.Fatalf("sync 90s timeout = %v, want 120s", got)
+	}
+	if got := delegateCallTimeout(true, 90_000); got < 45*time.Second {
+		t.Fatalf("async timeout = %v, want >= 45s", got)
+	}
+
+	// claudeTranscript.FindFile prefers explicit AgentConfigDir over CLAUDE_CONFIG_DIR.
+	teamCfg := t.TempDir()
+	otherCfg := t.TempDir()
+	t.Setenv("CLAUDE_CONFIG_DIR", otherCfg)
+	projDir := filepath.Join(t.TempDir(), "app")
+	sid := "11111111-2222-4333-8444-555555555555"
+	want := filepath.Join(teamCfg, "projects", claudeSlug(projDir), sid+".jsonl")
+	if err := os.MkdirAll(filepath.Dir(want), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(want, []byte("{}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if got := (claudeTranscript{}).FindFile(projDir, "", "", teamCfg, sid, time.Now()); got != want {
+		t.Fatalf("FindFile = %q, want %q", got, want)
+	}
+}
+
 func TestDelegateInteractiveTUIEndToEnd(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("fake POSIX TUI script")
