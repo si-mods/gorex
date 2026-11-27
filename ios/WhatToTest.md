@@ -10,6 +10,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 `web` job of `.github/workflows/ci.yml` fails it.
 
 ## en-US
+- The in-app HTML viewer now matches the terminal's dark or light appearance (including dark-mode CSS and no white flash while loading).
 - Composer Mode: the expanded quick-keys pill now holds 7 controls (Esc, Tab, Enter, hold-to-repeat Delete, arrow stick, ⋯ menu, and collapse) so Delete and Tab are directly accessible.
 - Composer Mode: matched the collapsed ⌘ quick-keys button to the same 36 pt circle size as + and Send for a balanced bottom row.
 - Composer Mode now replaces the separate bottom key bar on iPhone: a subtle ⌘ marker in its action row springs open into Esc, Enter, the arrow stick, and a More Keys menu on tap.
@@ -174,6 +175,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - Settings: choose System, Light or Dark right in the Interface row, and Minimum Contrast from a menu. A space's Color menu shows each color's dot and marks the current one.
 
 ## zh-Hans
+- 内置 HTML 浏览器现在会跟随当前终端（或应用设置）的深/浅色外观，网页自动适配深色模式，且加载时不再白屏闪烁。
 - Composer 模式：展开后的快捷胶囊升级为 7 枚按键（Esc、Tab、回车、支持长按连发的删除键、方向摇杆、⋯ 菜单与收起），高频删除和 Tab 无需进二级菜单。
 - Composer 模式：将收起态的 ⌘ 快捷键按钮统一为与「+」和发送按钮等大的 36pt 圆形，底行视觉更齐整，向右展开时高度完全不跳动。
 - Composer 模式现已合并下方独立按键栏：底行居中保留一枚低调的 ⌘ 小标记，轻点后带弹性过渡动画展开 Esc、回车、方向摇杆与更多快捷键菜单；下滑抓手优先收键盘，再滑切回传统键栏。

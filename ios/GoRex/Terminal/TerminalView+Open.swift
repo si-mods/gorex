@@ -108,6 +108,14 @@ extension TerminalView {
             }, closed: restore)
             let nav = UINavigationController(rootViewController: viewer)
             nav.modalPresentationStyle = .fullScreen
+            let activeScheme = ScreenStyle.shared.terminal
+                ?? GoRexApp.colorScheme(UserDefaults.standard.string(forKey: "scheme") ?? "dark")
+            switch activeScheme {
+            case .dark: nav.overrideUserInterfaceStyle = .dark
+            case .light: nav.overrideUserInterfaceStyle = .light
+            case nil: nav.overrideUserInterfaceStyle = .unspecified
+            @unknown default: nav.overrideUserInterfaceStyle = .unspecified
+            }
             present(nav)
         } else {
             present(OpenedFiles.Preview(url, closed: restore))
