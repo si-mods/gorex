@@ -8,7 +8,7 @@ metadata:
 
 # IOS-032: Merge GhosttyVt into GhosttyKitAppStore
 
-Status: built (`si-mods/ghosttykit-rootshell` v0.3.0).
+Status: built (#1235, `si-mods/ghosttykit-rootshell` v0.3.0).
 
 This doc decides how Rex Go removes the duplicate `GhosttyVt.xcframework` static library by consuming the `libghostty-vt` C API from a `si-mods`-maintained fork of `GhosttyKitAppStore` (issue #1229). It updates the iOS linking design in [`REF-006`](REF-006-session-server.md).
 
@@ -114,7 +114,7 @@ Because `GoRexTests` is a standalone unit-test bundle that compiles `VTerminal.s
 
 ## Migration
 
-`GHOSTSNP` format version 1 carries no upstream binary-compatibility guarantee (`include/ghostty/vt/snapshot.h`). As [`REF-006`](REF-006-session-server.md) states, `ios/scripts/build-ghostty-vt.sh` pins `GhosttyVt.xcframework` to `si-mods/mygo`'s Ghostty commit (`108cacb17ed8990840cd14abfce43d8ed8503ca1`).
+`GHOSTSNP` format version 1 carries no upstream binary-compatibility guarantee (`include/ghostty/vt/snapshot.h`). Previously, `ios/scripts/build-ghostty-vt.sh` pinned `GhosttyVt.xcframework` to `si-mods/mygo`'s Ghostty commit (`108cacb17ed8990840cd14abfce43d8ed8503ca1`). Now `si-mods/ghostty-rootshell` keeps `src/terminal/snapshot/` wire-compatible by skipping unknown optional record tags.
 
 Before switching `ios/project.yml` to `si-mods/ghosttykit-rootshell`:
 
