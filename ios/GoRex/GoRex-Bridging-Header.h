@@ -6,3 +6,4 @@
 int ghostty_surface_response_read_fd(void *surface);
 
 #include <bzlib.h>
+#import "Terminal/ObjCException.h"

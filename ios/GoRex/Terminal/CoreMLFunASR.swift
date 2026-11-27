@@ -1,5 +1,6 @@
 import CoreML
 import Foundation
+import os
 
 /// Native Apple Core ML runner for Fun-ASR-Nano (IOS-031).
 /// Replaces SherpaOnnxC with three Core ML packages running on ANE/GPU:
@@ -14,24 +15,111 @@ actor CoreMLFunASR: Recogniser {
     static let maxNewTokens = 256
     static let hiddenSize = 1024
 
+    private static let log = Logger(subsystem: "dev.gorex.ios", category: "dictation")
+
+    nonisolated static var preferredComputeUnits: [MLComputeUnits] {
+        #if targetEnvironment(simulator)
+        [.cpuOnly]
+        #else
+        [.all, .cpuAndGPU, .cpuOnly]
+        #endif
+    }
+
     private let frontend = FbankFrontend()
     private let tokenizer: QwenTokenizer
+    private let decoderURL: URL
     // MLModel is thread-safe for prediction but not annotated Sendable in the iOS SDK;
     // actor isolation guarantees only one prediction uses each model at a time.
     private nonisolated(unsafe) let encoder: MLModel
     private nonisolated(unsafe) let embedding: MLModel
-    private nonisolated(unsafe) let decoder: MLModel
+    private nonisolated(unsafe) var decoder: MLModel
+    private var decoderUnitsIndex: Int
 
     init(in dir: URL) throws {
         self.tokenizer = try QwenTokenizer(
             vocabURL: dir.appending(path: "vocab.json"),
             promptURL: dir.appending(path: "prompt_ids.json")
         )
-        let cfg = MLModelConfiguration()
-        cfg.computeUnits = .all
-        self.encoder = try MLModel(contentsOf: dir.appending(path: "EncoderAdaptor.mlmodelc"), configuration: cfg)
-        self.embedding = try MLModel(contentsOf: dir.appending(path: "TokenEmbedding.mlmodelc"), configuration: cfg)
-        self.decoder = try MLModel(contentsOf: dir.appending(path: "Qwen3Decoder.mlmodelc"), configuration: cfg)
+        let candidates = Self.preferredComputeUnits
+        self.encoder = try Self.loadModel(at: dir.appending(path: "EncoderAdaptor.mlmodelc"), candidates: candidates).model
+        self.embedding = try Self.loadModel(at: dir.appending(path: "TokenEmbedding.mlmodelc"), candidates: candidates).model
+        self.decoderURL = dir.appending(path: "Qwen3Decoder.mlmodelc")
+        // Validate makeState() at load time: on iOS, MLE5Engine.newStateWithClientBuffers:
+        // can raise an Objective-C NSException under .all (ANE); catching it lets us fall
+        // back to .cpuAndGPU or .cpuOnly instead of aborting with SIGABRT.
+        let loadedDecoder = try Self.loadModel(at: decoderURL, candidates: candidates) { model in
+            _ = try Self.makeState(for: model)
+        }
+        self.decoder = loadedDecoder.model
+        self.decoderUnitsIndex = loadedDecoder.index
+    }
+
+    /// Calls `MLModel.makeState()` inside an Objective-C `@try/@catch` so an
+    /// `NSException` from Core ML's `MLE5Engine` becomes a catchable Swift error.
+    nonisolated static func makeState(for model: MLModel) throws -> MLState {
+        var state: MLState?
+        var nsError: NSError?
+        guard GoRexCatchObjCException({ state = model.makeState() }, &nsError) else {
+            throw nsError ?? CocoaError(.coderInvalidValue)
+        }
+        guard let state else {
+            throw CocoaError(.coderInvalidValue)
+        }
+        return state
+    }
+
+    /// Tries each `MLComputeUnits` candidate in order until `load` succeeds.
+    nonisolated static func loadWithFallback<T>(
+        candidates: [MLComputeUnits],
+        load: (MLComputeUnits) throws -> T
+    ) throws -> (value: T, index: Int) {
+        var lastError: Error?
+        for (index, units) in candidates.enumerated() {
+            do {
+                return (try load(units), index)
+            } catch {
+                lastError = error
+                log.warning("CoreMLFunASR computeUnits=\(units.rawValue) failed: \(error.localizedDescription, privacy: .public)")
+            }
+        }
+        throw lastError ?? CocoaError(.fileReadUnknown)
+    }
+
+    private nonisolated static func loadModel(
+        at url: URL,
+        candidates: [MLComputeUnits],
+        validate: ((MLModel) throws -> Void)? = nil
+    ) throws -> (model: MLModel, index: Int) {
+        let loaded = try loadWithFallback(candidates: candidates) { units -> MLModel in
+            let cfg = MLModelConfiguration()
+            cfg.computeUnits = units
+            let model = try MLModel(contentsOf: url, configuration: cfg)
+            try validate?(model)
+            return model
+        }
+        return (loaded.value, loaded.index)
+    }
+
+    private func makeDecoderState() throws -> MLState {
+        do {
+            return try Self.makeState(for: decoder)
+        } catch {
+            let candidates = Self.preferredComputeUnits
+            let nextIndex = decoderUnitsIndex + 1
+            guard nextIndex < candidates.count else { throw error }
+            Self.log.warning("CoreMLFunASR decoder makeState() failed at runtime; falling back: \(error.localizedDescription, privacy: .public)")
+            let remaining = Array(candidates[nextIndex...])
+            let loaded = try Self.loadWithFallback(candidates: remaining) { units -> (MLModel, MLState) in
+                let cfg = MLModelConfiguration()
+                cfg.computeUnits = units
+                let model = try MLModel(contentsOf: decoderURL, configuration: cfg)
+                let state = try Self.makeState(for: model)
+                return (model, state)
+            }
+            self.decoder = loaded.value.0
+            self.decoderUnitsIndex = nextIndex + loaded.index
+            return loaded.value.1
+        }
     }
 
     func recognise(_ samples: [Float]) async throws -> String {
@@ -68,7 +156,7 @@ actor CoreMLFunASR: Recogniser {
         copyFloat16Rows(from: afterEmbeds, count: afterLen, to: prefillEmbeds, dstRow: beforeLen + usedAudioLen)
 
         // 3. Prefill Qwen3Decoder with a fresh MLState KV-cache.
-        let state = decoder.makeState()
+        let state = try makeDecoderState()
         let eosSet = Set(tokenizer.prompt.eosIDs)
         var nextToken = try await decodeStep(embeds: prefillEmbeds, startPos: 0, seqLen: contextLen, state: state)
 
