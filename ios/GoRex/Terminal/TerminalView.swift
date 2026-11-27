@@ -521,7 +521,7 @@ final class TerminalView: UIView, TerminalOutput {
         }
     }
 
-    /// Reads the screen's rows off the main thread, after the writes queued
+    /// Reads the active screen's rows off the main thread, after the writes queued
     /// before it, a read a row: Ghostty joins soft-wrapped rows in one read,
     /// which would not tell which row is the cursor's. The cursor's row is
     /// read now, as drawnBottom reads it; output that moves it before the
@@ -542,6 +542,25 @@ final class TerminalView: UIView, TerminalOutput {
                 return t.text.map { String(decoding: UnsafeRawBufferPointer(start: $0, count: Int(t.text_len)), as: UTF8.self) } ?? ""
             }
             done(lines, row)
+        }
+    }
+
+    /// Reads the currently visible viewport's rows off the main thread (one
+    /// read per row), whether at the bottom or scrolled back into scrollback.
+    func readViewportRows(_ done: @escaping @Sendable (_ rows: [String]) -> Void) {
+        guard let s = surface else { done([]); return }
+        let z = ghostty_surface_size(s), rows = Int(z.rows), columns = Int(z.columns)
+        guard rows > 0, columns > 0 else { done([]); return }
+        nonisolated(unsafe) let surface = s
+        writes.async {
+            let point = { (x: Int, y: Int) in ghostty_point_s(tag: GHOSTTY_POINT_VIEWPORT, coord: GHOSTTY_POINT_COORD_EXACT, x: UInt32(x), y: UInt32(y)) }
+            let lines = (0..<rows).map { y -> String in
+                var t = ghostty_text_s()
+                guard ghostty_surface_read_text(surface, ghostty_selection_s(top_left: point(0, y), bottom_right: point(columns - 1, y), rectangle: false), &t) else { return "" }
+                defer { ghostty_surface_free_text(surface, &t) }
+                return t.text.map { String(decoding: UnsafeRawBufferPointer(start: $0, count: Int(t.text_len)), as: UTF8.self) } ?? ""
+            }
+            done(lines)
         }
     }
 
@@ -583,10 +602,36 @@ final class TerminalView: UIView, TerminalOutput {
         let p = g.location(in: self)
         if deselect(at: p) { return }
         let typing = keyboardUp
-        lastTapRow = cell.height > 0 ? Int(((p.y - inset) / cell.height).rounded(.down)) : nil
+        let tapRow = cell.height > 0 ? Int(((p.y - inset) / cell.height).rounded(.down)) : nil
+        let tapCol = cell.width > 0 ? Int((p.x / cell.width).rounded(.down)) : nil
+        lastTapRow = tapRow
         if openLink(at: p) {
             typingBeforeLink = typing
             return
+        }
+        if let tapRow, let tapCol, let s = surface {
+            let columns = Int(ghostty_surface_size(s).columns)
+            if columns > 0 {
+                readViewportRows { [weak self] rows in
+                    DispatchQueue.main.async {
+                        guard let self else { return }
+                        if let link = FileLink.wrappedLink(rows: rows, row: tapRow, column: tapCol, columns: columns) {
+                            self.typingBeforeLink = typing
+                            self.lastTapRow = nil
+                            switch link {
+                            case .file(let path, let hidden): self.openFile(path, hidden: hidden)
+                            case .web(let url): UIApplication.shared.open(url)
+                            }
+                            return
+                        }
+                        if let s = self.surface, ghostty_surface_mouse_captured(s) {
+                            self.click(at: p)
+                        }
+                        if !self.keyboardUp { self.becomeFirstResponder() }
+                    }
+                }
+                return
+            }
         }
         if let s = surface, ghostty_surface_mouse_captured(s) {
             click(at: p)
