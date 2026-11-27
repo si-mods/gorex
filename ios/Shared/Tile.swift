@@ -56,16 +56,31 @@ struct ProgramTile: View {
 }
 
 /// The glyph on a program's tile, at any size: an SF Symbol where one is
-/// mapped, inset as symbol.go insets them, else the brand's mark.
+/// mapped, inset as symbol.go insets them, else the brand's mark (bundled in
+/// Brands.xcassets for core brands, or fetched on demand from CDN for extra
+/// brands with a terminal fallback while loading).
 struct ProgramGlyph: View {
     let program: Program
+    @State private var fetched: UIImage?
 
     var body: some View {
         let g = program.tileGlyph.isEmpty ? program.glyph : program.tileGlyph
         if let sf = Program.symbols[g] {
             Image(systemName: sf).resizable().scaledToFit().scaleEffect(0.85)
         } else {
-            Image("Brands/" + g.replacingOccurrences(of: "brand:", with: ""), bundle: Bundle(for: BrandsBundle.self)).resizable().scaledToFit()
+            let id = g.replacingOccurrences(of: "brand:", with: "")
+            if let bundled = UIImage(named: "Brands/" + id, in: Bundle(for: BrandsBundle.self), compatibleWith: nil) {
+                Image(uiImage: bundled).renderingMode(.template).resizable().scaledToFit()
+            } else if let img = fetched ?? BrandIconCache.shared.cachedImage(for: id) {
+                Image(uiImage: img).renderingMode(.template).resizable().scaledToFit()
+            } else {
+                Image(systemName: "terminal").resizable().scaledToFit().scaleEffect(0.85)
+                    .task(id: id) {
+                        if let img = await BrandIconCache.shared.fetchIfNeeded(id) {
+                            fetched = img
+                        }
+                    }
+            }
         }
     }
 }

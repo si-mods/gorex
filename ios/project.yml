@@ -35,6 +35,12 @@ settings:
     DEVELOPMENT_TEAM: 57QL6YCAH5
     # The xcframework's simulator library is arm64 only.
     EXCLUDED_ARCHS[sdk=iphonesimulator*]: x86_64
+  configs:
+    Release:
+      SWIFT_OPTIMIZATION_LEVEL: -Osize
+      SWIFT_COMPILATION_MODE: wholemodule
+      DEAD_CODE_STRIPPING: YES
+      GCC_OPTIMIZATION_LEVEL: z
 targets:
   GoRex:
     type: application
