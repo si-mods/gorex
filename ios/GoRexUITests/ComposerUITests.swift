@@ -75,18 +75,23 @@ final class ComposerUITests: XCTestCase {
         XCTAssertTrue(toggleBtn.waitForExistence(timeout: 5))
         XCTAssertGreaterThan(addBtn.frame.midY, message.frame.midY)
         XCTAssertLessThan(abs(addBtn.frame.midY - sendBtn.frame.midY), 4)
+        let actionRowY = sendBtn.frame.midY
         shot("composer-centric-collapsed")
 
         // Tapping the quiet marker expands Esc, Tab, Enter, Delete, Arrow Keys,
-        // More Keys, and the collapse button smoothly in place.
+        // More Keys, and the collapse button full-width across the action row
+        // (temporarily fading +, mic, and Send) so every key meets Apple HIG's
+        // 44 pt minimum tap width.
         toggleBtn.tap()
         let moreKeys = app.buttons["composer.keys"]
         let collapseBtn = app.buttons["composer.keys.collapse"]
+        let deleteBtn = app.buttons["Delete"]
         XCTAssertTrue(moreKeys.waitForExistence(timeout: 5))
         XCTAssertTrue(collapseBtn.waitForExistence(timeout: 5))
         XCTAssertTrue(app.buttons["Tab"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.buttons["Delete"].waitForExistence(timeout: 5))
-        XCTAssertLessThan(abs(moreKeys.frame.midY - sendBtn.frame.midY), 4)
+        XCTAssertTrue(deleteBtn.waitForExistence(timeout: 5))
+        XCTAssertGreaterThanOrEqual(deleteBtn.frame.width, 44)
+        XCTAssertLessThan(abs(moreKeys.frame.midY - actionRowY), 4)
         shot("composer-centric-expanded")
 
         // Tapping collapse springs back to the quiet marker.
