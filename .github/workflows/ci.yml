@@ -120,7 +120,7 @@ jobs:
             go-build-
       - name: gofmt
         run: |
-          unformatted=$(gofmt -l $(git ls-files '*.go'))
+          unformatted=$(git ls-files -z '*.go' | xargs -0 gofmt -l)
           if [ -n "$unformatted" ]; then
             echo "gofmt needed:"
             echo "$unformatted"
@@ -145,9 +145,10 @@ jobs:
         env:
           CGO_ENABLED: "0"
         run: |
+          TAGS=$(grep -v '^#' packaging/ts-omit-tags.txt | grep -v '^$' | paste -sd, -)
           for t in linux/amd64 linux/arm64 windows/amd64 darwin/arm64; do
             echo "::group::$t"
-            GOOS=${t%/*} GOARCH=${t#*/} go build ./...
+            GOOS=${t%/*} GOARCH=${t#*/} GOFLAGS="-tags=$TAGS" go build ./...
             echo "::endgroup::"
           done
       - uses: actions/cache/save@v6
@@ -219,8 +220,8 @@ jobs:
         # No part retries: a failed test fails the job.
         run: |
           if [ "$PART" = others ]; then
-            pkgs=$(go list ./... | grep -v '^gorex$')
-            go test -race $pkgs -count=1 -timeout 15m
+            mapfile -t pkgs < <(go list ./... | grep -v '^gorex$')
+            go test -race "${pkgs[@]}" -count=1 -timeout 15m
           else
             go test -c -o "$RUNNER_TEMP/gorex.test" .
             tests=$("$RUNNER_TEMP/gorex.test" -test.list '^(Test|Example|Fuzz)' |
@@ -298,9 +299,11 @@ jobs:
           commit=$(sed -n 's/^const COMMIT = "\([0-9a-f]*\)";/\1/p' web/build.mjs)
           zig=$(sed -n 's/^const ZIG_VERSION = "\([^"]*\)";/\1/p' web/build.mjs)
           [ -n "$commit" ] && [ -n "$zig" ] || { echo "::error::COMMIT or ZIG_VERSION not found in web/build.mjs"; exit 1; }
-          echo "cache=$RUNNER_TEMP/gorex-web" >> "$GITHUB_OUTPUT"
-          echo "file=$RUNNER_TEMP/gorex-web/ghostty-vt-${commit:0:12}.wasm" >> "$GITHUB_OUTPUT"
-          echo "key=ghostty-vt-$commit-zig-$zig-${{ hashFiles('web/build.mjs') }}" >> "$GITHUB_OUTPUT"
+          {
+            echo "cache=$RUNNER_TEMP/gorex-web"
+            echo "file=$RUNNER_TEMP/gorex-web/ghostty-vt-${commit:0:12}.wasm"
+            echo "key=ghostty-vt-$commit-zig-$zig-${{ hashFiles('web/build.mjs') }}"
+          } >> "$GITHUB_OUTPUT"
       - name: ghostty-vt wasm cache
         uses: actions/cache@v6
         with:

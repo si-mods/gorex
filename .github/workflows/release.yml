@@ -122,7 +122,11 @@ jobs:
           (umask 077; printf '%s' "$P12" | base64 -D > "$RUNNER_TEMP/id.p12"; printf '%s\n' "$ASC_KEY_P8" > "$RUNNER_TEMP/AuthKey.p8")
           security import "$RUNNER_TEMP/id.p12" -k "$kc" -P "$P12_PASSWORD" -T /usr/bin/codesign
           security set-key-partition-list -S apple-tool:,apple: -s -k "$pw" "$kc" >/dev/null
-          security list-keychains -d user -s "$kc" $(security list-keychains -d user | tr -d '"')
+          existing_kcs=()
+          while IFS= read -r line; do
+            [ -n "$line" ] && existing_kcs+=("$line")
+          done < <(security list-keychains -d user | tr -d '"' | awk '{$1=$1; print}')
+          security list-keychains -d user -s "$kc" "${existing_kcs[@]}"
           xcrun notarytool store-credentials gorex-notary --keychain "$kc" \
             --key "$RUNNER_TEMP/AuthKey.p8" --key-id 6GG554C43Y --issuer 1b9ef96d-c5b4-49a9-8c8d-4f0b999da4d6
           rm -f "$RUNNER_TEMP/id.p12" "$RUNNER_TEMP/AuthKey.p8"
@@ -132,7 +136,9 @@ jobs:
         env:
           MYGO_UPDATER_PRIVATE_KEY: ${{ secrets.MYGO_UPDATER_PRIVATE_KEY }}
           GH_TOKEN: ${{ github.token }}
-        run: go tool mygo build -platform darwin/arm64,linux/amd64,linux/arm64 -upload
+        run: |
+          TAGS=$(grep -v '^#' packaging/ts-omit-tags.txt | grep -v '^$' | paste -sd, -)
+          GOFLAGS="-tags=$TAGS" go tool mygo build -platform darwin/arm64,linux/amd64,linux/arm64 -upload
       - if: always()
         run: |
           security delete-keychain "$RUNNER_TEMP/signing.keychain-db" 2>/dev/null || true
@@ -159,7 +165,10 @@ jobs:
         env:
           MYGO_UPDATER_PRIVATE_KEY: ${{ secrets.MYGO_UPDATER_PRIVATE_KEY }}
           GH_TOKEN: ${{ github.token }}
-        run: go tool mygo build -platform windows/amd64,windows/arm64 -upload
+        run: |
+          $tags = (Get-Content packaging/ts-omit-tags.txt | Where-Object { $_ -and -not $_.StartsWith('#') }) -join ','
+          $env:GOFLAGS = "-tags=$tags"
+          go tool mygo build -platform windows/amd64,windows/arm64 -upload
 
   # Writes SHA256SUMS from the release's assets once a build is done and none
   # failed. A build that the target skips does not count. It needs only gh, jq
@@ -209,9 +218,11 @@ jobs:
           commit=$(sed -n 's/^const COMMIT = "\([0-9a-f]*\)";/\1/p' web/build.mjs)
           zig=$(sed -n 's/^const ZIG_VERSION = "\([^"]*\)";/\1/p' web/build.mjs)
           [ -n "$commit" ] && [ -n "$zig" ] || { echo "::error::COMMIT or ZIG_VERSION not found in web/build.mjs"; exit 1; }
-          echo "cache=$RUNNER_TEMP/gorex-web" >> "$GITHUB_OUTPUT"
-          echo "file=$RUNNER_TEMP/gorex-web/ghostty-vt-${commit:0:12}.wasm" >> "$GITHUB_OUTPUT"
-          echo "key=ghostty-vt-$commit-zig-$zig-${{ hashFiles('web/build.mjs') }}" >> "$GITHUB_OUTPUT"
+          {
+            echo "cache=$RUNNER_TEMP/gorex-web"
+            echo "file=$RUNNER_TEMP/gorex-web/ghostty-vt-${commit:0:12}.wasm"
+            echo "key=ghostty-vt-$commit-zig-$zig-${{ hashFiles('web/build.mjs') }}"
+          } >> "$GITHUB_OUTPUT"
       - name: ghostty-vt wasm cache
         uses: actions/cache@v6
         with:
