@@ -10,6 +10,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 `web` job of `.github/workflows/ci.yml` fails it.
 
 ## en-US
+- Composer Mode: the expanded quick-keys pill now holds 7 controls (Esc, Tab, Enter, hold-to-repeat Delete, arrow stick, ⋯ menu, and collapse) so Delete and Tab are directly accessible.
 - Composer Mode: matched the collapsed ⌘ quick-keys button to the same 36 pt circle size as + and Send for a balanced bottom row.
 - Composer Mode now replaces the separate bottom key bar on iPhone: a subtle ⌘ marker in its action row springs open into Esc, Enter, the arrow stick, and a More Keys menu on tap.
 - Fixed tapping long file paths that agent TUIs word-wrap at hyphens or slashes (and when scrolled back into history) so the full path opens cleanly.
@@ -173,6 +174,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - Settings: choose System, Light or Dark right in the Interface row, and Minimum Contrast from a menu. A space's Color menu shows each color's dot and marks the current one.
 
 ## zh-Hans
+- Composer 模式：展开后的快捷胶囊升级为 7 枚按键（Esc、Tab、回车、支持长按连发的删除键、方向摇杆、⋯ 菜单与收起），高频删除和 Tab 无需进二级菜单。
 - Composer 模式：将收起态的 ⌘ 快捷键按钮统一为与「+」和发送按钮等大的 36pt 圆形，底行视觉更齐整，向右展开时高度完全不跳动。
 - Composer 模式现已合并下方独立按键栏：底行居中保留一枚低调的 ⌘ 小标记，轻点后带弹性过渡动画展开 Esc、回车、方向摇杆与更多快捷键菜单；下滑抓手优先收键盘，再滑切回传统键栏。
 - 修复在终端中点按被 agy 等 TUI 按连字符或斜杠折行的长文件路径（以及回滚历史记录时）仍提示文件不存在的问题，现在可完整拼接并打开。

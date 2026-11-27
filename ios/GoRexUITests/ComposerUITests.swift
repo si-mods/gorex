@@ -77,13 +77,15 @@ final class ComposerUITests: XCTestCase {
         XCTAssertLessThan(abs(addBtn.frame.midY - sendBtn.frame.midY), 4)
         shot("composer-centric-collapsed")
 
-        // Tapping the quiet marker expands Esc, Enter, Arrow Keys, More Keys,
-        // and the collapse button smoothly in place.
+        // Tapping the quiet marker expands Esc, Tab, Enter, Delete, Arrow Keys,
+        // More Keys, and the collapse button smoothly in place.
         toggleBtn.tap()
         let moreKeys = app.buttons["composer.keys"]
         let collapseBtn = app.buttons["composer.keys.collapse"]
         XCTAssertTrue(moreKeys.waitForExistence(timeout: 5))
         XCTAssertTrue(collapseBtn.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["Tab"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["Delete"].waitForExistence(timeout: 5))
         XCTAssertLessThan(abs(moreKeys.frame.midY - sendBtn.frame.midY), 4)
         shot("composer-centric-expanded")
 

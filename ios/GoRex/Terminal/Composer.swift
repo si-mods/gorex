@@ -56,13 +56,16 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
     private let quickPill = UIView()
     private let quickToggle = UIButton()
     private let quickKeys = UIStackView()
-    private var quickPillWidth: NSLayoutConstraint?
+    private var quickPillCollapsedWidth: NSLayoutConstraint?
+    private var quickPillExpandedWidth: NSLayoutConstraint?
+    private var quickKeysTrailing: NSLayoutConstraint?
     private var quickPillHeight: NSLayoutConstraint?
     private var quickKeysExpanded = false
     private let stickBtn = UIButton()
     private let keysMenuBtn = UIButton()
     private let pad = StickPad()
     private var repeating: Task<Void, Never>?
+    private var pressing: Task<Void, Never>?
     private var steered = false
     private var arrow: String? { didSet { pad.arrow = arrow } }
     private let tick = UIImpactFeedbackGenerator(style: .light)
@@ -199,8 +202,9 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
 
         // Two-row layout (IOS-030): full-width message field on top, action
         // row below with `+` on the left, a quiet collapsible quick-keys pill
-        // centered in the middle, and mic + circular Send on the right.
-        func quickButton(image: UIImage?, label: String, id: String? = nil, width: CGFloat = 34, tint: UIColor = .label) -> UIButton {
+        // (`36×36` circle → `212×36` 7-key strip) left-aligned after `+`, and
+        // mic + circular Send on the right.
+        func quickButton(image: UIImage?, label: String, id: String? = nil, tint: UIColor = .label) -> UIButton {
             var c = UIButton.Configuration.filled()
             c.image = image
             c.baseBackgroundColor = .clear
@@ -218,17 +222,20 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
                 }
             }
             b.translatesAutoresizingMaskIntoConstraints = false
-            NSLayoutConstraint.activate([
-                b.widthAnchor.constraint(equalToConstant: width),
-                b.heightAnchor.constraint(equalToConstant: 32),
-            ])
+            b.heightAnchor.constraint(equalToConstant: 32).isActive = true
             return b
         }
-        let symCfg = UIImage.SymbolConfiguration(pointSize: 14, weight: .regular)
+        let symCfg = UIImage.SymbolConfiguration(pointSize: 13.5, weight: .regular)
         let escBtn = quickButton(image: UIImage(systemName: "escape", withConfiguration: symCfg), label: String(localized: "Esc"))
         escBtn.addAction(UIAction { [weak self] _ in
             self?.tick.impactOccurred()
             self?.terminal?.send("escape")
+        }, for: .touchUpInside)
+
+        let tabBtn = quickButton(image: UIImage(systemName: "arrow.right.to.line", withConfiguration: symCfg), label: String(localized: "Tab"))
+        tabBtn.addAction(UIAction { [weak self] _ in
+            self?.tick.impactOccurred()
+            self?.terminal?.send("tab")
         }, for: .touchUpInside)
 
         let enterBtn = quickButton(image: UIImage(systemName: "return", withConfiguration: symCfg), label: String(localized: "Enter"))
@@ -236,6 +243,25 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
             self?.tick.impactOccurred()
             self?.terminal?.send("enter")
         }, for: .touchUpInside)
+
+        let deleteBtn = quickButton(image: UIImage(systemName: "delete.left", withConfiguration: symCfg), label: String(localized: "Delete"))
+        deleteBtn.addAction(UIAction { [weak self] _ in
+            guard let self else { return }
+            self.pressing?.cancel()
+            self.pressing = Task { [weak self] in
+                var delay = 0.4
+                repeat {
+                    self?.terminal?.send("backspace", holding: true)
+                    self?.tick.impactOccurred(intensity: 0.5)
+                    try? await Task.sleep(for: .seconds(delay))
+                    delay = 0.05
+                } while !Task.isCancelled
+            }
+        }, for: .touchDown)
+        deleteBtn.addAction(UIAction { [weak self] _ in
+            self?.pressing?.cancel()
+            self?.terminal?.release()
+        }, for: [.touchUpInside, .touchUpOutside, .touchCancel])
 
         var stickCfg = UIButton.Configuration.filled()
         stickCfg.image = KeyBar.stick
@@ -246,10 +272,7 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
         stickBtn.configuration = stickCfg
         stickBtn.accessibilityLabel = String(localized: "Arrow Keys")
         stickBtn.translatesAutoresizingMaskIntoConstraints = false
-        NSLayoutConstraint.activate([
-            stickBtn.widthAnchor.constraint(equalToConstant: 34),
-            stickBtn.heightAnchor.constraint(equalToConstant: 32),
-        ])
+        stickBtn.heightAnchor.constraint(equalToConstant: 32).isActive = true
         let drag = UILongPressGestureRecognizer(target: self, action: #selector(steer))
         drag.minimumPressDuration = 0
         drag.allowableMovement = .greatestFiniteMagnitude
@@ -270,14 +293,8 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
             UIAction(title: String(localized: "Ctrl+C"), image: UIImage(systemName: "xmark.circle")) { [weak self] _ in
                 self?.terminal?.sendCtrlC()
             },
-            UIAction(title: String(localized: "Tab"), image: UIImage(systemName: "arrow.right.to.line")) { [weak self] _ in
-                self?.terminal?.send("tab")
-            },
             UIAction(title: String(localized: "Shift+Tab"), image: UIImage(systemName: "arrow.left.to.line")) { [weak self] _ in
                 self?.terminal?.sendShiftTab()
-            },
-            UIAction(title: String(localized: "Delete"), image: UIImage(systemName: "delete.left")) { [weak self] _ in
-                self?.terminal?.send("backspace")
             },
             UIDeferredMenuElement.uncached { [weak self] done in
                 var tail: [UIMenuElement] = []
@@ -293,16 +310,12 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
             },
         ])
         keysMenuBtn.translatesAutoresizingMaskIntoConstraints = false
-        NSLayoutConstraint.activate([
-            keysMenuBtn.widthAnchor.constraint(equalToConstant: 34),
-            keysMenuBtn.heightAnchor.constraint(equalToConstant: 32),
-        ])
+        keysMenuBtn.heightAnchor.constraint(equalToConstant: 32).isActive = true
 
         let closeCfg = UIImage.SymbolConfiguration(pointSize: 11, weight: .semibold)
         let collapseBtn = quickButton(image: UIImage(systemName: "xmark", withConfiguration: closeCfg),
                                       label: String(localized: "Hide"),
                                       id: "composer.keys.collapse",
-                                      width: 26,
                                       tint: .secondaryLabel)
         collapseBtn.addAction(UIAction { [weak self] _ in
             self?.tick.impactOccurred()
@@ -310,13 +323,14 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
         }, for: .touchUpInside)
 
         quickKeys.axis = .horizontal
+        quickKeys.distribution = .fillEqually
         quickKeys.alignment = .center
-        quickKeys.spacing = 2
+        quickKeys.spacing = 0
         quickKeys.alpha = 0
         quickKeys.isHidden = true
         quickKeys.transform = CGAffineTransform(translationX: -10, y: 0).scaledBy(x: 0.92, y: 0.92)
         quickKeys.translatesAutoresizingMaskIntoConstraints = false
-        for v in [escBtn, enterBtn, stickBtn, keysMenuBtn, collapseBtn] { quickKeys.addArrangedSubview(v) }
+        for v in [escBtn, tabBtn, enterBtn, deleteBtn, stickBtn, keysMenuBtn, collapseBtn] { quickKeys.addArrangedSubview(v) }
 
         var toggleCfg = UIButton.Configuration.plain()
         toggleCfg.image = UIImage(systemName: "command", withConfiguration: UIImage.SymbolConfiguration(pointSize: 15, weight: .medium))
@@ -338,12 +352,17 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
         quickPill.translatesAutoresizingMaskIntoConstraints = false
         quickPill.addSubview(quickToggle)
         quickPill.addSubview(quickKeys)
-        let pw = quickPill.widthAnchor.constraint(equalToConstant: 36)
+        let collapsedW = quickPill.widthAnchor.constraint(equalToConstant: 36)
+        let expandedW = quickPill.widthAnchor.constraint(equalToConstant: 212)
+        expandedW.priority = .defaultHigh
+        let keysTrail = quickKeys.trailingAnchor.constraint(equalTo: quickPill.trailingAnchor, constant: -4)
         let ph = quickPill.heightAnchor.constraint(equalToConstant: 36)
-        quickPillWidth = pw
+        quickPillCollapsedWidth = collapsedW
+        quickPillExpandedWidth = expandedW
+        quickKeysTrailing = keysTrail
         quickPillHeight = ph
         NSLayoutConstraint.activate([
-            pw, ph,
+            collapsedW, ph,
             quickToggle.leadingAnchor.constraint(equalTo: quickPill.leadingAnchor),
             quickToggle.widthAnchor.constraint(equalToConstant: 36),
             quickToggle.topAnchor.constraint(equalTo: quickPill.topAnchor),
@@ -605,7 +624,9 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
     private func setQuickKeysExpanded(_ expanded: Bool, animated: Bool) {
         guard expanded != quickKeysExpanded else { return }
         quickKeysExpanded = expanded
-        quickPillWidth?.constant = expanded ? 180 : 36
+        quickPillCollapsedWidth?.isActive = !expanded
+        quickPillExpandedWidth?.isActive = expanded
+        quickKeysTrailing?.isActive = expanded
         quickPillHeight?.constant = 36
         if expanded {
             quickKeys.isHidden = false
