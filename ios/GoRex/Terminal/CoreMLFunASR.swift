@@ -3,13 +3,15 @@ import Foundation
 import os
 
 /// Native Apple Core ML runner for Fun-ASR-Nano (IOS-031).
-/// Replaces SherpaOnnxC with three Core ML packages running on ANE/GPU:
+/// Replaces SherpaOnnxC with three Core ML packages:
 ///   1. EncoderAdaptor.mlmodelc  — SenseVoiceEncoderSmall + Transformer adaptor
-///   2. TokenEmbedding.mlmodelc  — Qwen3-0.6B token embedding lookup
+///   2. TokenEmbedding.mlmodelc  — Qwen3-0.6B token embedding lookup (CPU-only gather)
 ///   3. Qwen3Decoder.mlmodelc    — 28-layer Qwen3-0.6B with iOS 18+ MLState KV-cache
 ///
-/// Audio features are computed in Swift via Accelerate (FbankFrontend), and
-/// generated token IDs are decoded via QwenTokenizer.
+/// To stay well within iOS memory limits, EncoderAdaptor (~235 MB) and
+/// Qwen3Decoder (~336 MB + 59 MB MLState) are loaded in separate stages and
+/// never held in memory at the same time. TokenEmbedding runs on `.cpuOnly`
+/// to avoid GPU/ANE compilation and buffer overhead for a simple table lookup.
 actor CoreMLFunASR: Recogniser {
     static let maxSeqLen = 512
     static let maxNewTokens = 256
@@ -17,41 +19,39 @@ actor CoreMLFunASR: Recogniser {
 
     private static let log = Logger(subsystem: "dev.gorex.ios", category: "dictation")
 
+    /// Device backends skip `.cpuAndGPU`: on iOS, compiling Qwen3Decoder's
+    /// 28-layer MIL graph for MPSGraph can exhaust memory (`llvm::report_bad_alloc_error`).
     nonisolated static var preferredComputeUnits: [MLComputeUnits] {
         #if targetEnvironment(simulator)
         [.cpuOnly]
         #else
-        [.all, .cpuAndGPU, .cpuOnly]
+        [.all, .cpuOnly]
         #endif
     }
 
     private let frontend = FbankFrontend()
     private let tokenizer: QwenTokenizer
+    private let encoderURL: URL
     private let decoderURL: URL
-    // MLModel is thread-safe for prediction but not annotated Sendable in the iOS SDK;
-    // actor isolation guarantees only one prediction uses each model at a time.
-    private nonisolated(unsafe) let encoder: MLModel
+    // TokenEmbedding is a 1-op gather table; running it on `.cpuOnly` avoids
+    // GPU/ANE buffer allocation and compiles in ~0.3 s instead of >10 s.
     private nonisolated(unsafe) let embedding: MLModel
-    private nonisolated(unsafe) var decoder: MLModel
-    private var decoderUnitsIndex: Int
 
     init(in dir: URL) throws {
         self.tokenizer = try QwenTokenizer(
             vocabURL: dir.appending(path: "vocab.json"),
             promptURL: dir.appending(path: "prompt_ids.json")
         )
-        let candidates = Self.preferredComputeUnits
-        self.encoder = try Self.loadModel(at: dir.appending(path: "EncoderAdaptor.mlmodelc"), candidates: candidates).model
-        self.embedding = try Self.loadModel(at: dir.appending(path: "TokenEmbedding.mlmodelc"), candidates: candidates).model
+        self.encoderURL = dir.appending(path: "EncoderAdaptor.mlmodelc")
         self.decoderURL = dir.appending(path: "Qwen3Decoder.mlmodelc")
-        // Validate makeState() at load time: on iOS, MLE5Engine.newStateWithClientBuffers:
-        // can raise an Objective-C NSException under .all (ANE); catching it lets us fall
-        // back to .cpuAndGPU or .cpuOnly instead of aborting with SIGABRT.
-        let loadedDecoder = try Self.loadModel(at: decoderURL, candidates: candidates) { model in
-            _ = try Self.makeState(for: model)
+        for url in [encoderURL, decoderURL] {
+            guard FileManager.default.fileExists(atPath: url.path) else {
+                throw CocoaError(.fileNoSuchFile)
+            }
         }
-        self.decoder = loadedDecoder.model
-        self.decoderUnitsIndex = loadedDecoder.index
+        let embCfg = MLModelConfiguration()
+        embCfg.computeUnits = .cpuOnly
+        self.embedding = try MLModel(contentsOf: dir.appending(path: "TokenEmbedding.mlmodelc"), configuration: embCfg)
     }
 
     /// Calls `MLModel.makeState()` inside an Objective-C `@try/@catch` so an
@@ -69,6 +69,8 @@ actor CoreMLFunASR: Recogniser {
     }
 
     /// Tries each `MLComputeUnits` candidate in order until `load` succeeds.
+    /// Any model constructed in a failed attempt is released before the next
+    /// candidate starts so two copies are never resident simultaneously.
     nonisolated static func loadWithFallback<T>(
         candidates: [MLComputeUnits],
         load: (MLComputeUnits) throws -> T
@@ -76,7 +78,10 @@ actor CoreMLFunASR: Recogniser {
         var lastError: Error?
         for (index, units) in candidates.enumerated() {
             do {
-                return (try load(units), index)
+                let value = try autoreleasepool {
+                    try load(units)
+                }
+                return (value, index)
             } catch {
                 lastError = error
                 log.warning("CoreMLFunASR computeUnits=\(units.rawValue) failed: \(error.localizedDescription, privacy: .public)")
@@ -85,80 +90,30 @@ actor CoreMLFunASR: Recogniser {
         throw lastError ?? CocoaError(.fileReadUnknown)
     }
 
-    private nonisolated static func loadModel(
-        at url: URL,
-        candidates: [MLComputeUnits],
-        validate: ((MLModel) throws -> Void)? = nil
-    ) throws -> (model: MLModel, index: Int) {
-        let loaded = try loadWithFallback(candidates: candidates) { units -> MLModel in
-            let cfg = MLModelConfiguration()
-            cfg.computeUnits = units
-            let model = try MLModel(contentsOf: url, configuration: cfg)
-            try validate?(model)
-            return model
-        }
-        return (loaded.value, loaded.index)
-    }
-
-    private func makeDecoderState() throws -> MLState {
-        do {
-            return try Self.makeState(for: decoder)
-        } catch {
-            let candidates = Self.preferredComputeUnits
-            let nextIndex = decoderUnitsIndex + 1
-            guard nextIndex < candidates.count else { throw error }
-            Self.log.warning("CoreMLFunASR decoder makeState() failed at runtime; falling back: \(error.localizedDescription, privacy: .public)")
-            let remaining = Array(candidates[nextIndex...])
-            let loaded = try Self.loadWithFallback(candidates: remaining) { units -> (MLModel, MLState) in
-                let cfg = MLModelConfiguration()
-                cfg.computeUnits = units
-                let model = try MLModel(contentsOf: decoderURL, configuration: cfg)
-                let state = try Self.makeState(for: model)
-                return (model, state)
-            }
-            self.decoder = loaded.value.0
-            self.decoderUnitsIndex = nextIndex + loaded.index
-            return loaded.value.1
-        }
-    }
-
     func recognise(_ samples: [Float]) async throws -> String {
         let (features, numFrames) = frontend.extract(samples)
         guard numFrames > 0 else { return "" }
 
-        // 1. Run EncoderAdaptor: [1, numFrames, 560] -> [1, numFrames, 1024]
-        let speechArr = try MLMultiArray(shape: [1, NSNumber(value: numFrames), NSNumber(value: FbankFrontend.outputDim)], dataType: .float32)
-        features.withUnsafeBytes { src in
-            _ = memcpy(speechArr.dataPointer, src.baseAddress!, src.count)
-        }
-        let encIn = try MLDictionaryFeatureProvider(dictionary: ["speech": MLFeatureValue(multiArray: speechArr)])
-        let encOut = try await encoder.prediction(from: encIn)
-        guard let audioEmbeds = encOut.featureValue(for: "audio_embeds")?.multiArrayValue else {
-            throw CocoaError(.fileReadCorruptFile)
-        }
-        let audioLen = audioEmbeds.shape[1].intValue
-
-        // 2. Embed fixed prompt prefix & suffix tokens.
-        let beforeEmbeds = try await embedTokens(tokenizer.prompt.idsBefore)
-        let afterEmbeds = try await embedTokens(tokenizer.prompt.idsAfter)
-
-        let beforeLen = tokenizer.prompt.idsBefore.count
-        let afterLen = tokenizer.prompt.idsAfter.count
-        let maxAudioLen = max(0, Self.maxSeqLen - beforeLen - afterLen - 16)
-        let usedAudioLen = min(audioLen, maxAudioLen)
-        let contextLen = beforeLen + usedAudioLen + afterLen
+        // 1. Run EncoderAdaptor in its own scope and release it immediately so
+        //    its weights and E5/ANE buffers are freed before Qwen3Decoder loads.
+        let (prefillEmbeds, contextLen) = try await buildPrefillEmbeddings(features: features, numFrames: numFrames)
         guard contextLen > 0, contextLen < Self.maxSeqLen else { return "" }
 
-        // Concatenate [beforeEmbeds, audioEmbeds[:, :usedAudioLen, :], afterEmbeds] -> Float16 [1, contextLen, 1024].
-        let prefillEmbeds = try MLMultiArray(shape: [1, NSNumber(value: contextLen), NSNumber(value: Self.hiddenSize)], dataType: .float16)
-        copyFloat16Rows(from: beforeEmbeds, count: beforeLen, to: prefillEmbeds, dstRow: 0)
-        copyFloat16Rows(from: audioEmbeds, count: usedAudioLen, to: prefillEmbeds, dstRow: beforeLen)
-        copyFloat16Rows(from: afterEmbeds, count: afterLen, to: prefillEmbeds, dstRow: beforeLen + usedAudioLen)
+        // 2. Load Qwen3Decoder and allocate its MLState KV-cache after
+        //    EncoderAdaptor has been released; fall back from `.all` to
+        //    `.cpuOnly` if E5 state allocation raises an Objective-C NSException.
+        let loadedDecoder = try Self.loadWithFallback(candidates: Self.preferredComputeUnits) { units -> (MLModel, MLState) in
+            let cfg = MLModelConfiguration()
+            cfg.computeUnits = units
+            let model = try MLModel(contentsOf: decoderURL, configuration: cfg)
+            let state = try Self.makeState(for: model)
+            return (model, state)
+        }.value
+        nonisolated(unsafe) let decoder = loadedDecoder.0
+        let state = loadedDecoder.1
 
-        // 3. Prefill Qwen3Decoder with a fresh MLState KV-cache.
-        let state = try makeDecoderState()
         let eosSet = Set(tokenizer.prompt.eosIDs)
-        var nextToken = try await decodeStep(embeds: prefillEmbeds, startPos: 0, seqLen: contextLen, state: state)
+        var nextToken = try decodeStep(decoder: decoder, embeds: prefillEmbeds, startPos: 0, seqLen: contextLen, state: state)
 
         var generated: [Int] = []
         generated.reserveCapacity(64)
@@ -168,11 +123,54 @@ actor CoreMLFunASR: Recogniser {
             if eosSet.contains(nextToken) { break }
             generated.append(nextToken)
             let tokEmbed = try await embedTokens([nextToken])
-            nextToken = try await decodeStep(embeds: tokEmbed, startPos: pos, seqLen: 1, state: state)
+            nextToken = try decodeStep(decoder: decoder, embeds: tokEmbed, startPos: pos, seqLen: 1, state: state)
             pos += 1
         }
 
         return tokenizer.decode(generated)
+    }
+
+    private func buildPrefillEmbeddings(features: [Float], numFrames: Int) async throws -> (MLMultiArray, Int) {
+        let audioEmbeds = try runEncoder(features: features, numFrames: numFrames)
+        let audioLen = audioEmbeds.shape[1].intValue
+
+        let beforeEmbeds = try await embedTokens(tokenizer.prompt.idsBefore)
+        let afterEmbeds = try await embedTokens(tokenizer.prompt.idsAfter)
+
+        let beforeLen = tokenizer.prompt.idsBefore.count
+        let afterLen = tokenizer.prompt.idsAfter.count
+        let maxAudioLen = max(0, Self.maxSeqLen - beforeLen - afterLen - 16)
+        let usedAudioLen = min(audioLen, maxAudioLen)
+        let contextLen = beforeLen + usedAudioLen + afterLen
+        guard contextLen > 0, contextLen < Self.maxSeqLen else {
+            return (try MLMultiArray(shape: [1, 1, NSNumber(value: Self.hiddenSize)], dataType: .float16), 0)
+        }
+
+        // Concatenate [beforeEmbeds, audioEmbeds[:, :usedAudioLen, :], afterEmbeds] -> Float16 [1, contextLen, 1024].
+        let prefillEmbeds = try MLMultiArray(shape: [1, NSNumber(value: contextLen), NSNumber(value: Self.hiddenSize)], dataType: .float16)
+        copyFloat16Rows(from: beforeEmbeds, count: beforeLen, to: prefillEmbeds, dstRow: 0)
+        copyFloat16Rows(from: audioEmbeds, count: usedAudioLen, to: prefillEmbeds, dstRow: beforeLen)
+        copyFloat16Rows(from: afterEmbeds, count: afterLen, to: prefillEmbeds, dstRow: beforeLen + usedAudioLen)
+        return (prefillEmbeds, contextLen)
+    }
+
+    private func runEncoder(features: [Float], numFrames: Int) throws -> MLMultiArray {
+        let encoder = try Self.loadWithFallback(candidates: Self.preferredComputeUnits) { units -> MLModel in
+            let cfg = MLModelConfiguration()
+            cfg.computeUnits = units
+            return try MLModel(contentsOf: encoderURL, configuration: cfg)
+        }.value
+
+        let speechArr = try MLMultiArray(shape: [1, NSNumber(value: numFrames), NSNumber(value: FbankFrontend.outputDim)], dataType: .float32)
+        features.withUnsafeBytes { src in
+            _ = memcpy(speechArr.dataPointer, src.baseAddress!, src.count)
+        }
+        let encIn = try MLDictionaryFeatureProvider(dictionary: ["speech": MLFeatureValue(multiArray: speechArr)])
+        let encOut = try encoder.prediction(from: encIn)
+        guard let audioEmbeds = encOut.featureValue(for: "audio_embeds")?.multiArrayValue else {
+            throw CocoaError(.fileReadCorruptFile)
+        }
+        return audioEmbeds
     }
 
     private func embedTokens(_ ids: [Int]) async throws -> MLMultiArray {
@@ -189,7 +187,7 @@ actor CoreMLFunASR: Recogniser {
         return embeds
     }
 
-    private func decodeStep(embeds: MLMultiArray, startPos: Int, seqLen: Int, state: MLState) async throws -> Int {
+    private func decodeStep(decoder: MLModel, embeds: MLMultiArray, startPos: Int, seqLen: Int, state: MLState) throws -> Int {
         let posArr = try MLMultiArray(shape: [1, NSNumber(value: seqLen)], dataType: .int32)
         let posPtr = posArr.dataPointer.assumingMemoryBound(to: Int32.self)
         for i in 0..<seqLen {
@@ -214,7 +212,7 @@ actor CoreMLFunASR: Recogniser {
             "position_ids": MLFeatureValue(multiArray: posArr),
             "causal_mask": MLFeatureValue(multiArray: maskArr),
         ])
-        let out = try await decoder.prediction(from: input, using: state)
+        let out = try decoder.prediction(from: input, using: state)
         guard let logits = out.featureValue(for: "logits")?.multiArrayValue else {
             throw CocoaError(.fileReadCorruptFile)
         }

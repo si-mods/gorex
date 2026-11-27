@@ -10,6 +10,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 `web` job of `.github/workflows/ci.yml` fails it.
 
 ## en-US
+- Dictation: Fun-ASR-Nano now stages its encoder and decoder separately to cut peak memory and avoid out-of-memory crashes during hold-to-talk voice input.
 - Dictation: holding the mic to send voice with Fun-ASR-Nano no longer crashes when the Neural Engine fails to allocate decoder state; it now falls back cleanly.
 - Program tab icons now stay in sync across iPhone, desktop, and web from a single shared catalog.
 - Dictation: SenseVoice Small and Silero VAD now also run on native Core ML downloaded from GitHub Releases (no Hugging Face required), cutting another large third-party speech library from the app.
@@ -182,6 +183,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - Settings: choose System, Light or Dark right in the Interface row, and Minimum Contrast from a menu. A space's Color menu shows each color's dot and marks the current one.
 
 ## zh-Hans
+- 语音听写：Fun-ASR-Nano 改为分阶段加载编码器与解码器，大幅降低峰值内存，修复长按发送语音时因内存不足导致的闪退。
 - 语音听写：使用 Fun-ASR-Nano 长按发送语音时，神经网络引擎分配解码状态失败不再闪退，改为自动回退并继续识别。
 - 程序标签图标目录现已由统一配置自动生成，iPhone、桌面端与网页端图标保持一致。
 - 语音听写：SenseVoice Small 与 Silero VAD 现也全部改由原生 Core ML 运行并从 GitHub Releases 下载（不再依赖 Hugging Face），同时移除了 FluidAudio 第三方语音依赖包。

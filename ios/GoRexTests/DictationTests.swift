@@ -545,11 +545,12 @@ nonisolated final class DictationTests: XCTestCase {
         XCTAssertEqual(err?.localizedDescription, "simulated E5 state failure")
     }
 
-    /// CoreMLFunASR falls back across compute units when an earlier backend
-    /// throws a Swift error or an Objective-C NSException during state creation.
+    /// CoreMLFunASR falls back from `.all` to `.cpuOnly` (never `.cpuAndGPU`,
+    /// which triggers MPSGraph MLIR OOM on iOS) when state creation throws.
     func testCoreMLFunASRFallbackRecoversFromObjCException() throws {
+        XCTAssertFalse(CoreMLFunASR.preferredComputeUnits.contains(.cpuAndGPU))
         var tried: [MLComputeUnits] = []
-        let loaded = try CoreMLFunASR.loadWithFallback(candidates: [.all, .cpuAndGPU, .cpuOnly]) { units -> String in
+        let loaded = try CoreMLFunASR.loadWithFallback(candidates: [.all, .cpuOnly]) { units -> String in
             tried.append(units)
             if units == .all {
                 var nsErr: NSError?
@@ -560,8 +561,8 @@ nonisolated final class DictationTests: XCTestCase {
             }
             return "ok-\(units.rawValue)"
         }
-        XCTAssertEqual(tried, [.all, .cpuAndGPU])
-        XCTAssertEqual(loaded.value, "ok-\(MLComputeUnits.cpuAndGPU.rawValue)")
+        XCTAssertEqual(tried, [.all, .cpuOnly])
+        XCTAssertEqual(loaded.value, "ok-\(MLComputeUnits.cpuOnly.rawValue)")
         XCTAssertEqual(loaded.index, 1)
 
         XCTAssertThrowsError(try CoreMLFunASR.loadWithFallback(candidates: [.all, .cpuOnly]) { _ -> Int in
@@ -570,15 +571,15 @@ nonisolated final class DictationTests: XCTestCase {
     }
 
     /// End-to-end CoreMLFunASR inference on the real compiled Core ML bundle
-    /// when GOREX_FUNASR_MODEL_DIR points to an unpacked model directory.
+    /// when GOREX_FUNASR_MODEL_DIR points to an unpacked model directory,
+    /// running two consecutive utterances to verify staged load/release.
     func testCoreMLFunASREndToEndWhenModelPresent() async throws {
         guard let path = ProcessInfo.processInfo.environment["GOREX_FUNASR_MODEL_DIR"], !path.isEmpty else {
             throw XCTSkip("GOREX_FUNASR_MODEL_DIR not set")
         }
         let asr = try CoreMLFunASR(in: URL(fileURLWithPath: path))
-        // 1 second of 16 kHz silence/low-amplitude tone exercises FbankFrontend,
-        // EncoderAdaptor, TokenEmbedding, Qwen3Decoder.makeState(), and decoding.
         let samples = [Float](repeating: 0.001, count: 16_000)
+        _ = try await asr.recognise(samples)
         _ = try await asr.recognise(samples)
     }
 }
