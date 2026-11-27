@@ -330,6 +330,136 @@ nonisolated enum FileLink {
         return full
     }
 
+    /// Searches the token at `(row, column)` and its adjacent wrapped rows
+    /// for a file path or web URL (for example when the user taps the tail
+    /// fragment `html` or `1221` of a wrapped link that Ghostty's single-row
+    /// matcher did not recognize).
+    static func wrappedLink(rows: [String], row: Int, column: Int, columns: Int) -> Target? {
+        guard columns > 0, rows.indices.contains(row), column >= 0 else { return nil }
+        let isDelimiter: (Character) -> Bool = { $0.isWhitespace || proseDelimiters.contains($0) }
+        let line = rows[row]
+        guard let tapIndex = index(atDisplayColumn: column, in: line), !isDelimiter(line[tapIndex]) else {
+            return nil
+        }
+
+        // Expand around `tapIndex` to the enclosing non-delimiter token.
+        var tokStart = tapIndex
+        while tokStart > line.startIndex {
+            let prev = line.index(before: tokStart)
+            if isDelimiter(line[prev]) { break }
+            tokStart = prev
+        }
+        var tokEnd = line.index(after: tapIndex)
+        while tokEnd < line.endIndex, !isDelimiter(line[tokEnd]) {
+            tokEnd = line.index(after: tokEnd)
+        }
+
+        let token = String(line[tokStart..<tokEnd])
+        // Try expanding across wrapped rows using the same rules as `wrappedPath`,
+        // allowing web URLs as well as file paths.
+        if let full = wrappedToken(rows: rows, foundRow: row, tokStart: tokStart, tokEnd: tokEnd, columns: columns) {
+            if let url = WebLink.url(full, matched: true) { return .web(url) }
+            if let t = target(full, matched: true) {
+                switch t {
+                case .file(let p, let hidden) where !hidden && p.contains("/"): return .file(p, hidden: false)
+                case .web(let u): return .web(u)
+                default: break
+                }
+            }
+        }
+        // Single-row fallback if Ghostty missed a valid URL or path token.
+        if let url = WebLink.url(token, matched: true) { return .web(url) }
+        if let t = target(token, matched: true) {
+            switch t {
+            case .file(let p, let hidden) where !hidden && p.contains("/"): return .file(p, hidden: false)
+            case .web(let u): return .web(u)
+            default: break
+            }
+        }
+        return nil
+    }
+
+    private static func wrappedToken(rows: [String], foundRow: Int, tokStart: String.Index, tokEnd: String.Index, columns: Int) -> String? {
+        let isDelimiter: (Character) -> Bool = { $0.isWhitespace || proseDelimiters.contains($0) }
+        let line = rows[foundRow]
+        let trimmedRightString: (String) -> String = { s in
+            String(s.reversed().drop(while: { $0 == " " }).reversed())
+        }
+        let looksWrapped: (String, Substring) -> Bool = { prevLine, nextToken in
+            let trimmed = trimmedRightString(prevLine)
+            guard let last = trimmed.last, !isDelimiter(last), !nextToken.isEmpty else { return false }
+            if last == "-" || last == "/" || last == "_" { return true }
+            let w = displayWidth(trimmed)
+            if w >= max(columns - 8, 1) { return true }
+            return w + displayWidth(String(nextToken)) > max(columns - 6, 1)
+        }
+        let startsNewRoot: (Substring) -> Bool = { s in
+            s.hasPrefix("~/") || s.hasPrefix("./") || s.hasPrefix("../") || s.hasPrefix("/")
+                || s.hasPrefix("http://") || s.hasPrefix("https://")
+        }
+
+        var joined = String(line[tokStart..<tokEnd])
+        var startRow = foundRow
+        var endRow = foundRow
+        let maxSteps = 6
+
+        var atRowStart = line[..<tokStart].allSatisfy { $0 == " " }
+        var r = foundRow - 1
+        while atRowStart, r >= max(0, foundRow - maxSteps) {
+            let prevLine = rows[r]
+            let currentFirst = Substring(joined.prefix(while: { !isDelimiter($0) }))
+            guard looksWrapped(prevLine, currentFirst) else { break }
+            let trimmedRight = trimmedRightString(prevLine)
+            guard !trimmedRight.isEmpty else { break }
+            var pStart = trimmedRight.endIndex
+            while pStart > trimmedRight.startIndex {
+                let before = trimmedRight.index(before: pStart)
+                if isDelimiter(trimmedRight[before]) { break }
+                pStart = before
+            }
+            let prevTok = trimmedRight[pStart..<trimmedRight.endIndex]
+            guard !prevTok.isEmpty else { break }
+            if startsNewRoot(Substring(joined)), !prevTok.hasSuffix("/") { break }
+            let looksLikeLink = prevTok.contains("/") || prevTok.contains("://") || prevTok.hasPrefix("~") || prevTok.hasPrefix(".") || joined.contains("/")
+            guard looksLikeLink else { break }
+            joined = String(prevTok) + joined
+            startRow = r
+            atRowStart = trimmedRight[..<pStart].allSatisfy { $0 == " " }
+            r -= 1
+        }
+
+        var atRowEnd = line[tokEnd...].allSatisfy { $0 == " " }
+        r = foundRow + 1
+        while atRowEnd, r <= min(rows.count - 1, foundRow + maxSteps) {
+            let nextLine = rows[r]
+            let afterSpaces = nextLine.drop(while: { $0 == " " })
+            guard let firstChar = afterSpaces.first, !isDelimiter(firstChar) else { break }
+            let nextTok = afterSpaces.prefix(while: { !isDelimiter($0) })
+            guard !nextTok.isEmpty else { break }
+            if startsNewRoot(nextTok), !joined.hasSuffix("/") { break }
+            guard looksWrapped(rows[endRow], nextTok) else { break }
+            joined += nextTok
+            endRow = r
+            let rest = afterSpaces.dropFirst(nextTok.count)
+            atRowEnd = rest.allSatisfy { $0 == " " }
+            r += 1
+        }
+
+        return startRow != endRow ? joined : nil
+    }
+
+    private static func index(atDisplayColumn column: Int, in line: String) -> String.Index? {
+        var col = 0
+        var idx = line.startIndex
+        while idx < line.endIndex {
+            let w = displayWidth(String(line[idx]))
+            if column < col + w { return idx }
+            col += w
+            idx = line.index(after: idx)
+        }
+        return nil
+    }
+
     /// Terminal display columns of a string (2 for East Asian wide scalars).
     private static func displayWidth(_ text: String) -> Int {
         text.unicodeScalars.reduce(0) { n, s in

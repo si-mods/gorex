@@ -602,10 +602,36 @@ final class TerminalView: UIView, TerminalOutput {
         let p = g.location(in: self)
         if deselect(at: p) { return }
         let typing = keyboardUp
-        lastTapRow = cell.height > 0 ? Int(((p.y - inset) / cell.height).rounded(.down)) : nil
+        let tapRow = cell.height > 0 ? Int(((p.y - inset) / cell.height).rounded(.down)) : nil
+        let tapCol = cell.width > 0 ? Int((p.x / cell.width).rounded(.down)) : nil
+        lastTapRow = tapRow
         if openLink(at: p) {
             typingBeforeLink = typing
             return
+        }
+        if let tapRow, let tapCol, let s = surface {
+            let columns = Int(ghostty_surface_size(s).columns)
+            if columns > 0 {
+                readViewportRows { [weak self] rows in
+                    DispatchQueue.main.async {
+                        guard let self else { return }
+                        if let link = FileLink.wrappedLink(rows: rows, row: tapRow, column: tapCol, columns: columns) {
+                            self.typingBeforeLink = typing
+                            self.lastTapRow = nil
+                            switch link {
+                            case .file(let path, let hidden): self.openFile(path, hidden: hidden)
+                            case .web(let url): UIApplication.shared.open(url)
+                            }
+                            return
+                        }
+                        if let s = self.surface, ghostty_surface_mouse_captured(s) {
+                            self.click(at: p)
+                        }
+                        if !self.keyboardUp { self.becomeFirstResponder() }
+                    }
+                }
+                return
+            }
         }
         if let s = surface, ghostty_surface_mouse_captured(s) {
             click(at: p)

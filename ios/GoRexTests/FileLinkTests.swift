@@ -240,5 +240,24 @@ nonisolated final class FileLinkTests: XCTestCase {
         XCTAssertEqual(FileLink.wrappedPath(rows: hyphenWrapped, row: 1, fragment: "~/.gemini/antigravity-cli/brain/00000000-4aa4-", columns: 56), hyphenFull, "off-by-one tap row still finds fragment")
         XCTAssertEqual(FileLink.wrappedPath(rows: hyphenWrapped, row: 1, fragment: "4289-bfa3-000000000000/scratch/html-viewer-", columns: 56), hyphenFull)
         XCTAssertEqual(FileLink.wrappedPath(rows: hyphenWrapped, row: 2, fragment: "demo/index.html", columns: 56), hyphenFull)
+
+        // Tapping a bare tail fragment ("html") or wrapped URL tail ("1221")
+        // that Ghostty's single-row matcher does not recognize still finds
+        // the full link by searching around the tapped cell.
+        let tailRows = [
+            "  ~/.gemini/antigravity-cli/brain/00000000-0000-40",
+            "  00-8000-000000000000/scratch/html-viewer-demo/in",
+            "  dex.html",
+        ]
+        XCTAssertEqual(FileLink.wrappedLink(rows: tailRows, row: 2, column: 4, columns: 54),
+                       .file("~/.gemini/antigravity-cli/brain/00000000-0000-4000-8000-000000000000/scratch/html-viewer-demo/index.html", hidden: false))
+        XCTAssertNil(FileLink.wrappedLink(rows: tailRows, row: 2, column: 20, columns: 54), "tapping blank space must not open a link")
+
+        let wrappedURL = [
+            "  https://github.com/si-mods/gorex/pull/",
+            "  1221",
+        ]
+        XCTAssertEqual(FileLink.wrappedLink(rows: wrappedURL, row: 1, column: 3, columns: 54),
+                       .web(URL(string: "https://github.com/si-mods/gorex/pull/1221")!))
     }
 }
