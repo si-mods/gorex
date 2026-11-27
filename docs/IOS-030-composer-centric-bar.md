@@ -34,8 +34,8 @@ With the two-row `ComposerBar` stacked above `KeyBar`, the bottom chrome uses 17
 
 - When Composer Mode is on (iPhone):
   - `KeyBar` is hidden and `ComposerBar` anchors directly above `keyboardLayoutGuide.topAnchor` with `ComposerBar.gap` (6 pt).
-  - `ComposerBar`'s bottom action row holds `+` (Attach) on the left, immediately followed by a left-aligned quiet muted `⌘` marker pill (`40 × 28 pt`, `composer.keys.toggle`), a flexible spacer, and `Mic` + `Send` on the right.
-  - Tapping the quiet marker unfurls the pill rightward (`180 × 34 pt`, `damping 0.82`) from its left edge to reveal `[ Esc  Enter  Stick  ⋯  ✕ ]` while `+`, `Mic`, and `Send` stay fixed. Tapping `✕` smoothly collapses it leftward back into the quiet marker. Under Reduce Motion, the transition cross-fades without bounce.
+  - `ComposerBar`'s bottom action row holds `+` (Attach) on the left, immediately followed by a left-aligned quiet muted `⌘` circular button (`36 × 36 pt`, `composer.keys.toggle`, matching `+` and Send), a flexible spacer, and `Mic` + `Send` on the right.
+  - Tapping the quiet marker unfurls the pill rightward (`180 × 36 pt`, `damping 0.82`) from its left edge to reveal `[ Esc  Enter  Stick  ⋯  ✕ ]` while `+`, `Mic`, and `Send` stay fixed. Tapping `✕` smoothly collapses it leftward back into the quiet `36 × 36 pt` circle. Under Reduce Motion, the transition cross-fades without bounce.
   - Tapping `Esc` or `Enter` sends the key directly to the terminal. Pressing and dragging `Stick` (`◎`) shows `StickPad` and sends repeated arrow keys, without triggering the bar's downward dismiss pan or push-to-talk long press.
   - Tapping `⋯` (`composer.keys`) opens a native menu with `Ctrl+C`, `Tab`, `Shift+Tab`, `Delete`, plus an inline section with `Hide Keyboard` (when the keyboard is up) and `Show Key Bar` (which turns Composer Mode off and restores `KeyBar`).
   - Swiping down on `ComposerBar`'s grabber: if the compose field is first responder, dismisses the keyboard and keeps Composer Mode open; if the keyboard is already down, closes Composer Mode and restores `KeyBar` (where `Compose` reopens it in one tap).
