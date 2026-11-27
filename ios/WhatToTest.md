@@ -10,6 +10,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 `web` job of `.github/workflows/ci.yml` fails it.
 
 ## en-US
+- Composer Mode now replaces the separate bottom key bar on iPhone: a subtle ⌘ marker in its action row springs open into Esc, Enter, the arrow stick, and a More Keys menu on tap.
 - Fixed tapping long file paths that agent TUIs word-wrap at hyphens or slashes (and when scrolled back into history) so the full path opens cleanly.
 - Tapping a URL or file path now works inside mouse-capturing agent TUIs (such as agy, Claude Code, and tmux), and long paths hard-wrapped across lines by a TUI open as one complete path.
 - Fixed lag and frame drops when tapping keys in the iPhone key bar, and kept the keyboard steady without bouncing when opening or closing Composer Mode.
@@ -171,6 +172,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - Settings: choose System, Light or Dark right in the Interface row, and Minimum Contrast from a menu. A space's Color menu shows each color's dot and marks the current one.
 
 ## zh-Hans
+- Composer 模式现已合并下方独立按键栏：底行居中保留一枚低调的 ⌘ 小标记，轻点后带弹性过渡动画展开 Esc、回车、方向摇杆与更多快捷键菜单；下滑抓手优先收键盘，再滑切回传统键栏。
 - 修复在终端中点按被 agy 等 TUI 按连字符或斜杠折行的长文件路径（以及回滚历史记录时）仍提示文件不存在的问题，现在可完整拼接并打开。
 - 修复在接管鼠标的终端 TUI（如 agy、Claude Code、tmux）中点按链接和文件路径无反应的问题，并支持自动拼接 TUI 在手机窄屏上硬换行折断的长文件路径。
 - 修复点击 iPhone 底部按键栏快捷键时的延迟与掉帧，并修复键盘已打开时开关 Composer 导致键盘先收起再重复弹出的问题。

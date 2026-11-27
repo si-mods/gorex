@@ -130,12 +130,16 @@ final class TerminalView: UIView, TerminalOutput {
 
     /// The keyboard's height over the terminal.
     private var keys: CGFloat = 0
+    /// Whether the phone's key bar is hidden while Composer Mode shows its
+    /// unified bar (IOS-030), without changing `band` (so no PTY resize runs).
+    var keyBarHiddenForComposer = false
     /// How far the keyboard and compose bar reach over the grid, past the band
     /// under it: how far the terminal slides up to keep its cursor clear,
     /// without resizing the grid.
     var covered: CGFloat {
         let kb = band > 0 ? max(0, keys - (superview?.safeAreaInsets.bottom ?? 0)) : keys
-        return kb + composerCover
+        let hiddenBar = keyBarHiddenForComposer ? KeyBar.height : 0
+        return max(0, kb + composerCover - hiddenBar)
     }
 
     /// How tall the phone's bar and the pane bar over it are.
@@ -749,6 +753,18 @@ final class TerminalView: UIView, TerminalOutput {
         if !holding { release() }
     }
 
+    /// Sends Ctrl+C (ETX) directly to the terminal, for the composer's More Keys menu.
+    func sendCtrlC() {
+        forget()
+        session.type(Data([0x03]))
+    }
+
+    /// Sends Shift+Tab (backtab) directly to the terminal, for the composer's More Keys menu.
+    func sendShiftTab() {
+        forget()
+        press([.named("tab", shift: true, ctrl: false, alt: false)])
+    }
+
     /// Types a key of the bar that types text, as the keyboard would.
     func type(_ text: String) {
         changing { insertText(text) }
@@ -1258,10 +1274,23 @@ final class TerminalHost: UIView, UIGestureRecognizerDelegate {
     var onHoldVoiceCancel: (() -> Void)? {
         didSet { composer?.onHoldVoiceCancel = onHoldVoiceCancel }
     }
-    /// Current height + gap occupied by the compose bar, or 0 when absent.
-    var currentComposerInset: CGFloat {
+    /// Visual height + gap occupied by the compose bar, or 0 when absent.
+    private var visualComposerInset: CGFloat {
         guard let c = composer else { return 0 }
         return (c.bounds.height > 0 ? c.bounds.height : ComposerBar.baseHeight) + ComposerBar.gap
+    }
+    /// Composer inset reported to `TerminalScreen` (which adds `KeyBar.height`
+    /// when `hasBar` is true). Subtracting `KeyBar.height` while the phone key
+    /// bar is hidden for Composer Mode keeps `PaneBar` and `Reconnecting`
+    /// anchored right above `composer`.
+    var currentComposerInset: CGFloat {
+        let inset = visualComposerInset
+        guard inset > 0 else { return 0 }
+        return hidesKeyBarForComposer ? inset - KeyBar.height : inset
+    }
+    private var reportedComposerInset: CGFloat { currentComposerInset }
+    private var hidesKeyBarForComposer: Bool {
+        composer != nil && UIDevice.current.userInterfaceIdiom != .pad
     }
 
     /// Where the screen's mic lands: the pinned bar in Composer Mode,
@@ -1301,12 +1330,13 @@ final class TerminalHost: UIView, UIGestureRecognizerDelegate {
             let b = scrollDown.bottomAnchor.constraint(equalTo: composer!.topAnchor, constant: -12)
             b.isActive = true
             scrollDownBottom = b
+            syncKeyBarForComposer(animated: true)
             placeBottomEdge()
             // Transfer first responder directly without calling
             // resignFirstResponder() first, so the keyboard stays steady
             // instead of dismissing and bouncing back up.
             if wasTyping { composer?.focus() }
-            let inset = currentComposerInset
+            let inset = reportedComposerInset
             Task { @MainActor [weak self] in self?.onComposerHeight?(inset) }
         } else {
             let oldComposer = composer
@@ -1318,6 +1348,7 @@ final class TerminalHost: UIView, UIGestureRecognizerDelegate {
             // `terminal.canBecomeFirstResponder` is true and UIKit hands off
             // the keyboard atomically without dismissing it.
             composer = nil
+            syncKeyBarForComposer(animated: true)
             if wasTyping { _ = terminal.becomeFirstResponder() }
             oldComposer?.removeFromSuperview()
             scrollDownBottom?.isActive = false
@@ -1329,18 +1360,35 @@ final class TerminalHost: UIView, UIGestureRecognizerDelegate {
         }
     }
 
-    /// The compose bar, pinned over the key bar by Composer Mode.
+    /// Hides the separate iPhone key bar while Composer Mode is active
+    /// (IOS-030) without toggling `isHidden` so `band` stays constant and no
+    /// PTY resize runs.
+    private func syncKeyBarForComposer(animated: Bool) {
+        let hide = hidesKeyBarForComposer
+        terminal.keyBarHiddenForComposer = hide
+        terminal.bar.isUserInteractionEnabled = !hide
+        let apply = { self.terminal.bar.alpha = hide ? 0 : 1 }
+        if animated {
+            UIView.animate(withDuration: 0.2, animations: apply)
+        } else {
+            apply()
+        }
+    }
+
+    /// The compose bar, anchored directly above the keyboard/safe area on
+    /// iPhone (replacing the separate key bar; IOS-030).
     private func openComposer() {
         let c = ComposerBar(terminal: terminal)
         c.translatesAutoresizingMaskIntoConstraints = false
         addSubview(c)
-        let bottom = terminal.bar.superview === self ? terminal.bar.topAnchor : keyboardLayoutGuide.topAnchor
+        let bottom = keyboardLayoutGuide.topAnchor
         NSLayoutConstraint.activate([
             c.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 10),
             c.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -10),
             c.bottomAnchor.constraint(equalTo: bottom, constant: -ComposerBar.gap),
         ])
         composer = c
+        syncKeyBarForComposer(animated: false)
         c.onClose = { [weak self] in self?.terminal.setComposerEnabled(false) }
         terminal.composerCover = ComposerBar.baseInset
         c.onHeightChange = { [weak self] h in
@@ -1348,7 +1396,8 @@ final class TerminalHost: UIView, UIGestureRecognizerDelegate {
             let inset = h + ComposerBar.gap
             terminal.composerCover = inset
             placeBottomEdge()
-            Task { @MainActor [weak self] in self?.onComposerHeight?(inset) }
+            let reported = reportedComposerInset
+            Task { @MainActor [weak self] in self?.onComposerHeight?(reported) }
         }
         c.alpha = 0
         UIView.animate(withDuration: 0.2) { c.alpha = 1 }
@@ -1434,8 +1483,8 @@ final class TerminalHost: UIView, UIGestureRecognizerDelegate {
     /// bars above it; with neither it goes.
     func placeBottomEdge() {
         let bar = terminal.bar
-        let keyBar = bar.superview === self && !bar.isHidden ? KeyBar.height : 0
-        let comp = currentComposerInset
+        let keyBar = bar.superview === self && !bar.isHidden && !hidesKeyBarForComposer ? KeyBar.height : 0
+        let comp = visualComposerInset
         let height = keyBar + comp + aboveBar
         bottomEdge.isHidden = height == 0
         bottomEdgeTop?.constant = -height
@@ -1837,7 +1886,7 @@ final class KeyBar: UIView, UIScrollViewDelegate {
 
     /// The stick, which no SF Symbol draws: a ring with four arrowheads
     /// inside it and a dot at its centre.
-    private static let stick = UIGraphicsImageRenderer(size: CGSize(width: 24, height: 24)).image { _ in
+    static let stick = UIGraphicsImageRenderer(size: CGSize(width: 24, height: 24)).image { _ in
         let c = CGPoint(x: 12, y: 12)
         let ring = UIBezierPath(arcCenter: c, radius: 10.6, startAngle: 0, endAngle: 2 * .pi, clockwise: true)
         ring.lineWidth = 1.4
