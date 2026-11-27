@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.68.0
+
+### Features
+
+* **rex,cli:** add peer delegation over interactive coding-agent TUIs (`gorex hosts --probe`, `gorex [-S HOST] agents`, `gorex [-S HOST] delegate` with `--name`, warm `--session` follow-ups, cold `--resume`, OSC 7501 event-driven wait, parent-agent `blocked` approval recovery, and opt-in `--mode yolo`) (MOD-016) ([#1207](https://github.com/si-mods/gorex/pull/1207), [#1208](https://github.com/si-mods/gorex/pull/1208), [#1212](https://github.com/si-mods/gorex/pull/1212), [#1214](https://github.com/si-mods/gorex/pull/1214), [#1217](https://github.com/si-mods/gorex/pull/1217))
+* **icons:** add 142 Rex brand tiles across Desktop, Web, and iOS, and align `omp` tile icon with Rex gradient style ([#1199](https://github.com/si-mods/gorex/pull/1199), [#1203](https://github.com/si-mods/gorex/pull/1203))
+* **ios:** streamline key bar into two capsules, add two-row Rex Composer layout with first-page Enter, and open tapped HTML files in an in-app WKWebView with relative asset loading (IOS-029) ([#1200](https://github.com/si-mods/gorex/pull/1200), [#1202](https://github.com/si-mods/gorex/pull/1202), [#1211](https://github.com/si-mods/gorex/pull/1211))
+
+### Bug Fixes
+
+* **rex:** reply to OSC 7501/7502 queries before DA1 sentinel ([#1209](https://github.com/si-mods/gorex/pull/1209))
+* **ios:** align iPhone key bar with official Rex, reflow streaming output via shadow VTerminal on remote size mismatch, eliminate key bar tap jank and keyboard bounce on Composer toggle, and allow tapping links under TUI mouse capture with hard-wrapped path reconstruction ([#1210](https://github.com/si-mods/gorex/pull/1210), [#1213](https://github.com/si-mods/gorex/pull/1213), [#1216](https://github.com/si-mods/gorex/pull/1216), [#1218](https://github.com/si-mods/gorex/pull/1218))
+
 ## 0.67.0
 
 ### Features
