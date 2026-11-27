@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.68.2
+
+### Bug Fixes
+
+* **delegate:** wait for visible TUI readiness (ignoring ConPTY control-only sequences and honoring OSC 7501 `idle` for all agents), exclude pre-existing transcript files so `omp`/`agy`/`codex`/`devin` never bind to old sessions, seek `--resume` transcripts to end of file, and keep `--async` sessions alive on fast completion ([#1241](https://github.com/si-mods/gorex/pull/1241))
+
 ## 0.68.1
 
 ### Performance & Size
