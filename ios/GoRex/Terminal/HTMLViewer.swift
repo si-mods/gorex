@@ -330,6 +330,9 @@ final class HTMLViewerController: UIViewController, WKNavigationDelegate, WKUIDe
         config.setURLSchemeHandler(schemeHandler, forURLScheme: HTMLResourcePath.scheme)
 
         let wv = WKWebView(frame: .zero, configuration: config)
+        wv.isOpaque = false
+        wv.backgroundColor = .systemBackground
+        wv.scrollView.backgroundColor = .systemBackground
         wv.navigationDelegate = self
         wv.uiDelegate = self
         wv.allowsBackForwardNavigationGestures = true
