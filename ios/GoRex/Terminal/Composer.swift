@@ -251,8 +251,9 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
             self.pressing = Task { [weak self] in
                 var delay = 0.4
                 repeat {
-                    self?.terminal?.send("backspace", holding: true)
-                    self?.tick.impactOccurred(intensity: 0.5)
+                    guard let self else { break }
+                    self.terminal?.send("backspace", holding: true)
+                    self.tick.impactOccurred(intensity: 0.5)
                     try? await Task.sleep(for: .seconds(delay))
                     delay = 0.05
                 } while !Task.isCancelled
