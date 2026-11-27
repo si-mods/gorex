@@ -199,38 +199,46 @@ func TestWaitTUIReadyIgnoresControlOnlyOutput(t *testing.T) {
 	origPoll := delegateReadyPoll
 	origQuiet := delegateReadyQuiet
 	origFallback := delegateReadyFallbackQuiet
-	delegateReadyPoll = 5 * time.Millisecond
-	delegateReadyQuiet = 25 * time.Millisecond
-	delegateReadyFallbackQuiet = 60 * time.Millisecond
+	delegateReadyPoll = 10 * time.Millisecond
+	delegateReadyQuiet = 40 * time.Millisecond
+	delegateReadyFallbackQuiet = 100 * time.Millisecond
 	t.Cleanup(func() {
 		delegateReadyPoll = origPoll
 		delegateReadyQuiet = origQuiet
 		delegateReadyFallbackQuiet = origFallback
 	})
 
+	base := time.Date(2026, 11, 27, 12, 0, 0, 0, time.UTC)
+
 	for _, agentID := range []string{"omp", "agy", "codex", "devin"} {
 		t.Run(agentID+"_control_only_waits", func(t *testing.T) {
-			start := time.Now()
+			cur := base
+			nowFn := func() time.Time { return cur }
+			sleepFn := func(d time.Duration) { cur = cur.Add(d) }
+
 			waitTUIReadyWith(func() tuiSnapshot {
 				return tuiSnapshot{
 					output:     16,
-					lastOutput: start.Add(-time.Second),
+					lastOutput: base.Add(-time.Second),
 					plainText:  stripANSI("\x1bH\x1b[2J\x1b[?25l"),
 				}
-			}, agentID, 80*time.Millisecond)
-			if elapsed := time.Since(start); elapsed < 60*time.Millisecond {
-				t.Fatalf("%s: waitTUIReady returned in %v on control-only output, want full wait", agentID, elapsed)
+			}, agentID, 80*time.Millisecond, nowFn, sleepFn)
+			if elapsed := cur.Sub(base); elapsed != 80*time.Millisecond {
+				t.Fatalf("%s: waitTUIReady virtual elapsed = %v on control-only output, want full 80ms wait", agentID, elapsed)
 			}
 		})
 
 		t.Run(agentID+"_ready_after_visible_settle", func(t *testing.T) {
-			start := time.Now()
-			readyAt := start.Add(20 * time.Millisecond)
+			cur := base
+			nowFn := func() time.Time { return cur }
+			sleepFn := func(d time.Duration) { cur = cur.Add(d) }
+			readyAt := base.Add(20 * time.Millisecond)
+
 			waitTUIReadyWith(func() tuiSnapshot {
-				if time.Now().Before(readyAt) {
+				if cur.Before(readyAt) {
 					return tuiSnapshot{
 						output:     16,
-						lastOutput: start,
+						lastOutput: base,
 						plainText:  stripANSI("\x1bH\x1b[2J"),
 					}
 				}
@@ -240,24 +248,26 @@ func TestWaitTUIReadyIgnoresControlOnlyOutput(t *testing.T) {
 					bracketed:  true,
 					plainText:  stripANSI("\x1b[2J\x1b[HWelcome\r\n❯ "),
 				}
-			}, agentID, 2*time.Second)
-			elapsed := time.Since(start)
-			if elapsed < 40*time.Millisecond || elapsed > 500*time.Millisecond {
-				t.Fatalf("%s: waitTUIReady elapsed = %v, want between 40ms and 500ms", agentID, elapsed)
+			}, agentID, 2*time.Second, nowFn, sleepFn)
+			want := 60 * time.Millisecond // 20ms startup + 40ms settle
+			if elapsed := cur.Sub(base); elapsed != want {
+				t.Fatalf("%s: waitTUIReady virtual elapsed = %v, want %v", agentID, elapsed, want)
 			}
 		})
 
 		t.Run(agentID+"_osc7501_idle_returns_immediately", func(t *testing.T) {
-			start := time.Now()
+			cur := base
+			calls := 0
 			waitTUIReadyWith(func() tuiSnapshot {
+				calls++
 				return tuiSnapshot{
 					output:    4,
 					idle:      true,
 					plainText: stripANSI("\x1bH"),
 				}
-			}, agentID, time.Second)
-			if elapsed := time.Since(start); elapsed > 100*time.Millisecond {
-				t.Fatalf("%s: waitTUIReady took %v despite OSC 7501 idle", agentID, elapsed)
+			}, agentID, time.Second, func() time.Time { return cur }, func(d time.Duration) { cur = cur.Add(d) })
+			if calls != 1 || cur != base {
+				t.Fatalf("%s: osc7501 idle calls=%d elapsed=%v, want 1 call and 0s", agentID, calls, cur.Sub(base))
 			}
 		})
 	}

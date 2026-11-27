@@ -210,11 +210,7 @@ func (s *Server) doDelegate(req Request, peer string, _ *keptConn) (any, error) 
 	// pasting so Windows PowerShell / ConPTY init bytes do not trigger early paste.
 	waitTUIReady(ss, agentID, delegateReadyWait)
 	if in := ss.info(); in.Exited {
-		status := "failed"
-		if in.ExitCode == 0 {
-			status = "completed"
-		}
-		run.finishTurn(status, "", "delegated agent exited before accepting prompt")
+		run.finishTurn("failed", "", "delegated agent exited before accepting prompt")
 		return run.snapshot(ss), nil
 	}
 
@@ -578,18 +574,18 @@ func waitTUIReady(ss *session, agentID string, maxWait time.Duration) {
 			bracketed:  ss.bracketedPaste(),
 			plainText:  sessionPlainText(ss),
 		}
-	}, agentID, maxWait)
+	}, agentID, maxWait, time.Now, time.Sleep)
 }
 
-func waitTUIReadyWith(sample func() tuiSnapshot, agentID string, maxWait time.Duration) {
-	deadline := time.Now().Add(maxWait)
+func waitTUIReadyWith(sample func() tuiSnapshot, agentID string, maxWait time.Duration, nowFn func() time.Time, sleepFn func(time.Duration)) {
+	deadline := nowFn().Add(maxWait)
 	var prevOut uint64
 	var prevTxt string
 	var lastChange time.Time
 	seenVisible := false
 
 	for {
-		now := time.Now()
+		now := nowFn()
 		snap := sample()
 		if snap.exited || snap.idle {
 			return
@@ -633,11 +629,11 @@ func waitTUIReadyWith(sample func() tuiSnapshot, agentID string, maxWait time.Du
 			return
 		}
 		sleep := delegateReadyPoll
-		if rem := time.Until(deadline); rem < sleep {
+		if rem := deadline.Sub(now); rem < sleep {
 			sleep = rem
 		}
 		if sleep > 0 {
-			time.Sleep(sleep)
+			sleepFn(sleep)
 		}
 	}
 }

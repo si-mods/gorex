@@ -275,7 +275,7 @@ func (ompTranscript) FindFile(dir, tty, home, _, agentSession string, startedAt 
 				return p
 			}
 			cand := filepath.Clean(lines[1])
-			if samePath(real(lines[0]), real(dir)) && !isExcludedPath(exclude, cand) {
+			if samePath(real(lines[0]), real(dir)) && (agentSession != "" || !isExcludedPath(exclude, cand)) {
 				if agentSession == "" || strings.Contains(filepath.Base(cand), agentSession) {
 					if st, err := os.Stat(cand); err == nil && !st.IsDir() {
 						if agentSession != "" || cutoff.IsZero() || !st.ModTime().Before(cutoff) {
