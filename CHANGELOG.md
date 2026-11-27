@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.68.1
+
+### Performance & Size
+
+* **build:** omit unused Tailscale features via shared `packaging/ts-omit-tags.txt` across desktop and iOS builds ([#1223](https://github.com/si-mods/gorex/pull/1223), [#1239](https://github.com/si-mods/gorex/pull/1239))
+* **icons:** load 142 extra brand SVGs on demand from CDN with local disk cache on Desktop and iOS, and enable iOS Release `-Osize` / dead-code stripping ([#1224](https://github.com/si-mods/gorex/pull/1224), [#1230](https://github.com/si-mods/gorex/pull/1230))
+* **web:** extend Cloudflare CDN `Cache-Control` for `/fonts`, `/icons`, `/brands`, and `/pwa` static assets to 1 year immutable ([#1226](https://github.com/si-mods/gorex/pull/1226))
+* **ios:** run Fun-ASR-Nano, SenseVoiceSmall, and Silero VAD natively on Apple Core ML (hosted on GitHub Releases), removing both `SherpaOnnxC` and `FluidAudio` (`NemoTextProcessing`), and merge `GhosttyVt` into `GhosttyKitAppStore` (IOS-031, IOS-032, IOS-033) ([#1234](https://github.com/si-mods/gorex/pull/1234), [#1235](https://github.com/si-mods/gorex/pull/1235), [#1238](https://github.com/si-mods/gorex/pull/1238))
+
+### Features & Fixes
+
+* **ios:** unified Composer-centric action bar with full-width 7-key quick-keys strip (44pt HIG targets), 36pt collapsed button alignment, in-app HTML viewer dark/light theme sync, and hyphen/word-wrapped TUI path reconstruction (IOS-030) ([#1219](https://github.com/si-mods/gorex/pull/1219), [#1221](https://github.com/si-mods/gorex/pull/1221), [#1222](https://github.com/si-mods/gorex/pull/1222), [#1225](https://github.com/si-mods/gorex/pull/1225), [#1227](https://github.com/si-mods/gorex/pull/1227), [#1228](https://github.com/si-mods/gorex/pull/1228))
+* **icons:** unify Go, Web, and iOS program brand catalogs from `assets/brands.json` via `tools/genbrands` ([#1236](https://github.com/si-mods/gorex/pull/1236))
+
 ## 0.68.0
 
 ### Features
