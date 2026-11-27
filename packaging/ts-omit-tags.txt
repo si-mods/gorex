@@ -1,6 +1,7 @@
-# Tailscale features omitted from desktop release builds via GOFLAGS=-tags=...
-# Matches ios/scripts/build-tailnet except useproxy, which internal/rex/ownrelay.go
-# imports. Kept: netstack, serve, acme, dns, logtail, tailscaledhttps, cachenetmap,
+# Shared Tailscale features omitted from desktop release builds (ci.yml,
+# release.yml) and iOS builds (ios/scripts/build-tailnet, which adds
+# ts_omit_useproxy because desktop's internal/rex/ownrelay.go needs useproxy).
+# Kept: netstack, serve, acme, dns, logtail, tailscaledhttps, cachenetmap,
 # ssh (required by tsnet); ipnbus, portmapper, tailnetlock, useproxy.
 ts_omit_ace
 ts_omit_advertiseexitnode
