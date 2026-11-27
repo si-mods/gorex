@@ -319,7 +319,7 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
         for v in [escBtn, enterBtn, stickBtn, keysMenuBtn, collapseBtn] { quickKeys.addArrangedSubview(v) }
 
         var toggleCfg = UIButton.Configuration.plain()
-        toggleCfg.image = UIImage(systemName: "command", withConfiguration: UIImage.SymbolConfiguration(pointSize: 12, weight: .medium))
+        toggleCfg.image = UIImage(systemName: "command", withConfiguration: UIImage.SymbolConfiguration(pointSize: 15, weight: .medium))
         toggleCfg.baseForegroundColor = UIColor.label.withAlphaComponent(0.45)
         toggleCfg.contentInsets = .zero
         quickToggle.configuration = toggleCfg
@@ -332,20 +332,20 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
         }, for: .touchUpInside)
 
         quickPill.backgroundColor = UIColor.white.withAlphaComponent(0.06)
-        quickPill.layer.cornerRadius = 14
+        quickPill.layer.cornerRadius = 18
         quickPill.clipsToBounds = true
         quickPill.isHidden = UIDevice.current.userInterfaceIdiom == .pad
         quickPill.translatesAutoresizingMaskIntoConstraints = false
         quickPill.addSubview(quickToggle)
         quickPill.addSubview(quickKeys)
-        let pw = quickPill.widthAnchor.constraint(equalToConstant: 40)
-        let ph = quickPill.heightAnchor.constraint(equalToConstant: 28)
+        let pw = quickPill.widthAnchor.constraint(equalToConstant: 36)
+        let ph = quickPill.heightAnchor.constraint(equalToConstant: 36)
         quickPillWidth = pw
         quickPillHeight = ph
         NSLayoutConstraint.activate([
             pw, ph,
             quickToggle.leadingAnchor.constraint(equalTo: quickPill.leadingAnchor),
-            quickToggle.widthAnchor.constraint(equalToConstant: 40),
+            quickToggle.widthAnchor.constraint(equalToConstant: 36),
             quickToggle.topAnchor.constraint(equalTo: quickPill.topAnchor),
             quickToggle.bottomAnchor.constraint(equalTo: quickPill.bottomAnchor),
             quickKeys.leadingAnchor.constraint(equalTo: quickPill.leadingAnchor, constant: 6),
@@ -605,8 +605,8 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
     private func setQuickKeysExpanded(_ expanded: Bool, animated: Bool) {
         guard expanded != quickKeysExpanded else { return }
         quickKeysExpanded = expanded
-        quickPillWidth?.constant = expanded ? 180 : 40
-        quickPillHeight?.constant = expanded ? 34 : 28
+        quickPillWidth?.constant = expanded ? 180 : 36
+        quickPillHeight?.constant = 36
         if expanded {
             quickKeys.isHidden = false
             quickToggle.isUserInteractionEnabled = false
@@ -615,7 +615,6 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
             quickKeys.isUserInteractionEnabled = false
         }
         let apply = {
-            self.quickPill.layer.cornerRadius = expanded ? 17 : 14
             self.quickPill.backgroundColor = UIColor.white.withAlphaComponent(expanded ? 0.09 : 0.06)
             self.quickToggle.alpha = expanded ? 0 : 1
             self.quickToggle.transform = expanded ? CGAffineTransform(scaleX: 0.75, y: 0.75) : .identity
