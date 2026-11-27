@@ -1,4 +1,5 @@
 import AVFoundation
+import CoreML
 import UIKit
 import XCTest
 import os
@@ -527,5 +528,57 @@ nonisolated final class DictationTests: XCTestCase {
         XCTAssertEqual(Dictation.level(of: 1, after: 0), 1)
         XCTAssertEqual(Dictation.level(of: 0, after: 0.8), 0.4, accuracy: 0.001)
         XCTAssertEqual(Dictation.level(of: 0.1, after: 0.5), 0.75, accuracy: 0.001)
+    }
+
+    /// Objective-C exceptions raised by Core ML (such as MLE5Engine state
+    /// allocation failures) convert to Swift errors instead of aborting.
+    func testObjCExceptionCatcherConvertsNSExceptionToError() {
+        var ran = false
+        var err: NSError?
+        XCTAssertTrue(GoRexCatchObjCException({ ran = true }, &err))
+        XCTAssertTrue(ran)
+        XCTAssertNil(err)
+
+        XCTAssertFalse(GoRexCatchObjCException({
+            NSException(name: .internalInconsistencyException, reason: "simulated E5 state failure", userInfo: nil).raise()
+        }, &err))
+        XCTAssertEqual(err?.localizedDescription, "simulated E5 state failure")
+    }
+
+    /// CoreMLFunASR falls back across compute units when an earlier backend
+    /// throws a Swift error or an Objective-C NSException during state creation.
+    func testCoreMLFunASRFallbackRecoversFromObjCException() throws {
+        var tried: [MLComputeUnits] = []
+        let loaded = try CoreMLFunASR.loadWithFallback(candidates: [.all, .cpuAndGPU, .cpuOnly]) { units -> String in
+            tried.append(units)
+            if units == .all {
+                var nsErr: NSError?
+                _ = GoRexCatchObjCException({
+                    NSException(name: .internalInconsistencyException, reason: "E5 buffer alloc failed", userInfo: nil).raise()
+                }, &nsErr)
+                throw nsErr!
+            }
+            return "ok-\(units.rawValue)"
+        }
+        XCTAssertEqual(tried, [.all, .cpuAndGPU])
+        XCTAssertEqual(loaded.value, "ok-\(MLComputeUnits.cpuAndGPU.rawValue)")
+        XCTAssertEqual(loaded.index, 1)
+
+        XCTAssertThrowsError(try CoreMLFunASR.loadWithFallback(candidates: [.all, .cpuOnly]) { _ -> Int in
+            throw CocoaError(.fileReadCorruptFile)
+        })
+    }
+
+    /// End-to-end CoreMLFunASR inference on the real compiled Core ML bundle
+    /// when GOREX_FUNASR_MODEL_DIR points to an unpacked model directory.
+    func testCoreMLFunASREndToEndWhenModelPresent() async throws {
+        guard let path = ProcessInfo.processInfo.environment["GOREX_FUNASR_MODEL_DIR"], !path.isEmpty else {
+            throw XCTSkip("GOREX_FUNASR_MODEL_DIR not set")
+        }
+        let asr = try CoreMLFunASR(in: URL(fileURLWithPath: path))
+        // 1 second of 16 kHz silence/low-amplitude tone exercises FbankFrontend,
+        // EncoderAdaptor, TokenEmbedding, Qwen3Decoder.makeState(), and decoding.
+        let samples = [Float](repeating: 0.001, count: 16_000)
+        _ = try await asr.recognise(samples)
     }
 }

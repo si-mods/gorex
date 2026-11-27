@@ -183,6 +183,7 @@ targets:
       - GoRex/Terminal/QwenTokenizer.swift
       - GoRex/Terminal/CoreMLSileroVAD.swift
       - GoRex/Terminal/CoreMLSenseVoice.swift
+      - GoRex/Terminal/ObjCException.m
       - GoRex/Terminal/CoreMLFunASR.swift
       - GoRex/Terminal/Dictation.swift
       - GoRex/Terminal/Polish.swift
