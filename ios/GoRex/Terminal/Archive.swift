@@ -1,9 +1,8 @@
 import Foundation
 
-/// A model as sherpa-onnx's releases carry it: one .tar.bz2 of the files
-/// Hugging Face holds, for where neither Hugging Face nor its mirror can be
-/// reached, as from mainland China. bzip2 is the system's; tar's headers
-/// are read here, as the archive comes.
+/// A model as GitHub Releases carries it: one .tar.bz2 of the compiled model
+/// files. bzip2 is the system's; tar's headers are read here, as the archive
+/// comes.
 nonisolated enum TarBz2 {
     /// Why an archive could not be unpacked.
     struct Failure: LocalizedError {

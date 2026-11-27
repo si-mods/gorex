@@ -1,6 +1,5 @@
 import AVFoundation
 import FluidAudio
-import SherpaOnnxC
 import Synchronization
 import UIKit
 import os
@@ -8,68 +7,58 @@ import os
 /// Dictation, after rootshell's: the mic records, and the model chosen
 /// recognises it on the phone, in the language it hears, with punctuation
 /// and digits: SenseVoiceSmall (FunASR's, in Core ML through FluidAudio), or
-/// a larger one, through sherpa-onnx. The app does not ship the models: the
-/// mic's first tap asks, and downloads the one chosen.
+/// Fun-ASR-Nano (in Core ML through CoreMLFunASR). The app does not ship the
+/// models: the mic's first tap asks, and downloads the one chosen.
 @Observable final class Dictation {
     static let shared = Dictation()
 
     /// A speech model, and where it comes from.
     nonisolated enum Model: String, CaseIterable, Sendable {
-        case senseVoice, funASRNano, qwen3ASR
+        case senseVoice, funASRNano
 
         var name: String {
             switch self {
             case .senseVoice: "SenseVoice Small"
             case .funASRNano: "Fun-ASR-Nano"
-            case .qwen3ASR: "Qwen3-ASR 0.6B"
             }
         }
 
-        /// sherpa-onnx's int8 conversion, in a Hugging Face repo at a
-        /// commit: its files, and what each weighs. SenseVoice's is
-        /// FluidAudio's.
-        var repo: (name: String, commit: String, files: [(path: String, size: Int)])? {
-            switch self {
-            case .senseVoice: nil
-            case .funASRNano: ("csukuangfj/sherpa-onnx-funasr-nano-int8-2025-12-30", "6f16bd378457e13f36ccf3910df9017f96c346fb",
-                               [("encoder_adaptor.int8.onnx", 237_792_748), ("llm.int8.onnx", 600_356_593), ("embedding.int8.onnx", 155_584_380),
-                                ("Qwen3-0.6B/tokenizer.json", 11_422_654), ("Qwen3-0.6B/vocab.json", 2_776_833), ("Qwen3-0.6B/merges.txt", 1_671_853)])
-            case .qwen3ASR: ("csukuangfj2/sherpa-onnx-qwen3-asr-0.6B-int8-2026-03-25", "68818b2313fe77bd06f6a7c5068ff3ef59d02b8a", qwen3)
-            }
-        }
-
-        /// The same model as sherpa-onnx releases it, one tarball on
-        /// GitHub: its asset, and the files in it with what each weighs.
-        /// Those are that build's, which are not always the commit's:
-        /// Fun-ASR-Nano's differ. Nil for SenseVoice's, which FluidAudio
-        /// keeps.
+        /// The model as a single tarball on GitHub Releases: its asset name,
+        /// and the files in it with what each weighs. Nil for SenseVoice,
+        /// which FluidAudio downloads from Hugging Face.
         var release: (asset: String, files: [(path: String, size: Int)])? {
             switch self {
             case .senseVoice: nil
-            case .funASRNano: ("sherpa-onnx-funasr-nano-int8-2025-12-30.tar.bz2",
-                               [("encoder_adaptor.int8.onnx", 238_277_200), ("llm.int8.onnx", 600_339_316), ("embedding.int8.onnx", 155_583_106),
-                                ("Qwen3-0.6B/tokenizer.json", 11_422_654), ("Qwen3-0.6B/vocab.json", 2_776_833), ("Qwen3-0.6B/merges.txt", 1_671_853)])
-            case .qwen3ASR: ("sherpa-onnx-qwen3-asr-0.6B-int8-2026-03-25.tar.bz2", qwen3)
+            case .funASRNano: ("funasr-nano-coreml-v1.tar.bz2", [
+                ("EncoderAdaptor.mlmodelc/analytics/coremldata.bin", 243),
+                ("EncoderAdaptor.mlmodelc/coremldata.bin", 398),
+                ("EncoderAdaptor.mlmodelc/model.mil", 908_120),
+                ("EncoderAdaptor.mlmodelc/weights/weight.bin", 235_347_456),
+                ("TokenEmbedding.mlmodelc/analytics/coremldata.bin", 243),
+                ("TokenEmbedding.mlmodelc/coremldata.bin", 384),
+                ("TokenEmbedding.mlmodelc/model.mil", 2_626),
+                ("TokenEmbedding.mlmodelc/weights/weight.bin", 155_886_528),
+                ("Qwen3Decoder.mlmodelc/analytics/coremldata.bin", 243),
+                ("Qwen3Decoder.mlmodelc/coremldata.bin", 576),
+                ("Qwen3Decoder.mlmodelc/model.mil", 1_132_528),
+                ("Qwen3Decoder.mlmodelc/weights/weight.bin", 335_795_200),
+                ("vocab.json", 2_776_833),
+                ("prompt_ids.json", 341),
+            ])
             }
         }
 
-        /// Qwen3-ASR's files, the same in its commit and its release.
-        private var qwen3: [(path: String, size: Int)] {
-            [("conv_frontend.onnx", 44_148_281), ("encoder.int8.onnx", 182_491_662), ("decoder.int8.onnx", 755_914_231),
-             ("tokenizer/tokenizer_config.json", 12_487), ("tokenizer/vocab.json", 2_776_833), ("tokenizer/merges.txt", 1_671_853)]
-        }
-
         /// What it weighs: SenseVoice's preprocessor, encoder, vocabulary
-        /// and VAD; another's files.
+        /// and VAD; Fun-ASR-Nano's compiled Core ML files.
         var size: Int64 {
-            guard let repo else { return Dictation.precision == .fp16 ? 474_000_000 : 241_000_000 }
-            return Int64(repo.files.reduce(0) { $0 + $1.size })
+            guard let release else { return Dictation.precision == .fp16 ? 474_000_000 : 241_000_000 }
+            return Int64(release.files.reduce(0) { $0 + $1.size })
         }
 
         /// The longest phrase it takes, in samples. SenseVoice's encoder
-        /// takes 0.2 to 30 s, and Qwen3-ASR as much: a phrase is cut as it
-        /// passes 29 s, its last chunk keeping it under 30. Fun-ASR-Nano
-        /// left words out of 29 s, not of 20.
+        /// takes 0.2 to 30 s: a phrase is cut as it passes 29 s, its last
+        /// chunk keeping it under 30. Fun-ASR-Nano cuts at 20 s to stay
+        /// within its 512-token context window.
         var longest: Int { self == .funASRNano ? 20 * 16_000 : 29 * 16_000 }
     }
 
@@ -83,25 +72,28 @@ import os
         .int8
         #endif
     }
-    /// Where FluidAudio keeps its models, and sherpa-onnx's, out of backups.
+    /// Where FluidAudio keeps its models, and CoreMLFunASR's, out of backups.
     nonisolated private static let root = URL.applicationSupportDirectory.appending(path: "FluidAudio")
     nonisolated private static var speechDir: URL { MLModelConfigurationUtils.defaultModelsDirectory(for: .senseVoiceSmall) }
     nonisolated private static var vadModel: URL {
         MLModelConfigurationUtils.defaultModelsDirectory(for: .vad).appending(path: ModelNames.VAD.sileroVadFile)
     }
     /// Hugging Face, and hf-mirror.com, a mirror run by others, for where
-    /// Hugging Face can't be reached, as often from mainland China. The
-    /// mirror now redirects there instead of serving the files itself, so a
-    /// model both fail to serve comes as one tarball from GitHub.
+    /// Hugging Face can't be reached, as often from mainland China.
     nonisolated private static let hub = "https://huggingface.co"
     nonisolated private static let mirror = "https://hf-mirror.com"
-    /// sherpa-onnx's releases, where each of its models is one tarball.
-    nonisolated private static let releases = "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models"
+    /// GitHub Releases hosting the precompiled Core ML Fun-ASR-Nano tarball.
+    nonisolated private static let releases = "https://github.com/si-mods/gorex/releases/download/models-funasr-nano-coreml-v1"
     /// SenseVoice's text-norm: punctuation and digits (withitn).
     nonisolated private static let textNorm: Int32 = 14
 
-    /// The model the mic uses, as Settings chose it.
-    var model = Model(rawValue: UserDefaults.standard.string(forKey: "dictationModel") ?? "") ?? .senseVoice {
+    /// The model the mic uses, as Settings chose it. Migrates retired
+    /// `"qwen3ASR"` selections to `.funASRNano`.
+    var model: Model = {
+        let saved = UserDefaults.standard.string(forKey: "dictationModel") ?? ""
+        if saved == "qwen3ASR" { return .funASRNano }
+        return Model(rawValue: saved) ?? .senseVoice
+    }() {
         didSet {
             UserDefaults.standard.set(model.rawValue, forKey: "dictationModel")
             // The one loaded goes; the next listening loads this.
@@ -180,7 +172,8 @@ import os
 
     /// The models whole on disk.
     @concurrent nonisolated static func onDisk() async -> Set<Model> {
-        Set(Model.allCases.filter(present))
+        removeLegacyONNXCaches()
+        return Set(Model.allCases.filter(present))
     }
 
     /// Whether a model is loaded, or loading.
@@ -322,14 +315,25 @@ import os
     }
 
     nonisolated private static func dir(_ m: Model) -> URL {
-        guard let repo = m.repo else { return speechDir }
-        return root.appending(path: repo.name)
+        guard m != .senseVoice else { return speechDir }
+        return root.appending(path: "funasr-nano-coreml-v1")
     }
 
     /// Where a release's archive and what it unpacks into live while it
     /// downloads: beside the model, never in it.
     nonisolated private static func stage(_ m: Model) -> URL {
-        root.appending(path: (m.repo?.name ?? m.rawValue) + ".release")
+        root.appending(path: (m == .senseVoice ? m.rawValue : "funasr-nano-coreml-v1") + ".release")
+    }
+
+    /// Reclaims legacy sherpa-onnx ONNX weights left on disk by earlier builds.
+    nonisolated private static func removeLegacyONNXCaches() {
+        let fm = FileManager.default
+        for rel in ["csukuangfj/sherpa-onnx-funasr-nano-int8-2025-12-30",
+                    "csukuangfj/sherpa-onnx-funasr-nano-int8-2025-12-30.release",
+                    "csukuangfj2/sherpa-onnx-qwen3-asr-0.6B-int8-2026-03-25",
+                    "csukuangfj2/sherpa-onnx-qwen3-asr-0.6B-int8-2026-03-25.release"] {
+            try? fm.removeItem(at: root.appending(path: rel))
+        }
     }
 
     /// Whether the VAD's compiled model is on disk whole: what every model
@@ -341,18 +345,15 @@ import os
 
     /// Whether a model is whole: the VAD's compiled model, with nothing
     /// left half downloaded; FluidAudio's check for SenseVoice, and
-    /// another's files.
+    /// CoreMLFunASR's compiled files for Fun-ASR-Nano.
     nonisolated static func present(_ m: Model) -> Bool {
         guard vadPresent else { return false }
-        guard let repo = m.repo else { return SenseVoiceModels.modelsExist(at: speechDir, precision: precision) }
-        if whole(repo.files, in: dir(m)) { return true }
-        // The release's build of the same model, whose files are not
-        // always the commit's.
-        return m.release.map { whole($0.files, in: dir(m)) } ?? false
+        guard let release = m.release else { return SenseVoiceModels.modelsExist(at: speechDir, precision: precision) }
+        return whole(release.files, in: dir(m))
     }
 
     /// Whether each file is in dir at its size; one downloading is not
-    /// yet, as get keeps it as .partial.
+    /// yet, as tarball keeps it as .partial.
     nonisolated static func whole(_ files: [(path: String, size: Int)], in dir: URL) -> Bool {
         files.allSatisfy { (try? dir.appending(path: $0.path).resourceValues(forKeys: [.fileSizeKey]).fileSize) == $0.size }
     }
@@ -360,15 +361,13 @@ import os
     @concurrent nonisolated private static func load(_ m: Model) async throws -> (any Recogniser, VadManager) {
         let speech: any Recogniser = m == .senseVoice
             ? SenseVoiceManager(models: try SenseVoiceModels.load(from: speechDir, precision: precision), language: 0, textNorm: textNorm)
-            : try Sherpa(m, in: dir(m))
+            : try CoreMLFunASR(in: dir(m))
         return (speech, try await VadManager())
     }
 
-    /// Downloads what is missing from the first source that serves it:
-    /// Hugging Face, hf-mirror, or sherpa-onnx's release on GitHub, where
-    /// the model is one tarball. FluidAudio checks each file against the
-    /// size its source lists, and keeps it as .partial until it is whole;
-    /// get and the release's tarball do the same.
+    /// Downloads what is missing: SenseVoice and Silero VAD from Hugging Face
+    /// (or hf-mirror), and Fun-ASR-Nano's compiled Core ML tarball from GitHub
+    /// Releases.
     @concurrent nonisolated private static func fetch(_ m: Model, _ progress: @escaping @Sendable (Double) -> Void) async throws {
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         var v = URLResourceValues()
@@ -387,18 +386,13 @@ import os
         for source in sources {
             ModelRegistry.baseURL = source.url
             do {
-                // Listing the VAD's files on Hugging Face takes the network:
-                // one already on disk is not asked for again, whatever the
-                // source, its listing unreachable as much as its files.
                 if !vadPresent {
                     try await ModelHub.download(.vad, to: MLModelConfigurationUtils.defaultModelsDirectory())
                 }
                 if m == .senseVoice {
                     _ = try await SenseVoiceModels.download(precision: precision) { progress($0.fractionCompleted) }
-                } else if source.release {
-                    try await tarball(m, progress)
                 } else {
-                    try await get(m, from: source.url, progress)
+                    try await tarball(m, progress)
                 }
                 return
             } catch {
@@ -406,44 +400,33 @@ import os
                 failure = error
             }
         }
-        // A source served, and failed: its error says the most about why.
         throw failure ?? URLError(.cannotConnectToHost)
     }
 
-    /// A place a model comes from: Hugging Face or its mirror, file by
-    /// file, or sherpa-onnx's release, the model as one tarball.
+    /// A place a model comes from: Hugging Face or its mirror for FluidAudio
+    /// models (VAD / SenseVoice), plus GitHub Releases for Fun-ASR-Nano's tarball.
     nonisolated private struct Source: Sendable {
         let url: String
         let release: Bool
     }
 
-    /// The sources that serve a model, best first. One that does not serve
-    /// is left out, so a host this network blocks fails no download: from
-    /// mainland China hf-mirror answers nothing but a redirect to Hugging
-    /// Face, which does not answer at all.
     @concurrent nonisolated private static func sources(_ m: Model) async -> [Source] {
-        async let fromHub = serves(hub, m)
-        async let fromMirror = serves(mirror, m)
+        async let fromHub = serves(hub)
+        async let fromMirror = serves(mirror)
         var sources: [Source] = []
-        if await fromHub { sources.append(Source(url: hub, release: false)) }
-        if await fromMirror { sources.append(Source(url: mirror, release: false)) }
-        if m.release != nil { sources.append(Source(url: hub, release: true)) }
+        let isRelease = m.release != nil
+        if await fromHub { sources.append(Source(url: hub, release: isRelease)) }
+        if await fromMirror { sources.append(Source(url: mirror, release: isRelease)) }
+        if isRelease, sources.isEmpty { sources.append(Source(url: hub, release: true)) }
         return sources
     }
 
-    /// Whether a source serves a model: the first bytes of the smallest of
-    /// its files come back, not a redirect to a host this network cannot
-    /// reach. SenseVoice's is the VAD's model, which a source of a
-    /// sherpa-onnx one carries too.
-    @concurrent nonisolated private static func serves(_ base: String, _ m: Model) async -> Bool {
-        let probe: (repo: String, commit: String, path: String, size: Int)
-        if let repo = m.repo, let smallest = repo.files.min(by: { $0.size < $1.size }) {
-            probe = (repo.name, repo.commit, smallest.path, smallest.size)
-        } else {
-            probe = (Repo.vad.rawValue, "main", "\(ModelNames.VAD.sileroVadFile)/coremldata.bin", 100)
-        }
-        let n = min(64, probe.size)
-        guard let url = URL(string: "\(base)/\(probe.repo)/resolve/\(probe.commit)/\(probe.path)") else { return false }
+    /// Whether a Hugging Face host serves the VAD model (used by every
+    /// dictation model).
+    @concurrent nonisolated private static func serves(_ base: String) async -> Bool {
+        let path = "\(ModelNames.VAD.sileroVadFile)/coremldata.bin"
+        let n = 64
+        guard let url = URL(string: "\(base)/\(Repo.vad.rawValue)/resolve/main/\(path)") else { return false }
         var r = URLRequest(url: url, timeoutInterval: 10)
         r.setValue("bytes=0-\(n - 1)", forHTTPHeaderField: "Range")
         guard let (data, res) = try? await sessions[0].data(for: r) else { return false }
@@ -525,65 +508,9 @@ import os
         return total
     }
 
-    /// A sherpa-onnx model's files not yet whole, as Maple gets its faces:
-    /// by ranges, four at a time on four connections as one is slow, each
-    /// added in turn to the file's .partial, which goes on from what it
-    /// has and takes its name once whole.
-    @concurrent nonisolated private static func get(_ m: Model, from source: String, _ progress: @Sendable (Double) -> Void) async throws {
-        guard let repo = m.repo else { return }
-        let total = repo.files.reduce(0) { $0 + $1.size }
-        var done = 0
-        for f in repo.files {
-            let file = dir(m).appending(path: f.path)
-            if whole([f], in: dir(m)) {
-                done += f.size
-                continue
-            }
-            let part = file.appendingPathExtension("partial")
-            try FileManager.default.createDirectory(at: part.deletingLastPathComponent(), withIntermediateDirectories: true)
-            if !FileManager.default.fileExists(atPath: part.path) { FileManager.default.createFile(atPath: part.path, contents: nil) }
-            let out = try FileHandle(forWritingTo: part)
-            defer { try? out.close() }
-            var have = Int(try out.seekToEnd())
-            if have > f.size {
-                try out.truncate(atOffset: 0)
-                have = 0
-            }
-            done += have
-            // The file's URL; after the first range, the signed one it
-            // redirects to, signed again as it expires.
-            let resolve = URL(string: "\(source)/\(repo.name)/resolve/\(repo.commit)/\(f.path)")!
-            var url = resolve
-            // Ranges ahead of the .partial, those coming and those come
-            // out of turn, are four at most.
-            try await withThrowingTaskGroup(of: (Int, Data, URL).self) { g in
-                var next = have
-                var got: [Int: Data] = [:]
-                while have < f.size {
-                    while next < f.size, next - have < 4 * chunk {
-                        let at = next, n = min(chunk, f.size - at), u = url
-                        g.addTask { try await range(at, n, of: u, else: resolve) }
-                        next += n
-                    }
-                    let (at, data, signed) = try await g.next()!
-                    got[at] = data
-                    url = signed
-                    while let data = got.removeValue(forKey: have) {
-                        try out.write(contentsOf: data)
-                        have += data.count
-                        done += data.count
-                        progress(Double(done) / Double(total))
-                    }
-                }
-            }
-            try? FileManager.default.removeItem(at: file)
-            try FileManager.default.moveItem(at: part, to: file)
-        }
-    }
-
-    /// What get asks for at once: 8 MB.
+    /// What tarball asks for at once: 8 MB.
     nonisolated private static let chunk = 8 << 20
-    /// A connection for each of get's four ranges: one session would carry
+    /// A connection for each of tarball's four ranges: one session would carry
     /// them all on one HTTP/2 connection, no faster than one range.
     nonisolated private static let sessions = (0..<4).map { _ in URLSession(configuration: .ephemeral) }
 
@@ -799,55 +726,6 @@ extension SenseVoiceManager: Recogniser {
     func recognise(_ samples: [Float]) throws -> String {
         let r = try transcribeDetailed(audio: samples)
         return r.language == "nospeech" ? "" : r.text
-    }
-}
-
-/// sherpa-onnx's recogniser, for Fun-ASR-Nano and Qwen3-ASR, on two CPU
-/// cores, as they were measured: greedy, without hotwords.
-actor Sherpa: Recogniser {
-    private nonisolated(unsafe) let recogniser: OpaquePointer
-
-    /// Throws as sherpa-onnx can't load the model in dir.
-    init(_ m: Dictation.Model, in dir: URL) throws {
-        var c = SherpaOnnxOfflineRecognizerConfig()
-        var paths: [UnsafeMutablePointer<CChar>] = []
-        defer { paths.forEach { free($0) } }
-        func path(_ p: String) -> UnsafePointer<CChar> {
-            paths.append(strdup(dir.appending(path: p).path))
-            return UnsafePointer(paths.last!)
-        }
-        c.model_config.num_threads = 2
-        switch m {
-        case .funASRNano:
-            c.model_config.funasr_nano.encoder_adaptor = path("encoder_adaptor.int8.onnx")
-            c.model_config.funasr_nano.llm = path("llm.int8.onnx")
-            c.model_config.funasr_nano.embedding = path("embedding.int8.onnx")
-            c.model_config.funasr_nano.tokenizer = path("Qwen3-0.6B")
-            c.model_config.funasr_nano.itn = 1
-        case .qwen3ASR:
-            c.feat_config.feature_dim = 128
-            c.model_config.qwen3_asr.conv_frontend = path("conv_frontend.onnx")
-            c.model_config.qwen3_asr.encoder = path("encoder.int8.onnx")
-            c.model_config.qwen3_asr.decoder = path("decoder.int8.onnx")
-            c.model_config.qwen3_asr.tokenizer = path("tokenizer")
-            c.model_config.qwen3_asr.max_new_tokens = 256
-        case .senseVoice:
-            break
-        }
-        guard let r = SherpaOnnxCreateOfflineRecognizer(&c) else { throw CocoaError(.fileReadCorruptFile) }
-        recogniser = r
-    }
-
-    deinit { SherpaOnnxDestroyOfflineRecognizer(recogniser) }
-
-    func recognise(_ samples: [Float]) -> String {
-        guard let s = SherpaOnnxCreateOfflineStream(recogniser) else { return "" }
-        defer { SherpaOnnxDestroyOfflineStream(s) }
-        SherpaOnnxAcceptWaveformOffline(s, 16_000, samples, Int32(samples.count))
-        SherpaOnnxDecodeOfflineStream(recogniser, s)
-        guard let r = SherpaOnnxGetOfflineStreamResult(s) else { return "" }
-        defer { SherpaOnnxDestroyOfflineRecognizerResult(r) }
-        return r.pointee.text.map { String(cString: $0) } ?? ""
     }
 }
 
