@@ -12,6 +12,7 @@ import (
 	"gorex/internal/rex"
 )
 
+//go:generate go run ./tools/genbrands
 //go:embed assets/icons/*.svg assets/brands/*.svg resources/icon.png
 var assets embed.FS
 

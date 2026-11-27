@@ -1,0 +1,318 @@
+// Command genbrands generates programs_brands.go, web/src/programs_brands.ts,
+// and ios/Shared/ProgramBrands.swift from the single source of truth in
+// assets/brands.json.
+//
+// Usage:
+//
+//	go run ./tools/genbrands         # regenerate all three files
+//	go run ./tools/genbrands -check  # exit non-zero if any generated file is stale
+package main
+
+import (
+	"bytes"
+	"encoding/json"
+	"flag"
+	"fmt"
+	"go/format"
+	"math"
+	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
+)
+
+type Catalog struct {
+	Brands  []Brand `json:"brands"`
+	Aliases []Alias `json:"aliases"`
+}
+
+type Brand struct {
+	ID         string    `json:"id"`
+	Name       string    `json:"name"`
+	Glyph      string    `json:"glyph"`
+	TileBg     string    `json:"tileBg"`
+	TileFg     string    `json:"tileFg"`
+	TileBorder bool      `json:"tileBorder,omitempty"`
+	Shell      bool      `json:"shell,omitempty"`
+	Gradient   *Gradient `json:"gradient,omitempty"`
+}
+
+type Gradient struct {
+	Angle float64        `json:"angle"`
+	Stops []GradientStop `json:"stops"`
+}
+
+type GradientStop struct {
+	Color string  `json:"color"`
+	At    float64 `json:"at"`
+}
+
+type Alias struct {
+	Name   string `json:"name"`
+	Target string `json:"target"`
+}
+
+func main() {
+	check := flag.Bool("check", false, "verify generated files match assets/brands.json without writing")
+	root := flag.String("root", ".", "repository root directory")
+	flag.Parse()
+
+	if err := run(*root, *check); err != nil {
+		fmt.Fprintf(os.Stderr, "genbrands: %v\n", err)
+		os.Exit(1)
+	}
+}
+
+func run(root string, check bool) error {
+	raw, err := os.ReadFile(filepath.Join(root, "assets", "brands.json"))
+	if err != nil {
+		return err
+	}
+	var cat Catalog
+	if err := json.Unmarshal(raw, &cat); err != nil {
+		return fmt.Errorf("parse assets/brands.json: %w", err)
+	}
+	if err := validate(&cat); err != nil {
+		return err
+	}
+
+	goSrc, err := genGo(&cat)
+	if err != nil {
+		return fmt.Errorf("generate Go: %w", err)
+	}
+	tsSrc := genTS(&cat)
+	swiftSrc := genSwift(&cat)
+
+	outputs := []struct {
+		rel  string
+		data []byte
+	}{
+		{"programs_brands.go", goSrc},
+		{filepath.Join("web", "src", "programs_brands.ts"), tsSrc},
+		{filepath.Join("ios", "Shared", "ProgramBrands.swift"), swiftSrc},
+	}
+
+	var stale []string
+	for _, out := range outputs {
+		path := filepath.Join(root, out.rel)
+		if check {
+			cur, err := os.ReadFile(path)
+			if err != nil || !bytes.Equal(cur, out.data) {
+				stale = append(stale, out.rel)
+			}
+			continue
+		}
+		if err := os.WriteFile(path, out.data, 0o644); err != nil {
+			return fmt.Errorf("write %s: %w", out.rel, err)
+		}
+	}
+	if len(stale) > 0 {
+		return fmt.Errorf("out of date (%s); run `go run ./tools/genbrands`", strings.Join(stale, ", "))
+	}
+	return nil
+}
+
+func validate(cat *Catalog) error {
+	seen := make(map[string]bool, len(cat.Brands))
+	for _, b := range cat.Brands {
+		if b.ID == "" || b.Name == "" || b.Glyph == "" {
+			return fmt.Errorf("brand missing required field: %+v", b)
+		}
+		if seen[b.ID] {
+			return fmt.Errorf("duplicate brand id %q", b.ID)
+		}
+		seen[b.ID] = true
+		if _, err := hexRGB(b.TileBg); err != nil {
+			return fmt.Errorf("brand %q tileBg: %w", b.ID, err)
+		}
+		if _, err := hexRGB(b.TileFg); err != nil {
+			return fmt.Errorf("brand %q tileFg: %w", b.ID, err)
+		}
+		if b.Gradient != nil {
+			if len(b.Gradient.Stops) < 2 {
+				return fmt.Errorf("brand %q gradient needs >= 2 stops", b.ID)
+			}
+			for _, s := range b.Gradient.Stops {
+				if _, err := hexRGB(s.Color); err != nil {
+					return fmt.Errorf("brand %q gradient stop: %w", b.ID, err)
+				}
+			}
+		}
+	}
+	seenAlias := make(map[string]bool, len(cat.Aliases))
+	for _, a := range cat.Aliases {
+		if a.Name == "" || a.Target == "" {
+			return fmt.Errorf("alias missing name or target: %+v", a)
+		}
+		if seenAlias[a.Name] {
+			return fmt.Errorf("duplicate alias %q", a.Name)
+		}
+		seenAlias[a.Name] = true
+	}
+	return nil
+}
+
+func hexRGB(s string) (string, error) {
+	s = strings.TrimPrefix(strings.ToLower(s), "#")
+	if len(s) != 6 {
+		return "", fmt.Errorf("invalid hex color %q", s)
+	}
+	if _, err := strconv.ParseUint(s, 16, 32); err != nil {
+		return "", fmt.Errorf("invalid hex color %q: %w", s, err)
+	}
+	return s, nil
+}
+
+func fmtFloat(f float64) string {
+	if math.Trunc(f) == f {
+		return fmt.Sprintf("%.1f", f)
+	}
+	return strconv.FormatFloat(f, 'f', -1, 64)
+}
+
+func fmtPct(at float64) string {
+	pct := math.Round(at*1000) / 10
+	if math.Trunc(pct) == pct {
+		return fmt.Sprintf("%.0f%%", pct)
+	}
+	return strconv.FormatFloat(pct, 'f', -1, 64) + "%"
+}
+
+func fmtDeg(angle float64) string {
+	if math.Trunc(angle) == angle {
+		return fmt.Sprintf("%.0fdeg", angle)
+	}
+	return strconv.FormatFloat(angle, 'f', -1, 64) + "deg"
+}
+
+func goIdent(id string) string {
+	return "grad_" + strings.ReplaceAll(id, "-", "_")
+}
+
+func genGo(cat *Catalog) ([]byte, error) {
+	var b bytes.Buffer
+	b.WriteString("// Code generated by tools/genbrands from assets/brands.json. DO NOT EDIT.\n\n")
+	b.WriteString("package main\n\n")
+	b.WriteString("import \"github.com/egoist/mygo/ui\"\n\n")
+	b.WriteString("// registerRexBrands adds the additional program brand tiles and aliases\n")
+	b.WriteString("// to the desktop program catalog without overwriting existing entries.\n")
+	b.WriteString("func registerRexBrands(m map[string]program) {\n")
+	for _, br := range cat.Brands {
+		if br.Gradient == nil {
+			continue
+		}
+		var stops []string
+		for _, st := range br.Gradient.Stops {
+			stops = append(stops, fmt.Sprintf("{Color: ui.Hex(%q), At: %s}", strings.ToLower(st.Color), fmtFloat(st.At)))
+		}
+		fmt.Fprintf(&b, "\t%s := ui.LinearGradient{Angle: %s, Stops: []ui.GradientStop{%s}}\n",
+			goIdent(br.ID), fmtFloat(br.Gradient.Angle), strings.Join(stops, ", "))
+	}
+	for _, br := range cat.Brands {
+		var fields []string
+		fields = append(fields,
+			fmt.Sprintf("Name: %q", br.Name),
+			fmt.Sprintf("Glyph: %q", br.Glyph),
+			fmt.Sprintf("TileBg: ui.Hex(%q)", strings.ToLower(br.TileBg)),
+			fmt.Sprintf("TileFg: ui.Hex(%q)", strings.ToLower(br.TileFg)),
+		)
+		if br.TileBorder {
+			fields = append(fields, "TileBorder: true")
+		}
+		if br.Shell {
+			fields = append(fields, "Shell: true")
+		}
+		if br.Gradient != nil {
+			fields = append(fields, "TileBgGradient: &"+goIdent(br.ID))
+		}
+		fmt.Fprintf(&b, "\tm[%q] = program{%s}\n", br.ID, strings.Join(fields, ", "))
+	}
+	for _, al := range cat.Aliases {
+		fmt.Fprintf(&b, "\tm[%q] = m[%q]\n", al.Name, al.Target)
+	}
+	b.WriteString("}\n")
+	return format.Source(b.Bytes())
+}
+
+func genTS(cat *Catalog) []byte {
+	var b bytes.Buffer
+	b.WriteString("// Code generated by tools/genbrands from assets/brands.json. DO NOT EDIT.\n\n")
+	b.WriteString("import type { Program } from \"./programs\";\n\n")
+	b.WriteString("type Opts = { tileBorder?: boolean; shell?: boolean; tileBgGradient?: string };\n")
+	b.WriteString("const p = (name: string, glyph: string, tileBg: number, tileFg: number, o: Opts = {}): Program => ({\n")
+	b.WriteString("  name, glyph, tileBg, tileFg, tileBgGradient: o.tileBgGradient, tileGlyph: \"\", tileBorder: o.tileBorder ?? false, shell: o.shell ?? false,\n")
+	b.WriteString("});\n\n")
+	b.WriteString("export function registerRexBrands(m: Map<string, Program>): void {\n")
+	for _, br := range cat.Brands {
+		bg, _ := hexRGB(br.TileBg)
+		fg, _ := hexRGB(br.TileFg)
+		var opts []string
+		if br.TileBorder {
+			opts = append(opts, "tileBorder: true")
+		}
+		if br.Shell {
+			opts = append(opts, "shell: true")
+		}
+		if br.Gradient != nil {
+			var stops []string
+			for _, st := range br.Gradient.Stops {
+				stops = append(stops, fmt.Sprintf("%s %s", strings.ToLower(st.Color), fmtPct(st.At)))
+			}
+			css := fmt.Sprintf("linear-gradient(%s, %s)", fmtDeg(br.Gradient.Angle), strings.Join(stops, ", "))
+			opts = append(opts, fmt.Sprintf("tileBgGradient: %q", css))
+		}
+		if len(opts) > 0 {
+			fmt.Fprintf(&b, "  m.set(%q, p(%q, %q, 0x%s, 0x%s, { %s }));\n",
+				br.ID, br.Name, br.Glyph, bg, fg, strings.Join(opts, ", "))
+		} else {
+			fmt.Fprintf(&b, "  m.set(%q, p(%q, %q, 0x%s, 0x%s));\n",
+				br.ID, br.Name, br.Glyph, bg, fg)
+		}
+	}
+	for _, al := range cat.Aliases {
+		fmt.Fprintf(&b, "  m.set(%q, m.get(%q)!);\n", al.Name, al.Target)
+	}
+	b.WriteString("}\n")
+	return b.Bytes()
+}
+
+func genSwift(cat *Catalog) []byte {
+	var b bytes.Buffer
+	b.WriteString("// Code generated by tools/genbrands from assets/brands.json. DO NOT EDIT.\n\n")
+	b.WriteString("import SwiftUI\n\n")
+	b.WriteString("extension Program {\n")
+	b.WriteString("    static func registerRexBrands(_ p: inout [String: Program]) {\n")
+	for _, br := range cat.Brands {
+		bg, _ := hexRGB(br.TileBg)
+		fg, _ := hexRGB(br.TileFg)
+		var args []string
+		args = append(args,
+			fmt.Sprintf("name: %q", br.Name),
+			fmt.Sprintf("glyph: %q", br.Glyph),
+			fmt.Sprintf("tileBg: 0x%s", bg),
+			fmt.Sprintf("tileFg: 0x%s", fg),
+		)
+		if br.TileBorder {
+			args = append(args, "tileBorder: true")
+		}
+		if br.Shell {
+			args = append(args, "shell: true")
+		}
+		if br.Gradient != nil {
+			var stops []string
+			for _, st := range br.Gradient.Stops {
+				c, _ := hexRGB(st.Color)
+				stops = append(stops, fmt.Sprintf("(0x%s, %s)", c, fmtFloat(st.At)))
+			}
+			args = append(args, fmt.Sprintf("tileBgGradient: .init(angleDegrees: %s, stops: [%s])",
+				fmtFloat(br.Gradient.Angle), strings.Join(stops, ", ")))
+		}
+		fmt.Fprintf(&b, "        p[%q] = .init(%s)\n", br.ID, strings.Join(args, ", "))
+	}
+	for _, al := range cat.Aliases {
+		fmt.Fprintf(&b, "        p[%q] = p[%q]\n", al.Name, al.Target)
+	}
+	b.WriteString("    }\n")
+	b.WriteString("}\n")
+	return b.Bytes()
+}

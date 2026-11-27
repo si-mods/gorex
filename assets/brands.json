@@ -1,0 +1,1632 @@
+{
+  "brands": [
+    {
+      "id": "amp",
+      "name": "Amp",
+      "glyph": "brand:amp",
+      "tileBg": "#dfdfc1",
+      "tileFg": "#091c1e",
+      "tileBorder": true
+    },
+    {
+      "id": "android",
+      "name": "Android",
+      "glyph": "brand:android",
+      "tileBg": "#00ab47",
+      "tileFg": "#ffffff"
+    },
+    {
+      "id": "apple-container",
+      "name": "Apple Container",
+      "glyph": "brand:apple-container",
+      "tileBg": "#767b91",
+      "tileFg": "#ffffff"
+    },
+    {
+      "id": "aside",
+      "name": "Aside",
+      "glyph": "brand:aside",
+      "tileBg": "#f9fbfb",
+      "tileFg": "#090b0c",
+      "tileBorder": true
+    },
+    {
+      "id": "azure",
+      "name": "Azure",
+      "glyph": "brand:azure",
+      "tileBg": "#000000",
+      "tileFg": "#ffffff"
+    },
+    {
+      "id": "bat",
+      "name": "Bat",
+      "glyph": "brand:bat",
+      "tileBg": "#3036a4",
+      "tileFg": "#ffffff"
+    },
+    {
+      "id": "bazel",
+      "name": "Bazel",
+      "glyph": "brand:bazel",
+      "tileBg": "#4ed569",
+      "tileFg": "#ffffff"
+    },
+    {
+      "id": "boundary",
+      "name": "Boundary",
+      "glyph": "brand:boundary",
+      "tileBg": "#f24c53",
+      "tileFg": "#ffffff"
+    },
+    {
+      "id": "brew",
+      "name": "Homebrew",
+      "glyph": "brand:brew",
+      "tileBg": "#ffac0b",
+      "tileFg": "#ffffff"
+    },
+    {
+      "id": "browser",
+      "name": "Browser",
+      "glyph": "brand:browser",
+      "tileBg": "#00c4fd",
+      "tileFg": "#ffffff",
+      "gradient": {
+        "angle": 90.0,
+        "stops": [
+          {
+            "color": "#00c4fc",
+            "at": 0.0
+          },
+          {
+            "color": "#016dff",
+            "at": 1.0
+          }
+        ]
+      }
+    },
+    {
+      "id": "buck",
+      "name": "Buck",
+      "glyph": "brand:buck",
+      "tileBg": "#bd4731",
+      "tileFg": "#ffffff",
+      "gradient": {
+        "angle": 90.0,
+        "stops": [
+          {
+            "color": "#bd4731",
+            "at": 0.0
+          },
+          {
+            "color": "#ff9000",
+            "at": 1.0
+          }
+        ]
+      }
+    },
+    {
+      "id": "buildkite",
+      "name": "Buildkite",
+      "glyph": "brand:buildkite",
+      "tileBg": "#00d078",
+      "tileFg": "#ffffff"
+    },
+    {
+      "id": "butler",
+      "name": "Git Butler",
+      "glyph": "brand:butler",
+      "tileBg": "#bae8e8",
+      "tileFg": "#000000",
+      "tileBorder": true
+    },
+    {
+      "id": "caddy",
+      "name": "Caddy",
+      "glyph": "brand:caddy",
+      "tileBg": "#0a374a",
+      "tileFg": "#00f857"
+    },
+    {
+      "id": "caffeinate",
+      "name": "caffeinate",
+      "glyph": "brand:caffeinate",
+      "tileBg": "#2b2d31",
+      "tileFg": "#7ee787"
+    },
+    {
+      "id": "charm",
+      "name": "Charm",
+      "glyph": "brand:charm",
+      "tileBg": "#ab5afa",
+      "tileFg": "#ffffff"
+    },
+    {
+      "id": "clang",
+      "name": "Clang",
+      "glyph": "brand:clang",
+      "tileBg": "#cbf0ff",
+      "tileFg": "#002c38",
+      "tileBorder": true
+    },
+    {
+      "id": "cloudflare",
+      "name": "Cloudflare",
+      "glyph": "brand:cloudflare",
+      "tileBg": "#f6821e",
+      "tileFg": "#ffffff"
+    },
+    {
+      "id": "coder",
+      "name": "Coder",
+      "glyph": "brand:coder",
+      "tileBg": "#ffffff",
+      "tileFg": "#000000",
+      "tileBorder": true
+    },
+    {
+      "id": "consul",
+      "name": "Consul",
+      "glyph": "brand:consul",
+      "tileBg": "#e03875",
+      "tileFg": "#ffffff"
+    },
+    {
+      "id": "copilot",
+      "name": "Copilot",
+      "glyph": "brand:copilot",
+      "tileBg": "#fafafa",
+      "tileFg": "#2a56fe",
+      "tileBorder": true
+    },
+    {
+      "id": "crush",
+      "name": "Crush",
+      "glyph": "brand:crush",
+      "tileBg": "#000000",
+      "tileFg": "#ffffff"
+    },
+    {
+      "id": "crystal",
+      "name": "Crystal",
+      "glyph": "brand:crystal",
+      "tileBg": "#000000",
+      "tileFg": "#ffffff"
+    },
+    {
+      "id": "cua",
+      "name": "Cua",
+      "glyph": "brand:cua",
+      "tileBg": "#c55c00",
+      "tileFg": "#ffffff"
+    },
+    {
+      "id": "cursor",
+      "name": "Cursor",
+      "glyph": "brand:cursor",
+      "tileBg": "#f7f7f4",
+      "tileFg": "#26251d",
+      "tileBorder": true
+    },
+    {
+      "id": "d2",
+      "name": "D2",
+      "glyph": "brand:d2",
+      "tileBg": "#f3f5ff",
+      "tileFg": "#245df5",
+      "tileBorder": true
+    },
+    {
+      "id": "dart",
+      "name": "Dart",
+      "glyph": "brand:dart",
+      "tileBg": "#00bafc",
+      "tileFg": "#ffffff"
+    },
+    {
+      "id": "datadog",
+      "name": "Datadog",
+      "glyph": "brand:datadog",
+      "tileBg": "#8d00ff",
+      "tileFg": "#ffffff"
+    },
+    {
+      "id": "daytona",
+      "name": "Daytona",
+      "glyph": "brand:daytona",
+      "tileBg": "#000000",
+      "tileFg": "#ffffff"
+    },
+    {
+      "id": "dbcli",
+      "name": "DBCLI",
+      "glyph": "brand:dbcli",
+      "tileBg": "#201815",
+      "tileFg": "#ffffff"
+    },
+    {
+      "id": "depot",
+      "name": "Depot",
+      "glyph": "brand:depot",
+      "tileBg": "#ebecf0",
+      "tileFg": "#000000",
+      "tileBorder": true
+    },
+    {
+      "id": "dotnet",
+      "name": ".Net",
+      "glyph": "brand:dotnet",
+      "tileBg": "#4a30dd",
+      "tileFg": "#ffffff",
+      "gradient": {
+        "angle": 90.0,
+        "stops": [
+          {
+            "color": "#7817ed",
+            "at": 0.0
+          },
+          {
+            "color": "#4a30dd",
+            "at": 1.0
+          }
+        ]
+      }
+    },
+    {
+      "id": "droid",
+      "name": "Droid",
+      "glyph": "brand:droid",
+      "tileBg": "#000000",
+      "tileFg": "#ffffff"
+    },
+    {
+      "id": "duckdb",
+      "name": "DuckDB",
+      "glyph": "brand:duckdb",
+      "tileBg": "#fff000",
+      "tileFg": "#1d1d1b",
+      "tileBorder": true
+    },
+    {
+      "id": "e2b",
+      "name": "E2B",
+      "glyph": "brand:e2b",
+      "tileBg": "#000000",
+      "tileFg": "#ff0000"
+    },
+    {
+      "id": "elixir",
+      "name": "Elixir",
+      "glyph": "brand:elixir",
+      "tileBg": "#9243bf",
+      "tileFg": "#ffffff"
+    },
+    {
+      "id": "expo",
+      "name": "Expo",
+      "glyph": "brand:expo",
+      "tileBg": "#ffffff",
+      "tileFg": "#000000",
+      "tileBorder": true
+    },
+    {
+      "id": "fish",
+      "name": "fish",
+      "glyph": "brand:fish",
+      "tileBg": "#2b2d31",
+      "tileFg": "#7ee787",
+      "shell": true
+    },
+    {
+      "id": "flutter",
+      "name": "Flutter",
+      "glyph": "brand:flutter",
+      "tileBg": "#5fc8f9",
+      "tileFg": "#ffffff"
+    },
+    {
+      "id": "fm",
+      "name": "Foundation Models",
+      "glyph": "brand:fm",
+      "tileBg": "#9bef53",
+      "tileFg": "#f1fff3",
+      "gradient": {
+        "angle": 90.0,
+        "stops": [
+          {
+            "color": "#99ee56",
+            "at": 0.0
+          },
+          {
+            "color": "#0393db",
+            "at": 0.953
+          }
+        ]
+      }
+    },
+    {
+      "id": "fx",
+      "name": "fx",
+      "glyph": "brand:fx",
+      "tileBg": "#111111",
+      "tileFg": "#ffffff"
+    },
+    {
+      "id": "gemini",
+      "name": "Gemini",
+      "glyph": "brand:gemini",
+      "tileBg": "#f9f9f9",
+      "tileFg": "#3a88fe",
+      "tileBorder": true
+    },
+    {
+      "id": "github",
+      "name": "GitHub",
+      "glyph": "brand:github",
+      "tileBg": "#f9f9f9",
+      "tileFg": "#000000",
+      "tileBorder": true
+    },
+    {
+      "id": "gitlab",
+      "name": "GitLab",
+      "glyph": "brand:gitlab",
+      "tileBg": "#f62d10",
+      "tileFg": "#ffffff",
+      "gradient": {
+        "angle": 90.0,
+        "stops": [
+          {
+            "color": "#f62d10",
+            "at": 0.18
+          },
+          {
+            "color": "#ff6100",
+            "at": 0.59
+          },
+          {
+            "color": "#ff9e00",
+            "at": 1.0
+          }
+        ]
+      }
+    },
+    {
+      "id": "gnu",
+      "name": "Gnu",
+      "glyph": "brand:gnu",
+      "tileBg": "#ffffff",
+      "tileFg": "#000000",
+      "tileBorder": true
+    },
+    {
+      "id": "goose",
+      "name": "Goose",
+      "glyph": "brand:goose",
+      "tileBg": "#ffffff",
+      "tileFg": "#000000",
+      "tileBorder": true
+    },
+    {
+      "id": "gradle",
+      "name": "Gradle",
+      "glyph": "brand:gradle",
+      "tileBg": "#00ccc1",
+      "tileFg": "#ffffff",
+      "gradient": {
+        "angle": 10.0,
+        "stops": [
+          {
+            "color": "#00ccc1",
+            "at": 0.0
+          },
+          {
+            "color": "#009ec8",
+            "at": 1.0
+          }
+        ]
+      }
+    },
+    {
+      "id": "grok",
+      "name": "Grok",
+      "glyph": "brand:grok",
+      "tileBg": "#000000",
+      "tileFg": "#ffffff"
+    },
+    {
+      "id": "hermes",
+      "name": "Hermes",
+      "glyph": "brand:hermes",
+      "tileBg": "#f2f2f2",
+      "tileFg": "#0a04f2",
+      "tileBorder": true
+    },
+    {
+      "id": "heroku",
+      "name": "Heroku",
+      "glyph": "brand:heroku",
+      "tileBg": "#7432b6",
+      "tileFg": "#ffffff"
+    },
+    {
+      "id": "homey",
+      "name": "Homey",
+      "glyph": "brand:homey",
+      "tileBg": "#0090fe",
+      "tileFg": "#ffffff"
+    },
+    {
+      "id": "hugging-face",
+      "name": "Hugging Face",
+      "glyph": "brand:hugging-face",
+      "tileBg": "#ffd000",
+      "tileFg": "#562800"
+    },
+    {
+      "id": "hunk",
+      "name": "Hunk",
+      "glyph": "brand:hunk",
+      "tileBg": "#f5f1e9",
+      "tileFg": "#007c2a",
+      "tileBorder": true
+    },
+    {
+      "id": "ibm-bob",
+      "name": "IBM Bob",
+      "glyph": "brand:ibm-bob",
+      "tileBg": "#0e61fe",
+      "tileFg": "#ffffff",
+      "gradient": {
+        "angle": 143.0,
+        "stops": [
+          {
+            "color": "#0e61fe",
+            "at": 0.0
+          },
+          {
+            "color": "#893ffc",
+            "at": 1.0
+          }
+        ]
+      }
+    },
+    {
+      "id": "inspector",
+      "name": "Inspector",
+      "glyph": "brand:inspector",
+      "tileBg": "#366fff",
+      "tileFg": "#ffffff"
+    },
+    {
+      "id": "jj",
+      "name": "JJ",
+      "glyph": "brand:jj",
+      "tileBg": "#00a2e5",
+      "tileFg": "#042652"
+    },
+    {
+      "id": "julia",
+      "name": "Julia",
+      "glyph": "brand:julia",
+      "tileBg": "#369826",
+      "tileFg": "#ffffff"
+    },
+    {
+      "id": "junie",
+      "name": "Junie",
+      "glyph": "brand:junie",
+      "tileBg": "#000000",
+      "tileFg": "#00e436"
+    },
+    {
+      "id": "jupyter",
+      "name": "Jupyter",
+      "glyph": "brand:jupyter",
+      "tileBg": "#f37626",
+      "tileFg": "#ffffff"
+    },
+    {
+      "id": "k9s",
+      "name": "K9s",
+      "glyph": "brand:k9s",
+      "tileBg": "#1656fd",
+      "tileFg": "#ffffff"
+    },
+    {
+      "id": "kakoune",
+      "name": "Kakoune",
+      "glyph": "brand:kakoune",
+      "tileBg": "#e1785d",
+      "tileFg": "#ffffff"
+    },
+    {
+      "id": "kimi",
+      "name": "Kimi",
+      "glyph": "brand:kimi",
+      "tileBg": "#000000",
+      "tileFg": "#ffffff"
+    },
+    {
+      "id": "kiro",
+      "name": "Kiro",
+      "glyph": "brand:kiro",
+      "tileBg": "#a637fe",
+      "tileFg": "#ffffff"
+    },
+    {
+      "id": "kube",
+      "name": "Kubernetes",
+      "glyph": "brand:kube",
+      "tileBg": "#326ce5",
+      "tileFg": "#ffffff"
+    },
+    {
+      "id": "ladybird",
+      "name": "Ladybird",
+      "glyph": "brand:ladybird",
+      "tileBg": "#000000",
+      "tileFg": "#ae94ed"
+    },
+    {
+      "id": "llama-cpp",
+      "name": "Llama",
+      "glyph": "brand:llama-cpp",
+      "tileBg": "#ffffff",
+      "tileFg": "#000000",
+      "tileBorder": true
+    },
+    {
+      "id": "log",
+      "name": "log",
+      "glyph": "brand:log",
+      "tileBg": "#2b2d31",
+      "tileFg": "#7ee787"
+    },
+    {
+      "id": "maki",
+      "name": "Maki",
+      "glyph": "brand:maki",
+      "tileBg": "#dce5ff",
+      "tileFg": "#2f1f33",
+      "gradient": {
+        "angle": 90.0,
+        "stops": [
+          {
+            "color": "#dce5ff",
+            "at": 0.0
+          },
+          {
+            "color": "#eedcf7",
+            "at": 0.5
+          },
+          {
+            "color": "#fcd5dd",
+            "at": 1.0
+          }
+        ]
+      }
+    },
+    {
+      "id": "mastra",
+      "name": "Mastra",
+      "glyph": "brand:mastra",
+      "tileBg": "#171717",
+      "tileFg": "#ffffff"
+    },
+    {
+      "id": "meta",
+      "name": "Meta",
+      "glyph": "brand:meta",
+      "tileBg": "#ffffff",
+      "tileFg": "#0072ff",
+      "tileBorder": true
+    },
+    {
+      "id": "micro",
+      "name": "Micro",
+      "glyph": "brand:micro",
+      "tileBg": "#2d3198",
+      "tileFg": "#ffffff"
+    },
+    {
+      "id": "minimal",
+      "name": "Minimal",
+      "glyph": "brand:minimal",
+      "tileBg": "#ecf7f7",
+      "tileFg": "#000000"
+    },
+    {
+      "id": "mise",
+      "name": "Mise",
+      "glyph": "brand:mise",
+      "tileBg": "#fffcf9",
+      "tileFg": "#8b2252",
+      "tileBorder": true
+    },
+    {
+      "id": "mistral",
+      "name": "Mistral",
+      "glyph": "brand:mistral",
+      "tileBg": "#ff7900",
+      "tileFg": "#ffffff"
+    },
+    {
+      "id": "modal",
+      "name": "Modal",
+      "glyph": "brand:modal",
+      "tileBg": "#181818",
+      "tileFg": "#94f17e"
+    },
+    {
+      "id": "mole",
+      "name": "Mole",
+      "glyph": "brand:mole",
+      "tileBg": "#3b573e",
+      "tileFg": "#faf4e6"
+    },
+    {
+      "id": "moon",
+      "name": "Moon",
+      "glyph": "brand:moon",
+      "tileBg": "#022949",
+      "tileFg": "#68d3e8"
+    },
+    {
+      "id": "nano",
+      "name": "Nano",
+      "glyph": "brand:nano",
+      "tileBg": "#430077",
+      "tileFg": "#ffffff"
+    },
+    {
+      "id": "nanoc",
+      "name": "Nanoc",
+      "glyph": "brand:nanoc",
+      "tileBg": "#d5cec8",
+      "tileFg": "#59534e"
+    },
+    {
+      "id": "netlify",
+      "name": "Netlify",
+      "glyph": "brand:netlify",
+      "tileBg": "#00d8e8",
+      "tileFg": "#121619"
+    },
+    {
+      "id": "nextflow",
+      "name": "Nextflow",
+      "glyph": "brand:nextflow",
+      "tileBg": "#00c49b",
+      "tileFg": "#ffffff"
+    },
+    {
+      "id": "nix",
+      "name": "Nix",
+      "glyph": "brand:nix",
+      "tileBg": "#000000",
+      "tileFg": "#ffffff"
+    },
+    {
+      "id": "nomad",
+      "name": "Nomad",
+      "glyph": "brand:nomad",
+      "tileBg": "#00ca8e",
+      "tileFg": "#ffffff"
+    },
+    {
+      "id": "notion",
+      "name": "Notion",
+      "glyph": "brand:notion",
+      "tileBg": "#ffffff",
+      "tileFg": "#000000",
+      "tileBorder": true
+    },
+    {
+      "id": "nushell",
+      "name": "nushell",
+      "glyph": "brand:nushell",
+      "tileBg": "#2b2d31",
+      "tileFg": "#7ee787",
+      "shell": true
+    },
+    {
+      "id": "ollama",
+      "name": "Ollama",
+      "glyph": "brand:ollama",
+      "tileBg": "#f9f9f9",
+      "tileFg": "#111111",
+      "tileBorder": true
+    },
+    {
+      "id": "omnigent",
+      "name": "Omnigent",
+      "glyph": "brand:omnigent",
+      "tileBg": "#ff149f",
+      "tileFg": "#ffffff"
+    },
+    {
+      "id": "openclaw",
+      "name": "OpenClaw",
+      "glyph": "brand:openclaw",
+      "tileBg": "#ca0f21",
+      "tileFg": "#ffffff",
+      "gradient": {
+        "angle": 312.0,
+        "stops": [
+          {
+            "color": "#ca0f21",
+            "at": 0.0
+          },
+          {
+            "color": "#f5664b",
+            "at": 1.0
+          }
+        ]
+      }
+    },
+    {
+      "id": "opencode",
+      "name": "OpenCode",
+      "glyph": "brand:opencode",
+      "tileBg": "#333333",
+      "tileFg": "#f9f9f9"
+    },
+    {
+      "id": "opscope",
+      "name": "Opscope",
+      "glyph": "brand:opscope",
+      "tileBg": "#e8e8e8",
+      "tileFg": "#000000",
+      "tileBorder": true
+    },
+    {
+      "id": "orbstack",
+      "name": "OrbStack",
+      "glyph": "brand:orbstack",
+      "tileBg": "#bee2ff",
+      "tileFg": "#aa39d0",
+      "gradient": {
+        "angle": 90.0,
+        "stops": [
+          {
+            "color": "#bee2ff",
+            "at": 0.0
+          },
+          {
+            "color": "#abbafe",
+            "at": 1.0
+          }
+        ]
+      }
+    },
+    {
+      "id": "oxide",
+      "name": "Oxide",
+      "glyph": "brand:oxide",
+      "tileBg": "#204d3b",
+      "tileFg": "#00d992"
+    },
+    {
+      "id": "pack",
+      "name": "Pack",
+      "glyph": "brand:pack",
+      "tileBg": "#4452a2",
+      "tileFg": "#ffffff"
+    },
+    {
+      "id": "packer",
+      "name": "Packer",
+      "glyph": "brand:packer",
+      "tileBg": "#02a8ef",
+      "tileFg": "#ffffff"
+    },
+    {
+      "id": "pi",
+      "name": "Pi",
+      "glyph": "brand:pi",
+      "tileBg": "#ece7e4",
+      "tileFg": "#000000",
+      "tileBorder": true
+    },
+    {
+      "id": "pixi",
+      "name": "Pixi",
+      "glyph": "brand:pixi",
+      "tileBg": "#ffca15",
+      "tileFg": "#001d38"
+    },
+    {
+      "id": "planetscale",
+      "name": "Planetscale",
+      "glyph": "brand:planetscale",
+      "tileBg": "#111111",
+      "tileFg": "#e1e1e1"
+    },
+    {
+      "id": "podman",
+      "name": "Podman",
+      "glyph": "brand:podman",
+      "tileBg": "#cfbddd",
+      "tileFg": "#503e68"
+    },
+    {
+      "id": "poolside-icon",
+      "name": "Poolside",
+      "glyph": "brand:poolside-icon",
+      "tileBg": "#4137ff",
+      "tileFg": "#ffffff"
+    },
+    {
+      "id": "porter",
+      "name": "Porter",
+      "glyph": "brand:porter",
+      "tileBg": "#ffea4b",
+      "tileFg": "#000000",
+      "tileBorder": true
+    },
+    {
+      "id": "prime-agent",
+      "name": "Prime Agent",
+      "glyph": "brand:prime-agent",
+      "tileBg": "#151515",
+      "tileFg": "#ffffff"
+    },
+    {
+      "id": "proto",
+      "name": "Proto",
+      "glyph": "brand:proto",
+      "tileBg": "#010f1c",
+      "tileFg": "#9a72ff"
+    },
+    {
+      "id": "proton-drive",
+      "name": "Proton Drive",
+      "glyph": "brand:proton-drive",
+      "tileBg": "#eb4fcc",
+      "tileFg": "#ffffff",
+      "gradient": {
+        "angle": 225.0,
+        "stops": [
+          {
+            "color": "#eb4fcc",
+            "at": 0.0
+          },
+          {
+            "color": "#6c4afd",
+            "at": 1.0
+          }
+        ]
+      }
+    },
+    {
+      "id": "proton-pass",
+      "name": "Proton Pass",
+      "glyph": "brand:proton-pass",
+      "tileBg": "#efbc9d",
+      "tileFg": "#ffffff",
+      "gradient": {
+        "angle": 225.0,
+        "stops": [
+          {
+            "color": "#efbc9d",
+            "at": 0.08
+          },
+          {
+            "color": "#704bff",
+            "at": 0.92
+          }
+        ]
+      }
+    },
+    {
+      "id": "pulumi",
+      "name": "Pulumi",
+      "glyph": "brand:pulumi",
+      "tileBg": "#1f1b21",
+      "tileFg": "#ffffff"
+    },
+    {
+      "id": "railway",
+      "name": "Railway",
+      "glyph": "brand:railway",
+      "tileBg": "#13111d",
+      "tileFg": "#ffffff"
+    },
+    {
+      "id": "rclone",
+      "name": "Rclone",
+      "glyph": "brand:rclone",
+      "tileBg": "#48cdf6",
+      "tileFg": "#ffffff"
+    },
+    {
+      "id": "render",
+      "name": "Render",
+      "glyph": "brand:render",
+      "tileBg": "#ffffff",
+      "tileFg": "#000000",
+      "tileBorder": true
+    },
+    {
+      "id": "rex",
+      "name": "Rex",
+      "glyph": "brand:rex",
+      "tileBg": "#be6dff",
+      "tileFg": "#ffffff"
+    },
+    {
+      "id": "sail",
+      "name": "Sail",
+      "glyph": "brand:sail",
+      "tileBg": "#0e41b6",
+      "tileFg": "#ffffff"
+    },
+    {
+      "id": "sanity",
+      "name": "Sanity",
+      "glyph": "brand:sanity",
+      "tileBg": "#ffffff",
+      "tileFg": "#000000",
+      "tileBorder": true
+    },
+    {
+      "id": "shell-container",
+      "name": "container",
+      "glyph": "brand:shell-container",
+      "tileBg": "#2b2d31",
+      "tileFg": "#7ee787"
+    },
+    {
+      "id": "shell-curl",
+      "name": "curl",
+      "glyph": "brand:shell-curl",
+      "tileBg": "#2b2d31",
+      "tileFg": "#7ee787"
+    },
+    {
+      "id": "shell-manual",
+      "name": "manual",
+      "glyph": "brand:shell-manual",
+      "tileBg": "#2b2d31",
+      "tileFg": "#7ee787"
+    },
+    {
+      "id": "shopify",
+      "name": "Shopify",
+      "glyph": "brand:shopify",
+      "tileBg": "#89c129",
+      "tileFg": "#ffffff"
+    },
+    {
+      "id": "sleep",
+      "name": "sleep",
+      "glyph": "brand:sleep",
+      "tileBg": "#2b2d31",
+      "tileFg": "#7ee787"
+    },
+    {
+      "id": "snowflake",
+      "name": "Snowflake",
+      "glyph": "brand:snowflake",
+      "tileBg": "#259edc",
+      "tileFg": "#ffffff"
+    },
+    {
+      "id": "sofka",
+      "name": "Sofka",
+      "glyph": "brand:sofka",
+      "tileBg": "#11111b",
+      "tileFg": "#b4befe"
+    },
+    {
+      "id": "sqlite",
+      "name": "SQLite",
+      "glyph": "brand:sqlite",
+      "tileBg": "#0082d2",
+      "tileFg": "#ffffff"
+    },
+    {
+      "id": "stripe",
+      "name": "Stripe",
+      "glyph": "brand:stripe",
+      "tileBg": "#5739ff",
+      "tileFg": "#ffffff"
+    },
+    {
+      "id": "sublime",
+      "name": "Sublime",
+      "glyph": "brand:sublime",
+      "tileBg": "#4b4b4b",
+      "tileFg": "#ff9800"
+    },
+    {
+      "id": "tailscale",
+      "name": "Tailscale",
+      "glyph": "brand:tailscale",
+      "tileBg": "#1f1e1e",
+      "tileFg": "#ffffff"
+    },
+    {
+      "id": "tart",
+      "name": "Tart",
+      "glyph": "brand:tart",
+      "tileBg": "#ffcc02",
+      "tileFg": "#bb301f",
+      "gradient": {
+        "angle": 90.0,
+        "stops": [
+          {
+            "color": "#ffcc02",
+            "at": 0.0
+          },
+          {
+            "color": "#fea800",
+            "at": 1.0
+          }
+        ]
+      }
+    },
+    {
+      "id": "task",
+      "name": "Task",
+      "glyph": "brand:task",
+      "tileBg": "#00c1b0",
+      "tileFg": "#ffffff"
+    },
+    {
+      "id": "terraform",
+      "name": "Terraform",
+      "glyph": "brand:terraform",
+      "tileBg": "#a067da",
+      "tileFg": "#ffffff"
+    },
+    {
+      "id": "tessl",
+      "name": "Tessl",
+      "glyph": "brand:tessl",
+      "tileBg": "#ffffff",
+      "tileFg": "#000000",
+      "tileBorder": true
+    },
+    {
+      "id": "tilt",
+      "name": "Tilt",
+      "glyph": "brand:tilt",
+      "tileBg": "#00bd00",
+      "tileFg": "#ffffff"
+    },
+    {
+      "id": "turborepo",
+      "name": "Turborepo",
+      "glyph": "brand:turborepo",
+      "tileBg": "#0080ff",
+      "tileFg": "#ffffff",
+      "gradient": {
+        "angle": 235.0,
+        "stops": [
+          {
+            "color": "#ff005f",
+            "at": 0.11
+          },
+          {
+            "color": "#0080ff",
+            "at": 0.8
+          }
+        ]
+      }
+    },
+    {
+      "id": "typst",
+      "name": "Typst",
+      "glyph": "brand:typst",
+      "tileBg": "#2d92bb",
+      "tileFg": "#ffffff",
+      "gradient": {
+        "angle": 238.0,
+        "stops": [
+          {
+            "color": "#2d92bb",
+            "at": 0.25
+          },
+          {
+            "color": "#2ba7a3",
+            "at": 0.61
+          },
+          {
+            "color": "#1fb3b4",
+            "at": 0.75
+          }
+        ]
+      }
+    },
+    {
+      "id": "unreal-engine",
+      "name": "Unreal Engine",
+      "glyph": "brand:unreal-engine",
+      "tileBg": "#000000",
+      "tileFg": "#ffffff"
+    },
+    {
+      "id": "uv",
+      "name": "uv",
+      "glyph": "brand:uv",
+      "tileBg": "#de5fe9",
+      "tileFg": "#ffffff"
+    },
+    {
+      "id": "vagrant",
+      "name": "Vagrant",
+      "glyph": "brand:vagrant",
+      "tileBg": "#3266e9",
+      "tileFg": "#ffffff"
+    },
+    {
+      "id": "vakna",
+      "name": "Vakna",
+      "glyph": "brand:vakna",
+      "tileBg": "#ff3a20",
+      "tileFg": "#000000"
+    },
+    {
+      "id": "vault",
+      "name": "Vault",
+      "glyph": "brand:vault",
+      "tileBg": "#ffcf25",
+      "tileFg": "#000000"
+    },
+    {
+      "id": "vercel",
+      "name": "Vercel",
+      "glyph": "brand:vercel",
+      "tileBg": "#111111",
+      "tileFg": "#ffffff"
+    },
+    {
+      "id": "vite",
+      "name": "Vite",
+      "glyph": "brand:vite",
+      "tileBg": "#000000",
+      "tileFg": "#ffffff"
+    },
+    {
+      "id": "vite-plus",
+      "name": "Vite+",
+      "glyph": "brand:vite-plus",
+      "tileBg": "#644aff",
+      "tileFg": "#ffffff",
+      "gradient": {
+        "angle": 135.0,
+        "stops": [
+          {
+            "color": "#644aff",
+            "at": 0.29
+          },
+          {
+            "color": "#56b0e6",
+            "at": 1.0
+          }
+        ]
+      }
+    },
+    {
+      "id": "waypoint",
+      "name": "Waypoint",
+      "glyph": "brand:waypoint",
+      "tileBg": "#14c6cb",
+      "tileFg": "#ffffff"
+    },
+    {
+      "id": "xcode",
+      "name": "Xcode",
+      "glyph": "brand:xcode",
+      "tileBg": "#01a7ff",
+      "tileFg": "#ffffff",
+      "gradient": {
+        "angle": 90.0,
+        "stops": [
+          {
+            "color": "#01a7ff",
+            "at": 0.0
+          },
+          {
+            "color": "#2674ff",
+            "at": 1.0
+          }
+        ]
+      }
+    },
+    {
+      "id": "yazi",
+      "name": "Yazi",
+      "glyph": "brand:yazi",
+      "tileBg": "#f58b37",
+      "tileFg": "#fff79e"
+    },
+    {
+      "id": "zed-delta",
+      "name": "Delta",
+      "glyph": "brand:zed-delta",
+      "tileBg": "#f9f5ef",
+      "tileFg": "#d5442c",
+      "tileBorder": true
+    },
+    {
+      "id": "zig",
+      "name": "Zig",
+      "glyph": "brand:zig",
+      "tileBg": "#f7a41e",
+      "tileFg": "#ffffff"
+    }
+  ],
+  "aliases": [
+    {
+      "name": "container",
+      "target": "apple-container"
+    },
+    {
+      "name": "az",
+      "target": "azure"
+    },
+    {
+      "name": "buck2",
+      "target": "buck"
+    },
+    {
+      "name": "bk",
+      "target": "buildkite"
+    },
+    {
+      "name": "buildkite-agent",
+      "target": "buildkite"
+    },
+    {
+      "name": "but",
+      "target": "butler"
+    },
+    {
+      "name": "glow",
+      "target": "charm"
+    },
+    {
+      "name": "vhs",
+      "target": "charm"
+    },
+    {
+      "name": "gum",
+      "target": "charm"
+    },
+    {
+      "name": "clang++",
+      "target": "clang"
+    },
+    {
+      "name": "clang-cpp",
+      "target": "clang"
+    },
+    {
+      "name": "clang-cl",
+      "target": "clang"
+    },
+    {
+      "name": "wrangler",
+      "target": "cloudflare"
+    },
+    {
+      "name": "cloudflared",
+      "target": "cloudflare"
+    },
+    {
+      "name": "shards",
+      "target": "crystal"
+    },
+    {
+      "name": "lume",
+      "target": "cua"
+    },
+    {
+      "name": "agent",
+      "target": "cursor"
+    },
+    {
+      "name": "cursor-agent",
+      "target": "cursor"
+    },
+    {
+      "name": "pub",
+      "target": "dart"
+    },
+    {
+      "name": "pup",
+      "target": "datadog"
+    },
+    {
+      "name": "daytona-v0",
+      "target": "daytona"
+    },
+    {
+      "name": "pgcli",
+      "target": "dbcli"
+    },
+    {
+      "name": "mycli",
+      "target": "dbcli"
+    },
+    {
+      "name": "litecli",
+      "target": "dbcli"
+    },
+    {
+      "name": "mssql-cli",
+      "target": "dbcli"
+    },
+    {
+      "name": "iredis",
+      "target": "dbcli"
+    },
+    {
+      "name": "athenacli",
+      "target": "dbcli"
+    },
+    {
+      "name": "vcli",
+      "target": "dbcli"
+    },
+    {
+      "name": "iex",
+      "target": "elixir"
+    },
+    {
+      "name": "elixirc",
+      "target": "elixir"
+    },
+    {
+      "name": "fvm",
+      "target": "flutter"
+    },
+    {
+      "name": "gh",
+      "target": "github"
+    },
+    {
+      "name": "glab",
+      "target": "gitlab"
+    },
+    {
+      "name": "duo",
+      "target": "gitlab"
+    },
+    {
+      "name": "glab-tui",
+      "target": "gitlab"
+    },
+    {
+      "name": "gmake",
+      "target": "gnu"
+    },
+    {
+      "name": "configure",
+      "target": "gnu"
+    },
+    {
+      "name": "libtool",
+      "target": "gnu"
+    },
+    {
+      "name": "gcc",
+      "target": "gnu"
+    },
+    {
+      "name": "g++",
+      "target": "gnu"
+    },
+    {
+      "name": "cpp",
+      "target": "gnu"
+    },
+    {
+      "name": "grok-build",
+      "target": "grok"
+    },
+    {
+      "name": "hf",
+      "target": "hugging-face"
+    },
+    {
+      "name": "bob",
+      "target": "ibm-bob"
+    },
+    {
+      "name": "jjui",
+      "target": "jj"
+    },
+    {
+      "name": "jupyter-lab",
+      "target": "jupyter"
+    },
+    {
+      "name": "jupyter-console",
+      "target": "jupyter"
+    },
+    {
+      "name": "kak",
+      "target": "kakoune"
+    },
+    {
+      "name": "kiro-cli",
+      "target": "kiro"
+    },
+    {
+      "name": "kubectl",
+      "target": "kube"
+    },
+    {
+      "name": "kubectx",
+      "target": "kube"
+    },
+    {
+      "name": "kubens",
+      "target": "kube"
+    },
+    {
+      "name": "ladybird.py",
+      "target": "ladybird"
+    },
+    {
+      "name": "llama",
+      "target": "llama-cpp"
+    },
+    {
+      "name": "tail",
+      "target": "log"
+    },
+    {
+      "name": "head",
+      "target": "log"
+    },
+    {
+      "name": "pv",
+      "target": "log"
+    },
+    {
+      "name": "mastracode",
+      "target": "mastra"
+    },
+    {
+      "name": "muse",
+      "target": "meta"
+    },
+    {
+      "name": "min",
+      "target": "minimal"
+    },
+    {
+      "name": "mip",
+      "target": "minimal"
+    },
+    {
+      "name": "vibe",
+      "target": "mistral"
+    },
+    {
+      "name": "vibe-rs",
+      "target": "mistral"
+    },
+    {
+      "name": "mo",
+      "target": "mole"
+    },
+    {
+      "name": "netlify-cli",
+      "target": "netlify"
+    },
+    {
+      "name": "nh",
+      "target": "nix"
+    },
+    {
+      "name": "nom",
+      "target": "nix"
+    },
+    {
+      "name": "nix-build",
+      "target": "nix"
+    },
+    {
+      "name": "nix-env",
+      "target": "nix"
+    },
+    {
+      "name": "nix-shell",
+      "target": "nix"
+    },
+    {
+      "name": "nix-store",
+      "target": "nix"
+    },
+    {
+      "name": "ntn",
+      "target": "notion"
+    },
+    {
+      "name": "nu",
+      "target": "nushell"
+    },
+    {
+      "name": "orb",
+      "target": "orbstack"
+    },
+    {
+      "name": "pscale",
+      "target": "planetscale"
+    },
+    {
+      "name": "pool",
+      "target": "poolside-icon"
+    },
+    {
+      "name": "pass-cli",
+      "target": "proton-pass"
+    },
+    {
+      "name": "lazydocker",
+      "target": "shell-container"
+    },
+    {
+      "name": "curl",
+      "target": "shell-curl"
+    },
+    {
+      "name": "snow",
+      "target": "snowflake"
+    },
+    {
+      "name": "sqlite3",
+      "target": "sqlite"
+    },
+    {
+      "name": "subl",
+      "target": "sublime"
+    },
+    {
+      "name": "turbo",
+      "target": "turborepo"
+    },
+    {
+      "name": "unrealeditor",
+      "target": "unreal-engine"
+    },
+    {
+      "name": "unrealbuildtool",
+      "target": "unreal-engine"
+    },
+    {
+      "name": "ue4",
+      "target": "unreal-engine"
+    },
+    {
+      "name": "ue4editor",
+      "target": "unreal-engine"
+    },
+    {
+      "name": "uvx",
+      "target": "uv"
+    },
+    {
+      "name": "vc",
+      "target": "vercel"
+    },
+    {
+      "name": "vp",
+      "target": "vite-plus"
+    },
+    {
+      "name": "xcbuild",
+      "target": "xcode"
+    },
+    {
+      "name": "maker",
+      "target": "zig"
+    }
+  ]
+}
