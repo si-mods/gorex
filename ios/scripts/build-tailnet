@@ -10,24 +10,12 @@ set -euo pipefail
 IOS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$IOS_DIR/.."
 
-# Tailscale's features the engine does without (docs/IOS-001-tailnet.md, Size).
-# Kept: netstack, serve, acme, dns, logtail, tailscaledhttps, cachenetmap
-# and ssh, which tsnet needs; ipnbus, for the status the app watches;
-# portmapper, for direct connections; tailnetlock, for tailnets that lock.
-OMIT=(
-    ace advertiseexitnode advertiseroutes androidbin androiddns appconnectors
-    aws bakedroots bird c2n captiveportal capture cli cliconndiag
-    clientmetrics clientupdate cloud colorable completion conn25 connreject
-    dbus debug debugeventbus debugportmapper dnsresolvecache doctor drive
-    favorites flashappliance gro health hujsonconf identityfederation
-    iptables kube linkspeed linuxdnsfight listenrawdisco netlog
-    networkmanager oauthkey osrouter outboundproxy peerapiclient
-    peerapiserver portlist posture qrcodes relayserver remoteconfig resolved
-    routecheck runtimemetrics sdnotify serviceclientprefs synology syslog
-    syspolicy systray taildrop tap tpm tundevstats unixsocketidentity
-    useexitnode useproxy usermetrics useroutes wakeonlan webbrowser webclient
-)
-TAGS=$(printf 'ts_omit_%s,' "${OMIT[@]}")
+# Shared Tailscale omit list (packaging/ts-omit-tags.txt, docs/IOS-001-tailnet.md)
+# plus iOS-only omits (desktop keeps useproxy for internal/rex/ownrelay.go).
+IOS_ONLY_OMIT=(ts_omit_useproxy)
+BASE_TAGS=$(grep -v '^#' packaging/ts-omit-tags.txt | grep -v '^$' | paste -sd, -)
+EXTRA_TAGS=$(printf '%s,' "${IOS_ONLY_OMIT[@]}")
+TAGS="${BASE_TAGS},${EXTRA_TAGS%,}"
 
 # gomobile finds gobind on PATH; both at go.mod's version.
 BIN="$IOS_DIR/build/gomobile-bin"
