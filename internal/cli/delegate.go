@@ -94,7 +94,7 @@ func delegateCmd(args []string, out, errOut io.Writer) (int, bool) {
 			Async:  true,
 		})
 	} else {
-		closeOnComplete = !*keep
+		closeOnComplete = !*keep && !*async
 		started, err = c.Delegate(rex.DelegateOptions{
 			Agent:  *agent,
 			Dir:    *dir,

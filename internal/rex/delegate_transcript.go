@@ -27,8 +27,56 @@ type transcriptEvent struct {
 // transcript file so delegated turns return clean assistant text without
 // scraping ANSI from the PTY.
 type agentTranscript interface {
-	FindFile(dir, tty, home, configDir, agentSession string, startedAt time.Time) string
+	// ExistingFiles snapshots transcript paths that already exist before a new
+	// delegated session launches so FindFile never binds to a pre-existing file
+	// (including another live session's transcript in the same directory).
+	ExistingFiles(dir, home, configDir string) map[string]struct{}
+	FindFile(dir, tty, home, configDir, agentSession string, startedAt time.Time, exclude map[string]struct{}) string
 	ParseRow(line []byte) transcriptEvent
+}
+
+// transcriptCutoffSlack tolerates small coarse-clock skew between time.Now()
+// and filesystem mtimes (e.g. Linux CLOCK_REALTIME_COARSE jiffies) without
+// reaching back seconds into previous sessions.
+const transcriptCutoffSlack = 20 * time.Millisecond
+
+func transcriptCutoff(startedAt time.Time) time.Time {
+	if startedAt.IsZero() {
+		return time.Time{}
+	}
+	return startedAt.Add(-transcriptCutoffSlack)
+}
+
+func isExcludedPath(exclude map[string]struct{}, p string) bool {
+	if len(exclude) == 0 {
+		return false
+	}
+	_, ok := exclude[filepath.Clean(p)]
+	return ok
+}
+
+func snapshotJSONL(root, filter string) map[string]struct{} {
+	if root == "" {
+		return nil
+	}
+	var out map[string]struct{}
+	_ = filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return nil
+		}
+		if !strings.HasSuffix(d.Name(), ".jsonl") {
+			return nil
+		}
+		if filter != "" && !strings.Contains(p, filter) {
+			return nil
+		}
+		if out == nil {
+			out = make(map[string]struct{})
+		}
+		out[filepath.Clean(p)] = struct{}{}
+		return nil
+	})
+	return out
 }
 
 func transcriptAdapterFor(agentID string) agentTranscript {
@@ -53,7 +101,12 @@ func transcriptAdapterFor(agentID string) agentTranscript {
 // yetone/magpie's internal/claudetui/transcript.go).
 type claudeTranscript struct{}
 
-func (claudeTranscript) FindFile(dir, _, home, configDir, agentSession string, _ time.Time) string {
+func (claudeTranscript) ExistingFiles(_, _, _ string) map[string]struct{} {
+	// Claude gets a freshly generated --session-id UUID for each new session.
+	return nil
+}
+
+func (claudeTranscript) FindFile(dir, _, home, configDir, agentSession string, _ time.Time, exclude map[string]struct{}) string {
 	if agentSession == "" {
 		return ""
 	}
@@ -72,13 +125,17 @@ func (claudeTranscript) FindFile(dir, _, home, configDir, agentSession string, _
 	}
 	if dir != "" {
 		p := filepath.Join(base, "projects", claudeSlug(dir), agentSession+".jsonl")
-		if st, err := os.Stat(p); err == nil && !st.IsDir() {
-			return p
+		if !isExcludedPath(exclude, p) {
+			if st, err := os.Stat(p); err == nil && !st.IsDir() {
+				return p
+			}
 		}
 	}
 	matches, _ := filepath.Glob(filepath.Join(base, "projects", "*", agentSession+".jsonl"))
-	if len(matches) > 0 {
-		return matches[0]
+	for _, m := range matches {
+		if !isExcludedPath(exclude, m) {
+			return m
+		}
 	}
 	return ""
 }
@@ -168,18 +225,70 @@ func isClaudePromptMessage(raw json.RawMessage) bool {
 // existing ompDirs and ompSlug helpers (internal/rex/omp.go).
 type ompTranscript struct{}
 
-func (ompTranscript) FindFile(dir, tty, home, _, agentSession string, startedAt time.Time) string {
-	env := func(k string) string { return os.Getenv(k) }
-	if tty != "" {
-		if _, _, file := ompSession(env, dir, nil, tty, home); file != "" {
-			return file
+func ompSessionDir(dir, home string) (sessDir, state string) {
+	if home == "" {
+		home, _ = os.UserHomeDir()
+	}
+	data, st := ompDirs(os.Getenv, nil, home)
+	if data == "" || dir == "" {
+		return "", st
+	}
+	return filepath.Join(data, "sessions", ompSlug(dir, home)), st
+}
+
+func (ompTranscript) ExistingFiles(dir, home, _ string) map[string]struct{} {
+	sessDir, _ := ompSessionDir(dir, home)
+	if sessDir == "" {
+		return nil
+	}
+	ents, err := os.ReadDir(sessDir)
+	if err != nil {
+		return nil
+	}
+	var out map[string]struct{}
+	for _, e := range ents {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".jsonl") {
+			continue
+		}
+		if out == nil {
+			out = make(map[string]struct{})
+		}
+		out[filepath.Clean(filepath.Join(sessDir, e.Name()))] = struct{}{}
+	}
+	return out
+}
+
+func (ompTranscript) FindFile(dir, tty, home, _, agentSession string, startedAt time.Time, exclude map[string]struct{}) string {
+	sessDir, state := ompSessionDir(dir, home)
+	cutoff := transcriptCutoff(startedAt)
+
+	// On Unix, check omp's per-tty pointer directly without falling back to
+	// ompSession's unguarded newest-file scan (which can match old sessions).
+	if name, ok := strings.CutPrefix(tty, "/dev/"); ok && state != "" {
+		b, err := os.ReadFile(filepath.Join(state, "terminal-sessions", strings.ReplaceAll(name, "/", "-")))
+		lines := strings.Split(strings.TrimSpace(string(b)), "\n")
+		if err == nil && len(lines) >= 2 && dir != "" {
+			real := func(p string) string {
+				if r, err := filepath.EvalSymlinks(p); err == nil {
+					return r
+				}
+				return p
+			}
+			cand := filepath.Clean(lines[1])
+			if samePath(real(lines[0]), real(dir)) && !isExcludedPath(exclude, cand) {
+				if agentSession == "" || strings.Contains(filepath.Base(cand), agentSession) {
+					if st, err := os.Stat(cand); err == nil && !st.IsDir() {
+						if agentSession != "" || cutoff.IsZero() || !st.ModTime().Before(cutoff) {
+							return cand
+						}
+					}
+				}
+			}
 		}
 	}
-	data, _ := ompDirs(env, nil, home)
-	if data == "" || dir == "" {
+	if sessDir == "" {
 		return ""
 	}
-	sessDir := filepath.Join(data, "sessions", ompSlug(dir, home))
 	ents, err := os.ReadDir(sessDir)
 	if err != nil {
 		return ""
@@ -193,15 +302,19 @@ func (ompTranscript) FindFile(dir, tty, home, _, agentSession string, startedAt 
 		if agentSession != "" && !strings.Contains(e.Name(), agentSession) {
 			continue
 		}
+		full := filepath.Clean(filepath.Join(sessDir, e.Name()))
+		if agentSession == "" && isExcludedPath(exclude, full) {
+			continue
+		}
 		info, err := e.Info()
 		if err != nil {
 			continue
 		}
-		if agentSession == "" && info.ModTime().Before(startedAt.Add(-2*time.Second)) {
+		if agentSession == "" && !cutoff.IsZero() && info.ModTime().Before(cutoff) {
 			continue
 		}
 		if best == "" || info.ModTime().After(bestMod) {
-			best = filepath.Join(sessDir, e.Name())
+			best = full
 			bestMod = info.ModTime()
 		}
 	}
@@ -250,7 +363,7 @@ func (ompTranscript) ParseRow(b []byte) transcriptEvent {
 // <CODEX_HOME or home/.codex>/sessions/.
 type codexTranscript struct{}
 
-func (codexTranscript) FindFile(_, _, home, _, agentSession string, startedAt time.Time) string {
+func codexSessionsRoot(home string) string {
 	base := os.Getenv("CODEX_HOME")
 	if base == "" {
 		if home == "" {
@@ -261,8 +374,22 @@ func (codexTranscript) FindFile(_, _, home, _, agentSession string, startedAt ti
 		}
 		base = filepath.Join(home, ".codex")
 	}
-	root := filepath.Join(base, "sessions")
-	return newestJSONL(root, agentSession, startedAt)
+	return filepath.Join(base, "sessions")
+}
+
+func (codexTranscript) ExistingFiles(_, home, _ string) map[string]struct{} {
+	return snapshotJSONL(codexSessionsRoot(home), "")
+}
+
+func (codexTranscript) FindFile(_, _, home, _, agentSession string, startedAt time.Time, exclude map[string]struct{}) string {
+	root := codexSessionsRoot(home)
+	if root == "" {
+		return ""
+	}
+	if agentSession != "" {
+		return newestJSONL(root, agentSession, time.Time{}, nil)
+	}
+	return newestJSONL(root, "", transcriptCutoff(startedAt), exclude)
 }
 
 func (codexTranscript) ParseRow(b []byte) transcriptEvent {
@@ -309,21 +436,33 @@ func (codexTranscript) ParseRow(b []byte) transcriptEvent {
 // <agyDir>/brain/<id>/.system_generated/logs/transcript_full.jsonl.
 type agyTranscript struct{}
 
-func (agyTranscript) FindFile(_, _, home, _, agentSession string, startedAt time.Time) string {
+func agyBrainRoot(home string) string {
 	if home == "" {
 		home, _ = os.UserHomeDir()
 	}
 	if home == "" {
 		return ""
 	}
-	root := filepath.Join(home, ".gemini", "antigravity-cli", "brain")
+	return filepath.Join(home, ".gemini", "antigravity-cli", "brain")
+}
+
+func (agyTranscript) ExistingFiles(_, home, _ string) map[string]struct{} {
+	return snapshotJSONL(agyBrainRoot(home), "transcript_full.jsonl")
+}
+
+func (agyTranscript) FindFile(_, _, home, _, agentSession string, startedAt time.Time, exclude map[string]struct{}) string {
+	root := agyBrainRoot(home)
+	if root == "" {
+		return ""
+	}
 	if agentSession != "" {
 		p := filepath.Join(root, agentSession, ".system_generated", "logs", "transcript_full.jsonl")
 		if st, err := os.Stat(p); err == nil && !st.IsDir() {
 			return p
 		}
+		return ""
 	}
-	return newestJSONL(root, "transcript_full.jsonl", startedAt)
+	return newestJSONL(root, "transcript_full.jsonl", transcriptCutoff(startedAt), exclude)
 }
 
 func (agyTranscript) ParseRow(b []byte) transcriptEvent {
@@ -353,7 +492,7 @@ func (agyTranscript) ParseRow(b []byte) transcriptEvent {
 // with DEVIN_SESSION_STORE=files at <data>/devin/cli/sessions/<id>/log.jsonl.
 type devinTranscript struct{}
 
-func (devinTranscript) FindFile(_, _, home, _, agentSession string, startedAt time.Time) string {
+func devinSessionsRoot(home string) string {
 	base := os.Getenv("DEVIN_SESSIONS_DIR")
 	if base == "" {
 		if runtime.GOOS == "windows" {
@@ -378,14 +517,26 @@ func (devinTranscript) FindFile(_, _, home, _, agentSession string, startedAt ti
 	if base == "" {
 		return ""
 	}
-	root := filepath.Join(base, "sessions")
+	return filepath.Join(base, "sessions")
+}
+
+func (devinTranscript) ExistingFiles(_, home, _ string) map[string]struct{} {
+	return snapshotJSONL(devinSessionsRoot(home), "log.jsonl")
+}
+
+func (devinTranscript) FindFile(_, _, home, _, agentSession string, startedAt time.Time, exclude map[string]struct{}) string {
+	root := devinSessionsRoot(home)
+	if root == "" {
+		return ""
+	}
 	if agentSession != "" {
 		p := filepath.Join(root, agentSession, "log.jsonl")
 		if st, err := os.Stat(p); err == nil && !st.IsDir() {
 			return p
 		}
+		return ""
 	}
-	return newestJSONL(root, "log.jsonl", startedAt)
+	return newestJSONL(root, "log.jsonl", transcriptCutoff(startedAt), exclude)
 }
 
 func (devinTranscript) ParseRow(b []byte) transcriptEvent {
@@ -437,10 +588,9 @@ func extractContentText(raw json.RawMessage) string {
 	return sb.String()
 }
 
-func newestJSONL(root, filter string, startedAt time.Time) string {
+func newestJSONL(root, filter string, cutoff time.Time, exclude map[string]struct{}) string {
 	var best string
 	var bestMod time.Time
-	cutoff := startedAt.Add(-2 * time.Second)
 	_ = filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
 		if err != nil || d.IsDir() {
 			return nil
@@ -451,12 +601,18 @@ func newestJSONL(root, filter string, startedAt time.Time) string {
 		if filter != "" && !strings.Contains(p, filter) {
 			return nil
 		}
+		if isExcludedPath(exclude, p) {
+			return nil
+		}
 		info, err := d.Info()
-		if err != nil || info.ModTime().Before(cutoff) {
+		if err != nil {
+			return nil
+		}
+		if !cutoff.IsZero() && info.ModTime().Before(cutoff) {
 			return nil
 		}
 		if best == "" || info.ModTime().After(bestMod) {
-			best = p
+			best = filepath.Clean(p)
 			bestMod = info.ModTime()
 		}
 		return nil

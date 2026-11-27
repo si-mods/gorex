@@ -104,4 +104,19 @@ done
 
 	// Clean up kept session.
 	_, _, _, _ = runMain(t, "close", "-s", got.Session)
+
+	// 4. Async delegate must NOT kill the session even if the turn finishes quickly.
+	code, _, out4, errOut4 := runMain(t, "delegate", "--agent", "claude", "--dir", workDir, "--async", "--json", "--", "async ping")
+	if code != ExitOK {
+		t.Fatalf("delegate --async: code=%d out=%q err=%q", code, out4, errOut4)
+	}
+	var got4 delegateOutput
+	if err := json.Unmarshal([]byte(out4), &got4); err != nil || got4.Session == "" {
+		t.Fatalf("delegate --async output = %q (%v)", out4, err)
+	}
+	code, _, resOut, resErr := runMain(t, "delegate", "--result", got4.Session, "--json")
+	if code != ExitOK {
+		t.Fatalf("delegate --result after --async: code=%d out=%q err=%q", code, resOut, resErr)
+	}
+	_, _, _, _ = runMain(t, "close", "-s", got4.Session)
 }
