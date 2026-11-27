@@ -1,13 +1,12 @@
 # XcodeGen spec: `xcodegen generate` writes GoRex.xcodeproj (not committed).
-# Build ios/Frameworks/GhosttyVt.xcframework first: scripts/build-ghostty-vt.sh.
-# And ios/Frameworks/Tailnet.xcframework: scripts/build-tailnet.
+# Build ios/Frameworks/Tailnet.xcframework first: scripts/build-tailnet.
 name: GoRex
 packages:
-  # rootshell's prebuilt Ghostty (Metal renderer, key encoding), at the
-  # version rootshell pins.
+  # si-mods fork of GhosttyKit (Metal renderer, key encoding, and libghostty-vt
+  # exported in one static library; docs/IOS-032-merge-ghostty-vt.md).
   GhosttyKit:
-    url: https://github.com/kitknox/ghosttykit-rootshell.git
-    exactVersion: 0.2.23
+    url: https://github.com/si-mods/ghosttykit-rootshell.git
+    exactVersion: 0.3.0
   # Speech recognition on the phone (Dictation): FluidAudio's SenseVoice and
   # Silero VAD, from rootshell's fork as rootshell pins it (0.17.4-rootshell.2).
   # Upstream builds TTS too, whose bundled G2P data is GPL-3.0.
@@ -54,9 +53,6 @@ targets:
     dependencies:
       # The widgets (docs/IOS-010-widgets.md), embedded in PlugIns.
       - target: GoRexWidgets
-      # libghostty-vt reads the snapshot a stream starts with.
-      - framework: Frameworks/GhosttyVt.xcframework
-        embed: false
       # Built-in Tailscale (ios/tailnet), a static library.
       - framework: Frameworks/Tailnet.xcframework
         embed: false
@@ -204,16 +200,16 @@ targets:
       - path: ../internal/rexapi/testdata/rex-terminal-stream.bin
         buildPhase: resources
     dependencies:
-      - framework: Frameworks/GhosttyVt.xcframework
-        embed: false
+      - package: GhosttyKit
+        product: GhosttyKitAppStore
       - package: FluidAudio
     settings:
       base:
         GENERATE_INFOPLIST_FILE: true
         # An identifier, for its asset catalog (the brand marks) to load.
         PRODUCT_BUNDLE_IDENTIFIER: dev.gorex.ios.tests
-        # Archive.swift reads bzip2, as the app does.
-        OTHER_LDFLAGS: -lbz2
+        # GhosttyKit needs C++; Archive.swift reads bzip2, as the app does.
+        OTHER_LDFLAGS: -lc++ -lbz2
         SWIFT_OBJC_BRIDGING_HEADER: GoRex/GoRex-Bridging-Header.h
   GoRexUITests:
     type: bundle.ui-testing

@@ -158,7 +158,7 @@ func plan(files []string, f facts) []check {
 			c.skip = "NOT VERIFIED: ios changed; build with xcodebuild on the Mac (see the gorex-ui-testing skill)"
 			c.unverified = true
 		case !f.iosToolsPresent:
-			c.skip = "NOT VERIFIED: ios changed; needs xcodegen, xcodebuild and ios/Frameworks (scripts/build-ghostty-vt.sh, scripts/build-tailnet; see the gorex-ui-testing skill)"
+			c.skip = "NOT VERIFIED: ios changed; needs xcodegen, xcodebuild and ios/Frameworks/Tailnet.xcframework (scripts/build-tailnet; see the gorex-ui-testing skill)"
 			c.unverified = true
 		default:
 			c.args = []string{"sh", "-c", `xcodegen generate && xcodebuild -scheme GoRex -destination "generic/platform=iOS Simulator" -derivedDataPath "${TMPDIR:-/tmp}/gorex-verify-dd" CODE_SIGNING_ALLOWED=NO build -quiet`}
@@ -521,9 +521,8 @@ func machineFacts(root string, full bool) facts {
 	}
 	_, e1 := exec.LookPath("xcodegen")
 	_, e2 := exec.LookPath("xcodebuild")
-	_, e3 := os.Stat(filepath.Join(root, "ios", "Frameworks", "GhosttyVt.xcframework"))
-	_, e4 := os.Stat(filepath.Join(root, "ios", "Frameworks", "Tailnet.xcframework"))
-	f.iosToolsPresent = e1 == nil && e2 == nil && e3 == nil && e4 == nil
+	_, e3 := os.Stat(filepath.Join(root, "ios", "Frameworks", "Tailnet.xcframework"))
+	f.iosToolsPresent = e1 == nil && e2 == nil && e3 == nil
 	return f
 }
 

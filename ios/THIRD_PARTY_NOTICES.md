@@ -2,13 +2,13 @@
 
 ## Ghostty (GhosttyKit, libghostty-vt)
 
-The terminal is a Ghostty surface: the app links GhosttyKit, rootshell's
-build of Ghostty, from the binary Swift package
-https://github.com/kitknox/ghosttykit-rootshell (0.2.23, from
-https://github.com/kitknox/ghostty-rootshell). It also links
-libghostty-vt, built from Ghostty's sources by
-`scripts/build-ghostty-vt.sh`, which reads the snapshot a terminal stream
-starts with. https://github.com/ghostty-org/ghostty
+The terminal is a Ghostty surface: the app links GhosttyKit, si-mods's fork
+of rootshell's build of Ghostty, from the binary Swift package
+https://github.com/si-mods/ghosttykit-rootshell (0.3.0, from
+https://github.com/si-mods/ghostty-rootshell, forked from
+https://github.com/kitknox/ghostty-rootshell). The same static library also
+exports libghostty-vt, which reads the snapshot a terminal stream starts
+with. https://github.com/ghostty-org/ghostty
 
 GhosttyKit's license adds to Ghostty's notice below:
 
@@ -144,9 +144,9 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
 
 ## rootshell
 
-`scripts/build-ghostty-vt.sh`, the keyboard bar and the text input traits of
+The keyboard bar and the text input traits of
 `GoRex/Terminal/TerminalView.swift` follow rootshell's
-`scripts/build-framework.sh`, `KeyboardAccessoryView` and `TerminalView`;
+`KeyboardAccessoryView` and `TerminalView`;
 the Ghostty surface and app in `GoRex/Terminal/TerminalView.swift` and
 `GoRex/Terminal/Ghostty.swift` follow its `TerminalSurfaceController`,
 `GhosttyApp` and `GhosttyInput`; `GoRex/Terminal/Dictation.swift` follows

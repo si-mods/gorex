@@ -82,16 +82,34 @@ nonisolated final class VTerminal {
 
     private func format(_ emit: GhosttyFormatterFormat) -> Data {
         var f: GhosttyFormatter?
-        guard ghostty_formatter_terminal_new(nil, &f, term) == GHOSTTY_SUCCESS, let f else { return Data() }
+        // Trimming is on for plain text; the extras are all but the palette.
+        let opts = GhosttyFormatterTerminalOptions(
+            size: MemoryLayout<GhosttyFormatterTerminalOptions>.size,
+            emit: emit,
+            unwrap: false,
+            trim: emit == GHOSTTY_FORMATTER_FORMAT_PLAIN,
+            extra: GhosttyFormatterTerminalExtra(
+                size: MemoryLayout<GhosttyFormatterTerminalExtra>.size,
+                palette: false,
+                modes: true,
+                scrolling_region: true,
+                tabstops: true,
+                pwd: true,
+                keyboard: true,
+                screen: GhosttyFormatterScreenExtra(
+                    size: MemoryLayout<GhosttyFormatterScreenExtra>.size,
+                    cursor: true,
+                    style: true,
+                    hyperlink: true,
+                    protection: true,
+                    kitty_keyboard: true,
+                    charsets: true
+                )
+            ),
+            selection: nil
+        )
+        guard ghostty_formatter_terminal_new(nil, &f, term, opts) == GHOSTTY_SUCCESS, let f else { return Data() }
         defer { ghostty_formatter_free(f) }
-        // Trimming is on unless turned off; the extras are all but the palette.
-        var emit = emit
-        var trim = emit == GHOSTTY_FORMATTER_FORMAT_PLAIN
-        var extras: GhosttyFormatterExtras = GHOSTTY_FORMATTER_EXTRAS_ALL & ~GHOSTTY_FORMATTER_EXTRA_PALETTE
-        guard ghostty_formatter_set(f, GHOSTTY_FORMATTER_OPT_EMIT, &emit) == GHOSTTY_SUCCESS,
-              ghostty_formatter_set(f, GHOSTTY_FORMATTER_OPT_TRIM, &trim) == GHOSTTY_SUCCESS,
-              ghostty_formatter_set(f, GHOSTTY_FORMATTER_OPT_EXTRAS, &extras) == GHOSTTY_SUCCESS
-        else { return Data() }
         var p: UnsafeMutablePointer<UInt8>?
         var n = 0
         guard ghostty_formatter_format_alloc(f, nil, &p, &n) == GHOSTTY_SUCCESS, let p else { return Data() }

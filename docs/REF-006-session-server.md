@@ -3,7 +3,7 @@ name: REF-006
 description: "The session server: one PTY and one screen for each shell, data flow, recovery, attach and terminal queries. Use when you change `internal/rex` sessions."
 metadata:
   created: "2026-11-07"
-  updated: "2026-11-24"
+  updated: "2026-11-27"
 ---
 
 # REF-006: The session server's terminals
@@ -59,12 +59,12 @@ The desktop does not embed the whole of Ghostty:
 - The server needs a terminal with no view at all.
 
 The iOS app is the other way round. It shows each terminal in a GhosttyKit
-surface (rootshell's prebuilt package, Metal renderer; `ios/project.yml`,
-`ios/GoRex/Terminal/Ghostty.swift`). GhosttyKit cannot read a snapshot,
-so the app also links libghostty-vt (`GhosttyVt.xcframework`, built by
-`ios/scripts/build-ghostty-vt.sh` at the commit GoRex's binding uses):
-`VTerminal.swift` decodes the GHOSTSNP a stream starts with and turns it
-into the escape sequences that draw the same screen.
+surface (from `si-mods/ghosttykit-rootshell`, Metal renderer;
+`ios/project.yml`, `ios/GoRex/Terminal/Ghostty.swift`). The same
+`GhosttyKitAppStore` static library exports libghostty-vt (`GhosttyVt`
+module; [`IOS-032`](IOS-032-merge-ghostty-vt.md)): `VTerminal.swift`
+decodes the GHOSTSNP a stream starts with and turns it into the escape
+sequences that draw the same screen.
 
 ## Data flow
 
@@ -430,6 +430,7 @@ emulator before the program's first output (`CreateOptions.prelude`). See
   graphics filter's (`graphics.pending`) and the emulator's, does not
   reach the new server. The rest of a Kitty transfer whose start it read
   is passed on, not recorded (`graphics.cut`).
-- **GHOSTSNP is tied to one libghostty-vt.** The iOS app's
-  `GhosttyVt.xcframework` must be built at the commit the server's MyGo
-  binds.
+- **GHOSTSNP requires compatible libghostty-vt.** The iOS app's
+  `GhosttyKitAppStore` (`si-mods/ghostty-rootshell`) must stay wire-compatible
+  with the GHOSTSNP v1 snapshots that the server's MyGo binds (including
+  skipping unknown optional record tags).

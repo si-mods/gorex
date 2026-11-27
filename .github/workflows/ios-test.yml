@@ -53,19 +53,6 @@ jobs:
       - run: |
           v=$(xcodegen --version | grep -Eo '[0-9]+(\.[0-9]+)+' | head -1)
           [[ $(printf '%s\n' 2.45.1 "$v" | sort -V | head -1) == 2.45.1 ]] || brew upgrade xcodegen
-      # The script pins Ghostty's commit and Zig's version.
-      - uses: actions/cache/restore@v6
-        id: ghostty-vt
-        with:
-          path: ios/Frameworks/GhosttyVt.xcframework
-          key: ghostty-vt-${{ hashFiles('ios/scripts/build-ghostty-vt.sh') }}
-      - if: steps.ghostty-vt.outputs.cache-hit != 'true'
-        run: ios/scripts/build-ghostty-vt.sh
-      - if: steps.ghostty-vt.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v6
-        with:
-          path: ios/Frameworks/GhosttyVt.xcframework
-          key: ${{ steps.ghostty-vt.outputs.cache-primary-key }}
       # Built-in Tailscale (ios/tailnet), with the Go and gomobile go.mod pins.
       - uses: actions/setup-go@v7
         with:

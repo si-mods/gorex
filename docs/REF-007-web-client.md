@@ -3,7 +3,7 @@ name: REF-007
 description: "The standalone web client in `web/`: hosts, trust of a page, Tailscale, hosting and the app shell. Use when you change the web client."
 metadata:
   created: "2026-11-12"
-  updated: "2026-11-25"
+  updated: "2026-11-27"
 ---
 
 # REF-007: Web client
@@ -553,8 +553,8 @@ npm run build     # node build.mjs; Windows: the same, from PowerShell or Git Ba
 `web/build.mjs` does these steps:
 
 1. It gets Zig 0.17.0 for the host into the cache, if `ZIG` is not set.
-2. It clones Ghostty and checks out the pinned commit. This is the same
-   commit as `ios/scripts/build-ghostty-vt.sh`. Pass
+2. It clones Ghostty and checks out the pinned commit that matches
+   `si-mods/mygo`'s terminal binding. Pass
    `--ghostty-source <path>` to use a checkout you already have.
 3. It fetches the Zig packages that libghostty-vt needs (Ghostty's
    `deps/libghostty-vt.txt`) into the cache, as Ghostty's
