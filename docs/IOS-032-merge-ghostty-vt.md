@@ -8,7 +8,7 @@ metadata:
 
 # IOS-032: Merge GhosttyVt into GhosttyKitAppStore
 
-Status: accepted. Not implemented.
+Status: built (`si-mods/ghosttykit-rootshell` v0.3.0).
 
 This doc decides how Rex Go removes the duplicate `GhosttyVt.xcframework` static library by consuming the `libghostty-vt` C API from a `si-mods`-maintained fork of `GhosttyKitAppStore` (issue #1229). It updates the iOS linking design in [`REF-006`](REF-006-session-server.md).
 
@@ -87,16 +87,17 @@ Because `GoRexTests` is a standalone unit-test bundle that compiles `VTerminal.s
 #### Fork changes in `si-mods/ghostty-rootshell` and `si-mods/ghosttykit-rootshell`
 
 1. Fork `kitknox/ghostty-rootshell` to `si-mods/ghostty-rootshell` and `kitknox/ghosttykit-rootshell` to `si-mods/ghosttykit-rootshell`.
-2. Rebase or merge upstream Ghostty through `108cacb17ed8990840cd14abfce43d8ed8503ca1` in `si-mods/ghostty-rootshell` so `src/terminal/snapshot/` matches `si-mods/mygo`.
-3. Export the `libghostty-vt` C API from `src/terminal/c/main.zig` inside `src/main_c.zig` (or link `vt_c` into `GhosttyLib.initStatic`).
+2. Backport upstream Ghostty commit `781c58e966` (skip snapshot records with unknown tags) into `si-mods/ghostty-rootshell` so `src/terminal/snapshot/` decodes `si-mods/mygo`'s `GHOSTSNP` v1 streams while keeping `kitknox/ghostty-rootshell`'s Zig 0.16 base.
+3. Enable `c_abi = true` in `src/build/Config.zig` and export the `libghostty-vt` C API from `src/terminal/c/main.zig` inside `src/main_c.zig`.
 4. Confirm that no C symbol names collide between `src/main_c.zig` and `src/terminal/c/main.zig`.
 5. Copy `include/ghostty/vt.h` and `include/ghostty/vt/*.h` into the xcframework `Headers/` directory in `src/build/GhosttyXCFramework.zig`.
 6. Add `module GhosttyVt { header "ghostty/vt.h" export * }` beside `module GhosttyKit` in `include/module.modulemap`. Both blocks use `header` instead of `umbrella header`, so Clang emits no `-Wincomplete-umbrella` warnings.
-7. Update `scripts/release.sh` and `Package.swift` in `si-mods/ghosttykit-rootshell` to target `si-mods/ghosttykit-rootshell` releases, publish a release tag, and verify the exported symbols with `nm -g`.
+7. Update `scripts/release.sh` and `Package.swift` in `si-mods/ghosttykit-rootshell` to target `si-mods/ghosttykit-rootshell` releases, publish `v0.3.0`, and verify the exported symbols with `nm -g`.
 
 #### GoRex repository changes
 
-- `ios/project.yml`: switch `GhosttyKit` URL to `https://github.com/si-mods/ghosttykit-rootshell.git` at the new `exactVersion` and remove `Frameworks/GhosttyVt.xcframework` from `GoRex` and `GoRexTests`. Add package product `GhosttyKitAppStore` to `GoRexTests` and add `-lc++` to `GoRexTests` `OTHER_LDFLAGS` if required.
+- `ios/project.yml`: switch `GhosttyKit` URL to `https://github.com/si-mods/ghosttykit-rootshell.git` at `exactVersion: 0.3.0` and remove `Frameworks/GhosttyVt.xcframework` from `GoRex` and `GoRexTests`. Add package product `GhosttyKitAppStore` to `GoRexTests` and add `-lc++` to `GoRexTests` `OTHER_LDFLAGS`.
+- `ios/GoRex/Terminal/VTerminal.swift`: pass `GhosttyFormatterTerminalOptions` to `ghostty_formatter_terminal_new` to match `si-mods/ghostty-rootshell`'s `formatter.h`.
 - `ios/scripts/build-ghostty-vt.sh`: delete the script.
 - `ios/scripts/upload`: remove the comment that references `scripts/build-ghostty-vt.sh`.
 - `.github/workflows/ios-test.yml` and `.github/workflows/testflight.yml`: remove the `ghostty-vt` cache restore, build, and cache save steps.

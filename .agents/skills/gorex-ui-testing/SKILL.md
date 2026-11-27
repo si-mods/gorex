@@ -126,7 +126,7 @@ Server-side behavior that needs a real process, such as exec, PIDs and fds, belo
 
 For `ios/`: the simulator needs no window and no hands. `xcrun simctl` boots a device and reads its framebuffer; a throwaway XCUITest target sends real touches through the accessibility protocol and asserts on what UIKit sees (the keyboard, alerts, elements), which is what a pixel click on a window cannot prove. Prefer this to clicking a Simulator window with an automation driver: since Xcode 27 the simulator's UI is Device Hub, which shows only some booted devices, so the window for your device may not exist, and guessed coordinates prove nothing.
 
-Build, install, and use a device of your own; never reuse one that someone else has booted (`xcrun simctl list devices booted`). With `ios/Frameworks` empty, build the two frameworks the project links first: `scripts/build-ghostty-vt.sh` (needs Zig) and `scripts/build-tailnet` (needs Go and gomobile).
+Build, install, and use a device of your own; never reuse one that someone else has booted (`xcrun simctl list devices booted`). With `ios/Frameworks` empty, build the Tailnet framework first: `scripts/build-tailnet` (needs Go and gomobile).
 
 ```sh
 cd ios && xcodegen generate

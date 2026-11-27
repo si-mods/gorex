@@ -1,7 +1,7 @@
 #!/bin/bash
 # upload: archive Rex Go and upload it to TestFlight. Run on a Mac with Xcode,
-# asc and xcodegen, from ios/, after scripts/build-ghostty-vt.sh and
-# scripts/build-tailnet. Signing is cloud-managed, by the App Store Connect
+# asc and xcodegen, from ios/, after scripts/build-tailnet. Signing is
+# cloud-managed, by the App Store Connect
 # API key: ASC_KEY_PATH, ASC_KEY_ID and ASC_ISSUER_ID, by default the key in
 # ~/.appstoreconnect/private_keys. DESTINATION=export writes the signed IPA
 # to build/export and uploads nothing, to check its signing.
