@@ -7,12 +7,6 @@ packages:
   GhosttyKit:
     url: https://github.com/si-mods/ghosttykit-rootshell.git
     exactVersion: 0.3.0
-  # Speech recognition on the phone (Dictation): FluidAudio's SenseVoice and
-  # Silero VAD, from rootshell's fork as rootshell pins it (0.17.4-rootshell.2).
-  # Upstream builds TTS too, whose bundled G2P data is GPL-3.0.
-  FluidAudio:
-    url: https://github.com/kitknox/fluidaudio-rootshell.git
-    revision: bc3521103941a5e4b395604bc4402274210c68d8
 options:
   deploymentTarget:
     iOS: "26.0"
@@ -58,7 +52,6 @@ targets:
         embed: false
       - package: GhosttyKit
         product: GhosttyKitAppStore
-      - package: FluidAudio
     settings:
       base:
         OTHER_LDFLAGS: -lc++ -lbz2
@@ -188,6 +181,8 @@ targets:
       - GoRex/Terminal/Archive.swift
       - GoRex/Terminal/FbankFrontend.swift
       - GoRex/Terminal/QwenTokenizer.swift
+      - GoRex/Terminal/CoreMLSileroVAD.swift
+      - GoRex/Terminal/CoreMLSenseVoice.swift
       - GoRex/Terminal/CoreMLFunASR.swift
       - GoRex/Terminal/Dictation.swift
       - GoRex/Terminal/Polish.swift
@@ -202,7 +197,6 @@ targets:
     dependencies:
       - package: GhosttyKit
         product: GhosttyKitAppStore
-      - package: FluidAudio
     settings:
       base:
         GENERATE_INFOPLIST_FILE: true

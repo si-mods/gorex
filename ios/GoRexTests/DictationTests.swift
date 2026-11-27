@@ -1,24 +1,25 @@
 import AVFoundation
-import FluidAudio
 import UIKit
 import XCTest
 import os
 
 /// Dictation's phrases, joined as spoken.
 nonisolated final class DictationTests: XCTestCase {
-    /// SenseVoice is FluidAudio's; Fun-ASR-Nano is a precompiled Core ML
-    /// tarball on GitHub Releases, its size the sum of its files. A phrase
-    /// is cut under each model's limit: 29 s for SenseVoice, 20 s for
-    /// Fun-ASR-Nano.
+    /// Both SenseVoice Small and Fun-ASR-Nano are precompiled Core ML tarballs
+    /// on GitHub Releases, their size the sum of their files. A phrase is cut
+    /// under each model's limit: 29 s for SenseVoice, 20 s for Fun-ASR-Nano.
     func testModels() {
         XCTAssertEqual(Dictation.Model.allCases, [.senseVoice, .funASRNano])
-        XCTAssertNil(Dictation.Model.senseVoice.release)
         XCTAssertEqual(Dictation.Model.senseVoice.longest, 29 * 16_000)
         XCTAssertEqual(Dictation.Model.funASRNano.longest, 20 * 16_000)
+        XCTAssertEqual(Dictation.Model.senseVoice.size, 237_597_360)
         XCTAssertEqual(Dictation.Model.funASRNano.size, 731_851_719)
-        let release = Dictation.Model.funASRNano.release!
-        XCTAssertEqual(release.asset, "funasr-nano-coreml-v1.tar.bz2")
-        XCTAssertEqual(Set(release.files.map(\.path)).count, release.files.count)
+        XCTAssertEqual(Dictation.Model.senseVoice.release.asset, "sensevoice-small-coreml-v1.tar.bz2")
+        XCTAssertEqual(Dictation.Model.funASRNano.release.asset, "funasr-nano-coreml-v1.tar.bz2")
+        XCTAssertEqual(Dictation.vadRelease.asset, "silero-vad-coreml-v1.tar.bz2")
+        for release in [Dictation.vadRelease, Dictation.Model.senseVoice.release, Dictation.Model.funASRNano.release] {
+            XCTAssertEqual(Set(release.files.map(\.path)).count, release.files.count, release.asset)
+        }
     }
 
     /// A model is whole with each file at its size: not with one missing,
@@ -130,9 +131,9 @@ nonisolated final class DictationTests: XCTestCase {
     /// xcodebuild): ~840 MB, so not with every test run.
     func testTarballUnpacksARelease() throws {
         let env = ProcessInfo.processInfo.environment
-        guard let archive = env["DICTATION_ARCHIVE"], let model = env["DICTATION_MODEL"].flatMap(Dictation.Model.init(rawValue:)),
-              let release = model.release
+        guard let archive = env["DICTATION_ARCHIVE"], let model = env["DICTATION_MODEL"].flatMap(Dictation.Model.init(rawValue:))
         else { throw XCTSkip("DICTATION_ARCHIVE or DICTATION_MODEL not set") }
+        let release = model.release
         let dir = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: dir) }
         let start = ContinuousClock.now
@@ -185,7 +186,7 @@ nonisolated final class DictationTests: XCTestCase {
     func testAudioWaitingForTheModelIsBounded() {
         // A load that ends only with the test: the audio waits until then.
         let (gate, open) = AsyncStream.makeStream(of: Void.self)
-        let models = Task<(any Recogniser, VadManager), Error> {
+        let models = Task<(any Recogniser, CoreMLSileroVAD), Error> {
             for await _ in gate {}
             throw CancellationError()
         }
@@ -430,7 +431,7 @@ nonisolated final class DictationTests: XCTestCase {
         XCTAssertEqual(f.processingFormat.sampleRate, 16_000)
         let samples = Array(UnsafeBufferPointer(start: b.floatChannelData![0], count: Int(b.frameLength)))
         let dir = URL(filePath: modelDir)
-        XCTAssertTrue(Dictation.whole(Dictation.Model.funASRNano.release!.files, in: dir))
+        XCTAssertTrue(Dictation.whole(Dictation.Model.funASRNano.release.files, in: dir))
         let start = ContinuousClock.now
         let asr = try CoreMLFunASR(in: dir)
         let loaded = ContinuousClock.now
@@ -480,6 +481,40 @@ nonisolated final class DictationTests: XCTestCase {
         for s in [Dictation.Said(phrases: ["A.", "今天"], open: "好"), Dictation.Said(phrases: ["こ ん"], open: "に ち は")] {
             XCTAssertTrue(s.text.hasPrefix(s.settled), "\(s)")
         }
+    }
+
+    /// CoreMLSenseVoice collapses CTC blanks/repeats, strips meta tags, and
+    /// returns empty on <|nospeech|>.
+    func testCoreMLSenseVoiceDecodeCTC() {
+        let tokens = ["<unk>", "<|zh|>", "<|nospeech|>", "▁Hello", "▁world", "你", "好"]
+        XCTAssertEqual(CoreMLSenseVoice.decodeCTC([1, 1, 0, 5, 5, 0, 6], tokens: tokens), "你好")
+        XCTAssertEqual(CoreMLSenseVoice.decodeCTC([0, 3, 3, 0, 4], tokens: tokens), "Hello world")
+        XCTAssertEqual(CoreMLSenseVoice.decodeCTC([2, 5, 6], tokens: tokens), "")
+    }
+
+    /// CoreMLSileroVAD hysteresis emits speechStart once above entry threshold
+    /// and speechEnd only after minSilenceDuration below negativeThreshold.
+    func testCoreMLSileroVADHysteresis() {
+        let cfg = VadSegmentationConfig(minSilenceDuration: 0.5, silenceThresholdForSplit: 0.45,
+                                        negativeThreshold: 0.45, negativeThresholdOffset: 0.15)
+        var s = VadStreamState.initial()
+        let zCtx = s.context, zH = s.hidden, zC = s.cell
+        // Below threshold -> no event
+        var r = CoreMLSileroVAD.stepStateMachine(probability: 0.2, chunkSampleCount: 4096, context: zCtx, hidden: zH, cell: zC, state: s, config: cfg)
+        XCTAssertNil(r.event); s = r.state
+        // Above entry (0.6) -> speechStart
+        r = CoreMLSileroVAD.stepStateMachine(probability: 0.8, chunkSampleCount: 4096, context: zCtx, hidden: zH, cell: zC, state: s, config: cfg)
+        XCTAssertEqual(r.event?.kind, .speechStart); s = r.state
+        // Still speaking -> no duplicate start
+        r = CoreMLSileroVAD.stepStateMachine(probability: 0.9, chunkSampleCount: 4096, context: zCtx, hidden: zH, cell: zC, state: s, config: cfg)
+        XCTAssertNil(r.event); s = r.state
+        // Silence starts (0.5 s = 8000 samples -> 3 chunks of 4096 after first silent chunk)
+        r = CoreMLSileroVAD.stepStateMachine(probability: 0.1, chunkSampleCount: 4096, context: zCtx, hidden: zH, cell: zC, state: s, config: cfg)
+        XCTAssertNil(r.event); s = r.state
+        r = CoreMLSileroVAD.stepStateMachine(probability: 0.1, chunkSampleCount: 4096, context: zCtx, hidden: zH, cell: zC, state: s, config: cfg)
+        XCTAssertNil(r.event); s = r.state
+        r = CoreMLSileroVAD.stepStateMachine(probability: 0.1, chunkSampleCount: 4096, context: zCtx, hidden: zH, cell: zC, state: s, config: cfg)
+        XCTAssertEqual(r.event?.kind, .speechEnd)
     }
 
     /// The level shown: -50 dB and below is none, -10 dB and above full;
