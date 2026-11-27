@@ -10,6 +10,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 `web` job of `.github/workflows/ci.yml` fails it.
 
 ## en-US
+- Dictation: Fun-ASR-Nano now runs natively on Apple Core ML (Neural Engine) with a smaller model download and a much smaller app install size.
 - Smaller app install size: extra program tab icons now download on demand and cache locally, and release builds optimize for size.
 - Composer Mode: expanding the quick-keys pill now uses the full bottom action row (temporarily fading +, mic, and Send) so all 7 keys have generous spacing and 44 pt tap targets.
 - The in-app HTML viewer now matches the terminal's dark or light appearance (including dark-mode CSS and no white flash while loading).
@@ -177,6 +178,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - Settings: choose System, Light or Dark right in the Interface row, and Minimum Contrast from a menu. A space's Color menu shows each color's dot and marks the current one.
 
 ## zh-Hans
+- 语音听写：Fun-ASR-Nano 现已切换为原生 Apple Core ML（神经网络引擎）加速推理，模型下载体积更小，并大幅缩减了应用安装包大小。
 - 安装包体积优化：扩展程序标签图标改为按需从 CDN 下载并本地缓存，同时开启 Release 体积优化。
 - Composer 模式：展开快捷按键条时临时淡出「+」、麦克风与发送按钮，让 7 枚按键独占整行，间距更宽裕并满足 44pt 最小触控热区规范。
 - 内置 HTML 浏览器现在会跟随当前终端（或应用设置）的深/浅色外观，网页自动适配深色模式，且加载时不再白屏闪烁。
