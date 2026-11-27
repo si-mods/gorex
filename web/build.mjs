@@ -525,10 +525,14 @@ async function main() {
   copyFileSync(join(web, "_headers"), join(dist, "_headers"));
   // The desktop's terminal font, which GoRex embeds too, with its licence.
   for (const f of readdirSync(join(root, "assets", "fonts"))) copyFileSync(join(root, "assets", "fonts", f), join(dist, "fonts", f));
-  // The glyphs of the program tiles: the repo's lucide icons and brand marks, which the desktop embeds too.
+  // The glyphs of the program tiles: the repo's lucide icons and brand marks
+  // (core embedded brands + on-demand extra brands served from /brands/).
   for (const d of ["icons", "brands"]) {
     mkdirSync(join(dist, d));
     for (const f of readdirSync(join(root, "assets", d))) copyFileSync(join(root, "assets", d, f), join(dist, d, f));
+  }
+  for (const f of readdirSync(join(root, "assets", "brands-extra"))) {
+    copyFileSync(join(root, "assets", "brands-extra", f), join(dist, "brands", f));
   }
   // The app's manifest and icons.
   copyFileSync(join(web, "manifest.webmanifest"), join(dist, "manifest.webmanifest"));
