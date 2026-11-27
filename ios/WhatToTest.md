@@ -10,6 +10,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 `web` job of `.github/workflows/ci.yml` fails it.
 
 ## en-US
+- Dictation: SenseVoice Small and Silero VAD now also run on native Core ML downloaded from GitHub Releases (no Hugging Face required), cutting another large third-party speech library from the app.
 - Smaller app install size: Rex Go now shares one terminal engine across rendering and snapshot restore, reducing app binary size by about 3.3 MB.
 - Dictation: Fun-ASR-Nano now runs natively on Apple Core ML (Neural Engine) with a smaller model download and a much smaller app install size.
 - Smaller app install size: extra program tab icons now download on demand and cache locally, and release builds optimize for size.
@@ -179,6 +180,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - Settings: choose System, Light or Dark right in the Interface row, and Minimum Contrast from a menu. A space's Color menu shows each color's dot and marks the current one.
 
 ## zh-Hans
+- 语音听写：SenseVoice Small 与 Silero VAD 现也全部改由原生 Core ML 运行并从 GitHub Releases 下载（不再依赖 Hugging Face），同时移除了 FluidAudio 第三方语音依赖包。
 - 安装包体积优化：终端渲染与快照恢复现已共用同一底层终端引擎，减少约 3.3 MB 安装包体积。
 - 语音听写：Fun-ASR-Nano 现已切换为原生 Apple Core ML（神经网络引擎）加速推理，模型下载体积更小，并大幅缩减了应用安装包大小。
 - 安装包体积优化：扩展程序标签图标改为按需从 CDN 下载并本地缓存，同时开启 Release 体积优化。

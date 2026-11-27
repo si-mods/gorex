@@ -1,16 +1,44 @@
 import AVFoundation
-import FluidAudio
 import Synchronization
 import UIKit
 import os
 
 /// Dictation, after rootshell's: the mic records, and the model chosen
 /// recognises it on the phone, in the language it hears, with punctuation
-/// and digits: SenseVoiceSmall (FunASR's, in Core ML through FluidAudio), or
-/// Fun-ASR-Nano (in Core ML through CoreMLFunASR). The app does not ship the
-/// models: the mic's first tap asks, and downloads the one chosen.
+/// and digits: SenseVoiceSmall or Fun-ASR-Nano, both running natively on
+/// Apple Core ML with Silero VAD. The app does not ship the models: the
+/// mic's first tap asks, and downloads the one chosen from GitHub Releases.
 @Observable final class Dictation {
     static let shared = Dictation()
+
+    /// A precompiled Core ML tarball hosted on si-mods/gorex GitHub Releases.
+    nonisolated struct ReleaseBundle: Sendable {
+        let tag: String
+        let asset: String
+        let dirName: String
+        let files: [(path: String, size: Int)]
+
+        var url: URL {
+            URL(string: "https://github.com/si-mods/gorex/releases/download/\(tag)/\(asset)")!
+        }
+
+        var totalBytes: Int64 {
+            Int64(files.reduce(0) { $0 + $1.size })
+        }
+    }
+
+    /// Silero VAD v5/v6 Core ML bundle shared by every dictation model.
+    nonisolated static let vadRelease = ReleaseBundle(
+        tag: "models-sensevoice-vad-coreml-v1",
+        asset: "silero-vad-coreml-v1.tar.bz2",
+        dirName: "silero-vad-coreml-v1",
+        files: [
+            ("SileroVAD.mlmodelc/analytics/coremldata.bin", 243),
+            ("SileroVAD.mlmodelc/coremldata.bin", 460),
+            ("SileroVAD.mlmodelc/model.mil", 15_500),
+            ("SileroVAD.mlmodelc/weights/weight.bin", 1_239_488),
+        ]
+    )
 
     /// A speech model, and where it comes from.
     nonisolated enum Model: String, CaseIterable, Sendable {
@@ -23,37 +51,49 @@ import os
             }
         }
 
-        /// The model as a single tarball on GitHub Releases: its asset name,
-        /// and the files in it with what each weighs. Nil for SenseVoice,
-        /// which FluidAudio downloads from Hugging Face.
-        var release: (asset: String, files: [(path: String, size: Int)])? {
+        /// The model as a single precompiled Core ML tarball on GitHub Releases.
+        var release: ReleaseBundle {
             switch self {
-            case .senseVoice: nil
-            case .funASRNano: ("funasr-nano-coreml-v1.tar.bz2", [
-                ("EncoderAdaptor.mlmodelc/analytics/coremldata.bin", 243),
-                ("EncoderAdaptor.mlmodelc/coremldata.bin", 398),
-                ("EncoderAdaptor.mlmodelc/model.mil", 908_120),
-                ("EncoderAdaptor.mlmodelc/weights/weight.bin", 235_347_456),
-                ("TokenEmbedding.mlmodelc/analytics/coremldata.bin", 243),
-                ("TokenEmbedding.mlmodelc/coremldata.bin", 384),
-                ("TokenEmbedding.mlmodelc/model.mil", 2_626),
-                ("TokenEmbedding.mlmodelc/weights/weight.bin", 155_886_528),
-                ("Qwen3Decoder.mlmodelc/analytics/coremldata.bin", 243),
-                ("Qwen3Decoder.mlmodelc/coremldata.bin", 576),
-                ("Qwen3Decoder.mlmodelc/model.mil", 1_132_528),
-                ("Qwen3Decoder.mlmodelc/weights/weight.bin", 335_795_200),
-                ("vocab.json", 2_776_833),
-                ("prompt_ids.json", 341),
-            ])
+            case .senseVoice:
+                ReleaseBundle(
+                    tag: "models-sensevoice-vad-coreml-v1",
+                    asset: "sensevoice-small-coreml-v1.tar.bz2",
+                    dirName: "sensevoice-small-coreml-v1",
+                    files: [
+                        ("SenseVoiceSmall.mlmodelc/analytics/coremldata.bin", 243),
+                        ("SenseVoiceSmall.mlmodelc/coremldata.bin", 420),
+                        ("SenseVoiceSmall.mlmodelc/model.mil", 889_051),
+                        ("SenseVoiceSmall.mlmodelc/weights/weight.bin", 236_355_582),
+                        ("tokens.json", 352_064),
+                    ]
+                )
+            case .funASRNano:
+                ReleaseBundle(
+                    tag: "models-funasr-nano-coreml-v1",
+                    asset: "funasr-nano-coreml-v1.tar.bz2",
+                    dirName: "funasr-nano-coreml-v1",
+                    files: [
+                        ("EncoderAdaptor.mlmodelc/analytics/coremldata.bin", 243),
+                        ("EncoderAdaptor.mlmodelc/coremldata.bin", 398),
+                        ("EncoderAdaptor.mlmodelc/model.mil", 908_120),
+                        ("EncoderAdaptor.mlmodelc/weights/weight.bin", 235_347_456),
+                        ("TokenEmbedding.mlmodelc/analytics/coremldata.bin", 243),
+                        ("TokenEmbedding.mlmodelc/coremldata.bin", 384),
+                        ("TokenEmbedding.mlmodelc/model.mil", 2_626),
+                        ("TokenEmbedding.mlmodelc/weights/weight.bin", 155_886_528),
+                        ("Qwen3Decoder.mlmodelc/analytics/coremldata.bin", 243),
+                        ("Qwen3Decoder.mlmodelc/coremldata.bin", 576),
+                        ("Qwen3Decoder.mlmodelc/model.mil", 1_132_528),
+                        ("Qwen3Decoder.mlmodelc/weights/weight.bin", 335_795_200),
+                        ("vocab.json", 2_776_833),
+                        ("prompt_ids.json", 341),
+                    ]
+                )
             }
         }
 
-        /// What it weighs: SenseVoice's preprocessor, encoder, vocabulary
-        /// and VAD; Fun-ASR-Nano's compiled Core ML files.
-        var size: Int64 {
-            guard let release else { return Dictation.precision == .fp16 ? 474_000_000 : 241_000_000 }
-            return Int64(release.files.reduce(0) { $0 + $1.size })
-        }
+        /// What it weighs on disk (compiled Core ML files).
+        var size: Int64 { release.totalBytes }
 
         /// The longest phrase it takes, in samples. SenseVoice's encoder
         /// takes 0.2 to 30 s: a phrase is cut as it passes 29 s, its last
@@ -62,30 +102,10 @@ import os
         var longest: Int { self == .funASRNano ? 20 * 16_000 : 29 * 16_000 }
     }
 
-    /// The encoder: int8, on the Neural Engine. Off it, as in the
-    /// simulator, int8 gives NaN: fp16 there, as this FluidAudio's fp32
-    /// takes 108 s of audio and no less.
-    nonisolated private static var precision: SenseVoiceEncoderPrecision {
-        #if targetEnvironment(simulator)
-        .fp16
-        #else
-        .int8
-        #endif
-    }
-    /// Where FluidAudio keeps its models, and CoreMLFunASR's, out of backups.
+    /// Where Core ML speech & VAD models live on disk, excluded from backups.
     nonisolated private static let root = URL.applicationSupportDirectory.appending(path: "FluidAudio")
-    nonisolated private static var speechDir: URL { MLModelConfigurationUtils.defaultModelsDirectory(for: .senseVoiceSmall) }
-    nonisolated private static var vadModel: URL {
-        MLModelConfigurationUtils.defaultModelsDirectory(for: .vad).appending(path: ModelNames.VAD.sileroVadFile)
-    }
-    /// Hugging Face, and hf-mirror.com, a mirror run by others, for where
-    /// Hugging Face can't be reached, as often from mainland China.
-    nonisolated private static let hub = "https://huggingface.co"
-    nonisolated private static let mirror = "https://hf-mirror.com"
-    /// GitHub Releases hosting the precompiled Core ML Fun-ASR-Nano tarball.
-    nonisolated private static let releases = "https://github.com/si-mods/gorex/releases/download/models-funasr-nano-coreml-v1"
-    /// SenseVoice's text-norm: punctuation and digits (withitn).
-    nonisolated private static let textNorm: Int32 = 14
+    nonisolated private static var vadDir: URL { root.appending(path: vadRelease.dirName) }
+    nonisolated private static var vadModel: URL { vadDir.appending(path: "SileroVAD.mlmodelc") }
 
     /// The model the mic uses, as Settings chose it. Migrates retired
     /// `"qwen3ASR"` selections to `.funASRNano`.
@@ -118,7 +138,7 @@ import os
     var error: String?
     private var task: Task<Void, Never>?
     /// The model loaded, and what unloads it once idle.
-    var models: Task<(any Recogniser, VadManager), Error>?
+    var models: Task<(any Recogniser, CoreMLSileroVAD), Error>?
     private var idle: Task<Void, Never>?
     /// The listenings not yet ended, each recognising until its last
     /// phrase is done: while one is, the app going to the background keeps
@@ -126,8 +146,6 @@ import os
     var listenings = 0
 
     private init() {
-        // Loading never downloads: only download does.
-        ModelHub.offlineMode = true
         // A model weighs up to a gigabyte: it goes as memory runs short,
         // and as the app leaves the screen with the mic off, rather than a
         // minute later, when iOS may have ended the app for it.
@@ -315,23 +333,25 @@ import os
     }
 
     nonisolated private static func dir(_ m: Model) -> URL {
-        guard m != .senseVoice else { return speechDir }
-        return root.appending(path: "funasr-nano-coreml-v1")
+        root.appending(path: m.release.dirName)
     }
 
     /// Where a release's archive and what it unpacks into live while it
     /// downloads: beside the model, never in it.
     nonisolated private static func stage(_ m: Model) -> URL {
-        root.appending(path: (m == .senseVoice ? m.rawValue : "funasr-nano-coreml-v1") + ".release")
+        root.appending(path: m.release.dirName + ".release")
     }
 
-    /// Reclaims legacy sherpa-onnx ONNX weights left on disk by earlier builds.
+    /// Reclaims legacy sherpa-onnx ONNX and FluidAudio Hugging Face caches left
+    /// on disk by earlier builds.
     nonisolated private static func removeLegacyONNXCaches() {
         let fm = FileManager.default
         for rel in ["csukuangfj/sherpa-onnx-funasr-nano-int8-2025-12-30",
                     "csukuangfj/sherpa-onnx-funasr-nano-int8-2025-12-30.release",
                     "csukuangfj2/sherpa-onnx-qwen3-asr-0.6B-int8-2026-03-25",
-                    "csukuangfj2/sherpa-onnx-qwen3-asr-0.6B-int8-2026-03-25.release"] {
+                    "csukuangfj2/sherpa-onnx-qwen3-asr-0.6B-int8-2026-03-25.release",
+                    "Models/sensevoice-small-coreml",
+                    "Models/silero-vad-coreml"] {
             try? fm.removeItem(at: root.appending(path: rel))
         }
     }
@@ -339,17 +359,12 @@ import os
     /// Whether the VAD's compiled model is on disk whole: what every model
     /// recognises a phrase through.
     nonisolated static var vadPresent: Bool {
-        FileManager.default.fileExists(atPath: vadModel.appending(path: "coremldata.bin").path)
-            && !(FileManager.default.enumerator(at: vadModel, includingPropertiesForKeys: nil)?.contains { ($0 as? URL)?.pathExtension == "partial" } ?? true)
+        whole(vadRelease.files, in: vadDir)
     }
 
-    /// Whether a model is whole: the VAD's compiled model, with nothing
-    /// left half downloaded; FluidAudio's check for SenseVoice, and
-    /// CoreMLFunASR's compiled files for Fun-ASR-Nano.
+    /// Whether a model is whole: Silero VAD plus the model's compiled Core ML files.
     nonisolated static func present(_ m: Model) -> Bool {
-        guard vadPresent else { return false }
-        guard let release = m.release else { return SenseVoiceModels.modelsExist(at: speechDir, precision: precision) }
-        return whole(release.files, in: dir(m))
+        vadPresent && whole(m.release.files, in: dir(m))
     }
 
     /// Whether each file is in dir at its size; one downloading is not
@@ -358,96 +373,41 @@ import os
         files.allSatisfy { (try? dir.appending(path: $0.path).resourceValues(forKeys: [.fileSizeKey]).fileSize) == $0.size }
     }
 
-    @concurrent nonisolated private static func load(_ m: Model) async throws -> (any Recogniser, VadManager) {
-        let speech: any Recogniser = m == .senseVoice
-            ? SenseVoiceManager(models: try SenseVoiceModels.load(from: speechDir, precision: precision), language: 0, textNorm: textNorm)
-            : try CoreMLFunASR(in: dir(m))
-        return (speech, try await VadManager())
+    @concurrent nonisolated private static func load(_ m: Model) async throws -> (any Recogniser, CoreMLSileroVAD) {
+        let speech: any Recogniser = switch m {
+        case .senseVoice: try CoreMLSenseVoice(in: dir(m))
+        case .funASRNano: try CoreMLFunASR(in: dir(m))
+        }
+        return (speech, try CoreMLSileroVAD(modelURL: vadModel))
     }
 
-    /// Downloads what is missing: SenseVoice and Silero VAD from Hugging Face
-    /// (or hf-mirror), and Fun-ASR-Nano's compiled Core ML tarball from GitHub
-    /// Releases.
+    /// Downloads Silero VAD (if missing) and the chosen speech model from
+    /// GitHub Releases using resumable 4-connection range requests.
     @concurrent nonisolated private static func fetch(_ m: Model, _ progress: @escaping @Sendable (Double) -> Void) async throws {
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         var v = URLResourceValues()
         v.isExcludedFromBackup = true
         var dir = root
         try dir.setResourceValues(v)
-        ModelHub.offlineMode = false
-        defer { ModelHub.offlineMode = true }
-        let sources = await sources(m)
-        guard !sources.isEmpty else {
-            throw RexError(code: "dictation", message: m.release == nil
-                           ? String(localized: "Hugging Face and its mirror could not be reached.")
-                           : String(localized: "Hugging Face, its mirror and GitHub could not be reached."))
-        }
-        var failure: Error?
-        for source in sources {
-            ModelRegistry.baseURL = source.url
-            do {
-                if !vadPresent {
-                    try await ModelHub.download(.vad, to: MLModelConfigurationUtils.defaultModelsDirectory())
-                }
-                if m == .senseVoice {
-                    _ = try await SenseVoiceModels.download(precision: precision) { progress($0.fractionCompleted) }
-                } else {
-                    try await tarball(m, progress)
-                }
-                return
-            } catch {
-                if Task.isCancelled { throw error }
-                failure = error
+        if !vadPresent {
+            try await tarball(vadRelease, into: vadDir, stage: root.appending(path: vadRelease.dirName + ".release")) { p in
+                progress(p * 0.05)
             }
         }
-        throw failure ?? URLError(.cannotConnectToHost)
+        let base = vadPresent ? 0.05 : 0.0
+        try await tarball(m.release, into: Self.dir(m), stage: Self.stage(m)) { p in
+            progress(base + (1.0 - base) * p)
+        }
     }
 
-    /// A place a model comes from: Hugging Face or its mirror for FluidAudio
-    /// models (VAD / SenseVoice), plus GitHub Releases for Fun-ASR-Nano's tarball.
-    nonisolated private struct Source: Sendable {
-        let url: String
-        let release: Bool
-    }
-
-    @concurrent nonisolated private static func sources(_ m: Model) async -> [Source] {
-        async let fromHub = serves(hub)
-        async let fromMirror = serves(mirror)
-        var sources: [Source] = []
-        let isRelease = m.release != nil
-        if await fromHub { sources.append(Source(url: hub, release: isRelease)) }
-        if await fromMirror { sources.append(Source(url: mirror, release: isRelease)) }
-        if isRelease, sources.isEmpty { sources.append(Source(url: hub, release: true)) }
-        return sources
-    }
-
-    /// Whether a Hugging Face host serves the VAD model (used by every
-    /// dictation model).
-    @concurrent nonisolated private static func serves(_ base: String) async -> Bool {
-        let path = "\(ModelNames.VAD.sileroVadFile)/coremldata.bin"
-        let n = 64
-        guard let url = URL(string: "\(base)/\(Repo.vad.rawValue)/resolve/main/\(path)") else { return false }
-        var r = URLRequest(url: url, timeoutInterval: 10)
-        r.setValue("bytes=0-\(n - 1)", forHTTPHeaderField: "Range")
-        guard let (data, res) = try? await sessions[0].data(for: r) else { return false }
-        return (res as? HTTPURLResponse)?.statusCode == 206 && data.count == n
-    }
-
-    /// A sherpa-onnx model from GitHub's release: the whole of it as one
-    /// tarball, resumed by ranges on four connections as get does a file,
-    /// then unpacked where its files belong. Half of what the tarball holds
-    /// is not wanted, and bzip2 gives no way to pass over it.
-    @concurrent nonisolated private static func tarball(_ m: Model, _ progress: @escaping @Sendable (Double) -> Void) async throws {
-        guard let release = m.release else { return }
-        let dir = dir(m)
-        // Its archive and what it unpacks into stand beside the model, so
-        // that neither a half download nor a file of the release's build
-        // lies beside the commit's, which get goes on from.
-        let stage = Self.stage(m)
+    /// Downloads a precompiled Core ML tarball from GitHub Releases by ranges
+    /// on four connections, then unpacks its verified files into `dir`.
+    @concurrent nonisolated private static func tarball(_ release: ReleaseBundle, into dir: URL, stage: URL,
+                                                        _ progress: @escaping @Sendable (Double) -> Void) async throws {
         let archive = stage.appending(path: release.asset).appendingPathExtension("partial")
         let unpacked = stage.appending(path: "unpacked")
         try FileManager.default.createDirectory(at: stage, withIntermediateDirectories: true)
-        let url = URL(string: "\(releases)/\(release.asset)")!
+        let url = release.url
         let size = try await length(of: url)
         var have = Int((try? archive.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0)
         if have > size {
@@ -541,7 +501,7 @@ nonisolated final class Listening: Sendable {
     private let audio: SampleRing
 
     /// longest: the longest phrase the model takes, in samples.
-    init(_ models: Task<(any Recogniser, VadManager), Error>, longest: Int) {
+    init(_ models: Task<(any Recogniser, CoreMLSileroVAD), Error>, longest: Int) {
         let (said, show) = AsyncStream.makeStream(of: Dictation.Said.self, bufferingPolicy: .bufferingNewest(1))
         let audio = SampleRing(capacity: Self.backlog)
         self.said = said
@@ -586,12 +546,12 @@ nonisolated final class Listening: Sendable {
 
     /// Hears the audio in the VAD's chunks, one at a time, each filled from
     /// the ring as the audio comes: while it recognises, the audio waits.
-    @concurrent private static func run(_ audio: SampleRing, _ models: Task<(any Recogniser, VadManager), Error>,
+    @concurrent private static func run(_ audio: SampleRing, _ models: Task<(any Recogniser, CoreMLSileroVAD), Error>,
                                         _ longest: Int, _ show: AsyncStream<Dictation.Said>.Continuation) async throws -> String {
         defer { show.finish() }
         let (speech, vad) = try await models.value
         var ear = Ear(speech: speech, vad: vad, longest: longest, show: show)
-        var chunk = [Float](repeating: 0, count: VadManager.chunkSize)
+        var chunk = [Float](repeating: 0, count: CoreMLSileroVAD.chunkSize)
         var filled = 0
         while true {
             try Task.checkCancellation()
@@ -620,7 +580,7 @@ nonisolated final class Listening: Sendable {
     /// The phrase open, and how it is heard.
     private nonisolated struct Ear {
         let speech: any Recogniser
-        let vad: VadManager
+        let vad: CoreMLSileroVAD
         /// A phrase is cut as it passes this many samples.
         let longest: Int
         let show: AsyncStream<Dictation.Said>.Continuation
@@ -643,7 +603,7 @@ nonisolated final class Listening: Sendable {
         /// with a word of 0.2 s.
         private static let shortest = 4_800
 
-        init(speech: any Recogniser, vad: VadManager, longest: Int, show: AsyncStream<Dictation.Said>.Continuation) {
+        init(speech: any Recogniser, vad: CoreMLSileroVAD, longest: Int, show: AsyncStream<Dictation.Said>.Continuation) {
             self.speech = speech
             self.vad = vad
             self.longest = longest
@@ -720,13 +680,6 @@ nonisolated final class Listening: Sendable {
 /// samples; "" for none.
 nonisolated protocol Recogniser: Sendable {
     func recognise(_ samples: [Float]) async throws -> String
-}
-
-extension SenseVoiceManager: Recogniser {
-    func recognise(_ samples: [Float]) throws -> String {
-        let r = try transcribeDetailed(audio: samples)
-        return r.language == "nospeech" ? "" : r.text
-    }
 }
 
 /// The microphone while the mic is on: what it hears, as the models take
