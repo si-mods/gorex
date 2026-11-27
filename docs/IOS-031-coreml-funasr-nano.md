@@ -8,7 +8,9 @@ metadata:
 
 # IOS-031: Core ML Fun-ASR-Nano for iOS dictation
 
-Status: proposal.
+Status: built.
+
+Converted `FunAudioLLM/Fun-ASR-Nano-2512` to precompiled Apple Core ML (`.mlmodelc`) and published `funasr-nano-coreml-v1.tar.bz2` (550 MB compressed, 698 MB unpacked) under release `models-funasr-nano-coreml-v1`, with `SherpaOnnxC` removed from `ios/project.yml`.
 
 This doc decides how Rex Go runs `Fun-ASR-Nano` natively on Apple `CoreML.framework` on iOS so we can remove `SherpaOnnxC` completely, cut 15 to 25 MB from the IPA, and move inference from 2 CPU cores to the Apple Neural Engine (ANE), while keeping a clean path for Core ML TTS later.
 

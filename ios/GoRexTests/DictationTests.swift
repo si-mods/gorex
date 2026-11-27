@@ -6,28 +6,19 @@ import os
 
 /// Dictation's phrases, joined as spoken.
 nonisolated final class DictationTests: XCTestCase {
-    /// SenseVoice is FluidAudio's; the others are pinned Hugging Face
-    /// files, their size their sum, and the same model as one tarball on
-    /// sherpa-onnx's releases, whose files are not always the commit's. A
-    /// phrase is cut under each model's limit: 29 s, and 20 for Fun-ASR-Nano.
+    /// SenseVoice is FluidAudio's; Fun-ASR-Nano is a precompiled Core ML
+    /// tarball on GitHub Releases, its size the sum of its files. A phrase
+    /// is cut under each model's limit: 29 s for SenseVoice, 20 s for
+    /// Fun-ASR-Nano.
     func testModels() {
-        XCTAssertEqual(Dictation.Model.allCases, [.senseVoice, .funASRNano, .qwen3ASR])
-        XCTAssertNil(Dictation.Model.senseVoice.repo)
+        XCTAssertEqual(Dictation.Model.allCases, [.senseVoice, .funASRNano])
         XCTAssertNil(Dictation.Model.senseVoice.release)
         XCTAssertEqual(Dictation.Model.senseVoice.longest, 29 * 16_000)
-        XCTAssertEqual(Dictation.Model.qwen3ASR.longest, 29 * 16_000)
         XCTAssertEqual(Dictation.Model.funASRNano.longest, 20 * 16_000)
-        XCTAssertEqual(Dictation.Model.funASRNano.size, 1_009_605_061)
-        XCTAssertEqual(Dictation.Model.qwen3ASR.size, 987_015_347)
-        XCTAssertEqual(Dictation.Model.funASRNano.release?.asset, "sherpa-onnx-funasr-nano-int8-2025-12-30.tar.bz2")
-        XCTAssertEqual(Dictation.Model.qwen3ASR.release?.asset, "sherpa-onnx-qwen3-asr-0.6B-int8-2026-03-25.tar.bz2")
-        for m in [Dictation.Model.funASRNano, .qwen3ASR] {
-            let repo = m.repo!
-            XCTAssertEqual(repo.commit.count, 40, m.name)
-            XCTAssertEqual(Set(repo.files.map(\.path)).count, repo.files.count, m.name)
-            // The release holds the same files as the commit, at its own sizes.
-            XCTAssertEqual(Set(m.release!.files.map(\.path)), Set(repo.files.map(\.path)), m.name)
-        }
+        XCTAssertEqual(Dictation.Model.funASRNano.size, 731_851_719)
+        let release = Dictation.Model.funASRNano.release!
+        XCTAssertEqual(release.asset, "funasr-nano-coreml-v1.tar.bz2")
+        XCTAssertEqual(Set(release.files.map(\.path)).count, release.files.count)
     }
 
     /// A model is whole with each file at its size: not with one missing,
@@ -155,8 +146,8 @@ nonisolated final class DictationTests: XCTestCase {
         let d = Dictation.shared
         let was = d.model
         defer { d.model = was }
-        d.model = .qwen3ASR
-        XCTAssertEqual(UserDefaults.standard.string(forKey: "dictationModel"), "qwen3ASR")
+        d.model = .funASRNano
+        XCTAssertEqual(UserDefaults.standard.string(forKey: "dictationModel"), "funASRNano")
         d.model = .senseVoice
         XCTAssertEqual(UserDefaults.standard.string(forKey: "dictationModel"), "senseVoice")
     }
@@ -383,29 +374,70 @@ nonisolated final class DictationTests: XCTestCase {
         XCTAssertEqual(Double(total), 8_000, accuracy: 200)
     }
 
-    /// Fun-ASR-Nano and Qwen3-ASR recognise a clip through sherpa-onnx:
-    /// the models in SHERPA_MODELS, laid out as the app keeps them, and the
-    /// clip, 16 kHz mono, in DICTATION_WAV (TEST_RUNNER_… to xcodebuild).
-    func testSherpaRecognises() async throws {
+    /// FbankFrontend returns empty for silence and finite 560-dim LFR frames
+    /// for speech-like audio.
+    func testFbankFrontendExtractsLFR() {
+        let fe = FbankFrontend()
+        // Digital silence is skipped.
+        let (silent, silentFrames) = fe.extract([Float](repeating: 0, count: 16_000))
+        XCTAssertEqual(silentFrames, 0)
+        XCTAssertTrue(silent.isEmpty)
+
+        // 1 second of 440 Hz tone -> 100 raw frames -> (100 - 7) / 6 + 1 = 16 LFR frames x 560 dims.
+        let samples = (0..<16_000).map { i in 0.25 * sinf(2 * .pi * 440 * Float(i) / 16_000) }
+        let (feats, frames) = fe.extract(samples)
+        XCTAssertEqual(frames, 16)
+        XCTAssertEqual(feats.count, 16 * FbankFrontend.outputDim)
+        XCTAssertTrue(feats.allSatisfy(\.isFinite))
+    }
+
+    /// QwenTokenizer decodes byte-level BPE tokens (ASCII and multi-byte UTF-8)
+    /// and skips special tokens.
+    func testQwenTokenizerDecodesUTF8AndSkipsSpecials() throws {
+        let dir = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        // 'H' (0x48), 'i' (0x69), 'Ġ' (space, 0x20), '你' (E4 BD A0 -> ä½ł in GPT-2 byte map)
+        let vocab: [String: Int] = [
+            "Hi": 1,
+            "\u{0120}there": 2,
+            "<|im_end|>": 151645,
+        ]
+        let prompt = """
+        {"idsBefore":[1],"idsAfter":[2],"eosIDs":[151645,151643],"padID":151643}
+        """
+        try JSONSerialization.data(withJSONObject: vocab).write(to: dir.appending(path: "vocab.json"))
+        try Data(prompt.utf8).write(to: dir.appending(path: "prompt_ids.json"))
+
+        let tok = try QwenTokenizer(vocabURL: dir.appending(path: "vocab.json"),
+                                    promptURL: dir.appending(path: "prompt_ids.json"))
+        XCTAssertEqual(tok.decode([1, 2, 151645]), "Hi there")
+        XCTAssertEqual(tok.prompt.idsBefore, [1])
+        XCTAssertEqual(tok.prompt.eosIDs, [151645, 151643])
+    }
+
+    /// Fun-ASR-Nano recognises a clip through CoreMLFunASR: the compiled model
+    /// directory in COREML_FUNASR_DIR, and the clip, 16 kHz mono, in
+    /// DICTATION_WAV (TEST_RUNNER_… to xcodebuild).
+    func testCoreMLFunASRRecognises() async throws {
         let env = ProcessInfo.processInfo.environment
-        guard let models = env["SHERPA_MODELS"], let wav = env["DICTATION_WAV"] else { throw XCTSkip("SHERPA_MODELS or DICTATION_WAV not set") }
+        guard let modelDir = env["COREML_FUNASR_DIR"], let wav = env["DICTATION_WAV"] else {
+            throw XCTSkip("COREML_FUNASR_DIR or DICTATION_WAV not set")
+        }
         let f = try AVAudioFile(forReading: URL(filePath: wav))
         let b = AVAudioPCMBuffer(pcmFormat: f.processingFormat, frameCapacity: AVAudioFrameCount(f.length))!
         try f.read(into: b)
         XCTAssertEqual(f.processingFormat.sampleRate, 16_000)
         let samples = Array(UnsafeBufferPointer(start: b.floatChannelData![0], count: Int(b.frameLength)))
-        for m in [Dictation.Model.funASRNano, .qwen3ASR] {
-            let dir = URL(filePath: models).appending(path: m.repo!.name)
-            // The commit's files, or the release's build of them.
-            XCTAssertTrue(Dictation.whole(m.repo!.files, in: dir) || Dictation.whole(m.release!.files, in: dir), m.name)
-            let start = ContinuousClock.now
-            let sherpa = try Sherpa(m, in: dir)
-            let loaded = ContinuousClock.now
-            let text = await sherpa.recognise(samples)
-            let done = ContinuousClock.now
-            print("SHERPA \(m.name): load \(loaded - start), \(Double(samples.count) / 16_000) s in \(done - loaded), \(Self.footprint()) MB: «\(text)»")
-            XCTAssertFalse(text.isEmpty, m.name)
-        }
+        let dir = URL(filePath: modelDir)
+        XCTAssertTrue(Dictation.whole(Dictation.Model.funASRNano.release!.files, in: dir))
+        let start = ContinuousClock.now
+        let asr = try CoreMLFunASR(in: dir)
+        let loaded = ContinuousClock.now
+        let text = try await asr.recognise(samples)
+        let done = ContinuousClock.now
+        print("COREML Fun-ASR-Nano: load \(loaded - start), \(Double(samples.count) / 16_000) s in \(done - loaded), \(Self.footprint()) MB: «\(text)»")
+        XCTAssertFalse(text.isEmpty)
     }
 
     /// The process's memory, as jetsam counts it, in MB.
