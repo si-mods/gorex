@@ -1059,10 +1059,33 @@ func (s *session) paste(text string) error {
 	if text == "" {
 		return nil
 	}
+	return s.inputProgram(encodePaste(text, s.bracketedPaste()))
+}
+
+// bracketedPaste reports whether the foreground program has enabled DEC
+// private mode 2004 (bracketed paste).
+func (s *session) bracketedPaste() bool {
 	s.mu.Lock()
-	bracketed := s.modes.bracketed
-	s.mu.Unlock()
-	return s.inputProgram(encodePaste(text, bracketed))
+	defer s.mu.Unlock()
+	return s.modes.bracketed
+}
+
+// plainText returns the session's rendered screen text without ANSI escape
+// sequences, using the live terminal emulator when running or the saved exit
+// text after exit.
+func (s *session) plainText() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.exited {
+		if s.text != "" {
+			return strings.TrimSpace(s.text)
+		}
+		return stripANSI(string(s.screen))
+	}
+	if s.vt != nil {
+		return strings.TrimSpace(s.vt.Text())
+	}
+	return stripANSI(string(s.screen))
 }
 
 // admit returns what of p, which client a sends, the program gets. Every

@@ -22,11 +22,14 @@ import (
 // Tunable timings for the interactive TUI driver; tests shorten these so
 // fake TUI tests finish in milliseconds.
 var (
-	delegateReadyWait     = 20 * time.Second
-	delegatePasteDelay    = 200 * time.Millisecond
-	delegateEnterWait     = 2 * time.Second
-	delegatePollInterval  = 100 * time.Millisecond
-	delegateDefaultTimout = 10 * time.Minute
+	delegateReadyWait          = 20 * time.Second
+	delegateReadyPoll          = 80 * time.Millisecond
+	delegateReadyQuiet         = 400 * time.Millisecond
+	delegateReadyFallbackQuiet = 1500 * time.Millisecond
+	delegatePasteDelay         = 200 * time.Millisecond
+	delegateEnterWait          = 2 * time.Second
+	delegatePollInterval       = 100 * time.Millisecond
+	delegateDefaultTimout      = 10 * time.Minute
 )
 
 // delegatedRun tracks one delegated session's live turn state and
@@ -39,8 +42,10 @@ type delegatedRun struct {
 	dir          string
 	home         string
 	agentSession string
+	resumed      bool
 	startedAt    time.Time
 	adapter      agentTranscript
+	excludeFiles map[string]struct{}
 	filePath     string
 	fileOffset   int64
 
@@ -71,12 +76,14 @@ func (d *delegatedRun) beginTurn() chan struct{} {
 	return ch
 }
 
-func (d *delegatedRun) finishTurn(status, result, errText string) {
+func (d *delegatedRun) finishTurn(status, result, errText string) bool {
 	d.mu.Lock()
+	changed := false
 	// Allow a blocked turn to transition to completed/failed once approved
 	// by the parent agent or user.
 	if d.status == "running" || (d.status == "blocked" && (status == "completed" || status == "failed")) {
 		d.status = status
+		changed = true
 		if result != "" {
 			d.result = result
 		}
@@ -91,6 +98,7 @@ func (d *delegatedRun) finishTurn(status, result, errText string) {
 		}
 	}
 	d.mu.Unlock()
+	return changed
 }
 
 func (d *delegatedRun) snapshot(ss *session) DelegateResult {
@@ -167,6 +175,13 @@ func (s *Server) doDelegate(req Request, peer string, _ *keptConn) (any, error) 
 	}
 	cmd := agentCommandWithArgs(shell, agentID, resolvedPath, extraArgs)
 
+	adapter := transcriptAdapterFor(agentID)
+	startedAt := time.Now()
+	var excludeFiles map[string]struct{}
+	if opt.Resume == "" && adapter != nil {
+		excludeFiles = adapter.ExistingFiles(dir, home, "")
+	}
+
 	tabName := delegateTabName(agentID, opt.From, opt.Name, opt.Prompt)
 	ss, err := s.createDelegatedTab(dir, tabName, cmd, extraEnv, peer, opt.From, agentID)
 	if err != nil {
@@ -180,19 +195,32 @@ func (s *Server) doDelegate(req Request, peer string, _ *keptConn) (any, error) 
 		dir:          dir,
 		home:         home,
 		agentSession: agentSession,
-		startedAt:    time.Now(),
-		adapter:      transcriptAdapterFor(agentID),
+		resumed:      opt.Resume != "",
+		startedAt:    startedAt,
+		adapter:      adapter,
+		excludeFiles: excludeFiles,
 		status:       "running",
 		stopCh:       make(chan struct{}),
 	}
 	s.registerDelegate(run)
 
 	turnDone := run.beginTurn()
-	go s.tailDelegate(run, ss)
 
 	// Wait for the interactive TUI to finish drawing its input prompt before
 	// pasting so Windows PowerShell / ConPTY init bytes do not trigger early paste.
 	waitTUIReady(ss, agentID, delegateReadyWait)
+	if in := ss.info(); in.Exited {
+		run.finishTurn("failed", "", "delegated agent exited before accepting prompt")
+		return run.snapshot(ss), nil
+	}
+
+	// For --resume, start tailing at the current end of the resumed transcript
+	// file so prior turns never falsely ack or complete the new turn.
+	if run.resumed && run.adapter != nil {
+		run.seekResumedTranscript(ss)
+	}
+
+	go s.tailDelegate(run, ss)
 	if err := deliverTurnPrompt(run, ss, opt.Prompt); err != nil {
 		run.finishTurn("failed", "", err.Error())
 		return run.snapshot(ss), nil
@@ -526,28 +554,103 @@ func (s *Server) killSession(sid string) error {
 	return err
 }
 
+type tuiSnapshot struct {
+	exited     bool
+	idle       bool
+	output     uint64
+	lastOutput time.Time
+	bracketed  bool
+	plainText  string
+}
+
 func waitTUIReady(ss *session, agentID string, maxWait time.Duration) {
-	deadline := time.Now().Add(maxWait)
-	for time.Now().Before(deadline) {
+	waitTUIReadyWith(func() tuiSnapshot {
 		in := ss.info()
-		if in.Exited {
+		return tuiSnapshot{
+			exited:     in.Exited,
+			idle:       in.Status != nil && in.Status.State == "idle",
+			output:     in.Output,
+			lastOutput: in.LastOutput,
+			bracketed:  ss.bracketedPaste(),
+			plainText:  sessionPlainText(ss),
+		}
+	}, agentID, maxWait, time.Now, time.Sleep)
+}
+
+func waitTUIReadyWith(sample func() tuiSnapshot, agentID string, maxWait time.Duration, nowFn func() time.Time, sleepFn func(time.Duration)) {
+	deadline := nowFn().Add(maxWait)
+	var prevOut uint64
+	var prevTxt string
+	var lastChange time.Time
+	seenVisible := false
+
+	for {
+		now := nowFn()
+		snap := sample()
+		if snap.exited || snap.idle {
 			return
 		}
-		if agentID == "claude" {
-			if in.Status != nil && in.Status.State == "idle" {
-				return
+
+		txt := snap.plainText
+		if txt != "" {
+			if !seenVisible {
+				seenVisible = true
+				prevOut = snap.output
+				prevTxt = txt
+				if !snap.lastOutput.IsZero() && snap.lastOutput.Before(now) {
+					lastChange = snap.lastOutput
+				} else {
+					lastChange = now
+				}
+			} else if snap.output != prevOut || txt != prevTxt {
+				prevOut = snap.output
+				prevTxt = txt
+				lastChange = now
 			}
-			if in.Output > 0 {
-				txt := sessionPlainText(ss)
-				if strings.Contains(txt, "❯") || strings.Contains(txt, "> ") {
+
+			quiet := now.Sub(lastChange)
+			promptReady := hasPromptIndicator(txt)
+
+			if agentID == "claude" {
+				if promptReady && quiet >= delegateReadyQuiet {
+					return
+				}
+			} else {
+				if (snap.bracketed || promptReady) && quiet >= delegateReadyQuiet {
+					return
+				}
+				if quiet >= delegateReadyFallbackQuiet {
 					return
 				}
 			}
-		} else if in.Output > 0 {
+		}
+
+		if !now.Before(deadline) {
 			return
 		}
-		time.Sleep(80 * time.Millisecond)
+		sleep := delegateReadyPoll
+		if rem := deadline.Sub(now); rem < sleep {
+			sleep = rem
+		}
+		if sleep > 0 {
+			sleepFn(sleep)
+		}
 	}
+}
+
+// hasPromptIndicator reports whether visible terminal text contains an
+// interactive TUI input prompt glyph (❯, ›, or >).
+func hasPromptIndicator(txt string) bool {
+	if strings.Contains(txt, "❯") || strings.Contains(txt, "›") || strings.Contains(txt, "> ") {
+		return true
+	}
+	for _, line := range strings.Split(txt, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == ">" || strings.HasPrefix(trimmed, "> ") {
+			return true
+		}
+	}
+	return false
 }
 
 func deliverTurnPrompt(d *delegatedRun, ss *session, prompt string) error {
@@ -614,15 +717,48 @@ func (s *Server) tailDelegate(d *delegatedRun, ss *session) {
 			if in.ExitCode != 0 {
 				status = "failed"
 			}
-			d.finishTurn(status, partial.String(), "")
+			if d.finishTurn(status, partial.String(), "") && ss != nil {
+				ss.notify()
+			}
 			return
 		case <-ticker.C:
 			s.pollTranscriptOnce(d, ss, &partial)
 			if st := ss.info().Status; st != nil && st.State == "blocked" {
-				d.finishTurn("blocked", partial.String(), st.Message())
+				if d.finishTurn("blocked", partial.String(), st.Message()) && ss != nil {
+					ss.notify()
+				}
 			}
 		}
 	}
+}
+
+func (d *delegatedRun) seekResumedTranscript(ss *session) {
+	if d.adapter == nil {
+		return
+	}
+	d.mu.Lock()
+	dir, home, agentSid := d.dir, d.home, d.agentSession
+	d.mu.Unlock()
+
+	tty, cfgDir := "", ""
+	if ss != nil {
+		if ss.p != nil {
+			tty = ss.p.tty()
+		}
+		cfgDir = ss.info().AgentConfigDir
+	}
+	filePath := d.adapter.FindFile(dir, tty, home, cfgDir, agentSid, time.Time{}, nil)
+	if filePath == "" {
+		return
+	}
+	st, err := os.Stat(filePath)
+	if err != nil || st.IsDir() {
+		return
+	}
+	d.mu.Lock()
+	d.filePath = filePath
+	d.fileOffset = st.Size()
+	d.mu.Unlock()
 }
 
 func (s *Server) pollTranscriptOnce(d *delegatedRun, ss *session, partial *strings.Builder) {
@@ -633,6 +769,9 @@ func (s *Server) pollTranscriptOnce(d *delegatedRun, ss *session, partial *strin
 	filePath := d.filePath
 	offset := d.fileOffset
 	dir, home, agentSid, startedAt := d.dir, d.home, d.agentSession, d.startedAt
+	exclude := d.excludeFiles
+	resumed := d.resumed
+	agent := d.agent
 	d.mu.Unlock()
 
 	if filePath == "" {
@@ -643,19 +782,32 @@ func (s *Server) pollTranscriptOnce(d *delegatedRun, ss *session, partial *strin
 			}
 			in := ss.info()
 			cfgDir = in.AgentConfigDir
-			if agentSid == "" && in.AgentSession != "" {
+			// Only trust ss.info().AgentSession for claude (which inspects the
+			// exact foreground PID). Other agents like omp fall back to the
+			// newest file in the directory on Windows and would poison agentSid
+			// with an old session ID before the new session writes its file.
+			if agent == "claude" && agentSid == "" && in.AgentSession != "" {
 				agentSid = in.AgentSession
 				d.mu.Lock()
 				d.agentSession = agentSid
 				d.mu.Unlock()
 			}
 		}
-		filePath = d.adapter.FindFile(dir, tty, home, cfgDir, agentSid, startedAt)
+		if resumed {
+			filePath = d.adapter.FindFile(dir, tty, home, cfgDir, agentSid, time.Time{}, nil)
+		} else {
+			filePath = d.adapter.FindFile(dir, tty, home, cfgDir, agentSid, startedAt, exclude)
+		}
 		if filePath == "" {
 			return
 		}
 		d.mu.Lock()
 		d.filePath = filePath
+		if agent == "omp" && d.agentSession == "" {
+			if id := ompID(filepath.Base(filePath)); id != "" {
+				d.agentSession = id
+			}
+		}
 		d.mu.Unlock()
 	}
 
@@ -704,10 +856,14 @@ func (s *Server) pollTranscriptOnce(d *delegatedRun, ss *session, partial *strin
 			if ev.TurnDone {
 				text := partial.String()
 				partial.Reset()
+				var changed bool
 				if ev.IsError {
-					d.finishTurn("failed", text, ev.ErrorText)
+					changed = d.finishTurn("failed", text, ev.ErrorText)
 				} else {
-					d.finishTurn("completed", text, "")
+					changed = d.finishTurn("completed", text, "")
+				}
+				if changed && ss != nil {
+					ss.notify()
 				}
 			}
 		}
@@ -753,12 +909,10 @@ func (s *Server) waitDelegateTurn(d *delegatedRun, ss *session, turnDone <-chan 
 }
 
 func sessionPlainText(ss *session) string {
-	cap := ss.capture(0)
-	if len(cap.Screen) == 0 {
+	if ss == nil {
 		return ""
 	}
-	// Strip basic ANSI escapes for fallback readability.
-	return stripANSI(string(cap.Screen))
+	return ss.plainText()
 }
 
 func stripANSI(s string) string {
@@ -767,14 +921,14 @@ func stripANSI(s string) string {
 	for i := 0; i < len(s); i++ {
 		if s[i] == 0x1b && i+1 < len(s) {
 			next := s[i+1]
-			if next == '[' {
+			switch next {
+			case '[': // CSI
 				i += 2
 				for i < len(s) && (s[i] < 0x40 || s[i] > 0x7e) {
 					i++
 				}
 				continue
-			}
-			if next == ']' {
+			case ']', 'P', '_', '^': // OSC, DCS, APC, PM
 				i += 2
 				for i < len(s) && s[i] != 0x07 {
 					if s[i] == 0x1b && i+1 < len(s) && s[i+1] == '\\' {
@@ -784,6 +938,20 @@ func stripANSI(s string) string {
 					i++
 				}
 				continue
+			default:
+				// Intermediate bytes (e.g. \x1b(B) followed by final byte 0x30..0x7e,
+				// or 2-byte ESC sequence (e.g. \x1bH, \x1bM, \x1b=, \x1b>).
+				if next >= 0x20 && next <= 0x2f {
+					i += 2
+					for i < len(s) && s[i] >= 0x20 && s[i] <= 0x2f {
+						i++
+					}
+					continue
+				}
+				if next >= 0x30 && next <= 0x7e {
+					i++
+					continue
+				}
 			}
 		}
 		b.WriteByte(s[i])

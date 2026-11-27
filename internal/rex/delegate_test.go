@@ -173,8 +173,351 @@ func TestDelegateCallTimeoutAndConfigDir(t *testing.T) {
 	if err := os.WriteFile(want, []byte("{}\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if got := (claudeTranscript{}).FindFile(projDir, "", "", teamCfg, sid, time.Now()); got != want {
+	if got := (claudeTranscript{}).FindFile(projDir, "", "", teamCfg, sid, time.Now(), nil); got != want {
 		t.Fatalf("FindFile = %q, want %q", got, want)
+	}
+}
+
+func TestStripANSIControlSequences(t *testing.T) {
+	cases := []struct {
+		in   string
+		want string
+	}{
+		{"\x1bH", ""},
+		{"\x1b[?9001h\x1b[?1004h\x1b[2J\x1bH\x1b(B\x1b=", ""},
+		{"\x1b]0;GoRex\x07\x1b[?25l\x1b[?2004h", ""},
+		{"\x1b[2J\x1b[H\x1b[32m❯\x1b[0m ", "❯"},
+	}
+	for _, tc := range cases {
+		if got := stripANSI(tc.in); got != tc.want {
+			t.Errorf("stripANSI(%q) = %q, want %q", tc.in, got, tc.want)
+		}
+	}
+}
+
+func TestWaitTUIReadyIgnoresControlOnlyOutput(t *testing.T) {
+	origPoll := delegateReadyPoll
+	origQuiet := delegateReadyQuiet
+	origFallback := delegateReadyFallbackQuiet
+	delegateReadyPoll = 10 * time.Millisecond
+	delegateReadyQuiet = 40 * time.Millisecond
+	delegateReadyFallbackQuiet = 100 * time.Millisecond
+	t.Cleanup(func() {
+		delegateReadyPoll = origPoll
+		delegateReadyQuiet = origQuiet
+		delegateReadyFallbackQuiet = origFallback
+	})
+
+	base := time.Date(2026, 11, 27, 12, 0, 0, 0, time.UTC)
+
+	for _, agentID := range []string{"omp", "agy", "codex", "devin"} {
+		t.Run(agentID+"_control_only_waits", func(t *testing.T) {
+			cur := base
+			nowFn := func() time.Time { return cur }
+			sleepFn := func(d time.Duration) { cur = cur.Add(d) }
+
+			waitTUIReadyWith(func() tuiSnapshot {
+				return tuiSnapshot{
+					output:     16,
+					lastOutput: base.Add(-time.Second),
+					plainText:  stripANSI("\x1bH\x1b[2J\x1b[?25l"),
+				}
+			}, agentID, 80*time.Millisecond, nowFn, sleepFn)
+			if elapsed := cur.Sub(base); elapsed != 80*time.Millisecond {
+				t.Fatalf("%s: waitTUIReady virtual elapsed = %v on control-only output, want full 80ms wait", agentID, elapsed)
+			}
+		})
+
+		t.Run(agentID+"_ready_after_visible_settle", func(t *testing.T) {
+			cur := base
+			nowFn := func() time.Time { return cur }
+			sleepFn := func(d time.Duration) { cur = cur.Add(d) }
+			readyAt := base.Add(20 * time.Millisecond)
+
+			waitTUIReadyWith(func() tuiSnapshot {
+				if cur.Before(readyAt) {
+					return tuiSnapshot{
+						output:     16,
+						lastOutput: base,
+						plainText:  stripANSI("\x1bH\x1b[2J"),
+					}
+				}
+				return tuiSnapshot{
+					output:     48,
+					lastOutput: readyAt,
+					bracketed:  true,
+					plainText:  stripANSI("\x1b[2J\x1b[HWelcome\r\n❯ "),
+				}
+			}, agentID, 2*time.Second, nowFn, sleepFn)
+			want := 60 * time.Millisecond // 20ms startup + 40ms settle
+			if elapsed := cur.Sub(base); elapsed != want {
+				t.Fatalf("%s: waitTUIReady virtual elapsed = %v, want %v", agentID, elapsed, want)
+			}
+		})
+
+		t.Run(agentID+"_osc7501_idle_returns_immediately", func(t *testing.T) {
+			cur := base
+			calls := 0
+			waitTUIReadyWith(func() tuiSnapshot {
+				calls++
+				return tuiSnapshot{
+					output:    4,
+					idle:      true,
+					plainText: stripANSI("\x1bH"),
+				}
+			}, agentID, time.Second, func() time.Time { return cur }, func(d time.Duration) { cur = cur.Add(d) })
+			if calls != 1 || cur != base {
+				t.Fatalf("%s: osc7501 idle calls=%d elapsed=%v, want 1 call and 0s", agentID, calls, cur.Sub(base))
+			}
+		})
+	}
+}
+
+func TestTranscriptFindFileSkipsOldAndPreExisting(t *testing.T) {
+	home := t.TempDir()
+	projDir := filepath.Join(t.TempDir(), "repo")
+	if err := os.MkdirAll(projDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	// 1. omp: old session file in the same dir must NOT be matched even when tty
+	// is set (no terminal-sessions entry yet) or when a pre-existing file is
+	// modified after startedAt.
+	t.Setenv("PI_CODING_AGENT_DIR", filepath.Join(home, ".omp", "agent"))
+	ompDir := filepath.Join(home, ".omp", "agent", "sessions", ompSlug(projDir, home))
+	if err := os.MkdirAll(ompDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	oldOmp := filepath.Join(ompDir, "2026-11-26T10-00-00Z_11111111-2222-4333-8444-555555555555.jsonl")
+	if err := os.WriteFile(oldOmp, []byte(`{"type":"session","id":"11111111-2222-4333-8444-555555555555"}`+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	oldTime := time.Now().Add(-10 * time.Minute)
+	_ = os.Chtimes(oldOmp, oldTime, oldTime)
+
+	omp := ompTranscript{}
+	excludeOmp := omp.ExistingFiles(projDir, home, "")
+	startedAt := time.Now()
+
+	// Without exclude, old mtime must still be rejected even with a tty.
+	if got := omp.FindFile(projDir, "/dev/ttys009", home, "", "", startedAt, nil); got != "" {
+		t.Fatalf("omp FindFile matched old file without exclude: %q", got)
+	}
+	// Even if another active omp session touches the pre-existing file after
+	// startedAt, exclude must prevent binding to it.
+	now := time.Now().Add(time.Second)
+	_ = os.Chtimes(oldOmp, now, now)
+	if got := omp.FindFile(projDir, "/dev/ttys009", home, "", "", startedAt, excludeOmp); got != "" {
+		t.Fatalf("omp FindFile matched pre-existing active file: %q", got)
+	}
+	// Once the new session creates its own file, FindFile returns it.
+	newOmp := filepath.Join(ompDir, "2026-11-27T18-00-00Z_aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee.jsonl")
+	if err := os.WriteFile(newOmp, []byte(`{"type":"session","id":"aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"}`+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if got := omp.FindFile(projDir, "/dev/ttys009", home, "", "", startedAt, excludeOmp); got != filepath.Clean(newOmp) {
+		t.Fatalf("omp FindFile = %q, want %q", got, newOmp)
+	}
+
+	// 2. agy: caller's own active transcript_full.jsonl must be excluded.
+	oldAgy := filepath.Join(home, ".gemini", "antigravity-cli", "brain", "caller-conv", ".system_generated", "logs", "transcript_full.jsonl")
+	if err := os.MkdirAll(filepath.Dir(oldAgy), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(oldAgy, []byte(`{"type":"USER_INPUT","content":"caller"}`+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	agy := agyTranscript{}
+	excludeAgy := agy.ExistingFiles(projDir, home, "")
+	agyStart := time.Now()
+	// Simulate caller writing to its own transcript after delegate starts.
+	if err := os.WriteFile(oldAgy, []byte(`{"type":"USER_INPUT","content":"caller2"}`+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if got := agy.FindFile(projDir, "", home, "", "", agyStart, excludeAgy); got != "" {
+		t.Fatalf("agy FindFile matched caller's pre-existing transcript: %q", got)
+	}
+	newAgy := filepath.Join(home, ".gemini", "antigravity-cli", "brain", "child-conv", ".system_generated", "logs", "transcript_full.jsonl")
+	if err := os.MkdirAll(filepath.Dir(newAgy), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(newAgy, []byte(`{"type":"USER_INPUT","content":"child"}`+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if got := agy.FindFile(projDir, "", home, "", "", agyStart, excludeAgy); got != filepath.Clean(newAgy) {
+		t.Fatalf("agy FindFile = %q, want %q", got, newAgy)
+	}
+
+	// 3. codex: pre-existing rollout must be excluded; new rollout matched.
+	codexHome := filepath.Join(home, ".codex")
+	t.Setenv("CODEX_HOME", codexHome)
+	oldCodex := filepath.Join(codexHome, "sessions", "2026", "11", "27", "rollout-old.jsonl")
+	if err := os.MkdirAll(filepath.Dir(oldCodex), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(oldCodex, []byte("{}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cx := codexTranscript{}
+	excludeCx := cx.ExistingFiles(projDir, home, "")
+	cxStart := time.Now()
+	if err := os.WriteFile(oldCodex, []byte(`{"type":"event_msg"}`+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if got := cx.FindFile(projDir, "", home, "", "", cxStart, excludeCx); got != "" {
+		t.Fatalf("codex FindFile matched pre-existing rollout: %q", got)
+	}
+	newCodex := filepath.Join(codexHome, "sessions", "2026", "11", "27", "rollout-new.jsonl")
+	if err := os.WriteFile(newCodex, []byte("{}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if got := cx.FindFile(projDir, "", home, "", "", cxStart, excludeCx); got != filepath.Clean(newCodex) {
+		t.Fatalf("codex FindFile = %q, want %q", got, newCodex)
+	}
+
+	// 4. devin: pre-existing log.jsonl must be excluded; new log.jsonl matched.
+	devinDir := filepath.Join(home, "devin")
+	t.Setenv("DEVIN_SESSIONS_DIR", devinDir)
+	oldDevin := filepath.Join(devinDir, "sessions", "old-id", "log.jsonl")
+	if err := os.MkdirAll(filepath.Dir(oldDevin), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(oldDevin, []byte("{}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	dv := devinTranscript{}
+	excludeDv := dv.ExistingFiles(projDir, home, "")
+	dvStart := time.Now()
+	if err := os.WriteFile(oldDevin, []byte(`{"role":"user"}`+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if got := dv.FindFile(projDir, "", home, "", "", dvStart, excludeDv); got != "" {
+		t.Fatalf("devin FindFile matched pre-existing log: %q", got)
+	}
+	newDevin := filepath.Join(devinDir, "sessions", "new-id", "log.jsonl")
+	if err := os.MkdirAll(filepath.Dir(newDevin), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(newDevin, []byte("{}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if got := dv.FindFile(projDir, "", home, "", "", dvStart, excludeDv); got != filepath.Clean(newDevin) {
+		t.Fatalf("devin FindFile = %q, want %q", got, newDevin)
+	}
+}
+
+func TestPollTranscriptOmpIgnoresOldFileAndResumeSeeksEnd(t *testing.T) {
+	home := t.TempDir()
+	projDir := filepath.Join(t.TempDir(), "repo")
+	if err := os.MkdirAll(projDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PI_CODING_AGENT_DIR", filepath.Join(home, ".omp", "agent"))
+	ompDir := filepath.Join(home, ".omp", "agent", "sessions", ompSlug(projDir, home))
+	if err := os.MkdirAll(ompDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	// Plant a completed old omp session in the same directory.
+	oldID := "11111111-2222-4333-8444-555555555555"
+	oldFile := filepath.Join(ompDir, "2026-11-26T10-00-00Z_"+oldID+".jsonl")
+	oldContent := `{"type":"session","id":"` + oldID + `"}` + "\n" +
+		`{"type":"message","message":{"role":"user","content":"old prompt"}}` + "\n" +
+		`{"type":"message","message":{"role":"assistant","stopReason":"stop","content":[{"type":"text","text":"old reply"}]}}` + "\n"
+	if err := os.WriteFile(oldFile, []byte(oldContent), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	adapter := ompTranscript{}
+	srv := &Server{}
+	run := &delegatedRun{
+		sid:          "s1",
+		agent:        "omp",
+		dir:          projDir,
+		home:         home,
+		startedAt:    time.Now(),
+		adapter:      adapter,
+		excludeFiles: adapter.ExistingFiles(projDir, home, ""),
+		promptAckCh:  make(chan struct{}, 1),
+		status:       "running",
+		turnDone:     make(chan struct{}),
+		stopCh:       make(chan struct{}),
+	}
+
+	var partial strings.Builder
+	srv.pollTranscriptOnce(run, nil, &partial)
+
+	// Old file must NOT trigger promptAckCh, must NOT complete the turn, and
+	// must NOT latch the old agentSession.
+	select {
+	case <-run.promptAckCh:
+		t.Fatal("old omp transcript falsely triggered promptAckCh")
+	default:
+	}
+	if run.status != "running" || run.result != "" || run.agentSession != "" || run.filePath != "" {
+		t.Fatalf("old omp transcript polluted run state: status=%q result=%q sid=%q file=%q",
+			run.status, run.result, run.agentSession, run.filePath)
+	}
+
+	// Now the new omp session writes its own file.
+	newID := "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"
+	newFile := filepath.Join(ompDir, "2026-11-27T18-00-00Z_"+newID+".jsonl")
+	newContent := `{"type":"session","id":"` + newID + `"}` + "\n" +
+		`{"type":"message","message":{"role":"user","content":"new prompt"}}` + "\n" +
+		`{"type":"message","message":{"role":"assistant","stopReason":"stop","content":[{"type":"text","text":"new reply"}]}}` + "\n"
+	if err := os.WriteFile(newFile, []byte(newContent), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	srv.pollTranscriptOnce(run, nil, &partial)
+	select {
+	case <-run.promptAckCh:
+	default:
+		t.Fatal("new omp transcript did not trigger promptAckCh")
+	}
+	if run.status != "completed" || run.result != "new reply" || run.agentSession != newID {
+		t.Fatalf("new omp run = status:%q result:%q sid:%q", run.status, run.result, run.agentSession)
+	}
+
+	// Verify --resume seeks to the end of the existing file so old turns do not
+	// falsely ack or complete the resumed turn.
+	resumedRun := &delegatedRun{
+		sid:          "s2",
+		agent:        "omp",
+		dir:          projDir,
+		home:         home,
+		agentSession: oldID,
+		resumed:      true,
+		startedAt:    time.Now(),
+		adapter:      adapter,
+		promptAckCh:  make(chan struct{}, 1),
+		status:       "running",
+		turnDone:     make(chan struct{}),
+		stopCh:       make(chan struct{}),
+	}
+	resumedRun.seekResumedTranscript(nil)
+	var resumedPartial strings.Builder
+	srv.pollTranscriptOnce(resumedRun, nil, &resumedPartial)
+	select {
+	case <-resumedRun.promptAckCh:
+		t.Fatal("resumed transcript falsely acked from prior turn")
+	default:
+	}
+	if resumedRun.status != "running" {
+		t.Fatalf("resumed run status = %q before new turn, want running", resumedRun.status)
+	}
+
+	// Append a new turn to the resumed file and verify it completes cleanly.
+	f, err := os.OpenFile(oldFile, os.O_APPEND|os.O_WRONLY, 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = f.WriteString(`{"type":"message","message":{"role":"user","content":"follow up"}}` + "\n")
+	_, _ = f.WriteString(`{"type":"message","message":{"role":"assistant","stopReason":"stop","content":[{"type":"text","text":"follow up reply"}]}}` + "\n")
+	_ = f.Close()
+
+	srv.pollTranscriptOnce(resumedRun, nil, &resumedPartial)
+	if resumedRun.status != "completed" || resumedRun.result != "follow up reply" {
+		t.Fatalf("resumed turn = status:%q result:%q", resumedRun.status, resumedRun.result)
 	}
 }
 
@@ -184,13 +527,22 @@ func TestDelegateInteractiveTUIEndToEnd(t *testing.T) {
 	}
 
 	origReady := delegateReadyWait
+	origReadyPoll := delegateReadyPoll
+	origReadyQuiet := delegateReadyQuiet
+	origReadyFallback := delegateReadyFallbackQuiet
 	origPaste := delegatePasteDelay
 	origPoll := delegatePollInterval
 	delegateReadyWait = 3 * time.Second
+	delegateReadyPoll = 10 * time.Millisecond
+	delegateReadyQuiet = 30 * time.Millisecond
+	delegateReadyFallbackQuiet = 80 * time.Millisecond
 	delegatePasteDelay = 30 * time.Millisecond
 	delegatePollInterval = 25 * time.Millisecond
 	t.Cleanup(func() {
 		delegateReadyWait = origReady
+		delegateReadyPoll = origReadyPoll
+		delegateReadyQuiet = origReadyQuiet
+		delegateReadyFallbackQuiet = origReadyFallback
 		delegatePasteDelay = origPaste
 		delegatePollInterval = origPoll
 	})
