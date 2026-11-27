@@ -50,19 +50,23 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
     }()
     private let attach = UIButton()
     private let send = UIButton()
-    /// Collapsible center pill in the bottom action row on iPhone (IOS-030):
-    /// rests as a quiet muted marker and springs open into Esc, Enter, arrow
-    /// stick, `⌘` More Keys, and a collapse button on tap.
-    private let quickPill = UIView()
+    /// Collapsible quick-keys pill in the bottom action row on iPhone (IOS-030):
+    /// rests as a quiet muted 36 pt circle beside `+` and expands full-width
+    /// across the action row (temporarily fading `+`, mic, and Send) so all 7
+    /// keys meet Apple HIG's 44 pt minimum tap target.
+    private let quickPill = QuickPillView()
     private let quickToggle = UIButton()
     private let quickKeys = UIStackView()
+    private let actionsRow = UIStackView()
+    private var quickPillCollapsedLeading: NSLayoutConstraint?
     private var quickPillCollapsedWidth: NSLayoutConstraint?
-    private var quickPillExpandedWidth: NSLayoutConstraint?
+    private var quickPillExpandedLeading: NSLayoutConstraint?
+    private var quickPillExpandedTrailing: NSLayoutConstraint?
     private var quickKeysTrailing: NSLayoutConstraint?
     private var quickPillHeight: NSLayoutConstraint?
     private var quickKeysExpanded = false
-    private let stickBtn = UIButton()
-    private let keysMenuBtn = UIButton()
+    private let stickBtn = QuickKeyButton()
+    private let keysMenuBtn = QuickKeyButton()
     private let pad = StickPad()
     private var repeating: Task<Void, Never>?
     private var pressing: Task<Void, Never>?
@@ -202,8 +206,8 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
 
         // Two-row layout (IOS-030): full-width message field on top, action
         // row below with `+` on the left, a quiet collapsible quick-keys pill
-        // (`36×36` circle → `212×36` 7-key strip) left-aligned after `+`, and
-        // mic + circular Send on the right.
+        // (`36×36` circle → full-width 7-key strip) left-aligned after `+`,
+        // and mic + circular Send on the right.
         func quickButton(image: UIImage?, label: String, id: String? = nil, tint: UIColor = .label) -> UIButton {
             var c = UIButton.Configuration.filled()
             c.image = image
@@ -211,7 +215,7 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
             c.baseForegroundColor = tint
             c.cornerStyle = .capsule
             c.contentInsets = .zero
-            let b = UIButton(configuration: c)
+            let b = QuickKeyButton(configuration: c)
             b.accessibilityLabel = label
             b.accessibilityIdentifier = id
             b.configurationUpdateHandler = { btn in
@@ -346,6 +350,24 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
             self?.setQuickKeysExpanded(true, animated: true)
         }, for: .touchUpInside)
 
+        let quickAnchor = UIView()
+        quickAnchor.isUserInteractionEnabled = false
+        quickAnchor.isHidden = UIDevice.current.userInterfaceIdiom == .pad
+        quickAnchor.translatesAutoresizingMaskIntoConstraints = false
+
+        let spacer = UIView()
+        spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        for v in [attach, quickAnchor, spacer, micHolder, send] { actionsRow.addArrangedSubview(v) }
+        actionsRow.axis = .horizontal
+        actionsRow.alignment = .center
+        actionsRow.spacing = 8
+        actionsRow.translatesAutoresizingMaskIntoConstraints = false
+
+        let actionsBox = QuickPillView()
+        actionsBox.translatesAutoresizingMaskIntoConstraints = false
+        actionsBox.addSubview(actionsRow)
+        actionsBox.addSubview(quickPill)
+
         quickPill.backgroundColor = UIColor.white.withAlphaComponent(0.06)
         quickPill.layer.cornerRadius = 18
         quickPill.clipsToBounds = true
@@ -353,17 +375,27 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
         quickPill.translatesAutoresizingMaskIntoConstraints = false
         quickPill.addSubview(quickToggle)
         quickPill.addSubview(quickKeys)
+        let collapsedLead = quickPill.leadingAnchor.constraint(equalTo: quickAnchor.leadingAnchor)
         let collapsedW = quickPill.widthAnchor.constraint(equalToConstant: 36)
-        let expandedW = quickPill.widthAnchor.constraint(equalToConstant: 212)
-        expandedW.priority = .defaultHigh
-        let keysTrail = quickKeys.trailingAnchor.constraint(equalTo: quickPill.trailingAnchor, constant: -4)
+        let expandedLead = quickPill.leadingAnchor.constraint(equalTo: actionsBox.leadingAnchor)
+        let expandedTrail = quickPill.trailingAnchor.constraint(equalTo: actionsBox.trailingAnchor)
+        let keysTrail = quickKeys.trailingAnchor.constraint(equalTo: quickPill.trailingAnchor, constant: -6)
         let ph = quickPill.heightAnchor.constraint(equalToConstant: 36)
+        quickPillCollapsedLeading = collapsedLead
         quickPillCollapsedWidth = collapsedW
-        quickPillExpandedWidth = expandedW
+        quickPillExpandedLeading = expandedLead
+        quickPillExpandedTrailing = expandedTrail
         quickKeysTrailing = keysTrail
         quickPillHeight = ph
         NSLayoutConstraint.activate([
-            collapsedW, ph,
+            actionsRow.leadingAnchor.constraint(equalTo: actionsBox.leadingAnchor),
+            actionsRow.trailingAnchor.constraint(equalTo: actionsBox.trailingAnchor),
+            actionsRow.topAnchor.constraint(equalTo: actionsBox.topAnchor),
+            actionsRow.bottomAnchor.constraint(equalTo: actionsBox.bottomAnchor),
+            quickAnchor.widthAnchor.constraint(equalToConstant: 36),
+            quickAnchor.heightAnchor.constraint(equalToConstant: 36),
+            collapsedLead, collapsedW, ph,
+            quickPill.centerYAnchor.constraint(equalTo: actionsBox.centerYAnchor),
             quickToggle.leadingAnchor.constraint(equalTo: quickPill.leadingAnchor),
             quickToggle.widthAnchor.constraint(equalToConstant: 36),
             quickToggle.topAnchor.constraint(equalTo: quickPill.topAnchor),
@@ -372,19 +404,11 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
             quickKeys.centerYAnchor.constraint(equalTo: quickPill.centerYAnchor),
         ])
 
-        let spacer = UIView()
-        spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
-        let actionsRow = UIStackView(arrangedSubviews: [attach, quickPill, spacer, micHolder, send])
-        actionsRow.axis = .horizontal
-        actionsRow.alignment = .center
-        actionsRow.spacing = 8
-        actionsRow.translatesAutoresizingMaskIntoConstraints = false
-
         inputRow.axis = .vertical
         inputRow.alignment = .fill
         inputRow.spacing = Self.rowSpacing
         inputRow.addArrangedSubview(field)
-        inputRow.addArrangedSubview(actionsRow)
+        inputRow.addArrangedSubview(actionsBox)
         inputRow.translatesAutoresizingMaskIntoConstraints = false
 
         voiceHolder.alpha = 0
@@ -625,18 +649,24 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
     private func setQuickKeysExpanded(_ expanded: Bool, animated: Bool) {
         guard expanded != quickKeysExpanded else { return }
         quickKeysExpanded = expanded
+        quickPillCollapsedLeading?.isActive = !expanded
         quickPillCollapsedWidth?.isActive = !expanded
-        quickPillExpandedWidth?.isActive = expanded
+        quickPillExpandedLeading?.isActive = expanded
+        quickPillExpandedTrailing?.isActive = expanded
         quickKeysTrailing?.isActive = expanded
         quickPillHeight?.constant = 36
         if expanded {
             quickKeys.isHidden = false
             quickToggle.isUserInteractionEnabled = false
+            actionsRow.isUserInteractionEnabled = false
         } else {
             quickToggle.isHidden = false
             quickKeys.isUserInteractionEnabled = false
+            actionsRow.isUserInteractionEnabled = true
         }
         let apply = {
+            self.actionsRow.alpha = expanded ? 0 : 1
+            self.actionsRow.transform = expanded ? CGAffineTransform(scaleX: 0.96, y: 0.96) : .identity
             self.quickPill.backgroundColor = UIColor.white.withAlphaComponent(expanded ? 0.09 : 0.06)
             self.quickToggle.alpha = expanded ? 0 : 1
             self.quickToggle.transform = expanded ? CGAffineTransform(scaleX: 0.75, y: 0.75) : .identity
@@ -962,6 +992,24 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
 
     private func failed(_ error: Error) {
         terminal?.alert(String(localized: "Can't Upload"), error.localizedDescription)
+    }
+}
+
+/// Container that extends its vertical hit-test area to Apple HIG's 44 pt
+/// minimum so the 36 pt quick-keys pill stays visually compact without
+/// sacrificing vertical tap comfort.
+private final class QuickPillView: UIView {
+    override func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
+        let dy = max(0, (44 - bounds.height) / 2)
+        return bounds.insetBy(dx: 0, dy: -dy).contains(point)
+    }
+}
+
+/// Quick-key button with a 44 pt minimum vertical hit target.
+private final class QuickKeyButton: UIButton {
+    override func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
+        let dy = max(0, (44 - bounds.height) / 2)
+        return bounds.insetBy(dx: 0, dy: -dy).contains(point)
     }
 }
 
