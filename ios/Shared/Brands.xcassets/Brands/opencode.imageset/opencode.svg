@@ -1,8 +1,0 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<svg width="48px" height="48px" viewBox="0 0 48 48" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
-    <title>opencode</title>
-    <g id="opencode" stroke="none" fill="none">
-        <polygon id="Path" fill-opacity="0.2" fill="#000000" fill-rule="evenodd" points="33 37 15 37 15 19 33 19"></polygon>
-        <path d="M33,11 L15,11 L15,37 L33,37 L33,11 Z M42,46 L6,46 L6,2 L42,2 L42,46 Z" id="Shape" fill="#000000" fill-rule="nonzero"></path>
-    </g>
-</svg>

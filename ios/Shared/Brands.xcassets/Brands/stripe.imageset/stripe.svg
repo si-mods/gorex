@@ -1,9 +1,0 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<svg width="512px" height="512px" viewBox="0 0 512 512" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
-    <title>stripe</title>
-    <g id="stripe" stroke="none" fill="none" fill-rule="evenodd" stroke-width="1">
-        <g id="Group" fill="#ffffff">
-            <polygon id="Path" points="120 392 392 334.317 392 120 120 178.357"></polygon>
-        </g>
-    </g>
-</svg>

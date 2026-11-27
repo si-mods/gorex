@@ -534,6 +534,11 @@ async function main() {
   for (const f of readdirSync(join(root, "assets", "brands-extra"))) {
     copyFileSync(join(root, "assets", "brands-extra", f), join(dist, "brands", f));
   }
+  // Monochrome 64x64 template PNGs of the extra brands for iOS on-demand fetch.
+  mkdirSync(join(dist, "brands-png"));
+  for (const f of readdirSync(join(root, "assets", "brands-png"))) {
+    copyFileSync(join(root, "assets", "brands-png", f), join(dist, "brands-png", f));
+  }
   // The app's manifest and icons.
   copyFileSync(join(web, "manifest.webmanifest"), join(dist, "manifest.webmanifest"));
   mkdirSync(join(dist, "pwa"));
