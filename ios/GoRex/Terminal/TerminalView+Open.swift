@@ -71,7 +71,7 @@ extension TerminalView {
         let columns = Int(ghostty_surface_size(s).columns)
         guard columns > 0 else { return nil }
         let rows: [String] = await withCheckedContinuation { cont in
-            readRows { lines, _ in cont.resume(returning: lines) }
+            readViewportRows { lines in cont.resume(returning: lines) }
         }
         return FileLink.wrappedPath(rows: rows, row: tapRow, fragment: fragment, columns: columns)
     }

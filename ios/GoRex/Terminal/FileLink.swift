@@ -212,10 +212,27 @@ nonisolated enum FileLink {
     /// Ghostty matched on that row, and the terminal width in `columns`.
     /// Returns `nil` if the fragment does not span multiple wrapped rows.
     static func wrappedPath(rows: [String], row: Int, fragment: String, columns: Int) -> String? {
-        guard columns > 0, rows.indices.contains(row), !fragment.isEmpty else { return nil }
+        guard columns > 0, !rows.isEmpty, !fragment.isEmpty else { return nil }
         let isDelimiter: (Character) -> Bool = { $0.isWhitespace || proseDelimiters.contains($0) }
-        let line = rows[row]
-        guard let range = line.range(of: fragment) else { return nil }
+
+        // Locate the row nearest to `row` that contains `fragment` so a 1–2
+        // row tap-coordinate rounding offset never misses the wrapped line.
+        let clamped = min(max(row, 0), rows.count - 1)
+        var anchorRow: Int?
+        var anchorRange: Range<String.Index>?
+        for delta in 0..<rows.count {
+            let candidates = delta == 0 ? [clamped] : [clamped - delta, clamped + delta]
+            for idx in candidates where rows.indices.contains(idx) {
+                if let r = rows[idx].range(of: fragment) {
+                    anchorRow = idx
+                    anchorRange = r
+                    break
+                }
+            }
+            if anchorRow != nil { break }
+        }
+        guard let foundRow = anchorRow, let range = anchorRange else { return nil }
+        let line = rows[foundRow]
 
         // Expand within `line` to the enclosing non-delimiter token.
         var tokStart = range.lowerBound
@@ -235,29 +252,39 @@ nonisolated enum FileLink {
         let trailingEmpty: (String, String.Index) -> Bool = { s, idx in
             s[idx...].allSatisfy { $0 == " " }
         }
-        let nearFullWidth: (String) -> Bool = { s in
-            let stripped = s.drop(while: { _ in false }).reversed().drop(while: { $0 == " " })
-            guard let last = stripped.first, !isDelimiter(last) else { return false }
-            let w = displayWidth(String(stripped.reversed()))
-            return w >= max(columns - 8, 1)
+        let trimmedRightString: (String) -> String = { s in
+            String(s.reversed().drop(while: { $0 == " " }).reversed())
+        }
+        // A row wrapped into `nextToken` when it ends on a mid-path separator
+        // (`-`, `/`, `_`), reaches near the right margin, or is too wide for
+        // `nextToken` to have fit on the same line (TUI word-wrap at hyphens
+        // or slashes).
+        let looksWrapped: (String, Substring) -> Bool = { prevLine, nextToken in
+            let trimmed = trimmedRightString(prevLine)
+            guard let last = trimmed.last, !isDelimiter(last), !nextToken.isEmpty else { return false }
+            if last == "-" || last == "/" || last == "_" { return true }
+            let w = displayWidth(trimmed)
+            if w >= max(columns - 8, 1) { return true }
+            return w + displayWidth(String(nextToken)) > max(columns - 6, 1)
         }
         let startsNewRoot: (Substring) -> Bool = { s in
             s.hasPrefix("~/") || s.hasPrefix("./") || s.hasPrefix("../") || s.hasPrefix("/")
         }
 
         var joined = String(line[tokStart..<tokEnd])
-        var startRow = row
-        var endRow = row
+        var startRow = foundRow
+        var endRow = foundRow
         let maxSteps = 6
 
         // Walk upward while the current token starts at the beginning of its
         // row (after leading TUI indent spaces) and the row above looks wrapped.
         var atRowStart = leadingOnlySpaces(line, tokStart)
-        var r = row - 1
-        while atRowStart, r >= max(0, row - maxSteps) {
+        var r = foundRow - 1
+        while atRowStart, r >= max(0, foundRow - maxSteps) {
             let prevLine = rows[r]
-            guard nearFullWidth(prevLine) else { break }
-            let trimmedRight = String(prevLine.reversed().drop(while: { $0 == " " }).reversed())
+            let currentFirst = Substring(joined.prefix(while: { !isDelimiter($0) }))
+            guard looksWrapped(prevLine, currentFirst) else { break }
+            let trimmedRight = trimmedRightString(prevLine)
             guard !trimmedRight.isEmpty else { break }
             var pStart = trimmedRight.endIndex
             while pStart > trimmedRight.startIndex {
@@ -277,21 +304,22 @@ nonisolated enum FileLink {
             r -= 1
         }
 
-        // Walk downward while the current token reaches the end of a near-full
-        // row and the next row continues the path after optional indent spaces.
-        var atRowEnd = trailingEmpty(line, tokEnd) && nearFullWidth(line)
-        r = row + 1
-        while atRowEnd, r <= min(rows.count - 1, row + maxSteps) {
+        // Walk downward while the current token reaches the end of its row
+        // and the next row continues the path after optional indent spaces.
+        var atRowEnd = trailingEmpty(line, tokEnd)
+        r = foundRow + 1
+        while atRowEnd, r <= min(rows.count - 1, foundRow + maxSteps) {
             let nextLine = rows[r]
             let afterSpaces = nextLine.drop(while: { $0 == " " })
             guard let firstChar = afterSpaces.first, !isDelimiter(firstChar) else { break }
             let nextTok = afterSpaces.prefix(while: { !isDelimiter($0) })
             guard !nextTok.isEmpty else { break }
             if startsNewRoot(nextTok), !joined.hasSuffix("/") { break }
+            guard looksWrapped(rows[endRow], nextTok) else { break }
             joined += nextTok
             endRow = r
             let rest = afterSpaces.dropFirst(nextTok.count)
-            atRowEnd = rest.allSatisfy { $0 == " " } && nearFullWidth(nextLine)
+            atRowEnd = rest.allSatisfy { $0 == " " }
             r += 1
         }
 

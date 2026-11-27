@@ -227,5 +227,18 @@ nonisolated final class FileLinkTests: XCTestCase {
             "  ~/bbbb.html",
         ]
         XCTAssertNil(FileLink.wrappedPath(rows: twoRoots, row: 0, fragment: "/tmp/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.go", columns: 54))
+
+        // Real agy word-wrap capture: breaks at hyphens well before the right
+        // edge (46 and 43 cols on a 56-col terminal), plus a ±1 tap-row offset.
+        let hyphenWrapped = [
+            "~/.gemini/antigravity-cli/brain/00000000-4aa4-",
+            "4289-bfa3-000000000000/scratch/html-viewer-",
+            "demo/index.html",
+        ]
+        let hyphenFull = "~/.gemini/antigravity-cli/brain/00000000-4aa4-4289-bfa3-000000000000/scratch/html-viewer-demo/index.html"
+        XCTAssertEqual(FileLink.wrappedPath(rows: hyphenWrapped, row: 0, fragment: "~/.gemini/antigravity-cli/brain/00000000-4aa4-", columns: 56), hyphenFull)
+        XCTAssertEqual(FileLink.wrappedPath(rows: hyphenWrapped, row: 1, fragment: "~/.gemini/antigravity-cli/brain/00000000-4aa4-", columns: 56), hyphenFull, "off-by-one tap row still finds fragment")
+        XCTAssertEqual(FileLink.wrappedPath(rows: hyphenWrapped, row: 1, fragment: "4289-bfa3-000000000000/scratch/html-viewer-", columns: 56), hyphenFull)
+        XCTAssertEqual(FileLink.wrappedPath(rows: hyphenWrapped, row: 2, fragment: "demo/index.html", columns: 56), hyphenFull)
     }
 }

@@ -521,7 +521,7 @@ final class TerminalView: UIView, TerminalOutput {
         }
     }
 
-    /// Reads the screen's rows off the main thread, after the writes queued
+    /// Reads the active screen's rows off the main thread, after the writes queued
     /// before it, a read a row: Ghostty joins soft-wrapped rows in one read,
     /// which would not tell which row is the cursor's. The cursor's row is
     /// read now, as drawnBottom reads it; output that moves it before the
@@ -542,6 +542,25 @@ final class TerminalView: UIView, TerminalOutput {
                 return t.text.map { String(decoding: UnsafeRawBufferPointer(start: $0, count: Int(t.text_len)), as: UTF8.self) } ?? ""
             }
             done(lines, row)
+        }
+    }
+
+    /// Reads the currently visible viewport's rows off the main thread (one
+    /// read per row), whether at the bottom or scrolled back into scrollback.
+    func readViewportRows(_ done: @escaping @Sendable (_ rows: [String]) -> Void) {
+        guard let s = surface else { done([]); return }
+        let z = ghostty_surface_size(s), rows = Int(z.rows), columns = Int(z.columns)
+        guard rows > 0, columns > 0 else { done([]); return }
+        nonisolated(unsafe) let surface = s
+        writes.async {
+            let point = { (x: Int, y: Int) in ghostty_point_s(tag: GHOSTTY_POINT_VIEWPORT, coord: GHOSTTY_POINT_COORD_EXACT, x: UInt32(x), y: UInt32(y)) }
+            let lines = (0..<rows).map { y -> String in
+                var t = ghostty_text_s()
+                guard ghostty_surface_read_text(surface, ghostty_selection_s(top_left: point(0, y), bottom_right: point(columns - 1, y), rectangle: false), &t) else { return "" }
+                defer { ghostty_surface_free_text(surface, &t) }
+                return t.text.map { String(decoding: UnsafeRawBufferPointer(start: $0, count: Int(t.text_len)), as: UTF8.self) } ?? ""
+            }
+            done(lines)
         }
     }
 
