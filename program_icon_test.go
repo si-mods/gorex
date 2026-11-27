@@ -6,9 +6,13 @@ import (
 	"image"
 	"image/color"
 	"image/png"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/egoist/mygo/ui"
 	"gorex/internal/config"
@@ -222,7 +226,12 @@ func TestOmpGradientTile(t *testing.T) {
 }
 
 func TestAllBrandTilesParseAndRender(t *testing.T) {
-	// Every registered program's glyph must parse cleanly.
+	// Disable network fetch during the offline parse/render sweep.
+	oldURL := brandBaseURL
+	brandBaseURL = ""
+	t.Cleanup(func() { brandBaseURL = oldURL })
+
+	// Every registered program's glyph must return a valid SVG (embedded or fallback).
 	for name, prog := range programs {
 		g := prog.TileGlyph
 		if g == "" {
@@ -230,6 +239,20 @@ func TestAllBrandTilesParseAndRender(t *testing.T) {
 		}
 		if icon(g) == nil {
 			t.Fatalf("program %q glyph %q returned nil SVG", name, g)
+		}
+	}
+	// Every extra on-demand brand SVG on disk must also parse cleanly.
+	extraFiles, err := filepath.Glob(filepath.Join("assets", "brands-extra", "*.svg"))
+	if err != nil || len(extraFiles) < 100 {
+		t.Fatalf("expected >=100 extra brand SVGs, got %d (err=%v)", len(extraFiles), err)
+	}
+	for _, f := range extraFiles {
+		b, err := os.ReadFile(f)
+		if err != nil {
+			t.Fatalf("read %s: %v", f, err)
+		}
+		if _, err := ui.ParseSVG(b); err != nil {
+			t.Fatalf("parse %s: %v", f, err)
 		}
 	}
 	// Spot-check key newly added brand tiles and command aliases.
@@ -253,50 +276,72 @@ func TestAllBrandTilesParseAndRender(t *testing.T) {
 			t.Errorf("tileImage(%q) returned empty", s)
 		}
 	}
-	if shotDir := os.Getenv("GOREX_SHOT_DIR"); shotDir != "" {
-		// Render a 6x4 contact sheet of the 24 sample tiles on a dark canvas.
-		cols, rows := 6, 4
-		cell := 72
-		sheet := image.NewRGBA(image.Rect(0, 0, cols*cell, rows*cell))
-		for y := 0; y < rows*cell; y++ {
-			for x := 0; x < cols*cell; x++ {
-				sheet.Set(x, y, color.RGBA{R: 28, G: 30, B: 34, A: 255})
-			}
+}
+
+func TestBrandOnDemandFetchAndCache(t *testing.T) {
+	t.Setenv("GOREX_DIR", t.TempDir())
+	var hits atomic.Int32
+	cursorSVG, err := os.ReadFile(filepath.Join("assets", "brands-extra", "cursor.svg"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits.Add(1)
+		if r.URL.Path == "/cursor.svg" {
+			w.Header().Set("Content-Type", "image/svg+xml")
+			_, _ = w.Write(cursorSVG)
+			return
 		}
-		for idx, s := range samples {
-			p := programOf(s)
-			p.Shell = false
-			raw := tileImage(p)
-			tileImg, err := png.Decode(bytes.NewReader(raw))
-			if err != nil {
-				t.Fatalf("decode %q: %v", s, err)
-			}
-			ox, oy := (idx%cols)*cell, (idx/cols)*cell
-			b := tileImg.Bounds()
-			for y := b.Min.Y; y < b.Max.Y; y++ {
-				for x := b.Min.X; x < b.Max.X; x++ {
-					sr, sg, sb, sa := tileImg.At(x, y).RGBA()
-					if sa == 0 {
-						continue
-					}
-					a := float64(sa) / 65535.0
-					dr, dg, db, _ := sheet.At(ox+x-b.Min.X, oy+y-b.Min.Y).RGBA()
-					sheet.Set(ox+x-b.Min.X, oy+y-b.Min.Y, color.RGBA{
-						R: uint8((float64(sr)*a + float64(dr)*(1-a)) / 257),
-						G: uint8((float64(sg)*a + float64(dg)*(1-a)) / 257),
-						B: uint8((float64(sb)*a + float64(db)*(1-a)) / 257),
-						A: 255,
-					})
-				}
-			}
+		http.NotFound(w, r)
+	}))
+	defer srv.Close()
+
+	resetBrandCache := func() {
+		brandMu.Lock()
+		brandSVGs = map[string]*ui.SVG{}
+		brandDiskChecked = map[string]bool{}
+		brandFetching = map[string]bool{}
+		brandFailed = map[string]bool{}
+		brandMu.Unlock()
+	}
+	oldURL, oldClient, oldCB := brandBaseURL, brandHTTPClient, onBrandLoaded
+	t.Cleanup(func() {
+		brandBaseURL, brandHTTPClient, onBrandLoaded = oldURL, oldClient, oldCB
+		resetBrandCache()
+	})
+	resetBrandCache()
+	brandBaseURL = srv.URL
+	brandHTTPClient = srv.Client()
+
+	loaded := make(chan string, 1)
+	onBrandLoaded = func(id string) { loaded <- id }
+
+	// 1. First call returns terminal fallback and kicks off background fetch.
+	termSVG := icon("terminal")
+	if got := icon("brand:cursor"); got != termSVG {
+		t.Fatalf("expected immediate terminal fallback before fetch")
+	}
+	select {
+	case id := <-loaded:
+		if id != "cursor" {
+			t.Fatalf("loaded id = %q, want cursor", id)
 		}
-		f, err := os.Create(filepath.Join(shotDir, "brand-tiles-sheet.png"))
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer f.Close()
-		if err := png.Encode(f, sheet); err != nil {
-			t.Fatal(err)
-		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for on-demand brand fetch")
+	}
+	if got := icon("brand:cursor"); got == termSVG || got == nil {
+		t.Fatal("expected fetched cursor SVG after load")
+	}
+	if hits.Load() != 1 {
+		t.Fatalf("expected 1 HTTP fetch, got %d", hits.Load())
+	}
+
+	// 2. Clearing memory cache loads synchronously from disk with 0 HTTP hits.
+	resetBrandCache()
+	if got := icon("brand:cursor"); got == termSVG || got == nil {
+		t.Fatal("expected disk-cached cursor SVG")
+	}
+	if hits.Load() != 1 {
+		t.Fatalf("expected disk cache hit without HTTP request, got %d hits", hits.Load())
 	}
 }

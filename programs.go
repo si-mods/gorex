@@ -62,17 +62,22 @@ func opaqueCrop(img image.Image) image.Image {
 }
 
 // icon returns an embedded SVG: "x" from the icons, "brand:git" from the
-// brands.
+// brands. Non-embedded brand marks are loaded on demand from the local disk
+// cache or brandBaseURL, returning the terminal glyph until available.
 func icon(name string) *ui.SVG {
 	if s, ok := svgs[name]; ok {
 		return s
 	}
 	file := "assets/icons/" + name + ".svg"
-	if b, ok := strings.CutPrefix(name, "brand:"); ok {
+	b, isBrand := strings.CutPrefix(name, "brand:")
+	if isBrand {
 		file = "assets/brands/" + b + ".svg"
 	}
 	data, err := assets.ReadFile(file)
 	if err != nil {
+		if isBrand {
+			return onDemandBrandIcon(b)
+		}
 		panic(err)
 	}
 	s := ui.MustParseSVG(data)
