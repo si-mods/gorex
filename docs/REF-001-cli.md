@@ -3,7 +3,7 @@ name: REF-001
 description: "The `gorex` command line: the commands that drive sessions without a window, and the agent hooks. Use when you add or change a CLI command."
 metadata:
   created: "2026-10-28"
-  updated: "2026-11-26"
+  updated: "2026-11-28"
 ---
 
 # REF-001: gorex command line
@@ -41,7 +41,9 @@ machine's local socket look local. It still gets `GOREX_SESSION`.
 gorex ls [--json]
 gorex clients [--json]
 gorex [-S HOST] layout [--json]
-gorex new [--dir DIR] [--json] [-- COMMAND...]
+gorex [-S HOST] projects [--json]
+gorex [-S HOST] project ls [--json] | new [NAME] [--dir DIR] [--space SPACE] [--color COLOR] [--json] | rename PROJECT NAME [--json] | move [--no-project] SESSION [PROJECT] [--json]
+gorex [-S HOST] new [--project PROJECT] [--dir DIR] [--name NAME] [--json] [-- COMMAND...]
 gorex split [-s SESSION] [--down] [--dir DIR] [--json] [-- COMMAND...]
 gorex close [-s SESSION] [--tab] [--json]
 gorex rename [-s SESSION] [--json] NAME
@@ -106,7 +108,16 @@ in `ls` (1 is the first), or the end of an ID (at least four characters).
 `-b` chooses a pane label, `-w` a tab label; `-b` wins over `-w`, which
 wins over `-s`. An ambiguous target exits 3. `rename` gives a pane a label.
 
-- `new` creates a session and prints its ID.
+- `projects` (and `project ls`) lists the host's projects with their IDs, names,
+  folders, tabs and panes. `project new` creates a project for a folder and opens
+  its first tab in it; `project rename` renames a project; `project move` moves a
+  session's tab into another project (or out of projects with `--no-project`)
+  while keeping its running processes.
+- `new` opens a tab in a project and prints its session ID. Without `--project`,
+  it places the tab in the caller's `GOREX_SESSION` project, else the active
+  project in `Store.Windows` (or the matching/most recently used project on a
+  headless host), and exits 3 when the server has no project yet. `ls` shows
+  each session's project alongside its program and directory.
 - `send` types without attaching; `--enter` presses Return. `paste` uses
   the terminal's paste path, which programs can handle differently.
 - `capture` prints the screen as text, or the escape sequences with
