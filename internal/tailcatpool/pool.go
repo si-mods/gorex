@@ -36,10 +36,8 @@ type Pool struct {
 	LogPrefix string
 	// KeyFn, when non-nil, supplies the active client key when retiring a stale
 	// client. Returning ok=false stops retirement (e.g. after key cleared).
+	// KeyFn is always invoked without holding Pool's internal mutex.
 	KeyFn func() (key.NodePrivate, bool)
-	// OnDialing, when non-nil, is called right after a dial registers on its
-	// pooled entry (used by tests to synchronize concurrent dials).
-	OnDialing func()
 	// Tries counts dial attempts against previously-used clients (read by tests).
 	Tries atomic.Int64
 
@@ -47,6 +45,7 @@ type Pool struct {
 	clients     map[string]*Entry
 	idleTimeout time.Duration
 	tryTimeout  time.Duration
+	onDialing   func()
 }
 
 // Entry is a pooled tailcat.Client for one server address.
@@ -75,6 +74,14 @@ func (p *Pool) SetTryTimeout(d time.Duration) {
 	p.mu.Unlock()
 }
 
+// SetOnDialing registers an optional hook called right after a dial registers
+// on its pooled entry (used by tests to synchronize concurrent dials).
+func (p *Pool) SetOnDialing(fn func()) {
+	p.mu.Lock()
+	p.onDialing = fn
+	p.mu.Unlock()
+}
+
 func (p *Pool) idleDur() time.Duration {
 	if p.idleTimeout > 0 {
 		return p.idleTimeout
@@ -97,9 +104,9 @@ func (p *Pool) tryDur() time.Duration {
 // it, so a new client replaces it (retire). A dial whose caller canceled ctx
 // does not drop a healthy client.
 func (p *Pool) Dial(ctx context.Context, addr string, port uint16, k key.NodePrivate) (net.Conn, error) {
-	e, used := p.acquire(addr, k)
-	if fn := p.OnDialing; fn != nil {
-		fn()
+	e, used, onDialing := p.acquire(addr, k)
+	if onDialing != nil {
+		onDialing()
 	}
 
 	var (
@@ -150,7 +157,7 @@ func (p *Pool) Dial(ctx context.Context, addr string, port uint16, k key.NodePri
 // runs fn, marks the entry used on success or drops it on error, and releases
 // it when fn returns.
 func (p *Pool) WithClient(addr string, k key.NodePrivate, fn func(*tailcat.Client) error) error {
-	e, _ := p.acquire(addr, k)
+	e, _, _ := p.acquire(addr, k)
 	defer p.release(addr, e)
 	if err := fn(e.tc); err != nil {
 		if p.drop(addr, e) {
@@ -223,6 +230,10 @@ func (p *Pool) Evict(addr string, e *Entry) {
 	if evicted {
 		delete(p.clients, addr)
 		e.dead = true
+		if e.idle != nil {
+			e.idle.Stop()
+			e.idle = nil
+		}
 	}
 	p.mu.Unlock()
 	if evicted {
@@ -270,7 +281,7 @@ func (p *Pool) KeepOnly(addrs map[string]bool) {
 	}
 }
 
-func (p *Pool) acquire(addr string, k key.NodePrivate) (*Entry, bool) {
+func (p *Pool) acquire(addr string, k key.NodePrivate) (*Entry, bool, func()) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	e := p.clients[addr]
@@ -282,7 +293,7 @@ func (p *Pool) acquire(addr string, k key.NodePrivate) (*Entry, bool) {
 		e.idle = nil
 	}
 	e.conns++
-	return e, e.used
+	return e, e.used, p.onDialing
 }
 
 func (p *Pool) newEntryLocked(addr string, k key.NodePrivate) *Entry {
@@ -309,23 +320,33 @@ func (p *Pool) try(ctx context.Context, e *Entry, port uint16) (net.Conn, bool, 
 // replacement entry (already counted), or nil when e stays.
 func (p *Pool) retire(addr string, e *Entry, timedOut bool) *Entry {
 	p.mu.Lock()
-	defer p.mu.Unlock()
 	if !e.dead {
 		if p.clients[addr] != e || !timedOut && e.conns != 1 {
+			p.mu.Unlock()
 			return nil
 		}
 		e.dead = true
 		delete(p.clients, addr)
+		if e.idle != nil {
+			e.idle.Stop()
+			e.idle = nil
+		}
 		go e.tc.Close()
 	}
 	k := e.tc.Key
-	if p.KeyFn != nil {
+	keyFn := p.KeyFn
+	p.mu.Unlock()
+
+	if keyFn != nil {
 		var ok bool
-		k, ok = p.KeyFn()
+		k, ok = keyFn()
 		if !ok {
 			return nil
 		}
 	}
+
+	p.mu.Lock()
+	defer p.mu.Unlock()
 	n := p.clients[addr]
 	if n == nil {
 		n = p.newEntryLocked(addr, k)

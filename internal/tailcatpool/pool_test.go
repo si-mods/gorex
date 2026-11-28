@@ -30,7 +30,7 @@ func TestPoolLifecycleAndHalfClose(t *testing.T) {
 	p.SetIdleTimeout(20 * time.Millisecond)
 
 	k := key.NewNode()
-	e, used := p.acquire("addr-1", k)
+	e, used, _ := p.acquire("addr-1", k)
 	if used {
 		t.Fatal("fresh entry should not be marked used")
 	}
@@ -87,8 +87,8 @@ func TestPoolLifecycleAndHalfClose(t *testing.T) {
 func TestPoolKeepOnlyAndCloseAll(t *testing.T) {
 	var p Pool
 	k := key.NewNode()
-	e1, _ := p.acquire("a", k)
-	e2, _ := p.acquire("b", k)
+	e1, _, _ := p.acquire("a", k)
+	e2, _, _ := p.acquire("b", k)
 	if snap := p.Snapshot(); len(snap) != 2 {
 		t.Fatalf("Snapshot len=%d, want 2", len(snap))
 	}
@@ -100,7 +100,7 @@ func TestPoolKeepOnlyAndCloseAll(t *testing.T) {
 	if p.Len() != 0 || !e1.dead || !e2.dead {
 		t.Fatalf("Evict failed: len=%d e1.dead=%v e2.dead=%v", p.Len(), e1.dead, e2.dead)
 	}
-	_, _ = p.acquire("c", k)
+	_, _, _ = p.acquire("c", k)
 	p.CloseAll()
 	if p.Len() != 0 {
 		t.Fatalf("CloseAll left %d entries", p.Len())

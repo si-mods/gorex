@@ -132,20 +132,20 @@ func SetTailcatHosts(hostsJSON string) error {
 		m[strings.ToLower(h.ID)] = h.Address
 	}
 	tcMu.Lock()
-	defer tcMu.Unlock()
 	tcHosts = m
 	// The clients of addresses no host has go.
 	listed := map[string]bool{}
 	for _, a := range m {
 		listed[a] = true
 	}
-	tcPool.KeepOnly(listed)
 	for a, s := range tcScopes {
 		if !listed[a] {
 			delete(tcScopes, a)
 			s.cancel()
 		}
 	}
+	tcMu.Unlock()
+	tcPool.KeepOnly(listed)
 	return nil
 }
 

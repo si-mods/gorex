@@ -495,8 +495,8 @@ func TestTailcatDialCancel(t *testing.T) {
 	// The machine is gone: a dial to it waits until something ends it.
 	m.ts.Close()
 	dialing := make(chan struct{}, 1)
-	tcPool.OnDialing = func() { dialing <- struct{}{} }
-	defer func() { tcPool.OnDialing = nil }()
+	tcPool.SetOnDialing(func() { dialing <- struct{}{} })
+	defer tcPool.SetOnDialing(nil)
 	hang := func(name string, ctx context.Context, end func()) {
 		t.Helper()
 		ended := make(chan error, 1)
