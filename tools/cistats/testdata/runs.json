@@ -1,0 +1,293 @@
+[
+ {
+  "run": {
+   "id": 1,
+   "name": "CI",
+   "event": "pull_request",
+   "conclusion": "success"
+  },
+  "jobs": [
+   {
+    "name": "linux",
+    "labels": [
+     "instabox-large"
+    ],
+    "conclusion": "success",
+    "runner_name": "box-1",
+    "started_at": "2026-11-27T10:00:05Z",
+    "completed_at": "2026-11-27T10:05:05Z",
+    "steps": [
+     {
+      "name": "gofmt",
+      "conclusion": "success"
+     },
+     {
+      "name": "vet",
+      "conclusion": "success"
+     },
+     {
+      "name": "build",
+      "conclusion": "success"
+     },
+     {
+      "name": "lint",
+      "conclusion": "success"
+     },
+     {
+      "name": "web test",
+      "conclusion": "skipped"
+     },
+     {
+      "name": "test",
+      "conclusion": "success"
+     },
+     {
+      "name": "build and upload to R2",
+      "conclusion": "skipped"
+     },
+     {
+      "name": "Set up job",
+      "conclusion": "success"
+     }
+    ]
+   },
+   {
+    "name": "test-windows",
+    "labels": [
+     "self-hosted",
+     "alice-pc"
+    ],
+    "conclusion": "success",
+    "runner_name": "pc",
+    "started_at": "2026-11-27T10:00:06Z",
+    "completed_at": "2026-11-27T10:04:00Z",
+    "steps": []
+   }
+  ]
+ },
+ {
+  "run": {
+   "id": 2,
+   "name": "CI",
+   "event": "pull_request",
+   "conclusion": "success"
+  },
+  "jobs": [
+   {
+    "name": "linux",
+    "labels": [
+     "instabox-large"
+    ],
+    "conclusion": "failure",
+    "runner_name": "box-1",
+    "started_at": "2026-11-27T10:00:40Z",
+    "completed_at": "2026-11-27T10:12:40Z",
+    "steps": [
+     {
+      "name": "gofmt",
+      "conclusion": "skipped"
+     },
+     {
+      "name": "vet",
+      "conclusion": "skipped"
+     },
+     {
+      "name": "build",
+      "conclusion": "skipped"
+     },
+     {
+      "name": "lint",
+      "conclusion": "skipped"
+     },
+     {
+      "name": "web test",
+      "conclusion": "skipped"
+     },
+     {
+      "name": "test",
+      "conclusion": "skipped"
+     },
+     {
+      "name": "build and upload to R2",
+      "conclusion": "skipped"
+     },
+     {
+      "name": "Set up job",
+      "conclusion": "success"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "run": {
+   "id": 3,
+   "name": "CI",
+   "event": "push",
+   "conclusion": "success"
+  },
+  "jobs": [
+   {
+    "name": "linux",
+    "labels": [
+     "instabox-large"
+    ],
+    "conclusion": "success",
+    "runner_name": "box-1",
+    "started_at": "2026-11-27T11:30:00Z",
+    "completed_at": "2026-11-27T11:40:00Z",
+    "steps": [
+     {
+      "name": "gofmt",
+      "conclusion": "success"
+     },
+     {
+      "name": "vet",
+      "conclusion": "success"
+     },
+     {
+      "name": "build",
+      "conclusion": "success"
+     },
+     {
+      "name": "lint",
+      "conclusion": "success"
+     },
+     {
+      "name": "web test",
+      "conclusion": "success"
+     },
+     {
+      "name": "test",
+      "conclusion": "success"
+     },
+     {
+      "name": "build and upload to R2",
+      "conclusion": "success"
+     },
+     {
+      "name": "Set up job",
+      "conclusion": "success"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "run": {
+   "id": 4,
+   "name": "PR verified",
+   "event": "pull_request_target",
+   "conclusion": "success"
+  },
+  "jobs": [
+   {
+    "name": "verified",
+    "labels": [
+     "instabox-medium"
+    ],
+    "conclusion": "success",
+    "runner_name": "box-2",
+    "started_at": "2026-11-27T10:00:30Z",
+    "completed_at": "2026-11-27T10:00:50Z",
+    "steps": []
+   }
+  ]
+ },
+ {
+  "run": {
+   "id": 5,
+   "name": "PR verified",
+   "event": "pull_request_target",
+   "conclusion": "success"
+  },
+  "jobs": [
+   {
+    "name": "verified",
+    "labels": [
+     "instabox-medium"
+    ],
+    "conclusion": "skipped",
+    "runner_name": "",
+    "started_at": "2026-11-27T10:01:00Z",
+    "completed_at": "2026-11-27T10:01:00Z",
+    "steps": []
+   }
+  ]
+ },
+ {
+  "run": {
+   "id": 6,
+   "name": "Maintenance",
+   "event": "schedule",
+   "conclusion": "success"
+  },
+  "jobs": [
+   {
+    "name": "audit",
+    "labels": [
+     "instabox-medium"
+    ],
+    "conclusion": "success",
+    "runner_name": "box-3",
+    "started_at": "2026-11-26T03:17:00Z",
+    "completed_at": "2026-11-26T03:25:00Z",
+    "steps": []
+   }
+  ]
+ },
+ {
+  "run": {
+   "id": 7,
+   "name": "CI",
+   "event": "push",
+   "conclusion": "success"
+  },
+  "jobs": [
+   {
+    "name": "linux",
+    "labels": [
+     "instabox-large"
+    ],
+    "conclusion": "success",
+    "runner_name": "box-1",
+    "started_at": "2026-11-20T09:00:00Z",
+    "completed_at": "2026-11-20T09:50:00Z",
+    "steps": [
+     {
+      "name": "gofmt",
+      "conclusion": "success"
+     },
+     {
+      "name": "vet",
+      "conclusion": "success"
+     },
+     {
+      "name": "build",
+      "conclusion": "success"
+     },
+     {
+      "name": "lint",
+      "conclusion": "success"
+     },
+     {
+      "name": "web test",
+      "conclusion": "success"
+     },
+     {
+      "name": "test",
+      "conclusion": "success"
+     },
+     {
+      "name": "build and upload to R2",
+      "conclusion": "success"
+     },
+     {
+      "name": "Set up job",
+      "conclusion": "success"
+     }
+    ]
+   }
+  ]
+ }
+]

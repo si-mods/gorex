@@ -76,6 +76,13 @@ A flag, an early return or `isEnabled = false` needs a linked issue that
 says what must happen before the code comes back or is deleted. With no
 issue, delete the code now: git keeps it.
 
+## CI health
+
+`maintenance.yml` posts a weekly report on sandbox starts and CI duration as a
+comment on the issue named by the repository variable `CI_HEALTH_ISSUE`. Read
+the last report monthly, with the checks above. A flag in it is a defect:
+`docs/REF-015-ci.md` says what to do.
+
 ## Dependencies
 
 `go.mod` and `web/package.json` changes are read, not counted. A new
