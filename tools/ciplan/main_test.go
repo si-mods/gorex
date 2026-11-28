@@ -269,3 +269,21 @@ func subset(a, b []string) bool {
 	}
 	return true
 }
+
+func TestPRBase(t *testing.T) {
+	merge := []string{"m", "mainTip", "prHead"}
+	for _, c := range []struct {
+		event, base string
+		line        []string
+		want        string
+	}{
+		{"pull_request", "staleBase", merge, "mainTip"},
+		{"pull_request", "staleBase", []string{"h", "p"}, "staleBase"}, // not a merge commit
+		{"push", "before", merge, "before"},
+		{"workflow_dispatch", "", merge, ""},
+	} {
+		if got := prBase(c.event, c.base, c.line); got != c.want {
+			t.Errorf("prBase(%q, %q, %v) = %q, want %q", c.event, c.base, c.line, got, c.want)
+		}
+	}
+}
