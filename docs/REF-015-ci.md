@@ -60,7 +60,7 @@ The Windows tests run on a self-hosted Windows runner. They use no start. The Ma
 
 ### Inputs
 
-- `BASE` is the commit to compare with. It is the base of the pull request, or the commit before the push.
+- `BASE` is the commit to compare with. On a push, it is the commit before the push. On a pull request, the tool uses the first parent of the merge commit that the run checks out, which is the base branch as GitHub merged it. The event's `base.sha` does not move when main moves, so it would add main's newer commits to the diff.
 - `GITHUB_EVENT_NAME` tells the tool about a manual run.
 - The tool runs `git diff --name-only BASE HEAD` to get the changed files.
 - The tool reads the package graph of the module with `go/build` for linux, windows and darwin. It reads import lines only. It needs no module download and runs before the Go caches are restored.

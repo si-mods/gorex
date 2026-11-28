@@ -268,6 +268,11 @@ Each item has a **Trigger** (what the diff shows), a **Check** (what the author 
 - **Check:** each instabox job that runs is one sandbox start, and the plan allows 500 a day, 200 an hour and 30 a minute. Add a step to the existing job (CI's `linux`) instead. A new instabox job names its expected starts per day in the PR.
 - **Source:** CI started up to 9 boxes per run and averaged about 900 starts a day before the allowance (Nov 2026); this PR folded CI into one `linux` job.
 
+### A pull request's base.sha
+- **Trigger:** a workflow or tool diffs a pull request against `github.event.pull_request.base.sha`.
+- **Check:** diff against the first parent of the checked-out merge commit (`HEAD^1`). `base.sha` does not move when main moves, so the diff also holds main's newer commits.
+- **Source:** #1267's CI diffed against a stale `base.sha` and ran the tests of 10 packages that #1266 had changed on main; #1272 makes `tools/ciplan` and the what-to-test step use `HEAD^1`.
+
 ### A test that reads a file outside its package
 - **Trigger:** a Go test or generator reads a repo path outside its package's directory (`os.ReadFile`, `WalkDir`, `git ls-files`), or a new `//go:embed` reaches outside the package.
 - **Check:** the path is in `readsElsewhere` in `tools/ciplan/plan.go`, or the root test is in its `ruleTests`. Otherwise CI skips that test when only that file changes.

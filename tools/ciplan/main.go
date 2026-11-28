@@ -42,6 +42,9 @@ func run() error {
 		return err
 	}
 	base := strings.TrimSpace(os.Getenv("BASE"))
+	if parents, err := git(root, "rev-list", "--parents", "-n", "1", "HEAD"); err == nil {
+		base = prBase(os.Getenv("GITHUB_EVENT_NAME"), base, os.Getenv("HEAD_SHA"), strings.Fields(parents))
+	}
 	ancestor := false
 	if validBase(base) {
 		_, err := git(root, "merge-base", "--is-ancestor", base, "HEAD")
@@ -85,6 +88,22 @@ func run() error {
 // all-zero SHA a push that creates a branch sends.
 func validBase(base string) bool {
 	return base != "" && strings.Trim(base, "0") != ""
+}
+
+// prBase is the commit a pull request's run diffs against. The run checks
+// out the PR's merge commit (refs/pull/N/merge), whose first parent is the
+// base branch as GitHub merged it. The event's base.sha can be older: it
+// does not move when main moves, so BASE..HEAD would also hold main's newer
+// commits and run their tests. line is `git rev-list --parents -n 1 HEAD`:
+// HEAD, then its parents. head is the PR's head SHA: only a merge commit
+// whose second parent is the PR head is GitHub's test merge. A merge commit
+// on the PR branch itself (head checked out) keeps base, so its earlier
+// commits are not dropped from the diff.
+func prBase(event, base, head string, line []string) string {
+	if event == "pull_request" && len(line) == 3 && head != "" && line[2] == head {
+		return line[1]
+	}
+	return base
 }
 
 // needAll says why everything runs, or "" when the diff decides.

@@ -64,6 +64,7 @@ jobs:
       - id: plan
         env:
           BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: go run ./tools/ciplan
 
       # What to Test comes from ios/WhatToTest.md, a bullet per locale, through
@@ -72,13 +73,15 @@ jobs:
       # every pull request, the iOS app's alone too.
       - name: what-to-test
         if: github.event_name == 'pull_request'
-        env:
-          BASE: ${{ github.event.pull_request.base.sha }}
         # The script that judges the pull request comes from the base commit,
         # so the pull request cannot edit its own check. It reads the merge
-        # commit (HEAD here) by SHA: the objects are shared.
+        # commit (HEAD here) by SHA: the objects are shared. The base is the
+        # merge commit's first parent, main as GitHub merged it: the event's
+        # base.sha does not move with main (docs/lessons.md, "A pull
+        # request's base.sha").
         run: |
           TO=$(git rev-parse HEAD)
+          BASE=$(git rev-parse HEAD^1)
           git worktree add "$RUNNER_TEMP/base" "$BASE"
           "$RUNNER_TEMP/base/ios/scripts/test-notes" check "$BASE" "$TO"
 
@@ -268,6 +271,7 @@ jobs:
         shell: powershell
         env:
           BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           go run ./tools/ciplan
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
