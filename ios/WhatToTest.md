@@ -10,6 +10,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 `what-to-test` step of the `linux` job of `.github/workflows/ci.yml` fails it.
 
 ## en-US
+- Fixed swiping left on the iPhone compose bar dismissing an open keyboard when expanding the quick-keys strip; the keyboard and bar now stay steady in place.
 - Composer Mode: the remove badge on attached photos and files now sits cleanly inside each thumbnail with a full 44 pt tap target in light and dark mode, instead of clipping.
 - Composer Mode on iPhone: swipe left on the compose bar to open the quick-keys strip (Esc, Tab, Enter, Delete, arrow stick), and swipe right to return to typing.
 - Agent-driven sessions now show an agent badge in the list and a blue outline on iPad and multi-pane views, respecting Reduce Motion, VoiceOver, and clearing as you type.
@@ -200,6 +201,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - Settings has a new Notifications row: it shows whether they are on, and turns them on or opens the Settings app for you.
 
 ## zh-Hans
+- 修复在 iPhone 的 Composer 模式下键盘已打开时左滑展开快捷按键条会把键盘收起的问题，现在键盘与消息栏保持原位不跳动。
 - 在 Composer 模式下，已添加照片或文件缩略图右上角的移除（×）按钮现完整收在缩略图内，不再被圆角裁切，在深浅色模式与弹出键盘时都清晰易点。
 - 在 iPhone 的 Composer 模式下，在消息栏上左滑可直接展开快捷按键条（Esc、Tab、回车、删除、方向摇杆），右滑即可切回输入框继续打字。
 - 由 agent 操作的会话与分屏现会在列表显示「agent」角标、在 iPad 与多窗格界面显示柔和蓝色描边，支持减弱动态效果静态描边与旁白播报，手动输入即刻清除。

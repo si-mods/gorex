@@ -236,21 +236,39 @@ final class ComposerUITests: XCTestCase {
         XCTAssertTrue(addBtn.waitForExistence(timeout: 5))
         XCTAssertTrue(sendBtn.waitForExistence(timeout: 5))
         XCTAssertFalse(app.buttons["Tab"].exists)
+        // Open the keyboard first: swiping left into quick keys must keep the
+        // keyboard up and the bar steady in place instead of dismissing it.
+        message.tap()
+        let hadKeyboard = app.keyboards.element.waitForExistence(timeout: 5)
+        let barMidYBeforeSwipe = bar.frame.midY
         shot("composer-swipe-before-dark")
 
-        // Left swipe on the bar expands quick keys inline.
+        // Left swipe on the bar expands quick keys inline while keeping keyboard open.
         bar.swipeLeft()
+        let collapseBtn = app.buttons["composer.keys.collapse"]
         XCTAssertTrue(app.buttons["Esc"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.buttons["Tab"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.buttons["composer.keys.collapse"].waitForExistence(timeout: 5))
+        XCTAssertTrue(collapseBtn.waitForExistence(timeout: 5))
+        let hittableDeadline = Date().addingTimeInterval(5)
+        while !collapseBtn.isHittable, Date() < hittableDeadline {
+            _ = collapseBtn.exists
+        }
+        XCTAssertTrue(collapseBtn.isHittable)
+        if hadKeyboard {
+            XCTAssertTrue(app.keyboards.element.exists, "Swiping left dismissed the open software keyboard")
+            XCTAssertLessThan(abs(bar.frame.midY - barMidYBeforeSwipe), 8, "Composer bar dropped when swiping left")
+        }
         shot("composer-swipe-left-dark")
 
-        // Right swipe collapses quick keys and focuses the message field.
+        // Right swipe collapses quick keys and keeps/restores focus on the message field.
         bar.swipeRight()
-        XCTAssertTrue(app.buttons["composer.keys.collapse"].waitForNonExistence(timeout: 5))
+        XCTAssertTrue(collapseBtn.waitForNonExistence(timeout: 5))
         XCTAssertTrue(message.waitForExistence(timeout: 5))
         XCTAssertTrue(addBtn.waitForExistence(timeout: 5))
         if app.keyboards.element.waitForExistence(timeout: 5) {
+            if hadKeyboard {
+                XCTAssertLessThan(abs(bar.frame.midY - barMidYBeforeSwipe), 8)
+            }
             message.typeText("ok")
             XCTAssertEqual(message.value as? String, "ok")
         }
@@ -262,10 +280,22 @@ final class ComposerUITests: XCTestCase {
         app.launch()
         try terminal()
         XCTAssertTrue(bar.waitForExistence(timeout: 10))
+        message.tap()
+        let hadLightKeyboard = app.keyboards.element.waitForExistence(timeout: 5)
+        let lightBarMidY = bar.frame.midY
         shot("composer-swipe-before-light")
         bar.swipeLeft()
         XCTAssertTrue(app.buttons["Esc"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.buttons["Tab"].waitForExistence(timeout: 5))
+        let lightDeadline = Date().addingTimeInterval(5)
+        while !collapseBtn.isHittable, Date() < lightDeadline {
+            _ = collapseBtn.exists
+        }
+        XCTAssertTrue(collapseBtn.isHittable)
+        if hadLightKeyboard {
+            XCTAssertTrue(app.keyboards.element.exists, "Swiping left under Reduce Motion dismissed the open software keyboard")
+            XCTAssertLessThan(abs(bar.frame.midY - lightBarMidY), 8)
+        }
         shot("composer-swipe-left-light-reduce-motion")
 
         bar.swipeRight()
