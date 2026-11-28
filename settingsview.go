@@ -206,7 +206,7 @@ func settingsSidebarTop() float32 {
 // window's alone; the terminal window keeps its own.
 func settingsTheme(base *ui.Theme, k *colors) *ui.Theme {
 	t := widgetTheme(base, k)
-	t.Radius = k.radius(14)
+	t.Radius = k.radius(radiusXL)
 	return t
 }
 

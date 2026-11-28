@@ -284,7 +284,7 @@ func (a *App) teleportConfirm(c *ui.Context, k *colors) {
 	ui.DialogBase(c, &ask.open, func(backdrop, panel ui.Element) {
 		dialogEnter(c, backdrop, panel)
 		backdrop.Background(k.backdrop)
-		dialogShadow(glassPanel(panel.Width(380).Padding(20).Radius(k.radius(radiusXXL)), k).Border(k.borderW(), k.panelBorder), k).Role(ui.RoleDialog).Label(title)
+		dialogPanel(panel, k, 380).Role(ui.RoleDialog).Label(title)
 		ui.Column(c).Gap(10).Children(func() {
 			ui.Text(c, title).FontSize(fontTitle).FontWeight(700).TextColor(k.text)
 			body := reason

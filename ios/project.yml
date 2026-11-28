@@ -44,6 +44,9 @@ targets:
       # The desktop app's JetBrains Mono, for the font previews.
       - path: ../assets/fonts/JetBrainsMono-Regular.ttf
         buildPhase: resources
+      # Shared Ghostty terminal themes catalog (used by iOS and web).
+      - path: ../assets/ghostty-themes.json
+        buildPhase: resources
     dependencies:
       # The widgets (docs/IOS-010-widgets.md), embedded in PlugIns.
       - target: GoRexWidgets

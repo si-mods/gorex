@@ -571,7 +571,7 @@ func (a *App) spaceDialog(c *ui.Context, k *colors) {
 		dialogEnter(c, backdrop, panel)
 		backdrop.Background(k.backdrop)
 		_, winH := c.Size()
-		dialogShadow(glassPanel(panel.Width(400).MaxHeight(winH-24).Padding(20).Radius(k.radius(radiusXXL)), k).Border(k.borderW(), k.panelBorder), k).Role(ui.RoleDialog).Label(title)
+		dialogPanel(panel, k, 400).MaxHeight(winH - 24).Role(ui.RoleDialog).Label(title)
 		ui.Text(c, title).FontSize(fontTitle).FontWeight(700).TextColor(k.text).Margin(0, 0, 10, 0)
 		if s.dialog == "new" {
 			in := textField(c.Key("space-name"), k, &s.name, fieldRegular).Label(locales.SpaceNameLabel()).Placeholder(locales.SpaceNameHint()).AutoFocus()

@@ -275,7 +275,7 @@ func windowControls(c *ui.Context, k *colors, win *mygo.Window) {
 	_, hasClose := faceFill(roleWindowControlCloseBackground, k.windowControlCloseFace)
 	if hasCtrl || hasClose {
 		ctrlBtn := func(role faceRole, face ui.Color, glyph, label string, iconSize float32, maximize bool) ui.Element {
-			b := ui.Box(c).Size(21, 21).Center().Radius(k.radius(3)).Cursor(ui.CursorPointer).Role(ui.RoleButton).Label(label).Tooltip(label)
+			b := ui.Box(c).Size(21, 21).Center().Radius(k.radius(radiusXS)).Cursor(ui.CursorPointer).Role(ui.RoleButton).Label(label).Tooltip(label)
 			if maximize {
 				b.MaximizeButton()
 			}

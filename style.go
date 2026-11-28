@@ -976,6 +976,22 @@ var darkTerm = &terminal.Theme{
 	},
 }
 
+// applyWidgetControls sets GoRex's button, select, segmented, checkbox, radio,
+// menu, and font styles onto t. Shared by widgetTheme and menuTheme.
+func applyWidgetControls(t *ui.Theme, k *colors) {
+	t.Font = k.m.font
+	if bs := buttonStyleOf(k); bs != nil {
+		t.Button = bs
+	} else {
+		buttonColors(t, k)
+	}
+	t.Select = selectStyleOf(k)
+	t.Segmented = segmentedStyleOf(k)
+	t.Checkbox = checkboxStyleOf(k)
+	t.Radio = radioStyleOf(k)
+	t.Menu = menuStyleOf(k, t.Dark)
+}
+
 // widgetTheme is the stock widgets' theme in GoRex's colors, so that the
 // segmented controls, switches, steppers and selects of a window look as
 // the rest of the app. Its Background is the face of a segmented control's
@@ -985,22 +1001,12 @@ func widgetTheme(base *ui.Theme, k *colors) *ui.Theme {
 	t.Background, t.Surface, t.SurfaceHover, t.SurfacePressed = k.surface, k.surface, k.surfaceHover, k.surfacePressed
 	t.Border, t.Text, t.TextMuted = k.panelBorder, k.text, k.textMuted
 	t.Accent, t.AccentHover, t.AccentPressed, t.AccentText = k.accent, k.accentHover, k.accentPressed, k.accentText
-	t.Menu = menuStyleOf(k, t.Dark)
 	t.Selection, t.Focus = k.accent.Alpha(0.3), k.accent.Alpha(0.55)
-	if bs := buttonStyleOf(k); bs != nil {
-		t.Button = bs
-	} else {
-		buttonColors(&t, k)
-	}
-	t.Select = selectStyleOf(k)
-	t.Segmented = segmentedStyleOf(k)
-	t.Checkbox = checkboxStyleOf(k)
-	t.Radio = radioStyleOf(k)
+	applyWidgetControls(&t, k)
 	if sb := scrollbarStyleOf(k); sb != (ui.ScrollbarStyle{}) {
 		t.ScrollbarStyle = sb
 	}
 	t.Radius = k.radius(9)
-	t.Font = k.m.font
 	t.TooltipDelay = 500 * time.Millisecond
 	t.TooltipWarm = 400 * time.Millisecond
 	return &t

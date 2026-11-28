@@ -135,13 +135,6 @@ func SpaceName(taken func(string) bool) string {
 // Color is a preset color of a space; Hex is its base color.
 type Color struct{ ID, Hex string }
 
-// Palette is the order new spaces take their colors in.
-var Palette = []Color{
-	{"rose", "#e54666"}, {"orange", "#f76b15"}, {"amber", "#ffb224"},
-	{"green", "#30a46c"}, {"teal", "#12a594"}, {"blue", "#0090ff"},
-	{"indigo", "#3e63dd"}, {"violet", "#8e4ec6"}, {"pink", "#d6409f"},
-}
-
 // NextColor is the color a new space takes, beside spaces of colors used:
 // the first preset none uses, or, every one used, the preset the fewest
 // do, the palette's order settling ties.

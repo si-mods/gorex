@@ -127,7 +127,7 @@ func (a *App) workspaceConfirm(c *ui.Context, k *colors) {
 	ui.DialogBase(c, &a.wsConfirm, func(backdrop, panel ui.Element) {
 		dialogEnter(c, backdrop, panel)
 		backdrop.Background(k.backdrop)
-		dialogShadow(glassPanel(panel.Width(380).Padding(20).Radius(k.radius(radiusXXL)), k).Border(k.borderW(), k.panelBorder), k).Role(ui.RoleDialog).Label(locales.SessionCloseTitle(name))
+		dialogPanel(panel, k, 380).Role(ui.RoleDialog).Label(locales.SessionCloseTitle(name))
 		ui.Column(c).Gap(10).Children(func() {
 			ui.Text(c, locales.SessionCloseTitle(name)).FontSize(fontTitle).FontWeight(700).TextColor(k.text)
 			ui.Text(c, locales.SessionCloseBody(n)).FontSize(fontBody).TextColor(k.textMuted).LineHeight(1.35)

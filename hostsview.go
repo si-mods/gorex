@@ -684,7 +684,7 @@ func (a *App) addHostSheet(c *ui.Context, k *colors) {
 	ui.DialogBase(c, &page.adding, func(backdrop, panel ui.Element) {
 		dialogEnter(c, backdrop, panel)
 		backdrop.Background(k.backdrop)
-		dialogShadow(glassPanel(panel.Width(440).Padding(20).Gap(12).Radius(k.radius(radiusXXL)), k).Border(k.borderW(), k.panelBorder), k).Role(ui.RoleDialog).Label(locales.HostsAddTitle())
+		dialogPanel(panel, k, 440).Gap(12).Role(ui.RoleDialog).Label(locales.HostsAddTitle())
 		ui.Text(c, locales.HostsAddTitle()).FontSize(fontTitle).FontWeight(700).TextColor(k.text)
 		switch page.stage {
 		case addConnecting:

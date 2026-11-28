@@ -92,7 +92,7 @@ func plan(files []string, f facts) []check {
 		switch p {
 		case "assets/brands.json", "programs_brands_gen.go", "web/src/programs_brands.ts", "ios/Shared/ProgramBrands.swift":
 			addDir("./tools/genbrands")
-		case "internal/rexproto/protocol.json", "web/src/rex-protocol.gen.ts", "ios/GoRex/Rex/RexProtocol.gen.swift":
+		case "internal/rexproto/protocol.json", "internal/layout/palette_gen.go", "web/src/rex-protocol.gen.ts", "ios/GoRex/Rex/RexProtocol.gen.swift":
 			addDir("./internal/rexproto")
 		}
 		web = web || strings.HasPrefix(p, "web/")

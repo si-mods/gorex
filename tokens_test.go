@@ -100,6 +100,12 @@ func TestDesignTokens(t *testing.T) {
 				if x, ok := num(call.Args[0]); ok {
 					t.Errorf("%s: Radius(%v) is a literal, not a token from tokens.go", at(), x)
 				}
+			case name == "radius":
+				if path != "tokens.go" && path != "style.go" && len(call.Args) == 1 {
+					if x, ok := num(call.Args[0]); ok {
+						t.Errorf("%s: radius(%v) is a literal, not a token from tokens.go", at(), x)
+					}
+				}
 			case name == "Gap" || strings.HasPrefix(name, "Padding") || strings.HasPrefix(name, "Margin"):
 				for _, a := range call.Args {
 					if x, ok := num(a); ok && !grid[math.Abs(x)] && !exempt[enclosing] {
@@ -134,7 +140,7 @@ func TestDesignTokens(t *testing.T) {
 // k.radius so that a theme's metrics.radius scales them
 // (docs/DSK-012-theme-shaders.md, Metrics).
 var radiusTokens = map[string]bool{
-	"radiusS": true, "radiusM": true, "radiusL": true, "radiusXL": true, "radiusXXL": true, "radiusTile": true,
+	"radiusXS": true, "radiusS": true, "radiusM": true, "radiusL": true, "radiusXL": true, "radiusXXL": true, "radiusTile": true,
 }
 
 // bareRadii fails on a radius token in f that is not the argument of a

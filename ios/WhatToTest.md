@@ -10,6 +10,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 `what-to-test` step of the `linux` job of `.github/workflows/ci.yml` fails it.
 
 ## en-US
+- Project preset colors and terminal themes now come from one shared catalog across iPhone, desktop, and web.
 - Tailcat host connections now share the same connection pool as desktop GoRex for more consistent reconnect and cancel behavior.
 - Composer Mode dictation no longer sends by itself: the voice view now has Cancel (discard) and Done (put the text in the field), and you tap Send when ready.
 - Fixed the floating Search button overlapping the Composer bar and Send button in split view on iPhone Duo and landscape iPhones.
@@ -188,6 +189,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - Settings: choose System, Light or Dark right in the Interface row, and Minimum Contrast from a menu. A space's Color menu shows each color's dot and marks the current one.
 
 ## zh-Hans
+- 项目预设颜色与终端主题目录现已由统一配置生成，iPhone、桌面端与网页端保持一致。
 - Tailcat 主机连接现与桌面端 GoRex 共享同一连接池，断线重连与取消行为更一致。
 - 输入框模式的语音听写不再自动发送：语音界面改为“取消”（丢弃）和“完成”（把文字放进输入框），确认后再自己点发送。
 - 修复在 iPhone Duo 展开态及大屏 iPhone 横屏分栏模式下，搜索图标浮动遮挡 Composer 输入框与发送按钮的问题。

@@ -13,3 +13,15 @@ export const RexProtocol = {
   dataRejectByte: 0x82,
   maxChunk: 65536,
 } as const;
+
+export const ProjectColors: Record<string, string> = {
+  rose: "#e54666",
+  orange: "#f76b15",
+  amber: "#ffb224",
+  green: "#30a46c",
+  teal: "#12a594",
+  blue: "#0090ff",
+  indigo: "#3e63dd",
+  violet: "#8e4ec6",
+  pink: "#d6409f",
+};

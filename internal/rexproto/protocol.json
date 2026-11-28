@@ -18,5 +18,16 @@
   "creators": {
     "terminal": "com.superlogical.terminal",
     "tunnel": "com.superlogical.tunnel"
-  }
+  },
+  "project_colors": [
+    { "id": "rose", "hex": "#e54666" },
+    { "id": "orange", "hex": "#f76b15" },
+    { "id": "amber", "hex": "#ffb224" },
+    { "id": "green", "hex": "#30a46c" },
+    { "id": "teal", "hex": "#12a594" },
+    { "id": "blue", "hex": "#0090ff" },
+    { "id": "indigo", "hex": "#3e63dd" },
+    { "id": "violet", "hex": "#8e4ec6" },
+    { "id": "pink", "hex": "#d6409f" }
+  ]
 }

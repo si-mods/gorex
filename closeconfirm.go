@@ -159,7 +159,7 @@ func (a *App) closeAskFallback(c *ui.Context, k *colors) {
 	ui.DialogBase(c, &ask.open, func(backdrop, panel ui.Element) {
 		dialogEnter(c, backdrop, panel)
 		backdrop.Background(k.backdrop)
-		dialogShadow(glassPanel(panel.Width(320).Padding(20).Radius(k.radius(radiusXXL)), k).Border(k.borderW(), k.panelBorder), k)
+		dialogPanel(panel, k, 320)
 		a.closeAskBody(c, k, panel)
 	})
 	a.closeAskDone()
