@@ -187,6 +187,8 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - With Developer Mode on, the floating connection bar at the top no longer covers the first row of the computer list.
 - A tab's long-press menu no longer has Close Other Tabs. Close Tab still closes one tab.
 - Settings: choose System, Light or Dark right in the Interface row, and Minimum Contrast from a menu. A space's Color menu shows each color's dot and marks the current one.
+- Failed actions now show a short red message, not an alert: at the top, or in a terminal above the key bar. Uploads show Uploading, then Uploaded or Retry.
+- Settings has a new Notifications row: it shows whether they are on, and turns them on or opens the Settings app for you.
 
 ## zh-Hans
 - 项目预设颜色与终端主题目录现已由统一配置生成，iPhone、桌面端与网页端保持一致。
@@ -366,3 +368,5 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - 打开「开发者模式」后，顶部的悬浮连接条不再盖住电脑列表的第一行。
 - 长按标签页的菜单里不再有「关闭其他标签页」。「关闭标签页」仍可关闭单个标签页。
 - 「设置」的「界面」一行可直接选「系统」「浅色」「深色」，「最小对比度」改从菜单选择；「编辑空间」的颜色菜单用色点展示每个颜色并标出当前色。
+- 操作失败时显示一条红色短提示，不再弹出警告框：在顶部，终端里则在按键栏上方；上传依次显示“正在上传”和“已上传”，失败可重试。
+- 「设置」新增「通知」一行：显示通知是否开启，并可一键开启，或带你前往系统设置。

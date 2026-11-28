@@ -51,8 +51,6 @@ struct HostSection: View {
     @State private var lifts = 0
     /// Whether a new session or tab with no project is on its way.
     @State private var creating = false
-    /// What failed last, and why, as the server says it.
-    @State private var failure: (title: LocalizedStringKey, why: String)?
     /// The tab being renamed, and the name being typed.
     @State private var renaming: (session: String, window: String, title: String)?
     @State private var name = ""
@@ -93,10 +91,6 @@ struct HostSection: View {
         }
         .modifier(DragEnd { if drag?.dropped == false { drag = nil } })
         .sensoryFeedback(.selection, trigger: lifts)
-        .alert(failure?.title ?? "", isPresented: Binding { failure != nil } set: { if !$0 { failure = nil } }) {
-        } message: {
-            Text(failure?.why ?? "")
-        }
         .alert("Rename Tab", isPresented: Binding { renaming != nil } set: { if !$0 { renaming = nil } }, presenting: renaming) { r in
             TextField(r.title, text: $name)
             Button("Cancel", role: .cancel) {}
@@ -117,8 +111,9 @@ struct HostSection: View {
         }
         .sheet(item: $configuringLaunchers) { s in
             ProjectLaunchersSheet(host: host, sessionID: s.id, projectName: s.label) { why in
-                failure = ("Can't Update Quick Launchers", why)
+                Toasts.shared.fail("Can't Update Quick Launchers", why: why)
             }
+            .sheetToastHost()
         }
         .alert("Rename Host", isPresented: $renamingHost) {
             TextField(host.config.name, text: $name)
@@ -646,7 +641,7 @@ struct HostSection: View {
                     open(TerminalTarget(host: host.id, session: s, block: b, title: ""))
                 }
             } catch {
-                failure = ("Can't Make a New Session", error.localizedDescription)
+                Toasts.shared.fail("Can't Make a New Session", error)
             }
         }
     }
@@ -661,7 +656,7 @@ struct HostSection: View {
                     open(TerminalTarget(host: host.id, session: s, block: b, title: ""))
                 }
             } catch {
-                failure = ("Can't Open a New Tab", error.localizedDescription)
+                Toasts.shared.fail("Can't Open a New Tab", error)
             }
         }
     }
@@ -682,7 +677,7 @@ struct HostSection: View {
             } catch let error where ProjectFolder.missing(error) {
                 missing = s
             } catch {
-                failure = ("Can't Open a New Tab", error.localizedDescription)
+                Toasts.shared.fail("Can't Open a New Tab", error)
             }
         }
     }
@@ -697,15 +692,15 @@ struct HostSection: View {
                     open(TerminalTarget(host: host.id, session: s.id, block: b, title: ""))
                 }
             } catch {
-                failure = ("Can't Open a New Tab", error.localizedDescription)
+                Toasts.shared.fail("Can't Open a New Tab", error)
             }
         }
     }
 
     /// Runs a change, and tells why when it fails.
-    private func change(_ title: LocalizedStringKey, _ body: @escaping () async throws -> Void) {
+    private func change(_ title: LocalizedStringResource, _ body: @escaping () async throws -> Void) {
         Task {
-            do { try await body() } catch { failure = (title, error.localizedDescription) }
+            do { try await body() } catch { Toasts.shared.fail(title, error) }
         }
     }
 
@@ -1067,8 +1062,6 @@ private struct SessionMenu: ViewModifier {
     @State private var renaming = false
     @State private var closing = false
     @State private var name = ""
-    /// What failed, and why, as the server says it.
-    @State private var failure: (title: LocalizedStringKey, why: String)?
 
     func body(content: Content) -> some View {
         content
@@ -1093,15 +1086,11 @@ private struct SessionMenu: ViewModifier {
                     change("Can't Rename the Session") { [host, session, name] in try await host.renameSession(session.id, to: name) }
                 }
             }
-            .alert(failure?.title ?? "", isPresented: Binding { failure != nil } set: { if !$0 { failure = nil } }) {
-            } message: {
-                Text(failure?.why ?? "")
-            }
     }
 
-    private func change(_ title: LocalizedStringKey, _ body: @escaping () async throws -> Void) {
+    private func change(_ title: LocalizedStringResource, _ body: @escaping () async throws -> Void) {
         Task {
-            do { try await body() } catch { failure = (title, error.localizedDescription) }
+            do { try await body() } catch { Toasts.shared.fail(title, error) }
         }
     }
 }

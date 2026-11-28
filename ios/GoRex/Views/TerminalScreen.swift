@@ -19,8 +19,6 @@ struct TerminalScreen: View {
     /// This screen, as the Live Activity's owner (TerminalLive) and the
     /// window scheme's (ScreenStyle).
     @State private var liveOwner = UUID()
-    /// What failed last, and why, as the server says it.
-    @State private var failure: (title: LocalizedStringKey, why: String)?
     /// The panes asked to close, until the server answers.
     @State private var closing: Set<String> = []
     /// Whether the session's sheet is open, as the title opens it.
@@ -85,6 +83,9 @@ struct TerminalScreen: View {
     /// Whether the screen is gone: a slide finishing after it must not start
     /// the map again.
     @State private var gone = false
+    /// The screen's toast host: the toast shows above the key bar, not
+    /// over the header (docs/IOS-034-toasts.md).
+    @State private var toastSlot = UUID()
 
     init(target: TerminalTarget, host: Host, go: @escaping (TerminalTarget?) -> Void) {
         self.target = target
@@ -127,6 +128,8 @@ struct TerminalScreen: View {
             }
         }
             .onGeometryChange(for: CGSize.self) { $0.size } action: { pageSize = $0 }
+            .onAppear { Toasts.shared.mount(toastSlot) }
+            .onDisappear { Toasts.shared.unmount(toastSlot) }
             .clipped()
             .ignoresSafeArea(.container, edges: Self.edges(side: sideBar, row: sideMode, insets: Self.windowInsets))
             .ignoresSafeArea(.keyboard)
@@ -155,6 +158,7 @@ struct TerminalScreen: View {
             // bar; they ride the keyboard too.
             .overlay(alignment: .bottom) {
                 VStack(spacing: 10) {
+                    ToastSlot(host: toastSlot, edge: .bottom)
                     if stalled, let session {
                         Reconnecting(waitingToSend: session.waitingToSend)
                             .transition(.move(edge: .bottom).combined(with: .opacity))
@@ -292,10 +296,6 @@ struct TerminalScreen: View {
             // and follow its panes as they split and close.
             .onChange(of: keptPanes, initial: true) { _, panes in
                 if let panes { keep(panes) }
-            }
-            .alert(failure?.title ?? "", isPresented: Binding { failure != nil } set: { if !$0 { failure = nil } }) {
-            } message: {
-                Text(failure?.why ?? "")
             }
             // The mic's, here, as the one in the key bar can't show them.
             .alert("Download the Speech Model?", isPresented: $asking) {
@@ -976,7 +976,7 @@ struct TerminalScreen: View {
                     switchTo(TerminalTarget(host: host.id, session: currentTarget.session, block: b, title: ""), dir: 1)
                 }
             } catch {
-                failure = ("Can't Split the Pane", error.localizedDescription)
+                Toasts.shared.fail("Can't Split the Pane", error)
             }
         }
     }
@@ -1005,7 +1005,7 @@ struct TerminalScreen: View {
             do {
                 try await host.closePane(block, in: session)
             } catch {
-                failure = ("Can't Close the Pane", error.localizedDescription)
+                Toasts.shared.fail("Can't Close the Pane", error)
             }
         }
     }
@@ -1022,9 +1022,9 @@ struct TerminalScreen: View {
                     switchTo(TerminalTarget(host: host.id, session: session, block: b, title: ""), dir: 1)
                 }
             } catch let error where ProjectFolder.missing(error) {
-                failure = ("Folder Not Found", String(localized: "\(dir ?? "") is not on \(host.config.name) any more."))
+                Toasts.shared.fail("Folder Not Found", why: String(localized: "\(dir ?? "") is not on \(host.config.name) any more."))
             } catch {
-                failure = ("Can't Open a New Tab", error.localizedDescription)
+                Toasts.shared.fail("Can't Open a New Tab", error)
             }
         }
     }
@@ -1038,7 +1038,7 @@ struct TerminalScreen: View {
                 try await host.closeWindow(w.window_id, in: currentTarget.session)
                 go(nil)
             } catch {
-                failure = ("Can't Close the Tab", error.localizedDescription)
+                Toasts.shared.fail("Can't Close the Tab", error)
             }
         }
     }
