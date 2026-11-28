@@ -199,7 +199,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - Settings has a new Notifications row: it shows whether they are on, and turns them on or opens the Settings app for you.
 
 ## zh-Hans
-- iPhone 的 Composer 模式现支持在消息栏上左滑直接展开快捷按键条（Esc、Tab、回车、删除、方向摇杆），右滑即可切回输入框继续打字。
+- 在 iPhone 的 Composer 模式下，在消息栏上左滑可直接展开快捷按键条（Esc、Tab、回车、删除、方向摇杆），右滑即可切回输入框继续打字。
 - 由 agent 操作的会话与分屏现会在列表显示「agent」角标、在 iPad 与多窗格界面显示柔和蓝色描边，支持减弱动态效果静态描边与旁白播报，手动输入即刻清除。
 - Composer 模式输入多行文字时会自动展开为上方全宽编辑区、下方「+」与麦克风及高亮发送按钮的两行卡片，长文本滚动与换行更顺滑。
 - Composer 模式精简为单行胶囊布局（+、输入框、麦克风与发送同处一行），快捷按键、收起键盘与切回传统键栏集成至「+」菜单并保留下滑手势。
