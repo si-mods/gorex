@@ -109,6 +109,7 @@ func main() {
 	// (docs/EXT-001-extension-panes.md).
 	mygo.BindAs("Extension", extensionBridge{})
 	loadExtPacks()
+	bindAppCommands()
 	st := &store{}
 	st.refreshMenus = func() { mygo.App.SetMenu(st.menu()) }
 	mygo.App.SetMenu(st.menu())

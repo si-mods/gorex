@@ -12,16 +12,10 @@ import (
 	"testing"
 )
 
-// TestNoNewRootInit keeps package main from adding package-level init()
-// functions beyond the existing baseline: initialization stays explicit.
+// TestNoNewRootInit forbids package-level init() functions in package main so
+// initialization stays explicit and cycle-free.
 func TestNoNewRootInit(t *testing.T) {
-	allowed := map[string]bool{
-		"commands.go":      true,
-		"settingsview.go":  true,
-		"shortcutsview.go": true,
-		"workspace.go":     true,
-		"workspaceview.go": true,
-	}
+	allowed := map[string]bool{}
 	entries, err := os.ReadDir(".")
 	if err != nil {
 		t.Fatal(err)
@@ -80,14 +74,10 @@ func TestNoInternalInit(t *testing.T) {
 	}
 }
 
-// TestNoNewRootPanic forbids adding new panic() calls in package main
-// production files beyond the existing startup/invariant baseline.
+// TestNoNewRootPanic forbids panic() calls in package main production files so
+// runtime paths log and recover gracefully instead of crashing the app.
 func TestNoNewRootPanic(t *testing.T) {
-	allowed := map[string]bool{
-		"commands.go": true,
-		"host.go":     true,
-		"programs.go": true,
-	}
+	allowed := map[string]bool{}
 	entries, err := os.ReadDir(".")
 	if err != nil {
 		t.Fatal(err)

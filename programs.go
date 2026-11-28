@@ -5,8 +5,10 @@ import (
 	"embed"
 	"image"
 	"image/png"
+	"log"
 	"path"
 	"strings"
+	"sync"
 
 	"github.com/egoist/mygo/ui"
 	"gorex/internal/rex"
@@ -16,25 +18,31 @@ import (
 //go:embed assets/icons/*.svg assets/brands/*.svg resources/icon.png
 var assets embed.FS
 
-var svgs = map[string]*ui.SVG{}
+var (
+	svgsMu sync.RWMutex
+	svgs   = map[string]*ui.SVG{}
 
-var appIconSrc ui.ImageSource
+	appIconOnce sync.Once
+	appIconSrc  ui.ImageSource
+)
 
 // appIcon is the app's icon, for the server card of the settings window:
 // the same prism the iOS app carries. It is the squircle alone, the
 // canvas's margin and shadow cropped off, so that it fills the tile.
 func appIcon() ui.ImageSource {
-	if appIconSrc == nil {
+	appIconOnce.Do(func() {
 		data, err := assets.ReadFile("resources/icon.png")
 		if err != nil {
-			panic(err)
+			log.Printf("gorex: reading resources/icon.png: %v", err)
+			return
 		}
 		img, err := png.Decode(bytes.NewReader(data))
 		if err != nil {
-			panic(err)
+			log.Printf("gorex: decoding resources/icon.png: %v", err)
+			return
 		}
 		appIconSrc = ui.NewBitmap(opaqueCrop(img))
-	}
+	})
 	return appIconSrc
 }
 
@@ -66,9 +74,13 @@ func opaqueCrop(img image.Image) image.Image {
 // brands. Non-embedded brand marks are loaded on demand from the local disk
 // cache or brandBaseURL, returning the terminal glyph until available.
 func icon(name string) *ui.SVG {
+	svgsMu.RLock()
 	if s, ok := svgs[name]; ok {
+		svgsMu.RUnlock()
 		return s
 	}
+	svgsMu.RUnlock()
+
 	file := "assets/icons/" + name + ".svg"
 	b, isBrand := strings.CutPrefix(name, "brand:")
 	if isBrand {
@@ -79,10 +91,35 @@ func icon(name string) *ui.SVG {
 		if isBrand {
 			return onDemandBrandIcon(b)
 		}
-		panic(err)
+		log.Printf("gorex: missing icon %q: %v", file, err)
+		var fb *ui.SVG
+		if name != "terminal" {
+			fb = icon("terminal")
+		}
+		svgsMu.Lock()
+		if len(svgs) < 512 {
+			svgs[name] = fb
+		}
+		svgsMu.Unlock()
+		return fb
 	}
-	s := ui.MustParseSVG(data)
+	s, err := ui.ParseSVG(data)
+	if err != nil {
+		log.Printf("gorex: parsing icon %q: %v", file, err)
+		var fb *ui.SVG
+		if name != "terminal" {
+			fb = icon("terminal")
+		}
+		svgsMu.Lock()
+		if len(svgs) < 512 {
+			svgs[name] = fb
+		}
+		svgsMu.Unlock()
+		return fb
+	}
+	svgsMu.Lock()
 	svgs[name] = s
+	svgsMu.Unlock()
 	return s
 }
 

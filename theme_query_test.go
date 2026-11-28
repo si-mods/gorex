@@ -14,6 +14,7 @@ import (
 // TestMain keeps the tests from asking the app its appearance: no app runs,
 // and mygo.Theme.IsDark would wait for its main loop.
 func TestMain(m *testing.M) {
+	bindAppCommands()
 	appearanceDark = func() bool { return false }
 	os.Exit(m.Run())
 }
