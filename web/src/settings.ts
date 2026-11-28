@@ -7,6 +7,7 @@
 // (prefs.ts) and applied to the open panes at once by the page; a change
 // of language draws the dialog again in the new one.
 import { checkForUpdate, install, installKind } from "./app";
+import { el } from "./dom";
 import { allowCommand, commandBox, Host, HostLink, HostList, icon } from "./hosts";
 import {
   chordFromEvent, commandTitle, hasModifiedShortcuts, mac, resetAllShortcuts,
@@ -103,13 +104,6 @@ function installed(family: string): boolean {
 }
 
 let fontsFound: string[] | undefined;
-
-function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: string): HTMLElementTagNameMap[K] {
-  const e = document.createElement(tag);
-  if (cls) e.className = cls;
-  if (text !== undefined) e.textContent = text;
-  return e;
-}
 
 function button(label: string, cls = "host-add"): HTMLButtonElement {
   const b = el("button", cls, label);

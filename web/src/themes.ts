@@ -7,6 +7,7 @@
 // without it: the standard theme's are in the script (build.mjs,
 // __STANDARD_THEME__), another one's kept with the choice; only a choice
 // kept without them (by an older version) loads the list as it starts.
+import { el } from "./dom";
 import { check, icon } from "./hosts";
 import type { RGB } from "./ghostty";
 import { PlainKey, t as tr } from "./i18n";
@@ -70,13 +71,6 @@ export function themeColours(t: ThemeEntry): Theme {
 export const isLight = ([r, g, b]: RGB) => 0.299 * r + 0.587 * g + 0.114 * b >= 128;
 
 const hex = (v: number) => `#${v.toString(16).padStart(6, "0")}`;
-
-function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: string): HTMLElementTagNameMap[K] {
-  const e = document.createElement(tag);
-  if (cls) e.className = cls;
-  if (text !== undefined) e.textContent = text;
-  return e;
-}
 
 /**
  * The picker, as the iOS app's Themes settings: a preview of the chosen

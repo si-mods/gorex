@@ -2,28 +2,15 @@
 // IndexedDB so a reload does not pair again, in memory when the user
 // chose this-tab-only. The key is a secret: the page keeps it here and
 // shows only its public half.
+import { openDB } from "./idb";
 
 const dbName = "gorex-tailcat";
 const storeName = "key";
 const id = "device";
 
-function openDB(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    const idb = typeof indexedDB !== "undefined" ? indexedDB : undefined;
-    if (!idb) return reject(new Error("indexedDB unavailable"));
-    const req = idb.open(dbName, 1);
-    req.onupgradeneeded = () => {
-      const db = req.result;
-      if (!db.objectStoreNames.contains(storeName)) db.createObjectStore(storeName);
-    };
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error ?? new Error("indexedDB open failed"));
-  });
-}
-
 async function withStore<T>(mode: IDBTransactionMode, f: (s: IDBObjectStore) => IDBRequest<T>): Promise<T | undefined> {
   try {
-    const db = await openDB();
+    const db = await openDB(dbName, storeName);
     try {
       return await new Promise<T | undefined>((resolve, reject) => {
         const tx = db.transaction(storeName, mode);

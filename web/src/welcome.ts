@@ -3,16 +3,11 @@
 // Tailscale opens the guide (guide.ts); Connect by address shows the host
 // form (hosts.ts) in place of the choices. How a host trusts the page is
 // not said here: the page says it when a host refuses it (diagnose).
+import { el } from "./dom";
 import type { HostList } from "./hosts";
 import { icon } from "./hosts";
 import { localize, PlainKey, t } from "./i18n";
 import type { Tailnet } from "./tailnet";
-
-function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string): HTMLElementTagNameMap[K] {
-  const e = document.createElement(tag);
-  if (cls) e.className = cls;
-  return e;
-}
 
 /** An element whose text is key's message, said again after a change of language. */
 function said<K extends keyof HTMLElementTagNameMap>(tag: K, cls: string, key: PlainKey | (() => string)): HTMLElementTagNameMap[K] {

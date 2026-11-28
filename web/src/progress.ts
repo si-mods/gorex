@@ -8,6 +8,7 @@
 // Content-Length is the compressed size or none), else unknown and the bar
 // is indeterminate. ProgressView shows it, the same in every place.
 
+import { el } from "./dom";
 import { formatSize, localize, Msg, msg, t } from "./i18n";
 
 /** Bytes as a short size, in the page's language: 412 KB, 6.1 MB. */
@@ -56,13 +57,6 @@ export type LoadState =
   | { phase: "download"; received: number; total?: number }
   | { phase: "start" }
   | { phase: "failed"; message: Msg };
-
-function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: string): HTMLElementTagNameMap[K] {
-  const e = document.createElement(tag);
-  if (cls) e.className = cls;
-  if (text !== undefined) e.textContent = text;
-  return e;
-}
 
 /**
  * A progress bar with its title and count, which shows a download, then

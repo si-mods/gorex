@@ -2,6 +2,7 @@
 // host, a folder browsed through gorex.dir.list, a name. The state is
 // projects.ts's FolderBrowser; this draws it, as manage.ts's confirmDanger
 // draws its question (the same frosted dialog).
+import { el } from "./dom";
 import type { HostConn } from "./hostconn";
 import { icon } from "./hosts";
 import { describe } from "./pane";
@@ -27,13 +28,6 @@ export interface SheetOptions {
   dir?: string;
   /** Ask for the project's name, which is the folder's by default. */
   named: boolean;
-}
-
-function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: string): HTMLElementTagNameMap[K] {
-  const e = document.createElement(tag);
-  if (cls) e.className = cls;
-  if (text !== undefined) e.textContent = text;
-  return e;
 }
 
 function why(s: HostState, name: string): string {

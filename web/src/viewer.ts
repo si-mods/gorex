@@ -6,6 +6,7 @@
 // Ctrl+wheel and a trackpad's pinch (which arrives as Ctrl+wheel) zoom at
 // the pointer, two fingers zoom on a touch screen, and a drag pans an image
 // larger than the window. Escape or a click outside closes it.
+import { el } from "./dom";
 import { icon } from "./hosts";
 import { formatSize, localize, Msg, msg, onLanguageChange, PlainKey, t } from "./i18n";
 import { setTooltip } from "./tooltip";
@@ -16,13 +17,6 @@ export interface ViewerHost {
   download(): void;
   /** The viewer closed: the keyboard goes back to the pane. */
   closed(): void;
-}
-
-function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: string): HTMLElementTagNameMap[K] {
-  const e = document.createElement(tag);
-  if (cls) e.className = cls;
-  if (text !== undefined) e.textContent = text;
-  return e;
 }
 
 /** A file's size in words, in the page's language, as 48 KB. */

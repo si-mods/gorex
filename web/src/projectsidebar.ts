@@ -4,6 +4,7 @@
 // New Tab. A host that is away shows its copy, greyed and read-only. Hosts
 // with no projects of version 2 keep the rows of sidebar.ts. The rules are
 // projectmodel.ts's; the calls are projectops.ts's.
+import { el } from "./dom";
 import type { Agent, HostConn } from "./hostconn";
 import type { Host } from "./hosts";
 import { icon } from "./hosts";
@@ -106,13 +107,6 @@ function toggle(key: string, now: boolean) {
     // Not kept.
   }
   redraw();
-}
-
-function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: string): HTMLElementTagNameMap[K] {
-  const e = document.createElement(tag);
-  if (cls) e.className = cls;
-  if (text !== undefined) e.textContent = text;
-  return e;
 }
 
 function iconButton(glyph: string, label: string, run: () => void, disabled = false): HTMLButtonElement {
