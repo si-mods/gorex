@@ -1,16 +1,17 @@
 import XCTest
 
-/// The compose bar (docs/IOS-025-composer.md): it is up only while
-/// Settings > Terminal's Composer Mode is on — here the defaults
-/// argument — pinned in the key bar's place on an iPhone (IOS-030), the
-/// mic moved beside its field.
-/// Demo Mode's host takes no uploads, so the attach menu stays away; the
-/// test covers the message side.
+/// The compose bar (docs/IOS-025-composer.md, docs/IOS-030-composer-centric-bar.md):
+/// it is up only while Settings > Terminal's Composer Mode is on — here the
+/// defaults argument or Compose toggle — pinned in the key bar's place on an
+/// iPhone as a compact single-row pill (`+`, message field, mic, and Send on
+/// one line). Demo Mode's host takes no uploads, so the test covers layout,
+/// inline quick keys, swipe-down, and multi-line growth.
 final class ComposerUITests: XCTestCase {
     private var app: XCUIApplication!
 
     override func setUpWithError() throws {
         continueAfterFailure = false
+        XCUIDevice.shared.orientation = .portrait
         app = XCUIApplication()
         // A fresh install raises the notification-permission alert over the
         // launch; decline it so the first screen is reachable.
@@ -36,17 +37,20 @@ final class ComposerUITests: XCTestCase {
     /// Demo Mode's host, and a terminal of it: the key bar shows, or in
     /// Composer Mode the compose bar in its place (IOS-030).
     private func terminal() throws {
-        let demo = app.buttons["Try Demo Mode"]
-        guard demo.waitForExistence(timeout: 30) else {
-            throw XCTSkip("needs a fresh simulator's empty host list")
+        let shown = app.descendants(matching: .any).matching(NSPredicate(
+            format: "identifier == 'Esc' OR label == 'Esc' OR identifier == 'composer.message'")).firstMatch
+        if shown.waitForExistence(timeout: 3) { return }
+        if !app.buttons["Shell"].exists {
+            let demo = app.buttons["Try Demo Mode"]
+            guard demo.waitForExistence(timeout: 30) else {
+                throw XCTSkip("needs a fresh simulator's empty host list")
+            }
+            demo.tap()
         }
-        demo.tap()
         // The demo's loose tab, a window row under its own header.
         let row = app.buttons["Shell"]
         XCTAssertTrue(row.waitForExistence(timeout: 15))
         row.tap()
-        let shown = app.descendants(matching: .any).matching(NSPredicate(
-            format: "identifier == 'Esc' OR label == 'Esc' OR identifier == 'composer.message'")).firstMatch
         XCTAssertTrue(shown.waitForExistence(timeout: 15))
     }
 
@@ -54,13 +58,13 @@ final class ComposerUITests: XCTestCase {
     /// runner's simulator keeps the app's defaults, and Compose writes the
     /// mode there. A launch argument cannot set it, as the argument would
     /// also hide every write the test makes. With the keyboard down, a
-    /// swipe down on the grabber closes the mode, as a user does.
+    /// swipe down on the compose bar closes the mode, as a user does.
     private func composerModeOff() {
         guard message.exists else { return }
-        let grabber = app.otherElements["composer.grabber"]
-        XCTAssertTrue(grabber.waitForExistence(timeout: 5))
+        let bar = app.otherElements["composer"]
+        XCTAssertTrue(bar.waitForExistence(timeout: 5))
         func swipeDown() {
-            let start = grabber.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+            let start = bar.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
             start.press(forDuration: 0.05, thenDragTo: start.withOffset(CGVector(dx: 0, dy: 90)))
         }
         // The first swipe lowers the keyboard where it is up, the next
@@ -69,7 +73,9 @@ final class ComposerUITests: XCTestCase {
             swipeDown()
             XCTAssertTrue(app.keyboards.element.waitForNonExistence(timeout: 5))
         }
-        swipeDown()
+        if message.exists {
+            swipeDown()
+        }
         XCTAssertTrue(message.waitForNonExistence(timeout: 5))
     }
 
@@ -78,8 +84,9 @@ final class ComposerUITests: XCTestCase {
 
     /// Without the mode the bar stays away and the key bar shows ⌘, Compose,
     /// the continuous-scroll terminal keys, stick, Dictate, and Keyboard.
-    /// Tapping Compose opens the bar in one tap, and swiping down on the top
-    /// grabber dismisses it and restores ⌘ and Dictate.
+    /// Tapping Compose opens the single-row Composer pill (`[ +, field, Mic, Send ]`),
+    /// `+` › `More Keys` unfurls the 7-key strip inline without changing height,
+    /// and swiping down or choosing `Show Key Bar` closes Composer back to `KeyBar`.
     func testNoComposerByDefault() throws {
         composerModeOff()
         XCTAssertTrue(app.buttons.matching(identifier: "Esc").firstMatch.waitForExistence(timeout: 5))
@@ -90,28 +97,30 @@ final class ComposerUITests: XCTestCase {
         XCTAssertTrue(compose.waitForExistence(timeout: 5))
         shot("keybar-rex-rest")
 
-        // Tapping Compose opens the unified Composer-centric card (IOS-030)
-        // with the quiet quick-keys marker centered in the bottom action row.
+        // Tapping Compose opens the single-row 48 pt pill with +, message,
+        // Dictate, and Send aligned on one horizontal line.
         compose.tap()
         XCTAssertTrue(message.waitForExistence(timeout: 5))
-        let grabber = app.otherElements["composer.grabber"]
-        XCTAssertTrue(grabber.waitForExistence(timeout: 5))
+        let bar = app.otherElements["composer"]
+        XCTAssertTrue(bar.waitForExistence(timeout: 5))
+        XCTAssertLessThanOrEqual(bar.frame.height, 56)
         let addBtn = app.buttons.matching(identifier: "Add Attachment").firstMatch
         let sendBtn = app.buttons.matching(identifier: "Send").firstMatch
-        let toggleBtn = app.buttons["composer.keys.toggle"]
         XCTAssertTrue(addBtn.waitForExistence(timeout: 5))
         XCTAssertTrue(sendBtn.waitForExistence(timeout: 5))
-        XCTAssertTrue(toggleBtn.waitForExistence(timeout: 5))
-        XCTAssertGreaterThan(addBtn.frame.midY, message.frame.midY)
+        XCTAssertLessThan(abs(addBtn.frame.midY - message.frame.midY), 4)
+        XCTAssertLessThan(abs(sendBtn.frame.midY - message.frame.midY), 4)
         XCTAssertLessThan(abs(addBtn.frame.midY - sendBtn.frame.midY), 4)
-        let actionRowY = sendBtn.frame.midY
-        shot("composer-centric-collapsed")
+        let restRowY = sendBtn.frame.midY
+        shot("composer-single-row-rest")
 
-        // Tapping the quiet marker expands Esc, Tab, Enter, Delete, Arrow Keys,
-        // More Keys, and the collapse button full-width across the action row
-        // (temporarily fading +, mic, and Send) so every key meets Apple HIG's
-        // 44 pt minimum tap width.
-        toggleBtn.tap()
+        // Tapping + -> More Keys unfurls Esc, Tab, Enter, Delete, Arrow Keys,
+        // More Keys, and the collapse button full-width across the same single
+        // row so every key meets Apple HIG's 44 pt minimum tap width.
+        addBtn.tap()
+        let toggleMenuBtn = app.buttons["composer.keys.toggle"].exists ? app.buttons["composer.keys.toggle"] : app.buttons["More Keys"]
+        XCTAssertTrue(toggleMenuBtn.waitForExistence(timeout: 5))
+        toggleMenuBtn.tap()
         let moreKeys = app.buttons["composer.keys"]
         let collapseBtn = app.buttons["composer.keys.collapse"]
         let deleteBtn = app.buttons["Delete"]
@@ -120,58 +129,52 @@ final class ComposerUITests: XCTestCase {
         XCTAssertTrue(app.buttons["Tab"].waitForExistence(timeout: 5))
         XCTAssertTrue(deleteBtn.waitForExistence(timeout: 5))
         XCTAssertGreaterThanOrEqual(deleteBtn.frame.width, 44)
-        XCTAssertLessThan(abs(moreKeys.frame.midY - actionRowY), 4)
-        shot("composer-centric-expanded")
+        XCTAssertLessThan(abs(moreKeys.frame.midY - restRowY), 4)
+        shot("composer-single-row-expanded")
 
-        // Tapping collapse springs back to the quiet marker.
+        // Tapping collapse restores the single-row compose bar.
         collapseBtn.tap()
-        XCTAssertTrue(toggleBtn.waitForExistence(timeout: 5))
+        XCTAssertTrue(addBtn.waitForExistence(timeout: 5))
 
-        // Dragging down on the top grabber dismisses Composer Mode and restores
+        // Dragging down anywhere on the bar dismisses Composer Mode and restores
         // the traditional key bar below.
-        let start = grabber.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        let start = bar.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
         let end = start.withOffset(CGVector(dx: 0, dy: 90))
         start.press(forDuration: 0.05, thenDragTo: end)
         XCTAssertTrue(message.waitForNonExistence(timeout: 5))
         XCTAssertTrue(app.buttons["keybar.more"].waitForExistence(timeout: 5))
         shot("composer-mode-closed")
 
-        // Tapping Compose reopens it, expanding quick keys -> More Keys ->
-        // Show Key Bar closes Composer back to KeyBar.
+        // Tapping Compose reopens it; + -> Show Key Bar closes Composer directly.
         compose.tap()
         XCTAssertTrue(message.waitForExistence(timeout: 5))
-        toggleBtn.tap()
-        XCTAssertTrue(moreKeys.waitForExistence(timeout: 5))
-        moreKeys.tap()
+        addBtn.tap()
         let showBar = app.buttons["Show Key Bar"]
         XCTAssertTrue(showBar.waitForExistence(timeout: 5))
         showBar.tap()
         XCTAssertTrue(message.waitForNonExistence(timeout: 5))
     }
 
-    /// Composer Mode pins the two-row bar with a top grabber handle, full-width
-    /// field above circular `+`, the quick-keys marker, mic, and Send. On an
-    /// iPhone the bar takes the key bar's place: the key bar hides (IOS-030).
+    /// Composer Mode pins the single-row 48 pt pill with `+`, message field,
+    /// mic, and Send on one line while hiding the separate phone key bar, and
+    /// grows upward for multi-line text while keeping `+` and Send bottom-aligned.
     func testComposerModePinsBar() throws {
         app.terminate()
         app.launchArguments = ["-composerMode", "YES"]
         app.launch()
         try terminal()
         XCTAssertTrue(message.waitForExistence(timeout: 10))
-        XCTAssertTrue(app.buttons.matching(identifier: "Add Attachment").firstMatch.waitForExistence(timeout: 5))
-        XCTAssertTrue(app.buttons["composer.keys.toggle"].waitForExistence(timeout: 5))
+        let addBtn = app.buttons.matching(identifier: "Add Attachment").firstMatch
+        let sendBtn = app.buttons.matching(identifier: "Send").firstMatch
+        XCTAssertTrue(addBtn.waitForExistence(timeout: 5))
+        XCTAssertTrue(sendBtn.waitForExistence(timeout: 5))
         XCTAssertFalse(app.buttons["keybar.more"].exists)
         XCTAssertFalse(app.buttons["keybar.compose"].exists)
-        // The key bar's mic moved into the bar's bottom action row.
-        let addBtn = app.buttons.matching(identifier: "Add Attachment").firstMatch
         let dictates = app.buttons.matching(identifier: "Dictate").allElementsBoundByIndex
-        XCTAssertTrue(dictates.contains { abs($0.frame.midY - addBtn.frame.midY) < 20 })
-        let grabber = app.otherElements["composer.grabber"]
-        XCTAssertTrue(grabber.waitForExistence(timeout: 5))
+        XCTAssertTrue(dictates.contains { abs($0.frame.midY - addBtn.frame.midY) < 8 })
         let bar = app.otherElements["composer"]
-        if bar.exists {
-            XCTAssertLessThanOrEqual(bar.frame.height, 120)
-        }
+        XCTAssertTrue(bar.waitForExistence(timeout: 5))
+        XCTAssertLessThanOrEqual(bar.frame.height, 56)
         shot("composer-mode-rest")
 
         // Raising the keyboard keeps the key bar hidden under the compose bar,
@@ -182,8 +185,7 @@ final class ComposerUITests: XCTestCase {
             message.typeText("abc" + XCUIKeyboardKey.delete.rawValue)
             XCTAssertEqual(message.value as? String, "ab")
             message.typeText("\nline 2\nline 3")
-            let addBtn = app.buttons.matching(identifier: "Add Attachment").firstMatch
-            let sendBtn = app.buttons.matching(identifier: "Send").firstMatch
+            XCTAssertGreaterThan(bar.frame.height, 64)
             XCTAssertGreaterThan(addBtn.frame.midY, message.frame.midY)
             XCTAssertGreaterThan(sendBtn.frame.midY, message.frame.midY)
             XCTAssertLessThan(abs(addBtn.frame.midY - sendBtn.frame.midY), 4)

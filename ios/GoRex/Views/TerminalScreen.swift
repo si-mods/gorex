@@ -49,7 +49,9 @@ struct TerminalScreen: View {
     @AppStorage(ComposerBar.modeKey) private var composerMode = false
     /// Live height + gap of the compose bar when Composer Mode is on, so
     /// PaneBar and Reconnecting sit cleanly above it.
-    @State private var composerInset: CGFloat = TerminalView.composerMode ? ComposerBar.baseInset : 0
+    @State private var composerInset: CGFloat = TerminalView.composerMode
+        ? (TerminalView.hasBar ? ComposerBar.baseInset - KeyBar.height : ComposerBar.baseInset)
+        : 0
     /// The ports the pane listens on, for the bar's button.
     @State private var ports: Ports?
     /// Whether the ports sheet shows.
@@ -172,7 +174,7 @@ struct TerminalScreen: View {
                         .transition(.opacity.combined(with: .move(edge: .bottom)))
                     }
                 }
-                .padding(.bottom, (hasBar ? KeyBar.height : 0) + composerInset + 10)
+                .padding(.bottom, max(0, (hasBar ? KeyBar.height : 0) + composerInset) + 10)
             }
             // The layout, floating under the toolbar's right side for a
             // moment after a switch, as Rex Go shows it.
@@ -1367,44 +1369,11 @@ private struct ProgressLine: View {
     }
 }
 
-/// Wide live scrolling audio waveform for Composer Mode's inline voice view:
-/// thin vertical capsule bars spanning the full width between Stop and Send.
-private struct WideWave: View {
-    @Environment(\.accessibilityReduceMotion) private var still
-
-    var body: some View {
-        let levels = Dictation.shared.levels
-        Group {
-            if still {
-                Image(systemName: "waveform")
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity)
-            } else {
-                GeometryReader { geo in
-                    let step: CGFloat = 5.5
-                    let count = max(12, min(levels.count, Int((geo.size.width + 3) / step)))
-                    let slice = Array(levels.suffix(count))
-                    HStack(spacing: 3) {
-                        ForEach(slice.indices, id: \.self) { i in
-                            Capsule()
-                                .fill(Color.secondary.opacity(0.8))
-                                .frame(width: 2.5, height: 3 + 21 * CGFloat(slice[i]))
-                        }
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
-                    .animation(.easeOut(duration: 0.1), value: slice)
-                }
-            }
-        }
-        .frame(height: 24)
-        .accessibilityHidden(true)
-    }
-}
-
-/// What is said while the mic is on: in the key bar, a compact single-row
-/// capsule; in Composer Mode (`composer`), a two-row Grok-style card with
-/// the full-width live transcript on top and Cancel, wide waveform, and Done
-/// below. Dictation never sends: Done lands the text in the field.
+/// What is said while the mic is on: a compact single-row capsule in both the
+/// key bar and Composer Mode (`composer`). In Composer Mode, circular 36 pt
+/// Cancel and accent Done buttons frame the live waveform and scrolling
+/// transcript at the pill's 48 pt resting height. Dictation never sends: Done
+/// lands the text in the field.
 ///
 /// In the key bar it is given again only as what is said, or busy, changes
 /// (DictationShown): an input it shows besides those goes in there too.
@@ -1431,18 +1400,36 @@ private struct VoiceCapsule: View {
             } else {
                 Text(AttributedString(settled) + open)
             }
-            VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Button {
+                    Haptics.tapped()
+                    cancel()
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(Color.primary)
+                        .frame(width: 36, height: 36)
+                        .background(Color(uiColor: .tertiarySystemFill), in: Circle())
+                        .contentShape(.circle)
+                }
+                .buttonStyle(.plain)
+                .disabled(busy)
+                .accessibilityLabel("Cancel")
+
                 HStack(spacing: 6) {
                     if said?.polishing == true {
                         Image(systemName: "sparkles")
                             .foregroundStyle(.secondary)
                             .symbolEffect(.pulse)
+                            .frame(height: 18)
                             .accessibilityLabel("Polishing")
+                    } else {
+                        Level()
                     }
                     ScrollViewReader { proxy in
                         ScrollView(.horizontal) {
                             HStack(spacing: 0) {
-                                transcript.font(.system(size: 17)).lineLimit(1)
+                                transcript.font(.system(size: 16)).lineLimit(1)
                                 Color.clear.frame(width: 1, height: 1).id("end")
                             }
                         }
@@ -1461,53 +1448,31 @@ private struct VoiceCapsule: View {
                         ], startPoint: .leading, endPoint: .trailing)
                     }
                 }
-                .padding(.horizontal, 6)
-                .padding(.top, 4)
 
-                HStack(spacing: 12) {
-                    Button {
-                        Haptics.tapped()
-                        cancel()
-                    } label: {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 15, weight: .semibold))
-                            .foregroundStyle(Color.primary)
-                            .frame(width: 36, height: 36)
-                            .background(Color(uiColor: .secondarySystemFill), in: Circle())
-                            .contentShape(.circle)
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(busy)
-                    .accessibilityLabel("Cancel")
-
-                    WideWave()
-
-                    Button {
-                        Haptics.tapped()
-                        finish()
-                    } label: {
-                        Group {
-                            if busy {
-                                ProgressView()
-                                    .tint(Color(uiColor: .systemBackground))
-                                    .accessibilityLabel("Recognising")
-                            } else {
-                                Image(systemName: "checkmark")
-                                    .font(.system(size: 15, weight: .semibold))
-                                    .foregroundStyle(Color(uiColor: .systemBackground))
-                                    .accessibilityLabel("Done")
-                            }
+                Button {
+                    Haptics.tapped()
+                    finish()
+                } label: {
+                    Group {
+                        if busy {
+                            ProgressView()
+                                .tint(Color(uiColor: .systemBackground))
+                                .accessibilityLabel("Recognising")
+                        } else {
+                            Image(systemName: "checkmark")
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundStyle(Color(uiColor: .systemBackground))
+                                .accessibilityLabel("Done")
                         }
-                        .frame(width: 36, height: 36)
-                        .background(Color.accentColor, in: Circle())
-                        .contentShape(.circle)
                     }
-                    .buttonStyle(.plain)
-                    .disabled(busy)
+                    .frame(width: 36, height: 36)
+                    .background(Color.accentColor, in: Circle())
+                    .contentShape(.circle)
                 }
-                .padding(.bottom, 2)
+                .buttonStyle(.plain)
+                .disabled(busy)
             }
-            .padding(.horizontal, 2)
+            .frame(height: 36)
         } else {
             let text = Text(AttributedString(settled) + open).font(.callout)
             HStack(spacing: 8) {

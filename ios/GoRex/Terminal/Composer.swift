@@ -1,17 +1,19 @@
 import UIKit
 import UniformTypeIdentifiers
 
-/// The compose bar (docs/IOS-025-composer.md), up while Settings >
-/// Terminal's Composer Mode is on: a glass capsule pinned over the key
-/// bar — a message field that names its block and grows with its lines,
-/// an attach menu, the screen's mic, and a send — over the terminal,
-/// which stays in view with the keyboard. Typing and dictation land in
-/// the field to read before Send. The attachments stage in a folder of
-/// the temporary directory, emptied as a send goes. Send uploads them as
-/// one batch, whose paths the server types together once every file is
-/// up, then pastes the text and sends Return: the paths land first and
-/// the lot is one submission. A send with no text submits the paths
-/// alone, and empties the bar for the next message.
+/// The compose bar (docs/IOS-025-composer.md, docs/IOS-030-composer-centric-bar.md),
+/// up while Settings > Terminal's Composer Mode is on: a single-row glass pill
+/// pinned above the keyboard or home indicator — a circular attach/actions
+/// menu on the left, a message field that names its block and grows upward with
+/// its lines, and the screen's mic plus Send on the right — over the terminal,
+/// which stays in view with the keyboard. Typing and dictation land in the
+/// field to read before Send. On iPhone, `More Keys` in `+` unfurls the inline
+/// 7-key strip across the pill on demand. The attachments stage in a folder of
+/// the temporary directory, emptied as a send goes. Send uploads them as one
+/// batch, whose paths the server types together once every file is up, then
+/// pastes the text and sends Return: the paths land first and the lot is one
+/// submission. A send with no text submits the paths alone, and empties the bar
+/// for the next message.
 final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate {
     /// A staged attachment: its file in the folder, and its thumbnail for
     /// the strip, nil for a file that is no image.
@@ -48,24 +50,16 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
         g.endPoint = CGPoint(x: 1, y: 0.5)
         return g
     }()
-    private let attach = UIButton()
-    private let send = UIButton()
-    /// Collapsible quick-keys pill in the bottom action row on iPhone (IOS-030):
-    /// rests as a quiet muted 36 pt circle beside `+` and expands full-width
-    /// across the action row (temporarily fading `+`, mic, and Send) so all 7
-    /// keys meet Apple HIG's 44 pt minimum tap target.
+    private let attach = QuickKeyButton()
+    private let send = QuickKeyButton()
+    /// Inline quick-keys pill on iPhone (IOS-030): unfurls full-width across
+    /// the single row from `+` › `More Keys` (temporarily fading `inputRow`) so
+    /// all 7 keys meet Apple HIG's 44 × 44 pt minimum tap target.
     private let quickPill = QuickPillView()
-    private let quickToggle = UIButton()
-    private let quickKeys = UIStackView()
-    private let actionsRow = UIStackView()
-    private var quickPillCollapsedLeading: NSLayoutConstraint?
-    private var quickPillCollapsedWidth: NSLayoutConstraint?
-    private var quickPillExpandedLeading: NSLayoutConstraint?
-    private var quickPillExpandedTrailing: NSLayoutConstraint?
-    private var quickKeysTrailing: NSLayoutConstraint?
-    private var quickPillHeight: NSLayoutConstraint?
+    private let quickKeys = QuickStackView()
     private var quickKeysExpanded = false
     private let stickBtn = QuickKeyButton()
+    private var stickDrag: UILongPressGestureRecognizer?
     private let keysMenuBtn = QuickKeyButton()
     private let pad = StickPad()
     private var repeating: Task<Void, Never>?
@@ -73,22 +67,21 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
     private var steered = false
     private var arrow: String? { didSet { pad.arrow = arrow } }
     private let tick = UIImpactFeedbackGenerator(style: .light)
-    /// Where the screen's mic lands, next to Send.
-    let micHolder = UIView()
-    /// Where the screen's voice controls land while dictating, replacing the
-    /// input row inline inside the compose capsule instead of the key bar.
+    /// Where the screen's mic lands, between the message field and Send.
+    let micHolder: UIView = QuickPillView()
+    /// Where the screen's single-row voice controls land while dictating,
+    /// cross-fading with `inputRow` inside the compose pill.
     let voiceHolder = UIView()
-    private let inputRow = UIStackView()
-    private var voiceMinHeight: NSLayoutConstraint?
+    private let inputRow = QuickStackView()
     private var voiceActive = false
     /// Press-and-hold anywhere on the compose bar to dictate (push-to-talk):
     /// holding starts voice recording, releasing converts speech to text.
     private lazy var holdVoice = UILongPressGestureRecognizer(target: self, action: #selector(heldForVoice))
     private var holdingVoice = false
-    /// Top grabber area; dragging or flicking down closes Composer Mode.
-    private let handleArea = UIView()
+    /// Downward drag or flick anywhere on the bar dismisses the keyboard first
+    /// if up, and closes Composer Mode on the next swipe.
     private lazy var dismissPan = UIPanGestureRecognizer(target: self, action: #selector(draggedDown))
-    /// Called when the user drags or flicks down on the grabber to close Composer Mode.
+    /// Called when the user closes Composer Mode via swipe-down or menu.
     var onClose: (() -> Void)?
     /// Whether an upload or inline dictation is running and closing must wait.
     var isBusy: Bool { sending || voiceActive }
@@ -102,22 +95,17 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
     /// attachments), so the host can slide the terminal and bottom edge.
     var onHeightChange: ((CGFloat) -> Void)?
     private var lastHeight: CGFloat = 0
-    /// Minimum height of the single-line message field, bottom action row, top
-    /// grabber, and vertical padding inside the capsule; together they fix the
-    /// resting height (matching official Rex's two-row composer card).
+    /// Single-line row height and concentric 6 pt padding inside the 24 pt
+    /// radius pill (`18 + 6 = 24`), fixing the resting height at 48 pt.
     private static let fieldMin: CGFloat = 36
-    private static let actionsHeight: CGFloat = 36
-    private static let rowSpacing: CGFloat = 8
-    private static let topPad: CGFloat = 4
-    private static let bottomPad: CGFloat = 10
-    private static let handleHeight: CGFloat = 14
-    private static let handleSpacing: CGFloat = 4
-    /// Gap between the compose bar and the bar below it.
+    private static let vPad: CGFloat = 6
+    private static let hPad: CGFloat = 6
+    /// Gap between the compose bar and the keyboard or safe area below it.
     static let gap: CGFloat = 6
-    /// Resting height of the two-row bar with no attachments.
-    static let baseHeight: CGFloat = topPad + handleHeight + handleSpacing + fieldMin + rowSpacing + actionsHeight + bottomPad
-    /// Bottom inset reserved in the terminal grid so the resting bar never
-    /// covers the program's own input row.
+    /// Resting height of the single-row pill with no attachments (48 pt).
+    static let baseHeight: CGFloat = vPad + fieldMin + vPad
+    /// Bottom inset reserved so the resting bar never covers the program's own
+    /// input row (54 pt).
     static let baseInset: CGFloat = baseHeight + gap
     /// How tall the field grows before it scrolls instead.
     private static let fieldMax: CGFloat = 112
@@ -127,9 +115,10 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
         dir = FileManager.default.temporaryDirectory.appending(path: "Composer").appending(path: UUID().uuidString)
         super.init(frame: .zero)
         accessibilityIdentifier = "composer"
+        accessibilityContainerType = .semanticGroup
 
         let glass = UIVisualEffectView(effect: UIGlassEffect(style: .regular))
-        glass.cornerConfiguration = .uniformCorners(radius: 26)
+        glass.cornerConfiguration = .uniformCorners(radius: 24)
         glass.clipsToBounds = true
         glass.translatesAutoresizingMaskIntoConstraints = false
         addSubview(glass)
@@ -158,16 +147,44 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
             }
             items.append(UIAction(title: String(localized: "File"), image: UIImage(systemName: "doc")) { [weak self] _ in self?.addFiles() })
         }
+        items.append(UIDeferredMenuElement.uncached { [weak self] done in
+            var tail: [UIMenuElement] = []
+            if UIDevice.current.userInterfaceIdiom != .pad {
+                let keysAction = UIAction(title: String(localized: "More Keys"), image: UIImage(systemName: "command")) { [weak self] _ in
+                    self?.tick.impactOccurred()
+                    self?.setQuickKeysExpanded(true, animated: true)
+                }
+                keysAction.accessibilityIdentifier = "composer.keys.toggle"
+                tail.append(keysAction)
+                if self?.terminal?.keyboardUp == true {
+                    tail.append(UIAction(title: String(localized: "Hide Keyboard"), image: UIImage(systemName: "keyboard.chevron.compact.down")) { [weak self] _ in
+                        _ = self?.terminal?.resignFirstResponder()
+                    })
+                }
+                tail.append(UIAction(title: String(localized: "Show Key Bar"), image: UIImage(systemName: "keyboard")) { [weak self] _ in
+                    self?.requestClose()
+                })
+            } else {
+                tail.append(UIAction(title: String(localized: "Hide Composer"), image: UIImage(systemName: "xmark.circle")) { [weak self] _ in
+                    self?.requestClose()
+                })
+            }
+            done([UIMenu(options: .displayInline, children: tail)])
+        })
         attach.menu = UIMenu(children: items)
         attach.showsMenuAsPrimaryAction = true
         attach.addAction(UIAction { _ in Haptics.tapped() }, for: .touchDown)
 
         field.font = .systemFont(ofSize: 17)
         field.backgroundColor = .clear
-        field.textContainerInset = UIEdgeInsets(top: 6, left: 4, bottom: 6, right: 4)
+        field.textContainerInset = UIEdgeInsets(top: 7.5, left: 4, bottom: 7.5, right: 4)
         field.textContainer.lineFragmentPadding = 0
         field.isScrollEnabled = false
         field.delegate = self
+        field.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        field.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        field.inputAssistantItem.leadingBarButtonGroups = []
+        field.inputAssistantItem.trailingBarButtonGroups = []
         field.accessibilityLabel = String(localized: "Message")
         field.accessibilityIdentifier = "composer.message"
 
@@ -182,6 +199,9 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
         hint.isUserInteractionEnabled = false
         hint.translatesAutoresizingMaskIntoConstraints = false
         field.addSubview(hint)
+
+        micHolder.backgroundColor = .tertiarySystemFill
+        micHolder.layer.cornerRadius = 18
 
         var s = UIButton.Configuration.filled()
         s.image = UIImage(systemName: "arrow.up")
@@ -201,13 +221,11 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
         thumbs.alignment = .center
         thumbs.translatesAutoresizingMaskIntoConstraints = false
         strip.addSubview(thumbs)
+        strip.contentInset = UIEdgeInsets(top: 4, left: 6, bottom: 0, right: 6)
         strip.showsHorizontalScrollIndicator = false
         strip.isHidden = true
 
-        // Two-row layout (IOS-030): full-width message field on top, action
-        // row below with `+` on the left, a quiet collapsible quick-keys pill
-        // (`36×36` circle → full-width 7-key strip) left-aligned after `+`,
-        // and mic + circular Send on the right.
+        // Inline 7-key strip (IOS-030), unfurled across the row from `+` › `More Keys`.
         func quickButton(image: UIImage?, label: String, id: String? = nil, tint: UIColor = .label) -> UIButton {
             var c = UIButton.Configuration.filled()
             c.image = image
@@ -221,7 +239,7 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
             b.configurationUpdateHandler = { btn in
                 UIView.performWithoutAnimation {
                     var cfg = btn.configuration ?? c
-                    cfg.baseBackgroundColor = btn.isHighlighted ? UIColor.white.withAlphaComponent(0.16) : .clear
+                    cfg.baseBackgroundColor = btn.isHighlighted ? .secondarySystemFill : .clear
                     btn.configuration = cfg
                 }
             }
@@ -282,6 +300,7 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
         drag.minimumPressDuration = 0
         drag.allowableMovement = .greatestFiniteMagnitude
         stickBtn.addGestureRecognizer(drag)
+        stickDrag = drag
 
         var menuCfg = UIButton.Configuration.filled()
         menuCfg.image = UIImage(systemName: "ellipsis", withConfiguration: symCfg)
@@ -331,110 +350,37 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
         quickKeys.distribution = .fillEqually
         quickKeys.alignment = .center
         quickKeys.spacing = 0
-        quickKeys.alpha = 0
-        quickKeys.isHidden = true
-        quickKeys.transform = CGAffineTransform(translationX: -10, y: 0).scaledBy(x: 0.92, y: 0.92)
+        quickKeys.transform = CGAffineTransform(scaleX: 0.94, y: 0.94)
         quickKeys.translatesAutoresizingMaskIntoConstraints = false
         for v in [escBtn, tabBtn, enterBtn, deleteBtn, stickBtn, keysMenuBtn, collapseBtn] { quickKeys.addArrangedSubview(v) }
 
-        var toggleCfg = UIButton.Configuration.plain()
-        toggleCfg.image = UIImage(systemName: "command", withConfiguration: UIImage.SymbolConfiguration(pointSize: 15, weight: .medium))
-        toggleCfg.baseForegroundColor = UIColor.label.withAlphaComponent(0.45)
-        toggleCfg.contentInsets = .zero
-        quickToggle.configuration = toggleCfg
-        quickToggle.accessibilityLabel = String(localized: "More Keys")
-        quickToggle.accessibilityIdentifier = "composer.keys.toggle"
-        quickToggle.translatesAutoresizingMaskIntoConstraints = false
-        quickToggle.addAction(UIAction { [weak self] _ in
-            self?.tick.impactOccurred()
-            self?.setQuickKeysExpanded(true, animated: true)
-        }, for: .touchUpInside)
-
-        let quickAnchor = UIView()
-        quickAnchor.isUserInteractionEnabled = false
-        quickAnchor.isHidden = UIDevice.current.userInterfaceIdiom == .pad
-        quickAnchor.translatesAutoresizingMaskIntoConstraints = false
-
-        let spacer = UIView()
-        spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
-        for v in [attach, quickAnchor, spacer, micHolder, send] { actionsRow.addArrangedSubview(v) }
-        actionsRow.axis = .horizontal
-        actionsRow.alignment = .center
-        actionsRow.spacing = 8
-        actionsRow.translatesAutoresizingMaskIntoConstraints = false
-
-        let actionsBox = QuickPillView()
-        actionsBox.translatesAutoresizingMaskIntoConstraints = false
-        actionsBox.addSubview(actionsRow)
-        actionsBox.addSubview(quickPill)
-
-        quickPill.backgroundColor = UIColor.white.withAlphaComponent(0.06)
+        quickPill.backgroundColor = .tertiarySystemFill
         quickPill.layer.cornerRadius = 18
         quickPill.clipsToBounds = true
-        quickPill.isHidden = UIDevice.current.userInterfaceIdiom == .pad
+        quickPill.alpha = 0
+        quickPill.isHidden = true
         quickPill.translatesAutoresizingMaskIntoConstraints = false
-        quickPill.addSubview(quickToggle)
         quickPill.addSubview(quickKeys)
-        let collapsedLead = quickPill.leadingAnchor.constraint(equalTo: quickAnchor.leadingAnchor)
-        let collapsedW = quickPill.widthAnchor.constraint(equalToConstant: 36)
-        let expandedLead = quickPill.leadingAnchor.constraint(equalTo: actionsBox.leadingAnchor)
-        let expandedTrail = quickPill.trailingAnchor.constraint(equalTo: actionsBox.trailingAnchor)
-        let keysTrail = quickKeys.trailingAnchor.constraint(equalTo: quickPill.trailingAnchor, constant: -6)
-        let ph = quickPill.heightAnchor.constraint(equalToConstant: 36)
-        quickPillCollapsedLeading = collapsedLead
-        quickPillCollapsedWidth = collapsedW
-        quickPillExpandedLeading = expandedLead
-        quickPillExpandedTrailing = expandedTrail
-        quickKeysTrailing = keysTrail
-        quickPillHeight = ph
-        NSLayoutConstraint.activate([
-            actionsRow.leadingAnchor.constraint(equalTo: actionsBox.leadingAnchor),
-            actionsRow.trailingAnchor.constraint(equalTo: actionsBox.trailingAnchor),
-            actionsRow.topAnchor.constraint(equalTo: actionsBox.topAnchor),
-            actionsRow.bottomAnchor.constraint(equalTo: actionsBox.bottomAnchor),
-            quickAnchor.widthAnchor.constraint(equalToConstant: 36),
-            quickAnchor.heightAnchor.constraint(equalToConstant: 36),
-            collapsedLead, collapsedW, ph,
-            quickPill.centerYAnchor.constraint(equalTo: actionsBox.centerYAnchor),
-            quickToggle.leadingAnchor.constraint(equalTo: quickPill.leadingAnchor),
-            quickToggle.widthAnchor.constraint(equalToConstant: 36),
-            quickToggle.topAnchor.constraint(equalTo: quickPill.topAnchor),
-            quickToggle.bottomAnchor.constraint(equalTo: quickPill.bottomAnchor),
-            quickKeys.leadingAnchor.constraint(equalTo: quickPill.leadingAnchor, constant: 6),
-            quickKeys.centerYAnchor.constraint(equalTo: quickPill.centerYAnchor),
-        ])
 
-        inputRow.axis = .vertical
-        inputRow.alignment = .fill
-        inputRow.spacing = Self.rowSpacing
-        inputRow.addArrangedSubview(field)
-        inputRow.addArrangedSubview(actionsBox)
+        for v in [attach, field, micHolder, send] { inputRow.addArrangedSubview(v) }
+        inputRow.axis = .horizontal
+        inputRow.alignment = .bottom
+        inputRow.spacing = 6
         inputRow.translatesAutoresizingMaskIntoConstraints = false
 
         voiceHolder.alpha = 0
         voiceHolder.isHidden = true
         voiceHolder.translatesAutoresizingMaskIntoConstraints = false
 
-        let rowBox = UIView()
+        let rowBox = QuickPillView()
         rowBox.translatesAutoresizingMaskIntoConstraints = false
         rowBox.addSubview(inputRow)
+        rowBox.addSubview(quickPill)
         rowBox.addSubview(voiceHolder)
 
-        // Top grabber pill: swiping down closes Composer Mode.
-        let handle = UIView()
-        handle.backgroundColor = .tertiaryLabel
-        handle.layer.cornerRadius = 2.5
-        handle.translatesAutoresizingMaskIntoConstraints = false
-        handleArea.translatesAutoresizingMaskIntoConstraints = false
-        handleArea.isAccessibilityElement = true
-        handleArea.accessibilityIdentifier = "composer.grabber"
-        handleArea.accessibilityLabel = String(localized: "Hide Composer")
-        handleArea.addSubview(handle)
-
-        let body = UIStackView(arrangedSubviews: [handleArea, strip, rowBox])
+        let body = QuickStackView(arrangedSubviews: [strip, rowBox])
         body.axis = .vertical
         body.spacing = 8
-        body.setCustomSpacing(Self.handleSpacing, after: handleArea)
         body.translatesAutoresizingMaskIntoConstraints = false
         glass.contentView.addSubview(body)
 
@@ -450,34 +396,33 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
         micHolder.translatesAutoresizingMaskIntoConstraints = false
         let inputBottomFit = inputRow.bottomAnchor.constraint(equalTo: rowBox.bottomAnchor)
         inputBottomFit.priority = .defaultHigh
-        let voiceHeight = rowBox.heightAnchor.constraint(greaterThanOrEqualToConstant: 86)
-        voiceMinHeight = voiceHeight
         NSLayoutConstraint.activate([
-            handle.centerXAnchor.constraint(equalTo: handleArea.centerXAnchor),
-            handle.centerYAnchor.constraint(equalTo: handleArea.centerYAnchor),
-            handle.widthAnchor.constraint(equalToConstant: 36),
-            handle.heightAnchor.constraint(equalToConstant: 5),
-            handleArea.heightAnchor.constraint(equalToConstant: Self.handleHeight),
-            body.leadingAnchor.constraint(equalTo: glass.contentView.leadingAnchor, constant: 12),
-            body.trailingAnchor.constraint(equalTo: glass.contentView.trailingAnchor, constant: -12),
-            body.topAnchor.constraint(equalTo: glass.contentView.topAnchor, constant: Self.topPad),
-            body.bottomAnchor.constraint(equalTo: glass.contentView.bottomAnchor, constant: -Self.bottomPad),
+            body.leadingAnchor.constraint(equalTo: glass.contentView.leadingAnchor, constant: Self.hPad),
+            body.trailingAnchor.constraint(equalTo: glass.contentView.trailingAnchor, constant: -Self.hPad),
+            body.topAnchor.constraint(equalTo: glass.contentView.topAnchor, constant: Self.vPad),
+            body.bottomAnchor.constraint(equalTo: glass.contentView.bottomAnchor, constant: -Self.vPad),
             inputRow.leadingAnchor.constraint(equalTo: rowBox.leadingAnchor),
             inputRow.trailingAnchor.constraint(equalTo: rowBox.trailingAnchor),
             inputRow.topAnchor.constraint(equalTo: rowBox.topAnchor),
             inputRow.bottomAnchor.constraint(lessThanOrEqualTo: rowBox.bottomAnchor),
             inputBottomFit,
+            quickPill.leadingAnchor.constraint(equalTo: rowBox.leadingAnchor),
+            quickPill.trailingAnchor.constraint(equalTo: rowBox.trailingAnchor),
+            quickPill.bottomAnchor.constraint(equalTo: rowBox.bottomAnchor),
+            quickPill.heightAnchor.constraint(equalToConstant: Self.fieldMin),
+            quickKeys.leadingAnchor.constraint(equalTo: quickPill.leadingAnchor, constant: 2),
+            quickKeys.trailingAnchor.constraint(equalTo: quickPill.trailingAnchor, constant: -2),
+            quickKeys.centerYAnchor.constraint(equalTo: quickPill.centerYAnchor),
             voiceHolder.leadingAnchor.constraint(equalTo: rowBox.leadingAnchor),
             voiceHolder.trailingAnchor.constraint(equalTo: rowBox.trailingAnchor),
-            voiceHolder.topAnchor.constraint(equalTo: rowBox.topAnchor),
-            voiceHolder.bottomAnchor.constraint(equalTo: rowBox.bottomAnchor),
+            voiceHolder.centerYAnchor.constraint(equalTo: rowBox.centerYAnchor),
+            voiceHolder.heightAnchor.constraint(equalToConstant: Self.fieldMin),
             thumbs.leadingAnchor.constraint(equalTo: strip.contentLayoutGuide.leadingAnchor),
             thumbs.trailingAnchor.constraint(equalTo: strip.contentLayoutGuide.trailingAnchor),
             thumbs.topAnchor.constraint(equalTo: strip.contentLayoutGuide.topAnchor),
             thumbs.bottomAnchor.constraint(equalTo: strip.contentLayoutGuide.bottomAnchor),
-            thumbs.heightAnchor.constraint(equalTo: strip.frameLayoutGuide.heightAnchor),
+            thumbs.heightAnchor.constraint(equalTo: strip.frameLayoutGuide.heightAnchor, constant: -4),
             strip.heightAnchor.constraint(equalToConstant: 52),
-            actionsRow.heightAnchor.constraint(equalToConstant: Self.actionsHeight),
             attach.widthAnchor.constraint(equalToConstant: 36),
             attach.heightAnchor.constraint(equalToConstant: 36),
             micHolder.widthAnchor.constraint(equalToConstant: 36),
@@ -490,6 +435,21 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
             field.heightAnchor.constraint(greaterThanOrEqualToConstant: Self.fieldMin),
             field.heightAnchor.constraint(lessThanOrEqualToConstant: Self.fieldMax),
         ])
+
+        var actions = [
+            UIAccessibilityCustomAction(name: String(localized: "Hide Composer")) { [weak self] _ in
+                self?.requestClose()
+                return true
+            },
+        ]
+        if UIDevice.current.userInterfaceIdiom != .pad {
+            actions.append(UIAccessibilityCustomAction(name: String(localized: "More Keys")) { [weak self] _ in
+                guard let self else { return false }
+                self.setQuickKeysExpanded(!self.quickKeysExpanded, animated: true)
+                return true
+            })
+        }
+        accessibilityCustomActions = actions
 
         // The bar's mic dictates into the field, not the terminal.
         terminal.dictationInsert = { [weak self] text in self?.hear(text) }
@@ -529,34 +489,46 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
     /// Where an open lands: the field's keyboard.
     func focus() { field.becomeFirstResponder() }
 
-    /// Cross-fades the input row into the inline two-row voice view while
-    /// dictating, expanding the capsule smoothly and leaving the key bar below
-    /// untouched.
+    /// Cross-fades the input row into the inline single-row voice view while
+    /// dictating, keeping the resting pill height steady without bouncing the
+    /// terminal above it.
     func setVoice(active: Bool) {
         guard active != voiceActive else { return }
         voiceActive = active
-        voiceMinHeight?.isActive = active
+        if active, quickKeysExpanded {
+            setQuickKeysExpanded(false, animated: false)
+        }
+        let still = UIAccessibility.isReduceMotionEnabled
         if active {
             voiceHolder.isHidden = false
-            voiceHolder.transform = CGAffineTransform(scaleX: 0.96, y: 0.96)
+            voiceHolder.transform = still ? .identity : CGAffineTransform(scaleX: 0.96, y: 0.96)
             inputRow.isUserInteractionEnabled = false
-            UIView.animate(withDuration: 0.28, delay: 0, usingSpringWithDamping: 0.86, initialSpringVelocity: 0) {
+            let apply = {
                 self.inputRow.alpha = 0
-                self.inputRow.transform = CGAffineTransform(scaleX: 0.96, y: 0.96)
+                self.inputRow.transform = still ? .identity : CGAffineTransform(scaleX: 0.96, y: 0.96)
                 self.voiceHolder.alpha = 1
                 self.voiceHolder.transform = .identity
-                self.superview?.layoutIfNeeded()
+            }
+            if still {
+                UIView.animate(withDuration: 0.15, animations: apply)
+            } else {
+                UIView.animate(withDuration: 0.26, delay: 0, usingSpringWithDamping: 0.88, initialSpringVelocity: 0, animations: apply)
             }
         } else {
             inputRow.isUserInteractionEnabled = true
-            UIView.animate(withDuration: 0.24, delay: 0, usingSpringWithDamping: 0.9, initialSpringVelocity: 0) {
+            let apply = {
                 self.inputRow.alpha = 1
                 self.inputRow.transform = .identity
                 self.voiceHolder.alpha = 0
-                self.voiceHolder.transform = CGAffineTransform(scaleX: 0.96, y: 0.96)
-                self.superview?.layoutIfNeeded()
-            } completion: { _ in
+                self.voiceHolder.transform = still ? .identity : CGAffineTransform(scaleX: 0.96, y: 0.96)
+            }
+            let done: (Bool) -> Void = { _ in
                 if !self.voiceActive { self.voiceHolder.isHidden = true }
+            }
+            if still {
+                UIView.animate(withDuration: 0.15, animations: apply, completion: done)
+            } else {
+                UIView.animate(withDuration: 0.22, delay: 0, usingSpringWithDamping: 0.9, initialSpringVelocity: 0, animations: apply, completion: done)
             }
         }
     }
@@ -566,15 +538,21 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
         Haptics.tapped()
     }
 
-    @objc private func requestClose() {
-        guard !sending, !voiceActive else { return }
+    @discardableResult
+    private func requestClose() -> Bool {
+        guard !sending, !voiceActive else { return false }
         Haptics.tapped()
         onClose?()
+        return true
     }
 
     @objc private func draggedDown(_ g: UIPanGestureRecognizer) {
         switch g.state {
-        case .changed:
+        case .began, .changed:
+            if holdingVoice {
+                holdVoice.isEnabled = false
+                holdVoice.isEnabled = true
+            }
             let dy = max(0, g.translation(in: self).y)
             transform = CGAffineTransform(translationX: 0, y: dy * 0.5)
         case .ended:
@@ -589,8 +567,10 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
                     UIView.animate(withDuration: 0.2, delay: 0, usingSpringWithDamping: 0.85, initialSpringVelocity: 0) {
                         self.transform = .identity
                     }
-                } else {
-                    requestClose()
+                } else if !requestClose() {
+                    UIView.animate(withDuration: 0.2, delay: 0, usingSpringWithDamping: 0.85, initialSpringVelocity: 0) {
+                        self.transform = .identity
+                    }
                 }
             } else {
                 UIView.animate(withDuration: 0.2, delay: 0, usingSpringWithDamping: 0.85, initialSpringVelocity: 0) {
@@ -643,43 +623,34 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
         }
     }
 
-    /// Smoothly expands or collapses the center quick-keys pill with spring
+    /// Smoothly expands or collapses the inline quick-keys pill with spring
     /// physics (or a plain fade under Reduce Motion).
     private func setQuickKeysExpanded(_ expanded: Bool, animated: Bool) {
         guard expanded != quickKeysExpanded else { return }
         quickKeysExpanded = expanded
-        quickPillCollapsedLeading?.isActive = !expanded
-        quickPillCollapsedWidth?.isActive = !expanded
-        quickPillExpandedLeading?.isActive = expanded
-        quickPillExpandedTrailing?.isActive = expanded
-        quickKeysTrailing?.isActive = expanded
-        quickPillHeight?.constant = 36
         if expanded {
-            quickKeys.isHidden = false
-            quickToggle.isUserInteractionEnabled = false
-            actionsRow.isUserInteractionEnabled = false
+            quickPill.isHidden = false
+            quickPill.isUserInteractionEnabled = false
+            inputRow.isUserInteractionEnabled = false
         } else {
-            quickToggle.isHidden = false
-            quickKeys.isUserInteractionEnabled = false
-            actionsRow.isUserInteractionEnabled = true
+            quickPill.isUserInteractionEnabled = false
+            inputRow.isUserInteractionEnabled = true
+        }
+        let still = UIAccessibility.isReduceMotionEnabled
+        if expanded {
+            quickKeys.transform = still ? .identity : CGAffineTransform(scaleX: 0.94, y: 0.94)
         }
         let apply = {
-            self.actionsRow.alpha = expanded ? 0 : 1
-            self.actionsRow.transform = expanded ? CGAffineTransform(scaleX: 0.96, y: 0.96) : .identity
-            self.quickPill.backgroundColor = UIColor.white.withAlphaComponent(expanded ? 0.09 : 0.06)
-            self.quickToggle.alpha = expanded ? 0 : 1
-            self.quickToggle.transform = expanded ? CGAffineTransform(scaleX: 0.75, y: 0.75) : .identity
-            self.quickKeys.alpha = expanded ? 1 : 0
-            self.quickKeys.transform = expanded ? .identity : CGAffineTransform(translationX: -10, y: 0).scaledBy(x: 0.92, y: 0.92)
-            self.layoutIfNeeded()
+            self.inputRow.alpha = expanded ? 0 : 1
+            self.inputRow.transform = (expanded && !still) ? CGAffineTransform(scaleX: 0.96, y: 0.96) : .identity
+            self.quickPill.alpha = expanded ? 1 : 0
+            self.quickKeys.transform = (expanded || still) ? .identity : CGAffineTransform(scaleX: 0.94, y: 0.94)
         }
         let done: (Bool) -> Void = { _ in
             if self.quickKeysExpanded {
-                self.quickToggle.isHidden = true
-                self.quickKeys.isUserInteractionEnabled = true
+                self.quickPill.isUserInteractionEnabled = true
             } else {
-                self.quickKeys.isHidden = true
-                self.quickToggle.isUserInteractionEnabled = true
+                self.quickPill.isHidden = true
             }
         }
         guard animated else {
@@ -687,16 +658,19 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
             done(true)
             return
         }
-        if UIAccessibility.isReduceMotionEnabled {
-            UIView.animate(withDuration: 0.18, animations: apply, completion: done)
+        if still {
+            UIView.animate(withDuration: 0.15, animations: apply, completion: done)
         } else {
-            UIView.animate(withDuration: 0.34, delay: 0, usingSpringWithDamping: 0.82, initialSpringVelocity: 0.2, animations: apply, completion: done)
+            UIView.animate(withDuration: 0.32, delay: 0, usingSpringWithDamping: 0.82, initialSpringVelocity: 0.2, animations: apply, completion: done)
         }
     }
 
     override func gestureRecognizerShouldBegin(_ g: UIGestureRecognizer) -> Bool {
         if g === dismissPan {
-            guard !voiceActive, !sending else { return false }
+            guard !voiceActive, !sending, !holdingVoice else { return false }
+            if let stickDrag, stickDrag.state == .began || stickDrag.state == .changed {
+                return false
+            }
             let v = dismissPan.velocity(in: self)
             guard v.y > 0, v.y > abs(v.x) else { return false }
             let p = g.location(in: self)
@@ -710,8 +684,8 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
         }
         guard g === holdVoice else { return super.gestureRecognizerShouldBegin(g) }
         guard !voiceActive, !sending else { return false }
+        if dismissPan.state == .began || dismissPan.state == .changed { return false }
         let p = g.location(in: self)
-        if handleArea.frame.contains(convert(p, to: handleArea.superview)) { return false }
         if !attach.isHidden, attach.frame.contains(convert(p, to: attach.superview)) { return false }
         if !quickPill.isHidden, quickPill.frame.contains(convert(p, to: quickPill.superview)) { return false }
         if send.frame.contains(convert(p, to: send.superview)) { return false }
@@ -723,6 +697,13 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
             return false
         }
         return true
+    }
+
+    func gestureRecognizer(_ g: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool {
+        if g === dismissPan, !field.isScrollEnabled, other.view?.isDescendant(of: field) == true {
+            return true
+        }
+        return false
     }
 
     @objc private func heldForVoice(_ g: UILongPressGestureRecognizer) {
@@ -884,7 +865,7 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
     private func update() {
         let on = !sending && (!field.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !attachments.isEmpty)
         send.isEnabled = on
-        send.alpha = on ? 1 : 0.4
+        send.alpha = on ? 1 : 0.45
     }
 
     /// Uploads the attachments as one batch — the server types their
@@ -994,9 +975,19 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
     }
 }
 
+/// Stack view that extends its vertical hit-test area to Apple HIG's 44 pt
+/// minimum so touches near the pill's outer edges reach child controls instead
+/// of clipping at the 32–36 pt stack bounds.
+private final class QuickStackView: UIStackView {
+    override func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
+        let dy = max(0, (44 - bounds.height) / 2)
+        return bounds.insetBy(dx: 0, dy: -dy).contains(point)
+    }
+}
+
 /// Container that extends its vertical hit-test area to Apple HIG's 44 pt
-/// minimum so the 36 pt quick-keys pill stays visually compact without
-/// sacrificing vertical tap comfort.
+/// minimum so 36 pt controls inside the 48 pt pill stay visually compact
+/// without sacrificing vertical tap comfort.
 private final class QuickPillView: UIView {
     override func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
         let dy = max(0, (44 - bounds.height) / 2)
@@ -1004,7 +995,7 @@ private final class QuickPillView: UIView {
     }
 }
 
-/// Quick-key button with a 44 pt minimum vertical hit target.
+/// Button with a 44 pt minimum vertical hit target.
 private final class QuickKeyButton: UIButton {
     override func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
         let dy = max(0, (44 - bounds.height) / 2)
