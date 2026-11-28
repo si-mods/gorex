@@ -98,7 +98,7 @@ gorex events
 gorex run [--dir DIR] [--json] -- COMMAND...
 gorex hosts [--probe] [--timeout D] [--json]
 gorex [-S HOST] agents [--json]
-gorex [-S HOST] delegate [--agent auto|claude|omp|codex] [--dir DIR] [--name NAME] [--mode full|read-only|yolo] [--session SID] [--resume ID] [--result SID] [--async] [--keep] [--json] -- PROMPT...
+gorex [-S HOST] delegate [--agent auto|claude|omp|codex|agy|devin] [--dir DIR] [--name NAME] [--mode full|read-only|yolo] [--session SID] [--resume ID] [--result SID] [--async] [--keep] [--json] -- PROMPT...
 gorex action run [-s SESSION] ACTION [KEY=VALUE...] [--json]
 gorex float [new|toggle|hide-all|raise|lower|cycle|move|resize|dock] [-s SESSION]
 gorex omarchy status [--json] | bind [--keys KEYS] | unbind [--json]
@@ -173,6 +173,10 @@ gorex -S build-linux delegate --resume <AGENT_SESSION> --dir /home/alice/repos/a
 ` + "```" + `
 
    Or run plain shell commands directly with ` + "`gorex -S HOST run --dir <DIR> --json -- <CMD>`" + `.
+   ` + "`delegate`" + ` waits for the TUI to settle, presses ` + "`Escape`" + ` to dismiss startup
+   notices (such as ` + "`Introducing …`" + ` / ` + "`esc to dismiss`" + `), verifies that the pasted
+   prompt echoed into the input box (retrying with bounded backoff), and exits 1
+   with ` + "`status: \"failed\"`" + ` if the agent still does not accept the prompt.
 
 4. If ` + "`delegate`" + ` returns ` + "`status: \"blocked\"`" + `, inspect ` + "`error`" + ` and ` + "`rawCapture`" + `:
    - For safe commands (read-only checks, tests, builds), approve directly with

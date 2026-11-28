@@ -48,6 +48,7 @@ var wantLightColors = colors{
 	attention: ui.Hex("#f59e0b"),
 	done:      ui.Hex("#7aa0c2"),
 	exited:    ui.Hex("#a1a1a6"),
+	agent:     ui.Hex("#2e6fd0"),
 
 	panel:       ui.Hex("#fcfcfd"),
 	panelGlass:  ui.RGBA(252, 252, 253, 0.80),
@@ -100,6 +101,7 @@ var wantDarkColors = colors{
 	attention: ui.Hex("#fbbf24"),
 	done:      ui.Hex("#7aa0c2"),
 	exited:    ui.Hex("#636366"),
+	agent:     ui.Hex("#6cb2ff"),
 
 	panel:       ui.Hex("#26262a"),
 	panelGlass:  ui.RGBA(38, 38, 42, 0.78),

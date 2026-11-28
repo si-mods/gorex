@@ -3,12 +3,14 @@ package cli
 import (
 	"bufio"
 	"encoding/json"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"gorex/internal/rex"
 )
@@ -152,11 +154,12 @@ func TestCLITakeoverEventsAndWait(t *testing.T) {
 	t.Setenv("GOREX_SESSION", parentSID)
 
 	// Split a child pane from inside parentSID with --agent agy.
-	code, _, out, errOut := runMain(t, "split", "-s", parentSID, "--agent", "agy", "--", "/bin/sh", "-c", "sleep 5")
+	code, _, out, errOut := runMain(t, "split", "-s", parentSID, "--agent", "agy", "--", "/bin/sh", "-c", "sleep 60")
 	if code != ExitOK {
 		t.Fatalf("split: %d %s", code, errOut)
 	}
 	childSID := strings.TrimSpace(out)
+	t.Cleanup(func() { _ = c.Kill(childSID) })
 
 	// Verify wait --takeover times out cleanly when no human takes over.
 	code, _, _, _ = runMain(t, "wait", "-s", childSID, "--takeover", "--timeout", "100ms")
@@ -181,14 +184,24 @@ func TestCLITakeoverEventsAndWait(t *testing.T) {
 		}
 		close(lines)
 	}()
-	for {
-		if _, err := c.Command(rex.LayoutCommand{Op: "pane.rename", SID: childSID, Name: "worker"}); err != nil {
+	subscribed := false
+	for i := range 200 {
+		if _, err := c.Command(rex.LayoutCommand{Op: "pane.rename", SID: childSID, Name: fmt.Sprintf("worker-%d", i)}); err != nil {
 			t.Fatal(err)
 		}
-		line := <-lines
-		if strings.Contains(line, `"event":"layout"`) {
+		select {
+		case line := <-lines:
+			if strings.Contains(line, `"event":"layout"`) {
+				subscribed = true
+			}
+		case <-time.After(20 * time.Millisecond):
+		}
+		if subscribed {
 			break
 		}
+	}
+	if !subscribed {
+		t.Fatal("timed out waiting for gorex events subscription")
 	}
 
 	// Start wait --takeover --json concurrently and trigger human takeover.

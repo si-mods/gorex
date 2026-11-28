@@ -66,6 +66,7 @@ func TestAgentHighlightVisualAndTakeover(t *testing.T) {
 		t.Fatal(err)
 	}
 	refresh(a)
+	tt.Frame()
 	tt.Advance(200 * time.Millisecond)
 
 	if !hasFound(tt, "agy") {
@@ -100,6 +101,7 @@ func TestAgentHighlightVisualAndTakeover(t *testing.T) {
 		t.Fatal(err)
 	}
 	refresh(a)
+	tt.Frame()
 	tt.Advance(200 * time.Millisecond)
 	if !hasFound(tt, "omp") {
 		t.Fatalf("new CLI input did not re-arm 'omp' badge; texts=%v", tt.Texts())
@@ -127,6 +129,7 @@ func TestAgentHighlightWindowExpiryAndOptOut(t *testing.T) {
 		t.Fatal(err)
 	}
 	refresh(a)
+	tt.Frame()
 	tt.Advance(200 * time.Millisecond)
 	if !hasFound(tt, "cli") {
 		t.Fatalf("default CLI badge 'cli' missing; texts=%v", tt.Texts())

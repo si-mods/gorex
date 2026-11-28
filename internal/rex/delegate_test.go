@@ -255,19 +255,31 @@ func TestWaitTUIReadyIgnoresControlOnlyOutput(t *testing.T) {
 			}
 		})
 
-		t.Run(agentID+"_osc7501_idle_returns_immediately", func(t *testing.T) {
+		t.Run(agentID+"_osc7501_idle_waits_for_visible_settle", func(t *testing.T) {
 			cur := base
-			calls := 0
+			visibleAt := base.Add(20 * time.Millisecond)
 			waitTUIReadyWith(func() tuiSnapshot {
-				calls++
+				if cur.Before(visibleAt) {
+					// Antigravity emits OSC 7501 idle before painting its first
+					// frame or splash banner (#1285): control-only output must
+					// not return at 0s.
+					return tuiSnapshot{
+						output:     4,
+						lastOutput: base,
+						idle:       true,
+						plainText:  stripANSI("\x1bH"),
+					}
+				}
 				return tuiSnapshot{
-					output:    4,
-					idle:      true,
-					plainText: stripANSI("\x1bH"),
+					output:     64,
+					lastOutput: visibleAt,
+					idle:       true,
+					plainText:  " ┃ Introducing Gemini 4 Neon\n ┃ esc to dismiss\n> ",
 				}
 			}, agentID, time.Second, func() time.Time { return cur }, func(d time.Duration) { cur = cur.Add(d) })
-			if calls != 1 || cur != base {
-				t.Fatalf("%s: osc7501 idle calls=%d elapsed=%v, want 1 call and 0s", agentID, calls, cur.Sub(base))
+			want := 60 * time.Millisecond // 20ms until visible + 40ms quiet settle
+			if elapsed := cur.Sub(base); elapsed != want {
+				t.Fatalf("%s: osc7501 idle virtual elapsed = %v, want %v", agentID, elapsed, want)
 			}
 		})
 	}
@@ -702,17 +714,27 @@ done
 }
 
 // TestPromptDeliveryChecks: the screen reads that decide whether a
-// notice covers the input box and whether a prompt was lost.
+// startup notice covers the input box and whether a pasted prompt echoed.
 func TestPromptDeliveryChecks(t *testing.T) {
+	agySplash := " ┃ Introducing Gemini 4 Neon\n" +
+		" ┃ Our best balance of intelligence, cost, and latency. Get building today with Neon.\n" +
+		" ┃ esc to dismiss\n" +
+		"──────────────────────────────────────────────\n" +
+		"> Auto mode: edits & safe commands auto-approved (shift+tab to cycle)\n" +
+		">"
 	for _, c := range []struct {
 		txt  string
 		rows int
 		want bool
 	}{
+		{agySplash, 24, true},
+		{" ┃ Introducing Gemini 4 Neon\n ┃ Our best balance of intelligence.\n> ", 24, true},
 		{"Introducing Gemini Neon — esc to dismiss\n> ", 24, true},
 		{"New model! Press Esc to dismiss", 0, true},
 		{"(escape to dismiss)", 5, true},
+		{"Press esc to close", 5, true},
 		{"esc to interrupt", 5, false},
+		{"esc to cancel          auto · Gemini 4 Carbon · medium", 5, false},
 		{"Esc to cancel · Enter to confirm", 5, false},
 		// A notice that scrolled off the screen no longer covers the box.
 		{"esc to dismiss\nline\nline\n> ", 2, false},
@@ -731,6 +753,7 @@ func TestPromptDeliveryChecks(t *testing.T) {
 		// Wrapped inside a box.
 		{"│ > Run the Linux te │\n│ st suite and summ │", true},
 		{"> [Pasted text #1 +40 lines]", true},
+		{"> [Pasted Content 120 chars]", true},
 		{"> ", false},
 		{"Introducing Gemini Neon\n> ", false},
 	} {
@@ -739,36 +762,259 @@ func TestPromptDeliveryChecks(t *testing.T) {
 		}
 	}
 
-	now := time.Date(2026, 11, 28, 12, 0, 0, 0, time.UTC)
-	quiet := now.Add(-2 * delegateReadyFallbackQuiet)
+	// If a word in the prompt already appeared in TUI chrome before paste,
+	// a swallowed paste must not falsely match the pre-existing occurrence.
+	preChrome := tuiSnapshot{rows: 10, plainText: "> Auto mode: edits & safe commands\n> "}
+	if promptAppearedOnScreen(preChrome, preChrome, "Auto") {
+		t.Fatal("promptAppearedOnScreen matched pre-existing chrome word without new echo")
+	}
+	curEcho := tuiSnapshot{rows: 10, plainText: "> Auto mode: edits & safe commands\n> Auto"}
+	if !promptAppearedOnScreen(preChrome, curEcho, "Auto") {
+		t.Fatal("promptAppearedOnScreen missed second occurrence echoed into input box")
+	}
+	// Long multi-line prompt whose opening lines scrolled out of a bounded
+	// input viewport while the tail lines remain visible near the cursor.
+	longPrompt := "First heading line that scrolls off the top\n" + strings.Repeat("middle line\n", 20) + "Final verification tail line"
+	scrolledEcho := tuiSnapshot{rows: 4, plainText: "middle line\nmiddle line\nmiddle line\nFinal verification tail line"}
+	if !promptAppearedOnScreen(tuiSnapshot{rows: 4, plainText: "> "}, scrolledEcho, longPrompt) {
+		t.Fatal("promptAppearedOnScreen missed multi-line prompt whose head scrolled above viewport")
+	}
+
 	echo := promptEchoAllowance(prompt)
 	for _, c := range []struct {
-		name   string
-		snap   tuiSnapshot
-		before pasteState
-		want   bool
+		name    string
+		after   tuiSnapshot
+		post    tuiSnapshot
+		preHint bool
+		want    bool
 	}{
-		{"empty box", tuiSnapshot{lastOutput: quiet, plainText: "> "}, pasteState{}, true},
-		{"echo only", tuiSnapshot{lastOutput: quiet, output: 100 + echo, plainText: "> "}, pasteState{output: 100}, true},
-		// An answer with no status nor transcript that scrolled the prompt
-		// off the screen: the agent took it.
-		{"answered", tuiSnapshot{lastOutput: quiet, output: 101 + echo, plainText: "> "}, pasteState{output: 100}, false},
-		// The notice that took the paste is still on the screen, whatever
-		// it redrew.
-		{"notice stays", tuiSnapshot{lastOutput: quiet, output: 10 * echo, plainText: "esc to dismiss\n> "}, pasteState{hint: true}, true},
-		{"notice new", tuiSnapshot{lastOutput: quiet, output: 10 * echo, plainText: "esc to dismiss\n> "}, pasteState{}, false},
-		{"still in box", tuiSnapshot{lastOutput: quiet, plainText: "> " + prompt}, pasteState{}, false},
-		{"drawing", tuiSnapshot{lastOutput: now, plainText: "> "}, pasteState{}, false},
-		{"working", tuiSnapshot{lastOutput: quiet, busy: true, plainText: "> "}, pasteState{}, false},
-		{"exited", tuiSnapshot{lastOutput: quiet, exited: true, plainText: "> "}, pasteState{}, false},
-		// An earlier turn's prompt in the scrollback is not this one on
-		// the screen.
-		{"scrollback only", tuiSnapshot{lastOutput: quiet, rows: 1, plainText: prompt + "\nreply\n> "}, pasteState{}, true},
+		{"echo only", tuiSnapshot{output: 100}, tuiSnapshot{output: 100 + echo, plainText: "> "}, false, false},
+		{"answered", tuiSnapshot{output: 100}, tuiSnapshot{output: 101 + echo, plainText: "> "}, false, true},
+		{"osc7501 idle", tuiSnapshot{output: 100}, tuiSnapshot{output: 10 * echo, idle: true, plainText: "> "}, false, false},
+		{"fresh splash", tuiSnapshot{output: 100}, tuiSnapshot{output: 10 * echo, plainText: agySplash}, false, false},
+		{"static hint in conversation", tuiSnapshot{output: 100}, tuiSnapshot{output: 10 * echo, plainText: "esc to dismiss\n> "}, true, true},
+		{"exited", tuiSnapshot{output: 100}, tuiSnapshot{output: 10 * echo, exited: true, plainText: "> "}, false, false},
 	} {
-		if got := promptLost(c.snap, c.before, prompt, now); got != c.want {
-			t.Errorf("promptLost %s = %v, want %v", c.name, got, c.want)
+		if got := agentAnsweredWithoutTranscript(c.after, c.post, c.preHint, prompt); got != c.want {
+			t.Errorf("agentAnsweredWithoutTranscript %s = %v, want %v", c.name, got, c.want)
 		}
 	}
+}
+
+// TestDeliverPromptDriver verifies the prompt delivery state machine
+// deterministically against a virtual clock:
+//  1. startup splash present -> Escape sent before pasting, then prompt succeeds;
+//  2. late splash or dropped paste leaves input box empty -> retries once and succeeds;
+//  3. three consecutive failures -> returns an explicit error instead of succeeding.
+func TestDeliverPromptDriver(t *testing.T) {
+	saved := []struct {
+		p *time.Duration
+		v time.Duration
+	}{
+		{&delegateReadyWait, 500 * time.Millisecond},
+		{&delegateReadyPoll, 10 * time.Millisecond},
+		{&delegateReadyQuiet, 30 * time.Millisecond},
+		{&delegateReadyFallbackQuiet, 80 * time.Millisecond},
+		{&delegatePasteDelay, 20 * time.Millisecond},
+		{&delegateEchoWait, 60 * time.Millisecond},
+		{&delegateRetryBackoff, 50 * time.Millisecond},
+		{&delegateEnterWait, 40 * time.Millisecond},
+	}
+	for _, s := range saved {
+		old := *s.p
+		*s.p = s.v
+		t.Cleanup(func() { *s.p = old })
+	}
+
+	agySplash := " ┃ Introducing Gemini 4 Neon\n ┃ Our best balance of intelligence, cost, and latency.\n ┃ esc to dismiss\n> "
+
+	t.Run("splash_present_sends_esc_then_pastes", func(t *testing.T) {
+		cur := time.Date(2026, 11, 28, 12, 0, 0, 0, time.UTC)
+		lastOut := cur.Add(-time.Second)
+		outBytes := uint64(64)
+		screen := agySplash
+		var ops []string
+		accepted := false
+
+		drv := promptDriver{
+			agent:      "agy",
+			hasAdapter: true,
+			now:        func() time.Time { return cur },
+			sleep:      func(d time.Duration) { cur = cur.Add(d) },
+			sample: func() tuiSnapshot {
+				return tuiSnapshot{
+					idle:       !accepted,
+					busy:       accepted,
+					rows:       24,
+					output:     outBytes,
+					lastOutput: lastOut,
+					bracketed:  true,
+					plainText:  screen,
+				}
+			},
+			sendEscape: func() error {
+				ops = append(ops, "esc")
+				screen = "> "
+				outBytes += 32
+				lastOut = cur
+				return nil
+			},
+			paste: func(p string) error {
+				ops = append(ops, "paste:"+p)
+				if strings.Contains(screen, "esc to dismiss") {
+					// Splash swallows input if Escape was not sent first.
+					return nil
+				}
+				screen = "> " + p
+				outBytes += uint64(len(p))
+				lastOut = cur
+				return nil
+			},
+			sendReturn: func() {
+				ops = append(ops, "enter")
+				if strings.HasPrefix(screen, "> 只回复 OK") {
+					accepted = true
+				}
+			},
+			accepted: func() bool { return accepted },
+			waitAck: func(maxWait time.Duration, _ snapshotStatus) bool {
+				cur = cur.Add(10 * time.Millisecond)
+				return accepted
+			},
+		}
+
+		if err := deliverPromptWith(drv, "只回复 OK"); err != nil {
+			t.Fatalf("deliverPromptWith: %v", err)
+		}
+		want := []string{"esc", "paste:只回复 OK", "enter"}
+		if !slices.Equal(ops, want) {
+			t.Fatalf("ops = %v, want %v", ops, want)
+		}
+	})
+
+	t.Run("lost_paste_retries_once_and_succeeds", func(t *testing.T) {
+		cur := time.Date(2026, 11, 28, 12, 0, 0, 0, time.UTC)
+		lastOut := cur.Add(-time.Second)
+		outBytes := uint64(64)
+		screen := "> "
+		var ops []string
+		pastes := 0
+		accepted := false
+
+		drv := promptDriver{
+			agent:      "agy",
+			hasAdapter: true,
+			now:        func() time.Time { return cur },
+			sleep:      func(d time.Duration) { cur = cur.Add(d) },
+			sample: func() tuiSnapshot {
+				return tuiSnapshot{
+					idle:       !accepted,
+					busy:       accepted,
+					rows:       24,
+					output:     outBytes,
+					lastOutput: lastOut,
+					bracketed:  true,
+					plainText:  screen,
+				}
+			},
+			sendEscape: func() error {
+				ops = append(ops, "esc")
+				screen = "> "
+				outBytes += 32
+				lastOut = cur
+				return nil
+			},
+			paste: func(p string) error {
+				pastes++
+				ops = append(ops, "paste:"+p)
+				if pastes == 1 {
+					// Simulate late Antigravity splash painting right as the
+					// first paste arrives, swallowing it (#1285).
+					screen = agySplash
+					outBytes += 4096
+					lastOut = cur
+					return nil
+				}
+				screen = "> " + p
+				outBytes += uint64(len(p))
+				lastOut = cur
+				return nil
+			},
+			sendReturn: func() {
+				ops = append(ops, "enter")
+				if strings.HasPrefix(screen, "> 只回复 OK") {
+					accepted = true
+				}
+			},
+			accepted: func() bool { return accepted },
+			waitAck: func(_ time.Duration, _ snapshotStatus) bool {
+				cur = cur.Add(10 * time.Millisecond)
+				return accepted
+			},
+		}
+
+		if err := deliverPromptWith(drv, "只回复 OK"); err != nil {
+			t.Fatalf("deliverPromptWith: %v", err)
+		}
+		want := []string{"paste:只回复 OK", "esc", "paste:只回复 OK", "enter"}
+		if !slices.Equal(ops, want) {
+			t.Fatalf("ops = %v, want %v", ops, want)
+		}
+	})
+
+	t.Run("three_failures_return_explicit_error", func(t *testing.T) {
+		cur := time.Date(2026, 11, 28, 12, 0, 0, 0, time.UTC)
+		start := cur
+		var ops []string
+		var sleeps []time.Duration
+
+		drv := promptDriver{
+			agent:      "agy",
+			hasAdapter: true,
+			now:        func() time.Time { return cur },
+			sleep: func(d time.Duration) {
+				sleeps = append(sleeps, d)
+				cur = cur.Add(d)
+			},
+			sample: func() tuiSnapshot {
+				return tuiSnapshot{
+					idle:       true,
+					rows:       24,
+					output:     64,
+					lastOutput: start.Add(-time.Second),
+					bracketed:  true,
+					plainText:  "> ",
+				}
+			},
+			sendEscape: func() error {
+				ops = append(ops, "esc")
+				return nil
+			},
+			paste: func(p string) error {
+				ops = append(ops, "paste")
+				// Input is dropped every time: input box stays "> ".
+				return nil
+			},
+			sendReturn: func() {
+				ops = append(ops, "enter")
+			},
+			accepted: func() bool { return false },
+			waitAck:  func(_ time.Duration, _ snapshotStatus) bool { return false },
+		}
+
+		err := deliverPromptWith(drv, "只回复 OK")
+		if err == nil || !strings.Contains(err.Error(), "after 3 attempts") {
+			t.Fatalf("err = %v, want error naming 3 attempts", err)
+		}
+		wantOps := []string{"paste", "paste", "paste"}
+		if !slices.Equal(ops, wantOps) {
+			t.Fatalf("ops = %v, want %v (must not press Return on empty bracketed input)", ops, wantOps)
+		}
+		// Verify bounded retry backoffs (50ms before retry 1, 100ms before retry 2) occurred.
+		if !slices.Contains(sleeps, 50*time.Millisecond) || !slices.Contains(sleeps, 100*time.Millisecond) {
+			t.Fatalf("sleeps = %v, expected 50ms and 100ms retry backoffs", sleeps)
+		}
+	})
 }
 
 // TestDelegateSplashKeepsPrompt: a fake agent shows a splash that takes
@@ -788,6 +1034,8 @@ func TestDelegateSplashKeepsPrompt(t *testing.T) {
 		{&delegateReadyQuiet, 30 * time.Millisecond},
 		{&delegateReadyFallbackQuiet, 80 * time.Millisecond},
 		{&delegatePasteDelay, 30 * time.Millisecond},
+		{&delegateEchoWait, 80 * time.Millisecond},
+		{&delegateRetryBackoff, 30 * time.Millisecond},
 		{&delegateEnterWait, 150 * time.Millisecond},
 		{&delegatePollInterval, 25 * time.Millisecond},
 	}
@@ -832,6 +1080,9 @@ if [ "$mode" = hint ]; then
 elif [ "$mode" = nohint ]; then
   printf 'Welcome! Press any key\r\n> '
   dd bs=256 count=1 >/dev/null 2>&1
+elif [ "$mode" = dropall ]; then
+  printf '\033[?2004h\033]7501;{"state":"idle","app":"antigravity"}\007> '
+  while :; do dd bs=256 count=1 >/dev/null 2>&1; done
 fi
 stty sane -echo
 printf '\033[2J\033[H> '
@@ -921,4 +1172,20 @@ done
 	if got != "answer turn\nsentinel\n" {
 		t.Fatalf("answer: the agent received %q, want the prompt once, then the sentinel", got)
 	}
+	_ = c.Kill(res.Session)
+
+	// A bracketed-paste TUI that drops every paste (leaving the input box
+	// empty across all 3 attempts) must fail loudly instead of reporting
+	// status=running (#1285).
+	if err := os.WriteFile(modeFile, []byte("dropall"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	failedRes, err := c.Delegate(DelegateOptions{Agent: "claude", Dir: projDir, Prompt: "dropped turn", Async: true})
+	if err != nil {
+		t.Fatalf("dropall: Delegate RPC error: %v", err)
+	}
+	if failedRes.Status != "failed" || !strings.Contains(failedRes.Error, "after 3 attempts") {
+		t.Fatalf("dropall: Delegate result = %+v, want status=failed with retry error", failedRes)
+	}
+	_ = c.Kill(failedRes.Session)
 }

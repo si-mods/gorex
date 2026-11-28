@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Bug Fixes
+
+* **delegate:** wait for visible TUI output to settle even when OSC 7501 reports `idle` early, dismiss `Introducing …` / `esc to dismiss` startup overlays before pasting, verify prompt echo in the input box with bounded retries, and fail explicitly (`status: "failed"`) instead of reporting `running` when prompt delivery fails ([#1285](https://github.com/si-mods/gorex/issues/1285))
+
 ## 0.69.0
 
 ### Features

@@ -12,14 +12,18 @@ import (
 func waitCapture(t *testing.T, c *Client, sid, want string) {
 	t.Helper()
 	deadline := time.Now().Add(5 * time.Second)
+	var last string
 	for time.Now().Before(deadline) {
 		res, err := c.Capture(sid, 0)
-		if err == nil && strings.Contains(string(res.Screen), want) {
-			return
+		if err == nil {
+			last = string(res.Screen)
+			if strings.Contains(last, want) {
+				return
+			}
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
-	t.Fatalf("the session never showed %q", want)
+	t.Fatalf("the session never showed %q (got %q)", want, last)
 }
 
 // TestInputEvents: the input ops encode what a client sends as the
