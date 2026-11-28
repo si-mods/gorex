@@ -29,20 +29,20 @@ Every workflow in `.github/workflows` is in this table. "instabox" means one san
 | Workflow | Job | Runner | Trigger |
 | --- | --- | --- | --- |
 | `ci.yml` | `linux` | `instabox-large` | Pull request, push to main, manual. Docs-only changes start no run (paths filter). |
-| `ci.yml` | `test-windows` | self-hosted `yibo-pc` | The same as `linux`. Pull requests from forks do not run it. |
+| `ci.yml` | `test-windows` | self-hosted Windows runner | The same as `linux`. Pull requests from forks do not run it. |
 | `pr-verified.yml` | `verified` | `instabox-medium` | `pull_request_target`: opened, edited, synchronize, reopened. |
 | `maintenance.yml` | `audit` | `instabox-medium` | Monday 03:17 UTC, manual. It also posts the CI health report. |
 | `web.yml` | `deploy` | `instabox-medium` | Push to main that changes `web/**`, `assets/**`, `go.mod`, `go.sum` or the workflow. Manual. |
 | `testflight.yml` | `guard` | `instabox-medium` | Push to main that changes `ios/**`, `go.mod`, `go.sum` or `internal/tailnode/**`. Manual. |
-| `testflight.yml` | `upload` | self-hosted `gorex-testflight` | The same as `guard`. |
+| `testflight.yml` | `upload` | self-hosted Mac runner (`gorex-testflight`) | The same as `guard`. |
 | `release.yml` | `guard` | `instabox-medium` | Manual, on main. |
-| `release.yml` | `draft` | self-hosted `macmini`, or `yibo-pc` for a Windows-only release | Manual, on main. |
-| `release.yml` | `unix` | self-hosted `macmini` | Manual, on main. |
-| `release.yml` | `windows` | self-hosted `yibo-pc` | Manual, on main. |
+| `release.yml` | `draft` | self-hosted Mac runner, or the Windows runner for a Windows-only release | Manual, on main. |
+| `release.yml` | `unix` | self-hosted Mac runner | Manual, on main. |
+| `release.yml` | `windows` | self-hosted Windows runner | Manual, on main. |
 | `release.yml` | `checksums` | `instabox-medium` | After `unix` and `windows` succeed. |
 | `release.yml` | `web-r2` | `instabox-medium` | Manual, on main, target `all` or `web`. |
-| `ios-test.yml` | `test` | self-hosted `gorex-testflight` | Manual. |
-| `delete-shots.yml` | `delete` | self-hosted `macmini` | A merged pull request. |
+| `ios-test.yml` | `test` | self-hosted Mac runner (`gorex-testflight`) | Manual. |
+| `delete-shots.yml` | `delete` | self-hosted Mac runner | A merged pull request. |
 
 ### The one-job rule
 
@@ -52,7 +52,7 @@ Add a step to `linux`. Do not add a job. A new instabox job names its expected s
 
 Every step after `plan` has `if: ${{ !cancelled() }}` in its condition. One failure does not hide the other failures. Each failed step fails the job.
 
-The Windows tests run on `yibo-pc`, a self-hosted runner. They use no start. The Mac mini's runners build iOS and releases, and no CI job waits for them.
+The Windows tests run on a self-hosted Windows runner. They use no start. The Mac mini's runners build iOS and releases, and no CI job waits for them.
 
 ## What runs for a change
 
@@ -158,6 +158,6 @@ When a flag trips:
 
 ## Alternatives
 
-- **Drop `synchronize` from `pr-verified`.** It would save one start for each push to a pull request. It lost, because the check attaches to the head SHA. A new push has no check, and the pull request cannot merge.
+- **Drop `synchronize` from `pr-verified`.** It would save one start for each push to a pull request. It lost, because the check attaches to the head SHA. After a push, the new head has no check, and an earlier failure no longer shows.
 - **Run the root package tests and the other package tests at the same time.** It would save wall time. It lost, because the CPU load made timing tests fail.
 - **Retry a failed test.** It lost. A retry hides a real flake. See [CI retry](lessons.md#ci-retry).
