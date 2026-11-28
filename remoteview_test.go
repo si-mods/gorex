@@ -238,6 +238,12 @@ func TestRexGoQR(t *testing.T) {
 	if !tt.HasText(locales.RemoteQRTransportDirect()) || !tt.HasText(locales.RemoteDirectQRHint()) {
 		t.Fatalf("same-network tab missing direct transport/hint: %q", tt.Texts())
 	}
+	// A pending request can be approved directly inside the QR dialog.
+	remoteUI.st.Pending = []rex.RemotePending{{Name: "alice-iphone", PublicKey: testKey}}
+	tt.Frame()
+	if !tt.HasText("alice-iphone") || !tt.HasText(rex.Fingerprint(testKey)) || !tt.HasText(locales.RemoteApprove()) {
+		t.Fatalf("pending request not shown in QR dialog: %q", tt.Texts())
+	}
 	remoteUI.st.Running = false
 	tt.Frame()
 	if remoteUI.pairQR != nil {

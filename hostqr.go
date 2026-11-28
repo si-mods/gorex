@@ -241,7 +241,7 @@ func pairQRCode(c *ui.Context, img ui.ImageSource, label string) {
 	})
 }
 
-func hostPairQRSheet(c *ui.Context, k *colors, page *hostPairQR) {
+func (a *App) hostPairQRSheet(c *ui.Context, k *colors, page *hostPairQR) {
 	title := locales.HostsRexQRTitle(page.host)
 	if page.rexGo {
 		title = locales.RemoteRexGoQRTitle(page.host)
@@ -334,6 +334,25 @@ func hostPairQRSheet(c *ui.Context, k *colors, page *hostPairQR) {
 			if page.rexGo && remoteUI.st.Pairing.Open && !sameNetSelected || (page.rexGo && remoteUI.st.Pairing.Open && !page.directIsLAN) {
 				statusLine(c, k, k.attention, locales.RemotePairWaiting(pairingLeft(remoteUI.st.Pairing.ExpiresAt, c.Now())))
 				c.After(time.Second)
+			}
+			if page.rexGo && len(remoteUI.st.Pending) > 0 {
+				ui.Column(c.Key("qr-pending")).Gap(8).Children(func() {
+					for _, p := range remoteUI.st.Pending {
+						ui.Row(c.Key("qr-pending:"+p.PublicKey)).Gap(8).Padding(10, 12).Radius(k.radius(radiusM)).
+							Background(k.panel).Border(1, k.panelBorder).AlignItems(ui.Center).Children(func() {
+							ui.Column(c).Grow(1).MinWidth(0).Gap(2).Children(func() {
+								ui.Text(c, p.Name).FontSize(fontBody).FontWeight(600).TextColor(k.text).SingleLine().Ellipsis("…")
+								ui.Text(c, rex.Fingerprint(p.PublicKey)).Font(monoFamily()).FontSize(fontFootnote).TextColor(k.textMuted).SingleLine()
+							})
+							if ui.Button(c.Key("qr-reject"), locales.RemoteReject()).Disabled(remoteUI.busy).Clicked() {
+								a.remoteDo(func(srv *rex.Client) error { return srv.RejectPairing(p.PublicKey) }, nil)
+							}
+							if ui.PrimaryButton(c.Key("qr-approve"), locales.RemoteApprove()).Disabled(remoteUI.busy).Clicked() {
+								a.remoteDo(func(srv *rex.Client) error { return srv.ApprovePairing(p.PublicKey) }, nil)
+							}
+						})
+					}
+				})
 			}
 			pairQRCode(c, activeImage, title)
 			if page.rexGo && !(sameNetSelected && page.directIsLAN) {

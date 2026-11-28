@@ -284,7 +284,7 @@ func (a *App) settingsView(c *ui.Context) {
 			page.rexGo && !remoteUI.st.Running {
 			remoteUI.pairQR = nil
 		} else {
-			hostPairQRSheet(c, k, page)
+			a.hostPairQRSheet(c, k, page)
 		}
 	}
 }
