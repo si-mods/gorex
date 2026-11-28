@@ -486,75 +486,6 @@ func methodGorexSpaceList(c *control, a args) (any, *apiError) {
 	return map[string][]string{"spaces": names}, nil
 }
 
-// methodGorexProjectSetHome is v0.38.0's gorex.project.set_home, kept for
-// Rex Go 1.1 and the web client of v0.39.0, which make a project as a
-// session.create and a set_home of its folder. Deprecated: it goes once
-// phases 3 and 4 of docs/MOD-002-projects.md ship. A home is a folder of this
-// machine only (space.home): another machine's fails with bad_request; a
-// machine_id of "" clears it.
-func methodGorexProjectSetHome(c *control, a args) (any, *apiError) {
-	if aerr := c.projectsCan(); aerr != nil {
-		return nil, aerr
-	}
-	if aerr := a.only("session_id", "machine_id", "dir"); aerr != nil {
-		return nil, aerr
-	}
-	s, aerr := c.sessionArg(a)
-	if aerr != nil {
-		return nil, aerr
-	}
-	if s.space == desktopSpace {
-		return nil, errBadRequest("%s is no project of the desktop's", s.id)
-	}
-	machine, aerr := a.reqStr("machine_id")
-	if aerr != nil {
-		return nil, aerr
-	}
-	raw, _, aerr := a.str("dir")
-	if aerr != nil {
-		return nil, aerr
-	}
-	dir := ""
-	switch {
-	case machine == "":
-	case machine != c.g.hello.Machine:
-		return nil, errBadRequest("a project of another host is made on that host (gorex.project.create there)")
-	default:
-		if dir, aerr = folderArg(raw); aerr != nil {
-			return nil, aerr
-		}
-		if dir, aerr = folderThere(dir); aerr != nil {
-			return nil, aerr
-		}
-	}
-	res, err := c.g.opt.Client.Command(rex.LayoutCommand{Op: "space.home", Space: s.space, Dir: dir})
-	if err != nil {
-		return nil, errInternal("asking the GoRex server: %v", err)
-	}
-	if res.Code == "exists" {
-		return nil, errExists(dir, sessionID(res.Space))
-	}
-	if res.Code != "" {
-		return nil, layoutError(c.g, res)
-	}
-	m, aerr := c.g.afterCommand(func(m *model) bool {
-		now := m.byID[s.id]
-		return now == nil || now.dir == dir
-	})
-	if aerr != nil {
-		return nil, aerr
-	}
-	now := m.byID[s.id]
-	if now == nil {
-		return nil, errSessionNotFound("no session %s", s.id)
-	}
-	out := map[string]any{"revision": now.revision}
-	if now.dir != "" {
-		out["project"] = now.project
-	}
-	return out, nil
-}
-
 // projectSchema is the schema of a session's project in the help
 // document's results.
 var projectSchema = map[string]any{
@@ -696,14 +627,6 @@ var projectEntries = []map[string]any{
 		"{\n  \"name\": \"Work\"\n}",
 		"{\n  \"projects\": 3\n}",
 		"An empty name fails with bad_request. A name of no project deletes the name alone, answering projects 0.",
-	),
-	projectEntry("gorex.project.set_home", "Deprecated: v0.38.0's way to give a session a folder of this machine, kept for Rex Go 1.1 and the web client of v0.39.0; use gorex.project.create. It goes once those clients are replaced.",
-		map[string]any{"session_id": strProp("The session."), "machine_id": strProp("This machine's ID; empty to clear the folder."), "dir": strProp("The folder, an absolute path on this machine.")},
-		[]any{"session_id", "machine_id"},
-		map[string]any{"type": "object", "properties": map[string]any{"revision": map[string]any{"type": "integer"}, "project": projectSchema}, "required": []any{"revision"}, "additionalProperties": false},
-		`{"session_id": "session:<uuid>", "machine_id": "9c63…", "dir": "/home/me/code/windflow"}`,
-		`{"revision": 5, "project": {"dir": "/home/me/code/windflow", "home_machine": "9c63…"}}`,
-		"Another machine's ID fails with bad_request: a project is made on its host. A folder that is a project already fails with code exists and the error's project_id.",
 	),
 	projectEntry("gorex.space.list", "List the space names of this host: those its projects carry, then those it offers though none does, as the spaces of a GoRex of before projects.",
 		map[string]any{}, nil,

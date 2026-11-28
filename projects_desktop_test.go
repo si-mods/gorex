@@ -624,30 +624,6 @@ func TestMoveTabStaysOnItsHost(t *testing.T) {
 	_ = h
 }
 
-// TestOldActionIDs: an action ID of before keeps working: session.new is
-// New Tab with No Project, and a removed action does nothing, without an
-// error.
-func TestOldActionIDs(t *testing.T) {
-	if c := lookupCommand("session.new"); c == nil || c.ID != "tab.new_no_project" {
-		t.Errorf("session.new is %+v", c)
-	}
-	for _, id := range []string{"sidebar.view.toggle", "tab.move_window", "project.change_folder", "project.remove_folder"} {
-		c := lookupCommand(id)
-		if c == nil {
-			t.Fatalf("%s is no action", id)
-		}
-		if err := c.invoke(&App{}, nil); err != nil {
-			t.Errorf("%s: %v", id, err)
-		}
-	}
-	if lookupCommand("no.such.action") != nil {
-		t.Error("an ID never an action's is one")
-	}
-	if blockedFromClient("tab.move_window") {
-		t.Error("tab.move_window is still blocked")
-	}
-}
-
 // TestRefusedAdoptionWaits: an adoption its host refused goes again only
 // once the host connects anew, not as its layout changes.
 func TestRefusedAdoptionWaits(t *testing.T) {

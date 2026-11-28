@@ -1212,15 +1212,6 @@ func (t *Tab) label() (name, detail string) {
 	return t.Focus.label()
 }
 
-func sortedInfos(m map[string]rex.SessionInfo) []rex.SessionInfo {
-	out := make([]rex.SessionInfo, 0, len(m))
-	for _, in := range m {
-		out = append(out, in)
-	}
-	slices.SortFunc(out, func(a, b rex.SessionInfo) int { return a.Created.Compare(b.Created) })
-	return out
-}
-
 // poll asks this machine's server what runs in each session, every half
 // second, for every window, until stop closes or the connection does;
 // update runs a change on the main thread. The windows draw again as the
