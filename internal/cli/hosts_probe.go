@@ -184,13 +184,13 @@ func probeOneHost(cand probeCandidate, timeout time.Duration) probedHost {
 	return res
 }
 
-// sanitizeProbeError removes a host's secret address from an error message
-// before printing it to stdout/stderr.
+// sanitizeProbeError removes secret addresses, tailcat IPv6 prefixes, and key
+// material from an error message before printing it to stdout/stderr.
 func sanitizeProbeError(msg, secretAddr string) string {
-	if secretAddr != "" && strings.Contains(msg, secretAddr) {
-		msg = strings.ReplaceAll(msg, secretAddr, "<redacted>")
+	if secretAddr != "" {
+		return rex.Scrub(msg, secretAddr)
 	}
-	return msg
+	return rex.Scrub(msg)
 }
 
 func writeProbedHostsTable(out io.Writer, list []probedHost) {

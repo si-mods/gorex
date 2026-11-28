@@ -128,6 +128,56 @@ func TestStateForMaps(t *testing.T) {
 	}
 }
 
+func TestShownText(t *testing.T) {
+	cases := []struct {
+		in   string
+		want string
+	}{
+		{"plain text\t\n", "plain text\t\n"},
+		{"\x1b[31mred\x1b[0m", "red"},
+		{"\x1b]0;window title\x07ok", "ok"},
+		{"\x1b]7501;state=working\x1b\\done", "done"},
+		{"a\u202eb\u200bc\ufeffd\ue0a0e\ufffdf", "abcdef"},
+		{"⏺ Task", "⏺\uFE0E Task"},
+		{"❤ and ❤\uFE0F", "❤\uFE0E and ❤\uFE0F"},
+		{"☝\U0001F3FD", "☝\U0001F3FD"},
+	}
+	for _, tc := range cases {
+		if got := ShownText(tc.in); got != tc.want {
+			t.Errorf("ShownText(%q) = %q, want %q", tc.in, got, tc.want)
+		}
+	}
+
+	updated := time.Unix(ReferenceDate+60, 0)
+	info := &rex.SessionInfo{
+		Statuses: []rex.ProgramStatus{{
+			ID:      "r1",
+			State:   "working",
+			App:     "\x1b[1m\u202ecargo\ue0a0",
+			Title:   "\x1b[1m ⏺ Build \x1b[0m",
+			Msg:     "\x1b[32mrunning\x1b[0m\r\n\ue0a0step 2\rstep 3\n\nstep 4",
+			Updated: updated,
+		}},
+	}
+	st := StateFor(info, "\x1b[2J", "\x1b[31mzsh", "shell", "work")
+	if st.Title != "shell" {
+		t.Errorf("title after pure escape windowTitle = %q, want shell", st.Title)
+	}
+	if st.Program != "cargo" {
+		t.Errorf("program = %q, want cargo", st.Program)
+	}
+	if st.Record == nil || st.Record.Title != "⏺\uFE0E Build" {
+		t.Errorf("record title = %+v, want cleaned text-styled title", st.Record)
+	}
+	if st.Line != "running step 2 step 3 step 4" {
+		t.Errorf("line = %q, want %q", st.Line, "running step 2 step 3 step 4")
+	}
+	al := alertFor(ContentState{Program: "\x1b[1mclaude\u202e"}, &rex.ProgramStatus{Msg: "approve\rnow"})
+	if al.Title != "claude needs input" || al.Body != "approve now" {
+		t.Errorf("alertFor = %+v", al)
+	}
+}
+
 // TestCutLimits: cut holds both limits, whole characters only, counting
 // a cluster — an accented letter, an emoji family, a flag — as one
 // character, as TerminalActivity.cut does.

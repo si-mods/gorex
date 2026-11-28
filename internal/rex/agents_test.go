@@ -32,7 +32,8 @@ func TestDetectAgentsInDirs(t *testing.T) {
 	if got[0].ID != "claude" || got[0].Name != "Claude Code" {
 		t.Errorf("agent 0 = %+v, want claude", got[0])
 	}
-	wantClaude := []string{"/bin/zsh", "-lic", "exec '" + filepath.Join(dir, "claude") + "'"}
+	qClaude, _ := PathWord("/bin/zsh", filepath.Join(dir, "claude"))
+	wantClaude := []string{"/bin/zsh", "-lic", "exec " + qClaude}
 	if !slices.Equal(got[0].Command, wantClaude) {
 		t.Errorf("claude command = %v, want %v", got[0].Command, wantClaude)
 	}
@@ -48,6 +49,19 @@ func TestDetectAgentsInDirs(t *testing.T) {
 	wantPath := []string{filepath.Join(dir, "claude")}
 	if !slices.Equal(gotOther[0].Command, wantPath) {
 		t.Errorf("custom shell command = %v, want %v", gotOther[0].Command, wantPath)
+	}
+
+	// POSIX and fish each quote special characters in resolved paths with their own rules.
+	specialBin := "/opt/alice's tools/bin\\claude"
+	gotPosix := agentCommand("/bin/zsh", "claude", specialBin)
+	wantPosix := []string{"/bin/zsh", "-lic", `exec '/opt/alice'\''s tools/bin\claude'`}
+	if !slices.Equal(gotPosix, wantPosix) {
+		t.Errorf("posix command = %q, want %q", gotPosix, wantPosix)
+	}
+	gotFish := agentCommandWithArgs("/opt/homebrew/bin/fish", "claude", specialBin, []string{"-p", "hi"})
+	wantFish := []string{"/opt/homebrew/bin/fish", "-lic", `exec '/opt/alice\'s tools/bin\\claude' $argv`, "--", "-p", "hi"}
+	if !slices.Equal(gotFish, wantFish) {
+		t.Errorf("fish command = %q, want %q", gotFish, wantFish)
 	}
 }
 

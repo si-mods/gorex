@@ -279,7 +279,7 @@ func (s *Sender) sendStart(r *registration, sessionID, blockID string, st Conten
 			AttributesType: AttributesTypeTerminalActivity,
 			Attributes: &Attributes{
 				Host:     r.phoneHost,
-				HostName: cut(hostName, MaxText, MaxTextBytes),
+				HostName: cleanText(hostName),
 				Session:  sessionID,
 				Block:    blockID,
 			},
@@ -300,9 +300,9 @@ func (s *Sender) sendStart(r *registration, sessionID, blockID string, st Conten
 // named by the state's program or title, and the record's message as
 // the body.
 func alertFor(st ContentState, u *rex.ProgramStatus) *Alert {
-	name := st.Program
+	name := cleanText(st.Program)
 	if name == "" {
-		name = st.Title
+		name = cleanText(st.Title)
 	}
 	return &Alert{
 		Title: cut(strings.TrimSpace(name+" needs input"), MaxText, MaxTextBytes),

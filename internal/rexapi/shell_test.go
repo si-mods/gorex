@@ -25,6 +25,19 @@ func TestShellOptionsFromIPhone(t *testing.T) {
 	if so.command != nil {
 		t.Errorf("command = %q, want the default shell", so.command)
 	}
+
+	var short args
+	if err := json.Unmarshal([]byte(`{"theme":{"foreground":"#f0a","background":"abc","palette":["3=#0f8","4=123"]}}`), &short); err != nil {
+		t.Fatal(err)
+	}
+	shortOpt, aerr := parseShellOptions(short)
+	if aerr != nil {
+		t.Fatalf("parse 3-digit hex: %v", aerr)
+	}
+	if shortOpt.theme.Foreground != "#ff00aa" || shortOpt.theme.Background != "aabbcc" ||
+		!slices.Equal(shortOpt.theme.Palette, []string{"3=#00ff88", "4=112233"}) {
+		t.Errorf("3-digit theme = %+v", shortOpt.theme)
+	}
 }
 
 func TestShellOptionsRefuse(t *testing.T) {
@@ -63,6 +76,7 @@ func TestPaneCommand(t *testing.T) {
 		{"fish", false, nil, nil, nil, []string{"fish"}},
 		{"", true, nil, []string{"-i"}, nil, []string{"/bin/zsh", "-i"}},
 		{"", true, nil, nil, []string{"/opt/bin"}, []string{"/bin/sh", "-c", `PATH="/opt/bin:$PATH"; export PATH; exec "$@"`, "sh", "/bin/zsh", "-l"}},
+		{"", true, nil, nil, []string{`/opt/$HOME/"bin"` + "`id`\\x"}, []string{"/bin/sh", "-c", `PATH="/opt/\$HOME/\"bin\"\` + "`id\\`\\\\x" + `:$PATH"; export PATH; exec "$@"`, "sh", "/bin/zsh", "-l"}},
 	} {
 		if got := paneCommand(c.shell, c.login, c.command, c.argv, c.prepend); !slices.Equal(got, c.want) {
 			t.Errorf("paneCommand(%q, %v, %q, %q, %q) = %q, want %q", c.shell, c.login, c.command, c.argv, c.prepend, got, c.want)

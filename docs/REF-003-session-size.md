@@ -3,7 +3,7 @@ name: REF-003
 description: "How one session gets one terminal size when several clients attach: authority, focus claims and the idle policy. Use when you change sizes or attach."
 metadata:
   created: "2026-10-29"
-  updated: "2026-11-26"
+  updated: "2026-11-28"
 ---
 
 # REF-003: Session size with several clients
@@ -179,9 +179,7 @@ windows: it is above them.
   (`UnlockSize(sid, "", 0, 0)`), and the session takes its authority's
   recorded size at once (`endSizeLockLocked`), as when the lock's
   connection closes or its lease runs out: every window, of this
-  machine or another, gets its size back. Local panes that see a lock
-  end also resend their size (`ResendSize`), for a server before this,
-  which outlives the app.
+  machine or another, gets its size back.
 
 So with the phone and a desktop window on the same pane, whoever types
 last holds the size: it goes to the phone each time it opens the

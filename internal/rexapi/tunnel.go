@@ -2,8 +2,6 @@ package rexapi
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/binary"
 	"fmt"
 	"io"
 	"net"
@@ -52,16 +50,7 @@ type tunnelBlock struct {
 }
 
 func newUUIDv4() string {
-	var b [16]byte
-	_, _ = rand.Read(b[:])
-	b[6] = (b[6] & 0x0f) | 0x40
-	b[8] = (b[8] & 0x3f) | 0x80
-	return fmt.Sprintf("%08x-%04x-%04x-%04x-%012x",
-		binary.BigEndian.Uint32(b[0:4]),
-		binary.BigEndian.Uint16(b[4:6]),
-		binary.BigEndian.Uint16(b[6:8]),
-		binary.BigEndian.Uint16(b[8:10]),
-		b[10:16])
+	return randomUUID()
 }
 
 func (tb *tunnelBlock) currentOwner() string {

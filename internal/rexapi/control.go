@@ -503,7 +503,7 @@ func (c *control) handle(req *request) {
 			c.respond(req, nil, errInternal("%s failed", req.Method))
 		}
 	}()
-	fn := methods[req.Method]
+	fn := methodTable()[req.Method]
 	if fn == nil {
 		if strings.HasPrefix(req.Method, "com.superlogical.") {
 			args, err := decodeArgs(req.Payload)

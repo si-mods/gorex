@@ -117,7 +117,7 @@ func (s *Server) filePath(sid, dir string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if rest, ok := strings.CutPrefix(dir, "~"); ok && (rest == "" || rest[0] == '/') {
+	if rest, ok := strings.CutPrefix(dir, "~"); ok && (rest == "" || rest[0] == '/' || rest[0] == filepath.Separator) {
 		home, err := s.homeDir()
 		if err != nil {
 			return "", err
@@ -184,13 +184,15 @@ func (s *Server) filePut(conn net.Conn, r *bufio.Reader, first []byte, peer stri
 	if req.Size < 0 {
 		return errors.New("rex: a negative size")
 	}
-	// A directory a client names absolute is read here: a device, a pipe
-	// or a share rooted with no volume may wait or contact another host
-	// (volumePath).
-	if filepath.IsAbs(req.Dir) {
-		if _, ok := volumePath(req.Dir); !ok {
+	// A directory a client names is checked before anything reads it: a
+	// device, a pipe or a share rooted with no volume may wait or contact
+	// another host (volumePath).
+	if req.Dir != "" {
+		d, ok := volumePath(req.Dir)
+		if !ok {
 			return fmt.Errorf("rex: %s names no folder to put a file in", req.Dir)
 		}
+		req.Dir = d
 	}
 	dir, err := s.filePath(req.SID, req.Dir)
 	if err != nil {

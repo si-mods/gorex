@@ -3,6 +3,7 @@ package rexapi
 import (
 	_ "embed"
 	"encoding/json"
+	"sync"
 )
 
 // blockEventSchemas are the events a GoRex block sends, as a
@@ -117,8 +118,8 @@ func blockCreatorAPI() map[string]any {
 	// upload_begin and ports postdate the snapshot the method list comes
 	// from; describe_block reports them like block_creator.list does.
 	methods["upload_begin"] = uploadBeginEntry
-	if portsCreatorEntry != nil {
-		methods["ports"] = portsCreatorEntry
+	if _, creatorEntry := portsEntries(); creatorEntry != nil {
+		methods["ports"] = creatorEntry
 	}
 	return map[string]any{"methods": methods, "events": blockEventSchemas}
 }
@@ -137,17 +138,24 @@ var terminalCreatorJSON []byte
 //go:embed testdata/rex-ports-method.json
 var portsMethodJSON []byte
 
-var portsMethodEntry, portsCreatorEntry map[string]any
+var (
+	portsOnce         sync.Once
+	portsMethodEntry  map[string]any
+	portsCreatorEntry map[string]any
+)
 
-func init() {
-	if json.Unmarshal(portsMethodJSON, &portsMethodEntry) != nil {
-		return
-	}
-	portsCreatorEntry = map[string]any{
-		"description":   portsMethodEntry["description"],
-		"input_schema":  portsMethodEntry["args_schema"],
-		"output_schema": portsMethodEntry["output_schema"],
-	}
+func portsEntries() (map[string]any, map[string]any) {
+	portsOnce.Do(func() {
+		if json.Unmarshal(portsMethodJSON, &portsMethodEntry) != nil {
+			return
+		}
+		portsCreatorEntry = map[string]any{
+			"description":   portsMethodEntry["description"],
+			"input_schema":  portsMethodEntry["args_schema"],
+			"output_schema": portsMethodEntry["output_schema"],
+		}
+	})
+	return portsMethodEntry, portsCreatorEntry
 }
 
 // focusHistoryMethodJSON is revision 19's focus_history.reverse, as Rex
@@ -294,8 +302,8 @@ func methodBlockCreatorList(c *control, a args) (any, *apiError) {
 	if api, ok := creator["api"].(map[string]any); ok {
 		if methods, ok := api["methods"].(map[string]any); ok {
 			methods["upload_begin"] = uploadBeginEntry
-			if portsCreatorEntry != nil {
-				methods["ports"] = portsCreatorEntry
+			if _, creatorEntry := portsEntries(); creatorEntry != nil {
+				methods["ports"] = creatorEntry
 			}
 		}
 	}
@@ -330,7 +338,7 @@ func helpDocument(rev int, withHTTP bool) map[string]json.RawMessage {
 		if json.Unmarshal(raw, &m) != nil {
 			continue
 		}
-		if !implementedMethods[m.Name] || !methodAvailable(rev, m.Name) {
+		if _, ok := methodTable()[m.Name]; !ok || !methodAvailable(rev, m.Name) {
 			continue
 		}
 		kept = append(kept, withProject(laterSchema(rev, m.Name, raw)))
@@ -414,7 +422,8 @@ func helpAllDocument(rev int) map[string]json.RawMessage {
 // withPortsMethod adds revision 15's ports method to a terminal creator's
 // method list, which the snapshot the document comes from predates.
 func withPortsMethod(raw json.RawMessage) json.RawMessage {
-	if portsMethodEntry == nil {
+	methodEntry, _ := portsEntries()
+	if methodEntry == nil {
 		return raw
 	}
 	var block map[string]any
@@ -427,8 +436,8 @@ func withPortsMethod(raw json.RawMessage) json.RawMessage {
 			return raw
 		}
 	}
-	entry := make(map[string]any, len(portsMethodEntry))
-	for k, v := range portsMethodEntry {
+	entry := make(map[string]any, len(methodEntry))
+	for k, v := range methodEntry {
 		entry[k] = v
 	}
 	entry["invoke"] = map[string]any{"method": creatorName + ".ports"}
@@ -452,15 +461,4 @@ func ownMethods() []json.RawMessage {
 		}
 	}
 	return out
-}
-
-// implementedMethods are the methods of the methods table, for the help
-// documents: filled in init, so that the help document does not depend on
-// the table it is named in.
-var implementedMethods = map[string]bool{}
-
-func init() {
-	for name := range methods {
-		implementedMethods[name] = true
-	}
 }

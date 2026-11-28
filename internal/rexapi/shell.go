@@ -108,6 +108,8 @@ func parseShellOptions(o args) (shellOptions, *apiError) {
 	return so, nil
 }
 
+var shDoubleQuoteEscaper = strings.NewReplacer(`\`, `\\`, `"`, `\"`, `$`, `\$`, "`", "\\`")
+
 // paneCommand returns what a pane runs for the options, or nil for the
 // user's login shell, which is what GoRex runs by default.
 func paneCommand(shell string, login bool, command, argv, prepend []string) []string {
@@ -127,7 +129,11 @@ func paneCommand(shell string, login bool, command, argv, prepend []string) []st
 	}
 	path := ""
 	if len(prepend) > 0 {
-		path = `PATH="` + strings.Join(prepend, ":") + `:$PATH"; export PATH; `
+		escaped := make([]string, len(prepend))
+		for i, p := range prepend {
+			escaped[i] = shDoubleQuoteEscaper.Replace(p)
+		}
+		path = `PATH="` + strings.Join(escaped, ":") + `:$PATH"; export PATH; `
 	}
 	switch {
 	case len(command) > 0 && shell == "none":

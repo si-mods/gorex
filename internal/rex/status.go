@@ -1,7 +1,6 @@
 package rex
 
 import (
-	"bytes"
 	"cmp"
 	"encoding/base64"
 	"slices"
@@ -42,80 +41,21 @@ type programStatus struct {
 
 // feed reads output for reports, prompts and resets, and returns how many
 // times the program asked whether the terminal knows the protocol.
-func (st *programStatus) feed(p []byte) (queries int) {
-	if len(st.carry) > 0 {
-		p = append(st.carry, p...)
-		st.carry = nil
-	}
-	for {
-		i := bytes.IndexByte(p, 0x1b)
-		if i < 0 {
-			return
-		}
-		p = p[i:]
-		if len(p) < 2 {
-			st.carry = append([]byte(nil), p...)
-			return
-		}
-		switch p[1] {
-		case 'c': // RIS
+func (st *programStatus) feed(p []byte) int {
+	return feedOSC(
+		&st.carry,
+		p,
+		"7501",
+		maxStatusSeq,
+		func() {
 			if len(st.records) > 0 {
 				st.updates++
 			}
 			clear(st.records)
-			p = p[2:]
-			continue
-		case ']':
-		default:
-			p = p[1:]
-			continue
-		}
-		body, n := oscBody(p[2:])
-		if n < 0 {
-			// Unfinished: keep it if it may be ours and not too long.
-			if len(p) <= maxStatusSeq && (mayBe(p[2:], "7501;") || mayBe(p[2:], "133;")) {
-				st.carry = append([]byte(nil), p...)
-			}
-			return
-		}
-		p = p[2+n:]
-		switch {
-		case bytes.HasPrefix(body, []byte("133;A")) && (len(body) == 5 || body[5] == ';'):
-			st.drop()
-		case !bytes.HasPrefix(body, []byte("7501;")) || 2+n > maxStatusSeq:
-		case strings.TrimSpace(string(body[5:])) == "?":
-			queries++
-		default:
-			st.report(string(body[5:]))
-		}
-	}
-}
-
-// oscBody returns the body of an OSC string after its "ESC ]", and the
-// length of the string with its terminator; -1 when it is unfinished. A
-// sequence that cuts it ends it with no body.
-func oscBody(p []byte) ([]byte, int) {
-	for i, c := range p {
-		if c == 0x07 {
-			return p[:i], i + 1
-		}
-		if c == 0x1b {
-			if i+1 == len(p) {
-				return nil, -1
-			}
-			if p[i+1] == '\\' {
-				return p[:i], i + 2
-			}
-			return nil, i
-		}
-	}
-	return nil, -1
-}
-
-// mayBe tells whether p may be the start of a string starting with prefix.
-func mayBe(p []byte, prefix string) bool {
-	n := min(len(p), len(prefix))
-	return string(p[:n]) == prefix[:n]
+		},
+		st.drop,
+		st.report,
+	)
 }
 
 // drop drops the records of what was running, as its program ended or a

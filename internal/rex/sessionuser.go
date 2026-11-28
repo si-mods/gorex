@@ -56,9 +56,6 @@ func sessionUserFromEnv() (*sessionUser, error) {
 	if int(u.uid) == os.Geteuid() {
 		return nil, nil
 	}
-	if !sessionUserSupported {
-		return nil, fmt.Errorf("rex: %s is supported on Linux only", EnvSessionUser)
-	}
 	if os.Geteuid() != 0 {
 		return nil, fmt.Errorf("rex: %s=%s: the server must run as root to run sessions as another user", EnvSessionUser, name)
 	}

@@ -107,16 +107,6 @@ func List(extsRoot string) []Installed {
 	return out
 }
 
-// ByKind is the pack serving the pane kind, nil when none does.
-func ByKind(packs []*Pack, kind string) *Pack {
-	for _, p := range packs {
-		if p.Manifest.Pane(kind) != nil {
-			return p
-		}
-	}
-	return nil
-}
-
 // JailPath is the path name inside root, an error when it would leave
 // it: names are relative and clean, and the path they land on stays
 // inside root once symlinks resolve.

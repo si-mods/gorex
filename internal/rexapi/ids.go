@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"gorex/internal/layout"
 )
 
 // Namespaces of Rex IDs, fixed for every run of this package: a GoRex
@@ -76,18 +78,12 @@ func hostID(name, user string) string {
 func randomUUID() string {
 	var b [16]byte
 	copy(b[:], randomBytes(16))
-	b[6] = b[6]&0x0f | 0x40
-	b[8] = b[8]&0x3f | 0x80
-	return uuidString(b)
+	return layout.FormatUUIDv4(b)
 }
 
 // newID makes a random ID of the kind, shaped as Rex's are.
 func newID(kind string) string {
-	var b [16]byte
-	rand.Read(b[:])
-	b[6] = b[6]&0x0f | 0x40
-	b[8] = b[8]&0x3f | 0x80
-	return kind + ":" + uuidString(b)
+	return kind + ":" + randomUUID()
 }
 
 // randomBytes returns n random bytes.
@@ -117,21 +113,7 @@ func uuidString(b [16]byte) string {
 // UUID, as client.inspect requires.
 func isUUIDID(id, kind string) bool {
 	rest, ok := strings.CutPrefix(id, kind+":")
-	if !ok || len(rest) != 36 {
-		return false
-	}
-	for i, r := range rest {
-		if i == 8 || i == 13 || i == 18 || i == 23 {
-			if r != '-' {
-				return false
-			}
-			continue
-		}
-		if !isHex(r) {
-			return false
-		}
-	}
-	return true
+	return ok && layout.IsUUID(rest)
 }
 
 // shortID is the last eight hexadecimal digits of an ID, as Rex shows

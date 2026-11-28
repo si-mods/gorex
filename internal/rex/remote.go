@@ -47,11 +47,11 @@ import (
 // (remote.pair), and nothing else; the local user approves or rejects.
 
 // RemotePort is the port the server listens on at its tailcat address.
-const RemotePort = 7464
+const RemotePort = pairaddr.RemotePort
 
 // RexAPIPort is Rex's API port, which the server's tailcat address serves
 // too: its connections go to the Rex API gateway (toGateway).
-const RexAPIPort = 7297
+const RexAPIPort = pairaddr.RexAPIPort
 
 // RemoteConfig is the server's remote access, kept in Dir()/remote.json.
 type RemoteConfig struct {

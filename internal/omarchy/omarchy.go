@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"gorex/internal/atomicfile"
+	"gorex/internal/homedir"
 	"gorex/internal/rex"
 	"gorex/internal/theme"
 )
@@ -61,10 +62,11 @@ type Paths struct {
 // GoRex's home directory.
 func DefaultPaths() Paths {
 	home, _ := os.UserHomeDir()
+	configHome, _ := homedir.XDGConfigHome(home)
 	return Paths{
 		OmarchyRoot:  cmp.Or(strings.TrimSpace(os.Getenv("OMARCHY_PATH")), "/usr/share/omarchy"),
 		StateDir:     filepath.Join(cmp.Or(strings.TrimSpace(os.Getenv("XDG_STATE_HOME")), filepath.Join(home, ".local", "state")), "omarchy"),
-		ConfigHome:   cmp.Or(strings.TrimSpace(os.Getenv("XDG_CONFIG_HOME")), filepath.Join(home, ".config")),
+		ConfigHome:   cmp.Or(strings.TrimSpace(configHome), filepath.Join(home, ".config")),
 		SettingsPath: filepath.Join(rex.Dir(), "settings.json"),
 	}
 }

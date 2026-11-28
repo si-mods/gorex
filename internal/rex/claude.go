@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+
+	"gorex/internal/layout"
 )
 
 // claudeSession returns the conversation Claude Code's process pid has
@@ -66,22 +68,7 @@ func parseClaudeSession(b []byte, pid int, dir string) string {
 // IsUUID tells whether s is a UUID, 8-4-4-4-12 hex digits: a conversation
 // id GoRex types into a shell.
 func IsUUID(s string) bool {
-	if len(s) != 36 {
-		return false
-	}
-	for i, r := range s {
-		switch i {
-		case 8, 13, 18, 23:
-			if r != '-' {
-				return false
-			}
-		default:
-			if !strings.ContainsRune("0123456789abcdefABCDEF", r) {
-				return false
-			}
-		}
-	}
-	return true
+	return layout.IsUUID(s)
 }
 
 // samePath tells whether a and b name one directory: Windows takes no

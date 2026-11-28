@@ -17,25 +17,20 @@ import (
 	"context"
 	"errors"
 	"net"
+	"net/http"
 	"strconv"
 	"strings"
 	"sync"
 	"syscall/js"
 	"time"
 
+	"gorex/internal/pairaddr"
+	"gorex/internal/tailcatpool"
 	"gorex/web/jsbridge"
 
 	"github.com/tailscale/tailcat"
 	"tailscale.com/types/key"
 )
-
-// rexAPIPort is the gateway's port on the host's tailcat address
-// (internal/rexapi, as Rex Go dials it).
-const rexAPIPort = 7297
-
-// remotePort is the session server's port on the tailcat address, where
-// a client not allowed yet asks to pair (internal/rex RemotePort).
-const remotePort = 7464
 
 // dialWait bounds one dial of a client: the DERP connection and the
 // handshake it carries.
@@ -56,19 +51,21 @@ func main() {
 	select {}
 }
 
-// node is the page's tailcat device: its key and a client for each host's
-// address. Two clients of one key take each other's packets, so one page
-// holds one key (web/src/tailcat.ts's tab lock), and one address keeps
-// one client.
+// node is the page's tailcat device: its key, a shared tailcatpool.Pool so
+// restarted hosts retire stale clients automatically, and one HTTP transport
+// per host address. Two clients of one key take each other's packets, so one
+// page holds one key (web/src/tailcat.ts's tab lock), and one address keeps
+// one pooled client.
 type node struct {
 	priv key.NodePrivate
+	pool *tailcatpool.Pool
 
-	mu      sync.Mutex
-	clients map[tailcat.Addr]*tailcat.Client
+	mu         sync.Mutex
+	transports map[string]*http.Transport
 }
 
 func newNode(config js.Value) (*node, error) {
-	n := &node{clients: map[tailcat.Addr]*tailcat.Client{}}
+	n := &node{transports: map[string]*http.Transport{}}
 	if k := config.Get("key"); k.Type() == js.TypeString && k.String() != "" {
 		if err := n.priv.UnmarshalText([]byte(k.String())); err != nil || n.priv.IsZero() {
 			return nil, errors.New("invalid tailcat key")
@@ -76,35 +73,41 @@ func newNode(config js.Value) (*node, error) {
 	} else {
 		n.priv = key.NewNode()
 	}
+	n.pool = &tailcatpool.Pool{
+		LogPrefix: "tailcat",
+		KeyFn:     func() (key.NodePrivate, bool) { return n.priv, !n.priv.IsZero() },
+	}
 	return n, nil
 }
 
-// client returns the tailcat client of an address, made on first use.
-// Callers dial it; a client starts lazily (tailcat's ensureStarted).
-func (n *node) client(addr string) (*tailcat.Client, error) {
-	a := tailcat.Addr(addr)
-	if _, err := tailcat.ParseAddr(a); err != nil {
-		return nil, err
-	}
-	n.mu.Lock()
-	defer n.mu.Unlock()
-	c := n.clients[a]
-	if c == nil {
-		c = tailcat.NewClient(a)
-		c.Key = n.priv
-		n.clients[a] = c
-	}
-	return c, nil
+func checkAddr(addr string) error {
+	_, err := tailcat.ParseAddr(tailcat.Addr(addr))
+	return err
 }
 
-// close drops the client of an address, for Disconnect and host removal.
+// dial connects to port at addr through the pooled tailcat client, retiring a
+// warm client when a restarted server forgot it.
+func (n *node) dial(ctx context.Context, addr string, port uint16) (net.Conn, error) {
+	if err := checkAddr(addr); err != nil {
+		return nil, err
+	}
+	ctx, cancel := context.WithTimeout(ctx, dialWait)
+	defer cancel()
+	return n.pool.Dial(ctx, addr, port, n.priv)
+}
+
+// close drops the HTTP transport and pooled tailcat client of an address, for
+// Disconnect and host removal.
 func (n *node) close(addr string) {
 	n.mu.Lock()
-	defer n.mu.Unlock()
-	a := tailcat.Addr(addr)
-	if c := n.clients[a]; c != nil {
-		delete(n.clients, a)
-		go c.Close() // a stuck bind would block the caller
+	rt := n.transports[addr]
+	delete(n.transports, addr)
+	n.mu.Unlock()
+	if rt != nil {
+		rt.CloseIdleConnections()
+	}
+	if e := n.pool.Get(addr); e != nil {
+		n.pool.Evict(addr, e)
 	}
 }
 
@@ -175,17 +178,11 @@ func derpBase(hostName string, port int) string {
 func (n *node) jsPair(args []js.Value) any {
 	addr, name := args[0].String(), args[1].String()
 	return jsbridge.Promise(func() (any, error) {
-		c, err := n.client(addr)
-		if err != nil {
-			return nil, err
-		}
-		ctx, cancel := context.WithTimeout(context.Background(), dialWait)
-		defer cancel()
-		conn, err := c.DialTCPPort(ctx, remotePort)
+		conn, err := n.dial(context.Background(), addr, pairaddr.RemotePort)
 		if err != nil {
 			return nil, err
 		}
 		defer conn.Close()
-		return pairOn(conn, name)
+		return pairaddr.PairTailcat(conn, name)
 	})
 }

@@ -7,6 +7,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"gorex/internal/layout"
 )
 
 const maxCLIIconBytes = 32 * 1024
@@ -86,16 +88,5 @@ func iconCmd(args []string, out, errOut io.Writer) (int, bool) {
 }
 
 func normalizeHexFlag(s string) (string, bool) {
-	s = strings.TrimPrefix(strings.TrimSpace(s), "#")
-	if len(s) != 6 {
-		return "", false
-	}
-	for i := 0; i < 6; i++ {
-		c := s[i]
-		isHex := (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')
-		if !isHex {
-			return "", false
-		}
-	}
-	return strings.ToLower(s), true
+	return layout.NormalizeHex6(strings.TrimSpace(s))
 }

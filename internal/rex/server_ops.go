@@ -13,6 +13,8 @@ import (
 
 	"github.com/egoist/mygo/plugins/terminal"
 	"github.com/egoist/mygo/ui"
+
+	"gorex/internal/layout"
 )
 
 type serverOpFunc func(s *Server, req Request, peer string, kept *keptConn) (any, error)
@@ -505,12 +507,9 @@ func toTerminalTheme(t *Theme) *terminal.Theme {
 // ParseHexColor reads "#rgb" and "#rrggbb", with or without the #, and
 // false for other forms.
 func ParseHexColor(s string) (ui.Color, bool) {
-	h := strings.TrimPrefix(s, "#")
-	if len(h) != 3 && len(h) != 6 {
+	r, g, b, ok := layout.ParseHexRGB(s)
+	if !ok {
 		return ui.Color{}, false
 	}
-	if _, err := strconv.ParseUint(h, 16, 32); err != nil {
-		return ui.Color{}, false
-	}
-	return ui.Hex("#" + h), true
+	return ui.RGB(r, g, b), true
 }

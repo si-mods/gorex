@@ -53,6 +53,14 @@ const (
 )
 
 const (
+	// RemotePort is the session server's port on its tailcat address, where a
+	// client asks to pair (remote.pair) and desktop peers connect.
+	RemotePort = 7464
+	// RexAPIPort is Rex's API port on the tailcat address and LAN gateway.
+	RexAPIPort = 7297
+)
+
+const (
 	MsgWait  = 10 * time.Second // for each message before approval
 	AddrWait = 2 * time.Minute  // for the user's approval
 	NameMax  = 256              // bytes of a name on the wire
@@ -279,4 +287,44 @@ func CheckAddrs(addrs []string, ks key.NodePublic, pin string) error {
 		}
 	}
 	return nil
+}
+
+// PairTailcat sends the one-line remote.pair request on conn (dialed to
+// RemotePort on a machine's tailcat address) and returns the fingerprint the
+// machine displays for approval, or its refusal.
+func PairTailcat(conn net.Conn, name string) (string, error) {
+	conn.SetDeadline(time.Now().Add(30 * time.Second))
+	req, _ := json.Marshal(struct {
+		ID     int64  `json:"id"`
+		Op     string `json:"op"`
+		Remote struct {
+			Name string `json:"name"`
+		} `json:"remote"`
+	}{
+		ID: 1,
+		Op: "remote.pair",
+		Remote: struct {
+			Name string `json:"name"`
+		}{Name: name},
+	})
+	if _, err := conn.Write(append(req, '\n')); err != nil {
+		return "", err
+	}
+	line, err := bufio.NewReaderSize(conn, 4096).ReadBytes('\n')
+	if err != nil {
+		return "", err
+	}
+	var res struct {
+		Error string `json:"error"`
+		Data  struct {
+			Fingerprint string `json:"fingerprint"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(line, &res); err != nil {
+		return "", fmt.Errorf("not an answer: %w", err)
+	}
+	if res.Error != "" {
+		return "", errors.New(res.Error)
+	}
+	return res.Data.Fingerprint, nil
 }

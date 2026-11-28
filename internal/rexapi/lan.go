@@ -20,11 +20,12 @@ import (
 	"time"
 
 	"gorex/internal/atomicfile"
+	"gorex/internal/pairaddr"
 )
 
 // LANPort is the port the gateway takes on the local network by default:
 // Rex's own.
-const LANPort = 7297
+const LANPort = pairaddr.RexAPIPort
 
 // LANConfig is the gateway's listener on the local network, kept in
 // lan.json in the gateway's state directory. Rex's apps connect to it by

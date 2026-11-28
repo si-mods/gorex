@@ -9,6 +9,8 @@ import (
 	"regexp"
 	"strings"
 	"unicode/utf8"
+
+	"gorex/internal/layout"
 )
 
 // iconReply answers a program asking whether the terminal supports OSC 7502.
@@ -35,49 +37,8 @@ type programIcon struct {
 
 // feed reads output for icon reports, queries, prompts and resets, and returns
 // how many times the program asked whether the terminal supports OSC 7502.
-func (ic *programIcon) feed(p []byte) (queries int) {
-	if len(ic.carry) > 0 {
-		p = append(ic.carry, p...)
-		ic.carry = nil
-	}
-	for {
-		i := bytes.IndexByte(p, 0x1b)
-		if i < 0 {
-			return
-		}
-		p = p[i:]
-		if len(p) < 2 {
-			ic.carry = append([]byte(nil), p...)
-			return
-		}
-		switch p[1] {
-		case 'c': // RIS
-			ic.drop()
-			p = p[2:]
-			continue
-		case ']':
-		default:
-			p = p[1:]
-			continue
-		}
-		body, n := oscBody(p[2:])
-		if n < 0 {
-			if len(p) <= maxIconSeq && (mayBe(p[2:], "7502;") || mayBe(p[2:], "133;")) {
-				ic.carry = append([]byte(nil), p...)
-			}
-			return
-		}
-		p = p[2+n:]
-		switch {
-		case bytes.HasPrefix(body, []byte("133;A")) && (len(body) == 5 || body[5] == ';'):
-			ic.drop()
-		case !bytes.HasPrefix(body, []byte("7502;")) || 2+n > maxIconSeq:
-		case strings.TrimSpace(string(body[5:])) == "?":
-			queries++
-		default:
-			ic.apply(string(body[5:]))
-		}
-	}
+func (ic *programIcon) feed(p []byte) int {
+	return feedOSC(&ic.carry, p, "7502", maxIconSeq, ic.drop, ic.drop, ic.apply)
 }
 
 // drop clears the active program icon, if one is set.
@@ -267,16 +228,9 @@ func validateSVG(raw []byte) bool {
 }
 
 func parseHexColor(s string) (string, bool) {
-	s = strings.TrimPrefix(s, "#")
-	if len(s) != 6 {
+	h, ok := layout.NormalizeHex6(s)
+	if !ok {
 		return "", false
 	}
-	for i := 0; i < 6; i++ {
-		c := s[i]
-		isHex := (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')
-		if !isHex {
-			return "", false
-		}
-	}
-	return "#" + strings.ToLower(s), true
+	return "#" + h, true
 }

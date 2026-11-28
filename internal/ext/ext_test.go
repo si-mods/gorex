@@ -73,9 +73,6 @@ func TestLoadAll(t *testing.T) {
 	if len(errs) != 2 { // bad manifest + duplicate kind
 		t.Errorf("%d errors, want 2: %v", len(errs), errs)
 	}
-	if ByKind(packs, "demo.pane") == nil || ByKind(packs, "none") != nil {
-		t.Error("ByKind")
-	}
 }
 
 func TestLoadAllKindClash(t *testing.T) {
