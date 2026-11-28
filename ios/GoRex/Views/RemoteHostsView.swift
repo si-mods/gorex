@@ -588,18 +588,6 @@ struct TailcatPairSheet: View {
     private static let waitSeconds: TimeInterval = 5 * 60
     private static let wait = Duration.seconds(waitSeconds)
 
-    /// Matches the server's "allowed there already" response so pre-allowed
-    /// devices succeed instead of failing.
-    static func isAlreadyAllowed(_ error: Error) -> Bool {
-        error.localizedDescription.localizedCaseInsensitiveContains("allowed there already")
-    }
-
-    /// Formats the remaining pairing window time as m:ss, clamped at 0:00.
-    static func remainingText(until deadline: Date, now: Date = .now) -> String {
-        let secs = max(0, Int(deadline.timeIntervalSince(now).rounded()))
-        return String(format: "%d:%02d", secs / 60, secs % 60)
-    }
-
     private var online: Bool { store.host(code.id)?.status == .online }
     /// Added, and waiting for the approval.
     private var waiting: Bool { fingerprint != nil && end == nil && !online }
@@ -643,7 +631,7 @@ struct TailcatPairSheet: View {
                 if !online {
                     if let deadline {
                         TimelineView(.periodic(from: .now, by: 1)) { ctx in
-                            Text("Time left: \(Self.remainingText(until: deadline, now: ctx.date))")
+                            Text("Time left: \(HostConfig.remainingPairingText(until: deadline, now: ctx.date))")
                                 .font(.footnote.monospacedDigit())
                                 .foregroundStyle(.secondary)
                         }
@@ -699,7 +687,7 @@ struct TailcatPairSheet: View {
             end = .expired
         } catch is CancellationError {
         } catch {
-            if Self.isAlreadyAllowed(error) {
+            if HostConfig.isAlreadyAllowed(error) {
                 alreadyAllowed = true
                 kept = true
                 store.add(code)

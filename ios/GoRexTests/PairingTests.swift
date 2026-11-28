@@ -76,13 +76,13 @@ nonisolated final class PairingTests: XCTestCase {
     @MainActor func testTailcatPairSheetHelpers() {
         let allowed = NSError(domain: "rex", code: 1, userInfo: [NSLocalizedDescriptionKey: "rex: this machine is allowed there already"])
         let other = NSError(domain: "rex", code: 1, userInfo: [NSLocalizedDescriptionKey: "the machine is not pairing now"])
-        XCTAssertTrue(TailcatPairSheet.isAlreadyAllowed(allowed))
-        XCTAssertFalse(TailcatPairSheet.isAlreadyAllowed(other))
+        XCTAssertTrue(HostConfig.isAlreadyAllowed(allowed))
+        XCTAssertFalse(HostConfig.isAlreadyAllowed(other))
 
         let now = Date(timeIntervalSince1970: 1_000)
-        XCTAssertEqual(TailcatPairSheet.remainingText(until: now.addingTimeInterval(300), now: now), "5:00")
-        XCTAssertEqual(TailcatPairSheet.remainingText(until: now.addingTimeInterval(65), now: now), "1:05")
-        XCTAssertEqual(TailcatPairSheet.remainingText(until: now.addingTimeInterval(-10), now: now), "0:00")
+        XCTAssertEqual(HostConfig.remainingPairingText(until: now.addingTimeInterval(300), now: now), "5:00")
+        XCTAssertEqual(HostConfig.remainingPairingText(until: now.addingTimeInterval(65), now: now), "1:05")
+        XCTAssertEqual(HostConfig.remainingPairingText(until: now.addingTimeInterval(-10), now: now), "0:00")
     }
 }
 
