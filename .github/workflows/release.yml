@@ -4,10 +4,8 @@ name: Release
 # them to that version's draft GitHub release, on si-mods' own runners: no
 # job runs on GitHub's. The Mac mini builds the Unix apps, whose archives
 # keep the executable bit that a Windows file system loses; YIBO-PC builds
-# the Windows apps, with the NSIS installer. The two builds run in parallel,
-# but upload one at a time (job concurrency "release-upload"): mygo's -upload
-# puts a SHA256SUMS in the release, merged with the one there, and two uploads
-# of that name at once fail with HTTP 422 "already exists". "draft" creates the draft release before them, so that they do not both
+# the Windows apps, with the NSIS installer. The two builds run in parallel.
+# "draft" creates the draft release before them, so that they do not both
 # create it. "checksums" writes the release's SHA256SUMS from its assets
 # after them, so that they do not both rewrite it; the SHA256SUMS that each
 # build uploads is replaced.
@@ -96,10 +94,6 @@ jobs:
     if: github.ref == 'refs/heads/main' && (inputs.target == 'all' || inputs.target == 'unix')
     runs-on: [self-hosted, macmini]
     timeout-minutes: 60
-    # One upload job at a time, with windows: see the note at the top.
-    concurrency:
-      group: release-upload-${{ github.ref }}
-      cancel-in-progress: false
     steps:
       # -upload uploads with gh.
       - run: gh --version
@@ -155,10 +149,6 @@ jobs:
     if: github.ref == 'refs/heads/main' && (inputs.target == 'all' || inputs.target == 'windows')
     runs-on: [self-hosted, yibo-pc]
     timeout-minutes: 60
-    # One upload job at a time, with unix: see the note at the top.
-    concurrency:
-      group: release-upload-${{ github.ref }}
-      cancel-in-progress: false
     steps:
       - run: gh --version
       # Keep LF in the files the app embeds, as the other platforms do.
