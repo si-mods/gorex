@@ -13,8 +13,9 @@
 // chunk that arrives, and the panes draw again. A page built without Maple
 // draws no CJK character at all.
 import { loader } from "./loader";
+import { mapleFamily } from "./prefs";
 
-export const mapleFamily = "Maple Mono NF CN";
+export { mapleFamily };
 
 interface Index {
   family: string;

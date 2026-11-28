@@ -3,7 +3,10 @@
 // dense its tint is, and the displacement map of its rim lens. glass.ts
 // applies it to the page; test/glass.test.ts checks it.
 
-export type RGB = [number, number, number];
+import type { RGB } from "./ghostty";
+import { contrastRatio } from "./termtheme";
+
+export type { RGB };
 /** The text colour on a glass surface: dark ink on light glass, light ink on dark glass. */
 export type Ink = "light" | "dark";
 export type Scheme = "light" | "dark";
@@ -178,20 +181,8 @@ export function inkOn(glass: RGB, ink: Ink, level: "primary" | "secondary"): RGB
   return glass.map((v, i) => clamp(v + a * c[i], 0, 255)) as RGB;
 }
 
-/** WCAG 2's relative luminance of an sRGB colour. */
-function relLum(c: RGB): number {
-  const [r, g, b] = c.map((v) => {
-    const s = v / 255;
-    return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
-  });
-  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
-}
-
 /** WCAG 2's contrast ratio of two colours, 1 to 21. */
-export function contrast(a: RGB, b: RGB): number {
-  const [x, y] = [relLum(a), relLum(b)].sort((p, q) => q - p);
-  return (x + 0.05) / (y + 0.05);
-}
+export const contrast = contrastRatio;
 
 /** The rim lens's width for a surface: a 3.5th of its short side, 4 to 44 px. */
 export const rimWidth = (w: number, h: number): number => Math.max(4, Math.min(44, Math.min(w, h) / 3.5));

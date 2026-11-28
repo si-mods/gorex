@@ -3,8 +3,7 @@
 // the page loads and written on every change. The Settings dialog
 // (settings.ts) changes them; the page applies each change to every open
 // pane at once.
-import { mapleFamily } from "./maple";
-import { minimumContrast } from "./terminal";
+import { minimumContrast } from "./termtheme";
 
 export type Appearance = "" | "light" | "dark";
 export type CursorStyle = "block" | "bar" | "underline";
@@ -209,6 +208,9 @@ export const contrastRatio = () => prefs.minimumContrast || minimumContrast;
 
 /** The font until one is chosen, which the page bundles as the desktop does (style.go, defaultFontFamily). */
 export const defaultFont = "JetBrains Mono";
+
+/** The terminal's bundled CJK fallback font family (maple.ts). */
+export const mapleFamily = "Maple Mono NF CN";
 
 /**
  * The terminals' CSS font family: the chosen font, then Maple Mono NF CN
