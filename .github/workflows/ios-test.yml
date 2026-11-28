@@ -103,7 +103,11 @@ jobs:
           print(best[1] if best else "")
           ')
           [[ -n $UDID ]] || { echo "::error::No available iPhone simulator"; exit 1; }
-          A=(-scheme GoRex -destination "platform=iOS Simulator,id=$UDID" CODE_SIGNING_ALLOWED=NO -resultBundlePath build/test.xcresult)
+          # Ad hoc signing, not CODE_SIGNING_ALLOWED=NO: the Mac holds no
+          # signing identity, but an unsigned app gets no entitlements, and
+          # the simulator's Keychain then refuses every item with
+          # errSecMissingEntitlement (-34018), as in SSHKeysUITests (#1161).
+          A=(-scheme GoRex -destination "platform=iOS Simulator,id=$UDID" CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY=- -resultBundlePath build/test.xcresult)
           [[ -z $ONLY ]] || A+=("-only-testing:$ONLY")
           rm -rf build/test.xcresult
           rc=0
