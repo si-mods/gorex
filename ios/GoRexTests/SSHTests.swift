@@ -1,4 +1,5 @@
 import Foundation
+import Security
 import UIKit
 import XCTest
 

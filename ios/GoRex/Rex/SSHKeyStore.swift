@@ -236,30 +236,41 @@ final class SSHKeyStore {
         }
         switch keychain.lookupLegacyPrivateKey() {
         case .found(let legacy):
-            if let parsed = try? parseKey(legacy, "") {
-                let id = UUID()
-                if (try? keychain.setPrivateKey(parsed.pem, for: id)) != nil {
-                    let record = SSHKeyRecord(
-                        id: id,
-                        name: String(localized: "This Device"),
-                        type: parsed.type,
-                        publicKey: parsed.publicKey,
-                        fingerprint: parsed.fingerprint,
-                        createdAt: Date(),
-                        isDefault: true
-                    )
-                    keys = [record]
-                    hasInitialized = true
-                    save()
-                    pushPayload([[
-                        "id": id.uuidString.lowercased(),
-                        "pem": parsed.pem,
-                        "isDefault": true,
-                    ]])
-                    return
-                }
+            let parsed: ParsedKey
+            do {
+                parsed = try parseKey(legacy, "")
+            } catch {
+                // An unparseable legacy item will never parse on retry; log and
+                // sync an empty key set so SSH hosts are not permanently blocked.
+                ConnectionLog.note("ssh keys: legacy key unparseable: \(error.localizedDescription)")
+                pushPayload([])
+                return
             }
-            isEngineSynced = false
+            let id = UUID()
+            do {
+                try keychain.setPrivateKey(parsed.pem, for: id)
+            } catch {
+                isEngineSynced = false
+                ConnectionLog.note("ssh keys: legacy key migration save failed: \(error.localizedDescription)")
+                return
+            }
+            let record = SSHKeyRecord(
+                id: id,
+                name: String(localized: "This Device"),
+                type: parsed.type,
+                publicKey: parsed.publicKey,
+                fingerprint: parsed.fingerprint,
+                createdAt: Date(),
+                isDefault: true
+            )
+            keys = [record]
+            hasInitialized = true
+            save()
+            pushPayload([[
+                "id": id.uuidString.lowercased(),
+                "pem": parsed.pem,
+                "isDefault": true,
+            ]])
         case .notFound:
             pushPayload([])
         case .unavailable(let status):

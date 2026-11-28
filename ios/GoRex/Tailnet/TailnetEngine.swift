@@ -297,7 +297,7 @@ final class TailnetEngine {
     /// The proxy for tailcat hosts; nil while the phone has no tailcat key
     /// or while its Keychain is locked.
     private func tailcatProxyNow() -> LoopbackProxy? {
-        guard (try? useTailcatKey(create: false)) == true || hasSSH || !SSHKeyStore.shared.keys.isEmpty else { return nil }
+        guard (try? useTailcatKey(create: false)) == true else { return nil }
         if tailcatProxy == nil { tailcatProxy = try? Self.readProxy(run: 0) }
         return tailcatProxy
     }
@@ -308,6 +308,7 @@ final class TailnetEngine {
     private func sshProxyNow() -> LoopbackProxy? {
         guard SSHKeyStore.shared.ensureSynced() else { return nil }
         if hasSSH { _ = try? SSHKeyStore.shared.ensureDefaultKey() }
+        guard SSHKeyStore.shared.isEngineSynced else { return nil }
         if tailcatProxy == nil { tailcatProxy = try? Self.readProxy(run: 0) }
         return tailcatProxy
     }
