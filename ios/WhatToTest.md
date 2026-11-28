@@ -12,6 +12,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 ## en-US
 - Pairing a host with Rex Go now has a cleaner step-by-step sheet with status badges, a prominent fingerprint card, live countdown, and smoother completion transition.
 - Pairing a host with Rex Go now treats pre-allowed devices as paired, shows a countdown and clear error details while waiting for approval, and removes unapproved hosts if the window expires.
+- Fixed a rare SSH host problem when you save a host's settings or change keys while that host is still connecting.
 - Project preset colors and terminal themes now come from one shared catalog across iPhone, desktop, and web.
 - Tailcat host connections now share the same connection pool as desktop GoRex for more consistent reconnect and cancel behavior.
 - Composer Mode dictation no longer sends by itself: the voice view now has Cancel (discard) and Done (put the text in the field), and you tap Send when ready.
@@ -193,6 +194,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 ## zh-Hans
 - Rex Go 扫码配对弹窗升级为更清爽的分步状态卡片：带状态图标徽章、醒目的指纹核对卡片、实时倒计时与配对完成后的平滑跳转。
 - Rex Go 扫码配对主机时，已预先允许的设备会直接添加成功；等待批准期间显示剩余时间与失败原因，超时未批准不再残留无法连接的主机。
+- 修复了 SSH 主机仍在连接时保存其设置或更换密钥可能出现的罕见问题。
 - 项目预设颜色与终端主题目录现已由统一配置生成，iPhone、桌面端与网页端保持一致。
 - Tailcat 主机连接现与桌面端 GoRex 共享同一连接池，断线重连与取消行为更一致。
 - 输入框模式的语音听写不再自动发送：语音界面改为“取消”（丢弃）和“完成”（把文字放进输入框），确认后再自己点发送。
