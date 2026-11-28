@@ -144,27 +144,23 @@ jobs:
           npm run typecheck
           npm test
 
-      # The Go tests: the other packages run in the background while the
-      # root package's tests run in the foreground, on the same box. No retry:
-      # a failed test fails the step.
+      # The Go tests, one after the other on the same box: the other
+      # packages' -race run beside the root package's tests made timing tests
+      # (TestDataSlowReader) fail on CPU load. Both run even if the first
+      # fails. No retry: a failed test fails the step.
       - name: test
         if: ${{ !cancelled() && steps.diff.outputs.code == 'true' }}
         shell: bash
         run: |
-          mapfile -t pkgs < <(go list ./... | grep -v '^gorex$')
-          go test -race "${pkgs[@]}" -count=1 -timeout 15m >"$RUNNER_TEMP/others.log" 2>&1 &
-          others=$!
           root=0
           go test -c -o "$RUNNER_TEMP/gorex.test" . &&
             "$RUNNER_TEMP/gorex.test" -test.timeout 15m || root=1
-          rc=0
-          wait "$others" || rc=$?
-          echo "::group::other packages"
-          cat "$RUNNER_TEMP/others.log"
-          echo "::endgroup::"
+          mapfile -t pkgs < <(go list ./... | grep -v '^gorex$')
+          others=0
+          go test -race "${pkgs[@]}" -count=1 -timeout 15m || others=1
           [ "$root" -eq 0 ] || echo "::error::root package tests failed"
-          [ "$rc" -eq 0 ] || echo "::error::other packages' tests failed"
-          [ "$root" -eq 0 ] && [ "$rc" -eq 0 ]
+          [ "$others" -eq 0 ] || echo "::error::other packages' tests failed"
+          [ "$root" -eq 0 ] && [ "$others" -eq 0 ]
       - uses: actions/cache/save@v6
         if: ${{ !cancelled() && steps.diff.outputs.code == 'true' && github.event_name == 'push' && github.ref == 'refs/heads/main' }}
         with:
