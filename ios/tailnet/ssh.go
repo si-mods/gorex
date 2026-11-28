@@ -234,7 +234,14 @@ func setSSHKeyEntries(next []sshKeyEntry) {
 		return
 	}
 	sshKeys = next
-	old := sshClients
+	// A client's c is read under sshMu, as its connect sets it there; a
+	// connect still running sees itself dropped and closes its client.
+	var old []*ssh.Client
+	for _, p := range sshClients {
+		if p.c != nil {
+			old = append(old, p.c)
+		}
+	}
 	sshClients = map[string]*pooledSSH{}
 	for _, sc := range sshScopes {
 		sc.cancel() // dials of the old key
@@ -243,10 +250,8 @@ func setSSHKeyEntries(next []sshKeyEntry) {
 	sshPasswords = map[string]string{}
 	sshPasswordAuth = map[string]bool{}
 	sshMu.Unlock()
-	for _, p := range old {
-		if p.c != nil {
-			go p.c.Close() // a stuck close would block the caller
-		}
+	for _, c := range old {
+		go c.Close() // a stuck close would block the caller
 	}
 }
 
@@ -469,11 +474,16 @@ func SetSSHHosts(hostsJSON string) error {
 		h, ok := m[id]
 		return !ok || h != sshHosts[id]
 	}
-	var dead []*pooledSSH
+	// A client's c is read here, under sshMu, as its connect sets it
+	// there; a connect still running sees itself dropped and closes its
+	// client.
+	var dead []*ssh.Client
 	for id, p := range sshClients {
 		if gone(id) {
 			delete(sshClients, id)
-			dead = append(dead, p)
+			if p.c != nil {
+				dead = append(dead, p.c)
+			}
 		}
 	}
 	for id, s := range sshScopes {
@@ -523,10 +533,8 @@ func SetSSHHosts(hostsJSON string) error {
 	}
 	sshHosts = m
 	sshMu.Unlock()
-	for _, p := range dead {
-		if p.c != nil {
-			go p.c.Close()
-		}
+	for _, c := range dead {
+		go c.Close()
 	}
 	return nil
 }
@@ -996,11 +1004,14 @@ func SSHTakePasswordOffer(id string) bool {
 func SSHInstallKey(id string) error {
 	id = strings.ToLower(id)
 	sshMu.Lock()
-	p := sshClients[id]
+	var c *ssh.Client
+	if p := sshClients[id]; p != nil {
+		c = p.c // set under sshMu by its connect
+	}
 	h := sshHosts[id]
 	pub := sshPublicKeyForLocked(h.KeyID)
 	sshMu.Unlock()
-	if p == nil || p.c == nil {
+	if c == nil {
 		return errors.New("ssh host not connected: " + id)
 	}
 	if pub == "" {
@@ -1011,10 +1022,10 @@ func SSHInstallKey(id string) error {
 	cmd := "umask 077; mkdir -p ~/.ssh && touch ~/.ssh/authorized_keys && " +
 		"grep -qF '" + pub + "' ~/.ssh/authorized_keys 2>/dev/null || " +
 		"printf '%s\\n' '" + pub + " rexgo' >> ~/.ssh/authorized_keys"
-	if _, err := sshExec(ctx, p.c, cmd); err != nil {
+	if _, err := sshExec(ctx, c, cmd); err != nil {
 		return errors.New("installing the key failed: " + err.Error())
 	}
-	if _, err := sshExec(ctx, p.c, installCheck(pub)); err != nil {
+	if _, err := sshExec(ctx, c, installCheck(pub)); err != nil {
 		return errors.New("the key is not in ~/.ssh/authorized_keys after the install: " + err.Error())
 	}
 	return nil
