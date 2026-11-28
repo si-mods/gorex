@@ -221,3 +221,54 @@ func TestStatusSeen(t *testing.T) {
 		t.Fatalf("a record after seen: %+v", got)
 	}
 }
+
+// Antigravity CLI reports state=blocked with msg "Approve plan" at its idle
+// prompt whenever an artifact exists in the conversation, even after the
+// task finished. GoRex turns that report into idle at start and done after
+// work so viewing the pane clears it, while keeping real permission prompts.
+func TestStatusAntigravityApprovePlan(t *testing.T) {
+	plan := osc("state=blocked:kind=permission:app=antigravity:msg=" + b64("Approve plan"))
+
+	// Resuming a conversation with an existing artifact before any work stays idle.
+	var resumed programStatus
+	resumed.feed([]byte(plan))
+	if got := resumed.summary(); got == nil || got.State != "idle" || got.Kind != "" || got.Msg != "" {
+		t.Fatalf("at start: got %+v, want idle without kind or msg", got)
+	}
+
+	// After work, the same report becomes done (preserving LastMsg) and clears once seen.
+	var st programStatus
+	st.feed([]byte(osc("state=working:app=antigravity:msg=" + b64("Merging PR"))))
+	st.feed([]byte(plan))
+	got := MostUrgent(st.list(), st.seen)
+	if got == nil || got.State != "done" || got.Kind != "" || got.Msg != "" || got.Message() != "Merging PR" {
+		t.Fatalf("after work: got %+v, want done with LastMsg Merging PR", got)
+	}
+	if !st.see(got.Updated) || MostUrgent(st.list(), st.seen) != nil {
+		t.Fatalf("still urgent after seen: %+v (seen=%v)", MostUrgent(st.list(), st.seen), st.seen)
+	}
+
+	// A duplicate report without new work does not make the seen done record unread again.
+	before := st.updates
+	st.feed([]byte(plan))
+	if st.updates != before || MostUrgent(st.list(), st.seen) != nil {
+		t.Fatalf("duplicate report woke seen record: updates %d -> %d, urgent %+v", before, st.updates, MostUrgent(st.list(), st.seen))
+	}
+
+	// A second working turn finishing with the same report becomes unread done again.
+	st.feed([]byte(osc("state=working:app=antigravity:msg="+b64("Updating docs")) + plan))
+	if got = MostUrgent(st.list(), st.seen); got == nil || got.State != "done" || got.Message() != "Updating docs" {
+		t.Fatalf("second turn: got %+v, want unread done Updating docs", got)
+	}
+
+	// Real Antigravity permission prompts and other apps' "Approve plan" stay blocked.
+	st.feed([]byte(osc("state=blocked:kind=permission:app=antigravity:msg=" + b64("Approve bash: git push"))))
+	if got = MostUrgent(st.list(), st.seen); got == nil || got.State != "blocked" || got.Msg != "Approve bash: git push" {
+		t.Fatalf("real permission prompt: got %+v, want blocked", got)
+	}
+	var claude programStatus
+	claude.feed([]byte(osc("state=blocked:kind=permission:app=claude:msg=" + b64("Approve plan"))))
+	if got = claude.summary(); got == nil || got.State != "blocked" {
+		t.Fatalf("other app Approve plan: got %+v, want blocked", got)
+	}
+}
