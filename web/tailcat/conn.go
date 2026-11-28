@@ -2,24 +2,22 @@
 
 package main
 
-// HTTP and WebSockets to a host's gateway over its tailcat client, and
-// the one-line request that pairs (docs/WEB-006-tailcat.md): plain HTTP/1.1
-// inside WireGuard — no TLS and no bakedroots — as Rex Go's gateway
-// stream is plain. The engine sends no Origin: the connection's device
-// key is the trust, as it is for a phone.
+// HTTP and WebSockets to a host's gateway over its pooled tailcat client
+// (docs/WEB-006-tailcat.md): plain HTTP/1.1 inside WireGuard — no TLS and no
+// bakedroots — as Rex Go's gateway stream is plain. The engine sends no
+// Origin: the connection's device key is the trust, as it is for a phone.
 
 import (
-	"bufio"
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net"
 	"net/http"
 	"strings"
 	"syscall/js"
 	"time"
 
+	"gorex/internal/pairaddr"
 	"gorex/web/jsbridge"
 )
 
@@ -28,25 +26,29 @@ import (
 // one address.
 const gateway = "http://gorex.tailcat.invalid:7297"
 
-// client is the HTTP transport of a host's address: its own dialer, so
-// net/http never sends a request through the browser's fetch
-// (net/http/roundtrip_js.go).
+// transport returns the cached HTTP transport of a host's address: its own
+// dialer, so net/http never sends a request through the browser's fetch
+// (net/http/roundtrip_js.go), and one connection pool per address.
 func (n *node) transport(addr string) (*http.Transport, error) {
-	c, err := n.client(addr)
-	if err != nil {
+	if err := checkAddr(addr); err != nil {
 		return nil, err
 	}
-	return &http.Transport{
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	if rt := n.transports[addr]; rt != nil {
+		return rt, nil
+	}
+	rt := &http.Transport{
 		DialContext: func(ctx context.Context, network, a string) (net.Conn, error) {
-			ctx, cancel := context.WithTimeout(ctx, dialWait)
-			defer cancel()
-			return c.DialTCPPort(ctx, rexAPIPort)
+			return n.dial(ctx, addr, pairaddr.RexAPIPort)
 		},
 		ForceAttemptHTTP2:     false,
 		MaxIdleConnsPerHost:   4,
 		IdleConnTimeout:       60 * time.Second,
 		ResponseHeaderTimeout: 60 * time.Second,
-	}, nil
+	}
+	n.transports[addr] = rt
+	return rt, nil
 }
 
 // jsRequest is request(address, method, path, headers, body, timeoutMs):
@@ -87,45 +89,12 @@ func (n *node) jsSocket(args []js.Value) any {
 		panic("usage: socket(address, path, protocol, emit)")
 	}
 	addr, path, protocol, emit := args[0].String(), args[1].String(), args[2].String(), args[3]
-	c, err := n.client(addr)
-	if err != nil {
+	if err := checkAddr(addr); err != nil {
 		return jsbridge.Socket(func(context.Context) (net.Conn, error) {
 			return nil, err
 		}, "tailcat", path, "", protocol, emit)
 	}
 	return jsbridge.Socket(func(ctx context.Context) (net.Conn, error) {
-		ctx, cancel := context.WithTimeout(ctx, dialWait)
-		defer cancel()
-		return c.DialTCPPort(ctx, rexAPIPort)
+		return n.dial(ctx, addr, pairaddr.RexAPIPort)
 	}, "tailcat", path, "", protocol, emit)
-}
-
-// pairOn writes the one remote.pair request the pairing window serves and
-// reads its one answer (internal/rex pairConn): the fingerprint of this
-// key as the server shows it, or the server's refusal.
-func pairOn(conn net.Conn, name string) (any, error) {
-	conn.SetDeadline(time.Now().Add(30 * time.Second))
-	req, _ := json.Marshal(map[string]any{"id": 1, "op": "remote.pair", "remote": map[string]string{"name": name}})
-	if _, err := conn.Write(append(req, '\n')); err != nil {
-		return nil, err
-	}
-	line, err := bufio.NewReaderSize(conn, 4096).ReadBytes('\n')
-	if err != nil {
-		return nil, err
-	}
-	var res struct {
-		Error string          `json:"error"`
-		Data  json.RawMessage `json:"data"`
-	}
-	if err := json.Unmarshal(line, &res); err != nil {
-		return nil, fmt.Errorf("not an answer: %w", err)
-	}
-	if res.Error != "" {
-		return nil, errors.New(res.Error)
-	}
-	var data struct {
-		Fingerprint string `json:"fingerprint"`
-	}
-	json.Unmarshal(res.Data, &data)
-	return data.Fingerprint, nil
 }

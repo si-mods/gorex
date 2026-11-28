@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"strconv"
 	"strings"
+	"sync"
 )
 
 // revisionChange is one change Rex's API revision history documents
@@ -113,18 +114,21 @@ var eventSince = map[string]int{
 }
 
 var (
+	revisionsOnce      sync.Once
 	changesByMethod    map[string][]revisionChange
 	maxChangedRevision int
 )
 
-func init() {
-	changesByMethod = make(map[string][]revisionChange, len(revisionChanges))
-	for _, ch := range revisionChanges {
-		changesByMethod[ch.method] = append(changesByMethod[ch.method], ch)
-		if ch.at > maxChangedRevision {
-			maxChangedRevision = ch.at
+func loadRevisions() {
+	revisionsOnce.Do(func() {
+		changesByMethod = make(map[string][]revisionChange, len(revisionChanges))
+		for _, ch := range revisionChanges {
+			changesByMethod[ch.method] = append(changesByMethod[ch.method], ch)
+			if ch.at > maxChangedRevision {
+				maxChangedRevision = ch.at
+			}
 		}
-	}
+	})
 }
 
 // methodAvailable tells whether a client at revision rev may call method.
@@ -135,6 +139,7 @@ func methodAvailable(rev int, method string) bool {
 
 // changesFor returns the changes that a client at rev predates.
 func changesFor(rev int, method string) []revisionChange {
+	loadRevisions()
 	if rev >= maxChangedRevision {
 		return nil
 	}

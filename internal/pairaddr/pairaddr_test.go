@@ -26,3 +26,33 @@ func TestAskAddress(t *testing.T) {
 		}
 	}
 }
+
+func TestPairTailcat(t *testing.T) {
+	client, server := net.Pipe()
+	defer client.Close()
+	go func() {
+		defer server.Close()
+		buf := make([]byte, 256)
+		n, _ := server.Read(buf)
+		if !strings.Contains(string(buf[:n]), `"op":"remote.pair"`) {
+			return
+		}
+		_, _ = server.Write([]byte(`{"data":{"fingerprint":"1234-5678"}}` + "\n"))
+	}()
+	fp, err := PairTailcat(client, "web-rex-test")
+	if err != nil || fp != "1234-5678" {
+		t.Fatalf("PairTailcat = %q, %v", fp, err)
+	}
+
+	c2, s2 := net.Pipe()
+	defer c2.Close()
+	go func() {
+		defer s2.Close()
+		buf := make([]byte, 256)
+		_, _ = s2.Read(buf)
+		_, _ = s2.Write([]byte(`{"error":"rex: this machine is not allowed here"}` + "\n"))
+	}()
+	if _, err := PairTailcat(c2, "web-rex-test"); err == nil || !strings.Contains(err.Error(), "not allowed") {
+		t.Fatalf("PairTailcat error = %v", err)
+	}
+}
