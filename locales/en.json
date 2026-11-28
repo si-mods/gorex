@@ -3018,5 +3018,19 @@
 		"placeholders": {
 			"slot": {}
 		}
+	},
+	"tabAgentOperated": "{label}, operated by an agent",
+	"@tabAgentOperated": {
+		"description": "Accessibility label of a tab whose pane is operated by an agent.",
+		"placeholders": {
+			"label": {}
+		}
+	},
+	"tabAgentTooltip": "Agent: {agent}",
+	"@tabAgentTooltip": {
+		"description": "Tooltip on a tab's program tile when an agent operates its pane.",
+		"placeholders": {
+			"agent": {}
+		}
 	}
 }

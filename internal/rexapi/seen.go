@@ -60,8 +60,16 @@ func agentActorPayload(info *rex.SessionInfo) map[string]any {
 	if !act.TookOverAt.IsZero() {
 		out["tookOverAt"] = act.TookOverAt.UTC().Format(time.RFC3339Nano)
 	}
-	if createdBy != rex.ActorHuman && !info.Created.IsZero() {
-		out["created"] = info.Created.UTC().Format(time.RFC3339Nano)
+	createdAt := act.CreatedAt
+	if createdAt.IsZero() {
+		createdAt = info.Created
+	}
+	if !createdAt.IsZero() {
+		ts := createdAt.UTC().Format(time.RFC3339Nano)
+		out["createdAt"] = ts
+		if createdBy != rex.ActorHuman {
+			out["created"] = ts
+		}
 	}
 	return out
 }
@@ -79,6 +87,7 @@ var agentActorSchema = map[string]any{
 	"description": "GoRex's own: CLI or delegated agent ownership and latest CLI input timestamp for the terminal block.",
 	"properties": map[string]any{
 		"createdBy":      map[string]any{"type": "string"},
+		"createdAt":      map[string]any{"type": "string", "format": "date-time"},
 		"lastCliInputAt": map[string]any{"type": "string", "format": "date-time"},
 		"agent":          map[string]any{"type": "string"},
 		"active":         map[string]any{"type": "boolean"},

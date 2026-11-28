@@ -569,7 +569,8 @@ func (a *App) sidebarTab(c *ui.Context, k *colors, i int, t *Tab, reserve float3
 	e := ui.Row(c.Key("tab-"+t.UID)).Height(sidebarRowH()).Shrink(0).Padding(0, 6, 0, sidebarTabLead()).Gap(sideGap).AlignItems(ui.Center).Radius(pillRadius(k, sidebarRowH(), k.radius(radiusM))).
 		Role(ui.RoleTab).Selected(active)
 	name, detail := t.label()
-	e.Label(name + " " + detail)
+	_, _, _, agActive := t.agentBadgeAt(c.Now())
+	e.Label(tabAccessLabel(name, detail, agActive))
 	ck := k // the palette of the row's content, paired with its face
 	if active {
 		sidebarChosen(e, k, sidebarRowH(), lifted)
@@ -637,18 +638,17 @@ func (a *App) hostSectionIcon(c *ui.Context, k *colors, h *hostConn) {
 	}
 }
 
-// spaceTab is a tab of a session the window does not show, in the host
-// view: its tiles and its name, as the window's tabs show, but neither
-// chosen nor dragged; s is its panes' most urgent record, whose dot
-// ends the row as a shown tab's does. It reports whether it was
-// clicked.
-func spaceTab(c *ui.Context, k *colors, key, name, detail string, s *rex.ProgramStatus, reserve float32, tiles func()) bool {
-	return spaceTabWithAgent(c, k, key, name, detail, "", 0, 0, s, reserve, tiles)
-}
-
-func spaceTabWithAgent(c *ui.Context, k *colors, key, name, detail, agent string, agentFade float32, agentRem time.Duration, s *rex.ProgramStatus, reserve float32, tiles func()) bool {
+// spaceTabWithAgent is a tab of a session the window does not show, in the
+// host view: its tiles and its name, as the window's tabs show, but neither
+// chosen nor dragged; s is its panes' most urgent record, whose dot ends the
+// row as a shown tab's does. It reports whether it was clicked.
+func spaceTabWithAgent(c *ui.Context, k *colors, key, name, detail, agent string, agentRem time.Duration, s *rex.ProgramStatus, reserve float32, tiles func()) bool {
+	if agent != "" && agentRem > 0 {
+		c.After(agentRem + 20*time.Millisecond)
+	}
+	lbl := tabAccessLabel(name, detail, agent != "")
 	e := ui.Row(c.Key("tab-"+key)).Height(sidebarRowH()).Shrink(0).Padding(0, 6, 0, sidebarTabLead()).Gap(sideGap).AlignItems(ui.Center).Radius(pillRadius(k, sidebarRowH(), k.radius(radiusM))).
-		Cursor(ui.CursorPointer).Role(ui.RoleButton).Label(name + " " + detail)
+		Cursor(ui.CursorPointer).Role(ui.RoleButton).Label(lbl)
 	if anim := motion(c); anim != nil {
 		e.Transition(exitIn(ui.ElementTransition{Animation: anim, Position: true, Enter: tabMotion, Exit: tabMotion}, durExitMove))
 	}
@@ -665,9 +665,6 @@ func spaceTabWithAgent(c *ui.Context, k *colors, key, name, detail, agent string
 		ui.Box(c).Grow(1).MinWidth(0).Height(18).Draw(func(p *ui.Painter, r ui.Rect) {
 			fadeText(p, r, tabLabel(name, detail, k.textMuted, k.textFaint))
 		})
-		if agent != "" {
-			agentBadge(c, k, agent, agentFade, agentRem)
-		}
 		if needsUser(s) || s != nil && s.State == "working" {
 			statusDot(c, k, s, 5.5).Label(statusTip(s))
 		}

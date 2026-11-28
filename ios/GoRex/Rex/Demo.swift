@@ -117,7 +117,7 @@ enum Demo {
             dashboard: block("Dashboard", "node", [
                 .init(id: "vite", state: "working", progress: 65, app: "node",
                       title: "Dashboard", msg: "Compiling App.tsx", updated: now.addingTimeInterval(-30)),
-            ], actor: .init(createdBy: "cli", lastCliInputAt: now.addingTimeInterval(-8), agent: "agy", active: true)),
+            ], actor: .init(createdBy: "delegate", lastCliInputAt: now.addingTimeInterval(-180), agent: "agy", active: true, createdAt: now.addingTimeInterval(-180))),
             tests: block("Tests", "swift", [
                 .init(id: "swift-test", state: "done", app: "swift",
                       title: "Tests", msg: "312 tests passed in 4.2s", updated: now.addingTimeInterval(-300)),

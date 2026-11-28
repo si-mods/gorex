@@ -1,6 +1,12 @@
 import SwiftUI
 import UIKit
 
+private func blockAgentSignature(_ host: Host, _ id: String) -> String {
+    let b = host.blocks[id]
+    let act = b?.agentActor
+    return "\(id):\(act?.createdBy ?? ""):\(act?.createdAt?.timeIntervalSince1970 ?? 0):\(act?.lastCliInputAt?.timeIntervalSince1970 ?? 0):\(act?.tookOverAt?.timeIntervalSince1970 ?? 0):\(act?.active ?? false):\(b?.agentCleared ?? false):\(b?.exited ?? false)"
+}
+
 /// Inset rounded blue border drawn over an agent-driven terminal pane in
 /// `TerminalScreen` (iPad split-view detail and multi-pane terminals).
 /// Breathes on a 2.4 s cosine wave when active and visible, switches to a
@@ -94,6 +100,9 @@ struct AgentPaneOutline: View {
                     host.expireAgentIfNeeded(block: block, at: now)
                     return
                 }
+                if st.isPersistent {
+                    return
+                }
                 let wait = st.remaining > AgentHighlight.fadeDuration
                     ? (st.remaining - AgentHighlight.fadeDuration + 0.02)
                     : (st.remaining + 0.02)
@@ -103,10 +112,12 @@ struct AgentPaneOutline: View {
     }
 }
 
-/// Compact inline `agent` badge shown on agent-driven rows in `WindowRow` and
-/// `StatusRow`. Never draws a full-row border; pauses timers when off-screen or
-/// outside `scenePhase == .active`, and fades across the final 3 s of the 60 s window.
-struct AgentWindowBadge: View {
+/// Circular `sparkles` corner mark placed at `.topTrailing` of a program tile
+/// (`ProgramTiles` in `WindowRow`, `StatusRow` in `StatusInbox`, and the header
+/// tile in `TerminalScreen`). Uses no text label, stays resident on
+/// agent-created panes until human takeover or exit, and fades across the final
+/// 3 s of the 60 s CLI idle window on human-created panes touched by a script.
+struct AgentTileBadge: View {
     let stateProvider: (Date) -> AgentHighlight.State?
     let trackingKey: AnyHashable
     var onExpire: (() -> Void)? = nil
@@ -124,10 +135,7 @@ struct AgentWindowBadge: View {
             host.expireWindowAgentsIfNeeded(window, at: .now)
             onExpire?()
         }
-        let actors = window.blockIDs.map { id in
-            let b = host.blocks[id]
-            return "\(id):\(b?.agentActor?.lastCliInputAt?.timeIntervalSince1970 ?? 0):\(b?.agentActor?.active ?? false):\(b?.agentCleared ?? false):\(b?.exited ?? false)"
-        }.joined(separator: "|")
+        let actors = window.blockIDs.map { blockAgentSignature(host, $0) }.joined(separator: "|")
         self.trackingKey = AnyHashable(actors)
     }
 
@@ -137,8 +145,7 @@ struct AgentWindowBadge: View {
             host.expireAgentIfNeeded(block: block, at: .now)
             onExpire?()
         }
-        let b = host.blocks[block]
-        self.trackingKey = AnyHashable("\(block):\(b?.agentActor?.lastCliInputAt?.timeIntervalSince1970 ?? 0):\(b?.agentActor?.active ?? false):\(b?.agentCleared ?? false):\(b?.exited ?? false)")
+        self.trackingKey = AnyHashable(blockAgentSignature(host, block))
     }
 
     private var reduceMotion: Bool {
@@ -153,7 +160,7 @@ struct AgentWindowBadge: View {
 
     var body: some View {
         let snap = stateProvider(tick)
-        let fading = snap.map { $0.remaining <= AgentHighlight.fadeDuration } ?? false
+        let fading = snap.map { !$0.isPersistent && $0.remaining <= AgentHighlight.fadeDuration } ?? false
         let animates = fading && AgentHighlight.animates(reduceMotion: reduceMotion, phase: phase, visible: onScreen)
         let taskKey = TaskKey(tracking: trackingKey, activePhase: phase == .active, onScreen: onScreen)
 
@@ -162,16 +169,29 @@ struct AgentWindowBadge: View {
             if let st = stateProvider(evalDate) {
                 let fade = reduceMotion ? 1.0 : st.fade
                 let col = AgentHighlight.color(for: scheme)
-                Text(verbatim: st.badgeText)
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(col.opacity(0.96 * fade))
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(col.opacity(0.16 * fade), in: Capsule())
-                    .overlay {
-                        Capsule().strokeBorder(col.opacity(0.38 * fade), lineWidth: 0.75)
-                    }
-                    .fixedSize()
+                let ink = scheme == .dark ? Color(rgb: 0x091624) : Color.white
+                let rim = scheme == .dark ? Color.black.opacity(0.85 * fade) : Color.white.opacity(0.95 * fade)
+                ZStack {
+                    Circle()
+                        .fill(col.opacity(fade))
+                        .overlay {
+                            Circle()
+                                .fill(
+                                    LinearGradient(
+                                        colors: [.white.opacity(0.28 * fade), .white.opacity(0)],
+                                        startPoint: .top,
+                                        endPoint: .center
+                                    )
+                                )
+                        }
+                    Image(systemName: st.symbolName)
+                        .font(.system(size: 7.5, weight: .bold))
+                        .foregroundStyle(ink.opacity(fade))
+                }
+                .frame(width: 12, height: 12)
+                .padding(1.25)
+                .background(Circle().fill(rim))
+                .fixedSize()
             }
         }
         .allowsHitTesting(false)
@@ -201,6 +221,9 @@ struct AgentWindowBadge: View {
                 tick = now
                 guard let st = stateProvider(now) else {
                     onExpire?()
+                    return
+                }
+                if st.isPersistent {
                     return
                 }
                 let wait = st.remaining > AgentHighlight.fadeDuration
@@ -242,10 +265,7 @@ struct AgentVoiceOverModifier: ViewModifier {
                 host.expireAgentIfNeeded(block: id, at: now)
             }
         }
-        let sig = allIDs.map { id in
-            let b = host.blocks[id]
-            return "\(id):\(b?.agentActor?.lastCliInputAt?.timeIntervalSince1970 ?? 0):\(b?.agentActor?.active ?? false):\(b?.agentCleared ?? false):\(b?.exited ?? false)"
-        }.joined(separator: "|")
+        let sig = allIDs.map { blockAgentSignature(host, $0) }.joined(separator: "|")
         self.trackingKey = AnyHashable(sig)
     }
 
@@ -266,10 +286,7 @@ struct AgentVoiceOverModifier: ViewModifier {
         self.expireBlocks = { now in
             host.expireWindowAgentsIfNeeded(window, at: now)
         }
-        let sig = window.blockIDs.map { id in
-            let b = host.blocks[id]
-            return "\(id):\(b?.agentActor?.lastCliInputAt?.timeIntervalSince1970 ?? 0):\(b?.agentActor?.active ?? false):\(b?.agentCleared ?? false):\(b?.exited ?? false)"
-        }.joined(separator: "|")
+        let sig = window.blockIDs.map { blockAgentSignature(host, $0) }.joined(separator: "|")
         self.trackingKey = AnyHashable(sig)
     }
 
@@ -318,6 +335,7 @@ struct AgentVoiceOverModifier: ViewModifier {
                     tick = now
                     expireBlocks(now)
                     guard let st = stateProvider(now) else { return }
+                    if st.isPersistent { return }
                     try? await Task.sleep(for: .seconds(st.remaining + 0.05))
                 }
             }

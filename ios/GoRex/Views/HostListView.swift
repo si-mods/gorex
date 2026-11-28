@@ -939,7 +939,15 @@ struct WindowRow<Mark: View>: View {
         let status = host.status([block] + window.panes)
         let agentActive = host.windowAgentState(window) != nil
         HStack(spacing: 14) {
-            ProgramTiles(front: host.blocks[block]?.program, back: window.back.map { host.blocks[$0]?.program }, state: status?.state, plate: plate).frame(width: tiles, height: 16 * ProgramTiles.scale + 4, alignment: .leading)
+            ProgramTiles(
+                front: host.blocks[block]?.program,
+                back: window.back.map { host.blocks[$0]?.program },
+                state: status?.state,
+                plate: plate,
+                host: host,
+                window: window
+            )
+            .frame(width: tiles, height: 16 * ProgramTiles.scale + 4, alignment: .leading)
             Text(title.isEmpty ? " " : title.asText)
                 // Regular and a little dimmed, as Rex sets a window's title.
                 .font(.body)
@@ -948,7 +956,6 @@ struct WindowRow<Mark: View>: View {
                 .truncationMode(.tail)
                 .accessibilityLabel(Text(AgentHighlight.accessibilityLabel(for: title.asText, active: agentActive)))
             Spacer(minLength: 8)
-            AgentWindowBadge(host: host, window: window)
             // As the desktop's tab: a dot while the program waits for the
             // user or failed, else its progress or animated dots while working.
             ProgramStatusMark(state: status?.state, progress: status?.progress)

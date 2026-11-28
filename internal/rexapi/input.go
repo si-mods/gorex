@@ -129,7 +129,9 @@ func methodClientKey(c *control, a args) (any, *apiError) {
 		b = s.focused()
 	}
 	if b != nil {
-		c.g.takeOnInput(c.rec, s, b)
+		if k.IsTypingPress() {
+			c.g.takeOnInput(c.rec, s, b)
+		}
 		if err := c.g.opt.Client.SendKey(b.sid, k); err != nil {
 			return nil, errInternal("typing the key: %v", err)
 		}
@@ -181,7 +183,9 @@ func methodBlockEvent(c *control, a args) (any, *apiError) {
 		if aerr != nil {
 			return nil, aerr
 		}
-		c.g.takeOnInput(c.rec, s, b)
+		if k.IsTypingPress() {
+			c.g.takeOnInput(c.rec, s, b)
+		}
 		if err := client.SendKey(b.sid, k); err != nil {
 			return nil, errInternal("typing the key: %v", err)
 		}

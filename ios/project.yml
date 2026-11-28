@@ -192,6 +192,7 @@ targets:
       - GoRex/Terminal/Polish.swift
       - GoRex/Tailnet/TailnetSettings.swift
       - GoRex/Views/ProgramTile.swift
+      - GoRex/Views/AgentHighlightView.swift
       - GoRex/Views/TopAlertPresenter.swift
       - GoRex/Views/Toast.swift
       - GoRex/Share/WebClientSync.swift

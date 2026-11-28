@@ -77,14 +77,16 @@ nonisolated final class AgentHighlightTests: XCTestCase {
         XCTAssertEqual(decoded.agent, "codex")
     }
 
-    @MainActor func testSixtySecondWindowAndThreeSecondFadeOut() throws {
+    @MainActor func testSixtySecondWindowAppliesOnlyToHumanCreatedPanes() throws {
         let t0 = Date(timeIntervalSince1970: 1_760_000_000)
-        let actor = AgentActor(createdBy: "cli", lastCliInputAt: t0, agent: "agy", active: true)
+        // Human-created pane touched once by a script (`createdBy == "human"`, `lastCliInputAt != nil`).
+        let actor = AgentActor(createdBy: "human", lastCliInputAt: t0, agent: "cli", active: true)
 
-        // Fresh at t0: full opacity, 60 s remaining, compact "agent" row badge.
+        // Fresh at t0: full opacity, 60 s remaining, non-persistent, sparkles tile corner icon.
         let s0 = try XCTUnwrap(AgentHighlight.state(actor: actor, now: t0))
-        XCTAssertEqual(s0.badgeText, "agent")
-        XCTAssertEqual(s0.agentName, "agy")
+        XCTAssertEqual(s0.symbolName, AgentHighlight.badgeSymbol)
+        XCTAssertEqual(s0.agentName, "cli")
+        XCTAssertFalse(s0.isPersistent)
         XCTAssertEqual(s0.fade, 1.0, accuracy: 0.0001)
         XCTAssertEqual(s0.remaining, 60.0, accuracy: 0.0001)
 
@@ -116,13 +118,14 @@ nonisolated final class AgentHighlightTests: XCTestCase {
         b.applyAgentActor(AgentActor(createdBy: "cli", lastCliInputAt: t0, agent: "agy", active: true))
         XCTAssertNotNil(h.agentState(for: Demo.dashboard, at: t0.addingTimeInterval(1)))
 
-        // Terminal query replies, focus reports, and scroll-wheel motion do NOT clear.
+        // Terminal query replies, focus reports, mouse click/release/motion/wheel,
+        // clipboard denials, and Kitty key-release or modifier-only events do NOT clear.
         let session = TerminalSession(host: h, session: "s-work", block: Demo.dashboard)
         defer { session.close() }
         session.start()
-        session.type(Data("\u{1B}[I\u{1B}[?62;22c\u{1B}[12;34R\u{1B}[<64;10;20M".utf8))
+        session.type(Data("\u{1B}[I\u{1B}[O\u{1B}[?62;22c\u{1B}[12;34R\u{1B}[<64;10;20M\u{1B}[<35;10;20M\u{1B}[<0;10;20M\u{1B}[<0;10;20m\u{1B}[M !!\u{1B}[32;10;20M\u{1B}]5522;type=read:status=EPERM\u{1B}\\\u{1B}[97;1:3u\u{1B}[57444;9u".utf8))
         XCTAssertNotNil(h.agentState(for: Demo.dashboard, at: t0.addingTimeInterval(1)),
-                        "terminal replies, focus reports, and wheel events must not clear agent state")
+                        "terminal replies, focus reports, mouse/wheel events, and key releases must not clear agent state")
 
         // Real user typing clears on the same turn without waiting for a server round-trip.
         session.type(Data("a".utf8))
@@ -189,7 +192,7 @@ nonisolated final class AgentHighlightTests: XCTestCase {
             host.agentState(for: "b1") != nil
         }
         let w = try XCTUnwrap(host.sessions.first?.view?.windows?.first)
-        XCTAssertEqual(host.windowAgentState(w)?.badgeText, "agent")
+        XCTAssertEqual(host.windowAgentState(w)?.symbolName, AgentHighlight.badgeSymbol)
         XCTAssertEqual(host.windowAgentState(w)?.agentName, "agy")
 
         // Server pushes human takeover via program_status_changed (`tookOverAt` set, `active` omitted).
@@ -311,14 +314,74 @@ nonisolated final class AgentHighlightTests: XCTestCase {
         XCTAssertEqual(spoken.count, 2)
     }
 
-    @MainActor func testHostExpiresActiveFlagAfterSixtySeconds() {
+    @MainActor func testAgentCreatedHighlightPersistsUntilHumanTakeoverOrExit() throws {
+        let t0 = Date(timeIntervalSince1970: 1_760_000_000)
+        let iso = t0.ISO8601Format()
+
+        // 1. Both `createdBy == "cli"` and `createdBy == "delegate"` with `tookOverAt == nil`
+        //    keep a persistent highlight (`isPersistent == true`, `fade == 1.0`) regardless of
+        //    how much time passes (0 s, 61 s, 10 min, 2 hr) or whether `lastCliInputAt` is present.
+        for creator in ["cli", "delegate"] {
+            let withInput = AgentActor(createdBy: creator, lastCliInputAt: t0, agent: "agy", active: true, createdAt: t0)
+            let withoutInput = try XCTUnwrap(AgentActor(json: [
+                "createdBy": creator,
+                "createdAt": iso,
+                "agent": "agy",
+                "active": true,
+            ]))
+            for actor in [withInput, withoutInput] {
+                for elapsed: TimeInterval in [0, 61, 600, 7200] {
+                    let st = try XCTUnwrap(
+                        AgentHighlight.state(actor: actor, now: t0.addingTimeInterval(elapsed)),
+                        "createdBy=\(creator) must stay highlighted at +\(elapsed)s"
+                    )
+                    XCTAssertEqual(st.symbolName, AgentHighlight.badgeSymbol)
+                    XCTAssertEqual(st.agentName, "agy")
+                    XCTAssertEqual(st.fade, 1.0, accuracy: 0.0001)
+                    XCTAssertTrue(st.isPersistent)
+                }
+            }
+
+            // 2. Setting `tookOverAt` permanently clears the highlight.
+            let taken = try XCTUnwrap(AgentActor(json: [
+                "createdBy": creator,
+                "createdAt": iso,
+                "lastCliInputAt": iso,
+                "agent": "agy",
+                "tookOverAt": t0.addingTimeInterval(25).ISO8601Format(),
+            ]))
+            XCTAssertFalse(taken.active)
+            XCTAssertNil(AgentHighlight.state(actor: taken, now: t0.addingTimeInterval(26)))
+
+            // 3. Session exit (`exited: true`) clears the highlight immediately.
+            XCTAssertNil(AgentHighlight.state(actor: withInput, exited: true, now: t0.addingTimeInterval(5)))
+        }
+    }
+
+    @MainActor func testHostKeepsAgentCreatedActiveAndExpiresOnlyHumanCreatedAfterSixtySeconds() throws {
         let host = Host(Demo.config())
         host.connect()
         defer { host.stop() }
-        XCTAssertEqual(host.blocks[Demo.claude]?.agentActor?.active, true)
-        let future = Date.now.addingTimeInterval(61)
+
+        let t0 = Date.now
+        let future = t0.addingTimeInterval(3600)
+
+        // Demo.claude (`createdBy == "cli"`, `blocked`) and Demo.dashboard (`createdBy == "delegate"`, `working`)
+        // must NEVER expire after 60 s or 1 hour while `tookOverAt == nil`.
         host.expireAgentIfNeeded(block: Demo.claude, at: future)
-        XCTAssertEqual(host.blocks[Demo.claude]?.agentActor?.active, false)
-        XCTAssertNil(host.agentState(for: Demo.claude))
+        host.expireAgentIfNeeded(block: Demo.dashboard, at: future)
+        XCTAssertEqual(host.blocks[Demo.claude]?.agentActor?.active, true)
+        XCTAssertEqual(host.blocks[Demo.dashboard]?.agentActor?.active, true)
+        XCTAssertEqual(host.agentState(for: Demo.claude, at: future)?.isPersistent, true)
+        XCTAssertEqual(host.agentState(for: Demo.dashboard, at: future)?.isPersistent, true)
+
+        // By contrast, a human-created shell (`Demo.shell`, `createdBy == "human"`) touched once
+        // by a CLI script (`lastCliInputAt == t0`) expires cleanly after 60 s.
+        let shellBlock = try XCTUnwrap(host.blocks[Demo.shell])
+        shellBlock.applyAgentActor(AgentActor(createdBy: "human", lastCliInputAt: t0, agent: "cli", active: true))
+        XCTAssertEqual(host.agentState(for: Demo.shell, at: t0.addingTimeInterval(10))?.isPersistent, false)
+        host.expireAgentIfNeeded(block: Demo.shell, at: t0.addingTimeInterval(61))
+        XCTAssertEqual(shellBlock.agentActor?.active, false)
+        XCTAssertNil(host.agentState(for: Demo.shell, at: t0.addingTimeInterval(61)))
     }
 }

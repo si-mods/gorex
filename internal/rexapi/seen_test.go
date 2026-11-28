@@ -103,16 +103,33 @@ func TestAgentActorBridge(t *testing.T) {
 		t.Fatalf("event block %v, want %s", ev["block_id"], block)
 	}
 	act, _ := ev["payload"].(map[string]any)["agentActor"].(map[string]any)
-	if act == nil || act["active"] != true || act["agent"] != "agy" || act["lastCliInputAt"] == nil {
-		t.Fatalf("agent_actor_changed payload = %v, want active agy with lastCliInputAt", ev["payload"])
+	if act == nil || act["active"] != true || act["agent"] != "agy" || act["lastCliInputAt"] == nil || act["createdAt"] == nil {
+		t.Fatalf("agent_actor_changed payload = %v, want active agy with createdAt and lastCliInputAt", ev["payload"])
 	}
 
 	status := callChecked(t, c, "com.superlogical.terminal.program_status", map[string]any{
 		"session_id": sid, "block_id": block, "args": map[string]any{},
 	})
 	statusAct, _ := status["agentActor"].(map[string]any)
-	if statusAct == nil || statusAct["active"] != true || statusAct["agent"] != "agy" {
-		t.Fatalf("program_status agentActor = %v, want active agy", status["agentActor"])
+	if statusAct == nil || statusAct["active"] != true || statusAct["agent"] != "agy" || statusAct["createdAt"] == nil {
+		t.Fatalf("program_status agentActor = %v, want active agy with createdAt", status["agentActor"])
+	}
+
+	// Focus, mouse motion/wheel/click, query replies, Kitty key-release, and
+	// clipboard denials written via terminal.write must NOT set tookOverAt.
+	callChecked(t, c, "com.superlogical.terminal.write", map[string]any{
+		"session_id": sid,
+		"block_id":   block,
+		"args": map[string]any{
+			"data": "\x1b[I\x1b[O\x1b[<35;10;20M\x1b[<64;10;20M\x1b[<0;10;20M\x1b[<0;10;20m\x1b[?62;22c\x1b[97;1:3u\x1b]5522;type=read:status=EPERM\x1b\\",
+		},
+	})
+	statusAfterNoise := callChecked(t, c, "com.superlogical.terminal.program_status", map[string]any{
+		"session_id": sid, "block_id": block, "args": map[string]any{},
+	})
+	noiseAct, _ := statusAfterNoise["agentActor"].(map[string]any)
+	if noiseAct == nil || noiseAct["active"] != true || noiseAct["tookOverAt"] != nil {
+		t.Fatalf("non-typing terminal.write altered agentActor: %v", statusAfterNoise["agentActor"])
 	}
 
 	// Human UI write via Rex API clears active and emits agent_actor_changed with tookOverAt.

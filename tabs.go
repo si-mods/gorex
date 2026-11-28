@@ -125,10 +125,6 @@ func tabWidth(c *ui.Context, t *Tab) float32 {
 		bw, _ := c.MeasureText(0, ui.Span{Text: h.label(), Size: badgeSize, Weight: 600})
 		badge = min(bw, badgeMaxW) + 12 + 6
 	}
-	if ag, _, _, ok := t.agentBadgeAt(c.Now()); ok {
-		bw, _ := c.MeasureText(0, ui.Span{Text: ag, Size: badgeSize, Weight: 600})
-		badge += min(bw, badgeMaxW) + 12 + 6
-	}
 	return min(max(9+tiles+6+w+6+18+10, tabMinW), tabMaxW) + badge
 }
 
@@ -217,7 +213,8 @@ func (a *App) tabItem(c *ui.Context, k *colors, i int, t *Tab, width float32, sq
 	e := ui.Row(c.Key(t.ID)).Height(tabH).Basis(width).Shrink(shrink).MinWidth(64).
 		Padding(0, 10, 0, 10).Gap(6).AlignItems(ui.Center).Radius(tabH / 2).Role(ui.RoleTab).AccessSelected(active)
 	name, detail := t.label()
-	e.Label(name + " " + detail)
+	_, _, _, agActive := t.agentBadgeAt(c.Now())
+	e.Label(tabAccessLabel(name, detail, agActive))
 	if !active && e.Hovered() {
 		paintFace(e, k, roleTabHoverBackground, hoverFace(k))
 	}
@@ -256,9 +253,6 @@ func (a *App) tabRest(c *ui.Context, k *colors, t *Tab, active, hovered bool) {
 	}
 	if dragged, over := ui.DragOver[*Pane](label); over && (t.Root == nil || dragged.host == t.host()) {
 		label.Border(1.5, k.busy.Alpha(0.6))
-	}
-	if ag, fade, rem, ok := t.agentBadgeAt(c.Now()); ok {
-		agentBadge(c, k, ag, fade, rem)
 	}
 	a.tabEnd(c, k, t, hovered)
 }
@@ -600,8 +594,16 @@ func (a *App) tiles(c *ui.Context, k *colors, t *Tab) {
 	if s := t.status(); s != nil && s.State == "done" {
 		done = true
 	}
+	agLabel, _, agRem, agOK := t.agentBadgeAt(c.Now())
+	if agOK && agRem > 0 {
+		c.After(agRem + 20*time.Millisecond)
+	}
 	w := float32(tileW + tileStep*len(back) + 2)
-	ui.Box(c).Size(w, tileH+4).Shrink(0).Draw(func(p *ui.Painter, r ui.Rect) {
+	box := ui.Box(c).Size(w, tileH+4).Shrink(0)
+	if agOK {
+		box.Tooltip(locales.TabAgentTooltip(agLabel))
+	}
+	box.Draw(func(p *ui.Painter, r ui.Rect) {
 		y := r.Y + 2
 		for i := len(back) - 1; i >= 0; i-- {
 			x := r.X + 1 + float32(tileStep*(i+1))
@@ -610,21 +612,27 @@ func (a *App) tiles(c *ui.Context, k *colors, t *Tab) {
 		}
 		if front != nil {
 			fr := ui.Rect{X: r.X + 1, Y: y, W: tileW, H: tileH}
-			if m == tileStill {
+			_, curFade, _, stillAgent := t.agentBadgeAt(p.Now())
+			paintFront := func() {
 				drawTile(p, k, fr, front.program(), true)
 				if done {
-					drawDoneDot(p, fr, k)
+					dx := float32(0)
+					if stillAgent {
+						dx = -8.5
+					}
+					drawDoneDotOffset(p, fr, k, dx)
 				}
+				if stillAgent {
+					drawAgentTileMark(p, fr, k, curFade)
+				}
+			}
+			if m == tileStill {
+				paintFront()
 			} else {
 				p.AnimationFrameRate(30)
 				dy, sx, sy := tileBounceAt(m, p.Now())
 				// iOS squashes about the tile's bottom edge, then lifts.
-				p.Transform(ui.Scaling(sx, sy).Then(ui.Translation(0, dy)), fr.X+fr.W/2, fr.Y+fr.H, func() {
-					drawTile(p, k, fr, front.program(), true)
-					if done {
-						drawDoneDot(p, fr, k)
-					}
-				})
+				p.Transform(ui.Scaling(sx, sy).Then(ui.Translation(0, dy)), fr.X+fr.W/2, fr.Y+fr.H, paintFront)
 			}
 		}
 	})
@@ -634,9 +642,13 @@ func (a *App) tiles(c *ui.Context, k *colors, t *Tab) {
 // a program tile, as iOS's DoneDot (ios/GoRex/Views/ProgramTile.swift)
 // but without its rim.
 func drawDoneDot(p *ui.Painter, fr ui.Rect, k *colors) {
+	drawDoneDotOffset(p, fr, k, 0)
+}
+
+func drawDoneDotOffset(p *ui.Painter, fr ui.Rect, k *colors, dx float32) {
 	const dotSize = float32(6.5)
 	r := ui.Rect{
-		X: fr.X + fr.W + 1 - dotSize,
+		X: fr.X + fr.W + 1 - dotSize + dx,
 		Y: fr.Y - 1.5,
 		W: dotSize,
 		H: dotSize,

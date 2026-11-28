@@ -10,6 +10,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 `what-to-test` step of the `linux` job of `.github/workflows/ci.yml` fails it.
 
 ## en-US
+- Tabs started by an agent now show a sparkles badge on the top-right corner of their program tile (no text label) and keep it with the blue pane outline until you type in them or they close.
 - Fixed swiping left on the iPhone compose bar dismissing an open keyboard when expanding the quick-keys strip; the keyboard and bar now stay steady in place.
 - Composer Mode: the remove badge on attached photos and files now sits cleanly inside each thumbnail with a full 44 pt tap target in light and dark mode, instead of clipping.
 - Composer Mode on iPhone: swipe left on the compose bar to open the quick-keys strip (Esc, Tab, Enter, Delete, arrow stick), and swipe right to return to typing.
@@ -201,6 +202,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - Settings has a new Notifications row: it shows whether they are on, and turns them on or opens the Settings app for you.
 
 ## zh-Hans
+- 由智能体或命令行创建的标签页与分屏改在程序图标右上角常驻显示星芒角标（不再占行显示文字标签）并保留窗格蓝色描边，直到你手动输入接管或会话结束。
 - 修复在 iPhone 的 Composer 模式下键盘已打开时左滑展开快捷按键条会把键盘收起的问题，现在键盘与消息栏保持原位不跳动。
 - 在 Composer 模式下，已添加照片或文件缩略图右上角的移除（×）按钮现完整收在缩略图内，不再被圆角裁切，在深浅色模式与弹出键盘时都清晰易点。
 - 在 iPhone 的 Composer 模式下，在消息栏上左滑可直接展开快捷按键条（Esc、Tab、回车、删除、方向摇杆），右滑即可切回输入框继续打字。

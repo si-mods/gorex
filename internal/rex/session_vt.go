@@ -171,6 +171,164 @@ func replyLen(p []byte) int {
 	return 0
 }
 
+// HasHumanInputBytes reports whether p carries genuine human keyboard or paste
+// input rather than terminal query replies (DA, CPR, DSR, DECRPM, XTWINOPS,
+// Kitty flags, OSC/DCS/APC), clipboard read refusals (OSC 5522 EPERM/DONE),
+// window focus reports (CSI I, CSI O), mouse/wheel/motion reports (SGR, URXVT,
+// X10), or Kitty keyboard protocol key-release and modifier-only events.
+func HasHumanInputBytes(p []byte) bool {
+	if len(p) == 0 {
+		return false
+	}
+	if bytes.IndexByte(p, 0x1b) < 0 {
+		return true
+	}
+	for i := 0; i < len(p); {
+		if n := nonHumanInputLen(p[i:]); n > 0 {
+			i += n
+			continue
+		}
+		return true
+	}
+	return false
+}
+
+func nonHumanInputLen(p []byte) int {
+	if len(p) < 3 || p[0] != 0x1b {
+		return 0
+	}
+	if bytes.HasPrefix(p, []byte("\x1b[I")) || bytes.HasPrefix(p, []byte("\x1b[O")) {
+		return 3
+	}
+	if n := replyLen(p); n > 0 {
+		return n
+	}
+	switch p[1] {
+	case ']':
+		// OSC 5522 is left untouched by replyLen so clipboard paste packets reach
+		// the program. Only a paste offer (type=paste) or granted paste payload
+		// (type=read:status=OK / status=DATA) is human input; policy denials such
+		// as status=EPERM and trailing status=DONE frames are terminal replies.
+		if bytes.HasPrefix(p, []byte("\x1b]5522;")) {
+			if isKittyPasteInput(p) {
+				return 0
+			}
+			return controlStringLen(p)
+		}
+	case '^', 'X': // PM, SOS control strings
+		return controlStringLen(p)
+	case '[':
+		if n := mouseReportLen(p); n > 0 {
+			return n
+		}
+		if n := kittyNonTypingKeyLen(p); n > 0 {
+			return n
+		}
+	}
+	return 0
+}
+
+func isKittyPasteInput(p []byte) bool {
+	return bytes.HasPrefix(p, []byte("\x1b]5522;type=paste")) ||
+		bytes.HasPrefix(p, []byte("\x1b]5522;type=read:status=DATA")) ||
+		bytes.HasPrefix(p, []byte("\x1b]5522;type=read:status=OK"))
+}
+
+func controlStringLen(p []byte) int {
+	for i := 2; i < len(p); i++ {
+		switch {
+		case p[i] == 0x07 && p[1] == ']':
+			return i + 1
+		case p[i] == 0x1b:
+			if i+1 < len(p) && p[i+1] == '\\' {
+				return i + 2
+			}
+			return 0
+		}
+	}
+	return 0
+}
+
+// mouseReportLen matches SGR (CSI < Cb;Cx;Cy M/m), URXVT (CSI Cb;Cx;Cy M), and
+// X10/normal (CSI M cb cx cy) pointer, click, drag, and wheel reports.
+func mouseReportLen(p []byte) int {
+	if len(p) < 6 || p[0] != 0x1b || p[1] != '[' {
+		return 0
+	}
+	if p[2] == '<' {
+		j := 3
+		digits := false
+		for j < len(p) && (p[j] >= '0' && p[j] <= '9' || p[j] == ';') {
+			if p[j] >= '0' && p[j] <= '9' {
+				digits = true
+			}
+			j++
+		}
+		if digits && j < len(p) && (p[j] == 'M' || p[j] == 'm') {
+			return j + 1
+		}
+		return 0
+	}
+	if p[2] == 'M' && p[3] >= 0x20 && p[4] >= 0x21 && p[5] >= 0x21 {
+		return 6
+	}
+	// URXVT mouse: ESC [ Cb ; Cx ; Cy M (at least two semicolons).
+	j, semis, digits := 2, 0, false
+	for j < len(p) && (p[j] >= '0' && p[j] <= '9' || p[j] == ';') {
+		if p[j] == ';' {
+			semis++
+		} else {
+			digits = true
+		}
+		j++
+	}
+	if digits && semis >= 2 && j < len(p) && p[j] == 'M' {
+		return j + 1
+	}
+	return 0
+}
+
+// kittyNonTypingKeyLen matches Kitty keyboard protocol key-release sequences
+// (event type :3 before the final byte, as CSI 97;1:3u or CSI 1;1:3A) and
+// modifier-only key events (codes 57441..57454 ending in 'u').
+func kittyNonTypingKeyLen(p []byte) int {
+	if len(p) < 4 || p[0] != 0x1b || p[1] != '[' {
+		return 0
+	}
+	code, hasCode := 0, false
+	j := 2
+	for j < len(p) && p[j] >= '0' && p[j] <= '9' {
+		code = code*10 + int(p[j]-'0')
+		hasCode = true
+		j++
+	}
+	for j < len(p) && (p[j] >= '0' && p[j] <= '9' || p[j] == ';' || p[j] == ':') {
+		j++
+	}
+	if j >= len(p) {
+		return 0
+	}
+	f := p[j]
+	if f != 'u' && f != '~' && (f < 'A' || f > 'Z') {
+		return 0
+	}
+	params := p[2:j]
+	// Check for Kitty event-type ":3" (release) in the modifier parameter (2nd field).
+	if semi := bytes.IndexByte(params, ';'); semi >= 0 {
+		rest := params[semi+1:]
+		if end := bytes.IndexByte(rest, ';'); end >= 0 {
+			rest = rest[:end]
+		}
+		if colon := bytes.IndexByte(rest, ':'); colon >= 0 && bytes.Equal(rest[colon+1:], []byte("3")) {
+			return j + 1
+		}
+	}
+	if f == 'u' && hasCode && code >= 57441 && code <= 57454 {
+		return j + 1
+	}
+	return 0
+}
+
 // batchWait is the longest an attach waits for a synchronized update to
 // end before it takes its snapshot.
 const batchWait = 100 * time.Millisecond

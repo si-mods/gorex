@@ -235,6 +235,7 @@ func (s *session) state() sessionState {
 		Statuses: s.status.list(), StatusSeen: s.status.seen, ProgramIcon: s.icon.get(), Images: s.graphics.sequences(),
 		AgentActor: &AgentActor{
 			CreatedBy:      cmp.Or(s.createdBy, ActorHuman),
+			CreatedAt:      s.created,
 			LastCLIInputAt: s.lastCLIInputAt,
 			Agent:          s.agentLabel,
 			Active:         s.agentActive,
@@ -329,6 +330,9 @@ func resumeSession(st sessionState, changed func()) (*session, error) {
 		cols: clampSize(st.Cols), rows: clampSize(st.Rows), done: make(chan struct{}),
 	}
 	if st.AgentActor != nil {
+		if s.created.IsZero() && !st.AgentActor.CreatedAt.IsZero() {
+			s.created = st.AgentActor.CreatedAt
+		}
 		s.createdBy = normalizeCreatedBy(st.AgentActor.CreatedBy)
 		s.lastCLIInputAt = st.AgentActor.LastCLIInputAt
 		s.agentLabel = st.AgentActor.Agent

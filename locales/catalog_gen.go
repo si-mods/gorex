@@ -8901,3 +8901,31 @@ func SettingsThemeShaderNote(slot string) string {
 func (msgs Messages) SettingsThemeShaderNote(slot string) string {
 	return Catalog.Format(msgs.locale, "settingsThemeShaderNote", map[string]any{"slot": slot})
 }
+
+// TabAgentOperated says "{label}, operated by an agent"
+// in the language the app shows.
+//
+// Accessibility label of a tab whose pane is operated by an agent.
+func TabAgentOperated(label string) string { return In(i18n.Locale()).TabAgentOperated(label) }
+
+// TabAgentOperated says "{label}, operated by an agent"
+// in the language of msgs.
+//
+// Accessibility label of a tab whose pane is operated by an agent.
+func (msgs Messages) TabAgentOperated(label string) string {
+	return Catalog.Format(msgs.locale, "tabAgentOperated", map[string]any{"label": label})
+}
+
+// TabAgentTooltip says "Agent: {agent}"
+// in the language the app shows.
+//
+// Tooltip on a tab's program tile when an agent operates its pane.
+func TabAgentTooltip(agent string) string { return In(i18n.Locale()).TabAgentTooltip(agent) }
+
+// TabAgentTooltip says "Agent: {agent}"
+// in the language of msgs.
+//
+// Tooltip on a tab's program tile when an agent operates its pane.
+func (msgs Messages) TabAgentTooltip(agent string) string {
+	return Catalog.Format(msgs.locale, "tabAgentTooltip", map[string]any{"agent": agent})
+}

@@ -119,6 +119,8 @@ func agentActorSignature(info *rex.SessionInfo) string {
 	var b strings.Builder
 	b.WriteString(act.CreatedBy)
 	b.WriteByte(0)
+	b.WriteString(act.CreatedAt.Format(time.RFC3339Nano))
+	b.WriteByte(0)
 	b.WriteString(act.LastCLIInputAt.Format(time.RFC3339Nano))
 	b.WriteByte(0)
 	b.WriteString(act.Agent)

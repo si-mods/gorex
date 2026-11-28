@@ -849,6 +849,10 @@ struct TerminalScreen: View {
         HStack(spacing: 10) {
             ProgramTile(program: .of(host.blocks[currentTarget.block]?.program))
                 .frame(width: 21 * k, height: 16 * k)
+                .overlay(alignment: .topTrailing) {
+                    AgentTileBadge(host: host, block: currentTarget.block)
+                        .offset(x: 3.5, y: -3.5)
+                }
                 .scaleEffect(small)
                 .frame(width: 21 * k * small, height: 16 * k * small)
             Text(title.asText)

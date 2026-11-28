@@ -4,6 +4,7 @@ package rex
 
 import (
 	"runtime"
+	"slices"
 	"testing"
 	"time"
 )
@@ -50,13 +51,13 @@ func TestAgentActorBookkeeping(t *testing.T) {
 		t.Fatalf("human session actor = %+v, want human/zero/inactive", got)
 	}
 
-	// A CLI-created session records createdBy="cli", stamps lastCliInputAt, and sets active.
+	// A CLI-created session records createdBy="cli", stamps createdAt and lastCliInputAt, and sets active.
 	cliSess, err := c.Create(CreateOptions{Cols: 80, Rows: 24, CreatedBy: ActorCLI, Agent: "agy"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := cliSess.AgentActor; got.CreatedBy != ActorCLI || got.Agent != "agy" || got.LastCLIInputAt.IsZero() || !got.Active {
-		t.Fatalf("cli session actor = %+v, want cli/agy/stamped/active", got)
+	if got := cliSess.AgentActor; got.CreatedBy != ActorCLI || got.Agent != "agy" || got.CreatedAt.IsZero() || got.LastCLIInputAt.IsZero() || !got.Active {
+		t.Fatalf("cli session actor = %+v, want cli/agy/createdAt+lastCliInputAt stamped/active", got)
 	}
 	t0 := cliSess.AgentActor.LastCLIInputAt
 
@@ -322,10 +323,176 @@ func TestAgentActorSplitAndHandoff(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if resumed.createdBy != ActorCLI || resumed.agentLabel != "agy" || !resumed.lastCLIInputAt.Equal(gotCmd.LastCLIInputAt) {
-		t.Fatalf("resumed actor = (%q, %q, %v), want (%q, %q, %v)",
-			resumed.createdBy, resumed.agentLabel, resumed.lastCLIInputAt,
+	if resumed.createdBy != ActorCLI || resumed.agentLabel != "agy" || !resumed.lastCLIInputAt.Equal(gotCmd.LastCLIInputAt) || resumed.info().AgentActor.CreatedAt.IsZero() {
+		t.Fatalf("resumed actor = %+v, want (%q, %q, %v, non-zero createdAt)",
+			resumed.info().AgentActor,
 			ActorCLI, "agy", gotCmd.LastCLIInputAt)
+	}
+}
+
+// TestAgentActorOnlyHumanTypingSetsTookOverAt verifies #1290: delegated and CLI
+// panes never record tookOverAt or drop active on attach, focus/blur, mouse
+// motion/wheel/click/release, terminal query replies, clipboard read denials,
+// Kitty key-release or modifier-only events, or CLI writes — only genuine UI
+// keyboard typing or paste sets tookOverAt.
+func TestAgentActorOnlyHumanTypingSetsTookOverAt(t *testing.T) {
+	nonHumanPayloads := []struct {
+		name string
+		data string
+	}{
+		{"focus_in_out", "\x1b[I\x1b[O"},
+		{"sgr_mouse_motion", "\x1b[<35;42;12M"},
+		{"sgr_mouse_wheel", "\x1b[<64;42;12M\x1b[<65;42;12M"},
+		{"sgr_mouse_click_release", "\x1b[<0;15;8M\x1b[<0;15;8m"},
+		{"x10_mouse", "\x1b[M !!"},
+		{"urxvt_mouse", "\x1b[32;15;8M"},
+		{"query_replies", "\x1b[?62;22c\x1b[>1;10;0c\x1b[12;34R\x1b[0n\x1b[?2004;1$y\x1b[8;24;80t\x1b[?1u\x1b[?997;1n"},
+		{"osc_color_reply", "\x1b]11;rgb:2222/2525/2f2f\x1b\\"},
+		{"osc_5522_denial", "\x1b]5522;type=read:status=EPERM\x1b\\\x1b]5522;type=read:status=DONE\x1b\\"},
+		{"kitty_key_release", "\x1b[97;1:3u\x1b[1;1:3A\x1b[27;1:3u"},
+		{"kitty_modifier_only", "\x1b[57441;2u\x1b[57442;5u\x1b[57444;9u\x1b[57450;2u"},
+	}
+	for _, tc := range nonHumanPayloads {
+		if HasHumanInputBytes([]byte(tc.data)) {
+			t.Fatalf("HasHumanInputBytes(%s = %q) = true, want false", tc.name, tc.data)
+		}
+	}
+	for _, human := range []string{
+		"x",
+		"\r",
+		"\x1b[A",
+		"\x1b[97;1u",
+		"\x1b[97;1:2u",
+		"\x1b[200~pasted\x1b[201~",
+		"\x1b]5522;type=paste:mime=dGV4dC9wbGFpbg==\x1b\\",
+		"\x1b]5522;type=read:status=DATA;YWJj\x1b\\",
+	} {
+		if !HasHumanInputBytes([]byte(human)) {
+			t.Fatalf("HasHumanInputBytes(%q) = false, want true", human)
+		}
+	}
+	for _, nonTypingKey := range []KeyInput{
+		{Key: "key_a", Action: "release"},
+		{Key: "shift_left"},
+		{Key: "control_right"},
+		{Key: "super_left"},
+		{Key: "caps_lock"},
+	} {
+		if nonTypingKey.IsTypingPress() {
+			t.Fatalf("KeyInput(%+v).IsTypingPress() = true, want false", nonTypingKey)
+		}
+	}
+	if !(KeyInput{Key: "key_j", Text: "j"}).IsTypingPress() {
+		t.Fatal("KeyInput(key_j).IsTypingPress() = false, want true")
+	}
+
+	s, _ := testServer(t)
+	c := pipe(s, "")
+	defer c.Close()
+
+	sub := pipe(s, "")
+	defer sub.Close()
+	if err := sub.SubscribeTransfers(); err != nil {
+		t.Fatal(err)
+	}
+
+	del, err := c.Create(CreateOptions{
+		Cols:       80,
+		Rows:       24,
+		CreatedBy:  ActorDelegate,
+		Agent:      "agy",
+		StampInput: true,
+		Command:    shellSleepCommand(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !del.AgentActor.Active || !del.AgentActor.TookOverAt.IsZero() || del.AgentActor.CreatedAt.IsZero() {
+		t.Fatalf("initial delegate actor = %+v", del.AgentActor)
+	}
+	fenceActorEvents(t, s, sub)
+
+	att, err := c.AttachConn(Attach{SID: del.ID, Cols: 80, Rows: 24, Focused: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer att.Close()
+
+	// Exercise every non-human byte sequence on both the attached PTY stream
+	// (desktop attach) and Client.InputHuman (Rex API blockWrite used by iOS/web).
+	for _, tc := range nonHumanPayloads {
+		if _, err := att.Write([]byte(tc.data)); err != nil {
+			t.Fatalf("att.Write(%s): %v", tc.name, err)
+		}
+		if err := c.InputHuman(del.ID, []byte(tc.data)); err != nil {
+			t.Fatalf("InputHuman(%s): %v", tc.name, err)
+		}
+	}
+	waitCond(t, "non-human attach stream bytes processed", func() bool {
+		return !sessionByID(t, c, del.ID).LastInput.IsZero()
+	})
+	if err := c.SendFocus(del.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.SendMouse(del.ID, MouseInput{Action: "press", Button: "left", Col: 4, Row: 4}); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.SendKey(del.ID, KeyInput{Key: "key_a", Action: "release"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.SendKey(del.ID, KeyInput{Key: "shift_left"}); err != nil {
+		t.Fatal(err)
+	}
+
+	// Assert active=true, zero tookOverAt, and zero takeover events BEFORE any CLI re-arm write.
+	if evs := fenceActorEvents(t, s, sub); slices.ContainsFunc(evs, func(ev Event) bool { return ev.Kind == "takeover" }) {
+		t.Fatalf("non-typing activity emitted false takeover event in %+v", evs)
+	}
+	got := sessionByID(t, c, del.ID).AgentActor
+	if !got.Active || !got.TookOverAt.IsZero() {
+		t.Fatalf("delegate actor after non-typing activity = %+v, want active=true and zero tookOverAt", got)
+	}
+
+	// Ordinary CLI / delegate writes also keep active=true and tookOverAt zero.
+	if err := c.InputWithAgent(del.ID, []byte("\n"), "agy"); err != nil {
+		t.Fatal(err)
+	}
+	if evs := fenceActorEvents(t, s, sub); slices.ContainsFunc(evs, func(ev Event) bool { return ev.Kind == "takeover" }) {
+		t.Fatalf("CLI write emitted false takeover event in %+v", evs)
+	}
+	got = sessionByID(t, c, del.ID).AgentActor
+	if !got.Active || !got.TookOverAt.IsZero() {
+		t.Fatalf("delegate actor after CLI write = %+v, want active=true and zero tookOverAt", got)
+	}
+
+	// Real human input via InputHuman (iOS/web terminal write) sets tookOverAt.
+	if err := c.InputHuman(del.ID, []byte("j")); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := waitTakeoverEvent(t, sub, del.ID, 2*time.Second); !ok {
+		t.Fatal("real InputHuman keystroke did not emit takeover event")
+	}
+	afterHuman := sessionByID(t, c, del.ID).AgentActor
+	if afterHuman.Active || afterHuman.TookOverAt.IsZero() {
+		t.Fatalf("after real InputHuman keystroke: %+v, want inactive with tookOverAt", afterHuman)
+	}
+}
+
+func fenceActorEvents(t *testing.T, s *Server, sub *Client) []Event {
+	t.Helper()
+	id := newID()
+	s.transferred(Transfer{ID: id, SID: "fence", Direction: "put", State: "done"})
+	var evs []Event
+	for deadline := time.After(5 * time.Second); ; {
+		select {
+		case ev := <-sub.Events():
+			if ev.Kind == "transfer" && ev.Transfer != nil && ev.Transfer.ID == id {
+				return evs
+			}
+			evs = append(evs, ev)
+		case <-deadline:
+			t.Fatalf("timed out waiting for event fence after %d events", len(evs))
+		}
 	}
 }
 

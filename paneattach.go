@@ -224,7 +224,7 @@ func (a *App) attach(p *Pane, cols, rows int) {
 	// cannot start with one of those. Command's keys are the app's
 	// shortcuts.
 	opts.OnKey = func(mods ui.Modifiers, key ui.Key) bool {
-		if mods&ui.Super == 0 {
+		if mods&ui.Super == 0 && !isModifierOnlyKey(key) {
 			if p.host == nil {
 				a.takeSize(p)
 			}
@@ -233,7 +233,7 @@ func (a *App) attach(p *Pane, cols, rows int) {
 		if a.dispatchKey(mods, key) {
 			return true
 		}
-		if mods&ui.Super == 0 {
+		if mods&ui.Super == 0 && !isModifierOnlyKey(key) && !isNonTypingTerminalShortcut(mods, key) {
 			p.clearAgentLocal()
 		}
 		return false

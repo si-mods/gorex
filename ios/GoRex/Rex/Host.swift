@@ -609,13 +609,16 @@ final class Host: Identifiable {
             agentClearedAt = agentActor?.lastCliInputAt
             if var cur = agentActor {
                 cur.active = false
+                if cur.tookOverAt == nil {
+                    cur.tookOverAt = .now
+                }
                 agentActor = cur
             }
         }
 
         /// Reconciles a server `AgentActor` update against any local human-takeover latch.
         func applyAgentActor(_ incoming: AgentActor) {
-            if !incoming.active {
+            if !incoming.active || incoming.tookOverAt != nil {
                 agentCleared = false
                 agentActor = incoming
                 return
@@ -628,6 +631,9 @@ final class Host: Identifiable {
                 } else {
                     var suppressed = incoming
                     suppressed.active = false
+                    if suppressed.tookOverAt == nil {
+                        suppressed.tookOverAt = agentActor?.tookOverAt ?? .now
+                    }
                     agentActor = suppressed
                 }
                 return
@@ -1309,7 +1315,8 @@ final class Host: Identifiable {
     }
 
     /// The active agent-highlight state for `block` at `now`, or nil when
-    /// human-operated, cleared, exited, or past the 60 s CLI idle window.
+    /// human-operated, taken over, exited, or (for human-created panes) past
+    /// the 60 s CLI idle window.
     func agentState(for block: String, at now: Date = .now) -> AgentHighlight.State? {
         guard let b = blocks[block] else { return nil }
         return AgentHighlight.state(
@@ -1322,7 +1329,7 @@ final class Host: Identifiable {
     }
 
     /// The active agent-highlight state for a window row at `now`, preferring
-    /// the window's focused block and otherwise its most recently driven pane.
+    /// the window's focused block and otherwise a persistent or freshest pane.
     func windowAgentState(_ w: SessionView.Window, at now: Date = .now) -> AgentHighlight.State? {
         if let front = w.block, let st = agentState(for: front, at: now) {
             return st
@@ -1342,9 +1349,9 @@ final class Host: Identifiable {
         blocks[block]?.clearAgentLocal()
     }
 
-    /// Marks `block`'s `agentActor.active` false once its 60 s CLI idle window
-    /// has elapsed so every `@Observable` reader (`PaneBar`, `PaneMiniMap`,
-    /// `WindowRow`, `TerminalView.accessibilityLabel`) drops the highlight at once.
+    /// Marks a human-created `block`'s `agentActor.active` false once its 60 s
+    /// CLI idle window has elapsed. Agent-created blocks (`cli` / `delegate`)
+    /// stay persistent (`remaining == .infinity`) until human takeover or exit.
     func expireAgentIfNeeded(block: String, at now: Date = .now) {
         guard let b = blocks[block], b.agentActor?.active == true else { return }
         let stillActive = AgentHighlight.state(

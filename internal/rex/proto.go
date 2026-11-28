@@ -888,11 +888,13 @@ const (
 	ActorDelegate = "delegate"
 )
 
-// AgentActor records who created a session, when the CLI or peer delegation
-// last sent input to it, the short agent badge label, and whether the agent
-// mark is still active (cleared as soon as a person types in the UI).
+// AgentActor records who created a session, when it was created, when the CLI
+// or peer delegation last sent input to it, the short agent badge label, and
+// whether the agent mark is still active (cleared as soon as a person types in
+// the UI).
 type AgentActor struct {
 	CreatedBy      string    `json:"createdBy"`
+	CreatedAt      time.Time `json:"createdAt,omitzero"`
 	LastCLIInputAt time.Time `json:"lastCliInputAt,omitzero"`
 	Agent          string    `json:"agent,omitempty"`
 	Active         bool      `json:"active,omitempty"`

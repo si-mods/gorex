@@ -213,6 +213,10 @@ private struct StatusRow: View {
         HStack(spacing: 14) {
             ProgramTile(program: tile)
                 .frame(width: 21 * ProgramTiles.scale, height: 16 * ProgramTiles.scale)
+                .overlay(alignment: .topTrailing) {
+                    AgentTileBadge(host: host, block: item.block)
+                        .offset(x: 3.5, y: -3.5)
+                }
                 .scaleEffect(1.4)
                 .tileBounce(state: item.status.state)
                 .frame(width: 44, height: 44)
@@ -220,7 +224,6 @@ private struct StatusRow: View {
                 HStack(spacing: 8) {
                     headingText
                     Spacer(minLength: 4)
-                    AgentWindowBadge(host: host, block: item.block)
                     VStack(alignment: .trailing, spacing: 4) {
                         mark
                         metaText
@@ -231,7 +234,6 @@ private struct StatusRow: View {
                     HStack(spacing: 8) {
                         headingText
                         Spacer(minLength: 4)
-                        AgentWindowBadge(host: host, block: item.block)
                         mark
                     }
                     HStack(spacing: 8) {

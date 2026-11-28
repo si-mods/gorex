@@ -21,10 +21,10 @@ Agents and scripts drive GoRex panes with `gorex new`, `gorex split`, `gorex sen
 
 ## Goal
 
-- Record actor state on each session on the server: `createdBy` (`"human"`, `"cli"`, or `"delegate"`), `lastCliInputAt`, `agent`, `active`, `parentSession`, and `tookOverAt`.
+- Record actor state on each session on the server: `createdBy` (`"human"`, `"cli"`, or `"delegate"`), `createdAt`, `lastCliInputAt`, `agent`, `active`, `parentSession`, and `tookOverAt`.
 - Stamp `lastCliInputAt` when the CLI creates a session (`gorex new`), starts a split with a command (`gorex split -- ...`), sends input (`gorex send`), or pastes text (`gorex paste`), and when peer delegation sends a prompt.
-- Draw a calm blue pulsing border (2.4 s period) around an active agent pane and a small agent badge on its tab in the title bar and sidebar while the CLI created the pane or `now - lastCliInputAt < 60s`.
-- Clear the border and badge on the next frame as soon as a person types or pastes in that pane in the UI, and fade the mark out after 60 seconds without CLI input.
+- Keep a **persistent** calm blue pulsing border (2.4 s period) and a top-right circular `sparkles` corner mark on the tab/sidebar program tile (with no text label) on every agent-created pane (`createdBy` is `"cli"` or `"delegate"`) as long as `tookOverAt` is empty and the session has not exited—never decaying over time across working or idle states.
+- Clear the highlight permanently on genuine human UI input (keyboard typing or paste, which sets `tookOverAt` and clears `active`) or when the session exits/closes; reserve the 60-second CLI idle window (`57s..60s` 3 s fade-out) exclusively for human-created panes (`createdBy == "human"`) that a script wrote to once.
 - Push one `"takeover"` event line on `gorex events` at the exact moment human UI input flips `active` from `true` to `false`, carrying the child session ID, the displaced `agent` label, and the `parentSession` ID.
 - Expose `agentActor` on every session in `gorex ls --json` so scripts can audit ownership and catch takeovers that happened before they subscribed.
 - Accept an optional `--agent <name>` flag on `gorex new`, `gorex split`, `gorex send`, and `gorex paste` (default `"cli"`) to label the tab badge.
@@ -41,14 +41,12 @@ Agents and scripts drive GoRex panes with `gorex new`, `gorex split`, `gorex sen
 
 ### Behavior
 
-#### Visual mark and human takeover in the window
+#### Highlight lifetime and human takeover
 
-When an agent runs `gorex split -s <sid> --agent agy -- make test` or `gorex send -s <sid> --agent agy --enter hi`, the window shows two marks within one poll cycle:
-
-1. **Pane border**: `paneCard` draws a rounded blue border (`#2e6fd0` in light windows, `#6cb2ff` in dark windows) around the pane. With motion on, the border breathes on a 2.4 s cosine wave and fades out smoothly across the final 3 seconds (`57s..60s`). With `animation: "off"` or OS Reduce Motion, the border stays steady and schedules one timer for expiry.
-2. **Tab badge**: `tabRest` and `spaceTabWithAgent` draw a compact badge (`cli` by default, or the `--agent` name such as `agy` or `omp`) on the tab in the top tab bar and the sidebar.
-
-When the person clicks into that pane and types a key or pastes text, the window clears the border and the badge on the next frame without waiting for the 500 ms session poll. If 60 seconds pass without new CLI input, the border and badge fade out on their own.
+1. **Agent-created panes stay highlighted (`createdBy` in `{"cli", "delegate"}` and `tookOverAt` empty)**: Any pane created by `gorex new`, `gorex split`, or `gorex delegate` keeps its blue border (`#2e6fd0` in light windows, `#6cb2ff` in dark windows, 2.4 s cosine wave; static with zero wakeup timers when Reduce Motion or `animation: "off"` is set) and a circular `sparkles` icon mark on the top-right corner of its tab/sidebar program tile (`drawAgentTileMark`, with no text pill) **persistently** for the life of the session. It does **not** decay after 60 seconds without CLI writes, whether the program inside is actively working or sitting idle at its prompt: `gorex delegate` delivers its prompt once at startup and the agent TUI then owns the pane autonomously until a person steps in.
+2. **Only genuine human input sets `tookOverAt` and permanently clears the highlight**: Typing a key or pasting in the UI sets `tookOverAt`, flips `active` to `false`, and clears the border and badge on the next frame without waiting for the 500 ms session poll. Attach, focus/blur (`CSI I`/`CSI O`), mouse hover/motion/wheel/click/release (`SGR`, `URXVT`, `X10`, `doMouse`), terminal query replies (`DA`, `CPR`, `DSR`, `DECRPM`, `XTWINOPS`, Kitty flags, `OSC`/`DCS`/`APC`), clipboard read policy denials (`OSC 5522` `EPERM`/`DONE`), scrollback shortcuts, Kitty `:3` key-release or modifier-only events, and ordinary CLI writes never set `tookOverAt`.
+3. **Session exit or close clears the highlight**: Once the child process exits (`Exited == true`) or the pane closes, the border and badge disappear immediately.
+4. **The 60-second CLI idle window applies only to human-created panes (`createdBy == "human"`) touched by a script**: When a person opens their own shell and a helper script writes to it once via `gorex send` or `gorex paste` (`lastCliInputAt` non-zero, `tookOverAt` empty), the pane remains the person's terminal rather than a dedicated agent worker. Keeping a permanent blue border on a human shell after a one-off script write would be visual noise, so human-created panes fade out across the final 3 seconds (`57s..60s`) of the 60-second CLI idle window.
 
 #### Takeover notification on `gorex events`
 
@@ -77,6 +75,7 @@ Each `session` keeps an `AgentActor` value exposed in `SessionInfo` as `agentAct
 | Field | Type | Phase | Meaning |
 | --- | --- | --- | --- |
 | `createdBy` | `string` | 1 | `"human"` for window-created and restored panes, `"cli"` for `gorex new` and `gorex split`, `"delegate"` for `gorex delegate`. |
+| `createdAt` | `time.Time` | 1 | Creation time of the session, used as the fallback highlight reference when a delegated or CLI shell has not stamped `lastCliInputAt` yet. Omitted when zero. |
 | `lastCliInputAt` | `time.Time` | 1 | Time of the latest CLI or delegated input (`gorex new`, `gorex split` with a command, `gorex send`, `gorex paste`, `gorex delegate` prompt delivery). Omitted when zero. |
 | `agent` | `string` | 1 | Short badge label from `--agent <name>` (default `"cli"`, or the delegated agent ID), trimmed to 24 runes. |
 | `active` | `bool` | 1 | True while an agent created or wrote to the session and no human UI input has taken over since. |
@@ -93,9 +92,10 @@ A `"takeover"` event is strictly edge-triggered on the server transition `active
 | Human sends key via `doKey` (`KeyInput` press/repeat) while `active == true` | `false` | `now` | Yes (`via: "key"`) |
 | Human pastes via `PasteHuman` / `InputHuman` (ConPTY paste, file drop, mobile paste) while `active == true` | `false` | `now` | Yes (`via: "paste"`) |
 | Further human keystrokes while `active == false` | stays `false` | unchanged | No (no per-keystroke spam) |
-| Terminal query replies (`DA1`, `DA2`, `CPR`, `DECRPM`, `OSC`) or focus reports (`CSI I`, `CSI O`) | unchanged | unchanged | No |
-| Pointer motion, wheel, or `FocusReport` control op (`doMouse`, `doFocusReport`) | unchanged | unchanged | No |
-| 60-second visual idle window expires with no human input | stays `true` | unchanged | No (nobody took over) |
+| Terminal query replies (`DA1`, `DA2`, `CPR`, `DECRPM`, `OSC`), clipboard read denials (`OSC 5522` `EPERM`/`DONE`), or focus reports (`CSI I`, `CSI O`) | unchanged | unchanged | No |
+| Pointer motion, wheel, click/release (`SGR`, `URXVT`, `X10`, `doMouse`), Kitty key-release (`:3`) or modifier-only events, or `FocusReport` (`doFocusReport`) | unchanged | unchanged | No |
+| 60-second CLI idle window elapses on a `createdBy == "human"` pane with no human input | stays `true` | unchanged | No (visual mark fades on human pane; nobody took over) |
+| Time elapses on a `createdBy` in `{"cli", "delegate"}` pane with no human input | stays `true` | unchanged | No (visual mark stays resident on agent-created pane) |
 | Process exits (`Exited == true`) | `false` in `info()` | unchanged | No (`"sessions"` event fires instead) |
 | Later `gorex send`, `gorex paste`, or `delegate.send` | `true` | zeroed | No (re-arms for next takeover) |
 
@@ -161,14 +161,11 @@ Local subscribers on `server.sock` already run as the session owner. Remote subs
 
 - **Wire compatibility (`internal/rex/event_wire_test.go`)**: Verify `Event{Kind: "takeover", Takeover: ...}` marshals to the exact one-line JSON shape and unmarshals into `oldResponse` (`0.15–0.21`) without error.
 - **Takeover event edge triggers (`internal/rex/actor_test.go`)**:
-  - Subscribe a client, create or drive a session via CLI (`ParentSession: "p1"`, `Agent: "agy"`), write DA1/CPR query replies and focus reports on an attached PTY stream, and assert **no** `"takeover"` event fires.
-  - Write a real human byte (`"a"`) on the attached stream and assert **exactly one** `"takeover"` event arrives with `SID`, `Agent: "agy"`, `ParentSession: "p1"`, and `Via: "pty"`.
-  - Write further human bytes (`"bcd"`) and assert **no** second `"takeover"` event fires.
-  - Re-arm with `InputWithAgent` and verify a subsequent `SendKey` (`Via: "key"`) or `PasteHuman` (`Via: "paste"`) emits a fresh `"takeover"` event.
-  - Verify a paired remote subscriber receives `"takeover"` events.
+  - `TestAgentActorOnlyHumanTypingSetsTookOverAt`: verify attach, focus/blur (`CSI I`/`CSI O`), pointer motion/wheel/click/release (`SGR`, `URXVT`, `X10`, `SendMouse`), query replies (`DA`, `CPR`, `DSR`, `DECRPM`, `XTWINOPS`, Kitty flags, `OSC`), clipboard denials (`OSC 5522` `EPERM`/`DONE`), Kitty `:3` key-release and modifier-only events, and CLI writes never set `tookOverAt` or clear `active` on either `att.Write` or `InputHuman`; only real human keyboard/paste input sets `tookOverAt` and emits `"takeover"`.
+  - `TestAgentTakeoverEvents`: write a real human byte (`"a"`) on the attached stream and assert **exactly one** `"takeover"` event arrives with `SID`, `Agent: "agy"`, `ParentSession: "p1"`, and `Via: "pty"`, no duplicate fires on `"bcd"`, `InputWithAgent` re-arms for `SendKey` (`Via: "key"`) and `PasteHuman` (`Via: "paste"`), and paired remote subscribers receive `"takeover"`.
 - **CLI & UI (`internal/cli/actor_test.go`, `agenthighlight_test.go`)**:
-  - Verify `GOREX_SESSION` populates `parentSession` on `new`, `split`, `send`, and `paste`, and `gorex events` (plus `gorex wait --takeover` if included) surfaces the takeover line.
-  - Headless `ui.NewTester` checks blue border pixels, tab badge, immediate next-frame clear on `tt.Key`, 60 s expiry, and `agentHighlight=false` opt-out (#1281).
+  - Verify `GOREX_SESSION` populates `parentSession` on `new`, `split`, `send`, and `paste`, and `gorex events` (plus `gorex wait --takeover`) surfaces the takeover line.
+  - `TestAgentCreatedHighlightPersistsUntilHumanTakeoverOrExit`, `TestAgentHighlightVisualAndTakeover`, and `TestAgentHighlightWindowExpiryAndOptOut`: verify `createdBy` in `{"cli", "delegate"}` stays highlighted indefinitely across idle and working states until `tookOverAt` or session exit, immediate next-frame clear on `tt.Key`, 60 s expiry restricted to `createdBy == "human"` scripted panes, and `agentHighlight=false` opt-out.
 - **Post-deploy check (`docs/irreversible.md`)**: Run `gorex events` in one pane, split a sibling pane with `gorex split --agent agy`, type in the new pane, confirm one `"takeover"` JSON line prints and open windows show zero errors. Rollback if needed is reverting the `"takeover"` emit in `events.go` while keeping `AgentActor` fields backward-compatible.
 
 ## Phases

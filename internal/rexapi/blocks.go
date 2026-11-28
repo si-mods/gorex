@@ -677,8 +677,11 @@ func blockWrite(c *control, s *mSession, b *mBlock, a args) (any, *apiError) {
 	if aerr != nil {
 		return nil, aerr
 	}
-	c.g.takeOnInput(c.rec, s, b)
-	if err := c.g.opt.Client.InputHuman(b.sid, []byte(data)); err != nil {
+	raw := []byte(data)
+	if rex.HasHumanInputBytes(raw) {
+		c.g.takeOnInput(c.rec, s, b)
+	}
+	if err := c.g.opt.Client.InputHuman(b.sid, raw); err != nil {
 		return nil, errInternal("typing: %v", err)
 	}
 	return map[string]any{"bytes_written": len(data)}, nil
