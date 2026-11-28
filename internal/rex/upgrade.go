@@ -340,6 +340,9 @@ func resumeSession(st sessionState, changed func()) (*session, error) {
 		return nil, err
 	}
 	for _, r := range st.Statuses {
+		if isAntigravityIdleArtifact(r, r.App) {
+			r.State, r.Kind, r.Msg, r.Progress = "done", "", "", -1
+		}
 		if s.status.records == nil {
 			s.status.records = map[string]*statusRecord{}
 		}

@@ -455,6 +455,35 @@ func TestResumeKeepsStatusSeen(t *testing.T) {
 	}
 }
 
+// TestResumeNormalizesAntigravityApprovePlan turns a stale Antigravity
+// "Approve plan" blocked record from an older server into done on handoff so
+// viewing the pane clears it.
+func TestResumeNormalizesAntigravityApprovePlan(t *testing.T) {
+	s := &session{cols: 80, rows: 24, p: &pty{}, exited: true}
+	st := s.state()
+	updated := time.Now().Add(-time.Minute).Round(time.Microsecond)
+	st.Statuses = []ProgramStatus{{
+		State:    "blocked",
+		Kind:     "permission",
+		Progress: -1,
+		App:      "antigravity",
+		Msg:      "Approve plan",
+		LastMsg:  "Merging PR",
+		Updated:  updated,
+	}}
+	r, err := resumeSession(st, func() {})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := MostUrgent(r.status.list(), r.status.seen)
+	if got == nil || got.State != "done" || got.Kind != "" || got.Msg != "" || got.Message() != "Merging PR" || !got.Updated.Equal(updated) {
+		t.Fatalf("after handoff: got %+v, want done at %v with LastMsg Merging PR", got, updated)
+	}
+	if !r.status.see(got.Updated) || MostUrgent(r.status.list(), r.status.seen) != nil {
+		t.Fatalf("still urgent after seen: %+v", MostUrgent(r.status.list(), r.status.seen))
+	}
+}
+
 // TestResumeKeepsProgramIcon hands over a session with a custom OSC 7502 icon.
 func TestResumeKeepsProgramIcon(t *testing.T) {
 	s := &session{cols: 80, rows: 24, p: &pty{}, exited: true}

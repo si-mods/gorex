@@ -152,10 +152,24 @@ func (st *programStatus) report(body string) {
 	if k := kv["kind"]; r.State == "blocked" && (k == "permission" || k == "question" || k == "auth") {
 		r.Kind = k
 	}
+	old := st.records[id]
+	if isAntigravityIdleArtifact(r, st.appOf(id, r.App)) {
+		switch {
+		case old == nil:
+			r.State, r.Kind, r.Msg, r.Progress = "idle", "", "", -1
+		case old.State == "idle" || old.State == "done" || old.State == "error":
+			return
+		default:
+			r.State, r.Kind, r.Msg, r.Progress = "done", "", "", -1
+		}
+	}
+	if !r.Updated.After(st.seen) {
+		r.Updated = st.seen.Add(time.Nanosecond)
+	}
 	if st.records == nil {
 		st.records = map[string]*statusRecord{}
 	}
-	if _, ok := st.records[id]; !ok && len(st.records) >= maxStatusRecords {
+	if old == nil && len(st.records) >= maxStatusRecords {
 		var oldest *statusRecord
 		var oldestID string
 		for k, rec := range st.records {
@@ -165,7 +179,7 @@ func (st *programStatus) report(body string) {
 		}
 		delete(st.records, oldestID)
 	}
-	if old := st.records[id]; old != nil {
+	if old != nil {
 		r.LastMsg = old.LastMsg
 	}
 	if r.State == "working" {
@@ -226,18 +240,33 @@ func isStatusID(id string) bool {
 	return true
 }
 
+// appOf returns app when set, else the nearest ancestor record's app.
+func (st *programStatus) appOf(id, app string) string {
+	for app == "" && id != "" {
+		id = id[:max(strings.LastIndexByte(id, '/'), 0)]
+		if p, ok := st.records[id]; ok {
+			app = p.App
+		}
+	}
+	return app
+}
+
+// isAntigravityIdleArtifact reports Antigravity CLI's idle turn-end report
+// when an artifact exists in the conversation ("1 artifact · /artifact to
+// review"): it sends state=blocked, kind=permission, msg="Approve plan" at its
+// ">" prompt instead of done or idle.
+func isAntigravityIdleArtifact(r ProgramStatus, app string) bool {
+	return r.State == "blocked" && r.Kind == "permission" &&
+		strings.EqualFold(app, "antigravity") && r.Msg == "Approve plan"
+}
+
 // list returns the records by id. A record without app takes its
 // nearest ancestor's.
 func (st *programStatus) list() []ProgramStatus {
 	var out []ProgramStatus
 	for id, r := range st.records {
 		s := r.ProgramStatus
-		for id := id; s.App == "" && id != ""; {
-			id = id[:max(strings.LastIndexByte(id, '/'), 0)]
-			if p, ok := st.records[id]; ok {
-				s.App = p.App
-			}
-		}
+		s.App = st.appOf(id, s.App)
 		out = append(out, s)
 	}
 	slices.SortFunc(out, func(a, b ProgramStatus) int { return strings.Compare(a.ID, b.ID) })
