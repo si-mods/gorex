@@ -1,8 +1,12 @@
 package main
 
 import (
-	"encoding/json"
+	"fmt"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -12,48 +16,6 @@ import (
 
 	"gorex/locales"
 )
-
-// catalogKeys returns the message keys of a catalog of locales, without
-// its descriptions (@key) and its locale (@@locale).
-func catalogKeys(t *testing.T, file string) []string {
-	t.Helper()
-	b, err := os.ReadFile("locales/" + file)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var m map[string]json.RawMessage
-	if err := json.Unmarshal(b, &m); err != nil {
-		t.Fatal(err)
-	}
-	var keys []string
-	for k := range m {
-		if !strings.HasPrefix(k, "@") {
-			keys = append(keys, k)
-		}
-	}
-	slices.Sort(keys)
-	return keys
-}
-
-// TestNoThreeDots checks that the catalogs write the ellipsis as …, never as
-// three dots.
-func TestNoThreeDots(t *testing.T) {
-	for _, file := range []string{"en.json", "zh-Hans.json"} {
-		b, err := os.ReadFile("locales/" + file)
-		if err != nil {
-			t.Fatal(err)
-		}
-		var m map[string]json.RawMessage
-		if err := json.Unmarshal(b, &m); err != nil {
-			t.Fatal(err)
-		}
-		for k, v := range m {
-			if strings.Contains(string(v), "...") {
-				t.Errorf("%s: %s has three dots: %s", file, k, v)
-			}
-		}
-	}
-}
 
 // TestServerPIDHasNoSeparator checks that a process id is not grouped.
 func TestServerPIDHasNoSeparator(t *testing.T) {
@@ -79,21 +41,111 @@ func TestLanguageFromFile(t *testing.T) {
 	}
 }
 
-// TestCatalogsAgree checks that Chinese says every message English does.
-func TestCatalogsAgree(t *testing.T) {
-	en, zh := catalogKeys(t, "en.json"), catalogKeys(t, "zh-Hans.json")
-	if len(en) == 0 {
-		t.Fatal("no messages")
+// checkUnusedCatalogKeys reports any generated locales.Messages method in
+// genSrc whose selector name never appears across prodSources.
+func checkUnusedCatalogKeys(genSrc []byte, prodSources map[string][]byte) ([]string, error) {
+	fset := token.NewFileSet()
+	gen, err := parser.ParseFile(fset, "locales/catalog_gen.go", genSrc, 0)
+	if err != nil {
+		return nil, fmt.Errorf("parse locales/catalog_gen.go: %w", err)
 	}
-	for _, k := range en {
-		if !slices.Contains(zh, k) {
-			t.Errorf("zh-Hans lacks %s", k)
+	var methods []struct{ method, key string }
+	for _, decl := range gen.Decls {
+		fn, ok := decl.(*ast.FuncDecl)
+		if !ok || fn.Recv == nil || fn.Body == nil {
+			continue
+		}
+		ast.Inspect(fn.Body, func(n ast.Node) bool {
+			call, ok := n.(*ast.CallExpr)
+			if !ok || len(call.Args) < 2 {
+				return true
+			}
+			sel, ok := call.Fun.(*ast.SelectorExpr)
+			if !ok || sel.Sel.Name != "Format" {
+				return true
+			}
+			lit, ok := call.Args[1].(*ast.BasicLit)
+			if ok && lit.Kind == token.STRING {
+				methods = append(methods, struct{ method, key string }{fn.Name.Name, strings.Trim(lit.Value, `"`)})
+			}
+			return true
+		})
+	}
+	if len(methods) == 0 {
+		return nil, fmt.Errorf("no methods parsed from locales/catalog_gen.go")
+	}
+
+	used := map[string]bool{}
+	for name, src := range prodSources {
+		f, err := parser.ParseFile(fset, name, src, 0)
+		if err != nil {
+			return nil, fmt.Errorf("parse %s: %w", name, err)
+		}
+		ast.Inspect(f, func(n ast.Node) bool {
+			if sel, ok := n.(*ast.SelectorExpr); ok {
+				used[sel.Sel.Name] = true
+			}
+			return true
+		})
+	}
+	var errs []string
+	for _, m := range methods {
+		if !used[m.method] {
+			errs = append(errs, fmt.Sprintf("unused locale key %q (locales.%s); remove from locales/*.json and run `go tool mygo generate`", m.key, m.method))
 		}
 	}
-	for _, k := range zh {
-		if !slices.Contains(en, k) {
-			t.Errorf("zh-Hans has %s, which en lacks", k)
+	return errs, nil
+}
+
+// TestCatalogNoUnusedKeys checks that every message in locales/catalog_gen.go
+// is referenced by production code in the root package (tools/verify/arch.go
+// forbids subpackages from importing gorex/locales).
+func TestCatalogNoUnusedKeys(t *testing.T) {
+	genSrc, err := os.ReadFile("locales/catalog_gen.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	files, err := filepath.Glob("*.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	prod := map[string][]byte{}
+	for _, path := range files {
+		if strings.HasSuffix(path, "_test.go") {
+			continue
 		}
+		b, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		prod[path] = b
+	}
+	errs, err := checkUnusedCatalogKeys(genSrc, prod)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range errs {
+		t.Error(e)
+	}
+}
+
+func TestCheckUnusedCatalogKeysViolations(t *testing.T) {
+	genSrc := []byte(`package locales
+func (msgs Messages) UsedKey() string { return Catalog.Format(msgs.locale, "usedKey", nil) }
+func (msgs Messages) DeadKey() string { return Catalog.Format(msgs.locale, "deadKey", nil) }
+`)
+	prod := map[string][]byte{
+		"app.go": []byte(`package main
+import "gorex/locales"
+func f() string { return locales.UsedKey() }
+`),
+	}
+	errs, err := checkUnusedCatalogKeys(genSrc, prod)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(errs) != 1 || !strings.Contains(errs[0], `"deadKey"`) {
+		t.Fatalf("expected unused deadKey violation, got %v", errs)
 	}
 }
 

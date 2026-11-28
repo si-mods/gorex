@@ -3660,20 +3660,6 @@ func (msgs Messages) TailnetUnavailable() string {
 	return Catalog.Format(msgs.locale, "tailnetUnavailable", nil)
 }
 
-// RemoteAllow says "Allow remote clients"
-// in the language the app shows.
-//
-// Setting: whether other machines may connect.
-func RemoteAllow() string { return In(i18n.Locale()).RemoteAllow() }
-
-// RemoteAllow says "Allow remote clients"
-// in the language of msgs.
-//
-// Setting: whether other machines may connect.
-func (msgs Messages) RemoteAllow() string {
-	return Catalog.Format(msgs.locale, "remoteAllow", nil)
-}
-
 // RemoteUnreachable says "Server not reachable"
 // in the language the app shows.
 //
@@ -4776,20 +4762,6 @@ func (msgs Messages) HostsFailed() string {
 	return Catalog.Format(msgs.locale, "hostsFailed", nil)
 }
 
-// HostsRetryNote says "GoRex tries again on its own."
-// in the language the app shows.
-//
-// Detail after a failed attempt.
-func HostsRetryNote() string { return In(i18n.Locale()).HostsRetryNote() }
-
-// HostsRetryNote says "GoRex tries again on its own."
-// in the language of msgs.
-//
-// Detail after a failed attempt.
-func (msgs Messages) HostsRetryNote() string {
-	return Catalog.Format(msgs.locale, "hostsRetryNote", nil)
-}
-
 // HostsUnreachable says "Could not reach the host. Check that GoRex runs there with remote access on."
 // in the language the app shows.
 //
@@ -5528,22 +5500,6 @@ func (msgs Messages) MenuSession() string {
 	return Catalog.Format(msgs.locale, "menuSession", nil)
 }
 
-// SessionLabel says "Project {name}"
-// in the language the app shows.
-//
-// Accessibility label and tooltip of the title bar's space button. name is
-// the space's name, as icy-ridge.
-func SessionLabel(name string) string { return In(i18n.Locale()).SessionLabel(name) }
-
-// SessionLabel says "Project {name}"
-// in the language of msgs.
-//
-// Accessibility label and tooltip of the title bar's space button. name is
-// the space's name, as icy-ridge.
-func (msgs Messages) SessionLabel(name string) string {
-	return Catalog.Format(msgs.locale, "sessionLabel", map[string]any{"name": name})
-}
-
 // SessionTabs says "{n, plural, one {# tab} other {# tabs}}"
 // in the language the app shows.
 //
@@ -6244,34 +6200,6 @@ func (msgs Messages) RemoteDirectAddressNote() string {
 	return Catalog.Format(msgs.locale, "remoteDirectAddressNote", nil)
 }
 
-// RemoteDirectQR says "Direct QR…"
-// in the language the app shows.
-//
-// Button: shows the QR code of the direct address.
-func RemoteDirectQR() string { return In(i18n.Locale()).RemoteDirectQR() }
-
-// RemoteDirectQR says "Direct QR…"
-// in the language of msgs.
-//
-// Button: shows the QR code of the direct address.
-func (msgs Messages) RemoteDirectQR() string {
-	return Catalog.Format(msgs.locale, "remoteDirectQR", nil)
-}
-
-// RemoteDirectQRHint says "Scan this code on a device that can dial this machine directly, then approve its request under Devices if the fingerp…"
-// in the language the app shows.
-//
-// Text over the QR code of the direct address.
-func RemoteDirectQRHint() string { return In(i18n.Locale()).RemoteDirectQRHint() }
-
-// RemoteDirectQRHint says "Scan this code on a device that can dial this machine directly, then approve its request under Devices if the fingerp…"
-// in the language of msgs.
-//
-// Text over the QR code of the direct address.
-func (msgs Messages) RemoteDirectQRHint() string {
-	return Catalog.Format(msgs.locale, "remoteDirectQRHint", nil)
-}
-
 // RemotePairAddrFrom says "From {source}"
 // in the language the app shows.
 //
@@ -6824,20 +6752,6 @@ func RemoteRexGoQRTitle(host string) string { return In(i18n.Locale()).RemoteRex
 // name.
 func (msgs Messages) RemoteRexGoQRTitle(host string) string {
 	return Catalog.Format(msgs.locale, "remoteRexGoQRTitle", map[string]any{"host": host})
-}
-
-// RemoteRexGoQRHint says "Scan this code in Rex Go, then approve its request under Devices if the fingerprint matches. The code holds this mach…"
-// in the language the app shows.
-//
-// Text over the QR code for Rex Go.
-func RemoteRexGoQRHint() string { return In(i18n.Locale()).RemoteRexGoQRHint() }
-
-// RemoteRexGoQRHint says "Scan this code in Rex Go, then approve its request under Devices if the fingerprint matches. The code holds this mach…"
-// in the language of msgs.
-//
-// Text over the QR code for Rex Go.
-func (msgs Messages) RemoteRexGoQRHint() string {
-	return Catalog.Format(msgs.locale, "remoteRexGoQRHint", nil)
 }
 
 // RemoteRexGoQRUnavailable says "Remote access has no address yet. Try again once it is listening."
@@ -7688,62 +7602,6 @@ func ProjectSheetMore(n int) string { return In(i18n.Locale()).ProjectSheetMore(
 // Folder browser: the folder holds more folders than are listed.
 func (msgs Messages) ProjectSheetMore(n int) string {
 	return Catalog.Format(msgs.locale, "projectSheetMore", map[string]any{"n": n})
-}
-
-// ProjectChangeFolder says "Change Folder…"
-// in the language the app shows.
-//
-// Project menu: choose the folder the project's new tabs start in.
-func ProjectChangeFolder() string { return In(i18n.Locale()).ProjectChangeFolder() }
-
-// ProjectChangeFolder says "Change Folder…"
-// in the language of msgs.
-//
-// Project menu: choose the folder the project's new tabs start in.
-func (msgs Messages) ProjectChangeFolder() string {
-	return Catalog.Format(msgs.locale, "projectChangeFolder", nil)
-}
-
-// ProjectRemoveFolder says "Remove Folder"
-// in the language the app shows.
-//
-// Project menu: unbind the project from its folder; its tabs stay.
-func ProjectRemoveFolder() string { return In(i18n.Locale()).ProjectRemoveFolder() }
-
-// ProjectRemoveFolder says "Remove Folder"
-// in the language of msgs.
-//
-// Project menu: unbind the project from its folder; its tabs stay.
-func (msgs Messages) ProjectRemoveFolder() string {
-	return Catalog.Format(msgs.locale, "projectRemoveFolder", nil)
-}
-
-// ProjectSetFolder says "Set Folder…"
-// in the language the app shows.
-//
-// Project menu: choose a folder for a project that has none.
-func ProjectSetFolder() string { return In(i18n.Locale()).ProjectSetFolder() }
-
-// ProjectSetFolder says "Set Folder…"
-// in the language of msgs.
-//
-// Project menu: choose a folder for a project that has none.
-func (msgs Messages) ProjectSetFolder() string {
-	return Catalog.Format(msgs.locale, "projectSetFolder", nil)
-}
-
-// ProjectNoFolder says "No folder"
-// in the language the app shows.
-//
-// Project list: under the name of a project that has no folder.
-func ProjectNoFolder() string { return In(i18n.Locale()).ProjectNoFolder() }
-
-// ProjectNoFolder says "No folder"
-// in the language of msgs.
-//
-// Project list: under the name of a project that has no folder.
-func (msgs Messages) ProjectNoFolder() string {
-	return Catalog.Format(msgs.locale, "projectNoFolder", nil)
 }
 
 // ProjectFolderMissing says "The folder {dir} of {name} is missing or cannot be opened; no tab opened."

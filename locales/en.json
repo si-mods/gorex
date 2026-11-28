@@ -1168,10 +1168,6 @@
 		}
 	},
 	"tailnetUnavailable": "System Tailscale is unavailable. GoRex will try again automatically.",
-	"remoteAllow": "Allow remote clients",
-	"@remoteAllow": {
-		"description": "Setting: whether other machines may connect."
-	},
 	"remoteUnreachable": "Server not reachable",
 	"@remoteUnreachable": {
 		"description": "State: the session server does not answer."
@@ -1522,10 +1518,6 @@
 	"@hostsFailed": {
 		"description": "Host status: the last attempt failed; another comes."
 	},
-	"hostsRetryNote": "GoRex tries again on its own.",
-	"@hostsRetryNote": {
-		"description": "Detail after a failed attempt."
-	},
 	"hostsUnreachable": "Could not reach the host. Check that GoRex runs there with remote access on.",
 	"@hostsUnreachable": {
 		"description": "Why a host is not connected: the network or the host."
@@ -1826,16 +1818,6 @@
 	"@menuSession": {
 		"description": "Title of the Space menu."
 	},
-	"sessionLabel": "Project {name}",
-	"@sessionLabel": {
-		"description": "Accessibility label and tooltip of the title bar's space button. name is the space's name, as icy-ridge.",
-		"placeholders": {
-			"name": {
-				"type": "String",
-				"example": "icy-ridge"
-			}
-		}
-	},
 	"sessionTabs": "{n, plural, one {# tab} other {# tabs}}",
 	"@sessionTabs": {
 		"description": "Space popover and palette: how many tabs a space has.",
@@ -2092,14 +2074,6 @@
 	"@remoteDirectAddressNote": {
 		"description": "Hint under the direct address."
 	},
-	"remoteDirectQR": "Direct QR…",
-	"@remoteDirectQR": {
-		"description": "Button: shows the QR code of the direct address."
-	},
-	"remoteDirectQRHint": "Scan this code on a device that can dial this machine directly, then approve its request under Devices if the fingerprint matches. The code holds this machine's direct address, a secret: show it only to your own devices.",
-	"@remoteDirectQRHint": {
-		"description": "Text over the QR code of the direct address."
-	},
 	"remotePairAddrFrom": "From {source}",
 	"@remotePairAddrFrom": {
 		"description": "Pairing request by address: the address it came from.",
@@ -2278,10 +2252,6 @@
 	"remoteRexGoQRTitle": "Connect Rex Go to {host}",
 	"@remoteRexGoQRTitle": {
 		"description": "Title of the dialog with the QR code for Rex Go. {host} is this machine's name."
-	},
-	"remoteRexGoQRHint": "Scan this code in Rex Go, then approve its request under Devices if the fingerprint matches. The code holds this machine's address, a secret: show it only to your own devices.",
-	"@remoteRexGoQRHint": {
-		"description": "Text over the QR code for Rex Go."
 	},
 	"remoteRexGoQRUnavailable": "Remote access has no address yet. Try again once it is listening.",
 	"@remoteRexGoQRUnavailable": {
@@ -2593,22 +2563,6 @@
 				"example": "2000"
 			}
 		}
-	},
-	"projectChangeFolder": "Change Folder…",
-	"@projectChangeFolder": {
-		"description": "Project menu: choose the folder the project's new tabs start in."
-	},
-	"projectRemoveFolder": "Remove Folder",
-	"@projectRemoveFolder": {
-		"description": "Project menu: unbind the project from its folder; its tabs stay."
-	},
-	"projectSetFolder": "Set Folder…",
-	"@projectSetFolder": {
-		"description": "Project menu: choose a folder for a project that has none."
-	},
-	"projectNoFolder": "No folder",
-	"@projectNoFolder": {
-		"description": "Project list: under the name of a project that has no folder."
 	},
 	"projectFolderMissing": "The folder {dir} of {name} is missing or cannot be opened; no tab opened.",
 	"@projectFolderMissing": {

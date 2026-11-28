@@ -239,7 +239,7 @@ func TestDirectAddress(t *testing.T) {
 	_, tt, rs := serverPage(t, rex.RemoteStatus{Enabled: true, Running: true})
 	remoteUI.details = true
 	tt.Frame()
-	if tt.HasText(locales.RemoteDirectAddress()) || tt.HasText(locales.RemoteDirectQR()) {
+	if tt.HasText(locales.RemoteDirectAddress()) || tt.HasText("Direct QR…") {
 		t.Fatalf("the direct address shows with Reachable at off; texts %q", tt.Texts())
 	}
 	rs.show(tt, func(st *rex.RemoteStatus) { st.ReachableAt = "192.0.2.10" })
@@ -248,7 +248,7 @@ func TestDirectAddress(t *testing.T) {
 			t.Errorf("no %q in %q", s, tt.Texts())
 		}
 	}
-	if tt.HasText(locales.RemoteDirectQR()) {
+	if tt.HasText("Direct QR…") {
 		t.Errorf("separate Direct QR button still shows: %q", tt.Texts())
 	}
 	// Each address is shown by its own button: the first one's leaves the
