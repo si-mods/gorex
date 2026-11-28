@@ -2,7 +2,7 @@ name: CI
 
 on:
   # Docs-only changes start no run; workflow_dispatch runs it by hand.
-  # ios/WhatToTest.md stays in: the what-to-test job checks it. No other .md file is
+  # ios/WhatToTest.md stays in: the what-to-test step checks it. No other .md file is
   # an input to the code or the tests.
   pull_request:
     paths:
@@ -29,63 +29,41 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  # Most jobs run on an instabox machine (Ubuntu 24.04) that lives for
-  # the job, a fork's pull request too. Go caches are saved on pushes to
-  # main only; a pull request restores them and saves none, so the 10 GB
-  # cache limit does not fill with one copy per pull request.
+  # One job on one instabox machine (Ubuntu 24.04, 8 vCPU, 16 GiB). Every
+  # instabox job that runs is one sandbox start, and the plan allows 500 a
+  # day, 200 an hour and 30 a minute. Add steps to this job, not jobs. A job
+  # that is skipped starts nothing. The machine lives for the job, a fork's
+  # pull request too. Go caches are saved on pushes to main only; a pull
+  # request restores them and saves none, so the 10 GB cache limit does not
+  # fill with one copy per pull request.
+  # Every step after diff runs even when an earlier one failed (!cancelled()),
+  # so one failure does not hide the others; each failed step fails the job.
   # The Mac mini's runner takes one job at a time and is kept for the
   # release, so no job here waits for it.
   # Windows tests run on the self-hosted YIBO-PC runner (same-repo PRs and
   # pushes only); macOS-only issues still show on a developer's machine.
   # si-mods runs no job on GitHub's runners.
-
-  # Whether the change reaches past the iOS app. A change only to the
-  # Swift app (IOS_ONLY: its sources, tests, packages, scripts and
-  # project), docs, .md files or the TestFlight workflow runs only
-  # what-to-test here: the TestFlight workflow builds the app when it
-  # reaches main. Everything else runs all jobs, a new path too: ios/share
-  # and ios/tailnet are Go, and Go's tests and the web build read the files
-  # in READ_ELSEWHERE. An empty diff, a manual run, and a base that is not
-  # an ancestor (a new branch, a force-push) run all.
-  changes:
-    runs-on: instabox-medium
-    timeout-minutes: 5
-    outputs:
-      code: ${{ steps.diff.outputs.code }}
+  linux:
+    runs-on: instabox-large
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
+      # Whether the change reaches past the iOS app; see the script for the
+      # rules. A change only to the Swift app, docs or .md files runs only
+      # what-to-test here.
       - id: diff
         env:
           BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
-          IOS_ONLY: '^(ios/(GoRex|GoRexTests|SherpaOnnx|scripts)/|ios/(project\.yml|\.gitignore)$|docs/|\.github/workflows/testflight\.yml$)|\.md$'
-          READ_ELSEWHERE: '^ios/GoRex/(Rex/RexProtocol\.gen\.swift|ghostty-themes\.json)$'
-        run: |
-          code=true
-          if [ "$GITHUB_EVENT_NAME" != workflow_dispatch ] && git merge-base --is-ancestor "$BASE" HEAD 2>/dev/null; then
-            files=$(git diff --name-only "$BASE" HEAD)
-            if [ -n "$files" ] &&
-              ! printf '%s\n' "$files" | grep -Ev "$IOS_ONLY" | grep -q . &&
-              ! printf '%s\n' "$files" | grep -Eq "$READ_ELSEWHERE"; then
-              code=false
-            fi
-          fi
-          echo "code=$code" | tee -a "$GITHUB_OUTPUT"
+        run: bash .github/scripts/ci-changes.sh
 
-  # What to Test comes from ios/WhatToTest.md, a bullet per locale, through
-  # ios/scripts/test-notes: a pull request that changes what a tester sees
-  # adds one, and one that reads like a commit subject fails. It runs on
-  # every pull request, the iOS app's alone too.
-  what-to-test:
-    if: github.event_name == 'pull_request'
-    runs-on: instabox-medium
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-      - name: ios/WhatToTest.md
+      # What to Test comes from ios/WhatToTest.md, a bullet per locale, through
+      # ios/scripts/test-notes: a pull request that changes what a tester sees
+      # adds one, and one that reads like a commit subject fails. It runs on
+      # every pull request, the iOS app's alone too.
+      - name: what-to-test
+        if: github.event_name == 'pull_request'
         env:
           BASE: ${{ github.event.pull_request.base.sha }}
         # The script that judges the pull request comes from the base commit,
@@ -96,29 +74,23 @@ jobs:
           git worktree add "$RUNNER_TEMP/base" "$BASE"
           "$RUNNER_TEMP/base/ios/scripts/test-notes" check "$BASE" "$TO"
 
-  # gofmt and vet, and each system's code cross-compiled. It runs on the
-  # large box (8 vCPU, 16 GiB), as vet and lint compile everything.
-  build:
-    needs: changes
-    if: needs.changes.outputs.code == 'true'
-    runs-on: instabox-large
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
+        if: ${{ !cancelled() && steps.diff.outputs.code == 'true' }}
         with:
           go-version-file: go.mod
           cache: false
       - uses: actions/cache/restore@v6
+        if: ${{ !cancelled() && steps.diff.outputs.code == 'true' }}
         with:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: go-build-${{ hashFiles('go.sum') }}-${{ github.sha }}
+          key: go-ci-${{ hashFiles('go.sum') }}-${{ github.sha }}
           restore-keys: |
-            go-build-${{ hashFiles('go.sum') }}-
-            go-build-
+            go-ci-${{ hashFiles('go.sum') }}-
+            go-ci-
       - name: gofmt
+        if: ${{ !cancelled() && steps.diff.outputs.code == 'true' }}
         run: |
           unformatted=$(git ls-files -z '*.go' | xargs -0 gofmt -l)
           if [ -n "$unformatted" ]; then
@@ -129,6 +101,7 @@ jobs:
       # Each system's files and tests: build skips the tests, and they run
       # on Linux only.
       - name: vet
+        if: ${{ !cancelled() && steps.diff.outputs.code == 'true' }}
         env:
           CGO_ENABLED: "0"
         run: |
@@ -138,10 +111,12 @@ jobs:
             echo "::endgroup::"
           done
       - name: lint
+        if: ${{ !cancelled() && steps.diff.outputs.code == 'true' }}
         env:
           CGO_ENABLED: "0"
         run: go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0 run ./...
       - name: build
+        if: ${{ !cancelled() && steps.diff.outputs.code == 'true' }}
         env:
           CGO_ENABLED: "0"
         run: |
@@ -151,150 +126,61 @@ jobs:
             GOOS=${t%/*} GOARCH=${t#*/} GOFLAGS="-tags=$TAGS" go build ./...
             echo "::endgroup::"
           done
-      - uses: actions/cache/save@v6
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        with:
-          path: |
-            ~/.cache/go-build
-            ~/go/pkg/mod
-          key: go-build-${{ hashFiles('go.sum') }}-${{ github.sha }}
 
-  # The web client's unit tests: its modules with no DOM, in Node
-  # (web/test.mjs bundles web/test/*.test.ts and runs node --test). The
-  # web build itself needs Zig and Ghostty, and is not run here.
-  web:
-    needs: changes
-    if: needs.changes.outputs.code == 'true'
-    runs-on: instabox-medium
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v7
+      # The web client's unit tests: its modules with no DOM, in Node
+      # (web/test.mjs bundles web/test/*.test.ts and runs node --test). The
+      # web build itself needs Zig and Ghostty, and is not run here.
       - uses: actions/setup-node@v7
+        if: ${{ !cancelled() && steps.diff.outputs.code == 'true' }}
         with:
           node-version: 24
           cache: npm
           cache-dependency-path: web/package-lock.json
-      - name: test
+      - name: web test
+        if: ${{ !cancelled() && steps.diff.outputs.code == 'true' }}
         working-directory: web
         run: |
           npm ci
           npm run typecheck
           npm test
 
-  # The tests. The root package's tests run one after another, so three
-  # machines take a third each; a fourth runs the other packages. With
-  # build and web, that is five at a time.
-  test-linux:
-    needs: changes
-    if: needs.changes.outputs.code == 'true'
-    runs-on: instabox-medium
-    # One run of a part that hangs, at 15 minutes, and the setup.
-    timeout-minutes: 20
-    strategy:
-      fail-fast: false
-      matrix:
-        part: [root-0, root-1, root-2, others]
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
-        with:
-          go-version-file: go.mod
-          cache: false
-      # Its own cache, as build's holds no compiled tests.
-      - uses: actions/cache/restore@v6
-        id: cache
-        with:
-          path: |
-            ~/.cache/go-build
-            ~/go/pkg/mod
-          key: go-test-linux-${{ startsWith(matrix.part, 'root') && 'root' || 'others' }}-${{ hashFiles('go.sum') }}-${{ github.sha }}
-          restore-keys: |
-            go-test-linux-${{ startsWith(matrix.part, 'root') && 'root' || 'others' }}-${{ hashFiles('go.sum') }}-
-            go-test-linux-${{ startsWith(matrix.part, 'root') && 'root' || 'others' }}-
+      # The Go tests: the other packages run in the background while the
+      # root package's tests run in the foreground, on the same box. No retry:
+      # a failed test fails the step.
       - name: test
+        if: ${{ !cancelled() && steps.diff.outputs.code == 'true' }}
         shell: bash
-        env:
-          PART: ${{ matrix.part }}
-          # The number of root-N parts in the matrix.
-          ROOT_PARTS: 3
-        # No part retries: a failed test fails the job.
         run: |
-          if [ "$PART" = others ]; then
-            mapfile -t pkgs < <(go list ./... | grep -v '^gorex$')
-            go test -race "${pkgs[@]}" -count=1 -timeout 15m
-          else
-            go test -c -o "$RUNNER_TEMP/gorex.test" .
-            tests=$("$RUNNER_TEMP/gorex.test" -test.list '^(Test|Example|Fuzz)' |
-              awk -v n="$ROOT_PARTS" -v i="${PART#root-}" 'NR % n == i' | paste -sd'|' -)
-            [ -n "$tests" ]
-            "$RUNNER_TEMP/gorex.test" -test.timeout 15m -test.run "^($tests)\$"
-          fi
-      # root-0, root-1 and root-2 share one key, so root-0 saves for them.
+          mapfile -t pkgs < <(go list ./... | grep -v '^gorex$')
+          go test -race "${pkgs[@]}" -count=1 -timeout 15m >"$RUNNER_TEMP/others.log" 2>&1 &
+          others=$!
+          root=0
+          go test -c -o "$RUNNER_TEMP/gorex.test" . &&
+            "$RUNNER_TEMP/gorex.test" -test.timeout 15m || root=1
+          rc=0
+          wait "$others" || rc=$?
+          echo "::group::other packages"
+          cat "$RUNNER_TEMP/others.log"
+          echo "::endgroup::"
+          [ "$root" -eq 0 ] || echo "::error::root package tests failed"
+          [ "$rc" -eq 0 ] || echo "::error::other packages' tests failed"
+          [ "$root" -eq 0 ] && [ "$rc" -eq 0 ]
       - uses: actions/cache/save@v6
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && (matrix.part == 'root-0' || matrix.part == 'others')
+        if: ${{ !cancelled() && steps.diff.outputs.code == 'true' && github.event_name == 'push' && github.ref == 'refs/heads/main' }}
         with:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ steps.cache.outputs.cache-primary-key }}
+          key: go-ci-${{ hashFiles('go.sum') }}-${{ github.sha }}
 
-  test-windows:
-    needs: changes
-    if: needs.changes.outputs.code == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
-    runs-on: [self-hosted, yibo-pc]
-    timeout-minutes: 25
-    steps:
-      - run: git config --global core.autocrlf false
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
-        with:
-          go-version-file: go.mod
-          cache: false
-      # Root UI integration tests take ~40m and hit Session 0 timing flakes on
-      # yibo-pc, so CI runs all subpackages here (~3.5m) which cover ConPTY,
-      # session server, CLI, rexapi, and Windows-specific subsystems.
-      - name: test
-        shell: powershell
-        env:
-          CGO_ENABLED: "0"
-        run: |
-          $pkgs = go list ./... | Where-Object { $_ -ne 'gorex' }
-          go test $pkgs -count=1 -timeout 15m
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-
-  # Builds web/dist (with files.json) and uploads it to Cloudflare R2 on pushes to main.
-  web-r2:
-    needs: changes
-    if: needs.changes.outputs.code == 'true' && github.event_name == 'push' && github.ref == 'refs/heads/main'
-    runs-on: instabox-medium
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
-        with:
-          go-version-file: go.mod
-          cache: false
-      # Build's cache, restored only: this job saves none.
-      - uses: actions/cache/restore@v6
-        with:
-          path: |
-            ~/.cache/go-build
-            ~/go/pkg/mod
-          key: go-build-${{ hashFiles('go.sum') }}-${{ github.sha }}
-          restore-keys: |
-            go-build-${{ hashFiles('go.sum') }}-
-            go-build-
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 24
-          cache: npm
-          cache-dependency-path: web/package-lock.json
+      # Builds web/dist (with files.json) and uploads it to Cloudflare R2 on pushes to main.
       # Reuse the built ghostty-vt wasm: web/build.mjs skips the Zig build when
       # $GOREX_WEB_CACHE has it. The key holds the Ghostty commit, the Zig version
       # and a hash of build.mjs (which holds the build flags), so any change there
       # builds cold. Only the wasm file is cached, not the clone or the toolchain.
       - name: ghostty-vt wasm cache key
         id: wasm
+        if: ${{ !cancelled() && steps.diff.outputs.code == 'true' && github.event_name == 'push' && github.ref == 'refs/heads/main' }}
         run: |
           commit=$(sed -n 's/^const COMMIT = "\([0-9a-f]*\)";/\1/p' web/build.mjs)
           zig=$(sed -n 's/^const ZIG_VERSION = "\([^"]*\)";/\1/p' web/build.mjs)
@@ -305,11 +191,13 @@ jobs:
             echo "key=ghostty-vt-$commit-zig-$zig-${{ hashFiles('web/build.mjs') }}"
           } >> "$GITHUB_OUTPUT"
       - name: ghostty-vt wasm cache
+        if: ${{ !cancelled() && steps.diff.outputs.code == 'true' && github.event_name == 'push' && github.ref == 'refs/heads/main' }}
         uses: actions/cache@v6
         with:
           path: ${{ steps.wasm.outputs.file }}
           key: ${{ steps.wasm.outputs.key }}
       - name: build and upload to R2
+        if: ${{ !cancelled() && steps.diff.outputs.code == 'true' && github.event_name == 'push' && github.ref == 'refs/heads/main' }}
         working-directory: web
         env:
           GOREX_WEB_CACHE: ${{ steps.wasm.outputs.cache }}
@@ -326,3 +214,38 @@ jobs:
           npm ci
           node build.mjs --ci
           node r2-upload.mjs
+
+  test-windows:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, yibo-pc]
+    timeout-minutes: 25
+    steps:
+      - run: git config --global core.autocrlf false
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      # Git for Windows' bash by path: bare bash on this runner may be the WSL launcher.
+      - id: diff
+        shell: powershell
+        env:
+          BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          & "C:\Program Files\Git\bin\bash.exe" .github/scripts/ci-changes.sh
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - uses: actions/setup-go@v7
+        if: ${{ steps.diff.outputs.code == 'true' }}
+        with:
+          go-version-file: go.mod
+          cache: false
+      # Root UI integration tests take ~40m and hit Session 0 timing flakes on
+      # yibo-pc, so CI runs all subpackages here (~3.5m) which cover ConPTY,
+      # session server, CLI, rexapi, and Windows-specific subsystems.
+      - name: test
+        if: ${{ steps.diff.outputs.code == 'true' }}
+        shell: powershell
+        env:
+          CGO_ENABLED: "0"
+        run: |
+          $pkgs = go list ./... | Where-Object { $_ -ne 'gorex' }
+          go test $pkgs -count=1 -timeout 15m
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

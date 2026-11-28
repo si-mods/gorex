@@ -6,12 +6,16 @@ name: PR verified
 # or runs the pull request's code: it reads the title and body only.
 on:
   pull_request_target:
-    types: [opened, edited, synchronize, reopened]
+    # Not synchronize: a push changes neither the title nor the body this job
+    # reads, and each run is one instabox sandbox start.
+    types: [opened, edited, reopened]
 
 permissions: {}
 
 jobs:
   verified:
+    # An edit that changes only the base branch changes neither title nor body.
+    if: ${{ github.event.action != 'edited' || github.event.changes.title != null || github.event.changes.body != null }}
     runs-on: instabox-medium
     timeout-minutes: 2
     env:
