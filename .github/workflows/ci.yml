@@ -156,8 +156,9 @@ jobs:
       # (web/test.mjs bundles web/test/*.test.ts and runs node --test). They
       # and the typecheck read web/ only. The web build itself needs Zig and
       # Ghostty, and is not run here.
+      # The R2 upload below builds web/ too, on a push to main.
       - uses: actions/setup-node@v7
-        if: ${{ !cancelled() && steps.plan.outputs.web == 'true' }}
+        if: ${{ !cancelled() && (steps.plan.outputs.web == 'true' || (steps.plan.outputs.web_r2 == 'true' && github.event_name == 'push' && github.ref == 'refs/heads/main')) }}
         with:
           node-version: 24
           cache: npm

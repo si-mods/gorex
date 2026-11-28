@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"fmt"
 	"go/build"
 	"io/fs"
 	"path"
@@ -107,8 +108,10 @@ func loadDir(root, dir, goos string) (*pkg, error) {
 			}
 		case errors.As(err, &multi):
 			// A //go:build ignore generator beside the package (package main).
-		case err != nil && bp == nil:
-			return nil, err
+		case err != nil:
+			// A parse error or the like: fail the plan step (a red job) rather
+			// than plan from a partial graph.
+			return nil, fmt.Errorf("%s (GOOS=%s GOARCH=%s): %w", dir, goos, arch, err)
 		}
 		any = true
 		for _, list := range [][]string{bp.GoFiles, bp.TestGoFiles, bp.XTestGoFiles} {

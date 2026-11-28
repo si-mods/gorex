@@ -154,12 +154,20 @@ func plan(files []string, g graph) result {
 				r.gofmt = append(r.gofmt, f)
 			}
 			ip := importPath(dir)
-			for _, goos := range fileGOOS(g, ip, f) {
+			for _, goos := range fileGOOS(f) {
 				seed[goos][ip] = true
 				goSeed[goos][ip] = true
 			}
 			if !dirs[dir] {
 				nearest(dir) // testdata, or a package being deleted
+			}
+			// tools/ciplan's tests check its graph against go list on the
+			// repo, so any Go change runs them.
+			addAll(module + "/tools/ciplan")
+			// tools/verify's TestArchBoundariesRepo reads every non-test .go
+			// file under internal/ and ios/.
+			if (strings.HasPrefix(f, "internal/") || strings.HasPrefix(f, "ios/")) && !strings.HasSuffix(f, "_test.go") {
+				addAll(module + "/tools/verify")
 			}
 		} else if !strings.HasSuffix(f, ".md") {
 			nearest(dir)
@@ -205,12 +213,9 @@ func plan(files []string, g graph) result {
 			r.test[goos] = append(r.test[goos], ip)
 		}
 	}
-	for ip := range goSeed["linux"] {
-		if p := g.pkgs["linux"][ip]; p != nil && len(p.Files) > 0 {
-			r.lint = append(r.lint, ip) // lint reports on a package's own files only
-		}
-	}
-	slices.Sort(r.lint)
+	// Some staticcheck checks read a callee in another package, so lint
+	// covers the importers too, like vet.
+	r.lint = r.vet["linux"]
 	if !r.root && len(rules) > 0 {
 		names := make([]string, 0, len(rules))
 		for n := range rules {
@@ -224,19 +229,19 @@ func plan(files []string, g graph) result {
 	return r
 }
 
-// fileGOOS is the systems that build the .go file f of package ip. A file
-// no system builds, or one that is gone, counts for all of them.
-func fileGOOS(g graph, ip, f string) []string {
-	var out []string
-	for _, goos := range goosList {
-		if p := g.pkgs[goos][ip]; p != nil && p.Files[f] {
-			out = append(out, goos)
+// fileGOOS is the systems a change to the .go file f can affect. Only a
+// GOOS file-name suffix (x_windows.go, x_darwin_test.go) fixes it: a
+// //go:build line can be the very thing the change edits, and HEAD's graph
+// no longer shows the system it dropped, so any other file counts for all.
+func fileGOOS(f string) []string {
+	name := strings.TrimSuffix(strings.TrimSuffix(path.Base(f), ".go"), "_test")
+	parts := strings.Split(name, "_")
+	for i := len(parts) - 1; i >= 1 && i >= len(parts)-2; i-- {
+		if slices.Contains(goosList, parts[i]) {
+			return []string{parts[i]}
 		}
 	}
-	if len(out) == 0 {
-		return goosList
-	}
-	return out
+	return goosList
 }
 
 // embeds reports whether the //go:embed pattern names f: f or a directory
