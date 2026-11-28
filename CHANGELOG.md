@@ -1,14 +1,24 @@
 # Changelog
 
-## Unreleased
+## 0.69.0
 
 ### Features
 
-* **cli:** add `gorex projects` and `gorex project ls|new|rename|move` to inspect, create, rename, and move tabs across projects, and expose project/tab metadata in `gorex ls` and `gorex new --json`
+* **cli:** add `gorex projects` and `gorex project ls|new|rename|move` to inspect, create, rename, and move tabs across projects, expose project/tab metadata in `gorex ls` and `gorex new --json`, and add `gorex delegate --send --key` ([#1275](https://github.com/si-mods/gorex/pull/1275), [#1277](https://github.com/si-mods/gorex/pull/1277))
+* **pairing:** unify host pairing into one 3-step state-driven flow ([#1255](https://github.com/si-mods/gorex/pull/1255), [#1261](https://github.com/si-mods/gorex/pull/1261))
+* **ios:** condense Composer Mode into a single-row pill (IOS-030) ([#1268](https://github.com/si-mods/gorex/pull/1268))
+* **ios:** add status and progress toasts and notifications row (IOS-034) ([#1101](https://github.com/si-mods/gorex/pull/1101))
 
 ### Bug Fixes
 
-* **cli:** place `gorex new` sessions as tabs in the current/active project (or `--project <name|id>`), error clearly when no project exists instead of creating invisible orphan sessions, and let `gorex close -s` clean up unplaced sessions
+* **cli,delegate:** place `gorex new` sessions as tabs in the active project (or `--project <name|id>`), let `gorex close -s` clean up unplaced sessions, dismiss agent splash notices, and re-paste lost prompts ([#1275](https://github.com/si-mods/gorex/pull/1275), [#1277](https://github.com/si-mods/gorex/pull/1277))
+* **ios:** stage Fun-ASR Core ML models on the CPU to eliminate MPSGraph OOM and 35s per-phrase compile stalls, catch `makeState` `NSException`s, keep dictation in Composer Mode from auto-sending, defer SSH dials until Keychain sync completes, keep split-view search inside the sidebar, read `pooledSSH.c` under `sshMu`, and wrap toast messages to three lines ([#1243](https://github.com/si-mods/gorex/pull/1243), [#1244](https://github.com/si-mods/gorex/pull/1244), [#1245](https://github.com/si-mods/gorex/pull/1245), [#1247](https://github.com/si-mods/gorex/pull/1247), [#1248](https://github.com/si-mods/gorex/pull/1248), [#1250](https://github.com/si-mods/gorex/pull/1250), [#1258](https://github.com/si-mods/gorex/pull/1258), [#1274](https://github.com/si-mods/gorex/pull/1274))
+* **rex,rexapi,push:** support 3-digit `#rgb` hex colors in `set_theme`, bound `blockListDir` with batched reads, concurrency semaphore, 10s deadline, and full `VolumePath` checks, fix `fish` and `path_prepend` shell quoting, redact `?ticket=` in trace URIs, pool `web/tailcat` connections via `tailcatpool`, and sanitize APNs Live Activity text via `ShownText` ([#1271](https://github.com/si-mods/gorex/pull/1271))
+* **release:** retry `SHA256SUMS` uploads that lose a concurrent asset upload race ([#1254](https://github.com/si-mods/gorex/pull/1254))
+
+### Architecture & Tooling
+
+* **all:** unify cross-platform SSOT primitives (`ghostty-themes`, `ProjectColors`, hex/UUID helpers, `ActionClock`, `atomicfile`, `tailcatpool`), eliminate Web runtime import cycles and `/api/spaces` polling, eliminate all desktop `init()`/`panic()` calls and synchronize multi-window render caches, decompose multi-domain files, and enforce full-repo package DAG and catalog integrity gates in `tools/verify` and `tools/ciplan` ([#1246](https://github.com/si-mods/gorex/pull/1246), [#1249](https://github.com/si-mods/gorex/pull/1249), [#1251](https://github.com/si-mods/gorex/pull/1251), [#1252](https://github.com/si-mods/gorex/pull/1252), [#1256](https://github.com/si-mods/gorex/pull/1256), [#1263](https://github.com/si-mods/gorex/pull/1263), [#1272](https://github.com/si-mods/gorex/pull/1272), [#1278](https://github.com/si-mods/gorex/pull/1278), [#1282](https://github.com/si-mods/gorex/pull/1282))
 
 ## 0.68.2
 
