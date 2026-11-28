@@ -4,6 +4,8 @@ package rex
 
 import (
 	"errors"
+	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/egoist/mygo/plugins/terminal"
@@ -55,6 +57,137 @@ func KeyCode(name string) string {
 		b.WriteString(part[1:])
 	}
 	return b.String()
+}
+
+// chordModifiers are the modifier names ParseKeyChord reads, by the
+// name of an input event's.
+var chordModifiers = map[string]string{
+	"shift": "shift", "ctrl": "ctrl", "control": "ctrl",
+	"alt": "alt", "opt": "alt", "option": "alt",
+	"super": "super", "cmd": "super", "command": "super", "meta": "super", "win": "super",
+}
+
+// chordKeys are the key names ParseKeyChord reads besides a character,
+// by their W3C KeyboardEvent.code.
+var chordKeys = map[string]string{
+	"enter": "Enter", "return": "Enter", "esc": "Escape", "escape": "Escape",
+	"tab": "Tab", "backspace": "Backspace", "delete": "Delete", "del": "Delete",
+	"insert": "Insert", "ins": "Insert", "home": "Home", "end": "End",
+	"pageup": "PageUp", "page_up": "PageUp", "pgup": "PageUp",
+	"pagedown": "PageDown", "page_down": "PageDown", "pgdn": "PageDown",
+	"up": "ArrowUp", "down": "ArrowDown", "left": "ArrowLeft", "right": "ArrowRight",
+}
+
+// chordPunctuation are the codes of the punctuation keys of a US
+// keyboard, by the character each types without shift.
+var chordPunctuation = map[byte]string{
+	'-': "Minus", '=': "Equal", '[': "BracketLeft", ']': "BracketRight",
+	'\\': "Backslash", ';': "Semicolon", '\'': "Quote", '`': "Backquote",
+	',': "Comma", '.': "Period", '/': "Slash",
+}
+
+// ParseKeyChord reads a key as a user names it on the command line,
+// "alt+m", "ctrl+c", "shift+tab", "escape", "f5", or a W3C code ("KeyM",
+// "arrow_up"), into the key event of "key", which the server encodes as
+// the program's modes ask. A character key gets the code point it types,
+// which the encoder needs for alt and for the text of a plain key; a
+// shifted character other than a letter is refused, as the character it
+// types depends on the keyboard layout.
+func ParseKeyChord(s string) (KeyInput, error) {
+	var k KeyInput
+	parts := strings.Split(strings.TrimSpace(s), "+")
+	name := strings.TrimSpace(parts[len(parts)-1])
+	if name == "" {
+		return k, fmt.Errorf("rex: no key in %q", s)
+	}
+	held := map[string]bool{}
+	var mods []string
+	for _, p := range parts[:len(parts)-1] {
+		m, ok := chordModifiers[strings.ToLower(strings.TrimSpace(p))]
+		if !ok {
+			return k, fmt.Errorf("rex: unknown modifier %q in %q", p, s)
+		}
+		if !held[m] {
+			held[m] = true
+			mods = append(mods, m)
+		}
+	}
+	// Names ignore case, as "Alt+M" is written for alt+m: shift is a
+	// modifier of its own.
+	k.Mods = strings.Join(mods, "+")
+	plain := !held["ctrl"] && !held["alt"] && !held["super"]
+	lower := strings.ToLower(name)
+	if c, ok := chordChar(name); ok {
+		switch {
+		case c >= 'a' && c <= 'z':
+			k.Key = "Key" + strings.ToUpper(string(c))
+		case c >= '0' && c <= '9':
+			k.Key = "Digit" + string(c)
+		default:
+			k.Key = chordPunctuation[c]
+		}
+		isLetter := c >= 'a' && c <= 'z'
+		if held["shift"] && !isLetter {
+			return k, fmt.Errorf("rex: %q: type the shifted character as text", s)
+		}
+		k.Unshifted = int(c)
+		if plain {
+			k.Text = string(c)
+			if held["shift"] {
+				k.Text = strings.ToUpper(k.Text)
+				k.Consumed = "shift"
+			}
+		}
+		return k, nil
+	}
+	if len(name) == 1 {
+		return k, fmt.Errorf("rex: unknown key %q in %q", name, s)
+	}
+	if lower == "space" {
+		k.Key, k.Unshifted = "Space", ' '
+		if plain {
+			k.Text = " "
+		}
+		return k, nil
+	}
+	if code, ok := chordKeys[lower]; ok {
+		k.Key = code
+		return k, nil
+	}
+	if n, err := strconv.Atoi(strings.TrimPrefix(lower, "f")); err == nil && lower[0] == 'f' && n >= 1 && n <= 24 {
+		k.Key = "F" + strconv.Itoa(n)
+		return k, nil
+	}
+	code := KeyCode(name)
+	if terminal.ParseKey(code) == terminal.KeyUnidentified {
+		return k, fmt.Errorf("rex: unknown key %q in %q", name, s)
+	}
+	k.Key = code
+	return k, nil
+}
+
+// chordChar returns the character a character key types without shift,
+// named by the character ("m", "/") or by its W3C code ("KeyM", "Digit1",
+// "Slash"): the encoder needs it for alt and for a plain key's text.
+func chordChar(name string) (byte, bool) {
+	if len(name) == 1 {
+		c := strings.ToLower(name)[0]
+		ok := c >= 'a' && c <= 'z' || c >= '0' && c <= '9' || chordPunctuation[c] != ""
+		return c, ok
+	}
+	code := KeyCode(name)
+	switch {
+	case len(code) == 4 && strings.HasPrefix(code, "Key") && code[3] >= 'A' && code[3] <= 'Z':
+		return code[3] - 'A' + 'a', true
+	case len(code) == 6 && strings.HasPrefix(code, "Digit") && code[5] >= '0' && code[5] <= '9':
+		return code[5], true
+	}
+	for c, p := range chordPunctuation {
+		if p == code {
+			return c, true
+		}
+	}
+	return 0, false
 }
 
 // KeyEvent returns the mygo key event of an input event.

@@ -78,6 +78,30 @@ func TestInputEvents(t *testing.T) {
 	}
 }
 
+// TestKeyChordBytes: the keys ParseKeyChord reads reach the program as a
+// terminal would type them, alt+m as ESC m.
+func TestKeyChordBytes(t *testing.T) {
+	c := pasteServer(t)
+	info, err := c.Create(CreateOptions{Command: []string{"/bin/sh", "-c", "stty raw -echo; printf ready; exec cat -v"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitCapture(t, c, info.ID, "ready")
+	for _, name := range []string{"alt+m", "Alt+KeyM", "m", "ctrl+c", "escape", "shift+tab", "space", "/"} {
+		k, err := ParseKeyChord(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := c.Input(info.ID, []byte("|")); err != nil {
+			t.Fatal(err)
+		}
+		if err := c.SendKey(info.ID, k); err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+	}
+	waitCapture(t, c, info.ID, "|^[m|^[m|m|^C|^[|^[[Z| |/")
+}
+
 // TestTerminalQueries: the ops that read and change a session's terminal.
 func TestTerminalQueries(t *testing.T) {
 	c := pasteServer(t)

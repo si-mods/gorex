@@ -10,9 +10,11 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 
 	"gorex/internal/layout"
 )
@@ -28,6 +30,11 @@ var (
 	delegateEnterWait          = 2 * time.Second
 	delegatePollInterval       = 100 * time.Millisecond
 	delegateDefaultTimout      = 10 * time.Minute
+	// delegateDismissTries bounds the Escapes that dismiss a notice over
+	// the input box, delegateRepasteTries the pastes again of a prompt
+	// the agent lost (docs/MOD-016-peer-delegation.md, Prompt delivery).
+	delegateDismissTries = 3
+	delegateRepasteTries = 1
 )
 
 // delegatedRun tracks one delegated session's live turn state and
@@ -555,6 +562,8 @@ func (s *Server) killSession(sid string) error {
 type tuiSnapshot struct {
 	exited     bool
 	idle       bool
+	busy       bool // an OSC 7501 status says working or blocked
+	rows       int
 	output     uint64
 	lastOutput time.Time
 	bracketed  bool
@@ -562,17 +571,26 @@ type tuiSnapshot struct {
 }
 
 func waitTUIReady(ss *session, agentID string, maxWait time.Duration) {
-	waitTUIReadyWith(func() tuiSnapshot {
-		in := ss.info()
-		return tuiSnapshot{
-			exited:     in.Exited,
-			idle:       in.Status != nil && in.Status.State == "idle",
-			output:     in.Output,
-			lastOutput: in.LastOutput,
-			bracketed:  ss.bracketedPaste(),
-			plainText:  sessionPlainText(ss),
-		}
-	}, agentID, maxWait, time.Now, time.Sleep)
+	waitTUIReadyWith(func() tuiSnapshot { return sampleTUI(ss) }, agentID, maxWait, time.Now, time.Sleep)
+}
+
+// sampleTUI reads what the prompt driver looks at in a session.
+func sampleTUI(ss *session) tuiSnapshot {
+	in := ss.info()
+	state := ""
+	if in.Status != nil {
+		state = in.Status.State
+	}
+	return tuiSnapshot{
+		exited:     in.Exited,
+		idle:       state == "idle",
+		busy:       state == "working" || state == "blocked",
+		rows:       in.Rows,
+		output:     in.Output,
+		lastOutput: in.LastOutput,
+		bracketed:  ss.bracketedPaste(),
+		plainText:  sessionPlainText(ss),
+	}
 }
 
 func waitTUIReadyWith(sample func() tuiSnapshot, agentID string, maxWait time.Duration, nowFn func() time.Time, sleepFn func(time.Duration)) {
@@ -651,6 +669,135 @@ func hasPromptIndicator(txt string) bool {
 	return false
 }
 
+// dismissHint matches a notice an agent's TUI shows over its input box
+// until a key dismisses it, as "esc to dismiss": a paste typed into the
+// notice is lost.
+var dismissHint = regexp.MustCompile(`(?i)\besc(ape)?\b[^\n]{0,24}\bdismiss`)
+
+// screenTail returns the last rows lines of a session's text, which holds
+// its scrollback too: what the screen shows, for a notice on it now.
+func screenTail(txt string, rows int) string {
+	if rows <= 0 {
+		return txt
+	}
+	lines := strings.Split(txt, "\n")
+	if len(lines) > rows {
+		lines = lines[len(lines)-rows:]
+	}
+	return strings.Join(lines, "\n")
+}
+
+// hasDismissHint reports whether the screen shows a notice that Escape
+// dismisses.
+func hasDismissHint(snap tuiSnapshot) bool {
+	return dismissHint.MatchString(screenTail(snap.plainText, snap.rows))
+}
+
+// dismissNotices presses Escape while the screen shows a notice that
+// Escape dismisses, then waits for the TUI again: at most
+// delegateDismissTries times, and no more once the hint stays after an
+// Escape, as text of the conversation does. A second notice after the
+// first gets an Escape of its own.
+func dismissNotices(ss *session, agentID string) {
+	for range delegateDismissTries {
+		snap := sampleTUI(ss)
+		if snap.exited || !hasDismissHint(snap) {
+			return
+		}
+		if err := ss.Key(KeyInput{Key: "Escape"}); err != nil {
+			return
+		}
+		if !waitHintGone(ss, delegateReadyFallbackQuiet) {
+			return
+		}
+		waitTUIReady(ss, agentID, delegateReadyWait)
+	}
+}
+
+// waitHintGone waits at most maxWait for the screen to show no dismiss
+// hint, and reports whether it went.
+func waitHintGone(ss *session, maxWait time.Duration) bool {
+	deadline := time.Now().Add(maxWait)
+	for {
+		if !hasDismissHint(sampleTUI(ss)) {
+			return true
+		}
+		if !time.Now().Before(deadline) {
+			return false
+		}
+		time.Sleep(delegateReadyPoll)
+	}
+}
+
+// promptProbeRunes is how much of a prompt promptOnScreen looks for.
+const promptProbeRunes = 24
+
+// squash drops the spaces and box-drawing characters of s, so a prompt
+// wrapped inside an input box still reads as one run of text.
+func squash(s string) string {
+	return strings.Map(func(r rune) rune {
+		if unicode.IsSpace(r) || (r >= 0x2500 && r <= 0x259f) {
+			return -1
+		}
+		return r
+	}, s)
+}
+
+// promptOnScreen reports whether the screen shows the prompt, in the
+// input box or the conversation: its first promptProbeRunes characters,
+// or a long paste the TUI collapsed to a "[Pasted text" marker.
+func promptOnScreen(txt, prompt string) bool {
+	if strings.Contains(txt, "[Pasted text") {
+		return true
+	}
+	probe := []rune(squash(prompt))
+	if len(probe) > promptProbeRunes {
+		probe = probe[:promptProbeRunes]
+	}
+	return len(probe) > 0 && strings.Contains(squash(txt), string(probe))
+}
+
+// promptEchoAllowance is how many bytes a TUI may print after a paste of
+// prompt, and the Returns after it, without having taken the prompt: the
+// echo of the text and a redraw of its input box.
+func promptEchoAllowance(prompt string) uint64 {
+	return 2*uint64(len(prompt)) + 1024
+}
+
+// pasteState is what the session showed right before a paste: the bytes
+// it had printed, and whether a dismiss hint was on the screen.
+type pasteState struct {
+	output uint64
+	hint   bool
+}
+
+// promptLost reports whether a prompt the transcript never recorded is
+// gone: the session runs, says it does no work, printed nothing for
+// delegateReadyFallbackQuiet, and its screen does not show the prompt. A
+// prompt still in the input box is not lost. That is not enough: an agent
+// with no status whose answer scrolled the prompt off the screen looks
+// the same, and a paste again would run its task twice. So it also needs
+// evidence that the agent did not take the input: it printed no more
+// than promptEchoAllowance since the paste, or the notice that was on
+// the screen before the paste is still there.
+func promptLost(snap tuiSnapshot, before pasteState, prompt string, now time.Time) bool {
+	if snap.exited || snap.busy {
+		return false
+	}
+	if now.Sub(snap.lastOutput) < delegateReadyFallbackQuiet {
+		return false
+	}
+	if promptOnScreen(screenTail(snap.plainText, snap.rows), prompt) {
+		return false
+	}
+	printed := snap.output - min(snap.output, before.output)
+	return printed <= promptEchoAllowance(prompt) || (before.hint && hasDismissHint(snap))
+}
+
+// deliverTurnPrompt types a prompt into the agent's TUI and submits it
+// (docs/MOD-016-peer-delegation.md, Prompt delivery): it dismisses a
+// notice over the input box, pastes, presses Return until the transcript
+// records the prompt, and pastes again, once, a prompt the agent lost.
 func deliverTurnPrompt(d *delegatedRun, ss *session, prompt string) error {
 	d.mu.Lock()
 	before := d.promptCount
@@ -665,37 +812,66 @@ func deliverTurnPrompt(d *delegatedRun, ss *session, prompt string) error {
 	default:
 	}
 
-	if err := ss.paste(prompt); err != nil {
-		return err
-	}
-	time.Sleep(delegatePasteDelay)
-
-	// Retry Return up to 4 times until the transcript confirms the prompt
-	// arrived (matching yetone/magpie's claudetui/tui.go:1399) or the turn
-	// already completed.
-	for try := 0; try < 4; try++ {
-		ss.write([]byte("\r"))
+	for attempt := 0; ; attempt++ {
+		dismissNotices(ss, d.agent)
+		pre := sampleTUI(ss)
+		start := pasteState{output: pre.output, hint: hasDismissHint(pre)}
+		if err := ss.paste(prompt); err != nil {
+			return err
+		}
+		time.Sleep(delegatePasteDelay)
 		if d.adapter == nil {
+			ss.write([]byte("\r"))
 			return nil
 		}
-		timer := time.NewTimer(delegateEnterWait)
-		select {
-		case <-ackCh:
-			timer.Stop()
+		if submitPrompt(d, ss, ackCh, before) {
 			return nil
-		case <-ss.done:
-			timer.Stop()
+		}
+		if attempt >= delegateRepasteTries || !promptLost(sampleTUI(ss), start, prompt, time.Now()) {
 			return nil
-		case <-timer.C:
-			d.mu.Lock()
-			accepted := d.promptCount > before || d.status != "running"
-			d.mu.Unlock()
-			if accepted {
-				return nil
-			}
+		}
+		// An agent may write its transcript late: it gets one more wait
+		// before the paste again, and the screen must still read lost.
+		if waitPromptAck(d, ss, ackCh, before, 2*delegateEnterWait) || !promptLost(sampleTUI(ss), start, prompt, time.Now()) {
+			return nil
 		}
 	}
-	return nil
+}
+
+// submitPrompt presses Return up to 4 times until the transcript confirms
+// the prompt arrived (matching yetone/magpie's claudetui/tui.go:1399), the
+// turn already ended, or the session did; it reports whether one did.
+func submitPrompt(d *delegatedRun, ss *session, ackCh chan struct{}, before int) bool {
+	for range 4 {
+		ss.write([]byte("\r"))
+		if waitPromptAck(d, ss, ackCh, before, delegateEnterWait) {
+			return true
+		}
+	}
+	return false
+}
+
+// waitPromptAck waits at most maxWait for the transcript to record a
+// prompt, the turn to end or the session to; it reports whether one did.
+func waitPromptAck(d *delegatedRun, ss *session, ackCh chan struct{}, before int, maxWait time.Duration) bool {
+	timer := time.NewTimer(maxWait)
+	defer timer.Stop()
+	select {
+	case <-ackCh:
+		return true
+	case <-ss.done:
+		return true
+	case <-timer.C:
+		return d.promptAccepted(before)
+	}
+}
+
+// promptAccepted reports whether the transcript recorded a prompt since
+// it held before, or the turn already ended.
+func (d *delegatedRun) promptAccepted(before int) bool {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.promptCount > before || d.status != "running"
 }
 
 func (s *Server) tailDelegate(d *delegatedRun, ss *session) {

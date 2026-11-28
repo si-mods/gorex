@@ -684,16 +684,28 @@ func renameCmd(args []string, out, errOut io.Writer) (int, bool) {
 func sendCmd(args []string, out, errOut io.Writer) (int, bool) {
 	fs := flagSet("send", errOut)
 	sid := targetFlag(fs)
-	enter := fs.Bool("enter", false, "press Return after the text")
+	enter := fs.Bool("enter", false, "press Return after the text and keys")
+	var keyNames stringList
+	fs.Var(&keyNames, "key", "press a key or chord after the text, as alt+m, ctrl+c or escape (repeatable)")
 	asJSON := fs.Bool("json", false, "print JSON")
 	if code, stop := parse(fs, args); stop {
 		return code, true
 	}
+	keys := make([]rex.KeyInput, 0, len(keyNames))
+	for _, name := range keyNames {
+		k, err := rex.ParseKeyChord(name)
+		if err != nil {
+			fmt.Fprintln(errOut, "gorex send:", err)
+			return ExitUsage, true
+		}
+		keys = append(keys, k)
+	}
 	text := strings.Join(fs.Args(), " ")
-	if *enter {
+	// Return goes with the text unless keys come between them.
+	if *enter && len(keys) == 0 {
 		text += "\r"
 	}
-	if text == "" {
+	if text == "" && len(keys) == 0 && !*enter {
 		fmt.Fprintln(errOut, "gorex send: no text")
 		return ExitUsage, true
 	}
@@ -707,9 +719,23 @@ func sendCmd(args []string, out, errOut io.Writer) (int, bool) {
 		fmt.Fprintln(errOut, err)
 		return codeFor(err), true
 	}
-	if err := c.Input(target, []byte(text)); err != nil {
-		fmt.Fprintln(errOut, err)
-		return codeFor(err), true
+	if text != "" {
+		if err := c.Input(target, []byte(text)); err != nil {
+			fmt.Fprintln(errOut, err)
+			return codeFor(err), true
+		}
+	}
+	for _, k := range keys {
+		if err := c.SendKey(target, k); err != nil {
+			fmt.Fprintln(errOut, err)
+			return codeFor(err), true
+		}
+	}
+	if *enter && len(keys) > 0 {
+		if err := c.Input(target, []byte("\r")); err != nil {
+			fmt.Fprintln(errOut, err)
+			return codeFor(err), true
+		}
 	}
 	if *asJSON {
 		WriteJSON(out, map[string]bool{"ok": true})

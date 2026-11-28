@@ -700,3 +700,225 @@ done
 		}
 	}
 }
+
+// TestPromptDeliveryChecks: the screen reads that decide whether a
+// notice covers the input box and whether a prompt was lost.
+func TestPromptDeliveryChecks(t *testing.T) {
+	for _, c := range []struct {
+		txt  string
+		rows int
+		want bool
+	}{
+		{"Introducing Gemini Neon — esc to dismiss\n> ", 24, true},
+		{"New model! Press Esc to dismiss", 0, true},
+		{"(escape to dismiss)", 5, true},
+		{"esc to interrupt", 5, false},
+		{"Esc to cancel · Enter to confirm", 5, false},
+		// A notice that scrolled off the screen no longer covers the box.
+		{"esc to dismiss\nline\nline\n> ", 2, false},
+	} {
+		if got := hasDismissHint(tuiSnapshot{plainText: c.txt, rows: c.rows}); got != c.want {
+			t.Errorf("hasDismissHint(%q, %d) = %v, want %v", c.txt, c.rows, got, c.want)
+		}
+	}
+
+	prompt := "Run the Linux test suite and summarise any failures"
+	for _, c := range []struct {
+		txt  string
+		want bool
+	}{
+		{"> Run the Linux test suite and summarise any failures", true},
+		// Wrapped inside a box.
+		{"│ > Run the Linux te │\n│ st suite and summ │", true},
+		{"> [Pasted text #1 +40 lines]", true},
+		{"> ", false},
+		{"Introducing Gemini Neon\n> ", false},
+	} {
+		if got := promptOnScreen(c.txt, prompt); got != c.want {
+			t.Errorf("promptOnScreen(%q) = %v, want %v", c.txt, got, c.want)
+		}
+	}
+
+	now := time.Date(2026, 11, 28, 12, 0, 0, 0, time.UTC)
+	quiet := now.Add(-2 * delegateReadyFallbackQuiet)
+	echo := promptEchoAllowance(prompt)
+	for _, c := range []struct {
+		name   string
+		snap   tuiSnapshot
+		before pasteState
+		want   bool
+	}{
+		{"empty box", tuiSnapshot{lastOutput: quiet, plainText: "> "}, pasteState{}, true},
+		{"echo only", tuiSnapshot{lastOutput: quiet, output: 100 + echo, plainText: "> "}, pasteState{output: 100}, true},
+		// An answer with no status nor transcript that scrolled the prompt
+		// off the screen: the agent took it.
+		{"answered", tuiSnapshot{lastOutput: quiet, output: 101 + echo, plainText: "> "}, pasteState{output: 100}, false},
+		// The notice that took the paste is still on the screen, whatever
+		// it redrew.
+		{"notice stays", tuiSnapshot{lastOutput: quiet, output: 10 * echo, plainText: "esc to dismiss\n> "}, pasteState{hint: true}, true},
+		{"notice new", tuiSnapshot{lastOutput: quiet, output: 10 * echo, plainText: "esc to dismiss\n> "}, pasteState{}, false},
+		{"still in box", tuiSnapshot{lastOutput: quiet, plainText: "> " + prompt}, pasteState{}, false},
+		{"drawing", tuiSnapshot{lastOutput: now, plainText: "> "}, pasteState{}, false},
+		{"working", tuiSnapshot{lastOutput: quiet, busy: true, plainText: "> "}, pasteState{}, false},
+		{"exited", tuiSnapshot{lastOutput: quiet, exited: true, plainText: "> "}, pasteState{}, false},
+		// An earlier turn's prompt in the scrollback is not this one on
+		// the screen.
+		{"scrollback only", tuiSnapshot{lastOutput: quiet, rows: 1, plainText: prompt + "\nreply\n> "}, pasteState{}, true},
+	} {
+		if got := promptLost(c.snap, c.before, prompt, now); got != c.want {
+			t.Errorf("promptLost %s = %v, want %v", c.name, got, c.want)
+		}
+	}
+}
+
+// TestDelegateSplashKeepsPrompt: a fake agent shows a splash that takes
+// the input typed into it. The prompt still arrives: an "esc to dismiss"
+// notice is dismissed before the paste, and a prompt a splash with no
+// hint took is pasted again.
+func TestDelegateSplashKeepsPrompt(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("fake POSIX TUI script")
+	}
+	saved := []struct {
+		p *time.Duration
+		v time.Duration
+	}{
+		{&delegateReadyWait, 3 * time.Second},
+		{&delegateReadyPoll, 10 * time.Millisecond},
+		{&delegateReadyQuiet, 30 * time.Millisecond},
+		{&delegateReadyFallbackQuiet, 80 * time.Millisecond},
+		{&delegatePasteDelay, 30 * time.Millisecond},
+		{&delegateEnterWait, 150 * time.Millisecond},
+		{&delegatePollInterval, 25 * time.Millisecond},
+	}
+	for _, s := range saved {
+		old := *s.p
+		*s.p = s.v
+		t.Cleanup(func() { *s.p = old })
+	}
+
+	t.Setenv("GOREX_DIR", t.TempDir())
+	claudeCfg := t.TempDir()
+	t.Setenv("CLAUDE_CONFIG_DIR", claudeCfg)
+	projDir := filepath.Join(t.TempDir(), "app")
+	if err := os.MkdirAll(projDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	binDir := t.TempDir()
+	modeFile := filepath.Join(binDir, "splash")
+	receivedFile := filepath.Join(binDir, "received")
+	slug := claudeSlug(projDir)
+	// The splash reads raw input a read at a time: with a hint, until a
+	// lone Escape; without, it takes the first read whatever it holds, as
+	// a "press any key" screen. Only then does the input box read lines.
+	script := fmt.Sprintf(`#!/bin/sh
+sid=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --session-id|--resume) sid="$2"; shift 2 ;;
+    *) shift ;;
+  esac
+done
+mkdir -p "%[1]s/projects/%[2]s"
+out="%[1]s/projects/%[2]s/${sid}.jsonl"
+mode=$(cat "%[3]s")
+stty raw -echo
+if [ "$mode" = hint ]; then
+  printf 'Introducing Model X — esc to dismiss\r\n> '
+  while :; do
+    chunk=$(dd bs=256 count=1 2>/dev/null | od -An -c | tr -d ' \n')
+    [ "$chunk" = '033' ] && break
+  done
+elif [ "$mode" = nohint ]; then
+  printf 'Welcome! Press any key\r\n> '
+  dd bs=256 count=1 >/dev/null 2>&1
+fi
+stty sane -echo
+printf '\033[2J\033[H> '
+while IFS= read -r line; do
+  clean=$(printf '%%s' "$line" | tr -d '\r' | sed 's/\x1b\[200~//g; s/\x1b\[201~//g')
+  [ -z "$clean" ] && continue
+  if [ "$mode" = answer ]; then
+    printf '%%s\n' "$clean" >> "%[4]s"
+    i=0
+    while [ $i -lt 200 ]; do i=$((i+1)); printf 'answer line %%s\n' $i; done
+    printf '> '
+    continue
+  fi
+  printf '{"type":"user","sessionId":"%%s","message":{"role":"user","content":"%%s"}}\n' "$sid" "$clean" >> "$out"
+  printf '{"type":"assistant","sessionId":"%%s","message":{"model":"claude-sonnet","content":[{"type":"text","text":"reply:%%s"}]}}\n' "$sid" "$clean" >> "$out"
+  printf '{"type":"system","subtype":"turn_duration"}\n' >> "$out"
+  printf 'reply:%%s\n> ' "$clean"
+done
+`, claudeCfg, slug, modeFile, receivedFile)
+	if err := os.WriteFile(filepath.Join(binDir, "claude"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", binDir+":"+os.Getenv("PATH"))
+	t.Setenv("SHELL", "/bin/sh")
+	// As in TestDelegateInteractiveTUIEndToEnd: no login profile puts a
+	// real claude before the fake one.
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("ENV", "")
+	t.Setenv("BASH_ENV", "")
+	t.Setenv("ZDOTDIR", t.TempDir())
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	ResetAgentsCacheForTest()
+	t.Cleanup(ResetAgentsCacheForTest)
+
+	go func() { _ = Serve() }()
+	for i := 0; i < 100; i++ {
+		if _, err := os.Stat(SocketPath()); err == nil {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	c, err := Connect()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { c.Shutdown() })
+
+	for _, mode := range []string{"hint", "nohint"} {
+		if err := os.WriteFile(modeFile, []byte(mode), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		prompt := "splash turn " + mode
+		res, err := c.Delegate(DelegateOptions{Agent: "claude", Dir: projDir, Prompt: prompt, TimeoutMs: 8000})
+		if err != nil {
+			t.Fatalf("%s: Delegate: %v", mode, err)
+		}
+		if res.Status != "completed" || res.Result != "reply:"+prompt {
+			t.Fatalf("%s: Delegate result = %+v", mode, res)
+		}
+	}
+
+	// An agent with no status nor transcript takes the prompt and answers
+	// with more lines than the screen holds, which scrolls the prompt off:
+	// the prompt must arrive once, not be pasted again.
+	if err := os.WriteFile(modeFile, []byte("answer"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	res, err := c.Delegate(DelegateOptions{Agent: "claude", Dir: projDir, Prompt: "answer turn", Async: true})
+	if err != nil {
+		t.Fatalf("answer: Delegate: %v", err)
+	}
+	// Delivery is over once an async delegate returns. A sentinel typed
+	// after it lands after any paste again, as the terminal keeps order.
+	if err := c.Input(res.Session, []byte("sentinel\r")); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	var got string
+	for {
+		b, _ := os.ReadFile(receivedFile)
+		got = string(b)
+		if strings.Contains(got, "sentinel") || time.Now().After(deadline) {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if got != "answer turn\nsentinel\n" {
+		t.Fatalf("answer: the agent received %q, want the prompt once, then the sentinel", got)
+	}
+}
