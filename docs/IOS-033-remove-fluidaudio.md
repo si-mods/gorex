@@ -37,6 +37,8 @@ After `IOS-031` removed `SherpaOnnxC`, `FluidAudio` remained the only third-part
 
 `SenseVoiceSmall` runs on `.cpuOnly` on a device as on the simulator. On `.all`, Core ML compiles it for the GPU at the first phrase after each load (the model unloads a minute after the mic goes off), and measured natively on an Apple M2 Pro Mac that phrase took 17.5 s: a 14.5 s dictation showed no text until 18 s in, and finished 3.2 s after the mic at a 338 MB peak footprint. On the CPU a 4 s phrase takes 0.05 to 0.08 s and 17 s of speech 0.11 s, the first text shows 1.4 s in, and the same dictation finishes 0.14 s after the mic, at under 60 MB. See `IOS-031` (Latency) for Fun-ASR-Nano.
 
+`CoreMLSileroVAD` predicts each chunk inside an `autoreleasepool`. On a task's thread, nothing drains Core ML's autoreleased outputs, so without that pool each chunk ran slower than the one before. On the simulator, 14.5 s of audio heard in one go (the backlog a slow phrase leaves) took 25 s, against 1 s with the pool.
+
 ## Verification
 
 - PyTorch vs Core ML end-to-end parity verification on `zh.mp3` and `en.mp3` for `SenseVoiceSmall` and speech-segment detection verification for `SileroVAD`.

@@ -475,11 +475,11 @@ nonisolated final class DictationTests: XCTestCase {
         }
     }
 
-    /// How long finish may take after the mic goes off: the last phrase
-    /// recognised, 4.5 s of speech, takes Fun-ASR-Nano about 6 s on the
-    /// simulator's CPU (2 s natively on a Mac), with room for a busy Mac.
-    /// Loading its models for each phrase on `.all` took 320 s on a Mac.
-    private static let afterTheMic = Duration.seconds(10)
+    /// How long finish may take after the mic goes off: the last phrase,
+    /// 4.5 s of speech, and what waits before it take Fun-ASR-Nano 2.4 to
+    /// 2.8 s on the simulator, with room for a busy Mac. Loading its models
+    /// for each phrase on `.all` took 320 s on a Mac.
+    private static let afterTheMic = Duration.seconds(5)
 
     /// A WAV's samples, 16 kHz mono.
     private static func samples(_ wav: String) throws -> [Float] {
@@ -604,18 +604,97 @@ nonisolated final class DictationTests: XCTestCase {
 
     /// End-to-end CoreMLFunASR inference on the real compiled Core ML bundle
     /// when GOREX_FUNASR_MODEL_DIR points to an unpacked model directory,
-    /// running two consecutive utterances on the models loaded once.
+    /// running two consecutive utterances on the models loaded once: the
+    /// first 2 s of DICTATION_WAV's speech, or a near-silence without it.
     func testCoreMLFunASREndToEndWhenModelPresent() async throws {
-        guard let path = ProcessInfo.processInfo.environment["GOREX_FUNASR_MODEL_DIR"], !path.isEmpty else {
+        let env = ProcessInfo.processInfo.environment
+        guard let path = env["GOREX_FUNASR_MODEL_DIR"], !path.isEmpty else {
             throw XCTSkip("GOREX_FUNASR_MODEL_DIR not set")
         }
         let asr = try CoreMLFunASR(in: URL(fileURLWithPath: path))
-        let samples = [Float](repeating: 0.001, count: 16_000)
-        _ = try await asr.recognise(samples)
-        // The second loads nothing: loading the models for each phrase, the
-        // two took 10 s on the simulator.
+        let samples = try env["DICTATION_WAV"].map { Array(try Self.samples($0).prefix(32_000)) }
+            ?? [Float](repeating: 0.001, count: 16_000)
+        let first = try await asr.recognise(samples)
+        // The second loads nothing. Loading the models for each phrase cost
+        // little on the simulator's CPU (1.75 s for this one), and 35 to
+        // 43 s a phrase on `.all` (IOS-031, Latency).
         let start = ContinuousClock.now
-        _ = try await asr.recognise(samples)
-        XCTAssertLessThan(ContinuousClock.now - start, .seconds(2))
+        let second = try await asr.recognise(samples)
+        let took = ContinuousClock.now - start
+        print("COREML Fun-ASR-Nano: second phrase in \(took): «\(second)»")
+        XCTAssertEqual(first, second)
+        XCTAssertLessThan(took, .seconds(2))
+    }
+
+    /// A guess going on is given up as the mic goes off, its work
+    /// cancelled; with the mic on, what it recognises is kept.
+    func testGuessIsGivenUpAsTheMicGoesOff() async throws {
+        let audio = SampleRing(capacity: 16)
+        let kept = try await Listening.unlessOff(audio) { "said" }
+        XCTAssertEqual(kept, "said")
+        let (started, start) = AsyncStream.makeStream(of: Void.self)
+        let guess = Task {
+            try await Listening.unlessOff(audio) {
+                start.yield()
+                try await Task.sleep(for: .seconds(3_600))
+                return "late"
+            }
+        }
+        for await _ in started { break }
+        audio.finish()
+        let given = try await guess.value
+        XCTAssertNil(given)
+    }
+
+    /// Finish does not wait for a guess going on as the mic goes off, and
+    /// hears what waits after it at once: the recogniser's first phrase, a
+    /// guess, never ends unless cancelled.
+    /// The VAD's directory in GOREX_VAD_MODEL_DIR, speech in DICTATION_WAV.
+    func testFinishGivesUpAGuessGoingOn() async throws {
+        let env = ProcessInfo.processInfo.environment
+        guard let vad = env["GOREX_VAD_MODEL_DIR"], let wav = env["DICTATION_WAV"] else {
+            throw XCTSkip("GOREX_VAD_MODEL_DIR or DICTATION_WAV not set")
+        }
+        let (started, start) = AsyncStream.makeStream(of: Void.self)
+        let model = URL(filePath: vad).appending(path: "SileroVAD.mlmodelc")
+        let loading = Task<(any Recogniser, CoreMLSileroVAD), Error> { (Stuck(start), try CoreMLSileroVAD(modelURL: model)) }
+        let listening = Listening(loading, longest: Dictation.Model.funASRNano.longest)
+        XCTAssertTrue(listening.add(try Self.samples(wav)))
+        for await _ in started { break }
+        let off = ContinuousClock.now
+        let finished = Task { try await listening.finish() }
+        let done = expectation(description: "finish")
+        Task {
+            _ = await finished.result
+            done.fulfill()
+        }
+        await fulfillment(of: [done], timeout: 30)
+        listening.cancel()
+        let text = try await finished.value
+        let took = ContinuousClock.now - off
+        print("Listening, a guess going on: done \(took) after the mic: «\(text)»")
+        XCTAssertTrue(text.hasPrefix("ok"), text)
+        // The rest, 14 s of audio, is heard in about a second: the VAD took
+        // 22 s for it when its Core ML outputs piled up.
+        XCTAssertLessThan(took, .seconds(5))
+    }
+}
+
+/// A recogniser whose first phrase never ends unless cancelled, telling
+/// started as it begins; "ok" for the rest.
+private actor Stuck: Recogniser {
+    private let started: AsyncStream<Void>.Continuation
+    private var calls = 0
+
+    init(_ started: AsyncStream<Void>.Continuation) {
+        self.started = started
+    }
+
+    func recognise(_ samples: [Float]) async throws -> String {
+        calls += 1
+        guard calls == 1 else { return "ok" }
+        started.yield()
+        try await Task.sleep(for: .seconds(3_600))
+        return "late"
     }
 }
