@@ -45,8 +45,18 @@ struct Toast: Identifiable {
         4 + min(4, Double(max(0, text.count - 40)) / 20)
     }
 
+    /// The reason a failure shows. A server's not_found names the ids it
+    /// looked for ("no block block:… in session:…"), which tell the user
+    /// nothing: what it means is that the thing closed on the computer.
+    static func reason(_ error: Error) -> String {
+        if let e = error as? RexError, e.code == "not_found" || e.code == "session_not_found" {
+            return String(localized: "It has closed on the computer.")
+        }
+        return error.localizedDescription
+    }
+
     /// The first line of a reason, with a cut ending in an ellipsis past
-    /// 120 characters: a toast has one line.
+    /// 120 characters: a toast wraps to three lines at most.
     static func oneLine(_ s: String) -> String {
         let first = s.split(whereSeparator: \.isNewline).first.map(String.init) ?? ""
         let line = first.trimmingCharacters(in: .whitespaces)
@@ -103,10 +113,10 @@ struct Toast: Identifiable {
         show(Toast(kind: .status, text: text, symbol: symbol, seconds: seconds ?? Toast.lifetime(text)))
     }
 
-    /// What failed and why, in one line. It replaces the alert that had
+    /// What failed and why. It replaces the alert that had
     /// only OK.
     func fail(_ title: LocalizedStringResource, _ error: Error) {
-        fail(title, why: error.localizedDescription)
+        fail(title, why: Toast.reason(error))
     }
 
     func fail(_ title: LocalizedStringResource, why: String) {
@@ -216,8 +226,10 @@ struct ToastSlot: View {
     }
 }
 
-/// The glass capsule: a symbol or spinner, one line, a button, and for a
-/// line with a button a close.
+/// The glass toast: a symbol or spinner, up to three lines, a button, and
+/// for a line with a button a close. One line is a capsule (40 pt tall,
+/// 46 with Retry and close: the 23 pt radius clamps to half the height);
+/// more lines keep that radius.
 private struct ToastView: View {
     let toast: Toast
     /// The edge it shows at, which a swipe toward dismisses it.
@@ -237,8 +249,10 @@ private struct ToastView: View {
             }
             Text(verbatim: toast.text)
                 .font(.subheadline)
-                .lineLimit(1)
+                .lineLimit(3)
                 .truncationMode(.tail)
+                .multilineTextAlignment(.leading)
+                .fixedSize(horizontal: false, vertical: true)
             if let button = toast.button {
                 Button(button.label) { Toasts.shared.press(toast.id) }
                     .font(.subheadline.weight(.semibold))
@@ -257,7 +271,7 @@ private struct ToastView: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
-        .glassEffect(.regular, in: .capsule)
+        .glassEffect(.regular, in: .rect(cornerRadius: 23, style: .continuous))
         .padding(.horizontal, 16)
         .padding(.top, edge == .top ? 8 : 0)
         .animation(.easeInOut(duration: 0.15), value: toast.text)

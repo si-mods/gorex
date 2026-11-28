@@ -498,3 +498,8 @@ Each item has a **Trigger** (what the diff shows), a **Check** (what the author 
 - **Trigger:** a voice or dictation path in the composer (`VoiceCapsule`, `dictationInsert`) calls the send path.
 - **Check:** dictation only fills the field; the user's own tap sends. Recognition can be wrong, and a sent message cannot be recalled.
 - **Source:** #1166 added a one-tap Send to the inline voice view; this PR removes it for a Done button.
+
+### A server's error text shown to the user
+- **Trigger:** the app shows an error's message (`localizedDescription`, a server `message`) in a toast, banner or label.
+- **Check:** the message is read as the user sees it. A server message written for API clients names ids ("no block block:… in session:…"); map its code to words instead. A one-line limit cuts the reason, the part that matters, so the text wraps or shows in full.
+- **Source:** #1101 made failures one-line toasts of the raw message; #1274 wraps them to three lines and maps `not_found` to "It has closed on the computer."

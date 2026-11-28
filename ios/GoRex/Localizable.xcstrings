@@ -2858,6 +2858,16 @@
         }
       }
     },
+    "It has closed on the computer.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "它已在电脑上关闭。"
+          }
+        }
+      }
+    },
     "Its %lld projects move to Default. No tab closes.": {
       "localizations": {
         "en": {

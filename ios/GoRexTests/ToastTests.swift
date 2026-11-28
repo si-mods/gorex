@@ -50,6 +50,18 @@ nonisolated final class ToastTests: XCTestCase {
         XCTAssertEqual(Toast.oneLine(""), "")
     }
 
+    /// A server's not_found reads as a closed thing, not as the ids it
+    /// names; any other error keeps its own reason.
+    @MainActor func testReason() {
+        let gone = RexError(code: "not_found", message: "no block block:9383 in session:12ab")
+        XCTAssertEqual(Toast.reason(gone), String(localized: "It has closed on the computer."))
+        XCTAssertFalse(Toast.reason(gone).contains("block:"))
+        let noSession = RexError(code: "session_not_found", message: "session:12ab")
+        XCTAssertEqual(Toast.reason(noSession), String(localized: "It has closed on the computer."))
+        let other = RexError(code: "conflict", message: "The pane is too small to split.")
+        XCTAssertEqual(Toast.reason(other), "The pane is too small to split.")
+    }
+
     // MARK: Showing
 
     /// A failure is an error toast with its title and its reason on one

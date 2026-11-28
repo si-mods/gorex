@@ -87,7 +87,7 @@ extension TerminalView: UIDocumentPickerDelegate {
                 Toasts.shared.settle(toast, with: Toast(kind: .status, text: String(localized: "Uploaded"), seconds: 3))
                 await Self.remove(dir)
             } catch {
-                let text = String(localized: "Can't Upload: \(Toast.oneLine(error.localizedDescription))")
+                let text = String(localized: "Can't Upload: \(Toast.oneLine(Toast.reason(error)))")
                 // A staging that failed part-way left sources moved and
                 // copies half made: a retry of it would fail again. The
                 // folder goes, and the error has no Retry; the user picks
