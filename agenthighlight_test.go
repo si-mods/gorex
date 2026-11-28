@@ -96,7 +96,6 @@ func TestAgentHighlightVisualAndTakeover(t *testing.T) {
 	}
 
 	// New CLI input after takeover re-arms the badge and border with the new agent name.
-	time.Sleep(5 * time.Millisecond)
 	if err := a.client.InputWithAgent(p0.SID, []byte(" "), "omp"); err != nil {
 		t.Fatal(err)
 	}

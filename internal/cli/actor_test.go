@@ -1,13 +1,14 @@
 package cli
 
 import (
+	"bufio"
 	"encoding/json"
+	"io"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
-	"time"
 
 	"gorex/internal/rex"
 )
@@ -18,10 +19,15 @@ func TestCLIAgentActorAndFlags(t *testing.T) {
 	}
 	c := startServer(t)
 
-	// A human-created tab has createdBy="human" in ls --json.
-	humanTab, err := c.Command(rex.LayoutCommand{Op: "tab.create"})
+	// A human-created project tab has createdBy="human" in ls --json, and gives
+	// gorex new a project to place tabs into.
+	projDir := t.TempDir()
+	if real, err := filepath.EvalSymlinks(projDir); err == nil {
+		projDir = real
+	}
+	humanTab, err := c.Command(rex.LayoutCommand{Op: "project.create", Name: "demo", Dir: projDir})
 	if err != nil || humanTab.Code != "" {
-		t.Fatalf("tab.create: %+v %v", humanTab, err)
+		t.Fatalf("project.create: %+v %v", humanTab, err)
 	}
 
 	// gorex new --agent agy stamps createdBy="cli", agent="agy", and lastCliInputAt.
@@ -48,7 +54,6 @@ func TestCLIAgentActorAndFlags(t *testing.T) {
 	}
 
 	// gorex send (default --agent cli) and gorex paste (--agent claude) update lastCliInputAt and agent.
-	time.Sleep(5 * time.Millisecond)
 	code, _, _, errOut = runMain(t, "send", "-s", humanTab.New, "--enter", "echo hi")
 	if code != ExitOK {
 		t.Fatalf("send: %d %s", code, errOut)
@@ -56,6 +61,10 @@ func TestCLIAgentActorAndFlags(t *testing.T) {
 	code, _, _, errOut = runMain(t, "paste", "-s", newInfo.ID, "--agent", "claude", "echo pasted")
 	if code != ExitOK {
 		t.Fatalf("paste --agent claude: %d %s", code, errOut)
+	}
+	code, _, _, errOut = runMain(t, "send", "-s", splitSID, "--key", "enter", "--agent", "codex")
+	if code != ExitOK {
+		t.Fatalf("send --key enter --agent codex: %d %s", code, errOut)
 	}
 
 	// gorex ls --json exposes agentActor: {createdBy, lastCliInputAt} on every session.
@@ -78,8 +87,8 @@ func TestCLIAgentActorAndFlags(t *testing.T) {
 	if got := byID[newInfo.ID].AgentActor; got.CreatedBy != rex.ActorCLI || got.Agent != "claude" || !got.LastCLIInputAt.After(newInfo.AgentActor.LastCLIInputAt) {
 		t.Fatalf("new session after paste --agent claude: %+v (was %v)", got, newInfo.AgentActor.LastCLIInputAt)
 	}
-	if got := byID[splitSID].AgentActor; got.CreatedBy != rex.ActorCLI || got.Agent != "omp" || got.LastCLIInputAt.IsZero() {
-		t.Fatalf("split session actor: %+v", got)
+	if got := byID[splitSID].AgentActor; got.CreatedBy != rex.ActorCLI || got.Agent != "codex" || got.LastCLIInputAt.IsZero() || !got.Active {
+		t.Fatalf("split session actor after send --key: %+v", got)
 	}
 }
 
@@ -155,7 +164,34 @@ func TestCLITakeoverEventsAndWait(t *testing.T) {
 		t.Fatalf("wait --takeover timeout code = %d, want %d", code, ExitFailed)
 	}
 
-	// Start wait --takeover --json concurrently, then trigger human takeover.
+	// Stream gorex events while a human takes over childSID; verify a single "takeover" line prints.
+	evR, evW := io.Pipe()
+	defer evR.Close()
+	go func() {
+		var errBuf strings.Builder
+		_, _ = Main([]string{"events"}, evW, &errBuf, "1.2.3")
+		_ = evW.Close()
+	}()
+	// Trigger a layout event first so we know `gorex events` is subscribed before PasteHuman.
+	lines := make(chan string, 16)
+	go func() {
+		sc := bufio.NewScanner(evR)
+		for sc.Scan() {
+			lines <- sc.Text()
+		}
+		close(lines)
+	}()
+	for {
+		if _, err := c.Command(rex.LayoutCommand{Op: "pane.rename", SID: childSID, Name: "worker"}); err != nil {
+			t.Fatal(err)
+		}
+		line := <-lines
+		if strings.Contains(line, `"event":"layout"`) {
+			break
+		}
+	}
+
+	// Start wait --takeover --json concurrently and trigger human takeover.
 	type waitRes struct {
 		code int
 		out  string
@@ -166,10 +202,21 @@ func TestCLITakeoverEventsAndWait(t *testing.T) {
 		cCode, _, cOut, cErr := runMain(t, "wait", "-s", childSID, "--takeover", "--timeout", "3s", "--json")
 		done <- waitRes{cCode, cOut, cErr}
 	}()
-	time.Sleep(80 * time.Millisecond)
 	if err := c.PasteHuman(childSID, "human input"); err != nil {
 		t.Fatal(err)
 	}
+
+	// Verify `gorex events` printed the exact takeover JSON line.
+	var gotEvent rex.Event
+	for line := range lines {
+		if err := json.Unmarshal([]byte(line), &gotEvent); err == nil && gotEvent.Kind == "takeover" {
+			break
+		}
+	}
+	if gotEvent.Takeover == nil || gotEvent.Takeover.SID != childSID || gotEvent.Takeover.Agent != "agy" || gotEvent.Takeover.ParentSession != parentSID || gotEvent.Takeover.Via != "paste" {
+		t.Fatalf("gorex events takeover = %+v", gotEvent.Takeover)
+	}
+
 	res := <-done
 	if res.code != ExitOK {
 		t.Fatalf("wait --takeover failed: code=%d err=%s out=%s", res.code, res.err, res.out)
@@ -181,7 +228,7 @@ func TestCLITakeoverEventsAndWait(t *testing.T) {
 	if err := json.Unmarshal([]byte(res.out), &parsed); err != nil {
 		t.Fatalf("unmarshal wait --takeover: %v (%q)", err, res.out)
 	}
-	if parsed.Session != childSID || parsed.Takeover.SID != childSID || parsed.Takeover.Agent != "agy" || parsed.Takeover.ParentSession != parentSID || parsed.Takeover.Via != "paste" {
+	if parsed.Session != childSID || parsed.Takeover.SID != childSID || parsed.Takeover.Agent != "agy" || parsed.Takeover.ParentSession != parentSID || (parsed.Takeover.Via != "paste" && parsed.Takeover.Via != "prior") {
 		t.Fatalf("unexpected wait --takeover output: %+v", parsed)
 	}
 

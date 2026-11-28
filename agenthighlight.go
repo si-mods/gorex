@@ -162,7 +162,7 @@ func drawAgentPaneBorder(c *ui.Context, card ui.Element, k *colors, p *Pane, car
 	if col.A == 0 {
 		col = k.accent
 	}
-	animates := breathing && motion(c) != nil
+	animates := !unfocusedBreathing.Load() && motion(c) != nil
 	if !animates {
 		c.After(rem + 20*time.Millisecond)
 	}

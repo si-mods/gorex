@@ -22,6 +22,17 @@ func sessionByID(t *testing.T, c *Client, sid string) SessionInfo {
 	return SessionInfo{}
 }
 
+func waitCond(t *testing.T, what string, fn func() bool) {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for !fn() {
+		if time.Now().After(deadline) {
+			t.Fatalf("timed out waiting for %s", what)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
 // TestAgentActorBookkeeping verifies server-side actor tracking across creation,
 // CLI send/paste, terminal query replies vs human UI keystrokes, and re-arming.
 func TestAgentActorBookkeeping(t *testing.T) {
@@ -59,7 +70,9 @@ func TestAgentActorBookkeeping(t *testing.T) {
 	if _, err := att.Write([]byte("\x1b[?1;2c\x1b[1;1R\x1b[I\x1b[O")); err != nil {
 		t.Fatal(err)
 	}
-	time.Sleep(40 * time.Millisecond)
+	waitCond(t, "attach reply bytes processed", func() bool {
+		return !sessionByID(t, c, cliSess.ID).LastInput.IsZero()
+	})
 	if got := sessionByID(t, c, cliSess.ID).AgentActor; !got.Active {
 		t.Fatalf("query replies or focus reports cleared active: %+v", got)
 	}
@@ -68,23 +81,14 @@ func TestAgentActorBookkeeping(t *testing.T) {
 	if _, err := att.Write([]byte("a")); err != nil {
 		t.Fatal(err)
 	}
-	deadline := time.Now().Add(2 * time.Second)
-	for {
-		got := sessionByID(t, c, cliSess.ID).AgentActor
-		if !got.Active {
-			if got.CreatedBy != ActorCLI || !got.LastCLIInputAt.Equal(t0) {
-				t.Fatalf("human takeover altered audit fields: %+v (want lastCliInputAt=%v)", got, t0)
-			}
-			break
-		}
-		if time.Now().After(deadline) {
-			t.Fatalf("human UI keystroke did not clear active: %+v", got)
-		}
-		time.Sleep(15 * time.Millisecond)
+	waitCond(t, "human UI keystroke clears active", func() bool {
+		return !sessionByID(t, c, cliSess.ID).AgentActor.Active
+	})
+	if got := sessionByID(t, c, cliSess.ID).AgentActor; got.CreatedBy != ActorCLI || !got.LastCLIInputAt.Equal(t0) {
+		t.Fatalf("human takeover altered audit fields: %+v (want lastCliInputAt=%v)", got, t0)
 	}
 
 	// Subsequent CLI send stamps a newer lastCliInputAt, updates badge label, and re-arms active.
-	time.Sleep(5 * time.Millisecond)
 	if err := c.InputWithAgent(cliSess.ID, []byte("b"), "omp"); err != nil {
 		t.Fatal(err)
 	}

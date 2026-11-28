@@ -588,7 +588,7 @@ func (s *session) newVT() error {
 	// The emulator's Conn reads nothing, and what it answers programs is
 	// typed only while no client's terminal answers them.
 	pr, pw := io.Pipe()
-	vt, err := terminal.New(terminal.Options{Conn: &vtConn{r: pr, s: s}, Scrollback: scrollback, OnBell: func() { s.bells.Add(1); s.notify() }})
+	vt, err := terminal.New(terminal.Options{Conn: &vtConn{r: pr, s: s}, Scrollback: scrollback, OptionAsAlt: true, OnBell: func() { s.bells.Add(1); s.notify() }})
 	if err != nil {
 		return err
 	}
@@ -1042,6 +1042,9 @@ func (s *session) inputProgramWithActor(p []byte, actor, agent, parentSession, v
 			def := ActorCLI
 			if actor == ActorDelegate {
 				def = ActorDelegate
+			}
+			if !now.After(s.lastCLIInputAt) {
+				now = s.lastCLIInputAt.Add(time.Nanosecond)
 			}
 			s.lastCLIInputAt = now
 			s.tookOverAt = time.Time{}
