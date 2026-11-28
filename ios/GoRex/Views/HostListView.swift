@@ -410,9 +410,11 @@ struct HostListView: View {
                 }
             }
             ToolbarSpacer(.flexible, placement: .bottomBar)
-            DefaultToolbarItem(kind: .search, placement: .bottomBar)
+            if width != .regular {
+                DefaultToolbarItem(kind: .search, placement: .bottomBar)
+            }
         }
-        .searchable(text: $query, prompt: "Search tabs")
+        .searchable(text: $query, placement: width == .regular ? .sidebar : .automatic, prompt: "Search tabs")
         .searchToolbarBehavior(.minimize)
         .textInputAutocapitalization(.never)
         .autocorrectionDisabled()

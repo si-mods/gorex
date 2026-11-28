@@ -10,6 +10,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 `web` job of `.github/workflows/ci.yml` fails it.
 
 ## en-US
+- Fixed the floating Search button overlapping the Composer bar and Send button in split view on iPhone Duo and landscape iPhones.
 - Fixed SSH hosts occasionally prompting for a password on cold launch when local SSH keys were not yet synced from the Keychain.
 - Dictation: Fun-ASR-Nano now stages its encoder and decoder separately to cut peak memory and avoid out-of-memory crashes during hold-to-talk voice input.
 - Dictation: holding the mic to send voice with Fun-ASR-Nano no longer crashes when the Neural Engine fails to allocate decoder state; it now falls back cleanly.
@@ -184,6 +185,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - Settings: choose System, Light or Dark right in the Interface row, and Minimum Contrast from a menu. A space's Color menu shows each color's dot and marks the current one.
 
 ## zh-Hans
+- 修复在 iPhone Duo 展开态及大屏 iPhone 横屏分栏模式下，搜索图标浮动遮挡 Composer 输入框与发送按钮的问题。
 - 修复冷启动时因本地 SSH 密钥尚未从钥匙串同步完成，导致 SSH 主机偶发弹出密码输入框的问题。
 - 语音听写：Fun-ASR-Nano 改为分阶段加载编码器与解码器，大幅降低峰值内存，修复长按发送语音时因内存不足导致的闪退。
 - 语音听写：使用 Fun-ASR-Nano 长按发送语音时，神经网络引擎分配解码状态失败不再闪退，改为自动回退并继续识别。
