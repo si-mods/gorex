@@ -15,7 +15,7 @@
 set -eu
 
 IOS_ONLY='^(ios/(GoRex|GoRexTests|SherpaOnnx|scripts)/|ios/(project\.yml|\.gitignore)$|docs/|\.github/workflows/testflight\.yml$)|\.md$'
-READ_ELSEWHERE='^ios/GoRex/(Rex/RexProtocol\.gen\.swift|ghostty-themes\.json)$'
+READ_ELSEWHERE='^ios/GoRex/Rex/RexProtocol\.gen\.swift$'
 
 code=true
 if [ "$GITHUB_EVENT_NAME" != workflow_dispatch ] && git merge-base --is-ancestor "$BASE" HEAD 2>/dev/null; then

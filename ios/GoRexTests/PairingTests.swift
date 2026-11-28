@@ -116,7 +116,7 @@ nonisolated final class ThemeTests: XCTestCase {
 
     /// The default is one of the themes the app ships.
     @MainActor func testStandardShips() throws {
-        let url = URL(fileURLWithPath: #filePath).deletingLastPathComponent().appending(path: "../GoRex/ghostty-themes.json")
+        let url = URL(fileURLWithPath: #filePath).deletingLastPathComponent().appending(path: "../../assets/ghostty-themes.json")
         let all = try JSONDecoder().decode([TerminalTheme].self, from: Data(contentsOf: url))
         XCTAssertTrue(all.contains { $0.name == TerminalTheme.standard })
     }

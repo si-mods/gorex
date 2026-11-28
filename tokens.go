@@ -27,6 +27,7 @@ const (
 // concentric(k.radius(outer), inset), and a circle or a pill is
 // k.capsule(h).
 const (
+	radiusXS  = 3
 	radiusS   = 6
 	radiusM   = 10
 	radiusL   = 12
@@ -95,4 +96,10 @@ func popoverShadow(e ui.Element, k *colors) ui.Element {
 // dialogShadow is the shadow of a dialog or a sheet over a backdrop.
 func dialogShadow(e ui.Element, k *colors) ui.Element {
 	return k.lift(k.lift(e, 24, 60, -8, ui.RGBA(0, 0, 0, 0.28)), 2, 6, 0, ui.RGBA(0, 0, 0, 0.06))
+}
+
+// dialogPanel styles a frosted modal dialog panel of width w with the
+// standard padding, radius, border, and dialog shadow.
+func dialogPanel(panel ui.Element, k *colors, w float32) ui.Element {
+	return dialogShadow(glassPanel(panel.Width(w).Padding(20).Radius(k.radius(radiusXXL)), k).Border(k.borderW(), k.panelBorder), k)
 }

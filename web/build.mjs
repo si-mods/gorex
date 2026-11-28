@@ -327,7 +327,7 @@ export function assetDefines(dir, url) {
 
 /** assetDefines from the manifest's assets and its url. */
 function definesOf(assets, url) {
-  const themes = JSON.parse(readFileSync(join(root, "ios", "GoRex", "ghostty-themes.json"), "utf8"));
+  const themes = JSON.parse(readFileSync(join(root, "assets", "ghostty-themes.json"), "utf8"));
   return {
     __ASSET_MANIFEST__: JSON.stringify(url),
     __BOOT_ASSETS__: JSON.stringify(Object.fromEntries(bootAssets.filter((n) => assets[n]).map((n) => [n, assets[n]]))),
@@ -507,7 +507,7 @@ async function main() {
   const manifest = new Manifest();
   manifest.add(dist, "ghostty-vt", readFileSync(wasmFile), "ghostty-vt", ".wasm", "wasm");
   // The themes, 190 KB, load when Settings shows them (src/themes.ts).
-  manifest.add(dist, "ghostty-themes", readFileSync(join(root, "ios", "GoRex", "ghostty-themes.json")), "ghostty-themes", ".json", "json", true);
+  manifest.add(dist, "ghostty-themes", readFileSync(join(root, "assets", "ghostty-themes.json")), "ghostty-themes", ".json", "json", true);
   mkdirSync(join(dist, "fonts"));
   await addMaple(dist, manifest);
   // Built-in Tailscale's engine, which the page loads only when the user turns it on.

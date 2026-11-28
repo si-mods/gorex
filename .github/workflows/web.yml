@@ -15,7 +15,6 @@ on:
     paths:
       - web/**
       - assets/**
-      - ios/GoRex/ghostty-themes.json
       - go.mod
       - go.sum
       - .github/workflows/web.yml

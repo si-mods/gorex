@@ -6,6 +6,8 @@
 // offline host still waits for. No DOM here; sidebar's drawing is
 // projectsidebar.ts, and the calls are projectops.ts.
 
+import { ProjectColors } from "./rex-protocol.gen";
+
 /** A project is not shown under Older until this many days passed since its last use. */
 export const olderDays = 30;
 const day = 86400000;
@@ -106,18 +108,8 @@ export function groupProjects(projects: ProjectRow[], space: string, now: number
   return { recent: mine.filter((p) => !old(p)), older: mine.filter(old) };
 }
 
-/** Preset project color IDs (internal/layout/names.go, Palette) mapped to hex. */
-export const projectColors: Record<string, string> = {
-  rose: "#e54666",
-  orange: "#f76b15",
-  amber: "#ffb224",
-  green: "#30a46c",
-  teal: "#12a594",
-  blue: "#0090ff",
-  indigo: "#3e63dd",
-  violet: "#8e4ec6",
-  pink: "#d6409f",
-};
+/** Preset project color IDs (generated from internal/rexproto/protocol.json) mapped to hex. */
+export const projectColors: Record<string, string> = ProjectColors;
 
 /** A project's icon tint: the host's preset or hex color, or undefined for the default muted icon. */
 export function projectColor(given?: string): string | undefined {

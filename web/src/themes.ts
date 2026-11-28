@@ -1,4 +1,4 @@
-// Ghostty themes: the list GoRex's iOS app ships (ios/GoRex/ghostty-themes.json,
+// Ghostty themes: the shared catalog (assets/ghostty-themes.json,
 // copied into the build), and the picker of the Settings dialog's Theme
 // section. The choice is a setting (prefs.ts, theme, with its colours).
 //

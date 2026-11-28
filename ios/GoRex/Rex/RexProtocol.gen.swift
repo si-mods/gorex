@@ -15,4 +15,15 @@ enum RexProtocol {
     static let methodTerminalUploadBegin = "com.superlogical.terminal.upload_begin"
     static let methodTerminalDownloadBegin = "com.superlogical.terminal.download_begin"
     static let methodTunnelInfo = "com.superlogical.tunnel.info"
+    static let projectColors: [(id: String, hex: UInt32)] = [
+        ("rose", 0xE54666),
+        ("orange", 0xF76B15),
+        ("amber", 0xFFB224),
+        ("green", 0x30A46C),
+        ("teal", 0x12A594),
+        ("blue", 0x0090FF),
+        ("indigo", 0x3E63DD),
+        ("violet", 0x8E4EC6),
+        ("pink", 0xD6409F),
+    ]
 }

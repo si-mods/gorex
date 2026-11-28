@@ -234,9 +234,7 @@ func hostPairQRSheet(c *ui.Context, k *colors, page *hostPairQR) {
 		// The backdrop dims the window; the glass is the panel's, as in
 		// the other sheets over the app.
 		backdrop.Background(k.backdrop)
-		dialogShadow(glassPanel(panel.Width(380).Padding(20).Gap(12).Radius(k.radius(radiusXXL)), k).
-			Border(k.borderW(), k.panelBorder), k).
-			Role(ui.RoleDialog).Label(title)
+		dialogPanel(panel, k, 380).Gap(12).Role(ui.RoleDialog).Label(title)
 		ui.Text(c, title).FontSize(fontTitle).FontWeight(700).TextColor(k.text)
 		// A listener with a web link offers both codes: this address's,
 		// for Rex, and the page's, for a browser on the same network.

@@ -127,14 +127,10 @@ struct ProjectListing: Codable, Equatable {
     var pickerSpaces: Set<String> { spaces.union(offered ?? []) }
 }
 
-/// The colors a project or a space takes, as the desktop's presets
-/// (internal/layout, Palette): an ID and its color as hex.
+/// The colors a project or a space takes, generated from
+/// internal/rexproto/protocol.json: an ID and its color as hex.
 enum ProjectColor {
-    static let all: [(id: String, hex: UInt32)] = [
-        ("rose", 0xE54666), ("orange", 0xF76B15), ("amber", 0xFFB224),
-        ("green", 0x30A46C), ("teal", 0x12A594), ("blue", 0x0090FF),
-        ("indigo", 0x3E63DD), ("violet", 0x8E4EC6), ("pink", 0xD6409F),
-    ]
+    static let all: [(id: String, hex: UInt32)] = RexProtocol.projectColors
 
     /// The hex of a color by its ID, or of a "#rrggbb" color; nil for none.
     static func hex(_ color: String?) -> UInt32? {
