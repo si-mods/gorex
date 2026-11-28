@@ -41,12 +41,33 @@ struct SSHKeyRecord: Codable, Identifiable, Hashable {
     }
 }
 
+/// Result of reading a private key from Keychain: distinguishes a missing item
+/// (`notFound`) from a transient/locked Keychain error (`unavailable`), so cold
+/// starts before Keychain is accessible never wipe saved key metadata.
+enum SSHKeychainLookup: Equatable {
+    case found(String)
+    case notFound
+    case unavailable(OSStatus)
+}
+
 /// Private-key storage for SSHKeyStore: Keychain in the app, memory in tests.
 protocol SSHKeychain: AnyObject {
-    func privateKey(for id: UUID) -> String?
+    func lookupPrivateKey(for id: UUID) -> SSHKeychainLookup
     func setPrivateKey(_ pem: String?, for id: UUID) throws
     /// Reads the single-key legacy item from IOS-023, if present.
-    func legacyPrivateKey() -> String?
+    func lookupLegacyPrivateKey() -> SSHKeychainLookup
+}
+
+extension SSHKeychain {
+    func privateKey(for id: UUID) -> String? {
+        if case .found(let pem) = lookupPrivateKey(for: id) { return pem }
+        return nil
+    }
+
+    func legacyPrivateKey() -> String? {
+        if case .found(let pem) = lookupLegacyPrivateKey() { return pem }
+        return nil
+    }
 }
 
 /// Stores each SSH private key as a device-only Keychain generic password.
@@ -63,14 +84,17 @@ final class KeychainSSHKeys: SSHKeychain {
         ]
     }
 
-    func privateKey(for id: UUID) -> String? {
+    func lookupPrivateKey(for id: UUID) -> SSHKeychainLookup {
         var q = query(for: id)
         q[kSecReturnData as String] = true
         q[kSecMatchLimit as String] = kSecMatchLimitOne
         var out: CFTypeRef?
-        guard SecItemCopyMatching(q as CFDictionary, &out) == errSecSuccess,
-              let data = out as? Data else { return nil }
-        return String(decoding: data, as: UTF8.self)
+        let status = SecItemCopyMatching(q as CFDictionary, &out)
+        if status == errSecSuccess, let data = out as? Data {
+            return .found(String(decoding: data, as: UTF8.self))
+        }
+        if status == errSecItemNotFound { return .notFound }
+        return .unavailable(status)
     }
 
     func setPrivateKey(_ pem: String?, for id: UUID) throws {
@@ -90,7 +114,7 @@ final class KeychainSSHKeys: SSHKeychain {
         }
     }
 
-    func legacyPrivateKey() -> String? {
+    func lookupLegacyPrivateKey() -> SSHKeychainLookup {
         let q: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: Self.legacyService,
@@ -99,9 +123,12 @@ final class KeychainSSHKeys: SSHKeychain {
             kSecMatchLimit as String: kSecMatchLimitOne,
         ]
         var out: CFTypeRef?
-        guard SecItemCopyMatching(q as CFDictionary, &out) == errSecSuccess,
-              let data = out as? Data else { return nil }
-        return String(decoding: data, as: UTF8.self)
+        let status = SecItemCopyMatching(q as CFDictionary, &out)
+        if status == errSecSuccess, let data = out as? Data {
+            return .found(String(decoding: data, as: UTF8.self))
+        }
+        if status == errSecItemNotFound { return .notFound }
+        return .unavailable(status)
     }
 }
 
@@ -114,6 +141,10 @@ final class SSHKeyStore {
     private static let defaultsKey = "sshKeys"
 
     private(set) var keys: [SSHKeyRecord] = []
+    /// Whether the current key set has been read from Keychain and pushed to
+    /// the Go SSH engine. False when a cold-start Keychain read was blocked
+    /// (e.g. prewarming before first unlock) or engine sync failed.
+    private(set) var isEngineSynced = false
 
     /// Primary default key's public line, or the first key's, or "".
     var primaryPublicKey: String {
@@ -124,7 +155,7 @@ final class SSHKeyStore {
     private let keychain: SSHKeychain
     private let parseKey: @MainActor (String, String) throws -> ParsedKey
     private let generatePEM: @MainActor () -> String
-    private let pushEngine: @MainActor (String) -> Void
+    private let pushEngine: @MainActor (String) -> Bool
     private var hasInitialized = false
 
     struct ParsedKey: Decodable {
@@ -139,9 +170,13 @@ final class SSHKeyStore {
         keychain: SSHKeychain = KeychainSSHKeys(),
         parseKey: @escaping @MainActor (String, String) throws -> ParsedKey = SSHKeyStore.engineParseKey,
         generatePEM: @escaping @MainActor () -> String = { TailnetNewSSHKey() },
-        pushEngine: @escaping @MainActor (String) -> Void = { json in
+        pushEngine: @escaping @MainActor (String) -> Bool = { json in
             var error: NSError?
-            _ = TailnetSetSSHKeys(json, &error)
+            guard TailnetSetSSHKeys(json, &error) else {
+                ConnectionLog.note("ssh keys: engine sync failed: \(error?.localizedDescription ?? "unknown")")
+                return false
+            }
+            return true
         }
     ) {
         self.defaults = defaults
@@ -163,33 +198,84 @@ final class SSHKeyStore {
     }
 
     /// Loads saved metadata or migrates the legacy single IOS-023 key, then
-    /// pushes the loaded keys to the engine.
+    /// pushes the loaded keys to the engine. Transient Keychain errors keep
+    /// saved metadata intact and defer engine sync until the Keychain is ready.
     func load() {
         if let data = defaults.data(forKey: Self.defaultsKey),
            let decoded = try? JSONDecoder().decode([SSHKeyRecord].self, from: data) {
             hasInitialized = true
-            // Drop any stale metadata whose private key is no longer in Keychain.
-            keys = decoded.filter { keychain.privateKey(for: $0.id) != nil }
-            if keys.count != decoded.count { save() }
-        } else if let legacy = keychain.legacyPrivateKey(),
-                  let parsed = try? parseKey(legacy, "") {
-            let id = UUID()
-            if (try? keychain.setPrivateKey(parsed.pem, for: id)) != nil {
-                let record = SSHKeyRecord(
-                    id: id,
-                    name: String(localized: "This Device"),
-                    type: parsed.type,
-                    publicKey: parsed.publicKey,
-                    fingerprint: parsed.fingerprint,
-                    createdAt: Date(),
-                    isDefault: true
-                )
-                keys = [record]
-                hasInitialized = true
-                save()
+            var kept: [SSHKeyRecord] = []
+            var payload: [[String: Any]] = []
+            var pruned = false
+            var unavailableStatus: OSStatus?
+            for record in decoded {
+                switch keychain.lookupPrivateKey(for: record.id) {
+                case .found(let pem):
+                    kept.append(record)
+                    payload.append([
+                        "id": record.id.uuidString.lowercased(),
+                        "pem": pem,
+                        "isDefault": record.isDefault,
+                    ])
+                case .notFound:
+                    pruned = true
+                case .unavailable(let status):
+                    kept.append(record)
+                    if unavailableStatus == nil { unavailableStatus = status }
+                }
             }
+            keys = kept
+            if pruned { save() }
+            if let status = unavailableStatus {
+                isEngineSynced = false
+                ConnectionLog.note("ssh keys: keychain unavailable on load (status \(status)); deferring engine sync")
+                return
+            }
+            pushPayload(payload)
+            return
         }
-        syncToEngine()
+        switch keychain.lookupLegacyPrivateKey() {
+        case .found(let legacy):
+            if let parsed = try? parseKey(legacy, "") {
+                let id = UUID()
+                if (try? keychain.setPrivateKey(parsed.pem, for: id)) != nil {
+                    let record = SSHKeyRecord(
+                        id: id,
+                        name: String(localized: "This Device"),
+                        type: parsed.type,
+                        publicKey: parsed.publicKey,
+                        fingerprint: parsed.fingerprint,
+                        createdAt: Date(),
+                        isDefault: true
+                    )
+                    keys = [record]
+                    hasInitialized = true
+                    save()
+                    pushPayload([[
+                        "id": id.uuidString.lowercased(),
+                        "pem": parsed.pem,
+                        "isDefault": true,
+                    ]])
+                    return
+                }
+            }
+            isEngineSynced = false
+        case .notFound:
+            pushPayload([])
+        case .unavailable(let status):
+            isEngineSynced = false
+            ConnectionLog.note("ssh keys: legacy keychain unavailable on load (status \(status)); deferring engine sync")
+        }
+    }
+
+    /// Ensures local SSH keys have been loaded from Keychain and pushed to the
+    /// Go engine. Retries loading if an earlier cold-start attempt found the
+    /// Keychain unavailable.
+    @discardableResult
+    func ensureSynced() -> Bool {
+        if isEngineSynced { return true }
+        load()
+        return isEngineSynced
     }
 
     /// Creates a default Ed25519 key when the user adds their first SSH host
@@ -197,6 +283,9 @@ final class SSHKeyStore {
     /// already initialized (e.g. explicitly deleted all keys).
     @discardableResult
     func ensureDefaultKey() throws -> SSHKeyRecord? {
+        guard ensureSynced() else {
+            throw RexError(code: "keychain", message: String(localized: "Rex Go's SSH connection is not ready"))
+        }
         if let existing = keys.first { return existing }
         guard !hasInitialized else { return nil }
         return try generateKey(name: String(localized: "This Device"), isDefault: true)
@@ -286,19 +375,37 @@ final class SSHKeyStore {
         return keys.first { $0.id == id }
     }
 
-    /// Sends all saved keys to the Go SSH engine.
-    func syncToEngine() {
-        let payload: [[String: Any]] = keys.compactMap { k in
-            guard let pem = keychain.privateKey(for: k.id) else { return nil }
-            return [
-                "id": k.id.uuidString.lowercased(),
-                "pem": pem,
-                "isDefault": k.isDefault,
-            ]
+    /// Sends all saved keys to the Go SSH engine. Returns false without pushing
+    /// a partial list if the Keychain is temporarily unavailable.
+    @discardableResult
+    func syncToEngine() -> Bool {
+        var payload: [[String: Any]] = []
+        for k in keys {
+            switch keychain.lookupPrivateKey(for: k.id) {
+            case .found(let pem):
+                payload.append([
+                    "id": k.id.uuidString.lowercased(),
+                    "pem": pem,
+                    "isDefault": k.isDefault,
+                ])
+            case .notFound:
+                continue
+            case .unavailable(let status):
+                isEngineSynced = false
+                ConnectionLog.note("ssh keys: keychain unavailable on sync (status \(status)); deferring engine sync")
+                return false
+            }
         }
+        return pushPayload(payload)
+    }
+
+    @discardableResult
+    private func pushPayload(_ payload: [[String: Any]]) -> Bool {
         let json = (try? JSONSerialization.data(withJSONObject: payload))
             .map { String(decoding: $0, as: UTF8.self) } ?? "[]"
-        pushEngine(json)
+        let ok = pushEngine(json)
+        isEngineSynced = ok
+        return ok
     }
 
     private func save() {

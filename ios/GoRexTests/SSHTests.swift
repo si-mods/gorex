@@ -243,11 +243,21 @@ nonisolated final class SSHAddressTests: XCTestCase {
         final class MemorySSHKeychain: SSHKeychain {
             var stored: [UUID: String] = [:]
             var legacy: String?
-            func privateKey(for id: UUID) -> String? { stored[id] }
+            var unavailableStatus: OSStatus?
+            func lookupPrivateKey(for id: UUID) -> SSHKeychainLookup {
+                if let status = unavailableStatus { return .unavailable(status) }
+                return stored[id].map(SSHKeychainLookup.found) ?? .notFound
+            }
             func setPrivateKey(_ pem: String?, for id: UUID) throws {
+                if let status = unavailableStatus {
+                    throw RexError(code: "keychain", message: "\(status)")
+                }
                 if let pem { stored[id] = pem } else { stored.removeValue(forKey: id) }
             }
-            func legacyPrivateKey() -> String? { legacy }
+            func lookupLegacyPrivateKey() -> SSHKeychainLookup {
+                if let status = unavailableStatus { return .unavailable(status) }
+                return legacy.map(SSHKeychainLookup.found) ?? .notFound
+            }
         }
 
         let suiteName = "dev.gorex.tests.sshkeys.\(UUID().uuidString)"
@@ -272,8 +282,12 @@ nonisolated final class SSHAddressTests: XCTestCase {
             keychain: kc,
             parseKey: fakeParse,
             generatePEM: { "GEN-PEM" },
-            pushEngine: { pushedJSONs.append($0) }
+            pushEngine: {
+                pushedJSONs.append($0)
+                return true
+            }
         )
+        XCTAssertTrue(store.isEngineSynced)
         XCTAssertEqual(store.keys.count, 1)
         XCTAssertEqual(store.keys[0].name, "This Device")
         XCTAssertEqual(store.keys[0].isDefault, true)
@@ -300,6 +314,91 @@ nonisolated final class SSHAddressTests: XCTestCase {
         XCTAssertEqual(store.keys.count, 2)
         XCTAssertNil(kc.privateKey(for: generated.id))
         XCTAssertFalse(pushedJSONs.last?.contains("GEN-PEM") == true)
+    }
+
+    /// Cold start while Keychain is unavailable (e.g. iOS prewarming before unlock)
+    /// must keep saved SSH key metadata intact, avoid pushing an empty key set to
+    /// the engine, and sync once Keychain becomes readable again.
+    @MainActor func testSSHKeyStoreColdStartKeychainUnavailableDefersSync() throws {
+        final class LockedMemorySSHKeychain: SSHKeychain {
+            var stored: [UUID: String] = [:]
+            var legacy: String?
+            var locked = true
+            func lookupPrivateKey(for id: UUID) -> SSHKeychainLookup {
+                if locked { return .unavailable(errSecInteractionNotAllowed) }
+                return stored[id].map(SSHKeychainLookup.found) ?? .notFound
+            }
+            func setPrivateKey(_ pem: String?, for id: UUID) throws {
+                if locked { throw RexError(code: "keychain", message: "locked") }
+                if let pem { stored[id] = pem } else { stored.removeValue(forKey: id) }
+            }
+            func lookupLegacyPrivateKey() -> SSHKeychainLookup {
+                if locked { return .unavailable(errSecInteractionNotAllowed) }
+                return legacy.map(SSHKeychainLookup.found) ?? .notFound
+            }
+        }
+
+        let suiteName = "dev.gorex.tests.sshkeys.locked.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let keyID = UUID()
+        let savedRecord = SSHKeyRecord(
+            id: keyID,
+            name: "This Device",
+            type: "ssh-ed25519",
+            publicKey: "ssh-ed25519 AAAA-SAVED",
+            fingerprint: "SHA256:SAVED",
+            createdAt: Date(),
+            isDefault: true
+        )
+        defaults.set(try JSONEncoder().encode([savedRecord]), forKey: "sshKeys")
+
+        let kc = LockedMemorySSHKeychain()
+        kc.stored[keyID] = "SAVED-PEM"
+        var pushedJSONs: [String] = []
+        let store = SSHKeyStore(
+            defaults: defaults,
+            keychain: kc,
+            generatePEM: { "NEW-PEM" },
+            pushEngine: {
+                pushedJSONs.append($0)
+                return true
+            }
+        )
+
+        // While Keychain is locked: metadata is preserved, nothing pushed to engine.
+        XCTAssertFalse(store.isEngineSynced)
+        XCTAssertEqual(store.keys.map(\.id), [keyID])
+        XCTAssertTrue(pushedJSONs.isEmpty)
+        XCTAssertThrowsError(try store.ensureDefaultKey())
+        let persistedAfterLockedLoad = try XCTUnwrap(defaults.data(forKey: "sshKeys"))
+        let decodedAfterLockedLoad = try JSONDecoder().decode([SSHKeyRecord].self, from: persistedAfterLockedLoad)
+        XCTAssertEqual(decodedAfterLockedLoad.map(\.id), [keyID])
+
+        // Once Keychain unlocks: ensureSynced() loads and pushes the real key.
+        kc.locked = false
+        XCTAssertTrue(store.ensureSynced())
+        XCTAssertTrue(store.isEngineSynced)
+        XCTAssertEqual(pushedJSONs.count, 1)
+        XCTAssertTrue(pushedJSONs[0].contains("SAVED-PEM"))
+    }
+
+    /// SSH hosts gate on Host.sshProxy rather than Host.tailcatProxy so a ready
+    /// tailcat key cannot let an SSH host dial before SSH keys are synced.
+    @MainActor func testSSHHostUsesDedicatedSSHProxyGate() throws {
+        let (oldTailcat, oldSSH) = (Host.tailcatProxy, Host.sshProxy)
+        defer {
+            Host.tailcatProxy = oldTailcat
+            Host.sshProxy = oldSSH
+        }
+        Host.tailcatProxy = { LoopbackProxy(port: 12345, password: "pw", run: 0) }
+        Host.sshProxy = { nil }
+        let sshHost = Host(try XCTUnwrap(HostConfig(ssh: "ssh://alice@alice-laptop")))
+        XCTAssertThrowsError(try sshHost.session())
+
+        Host.sshProxy = { LoopbackProxy(port: 12345, password: "pw", run: 0) }
+        XCTAssertNoThrow(try sshHost.session())
     }
 }
 

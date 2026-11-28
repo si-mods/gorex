@@ -146,6 +146,7 @@ final class TailnetEngine {
             return e.status.isRunning ? e.proxy : nil
         }
         Host.tailcatProxy = { TailnetEngine.shared.tailcatProxyNow() }
+        Host.sshProxy = { TailnetEngine.shared.sshProxyNow() }
         Host.tailcatHosts = { TailnetEngine.shared.setTailcatHosts($0) }
         Host.sshHosts = { TailnetEngine.shared.setSSHHosts($0) }
         Host.sshHostToken = { TailnetEngine.shared.learnSSHHostToken($0) }
@@ -153,7 +154,7 @@ final class TailnetEngine {
         Host.proxyFailed = { Task { await TailnetEngine.shared.reproxy() } }
         TailnetSetSSHDelegate(sshDelegate)
         _ = try? useTailcatKey(create: false)
-        SSHKeyStore.shared.syncToEngine()
+        _ = SSHKeyStore.shared.ensureSynced()
     }
 
     /// Starts the engine as Settings › Tailscale has it, signing in with
@@ -293,11 +294,20 @@ final class TailnetEngine {
         error.localizedDescription == TailnetAddressPairingWarning()
     }
 
-    /// The proxy for the tailcat and ssh:// hosts; nil while the phone
-    /// has neither a tailcat nor an SSH key, as before it paired or an
-    /// ssh:// host was added, or while its Keychain is locked.
+    /// The proxy for tailcat hosts; nil while the phone has no tailcat key
+    /// or while its Keychain is locked.
     private func tailcatProxyNow() -> LoopbackProxy? {
         guard (try? useTailcatKey(create: false)) == true || hasSSH || !SSHKeyStore.shared.keys.isEmpty else { return nil }
+        if tailcatProxy == nil { tailcatProxy = try? Self.readProxy(run: 0) }
+        return tailcatProxy
+    }
+
+    /// The proxy for ssh:// hosts; nil until local SSH keys have been
+    /// synced from the Keychain to the engine, so cold-start dials retry
+    /// instead of connecting without keys and prompting for a password.
+    private func sshProxyNow() -> LoopbackProxy? {
+        guard SSHKeyStore.shared.ensureSynced() else { return nil }
+        if hasSSH { _ = try? SSHKeyStore.shared.ensureDefaultKey() }
         if tailcatProxy == nil { tailcatProxy = try? Self.readProxy(run: 0) }
         return tailcatProxy
     }
