@@ -136,6 +136,18 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
     private static let rowGap: CGFloat = 8
     private static let compactInsets = UIEdgeInsets(top: 7.5, left: 4, bottom: 7.5, right: 4)
     private static let expandedInsets = UIEdgeInsets(top: 8, left: 10, bottom: 6, right: 10)
+    /// Attachment strip geometry: 56 × 56 pt continuous-corner cards inset 12 pt
+    /// inside the 24 pt glass pill (`vPad 6 + stripTopPad 6 = 12`, concentric
+    /// `thumbRadius = 12`), with a 44 × 44 pt remove hit target and 20 × 20 pt
+    /// high-contrast corner badge fully inside each thumbnail's bounds.
+    private static let thumbSize: CGFloat = 56
+    private static let thumbRadius: CGFloat = 12
+    private static let removeHitSize: CGFloat = 44
+    private static let removeBadgeSize: CGFloat = 20
+    private static let removeBadgeInset: CGFloat = 4
+    private static let stripTopPad: CGFloat = 6
+    private static let stripSidePad: CGFloat = 6
+    private static let stripHeight: CGFloat = stripTopPad + thumbSize
     /// Gap between the compose bar and the keyboard or safe area below it.
     static let gap: CGFloat = 6
     /// Resting height of the single-row pill with no attachments (48 pt).
@@ -284,9 +296,17 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
         thumbs.axis = .horizontal
         thumbs.spacing = 10
         thumbs.alignment = .center
+        thumbs.isLayoutMarginsRelativeArrangement = true
+        thumbs.directionalLayoutMargins = NSDirectionalEdgeInsets(
+            top: Self.stripTopPad,
+            leading: Self.stripSidePad,
+            bottom: 0,
+            trailing: Self.stripSidePad
+        )
         thumbs.translatesAutoresizingMaskIntoConstraints = false
         strip.addSubview(thumbs)
-        strip.contentInset = UIEdgeInsets(top: 4, left: 6, bottom: 0, right: 6)
+        strip.contentInsetAdjustmentBehavior = .never
+        strip.delaysContentTouches = false
         strip.showsHorizontalScrollIndicator = false
         strip.isHidden = true
 
@@ -441,7 +461,7 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
 
         let body = QuickStackView(arrangedSubviews: [strip, rowBox])
         body.axis = .vertical
-        body.spacing = 8
+        body.spacing = Self.rowGap
         body.translatesAutoresizingMaskIntoConstraints = false
         glass.contentView.addSubview(body)
 
@@ -500,8 +520,8 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
             thumbs.trailingAnchor.constraint(equalTo: strip.contentLayoutGuide.trailingAnchor),
             thumbs.topAnchor.constraint(equalTo: strip.contentLayoutGuide.topAnchor),
             thumbs.bottomAnchor.constraint(equalTo: strip.contentLayoutGuide.bottomAnchor),
-            thumbs.heightAnchor.constraint(equalTo: strip.frameLayoutGuide.heightAnchor, constant: -4),
-            strip.heightAnchor.constraint(equalToConstant: 52),
+            thumbs.heightAnchor.constraint(equalTo: strip.frameLayoutGuide.heightAnchor),
+            strip.heightAnchor.constraint(equalToConstant: Self.stripHeight),
             hint.leadingAnchor.constraint(equalTo: field.frameLayoutGuide.leadingAnchor, constant: 4),
             hint.centerYAnchor.constraint(equalTo: field.frameLayoutGuide.centerYAnchor),
             hint.trailingAnchor.constraint(equalTo: field.frameLayoutGuide.trailingAnchor, constant: -4),
@@ -583,7 +603,7 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
         guard let host = superview, host.bounds.height > 0 else { return Self.fieldMax }
         let bottomY = frame.maxY > 0 ? frame.maxY : host.bounds.height - host.safeAreaInsets.bottom
         let available = bottomY - host.safeAreaInsets.top - 56
-        let chrome = Self.vPad * 2 + (multiLine ? Self.fieldMin + Self.rowGap : 0) + (attachments.isEmpty ? 0 : 60)
+        let chrome = Self.vPad * 2 + (multiLine ? Self.fieldMin + Self.rowGap : 0) + (attachments.isEmpty ? 0 : Self.stripHeight + Self.rowGap)
         return max(56, min(Self.fieldMax, available - chrome))
     }
 
@@ -1260,41 +1280,79 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
         textViewDidChange(field)
     }
 
-    /// An attachment's thumbnail, or a document mark, with the mark that
-    /// takes it out of the strip.
+    /// An attachment's thumbnail, or a document mark, with a 44 × 44 pt remove
+    /// button and inset circular × badge completely inside the thumbnail bounds.
     private func cell(_ a: Attachment) -> UIView {
         let c = UIView()
         c.translatesAutoresizingMaskIntoConstraints = false
         c.backgroundColor = .secondarySystemFill
-        c.layer.cornerRadius = 10
+        c.layer.cornerRadius = Self.thumbRadius
+        c.layer.cornerCurve = .continuous
         c.clipsToBounds = true
+        c.accessibilityIdentifier = "composer.attachment"
+        c.accessibilityContainerType = .semanticGroup
         let body = a.thumb.map { UIImageView(image: $0) } ?? UIImageView(image: UIImage(systemName: "doc.fill"))
         body.contentMode = a.thumb == nil ? .center : .scaleAspectFill
         body.tintColor = .secondaryLabel
+        body.isAccessibilityElement = false
         body.translatesAutoresizingMaskIntoConstraints = false
         c.addSubview(body)
-        let x = UIButton(configuration: {
-            var b = UIButton.Configuration.plain()
-            b.image = UIImage(systemName: "xmark.circle.fill")
-            b.preferredSymbolConfigurationForImage = UIImage.SymbolConfiguration(pointSize: 14)
-            b.baseForegroundColor = .systemGray
-            b.contentInsets = .zero
-            return b
-        }(), primaryAction: UIAction { [weak self, weak c] _ in if let c { self?.remove(a, c) } })
+
+        let badge = UIView()
+        badge.isUserInteractionEnabled = false
+        badge.isAccessibilityElement = false
+        badge.backgroundColor = UIColor(white: 0.12, alpha: 0.82)
+        badge.layer.cornerRadius = Self.removeBadgeSize / 2
+        badge.layer.borderWidth = 0.75
+        badge.layer.borderColor = UIColor.white.withAlphaComponent(0.32).cgColor
+        badge.translatesAutoresizingMaskIntoConstraints = false
+
+        let glyphCfg = UIImage.SymbolConfiguration(pointSize: 10, weight: .bold)
+        let glyph = UIImageView(
+            image: UIImage(systemName: "xmark", withConfiguration: glyphCfg)?
+                .withTintColor(.white, renderingMode: .alwaysOriginal)
+        )
+        glyph.isUserInteractionEnabled = false
+        glyph.isAccessibilityElement = false
+        glyph.translatesAutoresizingMaskIntoConstraints = false
+        badge.addSubview(glyph)
+
+        var btnCfg = UIButton.Configuration.plain()
+        btnCfg.background.backgroundColor = .clear
+        btnCfg.contentInsets = .zero
+        let x = UIButton(configuration: btnCfg, primaryAction: UIAction { [weak self, weak c] _ in
+            Haptics.tapped()
+            if let c { self?.remove(a, c) }
+        })
+        x.configurationUpdateHandler = { [weak badge] btn in
+            UIView.performWithoutAnimation {
+                badge?.transform = btn.isHighlighted ? CGAffineTransform(scaleX: 0.9, y: 0.9) : .identity
+                badge?.alpha = btn.isHighlighted ? 0.85 : 1
+            }
+        }
         x.accessibilityLabel = String(localized: "Remove Attachment")
+        x.accessibilityIdentifier = "composer.attachment.remove"
         x.translatesAutoresizingMaskIntoConstraints = false
+        x.addSubview(badge)
         c.addSubview(x)
+
         NSLayoutConstraint.activate([
-            c.widthAnchor.constraint(equalToConstant: 44),
-            c.heightAnchor.constraint(equalToConstant: 44),
+            c.widthAnchor.constraint(equalToConstant: Self.thumbSize),
+            c.heightAnchor.constraint(equalToConstant: Self.thumbSize),
             body.leadingAnchor.constraint(equalTo: c.leadingAnchor),
             body.trailingAnchor.constraint(equalTo: c.trailingAnchor),
             body.topAnchor.constraint(equalTo: c.topAnchor),
             body.bottomAnchor.constraint(equalTo: c.bottomAnchor),
-            x.topAnchor.constraint(equalTo: c.topAnchor, constant: -4),
-            x.trailingAnchor.constraint(equalTo: c.trailingAnchor, constant: 4),
-            x.widthAnchor.constraint(equalToConstant: 20),
-            x.heightAnchor.constraint(equalToConstant: 20),
+            x.topAnchor.constraint(equalTo: c.topAnchor),
+            x.trailingAnchor.constraint(equalTo: c.trailingAnchor),
+            x.widthAnchor.constraint(equalToConstant: Self.removeHitSize),
+            x.heightAnchor.constraint(equalToConstant: Self.removeHitSize),
+            badge.topAnchor.constraint(equalTo: x.topAnchor, constant: Self.removeBadgeInset),
+            badge.trailingAnchor.constraint(equalTo: x.trailingAnchor, constant: -Self.removeBadgeInset),
+            badge.widthAnchor.constraint(equalToConstant: Self.removeBadgeSize),
+            badge.heightAnchor.constraint(equalToConstant: Self.removeBadgeSize),
+            glyph.centerXAnchor.constraint(equalTo: badge.centerXAnchor),
+            glyph.centerYAnchor.constraint(equalTo: badge.centerYAnchor),
         ])
         return c
     }

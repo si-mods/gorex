@@ -1,3 +1,5 @@
+import Foundation
+import Network
 import XCTest
 
 /// The compose bar (docs/IOS-025-composer.md, docs/IOS-030-composer-centric-bar.md):
@@ -361,5 +363,483 @@ final class SplitViewComposerUITests: XCTestCase {
         s.name = name
         s.lifetime = .keepAlways
         add(s)
+    }
+}
+
+/// Regression tests for attachment thumbnails in Composer Mode: with two photos
+/// attached and the software keyboard raised, each thumbnail's Remove (×) button
+/// stays completely inside its thumbnail and composer bounds, meets the 44 × 44 pt
+/// minimum hit target in dark and light themes, and removes its attachment on tap.
+final class ComposerAttachmentUITests: XCTestCase {
+    private var server: LocalUploadRex?
+    private var testApp: XCUIApplication?
+    private var testPort: UInt16 = 0
+
+    override func tearDownWithError() throws {
+        let app = testApp
+        let port = testPort
+        if let app {
+            MainActor.assumeIsolated {
+                Self.removeTestHostIfPresent(app, port: port)
+                XCUIDevice.shared.orientation = .portrait
+            }
+        }
+        testApp = nil
+        testPort = 0
+        server?.stop()
+        server = nil
+    }
+
+    @MainActor
+    func testAttachmentRemoveButtonsInsideThumbnailsAndHittable() throws {
+        continueAfterFailure = false
+        XCUIDevice.shared.orientation = .portrait
+        let srv = try LocalUploadRex()
+        server = srv
+        let port = try srv.waitPort()
+        testPort = port
+        let app = XCUIApplication()
+        testApp = app
+        addUIInterruptionMonitor(withDescription: "system alerts") { alert in
+            for b in ["Don't Allow", "Don’t Allow", "Allow", "OK"] where alert.buttons[b].exists {
+                alert.buttons[b].tap()
+                return true
+            }
+            return false
+        }
+
+        // 1. Dark appearance: pair with the local upload-capable fake server,
+        // attach two photos, raise the keyboard, and capture screenshot.
+        try openUploadTerminal(app: app, port: port, scheme: "dark", theme: "Gruvbox Dark", pairIfNeeded: true)
+        try attachTwoPhotos(app: app)
+        raiseKeyboardAndTypeDraft(app: app, text: "Check two attached photos")
+        shot("composer-attachments-dark")
+
+        let darkFailure = checkTwoAttachmentsGeometryAndTap(app: app, context: "dark")
+
+        // 2. Light appearance: relaunch against the same local fake server,
+        // attach two photos with keyboard up, capture screenshot, and verify.
+        app.terminate()
+        try openUploadTerminal(app: app, port: port, scheme: "light", theme: "Apple System Colors Light", pairIfNeeded: false)
+        try attachTwoPhotos(app: app)
+        raiseKeyboardAndTypeDraft(app: app, text: "Check light theme badges")
+        shot("composer-attachments-light")
+
+        if let darkFailure {
+            XCTFail(darkFailure)
+        }
+        if let lightFailure = checkTwoAttachmentsGeometryAndTap(app: app, context: "light") {
+            XCTFail(lightFailure)
+        }
+    }
+
+    @MainActor
+    private func raiseKeyboardAndTypeDraft(app: XCUIApplication, text: String) {
+        let msg = app.textViews["composer.message"]
+        let composer = app.otherElements["composer"]
+        if !app.keyboards.keys.firstMatch.exists {
+            msg.tap()
+        }
+        if app.keyboards.keys.firstMatch.waitForExistence(timeout: 5) {
+            msg.typeText(text)
+            let maxSettledY = app.frame.height - 200
+            let settleDeadline = Date().addingTimeInterval(3)
+            while Date() < settleDeadline {
+                let kbMinY = app.keyboards.element.frame.minY
+                if kbMinY > 0, kbMinY < maxSettledY, composer.frame.maxY <= kbMinY + 12 {
+                    break
+                }
+                _ = composer.exists
+            }
+        }
+    }
+
+    @MainActor
+    private func openUploadTerminal(
+        app: XCUIApplication,
+        port: UInt16,
+        scheme: String,
+        theme: String,
+        pairIfNeeded: Bool
+    ) throws {
+        app.launchArguments = [
+            "-composerMode", "YES",
+            "-scheme", scheme,
+            "-theme", theme,
+            "-spaces.chosen", "",
+            "-pair", "http://127.0.0.1:\(port)",
+        ]
+        app.launch()
+        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        let notifAlert = springboard.alerts.firstMatch
+        if notifAlert.waitForExistence(timeout: 3) {
+            for b in ["Don’t Allow", "Don't Allow", "Allow"] where notifAlert.buttons[b].exists {
+                notifAlert.buttons[b].tap()
+                break
+            }
+        }
+        if app.buttons["alpha-laptop"].exists || app.staticTexts["alpha-laptop"].exists {
+            throw XCTSkip("simulator is seeded with HostDragTests fixtures")
+        }
+        if app.buttons["Back"].exists {
+            app.buttons["Back"].tap()
+        } else if app.buttons["Show Sidebar"].exists {
+            app.buttons["Show Sidebar"].tap()
+        } else if app.buttons["BackButton"].exists {
+            app.buttons["BackButton"].tap()
+        } else if app.navigationBars.buttons["Back"].exists {
+            app.navigationBars.buttons["Back"].tap()
+        }
+        let row = app.buttons["Upload Shell"]
+        if !row.waitForExistence(timeout: 4) {
+            if app.buttons["Show Sidebar"].exists {
+                app.buttons["Show Sidebar"].tap()
+            }
+        }
+        if pairIfNeeded, !row.exists {
+            if app.buttons["Add a Host"].waitForExistence(timeout: 5) {
+                app.buttons["Add a Host"].tap()
+            } else {
+                let settingsBtn = app.buttons["Settings"]
+                XCTAssertTrue(settingsBtn.waitForExistence(timeout: 10))
+                settingsBtn.tap()
+            }
+            let remoteHosts = app.buttons["Remote Hosts"].exists ? app.buttons["Remote Hosts"] : app.staticTexts["Remote Hosts"]
+            XCTAssertTrue(remoteHosts.waitForExistence(timeout: 10))
+            remoteHosts.tap()
+            let addHost = app.buttons["Add Host"]
+            XCTAssertTrue(addHost.waitForExistence(timeout: 10))
+            addHost.tap()
+            let qr = app.buttons["Pair via QR Code"]
+            XCTAssertTrue(qr.waitForExistence(timeout: 10))
+            qr.tap()
+            let backBtn = app.buttons["BackButton"]
+            if backBtn.waitForExistence(timeout: 10) {
+                backBtn.tap()
+            } else if app.navigationBars["Remote Hosts"].buttons["Settings"].exists {
+                app.navigationBars["Remote Hosts"].buttons["Settings"].tap()
+            }
+            let close = app.buttons["Close"]
+            if close.waitForExistence(timeout: 10) {
+                close.tap()
+            } else if app.navigationBars.buttons["Close"].exists {
+                app.navigationBars.buttons["Close"].tap()
+            }
+        }
+        XCTAssertTrue(row.waitForExistence(timeout: 15))
+        row.tap()
+        XCTAssertTrue(app.textViews["composer.message"].waitForExistence(timeout: 15))
+    }
+
+    @MainActor
+    private func attachTwoPhotos(app: XCUIApplication) throws {
+        let addBtn = app.buttons.matching(identifier: "Add Attachment").firstMatch
+        XCTAssertTrue(addBtn.waitForExistence(timeout: 5))
+        addBtn.tap()
+        let photoAction = app.buttons["Photo"]
+        XCTAssertTrue(photoAction.waitForExistence(timeout: 5))
+        photoAction.tap()
+
+        let nav = app.navigationBars["Add Photo"]
+        XCTAssertTrue(nav.waitForExistence(timeout: 15))
+        let confirmAdd = nav.buttons["Add"].waitForExistence(timeout: 3) ? nav.buttons["Add"] : app.buttons["Add"]
+        XCTAssertTrue(confirmAdd.waitForExistence(timeout: 5))
+
+        // Select the first two visible photos in Row 1 of PHPickerViewController's
+        // sheet, bounded strictly within the sheet's horizontal and vertical frame.
+        let navFrame = nav.frame
+        let minX = navFrame.minX - 8
+        let maxX = navFrame.maxX + 8
+        let minY = navFrame.maxY + 8
+        let maxY = app.frame.height - 16
+        let picker = XCUIApplication(bundleIdentifier: "com.apple.mobileslideshow.photospicker")
+        var chosenFrames: [CGRect] = []
+        let gridDeadline = Date().addingTimeInterval(6)
+        while Date() < gridDeadline, chosenFrames.count < 2 {
+            let localFrames = app.images.allElementsBoundByIndex.compactMap { img -> CGRect? in
+                guard img.exists else { return nil }
+                let f = img.frame
+                return (f.minX >= minX && f.maxX <= maxX && f.minY >= minY && f.maxY <= maxY && f.width >= 40 && f.height >= 40) ? f : nil
+            }
+            if localFrames.count >= 2 {
+                chosenFrames = Array(localFrames.prefix(2))
+                break
+            }
+            let remoteFrames = picker.images.allElementsBoundByIndex.compactMap { img -> CGRect? in
+                guard img.exists else { return nil }
+                let f = img.frame
+                return (f.minX >= minX && f.maxX <= maxX && f.minY >= minY && f.maxY <= maxY && f.width >= 40 && f.height >= 40) ? f : nil
+            }
+            if remoteFrames.count >= 2 {
+                chosenFrames = Array(remoteFrames.prefix(2))
+                break
+            }
+        }
+        let origin = app.coordinate(withNormalizedOffset: .zero)
+        for rect in chosenFrames {
+            origin.withOffset(CGVector(dx: rect.midX, dy: rect.midY)).tap()
+        }
+        if !confirmAdd.isEnabled {
+            let rowY = min(app.frame.height - 40, navFrame.maxY + 64)
+            origin.withOffset(CGVector(dx: navFrame.minX + navFrame.width * 0.2, dy: rowY)).tap()
+            origin.withOffset(CGVector(dx: navFrame.minX + navFrame.width * 0.5, dy: rowY)).tap()
+        }
+        let deadline = Date().addingTimeInterval(5)
+        while !confirmAdd.isEnabled, Date() < deadline {
+            _ = confirmAdd.exists
+        }
+        guard confirmAdd.isEnabled else {
+            throw XCTSkip("simulator photo library contains no selectable photos")
+        }
+        confirmAdd.tap()
+        XCTAssertTrue(nav.waitForNonExistence(timeout: 10))
+
+        let thumbs = app.otherElements.matching(identifier: "composer.attachment")
+        let stageDeadline = Date().addingTimeInterval(10)
+        while thumbs.count < 2, Date() < stageDeadline {
+            _ = thumbs.firstMatch.exists
+        }
+        XCTAssertEqual(thumbs.count, 2, "expected 2 staged photo thumbnails")
+    }
+
+    @MainActor
+    private func checkTwoAttachmentsGeometryAndTap(app: XCUIApplication, context: String) -> String? {
+        let composer = app.otherElements["composer"]
+        let thumbs = app.otherElements.matching(identifier: "composer.attachment").allElementsBoundByIndex
+        let removes = app.buttons.matching(identifier: "composer.attachment.remove").allElementsBoundByIndex
+        guard thumbs.count == 2, removes.count == 2 else {
+            return "[\(context)] expected 2 thumbnails and 2 remove buttons, got thumbs=\(thumbs.count) removes=\(removes.count)"
+        }
+        let composerFrame = composer.frame
+        let pairs = zip(
+            thumbs.sorted { $0.frame.minX < $1.frame.minX },
+            removes.sorted { $0.frame.minX < $1.frame.minX }
+        )
+        for (idx, pair) in pairs.enumerated() {
+            let thumbFrame = pair.0.frame
+            let removeFrame = pair.1.frame
+            let allowedThumb = thumbFrame.insetBy(dx: -1, dy: -1)
+            if !allowedThumb.contains(removeFrame) {
+                return "[\(context)] remove[\(idx)] frame \(removeFrame) protrudes outside thumbnail frame \(thumbFrame)"
+            }
+            if !composerFrame.insetBy(dx: -1, dy: -1).contains(removeFrame) {
+                return "[\(context)] remove[\(idx)] frame \(removeFrame) protrudes outside composer frame \(composerFrame)"
+            }
+            if removeFrame.width < 44 || removeFrame.height < 44 {
+                return "[\(context)] remove[\(idx)] frame \(removeFrame) is smaller than 44x44 pt minimum hit target"
+            }
+            if !pair.1.isHittable {
+                return "[\(context)] remove[\(idx)] is not hittable"
+            }
+        }
+        // Tap near the top-right badge of the first thumbnail's remove button and verify removal.
+        let firstRemove = removes.sorted { $0.frame.minX < $1.frame.minX }[0]
+        firstRemove.coordinate(withNormalizedOffset: CGVector(dx: 0.78, dy: 0.22)).tap()
+        let remaining = app.otherElements.matching(identifier: "composer.attachment")
+        let deadline = Date().addingTimeInterval(5)
+        while remaining.count != 1, Date() < deadline {
+            _ = remaining.firstMatch.exists
+        }
+        if remaining.count != 1 {
+            return "[\(context)] tapping first remove badge left \(remaining.count) attachments instead of 1"
+        }
+        shot("composer-attachments-\(context)-after-remove")
+        return nil
+    }
+
+    @MainActor
+    private static func removeTestHostIfPresent(_ app: XCUIApplication, port: UInt16) {
+        guard app.state == .runningForeground, port != 0 else { return }
+        if app.navigationBars["Add Photo"].buttons["Close"].exists {
+            app.navigationBars["Add Photo"].buttons["Close"].tap()
+        }
+        // If Remote Hosts is still open from an interrupted run, delete only this port's cell.
+        if app.navigationBars["Remote Hosts"].exists {
+            let cell = app.collectionViews.cells.containing(.staticText, identifier: "http://127.0.0.1:\(port)").firstMatch
+            if cell.exists, cell.buttons["Edit Host"].exists {
+                cell.buttons["Edit Host"].tap()
+                if app.collectionViews.buttons["Delete Host"].waitForExistence(timeout: 3) {
+                    app.collectionViews.buttons["Delete Host"].tap()
+                    let confirm = app.sheets.buttons["Delete Host"].exists
+                        ? app.sheets.buttons["Delete Host"]
+                        : app.buttons.matching(identifier: "Delete Host").allElementsBoundByIndex.last
+                    if let confirm, confirm.waitForExistence(timeout: 3) {
+                        confirm.tap()
+                    }
+                }
+            }
+            if app.buttons["BackButton"].exists {
+                app.buttons["BackButton"].tap()
+            }
+            if app.buttons["Close"].waitForExistence(timeout: 3) {
+                app.buttons["Close"].tap()
+            }
+            return
+        }
+        if app.buttons["Close"].exists {
+            app.buttons["Close"].tap()
+        }
+        if app.buttons["Back"].waitForExistence(timeout: 2) {
+            app.buttons["Back"].tap()
+        } else if app.buttons["Show Sidebar"].exists {
+            app.buttons["Show Sidebar"].tap()
+        } else if app.buttons["BackButton"].exists {
+            app.buttons["BackButton"].tap()
+        }
+        let ipLabel = app.buttons["127.0.0.1"]
+        guard ipLabel.waitForExistence(timeout: 3) else { return }
+        let targetY = ipLabel.frame.midY
+        let matchingMenu = app.buttons.matching(identifier: "Host Menu").allElementsBoundByIndex.first { btn in
+            btn.exists && abs(btn.frame.midY - targetY) < 28
+        } ?? app.buttons.matching(NSPredicate(format: "label == 'Host Menu'")).allElementsBoundByIndex.first { btn in
+            btn.exists && abs(btn.frame.midY - targetY) < 28
+        }
+        guard let matchingMenu else { return }
+        matchingMenu.tap()
+        let remove = app.buttons["Remove"]
+        if remove.waitForExistence(timeout: 3) {
+            remove.tap()
+            _ = ipLabel.waitForNonExistence(timeout: 3)
+        }
+    }
+
+    @MainActor
+    private func shot(_ name: String) {
+        let s = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        s.name = name
+        s.lifetime = .keepAlways
+        add(s)
+    }
+}
+
+/// Minimal localhost WebSocket Rex server (`api_revision: 11`) so XCUITests can
+/// open a live upload-capable terminal without external hosts or secrets.
+private final class LocalUploadRex: @unchecked Sendable {
+    private let queue = DispatchQueue(label: "test.local-upload-rex")
+    private let ready = DispatchSemaphore(value: 0)
+    private var signaled = false
+    private let listener: NWListener
+    private var connections: [NWConnection] = []
+    private static let welcome = Data([0x81] + [UInt8](repeating: 7, count: 19) + [0x60, 0xEA, 0, 0] + [1, 0, 0, 0, 0, 0, 0, 0])
+
+    init() throws {
+        let ws = NWProtocolWebSocket.Options()
+        ws.autoReplyPing = true
+        ws.maximumMessageSize = 1 << 20
+        ws.setClientRequestHandler(queue) { protocols, _ in
+            NWProtocolWebSocket.Response(status: .accept, subprotocol: protocols.first)
+        }
+        let params = NWParameters.tcp
+        params.defaultProtocolStack.applicationProtocols.insert(ws, at: 0)
+        listener = try NWListener(using: params, on: .any)
+        listener.stateUpdateHandler = { [weak self] state in
+            guard let self, !self.signaled else { return }
+            switch state {
+            case .ready, .failed, .cancelled:
+                self.signaled = true
+                self.ready.signal()
+            default:
+                break
+            }
+        }
+        listener.newConnectionHandler = { [weak self] c in
+            self?.accept(c)
+        }
+        listener.start(queue: queue)
+    }
+
+    func waitPort() throws -> UInt16 {
+        guard ready.wait(timeout: .now() + 5) == .success,
+              let p = queue.sync(execute: { listener.port?.rawValue }),
+              p != 0 else {
+            throw URLError(.cannotConnectToHost)
+        }
+        return p
+    }
+
+    func stop() {
+        queue.sync {
+            listener.cancel()
+            connections.forEach { $0.cancel() }
+            connections.removeAll()
+        }
+    }
+
+    private func accept(_ c: NWConnection) {
+        connections.append(c)
+        c.start(queue: queue)
+        receive(c, first: true)
+    }
+
+    private func receive(_ c: NWConnection, first: Bool) {
+        c.receiveMessage { [weak self] content, _, _, error in
+            guard let self, error == nil, let content else { return }
+            if first, content.first == 0x01 || content.first == 0x02 {
+                Self.sendBinary(c, Self.welcome)
+                Self.sendBinary(c, Data("alice@laptop:~ $ ".utf8))
+                return
+            }
+            self.handleControl(c, content)
+            self.receive(c, first: false)
+        }
+    }
+
+    private func handleControl(_ c: NWConnection, _ d: Data) {
+        guard let m = try? JSONSerialization.jsonObject(with: d) as? [String: Any] else { return }
+        switch m["type"] as? String {
+        case "hello":
+            Self.sendJSON(c, [
+                "type": "welcome",
+                "protocol": "rex.control.v1",
+                "api_revision": 11,
+                "client": ["id": "c1", "reconnect_token": "t1"],
+                "features": [],
+            ])
+        case "request":
+            let id = m["id"] ?? ""
+            let method = m["method"] as? String ?? ""
+            let view: [String: Any] = [
+                "revision": 1,
+                "session_id": "s1",
+                "label": "",
+                "windows": [[
+                    "window_id": "w1",
+                    "focused_block_id": "b1",
+                    "layers": [[
+                        "blocks": [["block_id": "b1"]],
+                    ]],
+                ]],
+            ]
+            let payload: [String: Any]
+            switch method {
+            case "session.bootstrap":
+                payload = [
+                    "attach_all": ["sessions": [["session_id": "s1", "label": ""]]],
+                    "selected_session": ["view": view],
+                ]
+            case "session.view":
+                payload = view
+            case "com.superlogical.terminal.title":
+                payload = ["title": "Upload Shell"]
+            case "data.connect", "com.superlogical.terminal.upload_begin":
+                payload = ["ticket": "uH4mJKwzMarlTNT-UiyMog"]
+            default:
+                payload = [:]
+            }
+            Self.sendJSON(c, ["type": "response", "id": id, "seq": 1, "payload": payload])
+        default:
+            break
+        }
+    }
+
+    private static func sendJSON(_ c: NWConnection, _ obj: [String: Any]) {
+        guard let data = try? JSONSerialization.data(withJSONObject: obj) else { return }
+        let meta = NWProtocolWebSocket.Metadata(opcode: .text)
+        c.send(content: data, contentContext: .init(identifier: "json", metadata: [meta]), isComplete: true, completion: .idempotent)
+    }
+
+    private static func sendBinary(_ c: NWConnection, _ data: Data) {
+        let meta = NWProtocolWebSocket.Metadata(opcode: .binary)
+        c.send(content: data, contentContext: .init(identifier: "bin", metadata: [meta]), isComplete: true, completion: .idempotent)
     }
 }
