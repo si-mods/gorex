@@ -67,10 +67,12 @@ final class SSHKeysUITests: XCTestCase {
 
         // The detail list builds its rows lazily: on a short screen the
         // Delete Key row is below the fold and not in the tree until shown.
+        // A swipe stays inside the element's frame, so swipe the list, not
+        // a label in it.
         let deleteBtn = app.buttons["Delete Key"]
-        let publicKey = app.staticTexts["OpenSSH Format"]
+        let detailList = app.collectionViews.containing(.staticText, identifier: "OpenSSH Format").firstMatch
         for _ in 0..<4 where !deleteBtn.exists {
-            publicKey.swipeUp()
+            detailList.swipeUp()
         }
         XCTAssertTrue(deleteBtn.waitForExistence(timeout: 5))
         deleteBtn.tap()
