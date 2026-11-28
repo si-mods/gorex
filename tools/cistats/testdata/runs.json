@@ -55,7 +55,7 @@
     "name": "test-windows",
     "labels": [
      "self-hosted",
-     "yibo-pc"
+     "alice-pc"
     ],
     "conclusion": "success",
     "runner_name": "pc",
