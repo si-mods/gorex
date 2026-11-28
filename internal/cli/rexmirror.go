@@ -179,14 +179,7 @@ func (s *syncWriter) Write(p []byte) (int, error) {
 }
 
 // oscSafe drops the control characters an OSC title cannot hold.
-func oscSafe(s string) string {
-	return strings.Map(func(r rune) rune {
-		if r < 0x20 || r == 0x7f {
-			return -1
-		}
-		return r
-	}, s)
-}
+func oscSafe(s string) string { return printable(s) }
 
 // statusOSC is a program status report, as OSC 7501 carries it.
 func statusOSC(st rexpeer.Status) string {

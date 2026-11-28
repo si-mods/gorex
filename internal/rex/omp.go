@@ -133,18 +133,8 @@ func ompSession(env func(string) string, dir string, args []string, tty, home st
 		home, _ = os.UserHomeDir()
 	}
 	data, state := ompDirs(env, args, home)
-	real := func(p string) string {
-		if r, err := filepath.EvalSymlinks(p); err == nil {
-			return r
-		}
-		return p
-	}
-	if name, ok := strings.CutPrefix(tty, "/dev/"); ok {
-		b, err := os.ReadFile(filepath.Join(state, "terminal-sessions", strings.ReplaceAll(name, "/", "-")))
-		lines := strings.Split(strings.TrimSpace(string(b)), "\n")
-		if err == nil && len(lines) >= 2 && samePath(real(lines[0]), real(dir)) && exists(lines[1]) {
-			file = lines[1]
-		}
+	if cand, ok := readOmpTTYPointer(state, tty, dir); ok && exists(cand) {
+		file = cand
 	}
 	if file == "" {
 		sessions := filepath.Join(data, "sessions", ompSlug(dir, home))
@@ -167,6 +157,34 @@ func ompSession(env func(string) string, dir string, args []string, tty, home st
 		return "", "", ""
 	}
 	return id, data, file
+}
+
+// readOmpTTYPointer reads omp's per-tty terminal-sessions pointer file under
+// state and returns the recorded conversation path when its working directory
+// matches dir.
+func readOmpTTYPointer(state, tty, dir string) (string, bool) {
+	name, ok := strings.CutPrefix(tty, "/dev/")
+	if !ok || state == "" {
+		return "", false
+	}
+	b, err := os.ReadFile(filepath.Join(state, "terminal-sessions", strings.ReplaceAll(name, "/", "-")))
+	if err != nil {
+		return "", false
+	}
+	lines := strings.Split(strings.TrimSpace(string(b)), "\n")
+	if len(lines) < 2 {
+		return "", false
+	}
+	real := func(p string) string {
+		if r, err := filepath.EvalSymlinks(p); err == nil {
+			return r
+		}
+		return p
+	}
+	if !samePath(real(lines[0]), real(dir)) {
+		return "", false
+	}
+	return lines[1], true
 }
 
 // ompID is the conversation id of omp's file name, <time>_<id>.jsonl,

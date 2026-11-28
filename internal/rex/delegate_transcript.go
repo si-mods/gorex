@@ -261,18 +261,10 @@ func (ompTranscript) FindFile(dir, tty, home, _, agentSession string, startedAt 
 
 	// On Unix, check omp's per-tty pointer directly without falling back to
 	// ompSession's unguarded newest-file scan (which can match old sessions).
-	if name, ok := strings.CutPrefix(tty, "/dev/"); ok && state != "" {
-		b, err := os.ReadFile(filepath.Join(state, "terminal-sessions", strings.ReplaceAll(name, "/", "-")))
-		lines := strings.Split(strings.TrimSpace(string(b)), "\n")
-		if err == nil && len(lines) >= 2 && dir != "" {
-			real := func(p string) string {
-				if r, err := filepath.EvalSymlinks(p); err == nil {
-					return r
-				}
-				return p
-			}
-			cand := filepath.Clean(lines[1])
-			if samePath(real(lines[0]), real(dir)) && (agentSession != "" || !isExcludedPath(exclude, cand)) {
+	if dir != "" {
+		if ptr, ok := readOmpTTYPointer(state, tty, dir); ok {
+			cand := filepath.Clean(ptr)
+			if agentSession != "" || !isExcludedPath(exclude, cand) {
 				if agentSession == "" || strings.Contains(filepath.Base(cand), agentSession) {
 					if st, err := os.Stat(cand); err == nil && !st.IsDir() {
 						if agentSession != "" || cutoff.IsZero() || !st.ModTime().Before(cutoff) {

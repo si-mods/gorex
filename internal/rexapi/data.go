@@ -1020,7 +1020,7 @@ func (s *stream) ended(code int) {
 // the client's own read of Rex's messages too, and an escape sequence;
 // then a reset clears the screen and scrollback for the snapshot that
 // follows.
-const resyncReset = "\x1b\\\x1bc\x1b[H\x1b[2J\x1b[3J"
+const resyncReset = "\x18\x1b\\\x1bc\x1b[H\x1b[2J\x1b[3J"
 
 // startResync attaches to the session again, in the background, for
 // applyResync, unless an attach is under way.

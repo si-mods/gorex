@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+
+	"gorex/internal/homedir"
 )
 
 // homeDir is the home directory of the server's user.
@@ -24,7 +26,7 @@ func (s *Server) homeDir() (string, error) {
 // CLAUDE_CONFIG_DIR of the server's environment, which they inherit, else
 // ~/.claude.
 func (s *Server) claudeConfigDir() (string, error) {
-	if d := os.Getenv("CLAUDE_CONFIG_DIR"); filepath.IsAbs(d) {
+	if d, err := homedir.ClaudeConfigDir(s.home); err == nil && filepath.IsAbs(d) {
 		return d, nil
 	}
 	home, err := s.homeDir()

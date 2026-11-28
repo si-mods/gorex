@@ -1270,16 +1270,6 @@ func (s *Stream) sync() error {
 	return s.c.Resize(s.sid, cols, rows)
 }
 
-// ResendSize tells the server the terminal's size again, once attached,
-// though it told it that one last: the session ignored it while another
-// held its size.
-func (s *Stream) ResendSize() error {
-	s.mu.Lock()
-	s.sentCols, s.sentRows = 0, 0
-	s.mu.Unlock()
-	return s.sync()
-}
-
 // readOK reads the server's answer to an attach, a byte at a time so as
 // to read nothing past it.
 func readOK(conn net.Conn) error {
