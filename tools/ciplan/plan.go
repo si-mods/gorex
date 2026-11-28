@@ -82,6 +82,10 @@ var ruleTests = []struct {
 	{"TestWorkflowsTargetFork", func(f string) bool {
 		return path.Dir(f) == ".github/workflows" && strings.HasSuffix(f, ".yml")
 	}},
+	// iOS string catalogs.
+	{"TestIOSCatalogIntegrity", func(f string) bool {
+		return strings.HasPrefix(f, "ios/") && strings.HasSuffix(f, ".xcstrings")
+	}},
 }
 
 // result is what CI runs. Package lists are import paths; lines writes them
@@ -165,8 +169,8 @@ func plan(files []string, g graph) result {
 			// repo, so any Go change runs them.
 			addAll(module + "/tools/ciplan")
 			// tools/verify's TestArchBoundariesRepo reads every non-test .go
-			// file under internal/ and ios/.
-			if (strings.HasPrefix(f, "internal/") || strings.HasPrefix(f, "ios/")) && !strings.HasSuffix(f, "_test.go") {
+			// file under internal/, ios/, web/, locales/ and tools/.
+			if (strings.HasPrefix(f, "internal/") || strings.HasPrefix(f, "ios/") || strings.HasPrefix(f, "web/") || strings.HasPrefix(f, "locales/") || strings.HasPrefix(f, "tools/")) && !strings.HasSuffix(f, "_test.go") {
 				addAll(module + "/tools/verify")
 			}
 		} else if !strings.HasSuffix(f, ".md") {

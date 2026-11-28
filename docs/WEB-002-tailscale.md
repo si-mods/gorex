@@ -3,7 +3,7 @@ name: WEB-002
 description: "The web client runs Tailscale in the page with WebAssembly, so it needs no Tailscale app. Use when you change the web tailnet engine."
 metadata:
   created: "2026-11-12"
-  updated: "2026-11-20"
+  updated: "2026-11-28"
 ---
 
 # WEB-002: Web client: built-in Tailscale
@@ -335,7 +335,7 @@ Phases 1 to 3 are built. They have these differences from the design above:
 - **Origin and mode.** The node runs in the origin of the page, as the first version that Security allows. There is no node frame (phase 4). Both state modes exist (#546). **Stay signed in** is the default (`prefs.tailscalePersist`). It keeps the state in IndexedDB (`web/src/tailstore.ts`) through `persistStore` in `web/tailnet/main.go`, which backs `ipn.StateStore` with `mem.Store`. **This tab only** uses an ephemeral node (`LoginEphemeral`) with its state in memory. The tab lock exists. It uses a Web Lock (`navigator.locks`) and a `BroadcastChannel`, and a second tab can take the node over. #547 separates an unsigned reload from an expired Tailscale login. The Security section says that the first version must not keep keys longer than the tab until the frame exists. The code differs from this rule, because **Stay signed in** keeps keys in IndexedDB in the origin of the page.
 - **Thread.** The engine runs on the thread of the page, as tsconnect does, and not in a Worker. Its events reach the page through `queueMicrotask`, so no page code runs inside a call from Go.
 - **Engine.** `web/tailnet` is `package main` with `//go:build js && wasm` in the module of GoRex. `go.mod` did not change (`go mod tidy -diff` shows only line endings). It sets one global, `gorexTailnet(config, emit)`. Its calls are `start`, `login`, `logout`, `stop`, `rename`, `netmap`, `request` and `socket`. `hosts()` belongs to the page (`web/src/tailnet.ts`) and uses `netmap()`.
-- **WebSocket.** The engine does not use `golang.org/x/net/websocket`. That package drops the close code (the page needs 4000, a closed block) and does not join fragments. The engine uses `web/tailnet/wsclient`, a small RFC 6455 client. It is tested against `coder/websocket` with the tests of the desktop.
+- **WebSocket.** The engine does not use `golang.org/x/net/websocket`. That package drops the close code (the page needs 4000, a closed block) and does not join fragments. The engine uses `web/wsclient`, a small RFC 6455 client. It is tested against `coder/websocket` with the tests of the desktop.
 - **Hosts.** The page lists only peers that answered `/api/help`. They stay listed as offline when they go offline. The empty state of the guide names the peers called `*-gorex` that did not answer. The page asks a refusing host again every 15 seconds. It asks a host that did not answer every minute. **Look for GoRex on all my devices** does not exist yet. Besides the events of the network map, the page reads the map every 15 seconds while the node runs. The `hostinfo.SetApp("gorex")` call of the gateway (phase 5) is not done.
 - **Refusals.** The guide maps the 403 messages of the gateway. "does not trust web pages from" means: run `gorex rexapi web allow <origin>`. "lets in only the Tailscale user who signed it in" means: sign in with that account, or run `gorex rexapi tailscale on --allow-tailnet-members`. "built-in Tailscale is off" has its own message.
 - **Settings.** There is no control server field, because the CSP of the page allows only the servers of Tailscale. The device name is in `gorex.settings` (`tailscaleName`). It is random for each tab until the user sets it.

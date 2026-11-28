@@ -89,6 +89,8 @@ func TestPlan(t *testing.T) {
 		{"docs only", []string{"docs/DOC-001-design-docs.md", "README.md", "ios/WhatToTest.md"}, nil, none},
 		{"ios swift only", []string{"ios/GoRex/App.swift", "ios/project.yml"}, nil,
 			with(none, "go", "true", "root_run", "^(TestNoExcuseComments)$")},
+		{"ios xcstrings", []string{"ios/GoRex/Localizable.xcstrings", "ios/GoRex/InfoPlist.xcstrings"}, nil,
+			with(none, "go", "true", "root_run", "^(TestIOSCatalogIntegrity)$")},
 		{"workflow other than ci.yml", []string{".github/workflows/release.yml"}, nil,
 			with(none, "go", "true", "root_run", "^(TestWorkflowsTargetFork)$")},
 		{"web source", []string{"web/src/x.ts"}, nil,

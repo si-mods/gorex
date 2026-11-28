@@ -1,6 +1,6 @@
 // Package wsclient is a small WebSocket client (RFC 6455) over a
-// connection the caller dialed, for the web client's tailnet engine
-// (web/tailnet): it speaks to a GoRex gateway over TLS on the engine's
+// connection the caller dialed, for the web client's engines
+// (web/tailnet, web/tailcat): it speaks to a GoRex gateway over the engine's
 // userspace network stack, where neither the browser's WebSocket nor
 // github.com/coder/websocket's dialer (none under js) can go. Unlike
 // golang.org/x/net/websocket it reports the peer's close code, which the

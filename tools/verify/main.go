@@ -84,7 +84,7 @@ func plan(files []string, f facts) []check {
 		case strings.HasSuffix(p, ".go"):
 			goFiles = append(goFiles, p)
 			addDir(pathDir(p))
-			if strings.HasPrefix(p, "internal/") || strings.HasPrefix(p, "ios/") || strings.HasPrefix(p, "tools/verify/") {
+			if strings.HasPrefix(p, "internal/") || strings.HasPrefix(p, "ios/") || strings.HasPrefix(p, "web/") || strings.HasPrefix(p, "locales/") || strings.HasPrefix(p, "tools/") {
 				arch = true
 			}
 		}
@@ -94,6 +94,8 @@ func plan(files []string, f facts) []check {
 			addDir("./tools/genbrands")
 		case "internal/rexproto/protocol.json", "internal/layout/palette_gen.go", "web/src/rex-protocol.gen.ts", "ios/GoRex/Rex/RexProtocol.gen.swift":
 			addDir("./internal/rexproto")
+		case "locales/en.json", "locales/zh-Hans.json", "locales/catalog_gen.go":
+			addDir("./locales")
 		}
 		web = web || strings.HasPrefix(p, "web/")
 		ios = ios || strings.HasPrefix(p, "ios/")

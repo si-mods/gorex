@@ -1,6 +1,8 @@
 package main
 
 import (
+	"encoding/json"
+	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -8,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -187,5 +190,108 @@ func TestNoExcuseComments(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+func validateIOSCatalog(path string, data []byte) ([]string, error) {
+	var cat struct {
+		SourceLanguage string `json:"sourceLanguage"`
+		Strings        map[string]struct {
+			ShouldTranslate *bool                      `json:"shouldTranslate"`
+			Localizations   map[string]json.RawMessage `json:"localizations"`
+		} `json:"strings"`
+	}
+	if err := json.Unmarshal(data, &cat); err != nil {
+		return nil, fmt.Errorf("%s: invalid JSON: %w", path, err)
+	}
+	var errs []string
+	if cat.SourceLanguage != "en" {
+		errs = append(errs, fmt.Sprintf("%s: sourceLanguage = %q, want \"en\"", path, cat.SourceLanguage))
+	}
+	if len(cat.Strings) == 0 {
+		errs = append(errs, fmt.Sprintf("%s: empty strings catalog", path))
+	}
+	for key, entry := range cat.Strings {
+		if strings.Contains(key, "...") {
+			errs = append(errs, fmt.Sprintf("%s: key %q uses ASCII '...' instead of '…'", path, key))
+		}
+		if key != "" && (entry.ShouldTranslate == nil || *entry.ShouldTranslate) {
+			if _, ok := entry.Localizations["zh-Hans"]; !ok {
+				errs = append(errs, fmt.Sprintf("%s: key %q missing zh-Hans localization", path, key))
+			}
+		}
+		for lang, raw := range entry.Localizations {
+			if strings.Contains(string(raw), "...") {
+				errs = append(errs, fmt.Sprintf("%s: key %q (%s) uses ASCII '...' instead of '…'", path, key, lang))
+			}
+		}
+	}
+	slices.Sort(errs)
+	return errs, nil
+}
+
+// TestIOSCatalogIntegrity validates iOS string catalogs without requiring
+// xcodebuild: valid JSON, English source language, zh-Hans parity for
+// translatable entries, and typographical ellipsis ('…' instead of '...').
+func TestIOSCatalogIntegrity(t *testing.T) {
+	for _, path := range []string{
+		"ios/GoRex/Localizable.xcstrings",
+		"ios/GoRex/InfoPlist.xcstrings",
+		"ios/GoRexWidgets/Localizable.xcstrings",
+	} {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("read %s: %v", path, err)
+		}
+		errs, err := validateIOSCatalog(path, data)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, e := range errs {
+			t.Error(e)
+		}
+	}
+}
+
+func TestValidateIOSCatalogViolations(t *testing.T) {
+	if _, err := validateIOSCatalog("bad.xcstrings", []byte("{not json")); err == nil {
+		t.Fatal("expected invalid JSON error")
+	}
+	bad := []byte(`{
+		"sourceLanguage": "fr",
+		"strings": {
+			"Copy...": {
+				"localizations": {
+					"zh-Hans": {"stringUnit": {"state": "translated", "value": "复制"}}
+				}
+			},
+			"Untranslated": {},
+			"BadZh": {
+				"localizations": {
+					"zh-Hans": {"stringUnit": {"state": "translated", "value": "等待中..."}}
+				}
+			},
+			"BrandLiteral": {
+				"shouldTranslate": false
+			}
+		}
+	}`)
+	errs, err := validateIOSCatalog("test.xcstrings", bad)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := strings.Join(errs, "\n")
+	for _, want := range []string{
+		`sourceLanguage = "fr", want "en"`,
+		`key "Copy..." uses ASCII '...'`,
+		`key "Untranslated" missing zh-Hans localization`,
+		`key "BadZh" (zh-Hans) uses ASCII '...'`,
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("missing expected violation %q in:\n%s", want, got)
+		}
+	}
+	if strings.Contains(got, "BrandLiteral") {
+		t.Errorf("shouldTranslate=false entry must not require zh-Hans:\n%s", got)
 	}
 }
