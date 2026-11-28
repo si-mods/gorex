@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/egoist/mygo/ui"
@@ -265,11 +266,14 @@ func (a *App) paneTransition(c *ui.Context, t *Tab) *ui.ElementTransition {
 	return &tr
 }
 
-// fadeColors tells whether the elements being built fade their colors as
-// they change: not in a pane that moves, as MyGo lays out an element with
-// a Transition of its own where its parent goes, not where it shows on
-// the way.
-var fadeColors = true
+// suppressFadeColors disables color-fade transitions inside a moving pane,
+// as MyGo lays out an element with a Transition of its own where its parent
+// goes, not where it shows on the way.
+var suppressFadeColors atomic.Bool
+
+func fadeColorsEnabled() bool {
+	return !suppressFadeColors.Load()
+}
 
 // layout describes the tree of the tab's panes, their shares, and the one
 // zoomed.

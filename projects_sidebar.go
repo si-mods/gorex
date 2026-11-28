@@ -796,7 +796,7 @@ func (a *App) projectNewTabRow(c *ui.Context, k *colors, w *Workspace, agents []
 			paintFace(add, k, roleTabHoverBackground, hoverFace(k))
 			ck = sidebarHoverColors(k)
 		}
-		if fadeColors {
+		if fadeColorsEnabled() {
 			add.Transition(hoverFade)
 		}
 		col := ck.textMuted
@@ -828,7 +828,7 @@ func (a *App) projectNewTabRow(c *ui.Context, k *colors, w *Workspace, agents []
 					b.Background(k.hover)
 					col = k.text
 				}
-				if fadeColors {
+				if fadeColorsEnabled() {
 					b.Transition(hoverFade)
 				}
 				b.Children(func() {

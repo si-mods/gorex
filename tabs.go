@@ -5,6 +5,7 @@ import (
 	"runtime"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 	"unicode/utf8"
 
@@ -672,13 +673,17 @@ func drawTile(p *ui.Painter, k *colors, r ui.Rect, prog program, glyph bool) {
 // fit, rather than cutting them with an ellipsis.
 func fadeText(p *ui.Painter, r ui.Rect, spans []ui.Span) {
 	key := fmt.Sprintf("%.0f|%v", r.W, spans)
+	fadesMu.Lock()
 	f, ok := fades[key]
+	fadesMu.Unlock()
 	if !ok {
 		f = layoutFade(p, r.W, spans)
+		fadesMu.Lock()
 		if len(fades) > 512 {
 			clear(fades)
 		}
 		fades[key] = f
+		fadesMu.Unlock()
 	}
 	p.Clip(r, 0, func() {
 		p.RichText(r.X, r.Y+(r.H-f.h)/2, 0, f.spans...)
@@ -686,7 +691,10 @@ func fadeText(p *ui.Painter, r ui.Rect, spans []ui.Span) {
 }
 
 // fades caches the spans of faded texts, by their width and spans.
-var fades = map[string]fadeLayout{}
+var (
+	fadesMu sync.Mutex
+	fades   = map[string]fadeLayout{}
+)
 
 type fadeLayout struct {
 	spans []ui.Span

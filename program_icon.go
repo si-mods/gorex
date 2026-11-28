@@ -17,6 +17,7 @@ import (
 const maxCustomIconCache = 256
 
 var (
+	customIconMu      sync.Mutex
 	customSVGCache    = map[string]*ui.SVG{}
 	customBitmapCache = map[string]ui.ImageSource{}
 
@@ -102,6 +103,8 @@ func customIconSVG(ic *rex.ProgramIcon) *ui.SVG {
 		return nil
 	}
 	key := programIconKey(ic)
+	customIconMu.Lock()
+	defer customIconMu.Unlock()
 	if s, ok := customSVGCache[key]; ok {
 		return s
 	}
@@ -127,6 +130,8 @@ func customIconBitmap(ic *rex.ProgramIcon) ui.ImageSource {
 		return nil
 	}
 	key := programIconKey(ic)
+	customIconMu.Lock()
+	defer customIconMu.Unlock()
 	if src, ok := customBitmapCache[key]; ok {
 		return src
 	}

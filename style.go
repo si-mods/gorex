@@ -870,21 +870,21 @@ func Fragment(dst vec4, pos vec2) vec4 {
 }
 `)
 
-// The background's uniforms, and the values it draws with, set again for
-// each frame.
+// The background's uniforms, and a pool of shader.Values reused across frames.
 var (
-	bgValues                                   = background.NewValues()
+	bgValuesPool                               = sync.Pool{New: func() any { return background.NewValues() }}
 	bgTopU, bgMidU, bgLowU, bgBottomU, bgTintU = background.Uniform("Top"), background.Uniform("Mid"),
 		background.Uniform("Low"), background.Uniform("Bottom"), background.Uniform("Tint")
 	bgAlphaU = background.Uniform("Alpha")
 )
 
 // backgroundOptions returns what the background shader draws with: k's
-// colors, as opaque as alpha, in the values made once.
+// colors, as opaque as alpha, in pooled shader.Values.
 func backgroundOptions(k *colors, alpha float32) shader.Options {
-	bgValues.Color(bgTopU, k.bgTop).Color(bgMidU, k.bgMid).Color(bgLowU, k.bgLow).
+	vals := bgValuesPool.Get().(*shader.Values)
+	vals.Color(bgTopU, k.bgTop).Color(bgMidU, k.bgMid).Color(bgLowU, k.bgLow).
 		Color(bgBottomU, k.bgBottom).Color(bgTintU, k.bgTint).Float(bgAlphaU, alpha)
-	return shader.Options{Values: bgValues}
+	return shader.Options{Values: vals}
 }
 
 // paintBackground paints the window's background, as opaque as alpha: 1,
@@ -902,7 +902,9 @@ func paintBackground(p *ui.Painter, r ui.Rect, k *colors, alpha float32, dark, m
 		return
 	}
 	if p.Accelerated() {
-		background.Draw(p, r, backgroundOptions(k, alpha))
+		opts := backgroundOptions(k, alpha)
+		background.Draw(p, r, opts)
+		bgValuesPool.Put(opts.Values)
 		return
 	}
 	top, mid, low, bottom, tint := k.bgTop, k.bgMid, k.bgLow, k.bgBottom, k.bgTint

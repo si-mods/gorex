@@ -545,8 +545,8 @@ func TestWorkingDotsAnimate(t *testing.T) {
 	}
 	t.Run("unfocused", func(t *testing.T) {
 		prefs = settings{}
-		breathing = false
-		t.Cleanup(func() { breathing = true })
+		unfocusedBreathing.Store(true)
+		t.Cleanup(func() { unfocusedBreathing.Store(false) })
 		tt := ui.NewTester(func(c *ui.Context) { workingDots(c, ui.RGBA(120, 120, 128, 1)) }, 40, 40)
 		tt.Frame()
 		before := slices.Clone(tt.Image().Pix)
