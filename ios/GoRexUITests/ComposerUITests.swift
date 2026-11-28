@@ -2,7 +2,8 @@ import XCTest
 
 /// The compose bar (docs/IOS-025-composer.md): it is up only while
 /// Settings > Terminal's Composer Mode is on — here the defaults
-/// argument — pinned over the key bar, the mic moved beside its field.
+/// argument — pinned in the key bar's place on an iPhone (IOS-030), the
+/// mic moved beside its field.
 /// Demo Mode's host takes no uploads, so the attach menu stays away; the
 /// test covers the message side.
 final class ComposerUITests: XCTestCase {
@@ -44,12 +45,9 @@ final class ComposerUITests: XCTestCase {
         let row = app.buttons["Shell"]
         XCTAssertTrue(row.waitForExistence(timeout: 15))
         row.tap()
-        let esc = app.buttons.matching(identifier: "Esc").firstMatch
-        var shown = false
-        for _ in 0..<15 where !shown {
-            shown = esc.waitForExistence(timeout: 0.5) || message.waitForExistence(timeout: 0.5)
-        }
-        XCTAssertTrue(shown)
+        let shown = app.descendants(matching: .any).matching(NSPredicate(
+            format: "identifier == 'Esc' OR label == 'Esc' OR identifier == 'composer.message'")).firstMatch
+        XCTAssertTrue(shown.waitForExistence(timeout: 15))
     }
 
     /// Turns Composer Mode off where an earlier run left it on: the
@@ -58,15 +56,21 @@ final class ComposerUITests: XCTestCase {
     /// also hide every write the test makes. With the keyboard down, a
     /// swipe down on the grabber closes the mode, as a user does.
     private func composerModeOff() {
+        guard message.exists else { return }
         let grabber = app.otherElements["composer.grabber"]
-        // A second swipe when the first only lowered the keyboard.
-        for _ in 0..<2 where message.exists {
-            XCTAssertTrue(grabber.waitForExistence(timeout: 5))
+        XCTAssertTrue(grabber.waitForExistence(timeout: 5))
+        func swipeDown() {
             let start = grabber.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
             start.press(forDuration: 0.05, thenDragTo: start.withOffset(CGVector(dx: 0, dy: 90)))
-            _ = message.waitForNonExistence(timeout: 5)
         }
-        XCTAssertFalse(message.exists)
+        // The first swipe lowers the keyboard where it is up, the next
+        // closes the mode.
+        if app.keyboards.element.exists {
+            swipeDown()
+            XCTAssertTrue(app.keyboards.element.waitForNonExistence(timeout: 5))
+        }
+        swipeDown()
+        XCTAssertTrue(message.waitForNonExistence(timeout: 5))
     }
 
     /// The compose bar's message field, which names the demo's block.
@@ -170,7 +174,7 @@ final class ComposerUITests: XCTestCase {
         }
         shot("composer-mode-rest")
 
-        // Raising the keyboard collapses the key bar under the compose bar,
+        // Raising the keyboard keeps the key bar hidden under the compose bar,
         // grows the bar cleanly for multiple lines, keeps +, mic, and Send
         // aligned to the bottom row, and routes Backspace to the compose field.
         message.tap()
