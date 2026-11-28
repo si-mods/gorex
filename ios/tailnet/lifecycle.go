@@ -10,12 +10,13 @@ package tailnet
 import (
 	"context"
 	"errors"
-	"maps"
 	"reflect"
 	"sync"
 	"sync/atomic"
 	"time"
 	"unsafe"
+
+	"gorex/internal/tailcatpool"
 
 	"github.com/tailscale/tailcat"
 	"github.com/tailscale/wireguard-go/device"
@@ -199,7 +200,7 @@ func closeSockets(mc *magicsock.Conn) {
 // systemPeers is an engine's subsystems and its peers.
 type systemPeers struct {
 	addr  string
-	p     *pooledTailcat
+	p     *tailcatpool.Entry
 	sys   *tsd.System
 	peers []key.NodePublic
 }
@@ -216,19 +217,9 @@ func resetTailcat() (wait func()) {
 	var wg sync.WaitGroup
 	for _, s := range tailcatSystems() {
 		wg.Go(func() {
-			tcMu.Lock()
-			if tcClients[s.addr] == s.p {
-				s.p.used = false
-			}
-			tcMu.Unlock()
+			tcPool.MarkCold(s.addr, s.p)
 			if errors.Is(resetSockets(s.sys, s.peers), errStuck) {
-				tcMu.Lock()
-				if tcClients[s.addr] == s.p {
-					delete(tcClients, s.addr)
-					s.p.dead = true // its dials take a new client (retire)
-				}
-				tcMu.Unlock()
-				go s.p.tc.Close()
+				tcPool.Evict(s.addr, s.p)
 				return
 			}
 			tailcatWarms.Add(1)
@@ -247,24 +238,22 @@ var tailcatWarms atomic.Int64
 // server add the client as a peer again, as it must for a server
 // restarted in the suspension, and the disco ping finds a path and
 // shakes hands. The dial that follows only sends.
-func warm(p *pooledTailcat) {
+func warm(p *tailcatpool.Entry) {
 	ctx, cancel := context.WithTimeout(context.Background(), tailcatDial)
 	defer cancel()
-	if _, err := p.tc.Ping(ctx); err != nil {
+	if _, err := p.Client().Ping(ctx); err != nil {
 		return
 	}
-	_, _ = p.tc.DiscoPing(ctx)
+	_, _ = p.Client().DiscoPing(ctx)
 }
 
 // tailcatSystems is the subsystems of each started tailcat client, with
 // its server as its peer.
 func tailcatSystems() []systemPeers {
-	tcMu.Lock()
-	clients := maps.Clone(tcClients)
-	tcMu.Unlock()
+	clients := tcPool.Snapshot()
 	var systems []systemPeers
 	for addr, p := range clients {
-		sys := tailcatSystem(p.tc)
+		sys := tailcatSystem(p.Client())
 		if sys == nil {
 			continue
 		}
