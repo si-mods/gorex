@@ -706,5 +706,7 @@
 	"settingsExtPacksEmpty": "还没有已安装的扩展包。",
 	"settingsExtPacksKindHint": "窗格:{kinds}",
 	"settingsThemeShaderDropped": "未使用主题着色器：{slot}",
-	"settingsThemeShaderNote": "主题着色器提示：{slot}"
+	"settingsThemeShaderNote": "主题着色器提示：{slot}",
+	"tabAgentOperated": "{label}，由智能体操作",
+	"tabAgentTooltip": "智能体：{agent}"
 }

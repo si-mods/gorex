@@ -7,7 +7,9 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
+	"gorex/internal/layout"
 	"gorex/internal/rex"
+	"gorex/locales"
 )
 
 func hasFound(tt *ui.Tester, label string) bool {
@@ -252,5 +254,63 @@ func TestAgentCreatedHighlightPersistsUntilHumanTakeoverOrExit(t *testing.T) {
 	}
 	if _, _, _, ok := agentInfoStateAt(humanScripted, tWrite.Add(60*time.Second)); ok {
 		t.Fatal("human scripted highlight did not expire after 60s")
+	}
+
+	// Non-typing terminal shortcuts (scrollback, copy, select all, zoom) must not clear local agent state.
+	for _, sc := range []struct {
+		mods ui.Modifiers
+		key  ui.Key
+	}{
+		{ui.Shift, ui.KeyPageUp},
+		{ui.Ctrl | ui.Shift, ui.KeyC},
+		{ui.Ctrl | ui.Shift, ui.KeyA},
+		{ui.Ctrl | ui.Shift, ui.KeyPageDown},
+		{ui.Ctrl, ui.KeyInsert},
+		{ui.Ctrl, ui.KeyEqual},
+		{ui.Ctrl, ui.KeyMinus},
+		{ui.Ctrl, ui.Key0},
+	} {
+		if !isNonTypingTerminalShortcut(sc.mods, sc.key) {
+			t.Fatalf("isNonTypingTerminalShortcut(%v, %v) = false, want true", sc.mods, sc.key)
+		}
+	}
+	for _, typing := range []struct {
+		mods ui.Modifiers
+		key  ui.Key
+	}{
+		{0, ui.KeyA},
+		{ui.Shift, ui.KeyA},
+		{ui.Ctrl, ui.KeyC},
+	} {
+		if isNonTypingTerminalShortcut(typing.mods, typing.key) {
+			t.Fatalf("isNonTypingTerminalShortcut(%v, %v) = true, want false", typing.mods, typing.key)
+		}
+	}
+
+	// Remote unmounted tabs match leaf.Host == hostID; localized accessibility label appends suffix.
+	remoteTab := savedTab{
+		ID:    "tab-remote",
+		Focus: 0,
+		Root:  &layout.Node{SID: "sid-remote", Host: "host-remote"},
+	}
+	remoteInfos := map[string]rex.SessionInfo{
+		"sid-remote": {
+			Created: t0,
+			AgentActor: rex.AgentActor{
+				CreatedBy: rex.ActorDelegate,
+				CreatedAt: t0,
+				Agent:     "agy",
+				Active:    true,
+			},
+		},
+	}
+	if gotLabel, _, _, ok := savedTabAgentBadgeAt(t0.Add(time.Minute), remoteTab, "host-remote", remoteInfos); !ok || gotLabel != "agy" {
+		t.Fatalf("savedTabAgentBadgeAt(host-remote) = (%q, %v), want (agy, true)", gotLabel, ok)
+	}
+	if _, _, _, ok := savedTabAgentBadgeAt(t0.Add(time.Minute), remoteTab, "", remoteInfos); ok {
+		t.Fatal("savedTabAgentBadgeAt(local) unexpectedly matched remote leaf")
+	}
+	if got := tabAccessLabel("gorex", "main", true); got != locales.TabAgentOperated("gorex main") {
+		t.Fatalf("tabAccessLabel(active) = %q, want %q", got, locales.TabAgentOperated("gorex main"))
 	}
 }

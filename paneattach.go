@@ -233,7 +233,7 @@ func (a *App) attach(p *Pane, cols, rows int) {
 		if a.dispatchKey(mods, key) {
 			return true
 		}
-		if mods&ui.Super == 0 && !isModifierOnlyKey(key) && !isScrollbackKey(mods, key) {
+		if mods&ui.Super == 0 && !isModifierOnlyKey(key) && !isNonTypingTerminalShortcut(mods, key) {
 			p.clearAgentLocal()
 		}
 		return false

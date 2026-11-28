@@ -213,7 +213,8 @@ func (a *App) tabItem(c *ui.Context, k *colors, i int, t *Tab, width float32, sq
 	e := ui.Row(c.Key(t.ID)).Height(tabH).Basis(width).Shrink(shrink).MinWidth(64).
 		Padding(0, 10, 0, 10).Gap(6).AlignItems(ui.Center).Radius(tabH / 2).Role(ui.RoleTab).AccessSelected(active)
 	name, detail := t.label()
-	e.Label(name + " " + detail)
+	_, _, _, agActive := t.agentBadgeAt(c.Now())
+	e.Label(tabAccessLabel(name, detail, agActive))
 	if !active && e.Hovered() {
 		paintFace(e, k, roleTabHoverBackground, hoverFace(k))
 	}
@@ -600,7 +601,7 @@ func (a *App) tiles(c *ui.Context, k *colors, t *Tab) {
 	w := float32(tileW + tileStep*len(back) + 2)
 	box := ui.Box(c).Size(w, tileH+4).Shrink(0)
 	if agOK {
-		box.Tooltip("Agent: " + agLabel)
+		box.Tooltip(locales.TabAgentTooltip(agLabel))
 	}
 	box.Draw(func(p *ui.Painter, r ui.Rect) {
 		y := r.Y + 2

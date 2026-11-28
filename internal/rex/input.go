@@ -217,6 +217,27 @@ func (k KeyInput) KeyEvent() (terminal.KeyEvent, error) {
 	return ev, nil
 }
 
+// IsTypingPress reports whether k is a non-release, non-modifier key press
+// that produces terminal input when typed by a user.
+func (k KeyInput) IsTypingPress() bool {
+	if k.Action == "release" {
+		return false
+	}
+	if _, err := k.KeyEvent(); err != nil {
+		return false
+	}
+	switch KeyCode(k.Key) {
+	case "ShiftLeft", "ShiftRight",
+		"ControlLeft", "ControlRight",
+		"AltLeft", "AltRight",
+		"SuperLeft", "SuperRight",
+		"MetaLeft", "MetaRight",
+		"CapsLock", "NumLock":
+		return false
+	}
+	return true
+}
+
 // MouseEvent returns the mygo pointer event of an input event.
 func (m MouseInput) MouseEvent() (terminal.MouseEvent, error) {
 	ev := terminal.MouseEvent{Col: m.Col, Row: m.Row}
@@ -278,7 +299,9 @@ func (s *session) keyFromActor(k KeyInput, actor, agent, parentSession string) e
 		return s.inputProgram(encoded)
 	}
 	if actor == "" || actor == ActorHuman {
-		s.clearAgent("key")
+		if HasHumanInputBytes(encoded) {
+			s.clearAgent("key")
+		}
 		return s.inputProgram(encoded)
 	}
 	return s.inputFromActor(encoded, actor, agent, parentSession, "key")

@@ -1,6 +1,6 @@
 ---
 name: IOS-035
-description: "Rex Go highlights agent-driven panes and rows with a calm blue outline and inline agent badge while respecting Reduce Motion, VoiceOver, contrast, and battery rules. Use when you change AgentHighlight.swift, AgentHighlightView.swift, or agentActor handling on iOS."
+description: "Rex Go highlights agent-driven panes and rows with a calm blue outline and program-tile sparkles corner mark while respecting Reduce Motion, VoiceOver, contrast, and battery rules. Use when you change AgentHighlight.swift, AgentHighlightView.swift, or agentActor handling on iOS."
 metadata:
   created: "2026-11-28"
   updated: "2026-11-28"

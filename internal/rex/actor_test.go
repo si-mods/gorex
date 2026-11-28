@@ -4,6 +4,7 @@ package rex
 
 import (
 	"runtime"
+	"slices"
 	"testing"
 	"time"
 )
@@ -370,6 +371,20 @@ func TestAgentActorOnlyHumanTypingSetsTookOverAt(t *testing.T) {
 			t.Fatalf("HasHumanInputBytes(%q) = false, want true", human)
 		}
 	}
+	for _, nonTypingKey := range []KeyInput{
+		{Key: "key_a", Action: "release"},
+		{Key: "shift_left"},
+		{Key: "control_right"},
+		{Key: "super_left"},
+		{Key: "caps_lock"},
+	} {
+		if nonTypingKey.IsTypingPress() {
+			t.Fatalf("KeyInput(%+v).IsTypingPress() = true, want false", nonTypingKey)
+		}
+	}
+	if !(KeyInput{Key: "key_j", Text: "j"}).IsTypingPress() {
+		t.Fatal("KeyInput(key_j).IsTypingPress() = false, want true")
+	}
 
 	s, _ := testServer(t)
 	c := pipe(s, "")
@@ -377,7 +392,7 @@ func TestAgentActorOnlyHumanTypingSetsTookOverAt(t *testing.T) {
 
 	sub := pipe(s, "")
 	defer sub.Close()
-	if err := sub.Subscribe(); err != nil {
+	if err := sub.SubscribeTransfers(); err != nil {
 		t.Fatal(err)
 	}
 
@@ -395,6 +410,7 @@ func TestAgentActorOnlyHumanTypingSetsTookOverAt(t *testing.T) {
 	if !del.AgentActor.Active || !del.AgentActor.TookOverAt.IsZero() || del.AgentActor.CreatedAt.IsZero() {
 		t.Fatalf("initial delegate actor = %+v", del.AgentActor)
 	}
+	fenceActorEvents(t, s, sub)
 
 	att, err := c.AttachConn(Attach{SID: del.ID, Cols: 80, Rows: 24, Focused: true})
 	if err != nil {
@@ -412,6 +428,9 @@ func TestAgentActorOnlyHumanTypingSetsTookOverAt(t *testing.T) {
 			t.Fatalf("InputHuman(%s): %v", tc.name, err)
 		}
 	}
+	waitCond(t, "non-human attach stream bytes processed", func() bool {
+		return !sessionByID(t, c, del.ID).LastInput.IsZero()
+	})
 	if err := c.SendFocus(del.ID, true); err != nil {
 		t.Fatal(err)
 	}
@@ -421,17 +440,29 @@ func TestAgentActorOnlyHumanTypingSetsTookOverAt(t *testing.T) {
 	if err := c.SendKey(del.ID, KeyInput{Key: "key_a", Action: "release"}); err != nil {
 		t.Fatal(err)
 	}
-	// Ordinary CLI / delegate writes keep active=true and tookOverAt zero.
-	if err := c.InputWithAgent(del.ID, []byte("\n"), "agy"); err != nil {
+	if err := c.SendKey(del.ID, KeyInput{Key: "shift_left"}); err != nil {
 		t.Fatal(err)
 	}
 
-	if ev, ok := waitTakeoverEvent(t, sub, del.ID, 80*time.Millisecond); ok {
-		t.Fatalf("non-typing activity emitted false takeover event: %+v", ev)
+	// Assert active=true, zero tookOverAt, and zero takeover events BEFORE any CLI re-arm write.
+	if evs := fenceActorEvents(t, s, sub); slices.ContainsFunc(evs, func(ev Event) bool { return ev.Kind == "takeover" }) {
+		t.Fatalf("non-typing activity emitted false takeover event in %+v", evs)
 	}
 	got := sessionByID(t, c, del.ID).AgentActor
 	if !got.Active || !got.TookOverAt.IsZero() {
 		t.Fatalf("delegate actor after non-typing activity = %+v, want active=true and zero tookOverAt", got)
+	}
+
+	// Ordinary CLI / delegate writes also keep active=true and tookOverAt zero.
+	if err := c.InputWithAgent(del.ID, []byte("\n"), "agy"); err != nil {
+		t.Fatal(err)
+	}
+	if evs := fenceActorEvents(t, s, sub); slices.ContainsFunc(evs, func(ev Event) bool { return ev.Kind == "takeover" }) {
+		t.Fatalf("CLI write emitted false takeover event in %+v", evs)
+	}
+	got = sessionByID(t, c, del.ID).AgentActor
+	if !got.Active || !got.TookOverAt.IsZero() {
+		t.Fatalf("delegate actor after CLI write = %+v, want active=true and zero tookOverAt", got)
 	}
 
 	// Real human input via InputHuman (iOS/web terminal write) sets tookOverAt.
@@ -444,6 +475,24 @@ func TestAgentActorOnlyHumanTypingSetsTookOverAt(t *testing.T) {
 	afterHuman := sessionByID(t, c, del.ID).AgentActor
 	if afterHuman.Active || afterHuman.TookOverAt.IsZero() {
 		t.Fatalf("after real InputHuman keystroke: %+v, want inactive with tookOverAt", afterHuman)
+	}
+}
+
+func fenceActorEvents(t *testing.T, s *Server, sub *Client) []Event {
+	t.Helper()
+	id := newID()
+	s.transferred(Transfer{ID: id, SID: "fence", Direction: "put", State: "done"})
+	var evs []Event
+	for deadline := time.After(5 * time.Second); ; {
+		select {
+		case ev := <-sub.Events():
+			if ev.Kind == "transfer" && ev.Transfer != nil && ev.Transfer.ID == id {
+				return evs
+			}
+			evs = append(evs, ev)
+		case <-deadline:
+			t.Fatalf("timed out waiting for event fence after %d events", len(evs))
+		}
 	}
 }
 

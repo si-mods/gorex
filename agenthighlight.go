@@ -3,12 +3,14 @@ package main
 import (
 	"cmp"
 	"math"
+	"strings"
 	"time"
 
 	"github.com/egoist/mygo/ui"
 
 	"gorex/internal/layout"
 	"gorex/internal/rex"
+	"gorex/locales"
 )
 
 // Timings for the agent-driven pane highlight (docs/DSK-016-agent-pane-highlight.md).
@@ -135,14 +137,23 @@ func (t *Tab) agentBadgeAt(now time.Time) (label string, fade float32, rem time.
 	return label, fade, rem, ok
 }
 
+// tabAccessLabel formats a tab's accessibility label, appending the localized
+// agent-operated suffix when agentActive is true.
+func tabAccessLabel(name, detail string, agentActive bool) string {
+	if !agentActive {
+		return name + " " + detail
+	}
+	return locales.TabAgentOperated(strings.TrimSpace(name + " " + detail))
+}
+
 // savedTabAgentBadgeAt returns the active agent badge for an unmounted tab in
 // another workspace shown in the sidebar.
-func savedTabAgentBadgeAt(now time.Time, t savedTab, infos map[string]rex.SessionInfo) (label string, fade float32, rem time.Duration, ok bool) {
+func savedTabAgentBadgeAt(now time.Time, t savedTab, hostID string, infos map[string]rex.SessionInfo) (label string, fade float32, rem time.Duration, ok bool) {
 	if !agentHighlightOn() || len(infos) == 0 {
 		return "", 0, 0, false
 	}
 	focus := focusedLeaf(t)
-	if focus.Host == "" && focus.SID != "" {
+	if focus.Host == hostID && focus.SID != "" {
 		if in, found := infos[focus.SID]; found {
 			if l, f, r, active := agentInfoStateAt(in, now); active {
 				return l, f, r, true
@@ -151,7 +162,7 @@ func savedTabAgentBadgeAt(now time.Time, t savedTab, infos map[string]rex.Sessio
 	}
 	for _, root := range t.Roots() {
 		for _, leaf := range layout.Leaves(root) {
-			if leaf.Host != "" || leaf.SID == "" {
+			if leaf.Host != hostID || leaf.SID == "" {
 				continue
 			}
 			in, found := infos[leaf.SID]
@@ -187,9 +198,7 @@ func drawAgentPaneBorder(c *ui.Context, card ui.Element, k *colors, p *Pane, car
 	}
 	animates := !unfocusedBreathing.Load() && motion(c) != nil
 	if !animates && rem > 0 {
-		if rem > 0 {
-			c.After(rem + 20*time.Millisecond)
-		}
+		c.After(rem + 20*time.Millisecond)
 	}
 	card.DrawOver(func(pt *ui.Painter, r ui.Rect) {
 		if r.W <= 2 || r.H <= 2 {
@@ -242,7 +251,7 @@ func drawAgentTileMark(p *ui.Painter, fr ui.Rect, k *colors, fade float32) {
 		H: r.H + 2*rimPad,
 	}
 	rimCol := k.panel.Alpha(0.92 * fade)
-	inkCol := k.accentText.Alpha(fade)
+	inkCol := ui.RGBA(255, 255, 255, fade)
 	if int(col.R)+int(col.G)+int(col.B) > 450 {
 		inkCol = k.panel.Alpha(fade)
 	}
@@ -268,6 +277,15 @@ func isModifierOnlyKey(k ui.Key) bool {
 	return k == ui.KeyUnknown || k == ui.KeyBack || k == ui.KeyForward
 }
 
-func isScrollbackKey(mods ui.Modifiers, k ui.Key) bool {
-	return mods == ui.Shift && (k == ui.KeyPageUp || k == ui.KeyPageDown || k == ui.KeyHome || k == ui.KeyEnd)
+func isNonTypingTerminalShortcut(mods ui.Modifiers, k ui.Key) bool {
+	switch mods {
+	case ui.Shift:
+		return k == ui.KeyPageUp || k == ui.KeyPageDown || k == ui.KeyHome || k == ui.KeyEnd
+	case ui.Ctrl | ui.Shift:
+		return k == ui.KeyPageUp || k == ui.KeyPageDown || k == ui.KeyHome || k == ui.KeyEnd ||
+			k == ui.KeyC || k == ui.KeyA || k == ui.KeyEqual || k == ui.KeyMinus
+	case ui.Ctrl:
+		return k == ui.KeyInsert || k == ui.KeyEqual || k == ui.KeyMinus || k == ui.Key0
+	}
+	return false
 }
