@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+
+	"gorex/internal/atomicfile"
 )
 
 // hookCommand is what an agent's session-start hook runs. The trailing
@@ -93,35 +95,7 @@ func writeObject(path string, root map[string]any) error {
 	if err := enc.Encode(root); err != nil {
 		return err
 	}
-	b := buf.Bytes()
-	tmp, err := os.CreateTemp(filepath.Dir(path), ".settings-*")
-	if err != nil {
-		return err
-	}
-	name := tmp.Name()
-	if _, err := tmp.Write(b); err != nil {
-		tmp.Close()
-		os.Remove(name)
-		return err
-	}
-	if err := tmp.Sync(); err != nil {
-		tmp.Close()
-		os.Remove(name)
-		return err
-	}
-	if err := tmp.Close(); err != nil {
-		os.Remove(name)
-		return err
-	}
-	if err := os.Chmod(name, 0o600); err != nil {
-		os.Remove(name)
-		return err
-	}
-	if err := os.Rename(name, path); err != nil {
-		os.Remove(name)
-		return err
-	}
-	return nil
+	return atomicfile.WriteSync(path, buf.Bytes(), 0o600)
 }
 
 // hooksObject returns the hooks map and the SessionStart array, refusing

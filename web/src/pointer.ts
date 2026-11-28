@@ -10,6 +10,7 @@
 // Ctrl (Cmd on the Mac) over a link underlines it, and a click opens it,
 // as on the desktop (links.ts): a URL in a new tab, a host's file with
 // files.ts.
+import { el } from "./dom";
 import { Mods } from "./ghostty";
 import { icon } from "./hosts";
 import { localize, Msg, t } from "./i18n";
@@ -49,13 +50,6 @@ const slop = 10;
 const autoscrollMs = 15;
 /** A handle's knob, in CSS pixels, as iOS's SelectionHandle. */
 const knob = 10;
-
-function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls: string, text?: string): HTMLElementTagNameMap[K] {
-  const e = document.createElement(tag);
-  e.className = cls;
-  if (text !== undefined) e.textContent = text;
-  return e;
-}
 
 /** A key event's or pointer event's modifiers, as Ghostty's Mods. */
 function modsOf(e: { shiftKey: boolean; ctrlKey: boolean; altKey: boolean; metaKey: boolean }): number {

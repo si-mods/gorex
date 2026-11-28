@@ -2,24 +2,14 @@
 // (docs/WEB-002-tailscale.md, State & Tabs). No DOM here so Node tests can
 // exercise the coordination logic directly.
 
+import { openDB as openStoreDB } from "./idb";
+
 const dbName = "gorex-tailnet";
 const storeName = "state";
 const tailnetLockName = "gorex-tailnet-node";
 const channelName = "gorex-tailnet";
 
-function openDB(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    const idb = typeof indexedDB !== "undefined" ? indexedDB : undefined;
-    if (!idb) return reject(new Error("indexedDB unavailable"));
-    const req = idb.open(dbName, 1);
-    req.onupgradeneeded = () => {
-      const db = req.result;
-      if (!db.objectStoreNames.contains(storeName)) db.createObjectStore(storeName);
-    };
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error ?? new Error("indexedDB open failed"));
-  });
-}
+const openDB = () => openStoreDB(dbName, storeName);
 
 /** Reads every persisted Tailscale state key from IndexedDB; returns {} if unavailable. */
 export async function loadTailnetState(): Promise<Record<string, Uint8Array>> {

@@ -10,14 +10,13 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"log"
 	"net"
 	"strconv"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
+	"gorex/internal/tailcatpool"
 	"gorex/internal/tailnode"
 
 	"github.com/tailscale/tailcat"
@@ -37,11 +36,15 @@ var (
 	tcKey key.NodePrivate
 	// tcHosts is each host's tailcat address, by its id.
 	tcHosts = map[string]string{}
-	// tcClients is the tailcat client of each address: one per machine, as
-	// two of one key take each other's packets (internal/rex, #212). One
-	// closes once it had no connection for tailcatIdle.
-	tcClients   = map[string]*pooledTailcat{}
-	tailcatIdle = 3 * time.Minute
+	// tcPool holds one tailcat client per machine, shared with internal/rex.
+	tcPool = &tailcatpool.Pool{
+		LogPrefix: "tailcat",
+		KeyFn: func() (key.NodePrivate, bool) {
+			tcMu.Lock()
+			defer tcMu.Unlock()
+			return tcKey, !tcKey.IsZero()
+		},
+	}
 	// tcScopes ends the dials to each address: SetTailcatHosts cancels
 	// the scope of an address no host has any more, SetTailcatKey all.
 	tcScopes = map[string]tcScope{}
@@ -83,16 +86,12 @@ func SetTailcatKey(privateKey string) error {
 		return nil
 	}
 	tcKey = k
-	old := tcClients
-	tcClients = map[string]*pooledTailcat{}
 	for _, s := range tcScopes {
 		s.cancel() // dials of the old key
 	}
 	tcScopes = map[string]tcScope{}
 	tcMu.Unlock()
-	for _, p := range old {
-		go p.tc.Close() // a stuck bind would block the caller
-	}
+	tcPool.CloseAll()
 	return nil
 }
 
@@ -133,18 +132,11 @@ func SetTailcatHosts(hostsJSON string) error {
 		m[strings.ToLower(h.ID)] = h.Address
 	}
 	tcMu.Lock()
-	defer tcMu.Unlock()
 	tcHosts = m
 	// The clients of addresses no host has go.
 	listed := map[string]bool{}
 	for _, a := range m {
 		listed[a] = true
-	}
-	for a, p := range tcClients {
-		if !listed[a] {
-			delete(tcClients, a)
-			go p.tc.Close()
-		}
 	}
 	for a, s := range tcScopes {
 		if !listed[a] {
@@ -152,6 +144,8 @@ func SetTailcatHosts(hostsJSON string) error {
 			s.cancel()
 		}
 	}
+	tcMu.Unlock()
+	tcPool.KeepOnly(listed)
 	return nil
 }
 
@@ -184,29 +178,8 @@ func tailcatTarget(addr string) (id string, port uint16, ok bool) {
 
 // tailcatDial bounds a dial of a tailcat host, longer than the five
 // seconds the proxy's SOCKS server gives one: a client's first dial
-// connects to DERP and shakes hands. tailcatTry bounds a try of a client
-// that connected before, which fails when its server restarted
-// (internal/rex has the same).
-var (
-	tailcatDial = 15 * time.Second
-	tailcatTry  = 3 * time.Second
-)
-
-// tailcatTries counts the tries of kept clients (a test reads it).
-var tailcatTries atomic.Int64
-
-// tailcatDialing is called once a dial counts on its client; a test
-// replaces it.
-var tailcatDialing = func() {}
-
-// pooledTailcat is the client of an address, as internal/rex's.
-type pooledTailcat struct {
-	tc    *tailcat.Client
-	conns int  // open, or being dialed
-	used  bool // it connected once and no socket reset stranded it since
-	dead  bool // out of the pool and closed (retire, drop)
-	idle  *time.Timer
-}
+// connects to DERP and shakes hands.
+var tailcatDial = 15 * time.Second
 
 // dialTailcat connects to port on the tailcat host id, within
 // tailcatDial. A cancel of ctx ends the dial; ctx's deadline does not.
@@ -239,185 +212,15 @@ func dialTailcat(ctx context.Context, id string, port uint16) (net.Conn, error) 
 	return dialAddr(dctx, addr, port)
 }
 
-// dialAddr connects to port at addr with the client of addr, as
-// internal/rex's dialTailcat: a client that connected before and fails
-// now may have a server that restarted and forgot it, so a new client
-// replaces it (retire). (A Ping to register again does not help: it
-// returns at once for a client that was registered, so the try after it
-// only waited tailcatTry more.)
+// dialAddr connects to port at addr with the pooled client of addr.
 func dialAddr(ctx context.Context, addr string, port uint16) (net.Conn, error) {
 	tcMu.Lock()
-	if tcKey.IsZero() {
-		tcMu.Unlock()
+	k := tcKey
+	tcMu.Unlock()
+	if k.IsZero() {
 		return nil, errors.New("no tailcat key")
 	}
-	p := tcClients[addr]
-	if p == nil {
-		p = newPooledLocked(addr)
-	}
-	if p.idle != nil {
-		p.idle.Stop()
-		p.idle = nil
-	}
-	p.conns++
-	used := p.used
-	tcMu.Unlock()
-	tailcatDialing()
-
-	var c net.Conn
-	var err error
-	if used {
-		t0 := time.Now()
-		var timedOut bool
-		c, timedOut, err = p.try(ctx, port)
-		var fresh *pooledTailcat
-		if err != nil && ctx.Err() == nil {
-			fresh = p.retire(addr, timedOut)
-		}
-		if fresh != nil {
-			tried := time.Since(t0)
-			p.release(addr)
-			p = fresh
-			c, err = p.tc.DialTCPPort(ctx, port)
-			// Only on this path, so a slow reconnect explains itself.
-			log.Printf("tailcat: the kept client's try failed after %v; a new client %s after %v more",
-				tried.Round(time.Millisecond), map[bool]string{true: "connected", false: "failed"}[err == nil],
-				(time.Since(t0) - tried).Round(time.Millisecond))
-		}
-	} else {
-		c, err = p.tc.DialTCPPort(ctx, port)
-	}
-	if err != nil {
-		if p.drop(addr) {
-			go p.tc.Close()
-		}
-		p.release(addr)
-		return nil, err
-	}
-	tcMu.Lock()
-	p.used = true
-	tcMu.Unlock()
-	return &tailcatConn{Conn: c, p: p, addr: addr}, nil
-}
-
-// newPooledLocked makes the client of addr. tcMu must be held, and tcKey
-// set.
-func newPooledLocked(addr string) *pooledTailcat {
-	p := &pooledTailcat{tc: &tailcat.Client{Server: tailcat.Addr(addr), Key: tcKey, Logf: func(string, ...any) {}}} // it logs keys
-	tcClients[addr] = p
-	return p
-}
-
-// try dials within tailcatTry, and tells whether that time ran out.
-func (p *pooledTailcat) try(ctx context.Context, port uint16) (net.Conn, bool, error) {
-	tailcatTries.Add(1)
-	ctx, cancel := context.WithTimeout(ctx, tailcatTry)
-	defer cancel()
-	c, err := p.tc.DialTCPPort(ctx, port)
-	return c, err != nil && ctx.Err() != nil, err
-}
-
-// retire is for a try of p that failed while its dial goes on. p goes
-// from the pool and closes when its server seems to have forgotten it:
-// the try ran out of time, or no other connection uses p. Its other
-// connections then go too: their server forgot them, and two clients of
-// one key take each other's packets (#212). It returns the client of addr
-// to dial with now, counted, or nil when p stays, as after a port that
-// refused while others use p. A dial whose try failed because another
-// retired p takes that new client too, and so does each dial after: none
-// waits for the others to end.
-func (p *pooledTailcat) retire(addr string, timedOut bool) *pooledTailcat {
-	tcMu.Lock()
-	defer tcMu.Unlock()
-	if !p.dead {
-		if tcClients[addr] != p || !timedOut && p.conns != 1 {
-			return nil
-		}
-		p.dead = true
-		delete(tcClients, addr)
-		go p.tc.Close()
-	}
-	if tcKey.IsZero() {
-		return nil
-	}
-	n := tcClients[addr]
-	if n == nil {
-		n = newPooledLocked(addr)
-	}
-	if n.idle != nil {
-		n.idle.Stop()
-		n.idle = nil
-	}
-	n.conns++
-	return n
-}
-
-// drop takes p out of the pool when the dial under way is its only
-// connection, and reports whether it did.
-func (p *pooledTailcat) drop(addr string) bool {
-	tcMu.Lock()
-	defer tcMu.Unlock()
-	if p.conns != 1 || tcClients[addr] != p {
-		return false
-	}
-	p.dead = true
-	delete(tcClients, addr)
-	return true
-}
-
-// release counts a connection of p closed, and closes p after tailcatIdle
-// without one.
-func (p *pooledTailcat) release(addr string) {
-	tcMu.Lock()
-	defer tcMu.Unlock()
-	p.conns--
-	if p.conns > 0 || tcClients[addr] != p {
-		return
-	}
-	var t *time.Timer
-	t = time.AfterFunc(tailcatIdle, func() {
-		tcMu.Lock()
-		idle := p.idle == t && p.conns == 0 && tcClients[addr] == p
-		if idle {
-			delete(tcClients, addr)
-		}
-		tcMu.Unlock()
-		if idle {
-			p.tc.Close()
-		}
-	})
-	p.idle = t
-}
-
-// tailcatConn is a connection of a pooled client, which it releases on
-// close.
-type tailcatConn struct {
-	net.Conn
-	p    *pooledTailcat
-	addr string
-	once sync.Once
-}
-
-func (c *tailcatConn) Close() error {
-	err := c.Conn.Close()
-	c.once.Do(func() { c.p.release(c.addr) })
-	return err
-}
-
-// Forward half-close to the underlying conn so callers checking
-// nettype.HalfCloser (such as tailscale.com/net/socks5) propagate EOF.
-func (c *tailcatConn) CloseRead() error {
-	if hr, ok := c.Conn.(interface{ CloseRead() error }); ok {
-		return hr.CloseRead()
-	}
-	return errors.ErrUnsupported
-}
-
-func (c *tailcatConn) CloseWrite() error {
-	if hw, ok := c.Conn.(interface{ CloseWrite() error }); ok {
-		return hw.CloseWrite()
-	}
-	return errors.ErrUnsupported
+	return tcPool.Dial(ctx, addr, port, k)
 }
 
 // The session server's wire (internal/rex, proto.go), as far as pairing

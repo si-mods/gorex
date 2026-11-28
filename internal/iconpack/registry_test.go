@@ -36,7 +36,7 @@ func TestFetchSearchAndInstallFromRegistry(t *testing.T) {
 		{"config", "user.email", "test@example.com"},
 		{"config", "user.name", "Test"},
 		{"add", "."},
-		{"commit", "-m", "init"},
+		{"commit", "--no-verify", "-m", "init"},
 	} {
 		c := exec.Command("git", args...)
 		c.Dir = repoSrc
@@ -118,7 +118,7 @@ func TestRegistrySecurityGuards(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(repoSrc, "README"), []byte("hi"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	for _, args := range [][]string{{"add", "."}, {"commit", "-m", "init"}} {
+	for _, args := range [][]string{{"add", "."}, {"commit", "--no-verify", "-m", "init"}} {
 		c := exec.Command("git", args...)
 		c.Dir = repoSrc
 		if out, err := c.CombinedOutput(); err != nil {
@@ -169,7 +169,7 @@ func TestCheckoutRef(t *testing.T) {
 			t.Fatal(err)
 		}
 		git("add", ".")
-		git("commit", "-q", "-m", text)
+		git("commit", "--no-verify", "-q", "-m", text)
 		return git("rev-parse", "HEAD")
 	}
 	first := commit(`{"name":"first"}`)

@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/tailscale/tailcat"
+	"gorex/internal/tailcatpool"
 	"tailscale.com/derp/derpserver"
 	"tailscale.com/ipn/ipnstate"
 	"tailscale.com/net/stun/stuntest"
@@ -94,13 +95,7 @@ func tailcatEnv(t *testing.T) *tailcfg.DERPRegion {
 	spawnServer = func() error { return errors.New("no server in tests") }
 	t.Cleanup(func() { spawnServer = old })
 	t.Cleanup(func() {
-		tailcatMu.Lock()
-		pool := tailcatClients
-		tailcatClients = map[string]*pooledTailcat{}
-		tailcatMu.Unlock()
-		for _, p := range pool {
-			p.tc.Close()
-		}
+		tailcatPool.CloseAll()
 	})
 	return runDERP(t)
 }
@@ -174,9 +169,7 @@ func dialTrip(t *testing.T, addr tailcat.Addr) (net.Conn, error) {
 }
 
 func poolSize() int {
-	tailcatMu.Lock()
-	defer tailcatMu.Unlock()
-	return len(tailcatClients)
+	return tailcatPool.Len()
 }
 
 // The window's connection stays up, asked every 200 ms, while the CLI of
@@ -237,9 +230,9 @@ func TestTailcatSameKeyRelayed(t *testing.T) {
 func TestTailcatPool(t *testing.T) {
 	reg := tailcatEnv(t)
 	ts := echoServer(t, reg, key.NewNode(), tailcat.NewPresharedKey())
-	old := tailcatIdle
-	tailcatIdle = 300 * time.Millisecond
-	t.Cleanup(func() { tailcatIdle = old })
+	const idle = 300 * time.Millisecond
+	tailcatPool.SetIdleTimeout(idle)
+	t.Cleanup(func() { tailcatPool.SetIdleTimeout(0) })
 
 	var conns [3]net.Conn
 	var errs [3]error
@@ -254,15 +247,13 @@ func TestTailcatPool(t *testing.T) {
 		})
 	}
 	wg.Wait()
-	tailcatMu.Lock()
-	p := tailcatClients[string(ts.TailcatAddr())]
-	n := len(tailcatClients)
-	tailcatMu.Unlock()
+	p := tailcatPool.Get(string(ts.TailcatAddr()))
+	n := tailcatPool.Len()
 	for i, err := range errs {
 		if err != nil {
 			t.Fatalf("dial %d: %v", i, err)
 		}
-		if conns[i].(*tailcatConn).p != p {
+		if conns[i].(*tailcatpool.Conn).Entry() != p {
 			t.Errorf("dial %d has a client of its own", i)
 		}
 	}
@@ -271,7 +262,7 @@ func TestTailcatPool(t *testing.T) {
 	}
 	conns[0].Close()
 	conns[1].Close()
-	time.Sleep(2 * tailcatIdle)
+	time.Sleep(2 * idle)
 	if poolSize() != 1 {
 		t.Fatal("closed with a connection open")
 	}
@@ -292,9 +283,8 @@ func TestTailcatServerRestart(t *testing.T) {
 	ts := echoServer(t, reg, sk, psk)
 	s, _ := testServer(t)
 	localRelay(t, s, "")
-	oldTry := tailcatTry
-	tailcatTry = time.Second
-	t.Cleanup(func() { tailcatTry = oldTry })
+	tailcatPool.SetTryTimeout(time.Second)
+	t.Cleanup(func() { tailcatPool.SetTryTimeout(0) })
 
 	c, err := dialTrip(t, ts.TailcatAddr())
 	if err != nil {
@@ -303,15 +293,15 @@ func TestTailcatServerRestart(t *testing.T) {
 	c.Close()
 	ts.Close()
 	ts = echoServer(t, reg, sk, psk)
-	tries := tailcatTries.Load()
+	tries := tailcatPool.Tries.Load()
 	c, err = dialTrip(t, ts.TailcatAddr())
 	if err != nil {
 		t.Fatalf("after the restart: %v", err)
 	}
 	c.Close()
 	// Its Ping returns at once, as it registered before, so a second try
-	// would only wait another tailcatTry.
-	if n := tailcatTries.Load() - tries; n != 1 {
+	// would only wait another TryTimeout.
+	if n := tailcatPool.Tries.Load() - tries; n != 1 {
 		t.Errorf("the kept client had %d tries after the restart, want 1", n)
 	}
 }
@@ -328,7 +318,7 @@ func TestTailcatRelayFallback(t *testing.T) {
 	if err != nil {
 		t.Fatalf("without a local server: %v", err)
 	}
-	if _, ok := c.(*tailcatConn); !ok {
+	if _, ok := c.(*tailcatpool.Conn); !ok {
 		t.Errorf("without a local server, a %T", c)
 	}
 	if poolSize() != 1 {
@@ -340,7 +330,7 @@ func TestTailcatRelayFallback(t *testing.T) {
 	if c, err = dialTrip(t, addr); err != nil {
 		t.Fatalf("with an older local server: %v", err)
 	}
-	if _, ok := c.(*tailcatConn); !ok {
+	if _, ok := c.(*tailcatpool.Conn); !ok {
 		t.Errorf("with an older local server, a %T", c)
 	}
 	c.Close()
@@ -453,10 +443,7 @@ func TestTailcatFailedDialKeepsClient(t *testing.T) {
 	if err := lineTrip(win, 5*time.Second); err != nil {
 		t.Errorf("the live connection after a failed dial: %v", err)
 	}
-	tailcatMu.Lock()
-	same := tailcatClients[addr] == win.(*tailcatConn).p
-	tailcatMu.Unlock()
-	if !same {
+	if tailcatPool.Get(addr) != win.(*tailcatpool.Conn).Entry() {
 		t.Error("the client was replaced")
 	}
 }
@@ -472,9 +459,8 @@ func TestTailcatServerRestartWithOpenConn(t *testing.T) {
 	sk, psk := key.NewNode(), tailcat.NewPresharedKey()
 	ts := echoServer(t, reg, sk, psk)
 	addr := string(ts.TailcatAddr())
-	oldTry := tailcatTry
-	tailcatTry = time.Second
-	t.Cleanup(func() { tailcatTry = oldTry })
+	tailcatPool.SetTryTimeout(time.Second)
+	t.Cleanup(func() { tailcatPool.SetTryTimeout(0) })
 
 	ctx, cancel := context.WithTimeout(context.Background(), tailcatDial)
 	open, err := dialTailcat(ctx, addr)
@@ -486,11 +472,11 @@ func TestTailcatServerRestartWithOpenConn(t *testing.T) {
 	if err := lineTrip(open, 5*time.Second); err != nil {
 		t.Fatal(err)
 	}
-	old := open.(*tailcatConn).p
+	old := open.(*tailcatpool.Conn).Entry()
 	ts.Close()
 	echoServer(t, reg, sk, psk)
 
-	tries := tailcatTries.Load()
+	tries := tailcatPool.Tries.Load()
 	start := time.Now()
 	ctx, cancel = context.WithTimeout(context.Background(), tailcatDial)
 	defer cancel()
@@ -505,13 +491,10 @@ func TestTailcatServerRestartWithOpenConn(t *testing.T) {
 	t.Logf("connected in %v", time.Since(start).Round(time.Millisecond))
 	// The count of tries is asserted, not the time, which a loaded
 	// machine stretches; tailcatDial bounds the time.
-	if n := tailcatTries.Load() - tries; n != 1 {
+	if n := tailcatPool.Tries.Load() - tries; n != 1 {
 		t.Errorf("the kept client had %d tries after the restart, want 1", n)
 	}
-	tailcatMu.Lock()
-	kept := tailcatClients[addr] == old
-	tailcatMu.Unlock()
-	if kept || c.(*tailcatConn).p == old {
+	if tailcatPool.Get(addr) == old || c.(*tailcatpool.Conn).Entry() == old {
 		t.Error("the kept client was not replaced")
 	}
 }

@@ -4,6 +4,7 @@
 // user adds each one, and each one must trust this page's origin. Hosts
 // found on the tailnet by built-in Tailscale (tailnet.ts) are listed in a
 // group of their own, and not kept.
+import { el } from "./dom";
 import { localize, PlainKey, t } from "./i18n";
 import type { LinkState } from "./settings";
 import { joinHostURL, SharedGroup, withToken } from "./share";
@@ -238,13 +239,6 @@ export async function diagnose(url: string, token?: string): Promise<Problem> {
     return problem(() => t("problemUnreachableTitle"), () => t("problemUnreachableText", { url }));
   }
   return untrusted(() => t("problemUntrustedText", { url }));
-}
-
-function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: string): HTMLElementTagNameMap[K] {
-  const e = document.createElement(tag);
-  if (cls) e.className = cls;
-  if (text !== undefined) e.textContent = text;
-  return e;
 }
 
 /** A lucide icon of the repo, drawn in the text's colour; "tailscale" is Tailscale's own mark. */

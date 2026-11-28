@@ -4,18 +4,12 @@
 // follow the node (tailnet.ts): what happens, the engine's download, the
 // sign-in in a tab of its own, and the hosts found, with what to do when
 // none are. Escape or Close hides it; a sign-in on its way goes on.
+import { el } from "./dom";
 import { allowCommand, commandBox, Host, icon } from "./hosts";
 import { formatList, onLanguageChange, PlainKey, t } from "./i18n";
 import { ProgressView } from "./progress";
 import { Tailnet, TailnetHost } from "./tailnet";
 import { setTooltip } from "./tooltip";
-
-function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: string): HTMLElementTagNameMap[K] {
-  const e = document.createElement(tag);
-  if (cls) e.className = cls;
-  if (text !== undefined) e.textContent = text;
-  return e;
-}
 
 function button(label: string, cls = "host-add", glyph?: string): HTMLButtonElement {
   const b = el("button", cls);

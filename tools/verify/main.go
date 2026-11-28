@@ -67,20 +67,33 @@ type facts struct {
 // plan maps the changed files to the checks to run, cheapest first.
 func plan(files []string, f facts) []check {
 	var goFiles, goDirs []string
-	goAll, web, ios, gh, docs := false, false, false, false, false
+	goAll, web, ios, gh, docs, arch := false, false, false, false, false, false
 	seen := map[string]bool{}
+	addDir := func(d string) {
+		if !seen[d] {
+			seen[d] = true
+			goDirs = append(goDirs, d)
+		}
+	}
 	for _, p := range files {
 		p = filepath.ToSlash(p)
 		switch {
 		case p == "go.mod" || p == "go.sum":
 			goAll = true
+			arch = true
 		case strings.HasSuffix(p, ".go"):
 			goFiles = append(goFiles, p)
-			d := pathDir(p)
-			if !seen[d] {
-				seen[d] = true
-				goDirs = append(goDirs, d)
+			addDir(pathDir(p))
+			if strings.HasPrefix(p, "internal/") || strings.HasPrefix(p, "ios/") || strings.HasPrefix(p, "tools/verify/") {
+				arch = true
 			}
+		}
+		// Trigger generated-SSOT drift tests when any input or cross-platform output changes.
+		switch p {
+		case "assets/brands.json", "programs_brands_gen.go", "web/src/programs_brands.ts", "ios/Shared/ProgramBrands.swift":
+			addDir("./tools/genbrands")
+		case "internal/rexproto/protocol.json", "web/src/rex-protocol.gen.ts", "ios/GoRex/Rex/RexProtocol.gen.swift":
+			addDir("./internal/rexproto")
 		}
 		web = web || strings.HasPrefix(p, "web/")
 		ios = ios || strings.HasPrefix(p, "ios/")
@@ -96,6 +109,9 @@ func plan(files []string, f facts) []check {
 	var cs []check
 	if len(goFiles) > 0 {
 		cs = append(cs, check{name: "gofmt", args: append([]string{"gofmt", "-l"}, goFiles...)})
+	}
+	if arch {
+		cs = append(cs, check{name: "arch boundaries", fn: archBoundariesCheck})
 	}
 	if docs {
 		cs = append(cs, check{name: "design docs", fn: designDocsCheck})
@@ -177,7 +193,7 @@ func plan(files []string, f facts) []check {
 // branch's own config. A skip counts as NOT VERIFIED.
 func readOnlyPlan(cs []check) []check {
 	for i, c := range cs {
-		safe := c.name == "gofmt" || c.name == "actionlint" || c.name == "design docs" ||
+		safe := c.name == "gofmt" || c.name == "arch boundaries" || c.name == "actionlint" || c.name == "design docs" ||
 			strings.HasPrefix(c.name, "vet ") || strings.HasPrefix(c.name, "build ")
 		if !safe && c.skip == "" {
 			cs[i].skip = "NOT VERIFIED: branch is not from si-mods; read-only checks only"

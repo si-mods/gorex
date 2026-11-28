@@ -14,6 +14,7 @@ import (
 	"github.com/egoist/mygo/i18n"
 	"github.com/egoist/mygo/plugins/terminal"
 
+	"gorex/internal/atomicfile"
 	"gorex/internal/config"
 	"gorex/internal/rex"
 	"gorex/internal/theme"
@@ -239,9 +240,9 @@ func migrateSettingsFile(b []byte) []byte {
 	}
 	out := marshalRawObject(raw)
 	path := settingsPath()
-	if err := writeFileAtomic(path+".bak", b, 0o600); err != nil {
+	if err := atomicfile.Write(path+".bak", b, 0o600); err != nil {
 		log.Printf("gorex settings: backup: %v", err)
-	} else if err := writeFileAtomic(path, out, 0o600); err != nil {
+	} else if err := atomicfile.Write(path, out, 0o600); err != nil {
 		log.Printf("gorex settings: migrate: %v", err)
 	}
 	return out
@@ -381,36 +382,13 @@ func saveSettings() {
 	// The watcher's skip is recorded before the write: an event for
 	// settings.json itself can only come once the rename lands the bytes.
 	recordSettingsWritten(b)
-	if err := writeFileAtomic(settingsPath(), b, 0o600); err != nil {
+	if err := atomicfile.Write(settingsPath(), b, 0o600); err != nil {
 		log.Printf("gorex settings: %v", err)
 		return
 	}
 	// The watcher skips this write by hash: mark the file stale so the
 	// settings.json page resyncs its buffer on its next draw.
 	settingsFileStale.Store(true)
-}
-
-// writeFileAtomic writes data to path through a file beside it, renamed
-// over it: a crash leaves the old content or the new, never part of it.
-func writeFileAtomic(path string, data []byte, perm os.FileMode) error {
-	f, err := os.CreateTemp(filepath.Dir(path), filepath.Base(path)+".*.tmp")
-	if err != nil {
-		return err
-	}
-	_, err = f.Write(data)
-	if cerr := f.Close(); err == nil {
-		err = cerr
-	}
-	if err == nil {
-		err = os.Chmod(f.Name(), perm)
-	}
-	if err == nil {
-		err = os.Rename(f.Name(), path)
-	}
-	if err != nil {
-		os.Remove(f.Name())
-	}
-	return err
 }
 
 // setThemeSource sets the windows' theme; tests, which run no windows, take

@@ -2,16 +2,11 @@
 // the sidebar's footer and Settings' Appearance page hold once a host exists.
 // The language is the same setting as Settings › Appearance › Language
 // (setLanguage), so the two always show the same choice.
+import { el } from "./dom";
 import { icon } from "./hosts";
 import { Language, language, languages, localize, setLanguage, t, tIn } from "./i18n";
 import { prefs } from "./prefs";
 import { setTooltip } from "./tooltip";
-
-function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls: string): HTMLElementTagNameMap[K] {
-  const e = document.createElement(tag);
-  e.className = cls;
-  return e;
-}
 
 /** Fills mount with the language menu and the Settings button. */
 export function mountCorner(mount: HTMLElement, openSettings: () => void) {

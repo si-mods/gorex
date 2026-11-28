@@ -25,8 +25,10 @@ import (
 	"sync/atomic"
 	"time"
 
+	"gorex/internal/atomicfile"
 	"gorex/internal/layout"
 	"gorex/internal/pairaddr"
+	"gorex/internal/tailcatpool"
 
 	"github.com/tailscale/tailcat"
 	"tailscale.com/envknob"
@@ -90,23 +92,7 @@ func remotePath() string { return filepath.Join(Dir(), "remote.json") }
 
 // writeJSON writes v to path, readable by the user only, atomically.
 func writeJSON(path string, v any) error {
-	b, err := json.MarshalIndent(v, "", "  ")
-	if err != nil {
-		return err
-	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		return err
-	}
-	tmp := path + ".tmp"
-	os.Remove(tmp)
-	if err := os.WriteFile(tmp, b, 0o600); err != nil {
-		return err
-	}
-	if err := os.Rename(tmp, path); err != nil {
-		os.Remove(tmp)
-		return err
-	}
-	return nil
+	return atomicfile.WriteJSON(path, v, 0o600)
 }
 
 // readJSON reads path into v; a file that does not exist leaves v as is.
@@ -1057,19 +1043,12 @@ func (w waitReader) Read(b []byte) (int, error) {
 }
 
 // The tailcat clients of this process, one per address: a client's
-// connections share it, and it closes once it had none for tailcatIdle.
-var (
-	tailcatMu      sync.Mutex
-	tailcatClients = map[string]*pooledTailcat{}
-	tailcatIdle    = 3 * time.Minute
-)
+// connections share it, and it closes once it had none for IdleTimeout.
+var tailcatPool = &tailcatpool.Pool{LogPrefix: "rex"}
 
-// tailcatDial bounds a dial; tailcatTry an attempt of a client that
-// connected before, which fails when its server restarted. tailcatPing
-// bounds a status's ping.
+// tailcatDial bounds a dial; tailcatPing bounds a status's ping.
 var (
 	tailcatDial = 15 * time.Second
-	tailcatTry  = 3 * time.Second
 	tailcatPing = 8 * time.Second
 )
 
@@ -1079,173 +1058,14 @@ var discoPing = func(ctx context.Context, tc *tailcat.Client) (*ipnstate.PingRes
 	return tc.DiscoPing(ctx)
 }
 
-// tailcatTries counts the tries of kept clients (a test reads it).
-var tailcatTries atomic.Int64
-
-type pooledTailcat struct {
-	tc    *tailcat.Client
-	conns int  // open, or being dialed
-	used  bool // it connected once
-	dead  bool // out of the pool and closed (retire, drop)
-	idle  *time.Timer
-}
-
-// dialTailcat connects to RemotePort at addr with the tailcat client of
-// addr. A client that connected before and fails now may have a server
-// that restarted and forgot it, so a new client replaces it (retire), as
-// in ios/tailnet/tailcat.go. (A Ping to register again does not help: it
-// returns at once for a client that was registered, so the try after it
-// only waited tailcatTry more.) A dial its caller gave up (canceled)
-// closes no client.
+// dialTailcat connects to RemotePort at addr with the pooled tailcat client of
+// addr.
 func dialTailcat(ctx context.Context, addr string) (net.Conn, error) {
 	k, err := remoteClientKey()
 	if err != nil {
 		return nil, err
 	}
-	tailcatMu.Lock()
-	p := tailcatClients[addr]
-	if p == nil {
-		p = newPooledTailcat(addr, k)
-	}
-	if p.idle != nil {
-		p.idle.Stop()
-		p.idle = nil
-	}
-	p.conns++
-	used := p.used
-	tailcatMu.Unlock()
-
-	var c net.Conn
-	if used {
-		t0 := time.Now()
-		var timedOut bool
-		c, timedOut, err = p.try(ctx)
-		var fresh *pooledTailcat
-		if err != nil && ctx.Err() == nil {
-			fresh = p.retire(addr, timedOut)
-		}
-		if fresh != nil {
-			tried := time.Since(t0)
-			p.release(addr)
-			p = fresh
-			c, err = p.tc.DialTCPPort(ctx, RemotePort)
-			// Only on this path, so a slow reconnect explains itself.
-			log.Printf("rex: the kept tailcat client's try failed after %v; a new client %s after %v more",
-				tried.Round(time.Millisecond), map[bool]string{true: "connected", false: "failed"}[err == nil],
-				(time.Since(t0) - tried).Round(time.Millisecond))
-		}
-	} else {
-		c, err = p.tc.DialTCPPort(ctx, RemotePort)
-	}
-	if err != nil {
-		if !errors.Is(ctx.Err(), context.Canceled) && p.drop(addr) {
-			p.tc.Close()
-		}
-		p.release(addr)
-		return nil, err
-	}
-	tailcatMu.Lock()
-	p.used = true
-	tailcatMu.Unlock()
-	return &tailcatConn{Conn: c, p: p, addr: addr}, nil
-}
-
-// retire is for a try of p that failed while its dial goes on. p goes
-// from the pool and closes when its server seems to have forgotten it:
-// the try ran out of time, or no other connection uses p. Its other
-// connections then go too: their server forgot them, and two clients of
-// one key take each other's packets (#212). It returns the client of addr
-// to dial with now, counted, or nil when p stays, as after a port that
-// refused while others use p. A dial whose try failed because another
-// retired p takes that new client too, and so does each dial after: none
-// waits for the others to end. A new client has p's key.
-func (p *pooledTailcat) retire(addr string, timedOut bool) *pooledTailcat {
-	tailcatMu.Lock()
-	defer tailcatMu.Unlock()
-	if !p.dead {
-		if tailcatClients[addr] != p || !timedOut && p.conns != 1 {
-			return nil
-		}
-		p.dead = true
-		delete(tailcatClients, addr)
-		go p.tc.Close()
-	}
-	n := tailcatClients[addr]
-	if n == nil {
-		n = newPooledTailcat(addr, p.tc.Key)
-	}
-	if n.idle != nil {
-		n.idle.Stop()
-		n.idle = nil
-	}
-	n.conns++
-	return n
-}
-
-// drop takes p out of the pool when the dial under way is its only
-// connection, and reports whether it did.
-func (p *pooledTailcat) drop(addr string) bool {
-	tailcatMu.Lock()
-	defer tailcatMu.Unlock()
-	if p.conns != 1 || tailcatClients[addr] != p {
-		return false
-	}
-	p.dead = true
-	delete(tailcatClients, addr)
-	return true
-}
-
-// newPooledTailcat makes the client of addr. tailcatMu must be held.
-func newPooledTailcat(addr string, k key.NodePrivate) *pooledTailcat {
-	p := &pooledTailcat{tc: &tailcat.Client{Server: tailcat.Addr(addr), Key: k, Logf: func(string, ...any) {}}}
-	tailcatClients[addr] = p
-	return p
-}
-
-// try dials within tailcatTry, and tells whether that time ran out.
-func (p *pooledTailcat) try(ctx context.Context) (net.Conn, bool, error) {
-	tailcatTries.Add(1)
-	ctx, cancel := context.WithTimeout(ctx, tailcatTry)
-	defer cancel()
-	c, err := p.tc.DialTCPPort(ctx, RemotePort)
-	return c, err != nil && ctx.Err() != nil, err
-}
-
-// release counts a connection of p closed, and closes p after a while
-// without one.
-func (p *pooledTailcat) release(addr string) {
-	tailcatMu.Lock()
-	defer tailcatMu.Unlock()
-	p.conns--
-	if p.conns > 0 || tailcatClients[addr] != p {
-		return
-	}
-	var t *time.Timer
-	t = time.AfterFunc(tailcatIdle, func() {
-		tailcatMu.Lock()
-		idle := p.idle == t && p.conns == 0 && tailcatClients[addr] == p
-		if idle {
-			delete(tailcatClients, addr)
-		}
-		tailcatMu.Unlock()
-		if idle {
-			p.tc.Close()
-		}
-	})
-	p.idle = t
-}
-
-type tailcatConn struct {
-	net.Conn
-	p    *pooledTailcat
-	addr string
-	once sync.Once
-}
-
-func (c *tailcatConn) Close() error {
-	err := c.Conn.Close()
-	c.once.Do(func() { c.p.release(c.addr) })
-	return err
+	return tailcatPool.Dial(ctx, addr, RemotePort, k)
 }
 
 // tailcatStatus answers remote.tailcatStatus (TailcatStatus): it pings
@@ -1262,31 +1082,17 @@ func tailcatStatus(addr string) (TailcatStatus, error) {
 	if err != nil {
 		return st, err
 	}
-	tailcatMu.Lock()
-	p := tailcatClients[addr]
-	if p == nil {
-		p = newPooledTailcat(addr, k)
-	}
-	if p.idle != nil {
-		p.idle.Stop()
-		p.idle = nil
-	}
-	p.conns++
-	tailcatMu.Unlock()
-	defer p.release(addr)
-
-	ctx, cancel := context.WithTimeout(context.Background(), tailcatPing)
-	defer cancel()
-	res, err := discoPing(ctx, p.tc)
+	var res *ipnstate.PingResult
+	err = tailcatPool.WithClient(addr, k, func(tc *tailcat.Client) error {
+		ctx, cancel := context.WithTimeout(context.Background(), tailcatPing)
+		defer cancel()
+		var perr error
+		res, perr = discoPing(ctx, tc)
+		return perr
+	})
 	if err != nil {
-		if p.drop(addr) {
-			p.tc.Close()
-		}
 		return st, errors.New(scrub(err.Error(), addr))
 	}
-	tailcatMu.Lock()
-	p.used = true
-	tailcatMu.Unlock()
 
 	st.Direct = res.Endpoint != ""
 	st.Endpoint = res.Endpoint

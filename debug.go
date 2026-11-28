@@ -14,6 +14,7 @@ import (
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/plugins/terminal"
 
+	"gorex/internal/atomicfile"
 	"gorex/locales"
 )
 
@@ -181,7 +182,7 @@ func (st *store) debug(dir, line string) {
 		var b []byte
 		debugMain(func() { b, _ = json.MarshalIndent(st.state(), "", "  ") })
 		path := filepath.Join(dir, arg)
-		writeFileAtomic(path, b, 0o644)
+		atomicfile.Write(path, b, 0o644)
 		return
 	}
 	if a == nil {
@@ -309,7 +310,7 @@ func (a *App) debug(dir, line string) {
 		}
 		b, _ := json.MarshalIndent(a.panesDump(), "", "  ")
 		path := filepath.Join(dir, name)
-		writeFileAtomic(path, b, 0o644)
+		atomicfile.Write(path, b, 0o644)
 		return
 	}
 	win := a.win

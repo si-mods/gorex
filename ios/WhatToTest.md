@@ -10,6 +10,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 `what-to-test` step of the `linux` job of `.github/workflows/ci.yml` fails it.
 
 ## en-US
+- Tailcat host connections now share the same connection pool as desktop GoRex for more consistent reconnect and cancel behavior.
 - Fixed the floating Search button overlapping the Composer bar and Send button in split view on iPhone Duo and landscape iPhones.
 - Fixed SSH hosts occasionally prompting for a password on cold launch when local SSH keys were not yet synced from the Keychain.
 - Dictation: tapping the mic to finish no longer spins for minutes; the text appears a few seconds after you stop talking, with Fun-ASR-Nano and SenseVoice alike.
@@ -186,6 +187,7 @@ bullet that reads like a commit subject is one testers cannot read, and the
 - Settings: choose System, Light or Dark right in the Interface row, and Minimum Contrast from a menu. A space's Color menu shows each color's dot and marks the current one.
 
 ## zh-Hans
+- Tailcat 主机连接现与桌面端 GoRex 共享同一连接池，断线重连与取消行为更一致。
 - 修复在 iPhone Duo 展开态及大屏 iPhone 横屏分栏模式下，搜索图标浮动遮挡 Composer 输入框与发送按钮的问题。
 - 修复冷启动时因本地 SSH 密钥尚未从钥匙串同步完成，导致 SSH 主机偶发弹出密码输入框的问题。
 - 语音听写：点麦克风结束后不再转圈好几分钟；停止说话后几秒内出字，Fun-ASR-Nano 与 SenseVoice 均如此。

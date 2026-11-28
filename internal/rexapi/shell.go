@@ -1,6 +1,7 @@
 package rexapi
 
 import (
+	"cmp"
 	"os"
 	"runtime"
 	"strings"
@@ -122,7 +123,7 @@ func paneCommand(shell string, login bool, command, argv, prepend []string) []st
 	}
 	sh := shell
 	if sh == "" || sh == "none" {
-		sh = cmpOr(os.Getenv("SHELL"), "/bin/sh")
+		sh = cmp.Or(os.Getenv("SHELL"), "/bin/sh")
 	}
 	path := ""
 	if len(prepend) > 0 {
@@ -156,13 +157,6 @@ func paneCommand(shell string, login bool, command, argv, prepend []string) []st
 		}
 		return append([]string{"/bin/sh", "-c", path + `exec "$@"`, "sh"}, c...)
 	}
-}
-
-func cmpOr(a, b string) string {
-	if a != "" {
-		return a
-	}
-	return b
 }
 
 // applyShellOptions applies the options that act on a running block:

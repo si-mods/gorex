@@ -3,6 +3,7 @@ package rexapi
 import (
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"sync/atomic"
 )
@@ -31,22 +32,9 @@ func tracef(format string, args ...any) {
 func clip(b []byte) string {
 	const most = 4000
 	if len(b) > most {
-		return string(b[:most]) + "…(" + itoa(len(b)) + " bytes)"
+		return string(b[:most]) + "…(" + strconv.Itoa(len(b)) + " bytes)"
 	}
 	return string(b)
-}
-
-func itoa(n int) string {
-	var b [20]byte
-	i := len(b)
-	for {
-		i--
-		b[i] = byte('0' + n%10)
-		n /= 10
-		if n == 0 {
-			return string(b[i:])
-		}
-	}
 }
 
 // traceRequests logs each request's line and the headers that say what

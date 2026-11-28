@@ -10,6 +10,8 @@ import (
 	"runtime"
 	"strings"
 	"time"
+
+	"gorex/internal/homedir"
 )
 
 // transcriptEvent is a normalized event parsed from an agent's JSONL
@@ -112,16 +114,11 @@ func (claudeTranscript) FindFile(dir, _, home, configDir, agentSession string, _
 	}
 	base := configDir
 	if base == "" {
-		base = os.Getenv("CLAUDE_CONFIG_DIR")
-	}
-	if base == "" {
-		if home == "" {
-			home, _ = os.UserHomeDir()
-		}
-		if home == "" {
+		var err error
+		base, err = homedir.ClaudeConfigDir(home)
+		if err != nil || base == "" {
 			return ""
 		}
-		base = filepath.Join(home, ".claude")
 	}
 	if dir != "" {
 		p := filepath.Join(base, "projects", claudeSlug(dir), agentSession+".jsonl")
@@ -364,15 +361,9 @@ func (ompTranscript) ParseRow(b []byte) transcriptEvent {
 type codexTranscript struct{}
 
 func codexSessionsRoot(home string) string {
-	base := os.Getenv("CODEX_HOME")
-	if base == "" {
-		if home == "" {
-			home, _ = os.UserHomeDir()
-		}
-		if home == "" {
-			return ""
-		}
-		base = filepath.Join(home, ".codex")
+	base, err := homedir.CodexHome(home)
+	if err != nil || base == "" {
+		return ""
 	}
 	return filepath.Join(base, "sessions")
 }

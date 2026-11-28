@@ -1,5 +1,6 @@
 // One pane of a window: a block's terminal, its stream fed to
 // libghostty-vt, drawn on its own canvas, the keys typed written back.
+import { el } from "./dom";
 import { FindBar } from "./find";
 import { glassRedrawn } from "./glass";
 import { Ghostty } from "./ghostty";
@@ -51,13 +52,6 @@ const maxTyped = 4 << 20;
 const maxWrite = 128 << 10;
 
 export { describe };
-
-function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls: string, text?: string): HTMLElementTagNameMap[K] {
-  const e = document.createElement(tag);
-  e.className = cls;
-  if (text !== undefined) e.textContent = text;
-  return e;
-}
 
 /** The header's buttons, as the desktop's (view.go paneActions), with its lucide icons: split right, split down, zoom and close. */
 const actions: [name: string, label: PlainKey][] = [

@@ -881,8 +881,8 @@ func TestLANMigrationKeepsConcurrentToken(t *testing.T) {
 // instead of serving with it.
 func TestLANMigrationUnsavedTokenStaysOff(t *testing.T) {
 	g, dir := startStateGateway(t)
-	// A directory where the file's temporary copy goes makes the write fail.
-	if err := os.MkdirAll(lanConfPath(dir)+".tmp", 0o700); err != nil {
+	// A directory at lan.json makes the atomic rename fail.
+	if err := os.MkdirAll(lanConfPath(dir), 0o700); err != nil {
 		t.Fatal(err)
 	}
 	g.lan.apply(LANConfig{Enabled: true, Listen: "127.0.0.1:0", Allow: []string{"127.0.0.1"}})

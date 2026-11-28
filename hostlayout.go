@@ -8,6 +8,7 @@ import (
 	"slices"
 	"sort"
 
+	"gorex/internal/atomicfile"
 	"gorex/internal/layout"
 	"gorex/internal/rex"
 )
@@ -400,7 +401,7 @@ func readHostCache() map[string]savedStore {
 
 func writeHostCache(all map[string]savedStore) {
 	b, _ := json.Marshal(all)
-	if err := writeFileAtomic(hostCachePath(), b, 0o600); err != nil {
+	if err := atomicfile.Write(hostCachePath(), b, 0o600); err != nil {
 		log.Printf("gorex: keeping the hosts' layouts: %v", err)
 	}
 }

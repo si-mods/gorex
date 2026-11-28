@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"gorex/internal/atomicfile"
 	"gorex/internal/rex"
 	"gorex/internal/theme"
 )
@@ -609,30 +610,11 @@ func bindKeys(line string) (string, bool) {
 	return "", false
 }
 
-// writeFileAtomic writes b to path through a temporary file in the same
-// folder and a rename.
+// writeFileAtomic creates parent directories if needed and writes b to path
+// atomically.
 func writeFileAtomic(path string, b []byte, perm os.FileMode) error {
-	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
-	f, err := os.CreateTemp(dir, "."+filepath.Base(path)+".*")
-	if err != nil {
-		return err
-	}
-	name := f.Name()
-	_, err = f.Write(b)
-	if cerr := f.Close(); err == nil {
-		err = cerr
-	}
-	if err == nil {
-		err = os.Chmod(name, perm)
-	}
-	if err == nil {
-		err = os.Rename(name, path)
-	}
-	if err != nil {
-		os.Remove(name)
-	}
-	return err
+	return atomicfile.Write(path, b, perm)
 }

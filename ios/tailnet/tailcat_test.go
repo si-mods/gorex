@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"gorex/internal/rex"
+	"gorex/internal/tailcatpool"
 
 	"github.com/tailscale/tailcat"
 	"tailscale.com/derp/derpserver"
@@ -193,10 +194,7 @@ func TestTailcatProxy(t *testing.T) {
 	if got, err := get(hc, "http://mac.tailcat.invalid:7297/"); err == nil {
 		t.Errorf("GET of a host taken out = %q", got)
 	}
-	tcMu.Lock()
-	n := len(tcClients)
-	tcMu.Unlock()
-	if n != 0 {
+	if n := tcPool.Len(); n != 0 {
 		t.Errorf("%d clients left with no hosts", n)
 	}
 }
@@ -268,10 +266,7 @@ func TestTailcatPair(t *testing.T) {
 		t.Errorf("the machine was asked by %q", asked)
 	}
 	// The client made to pair, of no host, is gone.
-	tcMu.Lock()
-	n := len(tcClients)
-	tcMu.Unlock()
-	if n != 0 {
+	if n := tcPool.Len(); n != 0 {
 		t.Errorf("%d clients left after pairing", n)
 	}
 	if _, err := TailcatPair("not an address", "rexgo-kqzt"); err == nil {
@@ -282,10 +277,7 @@ func TestTailcatPair(t *testing.T) {
 	if fp, err := TailcatPair(addr, "rexgo-kqzt"); err != nil || fp != rex.Fingerprint(TailcatKey()) {
 		t.Errorf("TailcatPair with a listed machine = %q, %v", fp, err)
 	}
-	tcMu.Lock()
-	p := tcClients[addr]
-	tcMu.Unlock()
-	if p == nil || !p.used {
+	if p := tcPool.Get(addr); p == nil || !tcPool.IsUsed(p) {
 		t.Error("pairing a listed machine didn't use its client")
 	}
 }
@@ -341,10 +333,8 @@ func TestTailcatReset(t *testing.T) {
 	}
 	roundTrip("before")
 
-	tcMu.Lock()
-	c := tcClients[addr]
-	tcMu.Unlock()
-	sys := tailcatSystem(c.tc)
+	c := tcPool.Get(addr)
+	sys := tailcatSystem(c.Client())
 	if sys == nil {
 		t.Fatal("a started client has no system")
 	}
@@ -352,7 +342,7 @@ func TestTailcatReset(t *testing.T) {
 	waitLoops(t, 6)
 	closeSockets(sys.MagicSock.Get())
 	waitLoops(t, 4)
-	tries := tailcatTries.Load()
+	tries := tcPool.Tries.Load()
 	warms := tailcatWarms.Load()
 	if err := ResetSockets(); err != nil {
 		t.Fatal(err)
@@ -366,14 +356,11 @@ func TestTailcatReset(t *testing.T) {
 		t.Errorf("GET after the reset: %v", err)
 	}
 	// A dial of a reset client gets the full bound, as a fresh client's:
-	// it is cold, not a suspect that a try bounds at tailcatTry.
-	if n := tailcatTries.Load() - tries; n != 0 {
+	// it is cold, not a suspect that a try bounds at TryTimeout.
+	if n := tcPool.Tries.Load() - tries; n != 0 {
 		t.Errorf("dials after the reset tried the kept client %d times; want none", n)
 	}
-	tcMu.Lock()
-	same := tcClients[addr] == c
-	tcMu.Unlock()
-	if !same {
+	if tcPool.Get(addr) != c {
 		t.Error("the reset replaced a client that wasn't stuck")
 	}
 	DefaultInterfaceChanged("en0")
@@ -382,8 +369,8 @@ func TestTailcatReset(t *testing.T) {
 // A machine whose server restarted, as on an upgrade, is reached again at
 // once, not after WireGuard's rekey.
 func TestTailcatServerRestart(t *testing.T) {
-	defer func(d time.Duration) { tailcatTry = d }(tailcatTry)
-	tailcatTry = time.Second
+	tcPool.SetTryTimeout(time.Second)
+	defer tcPool.SetTryTimeout(0)
 	Stop()
 	tailcatEnv(t)
 	m := newMachine(t)
@@ -399,18 +386,18 @@ func TestTailcatServerRestart(t *testing.T) {
 	}
 	c.Close()
 	restart(t, m)
-	// The kept client fails one try (tailcatTry) against the new server,
+	// The kept client fails one try (TryTimeout) against the new server,
 	// which has not met it, and a new client replaces it. A second try of
-	// the old client adds tailcatTry for nothing: its Ping returns at once,
+	// the old client adds TryTimeout for nothing: its Ping returns at once,
 	// as it registered before. The count of tries is what is asserted, not
 	// the time, which a loaded machine stretches; tailcatDial bounds it.
-	tries := tailcatTries.Load()
+	tries := tcPool.Tries.Load()
 	start := time.Now()
 	got, err := get(hc, "http://mac.tailcat.invalid:7297/")
 	if err != nil || got != "again" {
 		t.Fatalf("GET after the restart = %q, %v, %v after it", got, err, time.Since(start))
 	}
-	if n := tailcatTries.Load() - tries; n != 1 {
+	if n := tcPool.Tries.Load() - tries; n != 1 {
 		t.Errorf("the kept client had %d tries after the restart, want 1", n)
 	}
 }
@@ -437,8 +424,8 @@ func restart(t *testing.T, m *machine) {
 // for the others to end, as the kept client's open connection would make
 // it wait for ever.
 func TestTailcatRestartConcurrentDials(t *testing.T) {
-	defer func(d time.Duration) { tailcatTry = d }(tailcatTry)
-	tailcatTry = time.Second
+	tcPool.SetTryTimeout(time.Second)
+	defer tcPool.SetTryTimeout(0)
 	Stop()
 	tailcatEnv(t)
 	m := newMachine(t)
@@ -449,9 +436,7 @@ func TestTailcatRestartConcurrentDials(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer open.Close()
-	tcMu.Lock()
-	old := tcClients[addr]
-	tcMu.Unlock()
+	old := tcPool.Get(addr)
 	restart(t, m)
 	const n = 3
 	conns := make(chan net.Conn, n)
@@ -466,20 +451,17 @@ func TestTailcatRestartConcurrentDials(t *testing.T) {
 			conns <- c
 		}()
 	}
-	var pools []*pooledTailcat
+	var pools []*tailcatpool.Entry
 	for range n {
 		select {
 		case err := <-errs:
 			t.Errorf("a dial after the restart: %v", err)
 		case c := <-conns:
-			pools = append(pools, c.(*tailcatConn).p)
+			pools = append(pools, c.(*tailcatpool.Conn).Entry())
 			c.Close()
 		}
 	}
-	tcMu.Lock()
-	dead := old.dead
-	tcMu.Unlock()
-	if !dead {
+	if !tcPool.IsDead(old) {
 		t.Error("the kept client was not retired")
 	}
 	for _, p := range pools {
@@ -494,8 +476,10 @@ func TestTailcatRestartConcurrentDials(t *testing.T) {
 // list, but not at its caller's deadline: the proxy's SOCKS server gives
 // every dial five seconds, too short for a first dial.
 func TestTailcatDialCancel(t *testing.T) {
-	defer func(d, t time.Duration) { tailcatDial, tailcatTry = d, t }(tailcatDial, tailcatTry)
-	tailcatDial, tailcatTry = time.Minute, time.Minute
+	defer func(d time.Duration) { tailcatDial = d }(tailcatDial)
+	tailcatDial = time.Minute
+	tcPool.SetTryTimeout(time.Minute)
+	defer tcPool.SetTryTimeout(0)
 	Stop()
 	tailcatEnv(t)
 	m := newMachine(t)
@@ -511,8 +495,8 @@ func TestTailcatDialCancel(t *testing.T) {
 	// The machine is gone: a dial to it waits until something ends it.
 	m.ts.Close()
 	dialing := make(chan struct{}, 1)
-	tailcatDialing = func() { dialing <- struct{}{} }
-	defer func() { tailcatDialing = func() {} }()
+	tcPool.SetOnDialing(func() { dialing <- struct{}{} })
+	defer tcPool.SetOnDialing(nil)
 	hang := func(name string, ctx context.Context, end func()) {
 		t.Helper()
 		ended := make(chan error, 1)
@@ -543,21 +527,20 @@ func TestTailcatDialCancel(t *testing.T) {
 	hang("host removed", context.Background(), func() { setHosts(t) })
 }
 
-// A client with no connection for tailcatIdle closes; one with an open
+// A client with no connection for idle closes; one with an open
 // connection stays, as does one whose dial to a closed port failed while
 // another connection uses it.
 func TestTailcatIdle(t *testing.T) {
-	defer func(d time.Duration) { tailcatIdle = d }(tailcatIdle)
-	tailcatIdle = 200 * time.Millisecond
+	const idle = 200 * time.Millisecond
+	tcPool.SetIdleTimeout(idle)
+	defer tcPool.SetIdleTimeout(0)
 	Stop()
 	tailcatEnv(t)
 	m := newMachine(t)
 	addr := string(m.ts.TailcatAddr())
 	setHosts(t, tailcatHost{ID: "mac", Address: addr})
-	pooled := func() *pooledTailcat {
-		tcMu.Lock()
-		defer tcMu.Unlock()
-		return tcClients[addr]
+	pooled := func() *tailcatpool.Entry {
+		return tcPool.Get(addr)
 	}
 	j, _ := Proxy()
 	var p struct{ Address, Password string }
@@ -570,7 +553,7 @@ func TestTailcatIdle(t *testing.T) {
 	if _, err := socksConnect(p.Address, "tsnet", p.Password, "mac.tailcat.invalid", 1); err == nil {
 		t.Error("a port nothing listens on connected")
 	}
-	time.Sleep(3 * tailcatIdle)
+	time.Sleep(3 * idle)
 	if pooled() != c {
 		t.Fatal("a client with an open connection went")
 	}
