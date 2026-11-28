@@ -468,3 +468,8 @@ Each item has a **Trigger** (what the diff shows), a **Check** (what the author 
 - **Trigger:** two release jobs upload a same-named asset (`SHA256SUMS`) and one loses with HTTP 422.
 - **Check:** uploads that dedupe by name still race when both jobs write at once; the mygo `-upload` flag needs `--clobber`, or one job must own the shared file.
 - **Source:** the v0.63.0 release's `unix` job failed on `SHA256SUMS` already existing after `windows` won the race; a `--failed` rerun recovered it because the upload skips assets by name.
+
+### Dictation that sends
+- **Trigger:** a voice or dictation path in the composer (`VoiceCapsule`, `dictationInsert`) calls the send path.
+- **Check:** dictation only fills the field; the user's own tap sends. Recognition can be wrong, and a sent message cannot be recalled.
+- **Source:** #1166 added a one-tap Send to the inline voice view; this PR removes it for a Done button.

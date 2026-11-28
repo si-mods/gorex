@@ -493,7 +493,6 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
 
         // The bar's mic dictates into the field, not the terminal.
         terminal.dictationInsert = { [weak self] text in self?.hear(text) }
-        terminal.composerSend = { [weak self] in self?.sendNow() }
 
         holdVoice.minimumPressDuration = 0.25
         holdVoice.allowableMovement = .greatestFiniteMagnitude
