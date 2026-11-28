@@ -569,16 +569,24 @@ struct TailcatPairSheet: View {
     @Environment(HostStore.self) private var store
     @Environment(\.dismiss) private var dismiss
     @State private var fingerprint: String?
-    /// Why the sheet stopped: the pair failed, or the approval window
-    /// ran out while the host keeps trying on its own.
+    /// True when the host answered that this phone's key is already on its
+    /// allowlist: the host is added immediately without waiting for approval.
+    @State private var alreadyAllowed = false
+    /// When the host's pairing window for this request closes.
+    @State private var deadline: Date?
+    /// Why the sheet stopped: the pair failed, or the approval window ran out.
     @State private var end: PairEnd?
-    /// Whether the host stays: it came online, or waiting timed out while
-    /// it may be approved. Any other way out takes it back.
+    /// The host or transport error for a failed pair, so the user knows
+    /// which step failed.
+    @State private var failureDetail: String?
+    /// Whether the host stays: it came online or was already allowed. Any
+    /// other way out removes the unapproved host.
     @State private var kept = false
     @State private var copied = false
 
     /// How long the sheet waits for the approval: GoRex's pairing window.
-    private static let wait = Duration.seconds(5 * 60)
+    private static let waitSeconds: TimeInterval = 5 * 60
+    private static let wait = Duration.seconds(waitSeconds)
 
     private var online: Bool { store.host(code.id)?.status == .online }
     /// Added, and waiting for the approval.
@@ -589,35 +597,53 @@ struct TailcatPairSheet: View {
             Text("Pair with \(code.name)").font(.title2.bold())
             if let end {
                 ContentUnavailableView {
-                    Label(end == .failed ? "Couldn't pair." : "Not connected yet.",
-                          systemImage: end == .failed ? "exclamationmark.triangle" : "clock")
+                    Label(end == .expired ? "Pairing window expired." : "Couldn't pair.",
+                          systemImage: end == .expired ? "clock" : "exclamationmark.triangle")
                 } description: {
-                    Text(end == .failed
-                         ? "Check the connection and try again."
-                         : "Rex Go keeps trying: approve this phone on the machine.")
-                } actions: {
-                    if end == .failed {
-                        Button("Try again") { retry() }
-                            .buttonStyle(.glassProminent)
-                            .foregroundStyle(Color.page)
-                        copyButton()
+                    if end == .expired {
+                        Text("The request wasn't approved in time. Open Rex Go QR… on \(code.name) and try again.")
+                    } else if let failureDetail, !failureDetail.isEmpty {
+                        Text(failureDetail)
+                    } else {
+                        Text("Check the connection and try again.")
                     }
+                } actions: {
+                    Button("Try again") { retry() }
+                        .buttonStyle(.glassProminent)
+                        .foregroundStyle(Color.page)
+                    copyButton()
+                }
+            } else if alreadyAllowed {
+                if online {
+                    Text("Paired. Rex Go is connected.").foregroundStyle(.secondary)
+                } else {
+                    Text("Already allowed on \(code.name). Connecting…").foregroundStyle(.secondary)
+                    ProgressView()
                 }
             } else if let fingerprint {
                 if online {
                     Text("Paired. Rex Go is connected.").foregroundStyle(.secondary)
                 } else {
-                    Text("On \(code.name), approve \(TailnetSettings.name) in Settings › Server › Devices only if its fingerprint is this one.")
+                    Text("Request sent. On \(code.name), approve \(TailnetSettings.name) in Settings › Server › Devices only if its fingerprint is this one.")
                         .foregroundStyle(.secondary)
                 }
                 Text(fingerprint).font(.title3.monospaced().bold()).textSelection(.enabled)
-                if !online { ProgressView() }
+                if !online {
+                    if let deadline {
+                        TimelineView(.periodic(from: .now, by: 1)) { ctx in
+                            Text("Time left: \(HostConfig.remainingPairingText(until: deadline, now: ctx.date))")
+                                .font(.footnote.monospacedDigit())
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    ProgressView()
+                }
             } else {
                 Text("Asking \(code.name) to pair…").foregroundStyle(.secondary)
                 ProgressView()
             }
             Spacer(minLength: 12)
-            Button(waiting || fingerprint == nil && end == nil ? "Cancel" : "Done") { finish() }
+            Button(waiting || (fingerprint == nil && !alreadyAllowed && end == nil) ? "Cancel" : "Done") { finish() }
                 .buttonStyle(.glass)
                 .font(.headline)
                 .controlSize(.extraLarge)
@@ -643,23 +669,43 @@ struct TailcatPairSheet: View {
         do {
             let f = try await TailnetEngine.shared.pair(address: address)
             try Task.checkCancellation()
+            if f.isEmpty {
+                // Already on the host's allowlist: add immediately, no approval needed.
+                alreadyAllowed = true
+                kept = true
+                store.add(code)
+                return
+            }
             fingerprint = f
+            deadline = Date.now.addingTimeInterval(Self.waitSeconds)
             store.add(code)
             try await Task.sleep(for: Self.wait)
             guard !online else { return }
-            // Not approved yet, or still connecting: it stays, and tries on.
-            kept = true
-            end = .stillTrying
+            // Window expired without approval: remove the unapproved host
+            // instead of keeping one that can never connect.
+            store.remove(code.id)
+            end = .expired
         } catch is CancellationError {
         } catch {
+            if HostConfig.isAlreadyAllowed(error) {
+                alreadyAllowed = true
+                kept = true
+                store.add(code)
+                return
+            }
             ConnectionLog.note("pair \(code.name): \(error.diagnosis)")
+            failureDetail = error.localizedDescription
             end = .failed
         }
     }
 
     private func retry() {
         end = nil
+        failureDetail = nil
         fingerprint = nil
+        alreadyAllowed = false
+        deadline = nil
+        kept = false
         Task { await pair() }
     }
 
@@ -690,8 +736,8 @@ private func diagnosticsText() -> String {
 private enum PairEnd {
     case failed
     case mismatch
-    /// The approval window ran out; the host keeps trying on its own.
-    case stillTrying
+    /// The approval window ran out before the host approved the request.
+    case expired
 }
 
 /// Pairs with a GoRex machine by its IP address, through its own relay

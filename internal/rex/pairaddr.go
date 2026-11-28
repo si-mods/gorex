@@ -190,6 +190,10 @@ func (s *Server) pairByAddress(w http.ResponseWriter, req *http.Request, leaf []
 	default:
 		p.key, p.Name, p.RequestedAt = k.String(), pairName(string(name)), time.Now()
 		p.Code = pairCode(x, leaf, kc, ks, nc, ns)
+		if until := time.Now().Add(pairWindow); until.After(r.pairUntil) {
+			r.pairUntil = until
+			time.AfterFunc(pairWindow+time.Second, s.ownDropStrangers)
+		}
 	}
 	r.mu.Unlock()
 	if refused != "" {

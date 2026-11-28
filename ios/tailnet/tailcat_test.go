@@ -63,6 +63,7 @@ type machine struct {
 	ts      *tailcat.Server
 	mu      sync.Mutex
 	pairing bool
+	allowed bool
 	asked   string // the name of the last request
 }
 
@@ -103,8 +104,9 @@ func newMachine(t *testing.T) *machine {
 		}
 		m.mu.Lock()
 		pairing := m.pairing
+		allowed := m.allowed
 		m.mu.Unlock()
-		if !pairing {
+		if !pairing && !allowed {
 			b, _ := json.Marshal(rex.Response{Error: "rex: this machine is not allowed here"})
 			c.Write(append(b, '\n'))
 			return
@@ -117,6 +119,8 @@ func newMachine(t *testing.T) *machine {
 		res := rex.Response{}
 		if json.Unmarshal(line, &req) != nil || req.Op != "remote.pair" || req.Remote == nil {
 			res.Error = "rex: not a pairing request"
+		} else if allowed {
+			res.Error = "rex: this machine is allowed there already"
 		} else {
 			m.mu.Lock()
 			m.asked = req.Remote.Name
@@ -279,6 +283,14 @@ func TestTailcatPair(t *testing.T) {
 	}
 	if p := tcPool.Get(addr); p == nil || !tcPool.IsUsed(p) {
 		t.Error("pairing a listed machine didn't use its client")
+	}
+	// A pre-allowed device gets "allowed there already" from the server,
+	// which TailcatPair treats as success with no fingerprint needed.
+	m.mu.Lock()
+	m.pairing, m.allowed = false, true
+	m.mu.Unlock()
+	if fp, err := TailcatPair(addr, "rexgo-kqzt"); err != nil || fp != "" {
+		t.Errorf("TailcatPair when already allowed = %q, %v; want \"\", nil", fp, err)
 	}
 }
 

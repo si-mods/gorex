@@ -232,8 +232,9 @@ func TestReachableFirewall(t *testing.T) {
 	}
 }
 
-// TestDirectAddress: while Reachable at runs, the second address and its
-// QR code are offered, hidden as the first is; off, they are not.
+// TestDirectAddress: while Reachable at runs, the second address is
+// offered in Show Details, hidden as the first is; off, it is not.
+// Devices keeps one Rex Go QR button instead of a separate Direct QR one.
 func TestDirectAddress(t *testing.T) {
 	_, tt, rs := serverPage(t, rex.RemoteStatus{Enabled: true, Running: true})
 	remoteUI.details = true
@@ -242,10 +243,13 @@ func TestDirectAddress(t *testing.T) {
 		t.Fatalf("the direct address shows with Reachable at off; texts %q", tt.Texts())
 	}
 	rs.show(tt, func(st *rex.RemoteStatus) { st.ReachableAt = "192.0.2.10" })
-	for _, s := range []string{locales.RemoteDirectAddress(), locales.RemoteDirectAddressNote(), locales.RemoteDirectQR()} {
+	for _, s := range []string{locales.RemoteDirectAddress(), locales.RemoteDirectAddressNote(), locales.RemoteRexGoQR()} {
 		if !tt.HasText(s) {
 			t.Errorf("no %q in %q", s, tt.Texts())
 		}
+	}
+	if tt.HasText(locales.RemoteDirectQR()) {
+		t.Errorf("separate Direct QR button still shows: %q", tt.Texts())
 	}
 	// Each address is shown by its own button: the first one's leaves the
 	// direct one hidden.
@@ -258,7 +262,7 @@ func TestDirectAddress(t *testing.T) {
 	remoteUI.reveal = false
 	// A failed relay offers none.
 	rs.show(tt, func(st *rex.RemoteStatus) { st.ReachableError = "it failed" })
-	if tt.HasText(locales.RemoteDirectAddress()) || tt.HasText(locales.RemoteDirectQR()) {
+	if tt.HasText(locales.RemoteDirectAddress()) {
 		t.Errorf("the direct address shows with the relay down; texts %q", tt.Texts())
 	}
 }

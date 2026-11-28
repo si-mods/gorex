@@ -202,22 +202,47 @@ func TestRexGoQR(t *testing.T) {
 	}
 	// While a change is on its way, it waits, as every change does.
 	remoteUI.busy, remoteUI.err = true, nil
-	a.openRexGoQR(false)
+	a.openRexGoQR()
 	if remoteUI.err != nil {
 		t.Error("Rex Go QR… asked while busy")
 	}
 	remoteUI.busy = false
 
 	const secret = "tcSECRETADDRESS"
-	remoteUI.pairQR = &hostPairQR{host: "mac", image: qrImage(rexGoPairURL(secret, "mac")), open: true, rexGo: true}
+	const directSecret = "tcDIRECTSECRET"
+	remoteUI.pairQR = &hostPairQR{
+		host:        "mac",
+		image:       qrImage(rexGoPairURL(secret, "mac")),
+		directImage: qrImage(rexGoPairURL(directSecret, "mac")),
+		open:        true,
+		rexGo:       true,
+	}
+	remoteUI.st.Pairing = rex.RemotePairing{Open: true, ExpiresAt: time.Now().Add(2 * time.Minute)}
 	tt.Frame()
-	if !tt.HasText(locales.RemoteRexGoQRHint()) {
-		t.Fatalf("no hint in %q", tt.Texts())
+	if !tt.HasText(locales.RemoteRexGoQRHint()) || !tt.HasText(locales.RemoteQRTransportRelay()) {
+		t.Fatalf("no hint or relay transport in %q", tt.Texts())
+	}
+	if !tt.HasText(locales.RemoteQRRelay()) || !tt.HasText(locales.RemoteQRSameNetwork()) {
+		t.Fatalf("no relay / same-network choice in %q", tt.Texts())
 	}
 	for _, s := range tt.Texts() {
-		if strings.Contains(s, secret) || s == locales.HostsRexQRCopy() {
+		if strings.Contains(s, secret) || strings.Contains(s, directSecret) || s == locales.HostsRexQRCopy() {
 			t.Errorf("the dialog shows %q", s)
 		}
+	}
+	// Switching to "Same network only" shows the direct transport line.
+	if err := tt.Click(locales.RemoteQRSameNetwork()); err != nil {
+		t.Fatalf("click same-network: %v", err)
+	}
+	tt.Frame()
+	if !tt.HasText(locales.RemoteQRTransportDirect()) || !tt.HasText(locales.RemoteDirectQRHint()) {
+		t.Fatalf("same-network tab missing direct transport/hint: %q", tt.Texts())
+	}
+	// A pending request can be approved directly inside the QR dialog.
+	remoteUI.st.Pending = []rex.RemotePending{{Name: "alice-iphone", PublicKey: testKey}}
+	tt.Frame()
+	if !tt.HasText("alice-iphone") || !tt.HasText(rex.Fingerprint(testKey)) || !tt.HasText(locales.RemoteApprove()) {
+		t.Fatalf("pending request not shown in QR dialog: %q", tt.Texts())
 	}
 	remoteUI.st.Running = false
 	tt.Frame()

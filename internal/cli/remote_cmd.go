@@ -319,10 +319,12 @@ func remoteCmd(args []string, out, errOut io.Writer) (int, bool) {
 			fmt.Fprintln(errOut, err)
 			return ExitServer, true
 		}
-		fmt.Fprintln(out, st.Address)
+		if st.Address != "" {
+			fmt.Fprintf(out, "tailcat %s\n", st.Address)
+		}
 		// The second, of Reachable at, while its relay runs.
 		if st.ReachableAddress != "" {
-			fmt.Fprintln(out, st.ReachableAddress)
+			fmt.Fprintf(out, "reachable-at %s\n", st.ReachableAddress)
 		}
 		return ExitOK, true
 	}

@@ -6854,6 +6854,100 @@ func (msgs Messages) RemoteRexGoQRUnavailable() string {
 	return Catalog.Format(msgs.locale, "remoteRexGoQRUnavailable", nil)
 }
 
+// RemoteQRRelay says "Anywhere (Relay)"
+// in the language the app shows.
+//
+// Segmented choice in the Rex Go QR dialog: the default relay address that
+// works off-LAN.
+func RemoteQRRelay() string { return In(i18n.Locale()).RemoteQRRelay() }
+
+// RemoteQRRelay says "Anywhere (Relay)"
+// in the language of msgs.
+//
+// Segmented choice in the Rex Go QR dialog: the default relay address that
+// works off-LAN.
+func (msgs Messages) RemoteQRRelay() string {
+	return Catalog.Format(msgs.locale, "remoteQRRelay", nil)
+}
+
+// RemoteQRSameNetwork says "Same network only"
+// in the language the app shows.
+//
+// Segmented choice in the Rex Go QR dialog: the direct/LAN address that
+// only works on the same network.
+func RemoteQRSameNetwork() string { return In(i18n.Locale()).RemoteQRSameNetwork() }
+
+// RemoteQRSameNetwork says "Same network only"
+// in the language of msgs.
+//
+// Segmented choice in the Rex Go QR dialog: the direct/LAN address that
+// only works on the same network.
+func (msgs Messages) RemoteQRSameNetwork() string {
+	return Catalog.Format(msgs.locale, "remoteQRSameNetwork", nil)
+}
+
+// RemoteQRTransportRelay says "Tailcat relay · Works anywhere (off-LAN)"
+// in the language the app shows.
+//
+// Transport summary line in the QR dialog for a relay-backed tailcat
+// address.
+func RemoteQRTransportRelay() string { return In(i18n.Locale()).RemoteQRTransportRelay() }
+
+// RemoteQRTransportRelay says "Tailcat relay · Works anywhere (off-LAN)"
+// in the language of msgs.
+//
+// Transport summary line in the QR dialog for a relay-backed tailcat
+// address.
+func (msgs Messages) RemoteQRTransportRelay() string {
+	return Catalog.Format(msgs.locale, "remoteQRTransportRelay", nil)
+}
+
+// RemoteQRTransportDirect says "Tailcat direct · Same network / direct IP only"
+// in the language the app shows.
+//
+// Transport summary line in the QR dialog for a direct Reachable-at tailcat
+// address.
+func RemoteQRTransportDirect() string { return In(i18n.Locale()).RemoteQRTransportDirect() }
+
+// RemoteQRTransportDirect says "Tailcat direct · Same network / direct IP only"
+// in the language of msgs.
+//
+// Transport summary line in the QR dialog for a direct Reachable-at tailcat
+// address.
+func (msgs Messages) RemoteQRTransportDirect() string {
+	return Catalog.Format(msgs.locale, "remoteQRTransportDirect", nil)
+}
+
+// RemoteQRTransportLAN says "LAN · Same network only (does not work off-LAN)"
+// in the language the app shows.
+//
+// Transport summary line in the QR dialog for a local network HTTP address.
+func RemoteQRTransportLAN() string { return In(i18n.Locale()).RemoteQRTransportLAN() }
+
+// RemoteQRTransportLAN says "LAN · Same network only (does not work off-LAN)"
+// in the language of msgs.
+//
+// Transport summary line in the QR dialog for a local network HTTP address.
+func (msgs Messages) RemoteQRTransportLAN() string {
+	return Catalog.Format(msgs.locale, "remoteQRTransportLAN", nil)
+}
+
+// RemoteQRTransportTailnet says "Tailscale · Works on your tailnet"
+// in the language the app shows.
+//
+// Transport summary line in the QR dialog for a Tailscale tailnet HTTPS
+// address.
+func RemoteQRTransportTailnet() string { return In(i18n.Locale()).RemoteQRTransportTailnet() }
+
+// RemoteQRTransportTailnet says "Tailscale · Works on your tailnet"
+// in the language of msgs.
+//
+// Transport summary line in the QR dialog for a Tailscale tailnet HTTPS
+// address.
+func (msgs Messages) RemoteQRTransportTailnet() string {
+	return Catalog.Format(msgs.locale, "remoteQRTransportTailnet", nil)
+}
+
 // RemoteAddByKeyAsk says "Add by Key…"
 // in the language the app shows.
 //

@@ -768,6 +768,13 @@ func (s *Server) remotePair(k, name string) (string, error) {
 		r.pending = append(r.pending, RemotePending{Name: name, PublicKey: k, RequestedAt: time.Now()})
 		log.Print("rex: a pairing request")
 	}
+	// Keep the pairing window open for a full window from when the request
+	// arrived so the user has time to approve it and both sides agree on
+	// the remaining time.
+	if until := time.Now().Add(pairWindow); until.After(r.pairUntil) {
+		r.pairUntil = until
+		time.AfterFunc(pairWindow+time.Second, s.ownDropStrangers)
+	}
 	return Fingerprint(k), nil
 }
 

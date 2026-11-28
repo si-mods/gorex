@@ -254,6 +254,18 @@ extension HostConfig {
         self.init(id: id, name: n.isEmpty ? "GoRex" : n, url: Self.tailcatURL(id), tailcat: Tailcat(address: a, machine: n))
     }
 
+    /// Matches the server's "allowed there already" response so pre-allowed
+    /// devices succeed instead of failing.
+    static func isAlreadyAllowed(_ error: Error) -> Bool {
+        error.localizedDescription.localizedCaseInsensitiveContains("allowed there already")
+    }
+
+    /// Formats the remaining pairing window time as m:ss, clamped at 0:00.
+    static func remainingPairingText(until deadline: Date, now: Date = .now) -> String {
+        let secs = max(0, Int(deadline.timeIntervalSince(now).rounded()))
+        return String(format: "%d:%02d", secs / 60, secs % 60)
+    }
+
     /// The host of an ssh:// address,
     /// ssh://user@host[:port][/socket|/tcp://host:port][#k=token]
     /// (docs/IOS-023-ssh-hosts.md, The address; docs/IOS-024-ssh-tcp.md);

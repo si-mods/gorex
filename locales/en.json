@@ -2287,6 +2287,30 @@
 	"@remoteRexGoQRUnavailable": {
 		"description": "Shown in place of the QR code for Rex Go when the server has no address."
 	},
+	"remoteQRRelay": "Anywhere (Relay)",
+	"@remoteQRRelay": {
+		"description": "Segmented choice in the Rex Go QR dialog: the default relay address that works off-LAN."
+	},
+	"remoteQRSameNetwork": "Same network only",
+	"@remoteQRSameNetwork": {
+		"description": "Segmented choice in the Rex Go QR dialog: the direct/LAN address that only works on the same network."
+	},
+	"remoteQRTransportRelay": "Tailcat relay · Works anywhere (off-LAN)",
+	"@remoteQRTransportRelay": {
+		"description": "Transport summary line in the QR dialog for a relay-backed tailcat address."
+	},
+	"remoteQRTransportDirect": "Tailcat direct · Same network / direct IP only",
+	"@remoteQRTransportDirect": {
+		"description": "Transport summary line in the QR dialog for a direct Reachable-at tailcat address."
+	},
+	"remoteQRTransportLAN": "LAN · Same network only (does not work off-LAN)",
+	"@remoteQRTransportLAN": {
+		"description": "Transport summary line in the QR dialog for a local network HTTP address."
+	},
+	"remoteQRTransportTailnet": "Tailscale · Works on your tailnet",
+	"@remoteQRTransportTailnet": {
+		"description": "Transport summary line in the QR dialog for a Tailscale tailnet HTTPS address."
+	},
 	"remoteAddByKeyAsk": "Add by Key…",
 	"@remoteAddByKeyAsk": {
 		"description": "Remote page button: shows the fields that allow a client by its public key."
