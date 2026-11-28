@@ -253,6 +253,11 @@ Each item has a **Trigger** (what the diff shows), a **Check** (what the author 
 - **Check:** each instabox job that runs is one sandbox start, and the plan allows 500 a day, 200 an hour and 30 a minute. Add a step to the existing job (CI's `linux`) instead. A new instabox job names its expected starts per day in the PR.
 - **Source:** CI started up to 9 boxes per run and averaged about 900 starts a day before the allowance (Nov 2026); this PR folded CI into one `linux` job.
 
+### A test that reads a file outside its package
+- **Trigger:** a Go test or generator reads a repo path outside its package's directory (`os.ReadFile`, `WalkDir`, `git ls-files`), or a new `//go:embed` reaches outside the package.
+- **Check:** the path is in `readsElsewhere` in `tools/ciplan/plan.go`, or the root test is in its `ruleTests`. Otherwise CI skips that test when only that file changes.
+- **Source:** the PR that added `tools/ciplan`: CI runs only the packages a change reaches.
+
 ### CI retry
 - **Trigger:** the diff adds a retry or rerun of a failed test or shard to a workflow or script.
 - **Check:** reject it. No CI job retries a failed test. Fix the test.
