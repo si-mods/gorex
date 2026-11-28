@@ -3,7 +3,7 @@ name: MOD-016
 description: "Cross-host agent delegation over existing peer links: peer capability probing, gorex delegate over the MOD-010 quick launcher, visible layout tabs, and gorexGuide workflow rules. Use when adding or changing gorex hosts --probe, gorex -S HOST agents, or gorex delegate."
 metadata:
   created: "2026-11-26"
-  updated: "2026-11-26"
+  updated: "2026-11-28"
 ---
 
 # MOD-016: Peer delegation for coding agents
@@ -126,6 +126,26 @@ Running `claude -p --output-format json` in a PTY breaks live viewing, prevents 
 
 Every agent shares the same TUI driver (launch via `MOD-010` + `tab.create`, readiness wait, bracketed paste + `\r`, warm `--session` follow-up) and plugs into a thin `agentTranscript` interface (`FindFile` + `ParseRow`). Any agent without a dedicated transcript parser still runs in the live interactive TUI and falls back to GoRex idle detection plus `capture`. Phase 2 ships native transcript parsers for `claude`, `omp`, and `codex` first, with `agy` and `devin` using the shared TUI driver and incremental transcript parsers.
 
+#### Prompt delivery
+
+`delegate` and `delegate.send` deliver a prompt in the same steps for every agent (#1259). An agent TUI can show a notice over its input box at start, as Antigravity's "esc to dismiss" splash. A paste typed into such a notice is lost, and the session then waits at an empty prompt. The steps below find that state from the screen and the transcript. GoRex keeps no per-agent list of notices or keys.
+
+1. **Wait for readiness**: an OSC 7501 `idle` status, or a prompt glyph or bracketed paste after `400 ms` of quiet, or `1.5 s` of quiet for agents other than `claude`. The wait stops after `20 s`.
+2. **Dismiss a notice**: when the screen (the last `rows` lines of the text) shows "esc" and then "dismiss" on one line, the server presses Escape through the `key` encoder. When the hint goes within `1.5 s`, it waits for readiness again and looks for a next notice, at most 3 times. When the hint stays, as text of the conversation does, it presses no more. A notice that a different key dismisses is not handled.
+3. **Paste and submit**: bracketed paste, then Return up to 4 times (`2 s` apart) until the agent's transcript records the prompt (`PromptAccepted`).
+4. **Check the submit**: when the transcript records no prompt, the server reads the screen once. It pastes the prompt again (back to step 2, once only) when all of these are true:
+   - the session did not exit, and no OSC 7501 status says `working` or `blocked`;
+   - the session printed nothing for `1.5 s` (an agent at work draws a spinner);
+   - the screen (not the scrollback) does not show the prompt's first 24 characters (compared without spaces and box-drawing characters, so wrapped text in a box still matches) nor a collapsed paste such as `[Pasted text #1 +40 lines]`.
+
+   An agent can write its transcript late, so the server then waits `4 s` more for the transcript and reads the screen again before it pastes. A prompt still in the input box is left there: Return was already pressed 4 times. An agent with no transcript adapter skips step 3's wait and 4.
+
+Every wait is bounded. The worst case, an agent that never settles, is 3 × (`1.5 s` + `20 s`) for notices, then 2 pastes with 8 Returns (`16 s`) and the `4 s` wait between them. No new flag sets them: the existing constants in `internal/rex/delegate.go` (tests shorten them) cover each wait.
+
+#### Keys for a live session
+
+A caller sends a key or chord to a delegated session, or any session, with `gorex [-S HOST] send -s SESSION --key KEY` (repeatable). An example is Alt+M, which Antigravity reads as "send the queued input now" while a turn runs. The CLI reads names such as `alt+m`, `ctrl+c`, `shift+tab`, `escape`, `up` or `f5` (or a W3C code such as `KeyM`) into a `KeyInput` (`rex.ParseKeyChord`). It sends each through the existing `key` op, which encodes the key as the program's terminal modes ask, as a window's keystroke is. GoRex adds no per-agent flag such as `--now`: the caller names the agent's own key. The `key` op is already in `remoteAllowed`, so `-S HOST` needs no server change.
+
 Rules for argument safety and process hygiene:
 
 - On Unix, `agentCommand` passes arguments via POSIX positional parameters (`sh -lic 'exec /path/to/agent "$@"' -- <args...>`) so arguments never undergo shell interpolation.
@@ -171,6 +191,7 @@ Rules for argument safety and process hygiene:
 - **Peer probing**: unit test in `internal/cli/commands_test.go` with mock saved hosts and Tailscale-discovered hosts verifying `gorex hosts --probe --json` merges and deduplicates both sources, returns `online`, `agents`, and `projects`, and does not block on unreachable hosts.
 - **Quick-launcher argv safety**: unit tests in `internal/rex/agents_test.go` covering `claude` and `codex` on Unix and Windows with shell metacharacters in prompts, verifying positional `"$@"` / PowerShell quoting and refusal of `--mode read-only` on agents without a read-only flag.
 - **Layout attachment, multi-turn, and resilience**: unit tests in `internal/rex/delegate_test.go` verifying `delegate` attaches the session via `tab.create` under the matching project, drives interactive `claude` via bracketed paste and tails transcript JSONL (`user`, `assistant`, `turn_duration`), handles warm follow-up turns (`delegate.send`) and cold `--resume`, surfaces `blocked` status promptly, returns `session` on timeout or disconnect without spawning duplicates, kills on `SIGINT` or `--cancel-on-timeout`, and closes the tab on clean sync exit unless `--keep` is set.
+- **Prompt delivery and keys** (#1259): unit tests in `internal/rex/delegate_test.go` for the dismiss-hint match, the prompt-on-screen match and the re-paste decision, and an end-to-end test with a fake agent script whose splash swallows input until Escape. `internal/rex/input_test.go` checks the bytes `ParseKeyChord` keys encode to (`alt+m` is `ESC m`).
 - **Invariants touched** (`docs/invariants.md`):
   - Invariant 1 (a window comes back on its sessions): verify `DelegatedFrom` survives in-place server upgrade (`internal/rex/upgrade_test.go`).
   - Invariant 6 (a pane ends only when its session ends): verify synchronous `delegate` cleans up its tab and session on exit code 0, keeps them on failure or `--keep`, and `--async` keeps them until closed.
@@ -179,3 +200,4 @@ Rules for argument safety and process hygiene:
 
 1. **Phase 1 (Discovery & Skill)** (#1207): add `gorex hosts --probe --json` (merging `hosts.json` and Tailnet hosts), `gorex -S HOST agents --json`, and update `gorexGuide` in `internal/cli/skill.go` with the standard cross-host workflow.
 2. **Phase 2 (Core Delegation)** (#1208): add `CapabilityDelegate`, `internal/rex/delegate.go`, `MOD-010` quick-launcher argv extensions in `internal/rex/agents*.go`, `tab.create` layout attachment, off-band result extraction, and `gorex -S HOST delegate`.
+3. **Phase 3 (Reliable delivery)** (#1259): notice dismissal and the submit check in prompt delivery, and `gorex send --key`.

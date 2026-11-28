@@ -66,6 +66,15 @@ done
 	}
 	t.Setenv("PATH", binDir+":"+os.Getenv("PATH"))
 	t.Setenv("SHELL", "/bin/sh")
+	// The server finds the agent through a login shell (sh -l), which reads
+	// the user's profile. An empty HOME keeps a real claude that the profile
+	// puts first in PATH from replacing the fake one (as #1266 did for
+	// internal/rex).
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("ENV", "")
+	t.Setenv("BASH_ENV", "")
+	t.Setenv("ZDOTDIR", t.TempDir())
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	rex.ResetAgentsCacheForTest()
 	t.Cleanup(rex.ResetAgentsCacheForTest)
 

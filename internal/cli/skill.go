@@ -88,7 +88,7 @@ gorex new [--dir DIR] [--json] [-- COMMAND...]
 gorex split [-s SESSION] [-w TAB] [-b PANE] [--down] [--dir DIR] [--json] [-- COMMAND...]
 gorex close [-s SESSION] [-w TAB] [-b PANE] [--tab] [--json]
 gorex rename [-s SESSION] [-w TAB] [-b PANE] NAME [--json]
-gorex send [-s SESSION] [-w TAB] [-b PANE] [--enter] TEXT...
+gorex send [-s SESSION] [-w TAB] [-b PANE] [--key KEY]... [--enter] [TEXT...]
 gorex paste [-s SESSION] [-w TAB] [-b PANE] TEXT...
 gorex capture [-s SESSION] [-w TAB] [-b PANE] [--history BYTES] [--raw] [--json]
 gorex wait [-s SESSION] [-w TAB] [-b PANE] (--exit | --idle | --status STATE | --contains TEXT) [--timeout D]
@@ -107,7 +107,9 @@ gorex omarchy status [--json] | bind [--keys KEYS] | unbind [--json]
   the new session's ID. The command after ` + "`--`" + ` runs in the new pane, or a
   shell does; wrap shell syntax such as a pipe in ` + "`sh -c '...'`" + `.
 - ` + "`close`" + ` closes the selected pane, or its tab with ` + "`--tab`" + `.
-- ` + "`send`" + ` types without attaching; ` + "`--enter`" + ` presses Return. ` + "`paste`" + ` uses
+- ` + "`send`" + ` types without attaching; ` + "`--enter`" + ` presses Return; ` + "`--key alt+m`" + `
+  presses a key or chord after the text (repeatable), as an agent's "send queued
+  input now" key. ` + "`paste`" + ` uses
   the terminal's paste path, which programs can handle differently.
 - ` + "`capture`" + ` prints the screen as text. ` + "`--raw`" + ` keeps escape sequences,
   and ` + "`--history`" + ` asks for that many bytes of scrollback.

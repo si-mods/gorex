@@ -3,7 +3,7 @@ name: REF-001
 description: "The `gorex` command line: the commands that drive sessions without a window, and the agent hooks. Use when you add or change a CLI command."
 metadata:
   created: "2026-10-28"
-  updated: "2026-11-26"
+  updated: "2026-11-28"
 ---
 
 # REF-001: gorex command line
@@ -47,7 +47,7 @@ gorex close [-s SESSION] [--tab] [--json]
 gorex rename [-s SESSION] [--json] NAME
 gorex icon [--bg HEX] [--fg HEX] [--mode mono|color] [--format svg|png] FILE|clear
 gorex pack ls [--json] | search [QUERY] [--json] | install [--name ID] [--json] ID|DIR|GIT_URL | update [--check] [ID] | rm ID
-gorex send [-s SESSION] [--enter] [--json] TEXT...
+gorex send [-s SESSION] [--key KEY]... [--enter] [--json] [TEXT...]
 gorex paste [-s SESSION] [--json] TEXT...
 gorex capture [-s SESSION] [--history BYTES] [--raw] [--json]
 gorex wait [-s SESSION] [--json] (--exit | --idle | --status STATE | --contains TEXT) [--timeout D]
@@ -109,6 +109,21 @@ wins over `-s`. An ambiguous target exits 3. `rename` gives a pane a label.
 - `new` creates a session and prints its ID.
 - `send` types without attaching; `--enter` presses Return. `paste` uses
   the terminal's paste path, which programs can handle differently.
+- `send --key KEY` presses a named key or chord, as `alt+m`, `ctrl+c`,
+  `shift+tab`, `escape`, `up` or `f5`; repeat it for several keys. The
+  text goes first, then each key in order, then Return for `--enter`. The
+  server encodes each key as the program's terminal modes ask, as a
+  window's keystroke is: `up` is `ESC O A` in application cursor mode.
+  Keys are letters, digits, the punctuation of a US keyboard, `enter`,
+  `escape` (`esc`), `tab`, `space`, `backspace`, `delete`, `insert`,
+  `home`, `end`, `pageup`, `pagedown`, the arrows, `f1` to `f24`, or a
+  W3C code such as `KeyM`. Modifiers are `shift`, `ctrl`, `alt`
+  (`option`) and `super` (`cmd`, `meta`). Names ignore case: `Alt+M` is
+  `alt+m`, and only `shift` adds shift. Write a shifted character such
+  as `!` as text: `shift+1` is refused, as the character it types depends
+  on the keyboard layout. An agent TUI that queues input during a turn
+  often has a key to send it now, as Alt+M in Antigravity:
+  `gorex send -s <id> --key alt+m`.
 - `capture` prints the screen as text, or the escape sequences with
   `--raw`.
 - `wait --exit` exits with the program's status; the other conditions

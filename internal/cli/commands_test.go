@@ -76,6 +76,14 @@ func TestCLI(t *testing.T) {
 	if code != ExitOK {
 		t.Fatalf("send: %d %s", code, errOut)
 	}
+	if code, _, _, _ = runMain(t, "send", "-s", info.ID, "--key", "hyper+m"); code != ExitUsage {
+		t.Errorf("send --key with an unknown modifier: %d", code)
+	}
+	// ctrl+e moves the shell's cursor to the end of an empty line: a key
+	// that changes nothing the test reads.
+	if code, _, _, errOut = runMain(t, "send", "-s", info.ID, "--key", "ctrl+e"); code != ExitOK {
+		t.Fatalf("send --key: %d %s", code, errOut)
+	}
 	deadline := time.Now().Add(5 * time.Second)
 	for {
 		code, _, out, errOut = runMain(t, "capture", "-s", info.ID, "--json")
