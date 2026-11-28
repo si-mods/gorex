@@ -189,12 +189,11 @@ func plan(files []string, g graph) result {
 
 	for _, goos := range goosList {
 		pkgs := g.pkgs[goos]
-		for ip := range goSeed[goos] {
-			if p := pkgs[ip]; p != nil && len(p.Files) > 0 {
-				r.vet[goos] = append(r.vet[goos], ip)
-			}
-		}
-		slices.Sort(r.vet[goos])
+		// vet compiles each package with its tests on this GOOS, so it runs on
+		// the packages whose .go files changed and on every package whose code
+		// or tests import one of them: a change can break a darwin-only test
+		// of an importer, which build (no tests) and the Linux tests miss.
+		r.vet[goos] = affected(pkgs, goSeed[goos])
 		if goos == "darwin" {
 			continue // CI runs no test on darwin
 		}
@@ -206,7 +205,12 @@ func plan(files []string, g graph) result {
 			r.test[goos] = append(r.test[goos], ip)
 		}
 	}
-	r.lint = r.vet["linux"]
+	for ip := range goSeed["linux"] {
+		if p := g.pkgs["linux"][ip]; p != nil && len(p.Files) > 0 {
+			r.lint = append(r.lint, ip) // lint reports on a package's own files only
+		}
+	}
+	slices.Sort(r.lint)
 	if !r.root && len(rules) > 0 {
 		names := make([]string, 0, len(rules))
 		for n := range rules {

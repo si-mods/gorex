@@ -110,9 +110,9 @@ jobs:
             echo "$unformatted"
             exit 1
           fi
-      # Each system's files and tests, in the packages whose .go files
-      # changed: their importers only need to compile, which build checks,
-      # and their tests run below.
+      # Each system's files and tests, in the packages whose .go files changed
+      # and every package whose code or tests import one of them, so a change
+      # that breaks an importer's darwin-only test still fails here.
       - name: vet
         if: ${{ !cancelled() && (steps.plan.outputs.vet_linux != '' || steps.plan.outputs.vet_windows != '' || steps.plan.outputs.vet_darwin != '') }}
         env:
