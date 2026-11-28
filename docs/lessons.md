@@ -105,7 +105,12 @@ Each item has a **Trigger** (what the diff shows), a **Check** (what the author 
 ### A UI test that expects a fresh install
 - **Trigger:** an XCUITest under `ios/GoRexUITests/` checks a value the app makes once and keeps (UserDefaults, the Keychain, the app's files), such as a default name.
 - **Check:** the test sets that state at launch, or accepts any value an earlier build could have left. The Mac mini's simulator keeps the app's data between runs; `xcodebuild test` installs over it. The PR shows a green `ios-test` run of the test, not only a local run on a new simulator.
-- **Source:** #1027's `testDeviceNameWhileOff` waited for a `-rex-` name, but the runner's simulator kept `rexgo-xpkz` from an earlier build, and `makeName` keeps a name it finds (#1039). #1094 makes the test accept any valid name.
+- **Source:** #1027's `testDeviceNameWhileOff` waited for a `-rex-` name, but the runner's simulator kept `rexgo-xpkz` from an earlier build, and `makeName` keeps a name it finds (#1039). #1094 makes the test accept any valid name. `ComposerUITests.testNoComposerByDefault` found Composer Mode on, as its Compose tap writes the mode to the defaults and an earlier run stopped before it closed it (#1264). A `-composerMode NO` argument would hide the test's own writes, so the test turns the mode off through the UI.
+
+### A UI change whose XCUITests did not run
+- **Trigger:** the diff changes what an XCUITest under `ios/GoRexUITests/` looks for (an accessibility identifier, a bar that shows or hides), or the layout it taps by coordinates.
+- **Check:** the PR shows a green `ios-test` run of every test class that covers the view, on the runner's simulator (an iPhone Duo, 466 x 678 pt). A tap at a fixed share of the screen is placed from an element's frame instead.
+- **Source:** #1219 hid the key bar in Composer Mode, but `testComposerModePinsBar` still waited for its Esc key; `testSpacePanelMorph` tapped at 90 % of the screen, on the Duo's bottom bar, which does not close the space panel (#1264).
 
 ### A UI test that writes to the Keychain
 - **Trigger:** an XCUITest drives a screen that calls `SecItemAdd`, or a diff puts `CODE_SIGNING_ALLOWED=NO` back into `.github/workflows/ios-test.yml`.

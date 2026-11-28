@@ -35,7 +35,14 @@ final class SpacePickerMorphTests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Spaces"].waitForNonExistence(timeout: 10))
         capsule.tap()
         XCTAssertTrue(app.staticTexts["Spaces"].waitForExistence(timeout: 10))
-        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.9)).tap()
+        // Beside the panel: right of its last row, inside the list it
+        // covers. A fixed share of the screen lands on the bottom bar on a
+        // short screen (466 x 678 pt on the runner's iPhone Duo), which is
+        // not the list's and does not close the panel.
+        let last = app.buttons["New Space"]
+        XCTAssertTrue(last.waitForExistence(timeout: 5))
+        app.coordinate(withNormalizedOffset: .zero)
+            .withOffset(CGVector(dx: last.frame.maxX + 24, dy: last.frame.midY)).tap()
         XCTAssertTrue(app.staticTexts["Spaces"].waitForNonExistence(timeout: 10))
     }
 }
