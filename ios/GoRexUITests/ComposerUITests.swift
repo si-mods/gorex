@@ -32,7 +32,8 @@ final class ComposerUITests: XCTestCase {
         try terminal()
     }
 
-    /// Demo Mode's host, and a terminal of it: the key bar shows.
+    /// Demo Mode's host, and a terminal of it: the key bar shows, or in
+    /// Composer Mode the compose bar in its place (IOS-030).
     private func terminal() throws {
         let demo = app.buttons["Try Demo Mode"]
         guard demo.waitForExistence(timeout: 30) else {
@@ -43,7 +44,29 @@ final class ComposerUITests: XCTestCase {
         let row = app.buttons["Shell"]
         XCTAssertTrue(row.waitForExistence(timeout: 15))
         row.tap()
-        XCTAssertTrue(app.buttons.matching(identifier: "Esc").firstMatch.waitForExistence(timeout: 15))
+        let esc = app.buttons.matching(identifier: "Esc").firstMatch
+        var shown = false
+        for _ in 0..<15 where !shown {
+            shown = esc.waitForExistence(timeout: 0.5) || message.waitForExistence(timeout: 0.5)
+        }
+        XCTAssertTrue(shown)
+    }
+
+    /// Turns Composer Mode off where an earlier run left it on: the
+    /// runner's simulator keeps the app's defaults, and Compose writes the
+    /// mode there. A launch argument cannot set it, as the argument would
+    /// also hide every write the test makes. With the keyboard down, a
+    /// swipe down on the grabber closes the mode, as a user does.
+    private func composerModeOff() {
+        let grabber = app.otherElements["composer.grabber"]
+        // A second swipe when the first only lowered the keyboard.
+        for _ in 0..<2 where message.exists {
+            XCTAssertTrue(grabber.waitForExistence(timeout: 5))
+            let start = grabber.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+            start.press(forDuration: 0.05, thenDragTo: start.withOffset(CGVector(dx: 0, dy: 90)))
+            _ = message.waitForNonExistence(timeout: 5)
+        }
+        XCTAssertFalse(message.exists)
     }
 
     /// The compose bar's message field, which names the demo's block.
@@ -54,6 +77,8 @@ final class ComposerUITests: XCTestCase {
     /// Tapping Compose opens the bar in one tap, and swiping down on the top
     /// grabber dismisses it and restores ⌘ and Dictate.
     func testNoComposerByDefault() throws {
+        composerModeOff()
+        XCTAssertTrue(app.buttons.matching(identifier: "Esc").firstMatch.waitForExistence(timeout: 5))
         XCTAssertTrue(message.waitForNonExistence(timeout: 5))
         XCTAssertTrue(app.buttons.matching(identifier: "Dictate").firstMatch.waitForExistence(timeout: 5))
         XCTAssertTrue(app.buttons["keybar.more"].waitForExistence(timeout: 5))
@@ -121,8 +146,8 @@ final class ComposerUITests: XCTestCase {
     }
 
     /// Composer Mode pins the two-row bar with a top grabber handle, full-width
-    /// field above circular `+`, mic, and Send, while keeping the left capsule
-    /// stable below.
+    /// field above circular `+`, the quick-keys marker, mic, and Send. On an
+    /// iPhone the bar takes the key bar's place: the key bar hides (IOS-030).
     func testComposerModePinsBar() throws {
         app.terminate()
         app.launchArguments = ["-composerMode", "YES"]
@@ -130,8 +155,9 @@ final class ComposerUITests: XCTestCase {
         try terminal()
         XCTAssertTrue(message.waitForExistence(timeout: 10))
         XCTAssertTrue(app.buttons.matching(identifier: "Add Attachment").firstMatch.waitForExistence(timeout: 5))
-        XCTAssertTrue(app.buttons["keybar.more"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.buttons["keybar.compose"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["composer.keys.toggle"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["keybar.more"].exists)
+        XCTAssertFalse(app.buttons["keybar.compose"].exists)
         // The key bar's mic moved into the bar's bottom action row.
         let addBtn = app.buttons.matching(identifier: "Add Attachment").firstMatch
         let dictates = app.buttons.matching(identifier: "Dictate").allElementsBoundByIndex
