@@ -112,7 +112,10 @@ func TestStatusSeenOp(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ss := must(s.session(in.ID))
+	ss, err := s.session(in.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
 	ss.mu.Lock()
 	ss.status.feed([]byte("\x1b]7501;state=done\x07"))
 	ss.mu.Unlock()
@@ -140,10 +143,8 @@ func TestStatusSeenOp(t *testing.T) {
 	if err := c.SeeStatus(in.ID, done.Updated.Add(-time.Second)); err != nil {
 		t.Fatal(err)
 	}
-	for _, ev := range fence(t, s, c) {
-		if ev.Kind == "sessions" {
-			t.Fatalf("an event for no news: %+v", ev)
-		}
+	if evs := fence(t, s, c); len(evs) > 0 {
+		t.Fatalf("an event for no news: %+v", evs[0])
 	}
 	if err := c.SeeStatus("nope", done.Updated); err == nil {
 		t.Error("seeing a session the server lacks succeeded")
@@ -167,7 +168,7 @@ func fence(t *testing.T, s *Server, c *Client) []Event {
 			}
 			evs = append(evs, ev)
 		case <-deadline:
-			t.Fatal("no fence")
+			t.Fatalf("no fence after %d events", len(evs))
 		}
 	}
 }

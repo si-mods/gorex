@@ -83,7 +83,9 @@ func (s *Server) subscribe(write func([]byte), remote bool, transfers bool) *sub
 				b, _ := json.Marshal(ev)
 				write(b)
 			}
-			// An ended session's transfer is told its last state too.
+			// An ended session's transfer is told its last state too. The
+			// transfers go last, after the changes told before them, which a
+			// test's fence relies on.
 			for _, t := range transfers {
 				b, _ := json.Marshal(Event{Kind: "transfer", Transfer: &t})
 				write(b)
