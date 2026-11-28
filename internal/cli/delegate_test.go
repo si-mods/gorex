@@ -128,4 +128,30 @@ done
 		t.Fatalf("delegate --result after --async: code=%d out=%q err=%q", code, resOut, resErr)
 	}
 	_, _, _, _ = runMain(t, "close", "-s", got4.Session)
+
+	// 5. When the agent TUI swallows every prompt attempt (input box stays
+	// empty), delegate --async must exit non-zero with status="failed" instead
+	// of falsely returning status="running" (#1285).
+	dropScript := `#!/bin/sh
+stty raw -echo
+printf '\033[?2004h> '
+while :; do dd bs=256 count=1 >/dev/null 2>&1; done
+`
+	if err := os.WriteFile(filepath.Join(binDir, "claude"), []byte(dropScript), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	code, _, out5, errOut5 := runMain(t, "delegate", "--agent", "claude", "--dir", workDir, "--async", "--json", "--", "swallowed prompt")
+	if code != ExitFailed {
+		t.Fatalf("delegate --async swallowed: code=%d, want %d (out=%q err=%q)", code, ExitFailed, out5, errOut5)
+	}
+	var got5 delegateOutput
+	if err := json.Unmarshal([]byte(out5), &got5); err != nil {
+		t.Fatalf("unmarshal failed output %q: %v", out5, err)
+	}
+	if got5.Status != "failed" || got5.Error == "" {
+		t.Fatalf("delegate --async swallowed output = %+v, want status=failed and non-empty error", got5)
+	}
+	if got5.Session != "" {
+		_, _, _, _ = runMain(t, "close", "-s", got5.Session)
+	}
 }

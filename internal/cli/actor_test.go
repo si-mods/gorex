@@ -152,11 +152,12 @@ func TestCLITakeoverEventsAndWait(t *testing.T) {
 	t.Setenv("GOREX_SESSION", parentSID)
 
 	// Split a child pane from inside parentSID with --agent agy.
-	code, _, out, errOut := runMain(t, "split", "-s", parentSID, "--agent", "agy", "--", "/bin/sh", "-c", "sleep 5")
+	code, _, out, errOut := runMain(t, "split", "-s", parentSID, "--agent", "agy", "--", "/bin/sh", "-c", "sleep 60")
 	if code != ExitOK {
 		t.Fatalf("split: %d %s", code, errOut)
 	}
 	childSID := strings.TrimSpace(out)
+	t.Cleanup(func() { _ = c.Kill(childSID) })
 
 	// Verify wait --takeover times out cleanly when no human takes over.
 	code, _, _, _ = runMain(t, "wait", "-s", childSID, "--takeover", "--timeout", "100ms")
