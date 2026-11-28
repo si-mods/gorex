@@ -65,7 +65,13 @@ final class SSHKeysUITests: XCTestCase {
         detailShot.lifetime = .keepAlways
         add(detailShot)
 
+        // The detail list builds its rows lazily: on a short screen the
+        // Delete Key row is below the fold and not in the tree until shown.
         let deleteBtn = app.buttons["Delete Key"]
+        let publicKey = app.staticTexts["OpenSSH Format"]
+        for _ in 0..<4 where !deleteBtn.exists {
+            publicKey.swipeUp()
+        }
         XCTAssertTrue(deleteBtn.waitForExistence(timeout: 5))
         deleteBtn.tap()
         let confirmDelete = app.alerts.buttons["Delete"]
