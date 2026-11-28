@@ -43,7 +43,7 @@ func run() error {
 	}
 	base := strings.TrimSpace(os.Getenv("BASE"))
 	if parents, err := git(root, "rev-list", "--parents", "-n", "1", "HEAD"); err == nil {
-		base = prBase(os.Getenv("GITHUB_EVENT_NAME"), base, strings.Fields(parents))
+		base = prBase(os.Getenv("GITHUB_EVENT_NAME"), base, os.Getenv("HEAD_SHA"), strings.Fields(parents))
 	}
 	ancestor := false
 	if validBase(base) {
@@ -95,9 +95,12 @@ func validBase(base string) bool {
 // base branch as GitHub merged it. The event's base.sha can be older: it
 // does not move when main moves, so BASE..HEAD would also hold main's newer
 // commits and run their tests. line is `git rev-list --parents -n 1 HEAD`:
-// HEAD, then its parents.
-func prBase(event, base string, line []string) string {
-	if event == "pull_request" && len(line) == 3 {
+// HEAD, then its parents. head is the PR's head SHA: only a merge commit
+// whose second parent is the PR head is GitHub's test merge. A merge commit
+// on the PR branch itself (head checked out) keeps base, so its earlier
+// commits are not dropped from the diff.
+func prBase(event, base, head string, line []string) string {
+	if event == "pull_request" && len(line) == 3 && head != "" && line[2] == head {
 		return line[1]
 	}
 	return base

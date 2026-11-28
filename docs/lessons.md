@@ -271,7 +271,7 @@ Each item has a **Trigger** (what the diff shows), a **Check** (what the author 
 ### A pull request's base.sha
 - **Trigger:** a workflow or tool diffs a pull request against `github.event.pull_request.base.sha`.
 - **Check:** diff against the first parent of the checked-out merge commit (`HEAD^1`). `base.sha` does not move when main moves, so the diff also holds main's newer commits.
-- **Source:** #1267's CI diffed against a stale `base.sha` and ran the tests of 10 packages that #1266 had changed on main; the follow-up PR to #1256 makes `tools/ciplan` use `HEAD^1`.
+- **Source:** #1267's CI diffed against a stale `base.sha` and ran the tests of 10 packages that #1266 had changed on main; #1272 makes `tools/ciplan` and the what-to-test step use `HEAD^1`.
 
 ### A test that reads a file outside its package
 - **Trigger:** a Go test or generator reads a repo path outside its package's directory (`os.ReadFile`, `WalkDir`, `git ls-files`), or a new `//go:embed` reaches outside the package.
