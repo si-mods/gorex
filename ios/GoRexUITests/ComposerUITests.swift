@@ -216,6 +216,63 @@ final class ComposerUITests: XCTestCase {
         }
     }
 
+    /// Swiping left on the compose bar unfurls the inline quick-keys strip
+    /// (`Esc`, `Tab`, `Enter`, `Delete`, `Arrow Keys`, `More Keys`, `Hide`)
+    /// without opening `+`, and swiping right collapses it back and focuses
+    /// the message field (including under Reduce Motion).
+    func testSwipeSwitchesQuickKeys() throws {
+        app.terminate()
+        app.launchArguments = ["-scheme", "dark", "-theme", "Gruvbox Dark", "-composerMode", "YES"]
+        app.launch()
+        try terminal()
+
+        let bar = app.otherElements["composer"]
+        XCTAssertTrue(bar.waitForExistence(timeout: 10))
+        XCTAssertTrue(message.waitForExistence(timeout: 5))
+        let addBtn = app.buttons.matching(identifier: "Add Attachment").firstMatch
+        let sendBtn = app.buttons.matching(identifier: "Send").firstMatch
+        XCTAssertTrue(addBtn.waitForExistence(timeout: 5))
+        XCTAssertTrue(sendBtn.waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["Tab"].exists)
+        shot("composer-swipe-before-dark")
+
+        // Left swipe on the bar expands quick keys inline.
+        bar.swipeLeft()
+        XCTAssertTrue(app.buttons["Esc"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["Tab"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["composer.keys.collapse"].waitForExistence(timeout: 5))
+        shot("composer-swipe-left-dark")
+
+        // Right swipe collapses quick keys and focuses the message field.
+        bar.swipeRight()
+        XCTAssertTrue(app.buttons["composer.keys.collapse"].waitForNonExistence(timeout: 5))
+        XCTAssertTrue(message.waitForExistence(timeout: 5))
+        XCTAssertTrue(addBtn.waitForExistence(timeout: 5))
+        if app.keyboards.element.waitForExistence(timeout: 5) {
+            message.typeText("ok")
+            XCTAssertEqual(message.value as? String, "ok")
+        }
+        shot("composer-swipe-right-dark")
+
+        // Also verify under Reduce Motion and light appearance.
+        app.terminate()
+        app.launchArguments = ["-scheme", "light", "-composerMode", "YES", "-reduceMotion", "YES", "-theme", "Apple System Colors Light"]
+        app.launch()
+        try terminal()
+        XCTAssertTrue(bar.waitForExistence(timeout: 10))
+        shot("composer-swipe-before-light")
+        bar.swipeLeft()
+        XCTAssertTrue(app.buttons["Esc"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["Tab"].waitForExistence(timeout: 5))
+        shot("composer-swipe-left-light-reduce-motion")
+
+        bar.swipeRight()
+        XCTAssertTrue(app.buttons["composer.keys.collapse"].waitForNonExistence(timeout: 5))
+        XCTAssertTrue(message.waitForExistence(timeout: 5))
+        _ = app.keyboards.element.waitForExistence(timeout: 5)
+        shot("composer-swipe-right-light-reduce-motion")
+    }
+
     /// Verifies Composer Mode over a light terminal theme ("Apple System Colors Light")
     /// renders a crisp dark Send button with white arrow and full-width multi-line CJK text.
     func testLightThemeMultiline() throws {

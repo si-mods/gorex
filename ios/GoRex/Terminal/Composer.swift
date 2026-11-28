@@ -8,8 +8,9 @@ import UniformTypeIdentifiers
 /// as soon as the draft wraps or includes a newline, the field reflows in place
 /// across the full width above a dedicated `[ +  …  Mic  Send ]` bottom action
 /// row (Grok-style), growing smoothly up to `fieldMax` before scrolling. On
-/// iPhone, `More Keys` in `+` unfurls the inline 7-key strip across the bottom
-/// row on demand. Attachments stage in a temporary folder and upload as one
+/// iPhone, swiping left on the bar (or choosing `More Keys` in `+`) unfurls the
+/// inline 7-key strip across the bottom row, and swiping right returns to the
+/// message field. Attachments stage in a temporary folder and upload as one
 /// batch before pasting the text and sending Return.
 final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate {
     /// A staged attachment: its file in the folder, and its thumbnail for
@@ -93,6 +94,25 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
     /// Downward drag or flick on the bar dismisses the keyboard first if up,
     /// and closes Composer Mode on the next swipe.
     private lazy var dismissPan = UIPanGestureRecognizer(target: self, action: #selector(draggedDown))
+    /// Horizontal swipes on iPhone switch inline between the compose field and
+    /// the 7-key strip without opening the `+` menu.
+    private lazy var swipeLeft: UISwipeGestureRecognizer = {
+        let g = UISwipeGestureRecognizer(target: self, action: #selector(swipedLeft))
+        g.direction = .left
+        g.cancelsTouchesInView = false
+        g.delegate = self
+        return g
+    }()
+    private lazy var swipeRight: UISwipeGestureRecognizer = {
+        let g = UISwipeGestureRecognizer(target: self, action: #selector(swipedRight))
+        g.direction = .right
+        g.cancelsTouchesInView = false
+        g.delegate = self
+        return g
+    }()
+    private var isReduceMotion: Bool {
+        UIAccessibility.isReduceMotionEnabled || UserDefaults.standard.bool(forKey: "reduceMotion")
+    }
     /// Called when the user closes Composer Mode via swipe-down or menu.
     var onClose: (() -> Void)?
     /// Whether an upload or inline dictation is running and closing must wait.
@@ -512,6 +532,10 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
 
         dismissPan.delegate = self
         addGestureRecognizer(dismissPan)
+        if UIDevice.current.userInterfaceIdiom != .pad {
+            addGestureRecognizer(swipeLeft)
+            addGestureRecognizer(swipeRight)
+        }
         addSubview(pad)
         NotificationCenter.default.addObserver(self, selector: #selector(keyboardFrameChanged),
                                                name: UIResponder.keyboardDidChangeFrameNotification, object: nil)
@@ -692,7 +716,7 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
             fieldHeight.constant = targetH
         }
 
-        if modeChanged, animated, window != nil, !UIAccessibility.isReduceMotionEnabled {
+        if modeChanged, animated, window != nil, !isReduceMotion {
             UIView.animate(withDuration: 0.22, delay: 0, usingSpringWithDamping: 0.92, initialSpringVelocity: 0,
                            options: [.beginFromCurrentState, .allowUserInteraction]) {
                 (self.superview ?? self).layoutIfNeeded()
@@ -740,7 +764,7 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
         if active, quickKeysExpanded {
             setQuickKeysExpanded(false, animated: false)
         }
-        let still = UIAccessibility.isReduceMotionEnabled
+        let still = isReduceMotion
         if active {
             voiceHolder.isHidden = false
             voiceHolder.transform = still ? .identity : CGAffineTransform(scaleX: 0.96, y: 0.96)
@@ -870,9 +894,11 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
             quickPill.isHidden = false
             quickPill.isUserInteractionEnabled = false
         } else {
+            pressing?.cancel()
+            repeating?.cancel()
             quickPill.isUserInteractionEnabled = false
         }
-        let still = UIAccessibility.isReduceMotionEnabled
+        let still = isReduceMotion
         if expanded {
             quickKeys.transform = still ? .identity : CGAffineTransform(scaleX: 0.94, y: 0.94)
         }
@@ -900,7 +926,46 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
         }
     }
 
+    private func cancelTrackedControls(in root: UIView) {
+        if let c = root as? UIControl { c.cancelTracking(with: nil) }
+        for sub in root.subviews { cancelTrackedControls(in: sub) }
+    }
+
+    @objc private func swipedLeft(_ g: UISwipeGestureRecognizer) {
+        guard g.state == .ended, !quickKeysExpanded else { return }
+        for v in [attach, micHolder, send] { cancelTrackedControls(in: v) }
+        tick.impactOccurred()
+        setQuickKeysExpanded(true, animated: true)
+    }
+
+    @objc private func swipedRight(_ g: UISwipeGestureRecognizer) {
+        guard g.state == .ended, quickKeysExpanded else { return }
+        cancelTrackedControls(in: quickPill)
+        tick.impactOccurred()
+        setQuickKeysExpanded(false, animated: true)
+        focus()
+    }
+
     override func gestureRecognizerShouldBegin(_ g: UIGestureRecognizer) -> Bool {
+        if g === swipeLeft || g === swipeRight {
+            guard !voiceActive, !sending, !holdingVoice else { return false }
+            if g === swipeLeft, quickKeysExpanded { return false }
+            if g === swipeRight, !quickKeysExpanded { return false }
+            if dismissPan.state == .began || dismissPan.state == .changed { return false }
+            if let stickDrag, stickDrag.state == .began || stickDrag.state == .changed { return false }
+            let p = g.location(in: self)
+            if !strip.isHidden, strip.frame.contains(convert(p, to: strip.superview)) {
+                return false
+            }
+            if quickKeysExpanded, !quickPill.isHidden, stickBtn.frame.contains(convert(p, to: stickBtn.superview)) {
+                return false
+            }
+            let inField = fieldClip.alpha > 0 && fieldClip.frame.contains(convert(p, to: rowBox))
+            if inField, field.isFirstResponder, field.selectedRange.length > 0 {
+                return false
+            }
+            return true
+        }
         if g === dismissPan {
             guard !voiceActive, !sending, !holdingVoice else { return false }
             if let stickDrag, stickDrag.state == .began || stickDrag.state == .changed {
@@ -940,6 +1005,21 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
 
     func gestureRecognizer(_ g: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool {
         if g === dismissPan, !multiLine || !field.isFirstResponder, !field.isScrollEnabled, other.view?.isDescendant(of: field) == true {
+            return true
+        }
+        if g === swipeLeft || g === swipeRight,
+           !(field.isFirstResponder && field.selectedRange.length > 0),
+           other.view?.isDescendant(of: field) == true {
+            return true
+        }
+        return false
+    }
+
+    func gestureRecognizer(_ g: UIGestureRecognizer, shouldBeRequiredToFailBy other: UIGestureRecognizer) -> Bool {
+        if g === swipeRight, quickKeysExpanded, other.view?.isDescendant(of: self) != true {
+            return true
+        }
+        if g === swipeLeft, !quickKeysExpanded, other.view?.isDescendant(of: self) != true {
             return true
         }
         return false
