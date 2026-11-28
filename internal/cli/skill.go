@@ -7,11 +7,11 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"text/tabwriter"
 
 	"gorex/internal/atomicfile"
+	"gorex/internal/homedir"
 )
 
 // The skill is a stub: it points at the guide the installed binary prints,
@@ -236,64 +236,22 @@ func isDir(path string) bool {
 	return err == nil && st.IsDir()
 }
 
-func claudeDir() (string, error) {
-	if v := os.Getenv("CLAUDE_CONFIG_DIR"); v != "" {
-		return v, nil
-	}
-	h, err := homeDir()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(h, ".claude"), nil
-}
+func claudeDir() (string, error) { return homedir.ClaudeConfigDir("") }
 
-func codexDir() (string, error) {
-	if v := os.Getenv("CODEX_HOME"); v != "" {
-		return v, nil
-	}
-	h, err := homeDir()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(h, ".codex"), nil
-}
+func codexDir() (string, error) { return homedir.CodexHome("") }
 
 func opencodeDir() (string, error) {
-	base := os.Getenv("XDG_CONFIG_HOME")
-	if base == "" {
-		if runtime.GOOS == "windows" {
-			d, err := os.UserConfigDir()
-			if err != nil {
-				return "", err
-			}
-			base = d
-		} else {
-			h, err := homeDir()
-			if err != nil {
-				return "", err
-			}
-			base = filepath.Join(h, ".config")
-		}
+	base, err := homedir.XDGConfigHome("")
+	if err != nil {
+		return "", err
 	}
 	return filepath.Join(base, "opencode"), nil
 }
 
 func devinDir() (string, error) {
-	base := os.Getenv("XDG_CONFIG_HOME")
-	if base == "" {
-		if runtime.GOOS == "windows" {
-			d, err := os.UserConfigDir()
-			if err != nil {
-				return "", err
-			}
-			base = d
-		} else {
-			h, err := homeDir()
-			if err != nil {
-				return "", err
-			}
-			base = filepath.Join(h, ".config")
-		}
+	base, err := homedir.XDGConfigHome("")
+	if err != nil {
+		return "", err
 	}
 	return filepath.Join(base, "devin"), nil
 }

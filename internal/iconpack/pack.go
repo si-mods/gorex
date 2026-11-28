@@ -15,6 +15,7 @@ import (
 	"strings"
 
 	"gorex/internal/config"
+	"gorex/internal/ext"
 	"gorex/internal/rex"
 )
 
@@ -313,7 +314,8 @@ func InstallLocal(srcDir, packsDir, overrideID string) (*Pack, error) {
 		return nil, err
 	}
 	defer os.RemoveAll(tmp)
-	if err := copyDir(pk.Dir, tmp); err != nil {
+	// A copied record would claim a registry version for a local install.
+	if err := ext.CopyDir(pk.Dir, tmp, func(rel string) bool { return rel == RecordFile }); err != nil {
 		return nil, err
 	}
 	if err := os.RemoveAll(dst); err != nil {
@@ -454,31 +456,6 @@ func lookupPairs(m map[string]resolvedPair, keys []string, dark bool) *rex.Progr
 		}
 	}
 	return nil
-}
-
-func copyDir(src, dst string) error {
-	return filepath.WalkDir(src, func(p string, d os.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		rel, err := filepath.Rel(src, p)
-		if err != nil {
-			return err
-		}
-		target := filepath.Join(dst, rel)
-		if d.IsDir() {
-			return os.MkdirAll(target, 0o755)
-		}
-		// A copied record would claim a registry version for a local install.
-		if d.Type()&os.ModeSymlink != 0 || rel == RecordFile {
-			return nil
-		}
-		data, err := os.ReadFile(p)
-		if err != nil {
-			return err
-		}
-		return os.WriteFile(target, data, 0o644)
-	})
 }
 
 func readLimited(path string, maxBytes int64) ([]byte, error) {

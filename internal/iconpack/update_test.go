@@ -73,7 +73,7 @@ func TestInstallRecords(t *testing.T) {
 		{"config", "user.email", "test@example.com"},
 		{"config", "user.name", "Test"},
 		{"add", "."},
-		{"commit", "-m", "init"},
+		{"commit", "--no-verify", "-m", "init"},
 	} {
 		c := exec.Command("git", args...)
 		c.Dir = repo

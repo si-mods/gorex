@@ -180,15 +180,17 @@ func Install(src, extsRoot string) (*Pack, error) {
 	if err := os.RemoveAll(dst); err != nil {
 		return nil, err
 	}
-	if err := copyDir(src, dst); err != nil {
+	if err := CopyDir(src, dst, nil); err != nil {
 		return nil, err
 	}
 	return &Pack{Dir: dst, Manifest: m}, nil
 }
 
-// copyDir copies src into dst, created; symlinks are not followed, so a
-// pack cannot point out of itself.
-func copyDir(src, dst string) error {
+// CopyDir copies regular files under src into dst (creating directories as
+// needed). Symlinks and non-regular files are skipped so a pack cannot point
+// outside itself. If skip is non-nil and returns true for a slash-separated
+// relative path, that entry is omitted.
+func CopyDir(src, dst string, skip func(rel string) bool) error {
 	return filepath.WalkDir(src, func(p string, e fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -202,6 +204,9 @@ func copyDir(src, dst string) error {
 			return os.MkdirAll(to, 0o755)
 		}
 		if e.Type()&os.ModeSymlink != 0 || !e.Type().IsRegular() {
+			return nil
+		}
+		if skip != nil && skip(filepath.ToSlash(rel)) {
 			return nil
 		}
 		in, err := os.Open(p)
