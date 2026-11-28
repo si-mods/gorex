@@ -44,13 +44,16 @@ final class SSHKeysUITests: XCTestCase {
         let nameField = app.textFields["sshKeyName"]
         XCTAssertTrue(nameField.waitForExistence(timeout: 5))
         nameField.tap()
-        nameField.typeText("Work Laptop")
+        // A name of its own: the runner's simulator keeps keys an earlier
+        // run left, and a row of theirs must not stand in for this one.
+        let keyName = "Work Laptop \(UUID().uuidString.prefix(6))"
+        nameField.typeText(keyName)
 
         let confirmGenerate = app.buttons["generateSSHKey"]
         XCTAssertTrue(confirmGenerate.waitForExistence(timeout: 5))
         confirmGenerate.tap()
 
-        let keyRow = app.staticTexts["Work Laptop"].firstMatch
+        let keyRow = app.staticTexts[keyName].firstMatch
         XCTAssertTrue(keyRow.waitForExistence(timeout: 10))
         let listShot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
         listShot.name = "ssh-keys-list"
@@ -65,11 +68,23 @@ final class SSHKeysUITests: XCTestCase {
         detailShot.lifetime = .keepAlways
         add(detailShot)
 
+        // The detail list builds its rows lazily: on a short screen the
+        // Delete Key row is below the fold and not in the tree until shown.
+        // A swipe stays inside the element's frame, so swipe the list, not
+        // a label in it.
         let deleteBtn = app.buttons["Delete Key"]
+        let detailList = app.collectionViews.containing(.staticText, identifier: "OpenSSH Format").firstMatch
+        XCTAssertTrue(detailList.exists)
+        for _ in 0..<4 where !deleteBtn.exists {
+            detailList.swipeUp()
+        }
         XCTAssertTrue(deleteBtn.waitForExistence(timeout: 5))
         deleteBtn.tap()
         let confirmDelete = app.alerts.buttons["Delete"]
         XCTAssertTrue(confirmDelete.waitForExistence(timeout: 5))
         confirmDelete.tap()
+        // Back on the list, the key's row is gone; an error alert would
+        // keep it there.
+        XCTAssertTrue(keyRow.waitForNonExistence(timeout: 10))
     }
 }

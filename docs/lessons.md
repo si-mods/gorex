@@ -107,6 +107,11 @@ Each item has a **Trigger** (what the diff shows), a **Check** (what the author 
 - **Check:** the test sets that state at launch, or accepts any value an earlier build could have left. The Mac mini's simulator keeps the app's data between runs; `xcodebuild test` installs over it. The PR shows a green `ios-test` run of the test, not only a local run on a new simulator.
 - **Source:** #1027's `testDeviceNameWhileOff` waited for a `-rex-` name, but the runner's simulator kept `rexgo-xpkz` from an earlier build, and `makeName` keeps a name it finds (#1039). #1094 makes the test accept any valid name.
 
+### A UI test that writes to the Keychain
+- **Trigger:** an XCUITest drives a screen that calls `SecItemAdd`, or a diff puts `CODE_SIGNING_ALLOWED=NO` back into `.github/workflows/ios-test.yml`.
+- **Check:** the ios-test build is signed ad hoc, so the app has its entitlements. An unsigned app gets `errSecMissingEntitlement` (-34018) for every item, and the screen shows its error alert in place of the result. The PR shows a green `ios-test` run of the test.
+- **Source:** #1157's `SSHKeysUITests` never passed in CI: Generate showed "A required entitlement is not present." (#1161). #1265 signs the test build ad hoc.
+
 ## Fixes
 
 ### A remote command read by its output alone
