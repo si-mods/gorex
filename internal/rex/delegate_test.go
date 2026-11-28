@@ -772,21 +772,30 @@ func TestPromptDeliveryChecks(t *testing.T) {
 	if !promptAppearedOnScreen(preChrome, curEcho, "Auto") {
 		t.Fatal("promptAppearedOnScreen missed second occurrence echoed into input box")
 	}
+	// Long multi-line prompt whose opening lines scrolled out of a bounded
+	// input viewport while the tail lines remain visible near the cursor.
+	longPrompt := "First heading line that scrolls off the top\n" + strings.Repeat("middle line\n", 20) + "Final verification tail line"
+	scrolledEcho := tuiSnapshot{rows: 4, plainText: "middle line\nmiddle line\nmiddle line\nFinal verification tail line"}
+	if !promptAppearedOnScreen(tuiSnapshot{rows: 4, plainText: "> "}, scrolledEcho, longPrompt) {
+		t.Fatal("promptAppearedOnScreen missed multi-line prompt whose head scrolled above viewport")
+	}
 
 	echo := promptEchoAllowance(prompt)
 	for _, c := range []struct {
-		name  string
-		after tuiSnapshot
-		post  tuiSnapshot
-		want  bool
+		name    string
+		after   tuiSnapshot
+		post    tuiSnapshot
+		preHint bool
+		want    bool
 	}{
-		{"echo only", tuiSnapshot{output: 100}, tuiSnapshot{output: 100 + echo, plainText: "> "}, false},
-		{"answered", tuiSnapshot{output: 100}, tuiSnapshot{output: 101 + echo, plainText: "> "}, true},
-		{"osc7501 idle", tuiSnapshot{output: 100}, tuiSnapshot{output: 10 * echo, idle: true, plainText: "> "}, false},
-		{"splash stays", tuiSnapshot{output: 100}, tuiSnapshot{output: 10 * echo, plainText: agySplash}, false},
-		{"exited", tuiSnapshot{output: 100}, tuiSnapshot{output: 10 * echo, exited: true, plainText: "> "}, false},
+		{"echo only", tuiSnapshot{output: 100}, tuiSnapshot{output: 100 + echo, plainText: "> "}, false, false},
+		{"answered", tuiSnapshot{output: 100}, tuiSnapshot{output: 101 + echo, plainText: "> "}, false, true},
+		{"osc7501 idle", tuiSnapshot{output: 100}, tuiSnapshot{output: 10 * echo, idle: true, plainText: "> "}, false, false},
+		{"fresh splash", tuiSnapshot{output: 100}, tuiSnapshot{output: 10 * echo, plainText: agySplash}, false, false},
+		{"static hint in conversation", tuiSnapshot{output: 100}, tuiSnapshot{output: 10 * echo, plainText: "esc to dismiss\n> "}, true, true},
+		{"exited", tuiSnapshot{output: 100}, tuiSnapshot{output: 10 * echo, exited: true, plainText: "> "}, false, false},
 	} {
-		if got := agentAnsweredWithoutTranscript(c.after, c.post, prompt); got != c.want {
+		if got := agentAnsweredWithoutTranscript(c.after, c.post, c.preHint, prompt); got != c.want {
 			t.Errorf("agentAnsweredWithoutTranscript %s = %v, want %v", c.name, got, c.want)
 		}
 	}

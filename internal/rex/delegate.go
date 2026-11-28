@@ -230,7 +230,6 @@ func (s *Server) doDelegate(req Request, peer string, _ *keptConn) (any, error) 
 	go s.tailDelegate(run, ss)
 	if err := deliverTurnPrompt(run, ss, opt.Prompt); err != nil {
 		run.finishTurn("failed", "", err.Error())
-		run.stop()
 		return run.snapshot(ss), nil
 	}
 
@@ -720,12 +719,20 @@ func squash(s string) string {
 	}, s)
 }
 
-func promptProbe(prompt string) string {
-	probe := []rune(squash(prompt))
-	if len(probe) > promptProbeRunes {
-		probe = probe[:promptProbeRunes]
+func promptProbes(prompt string) []string {
+	rs := []rune(squash(prompt))
+	if len(rs) == 0 {
+		return nil
 	}
-	return string(probe)
+	if len(rs) <= promptProbeRunes {
+		return []string{string(rs)}
+	}
+	head := string(rs[:promptProbeRunes])
+	tail := string(rs[len(rs)-promptProbeRunes:])
+	if head == tail {
+		return []string{head}
+	}
+	return []string{head, tail}
 }
 
 func pastedMarkerCount(txt string) int {
@@ -733,37 +740,47 @@ func pastedMarkerCount(txt string) int {
 }
 
 // promptOnScreen reports whether the screen shows the prompt, in the
-// input box or the conversation: its first promptProbeRunes characters,
-// or a long paste the TUI collapsed to a "[Pasted..." marker.
+// input box or the conversation: its first or last promptProbeRunes
+// characters, or a long paste the TUI collapsed to a "[Pasted..." marker.
 func promptOnScreen(txt, prompt string) bool {
 	if pastedMarkerCount(txt) > 0 {
 		return true
 	}
-	probe := promptProbe(prompt)
-	return probe != "" && strings.Contains(squash(txt), probe)
+	sq := squash(txt)
+	for _, probe := range promptProbes(prompt) {
+		if strings.Contains(sq, probe) {
+			return true
+		}
+	}
+	return false
 }
 
-// promptAppearedOnScreen reports whether pasting prompt added a new visible
-// occurrence of the prompt (or a collapsed "[Pasted..." marker) compared
-// with pre, so text already present in TUI chrome or prior turns does not
-// mask a swallowed paste.
+// promptAppearedOnScreen reports whether pasting prompt added a new
+// occurrence of the prompt's head or tail (or a collapsed "[Pasted..."
+// marker) on the visible screen or in scrollback compared with pre, so
+// text already present in TUI chrome does not mask a swallowed paste and
+// long multi-line prompts whose opening lines scrolled out of the viewport
+// still match near the cursor.
 func promptAppearedOnScreen(pre, cur tuiSnapshot, prompt string) bool {
 	preTail := screenTail(pre.plainText, pre.rows)
 	curTail := screenTail(cur.plainText, cur.rows)
-	if pastedMarkerCount(curTail) > pastedMarkerCount(preTail) {
+	if pastedMarkerCount(curTail) > pastedMarkerCount(preTail) ||
+		pastedMarkerCount(cur.plainText) > pastedMarkerCount(pre.plainText) {
 		return true
 	}
-	probe := promptProbe(prompt)
-	if probe == "" {
+	probes := promptProbes(prompt)
+	if len(probes) == 0 {
 		return false
 	}
-	preCount := strings.Count(squash(preTail), probe)
-	curCount := strings.Count(squash(curTail), probe)
-	if curCount > preCount {
-		return true
-	}
-	if preCount > 0 && curCount == preCount {
-		return strings.Count(squash(cur.plainText), probe) > strings.Count(squash(pre.plainText), probe)
+	preTailSq, curTailSq := squash(preTail), squash(curTail)
+	preFullSq, curFullSq := squash(pre.plainText), squash(cur.plainText)
+	for _, probe := range probes {
+		if strings.Count(curTailSq, probe) > strings.Count(preTailSq, probe) {
+			return true
+		}
+		if strings.Count(curFullSq, probe) > strings.Count(preFullSq, probe) {
+			return true
+		}
 	}
 	return false
 }
@@ -787,9 +804,9 @@ func turnStartedByStatus(pre, cur tuiSnapshot) bool {
 
 // agentAnsweredWithoutTranscript covers a non-status agent whose transcript
 // was not matched, yet took the prompt and printed a response beyond echo
-// allowance without leaving a notice or idle status on screen.
-func agentAnsweredWithoutTranscript(afterPaste, post tuiSnapshot, prompt string) bool {
-	if post.exited || post.idle || hasDismissHint(post) {
+// allowance without leaving a fresh notice or idle status on screen.
+func agentAnsweredWithoutTranscript(afterPaste, post tuiSnapshot, preHint bool, prompt string) bool {
+	if post.exited || post.idle || (!preHint && hasDismissHint(post)) {
 		return false
 	}
 	printed := post.output - min(post.output, afterPaste.output)
@@ -895,13 +912,13 @@ func waitPromptEchoWith(drv promptDriver, pre tuiSnapshot, prompt string, maxWai
 	}
 }
 
-func submitPromptWith(drv promptDriver, preSt snapshotStatus) bool {
+func submitPromptWith(drv promptDriver, preSt snapshotStatus, preHint bool) bool {
 	for range 4 {
 		drv.sendReturn()
 		if drv.waitAck(delegateEnterWait, preSt) {
 			return true
 		}
-		if snap := drv.sample(); snap.exited || hasDismissHint(snap) {
+		if snap := drv.sample(); snap.exited || (!preHint && hasDismissHint(snap)) {
 			return drv.accepted()
 		}
 	}
@@ -936,6 +953,7 @@ func deliverPromptWith(drv promptDriver, prompt string) error {
 			return errors.New("rex: delegated agent exited before accepting prompt")
 		}
 		preSt := statusOf(pre)
+		preHint := hasDismissHint(pre)
 
 		alreadyEchoed := attempt > 0 && promptAppearedOnScreen(initial, pre, prompt)
 		echoed := alreadyEchoed
@@ -965,7 +983,7 @@ func deliverPromptWith(drv promptDriver, prompt string) error {
 		if !alreadyEchoed {
 			drv.sleep(delegatePasteDelay)
 		}
-		if !hasDismissHint(pre) && hasDismissHint(drv.sample()) {
+		if !preHint && hasDismissHint(drv.sample()) {
 			dismissNoticesWith(drv)
 			afterDismiss := drv.sample()
 			if echoed && !promptAppearedOnScreen(initial, afterDismiss, prompt) && !drv.accepted() && !preSt.started(afterDismiss) {
@@ -979,7 +997,7 @@ func deliverPromptWith(drv promptDriver, prompt string) error {
 			return nil
 		}
 
-		if submitPromptWith(drv, preSt) {
+		if submitPromptWith(drv, preSt, preHint) {
 			return nil
 		}
 
@@ -990,14 +1008,14 @@ func deliverPromptWith(drv promptDriver, prompt string) error {
 			}
 			return errors.New("rex: delegated agent exited before accepting prompt")
 		}
-		if agentAnsweredWithoutTranscript(afterPaste, post, prompt) {
+		if agentAnsweredWithoutTranscript(afterPaste, post, preHint, prompt) {
 			return nil
 		}
-		if !post.idle && !hasDismissHint(post) && echoed {
+		if !post.idle && !(!preHint && hasDismissHint(post)) && echoed {
 			if drv.waitAck(2*delegateEnterWait, preSt) {
 				return nil
 			}
-			if agentAnsweredWithoutTranscript(afterPaste, drv.sample(), prompt) {
+			if agentAnsweredWithoutTranscript(afterPaste, drv.sample(), preHint, prompt) {
 				return nil
 			}
 		}

@@ -3,6 +3,7 @@
 package rex
 
 import (
+	"runtime"
 	"testing"
 	"time"
 )
@@ -329,5 +330,8 @@ func TestAgentActorSplitAndHandoff(t *testing.T) {
 }
 
 func shellSleepCommand() []string {
+	if runtime.GOOS == "windows" {
+		return []string{"cmd.exe", "/c", "ping -n 6 127.0.0.1 >nul"}
+	}
 	return []string{"/bin/sh", "-c", "sleep 5"}
 }
