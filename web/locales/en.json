@@ -394,10 +394,6 @@
   "@errorOffline": {
     "description": "Error when the page is not connected: shown in the status line after “Could not …:”."
   },
-  "errorNoHost": "No host is chosen",
-  "@errorNoHost": {
-    "description": "Error when no host is chosen: shown in the status line after “Could not …:”."
-  },
   "errorDisconnected": "The connection dropped",
   "@errorDisconnected": {
     "description": "Error of a request whose connection ended before its answer came."
@@ -2449,16 +2445,6 @@
       "size": {
         "type": "String",
         "example": "256 MB"
-      }
-    }
-  },
-  "fileHostAnswered": "The host answered {status}",
-  "@fileHostAnswered": {
-    "description": "Why a file did not download: the HTTP status.",
-    "placeholders": {
-      "status": {
-        "type": "String",
-        "example": "404"
       }
     }
   },

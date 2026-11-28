@@ -41,16 +41,16 @@ const typeOf = { String: "string", int: "number", num: "number", double: "number
  * Checks the catalogs and writes src/locales.gen.ts when it changes.
  * Returns the errors and warnings; with ci, a missing translation is an error.
  */
-export async function generate({ ci = !!process.env.CI } = {}) {
+export async function generate({ ci = !!process.env.CI, localesDir = dir, srcDir = join(web, "src"), write = true } = {}) {
   const { parse, args } = await icu();
   const errors = [], warnings = [];
-  const files = readdirSync(dir).filter((f) => f.endsWith(".json")).sort();
+  const files = readdirSync(localesDir).filter((f) => f.endsWith(".json")).sort();
   const catalogs = {};
   for (const f of files) {
     const lang = f.slice(0, -5);
     let j;
     try {
-      j = JSON.parse(readFileSync(join(dir, f), "utf8"));
+      j = JSON.parse(readFileSync(join(localesDir, f), "utf8"));
     } catch (e) {
       errors.push(`${f}: ${e.message}`);
       continue;
@@ -77,6 +77,7 @@ export async function generate({ ci = !!process.env.CI } = {}) {
       continue;
     }
     if (!/^[a-z][A-Za-z0-9]*$/.test(k)) errors.push(`en.json: ${k}: keys are camelCase`);
+    if (en[k].includes("...")) errors.push(`en.json: ${k}: use ellipsis "…" instead of "..."`);
     const meta = en[`@${k}`];
     if (!meta?.description) errors.push(`en.json: ${k} has no "@${k}" with a description of where it shows`);
     const used = argsOf(source, k);
@@ -118,6 +119,7 @@ export async function generate({ ci = !!process.env.CI } = {}) {
         errors.push(`${lang}.json: ${k} is not a string`);
         continue;
       }
+      if (c[k].includes("...")) errors.push(`${lang}.json: ${k}: use ellipsis "…" instead of "..."`);
       const got = argsOf(lang, k);
       if (!got || !types[k]) continue;
       const want = Object.keys(types[k]).sort().join(", ");
@@ -127,6 +129,17 @@ export async function generate({ ci = !!process.env.CI } = {}) {
     const missing = keys.filter((k) => !(k in c));
     if (missing.length) {
       const msg = `${lang}.json: ${missing.length} key(s) not translated, shown in English: ${missing.join(", ")}`;
+      (ci ? errors : warnings).push(msg);
+    }
+  }
+  if (srcDir && existsSync(srcDir)) {
+    const srcText = readdirSync(srcDir)
+      .filter((f) => f.endsWith(".ts") && f !== "locales.gen.ts")
+      .map((f) => readFileSync(join(srcDir, f), "utf8").replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, ""))
+      .join("\n");
+    const unused = keys.filter((k) => !srcText.includes(`"${k}"`) && !srcText.includes(`'${k}'`));
+    if (unused.length) {
+      const msg = `en.json: ${unused.length} unused key(s): ${unused.join(", ")}`;
       (ci ? errors : warnings).push(msg);
     }
   }
@@ -158,7 +171,7 @@ export async function generate({ ci = !!process.env.CI } = {}) {
   ];
   const text = lines.join("\n");
   // A catalog with errors leaves the last good file, so that a dev server keeps building.
-  if (!errors.length && (!existsSync(out) || readFileSync(out, "utf8") !== text)) writeFileSync(out, text);
+  if (write && !errors.length && (!existsSync(out) || readFileSync(out, "utf8") !== text)) writeFileSync(out, text);
   return { errors, warnings, keys: keys.length, languages: langs };
 }
 
