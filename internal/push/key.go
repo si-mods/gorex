@@ -17,6 +17,8 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+
+	"gorex/internal/atomicfile"
 )
 
 // Keypair is the host's push key, the P-256 pair of NET-003's parties:
@@ -73,13 +75,7 @@ func LoadOrCreate(dir string) (*Keypair, error) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, err
 	}
-	tmp := path + ".tmp"
-	os.Remove(tmp)
-	if err := os.WriteFile(tmp, b, 0o600); err != nil {
-		return nil, err
-	}
-	if err := os.Rename(tmp, path); err != nil {
-		os.Remove(tmp)
+	if err := atomicfile.Write(path, b, 0o600); err != nil {
 		return nil, err
 	}
 	return keypair(priv)

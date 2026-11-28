@@ -25,6 +25,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"gorex/internal/atomicfile"
 	"gorex/internal/layout"
 	"gorex/internal/pairaddr"
 
@@ -90,23 +91,7 @@ func remotePath() string { return filepath.Join(Dir(), "remote.json") }
 
 // writeJSON writes v to path, readable by the user only, atomically.
 func writeJSON(path string, v any) error {
-	b, err := json.MarshalIndent(v, "", "  ")
-	if err != nil {
-		return err
-	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		return err
-	}
-	tmp := path + ".tmp"
-	os.Remove(tmp)
-	if err := os.WriteFile(tmp, b, 0o600); err != nil {
-		return err
-	}
-	if err := os.Rename(tmp, path); err != nil {
-		os.Remove(tmp)
-		return err
-	}
-	return nil
+	return atomicfile.WriteJSON(path, v, 0o600)
 }
 
 // readJSON reads path into v; a file that does not exist leaves v as is.

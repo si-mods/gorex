@@ -10,6 +10,7 @@ import (
 
 	"github.com/egoist/mygo"
 
+	"gorex/internal/atomicfile"
 	"gorex/internal/config"
 	"gorex/internal/rex"
 )
@@ -194,5 +195,5 @@ func writeShortcuts(b []shortcutBinding) error {
 	if err := os.MkdirAll(filepath.Dir(rexShortcutsPath()), 0o700); err != nil {
 		return err
 	}
-	return writeFileAtomic(rexShortcutsPath(), j, 0o600)
+	return atomicfile.Write(rexShortcutsPath(), j, 0o600)
 }

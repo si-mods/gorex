@@ -10,6 +10,8 @@ import (
 	"runtime"
 	"strings"
 	"text/tabwriter"
+
+	"gorex/internal/atomicfile"
 )
 
 // The skill is a stub: it points at the guide the installed binary prints,
@@ -586,29 +588,7 @@ func installSkill(dir, content string, force, dry bool) (string, error) {
 		return "failed", err
 	}
 	path := filepath.Join(dir, "SKILL.md")
-	tmp, err := os.CreateTemp(dir, ".SKILL.md-*")
-	if err != nil {
-		return "failed", err
-	}
-	name := tmp.Name()
-	cleanup := func() {
-		tmp.Close()
-		os.Remove(name)
-	}
-	if _, err := tmp.WriteString(content); err != nil {
-		cleanup()
-		return "failed", err
-	}
-	if err := tmp.Close(); err != nil {
-		os.Remove(name)
-		return "failed", err
-	}
-	if err := os.Chmod(name, 0o644); err != nil {
-		os.Remove(name)
-		return "failed", err
-	}
-	if err := os.Rename(name, path); err != nil {
-		os.Remove(name)
+	if err := atomicfile.Write(path, []byte(content), 0o644); err != nil {
 		return "failed", err
 	}
 	if state == "missing" {

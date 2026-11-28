@@ -17,6 +17,7 @@ import (
 	"github.com/egoist/mygo/ui"
 	"github.com/egoist/mygo/ui/editor"
 
+	"gorex/internal/atomicfile"
 	"gorex/internal/duotone"
 	"gorex/internal/rex"
 	"gorex/internal/rexapi"
@@ -787,7 +788,7 @@ func (a *App) saveSettingsJSON() {
 	// Recorded before the write, so the watcher's event of it is skipped,
 	// as a write of saveSettings is.
 	recordSettingsWritten([]byte(text))
-	if err := writeFileAtomic(settingsPath(), []byte(text), 0o600); err != nil {
+	if err := atomicfile.Write(settingsPath(), []byte(text), 0o600); err != nil {
 		log.Printf("gorex settings: %v", err)
 		return
 	}

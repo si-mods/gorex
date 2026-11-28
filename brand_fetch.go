@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/egoist/mygo/ui"
+	"gorex/internal/atomicfile"
 	"gorex/internal/homedir"
 )
 
@@ -130,16 +131,7 @@ func fetchBrandSVG(id, baseURL string) {
 
 	if dir := brandCacheDir(); dir != "" {
 		if os.MkdirAll(dir, 0o755) == nil {
-			if tmp, err := os.CreateTemp(dir, id+".*.tmp"); err == nil {
-				tmpName := tmp.Name()
-				_, werr := tmp.Write(data)
-				cerr := tmp.Close()
-				if werr == nil && cerr == nil {
-					_ = os.Rename(tmpName, filepath.Join(dir, id+".svg"))
-				} else {
-					_ = os.Remove(tmpName)
-				}
-			}
+			_ = atomicfile.Write(filepath.Join(dir, id+".svg"), data, 0o644)
 		}
 	}
 

@@ -121,7 +121,7 @@ func TestPackInstallTheme(t *testing.T) {
 		{"config", "user.email", "test@example.com"},
 		{"config", "user.name", "Test"},
 		{"add", "."},
-		{"commit", "-m", "init"},
+		{"commit", "--no-verify", "-m", "init"},
 	} {
 		c := exec.Command("git", args...)
 		c.Dir = repo
@@ -310,7 +310,7 @@ func TestPackUpdate(t *testing.T) {
 		os.WriteFile(filepath.Join(iconDir, "pack.json"), []byte(`{"schema":1,"id":"tools","name":"Tools","version":"`+version+`","programs":{"mycli":{"icon":"icons/app.svg","bg":"#112233"}}}`), 0o644)
 		os.WriteFile(filepath.Join(themeDir, "theme.json"), []byte(manifest), 0o644)
 		git("add", ".")
-		git("commit", "-q", "-m", version)
+		git("commit", "--no-verify", "-q", "-m", version)
 		return git("rev-parse", "HEAD")
 	}
 	git("init", "-q", "-b", "main")

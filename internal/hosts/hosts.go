@@ -12,6 +12,8 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+
+	"gorex/internal/atomicfile"
 )
 
 // Host is a remote host as hosts.json keeps it.
@@ -97,28 +99,5 @@ func Save(dir string, list []Host) error {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
 	}
-	return writeAtomic(path, b, 0o600)
-}
-
-// writeAtomic writes data to path through a file beside it, renamed over
-// it: a crash leaves the old file or the new one, not half of either.
-func writeAtomic(path string, data []byte, perm os.FileMode) error {
-	f, err := os.CreateTemp(filepath.Dir(path), filepath.Base(path)+".*.tmp")
-	if err != nil {
-		return err
-	}
-	_, err = f.Write(data)
-	if cerr := f.Close(); err == nil {
-		err = cerr
-	}
-	if err == nil {
-		err = os.Chmod(f.Name(), perm)
-	}
-	if err == nil {
-		err = os.Rename(f.Name(), path)
-	}
-	if err != nil {
-		os.Remove(f.Name())
-	}
-	return err
+	return atomicfile.Write(path, b, 0o600)
 }

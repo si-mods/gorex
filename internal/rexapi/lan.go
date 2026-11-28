@@ -14,11 +14,12 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"runtime"
 	"slices"
 	"strings"
 	"sync"
 	"time"
+
+	"gorex/internal/atomicfile"
 )
 
 // LANPort is the port the gateway takes on the local network by default:
@@ -208,23 +209,7 @@ func saveLANStatus(dir string, s LANStatus) {
 
 // writeJSON writes v to path for this user only, whole or not at all.
 func writeJSON(path string, v any) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		return err
-	}
-	b, _ := json.MarshalIndent(v, "", "  ")
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, append(b, '\n'), 0o600); err != nil {
-		return err
-	}
-	err := os.Rename(tmp, path)
-	// On Windows the rename fails while a reader, such as the app's poll
-	// of lan-status.json, has path open: try again for a moment rather
-	// than lose the write.
-	for i := 0; err != nil && runtime.GOOS == "windows" && i < 50; i++ {
-		time.Sleep(10 * time.Millisecond)
-		err = os.Rename(tmp, path)
-	}
-	return err
+	return atomicfile.WriteJSON(path, v, 0o600)
 }
 
 // check validates c, and returns its networks.
