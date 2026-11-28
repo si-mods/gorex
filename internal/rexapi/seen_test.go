@@ -74,3 +74,54 @@ func TestSeeBlock(t *testing.T) {
 		t.Error("/llms.txt does not describe gorex.see_block")
 	}
 }
+
+// TestAgentActorBridge checks that CLI agent input on a GoRex session reaches
+// Rex API clients through program_status and agent_actor_changed, and clears on
+// human blockWrite input.
+func TestAgentActorBridge(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the test's program is a Unix one")
+	}
+	f := startFixture(t)
+	c, sid, block := f.sessionWith(t, rex.CreateOptions{Command: []string{"/bin/sh", "-c", "sleep 60"}})
+
+	obs := f.dialControl()
+	obs.hello(apiRevision)
+	callChecked(t, obs, "session.attach_all", map[string]any{"event_scope": "all"})
+
+	infos, err := f.desk.List()
+	if err != nil || len(infos) == 0 {
+		t.Fatalf("List: %v (%d sessions)", err, len(infos))
+	}
+	hostSID := infos[0].ID
+	if err := f.desk.InputWithAgent(hostSID, []byte("echo hi\n"), "agy"); err != nil {
+		t.Fatalf("InputWithAgent: %v", err)
+	}
+
+	ev := waitBlockEventNamed(t, obs, "agent_actor_changed")
+	if ev["block_id"] != block {
+		t.Fatalf("event block %v, want %s", ev["block_id"], block)
+	}
+	act, _ := ev["payload"].(map[string]any)["agentActor"].(map[string]any)
+	if act == nil || act["active"] != true || act["agent"] != "agy" || act["lastCliInputAt"] == nil {
+		t.Fatalf("agent_actor_changed payload = %v, want active agy with lastCliInputAt", ev["payload"])
+	}
+
+	status := callChecked(t, c, "com.superlogical.terminal.program_status", map[string]any{
+		"session_id": sid, "block_id": block, "args": map[string]any{},
+	})
+	statusAct, _ := status["agentActor"].(map[string]any)
+	if statusAct == nil || statusAct["active"] != true || statusAct["agent"] != "agy" {
+		t.Fatalf("program_status agentActor = %v, want active agy", status["agentActor"])
+	}
+
+	// Human UI write via Rex API clears active and emits agent_actor_changed with tookOverAt.
+	callChecked(t, c, "com.superlogical.terminal.write", map[string]any{
+		"session_id": sid, "block_id": block, "args": map[string]any{"data": "a"},
+	})
+	clearEv := waitBlockEventNamed(t, obs, "agent_actor_changed")
+	clearAct, _ := clearEv["payload"].(map[string]any)["agentActor"].(map[string]any)
+	if clearAct == nil || clearAct["active"] == true || clearAct["tookOverAt"] == nil {
+		t.Fatalf("expected human write to clear active and set tookOverAt, got %v", clearEv["payload"])
+	}
+}

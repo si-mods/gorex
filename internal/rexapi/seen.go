@@ -20,11 +20,48 @@ import (
 const featureSeeBlock = "gorex.see_block"
 
 // statusPayload is program_status's result and program_status_changed's
-// payload: the records, and seen_at once a client saw some.
+// payload: the records, seen_at once a client saw some, and agentActor once an
+// agent created or drove the session.
 func statusPayload(info *rex.SessionInfo) map[string]any {
 	out := map[string]any{"records": statusRecords(info)}
 	if !info.StatusSeen.IsZero() {
 		out["seen_at"] = connectedAtString(info.StatusSeen)
+	}
+	if act := agentActorPayload(info); act != nil {
+		out["agentActor"] = act
+	}
+	return out
+}
+
+// agentActorPayload formats info.AgentActor for Rex API clients (Rex Go on iOS
+// and web), returning nil for untouched human sessions.
+func agentActorPayload(info *rex.SessionInfo) map[string]any {
+	act := info.AgentActor
+	createdBy := act.CreatedBy
+	if createdBy == "" {
+		createdBy = rex.ActorHuman
+	}
+	if !act.Active && createdBy == rex.ActorHuman && act.LastCLIInputAt.IsZero() && act.TookOverAt.IsZero() {
+		return nil
+	}
+	out := map[string]any{"createdBy": createdBy}
+	if !act.LastCLIInputAt.IsZero() {
+		out["lastCliInputAt"] = act.LastCLIInputAt.UTC().Format(time.RFC3339Nano)
+	}
+	if act.Agent != "" {
+		out["agent"] = act.Agent
+	}
+	if act.Active {
+		out["active"] = true
+	}
+	if act.ParentSession != "" {
+		out["parentSession"] = act.ParentSession
+	}
+	if !act.TookOverAt.IsZero() {
+		out["tookOverAt"] = act.TookOverAt.UTC().Format(time.RFC3339Nano)
+	}
+	if createdBy != rex.ActorHuman && !info.Created.IsZero() {
+		out["created"] = info.Created.UTC().Format(time.RFC3339Nano)
 	}
 	return out
 }
@@ -35,8 +72,26 @@ var seenAtSchema = map[string]any{
 	"description": "GoRex's own: when the latest done or error record a client saw was updated (gorex.see_block). A done or error record whose updated_at is not after it was seen. Left out until a client saw some.",
 }
 
-// withSeenAt adds seen_at to program_status's result in a help document,
-// whose schema Rex closes to other properties.
+// agentActorSchema is agentActor's schema on program_status, for iOS and web
+// clients to highlight agent-driven panes (docs/IOS-035-agent-highlight.md).
+var agentActorSchema = map[string]any{
+	"type":        "object",
+	"description": "GoRex's own: CLI or delegated agent ownership and latest CLI input timestamp for the terminal block.",
+	"properties": map[string]any{
+		"createdBy":      map[string]any{"type": "string"},
+		"lastCliInputAt": map[string]any{"type": "string", "format": "date-time"},
+		"agent":          map[string]any{"type": "string"},
+		"active":         map[string]any{"type": "boolean"},
+		"parentSession":  map[string]any{"type": "string"},
+		"tookOverAt":     map[string]any{"type": "string", "format": "date-time"},
+		"created":        map[string]any{"type": "string", "format": "date-time"},
+	},
+	"required":             []any{"createdBy"},
+	"additionalProperties": false,
+}
+
+// withSeenAt adds seen_at and agentActor to program_status's result in a help
+// document, whose schema Rex closes to other properties.
 func withSeenAt(doc map[string]json.RawMessage) {
 	var blocks []map[string]any
 	if json.Unmarshal(doc["block_types"], &blocks) != nil {
@@ -52,6 +107,7 @@ func withSeenAt(doc map[string]json.RawMessage) {
 			out, _ := m["output_schema"].(map[string]any)
 			if props, _ := out["properties"].(map[string]any); props != nil {
 				props["seen_at"] = seenAtSchema
+				props["agentActor"] = agentActorSchema
 			}
 		}
 	}

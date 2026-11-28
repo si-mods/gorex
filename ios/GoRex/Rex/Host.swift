@@ -578,6 +578,16 @@ final class Host: Identifiable {
         var program: String?
         /// What its programs reported.
         var statuses: [ProgramStatus]?
+        /// CLI or delegated agent ownership (`agentActor` from #1281).
+        var agentActor: AgentActor?
+        /// Whether the block's child process has exited.
+        var exited = false
+        /// Latched when the user types or uploads in this pane locally, so
+        /// stale server polls cannot re-light the highlight until newer CLI input arrives.
+        var agentCleared = false
+        var agentClearedAt: Date?
+        /// Set on local human takeover so VoiceOver can announce the takeover edge.
+        var tookOverLocally = false
         /// When the latest done or error record a client showed the user
         /// was updated: those till then were seen. The server keeps
         /// it for every client (seen_at, gorex.see_block); against one
@@ -587,6 +597,42 @@ final class Host: Identifiable {
         /// Takes the server's seen_at, which only moves forward.
         func raiseSeen(_ t: Date?) {
             if let t, t > seen ?? .distantPast { seen = t }
+        }
+
+        /// Clears the block's agent highlight immediately on the UI thread when
+        /// the user types, pastes, uploads, or answers in this pane.
+        func clearAgentLocal() {
+            if agentActor?.active == true {
+                tookOverLocally = true
+            }
+            agentCleared = true
+            agentClearedAt = agentActor?.lastCliInputAt
+            if var cur = agentActor {
+                cur.active = false
+                agentActor = cur
+            }
+        }
+
+        /// Reconciles a server `AgentActor` update against any local human-takeover latch.
+        func applyAgentActor(_ incoming: AgentActor) {
+            if !incoming.active {
+                agentCleared = false
+                agentActor = incoming
+                return
+            }
+            if agentCleared {
+                if let incAt = incoming.lastCliInputAt, incAt > (agentClearedAt ?? .distantPast) {
+                    agentCleared = false
+                    tookOverLocally = false
+                    agentActor = incoming
+                } else {
+                    var suppressed = incoming
+                    suppressed.active = false
+                    agentActor = suppressed
+                }
+                return
+            }
+            agentActor = incoming
         }
     }
 
@@ -1188,17 +1234,30 @@ final class Host: Identifiable {
         case "client_prompt_ended":
             if let id = e.payload["call_id"] as? String, prompt?.callID == id { prompt = nil }
         case "block_event":
-            guard let block = e.payload["block_id"] as? String, let p = e.payload["payload"] as? [String: Any] else { return }
+            guard let block = e.payload["block_id"] as? String else { return }
+            let eventName = e.payload["name"] as? String
+            if eventName == "child_exited" {
+                self.block(block).exited = true
+            }
+            guard let p = e.payload["payload"] as? [String: Any] else { return }
             // Observation skips a value set again unchanged.
-            switch e.payload["name"] as? String {
+            switch eventName {
             case "title_changed": self.block(block).title = p["title"] as? String
-            case "process_changed": self.block(block).program = Self.program(p["foreground"])
+            case "process_changed":
+                let b = self.block(block)
+                b.program = Self.program(p["foreground"])
+                if let act = AgentActor(json: p["agentActor"] ?? p["agent_actor"]) {
+                    b.applyAgentActor(act)
+                }
             case "program_status_changed":
                 let b = self.block(block)
                 let was = b.statuses ?? []
                 let now = (p["records"] as? [Any] ?? []).compactMap(ProgramStatus.init)
                 b.statuses = now
                 b.raiseSeen(ProgramStatus.time(p["seen_at"]))
+                if let act = AgentActor(json: p["agentActor"] ?? p["agent_actor"]) {
+                    b.applyAgentActor(act)
+                }
                 if let s = e.sessionID, Self.shown?(self, block) == true { see(session: s, block: block) }
                 for r in now where r.state == "blocked" && !was.contains(where: { $0.id == r.id && $0.state == "blocked" }) {
                     // A host that pushes alerts by push, while the phone has Live Activities on.
@@ -1209,6 +1268,10 @@ final class Host: Identifiable {
             case "program_status_removed":
                 let ids = p["ids"] as? [String] ?? []
                 if let b = blocks[block] { b.statuses = b.statuses?.filter { !ids.contains($0.id) } }
+            case "agent_actor_changed":
+                if let act = AgentActor(json: p["agentActor"] ?? p["agent_actor"] ?? p) {
+                    self.block(block).applyAgentActor(act)
+                }
             default: break
             }
         default:
@@ -1243,6 +1306,64 @@ final class Host: Identifiable {
     /// nil when the pane has none, for `title(_:)`'s fallbacks to run.
     func title(_ w: SessionView.Window, pane block: String) -> String? {
         w.name ?? paneTitle(block, in: w)
+    }
+
+    /// The active agent-highlight state for `block` at `now`, or nil when
+    /// human-operated, cleared, exited, or past the 60 s CLI idle window.
+    func agentState(for block: String, at now: Date = .now) -> AgentHighlight.State? {
+        guard let b = blocks[block] else { return nil }
+        return AgentHighlight.state(
+            actor: b.agentActor,
+            exited: b.exited,
+            cleared: b.agentCleared,
+            enabled: AgentHighlight.isEnabled,
+            now: now
+        )
+    }
+
+    /// The active agent-highlight state for a window row at `now`, preferring
+    /// the window's focused block and otherwise its most recently driven pane.
+    func windowAgentState(_ w: SessionView.Window, at now: Date = .now) -> AgentHighlight.State? {
+        if let front = w.block, let st = agentState(for: front, at: now) {
+            return st
+        }
+        var best: AgentHighlight.State?
+        for id in w.blockIDs {
+            if let st = agentState(for: id, at: now), best == nil || st.remaining > best!.remaining {
+                best = st
+            }
+        }
+        return best
+    }
+
+    /// Clears a block's active agent highlight locally as soon as the user
+    /// types, pastes, uploads, or answers in that pane.
+    func clearAgentLocal(block: String) {
+        blocks[block]?.clearAgentLocal()
+    }
+
+    /// Marks `block`'s `agentActor.active` false once its 60 s CLI idle window
+    /// has elapsed so every `@Observable` reader (`PaneBar`, `PaneMiniMap`,
+    /// `WindowRow`, `TerminalView.accessibilityLabel`) drops the highlight at once.
+    func expireAgentIfNeeded(block: String, at now: Date = .now) {
+        guard let b = blocks[block], b.agentActor?.active == true else { return }
+        let stillActive = AgentHighlight.state(
+            actor: b.agentActor,
+            exited: b.exited,
+            cleared: b.agentCleared,
+            enabled: true,
+            now: now
+        ) != nil
+        if !stillActive {
+            b.agentActor?.active = false
+        }
+    }
+
+    /// Expires any blocks in `w` whose 60 s CLI idle window has elapsed.
+    func expireWindowAgentsIfNeeded(_ w: SessionView.Window, at now: Date = .now) {
+        for id in w.blockIDs {
+            expireAgentIfNeeded(block: id, at: now)
+        }
     }
 
     /// The record of blocks that most needs the user, as the desktop's dot
@@ -1312,6 +1433,13 @@ final class Host: Identifiable {
         if sessions[i].project != project { sessions[i].project = project }
         let again = reread.remove(v.session_id) != nil
         for w in v.windows ?? [] {
+            for layer in w.layers ?? [] {
+                for blk in layer.blocks ?? [] {
+                    if let act = blk.agentActor {
+                        self.block(blk.block_id).applyAgentActor(act)
+                    }
+                }
+            }
             for b in w.blockIDs where blocks[b]?.title == nil || again { describe(session: v.session_id, block: b) }
         }
         prune()
@@ -1351,10 +1479,19 @@ final class Host: Identifiable {
                 if let program, b.program == nil || b.program == hadProgram {
                     b.program = program
                 }
+                if let lastExit = p["last_exit"], !(lastExit is NSNull) {
+                    b.exited = true
+                }
+                if let act = AgentActor(json: p["agentActor"] ?? p["agent_actor"]) {
+                    b.applyAgentActor(act)
+                }
             }
             guard !Task.isCancelled else { return }
             if let p = try? await c.callBlock("program_status", session: session, block: block), let r = p["records"] as? [Any] {
                 b.raiseSeen(ProgramStatus.time(p["seen_at"]))
+                if let act = AgentActor(json: p["agentActor"] ?? p["agent_actor"]) {
+                    b.applyAgentActor(act)
+                }
                 if b.statuses == nil || b.statuses == hadRecords {
                     b.statuses = r.compactMap(ProgramStatus.init)
                     if Self.shown?(self, block) == true { see(session: session, block: block) }
@@ -1426,6 +1563,7 @@ final class Host: Identifiable {
     /// they are typed together, in index order.
     func upload(_ file: URL, block: String, session: String? = nil,
                 batch: (id: String, index: Int, count: Int)? = nil) async throws {
+        clearAgentLocal(block: block)
         let c = try live()
         guard c.apiRevision >= RexProtocol.uploadRevision, let sid = session ?? sessionID(forBlock: block) else {
             throw RexError(code: "not_supported", message: String(localized: "Server does not accept uploads"))

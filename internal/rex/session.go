@@ -1058,6 +1058,8 @@ func (s *session) inputProgramWithActor(p []byte, actor, agent, parentSession, v
 	s.mu.Unlock()
 	if tookOver {
 		s.emitTakeover(takeover)
+	} else if trackActor && actor != ActorHuman && s.changed != nil {
+		s.changed()
 	}
 	s.write(p)
 	if s.typed != nil {

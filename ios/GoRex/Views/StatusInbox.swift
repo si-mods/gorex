@@ -220,6 +220,7 @@ private struct StatusRow: View {
                 HStack(spacing: 8) {
                     headingText
                     Spacer(minLength: 4)
+                    AgentWindowBadge(host: host, block: item.block)
                     VStack(alignment: .trailing, spacing: 4) {
                         mark
                         metaText
@@ -230,6 +231,7 @@ private struct StatusRow: View {
                     HStack(spacing: 8) {
                         headingText
                         Spacer(minLength: 4)
+                        AgentWindowBadge(host: host, block: item.block)
                         mark
                     }
                     HStack(spacing: 8) {
@@ -265,10 +267,12 @@ private struct StatusRow: View {
 
     private var headingText: some View {
         let heading = item.heading(title: title)
+        let agentActive = host.agentState(for: item.block, at: now) != nil
         return Text(heading.isEmpty ? " " : heading.asText)
             .font(.body.weight(.medium))
             .foregroundStyle(secondary ? .secondary : .primary)
             .lineLimit(1)
+            .accessibilityLabel(Text(AgentHighlight.accessibilityLabel(for: heading.asText, active: agentActive)))
     }
 
     @ViewBuilder private var metaText: some View {

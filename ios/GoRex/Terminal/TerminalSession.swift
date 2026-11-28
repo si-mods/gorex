@@ -18,11 +18,14 @@ protocol TerminalOutput: AnyObject {
     /// among them, nil where it cannot tell, for the Live Activity's line;
     /// done gets them off the main thread.
     func readRows(_ done: @escaping @Sendable (_ rows: [String], _ cursor: Int?) -> Void)
+    /// Updates the VoiceOver accessibility label on the terminal view.
+    func setAccessibilityLabel(_ label: String?)
 }
 
 extension TerminalOutput {
     func readScreen(_ done: @escaping @Sendable (_ text: String, _ columns: Int) -> Void) {}
     func readRows(_ done: @escaping @Sendable (_ rows: [String], _ cursor: Int?) -> Void) {}
+    func setAccessibilityLabel(_ label: String?) {}
 }
 
 /// One block's terminal on the phone: its data stream fed to the view's
@@ -66,8 +69,16 @@ final class TerminalSession {
     @ObservationIgnored weak var output: TerminalOutput? {
         didSet {
             if let theme { output?.setTheme(theme) }
+            if let accessibilityTitle { output?.setAccessibilityLabel(accessibilityTitle) }
             output?.write(pending)
             pending = Data()
+        }
+    }
+    /// Localized VoiceOver label pushed from `TerminalAgentAccessibility`.
+    @ObservationIgnored var accessibilityTitle: String? {
+        didSet {
+            guard accessibilityTitle != oldValue else { return }
+            output?.setAccessibilityLabel(accessibilityTitle)
         }
     }
     @ObservationIgnored private var pending = Data()
@@ -400,6 +411,7 @@ final class TerminalSession {
                     hostTheme = m
                     apply(theme: TerminalTheme.chosen?.message ?? m)
                 case "child_exited":
+                    host.blocks[block]?.exited = true
                     end(.exited(m["exit_code"] as? Int ?? 0))
                 default:
                     // Resize messages are tracked in TerminalFeed to reflow
@@ -472,6 +484,9 @@ final class TerminalSession {
     /// The server drops what has the shape of Ghostty's own answers to the
     /// program's queries: its terminal answers them.
     func type(_ bytes: Data) {
+        if AgentHighlight.hasHumanInputBytes(bytes) {
+            host.clearAgentLocal(block: block)
+        }
         if let demo {
             demo.type(bytes)
             return

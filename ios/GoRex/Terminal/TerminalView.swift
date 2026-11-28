@@ -224,6 +224,7 @@ final class TerminalView: UIView, TerminalOutput {
         addInteraction(editMenu)
         isAccessibilityElement = true
         accessibilityIdentifier = "terminal"
+        accessibilityLabel = session.accessibilityTitle
         // The renderer draws nothing in the background, which iOS forbids.
         NotificationCenter.default.addObserver(self, selector: #selector(hide), name: UIApplication.didEnterBackgroundNotification, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(show), name: UIApplication.willEnterForegroundNotification, object: nil)
@@ -240,6 +241,10 @@ final class TerminalView: UIView, TerminalOutput {
     required init?(coder: NSCoder) { fatalError() }
 
     // MARK: Surface
+
+    func setAccessibilityLabel(_ label: String?) {
+        accessibilityLabel = label
+    }
 
     override func didMoveToWindow() {
         super.didMoveToWindow()
