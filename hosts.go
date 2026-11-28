@@ -615,9 +615,6 @@ func (a *App) watchHost(h *hostConn, c *rex.Client, update func(func())) {
 				return
 			}
 			h.infos = byID
-			if a.st != nil {
-				a.st.takeOld(h, byID)
-			}
 			for _, o := range a.peers() {
 				o.apply(h, byID)
 			}

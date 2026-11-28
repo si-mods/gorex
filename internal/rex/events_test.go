@@ -397,9 +397,6 @@ func TestShareLayoutGone(t *testing.T) {
 	if res := s.request(Request{ID: 2, Op: "getLayout"}, "peer", nil); res.Error != "" {
 		t.Fatalf("the layout after Share Layout off: %q", res.Error)
 	}
-	if !s.remoteStatusLocked(nil).ShareLayout {
-		t.Error("the status of an app of before says the layout is not shared")
-	}
 }
 
 func TestFilterLayout(t *testing.T) {

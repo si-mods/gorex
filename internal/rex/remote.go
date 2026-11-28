@@ -776,8 +776,8 @@ func (s *Server) remoteStatusLocked(tailnet *TailnetStatus) RemoteStatus {
 	st := RemoteStatus{
 		Enabled: r.cfg.Enabled, Running: r.ts != nil, Address: string(r.addr), Relay: r.cfg.Relay,
 		Allowed: slices.Clone(r.cfg.Allowed), LastError: r.lastErr,
-		ShareLayout: true, RemoteControl: r.cfg.RemoteControl,
-		ReachableAt: r.cfg.ReachableAt, ReachableError: r.ownErr,
+		RemoteControl: r.cfg.RemoteControl,
+		ReachableAt:   r.cfg.ReachableAt, ReachableError: r.ownErr,
 	}
 	if !r.cfg.NodeKey.IsZero() {
 		st.PublicKey = r.cfg.NodeKey.Public().String()

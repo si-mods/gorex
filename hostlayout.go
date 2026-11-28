@@ -37,10 +37,6 @@ type hostSync struct {
 	// conn is the connection the app follows the layout through
 	// (followHost), the host's connection of then.
 	conn *rex.Client
-	// old tells a host of before projects (v0.38.0 to v0.40.x): its
-	// sessions show as tabs with no project, one a session, and nothing
-	// the app arranges goes there.
-	old bool
 }
 
 // hostSyncOf is h's layout as the app follows it, made the first time.
@@ -53,9 +49,9 @@ func hostSyncOf(h *hostConn) *hostSync {
 
 // serverMade tells whether the server of host h, nil for this machine,
 // makes the changes of its layout itself, new sessions among them, as the
-// app asks: this machine's, and a host's of projects (rex.CapabilityProjects).
+// app asks: this machine's, and a connected remote host's.
 func serverMade(h *hostConn) bool {
-	return h == nil || h.lay != nil && !h.lay.old && h.lay.conn != nil && h.lay.conn == h.current()
+	return h == nil || h.lay != nil && h.lay.conn != nil && h.lay.conn == h.current()
 }
 
 // hostForm is s, a host's layout in the app's form, as the host keeps it:
@@ -107,17 +103,12 @@ func eachLeaf(s *savedStore, fn func(n *layout.Node)) {
 
 // followHost has the app follow the layout of host h's server through c,
 // its connection of now: the host's workspaces take it as it changes
-// (takeHost). A host of before projects shows its sessions instead
-// (takeOld, as its list comes). Call it on the main thread.
+// (takeHost). Call it on the main thread.
 func (st *store) followHost(h *hostConn, c *rex.Client, hello rex.Hello, update func(func())) {
 	l := hostSyncOf(h)
-	l.old, l.conn = !hello.Can(rex.CapabilityProjects), c
+	l.conn = c
 	st.retryAdoptions(h)
-	l.live = l.old // a host of projects is live once its layout came (takeHost)
-	if l.old {
-		l.out.use(nil, update, nil)
-		return
-	}
+	l.live = false // live once its layout arrives (takeHost)
 	l.out.use(c, update, func(ls rex.LayoutState) bool { return st.takeHost(h, c, ls) })
 	l.out.follow(c)
 }
@@ -223,7 +214,7 @@ func (st *store) savedOn(h *hostConn) savedStore {
 func (st *store) queueHosts() {
 	for _, h := range st.hosts {
 		l := h.lay
-		if l == nil || !l.got || !l.live || l.old || h.current() == nil {
+		if l == nil || !l.got || !l.live || h.current() == nil {
 			continue
 		}
 		now := keepActive(st.savedOn(h), l.base)
@@ -293,50 +284,9 @@ func (st *store) sendOn(h *hostConn, c rex.LayoutCommand, done func(rex.LayoutCo
 		}
 		return
 	}
-	if l.old {
-		// A host of before projects makes the command, of its own
-		// layout, but the app follows only its sessions (takeOld).
-		cl := h.current()
-		update := h.update
-		go func() {
-			res, err := cl.Command(c)
-			if err != nil {
-				res = rex.LayoutCommand{Code: "failed", Error: err.Error()}
-			}
-			if done != nil && update != nil {
-				update(func() { done(res) })
-			}
-		}()
-		return
-	}
 	st.queue()
 	l.out.add(c, done)
 	l.out.kick()
-}
-
-// takeOld shows the sessions of host h, of before projects, as its tabs
-// with no project: a tab a session, in the order they were made. Call it
-// on the main thread with the host's last list.
-func (st *store) takeOld(h *hostConn, byID map[string]rex.SessionInfo) {
-	l := hostSyncOf(h)
-	if !l.old || !l.live {
-		return
-	}
-	w := savedWorkspace{ID: "old:" + h.ID, Name: layout.NoProjectName, Layout: layout.Layout{Tabs: []savedTab{}}}
-	for _, in := range sortedInfos(byID) {
-		if in.Exited {
-			continue
-		}
-		w.Tabs = append(w.Tabs, savedTab{ID: "old:" + in.ID, Root: &layout.Node{SID: in.ID, Host: h.ID, Dir: in.Dir}})
-	}
-	s := savedStore{Version: layout.Version, Sessions: []savedWorkspace{w}}
-	shown := st.withShownActive(h, s)
-	if l.got && sameArrangement(shown, st.savedOn(h)) {
-		return
-	}
-	l.base, l.got = s, true
-	st.reconcileOn(h, shown)
-	st.redraw()
 }
 
 // hostWorkspaces are host h's workspaces, nil for this machine's, in the
@@ -372,7 +322,7 @@ func hostCachePath() string { return filepath.Join(rex.Dir(), "hosts-layout.json
 // cacheHost keeps the copy of host h's layout as the app took it last.
 func (st *store) cacheHost(h *hostConn) {
 	l := h.lay
-	if l == nil || !l.got || l.old {
+	if l == nil || !l.got {
 		return
 	}
 	all := readHostCache()

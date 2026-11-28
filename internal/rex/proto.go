@@ -55,11 +55,7 @@ import (
 // with the LayoutCommand fields TabLayout, Spaces, Color and Float.
 // Still within 3, the capability "tab.to_space": "tab.to_space", which
 // moves a tab to another space (LayoutCommand.ToSpace).
-// Still within 3, the capability "voice": "voice.put" and "voice.get",
-// each on a connection of its own, which carry a phone's microphone to
-// the rec a session runs (Voice); deprecated, as nothing on the host
-// reads a voice any more, and to go. Still within 3, the capability
-// "status.seen": "seeStatus", which tells that the user saw a session's
+// Still within 3, the capability "status.seen": "seeStatus", which tells that the user saw a session's
 // status records, and SessionInfo.StatusSeen, which every client reads
 // back. Still within 3, the capability "dir.list": "dir.list", which
 // lists the directories in a directory of the server's machine (DirList).
@@ -692,12 +688,6 @@ type RemoteStatus struct {
 	// PendingByAddress are the requests made by address (pairaddr.go),
 	// apart from Pending: each is approved by its code alone.
 	PendingByAddress []RemoteAddrPending `json:"pendingByAddress,omitempty"`
-	// ShareLayout is always true: every remote client reads this
-	// machine's layout (docs/MOD-002-projects.md). Deprecated: kept for an app of
-	// before, which shows its switch; this server ignores the switch.
-	// Before, it told that remote clients may read this machine's layout
-	// and subscribe to its changes.
-	ShareLayout bool `json:"shareLayout"`
 	// RemoteControl tells that remote clients may run app actions through
 	// this window.
 	RemoteControl bool           `json:"remoteControl"`
