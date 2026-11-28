@@ -1,7 +1,6 @@
 package rexapi
 
 import (
-	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -10,7 +9,6 @@ import (
 	"math"
 	"os"
 	"strings"
-	"sync"
 	"time"
 
 	"gorex/internal/config"
@@ -195,15 +193,11 @@ func (g *Gateway) runConfigAction(c *control, name, origin, sid, block string, c
 	}
 	host := &actionHost{c: c, session: sid, block: block}
 	rt.cfg.SetInvoke(host.invoke)
-	ctx, cancel := context.WithCancel(context.Background())
-	clock := newActionClock(actionDeadline, cancel)
-	defer func() {
-		clock.stop()
-		cancel()
-	}()
+	clock, ctx := config.NewActionClock(actionDeadline)
+	defer clock.Stop()
 	rt.cfg.SetUI(func(opts config.UIOptions) (config.UIAnswer, error) {
-		clock.pause()
-		defer clock.resume()
+		clock.Pause()
+		defer clock.Resume()
 		return g.openPrompt(ctx, name, opts)
 	})
 	vals := map[string]any{"origin": origin}
@@ -214,79 +208,12 @@ func (g *Gateway) runConfigAction(c *control, name, origin, sid, block string, c
 		vals["block_id"] = block
 	}
 	if err := rt.cfg.InvokeWithin(ctx, name, vals, callArgs); err != nil {
-		if clock.expired() {
+		if clock.Expired() {
 			return nil, errorf("timeout", 408, "%s did not finish in %s", name, actionDeadline)
 		}
 		return nil, errInternal("%s: %v", name, err)
 	}
 	return actionResult{ClientActions: []any{}}, nil
-}
-
-// actionClock stops an action when its running time passes, and pauses
-// while a prompt is open, which does not count.
-type actionClock struct {
-	mu        sync.Mutex
-	timer     *time.Timer
-	remaining time.Duration
-	started   time.Time
-	paused    bool
-	fired     bool
-	cancel    context.CancelFunc
-}
-
-func newActionClock(d time.Duration, cancel context.CancelFunc) *actionClock {
-	k := &actionClock{remaining: d, started: time.Now(), cancel: cancel}
-	k.timer = time.AfterFunc(d, func() {
-		k.mu.Lock()
-		k.fired = true
-		k.mu.Unlock()
-		cancel()
-	})
-	return k
-}
-
-// pause stops the clock for a prompt.
-func (k *actionClock) pause() {
-	k.mu.Lock()
-	defer k.mu.Unlock()
-	if k.paused || k.fired {
-		return
-	}
-	if k.timer.Stop() {
-		k.remaining -= time.Since(k.started)
-	}
-	k.paused = true
-}
-
-// resume starts the clock again with what is left.
-func (k *actionClock) resume() {
-	k.mu.Lock()
-	defer k.mu.Unlock()
-	if !k.paused || k.fired {
-		return
-	}
-	k.paused = false
-	if k.remaining <= 0 {
-		k.fired = true
-		k.cancel()
-		return
-	}
-	k.started = time.Now()
-	k.timer.Reset(k.remaining)
-}
-
-// stop ends the clock.
-func (k *actionClock) stop() {
-	k.mu.Lock()
-	k.timer.Stop()
-	k.mu.Unlock()
-}
-
-// expired tells whether the running time passed.
-func (k *actionClock) expired() bool {
-	k.mu.Lock()
-	defer k.mu.Unlock()
-	return k.fired
 }
 
 // checkActionArgs checks a call's args against the action's declaration.
