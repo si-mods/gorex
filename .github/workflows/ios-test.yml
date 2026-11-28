@@ -1,7 +1,8 @@
 name: iOS test
 
-# Builds Rex Go and runs its unit tests (GoRexTests) for any branch, tag or
-# commit, on the Mac mini's runner. It uploads nothing and uses no secret.
+# Builds Rex Go and runs its tests (GoRexTests, GoRexUITests) for any
+# branch, tag or commit, on the Mac mini's runner. It uploads nothing and
+# uses no secret.
 # Start it by hand; this file runs from main:
 #   gh workflow run ios-test.yml -R si-mods/gorex --ref main -f ref=<branch>
 on:

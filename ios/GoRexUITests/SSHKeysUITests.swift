@@ -74,6 +74,7 @@ final class SSHKeysUITests: XCTestCase {
         // a label in it.
         let deleteBtn = app.buttons["Delete Key"]
         let detailList = app.collectionViews.containing(.staticText, identifier: "OpenSSH Format").firstMatch
+        XCTAssertTrue(detailList.exists)
         for _ in 0..<4 where !deleteBtn.exists {
             detailList.swipeUp()
         }
@@ -82,5 +83,8 @@ final class SSHKeysUITests: XCTestCase {
         let confirmDelete = app.alerts.buttons["Delete"]
         XCTAssertTrue(confirmDelete.waitForExistence(timeout: 5))
         confirmDelete.tap()
+        // Back on the list, the key's row is gone; an error alert would
+        // keep it there.
+        XCTAssertTrue(keyRow.waitForNonExistence(timeout: 10))
     }
 }
