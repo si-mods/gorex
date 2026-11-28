@@ -78,6 +78,28 @@ func TestEventWire(t *testing.T) {
 			t.Errorf("old client read %s as %+v, want %+v", n, back, r.old)
 		}
 	}
+
+	// A new server's "takeover" event decodes cleanly in an old client,
+	// carrying Kind="takeover" and ignoring unknown payload fields.
+	tkAt := time.Date(2026, 11, 28, 8, 0, 0, 0, time.UTC)
+	tkLine, err := json.Marshal(Event{
+		Kind: "takeover",
+		Takeover: &TakeoverEvent{
+			SID:           "s1",
+			Agent:         "agy",
+			CreatedBy:     ActorCLI,
+			ParentSession: "p1",
+			Via:           "pty",
+			At:            tkAt,
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var oldTk oldResponse
+	if err := json.Unmarshal(tkLine, &oldTk); err != nil || oldTk.Event != "takeover" || oldTk.ID != 0 {
+		t.Errorf("old client read takeover line %s as %+v (err=%v)", tkLine, oldTk, err)
+	}
 }
 
 // TestEventFromOldServer feeds the lines an old server writes to a client,

@@ -489,11 +489,15 @@ func (s *Server) createDelegatedTab(dir, name string, cmd, env []string, peer, f
 	}
 
 	ss, err := s.create(CreateOptions{
-		Command: cmd,
-		Dir:     dir,
-		Env:     env,
-		Cols:    cols,
-		Rows:    rows,
+		Command:       cmd,
+		Dir:           dir,
+		Env:           env,
+		Cols:          cols,
+		Rows:          rows,
+		CreatedBy:     ActorDelegate,
+		Agent:         agentID,
+		ParentSession: from,
+		StampInput:    true,
 	}, peer)
 	if err != nil {
 		return nil, err
@@ -704,7 +708,7 @@ func dismissNotices(ss *session, agentID string) {
 		if snap.exited || !hasDismissHint(snap) {
 			return
 		}
-		if err := ss.Key(KeyInput{Key: "Escape"}); err != nil {
+		if err := ss.keyFromActor(KeyInput{Key: "Escape"}, ActorDelegate, agentID, ""); err != nil {
 			return
 		}
 		if !waitHintGone(ss, delegateReadyFallbackQuiet) {
@@ -816,7 +820,7 @@ func deliverTurnPrompt(d *delegatedRun, ss *session, prompt string) error {
 		dismissNotices(ss, d.agent)
 		pre := sampleTUI(ss)
 		start := pasteState{output: pre.output, hint: hasDismissHint(pre)}
-		if err := ss.paste(prompt); err != nil {
+		if err := ss.pasteFromActor(prompt, ActorDelegate, d.agent, ""); err != nil {
 			return err
 		}
 		time.Sleep(delegatePasteDelay)

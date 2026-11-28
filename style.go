@@ -42,7 +42,7 @@ type colors struct {
 	// and liftShadow its shadow, so that it stands over the group's face.
 	groupFace, pillLift, liftShadow ui.Color
 
-	busy, attention, done, exited, danger ui.Color
+	busy, attention, done, exited, danger, agent ui.Color
 
 	// panel is the face of popovers, dialogs and the rows that float over
 	// a pane: opaque, so that the text they cover shows through nowhere.
@@ -180,9 +180,9 @@ func ink(c ui.Color, a float32) ui.Color {
 // derive makes the palette of s: the seeds as they are, and the ink at
 // the steps of the lightness of s.panel.
 func derive(s seeds) colors {
-	st, contrast := lightInk, ui.RGBA(0, 0, 0, 1)
+	st, contrast, agent := lightInk, ui.RGBA(0, 0, 0, 1), ui.Hex("#2e6fd0")
 	if isDark(s.panel) {
-		st, contrast = darkInk, ui.RGBA(255, 255, 255, 1)
+		st, contrast, agent = darkInk, ui.RGBA(255, 255, 255, 1), ui.Hex("#6cb2ff")
 	}
 	white, black := ui.RGBA(255, 255, 255, 1), ui.RGBA(0, 0, 0, 1)
 	return colors{
@@ -202,7 +202,7 @@ func derive(s seeds) colors {
 		tabHover: ink(contrast, st.tabHover), pillTint: s.pillTint,
 		groupFace: ink(contrast, st.groupFace), pillLift: ink(white, st.pillLift), liftShadow: ink(black, st.liftShadow),
 
-		busy: s.busy, attention: s.attention, done: s.done, exited: s.exited, danger: s.danger,
+		busy: s.busy, attention: s.attention, done: s.done, exited: s.exited, danger: s.danger, agent: agent,
 
 		panel: s.panel, panelBorder: ink(contrast, st.panelBorder), panelSel: ink(s.accent, st.panelSel), backdrop: s.backdrop,
 		panelGlass: ink(s.panel, st.panelGlass),

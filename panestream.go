@@ -98,6 +98,8 @@ type paneStream struct {
 	// asked is closed as the view asks for a size the first time.
 	asked     chan struct{}
 	askedOnce sync.Once
+	// onInput runs when user-typed bytes are written to the terminal stream.
+	onInput func()
 }
 
 func newHostStream(h *hostConn, sid string, cols, rows int) *paneStream {
@@ -337,6 +339,9 @@ func (s *paneStream) Gone() bool {
 }
 
 func (s *paneStream) Write(p []byte) (int, error) {
+	if s.onInput != nil && hasHumanInputBytes(p) {
+		s.onInput()
+	}
 	typed := len(p)
 	s.mu.Lock()
 	if st := s.cur; st != nil && !s.detached {
@@ -373,7 +378,7 @@ func (s *paneStream) Paste(text string) error {
 	if c == nil {
 		return errors.New("gorex: the host is away")
 	}
-	return c.Paste(s.sid, text)
+	return c.PasteHuman(s.sid, text)
 }
 
 // Resize tells the session the size of the screen, when attached; the

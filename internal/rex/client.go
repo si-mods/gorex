@@ -749,15 +749,45 @@ func (t trackedConn) Close() error {
 	return t.Conn.Close()
 }
 
-// Input types b into the session, as a terminal would.
+// Input types b into the session, as a CLI or programmatic client.
 func (c *Client) Input(sid string, b []byte) error {
-	return c.call(Request{Op: "input", SID: sid, Bytes: b}, nil)
+	return c.InputWithAgent(sid, b, "")
+}
+
+// InputWithAgent types b into the session and labels the active agent badge
+// with agent (defaulting to ActorCLI on the server when empty).
+func (c *Client) InputWithAgent(sid string, b []byte, agent string) error {
+	return c.InputFromSession(sid, b, agent, "")
+}
+
+// InputFromSession types b into the session, recording the agent label and
+// the caller's parent session ID for takeover events.
+func (c *Client) InputFromSession(sid string, b []byte, agent, parentSession string) error {
+	return c.call(Request{Op: "input", SID: sid, Bytes: b, Actor: ActorCLI, Agent: agent, ParentSession: parentSession}, nil)
+}
+
+// InputHuman types b into the session on behalf of a human UI action,
+// clearing any active agent mark rather than stamping CLI input.
+func (c *Client) InputHuman(sid string, b []byte) error {
+	return c.call(Request{Op: "input", SID: sid, Bytes: b, Actor: ActorHuman}, nil)
 }
 
 // SendKey types a key event into the session's program, encoded as the
 // program's modes ask.
 func (c *Client) SendKey(sid string, k KeyInput) error {
 	return c.call(Request{Op: "key", SID: sid, Key: &k}, nil)
+}
+
+// SendKeyWithAgent types a key event into the session on behalf of the CLI,
+// stamping lastCLIInputAt and labeling the active agent badge with agent.
+func (c *Client) SendKeyWithAgent(sid string, k KeyInput, agent string) error {
+	return c.SendKeyFromSession(sid, k, agent, "")
+}
+
+// SendKeyFromSession types a key event into the session on behalf of the CLI,
+// recording the agent label and the caller's parent session ID.
+func (c *Client) SendKeyFromSession(sid string, k KeyInput, agent, parentSession string) error {
+	return c.call(Request{Op: "key", SID: sid, Key: &k, Actor: ActorCLI, Agent: agent, ParentSession: parentSession}, nil)
 }
 
 // SendMouse sends a pointer event to the session's program, encoded as
@@ -815,12 +845,34 @@ const pasteChunk = 64 << 10
 // event. A text longer than pasteChunk goes as several pastes, each of a
 // piece of its own, in order.
 func (c *Client) Paste(sid, text string) error {
+	return c.pasteActor(sid, text, ActorCLI, "", "")
+}
+
+// PasteWithAgent pastes text into the session and labels the active agent
+// badge with agent (defaulting to ActorCLI on the server when empty).
+func (c *Client) PasteWithAgent(sid, text, agent string) error {
+	return c.PasteFromSession(sid, text, agent, "")
+}
+
+// PasteFromSession pastes text into the session, recording the agent label and
+// the caller's parent session ID for takeover events.
+func (c *Client) PasteFromSession(sid, text, agent, parentSession string) error {
+	return c.pasteActor(sid, text, ActorCLI, agent, parentSession)
+}
+
+// PasteHuman pastes text into the session on behalf of a human UI action,
+// clearing any active agent mark rather than stamping CLI input.
+func (c *Client) PasteHuman(sid, text string) error {
+	return c.pasteActor(sid, text, ActorHuman, "", "")
+}
+
+func (c *Client) pasteActor(sid, text, actor, agent, parentSession string) error {
 	for len(text) > 0 {
 		n := min(len(text), pasteChunk)
 		for n > 0 && n < len(text) && !utf8.RuneStart(text[n]) {
 			n-- // a piece never splits a rune
 		}
-		if err := c.call(Request{Op: "paste", SID: sid, Paste: text[:n]}, nil); err != nil {
+		if err := c.call(Request{Op: "paste", SID: sid, Paste: text[:n], Actor: actor, Agent: agent, ParentSession: parentSession}, nil); err != nil {
 			return err
 		}
 		text = text[n:]

@@ -43,16 +43,16 @@ gorex clients [--json]
 gorex [-S HOST] layout [--json]
 gorex [-S HOST] projects [--json]
 gorex [-S HOST] project ls [--json] | new [NAME] [--dir DIR] [--space SPACE] [--color COLOR] [--json] | rename PROJECT NAME [--json] | move [--no-project] SESSION [PROJECT] [--json]
-gorex [-S HOST] new [--project PROJECT] [--dir DIR] [--name NAME] [--json] [-- COMMAND...]
-gorex split [-s SESSION] [--down] [--dir DIR] [--json] [-- COMMAND...]
+gorex [-S HOST] new [--project PROJECT] [--dir DIR] [--name NAME] [--agent NAME] [--json] [-- COMMAND...]
+gorex split [-s SESSION] [--down] [--dir DIR] [--agent NAME] [--json] [-- COMMAND...]
 gorex close [-s SESSION] [--tab] [--json]
 gorex rename [-s SESSION] [--json] NAME
 gorex icon [--bg HEX] [--fg HEX] [--mode mono|color] [--format svg|png] FILE|clear
 gorex pack ls [--json] | search [QUERY] [--json] | install [--name ID] [--json] ID|DIR|GIT_URL | update [--check] [ID] | rm ID
-gorex send [-s SESSION] [--key KEY]... [--enter] [--json] [TEXT...]
-gorex paste [-s SESSION] [--json] TEXT...
+gorex send [-s SESSION] [--key KEY]... [--enter] [--agent NAME] [--json] [TEXT...]
+gorex paste [-s SESSION] [--agent NAME] [--json] TEXT...
 gorex capture [-s SESSION] [--history BYTES] [--raw] [--json]
-gorex wait [-s SESSION] [--json] (--exit | --idle | --status STATE | --contains TEXT) [--timeout D]
+gorex wait [-s SESSION] [--json] (--exit | --idle | --status STATE | --contains TEXT | --takeover) [--timeout D]
 gorex run [--json] [--dir DIR] -- COMMAND...
 gorex events
 gorex hosts [ls] [--json]
@@ -61,7 +61,7 @@ gorex skill show|setup|status|remove [--agent NAME] [--project] [--dry-run] [--j
 gorex remote status [--json] | tailscale on|off | address | key | relay HOST|default | reachable IP|off | enable | disable | control on|off | pair start|stop | pending | approve KEY|CODE | reject KEY|CODE | allow NAME KEY | revoke KEY
 gorex server restart | upgrade
 gorex update
-gorex config path | config check [FILE] | config reload
+gorex config path | config check [FILE] | config reload | config get agent-highlight [--json] | config set agent-highlight on|off
 gorex omarchy status [--json] | bind [--keys KEYS] | unbind [--json]
 gorex action run [-s SESSION] [--json] ACTION [KEY=VALUE...]
 gorex float [new|toggle|hide-all|raise|lower|cycle|move|resize|dock] [-s SESSION] [--json] [KEY=VALUE...]
@@ -117,9 +117,14 @@ wins over `-s`. An ambiguous target exits 3. `rename` gives a pane a label.
   it places the tab in the caller's `GOREX_SESSION` project, else the active
   project in `Store.Windows` (or the matching/most recently used project on a
   headless host), and exits 3 when the server has no project yet. `ls` shows
-  each session's project alongside its program and directory.
+  each session's project alongside its program and directory, and `ls --json`
+  includes `agentActor` (`createdBy` and `lastCliInputAt`) on every session
+  ([DSK-016](DSK-016-agent-pane-highlight.md)).
 - `send` types without attaching; `--enter` presses Return. `paste` uses
-  the terminal's paste path, which programs can handle differently.
+  the terminal's paste path, which programs can handle differently. `--agent NAME`
+  on `new`, `split`, `send`, and `paste` sets the agent badge label shown on the
+  tab (default `cli`). `config set agent-highlight off|on` toggles the pane
+  highlight and tab badge in `settings.json`.
 - `send --key KEY` presses a named key or chord, as `alt+m`, `ctrl+c`,
   `shift+tab`, `escape`, `up` or `f5`; repeat it for several keys. The
   text goes first, then each key in order, then Return for `--enter`. The
@@ -138,15 +143,15 @@ wins over `-s`. An ambiguous target exits 3. `rename` gives a pane a label.
 - `capture` prints the screen as text, or the escape sequences with
   `--raw`.
 - `wait --exit` exits with the program's status; the other conditions
-  exit 0, and a timeout exits 1. `--timeout 0` (the default) waits forever.
+  exit 0, and a timeout exits 1. `--timeout 0` (the default) waits forever. `--takeover` waits until human UI input takes over an agent-driven session ([DSK-016](DSK-016-agent-pane-highlight.md)).
 - `run` creates a session, runs the command, prints what the screen shows
   when it ends, and exits with the program's status.
 - `split` changes the layout; the command after `--` runs in the new
   pane, or a shell does. The session server makes the change, and an
   open window shows it at once, a closed one as it opens. `close` and
   `rename` work the same way.
-- `events` prints each layout or session change as one JSON line; with a
-  remote host, it subscribes to that host's layout too.
+- `events` prints each layout, session, or human takeover (`"event":"takeover"`) change as one JSON line; with a
+  remote host, it subscribes to that host's layout and takeover events too.
 - `clients` prints the principal, peer key, whether it is remote, through a
   kept connection, and how many seconds it has been attached.
 - `hosts` lists saved remote hosts, each by its name and the alias it was

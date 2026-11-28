@@ -149,6 +149,10 @@ type Pane struct {
 	waitAt             time.Time
 	waitMend           bool
 	waitTimer          *time.Timer
+	// agentCleared and agentClearedAt hold local human takeover until the
+	// next server poll confirms it or stamps newer CLI input (agenthighlight.go).
+	agentCleared   bool
+	agentClearedAt time.Time
 }
 
 // end lets the pane go from its window: its terminal closes. Its
@@ -1285,6 +1289,7 @@ func (a *App) take(h *hostConn, byID map[string]rex.SessionInfo) {
 			}
 			was := p.info
 			p.info = in
+			p.reconcileAgent(in)
 			// A strip naming what the pane ran has served its purpose once
 			// something runs there again.
 			if p.resume != nil && !in.Idle {

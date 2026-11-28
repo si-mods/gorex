@@ -118,6 +118,10 @@ type settings struct {
 	// DisabledExts are the installed extension packs the app does not
 	// serve: their pane kinds read as missing (docs/EXT-001).
 	DisabledExts []string `json:"extensions.disabled,omitempty"`
+	// AgentHighlight toggles the blue pulsing border and tab badge on
+	// agent-created or CLI-driven panes (docs/DSK-016-agent-pane-highlight.md);
+	// absent or true is on, false turns it off.
+	AgentHighlight *bool `json:"agentHighlight,omitempty"`
 }
 
 // defaultMinContrast is the minimum contrast when neither the user nor

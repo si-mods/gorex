@@ -4,6 +4,7 @@ package rex
 
 import (
 	"bytes"
+	"cmp"
 	"errors"
 	"fmt"
 	"io"
@@ -53,6 +54,17 @@ type session struct {
 	// metadata (docs/MOD-016-peer-delegation.md).
 	delegatedFrom  string
 	delegatedAgent string
+	// createdBy, lastCLIInputAt, agentLabel, agentActive, parentSession,
+	// and tookOverAt track CLI and delegated actor state under mu;
+	// onTakeover notifies subscribers after mu is released
+	// (docs/DSK-016-agent-pane-highlight.md).
+	createdBy      string
+	lastCLIInputAt time.Time
+	agentLabel     string
+	agentActive    bool
+	parentSession  string
+	tookOverAt     time.Time
+	onTakeover     func(TakeoverEvent)
 	// changed tells the server's subscribers that what the list shows of
 	// the session changed; sampler looks, as the session prints, whether
 	// its title or foreground program did, from seen.
@@ -531,10 +543,34 @@ func newSession(id string, o CreateOptions, owner string, changed func(), sp spa
 	if err != nil {
 		return nil, err
 	}
+	now := time.Now()
+	createdBy := normalizeCreatedBy(o.CreatedBy)
+	var lastCLI time.Time
+	var agentLabel, parentSession string
+	var agentActive bool
+	if createdBy != ActorHuman {
+		def := ActorCLI
+		if createdBy == ActorDelegate {
+			def = ActorDelegate
+		}
+		agentLabel = cmp.Or(NormalizeAgentName(o.Agent), def)
+		if o.ParentSession != "" && o.ParentSession != id {
+			parentSession = o.ParentSession
+		}
+		agentActive = true
+		if o.StampInput || len(o.Command) > 0 {
+			lastCLI = now
+		}
+	}
 	s := &session{
-		id: id, shell: name, command: len(o.Command) > 0, created: time.Now(), p: p, dir: dir, home: home,
-		runAs:   sp.user,
-		clients: map[*attached]struct{}{}, changed: changed,
+		id: id, shell: name, command: len(o.Command) > 0, created: now, p: p, dir: dir, home: home,
+		runAs:          sp.user,
+		createdBy:      createdBy,
+		lastCLIInputAt: lastCLI,
+		agentLabel:     agentLabel,
+		agentActive:    agentActive,
+		parentSession:  parentSession,
+		clients:        map[*attached]struct{}{}, changed: changed,
 		cols: cols, rows: rows, done: make(chan struct{}),
 	}
 	s.graphics.home = home
@@ -552,7 +588,7 @@ func (s *session) newVT() error {
 	// The emulator's Conn reads nothing, and what it answers programs is
 	// typed only while no client's terminal answers them.
 	pr, pw := io.Pipe()
-	vt, err := terminal.New(terminal.Options{Conn: &vtConn{r: pr, s: s}, Scrollback: scrollback, OnBell: func() { s.bells.Add(1); s.notify() }})
+	vt, err := terminal.New(terminal.Options{Conn: &vtConn{r: pr, s: s}, Scrollback: scrollback, OptionAsAlt: true, OnBell: func() { s.bells.Add(1); s.notify() }})
 	if err != nil {
 		return err
 	}
@@ -962,9 +998,29 @@ func (s *session) input(a *attached, p []byte) {
 	}
 }
 
+func normalizeCreatedBy(v string) string {
+	switch v {
+	case ActorCLI, ActorDelegate:
+		return v
+	default:
+		return ActorHuman
+	}
+}
+
 // inputProgram types what a client that is not attached sends, without
 // the terminal's answers a program would read as its own.
 func (s *session) inputProgram(p []byte) error {
+	return s.inputProgramWithActor(p, "", "", "", "", false)
+}
+
+// inputFromActor types p on behalf of actor ("cli", "delegate", or "human"),
+// stamping lastCLIInputAt for non-human actors or clearing the active agent
+// mark and emitting a takeover event when a human UI action sent p.
+func (s *session) inputFromActor(p []byte, actor, agent, parentSession, via string) error {
+	return s.inputProgramWithActor(p, actor, agent, parentSession, via, true)
+}
+
+func (s *session) inputProgramWithActor(p []byte, actor, agent, parentSession, via string, trackActor bool) error {
 	p = dropReplies(p)
 	s.mu.Lock()
 	if s.exited {
@@ -975,13 +1031,75 @@ func (s *session) inputProgram(p []byte) error {
 		s.mu.Unlock()
 		return nil
 	}
-	s.lastInput = time.Now()
+	now := time.Now()
+	s.lastInput = now
+	var takeover TakeoverEvent
+	var tookOver bool
+	if trackActor {
+		if actor == ActorHuman {
+			takeover, tookOver = s.takeOverLocked(cmp.Or(via, "paste"), now)
+		} else {
+			def := ActorCLI
+			if actor == ActorDelegate {
+				def = ActorDelegate
+			}
+			if !now.After(s.lastCLIInputAt) {
+				now = s.lastCLIInputAt.Add(time.Nanosecond)
+			}
+			s.lastCLIInputAt = now
+			s.tookOverAt = time.Time{}
+			s.agentLabel = cmp.Or(NormalizeAgentName(agent), s.agentLabel, def)
+			if parentSession != "" && parentSession != s.id {
+				s.parentSession = parentSession
+			}
+			s.agentActive = true
+		}
+	}
 	s.mu.Unlock()
+	if tookOver {
+		s.emitTakeover(takeover)
+	}
 	s.write(p)
 	if s.typed != nil {
 		s.typed()
 	}
 	return nil
+}
+
+// takeOverLocked transitions agentActive from true to false on human UI input
+// while s.mu is held, returning the edge-triggered TakeoverEvent.
+func (s *session) takeOverLocked(via string, now time.Time) (TakeoverEvent, bool) {
+	if !s.agentActive || s.exited {
+		return TakeoverEvent{}, false
+	}
+	s.agentActive = false
+	s.tookOverAt = now
+	return TakeoverEvent{
+		SID:            s.id,
+		Agent:          cmp.Or(s.agentLabel, s.delegatedAgent, ActorCLI),
+		CreatedBy:      cmp.Or(s.createdBy, ActorHuman),
+		ParentSession:  s.parentSession,
+		Via:            via,
+		LastCLIInputAt: s.lastCLIInputAt,
+		At:             now,
+	}, true
+}
+
+func (s *session) emitTakeover(ev TakeoverEvent) {
+	if s.onTakeover != nil {
+		s.onTakeover(ev)
+	}
+}
+
+// clearAgent clears the session's active agent mark when a person types in a
+// UI client, emitting a takeover event on the true -> false edge.
+func (s *session) clearAgent(via string) {
+	s.mu.Lock()
+	ev, ok := s.takeOverLocked(via, time.Now())
+	s.mu.Unlock()
+	if ok {
+		s.emitTakeover(ev)
+	}
 }
 
 // write types p into the program, one writer at a time: a writer's p
@@ -997,10 +1115,15 @@ func (s *session) write(p []byte) {
 // newlines as returns. A console that drops the terminal's paste event, a
 // ConPTY on Windows, gets a paste this way.
 func (s *session) paste(text string) error {
+	return s.pasteFromActor(text, ActorCLI, "", "")
+}
+
+// pasteFromActor writes text as a paste and updates actor bookkeeping.
+func (s *session) pasteFromActor(text, actor, agent, parentSession string) error {
 	if text == "" {
 		return nil
 	}
-	return s.inputProgram(encodePaste(text, s.bracketedPaste()))
+	return s.inputFromActor(encodePaste(text, s.bracketedPaste()), actor, agent, parentSession, "paste")
 }
 
 // bracketedPaste reports whether the foreground program has enabled DEC
@@ -1036,10 +1159,14 @@ func (s *session) plainText() string {
 // What the server types itself, a nil client's, goes as it is.
 func (s *session) admit(a *attached, p []byte) []byte {
 	typed := dropReplies(p)
+	var takeover TakeoverEvent
+	var tookOver bool
 	s.sized(func() bool {
 		prev := s.authorityLocked()
+		now := time.Now()
 		if a != nil && len(dropFocusReports(typed)) > 0 {
 			s.typist = a
+			takeover, tookOver = s.takeOverLocked("pty", now)
 		}
 		if a != nil && s.answererLocked() != a {
 			p = typed
@@ -1048,10 +1175,13 @@ func (s *session) admit(a *attached, p []byte) []byte {
 		if s.exited || len(p) == 0 {
 			p = nil
 		} else {
-			s.lastInput = time.Now()
+			s.lastInput = now
 		}
 		return pty
 	})
+	if tookOver {
+		s.emitTakeover(takeover)
+	}
 	return p
 }
 
@@ -1091,6 +1221,14 @@ func (s *session) info() SessionInfo {
 	in := SessionInfo{
 		ID: s.id, Shell: s.shell, Command: s.command, Created: s.created, Owner: s.owner,
 		DelegatedFrom: s.delegatedFrom, DelegatedAgent: s.delegatedAgent,
+		AgentActor: AgentActor{
+			CreatedBy:      cmp.Or(s.createdBy, ActorHuman),
+			LastCLIInputAt: s.lastCLIInputAt,
+			Agent:          s.agentLabel,
+			Active:         s.agentActive && !s.exited,
+			ParentSession:  s.parentSession,
+			TookOverAt:     s.tookOverAt,
+		},
 		Title: title, LastOutput: s.lastOutput, LastInput: s.lastInput,
 		Output: s.output, Bells: int(s.bells.Load()), Exited: s.exited, ExitCode: s.code,
 		Attached: len(s.clients), Cols: s.cols, Rows: s.rows,

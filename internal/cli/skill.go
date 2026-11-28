@@ -86,14 +86,15 @@ gorex clients [--json]
 gorex layout [--json]
 gorex [-S HOST] projects [--json]
 gorex [-S HOST] project ls [--json] | new [NAME] [--dir DIR] [--space SPACE] [--color COLOR] [--json] | rename PROJECT NAME [--json] | move SESSION PROJECT [--json]
-gorex [-S HOST] new [--project PROJECT] [--dir DIR] [--name NAME] [--json] [-- COMMAND...]
-gorex split [-s SESSION] [-w TAB] [-b PANE] [--down] [--dir DIR] [--json] [-- COMMAND...]
+gorex [-S HOST] new [--project PROJECT] [--dir DIR] [--name NAME] [--agent NAME] [--json] [-- COMMAND...]
+gorex split [-s SESSION] [-w TAB] [-b PANE] [--down] [--dir DIR] [--agent NAME] [--json] [-- COMMAND...]
 gorex close [-s SESSION] [-w TAB] [-b PANE] [--tab] [--json]
 gorex rename [-s SESSION] [-w TAB] [-b PANE] NAME [--json]
-gorex send [-s SESSION] [-w TAB] [-b PANE] [--key KEY]... [--enter] [TEXT...]
-gorex paste [-s SESSION] [-w TAB] [-b PANE] TEXT...
+gorex send [-s SESSION] [-w TAB] [-b PANE] [--key KEY]... [--enter] [--agent NAME] [TEXT...]
+gorex paste [-s SESSION] [-w TAB] [-b PANE] [--agent NAME] TEXT...
 gorex capture [-s SESSION] [-w TAB] [-b PANE] [--history BYTES] [--raw] [--json]
-gorex wait [-s SESSION] [-w TAB] [-b PANE] (--exit | --idle | --status STATE | --contains TEXT) [--timeout D]
+gorex wait [-s SESSION] [-w TAB] [-b PANE] (--exit | --idle | --status STATE | --contains TEXT | --takeover) [--timeout D] [--json]
+gorex events
 gorex run [--dir DIR] [--json] -- COMMAND...
 gorex hosts [--probe] [--timeout D] [--json]
 gorex [-S HOST] agents [--json]
@@ -119,12 +120,20 @@ gorex omarchy status [--json] | bind [--keys KEYS] | unbind [--json]
 - ` + "`send`" + ` types without attaching; ` + "`--enter`" + ` presses Return; ` + "`--key alt+m`" + `
   presses a key or chord after the text (repeatable), as an agent's "send queued
   input now" key. ` + "`paste`" + ` uses
-  the terminal's paste path, which programs can handle differently.
+  the terminal's paste path, which programs can handle differently. Pass ` + "`--agent <name>`" + `
+  (for example ` + "`claude`" + `, ` + "`codex`" + `, ` + "`agy`" + `, ` + "`omp`" + `, ` + "`devin`" + `) on ` + "`new`" + `, ` + "`split`" + `,
+  ` + "`send`" + `, and ` + "`paste`" + ` so the tab badge and blue pane border identify the agent.
 - ` + "`capture`" + ` prints the screen as text. ` + "`--raw`" + ` keeps escape sequences,
   and ` + "`--history`" + ` asks for that many bytes of scrollback.
 - ` + "`wait`" + ` returns when the program exits (` + "`--exit`" + `), the shell is idle
-  (` + "`--idle`" + `), a program reports a status (` + "`--status blocked`" + `), or the
-  screen contains text (` + "`--contains`" + `). ` + "`--timeout 0`" + ` waits forever.
+  (` + "`--idle`" + `), a program reports a status (` + "`--status blocked`" + `), the
+  screen contains text (` + "`--contains`" + `), or a person types in the pane to take
+  over (` + "`--takeover`" + `). ` + "`--timeout 0`" + ` waits forever.
+- ` + "`events`" + ` streams layout, session, and human takeover (` + "`\"event\":\"takeover\"`" + `)
+  JSON lines; stop sending commands to a child pane when a ` + "`takeover`" + ` event
+  arrives for its ` + "`sid`" + ` (or with ` + "`parentSession`" + ` matching ` + "`$GOREX_SESSION`" + `).
+  ` + "`gorex ls --json`" + ` also exposes ` + "`agentActor`" + ` (` + "`createdBy`" + `, ` + "`lastCliInputAt`" + `,
+  ` + "`active`" + `, ` + "`parentSession`" + `, ` + "`tookOverAt`" + `) on every session.
 - ` + "`run`" + ` creates a session, runs the command, prints what the screen shows
   when it ends, and exits with the program's status.
 - ` + "`action run`" + ` runs a built-in action by its ID. Values after the action

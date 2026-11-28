@@ -259,6 +259,10 @@ func (m MouseInput) MouseEvent() (terminal.MouseEvent, error) {
 
 // Key types a key event into the program, encoded as its modes ask.
 func (s *session) Key(k KeyInput) error {
+	return s.keyFromActor(k, ActorHuman, "", "")
+}
+
+func (s *session) keyFromActor(k KeyInput, actor, agent, parentSession string) error {
 	ev, err := k.KeyEvent()
 	if err != nil {
 		return err
@@ -269,7 +273,15 @@ func (s *session) Key(k KeyInput) error {
 	if exited {
 		return ErrSessionEnded
 	}
-	return s.inputProgram(s.vt.EncodeKey(ev))
+	encoded := s.vt.EncodeKey(ev)
+	if k.Action == "release" {
+		return s.inputProgram(encoded)
+	}
+	if actor == "" || actor == ActorHuman {
+		s.clearAgent("key")
+		return s.inputProgram(encoded)
+	}
+	return s.inputFromActor(encoded, actor, agent, parentSession, "key")
 }
 
 // Mouse sends a pointer event to the program, encoded as its mouse modes
