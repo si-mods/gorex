@@ -149,13 +149,13 @@ Usage:
   gorex icon [--bg HEX] [--fg HEX] [--mode mono|color] [--format svg|png] FILE|clear
   gorex pack ls [--json] | search [QUERY] [--json] | install [--name ID] [--json] ID|DIR|GIT_URL | update [--check] [ID] | rm ID
   gorex new [--dir DIR] [--json] [-- COMMAND...]
-  gorex send [-s SESSION] [-w TAB] [-b PANE] [--enter] [--json] TEXT...
+  gorex send [-s SESSION] [-w TAB] [-b PANE] [--enter] [--now] [--json] [TEXT...]
   gorex paste [-s SESSION] [-w TAB] [-b PANE] [--json] TEXT...
   gorex capture [-s SESSION] [--history BYTES] [--raw] [--json]
   gorex events
   gorex hosts [ls] [--probe] [--timeout D] [--json]
   gorex [-S HOST] agents [--json]
-  gorex [-S HOST] delegate [--agent ID] [--dir DIR] [--name NAME] [--mode full|read-only|yolo] [--session SID] [--resume ID] [--result SID] [--async] [--keep] [--timeout D] [--cancel-on-timeout] [--json] -- PROMPT...
+  gorex [-S HOST] delegate [--agent ID] [--dir DIR] [--name NAME] [--mode full|read-only|yolo] [--session SID] [--resume ID] [--result SID] [--async] [--keep] [--ready-timeout D] [--timeout D] [--cancel-on-timeout] [--json] -- PROMPT...
   gorex [-S HOST] pair [--json]
   gorex skill show|setup|status|remove [--agent NAME] [--project] [--dry-run] [--json]
   gorex remote status [--json] | tailscale on|off | address | key | relay HOST|default | reachable IP|off | enable | disable | control on|off | pair start|stop | pending | approve KEY|CODE | reject KEY|CODE | allow NAME KEY | revoke KEY
@@ -165,7 +165,7 @@ Usage:
   gorex omarchy status [--json] | bind [--keys KEYS] | unbind [--json]
   gorex wait [-s SESSION] [--json] (--exit | --idle | --status STATE | --contains TEXT) [--timeout D]
   gorex run [--json] [--dir DIR] -- COMMAND...
-  gorex action run [-s SESSION] [--json] ACTION [KEY=VALUE...]
+  gorex action run [-s SESSION] [--json] ACTION [KEY=VALUE...] | [SESSION] send-keys KEYS...
   gorex float [new|toggle|hide-all|raise|lower|cycle|move|resize|dock] [-s SESSION] [--json] [KEY=VALUE...]
   gorex teleport [--json] PANE HOST
   gorex rex-import [--rex SOCKET] [--session LABEL|ID] [--shell] [--resize] [--json]
@@ -594,19 +594,25 @@ func renameCmd(args []string, out, errOut io.Writer) (int, bool) {
 	return ExitOK, true
 }
 
+// sendNowFlushDelay separates submitting text+Return from sending an agent's
+// immediate-flush key chord so the TUI's input loop queues the turn first.
+var sendNowFlushDelay = 50 * time.Millisecond
+
 func sendCmd(args []string, out, errOut io.Writer) (int, bool) {
 	fs := flagSet("send", errOut)
 	sid := targetFlag(fs)
 	enter := fs.Bool("enter", false, "press Return after the text")
+	now := fs.Bool("now", false, "submit and flush queued input immediately when configured for the agent")
 	asJSON := fs.Bool("json", false, "print JSON")
 	if code, stop := parse(fs, args); stop {
 		return code, true
 	}
+	hasArgs := len(fs.Args()) > 0
 	text := strings.Join(fs.Args(), " ")
-	if *enter {
+	if *enter || (*now && hasArgs) {
 		text += "\r"
 	}
-	if text == "" {
+	if text == "" && !*now {
 		fmt.Fprintln(errOut, "gorex send: no text")
 		return ExitUsage, true
 	}
@@ -615,14 +621,27 @@ func sendCmd(args []string, out, errOut io.Writer) (int, bool) {
 		return code, true
 	}
 	defer c.Close()
-	target, err := resolveTarget(c, sid.value())
+	target, info, err := resolveTargetInfo(c, sid.value())
 	if err != nil {
 		fmt.Fprintln(errOut, err)
 		return codeFor(err), true
 	}
-	if err := c.Input(target, []byte(text)); err != nil {
-		fmt.Fprintln(errOut, err)
-		return codeFor(err), true
+	if text != "" {
+		if err := c.Input(target, []byte(text)); err != nil {
+			fmt.Fprintln(errOut, err)
+			return codeFor(err), true
+		}
+	}
+	if *now {
+		if flush := rex.AgentFlushInput(rex.SessionAgentID(info)); len(flush) > 0 {
+			if text != "" && sendNowFlushDelay > 0 {
+				time.Sleep(sendNowFlushDelay)
+			}
+			if err := c.Input(target, flush); err != nil {
+				fmt.Fprintln(errOut, err)
+				return codeFor(err), true
+			}
+		}
 	}
 	if *asJSON {
 		WriteJSON(out, map[string]bool{"ok": true})
@@ -851,6 +870,31 @@ func floatCmd(args []string, out, errOut io.Writer) (int, bool) {
 	return actionCmd(argv, out, errOut)
 }
 
+func hoistActionFlags(args []string) []string {
+	var flags, rest []string
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		if a == "--" {
+			rest = append(rest, args[i:]...)
+			break
+		}
+		switch {
+		case a == "-s" || a == "-w" || a == "-b":
+			flags = append(flags, a)
+			if i+1 < len(args) {
+				i++
+				flags = append(flags, args[i])
+			}
+		case strings.HasPrefix(a, "-s=") || strings.HasPrefix(a, "-w=") || strings.HasPrefix(a, "-b="),
+			a == "--json" || a == "-json" || a == "-h" || a == "--help":
+			flags = append(flags, a)
+		default:
+			rest = append(rest, a)
+		}
+	}
+	return append(flags, rest...)
+}
+
 func actionCmd(args []string, out, errOut io.Writer) (int, bool) {
 	if len(args) == 0 || args[0] != "run" {
 		fmt.Fprintln(errOut, "gorex action: use `gorex action run ACTION [KEY=VALUE...]`")
@@ -859,13 +903,25 @@ func actionCmd(args []string, out, errOut io.Writer) (int, bool) {
 	fs := flagSet("action run", errOut)
 	sid := targetFlag(fs)
 	asJSON := fs.Bool("json", false, "print JSON")
-	if code, stop := parse(fs, args[1:]); stop {
+	if code, stop := parse(fs, hoistActionFlags(args[1:])); stop {
 		return code, true
 	}
+	explicitTarget := false
+	fs.Visit(func(f *flag.Flag) {
+		if f.Name == "s" || f.Name == "w" || f.Name == "b" {
+			explicitTarget = true
+		}
+	})
 	rest := fs.Args()
 	if len(rest) == 0 {
 		fmt.Fprintln(errOut, "gorex action run: no action")
 		return ExitUsage, true
+	}
+	if rex.IsSendKeysAction(rest[0]) {
+		return sendKeysActionCmd(sid.value(), rest[1:], *asJSON, out, errOut)
+	}
+	if !explicitTarget && len(rest) >= 2 && rex.IsSendKeysAction(rest[1]) {
+		return sendKeysActionCmd(rest[0], rest[2:], *asJSON, out, errOut)
 	}
 	id, pairs := rest[0], rest[1:]
 	actionArgs := map[string]any{}
@@ -905,6 +961,44 @@ func actionCmd(args []string, out, errOut io.Writer) (int, bool) {
 	}
 	if *asJSON {
 		WriteJSON(out, res)
+	}
+	return ExitOK, true
+}
+
+func sendKeysActionCmd(rawTarget string, rawArgs []string, asJSON bool, out, errOut io.Writer) (int, bool) {
+	specs := make([]string, 0, len(rawArgs))
+	for _, arg := range rawArgs {
+		if k, v, ok := strings.Cut(arg, "="); ok && (k == "keys" || k == "key") {
+			specs = append(specs, v)
+			continue
+		}
+		specs = append(specs, arg)
+	}
+	encoded, err := rex.EncodeKeySequence(specs...)
+	if err != nil {
+		fmt.Fprintf(errOut, "gorex action run: %v\n", err)
+		return ExitUsage, true
+	}
+	if strings.TrimSpace(rawTarget) == "" {
+		fmt.Fprintln(errOut, "gorex action run: no session; use -s or GOREX_SESSION")
+		return ExitTarget, true
+	}
+	c, code := connect(errOut)
+	if c == nil {
+		return code, true
+	}
+	defer c.Close()
+	target, err := resolveTarget(c, rawTarget)
+	if err != nil {
+		fmt.Fprintln(errOut, err)
+		return codeFor(err), true
+	}
+	if err := c.Input(target, encoded); err != nil {
+		fmt.Fprintln(errOut, err)
+		return codeFor(err), true
+	}
+	if asJSON {
+		WriteJSON(out, rex.LayoutCommand{})
 	}
 	return ExitOK, true
 }

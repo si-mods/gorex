@@ -159,6 +159,9 @@ func TestDelegateCallTimeoutAndConfigDir(t *testing.T) {
 	if got := delegateCallTimeout(true, 90_000); got < 45*time.Second {
 		t.Fatalf("async timeout = %v, want >= 45s", got)
 	}
+	if got := delegateCallTimeoutWithReady(true, 0, 60_000); got < 75*time.Second {
+		t.Fatalf("async 60s ready-timeout = %v, want >= 75s", got)
+	}
 
 	// claudeTranscript.FindFile prefers explicit AgentConfigDir over CLAUDE_CONFIG_DIR.
 	teamCfg := t.TempDir()
@@ -222,7 +225,7 @@ func TestWaitTUIReadyIgnoresControlOnlyOutput(t *testing.T) {
 					lastOutput: base.Add(-time.Second),
 					plainText:  stripANSI("\x1bH\x1b[2J\x1b[?25l"),
 				}
-			}, agentID, 80*time.Millisecond, nowFn, sleepFn)
+			}, nil, agentID, 80*time.Millisecond, nowFn, sleepFn)
 			if elapsed := cur.Sub(base); elapsed != 80*time.Millisecond {
 				t.Fatalf("%s: waitTUIReady virtual elapsed = %v on control-only output, want full 80ms wait", agentID, elapsed)
 			}
@@ -248,7 +251,7 @@ func TestWaitTUIReadyIgnoresControlOnlyOutput(t *testing.T) {
 					bracketed:  true,
 					plainText:  stripANSI("\x1b[2J\x1b[HWelcome\r\n❯ "),
 				}
-			}, agentID, 2*time.Second, nowFn, sleepFn)
+			}, nil, agentID, 2*time.Second, nowFn, sleepFn)
 			want := 60 * time.Millisecond // 20ms startup + 40ms settle
 			if elapsed := cur.Sub(base); elapsed != want {
 				t.Fatalf("%s: waitTUIReady virtual elapsed = %v, want %v", agentID, elapsed, want)
@@ -265,12 +268,189 @@ func TestWaitTUIReadyIgnoresControlOnlyOutput(t *testing.T) {
 					idle:      true,
 					plainText: stripANSI("\x1bH"),
 				}
-			}, agentID, time.Second, func() time.Time { return cur }, func(d time.Duration) { cur = cur.Add(d) })
+			}, nil, agentID, time.Second, func() time.Time { return cur }, func(d time.Duration) { cur = cur.Add(d) })
 			if calls != 1 || cur != base {
 				t.Fatalf("%s: osc7501 idle calls=%d elapsed=%v, want 1 call and 0s", agentID, calls, cur.Sub(base))
 			}
 		})
 	}
+}
+
+func TestWaitTUIReadyDismissesSplashModal(t *testing.T) {
+	origPoll := delegateReadyPoll
+	origQuiet := delegateReadyQuiet
+	origFallback := delegateReadyFallbackQuiet
+	origCooldown := delegateSplashCooldown
+	delegateReadyPoll = 10 * time.Millisecond
+	delegateReadyQuiet = 40 * time.Millisecond
+	delegateReadyFallbackQuiet = 100 * time.Millisecond
+	delegateSplashCooldown = 80 * time.Millisecond
+	t.Cleanup(func() {
+		delegateReadyPoll = origPoll
+		delegateReadyQuiet = origQuiet
+		delegateReadyFallbackQuiet = origFallback
+		delegateSplashCooldown = origCooldown
+	})
+
+	base := time.Date(2026, 11, 28, 12, 0, 0, 0, time.UTC)
+	cur := base
+	dismissed := false
+	var sent [][]byte
+
+	waitTUIReadyWith(func() tuiSnapshot {
+		if !dismissed {
+			return tuiSnapshot{
+				output:     64,
+				lastOutput: base,
+				idle:       true, // even if OSC 7501 reports idle while splash shows
+				bracketed:  true,
+				plainText:  "Introducing Gemini 4 Neon — esc to dismiss",
+			}
+		}
+		return tuiSnapshot{
+			output:     96,
+			lastOutput: cur,
+			bracketed:  true,
+			plainText:  "Antigravity 1.5.18\n❯ ",
+		}
+	}, func(b []byte) {
+		sent = append(sent, append([]byte(nil), b...))
+		dismissed = true
+	}, "agy", 2*time.Second, func() time.Time { return cur }, func(d time.Duration) { cur = cur.Add(d) })
+
+	if !dismissed || len(sent) != 1 || string(sent[0]) != "\x1b" {
+		t.Fatalf("splash dismiss = %v (%q), want single ESC", dismissed, sent)
+	}
+	// 40ms settle on splash -> ESC -> 10ms next poll sees prompt -> 40ms settle on prompt = 90ms
+	if elapsed := cur.Sub(base); elapsed != 90*time.Millisecond {
+		t.Fatalf("elapsed = %v, want 90ms", elapsed)
+	}
+}
+
+func TestDeliverTurnPromptReinjectsWhenSwallowed(t *testing.T) {
+	// 1. Late splash modal swallows first paste; driver dismisses splash and re-injects prompt.
+	t.Run("splash_swallows_first_paste", func(t *testing.T) {
+		var pastes []string
+		var rawSent [][]byte
+		screen := "Antigravity\n❯ "
+		accepted := false
+		splashPopped := false
+
+		err := deliverTurnPromptWith("agy", "Inspect build failure in module alpha", true, promptDeliveryDeps{
+			paste: func(p string) error {
+				pastes = append(pastes, p)
+				if len(pastes) == 1 {
+					// Simulate late startup modal eating the first paste.
+					splashPopped = true
+					screen = "Introducing Gemini 4 Neon — esc to dismiss"
+					return nil
+				}
+				screen = "Antigravity\n❯ Inspect build failure in module alpha"
+				return nil
+			},
+			sendBytes: func(b []byte) {
+				rawSent = append(rawSent, append([]byte(nil), b...))
+				if string(b) == "\x1b" && splashPopped {
+					splashPopped = false
+					screen = "Antigravity\n❯ "
+				}
+				if string(b) == "\r" && len(pastes) == 2 && !splashPopped {
+					accepted = true
+				}
+			},
+			screen:     func() string { return screen },
+			isWorking:  func() bool { return false },
+			isAccepted: func() bool { return accepted },
+			waitReady:  func() {},
+			waitAck:    func(time.Duration) bool { return accepted },
+			sleep:      func(time.Duration) {},
+		})
+		if err != nil {
+			t.Fatalf("deliverTurnPromptWith: %v", err)
+		}
+		if !accepted || len(pastes) != 2 {
+			t.Fatalf("accepted=%v pastes=%d (%v), want 2 pastes", accepted, len(pastes), pastes)
+		}
+		sawEsc := false
+		for _, b := range rawSent {
+			if string(b) == "\x1b" {
+				sawEsc = true
+			}
+		}
+		if !sawEsc {
+			t.Fatalf("expected ESC to dismiss splash, got %q", rawSent)
+		}
+	})
+
+	// 2. Unmounted input box drops first paste (screen stays at empty prompt); driver re-pastes.
+	t.Run("empty_input_box_reinjects", func(t *testing.T) {
+		var pastes []string
+		screen := "~/repos/gorex\n❯ "
+		accepted := false
+
+		err := deliverTurnPromptWith("agy", "gorex status check", true, promptDeliveryDeps{
+			paste: func(p string) error {
+				pastes = append(pastes, p)
+				if len(pastes) >= 2 {
+					screen = "~/repos/gorex\n❯ gorex status check"
+				}
+				return nil
+			},
+			sendBytes: func(b []byte) {
+				if string(b) == "\r" && len(pastes) == 2 {
+					accepted = true
+				}
+			},
+			screen:     func() string { return screen },
+			isWorking:  func() bool { return false },
+			isAccepted: func() bool { return accepted },
+			waitReady:  func() {},
+			waitAck:    func(time.Duration) bool { return accepted },
+			sleep:      func(time.Duration) {},
+		})
+		if err != nil {
+			t.Fatalf("deliverTurnPromptWith: %v", err)
+		}
+		if !accepted || len(pastes) != 2 {
+			t.Fatalf("accepted=%v pastes=%d, want 2 pastes (even when prompt word appeared once in header)", accepted, len(pastes))
+		}
+	})
+
+	// 3. Prompt already visible in input box, only Return missed: sends Return without double-pasting.
+	t.Run("visible_in_box_does_not_double_paste", func(t *testing.T) {
+		var pastes []string
+		returns := 0
+		screen := "Claude Code\n❯ "
+		accepted := false
+
+		err := deliverTurnPromptWith("claude", "Summarize recent commits", true, promptDeliveryDeps{
+			paste: func(p string) error {
+				pastes = append(pastes, p)
+				screen = "Claude Code\n❯ Summarize recent commits"
+				return nil
+			},
+			sendBytes: func(b []byte) {
+				if string(b) == "\r" {
+					returns++
+					if returns == 2 {
+						accepted = true
+					}
+				}
+			},
+			screen:     func() string { return screen },
+			isWorking:  func() bool { return false },
+			isAccepted: func() bool { return accepted },
+			waitReady:  func() {},
+			waitAck:    func(time.Duration) bool { return accepted },
+			sleep:      func(time.Duration) {},
+		})
+		if err != nil {
+			t.Fatalf("deliverTurnPromptWith: %v", err)
+		}
+		if !accepted || len(pastes) != 1 || returns != 2 {
+			t.Fatalf("accepted=%v pastes=%d returns=%d, want 1 paste and 2 returns", accepted, len(pastes), returns)
+		}
+	})
 }
 
 func TestTranscriptFindFileSkipsOldAndPreExisting(t *testing.T) {
@@ -691,4 +871,139 @@ done
 			t.Fatalf("ephemeral delegated session %s was not closed on clean exit", res3.Session)
 		}
 	}
+}
+
+func TestDelegateSplashAndSwallowedPromptEndToEnd(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("fake POSIX TUI script")
+	}
+
+	origReady := delegateReadyWait
+	origReadyPoll := delegateReadyPoll
+	origReadyQuiet := delegateReadyQuiet
+	origReadyFallback := delegateReadyFallbackQuiet
+	origSplashCooldown := delegateSplashCooldown
+	origPaste := delegatePasteDelay
+	origEnterWait := delegateEnterWait
+	origPoll := delegatePollInterval
+	delegateReadyWait = 3 * time.Second
+	delegateReadyPoll = 10 * time.Millisecond
+	delegateReadyQuiet = 30 * time.Millisecond
+	delegateReadyFallbackQuiet = 80 * time.Millisecond
+	delegateSplashCooldown = 60 * time.Millisecond
+	delegatePasteDelay = 30 * time.Millisecond
+	delegateEnterWait = 120 * time.Millisecond
+	delegatePollInterval = 25 * time.Millisecond
+	t.Cleanup(func() {
+		delegateReadyWait = origReady
+		delegateReadyPoll = origReadyPoll
+		delegateReadyQuiet = origReadyQuiet
+		delegateReadyFallbackQuiet = origReadyFallback
+		delegateSplashCooldown = origSplashCooldown
+		delegatePasteDelay = origPaste
+		delegateEnterWait = origEnterWait
+		delegatePollInterval = origPoll
+	})
+
+	dir := t.TempDir()
+	t.Setenv("GOREX_DIR", dir)
+	realHome := os.Getenv("HOME")
+	home := t.TempDir()
+	if realHome != "" {
+		cacheParent := filepath.Join(home, "Library", "Caches")
+		if err := os.MkdirAll(cacheParent, 0o755); err == nil {
+			_ = os.Symlink(filepath.Join(realHome, "Library", "Caches", "mygo"), filepath.Join(cacheParent, "mygo"))
+		}
+	}
+	t.Setenv("HOME", home)
+	projDir := filepath.Join(t.TempDir(), "app")
+	if err := os.MkdirAll(projDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	// Fake agy TUI:
+	// 1. Shows "Introducing Gemini 4 Neon — esc to dismiss" in raw mode and
+	//    drops all bytes until ESC (0x1b) is pressed.
+	// 2. Clears splash, draws prompt, and also drops the very first line if
+	//    DROP_FIRST=1 to simulate a late input-box mount swallowing the first paste.
+	// 3. Writes USER_INPUT + ASSISTANT_RESPONSE to agy's transcript_full.jsonl.
+	binDir := t.TempDir()
+	logDir := filepath.Join(home, ".gemini", "antigravity-cli", "brain", "conv-test-1", ".system_generated", "logs")
+	script := fmt.Sprintf(`#!/bin/sh
+stty raw -echo
+printf '\033[?2004h\033[2J\033[HIntroducing Gemini 4 Neon — esc to dismiss'
+esc=$(printf '\033')
+while :; do
+  ch=$(dd bs=1 count=1 2>/dev/null)
+  [ "$ch" = "$esc" ] && break
+done
+stty sane -echo
+printf '\033[2J\033[HAntigravity 1.5.18\r\n❯ '
+mkdir -p "%s"
+out="%s/transcript_full.jsonl"
+dropped=0
+while IFS= read -r line; do
+  clean=$(printf '%%s' "$line" | tr -d '\r' | sed 's/\x1b\[200~//g; s/\x1b\[201~//g')
+  [ -z "$clean" ] && continue
+  if [ "$dropped" -eq 0 ]; then
+    dropped=1
+    printf '\033[2J\033[HAntigravity 1.5.18\r\n❯ '
+    continue
+  fi
+  printf '{"type":"USER_INPUT","content":"%%s"}\n' "$clean" >> "$out"
+  printf '{"type":"ASSISTANT_RESPONSE","content":"agy-ok:%%s"}\n' "$clean" >> "$out"
+  printf '\r\nagy-ok:%%s\r\n' "$clean"
+  exit 0
+done
+`, logDir, logDir)
+	if err := os.WriteFile(filepath.Join(binDir, "agy"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", binDir+":"+os.Getenv("PATH"))
+	t.Setenv("SHELL", "/bin/sh")
+	ResetAgentsCacheForTest()
+	t.Cleanup(ResetAgentsCacheForTest)
+
+	go func() { _ = Serve() }()
+	for i := 0; i < 100; i++ {
+		if _, err := os.Stat(SocketPath()); err == nil {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	c, err := Connect()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { c.Shutdown() })
+
+	res, err := c.Delegate(DelegateOptions{
+		Agent:          "agy",
+		Dir:            projDir,
+		Prompt:         "check splash recovery",
+		Async:          true,
+		ReadyTimeoutMs: 4000,
+	})
+	if err != nil {
+		t.Fatalf("Delegate agy async: %v", err)
+	}
+	if res.Session == "" {
+		t.Fatalf("Delegate returned empty session: %+v", res)
+	}
+
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		got, err := c.DelegateResult(res.Session)
+		if err != nil {
+			t.Fatalf("DelegateResult: %v", err)
+		}
+		if got.Status == "completed" && got.Result == "agy-ok:check splash recovery" {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("agy turn did not complete: %+v", got)
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+	_ = c.Kill(res.Session)
 }

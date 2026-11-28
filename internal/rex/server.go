@@ -796,7 +796,7 @@ func (s *Server) request(req Request, peer string, kept *keptConn) Response {
 		err = fmt.Errorf("rex: %s is this machine's GoRex window's", req.Command.Op)
 	} else if remote && req.Op == "remote.pair" {
 		err = errors.New("rex: this machine is allowed there already")
-	} else if remote && !remoteAllowed(req.Op) && !(req.Op == "action" && s.remoteControlEnabled()) {
+	} else if remote && !remoteAllowed(req.Op) && !(req.Op == "action" && (s.remoteControlEnabled() || (req.Action != nil && IsSendKeysAction(req.Action.ID)))) {
 		log.Printf("rex: denied %q to a remote connection", req.Op)
 		err = fmt.Errorf("%s is not allowed remotely", req.Op)
 	} else {

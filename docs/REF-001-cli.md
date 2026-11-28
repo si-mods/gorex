@@ -3,7 +3,7 @@ name: REF-001
 description: "The `gorex` command line: the commands that drive sessions without a window, and the agent hooks. Use when you add or change a CLI command."
 metadata:
   created: "2026-10-28"
-  updated: "2026-11-26"
+  updated: "2026-11-28"
 ---
 
 # REF-001: gorex command line
@@ -47,7 +47,7 @@ gorex close [-s SESSION] [--tab] [--json]
 gorex rename [-s SESSION] [--json] NAME
 gorex icon [--bg HEX] [--fg HEX] [--mode mono|color] [--format svg|png] FILE|clear
 gorex pack ls [--json] | search [QUERY] [--json] | install [--name ID] [--json] ID|DIR|GIT_URL | update [--check] [ID] | rm ID
-gorex send [-s SESSION] [--enter] [--json] TEXT...
+gorex send [-s SESSION] [--enter] [--now] [--json] [TEXT...]
 gorex paste [-s SESSION] [--json] TEXT...
 gorex capture [-s SESSION] [--history BYTES] [--raw] [--json]
 gorex wait [-s SESSION] [--json] (--exit | --idle | --status STATE | --contains TEXT) [--timeout D]
@@ -62,6 +62,7 @@ gorex update
 gorex config path | config check [FILE] | config reload
 gorex omarchy status [--json] | bind [--keys KEYS] | unbind [--json]
 gorex action run [-s SESSION] [--json] ACTION [KEY=VALUE...]
+gorex action run [-s SESSION | SESSION] send-keys KEYS... [--json]
 gorex float [new|toggle|hide-all|raise|lower|cycle|move|resize|dock] [-s SESSION] [--json] [KEY=VALUE...]
 gorex teleport [--json] PANE HOST
 gorex rex-import [--rex SOCKET] [--session LABEL|ID] [--shell] [--resize] [--json]
@@ -107,8 +108,10 @@ in `ls` (1 is the first), or the end of an ID (at least four characters).
 wins over `-s`. An ambiguous target exits 3. `rename` gives a pane a label.
 
 - `new` creates a session and prints its ID.
-- `send` types without attaching; `--enter` presses Return. `paste` uses
-  the terminal's paste path, which programs can handle differently.
+- `send` types without attaching; `--enter` presses Return, and `--now`
+  submits and flushes queued mid-turn input immediately when the session's
+  agent defines a flush chord (`alt+m` for `agy`). `paste` uses the terminal's
+  paste path, which programs can handle differently.
 - `capture` prints the screen as text, or the escape sequences with
   `--raw`.
 - `wait --exit` exits with the program's status; the other conditions

@@ -3,7 +3,7 @@ name: MOD-016
 description: "Cross-host agent delegation over existing peer links: peer capability probing, gorex delegate over the MOD-010 quick launcher, visible layout tabs, and gorexGuide workflow rules. Use when adding or changing gorex hosts --probe, gorex -S HOST agents, or gorex delegate."
 metadata:
   created: "2026-11-26"
-  updated: "2026-11-26"
+  updated: "2026-11-28"
 ---
 
 # MOD-016: Peer delegation for coding agents
@@ -76,6 +76,7 @@ gorex -S build-linux delegate --resume <AGENT_SESSION> --dir ~/repos/app --json 
 - `--mode` accepts `full` (default), `read-only`, or `yolo` (opt-in only, never default). `read-only` passes the agent's read-only flag (`--permission-mode plan` for `claude`, `--sandbox read-only` for `codex`). `yolo` passes the agent's auto-approve flag (`--permission-mode bypassPermissions` for `claude`, `--full-auto` for `codex`). Agents without the requested flag are refused.
 - `--session` sends a follow-up prompt to a live delegated session without restarting the process (warm multi-turn, preserving prompt cache).
 - `--resume` starts a new session on the target host and continues a previous agent conversation by its `agentSession` ID (cold multi-turn after process exit).
+- `--ready-timeout` bounds how long the server waits for the interactive agent TUI to dismiss any startup splash modal and settle at its input prompt before injecting the initial prompt (default `20s`); if a startup screen still swallows the first paste and leaves the input box empty, `delegate` dismisses any modal and re-injects the prompt automatically.
 - `--timeout` bounds synchronous waits (default `10m`, `0` waits until exit).
 - `--cancel-on-timeout` sends `kill` to stop the remote session when `--timeout` expires. Without it, a timeout or network drop leaves the remote session running and prints `{host, session, status: "running", error: "..."}` so the caller can reconnect with `gorex -S HOST wait -s SESSION --exit` and `gorex -S HOST delegate --result SESSION --json` (or cancel with `gorex -S HOST close -s SESSION`) instead of spawning a duplicate task.
 - Pressing `Ctrl-C` (`SIGINT`) during a synchronous `delegate` sends `kill` to stop the remote session so it does not keep burning tokens.

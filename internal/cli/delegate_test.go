@@ -25,6 +25,9 @@ func TestDelegateCLI(t *testing.T) {
 	if code, _, _, _ := runMain(t, "delegate", "--mode", "bogus", "--", "hi"); code != ExitUsage {
 		t.Fatalf("delegate bad mode: got %d, want %d", code, ExitUsage)
 	}
+	if code, _, _, _ := runMain(t, "delegate", "--ready-timeout", "-1s", "--", "hi"); code != ExitUsage {
+		t.Fatalf("delegate negative ready-timeout: got %d, want %d", code, ExitUsage)
+	}
 
 	claudeCfg := t.TempDir()
 	t.Setenv("CLAUDE_CONFIG_DIR", claudeCfg)

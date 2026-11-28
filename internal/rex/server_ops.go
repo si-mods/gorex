@@ -247,12 +247,62 @@ func (s *Server) doAction(req Request, peer string, _ *keptConn) (any, error) {
 	if req.Action == nil || req.Action.ID == "" {
 		return nil, errors.New("rex: no action")
 	}
+	if IsSendKeysAction(req.Action.ID) {
+		if req.SID == "" {
+			return LayoutCommand{Code: "no_session", Error: "send-keys requires a session"}, nil
+		}
+		ss, err := s.session(req.SID)
+		if err != nil {
+			return nil, err
+		}
+		specs, err := parseSendKeysArgs(req.Action.Args)
+		if err != nil {
+			return LayoutCommand{Code: "bad_args", Error: err.Error()}, nil
+		}
+		b, err := EncodeKeySequence(specs...)
+		if err != nil {
+			return LayoutCommand{Code: "bad_args", Error: err.Error()}, nil
+		}
+		if err := ss.inputProgram(b); err != nil {
+			return nil, err
+		}
+		return LayoutCommand{}, nil
+	}
 	if req.SID != "" {
 		if _, err := s.session(req.SID); err != nil {
 			return nil, err
 		}
 	}
 	return s.command(LayoutCommand{Op: "action", SID: req.SID, Action: req.Action.ID, Args: req.Action.Args, Remote: peer != ""}), nil
+}
+
+func parseSendKeysArgs(raw json.RawMessage) ([]string, error) {
+	if len(raw) == 0 {
+		return nil, errors.New("rex: no keys")
+	}
+	var m map[string]any
+	if err := json.Unmarshal(raw, &m); err != nil {
+		return nil, err
+	}
+	for _, field := range []string{"keys", "key"} {
+		v, ok := m[field]
+		if !ok {
+			continue
+		}
+		switch x := v.(type) {
+		case string:
+			return []string{x}, nil
+		case []any:
+			out := make([]string, 0, len(x))
+			for _, item := range x {
+				if s, ok := item.(string); ok {
+					out = append(out, s)
+				}
+			}
+			return out, nil
+		}
+	}
+	return nil, errors.New("rex: no keys")
 }
 
 func (s *Server) doGetLayout(_ Request, peer string, _ *keptConn) (any, error) {

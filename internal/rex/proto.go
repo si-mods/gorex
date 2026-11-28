@@ -313,6 +313,7 @@ type DelegateOptions struct {
 	From            string `json:"from,omitempty"`
 	Keep            bool   `json:"keep,omitempty"`
 	Async           bool   `json:"async,omitempty"`
+	ReadyTimeoutMs  int    `json:"readyTimeoutMs,omitempty"`
 	TimeoutMs       int    `json:"timeoutMs,omitempty"`
 	CancelOnTimeout bool   `json:"cancelOnTimeout,omitempty"`
 }

@@ -17,17 +17,24 @@ var errAmbiguous = errors.New("target is ambiguous")
 // session's full ID. Labels come from the window's layout when it is
 // available; a remote server has none.
 func resolveTarget(c *rex.Client, target string) (string, error) {
+	sid, _, err := resolveTargetInfo(c, target)
+	return sid, err
+}
+
+func resolveTargetInfo(c *rex.Client, target string) (string, rex.SessionInfo, error) {
 	target = strings.TrimSpace(target)
 	if target == "" {
-		return "", errNoSession
+		return "", rex.SessionInfo{}, errNoSession
 	}
 	infos, err := c.List()
 	if err != nil {
-		return "", err
+		return "", rex.SessionInfo{}, err
 	}
+	byID := make(map[string]rex.SessionInfo, len(infos))
 	for _, in := range infos {
+		byID[in.ID] = in
 		if in.ID == target {
-			return in.ID, nil
+			return in.ID, in, nil
 		}
 	}
 	labels := map[string]string{}
@@ -36,28 +43,32 @@ func resolveTarget(c *rex.Client, target string) (string, error) {
 	}
 	if sid, ok := labels[target]; ok {
 		if sid == "" {
-			return "", fmt.Errorf("%w: %s", errAmbiguous, target)
+			return "", rex.SessionInfo{}, fmt.Errorf("%w: %s", errAmbiguous, target)
 		}
-		return sid, nil
+		return sid, byID[sid], nil
 	}
 	if n, err := strconv.Atoi(target); err == nil && n >= 1 && n <= len(infos) {
-		return infos[n-1].ID, nil
+		return infos[n-1].ID, infos[n-1], nil
 	}
 	if len(target) >= 4 {
-		var found []string
+		var found []rex.SessionInfo
 		for _, in := range infos {
 			if strings.HasSuffix(in.ID, target) {
-				found = append(found, in.ID)
+				found = append(found, in)
 			}
 		}
 		if len(found) == 1 {
-			return found[0], nil
+			return found[0].ID, found[0], nil
 		}
 		if len(found) > 1 {
-			return "", fmt.Errorf("%w: %s", errAmbiguous, strings.Join(found, ", "))
+			ids := make([]string, len(found))
+			for i, in := range found {
+				ids[i] = in.ID
+			}
+			return "", rex.SessionInfo{}, fmt.Errorf("%w: %s", errAmbiguous, strings.Join(ids, ", "))
 		}
 	}
-	return "", errNoSession
+	return "", rex.SessionInfo{}, errNoSession
 }
 
 // sessionLabels maps a workspace's name and its tabs' names to the session

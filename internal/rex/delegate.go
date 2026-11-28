@@ -26,6 +26,7 @@ var (
 	delegateReadyPoll          = 80 * time.Millisecond
 	delegateReadyQuiet         = 400 * time.Millisecond
 	delegateReadyFallbackQuiet = 1500 * time.Millisecond
+	delegateSplashCooldown     = 500 * time.Millisecond
 	delegatePasteDelay         = 200 * time.Millisecond
 	delegateEnterWait          = 2 * time.Second
 	delegatePollInterval       = 100 * time.Millisecond
@@ -206,9 +207,14 @@ func (s *Server) doDelegate(req Request, peer string, _ *keptConn) (any, error) 
 
 	turnDone := run.beginTurn()
 
-	// Wait for the interactive TUI to finish drawing its input prompt before
-	// pasting so Windows PowerShell / ConPTY init bytes do not trigger early paste.
-	waitTUIReady(ss, agentID, delegateReadyWait)
+	// Wait for the interactive TUI to finish drawing its input prompt (and
+	// dismiss any startup splash modal) before pasting so init output or
+	// splash screens do not swallow the prompt.
+	readyWait := delegateReadyWait
+	if opt.ReadyTimeoutMs > 0 {
+		readyWait = time.Duration(opt.ReadyTimeoutMs) * time.Millisecond
+	}
+	waitTUIReady(ss, agentID, readyWait)
 	if in := ss.info(); in.Exited {
 		run.finishTurn("failed", "", "delegated agent exited before accepting prompt")
 		return run.snapshot(ss), nil
@@ -221,7 +227,7 @@ func (s *Server) doDelegate(req Request, peer string, _ *keptConn) (any, error) 
 	}
 
 	go s.tailDelegate(run, ss)
-	if err := deliverTurnPrompt(run, ss, opt.Prompt); err != nil {
+	if err := deliverTurnPrompt(run, ss, opt.Prompt, readyWait); err != nil {
 		run.finishTurn("failed", "", err.Error())
 		return run.snapshot(ss), nil
 	}
@@ -263,7 +269,7 @@ func (s *Server) doDelegateSend(req Request, _ string, _ *keptConn) (any, error)
 		return nil, fmt.Errorf("rex: session %q is not a delegated session", opt.SID)
 	}
 	turnDone := run.beginTurn()
-	if err := deliverTurnPrompt(run, ss, opt.Prompt); err != nil {
+	if err := deliverTurnPrompt(run, ss, opt.Prompt, delegateReadyWait); err != nil {
 		run.finishTurn("failed", "", err.Error())
 		return run.snapshot(ss), nil
 	}
@@ -574,24 +580,32 @@ func waitTUIReady(ss *session, agentID string, maxWait time.Duration) {
 			bracketed:  ss.bracketedPaste(),
 			plainText:  sessionPlainText(ss),
 		}
+	}, func(b []byte) {
+		_ = ss.inputProgram(b)
 	}, agentID, maxWait, time.Now, time.Sleep)
 }
 
-func waitTUIReadyWith(sample func() tuiSnapshot, agentID string, maxWait time.Duration, nowFn func() time.Time, sleepFn func(time.Duration)) {
+func waitTUIReadyWith(sample func() tuiSnapshot, dismiss func([]byte), agentID string, maxWait time.Duration, nowFn func() time.Time, sleepFn func(time.Duration)) {
 	deadline := nowFn().Add(maxWait)
 	var prevOut uint64
 	var prevTxt string
 	var lastChange time.Time
+	var lastDismiss time.Time
 	seenVisible := false
 
 	for {
 		now := nowFn()
 		snap := sample()
-		if snap.exited || snap.idle {
+		if snap.exited {
 			return
 		}
 
 		txt := snap.plainText
+		splashDismiss := agentSplashDismiss(agentID, txt)
+		if len(splashDismiss) == 0 && snap.idle {
+			return
+		}
+
 		if txt != "" {
 			if !seenVisible {
 				seenVisible = true
@@ -609,18 +623,25 @@ func waitTUIReadyWith(sample func() tuiSnapshot, agentID string, maxWait time.Du
 			}
 
 			quiet := now.Sub(lastChange)
-			promptReady := hasPromptIndicator(txt)
-
-			if agentID == "claude" {
-				if promptReady && quiet >= delegateReadyQuiet {
-					return
+			if len(splashDismiss) > 0 {
+				if dismiss != nil && quiet >= delegateReadyQuiet && (lastDismiss.IsZero() || now.Sub(lastDismiss) >= delegateSplashCooldown) {
+					dismiss(splashDismiss)
+					lastDismiss = now
+					lastChange = now
 				}
 			} else {
-				if (snap.bracketed || promptReady) && quiet >= delegateReadyQuiet {
-					return
-				}
-				if quiet >= delegateReadyFallbackQuiet {
-					return
+				promptReady := hasPromptIndicator(txt)
+				if agentID == "claude" {
+					if promptReady && quiet >= delegateReadyQuiet {
+						return
+					}
+				} else {
+					if promptReady && quiet >= delegateReadyQuiet {
+						return
+					}
+					if quiet >= delegateReadyFallbackQuiet {
+						return
+					}
 				}
 			}
 		}
@@ -653,13 +674,26 @@ func hasPromptIndicator(txt string) bool {
 	return false
 }
 
-func deliverTurnPrompt(d *delegatedRun, ss *session, prompt string) error {
+type promptDeliveryDeps struct {
+	paste      func(string) error
+	sendBytes  func([]byte)
+	screen     func() string
+	isWorking  func() bool
+	isAccepted func() bool
+	waitReady  func()
+	waitAck    func(time.Duration) bool
+	sleep      func(time.Duration)
+}
+
+func deliverTurnPrompt(d *delegatedRun, ss *session, prompt string, readyWait time.Duration) error {
 	d.mu.Lock()
 	before := d.promptCount
 	if d.promptAckCh == nil {
 		d.promptAckCh = make(chan struct{}, 1)
 	}
 	ackCh := d.promptAckCh
+	agentID := d.agent
+	hasAdapter := d.adapter != nil
 	d.mu.Unlock()
 	// Drain any stale ack signal.
 	select {
@@ -667,37 +701,147 @@ func deliverTurnPrompt(d *delegatedRun, ss *session, prompt string) error {
 	default:
 	}
 
-	if err := ss.paste(prompt); err != nil {
+	isAccepted := func() bool {
+		d.mu.Lock()
+		defer d.mu.Unlock()
+		return d.promptCount > before || d.status != "running"
+	}
+	isWorking := func() bool {
+		st := ss.info().Status
+		return st != nil && st.State == "working"
+	}
+	wasWorking := isWorking()
+	retryReadyWait := min(readyWait, 2*time.Second)
+
+	return deliverTurnPromptWith(agentID, prompt, hasAdapter, promptDeliveryDeps{
+		paste:     ss.paste,
+		sendBytes: ss.write,
+		screen:    func() string { return sessionPlainText(ss) },
+		isWorking: isWorking,
+		isAccepted: func() bool {
+			return isAccepted() || (!wasWorking && isWorking())
+		},
+		waitReady: func() {
+			waitTUIReady(ss, agentID, retryReadyWait)
+		},
+		waitAck: func(timeout time.Duration) bool {
+			timer := time.NewTimer(timeout)
+			defer timer.Stop()
+			step := min(delegatePollInterval, timeout)
+			if step <= 0 {
+				step = 10 * time.Millisecond
+			}
+			tick := time.NewTicker(step)
+			defer tick.Stop()
+			for {
+				select {
+				case <-ackCh:
+					return true
+				case <-ss.done:
+					return true
+				case <-tick.C:
+					if isAccepted() || (!wasWorking && isWorking()) {
+						return true
+					}
+				case <-timer.C:
+					return isAccepted() || (!wasWorking && isWorking())
+				}
+			}
+		},
+		sleep: time.Sleep,
+	})
+}
+
+func deliverTurnPromptWith(agentID, prompt string, hasAdapter bool, deps promptDeliveryDeps) error {
+	cur := deps.screen()
+	if dismiss := agentSplashDismiss(agentID, cur); len(dismiss) > 0 {
+		deps.sendBytes(dismiss)
+		deps.waitReady()
+		cur = deps.screen()
+	}
+	baseScreen := collapseSpaces(cur)
+
+	if err := deps.paste(prompt); err != nil {
 		return err
 	}
-	time.Sleep(delegatePasteDelay)
+	deps.sleep(delegatePasteDelay)
 
-	// Retry Return up to 4 times until the transcript confirms the prompt
-	// arrived (matching yetone/magpie's claudetui/tui.go:1399) or the turn
-	// already completed.
+	// Retry up to 4 times until the transcript or OSC 7501 confirms the prompt
+	// arrived. If a startup splash or late TUI mount swallowed the paste so the
+	// input box is still empty, dismiss any splash and re-inject the prompt;
+	// if the prompt is already visible in the input box, send Return alone.
 	for try := 0; try < 4; try++ {
-		ss.write([]byte("\r"))
-		if d.adapter == nil {
-			return nil
-		}
-		timer := time.NewTimer(delegateEnterWait)
-		select {
-		case <-ackCh:
-			timer.Stop()
-			return nil
-		case <-ss.done:
-			timer.Stop()
-			return nil
-		case <-timer.C:
-			d.mu.Lock()
-			accepted := d.promptCount > before || d.status != "running"
-			d.mu.Unlock()
-			if accepted {
+		deps.sendBytes([]byte("\r"))
+		if !hasAdapter {
+			deps.sleep(delegatePasteDelay)
+			cur = deps.screen()
+			if len(agentSplashDismiss(agentID, cur)) == 0 && promptAppearedOnScreen(baseScreen, cur, prompt) {
 				return nil
 			}
+		} else if deps.waitAck(delegateEnterWait) {
+			return nil
+		}
+		if deps.isAccepted() {
+			return nil
+		}
+		if try == 3 {
+			break
+		}
+
+		cur = deps.screen()
+		if dismiss := agentSplashDismiss(agentID, cur); len(dismiss) > 0 {
+			deps.sendBytes(dismiss)
+			deps.waitReady()
+			baseScreen = collapseSpaces(deps.screen())
+			if err := deps.paste(prompt); err != nil {
+				return err
+			}
+			deps.sleep(delegatePasteDelay)
+			continue
+		}
+		if !promptAppearedOnScreen(baseScreen, cur, prompt) {
+			baseScreen = collapseSpaces(cur)
+			if err := deps.paste(prompt); err != nil {
+				return err
+			}
+			deps.sleep(delegatePasteDelay)
 		}
 	}
 	return nil
+}
+
+func collapseSpaces(s string) string {
+	return strings.Join(strings.Fields(s), " ")
+}
+
+func promptProbe(prompt string) string {
+	for _, line := range strings.Split(prompt, "\n") {
+		line = strings.Join(strings.Fields(strings.TrimSpace(line)), " ")
+		if line == "" {
+			continue
+		}
+		rs := []rune(line)
+		if len(rs) > 16 {
+			rs = rs[:16]
+		}
+		return strings.TrimSpace(string(rs))
+	}
+	return ""
+}
+
+func promptAppearedOnScreen(baseCollapsed, curRaw, prompt string) bool {
+	curCollapsed := collapseSpaces(curRaw)
+	if probe := promptProbe(prompt); probe != "" {
+		if strings.Count(curCollapsed, probe) > strings.Count(baseCollapsed, probe) {
+			return true
+		}
+	}
+	for _, chip := range []string{"[Pasted", "Pasted text", "lines pasted"} {
+		if strings.Count(curCollapsed, chip) > strings.Count(baseCollapsed, chip) {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Server) tailDelegate(d *delegatedRun, ss *session) {

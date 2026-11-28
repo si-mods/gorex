@@ -698,3 +698,126 @@ func TestPairWithoutGateway(t *testing.T) {
 		t.Errorf("pair with an argument: %d", code)
 	}
 }
+
+func TestSendNowAndActionSendKeys(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("uses POSIX sh and stty")
+	}
+	c := startServer(t)
+
+	origDelay := sendNowFlushDelay
+	sendNowFlushDelay = 5 * time.Millisecond
+	t.Cleanup(func() { sendNowFlushDelay = origDelay })
+
+	// Create a fake "agy" executable that records raw PTY input bytes to a file.
+	binDir := t.TempDir()
+	agyLog := filepath.Join(t.TempDir(), "agy.in")
+	agyScript := fmt.Sprintf("#!/bin/sh\nstty raw -echo -icrnl\nexec cat > %q\n", agyLog)
+	agyBin := filepath.Join(binDir, "agy")
+	if err := os.WriteFile(agyBin, []byte(agyScript), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	shLog := filepath.Join(t.TempDir(), "plain.in")
+	shScript := fmt.Sprintf("stty raw -echo -icrnl; exec cat > %q", shLog)
+
+	agySess, err := c.Create(rex.CreateOptions{Command: []string{agyBin}, Cols: 80, Rows: 24})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = c.Kill(agySess.ID) })
+
+	shSess, err := c.Create(rex.CreateOptions{Command: []string{"/bin/sh", "-c", shScript}, Cols: 80, Rows: 24})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = c.Kill(shSess.ID) })
+
+	waitRaw := func(sid string) {
+		t.Helper()
+		deadline := time.Now().Add(5 * time.Second)
+		for {
+			if m, err := c.InputMode(sid); err == nil && !m.Canonical && !m.Echo {
+				return
+			}
+			if time.Now().After(deadline) {
+				t.Fatalf("session %s never entered raw mode", sid)
+			}
+			time.Sleep(15 * time.Millisecond)
+		}
+	}
+	waitRaw(agySess.ID)
+	waitRaw(shSess.ID)
+
+	waitBytes := func(path string, want []byte) {
+		t.Helper()
+		deadline := time.Now().Add(5 * time.Second)
+		for {
+			b, _ := os.ReadFile(path)
+			if bytes.Equal(b, want) {
+				return
+			}
+			if time.Now().After(deadline) {
+				t.Fatalf("%s bytes = %q, want %q", filepath.Base(path), b, want)
+			}
+			time.Sleep(15 * time.Millisecond)
+		}
+	}
+
+	// 1. send --now on agy submits text+\r and flushes with ESC+m (\x1bm).
+	if code, _, _, errOut := runMain(t, "send", "-s", agySess.ID, "--now", "mid-turn msg"); code != ExitOK {
+		t.Fatalf("send --now agy: %d %s", code, errOut)
+	}
+	waitBytes(agyLog, []byte("mid-turn msg\r\x1bm"))
+
+	// 2. send --enter --now does not double \r.
+	if code, _, _, errOut := runMain(t, "send", "-s", agySess.ID, "--enter", "--now", "second"); code != ExitOK {
+		t.Fatalf("send --enter --now agy: %d %s", code, errOut)
+	}
+	waitBytes(agyLog, []byte("mid-turn msg\r\x1bmsecond\r\x1bm"))
+
+	// 3. send --now with no text flushes an already-queued message on agy.
+	if code, _, _, errOut := runMain(t, "send", "-s", agySess.ID, "--now"); code != ExitOK {
+		t.Fatalf("send --now flush-only: %d %s", code, errOut)
+	}
+	waitBytes(agyLog, []byte("mid-turn msg\r\x1bmsecond\r\x1bm\x1bm"))
+
+	// 4. Unconfigured agent/shell keeps default behavior (no extra flush keys),
+	//    and --enter / plain send semantics stay intact.
+	if code, _, _, errOut := runMain(t, "send", "-s", shSess.ID, "draft"); code != ExitOK {
+		t.Fatalf("send plain: %d %s", code, errOut)
+	}
+	waitBytes(shLog, []byte("draft"))
+
+	if code, _, _, errOut := runMain(t, "send", "-s", shSess.ID, "--enter", ""); code != ExitOK {
+		t.Fatalf("send --enter empty: %d %s", code, errOut)
+	}
+	waitBytes(shLog, []byte("draft\r"))
+
+	if code, _, _, errOut := runMain(t, "send", "-s", shSess.ID, "--now", "plain-now"); code != ExitOK {
+		t.Fatalf("send --now plain shell: %d %s", code, errOut)
+	}
+	waitBytes(shLog, []byte("draft\rplain-now\r"))
+
+	// 5. Generic action run send-keys supports both -s SID and positional SID.
+	if code, _, _, errOut := runMain(t, "action", "run", "-s", shSess.ID, "send-keys", "alt+m"); code != ExitOK {
+		t.Fatalf("action run -s send-keys: %d %s", code, errOut)
+	}
+	waitBytes(shLog, []byte("draft\rplain-now\r\x1bm"))
+
+	if code, _, out, errOut := runMain(t, "action", "run", shSess.ID, "send-keys", "esc", "m", "--json"); code != ExitOK || !strings.Contains(out, "{") {
+		t.Fatalf("action run positional send-keys: %d out=%q err=%q", code, out, errOut)
+	}
+	waitBytes(shLog, []byte("draft\rplain-now\r\x1bm\x1bm"))
+
+	// Usage validation errors.
+	if code, _, _, _ := runMain(t, "send", "-s", shSess.ID); code != ExitUsage {
+		t.Fatalf("send with no text and no --now: got %d, want %d", code, ExitUsage)
+	}
+	if code, _, _, _ := runMain(t, "action", "run", "-s", shSess.ID, "send-keys"); code != ExitUsage {
+		t.Fatalf("action run send-keys with no keys: got %d, want %d", code, ExitUsage)
+	}
+	if code, _, _, _ := runMain(t, "action", "run", "-s", shSess.ID, "send-keys", "hyper+z"); code != ExitUsage {
+		t.Fatalf("action run send-keys invalid key: got %d, want %d", code, ExitUsage)
+	}
+}

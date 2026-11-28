@@ -88,15 +88,16 @@ gorex new [--dir DIR] [--json] [-- COMMAND...]
 gorex split [-s SESSION] [-w TAB] [-b PANE] [--down] [--dir DIR] [--json] [-- COMMAND...]
 gorex close [-s SESSION] [-w TAB] [-b PANE] [--tab] [--json]
 gorex rename [-s SESSION] [-w TAB] [-b PANE] NAME [--json]
-gorex send [-s SESSION] [-w TAB] [-b PANE] [--enter] TEXT...
+gorex send [-s SESSION] [-w TAB] [-b PANE] [--enter] [--now] [TEXT...]
 gorex paste [-s SESSION] [-w TAB] [-b PANE] TEXT...
 gorex capture [-s SESSION] [-w TAB] [-b PANE] [--history BYTES] [--raw] [--json]
 gorex wait [-s SESSION] [-w TAB] [-b PANE] (--exit | --idle | --status STATE | --contains TEXT) [--timeout D]
 gorex run [--dir DIR] [--json] -- COMMAND...
 gorex hosts [--probe] [--timeout D] [--json]
 gorex [-S HOST] agents [--json]
-gorex [-S HOST] delegate [--agent auto|claude|omp|codex] [--dir DIR] [--name NAME] [--mode full|read-only|yolo] [--session SID] [--resume ID] [--result SID] [--async] [--keep] [--json] -- PROMPT...
+gorex [-S HOST] delegate [--agent auto|claude|omp|codex|agy|devin] [--dir DIR] [--name NAME] [--mode full|read-only|yolo] [--session SID] [--resume ID] [--result SID] [--async] [--keep] [--ready-timeout D] [--json] -- PROMPT...
 gorex action run [-s SESSION] ACTION [KEY=VALUE...] [--json]
+gorex action run [-s SESSION | SESSION] send-keys KEYS... [--json]
 gorex float [new|toggle|hide-all|raise|lower|cycle|move|resize|dock] [-s SESSION]
 gorex omarchy status [--json] | bind [--keys KEYS] | unbind [--json]
 ` + "```" + `
@@ -107,8 +108,10 @@ gorex omarchy status [--json] | bind [--keys KEYS] | unbind [--json]
   the new session's ID. The command after ` + "`--`" + ` runs in the new pane, or a
   shell does; wrap shell syntax such as a pipe in ` + "`sh -c '...'`" + `.
 - ` + "`close`" + ` closes the selected pane, or its tab with ` + "`--tab`" + `.
-- ` + "`send`" + ` types without attaching; ` + "`--enter`" + ` presses Return. ` + "`paste`" + ` uses
-  the terminal's paste path, which programs can handle differently.
+- ` + "`send`" + ` types without attaching; ` + "`--enter`" + ` presses Return, and ` + "`--now`" + `
+  submits and flushes queued mid-turn input using the target agent's keybinding
+  when configured (such as ` + "`alt+m`" + ` for ` + "`agy`" + `). ` + "`paste`" + ` uses the terminal's
+  paste path, which programs can handle differently.
 - ` + "`capture`" + ` prints the screen as text. ` + "`--raw`" + ` keeps escape sequences,
   and ` + "`--history`" + ` asks for that many bytes of scrollback.
 - ` + "`wait`" + ` returns when the program exits (` + "`--exit`" + `), the shell is idle

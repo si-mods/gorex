@@ -24,6 +24,7 @@ func delegateCmd(args []string, out, errOut io.Writer) (int, bool) {
 	resultSID := fs.String("result", "", "fetch the latest result of a delegated session ID")
 	async := fs.Bool("async", false, "return immediately after starting the turn")
 	keep := fs.Bool("keep", false, "keep the delegated tab open after clean synchronous exit")
+	readyTimeout := fs.Duration("ready-timeout", 0, "max wait for agent TUI readiness before injecting prompt (default 20s)")
 	timeout := fs.Duration("timeout", 10*time.Minute, "synchronous wait timeout (0 waits indefinitely)")
 	cancelOnTimeout := fs.Bool("cancel-on-timeout", false, "kill the remote session if --timeout expires")
 	asJSON := fs.Bool("json", false, "print JSON")
@@ -31,6 +32,10 @@ func delegateCmd(args []string, out, errOut io.Writer) (int, bool) {
 		return code, true
 	}
 
+	if *readyTimeout < 0 {
+		fmt.Fprintln(errOut, "gorex delegate: --ready-timeout must not be negative")
+		return ExitUsage, true
+	}
 	if *timeout < 0 {
 		fmt.Fprintln(errOut, "gorex delegate: --timeout must not be negative")
 		return ExitUsage, true
@@ -96,15 +101,16 @@ func delegateCmd(args []string, out, errOut io.Writer) (int, bool) {
 	} else {
 		closeOnComplete = !*keep && !*async
 		started, err = c.Delegate(rex.DelegateOptions{
-			Agent:  *agent,
-			Dir:    *dir,
-			Name:   *name,
-			Prompt: prompt,
-			Mode:   *mode,
-			Resume: *resume,
-			From:   delegateOrigin(),
-			Keep:   true, // CLI closes cleanly after observing completion when !*keep
-			Async:  true,
+			Agent:          *agent,
+			Dir:            *dir,
+			Name:           *name,
+			Prompt:         prompt,
+			Mode:           *mode,
+			Resume:         *resume,
+			From:           delegateOrigin(),
+			Keep:           true, // CLI closes cleanly after observing completion when !*keep
+			Async:          true,
+			ReadyTimeoutMs: int(*readyTimeout / time.Millisecond),
 		})
 	}
 	if err != nil {

@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+### Features & Fixes
+
+* **cli,rex:** add `gorex send --now` (flushing queued mid-turn messages with per-agent keys from the agent registry, `ESC+m` for `agy`) and `gorex action run [SESSION] send-keys KEYS...` ([#1259](https://github.com/si-mods/gorex/issues/1259))
+* **delegate:** dismiss startup splash modals (`esc to dismiss`), re-inject the initial prompt when the input box stays empty, and add `--ready-timeout` ([#1259](https://github.com/si-mods/gorex/issues/1259))
+
 ## 0.68.2
 
 ### Bug Fixes
