@@ -1747,3 +1747,70 @@ func TestSSHTypedPasswordRefused(t *testing.T) {
 		t.Errorf("the next dial asked %+v; want a first ask, not the cached wrong password", asks)
 	}
 }
+
+// A dial before SetSSHKeys/SetSSHKey has ever initialized the key store must
+// fail fast instead of falling back to password prompts during a cold start.
+func TestSSHDialBeforeKeysReady(t *testing.T) {
+	Stop()
+	k := NewSSHKey()
+	signer, err := ssh.ParsePrivateKey([]byte(k))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		SetSSHDelegate(nil)
+		_ = SetSSHHosts("[]")
+		_ = SetSSHKeys("[]")
+	})
+
+	// Simulate a fresh process before SetSSHKeys has succeeded.
+	sshMu.Lock()
+	sshKeys = nil
+	sshKeysReady = false
+	sshMu.Unlock()
+
+	srv := newFakeSSHD(t, signer.PublicKey())
+	srv.mu.Lock()
+	srv.pw = "swordfish"
+	srv.mu.Unlock()
+	d := &authDelegate{answer: func(string, bool) (string, bool) { return "swordfish", true }}
+	SetSSHDelegate(d)
+	setSSHHosts(t, sshHost{ID: "alice-laptop", User: "alice", Host: "127.0.0.1", Port: srv.port(),
+		Socket: socketRec(srv), HostKey: srv.hostFP})
+
+	if _, err := dialSSH(context.Background(), "alice-laptop"); err == nil || !strings.Contains(err.Error(), "not ready") {
+		t.Fatalf("dial before keys ready: err = %v, want ssh keys not ready", err)
+	}
+	if asks := d.asked(); len(asks) != 0 {
+		t.Fatalf("dial before keys ready prompted for auth: %+v", asks)
+	}
+
+	// Once keys are synced, public-key auth succeeds without prompting.
+	keysJSON, _ := json.Marshal([]sshKeyInput{{ID: "k1", PEM: k, IsDefault: true}})
+	if err := SetSSHKeys(string(keysJSON)); err != nil {
+		t.Fatalf("SetSSHKeys: %v", err)
+	}
+	c, err := dialSSH(context.Background(), "alice-laptop")
+	if err != nil {
+		t.Fatalf("dial after SetSSHKeys: %v", err)
+	}
+	roundTrip(t, c, "hi")
+	c.Close()
+	if asks := d.asked(); len(asks) != 0 {
+		t.Fatalf("public-key dial prompted for auth: %+v", asks)
+	}
+
+	// Explicitly syncing an empty key set still allows password auth.
+	if err := SetSSHKeys("[]"); err != nil {
+		t.Fatalf("SetSSHKeys empty: %v", err)
+	}
+	c, err = dialSSH(context.Background(), "alice-laptop")
+	if err != nil {
+		t.Fatalf("dial after explicit empty SetSSHKeys: %v", err)
+	}
+	roundTrip(t, c, "hi")
+	c.Close()
+	if asks := d.asked(); len(asks) == 0 {
+		t.Fatalf("explicit empty key set did not prompt for password")
+	}
+}

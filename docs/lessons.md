@@ -92,6 +92,11 @@ Each item has a **Trigger** (what the diff shows), a **Check** (what the author 
 - **Check:** the consumer drops or re-reads it on the failure it causes too; a resume that races the failure leaves a window in which every use fails at once.
 - **Source:** #884 re-read the tailcat proxy only in `TailnetEngine.resume()`, after the socket reset's wait; a suspension's dials then reached the dead listener and failed at once, so every tailcat host showed "can't reach the server" for a stretch after each unlock.
 
+### Keychain lookup that treats every error as missing
+- **Trigger:** the diff reads iOS Keychain items (`SecItemCopyMatching`) and maps any non-`errSecSuccess` status to `nil`, or prunes saved metadata and dials before keys are synced.
+- **Check:** distinguish `errSecItemNotFound` from transient/locked errors (`errSecInteractionNotAllowed`); never delete metadata or push an empty key set on a transient error, and gate dials on the key store being synced with a test of a locked Keychain cold start.
+- **Source:** #1157 replaced `useSSHKey` with `SSHKeyStore`, which treated any Keychain error as missing, wiped `sshKeys` metadata, and let `tailcatProxyNow` dial SSH hosts with zero keys on cold start (fixed in this PR).
+
 ### A UI test that expects a fresh install
 - **Trigger:** an XCUITest under `ios/GoRexUITests/` checks a value the app makes once and keeps (UserDefaults, the Keychain, the app's files), such as a default name.
 - **Check:** the test sets that state at launch, or accepts any value an earlier build could have left. The Mac mini's simulator keeps the app's data between runs; `xcodebuild test` installs over it. The PR shows a green `ios-test` run of the test, not only a local run on a new simulator.

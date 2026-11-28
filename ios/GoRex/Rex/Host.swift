@@ -696,10 +696,12 @@ final class Host: Identifiable {
     /// The built-in Tailscale's proxy of the moment; nil while it isn't
     /// running. The app sets it.
     static var tailnetProxy: () -> LoopbackProxy? = { nil }
-    /// The proxy the tailcat and ssh:// hosts go through, the same one
-    /// whether or not the built-in Tailscale runs; nil when there is
-    /// none. The app sets it.
+    /// The proxy the tailcat hosts go through, the same one whether or not
+    /// the built-in Tailscale runs; nil when there is none. The app sets it.
     static var tailcatProxy: () -> LoopbackProxy? = { nil }
+    /// The proxy the ssh:// hosts go through, gated on local SSH keys being
+    /// synced to the engine; defaults to tailcatProxy for tests. The app sets it.
+    static var sshProxy: () -> LoopbackProxy? = { tailcatProxy() }
     /// Tells the engine the hosts, as their list changes, for it to reach
     /// those with a tailcat address. The app sets it.
     static var tailcatHosts: ([HostConfig]) -> Void = { _ in }
@@ -765,9 +767,10 @@ final class Host: Identifiable {
             }
             p = t
         case .ssh:
-            // The same SOCKS proxy the tailcat hosts use: the engine maps
-            // <id>.ssh.invalid to the host's SSH client.
-            guard let t = Self.tailcatProxy() else {
+            // The same SOCKS proxy the tailcat hosts use, gated on SSH
+            // keys being synced to the engine so a cold start with a
+            // locked Keychain retries instead of prompting for a password.
+            guard let t = Self.sshProxy() else {
                 throw RexError(code: "offline", message: String(localized: "Rex Go's SSH connection is not ready"))
             }
             p = t

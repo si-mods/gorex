@@ -106,6 +106,21 @@ struct GoRexApp: App {
         // activities' — run from the start: a start push may wake the
         // app with no terminal ever shown (docs/NET-003-push-relay.md).
         _ = TerminalLive.shared
+        // If iOS prewarmed the app before the Keychain was unlocked, sync
+        // local SSH keys and reconnect ssh:// hosts as soon as protected data
+        // becomes available.
+        NotificationCenter.default.addObserver(
+            forName: UIApplication.protectedDataDidBecomeAvailableNotification,
+            object: nil,
+            queue: .main
+        ) { [weak store] _ in
+            MainActor.assumeIsolated {
+                guard let store, !SSHKeyStore.shared.isEngineSynced else { return }
+                if SSHKeyStore.shared.ensureSynced() {
+                    store.hosts.filter { $0.config.ssh != nil }.forEach { $0.reconnectIfNeeded() }
+                }
+            }
+        }
         Task { await engine.apply() }
     }
 
@@ -172,6 +187,7 @@ struct GoRexApp: App {
                     // hears it once its register's answer lands
                     // (gorex.push.seen, Host.activitySeen).
                     TerminalLive.shared.reportSeen()
+                    _ = SSHKeyStore.shared.ensureSynced()
                     Task { await store.foreground(suspended: suspended) { await TailnetEngine.shared.resume() } }
                 }
                 .onChange(of: store.hosts.map(\.config)) { _, configs in

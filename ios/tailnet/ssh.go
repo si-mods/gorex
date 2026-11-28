@@ -43,6 +43,10 @@ const sshDomain = ".ssh.invalid"
 var (
 	sshMu   sync.Mutex
 	sshKeys []sshKeyEntry
+	// sshKeysReady is true once SetSSHKeys or SetSSHKey has loaded the app's
+	// local key set (even if empty). Until then, dials fail fast instead of
+	// falling back to password prompts during a cold start.
+	sshKeysReady bool
 	// sshHosts is each ssh host's record, by its id.
 	sshHosts = map[string]sshHost{}
 	// sshClients is the ssh client of each host: one per host, as
@@ -224,6 +228,7 @@ func sshKeyEntriesEqual(a, b []sshKeyEntry) bool {
 
 func setSSHKeyEntries(next []sshKeyEntry) {
 	sshMu.Lock()
+	sshKeysReady = true
 	if sshKeyEntriesEqual(sshKeys, next) {
 		sshMu.Unlock()
 		return
@@ -642,6 +647,10 @@ func sshClientFor(ctx context.Context, id string, h sshHost) (*pooledSSH, error)
 	sshMu.Lock()
 	p := sshClients[id]
 	if p == nil {
+		if !sshKeysReady {
+			sshMu.Unlock()
+			return nil, errors.New("ssh keys not ready")
+		}
 		signers := sshSignersForLocked(h.KeyID)
 		if len(signers) == 0 && sshDelegate == nil {
 			sshMu.Unlock()
