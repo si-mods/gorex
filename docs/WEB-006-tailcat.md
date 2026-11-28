@@ -3,7 +3,7 @@ name: WEB-006
 description: "The web client becomes a tailcat client of a GoRex host: a device key the browser keeps, DERP over WebSocket, and the usual pairing window. Use when you change the web tailcat engine, its keys or its pairing."
 metadata:
   created: "2026-11-23"
-  updated: "2026-11-24"
+  updated: "2026-11-28"
 ---
 
 # WEB-006: Web client over tailcat
@@ -66,7 +66,7 @@ Its calls:
 | `check(address)` | parses an address, says when its region is a machine's own relay, and returns the relay's base URL for the admission probe |
 | `pair(address, name)` | one `remote.pair` to `RemotePort`, answering the fingerprint or the server's error |
 | `request(address, method, path, headers, body, timeoutMs)` | HTTP/1.1 to the gateway on the tailcat address, port 7297 |
-| `socket(address, path, protocol, emit)` | a WebSocket to the gateway, with `web/tailnet/wsclient` over the same connection |
+| `socket(address, path, protocol, emit)` | a WebSocket to the gateway, with `web/wsclient` over the same connection |
 | `close(address)` | drops the client of an address, for Disconnect and host removal |
 
 The differences from the tailnet engine:

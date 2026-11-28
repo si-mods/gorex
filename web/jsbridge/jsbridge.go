@@ -20,7 +20,7 @@ import (
 	"syscall/js"
 	"time"
 
-	"gorex/web/tailnet/wsclient"
+	"gorex/web/wsclient"
 )
 
 // Promise runs f on a goroutine and settles a JS promise with its result,
