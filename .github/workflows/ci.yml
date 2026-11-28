@@ -36,7 +36,7 @@ jobs:
   # pull request too. Go caches are saved on pushes to main only; a pull
   # request restores them and saves none, so the 10 GB cache limit does not
   # fill with one copy per pull request.
-  # Every step after diff runs even when an earlier one failed (!cancelled()),
+  # Every step after plan runs even when an earlier one failed (!cancelled()),
   # so one failure does not hide the others; each failed step fails the job.
   # The Mac mini's runner takes one job at a time and is kept for the
   # release, so no job here waits for it.
@@ -50,13 +50,21 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-      # Whether the change reaches past the iOS app; see the script for the
-      # rules. A change only to the Swift app, docs or .md files runs only
-      # what-to-test here.
-      - id: diff
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: false
+      # What this change reaches, from tools/ciplan: each changed file maps to
+      # the packages that build, embed or read it, and every package whose
+      # code or tests import one of those runs its tests. A file only the root
+      # package's rule tests read (a .ts or .swift file, a workflow) runs just
+      # those tests. A change only to docs or .md files runs nothing here. A
+      # manual run, a new branch, a force-push, or a change to go.mod, go.sum,
+      # the lint config, this file or tools/ciplan runs everything.
+      - id: plan
         env:
           BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
-        run: bash .github/scripts/ci-changes.sh
+        run: go run ./tools/ciplan
 
       # What to Test comes from ios/WhatToTest.md, a bullet per locale, through
       # ios/scripts/test-notes: a pull request that changes what a tester sees
@@ -74,13 +82,8 @@ jobs:
           git worktree add "$RUNNER_TEMP/base" "$BASE"
           "$RUNNER_TEMP/base/ios/scripts/test-notes" check "$BASE" "$TO"
 
-      - uses: actions/setup-go@v7
-        if: ${{ !cancelled() && steps.diff.outputs.code == 'true' }}
-        with:
-          go-version-file: go.mod
-          cache: false
       - uses: actions/cache/restore@v6
-        if: ${{ !cancelled() && steps.diff.outputs.code == 'true' }}
+        if: ${{ !cancelled() && (steps.plan.outputs.go == 'true' || steps.plan.outputs.web_r2 == 'true') }}
         with:
           path: |
             ~/.cache/go-build
@@ -89,34 +92,48 @@ jobs:
           restore-keys: |
             go-ci-${{ hashFiles('go.sum') }}-
             go-ci-
+      # The changed .go files; every tracked one when all runs.
       - name: gofmt
-        if: ${{ !cancelled() && steps.diff.outputs.code == 'true' }}
+        if: ${{ !cancelled() && (steps.plan.outputs.all == 'true' || steps.plan.outputs.gofmt_files != '') }}
+        env:
+          ALL: ${{ steps.plan.outputs.all }}
+          FILES: ${{ steps.plan.outputs.gofmt_files }}
         run: |
-          unformatted=$(git ls-files -z '*.go' | xargs -0 gofmt -l)
+          if [ "$ALL" = true ]; then
+            unformatted=$(git ls-files -z '*.go' | xargs -0 gofmt -l)
+          else
+            # shellcheck disable=SC2086
+            unformatted=$(gofmt -l $FILES)
+          fi
           if [ -n "$unformatted" ]; then
             echo "gofmt needed:"
             echo "$unformatted"
             exit 1
           fi
-      # Each system's files and tests: build skips the tests, and they run
-      # on Linux only.
+      # Each system's files and tests, in the packages whose .go files changed
+      # and every package whose code or tests import one of them, so a change
+      # that breaks an importer's darwin-only test still fails here.
       - name: vet
-        if: ${{ !cancelled() && steps.diff.outputs.code == 'true' }}
+        if: ${{ !cancelled() && (steps.plan.outputs.vet_linux != '' || steps.plan.outputs.vet_windows != '' || steps.plan.outputs.vet_darwin != '') }}
         env:
           CGO_ENABLED: "0"
+          VET_linux: ${{ steps.plan.outputs.vet_linux }}
+          VET_windows: ${{ steps.plan.outputs.vet_windows }}
+          VET_darwin: ${{ steps.plan.outputs.vet_darwin }}
         run: |
+          status=0
           for os in linux windows darwin; do
+            var="VET_$os"
+            pkgs=${!var}
+            [ -n "$pkgs" ] || continue
             echo "::group::$os"
-            GOOS=$os go vet ./...
+            # shellcheck disable=SC2086
+            GOOS=$os go vet $pkgs || status=1
             echo "::endgroup::"
           done
-      - name: lint
-        if: ${{ !cancelled() && steps.diff.outputs.code == 'true' }}
-        env:
-          CGO_ENABLED: "0"
-        run: go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0 run ./...
+          exit $status
       - name: build
-        if: ${{ !cancelled() && steps.diff.outputs.code == 'true' }}
+        if: ${{ !cancelled() && steps.plan.outputs.build == 'true' }}
         env:
           CGO_ENABLED: "0"
         run: |
@@ -126,18 +143,28 @@ jobs:
             GOOS=${t%/*} GOARCH=${t#*/} GOFLAGS="-tags=$TAGS" go build ./...
             echo "::endgroup::"
           done
+      - name: lint
+        if: ${{ !cancelled() && steps.plan.outputs.lint != '' }}
+        env:
+          CGO_ENABLED: "0"
+          PKGS: ${{ steps.plan.outputs.lint }}
+        run: |
+          # shellcheck disable=SC2086
+          go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0 run $PKGS
 
       # The web client's unit tests: its modules with no DOM, in Node
-      # (web/test.mjs bundles web/test/*.test.ts and runs node --test). The
-      # web build itself needs Zig and Ghostty, and is not run here.
+      # (web/test.mjs bundles web/test/*.test.ts and runs node --test). They
+      # and the typecheck read web/ only. The web build itself needs Zig and
+      # Ghostty, and is not run here.
+      # The R2 upload below builds web/ too, on a push to main.
       - uses: actions/setup-node@v7
-        if: ${{ !cancelled() && steps.diff.outputs.code == 'true' }}
+        if: ${{ !cancelled() && (steps.plan.outputs.web == 'true' || (steps.plan.outputs.web_r2 == 'true' && github.event_name == 'push' && github.ref == 'refs/heads/main')) }}
         with:
           node-version: 24
           cache: npm
           cache-dependency-path: web/package-lock.json
       - name: web test
-        if: ${{ !cancelled() && steps.diff.outputs.code == 'true' }}
+        if: ${{ !cancelled() && steps.plan.outputs.web == 'true' }}
         working-directory: web
         run: |
           npm ci
@@ -147,22 +174,34 @@ jobs:
       # The Go tests, one after the other on the same box: the other
       # packages' -race run beside the root package's tests made timing tests
       # (TestDataSlowReader) fail on CPU load. Both run even if the first
-      # fails. No retry: a failed test fails the step.
+      # fails. No retry: a failed test fails the step. The root package runs
+      # in full when the change reaches it, or only its rule tests (root_run)
+      # when only a file they read changed.
       - name: test
-        if: ${{ !cancelled() && steps.diff.outputs.code == 'true' }}
+        if: ${{ !cancelled() && (steps.plan.outputs.root == 'true' || steps.plan.outputs.root_run != '' || steps.plan.outputs.test_linux != '') }}
         shell: bash
+        env:
+          ROOT: ${{ steps.plan.outputs.root }}
+          ROOT_RUN: ${{ steps.plan.outputs.root_run }}
+          PKGS: ${{ steps.plan.outputs.test_linux }}
         run: |
           root=0
-          go test -c -o "$RUNNER_TEMP/gorex.test" . &&
-            "$RUNNER_TEMP/gorex.test" -test.timeout 15m || root=1
-          mapfile -t pkgs < <(go list ./... | grep -v '^gorex$')
+          if [ "$ROOT" = true ] || [ -n "$ROOT_RUN" ]; then
+            run=()
+            [ "$ROOT" = true ] || run=(-test.run "$ROOT_RUN")
+            go test -c -o "$RUNNER_TEMP/gorex.test" . &&
+              "$RUNNER_TEMP/gorex.test" -test.timeout 15m "${run[@]}" || root=1
+          fi
           others=0
-          go test -race "${pkgs[@]}" -count=1 -timeout 15m || others=1
+          if [ -n "$PKGS" ]; then
+            # shellcheck disable=SC2086
+            go test -race $PKGS -count=1 -timeout 15m || others=1
+          fi
           [ "$root" -eq 0 ] || echo "::error::root package tests failed"
           [ "$others" -eq 0 ] || echo "::error::other packages' tests failed"
           [ "$root" -eq 0 ] && [ "$others" -eq 0 ]
       - uses: actions/cache/save@v6
-        if: ${{ !cancelled() && steps.diff.outputs.code == 'true' && github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+        if: ${{ !cancelled() && steps.plan.outputs.go == 'true' && github.event_name == 'push' && github.ref == 'refs/heads/main' }}
         with:
           path: |
             ~/.cache/go-build
@@ -176,7 +215,7 @@ jobs:
       # builds cold. Only the wasm file is cached, not the clone or the toolchain.
       - name: ghostty-vt wasm cache key
         id: wasm
-        if: ${{ !cancelled() && steps.diff.outputs.code == 'true' && github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+        if: ${{ !cancelled() && steps.plan.outputs.web_r2 == 'true' && github.event_name == 'push' && github.ref == 'refs/heads/main' }}
         run: |
           commit=$(sed -n 's/^const COMMIT = "\([0-9a-f]*\)";/\1/p' web/build.mjs)
           zig=$(sed -n 's/^const ZIG_VERSION = "\([^"]*\)";/\1/p' web/build.mjs)
@@ -187,13 +226,13 @@ jobs:
             echo "key=ghostty-vt-$commit-zig-$zig-${{ hashFiles('web/build.mjs') }}"
           } >> "$GITHUB_OUTPUT"
       - name: ghostty-vt wasm cache
-        if: ${{ !cancelled() && steps.diff.outputs.code == 'true' && github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+        if: ${{ !cancelled() && steps.plan.outputs.web_r2 == 'true' && github.event_name == 'push' && github.ref == 'refs/heads/main' }}
         uses: actions/cache@v6
         with:
           path: ${{ steps.wasm.outputs.file }}
           key: ${{ steps.wasm.outputs.key }}
       - name: build and upload to R2
-        if: ${{ !cancelled() && steps.diff.outputs.code == 'true' && github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+        if: ${{ !cancelled() && steps.plan.outputs.web_r2 == 'true' && github.event_name == 'push' && github.ref == 'refs/heads/main' }}
         working-directory: web
         env:
           GOREX_WEB_CACHE: ${{ steps.wasm.outputs.cache }}
@@ -220,28 +259,29 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-      # Git for Windows' bash by path: bare bash on this runner may be the WSL launcher.
-      - id: diff
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: false
+      # The same plan as the linux job's (tools/ciplan).
+      - id: plan
         shell: powershell
         env:
           BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
         run: |
-          & "C:\Program Files\Git\bin\bash.exe" .github/scripts/ci-changes.sh
+          go run ./tools/ciplan
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      - uses: actions/setup-go@v7
-        if: ${{ steps.diff.outputs.code == 'true' }}
-        with:
-          go-version-file: go.mod
-          cache: false
       # Root UI integration tests take ~40m and hit Session 0 timing flakes on
-      # yibo-pc, so CI runs all subpackages here (~3.5m) which cover ConPTY,
-      # session server, CLI, rexapi, and Windows-specific subsystems.
+      # yibo-pc, so CI runs only subpackages here (all of them take ~3.5m),
+      # the ones the change reaches on Windows: ConPTY, session server, CLI,
+      # rexapi and the Windows-specific subsystems.
       - name: test
-        if: ${{ steps.diff.outputs.code == 'true' }}
+        if: ${{ steps.plan.outputs.test_windows != '' }}
         shell: powershell
         env:
           CGO_ENABLED: "0"
+          PKGS: ${{ steps.plan.outputs.test_windows }}
         run: |
-          $pkgs = go list ./... | Where-Object { $_ -ne 'gorex' }
+          $pkgs = $env:PKGS -split ' '
           go test $pkgs -count=1 -timeout 15m
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

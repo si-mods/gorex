@@ -90,7 +90,7 @@ func plan(files []string, f facts) []check {
 		}
 		// Trigger generated-SSOT drift tests when any input or cross-platform output changes.
 		switch p {
-		case "assets/brands.json", "programs_brands_gen.go", "web/src/programs_brands.ts", "ios/Shared/ProgramBrands.swift":
+		case "assets/brands.json", "programs_brands.go", "web/src/programs_brands.ts", "ios/Shared/ProgramBrands.swift":
 			addDir("./tools/genbrands")
 		case "internal/rexproto/protocol.json", "internal/layout/palette_gen.go", "web/src/rex-protocol.gen.ts", "ios/GoRex/Rex/RexProtocol.gen.swift":
 			addDir("./internal/rexproto")

@@ -22,7 +22,7 @@ var (
 
 const ghReason = "gh writes in this repo must name their repo with -R; PRs and issues for GoRex go to si-mods/gorex, never egoist/gorex. If the user asked for something else, ask them."
 
-const heavyReason = "Full test suites run in CI (the Linux CI job runs the root package and all other packages; test-windows runs the other packages). Locally run only the changed packages' tests, ideally with -run. Only if the user asked for a full run, prefix the command: `GOREX_HEAVY_TESTS=1 go test ...` (bash) or `$env:GOREX_HEAVY_TESTS=1; go test ...` (PowerShell)."
+const heavyReason = "CI runs the tests of every package a change reaches (tools/ciplan): the Linux job those and the root package when reached, test-windows those but the root. Locally run only the changed packages' tests, ideally with -run. Only if the user asked for a full run, prefix the command: `GOREX_HEAVY_TESTS=1 go test ...` (bash) or `$env:GOREX_HEAVY_TESTS=1; go test ...` (PowerShell)."
 
 // ghWrites are the gh subcommands that change GitHub state.
 var ghWrites = map[string]string{
