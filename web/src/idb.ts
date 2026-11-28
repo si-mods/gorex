@@ -12,3 +12,35 @@ export function openDB(dbName: string, storeName: string): Promise<IDBDatabase> 
     req.onerror = () => reject(req.error ?? new Error("indexedDB open failed"));
   });
 }
+
+/**
+ * Runs a single object-store request inside a transaction, awaiting
+ * `tx.oncomplete` for readwrite transactions before closing the database.
+ */
+export async function withStore<T>(
+  dbName: string,
+  storeName: string,
+  mode: IDBTransactionMode,
+  f: (store: IDBObjectStore) => IDBRequest<T>,
+): Promise<T> {
+  const db = await openDB(dbName, storeName);
+  try {
+    return await new Promise<T>((resolve, reject) => {
+      const tx = db.transaction(storeName, mode);
+      let value!: T;
+      const req = f(tx.objectStore(storeName));
+      req.onsuccess = () => {
+        value = req.result;
+        if (mode === "readonly") resolve(value);
+      };
+      req.onerror = () => reject(req.error ?? new Error("indexedDB request failed"));
+      tx.onabort = () => reject(tx.error ?? new Error("indexedDB transaction aborted"));
+      if (mode !== "readonly") {
+        tx.oncomplete = () => resolve(value);
+        tx.onerror = () => reject(tx.error ?? new Error("indexedDB transaction failed"));
+      }
+    });
+  } finally {
+    db.close();
+  }
+}

@@ -19,9 +19,6 @@ export interface ViewerHost {
   closed(): void;
 }
 
-/** A file's size in words, in the page's language, as 48 KB. */
-export const sizeText = (n: number): string => formatSize(n, 1024);
-
 /** The most pixels the viewer shows once an image is decoded; a larger image is offered as a download. */
 export const maxViewPixels = 100_000_000;
 /** The zoom's bounds, and a button's step. */
@@ -117,7 +114,7 @@ export class Viewer {
     this.name.textContent = name;
     this.label = name;
     this.dialog.setAttribute("aria-label", name);
-    this.setInfo(() => sizeText(blob.size));
+    this.setInfo(() => formatSize(blob.size));
     this.zoomText.textContent = "";
     this.shown = false;
     this.img.hidden = true;
@@ -162,7 +159,7 @@ export class Viewer {
     this.h = h;
     this.shown = true;
     this.img.hidden = false;
-    this.setInfo(() => t("viewerInfo", { width: w, height: h, size: sizeText(bytes) }));
+    this.setInfo(() => t("viewerInfo", { width: w, height: h, size: formatSize(bytes) }));
     this.zoomButtons.forEach((b) => (b.disabled = false));
     this.scale = this.fit();
     this.place(true);
