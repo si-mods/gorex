@@ -248,6 +248,11 @@ Each item has a **Trigger** (what the diff shows), a **Check** (what the author 
 - **Check:** the helper sets aside the messages it skips for the next wait (`c.pending`). The responses to two requests on one connection arrive in either order. A fix for a timeout reproduces the failing line first, with a deliberate delay if `-count` does not show it.
 - **Source:** #1130 explained `TestPromptErrorIsShortened`'s timeout (#1114) by a gateway registration race. The same test and three others also had a second race: `readResponse(c, "reply")` dropped the action's response when it came first, and `readResponse(c, "run")` timed out (#1133).
 
+### A test that expects no event
+- **Trigger:** a test asserts that a step sends no event, or drains `c.Events()` with `len` before it waits for one.
+- **Check:** the server coalesces a subscriber's changes and computes an event when it writes it, so an event of an earlier change can still be on its way, and carry the new state. Nothing else in the test may change the session on its own (output, the sampler, a program that changes), and the test reads up to a fence of its own (`fence` in `internal/rex/status_unix_test.go`), not a timeout.
+- **Source:** `TestStatusSeenOp` drained only the events already read; the event of the record's own notify came after "seeStatus" and carried the new seen, so the next one looked like news (#1160).
+
 ### A new job on instabox
 - **Trigger:** the diff adds a job, a matrix entry or a workflow that runs on `instabox-*`, or widens a trigger (types, paths) of one.
 - **Check:** each instabox job that runs is one sandbox start, and the plan allows 500 a day, 200 an hour and 30 a minute. Add a step to the existing job (CI's `linux`) instead. A new instabox job names its expected starts per day in the PR.
