@@ -248,6 +248,11 @@ Each item has a **Trigger** (what the diff shows), a **Check** (what the author 
 - **Check:** the helper sets aside the messages it skips for the next wait (`c.pending`). The responses to two requests on one connection arrive in either order. A fix for a timeout reproduces the failing line first, with a deliberate delay if `-count` does not show it.
 - **Source:** #1130 explained `TestPromptErrorIsShortened`'s timeout (#1114) by a gateway registration race. The same test and three others also had a second race: `readResponse(c, "reply")` dropped the action's response when it came first, and `readResponse(c, "run")` timed out (#1133).
 
+### A new job on instabox
+- **Trigger:** the diff adds a job, a matrix entry or a workflow that runs on `instabox-*`, or widens a trigger (types, paths) of one.
+- **Check:** each instabox job that runs is one sandbox start, and the plan allows 500 a day, 200 an hour and 30 a minute. Add a step to the existing job (CI's `linux`) instead. A new instabox job names its expected starts per day in the PR.
+- **Source:** CI started up to 9 boxes per run and averaged about 900 starts a day before the allowance (Nov 2026); this PR folded CI into one `linux` job.
+
 ### CI retry
 - **Trigger:** the diff adds a retry or rerun of a failed test or shard to a workflow or script.
 - **Check:** reject it. No CI job retries a failed test. Fix the test.

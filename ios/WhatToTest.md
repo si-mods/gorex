@@ -7,7 +7,7 @@ from `## en-US` and `zh-Hans` from `## zh-Hans`.
 A pull request that changes what a tester sees adds one bullet to each
 section, in the app's terms: what they get to try, not how it is built. A
 bullet that reads like a commit subject is one testers cannot read, and the
-`web` job of `.github/workflows/ci.yml` fails it.
+`what-to-test` step of the `linux` job of `.github/workflows/ci.yml` fails it.
 
 ## en-US
 - Fixed the floating Search button overlapping the Composer bar and Send button in split view on iPhone Duo and landscape iPhones.
