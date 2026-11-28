@@ -147,15 +147,27 @@ func RoleByName(name string) (Role, bool) {
 	return Role(i), i >= 0
 }
 
-// Hex parses "#rgb", "#rgba", "#rrggbb" or "#rrggbbaa", without ui.Hex's
-// panic on other input.
-func Hex(s string) (col ui.Color, ok bool) {
-	defer func() {
-		if recover() != nil {
-			ok = false
+func isHexDigit(c byte) bool {
+	return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')
+}
+
+// Hex parses "#rgb", "#rgba", "#rrggbb" or "#rrggbbaa" without panicking.
+func Hex(s string) (ui.Color, bool) {
+	if len(s) == 0 || s[0] != '#' {
+		return ui.Color{}, false
+	}
+	h := s[1:]
+	switch len(h) {
+	case 3, 4, 6, 8:
+		for i := 0; i < len(h); i++ {
+			if !isHexDigit(h[i]) {
+				return ui.Color{}, false
+			}
 		}
-	}()
-	return ui.Hex(s), true
+		return ui.Hex(s), true
+	default:
+		return ui.Color{}, false
+	}
 }
 
 // ColorFor resolves a role value for one appearance: a hex string, or an
