@@ -13,9 +13,6 @@ import (
 // fields of the layout, and the acts a pane kind takes part in. Pane.ext
 // holds it, nil for a terminal.
 type paneExt interface {
-	// kind is the layout Kind it answers for: "note", "browser", or a
-	// pack's kind name.
-	kind() string
 	// program is the pane's tile and glyph.
 	program() program
 	// label is the pane's name and detail in headers and sidebars.
@@ -70,8 +67,6 @@ type paneKindDef struct {
 	program program
 }
 
-// paneKinds are the app's built-in pane kinds; allPaneKinds adds the
-// packs' to them.
 // paneKinds are the app's built-in pane kinds, none today: every pane
 // kind is a pack's.
 var paneKinds []paneKindDef
@@ -192,7 +187,6 @@ func (a *App) newPlaceholderPane(s *savedNode) *Pane {
 	return &Pane{ID: a.id(), Name: s.Name, ext: &placeholderExt{kindName: s.Kind, keep: keep}}
 }
 
-func (e *placeholderExt) kind() string { return e.kindName }
 func (e *placeholderExt) program() program {
 	return extMissingProgram
 }

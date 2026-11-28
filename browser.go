@@ -44,9 +44,6 @@ func browserURL(s string) string {
 
 // browserCleanURL is the URL a browser pane keeps and shows: without the
 // user info, which a layout file should not hold.
-
-// browserCleanURL is the URL a browser pane keeps and shows: without the
-// user info, which a layout file should not hold.
 func browserCleanURL(u string) string {
 	if ref, err := url.Parse(u); err == nil && ref.User != nil {
 		ref.User = nil
@@ -64,6 +61,3 @@ func browserHost(s string) string {
 	}
 	return u.Host
 }
-
-// newBrowserPane makes a pane that shows url in a web view of the
-// window's, with the address field given the keyboard.

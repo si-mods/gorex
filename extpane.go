@@ -439,7 +439,6 @@ func (e *extPane) updateSync(fn func()) {
 
 // The paneExt of an extension pack's pane.
 
-func (e *extPane) kind() string     { return e.def.Kind }
 func (e *extPane) program() program { return e.prog }
 
 // label is the pane's name, or the page of its web slot, or its own

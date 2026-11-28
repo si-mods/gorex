@@ -45,13 +45,17 @@ func TestPlan(t *testing.T) {
 		{"nothing", nil, win, nil},
 		{"docs only", []string{"docs/lessons.md", "README.md"}, win, []string{"design docs"}},
 		{"sub package", []string{"internal/rex/server.go"}, win,
-			append(append([]string{"gofmt"}, goChecks...), "golangci-lint", "go test")},
+			append(append([]string{"gofmt", "arch boundaries"}, goChecks...), "golangci-lint", "go test")},
 		{"root package", []string{"app.go"}, win,
 			append(append([]string{"gofmt"}, goChecks...), "golangci-lint", "go test root (skip)")},
 		{"root package full", []string{"app.go"}, facts{goos: "linux", full: true},
 			append(append([]string{"gofmt"}, goChecks...), "golangci-lint", "go test root")},
 		{"go.mod only", []string{"go.mod"}, win,
-			append(append([]string{}, goChecks...), "golangci-lint", "go test root (skip)")},
+			append(append([]string{"arch boundaries"}, goChecks...), "golangci-lint", "go test root (skip)")},
+		{"brands json", []string{"assets/brands.json"}, win,
+			append(append([]string{}, goChecks...), "golangci-lint", "go test")},
+		{"rexproto json", []string{"internal/rexproto/protocol.json"}, win,
+			append(append([]string{}, goChecks...), "golangci-lint", "go test")},
 		{"web", []string{"web/src/a.ts"}, win, []string{"web typecheck", "web test"}},
 		{"web no node_modules", []string{"web/src/a.ts"}, facts{goos: "windows"},
 			[]string{"web typecheck (skip)", "web test (skip)"}},
@@ -252,7 +256,7 @@ func TestHookDenies(t *testing.T) {
 		t.Fatal(err)
 	}
 	gitT("add", "go.mod")
-	gitT("-c", "user.name=t", "-c", "user.email=t@example.com", "commit", "-q", "-m", "init")
+	gitT("-c", "user.name=t", "-c", "user.email=t@example.com", "commit", "--no-verify", "-q", "-m", "init")
 	gitT("update-ref", "refs/remotes/origin/main", "HEAD")
 	if err := os.WriteFile(filepath.Join(dir, "bad.go"), []byte("package gorex\nvar  x = 1\n"), 0o644); err != nil {
 		t.Fatal(err)
@@ -284,6 +288,9 @@ func trustRepo(t *testing.T, url string) (string, func(args ...string) string) {
 	dir := t.TempDir()
 	g := func(args ...string) string {
 		t.Helper()
+		if len(args) > 0 && args[0] == "commit" {
+			args = append([]string{"commit", "--no-verify"}, args[1:]...)
+		}
 		out, err := git(dir, append([]string{"-c", "user.name=t", "-c", "user.email=t@example.com"}, args...)...)
 		if err != nil {
 			t.Fatal(err)
@@ -382,7 +389,7 @@ func TestTrustedBranch(t *testing.T) {
 func TestPlanReadOnly(t *testing.T) {
 	files := []string{"internal/rex/a.go", "web/src/a.ts", "ios/App.swift", ".github/workflows/ci.yml"}
 	for _, c := range plan(files, facts{goos: "darwin", webNodeModules: true, iosToolsPresent: true, readOnly: true}) {
-		safe := c.name == "gofmt" || c.name == "actionlint" || strings.HasPrefix(c.name, "vet ") || strings.HasPrefix(c.name, "build ")
+		safe := c.name == "gofmt" || c.name == "arch boundaries" || c.name == "actionlint" || strings.HasPrefix(c.name, "vet ") || strings.HasPrefix(c.name, "build ")
 		if safe && c.skip != "" {
 			t.Errorf("%s skipped in read-only mode: %s", c.name, c.skip)
 		}
@@ -424,7 +431,7 @@ func checkoutFork(t *testing.T, dir string, g func(args ...string) string) {
 		{"init", "-q", "-b", "main"},
 		{"fetch", "-q", dir, "refs/remotes/origin/main"},
 		{"checkout", "-q", "-b", "work", "FETCH_HEAD"},
-		{"-c", "user.name=f", "-c", "user.email=f@example.com", "commit", "-q", "--allow-empty", "-m", "fork work"},
+		{"-c", "user.name=f", "-c", "user.email=f@example.com", "commit", "--no-verify", "-q", "--allow-empty", "-m", "fork work"},
 	} {
 		if _, err := git(fork, a...); err != nil {
 			t.Fatal(err)
