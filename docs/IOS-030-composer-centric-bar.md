@@ -8,7 +8,7 @@ metadata:
 
 # IOS-030: Composer-centric iPhone action bar
 
-Status: accepted.
+Status: built (#1268, #1286).
 
 This doc extends [`IOS-025`](IOS-025-composer.md) and [`IOS-029`](IOS-029-key-bar-two-capsules.md). When Composer Mode is on, iPhone hides the separate 52 pt `KeyBar` beneath `ComposerBar` and condenses `ComposerBar` itself into a single-row 48 pt pill, keeping every compose, voice, attachment, and terminal-key action reachable without taking extra vertical height from the terminal.
 

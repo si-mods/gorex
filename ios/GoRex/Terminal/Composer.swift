@@ -84,6 +84,7 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
     private var fieldHeight: NSLayoutConstraint!
     private var multiLine = false
     private var lastRowWidth: CGFloat = 0
+    private var lastEffectiveMax: CGFloat = 0
     private var voiceActive = false
     /// Press-and-hold anywhere on the compose bar to dictate (push-to-talk):
     /// holding starts voice recording, releasing converts speech to text.
@@ -512,6 +513,13 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
         dismissPan.delegate = self
         addGestureRecognizer(dismissPan)
         addSubview(pad)
+        NotificationCenter.default.addObserver(self, selector: #selector(keyboardFrameChanged),
+                                               name: UIResponder.keyboardDidChangeFrameNotification, object: nil)
+    }
+
+    @objc private func keyboardFrameChanged() {
+        guard multiLine else { return }
+        setNeedsLayout()
     }
 
     required init?(coder: NSCoder) { fatalError() }
@@ -519,8 +527,10 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
     override func layoutSubviews() {
         super.layoutSubviews()
         let w = rowBox.bounds.width
-        if w > 0, abs(w - lastRowWidth) > 0.5 {
+        let effMax = effectiveFieldMax
+        if w > 0, abs(w - lastRowWidth) > 0.5 || (multiLine && abs(effMax - lastEffectiveMax) > 0.5) {
             lastRowWidth = w
+            lastEffectiveMax = effMax
             updateFieldLayout(animated: false)
             super.layoutSubviews()
         }
@@ -615,8 +625,8 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
         let totalW = rowBox.bounds.width > 0
             ? rowBox.bounds.width
             : max(220, (bounds.width > 0 ? bounds.width : 353) - Self.hPad * 2)
-        // Single-row inner glyph width: totalW minus attach(36) + gap(8) + gap(8) + mic(36) + gap(8) + send(36) = 132, minus compact horizontal insets(8).
-        let compactInnerW = max(60, totalW - 132 - Self.compactInsets.left - Self.compactInsets.right)
+        let compactControlsW = Self.fieldMin * 3 + Self.buttonGap * 3
+        let compactInnerW = max(60, totalW - compactControlsW - Self.compactInsets.left - Self.compactInsets.right)
         let text = field.text ?? ""
         let hasMarked = field.markedTextRange != nil
 
@@ -659,6 +669,7 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
         let tall: Bool
         if multiLine {
             let maxH = effectiveFieldMax
+            lastEffectiveMax = maxH
             let rawH = ceil(field.sizeThatFits(CGSize(width: totalW, height: .greatestFiniteMagnitude)).height)
             tall = rawH > maxH + 0.5
             targetH = min(max(Self.fieldMin, rawH), maxH)
@@ -695,6 +706,7 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
     /// once the message field exceeds `effectiveFieldMax`.
     private func scrollCaretToVisible(_ t: UITextView) {
         guard let end = t.selectedTextRange?.end else { return }
+        rowBox.layoutIfNeeded()
         t.layoutIfNeeded()
         let caret = t.caretRect(for: end)
         let nsLen = (t.text as NSString).length
@@ -927,7 +939,7 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
     }
 
     func gestureRecognizer(_ g: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool {
-        if g === dismissPan, !multiLine, !field.isScrollEnabled, other.view?.isDescendant(of: field) == true {
+        if g === dismissPan, !multiLine || !field.isFirstResponder, !field.isScrollEnabled, other.view?.isDescendant(of: field) == true {
             return true
         }
         return false
@@ -1084,6 +1096,7 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
         attachments.append(a)
         thumbs.addArrangedSubview(cell(a))
         strip.isHidden = false
+        updateFieldLayout(animated: false)
         update()
     }
 
@@ -1094,6 +1107,7 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
         strip.isHidden = attachments.isEmpty
         let url = a.url.deletingLastPathComponent()
         Task.detached { try? FileManager.default.removeItem(at: url) }
+        updateFieldLayout(animated: false)
         update()
     }
 
