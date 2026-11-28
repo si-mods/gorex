@@ -71,7 +71,7 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
     /// Where the screen's single-row voice controls land while dictating,
     /// cross-fading across the bottom 36 pt row inside the compose pill.
     let voiceHolder = UIView()
-    private let fieldClip = UIView()
+    private let fieldClip = FieldClipView()
     private let scrollFadeMask: CAGradientLayer = {
         let g = CAGradientLayer()
         g.startPoint = CGPoint(x: 0.5, y: 0)
@@ -619,9 +619,12 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
             v.transform = hideActions ? hiddenScale : .identity
             v.isUserInteractionEnabled = !hideActions
         }
-        fieldClip.alpha = hideField ? 0 : 1
+        fieldClip.passthrough = hideField
+        // Keep alpha > 0 and isUserInteractionEnabled == true on field's ancestor
+        // chain so UIKit never auto-resigns field's first responder (which would
+        // dismiss an open software keyboard when swiping left into quick keys).
+        fieldClip.alpha = hideField ? 0.001 : 1
         fieldClip.transform = hideField ? hiddenScale : .identity
-        fieldClip.isUserInteractionEnabled = !hideField
     }
 
     /// Softens scrolled multi-line edges so lines never slice abruptly against
@@ -980,7 +983,7 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
             if quickKeysExpanded, !quickPill.isHidden, stickBtn.frame.contains(convert(p, to: stickBtn.superview)) {
                 return false
             }
-            let inField = fieldClip.alpha > 0 && fieldClip.frame.contains(convert(p, to: rowBox))
+            let inField = !fieldClip.passthrough && fieldClip.frame.contains(convert(p, to: rowBox))
             if inField, field.isFirstResponder, field.selectedRange.length > 0 {
                 return false
             }
@@ -1090,6 +1093,9 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
     }
 
     func textViewDidChange(_ t: UITextView) {
+        if quickKeysExpanded, !multiLine, !voiceActive, !sending {
+            setQuickKeysExpanded(false, animated: true)
+        }
         hint.isHidden = !t.text.isEmpty || t.markedTextRange != nil
         updateFieldLayout(animated: true)
         update()
@@ -1369,6 +1375,17 @@ private final class ComposeTextView: UITextView {
     override var contentOffset: CGPoint {
         get { super.contentOffset }
         set { super.contentOffset = isScrollEnabled ? newValue : .zero }
+    }
+}
+
+/// Container for `field` that drops touch hit-testing while covered by the
+/// inline quick-keys or voice pill without disabling `isUserInteractionEnabled`
+/// or zeroing `alpha` on `field`'s ancestor chain (either of which makes UIKit
+/// automatically resign `field` as first responder and close the keyboard).
+private final class FieldClipView: UIView {
+    var passthrough = false
+    override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
+        passthrough ? nil : super.hitTest(point, with: event)
     }
 }
 

@@ -3,7 +3,7 @@ name: IOS-025
 description: "Rex Go's Composer Mode is a bar pinned over the key bar that writes a message, attaches photos, camera shots and files, and sends the lot as one prompt: the attachment paths first, then the text and Return. Use when you change the compose bar, its attachments, or the batch upload that carries them."
 metadata:
   created: "2026-11-25"
-  updated: "2026-11-28"
+  updated: "2026-11-29"
 ---
 
 # IOS-025: A composer for messages with attachments
@@ -47,7 +47,7 @@ An agent such as Claude Code or Codex takes a message and the images it talks ab
 #### Swipe to switch
 
 - On iPhone (`UIDevice.current.userInterfaceIdiom != .pad`), `ComposerBar` registers left and right `UISwipeGestureRecognizer` instances with `cancelsTouchesInView = false` so users reach terminal keys without opening the `+` menu.
-- Swiping left while quick keys are collapsed cancels active control tracking on the compose row, calls `setQuickKeysExpanded(true, animated: true)`, and plays light impact feedback (`UIImpactFeedbackGenerator(style: .light)`).
+- Swiping left while quick keys are collapsed cancels active control tracking on the compose row, calls `setQuickKeysExpanded(true, animated: true)`, and plays light impact feedback (`UIImpactFeedbackGenerator(style: .light)`), keeping `field` as first responder (`FieldClipView` drops hit-testing without zeroing `alpha` or disabling `isUserInteractionEnabled`) so an open software keyboard stays steady in place.
 - Swiping right while quick keys are expanded cancels active control tracking on `quickPill`, calls `setQuickKeysExpanded(false, animated: true)`, plays light impact feedback, and restores first-responder focus to `field`.
 - Gesture priority: `gestureRecognizerShouldBegin(_:)` refuses horizontal swipes while `voiceActive`, `sending`, or `holdingVoice` is true, while `dismissPan` or `stickDrag` is in `.began` or `.changed`, when the touch starts inside the staged-attachments `strip` or on `stickBtn` while quick keys are open, or when the touch starts inside `field` during active editing (`field.isFirstResponder`) with a non-empty selection (`field.selectedRange.length > 0`). Horizontal swipes across the single-row pill pass through, and `gestureRecognizer(_:shouldBeRequiredToFailBy:)` preempts ancestor navigation-pop pans so swiping right on `ComposerBar` collapses quick keys instead of popping the terminal screen.
 - Accessibility and motion: VoiceOver keeps the `More Keys` action in `accessibilityCustomActions` alongside `+` › `More Keys` and the `✕` collapse button. Under Reduce Motion, `setQuickKeysExpanded` uses its existing 150 ms cross-fade with no spring scale.

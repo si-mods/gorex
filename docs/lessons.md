@@ -117,6 +117,11 @@ Each item has a **Trigger** (what the diff shows), a **Check** (what the author 
 - **Check:** the ios-test build is signed ad hoc, so the app has its entitlements. An unsigned app gets `errSecMissingEntitlement` (-34018) for every item, and the screen shows its error alert in place of the result. The PR shows a green `ios-test` run of the test.
 - **Source:** #1157's `SSHKeysUITests` never passed in CI: Generate showed "A required entitlement is not present." (#1161). #1265 signs the test build ad hoc.
 
+### Hiding a view that holds the first responder
+- **Trigger:** the diff sets `isHidden = true`, `alpha = 0`, or `isUserInteractionEnabled = false` on a `UIView` (or an ancestor of one) whose `UITextView` / `UITextField` may hold `firstResponder` while an overlay pill or mode temporarily covers it.
+- **Check:** UIKit automatically resigns `firstResponder` and dismisses the software keyboard when any view in the responder's ancestor chain sets `isHidden = true`, `alpha = 0`, or `isUserInteractionEnabled = false`. Keep `isUserInteractionEnabled = true` and `alpha > 0` (routing hits away in `hitTest(_:with:)` instead), and assert in XCUITest that `app.keyboards.element.exists` and the bar's `midY` stay unchanged across the transition.
+- **Source:** #1292 expanded `ComposerBar`'s quick-keys pill in single-row mode through `syncChromeVisibility`, which set `fieldClip.alpha = 0` and `fieldClip.isUserInteractionEnabled = false` (#1268) and dismissed the open keyboard on every left swipe.
+
 ## Fixes
 
 ### A remote command read by its output alone
