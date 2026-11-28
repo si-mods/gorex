@@ -9,7 +9,10 @@
 # are Go, and Go's tests and the web build read the files in READ_ELSEWHERE.
 # An empty diff, a manual run, and a base that is not an ancestor (a new
 # branch, a force-push) run all.
-set -euo pipefail
+# No pipefail: grep -q stops reading early, and a SIGPIPE in the pipeline
+# would read as "no code files" and skip every check (docs/lessons.md,
+# "Shell pipeline with an early exit"). The lists are captured first.
+set -eu
 
 IOS_ONLY='^(ios/(GoRex|GoRexTests|SherpaOnnx|scripts)/|ios/(project\.yml|\.gitignore)$|docs/|\.github/workflows/testflight\.yml$)|\.md$'
 READ_ELSEWHERE='^ios/GoRex/(Rex/RexProtocol\.gen\.swift|ghostty-themes\.json)$'
@@ -17,9 +20,9 @@ READ_ELSEWHERE='^ios/GoRex/(Rex/RexProtocol\.gen\.swift|ghostty-themes\.json)$'
 code=true
 if [ "$GITHUB_EVENT_NAME" != workflow_dispatch ] && git merge-base --is-ancestor "$BASE" HEAD 2>/dev/null; then
   files=$(git diff --name-only "$BASE" HEAD)
-  if [ -n "$files" ] &&
-    ! printf '%s\n' "$files" | grep -Ev "$IOS_ONLY" | grep -q . &&
-    ! printf '%s\n' "$files" | grep -Eq "$READ_ELSEWHERE"; then
+  rest=$(printf '%s\n' "$files" | grep -Ev "$IOS_ONLY" || true)
+  read_elsewhere=$(printf '%s\n' "$files" | grep -E "$READ_ELSEWHERE" || true)
+  if [ -n "$files" ] && [ -z "$rest" ] && [ -z "$read_elsewhere" ]; then
     code=false
   fi
 fi
