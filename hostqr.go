@@ -31,11 +31,17 @@ type hostPairQR struct {
 	// copyable text (docs/WEB-006-tailcat.md): the web client's Add host
 	// takes the same rexgo://tailcat string the code encodes.
 	rexGo bool
-	// direct is that its address is the second one, for devices that dial
-	// this machine directly (Reachable at).
-	direct bool
-	// tab is the code the dialog shows when the listener has a web link
-	// too: 0 the address's own code, 1 the page's (rexapi.WebOrigin).
+	// directAddress and directImage hold the optional same-network-only
+	// code (Reachable at direct tailcat address, or the LAN listener's
+	// URL when Reachable at is off), offered behind an explicit "Same
+	// network only" choice (tab == 1) in the Rex Go QR dialog.
+	directAddress string
+	directImage   ui.ImageSource
+	directIsLAN   bool
+	// tab is the code the dialog shows when a second choice is offered:
+	// for Rex Go QR, 0 is the relay address (off-LAN) and 1 is same-network
+	// only; for a local listener with a web link, 0 is the address's own
+	// code and 1 is the page's (rexapi.WebOrigin).
 	tab int
 	// webImage is the code for the page at rexapi.WebOrigin, opened with
 	// this listener's address, certificate hash and pairing token
@@ -137,30 +143,45 @@ func openHostPairQR(h *hostConn) {
 }
 
 // openRexGoQR opens the pairing window and shows this machine's code for
-// Rex Go (docs/IOS-002-tailcat.md, Pairing a phone). The address is asked for
-// here and goes into the image and the copyable link only: never a log.
-// With direct it is the second address's, of Reachable at.
-func (a *App) openRexGoQR(direct bool) {
+// Rex Go (docs/IOS-002-tailcat.md, Pairing a phone). It offers the public
+// relay address by default (works off-LAN), with any direct/LAN address
+// behind an explicit "Same network only" choice. The address goes into
+// the image and the copyable link only: never a log.
+func (a *App) openRexGoQR() {
 	name, _, _ := a.hostIdentity()
+	_, lan := localRexPairs()
 	// Set off the UI thread, read on it once the change is done.
-	var image ui.ImageSource
-	var link string
+	var image, directImage ui.ImageSource
+	var link, directLink string
+	var directIsLAN bool
 	a.remoteDo(func(srv *rex.Client) error {
 		if err := srv.StartPairing(); err != nil {
 			return err
 		}
 		st, err := srv.RemoteStatus()
-		addr := st.Address
-		if direct {
-			addr = st.ReachableAddress
-		}
-		if err == nil && addr != "" {
-			link = rexGoPairURL(addr, name)
+		if err == nil && st.Address != "" {
+			link = rexGoPairURL(st.Address, name)
 			image = qrImage(link)
+		}
+		if err == nil && st.ReachableAddress != "" {
+			directLink = rexGoPairURL(st.ReachableAddress, name)
+			directImage = qrImage(directLink)
+		} else if err == nil && lan != "" {
+			directLink, directImage = mobilePairQR(lan)
+			directIsLAN = directImage != nil
 		}
 		return err
 	}, func() {
-		remoteUI.pairQR = &hostPairQR{host: name, address: link, image: image, open: true, rexGo: true, direct: direct}
+		remoteUI.pairQR = &hostPairQR{
+			host:          name,
+			address:       link,
+			image:         image,
+			directAddress: directLink,
+			directImage:   directImage,
+			directIsLAN:   directIsLAN,
+			open:          true,
+			rexGo:         true,
+		}
 	})
 }
 
@@ -238,9 +259,21 @@ func hostPairQRSheet(c *ui.Context, k *colors, page *hostPairQR) {
 		ui.Text(c, title).FontSize(fontTitle).FontWeight(700).TextColor(k.text)
 		// A listener with a web link offers both codes: this address's,
 		// for Rex, and the page's, for a browser on the same network.
+		// A Rex Go QR dialog offers the off-LAN relay address by default,
+		// with any direct/LAN address behind "Same network only".
 		web := page.webImage != nil
+		hasSameNet := page.rexGo && page.directImage != nil
 		if web {
 			ui.Segmented(c, &page.tab, locales.HostsPairCodeAddress(), locales.HostsPairCodePage()).Label(title).Changed()
+		} else if hasSameNet {
+			if ui.Segmented(c, &page.tab, locales.RemoteQRRelay(), locales.RemoteQRSameNetwork()).Label(title).Changed() {
+				page.copied, page.copyFailed = false, false
+			}
+		}
+		activeImage, activeAddr := page.image, page.address
+		sameNetSelected := hasSameNet && page.tab == 1
+		if sameNetSelected {
+			activeImage, activeAddr = page.directImage, page.directAddress
 		}
 		switch {
 		case page.loading:
@@ -276,28 +309,43 @@ func hostPairQRSheet(c *ui.Context, k *colors, page *hostPairQR) {
 			}
 			ui.Text(c, locales.HostsPairWebScan()).FontSize(fontSubhead).TextColor(k.textMuted).LineHeight(1.3)
 			pairQRCode(c, page.webImage, title)
-		case page.image != nil:
+		case activeImage != nil:
+			transport := locales.RemoteQRTransportTailnet()
 			hint := locales.HostsRexQRHint()
-			if page.direct {
+			switch {
+			case sameNetSelected && page.directIsLAN:
+				transport = locales.RemoteQRTransportLAN()
+				hint = locales.HostsLocalLanRexQRHint()
+			case sameNetSelected:
+				transport = locales.RemoteQRTransportDirect()
 				hint = locales.RemoteDirectQRHint()
-			} else if page.rexGo {
+			case page.rexGo:
+				transport = locales.RemoteQRTransportRelay()
 				hint = locales.RemoteRexGoQRHint()
-			} else if page.local {
+			case page.local && !page.tailnet:
+				transport = locales.RemoteQRTransportLAN()
+				hint = locales.HostsLocalLanRexQRHint()
+			case page.local:
+				transport = locales.RemoteQRTransportTailnet()
 				hint = locales.HostsLocalRexQRHint()
-				if !page.tailnet {
-					hint = locales.HostsLocalLanRexQRHint()
-				}
 			}
+			ui.Text(c, transport).FontSize(fontSubhead).FontWeight(600).TextColor(k.text).LineHeight(1.3)
 			ui.Text(c, hint).FontSize(fontCallout).TextColor(k.textMuted).LineHeight(1.35)
-			pairQRCode(c, page.image, title)
-			if page.rexGo {
-				// The web client takes the same link the code encodes,
-				// pasted into its Add host (docs/WEB-006-tailcat.md).
-				ui.Text(c, page.address).Font(monoFamily()).FontSize(fontSubhead).TextColor(k.text).Label(page.address)
-			} else {
+			if page.rexGo && remoteUI.st.Pairing.Open && !sameNetSelected || (page.rexGo && remoteUI.st.Pairing.Open && !page.directIsLAN) {
+				statusLine(c, k, k.attention, locales.RemotePairWaiting(pairingLeft(remoteUI.st.Pairing.ExpiresAt, c.Now())))
+				c.After(time.Second)
+			}
+			pairQRCode(c, activeImage, title)
+			if page.rexGo && !(sameNetSelected && page.directIsLAN) {
+				if activeAddr != "" {
+					// The web client takes the same link the code encodes,
+					// pasted into its Add host (docs/WEB-006-tailcat.md).
+					ui.Text(c, activeAddr).Font(monoFamily()).FontSize(fontSubhead).TextColor(k.text).Label(activeAddr)
+				}
+			} else if activeAddr != "" {
 				// The pairing token stays in the code and the copy, off
 				// the screen.
-				shown, _, _ := strings.Cut(page.address, "#")
+				shown, _, _ := strings.Cut(activeAddr, "#")
 				ui.Text(c, shown).Font(monoFamily()).FontSize(fontSubhead).TextColor(k.text).SingleLine().Label(shown)
 			}
 		case page.rexGo:
@@ -314,13 +362,13 @@ func hostPairQRSheet(c *ui.Context, k *colors, page *hostPairQR) {
 			}
 			// The web tab's code holds the token too: a copy of the other
 			// address's link would be a different code than the one shown.
-			if page.image != nil && page.address != "" && !(web && page.tab == 1) {
+			if activeImage != nil && activeAddr != "" && !(web && page.tab == 1) {
 				label := locales.HostsRexQRCopy()
 				if page.copied {
 					label = locales.HostsRexQRCopied()
 				}
 				if ui.Button(c.Key("copy"), label).Clicked() {
-					err := mygo.Clipboard.Write(transfer.TextData(page.address))
+					err := mygo.Clipboard.Write(transfer.TextData(activeAddr))
 					page.copied, page.copyFailed = err == nil, err != nil
 				}
 			}

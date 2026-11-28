@@ -246,6 +246,10 @@ type pairResponse struct {
 // while it is not pairing (internal/rex).
 const refusedMessage = "rex: this machine is not allowed here"
 
+// alreadyAllowedMessage is what a machine says when this phone's key is
+// already on its allowlist (internal/rex).
+const alreadyAllowedMessage = "allowed there already"
+
 // pairWait bounds a pairing request, the connection included.
 var pairWait = 30 * time.Second
 
@@ -294,6 +298,10 @@ func TailcatPair(address, name string) (string, error) {
 		return "", errors.New("the machine answered something else")
 	}
 	switch {
+	case strings.Contains(res.Error, alreadyAllowedMessage):
+		// Already on the host's allowlist: treat as paired with no
+		// approval needed, as the web client does.
+		return "", nil
 	case strings.Contains(res.Error, refusedMessage):
 		return "", errors.New("the machine is not pairing now: start pairing there first")
 	case res.Error != "":

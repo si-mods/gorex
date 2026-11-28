@@ -457,8 +457,16 @@ func TestRemotePairing(t *testing.T) {
 	if err := c.StartPairing(); err != nil {
 		t.Fatal(err)
 	}
+	// A request arriving near the end of the window extends it so the
+	// pending request stays visible and approvable for a full window.
+	s.rem.mu.Lock()
+	s.rem.pairUntil = time.Now().Add(2 * time.Second)
+	s.rem.mu.Unlock()
 	if _, err := dialAs(t, s, keys[1]).RequestPairing("laptop"); err != nil {
 		t.Fatal(err)
+	}
+	if st, _ := c.RemoteStatus(); !st.Pairing.Open || len(st.Pending) != 1 || time.Until(st.Pairing.ExpiresAt) < pairWindow-10*time.Second {
+		t.Errorf("request did not extend window: open=%v pending=%d left=%v", st.Pairing.Open, len(st.Pending), time.Until(st.Pairing.ExpiresAt))
 	}
 	s.rem.mu.Lock()
 	s.rem.pairUntil = time.Now().Add(-time.Second)

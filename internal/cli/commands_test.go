@@ -1,10 +1,12 @@
 package cli
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -212,6 +214,58 @@ func TestRemoteReachable(t *testing.T) {
 	runMain(t, "remote", "reachable", "off")
 	if _, _, out, _ := runMain(t, "remote", "status"); strings.Contains(out, "reachable=") {
 		t.Errorf("remote status after reachable off: %q", out)
+	}
+}
+
+// gorex remote address prints labelled lines: tailcat <addr> and, when
+// Reachable at runs, reachable-at <addr>.
+func TestRemoteAddress(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("uses unix socket")
+	}
+	dir := t.TempDir()
+	t.Setenv("GOREX_DIR", dir)
+	t.Setenv("GOREX_SERVER", "")
+	ln, err := net.Listen("unix", rex.SocketPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { ln.Close() })
+	go func() {
+		for {
+			c, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			go func() {
+				defer c.Close()
+				r := bufio.NewReader(c)
+				for {
+					line, err := r.ReadBytes('\n')
+					if err != nil {
+						return
+					}
+					var req rex.Request
+					_ = json.Unmarshal(line, &req)
+					data, _ := json.Marshal(rex.RemoteStatus{
+						Enabled:          true,
+						Running:          true,
+						Address:          "tcRELAY123",
+						ReachableAddress: "tcDIRECT456",
+					})
+					b, _ := json.Marshal(rex.Response{ID: req.ID, Data: data})
+					_, _ = c.Write(append(b, '\n'))
+				}
+			}()
+		}
+	}()
+	code, _, out, errOut := runMain(t, "remote", "address")
+	if code != ExitOK {
+		t.Fatalf("remote address: %d %s", code, errOut)
+	}
+	want := "tailcat tcRELAY123\nreachable-at tcDIRECT456\n"
+	if out != want {
+		t.Errorf("remote address = %q, want %q", out, want)
 	}
 }
 

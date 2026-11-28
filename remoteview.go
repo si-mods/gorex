@@ -917,14 +917,11 @@ func (a *App) remoteDevices(c *ui.Context, k *colors, st rex.RemoteStatus) {
 				} else {
 					ui.Spacer(c)
 				}
-				// Rex Go pairs by a code of the address, which opens the
-				// window too.
+				// Rex Go pairs by a single QR dialog that defaults to the
+				// off-LAN relay address, with any same-network address
+				// behind an explicit choice.
 				if st.Running && ui.Button(c.Key("rexgo-qr"), locales.RemoteRexGoQR()).Disabled(page.busy).Clicked() {
-					a.openRexGoQR(false)
-				}
-				if st.Running && st.ReachableAt != "" && st.ReachableError == "" &&
-					ui.Button(c.Key("direct-qr"), locales.RemoteDirectQR()).Disabled(page.busy).Clicked() {
-					a.openRexGoQR(true)
+					a.openRexGoQR()
 				}
 				if st.Enabled && !st.Pairing.Open {
 					if ui.PrimaryButton(c.Key("pair-start"), locales.RemotePairNew()).Disabled(page.busy).Clicked() {
