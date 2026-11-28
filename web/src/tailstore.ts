@@ -2,7 +2,7 @@
 // (docs/WEB-002-tailscale.md, State & Tabs). No DOM here so Node tests can
 // exercise the coordination logic directly.
 
-import { openDB as openStoreDB } from "./idb";
+import { openDB as openStoreDB, withStore } from "./idb";
 
 const dbName = "gorex-tailnet";
 const storeName = "state";
@@ -44,18 +44,8 @@ export async function loadTailnetState(): Promise<Record<string, Uint8Array>> {
 /** Writes one Tailscale state key to IndexedDB. */
 export async function writeTailnetState(key: string, data: Uint8Array): Promise<void> {
   try {
-    const db = await openDB();
-    try {
-      const copy = new Uint8Array(data);
-      await new Promise<void>((resolve, reject) => {
-        const tx = db.transaction(storeName, "readwrite");
-        tx.objectStore(storeName).put(copy, key);
-        tx.oncomplete = () => resolve();
-        tx.onerror = () => reject(tx.error ?? new Error("indexedDB write failed"));
-      });
-    } finally {
-      db.close();
-    }
+    const copy = new Uint8Array(data);
+    await withStore(dbName, storeName, "readwrite", (s) => s.put(copy, key));
   } catch {
     // Best-effort: in-memory store still serves the running session.
   }
@@ -64,17 +54,7 @@ export async function writeTailnetState(key: string, data: Uint8Array): Promise<
 /** Clears all persisted Tailscale state from IndexedDB (on sign out or switching to ephemeral). */
 export async function clearTailnetState(): Promise<void> {
   try {
-    const db = await openDB();
-    try {
-      await new Promise<void>((resolve, reject) => {
-        const tx = db.transaction(storeName, "readwrite");
-        tx.objectStore(storeName).clear();
-        tx.oncomplete = () => resolve();
-        tx.onerror = () => reject(tx.error ?? new Error("indexedDB clear failed"));
-      });
-    } finally {
-      db.close();
-    }
+    await withStore(dbName, storeName, "readwrite", (s) => s.clear());
   } catch {
     // Ignore when storage is unavailable.
   }

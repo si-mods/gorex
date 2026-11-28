@@ -1,6 +1,7 @@
 // Multi-tab coordination and graceful storage fallback (src/tailstore.ts).
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { withStore } from "../src/idb";
 import { ChannelAPI, clearTailnetState, loadTailnetState, LockAPI, TabCoordinator, TabMessage, writeTailnetState } from "../src/tailstore";
 
 function createBus(): () => ChannelAPI {
@@ -123,4 +124,57 @@ test("indexedDB helpers degrade gracefully when indexedDB is unavailable", async
   assert.deepEqual(await loadTailnetState(), {});
   await writeTailnetState("k", new Uint8Array([1, 2, 3]));
   await clearTailnetState();
+});
+
+test("withStore waits for readwrite tx.oncomplete before closing the database", async () => {
+  let closedBeforeComplete = false;
+  let completed = false;
+  const prev = (globalThis as any).indexedDB;
+  (globalThis as any).indexedDB = {
+    open() {
+      const openReq: any = { result: null, onupgradeneeded: null, onsuccess: null, onerror: null };
+      queueMicrotask(() => {
+        openReq.result = {
+          objectStoreNames: { contains: () => true },
+          transaction() {
+            const tx: any = {
+              oncomplete: null,
+              onerror: null,
+              onabort: null,
+              objectStore() {
+                return {
+                  put() {
+                    const r: any = { result: "ok", onsuccess: null, onerror: null };
+                    queueMicrotask(() => {
+                      r.onsuccess?.();
+                      queueMicrotask(() => {
+                        completed = true;
+                        tx.oncomplete?.();
+                      });
+                    });
+                    return r;
+                  },
+                };
+              },
+            };
+            return tx;
+          },
+          close() {
+            if (!completed) closedBeforeComplete = true;
+          },
+        };
+        openReq.onsuccess?.();
+      });
+      return openReq;
+    },
+  };
+  try {
+    const res = await withStore("db", "s", "readwrite", (s) => s.put("v", "k"));
+    assert.equal(res, "ok");
+    assert.equal(completed, true);
+    assert.equal(closedBeforeComplete, false);
+  } finally {
+    if (prev === undefined) delete (globalThis as any).indexedDB;
+    else (globalThis as any).indexedDB = prev;
+  }
 });

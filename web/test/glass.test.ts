@@ -7,8 +7,6 @@ import {
   contrast, density, displacementMap, edgeContrast, filterAmount, glassColor, Ink, inkOn, lift, luminance, materialOf, materials, maxOffset,
   nextInk, outlineAlpha, readBackdrop, RGB, rimOffset, rimWidth, saturationKept, Scheme, tintAlpha, trimmedMean,
 } from "../src/glassmath";
-// prefs and i18n import each other (through maple and the loader): i18n first, or the cycle reads prefs before it is set.
-import "../src/i18n";
 import { glassPrefs } from "../src/prefs";
 import { glassRedrawn, glassRunning } from "../src/glass";
 

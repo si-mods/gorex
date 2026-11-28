@@ -1,4 +1,4 @@
-import { RGB } from "./ghostty";
+import type { RGB } from "./ghostty";
 
 export interface Theme {
   background?: RGB;
@@ -10,10 +10,11 @@ export interface Theme {
   selectionText?: RGB;
 }
 
-/** A theme message's colour: RRGGBB or #RRGGBB. */
+/** A theme message's colour: RGB, #RGB, RRGGBB or #RRGGBB. */
 export function hex(s: unknown): RGB | undefined {
   if (typeof s !== "string") return undefined;
-  const h = s.startsWith("#") ? s.slice(1) : s;
+  let h = s.startsWith("#") ? s.slice(1) : s;
+  if (/^[0-9a-fA-F]{3}$/.test(h)) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
   if (!/^[0-9a-fA-F]{6}$/.test(h)) return undefined;
   const v = parseInt(h, 16);
   return [v >> 16, (v >> 8) & 0xff, v & 0xff];
@@ -61,8 +62,13 @@ const linear = Array.from({ length: 256 }, (_, v) => {
   const f = v / 255;
   return f <= 0.04045 ? f / 12.92 : ((f + 0.055) / 1.055) ** 2.4;
 });
-const luminance = (c: RGB) => 0.2126 * linear[c[0]] + 0.7152 * linear[c[1]] + 0.0722 * linear[c[2]];
-const contrast = (a: number, b: number) => (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+const clampByte = (v: number) => Math.max(0, Math.min(255, Math.round(v)));
+/** WCAG 2's relative luminance of an sRGB colour. */
+export const relativeLuminance = (c: RGB) =>
+  0.2126 * linear[clampByte(c[0])] + 0.7152 * linear[clampByte(c[1])] + 0.0722 * linear[clampByte(c[2])];
+const lumRatio = (a: number, b: number) => (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+/** WCAG 2's contrast ratio of two sRGB colours, 1 to 21. */
+export const contrastRatio = (a: RGB, b: RGB): number => lumRatio(relativeLuminance(a), relativeLuminance(b));
 const mix = (a: RGB, b: RGB, t: number): RGB => [0, 1, 2].map((i) => Math.round(a[i] + (b[i] - a[i]) * t)) as RGB;
 
 /**
@@ -71,13 +77,13 @@ const mix = (a: RGB, b: RGB, t: number): RGB => [0, 1, 2].map((i) => Math.round(
  * whichever contrasts more with bg, as little as reaches it.
  */
 export function contrasted(fg: RGB, bg: RGB, ratio: number): RGB {
-  const lb = luminance(bg);
-  if (contrast(luminance(fg), lb) >= ratio) return fg;
-  const to: RGB = contrast(1, lb) > contrast(0, lb) ? [255, 255, 255] : [0, 0, 0];
+  const lb = relativeLuminance(bg);
+  if (lumRatio(relativeLuminance(fg), lb) >= ratio) return fg;
+  const to: RGB = lumRatio(1, lb) > lumRatio(0, lb) ? [255, 255, 255] : [0, 0, 0];
   let lo = 0, hi = 1;
   for (let i = 0; i < 8; i++) {
     const mid = (lo + hi) / 2;
-    if (contrast(luminance(mix(fg, to, mid)), lb) >= ratio) hi = mid;
+    if (lumRatio(relativeLuminance(mix(fg, to, mid)), lb) >= ratio) hi = mid;
     else lo = mid;
   }
   return mix(fg, to, hi);

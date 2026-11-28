@@ -214,8 +214,6 @@
   .space-chip span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .space-chip .pane-icon { flex: none; width: 14px; height: 14px; color: var(--muted); }
   @media (hover: hover) { .space-chip:hover { background: var(--hover); } }
-  /* A project's folder beside its name in the bar (sidebar.ts). */
-  .space-chip .project-line { margin-left: 8px; font-size: 11px; font-weight: 400; opacity: 0.7; }
   /* A host's heading in the sidebar's host view; another host's is a button that connects to it. */
   .host-head {
     display: flex; align-items: center; gap: 8px; width: 100%; margin: 10px 0 0; padding: 5px 12px; border: 0; border-radius: 999px;
@@ -275,12 +273,9 @@
   .theme-check { display: flex; align-items: center; justify-content: center; width: 1.2em; }
   .theme-check .pane-icon { width: 14px; height: 14px; }
   .theme-empty { padding: 12px; color: var(--muted); text-align: center; }
-  #sessions h2 { margin: 12px 8px 4px; font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+  #sessions h2 { display: flex; align-items: center; margin: 12px 8px 4px; font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
   #sessions nav { color: var(--muted); }
-  #sessions h2 { display: flex; align-items: center; }
   #sessions h2 span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  /* A project's home host and folder under its name (sidebar.ts). */
-  #sessions h2 .project-line { display: block; overflow: hidden; text-overflow: ellipsis; margin-top: 1px; font-size: 10.5px; font-weight: 400; text-transform: none; letter-spacing: 0; opacity: 0.8; }
   button.icon {
     flex: none; width: 22px; height: 22px; padding: 0; border: 0; border-radius: 999px; background: none;
     color: var(--muted); display: flex; align-items: center; justify-content: center; cursor: pointer;

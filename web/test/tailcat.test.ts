@@ -3,7 +3,7 @@
 // anything else is a gateway URL or an error.
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { parseTailcatAddress } from "../src/hosts";
+import { defaultName, parseTailcatAddress } from "../src/hosts";
 import { relayDenies } from "../src/tailcat";
 
 const addr = "tcAB12cd34-ef56_gh78ij90";
@@ -18,13 +18,28 @@ test("a rexgo://tailcat link parses, with its name", () => {
   assert.deepEqual(parseTailcatAddress(link), { address: addr, name: "alice-laptop" });
 });
 
-test("a link's encoded name decodes", () => {
-  const link = "rexgo://tailcat?a=" + encodeURIComponent(addr) + "&n=" + encodeURIComponent("studio mac");
+test("a link's encoded name decodes and trims whitespace", () => {
+  const link = "rexgo://tailcat?a=" + encodeURIComponent(addr) + "&n=" + encodeURIComponent("  studio mac  ");
   assert.deepEqual(parseTailcatAddress(link), { address: addr, name: "studio mac" });
 });
 
 test("a link without a name gives none", () => {
   assert.deepEqual(parseTailcatAddress("rexgo://tailcat?a=" + addr), { address: addr });
+  assert.deepEqual(parseTailcatAddress("rexgo://tailcat?a=" + addr + "&n=%20%20"), { address: addr });
+});
+
+test("rexgo://tailcat rejects paths, credentials, ports and fragments", () => {
+  assert.equal(parseTailcatAddress("rexgo://tailcat/extra?a=" + addr), undefined);
+  assert.equal(parseTailcatAddress("rexgo://user@tailcat?a=" + addr), undefined);
+  assert.equal(parseTailcatAddress("rexgo://tailcat:8080?a=" + addr), undefined);
+  assert.equal(parseTailcatAddress("rexgo://tailcat?a=" + addr + "#frag"), undefined);
+});
+
+test("defaultName strips built-in Tailscale -gorex suffix and keeps IPs", () => {
+  assert.equal(defaultName("http://alice-laptop-gorex.tail.ts.net:7297"), "alice-laptop");
+  assert.equal(defaultName("http://alice-laptop.local:7297"), "alice-laptop");
+  assert.equal(defaultName("http://192.0.2.10:7297"), "192.0.2.10");
+  assert.equal(defaultName("http://[fd7a:115c::1]:7297"), "fd7a:115c::1");
 });
 
 test("a gateway address is not a tailcat address", () => {

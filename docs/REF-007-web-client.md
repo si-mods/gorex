@@ -3,7 +3,7 @@ name: REF-007
 description: "The standalone web client in `web/`: hosts, trust of a page, Tailscale, hosting and the app shell. Use when you change the web client."
 metadata:
   created: "2026-11-12"
-  updated: "2026-11-27"
+  updated: "2026-11-28"
 ---
 
 # REF-007: Web client
@@ -823,11 +823,12 @@ error's own words) stay as they are.
 arguments, so that `t("key", { … })` with a key `en.json` lacks, or
 without an argument its message uses, fails `tsc`. The build runs it
 before `tsc`, and `npm run dev` again when a catalog changes. It fails on
-a message that does not parse, an `en.json` message whose placeholders
+a message that does not parse, a message containing ASCII `"..."` in
+place of `"…"`, an `en.json` message whose placeholders
 its `"@key"` does not declare exactly, a key of another language that
 `en.json` lacks, and a translation whose placeholders differ from
-`en.json`'s. A key missing from a translation is a warning, and the page
-says it in English; with `$CI` set, or `--ci`, it fails the build.
+`en.json`'s. A key missing from a translation or unused in `web/src/` is a
+warning; with `$CI` set, or `--ci` (`npm run typecheck`), it fails the build.
 
 To add a string:
 
@@ -903,13 +904,6 @@ once.
   its own room on the stage (`.window-room`), the focus (see Split
   panes), and `park` and `unpark`, which take a kept window's room off the
   stage and put it back.
-- `web/src/spaces.ts`: the desktop's spaces across hosts. It reads
-  `/api/spaces` through a host's transport (`HostConn` keeps `machine` and
-  `remote`), and `CrossHost` is the port of Rex Go's: which windows of
-  other hosts a session shows (`rows`), which window shows in another
-  host's space (`isMoved`), and which session is no space (`isGone`). It
-  has no DOM and no view yet: `web/test/spaces.test.ts` has the cases of
-  `ios/GoRexTests/SpacesTests.swift`.
 - `web/src/manage.ts`: the menus of a right click or a long press, the
   field that renames in place, Close Space's question, and the drags of
   a window's row and a pane's header (see Spaces, windows and moves).
@@ -940,7 +934,8 @@ The sidebar has a heading for each host (its state dot while it
 reconnects or fails, and a line with its problem, **Retry** and **Edit**),
 a heading for each of its sessions (with a + button for a new window,
 off while the host is not connected) and a row for each window: the name the user gave it, else its
-focused pane's name or terminal's title, else its label, and its count of panes when it has
+focused pane's name or terminal's title, else its project's name or folder name, else its foreground
+program, else `"Tab"`, and its count of panes when it has
 more than one. A label is the user's when it is not the host's default,
 `Window ` and the last 8 characters of the window's ID, as the iOS app
 tells. Its close button shows on hover. A click shows the window. While
